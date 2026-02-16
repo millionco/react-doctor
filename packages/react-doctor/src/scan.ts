@@ -174,7 +174,7 @@ const printBranding = (score?: number): void => {
     logger.log(colorize(`  │ ${mouth} │`));
     logger.log(colorize("  └─────┘"));
   }
-  logger.dim("  React Doctor (www.react.doctor)");
+  logger.log(`  React Doctor ${highlighter.dim("(www.react.doctor)")}`);
   logger.break();
 };
 

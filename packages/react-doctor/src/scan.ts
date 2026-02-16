@@ -153,9 +153,13 @@ const printSummary = (diagnostics: Diagnostic[], elapsedMilliseconds: number): v
 
   logger.log(parts.join("  "));
 
-  const diagnosticsDirectory = writeDiagnosticsDirectory(diagnostics);
-  logger.break();
-  logger.dim(`Full diagnostics written to ${diagnosticsDirectory}`);
+  try {
+    const diagnosticsDirectory = writeDiagnosticsDirectory(diagnostics);
+    logger.break();
+    logger.dim(`Full diagnostics written to ${diagnosticsDirectory}`);
+  } catch {
+    logger.break();
+  }
 };
 
 export const scan = async (directory: string, options: ScanOptions): Promise<void> => {
@@ -189,15 +193,19 @@ export const scan = async (directory: string, options: ScanOptions): Promise<voi
 
   if (options.lint) {
     const lintSpinner = spinner("Running lint checks...").start();
-    diagnostics.push(
-      ...(await runOxlint(
-        directory,
-        projectInfo.hasTypeScript,
-        projectInfo.framework,
-        projectInfo.hasReactCompiler,
-      )),
-    );
-    lintSpinner.succeed("Running lint checks.");
+    try {
+      diagnostics.push(
+        ...(await runOxlint(
+          directory,
+          projectInfo.hasTypeScript,
+          projectInfo.framework,
+          projectInfo.hasReactCompiler,
+        )),
+      );
+      lintSpinner.succeed("Running lint checks.");
+    } catch {
+      lintSpinner.fail("Lint checks failed (non-fatal, skipping).");
+    }
   }
 
   if (options.deadCode) {

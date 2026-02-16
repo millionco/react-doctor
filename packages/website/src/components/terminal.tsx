@@ -20,6 +20,7 @@ const SCORE_BAR_WIDTH_MOBILE = 15;
 const SCORE_BAR_WIDTH_DESKTOP = 30;
 const SCORE_GOOD_THRESHOLD = 75;
 const SCORE_OK_THRESHOLD = 50;
+const DIAGNOSTIC_COUNT_MOBILE = 3;
 const TOTAL_ERROR_COUNT = 36;
 const AFFECTED_FILE_COUNT = 18;
 const ELAPSED_TIME = "2.1s";
@@ -212,35 +213,42 @@ const DiagnosticItem = ({ diagnostic }: { diagnostic: Diagnostic }) => {
 
   return (
     <div className="mb-1">
-      <button
-        onClick={() => setIsOpen((previous) => !previous)}
-        className="inline-flex items-center gap-1 text-left"
-      >
-        <ChevronRight
-          size={16}
-          className={`shrink-0 text-neutral-500 transition-transform duration-150 ${isOpen ? "rotate-90" : ""}`}
-        />
-        <span>
-          <span className="text-red-400">✗</span>
-          {` ${diagnostic.message} `}
-          <span className="text-neutral-500">({diagnostic.count})</span>
-        </span>
-      </button>
-      <div
-        className="ml-6 grid text-sm text-neutral-500 transition-[grid-template-rows,opacity] duration-200 ease-out sm:text-base"
-        style={{
-          gridTemplateRows: isOpen ? "1fr" : "0fr",
-          opacity: isOpen ? 1 : 0,
-        }}
-      >
-        <div className="overflow-hidden">
-          <div className="mt-1">
-            {diagnostic.files.map((file) => (
-              <div key={file.path}>
-                {file.path}
-                {file.lines.length > 0 && `: ${file.lines.join(", ")}`}
-              </div>
-            ))}
+      <div className="sm:hidden">
+        <span className="text-red-400"> ✗</span>
+        {` ${diagnostic.message} `}
+        <span className="text-neutral-500">({diagnostic.count})</span>
+      </div>
+      <div className="hidden sm:block">
+        <button
+          onClick={() => setIsOpen((previous) => !previous)}
+          className="inline-flex items-center gap-1 text-left"
+        >
+          <ChevronRight
+            size={16}
+            className={`shrink-0 text-neutral-500 transition-transform duration-150 ${isOpen ? "rotate-90" : ""}`}
+          />
+          <span>
+            <span className="text-red-400">✗</span>
+            {` ${diagnostic.message} `}
+            <span className="text-neutral-500">({diagnostic.count})</span>
+          </span>
+        </button>
+        <div
+          className="ml-6 grid text-sm text-neutral-500 transition-[grid-template-rows,opacity] duration-200 ease-out sm:text-base"
+          style={{
+            gridTemplateRows: isOpen ? "1fr" : "0fr",
+            opacity: isOpen ? 1 : 0,
+          }}
+        >
+          <div className="overflow-hidden">
+            <div className="mt-1">
+              {diagnostic.files.map((file) => (
+                <div key={file.path}>
+                  {file.path}
+                  {file.lines.length > 0 && `: ${file.lines.join(", ")}`}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -331,7 +339,7 @@ const Terminal = () => {
   return (
     <div
       ref={containerRef}
-      className="h-screen w-full overflow-y-auto bg-[#0a0a0a] p-6 font-mono text-base leading-relaxed text-neutral-300 sm:p-8 sm:text-lg"
+      className="h-screen w-full overflow-y-auto bg-[#0a0a0a] p-6 pb-32 font-mono text-base leading-relaxed text-neutral-300 sm:p-8 sm:pb-40 sm:text-lg"
     >
       <div>
         <span className="text-neutral-500">$ </span>
@@ -350,11 +358,22 @@ const Terminal = () => {
         </FadeIn>
       )}
 
-      {DIAGNOSTICS.slice(0, state.visibleDiagnosticCount).map((diagnostic) => (
-        <FadeIn key={diagnostic.message}>
-          <DiagnosticItem diagnostic={diagnostic} />
-        </FadeIn>
-      ))}
+      <div className="sm:hidden">
+        {DIAGNOSTICS.slice(0, Math.min(state.visibleDiagnosticCount, DIAGNOSTIC_COUNT_MOBILE)).map(
+          (diagnostic) => (
+            <FadeIn key={diagnostic.message}>
+              <DiagnosticItem diagnostic={diagnostic} />
+            </FadeIn>
+          ),
+        )}
+      </div>
+      <div className="hidden sm:block">
+        {DIAGNOSTICS.slice(0, state.visibleDiagnosticCount).map((diagnostic) => (
+          <FadeIn key={diagnostic.message}>
+            <DiagnosticItem diagnostic={diagnostic} />
+          </FadeIn>
+        ))}
+      </div>
 
       {state.showSeparator && <Spacer />}
 

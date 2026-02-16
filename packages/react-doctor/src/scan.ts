@@ -159,26 +159,21 @@ const printScoreGauge = (score: number, label: string): void => {
   logger.break();
 };
 
-const getDocterFace = (score: number): string[] => {
-  if (score >= SCORE_GOOD_THRESHOLD) {
-    return ["  ┌─────┐", "  │ ◠ ◠ │", "  │  ▽  │", "  └─────┘"];
-  }
-  if (score >= SCORE_OK_THRESHOLD) {
-    return ["  ┌─────┐", "  │ • • │", "  │  ─  │", "  └─────┘"];
-  }
-  return ["  ┌─────┐", "  │ x x │", "  │  ▽  │", "  └─────┘"];
+const getDoctorFace = (score: number): string => {
+  if (score >= SCORE_GOOD_THRESHOLD) return "◠‿◠";
+  if (score >= SCORE_OK_THRESHOLD) return "•_•";
+  return "x_x";
 };
 
 const printBranding = (score?: number): void => {
   logger.break();
   if (score !== undefined) {
-    const face = getDocterFace(score);
-    for (const line of face) {
-      logger.log(colorizeByScore(line, score));
-    }
-    logger.break();
+    logger.log(
+      `  ${colorizeByScore(getDoctorFace(score), score)}  ${highlighter.dim("React Doctor (www.react.doctor)")}`,
+    );
+  } else {
+    logger.dim("  React Doctor (www.react.doctor)");
   }
-  logger.dim("  React Doctor (www.react.doctor)");
 };
 
 const printSummary = (

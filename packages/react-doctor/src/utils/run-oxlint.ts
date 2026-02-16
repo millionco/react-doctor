@@ -2,11 +2,13 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { SPAWN_MAX_BUFFER_BYTES } from "../constants.js";
 import { OXLINT_CONFIG } from "../oxlint-config.js";
 import type { Diagnostic, OxlintOutput } from "../types.js";
 
 const PLUGIN_CATEGORY_MAP: Record<string, string> = {
   react: "Correctness",
+  "react-hooks": "Correctness",
   "jsx-a11y": "Accessibility",
   "react-perf": "Performance",
   import: "Bundle Size",
@@ -16,10 +18,17 @@ const PLUGIN_CATEGORY_MAP: Record<string, string> = {
   unicorn: "Code Quality",
 };
 
-const parseRuleCode = (code: string): { plugin: string; rule: string } => {
+const normalizePluginName = (rawPlugin: string): string =>
+  rawPlugin
+    .replace(/^eslint-plugin-/, "")
+    .replace(/^typescript-eslint$/, "typescript");
+
+const parseRuleCode = (
+  code: string,
+): { plugin: string; rule: string } => {
   const match = code.match(/^(.+)\((.+)\)$/);
   if (!match) return { plugin: "unknown", rule: code };
-  return { plugin: match[1], rule: match[2] };
+  return { plugin: normalizePluginName(match[1]), rule: match[2] };
 };
 
 const resolveOxlintBinary = (): string => {
@@ -46,6 +55,7 @@ export const runOxlint = (rootDirectory: string, hasTypeScript: boolean): Diagno
     const result = spawnSync(process.execPath, args, {
       cwd: rootDirectory,
       encoding: "utf-8",
+      maxBuffer: SPAWN_MAX_BUFFER_BYTES,
     });
 
     if (result.error) {

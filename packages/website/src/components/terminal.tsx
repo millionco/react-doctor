@@ -22,7 +22,6 @@ const SCORE_GOOD_THRESHOLD = 75;
 const SCORE_OK_THRESHOLD = 50;
 const DIAGNOSTIC_COUNT_MOBILE = 3;
 const TOTAL_ERROR_COUNT = 22;
-const TOTAL_WARNING_COUNT = 14;
 const AFFECTED_FILE_COUNT = 18;
 const ELAPSED_TIME = "2.1s";
 
@@ -417,8 +416,6 @@ const Terminal = () => {
           <Spacer />
           <div>
             <span className="text-red-400">{TOTAL_ERROR_COUNT} errors</span>
-            {"  "}
-            <span className="text-yellow-500">{TOTAL_WARNING_COUNT} warnings</span>
             <span className="text-neutral-500">
               {`  across ${AFFECTED_FILE_COUNT} files  in ${ELAPSED_TIME}`}
             </span>

@@ -26,6 +26,7 @@ const TOTAL_WARNING_COUNT = 14;
 const AFFECTED_FILE_COUNT = 18;
 const ELAPSED_TIME = "2.1s";
 
+const ANIMATION_COMPLETED_KEY = "react-doctor-animation-completed";
 const COMMAND = "npx -y react-doctor@latest .";
 const GITHUB_URL = "https://github.com/aidenybai/react-doctor";
 const GITHUB_ICON_PATH =
@@ -277,10 +278,38 @@ const INITIAL_STATE: AnimationState = {
   showSummary: false,
 };
 
+const COMPLETED_STATE: AnimationState = {
+  typedCommand: COMMAND,
+  isTyping: false,
+  showHeader: true,
+  visibleDiagnosticCount: DIAGNOSTICS.length,
+  showSeparator: true,
+  score: TARGET_SCORE,
+  showSummary: true,
+};
+
+const didAnimationComplete = () => {
+  try {
+    return localStorage.getItem(ANIMATION_COMPLETED_KEY) === "true";
+  } catch {
+    return false;
+  }
+};
+
+const markAnimationCompleted = () => {
+  try {
+    localStorage.setItem(ANIMATION_COMPLETED_KEY, "true");
+  } catch {}
+};
+
 const Terminal = () => {
-  const [state, setState] = useState<AnimationState>(INITIAL_STATE);
+  const [state, setState] = useState<AnimationState>(
+    didAnimationComplete() ? COMPLETED_STATE : INITIAL_STATE,
+  );
 
   useEffect(() => {
+    if (didAnimationComplete()) return;
+
     let cancelled = false;
 
     const update = (patch: Partial<AnimationState>) => {
@@ -324,6 +353,7 @@ const Terminal = () => {
       await sleep(POST_SCORE_DELAY_MS);
       if (cancelled) return;
       update({ showSummary: true });
+      markAnimationCompleted();
     };
 
     run();

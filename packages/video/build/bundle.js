@@ -2,7 +2,7 @@
 /******/ 	"use strict";
 /******/ 	var __webpack_modules__ = ({
 
-/***/ 2436
+/***/ 7833
 (__unused_webpack_module, __unused_webpack___webpack_exports__, __webpack_require__) {
 
 
@@ -765,247 +765,9 @@ const SCENE_SCORE_REVEAL_DURATION_FRAMES = 110;
 const TRANSITION_DURATION_FRAMES = 15;
 const TOTAL_DURATION = SCENE_TYPING_DURATION_FRAMES + SCENE_FILE_SCAN_DURATION_FRAMES + SCENE_DIAGNOSTICS_DURATION_FRAMES + SCENE_AGENT_HANDOFF_DURATION_FRAMES + SCENE_SCORE_REVEAL_DURATION_FRAMES - TRANSITION_DURATION_FRAMES;
 
-;// ../../node_modules/.pnpm/@remotion+google-fonts@4.0.421_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/@remotion/google-fonts/dist/esm/IBMPlexMono.mjs
-// src/base.ts
-
-
-var loadedFonts = {};
-var withResolvers = function() {
-  let resolve;
-  let reject;
-  const promise = new Promise((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-};
-var loadFontFaceOrTimeoutAfter20Seconds = (fontFace) => {
-  const timeout = withResolvers();
-  const int = setTimeout(() => {
-    timeout.reject(new Error("Timed out loading Google Font"));
-  }, 18000);
-  return Promise.race([
-    fontFace.load().then(() => {
-      clearTimeout(int);
-    }),
-    timeout.promise
-  ]);
-};
-var loadFonts = (meta, style, options) => {
-  const weightsAndSubsetsAreSpecified = Array.isArray(options?.weights) && Array.isArray(options?.subsets) && options.weights.length > 0 && options.subsets.length > 0;
-  if (no_react.NoReactInternals.ENABLE_V5_BREAKING_CHANGES && !weightsAndSubsetsAreSpecified) {
-    throw new Error("Loading Google Fonts without specifying weights and subsets is not supported in Remotion v5. Please specify the weights and subsets you need.");
-  }
-  const promises = [];
-  const styles = style ? [style] : Object.keys(meta.fonts);
-  let fontsLoaded = 0;
-  for (const style2 of styles) {
-    if (typeof FontFace === "undefined") {
-      continue;
-    }
-    if (!meta.fonts[style2]) {
-      throw new Error(`The font ${meta.fontFamily} does not have a style ${style2}`);
-    }
-    const weights = options?.weights ?? Object.keys(meta.fonts[style2]);
-    for (const weight of weights) {
-      if (!meta.fonts[style2][weight]) {
-        throw new Error(`The font ${meta.fontFamily} does not  have a weight ${weight} in style ${style2}`);
-      }
-      const subsets = options?.subsets ?? Object.keys(meta.fonts[style2][weight]);
-      for (const subset of subsets) {
-        let font = meta.fonts[style2]?.[weight]?.[subset];
-        if (!font) {
-          throw new Error(`weight: ${weight} subset: ${subset} is not available for '${meta.fontFamily}'`);
-        }
-        let fontKey = `${meta.fontFamily}-${style2}-${weight}-${subset}`;
-        const previousPromise = loadedFonts[fontKey];
-        if (previousPromise) {
-          promises.push(previousPromise);
-          continue;
-        }
-        const baseLabel = `Fetching ${meta.fontFamily} font ${JSON.stringify({
-          style: style2,
-          weight,
-          subset
-        })}`;
-        const label = weightsAndSubsetsAreSpecified ? baseLabel : `${baseLabel}. This might be caused by loading too many font variations. Read more: https://www.remotion.dev/docs/troubleshooting/font-loading-errors#render-timeout-when-loading-google-fonts`;
-        const handle = (0,esm.delayRender)(label, { timeoutInMilliseconds: 60000 });
-        fontsLoaded++;
-        const fontFace = new FontFace(meta.fontFamily, `url(${font}) format('woff2')`, {
-          weight,
-          style: style2,
-          unicodeRange: meta.unicodeRanges[subset]
-        });
-        let attempts = 2;
-        const tryToLoad = () => {
-          if (fontFace.status === "loaded") {
-            (0,esm.continueRender)(handle);
-            return;
-          }
-          const promise = loadFontFaceOrTimeoutAfter20Seconds(fontFace).then(() => {
-            (options?.document ?? document).fonts.add(fontFace);
-            (0,esm.continueRender)(handle);
-          }).catch((err) => {
-            loadedFonts[fontKey] = undefined;
-            if (attempts === 0) {
-              throw err;
-            } else {
-              attempts--;
-              tryToLoad();
-            }
-          });
-          loadedFonts[fontKey] = promise;
-          promises.push(promise);
-        };
-        tryToLoad();
-      }
-    }
-    if (fontsLoaded > 20) {
-      console.warn(`Made ${fontsLoaded} network requests to load fonts for ${meta.fontFamily}. Consider loading fewer weights and subsets by passing options to loadFont(). Disable this warning by passing "ignoreTooManyRequestsWarning: true" to "options".`);
-    }
-  }
-  return {
-    fontFamily: meta.fontFamily,
-    fonts: meta.fonts,
-    unicodeRanges: meta.unicodeRanges,
-    waitUntilDone: () => Promise.all(promises).then(() => {
-      return;
-    })
-  };
-};
-
-// src/IBMPlexMono.ts
-var getInfo = () => ({
-  fontFamily: "IBM Plex Mono",
-  importName: "IBMPlexMono",
-  version: "v20",
-  url: "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;1,100;1,200;1,300;1,400;1,500;1,600;1,700",
-  unicodeRanges: {
-    "cyrillic-ext": "U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F",
-    cyrillic: "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116",
-    vietnamese: "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB",
-    "latin-ext": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF",
-    latin: "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
-  },
-  fonts: {
-    italic: {
-      "100": {
-        "cyrillic-ext": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6rfjptAgt5VM-kVkqdyU8n1ioStkdvp-8tFQ.woff2",
-        cyrillic: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6rfjptAgt5VM-kVkqdyU8n1ioStkdmp-8tFQ.woff2",
-        vietnamese: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6rfjptAgt5VM-kVkqdyU8n1ioStkdtp-8tFQ.woff2",
-        "latin-ext": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6rfjptAgt5VM-kVkqdyU8n1ioStkdsp-8tFQ.woff2",
-        latin: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6rfjptAgt5VM-kVkqdyU8n1ioStkdip-8.woff2"
-      },
-      "200": {
-        "cyrillic-ext": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6sfjptAgt5VM-kVkqdyU8n1ioSGlZ1jcoQLNg.woff2",
-        cyrillic: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6sfjptAgt5VM-kVkqdyU8n1ioSGlZ1hMoQLNg.woff2",
-        vietnamese: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6sfjptAgt5VM-kVkqdyU8n1ioSGlZ1j8oQLNg.woff2",
-        "latin-ext": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6sfjptAgt5VM-kVkqdyU8n1ioSGlZ1jsoQLNg.woff2",
-        latin: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6sfjptAgt5VM-kVkqdyU8n1ioSGlZ1gMoQ.woff2"
-      },
-      "300": {
-        "cyrillic-ext": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6sfjptAgt5VM-kVkqdyU8n1ioSflV1jcoQLNg.woff2",
-        cyrillic: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6sfjptAgt5VM-kVkqdyU8n1ioSflV1hMoQLNg.woff2",
-        vietnamese: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6sfjptAgt5VM-kVkqdyU8n1ioSflV1j8oQLNg.woff2",
-        "latin-ext": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6sfjptAgt5VM-kVkqdyU8n1ioSflV1jsoQLNg.woff2",
-        latin: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6sfjptAgt5VM-kVkqdyU8n1ioSflV1gMoQ.woff2"
-      },
-      "400": {
-        "cyrillic-ext": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6pfjptAgt5VM-kVkqdyU8n1ioa2Hdgv-s.woff2",
-        cyrillic: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6pfjptAgt5VM-kVkqdyU8n1ioa0Xdgv-s.woff2",
-        vietnamese: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6pfjptAgt5VM-kVkqdyU8n1ioa2ndgv-s.woff2",
-        "latin-ext": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6pfjptAgt5VM-kVkqdyU8n1ioa23dgv-s.woff2",
-        latin: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6pfjptAgt5VM-kVkqdyU8n1ioa1Xdg.woff2"
-      },
-      "500": {
-        "cyrillic-ext": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6sfjptAgt5VM-kVkqdyU8n1ioSJlR1jcoQLNg.woff2",
-        cyrillic: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6sfjptAgt5VM-kVkqdyU8n1ioSJlR1hMoQLNg.woff2",
-        vietnamese: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6sfjptAgt5VM-kVkqdyU8n1ioSJlR1j8oQLNg.woff2",
-        "latin-ext": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6sfjptAgt5VM-kVkqdyU8n1ioSJlR1jsoQLNg.woff2",
-        latin: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6sfjptAgt5VM-kVkqdyU8n1ioSJlR1gMoQ.woff2"
-      },
-      "600": {
-        "cyrillic-ext": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6sfjptAgt5VM-kVkqdyU8n1ioSClN1jcoQLNg.woff2",
-        cyrillic: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6sfjptAgt5VM-kVkqdyU8n1ioSClN1hMoQLNg.woff2",
-        vietnamese: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6sfjptAgt5VM-kVkqdyU8n1ioSClN1j8oQLNg.woff2",
-        "latin-ext": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6sfjptAgt5VM-kVkqdyU8n1ioSClN1jsoQLNg.woff2",
-        latin: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6sfjptAgt5VM-kVkqdyU8n1ioSClN1gMoQ.woff2"
-      },
-      "700": {
-        "cyrillic-ext": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6sfjptAgt5VM-kVkqdyU8n1ioSblJ1jcoQLNg.woff2",
-        cyrillic: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6sfjptAgt5VM-kVkqdyU8n1ioSblJ1hMoQLNg.woff2",
-        vietnamese: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6sfjptAgt5VM-kVkqdyU8n1ioSblJ1j8oQLNg.woff2",
-        "latin-ext": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6sfjptAgt5VM-kVkqdyU8n1ioSblJ1jsoQLNg.woff2",
-        latin: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6sfjptAgt5VM-kVkqdyU8n1ioSblJ1gMoQ.woff2"
-      }
-    },
-    normal: {
-      "100": {
-        "cyrillic-ext": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6pfjptAgt5VM-kVkqdyU8n3kwa2Hdgv-s.woff2",
-        cyrillic: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6pfjptAgt5VM-kVkqdyU8n3kwa0Xdgv-s.woff2",
-        vietnamese: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6pfjptAgt5VM-kVkqdyU8n3kwa2ndgv-s.woff2",
-        "latin-ext": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6pfjptAgt5VM-kVkqdyU8n3kwa23dgv-s.woff2",
-        latin: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6pfjptAgt5VM-kVkqdyU8n3kwa1Xdg.woff2"
-      },
-      "200": {
-        "cyrillic-ext": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3uALwl1FgtIU.woff2",
-        cyrillic: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3uALwlRFgtIU.woff2",
-        vietnamese: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3uALwl9FgtIU.woff2",
-        "latin-ext": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3uALwl5FgtIU.woff2",
-        latin: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3uALwlBFgg.woff2"
-      },
-      "300": {
-        "cyrillic-ext": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3oQIwl1FgtIU.woff2",
-        cyrillic: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3oQIwlRFgtIU.woff2",
-        vietnamese: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3oQIwl9FgtIU.woff2",
-        "latin-ext": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3oQIwl5FgtIU.woff2",
-        latin: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3oQIwlBFgg.woff2"
-      },
-      "400": {
-        "cyrillic-ext": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F63fjptAgt5VM-kVkqdyU8n1iIq129k.woff2",
-        cyrillic: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F63fjptAgt5VM-kVkqdyU8n1isq129k.woff2",
-        vietnamese: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F63fjptAgt5VM-kVkqdyU8n1iAq129k.woff2",
-        "latin-ext": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F63fjptAgt5VM-kVkqdyU8n1iEq129k.woff2",
-        latin: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F63fjptAgt5VM-kVkqdyU8n1i8q1w.woff2"
-      },
-      "500": {
-        "cyrillic-ext": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3twJwl1FgtIU.woff2",
-        cyrillic: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3twJwlRFgtIU.woff2",
-        vietnamese: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3twJwl9FgtIU.woff2",
-        "latin-ext": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3twJwl5FgtIU.woff2",
-        latin: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3twJwlBFgg.woff2"
-      },
-      "600": {
-        "cyrillic-ext": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3vAOwl1FgtIU.woff2",
-        cyrillic: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3vAOwlRFgtIU.woff2",
-        vietnamese: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3vAOwl9FgtIU.woff2",
-        "latin-ext": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3vAOwl5FgtIU.woff2",
-        latin: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3vAOwlBFgg.woff2"
-      },
-      "700": {
-        "cyrillic-ext": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3pQPwl1FgtIU.woff2",
-        cyrillic: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3pQPwlRFgtIU.woff2",
-        vietnamese: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3pQPwl9FgtIU.woff2",
-        "latin-ext": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3pQPwl5FgtIU.woff2",
-        latin: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3pQPwlBFgg.woff2"
-      }
-    }
-  },
-  subsets: ["cyrillic", "cyrillic-ext", "latin", "latin-ext", "vietnamese"]
-});
-var fontFamily = "IBM Plex Mono";
-var loadFont = (style, options) => {
-  return loadFonts(getInfo(), style, options);
-};
-
-
 ;// ./src/utils/font.ts
 
-
-const { fontFamily: font_fontFamily } = loadFont("normal", {
-  weights: ["400", "500", "700"],
-  subsets: ["latin"]
-});
+const fontFamily = '"EK Modena Mono", monospace';
 
 ;// ./src/scenes/agent-handoff.tsx
 
@@ -1087,7 +849,7 @@ const AgentHandoff = () => {
           "div",
           {
             style: {
-              fontFamily: font_fontFamily,
+              fontFamily: fontFamily,
               fontSize: LOGO_FONT_SIZE_PX,
               lineHeight: 1.4,
               margin: 0,
@@ -1115,7 +877,7 @@ const AgentHandoff = () => {
           "div",
           {
             style: {
-              fontFamily: font_fontFamily,
+              fontFamily: fontFamily,
               fontSize: PROMPT_FONT_SIZE_PX,
               color: TEXT_COLOR,
               opacity: promptOpacity,
@@ -1133,7 +895,7 @@ const AgentHandoff = () => {
           "div",
           {
             style: {
-              fontFamily: font_fontFamily,
+              fontFamily: fontFamily,
               fontSize: STATUS_FONT_SIZE_PX,
               color: MUTED_COLOR,
               marginBottom: 12,
@@ -1149,7 +911,7 @@ const AgentHandoff = () => {
           "div",
           {
             style: {
-              fontFamily: font_fontFamily,
+              fontFamily: fontFamily,
               fontSize: STATUS_FONT_SIZE_PX,
               color: GREEN_COLOR,
               marginBottom: 12,
@@ -1187,7 +949,7 @@ const AgentHandoff = () => {
             "div",
             {
               style: {
-                fontFamily: font_fontFamily,
+                fontFamily: fontFamily,
                 fontSize: agent_handoff_DIAGNOSTIC_FONT_SIZE_PX,
                 lineHeight: 1.7,
                 color: isItemFixed ? (0,esm.interpolate)(
@@ -1372,7 +1134,7 @@ const Diagnostics = () => {
                           color: scoreColor,
                           lineHeight: 1.2,
                           fontSize: faceFontSize,
-                          fontFamily: font_fontFamily,
+                          fontFamily: fontFamily,
                           margin: 0
                         },
                         children: `${BOX_TOP}
@@ -1390,7 +1152,7 @@ ${BOX_BOTTOM}`
                               color: scoreColor,
                               fontWeight: 500,
                               fontSize: numberFontSize,
-                              fontFamily: font_fontFamily
+                              fontFamily: fontFamily
                             },
                             children: currentScore
                           }
@@ -1401,7 +1163,7 @@ ${BOX_BOTTOM}`
                             style: {
                               color: MUTED_COLOR,
                               fontSize: labelFontSize,
-                              fontFamily: font_fontFamily
+                              fontFamily: fontFamily
                             },
                             children: ` / ${PERFECT_SCORE}  `
                           }
@@ -1412,7 +1174,7 @@ ${BOX_BOTTOM}`
                             style: {
                               color: scoreColor,
                               fontSize: labelFontSize,
-                              fontFamily: font_fontFamily
+                              fontFamily: fontFamily
                             },
                             children: getScoreLabel(currentScore)
                           }
@@ -1425,7 +1187,7 @@ ${BOX_BOTTOM}`
                             marginTop: 8,
                             letterSpacing: 2,
                             fontSize: barFontSize,
-                            fontFamily: font_fontFamily
+                            fontFamily: fontFamily
                           },
                           children: [
                             /* @__PURE__ */ (0,jsx_runtime.jsx)("span", { style: { color: scoreColor }, children: "\u2588".repeat(filledBarCount) }),
@@ -1441,7 +1203,7 @@ ${BOX_BOTTOM}`
                 "div",
                 {
                   style: {
-                    fontFamily: font_fontFamily,
+                    fontFamily: fontFamily,
                     fontSize: SUMMARY_FONT_SIZE_PX,
                     lineHeight: 1.7,
                     color: TEXT_COLOR,
@@ -1474,7 +1236,7 @@ ${BOX_BOTTOM}`
                   "div",
                   {
                     style: {
-                      fontFamily: font_fontFamily,
+                      fontFamily: fontFamily,
                       fontSize: diagnostics_DIAGNOSTIC_FONT_SIZE_PX,
                       lineHeight: 1.7,
                       color: TEXT_COLOR,
@@ -1520,7 +1282,7 @@ ${BOX_BOTTOM}`
                   "div",
                   {
                     style: {
-                      fontFamily: font_fontFamily,
+                      fontFamily: fontFamily,
                       fontSize: OVERLAY_TITLE_FONT_SIZE_PX,
                       color: "white",
                       opacity: overlayTitleOpacity,
@@ -1629,7 +1391,7 @@ const FileScan = () => {
                 {
                   style: {
                     opacity: fileOpacity,
-                    fontFamily: font_fontFamily,
+                    fontFamily: fontFamily,
                     fontSize: FILE_SCAN_FONT_SIZE_PX,
                     lineHeight: LINE_HEIGHT_MULTIPLIER,
                     color: TEXT_COLOR,
@@ -1686,7 +1448,7 @@ const FileScan = () => {
                   "div",
                   {
                     style: {
-                      fontFamily: font_fontFamily,
+                      fontFamily: fontFamily,
                       fontSize: TITLE_FONT_SIZE_PX,
                       color: "white",
                       opacity: titleOpacity,
@@ -1781,7 +1543,7 @@ const ScoreReveal = () => {
                   color: scoreColor,
                   lineHeight: 1.2,
                   fontSize: SCORE_FACE_FONT_SIZE_PX,
-                  fontFamily: font_fontFamily,
+                  fontFamily: fontFamily,
                   margin: 0
                 },
                 children: `${BOX_TOP}
@@ -1799,7 +1561,7 @@ ${BOX_BOTTOM}`
                       color: scoreColor,
                       fontWeight: 500,
                       fontSize: SCORE_FONT_SIZE_PX,
-                      fontFamily: font_fontFamily
+                      fontFamily: fontFamily
                     },
                     children: currentScore
                   }
@@ -1810,7 +1572,7 @@ ${BOX_BOTTOM}`
                     style: {
                       color: MUTED_COLOR,
                       fontSize: SCORE_LABEL_FONT_SIZE_PX,
-                      fontFamily: font_fontFamily
+                      fontFamily: fontFamily
                     },
                     children: ` / ${PERFECT_SCORE}  `
                   }
@@ -1821,7 +1583,7 @@ ${BOX_BOTTOM}`
                     style: {
                       color: scoreColor,
                       fontSize: SCORE_LABEL_FONT_SIZE_PX,
-                      fontFamily: font_fontFamily
+                      fontFamily: fontFamily
                     },
                     children: score_reveal_getScoreLabel(currentScore)
                   }
@@ -1834,7 +1596,7 @@ ${BOX_BOTTOM}`
                     marginTop: 8,
                     letterSpacing: 2,
                     fontSize: SCORE_BAR_FONT_SIZE_PX,
-                    fontFamily: font_fontFamily
+                    fontFamily: fontFamily
                   },
                   children: [
                     /* @__PURE__ */ (0,jsx_runtime.jsx)("span", { style: { color: scoreColor }, children: "\u2588".repeat(filledBarCount) }),
@@ -1886,7 +1648,7 @@ const TerminalTyping = () => {
         "div",
         {
           style: {
-            fontFamily: font_fontFamily,
+            fontFamily: fontFamily,
             fontSize: TYPING_FONT_SIZE_PX,
             lineHeight: 1.7,
             color: TEXT_COLOR,
@@ -2192,14 +1954,20 @@ ___CSS_LOADER_EXPORT___.push([module.id, "@layer theme, base, components, utilit
 /* harmony import */ var _node_modules_pnpm_css_loader_5_2_7_webpack_5_105_0_esbuild_0_25_0_node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(5794);
 /* harmony import */ var _node_modules_pnpm_css_loader_5_2_7_webpack_5_105_0_esbuild_0_25_0_node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_1___default = /*#__PURE__*/__webpack_require__.n(_node_modules_pnpm_css_loader_5_2_7_webpack_5_105_0_esbuild_0_25_0_node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_1__);
 /* harmony import */ var _node_modules_pnpm_css_loader_5_2_7_webpack_5_105_0_esbuild_0_25_0_node_modules_css_loader_dist_cjs_js_node_modules_pnpm_tailwindcss_4_1_18_node_modules_tailwindcss_index_css__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(7095);
+/* harmony import */ var _node_modules_pnpm_css_loader_5_2_7_webpack_5_105_0_esbuild_0_25_0_node_modules_css_loader_dist_runtime_getUrl_js__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(6569);
+/* harmony import */ var _node_modules_pnpm_css_loader_5_2_7_webpack_5_105_0_esbuild_0_25_0_node_modules_css_loader_dist_runtime_getUrl_js__WEBPACK_IMPORTED_MODULE_3___default = /*#__PURE__*/__webpack_require__.n(_node_modules_pnpm_css_loader_5_2_7_webpack_5_105_0_esbuild_0_25_0_node_modules_css_loader_dist_runtime_getUrl_js__WEBPACK_IMPORTED_MODULE_3__);
+/* harmony import */ var _assets_ek_modena_mono_regular_otf__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(6255);
 // Imports
+
+
 
 
 
 var ___CSS_LOADER_EXPORT___ = _node_modules_pnpm_css_loader_5_2_7_webpack_5_105_0_esbuild_0_25_0_node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_1___default()((_node_modules_pnpm_css_loader_5_2_7_webpack_5_105_0_esbuild_0_25_0_node_modules_css_loader_dist_runtime_cssWithMappingToString_js__WEBPACK_IMPORTED_MODULE_0___default()));
 ___CSS_LOADER_EXPORT___.i(_node_modules_pnpm_css_loader_5_2_7_webpack_5_105_0_esbuild_0_25_0_node_modules_css_loader_dist_cjs_js_node_modules_pnpm_tailwindcss_4_1_18_node_modules_tailwindcss_index_css__WEBPACK_IMPORTED_MODULE_2__/* ["default"] */ .A);
+var ___CSS_LOADER_URL_REPLACEMENT_0___ = _node_modules_pnpm_css_loader_5_2_7_webpack_5_105_0_esbuild_0_25_0_node_modules_css_loader_dist_runtime_getUrl_js__WEBPACK_IMPORTED_MODULE_3___default()(_assets_ek_modena_mono_regular_otf__WEBPACK_IMPORTED_MODULE_4__);
 // Module
-___CSS_LOADER_EXPORT___.push([module.id, "\n", "",{"version":3,"sources":[],"names":[],"mappings":"","sourceRoot":""}]);
+___CSS_LOADER_EXPORT___.push([module.id, "@font-face {\n  font-family: \"EK Modena Mono\";\n  src: url(" + ___CSS_LOADER_URL_REPLACEMENT_0___ + ") format(\"opentype\");\n  font-style: normal;\n  font-weight: 400;\n  font-display: swap;\n}\n", "",{"version":3,"sources":["webpack://./src/style.css"],"names":[],"mappings":"AAAA;EACE,6BAA6B;EAC7B,+DAAkE;EAClE,kBAAkB;EAClB,gBAAgB;EAChB,kBAAkB;AACpB","sourcesContent":["@font-face {\n  font-family: \"EK Modena Mono\";\n  src: url(\"./assets/ek-modena-mono-regular.otf\") format(\"opentype\");\n  font-style: normal;\n  font-weight: 400;\n  font-display: swap;\n}\n\n@import \"tailwindcss\";\n"],"sourceRoot":""}]);
 // Exports
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (___CSS_LOADER_EXPORT___);
 
@@ -2316,6 +2084,46 @@ module.exports = function cssWithMappingToString(item) {
   }
 
   return [content].join("\n");
+};
+
+/***/ },
+
+/***/ 6569
+(module) {
+
+
+
+module.exports = function (url, options) {
+  if (!options) {
+    // eslint-disable-next-line no-param-reassign
+    options = {};
+  } // eslint-disable-next-line no-underscore-dangle, no-param-reassign
+
+
+  url = url && url.__esModule ? url.default : url;
+
+  if (typeof url !== "string") {
+    return url;
+  } // If url is already wrapped in quotes, remove them
+
+
+  if (/^['"].*['"]$/.test(url)) {
+    // eslint-disable-next-line no-param-reassign
+    url = url.slice(1, -1);
+  }
+
+  if (options.hash) {
+    // eslint-disable-next-line no-param-reassign
+    url += options.hash;
+  } // Should url be wrapped?
+  // See https://drafts.csswg.org/css-values-3/#urls
+
+
+  if (/["'() \t\n]/.test(url) || options.needQuotes) {
+    return "\"".concat(url.replace(/"/g, '\\"').replace(/\n/g, "\\n"), "\"");
+  }
+
+  return url;
 };
 
 /***/ },
@@ -19890,6 +19698,13 @@ module.exports = styleTagTransform;
 
 /***/ },
 
+/***/ 6255
+(module, __unused_webpack_exports, __webpack_require__) {
+
+module.exports = __webpack_require__.p + "647c79eb02ee24bc.otf";
+
+/***/ },
+
 /***/ 5331
 (__unused_webpack___webpack_module__, __webpack_exports__, __webpack_require__) {
 
@@ -29479,7 +29294,7 @@ var NoReactInternals = {
 /******/ 	// Load entry module and return exports
 /******/ 	// This entry module is referenced by other modules so it can't be inlined
 /******/ 	__webpack_require__(6778);
-/******/ 	__webpack_require__(2436);
+/******/ 	__webpack_require__(7833);
 /******/ 	__webpack_require__(1743);
 /******/ 	var __webpack_exports__ = __webpack_require__(5331);
 /******/ 	

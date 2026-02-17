@@ -179,10 +179,7 @@ const printBranding = (score?: number): void => {
   logger.break();
 };
 
-const buildShareUrl = (
-  diagnostics: Diagnostic[],
-  scoreResult: ScoreResult | null,
-): string => {
+const buildShareUrl = (diagnostics: Diagnostic[], scoreResult: ScoreResult | null): string => {
   const errorCount = diagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
   const warningCount = diagnostics.filter((diagnostic) => diagnostic.severity === "warning").length;
   const affectedFileCount = collectAffectedFiles(diagnostics).size;

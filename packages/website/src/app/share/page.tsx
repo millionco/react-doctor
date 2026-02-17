@@ -76,10 +76,12 @@ export const generateMetadata = async ({
   const title = `React Doctor - Score: ${score}/100 (${label})`;
   const descriptionParts: string[] = [];
   if (errorCount > 0) descriptionParts.push(`${errorCount} error${errorCount === 1 ? "" : "s"}`);
-  if (warningCount > 0) descriptionParts.push(`${warningCount} warning${warningCount === 1 ? "" : "s"}`);
-  const description = descriptionParts.length > 0
-    ? `${descriptionParts.join(", ")} found. Run react-doctor on your codebase to find React issues.`
-    : "Run react-doctor on your codebase to find React issues.";
+  if (warningCount > 0)
+    descriptionParts.push(`${warningCount} warning${warningCount === 1 ? "" : "s"}`);
+  const description =
+    descriptionParts.length > 0
+      ? `${descriptionParts.join(", ")} found. Run react-doctor on your codebase to find React issues.`
+      : "Run react-doctor on your codebase to find React issues.";
 
   const ogSearchParams = new URLSearchParams();
   if (resolvedParams.s) ogSearchParams.set("s", resolvedParams.s);
@@ -96,11 +98,7 @@ export const generateMetadata = async ({
   };
 };
 
-const SharePage = async ({
-  searchParams,
-}: {
-  searchParams: Promise<ShareSearchParams>;
-}) => {
+const SharePage = async ({ searchParams }: { searchParams: Promise<ShareSearchParams> }) => {
   const resolvedParams = await searchParams;
   const score = clampScore(Number(resolvedParams.s) || 0);
   const errorCount = Math.max(0, Number(resolvedParams.e) || 0);
@@ -125,8 +123,7 @@ const SharePage = async ({
       <div className="mb-6">
         <DoctorFace score={score} />
         <div className="mt-2 text-neutral-500">
-          React Doctor{" "}
-          <span className="text-neutral-600">(www.react.doctor)</span>
+          React Doctor <span className="text-neutral-600">(www.react.doctor)</span>
         </div>
       </div>
 
@@ -160,13 +157,9 @@ const SharePage = async ({
         </div>
       )}
 
-      <div className="text-neutral-500">
-        Run it on your codebase:
-      </div>
+      <div className="text-neutral-500">Run it on your codebase:</div>
       <div className="mt-2">
-        <span className="border border-white/20 px-3 py-1.5 text-white">
-          {COMMAND}
-        </span>
+        <span className="border border-white/20 px-3 py-1.5 text-white">{COMMAND}</span>
       </div>
 
       <div className="mt-8 flex flex-wrap items-center gap-3">

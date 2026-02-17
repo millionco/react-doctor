@@ -1,5 +1,12 @@
+import { createRequire } from "node:module";
 import basePrompts, { type PromptObject, type Answers } from "prompts";
+import type { PromptMultiselectContext } from "../types.js";
 import { logger } from "./logger.js";
+import { shouldSelectAllChoices } from "./should-select-all-choices.js";
+
+const require = createRequire(import.meta.url);
+const PROMPTS_MULTISELECT_MODULE_PATH = "prompts/lib/elements/multiselect";
+let didPatchMultiselectToggleAll = false;
 
 const onCancel = () => {
   logger.break();
@@ -8,8 +15,35 @@ const onCancel = () => {
   process.exit(0);
 };
 
+const patchMultiselectToggleAll = (): void => {
+  if (didPatchMultiselectToggleAll) return;
+  didPatchMultiselectToggleAll = true;
+
+  const multiselectPromptConstructor = require(PROMPTS_MULTISELECT_MODULE_PATH);
+
+  multiselectPromptConstructor.prototype.toggleAll = function (
+    this: PromptMultiselectContext,
+  ): void {
+    const isCurrentChoiceDisabled = Boolean(this.value[this.cursor]?.disabled);
+    if (this.maxChoices !== undefined || isCurrentChoiceDisabled) {
+      this.bell();
+      return;
+    }
+
+    const shouldSelectAllEnabledChoices = shouldSelectAllChoices(this.value);
+
+    for (const choiceState of this.value) {
+      if (choiceState.disabled) continue;
+      choiceState.selected = shouldSelectAllEnabledChoices;
+    }
+
+    this.render();
+  };
+};
+
 export const prompts = <T extends string = string>(
   questions: PromptObject<T> | PromptObject<T>[],
 ): Promise<Answers<T>> => {
+  patchMultiselectToggleAll();
   return basePrompts(questions, { onCancel });
 };

@@ -93,6 +93,19 @@ export interface WorkspacePackage {
   directory: string;
 }
 
+export interface PromptMultiselectChoiceState {
+  selected?: boolean;
+  disabled?: boolean;
+}
+
+export interface PromptMultiselectContext {
+  maxChoices?: number;
+  cursor: number;
+  value: PromptMultiselectChoiceState[];
+  bell: () => void;
+  render: () => void;
+}
+
 export interface KnipResults {
   issues: {
     files: Set<string>;

@@ -9,6 +9,8 @@ One command scans your codebase for security, performance, correctness, and arch
 
 ### [See it in action →](https://react.doctor)
 
+https://github.com/user-attachments/assets/07cc88d9-9589-44c3-aa73-5d603cb1c570
+
 ## Install
 
 Run this at your project root:

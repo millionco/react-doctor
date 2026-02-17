@@ -56,14 +56,10 @@ const OVERLAY_TITLE_FONT_SIZE_PX = 88;
 const FIX_START_DELAY_FRAMES = 8;
 const FIX_INTERVAL_FRAMES = 10;
 const FIX_TRANSITION_FRAMES = 8;
-const FINAL_SCORE_DELAY_FRAMES = 6;
 const FINAL_SCORE_HOLD_FRAMES = 10;
 const FINAL_SCORE_ANIMATION_FRAMES = 45;
 const STATUS_FADE_IN_FRAMES = 8;
 const STATUS_FONT_SIZE_PX = 34;
-const FIXED_ERROR_COUNT = 0;
-const FIXED_FILE_COUNT = 0;
-const FIXED_ELAPSED_TIME = "3.6s";
 
 const getScoreColor = (score: number) => {
   if (score >= 75) return "#4ade80";
@@ -90,11 +86,10 @@ export const Diagnostics = () => {
   const frame = useCurrentFrame() * VIDEO_SPEED_MULTIPLIER;
   const fixStartFrame = OVERLAY_END_FRAME + FIX_START_DELAY_FRAMES;
   const allFixedFrame = fixStartFrame + DIAGNOSTICS.length * FIX_INTERVAL_FRAMES;
-  const finalScorePhaseStartFrame = allFixedFrame + FINAL_SCORE_DELAY_FRAMES;
+  const finalScorePhaseStartFrame = allFixedFrame;
   const finalScoreIncreaseStartFrame = finalScorePhaseStartFrame + FINAL_SCORE_HOLD_FRAMES;
   const finalScoreEndFrame = finalScoreIncreaseStartFrame + FINAL_SCORE_ANIMATION_FRAMES;
   const isFixing = frame >= fixStartFrame && frame < allFixedFrame;
-  const isAllFixed = frame >= allFixedFrame;
   const isFinalScoreFocusPhase = frame >= finalScorePhaseStartFrame;
 
   const scoreBlockOpacity = interpolate(frame, [0, SCORE_FADE_IN_FRAMES], [0, 1], {
@@ -160,20 +155,6 @@ export const Diagnostics = () => {
       easing: Easing.out(Easing.cubic),
     },
   );
-  const fixedStatusOpacity = interpolate(
-    frame,
-    [allFixedFrame, allFixedFrame + STATUS_FADE_IN_FRAMES],
-    [0, 1],
-    {
-      extrapolateLeft: "clamp",
-      extrapolateRight: "clamp",
-      easing: Easing.out(Easing.cubic),
-    },
-  );
-  const summaryErrorCount = isAllFixed ? FIXED_ERROR_COUNT : TOTAL_ERROR_COUNT;
-  const summaryFileCount = isAllFixed ? FIXED_FILE_COUNT : AFFECTED_FILE_COUNT;
-  const summaryElapsedTime = isAllFixed ? FIXED_ELAPSED_TIME : ELAPSED_TIME;
-  const summaryPrimaryColor = isAllFixed ? GREEN_COLOR : RED_COLOR;
 
   const diagnosticsStartFrame = ERRORS_START_DELAY_FRAMES;
 
@@ -362,9 +343,9 @@ export const Diagnostics = () => {
             marginBottom: 24,
           }}
         >
-          <span style={{ color: summaryPrimaryColor }}>{summaryErrorCount} errors</span>
+          <span style={{ color: RED_COLOR }}>{TOTAL_ERROR_COUNT} errors</span>
           <span style={{ color: MUTED_COLOR }}>
-            {`  across ${summaryFileCount} files  in ${summaryElapsedTime}`}
+            {`  across ${AFFECTED_FILE_COUNT} files  in ${ELAPSED_TIME}`}
           </span>
         </div>
 
@@ -381,21 +362,6 @@ export const Diagnostics = () => {
           >
             <span style={{ color: "white" }}>◌</span>
             {" Fixing issues with coding agent..."}
-          </div>
-        )}
-
-        {isAllFixed && (
-          <div
-            style={{
-              fontFamily,
-              fontSize: STATUS_FONT_SIZE_PX,
-              lineHeight: 1.6,
-              color: GREEN_COLOR,
-              opacity: fixedStatusOpacity,
-              marginBottom: 12,
-            }}
-          >
-            ✓ All issues fixed
           </div>
         )}
 

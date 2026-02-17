@@ -28,9 +28,16 @@ export const TYPING_POST_PAUSE_FRAMES = 24;
 export const TYPING_PAN_THRESHOLD_PX = CONTENT_WIDTH_PX * 0.6;
 
 export const FILE_SCAN_FONT_SIZE_PX = 48;
-export const FRAMES_PER_FILE = 3;
-export const FILE_SCAN_INITIAL_DELAY_FRAMES = 5;
+export const FRAMES_PER_FILE = 2;
+export const FILE_SCAN_INITIAL_DELAY_FRAMES = 0;
 export const FILE_SCAN_VISIBLE_ROWS = 14;
+export const FILE_SCAN_TITLE_FONT_SIZE_PX = 88;
+export const FILE_SCAN_OVERLAY_START_RATIO = 0.25;
+export const FILE_SCAN_OVERLAY_FADE_IN_FRAMES = 15;
+export const FILE_SCAN_OVERLAY_HOLD_FRAMES = 60;
+export const FILE_SCAN_OVERLAY_FADE_OUT_FRAMES = 15;
+export const FILE_SCAN_TITLE_START_OFFSET_PX = -18;
+export const FILE_SCAN_TITLE_END_OFFSET_PX = 42;
 export const SCANNED_FILES = [
   { path: "src/components/Button.tsx", errors: 0, warnings: 1 },
   { path: "src/components/UserCard.tsx", errors: 2, warnings: 0 },
@@ -143,7 +150,7 @@ export const FRAMES_PER_FIX = 20;
 export const FIX_INITIAL_DELAY_FRAMES = 15;
 
 export const SCENE_TYPING_DURATION_FRAMES = 100;
-export const SCENE_FILE_SCAN_DURATION_FRAMES = 185;
+export const SCENE_FILE_SCAN_DURATION_FRAMES = 140;
 export const SCENE_DIAGNOSTICS_DURATION_FRAMES = 135;
 export const SCENE_FIXES_DURATION_FRAMES = 195;
 export const SCENE_CTA_DURATION_FRAMES = 90;

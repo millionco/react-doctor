@@ -646,9 +646,16 @@ const TYPING_INITIAL_DELAY_FRAMES = 8;
 const TYPING_POST_PAUSE_FRAMES = 24;
 const TYPING_PAN_THRESHOLD_PX = CONTENT_WIDTH_PX * 0.6;
 const FILE_SCAN_FONT_SIZE_PX = 48;
-const FRAMES_PER_FILE = 3;
-const FILE_SCAN_INITIAL_DELAY_FRAMES = 5;
+const FRAMES_PER_FILE = 2;
+const FILE_SCAN_INITIAL_DELAY_FRAMES = 0;
 const FILE_SCAN_VISIBLE_ROWS = 14;
+const FILE_SCAN_TITLE_FONT_SIZE_PX = 88;
+const FILE_SCAN_OVERLAY_START_RATIO = 0.25;
+const FILE_SCAN_OVERLAY_FADE_IN_FRAMES = 15;
+const FILE_SCAN_OVERLAY_HOLD_FRAMES = 60;
+const FILE_SCAN_OVERLAY_FADE_OUT_FRAMES = 15;
+const FILE_SCAN_TITLE_START_OFFSET_PX = -18;
+const FILE_SCAN_TITLE_END_OFFSET_PX = 42;
 const SCANNED_FILES = [
   { path: "src/components/Button.tsx", errors: 0, warnings: 1 },
   { path: "src/components/UserCard.tsx", errors: 2, warnings: 0 },
@@ -756,7 +763,7 @@ const BOX_BOTTOM = "\u2514\u2500\u2500\u2500\u2500\u2500\u2518";
 const FRAMES_PER_FIX = 20;
 const FIX_INITIAL_DELAY_FRAMES = 15;
 const SCENE_TYPING_DURATION_FRAMES = 100;
-const SCENE_FILE_SCAN_DURATION_FRAMES = 185;
+const SCENE_FILE_SCAN_DURATION_FRAMES = 140;
 const SCENE_DIAGNOSTICS_DURATION_FRAMES = 135;
 const SCENE_FIXES_DURATION_FRAMES = 195;
 const SCENE_CTA_DURATION_FRAMES = 90;
@@ -1314,30 +1321,24 @@ const FADE_IN_FRAMES = 6;
 const VIEWPORT_HEIGHT_PX = 1080;
 const CONTENT_PADDING_PX = 40;
 const USABLE_HEIGHT_PX = VIEWPORT_HEIGHT_PX - CONTENT_PADDING_PX * 2;
-const VISIBLE_ROW_COUNT = Math.floor(USABLE_HEIGHT_PX / LINE_HEIGHT_PX);
 const TOTAL_LIST_HEIGHT_PX = SCANNED_FILES.length * LINE_HEIGHT_PX;
 const MAX_SCROLL_PX = Math.max(0, TOTAL_LIST_HEIGHT_PX - USABLE_HEIGHT_PX);
-const SCROLL_START_FRAME = FILE_SCAN_INITIAL_DELAY_FRAMES + VISIBLE_ROW_COUNT * FRAMES_PER_FILE;
-const SCROLL_END_FRAME = FILE_SCAN_INITIAL_DELAY_FRAMES + SCANNED_FILES.length * FRAMES_PER_FILE;
-const file_scan_OVERLAY_START_FRAME = Math.floor(SCENE_FILE_SCAN_DURATION_FRAMES * 0.25);
-const file_scan_OVERLAY_FADE_IN_FRAMES = 15;
-const file_scan_OVERLAY_HOLD_FRAMES = 60;
-const file_scan_OVERLAY_FADE_OUT_FRAMES = 15;
-const file_scan_OVERLAY_END_FRAME = file_scan_OVERLAY_START_FRAME + file_scan_OVERLAY_FADE_IN_FRAMES + file_scan_OVERLAY_HOLD_FRAMES + file_scan_OVERLAY_FADE_OUT_FRAMES;
-const TITLE_FONT_SIZE_PX = 88;
+const SCROLL_START_FRAME = FILE_SCAN_INITIAL_DELAY_FRAMES;
+const SCROLL_END_FRAME = SCENE_FILE_SCAN_DURATION_FRAMES;
+const file_scan_OVERLAY_START_FRAME = Math.floor(SCENE_FILE_SCAN_DURATION_FRAMES * FILE_SCAN_OVERLAY_START_RATIO);
+const file_scan_OVERLAY_END_FRAME = file_scan_OVERLAY_START_FRAME + FILE_SCAN_OVERLAY_FADE_IN_FRAMES + FILE_SCAN_OVERLAY_HOLD_FRAMES + FILE_SCAN_OVERLAY_FADE_OUT_FRAMES;
 const FileScan = () => {
   const frame = (0,esm.useCurrentFrame)();
   const scrollY = (0,esm.interpolate)(frame, [SCROLL_START_FRAME, SCROLL_END_FRAME], [0, MAX_SCROLL_PX], {
     extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-    easing: esm.Easing.inOut(esm.Easing.quad)
+    extrapolateRight: "clamp"
   });
   const overlayOpacity = (0,esm.interpolate)(
     frame,
     [
       file_scan_OVERLAY_START_FRAME,
-      file_scan_OVERLAY_START_FRAME + file_scan_OVERLAY_FADE_IN_FRAMES,
-      file_scan_OVERLAY_END_FRAME - file_scan_OVERLAY_FADE_OUT_FRAMES,
+      file_scan_OVERLAY_START_FRAME + FILE_SCAN_OVERLAY_FADE_IN_FRAMES,
+      file_scan_OVERLAY_END_FRAME - FILE_SCAN_OVERLAY_FADE_OUT_FRAMES,
       file_scan_OVERLAY_END_FRAME
     ],
     [0, 1, 1, 0],
@@ -1349,16 +1350,25 @@ const FileScan = () => {
   const titleOpacity = (0,esm.interpolate)(
     frame,
     [
-      file_scan_OVERLAY_START_FRAME + 5,
-      file_scan_OVERLAY_START_FRAME + file_scan_OVERLAY_FADE_IN_FRAMES + 5,
-      file_scan_OVERLAY_END_FRAME - file_scan_OVERLAY_FADE_OUT_FRAMES - 5,
-      file_scan_OVERLAY_END_FRAME - 5
+      file_scan_OVERLAY_START_FRAME,
+      file_scan_OVERLAY_START_FRAME + FILE_SCAN_OVERLAY_FADE_IN_FRAMES,
+      file_scan_OVERLAY_END_FRAME - FILE_SCAN_OVERLAY_FADE_OUT_FRAMES,
+      file_scan_OVERLAY_END_FRAME
     ],
     [0, 1, 1, 0],
     {
       extrapolateLeft: "clamp",
       extrapolateRight: "clamp",
       easing: esm.Easing.out(esm.Easing.cubic)
+    }
+  );
+  const titleOffsetY = (0,esm.interpolate)(
+    frame,
+    [file_scan_OVERLAY_START_FRAME, file_scan_OVERLAY_END_FRAME],
+    [FILE_SCAN_TITLE_START_OFFSET_PX, FILE_SCAN_TITLE_END_OFFSET_PX],
+    {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp"
     }
   );
   return /* @__PURE__ */ (0,jsx_runtime.jsxs)(
@@ -1449,9 +1459,10 @@ const FileScan = () => {
                   {
                     style: {
                       fontFamily: fontFamily,
-                      fontSize: TITLE_FONT_SIZE_PX,
+                      fontSize: FILE_SCAN_TITLE_FONT_SIZE_PX,
                       color: "white",
                       opacity: titleOpacity,
+                      transform: `translateY(${titleOffsetY}px)`,
                       textAlign: "center",
                       lineHeight: 1.4
                     },

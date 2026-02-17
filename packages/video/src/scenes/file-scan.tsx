@@ -3,6 +3,13 @@ import {
   BACKGROUND_COLOR,
   FILE_SCAN_FONT_SIZE_PX,
   FILE_SCAN_INITIAL_DELAY_FRAMES,
+  FILE_SCAN_OVERLAY_FADE_IN_FRAMES,
+  FILE_SCAN_OVERLAY_FADE_OUT_FRAMES,
+  FILE_SCAN_OVERLAY_HOLD_FRAMES,
+  FILE_SCAN_OVERLAY_START_RATIO,
+  FILE_SCAN_TITLE_END_OFFSET_PX,
+  FILE_SCAN_TITLE_FONT_SIZE_PX,
+  FILE_SCAN_TITLE_START_OFFSET_PX,
   FRAMES_PER_FILE,
   MUTED_COLOR,
   OVERLAY_GRADIENT_BOTTOM_PADDING_PX,
@@ -23,19 +30,17 @@ const FADE_IN_FRAMES = 6;
 const VIEWPORT_HEIGHT_PX = 1080;
 const CONTENT_PADDING_PX = 40;
 const USABLE_HEIGHT_PX = VIEWPORT_HEIGHT_PX - CONTENT_PADDING_PX * 2;
-const VISIBLE_ROW_COUNT = Math.floor(USABLE_HEIGHT_PX / LINE_HEIGHT_PX);
 const TOTAL_LIST_HEIGHT_PX = SCANNED_FILES.length * LINE_HEIGHT_PX;
 const MAX_SCROLL_PX = Math.max(0, TOTAL_LIST_HEIGHT_PX - USABLE_HEIGHT_PX);
-const SCROLL_START_FRAME = FILE_SCAN_INITIAL_DELAY_FRAMES + VISIBLE_ROW_COUNT * FRAMES_PER_FILE;
-const SCROLL_END_FRAME = FILE_SCAN_INITIAL_DELAY_FRAMES + SCANNED_FILES.length * FRAMES_PER_FILE;
+const SCROLL_START_FRAME = FILE_SCAN_INITIAL_DELAY_FRAMES;
+const SCROLL_END_FRAME = SCENE_FILE_SCAN_DURATION_FRAMES;
 
-const OVERLAY_START_FRAME = Math.floor(SCENE_FILE_SCAN_DURATION_FRAMES * 0.25);
-const OVERLAY_FADE_IN_FRAMES = 15;
-const OVERLAY_HOLD_FRAMES = 60;
-const OVERLAY_FADE_OUT_FRAMES = 15;
+const OVERLAY_START_FRAME = Math.floor(SCENE_FILE_SCAN_DURATION_FRAMES * FILE_SCAN_OVERLAY_START_RATIO);
 const OVERLAY_END_FRAME =
-  OVERLAY_START_FRAME + OVERLAY_FADE_IN_FRAMES + OVERLAY_HOLD_FRAMES + OVERLAY_FADE_OUT_FRAMES;
-const TITLE_FONT_SIZE_PX = 88;
+  OVERLAY_START_FRAME +
+  FILE_SCAN_OVERLAY_FADE_IN_FRAMES +
+  FILE_SCAN_OVERLAY_HOLD_FRAMES +
+  FILE_SCAN_OVERLAY_FADE_OUT_FRAMES;
 
 export const FileScan = () => {
   const frame = useCurrentFrame();
@@ -43,15 +48,14 @@ export const FileScan = () => {
   const scrollY = interpolate(frame, [SCROLL_START_FRAME, SCROLL_END_FRAME], [0, MAX_SCROLL_PX], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
-    easing: Easing.inOut(Easing.quad),
   });
 
   const overlayOpacity = interpolate(
     frame,
     [
       OVERLAY_START_FRAME,
-      OVERLAY_START_FRAME + OVERLAY_FADE_IN_FRAMES,
-      OVERLAY_END_FRAME - OVERLAY_FADE_OUT_FRAMES,
+      OVERLAY_START_FRAME + FILE_SCAN_OVERLAY_FADE_IN_FRAMES,
+      OVERLAY_END_FRAME - FILE_SCAN_OVERLAY_FADE_OUT_FRAMES,
       OVERLAY_END_FRAME,
     ],
     [0, 1, 1, 0],
@@ -64,16 +68,25 @@ export const FileScan = () => {
   const titleOpacity = interpolate(
     frame,
     [
-      OVERLAY_START_FRAME + 5,
-      OVERLAY_START_FRAME + OVERLAY_FADE_IN_FRAMES + 5,
-      OVERLAY_END_FRAME - OVERLAY_FADE_OUT_FRAMES - 5,
-      OVERLAY_END_FRAME - 5,
+      OVERLAY_START_FRAME,
+      OVERLAY_START_FRAME + FILE_SCAN_OVERLAY_FADE_IN_FRAMES,
+      OVERLAY_END_FRAME - FILE_SCAN_OVERLAY_FADE_OUT_FRAMES,
+      OVERLAY_END_FRAME,
     ],
     [0, 1, 1, 0],
     {
       extrapolateLeft: "clamp",
       extrapolateRight: "clamp",
       easing: Easing.out(Easing.cubic),
+    },
+  );
+  const titleOffsetY = interpolate(
+    frame,
+    [OVERLAY_START_FRAME, OVERLAY_END_FRAME],
+    [FILE_SCAN_TITLE_START_OFFSET_PX, FILE_SCAN_TITLE_END_OFFSET_PX],
+    {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
     },
   );
 
@@ -162,9 +175,10 @@ export const FileScan = () => {
           <div
             style={{
               fontFamily,
-              fontSize: TITLE_FONT_SIZE_PX,
+              fontSize: FILE_SCAN_TITLE_FONT_SIZE_PX,
               color: "white",
               opacity: titleOpacity,
+              transform: `translateY(${titleOffsetY}px)`,
               textAlign: "center",
               lineHeight: 1.4,
             }}

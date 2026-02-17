@@ -12,11 +12,12 @@ import {
   TEXT_COLOR,
   TYPING_FONT_SIZE_PX,
   TYPING_INITIAL_DELAY_FRAMES,
+  VIDEO_SPEED_MULTIPLIER,
 } from "../constants";
 import { fontFamily } from "../utils/font";
 
 export const TerminalTyping = () => {
-  const frame = useCurrentFrame();
+  const frame = useCurrentFrame() * VIDEO_SPEED_MULTIPLIER;
 
   const typedCharCount = Math.min(
     COMMAND.length,

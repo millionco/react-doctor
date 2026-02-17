@@ -1,6 +1,7 @@
 export const VIDEO_WIDTH_PX = 1920;
 export const VIDEO_HEIGHT_PX = 1080;
 export const VIDEO_FPS = 30;
+export const VIDEO_SPEED_MULTIPLIER = 1.5;
 
 export const BACKGROUND_COLOR = "#0a0a0a";
 export const TEXT_COLOR = "#d4d4d8";
@@ -32,7 +33,7 @@ export const FRAMES_PER_FILE = 1.6;
 export const FILE_SCAN_INITIAL_DELAY_FRAMES = 0;
 export const FILE_SCAN_VISIBLE_ROWS = 14;
 export const FILE_SCAN_TITLE_FONT_SIZE_PX = 88;
-export const FILE_SCAN_OVERLAY_START_RATIO = 0.25;
+export const FILE_SCAN_OVERLAY_START_RATIO = 0;
 export const FILE_SCAN_OVERLAY_FADE_IN_FRAMES = 15;
 export const FILE_SCAN_OVERLAY_HOLD_FRAMES = 45;
 export const FILE_SCAN_OVERLAY_FADE_OUT_FRAMES = 15;
@@ -149,9 +150,22 @@ export const BOX_BOTTOM = "└─────┘";
 export const FRAMES_PER_FIX = 20;
 export const FIX_INITIAL_DELAY_FRAMES = 15;
 
-export const SCENE_TYPING_DURATION_FRAMES = 100;
-export const SCENE_FILE_SCAN_DURATION_FRAMES = 110;
-export const SCENE_DIAGNOSTICS_DURATION_FRAMES = 340;
+const getSpeedAdjustedDurationFrames = (durationInFrames: number) =>
+  Math.round(durationInFrames / VIDEO_SPEED_MULTIPLIER);
+
+export const SCENE_TYPING_BASE_DURATION_FRAMES = 100;
+export const SCENE_FILE_SCAN_BASE_DURATION_FRAMES = 110;
+export const SCENE_DIAGNOSTICS_BASE_DURATION_FRAMES = 340;
+
+export const SCENE_TYPING_DURATION_FRAMES = getSpeedAdjustedDurationFrames(
+  SCENE_TYPING_BASE_DURATION_FRAMES,
+);
+export const SCENE_FILE_SCAN_DURATION_FRAMES = getSpeedAdjustedDurationFrames(
+  SCENE_FILE_SCAN_BASE_DURATION_FRAMES,
+);
+export const SCENE_DIAGNOSTICS_DURATION_FRAMES = getSpeedAdjustedDurationFrames(
+  SCENE_DIAGNOSTICS_BASE_DURATION_FRAMES,
+);
 export const SCENE_FIXES_DURATION_FRAMES = 195;
 export const SCENE_CTA_DURATION_FRAMES = 90;
 export const SCENE_AGENT_HANDOFF_DURATION_FRAMES = 140;

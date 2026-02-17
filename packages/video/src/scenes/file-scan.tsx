@@ -17,8 +17,9 @@ import {
   OVERLAY_GRADIENT_HORIZONTAL_PADDING_PX,
   RED_COLOR,
   SCANNED_FILES,
-  SCENE_FILE_SCAN_DURATION_FRAMES,
+  SCENE_FILE_SCAN_BASE_DURATION_FRAMES,
   TEXT_COLOR,
+  VIDEO_SPEED_MULTIPLIER,
   YELLOW_COLOR,
 } from "../constants";
 import { getBottomOverlayGradient } from "../utils/get-bottom-overlay-gradient";
@@ -33,9 +34,11 @@ const USABLE_HEIGHT_PX = VIEWPORT_HEIGHT_PX - CONTENT_PADDING_PX * 2;
 const TOTAL_LIST_HEIGHT_PX = SCANNED_FILES.length * LINE_HEIGHT_PX;
 const MAX_SCROLL_PX = Math.max(0, TOTAL_LIST_HEIGHT_PX - USABLE_HEIGHT_PX);
 const SCROLL_START_FRAME = FILE_SCAN_INITIAL_DELAY_FRAMES;
-const SCROLL_END_FRAME = SCENE_FILE_SCAN_DURATION_FRAMES;
+const SCROLL_END_FRAME = SCENE_FILE_SCAN_BASE_DURATION_FRAMES;
 
-const OVERLAY_START_FRAME = Math.floor(SCENE_FILE_SCAN_DURATION_FRAMES * FILE_SCAN_OVERLAY_START_RATIO);
+const OVERLAY_START_FRAME = Math.floor(
+  SCENE_FILE_SCAN_BASE_DURATION_FRAMES * FILE_SCAN_OVERLAY_START_RATIO,
+);
 const OVERLAY_END_FRAME =
   OVERLAY_START_FRAME +
   FILE_SCAN_OVERLAY_FADE_IN_FRAMES +
@@ -43,7 +46,7 @@ const OVERLAY_END_FRAME =
   FILE_SCAN_OVERLAY_FADE_OUT_FRAMES;
 
 export const FileScan = () => {
-  const frame = useCurrentFrame();
+  const frame = useCurrentFrame() * VIDEO_SPEED_MULTIPLIER;
 
   const scrollY = interpolate(frame, [SCROLL_START_FRAME, SCROLL_END_FRAME], [0, MAX_SCROLL_PX], {
     extrapolateLeft: "clamp",
@@ -52,13 +55,8 @@ export const FileScan = () => {
 
   const overlayOpacity = interpolate(
     frame,
-    [
-      OVERLAY_START_FRAME,
-      OVERLAY_START_FRAME + FILE_SCAN_OVERLAY_FADE_IN_FRAMES,
-      OVERLAY_END_FRAME - FILE_SCAN_OVERLAY_FADE_OUT_FRAMES,
-      OVERLAY_END_FRAME,
-    ],
-    [0, 1, 1, 0],
+    [OVERLAY_START_FRAME, OVERLAY_START_FRAME + FILE_SCAN_OVERLAY_FADE_IN_FRAMES],
+    [0, 1],
     {
       extrapolateLeft: "clamp",
       extrapolateRight: "clamp",
@@ -67,13 +65,8 @@ export const FileScan = () => {
 
   const titleOpacity = interpolate(
     frame,
-    [
-      OVERLAY_START_FRAME,
-      OVERLAY_START_FRAME + FILE_SCAN_OVERLAY_FADE_IN_FRAMES,
-      OVERLAY_END_FRAME - FILE_SCAN_OVERLAY_FADE_OUT_FRAMES,
-      OVERLAY_END_FRAME,
-    ],
-    [0, 1, 1, 0],
+    [OVERLAY_START_FRAME, OVERLAY_START_FRAME + FILE_SCAN_OVERLAY_FADE_IN_FRAMES],
+    [0, 1],
     {
       extrapolateLeft: "clamp",
       extrapolateRight: "clamp",

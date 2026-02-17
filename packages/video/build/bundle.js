@@ -62,6 +62,7 @@ var jsx_runtime = __webpack_require__(8525);
 const VIDEO_WIDTH_PX = 1920;
 const VIDEO_HEIGHT_PX = 1080;
 const VIDEO_FPS = 30;
+const VIDEO_SPEED_MULTIPLIER = 1.5;
 const BACKGROUND_COLOR = "#0a0a0a";
 const TEXT_COLOR = "#d4d4d8";
 const MUTED_COLOR = "#737373";
@@ -89,7 +90,7 @@ const FRAMES_PER_FILE = 1.6;
 const FILE_SCAN_INITIAL_DELAY_FRAMES = 0;
 const FILE_SCAN_VISIBLE_ROWS = 14;
 const FILE_SCAN_TITLE_FONT_SIZE_PX = 88;
-const FILE_SCAN_OVERLAY_START_RATIO = 0.25;
+const FILE_SCAN_OVERLAY_START_RATIO = 0;
 const FILE_SCAN_OVERLAY_FADE_IN_FRAMES = 15;
 const FILE_SCAN_OVERLAY_HOLD_FRAMES = 45;
 const FILE_SCAN_OVERLAY_FADE_OUT_FRAMES = 15;
@@ -201,9 +202,19 @@ const BOX_TOP = "\u250C\u2500\u2500\u2500\u2500\u2500\u2510";
 const BOX_BOTTOM = "\u2514\u2500\u2500\u2500\u2500\u2500\u2518";
 const FRAMES_PER_FIX = 20;
 const FIX_INITIAL_DELAY_FRAMES = 15;
-const SCENE_TYPING_DURATION_FRAMES = 100;
-const SCENE_FILE_SCAN_DURATION_FRAMES = 110;
-const SCENE_DIAGNOSTICS_DURATION_FRAMES = 340;
+const getSpeedAdjustedDurationFrames = (durationInFrames) => Math.round(durationInFrames / VIDEO_SPEED_MULTIPLIER);
+const SCENE_TYPING_BASE_DURATION_FRAMES = 100;
+const SCENE_FILE_SCAN_BASE_DURATION_FRAMES = 110;
+const SCENE_DIAGNOSTICS_BASE_DURATION_FRAMES = 340;
+const SCENE_TYPING_DURATION_FRAMES = getSpeedAdjustedDurationFrames(
+  SCENE_TYPING_BASE_DURATION_FRAMES
+);
+const SCENE_FILE_SCAN_DURATION_FRAMES = getSpeedAdjustedDurationFrames(
+  SCENE_FILE_SCAN_BASE_DURATION_FRAMES
+);
+const SCENE_DIAGNOSTICS_DURATION_FRAMES = getSpeedAdjustedDurationFrames(
+  SCENE_DIAGNOSTICS_BASE_DURATION_FRAMES
+);
 const SCENE_FIXES_DURATION_FRAMES = 195;
 const SCENE_CTA_DURATION_FRAMES = 90;
 const SCENE_AGENT_HANDOFF_DURATION_FRAMES = 140;
@@ -244,17 +255,18 @@ const SHRINK_END_FRAME = SHRINK_START_FRAME + SHRINK_DURATION_FRAMES;
 const DIAGNOSTIC_FADE_IN_FRAMES = 6;
 const ERRORS_START_DELAY_FRAMES = 58;
 const OVERLAY_START_RATIO = 0.28;
-const OVERLAY_START_FRAME = Math.floor(SCENE_DIAGNOSTICS_DURATION_FRAMES * OVERLAY_START_RATIO);
+const OVERLAY_START_FRAME = Math.floor(SCENE_DIAGNOSTICS_BASE_DURATION_FRAMES * OVERLAY_START_RATIO);
 const OVERLAY_FADE_IN_FRAMES = 15;
-const OVERLAY_HOLD_FRAMES = 35;
+const OVERLAY_HOLD_FRAMES = 50;
 const OVERLAY_FADE_OUT_FRAMES = 15;
 const OVERLAY_END_FRAME = OVERLAY_START_FRAME + OVERLAY_FADE_IN_FRAMES + OVERLAY_HOLD_FRAMES + OVERLAY_FADE_OUT_FRAMES;
 const OVERLAY_TITLE_FONT_SIZE_PX = 88;
-const FIX_START_DELAY_FRAMES = 12;
-const FIX_INTERVAL_FRAMES = 12;
+const FIX_START_DELAY_FRAMES = 8;
+const FIX_INTERVAL_FRAMES = 10;
 const FIX_TRANSITION_FRAMES = 8;
-const FINAL_SCORE_DELAY_FRAMES = 8;
-const FINAL_SCORE_ANIMATION_FRAMES = 30;
+const FINAL_SCORE_DELAY_FRAMES = 6;
+const FINAL_SCORE_HOLD_FRAMES = 10;
+const FINAL_SCORE_ANIMATION_FRAMES = 45;
 const STATUS_FADE_IN_FRAMES = 8;
 const STATUS_FONT_SIZE_PX = 34;
 const FIXED_ERROR_COUNT = 0;
@@ -277,13 +289,15 @@ const getDoctorFace = (score) => {
 };
 const lerpSize = (heroSize, smallSize, progress) => heroSize + (smallSize - heroSize) * progress;
 const Diagnostics = () => {
-  const frame = (0,esm.useCurrentFrame)();
+  const frame = (0,esm.useCurrentFrame)() * VIDEO_SPEED_MULTIPLIER;
   const fixStartFrame = OVERLAY_END_FRAME + FIX_START_DELAY_FRAMES;
   const allFixedFrame = fixStartFrame + DIAGNOSTICS.length * FIX_INTERVAL_FRAMES;
-  const finalScoreStartFrame = allFixedFrame + FINAL_SCORE_DELAY_FRAMES;
-  const finalScoreEndFrame = finalScoreStartFrame + FINAL_SCORE_ANIMATION_FRAMES;
+  const finalScorePhaseStartFrame = allFixedFrame + FINAL_SCORE_DELAY_FRAMES;
+  const finalScoreIncreaseStartFrame = finalScorePhaseStartFrame + FINAL_SCORE_HOLD_FRAMES;
+  const finalScoreEndFrame = finalScoreIncreaseStartFrame + FINAL_SCORE_ANIMATION_FRAMES;
   const isFixing = frame >= fixStartFrame && frame < allFixedFrame;
   const isAllFixed = frame >= allFixedFrame;
+  const isFinalScoreFocusPhase = frame >= finalScorePhaseStartFrame;
   const scoreBlockOpacity = (0,esm.interpolate)(frame, [0, SCORE_FADE_IN_FRAMES], [0, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
@@ -296,15 +310,17 @@ const Diagnostics = () => {
   });
   const finalScore = (0,esm.interpolate)(
     frame,
-    [finalScoreStartFrame, finalScoreEndFrame],
+    [finalScoreIncreaseStartFrame, finalScoreEndFrame],
     [TARGET_SCORE, PERFECT_SCORE],
     {
       extrapolateLeft: "clamp",
       extrapolateRight: "clamp",
-      easing: esm.Easing.out(esm.Easing.cubic)
+      easing: esm.Easing.linear
     }
   );
-  const currentScore = Math.round(frame < finalScoreStartFrame ? initialScore : finalScore);
+  const currentScore = Math.round(
+    frame < finalScoreIncreaseStartFrame ? frame < finalScorePhaseStartFrame ? initialScore : TARGET_SCORE : finalScore
+  );
   const scoreColor = getScoreColor(currentScore);
   const [eyes, mouth] = getDoctorFace(currentScore);
   const filledBarCount = Math.round(currentScore / PERFECT_SCORE * SCORE_BAR_WIDTH);
@@ -354,13 +370,8 @@ const Diagnostics = () => {
   const diagnosticsStartFrame = ERRORS_START_DELAY_FRAMES;
   const overlayOpacity = (0,esm.interpolate)(
     frame,
-    [
-      OVERLAY_START_FRAME,
-      OVERLAY_START_FRAME + OVERLAY_FADE_IN_FRAMES,
-      OVERLAY_END_FRAME - OVERLAY_FADE_OUT_FRAMES,
-      OVERLAY_END_FRAME
-    ],
-    [0, 1, 1, 0],
+    [OVERLAY_START_FRAME, OVERLAY_START_FRAME + OVERLAY_FADE_IN_FRAMES],
+    [0, 1],
     {
       extrapolateLeft: "clamp",
       extrapolateRight: "clamp"
@@ -368,19 +379,108 @@ const Diagnostics = () => {
   );
   const overlayTitleOpacity = (0,esm.interpolate)(
     frame,
-    [
-      OVERLAY_START_FRAME + 5,
-      OVERLAY_START_FRAME + OVERLAY_FADE_IN_FRAMES + 5,
-      OVERLAY_END_FRAME - OVERLAY_FADE_OUT_FRAMES - 5,
-      OVERLAY_END_FRAME - 5
-    ],
-    [0, 1, 1, 0],
+    [OVERLAY_START_FRAME + 5, OVERLAY_START_FRAME + OVERLAY_FADE_IN_FRAMES + 5],
+    [0, 1],
     {
       extrapolateLeft: "clamp",
       extrapolateRight: "clamp",
       easing: esm.Easing.out(esm.Easing.cubic)
     }
   );
+  if (isFinalScoreFocusPhase) {
+    return /* @__PURE__ */ (0,jsx_runtime.jsx)(
+      esm.AbsoluteFill,
+      {
+        style: {
+          backgroundColor: BACKGROUND_COLOR,
+          justifyContent: "center",
+          alignItems: "center"
+        },
+        children: /* @__PURE__ */ (0,jsx_runtime.jsxs)(
+          "div",
+          {
+            style: {
+              display: "flex",
+              gap: (0,esm.interpolate)(shrinkProgress, [0, 1], [48, 32]),
+              alignItems: "flex-start"
+            },
+            children: [
+              /* @__PURE__ */ (0,jsx_runtime.jsx)(
+                "pre",
+                {
+                  style: {
+                    color: scoreColor,
+                    lineHeight: 1.2,
+                    fontSize: faceFontSize,
+                    fontFamily: fontFamily,
+                    margin: 0
+                  },
+                  children: `${BOX_TOP}
+\u2502 ${eyes} \u2502
+\u2502 ${mouth} \u2502
+${BOX_BOTTOM}`
+                }
+              ),
+              /* @__PURE__ */ (0,jsx_runtime.jsxs)("div", { children: [
+                /* @__PURE__ */ (0,jsx_runtime.jsxs)("div", { children: [
+                  /* @__PURE__ */ (0,jsx_runtime.jsx)(
+                    "span",
+                    {
+                      style: {
+                        color: scoreColor,
+                        fontWeight: 500,
+                        fontSize: numberFontSize,
+                        fontFamily: fontFamily
+                      },
+                      children: currentScore
+                    }
+                  ),
+                  /* @__PURE__ */ (0,jsx_runtime.jsx)(
+                    "span",
+                    {
+                      style: {
+                        color: MUTED_COLOR,
+                        fontSize: labelFontSize,
+                        fontFamily: fontFamily
+                      },
+                      children: ` / ${PERFECT_SCORE}  `
+                    }
+                  ),
+                  /* @__PURE__ */ (0,jsx_runtime.jsx)(
+                    "span",
+                    {
+                      style: {
+                        color: scoreColor,
+                        fontSize: labelFontSize,
+                        fontFamily: fontFamily
+                      },
+                      children: getScoreLabel(currentScore)
+                    }
+                  )
+                ] }),
+                /* @__PURE__ */ (0,jsx_runtime.jsxs)(
+                  "div",
+                  {
+                    style: {
+                      marginTop: 8,
+                      letterSpacing: 2,
+                      fontSize: barFontSize,
+                      fontFamily: fontFamily,
+                      lineHeight: 1.2
+                    },
+                    children: [
+                      /* @__PURE__ */ (0,jsx_runtime.jsx)("span", { style: { color: scoreColor }, children: "\u2588".repeat(filledBarCount) }),
+                      /* @__PURE__ */ (0,jsx_runtime.jsx)("span", { style: { color: "#525252" }, children: "\u2591".repeat(emptyBarCount) })
+                    ]
+                  }
+                )
+              ] })
+            ]
+          }
+        )
+      }
+    );
+  }
   return /* @__PURE__ */ (0,jsx_runtime.jsxs)(
     esm.AbsoluteFill,
     {
@@ -636,24 +736,21 @@ const USABLE_HEIGHT_PX = VIEWPORT_HEIGHT_PX - CONTENT_PADDING_PX * 2;
 const TOTAL_LIST_HEIGHT_PX = SCANNED_FILES.length * LINE_HEIGHT_PX;
 const MAX_SCROLL_PX = Math.max(0, TOTAL_LIST_HEIGHT_PX - USABLE_HEIGHT_PX);
 const SCROLL_START_FRAME = FILE_SCAN_INITIAL_DELAY_FRAMES;
-const SCROLL_END_FRAME = SCENE_FILE_SCAN_DURATION_FRAMES;
-const file_scan_OVERLAY_START_FRAME = Math.floor(SCENE_FILE_SCAN_DURATION_FRAMES * FILE_SCAN_OVERLAY_START_RATIO);
+const SCROLL_END_FRAME = SCENE_FILE_SCAN_BASE_DURATION_FRAMES;
+const file_scan_OVERLAY_START_FRAME = Math.floor(
+  SCENE_FILE_SCAN_BASE_DURATION_FRAMES * FILE_SCAN_OVERLAY_START_RATIO
+);
 const file_scan_OVERLAY_END_FRAME = file_scan_OVERLAY_START_FRAME + FILE_SCAN_OVERLAY_FADE_IN_FRAMES + FILE_SCAN_OVERLAY_HOLD_FRAMES + FILE_SCAN_OVERLAY_FADE_OUT_FRAMES;
 const FileScan = () => {
-  const frame = (0,esm.useCurrentFrame)();
+  const frame = (0,esm.useCurrentFrame)() * VIDEO_SPEED_MULTIPLIER;
   const scrollY = (0,esm.interpolate)(frame, [SCROLL_START_FRAME, SCROLL_END_FRAME], [0, MAX_SCROLL_PX], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp"
   });
   const overlayOpacity = (0,esm.interpolate)(
     frame,
-    [
-      file_scan_OVERLAY_START_FRAME,
-      file_scan_OVERLAY_START_FRAME + FILE_SCAN_OVERLAY_FADE_IN_FRAMES,
-      file_scan_OVERLAY_END_FRAME - FILE_SCAN_OVERLAY_FADE_OUT_FRAMES,
-      file_scan_OVERLAY_END_FRAME
-    ],
-    [0, 1, 1, 0],
+    [file_scan_OVERLAY_START_FRAME, file_scan_OVERLAY_START_FRAME + FILE_SCAN_OVERLAY_FADE_IN_FRAMES],
+    [0, 1],
     {
       extrapolateLeft: "clamp",
       extrapolateRight: "clamp"
@@ -661,13 +758,8 @@ const FileScan = () => {
   );
   const titleOpacity = (0,esm.interpolate)(
     frame,
-    [
-      file_scan_OVERLAY_START_FRAME,
-      file_scan_OVERLAY_START_FRAME + FILE_SCAN_OVERLAY_FADE_IN_FRAMES,
-      file_scan_OVERLAY_END_FRAME - FILE_SCAN_OVERLAY_FADE_OUT_FRAMES,
-      file_scan_OVERLAY_END_FRAME
-    ],
-    [0, 1, 1, 0],
+    [file_scan_OVERLAY_START_FRAME, file_scan_OVERLAY_START_FRAME + FILE_SCAN_OVERLAY_FADE_IN_FRAMES],
+    [0, 1],
     {
       extrapolateLeft: "clamp",
       extrapolateRight: "clamp",
@@ -798,7 +890,7 @@ const FileScan = () => {
 
 
 const TerminalTyping = () => {
-  const frame = (0,esm.useCurrentFrame)();
+  const frame = (0,esm.useCurrentFrame)() * VIDEO_SPEED_MULTIPLIER;
   const typedCharCount = Math.min(
     COMMAND.length,
     Math.max(

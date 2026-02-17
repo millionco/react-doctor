@@ -1,6 +1,14 @@
 {
   "name": "react-doctor",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aidenybai/react-doctor.git"
+  },
+  "homepage": "https://github.com/aidenybai/react-doctor#readme",
+  "bugs": {
+    "url": "https://github.com/aidenybai/react-doctor/issues"
+  },
   "scripts": {
     "dev": "pnpm --filter react-doctor run dev",
     "build": "pnpm --filter react-doctor run build",

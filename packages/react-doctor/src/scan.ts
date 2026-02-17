@@ -10,7 +10,8 @@ import {
   SCORE_BAR_WIDTH_CHARS,
   SCORE_GOOD_THRESHOLD,
   SCORE_OK_THRESHOLD,
-  SEPARATOR_LENGTH_CHARS,
+  SUMMARY_BOX_HORIZONTAL_PADDING_CHARS,
+  SUMMARY_BOX_OUTER_INDENT_CHARS,
   SHARE_BASE_URL,
 } from "./constants.js";
 import type { Diagnostic, ScanOptions, ScoreResult } from "./types.js";
@@ -23,6 +24,16 @@ import { checkReducedMotion } from "./utils/check-reduced-motion.js";
 import { runKnip } from "./utils/run-knip.js";
 import { runOxlint } from "./utils/run-oxlint.js";
 import { spinner } from "./utils/spinner.js";
+
+interface FramedLine {
+  plainText: string;
+  renderedText: string;
+}
+
+interface ScoreBarSegments {
+  filledSegment: string;
+  emptySegment: string;
+}
 
 const SEVERITY_ORDER: Record<Diagnostic["severity"], number> = {
   error: 0,
@@ -143,12 +154,53 @@ const colorizeByScore = (text: string, score: number): string => {
   return highlighter.error(text);
 };
 
-const buildScoreBar = (score: number): string => {
+const createFramedLine = (plainText: string, renderedText: string = plainText): FramedLine => ({
+  plainText,
+  renderedText,
+});
+
+const buildScoreBarSegments = (score: number): ScoreBarSegments => {
   const filledCount = Math.round((score / PERFECT_SCORE) * SCORE_BAR_WIDTH_CHARS);
   const emptyCount = SCORE_BAR_WIDTH_CHARS - filledCount;
-  const filled = "█".repeat(filledCount);
-  const empty = "░".repeat(emptyCount);
-  return colorizeByScore(filled, score) + highlighter.dim(empty);
+
+  return {
+    filledSegment: "█".repeat(filledCount),
+    emptySegment: "░".repeat(emptyCount),
+  };
+};
+
+const buildPlainScoreBar = (score: number): string => {
+  const { filledSegment, emptySegment } = buildScoreBarSegments(score);
+  return `${filledSegment}${emptySegment}`;
+};
+
+const buildScoreBar = (score: number): string => {
+  const { filledSegment, emptySegment } = buildScoreBarSegments(score);
+  return colorizeByScore(filledSegment, score) + highlighter.dim(emptySegment);
+};
+
+const printFramedBox = (framedLines: FramedLine[]): void => {
+  if (framedLines.length === 0) {
+    return;
+  }
+
+  const outerIndent = " ".repeat(SUMMARY_BOX_OUTER_INDENT_CHARS);
+  const horizontalPadding = " ".repeat(SUMMARY_BOX_HORIZONTAL_PADDING_CHARS);
+  const maximumLineLength = Math.max(
+    ...framedLines.map((framedLine) => framedLine.plainText.length),
+  );
+  const borderLine = "─".repeat(maximumLineLength + SUMMARY_BOX_HORIZONTAL_PADDING_CHARS * 2);
+
+  logger.log(`${outerIndent}┌${borderLine}┐`);
+
+  for (const framedLine of framedLines) {
+    const trailingSpaces = " ".repeat(maximumLineLength - framedLine.plainText.length);
+    logger.log(
+      `${outerIndent}│${horizontalPadding}${framedLine.renderedText}${trailingSpaces}${horizontalPadding}│`,
+    );
+  }
+
+  logger.log(`${outerIndent}└${borderLine}┘`);
 };
 
 const printScoreGauge = (score: number, label: string): void => {
@@ -203,31 +255,67 @@ const printSummary = (
   const affectedFileCount = collectAffectedFiles(diagnostics).size;
   const elapsed = formatElapsedTime(elapsedMilliseconds);
 
-  logger.log("─".repeat(SEPARATOR_LENGTH_CHARS));
-  logger.break();
-
-  printBranding(scoreResult?.score);
-
-  if (scoreResult) {
-    printScoreGauge(scoreResult.score, scoreResult.label);
-  } else {
-    logger.dim(`  ${OFFLINE_MESSAGE}`);
-    logger.break();
-  }
-
-  const parts: string[] = [];
+  const summaryLineParts: string[] = [];
+  const summaryLinePartsPlain: string[] = [];
   if (errorCount > 0) {
-    parts.push(highlighter.error(`${errorCount} error${errorCount === 1 ? "" : "s"}`));
+    const errorText = `✗ ${errorCount} error${errorCount === 1 ? "" : "s"}`;
+    summaryLinePartsPlain.push(errorText);
+    summaryLineParts.push(highlighter.error(errorText));
   }
   if (warningCount > 0) {
-    parts.push(highlighter.warn(`${warningCount} warning${warningCount === 1 ? "" : "s"}`));
+    const warningText = `⚠ ${warningCount} warning${warningCount === 1 ? "" : "s"}`;
+    summaryLinePartsPlain.push(warningText);
+    summaryLineParts.push(highlighter.warn(warningText));
   }
-  parts.push(
-    highlighter.dim(`across ${affectedFileCount} file${affectedFileCount === 1 ? "" : "s"}`),
-  );
-  parts.push(highlighter.dim(`in ${elapsed}`));
+  const fileCountText = `across ${affectedFileCount} file${affectedFileCount === 1 ? "" : "s"}`;
+  const elapsedTimeText = `in ${elapsed}`;
 
-  logger.log(`  ${parts.join("  ")}`);
+  summaryLinePartsPlain.push(fileCountText);
+  summaryLinePartsPlain.push(elapsedTimeText);
+  summaryLineParts.push(highlighter.dim(fileCountText));
+  summaryLineParts.push(highlighter.dim(elapsedTimeText));
+
+  const summaryFramedLines: FramedLine[] = [];
+  if (scoreResult) {
+    const [eyes, mouth] = getDoctorFace(scoreResult.score);
+    const scoreColorizer = (text: string): string => colorizeByScore(text, scoreResult.score);
+
+    summaryFramedLines.push(createFramedLine("┌─────┐", scoreColorizer("┌─────┐")));
+    summaryFramedLines.push(createFramedLine(`│ ${eyes} │`, scoreColorizer(`│ ${eyes} │`)));
+    summaryFramedLines.push(createFramedLine(`│ ${mouth} │`, scoreColorizer(`│ ${mouth} │`)));
+    summaryFramedLines.push(createFramedLine("└─────┘", scoreColorizer("└─────┘")));
+    summaryFramedLines.push(
+      createFramedLine(
+        "React Doctor (www.react.doctor)",
+        `React Doctor ${highlighter.dim("(www.react.doctor)")}`,
+      ),
+    );
+    summaryFramedLines.push(createFramedLine(""));
+
+    const scoreLinePlainText = `${scoreResult.score} / ${PERFECT_SCORE}  ${scoreResult.label}`;
+    const scoreLineRenderedText = `${colorizeByScore(String(scoreResult.score), scoreResult.score)} / ${PERFECT_SCORE}  ${colorizeByScore(scoreResult.label, scoreResult.score)}`;
+    summaryFramedLines.push(createFramedLine(scoreLinePlainText, scoreLineRenderedText));
+    summaryFramedLines.push(createFramedLine(""));
+    summaryFramedLines.push(
+      createFramedLine(buildPlainScoreBar(scoreResult.score), buildScoreBar(scoreResult.score)),
+    );
+    summaryFramedLines.push(createFramedLine(""));
+  } else {
+    summaryFramedLines.push(
+      createFramedLine(
+        "React Doctor (www.react.doctor)",
+        `React Doctor ${highlighter.dim("(www.react.doctor)")}`,
+      ),
+    );
+    summaryFramedLines.push(createFramedLine(""));
+    summaryFramedLines.push(createFramedLine(OFFLINE_MESSAGE, highlighter.dim(OFFLINE_MESSAGE)));
+    summaryFramedLines.push(createFramedLine(""));
+  }
+
+  summaryFramedLines.push(
+    createFramedLine(summaryLinePartsPlain.join("  "), summaryLineParts.join("  ")),
+  );
+  printFramedBox(summaryFramedLines);
 
   try {
     const diagnosticsDirectory = writeDiagnosticsDirectory(diagnostics);

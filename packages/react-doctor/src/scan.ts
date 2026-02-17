@@ -23,6 +23,7 @@ import { checkReducedMotion } from "./utils/check-reduced-motion.js";
 import { runKnip } from "./utils/run-knip.js";
 import { runOxlint } from "./utils/run-oxlint.js";
 import { spinner } from "./utils/spinner.js";
+import { indentMultilineText } from "./utils/indent-multiline-text.js";
 
 const SEVERITY_ORDER: Record<Diagnostic["severity"], number> = {
   error: 0,
@@ -68,7 +69,7 @@ const printDiagnostics = (diagnostics: Diagnostic[], isVerbose: boolean): void =
 
     logger.log(`  ${icon} ${firstDiagnostic.message}${countLabel}`);
     if (firstDiagnostic.help) {
-      logger.dim(`    ${firstDiagnostic.help}`);
+      logger.dim(indentMultilineText(firstDiagnostic.help, "    "));
     }
 
     if (isVerbose) {

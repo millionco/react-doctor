@@ -2,7 +2,7 @@
 /******/ 	"use strict";
 /******/ 	var __webpack_modules__ = ({
 
-/***/ 7833
+/***/ 5413
 (__unused_webpack_module, __unused_webpack___webpack_exports__, __webpack_require__) {
 
 
@@ -57,567 +57,6 @@ var update = injectStylesIntoStyleTag_default()(style/* default */.A, options);
 var esm = __webpack_require__(7367);
 // EXTERNAL MODULE: ../../node_modules/.pnpm/react@19.2.3/node_modules/react/jsx-runtime.js
 var jsx_runtime = __webpack_require__(8525);
-// EXTERNAL MODULE: ../../node_modules/.pnpm/react@19.2.3/node_modules/react/index.js
-var react = __webpack_require__(9081);
-// EXTERNAL MODULE: ../../node_modules/.pnpm/remotion@4.0.421_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/remotion/dist/esm/no-react.mjs
-var no_react = __webpack_require__(9802);
-;// ../../node_modules/.pnpm/@remotion+transitions@4.0.421_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/@remotion/transitions/dist/esm/index.mjs
-/* unused harmony import specifier */ var interpolate;
-/* unused harmony import specifier */ var React4;
-// src/presentations/slide.tsx
-
-
-
-var epsilon = 0.01;
-var SlidePresentation = ({
-  children,
-  presentationProgress,
-  presentationDirection,
-  passedProps: { direction = "from-left", enterStyle, exitStyle }
-}) => {
-  const directionStyle = (0,react.useMemo)(() => {
-    const presentationProgressWithEpsilonCorrection = presentationProgress === 1 ? presentationProgress * 100 : presentationProgress * 100 - epsilon;
-    if (presentationDirection === "exiting") {
-      switch (direction) {
-        case "from-left":
-          return {
-            transform: `translateX(${presentationProgressWithEpsilonCorrection}%)`
-          };
-        case "from-right":
-          return {
-            transform: `translateX(${-presentationProgress * 100}%)`
-          };
-        case "from-top":
-          return {
-            transform: `translateY(${presentationProgressWithEpsilonCorrection}%)`
-          };
-        case "from-bottom":
-          return {
-            transform: `translateY(${-presentationProgress * 100}%)`
-          };
-        default:
-          throw new Error(`Invalid direction: ${direction}`);
-      }
-    }
-    switch (direction) {
-      case "from-left":
-        return {
-          transform: `translateX(${-100 + presentationProgress * 100}%)`
-        };
-      case "from-right":
-        return {
-          transform: `translateX(${100 - presentationProgressWithEpsilonCorrection}%)`
-        };
-      case "from-top":
-        return {
-          transform: `translateY(${-100 + presentationProgress * 100}%)`
-        };
-      case "from-bottom":
-        return {
-          transform: `translateY(${100 - presentationProgressWithEpsilonCorrection}%)`
-        };
-      default:
-        throw new Error(`Invalid direction: ${direction}`);
-    }
-  }, [presentationDirection, presentationProgress, direction]);
-  const style = (0,react.useMemo)(() => {
-    return {
-      width: "100%",
-      height: "100%",
-      justifyContent: "center",
-      alignItems: "center",
-      ...directionStyle,
-      ...presentationDirection === "entering" ? enterStyle : exitStyle
-    };
-  }, [directionStyle, enterStyle, exitStyle, presentationDirection]);
-  return /* @__PURE__ */ (0,jsx_runtime.jsx)(esm.AbsoluteFill, {
-    style,
-    children
-  });
-};
-var slide = (props) => {
-  return {
-    component: SlidePresentation,
-    props: props ?? {}
-  };
-};
-
-// src/timings/linear-timing.ts
-
-var linearTiming = (options) => {
-  return {
-    getDurationInFrames: () => {
-      return options.durationInFrames;
-    },
-    getProgress: ({ frame }) => {
-      return interpolate(frame, [0, options.durationInFrames], [0, 1], {
-        easing: options.easing,
-        extrapolateLeft: "clamp",
-        extrapolateRight: "clamp"
-      });
-    }
-  };
-};
-// src/timings/spring-timing.ts
-
-var springTiming = (options = {}) => {
-  return {
-    getDurationInFrames: ({ fps }) => {
-      if (options.durationInFrames) {
-        return options.durationInFrames;
-      }
-      return (0,esm.measureSpring)({
-        config: options.config,
-        threshold: options.durationRestThreshold,
-        fps
-      });
-    },
-    getProgress: ({ fps, frame }) => {
-      const to = options.reverse ? 0 : 1;
-      const from = options.reverse ? 1 : 0;
-      return (0,esm.spring)({
-        fps,
-        frame,
-        to,
-        from,
-        config: options.config,
-        durationInFrames: options.durationInFrames,
-        durationRestThreshold: options.durationRestThreshold,
-        reverse: options.reverse
-      });
-    }
-  };
-};
-// src/TransitionSeries.tsx
-
-
-
-
-// src/context.tsx
-
-
-var EnteringContext = react.createContext(null);
-var ExitingContext = react.createContext(null);
-var WrapInEnteringProgressContext = ({ presentationProgress, children }) => {
-  const value = (0,react.useMemo)(() => {
-    return {
-      enteringProgress: presentationProgress
-    };
-  }, [presentationProgress]);
-  return /* @__PURE__ */ (0,jsx_runtime.jsx)(EnteringContext.Provider, {
-    value,
-    children
-  });
-};
-var WrapInExitingProgressContext = ({ presentationProgress, children }) => {
-  const value = (0,react.useMemo)(() => {
-    return {
-      exitingProgress: presentationProgress
-    };
-  }, [presentationProgress]);
-  return /* @__PURE__ */ (0,jsx_runtime.jsx)(ExitingContext.Provider, {
-    value,
-    children
-  });
-};
-
-// src/flatten-children.ts
-
-var flattenChildren = (children) => {
-  const childrenArray = react.Children.toArray(children);
-  return childrenArray.reduce((flatChildren, child) => {
-    if (child.type === react.Fragment) {
-      return flatChildren.concat(flattenChildren(child.props.children));
-    }
-    flatChildren.push(child);
-    return flatChildren;
-  }, []);
-};
-
-// src/validate.ts
-
-var validateDurationInFrames = no_react.NoReactInternals.validateDurationInFrames;
-
-// src/TransitionSeries.tsx
-
-var TransitionSeriesTransition = function(_props) {
-  return null;
-};
-var SeriesOverlay = () => {
-  return null;
-};
-var SeriesSequence = ({ children }) => {
-  return /* @__PURE__ */ (0,jsx_runtime.jsx)(jsx_runtime.Fragment, {
-    children
-  });
-};
-var TransitionSeriesChildren = ({
-  children
-}) => {
-  const { fps } = (0,esm.useVideoConfig)();
-  const frame = (0,esm.useCurrentFrame)();
-  const childrenValue = (0,react.useMemo)(() => {
-    let transitionOffsets = 0;
-    let startFrame = 0;
-    const flattedChildren = flattenChildren(children);
-    const overlayRenders = [];
-    const sequenceDurations = [];
-    let pendingOverlayValidation = false;
-    const mainChildren = react.Children.map(flattedChildren, (child, i) => {
-      const current = child;
-      if (typeof current === "string") {
-        if (current.trim() === "") {
-          return null;
-        }
-        throw new TypeError(`The <TransitionSeries /> component only accepts a list of <TransitionSeries.Sequence /> components as its children, but you passed a string "${current}"`);
-      }
-      const hasPrev = flattedChildren[i - 1];
-      const nextPrev = flattedChildren[i + 1];
-      const prevIsTransition = typeof hasPrev === "string" || typeof hasPrev === "undefined" ? false : hasPrev.type === TransitionSeriesTransition;
-      const prevIsOverlay = typeof hasPrev === "string" || typeof hasPrev === "undefined" ? false : hasPrev.type === SeriesOverlay;
-      if (current.type === SeriesOverlay) {
-        if (prevIsOverlay) {
-          throw new TypeError(`A <TransitionSeries.Overlay /> component must not be followed by another <TransitionSeries.Overlay /> component (nth children = ${i - 1} and ${i})`);
-        }
-        if (prevIsTransition) {
-          throw new TypeError(`A <TransitionSeries.Transition /> component must not be followed by a <TransitionSeries.Overlay /> component (nth children = ${i - 1} and ${i})`);
-        }
-        const nextIsTransition = typeof nextPrev === "string" || typeof nextPrev === "undefined" ? false : nextPrev.type === TransitionSeriesTransition;
-        if (nextIsTransition) {
-          throw new TypeError(`A <TransitionSeries.Overlay /> component must not be followed by a <TransitionSeries.Transition /> component (nth children = ${i} and ${i + 1})`);
-        }
-        const overlayProps = current.props;
-        validateDurationInFrames(overlayProps.durationInFrames, {
-          component: `of a <TransitionSeries.Overlay /> component`,
-          allowFloats: false
-        });
-        const overlayOffset = overlayProps.offset ?? 0;
-        if (Number.isNaN(overlayOffset)) {
-          throw new TypeError(`The "offset" property of a <TransitionSeries.Overlay /> must not be NaN, but got NaN.`);
-        }
-        if (!Number.isFinite(overlayOffset)) {
-          throw new TypeError(`The "offset" property of a <TransitionSeries.Overlay /> must be finite, but got ${overlayOffset}.`);
-        }
-        if (overlayOffset % 1 !== 0) {
-          throw new TypeError(`The "offset" property of a <TransitionSeries.Overlay /> must be an integer, but got ${overlayOffset}.`);
-        }
-        const cutPoint = startFrame + transitionOffsets;
-        const halfDuration = overlayProps.durationInFrames / 2;
-        const overlayFrom = cutPoint - halfDuration + overlayOffset;
-        if (overlayFrom < 0) {
-          throw new TypeError(`A <TransitionSeries.Overlay /> extends before frame 0. The overlay starts at frame ${overlayFrom}. Reduce the duration or adjust the offset.`);
-        }
-        const prevSeqIdx = sequenceDurations.length - 1;
-        if (prevSeqIdx >= 0) {
-          const overlayStartInPrev = halfDuration - overlayOffset;
-          if (overlayStartInPrev > sequenceDurations[prevSeqIdx]) {
-            throw new TypeError(`A <TransitionSeries.Overlay /> extends beyond the previous sequence. The overlay needs ${overlayStartInPrev} frames before the cut, but the previous sequence is only ${sequenceDurations[prevSeqIdx]} frames long.`);
-          }
-        }
-        pendingOverlayValidation = true;
-        overlayRenders.push({
-          cutPoint,
-          overlayFrom,
-          durationInFrames: overlayProps.durationInFrames,
-          overlayOffset,
-          halfDuration,
-          children: overlayProps.children,
-          index: i
-        });
-        return null;
-      }
-      if (current.type === TransitionSeriesTransition) {
-        if (prevIsTransition) {
-          throw new TypeError(`A <TransitionSeries.Transition /> component must not be followed by another <TransitionSeries.Transition /> component (nth children = ${i - 1} and ${i})`);
-        }
-        if (prevIsOverlay) {
-          throw new TypeError(`A <TransitionSeries.Overlay /> component must not be followed by a <TransitionSeries.Transition /> component (nth children = ${i - 1} and ${i})`);
-        }
-        return null;
-      }
-      if (current.type !== SeriesSequence) {
-        throw new TypeError(`The <TransitionSeries /> component only accepts a list of <TransitionSeries.Sequence />, <TransitionSeries.Transition />, and <TransitionSeries.Overlay /> components as its children, but got ${current} instead`);
-      }
-      const prev = typeof hasPrev === "string" || typeof hasPrev === "undefined" ? null : hasPrev.type === TransitionSeriesTransition ? hasPrev : null;
-      const next = typeof nextPrev === "string" || typeof nextPrev === "undefined" ? null : nextPrev.type === TransitionSeriesTransition ? nextPrev : null;
-      const castedChildAgain = current;
-      const debugInfo = `index = ${i}, duration = ${castedChildAgain.props.durationInFrames}`;
-      if (!castedChildAgain?.props.children) {
-        throw new TypeError(`A <TransitionSeries.Sequence /> component (${debugInfo}) was detected to not have any children. Delete it to fix this error.`);
-      }
-      const durationInFramesProp = castedChildAgain.props.durationInFrames;
-      const {
-        durationInFrames,
-        children: _children,
-        ...passedProps
-      } = castedChildAgain.props;
-      validateDurationInFrames(durationInFramesProp, {
-        component: `of a <TransitionSeries.Sequence /> component`,
-        allowFloats: true
-      });
-      const offset = castedChildAgain.props.offset ?? 0;
-      if (Number.isNaN(offset)) {
-        throw new TypeError(`The "offset" property of a <TransitionSeries.Sequence /> must not be NaN, but got NaN (${debugInfo}).`);
-      }
-      if (!Number.isFinite(offset)) {
-        throw new TypeError(`The "offset" property of a <TransitionSeries.Sequence /> must be finite, but got ${offset} (${debugInfo}).`);
-      }
-      if (offset % 1 !== 0) {
-        throw new TypeError(`The "offset" property of a <TransitionSeries.Sequence /> must be finite, but got ${offset} (${debugInfo}).`);
-      }
-      const currentStartFrame = startFrame + offset;
-      let duration = 0;
-      if (prev) {
-        duration = prev.props.timing.getDurationInFrames({
-          fps
-        });
-        transitionOffsets -= duration;
-      }
-      let actualStartFrame = currentStartFrame + transitionOffsets;
-      startFrame += durationInFramesProp + offset;
-      if (actualStartFrame < 0) {
-        startFrame -= actualStartFrame;
-        actualStartFrame = 0;
-      }
-      sequenceDurations.push(durationInFramesProp);
-      if (pendingOverlayValidation) {
-        pendingOverlayValidation = false;
-        const lastOverlay = overlayRenders[overlayRenders.length - 1];
-        const framesAfterCut = lastOverlay.halfDuration + lastOverlay.overlayOffset;
-        if (framesAfterCut > durationInFramesProp) {
-          throw new TypeError(`A <TransitionSeries.Overlay /> extends beyond the next sequence. The overlay needs ${framesAfterCut} frames after the cut, but the next sequence is only ${durationInFramesProp} frames long.`);
-        }
-      }
-      const nextProgress = next ? next.props.timing.getProgress({
-        frame: frame - actualStartFrame - durationInFrames + next.props.timing.getDurationInFrames({ fps }),
-        fps
-      }) : null;
-      const prevProgress = prev ? prev.props.timing.getProgress({
-        frame: frame - actualStartFrame,
-        fps
-      }) : null;
-      if (next && durationInFramesProp < next.props.timing.getDurationInFrames({ fps })) {
-        throw new Error(`The duration of a <TransitionSeries.Sequence /> must not be shorter than the duration of the next <TransitionSeries.Transition />. The transition is ${next.props.timing.getDurationInFrames({ fps })} frames long, but the sequence is only ${durationInFramesProp} frames long (${debugInfo})`);
-      }
-      if (prev && durationInFramesProp < prev.props.timing.getDurationInFrames({ fps })) {
-        throw new Error(`The duration of a <TransitionSeries.Sequence /> must not be shorter than the duration of the previous <TransitionSeries.Transition />. The transition is ${prev.props.timing.getDurationInFrames({ fps })} frames long, but the sequence is only ${durationInFramesProp} frames long (${debugInfo})`);
-      }
-      if (next && prev && nextProgress !== null && prevProgress !== null) {
-        const nextPresentation = next.props.presentation ?? slide();
-        const prevPresentation = prev.props.presentation ?? slide();
-        const UppercaseNextPresentation = nextPresentation.component;
-        const UppercasePrevPresentation = prevPresentation.component;
-        return /* @__PURE__ */ (0,jsx_runtime.jsx)(esm.Sequence, {
-          from: actualStartFrame,
-          durationInFrames: durationInFramesProp,
-          ...passedProps,
-          name: passedProps.name || "<TS.Sequence>",
-          children: /* @__PURE__ */ (0,jsx_runtime.jsx)(UppercaseNextPresentation, {
-            passedProps: nextPresentation.props ?? {},
-            presentationDirection: "exiting",
-            presentationProgress: nextProgress,
-            presentationDurationInFrames: next.props.timing.getDurationInFrames({ fps }),
-            children: /* @__PURE__ */ (0,jsx_runtime.jsx)(WrapInExitingProgressContext, {
-              presentationProgress: nextProgress,
-              children: /* @__PURE__ */ (0,jsx_runtime.jsx)(UppercasePrevPresentation, {
-                passedProps: prevPresentation.props ?? {},
-                presentationDirection: "entering",
-                presentationProgress: prevProgress,
-                presentationDurationInFrames: prev.props.timing.getDurationInFrames({ fps }),
-                children: /* @__PURE__ */ (0,jsx_runtime.jsx)(WrapInEnteringProgressContext, {
-                  presentationProgress: prevProgress,
-                  children: child
-                })
-              })
-            })
-          })
-        }, i);
-      }
-      if (prevProgress !== null && prev) {
-        const prevPresentation = prev.props.presentation ?? slide();
-        const UppercasePrevPresentation = prevPresentation.component;
-        return /* @__PURE__ */ (0,jsx_runtime.jsx)(esm.Sequence, {
-          from: actualStartFrame,
-          durationInFrames: durationInFramesProp,
-          ...passedProps,
-          name: passedProps.name || "<TS.Sequence>",
-          children: /* @__PURE__ */ (0,jsx_runtime.jsx)(UppercasePrevPresentation, {
-            passedProps: prevPresentation.props ?? {},
-            presentationDirection: "entering",
-            presentationProgress: prevProgress,
-            presentationDurationInFrames: prev.props.timing.getDurationInFrames({ fps }),
-            children: /* @__PURE__ */ (0,jsx_runtime.jsx)(WrapInEnteringProgressContext, {
-              presentationProgress: prevProgress,
-              children: child
-            })
-          })
-        }, i);
-      }
-      if (nextProgress !== null && next) {
-        const nextPresentation = next.props.presentation ?? slide();
-        const UppercaseNextPresentation = nextPresentation.component;
-        return /* @__PURE__ */ (0,jsx_runtime.jsx)(esm.Sequence, {
-          from: actualStartFrame,
-          durationInFrames: durationInFramesProp,
-          ...passedProps,
-          name: passedProps.name || "<TS.Sequence>",
-          children: /* @__PURE__ */ (0,jsx_runtime.jsx)(UppercaseNextPresentation, {
-            passedProps: nextPresentation.props ?? {},
-            presentationDirection: "exiting",
-            presentationProgress: nextProgress,
-            presentationDurationInFrames: next.props.timing.getDurationInFrames({ fps }),
-            children: /* @__PURE__ */ (0,jsx_runtime.jsx)(WrapInExitingProgressContext, {
-              presentationProgress: nextProgress,
-              children: child
-            })
-          })
-        }, i);
-      }
-      return /* @__PURE__ */ (0,jsx_runtime.jsx)(esm.Sequence, {
-        from: actualStartFrame,
-        durationInFrames: durationInFramesProp,
-        ...passedProps,
-        name: passedProps.name || "<TS.Sequence>",
-        children: child
-      }, i);
-    });
-    const overlayElements = overlayRenders.map((overlayInfo) => {
-      const info = overlayInfo;
-      return /* @__PURE__ */ (0,jsx_runtime.jsx)(esm.Sequence, {
-        from: Math.round(info.overlayFrom),
-        durationInFrames: info.durationInFrames,
-        name: "<TS.Overlay>",
-        layout: "absolute-fill",
-        children: info.children
-      }, `overlay-${info.index}`);
-    });
-    return [...mainChildren || [], ...overlayElements];
-  }, [children, fps, frame]);
-  return /* @__PURE__ */ (0,jsx_runtime.jsx)(jsx_runtime.Fragment, {
-    children: childrenValue
-  });
-};
-var TransitionSeries = ({ children, name, layout: passedLayout, ...otherProps }) => {
-  const displayName = name ?? "<TransitionSeries>";
-  const layout = passedLayout ?? "absolute-fill";
-  if (no_react.NoReactInternals.ENABLE_V5_BREAKING_CHANGES && layout !== "absolute-fill") {
-    throw new TypeError(`The "layout" prop of <TransitionSeries /> is not supported anymore in v5. TransitionSeries' must be absolutely positioned.`);
-  }
-  return /* @__PURE__ */ (0,jsx_runtime.jsx)(esm.Sequence, {
-    name: displayName,
-    layout,
-    ...otherProps,
-    children: /* @__PURE__ */ (0,jsx_runtime.jsx)(TransitionSeriesChildren, {
-      children
-    })
-  });
-};
-TransitionSeries.Sequence = SeriesSequence;
-TransitionSeries.Transition = TransitionSeriesTransition;
-TransitionSeries.Overlay = SeriesOverlay;
-esm.Internals.addSequenceStackTraces(TransitionSeries);
-esm.Internals.addSequenceStackTraces(SeriesSequence);
-esm.Internals.addSequenceStackTraces(SeriesOverlay);
-// src/use-transition-progress.ts
-
-var useTransitionProgress = () => {
-  const entering = React4.useContext(EnteringContext);
-  const exiting = React4.useContext(ExitingContext);
-  if (!entering && !exiting) {
-    return {
-      isInTransitionSeries: false,
-      entering: 1,
-      exiting: 0
-    };
-  }
-  return {
-    isInTransitionSeries: true,
-    entering: entering?.enteringProgress ?? 1,
-    exiting: exiting?.exitingProgress ?? 0
-  };
-};
-
-
-;// ../../node_modules/.pnpm/@remotion+transitions@4.0.421_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/@remotion/transitions/dist/esm/slide.mjs
-// src/presentations/slide.tsx
-
-
-
-var slide_epsilon = 0.01;
-var slide_SlidePresentation = ({
-  children,
-  presentationProgress,
-  presentationDirection,
-  passedProps: { direction = "from-left", enterStyle, exitStyle }
-}) => {
-  const directionStyle = (0,react.useMemo)(() => {
-    const presentationProgressWithEpsilonCorrection = presentationProgress === 1 ? presentationProgress * 100 : presentationProgress * 100 - slide_epsilon;
-    if (presentationDirection === "exiting") {
-      switch (direction) {
-        case "from-left":
-          return {
-            transform: `translateX(${presentationProgressWithEpsilonCorrection}%)`
-          };
-        case "from-right":
-          return {
-            transform: `translateX(${-presentationProgress * 100}%)`
-          };
-        case "from-top":
-          return {
-            transform: `translateY(${presentationProgressWithEpsilonCorrection}%)`
-          };
-        case "from-bottom":
-          return {
-            transform: `translateY(${-presentationProgress * 100}%)`
-          };
-        default:
-          throw new Error(`Invalid direction: ${direction}`);
-      }
-    }
-    switch (direction) {
-      case "from-left":
-        return {
-          transform: `translateX(${-100 + presentationProgress * 100}%)`
-        };
-      case "from-right":
-        return {
-          transform: `translateX(${100 - presentationProgressWithEpsilonCorrection}%)`
-        };
-      case "from-top":
-        return {
-          transform: `translateY(${-100 + presentationProgress * 100}%)`
-        };
-      case "from-bottom":
-        return {
-          transform: `translateY(${100 - presentationProgressWithEpsilonCorrection}%)`
-        };
-      default:
-        throw new Error(`Invalid direction: ${direction}`);
-    }
-  }, [presentationDirection, presentationProgress, direction]);
-  const style = (0,react.useMemo)(() => {
-    return {
-      width: "100%",
-      height: "100%",
-      justifyContent: "center",
-      alignItems: "center",
-      ...directionStyle,
-      ...presentationDirection === "entering" ? enterStyle : exitStyle
-    };
-  }, [directionStyle, enterStyle, exitStyle, presentationDirection]);
-  return /* @__PURE__ */ (0,jsx_runtime.jsx)(esm.AbsoluteFill, {
-    style,
-    children
-  });
-};
-var slide_slide = (props) => {
-  return {
-    component: slide_SlidePresentation,
-    props: props ?? {}
-  };
-};
-
-
 ;// ./src/constants.ts
 
 const VIDEO_WIDTH_PX = 1920;
@@ -640,22 +79,22 @@ const COMMAND = "npx -y react-doctor@latest";
 const CONTENT_WIDTH_PX = 1400;
 const TYPING_FONT_SIZE_PX = 100;
 const TYPING_CHAR_WIDTH_PX = 60;
-const CHAR_FRAMES = 2;
+const CHAR_FRAMES = 1.5;
 const CURSOR_BLINK_FRAMES = 16;
 const TYPING_INITIAL_DELAY_FRAMES = 8;
 const TYPING_POST_PAUSE_FRAMES = 24;
 const TYPING_PAN_THRESHOLD_PX = CONTENT_WIDTH_PX * 0.6;
 const FILE_SCAN_FONT_SIZE_PX = 48;
-const FRAMES_PER_FILE = 2;
+const FRAMES_PER_FILE = 1.6;
 const FILE_SCAN_INITIAL_DELAY_FRAMES = 0;
 const FILE_SCAN_VISIBLE_ROWS = 14;
 const FILE_SCAN_TITLE_FONT_SIZE_PX = 88;
 const FILE_SCAN_OVERLAY_START_RATIO = 0.25;
 const FILE_SCAN_OVERLAY_FADE_IN_FRAMES = 15;
-const FILE_SCAN_OVERLAY_HOLD_FRAMES = 60;
+const FILE_SCAN_OVERLAY_HOLD_FRAMES = 45;
 const FILE_SCAN_OVERLAY_FADE_OUT_FRAMES = 15;
 const FILE_SCAN_TITLE_START_OFFSET_PX = -18;
-const FILE_SCAN_TITLE_END_OFFSET_PX = 42;
+const FILE_SCAN_TITLE_END_OFFSET_PX = 0;
 const SCANNED_FILES = [
   { path: "src/components/Button.tsx", errors: 0, warnings: 1 },
   { path: "src/components/UserCard.tsx", errors: 2, warnings: 0 },
@@ -763,240 +202,23 @@ const BOX_BOTTOM = "\u2514\u2500\u2500\u2500\u2500\u2500\u2518";
 const FRAMES_PER_FIX = 20;
 const FIX_INITIAL_DELAY_FRAMES = 15;
 const SCENE_TYPING_DURATION_FRAMES = 100;
-const SCENE_FILE_SCAN_DURATION_FRAMES = 140;
-const SCENE_DIAGNOSTICS_DURATION_FRAMES = 135;
+const SCENE_FILE_SCAN_DURATION_FRAMES = 110;
+const SCENE_DIAGNOSTICS_DURATION_FRAMES = 340;
 const SCENE_FIXES_DURATION_FRAMES = 195;
 const SCENE_CTA_DURATION_FRAMES = 90;
 const SCENE_AGENT_HANDOFF_DURATION_FRAMES = 140;
 const SCENE_SCORE_REVEAL_DURATION_FRAMES = 110;
 const TRANSITION_DURATION_FRAMES = 15;
-const TOTAL_DURATION = SCENE_TYPING_DURATION_FRAMES + SCENE_FILE_SCAN_DURATION_FRAMES + SCENE_DIAGNOSTICS_DURATION_FRAMES + SCENE_AGENT_HANDOFF_DURATION_FRAMES + SCENE_SCORE_REVEAL_DURATION_FRAMES - TRANSITION_DURATION_FRAMES;
-
-;// ./src/utils/font.ts
-
-const fontFamily = '"EK Modena Mono", monospace';
-
-;// ./src/scenes/agent-handoff.tsx
-
-
-
-
-
-const HEADER_FADE_FRAMES = 10;
-const PROMPT_DELAY_FRAMES = 15;
-const PROMPT_FADE_FRAMES = 10;
-const ISSUES_APPEAR_FRAME = 28;
-const ISSUES_INTERVAL_FRAMES = 3;
-const ISSUES_FADE_FRAMES = 6;
-const FIX_START_FRAME = 65;
-const FIX_INTERVAL_FRAMES = 6;
-const FIX_FADE_FRAMES = 8;
-const LOGO_FONT_SIZE_PX = 40;
-const PROMPT_FONT_SIZE_PX = 44;
-const agent_handoff_DIAGNOSTIC_FONT_SIZE_PX = 38;
-const STATUS_FONT_SIZE_PX = 38;
-const CLAUDE_LOGO_ART = ` \u2590\u259B\u2588\u2588\u2588\u259C\u258C`;
-const CLAUDE_LOGO_ART_2 = `\u259D\u259C\u2588\u2588\u2588\u2588\u2588\u259B\u2598`;
-const CLAUDE_LOGO_ART_3 = `  \u2598\u2598 \u259D\u259D`;
-const SPINNER_CHARS = ["\u280B", "\u2819", "\u2839", "\u2838", "\u283C", "\u2834", "\u2826", "\u2827", "\u2807", "\u280F"];
-const SPINNER_SPEED = 3;
-const AgentHandoff = () => {
-  const frame = (0,esm.useCurrentFrame)();
-  const headerOpacity = (0,esm.interpolate)(
-    frame,
-    [0, HEADER_FADE_FRAMES],
-    [0, 1],
-    {
-      extrapolateLeft: "clamp",
-      extrapolateRight: "clamp",
-      easing: esm.Easing.out(esm.Easing.cubic)
-    }
-  );
-  const promptOpacity = (0,esm.interpolate)(
-    frame,
-    [PROMPT_DELAY_FRAMES, PROMPT_DELAY_FRAMES + PROMPT_FADE_FRAMES],
-    [0, 1],
-    {
-      extrapolateLeft: "clamp",
-      extrapolateRight: "clamp",
-      easing: esm.Easing.out(esm.Easing.cubic)
-    }
-  );
-  const allIssuesShown = frame >= ISSUES_APPEAR_FRAME + DIAGNOSTICS.length * ISSUES_INTERVAL_FRAMES;
-  const spinnerChar = SPINNER_CHARS[Math.floor(frame / SPINNER_SPEED) % SPINNER_CHARS.length];
-  const fixedCount = Math.max(
-    0,
-    Math.min(
-      DIAGNOSTICS.length,
-      Math.floor((frame - FIX_START_FRAME) / FIX_INTERVAL_FRAMES) + 1
-    )
-  );
-  const isFixing = frame >= FIX_START_FRAME;
-  const allFixed = fixedCount >= DIAGNOSTICS.length;
-  const allFixedFrame = FIX_START_FRAME + DIAGNOSTICS.length * FIX_INTERVAL_FRAMES;
-  const doneOpacity = (0,esm.interpolate)(
-    frame,
-    [allFixedFrame, allFixedFrame + 10],
-    [0, 1],
-    {
-      extrapolateLeft: "clamp",
-      extrapolateRight: "clamp",
-      easing: esm.Easing.out(esm.Easing.cubic)
-    }
-  );
-  return /* @__PURE__ */ (0,jsx_runtime.jsxs)(
-    esm.AbsoluteFill,
-    {
-      style: {
-        backgroundColor: BACKGROUND_COLOR,
-        padding: "80px 80px"
-      },
-      children: [
-        /* @__PURE__ */ (0,jsx_runtime.jsxs)(
-          "div",
-          {
-            style: {
-              fontFamily: fontFamily,
-              fontSize: LOGO_FONT_SIZE_PX,
-              lineHeight: 1.4,
-              margin: 0,
-              opacity: headerOpacity,
-              marginBottom: 24,
-              whiteSpace: "pre"
-            },
-            children: [
-              /* @__PURE__ */ (0,jsx_runtime.jsxs)("div", { children: [
-                /* @__PURE__ */ (0,jsx_runtime.jsx)("span", { style: { color: "#d77757" }, children: CLAUDE_LOGO_ART }),
-                /* @__PURE__ */ (0,jsx_runtime.jsx)("span", { style: { color: "white" }, children: "   Claude Code" })
-              ] }),
-              /* @__PURE__ */ (0,jsx_runtime.jsxs)("div", { children: [
-                /* @__PURE__ */ (0,jsx_runtime.jsx)("span", { style: { color: "#d77757" }, children: CLAUDE_LOGO_ART_2 }),
-                /* @__PURE__ */ (0,jsx_runtime.jsx)("span", { style: { color: MUTED_COLOR }, children: "  Opus 4.6 \xB7 Claude API" })
-              ] }),
-              /* @__PURE__ */ (0,jsx_runtime.jsxs)("div", { children: [
-                /* @__PURE__ */ (0,jsx_runtime.jsx)("span", { style: { color: "#d77757" }, children: CLAUDE_LOGO_ART_3 }),
-                /* @__PURE__ */ (0,jsx_runtime.jsx)("span", { style: { color: MUTED_COLOR }, children: "    /Users/you/my-app" })
-              ] })
-            ]
-          }
-        ),
-        /* @__PURE__ */ (0,jsx_runtime.jsxs)(
-          "div",
-          {
-            style: {
-              fontFamily: fontFamily,
-              fontSize: PROMPT_FONT_SIZE_PX,
-              color: TEXT_COLOR,
-              opacity: promptOpacity,
-              marginBottom: 16,
-              borderTop: "1px solid rgba(255,255,255,0.15)",
-              padding: "12px 0"
-            },
-            children: [
-              /* @__PURE__ */ (0,jsx_runtime.jsx)("span", { style: { color: MUTED_COLOR }, children: "\u276F " }),
-              /* @__PURE__ */ (0,jsx_runtime.jsx)("span", { style: { color: "white" }, children: "Fix these react-doctor issues" })
-            ]
-          }
-        ),
-        allIssuesShown && !allFixed && /* @__PURE__ */ (0,jsx_runtime.jsxs)(
-          "div",
-          {
-            style: {
-              fontFamily: fontFamily,
-              fontSize: STATUS_FONT_SIZE_PX,
-              color: MUTED_COLOR,
-              marginBottom: 12,
-              opacity: 1
-            },
-            children: [
-              /* @__PURE__ */ (0,jsx_runtime.jsx)("span", { style: { color: "#c084fc" }, children: spinnerChar }),
-              " Fixing issues..."
-            ]
-          }
-        ),
-        allFixed && /* @__PURE__ */ (0,jsx_runtime.jsx)(
-          "div",
-          {
-            style: {
-              fontFamily: fontFamily,
-              fontSize: STATUS_FONT_SIZE_PX,
-              color: GREEN_COLOR,
-              marginBottom: 12,
-              opacity: doneOpacity
-            },
-            children: "\u2713 All issues fixed"
-          }
-        ),
-        /* @__PURE__ */ (0,jsx_runtime.jsx)("div", { children: DIAGNOSTICS.map((diagnostic, index) => {
-          const appearFrame = ISSUES_APPEAR_FRAME + index * ISSUES_INTERVAL_FRAMES;
-          const localFrame = frame - appearFrame;
-          const itemOpacity = (0,esm.interpolate)(
-            localFrame,
-            [0, ISSUES_FADE_FRAMES],
-            [0, 1],
-            {
-              extrapolateLeft: "clamp",
-              extrapolateRight: "clamp",
-              easing: esm.Easing.out(esm.Easing.cubic)
-            }
-          );
-          const isItemFixed = isFixing && index < fixedCount;
-          const fixFrame = FIX_START_FRAME + index * FIX_INTERVAL_FRAMES;
-          const fixProgress = (0,esm.interpolate)(
-            frame - fixFrame,
-            [0, FIX_FADE_FRAMES],
-            [0, 1],
-            {
-              extrapolateLeft: "clamp",
-              extrapolateRight: "clamp",
-              easing: esm.Easing.out(esm.Easing.cubic)
-            }
-          );
-          return /* @__PURE__ */ (0,jsx_runtime.jsxs)(
-            "div",
-            {
-              style: {
-                fontFamily: fontFamily,
-                fontSize: agent_handoff_DIAGNOSTIC_FONT_SIZE_PX,
-                lineHeight: 1.7,
-                color: isItemFixed ? (0,esm.interpolate)(
-                  fixProgress,
-                  [0, 1],
-                  [0, 1]
-                ) > 0.3 ? MUTED_COLOR : TEXT_COLOR : TEXT_COLOR,
-                opacity: itemOpacity,
-                textDecoration: isItemFixed && fixProgress > 0.3 ? "line-through" : "none"
-              },
-              children: [
-                /* @__PURE__ */ (0,jsx_runtime.jsx)(
-                  "span",
-                  {
-                    style: {
-                      color: isItemFixed && fixProgress > 0.3 ? GREEN_COLOR : RED_COLOR
-                    },
-                    children: isItemFixed && fixProgress > 0.3 ? " \u2713" : " \u2717"
-                  }
-                ),
-                ` ${diagnostic.message} `,
-                /* @__PURE__ */ (0,jsx_runtime.jsxs)("span", { style: { color: MUTED_COLOR }, children: [
-                  "(",
-                  diagnostic.count,
-                  ")"
-                ] })
-              ]
-            },
-            diagnostic.message
-          );
-        }) })
-      ]
-    }
-  );
-};
+const TOTAL_DURATION = SCENE_TYPING_DURATION_FRAMES + SCENE_FILE_SCAN_DURATION_FRAMES + SCENE_DIAGNOSTICS_DURATION_FRAMES;
 
 ;// ./src/utils/get-bottom-overlay-gradient.ts
 
 
 const getBottomOverlayGradient = (overlayOpacity) => `linear-gradient(to top, rgba(${OVERLAY_GRADIENT_RGB}, ${overlayOpacity * OVERLAY_GRADIENT_BOTTOM_ALPHA}) 0%, rgba(${OVERLAY_GRADIENT_RGB}, ${overlayOpacity * OVERLAY_GRADIENT_MIDDLE_ALPHA}) ${OVERLAY_GRADIENT_MIDDLE_STOP_PERCENT}%, rgba(${OVERLAY_GRADIENT_RGB}, 0) 100%)`;
+
+;// ./src/utils/font.ts
+
+const fontFamily = '"EK Modena Mono", monospace';
 
 ;// ./src/scenes/diagnostics.tsx
 
@@ -1021,12 +243,23 @@ const SHRINK_DURATION_FRAMES = 20;
 const SHRINK_END_FRAME = SHRINK_START_FRAME + SHRINK_DURATION_FRAMES;
 const DIAGNOSTIC_FADE_IN_FRAMES = 6;
 const ERRORS_START_DELAY_FRAMES = 58;
-const OVERLAY_START_FRAME = Math.floor(SCENE_DIAGNOSTICS_DURATION_FRAMES * 0.5);
+const OVERLAY_START_RATIO = 0.28;
+const OVERLAY_START_FRAME = Math.floor(SCENE_DIAGNOSTICS_DURATION_FRAMES * OVERLAY_START_RATIO);
 const OVERLAY_FADE_IN_FRAMES = 15;
 const OVERLAY_HOLD_FRAMES = 35;
 const OVERLAY_FADE_OUT_FRAMES = 15;
 const OVERLAY_END_FRAME = OVERLAY_START_FRAME + OVERLAY_FADE_IN_FRAMES + OVERLAY_HOLD_FRAMES + OVERLAY_FADE_OUT_FRAMES;
 const OVERLAY_TITLE_FONT_SIZE_PX = 88;
+const FIX_START_DELAY_FRAMES = 12;
+const FIX_INTERVAL_FRAMES = 12;
+const FIX_TRANSITION_FRAMES = 8;
+const FINAL_SCORE_DELAY_FRAMES = 8;
+const FINAL_SCORE_ANIMATION_FRAMES = 30;
+const STATUS_FADE_IN_FRAMES = 8;
+const STATUS_FONT_SIZE_PX = 34;
+const FIXED_ERROR_COUNT = 0;
+const FIXED_FILE_COUNT = 0;
+const FIXED_ELAPSED_TIME = "3.6s";
 const getScoreColor = (score) => {
   if (score >= 75) return "#4ade80";
   if (score >= 50) return "#eab308";
@@ -1045,17 +278,33 @@ const getDoctorFace = (score) => {
 const lerpSize = (heroSize, smallSize, progress) => heroSize + (smallSize - heroSize) * progress;
 const Diagnostics = () => {
   const frame = (0,esm.useCurrentFrame)();
+  const fixStartFrame = OVERLAY_END_FRAME + FIX_START_DELAY_FRAMES;
+  const allFixedFrame = fixStartFrame + DIAGNOSTICS.length * FIX_INTERVAL_FRAMES;
+  const finalScoreStartFrame = allFixedFrame + FINAL_SCORE_DELAY_FRAMES;
+  const finalScoreEndFrame = finalScoreStartFrame + FINAL_SCORE_ANIMATION_FRAMES;
+  const isFixing = frame >= fixStartFrame && frame < allFixedFrame;
+  const isAllFixed = frame >= allFixedFrame;
   const scoreBlockOpacity = (0,esm.interpolate)(frame, [0, SCORE_FADE_IN_FRAMES], [0, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
     easing: esm.Easing.out(esm.Easing.cubic)
   });
-  const scoreProgress = (0,esm.interpolate)(frame, [0, SCORE_ANIMATION_FRAMES], [0, 1], {
+  const initialScore = (0,esm.interpolate)(frame, [0, SCORE_ANIMATION_FRAMES], [0, TARGET_SCORE], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
     easing: esm.Easing.out(esm.Easing.cubic)
   });
-  const currentScore = Math.round(scoreProgress * TARGET_SCORE);
+  const finalScore = (0,esm.interpolate)(
+    frame,
+    [finalScoreStartFrame, finalScoreEndFrame],
+    [TARGET_SCORE, PERFECT_SCORE],
+    {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+      easing: esm.Easing.out(esm.Easing.cubic)
+    }
+  );
+  const currentScore = Math.round(frame < finalScoreStartFrame ? initialScore : finalScore);
   const scoreColor = getScoreColor(currentScore);
   const [eyes, mouth] = getDoctorFace(currentScore);
   const filledBarCount = Math.round(currentScore / PERFECT_SCORE * SCORE_BAR_WIDTH);
@@ -1078,6 +327,30 @@ const Diagnostics = () => {
     extrapolateRight: "clamp",
     easing: esm.Easing.out(esm.Easing.cubic)
   });
+  const fixingStatusOpacity = (0,esm.interpolate)(
+    frame,
+    [fixStartFrame, fixStartFrame + STATUS_FADE_IN_FRAMES],
+    [0, 1],
+    {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+      easing: esm.Easing.out(esm.Easing.cubic)
+    }
+  );
+  const fixedStatusOpacity = (0,esm.interpolate)(
+    frame,
+    [allFixedFrame, allFixedFrame + STATUS_FADE_IN_FRAMES],
+    [0, 1],
+    {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+      easing: esm.Easing.out(esm.Easing.cubic)
+    }
+  );
+  const summaryErrorCount = isAllFixed ? FIXED_ERROR_COUNT : TOTAL_ERROR_COUNT;
+  const summaryFileCount = isAllFixed ? FIXED_FILE_COUNT : AFFECTED_FILE_COUNT;
+  const summaryElapsedTime = isAllFixed ? FIXED_ELAPSED_TIME : ELAPSED_TIME;
+  const summaryPrimaryColor = isAllFixed ? GREEN_COLOR : RED_COLOR;
   const diagnosticsStartFrame = ERRORS_START_DELAY_FRAMES;
   const overlayOpacity = (0,esm.interpolate)(
     frame,
@@ -1218,12 +491,43 @@ ${BOX_BOTTOM}`
                     marginBottom: 24
                   },
                   children: [
-                    /* @__PURE__ */ (0,jsx_runtime.jsxs)("span", { style: { color: RED_COLOR }, children: [
-                      TOTAL_ERROR_COUNT,
+                    /* @__PURE__ */ (0,jsx_runtime.jsxs)("span", { style: { color: summaryPrimaryColor }, children: [
+                      summaryErrorCount,
                       " errors"
                     ] }),
-                    /* @__PURE__ */ (0,jsx_runtime.jsx)("span", { style: { color: MUTED_COLOR }, children: `  across ${AFFECTED_FILE_COUNT} files  in ${ELAPSED_TIME}` })
+                    /* @__PURE__ */ (0,jsx_runtime.jsx)("span", { style: { color: MUTED_COLOR }, children: `  across ${summaryFileCount} files  in ${summaryElapsedTime}` })
                   ]
+                }
+              ),
+              isFixing && /* @__PURE__ */ (0,jsx_runtime.jsxs)(
+                "div",
+                {
+                  style: {
+                    fontFamily: fontFamily,
+                    fontSize: STATUS_FONT_SIZE_PX,
+                    lineHeight: 1.6,
+                    color: MUTED_COLOR,
+                    opacity: fixingStatusOpacity,
+                    marginBottom: 12
+                  },
+                  children: [
+                    /* @__PURE__ */ (0,jsx_runtime.jsx)("span", { style: { color: "white" }, children: "\u25CC" }),
+                    " Fixing issues with coding agent..."
+                  ]
+                }
+              ),
+              isAllFixed && /* @__PURE__ */ (0,jsx_runtime.jsx)(
+                "div",
+                {
+                  style: {
+                    fontFamily: fontFamily,
+                    fontSize: STATUS_FONT_SIZE_PX,
+                    lineHeight: 1.6,
+                    color: GREEN_COLOR,
+                    opacity: fixedStatusOpacity,
+                    marginBottom: 12
+                  },
+                  children: "\u2713 All issues fixed"
                 }
               ),
               DIAGNOSTICS.map((diagnostic, index) => {
@@ -1239,6 +543,13 @@ ${BOX_BOTTOM}`
                     easing: esm.Easing.out(esm.Easing.cubic)
                   }
                 );
+                const fixFrame = fixStartFrame + index * FIX_INTERVAL_FRAMES;
+                const fixProgress = (0,esm.interpolate)(frame, [fixFrame, fixFrame + FIX_TRANSITION_FRAMES], [0, 1], {
+                  extrapolateLeft: "clamp",
+                  extrapolateRight: "clamp",
+                  easing: esm.Easing.out(esm.Easing.cubic)
+                });
+                const didCompleteFixTransition = fixProgress > 0.5;
                 return /* @__PURE__ */ (0,jsx_runtime.jsxs)(
                   "div",
                   {
@@ -1246,15 +557,16 @@ ${BOX_BOTTOM}`
                       fontFamily: fontFamily,
                       fontSize: diagnostics_DIAGNOSTIC_FONT_SIZE_PX,
                       lineHeight: 1.7,
-                      color: TEXT_COLOR,
+                      color: didCompleteFixTransition ? MUTED_COLOR : TEXT_COLOR,
                       whiteSpace: "pre-wrap",
                       opacity: diagnosticOpacity,
+                      textDecoration: didCompleteFixTransition ? "line-through" : "none",
                       marginBottom: 2
                     },
                     children: [
-                      /* @__PURE__ */ (0,jsx_runtime.jsx)("span", { style: { color: RED_COLOR }, children: " \u2717" }),
+                      /* @__PURE__ */ (0,jsx_runtime.jsx)("span", { style: { color: didCompleteFixTransition ? GREEN_COLOR : RED_COLOR }, children: didCompleteFixTransition ? " \u2713" : " \u2717" }),
                       ` ${diagnostic.message} `,
-                      /* @__PURE__ */ (0,jsx_runtime.jsxs)("span", { style: { color: MUTED_COLOR }, children: [
+                      /* @__PURE__ */ (0,jsx_runtime.jsxs)("span", { style: { color: didCompleteFixTransition ? GREEN_COLOR : RED_COLOR }, children: [
                         "(",
                         diagnostic.count,
                         ")"
@@ -1296,7 +608,7 @@ ${BOX_BOTTOM}`
                       textAlign: "center",
                       lineHeight: 1.4
                     },
-                    children: "Send to coding agent"
+                    children: "Fix with coding agent"
                   }
                 )
               }
@@ -1364,11 +676,12 @@ const FileScan = () => {
   );
   const titleOffsetY = (0,esm.interpolate)(
     frame,
-    [file_scan_OVERLAY_START_FRAME, file_scan_OVERLAY_END_FRAME],
+    [file_scan_OVERLAY_START_FRAME, file_scan_OVERLAY_START_FRAME + FILE_SCAN_OVERLAY_FADE_IN_FRAMES],
     [FILE_SCAN_TITLE_START_OFFSET_PX, FILE_SCAN_TITLE_END_OFFSET_PX],
     {
       extrapolateLeft: "clamp",
-      extrapolateRight: "clamp"
+      extrapolateRight: "clamp",
+      easing: esm.Easing.out(esm.Easing.cubic)
     }
   );
   return /* @__PURE__ */ (0,jsx_runtime.jsxs)(
@@ -1478,151 +791,6 @@ const FileScan = () => {
   );
 };
 
-;// ./src/scenes/score-reveal.tsx
-
-
-
-
-
-const score_reveal_SCORE_ANIMATION_FRAMES = 25;
-const score_reveal_SCORE_FADE_IN_FRAMES = 10;
-const SCORE_FONT_SIZE_PX = 96;
-const SCORE_FACE_FONT_SIZE_PX = 72;
-const SCORE_LABEL_FONT_SIZE_PX = 56;
-const SCORE_BAR_FONT_SIZE_PX = 44;
-const score_reveal_SCORE_BAR_WIDTH = 30;
-const score_reveal_getScoreColor = (score) => {
-  if (score >= 75) return "#4ade80";
-  if (score >= 50) return "#eab308";
-  return RED_COLOR;
-};
-const score_reveal_getScoreLabel = (score) => {
-  if (score >= 75) return "Great";
-  if (score >= 50) return "Needs work";
-  return "Critical";
-};
-const score_reveal_getDoctorFace = (score) => {
-  if (score >= 75) return ["\u25E0 \u25E0", " \u25BD "];
-  if (score >= 50) return ["\u2022 \u2022", " \u2500 "];
-  return ["x x", " \u25BD "];
-};
-const ScoreReveal = () => {
-  const frame = (0,esm.useCurrentFrame)();
-  const fadeIn = (0,esm.interpolate)(frame, [0, score_reveal_SCORE_FADE_IN_FRAMES], [0, 1], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-    easing: esm.Easing.out(esm.Easing.cubic)
-  });
-  const scoreProgress = (0,esm.interpolate)(
-    frame,
-    [0, score_reveal_SCORE_ANIMATION_FRAMES],
-    [0, 1],
-    {
-      extrapolateLeft: "clamp",
-      extrapolateRight: "clamp",
-      easing: esm.Easing.linear
-    }
-  );
-  const currentScore = Math.round(scoreProgress * PERFECT_SCORE);
-  const scoreColor = score_reveal_getScoreColor(currentScore);
-  const [eyes, mouth] = score_reveal_getDoctorFace(currentScore);
-  const filledBarCount = Math.round(
-    currentScore / PERFECT_SCORE * score_reveal_SCORE_BAR_WIDTH
-  );
-  const emptyBarCount = score_reveal_SCORE_BAR_WIDTH - filledBarCount;
-  return /* @__PURE__ */ (0,jsx_runtime.jsx)(
-    esm.AbsoluteFill,
-    {
-      style: {
-        backgroundColor: BACKGROUND_COLOR,
-        justifyContent: "center",
-        alignItems: "center"
-      },
-      children: /* @__PURE__ */ (0,jsx_runtime.jsxs)(
-        "div",
-        {
-          style: {
-            display: "flex",
-            gap: 48,
-            alignItems: "flex-start"
-          },
-          children: [
-            /* @__PURE__ */ (0,jsx_runtime.jsx)(
-              "pre",
-              {
-                style: {
-                  color: scoreColor,
-                  lineHeight: 1.2,
-                  fontSize: SCORE_FACE_FONT_SIZE_PX,
-                  fontFamily: fontFamily,
-                  margin: 0
-                },
-                children: `${BOX_TOP}
-\u2502 ${eyes} \u2502
-\u2502 ${mouth} \u2502
-${BOX_BOTTOM}`
-              }
-            ),
-            /* @__PURE__ */ (0,jsx_runtime.jsxs)("div", { children: [
-              /* @__PURE__ */ (0,jsx_runtime.jsxs)("div", { children: [
-                /* @__PURE__ */ (0,jsx_runtime.jsx)(
-                  "span",
-                  {
-                    style: {
-                      color: scoreColor,
-                      fontWeight: 500,
-                      fontSize: SCORE_FONT_SIZE_PX,
-                      fontFamily: fontFamily
-                    },
-                    children: currentScore
-                  }
-                ),
-                /* @__PURE__ */ (0,jsx_runtime.jsx)(
-                  "span",
-                  {
-                    style: {
-                      color: MUTED_COLOR,
-                      fontSize: SCORE_LABEL_FONT_SIZE_PX,
-                      fontFamily: fontFamily
-                    },
-                    children: ` / ${PERFECT_SCORE}  `
-                  }
-                ),
-                /* @__PURE__ */ (0,jsx_runtime.jsx)(
-                  "span",
-                  {
-                    style: {
-                      color: scoreColor,
-                      fontSize: SCORE_LABEL_FONT_SIZE_PX,
-                      fontFamily: fontFamily
-                    },
-                    children: score_reveal_getScoreLabel(currentScore)
-                  }
-                )
-              ] }),
-              /* @__PURE__ */ (0,jsx_runtime.jsxs)(
-                "div",
-                {
-                  style: {
-                    marginTop: 8,
-                    letterSpacing: 2,
-                    fontSize: SCORE_BAR_FONT_SIZE_PX,
-                    fontFamily: fontFamily
-                  },
-                  children: [
-                    /* @__PURE__ */ (0,jsx_runtime.jsx)("span", { style: { color: scoreColor }, children: "\u2588".repeat(filledBarCount) }),
-                    /* @__PURE__ */ (0,jsx_runtime.jsx)("span", { style: { color: "#525252" }, children: "\u2591".repeat(emptyBarCount) })
-                  ]
-                }
-              )
-            ] })
-          ]
-        }
-      )
-    }
-  );
-};
-
 ;// ./src/scenes/terminal-typing.tsx
 
 
@@ -1684,56 +852,11 @@ const TerminalTyping = () => {
 
 
 
-
-
-
 const Main = () => {
-  return /* @__PURE__ */ (0,jsx_runtime.jsxs)(TransitionSeries, { children: [
-    /* @__PURE__ */ (0,jsx_runtime.jsx)(
-      TransitionSeries.Sequence,
-      {
-        durationInFrames: SCENE_TYPING_DURATION_FRAMES,
-        children: /* @__PURE__ */ (0,jsx_runtime.jsx)(TerminalTyping, {})
-      }
-    ),
-    /* @__PURE__ */ (0,jsx_runtime.jsx)(
-      TransitionSeries.Transition,
-      {
-        presentation: slide_slide({ direction: "from-bottom" }),
-        timing: springTiming({
-          config: { damping: 200 },
-          durationInFrames: TRANSITION_DURATION_FRAMES
-        })
-      }
-    ),
-    /* @__PURE__ */ (0,jsx_runtime.jsx)(
-      TransitionSeries.Sequence,
-      {
-        durationInFrames: SCENE_FILE_SCAN_DURATION_FRAMES,
-        children: /* @__PURE__ */ (0,jsx_runtime.jsx)(FileScan, {})
-      }
-    ),
-    /* @__PURE__ */ (0,jsx_runtime.jsx)(
-      TransitionSeries.Sequence,
-      {
-        durationInFrames: SCENE_DIAGNOSTICS_DURATION_FRAMES,
-        children: /* @__PURE__ */ (0,jsx_runtime.jsx)(Diagnostics, {})
-      }
-    ),
-    /* @__PURE__ */ (0,jsx_runtime.jsx)(
-      TransitionSeries.Sequence,
-      {
-        durationInFrames: SCENE_AGENT_HANDOFF_DURATION_FRAMES,
-        children: /* @__PURE__ */ (0,jsx_runtime.jsx)(AgentHandoff, {})
-      }
-    ),
-    /* @__PURE__ */ (0,jsx_runtime.jsx)(
-      TransitionSeries.Sequence,
-      {
-        durationInFrames: SCENE_SCORE_REVEAL_DURATION_FRAMES,
-        children: /* @__PURE__ */ (0,jsx_runtime.jsx)(ScoreReveal, {})
-      }
-    )
+  return /* @__PURE__ */ (0,jsx_runtime.jsxs)(esm.Series, { children: [
+    /* @__PURE__ */ (0,jsx_runtime.jsx)(esm.Series.Sequence, { durationInFrames: SCENE_TYPING_DURATION_FRAMES, children: /* @__PURE__ */ (0,jsx_runtime.jsx)(TerminalTyping, {}) }),
+    /* @__PURE__ */ (0,jsx_runtime.jsx)(esm.Series.Sequence, { durationInFrames: SCENE_FILE_SCAN_DURATION_FRAMES, children: /* @__PURE__ */ (0,jsx_runtime.jsx)(FileScan, {}) }),
+    /* @__PURE__ */ (0,jsx_runtime.jsx)(esm.Series.Sequence, { durationInFrames: SCENE_DIAGNOSTICS_DURATION_FRAMES, children: /* @__PURE__ */ (0,jsx_runtime.jsx)(Diagnostics, {}) })
   ] });
 };
 
@@ -29305,7 +28428,7 @@ var NoReactInternals = {
 /******/ 	// Load entry module and return exports
 /******/ 	// This entry module is referenced by other modules so it can't be inlined
 /******/ 	__webpack_require__(6778);
-/******/ 	__webpack_require__(7833);
+/******/ 	__webpack_require__(5413);
 /******/ 	__webpack_require__(1743);
 /******/ 	var __webpack_exports__ = __webpack_require__(5331);
 /******/ 	

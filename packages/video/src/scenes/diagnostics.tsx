@@ -7,6 +7,7 @@ import {
   DIAGNOSTICS,
   ELAPSED_TIME,
   FRAMES_PER_DIAGNOSTIC,
+  GREEN_COLOR,
   MUTED_COLOR,
   OVERLAY_GRADIENT_BOTTOM_PADDING_PX,
   OVERLAY_GRADIENT_HEIGHT_PX,
@@ -43,13 +44,24 @@ const SHRINK_END_FRAME = SHRINK_START_FRAME + SHRINK_DURATION_FRAMES;
 const DIAGNOSTIC_FADE_IN_FRAMES = 6;
 const ERRORS_START_DELAY_FRAMES = 58;
 
-const OVERLAY_START_FRAME = Math.floor(SCENE_DIAGNOSTICS_DURATION_FRAMES * 0.5);
+const OVERLAY_START_RATIO = 0.28;
+const OVERLAY_START_FRAME = Math.floor(SCENE_DIAGNOSTICS_DURATION_FRAMES * OVERLAY_START_RATIO);
 const OVERLAY_FADE_IN_FRAMES = 15;
 const OVERLAY_HOLD_FRAMES = 35;
 const OVERLAY_FADE_OUT_FRAMES = 15;
 const OVERLAY_END_FRAME =
   OVERLAY_START_FRAME + OVERLAY_FADE_IN_FRAMES + OVERLAY_HOLD_FRAMES + OVERLAY_FADE_OUT_FRAMES;
 const OVERLAY_TITLE_FONT_SIZE_PX = 88;
+const FIX_START_DELAY_FRAMES = 12;
+const FIX_INTERVAL_FRAMES = 12;
+const FIX_TRANSITION_FRAMES = 8;
+const FINAL_SCORE_DELAY_FRAMES = 8;
+const FINAL_SCORE_ANIMATION_FRAMES = 30;
+const STATUS_FADE_IN_FRAMES = 8;
+const STATUS_FONT_SIZE_PX = 34;
+const FIXED_ERROR_COUNT = 0;
+const FIXED_FILE_COUNT = 0;
+const FIXED_ELAPSED_TIME = "3.6s";
 
 const getScoreColor = (score: number) => {
   if (score >= 75) return "#4ade80";
@@ -74,6 +86,12 @@ const lerpSize = (heroSize: number, smallSize: number, progress: number) =>
 
 export const Diagnostics = () => {
   const frame = useCurrentFrame();
+  const fixStartFrame = OVERLAY_END_FRAME + FIX_START_DELAY_FRAMES;
+  const allFixedFrame = fixStartFrame + DIAGNOSTICS.length * FIX_INTERVAL_FRAMES;
+  const finalScoreStartFrame = allFixedFrame + FINAL_SCORE_DELAY_FRAMES;
+  const finalScoreEndFrame = finalScoreStartFrame + FINAL_SCORE_ANIMATION_FRAMES;
+  const isFixing = frame >= fixStartFrame && frame < allFixedFrame;
+  const isAllFixed = frame >= allFixedFrame;
 
   const scoreBlockOpacity = interpolate(frame, [0, SCORE_FADE_IN_FRAMES], [0, 1], {
     extrapolateLeft: "clamp",
@@ -81,12 +99,22 @@ export const Diagnostics = () => {
     easing: Easing.out(Easing.cubic),
   });
 
-  const scoreProgress = interpolate(frame, [0, SCORE_ANIMATION_FRAMES], [0, 1], {
+  const initialScore = interpolate(frame, [0, SCORE_ANIMATION_FRAMES], [0, TARGET_SCORE], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
     easing: Easing.out(Easing.cubic),
   });
-  const currentScore = Math.round(scoreProgress * TARGET_SCORE);
+  const finalScore = interpolate(
+    frame,
+    [finalScoreStartFrame, finalScoreEndFrame],
+    [TARGET_SCORE, PERFECT_SCORE],
+    {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+      easing: Easing.out(Easing.cubic),
+    },
+  );
+  const currentScore = Math.round(frame < finalScoreStartFrame ? initialScore : finalScore);
   const scoreColor = getScoreColor(currentScore);
   const [eyes, mouth] = getDoctorFace(currentScore);
   const filledBarCount = Math.round((currentScore / PERFECT_SCORE) * SCORE_BAR_WIDTH);
@@ -112,6 +140,30 @@ export const Diagnostics = () => {
     extrapolateRight: "clamp",
     easing: Easing.out(Easing.cubic),
   });
+  const fixingStatusOpacity = interpolate(
+    frame,
+    [fixStartFrame, fixStartFrame + STATUS_FADE_IN_FRAMES],
+    [0, 1],
+    {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+      easing: Easing.out(Easing.cubic),
+    },
+  );
+  const fixedStatusOpacity = interpolate(
+    frame,
+    [allFixedFrame, allFixedFrame + STATUS_FADE_IN_FRAMES],
+    [0, 1],
+    {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+      easing: Easing.out(Easing.cubic),
+    },
+  );
+  const summaryErrorCount = isAllFixed ? FIXED_ERROR_COUNT : TOTAL_ERROR_COUNT;
+  const summaryFileCount = isAllFixed ? FIXED_FILE_COUNT : AFFECTED_FILE_COUNT;
+  const summaryElapsedTime = isAllFixed ? FIXED_ELAPSED_TIME : ELAPSED_TIME;
+  const summaryPrimaryColor = isAllFixed ? GREEN_COLOR : RED_COLOR;
 
   const diagnosticsStartFrame = ERRORS_START_DELAY_FRAMES;
 
@@ -234,11 +286,42 @@ export const Diagnostics = () => {
             marginBottom: 24,
           }}
         >
-          <span style={{ color: RED_COLOR }}>{TOTAL_ERROR_COUNT} errors</span>
+          <span style={{ color: summaryPrimaryColor }}>{summaryErrorCount} errors</span>
           <span style={{ color: MUTED_COLOR }}>
-            {`  across ${AFFECTED_FILE_COUNT} files  in ${ELAPSED_TIME}`}
+            {`  across ${summaryFileCount} files  in ${summaryElapsedTime}`}
           </span>
         </div>
+
+        {isFixing && (
+          <div
+            style={{
+              fontFamily,
+              fontSize: STATUS_FONT_SIZE_PX,
+              lineHeight: 1.6,
+              color: MUTED_COLOR,
+              opacity: fixingStatusOpacity,
+              marginBottom: 12,
+            }}
+          >
+            <span style={{ color: "white" }}>◌</span>
+            {" Fixing issues with coding agent..."}
+          </div>
+        )}
+
+        {isAllFixed && (
+          <div
+            style={{
+              fontFamily,
+              fontSize: STATUS_FONT_SIZE_PX,
+              lineHeight: 1.6,
+              color: GREEN_COLOR,
+              opacity: fixedStatusOpacity,
+              marginBottom: 12,
+            }}
+          >
+            ✓ All issues fixed
+          </div>
+        )}
 
         {DIAGNOSTICS.map((diagnostic, index) => {
           const diagnosticStartFrame = diagnosticsStartFrame + index * FRAMES_PER_DIAGNOSTIC;
@@ -253,6 +336,13 @@ export const Diagnostics = () => {
               easing: Easing.out(Easing.cubic),
             },
           );
+          const fixFrame = fixStartFrame + index * FIX_INTERVAL_FRAMES;
+          const fixProgress = interpolate(frame, [fixFrame, fixFrame + FIX_TRANSITION_FRAMES], [0, 1], {
+            extrapolateLeft: "clamp",
+            extrapolateRight: "clamp",
+            easing: Easing.out(Easing.cubic),
+          });
+          const didCompleteFixTransition = fixProgress > 0.5;
 
           return (
             <div
@@ -261,15 +351,20 @@ export const Diagnostics = () => {
                 fontFamily,
                 fontSize: DIAGNOSTIC_FONT_SIZE_PX,
                 lineHeight: 1.7,
-                color: TEXT_COLOR,
+                color: didCompleteFixTransition ? MUTED_COLOR : TEXT_COLOR,
                 whiteSpace: "pre-wrap",
                 opacity: diagnosticOpacity,
+                textDecoration: didCompleteFixTransition ? "line-through" : "none",
                 marginBottom: 2,
               }}
             >
-              <span style={{ color: RED_COLOR }}> ✗</span>
+              <span style={{ color: didCompleteFixTransition ? GREEN_COLOR : RED_COLOR }}>
+                {didCompleteFixTransition ? " ✓" : " ✗"}
+              </span>
               {` ${diagnostic.message} `}
-              <span style={{ color: MUTED_COLOR }}>({diagnostic.count})</span>
+              <span style={{ color: didCompleteFixTransition ? GREEN_COLOR : RED_COLOR }}>
+                ({diagnostic.count})
+              </span>
             </div>
           );
         })}
@@ -301,7 +396,7 @@ export const Diagnostics = () => {
               lineHeight: 1.4,
             }}
           >
-            Send to coding agent
+            Fix with coding agent
           </div>
         </div>
       </AbsoluteFill>

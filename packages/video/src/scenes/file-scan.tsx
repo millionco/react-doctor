@@ -82,11 +82,12 @@ export const FileScan = () => {
   );
   const titleOffsetY = interpolate(
     frame,
-    [OVERLAY_START_FRAME, OVERLAY_END_FRAME],
+    [OVERLAY_START_FRAME, OVERLAY_START_FRAME + FILE_SCAN_OVERLAY_FADE_IN_FRAMES],
     [FILE_SCAN_TITLE_START_OFFSET_PX, FILE_SCAN_TITLE_END_OFFSET_PX],
     {
       extrapolateLeft: "clamp",
       extrapolateRight: "clamp",
+      easing: Easing.out(Easing.cubic),
     },
   );
 

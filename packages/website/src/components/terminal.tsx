@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Copy, Check, ChevronRight, RotateCcw } from "lucide-react";
-import ReactDoctorIcon from "./react-doctor-icon";
 
 const COPIED_RESET_DELAY_MS = 2000;
 const INITIAL_DELAY_MS = 500;
@@ -25,7 +24,6 @@ const DIAGNOSTIC_COUNT_MOBILE = 3;
 const TOTAL_ERROR_COUNT = 22;
 const AFFECTED_FILE_COUNT = 18;
 const ELAPSED_TIME = "2.1s";
-const DOCTOR_ICON_SIZE_PX = 40;
 
 const ANIMATION_COMPLETED_KEY = "react-doctor-animation-completed";
 const COMMAND = "npx -y react-doctor@latest .";
@@ -129,7 +127,27 @@ const FadeIn = ({ children }: { children: React.ReactNode }) => (
   <div className="animate-fade-in">{children}</div>
 );
 
-const DoctorBranding = () => <ReactDoctorIcon sizePx={DOCTOR_ICON_SIZE_PX} />;
+const getDoctorFace = (score: number): [string, string] => {
+  if (score >= SCORE_GOOD_THRESHOLD) return ["◠ ◠", " ▽ "];
+  if (score >= SCORE_OK_THRESHOLD) return ["• •", " ─ "];
+  return ["x x", " ▽ "];
+};
+
+const BOX_TOP = "┌─────┐";
+const BOX_BOTTOM = "└─────┘";
+
+const DoctorBranding = ({ score }: { score: number }) => {
+  const [eyes, mouth] = getDoctorFace(score);
+  const colorClass = getScoreColor(score);
+
+  return (
+    <div>
+      <pre className={`${colorClass} leading-tight`}>
+        {`  ${BOX_TOP}\n  │ ${eyes} │\n  │ ${mouth} │\n  ${BOX_BOTTOM}`}
+      </pre>
+    </div>
+  );
+};
 
 const ScoreBar = ({ score, barWidth }: { score: number; barWidth: number }) => {
   const filledCount = Math.round((score / PERFECT_SCORE) * barWidth);
@@ -385,7 +403,7 @@ const Terminal = () => {
 
       {state.score !== null && (
         <FadeIn>
-          <DoctorBranding />
+          <DoctorBranding score={state.score} />
           <Spacer />
           <ScoreGauge score={state.score} />
         </FadeIn>

@@ -5,6 +5,9 @@ const SCORE_GOOD_THRESHOLD = 75;
 const SCORE_OK_THRESHOLD = 50;
 const IMAGE_WIDTH_PX = 1200;
 const IMAGE_HEIGHT_PX = 630;
+const OG_BRAND_MARK_WIDTH_PX = 244;
+const OG_BRAND_MARK_HEIGHT_PX = 82;
+const OG_BRAND_MARK_PATH = "/react-doctor-og-banner.svg";
 
 const getScoreLabel = (score: number): string => {
   if (score >= SCORE_GOOD_THRESHOLD) return "Great";
@@ -18,12 +21,6 @@ const getScoreColor = (score: number): string => {
   return "#f87171";
 };
 
-const getDoctorFace = (score: number): [string, string] => {
-  if (score >= SCORE_GOOD_THRESHOLD) return ["^ ^", "v"];
-  if (score >= SCORE_OK_THRESHOLD) return ["o o", "-"];
-  return ["x x", "v"];
-};
-
 export const GET = (request: Request): ImageResponse => {
   const { searchParams } = new URL(request.url);
 
@@ -33,7 +30,7 @@ export const GET = (request: Request): ImageResponse => {
   const warningCount = Math.max(0, Number(searchParams.get("w")) || 0);
   const fileCount = Math.max(0, Number(searchParams.get("f")) || 0);
   const scoreColor = getScoreColor(score);
-  const [eyes, mouth] = getDoctorFace(score);
+  const brandMarkUrl = new URL(OG_BRAND_MARK_PATH, request.url).toString();
   const scoreBarPercent = (score / PERFECT_SCORE) * 100;
 
   return new ImageResponse(
@@ -50,26 +47,7 @@ export const GET = (request: Request): ImageResponse => {
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            width: "80px",
-            height: "80px",
-            border: `2px solid ${scoreColor}`,
-            borderRadius: "12px",
-            color: scoreColor,
-          }}
-        >
-          <div style={{ fontSize: "22px", lineHeight: 1 }}>{eyes}</div>
-          <div style={{ fontSize: "18px", lineHeight: 1, marginTop: "2px" }}>{mouth}</div>
-        </div>
-        <div style={{ display: "flex", flexDirection: "column" }}>
-          <span style={{ fontSize: "28px", color: "#d4d4d4" }}>React Doctor</span>
-          <span style={{ fontSize: "18px", color: "#525252" }}>www.react.doctor</span>
-        </div>
+        <img src={brandMarkUrl} width={OG_BRAND_MARK_WIDTH_PX} height={OG_BRAND_MARK_HEIGHT_PX} />
         {projectName && (
           <div
             style={{

@@ -78,6 +78,8 @@ const OVERLAY_GRADIENT_MIDDLE_ALPHA = 0.55;
 const OVERLAY_GRADIENT_MIDDLE_STOP_PERCENT = 50;
 const COMMAND = "npx -y react-doctor@latest";
 const CONTENT_WIDTH_PX = 1400;
+const DIAGNOSTICS_CONTENT_TOP_PADDING_PX = 60;
+const DIAGNOSTICS_CONTENT_SIDE_PADDING_PX = 80;
 const TYPING_FONT_SIZE_PX = 100;
 const TYPING_CHAR_WIDTH_PX = 60;
 const CHAR_FRAMES = 1.5;
@@ -165,9 +167,10 @@ const POST_SCORE_PAUSE_FRAMES = 21;
 const TARGET_SCORE = 42;
 const PERFECT_SCORE = 100;
 const FINAL_SCORE_FOCUS_ENTER_FRAMES = 10;
-const FINAL_SCORE_FOCUS_START_SCALE_RATIO = 0.85;
+const FINAL_SCORE_FOCUS_START_SCALE_RATIO = 1;
 const FINAL_SCORE_FOCUS_END_SCALE_RATIO = 1.4;
-const FINAL_SCORE_FOCUS_START_OFFSET_Y_PX = 80;
+const FINAL_SCORE_FOCUS_START_TRANSLATE_PERCENT = 0;
+const FINAL_SCORE_FOCUS_END_TRANSLATE_PERCENT = -50;
 const TOTAL_ERROR_COUNT = 22;
 const AFFECTED_FILE_COUNT = 18;
 const ELAPSED_TIME = "2.1s";
@@ -371,10 +374,40 @@ const Diagnostics = () => {
       easing: esm.Easing.out(esm.Easing.cubic)
     }
   );
-  const finalScoreFocusOffsetYPx = (0,esm.interpolate)(
+  const finalScoreFocusLeftPx = (0,esm.interpolate)(
     frame,
     [finalScorePhaseStartFrame, finalScorePhaseStartFrame + FINAL_SCORE_FOCUS_ENTER_FRAMES],
-    [FINAL_SCORE_FOCUS_START_OFFSET_Y_PX, 0],
+    [DIAGNOSTICS_CONTENT_SIDE_PADDING_PX, VIDEO_WIDTH_PX / 2],
+    {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+      easing: esm.Easing.out(esm.Easing.cubic)
+    }
+  );
+  const finalScoreFocusTopPx = (0,esm.interpolate)(
+    frame,
+    [finalScorePhaseStartFrame, finalScorePhaseStartFrame + FINAL_SCORE_FOCUS_ENTER_FRAMES],
+    [DIAGNOSTICS_CONTENT_TOP_PADDING_PX, VIDEO_HEIGHT_PX / 2],
+    {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+      easing: esm.Easing.out(esm.Easing.cubic)
+    }
+  );
+  const finalScoreFocusTranslateXPercent = (0,esm.interpolate)(
+    frame,
+    [finalScorePhaseStartFrame, finalScorePhaseStartFrame + FINAL_SCORE_FOCUS_ENTER_FRAMES],
+    [FINAL_SCORE_FOCUS_START_TRANSLATE_PERCENT, FINAL_SCORE_FOCUS_END_TRANSLATE_PERCENT],
+    {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+      easing: esm.Easing.out(esm.Easing.cubic)
+    }
+  );
+  const finalScoreFocusTranslateYPercent = (0,esm.interpolate)(
+    frame,
+    [finalScorePhaseStartFrame, finalScorePhaseStartFrame + FINAL_SCORE_FOCUS_ENTER_FRAMES],
+    [FINAL_SCORE_FOCUS_START_TRANSLATE_PERCENT, FINAL_SCORE_FOCUS_END_TRANSLATE_PERCENT],
     {
       extrapolateLeft: "clamp",
       extrapolateRight: "clamp",
@@ -424,7 +457,7 @@ const Diagnostics = () => {
             style: {
               opacity: mainTerminalOpacity,
               transform: `translateY(${(0,esm.interpolate)(shrinkProgress, [0, 1], [340, 0])}px)`,
-              padding: "60px 80px"
+              padding: `${DIAGNOSTICS_CONTENT_TOP_PADDING_PX}px ${DIAGNOSTICS_CONTENT_SIDE_PADDING_PX}px`
             },
             children: [
               /* @__PURE__ */ (0,jsx_runtime.jsxs)(
@@ -600,92 +633,101 @@ ${BOX_BOTTOM}`
           esm.AbsoluteFill,
           {
             style: {
-              justifyContent: "center",
-              alignItems: "center",
               opacity: finalScoreFocusOpacity
             },
-            children: /* @__PURE__ */ (0,jsx_runtime.jsxs)(
+            children: /* @__PURE__ */ (0,jsx_runtime.jsx)(
               "div",
               {
                 style: {
-                  display: "flex",
-                  gap: (0,esm.interpolate)(shrinkProgress, [0, 1], [48, 32]),
-                  alignItems: "flex-start",
-                  transform: `translateY(${finalScoreFocusOffsetYPx}px) scale(${finalScoreFocusScaleRatio})`,
-                  transformOrigin: "center center"
+                  position: "absolute",
+                  left: finalScoreFocusLeftPx,
+                  top: finalScoreFocusTopPx,
+                  transform: `translate(${finalScoreFocusTranslateXPercent}%, ${finalScoreFocusTranslateYPercent}%)`
                 },
-                children: [
-                  /* @__PURE__ */ (0,jsx_runtime.jsx)(
-                    "pre",
-                    {
-                      style: {
-                        color: scoreColor,
-                        lineHeight: 1.2,
-                        fontSize: faceFontSize,
-                        fontFamily: fontFamily,
-                        margin: 0
-                      },
-                      children: `${BOX_TOP}
+                children: /* @__PURE__ */ (0,jsx_runtime.jsxs)(
+                  "div",
+                  {
+                    style: {
+                      display: "flex",
+                      gap: (0,esm.interpolate)(shrinkProgress, [0, 1], [48, 32]),
+                      alignItems: "flex-start",
+                      transform: `scale(${finalScoreFocusScaleRatio})`,
+                      transformOrigin: "center center"
+                    },
+                    children: [
+                      /* @__PURE__ */ (0,jsx_runtime.jsx)(
+                        "pre",
+                        {
+                          style: {
+                            color: scoreColor,
+                            lineHeight: 1.2,
+                            fontSize: faceFontSize,
+                            fontFamily: fontFamily,
+                            margin: 0
+                          },
+                          children: `${BOX_TOP}
 \u2502 ${eyes} \u2502
 \u2502 ${mouth} \u2502
 ${BOX_BOTTOM}`
-                    }
-                  ),
-                  /* @__PURE__ */ (0,jsx_runtime.jsxs)("div", { children: [
-                    /* @__PURE__ */ (0,jsx_runtime.jsxs)("div", { children: [
-                      /* @__PURE__ */ (0,jsx_runtime.jsx)(
-                        "span",
-                        {
-                          style: {
-                            color: scoreColor,
-                            fontWeight: 500,
-                            fontSize: numberFontSize,
-                            fontFamily: fontFamily
-                          },
-                          children: currentScore
                         }
                       ),
-                      /* @__PURE__ */ (0,jsx_runtime.jsx)(
-                        "span",
-                        {
-                          style: {
-                            color: MUTED_COLOR,
-                            fontSize: labelFontSize,
-                            fontFamily: fontFamily
-                          },
-                          children: ` / ${PERFECT_SCORE}  `
-                        }
-                      ),
-                      /* @__PURE__ */ (0,jsx_runtime.jsx)(
-                        "span",
-                        {
-                          style: {
-                            color: scoreColor,
-                            fontSize: labelFontSize,
-                            fontFamily: fontFamily
-                          },
-                          children: getScoreLabel(currentScore)
-                        }
-                      )
-                    ] }),
-                    /* @__PURE__ */ (0,jsx_runtime.jsxs)(
-                      "div",
-                      {
-                        style: {
-                          marginTop: 8,
-                          letterSpacing: 2,
-                          fontSize: barFontSize,
-                          fontFamily: fontFamily,
-                          lineHeight: 1.2
-                        },
-                        children: [
-                          /* @__PURE__ */ (0,jsx_runtime.jsx)("span", { style: { color: scoreColor }, children: "\u2588".repeat(filledBarCount) }),
-                          /* @__PURE__ */ (0,jsx_runtime.jsx)("span", { style: { color: "#525252" }, children: "\u2591".repeat(emptyBarCount) })
-                        ]
-                      }
-                    )
-                  ] })
-                ]
+                      /* @__PURE__ */ (0,jsx_runtime.jsxs)("div", { children: [
+                        /* @__PURE__ */ (0,jsx_runtime.jsxs)("div", { children: [
+                          /* @__PURE__ */ (0,jsx_runtime.jsx)(
+                            "span",
+                            {
+                              style: {
+                                color: scoreColor,
+                                fontWeight: 500,
+                                fontSize: numberFontSize,
+                                fontFamily: fontFamily
+                              },
+                              children: currentScore
+                            }
+                          ),
+                          /* @__PURE__ */ (0,jsx_runtime.jsx)(
+                            "span",
+                            {
+                              style: {
+                                color: MUTED_COLOR,
+                                fontSize: labelFontSize,
+                                fontFamily: fontFamily
+                              },
+                              children: ` / ${PERFECT_SCORE}  `
+                            }
+                          ),
+                          /* @__PURE__ */ (0,jsx_runtime.jsx)(
+                            "span",
+                            {
+                              style: {
+                                color: scoreColor,
+                                fontSize: labelFontSize,
+                                fontFamily: fontFamily
+                              },
+                              children: getScoreLabel(currentScore)
+                            }
+                          )
+                        ] }),
+                        /* @__PURE__ */ (0,jsx_runtime.jsxs)(
+                          "div",
+                          {
+                            style: {
+                              marginTop: 8,
+                              letterSpacing: 2,
+                              fontSize: barFontSize,
+                              fontFamily: fontFamily,
+                              lineHeight: 1.2
+                            },
+                            children: [
+                              /* @__PURE__ */ (0,jsx_runtime.jsx)("span", { style: { color: scoreColor }, children: "\u2588".repeat(filledBarCount) }),
+                              /* @__PURE__ */ (0,jsx_runtime.jsx)("span", { style: { color: "#525252" }, children: "\u2591".repeat(emptyBarCount) })
+                            ]
+                          }
+                        )
+                      ] })
+                    ]
+                  }
+                )
               }
             )
           }

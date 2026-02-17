@@ -19,6 +19,8 @@ export const OVERLAY_GRADIENT_MIDDLE_STOP_PERCENT = 50;
 
 export const COMMAND = "npx -y react-doctor@latest";
 export const CONTENT_WIDTH_PX = 1400;
+export const DIAGNOSTICS_CONTENT_TOP_PADDING_PX = 60;
+export const DIAGNOSTICS_CONTENT_SIDE_PADDING_PX = 80;
 
 export const TYPING_FONT_SIZE_PX = 100;
 export const TYPING_CHAR_WIDTH_PX = 60;
@@ -109,9 +111,10 @@ export const POST_SCORE_PAUSE_FRAMES = 21;
 export const TARGET_SCORE = 42;
 export const PERFECT_SCORE = 100;
 export const FINAL_SCORE_FOCUS_ENTER_FRAMES = 10;
-export const FINAL_SCORE_FOCUS_START_SCALE_RATIO = 0.85;
+export const FINAL_SCORE_FOCUS_START_SCALE_RATIO = 1;
 export const FINAL_SCORE_FOCUS_END_SCALE_RATIO = 1.4;
-export const FINAL_SCORE_FOCUS_START_OFFSET_Y_PX = 80;
+export const FINAL_SCORE_FOCUS_START_TRANSLATE_PERCENT = 0;
+export const FINAL_SCORE_FOCUS_END_TRANSLATE_PERCENT = -50;
 export const TOTAL_ERROR_COUNT = 22;
 export const AFFECTED_FILE_COUNT = 18;
 export const ELAPSED_TIME = "2.1s";

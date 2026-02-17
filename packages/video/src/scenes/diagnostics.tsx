@@ -4,12 +4,15 @@ import {
   BACKGROUND_COLOR,
   BOX_BOTTOM,
   BOX_TOP,
+  DIAGNOSTICS_CONTENT_SIDE_PADDING_PX,
+  DIAGNOSTICS_CONTENT_TOP_PADDING_PX,
   DIAGNOSTICS,
   ELAPSED_TIME,
   FINAL_SCORE_FOCUS_END_SCALE_RATIO,
+  FINAL_SCORE_FOCUS_END_TRANSLATE_PERCENT,
   FINAL_SCORE_FOCUS_ENTER_FRAMES,
-  FINAL_SCORE_FOCUS_START_OFFSET_Y_PX,
   FINAL_SCORE_FOCUS_START_SCALE_RATIO,
+  FINAL_SCORE_FOCUS_START_TRANSLATE_PERCENT,
   FRAMES_PER_DIAGNOSTIC,
   GREEN_COLOR,
   MUTED_COLOR,
@@ -24,7 +27,9 @@ import {
   TARGET_SCORE,
   TEXT_COLOR,
   TOTAL_ERROR_COUNT,
+  VIDEO_HEIGHT_PX,
   VIDEO_SPEED_MULTIPLIER,
+  VIDEO_WIDTH_PX,
 } from "../constants";
 import { getBottomOverlayGradient } from "../utils/get-bottom-overlay-gradient";
 import { fontFamily } from "../utils/font";
@@ -178,10 +183,40 @@ export const Diagnostics = () => {
       easing: Easing.out(Easing.cubic),
     },
   );
-  const finalScoreFocusOffsetYPx = interpolate(
+  const finalScoreFocusLeftPx = interpolate(
     frame,
     [finalScorePhaseStartFrame, finalScorePhaseStartFrame + FINAL_SCORE_FOCUS_ENTER_FRAMES],
-    [FINAL_SCORE_FOCUS_START_OFFSET_Y_PX, 0],
+    [DIAGNOSTICS_CONTENT_SIDE_PADDING_PX, VIDEO_WIDTH_PX / 2],
+    {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+      easing: Easing.out(Easing.cubic),
+    },
+  );
+  const finalScoreFocusTopPx = interpolate(
+    frame,
+    [finalScorePhaseStartFrame, finalScorePhaseStartFrame + FINAL_SCORE_FOCUS_ENTER_FRAMES],
+    [DIAGNOSTICS_CONTENT_TOP_PADDING_PX, VIDEO_HEIGHT_PX / 2],
+    {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+      easing: Easing.out(Easing.cubic),
+    },
+  );
+  const finalScoreFocusTranslateXPercent = interpolate(
+    frame,
+    [finalScorePhaseStartFrame, finalScorePhaseStartFrame + FINAL_SCORE_FOCUS_ENTER_FRAMES],
+    [FINAL_SCORE_FOCUS_START_TRANSLATE_PERCENT, FINAL_SCORE_FOCUS_END_TRANSLATE_PERCENT],
+    {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+      easing: Easing.out(Easing.cubic),
+    },
+  );
+  const finalScoreFocusTranslateYPercent = interpolate(
+    frame,
+    [finalScorePhaseStartFrame, finalScorePhaseStartFrame + FINAL_SCORE_FOCUS_ENTER_FRAMES],
+    [FINAL_SCORE_FOCUS_START_TRANSLATE_PERCENT, FINAL_SCORE_FOCUS_END_TRANSLATE_PERCENT],
     {
       extrapolateLeft: "clamp",
       extrapolateRight: "clamp",
@@ -234,7 +269,7 @@ export const Diagnostics = () => {
         style={{
           opacity: mainTerminalOpacity,
           transform: `translateY(${interpolate(shrinkProgress, [0, 1], [340, 0])}px)`,
-          padding: "60px 80px",
+          padding: `${DIAGNOSTICS_CONTENT_TOP_PADDING_PX}px ${DIAGNOSTICS_CONTENT_SIDE_PADDING_PX}px`,
         }}
       >
         <div
@@ -384,73 +419,80 @@ export const Diagnostics = () => {
 
       <AbsoluteFill
         style={{
-          justifyContent: "center",
-          alignItems: "center",
           opacity: finalScoreFocusOpacity,
         }}
       >
         <div
           style={{
-            display: "flex",
-            gap: interpolate(shrinkProgress, [0, 1], [48, 32]),
-            alignItems: "flex-start",
-            transform: `translateY(${finalScoreFocusOffsetYPx}px) scale(${finalScoreFocusScaleRatio})`,
-            transformOrigin: "center center",
+            position: "absolute",
+            left: finalScoreFocusLeftPx,
+            top: finalScoreFocusTopPx,
+            transform: `translate(${finalScoreFocusTranslateXPercent}%, ${finalScoreFocusTranslateYPercent}%)`,
           }}
         >
-          <pre
+          <div
             style={{
-              color: scoreColor,
-              lineHeight: 1.2,
-              fontSize: faceFontSize,
-              fontFamily,
-              margin: 0,
+              display: "flex",
+              gap: interpolate(shrinkProgress, [0, 1], [48, 32]),
+              alignItems: "flex-start",
+              transform: `scale(${finalScoreFocusScaleRatio})`,
+              transformOrigin: "center center",
             }}
           >
-            {`${BOX_TOP}\n│ ${eyes} │\n│ ${mouth} │\n${BOX_BOTTOM}`}
-          </pre>
-          <div>
-            <div>
-              <span
-                style={{
-                  color: scoreColor,
-                  fontWeight: 500,
-                  fontSize: numberFontSize,
-                  fontFamily,
-                }}
-              >
-                {currentScore}
-              </span>
-              <span
-                style={{
-                  color: MUTED_COLOR,
-                  fontSize: labelFontSize,
-                  fontFamily,
-                }}
-              >
-                {` / ${PERFECT_SCORE}  `}
-              </span>
-              <span
-                style={{
-                  color: scoreColor,
-                  fontSize: labelFontSize,
-                  fontFamily,
-                }}
-              >
-                {getScoreLabel(currentScore)}
-              </span>
-            </div>
-            <div
+            <pre
               style={{
-                marginTop: 8,
-                letterSpacing: 2,
-                fontSize: barFontSize,
-                fontFamily,
+                color: scoreColor,
                 lineHeight: 1.2,
+                fontSize: faceFontSize,
+                fontFamily,
+                margin: 0,
               }}
             >
-              <span style={{ color: scoreColor }}>{"█".repeat(filledBarCount)}</span>
-              <span style={{ color: "#525252" }}>{"░".repeat(emptyBarCount)}</span>
+              {`${BOX_TOP}\n│ ${eyes} │\n│ ${mouth} │\n${BOX_BOTTOM}`}
+            </pre>
+            <div>
+              <div>
+                <span
+                  style={{
+                    color: scoreColor,
+                    fontWeight: 500,
+                    fontSize: numberFontSize,
+                    fontFamily,
+                  }}
+                >
+                  {currentScore}
+                </span>
+                <span
+                  style={{
+                    color: MUTED_COLOR,
+                    fontSize: labelFontSize,
+                    fontFamily,
+                  }}
+                >
+                  {` / ${PERFECT_SCORE}  `}
+                </span>
+                <span
+                  style={{
+                    color: scoreColor,
+                    fontSize: labelFontSize,
+                    fontFamily,
+                  }}
+                >
+                  {getScoreLabel(currentScore)}
+                </span>
+              </div>
+              <div
+                style={{
+                  marginTop: 8,
+                  letterSpacing: 2,
+                  fontSize: barFontSize,
+                  fontFamily,
+                  lineHeight: 1.2,
+                }}
+              >
+                <span style={{ color: scoreColor }}>{"█".repeat(filledBarCount)}</span>
+                <span style={{ color: "#525252" }}>{"░".repeat(emptyBarCount)}</span>
+              </div>
             </div>
           </div>
         </div>

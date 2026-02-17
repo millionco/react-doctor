@@ -1,5 +1,11 @@
 # react-doctor
 
+## 0.0.13
+
+### Patch Changes
+
+- fix: skill
+
 ## 0.0.12
 
 ### Patch Changes

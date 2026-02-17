@@ -41,7 +41,7 @@ const program = new Command()
   .option("-y, --yes", "skip prompts, scan all workspace projects")
   .option("--project <name>", "select workspace project (comma-separated for multiple)")
   .option("--fix", "open Ami to auto-fix all issues")
-  .option("--prompt", "copy Ami fix prompt with verbose diagnostics output to clipboard")
+  .option("--prompt", "copy latest scan output to clipboard")
   .action(async (directory: string, flags: CliFlags) => {
     const isScoreOnly = flags.score && !flags.prompt;
     const shouldCopyPromptOutput = flags.prompt;
@@ -108,7 +108,7 @@ const program = new Command()
     } finally {
       if (shouldCopyPromptOutput) {
         const capturedOutput = stopLoggerCapture();
-        copyAmiPromptToClipboard(capturedOutput, !isScoreOnly);
+        copyPromptToClipboard(capturedOutput, !isScoreOnly);
       }
     }
   })
@@ -121,7 +121,7 @@ ${highlighter.dim("Learn more:")}
   );
 
 const AMI_INSTALL_URL = "https://ami.dev/install.sh";
-const AMI_FIX_PROMPT =
+const FIX_PROMPT =
   "Fix all issues reported in the react-doctor diagnostics below, one by one. After applying fixes, run `react-dcotor` again to verify the results improved.";
 const REACT_DOCTOR_OUTPUT_LABEL = "react-doctor output";
 const SCAN_SUMMARY_SEPARATOR = "─".repeat(SEPARATOR_LENGTH_CHARS);
@@ -157,7 +157,7 @@ const openAmiToFix = (directory: string): void => {
   logger.log("Opening Ami to fix react-doctor issues...");
 
   const encodedDirectory = encodeURIComponent(resolvedDirectory);
-  const encodedPrompt = encodeURIComponent(AMI_FIX_PROMPT);
+  const encodedPrompt = encodeURIComponent(FIX_PROMPT);
   const deeplink = `ami://open-project?cwd=${encodedDirectory}&prompt=${encodedPrompt}&mode=agent`;
 
   try {
@@ -170,7 +170,7 @@ const openAmiToFix = (directory: string): void => {
   }
 };
 
-const buildAmiPromptWithOutput = (reactDoctorOutput: string): string => {
+const buildPromptWithOutput = (reactDoctorOutput: string): string => {
   const summaryStartIndex = reactDoctorOutput.indexOf(SCAN_SUMMARY_SEPARATOR);
   const diagnosticsOutput =
     summaryStartIndex === -1
@@ -179,12 +179,12 @@ const buildAmiPromptWithOutput = (reactDoctorOutput: string): string => {
   const normalizedReactDoctorOutput = diagnosticsOutput.trim();
   const outputContent =
     normalizedReactDoctorOutput.length > 0 ? normalizedReactDoctorOutput : "No output captured.";
-  return `${AMI_FIX_PROMPT}\n\n${REACT_DOCTOR_OUTPUT_LABEL}:\n\`\`\`\n${outputContent}\n\`\`\``;
+  return `${FIX_PROMPT}\n\n${REACT_DOCTOR_OUTPUT_LABEL}:\n\`\`\`\n${outputContent}\n\`\`\``;
 };
 
-const copyAmiPromptToClipboard = (reactDoctorOutput: string, shouldLogResult: boolean): void => {
-  const amiPromptWithOutput = buildAmiPromptWithOutput(reactDoctorOutput);
-  const didCopyPromptToClipboard = copyToClipboard(amiPromptWithOutput);
+const copyPromptToClipboard = (reactDoctorOutput: string, shouldLogResult: boolean): void => {
+  const promptWithOutput = buildPromptWithOutput(reactDoctorOutput);
+  const didCopyPromptToClipboard = copyToClipboard(promptWithOutput);
 
   if (!shouldLogResult) {
     return;
@@ -196,7 +196,7 @@ const copyAmiPromptToClipboard = (reactDoctorOutput: string, shouldLogResult: bo
   }
 
   logger.warn("Could not copy prompt to clipboard automatically. Use this prompt:");
-  logger.info(amiPromptWithOutput);
+  logger.info(promptWithOutput);
 };
 
 const maybePromptAmiFix = async (directory: string): Promise<void> => {

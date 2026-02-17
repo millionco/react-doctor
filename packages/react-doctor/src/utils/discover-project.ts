@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { SOURCE_FILE_PATTERN } from "../constants.js";
+import { GIT_LS_FILES_MAX_BUFFER_BYTES, SOURCE_FILE_PATTERN } from "../constants.js";
 import type {
   DependencyInfo,
   Framework,
@@ -66,6 +66,7 @@ const countSourceFiles = (rootDirectory: string): number => {
   const result = spawnSync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], {
     cwd: rootDirectory,
     encoding: "utf-8",
+    maxBuffer: GIT_LS_FILES_MAX_BUFFER_BYTES,
   });
 
   if (result.error || result.status !== 0) {

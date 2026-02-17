@@ -66,6 +66,7 @@ Options:
 | [supabase](https://github.com/supabase/supabase)       | **69** | [view](https://www.react.doctor/share?p=studio&s=69&e=74&w=1087&f=566)                  |
 | [onlook](https://github.com/onlook-dev/onlook)         | **69** | [view](https://www.react.doctor/share?p=%40onlook%2Fweb-client&s=69&e=64&w=418&f=178)   |
 | [payload](https://github.com/payloadcms/payload)       | **68** | [view](https://www.react.doctor/share?p=%40payloadcms%2Fui&s=68&e=139&w=408&f=298)      |
+| [sentry](https://github.com/getsentry/sentry)          | **64** | [view](https://www.react.doctor/share?p=sentry&s=64&e=94&w=1345&f=818)                  |
 | [cal.com](https://github.com/calcom/cal.com)           | **63** | [view](https://www.react.doctor/share?p=%40calcom%2Fweb&s=63&e=31&w=558&f=311)          |
 | [dub](https://github.com/dubinc/dub)                   | **62** | [view](https://www.react.doctor/share?p=web&s=62&e=52&w=966&f=457)                      |
 

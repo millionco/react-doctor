@@ -54,7 +54,8 @@
     "ora": "^9.3.0",
     "oxlint": "^1.47.0",
     "picocolors": "^1.1.1",
-    "prompts": "^2.4.2"
+    "prompts": "^2.4.2",
+    "typescript": ">=5.0.4 <7"
   },
   "devDependencies": {
     "@types/prompts": "^2.4.9",

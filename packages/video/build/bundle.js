@@ -171,6 +171,7 @@ const FINAL_SCORE_FOCUS_START_SCALE_RATIO = 1;
 const FINAL_SCORE_FOCUS_END_SCALE_RATIO = 1.4;
 const FINAL_SCORE_FOCUS_START_TRANSLATE_PERCENT = 0;
 const FINAL_SCORE_FOCUS_END_TRANSLATE_PERCENT = -50;
+const FINAL_SCORE_FOCUS_TRIGGER_COMPLETION_RATIO = 0.8;
 const TOTAL_ERROR_COUNT = 22;
 const AFFECTED_FILE_COUNT = 18;
 const ELAPSED_TIME = "2.1s";
@@ -294,8 +295,12 @@ const lerpSize = (heroSize, smallSize, progress) => heroSize + (smallSize - hero
 const Diagnostics = () => {
   const frame = (0,esm.useCurrentFrame)() * VIDEO_SPEED_MULTIPLIER;
   const fixStartFrame = OVERLAY_END_FRAME + FIX_START_DELAY_FRAMES;
+  const mostCompletedIssueCountBeforeFinalFocus = DIAGNOSTICS.length > 1 ? Math.min(
+    DIAGNOSTICS.length - 1,
+    Math.max(1, Math.ceil(DIAGNOSTICS.length * FINAL_SCORE_FOCUS_TRIGGER_COMPLETION_RATIO))
+  ) : DIAGNOSTICS.length;
   const allFixedFrame = fixStartFrame + DIAGNOSTICS.length * FIX_INTERVAL_FRAMES;
-  const finalScorePhaseStartFrame = allFixedFrame;
+  const finalScorePhaseStartFrame = fixStartFrame + mostCompletedIssueCountBeforeFinalFocus * FIX_INTERVAL_FRAMES;
   const finalScoreIncreaseStartFrame = finalScorePhaseStartFrame + FINAL_SCORE_HOLD_FRAMES;
   const finalScoreEndFrame = finalScoreIncreaseStartFrame + FINAL_SCORE_ANIMATION_FRAMES;
   const isFixing = frame >= fixStartFrame && frame < allFixedFrame;

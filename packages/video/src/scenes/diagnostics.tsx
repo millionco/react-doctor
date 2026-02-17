@@ -11,6 +11,7 @@ import {
   FINAL_SCORE_FOCUS_END_SCALE_RATIO,
   FINAL_SCORE_FOCUS_END_TRANSLATE_PERCENT,
   FINAL_SCORE_FOCUS_ENTER_FRAMES,
+  FINAL_SCORE_FOCUS_TRIGGER_COMPLETION_RATIO,
   FINAL_SCORE_FOCUS_START_SCALE_RATIO,
   FINAL_SCORE_FOCUS_START_TRANSLATE_PERCENT,
   FRAMES_PER_DIAGNOSTIC,
@@ -94,8 +95,16 @@ const lerpSize = (heroSize: number, smallSize: number, progress: number) =>
 export const Diagnostics = () => {
   const frame = useCurrentFrame() * VIDEO_SPEED_MULTIPLIER;
   const fixStartFrame = OVERLAY_END_FRAME + FIX_START_DELAY_FRAMES;
+  const mostCompletedIssueCountBeforeFinalFocus =
+    DIAGNOSTICS.length > 1
+      ? Math.min(
+          DIAGNOSTICS.length - 1,
+          Math.max(1, Math.ceil(DIAGNOSTICS.length * FINAL_SCORE_FOCUS_TRIGGER_COMPLETION_RATIO)),
+        )
+      : DIAGNOSTICS.length;
   const allFixedFrame = fixStartFrame + DIAGNOSTICS.length * FIX_INTERVAL_FRAMES;
-  const finalScorePhaseStartFrame = allFixedFrame;
+  const finalScorePhaseStartFrame =
+    fixStartFrame + mostCompletedIssueCountBeforeFinalFocus * FIX_INTERVAL_FRAMES;
   const finalScoreIncreaseStartFrame = finalScorePhaseStartFrame + FINAL_SCORE_HOLD_FRAMES;
   const finalScoreEndFrame = finalScoreIncreaseStartFrame + FINAL_SCORE_ANIMATION_FRAMES;
   const isFixing = frame >= fixStartFrame && frame < allFixedFrame;

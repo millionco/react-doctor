@@ -8,9 +8,29 @@ const ibmPlexMono = IBM_Plex_Mono({
   weight: ["400", "500"],
 });
 
+const SITE_URL = "https://www.react.doctor";
+const SITE_TITLE = "React Doctor";
+const SITE_DESCRIPTION = "Let coding agents diagnose and fix your React code.";
+const DEFAULT_OG_IMAGE_PATH = "/share/og?p=React%20Doctor&s=100";
+
 export const metadata: Metadata = {
-  title: "React Doctor",
-  description: "Let coding agents diagnose and fix your React code.",
+  metadataBase: new URL(SITE_URL),
+  title: SITE_TITLE,
+  description: SITE_DESCRIPTION,
+  openGraph: {
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    url: SITE_URL,
+    siteName: SITE_TITLE,
+    type: "website",
+    images: [DEFAULT_OG_IMAGE_PATH],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    images: [DEFAULT_OG_IMAGE_PATH],
+  },
   icons: { icon: "/react-doctor-icon.svg" },
 };
 

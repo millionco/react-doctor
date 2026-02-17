@@ -1,6 +1,5 @@
 {
   "name": "react-doctor",
-  "private": true,
   "scripts": {
     "dev": "pnpm --filter react-doctor run dev",
     "build": "pnpm --filter react-doctor run build",

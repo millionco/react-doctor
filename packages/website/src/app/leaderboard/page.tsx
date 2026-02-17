@@ -120,9 +120,7 @@ const LeaderboardPage = () => {
         >
           Add your project
         </a>
-        <span className="text-neutral-600">
-          {" — open a PR to leaderboard-entries.ts"}
-        </span>
+        <span className="text-neutral-600">{" — open a PR to leaderboard-entries.ts"}</span>
       </div>
     </div>
   );

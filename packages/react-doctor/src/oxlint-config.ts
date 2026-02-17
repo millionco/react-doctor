@@ -41,6 +41,54 @@ const REACT_COMPILER_RULES: Record<string, string> = {
   "react-hooks-js/todo": "error",
 };
 
+const JSX_A11Y_RULES: Record<string, string> = {
+  "jsx-a11y/alt-text": "error",
+  "jsx-a11y/anchor-is-valid": "warn",
+  "jsx-a11y/click-events-have-key-events": "warn",
+  "jsx-a11y/no-static-element-interactions": "warn",
+  "jsx-a11y/no-noninteractive-element-interactions": "warn",
+  "jsx-a11y/role-has-required-aria-props": "error",
+  "jsx-a11y/no-autofocus": "warn",
+  "jsx-a11y/heading-has-content": "warn",
+  "jsx-a11y/html-has-lang": "warn",
+  "jsx-a11y/no-redundant-roles": "warn",
+  "jsx-a11y/scope": "warn",
+  "jsx-a11y/tabindex-no-positive": "warn",
+  "jsx-a11y/label-has-associated-control": "warn",
+  "jsx-a11y/no-distracting-elements": "error",
+  "jsx-a11y/iframe-has-title": "warn",
+};
+
+const ROBLOX_TS_RULE_OVERRIDES: Record<string, string> = {
+  "react/jsx-no-script-url": "off",
+  "react/no-unknown-property": "off",
+
+  "react-doctor/no-layout-property-animation": "off",
+  "react-doctor/rendering-animate-svg-wrapper": "off",
+  "react-doctor/rendering-hydration-no-flicker": "off",
+
+  "react-doctor/no-transition-all": "off",
+  "react-doctor/no-global-css-variable-animation": "off",
+  "react-doctor/no-large-animated-blur": "off",
+  "react-doctor/no-scale-from-zero": "off",
+  "react-doctor/no-permanent-will-change": "off",
+
+  "react-doctor/no-secrets-in-client-code": "off",
+
+  "react-doctor/use-lazy-motion": "off",
+  "react-doctor/no-undeferred-third-party": "off",
+
+  "react-doctor/no-prevent-default": "off",
+
+  "react-doctor/server-auth-actions": "off",
+  "react-doctor/server-after-nonblocking": "off",
+
+  "react-doctor/client-passive-event-listeners": "off",
+
+  "react-doctor/js-batch-dom-css": "off",
+  "react-doctor/js-cache-storage": "off",
+};
+
 interface OxlintConfigOptions {
   pluginPath: string;
   framework: Framework;
@@ -51,101 +99,96 @@ export const createOxlintConfig = ({
   pluginPath,
   framework,
   hasReactCompiler,
-}: OxlintConfigOptions) => ({
-  categories: {
-    correctness: "off",
-    suspicious: "off",
-    pedantic: "off",
-    perf: "off",
-    restriction: "off",
-    style: "off",
-    nursery: "off",
-  },
-  plugins: ["react", "jsx-a11y", ...(hasReactCompiler ? [] : ["react-perf"])],
-  jsPlugins: [
-    ...(hasReactCompiler
-      ? [{ name: "react-hooks-js", specifier: esmRequire.resolve("eslint-plugin-react-hooks") }]
-      : []),
-    pluginPath,
-  ],
-  rules: {
-    "react/rules-of-hooks": "error",
-    "react/no-direct-mutation-state": "error",
-    "react/jsx-no-duplicate-props": "error",
-    "react/jsx-key": "error",
-    "react/no-children-prop": "warn",
-    "react/no-danger": "warn",
-    "react/jsx-no-script-url": "error",
-    "react/no-render-return-value": "warn",
-    "react/no-string-refs": "warn",
-    "react/no-is-mounted": "warn",
-    "react/require-render-return": "error",
-    "react/no-unknown-property": "warn",
+}: OxlintConfigOptions) => {
+  const isRobloxTsFramework = framework === "roblox-ts";
 
-    "jsx-a11y/alt-text": "error",
-    "jsx-a11y/anchor-is-valid": "warn",
-    "jsx-a11y/click-events-have-key-events": "warn",
-    "jsx-a11y/no-static-element-interactions": "warn",
-    "jsx-a11y/no-noninteractive-element-interactions": "warn",
-    "jsx-a11y/role-has-required-aria-props": "error",
-    "jsx-a11y/no-autofocus": "warn",
-    "jsx-a11y/heading-has-content": "warn",
-    "jsx-a11y/html-has-lang": "warn",
-    "jsx-a11y/no-redundant-roles": "warn",
-    "jsx-a11y/scope": "warn",
-    "jsx-a11y/tabindex-no-positive": "warn",
-    "jsx-a11y/label-has-associated-control": "warn",
-    "jsx-a11y/no-distracting-elements": "error",
-    "jsx-a11y/iframe-has-title": "warn",
+  return {
+    categories: {
+      correctness: "off",
+      suspicious: "off",
+      pedantic: "off",
+      perf: "off",
+      restriction: "off",
+      style: "off",
+      nursery: "off",
+    },
+    plugins: [
+      "react",
+      ...(isRobloxTsFramework ? [] : ["jsx-a11y"]),
+      ...(hasReactCompiler ? [] : ["react-perf"]),
+    ],
+    jsPlugins: [
+      ...(hasReactCompiler
+        ? [{ name: "react-hooks-js", specifier: esmRequire.resolve("eslint-plugin-react-hooks") }]
+        : []),
+      pluginPath,
+    ],
+    rules: {
+      "react/rules-of-hooks": "error",
+      "react/no-direct-mutation-state": "error",
+      "react/jsx-no-duplicate-props": "error",
+      "react/jsx-key": "error",
+      "react/no-children-prop": "warn",
+      "react/no-danger": "warn",
+      "react/jsx-no-script-url": "error",
+      "react/no-render-return-value": "warn",
+      "react/no-string-refs": "warn",
+      "react/no-is-mounted": "warn",
+      "react/require-render-return": "error",
+      "react/no-unknown-property": "warn",
 
-    ...(hasReactCompiler ? REACT_COMPILER_RULES : {}),
+      ...(isRobloxTsFramework ? {} : JSX_A11Y_RULES),
 
-    "react-doctor/no-derived-state-effect": "error",
-    "react-doctor/no-fetch-in-effect": "error",
-    "react-doctor/no-cascading-set-state": "warn",
-    "react-doctor/no-effect-event-handler": "warn",
-    "react-doctor/no-derived-useState": "warn",
-    "react-doctor/prefer-useReducer": "warn",
-    "react-doctor/rerender-lazy-state-init": "warn",
-    "react-doctor/rerender-functional-setstate": "warn",
-    "react-doctor/rerender-dependencies": "error",
+      ...(hasReactCompiler ? REACT_COMPILER_RULES : {}),
 
-    "react-doctor/no-giant-component": "warn",
-    "react-doctor/no-render-in-render": "warn",
-    "react-doctor/no-nested-component-definition": "error",
+      "react-doctor/no-derived-state-effect": "error",
+      "react-doctor/no-fetch-in-effect": "error",
+      "react-doctor/no-cascading-set-state": "warn",
+      "react-doctor/no-effect-event-handler": "warn",
+      "react-doctor/no-derived-useState": "warn",
+      "react-doctor/prefer-useReducer": "warn",
+      "react-doctor/rerender-lazy-state-init": "warn",
+      "react-doctor/rerender-functional-setstate": "warn",
+      "react-doctor/rerender-dependencies": "error",
 
-    "react-doctor/no-usememo-simple-expression": "warn",
-    "react-doctor/no-layout-property-animation": "error",
-    "react-doctor/rerender-memo-with-default-value": "warn",
-    "react-doctor/rendering-animate-svg-wrapper": "warn",
-    "react-doctor/no-inline-prop-on-memo-component": "warn",
-    "react-doctor/rendering-hydration-no-flicker": "warn",
+      "react-doctor/no-giant-component": "warn",
+      "react-doctor/no-render-in-render": "warn",
+      "react-doctor/no-nested-component-definition": "error",
 
-    "react-doctor/no-transition-all": "warn",
-    "react-doctor/no-global-css-variable-animation": "error",
-    "react-doctor/no-large-animated-blur": "warn",
-    "react-doctor/no-scale-from-zero": "warn",
-    "react-doctor/no-permanent-will-change": "warn",
+      "react-doctor/no-usememo-simple-expression": "warn",
+      "react-doctor/no-layout-property-animation": "error",
+      "react-doctor/rerender-memo-with-default-value": "warn",
+      "react-doctor/rendering-animate-svg-wrapper": "warn",
+      "react-doctor/no-inline-prop-on-memo-component": "warn",
+      "react-doctor/rendering-hydration-no-flicker": "warn",
 
-    "react-doctor/no-secrets-in-client-code": "error",
+      "react-doctor/no-transition-all": "warn",
+      "react-doctor/no-global-css-variable-animation": "error",
+      "react-doctor/no-large-animated-blur": "warn",
+      "react-doctor/no-scale-from-zero": "warn",
+      "react-doctor/no-permanent-will-change": "warn",
 
-    "react-doctor/no-barrel-import": "warn",
-    "react-doctor/no-full-lodash-import": "warn",
-    "react-doctor/no-moment": "warn",
-    "react-doctor/prefer-dynamic-import": "warn",
-    "react-doctor/use-lazy-motion": "warn",
-    "react-doctor/no-undeferred-third-party": "warn",
+      "react-doctor/no-secrets-in-client-code": "error",
 
-    "react-doctor/no-array-index-as-key": "warn",
-    "react-doctor/rendering-conditional-render": "warn",
-    "react-doctor/no-prevent-default": "warn",
+      "react-doctor/no-barrel-import": "warn",
+      "react-doctor/no-full-lodash-import": "warn",
+      "react-doctor/no-moment": "warn",
+      "react-doctor/prefer-dynamic-import": "warn",
+      "react-doctor/use-lazy-motion": "warn",
+      "react-doctor/no-undeferred-third-party": "warn",
 
-    "react-doctor/server-auth-actions": "error",
-    "react-doctor/server-after-nonblocking": "warn",
+      "react-doctor/no-array-index-as-key": "warn",
+      "react-doctor/rendering-conditional-render": "warn",
+      "react-doctor/no-prevent-default": "warn",
 
-    "react-doctor/client-passive-event-listeners": "warn",
+      "react-doctor/server-auth-actions": "error",
+      "react-doctor/server-after-nonblocking": "warn",
 
-    "react-doctor/async-parallel": "warn",
-    ...(framework === "nextjs" ? NEXTJS_RULES : {}),
-  },
-});
+      "react-doctor/client-passive-event-listeners": "warn",
+
+      "react-doctor/async-parallel": "warn",
+      ...(isRobloxTsFramework ? ROBLOX_TS_RULE_OVERRIDES : {}),
+      ...(framework === "nextjs" ? NEXTJS_RULES : {}),
+    },
+  };
+};

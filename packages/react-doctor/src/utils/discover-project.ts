@@ -41,6 +41,27 @@ const VITE_CONFIG_FILENAMES = [
 ];
 
 const REACT_COMPILER_CONFIG_PATTERN = /react-compiler|reactCompiler/;
+const SOURCE_COUNT_IGNORED_DIRECTORY_NAMES = new Set([
+  ".cache",
+  ".git",
+  ".hg",
+  ".next",
+  ".svn",
+  ".turbo",
+  "build",
+  "coverage",
+  "dist",
+  "node_modules",
+  "out",
+]);
+const ROBLOX_REACT_PACKAGE_NAME = "@rbxts/react";
+const ROBLOX_TYPES_PACKAGE_NAME = "@rbxts/types";
+const ROBLOX_TS_PACKAGE_NAME = "roblox-ts";
+const ROBLOX_TS_TYPE_MARKERS = new Set([
+  "@rbxts/types",
+  "@rbxts/react-types",
+  "@rbxts/react-roblox-types",
+]);
 
 const FRAMEWORK_PACKAGES: Record<string, Framework> = {
   next: "nextjs",
@@ -56,11 +77,54 @@ const FRAMEWORK_DISPLAY_NAMES: Record<Framework, string> = {
   cra: "Create React App",
   remix: "Remix",
   gatsby: "Gatsby",
+  "roblox-ts": "Roblox (roblox-ts)",
   unknown: "React",
 };
 
 export const formatFrameworkName = (framework: Framework): string =>
   FRAMEWORK_DISPLAY_NAMES[framework];
+
+const countSourceFilesFromFilesystem = (rootDirectory: string): number => {
+  const directoriesToVisit = [rootDirectory];
+  let sourceFileCount = 0;
+
+  while (directoriesToVisit.length > 0) {
+    const currentDirectory = directoriesToVisit.pop();
+    if (!currentDirectory) {
+      continue;
+    }
+
+    let directoryEntries: fs.Dirent[] = [];
+    try {
+      directoryEntries = fs.readdirSync(currentDirectory, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const directoryEntry of directoryEntries) {
+      const entryPath = path.join(currentDirectory, directoryEntry.name);
+
+      if (directoryEntry.isDirectory()) {
+        if (SOURCE_COUNT_IGNORED_DIRECTORY_NAMES.has(directoryEntry.name)) {
+          continue;
+        }
+        directoriesToVisit.push(entryPath);
+        continue;
+      }
+
+      if (!directoryEntry.isFile()) {
+        continue;
+      }
+
+      const relativePath = path.relative(rootDirectory, entryPath);
+      if (SOURCE_FILE_PATTERN.test(relativePath)) {
+        sourceFileCount += 1;
+      }
+    }
+  }
+
+  return sourceFileCount;
+};
 
 const countSourceFiles = (rootDirectory: string): number => {
   const result = spawnSync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], {
@@ -70,12 +134,18 @@ const countSourceFiles = (rootDirectory: string): number => {
   });
 
   if (result.error || result.status !== 0) {
-    return 0;
+    return countSourceFilesFromFilesystem(rootDirectory);
   }
 
-  return result.stdout
+  const gitSourceFileCount = result.stdout
     .split("\n")
     .filter((filePath) => filePath.length > 0 && SOURCE_FILE_PATTERN.test(filePath)).length;
+
+  if (gitSourceFileCount > 0) {
+    return gitSourceFileCount;
+  }
+
+  return countSourceFilesFromFilesystem(rootDirectory);
 };
 
 const collectAllDependencies = (packageJson: PackageJson): Record<string, string> => ({
@@ -83,7 +153,58 @@ const collectAllDependencies = (packageJson: PackageJson): Record<string, string
   ...packageJson.devDependencies,
 });
 
-const detectFramework = (dependencies: Record<string, string>): Framework => {
+const hasAnyRobloxTypeMarker = (types: string[]): boolean =>
+  types.some((typeName) => ROBLOX_TS_TYPE_MARKERS.has(typeName));
+
+const hasAnyRobloxTypeRoot = (typeRoots: string[]): boolean =>
+  typeRoots.some((typeRoot) => typeRoot.includes("@rbxts"));
+
+const hasRobloxToolchainDependencies = (dependencies: Record<string, string>): boolean =>
+  Boolean(dependencies[ROBLOX_TYPES_PACKAGE_NAME] || dependencies[ROBLOX_TS_PACKAGE_NAME]);
+
+const hasRobloxTsconfigTypeMarkers = (directory: string): boolean => {
+  const tsconfigPath = path.join(directory, "tsconfig.json");
+  if (!fs.existsSync(tsconfigPath)) {
+    return false;
+  }
+
+  const tsconfigContent = fs.readFileSync(tsconfigPath, "utf-8");
+
+  try {
+    const parsedTsconfig = JSON.parse(tsconfigContent) as {
+      compilerOptions?: { types?: unknown; typeRoots?: unknown };
+    };
+    const tsconfigTypes = parsedTsconfig.compilerOptions?.types;
+    if (Array.isArray(tsconfigTypes)) {
+      const typeNames = tsconfigTypes.filter((typeName) => typeof typeName === "string");
+      if (hasAnyRobloxTypeMarker(typeNames)) {
+        return true;
+      }
+    }
+
+    const tsconfigTypeRoots = parsedTsconfig.compilerOptions?.typeRoots;
+    if (Array.isArray(tsconfigTypeRoots)) {
+      const typeRootNames = tsconfigTypeRoots.filter((typeRoot) => typeof typeRoot === "string");
+      if (hasAnyRobloxTypeRoot(typeRootNames)) {
+        return true;
+      }
+    }
+  } catch {}
+
+  return (
+    [...ROBLOX_TS_TYPE_MARKERS].some((typeMarker) => tsconfigContent.includes(typeMarker)) ||
+    (tsconfigContent.includes('"typeRoots"') && tsconfigContent.includes("@rbxts"))
+  );
+};
+
+const detectFramework = (directory: string, dependencies: Record<string, string>): Framework => {
+  if (
+    dependencies[ROBLOX_REACT_PACKAGE_NAME] &&
+    (hasRobloxTsconfigTypeMarkers(directory) || hasRobloxToolchainDependencies(dependencies))
+  ) {
+    return "roblox-ts";
+  }
+
   for (const [packageName, frameworkName] of Object.entries(FRAMEWORK_PACKAGES)) {
     if (dependencies[packageName]) {
       return frameworkName;
@@ -92,11 +213,11 @@ const detectFramework = (dependencies: Record<string, string>): Framework => {
   return "unknown";
 };
 
-const extractDependencyInfo = (packageJson: PackageJson): DependencyInfo => {
+const extractDependencyInfo = (directory: string, packageJson: PackageJson): DependencyInfo => {
   const allDependencies = collectAllDependencies(packageJson);
   return {
-    reactVersion: allDependencies.react ?? null,
-    framework: detectFramework(allDependencies),
+    reactVersion: allDependencies.react ?? allDependencies[ROBLOX_REACT_PACKAGE_NAME] ?? null,
+    framework: detectFramework(directory, allDependencies),
   };
 };
 
@@ -173,7 +294,7 @@ const findDependencyInfoFromAncestors = (startDirectory: string): DependencyInfo
     const packageJsonPath = path.join(currentDirectory, "package.json");
     if (fs.existsSync(packageJsonPath)) {
       const packageJson = readPackageJson(packageJsonPath);
-      const info = extractDependencyInfo(packageJson);
+      const info = extractDependencyInfo(currentDirectory, packageJson);
 
       if (!result.reactVersion && info.reactVersion) {
         result.reactVersion = info.reactVersion;
@@ -202,7 +323,7 @@ const findReactInWorkspaces = (rootDirectory: string, packageJson: PackageJson):
 
     for (const workspaceDirectory of directories) {
       const workspacePackageJson = readPackageJson(path.join(workspaceDirectory, "package.json"));
-      const info = extractDependencyInfo(workspacePackageJson);
+      const info = extractDependencyInfo(workspaceDirectory, workspacePackageJson);
 
       if (info.reactVersion && !result.reactVersion) {
         result.reactVersion = info.reactVersion;
@@ -315,14 +436,21 @@ const detectReactCompiler = (directory: string, packageJson: PackageJson): boole
   return false;
 };
 
-export const discoverProject = (directory: string): ProjectInfo => {
+interface DiscoverProjectOptions {
+  frameworkOverride?: Framework;
+}
+
+export const discoverProject = (
+  directory: string,
+  options: DiscoverProjectOptions = {},
+): ProjectInfo => {
   const packageJsonPath = path.join(directory, "package.json");
   if (!fs.existsSync(packageJsonPath)) {
     throw new Error(`No package.json found in ${directory}`);
   }
 
   const packageJson = readPackageJson(packageJsonPath);
-  let { reactVersion, framework } = extractDependencyInfo(packageJson);
+  let { reactVersion, framework } = extractDependencyInfo(directory, packageJson);
 
   if (!reactVersion || framework === "unknown") {
     const workspaceInfo = findReactInWorkspaces(directory, packageJson);
@@ -354,7 +482,7 @@ export const discoverProject = (directory: string): ProjectInfo => {
     rootDirectory: directory,
     projectName,
     reactVersion,
-    framework,
+    framework: options.frameworkOverride ?? framework,
     hasTypeScript,
     hasReactCompiler,
     sourceFileCount,

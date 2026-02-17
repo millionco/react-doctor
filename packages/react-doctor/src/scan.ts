@@ -184,6 +184,7 @@ const printFramedBox = (framedLines: FramedLine[]): void => {
     return;
   }
 
+  const borderColorizer = highlighter.dim;
   const outerIndent = " ".repeat(SUMMARY_BOX_OUTER_INDENT_CHARS);
   const horizontalPadding = " ".repeat(SUMMARY_BOX_HORIZONTAL_PADDING_CHARS);
   const maximumLineLength = Math.max(
@@ -191,16 +192,16 @@ const printFramedBox = (framedLines: FramedLine[]): void => {
   );
   const borderLine = "─".repeat(maximumLineLength + SUMMARY_BOX_HORIZONTAL_PADDING_CHARS * 2);
 
-  logger.log(`${outerIndent}┌${borderLine}┐`);
+  logger.log(`${outerIndent}${borderColorizer(`┌${borderLine}┐`)}`);
 
   for (const framedLine of framedLines) {
     const trailingSpaces = " ".repeat(maximumLineLength - framedLine.plainText.length);
     logger.log(
-      `${outerIndent}│${horizontalPadding}${framedLine.renderedText}${trailingSpaces}${horizontalPadding}│`,
+      `${outerIndent}${borderColorizer("│")}${horizontalPadding}${framedLine.renderedText}${trailingSpaces}${horizontalPadding}${borderColorizer("│")}`,
     );
   }
 
-  logger.log(`${outerIndent}└${borderLine}┘`);
+  logger.log(`${outerIndent}${borderColorizer(`└${borderLine}┘`)}`);
 };
 
 const printScoreGauge = (score: number, label: string): void => {

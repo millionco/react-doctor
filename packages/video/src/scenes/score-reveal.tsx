@@ -8,6 +8,7 @@ import {
   BACKGROUND_COLOR,
   BOX_BOTTOM,
   BOX_TOP,
+  FACE_ART_FONT_FAMILY,
   MUTED_COLOR,
   PERFECT_SCORE,
   RED_COLOR,
@@ -36,9 +37,9 @@ const getScoreLabel = (score: number) => {
 };
 
 const getDoctorFace = (score: number): [string, string] => {
-  if (score >= 75) return ["◠ ◠", " ▽ "];
-  if (score >= 50) return ["• •", " ─ "];
-  return ["x x", " ▽ "];
+  if (score >= 75) return ["o o", " u "];
+  if (score >= 50) return ["o o", " - "];
+  return ["x x", " v "];
 };
 
 export const ScoreReveal = () => {
@@ -89,7 +90,7 @@ export const ScoreReveal = () => {
             color: scoreColor,
             lineHeight: 1.2,
             fontSize: SCORE_FACE_FONT_SIZE_PX,
-            fontFamily,
+            fontFamily: FACE_ART_FONT_FAMILY,
             margin: 0,
           }}
         >

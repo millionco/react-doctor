@@ -8,6 +8,7 @@ import {
   DIAGNOSTICS_CONTENT_TOP_PADDING_PX,
   DIAGNOSTICS,
   ELAPSED_TIME,
+  FACE_ART_FONT_FAMILY,
   FINAL_SCORE_FOCUS_END_SCALE_RATIO,
   FINAL_SCORE_FOCUS_END_TRANSLATE_PERCENT,
   FINAL_SCORE_FOCUS_ENTER_FRAMES,
@@ -84,9 +85,9 @@ const getScoreLabel = (score: number) => {
 };
 
 const getDoctorFace = (score: number): [string, string] => {
-  if (score >= 75) return ["◠ ◠", " ▽ "];
-  if (score >= 50) return ["• •", " ─ "];
-  return ["x x", " ▽ "];
+  if (score >= 75) return ["o o", " u "];
+  if (score >= 50) return ["o o", " - "];
+  return ["x x", " v "];
 };
 
 const lerpSize = (heroSize: number, smallSize: number, progress: number) =>
@@ -295,7 +296,7 @@ export const Diagnostics = () => {
               color: scoreColor,
               lineHeight: 1.2,
               fontSize: faceFontSize,
-              fontFamily,
+              fontFamily: FACE_ART_FONT_FAMILY,
               margin: 0,
             }}
           >
@@ -448,17 +449,17 @@ export const Diagnostics = () => {
               transformOrigin: "center center",
             }}
           >
-            <pre
-              style={{
-                color: scoreColor,
-                lineHeight: 1.2,
-                fontSize: faceFontSize,
-                fontFamily,
-                margin: 0,
-              }}
-            >
-              {`${BOX_TOP}\n│ ${eyes} │\n│ ${mouth} │\n${BOX_BOTTOM}`}
-            </pre>
+          <pre
+            style={{
+              color: scoreColor,
+              lineHeight: 1.2,
+              fontSize: faceFontSize,
+              fontFamily: FACE_ART_FONT_FAMILY,
+              margin: 0,
+            }}
+          >
+            {`${BOX_TOP}\n│ ${eyes} │\n│ ${mouth} │\n${BOX_BOTTOM}`}
+          </pre>
             <div>
               <div>
                 <span

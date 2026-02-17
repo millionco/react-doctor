@@ -21,6 +21,8 @@ export const COMMAND = "npx -y react-doctor@latest";
 export const CONTENT_WIDTH_PX = 1400;
 export const DIAGNOSTICS_CONTENT_TOP_PADDING_PX = 60;
 export const DIAGNOSTICS_CONTENT_SIDE_PADDING_PX = 80;
+export const FACE_ART_FONT_FAMILY =
+  '"SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
 
 export const TYPING_FONT_SIZE_PX = 100;
 export const TYPING_CHAR_WIDTH_PX = 60;

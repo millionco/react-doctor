@@ -80,6 +80,7 @@ const COMMAND = "npx -y react-doctor@latest";
 const CONTENT_WIDTH_PX = 1400;
 const DIAGNOSTICS_CONTENT_TOP_PADDING_PX = 60;
 const DIAGNOSTICS_CONTENT_SIDE_PADDING_PX = 80;
+const FACE_ART_FONT_FAMILY = '"SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
 const TYPING_FONT_SIZE_PX = 100;
 const TYPING_CHAR_WIDTH_PX = 60;
 const CHAR_FRAMES = 1.5;
@@ -287,9 +288,9 @@ const getScoreLabel = (score) => {
   return "Critical";
 };
 const getDoctorFace = (score) => {
-  if (score >= 75) return ["\u25E0 \u25E0", " \u25BD "];
-  if (score >= 50) return ["\u2022 \u2022", " \u2500 "];
-  return ["x x", " \u25BD "];
+  if (score >= 75) return ["o o", " u "];
+  if (score >= 50) return ["o o", " - "];
+  return ["x x", " v "];
 };
 const lerpSize = (heroSize, smallSize, progress) => heroSize + (smallSize - heroSize) * progress;
 const Diagnostics = () => {
@@ -483,7 +484,7 @@ const Diagnostics = () => {
                           color: scoreColor,
                           lineHeight: 1.2,
                           fontSize: faceFontSize,
-                          fontFamily: fontFamily,
+                          fontFamily: FACE_ART_FONT_FAMILY,
                           margin: 0
                         },
                         children: `${BOX_TOP}
@@ -667,7 +668,7 @@ ${BOX_BOTTOM}`
                             color: scoreColor,
                             lineHeight: 1.2,
                             fontSize: faceFontSize,
-                            fontFamily: fontFamily,
+                            fontFamily: FACE_ART_FONT_FAMILY,
                             margin: 0
                           },
                           children: `${BOX_TOP}

@@ -1,6 +1,6 @@
 {
   "name": "react-doctor",
-  "version": "0.0.11",
+  "version": "0.0.12",
   "bin": {
     "react-doctor": "./dist/cli.js"
   },

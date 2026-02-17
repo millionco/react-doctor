@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import AnimatedScore from "./animated-score";
+import ReactDoctorIcon from "@/components/react-doctor-icon";
 
 const PERFECT_SCORE = 100;
 const SCORE_GOOD_THRESHOLD = 75;
@@ -9,6 +10,7 @@ const FIX_COMMAND = "npx -y react-doctor@latest . --fix";
 const SHARE_BASE_URL = "https://www.react.doctor/share";
 const AMI_DEEPLINK =
   "ami://new-chat?prompt=Run%20%60npx%20-y%20react-doctor%40latest%20.%60%20to%20diagnose%20issues%2C%20then%20fix%20all%20reported%20issues%20one%20by%20one.%20After%20applying%20fixes%2C%20run%20it%20again%20to%20verify%20the%20results%20improved.&mode=agent&autoSubmit=true";
+const SHARE_ICON_SIZE_PX = 40;
 const X_ICON_PATH =
   "M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z";
 const LINKEDIN_ICON_PATH =
@@ -28,29 +30,6 @@ const getScoreLabel = (score: number): string => {
   if (score >= SCORE_GOOD_THRESHOLD) return "Great";
   if (score >= SCORE_OK_THRESHOLD) return "Needs work";
   return "Critical";
-};
-
-const getScoreColorClass = (score: number): string => {
-  if (score >= SCORE_GOOD_THRESHOLD) return "text-green-400";
-  if (score >= SCORE_OK_THRESHOLD) return "text-yellow-500";
-  return "text-red-400";
-};
-
-const getDoctorFace = (score: number): [string, string] => {
-  if (score >= SCORE_GOOD_THRESHOLD) return ["\u25E0 \u25E0", " \u25BD "];
-  if (score >= SCORE_OK_THRESHOLD) return ["\u2022 \u2022", " \u2500 "];
-  return ["x x", " \u25BD "];
-};
-
-const DoctorFace = ({ score }: { score: number }) => {
-  const [eyes, mouth] = getDoctorFace(score);
-  const colorClass = getScoreColorClass(score);
-
-  return (
-    <pre className={`${colorClass} leading-tight`}>
-      {`  \u250C\u2500\u2500\u2500\u2500\u2500\u2510\n  \u2502 ${eyes} \u2502\n  \u2502 ${mouth} \u2502\n  \u2514\u2500\u2500\u2500\u2500\u2500\u2518`}
-    </pre>
-  );
 };
 
 export const generateMetadata = async ({
@@ -118,7 +97,7 @@ const SharePage = async ({ searchParams }: { searchParams: Promise<ShareSearchPa
     <div className="mx-auto min-h-screen w-full max-w-3xl bg-[#0a0a0a] p-6 pb-32 font-mono text-base leading-relaxed text-neutral-300 sm:p-8 sm:pb-40 sm:text-lg">
       <div className="mb-6">
         {projectName && <div className="mb-4 text-xl text-white">{projectName}</div>}
-        <DoctorFace score={score} />
+        <ReactDoctorIcon sizePx={SHARE_ICON_SIZE_PX} />
         <div className="mt-2 text-neutral-500">
           React Doctor <span className="text-neutral-600">(www.react.doctor)</span>
         </div>

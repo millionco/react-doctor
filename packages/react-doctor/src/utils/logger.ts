@@ -1,25 +1,57 @@
 import { highlighter } from "./highlighter.js";
+import { stripAnsi } from "./strip-ansi.js";
+import type { LoggerCaptureState } from "../types.js";
+
+const loggerCaptureState: LoggerCaptureState = {
+  isEnabled: false,
+  lines: [],
+};
+
+const captureLogLine = (text: string): void => {
+  if (!loggerCaptureState.isEnabled) {
+    return;
+  }
+
+  loggerCaptureState.lines.push(stripAnsi(text));
+};
+
+const writeLogLine = (text: string): void => {
+  console.log(text);
+  captureLogLine(text);
+};
+
+export const startLoggerCapture = (): void => {
+  loggerCaptureState.isEnabled = true;
+  loggerCaptureState.lines = [];
+};
+
+export const stopLoggerCapture = (): string => {
+  const capturedOutput = loggerCaptureState.lines.join("\n");
+  loggerCaptureState.isEnabled = false;
+  loggerCaptureState.lines = [];
+  return capturedOutput;
+};
 
 export const logger = {
   error(...args: unknown[]) {
-    console.log(highlighter.error(args.join(" ")));
+    writeLogLine(highlighter.error(args.join(" ")));
   },
   warn(...args: unknown[]) {
-    console.log(highlighter.warn(args.join(" ")));
+    writeLogLine(highlighter.warn(args.join(" ")));
   },
   info(...args: unknown[]) {
-    console.log(highlighter.info(args.join(" ")));
+    writeLogLine(highlighter.info(args.join(" ")));
   },
   success(...args: unknown[]) {
-    console.log(highlighter.success(args.join(" ")));
+    writeLogLine(highlighter.success(args.join(" ")));
   },
   dim(...args: unknown[]) {
-    console.log(highlighter.dim(args.join(" ")));
+    writeLogLine(highlighter.dim(args.join(" ")));
   },
   log(...args: unknown[]) {
-    console.log(args.join(" "));
+    writeLogLine(args.join(" "));
   },
   break() {
-    console.log("");
+    writeLogLine("");
   },
 };

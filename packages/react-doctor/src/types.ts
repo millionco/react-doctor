@@ -88,6 +88,20 @@ export interface ScanOptions {
   scoreOnly: boolean;
 }
 
+export interface ClipboardCommand {
+  command: string;
+  args: string[];
+}
+
+export interface LoggerCaptureState {
+  isEnabled: boolean;
+  lines: string[];
+}
+
+export interface HandleErrorOptions {
+  shouldExit: boolean;
+}
+
 export interface WorkspacePackage {
   name: string;
   directory: string;

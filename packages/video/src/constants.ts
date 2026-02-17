@@ -23,7 +23,7 @@ export const TYPING_FONT_SIZE_PX = 100;
 export const TYPING_CHAR_WIDTH_PX = 60;
 export const CHAR_FRAMES = 2;
 export const CURSOR_BLINK_FRAMES = 16;
-export const TYPING_INITIAL_DELAY_FRAMES = 15;
+export const TYPING_INITIAL_DELAY_FRAMES = 8;
 export const TYPING_POST_PAUSE_FRAMES = 24;
 export const TYPING_PAN_THRESHOLD_PX = CONTENT_WIDTH_PX * 0.6;
 

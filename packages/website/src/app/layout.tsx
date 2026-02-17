@@ -8,9 +8,17 @@ const ibmPlexMono = IBM_Plex_Mono({
   weight: ["400", "500"],
 });
 
+const SITE_URL = "https://www.react.doctor";
+const TWITTER_IMAGE_PATH = "/react-doctor-og-banner.svg";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: "React Doctor",
   description: "Let coding agents diagnose and fix your React code.",
+  twitter: {
+    card: "summary_large_image",
+    images: [TWITTER_IMAGE_PATH],
+  },
   icons: { icon: "/react-doctor-icon.svg" },
 };
 

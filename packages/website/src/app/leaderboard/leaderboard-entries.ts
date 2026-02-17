@@ -57,6 +57,15 @@ const RAW_ENTRIES: LeaderboardEntry[] = [
     fileCount: 292,
   },
   {
+    name: "hazel",
+    githubUrl: "https://github.com/hazelchat/hazel",
+    packageName: "web",
+    score: 75,
+    errorCount: 24,
+    warningCount: 761,
+    fileCount: 610,
+  },
+  {
     name: "formbricks",
     githubUrl: "https://github.com/formbricks/formbricks",
     packageName: "@formbricks/web",

@@ -22,6 +22,16 @@ export default defineConfig([
   },
   {
     entry: {
+      index: "./src/index.ts",
+    },
+    external: ["oxlint", "knip", "knip/session"],
+    dts: true,
+    target: "node18",
+    platform: "node",
+    fixedExtension: false,
+  },
+  {
+    entry: {
       "react-doctor-plugin": "./src/plugin/index.ts",
     },
     target: "node18",

@@ -1,5 +1,35 @@
 # react-doctor
 
+## 0.0.17
+
+### Patch Changes
+
+- add lopgging
+
+## 0.0.16
+
+### Patch Changes
+
+- fix: log lint errors
+
+## 0.0.15
+
+### Patch Changes
+
+- export node api
+
+## 0.0.14
+
+### Patch Changes
+
+- fix repo
+
+## 0.0.13
+
+### Patch Changes
+
+- fix: skill
+
 ## 0.0.12
 
 ### Patch Changes

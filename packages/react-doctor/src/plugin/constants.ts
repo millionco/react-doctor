@@ -253,3 +253,47 @@ export const LARGE_BLUR_THRESHOLD_PX = 10;
 export const BLUR_VALUE_PATTERN = /blur\((\d+(?:\.\d+)?)px\)/;
 export const ANIMATION_CALLBACK_NAMES = new Set(["requestAnimationFrame", "setInterval"]);
 export const MOTION_LIBRARY_PACKAGES = new Set(["framer-motion", "motion"]);
+
+export const RAW_TEXT_PREVIEW_MAX_CHARS = 30;
+
+export const REACT_NATIVE_TEXT_COMPONENTS = new Set(["Text", "TextInput"]);
+
+export const DEPRECATED_RN_MODULE_REPLACEMENTS: Record<string, string> = {
+  AsyncStorage: "@react-native-async-storage/async-storage",
+  Picker: "@react-native-picker/picker",
+  PickerIOS: "@react-native-picker/picker",
+  DatePickerIOS: "@react-native-community/datetimepicker",
+  DatePickerAndroid: "@react-native-community/datetimepicker",
+  ProgressBarAndroid: "a community alternative",
+  ProgressViewIOS: "a community alternative",
+  SafeAreaView: "react-native-safe-area-context",
+  Slider: "@react-native-community/slider",
+  ViewPagerAndroid: "react-native-pager-view",
+  WebView: "react-native-webview",
+  NetInfo: "@react-native-community/netinfo",
+  CameraRoll: "@react-native-camera-roll/camera-roll",
+  Clipboard: "@react-native-clipboard/clipboard",
+  ImageEditor: "@react-native-community/image-editor",
+  MaskedViewIOS: "@react-native-masked-view/masked-view",
+};
+
+export const LEGACY_EXPO_PACKAGE_REPLACEMENTS: Record<string, string> = {
+  "expo-av": "expo-audio for audio and expo-video for video",
+  "expo-permissions": "the permissions API in each module (e.g. Camera.requestPermissionsAsync())",
+  "@expo/vector-icons": "expo-image with sf: source URIs",
+};
+
+export const REACT_NATIVE_LIST_COMPONENTS = new Set([
+  "FlatList",
+  "SectionList",
+  "VirtualizedList",
+  "FlashList",
+]);
+
+export const LEGACY_SHADOW_STYLE_PROPERTIES = new Set([
+  "shadowColor",
+  "shadowOffset",
+  "shadowOpacity",
+  "shadowRadius",
+  "elevation",
+]);

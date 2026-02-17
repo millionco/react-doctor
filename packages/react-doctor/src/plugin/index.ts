@@ -60,6 +60,16 @@ import {
   renderingHydrationNoFlicker,
   rerenderMemoWithDefaultValue,
 } from "./rules/performance.js";
+import {
+  rnNoRawText,
+  rnNoDeprecatedModules,
+  rnNoLegacyExpoPackages,
+  rnNoDimensionsGet,
+  rnNoInlineFlatlistRenderitem,
+  rnNoLegacyShadowStyles,
+  rnPreferReanimated,
+  rnNoSingleElementStyleArray,
+} from "./rules/react-native.js";
 import { noEval, noSecretsInClientCode } from "./rules/security.js";
 import { serverAfterNonblocking, serverAuthActions } from "./rules/server.js";
 import {
@@ -151,6 +161,15 @@ const plugin: RulePlugin = {
     "js-cache-storage": jsCacheStorage,
     "js-early-exit": jsEarlyExit,
     "async-parallel": asyncParallel,
+
+    "rn-no-raw-text": rnNoRawText,
+    "rn-no-deprecated-modules": rnNoDeprecatedModules,
+    "rn-no-legacy-expo-packages": rnNoLegacyExpoPackages,
+    "rn-no-dimensions-get": rnNoDimensionsGet,
+    "rn-no-inline-flatlist-renderitem": rnNoInlineFlatlistRenderitem,
+    "rn-no-legacy-shadow-styles": rnNoLegacyShadowStyles,
+    "rn-prefer-reanimated": rnPreferReanimated,
+    "rn-no-single-element-style-array": rnNoSingleElementStyleArray,
   },
 };
 

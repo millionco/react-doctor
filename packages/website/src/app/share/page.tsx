@@ -7,8 +7,6 @@ const SCORE_OK_THRESHOLD = 50;
 const COMMAND = "npx -y react-doctor@latest .";
 const FIX_COMMAND = "npx -y react-doctor@latest . --fix";
 const SHARE_BASE_URL = "https://www.react.doctor/share";
-const AMI_DEEPLINK =
-  "ami://new-chat?prompt=Run%20%60npx%20-y%20react-doctor%40latest%20.%60%20to%20diagnose%20issues%2C%20then%20fix%20all%20reported%20issues%20one%20by%20one.%20After%20applying%20fixes%2C%20run%20it%20again%20to%20verify%20the%20results%20improved.&mode=agent&autoSubmit=true";
 const X_ICON_PATH =
   "M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z";
 const LINKEDIN_ICON_PATH =
@@ -158,12 +156,6 @@ const SharePage = async ({ searchParams }: { searchParams: Promise<ShareSearchPa
       </div>
 
       <div className="mt-8 flex flex-wrap items-center gap-3">
-        <a
-          href={AMI_DEEPLINK}
-          className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap border border-purple-500/40 bg-purple-600 px-3 py-1.5 text-white transition-all hover:bg-purple-500 active:scale-[0.98]"
-        >
-          Fix with Ami
-        </a>
         <a
           href={twitterShareUrl}
           target="_blank"

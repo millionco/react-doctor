@@ -65,7 +65,6 @@ export const maybePromptSkillInstall = async (shouldSkipPrompts: boolean): Promi
   if (shouldInstall) {
     logger.break();
     installSkill();
+    writeConfig({ ...config, skillPromptDismissed: true });
   }
-
-  writeConfig({ ...config, skillPromptDismissed: true });
 };

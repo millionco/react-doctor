@@ -4,4 +4,3 @@ dist
 .DS_Store
 .agents
 .cursor
-packages/video/build

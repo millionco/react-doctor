@@ -1,0 +1,47 @@
+# React Doctor
+
+Diagnose React codebase health. Scans for security, performance, correctness, and architecture issues, then outputs a 0–100 score with actionable diagnostics.
+
+## Usage
+
+Run this at your project root:
+
+```bash
+npx -y react-doctor@latest .
+```
+
+Use `--verbose` to see affected files and line numbers:
+
+```bash
+npx -y react-doctor@latest . --verbose
+```
+
+Use `--score` to output only the numeric score:
+
+```bash
+npx -y react-doctor@latest . --score
+```
+
+Use `-y` to skip prompts (required for non-interactive environments like CI or coding agents):
+
+```bash
+npx -y react-doctor@latest . -y
+```
+
+## Options
+
+```
+Usage: react-doctor [directory] [options]
+
+Options:
+  -v, --version     display the version number
+  --no-lint         skip linting
+  --no-dead-code    skip dead code detection
+  --verbose         show file details per rule
+  --score           output only the score
+  -y, --yes         skip prompts, scan all workspace projects
+  --project <name>  select workspace project (comma-separated for multiple)
+  --fix             open Ami to auto-fix all issues
+  --prompt          copy latest scan output to clipboard
+  -h, --help        display help for command
+```

@@ -388,8 +388,9 @@ export const scan = async (directory: string, options: ScanOptions): Promise<voi
           );
           lintSpinner?.succeed("Running lint checks.");
           return lintDiagnostics;
-        } catch {
+        } catch (error) {
           lintSpinner?.fail("Lint checks failed (non-fatal, skipping).");
+          logger.error(String(error));
           return [];
         }
       })()
@@ -404,8 +405,9 @@ export const scan = async (directory: string, options: ScanOptions): Promise<voi
           const knipDiagnostics = await runKnip(directory);
           deadCodeSpinner?.succeed("Detecting dead code.");
           return knipDiagnostics;
-        } catch {
+        } catch (error) {
           deadCodeSpinner?.fail("Dead code detection failed (non-fatal, skipping).");
+          logger.error(String(error));
           return [];
         }
       })()

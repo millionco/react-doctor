@@ -15,6 +15,7 @@ const WEB_ONLY_ROBLOX_DISABLED_RULES = [
   "react-doctor/server-auth-actions",
   "react-doctor/server-after-nonblocking",
   "react-doctor/no-secrets-in-client-code",
+  "react-doctor/prefer-dynamic-import",
   "react-doctor/use-lazy-motion",
   "react-doctor/no-undeferred-third-party",
   "react-doctor/js-batch-dom-css",
@@ -56,5 +57,31 @@ describe("createOxlintConfig", () => {
     expect(robloxConfig.rules["react/rules-of-hooks"]).toBe("error");
     expect(robloxConfig.rules["react-doctor/no-derived-useState"]).toBe("warn");
     expect(robloxConfig.rules["react-doctor/no-fetch-in-effect"]).toBe("error");
+  });
+
+  it("enables Roblox-specific rules in roblox-ts profile", () => {
+    const robloxConfig = createOxlintConfig({
+      pluginPath: "/tmp/react-doctor-plugin.js",
+      framework: "roblox-ts",
+      hasReactCompiler: false,
+    });
+
+    expect(robloxConfig.rules["react-doctor/rbx-no-uncleaned-connection"]).toBe("error");
+    expect(robloxConfig.rules["react-doctor/rbx-no-print"]).toBe("warn");
+    expect(robloxConfig.rules["react-doctor/rbx-no-direct-instance-mutation"]).toBe("warn");
+    expect(robloxConfig.rules["react-doctor/rbx-no-unstored-connection"]).toBe("warn");
+  });
+
+  it("does not enable Roblox-specific rules in non-roblox profiles", () => {
+    const nextjsConfig = createOxlintConfig({
+      pluginPath: "/tmp/react-doctor-plugin.js",
+      framework: "nextjs",
+      hasReactCompiler: false,
+    });
+
+    expect(nextjsConfig.rules["react-doctor/rbx-no-uncleaned-connection"]).toBeUndefined();
+    expect(nextjsConfig.rules["react-doctor/rbx-no-print"]).toBeUndefined();
+    expect(nextjsConfig.rules["react-doctor/rbx-no-direct-instance-mutation"]).toBeUndefined();
+    expect(nextjsConfig.rules["react-doctor/rbx-no-unstored-connection"]).toBeUndefined();
   });
 });

@@ -30,4 +30,61 @@ describe("roblox-ts lint profile", () => {
     expect(diagnosticRuleNames.has("react-doctor/no-derived-useState")).toBe(true);
     expect(diagnosticRuleNames.has("react-doctor/no-fetch-in-effect")).toBe(true);
   });
+
+  it("detects Roblox-specific anti-patterns in roblox-ts mode", async () => {
+    const fixtureDirectory = path.join(FIXTURES_DIRECTORY, "roblox-react-issues");
+    const projectInfo = discoverProject(fixtureDirectory);
+    expect(projectInfo.framework).toBe("roblox-ts");
+
+    const diagnostics = await runOxlint(
+      fixtureDirectory,
+      projectInfo.hasTypeScript,
+      projectInfo.framework,
+      projectInfo.hasReactCompiler,
+    );
+    const diagnosticRuleNames = getRuleNames(diagnostics);
+
+    expect(diagnosticRuleNames.has("react-doctor/rbx-no-uncleaned-connection")).toBe(true);
+    expect(diagnosticRuleNames.has("react-doctor/rbx-no-print")).toBe(true);
+    expect(diagnosticRuleNames.has("react-doctor/rbx-no-direct-instance-mutation")).toBe(true);
+    expect(diagnosticRuleNames.has("react-doctor/rbx-no-unstored-connection")).toBe(true);
+  });
+
+  it("does not fire Roblox-specific rules on clean fixture", async () => {
+    const fixtureDirectory = path.join(FIXTURES_DIRECTORY, "roblox-react-clean");
+    const projectInfo = discoverProject(fixtureDirectory);
+    expect(projectInfo.framework).toBe("roblox-ts");
+
+    const diagnostics = await runOxlint(
+      fixtureDirectory,
+      projectInfo.hasTypeScript,
+      projectInfo.framework,
+      projectInfo.hasReactCompiler,
+    );
+    const diagnosticRuleNames = getRuleNames(diagnostics);
+
+    expect(diagnosticRuleNames.has("react-doctor/rbx-no-uncleaned-connection")).toBe(false);
+    expect(diagnosticRuleNames.has("react-doctor/rbx-no-print")).toBe(false);
+    expect(diagnosticRuleNames.has("react-doctor/rbx-no-direct-instance-mutation")).toBe(false);
+    expect(diagnosticRuleNames.has("react-doctor/rbx-no-unstored-connection")).toBe(false);
+  });
+
+  it("suppresses prefer-dynamic-import in roblox-ts mode", async () => {
+    const fixtureDirectory = path.join(FIXTURES_DIRECTORY, "roblox-react-web-noise");
+    const projectInfo = discoverProject(fixtureDirectory);
+    expect(projectInfo.framework).toBe("roblox-ts");
+
+    const unknownFrameworkDiagnostics = await runOxlint(fixtureDirectory, true, "unknown", false);
+    const unknownFrameworkRuleNames = getRuleNames(unknownFrameworkDiagnostics);
+
+    const diagnostics = await runOxlint(
+      fixtureDirectory,
+      projectInfo.hasTypeScript,
+      projectInfo.framework,
+      projectInfo.hasReactCompiler,
+    );
+    const diagnosticRuleNames = getRuleNames(diagnostics);
+
+    expect(diagnosticRuleNames.has("react-doctor/prefer-dynamic-import")).toBe(false);
+  });
 });

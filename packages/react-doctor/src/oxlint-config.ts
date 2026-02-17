@@ -59,6 +59,13 @@ const JSX_A11Y_RULES: Record<string, string> = {
   "jsx-a11y/iframe-has-title": "warn",
 };
 
+const ROBLOX_TS_SPECIFIC_RULES: Record<string, string> = {
+  "react-doctor/rbx-no-uncleaned-connection": "error",
+  "react-doctor/rbx-no-print": "warn",
+  "react-doctor/rbx-no-direct-instance-mutation": "warn",
+  "react-doctor/rbx-no-unstored-connection": "warn",
+};
+
 const ROBLOX_TS_RULE_OVERRIDES: Record<string, string> = {
   "react/jsx-no-script-url": "off",
   "react/no-unknown-property": "off",
@@ -75,6 +82,7 @@ const ROBLOX_TS_RULE_OVERRIDES: Record<string, string> = {
 
   "react-doctor/no-secrets-in-client-code": "off",
 
+  "react-doctor/prefer-dynamic-import": "off",
   "react-doctor/use-lazy-motion": "off",
   "react-doctor/no-undeferred-third-party": "off",
 
@@ -187,6 +195,7 @@ export const createOxlintConfig = ({
       "react-doctor/client-passive-event-listeners": "warn",
 
       "react-doctor/async-parallel": "warn",
+      ...(isRobloxTsFramework ? ROBLOX_TS_SPECIFIC_RULES : {}),
       ...(isRobloxTsFramework ? ROBLOX_TS_RULE_OVERRIDES : {}),
       ...(framework === "nextjs" ? NEXTJS_RULES : {}),
     },

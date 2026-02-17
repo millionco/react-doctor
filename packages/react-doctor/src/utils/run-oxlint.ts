@@ -82,6 +82,11 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/client-passive-event-listeners": "Performance",
 
   "react-doctor/async-parallel": "Performance",
+
+  "react-doctor/rbx-no-uncleaned-connection": "Roblox",
+  "react-doctor/rbx-no-print": "Roblox",
+  "react-doctor/rbx-no-direct-instance-mutation": "Roblox",
+  "react-doctor/rbx-no-unstored-connection": "Roblox",
 };
 
 const RULE_HELP_MAP: Record<string, string> = {
@@ -203,6 +208,15 @@ const RULE_HELP_MAP: Record<string, string> = {
 
   "async-parallel":
     "Use `const [a, b] = await Promise.all([fetchA(), fetchB()])` to run independent operations concurrently",
+
+  "rbx-no-uncleaned-connection":
+    "Store the connection and call connection.Disconnect() in the useEffect cleanup, or call instance.Destroy() to clean up all connections: `return () => connection.Disconnect()` or `return () => instance.Destroy()`",
+  "rbx-no-print":
+    "Remove print()/warn() calls or use a dedicated logging utility that can be disabled in production",
+  "rbx-no-direct-instance-mutation":
+    "Pass the value as a prop instead: `<textlabel TextColor3={color} />` rather than `ref.current.TextColor3 = color`",
+  "rbx-no-unstored-connection":
+    "Store the connection: `const connection = signal.Connect(fn)` so it can be disconnected later with `connection.Disconnect()`",
 };
 
 const FILEPATH_WITH_LOCATION_PATTERN = /\S+\.\w+:\d+:\d+[\s\S]*$/;

@@ -1,5 +1,6 @@
 node_modules
 dist
+packages/video/build/
 *.log
 .DS_Store
 .agents

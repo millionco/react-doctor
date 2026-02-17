@@ -6,6 +6,10 @@ import {
   BOX_TOP,
   DIAGNOSTICS,
   ELAPSED_TIME,
+  FINAL_SCORE_FOCUS_END_SCALE_RATIO,
+  FINAL_SCORE_FOCUS_ENTER_FRAMES,
+  FINAL_SCORE_FOCUS_START_OFFSET_Y_PX,
+  FINAL_SCORE_FOCUS_START_SCALE_RATIO,
   FRAMES_PER_DIAGNOSTIC,
   GREEN_COLOR,
   MUTED_COLOR,
@@ -90,7 +94,6 @@ export const Diagnostics = () => {
   const finalScoreIncreaseStartFrame = finalScorePhaseStartFrame + FINAL_SCORE_HOLD_FRAMES;
   const finalScoreEndFrame = finalScoreIncreaseStartFrame + FINAL_SCORE_ANIMATION_FRAMES;
   const isFixing = frame >= fixStartFrame && frame < allFixedFrame;
-  const isFinalScoreFocusPhase = frame >= finalScorePhaseStartFrame;
 
   const scoreBlockOpacity = interpolate(frame, [0, SCORE_FADE_IN_FRAMES], [0, 1], {
     extrapolateLeft: "clamp",
@@ -155,10 +158,51 @@ export const Diagnostics = () => {
       easing: Easing.out(Easing.cubic),
     },
   );
+  const finalScoreFocusOpacity = interpolate(
+    frame,
+    [finalScorePhaseStartFrame, finalScorePhaseStartFrame + FINAL_SCORE_FOCUS_ENTER_FRAMES],
+    [0, 1],
+    {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+      easing: Easing.out(Easing.cubic),
+    },
+  );
+  const finalScoreFocusScaleRatio = interpolate(
+    frame,
+    [finalScorePhaseStartFrame, finalScorePhaseStartFrame + FINAL_SCORE_FOCUS_ENTER_FRAMES],
+    [FINAL_SCORE_FOCUS_START_SCALE_RATIO, FINAL_SCORE_FOCUS_END_SCALE_RATIO],
+    {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+      easing: Easing.out(Easing.cubic),
+    },
+  );
+  const finalScoreFocusOffsetYPx = interpolate(
+    frame,
+    [finalScorePhaseStartFrame, finalScorePhaseStartFrame + FINAL_SCORE_FOCUS_ENTER_FRAMES],
+    [FINAL_SCORE_FOCUS_START_OFFSET_Y_PX, 0],
+    {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+      easing: Easing.out(Easing.cubic),
+    },
+  );
+  const mainTerminalOpacity = interpolate(
+    frame,
+    [finalScorePhaseStartFrame, finalScorePhaseStartFrame + FINAL_SCORE_FOCUS_ENTER_FRAMES],
+    [1, 0],
+    {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+      easing: Easing.out(Easing.cubic),
+    },
+  );
 
   const diagnosticsStartFrame = ERRORS_START_DELAY_FRAMES;
 
-  const overlayOpacity = interpolate(
+  const overlayOpacity =
+    interpolate(
     frame,
     [OVERLAY_START_FRAME, OVERLAY_START_FRAME + OVERLAY_FADE_IN_FRAMES],
     [0, 1],
@@ -166,9 +210,10 @@ export const Diagnostics = () => {
       extrapolateLeft: "clamp",
       extrapolateRight: "clamp",
     },
-  );
+  ) * mainTerminalOpacity;
 
-  const overlayTitleOpacity = interpolate(
+  const overlayTitleOpacity =
+    interpolate(
     frame,
     [OVERLAY_START_FRAME + 5, OVERLAY_START_FRAME + OVERLAY_FADE_IN_FRAMES + 5],
     [0, 1],
@@ -177,83 +222,7 @@ export const Diagnostics = () => {
       extrapolateRight: "clamp",
       easing: Easing.out(Easing.cubic),
     },
-  );
-
-  if (isFinalScoreFocusPhase) {
-    return (
-      <AbsoluteFill
-        style={{
-          backgroundColor: BACKGROUND_COLOR,
-          justifyContent: "center",
-          alignItems: "center",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            gap: interpolate(shrinkProgress, [0, 1], [48, 32]),
-            alignItems: "flex-start",
-          }}
-        >
-          <pre
-            style={{
-              color: scoreColor,
-              lineHeight: 1.2,
-              fontSize: faceFontSize,
-              fontFamily,
-              margin: 0,
-            }}
-          >
-            {`${BOX_TOP}\n│ ${eyes} │\n│ ${mouth} │\n${BOX_BOTTOM}`}
-          </pre>
-          <div>
-            <div>
-              <span
-                style={{
-                  color: scoreColor,
-                  fontWeight: 500,
-                  fontSize: numberFontSize,
-                  fontFamily,
-                }}
-              >
-                {currentScore}
-              </span>
-              <span
-                style={{
-                  color: MUTED_COLOR,
-                  fontSize: labelFontSize,
-                  fontFamily,
-                }}
-              >
-                {` / ${PERFECT_SCORE}  `}
-              </span>
-              <span
-                style={{
-                  color: scoreColor,
-                  fontSize: labelFontSize,
-                  fontFamily,
-                }}
-              >
-                {getScoreLabel(currentScore)}
-              </span>
-            </div>
-            <div
-              style={{
-                marginTop: 8,
-                letterSpacing: 2,
-                fontSize: barFontSize,
-                fontFamily,
-                lineHeight: 1.2,
-              }}
-            >
-              <span style={{ color: scoreColor }}>{"█".repeat(filledBarCount)}</span>
-              <span style={{ color: "#525252" }}>{"░".repeat(emptyBarCount)}</span>
-            </div>
-          </div>
-        </div>
-      </AbsoluteFill>
-    );
-  }
+  ) * mainTerminalOpacity;
 
   return (
     <AbsoluteFill
@@ -263,6 +232,7 @@ export const Diagnostics = () => {
     >
       <div
         style={{
+          opacity: mainTerminalOpacity,
           transform: `translateY(${interpolate(shrinkProgress, [0, 1], [340, 0])}px)`,
           padding: "60px 80px",
         }}
@@ -411,6 +381,80 @@ export const Diagnostics = () => {
           );
         })}
       </div>
+
+      <AbsoluteFill
+        style={{
+          justifyContent: "center",
+          alignItems: "center",
+          opacity: finalScoreFocusOpacity,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            gap: interpolate(shrinkProgress, [0, 1], [48, 32]),
+            alignItems: "flex-start",
+            transform: `translateY(${finalScoreFocusOffsetYPx}px) scale(${finalScoreFocusScaleRatio})`,
+            transformOrigin: "center center",
+          }}
+        >
+          <pre
+            style={{
+              color: scoreColor,
+              lineHeight: 1.2,
+              fontSize: faceFontSize,
+              fontFamily,
+              margin: 0,
+            }}
+          >
+            {`${BOX_TOP}\n│ ${eyes} │\n│ ${mouth} │\n${BOX_BOTTOM}`}
+          </pre>
+          <div>
+            <div>
+              <span
+                style={{
+                  color: scoreColor,
+                  fontWeight: 500,
+                  fontSize: numberFontSize,
+                  fontFamily,
+                }}
+              >
+                {currentScore}
+              </span>
+              <span
+                style={{
+                  color: MUTED_COLOR,
+                  fontSize: labelFontSize,
+                  fontFamily,
+                }}
+              >
+                {` / ${PERFECT_SCORE}  `}
+              </span>
+              <span
+                style={{
+                  color: scoreColor,
+                  fontSize: labelFontSize,
+                  fontFamily,
+                }}
+              >
+                {getScoreLabel(currentScore)}
+              </span>
+            </div>
+            <div
+              style={{
+                marginTop: 8,
+                letterSpacing: 2,
+                fontSize: barFontSize,
+                fontFamily,
+                lineHeight: 1.2,
+              }}
+            >
+              <span style={{ color: scoreColor }}>{"█".repeat(filledBarCount)}</span>
+              <span style={{ color: "#525252" }}>{"░".repeat(emptyBarCount)}</span>
+            </div>
+          </div>
+        </div>
+      </AbsoluteFill>
 
       <AbsoluteFill
         style={{

@@ -164,6 +164,10 @@ const SCORE_ANIMATION_FRAMES = 20;
 const POST_SCORE_PAUSE_FRAMES = 21;
 const TARGET_SCORE = 42;
 const PERFECT_SCORE = 100;
+const FINAL_SCORE_FOCUS_ENTER_FRAMES = 10;
+const FINAL_SCORE_FOCUS_START_SCALE_RATIO = 0.85;
+const FINAL_SCORE_FOCUS_END_SCALE_RATIO = 1.4;
+const FINAL_SCORE_FOCUS_START_OFFSET_Y_PX = 80;
 const TOTAL_ERROR_COUNT = 22;
 const AFFECTED_FILE_COUNT = 18;
 const ELAPSED_TIME = "2.1s";
@@ -292,7 +296,6 @@ const Diagnostics = () => {
   const finalScoreIncreaseStartFrame = finalScorePhaseStartFrame + FINAL_SCORE_HOLD_FRAMES;
   const finalScoreEndFrame = finalScoreIncreaseStartFrame + FINAL_SCORE_ANIMATION_FRAMES;
   const isFixing = frame >= fixStartFrame && frame < allFixedFrame;
-  const isFinalScoreFocusPhase = frame >= finalScorePhaseStartFrame;
   const scoreBlockOpacity = (0,esm.interpolate)(frame, [0, SCORE_FADE_IN_FRAMES], [0, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
@@ -348,6 +351,46 @@ const Diagnostics = () => {
       easing: esm.Easing.out(esm.Easing.cubic)
     }
   );
+  const finalScoreFocusOpacity = (0,esm.interpolate)(
+    frame,
+    [finalScorePhaseStartFrame, finalScorePhaseStartFrame + FINAL_SCORE_FOCUS_ENTER_FRAMES],
+    [0, 1],
+    {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+      easing: esm.Easing.out(esm.Easing.cubic)
+    }
+  );
+  const finalScoreFocusScaleRatio = (0,esm.interpolate)(
+    frame,
+    [finalScorePhaseStartFrame, finalScorePhaseStartFrame + FINAL_SCORE_FOCUS_ENTER_FRAMES],
+    [FINAL_SCORE_FOCUS_START_SCALE_RATIO, FINAL_SCORE_FOCUS_END_SCALE_RATIO],
+    {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+      easing: esm.Easing.out(esm.Easing.cubic)
+    }
+  );
+  const finalScoreFocusOffsetYPx = (0,esm.interpolate)(
+    frame,
+    [finalScorePhaseStartFrame, finalScorePhaseStartFrame + FINAL_SCORE_FOCUS_ENTER_FRAMES],
+    [FINAL_SCORE_FOCUS_START_OFFSET_Y_PX, 0],
+    {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+      easing: esm.Easing.out(esm.Easing.cubic)
+    }
+  );
+  const mainTerminalOpacity = (0,esm.interpolate)(
+    frame,
+    [finalScorePhaseStartFrame, finalScorePhaseStartFrame + FINAL_SCORE_FOCUS_ENTER_FRAMES],
+    [1, 0],
+    {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+      easing: esm.Easing.out(esm.Easing.cubic)
+    }
+  );
   const diagnosticsStartFrame = ERRORS_START_DELAY_FRAMES;
   const overlayOpacity = (0,esm.interpolate)(
     frame,
@@ -357,7 +400,7 @@ const Diagnostics = () => {
       extrapolateLeft: "clamp",
       extrapolateRight: "clamp"
     }
-  );
+  ) * mainTerminalOpacity;
   const overlayTitleOpacity = (0,esm.interpolate)(
     frame,
     [OVERLAY_START_FRAME + 5, OVERLAY_START_FRAME + OVERLAY_FADE_IN_FRAMES + 5],
@@ -367,101 +410,7 @@ const Diagnostics = () => {
       extrapolateRight: "clamp",
       easing: esm.Easing.out(esm.Easing.cubic)
     }
-  );
-  if (isFinalScoreFocusPhase) {
-    return /* @__PURE__ */ (0,jsx_runtime.jsx)(
-      esm.AbsoluteFill,
-      {
-        style: {
-          backgroundColor: BACKGROUND_COLOR,
-          justifyContent: "center",
-          alignItems: "center"
-        },
-        children: /* @__PURE__ */ (0,jsx_runtime.jsxs)(
-          "div",
-          {
-            style: {
-              display: "flex",
-              gap: (0,esm.interpolate)(shrinkProgress, [0, 1], [48, 32]),
-              alignItems: "flex-start"
-            },
-            children: [
-              /* @__PURE__ */ (0,jsx_runtime.jsx)(
-                "pre",
-                {
-                  style: {
-                    color: scoreColor,
-                    lineHeight: 1.2,
-                    fontSize: faceFontSize,
-                    fontFamily: fontFamily,
-                    margin: 0
-                  },
-                  children: `${BOX_TOP}
-\u2502 ${eyes} \u2502
-\u2502 ${mouth} \u2502
-${BOX_BOTTOM}`
-                }
-              ),
-              /* @__PURE__ */ (0,jsx_runtime.jsxs)("div", { children: [
-                /* @__PURE__ */ (0,jsx_runtime.jsxs)("div", { children: [
-                  /* @__PURE__ */ (0,jsx_runtime.jsx)(
-                    "span",
-                    {
-                      style: {
-                        color: scoreColor,
-                        fontWeight: 500,
-                        fontSize: numberFontSize,
-                        fontFamily: fontFamily
-                      },
-                      children: currentScore
-                    }
-                  ),
-                  /* @__PURE__ */ (0,jsx_runtime.jsx)(
-                    "span",
-                    {
-                      style: {
-                        color: MUTED_COLOR,
-                        fontSize: labelFontSize,
-                        fontFamily: fontFamily
-                      },
-                      children: ` / ${PERFECT_SCORE}  `
-                    }
-                  ),
-                  /* @__PURE__ */ (0,jsx_runtime.jsx)(
-                    "span",
-                    {
-                      style: {
-                        color: scoreColor,
-                        fontSize: labelFontSize,
-                        fontFamily: fontFamily
-                      },
-                      children: getScoreLabel(currentScore)
-                    }
-                  )
-                ] }),
-                /* @__PURE__ */ (0,jsx_runtime.jsxs)(
-                  "div",
-                  {
-                    style: {
-                      marginTop: 8,
-                      letterSpacing: 2,
-                      fontSize: barFontSize,
-                      fontFamily: fontFamily,
-                      lineHeight: 1.2
-                    },
-                    children: [
-                      /* @__PURE__ */ (0,jsx_runtime.jsx)("span", { style: { color: scoreColor }, children: "\u2588".repeat(filledBarCount) }),
-                      /* @__PURE__ */ (0,jsx_runtime.jsx)("span", { style: { color: "#525252" }, children: "\u2591".repeat(emptyBarCount) })
-                    ]
-                  }
-                )
-              ] })
-            ]
-          }
-        )
-      }
-    );
-  }
+  ) * mainTerminalOpacity;
   return /* @__PURE__ */ (0,jsx_runtime.jsxs)(
     esm.AbsoluteFill,
     {
@@ -473,6 +422,7 @@ ${BOX_BOTTOM}`
           "div",
           {
             style: {
+              opacity: mainTerminalOpacity,
               transform: `translateY(${(0,esm.interpolate)(shrinkProgress, [0, 1], [340, 0])}px)`,
               padding: "60px 80px"
             },
@@ -644,6 +594,100 @@ ${BOX_BOTTOM}`
                 );
               })
             ]
+          }
+        ),
+        /* @__PURE__ */ (0,jsx_runtime.jsx)(
+          esm.AbsoluteFill,
+          {
+            style: {
+              justifyContent: "center",
+              alignItems: "center",
+              opacity: finalScoreFocusOpacity
+            },
+            children: /* @__PURE__ */ (0,jsx_runtime.jsxs)(
+              "div",
+              {
+                style: {
+                  display: "flex",
+                  gap: (0,esm.interpolate)(shrinkProgress, [0, 1], [48, 32]),
+                  alignItems: "flex-start",
+                  transform: `translateY(${finalScoreFocusOffsetYPx}px) scale(${finalScoreFocusScaleRatio})`,
+                  transformOrigin: "center center"
+                },
+                children: [
+                  /* @__PURE__ */ (0,jsx_runtime.jsx)(
+                    "pre",
+                    {
+                      style: {
+                        color: scoreColor,
+                        lineHeight: 1.2,
+                        fontSize: faceFontSize,
+                        fontFamily: fontFamily,
+                        margin: 0
+                      },
+                      children: `${BOX_TOP}
+\u2502 ${eyes} \u2502
+\u2502 ${mouth} \u2502
+${BOX_BOTTOM}`
+                    }
+                  ),
+                  /* @__PURE__ */ (0,jsx_runtime.jsxs)("div", { children: [
+                    /* @__PURE__ */ (0,jsx_runtime.jsxs)("div", { children: [
+                      /* @__PURE__ */ (0,jsx_runtime.jsx)(
+                        "span",
+                        {
+                          style: {
+                            color: scoreColor,
+                            fontWeight: 500,
+                            fontSize: numberFontSize,
+                            fontFamily: fontFamily
+                          },
+                          children: currentScore
+                        }
+                      ),
+                      /* @__PURE__ */ (0,jsx_runtime.jsx)(
+                        "span",
+                        {
+                          style: {
+                            color: MUTED_COLOR,
+                            fontSize: labelFontSize,
+                            fontFamily: fontFamily
+                          },
+                          children: ` / ${PERFECT_SCORE}  `
+                        }
+                      ),
+                      /* @__PURE__ */ (0,jsx_runtime.jsx)(
+                        "span",
+                        {
+                          style: {
+                            color: scoreColor,
+                            fontSize: labelFontSize,
+                            fontFamily: fontFamily
+                          },
+                          children: getScoreLabel(currentScore)
+                        }
+                      )
+                    ] }),
+                    /* @__PURE__ */ (0,jsx_runtime.jsxs)(
+                      "div",
+                      {
+                        style: {
+                          marginTop: 8,
+                          letterSpacing: 2,
+                          fontSize: barFontSize,
+                          fontFamily: fontFamily,
+                          lineHeight: 1.2
+                        },
+                        children: [
+                          /* @__PURE__ */ (0,jsx_runtime.jsx)("span", { style: { color: scoreColor }, children: "\u2588".repeat(filledBarCount) }),
+                          /* @__PURE__ */ (0,jsx_runtime.jsx)("span", { style: { color: "#525252" }, children: "\u2591".repeat(emptyBarCount) })
+                        ]
+                      }
+                    )
+                  ] })
+                ]
+              }
+            )
           }
         ),
         /* @__PURE__ */ (0,jsx_runtime.jsx)(

@@ -221,11 +221,11 @@ const DiagnosticItem = ({ diagnostic }: { diagnostic: Diagnostic }) => {
       <div className="hidden sm:block">
         <button
           onClick={() => setIsOpen((previous) => !previous)}
-          className="inline-flex items-center gap-1 text-left"
+          className="inline-flex items-start gap-1 text-left"
         >
           <ChevronRight
             size={16}
-            className={`shrink-0 text-neutral-500 transition-transform duration-150 ${isOpen ? "rotate-90" : ""}`}
+            className={`mt-[0.35em] shrink-0 text-neutral-500 transition-transform duration-150 ${isOpen ? "rotate-90" : ""}`}
           />
           <span>
             <span className="text-red-400">✗</span>

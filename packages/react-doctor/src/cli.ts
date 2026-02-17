@@ -58,6 +58,11 @@ const program = new Command()
         flags.yes ||
         Boolean(process.env.CI) ||
         Boolean(process.env.CLAUDECODE) ||
+        Boolean(process.env.CURSOR_TRACE_ID) ||
+        Boolean(process.env.CURSOR_AGENT) ||
+        Boolean(process.env.CODEX_CI) ||
+        Boolean(process.env.OPENCODE) ||
+        Boolean(process.env.AMP_HOME) ||
         Boolean(process.env.AMI) ||
         !process.stdin.isTTY;
       const projectDirectories = await selectProjects(

@@ -11,6 +11,7 @@ import {
   SCORE_GOOD_THRESHOLD,
   SCORE_OK_THRESHOLD,
   SEPARATOR_LENGTH_CHARS,
+  SHARE_BASE_URL,
 } from "./constants.js";
 import type { Diagnostic, ScanOptions, ScoreResult } from "./types.js";
 import { calculateScore } from "./utils/calculate-score.js";
@@ -178,6 +179,23 @@ const printBranding = (score?: number): void => {
   logger.break();
 };
 
+const buildShareUrl = (
+  diagnostics: Diagnostic[],
+  scoreResult: ScoreResult | null,
+): string => {
+  const errorCount = diagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
+  const warningCount = diagnostics.filter((diagnostic) => diagnostic.severity === "warning").length;
+  const affectedFileCount = collectAffectedFiles(diagnostics).size;
+
+  const params = new URLSearchParams();
+  if (scoreResult) params.set("s", String(scoreResult.score));
+  if (errorCount > 0) params.set("e", String(errorCount));
+  if (warningCount > 0) params.set("w", String(warningCount));
+  if (affectedFileCount > 0) params.set("f", String(affectedFileCount));
+
+  return `${SHARE_BASE_URL}?${params.toString()}`;
+};
+
 const printSummary = (
   diagnostics: Diagnostic[],
   elapsedMilliseconds: number,
@@ -221,6 +239,10 @@ const printSummary = (
   } catch {
     logger.break();
   }
+
+  const shareUrl = buildShareUrl(diagnostics, scoreResult);
+  logger.break();
+  logger.dim(`  Share your results: ${highlighter.info(shareUrl)}`);
 };
 
 export const scan = async (directory: string, options: ScanOptions): Promise<void> => {

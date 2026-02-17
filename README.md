@@ -46,6 +46,8 @@ Options:
   --score           output only the score
   -y, --yes         skip prompts, scan all workspace projects
   --project <name>  select workspace project (comma-separated for multiple)
+  --fix             open Ami to auto-fix all issues
+  --prompt          copy Ami fix prompt with verbose diagnostics output to clipboard
   -h, --help        display help for command
 ```
 

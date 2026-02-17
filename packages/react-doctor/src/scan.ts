@@ -222,10 +222,10 @@ const printSummary = (
 
   const parts: string[] = [];
   if (errorCount > 0) {
-    parts.push(highlighter.error(`${errorCount} error${errorCount === 1 ? "" : "s"}`));
+    parts.push(highlighter.error(`✗ ${errorCount} error${errorCount === 1 ? "" : "s"}`));
   }
   if (warningCount > 0) {
-    parts.push(highlighter.warn(`${warningCount} warning${warningCount === 1 ? "" : "s"}`));
+    parts.push(highlighter.warn(`⚠ ${warningCount} warning${warningCount === 1 ? "" : "s"}`));
   }
   parts.push(
     highlighter.dim(`across ${affectedFileCount} file${affectedFileCount === 1 ? "" : "s"}`),

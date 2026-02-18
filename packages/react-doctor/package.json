@@ -1,6 +1,6 @@
 {
   "name": "react-doctor",
-  "version": "0.0.18",
+  "version": "0.0.19",
   "description": "Diagnose and fix performance issues in your React app",
   "keywords": [
     "diagnostics",

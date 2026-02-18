@@ -79,6 +79,7 @@ const countSourceFiles = (rootDirectory: string): number => {
 };
 
 const collectAllDependencies = (packageJson: PackageJson): Record<string, string> => ({
+  ...packageJson.peerDependencies,
   ...packageJson.dependencies,
   ...packageJson.devDependencies,
 });
@@ -194,8 +195,7 @@ const findDependencyInfoFromMonorepoRoot = (directory: string): DependencyInfo =
 
   return {
     reactVersion: rootInfo.reactVersion ?? workspaceInfo.reactVersion,
-    framework:
-      rootInfo.framework !== "unknown" ? rootInfo.framework : workspaceInfo.framework,
+    framework: rootInfo.framework !== "unknown" ? rootInfo.framework : workspaceInfo.framework,
   };
 };
 

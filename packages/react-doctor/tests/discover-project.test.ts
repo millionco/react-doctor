@@ -21,6 +21,11 @@ describe("discoverProject", () => {
     expect(projectInfo.hasTypeScript).toBe(true);
   });
 
+  it("detects React version from peerDependencies", () => {
+    const projectInfo = discoverProject(path.join(FIXTURES_DIRECTORY, "component-library"));
+    expect(projectInfo.reactVersion).toBe("^18.0.0 || ^19.0.0");
+  });
+
   it("throws when package.json is missing", () => {
     expect(() => discoverProject("/nonexistent/path")).toThrow("No package.json found");
   });

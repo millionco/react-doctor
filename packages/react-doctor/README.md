@@ -52,10 +52,51 @@ Options:
   --score           output only the score
   -y, --yes         skip prompts, scan all workspace projects
   --project <name>  select workspace project (comma-separated for multiple)
+  --diff [base]     scan only files changed vs base branch
   --fix             open Ami to auto-fix all issues
   --prompt          copy latest scan output to clipboard
   -h, --help        display help for command
 ```
+
+## Configuration
+
+Create a `react-doctor.config.json` in your project root to customize behavior:
+
+```json
+{
+  "ignore": {
+    "rules": ["react/no-danger", "jsx-a11y/no-autofocus", "knip/exports"],
+    "files": ["src/generated/**"]
+  }
+}
+```
+
+You can also use the `"reactDoctor"` key in your `package.json` instead:
+
+```json
+{
+  "reactDoctor": {
+    "ignore": {
+      "rules": ["react/no-danger"]
+    }
+  }
+}
+```
+
+If both exist, `react-doctor.config.json` takes precedence.
+
+### Config options
+
+| Key            | Type                | Default | Description                                                                                                                         |
+| -------------- | ------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `ignore.rules` | `string[]`          | `[]`    | Rules to suppress, using the `plugin/rule` format shown in diagnostic output (e.g. `react/no-danger`, `knip/exports`, `knip/types`) |
+| `ignore.files` | `string[]`          | `[]`    | File paths to exclude, supports glob patterns (`src/generated/**`, `**/*.test.tsx`)                                                 |
+| `lint`         | `boolean`           | `true`  | Enable/disable lint checks (same as `--no-lint`)                                                                                    |
+| `deadCode`     | `boolean`           | `true`  | Enable/disable dead code detection (same as `--no-dead-code`)                                                                       |
+| `verbose`      | `boolean`           | `false` | Show file details per rule (same as `--verbose`)                                                                                    |
+| `diff`         | `boolean \| string` | —       | Force diff mode (`true`) or pin a base branch (`"main"`). Set to `false` to disable auto-detection.                                 |
+
+CLI flags always override config values.
 
 ## Node.js API
 

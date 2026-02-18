@@ -1,4 +1,12 @@
-import { AbsoluteFill, Easing, Img, interpolate, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
+import {
+  AbsoluteFill,
+  Easing,
+  Img,
+  interpolate,
+  staticFile,
+  useCurrentFrame,
+  useVideoConfig,
+} from "remotion";
 import {
   BACKGROUND_COLOR,
   GREEN_COLOR,
@@ -36,12 +44,13 @@ const HIGHLIGHT_FADE_FRAMES = 12;
 const CLIMB_START_FRAMES = 90;
 const CLIMB_DURATION_FRAMES = 60;
 
-
 const ORIGINAL_INDEX = LEADERBOARD_ENTRIES.findIndex((entry) => entry.name === "cal.com");
 
 const entriesWithoutCal = LEADERBOARD_ENTRIES.filter((entry) => entry.name !== "cal.com");
-const sortedAfterClimb = [...entriesWithoutCal, { rank: 0, name: "cal.com", score: IMPROVED_SCORE }]
-  .sort((entryA, entryB) => entryB.score - entryA.score);
+const sortedAfterClimb = [
+  ...entriesWithoutCal,
+  { rank: 0, name: "cal.com", score: IMPROVED_SCORE },
+].sort((entryA, entryB) => entryB.score - entryA.score);
 const TARGET_INDEX = sortedAfterClimb.findIndex((entry) => entry.name === "cal.com");
 const POSITIONS_TO_CLIMB = ORIGINAL_INDEX - TARGET_INDEX;
 
@@ -56,7 +65,6 @@ const getScoreLabel = (score: number) => {
   if (score >= SCORE_OK_THRESHOLD) return "Needs work";
   return "Critical";
 };
-
 
 export const LeaderboardWithClimb = () => {
   const frame = useCurrentFrame();
@@ -83,9 +91,7 @@ export const LeaderboardWithClimb = () => {
 
   const isClimbing = frame >= CLIMB_START_FRAMES;
 
-  const calScore = Math.round(
-    interpolate(climbProgress, [0, 1], [ORIGINAL_SCORE, IMPROVED_SCORE]),
-  );
+  const calScore = Math.round(interpolate(climbProgress, [0, 1], [ORIGINAL_SCORE, IMPROVED_SCORE]));
   const calScoreColor = getScoreColor(calScore);
 
   const calOffsetY = -climbProgress * POSITIONS_TO_CLIMB * ROW_TOTAL_HEIGHT_PX;
@@ -102,7 +108,6 @@ export const LeaderboardWithClimb = () => {
   const glowColor = isClimbing
     ? `0 0 ${24 * climbProgress}px rgba(74, 222, 128, ${climbProgress * 0.35})`
     : `0 0 ${20 * highlightProgress}px rgba(248, 113, 113, ${highlightProgress * 0.3})`;
-
 
   const scoreOverlayOpacity = frame >= CLIMB_START_FRAMES ? 1 : 0;
 
@@ -121,7 +126,8 @@ export const LeaderboardWithClimb = () => {
   const cameraScale = interpolate(zoomProgress, [0, 1], [INITIAL_SCALE, ZOOM_SCALE]);
 
   const calRowBottomPercent = ((ORIGINAL_INDEX + 0.5) / LEADERBOARD_ENTRIES.length) * 100;
-  const calCurrentPercent = calRowBottomPercent + (calOffsetY / (LEADERBOARD_ENTRIES.length * ROW_TOTAL_HEIGHT_PX)) * 100;
+  const calCurrentPercent =
+    calRowBottomPercent + (calOffsetY / (LEADERBOARD_ENTRIES.length * ROW_TOTAL_HEIGHT_PX)) * 100;
   const originY = Math.min(85, calCurrentPercent);
 
   return (
@@ -144,20 +150,28 @@ export const LeaderboardWithClimb = () => {
               frame - rowStartFrame,
               [0, FADE_IN_DURATION_FRAMES],
               [0, 1],
-              { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) },
+              {
+                extrapolateLeft: "clamp",
+                extrapolateRight: "clamp",
+                easing: Easing.out(Easing.cubic),
+              },
             );
 
             const isCalEntry = entry.name === "cal.com";
             const displayScore = isCalEntry ? calScore : entry.score;
             const scoreColor = getScoreColor(displayScore);
-            const filledBarCount = Math.round((displayScore / PERFECT_SCORE) * LEADERBOARD_BAR_WIDTH);
+            const filledBarCount = Math.round(
+              (displayScore / PERFECT_SCORE) * LEADERBOARD_BAR_WIDTH,
+            );
             const emptyBarCount = LEADERBOARD_BAR_WIDTH - filledBarCount;
 
             const displayRank = isCalEntry
               ? Math.round(interpolate(climbProgress, [0, 1], [entry.rank, TARGET_INDEX + 1]))
               : (() => {
                   if (index < TARGET_INDEX || index >= ORIGINAL_INDEX) return entry.rank;
-                  return Math.round(interpolate(climbProgress, [0, 1], [entry.rank, entry.rank + 1]));
+                  return Math.round(
+                    interpolate(climbProgress, [0, 1], [entry.rank, entry.rank + 1]),
+                  );
                 })();
 
             const offsetY = isCalEntry ? calOffsetY : getDisplacedOffset(index);
@@ -184,14 +198,20 @@ export const LeaderboardWithClimb = () => {
                   boxShadow: isCalEntry ? glowColor : "none",
                   transform: `translateY(${offsetY}px)`,
                   zIndex: isCalEntry ? 10 : 1,
-                  backgroundColor: isCalEntry && isClimbing ? "rgba(74, 222, 128, 0.05)" : "transparent",
+                  backgroundColor:
+                    isCalEntry && isClimbing ? "rgba(74, 222, 128, 0.05)" : "transparent",
                 }}
               >
                 <span style={{ display: "flex", alignItems: "center", gap: 16 }}>
                   <span style={{ color: MUTED_COLOR, width: 48, textAlign: "right" }}>
                     {displayRank}
                   </span>
-                  <span style={{ color: isCalEntry ? "white" : TEXT_COLOR, fontWeight: isCalEntry ? 600 : 400 }}>
+                  <span
+                    style={{
+                      color: isCalEntry ? "white" : TEXT_COLOR,
+                      fontWeight: isCalEntry ? 600 : 400,
+                    }}
+                  >
                     {entry.name}
                   </span>
                 </span>
@@ -230,7 +250,15 @@ export const LeaderboardWithClimb = () => {
           }}
         >
           <div>
-            <span style={{ fontFamily, fontSize: 220, color: calScoreColor, fontWeight: 600, lineHeight: 1 }}>
+            <span
+              style={{
+                fontFamily,
+                fontSize: 220,
+                color: calScoreColor,
+                fontWeight: 600,
+                lineHeight: 1,
+              }}
+            >
               {calScore}
             </span>
             <span style={{ fontFamily, fontSize: 80, color: MUTED_COLOR }}>

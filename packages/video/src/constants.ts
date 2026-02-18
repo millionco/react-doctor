@@ -35,9 +35,7 @@ export const LEADERBOARD_ENTRIES: LeaderboardEntry[] = [
   { name: "cal.com", score: ORIGINAL_SCORE },
 ].map((entry, index) => ({ ...entry, rank: index + 1 }));
 
-export const CAL_ENTRY_INDEX = LEADERBOARD_ENTRIES.findIndex(
-  (entry) => entry.name === "cal.com",
-);
+export const CAL_ENTRY_INDEX = LEADERBOARD_ENTRIES.findIndex((entry) => entry.name === "cal.com");
 
 export const LEADERBOARD_BAR_WIDTH = 16;
 

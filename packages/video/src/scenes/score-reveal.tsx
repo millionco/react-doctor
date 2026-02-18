@@ -1,4 +1,11 @@
-import { AbsoluteFill, Easing, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
+import {
+  AbsoluteFill,
+  Easing,
+  interpolate,
+  spring,
+  useCurrentFrame,
+  useVideoConfig,
+} from "remotion";
 import {
   BACKGROUND_COLOR,
   GREEN_COLOR,
@@ -76,7 +83,14 @@ export const ScoreReveal = () => {
         </pre>
 
         <div>
-          <div style={{ fontFamily, fontSize: PACKAGE_FONT_SIZE_PX, color: MUTED_COLOR, marginBottom: 4 }}>
+          <div
+            style={{
+              fontFamily,
+              fontSize: PACKAGE_FONT_SIZE_PX,
+              color: MUTED_COLOR,
+              marginBottom: 4,
+            }}
+          >
             @calcom/web
           </div>
           <div>

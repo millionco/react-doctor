@@ -4,16 +4,18 @@ import os from "node:os";
 import path from "node:path";
 import { Command } from "commander";
 import { SEPARATOR_LENGTH_CHARS } from "./constants.js";
-import type { ScanOptions } from "./types.js";
+import { scan } from "./scan.js";
+import type { DiffInfo, ScanOptions } from "./types.js";
+import { copyToClipboard } from "./utils/copy-to-clipboard.js";
+import { filterSourceFiles, getDiffInfo } from "./utils/get-diff-files.js";
+import { maybeInstallGlobally } from "./utils/global-install.js";
 import { handleError } from "./utils/handle-error.js";
 import { highlighter } from "./utils/highlighter.js";
+import { loadConfig } from "./utils/load-config.js";
 import { logger, startLoggerCapture, stopLoggerCapture } from "./utils/logger.js";
-import { scan } from "./scan.js";
-import { selectProjects } from "./utils/select-projects.js";
 import { prompts } from "./utils/prompts.js";
+import { selectProjects } from "./utils/select-projects.js";
 import { maybePromptSkillInstall } from "./utils/skill-prompt.js";
-import { maybeInstallGlobally } from "./utils/global-install.js";
-import { copyToClipboard } from "./utils/copy-to-clipboard.js";
 
 const VERSION = process.env.VERSION ?? "0.0.0";
 
@@ -26,10 +28,42 @@ interface CliFlags {
   prompt: boolean;
   yes: boolean;
   project?: string;
+  diff?: boolean | string;
 }
 
 process.on("SIGINT", () => process.exit(0));
 process.on("SIGTERM", () => process.exit(0));
+
+const resolveDiffMode = async (
+  diffInfo: DiffInfo | null,
+  effectiveDiff: boolean | string | undefined,
+  shouldSkipPrompts: boolean,
+  isScoreOnly: boolean,
+): Promise<boolean> => {
+  if (effectiveDiff !== undefined && effectiveDiff !== false) {
+    if (diffInfo) return true;
+    if (!isScoreOnly) {
+      logger.warn("Not on a feature branch or could not determine base branch. Running full scan.");
+      logger.break();
+    }
+    return false;
+  }
+
+  if (effectiveDiff === false || !diffInfo) return false;
+
+  const changedSourceFiles = filterSourceFiles(diffInfo.changedFiles);
+  if (changedSourceFiles.length === 0) return false;
+  if (shouldSkipPrompts) return true;
+  if (isScoreOnly) return false;
+
+  const { shouldScanBranchOnly } = await prompts({
+    type: "confirm",
+    name: "shouldScanBranchOnly",
+    message: `On branch ${diffInfo.currentBranch} (${changedSourceFiles.length} changed files vs ${diffInfo.baseBranch}). Only scan this branch?`,
+    initial: true,
+  });
+  return Boolean(shouldScanBranchOnly);
+};
 
 const program = new Command()
   .name("react-doctor")
@@ -42,6 +76,7 @@ const program = new Command()
   .option("--score", "output only the score")
   .option("-y, --yes", "skip prompts, scan all workspace projects")
   .option("--project <name>", "select workspace project (comma-separated for multiple)")
+  .option("--diff [base]", "scan only files changed vs base branch")
   .option("--fix", "open Ami to auto-fix all issues")
   .option("--prompt", "copy latest scan output to clipboard")
   .action(async (directory: string, flags: CliFlags) => {
@@ -54,16 +89,24 @@ const program = new Command()
 
     try {
       const resolvedDirectory = path.resolve(directory);
+      const userConfig = loadConfig(resolvedDirectory);
 
       if (!isScoreOnly) {
         logger.log(`react-doctor v${VERSION}`);
         logger.break();
       }
 
+      const isCliOverride = (optionName: string) =>
+        program.getOptionValueSource(optionName) === "cli";
+
       const scanOptions: ScanOptions = {
-        lint: flags.lint,
-        deadCode: flags.deadCode,
-        verbose: flags.prompt || Boolean(flags.verbose),
+        lint: isCliOverride("lint") ? flags.lint : (userConfig?.lint ?? flags.lint),
+        deadCode: isCliOverride("deadCode")
+          ? flags.deadCode
+          : (userConfig?.deadCode ?? flags.deadCode),
+        verbose:
+          flags.prompt ||
+          (isCliOverride("verbose") ? Boolean(flags.verbose) : (userConfig?.verbose ?? false)),
         scoreOnly: isScoreOnly,
       };
 
@@ -83,12 +126,45 @@ const program = new Command()
         shouldSkipPrompts,
       );
 
+      const effectiveDiff = isCliOverride("diff") ? flags.diff : userConfig?.diff;
+      const explicitBaseBranch = typeof effectiveDiff === "string" ? effectiveDiff : undefined;
+      const diffInfo = getDiffInfo(resolvedDirectory, explicitBaseBranch);
+      const isDiffMode = await resolveDiffMode(
+        diffInfo,
+        effectiveDiff,
+        shouldSkipPrompts,
+        isScoreOnly,
+      );
+
+      if (isDiffMode && diffInfo && !isScoreOnly) {
+        logger.log(
+          `Scanning changes: ${highlighter.info(diffInfo.currentBranch)} → ${highlighter.info(diffInfo.baseBranch)}`,
+        );
+        logger.break();
+      }
+
       for (const projectDirectory of projectDirectories) {
+        let includePaths: string[] | undefined;
+        if (isDiffMode) {
+          const projectDiffInfo = getDiffInfo(projectDirectory, explicitBaseBranch);
+          if (projectDiffInfo) {
+            const changedSourceFiles = filterSourceFiles(projectDiffInfo.changedFiles);
+            if (changedSourceFiles.length === 0) {
+              if (!isScoreOnly) {
+                logger.dim(`No changed source files in ${projectDirectory}, skipping.`);
+                logger.break();
+              }
+              continue;
+            }
+            includePaths = changedSourceFiles;
+          }
+        }
+
         if (!isScoreOnly) {
           logger.dim(`Scanning ${projectDirectory}...`);
           logger.break();
         }
-        await scan(projectDirectory, scanOptions);
+        await scan(projectDirectory, { ...scanOptions, includePaths });
         if (!isScoreOnly) {
           logger.break();
         }

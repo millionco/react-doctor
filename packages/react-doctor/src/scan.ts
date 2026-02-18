@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
 import {
+  JSX_FILE_PATTERN,
   MILLISECONDS_PER_SECOND,
   OFFLINE_MESSAGE,
   PERFECT_SCORE,
@@ -16,15 +17,17 @@ import {
 } from "./constants.js";
 import type { Diagnostic, ScanOptions, ScoreResult } from "./types.js";
 import { calculateScore } from "./utils/calculate-score.js";
+import { checkReducedMotion } from "./utils/check-reduced-motion.js";
 import { discoverProject, formatFrameworkName } from "./utils/discover-project.js";
+import { filterIgnoredDiagnostics } from "./utils/filter-diagnostics.js";
 import { groupBy } from "./utils/group-by.js";
 import { highlighter } from "./utils/highlighter.js";
+import { indentMultilineText } from "./utils/indent-multiline-text.js";
+import { loadConfig } from "./utils/load-config.js";
 import { logger } from "./utils/logger.js";
-import { checkReducedMotion } from "./utils/check-reduced-motion.js";
 import { runKnip } from "./utils/run-knip.js";
 import { runOxlint } from "./utils/run-oxlint.js";
 import { spinner } from "./utils/spinner.js";
-import { indentMultilineText } from "./utils/indent-multiline-text.js";
 
 interface FramedLine {
   plainText: string;
@@ -345,9 +348,21 @@ const printSummary = (
   logger.dim(`  Share your results: ${highlighter.info(shareUrl)}`);
 };
 
-export const scan = async (directory: string, options: ScanOptions): Promise<void> => {
+export const scan = async (directory: string, inputOptions: ScanOptions = {}): Promise<void> => {
   const startTime = performance.now();
   const projectInfo = discoverProject(directory);
+  const userConfig = loadConfig(directory);
+
+  const options = {
+    lint: inputOptions.lint ?? userConfig?.lint ?? true,
+    deadCode: inputOptions.deadCode ?? userConfig?.deadCode ?? true,
+    verbose: inputOptions.verbose ?? userConfig?.verbose ?? false,
+    scoreOnly: inputOptions.scoreOnly ?? false,
+    includePaths: inputOptions.includePaths,
+  };
+
+  const includePaths = options.includePaths ?? [];
+  const isDiffMode = includePaths.length > 0;
 
   if (!projectInfo.reactVersion) {
     throw new Error("No React dependency found in package.json");
@@ -369,10 +384,23 @@ export const scan = async (directory: string, options: ScanOptions): Promise<voi
     completeStep(
       `Detecting React Compiler. ${projectInfo.hasReactCompiler ? highlighter.info("Found React Compiler.") : "Not found."}`,
     );
-    completeStep(`Found ${highlighter.info(`${projectInfo.sourceFileCount}`)} source files.`);
+
+    if (isDiffMode) {
+      completeStep(`Scanning ${highlighter.info(`${includePaths.length}`)} changed source files.`);
+    } else {
+      completeStep(`Found ${highlighter.info(`${projectInfo.sourceFileCount}`)} source files.`);
+    }
+
+    if (userConfig) {
+      completeStep(`Loaded ${highlighter.info("react-doctor config")}.`);
+    }
 
     logger.break();
   }
+
+  const jsxIncludePaths = isDiffMode
+    ? includePaths.filter((filePath) => JSX_FILE_PATTERN.test(filePath))
+    : undefined;
 
   const lintPromise = options.lint
     ? (async () => {
@@ -383,6 +411,7 @@ export const scan = async (directory: string, options: ScanOptions): Promise<voi
             projectInfo.hasTypeScript,
             projectInfo.framework,
             projectInfo.hasReactCompiler,
+            jsxIncludePaths,
           );
           lintSpinner?.succeed("Running lint checks.");
           return lintDiagnostics;
@@ -394,29 +423,33 @@ export const scan = async (directory: string, options: ScanOptions): Promise<voi
       })()
     : Promise.resolve<Diagnostic[]>([]);
 
-  const deadCodePromise = options.deadCode
-    ? (async () => {
-        const deadCodeSpinner = options.scoreOnly
-          ? null
-          : spinner("Detecting dead code...").start();
-        try {
-          const knipDiagnostics = await runKnip(directory);
-          deadCodeSpinner?.succeed("Detecting dead code.");
-          return knipDiagnostics;
-        } catch (error) {
-          deadCodeSpinner?.fail("Dead code detection failed (non-fatal, skipping).");
-          logger.error(String(error));
-          return [];
-        }
-      })()
-    : Promise.resolve<Diagnostic[]>([]);
+  const deadCodePromise =
+    options.deadCode && !isDiffMode
+      ? (async () => {
+          const deadCodeSpinner = options.scoreOnly
+            ? null
+            : spinner("Detecting dead code...").start();
+          try {
+            const knipDiagnostics = await runKnip(directory);
+            deadCodeSpinner?.succeed("Detecting dead code.");
+            return knipDiagnostics;
+          } catch (error) {
+            deadCodeSpinner?.fail("Dead code detection failed (non-fatal, skipping).");
+            logger.error(String(error));
+            return [];
+          }
+        })()
+      : Promise.resolve<Diagnostic[]>([]);
 
   const [lintDiagnostics, deadCodeDiagnostics] = await Promise.all([lintPromise, deadCodePromise]);
-  const diagnostics = [
+  const allDiagnostics = [
     ...lintDiagnostics,
     ...deadCodeDiagnostics,
-    ...checkReducedMotion(directory),
+    ...(isDiffMode ? [] : checkReducedMotion(directory)),
   ];
+  const diagnostics = userConfig
+    ? filterIgnoredDiagnostics(allDiagnostics, userConfig)
+    : allDiagnostics;
 
   const elapsedMilliseconds = performance.now() - startTime;
 
@@ -445,11 +478,13 @@ export const scan = async (directory: string, options: ScanOptions): Promise<voi
 
   printDiagnostics(diagnostics, options.verbose);
 
+  const displayedSourceFileCount = isDiffMode ? includePaths.length : projectInfo.sourceFileCount;
+
   printSummary(
     diagnostics,
     elapsedMilliseconds,
     scoreResult,
     projectInfo.projectName,
-    projectInfo.sourceFileCount,
+    displayedSourceFileCount,
   );
 };

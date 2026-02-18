@@ -258,6 +258,7 @@ export const runOxlint = async (
   framework: Framework,
   hasReactCompiler: boolean,
   includePaths?: string[],
+  ignorePatterns?: string[],
 ): Promise<Diagnostic[]> => {
   if (includePaths !== undefined && includePaths.length === 0) {
     return [];
@@ -276,6 +277,12 @@ export const runOxlint = async (
 
     if (hasTypeScript) {
       args.push("--tsconfig", "./tsconfig.json");
+    }
+
+    if (ignorePatterns) {
+      for (const pattern of ignorePatterns) {
+        args.push("--ignore-pattern", pattern);
+      }
     }
 
     if (includePaths !== undefined) {

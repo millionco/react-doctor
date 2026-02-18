@@ -10,6 +10,14 @@ const DerivedStateComponent = ({ items }: { items: string[] }) => {
   return <div>{filteredItems.join(",")}</div>;
 };
 
+const StateResetComponent = ({ visible }: { visible: boolean }) => {
+  const [inputValue, setInputValue] = useState("");
+  useEffect(() => {
+    setInputValue("");
+  }, [visible]);
+  return <input value={inputValue} onChange={(event) => setInputValue(event.target.value)} />;
+};
+
 const FetchInEffectComponent = () => {
   const [data, setData] = useState(null);
 
@@ -91,6 +99,7 @@ const DependencyLiteralComponent = () => {
 
 export {
   DerivedStateComponent,
+  StateResetComponent,
   FetchInEffectComponent,
   LazyInitComponent,
   CascadingSetStateComponent,

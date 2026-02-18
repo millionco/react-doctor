@@ -87,7 +87,7 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
 
 const RULE_HELP_MAP: Record<string, string> = {
   "no-derived-state-effect":
-    "Compute during render: `const derived = computeFrom(dep1, dep2)` — no useEffect needed",
+    "For derived state, compute inline: `const x = fn(dep)`. For state resets on prop change, use a key prop: `<Component key={prop} />`",
   "no-fetch-in-effect":
     "Use `useQuery()` from @tanstack/react-query, `useSWR()`, or fetch in a Server Component instead",
   "no-cascading-set-state":

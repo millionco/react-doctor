@@ -50,6 +50,7 @@ export const noDerivedStateEffect: Rule = {
       if (!containsOnlySetStateCalls) return;
 
       let allArgumentsDeriveFromDeps = true;
+      let hasAnyDependencyReference = false;
       for (const statement of statements) {
         const setStateArguments = statement.expression.arguments;
         if (!setStateArguments?.length) continue;
@@ -59,11 +60,15 @@ export const noDerivedStateEffect: Rule = {
           if (child.type === "Identifier") referencedIdentifiers.push(child.name);
         });
 
-        if (
-          referencedIdentifiers.some(
-            (name) => !dependencyNames.has(name) && !isSetterIdentifier(name),
-          )
-        ) {
+        const nonSetterIdentifiers = referencedIdentifiers.filter(
+          (name) => !isSetterIdentifier(name),
+        );
+
+        if (nonSetterIdentifiers.some((name) => dependencyNames.has(name))) {
+          hasAnyDependencyReference = true;
+        }
+
+        if (nonSetterIdentifiers.some((name) => !dependencyNames.has(name))) {
           allArgumentsDeriveFromDeps = false;
           break;
         }
@@ -72,7 +77,9 @@ export const noDerivedStateEffect: Rule = {
       if (allArgumentsDeriveFromDeps) {
         context.report({
           node,
-          message: "Derived state in useEffect — compute during render instead",
+          message: hasAnyDependencyReference
+            ? "Derived state in useEffect — compute during render instead"
+            : "State reset in useEffect — use a key prop to reset component state when props change",
         });
       }
     },

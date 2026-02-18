@@ -233,10 +233,15 @@ const hasReactDependency = (packageJson: PackageJson): boolean => {
   );
 };
 
-export const discoverReactSubprojects = (rootDirectory: string): WorkspacePackage[] => {
-  if (!fs.existsSync(rootDirectory) || !fs.statSync(rootDirectory).isDirectory()) return [];
+export const discoverReactSubprojects = (
+  rootDirectory: string,
+  packageJsonDirectory?: string,
+): WorkspacePackage[] => {
+  const effectiveDirectory = packageJsonDirectory ?? rootDirectory;
+  if (!fs.existsSync(effectiveDirectory) || !fs.statSync(effectiveDirectory).isDirectory())
+    return [];
 
-  const entries = fs.readdirSync(rootDirectory, { withFileTypes: true });
+  const entries = fs.readdirSync(effectiveDirectory, { withFileTypes: true });
   const packages: WorkspacePackage[] = [];
 
   for (const entry of entries) {
@@ -244,7 +249,7 @@ export const discoverReactSubprojects = (rootDirectory: string): WorkspacePackag
       continue;
     }
 
-    const subdirectory = path.join(rootDirectory, entry.name);
+    const subdirectory = path.join(effectiveDirectory, entry.name);
     const packageJsonPath = path.join(subdirectory, "package.json");
     if (!fs.existsSync(packageJsonPath)) continue;
 
@@ -258,12 +263,16 @@ export const discoverReactSubprojects = (rootDirectory: string): WorkspacePackag
   return packages;
 };
 
-export const listWorkspacePackages = (rootDirectory: string): WorkspacePackage[] => {
-  const packageJsonPath = path.join(rootDirectory, "package.json");
+export const listWorkspacePackages = (
+  rootDirectory: string,
+  packageJsonDirectory?: string,
+): WorkspacePackage[] => {
+  const effectiveDirectory = packageJsonDirectory ?? rootDirectory;
+  const packageJsonPath = path.join(effectiveDirectory, "package.json");
   if (!fs.existsSync(packageJsonPath)) return [];
 
   const packageJson = readPackageJson(packageJsonPath);
-  const patterns = getWorkspacePatterns(rootDirectory, packageJson);
+  const patterns = getWorkspacePatterns(effectiveDirectory, packageJson);
   if (patterns.length === 0) return [];
 
   const packages: WorkspacePackage[] = [];
@@ -321,17 +330,21 @@ const detectReactCompiler = (directory: string, packageJson: PackageJson): boole
   return false;
 };
 
-export const discoverProject = (directory: string): ProjectInfo => {
-  const packageJsonPath = path.join(directory, "package.json");
+export const discoverProject = (
+  directory: string,
+  packageJsonDirectory?: string,
+): ProjectInfo => {
+  const packageJsonDir = packageJsonDirectory ?? directory;
+  const packageJsonPath = path.join(packageJsonDir, "package.json");
   if (!fs.existsSync(packageJsonPath)) {
-    throw new Error(`No package.json found in ${directory}`);
+    throw new Error(`No package.json found in ${packageJsonDir}`);
   }
 
   const packageJson = readPackageJson(packageJsonPath);
   let { reactVersion, framework } = extractDependencyInfo(packageJson);
 
   if (!reactVersion || framework === "unknown") {
-    const workspaceInfo = findReactInWorkspaces(directory, packageJson);
+    const workspaceInfo = findReactInWorkspaces(packageJsonDir, packageJson);
     if (!reactVersion && workspaceInfo.reactVersion) {
       reactVersion = workspaceInfo.reactVersion;
     }
@@ -340,8 +353,8 @@ export const discoverProject = (directory: string): ProjectInfo => {
     }
   }
 
-  if ((!reactVersion || framework === "unknown") && !isMonorepoRoot(directory)) {
-    const monorepoInfo = findDependencyInfoFromMonorepoRoot(directory);
+  if ((!reactVersion || framework === "unknown") && !isMonorepoRoot(packageJsonDir)) {
+    const monorepoInfo = findDependencyInfoFromMonorepoRoot(packageJsonDir);
     if (!reactVersion) {
       reactVersion = monorepoInfo.reactVersion;
     }

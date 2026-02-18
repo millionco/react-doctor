@@ -9,10 +9,11 @@ export const selectProjects = async (
   rootDirectory: string,
   projectFlag: string | undefined,
   skipPrompts: boolean,
+  packageJsonDirectory?: string,
 ): Promise<string[]> => {
-  let packages = listWorkspacePackages(rootDirectory);
+  let packages = listWorkspacePackages(rootDirectory, packageJsonDirectory);
   if (packages.length === 0) {
-    packages = discoverReactSubprojects(rootDirectory);
+    packages = discoverReactSubprojects(rootDirectory, packageJsonDirectory);
   }
 
   if (packages.length === 0) return [rootDirectory];

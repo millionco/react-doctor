@@ -89,6 +89,7 @@ export interface ScanOptions {
   verbose?: boolean;
   scoreOnly?: boolean;
   includePaths?: string[];
+  packageJsonDirectory?: string;
 }
 
 export interface DiffInfo {

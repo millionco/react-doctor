@@ -350,7 +350,7 @@ const printSummary = (
 
 export const scan = async (directory: string, inputOptions: ScanOptions = {}): Promise<void> => {
   const startTime = performance.now();
-  const projectInfo = discoverProject(directory);
+  const projectInfo = discoverProject(directory, inputOptions.packageJsonDirectory);
   const userConfig = loadConfig(directory);
 
   const options = {

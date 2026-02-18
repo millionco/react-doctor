@@ -66,6 +66,34 @@ describe("scan", () => {
     }
   });
 
+  it("reads package.json from packageJsonDirectory when provided", async () => {
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await scan(path.join(FIXTURES_DIRECTORY, "split-project", "source"), {
+        lint: false,
+        deadCode: false,
+        packageJsonDirectory: path.join(FIXTURES_DIRECTORY, "split-project", "metadata"),
+      });
+    } finally {
+      consoleSpy.mockRestore();
+    }
+  });
+
+  it("throws when packageJsonDirectory has no React dependency", async () => {
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await expect(
+        scan(path.join(FIXTURES_DIRECTORY, "basic-react"), {
+          lint: false,
+          deadCode: false,
+          packageJsonDirectory: noReactTempDirectory,
+        }),
+      ).rejects.toThrow("No React dependency found");
+    } finally {
+      consoleSpy.mockRestore();
+    }
+  });
+
   it("runs lint and dead code in parallel when both enabled", async () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     try {

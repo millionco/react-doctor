@@ -16,6 +16,7 @@ export { getDiffInfo, filterSourceFiles } from "./utils/get-diff-files.js";
 export interface DiagnoseOptions {
   lint?: boolean;
   deadCode?: boolean;
+  packageJsonDirectory?: string;
   includePaths?: string[];
 }
 
@@ -30,12 +31,15 @@ export const diagnose = async (
   directory: string,
   options: DiagnoseOptions = {},
 ): Promise<DiagnoseResult> => {
-  const { includePaths = [] } = options;
+  const { packageJsonDirectory, includePaths = [] } = options;
   const isDiffMode = includePaths.length > 0;
 
   const startTime = performance.now();
   const resolvedDirectory = path.resolve(directory);
-  const projectInfo = discoverProject(resolvedDirectory);
+  const resolvedPackageJsonDirectory = packageJsonDirectory
+    ? path.resolve(packageJsonDirectory)
+    : undefined;
+  const projectInfo = discoverProject(resolvedDirectory, resolvedPackageJsonDirectory);
   const userConfig = loadConfig(resolvedDirectory);
 
   const effectiveLint = options.lint ?? userConfig?.lint ?? true;

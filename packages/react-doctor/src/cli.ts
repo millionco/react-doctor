@@ -28,6 +28,7 @@ interface CliFlags {
   prompt: boolean;
   yes: boolean;
   project?: string;
+  packageJson?: string;
   diff?: boolean | string;
 }
 
@@ -76,6 +77,7 @@ const program = new Command()
   .option("--score", "output only the score")
   .option("-y, --yes", "skip prompts, scan all workspace projects")
   .option("--project <name>", "select workspace project (comma-separated for multiple)")
+  .option("--package-json <directory>", "custom directory containing package.json")
   .option("--diff [base]", "scan only files changed vs base branch")
   .option("--fix", "open Ami to auto-fix all issues")
   .option("--prompt", "copy latest scan output to clipboard")
@@ -96,6 +98,10 @@ const program = new Command()
         logger.break();
       }
 
+      const resolvedPackageJsonDirectory = flags.packageJson
+        ? path.resolve(flags.packageJson)
+        : undefined;
+
       const isCliOverride = (optionName: string) =>
         program.getOptionValueSource(optionName) === "cli";
 
@@ -108,6 +114,7 @@ const program = new Command()
           flags.prompt ||
           (isCliOverride("verbose") ? Boolean(flags.verbose) : (userConfig?.verbose ?? false)),
         scoreOnly: isScoreOnly,
+        packageJsonDirectory: resolvedPackageJsonDirectory,
       };
 
       const isAutomatedEnvironment = [
@@ -124,6 +131,7 @@ const program = new Command()
         resolvedDirectory,
         flags.project,
         shouldSkipPrompts,
+        resolvedPackageJsonDirectory,
       );
 
       const effectiveDiff = isCliOverride("diff") ? flags.diff : userConfig?.diff;

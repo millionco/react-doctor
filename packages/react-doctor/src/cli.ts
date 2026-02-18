@@ -26,6 +26,7 @@ interface CliFlags {
   prompt: boolean;
   yes: boolean;
   project?: string;
+  packageJson?: string;
 }
 
 process.on("SIGINT", () => process.exit(0));
@@ -42,6 +43,7 @@ const program = new Command()
   .option("--score", "output only the score")
   .option("-y, --yes", "skip prompts, scan all workspace projects")
   .option("--project <name>", "select workspace project (comma-separated for multiple)")
+  .option("--package-json <directory>", "custom directory containing package.json")
   .option("--fix", "open Ami to auto-fix all issues")
   .option("--prompt", "copy latest scan output to clipboard")
   .action(async (directory: string, flags: CliFlags) => {
@@ -60,11 +62,16 @@ const program = new Command()
         logger.break();
       }
 
+      const resolvedPackageJsonDirectory = flags.packageJson
+        ? path.resolve(flags.packageJson)
+        : undefined;
+
       const scanOptions: ScanOptions = {
         lint: flags.lint,
         deadCode: flags.deadCode,
         verbose: flags.prompt || Boolean(flags.verbose),
         scoreOnly: isScoreOnly,
+        packageJsonDirectory: resolvedPackageJsonDirectory,
       };
 
       const isAutomatedEnvironment = [
@@ -81,6 +88,7 @@ const program = new Command()
         resolvedDirectory,
         flags.project,
         shouldSkipPrompts,
+        resolvedPackageJsonDirectory,
       );
 
       for (const projectDirectory of projectDirectories) {

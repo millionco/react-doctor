@@ -12,6 +12,7 @@ export type { Diagnostic, ProjectInfo, ScoreResult };
 export interface DiagnoseOptions {
   lint?: boolean;
   deadCode?: boolean;
+  packageJsonDirectory?: string;
 }
 
 export interface DiagnoseResult {
@@ -25,11 +26,14 @@ export const diagnose = async (
   directory: string,
   options: DiagnoseOptions = {},
 ): Promise<DiagnoseResult> => {
-  const { lint = true, deadCode = true } = options;
+  const { lint = true, deadCode = true, packageJsonDirectory } = options;
 
   const startTime = performance.now();
   const resolvedDirectory = path.resolve(directory);
-  const projectInfo = discoverProject(resolvedDirectory);
+  const resolvedPackageJsonDirectory = packageJsonDirectory
+    ? path.resolve(packageJsonDirectory)
+    : undefined;
+  const projectInfo = discoverProject(resolvedDirectory, resolvedPackageJsonDirectory);
 
   if (!projectInfo.reactVersion) {
     throw new Error("No React dependency found in package.json");

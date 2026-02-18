@@ -87,6 +87,7 @@ export interface ScanOptions {
   deadCode: boolean;
   verbose: boolean;
   scoreOnly: boolean;
+  packageJsonDirectory?: string;
 }
 
 export interface ClipboardCommand {

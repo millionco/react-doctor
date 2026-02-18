@@ -347,7 +347,7 @@ const printSummary = (
 
 export const scan = async (directory: string, options: ScanOptions): Promise<void> => {
   const startTime = performance.now();
-  const projectInfo = discoverProject(directory);
+  const projectInfo = discoverProject(directory, options.packageJsonDirectory);
 
   if (!projectInfo.reactVersion) {
     throw new Error("No React dependency found in package.json");

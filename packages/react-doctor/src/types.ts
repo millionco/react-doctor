@@ -1,4 +1,4 @@
-export type Framework = "nextjs" | "vite" | "cra" | "remix" | "gatsby" | "unknown";
+export type Framework = "nextjs" | "vite" | "cra" | "remix" | "gatsby" | "roblox-ts" | "unknown";
 
 export interface ProjectInfo {
   rootDirectory: string;
@@ -87,6 +87,7 @@ export interface ScanOptions {
   deadCode: boolean;
   verbose: boolean;
   scoreOnly: boolean;
+  frameworkOverride?: Framework;
 }
 
 export interface ClipboardCommand {

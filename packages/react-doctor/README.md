@@ -13,7 +13,7 @@ One command scans your codebase for security, performance, correctness, and arch
 
 ### [See it in action →](https://react.doctor)
 
-https://github.com/user-attachments/assets/07cc88d9-9589-44c3-aa73-5d603cb1c570
+<https://github.com/user-attachments/assets/07cc88d9-9589-44c3-aa73-5d603cb1c570>
 
 ## Install
 
@@ -41,7 +41,7 @@ This gives agents like Cursor, Claude Code, Copilot, and others access to all 47
 
 ## Options
 
-```
+```text
 Usage: react-doctor [directory] [options]
 
 Options:
@@ -52,9 +52,25 @@ Options:
   --score           output only the score
   -y, --yes         skip prompts, scan all workspace projects
   --project <name>  select workspace project (comma-separated for multiple)
+  --framework <name>  override framework detection (nextjs|vite|cra|remix|gatsby|roblox-ts|unknown)
   --fix             open Ami to auto-fix all issues
   --prompt          copy latest scan output to clipboard
   -h, --help        display help for command
+```
+
+## Roblox / React Luau (`roblox-ts`)
+
+React Doctor can detect Roblox React Luau projects built through `roblox-ts`.
+
+Auto-detection requires both:
+
+- `@rbxts/react` in dependencies/devDependencies
+- `tsconfig.json` with one of: `@rbxts/types`, `@rbxts/react-types`, `@rbxts/react-roblox-types` in `compilerOptions.types`
+
+If detection misses your setup, force it:
+
+```bash
+npx -y react-doctor@latest . --framework roblox-ts
 ```
 
 ## Node.js API

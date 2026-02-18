@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { Command } from "commander";
 import { SEPARATOR_LENGTH_CHARS } from "./constants.js";
-import type { ScanOptions } from "./types.js";
+import type { Framework, ScanOptions } from "./types.js";
 import { handleError } from "./utils/handle-error.js";
 import { highlighter } from "./utils/highlighter.js";
 import { logger, startLoggerCapture, stopLoggerCapture } from "./utils/logger.js";
@@ -26,7 +26,37 @@ interface CliFlags {
   prompt: boolean;
   yes: boolean;
   project?: string;
+  framework?: string;
 }
+
+const SUPPORTED_FRAMEWORKS: Framework[] = [
+  "nextjs",
+  "vite",
+  "cra",
+  "remix",
+  "gatsby",
+  "roblox-ts",
+  "unknown",
+];
+
+const parseFrameworkOverride = (frameworkName?: string): Framework | undefined => {
+  if (!frameworkName) {
+    return undefined;
+  }
+
+  const normalizedFramework = frameworkName.toLowerCase();
+  if (normalizedFramework === "nextjs") return "nextjs";
+  if (normalizedFramework === "vite") return "vite";
+  if (normalizedFramework === "cra") return "cra";
+  if (normalizedFramework === "remix") return "remix";
+  if (normalizedFramework === "gatsby") return "gatsby";
+  if (normalizedFramework === "roblox-ts") return "roblox-ts";
+  if (normalizedFramework === "unknown") return "unknown";
+
+  throw new Error(
+    `Invalid framework override "${frameworkName}". Supported values: ${SUPPORTED_FRAMEWORKS.join(", ")}`,
+  );
+};
 
 process.on("SIGINT", () => process.exit(0));
 process.on("SIGTERM", () => process.exit(0));
@@ -42,6 +72,7 @@ const program = new Command()
   .option("--score", "output only the score")
   .option("-y, --yes", "skip prompts, scan all workspace projects")
   .option("--project <name>", "select workspace project (comma-separated for multiple)")
+  .option("--framework <name>", "override framework detection")
   .option("--fix", "open Ami to auto-fix all issues")
   .option("--prompt", "copy latest scan output to clipboard")
   .action(async (directory: string, flags: CliFlags) => {
@@ -65,6 +96,7 @@ const program = new Command()
         deadCode: flags.deadCode,
         verbose: flags.prompt || Boolean(flags.verbose),
         scoreOnly: isScoreOnly,
+        frameworkOverride: parseFrameworkOverride(flags.framework),
       };
 
       const isAutomatedEnvironment = [

@@ -40,6 +40,8 @@ const VITE_CONFIG_FILENAMES = [
   "vite.config.cjs",
 ];
 
+const EXPO_APP_CONFIG_FILENAMES = ["app.json", "app.config.js", "app.config.ts"];
+
 const REACT_COMPILER_CONFIG_PATTERN = /react-compiler|reactCompiler/;
 
 const FRAMEWORK_PACKAGES: Record<string, Framework> = {
@@ -307,6 +309,7 @@ const detectReactCompiler = (directory: string, packageJson: PackageJson): boole
   if (hasCompilerInConfigFiles(directory, NEXT_CONFIG_FILENAMES)) return true;
   if (hasCompilerInConfigFiles(directory, BABEL_CONFIG_FILENAMES)) return true;
   if (hasCompilerInConfigFiles(directory, VITE_CONFIG_FILENAMES)) return true;
+  if (hasCompilerInConfigFiles(directory, EXPO_APP_CONFIG_FILENAMES)) return true;
 
   let ancestorDirectory = path.dirname(directory);
   while (ancestorDirectory !== path.dirname(ancestorDirectory)) {

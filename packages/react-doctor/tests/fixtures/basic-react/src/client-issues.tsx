@@ -7,7 +7,7 @@ const ScrollListenerComponent = () => {
     const element = ref.current;
     if (!element) return;
     const handler = () => {};
-    element.addEventListener("scroll", handler);
+    element.addEventListener("scroll", handler, { passive: true });
     return () => element.removeEventListener("scroll", handler);
   }, []);
 

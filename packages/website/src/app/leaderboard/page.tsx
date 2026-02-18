@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { LEADERBOARD_ENTRIES, type ResolvedLeaderboardEntry } from "./leaderboard-entries";
 
@@ -80,7 +81,7 @@ const LeaderboardPage = () => {
           href="/"
           className="inline-flex items-center gap-2 text-neutral-500 transition-colors hover:text-neutral-300"
         >
-          <img src="/favicon.svg" alt="React Doctor" width={20} height={20} />
+          <Image src="/favicon.svg" alt="React Doctor" width={20} height={20} />
           <span>react-doctor</span>
         </Link>
       </div>

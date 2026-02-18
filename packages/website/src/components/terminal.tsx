@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Image from "next/image";
 import { Copy, Check, ChevronRight, RotateCcw } from "lucide-react";
 
 const COPIED_RESET_DELAY_MS = 2000;
@@ -372,7 +373,7 @@ const Terminal = () => {
         <FadeIn>
           <Spacer />
           <div className="flex items-center gap-2">
-            <img src="/favicon.svg" alt="React Doctor" width={24} height={24} />
+            <Image src="/favicon.svg" alt="React Doctor" width={24} height={24} />
             react-doctor
           </div>
           <div className="text-neutral-500">

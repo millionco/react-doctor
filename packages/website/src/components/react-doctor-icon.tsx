@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 const DEFAULT_ICON_SIZE_PX = 40;
 
 interface ReactDoctorIconProps {
@@ -11,7 +13,7 @@ const ReactDoctorIcon = ({
   className,
   alt = "React Doctor icon",
 }: ReactDoctorIconProps) => (
-  <img
+  <Image
     src="/react-doctor-icon.svg"
     width={sizePx}
     height={sizePx}

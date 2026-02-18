@@ -1,22 +1,21 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 
 const DerivedStateComponent = ({ items }: { items: string[] }) => {
-  const [filteredItems, setFilteredItems] = useState<string[]>([]);
-
-  useEffect(() => {
-    setFilteredItems(items);
-  }, [items]);
+  // Derived state computed directly during render instead of in useEffect
+  const filteredItems = items;
 
   return <div>{filteredItems.join(",")}</div>;
 };
 
-const StateResetComponent = ({ visible }: { visible: boolean }) => {
+// Use key prop to reset component state when visible prop changes
+const StateResetInputInner = () => {
   const [inputValue, setInputValue] = useState("");
-  useEffect(() => {
-    setInputValue("");
-  }, [visible]);
   return <input value={inputValue} onChange={(event) => setInputValue(event.target.value)} />;
 };
+
+const StateResetComponent = ({ visible }: { visible: boolean }) => (
+  <StateResetInputInner key={String(visible)} />
+);
 
 const FetchInEffectComponent = () => {
   const [data, setData] = useState(null);

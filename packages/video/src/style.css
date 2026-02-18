@@ -1,0 +1,9 @@
+@font-face {
+  font-family: "EK Modena Mono";
+  src: url("./assets/ek-modena-mono-regular.otf") format("opentype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@import "tailwindcss";

@@ -10,7 +10,13 @@ import {
   SPAWN_ARGS_MAX_LENGTH_CHARS,
 } from "../constants.js";
 import { createOxlintConfig } from "../oxlint-config.js";
-import type { CleanedDiagnostic, Diagnostic, Framework, OxlintOutput } from "../types.js";
+import type {
+  AccessibilityPreset,
+  CleanedDiagnostic,
+  Diagnostic,
+  Framework,
+  OxlintOutput,
+} from "../types.js";
 import { neutralizeDisableDirectives } from "./neutralize-disable-directives.js";
 
 const esmRequire = createRequire(import.meta.url);
@@ -251,7 +257,10 @@ const cleanDiagnosticMessage = (
     return { message: REACT_COMPILER_MESSAGE, help: rawMessage || help };
   }
   const cleaned = message.replace(FILEPATH_WITH_LOCATION_PATTERN, "").trim();
-  return { message: cleaned || message, help: help || RULE_HELP_MAP[rule] || "" };
+  return {
+    message: cleaned || message,
+    help: help || RULE_HELP_MAP[rule] || "",
+  };
 };
 
 const parseRuleCode = (code: string): { plugin: string; rule: string } => {
@@ -379,6 +388,7 @@ export const runOxlint = async (
   framework: Framework,
   hasReactCompiler: boolean,
   includePaths?: string[],
+  accessibilityPreset: AccessibilityPreset | false = "minimal",
   nodeBinaryPath: string = process.execPath,
 ): Promise<Diagnostic[]> => {
   if (includePaths !== undefined && includePaths.length === 0) {
@@ -387,7 +397,12 @@ export const runOxlint = async (
 
   const configPath = path.join(os.tmpdir(), `react-doctor-oxlintrc-${process.pid}.json`);
   const pluginPath = resolvePluginPath();
-  const config = createOxlintConfig({ pluginPath, framework, hasReactCompiler });
+  const config = createOxlintConfig({
+    pluginPath,
+    framework,
+    hasReactCompiler,
+    accessibilityPreset,
+  });
   const restoreDisableDirectives = neutralizeDisableDirectives(rootDirectory);
 
   try {

@@ -64,6 +64,42 @@ const FRAMEWORK_DISPLAY_NAMES: Record<Framework, string> = {
 export const formatFrameworkName = (framework: Framework): string =>
   FRAMEWORK_DISPLAY_NAMES[framework];
 
+const SOURCE_FILE_FALLBACK_IGNORED_DIRECTORIES = new Set([
+  ".git",
+  ".next",
+  ".turbo",
+  "build",
+  "dist",
+  "node_modules",
+]);
+
+const countSourceFilesByDirectoryWalk = (rootDirectory: string): number => {
+  const stack = [rootDirectory];
+  let fileCount = 0;
+
+  while (stack.length > 0) {
+    const currentDirectory = stack.pop();
+    if (!currentDirectory) continue;
+
+    const entries = fs.readdirSync(currentDirectory, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        if (SOURCE_FILE_FALLBACK_IGNORED_DIRECTORIES.has(entry.name)) {
+          continue;
+        }
+        stack.push(path.join(currentDirectory, entry.name));
+        continue;
+      }
+
+      if (entry.isFile() && SOURCE_FILE_PATTERN.test(entry.name)) {
+        fileCount += 1;
+      }
+    }
+  }
+
+  return fileCount;
+};
+
 const countSourceFiles = (rootDirectory: string): number => {
   const result = spawnSync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], {
     cwd: rootDirectory,
@@ -72,7 +108,7 @@ const countSourceFiles = (rootDirectory: string): number => {
   });
 
   if (result.error || result.status !== 0) {
-    return 0;
+    return countSourceFilesByDirectoryWalk(rootDirectory);
   }
 
   return result.stdout

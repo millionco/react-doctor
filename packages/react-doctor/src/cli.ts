@@ -84,7 +84,9 @@ const program = new Command()
   .version(VERSION, "-v, --version", "display the version number")
   .argument("[directory]", "project directory to scan", ".")
   .option("--no-lint", "skip linting")
+  .option("--lint", "run linting")
   .option("--no-dead-code", "skip dead code detection")
+  .option("--dead-code", "run dead code detection")
   .option("--verbose", "show file details per rule")
   .option("--score", "output only the score")
   .option("-y, --yes", "skip prompts, scan all workspace projects")
@@ -179,7 +181,12 @@ const program = new Command()
           logger.dim(`Scanning ${projectDirectory}...`);
           logger.break();
         }
-        const scanResult = await scan(projectDirectory, { ...scanOptions, includePaths });
+        const projectUserConfig = projectDirectory === resolvedDirectory ? userConfig : undefined;
+        const scanResult = await scan(projectDirectory, {
+          ...scanOptions,
+          includePaths,
+          userConfig: projectUserConfig,
+        });
         allDiagnostics.push(...scanResult.diagnostics);
         if (!isScoreOnly) {
           logger.break();
@@ -286,14 +293,20 @@ const buildWebDeeplink = (directory: string): string =>
   `${OPEN_BASE_URL}?${buildDeeplinkParams(directory).toString()}`;
 
 const openAmiToFix = (directory: string): void => {
-  const isInstalled = isAmiInstalled();
+  let isInstalled = isAmiInstalled();
   const deeplink = buildDeeplink(directory);
   const webDeeplink = buildWebDeeplink(directory);
 
   if (!isInstalled) {
     if (process.platform === "darwin") {
       installAmi();
-      logger.success("Ami installed successfully.");
+      isInstalled = isAmiInstalled();
+      if (isInstalled) {
+        logger.success("Ami installed successfully.");
+      } else {
+        logger.error("Ami installation completed, but Ami was not detected.");
+        logger.dim(`Download at ${highlighter.info(AMI_RELEASES_URL)}`);
+      }
     } else {
       logger.error("Ami is not installed.");
       logger.dim(`Download at ${highlighter.info(AMI_RELEASES_URL)}`);

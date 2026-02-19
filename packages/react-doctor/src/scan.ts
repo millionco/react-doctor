@@ -320,7 +320,8 @@ export const scan = async (
 ): Promise<ScanResult> => {
   const startTime = performance.now();
   const projectInfo = discoverProject(directory);
-  const userConfig = loadConfig(directory);
+  const userConfig =
+    inputOptions.userConfig === undefined ? loadConfig(directory) : inputOptions.userConfig;
 
   const options = {
     lint: inputOptions.lint ?? userConfig?.lint ?? true,

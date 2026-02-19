@@ -17,14 +17,13 @@ export const loadConfig = (rootDirectory: string): ReactDoctorConfig | null => {
       const parsed: unknown = JSON.parse(fileContent);
       if (!isPlainObject(parsed)) {
         console.warn(`Warning: ${CONFIG_FILENAME} must be a JSON object, ignoring.`);
-        return null;
+      } else {
+        return parsed as ReactDoctorConfig;
       }
-      return parsed as ReactDoctorConfig;
     } catch (error) {
       console.warn(
         `Warning: Failed to parse ${CONFIG_FILENAME}: ${error instanceof Error ? error.message : String(error)}`,
       );
-      return null;
     }
   }
 

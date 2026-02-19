@@ -55,13 +55,16 @@ Usage: react-doctor [directory] [options]
 
 Options:
   -v, --version     display the version number
+  --lint            run linting
   --no-lint         skip linting
+  --dead-code       run dead code detection
   --no-dead-code    skip dead code detection
   --verbose         show file details per rule
   --score           output only the score
   -y, --yes         skip prompts, scan all workspace projects
   --project <name>  select workspace project (comma-separated for multiple)
   --diff [base]     scan only files changed vs base branch
+  --offline         skip telemetry (anonymous, not stored, only used to calculate score)
   --no-ami          skip Ami-related prompts
   --fix             open Ami to auto-fix all issues
   -h, --help        display help for command

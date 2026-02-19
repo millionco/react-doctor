@@ -275,6 +275,7 @@ const buildDeeplinkParams = (directory: string): URLSearchParams => {
   params.set("prompt", DEEPLINK_FIX_PROMPT);
   params.set("mode", "agent");
   params.set("autoSubmit", "true");
+  params.set("source", "react-doctor");
   return params;
 };
 

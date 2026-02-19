@@ -51,6 +51,10 @@ export const WARNING_ESTIMATED_FIX_RATE = 0.8;
 
 export const MAX_KNIP_RETRIES = 5;
 
+export const OXLINT_NODE_REQUIREMENT = "^20.19.0 || >=22.12.0";
+
+export const OXLINT_RECOMMENDED_NODE_MAJOR = 24;
+
 export const AMI_WEBSITE_URL = "https://ami.dev";
 
 export const AMI_INSTALL_URL = `${AMI_WEBSITE_URL}/install.sh`;

@@ -7,6 +7,8 @@ import {
   MILLISECONDS_PER_SECOND,
   OFFLINE_FLAG_MESSAGE,
   OFFLINE_MESSAGE,
+  OXLINT_NODE_REQUIREMENT,
+  OXLINT_RECOMMENDED_NODE_MAJOR,
   PERFECT_SCORE,
   SCORE_BAR_WIDTH_CHARS,
   SCORE_GOOD_THRESHOLD,
@@ -31,6 +33,12 @@ import { highlighter } from "./utils/highlighter.js";
 import { indentMultilineText } from "./utils/indent-multiline-text.js";
 import { loadConfig } from "./utils/load-config.js";
 import { logger } from "./utils/logger.js";
+import { prompts } from "./utils/prompts.js";
+import {
+  installNodeViaNvm,
+  isNvmInstalled,
+  resolveNodeForOxlint,
+} from "./utils/resolve-compatible-node.js";
 import { runKnip } from "./utils/run-knip.js";
 import { runOxlint } from "./utils/run-oxlint.js";
 import { spinner } from "./utils/spinner.js";
@@ -331,6 +339,64 @@ const printSummary = (
   logger.dim(`  Share your results: ${highlighter.info(shareUrl)}`);
 };
 
+const resolveOxlintNode = async (
+  isLintEnabled: boolean,
+  isScoreOnly: boolean,
+): Promise<string | null> => {
+  if (!isLintEnabled) return null;
+
+  const nodeResolution = resolveNodeForOxlint();
+
+  if (nodeResolution) {
+    if (!nodeResolution.isCurrentNode && !isScoreOnly) {
+      logger.warn(
+        `Node ${process.version} is unsupported by oxlint. Using Node ${nodeResolution.version} from nvm.`,
+      );
+      logger.break();
+    }
+    return nodeResolution.binaryPath;
+  }
+
+  if (isScoreOnly) return null;
+
+  logger.warn(
+    `Node ${process.version} is not compatible with oxlint (requires ${OXLINT_NODE_REQUIREMENT}). Lint checks will be skipped.`,
+  );
+
+  if (isNvmInstalled() && process.stdin.isTTY) {
+    const { shouldInstallNode } = await prompts({
+      type: "confirm",
+      name: "shouldInstallNode",
+      message: `Install Node ${OXLINT_RECOMMENDED_NODE_MAJOR} via nvm to enable lint checks?`,
+      initial: true,
+    });
+
+    if (shouldInstallNode) {
+      logger.break();
+      const freshResolution = installNodeViaNvm() ? resolveNodeForOxlint() : null;
+      if (freshResolution) {
+        logger.break();
+        logger.success(`Node ${freshResolution.version} installed. Using it for lint checks.`);
+        logger.break();
+        return freshResolution.binaryPath;
+      }
+      logger.break();
+      logger.warn("Failed to install Node via nvm. Skipping lint checks.");
+      logger.break();
+      return null;
+    }
+  } else if (isNvmInstalled()) {
+    logger.dim(`  Run: nvm install ${OXLINT_RECOMMENDED_NODE_MAJOR}`);
+  } else {
+    logger.dim(
+      `  Install nvm (https://github.com/nvm-sh/nvm) and run: nvm install ${OXLINT_RECOMMENDED_NODE_MAJOR}`,
+    );
+  }
+
+  logger.break();
+  return null;
+};
+
 interface ResolvedScanOptions {
   lint: boolean;
   deadCode: boolean;
@@ -411,7 +477,10 @@ export const scan = async (
   let didLintFail = false;
   let didDeadCodeFail = false;
 
-  const lintPromise = options.lint
+  const resolvedNodeBinaryPath = await resolveOxlintNode(options.lint, options.scoreOnly);
+  if (options.lint && !resolvedNodeBinaryPath) didLintFail = true;
+
+  const lintPromise = resolvedNodeBinaryPath
     ? (async () => {
         const lintSpinner = options.scoreOnly ? null : spinner("Running lint checks...").start();
         try {
@@ -421,19 +490,25 @@ export const scan = async (
             projectInfo.framework,
             projectInfo.hasReactCompiler,
             jsxIncludePaths,
+            resolvedNodeBinaryPath,
           );
           lintSpinner?.succeed("Running lint checks.");
           return lintDiagnostics;
         } catch (error) {
           didLintFail = true;
-          lintSpinner?.fail("Lint checks failed (non-fatal, skipping).");
-          if (error instanceof Error) {
-            logger.error(error.message);
-            if (error.stack) {
-              logger.dim(error.stack);
-            }
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          const isNativeBindingError = errorMessage.includes("native binding");
+
+          if (isNativeBindingError) {
+            lintSpinner?.fail(
+              `Lint checks failed — oxlint native binding not found (Node ${process.version}).`,
+            );
+            logger.dim(
+              `  Upgrade to Node ${OXLINT_NODE_REQUIREMENT} or run: npx -p oxlint@latest react-doctor@latest`,
+            );
           } else {
-            logger.error(String(error));
+            lintSpinner?.fail("Lint checks failed (non-fatal, skipping).");
+            logger.error(errorMessage);
           }
           return [];
         }

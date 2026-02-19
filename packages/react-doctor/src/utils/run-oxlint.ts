@@ -283,9 +283,13 @@ const batchIncludePaths = (baseArgs: string[], includePaths: string[]): string[]
   return batches;
 };
 
-const spawnOxlint = (args: string[], rootDirectory: string): Promise<string> =>
+const spawnOxlint = (
+  args: string[],
+  rootDirectory: string,
+  nodeBinaryPath: string,
+): Promise<string> =>
   new Promise<string>((resolve, reject) => {
-    const child = spawn(process.execPath, args, {
+    const child = spawn(nodeBinaryPath, args, {
       cwd: rootDirectory,
     });
 
@@ -349,6 +353,7 @@ export const runOxlint = async (
   framework: Framework,
   hasReactCompiler: boolean,
   includePaths?: string[],
+  nodeBinaryPath: string = process.execPath,
 ): Promise<Diagnostic[]> => {
   if (includePaths !== undefined && includePaths.length === 0) {
     return [];
@@ -375,7 +380,7 @@ export const runOxlint = async (
     const allDiagnostics: Diagnostic[] = [];
     for (const batch of fileBatches) {
       const batchArgs = [...baseArgs, ...batch];
-      const stdout = await spawnOxlint(batchArgs, rootDirectory);
+      const stdout = await spawnOxlint(batchArgs, rootDirectory, nodeBinaryPath);
       allDiagnostics.push(...parseOxlintOutput(stdout));
     }
 

@@ -3,6 +3,7 @@ import path from "node:path";
 import { main } from "knip";
 import { createOptions } from "knip/session";
 import type { Diagnostic, KnipIssueRecords, KnipResults } from "../types.js";
+import { compileGlobPattern } from "./match-glob-pattern.js";
 
 const KNIP_CATEGORY_MAP: Record<string, string> = {
   files: "Dead Code",
@@ -135,7 +136,7 @@ const hasNodeModules = (directory: string): boolean => {
   return fs.existsSync(nodeModulesPath) && fs.statSync(nodeModulesPath).isDirectory();
 };
 
-export const runKnip = async (rootDirectory: string): Promise<Diagnostic[]> => {
+export const runKnip = async (rootDirectory: string, ignorePatterns?: string[]): Promise<Diagnostic[]> => {
   const monorepoRoot = findMonorepoRoot(rootDirectory);
   const hasInstalledDependencies =
     hasNodeModules(rootDirectory) || (monorepoRoot !== null && hasNodeModules(monorepoRoot));
@@ -184,6 +185,14 @@ export const runKnip = async (rootDirectory: string): Promise<Diagnostic[]> => {
 
   for (const issueType of recordTypes) {
     diagnostics.push(...collectIssueRecords(issues[issueType], issueType, rootDirectory));
+  }
+
+  if (ignorePatterns && ignorePatterns.length > 0) {
+    const compiled = ignorePatterns.map(compileGlobPattern);
+    return diagnostics.filter((diagnostic) => {
+      const normalized = diagnostic.filePath.replace(/\\/g, "/");
+      return !compiled.some((pattern) => pattern.test(normalized));
+    });
   }
 
   return diagnostics;

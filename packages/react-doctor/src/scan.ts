@@ -331,6 +331,7 @@ export const scan = async (
     includePaths: inputOptions.includePaths,
   };
 
+  const ignoreFilePatterns = userConfig?.ignore?.files ?? [];
   const includePaths = options.includePaths ?? [];
   const isDiffMode = includePaths.length > 0;
 
@@ -382,6 +383,7 @@ export const scan = async (
             projectInfo.framework,
             projectInfo.hasReactCompiler,
             jsxIncludePaths,
+            ignoreFilePatterns,
           );
           lintSpinner?.succeed("Running lint checks.");
           return lintDiagnostics;
@@ -407,7 +409,7 @@ export const scan = async (
             ? null
             : spinner("Detecting dead code...").start();
           try {
-            const knipDiagnostics = await runKnip(directory);
+            const knipDiagnostics = await runKnip(directory, ignoreFilePatterns);
             deadCodeSpinner?.succeed("Detecting dead code.");
             return knipDiagnostics;
           } catch (error) {

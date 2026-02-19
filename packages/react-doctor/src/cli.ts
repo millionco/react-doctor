@@ -219,8 +219,7 @@ const colorizeByScore = (text: string, score: number): string => {
   return highlighter.error(text);
 };
 
-const DEEPLINK_FIX_PROMPT =
-  "Run `npx -y react-doctor@latest .` to diagnose issues, then fix all reported issues one by one. After applying fixes, run it again to verify the results improved.";
+const DEEPLINK_FIX_PROMPT = "/{slash-command:ami:react-doctor}";
 
 const isAmiInstalled = (): boolean => {
   if (process.platform === "darwin") {

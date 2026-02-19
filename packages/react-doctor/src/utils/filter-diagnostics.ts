@@ -20,7 +20,7 @@ export const filterIgnoredDiagnostics = (
       return false;
     }
 
-    const normalizedPath = diagnostic.filePath.replace(/\\/g, "/");
+    const normalizedPath = diagnostic.filePath.replace(/\\/g, "/").replace(/^\.\//, "");
     if (ignoredFilePatterns.some((pattern) => pattern.test(normalizedPath))) {
       return false;
     }

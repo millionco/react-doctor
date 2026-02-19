@@ -35,6 +35,7 @@ interface CliFlags {
   prompt: boolean;
   yes: boolean;
   offline: boolean;
+  ami: boolean;
   project?: string;
   diff?: boolean | string;
 }
@@ -94,6 +95,7 @@ const program = new Command()
   .option("--project <name>", "select workspace project (comma-separated for multiple)")
   .option("--diff [base]", "scan only files changed vs base branch")
   .option("--offline", "skip telemetry (anonymous, not stored, only used to calculate score)")
+  .option("--no-ami", "skip Ami-related prompts")
   .option("--fix", "open Ami to auto-fix all issues")
   .option("--prompt", "copy latest scan output to clipboard")
   .action(async (directory: string, flags: CliFlags) => {
@@ -136,6 +138,7 @@ const program = new Command()
         process.env.AMI,
       ].some(Boolean);
       const shouldSkipPrompts = flags.yes || isAutomatedEnvironment || !process.stdin.isTTY;
+      const shouldSkipAmiPrompts = shouldSkipPrompts || !flags.ami;
       const projectDirectories = await selectProjects(
         resolvedDirectory,
         flags.project,
@@ -198,8 +201,8 @@ const program = new Command()
       if (shouldCopyPromptOutput) {
         copyPromptToClipboard(capturedScanOutput, !isScoreOnly);
       } else if (!isScoreOnly) {
-        await maybePromptSkillInstall(shouldSkipPrompts);
-        if (!shouldSkipPrompts && !flags.fix) {
+        await maybePromptSkillInstall(shouldSkipAmiPrompts);
+        if (!shouldSkipAmiPrompts && !flags.fix) {
           const estimatedScoreResult = flags.offline
             ? null
             : await fetchEstimatedScore(allDiagnostics);

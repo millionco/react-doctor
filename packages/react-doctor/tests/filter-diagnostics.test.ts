@@ -94,6 +94,23 @@ describe("filterIgnoredDiagnostics", () => {
     expect(filtered).toHaveLength(2);
   });
 
+  it("filters file paths with ./ prefix against patterns without it", () => {
+    const diagnostics = [
+      createDiagnostic({ filePath: "./resources/js/components/ui/Button.tsx" }),
+      createDiagnostic({ filePath: "./resources/js/marketing/Hero.tsx" }),
+      createDiagnostic({ filePath: "./resources/js/pages/Home.tsx" }),
+    ];
+    const config: ReactDoctorConfig = {
+      ignore: {
+        files: ["resources/js/components/ui/**", "resources/js/marketing/**"],
+      },
+    };
+
+    const filtered = filterIgnoredDiagnostics(diagnostics, config);
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0].filePath).toBe("./resources/js/pages/Home.tsx");
+  });
+
   it("handles knip rule identifiers", () => {
     const diagnostics = [
       createDiagnostic({ plugin: "knip", rule: "exports" }),

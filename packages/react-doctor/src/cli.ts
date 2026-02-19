@@ -8,7 +8,6 @@ import { scan } from "./scan.js";
 import type { DiffInfo, ScanOptions } from "./types.js";
 import { copyToClipboard } from "./utils/copy-to-clipboard.js";
 import { filterSourceFiles, getDiffInfo } from "./utils/get-diff-files.js";
-import { maybeInstallGlobally } from "./utils/global-install.js";
 import { handleError } from "./utils/handle-error.js";
 import { highlighter } from "./utils/highlighter.js";
 import { loadConfig } from "./utils/load-config.js";
@@ -389,7 +388,6 @@ program.addCommand(fixCommand);
 program.addCommand(installAmiCommand);
 
 const main = async () => {
-  maybeInstallGlobally();
   await program.parseAsync();
 };
 

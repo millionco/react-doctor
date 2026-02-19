@@ -3,10 +3,17 @@ import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { Command } from "commander";
-import { OPEN_BASE_URL, SCORE_GOOD_THRESHOLD, SCORE_OK_THRESHOLD } from "./constants.js";
+import { AMI_INSTALL_URL, AMI_RELEASES_URL, AMI_WEBSITE_URL, OPEN_BASE_URL } from "./constants.js";
 import { scan } from "./scan.js";
-import type { Diagnostic, DiffInfo, EstimatedScoreResult, ScanOptions } from "./types.js";
+import type {
+  Diagnostic,
+  DiffInfo,
+  EstimatedScoreResult,
+  ReactDoctorConfig,
+  ScanOptions,
+} from "./types.js";
 import { fetchEstimatedScore } from "./utils/calculate-score.js";
+import { colorizeByScore } from "./utils/colorize-by-score.js";
 import { createFramedLine, renderFramedBoxString } from "./utils/framed-box.js";
 import { filterSourceFiles, getDiffInfo } from "./utils/get-diff-files.js";
 import { handleError } from "./utils/handle-error.js";
@@ -42,6 +49,36 @@ const exitWithFixHint = () => {
 
 process.on("SIGINT", exitWithFixHint);
 process.on("SIGTERM", exitWithFixHint);
+
+const AUTOMATED_ENVIRONMENT_VARIABLES = [
+  "CI",
+  "CLAUDECODE",
+  "CURSOR_AGENT",
+  "CODEX_CI",
+  "OPENCODE",
+  "AMP_HOME",
+  "AMI",
+];
+
+const isAutomatedEnvironment = (): boolean =>
+  AUTOMATED_ENVIRONMENT_VARIABLES.some((envVariable) => Boolean(process.env[envVariable]));
+
+const resolveCliScanOptions = (
+  flags: CliFlags,
+  userConfig: ReactDoctorConfig | null,
+  programInstance: Command,
+): ScanOptions => {
+  const isCliOverride = (optionName: string) =>
+    programInstance.getOptionValueSource(optionName) === "cli";
+
+  return {
+    lint: isCliOverride("lint") ? flags.lint : (userConfig?.lint ?? flags.lint),
+    deadCode: isCliOverride("deadCode") ? flags.deadCode : (userConfig?.deadCode ?? flags.deadCode),
+    verbose: isCliOverride("verbose") ? Boolean(flags.verbose) : (userConfig?.verbose ?? false),
+    scoreOnly: flags.score,
+    offline: flags.offline,
+  };
+};
 
 const resolveDiffMode = async (
   diffInfo: DiffInfo | null,
@@ -105,29 +142,8 @@ const program = new Command()
         logger.break();
       }
 
-      const isCliOverride = (optionName: string) =>
-        program.getOptionValueSource(optionName) === "cli";
-
-      const scanOptions: ScanOptions = {
-        lint: isCliOverride("lint") ? flags.lint : (userConfig?.lint ?? flags.lint),
-        deadCode: isCliOverride("deadCode")
-          ? flags.deadCode
-          : (userConfig?.deadCode ?? flags.deadCode),
-        verbose: isCliOverride("verbose") ? Boolean(flags.verbose) : (userConfig?.verbose ?? false),
-        scoreOnly: isScoreOnly,
-        offline: flags.offline,
-      };
-
-      const isAutomatedEnvironment = [
-        process.env.CI,
-        process.env.CLAUDECODE,
-        process.env.CURSOR_AGENT,
-        process.env.CODEX_CI,
-        process.env.OPENCODE,
-        process.env.AMP_HOME,
-        process.env.AMI,
-      ].some(Boolean);
-      const shouldSkipPrompts = flags.yes || isAutomatedEnvironment || !process.stdin.isTTY;
+      const scanOptions = resolveCliScanOptions(flags, userConfig, program);
+      const shouldSkipPrompts = flags.yes || isAutomatedEnvironment() || !process.stdin.isTTY;
       const shouldSkipAmiPrompts = shouldSkipPrompts || !flags.ami;
       const projectDirectories = await selectProjects(
         resolvedDirectory,
@@ -135,7 +151,8 @@ const program = new Command()
         shouldSkipPrompts,
       );
 
-      const effectiveDiff = isCliOverride("diff") ? flags.diff : userConfig?.diff;
+      const isDiffCliOverride = program.getOptionValueSource("diff") === "cli";
+      const effectiveDiff = isDiffCliOverride ? flags.diff : userConfig?.diff;
       const explicitBaseBranch = typeof effectiveDiff === "string" ? effectiveDiff : undefined;
       const diffInfo = getDiffInfo(resolvedDirectory, explicitBaseBranch);
       const isDiffMode = await resolveDiffMode(
@@ -208,16 +225,6 @@ ${highlighter.dim("Learn more:")}
   ${highlighter.info("https://github.com/millionco/react-doctor")}
 `,
   );
-
-const AMI_WEBSITE_URL = "https://ami.dev";
-const AMI_INSTALL_URL = `${AMI_WEBSITE_URL}/install.sh`;
-const AMI_RELEASES_URL = "https://github.com/millionco/ami-releases/releases";
-
-const colorizeByScore = (text: string, score: number): string => {
-  if (score >= SCORE_GOOD_THRESHOLD) return highlighter.success(text);
-  if (score >= SCORE_OK_THRESHOLD) return highlighter.warn(text);
-  return highlighter.error(text);
-};
 
 const DEEPLINK_FIX_PROMPT = "/{slash-command:ami:react-doctor}";
 

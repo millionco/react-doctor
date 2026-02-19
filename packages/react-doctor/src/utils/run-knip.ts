@@ -2,7 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { main } from "knip";
 import { createOptions } from "knip/session";
+import { MAX_KNIP_RETRIES } from "../constants.js";
 import type { Diagnostic, KnipIssueRecords, KnipResults } from "../types.js";
+import { findMonorepoRoot } from "./find-monorepo-root.js";
 
 const KNIP_CATEGORY_MAP: Record<string, string> = {
   files: "Dead Code",
@@ -72,34 +74,12 @@ const silenced = async <T>(fn: () => Promise<T>): Promise<T> => {
   }
 };
 
-const findMonorepoRoot = (directory: string): string | null => {
-  let currentDirectory = path.dirname(directory);
-
-  while (currentDirectory !== path.dirname(currentDirectory)) {
-    const hasWorkspaceConfig =
-      fs.existsSync(path.join(currentDirectory, "pnpm-workspace.yaml")) ||
-      (() => {
-        const packageJsonPath = path.join(currentDirectory, "package.json");
-        if (!fs.existsSync(packageJsonPath)) return false;
-        const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
-        return Array.isArray(packageJson.workspaces) || packageJson.workspaces?.packages;
-      })();
-
-    if (hasWorkspaceConfig) return currentDirectory;
-    currentDirectory = path.dirname(currentDirectory);
-  }
-
-  return null;
-};
-
 const CONFIG_LOADING_ERROR_PATTERN = /Error loading .*\/([a-z-]+)\.config\./;
 
 const extractFailedPluginName = (error: unknown): string | null => {
   const match = String(error).match(CONFIG_LOADING_ERROR_PATTERN);
   return match?.[1] ?? null;
 };
-
-const MAX_KNIP_RETRIES = 5;
 
 const runKnipWithOptions = async (
   knipCwd: string,

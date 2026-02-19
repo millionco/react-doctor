@@ -1,17 +1,16 @@
 import {
+  ERROR_ESTIMATED_FIX_RATE,
+  ERROR_RULE_PENALTY,
   ESTIMATE_SCORE_API_URL,
   PERFECT_SCORE,
   SCORE_API_URL,
   SCORE_GOOD_THRESHOLD,
   SCORE_OK_THRESHOLD,
+  WARNING_ESTIMATED_FIX_RATE,
+  WARNING_RULE_PENALTY,
 } from "../constants.js";
 import type { Diagnostic, EstimatedScoreResult, ScoreResult } from "../types.js";
 import { proxyFetch } from "./proxy-fetch.js";
-
-const ERROR_RULE_PENALTY = 1.5;
-const WARNING_RULE_PENALTY = 0.75;
-const ERROR_ESTIMATED_FIX_RATE = 0.85;
-const WARNING_ESTIMATED_FIX_RATE = 0.8;
 
 const getScoreLabel = (score: number): string => {
   if (score >= SCORE_GOOD_THRESHOLD) return "Great";

@@ -1,11 +1,9 @@
 import path from "node:path";
 import { performance } from "node:perf_hooks";
-import { JSX_FILE_PATTERN } from "./constants.js";
 import type { Diagnostic, DiffInfo, ProjectInfo, ReactDoctorConfig, ScoreResult } from "./types.js";
 import { calculateScore } from "./utils/calculate-score.js";
-import { checkReducedMotion } from "./utils/check-reduced-motion.js";
+import { combineDiagnostics, computeJsxIncludePaths } from "./utils/combine-diagnostics.js";
 import { discoverProject } from "./utils/discover-project.js";
-import { filterIgnoredDiagnostics } from "./utils/filter-diagnostics.js";
 import { loadConfig } from "./utils/load-config.js";
 import { runKnip } from "./utils/run-knip.js";
 import { runOxlint } from "./utils/run-oxlint.js";
@@ -45,9 +43,9 @@ export const diagnose = async (
     throw new Error("No React dependency found in package.json");
   }
 
-  const jsxIncludePaths = isDiffMode
-    ? includePaths.filter((filePath) => JSX_FILE_PATTERN.test(filePath))
-    : undefined;
+  const jsxIncludePaths = computeJsxIncludePaths(includePaths);
+
+  const emptyDiagnostics: Diagnostic[] = [];
 
   const lintPromise = effectiveLint
     ? runOxlint(
@@ -58,27 +56,26 @@ export const diagnose = async (
         jsxIncludePaths,
       ).catch((error: unknown) => {
         console.error("Lint failed:", error);
-        return [] as Diagnostic[];
+        return emptyDiagnostics;
       })
-    : Promise.resolve([] as Diagnostic[]);
+    : Promise.resolve(emptyDiagnostics);
 
   const deadCodePromise =
     effectiveDeadCode && !isDiffMode
       ? runKnip(resolvedDirectory).catch((error: unknown) => {
           console.error("Dead code analysis failed:", error);
-          return [] as Diagnostic[];
+          return emptyDiagnostics;
         })
-      : Promise.resolve([] as Diagnostic[]);
+      : Promise.resolve(emptyDiagnostics);
 
   const [lintDiagnostics, deadCodeDiagnostics] = await Promise.all([lintPromise, deadCodePromise]);
-  const allDiagnostics = [
-    ...lintDiagnostics,
-    ...deadCodeDiagnostics,
-    ...(isDiffMode ? [] : checkReducedMotion(resolvedDirectory)),
-  ];
-  const diagnostics = userConfig
-    ? filterIgnoredDiagnostics(allDiagnostics, userConfig)
-    : allDiagnostics;
+  const diagnostics = combineDiagnostics(
+    lintDiagnostics,
+    deadCodeDiagnostics,
+    resolvedDirectory,
+    isDiffMode,
+    userConfig,
+  );
 
   const elapsedMilliseconds = performance.now() - startTime;
   const score = await calculateScore(diagnostics);

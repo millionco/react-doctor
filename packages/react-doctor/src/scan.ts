@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
 import {
-  JSX_FILE_PATTERN,
   MILLISECONDS_PER_SECOND,
   OFFLINE_FLAG_MESSAGE,
   OFFLINE_MESSAGE,
@@ -14,11 +13,18 @@ import {
   SCORE_OK_THRESHOLD,
   SHARE_BASE_URL,
 } from "./constants.js";
-import type { Diagnostic, ScanOptions, ScanResult, ScoreResult } from "./types.js";
+import type {
+  Diagnostic,
+  ProjectInfo,
+  ReactDoctorConfig,
+  ScanOptions,
+  ScanResult,
+  ScoreResult,
+} from "./types.js";
 import { calculateScore } from "./utils/calculate-score.js";
-import { checkReducedMotion } from "./utils/check-reduced-motion.js";
+import { colorizeByScore } from "./utils/colorize-by-score.js";
+import { combineDiagnostics, computeJsxIncludePaths } from "./utils/combine-diagnostics.js";
 import { discoverProject, formatFrameworkName } from "./utils/discover-project.js";
-import { filterIgnoredDiagnostics } from "./utils/filter-diagnostics.js";
 import { type FramedLine, createFramedLine, printFramedBox } from "./utils/framed-box.js";
 import { groupBy } from "./utils/group-by.js";
 import { highlighter } from "./utils/highlighter.js";
@@ -150,12 +156,6 @@ const writeDiagnosticsDirectory = (diagnostics: Diagnostic[]): string => {
   return outputDirectory;
 };
 
-const colorizeByScore = (text: string, score: number): string => {
-  if (score >= SCORE_GOOD_THRESHOLD) return highlighter.success(text);
-  if (score >= SCORE_OK_THRESHOLD) return highlighter.warn(text);
-  return highlighter.error(text);
-};
-
 const buildScoreBarSegments = (score: number): ScoreBarSegments => {
   const filledCount = Math.round((score / PERFECT_SCORE) * SCORE_BAR_WIDTH_CHARS);
   const emptyCount = SCORE_BAR_WIDTH_CHARS - filledCount;
@@ -223,6 +223,87 @@ const buildShareUrl = (
   return `${SHARE_BASE_URL}?${params.toString()}`;
 };
 
+const buildBrandingLines = (
+  scoreResult: ScoreResult | null,
+  noScoreMessage: string,
+): FramedLine[] => {
+  const lines: FramedLine[] = [];
+
+  if (scoreResult) {
+    const [eyes, mouth] = getDoctorFace(scoreResult.score);
+    const scoreColorizer = (text: string): string => colorizeByScore(text, scoreResult.score);
+
+    lines.push(createFramedLine("┌─────┐", scoreColorizer("┌─────┐")));
+    lines.push(createFramedLine(`│ ${eyes} │`, scoreColorizer(`│ ${eyes} │`)));
+    lines.push(createFramedLine(`│ ${mouth} │`, scoreColorizer(`│ ${mouth} │`)));
+    lines.push(createFramedLine("└─────┘", scoreColorizer("└─────┘")));
+    lines.push(
+      createFramedLine(
+        "React Doctor (www.react.doctor)",
+        `React Doctor ${highlighter.dim("(www.react.doctor)")}`,
+      ),
+    );
+    lines.push(createFramedLine(""));
+
+    const scoreLinePlainText = `${scoreResult.score} / ${PERFECT_SCORE}  ${scoreResult.label}`;
+    const scoreLineRenderedText = `${colorizeByScore(String(scoreResult.score), scoreResult.score)} / ${PERFECT_SCORE}  ${colorizeByScore(scoreResult.label, scoreResult.score)}`;
+    lines.push(createFramedLine(scoreLinePlainText, scoreLineRenderedText));
+    lines.push(createFramedLine(""));
+    lines.push(
+      createFramedLine(buildPlainScoreBar(scoreResult.score), buildScoreBar(scoreResult.score)),
+    );
+    lines.push(createFramedLine(""));
+  } else {
+    lines.push(
+      createFramedLine(
+        "React Doctor (www.react.doctor)",
+        `React Doctor ${highlighter.dim("(www.react.doctor)")}`,
+      ),
+    );
+    lines.push(createFramedLine(""));
+    lines.push(createFramedLine(noScoreMessage, highlighter.dim(noScoreMessage)));
+    lines.push(createFramedLine(""));
+  }
+
+  return lines;
+};
+
+const buildCountsSummaryLine = (
+  diagnostics: Diagnostic[],
+  totalSourceFileCount: number,
+  elapsedMilliseconds: number,
+): FramedLine => {
+  const errorCount = diagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
+  const warningCount = diagnostics.filter((diagnostic) => diagnostic.severity === "warning").length;
+  const affectedFileCount = collectAffectedFiles(diagnostics).size;
+  const elapsed = formatElapsedTime(elapsedMilliseconds);
+
+  const plainParts: string[] = [];
+  const renderedParts: string[] = [];
+
+  if (errorCount > 0) {
+    const errorText = `✗ ${errorCount} error${errorCount === 1 ? "" : "s"}`;
+    plainParts.push(errorText);
+    renderedParts.push(highlighter.error(errorText));
+  }
+  if (warningCount > 0) {
+    const warningText = `⚠ ${warningCount} warning${warningCount === 1 ? "" : "s"}`;
+    plainParts.push(warningText);
+    renderedParts.push(highlighter.warn(warningText));
+  }
+
+  const fileCountText =
+    totalSourceFileCount > 0
+      ? `across ${affectedFileCount}/${totalSourceFileCount} files`
+      : `across ${affectedFileCount} file${affectedFileCount === 1 ? "" : "s"}`;
+  const elapsedTimeText = `in ${elapsed}`;
+
+  plainParts.push(fileCountText, elapsedTimeText);
+  renderedParts.push(highlighter.dim(fileCountText), highlighter.dim(elapsedTimeText));
+
+  return createFramedLine(plainParts.join("  "), renderedParts.join("  "));
+};
+
 const printSummary = (
   diagnostics: Diagnostic[],
   elapsedMilliseconds: number,
@@ -231,74 +312,10 @@ const printSummary = (
   totalSourceFileCount: number,
   noScoreMessage: string,
 ): void => {
-  const errorCount = diagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
-  const warningCount = diagnostics.filter((diagnostic) => diagnostic.severity === "warning").length;
-  const affectedFileCount = collectAffectedFiles(diagnostics).size;
-  const elapsed = formatElapsedTime(elapsedMilliseconds);
-
-  const summaryLineParts: string[] = [];
-  const summaryLinePartsPlain: string[] = [];
-  if (errorCount > 0) {
-    const errorText = `✗ ${errorCount} error${errorCount === 1 ? "" : "s"}`;
-    summaryLinePartsPlain.push(errorText);
-    summaryLineParts.push(highlighter.error(errorText));
-  }
-  if (warningCount > 0) {
-    const warningText = `⚠ ${warningCount} warning${warningCount === 1 ? "" : "s"}`;
-    summaryLinePartsPlain.push(warningText);
-    summaryLineParts.push(highlighter.warn(warningText));
-  }
-  const fileCountText =
-    totalSourceFileCount > 0
-      ? `across ${affectedFileCount}/${totalSourceFileCount} files`
-      : `across ${affectedFileCount} file${affectedFileCount === 1 ? "" : "s"}`;
-  const elapsedTimeText = `in ${elapsed}`;
-
-  summaryLinePartsPlain.push(fileCountText);
-  summaryLinePartsPlain.push(elapsedTimeText);
-  summaryLineParts.push(highlighter.dim(fileCountText));
-  summaryLineParts.push(highlighter.dim(elapsedTimeText));
-
-  const summaryFramedLines: FramedLine[] = [];
-  if (scoreResult) {
-    const [eyes, mouth] = getDoctorFace(scoreResult.score);
-    const scoreColorizer = (text: string): string => colorizeByScore(text, scoreResult.score);
-
-    summaryFramedLines.push(createFramedLine("┌─────┐", scoreColorizer("┌─────┐")));
-    summaryFramedLines.push(createFramedLine(`│ ${eyes} │`, scoreColorizer(`│ ${eyes} │`)));
-    summaryFramedLines.push(createFramedLine(`│ ${mouth} │`, scoreColorizer(`│ ${mouth} │`)));
-    summaryFramedLines.push(createFramedLine("└─────┘", scoreColorizer("└─────┘")));
-    summaryFramedLines.push(
-      createFramedLine(
-        "React Doctor (www.react.doctor)",
-        `React Doctor ${highlighter.dim("(www.react.doctor)")}`,
-      ),
-    );
-    summaryFramedLines.push(createFramedLine(""));
-
-    const scoreLinePlainText = `${scoreResult.score} / ${PERFECT_SCORE}  ${scoreResult.label}`;
-    const scoreLineRenderedText = `${colorizeByScore(String(scoreResult.score), scoreResult.score)} / ${PERFECT_SCORE}  ${colorizeByScore(scoreResult.label, scoreResult.score)}`;
-    summaryFramedLines.push(createFramedLine(scoreLinePlainText, scoreLineRenderedText));
-    summaryFramedLines.push(createFramedLine(""));
-    summaryFramedLines.push(
-      createFramedLine(buildPlainScoreBar(scoreResult.score), buildScoreBar(scoreResult.score)),
-    );
-    summaryFramedLines.push(createFramedLine(""));
-  } else {
-    summaryFramedLines.push(
-      createFramedLine(
-        "React Doctor (www.react.doctor)",
-        `React Doctor ${highlighter.dim("(www.react.doctor)")}`,
-      ),
-    );
-    summaryFramedLines.push(createFramedLine(""));
-    summaryFramedLines.push(createFramedLine(noScoreMessage, highlighter.dim(noScoreMessage)));
-    summaryFramedLines.push(createFramedLine(""));
-  }
-
-  summaryFramedLines.push(
-    createFramedLine(summaryLinePartsPlain.join("  "), summaryLineParts.join("  ")),
-  );
+  const summaryFramedLines = [
+    ...buildBrandingLines(scoreResult, noScoreMessage),
+    buildCountsSummaryLine(diagnostics, totalSourceFileCount, elapsedMilliseconds),
+  ];
   printFramedBox(summaryFramedLines);
 
   try {
@@ -314,6 +331,62 @@ const printSummary = (
   logger.dim(`  Share your results: ${highlighter.info(shareUrl)}`);
 };
 
+interface ResolvedScanOptions {
+  lint: boolean;
+  deadCode: boolean;
+  verbose: boolean;
+  scoreOnly: boolean;
+  offline: boolean;
+  includePaths: string[];
+}
+
+const mergeScanOptions = (
+  inputOptions: ScanOptions,
+  userConfig: ReactDoctorConfig | null,
+): ResolvedScanOptions => ({
+  lint: inputOptions.lint ?? userConfig?.lint ?? true,
+  deadCode: inputOptions.deadCode ?? userConfig?.deadCode ?? true,
+  verbose: inputOptions.verbose ?? userConfig?.verbose ?? false,
+  scoreOnly: inputOptions.scoreOnly ?? false,
+  offline: inputOptions.offline ?? false,
+  includePaths: inputOptions.includePaths ?? [],
+});
+
+const printProjectDetection = (
+  projectInfo: ProjectInfo,
+  userConfig: ReactDoctorConfig | null,
+  isDiffMode: boolean,
+  includePaths: string[],
+): void => {
+  const frameworkLabel = formatFrameworkName(projectInfo.framework);
+  const languageLabel = projectInfo.hasTypeScript ? "TypeScript" : "JavaScript";
+
+  const completeStep = (message: string) => {
+    spinner(message).start().succeed(message);
+  };
+
+  completeStep(`Detecting framework. Found ${highlighter.info(frameworkLabel)}.`);
+  completeStep(
+    `Detecting React version. Found ${highlighter.info(`React ${projectInfo.reactVersion}`)}.`,
+  );
+  completeStep(`Detecting language. Found ${highlighter.info(languageLabel)}.`);
+  completeStep(
+    `Detecting React Compiler. ${projectInfo.hasReactCompiler ? highlighter.info("Found React Compiler.") : "Not found."}`,
+  );
+
+  if (isDiffMode) {
+    completeStep(`Scanning ${highlighter.info(`${includePaths.length}`)} changed source files.`);
+  } else {
+    completeStep(`Found ${highlighter.info(`${projectInfo.sourceFileCount}`)} source files.`);
+  }
+
+  if (userConfig) {
+    completeStep(`Loaded ${highlighter.info("react-doctor config")}.`);
+  }
+
+  logger.break();
+};
+
 export const scan = async (
   directory: string,
   inputOptions: ScanOptions = {},
@@ -321,17 +394,8 @@ export const scan = async (
   const startTime = performance.now();
   const projectInfo = discoverProject(directory);
   const userConfig = loadConfig(directory);
-
-  const options = {
-    lint: inputOptions.lint ?? userConfig?.lint ?? true,
-    deadCode: inputOptions.deadCode ?? userConfig?.deadCode ?? true,
-    verbose: inputOptions.verbose ?? userConfig?.verbose ?? false,
-    scoreOnly: inputOptions.scoreOnly ?? false,
-    offline: inputOptions.offline ?? false,
-    includePaths: inputOptions.includePaths,
-  };
-
-  const includePaths = options.includePaths ?? [];
+  const options = mergeScanOptions(inputOptions, userConfig);
+  const { includePaths } = options;
   const isDiffMode = includePaths.length > 0;
 
   if (!projectInfo.reactVersion) {
@@ -339,38 +403,10 @@ export const scan = async (
   }
 
   if (!options.scoreOnly) {
-    const frameworkLabel = formatFrameworkName(projectInfo.framework);
-    const languageLabel = projectInfo.hasTypeScript ? "TypeScript" : "JavaScript";
-
-    const completeStep = (message: string) => {
-      spinner(message).start().succeed(message);
-    };
-
-    completeStep(`Detecting framework. Found ${highlighter.info(frameworkLabel)}.`);
-    completeStep(
-      `Detecting React version. Found ${highlighter.info(`React ${projectInfo.reactVersion}`)}.`,
-    );
-    completeStep(`Detecting language. Found ${highlighter.info(languageLabel)}.`);
-    completeStep(
-      `Detecting React Compiler. ${projectInfo.hasReactCompiler ? highlighter.info("Found React Compiler.") : "Not found."}`,
-    );
-
-    if (isDiffMode) {
-      completeStep(`Scanning ${highlighter.info(`${includePaths.length}`)} changed source files.`);
-    } else {
-      completeStep(`Found ${highlighter.info(`${projectInfo.sourceFileCount}`)} source files.`);
-    }
-
-    if (userConfig) {
-      completeStep(`Loaded ${highlighter.info("react-doctor config")}.`);
-    }
-
-    logger.break();
+    printProjectDetection(projectInfo, userConfig, isDiffMode, includePaths);
   }
 
-  const jsxIncludePaths = isDiffMode
-    ? includePaths.filter((filePath) => JSX_FILE_PATTERN.test(filePath))
-    : undefined;
+  const jsxIncludePaths = computeJsxIncludePaths(includePaths);
 
   let didLintFail = false;
   let didDeadCodeFail = false;
@@ -424,14 +460,13 @@ export const scan = async (
       : Promise.resolve<Diagnostic[]>([]);
 
   const [lintDiagnostics, deadCodeDiagnostics] = await Promise.all([lintPromise, deadCodePromise]);
-  const allDiagnostics = [
-    ...lintDiagnostics,
-    ...deadCodeDiagnostics,
-    ...(isDiffMode ? [] : checkReducedMotion(directory)),
-  ];
-  const diagnostics = userConfig
-    ? filterIgnoredDiagnostics(allDiagnostics, userConfig)
-    : allDiagnostics;
+  const diagnostics = combineDiagnostics(
+    lintDiagnostics,
+    deadCodeDiagnostics,
+    directory,
+    isDiffMode,
+    userConfig,
+  );
 
   const elapsedMilliseconds = performance.now() - startTime;
 

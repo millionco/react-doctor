@@ -40,3 +40,19 @@ export const OFFLINE_MESSAGE =
 export const OFFLINE_FLAG_MESSAGE = "Score not calculated. Remove --offline to calculate score.";
 
 export const DEFAULT_BRANCH_CANDIDATES = ["main", "master"];
+
+export const ERROR_RULE_PENALTY = 1.5;
+
+export const WARNING_RULE_PENALTY = 0.75;
+
+export const ERROR_ESTIMATED_FIX_RATE = 0.85;
+
+export const WARNING_ESTIMATED_FIX_RATE = 0.8;
+
+export const MAX_KNIP_RETRIES = 5;
+
+export const AMI_WEBSITE_URL = "https://ami.dev";
+
+export const AMI_INSTALL_URL = `${AMI_WEBSITE_URL}/install.sh`;
+
+export const AMI_RELEASES_URL = "https://github.com/millionco/ami-releases/releases";

@@ -9,6 +9,7 @@ import type {
   ProjectInfo,
   WorkspacePackage,
 } from "../types.js";
+import { findMonorepoRoot, isMonorepoRoot } from "./find-monorepo-root.js";
 import { readPackageJson } from "./read-package-json.js";
 
 const REACT_COMPILER_PACKAGES = new Set([
@@ -170,25 +171,6 @@ const resolveWorkspaceDirectories = (rootDirectory: string, pattern: string): st
         fs.statSync(entryPath).isDirectory() &&
         fs.existsSync(path.join(entryPath, "package.json")),
     );
-};
-
-const isMonorepoRoot = (directory: string): boolean => {
-  if (fs.existsSync(path.join(directory, "pnpm-workspace.yaml"))) return true;
-  const packageJsonPath = path.join(directory, "package.json");
-  if (!fs.existsSync(packageJsonPath)) return false;
-  const packageJson = readPackageJson(packageJsonPath);
-  return Array.isArray(packageJson.workspaces) || Boolean(packageJson.workspaces?.packages);
-};
-
-const findMonorepoRoot = (startDirectory: string): string | null => {
-  let currentDirectory = path.dirname(startDirectory);
-
-  while (currentDirectory !== path.dirname(currentDirectory)) {
-    if (isMonorepoRoot(currentDirectory)) return currentDirectory;
-    currentDirectory = path.dirname(currentDirectory);
-  }
-
-  return null;
 };
 
 const findDependencyInfoFromMonorepoRoot = (directory: string): DependencyInfo => {

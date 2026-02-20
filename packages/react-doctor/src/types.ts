@@ -1,4 +1,4 @@
-export type Framework = "nextjs" | "vite" | "cra" | "remix" | "gatsby" | "unknown";
+export type Framework = "nextjs" | "vite" | "cra" | "remix" | "gatsby" | "expo" | "react-native" | "unknown";
 
 export interface ProjectInfo {
   rootDirectory: string;

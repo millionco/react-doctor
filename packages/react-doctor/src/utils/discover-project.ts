@@ -51,6 +51,8 @@ const FRAMEWORK_PACKAGES: Record<string, Framework> = {
   "react-scripts": "cra",
   "@remix-run/react": "remix",
   gatsby: "gatsby",
+  expo: "expo",
+  "react-native": "react-native",
 };
 
 const FRAMEWORK_DISPLAY_NAMES: Record<Framework, string> = {
@@ -59,6 +61,8 @@ const FRAMEWORK_DISPLAY_NAMES: Record<Framework, string> = {
   cra: "Create React App",
   remix: "Remix",
   gatsby: "Gatsby",
+  expo: "Expo",
+  "react-native": "React Native",
   unknown: "React",
 };
 

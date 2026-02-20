@@ -34,6 +34,7 @@ interface CliFlags {
   fix: boolean;
   yes: boolean;
   offline: boolean;
+  openReport?: boolean;
   ami: boolean;
   project?: string;
   diff?: boolean | string;
@@ -77,6 +78,7 @@ const resolveCliScanOptions = (
     verbose: isCliOverride("verbose") ? Boolean(flags.verbose) : (userConfig?.verbose ?? false),
     scoreOnly: flags.score,
     offline: flags.offline,
+    openReport: flags.openReport ?? false,
   };
 };
 
@@ -128,6 +130,7 @@ const program = new Command()
   .option("--project <name>", "select workspace project (comma-separated for multiple)")
   .option("--diff [base]", "scan only files changed vs base branch")
   .option("--offline", "skip telemetry (anonymous, not stored, only used to calculate score)")
+  .option("--open-report", "open the HTML report in the default browser after scan")
   .option("--no-ami", "skip Ami-related prompts")
   .option("--fix", "open Ami to auto-fix all issues")
   .action(async (directory: string, flags: CliFlags) => {

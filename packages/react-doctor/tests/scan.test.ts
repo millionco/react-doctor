@@ -81,4 +81,23 @@ describe("scan", () => {
       consoleSpy.mockRestore();
     }
   });
+
+  it("writes report.html and logs report path when diagnostics exist", async () => {
+    const logCalls: string[] = [];
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation((message: string) => {
+      logCalls.push(message);
+    });
+    try {
+      await scan(path.join(FIXTURES_DIRECTORY, "basic-react"), {
+        lint: true,
+        deadCode: false,
+      });
+      const hasReportWrittenMessage = logCalls.some((call) => call.includes("report written to"));
+      const hasReportOpenMessage = logCalls.some((call) => call.includes("report.html"));
+      expect(hasReportWrittenMessage).toBe(true);
+      expect(hasReportOpenMessage).toBe(true);
+    } finally {
+      consoleSpy.mockRestore();
+    }
+  });
 });

@@ -23,6 +23,8 @@ import type {
   ScanResult,
   ScoreResult,
 } from "./types.js";
+import { openFile } from "./utils/open-file.js";
+import { buildReportHtml } from "./utils/report-template.js";
 import { calculateScore } from "./utils/calculate-score.js";
 import { colorizeByScore } from "./utils/colorize-by-score.js";
 import { combineDiagnostics, computeJsxIncludePaths } from "./utils/combine-diagnostics.js";
@@ -144,7 +146,11 @@ const formatRuleSummary = (ruleKey: string, ruleDiagnostics: Diagnostic[]): stri
   return sections.join("\n") + "\n";
 };
 
-const writeDiagnosticsDirectory = (diagnostics: Diagnostic[]): string => {
+const writeReportDirectory = (
+  diagnostics: Diagnostic[],
+  scoreResult: ScoreResult | null,
+  projectName: string,
+): string => {
   const outputDirectory = join(tmpdir(), `react-doctor-${randomUUID()}`);
   mkdirSync(outputDirectory);
 
@@ -160,6 +166,14 @@ const writeDiagnosticsDirectory = (diagnostics: Diagnostic[]): string => {
   }
 
   writeFileSync(join(outputDirectory, "diagnostics.json"), JSON.stringify(diagnostics, null, 2));
+
+  const payload = {
+    diagnostics,
+    score: scoreResult?.score ?? null,
+    label: scoreResult?.label ?? null,
+    projectName,
+  };
+  writeFileSync(join(outputDirectory, "report.html"), buildReportHtml(payload));
 
   return outputDirectory;
 };
@@ -312,6 +326,8 @@ const buildCountsSummaryLine = (
   return createFramedLine(plainParts.join("  "), renderedParts.join("  "));
 };
 
+const REPORT_HTML_FILENAME = "report.html";
+
 const printSummary = (
   diagnostics: Diagnostic[],
   elapsedMilliseconds: number,
@@ -319,6 +335,7 @@ const printSummary = (
   projectName: string,
   totalSourceFileCount: number,
   noScoreMessage: string,
+  openReport: boolean,
 ): void => {
   const summaryFramedLines = [
     ...buildBrandingLines(scoreResult, noScoreMessage),
@@ -327,9 +344,18 @@ const printSummary = (
   printFramedBox(summaryFramedLines);
 
   try {
-    const diagnosticsDirectory = writeDiagnosticsDirectory(diagnostics);
+    const reportDirectory = writeReportDirectory(diagnostics, scoreResult, projectName);
     logger.break();
-    logger.dim(`  Full diagnostics written to ${diagnosticsDirectory}`);
+    logger.dim(`  Full diagnostics and report written to ${reportDirectory}`);
+    logger.dim(`  Open report.html to view the report.`);
+
+    if (openReport) {
+      try {
+        openFile(join(reportDirectory, REPORT_HTML_FILENAME));
+      } catch {
+        logger.dim(`  Could not open report in browser. Open report.html manually.`);
+      }
+    }
   } catch {
     logger.break();
   }
@@ -403,6 +429,7 @@ interface ResolvedScanOptions {
   verbose: boolean;
   scoreOnly: boolean;
   offline: boolean;
+  openReport: boolean;
   includePaths: string[];
 }
 
@@ -415,6 +442,7 @@ const mergeScanOptions = (
   verbose: inputOptions.verbose ?? userConfig?.verbose ?? false,
   scoreOnly: inputOptions.scoreOnly ?? false,
   offline: inputOptions.offline ?? false,
+  openReport: inputOptions.openReport ?? false,
   includePaths: inputOptions.includePaths ?? [],
 });
 
@@ -595,6 +623,7 @@ export const scan = async (
     projectInfo.projectName,
     displayedSourceFileCount,
     noScoreMessage,
+    options.openReport,
   );
 
   if (hasSkippedChecks) {

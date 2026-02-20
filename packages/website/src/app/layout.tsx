@@ -9,7 +9,7 @@ const ibmPlexMono = IBM_Plex_Mono({
   weight: ["400", "500"],
 });
 
-const SITE_URL = "https://www.react.doctor";
+const SITE_URL = "https://www.react-doctor.com";
 const TWITTER_IMAGE_PATH = "/react-doctor-og-banner.svg";
 
 export const metadata: Metadata = {

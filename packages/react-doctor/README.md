@@ -11,7 +11,7 @@ Let coding agents diagnose and fix your React code.
 
 One command scans your codebase for security, performance, correctness, and architecture issues, then outputs a **0–100 score** with actionable diagnostics.
 
-### [See it in action →](https://react.doctor)
+### [See it in action →](https://react-doctor.com)
 
 https://github.com/user-attachments/assets/07cc88d9-9589-44c3-aa73-5d603cb1c570
 
@@ -43,7 +43,7 @@ npx -y react-doctor@latest . --verbose
 Teach your coding agent all 47+ React best practice rules:
 
 ```bash
-curl -fsSL https://react.doctor/install-skill.sh | bash
+curl -fsSL https://react-doctor.com/install-skill.sh | bash
 ```
 
 Supports Cursor, Claude Code, Amp Code, Codex, Gemini CLI, OpenCode, Windsurf, and Antigravity.
@@ -146,22 +146,22 @@ interface Diagnostic {
 }
 ```
 
-## [Scores for popular open-source projects](https://react.doctor/leaderboard)
+## [Scores for popular open-source projects](https://react-doctor.com/leaderboard)
 
 | Project                                                | Score  | Share                                                                                   |
 | ------------------------------------------------------ | ------ | --------------------------------------------------------------------------------------- |
-| [tldraw](https://github.com/tldraw/tldraw)             | **84** | [view](https://www.react.doctor/share?p=tldraw&s=84&e=98&w=139&f=40)                    |
-| [excalidraw](https://github.com/excalidraw/excalidraw) | **84** | [view](https://www.react.doctor/share?p=%40excalidraw%2Fexcalidraw&s=84&e=2&w=196&f=80) |
-| [twenty](https://github.com/twentyhq/twenty)           | **78** | [view](https://www.react.doctor/share?p=twenty-front&s=78&e=99&w=293&f=268)             |
-| [plane](https://github.com/makeplane/plane)            | **78** | [view](https://www.react.doctor/share?p=web&s=78&e=7&w=525&f=292)                       |
-| [formbricks](https://github.com/formbricks/formbricks) | **75** | [view](https://www.react.doctor/share?p=%40formbricks%2Fweb&s=75&e=15&w=389&f=242)      |
-| [posthog](https://github.com/PostHog/posthog)          | **72** | [view](https://www.react.doctor/share?p=%40posthog%2Ffrontend&s=72&e=82&w=1177&f=585)   |
-| [supabase](https://github.com/supabase/supabase)       | **69** | [view](https://www.react.doctor/share?p=studio&s=69&e=74&w=1087&f=566)                  |
-| [onlook](https://github.com/onlook-dev/onlook)         | **69** | [view](https://www.react.doctor/share?p=%40onlook%2Fweb-client&s=69&e=64&w=418&f=178)   |
-| [payload](https://github.com/payloadcms/payload)       | **68** | [view](https://www.react.doctor/share?p=%40payloadcms%2Fui&s=68&e=139&w=408&f=298)      |
-| [sentry](https://github.com/getsentry/sentry)          | **64** | [view](https://www.react.doctor/share?p=sentry&s=64&e=94&w=1345&f=818)                  |
-| [cal.com](https://github.com/calcom/cal.com)           | **63** | [view](https://www.react.doctor/share?p=%40calcom%2Fweb&s=63&e=31&w=558&f=311)          |
-| [dub](https://github.com/dubinc/dub)                   | **62** | [view](https://www.react.doctor/share?p=web&s=62&e=52&w=966&f=457)                      |
+| [tldraw](https://github.com/tldraw/tldraw)             | **84** | [view](https://www.react-doctor.com/share?p=tldraw&s=84&e=98&w=139&f=40)                    |
+| [excalidraw](https://github.com/excalidraw/excalidraw) | **84** | [view](https://www.react-doctor.com/share?p=%40excalidraw%2Fexcalidraw&s=84&e=2&w=196&f=80) |
+| [twenty](https://github.com/twentyhq/twenty)           | **78** | [view](https://www.react-doctor.com/share?p=twenty-front&s=78&e=99&w=293&f=268)             |
+| [plane](https://github.com/makeplane/plane)            | **78** | [view](https://www.react-doctor.com/share?p=web&s=78&e=7&w=525&f=292)                       |
+| [formbricks](https://github.com/formbricks/formbricks) | **75** | [view](https://www.react-doctor.com/share?p=%40formbricks%2Fweb&s=75&e=15&w=389&f=242)      |
+| [posthog](https://github.com/PostHog/posthog)          | **72** | [view](https://www.react-doctor.com/share?p=%40posthog%2Ffrontend&s=72&e=82&w=1177&f=585)   |
+| [supabase](https://github.com/supabase/supabase)       | **69** | [view](https://www.react-doctor.com/share?p=studio&s=69&e=74&w=1087&f=566)                  |
+| [onlook](https://github.com/onlook-dev/onlook)         | **69** | [view](https://www.react-doctor.com/share?p=%40onlook%2Fweb-client&s=69&e=64&w=418&f=178)   |
+| [payload](https://github.com/payloadcms/payload)       | **68** | [view](https://www.react-doctor.com/share?p=%40payloadcms%2Fui&s=68&e=139&w=408&f=298)      |
+| [sentry](https://github.com/getsentry/sentry)          | **64** | [view](https://www.react-doctor.com/share?p=sentry&s=64&e=94&w=1345&f=818)                  |
+| [cal.com](https://github.com/calcom/cal.com)           | **63** | [view](https://www.react-doctor.com/share?p=%40calcom%2Fweb&s=63&e=31&w=558&f=311)          |
+| [dub](https://github.com/dubinc/dub)                   | **62** | [view](https://www.react-doctor.com/share?p=web&s=62&e=52&w=966&f=457)                      |
 
 ## Contributing
 

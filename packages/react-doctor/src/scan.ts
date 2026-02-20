@@ -208,7 +208,7 @@ const printBranding = (score?: number): void => {
     logger.log(colorize(`  │ ${mouth} │`));
     logger.log(colorize("  └─────┘"));
   }
-  logger.log(`  React Doctor ${highlighter.dim("(www.react.doctor)")}`);
+  logger.log(`  React Doctor ${highlighter.dim("(www.react-doctor.com)")}`);
   logger.break();
 };
 
@@ -247,8 +247,8 @@ const buildBrandingLines = (
     lines.push(createFramedLine("└─────┘", scoreColorizer("└─────┘")));
     lines.push(
       createFramedLine(
-        "React Doctor (www.react.doctor)",
-        `React Doctor ${highlighter.dim("(www.react.doctor)")}`,
+        "React Doctor (www.react-doctor.com)",
+        `React Doctor ${highlighter.dim("(www.react-doctor.com)")}`,
       ),
     );
     lines.push(createFramedLine(""));
@@ -264,8 +264,8 @@ const buildBrandingLines = (
   } else {
     lines.push(
       createFramedLine(
-        "React Doctor (www.react.doctor)",
-        `React Doctor ${highlighter.dim("(www.react.doctor)")}`,
+        "React Doctor (www.react-doctor.com)",
+        `React Doctor ${highlighter.dim("(www.react-doctor.com)")}`,
       ),
     );
     lines.push(createFramedLine(""));

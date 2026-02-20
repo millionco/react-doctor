@@ -18,13 +18,13 @@ export const SUMMARY_BOX_HORIZONTAL_PADDING_CHARS = 1;
 
 export const SUMMARY_BOX_OUTER_INDENT_CHARS = 2;
 
-export const SCORE_API_URL = "https://www.react.doctor/api/score";
+export const SCORE_API_URL = "https://www.react-doctor.com/api/score";
 
-export const ESTIMATE_SCORE_API_URL = "https://www.react.doctor/api/estimate-score";
+export const ESTIMATE_SCORE_API_URL = "https://www.react-doctor.com/api/estimate-score";
 
-export const SHARE_BASE_URL = "https://www.react.doctor/share";
+export const SHARE_BASE_URL = "https://www.react-doctor.com/share";
 
-export const OPEN_BASE_URL = "https://www.react.doctor/open";
+export const OPEN_BASE_URL = "https://www.react-doctor.com/open";
 
 export const FETCH_TIMEOUT_MS = 10_000;
 

@@ -3,8 +3,8 @@
 import { useState } from "react";
 
 const COPY_FEEDBACK_DURATION_MS = 2000;
-const BADGE_BASE_URL = "https://www.react.doctor/share/badge";
-const SHARE_BASE_URL = "https://www.react.doctor/share";
+const BADGE_BASE_URL = "https://www.react-doctor.com/share/badge";
+const SHARE_BASE_URL = "https://www.react-doctor.com/share";
 
 interface BadgeSnippetProps {
   searchParamsString: string;

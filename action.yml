@@ -14,6 +14,12 @@ inputs:
   project:
     description: "Workspace project(s) to scan (comma-separated)"
     required: false
+  diff:
+    description: "Base branch for diff mode (e.g. main). Only files changed vs this branch are scanned."
+    required: false
+  github-token:
+    description: "GitHub token for posting PR comments. When set on pull_request events, findings are posted as a PR comment."
+    required: false
   node-version:
     description: "Node.js version to use"
     default: "20"
@@ -35,11 +41,19 @@ runs:
         INPUT_DIRECTORY: ${{ inputs.directory }}
         INPUT_VERBOSE: ${{ inputs.verbose }}
         INPUT_PROJECT: ${{ inputs.project }}
+        INPUT_DIFF: ${{ inputs.diff }}
+        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
       run: |
         FLAGS=""
         if [ "$INPUT_VERBOSE" = "true" ]; then FLAGS="$FLAGS --verbose"; fi
         if [ -n "$INPUT_PROJECT" ]; then FLAGS="$FLAGS --project $INPUT_PROJECT"; fi
-        npx -y react-doctor@latest "$INPUT_DIRECTORY" $FLAGS
+        if [ -n "$INPUT_DIFF" ]; then FLAGS="$FLAGS --diff $INPUT_DIFF"; fi
+
+        if [ -n "$INPUT_GITHUB_TOKEN" ]; then
+          npx -y react-doctor@latest "$INPUT_DIRECTORY" $FLAGS | tee /tmp/react-doctor-output.txt
+        else
+          npx -y react-doctor@latest "$INPUT_DIRECTORY" $FLAGS
+        fi
 
     - id: score
       shell: bash
@@ -48,3 +62,35 @@ runs:
       run: |
         SCORE=$(npx -y react-doctor@latest "$INPUT_DIRECTORY" --score 2>/dev/null || echo "")
         echo "score=$SCORE" >> "$GITHUB_OUTPUT"
+
+    - if: ${{ inputs.github-token != '' && github.event_name == 'pull_request' }}
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const fs = require("fs");
+          const path = "/tmp/react-doctor-output.txt";
+          if (!fs.existsSync(path)) return;
+          const output = fs.readFileSync(path, "utf8").trim();
+          if (!output) return;
+
+          const marker = "<!-- react-doctor -->";
+          const body = `${marker}\n## 🩺 React Doctor\n\n\`\`\`\n${output}\n\`\`\``;
+
+          const { data: comments } = await github.rest.issues.listComments({
+            ...context.repo,
+            issue_number: context.issue.number,
+          });
+          const prev = comments.find((c) => c.body?.startsWith(marker));
+          if (prev) {
+            await github.rest.issues.deleteComment({
+              ...context.repo,
+              comment_id: prev.id,
+            });
+          }
+
+          await github.rest.issues.createComment({
+            ...context.repo,
+            issue_number: context.issue.number,
+            body,
+          });

@@ -22,7 +22,7 @@ React Doctor detects your framework (Next.js, Vite, Remix, etc.), React version,
 1. **Lint**: Checks 60+ rules across state & effects, performance, architecture, bundle size, security, correctness, accessibility, and framework-specific categories (Next.js, React Native). Rules are toggled automatically based on your project setup.
 2. **Dead code**: Detects unused files, exports, types, and duplicates.
 
-Diagnostics are filtered through your config, then scored by severity (errors weigh more than warnings) to produce a **0–100 health score** (75+ Great, 50–74 Needs work, <50 Critical).
+Diagnostics are filtered through your config, then scored by severity (errors weigh more than warnings) to produce a **0–100 health score** (75+ Great, 50–74 Needs work, <50 Critical). When issues are found, a **diagnostics.json** and an **HTML report** (report.html) are written to a temporary directory; use `--open-report` to open the report in your browser after the scan.
 
 ## Install
 
@@ -62,6 +62,8 @@ Options:
   -y, --yes         skip prompts, scan all workspace projects
   --project <name>  select workspace project (comma-separated for multiple)
   --diff [base]     scan only files changed vs base branch
+  --offline         skip telemetry (score not calculated)
+  --open-report     open the HTML report in the default browser after scan
   --no-ami          skip Ami-related prompts
   --fix             open Ami to auto-fix all issues
   -h, --help        display help for command

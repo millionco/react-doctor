@@ -4,6 +4,7 @@ import { readPackageJson } from "./read-package-json.js";
 
 export const isMonorepoRoot = (directory: string): boolean => {
   if (fs.existsSync(path.join(directory, "pnpm-workspace.yaml"))) return true;
+  if (fs.existsSync(path.join(directory, "nx.json"))) return true;
   const packageJsonPath = path.join(directory, "package.json");
   if (!fs.existsSync(packageJsonPath)) return false;
   const packageJson = readPackageJson(packageJsonPath);

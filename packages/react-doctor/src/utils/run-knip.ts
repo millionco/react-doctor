@@ -81,15 +81,20 @@ const extractFailedPluginName = (error: unknown): string | null => {
   return match?.[1] ?? null;
 };
 
+const resolveTsConfigFile = (directory: string): string | undefined =>
+  fs.existsSync(path.join(directory, "tsconfig.base.json")) ? "tsconfig.base.json" : undefined;
+
 const runKnipWithOptions = async (
   knipCwd: string,
   workspaceName?: string,
 ): Promise<KnipResults> => {
+  const tsConfigFile = resolveTsConfigFile(knipCwd);
   const options = await silenced(() =>
     createOptions({
       cwd: knipCwd,
       isShowProgress: false,
       ...(workspaceName ? { workspace: workspaceName } : {}),
+      ...(tsConfigFile ? { tsConfigFile } : {}),
     }),
   );
 

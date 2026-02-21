@@ -69,19 +69,7 @@ const FRAMEWORK_DISPLAY_NAMES: Record<Framework, string> = {
 export const formatFrameworkName = (framework: Framework): string =>
   FRAMEWORK_DISPLAY_NAMES[framework];
 
-const IGNORED_DIRECTORIES = new Set([
-  "node_modules",
-  ".git",
-  ".next",
-  ".turbo",
-  "dist",
-  "build",
-  "coverage",
-  ".cache",
-  ".output",
-  ".nuxt",
-  ".expo",
-]);
+const IGNORED_DIRECTORIES = new Set(["node_modules", "dist", "build", "coverage"]);
 
 const countSourceFilesViaFilesystem = (rootDirectory: string): number => {
   let count = 0;
@@ -93,10 +81,8 @@ const countSourceFilesViaFilesystem = (rootDirectory: string): number => {
 
     for (const entry of entries) {
       if (entry.isDirectory()) {
-        if (!entry.name.startsWith(".") || entry.name === ".git") {
-          if (!IGNORED_DIRECTORIES.has(entry.name)) {
-            stack.push(path.join(currentDirectory, entry.name));
-          }
+        if (!entry.name.startsWith(".") && !IGNORED_DIRECTORIES.has(entry.name)) {
+          stack.push(path.join(currentDirectory, entry.name));
         }
         continue;
       }

@@ -46,10 +46,7 @@ const VALID_FAIL_ON_LEVELS = new Set<FailOnLevel>(["error", "warning", "none"]);
 const isValidFailOnLevel = (level: string): level is FailOnLevel =>
   VALID_FAIL_ON_LEVELS.has(level as FailOnLevel);
 
-const shouldFailForDiagnostics = (
-  diagnostics: Diagnostic[],
-  failOnLevel: FailOnLevel,
-): boolean => {
+const shouldFailForDiagnostics = (diagnostics: Diagnostic[], failOnLevel: FailOnLevel): boolean => {
   if (failOnLevel === "none") return false;
   if (failOnLevel === "warning") return diagnostics.length > 0;
   return diagnostics.some((diagnostic) => diagnostic.severity === "error");

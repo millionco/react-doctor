@@ -1,6 +1,14 @@
 export type FailOnLevel = "error" | "warning" | "none";
 
-export type Framework = "nextjs" | "vite" | "cra" | "remix" | "gatsby" | "expo" | "react-native" | "unknown";
+export type Framework =
+  | "nextjs"
+  | "vite"
+  | "cra"
+  | "remix"
+  | "gatsby"
+  | "expo"
+  | "react-native"
+  | "unknown";
 
 export interface ProjectInfo {
   rootDirectory: string;

@@ -269,8 +269,7 @@ export const nextjsNoNativeScript: Rule = {
       if (node.name?.type !== "JSXIdentifier" || node.name.name !== "script") return;
 
       const typeAttribute = findJsxAttribute(node.attributes ?? [], "type");
-      const typeValue =
-        typeAttribute?.value?.type === "Literal" ? typeAttribute.value.value : null;
+      const typeValue = typeAttribute?.value?.type === "Literal" ? typeAttribute.value.value : null;
       if (typeof typeValue === "string" && !EXECUTABLE_SCRIPT_TYPES.has(typeValue)) return;
 
       context.report({

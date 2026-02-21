@@ -60,14 +60,14 @@ Supports Cursor, Claude Code, Amp Code, Codex, Gemini CLI, OpenCode, Windsurf, a
     github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-| Input          | Default | Description                                                             |
-| -------------- | ------- | ----------------------------------------------------------------------- |
-| `directory`    | `.`     | Project directory to scan                                               |
-| `verbose`      | `true`  | Show file details per rule                                              |
-| `project`      |         | Workspace project(s) to scan (comma-separated)                         |
-| `diff`         |         | Base branch for diff mode. Only changed files are scanned              |
-| `github-token` |         | When set on `pull_request` events, posts findings as a PR comment      |
-| `node-version` | `20`    | Node.js version to use                                                 |
+| Input          | Default | Description                                                       |
+| -------------- | ------- | ----------------------------------------------------------------- |
+| `directory`    | `.`     | Project directory to scan                                         |
+| `verbose`      | `true`  | Show file details per rule                                        |
+| `project`      |         | Workspace project(s) to scan (comma-separated)                    |
+| `diff`         |         | Base branch for diff mode. Only changed files are scanned         |
+| `github-token` |         | When set on `pull_request` events, posts findings as a PR comment |
+| `node-version` | `20`    | Node.js version to use                                            |
 
 The action outputs a `score` (0–100) you can use in subsequent steps.
 

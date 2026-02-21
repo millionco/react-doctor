@@ -87,6 +87,15 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/client-passive-event-listeners": "Performance",
 
   "react-doctor/async-parallel": "Performance",
+
+  "react-doctor/rn-no-raw-text": "React Native",
+  "react-doctor/rn-no-deprecated-modules": "React Native",
+  "react-doctor/rn-no-legacy-expo-packages": "React Native",
+  "react-doctor/rn-no-dimensions-get": "React Native",
+  "react-doctor/rn-no-inline-flatlist-renderitem": "React Native",
+  "react-doctor/rn-no-legacy-shadow-styles": "React Native",
+  "react-doctor/rn-prefer-reanimated": "React Native",
+  "react-doctor/rn-no-single-element-style-array": "React Native",
 };
 
 const RULE_HELP_MAP: Record<string, string> = {
@@ -208,6 +217,23 @@ const RULE_HELP_MAP: Record<string, string> = {
 
   "async-parallel":
     "Use `const [a, b] = await Promise.all([fetchA(), fetchB()])` to run independent operations concurrently",
+
+  "rn-no-raw-text":
+    "Wrap text in a `<Text>` component: `<Text>{value}</Text>` — raw strings outside `<Text>` crash on React Native",
+  "rn-no-deprecated-modules":
+    "Import from the community package instead — deprecated modules were removed from the react-native core",
+  "rn-no-legacy-expo-packages":
+    "Migrate to the recommended replacement package — legacy Expo packages are no longer maintained",
+  "rn-no-dimensions-get":
+    "Use `const { width, height } = useWindowDimensions()` — it updates reactively on rotation and resize",
+  "rn-no-inline-flatlist-renderitem":
+    "Extract renderItem to a named function or wrap in useCallback to avoid re-creating on every render",
+  "rn-no-legacy-shadow-styles":
+    "Use `boxShadow` for cross-platform shadows on the new architecture instead of platform-specific shadow properties",
+  "rn-prefer-reanimated":
+    "Use `import Animated from 'react-native-reanimated'` — animations run on the UI thread instead of the JS thread",
+  "rn-no-single-element-style-array":
+    "Use `style={value}` instead of `style={[value]}` — single-element arrays add unnecessary allocation",
 };
 
 const FILEPATH_WITH_LOCATION_PATTERN = /\S+\.\w+:\d+:\d+[\s\S]*$/;

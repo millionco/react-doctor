@@ -254,6 +254,19 @@ const hasReactDependency = (packageJson: PackageJson): boolean => {
   );
 };
 
+export const discoverRootReactPackage = (rootDirectory: string): WorkspacePackage | null => {
+  const packageJsonPath = path.join(rootDirectory, "package.json");
+  if (!fs.existsSync(packageJsonPath)) return null;
+
+  const packageJson = readPackageJson(packageJsonPath);
+  if (!hasReactDependency(packageJson)) return null;
+
+  return {
+    name: packageJson.name ?? path.basename(rootDirectory),
+    directory: rootDirectory,
+  };
+};
+
 export const discoverReactSubprojects = (rootDirectory: string): WorkspacePackage[] => {
   if (!fs.existsSync(rootDirectory) || !fs.statSync(rootDirectory).isDirectory()) return [];
 

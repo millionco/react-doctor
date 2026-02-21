@@ -301,12 +301,16 @@ const markAnimationCompleted = () => {
 };
 
 const Terminal = () => {
-  const [state, setState] = useState<AnimationState>(
-    didAnimationComplete() ? COMPLETED_STATE : INITIAL_STATE,
-  );
+  // #MARK: Before this fix, we read localStorage during render and could start from COMPLETED_STATE on the client.
+  // #MARK: That produced different first HTML on server vs client and triggered hydration mismatch.
+  const [state, setState] = useState<AnimationState>(INITIAL_STATE);
 
   useEffect(() => {
-    if (didAnimationComplete()) return;
+    // #MARK: Read persisted completion only after mount so the first client render matches SSR output.
+    if (didAnimationComplete()) {
+      setState(COMPLETED_STATE);
+      return;
+    }
 
     let cancelled = false;
 

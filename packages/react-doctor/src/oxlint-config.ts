@@ -1,7 +1,69 @@
 import { createRequire } from "node:module";
-import type { Framework } from "./types.js";
+import type { AccessibilityPreset, Framework } from "./types.js";
 
 const esmRequire = createRequire(import.meta.url);
+
+// Minimal preset: The original curated set of high-impact rules
+const A11Y_RULES_MINIMAL: Record<string, string> = {
+  "jsx-a11y/alt-text": "error",
+  "jsx-a11y/anchor-is-valid": "warn",
+  "jsx-a11y/click-events-have-key-events": "warn",
+  "jsx-a11y/no-static-element-interactions": "warn",
+  "jsx-a11y/no-noninteractive-element-interactions": "warn",
+  "jsx-a11y/role-has-required-aria-props": "error",
+  "jsx-a11y/no-autofocus": "warn",
+  "jsx-a11y/heading-has-content": "warn",
+  "jsx-a11y/html-has-lang": "warn",
+  "jsx-a11y/no-redundant-roles": "warn",
+  "jsx-a11y/scope": "warn",
+  "jsx-a11y/tabindex-no-positive": "warn",
+  "jsx-a11y/label-has-associated-control": "warn",
+  "jsx-a11y/no-distracting-elements": "error",
+  "jsx-a11y/iframe-has-title": "warn",
+};
+
+// Recommended preset: All jsx-a11y recommended rules
+const A11Y_RULES_RECOMMENDED: Record<string, string> = {
+  ...A11Y_RULES_MINIMAL,
+  "jsx-a11y/anchor-has-content": "warn",
+  "jsx-a11y/aria-activedescendant-has-tabindex": "warn",
+  "jsx-a11y/aria-props": "warn",
+  "jsx-a11y/aria-proptypes": "warn",
+  "jsx-a11y/aria-role": "warn",
+  "jsx-a11y/aria-unsupported-elements": "warn",
+  "jsx-a11y/autocomplete-valid": "warn",
+  "jsx-a11y/img-redundant-alt": "warn",
+  "jsx-a11y/interactive-supports-focus": "warn",
+  "jsx-a11y/media-has-caption": "warn",
+  "jsx-a11y/mouse-events-have-key-events": "warn",
+  "jsx-a11y/no-access-key": "warn",
+  "jsx-a11y/no-interactive-element-to-noninteractive-role": "warn",
+  "jsx-a11y/no-noninteractive-element-to-interactive-role": "warn",
+  "jsx-a11y/no-noninteractive-tabindex": "warn",
+  "jsx-a11y/role-supports-aria-props": "warn",
+};
+
+// Strict preset: All recommended rules plus strict-only rules, with errors instead of warnings
+const A11Y_RULES_STRICT: Record<string, string> = {
+  ...Object.fromEntries(Object.entries(A11Y_RULES_RECOMMENDED).map(([rule]) => [rule, "error"])),
+  "jsx-a11y/anchor-ambiguous-text": "error",
+  "jsx-a11y/control-has-associated-label": "error",
+};
+
+const getAccessibilityRules = (preset: AccessibilityPreset | false): Record<string, string> => {
+  switch (preset) {
+    case false:
+      return {};
+    case "minimal":
+      return A11Y_RULES_MINIMAL;
+    case "recommended":
+      return A11Y_RULES_RECOMMENDED;
+    case "strict":
+      return A11Y_RULES_STRICT;
+    default:
+      return A11Y_RULES_MINIMAL;
+  }
+};
 
 const NEXTJS_RULES: Record<string, string> = {
   "react-doctor/nextjs-no-img-element": "warn",
@@ -56,12 +118,14 @@ interface OxlintConfigOptions {
   pluginPath: string;
   framework: Framework;
   hasReactCompiler: boolean;
+  accessibilityPreset: AccessibilityPreset | false;
 }
 
 export const createOxlintConfig = ({
   pluginPath,
   framework,
   hasReactCompiler,
+  accessibilityPreset,
 }: OxlintConfigOptions) => ({
   categories: {
     correctness: "off",
@@ -72,7 +136,11 @@ export const createOxlintConfig = ({
     style: "off",
     nursery: "off",
   },
-  plugins: ["react", "jsx-a11y", ...(hasReactCompiler ? [] : ["react-perf"])],
+  plugins: [
+    "react",
+    ...(accessibilityPreset !== false ? ["jsx-a11y"] : []),
+    ...(hasReactCompiler ? [] : ["react-perf"]),
+  ],
   jsPlugins: [
     ...(hasReactCompiler
       ? [{ name: "react-hooks-js", specifier: esmRequire.resolve("eslint-plugin-react-hooks") }]
@@ -93,21 +161,7 @@ export const createOxlintConfig = ({
     "react/require-render-return": "error",
     "react/no-unknown-property": "warn",
 
-    "jsx-a11y/alt-text": "error",
-    "jsx-a11y/anchor-is-valid": "warn",
-    "jsx-a11y/click-events-have-key-events": "warn",
-    "jsx-a11y/no-static-element-interactions": "warn",
-    "jsx-a11y/no-noninteractive-element-interactions": "warn",
-    "jsx-a11y/role-has-required-aria-props": "error",
-    "jsx-a11y/no-autofocus": "warn",
-    "jsx-a11y/heading-has-content": "warn",
-    "jsx-a11y/html-has-lang": "warn",
-    "jsx-a11y/no-redundant-roles": "warn",
-    "jsx-a11y/scope": "warn",
-    "jsx-a11y/tabindex-no-positive": "warn",
-    "jsx-a11y/label-has-associated-control": "warn",
-    "jsx-a11y/no-distracting-elements": "error",
-    "jsx-a11y/iframe-has-title": "warn",
+    ...getAccessibilityRules(accessibilityPreset),
 
     ...(hasReactCompiler ? REACT_COMPILER_RULES : {}),
 

@@ -81,8 +81,10 @@ const extractFailedPluginName = (error: unknown): string | null => {
   return match?.[1] ?? null;
 };
 
+const TSCONFIG_FILENAMES = ["tsconfig.base.json", "tsconfig.json"];
+
 const resolveTsConfigFile = (directory: string): string | undefined =>
-  fs.existsSync(path.join(directory, "tsconfig.base.json")) ? "tsconfig.base.json" : undefined;
+  TSCONFIG_FILENAMES.find((filename) => fs.existsSync(path.join(directory, filename)));
 
 const runKnipWithOptions = async (
   knipCwd: string,

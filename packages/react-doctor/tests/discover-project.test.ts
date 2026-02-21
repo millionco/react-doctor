@@ -1,7 +1,10 @@
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import {
   discoverProject,
+  discoverReactSubprojects,
   formatFrameworkName,
   listWorkspacePackages,
 } from "../src/utils/discover-project.js";
@@ -43,6 +46,69 @@ describe("listWorkspacePackages", () => {
     expect(packageNames).toContain("my-app-client");
     expect(packageNames).toContain("ui");
     expect(packages).toHaveLength(2);
+  });
+});
+
+const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-discover-test-"));
+
+afterAll(() => {
+  fs.rmSync(tempDirectory, { recursive: true, force: true });
+});
+
+describe("discoverReactSubprojects", () => {
+  it("includes root directory when it has a react dependency", () => {
+    const rootDirectory = path.join(tempDirectory, "root-with-react");
+    fs.mkdirSync(rootDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({ name: "my-app", dependencies: { react: "^19.0.0" } }),
+    );
+
+    const packages = discoverReactSubprojects(rootDirectory);
+    expect(packages).toContainEqual({ name: "my-app", directory: rootDirectory });
+  });
+
+  it("includes both root and subdirectory when both have react", () => {
+    const rootDirectory = path.join(tempDirectory, "root-and-sub");
+    const subdirectory = path.join(rootDirectory, "extension");
+    fs.mkdirSync(subdirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({ name: "my-app", dependencies: { react: "^19.0.0" } }),
+    );
+    fs.writeFileSync(
+      path.join(subdirectory, "package.json"),
+      JSON.stringify({ name: "my-extension", dependencies: { react: "^18.0.0" } }),
+    );
+
+    const packages = discoverReactSubprojects(rootDirectory);
+    expect(packages).toHaveLength(2);
+    expect(packages[0]).toEqual({ name: "my-app", directory: rootDirectory });
+    expect(packages[1]).toEqual({ name: "my-extension", directory: subdirectory });
+  });
+
+  it("does not match packages with only @types/react", () => {
+    const rootDirectory = path.join(tempDirectory, "types-only");
+    fs.mkdirSync(rootDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({ name: "types-only", devDependencies: { "@types/react": "^18.0.0" } }),
+    );
+
+    const packages = discoverReactSubprojects(rootDirectory);
+    expect(packages).toHaveLength(0);
+  });
+
+  it("matches packages with react-native dependency", () => {
+    const rootDirectory = path.join(tempDirectory, "rn-app");
+    fs.mkdirSync(rootDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({ name: "rn-app", dependencies: { "react-native": "^0.74.0" } }),
+    );
+
+    const packages = discoverReactSubprojects(rootDirectory);
+    expect(packages).toHaveLength(1);
   });
 });
 

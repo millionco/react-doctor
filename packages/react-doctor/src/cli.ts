@@ -85,8 +85,8 @@ const resolveCliScanOptions = (
     programInstance.getOptionValueSource(optionName) === "cli";
 
   return {
-    lint: isCliOverride("lint") ? flags.lint : (userConfig?.lint ?? flags.lint),
-    deadCode: isCliOverride("deadCode") ? flags.deadCode : (userConfig?.deadCode ?? flags.deadCode),
+    lint: isCliOverride("lint") ? flags.lint : (userConfig?.lint ?? true),
+    deadCode: isCliOverride("deadCode") ? flags.deadCode : (userConfig?.deadCode ?? true),
     verbose: isCliOverride("verbose") ? Boolean(flags.verbose) : (userConfig?.verbose ?? false),
     scoreOnly: flags.score,
     offline: flags.offline,
@@ -133,7 +133,9 @@ const program = new Command()
   .description("Diagnose React codebase health")
   .version(VERSION, "-v, --version", "display the version number")
   .argument("[directory]", "project directory to scan", ".")
+  .option("--lint", "enable linting")
   .option("--no-lint", "skip linting")
+  .option("--dead-code", "enable dead code detection")
   .option("--no-dead-code", "skip dead code detection")
   .option("--verbose", "show file details per rule")
   .option("--score", "output only the score")
@@ -326,7 +328,12 @@ const openAmiToFix = (directory: string): void => {
   if (!isInstalled) {
     if (process.platform === "darwin") {
       installAmi();
-      logger.success("Ami installed successfully.");
+      if (isAmiInstalled()) {
+        logger.success("Ami installed successfully.");
+      } else {
+        logger.error("Installation could not be verified.");
+        logger.dim(`Install manually at ${highlighter.info(AMI_WEBSITE_URL)}`);
+      }
     } else {
       logger.error("Ami is not installed.");
       logger.dim(`Download at ${highlighter.info(AMI_RELEASES_URL)}`);

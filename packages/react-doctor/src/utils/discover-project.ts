@@ -247,18 +247,30 @@ const findReactInWorkspaces = (rootDirectory: string, packageJson: PackageJson):
   return result;
 };
 
+const REACT_DEPENDENCY_NAMES = new Set(["react", "react-native", "next"]);
+
 const hasReactDependency = (packageJson: PackageJson): boolean => {
   const allDependencies = collectAllDependencies(packageJson);
-  return Object.keys(allDependencies).some(
-    (packageName) => packageName === "next" || packageName.includes("react"),
+  return Object.keys(allDependencies).some((packageName) =>
+    REACT_DEPENDENCY_NAMES.has(packageName),
   );
 };
 
 export const discoverReactSubprojects = (rootDirectory: string): WorkspacePackage[] => {
   if (!fs.existsSync(rootDirectory) || !fs.statSync(rootDirectory).isDirectory()) return [];
 
-  const entries = fs.readdirSync(rootDirectory, { withFileTypes: true });
   const packages: WorkspacePackage[] = [];
+
+  const rootPackageJsonPath = path.join(rootDirectory, "package.json");
+  if (fs.existsSync(rootPackageJsonPath)) {
+    const rootPackageJson = readPackageJson(rootPackageJsonPath);
+    if (hasReactDependency(rootPackageJson)) {
+      const name = rootPackageJson.name ?? path.basename(rootDirectory);
+      packages.push({ name, directory: rootDirectory });
+    }
+  }
+
+  const entries = fs.readdirSync(rootDirectory, { withFileTypes: true });
 
   for (const entry of entries) {
     if (!entry.isDirectory() || entry.name.startsWith(".") || entry.name === "node_modules") {

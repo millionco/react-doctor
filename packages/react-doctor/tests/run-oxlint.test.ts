@@ -149,6 +149,12 @@ describe("runOxlint", () => {
         fixture: "performance-issues.tsx",
         ruleSource: "rules/performance.ts",
       },
+      "no-inline-object-props": {
+        fixture: "performance-issues.tsx",
+        ruleSource: "rules/performance.ts",
+        severity: "warning",
+        category: "Performance",
+      },
       "no-usememo-simple-expression": {
         fixture: "performance-issues.tsx",
         ruleSource: "rules/performance.ts",

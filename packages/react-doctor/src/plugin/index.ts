@@ -49,6 +49,7 @@ import {
 } from "./rules/nextjs.js";
 import {
   noGlobalCssVariableAnimation,
+  noInlineObjectProps,
   noLargeAnimatedBlur,
   noLayoutPropertyAnimation,
   noPermanentWillChange,
@@ -107,6 +108,7 @@ const plugin: RulePlugin = {
     "rerender-memo-with-default-value": rerenderMemoWithDefaultValue,
     "rendering-animate-svg-wrapper": renderingAnimateSvgWrapper,
     "no-inline-prop-on-memo-component": noInlinePropOnMemoComponent,
+    "no-inline-object-props": noInlineObjectProps,
     "rendering-hydration-no-flicker": renderingHydrationNoFlicker,
 
     "no-transition-all": noTransitionAll,

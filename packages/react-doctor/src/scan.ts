@@ -102,8 +102,13 @@ const printDiagnostics = (diagnostics: Diagnostic[], isVerbose: boolean): void =
       const fileLines = buildFileLineMap(ruleDiagnostics);
 
       for (const [filePath, lines] of fileLines) {
-        const lineLabel = lines.length > 0 ? `: ${lines.join(", ")}` : "";
-        logger.dim(`    ${filePath}${lineLabel}`);
+        if (lines.length > 0) {
+          for (const line of lines) {
+            logger.dim(`  ${filePath}:${line}`);
+          }
+        } else {
+          logger.dim(`  ${filePath}`);
+        }
       }
     }
 
@@ -137,8 +142,13 @@ const formatRuleSummary = (ruleKey: string, ruleDiagnostics: Diagnostic[]): stri
 
   sections.push("", "Files:");
   for (const [filePath, lines] of fileLines) {
-    const lineLabel = lines.length > 0 ? `: ${lines.join(", ")}` : "";
-    sections.push(`  ${filePath}${lineLabel}`);
+    if (lines.length > 0) {
+      for (const line of lines) {
+        sections.push(`  ${filePath}:${line}`);
+      }
+    } else {
+      sections.push(`  ${filePath}`);
+    }
   }
 
   return sections.join("\n") + "\n";

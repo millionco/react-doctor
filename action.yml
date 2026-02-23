@@ -39,8 +39,17 @@ runs:
       with:
         node-version: ${{ inputs.node-version }}
 
+    - if: ${{ inputs.diff != '' && github.event_name == 'pull_request' }}
+      shell: bash
+      run: |
+        git fetch origin ${{ github.base_ref }} --depth=1
+        git checkout ${{ github.head_ref }}
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+
     - shell: bash
       env:
+        NO_COLOR: "1"
         INPUT_DIRECTORY: ${{ inputs.directory }}
         INPUT_VERBOSE: ${{ inputs.verbose }}
         INPUT_PROJECT: ${{ inputs.project }}

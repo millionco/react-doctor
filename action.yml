@@ -42,8 +42,21 @@ runs:
     - if: ${{ inputs.diff != '' && github.event_name == 'pull_request' }}
       shell: bash
       run: |
+        echo "::group::Debug git state before fix"
+        echo "HEAD before: $(git rev-parse --abbrev-ref HEAD)"
+        echo "Branches: $(git branch -a | head -20)"
+        echo "::endgroup::"
         git fetch origin "$BASE_REF"
         git checkout "$HEAD_REF"
+        echo "::group::Debug git state after fix"
+        echo "HEAD after: $(git rev-parse --abbrev-ref HEAD)"
+        MERGE_BASE=$(git merge-base "$BASE_REF" HEAD 2>&1) && echo "merge-base: $MERGE_BASE" || echo "merge-base FAILED: $MERGE_BASE"
+        echo "Changed files (from repo root):"
+        git diff --name-only --diff-filter=ACMR "$MERGE_BASE" HEAD 2>&1 | head -20
+        echo "Changed files (--relative from ${{ inputs.directory }}):"
+        cd "${{ inputs.directory }}" && git diff --name-only --diff-filter=ACMR --relative "$MERGE_BASE" HEAD 2>&1 | head -20
+        cd -
+        echo "::endgroup::"
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         BASE_REF: ${{ github.base_ref }}

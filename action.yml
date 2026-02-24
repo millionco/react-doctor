@@ -42,10 +42,12 @@ runs:
     - if: ${{ inputs.diff != '' && github.event_name == 'pull_request' }}
       shell: bash
       run: |
-        git fetch origin ${{ github.base_ref }} --depth=1
-        git checkout ${{ github.head_ref }}
+        git fetch origin "$BASE_REF" --depth=1
+        git checkout "$HEAD_REF"
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
+        BASE_REF: ${{ github.base_ref }}
+        HEAD_REF: ${{ github.head_ref }}
 
     - shell: bash
       env:

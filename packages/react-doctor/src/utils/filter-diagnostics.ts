@@ -21,9 +21,10 @@ export const filterIgnoredDiagnostics = (
       return false;
     }
 
-    const normalizedPath = path
-      .relative(process.cwd(), diagnostic.filePath)
-      .replace(/\\/g, "/");
+  const projectRoot = config.projectRoot ?? process.cwd();
+  const normalizedPath = path
+    .relative(projectRoot, diagnostic.filePath)
+    .replace(/\\/g, "/");
 
     if (ignoredFilePatterns.some((pattern) => pattern.test(normalizedPath))) {
       return false;

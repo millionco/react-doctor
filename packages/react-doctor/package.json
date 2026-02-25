@@ -43,7 +43,7 @@
   },
   "scripts": {
     "dev": "tsdown --watch",
-    "build": "rm -rf dist && NODE_ENV=production tsdown",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsdown",
     "typecheck": "tsc --noEmit",
     "test": "pnpm build && vitest run"
   },

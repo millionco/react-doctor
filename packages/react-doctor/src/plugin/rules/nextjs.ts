@@ -1,5 +1,4 @@
 import {
-  APP_DIRECTORY_PATTERN,
   EFFECT_HOOK_NAMES,
   EXECUTABLE_SCRIPT_TYPES,
   GOOGLE_FONTS_PATTERN,
@@ -7,11 +6,7 @@ import {
   MUTATING_ROUTE_SEGMENTS,
   NEXTJS_NAVIGATION_FUNCTIONS,
   OG_ROUTE_PATTERN,
-  PAGE_FILE_PATTERN,
-  PAGE_OR_LAYOUT_FILE_PATTERN,
-  PAGES_DIRECTORY_PATTERN,
   POLYFILL_SCRIPT_PATTERN,
-  ROUTE_HANDLER_FILE_PATTERN,
 } from "../constants.js";
 import {
   containsFetchCall,
@@ -28,9 +23,53 @@ import {
 } from "../helpers.js";
 import type { EsTreeNode, Rule, RuleContext } from "../types.js";
 
+const normalizeFilePath = (filename: string): string => filename.replaceAll("\\", "/");
+
+const PAGE_FILE_BASENAME_PATTERN = /^page\.(tsx?|jsx?)$/;
+const PAGE_OR_LAYOUT_BASENAME_PATTERN = /^(page|layout)\.(tsx?|jsx?)$/;
+const ROUTE_HANDLER_BASENAME_PATTERN = /^route\.(tsx?|jsx?)$/;
+const PAGE_OR_LAYOUT_COMPONENT_NAMES = new Set(["Page", "Layout"]);
+
+const getNormalizedPathSegments = (filename: string): string[] =>
+  normalizeFilePath(filename).split("/").filter(Boolean);
+
+const getFileBasename = (filename: string): string => {
+  const pathSegments = getNormalizedPathSegments(filename);
+  return pathSegments[pathSegments.length - 1] ?? "";
+};
+
+const hasPathSegment = (filename: string, segment: string): boolean =>
+  getNormalizedPathSegments(filename).includes(segment);
+
+const isPageOrLayoutFile = (filename: string): boolean =>
+  PAGE_OR_LAYOUT_BASENAME_PATTERN.test(getFileBasename(filename));
+
+const isPageFile = (filename: string): boolean =>
+  PAGE_FILE_BASENAME_PATTERN.test(getFileBasename(filename));
+
+const isRouteHandlerFile = (filename: string): boolean =>
+  ROUTE_HANDLER_BASENAME_PATTERN.test(getFileBasename(filename));
+
+const hasDefaultExportedPageOrLayout = (programNode: EsTreeNode): boolean =>
+  Boolean(
+    programNode.body?.some((statement: EsTreeNode) => {
+      if (statement.type !== "ExportDefaultDeclaration") return false;
+      const declaration = statement.declaration;
+      if (declaration?.type === "Identifier") {
+        return PAGE_OR_LAYOUT_COMPONENT_NAMES.has(declaration.name);
+      }
+      if (declaration?.type === "FunctionDeclaration") {
+        return Boolean(
+          declaration.id?.name && PAGE_OR_LAYOUT_COMPONENT_NAMES.has(declaration.id.name),
+        );
+      }
+      return false;
+    }),
+  );
+
 export const nextjsNoImgElement: Rule = {
   create: (context: RuleContext) => {
-    const filename = context.getFilename?.() ?? "";
+    const filename = normalizeFilePath(context.getFilename?.() ?? "");
     const isOgRoute = OG_ROUTE_PATTERN.test(filename);
 
     return {
@@ -121,10 +160,12 @@ export const nextjsNoUseSearchParamsWithoutSuspense: Rule = {
 export const nextjsNoClientFetchForServerData: Rule = {
   create: (context: RuleContext) => {
     let fileHasUseClient = false;
+    let hasPageOrLayoutDefaultExport = false;
 
     return {
       Program(programNode: EsTreeNode) {
         fileHasUseClient = hasDirective(programNode, "use client");
+        hasPageOrLayoutDefaultExport = hasDefaultExportedPageOrLayout(programNode);
       },
       CallExpression(node: EsTreeNode) {
         if (!fileHasUseClient || !isHookCall(node, EFFECT_HOOK_NAMES)) return;
@@ -133,10 +174,10 @@ export const nextjsNoClientFetchForServerData: Rule = {
         if (!callback || !containsFetchCall(callback)) return;
 
         const filename = context.getFilename?.() ?? "";
-        const isPageOrLayoutFile =
-          PAGE_OR_LAYOUT_FILE_PATTERN.test(filename) || PAGES_DIRECTORY_PATTERN.test(filename);
+        const isPageOrLayoutSourceFile =
+          isPageOrLayoutFile(filename) || hasPathSegment(filename, "pages");
 
-        if (isPageOrLayoutFile) {
+        if (isPageOrLayoutSourceFile || hasPageOrLayoutDefaultExport) {
           context.report({
             node,
             message:
@@ -152,8 +193,12 @@ export const nextjsMissingMetadata: Rule = {
   create: (context: RuleContext) => ({
     Program(programNode: EsTreeNode) {
       const filename = context.getFilename?.() ?? "";
-      if (!PAGE_FILE_PATTERN.test(filename)) return;
-      if (INTERNAL_PAGE_PATH_PATTERN.test(filename)) return;
+      const normalizedFilename = normalizeFilePath(filename);
+      const shouldCheckForMetadata =
+        isPageFile(normalizedFilename) || hasDefaultExportedPageOrLayout(programNode);
+
+      if (!shouldCheckForMetadata) return;
+      if (INTERNAL_PAGE_PATH_PATTERN.test(normalizedFilename)) return;
 
       const hasMetadataExport = programNode.body?.some((statement: EsTreeNode) => {
         if (statement.type !== "ExportNamedDeclaration") return false;
@@ -373,7 +418,7 @@ export const nextjsNoHeadImport: Rule = {
       if (node.source?.value !== "next/head") return;
 
       const filename = context.getFilename?.() ?? "";
-      if (!APP_DIRECTORY_PATTERN.test(filename)) return;
+      if (filename && !hasPathSegment(filename, "app")) return;
 
       context.report({
         node,
@@ -384,8 +429,8 @@ export const nextjsNoHeadImport: Rule = {
 };
 
 const extractMutatingRouteSegment = (filename: string): string | null => {
-  const segments = filename.split("/");
-  for (const segment of segments) {
+  const pathSegments = getNormalizedPathSegments(filename);
+  for (const segment of pathSegments) {
     const cleaned = segment.replace(/^\[.*\]$/, "");
     if (MUTATING_ROUTE_SEGMENTS.has(cleaned)) return cleaned;
   }
@@ -421,7 +466,7 @@ export const nextjsNoSideEffectInGetHandler: Rule = {
   create: (context: RuleContext) => ({
     ExportNamedDeclaration(node: EsTreeNode) {
       const filename = context.getFilename?.() ?? "";
-      if (!ROUTE_HANDLER_FILE_PATTERN.test(filename)) return;
+      if (filename && !isRouteHandlerFile(filename)) return;
 
       const handlerBody = getExportedGetHandlerBody(node);
       if (!handlerBody) return;

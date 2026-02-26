@@ -43,7 +43,7 @@ const DirectMutationComponent = () => {
 // .Connect() result not stored (outside useEffect)
 const UnstoredConnectionComponent = () => {
   const event = { Connect: (_callback: () => void) => ({ Disconnect: () => {} }) };
-  
+
   event.Connect(() => {
     print("outside effect");
   });

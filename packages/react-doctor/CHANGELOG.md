@@ -1,5 +1,77 @@
 # react-doctor
 
+## 0.0.29
+
+### Patch Changes
+
+- fix
+
+## 0.0.28
+
+### Patch Changes
+
+- fix
+
+## 0.0.27
+
+### Patch Changes
+
+- cleanip
+
+## 0.0.26
+
+### Patch Changes
+
+- fix
+
+## 0.0.25
+
+### Patch Changes
+
+- fix
+
+## 0.0.24
+
+### Patch Changes
+
+- fix
+
+## 0.0.23
+
+### Patch Changes
+
+- fix issues
+
+## 0.0.22
+
+### Patch Changes
+
+- fix
+
+## 0.0.21
+
+### Patch Changes
+
+- offline flag
+
+## 0.0.20
+
+### Patch Changes
+
+- log err
+
+## 0.0.19
+
+### Patch Changes
+
+- fix issues
+
+## 0.0.18
+
+### Patch Changes
+
+- fix
+
 ## 0.0.17
 
 ### Patch Changes

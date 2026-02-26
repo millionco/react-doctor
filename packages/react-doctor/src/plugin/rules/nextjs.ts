@@ -1,6 +1,7 @@
 import {
   APP_DIRECTORY_PATTERN,
   EFFECT_HOOK_NAMES,
+  EXECUTABLE_SCRIPT_TYPES,
   GOOGLE_FONTS_PATTERN,
   INTERNAL_PAGE_PATH_PATTERN,
   MUTATING_ROUTE_SEGMENTS,
@@ -266,6 +267,10 @@ export const nextjsNoNativeScript: Rule = {
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNode) {
       if (node.name?.type !== "JSXIdentifier" || node.name.name !== "script") return;
+
+      const typeAttribute = findJsxAttribute(node.attributes ?? [], "type");
+      const typeValue = typeAttribute?.value?.type === "Literal" ? typeAttribute.value.value : null;
+      if (typeof typeValue === "string" && !EXECUTABLE_SCRIPT_TYPES.has(typeValue)) return;
 
       context.report({
         node,

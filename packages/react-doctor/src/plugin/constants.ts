@@ -212,6 +212,12 @@ export const GOOGLE_FONTS_PATTERN = /fonts\.googleapis\.com/;
 
 export const POLYFILL_SCRIPT_PATTERN = /polyfill\.io|polyfill\.min\.js|cdn\.polyfill/;
 
+export const EXECUTABLE_SCRIPT_TYPES = new Set([
+  "text/javascript",
+  "application/javascript",
+  "module",
+]);
+
 export const APP_DIRECTORY_PATTERN = /\/app\//;
 
 export const ROUTE_HANDLER_FILE_PATTERN = /\/route\.(tsx?|jsx?)$/;

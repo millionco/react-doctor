@@ -128,6 +128,15 @@ const RAW_ENTRIES: LeaderboardEntry[] = [
     warningCount: 966,
     fileCount: 457,
   },
+  {
+    name: "nodejs.org",
+    githubUrl: "https://github.com/nodejs/node",
+    packageName: "@node-core/website",
+    score: 88,
+    errorCount: 9,
+    warningCount: 169,
+    fileCount: 169,
+  },
 ];
 
 export interface ResolvedLeaderboardEntry extends LeaderboardEntry {

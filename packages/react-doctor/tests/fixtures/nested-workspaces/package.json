@@ -1,0 +1,8 @@
+{
+  "name": "nested-workspaces-fixture",
+  "private": true,
+  "workspaces": [
+    "apps/*/ClientApp",
+    "packages/*"
+  ]
+}

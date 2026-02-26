@@ -15,6 +15,15 @@ One command scans your codebase for security, performance, correctness, and arch
 
 <https://github.com/user-attachments/assets/07cc88d9-9589-44c3-aa73-5d603cb1c570>
 
+## How it works
+
+React Doctor detects your framework (Next.js, Vite, Remix, etc.), React version, and compiler setup, then runs two analysis passes **in parallel**:
+
+1. **Lint**: Checks 60+ rules across state & effects, performance, architecture, bundle size, security, correctness, accessibility, and framework-specific categories (Next.js, React Native). Rules are toggled automatically based on your project setup.
+2. **Dead code**: Detects unused files, exports, types, and duplicates.
+
+Diagnostics are filtered through your config, then scored by severity (errors weigh more than warnings) to produce a **0–100 health score** (75+ Great, 50–74 Needs work, <50 Critical).
+
 ## Install
 
 Run this at your project root:
@@ -29,15 +38,38 @@ Use `--verbose` to see affected files and line numbers:
 npx -y react-doctor@latest . --verbose
 ```
 
-## Install as a skill
+## Install for your coding agent
 
-Add React Doctor's rules as a [skill](https://skills.sh) for your coding agent:
+Teach your coding agent all 47+ React best practice rules:
 
 ```bash
-npx skills add millionco/react-doctor
+curl -fsSL https://react.doctor/install-skill.sh | bash
 ```
 
-This gives agents like Cursor, Claude Code, Copilot, and others access to all 47+ React best practice rules. The CLI will also prompt to install the skill on first run.
+Supports Cursor, Claude Code, Amp Code, Codex, Gemini CLI, OpenCode, Windsurf, and Antigravity.
+
+## GitHub Actions
+
+```yaml
+- uses: actions/checkout@v5
+  with:
+    fetch-depth: 0 # required for --diff
+- uses: millionco/react-doctor@main
+  with:
+    diff: main
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+```
+
+| Input          | Default | Description                                                       |
+| -------------- | ------- | ----------------------------------------------------------------- |
+| `directory`    | `.`     | Project directory to scan                                         |
+| `verbose`      | `true`  | Show file details per rule                                        |
+| `project`      |         | Workspace project(s) to scan (comma-separated)                    |
+| `diff`         |         | Base branch for diff mode. Only changed files are scanned         |
+| `github-token` |         | When set on `pull_request` events, posts findings as a PR comment |
+| `node-version` | `20`    | Node.js version to use                                            |
+
+The action outputs a `score` (0–100) you can use in subsequent steps.
 
 ## Options
 
@@ -52,20 +84,64 @@ Options:
   --score           output only the score
   -y, --yes         skip prompts, scan all workspace projects
   --project <name>  select workspace project (comma-separated for multiple)
-  --framework <name>  override framework detection (nextjs|vite|cra|remix|gatsby|roblox-ts|unknown)
+  --framework <name>  override framework detection
+  --diff [base]     scan only files changed vs base branch
+  --offline         skip telemetry used for score estimation
+  --no-ami          skip Ami-related prompts
+  --fail-on <level> exit with error code on diagnostics: error, warning, none
   --fix             open Ami to auto-fix all issues
-  --prompt          copy latest scan output to clipboard
   -h, --help        display help for command
 ```
+
+## Configuration
+
+Create a `react-doctor.config.json` in your project root to customize behavior:
+
+```json
+{
+  "ignore": {
+    "rules": ["react/no-danger", "jsx-a11y/no-autofocus", "knip/exports"],
+    "files": ["src/generated/**"]
+  }
+}
+```
+
+You can also use the `"reactDoctor"` key in your `package.json` instead:
+
+```json
+{
+  "reactDoctor": {
+    "ignore": {
+      "rules": ["react/no-danger"]
+    }
+  }
+}
+```
+
+If both exist, `react-doctor.config.json` takes precedence.
+
+### Config options
+
+| Key            | Type                             | Default  | Description                                                                                                                         |
+| -------------- | -------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `ignore.rules` | `string[]`                       | `[]`     | Rules to suppress, using the `plugin/rule` format shown in diagnostic output (e.g. `react/no-danger`, `knip/exports`, `knip/types`) |
+| `ignore.files` | `string[]`                       | `[]`     | File paths to exclude, supports glob patterns (`src/generated/**`, `**/*.test.tsx`)                                                 |
+| `lint`         | `boolean`                        | `true`   | Enable/disable lint checks (same as `--no-lint`)                                                                                    |
+| `deadCode`     | `boolean`                        | `true`   | Enable/disable dead code detection (same as `--no-dead-code`)                                                                       |
+| `verbose`      | `boolean`                        | `false`  | Show file details per rule (same as `--verbose`)                                                                                    |
+| `diff`         | `boolean \| string`              | —        | Force diff mode (`true`) or pin a base branch (`"main"`). Set to `false` to disable auto-detection.                                 |
+| `failOn`       | `"error" \| "warning" \| "none"` | `"none"` | Exit with a non-zero code when diagnostics meet the configured threshold.                                                           |
+
+CLI flags always override config values.
 
 ## Roblox / React Luau (`roblox-ts`)
 
 React Doctor can detect Roblox React Luau projects built through `roblox-ts`.
 
-Auto-detection requires both:
+Auto-detection requires `@rbxts/react` plus one of:
 
-- `@rbxts/react` in dependencies/devDependencies
-- `tsconfig.json` with one of: `@rbxts/types`, `@rbxts/react-types`, `@rbxts/react-roblox-types` in `compilerOptions.types`
+- `tsconfig.json` marker types (`@rbxts/types`, `@rbxts/react-types`, or `@rbxts/react-roblox-types`)
+- Roblox toolchain dependencies (`@rbxts/types` or `roblox-ts`)
 
 If detection misses your setup, force it:
 

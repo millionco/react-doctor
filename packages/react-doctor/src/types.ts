@@ -1,4 +1,15 @@
-export type Framework = "nextjs" | "vite" | "cra" | "remix" | "gatsby" | "roblox-ts" | "unknown";
+export type FailOnLevel = "error" | "warning" | "none";
+
+export type Framework =
+  | "nextjs"
+  | "vite"
+  | "cra"
+  | "remix"
+  | "gatsby"
+  | "expo"
+  | "react-native"
+  | "roblox-ts"
+  | "unknown";
 
 export interface ProjectInfo {
   rootDirectory: string;
@@ -57,6 +68,7 @@ export interface PackageJson {
   name?: string;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
   workspaces?: string[] | { packages: string[] };
 }
 
@@ -82,22 +94,34 @@ export interface ScoreResult {
   label: string;
 }
 
+export interface ScanResult {
+  diagnostics: Diagnostic[];
+  scoreResult: ScoreResult | null;
+  skippedChecks: string[];
+}
+
+export interface EstimatedScoreResult {
+  currentScore: number;
+  currentLabel: string;
+  estimatedScore: number;
+  estimatedLabel: string;
+}
+
 export interface ScanOptions {
-  lint: boolean;
-  deadCode: boolean;
-  verbose: boolean;
-  scoreOnly: boolean;
+  lint?: boolean;
+  deadCode?: boolean;
+  verbose?: boolean;
+  scoreOnly?: boolean;
+  offline?: boolean;
+  includePaths?: string[];
   frameworkOverride?: Framework;
 }
 
-export interface ClipboardCommand {
-  command: string;
-  args: string[];
-}
-
-export interface LoggerCaptureState {
-  isEnabled: boolean;
-  lines: string[];
+export interface DiffInfo {
+  currentBranch: string;
+  baseBranch: string;
+  changedFiles: string[];
+  isCurrentChanges?: boolean;
 }
 
 export interface HandleErrorOptions {
@@ -138,4 +162,18 @@ export interface KnipResults {
 export interface CleanedDiagnostic {
   message: string;
   help: string;
+}
+
+export interface ReactDoctorIgnoreConfig {
+  rules?: string[];
+  files?: string[];
+}
+
+export interface ReactDoctorConfig {
+  ignore?: ReactDoctorIgnoreConfig;
+  lint?: boolean;
+  deadCode?: boolean;
+  verbose?: boolean;
+  diff?: boolean | string;
+  failOn?: FailOnLevel;
 }

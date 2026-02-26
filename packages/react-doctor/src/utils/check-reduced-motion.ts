@@ -1,8 +1,8 @@
 import { execSync } from "node:child_process";
-import fs from "node:fs";
 import path from "node:path";
 import { MOTION_LIBRARY_PACKAGES } from "../plugin/constants.js";
 import type { Diagnostic } from "../types.js";
+import { isFile } from "./is-file.js";
 import { readPackageJson } from "./read-package-json.js";
 
 const REDUCED_MOTION_GREP_PATTERN = "prefers-reduced-motion|useReducedMotion";
@@ -24,7 +24,7 @@ const MISSING_REDUCED_MOTION_DIAGNOSTIC: Diagnostic = {
 
 export const checkReducedMotion = (rootDirectory: string): Diagnostic[] => {
   const packageJsonPath = path.join(rootDirectory, "package.json");
-  if (!fs.existsSync(packageJsonPath)) return [];
+  if (!isFile(packageJsonPath)) return [];
 
   let hasMotionLibrary = false;
   try {

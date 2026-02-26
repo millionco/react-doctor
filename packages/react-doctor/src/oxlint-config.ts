@@ -22,6 +22,17 @@ const NEXTJS_RULES: Record<string, string> = {
   "react-doctor/nextjs-no-side-effect-in-get-handler": "error",
 };
 
+const REACT_NATIVE_RULES: Record<string, string> = {
+  "react-doctor/rn-no-raw-text": "error",
+  "react-doctor/rn-no-deprecated-modules": "error",
+  "react-doctor/rn-no-legacy-expo-packages": "warn",
+  "react-doctor/rn-no-dimensions-get": "warn",
+  "react-doctor/rn-no-inline-flatlist-renderitem": "warn",
+  "react-doctor/rn-no-legacy-shadow-styles": "warn",
+  "react-doctor/rn-prefer-reanimated": "warn",
+  "react-doctor/rn-no-single-element-style-array": "warn",
+};
+
 const REACT_COMPILER_RULES: Record<string, string> = {
   "react-hooks-js/set-state-in-render": "error",
   "react-hooks-js/immutability": "error",
@@ -198,6 +209,7 @@ export const createOxlintConfig = ({
       ...(isRobloxTsFramework ? ROBLOX_TS_SPECIFIC_RULES : {}),
       ...(isRobloxTsFramework ? ROBLOX_TS_RULE_OVERRIDES : {}),
       ...(framework === "nextjs" ? NEXTJS_RULES : {}),
+      ...(framework === "expo" || framework === "react-native" ? REACT_NATIVE_RULES : {}),
     },
   };
 };

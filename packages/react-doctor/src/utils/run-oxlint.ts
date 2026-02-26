@@ -4,9 +4,14 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { ERROR_PREVIEW_LENGTH_CHARS, JSX_FILE_PATTERN } from "../constants.js";
+import {
+  ERROR_PREVIEW_LENGTH_CHARS,
+  JSX_FILE_PATTERN,
+  SPAWN_ARGS_MAX_LENGTH_CHARS,
+} from "../constants.js";
 import { createOxlintConfig } from "../oxlint-config.js";
 import type { CleanedDiagnostic, Diagnostic, Framework, OxlintOutput } from "../types.js";
+import { neutralizeDisableDirectives } from "./neutralize-disable-directives.js";
 
 const esmRequire = createRequire(import.meta.url);
 
@@ -82,16 +87,24 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/client-passive-event-listeners": "Performance",
 
   "react-doctor/async-parallel": "Performance",
-
   "react-doctor/rbx-no-uncleaned-connection": "Roblox",
   "react-doctor/rbx-no-print": "Roblox",
   "react-doctor/rbx-no-direct-instance-mutation": "Roblox",
   "react-doctor/rbx-no-unstored-connection": "Roblox",
+
+  "react-doctor/rn-no-raw-text": "React Native",
+  "react-doctor/rn-no-deprecated-modules": "React Native",
+  "react-doctor/rn-no-legacy-expo-packages": "React Native",
+  "react-doctor/rn-no-dimensions-get": "React Native",
+  "react-doctor/rn-no-inline-flatlist-renderitem": "React Native",
+  "react-doctor/rn-no-legacy-shadow-styles": "React Native",
+  "react-doctor/rn-prefer-reanimated": "React Native",
+  "react-doctor/rn-no-single-element-style-array": "React Native",
 };
 
 const RULE_HELP_MAP: Record<string, string> = {
   "no-derived-state-effect":
-    "Compute during render: `const derived = computeFrom(dep1, dep2)` — no useEffect needed",
+    "For derived state, compute inline: `const x = fn(dep)`. For state resets on prop change, use a key prop: `<Component key={prop} />`",
   "no-fetch-in-effect":
     "Use `useQuery()` from @tanstack/react-query, `useSWR()`, or fetch in a Server Component instead",
   "no-cascading-set-state":
@@ -217,6 +230,23 @@ const RULE_HELP_MAP: Record<string, string> = {
     "Pass the value as a prop instead: `<textlabel TextColor3={color} />` rather than `ref.current.TextColor3 = color`",
   "rbx-no-unstored-connection":
     "Store the connection: `const connection = signal.Connect(fn)` so it can be disconnected later with `connection.Disconnect()`",
+
+  "rn-no-raw-text":
+    "Wrap text in a `<Text>` component: `<Text>{value}</Text>` — raw strings outside `<Text>` crash on React Native",
+  "rn-no-deprecated-modules":
+    "Import from the community package instead — deprecated modules were removed from the react-native core",
+  "rn-no-legacy-expo-packages":
+    "Migrate to the recommended replacement package — legacy Expo packages are no longer maintained",
+  "rn-no-dimensions-get":
+    "Use `const { width, height } = useWindowDimensions()` — it updates reactively on rotation and resize",
+  "rn-no-inline-flatlist-renderitem":
+    "Extract renderItem to a named function or wrap in useCallback to avoid re-creating on every render",
+  "rn-no-legacy-shadow-styles":
+    "Use `boxShadow` for cross-platform shadows on the new architecture instead of platform-specific shadow properties",
+  "rn-prefer-reanimated":
+    "Use `import Animated from 'react-native-reanimated'` — animations run on the UI thread instead of the JS thread",
+  "rn-no-single-element-style-array":
+    "Use `style={value}` instead of `style={[value]}` — single-element arrays add unnecessary allocation",
 };
 
 const FILEPATH_WITH_LOCATION_PATTERN = /\S+\.\w+:\d+:\d+[\s\S]*$/;
@@ -265,87 +295,137 @@ const resolveDiagnosticCategory = (plugin: string, rule: string): string => {
   return RULE_CATEGORY_MAP[ruleKey] ?? PLUGIN_CATEGORY_MAP[plugin] ?? "Other";
 };
 
+const estimateArgsLength = (args: string[]): number =>
+  args.reduce((total, argument) => total + argument.length + 1, 0);
+
+const batchIncludePaths = (baseArgs: string[], includePaths: string[]): string[][] => {
+  const baseArgsLength = estimateArgsLength(baseArgs);
+  const batches: string[][] = [];
+  let currentBatch: string[] = [];
+  let currentBatchLength = baseArgsLength;
+
+  for (const filePath of includePaths) {
+    const entryLength = filePath.length + 1;
+    if (currentBatch.length > 0 && currentBatchLength + entryLength > SPAWN_ARGS_MAX_LENGTH_CHARS) {
+      batches.push(currentBatch);
+      currentBatch = [];
+      currentBatchLength = baseArgsLength;
+    }
+    currentBatch.push(filePath);
+    currentBatchLength += entryLength;
+  }
+
+  if (currentBatch.length > 0) {
+    batches.push(currentBatch);
+  }
+
+  return batches;
+};
+
+const spawnOxlint = (
+  args: string[],
+  rootDirectory: string,
+  nodeBinaryPath: string,
+): Promise<string> =>
+  new Promise<string>((resolve, reject) => {
+    const child = spawn(nodeBinaryPath, args, {
+      cwd: rootDirectory,
+    });
+
+    const stdoutBuffers: Buffer[] = [];
+    const stderrBuffers: Buffer[] = [];
+
+    child.stdout.on("data", (buffer: Buffer) => stdoutBuffers.push(buffer));
+    child.stderr.on("data", (buffer: Buffer) => stderrBuffers.push(buffer));
+
+    child.on("error", (error) => reject(new Error(`Failed to run oxlint: ${error.message}`)));
+    child.on("close", () => {
+      const output = Buffer.concat(stdoutBuffers).toString("utf-8").trim();
+      if (!output) {
+        const stderrOutput = Buffer.concat(stderrBuffers).toString("utf-8").trim();
+        if (stderrOutput) {
+          reject(new Error(`Failed to run oxlint: ${stderrOutput}`));
+          return;
+        }
+      }
+      resolve(output);
+    });
+  });
+
+const parseOxlintOutput = (stdout: string): Diagnostic[] => {
+  if (!stdout) return [];
+
+  let output: OxlintOutput;
+  try {
+    output = JSON.parse(stdout) as OxlintOutput;
+  } catch {
+    throw new Error(
+      `Failed to parse oxlint output: ${stdout.slice(0, ERROR_PREVIEW_LENGTH_CHARS)}`,
+    );
+  }
+
+  return output.diagnostics
+    .filter((diagnostic) => diagnostic.code && JSX_FILE_PATTERN.test(diagnostic.filename))
+    .map((diagnostic) => {
+      const { plugin, rule } = parseRuleCode(diagnostic.code);
+      const primaryLabel = diagnostic.labels[0];
+
+      const cleaned = cleanDiagnosticMessage(diagnostic.message, diagnostic.help, plugin, rule);
+
+      return {
+        filePath: diagnostic.filename,
+        plugin,
+        rule,
+        severity: diagnostic.severity,
+        message: cleaned.message,
+        help: cleaned.help,
+        line: primaryLabel?.span.line ?? 0,
+        column: primaryLabel?.span.column ?? 0,
+        category: resolveDiagnosticCategory(plugin, rule),
+      };
+    });
+};
+
 export const runOxlint = async (
   rootDirectory: string,
   hasTypeScript: boolean,
   framework: Framework,
   hasReactCompiler: boolean,
+  includePaths?: string[],
+  nodeBinaryPath: string = process.execPath,
 ): Promise<Diagnostic[]> => {
+  if (includePaths !== undefined && includePaths.length === 0) {
+    return [];
+  }
+
   const configPath = path.join(os.tmpdir(), `react-doctor-oxlintrc-${process.pid}.json`);
   const pluginPath = resolvePluginPath();
   const config = createOxlintConfig({ pluginPath, framework, hasReactCompiler });
+  const restoreDisableDirectives = neutralizeDisableDirectives(rootDirectory);
 
   try {
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 
     const oxlintBinary = resolveOxlintBinary();
-    const args = [oxlintBinary, "-c", configPath, "--format", "json"];
+    const baseArgs = [oxlintBinary, "-c", configPath, "--format", "json"];
 
     if (hasTypeScript) {
-      args.push("--tsconfig", "./tsconfig.json");
+      baseArgs.push("--tsconfig", "./tsconfig.json");
     }
 
-    args.push(".");
+    const fileBatches =
+      includePaths !== undefined ? batchIncludePaths(baseArgs, includePaths) : [["."]];
 
-    const stdout = await new Promise<string>((resolve, reject) => {
-      const child = spawn(process.execPath, args, {
-        cwd: rootDirectory,
-      });
-
-      const stdoutBuffers: Buffer[] = [];
-      const stderrBuffers: Buffer[] = [];
-
-      child.stdout.on("data", (buffer: Buffer) => stdoutBuffers.push(buffer));
-      child.stderr.on("data", (buffer: Buffer) => stderrBuffers.push(buffer));
-
-      child.on("error", (error) => reject(new Error(`Failed to run oxlint: ${error.message}`)));
-      child.on("close", () => {
-        const output = Buffer.concat(stdoutBuffers).toString("utf-8").trim();
-        if (!output) {
-          const stderrOutput = Buffer.concat(stderrBuffers).toString("utf-8").trim();
-          if (stderrOutput) {
-            reject(new Error(`Failed to run oxlint: ${stderrOutput}`));
-            return;
-          }
-        }
-        resolve(output);
-      });
-    });
-
-    if (!stdout) {
-      return [];
+    const allDiagnostics: Diagnostic[] = [];
+    for (const batch of fileBatches) {
+      const batchArgs = [...baseArgs, ...batch];
+      const stdout = await spawnOxlint(batchArgs, rootDirectory, nodeBinaryPath);
+      allDiagnostics.push(...parseOxlintOutput(stdout));
     }
 
-    let output: OxlintOutput;
-    try {
-      output = JSON.parse(stdout) as OxlintOutput;
-    } catch {
-      throw new Error(
-        `Failed to parse oxlint output: ${stdout.slice(0, ERROR_PREVIEW_LENGTH_CHARS)}`,
-      );
-    }
-
-    return output.diagnostics
-      .filter((diagnostic) => JSX_FILE_PATTERN.test(diagnostic.filename))
-      .map((diagnostic) => {
-        const { plugin, rule } = parseRuleCode(diagnostic.code);
-        const primaryLabel = diagnostic.labels[0];
-
-        const cleaned = cleanDiagnosticMessage(diagnostic.message, diagnostic.help, plugin, rule);
-
-        return {
-          filePath: diagnostic.filename,
-          plugin,
-          rule,
-          severity: diagnostic.severity,
-          message: cleaned.message,
-          help: cleaned.help,
-          line: primaryLabel?.span.line ?? 0,
-          column: primaryLabel?.span.column ?? 0,
-          category: resolveDiagnosticCategory(plugin, rule),
-        };
-      });
+    return allDiagnostics;
   } finally {
+    restoreDisableDirectives();
     if (fs.existsSync(configPath)) {
       fs.unlinkSync(configPath);
     }

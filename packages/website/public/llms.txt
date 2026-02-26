@@ -16,6 +16,12 @@ Use `--verbose` to see affected files and line numbers:
 npx -y react-doctor@latest . --verbose
 ```
 
+Use `--diff` to scan only changed files (branch changes or uncommitted changes):
+
+```bash
+npx -y react-doctor@latest . --verbose --diff
+```
+
 Use `--score` to output only the numeric score:
 
 ```bash
@@ -41,7 +47,7 @@ Options:
   --score           output only the score
   -y, --yes         skip prompts, scan all workspace projects
   --project <name>  select workspace project (comma-separated for multiple)
+  --diff [base]     scan only files changed vs base branch or uncommitted changes
   --fix             open Ami to auto-fix all issues
-  --prompt          copy latest scan output to clipboard
   -h, --help        display help for command
 ```

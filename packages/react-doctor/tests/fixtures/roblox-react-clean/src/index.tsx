@@ -14,16 +14,16 @@ const ProximityPromptComponent = () => {
   const [shown, setShown] = useState(false);
 
   useEffect(() => {
-    const prompt = { 
+    const prompt = {
       PromptShown: { Connect: (_callback: () => void) => ({}) },
       PromptHidden: { Connect: (_callback: () => void) => ({}) },
-      Destroy: () => {}
+      Destroy: () => {},
     };
-    
+
     prompt.PromptShown.Connect(() => {
       setShown(true);
     });
-    
+
     prompt.PromptHidden.Connect(() => {
       setShown(false);
     });

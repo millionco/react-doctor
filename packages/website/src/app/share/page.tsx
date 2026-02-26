@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import AnimatedScore from "./animated-score";
+import BadgeSnippet from "./badge-snippet";
 
 const PERFECT_SCORE = 100;
 const SCORE_GOOD_THRESHOLD = 75;
@@ -179,6 +180,8 @@ const SharePage = async ({ searchParams }: { searchParams: Promise<ShareSearchPa
           Share on LinkedIn
         </a>
       </div>
+
+      <BadgeSnippet searchParamsString={shareSearchParams.toString()} />
     </div>
   );
 };

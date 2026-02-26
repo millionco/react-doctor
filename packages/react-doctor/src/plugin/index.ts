@@ -70,6 +70,12 @@ import {
   rnPreferReanimated,
   rnNoSingleElementStyleArray,
 } from "./rules/react-native.js";
+import {
+  rbxNoUncleanedConnection,
+  rbxNoPrint,
+  rbxNoDirectInstanceMutation,
+  rbxNoUnstoredConnection,
+} from "./rules/roblox.js";
 import { noEval, noSecretsInClientCode } from "./rules/security.js";
 import { serverAfterNonblocking, serverAuthActions } from "./rules/server.js";
 import {
@@ -170,6 +176,11 @@ const plugin: RulePlugin = {
     "rn-no-legacy-shadow-styles": rnNoLegacyShadowStyles,
     "rn-prefer-reanimated": rnPreferReanimated,
     "rn-no-single-element-style-array": rnNoSingleElementStyleArray,
+
+    "rbx-no-uncleaned-connection": rbxNoUncleanedConnection,
+    "rbx-no-print": rbxNoPrint,
+    "rbx-no-direct-instance-mutation": rbxNoDirectInstanceMutation,
+    "rbx-no-unstored-connection": rbxNoUnstoredConnection,
   },
 };
 

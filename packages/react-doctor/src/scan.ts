@@ -17,6 +17,7 @@ import {
 } from "./constants.js";
 import type {
   Diagnostic,
+  Framework,
   ProjectInfo,
   ReactDoctorConfig,
   ScanOptions,
@@ -404,6 +405,7 @@ interface ResolvedScanOptions {
   scoreOnly: boolean;
   offline: boolean;
   includePaths: string[];
+  frameworkOverride?: Framework;
 }
 
 const mergeScanOptions = (
@@ -416,6 +418,7 @@ const mergeScanOptions = (
   scoreOnly: inputOptions.scoreOnly ?? false,
   offline: inputOptions.offline ?? false,
   includePaths: inputOptions.includePaths ?? [],
+  frameworkOverride: inputOptions.frameworkOverride,
 });
 
 const printProjectDetection = (
@@ -458,11 +461,13 @@ export const scan = async (
   inputOptions: ScanOptions = {},
 ): Promise<ScanResult> => {
   const startTime = performance.now();
-  const projectInfo = discoverProject(directory);
   const userConfig = loadConfig(directory);
   const options = mergeScanOptions(inputOptions, userConfig);
   const { includePaths } = options;
   const isDiffMode = includePaths.length > 0;
+  const projectInfo = discoverProject(directory, {
+    frameworkOverride: options.frameworkOverride,
+  });
 
   if (!projectInfo.reactVersion) {
     throw new Error("No React dependency found in package.json");

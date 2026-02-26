@@ -10,6 +10,7 @@ import type {
   DiffInfo,
   EstimatedScoreResult,
   FailOnLevel,
+  Framework,
   ReactDoctorConfig,
   ScanOptions,
 } from "./types.js";
@@ -37,9 +38,41 @@ interface CliFlags {
   offline: boolean;
   ami: boolean;
   project?: string;
+  framework?: string;
   diff?: boolean | string;
   failOn: string;
 }
+
+const SUPPORTED_FRAMEWORKS: Framework[] = [
+  "nextjs",
+  "vite",
+  "cra",
+  "remix",
+  "gatsby",
+  "expo",
+  "react-native",
+  "roblox-ts",
+  "unknown",
+];
+
+const parseFrameworkOverride = (frameworkName?: string): Framework | undefined => {
+  if (!frameworkName) {
+    return undefined;
+  }
+
+  const normalizedFrameworkName = frameworkName.toLowerCase();
+  const supportedFramework = SUPPORTED_FRAMEWORKS.find(
+    (frameworkNameCandidate) => frameworkNameCandidate === normalizedFrameworkName,
+  );
+
+  if (supportedFramework) {
+    return supportedFramework;
+  }
+
+  throw new Error(
+    `Invalid framework override "${frameworkName}". Supported values: ${SUPPORTED_FRAMEWORKS.join(", ")}`,
+  );
+};
 
 const VALID_FAIL_ON_LEVELS = new Set<FailOnLevel>(["error", "warning", "none"]);
 
@@ -90,6 +123,7 @@ const resolveCliScanOptions = (
     verbose: isCliOverride("verbose") ? Boolean(flags.verbose) : (userConfig?.verbose ?? false),
     scoreOnly: flags.score,
     offline: flags.offline,
+    frameworkOverride: parseFrameworkOverride(flags.framework),
   };
 };
 
@@ -141,6 +175,7 @@ const program = new Command()
   .option("--score", "output only the score")
   .option("-y, --yes", "skip prompts, scan all workspace projects")
   .option("--project <name>", "select workspace project (comma-separated for multiple)")
+  .option("--framework <name>", "override framework detection")
   .option("--diff [base]", "scan only files changed vs base branch")
   .option("--offline", "skip telemetry (anonymous, not stored, only used to calculate score)")
   .option("--no-ami", "skip Ami-related prompts")

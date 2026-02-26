@@ -13,7 +13,7 @@ One command scans your codebase for security, performance, correctness, and arch
 
 ### [See it in action →](https://react.doctor)
 
-https://github.com/user-attachments/assets/07cc88d9-9589-44c3-aa73-5d603cb1c570
+<https://github.com/user-attachments/assets/07cc88d9-9589-44c3-aa73-5d603cb1c570>
 
 ## How it works
 
@@ -73,7 +73,7 @@ The action outputs a `score` (0–100) you can use in subsequent steps.
 
 ## Options
 
-```
+```text
 Usage: react-doctor [directory] [options]
 
 Options:
@@ -84,8 +84,11 @@ Options:
   --score           output only the score
   -y, --yes         skip prompts, scan all workspace projects
   --project <name>  select workspace project (comma-separated for multiple)
+  --framework <name>  override framework detection
   --diff [base]     scan only files changed vs base branch
+  --offline         skip telemetry used for score estimation
   --no-ami          skip Ami-related prompts
+  --fail-on <level> exit with error code on diagnostics: error, warning, none
   --fix             open Ami to auto-fix all issues
   -h, --help        display help for command
 ```
@@ -119,16 +122,32 @@ If both exist, `react-doctor.config.json` takes precedence.
 
 ### Config options
 
-| Key            | Type                | Default | Description                                                                                                                         |
-| -------------- | ------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `ignore.rules` | `string[]`          | `[]`    | Rules to suppress, using the `plugin/rule` format shown in diagnostic output (e.g. `react/no-danger`, `knip/exports`, `knip/types`) |
-| `ignore.files` | `string[]`          | `[]`    | File paths to exclude, supports glob patterns (`src/generated/**`, `**/*.test.tsx`)                                                 |
-| `lint`         | `boolean`           | `true`  | Enable/disable lint checks (same as `--no-lint`)                                                                                    |
-| `deadCode`     | `boolean`           | `true`  | Enable/disable dead code detection (same as `--no-dead-code`)                                                                       |
-| `verbose`      | `boolean`           | `false` | Show file details per rule (same as `--verbose`)                                                                                    |
-| `diff`         | `boolean \| string` | —       | Force diff mode (`true`) or pin a base branch (`"main"`). Set to `false` to disable auto-detection.                                 |
+| Key            | Type                             | Default  | Description                                                                                                                         |
+| -------------- | -------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `ignore.rules` | `string[]`                       | `[]`     | Rules to suppress, using the `plugin/rule` format shown in diagnostic output (e.g. `react/no-danger`, `knip/exports`, `knip/types`) |
+| `ignore.files` | `string[]`                       | `[]`     | File paths to exclude, supports glob patterns (`src/generated/**`, `**/*.test.tsx`)                                                 |
+| `lint`         | `boolean`                        | `true`   | Enable/disable lint checks (same as `--no-lint`)                                                                                    |
+| `deadCode`     | `boolean`                        | `true`   | Enable/disable dead code detection (same as `--no-dead-code`)                                                                       |
+| `verbose`      | `boolean`                        | `false`  | Show file details per rule (same as `--verbose`)                                                                                    |
+| `diff`         | `boolean \| string`              | —        | Force diff mode (`true`) or pin a base branch (`"main"`). Set to `false` to disable auto-detection.                                 |
+| `failOn`       | `"error" \| "warning" \| "none"` | `"none"` | Exit with a non-zero code when diagnostics meet the configured threshold.                                                           |
 
 CLI flags always override config values.
+
+## Roblox / React Luau (`roblox-ts`)
+
+React Doctor can detect Roblox React Luau projects built through `roblox-ts`.
+
+Auto-detection requires `@rbxts/react` plus one of:
+
+- `tsconfig.json` marker types (`@rbxts/types`, `@rbxts/react-types`, or `@rbxts/react-roblox-types`)
+- Roblox toolchain dependencies (`@rbxts/types` or `roblox-ts`)
+
+If detection misses your setup, force it:
+
+```bash
+npx -y react-doctor@latest . --framework roblox-ts
+```
 
 ## Node.js API
 

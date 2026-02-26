@@ -303,3 +303,6 @@ export const LEGACY_SHADOW_STYLE_PROPERTIES = new Set([
   "shadowRadius",
   "elevation",
 ]);
+
+export const ROBLOX_CONNECTION_METHODS = new Set(["Connect", "Once"]);
+export const ROBLOX_PRINT_FUNCTIONS = new Set(["print", "warn"]);

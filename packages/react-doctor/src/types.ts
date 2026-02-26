@@ -8,6 +8,7 @@ export type Framework =
   | "gatsby"
   | "expo"
   | "react-native"
+  | "roblox-ts"
   | "unknown";
 
 export interface ProjectInfo {
@@ -113,6 +114,7 @@ export interface ScanOptions {
   scoreOnly?: boolean;
   offline?: boolean;
   includePaths?: string[];
+  frameworkOverride?: Framework;
 }
 
 export interface DiffInfo {

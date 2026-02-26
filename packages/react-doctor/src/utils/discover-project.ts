@@ -13,6 +13,17 @@ import { findMonorepoRoot, isMonorepoRoot } from "./find-monorepo-root.js";
 import { isFile } from "./is-file.js";
 import { readPackageJson } from "./read-package-json.js";
 
+interface DiscoverProjectOptions {
+  frameworkOverride?: Framework;
+}
+
+interface TsconfigFile {
+  compilerOptions?: {
+    types?: unknown;
+    typeRoots?: unknown;
+  };
+}
+
 const REACT_COMPILER_PACKAGES = new Set([
   "babel-plugin-react-compiler",
   "react-compiler-runtime",
@@ -46,6 +57,29 @@ const EXPO_APP_CONFIG_FILENAMES = ["app.json", "app.config.js", "app.config.ts"]
 
 const REACT_COMPILER_CONFIG_PATTERN = /react-compiler|reactCompiler/;
 
+const SOURCE_COUNT_IGNORED_DIRECTORY_NAMES = new Set([
+  ".cache",
+  ".git",
+  ".hg",
+  ".next",
+  ".svn",
+  ".turbo",
+  "build",
+  "coverage",
+  "dist",
+  "node_modules",
+  "out",
+]);
+
+const ROBLOX_REACT_PACKAGE_NAME = "@rbxts/react";
+const ROBLOX_TYPES_PACKAGE_NAME = "@rbxts/types";
+const ROBLOX_TS_PACKAGE_NAME = "roblox-ts";
+const ROBLOX_TS_TYPE_MARKERS = new Set([
+  "@rbxts/types",
+  "@rbxts/react-types",
+  "@rbxts/react-roblox-types",
+]);
+
 const FRAMEWORK_PACKAGES: Record<string, Framework> = {
   next: "nextjs",
   vite: "vite",
@@ -64,36 +98,64 @@ const FRAMEWORK_DISPLAY_NAMES: Record<Framework, string> = {
   gatsby: "Gatsby",
   expo: "Expo",
   "react-native": "React Native",
+  "roblox-ts": "Roblox (roblox-ts)",
   unknown: "React",
 };
+
+const REACT_DEPENDENCY_NAMES = new Set([
+  "react",
+  "react-native",
+  "next",
+  ROBLOX_REACT_PACKAGE_NAME,
+]);
 
 export const formatFrameworkName = (framework: Framework): string =>
   FRAMEWORK_DISPLAY_NAMES[framework];
 
-const IGNORED_DIRECTORIES = new Set(["node_modules", "dist", "build", "coverage"]);
-
 const countSourceFilesViaFilesystem = (rootDirectory: string): number => {
-  let count = 0;
-  const stack = [rootDirectory];
+  const directoriesToVisit = [rootDirectory];
+  let sourceFileCount = 0;
 
-  while (stack.length > 0) {
-    const currentDirectory = stack.pop()!;
-    const entries = fs.readdirSync(currentDirectory, { withFileTypes: true });
+  while (directoriesToVisit.length > 0) {
+    const currentDirectory = directoriesToVisit.pop();
+    if (!currentDirectory) {
+      continue;
+    }
 
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        if (!entry.name.startsWith(".") && !IGNORED_DIRECTORIES.has(entry.name)) {
-          stack.push(path.join(currentDirectory, entry.name));
+    let directoryEntries: fs.Dirent[] = [];
+
+    try {
+      directoryEntries = fs.readdirSync(currentDirectory, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const directoryEntry of directoryEntries) {
+      const entryPath = path.join(currentDirectory, directoryEntry.name);
+
+      if (directoryEntry.isDirectory()) {
+        if (
+          directoryEntry.name.startsWith(".") ||
+          SOURCE_COUNT_IGNORED_DIRECTORY_NAMES.has(directoryEntry.name)
+        ) {
+          continue;
         }
+        directoriesToVisit.push(entryPath);
         continue;
       }
-      if (entry.isFile() && SOURCE_FILE_PATTERN.test(entry.name)) {
-        count++;
+
+      if (!directoryEntry.isFile()) {
+        continue;
+      }
+
+      const relativePath = path.relative(rootDirectory, entryPath);
+      if (SOURCE_FILE_PATTERN.test(relativePath)) {
+        sourceFileCount += 1;
       }
     }
   }
 
-  return count;
+  return sourceFileCount;
 };
 
 const countSourceFilesViaGit = (rootDirectory: string): number | null => {
@@ -107,9 +169,15 @@ const countSourceFilesViaGit = (rootDirectory: string): number | null => {
     return null;
   }
 
-  return result.stdout
+  const gitSourceFileCount = result.stdout
     .split("\n")
     .filter((filePath) => filePath.length > 0 && SOURCE_FILE_PATTERN.test(filePath)).length;
+
+  if (gitSourceFileCount === 0) {
+    return null;
+  }
+
+  return gitSourceFileCount;
 };
 
 const countSourceFiles = (rootDirectory: string): number =>
@@ -121,20 +189,71 @@ const collectAllDependencies = (packageJson: PackageJson): Record<string, string
   ...packageJson.devDependencies,
 });
 
-const detectFramework = (dependencies: Record<string, string>): Framework => {
+const hasAnyRobloxTypeMarker = (types: string[]): boolean =>
+  types.some((typeName) => ROBLOX_TS_TYPE_MARKERS.has(typeName));
+
+const hasAnyRobloxTypeRoot = (typeRoots: string[]): boolean =>
+  typeRoots.some((typeRoot) => typeRoot.includes("@rbxts"));
+
+const hasRobloxToolchainDependencies = (dependencies: Record<string, string>): boolean =>
+  Boolean(dependencies[ROBLOX_TYPES_PACKAGE_NAME] || dependencies[ROBLOX_TS_PACKAGE_NAME]);
+
+const hasRobloxTsconfigTypeMarkers = (directory: string): boolean => {
+  const tsconfigPath = path.join(directory, "tsconfig.json");
+  if (!isFile(tsconfigPath)) {
+    return false;
+  }
+
+  const tsconfigContent = fs.readFileSync(tsconfigPath, "utf-8");
+
+  try {
+    const parsedTsconfig: TsconfigFile = JSON.parse(tsconfigContent);
+    const tsconfigTypes = parsedTsconfig.compilerOptions?.types;
+    if (Array.isArray(tsconfigTypes)) {
+      const typeNames = tsconfigTypes.filter((typeName) => typeof typeName === "string");
+      if (hasAnyRobloxTypeMarker(typeNames)) {
+        return true;
+      }
+    }
+
+    const tsconfigTypeRoots = parsedTsconfig.compilerOptions?.typeRoots;
+    if (Array.isArray(tsconfigTypeRoots)) {
+      const typeRootNames = tsconfigTypeRoots.filter((typeRoot) => typeof typeRoot === "string");
+      if (hasAnyRobloxTypeRoot(typeRootNames)) {
+        return true;
+      }
+    }
+  } catch {}
+
+  return (
+    [...ROBLOX_TS_TYPE_MARKERS].some((typeMarker) => tsconfigContent.includes(typeMarker)) ||
+    (tsconfigContent.includes('"typeRoots"') && tsconfigContent.includes("@rbxts"))
+  );
+};
+
+const detectFramework = (directory: string, dependencies: Record<string, string>): Framework => {
+  if (
+    dependencies[ROBLOX_REACT_PACKAGE_NAME] &&
+    (hasRobloxTsconfigTypeMarkers(directory) || hasRobloxToolchainDependencies(dependencies))
+  ) {
+    return "roblox-ts";
+  }
+
   for (const [packageName, frameworkName] of Object.entries(FRAMEWORK_PACKAGES)) {
     if (dependencies[packageName]) {
       return frameworkName;
     }
   }
+
   return "unknown";
 };
 
-const extractDependencyInfo = (packageJson: PackageJson): DependencyInfo => {
+const extractDependencyInfo = (directory: string, packageJson: PackageJson): DependencyInfo => {
   const allDependencies = collectAllDependencies(packageJson);
+
   return {
-    reactVersion: allDependencies.react ?? null,
-    framework: detectFramework(allDependencies),
+    reactVersion: allDependencies.react ?? allDependencies[ROBLOX_REACT_PACKAGE_NAME] ?? null,
+    framework: detectFramework(directory, allDependencies),
   };
 };
 
@@ -207,23 +326,6 @@ const resolveWorkspaceDirectories = (rootDirectory: string, pattern: string): st
     );
 };
 
-const findDependencyInfoFromMonorepoRoot = (directory: string): DependencyInfo => {
-  const monorepoRoot = findMonorepoRoot(directory);
-  if (!monorepoRoot) return { reactVersion: null, framework: "unknown" };
-
-  const monorepoPackageJsonPath = path.join(monorepoRoot, "package.json");
-  if (!isFile(monorepoPackageJsonPath)) return { reactVersion: null, framework: "unknown" };
-
-  const rootPackageJson = readPackageJson(monorepoPackageJsonPath);
-  const rootInfo = extractDependencyInfo(rootPackageJson);
-  const workspaceInfo = findReactInWorkspaces(monorepoRoot, rootPackageJson);
-
-  return {
-    reactVersion: rootInfo.reactVersion ?? workspaceInfo.reactVersion,
-    framework: rootInfo.framework !== "unknown" ? rootInfo.framework : workspaceInfo.framework,
-  };
-};
-
 const findReactInWorkspaces = (rootDirectory: string, packageJson: PackageJson): DependencyInfo => {
   const patterns = getWorkspacePatterns(rootDirectory, packageJson);
   const result: DependencyInfo = { reactVersion: null, framework: "unknown" };
@@ -233,7 +335,7 @@ const findReactInWorkspaces = (rootDirectory: string, packageJson: PackageJson):
 
     for (const workspaceDirectory of directories) {
       const workspacePackageJson = readPackageJson(path.join(workspaceDirectory, "package.json"));
-      const info = extractDependencyInfo(workspacePackageJson);
+      const info = extractDependencyInfo(workspaceDirectory, workspacePackageJson);
 
       if (info.reactVersion && !result.reactVersion) {
         result.reactVersion = info.reactVersion;
@@ -251,7 +353,22 @@ const findReactInWorkspaces = (rootDirectory: string, packageJson: PackageJson):
   return result;
 };
 
-const REACT_DEPENDENCY_NAMES = new Set(["react", "react-native", "next"]);
+const findDependencyInfoFromMonorepoRoot = (directory: string): DependencyInfo => {
+  const monorepoRoot = findMonorepoRoot(directory);
+  if (!monorepoRoot) return { reactVersion: null, framework: "unknown" };
+
+  const monorepoPackageJsonPath = path.join(monorepoRoot, "package.json");
+  if (!isFile(monorepoPackageJsonPath)) return { reactVersion: null, framework: "unknown" };
+
+  const rootPackageJson = readPackageJson(monorepoPackageJsonPath);
+  const rootInfo = extractDependencyInfo(monorepoRoot, rootPackageJson);
+  const workspaceInfo = findReactInWorkspaces(monorepoRoot, rootPackageJson);
+
+  return {
+    reactVersion: rootInfo.reactVersion ?? workspaceInfo.reactVersion,
+    framework: rootInfo.framework !== "unknown" ? rootInfo.framework : workspaceInfo.framework,
+  };
+};
 
 const hasReactDependency = (packageJson: PackageJson): boolean => {
   const allDependencies = collectAllDependencies(packageJson);
@@ -359,14 +476,17 @@ const detectReactCompiler = (directory: string, packageJson: PackageJson): boole
   return false;
 };
 
-export const discoverProject = (directory: string): ProjectInfo => {
+export const discoverProject = (
+  directory: string,
+  options: DiscoverProjectOptions = {},
+): ProjectInfo => {
   const packageJsonPath = path.join(directory, "package.json");
   if (!isFile(packageJsonPath)) {
     throw new Error(`No package.json found in ${directory}`);
   }
 
   const packageJson = readPackageJson(packageJsonPath);
-  let { reactVersion, framework } = extractDependencyInfo(packageJson);
+  let { reactVersion, framework } = extractDependencyInfo(directory, packageJson);
 
   if (!reactVersion || framework === "unknown") {
     const workspaceInfo = findReactInWorkspaces(directory, packageJson);
@@ -389,16 +509,15 @@ export const discoverProject = (directory: string): ProjectInfo => {
   }
 
   const projectName = packageJson.name ?? path.basename(directory);
-  const hasTypeScript = fs.existsSync(path.join(directory, "tsconfig.json"));
+  const hasTypeScript = isFile(path.join(directory, "tsconfig.json"));
   const sourceFileCount = countSourceFiles(directory);
-
   const hasReactCompiler = detectReactCompiler(directory, packageJson);
 
   return {
     rootDirectory: directory,
     projectName,
     reactVersion,
-    framework,
+    framework: options.frameworkOverride ?? framework,
     hasTypeScript,
     hasReactCompiler,
     sourceFileCount,

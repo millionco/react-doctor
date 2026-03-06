@@ -127,4 +127,153 @@ describe("filterIgnoredDiagnostics", () => {
     expect(filtered).toHaveLength(1);
     expect(filtered[0].rule).toBe("files");
   });
+
+  describe("overrides", () => {
+    it("ignores a specific rule only for matching files", () => {
+      const diagnostics = [
+        createDiagnostic({
+          plugin: "react-doctor",
+          rule: "no-giant-component",
+          filePath: "src/legacy/Dashboard.tsx",
+        }),
+        createDiagnostic({
+          plugin: "react-doctor",
+          rule: "no-giant-component",
+          filePath: "src/components/App.tsx",
+        }),
+      ];
+      const config: ReactDoctorConfig = {
+        overrides: [
+          {
+            files: ["src/legacy/**"],
+            ignore: { rules: ["react-doctor/no-giant-component"] },
+          },
+        ],
+      };
+
+      const filtered = filterIgnoredDiagnostics(diagnostics, config);
+      expect(filtered).toHaveLength(1);
+      expect(filtered[0].filePath).toBe("src/components/App.tsx");
+    });
+
+    it("applies multiple overrides to different file patterns", () => {
+      const diagnostics = [
+        createDiagnostic({
+          plugin: "react",
+          rule: "no-danger",
+          filePath: "src/legacy/Old.tsx",
+        }),
+        createDiagnostic({
+          plugin: "knip",
+          rule: "exports",
+          filePath: "src/generated/api.tsx",
+        }),
+        createDiagnostic({
+          plugin: "react-doctor",
+          rule: "no-giant-component",
+          filePath: "src/components/App.tsx",
+        }),
+      ];
+      const config: ReactDoctorConfig = {
+        overrides: [
+          {
+            files: ["src/legacy/**"],
+            ignore: { rules: ["react/no-danger"] },
+          },
+          {
+            files: ["src/generated/**"],
+            ignore: { rules: ["knip/exports"] },
+          },
+        ],
+      };
+
+      const filtered = filterIgnoredDiagnostics(diagnostics, config);
+      expect(filtered).toHaveLength(1);
+      expect(filtered[0].filePath).toBe("src/components/App.tsx");
+    });
+
+    it("combines overrides with global ignore.rules and ignore.files", () => {
+      const diagnostics = [
+        createDiagnostic({
+          plugin: "react",
+          rule: "no-danger",
+          filePath: "src/app.tsx",
+        }),
+        createDiagnostic({
+          plugin: "knip",
+          rule: "exports",
+          filePath: "src/generated/api.tsx",
+        }),
+        createDiagnostic({
+          plugin: "react-doctor",
+          rule: "no-giant-component",
+          filePath: "src/legacy/Dashboard.tsx",
+        }),
+        createDiagnostic({
+          plugin: "jsx-a11y",
+          rule: "no-autofocus",
+          filePath: "src/components/Search.tsx",
+        }),
+      ];
+      const config: ReactDoctorConfig = {
+        ignore: {
+          rules: ["react/no-danger"],
+          files: ["src/generated/**"],
+        },
+        overrides: [
+          {
+            files: ["src/legacy/**"],
+            ignore: { rules: ["react-doctor/no-giant-component"] },
+          },
+        ],
+      };
+
+      const filtered = filterIgnoredDiagnostics(diagnostics, config);
+      expect(filtered).toHaveLength(1);
+      expect(filtered[0].rule).toBe("no-autofocus");
+    });
+
+    it("has no effect when overrides array is empty", () => {
+      const diagnostics = [
+        createDiagnostic({ plugin: "react", rule: "no-danger" }),
+        createDiagnostic({ plugin: "knip", rule: "exports" }),
+      ];
+      const config: ReactDoctorConfig = { overrides: [] };
+
+      const filtered = filterIgnoredDiagnostics(diagnostics, config);
+      expect(filtered).toHaveLength(2);
+    });
+
+    it("supports multiple file globs in a single override", () => {
+      const diagnostics = [
+        createDiagnostic({
+          plugin: "react",
+          rule: "no-danger",
+          filePath: "src/legacy/Old.tsx",
+        }),
+        createDiagnostic({
+          plugin: "react",
+          rule: "no-danger",
+          filePath: "src/deprecated/Stale.tsx",
+        }),
+        createDiagnostic({
+          plugin: "react",
+          rule: "no-danger",
+          filePath: "src/components/App.tsx",
+        }),
+      ];
+      const config: ReactDoctorConfig = {
+        overrides: [
+          {
+            files: ["src/legacy/**", "src/deprecated/**"],
+            ignore: { rules: ["react/no-danger"] },
+          },
+        ],
+      };
+
+      const filtered = filterIgnoredDiagnostics(diagnostics, config);
+      expect(filtered).toHaveLength(1);
+      expect(filtered[0].filePath).toBe("src/components/App.tsx");
+    });
+  });
 });

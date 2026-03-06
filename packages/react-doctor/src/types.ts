@@ -167,8 +167,14 @@ export interface ReactDoctorIgnoreConfig {
   files?: string[];
 }
 
+export interface ReactDoctorOverride {
+  files: string[];
+  ignore: { rules: string[] };
+}
+
 export interface ReactDoctorConfig {
   ignore?: ReactDoctorIgnoreConfig;
+  overrides?: ReactDoctorOverride[];
   lint?: boolean;
   deadCode?: boolean;
   verbose?: boolean;

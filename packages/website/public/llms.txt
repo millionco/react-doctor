@@ -34,6 +34,12 @@ Use `-y` to skip prompts (required for non-interactive environments like CI or c
 npx -y react-doctor@latest . -y
 ```
 
+When issues are found, diagnostics and an HTML report are written to a temp directory. Use `--open-report` to open the report in the browser after the scan:
+
+```bash
+npx -y react-doctor@latest . --open-report
+```
+
 ## Options
 
 ```
@@ -48,6 +54,8 @@ Options:
   -y, --yes         skip prompts, scan all workspace projects
   --project <name>  select workspace project (comma-separated for multiple)
   --diff [base]     scan only files changed vs base branch or uncommitted changes
+  --offline         skip telemetry (score not calculated)
+  --open-report     open the HTML report in the default browser after scan
   --fix             open Ami to auto-fix all issues
   -h, --help        display help for command
 ```

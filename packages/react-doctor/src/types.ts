@@ -93,6 +93,13 @@ export interface ScoreResult {
   label: string;
 }
 
+export interface ReportPayload {
+  diagnostics: Diagnostic[];
+  score: number | null;
+  label: string | null;
+  projectName: string;
+}
+
 export interface ScanResult {
   diagnostics: Diagnostic[];
   scoreResult: ScoreResult | null;
@@ -112,6 +119,7 @@ export interface ScanOptions {
   verbose?: boolean;
   scoreOnly?: boolean;
   offline?: boolean;
+  openReport?: boolean;
   includePaths?: string[];
 }
 

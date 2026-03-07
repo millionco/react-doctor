@@ -119,14 +119,15 @@ If both exist, `react-doctor.config.json` takes precedence.
 
 ### Config options
 
-| Key            | Type                | Default | Description                                                                                                                         |
-| -------------- | ------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `ignore.rules` | `string[]`          | `[]`    | Rules to suppress, using the `plugin/rule` format shown in diagnostic output (e.g. `react/no-danger`, `knip/exports`, `knip/types`) |
-| `ignore.files` | `string[]`          | `[]`    | File paths to exclude, supports glob patterns (`src/generated/**`, `**/*.test.tsx`)                                                 |
-| `lint`         | `boolean`           | `true`  | Enable/disable lint checks (same as `--no-lint`)                                                                                    |
-| `deadCode`     | `boolean`           | `true`  | Enable/disable dead code detection (same as `--no-dead-code`)                                                                       |
-| `verbose`      | `boolean`           | `false` | Show file details per rule (same as `--verbose`)                                                                                    |
-| `diff`         | `boolean \| string` | —       | Force diff mode (`true`) or pin a base branch (`"main"`). Set to `false` to disable auto-detection.                                 |
+| Key             | Type                                              | Default     | Description                                                                                                                                                             |
+| --------------- | ------------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ignore.rules`  | `string[]`                                        | `[]`        | Rules to suppress, using the `plugin/rule` format shown in diagnostic output (e.g. `react/no-danger`, `knip/exports`, `knip/types`)                                     |
+| `ignore.files`  | `string[]`                                        | `[]`        | File paths to exclude, supports glob patterns (`src/generated/**`, `**/*.test.tsx`)                                                                                     |
+| `lint`          | `boolean`                                         | `true`      | Enable/disable lint checks (same as `--no-lint`)                                                                                                                        |
+| `deadCode`      | `boolean`                                         | `true`      | Enable/disable dead code detection (same as `--no-dead-code`)                                                                                                           |
+| `verbose`       | `boolean`                                         | `false`     | Show file details per rule (same as `--verbose`)                                                                                                                        |
+| `diff`          | `boolean \| string`                               | —           | Force diff mode (`true`) or pin a base branch (`"main"`). Set to `false` to disable auto-detection.                                                                     |
+| `accessibility` | `"minimal" \| "recommended" \| "strict" \| false` | `"minimal"` | Accessibility checking level. `minimal`: 15 high-impact rules, `recommended`: 31 rules (jsx-a11y/recommended), `strict`: 33 rules as errors. Set to `false` to disable. |
 
 CLI flags always override config values.
 
@@ -150,6 +151,7 @@ The `diagnose` function accepts an optional second argument:
 const result = await diagnose(".", {
   lint: true, // run lint checks (default: true)
   deadCode: true, // run dead code detection (default: true)
+  accessibility: "recommended", // "minimal" | "recommended" | "strict" | false (default: "minimal")
 });
 ```
 

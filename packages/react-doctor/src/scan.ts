@@ -465,6 +465,7 @@ export const scan = async (
   const options = mergeScanOptions(inputOptions, userConfig);
   const { includePaths } = options;
   const isDiffMode = includePaths.length > 0;
+  const effectiveAccessibility = userConfig?.accessibility ?? "minimal";
 
   if (!projectInfo.reactVersion) {
     throw new Error("No React dependency found in package.json");
@@ -492,6 +493,7 @@ export const scan = async (
             projectInfo.framework,
             projectInfo.hasReactCompiler,
             jsxIncludePaths,
+            effectiveAccessibility,
             resolvedNodeBinaryPath,
           );
           lintSpinner?.succeed("Running lint checks.");

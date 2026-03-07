@@ -1,6 +1,13 @@
 import path from "node:path";
 import { performance } from "node:perf_hooks";
-import type { Diagnostic, DiffInfo, ProjectInfo, ReactDoctorConfig, ScoreResult } from "./types.js";
+import type {
+  AccessibilityPreset,
+  Diagnostic,
+  DiffInfo,
+  ProjectInfo,
+  ReactDoctorConfig,
+  ScoreResult,
+} from "./types.js";
 import { calculateScore } from "./utils/calculate-score.js";
 import { combineDiagnostics, computeJsxIncludePaths } from "./utils/combine-diagnostics.js";
 import { discoverProject } from "./utils/discover-project.js";
@@ -8,13 +15,21 @@ import { loadConfig } from "./utils/load-config.js";
 import { runKnip } from "./utils/run-knip.js";
 import { runOxlint } from "./utils/run-oxlint.js";
 
-export type { Diagnostic, DiffInfo, ProjectInfo, ReactDoctorConfig, ScoreResult };
+export type {
+  AccessibilityPreset,
+  Diagnostic,
+  DiffInfo,
+  ProjectInfo,
+  ReactDoctorConfig,
+  ScoreResult,
+};
 export { getDiffInfo, filterSourceFiles } from "./utils/get-diff-files.js";
 
 export interface DiagnoseOptions {
   lint?: boolean;
   deadCode?: boolean;
   includePaths?: string[];
+  accessibility?: AccessibilityPreset | false;
 }
 
 export interface DiagnoseResult {
@@ -38,6 +53,7 @@ export const diagnose = async (
 
   const effectiveLint = options.lint ?? userConfig?.lint ?? true;
   const effectiveDeadCode = options.deadCode ?? userConfig?.deadCode ?? true;
+  const effectiveAccessibility = options.accessibility ?? userConfig?.accessibility ?? "minimal";
 
   if (!projectInfo.reactVersion) {
     throw new Error("No React dependency found in package.json");
@@ -54,6 +70,7 @@ export const diagnose = async (
         projectInfo.framework,
         projectInfo.hasReactCompiler,
         jsxIncludePaths,
+        effectiveAccessibility,
       ).catch((error: unknown) => {
         console.error("Lint failed:", error);
         return emptyDiagnostics;

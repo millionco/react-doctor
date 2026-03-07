@@ -167,6 +167,8 @@ export interface ReactDoctorIgnoreConfig {
   files?: string[];
 }
 
+export type AccessibilityPreset = "minimal" | "recommended" | "strict";
+
 export interface ReactDoctorConfig {
   ignore?: ReactDoctorIgnoreConfig;
   lint?: boolean;
@@ -174,4 +176,5 @@ export interface ReactDoctorConfig {
   verbose?: boolean;
   diff?: boolean | string;
   failOn?: FailOnLevel;
+  accessibility?: AccessibilityPreset | false;
 }

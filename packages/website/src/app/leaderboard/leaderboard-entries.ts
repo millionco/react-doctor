@@ -57,6 +57,15 @@ const RAW_ENTRIES: LeaderboardEntry[] = [
     fileCount: 292,
   },
   {
+    name: "rybbit",
+    githubUrl: "https://github.com/rybbit-io/rybbit",
+    packageName: "client",
+    score: 76,
+    errorCount: 11,
+    warningCount: 497,
+    fileCount: 215,
+  },
+  {
     name: "formbricks",
     githubUrl: "https://github.com/formbricks/formbricks",
     packageName: "@formbricks/web",

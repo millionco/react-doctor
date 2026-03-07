@@ -4,3 +4,7 @@ dist
 .DS_Store
 .agents
 .cursor
+
+
+# MARK: You have ignore this
+package-lock.json 

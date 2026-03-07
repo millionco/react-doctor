@@ -1,6 +1,10 @@
 import path from "node:path";
 import type { WorkspacePackage } from "../types.js";
-import { discoverReactSubprojects, listWorkspacePackages } from "./discover-project.js";
+import {
+  discoverReactSubprojects,
+  discoverRootReactPackage,
+  listWorkspacePackages,
+} from "./discover-project.js";
 import { highlighter } from "./highlighter.js";
 import { logger } from "./logger.js";
 import { prompts } from "./prompts.js";
@@ -13,6 +17,18 @@ export const selectProjects = async (
   let packages = listWorkspacePackages(rootDirectory);
   if (packages.length === 0) {
     packages = discoverReactSubprojects(rootDirectory);
+  }
+
+  const rootPackage = discoverRootReactPackage(rootDirectory);
+  if (rootPackage) {
+    const hasDuplicateRootPackage = packages.some(
+      (workspacePackage) =>
+        workspacePackage.name === rootPackage.name ||
+        workspacePackage.directory === rootPackage.directory,
+    );
+    if (!hasDuplicateRootPackage) {
+      packages.push(rootPackage);
+    }
   }
 
   if (packages.length === 0) return [rootDirectory];

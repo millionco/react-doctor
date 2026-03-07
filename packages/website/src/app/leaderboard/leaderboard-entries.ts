@@ -39,6 +39,15 @@ const RAW_ENTRIES: LeaderboardEntry[] = [
     fileCount: 80,
   },
   {
+    name: "easy-invoice-pdf",
+    githubUrl: "https://github.com/VladSez/easy-invoice-pdf",
+    packageName: "src",
+    score: 84,
+    errorCount: 1,
+    warningCount: 56,
+    fileCount: 36,
+  },
+  {
     name: "twenty",
     githubUrl: "https://github.com/twentyhq/twenty",
     packageName: "twenty-front",

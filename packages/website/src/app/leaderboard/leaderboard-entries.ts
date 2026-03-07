@@ -21,6 +21,15 @@ const buildShareUrl = (entry: LeaderboardEntry): string => {
 
 const RAW_ENTRIES: LeaderboardEntry[] = [
   {
+    name: "gitdiagram",
+    githubUrl: "https://github.com/ahmedkhaleel2004/gitdiagram",
+    packageName: "gitdiagram",
+    score: 100,
+    errorCount: 0,
+    warningCount: 0,
+    fileCount: 67,
+  },
+  {
     name: "tldraw",
     githubUrl: "https://github.com/tldraw/tldraw",
     packageName: "tldraw",

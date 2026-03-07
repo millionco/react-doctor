@@ -54,7 +54,8 @@ runs:
         if [ -n "$INPUT_DIFF" ]; then FLAGS="$FLAGS --diff $INPUT_DIFF"; fi
 
         if [ -n "$INPUT_GITHUB_TOKEN" ]; then
-          npx -y react-doctor@latest "$INPUT_DIRECTORY" $FLAGS | tee /tmp/react-doctor-output.txt
+          npx -y react-doctor@latest "$INPUT_DIRECTORY" $FLAGS | tee /tmp/react-doctor-output-raw.txt
+          sed 's/\x1b\[[0-9;]*[mGKHFJABCDsuh]//g' /tmp/react-doctor-output-raw.txt > /tmp/react-doctor-output.txt
         else
           npx -y react-doctor@latest "$INPUT_DIRECTORY" $FLAGS
         fi

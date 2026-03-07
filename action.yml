@@ -39,8 +39,21 @@ runs:
       with:
         node-version: ${{ inputs.node-version }}
 
+    - if: ${{ inputs.diff != '' && github.event_name == 'pull_request' }}
+      shell: bash
+      run: |
+        # create local ref for the diff base so git merge-base can resolve it
+        git fetch origin "$DIFF_BASE" && git branch -f "$DIFF_BASE" FETCH_HEAD 2>/dev/null || true
+        # checkout the PR head branch so getCurrentBranch() doesn't return null
+        git checkout "$HEAD_REF" 2>/dev/null || true
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        DIFF_BASE: ${{ inputs.diff }}
+        HEAD_REF: ${{ github.head_ref }}
+
     - shell: bash
       env:
+        NO_COLOR: "1"
         INPUT_DIRECTORY: ${{ inputs.directory }}
         INPUT_VERBOSE: ${{ inputs.verbose }}
         INPUT_PROJECT: ${{ inputs.project }}

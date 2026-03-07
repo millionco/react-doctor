@@ -21,6 +21,15 @@ const buildShareUrl = (entry: LeaderboardEntry): string => {
 
 const RAW_ENTRIES: LeaderboardEntry[] = [
   {
+    name: "fragments",
+    githubUrl: "https://github.com/ConanMcN/fragments",
+    packageName: "@fragments-sdk/ui",
+    score: 100,
+    errorCount: 0,
+    warningCount: 0,
+    fileCount: 0,
+  },
+  {
     name: "tldraw",
     githubUrl: "https://github.com/tldraw/tldraw",
     packageName: "tldraw",

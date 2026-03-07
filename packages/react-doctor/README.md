@@ -38,6 +38,12 @@ Use `--verbose` to see affected files and line numbers:
 npx -y react-doctor@latest . --verbose
 ```
 
+Write a Markdown report to a file:
+
+```bash
+npx -y react-doctor@latest . --report-md react-doctor-report.md
+```
+
 ## Install for your coding agent
 
 Teach your coding agent all 47+ React best practice rules:
@@ -82,6 +88,7 @@ Options:
   --no-dead-code    skip dead code detection
   --verbose         show file details per rule
   --score           output only the score
+  --report-md <path>  write a markdown report to file
   -y, --yes         skip prompts, scan all workspace projects
   --project <name>  select workspace project (comma-separated for multiple)
   --diff [base]     scan only files changed vs base branch

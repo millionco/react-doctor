@@ -10,6 +10,7 @@ import type {
   DiffInfo,
   EstimatedScoreResult,
   FailOnLevel,
+  MarkdownReportProject,
   ReactDoctorConfig,
   ScanOptions,
 } from "./types.js";
@@ -24,6 +25,7 @@ import { logger } from "./utils/logger.js";
 import { clearSelectBanner, prompts, setSelectBanner } from "./utils/prompts.js";
 import { selectProjects } from "./utils/select-projects.js";
 import { maybePromptSkillInstall } from "./utils/skill-prompt.js";
+import { writeMarkdownReport } from "./utils/write-markdown-report.js";
 
 const VERSION = process.env.VERSION ?? "0.0.0";
 
@@ -37,6 +39,7 @@ interface CliFlags {
   offline: boolean;
   ami: boolean;
   project?: string;
+  reportMd?: string;
   diff?: boolean | string;
   failOn: string;
 }
@@ -139,6 +142,7 @@ const program = new Command()
   .option("--no-dead-code", "skip dead code detection")
   .option("--verbose", "show file details per rule")
   .option("--score", "output only the score")
+  .option("--report-md <path>", "write a markdown report to file")
   .option("-y, --yes", "skip prompts, scan all workspace projects")
   .option("--project <name>", "select workspace project (comma-separated for multiple)")
   .option("--diff [base]", "scan only files changed vs base branch")
@@ -190,6 +194,7 @@ const program = new Command()
       }
 
       const allDiagnostics: Diagnostic[] = [];
+      const markdownReportProjects: MarkdownReportProject[] = [];
 
       for (const projectDirectory of projectDirectories) {
         let includePaths: string[] | undefined;
@@ -214,8 +219,42 @@ const program = new Command()
         }
         const scanResult = await scan(projectDirectory, { ...scanOptions, includePaths });
         allDiagnostics.push(...scanResult.diagnostics);
+        markdownReportProjects.push({
+          projectDirectory,
+          projectName: scanResult.project.projectName,
+          framework: scanResult.project.framework,
+          reactVersion: scanResult.project.reactVersion,
+          sourceFileCount: scanResult.project.sourceFileCount,
+          diagnostics: scanResult.diagnostics,
+          scoreResult: scanResult.scoreResult,
+          skippedChecks: scanResult.skippedChecks,
+          elapsedMilliseconds: scanResult.elapsedMilliseconds,
+        });
         if (!isScoreOnly) {
           logger.break();
+        }
+      }
+
+      if (flags.reportMd) {
+        const markdownReportPath = writeMarkdownReport(
+          {
+            generatedAtIso: new Date().toISOString(),
+            rootDirectory: resolvedDirectory,
+            isDiffMode,
+            isOffline: scanOptions.offline ?? false,
+            isScoreOnly,
+            isLintEnabled: scanOptions.lint ?? true,
+            isDeadCodeEnabled: scanOptions.deadCode ?? true,
+            isVerboseEnabled: scanOptions.verbose ?? false,
+            diagnostics: allDiagnostics,
+            projects: markdownReportProjects,
+          },
+          flags.reportMd,
+        );
+
+        if (!isScoreOnly) {
+          logger.break();
+          logger.dim(`Markdown report written to ${markdownReportPath}`);
         }
       }
 

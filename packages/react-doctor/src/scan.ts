@@ -484,60 +484,60 @@ export const scan = async (
 
   const lintPromise = resolvedNodeBinaryPath
     ? (async () => {
-        const lintSpinner = options.scoreOnly ? null : spinner("Running lint checks...").start();
-        try {
-          const lintDiagnostics = await runOxlint(
-            directory,
-            projectInfo.hasTypeScript,
-            projectInfo.framework,
-            projectInfo.hasReactCompiler,
-            jsxIncludePaths,
-            resolvedNodeBinaryPath,
-          );
-          lintSpinner?.succeed("Running lint checks.");
-          return lintDiagnostics;
-        } catch (error) {
-          didLintFail = true;
-          if (!options.scoreOnly) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            const isNativeBindingError = errorMessage.includes("native binding");
+      const lintSpinner = options.scoreOnly ? null : spinner("Running lint checks...").start();
+      try {
+        const lintDiagnostics = await runOxlint(
+          directory,
+          projectInfo.hasTypeScript,
+          projectInfo.framework,
+          projectInfo.hasReactCompiler,
+          jsxIncludePaths,
+          resolvedNodeBinaryPath,
+        );
+        lintSpinner?.succeed("Running lint checks.");
+        return lintDiagnostics;
+      } catch (error) {
+        didLintFail = true;
+        if (!options.scoreOnly) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          const isNativeBindingError = errorMessage.includes("native binding");
 
-            if (isNativeBindingError) {
-              lintSpinner?.fail(
-                `Lint checks failed — oxlint native binding not found (Node ${process.version}).`,
-              );
-              logger.dim(
-                `  Upgrade to Node ${OXLINT_NODE_REQUIREMENT} or run: npx -p oxlint@latest react-doctor@latest`,
-              );
-            } else {
-              lintSpinner?.fail("Lint checks failed (non-fatal, skipping).");
-              logger.error(errorMessage);
-            }
+          if (isNativeBindingError) {
+            lintSpinner?.fail(
+              `Lint checks failed — oxlint native binding not found (Node ${process.version}).`,
+            );
+            logger.dim(
+              `  Upgrade to Node ${OXLINT_NODE_REQUIREMENT} or run: npx -p oxlint@latest react-doctor@latest`,
+            );
+          } else {
+            lintSpinner?.fail("Lint checks failed (non-fatal, skipping).");
+            logger.error(errorMessage);
           }
-          return [];
         }
-      })()
+        return [];
+      }
+    })()
     : Promise.resolve<Diagnostic[]>([]);
 
   const deadCodePromise =
     options.deadCode && !isDiffMode
       ? (async () => {
-          const deadCodeSpinner = options.scoreOnly
-            ? null
-            : spinner("Detecting dead code...").start();
-          try {
-            const knipDiagnostics = await runKnip(directory);
-            deadCodeSpinner?.succeed("Detecting dead code.");
-            return knipDiagnostics;
-          } catch (error) {
-            didDeadCodeFail = true;
-            if (!options.scoreOnly) {
-              deadCodeSpinner?.fail("Dead code detection failed (non-fatal, skipping).");
-              logger.error(String(error));
-            }
-            return [];
+        const deadCodeSpinner = options.scoreOnly
+          ? null
+          : spinner("Detecting dead code...").start();
+        try {
+          const knipDiagnostics = await runKnip(directory);
+          deadCodeSpinner?.succeed("Detecting dead code.");
+          return knipDiagnostics;
+        } catch (error) {
+          didDeadCodeFail = true;
+          if (!options.scoreOnly) {
+            deadCodeSpinner?.fail("Dead code detection failed (non-fatal, skipping).");
+            logger.error(String(error));
           }
-        })()
+          return [];
+        }
+      })()
       : Promise.resolve<Diagnostic[]>([]);
 
   const [lintDiagnostics, deadCodeDiagnostics] = await Promise.all([lintPromise, deadCodePromise]);
@@ -567,7 +567,13 @@ export const scan = async (
     } else {
       logger.dim(noScoreMessage);
     }
-    return { diagnostics, scoreResult, skippedChecks };
+    return {
+      diagnostics,
+      scoreResult,
+      skippedChecks,
+      project: projectInfo,
+      elapsedMilliseconds,
+    };
   }
 
   if (diagnostics.length === 0) {
@@ -589,7 +595,13 @@ export const scan = async (
     } else {
       logger.dim(`  ${noScoreMessage}`);
     }
-    return { diagnostics, scoreResult, skippedChecks };
+    return {
+      diagnostics,
+      scoreResult,
+      skippedChecks,
+      project: projectInfo,
+      elapsedMilliseconds,
+    };
   }
 
   printDiagnostics(diagnostics, options.verbose);
@@ -612,5 +624,11 @@ export const scan = async (
     logger.warn(`  Note: ${skippedLabel} checks failed — score may be incomplete.`);
   }
 
-  return { diagnostics, scoreResult, skippedChecks };
+  return {
+    diagnostics,
+    scoreResult,
+    skippedChecks,
+    project: projectInfo,
+    elapsedMilliseconds,
+  };
 };

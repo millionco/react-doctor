@@ -97,6 +97,8 @@ export interface ScanResult {
   diagnostics: Diagnostic[];
   scoreResult: ScoreResult | null;
   skippedChecks: string[];
+  project: ProjectInfo;
+  elapsedMilliseconds: number;
 }
 
 export interface EstimatedScoreResult {
@@ -174,4 +176,29 @@ export interface ReactDoctorConfig {
   verbose?: boolean;
   diff?: boolean | string;
   failOn?: FailOnLevel;
+}
+
+export interface MarkdownReportProject {
+  projectDirectory: string;
+  projectName: string;
+  framework: Framework;
+  reactVersion: string | null;
+  sourceFileCount: number;
+  diagnostics: Diagnostic[];
+  scoreResult: ScoreResult | null;
+  skippedChecks: string[];
+  elapsedMilliseconds: number;
+}
+
+export interface MarkdownReportData {
+  generatedAtIso: string;
+  rootDirectory: string;
+  isDiffMode: boolean;
+  isOffline: boolean;
+  isScoreOnly: boolean;
+  isLintEnabled: boolean;
+  isDeadCodeEnabled: boolean;
+  isVerboseEnabled: boolean;
+  diagnostics: Diagnostic[];
+  projects: MarkdownReportProject[];
 }

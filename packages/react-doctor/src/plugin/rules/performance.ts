@@ -50,6 +50,31 @@ const isInlineReference = (node: EsTreeNode): string | null => {
   return null;
 };
 
+const getInlineLiteralKind = (node: EsTreeNode): "object" | "array" | null => {
+  if (node.type === "ObjectExpression") return "object";
+  if (node.type === "ArrayExpression") return "array";
+  return null;
+};
+
+export const noInlineObjectProps: Rule = {
+  create: (context: RuleContext) => ({
+    JSXAttribute(node: EsTreeNode) {
+      if (!node.value || node.value.type !== "JSXExpressionContainer") return;
+
+      const inlineLiteralKind = getInlineLiteralKind(node.value.expression);
+      if (!inlineLiteralKind) return;
+
+      const propName =
+        node.name?.type === "JSXIdentifier" ? node.name.name : "this prop";
+
+      context.report({
+        node: node.value.expression,
+        message: `Inline ${inlineLiteralKind} literal passed to "${propName}" creates a new reference on every render — extract it to a stable constant`,
+      });
+    },
+  }),
+};
+
 export const noInlinePropOnMemoComponent: Rule = {
   create: (context: RuleContext) => {
     const memoizedComponentNames = new Set<string>();

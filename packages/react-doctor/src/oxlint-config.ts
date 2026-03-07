@@ -130,6 +130,7 @@ export const createOxlintConfig = ({
     "react-doctor/rerender-memo-with-default-value": "warn",
     "react-doctor/rendering-animate-svg-wrapper": "warn",
     "react-doctor/no-inline-prop-on-memo-component": "warn",
+    "react-doctor/no-inline-object-props": "warn",
     "react-doctor/rendering-hydration-no-flicker": "warn",
 
     "react-doctor/no-transition-all": "warn",

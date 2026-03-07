@@ -44,6 +44,7 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/rerender-memo-with-default-value": "Performance",
   "react-doctor/rendering-animate-svg-wrapper": "Performance",
   "react-doctor/rendering-usetransition-loading": "Performance",
+  "react-doctor/no-inline-object-props": "Performance",
   "react-doctor/rendering-hydration-no-flicker": "Performance",
 
   "react-doctor/no-transition-all": "Performance",
@@ -137,6 +138,8 @@ const RULE_HELP_MAP: Record<string, string> = {
     "Wrap the SVG: `<motion.div animate={...}><svg>...</svg></motion.div>`",
   "rendering-usetransition-loading":
     "Replace with `const [isPending, startTransition] = useTransition()` — avoids a re-render for the loading state",
+  "no-inline-object-props":
+    "Extract object/array literals to stable references with `useMemo` or module-level constants, then pass those variables as props",
   "rendering-hydration-no-flicker":
     "Use `useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)` or add `suppressHydrationWarning` to the element",
 

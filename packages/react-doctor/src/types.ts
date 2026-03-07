@@ -113,6 +113,7 @@ export interface ScanOptions {
   scoreOnly?: boolean;
   offline?: boolean;
   includePaths?: string[];
+  packageJsonDirectory?: string;
 }
 
 export interface DiffInfo {

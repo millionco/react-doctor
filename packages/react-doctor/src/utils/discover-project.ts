@@ -133,6 +133,12 @@ const detectFramework = (dependencies: Record<string, string>): Framework => {
 
 const isCatalogReference = (version: string): boolean => version.startsWith("catalog:");
 
+const getCatalogName = (version: string): string | null => {
+  if (!isCatalogReference(version)) return null;
+  const catalogName = version.slice("catalog:".length).trim();
+  return catalogName.length > 0 ? catalogName : null;
+};
+
 const resolveVersionFromCatalog = (
   catalog: Record<string, unknown>,
   packageName: string,
@@ -162,42 +168,132 @@ const resolveCatalogVersion = (packageJson: PackageJson, packageName: string): s
   return null;
 };
 
-const extractDependencyInfo = (packageJson: PackageJson): DependencyInfo => {
+type PnpmWorkspaceConfig = {
+  packages: string[];
+  catalog: Record<string, string>;
+  catalogs: Record<string, Record<string, string>>;
+};
+
+const stripYamlComment = (line: string): string => {
+  const commentIndex = line.indexOf("#");
+  return commentIndex >= 0 ? line.slice(0, commentIndex) : line;
+};
+
+const trimYamlValue = (value: string): string => value.trim().replace(/["']/g, "");
+
+const parsePnpmWorkspaceConfig = (rootDirectory: string): PnpmWorkspaceConfig => {
+  const workspacePath = path.join(rootDirectory, "pnpm-workspace.yaml");
+  if (!isFile(workspacePath)) {
+    return { packages: [], catalog: {}, catalogs: {} };
+  }
+
+  const content = fs.readFileSync(workspacePath, "utf-8");
+  const config: PnpmWorkspaceConfig = { packages: [], catalog: {}, catalogs: {} };
+
+  let section: "packages" | "catalog" | "catalogs" | null = null;
+  let currentNamedCatalog: string | null = null;
+
+  for (const rawLine of content.split("\n")) {
+    const line = stripYamlComment(rawLine);
+    if (line.trim().length === 0) continue;
+
+    const indent = line.match(/^\s*/)![0].length;
+    const trimmed = line.trim();
+
+    if (indent === 0) {
+      currentNamedCatalog = null;
+      if (trimmed === "packages:") {
+        section = "packages";
+        continue;
+      }
+      if (trimmed === "catalog:") {
+        section = "catalog";
+        continue;
+      }
+      if (trimmed === "catalogs:") {
+        section = "catalogs";
+        continue;
+      }
+      section = null;
+      continue;
+    }
+
+    if (section === "packages") {
+      if (trimmed.startsWith("-")) {
+        config.packages.push(trimYamlValue(trimmed.replace(/^[-]\s*/, "")));
+      }
+      continue;
+    }
+
+    if (section === "catalog" && indent >= 2) {
+      const separatorIndex = trimmed.indexOf(":");
+      if (separatorIndex > 0) {
+        const packageKey = trimmed.slice(0, separatorIndex).trim();
+        const version = trimYamlValue(trimmed.slice(separatorIndex + 1));
+        if (version.length > 0) config.catalog[packageKey] = version;
+      }
+      continue;
+    }
+
+    if (section === "catalogs") {
+      if (indent === 2 && trimmed.endsWith(":")) {
+        currentNamedCatalog = trimmed.slice(0, -1).trim();
+        config.catalogs[currentNamedCatalog] = {};
+        continue;
+      }
+
+      if (indent >= 4 && currentNamedCatalog) {
+        const separatorIndex = trimmed.indexOf(":");
+        if (separatorIndex > 0) {
+          const packageKey = trimmed.slice(0, separatorIndex).trim();
+          const version = trimYamlValue(trimmed.slice(separatorIndex + 1));
+          if (version.length > 0) config.catalogs[currentNamedCatalog][packageKey] = version;
+        }
+      }
+    }
+  }
+
+  return config;
+};
+
+const resolveReactVersion = (
+  packageJson: PackageJson,
+  workspaceConfig?: PnpmWorkspaceConfig,
+): string | null => {
   const allDependencies = collectAllDependencies(packageJson);
   const rawVersion = allDependencies.react ?? null;
-  const reactVersion = rawVersion && !isCatalogReference(rawVersion) ? rawVersion : null;
+
+  if (!rawVersion) {
+    return resolveCatalogVersion(packageJson, "react");
+  }
+
+  if (!isCatalogReference(rawVersion)) {
+    return rawVersion;
+  }
+
+  const catalogName = getCatalogName(rawVersion);
+  if (!workspaceConfig) return null;
+
+  if (!catalogName) {
+    return resolveVersionFromCatalog(workspaceConfig.catalog, "react");
+  }
+
+  return resolveVersionFromCatalog(workspaceConfig.catalogs[catalogName] ?? {}, "react");
+};
+
+const extractDependencyInfo = (
+  packageJson: PackageJson,
+  workspaceConfig?: PnpmWorkspaceConfig,
+): DependencyInfo => {
+  const allDependencies = collectAllDependencies(packageJson);
   return {
-    reactVersion,
+    reactVersion: resolveReactVersion(packageJson, workspaceConfig),
     framework: detectFramework(allDependencies),
   };
 };
 
-const parsePnpmWorkspacePatterns = (rootDirectory: string): string[] => {
-  const workspacePath = path.join(rootDirectory, "pnpm-workspace.yaml");
-  if (!isFile(workspacePath)) return [];
-
-  const content = fs.readFileSync(workspacePath, "utf-8");
-  const patterns: string[] = [];
-  let isInsidePackagesBlock = false;
-
-  for (const line of content.split("\n")) {
-    const trimmed = line.trim();
-    if (trimmed === "packages:") {
-      isInsidePackagesBlock = true;
-      continue;
-    }
-    if (isInsidePackagesBlock && trimmed.startsWith("-")) {
-      patterns.push(trimmed.replace(/^-\s*/, "").replace(/["']/g, ""));
-    } else if (isInsidePackagesBlock && trimmed.length > 0 && !trimmed.startsWith("#")) {
-      isInsidePackagesBlock = false;
-    }
-  }
-
-  return patterns;
-};
-
 const getWorkspacePatterns = (rootDirectory: string, packageJson: PackageJson): string[] => {
-  const pnpmPatterns = parsePnpmWorkspacePatterns(rootDirectory);
+  const pnpmPatterns = parsePnpmWorkspaceConfig(rootDirectory).packages;
   if (pnpmPatterns.length > 0) return pnpmPatterns;
 
   if (Array.isArray(packageJson.workspaces)) {
@@ -249,17 +345,21 @@ const findDependencyInfoFromMonorepoRoot = (directory: string): DependencyInfo =
   if (!isFile(monorepoPackageJsonPath)) return { reactVersion: null, framework: "unknown" };
 
   const rootPackageJson = readPackageJson(monorepoPackageJsonPath);
-  const rootInfo = extractDependencyInfo(rootPackageJson);
-  const catalogVersion = resolveCatalogVersion(rootPackageJson, "react");
-  const workspaceInfo = findReactInWorkspaces(monorepoRoot, rootPackageJson);
+  const workspaceConfig = parsePnpmWorkspaceConfig(monorepoRoot);
+  const rootInfo = extractDependencyInfo(rootPackageJson, workspaceConfig);
+  const workspaceInfo = findReactInWorkspaces(monorepoRoot, rootPackageJson, workspaceConfig);
 
   return {
-    reactVersion: rootInfo.reactVersion ?? catalogVersion ?? workspaceInfo.reactVersion,
+    reactVersion: rootInfo.reactVersion ?? workspaceInfo.reactVersion,
     framework: rootInfo.framework !== "unknown" ? rootInfo.framework : workspaceInfo.framework,
   };
 };
 
-const findReactInWorkspaces = (rootDirectory: string, packageJson: PackageJson): DependencyInfo => {
+const findReactInWorkspaces = (
+  rootDirectory: string,
+  packageJson: PackageJson,
+  workspaceConfig = parsePnpmWorkspaceConfig(rootDirectory),
+): DependencyInfo => {
   const patterns = getWorkspacePatterns(rootDirectory, packageJson);
   const result: DependencyInfo = { reactVersion: null, framework: "unknown" };
 
@@ -268,7 +368,7 @@ const findReactInWorkspaces = (rootDirectory: string, packageJson: PackageJson):
 
     for (const workspaceDirectory of directories) {
       const workspacePackageJson = readPackageJson(path.join(workspaceDirectory, "package.json"));
-      const info = extractDependencyInfo(workspacePackageJson);
+      const info = extractDependencyInfo(workspacePackageJson, workspaceConfig);
 
       if (info.reactVersion && !result.reactVersion) {
         result.reactVersion = info.reactVersion;
@@ -401,14 +501,11 @@ export const discoverProject = (directory: string): ProjectInfo => {
   }
 
   const packageJson = readPackageJson(packageJsonPath);
-  let { reactVersion, framework } = extractDependencyInfo(packageJson);
-
-  if (!reactVersion) {
-    reactVersion = resolveCatalogVersion(packageJson, "react");
-  }
+  const workspaceConfig = parsePnpmWorkspaceConfig(directory);
+  let { reactVersion, framework } = extractDependencyInfo(packageJson, workspaceConfig);
 
   if (!reactVersion || framework === "unknown") {
-    const workspaceInfo = findReactInWorkspaces(directory, packageJson);
+    const workspaceInfo = findReactInWorkspaces(directory, packageJson, workspaceConfig);
     if (!reactVersion && workspaceInfo.reactVersion) {
       reactVersion = workspaceInfo.reactVersion;
     }

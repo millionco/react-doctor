@@ -33,6 +33,67 @@ describe("discoverProject", () => {
     expect(projectInfo.reactVersion).toBe("^18.0.0 || ^19.0.0");
   });
 
+  it("resolves React version from the default pnpm workspace catalog", () => {
+    const rootDirectory = path.join(tempDirectory, "pnpm-default-catalog");
+    const appDirectory = path.join(rootDirectory, "packages", "app");
+    fs.mkdirSync(appDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({ name: "workspace-root", private: true }),
+    );
+    fs.writeFileSync(
+      path.join(rootDirectory, "pnpm-workspace.yaml"),
+      [
+        "packages:",
+        '  - "packages/*"',
+        "catalog:",
+        '  react: "^19.1.0"',
+      ].join("\n"),
+    );
+    fs.writeFileSync(
+      path.join(appDirectory, "package.json"),
+      JSON.stringify({
+        name: "app",
+        dependencies: { react: "catalog:", vite: "^7.1.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(appDirectory);
+    expect(projectInfo.reactVersion).toBe("^19.1.0");
+    expect(projectInfo.framework).toBe("vite");
+  });
+
+  it("resolves React version from a named pnpm workspace catalog", () => {
+    const rootDirectory = path.join(tempDirectory, "pnpm-named-catalog");
+    const appDirectory = path.join(rootDirectory, "packages", "app");
+    fs.mkdirSync(appDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({ name: "workspace-root", private: true }),
+    );
+    fs.writeFileSync(
+      path.join(rootDirectory, "pnpm-workspace.yaml"),
+      [
+        "packages:",
+        '  - "packages/*"',
+        "catalogs:",
+        "  react19:",
+        '    react: "^19.2.0"',
+      ].join("\n"),
+    );
+    fs.writeFileSync(
+      path.join(appDirectory, "package.json"),
+      JSON.stringify({
+        name: "app",
+        dependencies: { react: "catalog:react19", vite: "^7.1.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(appDirectory);
+    expect(projectInfo.reactVersion).toBe("^19.2.0");
+    expect(projectInfo.framework).toBe("vite");
+  });
+
   it("throws when package.json is missing", () => {
     expect(() => discoverProject("/nonexistent/path")).toThrow("No package.json found");
   });

@@ -1,14 +1,15 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { ReactDoctorConfig } from "../types.js";
+import { findMonorepoRoot } from "./find-monorepo-root.js";
 import { isFile } from "./is-file.js";
 import { isPlainObject } from "./is-plain-object.js";
 
 const CONFIG_FILENAME = "react-doctor.config.json";
 const PACKAGE_JSON_CONFIG_KEY = "reactDoctor";
 
-export const loadConfig = (rootDirectory: string): ReactDoctorConfig | null => {
-  const configFilePath = path.join(rootDirectory, CONFIG_FILENAME);
+const loadDirectoryConfig = (directory: string): ReactDoctorConfig | null => {
+  const configFilePath = path.join(directory, CONFIG_FILENAME);
 
   if (isFile(configFilePath)) {
     try {
@@ -25,7 +26,7 @@ export const loadConfig = (rootDirectory: string): ReactDoctorConfig | null => {
     }
   }
 
-  const packageJsonPath = path.join(rootDirectory, "package.json");
+  const packageJsonPath = path.join(directory, "package.json");
   if (isFile(packageJsonPath)) {
     try {
       const fileContent = fs.readFileSync(packageJsonPath, "utf-8");
@@ -40,4 +41,18 @@ export const loadConfig = (rootDirectory: string): ReactDoctorConfig | null => {
   }
 
   return null;
+};
+
+export const loadConfig = (rootDirectory: string): ReactDoctorConfig | null => {
+  const localConfig = loadDirectoryConfig(rootDirectory);
+  if (localConfig) {
+    return localConfig;
+  }
+
+  const monorepoRoot = findMonorepoRoot(rootDirectory);
+  if (!monorepoRoot || monorepoRoot === rootDirectory) {
+    return null;
+  }
+
+  return loadDirectoryConfig(monorepoRoot);
 };

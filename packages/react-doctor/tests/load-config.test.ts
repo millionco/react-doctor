@@ -93,6 +93,56 @@ describe("loadConfig", () => {
     });
   });
 
+  describe("monorepo root fallback", () => {
+    it("loads monorepo root config when workspace package has no local config", () => {
+      const monorepoRoot = path.join(tempRootDirectory, "monorepo-root-fallback");
+      const workspaceDirectory = path.join(monorepoRoot, "packages", "app");
+
+      fs.mkdirSync(workspaceDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(monorepoRoot, "package.json"),
+        JSON.stringify({ name: "workspace-root", workspaces: ["packages/*"] }),
+      );
+      fs.writeFileSync(
+        path.join(monorepoRoot, "react-doctor.config.json"),
+        JSON.stringify({ ignore: { rules: ["jsx-a11y/alt-text"] } }),
+      );
+      fs.writeFileSync(
+        path.join(workspaceDirectory, "package.json"),
+        JSON.stringify({ name: "app" }),
+      );
+
+      const config = loadConfig(workspaceDirectory);
+      expect(config).toEqual({ ignore: { rules: ["jsx-a11y/alt-text"] } });
+    });
+
+    it("prefers workspace-local config over monorepo root fallback", () => {
+      const monorepoRoot = path.join(tempRootDirectory, "monorepo-local-precedence");
+      const workspaceDirectory = path.join(monorepoRoot, "packages", "app");
+
+      fs.mkdirSync(workspaceDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(monorepoRoot, "package.json"),
+        JSON.stringify({ name: "workspace-root", workspaces: ["packages/*"] }),
+      );
+      fs.writeFileSync(
+        path.join(monorepoRoot, "react-doctor.config.json"),
+        JSON.stringify({ ignore: { rules: ["from-root"] } }),
+      );
+      fs.writeFileSync(
+        path.join(workspaceDirectory, "package.json"),
+        JSON.stringify({ name: "app" }),
+      );
+      fs.writeFileSync(
+        path.join(workspaceDirectory, "react-doctor.config.json"),
+        JSON.stringify({ ignore: { rules: ["from-workspace"] } }),
+      );
+
+      const config = loadConfig(workspaceDirectory);
+      expect(config).toEqual({ ignore: { rules: ["from-workspace"] } });
+    });
+  });
+
   describe("no config", () => {
     let emptyDirectory: string;
 

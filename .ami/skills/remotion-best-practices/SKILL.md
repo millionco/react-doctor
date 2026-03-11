@@ -1,27 +1,25 @@
 ---
 name: remotion-best-practices
-description: Best practices for Remotion - Video creation in React
+description: Remotion video creation patterns for React — compositions, animations, rendering, captions, and audio. Use when building programmatic videos, configuring frame rates and resolutions, adding transitions, embedding media assets, or troubleshooting Remotion render issues.
 metadata:
   tags: remotion, video, react, animation, composition
 ---
 
 ## When to use
 
-Use this skills whenever you are dealing with Remotion code to obtain the domain-specific knowledge.
+Use this skill whenever working with Remotion code — creating compositions, rendering video, adding animations, handling captions/subtitles, embedding audio/video assets, or troubleshooting render issues.
 
-## Captions
+## Quick start
 
-When dealing with captions or subtitles, load the [./rules/subtitles.md](./rules/subtitles.md) file for more information.
+For common tasks, start with these rules:
 
-## Using FFmpeg
+1. **New video project**: [compositions.md](rules/compositions.md) → [assets.md](rules/assets.md) → [animations.md](rules/animations.md)
+2. **Add captions/subtitles**: [subtitles.md](rules/subtitles.md) → [display-captions.md](rules/display-captions.md)
+3. **Audio work**: [audio.md](rules/audio.md) → [audio-visualization.md](rules/audio-visualization.md)
+4. **Scene transitions**: [transitions.md](rules/transitions.md) → [timing.md](rules/timing.md)
+5. **FFmpeg operations** (trimming, silence detection): [ffmpeg.md](rules/ffmpeg.md)
 
-For some video operations, such as trimming videos or detecting silence, FFmpeg should be used. Load the [./rules/ffmpeg.md](./rules/ffmpeg.md) file for more information.
-
-## Audio visualization
-
-When needing to visualize audio (spectrum bars, waveforms, bass-reactive effects), load the [./rules/audio-visualization.md](./rules/audio-visualization.md) file for more information.
-
-## How to use
+## Reference
 
 Read individual rule files for detailed explanations and code examples:
 

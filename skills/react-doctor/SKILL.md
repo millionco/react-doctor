@@ -1,6 +1,6 @@
 ---
 name: react-doctor
-description: Run after making React changes to catch issues early. Use when reviewing code, finishing a feature, or fixing bugs in a React project.
+description: Runs react-doctor to lint, type-check, and scan React components for security, performance, and correctness issues. Use when validating changes, checking for errors, running diagnostics, or auditing a React codebase before shipping.
 version: 1.0.0
 ---
 
@@ -16,4 +16,6 @@ npx -y react-doctor@latest . --verbose --diff
 
 ## Workflow
 
-Run after making changes to catch issues early. Fix errors first, then re-run to verify the score improved.
+1. Run react-doctor after making changes.
+2. Fix **errors** first (security, correctness), then **warnings** (performance, architecture).
+3. Re-run to verify the score improved. Aim for 80+ on a healthy codebase.

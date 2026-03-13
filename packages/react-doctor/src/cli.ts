@@ -143,7 +143,7 @@ const program = new Command()
   .option("--project <name>", "select workspace project (comma-separated for multiple)")
   .option("--diff [base]", "scan only files changed vs base branch")
   .option("--offline", "skip telemetry (anonymous, not stored, only used to calculate score)")
-  .option("--no-ami", "skip Ami-related prompts")
+  .option("--ami", "enable Ami-related prompts")
   .option("--fail-on <level>", "exit with error code on diagnostics: error, warning, none", "none")
   .option("--fix", "open Ami to auto-fix all issues")
   .action(async (directory: string, flags: CliFlags) => {

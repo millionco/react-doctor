@@ -11,6 +11,7 @@ import type {
 } from "../types.js";
 import { findMonorepoRoot, isMonorepoRoot } from "./find-monorepo-root.js";
 import { isFile } from "./is-file.js";
+import { isPlainObject } from "./is-plain-object.js";
 import { readPackageJson } from "./read-package-json.js";
 
 const REACT_COMPILER_PACKAGES = new Set([
@@ -130,10 +131,43 @@ const detectFramework = (dependencies: Record<string, string>): Framework => {
   return "unknown";
 };
 
+const isCatalogReference = (version: string): boolean => version.startsWith("catalog:");
+
+const resolveVersionFromCatalog = (
+  catalog: Record<string, unknown>,
+  packageName: string,
+): string | null => {
+  const version = catalog[packageName];
+  if (typeof version === "string" && !isCatalogReference(version)) return version;
+  return null;
+};
+
+const resolveCatalogVersion = (packageJson: PackageJson, packageName: string): string | null => {
+  const raw = packageJson as Record<string, unknown>;
+
+  if (isPlainObject(raw.catalog)) {
+    const version = resolveVersionFromCatalog(raw.catalog, packageName);
+    if (version) return version;
+  }
+
+  if (isPlainObject(raw.catalogs)) {
+    for (const catalogEntries of Object.values(raw.catalogs)) {
+      if (isPlainObject(catalogEntries)) {
+        const version = resolveVersionFromCatalog(catalogEntries, packageName);
+        if (version) return version;
+      }
+    }
+  }
+
+  return null;
+};
+
 const extractDependencyInfo = (packageJson: PackageJson): DependencyInfo => {
   const allDependencies = collectAllDependencies(packageJson);
+  const rawVersion = allDependencies.react ?? null;
+  const reactVersion = rawVersion && !isCatalogReference(rawVersion) ? rawVersion : null;
   return {
-    reactVersion: allDependencies.react ?? null,
+    reactVersion,
     framework: detectFramework(allDependencies),
   };
 };
@@ -216,10 +250,11 @@ const findDependencyInfoFromMonorepoRoot = (directory: string): DependencyInfo =
 
   const rootPackageJson = readPackageJson(monorepoPackageJsonPath);
   const rootInfo = extractDependencyInfo(rootPackageJson);
+  const catalogVersion = resolveCatalogVersion(rootPackageJson, "react");
   const workspaceInfo = findReactInWorkspaces(monorepoRoot, rootPackageJson);
 
   return {
-    reactVersion: rootInfo.reactVersion ?? workspaceInfo.reactVersion,
+    reactVersion: rootInfo.reactVersion ?? catalogVersion ?? workspaceInfo.reactVersion,
     framework: rootInfo.framework !== "unknown" ? rootInfo.framework : workspaceInfo.framework,
   };
 };
@@ -367,6 +402,10 @@ export const discoverProject = (directory: string): ProjectInfo => {
 
   const packageJson = readPackageJson(packageJsonPath);
   let { reactVersion, framework } = extractDependencyInfo(packageJson);
+
+  if (!reactVersion) {
+    reactVersion = resolveCatalogVersion(packageJson, "react");
+  }
 
   if (!reactVersion || framework === "unknown") {
     const workspaceInfo = findReactInWorkspaces(directory, packageJson);

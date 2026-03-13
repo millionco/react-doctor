@@ -1,7 +1,7 @@
 import { JSX_FILE_PATTERN } from "../constants.js";
 import type { Diagnostic, ReactDoctorConfig } from "../types.js";
 import { checkReducedMotion } from "./check-reduced-motion.js";
-import { filterIgnoredDiagnostics } from "./filter-diagnostics.js";
+import { filterIgnoredDiagnostics, filterInlineSuppressions } from "./filter-diagnostics.js";
 
 export const computeJsxIncludePaths = (includePaths: string[]): string[] | undefined =>
   includePaths.length > 0
@@ -15,10 +15,11 @@ export const combineDiagnostics = (
   isDiffMode: boolean,
   userConfig: ReactDoctorConfig | null,
 ): Diagnostic[] => {
-  const allDiagnostics = [
+  const merged = [
     ...lintDiagnostics,
     ...deadCodeDiagnostics,
     ...(isDiffMode ? [] : checkReducedMotion(directory)),
   ];
-  return userConfig ? filterIgnoredDiagnostics(allDiagnostics, userConfig) : allDiagnostics;
+  const filtered = userConfig ? filterIgnoredDiagnostics(merged, userConfig) : merged;
+  return filterInlineSuppressions(filtered, directory);
 };

@@ -37,8 +37,6 @@ export const SPAWN_ARGS_MAX_LENGTH_CHARS = 24_000;
 export const OFFLINE_MESSAGE =
   "You are offline, could not calculate score. Reconnect to calculate.";
 
-export const OFFLINE_FLAG_MESSAGE = "Score not calculated. Remove --offline to calculate score.";
-
 export const DEFAULT_BRANCH_CANDIDATES = ["main", "master"];
 
 export const ERROR_RULE_PENALTY = 1.5;

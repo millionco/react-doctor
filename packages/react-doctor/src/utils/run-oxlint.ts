@@ -100,7 +100,7 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
 
 const RULE_HELP_MAP: Record<string, string> = {
   "no-derived-state-effect":
-    "For derived state, compute inline: `const x = fn(dep)`. For state resets on prop change, use a key prop: `<Component key={prop} />`",
+    "For derived state, compute inline: `const x = fn(dep)`. For state resets on prop change, use a key prop: `<Component key={prop} />`. See https://react.dev/learn/you-might-not-need-an-effect",
   "no-fetch-in-effect":
     "Use `useQuery()` from @tanstack/react-query, `useSWR()`, or fetch in a Server Component instead",
   "no-cascading-set-state":
@@ -187,7 +187,7 @@ const RULE_HELP_MAP: Record<string, string> = {
   "nextjs-missing-metadata":
     "Add `export const metadata = { title: '...', description: '...' }` or `export async function generateMetadata()`",
   "nextjs-no-client-side-redirect":
-    "Use `redirect('/path')` from 'next/navigation' in a Server Component, or handle in middleware",
+    "Use `redirect('/path')` from 'next/navigation' directly (works in both server and client components), or handle in middleware",
   "nextjs-no-redirect-in-try-catch":
     "Move the redirect/notFound call outside the try block, or add `unstable_rethrow(error)` in the catch",
   "nextjs-image-missing-sizes":
@@ -326,7 +326,15 @@ const spawnOxlint = (
     child.stderr.on("data", (buffer: Buffer) => stderrBuffers.push(buffer));
 
     child.on("error", (error) => reject(new Error(`Failed to run oxlint: ${error.message}`)));
-    child.on("close", () => {
+    child.on("close", (code, signal) => {
+      if (signal) {
+        const stderrOutput = Buffer.concat(stderrBuffers).toString("utf-8").trim();
+        const hint =
+          signal === "SIGABRT" ? " (out of memory — try scanning fewer files with --diff)" : "";
+        const detail = stderrOutput ? `: ${stderrOutput}` : "";
+        reject(new Error(`oxlint was killed by ${signal}${hint}${detail}`));
+        return;
+      }
       const output = Buffer.concat(stdoutBuffers).toString("utf-8").trim();
       if (!output) {
         const stderrOutput = Buffer.concat(stderrBuffers).toString("utf-8").trim();

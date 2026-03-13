@@ -64,6 +64,11 @@ const estimateScoreLocally = (diagnostics: Diagnostic[]): EstimatedScoreResult =
   };
 };
 
+export const calculateScoreLocally = (diagnostics: Diagnostic[]): ScoreResult => {
+  const { currentScore, currentLabel } = estimateScoreLocally(diagnostics);
+  return { score: currentScore, label: currentLabel };
+};
+
 export const calculateScore = async (diagnostics: Diagnostic[]): Promise<ScoreResult | null> => {
   try {
     const response = await proxyFetch(SCORE_API_URL, {
@@ -72,11 +77,11 @@ export const calculateScore = async (diagnostics: Diagnostic[]): Promise<ScoreRe
       body: JSON.stringify({ diagnostics }),
     });
 
-    if (!response.ok) return null;
+    if (!response.ok) return calculateScoreLocally(diagnostics);
 
     return (await response.json()) as ScoreResult;
   } catch {
-    return null;
+    return calculateScoreLocally(diagnostics);
   }
 };
 

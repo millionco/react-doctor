@@ -1,7 +1,7 @@
 const REGEX_SPECIAL_CHARACTERS = /[.+^${}()|[\]\\]/g;
 
 export const compileGlobPattern = (pattern: string): RegExp => {
-  const normalizedPattern = pattern.replace(/\\/g, "/");
+  const normalizedPattern = pattern.replace(/\\/g, "/").replace(/^\//, "");
 
   let regexSource = "^";
   let characterIndex = 0;

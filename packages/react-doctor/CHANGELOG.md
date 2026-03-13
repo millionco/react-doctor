@@ -1,5 +1,11 @@
 # react-doctor
 
+## 0.0.30
+
+### Patch Changes
+
+- fix issues
+
 ## 0.0.29
 
 ### Patch Changes

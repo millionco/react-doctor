@@ -2,12 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ReactDoctorConfig } from "../types.js";
 import { isFile } from "./is-file.js";
+import { isPlainObject } from "./is-plain-object.js";
 
 const CONFIG_FILENAME = "react-doctor.config.json";
 const PACKAGE_JSON_CONFIG_KEY = "reactDoctor";
-
-const isPlainObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 export const loadConfig = (rootDirectory: string): ReactDoctorConfig | null => {
   const configFilePath = path.join(rootDirectory, CONFIG_FILENAME);

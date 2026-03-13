@@ -213,7 +213,7 @@ export const nextjsNoClientSideRedirect: Rule = {
           context.report({
             node: child,
             message:
-              "Client-side redirect in useEffect — use redirect() in a server component or middleware instead",
+              "Client-side redirect in useEffect — use redirect() from next/navigation or handle in middleware instead",
           });
         }
       });

@@ -65,7 +65,11 @@ export const rnNoRawText: Rule = {
         if (isDomComponentFile) return;
 
         const elementName = resolveJsxElementName(node.openingElement);
-        if (elementName && REACT_NATIVE_TEXT_COMPONENTS.has(elementName)) return;
+        if (
+          elementName &&
+          (REACT_NATIVE_TEXT_COMPONENTS.has(elementName) || elementName.endsWith("Text"))
+        )
+          return;
 
         for (const child of node.children ?? []) {
           if (!isRawTextContent(child)) continue;

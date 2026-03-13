@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { performance } from "node:perf_hooks";
 import {
   MILLISECONDS_PER_SECOND,
-  OFFLINE_FLAG_MESSAGE,
   OFFLINE_MESSAGE,
   OXLINT_NODE_REQUIREMENT,
   OXLINT_RECOMMENDED_NODE_MAJOR,
@@ -23,7 +22,7 @@ import type {
   ScanResult,
   ScoreResult,
 } from "./types.js";
-import { calculateScore } from "./utils/calculate-score.js";
+import { calculateScore, calculateScoreLocally } from "./utils/calculate-score.js";
 import { colorizeByScore } from "./utils/colorize-by-score.js";
 import { combineDiagnostics, computeJsxIncludePaths } from "./utils/combine-diagnostics.js";
 import { discoverProject, formatFrameworkName } from "./utils/discover-project.js";
@@ -319,6 +318,7 @@ const printSummary = (
   projectName: string,
   totalSourceFileCount: number,
   noScoreMessage: string,
+  isOffline: boolean,
 ): void => {
   const summaryFramedLines = [
     ...buildBrandingLines(scoreResult, noScoreMessage),
@@ -334,9 +334,11 @@ const printSummary = (
     logger.break();
   }
 
-  const shareUrl = buildShareUrl(diagnostics, scoreResult, projectName);
-  logger.break();
-  logger.dim(`  Share your results: ${highlighter.info(shareUrl)}`);
+  if (!isOffline) {
+    const shareUrl = buildShareUrl(diagnostics, scoreResult, projectName);
+    logger.break();
+    logger.dim(`  Share your results: ${highlighter.info(shareUrl)}`);
+  }
 };
 
 const resolveOxlintNode = async (
@@ -554,8 +556,10 @@ export const scan = async (
   if (didDeadCodeFail) skippedChecks.push("dead code");
   const hasSkippedChecks = skippedChecks.length > 0;
 
-  const scoreResult = options.offline ? null : await calculateScore(diagnostics);
-  const noScoreMessage = options.offline ? OFFLINE_FLAG_MESSAGE : OFFLINE_MESSAGE;
+  const scoreResult = options.offline
+    ? calculateScoreLocally(diagnostics)
+    : await calculateScore(diagnostics);
+  const noScoreMessage = OFFLINE_MESSAGE;
 
   if (options.scoreOnly) {
     if (scoreResult) {
@@ -599,6 +603,7 @@ export const scan = async (
     projectInfo.projectName,
     displayedSourceFileCount,
     noScoreMessage,
+    options.offline,
   );
 
   if (hasSkippedChecks) {

@@ -87,6 +87,7 @@ Options:
   --diff [base]     scan only files changed vs base branch
   --offline         skip telemetry (anonymous, not stored, only used to calculate score)
   --no-ami          skip Ami-related prompts
+  --ami             enable Ami-related prompts
   --fix             open Ami to auto-fix all issues
   -h, --help        display help for command
 ```

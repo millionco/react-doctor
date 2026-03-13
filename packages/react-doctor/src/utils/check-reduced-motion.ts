@@ -5,7 +5,8 @@ import type { Diagnostic } from "../types.js";
 import { isFile } from "./is-file.js";
 import { readPackageJson } from "./read-package-json.js";
 
-const REDUCED_MOTION_GREP_PATTERN = "prefers-reduced-motion|useReducedMotion";
+const REDUCED_MOTION_GREP_PATTERN =
+  "prefers-reduced-motion|useReducedMotion|MotionConfig|reducedMotion";
 const REDUCED_MOTION_FILE_GLOBS = '"*.ts" "*.tsx" "*.js" "*.jsx" "*.css" "*.scss"';
 
 const MISSING_REDUCED_MOTION_DIAGNOSTIC: Diagnostic = {

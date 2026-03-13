@@ -286,7 +286,8 @@ export const DEPRECATED_RN_MODULE_REPLACEMENTS: Record<string, string> = {
 export const LEGACY_EXPO_PACKAGE_REPLACEMENTS: Record<string, string> = {
   "expo-av": "expo-audio for audio and expo-video for video",
   "expo-permissions": "the permissions API in each module (e.g. Camera.requestPermissionsAsync())",
-  "@expo/vector-icons": "expo-image with sf: source URIs",
+  "@expo/vector-icons":
+    "expo-symbols or expo-image (see https://docs.expo.dev/versions/latest/sdk/symbols/)",
 };
 
 export const REACT_NATIVE_LIST_COMPONENTS = new Set([

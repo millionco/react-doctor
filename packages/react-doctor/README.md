@@ -67,6 +67,8 @@ Supports Cursor, Claude Code, Amp Code, Codex, Gemini CLI, OpenCode, Windsurf, a
 | `project`      |         | Workspace project(s) to scan (comma-separated)                    |
 | `diff`         |         | Base branch for diff mode. Only changed files are scanned         |
 | `github-token` |         | When set on `pull_request` events, posts findings as a PR comment |
+| `fail-on`      | `error` | Exit with error code on diagnostics: `error`, `warning`, `none`   |
+| `offline`      | `false` | Skip sending diagnostics to the react.doctor API                  |
 | `node-version` | `20`    | Node.js version to use                                            |
 
 The action outputs a `score` (0–100) you can use in subsequent steps.

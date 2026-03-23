@@ -264,6 +264,15 @@ export const RAW_TEXT_PREVIEW_MAX_CHARS = 30;
 
 export const REACT_NATIVE_TEXT_COMPONENTS = new Set(["Text", "TextInput"]);
 
+export const REACT_NATIVE_TEXT_COMPONENT_SUFFIXES = new Set([
+  "Text",
+  "Title",
+  "Label",
+  "Heading",
+  "Caption",
+  "Subtitle",
+]);
+
 export const DEPRECATED_RN_MODULE_REPLACEMENTS: Record<string, string> = {
   AsyncStorage: "@react-native-async-storage/async-storage",
   Picker: "@react-native-picker/picker",

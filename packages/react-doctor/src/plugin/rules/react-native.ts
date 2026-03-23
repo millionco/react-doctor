@@ -5,6 +5,7 @@ import {
   RAW_TEXT_PREVIEW_MAX_CHARS,
   REACT_NATIVE_LIST_COMPONENTS,
   REACT_NATIVE_TEXT_COMPONENTS,
+  REACT_NATIVE_TEXT_COMPONENT_SUFFIXES,
 } from "../constants.js";
 import { hasDirective, isMemberProperty } from "../helpers.js";
 import type { EsTreeNode, Rule, RuleContext } from "../types.js";
@@ -53,6 +54,13 @@ const getRawTextDescription = (child: EsTreeNode): string => {
   return "text content";
 };
 
+const isTextHandlingComponent = (elementName: string): boolean => {
+  if (REACT_NATIVE_TEXT_COMPONENTS.has(elementName)) return true;
+  return [...REACT_NATIVE_TEXT_COMPONENT_SUFFIXES].some((suffix) =>
+    elementName.endsWith(suffix),
+  );
+};
+
 export const rnNoRawText: Rule = {
   create: (context: RuleContext) => {
     let isDomComponentFile = false;
@@ -65,11 +73,7 @@ export const rnNoRawText: Rule = {
         if (isDomComponentFile) return;
 
         const elementName = resolveJsxElementName(node.openingElement);
-        if (
-          elementName &&
-          (REACT_NATIVE_TEXT_COMPONENTS.has(elementName) || elementName.endsWith("Text"))
-        )
-          return;
+        if (elementName && isTextHandlingComponent(elementName)) return;
 
         for (const child of node.children ?? []) {
           if (!isRawTextContent(child)) continue;

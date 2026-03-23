@@ -56,9 +56,7 @@ const getRawTextDescription = (child: EsTreeNode): string => {
 
 const isTextHandlingComponent = (elementName: string): boolean => {
   if (REACT_NATIVE_TEXT_COMPONENTS.has(elementName)) return true;
-  return [...REACT_NATIVE_TEXT_COMPONENT_SUFFIXES].some((suffix) =>
-    elementName.endsWith(suffix),
-  );
+  return [...REACT_NATIVE_TEXT_COMPONENT_SUFFIXES].some((suffix) => elementName.endsWith(suffix));
 };
 
 export const rnNoRawText: Rule = {

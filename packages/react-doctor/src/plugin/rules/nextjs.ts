@@ -184,7 +184,8 @@ export const nextjsMissingMetadata: Rule = {
 const describeClientSideNavigation = (node: EsTreeNode): string | null => {
   if (node.type === "CallExpression" && node.callee?.type === "MemberExpression") {
     const objectName = node.callee.object?.type === "Identifier" ? node.callee.object.name : null;
-    const methodName = node.callee.property?.type === "Identifier" ? node.callee.property.name : null;
+    const methodName =
+      node.callee.property?.type === "Identifier" ? node.callee.property.name : null;
     if (objectName === "router" && (methodName === "push" || methodName === "replace")) {
       return `router.${methodName}() in useEffect — use redirect() from next/navigation or handle navigation in an event handler`;
     }

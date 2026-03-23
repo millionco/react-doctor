@@ -112,7 +112,7 @@ const resolveDiffMode = async (
 
   const changedSourceFiles = filterSourceFiles(diffInfo.changedFiles);
   if (changedSourceFiles.length === 0) return false;
-  if (shouldSkipPrompts) return true;
+  if (shouldSkipPrompts) return false;
   if (isScoreOnly) return false;
 
   const promptMessage = diffInfo.isCurrentChanges

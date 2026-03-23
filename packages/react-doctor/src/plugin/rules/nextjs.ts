@@ -181,24 +181,27 @@ export const nextjsMissingMetadata: Rule = {
   }),
 };
 
-const isClientSideRedirect = (node: EsTreeNode): boolean => {
+const describeClientSideNavigation = (node: EsTreeNode): string | null => {
   if (node.type === "CallExpression" && node.callee?.type === "MemberExpression") {
     const objectName = node.callee.object?.type === "Identifier" ? node.callee.object.name : null;
-    if (
-      objectName === "router" &&
-      (isMemberProperty(node.callee, "push") || isMemberProperty(node.callee, "replace"))
-    )
-      return true;
+    const methodName = node.callee.property?.type === "Identifier" ? node.callee.property.name : null;
+    if (objectName === "router" && (methodName === "push" || methodName === "replace")) {
+      return `router.${methodName}() in useEffect — use redirect() from next/navigation or handle navigation in an event handler`;
+    }
   }
 
   if (node.type === "AssignmentExpression" && node.left?.type === "MemberExpression") {
     const objectName = node.left.object?.type === "Identifier" ? node.left.object.name : null;
     const propertyName = node.left.property?.type === "Identifier" ? node.left.property.name : null;
-    if (objectName === "window" && propertyName === "location") return true;
-    if (objectName === "location" && propertyName === "href") return true;
+    if (objectName === "window" && propertyName === "location") {
+      return "window.location assignment in useEffect — use redirect() from next/navigation or handle in middleware instead";
+    }
+    if (objectName === "location" && propertyName === "href") {
+      return "location.href assignment in useEffect — use redirect() from next/navigation or handle in middleware instead";
+    }
   }
 
-  return false;
+  return null;
 };
 
 export const nextjsNoClientSideRedirect: Rule = {
@@ -209,11 +212,11 @@ export const nextjsNoClientSideRedirect: Rule = {
       if (!callback) return;
 
       walkAst(callback, (child: EsTreeNode) => {
-        if (isClientSideRedirect(child)) {
+        const navigationDescription = describeClientSideNavigation(child);
+        if (navigationDescription) {
           context.report({
             node: child,
-            message:
-              "Client-side redirect in useEffect — use redirect() from next/navigation or handle in middleware instead",
+            message: navigationDescription,
           });
         }
       });

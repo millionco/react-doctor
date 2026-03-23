@@ -473,6 +473,11 @@ export const listWorkspacePackages = (rootDirectory: string): WorkspacePackage[]
 
   const packages: WorkspacePackage[] = [];
 
+  if (hasReactDependency(packageJson)) {
+    const rootName = packageJson.name ?? path.basename(rootDirectory);
+    packages.push({ name: rootName, directory: rootDirectory });
+  }
+
   for (const pattern of patterns) {
     const directories = resolveWorkspaceDirectories(rootDirectory, pattern);
     for (const workspaceDirectory of directories) {

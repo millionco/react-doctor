@@ -76,6 +76,17 @@ describe("listWorkspacePackages", () => {
     expect(packageNames).toContain("ui");
     expect(packages).toHaveLength(2);
   });
+
+  it("includes monorepo root when it has a React dependency", () => {
+    const packages = listWorkspacePackages(
+      path.join(FIXTURES_DIRECTORY, "monorepo-with-root-react"),
+    );
+    const packageNames = packages.map((workspacePackage) => workspacePackage.name);
+
+    expect(packageNames).toContain("monorepo-root");
+    expect(packageNames).toContain("ui");
+    expect(packages).toHaveLength(2);
+  });
 });
 
 const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-discover-test-"));

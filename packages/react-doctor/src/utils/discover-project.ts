@@ -135,6 +135,12 @@ const detectFramework = (dependencies: Record<string, string>): Framework => {
 
 const isCatalogReference = (version: string): boolean => version.startsWith("catalog:");
 
+const extractCatalogName = (version: string): string | null => {
+  if (!isCatalogReference(version)) return null;
+  const name = version.slice("catalog:".length).trim();
+  return name.length > 0 ? name : null;
+};
+
 const resolveVersionFromCatalog = (
   catalog: Record<string, unknown>,
   packageName: string,
@@ -144,7 +150,106 @@ const resolveVersionFromCatalog = (
   return null;
 };
 
-const resolveCatalogVersion = (packageJson: PackageJson, packageName: string): string | null => {
+interface CatalogCollection {
+  defaultCatalog: Record<string, string>;
+  namedCatalogs: Record<string, Record<string, string>>;
+}
+
+const parsePnpmWorkspaceCatalogs = (rootDirectory: string): CatalogCollection => {
+  const workspacePath = path.join(rootDirectory, "pnpm-workspace.yaml");
+  if (!isFile(workspacePath)) return { defaultCatalog: {}, namedCatalogs: {} };
+
+  const content = fs.readFileSync(workspacePath, "utf-8");
+  const defaultCatalog: Record<string, string> = {};
+  const namedCatalogs: Record<string, Record<string, string>> = {};
+
+  let currentSection: "none" | "catalog" | "catalogs" | "named-catalog" = "none";
+  let currentCatalogName = "";
+
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0 || trimmed.startsWith("#")) continue;
+
+    const indentLevel = line.search(/\S/);
+
+    if (indentLevel === 0 && trimmed === "catalog:") {
+      currentSection = "catalog";
+      continue;
+    }
+    if (indentLevel === 0 && trimmed === "catalogs:") {
+      currentSection = "catalogs";
+      continue;
+    }
+    if (indentLevel === 0) {
+      currentSection = "none";
+      continue;
+    }
+
+    if (currentSection === "catalog" && indentLevel > 0) {
+      const colonIndex = trimmed.indexOf(":");
+      if (colonIndex > 0) {
+        const key = trimmed.slice(0, colonIndex).trim().replace(/["']/g, "");
+        const value = trimmed.slice(colonIndex + 1).trim().replace(/["']/g, "");
+        if (key && value) defaultCatalog[key] = value;
+      }
+      continue;
+    }
+
+    if (currentSection === "catalogs" && indentLevel > 0) {
+      if (trimmed.endsWith(":") && !trimmed.includes(" ")) {
+        currentCatalogName = trimmed.slice(0, -1).replace(/["']/g, "");
+        currentSection = "named-catalog";
+        namedCatalogs[currentCatalogName] = {};
+        continue;
+      }
+    }
+
+    if (currentSection === "named-catalog" && indentLevel > 0) {
+      if (indentLevel <= 2 && trimmed.endsWith(":") && !trimmed.includes(" ")) {
+        currentCatalogName = trimmed.slice(0, -1).replace(/["']/g, "");
+        namedCatalogs[currentCatalogName] = {};
+        continue;
+      }
+      const colonIndex = trimmed.indexOf(":");
+      if (colonIndex > 0 && currentCatalogName) {
+        const key = trimmed.slice(0, colonIndex).trim().replace(/["']/g, "");
+        const value = trimmed.slice(colonIndex + 1).trim().replace(/["']/g, "");
+        if (key && value) namedCatalogs[currentCatalogName][key] = value;
+      }
+    }
+  }
+
+  return { defaultCatalog, namedCatalogs };
+};
+
+const resolveCatalogVersionFromCollection = (
+  catalogs: CatalogCollection,
+  packageName: string,
+  catalogReference?: string | null,
+): string | null => {
+  if (catalogReference) {
+    const namedCatalog = catalogs.namedCatalogs[catalogReference];
+    if (namedCatalog?.[packageName]) return namedCatalog[packageName];
+  }
+
+  if (catalogs.defaultCatalog[packageName]) return catalogs.defaultCatalog[packageName];
+
+  for (const namedCatalog of Object.values(catalogs.namedCatalogs)) {
+    if (namedCatalog[packageName]) return namedCatalog[packageName];
+  }
+
+  return null;
+};
+
+const resolveCatalogVersion = (
+  packageJson: PackageJson,
+  packageName: string,
+  rootDirectory?: string,
+): string | null => {
+  const allDependencies = collectAllDependencies(packageJson);
+  const rawVersion = allDependencies[packageName];
+  const catalogName = rawVersion ? extractCatalogName(rawVersion) : null;
+
   const raw = packageJson as Record<string, unknown>;
 
   if (isPlainObject(raw.catalog)) {
@@ -153,12 +258,38 @@ const resolveCatalogVersion = (packageJson: PackageJson, packageName: string): s
   }
 
   if (isPlainObject(raw.catalogs)) {
+    if (catalogName && isPlainObject((raw.catalogs as Record<string, unknown>)[catalogName])) {
+      const version = resolveVersionFromCatalog(
+        (raw.catalogs as Record<string, unknown>)[catalogName] as Record<string, unknown>,
+        packageName,
+      );
+      if (version) return version;
+    }
     for (const catalogEntries of Object.values(raw.catalogs)) {
       if (isPlainObject(catalogEntries)) {
         const version = resolveVersionFromCatalog(catalogEntries, packageName);
         if (version) return version;
       }
     }
+  }
+
+  const workspaces = packageJson.workspaces;
+  if (workspaces && !Array.isArray(workspaces) && isPlainObject(workspaces.catalog)) {
+    const version = resolveVersionFromCatalog(
+      workspaces.catalog as Record<string, unknown>,
+      packageName,
+    );
+    if (version) return version;
+  }
+
+  if (rootDirectory) {
+    const pnpmCatalogs = parsePnpmWorkspaceCatalogs(rootDirectory);
+    const pnpmVersion = resolveCatalogVersionFromCollection(
+      pnpmCatalogs,
+      packageName,
+      catalogName,
+    );
+    if (pnpmVersion) return pnpmVersion;
   }
 
   return null;
@@ -252,7 +383,7 @@ const findDependencyInfoFromMonorepoRoot = (directory: string): DependencyInfo =
 
   const rootPackageJson = readPackageJson(monorepoPackageJsonPath);
   const rootInfo = extractDependencyInfo(rootPackageJson);
-  const catalogVersion = resolveCatalogVersion(rootPackageJson, "react");
+  const catalogVersion = resolveCatalogVersion(rootPackageJson, "react", monorepoRoot);
   const workspaceInfo = findReactInWorkspaces(monorepoRoot, rootPackageJson);
 
   return {
@@ -406,7 +537,18 @@ export const discoverProject = (directory: string): ProjectInfo => {
   let { reactVersion, framework } = extractDependencyInfo(packageJson);
 
   if (!reactVersion) {
-    reactVersion = resolveCatalogVersion(packageJson, "react");
+    reactVersion = resolveCatalogVersion(packageJson, "react", directory);
+  }
+
+  if (!reactVersion) {
+    const monorepoRoot = findMonorepoRoot(directory);
+    if (monorepoRoot) {
+      const monorepoPackageJsonPath = path.join(monorepoRoot, "package.json");
+      if (isFile(monorepoPackageJsonPath)) {
+        const rootPackageJson = readPackageJson(monorepoPackageJsonPath);
+        reactVersion = resolveCatalogVersion(rootPackageJson, "react", monorepoRoot);
+      }
+    }
   }
 
   if (!reactVersion || framework === "unknown") {

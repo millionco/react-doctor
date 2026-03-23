@@ -44,6 +44,27 @@ describe("discoverProject", () => {
 
     expect(() => discoverProject(projectDirectory)).toThrow("No package.json found");
   });
+
+  it("resolves React version from pnpm workspace default catalog", () => {
+    const projectInfo = discoverProject(
+      path.join(FIXTURES_DIRECTORY, "pnpm-catalog-workspace", "packages", "ui"),
+    );
+    expect(projectInfo.reactVersion).toBe("^19.0.0");
+  });
+
+  it("resolves React version from pnpm workspace named catalog", () => {
+    const projectInfo = discoverProject(
+      path.join(FIXTURES_DIRECTORY, "pnpm-named-catalog", "packages", "app"),
+    );
+    expect(projectInfo.reactVersion).toBe("^19.0.0");
+  });
+
+  it("resolves React version from Bun workspace catalog", () => {
+    const projectInfo = discoverProject(
+      path.join(FIXTURES_DIRECTORY, "bun-catalog-workspace", "apps", "web"),
+    );
+    expect(projectInfo.reactVersion).toBe("^19.1.4");
+  });
 });
 
 describe("listWorkspacePackages", () => {

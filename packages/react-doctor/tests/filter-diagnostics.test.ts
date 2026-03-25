@@ -19,7 +19,7 @@ describe("filterIgnoredDiagnostics", () => {
   it("returns all diagnostics when config has no ignore rules", () => {
     const diagnostics = [createDiagnostic()];
     const config: ReactDoctorConfig = {};
-    expect(filterIgnoredDiagnostics(diagnostics, config)).toEqual(diagnostics);
+    expect(filterIgnoredDiagnostics(diagnostics, config, "")).toEqual(diagnostics);
   });
 
   it("filters diagnostics matching ignored rules", () => {
@@ -34,7 +34,7 @@ describe("filterIgnoredDiagnostics", () => {
       },
     };
 
-    const filtered = filterIgnoredDiagnostics(diagnostics, config);
+    const filtered = filterIgnoredDiagnostics(diagnostics, config, "");
     expect(filtered).toHaveLength(1);
     expect(filtered[0].rule).toBe("no-giant-component");
   });
@@ -51,7 +51,7 @@ describe("filterIgnoredDiagnostics", () => {
       },
     };
 
-    const filtered = filterIgnoredDiagnostics(diagnostics, config);
+    const filtered = filterIgnoredDiagnostics(diagnostics, config, "");
     expect(filtered).toHaveLength(1);
     expect(filtered[0].filePath).toBe("src/components/Button.tsx");
   });
@@ -73,7 +73,7 @@ describe("filterIgnoredDiagnostics", () => {
       },
     };
 
-    const filtered = filterIgnoredDiagnostics(diagnostics, config);
+    const filtered = filterIgnoredDiagnostics(diagnostics, config, "");
     expect(filtered).toHaveLength(1);
     expect(filtered[0].rule).toBe("no-giant-component");
   });
@@ -90,7 +90,7 @@ describe("filterIgnoredDiagnostics", () => {
       },
     };
 
-    const filtered = filterIgnoredDiagnostics(diagnostics, config);
+    const filtered = filterIgnoredDiagnostics(diagnostics, config, "");
     expect(filtered).toHaveLength(2);
   });
 
@@ -106,7 +106,7 @@ describe("filterIgnoredDiagnostics", () => {
       },
     };
 
-    const filtered = filterIgnoredDiagnostics(diagnostics, config);
+    const filtered = filterIgnoredDiagnostics(diagnostics, config, "");
     expect(filtered).toHaveLength(1);
     expect(filtered[0].filePath).toBe("./resources/js/pages/Home.tsx");
   });
@@ -123,7 +123,7 @@ describe("filterIgnoredDiagnostics", () => {
       },
     };
 
-    const filtered = filterIgnoredDiagnostics(diagnostics, config);
+    const filtered = filterIgnoredDiagnostics(diagnostics, config, "");
     expect(filtered).toHaveLength(1);
     expect(filtered[0].rule).toBe("files");
   });

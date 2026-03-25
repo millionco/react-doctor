@@ -1,16 +1,15 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { Diagnostic, ReactDoctorConfig } from "../types.js";
-import { compileGlobPattern } from "./match-glob-pattern.js";
+import { compileIgnoredFilePatterns, isFileIgnoredByPatterns } from "./is-ignored-file.js";
 
 export const filterIgnoredDiagnostics = (
   diagnostics: Diagnostic[],
   config: ReactDoctorConfig,
+  rootDirectory: string,
 ): Diagnostic[] => {
   const ignoredRules = new Set(Array.isArray(config.ignore?.rules) ? config.ignore.rules : []);
-  const ignoredFilePatterns = Array.isArray(config.ignore?.files)
-    ? config.ignore.files.map(compileGlobPattern)
-    : [];
+  const ignoredFilePatterns = compileIgnoredFilePatterns(config);
 
   if (ignoredRules.size === 0 && ignoredFilePatterns.length === 0) {
     return diagnostics;
@@ -22,8 +21,7 @@ export const filterIgnoredDiagnostics = (
       return false;
     }
 
-    const normalizedPath = diagnostic.filePath.replace(/\\/g, "/").replace(/^\.\//, "");
-    if (ignoredFilePatterns.some((pattern) => pattern.test(normalizedPath))) {
+    if (isFileIgnoredByPatterns(diagnostic.filePath, rootDirectory, ignoredFilePatterns)) {
       return false;
     }
 

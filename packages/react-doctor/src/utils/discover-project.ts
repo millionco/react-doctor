@@ -1,7 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { GIT_LS_FILES_MAX_BUFFER_BYTES, SOURCE_FILE_PATTERN } from "../constants.js";
+import {
+  GIT_LS_FILES_MAX_BUFFER_BYTES,
+  IGNORED_DIRECTORIES,
+  SOURCE_FILE_PATTERN,
+} from "../constants.js";
 import type {
   DependencyInfo,
   Framework,
@@ -70,8 +74,6 @@ const FRAMEWORK_DISPLAY_NAMES: Record<Framework, string> = {
 
 export const formatFrameworkName = (framework: Framework): string =>
   FRAMEWORK_DISPLAY_NAMES[framework];
-
-const IGNORED_DIRECTORIES = new Set(["node_modules", "dist", "build", "coverage"]);
 
 const countSourceFilesViaFilesystem = (rootDirectory: string): number => {
   let count = 0;

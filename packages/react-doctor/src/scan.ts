@@ -38,6 +38,7 @@ import {
   isNvmInstalled,
   resolveNodeForOxlint,
 } from "./utils/resolve-compatible-node.js";
+import { resolveLintIncludePaths } from "./utils/resolve-lint-include-paths.js";
 import { runKnip } from "./utils/run-knip.js";
 import { runOxlint } from "./utils/run-oxlint.js";
 import { spinner } from "./utils/spinner.js";
@@ -425,6 +426,7 @@ const printProjectDetection = (
   userConfig: ReactDoctorConfig | null,
   isDiffMode: boolean,
   includePaths: string[],
+  lintSourceFileCount?: number,
 ): void => {
   const frameworkLabel = formatFrameworkName(projectInfo.framework);
   const languageLabel = projectInfo.hasTypeScript ? "TypeScript" : "JavaScript";
@@ -445,7 +447,9 @@ const printProjectDetection = (
   if (isDiffMode) {
     completeStep(`Scanning ${highlighter.info(`${includePaths.length}`)} changed source files.`);
   } else {
-    completeStep(`Found ${highlighter.info(`${projectInfo.sourceFileCount}`)} source files.`);
+    completeStep(
+      `Found ${highlighter.info(`${lintSourceFileCount ?? projectInfo.sourceFileCount}`)} source files.`,
+    );
   }
 
   if (userConfig) {
@@ -470,11 +474,13 @@ export const scan = async (
     throw new Error("No React dependency found in package.json");
   }
 
-  if (!options.scoreOnly) {
-    printProjectDetection(projectInfo, userConfig, isDiffMode, includePaths);
-  }
-
   const jsxIncludePaths = computeJsxIncludePaths(includePaths);
+  const lintIncludePaths = jsxIncludePaths ?? resolveLintIncludePaths(directory, userConfig);
+  const lintSourceFileCount = lintIncludePaths?.length ?? projectInfo.sourceFileCount;
+
+  if (!options.scoreOnly) {
+    printProjectDetection(projectInfo, userConfig, isDiffMode, includePaths, lintSourceFileCount);
+  }
 
   let didLintFail = false;
   let didDeadCodeFail = false;
@@ -491,7 +497,7 @@ export const scan = async (
             projectInfo.hasTypeScript,
             projectInfo.framework,
             projectInfo.hasReactCompiler,
-            jsxIncludePaths,
+            lintIncludePaths,
             resolvedNodeBinaryPath,
           );
           lintSpinner?.succeed("Running lint checks.");
@@ -594,7 +600,7 @@ export const scan = async (
 
   printDiagnostics(diagnostics, options.verbose);
 
-  const displayedSourceFileCount = isDiffMode ? includePaths.length : projectInfo.sourceFileCount;
+  const displayedSourceFileCount = isDiffMode ? includePaths.length : lintSourceFileCount;
 
   printSummary(
     diagnostics,

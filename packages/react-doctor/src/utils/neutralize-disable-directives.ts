@@ -3,14 +3,23 @@ import fs from "node:fs";
 import path from "node:path";
 import { GIT_LS_FILES_MAX_BUFFER_BYTES, SOURCE_FILE_PATTERN } from "../constants.js";
 
-const findFilesWithDisableDirectives = (rootDirectory: string): string[] => {
-  const result = spawnSync("git", ["grep", "-l", "--untracked", "-E", "(eslint|oxlint)-disable"], {
+const findFilesWithDisableDirectives = (
+  rootDirectory: string,
+  includePaths?: string[],
+): string[] => {
+  const grepArgs = ["grep", "-l", "--untracked", "-E", "(eslint|oxlint)-disable"];
+  if (includePaths && includePaths.length > 0) {
+    grepArgs.push("--", ...includePaths);
+  }
+
+  const result = spawnSync("git", grepArgs, {
     cwd: rootDirectory,
     encoding: "utf-8",
     maxBuffer: GIT_LS_FILES_MAX_BUFFER_BYTES,
   });
 
   if (result.error || result.status === null) return [];
+  if (result.status !== 0 && result.stdout.trim().length === 0) return [];
 
   return result.stdout
     .split("\n")
@@ -22,8 +31,11 @@ const neutralizeContent = (content: string): string =>
     .replaceAll("eslint-disable", "eslint_disable")
     .replaceAll("oxlint-disable", "oxlint_disable");
 
-export const neutralizeDisableDirectives = (rootDirectory: string): (() => void) => {
-  const filePaths = findFilesWithDisableDirectives(rootDirectory);
+export const neutralizeDisableDirectives = (
+  rootDirectory: string,
+  includePaths?: string[],
+): (() => void) => {
+  const filePaths = findFilesWithDisableDirectives(rootDirectory, includePaths);
   const originalContents = new Map<string, string>();
 
   for (const relativePath of filePaths) {

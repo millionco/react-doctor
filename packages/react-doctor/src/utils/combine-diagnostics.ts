@@ -20,6 +20,6 @@ export const combineDiagnostics = (
     ...deadCodeDiagnostics,
     ...(isDiffMode ? [] : checkReducedMotion(directory)),
   ];
-  const filtered = userConfig ? filterIgnoredDiagnostics(merged, userConfig) : merged;
+  const filtered = userConfig ? filterIgnoredDiagnostics(merged, userConfig, directory) : merged;
   return filterInlineSuppressions(filtered, directory);
 };

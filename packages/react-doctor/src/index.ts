@@ -5,6 +5,7 @@ import { calculateScore } from "./utils/calculate-score.js";
 import { combineDiagnostics, computeJsxIncludePaths } from "./utils/combine-diagnostics.js";
 import { discoverProject } from "./utils/discover-project.js";
 import { loadConfig } from "./utils/load-config.js";
+import { resolveLintIncludePaths } from "./utils/resolve-lint-include-paths.js";
 import { runKnip } from "./utils/run-knip.js";
 import { runOxlint } from "./utils/run-oxlint.js";
 
@@ -44,6 +45,8 @@ export const diagnose = async (
   }
 
   const jsxIncludePaths = computeJsxIncludePaths(includePaths);
+  const lintIncludePaths =
+    jsxIncludePaths ?? resolveLintIncludePaths(resolvedDirectory, userConfig);
 
   const emptyDiagnostics: Diagnostic[] = [];
 
@@ -53,7 +56,7 @@ export const diagnose = async (
         projectInfo.hasTypeScript,
         projectInfo.framework,
         projectInfo.hasReactCompiler,
-        jsxIncludePaths,
+        lintIncludePaths,
       ).catch((error: unknown) => {
         console.error("Lint failed:", error);
         return emptyDiagnostics;

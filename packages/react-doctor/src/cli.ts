@@ -157,7 +157,7 @@ const program = new Command()
       const userConfig = loadConfig(resolvedDirectory);
 
       if (!isScoreOnly && !flags.hideBranding) {
-        logger.log(\`react-doctor v\${VERSION}\`);
+        logger.log(`react-doctor v${VERSION}`);
         logger.break();
       }
 
@@ -202,7 +202,7 @@ const program = new Command()
             const changedSourceFiles = filterSourceFiles(projectDiffInfo.changedFiles);
             if (changedSourceFiles.length === 0) {
               if (!isScoreOnly && !flags.hideBranding) {
-                logger.dim(\`No changed source files in \${projectDirectory}, skipping.\`);
+                logger.dim(`No changed source files in ${projectDirectory}, skipping.`);
                 logger.break();
               }
               continue;
@@ -212,7 +212,7 @@ const program = new Command()
         }
 
         if (!isScoreOnly && !flags.hideBranding) {
-          logger.dim(\`Scanning \${projectDirectory}...\`);
+          logger.dim(`Scanning ${projectDirectory}...`);
           logger.break();
         }
         const scanResult = await scan(projectDirectory, { ...scanOptions, includePaths });

@@ -39,6 +39,7 @@ interface CliFlags {
   project?: string;
   diff?: boolean | string;
   failOn: string;
+  hideBranding: boolean;
 }
 
 const VALID_FAIL_ON_LEVELS = new Set<FailOnLevel>(["error", "warning", "none"]);
@@ -90,6 +91,7 @@ const resolveCliScanOptions = (
     verbose: isCliOverride("verbose") ? Boolean(flags.verbose) : (userConfig?.verbose ?? false),
     scoreOnly: flags.score,
     offline: flags.offline,
+    noBranding: flags.hideBranding,
   };
 };
 
@@ -146,6 +148,7 @@ const program = new Command()
   .option("--ami", "enable Ami-related prompts")
   .option("--fail-on <level>", "exit with error code on diagnostics: error, warning, none", "none")
   .option("--fix", "open Ami to auto-fix all issues")
+  .option("--hide-branding", "suppress branding for clean CI/PR output")
   .action(async (directory: string, flags: CliFlags) => {
     const isScoreOnly = flags.score;
 

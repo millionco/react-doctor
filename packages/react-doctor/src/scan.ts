@@ -38,6 +38,7 @@ import {
   isNvmInstalled,
   resolveNodeForOxlint,
 } from "./utils/resolve-compatible-node.js";
+import { buildNoBrandingReport } from "./utils/no-branding-diagnostics.js";
 import { runKnip } from "./utils/run-knip.js";
 import { runOxlint } from "./utils/run-oxlint.js";
 import { spinner } from "./utils/spinner.js";
@@ -319,7 +320,13 @@ const printSummary = (
   totalSourceFileCount: number,
   noScoreMessage: string,
   isOffline: boolean,
+  noBranding: boolean,
 ): void => {
+  if (noBranding) {
+    logger.log(buildNoBrandingReport(diagnostics, scoreResult));
+    return;
+  }
+
   const summaryFramedLines = [
     ...buildBrandingLines(scoreResult, noScoreMessage),
     buildCountsSummaryLine(diagnostics, totalSourceFileCount, elapsedMilliseconds),
@@ -405,18 +412,27 @@ interface ResolvedScanOptions {
   verbose: boolean;
   scoreOnly: boolean;
   offline: boolean;
+  noBranding: boolean;
   includePaths: string[];
 }
+
+const SCAN_DEFAULTS: ResolvedScanOptions = {
+  lint: true,
+  deadCode: true,
+  verbose: false,
+  scoreOnly: false,
+  offline: false,
+  noBranding: false,
+  includePaths: [],
+};
 
 const mergeScanOptions = (
   inputOptions: ScanOptions,
   userConfig: ReactDoctorConfig | null,
 ): ResolvedScanOptions => ({
-  lint: inputOptions.lint ?? userConfig?.lint ?? true,
-  deadCode: inputOptions.deadCode ?? userConfig?.deadCode ?? true,
-  verbose: inputOptions.verbose ?? userConfig?.verbose ?? false,
-  scoreOnly: inputOptions.scoreOnly ?? false,
-  offline: inputOptions.offline ?? false,
+  ...SCAN_DEFAULTS,
+  ...userConfig,
+  ...inputOptions,
   includePaths: inputOptions.includePaths ?? [],
 });
 
@@ -581,11 +597,13 @@ export const scan = async (
     }
     logger.break();
     if (hasSkippedChecks) {
-      printBranding();
+      if (!options.noBranding) printBranding();
       logger.dim("  Score not shown — some checks could not complete.");
     } else if (scoreResult) {
-      printBranding(scoreResult.score);
-      printScoreGauge(scoreResult.score, scoreResult.label);
+      if (!options.noBranding) {
+        printBranding(scoreResult.score);
+        printScoreGauge(scoreResult.score, scoreResult.label);
+      }
     } else {
       logger.dim(`  ${noScoreMessage}`);
     }
@@ -604,6 +622,7 @@ export const scan = async (
     displayedSourceFileCount,
     noScoreMessage,
     options.offline,
+    options.noBranding,
   );
 
   if (hasSkippedChecks) {

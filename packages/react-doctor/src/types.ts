@@ -112,6 +112,7 @@ export interface ScanOptions {
   verbose?: boolean;
   scoreOnly?: boolean;
   offline?: boolean;
+  noBranding?: boolean;
   includePaths?: string[];
 }
 

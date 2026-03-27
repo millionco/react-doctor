@@ -87,6 +87,7 @@ Options:
   --diff [base]     scan only files changed vs base branch
   --ami             enable Ami-related prompts
   --fix             open Ami to auto-fix all issues
+  --hide-branding   suppress ASCII branding, output clean HTML report
   -h, --help        display help for command
 ```
 
@@ -150,6 +151,7 @@ The `diagnose` function accepts an optional second argument:
 const result = await diagnose(".", {
   lint: true, // run lint checks (default: true)
   deadCode: true, // run dead code detection (default: true)
+  noBranding: true, // output clean HTML instead of ASCII branding (default: false)
 });
 ```
 

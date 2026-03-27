@@ -54,7 +54,7 @@ runs:
         if [ -n "$INPUT_DIFF" ]; then FLAGS="$FLAGS --diff $INPUT_DIFF"; fi
 
         if [ -n "$INPUT_GITHUB_TOKEN" ]; then
-          npx -y react-doctor@latest "$INPUT_DIRECTORY" $FLAGS | tee /tmp/react-doctor-output.txt
+          npx -y react-doctor@latest "$INPUT_DIRECTORY" $FLAGS --hide-branding | tee /tmp/react-doctor-output.txt
         else
           npx -y react-doctor@latest "$INPUT_DIRECTORY" $FLAGS
         fi
@@ -78,11 +78,13 @@ runs:
           const fs = require("fs");
           const path = "/tmp/react-doctor-output.txt";
           if (!fs.existsSync(path)) return;
-          const output = fs.readFileSync(path, "utf8").trim();
-          if (!output) return;
+          const raw = fs.readFileSync(path, "utf8").trim();
+          if (!raw) return;
+
+          const clean = raw.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, "").trim();
 
           const marker = "<!-- react-doctor -->";
-          const body = `${marker}\n## 🩺 React Doctor\n\n\`\`\`\n${output}\n\`\`\``;
+          const body = `${marker}\n## 🩺 React Doctor\n\n${clean}`;
 
           const { data: comments } = await github.rest.issues.listComments({
             ...context.repo,
@@ -90,14 +92,15 @@ runs:
           });
           const prev = comments.find((c) => c.body?.startsWith(marker));
           if (prev) {
-            await github.rest.issues.deleteComment({
+            await github.rest.issues.updateComment({
               ...context.repo,
               comment_id: prev.id,
+              body,
+            });
+          } else {
+            await github.rest.issues.createComment({
+              ...context.repo,
+              issue_number: context.issue.number,
+              body,
             });
           }
-
-          await github.rest.issues.createComment({
-            ...context.repo,
-            issue_number: context.issue.number,
-            body,
-          });

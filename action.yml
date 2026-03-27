@@ -47,16 +47,19 @@ runs:
         INPUT_DIFF: ${{ inputs.diff }}
         INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
         INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        GITHUB_ACTION_PATH: ${{ github.action_path }}
       run: |
+        DOCTOR="node $GITHUB_ACTION_PATH/packages/react-doctor/dist/cli.js"
+
         FLAGS="--fail-on $INPUT_FAIL_ON"
         if [ "$INPUT_VERBOSE" = "true" ]; then FLAGS="$FLAGS --verbose"; fi
         if [ -n "$INPUT_PROJECT" ]; then FLAGS="$FLAGS --project $INPUT_PROJECT"; fi
         if [ -n "$INPUT_DIFF" ]; then FLAGS="$FLAGS --diff $INPUT_DIFF"; fi
 
         if [ -n "$INPUT_GITHUB_TOKEN" ]; then
-          npx -y react-doctor@latest "$INPUT_DIRECTORY" $FLAGS --hide-branding | tee /tmp/react-doctor-output.txt
+          $DOCTOR "$INPUT_DIRECTORY" $FLAGS --hide-branding | tee /tmp/react-doctor-output.txt
         else
-          npx -y react-doctor@latest "$INPUT_DIRECTORY" $FLAGS
+          $DOCTOR "$INPUT_DIRECTORY" $FLAGS
         fi
 
     - id: score
@@ -64,8 +67,10 @@ runs:
       shell: bash
       env:
         INPUT_DIRECTORY: ${{ inputs.directory }}
+        GITHUB_ACTION_PATH: ${{ github.action_path }}
       run: |
-        SCORE=$(npx -y react-doctor@latest "$INPUT_DIRECTORY" --score 2>/dev/null | tail -1 | tr -d '[:space:]')
+        DOCTOR="node $GITHUB_ACTION_PATH/packages/react-doctor/dist/cli.js"
+        SCORE=$($DOCTOR "$INPUT_DIRECTORY" --score 2>/dev/null | tail -1 | tr -d '[:space:]')
         if [[ -n "$SCORE" && "$SCORE" =~ ^[0-9]+$ ]]; then
           echo "score=$SCORE" >> "$GITHUB_OUTPUT"
         fi

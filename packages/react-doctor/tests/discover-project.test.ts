@@ -12,6 +12,12 @@ import {
 const FIXTURES_DIRECTORY = path.resolve(import.meta.dirname, "fixtures");
 const VALID_FRAMEWORKS = ["nextjs", "vite", "cra", "remix", "gatsby", "unknown"];
 
+const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-discover-test-"));
+
+afterAll(() => {
+  fs.rmSync(tempDirectory, { recursive: true, force: true });
+});
+
 describe("discoverProject", () => {
   it("detects React version from package.json", () => {
     const projectInfo = discoverProject(path.join(FIXTURES_DIRECTORY, "basic-react"));
@@ -44,9 +50,57 @@ describe("discoverProject", () => {
 
     expect(() => discoverProject(projectDirectory)).toThrow("No package.json found");
   });
+
+  describe("with packageJsonDirectory", () => {
+    const sourceDirectory = path.join(FIXTURES_DIRECTORY, "split-project", "source");
+    const metadataDirectory = path.join(FIXTURES_DIRECTORY, "split-project", "metadata");
+
+    it("reads package.json from the custom directory", () => {
+      const projectInfo = discoverProject(sourceDirectory, metadataDirectory);
+      expect(projectInfo.reactVersion).toBe("^19.0.0");
+      expect(projectInfo.projectName).toBe("test-split-project");
+    });
+
+    it("detects tsconfig from the scan directory, not the package.json directory", () => {
+      const projectInfo = discoverProject(sourceDirectory, metadataDirectory);
+      expect(projectInfo.hasTypeScript).toBe(true);
+    });
+
+    it("uses the scan directory as rootDirectory", () => {
+      const projectInfo = discoverProject(sourceDirectory, metadataDirectory);
+      expect(projectInfo.rootDirectory).toBe(sourceDirectory);
+    });
+
+    it("throws when the custom directory has no package.json", () => {
+      expect(() => discoverProject(sourceDirectory, "/nonexistent/path")).toThrow(
+        "No package.json found",
+      );
+    });
+
+    it("falls back to scan directory when packageJsonDirectory is undefined", () => {
+      const projectInfo = discoverProject(path.join(FIXTURES_DIRECTORY, "basic-react"), undefined);
+      expect(projectInfo.reactVersion).toBe("^19.0.0");
+    });
+  });
 });
 
 describe("listWorkspacePackages", () => {
+  it("returns empty when packageJsonDirectory has no package.json", () => {
+    const packages = listWorkspacePackages("/some/root", "/nonexistent/path");
+    expect(packages).toEqual([]);
+  });
+
+  it("returns empty when packageJsonDirectory has no workspaces", () => {
+    const metadataDirectory = path.join(FIXTURES_DIRECTORY, "split-project", "metadata");
+    const packages = listWorkspacePackages("/some/root", metadataDirectory);
+    expect(packages).toEqual([]);
+  });
+
+  it("falls back to rootDirectory when packageJsonDirectory is undefined", () => {
+    const packages = listWorkspacePackages(path.join(FIXTURES_DIRECTORY, "basic-react"));
+    expect(packages).toEqual([]);
+  });
+
   it("resolves nested workspace patterns like apps/*/ClientApp", () => {
     const packages = listWorkspacePackages(path.join(FIXTURES_DIRECTORY, "nested-workspaces"));
     const packageNames = packages.map((workspacePackage) => workspacePackage.name);
@@ -55,12 +109,6 @@ describe("listWorkspacePackages", () => {
     expect(packageNames).toContain("ui");
     expect(packages).toHaveLength(2);
   });
-});
-
-const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-discover-test-"));
-
-afterAll(() => {
-  fs.rmSync(tempDirectory, { recursive: true, force: true });
 });
 
 describe("discoverReactSubprojects", () => {
@@ -133,6 +181,23 @@ describe("discoverReactSubprojects", () => {
 
     const packages = discoverReactSubprojects(rootDirectory);
     expect(packages).toHaveLength(1);
+  });
+
+  it("returns empty when packageJsonDirectory does not exist", () => {
+    const packages = discoverReactSubprojects("/some/root", "/nonexistent/path");
+    expect(packages).toEqual([]);
+  });
+
+  it("scans the packageJsonDirectory for subprojects instead of rootDirectory", () => {
+    const packages = discoverReactSubprojects("/nonexistent/root", FIXTURES_DIRECTORY);
+    const names = packages.map((p) => p.name);
+    expect(names).toContain("test-basic-react");
+  });
+
+  it("falls back to rootDirectory when packageJsonDirectory is undefined", () => {
+    const packages = discoverReactSubprojects(FIXTURES_DIRECTORY);
+    const names = packages.map((p) => p.name);
+    expect(names).toContain("test-basic-react");
   });
 });
 

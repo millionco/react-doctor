@@ -37,6 +37,7 @@ interface CliFlags {
   offline: boolean;
   ami: boolean;
   project?: string;
+  packageJson?: string;
   diff?: boolean | string;
   failOn: string;
 }
@@ -141,6 +142,7 @@ const program = new Command()
   .option("--score", "output only the score")
   .option("-y, --yes", "skip prompts, scan all workspace projects")
   .option("--project <name>", "select workspace project (comma-separated for multiple)")
+  .option("--package-json <directory>", "custom directory containing package.json")
   .option("--diff [base]", "scan only files changed vs base branch")
   .option("--offline", "skip telemetry (anonymous, not stored, only used to calculate score)")
   .option("--ami", "enable Ami-related prompts")
@@ -158,13 +160,21 @@ const program = new Command()
         logger.break();
       }
 
-      const scanOptions = resolveCliScanOptions(flags, userConfig, program);
+      const resolvedPackageJsonDirectory = flags.packageJson
+        ? path.resolve(flags.packageJson)
+        : undefined;
+
+      const scanOptions: ScanOptions = {
+        ...resolveCliScanOptions(flags, userConfig, program),
+        packageJsonDirectory: resolvedPackageJsonDirectory,
+      };
       const shouldSkipPrompts = flags.yes || isAutomatedEnvironment() || !process.stdin.isTTY;
       const shouldSkipAmiPrompts = shouldSkipPrompts || !flags.ami;
       const projectDirectories = await selectProjects(
         resolvedDirectory,
         flags.project,
         shouldSkipPrompts,
+        resolvedPackageJsonDirectory,
       );
 
       const isDiffCliOverride = program.getOptionValueSource("diff") === "cli";

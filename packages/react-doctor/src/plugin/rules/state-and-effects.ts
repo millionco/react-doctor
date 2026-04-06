@@ -9,6 +9,7 @@ import {
   containsFetchCall,
   countSetStateCalls,
   extractDestructuredPropNames,
+  getCalleeName,
   getCallbackStatements,
   getEffectCallback,
   isComponentAssignment,
@@ -40,13 +41,15 @@ export const noDerivedStateEffect: Rule = {
       const statements = getCallbackStatements(callback);
       if (statements.length === 0) return;
 
-      const containsOnlySetStateCalls = statements.every(
-        (statement: EsTreeNode) =>
-          statement.type === "ExpressionStatement" &&
-          statement.expression?.type === "CallExpression" &&
-          statement.expression.callee?.type === "Identifier" &&
-          isSetterIdentifier(statement.expression.callee.name),
-      );
+      const containsOnlySetStateCalls = statements.every((statement: EsTreeNode) => {
+        if (
+          statement.type !== "ExpressionStatement" ||
+          statement.expression?.type !== "CallExpression"
+        )
+          return false;
+        const name = getCalleeName(statement.expression.callee);
+        return name !== null && isSetterIdentifier(name);
+      });
       if (!containsOnlySetStateCalls) return;
 
       let allArgumentsDeriveFromDeps = true;
@@ -248,7 +251,8 @@ export const rerenderLazyStateInit: Rule = {
 export const rerenderFunctionalSetstate: Rule = {
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
-      if (node.callee?.type !== "Identifier" || !isSetterIdentifier(node.callee.name)) return;
+      const calleeName = getCalleeName(node.callee);
+      if (!calleeName || !isSetterIdentifier(calleeName)) return;
       if (!node.arguments?.length) return;
 
       const argument = node.arguments[0];
@@ -259,7 +263,7 @@ export const rerenderFunctionalSetstate: Rule = {
       ) {
         context.report({
           node,
-          message: `${node.callee.name}(${argument.left.name} ${argument.operator} ...) — use functional update to avoid stale closures`,
+          message: `${calleeName}(${argument.left.name} ${argument.operator} ...) — use functional update to avoid stale closures`,
         });
       }
     },

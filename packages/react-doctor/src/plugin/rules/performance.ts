@@ -9,6 +9,7 @@ import {
   SETTER_PATTERN,
 } from "../constants.js";
 import {
+  getCalleeName,
   getEffectCallback,
   isComponentAssignment,
   isHookCall,
@@ -412,12 +413,12 @@ export const renderingHydrationNoFlicker: Rule = {
       if (!bodyStatements || bodyStatements.length !== 1) return;
 
       const soleStatement = bodyStatements[0];
-      if (
+      const setterName =
         soleStatement?.type === "ExpressionStatement" &&
-        soleStatement.expression?.type === "CallExpression" &&
-        soleStatement.expression.callee?.type === "Identifier" &&
-        SETTER_PATTERN.test(soleStatement.expression.callee.name)
-      ) {
+        soleStatement.expression?.type === "CallExpression"
+          ? getCalleeName(soleStatement.expression.callee)
+          : null;
+      if (setterName && SETTER_PATTERN.test(setterName)) {
         context.report({
           node,
           message:

@@ -27,7 +27,7 @@
     "picocolors": "^1.1.1"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.27.0",
+    "@changesets/cli": "^2.30.0",
     "eslint-plugin-react-hooks": "^7.0.1",
     "oxfmt": "^0.32.0",
     "oxlint": "^1.47.0",

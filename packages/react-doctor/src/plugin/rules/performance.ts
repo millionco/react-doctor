@@ -412,11 +412,18 @@ export const renderingHydrationNoFlicker: Rule = {
       if (!bodyStatements || bodyStatements.length !== 1) return;
 
       const soleStatement = bodyStatements[0];
+      const soleCallee = soleStatement?.expression?.callee;
+      const soleCalleeName =
+        soleCallee?.type === "Identifier"
+          ? soleCallee.name
+          : soleCallee?.type === "MemberExpression" && soleCallee.property?.type === "Identifier"
+            ? soleCallee.property.name
+            : null;
       if (
         soleStatement?.type === "ExpressionStatement" &&
         soleStatement.expression?.type === "CallExpression" &&
-        soleStatement.expression.callee?.type === "Identifier" &&
-        SETTER_PATTERN.test(soleStatement.expression.callee.name)
+        soleCalleeName &&
+        SETTER_PATTERN.test(soleCalleeName)
       ) {
         context.report({
           node,

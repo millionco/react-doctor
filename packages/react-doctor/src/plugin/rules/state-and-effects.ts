@@ -40,13 +40,23 @@ export const noDerivedStateEffect: Rule = {
       const statements = getCallbackStatements(callback);
       if (statements.length === 0) return;
 
-      const containsOnlySetStateCalls = statements.every(
-        (statement: EsTreeNode) =>
-          statement.type === "ExpressionStatement" &&
-          statement.expression?.type === "CallExpression" &&
-          statement.expression.callee?.type === "Identifier" &&
-          isSetterIdentifier(statement.expression.callee.name),
-      );
+      const getSetterName = (expression: EsTreeNode): string | null => {
+        if (expression.callee?.type === "Identifier") return expression.callee.name;
+        if (
+          expression.callee?.type === "MemberExpression" &&
+          expression.callee.property?.type === "Identifier"
+        ) {
+          return expression.callee.property.name;
+        }
+        return null;
+      };
+
+      const containsOnlySetStateCalls = statements.every((statement: EsTreeNode) => {
+        if (statement.type !== "ExpressionStatement") return false;
+        if (statement.expression?.type !== "CallExpression") return false;
+        const name = getSetterName(statement.expression);
+        return name !== null && isSetterIdentifier(name);
+      });
       if (!containsOnlySetStateCalls) return;
 
       let allArgumentsDeriveFromDeps = true;
@@ -248,7 +258,16 @@ export const rerenderLazyStateInit: Rule = {
 export const rerenderFunctionalSetstate: Rule = {
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
-      if (node.callee?.type !== "Identifier" || !isSetterIdentifier(node.callee.name)) return;
+      let calleeName: string | null = null;
+      if (node.callee?.type === "Identifier") {
+        calleeName = node.callee.name;
+      } else if (
+        node.callee?.type === "MemberExpression" &&
+        node.callee.property?.type === "Identifier"
+      ) {
+        calleeName = node.callee.property.name;
+      }
+      if (!calleeName || !isSetterIdentifier(calleeName)) return;
       if (!node.arguments?.length) return;
 
       const argument = node.arguments[0];
@@ -259,7 +278,7 @@ export const rerenderFunctionalSetstate: Rule = {
       ) {
         context.report({
           node,
-          message: `${node.callee.name}(${argument.left.name} ${argument.operator} ...) — use functional update to avoid stale closures`,
+          message: `${calleeName}(${argument.left.name} ${argument.operator} ...) — use functional update to avoid stale closures`,
         });
       }
     },

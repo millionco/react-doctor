@@ -55,11 +55,9 @@ export const getCallbackStatements = (callback: EsTreeNode): EsTreeNode[] => {
 export const countSetStateCalls = (node: EsTreeNode): number => {
   let setStateCallCount = 0;
   walkAst(node, (child) => {
-    if (
-      child.type === "CallExpression" &&
-      child.callee?.type === "Identifier" &&
-      isSetterIdentifier(child.callee.name)
-    ) {
+    if (child.type !== "CallExpression") return;
+    const calleeName = getCalleeName(child);
+    if (calleeName && isSetterIdentifier(calleeName)) {
       setStateCallCount++;
     }
   });
@@ -100,10 +98,20 @@ export const isComponentAssignment = (node: EsTreeNode): boolean =>
   Boolean(node.init) &&
   (node.init.type === "ArrowFunctionExpression" || node.init.type === "FunctionExpression");
 
-export const isHookCall = (node: EsTreeNode, hookName: string | Set<string>): boolean =>
-  node.type === "CallExpression" &&
-  node.callee?.type === "Identifier" &&
-  (typeof hookName === "string" ? node.callee.name === hookName : hookName.has(node.callee.name));
+const getCalleeName = (node: EsTreeNode): string | null => {
+  if (node.callee?.type === "Identifier") return node.callee.name;
+  if (node.callee?.type === "MemberExpression" && node.callee.property?.type === "Identifier") {
+    return node.callee.property.name;
+  }
+  return null;
+};
+
+export const isHookCall = (node: EsTreeNode, hookName: string | Set<string>): boolean => {
+  if (node.type !== "CallExpression") return false;
+  const calleeName = getCalleeName(node);
+  if (!calleeName) return false;
+  return typeof hookName === "string" ? calleeName === hookName : hookName.has(calleeName);
+};
 
 export const hasDirective = (programNode: EsTreeNode, directive: string): boolean =>
   Boolean(

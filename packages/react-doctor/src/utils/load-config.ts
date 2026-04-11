@@ -7,8 +7,8 @@ import { isPlainObject } from "./is-plain-object.js";
 const CONFIG_FILENAME = "react-doctor.config.json";
 const PACKAGE_JSON_CONFIG_KEY = "reactDoctor";
 
-export const loadConfig = (rootDirectory: string): ReactDoctorConfig | null => {
-  const configFilePath = path.join(rootDirectory, CONFIG_FILENAME);
+const loadConfigFromDirectory = (directory: string): ReactDoctorConfig | null => {
+  const configFilePath = path.join(directory, CONFIG_FILENAME);
 
   if (isFile(configFilePath)) {
     try {
@@ -25,7 +25,7 @@ export const loadConfig = (rootDirectory: string): ReactDoctorConfig | null => {
     }
   }
 
-  const packageJsonPath = path.join(rootDirectory, "package.json");
+  const packageJsonPath = path.join(directory, "package.json");
   if (isFile(packageJsonPath)) {
     try {
       const fileContent = fs.readFileSync(packageJsonPath, "utf-8");
@@ -37,6 +37,20 @@ export const loadConfig = (rootDirectory: string): ReactDoctorConfig | null => {
     } catch {
       return null;
     }
+  }
+
+  return null;
+};
+
+export const loadConfig = (rootDirectory: string): ReactDoctorConfig | null => {
+  const localConfig = loadConfigFromDirectory(rootDirectory);
+  if (localConfig) return localConfig;
+
+  let ancestorDirectory = path.dirname(rootDirectory);
+  while (ancestorDirectory !== path.dirname(ancestorDirectory)) {
+    const ancestorConfig = loadConfigFromDirectory(ancestorDirectory);
+    if (ancestorConfig) return ancestorConfig;
+    ancestorDirectory = path.dirname(ancestorDirectory);
   }
 
   return null;

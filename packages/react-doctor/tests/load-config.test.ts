@@ -251,4 +251,60 @@ describe("loadConfig", () => {
       expect(config).toBeNull();
     });
   });
+
+  describe("ancestor config inheritance", () => {
+    it("finds config from parent directory when not present locally", () => {
+      const parentDirectory = path.join(tempRootDirectory, "monorepo-inherit");
+      const childDirectory = path.join(parentDirectory, "packages", "ui");
+      fs.mkdirSync(childDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(parentDirectory, "react-doctor.config.json"),
+        JSON.stringify({ ignore: { rules: ["from-monorepo-root"] } }),
+      );
+
+      const config = loadConfig(childDirectory);
+      expect(config).toEqual({ ignore: { rules: ["from-monorepo-root"] } });
+    });
+
+    it("prefers local config over ancestor config", () => {
+      const parentDirectory = path.join(tempRootDirectory, "monorepo-local-wins");
+      const childDirectory = path.join(parentDirectory, "packages", "ui");
+      fs.mkdirSync(childDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(parentDirectory, "react-doctor.config.json"),
+        JSON.stringify({ ignore: { rules: ["from-parent"] } }),
+      );
+      fs.writeFileSync(
+        path.join(childDirectory, "react-doctor.config.json"),
+        JSON.stringify({ ignore: { rules: ["from-child"] } }),
+      );
+
+      const config = loadConfig(childDirectory);
+      expect(config).toEqual({ ignore: { rules: ["from-child"] } });
+    });
+
+    it("finds config from package.json reactDoctor key in ancestor", () => {
+      const parentDirectory = path.join(tempRootDirectory, "monorepo-pkg-inherit");
+      const childDirectory = path.join(parentDirectory, "packages", "app");
+      fs.mkdirSync(childDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(parentDirectory, "package.json"),
+        JSON.stringify({
+          name: "monorepo",
+          reactDoctor: { customRulesOnly: true },
+        }),
+      );
+
+      const config = loadConfig(childDirectory);
+      expect(config).toEqual({ customRulesOnly: true });
+    });
+
+    it("returns null when no config exists anywhere in the ancestor chain", () => {
+      const isolatedDirectory = path.join(tempRootDirectory, "no-config-anywhere", "deep", "path");
+      fs.mkdirSync(isolatedDirectory, { recursive: true });
+
+      const config = loadConfig(isolatedDirectory);
+      expect(config).toBeNull();
+    });
+  });
 });

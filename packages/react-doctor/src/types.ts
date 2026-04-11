@@ -106,6 +106,7 @@ export interface ScanOptions {
   scoreOnly?: boolean;
   offline?: boolean;
   includePaths?: string[];
+  configOverride?: ReactDoctorConfig | null;
 }
 
 export interface DiffInfo {

@@ -469,7 +469,8 @@ export const scan = async (
 ): Promise<ScanResult> => {
   const startTime = performance.now();
   const projectInfo = discoverProject(directory);
-  const userConfig = loadConfig(directory);
+  const userConfig =
+    inputOptions.configOverride !== undefined ? inputOptions.configOverride : loadConfig(directory);
   const options = mergeScanOptions(inputOptions, userConfig);
   const { includePaths } = options;
   const isDiffMode = includePaths.length > 0;

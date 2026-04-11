@@ -195,6 +195,7 @@ const program = new Command()
           const scanResult = await scan(snapshot.tempDirectory, {
             ...scanOptions,
             includePaths: snapshot.stagedFiles,
+            configOverride: userConfig,
           });
 
           const remappedDiagnostics = scanResult.diagnostics.map((diagnostic) => ({

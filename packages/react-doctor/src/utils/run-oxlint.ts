@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import {
   ERROR_PREVIEW_LENGTH_CHARS,
   JSX_FILE_PATTERN,
+  OXLINT_MAX_FILES_PER_BATCH,
   SPAWN_ARGS_MAX_LENGTH_CHARS,
 } from "../constants.js";
 import { createOxlintConfig } from "../oxlint-config.js";
@@ -293,7 +294,11 @@ const batchIncludePaths = (baseArgs: string[], includePaths: string[]): string[]
 
   for (const filePath of includePaths) {
     const entryLength = filePath.length + 1;
-    if (currentBatch.length > 0 && currentBatchLength + entryLength > SPAWN_ARGS_MAX_LENGTH_CHARS) {
+    const exceedsArgLength =
+      currentBatch.length > 0 && currentBatchLength + entryLength > SPAWN_ARGS_MAX_LENGTH_CHARS;
+    const exceedsFileCount = currentBatch.length >= OXLINT_MAX_FILES_PER_BATCH;
+
+    if (exceedsArgLength || exceedsFileCount) {
       batches.push(currentBatch);
       currentBatch = [];
       currentBatchLength = baseArgsLength;

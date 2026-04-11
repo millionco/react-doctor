@@ -30,6 +30,10 @@ export const GIT_LS_FILES_MAX_BUFFER_BYTES = 50 * 1024 * 1024;
 // Use a conservative threshold to leave room for the executable path and quoting overhead.
 export const SPAWN_ARGS_MAX_LENGTH_CHARS = 24_000;
 
+// HACK: oxlint can SIGABRT on very large file sets due to memory pressure.
+// Cap each batch to avoid OOM crashes on projects with 100+ source files.
+export const OXLINT_MAX_FILES_PER_BATCH = 500;
+
 export const OFFLINE_MESSAGE = "Score calculated locally (offline mode).";
 
 export const DEFAULT_BRANCH_CANDIDATES = ["main", "master"];

@@ -6,14 +6,13 @@ import {
   LAYOUT_PROPERTIES,
   LOADING_STATE_PATTERN,
   MOTION_ANIMATE_PROPS,
-  SETTER_PATTERN,
 } from "../constants.js";
 import {
-  getCalleeName,
   getEffectCallback,
   isComponentAssignment,
   isHookCall,
   isMemberProperty,
+  isSetterCall,
   isSimpleExpression,
   isUppercaseName,
   walkAst,
@@ -413,14 +412,9 @@ export const renderingHydrationNoFlicker: Rule = {
       if (!bodyStatements || bodyStatements.length !== 1) return;
 
       const soleStatement = bodyStatements[0];
-      const soleCalleeName =
-        soleStatement?.expression?.type === "CallExpression"
-          ? getCalleeName(soleStatement.expression)
-          : null;
       if (
         soleStatement?.type === "ExpressionStatement" &&
-        soleCalleeName &&
-        SETTER_PATTERN.test(soleCalleeName)
+        isSetterCall(soleStatement.expression)
       ) {
         context.report({
           node,

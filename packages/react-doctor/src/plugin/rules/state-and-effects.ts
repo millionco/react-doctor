@@ -10,10 +10,10 @@ import {
   countSetStateCalls,
   extractDestructuredPropNames,
   getCallbackStatements,
-  getCalleeName,
   getEffectCallback,
   isComponentAssignment,
   isHookCall,
+  isSetterCall,
   isSetterIdentifier,
   isUppercaseName,
   walkAst,
@@ -43,9 +43,7 @@ export const noDerivedStateEffect: Rule = {
 
       const containsOnlySetStateCalls = statements.every((statement: EsTreeNode) => {
         if (statement.type !== "ExpressionStatement") return false;
-        if (statement.expression?.type !== "CallExpression") return false;
-        const name = getCalleeName(statement.expression);
-        return name !== null && isSetterIdentifier(name);
+        return isSetterCall(statement.expression);
       });
       if (!containsOnlySetStateCalls) return;
 
@@ -248,10 +246,10 @@ export const rerenderLazyStateInit: Rule = {
 export const rerenderFunctionalSetstate: Rule = {
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
-      const calleeName = getCalleeName(node);
-      if (!calleeName || !isSetterIdentifier(calleeName)) return;
+      if (!isSetterCall(node)) return;
       if (!node.arguments?.length) return;
 
+      const calleeName = node.callee.name;
       const argument = node.arguments[0];
       if (
         argument.type === "BinaryExpression" &&

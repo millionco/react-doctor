@@ -104,6 +104,27 @@ describe("namespace hook detection (React.useEffect, React.useState, etc.)", () 
     expect(issues[0].message).toContain("useState calls");
   });
 
+  it("does not flag member expression calls like localStorage.setItem as state setters", () => {
+    const allCleanFileIssues = diagnostics.filter(
+      (diagnostic) => diagnostic.filePath.includes("clean"),
+    );
+
+    const setterRules = new Set([
+      "no-derived-state-effect",
+      "no-cascading-set-state",
+      "rerender-functional-setstate",
+      "rendering-hydration-no-flicker",
+    ]);
+
+    const falsePositives = allCleanFileIssues.filter((diagnostic) =>
+      setterRules.has(diagnostic.rule),
+    );
+    expect(
+      falsePositives,
+      "member expression calls like localStorage.setItem should not be flagged as React state setters",
+    ).toHaveLength(0);
+  });
+
   it("still detects all rules from direct-import fixtures (no regression)", () => {
     const directImportRules = [
       "no-derived-state-effect",

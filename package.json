@@ -23,17 +23,17 @@
   },
   "dependencies": {
     "commander": "^14.0.3",
-    "knip": "^5.83.1",
+    "knip": "^6.3.1",
     "picocolors": "^1.1.1"
   },
   "devDependencies": {
     "@changesets/cli": "^2.30.0",
     "eslint-plugin-react-hooks": "^7.0.1",
-    "oxfmt": "^0.32.0",
-    "oxlint": "^1.47.0",
-    "tsdown": "^0.20.3",
-    "typescript": "^5.7.0",
-    "vitest": "^4.0.18"
+    "oxfmt": "^0.44.0",
+    "oxlint": "^1.59.0",
+    "tsdown": "^0.21.7",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.4"
   },
   "packageManager": "pnpm@10.29.1"
 }

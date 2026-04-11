@@ -1,8 +1,11 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { Command } from "commander";
 import { scan } from "./scan.js";
 import type { Diagnostic, DiffInfo, FailOnLevel, ReactDoctorConfig, ScanOptions } from "./types.js";
 import { filterSourceFiles, getDiffInfo } from "./utils/get-diff-files.js";
+import { getStagedSourceFiles, materializeStagedFiles } from "./utils/get-staged-files.js";
 import { handleError } from "./utils/handle-error.js";
 import { highlighter } from "./utils/highlighter.js";
 import { loadConfig } from "./utils/load-config.js";
@@ -21,6 +24,7 @@ interface CliFlags {
   no: boolean;
   offline: boolean;
   annotations: boolean;
+  staged: boolean;
   project?: string;
   diff?: boolean | string;
   failOn: string;
@@ -139,6 +143,7 @@ const program = new Command()
   .option("--project <name>", "select workspace project (comma-separated for multiple)")
   .option("--diff [base]", "scan only files changed vs base branch")
   .option("--offline", "skip telemetry (anonymous, not stored, only used to calculate score)")
+  .option("--staged", "scan only staged (git index) files for pre-commit hooks")
   .option("--fail-on <level>", "exit with error code on diagnostics: error, warning, none", "none")
   .option("--annotations", "output diagnostics as GitHub Actions annotations")
   .action(async (directory: string, flags: CliFlags) => {
@@ -161,6 +166,55 @@ const program = new Command()
         flags.project,
         shouldSkipPrompts,
       );
+
+      if (flags.staged) {
+        const stagedFiles = getStagedSourceFiles(resolvedDirectory);
+        if (stagedFiles.length === 0) {
+          if (!isScoreOnly) {
+            logger.dim("No staged source files found.");
+          }
+          return;
+        }
+
+        if (!isScoreOnly) {
+          logger.log(`Scanning ${highlighter.info(`${stagedFiles.length}`)} staged files...`);
+          logger.break();
+        }
+
+        const tempDirectory = mkdtempSync(path.join(tmpdir(), "react-doctor-staged-"));
+        const snapshot = materializeStagedFiles(resolvedDirectory, stagedFiles, tempDirectory);
+
+        try {
+          const scanResult = await scan(snapshot.tempDirectory, {
+            ...scanOptions,
+            includePaths: snapshot.stagedFiles,
+          });
+
+          const remappedDiagnostics = scanResult.diagnostics.map((diagnostic) => ({
+            ...diagnostic,
+            filePath: diagnostic.filePath.replace(snapshot.tempDirectory, resolvedDirectory),
+          }));
+
+          if (flags.annotations) {
+            printAnnotations(remappedDiagnostics);
+          }
+
+          const resolvedFailOn =
+            program.getOptionValueSource("failOn") === "cli"
+              ? flags.failOn
+              : (userConfig?.failOn ?? flags.failOn);
+          const effectiveFailOn: FailOnLevel = isValidFailOnLevel(resolvedFailOn)
+            ? resolvedFailOn
+            : "none";
+
+          if (shouldFailForDiagnostics(remappedDiagnostics, effectiveFailOn)) {
+            process.exitCode = 1;
+          }
+        } finally {
+          snapshot.cleanup();
+        }
+        return;
+      }
 
       const isDiffCliOverride = program.getOptionValueSource("diff") === "cli";
       const effectiveDiff = isDiffCliOverride ? flags.diff : userConfig?.diff;

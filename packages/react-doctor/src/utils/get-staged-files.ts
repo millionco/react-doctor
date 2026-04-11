@@ -1,33 +1,28 @@
-import { execSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { GIT_SHOW_MAX_BUFFER_BYTES, SOURCE_FILE_PATTERN } from "../constants.js";
 
 const getStagedFilePaths = (directory: string): string[] => {
-  try {
-    const output = execSync("git diff --cached --name-only --diff-filter=ACMR --relative", {
-      cwd: directory,
-      stdio: "pipe",
-    })
-      .toString()
-      .trim();
-    if (!output) return [];
-    return output.split("\n").filter(Boolean);
-  } catch {
-    return [];
-  }
+  const result = spawnSync(
+    "git",
+    ["diff", "--cached", "--name-only", "--diff-filter=ACMR", "--relative"],
+    { cwd: directory, stdio: "pipe", maxBuffer: GIT_SHOW_MAX_BUFFER_BYTES },
+  );
+  if (result.error || result.status !== 0) return [];
+  const output = result.stdout.toString().trim();
+  if (!output) return [];
+  return output.split("\n").filter(Boolean);
 };
 
 const readStagedContent = (directory: string, relativePath: string): string | null => {
-  try {
-    return execSync(`git show ":${relativePath}"`, {
-      cwd: directory,
-      stdio: "pipe",
-      maxBuffer: GIT_SHOW_MAX_BUFFER_BYTES,
-    }).toString();
-  } catch {
-    return null;
-  }
+  const result = spawnSync("git", ["show", `:${relativePath}`], {
+    cwd: directory,
+    stdio: "pipe",
+    maxBuffer: GIT_SHOW_MAX_BUFFER_BYTES,
+  });
+  if (result.error || result.status !== 0) return null;
+  return result.stdout.toString();
 };
 
 interface StagedSnapshot {

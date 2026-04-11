@@ -99,13 +99,6 @@ export interface ScanResult {
   skippedChecks: string[];
 }
 
-export interface EstimatedScoreResult {
-  currentScore: number;
-  currentLabel: string;
-  estimatedScore: number;
-  estimatedLabel: string;
-}
-
 export interface ScanOptions {
   lint?: boolean;
   deadCode?: boolean;

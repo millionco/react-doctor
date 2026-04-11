@@ -20,11 +20,7 @@ export const SUMMARY_BOX_OUTER_INDENT_CHARS = 2;
 
 export const SCORE_API_URL = "https://www.react.doctor/api/score";
 
-export const ESTIMATE_SCORE_API_URL = "https://www.react.doctor/api/estimate-score";
-
 export const SHARE_BASE_URL = "https://www.react.doctor/share";
-
-export const OPEN_BASE_URL = "https://www.react.doctor/open";
 
 export const FETCH_TIMEOUT_MS = 10_000;
 
@@ -42,10 +38,6 @@ export const ERROR_RULE_PENALTY = 1.5;
 
 export const WARNING_RULE_PENALTY = 0.75;
 
-export const ERROR_ESTIMATED_FIX_RATE = 0.85;
-
-export const WARNING_ESTIMATED_FIX_RATE = 0.8;
-
 export const MAX_KNIP_RETRIES = 5;
 
 export const OXLINT_NODE_REQUIREMENT = "^20.19.0 || >=22.12.0";
@@ -53,9 +45,3 @@ export const OXLINT_NODE_REQUIREMENT = "^20.19.0 || >=22.12.0";
 export const OXLINT_RECOMMENDED_NODE_MAJOR = 24;
 
 export const IGNORED_DIRECTORIES = new Set(["node_modules", "dist", "build", "coverage"]);
-
-export const AMI_WEBSITE_URL = "https://ami.dev";
-
-export const AMI_INSTALL_URL = `${AMI_WEBSITE_URL}/install.sh`;
-
-export const AMI_RELEASES_URL = "https://github.com/millionco/ami-releases/releases";

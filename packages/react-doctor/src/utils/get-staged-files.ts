@@ -1,7 +1,7 @@
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { SOURCE_FILE_PATTERN } from "../constants.js";
+import { GIT_SHOW_MAX_BUFFER_BYTES, SOURCE_FILE_PATTERN } from "../constants.js";
 
 const getStagedFilePaths = (directory: string): string[] => {
   try {
@@ -23,7 +23,7 @@ const readStagedContent = (directory: string, relativePath: string): string | nu
     return execSync(`git show ":${relativePath}"`, {
       cwd: directory,
       stdio: "pipe",
-      maxBuffer: 10 * 1024 * 1024,
+      maxBuffer: GIT_SHOW_MAX_BUFFER_BYTES,
     }).toString();
   } catch {
     return null;
@@ -56,10 +56,10 @@ export const materializeStagedFiles = (
     materializedFiles.push(relativePath);
   }
 
-  const configFiles = ["tsconfig.json", "package.json"];
-  for (const configFile of configFiles) {
-    const sourcePath = path.join(directory, configFile);
-    const targetPath = path.join(tempDirectory, configFile);
+  const projectConfigFilenames = ["tsconfig.json", "package.json", "react-doctor.config.json"];
+  for (const configFilename of projectConfigFilenames) {
+    const sourcePath = path.join(directory, configFilename);
+    const targetPath = path.join(tempDirectory, configFilename);
     if (fs.existsSync(sourcePath) && !fs.existsSync(targetPath)) {
       fs.cpSync(sourcePath, targetPath);
     }

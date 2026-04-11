@@ -41,6 +41,18 @@ const shouldFailForDiagnostics = (diagnostics: Diagnostic[], failOnLevel: FailOn
   return diagnostics.some((diagnostic) => diagnostic.severity === "error");
 };
 
+const resolveFailOnLevel = (
+  programInstance: Command,
+  flags: CliFlags,
+  userConfig: ReactDoctorConfig | null,
+): FailOnLevel => {
+  const resolvedFailOn =
+    programInstance.getOptionValueSource("failOn") === "cli"
+      ? flags.failOn
+      : (userConfig?.failOn ?? flags.failOn);
+  return isValidFailOnLevel(resolvedFailOn) ? resolvedFailOn : "none";
+};
+
 const printAnnotations = (diagnostics: Diagnostic[]): void => {
   for (const diagnostic of diagnostics) {
     const level = diagnostic.severity === "error" ? "error" : "warning";
@@ -161,11 +173,6 @@ const program = new Command()
       const scanOptions = resolveCliScanOptions(flags, userConfig, program);
       const shouldSkipPrompts =
         flags.yes || flags.no || isAutomatedEnvironment() || !process.stdin.isTTY;
-      const projectDirectories = await selectProjects(
-        resolvedDirectory,
-        flags.project,
-        shouldSkipPrompts,
-      );
 
       if (flags.staged) {
         const stagedFiles = getStagedSourceFiles(resolvedDirectory);
@@ -192,22 +199,21 @@ const program = new Command()
 
           const remappedDiagnostics = scanResult.diagnostics.map((diagnostic) => ({
             ...diagnostic,
-            filePath: diagnostic.filePath.replace(snapshot.tempDirectory, resolvedDirectory),
+            filePath: path.isAbsolute(diagnostic.filePath)
+              ? diagnostic.filePath.replace(snapshot.tempDirectory, resolvedDirectory)
+              : diagnostic.filePath,
           }));
 
           if (flags.annotations) {
             printAnnotations(remappedDiagnostics);
           }
 
-          const resolvedFailOn =
-            program.getOptionValueSource("failOn") === "cli"
-              ? flags.failOn
-              : (userConfig?.failOn ?? flags.failOn);
-          const effectiveFailOn: FailOnLevel = isValidFailOnLevel(resolvedFailOn)
-            ? resolvedFailOn
-            : "none";
-
-          if (shouldFailForDiagnostics(remappedDiagnostics, effectiveFailOn)) {
+          if (
+            shouldFailForDiagnostics(
+              remappedDiagnostics,
+              resolveFailOnLevel(program, flags, userConfig),
+            )
+          ) {
             process.exitCode = 1;
           }
         } finally {
@@ -215,6 +221,12 @@ const program = new Command()
         }
         return;
       }
+
+      const projectDirectories = await selectProjects(
+        resolvedDirectory,
+        flags.project,
+        shouldSkipPrompts,
+      );
 
       const isDiffCliOverride = program.getOptionValueSource("diff") === "cli";
       const effectiveDiff = isDiffCliOverride ? flags.diff : userConfig?.diff;
@@ -268,19 +280,13 @@ const program = new Command()
         }
       }
 
-      const resolvedFailOn =
-        program.getOptionValueSource("failOn") === "cli"
-          ? flags.failOn
-          : (userConfig?.failOn ?? flags.failOn);
-      const effectiveFailOn: FailOnLevel = isValidFailOnLevel(resolvedFailOn)
-        ? resolvedFailOn
-        : "none";
-
       if (flags.annotations) {
         printAnnotations(allDiagnostics);
       }
 
-      if (shouldFailForDiagnostics(allDiagnostics, effectiveFailOn)) {
+      if (
+        shouldFailForDiagnostics(allDiagnostics, resolveFailOnLevel(program, flags, userConfig))
+      ) {
         process.exitCode = 1;
       }
     } catch (error) {

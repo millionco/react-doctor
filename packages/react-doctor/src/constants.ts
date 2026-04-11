@@ -48,4 +48,6 @@ export const OXLINT_NODE_REQUIREMENT = "^20.19.0 || >=22.12.0";
 
 export const OXLINT_RECOMMENDED_NODE_MAJOR = 24;
 
+export const GIT_SHOW_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
+
 export const IGNORED_DIRECTORIES = new Set(["node_modules", "dist", "build", "coverage"]);

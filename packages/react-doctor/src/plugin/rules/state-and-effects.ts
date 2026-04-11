@@ -10,6 +10,7 @@ import {
   countSetStateCalls,
   extractDestructuredPropNames,
   getCallbackStatements,
+  getCalleeName,
   getEffectCallback,
   isComponentAssignment,
   isHookCall,
@@ -40,21 +41,10 @@ export const noDerivedStateEffect: Rule = {
       const statements = getCallbackStatements(callback);
       if (statements.length === 0) return;
 
-      const getSetterName = (expression: EsTreeNode): string | null => {
-        if (expression.callee?.type === "Identifier") return expression.callee.name;
-        if (
-          expression.callee?.type === "MemberExpression" &&
-          expression.callee.property?.type === "Identifier"
-        ) {
-          return expression.callee.property.name;
-        }
-        return null;
-      };
-
       const containsOnlySetStateCalls = statements.every((statement: EsTreeNode) => {
         if (statement.type !== "ExpressionStatement") return false;
         if (statement.expression?.type !== "CallExpression") return false;
-        const name = getSetterName(statement.expression);
+        const name = getCalleeName(statement.expression);
         return name !== null && isSetterIdentifier(name);
       });
       if (!containsOnlySetStateCalls) return;
@@ -258,15 +248,7 @@ export const rerenderLazyStateInit: Rule = {
 export const rerenderFunctionalSetstate: Rule = {
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
-      let calleeName: string | null = null;
-      if (node.callee?.type === "Identifier") {
-        calleeName = node.callee.name;
-      } else if (
-        node.callee?.type === "MemberExpression" &&
-        node.callee.property?.type === "Identifier"
-      ) {
-        calleeName = node.callee.property.name;
-      }
+      const calleeName = getCalleeName(node);
       if (!calleeName || !isSetterIdentifier(calleeName)) return;
       if (!node.arguments?.length) return;
 

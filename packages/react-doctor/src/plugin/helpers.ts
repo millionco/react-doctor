@@ -29,6 +29,11 @@ export const walkAst = (node: EsTreeNode, visitor: (child: EsTreeNode) => void):
 
 export const isSetterIdentifier = (name: string): boolean => SETTER_PATTERN.test(name);
 
+export const isSetterCall = (node: EsTreeNode): boolean =>
+  node.type === "CallExpression" &&
+  node.callee?.type === "Identifier" &&
+  isSetterIdentifier(node.callee.name);
+
 export const isUppercaseName = (name: string): boolean => UPPERCASE_PATTERN.test(name);
 
 export const isMemberProperty = (node: EsTreeNode, propertyName: string): boolean =>
@@ -55,11 +60,7 @@ export const getCallbackStatements = (callback: EsTreeNode): EsTreeNode[] => {
 export const countSetStateCalls = (node: EsTreeNode): number => {
   let setStateCallCount = 0;
   walkAst(node, (child) => {
-    if (child.type !== "CallExpression") return;
-    const calleeName = getCalleeName(child);
-    if (calleeName && isSetterIdentifier(calleeName)) {
-      setStateCallCount++;
-    }
+    if (isSetterCall(child)) setStateCallCount++;
   });
   return setStateCallCount;
 };

@@ -37,6 +37,7 @@ interface CliFlags {
   no: boolean;
   offline: boolean;
   ami: boolean;
+  annotations: boolean;
   project?: string;
   diff?: boolean | string;
   failOn: string;
@@ -51,6 +52,18 @@ const shouldFailForDiagnostics = (diagnostics: Diagnostic[], failOnLevel: FailOn
   if (failOnLevel === "none") return false;
   if (failOnLevel === "warning") return diagnostics.length > 0;
   return diagnostics.some((diagnostic) => diagnostic.severity === "error");
+};
+
+const printAnnotations = (diagnostics: Diagnostic[]): void => {
+  for (const diagnostic of diagnostics) {
+    const level = diagnostic.severity === "error" ? "error" : "warning";
+    const title = `${diagnostic.plugin}/${diagnostic.rule}`;
+    const fileLocation =
+      diagnostic.line > 0
+        ? `file=${diagnostic.filePath},line=${diagnostic.line}`
+        : `file=${diagnostic.filePath}`;
+    console.log(`::${level} ${fileLocation},title=${title}::${diagnostic.message}`);
+  }
 };
 
 const exitWithFixHint = () => {
@@ -147,6 +160,7 @@ const program = new Command()
   .option("--offline", "skip telemetry (anonymous, not stored, only used to calculate score)")
   .option("--ami", "enable Ami-related prompts")
   .option("--fail-on <level>", "exit with error code on diagnostics: error, warning, none", "none")
+  .option("--annotations", "output diagnostics as GitHub Actions annotations")
   .option("--fix", "open Ami to auto-fix all issues")
   .action(async (directory: string, flags: CliFlags) => {
     const isScoreOnly = flags.score;
@@ -229,6 +243,10 @@ const program = new Command()
       const effectiveFailOn: FailOnLevel = isValidFailOnLevel(resolvedFailOn)
         ? resolvedFailOn
         : "none";
+
+      if (flags.annotations) {
+        printAnnotations(allDiagnostics);
+      }
 
       if (shouldFailForDiagnostics(allDiagnostics, effectiveFailOn)) {
         process.exitCode = 1;

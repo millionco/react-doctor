@@ -3,6 +3,23 @@ import path from "node:path";
 import type { Diagnostic, ReactDoctorConfig } from "../types.js";
 import { compileIgnoredFilePatterns, isFileIgnoredByPatterns } from "./is-ignored-file.js";
 
+const OPENING_TAG_PATTERN = /<([A-Z][\w.]*)/;
+
+const isInsideTextComponent = (
+  lines: string[],
+  diagnosticLine: number,
+  textComponentNames: Set<string>,
+): boolean => {
+  for (let lineIndex = diagnosticLine - 1; lineIndex >= 0; lineIndex--) {
+    const match = lines[lineIndex].match(OPENING_TAG_PATTERN);
+    if (!match) continue;
+    const tagName = match[1];
+    const leafName = tagName.includes(".") ? tagName.split(".").pop()! : tagName;
+    return textComponentNames.has(tagName) || textComponentNames.has(leafName);
+  }
+  return false;
+};
+
 export const filterIgnoredDiagnostics = (
   diagnostics: Diagnostic[],
   config: ReactDoctorConfig,
@@ -10,10 +27,25 @@ export const filterIgnoredDiagnostics = (
 ): Diagnostic[] => {
   const ignoredRules = new Set(Array.isArray(config.ignore?.rules) ? config.ignore.rules : []);
   const ignoredFilePatterns = compileIgnoredFilePatterns(config);
+  const textComponentNames = new Set(
+    Array.isArray(config.textComponents) ? config.textComponents : [],
+  );
+  const hasTextComponents = textComponentNames.size > 0;
 
-  if (ignoredRules.size === 0 && ignoredFilePatterns.length === 0) {
-    return diagnostics;
-  }
+  const fileLineCache = new Map<string, string[] | null>();
+  const getFileLines = (filePath: string): string[] | null => {
+    const cached = fileLineCache.get(filePath);
+    if (cached !== undefined) return cached;
+    const absolutePath = path.isAbsolute(filePath) ? filePath : path.join(rootDirectory, filePath);
+    try {
+      const lines = fs.readFileSync(absolutePath, "utf-8").split("\n");
+      fileLineCache.set(filePath, lines);
+      return lines;
+    } catch {
+      fileLineCache.set(filePath, null);
+      return null;
+    }
+  };
 
   return diagnostics.filter((diagnostic) => {
     const ruleIdentifier = `${diagnostic.plugin}/${diagnostic.rule}`;
@@ -23,6 +55,13 @@ export const filterIgnoredDiagnostics = (
 
     if (isFileIgnoredByPatterns(diagnostic.filePath, rootDirectory, ignoredFilePatterns)) {
       return false;
+    }
+
+    if (hasTextComponents && diagnostic.rule === "rn-no-raw-text" && diagnostic.line > 0) {
+      const lines = getFileLines(diagnostic.filePath);
+      if (lines && isInsideTextComponent(lines, diagnostic.line, textComponentNames)) {
+        return false;
+      }
     }
 
     return true;

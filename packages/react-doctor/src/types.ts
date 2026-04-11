@@ -169,4 +169,5 @@ export interface ReactDoctorConfig {
   failOn?: FailOnLevel;
   customRulesOnly?: boolean;
   share?: boolean;
+  textComponents?: string[];
 }

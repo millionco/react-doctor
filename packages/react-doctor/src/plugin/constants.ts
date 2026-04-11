@@ -262,15 +262,31 @@ export const MOTION_LIBRARY_PACKAGES = new Set(["framer-motion", "motion"]);
 
 export const RAW_TEXT_PREVIEW_MAX_CHARS = 30;
 
-export const REACT_NATIVE_TEXT_COMPONENTS = new Set(["Text", "TextInput"]);
+export const REACT_NATIVE_TEXT_COMPONENTS = new Set([
+  "Text",
+  "TextInput",
+  "Typography",
+  "Paragraph",
+  "Span",
+  "H1",
+  "H2",
+  "H3",
+  "H4",
+  "H5",
+  "H6",
+]);
 
-export const REACT_NATIVE_TEXT_COMPONENT_SUFFIXES = new Set([
+export const REACT_NATIVE_TEXT_COMPONENT_KEYWORDS = new Set([
   "Text",
   "Title",
   "Label",
   "Heading",
   "Caption",
   "Subtitle",
+  "Typography",
+  "Paragraph",
+  "Description",
+  "Body",
 ]);
 
 export const DEPRECATED_RN_MODULE_REPLACEMENTS: Record<string, string> = {

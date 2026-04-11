@@ -5,7 +5,7 @@ import {
   RAW_TEXT_PREVIEW_MAX_CHARS,
   REACT_NATIVE_LIST_COMPONENTS,
   REACT_NATIVE_TEXT_COMPONENTS,
-  REACT_NATIVE_TEXT_COMPONENT_SUFFIXES,
+  REACT_NATIVE_TEXT_COMPONENT_KEYWORDS,
 } from "../constants.js";
 import { hasDirective, isMemberProperty } from "../helpers.js";
 import type { EsTreeNode, Rule, RuleContext } from "../types.js";
@@ -56,7 +56,7 @@ const getRawTextDescription = (child: EsTreeNode): string => {
 
 const isTextHandlingComponent = (elementName: string): boolean => {
   if (REACT_NATIVE_TEXT_COMPONENTS.has(elementName)) return true;
-  return [...REACT_NATIVE_TEXT_COMPONENT_SUFFIXES].some((suffix) => elementName.endsWith(suffix));
+  return [...REACT_NATIVE_TEXT_COMPONENT_KEYWORDS].some((keyword) => elementName.includes(keyword));
 };
 
 export const rnNoRawText: Rule = {

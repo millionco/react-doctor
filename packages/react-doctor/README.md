@@ -1,7 +1,7 @@
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/react-doctor-readme-logo-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="./assets/react-doctor-readme-logo-light.svg">
-  <img alt="React Doctor" src="./assets/react-doctor-readme-logo-light.svg" width="180" height="40">
+  <source media="(prefers-color-scheme: dark)" srcset="./.github/assets/react-doctor-readme-logo-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="./.github/assets/react-doctor-readme-logo-light.svg">
+  <img alt="React Doctor" src="./.github/assets/react-doctor-readme-logo-light.svg" width="180" height="40">
 </picture>
 
 [![version](https://img.shields.io/npm/v/react-doctor?style=flat&colorA=000000&colorB=000000)](https://npmjs.com/package/react-doctor)

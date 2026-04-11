@@ -105,8 +105,8 @@ describe("namespace hook detection (React.useEffect, React.useState, etc.)", () 
   });
 
   it("does not flag member expression calls like localStorage.setItem as state setters", () => {
-    const allCleanFileIssues = diagnostics.filter(
-      (diagnostic) => diagnostic.filePath.includes("clean"),
+    const allCleanFileIssues = diagnostics.filter((diagnostic) =>
+      diagnostic.filePath.includes("clean"),
     );
 
     const setterRules = new Set([

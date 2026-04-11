@@ -412,10 +412,7 @@ export const renderingHydrationNoFlicker: Rule = {
       if (!bodyStatements || bodyStatements.length !== 1) return;
 
       const soleStatement = bodyStatements[0];
-      if (
-        soleStatement?.type === "ExpressionStatement" &&
-        isSetterCall(soleStatement.expression)
-      ) {
+      if (soleStatement?.type === "ExpressionStatement" && isSetterCall(soleStatement.expression)) {
         context.report({
           node,
           message:

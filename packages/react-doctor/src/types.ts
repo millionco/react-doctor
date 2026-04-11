@@ -174,4 +174,6 @@ export interface ReactDoctorConfig {
   verbose?: boolean;
   diff?: boolean | string;
   failOn?: FailOnLevel;
+  customRulesOnly?: boolean;
+  share?: boolean;
 }

@@ -50,6 +50,8 @@ export const diagnose = async (
 
   const emptyDiagnostics: Diagnostic[] = [];
 
+  const effectiveCustomRulesOnly = userConfig?.customRulesOnly ?? false;
+
   const lintPromise = effectiveLint
     ? runOxlint(
         resolvedDirectory,
@@ -57,6 +59,8 @@ export const diagnose = async (
         projectInfo.framework,
         projectInfo.hasReactCompiler,
         lintIncludePaths,
+        undefined,
+        effectiveCustomRulesOnly,
       ).catch((error: unknown) => {
         console.error("Lint failed:", error);
         return emptyDiagnostics;

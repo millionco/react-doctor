@@ -388,6 +388,7 @@ export const runOxlint = async (
   hasReactCompiler: boolean,
   includePaths?: string[],
   nodeBinaryPath: string = process.execPath,
+  customRulesOnly = false,
 ): Promise<Diagnostic[]> => {
   if (includePaths !== undefined && includePaths.length === 0) {
     return [];
@@ -395,7 +396,7 @@ export const runOxlint = async (
 
   const configPath = path.join(os.tmpdir(), `react-doctor-oxlintrc-${process.pid}.json`);
   const pluginPath = resolvePluginPath();
-  const config = createOxlintConfig({ pluginPath, framework, hasReactCompiler });
+  const config = createOxlintConfig({ pluginPath, framework, hasReactCompiler, customRulesOnly });
   const restoreDisableDirectives = neutralizeDisableDirectives(rootDirectory, includePaths);
 
   try {

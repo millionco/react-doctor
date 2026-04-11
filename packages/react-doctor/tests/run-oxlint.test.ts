@@ -356,4 +356,40 @@ describe("runOxlint", () => {
     },
     () => nextjsDiagnostics,
   );
+
+  describe("customRulesOnly mode", () => {
+    it("excludes builtin react/ and jsx-a11y/ rules when customRulesOnly is true", async () => {
+      const customOnlyDiagnostics = await runOxlint(
+        BASIC_REACT_DIRECTORY,
+        true,
+        "unknown",
+        false,
+        undefined,
+        undefined,
+        true,
+      );
+
+      const builtinPluginDiagnostics = customOnlyDiagnostics.filter(
+        (diagnostic) => diagnostic.plugin === "react" || diagnostic.plugin === "jsx-a11y",
+      );
+      expect(builtinPluginDiagnostics).toHaveLength(0);
+    });
+
+    it("still includes react-doctor/* rules when customRulesOnly is true", async () => {
+      const customOnlyDiagnostics = await runOxlint(
+        BASIC_REACT_DIRECTORY,
+        true,
+        "unknown",
+        false,
+        undefined,
+        undefined,
+        true,
+      );
+
+      const reactDoctorDiagnostics = customOnlyDiagnostics.filter(
+        (diagnostic) => diagnostic.plugin === "react-doctor",
+      );
+      expect(reactDoctorDiagnostics.length).toBeGreaterThan(0);
+    });
+  });
 });

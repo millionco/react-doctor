@@ -166,7 +166,6 @@ if [ $INSTALLED -eq 0 ]; then
   echo "No supported tools detected."
   echo ""
   echo "Install one of these first:"
-  echo "  • Ami: https://ami.dev"
   echo "  • Amp Code: https://ampcode.com"
   echo "  • Antigravity: https://antigravity.google"
   echo "  • Claude Code: https://claude.ai/code"

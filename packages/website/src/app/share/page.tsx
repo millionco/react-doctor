@@ -6,7 +6,6 @@ const PERFECT_SCORE = 100;
 const SCORE_GOOD_THRESHOLD = 75;
 const SCORE_OK_THRESHOLD = 50;
 const COMMAND = "npx -y react-doctor@latest .";
-const FIX_COMMAND = "npx -y react-doctor@latest . --fix";
 const SHARE_BASE_URL = "https://www.react.doctor/share";
 const X_ICON_PATH =
   "M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z";
@@ -149,11 +148,6 @@ const SharePage = async ({ searchParams }: { searchParams: Promise<ShareSearchPa
       <div className="text-neutral-500">Run it on your codebase:</div>
       <div className="mt-2">
         <span className="border border-white/20 px-3 py-1.5 text-white">{COMMAND}</span>
-      </div>
-
-      <div className="mt-6 text-neutral-500">Auto-fix with Ami:</div>
-      <div className="mt-2">
-        <span className="border border-white/20 px-3 py-1.5 text-white">{FIX_COMMAND}</span>
       </div>
 
       <div className="mt-8 flex flex-wrap items-center gap-3">

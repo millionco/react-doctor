@@ -34,6 +34,7 @@ interface CliFlags {
   score: boolean;
   fix: boolean;
   yes: boolean;
+  no: boolean;
   offline: boolean;
   ami: boolean;
   project?: string;
@@ -140,6 +141,7 @@ const program = new Command()
   .option("--verbose", "show file details per rule")
   .option("--score", "output only the score")
   .option("-y, --yes", "skip prompts, scan all workspace projects")
+  .option("-n, --no", "skip prompts, always run a full scan (decline diff-only)")
   .option("--project <name>", "select workspace project (comma-separated for multiple)")
   .option("--diff [base]", "scan only files changed vs base branch")
   .option("--offline", "skip telemetry (anonymous, not stored, only used to calculate score)")
@@ -159,7 +161,8 @@ const program = new Command()
       }
 
       const scanOptions = resolveCliScanOptions(flags, userConfig, program);
-      const shouldSkipPrompts = flags.yes || isAutomatedEnvironment() || !process.stdin.isTTY;
+      const shouldSkipPrompts =
+        flags.yes || flags.no || isAutomatedEnvironment() || !process.stdin.isTTY;
       const shouldSkipAmiPrompts = shouldSkipPrompts || !flags.ami;
       const projectDirectories = await selectProjects(
         resolvedDirectory,

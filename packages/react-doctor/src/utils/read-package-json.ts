@@ -5,6 +5,9 @@ export const readPackageJson = (packageJsonPath: string): PackageJson => {
   try {
     return JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
   } catch (error) {
+    if (error instanceof SyntaxError) {
+      return {};
+    }
     if (error instanceof Error && "code" in error) {
       const { code } = error as { code: string };
       if (code === "EISDIR" || code === "EACCES") {

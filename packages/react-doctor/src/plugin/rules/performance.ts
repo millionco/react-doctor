@@ -422,3 +422,38 @@ export const renderingHydrationNoFlicker: Rule = {
     },
   }),
 };
+
+const SCRIPT_LOADING_ATTRIBUTES = new Set(["defer", "async"]);
+
+export const renderingScriptDeferAsync: Rule = {
+  create: (context: RuleContext) => ({
+    JSXOpeningElement(node: EsTreeNode) {
+      if (node.name?.type !== "JSXIdentifier" || node.name.name !== "script") return;
+
+      const attributes = node.attributes ?? [];
+      const hasSrc = attributes.some(
+        (attr: EsTreeNode) =>
+          attr.type === "JSXAttribute" &&
+          attr.name?.type === "JSXIdentifier" &&
+          attr.name.name === "src",
+      );
+
+      if (!hasSrc) return;
+
+      const hasLoadingStrategy = attributes.some(
+        (attr: EsTreeNode) =>
+          attr.type === "JSXAttribute" &&
+          attr.name?.type === "JSXIdentifier" &&
+          SCRIPT_LOADING_ATTRIBUTES.has(attr.name.name),
+      );
+
+      if (!hasLoadingStrategy) {
+        context.report({
+          node,
+          message:
+            "<script src> without defer or async — blocks HTML parsing and delays First Contentful Paint. Add defer for DOM-dependent scripts or async for independent ones",
+        });
+      }
+    },
+  }),
+};

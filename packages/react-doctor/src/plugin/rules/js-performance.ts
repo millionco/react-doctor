@@ -279,3 +279,44 @@ const reportIfIndependent = (statements: EsTreeNode[], context: RuleContext): vo
     message: `${statements.length} sequential await statements that appear independent — use Promise.all() for parallel execution`,
   });
 };
+
+export const jsFlatmapFilter: Rule = {
+  create: (context: RuleContext) => ({
+    CallExpression(node: EsTreeNode) {
+      if (node.callee?.type !== "MemberExpression" || node.callee.property?.type !== "Identifier")
+        return;
+
+      const outerMethod = node.callee.property.name;
+      if (outerMethod !== "filter") return;
+
+      const filterArgument = node.arguments?.[0];
+      if (!filterArgument) return;
+
+      const isFilterBoolean =
+        (filterArgument.type === "Identifier" && filterArgument.name === "Boolean") ||
+        (filterArgument.type === "ArrowFunctionExpression" &&
+          filterArgument.body?.type !== "BlockStatement" &&
+          filterArgument.body?.type === "Identifier" &&
+          filterArgument.params?.length === 1);
+
+      if (!isFilterBoolean) return;
+
+      const innerCall = node.callee.object;
+      if (
+        innerCall?.type !== "CallExpression" ||
+        innerCall.callee?.type !== "MemberExpression" ||
+        innerCall.callee.property?.type !== "Identifier"
+      )
+        return;
+
+      const innerMethod = innerCall.callee.property.name;
+      if (innerMethod !== "map") return;
+
+      context.report({
+        node,
+        message:
+          ".map().filter(Boolean) iterates twice — use .flatMap() to transform and filter in a single pass",
+      });
+    },
+  }),
+};

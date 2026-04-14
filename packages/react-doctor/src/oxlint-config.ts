@@ -155,6 +155,7 @@ export const createOxlintConfig = ({
     "react-doctor/rendering-animate-svg-wrapper": "warn",
     "react-doctor/no-inline-prop-on-memo-component": "warn",
     "react-doctor/rendering-hydration-no-flicker": "warn",
+    "react-doctor/rendering-script-defer-async": "warn",
 
     "react-doctor/no-transition-all": "warn",
     "react-doctor/no-global-css-variable-animation": "error",
@@ -163,6 +164,8 @@ export const createOxlintConfig = ({
     "react-doctor/no-permanent-will-change": "warn",
 
     "react-doctor/no-secrets-in-client-code": "error",
+
+    "react-doctor/js-flatmap-filter": "warn",
 
     "react-doctor/no-barrel-import": "warn",
     "react-doctor/no-full-lodash-import": "warn",

@@ -208,6 +208,11 @@ describe("runOxlint", () => {
         fixture: "client-issues.tsx",
         ruleSource: "rules/client.ts",
       },
+      "rendering-script-defer-async": {
+        fixture: "performance-issues.tsx",
+        ruleSource: "rules/performance.ts",
+        category: "Performance",
+      },
     },
     () => basicReactDiagnostics,
   );
@@ -218,6 +223,11 @@ describe("runOxlint", () => {
       "async-parallel": {
         fixture: "js-performance-issues.tsx",
         ruleSource: "rules/js-performance.ts",
+      },
+      "js-flatmap-filter": {
+        fixture: "js-performance-issues.tsx",
+        ruleSource: "rules/js-performance.ts",
+        category: "Performance",
       },
     },
     () => basicReactDiagnostics,

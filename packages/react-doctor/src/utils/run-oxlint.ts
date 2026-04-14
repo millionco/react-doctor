@@ -46,6 +46,7 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/rendering-animate-svg-wrapper": "Performance",
   "react-doctor/rendering-usetransition-loading": "Performance",
   "react-doctor/rendering-hydration-no-flicker": "Performance",
+  "react-doctor/rendering-script-defer-async": "Performance",
 
   "react-doctor/no-transition-all": "Performance",
   "react-doctor/no-global-css-variable-animation": "Performance",
@@ -93,6 +94,8 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/query-no-query-in-effect": "TanStack Query",
   "react-doctor/query-mutation-missing-invalidation": "TanStack Query",
   "react-doctor/query-no-usequery-for-mutation": "TanStack Query",
+
+  "react-doctor/js-flatmap-filter": "Performance",
 
   "react-doctor/async-parallel": "Performance",
 
@@ -162,6 +165,8 @@ const RULE_HELP_MAP: Record<string, string> = {
     "Replace with `const [isPending, startTransition] = useTransition()` — avoids a re-render for the loading state",
   "rendering-hydration-no-flicker":
     "Use `useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)` or add `suppressHydrationWarning` to the element",
+  "rendering-script-defer-async":
+    'Add `defer` for DOM-dependent scripts or `async` for independent ones (analytics). In Next.js, use `<Script strategy="afterInteractive" />` instead',
 
   "no-transition-all":
     'List specific properties: `transition: "opacity 200ms, transform 200ms"` — or in Tailwind use `transition-colors`, `transition-opacity`, or `transition-transform`',
@@ -250,6 +255,9 @@ const RULE_HELP_MAP: Record<string, string> = {
     "Add `onSuccess: () => queryClient.invalidateQueries({ queryKey: ['...'] })` so cached data stays in sync after the mutation",
   "query-no-usequery-for-mutation":
     "Use `useMutation()` for POST/PUT/DELETE — it provides onSuccess/onError callbacks, doesn't auto-refetch, and correctly models write operations",
+
+  "js-flatmap-filter":
+    "Use `.flatMap(item => condition ? [value] : [])` — transforms and filters in a single pass instead of creating an intermediate array",
 
   "async-parallel":
     "Use `const [a, b] = await Promise.all([fetchA(), fetchB()])` to run independent operations concurrently",

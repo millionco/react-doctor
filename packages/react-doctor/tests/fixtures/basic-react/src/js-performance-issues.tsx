@@ -86,6 +86,11 @@ const SequentialAwaitComponent = () => {
   return <button onClick={loadData}>Load</button>;
 };
 
+const FlatmapFilterComponent = ({ users }: { users: { isActive: boolean; name: string }[] }) => {
+  const activeNames = users.map((user) => (user.isActive ? user.name : null)).filter(Boolean);
+  return <div>{activeNames.join(",")}</div>;
+};
+
 export {
   CombineIterationsComponent,
   SpreadSortComponent,
@@ -97,4 +102,5 @@ export {
   CacheStorageComponent,
   EarlyExitComponent,
   SequentialAwaitComponent,
+  FlatmapFilterComponent,
 };

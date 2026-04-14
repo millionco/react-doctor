@@ -28,6 +28,7 @@ import {
   jsMinMaxLoop,
   jsSetMapLookups,
   jsTosortedImmutable,
+  jsFlatmapFilter,
 } from "./rules/js-performance.js";
 import {
   nextjsAsyncClientComponent,
@@ -58,6 +59,7 @@ import {
   renderingAnimateSvgWrapper,
   noInlinePropOnMemoComponent,
   renderingHydrationNoFlicker,
+  renderingScriptDeferAsync,
   rerenderMemoWithDefaultValue,
 } from "./rules/performance.js";
 import {
@@ -132,6 +134,7 @@ const plugin: RulePlugin = {
     "rendering-animate-svg-wrapper": renderingAnimateSvgWrapper,
     "no-inline-prop-on-memo-component": noInlinePropOnMemoComponent,
     "rendering-hydration-no-flicker": renderingHydrationNoFlicker,
+    "rendering-script-defer-async": renderingScriptDeferAsync,
 
     "no-transition-all": noTransitionAll,
     "no-global-css-variable-animation": noGlobalCssVariableAnimation,
@@ -184,6 +187,7 @@ const plugin: RulePlugin = {
     "js-index-maps": jsIndexMaps,
     "js-cache-storage": jsCacheStorage,
     "js-early-exit": jsEarlyExit,
+    "js-flatmap-filter": jsFlatmapFilter,
     "async-parallel": asyncParallel,
 
     "rn-no-raw-text": rnNoRawText,

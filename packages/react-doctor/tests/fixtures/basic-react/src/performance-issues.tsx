@@ -55,6 +55,12 @@ const GlobalCssVarComponent = () => {
   return <div />;
 };
 
+const ScriptWithoutDeferComponent = () => (
+  <div>
+    <script src="https://cdn.example.com/analytics.js" />
+  </div>
+);
+
 export {
   MemoChild,
   ParentWithInlinePropOnMemo,
@@ -69,4 +75,5 @@ export {
   LoadingStateComponent,
   HydrationFlickerComponent,
   GlobalCssVarComponent,
+  ScriptWithoutDeferComponent,
 };

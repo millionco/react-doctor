@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 
 const createFileRoute = (_path: string) => (options: any) => options;
+const createRootRoute = (options: any) => options;
 const redirect = (_opts: any) => {
   throw new Error("redirect");
 };
@@ -8,6 +9,16 @@ const notFound = () => {
   throw new Error("notFound");
 };
 const navigate = (_opts: any) => {};
+
+export const RootPropertyOrderRoute = createRootRoute({
+  loader: async ({ context }: any) => {
+    return context.user;
+  },
+  beforeLoad: async () => {
+    return { user: { id: "1" } };
+  },
+  component: () => <div />,
+});
 
 export const PropertyOrderRoute = createFileRoute("/property-order")({
   loader: async ({ context }: any) => {

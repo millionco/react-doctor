@@ -11,27 +11,28 @@ import {
   TANSTACK_SERVER_FN_NAMES,
   UPPERCASE_PATTERN,
 } from "../constants.js";
-import { findSideEffect, walkAst } from "../helpers.js";
+import { findSideEffect, getCalleeName, walkAst } from "../helpers.js";
 import type { EsTreeNode, Rule, RuleContext } from "../types.js";
 
 const getRouteOptionsObject = (node: EsTreeNode): EsTreeNode | null => {
   if (node.type !== "CallExpression") return null;
 
   const callee = node.callee;
-  let functionName: string | null = null;
 
-  if (callee?.type === "Identifier") {
-    functionName = callee.name;
-  } else if (callee?.type === "CallExpression" && callee.callee?.type === "Identifier") {
-    functionName = callee.callee.name;
+  if (callee?.type === "CallExpression" && callee.callee?.type === "Identifier") {
+    if (!TANSTACK_ROUTE_CREATION_FUNCTIONS.has(callee.callee.name)) return null;
+    const optionsArgument = node.arguments?.[0];
+    if (optionsArgument?.type === "ObjectExpression") return optionsArgument;
+    return null;
   }
 
-  if (!functionName || !TANSTACK_ROUTE_CREATION_FUNCTIONS.has(functionName)) return null;
+  if (callee?.type === "Identifier") {
+    if (!TANSTACK_ROUTE_CREATION_FUNCTIONS.has(callee.name)) return null;
+    const optionsArgument = node.arguments?.[0];
+    if (optionsArgument?.type === "ObjectExpression") return optionsArgument;
+    return null;
+  }
 
-  const optionsArgument =
-    callee.type === "CallExpression" ? node.arguments?.[0] : node.arguments?.[1];
-
-  if (optionsArgument?.type === "ObjectExpression") return optionsArgument;
   return null;
 };
 
@@ -39,14 +40,6 @@ const getPropertyKeyName = (property: EsTreeNode): string | null => {
   if (property.type !== "Property" && property.type !== "MethodDefinition") return null;
   if (property.key?.type === "Identifier") return property.key.name;
   if (property.key?.type === "Literal") return String(property.key.value);
-  return null;
-};
-
-const getChainCalleeName = (node: EsTreeNode): string | null => {
-  if (node.callee?.type === "Identifier") return node.callee.name;
-  if (node.callee?.type === "MemberExpression" && node.callee.property?.type === "Identifier") {
-    return node.callee.property.name;
-  }
   return null;
 };
 
@@ -66,7 +59,7 @@ const walkServerFnChain = (outerNode: EsTreeNode): ServerFnChainInfo => {
   let currentNode: EsTreeNode = outerNode.callee?.object;
 
   while (currentNode?.type === "CallExpression") {
-    const calleeName = getChainCalleeName(currentNode);
+    const calleeName = getCalleeName(currentNode);
 
     if (calleeName && TANSTACK_SERVER_FN_NAMES.has(calleeName)) {
       result.isServerFnChain = true;

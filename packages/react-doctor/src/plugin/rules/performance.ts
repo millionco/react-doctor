@@ -7,6 +7,7 @@ import {
   LAYOUT_PROPERTIES,
   LOADING_STATE_PATTERN,
   MOTION_ANIMATE_PROPS,
+  SCRIPT_LOADING_ATTRIBUTES,
 } from "../constants.js";
 import {
   getEffectCallback,
@@ -423,8 +424,6 @@ export const renderingHydrationNoFlicker: Rule = {
     },
   }),
 };
-
-const SCRIPT_LOADING_ATTRIBUTES = new Set(["defer", "async"]);
 
 export const renderingScriptDeferAsync: Rule = {
   create: (context: RuleContext) => ({

@@ -227,6 +227,10 @@ export const TANSTACK_MUTATION_HOOKS = new Set(["useMutation"]);
 
 export const TANSTACK_QUERY_CLIENT_CLASS = "QueryClient";
 
+export const STABLE_HOOK_WRAPPERS = new Set(["useState", "useMemo", "useRef"]);
+
+export const SCRIPT_LOADING_ATTRIBUTES = new Set(["defer", "async"]);
+
 export const GENERIC_EVENT_SUFFIXES = new Set(["Click", "Change", "Input", "Blur", "Focus"]);
 
 export const TRIVIAL_INITIALIZER_NAMES = new Set([

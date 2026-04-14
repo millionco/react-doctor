@@ -1,6 +1,7 @@
 import {
   EFFECT_HOOK_NAMES,
   MUTATING_HTTP_METHODS,
+  STABLE_HOOK_WRAPPERS,
   TANSTACK_MUTATION_HOOKS,
   TANSTACK_QUERY_CLIENT_CLASS,
   TANSTACK_QUERY_HOOKS,
@@ -8,8 +9,6 @@ import {
 } from "../constants.js";
 import { getEffectCallback, isHookCall, walkAst } from "../helpers.js";
 import type { EsTreeNode, Rule, RuleContext } from "../types.js";
-
-const STABLE_HOOK_WRAPPERS = new Set(["useState", "useMemo", "useRef"]);
 
 export const queryStableQueryClient: Rule = {
   create: (context: RuleContext) => {

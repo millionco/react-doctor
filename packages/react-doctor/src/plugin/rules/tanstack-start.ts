@@ -367,10 +367,6 @@ export const tanstackStartNoNavigateInRender: Rule = {
           componentDepth--;
         }
       },
-      ArrowFunctionExpression() {
-        // HACK: oxlint JS plugins don't link VariableDeclarator to its init's exit,
-        // so we track arrow function boundaries to approximate component scope
-      },
       CallExpression(node: EsTreeNode) {
         if (
           node.callee?.type === "Identifier" &&

@@ -448,6 +448,7 @@ export const renderingScriptDeferAsync: Rule = {
       );
       const typeValue = typeAttribute?.value?.type === "Literal" ? typeAttribute.value.value : null;
       if (typeof typeValue === "string" && !EXECUTABLE_SCRIPT_TYPES.has(typeValue)) return;
+      if (typeValue === "module") return;
 
       const hasLoadingStrategy = attributes.some(
         (attr: EsTreeNode) =>

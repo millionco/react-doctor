@@ -29,7 +29,17 @@ export const jsCombineIterations: Rule = {
       const innerMethod = innerCall.callee.property.name;
       if (!CHAINABLE_ITERATION_METHODS.has(innerMethod)) return;
 
-      if (innerMethod === "map" && outerMethod === "filter") return;
+      if (innerMethod === "map" && outerMethod === "filter") {
+        const filterArgument = node.arguments?.[0];
+        const isBooleanOrIdentityFilter =
+          (filterArgument?.type === "Identifier" && filterArgument.name === "Boolean") ||
+          (filterArgument?.type === "ArrowFunctionExpression" &&
+            filterArgument.params?.length === 1 &&
+            filterArgument.body?.type === "Identifier" &&
+            filterArgument.params[0]?.type === "Identifier" &&
+            filterArgument.body.name === filterArgument.params[0].name);
+        if (isBooleanOrIdentityFilter) return;
+      }
 
       context.report({
         node,

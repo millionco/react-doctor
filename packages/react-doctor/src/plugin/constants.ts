@@ -210,6 +210,12 @@ export const TANSTACK_MIDDLEWARE_METHOD_ORDER = [
   "handler",
 ];
 
+export const TANSTACK_REDIRECT_FUNCTIONS = new Set(["redirect", "notFound"]);
+
+export const TANSTACK_SERVER_FN_FILE_PATTERN = /\.functions(\.[jt]sx?)?$/;
+
+export const SEQUENTIAL_AWAIT_THRESHOLD_FOR_LOADER = 2;
+
 export const GENERIC_EVENT_SUFFIXES = new Set(["Click", "Change", "Input", "Blur", "Focus"]);
 
 export const TRIVIAL_INITIALIZER_NAMES = new Set([

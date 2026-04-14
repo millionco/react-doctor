@@ -29,8 +29,8 @@
   "devDependencies": {
     "@changesets/cli": "^2.30.0",
     "eslint-plugin-react-hooks": "^7.0.1",
-    "oxfmt": "^0.44.0",
-    "oxlint": "^1.59.0",
+    "oxfmt": "^0.45.0",
+    "oxlint": "^1.60.0",
     "tsdown": "^0.21.7",
     "typescript": "^6.0.2",
     "vitest": "^4.1.4"

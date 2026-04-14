@@ -1,12 +1,17 @@
 import {
+  MUTATION_METHOD_NAMES,
+  SEQUENTIAL_AWAIT_THRESHOLD_FOR_LOADER,
   TANSTACK_MIDDLEWARE_METHOD_ORDER,
+  TANSTACK_REDIRECT_FUNCTIONS,
   TANSTACK_ROUTE_CREATION_FUNCTIONS,
   TANSTACK_ROUTE_FILE_PATTERN,
   TANSTACK_ROUTE_PROPERTY_ORDER,
   TANSTACK_ROOT_ROUTE_FILE_PATTERN,
+  TANSTACK_SERVER_FN_FILE_PATTERN,
   TANSTACK_SERVER_FN_NAMES,
+  UPPERCASE_PATTERN,
 } from "../constants.js";
-import { findSideEffect, hasDirective, walkAst } from "../helpers.js";
+import { findSideEffect, walkAst } from "../helpers.js";
 import type { EsTreeNode, Rule, RuleContext } from "../types.js";
 
 const getRouteOptionsObject = (node: EsTreeNode): EsTreeNode | null => {
@@ -35,6 +40,64 @@ const getPropertyKeyName = (property: EsTreeNode): string | null => {
   if (property.key?.type === "Identifier") return property.key.name;
   if (property.key?.type === "Literal") return String(property.key.value);
   return null;
+};
+
+const getChainCalleeName = (node: EsTreeNode): string | null => {
+  if (node.callee?.type === "Identifier") return node.callee.name;
+  if (node.callee?.type === "MemberExpression" && node.callee.property?.type === "Identifier") {
+    return node.callee.property.name;
+  }
+  return null;
+};
+
+interface ServerFnChainInfo {
+  isServerFnChain: boolean;
+  specifiedMethod: string | null;
+  hasInputValidator: boolean;
+}
+
+const walkServerFnChain = (outerNode: EsTreeNode): ServerFnChainInfo => {
+  const result: ServerFnChainInfo = {
+    isServerFnChain: false,
+    specifiedMethod: null,
+    hasInputValidator: false,
+  };
+
+  let currentNode: EsTreeNode = outerNode.callee?.object;
+
+  while (currentNode?.type === "CallExpression") {
+    const calleeName = getChainCalleeName(currentNode);
+
+    if (calleeName && TANSTACK_SERVER_FN_NAMES.has(calleeName)) {
+      result.isServerFnChain = true;
+
+      const optionsArgument = currentNode.arguments?.[0];
+      if (optionsArgument?.type === "ObjectExpression") {
+        for (const property of optionsArgument.properties ?? []) {
+          if (
+            property.key?.type === "Identifier" &&
+            property.key.name === "method" &&
+            property.value?.type === "Literal" &&
+            typeof property.value.value === "string"
+          ) {
+            result.specifiedMethod = property.value.value;
+          }
+        }
+      }
+    }
+
+    if (calleeName === "inputValidator") {
+      result.hasInputValidator = true;
+    }
+
+    if (currentNode.callee?.type === "MemberExpression") {
+      currentNode = currentNode.callee.object;
+    } else {
+      break;
+    }
+  }
+
+  return result;
 };
 
 export const tanstackStartRoutePropertyOrder: Rule = {
@@ -97,86 +160,47 @@ export const tanstackStartNoDirectFetchInLoader: Rule = {
 };
 
 export const tanstackStartServerFnValidateInput: Rule = {
-  create: (context: RuleContext) => {
-    const serverFnChains: EsTreeNode[] = [];
+  create: (context: RuleContext) => ({
+    CallExpression(node: EsTreeNode) {
+      if (node.callee?.type !== "MemberExpression") return;
+      if (node.callee.property?.type !== "Identifier") return;
+      if (node.callee.property.name !== "handler") return;
 
-    return {
-      CallExpression(node: EsTreeNode) {
-        if (node.callee?.type !== "MemberExpression") return;
-        if (node.callee.property?.type !== "Identifier") return;
-        if (node.callee.property.name !== "handler") return;
+      const chainInfo = walkServerFnChain(node);
+      if (!chainInfo.isServerFnChain) return;
 
-        let currentNode: EsTreeNode = node.callee.object;
-        let isServerFnChain = false;
-        let hasInputValidator = false;
+      const handlerFunction = node.arguments?.[0];
+      if (!handlerFunction) return;
 
-        while (currentNode) {
-          if (currentNode.type === "CallExpression") {
-            const calleeName =
-              currentNode.callee?.type === "Identifier"
-                ? currentNode.callee.name
-                : currentNode.callee?.property?.type === "Identifier"
-                  ? currentNode.callee.property.name
-                  : null;
-
-            if (calleeName && TANSTACK_SERVER_FN_NAMES.has(calleeName)) {
-              isServerFnChain = true;
-            }
-            if (calleeName === "inputValidator") {
-              hasInputValidator = true;
-            }
-
-            currentNode =
-              currentNode.callee?.type === "MemberExpression"
-                ? currentNode.callee.object
-                : currentNode;
-            if (currentNode === node.callee?.object) break;
-            if (currentNode.callee?.type === "MemberExpression") {
-              currentNode = currentNode.callee.object;
-            } else {
-              break;
-            }
-          } else {
-            break;
-          }
+      let accessesData = false;
+      walkAst(handlerFunction, (child: EsTreeNode) => {
+        if (
+          child.type === "MemberExpression" &&
+          child.property?.type === "Identifier" &&
+          child.property.name === "data"
+        ) {
+          accessesData = true;
         }
+        if (
+          child.type === "ObjectPattern" &&
+          child.properties?.some(
+            (property: EsTreeNode) =>
+              property.key?.type === "Identifier" && property.key.name === "data",
+          )
+        ) {
+          accessesData = true;
+        }
+      });
 
-        if (!isServerFnChain) return;
-
-        const handlerArguments = node.arguments ?? [];
-        const handlerFunction = handlerArguments[0];
-        if (!handlerFunction) return;
-
-        let accessesData = false;
-        walkAst(handlerFunction, (child: EsTreeNode) => {
-          if (
-            child.type === "MemberExpression" &&
-            child.property?.type === "Identifier" &&
-            child.property.name === "data"
-          ) {
-            accessesData = true;
-          }
-          if (
-            child.type === "ObjectPattern" &&
-            child.properties?.some(
-              (property: EsTreeNode) =>
-                property.key?.type === "Identifier" && property.key.name === "data",
-            )
-          ) {
-            accessesData = true;
-          }
+      if (accessesData && !chainInfo.hasInputValidator) {
+        context.report({
+          node,
+          message:
+            "Server function handler accesses data without inputValidator() — validate inputs crossing the network boundary",
         });
-
-        if (accessesData && !hasInputValidator) {
-          context.report({
-            node,
-            message:
-              "Server function handler accesses data without inputValidator() — validate inputs crossing the network boundary",
-          });
-        }
-      },
-    };
-  },
+      }
+    },
+  }),
 };
 
 export const tanstackStartNoUseEffectFetch: Rule = {
@@ -337,28 +361,21 @@ export const tanstackStartNoNavigateInRender: Rule = {
 
     let componentDepth = 0;
     let effectDepth = 0;
-    let eventHandlerDepth = 0;
 
     return {
       FunctionDeclaration(node: EsTreeNode) {
-        if (node.id?.name && /^[A-Z]/.test(node.id.name)) {
+        if (node.id?.name && UPPERCASE_PATTERN.test(node.id.name)) {
           componentDepth++;
         }
       },
       "FunctionDeclaration:exit"(node: EsTreeNode) {
-        if (node.id?.name && /^[A-Z]/.test(node.id.name)) {
+        if (node.id?.name && UPPERCASE_PATTERN.test(node.id.name)) {
           componentDepth--;
         }
       },
-      VariableDeclarator(node: EsTreeNode) {
-        if (
-          node.id?.type === "Identifier" &&
-          /^[A-Z]/.test(node.id.name) &&
-          (node.init?.type === "ArrowFunctionExpression" ||
-            node.init?.type === "FunctionExpression")
-        ) {
-          componentDepth++;
-        }
+      ArrowFunctionExpression() {
+        // HACK: oxlint JS plugins don't link VariableDeclarator to its init's exit,
+        // so we track arrow function boundaries to approximate component scope
       },
       CallExpression(node: EsTreeNode) {
         if (
@@ -368,7 +385,7 @@ export const tanstackStartNoNavigateInRender: Rule = {
           effectDepth++;
         }
 
-        if (componentDepth <= 0 || effectDepth > 0 || eventHandlerDepth > 0) return;
+        if (componentDepth <= 0 || effectDepth > 0) return;
 
         if (
           node.callee?.type === "Identifier" &&
@@ -407,7 +424,7 @@ export const tanstackStartNoDynamicServerFnImport: Rule = {
         importPath = source.quasis[0].value?.raw ?? null;
       }
 
-      if (importPath && /\.functions(\.[jt]sx?)?$/.test(importPath)) {
+      if (importPath && TANSTACK_SERVER_FN_FILE_PATTERN.test(importPath)) {
         context.report({
           node,
           message:
@@ -490,19 +507,6 @@ export const tanstackStartNoSecretsInLoader: Rule = {
   }),
 };
 
-const MUTATION_CALLEE_NAMES = new Set([
-  "create",
-  "insert",
-  "update",
-  "upsert",
-  "delete",
-  "remove",
-  "destroy",
-  "put",
-  "patch",
-  "save",
-]);
-
 export const tanstackStartGetMutation: Rule = {
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
@@ -510,43 +514,9 @@ export const tanstackStartGetMutation: Rule = {
       if (node.callee.property?.type !== "Identifier" || node.callee.property.name !== "handler")
         return;
 
-      let currentNode: EsTreeNode = node.callee.object;
-      let isServerFnChain = false;
-      let specifiedMethod: string | null = null;
-
-      while (currentNode?.type === "CallExpression") {
-        const calleeName =
-          currentNode.callee?.type === "Identifier"
-            ? currentNode.callee.name
-            : currentNode.callee?.property?.type === "Identifier"
-              ? currentNode.callee.property.name
-              : null;
-
-        if (calleeName && TANSTACK_SERVER_FN_NAMES.has(calleeName)) {
-          isServerFnChain = true;
-          const optionsArgument = currentNode.arguments?.[0];
-          if (optionsArgument?.type === "ObjectExpression") {
-            for (const property of optionsArgument.properties ?? []) {
-              if (
-                property.key?.type === "Identifier" &&
-                property.key.name === "method" &&
-                property.value?.type === "Literal"
-              ) {
-                specifiedMethod = property.value.value as string;
-              }
-            }
-          }
-        }
-
-        if (currentNode.callee?.type === "MemberExpression") {
-          currentNode = currentNode.callee.object;
-        } else {
-          break;
-        }
-      }
-
-      if (!isServerFnChain) return;
-      if (specifiedMethod === "POST") return;
+      const chainInfo = walkServerFnChain(node);
+      if (!chainInfo.isServerFnChain) return;
+      if (chainInfo.specifiedMethod === "POST") return;
 
       const handlerFunction = node.arguments?.[0];
       if (!handlerFunction) return;
@@ -557,6 +527,7 @@ export const tanstackStartGetMutation: Rule = {
           node,
           message: `GET server function has side effects (${sideEffect}) — use createServerFn({ method: 'POST' }) for mutations`,
         });
+        return;
       }
 
       let hasMutationCall = false;
@@ -566,7 +537,7 @@ export const tanstackStartGetMutation: Rule = {
           child.type === "CallExpression" &&
           child.callee?.type === "MemberExpression" &&
           child.callee.property?.type === "Identifier" &&
-          MUTATION_CALLEE_NAMES.has(child.callee.property.name)
+          MUTATION_METHOD_NAMES.has(child.callee.property.name)
         ) {
           hasMutationCall = true;
         }
@@ -583,8 +554,6 @@ export const tanstackStartGetMutation: Rule = {
   }),
 };
 
-const TANSTACK_REDIRECT_FUNCTIONS = new Set(["redirect", "notFound"]);
-
 export const tanstackStartRedirectInTryCatch: Rule = {
   create: (context: RuleContext) => {
     let tryCatchDepth = 0;
@@ -596,29 +565,22 @@ export const tanstackStartRedirectInTryCatch: Rule = {
       "TryStatement:exit"() {
         tryCatchDepth--;
       },
-      CallExpression(node: EsTreeNode) {
+      ThrowStatement(node: EsTreeNode) {
         if (tryCatchDepth === 0) return;
-        if (node.callee?.type !== "Identifier") return;
-        if (!TANSTACK_REDIRECT_FUNCTIONS.has(node.callee.name)) return;
 
-        let parent = node.parent;
-        while (parent) {
-          if (parent.type === "ThrowStatement") {
-            context.report({
-              node,
-              message: `throw ${node.callee.name}() inside try-catch — the router catches this internally. Move it outside the try block or re-throw in the catch`,
-            });
-            return;
-          }
-          if (parent.type === "TryStatement") return;
-          parent = parent.parent;
-        }
+        const argument = node.argument;
+        if (argument?.type !== "CallExpression") return;
+        if (argument.callee?.type !== "Identifier") return;
+        if (!TANSTACK_REDIRECT_FUNCTIONS.has(argument.callee.name)) return;
+
+        context.report({
+          node,
+          message: `throw ${argument.callee.name}() inside try-catch — the router catches this internally. Move it outside the try block or re-throw in the catch`,
+        });
       },
     };
   },
 };
-
-const SEQUENTIAL_AWAIT_THRESHOLD_FOR_LOADER = 2;
 
 export const tanstackStartLoaderParallelFetch: Rule = {
   create: (context: RuleContext) => ({
@@ -641,9 +603,12 @@ export const tanstackStartLoaderParallelFetch: Rule = {
           functionBody = loaderValue.body;
         }
         if (loaderValue.type === "Property" && loaderValue.value) {
-          const value = loaderValue.value;
-          if (value.type === "ArrowFunctionExpression" || value.type === "FunctionExpression") {
-            functionBody = value.body;
+          const innerValue = loaderValue.value;
+          if (
+            innerValue.type === "ArrowFunctionExpression" ||
+            innerValue.type === "FunctionExpression"
+          ) {
+            functionBody = innerValue.body;
           }
         }
 

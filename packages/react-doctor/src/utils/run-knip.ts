@@ -151,9 +151,10 @@ export const runKnip = async (rootDirectory: string): Promise<Diagnostic[]> => {
   }
 
   const { issues } = knipResult;
+  const fileIssues = issues.files ?? new Set();
   const diagnostics: Diagnostic[] = [];
 
-  for (const unusedFile of issues.files) {
+  for (const unusedFile of fileIssues) {
     diagnostics.push({
       filePath: path.relative(rootDirectory, unusedFile),
       plugin: "knip",

@@ -29,6 +29,8 @@ export const jsCombineIterations: Rule = {
       const innerMethod = innerCall.callee.property.name;
       if (!CHAINABLE_ITERATION_METHODS.has(innerMethod)) return;
 
+      if (innerMethod === "map" && outerMethod === "filter") return;
+
       context.report({
         node,
         message: `.${innerMethod}().${outerMethod}() iterates the array twice — combine into a single loop with .reduce() or for...of`,
@@ -292,11 +294,16 @@ export const jsFlatmapFilter: Rule = {
       const filterArgument = node.arguments?.[0];
       if (!filterArgument) return;
 
+      const isIdentityArrow =
+        filterArgument.type === "ArrowFunctionExpression" &&
+        filterArgument.params?.length === 1 &&
+        filterArgument.body?.type === "Identifier" &&
+        filterArgument.params[0]?.type === "Identifier" &&
+        filterArgument.body.name === filterArgument.params[0].name;
+
       const isFilterBoolean =
         (filterArgument.type === "Identifier" && filterArgument.name === "Boolean") ||
-        (filterArgument.type === "ArrowFunctionExpression" &&
-          filterArgument.body?.type === "Identifier" &&
-          filterArgument.params?.length === 1);
+        isIdentityArrow;
 
       if (!isFilterBoolean) return;
 

@@ -353,20 +353,10 @@ export const tanstackStartNoNavigateInRender: Rule = {
     const filename = context.getFilename?.() ?? "";
     if (!TANSTACK_ROUTE_FILE_PATTERN.test(filename)) return {};
 
-    let componentDepth = 0;
     let effectDepth = 0;
+    let eventHandlerDepth = 0;
 
     return {
-      FunctionDeclaration(node: EsTreeNode) {
-        if (node.id?.name && UPPERCASE_PATTERN.test(node.id.name)) {
-          componentDepth++;
-        }
-      },
-      "FunctionDeclaration:exit"(node: EsTreeNode) {
-        if (node.id?.name && UPPERCASE_PATTERN.test(node.id.name)) {
-          componentDepth--;
-        }
-      },
       CallExpression(node: EsTreeNode) {
         if (
           node.callee?.type === "Identifier" &&
@@ -375,7 +365,7 @@ export const tanstackStartNoNavigateInRender: Rule = {
           effectDepth++;
         }
 
-        if (componentDepth <= 0 || effectDepth > 0) return;
+        if (effectDepth > 0 || eventHandlerDepth > 0) return;
 
         if (
           node.callee?.type === "Identifier" &&
@@ -395,6 +385,24 @@ export const tanstackStartNoNavigateInRender: Rule = {
           (node.callee.name === "useEffect" || node.callee.name === "useLayoutEffect")
         ) {
           effectDepth--;
+        }
+      },
+      JSXAttribute(node: EsTreeNode) {
+        if (
+          node.name?.type === "JSXIdentifier" &&
+          node.name.name.startsWith("on") &&
+          UPPERCASE_PATTERN.test(node.name.name.charAt(2))
+        ) {
+          eventHandlerDepth++;
+        }
+      },
+      "JSXAttribute:exit"(node: EsTreeNode) {
+        if (
+          node.name?.type === "JSXIdentifier" &&
+          node.name.name.startsWith("on") &&
+          UPPERCASE_PATTERN.test(node.name.name.charAt(2))
+        ) {
+          eventHandlerDepth--;
         }
       },
     };

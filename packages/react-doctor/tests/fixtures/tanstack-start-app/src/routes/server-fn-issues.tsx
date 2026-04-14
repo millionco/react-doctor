@@ -1,32 +1,21 @@
-const createServerFn = (options?: any) => ({
-  middleware: (mw: any[]) => ({
-    inputValidator: (schema: any) => ({
-      client: (fn: any) => ({
-        server: (fn2: any) => ({ handler: (fn3: any) => fn3 }),
-      }),
-      handler: (fn: any) => fn,
-    }),
-    handler: (fn: any) => fn,
-  }),
-  inputValidator: (schema: any) => ({
-    handler: (fn: any) => fn,
-  }),
-  client: (fn: any) => ({
-    server: (fn2: any) => ({ handler: (fn3: any) => fn3 }),
-  }),
-  server: (fn2: any) => ({ handler: (fn3: any) => fn3 }),
-  handler: (fn: any) => fn,
-});
+const chainable: any = new Proxy(
+  {},
+  {
+    get:
+      (_target, _prop) =>
+      (..._args: any[]) =>
+        chainable,
+  },
+);
+const createServerFn = (_options?: any) => chainable;
 
 export const noValidationFn = createServerFn({ method: "POST" }).handler(async ({ data }: any) => {
   return { id: "1", ...data };
 });
 
-export const wrongMethodOrder = createServerFn({ method: "POST" }).handler(
-  async ({ data }: any) => {
-    return data;
-  },
-);
+export const wrongMethodOrder = createServerFn({ method: "POST" })
+  .handler(async ({ data }: any) => data)
+  .inputValidator((data: any) => data);
 
 export const useServerInHandler = createServerFn().handler(async () => {
   "use server";

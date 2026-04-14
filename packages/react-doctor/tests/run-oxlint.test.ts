@@ -441,6 +441,11 @@ describe("runOxlint", () => {
         ruleSource: "rules/tanstack-start.ts",
         category: "TanStack Start",
       },
+      "tanstack-start-no-navigate-in-render": {
+        fixture: "src/routes/route-issues.tsx",
+        ruleSource: "rules/tanstack-start.ts",
+        category: "TanStack Start",
+      },
       "tanstack-start-no-secrets-in-loader": {
         fixture: "src/routes/route-issues.tsx",
         ruleSource: "rules/tanstack-start.ts",
@@ -460,6 +465,12 @@ describe("runOxlint", () => {
       "tanstack-start-missing-head-content": {
         fixture: "src/routes/__root.tsx",
         ruleSource: "rules/tanstack-start.ts",
+        category: "TanStack Start",
+      },
+      "tanstack-start-server-fn-method-order": {
+        fixture: "src/routes/server-fn-issues.tsx",
+        ruleSource: "rules/tanstack-start.ts",
+        severity: "error",
         category: "TanStack Start",
       },
       "tanstack-start-server-fn-validate-input": {

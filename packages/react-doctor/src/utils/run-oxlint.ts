@@ -107,6 +107,11 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/tanstack-start-server-fn-method-order": "TanStack Start",
   "react-doctor/tanstack-start-no-navigate-in-render": "TanStack Start",
   "react-doctor/tanstack-start-no-dynamic-server-fn-import": "TanStack Start",
+  "react-doctor/tanstack-start-no-use-server-in-handler": "TanStack Start",
+  "react-doctor/tanstack-start-no-secrets-in-loader": "Security",
+  "react-doctor/tanstack-start-get-mutation": "Security",
+  "react-doctor/tanstack-start-redirect-in-try-catch": "TanStack Start",
+  "react-doctor/tanstack-start-loader-parallel-fetch": "Performance",
 };
 
 const RULE_HELP_MAP: Record<string, string> = {
@@ -264,6 +269,16 @@ const RULE_HELP_MAP: Record<string, string> = {
     "Use `throw redirect({ to: '/path' })` in `beforeLoad` or `loader` instead — navigate() during render causes hydration issues",
   "tanstack-start-no-dynamic-server-fn-import":
     "Use `import { myFn } from '~/utils/my.functions'` — the bundler replaces server code with RPC stubs only for static imports",
+  "tanstack-start-no-use-server-in-handler":
+    'TanStack Start handles server boundaries automatically via the Vite plugin — "use server" inside createServerFn causes compilation errors',
+  "tanstack-start-no-secrets-in-loader":
+    "Loaders are isomorphic (run on both server and client). Wrap secret access in `createServerFn()` so it stays server-only",
+  "tanstack-start-get-mutation":
+    "Use `createServerFn({ method: 'POST' })` for data modifications — GET requests can be triggered by prefetching and are vulnerable to CSRF",
+  "tanstack-start-redirect-in-try-catch":
+    "TanStack Router's `redirect()` and `notFound()` throw special errors caught by the router. Move them outside the try block or re-throw in the catch",
+  "tanstack-start-loader-parallel-fetch":
+    "Use `const [a, b] = await Promise.all([fetchA(), fetchB()])` to avoid request waterfalls in route loaders",
 };
 
 const FILEPATH_WITH_LOCATION_PATTERN = /\S+\.\w+:\d+:\d+[\s\S]*$/;

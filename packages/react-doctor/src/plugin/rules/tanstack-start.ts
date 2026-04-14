@@ -6,7 +6,7 @@ import {
   TANSTACK_ROOT_ROUTE_FILE_PATTERN,
   TANSTACK_SERVER_FN_NAMES,
 } from "../constants.js";
-import { hasDirective, walkAst } from "../helpers.js";
+import { findSideEffect, hasDirective, walkAst } from "../helpers.js";
 import type { EsTreeNode, Rule, RuleContext } from "../types.js";
 
 const getRouteOptionsObject = (node: EsTreeNode): EsTreeNode | null => {
@@ -413,6 +413,262 @@ export const tanstackStartNoDynamicServerFnImport: Rule = {
           message:
             "Dynamic import of server functions file — use static imports so the bundler can replace server code with RPC stubs",
         });
+      }
+    },
+  }),
+};
+
+export const tanstackStartNoUseServerInHandler: Rule = {
+  create: (context: RuleContext) => ({
+    CallExpression(node: EsTreeNode) {
+      if (node.callee?.type !== "MemberExpression") return;
+      if (node.callee.property?.type !== "Identifier" || node.callee.property.name !== "handler")
+        return;
+
+      const handlerFunction = node.arguments?.[0];
+      if (
+        !handlerFunction ||
+        (handlerFunction.type !== "ArrowFunctionExpression" &&
+          handlerFunction.type !== "FunctionExpression")
+      )
+        return;
+
+      const body = handlerFunction.body;
+      if (body?.type !== "BlockStatement") return;
+
+      const hasUseServerDirective = body.body?.some(
+        (statement: EsTreeNode) =>
+          statement.type === "ExpressionStatement" &&
+          (statement.directive === "use server" ||
+            (statement.expression?.type === "Literal" &&
+              statement.expression.value === "use server")),
+      );
+
+      if (hasUseServerDirective) {
+        context.report({
+          node: handlerFunction,
+          message:
+            '"use server" inside createServerFn handler — TanStack Start handles this automatically, remove the directive',
+        });
+      }
+    },
+  }),
+};
+
+export const tanstackStartNoSecretsInLoader: Rule = {
+  create: (context: RuleContext) => ({
+    CallExpression(node: EsTreeNode) {
+      const optionsObject = getRouteOptionsObject(node);
+      if (!optionsObject) return;
+
+      const properties = optionsObject.properties ?? [];
+      for (const property of properties) {
+        const keyName = getPropertyKeyName(property);
+        if (keyName !== "loader" && keyName !== "beforeLoad") continue;
+
+        const loaderValue = property.value ?? property;
+        walkAst(loaderValue, (child: EsTreeNode) => {
+          if (child.type !== "MemberExpression") return;
+          if (
+            child.object?.type === "MemberExpression" &&
+            child.object.object?.type === "Identifier" &&
+            child.object.object.name === "process" &&
+            child.object.property?.type === "Identifier" &&
+            child.object.property.name === "env"
+          ) {
+            const envVarName = child.property?.type === "Identifier" ? child.property.name : null;
+            if (envVarName && !envVarName.startsWith("VITE_")) {
+              context.report({
+                node: child,
+                message: `process.env.${envVarName} in ${keyName} — loaders are isomorphic and may leak secrets to the client. Move to a createServerFn()`,
+              });
+            }
+          }
+        });
+      }
+    },
+  }),
+};
+
+const MUTATION_CALLEE_NAMES = new Set([
+  "create",
+  "insert",
+  "update",
+  "upsert",
+  "delete",
+  "remove",
+  "destroy",
+  "put",
+  "patch",
+  "save",
+]);
+
+export const tanstackStartGetMutation: Rule = {
+  create: (context: RuleContext) => ({
+    CallExpression(node: EsTreeNode) {
+      if (node.callee?.type !== "MemberExpression") return;
+      if (node.callee.property?.type !== "Identifier" || node.callee.property.name !== "handler")
+        return;
+
+      let currentNode: EsTreeNode = node.callee.object;
+      let isServerFnChain = false;
+      let specifiedMethod: string | null = null;
+
+      while (currentNode?.type === "CallExpression") {
+        const calleeName =
+          currentNode.callee?.type === "Identifier"
+            ? currentNode.callee.name
+            : currentNode.callee?.property?.type === "Identifier"
+              ? currentNode.callee.property.name
+              : null;
+
+        if (calleeName && TANSTACK_SERVER_FN_NAMES.has(calleeName)) {
+          isServerFnChain = true;
+          const optionsArgument = currentNode.arguments?.[0];
+          if (optionsArgument?.type === "ObjectExpression") {
+            for (const property of optionsArgument.properties ?? []) {
+              if (
+                property.key?.type === "Identifier" &&
+                property.key.name === "method" &&
+                property.value?.type === "Literal"
+              ) {
+                specifiedMethod = property.value.value as string;
+              }
+            }
+          }
+        }
+
+        if (currentNode.callee?.type === "MemberExpression") {
+          currentNode = currentNode.callee.object;
+        } else {
+          break;
+        }
+      }
+
+      if (!isServerFnChain) return;
+      if (specifiedMethod === "POST") return;
+
+      const handlerFunction = node.arguments?.[0];
+      if (!handlerFunction) return;
+
+      const sideEffect = findSideEffect(handlerFunction);
+      if (sideEffect) {
+        context.report({
+          node,
+          message: `GET server function has side effects (${sideEffect}) — use createServerFn({ method: 'POST' }) for mutations`,
+        });
+      }
+
+      let hasMutationCall = false;
+      walkAst(handlerFunction, (child: EsTreeNode) => {
+        if (hasMutationCall) return;
+        if (
+          child.type === "CallExpression" &&
+          child.callee?.type === "MemberExpression" &&
+          child.callee.property?.type === "Identifier" &&
+          MUTATION_CALLEE_NAMES.has(child.callee.property.name)
+        ) {
+          hasMutationCall = true;
+        }
+      });
+
+      if (hasMutationCall) {
+        context.report({
+          node,
+          message:
+            "GET server function performs mutations — use createServerFn({ method: 'POST' }) to prevent CSRF and unintended prefetch triggers",
+        });
+      }
+    },
+  }),
+};
+
+const TANSTACK_REDIRECT_FUNCTIONS = new Set(["redirect", "notFound"]);
+
+export const tanstackStartRedirectInTryCatch: Rule = {
+  create: (context: RuleContext) => {
+    let tryCatchDepth = 0;
+
+    return {
+      TryStatement() {
+        tryCatchDepth++;
+      },
+      "TryStatement:exit"() {
+        tryCatchDepth--;
+      },
+      CallExpression(node: EsTreeNode) {
+        if (tryCatchDepth === 0) return;
+        if (node.callee?.type !== "Identifier") return;
+        if (!TANSTACK_REDIRECT_FUNCTIONS.has(node.callee.name)) return;
+
+        let parent = node.parent;
+        while (parent) {
+          if (parent.type === "ThrowStatement") {
+            context.report({
+              node,
+              message: `throw ${node.callee.name}() inside try-catch — the router catches this internally. Move it outside the try block or re-throw in the catch`,
+            });
+            return;
+          }
+          if (parent.type === "TryStatement") return;
+          parent = parent.parent;
+        }
+      },
+    };
+  },
+};
+
+const SEQUENTIAL_AWAIT_THRESHOLD_FOR_LOADER = 2;
+
+export const tanstackStartLoaderParallelFetch: Rule = {
+  create: (context: RuleContext) => ({
+    CallExpression(node: EsTreeNode) {
+      const optionsObject = getRouteOptionsObject(node);
+      if (!optionsObject) return;
+
+      const properties = optionsObject.properties ?? [];
+      for (const property of properties) {
+        const keyName = getPropertyKeyName(property);
+        if (keyName !== "loader") continue;
+
+        const loaderValue = property.value ?? property;
+        let functionBody: EsTreeNode | null = null;
+
+        if (
+          loaderValue.type === "ArrowFunctionExpression" ||
+          loaderValue.type === "FunctionExpression"
+        ) {
+          functionBody = loaderValue.body;
+        }
+        if (loaderValue.type === "Property" && loaderValue.value) {
+          const value = loaderValue.value;
+          if (value.type === "ArrowFunctionExpression" || value.type === "FunctionExpression") {
+            functionBody = value.body;
+          }
+        }
+
+        if (!functionBody || functionBody.type !== "BlockStatement") continue;
+
+        let sequentialAwaitCount = 0;
+        for (const statement of functionBody.body ?? []) {
+          let hasAwait = false;
+          walkAst(statement, (child: EsTreeNode) => {
+            if (child.type === "AwaitExpression") hasAwait = true;
+          });
+
+          if (hasAwait) {
+            sequentialAwaitCount++;
+          }
+
+          if (sequentialAwaitCount >= SEQUENTIAL_AWAIT_THRESHOLD_FOR_LOADER) {
+            context.report({
+              node: property,
+              message:
+                "Multiple sequential awaits in loader — use Promise.all() to fetch data in parallel and avoid waterfalls",
+            });
+            break;
+          }
+        }
       }
     },
   }),

@@ -43,6 +43,11 @@ const TANSTACK_START_RULES: Record<string, string> = {
   "react-doctor/tanstack-start-server-fn-method-order": "error",
   "react-doctor/tanstack-start-no-navigate-in-render": "warn",
   "react-doctor/tanstack-start-no-dynamic-server-fn-import": "error",
+  "react-doctor/tanstack-start-no-use-server-in-handler": "error",
+  "react-doctor/tanstack-start-no-secrets-in-loader": "error",
+  "react-doctor/tanstack-start-get-mutation": "warn",
+  "react-doctor/tanstack-start-redirect-in-try-catch": "warn",
+  "react-doctor/tanstack-start-loader-parallel-fetch": "warn",
 };
 
 const REACT_COMPILER_RULES: Record<string, string> = {

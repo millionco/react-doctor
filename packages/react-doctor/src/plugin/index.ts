@@ -73,12 +73,17 @@ import {
 import { noEval, noSecretsInClientCode } from "./rules/security.js";
 import { serverAfterNonblocking, serverAuthActions } from "./rules/server.js";
 import {
+  tanstackStartGetMutation,
+  tanstackStartLoaderParallelFetch,
   tanstackStartMissingHeadContent,
   tanstackStartNoAnchorElement,
   tanstackStartNoDirectFetchInLoader,
   tanstackStartNoDynamicServerFnImport,
   tanstackStartNoNavigateInRender,
+  tanstackStartNoSecretsInLoader,
   tanstackStartNoUseEffectFetch,
+  tanstackStartNoUseServerInHandler,
+  tanstackStartRedirectInTryCatch,
   tanstackStartRoutePropertyOrder,
   tanstackStartServerFnMethodOrder,
   tanstackStartServerFnValidateInput,
@@ -191,6 +196,11 @@ const plugin: RulePlugin = {
     "tanstack-start-server-fn-method-order": tanstackStartServerFnMethodOrder,
     "tanstack-start-no-navigate-in-render": tanstackStartNoNavigateInRender,
     "tanstack-start-no-dynamic-server-fn-import": tanstackStartNoDynamicServerFnImport,
+    "tanstack-start-no-use-server-in-handler": tanstackStartNoUseServerInHandler,
+    "tanstack-start-no-secrets-in-loader": tanstackStartNoSecretsInLoader,
+    "tanstack-start-get-mutation": tanstackStartGetMutation,
+    "tanstack-start-redirect-in-try-catch": tanstackStartRedirectInTryCatch,
+    "tanstack-start-loader-parallel-fetch": tanstackStartLoaderParallelFetch,
   },
 };
 

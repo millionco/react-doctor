@@ -61,6 +61,8 @@ export const diagnose = async (
         lintIncludePaths,
         undefined,
         effectiveCustomRulesOnly,
+        userConfig?.plugins ?? [],
+        userConfig?.rules ?? {},
       ).catch((error: unknown) => {
         console.error("Lint failed:", error);
         return emptyDiagnostics;

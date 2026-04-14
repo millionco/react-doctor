@@ -392,4 +392,31 @@ describe("runOxlint", () => {
       expect(reactDoctorDiagnostics.length).toBeGreaterThan(0);
     });
   });
+
+  describe("external plugin loading", () => {
+    it("loads external plugin from relative file path", async () => {
+      const diagnostics = await runOxlint(
+        BASIC_REACT_DIRECTORY,
+        true,
+        "unknown",
+        false,
+        [path.join("src", "clean.tsx")],
+        undefined,
+        true,
+        ["./external-plugin.mjs"],
+        {
+          "test-external-plugin/no-local-storage-set-item": "error",
+        },
+      );
+
+      const externalPluginDiagnostics = diagnostics.filter(
+        (diagnostic) =>
+          diagnostic.plugin === "test-external-plugin" &&
+          diagnostic.rule === "no-local-storage-set-item",
+      );
+
+      expect(externalPluginDiagnostics.length).toBeGreaterThan(0);
+      expect(externalPluginDiagnostics[0].severity).toBe("error");
+    });
+  });
 });

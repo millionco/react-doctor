@@ -409,6 +409,8 @@ interface ResolvedScanOptions {
   includePaths: string[];
   customRulesOnly: boolean;
   share: boolean;
+  plugins: string[];
+  ruleLevels: Record<string, string>;
 }
 
 const mergeScanOptions = (
@@ -423,6 +425,11 @@ const mergeScanOptions = (
   includePaths: inputOptions.includePaths ?? [],
   customRulesOnly: userConfig?.customRulesOnly ?? false,
   share: userConfig?.share ?? true,
+  plugins: inputOptions.plugins ?? userConfig?.plugins ?? [],
+  ruleLevels: {
+    ...(userConfig?.rules ?? {}),
+    ...(inputOptions.ruleLevels ?? {}),
+  },
 });
 
 const printProjectDetection = (
@@ -505,6 +512,8 @@ export const scan = async (
             lintIncludePaths,
             resolvedNodeBinaryPath,
             options.customRulesOnly,
+            options.plugins,
+            options.ruleLevels,
           );
           lintSpinner?.succeed("Running lint checks.");
           return lintDiagnostics;

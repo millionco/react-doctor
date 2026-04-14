@@ -57,6 +57,8 @@ interface OxlintConfigOptions {
   framework: Framework;
   hasReactCompiler: boolean;
   customRulesOnly?: boolean;
+  externalJsPlugins?: string[];
+  ruleLevels?: Record<string, string>;
 }
 
 const BUILTIN_REACT_RULES: Record<string, string> = {
@@ -96,6 +98,8 @@ export const createOxlintConfig = ({
   framework,
   hasReactCompiler,
   customRulesOnly = false,
+  externalJsPlugins = [],
+  ruleLevels = {},
 }: OxlintConfigOptions) => ({
   categories: {
     correctness: "off",
@@ -112,6 +116,7 @@ export const createOxlintConfig = ({
       ? [{ name: "react-hooks-js", specifier: esmRequire.resolve("eslint-plugin-react-hooks") }]
       : []),
     pluginPath,
+    ...externalJsPlugins,
   ],
   rules: {
     ...(customRulesOnly ? {} : BUILTIN_REACT_RULES),
@@ -166,5 +171,6 @@ export const createOxlintConfig = ({
     "react-doctor/async-parallel": "warn",
     ...(framework === "nextjs" ? NEXTJS_RULES : {}),
     ...(framework === "expo" || framework === "react-native" ? REACT_NATIVE_RULES : {}),
+    ...ruleLevels,
   },
 });

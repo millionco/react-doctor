@@ -278,6 +278,25 @@ const resolvePluginPath = (): string => {
   return pluginPath;
 };
 
+const looksLikePath = (pluginSpecifier: string): boolean =>
+  pluginSpecifier.startsWith(".") ||
+  pluginSpecifier.startsWith("/") ||
+  pluginSpecifier.startsWith("file:");
+
+const resolveExternalPluginSpecifier = (
+  pluginSpecifier: string,
+  rootDirectory: string,
+  resolveFromRoot: ReturnType<typeof createRequire>,
+): string => {
+  if (looksLikePath(pluginSpecifier)) {
+    if (pluginSpecifier.startsWith("file:")) {
+      return pluginSpecifier;
+    }
+    return path.resolve(rootDirectory, pluginSpecifier);
+  }
+  return resolveFromRoot.resolve(pluginSpecifier);
+};
+
 const resolveDiagnosticCategory = (plugin: string, rule: string): string => {
   const ruleKey = `${plugin}/${rule}`;
   return RULE_CATEGORY_MAP[ruleKey] ?? PLUGIN_CATEGORY_MAP[plugin] ?? "Other";
@@ -394,6 +413,8 @@ export const runOxlint = async (
   includePaths?: string[],
   nodeBinaryPath: string = process.execPath,
   customRulesOnly = false,
+  pluginSpecifiers: string[] = [],
+  ruleLevels: Record<string, string> = {},
 ): Promise<Diagnostic[]> => {
   if (includePaths !== undefined && includePaths.length === 0) {
     return [];
@@ -401,7 +422,18 @@ export const runOxlint = async (
 
   const configPath = path.join(os.tmpdir(), `react-doctor-oxlintrc-${process.pid}.json`);
   const pluginPath = resolvePluginPath();
-  const config = createOxlintConfig({ pluginPath, framework, hasReactCompiler, customRulesOnly });
+  const resolveFromRoot = createRequire(path.join(rootDirectory, "package.json"));
+  const externalPluginSpecifiers = pluginSpecifiers.map((pluginSpecifier) =>
+    resolveExternalPluginSpecifier(pluginSpecifier, rootDirectory, resolveFromRoot),
+  );
+  const config = createOxlintConfig({
+    pluginPath,
+    framework,
+    hasReactCompiler,
+    customRulesOnly,
+    externalJsPlugins: externalPluginSpecifiers,
+    ruleLevels,
+  });
   const restoreDisableDirectives = neutralizeDisableDirectives(rootDirectory, includePaths);
 
   try {

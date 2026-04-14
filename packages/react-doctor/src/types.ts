@@ -106,6 +106,8 @@ export interface ScanOptions {
   scoreOnly?: boolean;
   offline?: boolean;
   includePaths?: string[];
+  plugins?: string[];
+  ruleLevels?: Record<string, string>;
   configOverride?: ReactDoctorConfig | null;
 }
 
@@ -171,4 +173,6 @@ export interface ReactDoctorConfig {
   customRulesOnly?: boolean;
   share?: boolean;
   textComponents?: string[];
+  plugins?: string[];
+  rules?: Record<string, string>;
 }

@@ -28,6 +28,8 @@ interface CliFlags {
   project?: string;
   diff?: boolean | string;
   failOn: string;
+  plugin?: string[];
+  rule?: string[];
 }
 
 const VALID_FAIL_ON_LEVELS = new Set<FailOnLevel>(["error", "warning", "none"]);
@@ -87,6 +89,30 @@ const AUTOMATED_ENVIRONMENT_VARIABLES = [
 const isAutomatedEnvironment = (): boolean =>
   AUTOMATED_ENVIRONMENT_VARIABLES.some((envVariable) => Boolean(process.env[envVariable]));
 
+const VALID_RULE_LEVELS = new Set(["off", "warn", "error"]);
+
+const parseRuleEntries = (ruleEntries: string[] | undefined): Record<string, string> => {
+  if (!ruleEntries) return {};
+  const ruleLevels: Record<string, string> = {};
+  for (const ruleEntry of ruleEntries) {
+    const separatorIndex = ruleEntry.indexOf("=");
+    if (separatorIndex <= 0 || separatorIndex === ruleEntry.length - 1) {
+      throw new Error(`Invalid --rule value "${ruleEntry}". Expected format: plugin/rule=level`);
+    }
+
+    const ruleName = ruleEntry.slice(0, separatorIndex).trim();
+    const level = ruleEntry.slice(separatorIndex + 1).trim();
+
+    if (!VALID_RULE_LEVELS.has(level)) {
+      throw new Error(
+        `Invalid rule level "${level}" in --rule "${ruleEntry}". Expected one of: off, warn, error`,
+      );
+    }
+    ruleLevels[ruleName] = level;
+  }
+  return ruleLevels;
+};
+
 const resolveCliScanOptions = (
   flags: CliFlags,
   userConfig: ReactDoctorConfig | null,
@@ -101,6 +127,8 @@ const resolveCliScanOptions = (
     verbose: isCliOverride("verbose") ? Boolean(flags.verbose) : (userConfig?.verbose ?? false),
     scoreOnly: flags.score,
     offline: flags.offline,
+    plugins: isCliOverride("plugin") ? (flags.plugin ?? []) : (userConfig?.plugins ?? []),
+    ruleLevels: isCliOverride("rule") ? parseRuleEntries(flags.rule) : {},
   };
 };
 
@@ -158,6 +186,8 @@ const program = new Command()
   .option("--staged", "scan only staged (git index) files for pre-commit hooks")
   .option("--fail-on <level>", "exit with error code on diagnostics: error, warning, none", "none")
   .option("--annotations", "output diagnostics as GitHub Actions annotations")
+  .option("--plugin <specifier...>", "load external oxlint plugin(s) by package name or path")
+  .option("--rule <rule...>", "override rule levels (format: plugin/rule=off|warn|error)")
   .action(async (directory: string, flags: CliFlags) => {
     const isScoreOnly = flags.score;
 
@@ -274,7 +304,10 @@ const program = new Command()
           logger.dim(`Scanning ${projectDirectory}...`);
           logger.break();
         }
-        const scanResult = await scan(projectDirectory, { ...scanOptions, includePaths });
+        const scanResult = await scan(projectDirectory, {
+          ...scanOptions,
+          includePaths,
+        });
         allDiagnostics.push(...scanResult.diagnostics);
         if (!isScoreOnly) {
           logger.break();

@@ -53,6 +53,7 @@ const REACT_COMPILER_CONFIG_PATTERN = /react-compiler|reactCompiler/;
 
 const FRAMEWORK_PACKAGES: Record<string, Framework> = {
   next: "nextjs",
+  "@tanstack/react-start": "tanstack-start",
   vite: "vite",
   "react-scripts": "cra",
   "@remix-run/react": "remix",
@@ -63,6 +64,7 @@ const FRAMEWORK_PACKAGES: Record<string, Framework> = {
 
 const FRAMEWORK_DISPLAY_NAMES: Record<Framework, string> = {
   nextjs: "Next.js",
+  "tanstack-start": "TanStack Start",
   vite: "Vite",
   cra: "Create React App",
   remix: "Remix",

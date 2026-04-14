@@ -172,6 +172,44 @@ export const SECRET_FALSE_POSITIVE_SUFFIXES = new Set([
 
 export const LOADING_STATE_PATTERN = /^(?:isLoading|isPending)$/;
 
+export const TANSTACK_ROUTE_FILE_PATTERN = /\/routes\//;
+export const TANSTACK_ROOT_ROUTE_FILE_PATTERN = /__root\.(tsx?|jsx?)$/;
+
+export const TANSTACK_ROUTE_PROPERTY_ORDER = [
+  "params",
+  "validateSearch",
+  "loaderDeps",
+  "search.middlewares",
+  "ssr",
+  "context",
+  "beforeLoad",
+  "loader",
+  "onEnter",
+  "onStay",
+  "onLeave",
+  "head",
+  "scripts",
+  "headers",
+  "remountDeps",
+];
+
+export const TANSTACK_ROUTE_CREATION_FUNCTIONS = new Set([
+  "createFileRoute",
+  "createRoute",
+  "createRootRoute",
+  "createRootRouteWithContext",
+]);
+
+export const TANSTACK_SERVER_FN_NAMES = new Set(["createServerFn"]);
+
+export const TANSTACK_MIDDLEWARE_METHOD_ORDER = [
+  "middleware",
+  "inputValidator",
+  "client",
+  "server",
+  "handler",
+];
+
 export const GENERIC_EVENT_SUFFIXES = new Set(["Click", "Change", "Input", "Blur", "Focus"]);
 
 export const TRIVIAL_INITIALIZER_NAMES = new Set([

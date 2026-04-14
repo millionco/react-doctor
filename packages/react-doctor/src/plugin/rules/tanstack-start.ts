@@ -1,0 +1,419 @@
+import {
+  TANSTACK_MIDDLEWARE_METHOD_ORDER,
+  TANSTACK_ROUTE_CREATION_FUNCTIONS,
+  TANSTACK_ROUTE_FILE_PATTERN,
+  TANSTACK_ROUTE_PROPERTY_ORDER,
+  TANSTACK_ROOT_ROUTE_FILE_PATTERN,
+  TANSTACK_SERVER_FN_NAMES,
+} from "../constants.js";
+import { hasDirective, walkAst } from "../helpers.js";
+import type { EsTreeNode, Rule, RuleContext } from "../types.js";
+
+const getRouteOptionsObject = (node: EsTreeNode): EsTreeNode | null => {
+  if (node.type !== "CallExpression") return null;
+
+  const callee = node.callee;
+  let functionName: string | null = null;
+
+  if (callee?.type === "Identifier") {
+    functionName = callee.name;
+  } else if (callee?.type === "CallExpression" && callee.callee?.type === "Identifier") {
+    functionName = callee.callee.name;
+  }
+
+  if (!functionName || !TANSTACK_ROUTE_CREATION_FUNCTIONS.has(functionName)) return null;
+
+  const optionsArgument =
+    callee.type === "CallExpression" ? node.arguments?.[0] : node.arguments?.[1];
+
+  if (optionsArgument?.type === "ObjectExpression") return optionsArgument;
+  return null;
+};
+
+const getPropertyKeyName = (property: EsTreeNode): string | null => {
+  if (property.type !== "Property" && property.type !== "MethodDefinition") return null;
+  if (property.key?.type === "Identifier") return property.key.name;
+  if (property.key?.type === "Literal") return String(property.key.value);
+  return null;
+};
+
+export const tanstackStartRoutePropertyOrder: Rule = {
+  create: (context: RuleContext) => ({
+    CallExpression(node: EsTreeNode) {
+      const optionsObject = getRouteOptionsObject(node);
+      if (!optionsObject) return;
+
+      const properties = optionsObject.properties ?? [];
+      const orderedPropertyNames = properties
+        .map(getPropertyKeyName)
+        .filter((name): name is string => name !== null);
+
+      const sensitiveProperties = orderedPropertyNames.filter((name) =>
+        TANSTACK_ROUTE_PROPERTY_ORDER.includes(name),
+      );
+
+      let lastIndex = -1;
+      for (const propertyName of sensitiveProperties) {
+        const currentIndex = TANSTACK_ROUTE_PROPERTY_ORDER.indexOf(propertyName);
+        if (currentIndex < lastIndex) {
+          const expectedBefore = TANSTACK_ROUTE_PROPERTY_ORDER[lastIndex];
+          context.report({
+            node: optionsObject,
+            message: `Route property "${propertyName}" must come before "${expectedBefore}" — wrong order breaks TypeScript type inference`,
+          });
+          return;
+        }
+        lastIndex = currentIndex;
+      }
+    },
+  }),
+};
+
+export const tanstackStartNoDirectFetchInLoader: Rule = {
+  create: (context: RuleContext) => ({
+    CallExpression(node: EsTreeNode) {
+      const optionsObject = getRouteOptionsObject(node);
+      if (!optionsObject) return;
+
+      const properties = optionsObject.properties ?? [];
+      for (const property of properties) {
+        const keyName = getPropertyKeyName(property);
+        if (keyName !== "loader") continue;
+
+        const loaderValue = property.value ?? property;
+        walkAst(loaderValue, (child: EsTreeNode) => {
+          if (child.type !== "CallExpression") return;
+          if (child.callee?.type === "Identifier" && child.callee.name === "fetch") {
+            context.report({
+              node: child,
+              message:
+                "Direct fetch() in route loader — use createServerFn() for type-safe server logic with automatic RPC",
+            });
+          }
+        });
+      }
+    },
+  }),
+};
+
+export const tanstackStartServerFnValidateInput: Rule = {
+  create: (context: RuleContext) => {
+    const serverFnChains: EsTreeNode[] = [];
+
+    return {
+      CallExpression(node: EsTreeNode) {
+        if (node.callee?.type !== "MemberExpression") return;
+        if (node.callee.property?.type !== "Identifier") return;
+        if (node.callee.property.name !== "handler") return;
+
+        let currentNode: EsTreeNode = node.callee.object;
+        let isServerFnChain = false;
+        let hasInputValidator = false;
+
+        while (currentNode) {
+          if (currentNode.type === "CallExpression") {
+            const calleeName =
+              currentNode.callee?.type === "Identifier"
+                ? currentNode.callee.name
+                : currentNode.callee?.property?.type === "Identifier"
+                  ? currentNode.callee.property.name
+                  : null;
+
+            if (calleeName && TANSTACK_SERVER_FN_NAMES.has(calleeName)) {
+              isServerFnChain = true;
+            }
+            if (calleeName === "inputValidator") {
+              hasInputValidator = true;
+            }
+
+            currentNode =
+              currentNode.callee?.type === "MemberExpression"
+                ? currentNode.callee.object
+                : currentNode;
+            if (currentNode === node.callee?.object) break;
+            if (currentNode.callee?.type === "MemberExpression") {
+              currentNode = currentNode.callee.object;
+            } else {
+              break;
+            }
+          } else {
+            break;
+          }
+        }
+
+        if (!isServerFnChain) return;
+
+        const handlerArguments = node.arguments ?? [];
+        const handlerFunction = handlerArguments[0];
+        if (!handlerFunction) return;
+
+        let accessesData = false;
+        walkAst(handlerFunction, (child: EsTreeNode) => {
+          if (
+            child.type === "MemberExpression" &&
+            child.property?.type === "Identifier" &&
+            child.property.name === "data"
+          ) {
+            accessesData = true;
+          }
+          if (
+            child.type === "ObjectPattern" &&
+            child.properties?.some(
+              (property: EsTreeNode) =>
+                property.key?.type === "Identifier" && property.key.name === "data",
+            )
+          ) {
+            accessesData = true;
+          }
+        });
+
+        if (accessesData && !hasInputValidator) {
+          context.report({
+            node,
+            message:
+              "Server function handler accesses data without inputValidator() — validate inputs crossing the network boundary",
+          });
+        }
+      },
+    };
+  },
+};
+
+export const tanstackStartNoUseEffectFetch: Rule = {
+  create: (context: RuleContext) => {
+    const filename = context.getFilename?.() ?? "";
+    if (!TANSTACK_ROUTE_FILE_PATTERN.test(filename)) return {};
+
+    return {
+      CallExpression(node: EsTreeNode) {
+        if (node.callee?.type !== "Identifier") return;
+        if (node.callee.name !== "useEffect" && node.callee.name !== "useLayoutEffect") return;
+
+        const callback = node.arguments?.[0];
+        if (!callback) return;
+
+        let hasFetchCall = false;
+        walkAst(callback, (child: EsTreeNode) => {
+          if (hasFetchCall) return;
+          if (
+            child.type === "CallExpression" &&
+            child.callee?.type === "Identifier" &&
+            child.callee.name === "fetch"
+          ) {
+            hasFetchCall = true;
+          }
+        });
+
+        if (hasFetchCall) {
+          context.report({
+            node,
+            message:
+              "fetch() inside useEffect in a route file — use the route loader or createServerFn() instead",
+          });
+        }
+      },
+    };
+  },
+};
+
+export const tanstackStartMissingHeadContent: Rule = {
+  create: (context: RuleContext) => {
+    const filename = context.getFilename?.() ?? "";
+    if (!TANSTACK_ROOT_ROUTE_FILE_PATTERN.test(filename)) return {};
+
+    let hasHeadContentElement = false;
+
+    return {
+      JSXOpeningElement(node: EsTreeNode) {
+        if (node.name?.type === "JSXIdentifier" && node.name.name === "HeadContent") {
+          hasHeadContentElement = true;
+        }
+      },
+      "Program:exit"(programNode: EsTreeNode) {
+        if (!hasHeadContentElement) {
+          context.report({
+            node: programNode,
+            message:
+              "Root route (__root) without <HeadContent /> — route head() meta tags won't render",
+          });
+        }
+      },
+    };
+  },
+};
+
+export const tanstackStartNoAnchorElement: Rule = {
+  create: (context: RuleContext) => {
+    const filename = context.getFilename?.() ?? "";
+    if (!TANSTACK_ROUTE_FILE_PATTERN.test(filename)) return {};
+
+    return {
+      JSXOpeningElement(node: EsTreeNode) {
+        if (node.name?.type !== "JSXIdentifier" || node.name.name !== "a") return;
+
+        const attributes = node.attributes ?? [];
+        const hrefAttribute = attributes.find(
+          (attr: EsTreeNode) =>
+            attr.type === "JSXAttribute" &&
+            attr.name?.type === "JSXIdentifier" &&
+            attr.name.name === "href",
+        );
+
+        if (!hrefAttribute?.value) return;
+
+        let hrefValue: string | null = null;
+        if (hrefAttribute.value.type === "Literal") {
+          hrefValue = hrefAttribute.value.value;
+        } else if (
+          hrefAttribute.value.type === "JSXExpressionContainer" &&
+          hrefAttribute.value.expression?.type === "Literal"
+        ) {
+          hrefValue = hrefAttribute.value.expression.value;
+        }
+
+        if (typeof hrefValue === "string" && hrefValue.startsWith("/")) {
+          context.report({
+            node,
+            message:
+              "Use <Link> from @tanstack/react-router instead of <a> for internal navigation — enables type-safe routing and preloading",
+          });
+        }
+      },
+    };
+  },
+};
+
+export const tanstackStartServerFnMethodOrder: Rule = {
+  create: (context: RuleContext) => ({
+    CallExpression(node: EsTreeNode) {
+      if (node.callee?.type !== "MemberExpression") return;
+
+      const methodNames: string[] = [];
+      let currentNode: EsTreeNode = node;
+
+      while (
+        currentNode?.type === "CallExpression" &&
+        currentNode.callee?.type === "MemberExpression"
+      ) {
+        const methodName =
+          currentNode.callee.property?.type === "Identifier"
+            ? currentNode.callee.property.name
+            : null;
+        if (methodName) methodNames.unshift(methodName);
+        currentNode = currentNode.callee.object;
+      }
+
+      if (currentNode?.type === "CallExpression" && currentNode.callee?.type === "Identifier") {
+        if (!TANSTACK_SERVER_FN_NAMES.has(currentNode.callee.name)) return;
+      } else {
+        return;
+      }
+
+      const orderSensitiveMethods = methodNames.filter((name) =>
+        TANSTACK_MIDDLEWARE_METHOD_ORDER.includes(name),
+      );
+
+      let lastIndex = -1;
+      for (const methodName of orderSensitiveMethods) {
+        const currentIndex = TANSTACK_MIDDLEWARE_METHOD_ORDER.indexOf(methodName);
+        if (currentIndex < lastIndex) {
+          const expectedBefore = TANSTACK_MIDDLEWARE_METHOD_ORDER[lastIndex];
+          context.report({
+            node,
+            message: `Server function method .${methodName}() must come before .${expectedBefore}() — wrong order breaks type inference`,
+          });
+          return;
+        }
+        lastIndex = currentIndex;
+      }
+    },
+  }),
+};
+
+export const tanstackStartNoNavigateInRender: Rule = {
+  create: (context: RuleContext) => {
+    const filename = context.getFilename?.() ?? "";
+    if (!TANSTACK_ROUTE_FILE_PATTERN.test(filename)) return {};
+
+    let componentDepth = 0;
+    let effectDepth = 0;
+    let eventHandlerDepth = 0;
+
+    return {
+      FunctionDeclaration(node: EsTreeNode) {
+        if (node.id?.name && /^[A-Z]/.test(node.id.name)) {
+          componentDepth++;
+        }
+      },
+      "FunctionDeclaration:exit"(node: EsTreeNode) {
+        if (node.id?.name && /^[A-Z]/.test(node.id.name)) {
+          componentDepth--;
+        }
+      },
+      VariableDeclarator(node: EsTreeNode) {
+        if (
+          node.id?.type === "Identifier" &&
+          /^[A-Z]/.test(node.id.name) &&
+          (node.init?.type === "ArrowFunctionExpression" ||
+            node.init?.type === "FunctionExpression")
+        ) {
+          componentDepth++;
+        }
+      },
+      CallExpression(node: EsTreeNode) {
+        if (
+          node.callee?.type === "Identifier" &&
+          (node.callee.name === "useEffect" || node.callee.name === "useLayoutEffect")
+        ) {
+          effectDepth++;
+        }
+
+        if (componentDepth <= 0 || effectDepth > 0 || eventHandlerDepth > 0) return;
+
+        if (
+          node.callee?.type === "Identifier" &&
+          node.callee.name === "navigate" &&
+          node.arguments?.length > 0
+        ) {
+          context.report({
+            node,
+            message:
+              "navigate() called during render — use redirect() in beforeLoad/loader for route-level redirects",
+          });
+        }
+      },
+      "CallExpression:exit"(node: EsTreeNode) {
+        if (
+          node.callee?.type === "Identifier" &&
+          (node.callee.name === "useEffect" || node.callee.name === "useLayoutEffect")
+        ) {
+          effectDepth--;
+        }
+      },
+    };
+  },
+};
+
+export const tanstackStartNoDynamicServerFnImport: Rule = {
+  create: (context: RuleContext) => ({
+    ImportExpression(node: EsTreeNode) {
+      const source = node.source;
+      if (!source) return;
+
+      let importPath: string | null = null;
+      if (source.type === "Literal" && typeof source.value === "string") {
+        importPath = source.value;
+      } else if (source.type === "TemplateLiteral" && source.quasis?.length === 1) {
+        importPath = source.quasis[0].value?.raw ?? null;
+      }
+
+      if (importPath && /\.functions(\.[jt]sx?)?$/.test(importPath)) {
+        context.report({
+          node,
+          message:
+            "Dynamic import of server functions file — use static imports so the bundler can replace server code with RPC stubs",
+        });
+      }
+    },
+  }),
+};

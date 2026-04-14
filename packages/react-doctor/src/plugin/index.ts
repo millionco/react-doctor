@@ -73,6 +73,17 @@ import {
 import { noEval, noSecretsInClientCode } from "./rules/security.js";
 import { serverAfterNonblocking, serverAuthActions } from "./rules/server.js";
 import {
+  tanstackStartMissingHeadContent,
+  tanstackStartNoAnchorElement,
+  tanstackStartNoDirectFetchInLoader,
+  tanstackStartNoDynamicServerFnImport,
+  tanstackStartNoNavigateInRender,
+  tanstackStartNoUseEffectFetch,
+  tanstackStartRoutePropertyOrder,
+  tanstackStartServerFnMethodOrder,
+  tanstackStartServerFnValidateInput,
+} from "./rules/tanstack-start.js";
+import {
   noCascadingSetState,
   noDerivedStateEffect,
   noDerivedUseState,
@@ -170,6 +181,16 @@ const plugin: RulePlugin = {
     "rn-no-legacy-shadow-styles": rnNoLegacyShadowStyles,
     "rn-prefer-reanimated": rnPreferReanimated,
     "rn-no-single-element-style-array": rnNoSingleElementStyleArray,
+
+    "tanstack-start-route-property-order": tanstackStartRoutePropertyOrder,
+    "tanstack-start-no-direct-fetch-in-loader": tanstackStartNoDirectFetchInLoader,
+    "tanstack-start-server-fn-validate-input": tanstackStartServerFnValidateInput,
+    "tanstack-start-no-useeffect-fetch": tanstackStartNoUseEffectFetch,
+    "tanstack-start-missing-head-content": tanstackStartMissingHeadContent,
+    "tanstack-start-no-anchor-element": tanstackStartNoAnchorElement,
+    "tanstack-start-server-fn-method-order": tanstackStartServerFnMethodOrder,
+    "tanstack-start-no-navigate-in-render": tanstackStartNoNavigateInRender,
+    "tanstack-start-no-dynamic-server-fn-import": tanstackStartNoDynamicServerFnImport,
   },
 };
 

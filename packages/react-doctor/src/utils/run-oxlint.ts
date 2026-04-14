@@ -97,6 +97,16 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/rn-no-legacy-shadow-styles": "React Native",
   "react-doctor/rn-prefer-reanimated": "React Native",
   "react-doctor/rn-no-single-element-style-array": "React Native",
+
+  "react-doctor/tanstack-start-route-property-order": "TanStack Start",
+  "react-doctor/tanstack-start-no-direct-fetch-in-loader": "TanStack Start",
+  "react-doctor/tanstack-start-server-fn-validate-input": "TanStack Start",
+  "react-doctor/tanstack-start-no-useeffect-fetch": "TanStack Start",
+  "react-doctor/tanstack-start-missing-head-content": "TanStack Start",
+  "react-doctor/tanstack-start-no-anchor-element": "TanStack Start",
+  "react-doctor/tanstack-start-server-fn-method-order": "TanStack Start",
+  "react-doctor/tanstack-start-no-navigate-in-render": "TanStack Start",
+  "react-doctor/tanstack-start-no-dynamic-server-fn-import": "TanStack Start",
 };
 
 const RULE_HELP_MAP: Record<string, string> = {
@@ -235,6 +245,25 @@ const RULE_HELP_MAP: Record<string, string> = {
     "Use `import Animated from 'react-native-reanimated'` — animations run on the UI thread instead of the JS thread",
   "rn-no-single-element-style-array":
     "Use `style={value}` instead of `style={[value]}` — single-element arrays add unnecessary allocation",
+
+  "tanstack-start-route-property-order":
+    "Follow the order: params/validateSearch → loaderDeps → context → beforeLoad → loader → head. See https://tanstack.com/router/latest/docs/eslint/create-route-property-order",
+  "tanstack-start-no-direct-fetch-in-loader":
+    "Use `createServerFn()` from @tanstack/react-start — provides type-safe RPC, input validation, and proper server/client code splitting",
+  "tanstack-start-server-fn-validate-input":
+    "Add `.inputValidator(schema)` before `.handler()` — data crosses a network boundary and must be validated at runtime",
+  "tanstack-start-no-useeffect-fetch":
+    "Fetch data in the route `loader` instead — the router coordinates loading before rendering to avoid waterfalls",
+  "tanstack-start-missing-head-content":
+    "Add `<HeadContent />` inside `<head>` in your __root route — without it, route `head()` meta tags are silently dropped",
+  "tanstack-start-no-anchor-element":
+    "`import { Link } from '@tanstack/react-router'` — enables type-safe routes, preloading via `preload=\"intent\"`, and client-side navigation",
+  "tanstack-start-server-fn-method-order":
+    "Chain methods in order: .middleware() → .inputValidator() → .client() → .server() → .handler() — types depend on this sequence",
+  "tanstack-start-no-navigate-in-render":
+    "Use `throw redirect({ to: '/path' })` in `beforeLoad` or `loader` instead — navigate() during render causes hydration issues",
+  "tanstack-start-no-dynamic-server-fn-import":
+    "Use `import { myFn } from '~/utils/my.functions'` — the bundler replaces server code with RPC stubs only for static imports",
 };
 
 const FILEPATH_WITH_LOCATION_PATTERN = /\S+\.\w+:\d+:\d+[\s\S]*$/;

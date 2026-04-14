@@ -33,6 +33,18 @@ const REACT_NATIVE_RULES: Record<string, string> = {
   "react-doctor/rn-no-single-element-style-array": "warn",
 };
 
+const TANSTACK_START_RULES: Record<string, string> = {
+  "react-doctor/tanstack-start-route-property-order": "error",
+  "react-doctor/tanstack-start-no-direct-fetch-in-loader": "warn",
+  "react-doctor/tanstack-start-server-fn-validate-input": "warn",
+  "react-doctor/tanstack-start-no-useeffect-fetch": "warn",
+  "react-doctor/tanstack-start-missing-head-content": "warn",
+  "react-doctor/tanstack-start-no-anchor-element": "warn",
+  "react-doctor/tanstack-start-server-fn-method-order": "error",
+  "react-doctor/tanstack-start-no-navigate-in-render": "warn",
+  "react-doctor/tanstack-start-no-dynamic-server-fn-import": "error",
+};
+
 const REACT_COMPILER_RULES: Record<string, string> = {
   "react-hooks-js/set-state-in-render": "error",
   "react-hooks-js/immutability": "error",
@@ -166,5 +178,6 @@ export const createOxlintConfig = ({
     "react-doctor/async-parallel": "warn",
     ...(framework === "nextjs" ? NEXTJS_RULES : {}),
     ...(framework === "expo" || framework === "react-native" ? REACT_NATIVE_RULES : {}),
+    ...(framework === "tanstack-start" ? TANSTACK_START_RULES : {}),
   },
 });

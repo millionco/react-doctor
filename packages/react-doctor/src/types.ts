@@ -8,6 +8,7 @@ export type Framework =
   | "gatsby"
   | "expo"
   | "react-native"
+  | "tanstack-start"
   | "unknown";
 
 export interface ProjectInfo {

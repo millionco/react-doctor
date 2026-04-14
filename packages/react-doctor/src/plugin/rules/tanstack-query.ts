@@ -36,6 +36,16 @@ export const queryStableQueryClient: Rule = {
           componentDepth++;
         }
       },
+      "VariableDeclarator:exit"(node: EsTreeNode) {
+        if (
+          node.id?.type === "Identifier" &&
+          UPPERCASE_PATTERN.test(node.id.name) &&
+          (node.init?.type === "ArrowFunctionExpression" ||
+            node.init?.type === "FunctionExpression")
+        ) {
+          componentDepth--;
+        }
+      },
       CallExpression(node: EsTreeNode) {
         if (node.callee?.type === "Identifier" && STABLE_HOOK_WRAPPERS.has(node.callee.name)) {
           stableHookDepth++;

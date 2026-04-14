@@ -1,4 +1,5 @@
 import {
+  MUTATING_HTTP_METHODS,
   MUTATION_METHOD_NAMES,
   SEQUENTIAL_AWAIT_THRESHOLD_FOR_LOADER,
   TANSTACK_MIDDLEWARE_METHOD_ORDER,
@@ -509,7 +510,11 @@ export const tanstackStartGetMutation: Rule = {
 
       const chainInfo = walkServerFnChain(node);
       if (!chainInfo.isServerFnChain) return;
-      if (chainInfo.specifiedMethod === "POST") return;
+      if (
+        chainInfo.specifiedMethod &&
+        MUTATING_HTTP_METHODS.has(chainInfo.specifiedMethod.toUpperCase())
+      )
+        return;
 
       const handlerFunction = node.arguments?.[0];
       if (!handlerFunction) return;

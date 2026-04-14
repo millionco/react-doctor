@@ -2,6 +2,7 @@ import {
   ANIMATION_CALLBACK_NAMES,
   BLUR_VALUE_PATTERN,
   EFFECT_HOOK_NAMES,
+  EXECUTABLE_SCRIPT_TYPES,
   LARGE_BLUR_THRESHOLD_PX,
   LAYOUT_PROPERTIES,
   LOADING_STATE_PATTERN,
@@ -439,6 +440,15 @@ export const renderingScriptDeferAsync: Rule = {
       );
 
       if (!hasSrc) return;
+
+      const typeAttribute = attributes.find(
+        (attr: EsTreeNode) =>
+          attr.type === "JSXAttribute" &&
+          attr.name?.type === "JSXIdentifier" &&
+          attr.name.name === "type",
+      );
+      const typeValue = typeAttribute?.value?.type === "Literal" ? typeAttribute.value.value : null;
+      if (typeof typeValue === "string" && !EXECUTABLE_SCRIPT_TYPES.has(typeValue)) return;
 
       const hasLoadingStrategy = attributes.some(
         (attr: EsTreeNode) =>

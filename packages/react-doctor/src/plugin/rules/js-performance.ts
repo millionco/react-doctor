@@ -295,7 +295,6 @@ export const jsFlatmapFilter: Rule = {
       const isFilterBoolean =
         (filterArgument.type === "Identifier" && filterArgument.name === "Boolean") ||
         (filterArgument.type === "ArrowFunctionExpression" &&
-          filterArgument.body?.type !== "BlockStatement" &&
           filterArgument.body?.type === "Identifier" &&
           filterArgument.params?.length === 1);
 

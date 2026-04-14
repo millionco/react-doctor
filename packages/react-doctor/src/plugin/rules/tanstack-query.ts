@@ -1,5 +1,6 @@
 import {
   EFFECT_HOOK_NAMES,
+  MUTATING_HTTP_METHODS,
   TANSTACK_MUTATION_HOOKS,
   TANSTACK_QUERY_CLIENT_CLASS,
   TANSTACK_QUERY_HOOKS,
@@ -12,27 +13,29 @@ const STABLE_HOOK_WRAPPERS = new Set(["useState", "useMemo", "useRef"]);
 
 export const queryStableQueryClient: Rule = {
   create: (context: RuleContext) => {
-    let functionDepth = 0;
+    let componentDepth = 0;
     let stableHookDepth = 0;
 
     return {
-      FunctionDeclaration() {
-        functionDepth++;
+      FunctionDeclaration(node: EsTreeNode) {
+        if (node.id?.name && UPPERCASE_PATTERN.test(node.id.name)) {
+          componentDepth++;
+        }
       },
-      "FunctionDeclaration:exit"() {
-        functionDepth--;
+      "FunctionDeclaration:exit"(node: EsTreeNode) {
+        if (node.id?.name && UPPERCASE_PATTERN.test(node.id.name)) {
+          componentDepth--;
+        }
       },
-      FunctionExpression() {
-        functionDepth++;
-      },
-      "FunctionExpression:exit"() {
-        functionDepth--;
-      },
-      ArrowFunctionExpression() {
-        functionDepth++;
-      },
-      "ArrowFunctionExpression:exit"() {
-        functionDepth--;
+      VariableDeclarator(node: EsTreeNode) {
+        if (
+          node.id?.type === "Identifier" &&
+          UPPERCASE_PATTERN.test(node.id.name) &&
+          (node.init?.type === "ArrowFunctionExpression" ||
+            node.init?.type === "FunctionExpression")
+        ) {
+          componentDepth++;
+        }
       },
       CallExpression(node: EsTreeNode) {
         if (node.callee?.type === "Identifier" && STABLE_HOOK_WRAPPERS.has(node.callee.name)) {
@@ -45,7 +48,7 @@ export const queryStableQueryClient: Rule = {
         }
       },
       NewExpression(node: EsTreeNode) {
-        if (functionDepth <= 0) return;
+        if (componentDepth <= 0) return;
         if (stableHookDepth > 0) return;
         if (node.callee?.type !== "Identifier" || node.callee.name !== TANSTACK_QUERY_CLIENT_CLASS)
           return;
@@ -235,9 +238,7 @@ export const queryNoUseQueryForMutation: Rule = {
             property.key.name === "method" &&
             property.value?.type === "Literal" &&
             typeof property.value.value === "string" &&
-            ["POST", "PUT", "DELETE", "PATCH"].includes(
-              (property.value.value as string).toUpperCase(),
-            ),
+            MUTATING_HTTP_METHODS.has(property.value.value.toUpperCase()),
         );
 
         if (methodProperty) hasMutatingFetch = true;

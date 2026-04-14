@@ -488,6 +488,44 @@ describe("runOxlint", () => {
     () => tanstackStartDiagnostics,
   );
 
+  describe("tanstack-start edge cases (false positive freedom)", () => {
+    it("does not flag correct property order in createFileRoute", () => {
+      const propertyOrderIssues = tanstackStartDiagnostics.filter(
+        (diagnostic) =>
+          diagnostic.rule === "tanstack-start-route-property-order" &&
+          diagnostic.filePath.includes("edge-cases"),
+      );
+      expect(propertyOrderIssues).toHaveLength(0);
+    });
+
+    it("does not flag createServerFn with PUT or DELETE method as get-mutation", () => {
+      const getMutationIssues = tanstackStartDiagnostics.filter(
+        (diagnostic) =>
+          diagnostic.rule === "tanstack-start-get-mutation" &&
+          diagnostic.filePath.includes("edge-cases"),
+      );
+      expect(getMutationIssues).toHaveLength(0);
+    });
+
+    it("does not flag server function with inputValidator as missing validation", () => {
+      const validationIssues = tanstackStartDiagnostics.filter(
+        (diagnostic) =>
+          diagnostic.rule === "tanstack-start-server-fn-validate-input" &&
+          diagnostic.filePath.includes("edge-cases"),
+      );
+      expect(validationIssues).toHaveLength(0);
+    });
+
+    it("does not flag script with type=application/ld+json", () => {
+      const scriptIssues = tanstackStartDiagnostics.filter(
+        (diagnostic) =>
+          diagnostic.rule === "rendering-script-defer-async" &&
+          diagnostic.filePath.includes("edge-cases"),
+      );
+      expect(scriptIssues).toHaveLength(0);
+    });
+  });
+
   describe("customRulesOnly mode", () => {
     it("excludes builtin react/ and jsx-a11y/ rules when customRulesOnly is true", async () => {
       const customOnlyDiagnostics = await runOxlint(

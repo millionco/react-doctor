@@ -327,6 +327,10 @@ export const tanstackStartServerFnMethodOrder: Rule = {
         return;
       }
 
+      const ownMethodName =
+        node.callee.property?.type === "Identifier" ? node.callee.property.name : null;
+      if (methodNames[methodNames.length - 1] !== ownMethodName) return;
+
       const orderSensitiveMethods = methodNames.filter((name) =>
         TANSTACK_MIDDLEWARE_METHOD_ORDER.includes(name),
       );
@@ -558,17 +562,25 @@ export const tanstackStartGetMutation: Rule = {
 
 export const tanstackStartRedirectInTryCatch: Rule = {
   create: (context: RuleContext) => {
-    let tryCatchDepth = 0;
+    let tryBlockDepth = 0;
+    let catchClauseDepth = 0;
 
     return {
       TryStatement() {
-        tryCatchDepth++;
+        tryBlockDepth++;
       },
       "TryStatement:exit"() {
-        tryCatchDepth--;
+        tryBlockDepth--;
+      },
+      CatchClause() {
+        catchClauseDepth++;
+      },
+      "CatchClause:exit"() {
+        catchClauseDepth--;
       },
       ThrowStatement(node: EsTreeNode) {
-        if (tryCatchDepth === 0) return;
+        if (tryBlockDepth === 0) return;
+        if (catchClauseDepth > 0) return;
 
         const argument = node.argument;
         if (argument?.type !== "CallExpression") return;
@@ -577,7 +589,7 @@ export const tanstackStartRedirectInTryCatch: Rule = {
 
         context.report({
           node,
-          message: `throw ${argument.callee.name}() inside try-catch — the router catches this internally. Move it outside the try block or re-throw in the catch`,
+          message: `throw ${argument.callee.name}() inside try block — the router catches this internally. Move it outside the try block or re-throw in the catch`,
         });
       },
     };

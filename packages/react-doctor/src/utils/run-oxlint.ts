@@ -87,6 +87,13 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
 
   "react-doctor/client-passive-event-listeners": "Performance",
 
+  "react-doctor/query-stable-query-client": "TanStack Query",
+  "react-doctor/query-no-rest-destructuring": "TanStack Query",
+  "react-doctor/query-no-void-query-fn": "TanStack Query",
+  "react-doctor/query-no-query-in-effect": "TanStack Query",
+  "react-doctor/query-mutation-missing-invalidation": "TanStack Query",
+  "react-doctor/query-no-usequery-for-mutation": "TanStack Query",
+
   "react-doctor/async-parallel": "Performance",
 
   "react-doctor/rn-no-raw-text": "React Native",
@@ -230,6 +237,19 @@ const RULE_HELP_MAP: Record<string, string> = {
 
   "client-passive-event-listeners":
     "Add `{ passive: true }` as the third argument: `addEventListener('scroll', handler, { passive: true })`",
+
+  "query-stable-query-client":
+    "Move `new QueryClient()` to module scope or wrap in `useState(() => new QueryClient())` — recreating it on every render resets the entire cache",
+  "query-no-rest-destructuring":
+    "Destructure only the fields you need: `const { data, isLoading } = useQuery(...)` — rest destructuring subscribes to all fields and causes extra re-renders",
+  "query-no-void-query-fn":
+    "queryFn must return a value for the cache. Use the `enabled` option to conditionally disable the query instead of returning undefined",
+  "query-no-query-in-effect":
+    "React Query manages refetching automatically via queryKey dependencies and the `enabled` option — manual refetch() in useEffect is usually unnecessary",
+  "query-mutation-missing-invalidation":
+    "Add `onSuccess: () => queryClient.invalidateQueries({ queryKey: ['...'] })` so cached data stays in sync after the mutation",
+  "query-no-usequery-for-mutation":
+    "Use `useMutation()` for POST/PUT/DELETE — it provides onSuccess/onError callbacks, doesn't auto-refetch, and correctly models write operations",
 
   "async-parallel":
     "Use `const [a, b] = await Promise.all([fetchA(), fetchB()])` to run independent operations concurrently",

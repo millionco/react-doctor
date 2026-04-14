@@ -370,6 +370,44 @@ describe("runOxlint", () => {
   );
 
   describeRules(
+    "tanstack-query rules",
+    {
+      "query-stable-query-client": {
+        fixture: "src/query-issues.tsx",
+        ruleSource: "rules/tanstack-query.ts",
+        severity: "error",
+        category: "TanStack Query",
+      },
+      "query-no-rest-destructuring": {
+        fixture: "src/query-issues.tsx",
+        ruleSource: "rules/tanstack-query.ts",
+        category: "TanStack Query",
+      },
+      "query-no-void-query-fn": {
+        fixture: "src/query-issues.tsx",
+        ruleSource: "rules/tanstack-query.ts",
+        category: "TanStack Query",
+      },
+      "query-no-query-in-effect": {
+        fixture: "src/query-issues.tsx",
+        ruleSource: "rules/tanstack-query.ts",
+        category: "TanStack Query",
+      },
+      "query-mutation-missing-invalidation": {
+        fixture: "src/query-issues.tsx",
+        ruleSource: "rules/tanstack-query.ts",
+        category: "TanStack Query",
+      },
+      "query-no-usequery-for-mutation": {
+        fixture: "src/query-issues.tsx",
+        ruleSource: "rules/tanstack-query.ts",
+        category: "TanStack Query",
+      },
+    },
+    () => basicReactDiagnostics,
+  );
+
+  describeRules(
     "tanstack-start rules",
     {
       "tanstack-start-route-property-order": {

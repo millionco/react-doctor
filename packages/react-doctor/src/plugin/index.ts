@@ -70,6 +70,14 @@ import {
   rnPreferReanimated,
   rnNoSingleElementStyleArray,
 } from "./rules/react-native.js";
+import {
+  queryMutationMissingInvalidation,
+  queryNoQueryInEffect,
+  queryNoRestDestructuring,
+  queryNoUseQueryForMutation,
+  queryNoVoidQueryFn,
+  queryStableQueryClient,
+} from "./rules/tanstack-query.js";
 import { noEval, noSecretsInClientCode } from "./rules/security.js";
 import { serverAfterNonblocking, serverAuthActions } from "./rules/server.js";
 import {
@@ -201,6 +209,13 @@ const plugin: RulePlugin = {
     "tanstack-start-get-mutation": tanstackStartGetMutation,
     "tanstack-start-redirect-in-try-catch": tanstackStartRedirectInTryCatch,
     "tanstack-start-loader-parallel-fetch": tanstackStartLoaderParallelFetch,
+
+    "query-stable-query-client": queryStableQueryClient,
+    "query-no-rest-destructuring": queryNoRestDestructuring,
+    "query-no-void-query-fn": queryNoVoidQueryFn,
+    "query-no-query-in-effect": queryNoQueryInEffect,
+    "query-mutation-missing-invalidation": queryMutationMissingInvalidation,
+    "query-no-usequery-for-mutation": queryNoUseQueryForMutation,
   },
 };
 

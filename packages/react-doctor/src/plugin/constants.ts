@@ -216,6 +216,17 @@ export const TANSTACK_SERVER_FN_FILE_PATTERN = /\.functions(\.[jt]sx?)?$/;
 
 export const SEQUENTIAL_AWAIT_THRESHOLD_FOR_LOADER = 2;
 
+export const TANSTACK_QUERY_HOOKS = new Set([
+  "useQuery",
+  "useInfiniteQuery",
+  "useSuspenseQuery",
+  "useSuspenseInfiniteQuery",
+]);
+
+export const TANSTACK_MUTATION_HOOKS = new Set(["useMutation"]);
+
+export const TANSTACK_QUERY_CLIENT_CLASS = "QueryClient";
+
 export const GENERIC_EVENT_SUFFIXES = new Set(["Click", "Change", "Input", "Blur", "Focus"]);
 
 export const TRIVIAL_INITIALIZER_NAMES = new Set([

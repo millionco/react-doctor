@@ -180,6 +180,13 @@ export const createOxlintConfig = ({
 
     "react-doctor/client-passive-event-listeners": "warn",
 
+    "react-doctor/query-stable-query-client": "error",
+    "react-doctor/query-no-rest-destructuring": "warn",
+    "react-doctor/query-no-void-query-fn": "warn",
+    "react-doctor/query-no-query-in-effect": "warn",
+    "react-doctor/query-mutation-missing-invalidation": "warn",
+    "react-doctor/query-no-usequery-for-mutation": "warn",
+
     "react-doctor/async-parallel": "warn",
     ...(framework === "nextjs" ? NEXTJS_RULES : {}),
     ...(framework === "expo" || framework === "react-native" ? REACT_NATIVE_RULES : {}),

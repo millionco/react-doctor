@@ -99,13 +99,17 @@ export const tanstackStartRoutePropertyOrder: Rule = {
       const optionsObject = getRouteOptionsObject(node);
       if (!optionsObject) return;
 
-      const properties = optionsObject.properties ?? [];
-      const orderedPropertyNames = properties
-        .map(getPropertyKeyName)
-        .filter((name): name is string => name !== null);
+      const properties: EsTreeNode[] = optionsObject.properties ?? [];
+      const orderedPropertyNames: string[] = [];
+      for (const property of properties) {
+        const propertyName = getPropertyKeyName(property);
+        if (propertyName !== null) {
+          orderedPropertyNames.push(propertyName);
+        }
+      }
 
-      const sensitiveProperties = orderedPropertyNames.filter((name) =>
-        TANSTACK_ROUTE_PROPERTY_ORDER.includes(name),
+      const sensitiveProperties = orderedPropertyNames.filter((propertyName) =>
+        TANSTACK_ROUTE_PROPERTY_ORDER.includes(propertyName),
       );
 
       let lastIndex = -1;
@@ -197,56 +201,60 @@ export const tanstackStartServerFnValidateInput: Rule = {
 };
 
 export const tanstackStartNoUseEffectFetch: Rule = {
-  create: (context: RuleContext) => {
-    const filename = context.getFilename?.() ?? "";
-    if (!TANSTACK_ROUTE_FILE_PATTERN.test(filename)) return {};
+  create: (context: RuleContext) => ({
+    CallExpression(node: EsTreeNode) {
+      const filename = context.getFilename?.() ?? "";
+      const isRouteFile = TANSTACK_ROUTE_FILE_PATTERN.test(filename);
+      if (!isRouteFile) return;
 
-    return {
-      CallExpression(node: EsTreeNode) {
-        if (node.callee?.type !== "Identifier") return;
-        if (node.callee.name !== "useEffect" && node.callee.name !== "useLayoutEffect") return;
+      if (node.callee?.type !== "Identifier") return;
+      if (node.callee.name !== "useEffect" && node.callee.name !== "useLayoutEffect") return;
 
-        const callback = node.arguments?.[0];
-        if (!callback) return;
+      const callback = node.arguments?.[0];
+      if (!callback) return;
 
-        let hasFetchCall = false;
-        walkAst(callback, (child: EsTreeNode) => {
-          if (hasFetchCall) return;
-          if (
-            child.type === "CallExpression" &&
-            child.callee?.type === "Identifier" &&
-            child.callee.name === "fetch"
-          ) {
-            hasFetchCall = true;
-          }
-        });
-
-        if (hasFetchCall) {
-          context.report({
-            node,
-            message:
-              "fetch() inside useEffect in a route file — use the route loader or createServerFn() instead",
-          });
+      let hasFetchCall = false;
+      walkAst(callback, (child: EsTreeNode) => {
+        if (hasFetchCall) return;
+        if (
+          child.type === "CallExpression" &&
+          child.callee?.type === "Identifier" &&
+          child.callee.name === "fetch"
+        ) {
+          hasFetchCall = true;
         }
-      },
-    };
-  },
+      });
+
+      if (hasFetchCall) {
+        context.report({
+          node,
+          message:
+            "fetch() inside useEffect in a route file — use the route loader or createServerFn() instead",
+        });
+      }
+    },
+  }),
 };
 
 export const tanstackStartMissingHeadContent: Rule = {
   create: (context: RuleContext) => {
-    const filename = context.getFilename?.() ?? "";
-    if (!TANSTACK_ROOT_ROUTE_FILE_PATTERN.test(filename)) return {};
-
     let hasHeadContentElement = false;
 
     return {
       JSXOpeningElement(node: EsTreeNode) {
+        const filename = context.getFilename?.() ?? "";
+        const isRootRouteFile = TANSTACK_ROOT_ROUTE_FILE_PATTERN.test(filename);
+        if (!isRootRouteFile) return;
+
         if (node.name?.type === "JSXIdentifier" && node.name.name === "HeadContent") {
           hasHeadContentElement = true;
         }
       },
       "Program:exit"(programNode: EsTreeNode) {
+        const filename = context.getFilename?.() ?? "";
+        const isRootRouteFile = TANSTACK_ROOT_ROUTE_FILE_PATTERN.test(filename);
+        if (!isRootRouteFile) return;
+
         if (!hasHeadContentElement) {
           context.report({
             node: programNode,
@@ -260,44 +268,43 @@ export const tanstackStartMissingHeadContent: Rule = {
 };
 
 export const tanstackStartNoAnchorElement: Rule = {
-  create: (context: RuleContext) => {
-    const filename = context.getFilename?.() ?? "";
-    if (!TANSTACK_ROUTE_FILE_PATTERN.test(filename)) return {};
+  create: (context: RuleContext) => ({
+    JSXOpeningElement(node: EsTreeNode) {
+      const filename = context.getFilename?.() ?? "";
+      const isRouteFile = TANSTACK_ROUTE_FILE_PATTERN.test(filename);
+      if (!isRouteFile) return;
 
-    return {
-      JSXOpeningElement(node: EsTreeNode) {
-        if (node.name?.type !== "JSXIdentifier" || node.name.name !== "a") return;
+      if (node.name?.type !== "JSXIdentifier" || node.name.name !== "a") return;
 
-        const attributes = node.attributes ?? [];
-        const hrefAttribute = attributes.find(
-          (attr: EsTreeNode) =>
-            attr.type === "JSXAttribute" &&
-            attr.name?.type === "JSXIdentifier" &&
-            attr.name.name === "href",
-        );
+      const attributes = node.attributes ?? [];
+      const hrefAttribute = attributes.find(
+        (attribute: EsTreeNode) =>
+          attribute.type === "JSXAttribute" &&
+          attribute.name?.type === "JSXIdentifier" &&
+          attribute.name.name === "href",
+      );
 
-        if (!hrefAttribute?.value) return;
+      if (!hrefAttribute?.value) return;
 
-        let hrefValue: string | null = null;
-        if (hrefAttribute.value.type === "Literal") {
-          hrefValue = hrefAttribute.value.value;
-        } else if (
-          hrefAttribute.value.type === "JSXExpressionContainer" &&
-          hrefAttribute.value.expression?.type === "Literal"
-        ) {
-          hrefValue = hrefAttribute.value.expression.value;
-        }
+      let hrefValue: string | null = null;
+      if (hrefAttribute.value.type === "Literal") {
+        hrefValue = hrefAttribute.value.value;
+      } else if (
+        hrefAttribute.value.type === "JSXExpressionContainer" &&
+        hrefAttribute.value.expression?.type === "Literal"
+      ) {
+        hrefValue = hrefAttribute.value.expression.value;
+      }
 
-        if (typeof hrefValue === "string" && hrefValue.startsWith("/")) {
-          context.report({
-            node,
-            message:
-              "Use <Link> from @tanstack/react-router instead of <a> for internal navigation — enables type-safe routing and preloading",
-          });
-        }
-      },
-    };
-  },
+      if (typeof hrefValue === "string" && hrefValue.startsWith("/")) {
+        context.report({
+          node,
+          message:
+            "Use <Link> from @tanstack/react-router instead of <a> for internal navigation — enables type-safe routing and preloading",
+        });
+      }
+    },
+  }),
 };
 
 export const tanstackStartServerFnMethodOrder: Rule = {
@@ -353,14 +360,15 @@ export const tanstackStartServerFnMethodOrder: Rule = {
 
 export const tanstackStartNoNavigateInRender: Rule = {
   create: (context: RuleContext) => {
-    const filename = context.getFilename?.() ?? "";
-    if (!TANSTACK_ROUTE_FILE_PATTERN.test(filename)) return {};
-
     let effectDepth = 0;
     let eventHandlerDepth = 0;
 
     return {
       CallExpression(node: EsTreeNode) {
+        const filename = context.getFilename?.() ?? "";
+        const isRouteFile = TANSTACK_ROUTE_FILE_PATTERN.test(filename);
+        if (!isRouteFile) return;
+
         if (
           node.callee?.type === "Identifier" &&
           (node.callee.name === "useEffect" || node.callee.name === "useLayoutEffect")
@@ -383,6 +391,10 @@ export const tanstackStartNoNavigateInRender: Rule = {
         }
       },
       "CallExpression:exit"(node: EsTreeNode) {
+        const filename = context.getFilename?.() ?? "";
+        const isRouteFile = TANSTACK_ROUTE_FILE_PATTERN.test(filename);
+        if (!isRouteFile) return;
+
         if (
           node.callee?.type === "Identifier" &&
           (node.callee.name === "useEffect" || node.callee.name === "useLayoutEffect")
@@ -391,6 +403,10 @@ export const tanstackStartNoNavigateInRender: Rule = {
         }
       },
       JSXAttribute(node: EsTreeNode) {
+        const filename = context.getFilename?.() ?? "";
+        const isRouteFile = TANSTACK_ROUTE_FILE_PATTERN.test(filename);
+        if (!isRouteFile) return;
+
         if (
           node.name?.type === "JSXIdentifier" &&
           node.name.name.startsWith("on") &&
@@ -400,6 +416,10 @@ export const tanstackStartNoNavigateInRender: Rule = {
         }
       },
       "JSXAttribute:exit"(node: EsTreeNode) {
+        const filename = context.getFilename?.() ?? "";
+        const isRouteFile = TANSTACK_ROUTE_FILE_PATTERN.test(filename);
+        if (!isRouteFile) return;
+
         if (
           node.name?.type === "JSXIdentifier" &&
           node.name.name.startsWith("on") &&

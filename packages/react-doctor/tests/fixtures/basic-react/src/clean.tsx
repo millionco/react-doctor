@@ -34,9 +34,7 @@ const HeavyMemoizedIteration = ({
 }) => {
   const selectedUserCount = useMemo(
     () =>
-      users
-        .filter((user) => user.id !== currentUserId)
-        .filter((user) => user.isSelected).length,
+      users.filter((user) => user.id !== currentUserId).filter((user) => user.isSelected).length,
     [currentUserId, users],
   );
 

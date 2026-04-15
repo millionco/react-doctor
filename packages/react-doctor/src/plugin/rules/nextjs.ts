@@ -181,7 +181,10 @@ export const nextjsMissingMetadata: Rule = {
   }),
 };
 
-const describeClientSideNavigation = (node: EsTreeNode, isPagesRouterFile: boolean): string | null => {
+const describeClientSideNavigation = (
+  node: EsTreeNode,
+  isPagesRouterFile: boolean,
+): string | null => {
   const redirectGuidance = isPagesRouterFile
     ? "handle navigation in an event handler, getServerSideProps redirect, or middleware"
     : "use redirect() from next/navigation or handle navigation in an event handler";

@@ -1,6 +1,5 @@
 import {
   MUTATING_HTTP_METHODS,
-  MUTATION_METHOD_NAMES,
   SEQUENTIAL_AWAIT_THRESHOLD_FOR_LOADER,
   TANSTACK_MIDDLEWARE_METHOD_ORDER,
   TANSTACK_REDIRECT_FUNCTIONS,
@@ -532,28 +531,6 @@ export const tanstackStartGetMutation: Rule = {
         context.report({
           node,
           message: `GET server function has side effects (${sideEffect}) — use createServerFn({ method: 'POST' }) for mutations`,
-        });
-        return;
-      }
-
-      let hasMutationCall = false;
-      walkAst(handlerFunction, (child: EsTreeNode) => {
-        if (hasMutationCall) return;
-        if (
-          child.type === "CallExpression" &&
-          child.callee?.type === "MemberExpression" &&
-          child.callee.property?.type === "Identifier" &&
-          MUTATION_METHOD_NAMES.has(child.callee.property.name)
-        ) {
-          hasMutationCall = true;
-        }
-      });
-
-      if (hasMutationCall) {
-        context.report({
-          node,
-          message:
-            "GET server function performs mutations — use createServerFn({ method: 'POST' }) to prevent CSRF and unintended prefetch triggers",
         });
       }
     },

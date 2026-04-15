@@ -79,6 +79,15 @@ describe("runOxlint", () => {
     }
   });
 
+  it("does not flag no-usememo-simple-expression for chained iteration callbacks", () => {
+    const memoIssues = basicReactDiagnostics.filter(
+      (diagnostic) =>
+        diagnostic.rule === "no-usememo-simple-expression" &&
+        diagnostic.filePath.endsWith("clean.tsx"),
+    );
+    expect(memoIssues).toHaveLength(0);
+  });
+
   describeRules(
     "state & effects rules",
     {
@@ -131,6 +140,20 @@ describe("runOxlint", () => {
     },
     () => basicReactDiagnostics,
   );
+
+  describe("nextjs router guidance", () => {
+    it("does not recommend next/navigation for pages-router redirects", async () => {
+      const pagesRouterDiagnostics = await runOxlint(NEXTJS_APP_DIRECTORY, true, "nextjs", false, [
+        path.join(NEXTJS_APP_DIRECTORY, "src/pages/_app.tsx"),
+      ]);
+      const redirectIssue = pagesRouterDiagnostics.find(
+        (diagnostic) => diagnostic.rule === "nextjs-no-client-side-redirect",
+      );
+      expect(redirectIssue).toBeDefined();
+      expect(redirectIssue?.message).toContain("getServerSideProps redirect");
+      expect(redirectIssue?.message).not.toContain("next/navigation");
+    });
+  });
 
   describeRules(
     "architecture rules",

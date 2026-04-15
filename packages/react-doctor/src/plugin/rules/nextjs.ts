@@ -181,13 +181,20 @@ export const nextjsMissingMetadata: Rule = {
   }),
 };
 
-const describeClientSideNavigation = (node: EsTreeNode): string | null => {
+const describeClientSideNavigation = (
+  node: EsTreeNode,
+  isPagesRouterFile: boolean,
+): string | null => {
+  const redirectGuidance = isPagesRouterFile
+    ? "handle navigation in an event handler, getServerSideProps redirect, or middleware"
+    : "use redirect() from next/navigation or handle navigation in an event handler";
+
   if (node.type === "CallExpression" && node.callee?.type === "MemberExpression") {
     const objectName = node.callee.object?.type === "Identifier" ? node.callee.object.name : null;
     const methodName =
       node.callee.property?.type === "Identifier" ? node.callee.property.name : null;
     if (objectName === "router" && (methodName === "push" || methodName === "replace")) {
-      return `router.${methodName}() in useEffect — use redirect() from next/navigation or handle navigation in an event handler`;
+      return `router.${methodName}() in useEffect — ${redirectGuidance}`;
     }
   }
 
@@ -195,10 +202,10 @@ const describeClientSideNavigation = (node: EsTreeNode): string | null => {
     const objectName = node.left.object?.type === "Identifier" ? node.left.object.name : null;
     const propertyName = node.left.property?.type === "Identifier" ? node.left.property.name : null;
     if (objectName === "window" && propertyName === "location") {
-      return "window.location assignment in useEffect — use redirect() from next/navigation or handle in middleware instead";
+      return `window.location assignment in useEffect — ${redirectGuidance}`;
     }
     if (objectName === "location" && propertyName === "href") {
-      return "location.href assignment in useEffect — use redirect() from next/navigation or handle in middleware instead";
+      return `location.href assignment in useEffect — ${redirectGuidance}`;
     }
   }
 
@@ -206,23 +213,28 @@ const describeClientSideNavigation = (node: EsTreeNode): string | null => {
 };
 
 export const nextjsNoClientSideRedirect: Rule = {
-  create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNode) {
-      if (!isHookCall(node, EFFECT_HOOK_NAMES)) return;
-      const callback = getEffectCallback(node);
-      if (!callback) return;
+  create: (context: RuleContext) => {
+    const filename = context.getFilename?.() ?? "";
+    const isPagesRouterFile = PAGES_DIRECTORY_PATTERN.test(filename);
 
-      walkAst(callback, (child: EsTreeNode) => {
-        const navigationDescription = describeClientSideNavigation(child);
-        if (navigationDescription) {
-          context.report({
-            node: child,
-            message: navigationDescription,
-          });
-        }
-      });
-    },
-  }),
+    return {
+      CallExpression(node: EsTreeNode) {
+        if (!isHookCall(node, EFFECT_HOOK_NAMES)) return;
+        const callback = getEffectCallback(node);
+        if (!callback) return;
+
+        walkAst(callback, (child: EsTreeNode) => {
+          const navigationDescription = describeClientSideNavigation(child, isPagesRouterFile);
+          if (navigationDescription) {
+            context.report({
+              node: child,
+              message: navigationDescription,
+            });
+          }
+        });
+      },
+    };
+  },
 };
 
 export const nextjsNoRedirectInTryCatch: Rule = {

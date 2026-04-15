@@ -573,6 +573,25 @@ export const tanstackStartRedirectInTryCatch: Rule = {
   },
 };
 
+const hasTopLevelAwait = (statement: EsTreeNode): boolean => {
+  if (statement.type === "VariableDeclaration") {
+    return statement.declarations?.some(
+      (declarator: EsTreeNode) => declarator.init?.type === "AwaitExpression",
+    );
+  }
+  if (statement.type === "ExpressionStatement") {
+    return (
+      statement.expression?.type === "AwaitExpression" ||
+      (statement.expression?.type === "AssignmentExpression" &&
+        statement.expression.right?.type === "AwaitExpression")
+    );
+  }
+  if (statement.type === "ReturnStatement") {
+    return statement.argument?.type === "AwaitExpression";
+  }
+  return false;
+};
+
 export const tanstackStartLoaderParallelFetch: Rule = {
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
@@ -584,35 +603,20 @@ export const tanstackStartLoaderParallelFetch: Rule = {
         const keyName = getPropertyKeyName(property);
         if (keyName !== "loader") continue;
 
-        const loaderValue = property.value ?? property;
-        let functionBody: EsTreeNode | null = null;
-
+        const loaderValue = property.value;
         if (
-          loaderValue.type === "ArrowFunctionExpression" ||
-          loaderValue.type === "FunctionExpression"
-        ) {
-          functionBody = loaderValue.body;
-        }
-        if (loaderValue.type === "Property" && loaderValue.value) {
-          const innerValue = loaderValue.value;
-          if (
-            innerValue.type === "ArrowFunctionExpression" ||
-            innerValue.type === "FunctionExpression"
-          ) {
-            functionBody = innerValue.body;
-          }
-        }
+          !loaderValue ||
+          (loaderValue.type !== "ArrowFunctionExpression" &&
+            loaderValue.type !== "FunctionExpression")
+        )
+          continue;
 
+        const functionBody = loaderValue.body;
         if (!functionBody || functionBody.type !== "BlockStatement") continue;
 
         let sequentialAwaitCount = 0;
         for (const statement of functionBody.body ?? []) {
-          let hasAwait = false;
-          walkAst(statement, (child: EsTreeNode) => {
-            if (child.type === "AwaitExpression") hasAwait = true;
-          });
-
-          if (hasAwait) {
+          if (hasTopLevelAwait(statement)) {
             sequentialAwaitCount++;
           }
 

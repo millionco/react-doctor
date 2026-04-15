@@ -14,7 +14,6 @@ import {
   isComponentAssignment,
   isHookCall,
   isMemberProperty,
-  isSetterCall,
   isSimpleExpression,
   isUppercaseName,
   walkAst,
@@ -116,6 +115,15 @@ export const noUsememoSimpleExpression: Rule = {
       }
 
       if (returnExpression && isSimpleExpression(returnExpression)) {
+        let isComplex = false;
+        walkAst(returnExpression, (child: EsTreeNode) => {
+          if (child.type === "CallExpression" || child.type === "NewExpression") {
+            isComplex = true;
+          }
+        });
+
+        if (isComplex) return;
+
         context.report({
           node,
           message:

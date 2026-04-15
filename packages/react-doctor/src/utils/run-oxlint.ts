@@ -215,7 +215,7 @@ const RULE_HELP_MAP: Record<string, string> = {
   "nextjs-missing-metadata":
     "Add `export const metadata = { title: '...', description: '...' }` or `export async function generateMetadata()`",
   "nextjs-no-client-side-redirect":
-    "Use `redirect('/path')` from 'next/navigation' directly (works in both server and client components), or handle in middleware",
+    "Avoid redirects inside useEffect. Use an event handler, middleware, or server-side redirect (App Router: redirect() from next/navigation; Pages Router: getServerSideProps redirect)",
   "nextjs-no-redirect-in-try-catch":
     "Move the redirect/notFound call outside the try block, or add `unstable_rethrow(error)` in the catch",
   "nextjs-image-missing-sizes":

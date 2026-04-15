@@ -77,7 +77,7 @@ export const isSimpleExpression = (node: EsTreeNode | null): boolean => {
     case "UnaryExpression":
       return isSimpleExpression(node.argument);
     case "MemberExpression":
-      return !node.computed;
+      return !node.computed && isSimpleExpression(node.object);
     case "ConditionalExpression":
       return (
         isSimpleExpression(node.test) &&

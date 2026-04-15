@@ -145,6 +145,44 @@ describe("discoverProject", () => {
     const projectInfo = discoverProject(monorepoRoot);
     expect(projectInfo.reactVersion).toBe("^19.0.0");
   });
+
+  it("does not detect React Compiler when next.config sets reactCompiler to false", () => {
+    const projectDirectory = path.join(tempDirectory, "next-react-compiler-disabled");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "next-react-compiler-disabled",
+        dependencies: { next: "^15.0.0", react: "^19.0.0" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "next.config.ts"),
+      "import type { NextConfig } from 'next';\nconst nextConfig: NextConfig = { reactCompiler: false };\nexport default nextConfig;\n",
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.hasReactCompiler).toBe(false);
+  });
+
+  it("detects React Compiler when next.config sets reactCompiler to true", () => {
+    const projectDirectory = path.join(tempDirectory, "next-react-compiler-enabled");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "next-react-compiler-enabled",
+        dependencies: { next: "^15.0.0", react: "^19.0.0" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "next.config.ts"),
+      "import type { NextConfig } from 'next';\nconst nextConfig: NextConfig = { reactCompiler: true };\nexport default nextConfig;\n",
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.hasReactCompiler).toBe(true);
+  });
 });
 
 describe("listWorkspacePackages", () => {

@@ -49,7 +49,9 @@ const VITE_CONFIG_FILENAMES = [
 
 const EXPO_APP_CONFIG_FILENAMES = ["app.json", "app.config.js", "app.config.ts"];
 
-const REACT_COMPILER_CONFIG_PATTERN = /react-compiler|reactCompiler/;
+const REACT_COMPILER_PACKAGE_REFERENCE_PATTERN =
+  /babel-plugin-react-compiler|react-compiler-runtime|eslint-plugin-react-compiler|["']react-compiler["']/;
+const REACT_COMPILER_ENABLED_FLAG_PATTERN = /["']?reactCompiler["']?\s*:\s*true\b/;
 
 const FRAMEWORK_PACKAGES: Record<string, Framework> = {
   next: "nextjs",
@@ -510,10 +512,17 @@ const fileContainsPattern = (filePath: string, pattern: RegExp): boolean => {
   return pattern.test(content);
 };
 
-const hasCompilerInConfigFiles = (directory: string, filenames: string[]): boolean =>
-  filenames.some((filename) =>
-    fileContainsPattern(path.join(directory, filename), REACT_COMPILER_CONFIG_PATTERN),
+const hasCompilerInConfigFile = (filePath: string): boolean => {
+  if (!isFile(filePath)) return false;
+  const content = fs.readFileSync(filePath, "utf-8");
+  return (
+    REACT_COMPILER_ENABLED_FLAG_PATTERN.test(content) ||
+    REACT_COMPILER_PACKAGE_REFERENCE_PATTERN.test(content)
   );
+};
+
+const hasCompilerInConfigFiles = (directory: string, filenames: string[]): boolean =>
+  filenames.some((filename) => hasCompilerInConfigFile(path.join(directory, filename)));
 
 const detectReactCompiler = (directory: string, packageJson: PackageJson): boolean => {
   if (hasCompilerPackage(packageJson)) return true;

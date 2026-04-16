@@ -228,7 +228,7 @@ const RULE_HELP_MAP: Record<string, string> = {
   "no-justified-text":
     "Use `text-align: left` for body text, or add `hyphens: auto` and `overflow-wrap: break-word` if you must justify",
   "no-tiny-text":
-    "Use at least 14px for body content, 16px is ideal. Small text is hard to read, especially on high-DPI mobile screens",
+    "Use at least 12px for body content, 16px is ideal. Small text is hard to read, especially on high-DPI mobile screens",
   "no-wide-letter-spacing":
     "Reserve wide tracking (letter-spacing > 0.05em) for short uppercase labels, navigation items, and buttons — not body text",
   "no-gray-on-colored-background":

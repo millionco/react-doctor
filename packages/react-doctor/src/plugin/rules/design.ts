@@ -156,8 +156,10 @@ const isPureBlackColor = (value: string): boolean => {
   return false;
 };
 
-const extractColorFromShadow = (shadowValue: string): ParsedRgb | null => {
-  const rgbMatch = shadowValue.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+const splitShadowLayers = (shadowValue: string): string[] => shadowValue.split(/,(?![^(]*\))/);
+
+const extractColorFromShadowLayer = (layer: string): ParsedRgb | null => {
+  const rgbMatch = layer.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
   if (rgbMatch) {
     return {
       red: parseInt(rgbMatch[1], 10),
@@ -166,25 +168,32 @@ const extractColorFromShadow = (shadowValue: string): ParsedRgb | null => {
     };
   }
 
-  const hexMatch = shadowValue.match(/#([0-9a-f]{3,6})\b/i);
+  const hexMatch = layer.match(/#([0-9a-f]{3,6})\b/i);
   if (hexMatch) return parseColorToRgb(`#${hexMatch[1]}`);
 
   return null;
 };
 
-const hasShadowColorChroma = (shadowValue: string): boolean => {
-  const parsed = extractColorFromShadow(shadowValue);
-  return parsed !== null && hasColorChroma(parsed);
+const parseShadowLayerBlur = (layer: string): number => {
+  const withoutColors = layer.replace(/rgba?\([^)]*\)/g, "").replace(/#[0-9a-f]{3,8}\b/gi, "");
+  const numericTokens = [...withoutColors.matchAll(/(\d+(?:\.\d+)?)(px)?/g)].map((match) =>
+    parseFloat(match[1]),
+  );
+  return numericTokens.length >= 3 ? numericTokens[2] : 0;
 };
 
-const parseShadowBlur = (shadowValue: string): number => {
-  const withoutColorFunctions = shadowValue
-    .replace(/rgba?\([^)]*\)/g, "")
-    .replace(/#[0-9a-f]{3,8}\b/gi, "");
-  const offsetAndBlurTokens = [...withoutColorFunctions.matchAll(/(\d+(?:\.\d+)?)(px)?/g)].map(
-    (match) => parseFloat(match[1]),
-  );
-  return offsetAndBlurTokens.length >= 3 ? offsetAndBlurTokens[2] : 0;
+const hasColoredGlowShadow = (shadowValue: string): boolean => {
+  for (const layer of splitShadowLayers(shadowValue)) {
+    const color = extractColorFromShadowLayer(layer);
+    if (
+      color &&
+      hasColorChroma(color) &&
+      parseShadowLayerBlur(layer) > DARK_GLOW_BLUR_THRESHOLD_PX
+    ) {
+      return true;
+    }
+  }
+  return false;
 };
 
 const isBackgroundDark = (bgValue: string): boolean => {
@@ -544,10 +553,7 @@ export const noDarkModeGlow: Rule = {
 
       if (!hasDarkBackground || !shadowValue || !shadowProperty) return;
 
-      if (
-        hasShadowColorChroma(shadowValue) &&
-        parseShadowBlur(shadowValue) > DARK_GLOW_BLUR_THRESHOLD_PX
-      ) {
+      if (hasColoredGlowShadow(shadowValue)) {
         context.report({
           node: shadowProperty,
           message:

@@ -14,14 +14,19 @@ import {
 import { clientPassiveEventListeners } from "./rules/client.js";
 import {
   noDarkModeGlow,
+  noDisabledZoom,
+  noGoogleFontsLink,
   noGradientText,
   noGrayOnColoredBackground,
   noInlineBounceEasing,
   noInlineExhaustiveStyle,
   noJustifiedText,
   noLayoutTransitionInline,
+  noLongTransitionDuration,
+  noOutlineNone,
   noOverusedFont,
   noPureBlackBackground,
+  noPxFontSize,
   noSideTabBorder,
   noTinyText,
   noWideLetterSpacing,
@@ -249,6 +254,11 @@ const plugin: RulePlugin = {
     "no-wide-letter-spacing": noWideLetterSpacing,
     "no-gray-on-colored-background": noGrayOnColoredBackground,
     "no-layout-transition-inline": noLayoutTransitionInline,
+    "no-disabled-zoom": noDisabledZoom,
+    "no-px-font-size": noPxFontSize,
+    "no-outline-none": noOutlineNone,
+    "no-long-transition-duration": noLongTransitionDuration,
+    "no-google-fonts-link": noGoogleFontsLink,
   },
 };
 

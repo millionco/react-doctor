@@ -203,6 +203,11 @@ export const createOxlintConfig = ({
     "react-doctor/no-wide-letter-spacing": "warn",
     "react-doctor/no-gray-on-colored-background": "warn",
     "react-doctor/no-layout-transition-inline": "warn",
+    "react-doctor/no-disabled-zoom": "error",
+    "react-doctor/no-px-font-size": "warn",
+    "react-doctor/no-outline-none": "warn",
+    "react-doctor/no-long-transition-duration": "warn",
+    "react-doctor/no-google-fonts-link": "warn",
 
     "react-doctor/async-parallel": "warn",
     ...(framework === "nextjs" ? NEXTJS_RULES : {}),

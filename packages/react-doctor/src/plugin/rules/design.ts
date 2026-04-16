@@ -2,13 +2,14 @@ import {
   BOUNCE_ANIMATION_NAMES,
   DARK_GLOW_BLUR_THRESHOLD_PX,
   INLINE_STYLE_PROPERTY_THRESHOLD,
+  LONG_TRANSITION_DURATION_THRESHOLD_MS,
   OVERUSED_FONT_FAMILIES,
   SIDE_TAB_BORDER_WIDTH_THRESHOLD_PX,
   TINY_TEXT_THRESHOLD_PX,
   WIDE_TRACKING_THRESHOLD_EM,
   Z_INDEX_ABSURD_THRESHOLD,
 } from "../constants.js";
-import { findJsxAttribute, walkAst } from "../helpers.js";
+import { findJsxAttribute, hasJsxAttribute, walkAst } from "../helpers.js";
 import type { EsTreeNode, Rule, RuleContext } from "../types.js";
 
 const isOvershootCubicBezier = (value: string): boolean => {
@@ -650,4 +651,199 @@ export const noLayoutTransitionInline: Rule = {
       }
     },
   }),
+};
+
+export const noDisabledZoom: Rule = {
+  create: (context: RuleContext) => ({
+    JSXOpeningElement(node: EsTreeNode) {
+      if (node.name?.type !== "JSXIdentifier" || node.name.name !== "meta") return;
+
+      const nameAttr = findJsxAttribute(node.attributes ?? [], "name");
+      if (!nameAttr?.value) return;
+      const nameValue = nameAttr.value.type === "Literal" ? nameAttr.value.value : null;
+      if (nameValue !== "viewport") return;
+
+      const contentAttr = findJsxAttribute(node.attributes ?? [], "content");
+      if (!contentAttr?.value) return;
+      const contentValue =
+        contentAttr.value.type === "Literal" && typeof contentAttr.value.value === "string"
+          ? contentAttr.value.value
+          : null;
+      if (!contentValue) return;
+
+      if (/user-scalable\s*=\s*no/i.test(contentValue)) {
+        context.report({
+          node,
+          message:
+            "user-scalable=no disables pinch-to-zoom — this is an accessibility violation (WCAG 1.4.4). Remove it and fix layout if it breaks at 200% zoom",
+        });
+      }
+
+      const maxScaleMatch = contentValue.match(/maximum-scale\s*=\s*([\d.]+)/i);
+      if (maxScaleMatch && parseFloat(maxScaleMatch[1]) < 2) {
+        context.report({
+          node,
+          message: `maximum-scale=${maxScaleMatch[1]} restricts zoom below 200% — this is an accessibility violation (WCAG 1.4.4). Use maximum-scale=5 or remove it`,
+        });
+      }
+    },
+  }),
+};
+
+export const noPxFontSize: Rule = {
+  create: (context: RuleContext) => ({
+    JSXAttribute(node: EsTreeNode) {
+      const expression = getInlineStyleExpression(node);
+      if (!expression) return;
+
+      for (const property of expression.properties ?? []) {
+        const key = getStylePropertyKey(property);
+        if (key !== "fontSize") continue;
+
+        const strValue = getStylePropertyStringValue(property);
+        if (strValue && /^\d+(\.\d+)?px$/.test(strValue)) {
+          context.report({
+            node: property,
+            message:
+              "Font size in px ignores user browser preferences — use rem or em so text scales when users change their default font size",
+          });
+        }
+
+        const numValue = getStylePropertyNumberValue(property);
+        if (numValue !== null && numValue > 0) {
+          context.report({
+            node: property,
+            message:
+              'Unitless font size resolves to px and ignores user browser preferences — use rem (e.g. "1rem") so text scales with user settings',
+          });
+        }
+      }
+    },
+  }),
+};
+
+export const noOutlineNone: Rule = {
+  create: (context: RuleContext) => ({
+    JSXAttribute(node: EsTreeNode) {
+      const expression = getInlineStyleExpression(node);
+      if (!expression) return;
+
+      let hasOutlineNone = false;
+      let outlineProperty: EsTreeNode | null = null;
+
+      for (const property of expression.properties ?? []) {
+        const key = getStylePropertyKey(property);
+        if (key !== "outline") continue;
+
+        const strValue = getStylePropertyStringValue(property);
+        const numValue = getStylePropertyNumberValue(property);
+
+        if (strValue === "none" || strValue === "0" || numValue === 0) {
+          hasOutlineNone = true;
+          outlineProperty = property;
+        }
+      }
+
+      if (!hasOutlineNone || !outlineProperty) return;
+
+      const hasCustomFocusRing = expression.properties?.some((property: EsTreeNode) => {
+        const key = getStylePropertyKey(property);
+        return key === "boxShadow" || key === "outlineOffset" || key === "ring";
+      });
+
+      if (!hasCustomFocusRing) {
+        context.report({
+          node: outlineProperty,
+          message:
+            "outline: none removes keyboard focus visibility — use :focus-visible styling instead, or provide a box-shadow focus ring",
+        });
+      }
+    },
+  }),
+};
+
+export const noLongTransitionDuration: Rule = {
+  create: (context: RuleContext) => ({
+    JSXAttribute(node: EsTreeNode) {
+      const expression = getInlineStyleExpression(node);
+      if (!expression) return;
+
+      for (const property of expression.properties ?? []) {
+        const key = getStylePropertyKey(property);
+        if (!key) continue;
+
+        const value = getStylePropertyStringValue(property);
+        if (!value) continue;
+
+        let durationMs: number | null = null;
+
+        if (key === "transitionDuration" || key === "animationDuration") {
+          const msMatch = value.match(/^([\d.]+)ms$/);
+          const sMatch = value.match(/^([\d.]+)s$/);
+          if (msMatch) durationMs = parseFloat(msMatch[1]);
+          else if (sMatch) durationMs = parseFloat(sMatch[1]) * 1000;
+        }
+
+        if (key === "transition") {
+          const sMatch = value.match(/\b([\d.]+)s\b/);
+          const msMatch = value.match(/\b(\d+)ms\b/);
+          if (msMatch) durationMs = parseFloat(msMatch[1]);
+          else if (sMatch) durationMs = parseFloat(sMatch[1]) * 1000;
+        }
+
+        if (durationMs !== null && durationMs > LONG_TRANSITION_DURATION_THRESHOLD_MS) {
+          context.report({
+            node: property,
+            message: `${durationMs}ms transition is too slow for UI feedback — keep transitions under 500ms. Exit animations should be ~75% of enter duration`,
+          });
+        }
+      }
+    },
+  }),
+};
+
+export const noGoogleFontsLink: Rule = {
+  create: (context: RuleContext) => {
+    const isNextjsFile = (): boolean => {
+      const filename = context.getFilename?.() ?? "";
+      return /\/app\//.test(filename) || /\/pages\//.test(filename);
+    };
+
+    return {
+      JSXOpeningElement(node: EsTreeNode) {
+        if (node.name?.type !== "JSXIdentifier" || node.name.name !== "link") return;
+        if (isNextjsFile()) return;
+
+        const hrefAttr = findJsxAttribute(node.attributes ?? [], "href");
+        if (!hrefAttr?.value) return;
+
+        const hrefValue =
+          hrefAttr.value.type === "Literal" && typeof hrefAttr.value.value === "string"
+            ? hrefAttr.value.value
+            : null;
+        if (!hrefValue) return;
+
+        if (/fonts\.googleapis\.com/.test(hrefValue)) {
+          const fontMatch = hrefValue.match(/family=([^&:]+)/);
+          const fontName = fontMatch ? fontMatch[1].replace(/\+/g, " ") : "unknown";
+          const normalizedFont = fontName.toLowerCase();
+
+          if (OVERUSED_FONT_FAMILIES.has(normalizedFont)) {
+            context.report({
+              node,
+              message: `Google Fonts link loading "${fontName}" — this font is on millions of sites. Choose a distinctive font for personality`,
+            });
+          }
+
+          if (!hasJsxAttribute(node.attributes ?? [], "display")) {
+            context.report({
+              node,
+              message:
+                "Google Fonts <link> without font-display strategy — add &display=swap to the URL or use next/font for automatic optimization",
+            });
+          }
+        }
+      },
+    };
+  },
 };

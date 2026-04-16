@@ -161,6 +161,60 @@ const HeightTransitionComponent = () => (
   <div style={{ transitionProperty: "height, transform" }}>transitioning height</div>
 );
 
+// ── Disabled zoom (viewport meta) ──
+
+const DisabledZoomComponent = () => (
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  </head>
+);
+
+const RestrictedZoomComponent = () => (
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  </head>
+);
+
+// ── px font size ──
+
+const PxFontSizeComponent = () => <p style={{ fontSize: "14px" }}>px font size</p>;
+
+const NumericFontSizeComponent = () => <span style={{ fontSize: 12 }}>unitless font size</span>;
+
+// ── outline none ──
+
+const OutlineNoneComponent = () => <button style={{ outline: "none" }}>no focus ring</button>;
+
+const OutlineZeroComponent = () => <input style={{ outline: 0 }} />;
+
+const OutlineNoneWithShadowOk = () => (
+  <button style={{ outline: "none", boxShadow: "0 0 0 2px blue" }}>custom focus ring</button>
+);
+
+// ── Long transition duration ──
+
+const SlowTransitionComponent = () => (
+  <div style={{ transition: "opacity 1.5s ease" }}>too slow</div>
+);
+
+const SlowTransitionDurationComponent = () => (
+  <div style={{ transitionDuration: "800ms" }}>also too slow</div>
+);
+
+// ── Google fonts link ──
+
+const GoogleFontsLinkComponent = () => (
+  <head>
+    <link href="https://fonts.googleapis.com/css2?family=Inter&display=swap" rel="stylesheet" />
+  </head>
+);
+
+const GoogleFontsNoDisplayComponent = () => (
+  <head>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk" rel="stylesheet" />
+  </head>
+);
+
 // ── Clean components (should NOT trigger) ──
 
 const CleanComponent = () => <div style={{ display: "flex", gap: "8px" }}>clean</div>;
@@ -181,10 +235,20 @@ const NormalFontComponent = () => (
   <div style={{ fontFamily: "Plus Jakarta Sans, sans-serif" }}>distinctive font</div>
 );
 
-const NormalSizeComponent = () => <div style={{ fontSize: "16px" }}>normal size</div>;
+const RemFontSizeOk = () => <div style={{ fontSize: "1rem" }}>rem is fine</div>;
 
 const OpacityTransitionComponent = () => (
   <div style={{ transition: "opacity 0.3s ease, transform 0.3s ease" }}>safe transition</div>
+);
+
+const NormalViewportComponent = () => (
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+  </head>
+);
+
+const FastTransitionComponent = () => (
+  <div style={{ transition: "transform 0.2s ease" }}>fast enough</div>
 );
 
 export {
@@ -216,12 +280,25 @@ export {
   GrayOnColorSlateComponent,
   LayoutTransitionComponent,
   HeightTransitionComponent,
+  DisabledZoomComponent,
+  RestrictedZoomComponent,
+  PxFontSizeComponent,
+  NumericFontSizeComponent,
+  OutlineNoneComponent,
+  OutlineZeroComponent,
+  OutlineNoneWithShadowOk,
+  SlowTransitionComponent,
+  SlowTransitionDurationComponent,
+  GoogleFontsLinkComponent,
+  GoogleFontsNoDisplayComponent,
   CleanComponent,
   ReasonableZIndexComponent,
   SmoothEasingComponent,
   NormalBorderComponent,
   NearBlackComponent,
   NormalFontComponent,
-  NormalSizeComponent,
+  RemFontSizeOk,
   OpacityTransitionComponent,
+  NormalViewportComponent,
+  FastTransitionComponent,
 };

@@ -108,6 +108,11 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/no-wide-letter-spacing": "Architecture",
   "react-doctor/no-gray-on-colored-background": "Accessibility",
   "react-doctor/no-layout-transition-inline": "Performance",
+  "react-doctor/no-disabled-zoom": "Accessibility",
+  "react-doctor/no-px-font-size": "Accessibility",
+  "react-doctor/no-outline-none": "Accessibility",
+  "react-doctor/no-long-transition-duration": "Performance",
+  "react-doctor/no-google-fonts-link": "Performance",
 
   "react-doctor/js-flatmap-filter": "Performance",
 
@@ -235,6 +240,16 @@ const RULE_HELP_MAP: Record<string, string> = {
     "Use a darker shade of the background color for text, or white/near-white for contrast. Gray text on colored backgrounds looks washed out",
   "no-layout-transition-inline":
     "Use `transform` and `opacity` for transitions — they run on the compositor thread. For height animations, use `grid-template-rows: 0fr → 1fr`",
+  "no-disabled-zoom":
+    "Remove `user-scalable=no` and `maximum-scale` from the viewport meta tag. If your layout breaks at 200% zoom, fix the layout — don't punish users with disabilities",
+  "no-px-font-size":
+    'Use `rem` units: `fontSize: "1rem"` instead of `fontSize: "16px"`. This respects user browser settings for default font size',
+  "no-outline-none":
+    "Use `:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px }` to show focus only for keyboard users while hiding it for mouse clicks",
+  "no-long-transition-duration":
+    "Keep UI transitions under 500ms — 100-150ms for instant feedback, 200-300ms for state changes, 300-500ms for layout changes. Exit animations should be ~75% of enter duration",
+  "no-google-fonts-link":
+    "Add `&display=swap` to the Google Fonts URL, or better yet use `next/font` (Next.js) or `@fontsource` for self-hosted fonts with zero layout shift",
 
   "no-array-index-as-key":
     "Use a stable unique identifier: `key={item.id}` or `key={item.slug}` — index keys break on reorder/filter",

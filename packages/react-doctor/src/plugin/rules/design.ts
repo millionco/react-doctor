@@ -410,6 +410,10 @@ export const noSideTabBorder: Rule = {
       const sideMatch = classStr.match(/\bborder-[lrse]-(\d+)\b/);
       if (!sideMatch) return;
 
+      const hasNeutralBorderColor =
+        /\bborder-(?:gray|slate|zinc|neutral|stone|white|black|transparent)-\d+\b/.test(classStr);
+      if (hasNeutralBorderColor) return;
+
       const width = parseInt(sideMatch[1], 10);
       const hasRounded =
         /\brounded(?:-(?!none\b)\w+)?\b/.test(classStr) && !/\brounded-none\b/.test(classStr);

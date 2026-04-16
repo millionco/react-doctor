@@ -98,6 +98,16 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/no-inline-bounce-easing": "Performance",
   "react-doctor/no-z-index-9999": "Architecture",
   "react-doctor/no-inline-exhaustive-style": "Architecture",
+  "react-doctor/no-side-tab-border": "Architecture",
+  "react-doctor/no-pure-black-background": "Architecture",
+  "react-doctor/no-gradient-text": "Architecture",
+  "react-doctor/no-overused-font": "Architecture",
+  "react-doctor/no-dark-mode-glow": "Architecture",
+  "react-doctor/no-justified-text": "Accessibility",
+  "react-doctor/no-tiny-text": "Accessibility",
+  "react-doctor/no-wide-letter-spacing": "Architecture",
+  "react-doctor/no-gray-on-colored-background": "Accessibility",
+  "react-doctor/no-layout-transition-inline": "Performance",
 
   "react-doctor/js-flatmap-filter": "Performance",
 
@@ -205,6 +215,26 @@ const RULE_HELP_MAP: Record<string, string> = {
     "Define a z-index scale in your design tokens (e.g. dropdown: 10, modal: 20, toast: 30). Create a new stacking context with `isolation: isolate` instead of escalating values",
   "no-inline-exhaustive-style":
     "Move styles to a CSS class, CSS module, Tailwind utilities, or a styled component — inline objects with many properties hurt readability and create new references every render",
+  "no-side-tab-border":
+    "Use a subtler accent (box-shadow inset, background gradient, or border-bottom) instead of a thick one-sided border",
+  "no-pure-black-background":
+    "Tint the background slightly toward your brand hue — e.g. `#0a0a0f` or Tailwind's `bg-gray-950`. Pure black looks harsh on modern displays",
+  "no-gradient-text":
+    "Use solid text colors for readability. If you need emphasis, use font weight, size, or a distinct color instead of gradients",
+  "no-overused-font":
+    "Choose a distinctive font from Google Fonts or a foundry — e.g. 'Space Grotesk', 'Plus Jakarta Sans', or 'DM Sans' instead of the defaults",
+  "no-dark-mode-glow":
+    "Use a subtle `box-shadow` with neutral colors for depth, or `border` with low opacity. Colored glows on dark backgrounds are the default AI-generated aesthetic",
+  "no-justified-text":
+    "Use `text-align: left` for body text, or add `hyphens: auto` and `overflow-wrap: break-word` if you must justify",
+  "no-tiny-text":
+    "Use at least 14px for body content, 16px is ideal. Small text is hard to read, especially on high-DPI mobile screens",
+  "no-wide-letter-spacing":
+    "Reserve wide tracking (letter-spacing > 0.05em) for short uppercase labels, navigation items, and buttons — not body text",
+  "no-gray-on-colored-background":
+    "Use a darker shade of the background color for text, or white/near-white for contrast. Gray text on colored backgrounds looks washed out",
+  "no-layout-transition-inline":
+    "Use `transform` and `opacity` for transitions — they run on the compositor thread. For height animations, use `grid-template-rows: 0fr → 1fr`",
 
   "no-array-index-as-key":
     "Use a stable unique identifier: `key={item.id}` or `key={item.slug}` — index keys break on reorder/filter",

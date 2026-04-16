@@ -12,7 +12,21 @@ import {
   useLazyMotion,
 } from "./rules/bundle-size.js";
 import { clientPassiveEventListeners } from "./rules/client.js";
-import { noInlineBounceEasing, noInlineExhaustiveStyle, noZIndex9999 } from "./rules/design.js";
+import {
+  noDarkModeGlow,
+  noGradientText,
+  noGrayOnColoredBackground,
+  noInlineBounceEasing,
+  noInlineExhaustiveStyle,
+  noJustifiedText,
+  noLayoutTransitionInline,
+  noOverusedFont,
+  noPureBlackBackground,
+  noSideTabBorder,
+  noTinyText,
+  noWideLetterSpacing,
+  noZIndex9999,
+} from "./rules/design.js";
 import {
   noArrayIndexAsKey,
   noPreventDefault,
@@ -225,6 +239,16 @@ const plugin: RulePlugin = {
     "no-inline-bounce-easing": noInlineBounceEasing,
     "no-z-index-9999": noZIndex9999,
     "no-inline-exhaustive-style": noInlineExhaustiveStyle,
+    "no-side-tab-border": noSideTabBorder,
+    "no-pure-black-background": noPureBlackBackground,
+    "no-gradient-text": noGradientText,
+    "no-overused-font": noOverusedFont,
+    "no-dark-mode-glow": noDarkModeGlow,
+    "no-justified-text": noJustifiedText,
+    "no-tiny-text": noTinyText,
+    "no-wide-letter-spacing": noWideLetterSpacing,
+    "no-gray-on-colored-background": noGrayOnColoredBackground,
+    "no-layout-transition-inline": noLayoutTransitionInline,
   },
 };
 

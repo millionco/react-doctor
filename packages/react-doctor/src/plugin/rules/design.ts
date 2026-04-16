@@ -162,8 +162,10 @@ const parseShadowColorChroma = (shadowValue: string): boolean => {
 };
 
 const parseShadowBlur = (shadowValue: string): number => {
-  const pxValues = [...shadowValue.matchAll(/([\d.]+)px/g)].map((match) => parseFloat(match[1]));
-  return pxValues.length >= 3 ? pxValues[2] : 0;
+  const numericTokens = [...shadowValue.matchAll(/(\d+(?:\.\d+)?)(px)?/g)]
+    .filter((match) => /^\d/.test(match[0]))
+    .map((match) => parseFloat(match[1]));
+  return numericTokens.length >= 3 ? numericTokens[2] : 0;
 };
 
 const isBackgroundDark = (bgValue: string): boolean => {
@@ -799,7 +801,7 @@ export const noLongTransitionDuration: Rule = {
           else if (secondsMatch) durationMs = parseFloat(secondsMatch[1]) * 1000;
         }
 
-        if (key === "transition") {
+        if (key === "transition" || key === "animation") {
           let longestDurationMs = 0;
           for (const msCapture of value.matchAll(/\b(\d+)ms\b/g)) {
             longestDurationMs = Math.max(longestDurationMs, parseFloat(msCapture[1]));

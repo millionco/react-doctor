@@ -183,6 +183,10 @@ const MultiDurationSlowTransitionComponent = () => (
   <div style={{ transition: "transform 0.3s ease, width 2s ease" }}>slow second duration</div>
 );
 
+const SlowAnimationShorthandComponent = () => (
+  <div style={{ animation: "fadeIn 2s ease" }}>slow animation shorthand</div>
+);
+
 const BothZoomRestrictionsComponent = () => (
   <head>
     <meta
@@ -258,6 +262,7 @@ export {
   NormalViewportComponent,
   FastTransitionComponent,
   MultiDurationSlowTransitionComponent,
+  SlowAnimationShorthandComponent,
   BothZoomRestrictionsComponent,
   BorderWidthWithoutColorOk,
   ShorthandNeutralBorderOk,

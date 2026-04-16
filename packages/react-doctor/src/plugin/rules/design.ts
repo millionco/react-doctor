@@ -178,7 +178,9 @@ const hasShadowColorChroma = (shadowValue: string): boolean => {
 };
 
 const parseShadowBlur = (shadowValue: string): number => {
-  const withoutColorFunctions = shadowValue.replace(/rgba?\([^)]*\)/g, "");
+  const withoutColorFunctions = shadowValue
+    .replace(/rgba?\([^)]*\)/g, "")
+    .replace(/#[0-9a-f]{3,8}\b/gi, "");
   const offsetAndBlurTokens = [...withoutColorFunctions.matchAll(/(\d+(?:\.\d+)?)(px)?/g)].map(
     (match) => parseFloat(match[1]),
   );

@@ -2,6 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Command } from "commander";
+import { runInstallSkill } from "./install-skill.js";
 import { scan } from "./scan.js";
 import type { Diagnostic, DiffInfo, FailOnLevel, ReactDoctorConfig, ScanOptions } from "./types.js";
 import { filterSourceFiles, getDiffInfo } from "./utils/get-diff-files.js";
@@ -301,6 +302,18 @@ ${highlighter.dim("Learn more:")}
   ${highlighter.info("https://github.com/millionco/react-doctor")}
 `,
   );
+
+program
+  .command("install")
+  .description("Install the react-doctor skill into your coding agents")
+  .option("-y, --yes", "skip prompts, install for all detected agents")
+  .action(async (options: { yes?: boolean }) => {
+    try {
+      await runInstallSkill({ yes: options.yes });
+    } catch (error) {
+      handleError(error);
+    }
+  });
 
 const main = async () => {
   await program.parseAsync();

@@ -40,13 +40,15 @@ npx -y react-doctor@latest . --verbose
 
 ## Install for your coding agent
 
-Teach your coding agent all 47+ React best practice rules:
+Teach your coding agent all 47+ React best practice rules. Run this at your project root:
 
 ```bash
-curl -fsSL https://react.doctor/install-skill.sh | bash
+npx -y react-doctor@latest install
 ```
 
-Supports Cursor, Claude Code, Amp Code, Codex, Gemini CLI, OpenCode, Windsurf, and Antigravity.
+You'll be prompted to pick which detected agents to install for. Pass `--yes` to skip prompts and install for every detected agent.
+
+Supports Claude Code, Codex, GitHub Copilot, Gemini CLI, Cursor, OpenCode, Factory Droid, and Pi.
 
 ## GitHub Actions
 

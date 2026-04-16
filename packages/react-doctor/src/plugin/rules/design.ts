@@ -156,8 +156,24 @@ const isPureBlackColor = (value: string): boolean => {
   return false;
 };
 
-const parseShadowColorChroma = (shadowValue: string): boolean => {
-  const parsed = parseColorToRgb(shadowValue);
+const extractColorFromShadow = (shadowValue: string): ParsedRgb | null => {
+  const rgbMatch = shadowValue.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+  if (rgbMatch) {
+    return {
+      red: parseInt(rgbMatch[1], 10),
+      green: parseInt(rgbMatch[2], 10),
+      blue: parseInt(rgbMatch[3], 10),
+    };
+  }
+
+  const hexMatch = shadowValue.match(/#([0-9a-f]{3,6})\b/i);
+  if (hexMatch) return parseColorToRgb(`#${hexMatch[1]}`);
+
+  return null;
+};
+
+const hasShadowColorChroma = (shadowValue: string): boolean => {
+  const parsed = extractColorFromShadow(shadowValue);
   return parsed !== null && hasColorChroma(parsed);
 };
 
@@ -394,7 +410,8 @@ export const noSideTabBorder: Rule = {
       if (!sideMatch) return;
 
       const width = parseInt(sideMatch[1], 10);
-      const hasRounded = /\brounded(?:-\w+)?\b/.test(classStr);
+      const hasRounded =
+        /\brounded(?:-(?!none\b)\w+)?\b/.test(classStr) && !/\brounded-none\b/.test(classStr);
       const tailwindThreshold = hasRounded
         ? SIDE_TAB_BORDER_WIDTH_WITH_RADIUS_PX
         : SIDE_TAB_TAILWIND_WIDTH_WITHOUT_RADIUS;
@@ -519,7 +536,7 @@ export const noDarkModeGlow: Rule = {
       if (!hasDarkBackground || !shadowValue || !shadowProperty) return;
 
       if (
-        parseShadowColorChroma(shadowValue) &&
+        hasShadowColorChroma(shadowValue) &&
         parseShadowBlur(shadowValue) > DARK_GLOW_BLUR_THRESHOLD_PX
       ) {
         context.report({

@@ -821,11 +821,15 @@ export const noLongTransitionDuration: Rule = {
 
         if (key === "transition" || key === "animation") {
           let longestDurationMs = 0;
-          for (const msCapture of value.matchAll(/(?<![a-zA-Z\d])(\d+)ms(?!\w)/g)) {
-            longestDurationMs = Math.max(longestDurationMs, parseFloat(msCapture[1]));
-          }
-          for (const secondsCapture of value.matchAll(/(?<![a-zA-Z\d])([\d.]+)s(?![a-zA-Z\d-])/g)) {
-            longestDurationMs = Math.max(longestDurationMs, parseFloat(secondsCapture[1]) * 1000);
+          const segments = value.split(",");
+          for (const segment of segments) {
+            const firstTimeMatch = segment.match(/(?<![a-zA-Z\d])([\d.]+)(m?s)(?![a-zA-Z\d-])/);
+            if (!firstTimeMatch) continue;
+            const segmentDurationMs =
+              firstTimeMatch[2] === "ms"
+                ? parseFloat(firstTimeMatch[1])
+                : parseFloat(firstTimeMatch[1]) * 1000;
+            longestDurationMs = Math.max(longestDurationMs, segmentDurationMs);
           }
           if (longestDurationMs > 0) durationMs = longestDurationMs;
         }

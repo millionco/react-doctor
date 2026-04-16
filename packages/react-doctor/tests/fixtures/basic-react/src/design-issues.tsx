@@ -179,6 +179,19 @@ const FastTransitionComponent = () => (
   <div style={{ transition: "transform 0.5s ease" }}>fast enough</div>
 );
 
+const MultiDurationSlowTransitionComponent = () => (
+  <div style={{ transition: "transform 0.3s ease, width 2s ease" }}>slow second duration</div>
+);
+
+const BothZoomRestrictionsComponent = () => (
+  <head>
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, user-scalable=no, maximum-scale=1"
+    />
+  </head>
+);
+
 const BorderWidthWithoutColorOk = () => (
   <div style={{ borderLeftWidth: 5, borderLeftStyle: "solid", borderLeftColor: "#ccc" }}>
     neutral border via longhand
@@ -244,6 +257,8 @@ export {
   OpacityTransitionComponent,
   NormalViewportComponent,
   FastTransitionComponent,
+  MultiDurationSlowTransitionComponent,
+  BothZoomRestrictionsComponent,
   BorderWidthWithoutColorOk,
   ShorthandNeutralBorderOk,
   ShorthandRgbNeutralBorderOk,

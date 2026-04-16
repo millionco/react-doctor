@@ -25,3 +25,9 @@ export interface EsTreeNode {
   type: string;
   [key: string]: any;
 }
+
+export interface ParsedRgb {
+  red: number;
+  green: number;
+  blue: number;
+}

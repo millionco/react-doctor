@@ -1,6 +1,6 @@
 import {
-  COLOR_CHROMA_THRESHOLD,
   BOUNCE_ANIMATION_NAMES,
+  COLOR_CHROMA_THRESHOLD,
   DARK_BACKGROUND_CHANNEL_MAX,
   DARK_GLOW_BLUR_THRESHOLD_PX,
   INLINE_STYLE_PROPERTY_THRESHOLD,
@@ -13,7 +13,7 @@ import {
   Z_INDEX_ABSURD_THRESHOLD,
 } from "../constants.js";
 import { findJsxAttribute, walkAst } from "../helpers.js";
-import type { EsTreeNode, Rule, RuleContext } from "../types.js";
+import type { EsTreeNode, ParsedRgb, Rule, RuleContext } from "../types.js";
 
 const isOvershootCubicBezier = (value: string): boolean => {
   const match = value.match(
@@ -27,7 +27,10 @@ const isOvershootCubicBezier = (value: string): boolean => {
 
 const hasBounceAnimationName = (value: string): boolean => {
   const lowerValue = value.toLowerCase();
-  return [...BOUNCE_ANIMATION_NAMES].some((name) => lowerValue.includes(name));
+  for (const name of BOUNCE_ANIMATION_NAMES) {
+    if (lowerValue.includes(name)) return true;
+  }
+  return false;
 };
 
 const getStringFromClassNameAttr = (node: EsTreeNode): string | null => {
@@ -90,12 +93,6 @@ const getStylePropertyKey = (property: EsTreeNode): string | null => {
     return property.key.value;
   return null;
 };
-
-interface ParsedRgb {
-  red: number;
-  green: number;
-  blue: number;
-}
 
 const parseColorToRgb = (value: string): ParsedRgb | null => {
   const trimmed = value.trim().toLowerCase();
@@ -715,16 +712,22 @@ export const noDisabledZoom: Rule = {
           : null;
       if (!contentValue) return;
 
-      if (/user-scalable\s*=\s*no/i.test(contentValue)) {
+      const hasUserScalableNo = /user-scalable\s*=\s*no/i.test(contentValue);
+      const maxScaleMatch = contentValue.match(/maximum-scale\s*=\s*([\d.]+)/i);
+      const hasRestrictiveMaxScale = maxScaleMatch !== null && parseFloat(maxScaleMatch[1]) < 2;
+
+      if (hasUserScalableNo && hasRestrictiveMaxScale) {
+        context.report({
+          node,
+          message: `user-scalable=no and maximum-scale=${maxScaleMatch[1]} disable pinch-to-zoom — this is an accessibility violation (WCAG 1.4.4). Remove both and fix layout if it breaks at 200% zoom`,
+        });
+      } else if (hasUserScalableNo) {
         context.report({
           node,
           message:
             "user-scalable=no disables pinch-to-zoom — this is an accessibility violation (WCAG 1.4.4). Remove it and fix layout if it breaks at 200% zoom",
         });
-      }
-
-      const maxScaleMatch = contentValue.match(/maximum-scale\s*=\s*([\d.]+)/i);
-      if (maxScaleMatch && parseFloat(maxScaleMatch[1]) < 2) {
+      } else if (hasRestrictiveMaxScale) {
         context.report({
           node,
           message: `maximum-scale=${maxScaleMatch[1]} restricts zoom below 200% — this is an accessibility violation (WCAG 1.4.4). Use maximum-scale=5 or remove it`,
@@ -797,10 +800,14 @@ export const noLongTransitionDuration: Rule = {
         }
 
         if (key === "transition") {
-          const secondsMatch = value.match(/\b([\d.]+)s\b/);
-          const msMatch = value.match(/\b(\d+)ms\b/);
-          if (msMatch) durationMs = parseFloat(msMatch[1]);
-          else if (secondsMatch) durationMs = parseFloat(secondsMatch[1]) * 1000;
+          let longestDurationMs = 0;
+          for (const msCapture of value.matchAll(/\b(\d+)ms\b/g)) {
+            longestDurationMs = Math.max(longestDurationMs, parseFloat(msCapture[1]));
+          }
+          for (const secondsCapture of value.matchAll(/(?<!\d)([\d.]+)s(?![-\w])/g)) {
+            longestDurationMs = Math.max(longestDurationMs, parseFloat(secondsCapture[1]) * 1000);
+          }
+          if (longestDurationMs > 0) durationMs = longestDurationMs;
         }
 
         if (durationMs !== null && durationMs > LONG_TRANSITION_DURATION_THRESHOLD_MS) {

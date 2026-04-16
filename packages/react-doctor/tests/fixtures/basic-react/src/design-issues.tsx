@@ -51,12 +51,6 @@ const SideTabTailwindComponent = () => (
   <div className="border-l-4 rounded-lg p-4">side tab tailwind</div>
 );
 
-const SideTabWidthComponent = () => (
-  <div style={{ borderLeftWidth: 5, borderLeftStyle: "solid", borderLeftColor: "#7c3aed" }}>
-    side tab width
-  </div>
-);
-
 // ── Pure black background ──
 
 const PureBlackBgComponent = () => (
@@ -88,14 +82,6 @@ const GradientTextTailwindComponent = () => (
   <h1 className="bg-gradient-to-r from-purple-500 to-pink-500 bg-clip-text text-transparent">
     gradient heading
   </h1>
-);
-
-// ── Overused font ──
-
-const InterFontComponent = () => <div style={{ fontFamily: "Inter, sans-serif" }}>inter text</div>;
-
-const RobotoFontComponent = () => (
-  <div style={{ fontFamily: "'Roboto', sans-serif" }}>roboto text</div>
 );
 
 // ── Dark mode glow ──
@@ -175,12 +161,6 @@ const RestrictedZoomComponent = () => (
   </head>
 );
 
-// ── px font size ──
-
-const PxFontSizeComponent = () => <p style={{ fontSize: "14px" }}>px font size</p>;
-
-const NumericFontSizeComponent = () => <span style={{ fontSize: 12 }}>unitless font size</span>;
-
 // ── outline none ──
 
 const OutlineNoneComponent = () => <button style={{ outline: "none" }}>no focus ring</button>;
@@ -198,21 +178,7 @@ const SlowTransitionComponent = () => (
 );
 
 const SlowTransitionDurationComponent = () => (
-  <div style={{ transitionDuration: "800ms" }}>also too slow</div>
-);
-
-// ── Google fonts link ──
-
-const GoogleFontsLinkComponent = () => (
-  <head>
-    <link href="https://fonts.googleapis.com/css2?family=Inter&display=swap" rel="stylesheet" />
-  </head>
-);
-
-const GoogleFontsNoDisplayComponent = () => (
-  <head>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk" rel="stylesheet" />
-  </head>
+  <div style={{ transitionDuration: "1200ms" }}>also too slow</div>
 );
 
 // ── Clean components (should NOT trigger) ──
@@ -231,12 +197,6 @@ const NearBlackComponent = () => (
   <div style={{ backgroundColor: "#0a0a0f" }}>near black, not pure</div>
 );
 
-const NormalFontComponent = () => (
-  <div style={{ fontFamily: "Plus Jakarta Sans, sans-serif" }}>distinctive font</div>
-);
-
-const RemFontSizeOk = () => <div style={{ fontSize: "1rem" }}>rem is fine</div>;
-
 const OpacityTransitionComponent = () => (
   <div style={{ transition: "opacity 0.3s ease, transform 0.3s ease" }}>safe transition</div>
 );
@@ -248,7 +208,13 @@ const NormalViewportComponent = () => (
 );
 
 const FastTransitionComponent = () => (
-  <div style={{ transition: "transform 0.2s ease" }}>fast enough</div>
+  <div style={{ transition: "transform 0.5s ease" }}>fast enough</div>
+);
+
+const BorderWidthWithoutColorOk = () => (
+  <div style={{ borderLeftWidth: 5, borderLeftStyle: "solid", borderLeftColor: "#ccc" }}>
+    neutral border
+  </div>
 );
 
 export {
@@ -261,14 +227,11 @@ export {
   InlineStyleOverloadComponent,
   SideTabInlineComponent,
   SideTabTailwindComponent,
-  SideTabWidthComponent,
   PureBlackBgComponent,
   PureBlackBgShortComponent,
   PureBlackTailwindComponent,
   GradientTextInlineComponent,
   GradientTextTailwindComponent,
-  InterFontComponent,
-  RobotoFontComponent,
   DarkGlowComponent,
   JustifiedTextComponent,
   JustifiedWithHyphensComponent,
@@ -282,23 +245,18 @@ export {
   HeightTransitionComponent,
   DisabledZoomComponent,
   RestrictedZoomComponent,
-  PxFontSizeComponent,
-  NumericFontSizeComponent,
   OutlineNoneComponent,
   OutlineZeroComponent,
   OutlineNoneWithShadowOk,
   SlowTransitionComponent,
   SlowTransitionDurationComponent,
-  GoogleFontsLinkComponent,
-  GoogleFontsNoDisplayComponent,
   CleanComponent,
   ReasonableZIndexComponent,
   SmoothEasingComponent,
   NormalBorderComponent,
   NearBlackComponent,
-  NormalFontComponent,
-  RemFontSizeOk,
   OpacityTransitionComponent,
   NormalViewportComponent,
   FastTransitionComponent,
+  BorderWidthWithoutColorOk,
 };

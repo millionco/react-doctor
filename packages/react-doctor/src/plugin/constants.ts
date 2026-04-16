@@ -397,20 +397,10 @@ export const INLINE_STYLE_PROPERTY_THRESHOLD = 8;
 
 export const SIDE_TAB_BORDER_WIDTH_THRESHOLD_PX = 3;
 
-export const OVERUSED_FONT_FAMILIES = new Set([
-  "inter",
-  "roboto",
-  "open sans",
-  "lato",
-  "montserrat",
-  "arial",
-  "helvetica",
-]);
-
 export const DARK_GLOW_BLUR_THRESHOLD_PX = 4;
 
 export const TINY_TEXT_THRESHOLD_PX = 12;
 
 export const WIDE_TRACKING_THRESHOLD_EM = 0.05;
 
-export const LONG_TRANSITION_DURATION_THRESHOLD_MS = 500;
+export const LONG_TRANSITION_DURATION_THRESHOLD_MS = 1000;

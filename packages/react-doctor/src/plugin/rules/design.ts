@@ -3,13 +3,12 @@ import {
   DARK_GLOW_BLUR_THRESHOLD_PX,
   INLINE_STYLE_PROPERTY_THRESHOLD,
   LONG_TRANSITION_DURATION_THRESHOLD_MS,
-  OVERUSED_FONT_FAMILIES,
   SIDE_TAB_BORDER_WIDTH_THRESHOLD_PX,
   TINY_TEXT_THRESHOLD_PX,
   WIDE_TRACKING_THRESHOLD_EM,
   Z_INDEX_ABSURD_THRESHOLD,
 } from "../constants.js";
-import { findJsxAttribute, hasJsxAttribute, walkAst } from "../helpers.js";
+import { findJsxAttribute, walkAst } from "../helpers.js";
 import type { EsTreeNode, Rule, RuleContext } from "../types.js";
 
 const isOvershootCubicBezier = (value: string): boolean => {
@@ -84,6 +83,20 @@ const getStylePropertyKey = (property: EsTreeNode): string | null => {
   if (property.key?.type === "Literal" && typeof property.key.value === "string")
     return property.key.value;
   return null;
+};
+
+const isNeutralBorderColor = (value: string): boolean => {
+  const trimmed = value.trim().toLowerCase();
+  if (["gray", "grey", "silver", "white", "black", "transparent", "currentcolor"].includes(trimmed))
+    return true;
+  const hexMatch = trimmed.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/);
+  if (hexMatch) {
+    const r = parseInt(hexMatch[1], 16);
+    const g = parseInt(hexMatch[2], 16);
+    const b = parseInt(hexMatch[3], 16);
+    return Math.max(r, g, b) - Math.min(r, g, b) < 30;
+  }
+  return false;
 };
 
 const isPureBlackColor = (value: string): boolean => {
@@ -305,6 +318,16 @@ export const noSideTabBorder: Rule = {
           const strValue = getStylePropertyStringValue(property);
           const width = numValue ?? (strValue !== null ? parseFloat(strValue) : NaN);
           if (isNaN(width)) continue;
+
+          const colorKey = key.replace("Width", "Color");
+          const hasColoredBorder = expression.properties?.some((colorProperty: EsTreeNode) => {
+            const colorPropertyKey = getStylePropertyKey(colorProperty);
+            if (colorPropertyKey !== colorKey) return false;
+            const colorValue = getStylePropertyStringValue(colorProperty);
+            return colorValue !== null && !isNeutralBorderColor(colorValue);
+          });
+          if (!hasColoredBorder) continue;
+
           const threshold = hasBorderRadius ? 1 : SIDE_TAB_BORDER_WIDTH_THRESHOLD_PX;
           if (width >= threshold) {
             context.report({
@@ -411,36 +434,6 @@ export const noGradientText: Rule = {
           message:
             "Gradient text (bg-clip-text + bg-gradient) is decorative rather than meaningful — a common AI tell. Use solid colors for text",
         });
-      }
-    },
-  }),
-};
-
-export const noOverusedFont: Rule = {
-  create: (context: RuleContext) => ({
-    JSXAttribute(node: EsTreeNode) {
-      const expression = getInlineStyleExpression(node);
-      if (!expression) return;
-
-      for (const property of expression.properties ?? []) {
-        const key = getStylePropertyKey(property);
-        if (key !== "fontFamily") continue;
-
-        const value = getStylePropertyStringValue(property);
-        if (!value) continue;
-
-        const primaryFont = value
-          .split(",")[0]
-          .trim()
-          .replace(/^['"]|['"]$/g, "")
-          .toLowerCase();
-
-        if (OVERUSED_FONT_FAMILIES.has(primaryFont)) {
-          context.report({
-            node: property,
-            message: `"${primaryFont}" is used on millions of sites — choose a distinctive font that gives your interface personality`,
-          });
-        }
       }
     },
   }),
@@ -690,38 +683,6 @@ export const noDisabledZoom: Rule = {
   }),
 };
 
-export const noPxFontSize: Rule = {
-  create: (context: RuleContext) => ({
-    JSXAttribute(node: EsTreeNode) {
-      const expression = getInlineStyleExpression(node);
-      if (!expression) return;
-
-      for (const property of expression.properties ?? []) {
-        const key = getStylePropertyKey(property);
-        if (key !== "fontSize") continue;
-
-        const strValue = getStylePropertyStringValue(property);
-        if (strValue && /^\d+(\.\d+)?px$/.test(strValue)) {
-          context.report({
-            node: property,
-            message:
-              "Font size in px ignores user browser preferences — use rem or em so text scales when users change their default font size",
-          });
-        }
-
-        const numValue = getStylePropertyNumberValue(property);
-        if (numValue !== null && numValue > 0) {
-          context.report({
-            node: property,
-            message:
-              'Unitless font size resolves to px and ignores user browser preferences — use rem (e.g. "1rem") so text scales with user settings',
-          });
-        }
-      }
-    },
-  }),
-};
-
 export const noOutlineNone: Rule = {
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNode) {
@@ -800,50 +761,4 @@ export const noLongTransitionDuration: Rule = {
       }
     },
   }),
-};
-
-export const noGoogleFontsLink: Rule = {
-  create: (context: RuleContext) => {
-    const isNextjsFile = (): boolean => {
-      const filename = context.getFilename?.() ?? "";
-      return /\/app\//.test(filename) || /\/pages\//.test(filename);
-    };
-
-    return {
-      JSXOpeningElement(node: EsTreeNode) {
-        if (node.name?.type !== "JSXIdentifier" || node.name.name !== "link") return;
-        if (isNextjsFile()) return;
-
-        const hrefAttr = findJsxAttribute(node.attributes ?? [], "href");
-        if (!hrefAttr?.value) return;
-
-        const hrefValue =
-          hrefAttr.value.type === "Literal" && typeof hrefAttr.value.value === "string"
-            ? hrefAttr.value.value
-            : null;
-        if (!hrefValue) return;
-
-        if (/fonts\.googleapis\.com/.test(hrefValue)) {
-          const fontMatch = hrefValue.match(/family=([^&:]+)/);
-          const fontName = fontMatch ? fontMatch[1].replace(/\+/g, " ") : "unknown";
-          const normalizedFont = fontName.toLowerCase();
-
-          if (OVERUSED_FONT_FAMILIES.has(normalizedFont)) {
-            context.report({
-              node,
-              message: `Google Fonts link loading "${fontName}" — this font is on millions of sites. Choose a distinctive font for personality`,
-            });
-          }
-
-          if (!hasJsxAttribute(node.attributes ?? [], "display")) {
-            context.report({
-              node,
-              message:
-                "Google Fonts <link> without font-display strategy — add &display=swap to the URL or use next/font for automatic optimization",
-            });
-          }
-        }
-      },
-    };
-  },
 };

@@ -15,7 +15,6 @@ import { clientPassiveEventListeners } from "./rules/client.js";
 import {
   noDarkModeGlow,
   noDisabledZoom,
-  noGoogleFontsLink,
   noGradientText,
   noGrayOnColoredBackground,
   noInlineBounceEasing,
@@ -24,9 +23,7 @@ import {
   noLayoutTransitionInline,
   noLongTransitionDuration,
   noOutlineNone,
-  noOverusedFont,
   noPureBlackBackground,
-  noPxFontSize,
   noSideTabBorder,
   noTinyText,
   noWideLetterSpacing,
@@ -247,7 +244,6 @@ const plugin: RulePlugin = {
     "no-side-tab-border": noSideTabBorder,
     "no-pure-black-background": noPureBlackBackground,
     "no-gradient-text": noGradientText,
-    "no-overused-font": noOverusedFont,
     "no-dark-mode-glow": noDarkModeGlow,
     "no-justified-text": noJustifiedText,
     "no-tiny-text": noTinyText,
@@ -255,10 +251,8 @@ const plugin: RulePlugin = {
     "no-gray-on-colored-background": noGrayOnColoredBackground,
     "no-layout-transition-inline": noLayoutTransitionInline,
     "no-disabled-zoom": noDisabledZoom,
-    "no-px-font-size": noPxFontSize,
     "no-outline-none": noOutlineNone,
     "no-long-transition-duration": noLongTransitionDuration,
-    "no-google-fonts-link": noGoogleFontsLink,
   },
 };
 

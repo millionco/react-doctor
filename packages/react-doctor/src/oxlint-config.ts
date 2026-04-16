@@ -196,7 +196,6 @@ export const createOxlintConfig = ({
     "react-doctor/no-side-tab-border": "warn",
     "react-doctor/no-pure-black-background": "warn",
     "react-doctor/no-gradient-text": "warn",
-    "react-doctor/no-overused-font": "warn",
     "react-doctor/no-dark-mode-glow": "warn",
     "react-doctor/no-justified-text": "warn",
     "react-doctor/no-tiny-text": "warn",
@@ -204,10 +203,8 @@ export const createOxlintConfig = ({
     "react-doctor/no-gray-on-colored-background": "warn",
     "react-doctor/no-layout-transition-inline": "warn",
     "react-doctor/no-disabled-zoom": "error",
-    "react-doctor/no-px-font-size": "warn",
     "react-doctor/no-outline-none": "warn",
     "react-doctor/no-long-transition-duration": "warn",
-    "react-doctor/no-google-fonts-link": "warn",
 
     "react-doctor/async-parallel": "warn",
     ...(framework === "nextjs" ? NEXTJS_RULES : {}),

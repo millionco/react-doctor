@@ -101,7 +101,6 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/no-side-tab-border": "Architecture",
   "react-doctor/no-pure-black-background": "Architecture",
   "react-doctor/no-gradient-text": "Architecture",
-  "react-doctor/no-overused-font": "Architecture",
   "react-doctor/no-dark-mode-glow": "Architecture",
   "react-doctor/no-justified-text": "Accessibility",
   "react-doctor/no-tiny-text": "Accessibility",
@@ -109,10 +108,8 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/no-gray-on-colored-background": "Accessibility",
   "react-doctor/no-layout-transition-inline": "Performance",
   "react-doctor/no-disabled-zoom": "Accessibility",
-  "react-doctor/no-px-font-size": "Accessibility",
   "react-doctor/no-outline-none": "Accessibility",
   "react-doctor/no-long-transition-duration": "Performance",
-  "react-doctor/no-google-fonts-link": "Performance",
 
   "react-doctor/js-flatmap-filter": "Performance",
 
@@ -226,8 +223,6 @@ const RULE_HELP_MAP: Record<string, string> = {
     "Tint the background slightly toward your brand hue — e.g. `#0a0a0f` or Tailwind's `bg-gray-950`. Pure black looks harsh on modern displays",
   "no-gradient-text":
     "Use solid text colors for readability. If you need emphasis, use font weight, size, or a distinct color instead of gradients",
-  "no-overused-font":
-    "Choose a distinctive font from Google Fonts or a foundry — e.g. 'Space Grotesk', 'Plus Jakarta Sans', or 'DM Sans' instead of the defaults",
   "no-dark-mode-glow":
     "Use a subtle `box-shadow` with neutral colors for depth, or `border` with low opacity. Colored glows on dark backgrounds are the default AI-generated aesthetic",
   "no-justified-text":
@@ -242,14 +237,10 @@ const RULE_HELP_MAP: Record<string, string> = {
     "Use `transform` and `opacity` for transitions — they run on the compositor thread. For height animations, use `grid-template-rows: 0fr → 1fr`",
   "no-disabled-zoom":
     "Remove `user-scalable=no` and `maximum-scale` from the viewport meta tag. If your layout breaks at 200% zoom, fix the layout — don't punish users with disabilities",
-  "no-px-font-size":
-    'Use `rem` units: `fontSize: "1rem"` instead of `fontSize: "16px"`. This respects user browser settings for default font size',
   "no-outline-none":
     "Use `:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px }` to show focus only for keyboard users while hiding it for mouse clicks",
   "no-long-transition-duration":
-    "Keep UI transitions under 500ms — 100-150ms for instant feedback, 200-300ms for state changes, 300-500ms for layout changes. Exit animations should be ~75% of enter duration",
-  "no-google-fonts-link":
-    "Add `&display=swap` to the Google Fonts URL, or better yet use `next/font` (Next.js) or `@fontsource` for self-hosted fonts with zero layout shift",
+    "Keep UI transitions under 1s — 100-150ms for instant feedback, 200-300ms for state changes, 300-500ms for layout changes. Use longer durations only for page-load hero animations",
 
   "no-array-index-as-key":
     "Use a stable unique identifier: `key={item.id}` or `key={item.slug}` — index keys break on reorder/filter",

@@ -12,6 +12,7 @@ import {
   useLazyMotion,
 } from "./rules/bundle-size.js";
 import { clientPassiveEventListeners } from "./rules/client.js";
+import { noInlineBounceEasing, noInlineExhaustiveStyle, noZIndex9999 } from "./rules/design.js";
 import {
   noArrayIndexAsKey,
   noPreventDefault,
@@ -220,6 +221,10 @@ const plugin: RulePlugin = {
     "query-no-query-in-effect": queryNoQueryInEffect,
     "query-mutation-missing-invalidation": queryMutationMissingInvalidation,
     "query-no-usequery-for-mutation": queryNoUseQueryForMutation,
+
+    "no-inline-bounce-easing": noInlineBounceEasing,
+    "no-z-index-9999": noZIndex9999,
+    "no-inline-exhaustive-style": noInlineExhaustiveStyle,
   },
 };
 

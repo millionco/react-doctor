@@ -388,3 +388,9 @@ export const LEGACY_SHADOW_STYLE_PROPERTIES = new Set([
   "shadowRadius",
   "elevation",
 ]);
+
+export const BOUNCE_ANIMATION_NAMES = ["bounce", "elastic", "wobble", "jiggle", "spring"];
+
+export const Z_INDEX_ABSURD_THRESHOLD = 100;
+
+export const INLINE_STYLE_PROPERTY_THRESHOLD = 8;

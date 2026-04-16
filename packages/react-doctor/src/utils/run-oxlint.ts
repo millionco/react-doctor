@@ -95,6 +95,10 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/query-mutation-missing-invalidation": "TanStack Query",
   "react-doctor/query-no-usequery-for-mutation": "TanStack Query",
 
+  "react-doctor/no-inline-bounce-easing": "Performance",
+  "react-doctor/no-z-index-9999": "Architecture",
+  "react-doctor/no-inline-exhaustive-style": "Architecture",
+
   "react-doctor/js-flatmap-filter": "Performance",
 
   "react-doctor/async-parallel": "Performance",
@@ -194,6 +198,13 @@ const RULE_HELP_MAP: Record<string, string> = {
     'Use `import { LazyMotion, m } from "framer-motion"` with `domAnimation` features — saves ~30kb',
   "no-undeferred-third-party":
     'Use `next/script` with `strategy="lazyOnload"` or add the `defer` attribute',
+
+  "no-inline-bounce-easing":
+    "Use `cubic-bezier(0.16, 1, 0.3, 1)` (ease-out-expo) for natural deceleration — objects in the real world don't bounce",
+  "no-z-index-9999":
+    "Define a z-index scale in your design tokens (e.g. dropdown: 10, modal: 20, toast: 30). Create a new stacking context with `isolation: isolate` instead of escalating values",
+  "no-inline-exhaustive-style":
+    "Move styles to a CSS class, CSS module, Tailwind utilities, or a styled component — inline objects with many properties hurt readability and create new references every render",
 
   "no-array-index-as-key":
     "Use a stable unique identifier: `key={item.id}` or `key={item.slug}` — index keys break on reorder/filter",

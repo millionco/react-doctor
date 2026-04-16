@@ -190,6 +190,10 @@ export const createOxlintConfig = ({
     "react-doctor/query-mutation-missing-invalidation": "warn",
     "react-doctor/query-no-usequery-for-mutation": "warn",
 
+    "react-doctor/no-inline-bounce-easing": "warn",
+    "react-doctor/no-z-index-9999": "warn",
+    "react-doctor/no-inline-exhaustive-style": "warn",
+
     "react-doctor/async-parallel": "warn",
     ...(framework === "nextjs" ? NEXTJS_RULES : {}),
     ...(framework === "expo" || framework === "react-native" ? REACT_NATIVE_RULES : {}),

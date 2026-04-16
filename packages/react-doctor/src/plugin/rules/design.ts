@@ -178,10 +178,11 @@ const hasShadowColorChroma = (shadowValue: string): boolean => {
 };
 
 const parseShadowBlur = (shadowValue: string): number => {
-  const numericTokens = [...shadowValue.matchAll(/(\d+(?:\.\d+)?)(px)?/g)]
-    .filter((match) => /^\d/.test(match[0]))
-    .map((match) => parseFloat(match[1]));
-  return numericTokens.length >= 3 ? numericTokens[2] : 0;
+  const withoutColorFunctions = shadowValue.replace(/rgba?\([^)]*\)/g, "");
+  const offsetAndBlurTokens = [...withoutColorFunctions.matchAll(/(\d+(?:\.\d+)?)(px)?/g)].map(
+    (match) => parseFloat(match[1]),
+  );
+  return offsetAndBlurTokens.length >= 3 ? offsetAndBlurTokens[2] : 0;
 };
 
 const isBackgroundDark = (bgValue: string): boolean => {
@@ -604,7 +605,7 @@ export const noTinyText: Rule = {
         if (pxValue !== null && pxValue > 0 && pxValue < TINY_TEXT_THRESHOLD_PX) {
           context.report({
             node: property,
-            message: `Font size ${pxValue}px is too small — body text should be at least 14px for readability, 16px is ideal`,
+            message: `Font size ${pxValue}px is too small — body text should be at least ${TINY_TEXT_THRESHOLD_PX}px for readability, 16px is ideal`,
           });
         }
       }
@@ -820,10 +821,10 @@ export const noLongTransitionDuration: Rule = {
 
         if (key === "transition" || key === "animation") {
           let longestDurationMs = 0;
-          for (const msCapture of value.matchAll(/\b(\d+)ms\b/g)) {
+          for (const msCapture of value.matchAll(/(?<![a-zA-Z\d])(\d+)ms(?!\w)/g)) {
             longestDurationMs = Math.max(longestDurationMs, parseFloat(msCapture[1]));
           }
-          for (const secondsCapture of value.matchAll(/(?<!\d)([\d.]+)s(?![-\w])/g)) {
+          for (const secondsCapture of value.matchAll(/(?<![a-zA-Z\d])([\d.]+)s(?![a-zA-Z\d-])/g)) {
             longestDurationMs = Math.max(longestDurationMs, parseFloat(secondsCapture[1]) * 1000);
           }
           if (longestDurationMs > 0) durationMs = longestDurationMs;

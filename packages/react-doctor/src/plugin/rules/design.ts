@@ -1,9 +1,13 @@
 import {
+  COLOR_CHROMA_THRESHOLD,
   BOUNCE_ANIMATION_NAMES,
+  DARK_BACKGROUND_CHANNEL_MAX,
   DARK_GLOW_BLUR_THRESHOLD_PX,
   INLINE_STYLE_PROPERTY_THRESHOLD,
   LONG_TRANSITION_DURATION_THRESHOLD_MS,
-  SIDE_TAB_BORDER_WIDTH_THRESHOLD_PX,
+  SIDE_TAB_BORDER_WIDTH_WITH_RADIUS_PX,
+  SIDE_TAB_BORDER_WIDTH_WITHOUT_RADIUS_PX,
+  SIDE_TAB_TAILWIND_WIDTH_WITHOUT_RADIUS,
   TINY_TEXT_THRESHOLD_PX,
   WIDE_TRACKING_THRESHOLD_EM,
   Z_INDEX_ABSURD_THRESHOLD,
@@ -16,13 +20,15 @@ const isOvershootCubicBezier = (value: string): boolean => {
     /cubic-bezier\(\s*([\d.-]+)\s*,\s*([\d.-]+)\s*,\s*([\d.-]+)\s*,\s*([\d.-]+)\s*\)/,
   );
   if (!match) return false;
-  const y1 = parseFloat(match[2]);
-  const y2 = parseFloat(match[4]);
-  return y1 < -0.1 || y1 > 1.1 || y2 < -0.1 || y2 > 1.1;
+  const controlY1 = parseFloat(match[2]);
+  const controlY2 = parseFloat(match[4]);
+  return controlY1 < -0.1 || controlY1 > 1.1 || controlY2 < -0.1 || controlY2 > 1.1;
 };
 
-const hasBounceAnimationName = (value: string): boolean =>
-  BOUNCE_ANIMATION_NAMES.some((name) => value.toLowerCase().includes(name));
+const hasBounceAnimationName = (value: string): boolean => {
+  const lowerValue = value.toLowerCase();
+  return [...BOUNCE_ANIMATION_NAMES].some((name) => lowerValue.includes(name));
+};
 
 const getStringFromClassNameAttr = (node: EsTreeNode): string | null => {
   const classAttr = findJsxAttribute(node.attributes ?? [], "className");
@@ -85,18 +91,65 @@ const getStylePropertyKey = (property: EsTreeNode): string | null => {
   return null;
 };
 
+interface ParsedRgb {
+  red: number;
+  green: number;
+  blue: number;
+}
+
+const parseColorToRgb = (value: string): ParsedRgb | null => {
+  const trimmed = value.trim().toLowerCase();
+
+  const hex6Match = trimmed.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/);
+  if (hex6Match) {
+    return {
+      red: parseInt(hex6Match[1], 16),
+      green: parseInt(hex6Match[2], 16),
+      blue: parseInt(hex6Match[3], 16),
+    };
+  }
+
+  const hex3Match = trimmed.match(/^#([0-9a-f])([0-9a-f])([0-9a-f])$/);
+  if (hex3Match) {
+    return {
+      red: parseInt(hex3Match[1] + hex3Match[1], 16),
+      green: parseInt(hex3Match[2] + hex3Match[2], 16),
+      blue: parseInt(hex3Match[3] + hex3Match[3], 16),
+    };
+  }
+
+  const rgbMatch = trimmed.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+  if (rgbMatch) {
+    return {
+      red: parseInt(rgbMatch[1], 10),
+      green: parseInt(rgbMatch[2], 10),
+      blue: parseInt(rgbMatch[3], 10),
+    };
+  }
+
+  return null;
+};
+
+const hasColorChroma = (parsed: ParsedRgb): boolean =>
+  Math.max(parsed.red, parsed.green, parsed.blue) -
+    Math.min(parsed.red, parsed.green, parsed.blue) >=
+  COLOR_CHROMA_THRESHOLD;
+
 const isNeutralBorderColor = (value: string): boolean => {
   const trimmed = value.trim().toLowerCase();
   if (["gray", "grey", "silver", "white", "black", "transparent", "currentcolor"].includes(trimmed))
     return true;
-  const hexMatch = trimmed.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/);
-  if (hexMatch) {
-    const r = parseInt(hexMatch[1], 16);
-    const g = parseInt(hexMatch[2], 16);
-    const b = parseInt(hexMatch[3], 16);
-    return Math.max(r, g, b) - Math.min(r, g, b) < 30;
-  }
+
+  const parsed = parseColorToRgb(trimmed);
+  if (parsed) return !hasColorChroma(parsed);
+
   return false;
+};
+
+const extractBorderColorFromShorthand = (shorthandValue: string): string | null => {
+  const afterSolid = shorthandValue.match(/solid\s+(.+)$/i);
+  if (!afterSolid) return null;
+  return afterSolid[1].trim();
 };
 
 const isPureBlackColor = (value: string): boolean => {
@@ -107,12 +160,8 @@ const isPureBlackColor = (value: string): boolean => {
 };
 
 const parseShadowColorChroma = (shadowValue: string): boolean => {
-  const colorMatch = shadowValue.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
-  if (!colorMatch) return false;
-  const r = parseInt(colorMatch[1], 10);
-  const g = parseInt(colorMatch[2], 10);
-  const b = parseInt(colorMatch[3], 10);
-  return Math.max(r, g, b) - Math.min(r, g, b) >= 30;
+  const parsed = parseColorToRgb(shadowValue);
+  return parsed !== null && hasColorChroma(parsed);
 };
 
 const parseShadowBlur = (shadowValue: string): number => {
@@ -123,21 +172,15 @@ const parseShadowBlur = (shadowValue: string): number => {
 const isBackgroundDark = (bgValue: string): boolean => {
   const trimmed = bgValue.trim().toLowerCase();
   if (isPureBlackColor(trimmed)) return true;
-  const hexMatch = trimmed.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/);
-  if (hexMatch) {
-    const r = parseInt(hexMatch[1], 16);
-    const g = parseInt(hexMatch[2], 16);
-    const b = parseInt(hexMatch[3], 16);
-    return r <= 35 && g <= 35 && b <= 35;
-  }
-  const rgbMatch = trimmed.match(/^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/);
-  if (rgbMatch) {
-    const r = parseInt(rgbMatch[1], 10);
-    const g = parseInt(rgbMatch[2], 10);
-    const b = parseInt(rgbMatch[3], 10);
-    return r <= 35 && g <= 35 && b <= 35;
-  }
-  return false;
+
+  const parsed = parseColorToRgb(trimmed);
+  if (!parsed) return false;
+
+  return (
+    parsed.red <= DARK_BACKGROUND_CHANNEL_MAX &&
+    parsed.green <= DARK_BACKGROUND_CHANNEL_MAX &&
+    parsed.blue <= DARK_BACKGROUND_CHANNEL_MAX
+  );
 };
 
 const BORDER_SIDE_KEYS: Record<string, string> = {
@@ -294,6 +337,10 @@ export const noSideTabBorder: Rule = {
         }
       }
 
+      const threshold = hasBorderRadius
+        ? SIDE_TAB_BORDER_WIDTH_WITH_RADIUS_PX
+        : SIDE_TAB_BORDER_WIDTH_WITHOUT_RADIUS_PX;
+
       for (const property of expression.properties ?? []) {
         const key = getStylePropertyKey(property);
         if (!key) continue;
@@ -303,8 +350,11 @@ export const noSideTabBorder: Rule = {
           if (!value) continue;
           const widthMatch = value.match(/^(\d+)px\s+solid/);
           if (!widthMatch) continue;
+
+          const borderColor = extractBorderColorFromShorthand(value);
+          if (borderColor && isNeutralBorderColor(borderColor)) continue;
+
           const width = parseInt(widthMatch[1], 10);
-          const threshold = hasBorderRadius ? 1 : SIDE_TAB_BORDER_WIDTH_THRESHOLD_PX;
           if (width >= threshold) {
             context.report({
               node: property,
@@ -328,7 +378,6 @@ export const noSideTabBorder: Rule = {
           });
           if (!hasColoredBorder) continue;
 
-          const threshold = hasBorderRadius ? 1 : SIDE_TAB_BORDER_WIDTH_THRESHOLD_PX;
           if (width >= threshold) {
             context.report({
               node: property,
@@ -347,9 +396,11 @@ export const noSideTabBorder: Rule = {
 
       const width = parseInt(sideMatch[1], 10);
       const hasRounded = /\brounded(?:-\w+)?\b/.test(classStr);
-      const threshold = hasRounded ? 1 : 4;
+      const tailwindThreshold = hasRounded
+        ? SIDE_TAB_BORDER_WIDTH_WITH_RADIUS_PX
+        : SIDE_TAB_TAILWIND_WIDTH_WITHOUT_RADIUS;
 
-      if (width >= threshold) {
+      if (width >= tailwindThreshold) {
         context.report({
           node,
           message: `Thick one-sided border (${sideMatch[0]}) — the most recognizable tell of AI-generated UIs. Use a subtler accent or remove it`,
@@ -418,7 +469,7 @@ export const noGradientText: Rule = {
 
       if (hasBackgroundClipText && hasGradientBackground) {
         context.report({
-          node: node.parent,
+          node,
           message:
             "Gradient text (background-clip: text) is decorative rather than meaningful — a common AI tell. Use solid colors for text",
         });
@@ -445,7 +496,7 @@ export const noDarkModeGlow: Rule = {
       const expression = getInlineStyleExpression(node);
       if (!expression) return;
 
-      let hasDarkBg = false;
+      let hasDarkBackground = false;
       let shadowProperty: EsTreeNode | null = null;
       let shadowValue: string | null = null;
 
@@ -456,7 +507,7 @@ export const noDarkModeGlow: Rule = {
         if (key === "backgroundColor" || key === "background") {
           const value = getStylePropertyStringValue(property);
           if (value && isBackgroundDark(value)) {
-            hasDarkBg = true;
+            hasDarkBackground = true;
           }
         }
 
@@ -466,7 +517,7 @@ export const noDarkModeGlow: Rule = {
         }
       }
 
-      if (!hasDarkBg || !shadowValue || !shadowProperty) return;
+      if (!hasDarkBackground || !shadowValue || !shadowProperty) return;
 
       if (
         parseShadowColorChroma(shadowValue) &&
@@ -502,7 +553,7 @@ export const noJustifiedText: Rule = {
 
       if (isJustified && !hasHyphens) {
         context.report({
-          node: node.parent,
+          node,
           message:
             'Justified text without hyphens creates uneven word spacing ("rivers of white"). Use text-align: left, or add hyphens: auto',
         });
@@ -740,22 +791,22 @@ export const noLongTransitionDuration: Rule = {
 
         if (key === "transitionDuration" || key === "animationDuration") {
           const msMatch = value.match(/^([\d.]+)ms$/);
-          const sMatch = value.match(/^([\d.]+)s$/);
+          const secondsMatch = value.match(/^([\d.]+)s$/);
           if (msMatch) durationMs = parseFloat(msMatch[1]);
-          else if (sMatch) durationMs = parseFloat(sMatch[1]) * 1000;
+          else if (secondsMatch) durationMs = parseFloat(secondsMatch[1]) * 1000;
         }
 
         if (key === "transition") {
-          const sMatch = value.match(/\b([\d.]+)s\b/);
+          const secondsMatch = value.match(/\b([\d.]+)s\b/);
           const msMatch = value.match(/\b(\d+)ms\b/);
           if (msMatch) durationMs = parseFloat(msMatch[1]);
-          else if (sMatch) durationMs = parseFloat(sMatch[1]) * 1000;
+          else if (secondsMatch) durationMs = parseFloat(secondsMatch[1]) * 1000;
         }
 
         if (durationMs !== null && durationMs > LONG_TRANSITION_DURATION_THRESHOLD_MS) {
           context.report({
             node: property,
-            message: `${durationMs}ms transition is too slow for UI feedback — keep transitions under 500ms. Exit animations should be ~75% of enter duration`,
+            message: `${durationMs}ms transition is too slow for UI feedback — keep transitions under ${LONG_TRANSITION_DURATION_THRESHOLD_MS}ms. Use longer durations only for page-load hero animations`,
           });
         }
       }

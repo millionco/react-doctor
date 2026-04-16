@@ -1,5 +1,3 @@
-// ── Bounce easing ──
-
 const BounceEasingComponent = () => (
   <div style={{ transition: "transform 0.3s cubic-bezier(0.68, -0.55, 0.27, 1.55)" }}>bounce</div>
 );
@@ -12,15 +10,11 @@ const SpringTimingComponent = () => (
 
 const TailwindBounceComponent = () => <div className="animate-bounce text-lg">bouncing text</div>;
 
-// ── z-index ──
-
 const AbsurdZIndexComponent = () => (
   <div style={{ zIndex: 9999, position: "relative" }}>on top</div>
 );
 
 const AbsurdZIndexStringComponent = () => <div style={{ zIndex: 999 }}>also bad</div>;
-
-// ── Exhaustive inline style ──
 
 const InlineStyleOverloadComponent = () => (
   <div
@@ -41,8 +35,6 @@ const InlineStyleOverloadComponent = () => (
   </div>
 );
 
-// ── Side-tab border ──
-
 const SideTabInlineComponent = () => (
   <div style={{ borderLeft: "4px solid #7c3aed", borderRadius: "8px" }}>side tab</div>
 );
@@ -50,8 +42,6 @@ const SideTabInlineComponent = () => (
 const SideTabTailwindComponent = () => (
   <div className="border-l-4 rounded-lg p-4">side tab tailwind</div>
 );
-
-// ── Pure black background ──
 
 const PureBlackBgComponent = () => (
   <div style={{ backgroundColor: "#000000", color: "white" }}>pure black</div>
@@ -62,8 +52,6 @@ const PureBlackBgShortComponent = () => (
 );
 
 const PureBlackTailwindComponent = () => <div className="bg-black text-white">tailwind black</div>;
-
-// ── Gradient text ──
 
 const GradientTextInlineComponent = () => (
   <div
@@ -84,8 +72,6 @@ const GradientTextTailwindComponent = () => (
   </h1>
 );
 
-// ── Dark mode glow ──
-
 const DarkGlowComponent = () => (
   <div
     style={{
@@ -96,8 +82,6 @@ const DarkGlowComponent = () => (
     glowing card
   </div>
 );
-
-// ── Justified text ──
 
 const JustifiedTextComponent = () => (
   <p style={{ textAlign: "justify" }}>
@@ -111,13 +95,9 @@ const JustifiedWithHyphensComponent = () => (
   </p>
 );
 
-// ── Tiny text ──
-
 const TinyTextComponent = () => <p style={{ fontSize: "10px" }}>too small to read</p>;
 
 const TinyTextNumberComponent = () => <span style={{ fontSize: 8 }}>extremely small</span>;
-
-// ── Wide letter spacing ──
 
 const WideTrackingComponent = () => (
   <p style={{ letterSpacing: "0.1em" }}>wide tracked body text</p>
@@ -127,8 +107,6 @@ const WideTrackingUppercaseOk = () => (
   <span style={{ letterSpacing: "0.1em", textTransform: "uppercase" }}>LABEL</span>
 );
 
-// ── Gray on colored background ──
-
 const GrayOnColorComponent = () => (
   <div className="bg-blue-500 text-gray-400 p-4">washed out text</div>
 );
@@ -137,8 +115,6 @@ const GrayOnColorSlateComponent = () => (
   <div className="bg-emerald-600 text-slate-400">also washed out</div>
 );
 
-// ── Layout transition ──
-
 const LayoutTransitionComponent = () => (
   <div style={{ transition: "width 0.3s ease, opacity 0.3s ease" }}>transitioning width</div>
 );
@@ -146,8 +122,6 @@ const LayoutTransitionComponent = () => (
 const HeightTransitionComponent = () => (
   <div style={{ transitionProperty: "height, transform" }}>transitioning height</div>
 );
-
-// ── Disabled zoom (viewport meta) ──
 
 const DisabledZoomComponent = () => (
   <head>
@@ -161,8 +135,6 @@ const RestrictedZoomComponent = () => (
   </head>
 );
 
-// ── outline none ──
-
 const OutlineNoneComponent = () => <button style={{ outline: "none" }}>no focus ring</button>;
 
 const OutlineZeroComponent = () => <input style={{ outline: 0 }} />;
@@ -171,8 +143,6 @@ const OutlineNoneWithShadowOk = () => (
   <button style={{ outline: "none", boxShadow: "0 0 0 2px blue" }}>custom focus ring</button>
 );
 
-// ── Long transition duration ──
-
 const SlowTransitionComponent = () => (
   <div style={{ transition: "opacity 1.5s ease" }}>too slow</div>
 );
@@ -180,8 +150,6 @@ const SlowTransitionComponent = () => (
 const SlowTransitionDurationComponent = () => (
   <div style={{ transitionDuration: "1200ms" }}>also too slow</div>
 );
-
-// ── Clean components (should NOT trigger) ──
 
 const CleanComponent = () => <div style={{ display: "flex", gap: "8px" }}>clean</div>;
 
@@ -213,7 +181,25 @@ const FastTransitionComponent = () => (
 
 const BorderWidthWithoutColorOk = () => (
   <div style={{ borderLeftWidth: 5, borderLeftStyle: "solid", borderLeftColor: "#ccc" }}>
-    neutral border
+    neutral border via longhand
+  </div>
+);
+
+const ShorthandNeutralBorderOk = () => (
+  <div style={{ borderLeft: "4px solid #ccc", borderRadius: "8px" }}>
+    neutral border via shorthand
+  </div>
+);
+
+const ShorthandRgbNeutralBorderOk = () => (
+  <div style={{ borderLeft: "4px solid rgb(200, 200, 200)", borderRadius: "8px" }}>
+    neutral rgb border
+  </div>
+);
+
+const ShorthandThreeCharHexOk = () => (
+  <div style={{ borderLeftWidth: 5, borderLeftStyle: "solid", borderLeftColor: "#aaa" }}>
+    neutral 3-char hex border
   </div>
 );
 
@@ -259,4 +245,7 @@ export {
   NormalViewportComponent,
   FastTransitionComponent,
   BorderWidthWithoutColorOk,
+  ShorthandNeutralBorderOk,
+  ShorthandRgbNeutralBorderOk,
+  ShorthandThreeCharHexOk,
 };

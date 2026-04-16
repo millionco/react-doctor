@@ -783,7 +783,7 @@ export const noOutlineNone: Rule = {
 
       const hasCustomFocusRing = expression.properties?.some((property: EsTreeNode) => {
         const key = getStylePropertyKey(property);
-        return key === "boxShadow" || key === "outlineOffset" || key === "ring";
+        return key === "boxShadow";
       });
 
       if (!hasCustomFocusRing) {

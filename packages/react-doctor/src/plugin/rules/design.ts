@@ -413,7 +413,7 @@ export const noSideTabBorder: Rule = {
       if (!sideMatch) return;
 
       const hasNeutralBorderColor =
-        /\bborder-(?:gray|slate|zinc|neutral|stone|white|black|transparent)-\d+\b/.test(classStr);
+        /\bborder-(?:(?:gray|slate|zinc|neutral|stone)-\d+|white|black|transparent)\b/.test(classStr);
       if (hasNeutralBorderColor) return;
 
       const width = parseInt(sideMatch[1], 10);

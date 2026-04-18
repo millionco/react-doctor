@@ -1,4 +1,4 @@
-import { getScoreLabel, scoreFromRuleCounts, countUniqueRules } from "react-doctor-core/browser";
+import { getScoreLabel, scoreFromRuleCounts, countUniqueRules } from "react-doctor-web";
 
 const ERROR_ESTIMATED_FIX_RATE = 0.85;
 const WARNING_ESTIMATED_FIX_RATE = 0.8;

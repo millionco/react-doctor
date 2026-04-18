@@ -86,6 +86,16 @@ importers:
         specifier: ^4.1.4
         version: 4.1.4(@types/node@20.19.33)(vite@7.3.1(@types/node@20.19.33)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.46.0)(yaml@2.8.3))
 
+  packages/react-doctor-web:
+    dependencies:
+      react-doctor-core:
+        specifier: workspace:*
+        version: link:../react-doctor-core
+    devDependencies:
+      typescript:
+        specifier: ^6.0.2
+        version: 6.0.2
+
   packages/website:
     dependencies:
       '@vercel/analytics':
@@ -100,9 +110,9 @@ importers:
       react:
         specifier: 19.2.3
         version: 19.2.3
-      react-doctor-core:
+      react-doctor-web:
         specifier: workspace:*
-        version: link:../react-doctor-core
+        version: link:../react-doctor-web
       react-dom:
         specifier: 19.2.3
         version: 19.2.3(react@19.2.3)

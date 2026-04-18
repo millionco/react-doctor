@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { calculateScoreLocally } from "react-doctor-core/browser";
+import { calculateScoreLocally } from "react-doctor-web";
 
 const SAMPLE_DIAGNOSTIC = {
   filePath: "/app/page.tsx",
@@ -15,14 +15,14 @@ const SAMPLE_DIAGNOSTIC = {
   category: "State & Effects",
 };
 
-export default function ReactDoctorCoreSmokePage() {
+export default function ReactDoctorWebSmokePage() {
   const payload = useMemo(() => calculateScoreLocally([SAMPLE_DIAGNOSTIC]), []);
 
   return (
     <main className="p-8 font-mono text-sm">
-      <h1 className="mb-4 text-lg font-semibold">react-doctor-core (browser bundle)</h1>
+      <h1 className="mb-4 text-lg font-semibold">react-doctor-web (client bundle)</h1>
       <p className="mb-2 text-neutral-400">
-        Client-side import of <code>react-doctor-core/browser</code> for CI smoke tests.
+        Client-side import of <code>react-doctor-web</code> for CI smoke tests.
       </p>
       <pre data-testid="core-smoke-result">{JSON.stringify(payload)}</pre>
     </main>

@@ -1,4 +1,4 @@
-import { calculateScoreLocally } from "react-doctor-core/browser";
+import { calculateScoreLocally } from "react-doctor-web";
 
 interface DiagnosticInput {
   filePath: string;

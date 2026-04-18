@@ -17,6 +17,7 @@
     "lint:fix": "oxlint --fix",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
+    "typecheck": "pnpm --filter react-doctor run typecheck && pnpm --filter react-doctor-core run typecheck && pnpm --filter react-doctor-web run typecheck && pnpm --filter website exec tsc --noEmit",
     "changeset": "changeset",
     "version": "changeset version",
     "release": "pnpm build && changeset publish"

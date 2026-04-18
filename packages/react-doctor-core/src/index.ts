@@ -1,11 +1,11 @@
-export type {
-  CleanedDiagnostic,
-  Diagnostic,
-  OxlintDiagnostic,
-  OxlintLabel,
-  OxlintOutput,
-  OxlintSpan,
-  ScoreResult,
+export {
+  type CleanedDiagnostic,
+  type Diagnostic,
+  type OxlintDiagnostic,
+  type OxlintLabel,
+  type OxlintOutput,
+  type OxlintSpan,
+  type ScoreResult,
 } from "./types";
 export {
   ERROR_PREVIEW_LENGTH_CHARS,

@@ -24,7 +24,8 @@ import type {
 } from "./types.js";
 import { calculateScore, calculateScoreLocally } from "./utils/calculate-score.js";
 import { colorizeByScore } from "./utils/colorize-by-score.js";
-import { combineDiagnostics, computeJsxIncludePaths } from "./utils/combine-diagnostics.js";
+import { combineDiagnostics } from "./utils/combine-diagnostics.js";
+import { computeJsxIncludePaths } from "./utils/jsx-include-paths.js";
 import { discoverProject, formatFrameworkName } from "./utils/discover-project.js";
 import { type FramedLine, createFramedLine, printFramedBox } from "./utils/framed-box.js";
 import { groupBy } from "./utils/group-by.js";

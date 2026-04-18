@@ -37,9 +37,17 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "default": "./dist/browser.js"
+    },
     "./oxlint-plugin": {
       "types": "./dist/react-doctor-plugin.d.ts",
       "default": "./dist/react-doctor-plugin.js"
+    },
+    "./worker": {
+      "types": "./dist/worker.d.ts",
+      "default": "./dist/worker.js"
     }
   },
   "scripts": {

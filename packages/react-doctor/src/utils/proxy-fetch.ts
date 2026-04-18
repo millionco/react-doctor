@@ -1,24 +1,20 @@
-import { execSync } from "node:child_process";
 import { FETCH_TIMEOUT_MS } from "../constants.js";
 
-const readNpmConfigValue = (key: string): string | undefined => {
-  try {
-    const value = execSync(`npm config get ${key}`, {
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "ignore"],
-    }).trim();
-    if (value && value !== "null" && value !== "undefined") return value;
-  } catch {}
-  return undefined;
+interface GlobalProcessLike {
+  env?: Record<string, string | undefined>;
+  versions?: { node?: string };
+}
+
+const getGlobalProcess = (): GlobalProcessLike | undefined => {
+  const candidate = (globalThis as { process?: GlobalProcessLike }).process;
+  return candidate?.versions?.node ? candidate : undefined;
 };
 
-const resolveProxyUrl = (): string | undefined =>
-  process.env.HTTPS_PROXY ??
-  process.env.https_proxy ??
-  process.env.HTTP_PROXY ??
-  process.env.http_proxy ??
-  readNpmConfigValue("https-proxy") ??
-  readNpmConfigValue("proxy");
+const readEnvProxy = (): string | undefined => {
+  const proc = getGlobalProcess();
+  if (!proc?.env) return undefined;
+  return proc.env.HTTPS_PROXY ?? proc.env.https_proxy ?? proc.env.HTTP_PROXY ?? proc.env.http_proxy;
+};
 
 let isProxyUrlResolved = false;
 let resolvedProxyUrl: string | undefined;
@@ -26,7 +22,7 @@ let resolvedProxyUrl: string | undefined;
 const getProxyUrl = (): string | undefined => {
   if (isProxyUrlResolved) return resolvedProxyUrl;
   isProxyUrlResolved = true;
-  resolvedProxyUrl = resolveProxyUrl();
+  resolvedProxyUrl = readEnvProxy();
   return resolvedProxyUrl;
 };
 

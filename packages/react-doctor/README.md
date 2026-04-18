@@ -92,6 +92,14 @@ Options:
   -h, --help        display help for command
 ```
 
+## Browser API
+
+Import `react-doctor/browser` to run the same **diagnostics merge, config-based filtering, timing, and scoring pipeline** as `react-doctor/api`’s `diagnose`, but with **caller-supplied** inputs: `project` metadata, a virtual `projectFiles` map (contents keyed by paths relative to `rootDirectory`) for ignore/suppression resolution, and a `runOxlint` callback that performs linting in your environment (for example a Web Worker with oxlint).
+
+Git history, real filesystem discovery, knip, the CLI, staged-file detection, and interactive prompts are **not** available in the browser bundle; treat those as Node-only or supply equivalents yourself. `react-doctor/worker` re-exports the same browser-facing modules for worker targets.
+
+If you call **`diagnoseCore`** yourself in the browser, pass **`calculateDiagnosticsScore`** from this package (re-exported as **`calculateScore`** on `react-doctor/browser`) so the bundle never pulls in Node-only proxy code.
+
 ## Configuration
 
 Create a `react-doctor.config.json` in your project root to customize behavior:

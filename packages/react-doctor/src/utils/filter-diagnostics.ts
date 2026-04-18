@@ -1,27 +1,36 @@
-import fs from "node:fs";
-import path from "node:path";
 import type { Diagnostic, ReactDoctorConfig } from "../types.js";
 import { compileIgnoredFilePatterns, isFileIgnoredByPatterns } from "./is-ignored-file.js";
+
+const resolveCandidateReadPath = (rootDirectory: string, filePath: string): string => {
+  const normalizedFile = filePath.replace(/\\/g, "/");
+  if (
+    normalizedFile.startsWith("/") ||
+    /^[a-zA-Z]:\//.test(normalizedFile) ||
+    /^[a-zA-Z]:\\/.test(filePath)
+  ) {
+    return filePath;
+  }
+  const root = rootDirectory.replace(/\\/g, "/").replace(/\/$/, "");
+  return `${root}/${normalizedFile.replace(/^\.\//, "")}`;
+};
 
 const OPENING_TAG_PATTERN = /<([A-Z][\w.]*)/;
 const DISABLE_NEXT_LINE_PATTERN = /\/\/\s*react-doctor-disable-next-line\b(?:\s+(.+))?/;
 const DISABLE_LINE_PATTERN = /\/\/\s*react-doctor-disable-line\b(?:\s+(.+))?/;
 
-const createFileLinesCache = (rootDirectory: string) => {
+const createFileLinesCache = (
+  rootDirectory: string,
+  readFileLinesSync: (filePath: string) => string[] | null,
+) => {
   const cache = new Map<string, string[] | null>();
 
   return (filePath: string): string[] | null => {
     const cached = cache.get(filePath);
     if (cached !== undefined) return cached;
-    const absolutePath = path.isAbsolute(filePath) ? filePath : path.join(rootDirectory, filePath);
-    try {
-      const lines = fs.readFileSync(absolutePath, "utf-8").split("\n");
-      cache.set(filePath, lines);
-      return lines;
-    } catch {
-      cache.set(filePath, null);
-      return null;
-    }
+    const absolutePath = resolveCandidateReadPath(rootDirectory, filePath);
+    const lines = readFileLinesSync(absolutePath);
+    cache.set(filePath, lines);
+    return lines;
   };
 };
 
@@ -51,6 +60,7 @@ export const filterIgnoredDiagnostics = (
   diagnostics: Diagnostic[],
   config: ReactDoctorConfig,
   rootDirectory: string,
+  readFileLinesSync: (filePath: string) => string[] | null,
 ): Diagnostic[] => {
   const ignoredRules = new Set(Array.isArray(config.ignore?.rules) ? config.ignore.rules : []);
   const ignoredFilePatterns = compileIgnoredFilePatterns(config);
@@ -58,7 +68,7 @@ export const filterIgnoredDiagnostics = (
     Array.isArray(config.textComponents) ? config.textComponents : [],
   );
   const hasTextComponents = textComponentNames.size > 0;
-  const getFileLines = createFileLinesCache(rootDirectory);
+  const getFileLines = createFileLinesCache(rootDirectory, readFileLinesSync);
 
   return diagnostics.filter((diagnostic) => {
     const ruleIdentifier = `${diagnostic.plugin}/${diagnostic.rule}`;
@@ -84,8 +94,9 @@ export const filterIgnoredDiagnostics = (
 export const filterInlineSuppressions = (
   diagnostics: Diagnostic[],
   rootDirectory: string,
+  readFileLinesSync: (filePath: string) => string[] | null,
 ): Diagnostic[] => {
-  const getFileLines = createFileLinesCache(rootDirectory);
+  const getFileLines = createFileLinesCache(rootDirectory, readFileLinesSync);
 
   return diagnostics.filter((diagnostic) => {
     if (diagnostic.line <= 0) return true;

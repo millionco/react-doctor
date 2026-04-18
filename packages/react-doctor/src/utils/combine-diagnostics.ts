@@ -1,12 +1,10 @@
-import { JSX_FILE_PATTERN } from "../constants.js";
 import type { Diagnostic, ReactDoctorConfig } from "../types.js";
 import { checkReducedMotion } from "./check-reduced-motion.js";
-import { filterIgnoredDiagnostics, filterInlineSuppressions } from "./filter-diagnostics.js";
+import { createNodeReadFileLinesSync } from "./read-file-lines-node.js";
+import { mergeAndFilterDiagnostics } from "./merge-and-filter-diagnostics.js";
 
-export const computeJsxIncludePaths = (includePaths: string[]): string[] | undefined =>
-  includePaths.length > 0
-    ? includePaths.filter((filePath) => JSX_FILE_PATTERN.test(filePath))
-    : undefined;
+export { mergeAndFilterDiagnostics } from "./merge-and-filter-diagnostics.js";
+export { computeJsxIncludePaths } from "./jsx-include-paths.js";
 
 export const combineDiagnostics = (
   lintDiagnostics: Diagnostic[],
@@ -14,12 +12,11 @@ export const combineDiagnostics = (
   directory: string,
   isDiffMode: boolean,
   userConfig: ReactDoctorConfig | null,
+  readFileLinesSync: (filePath: string) => string[] | null = createNodeReadFileLinesSync(directory),
+  includeEnvironmentChecks = true,
 ): Diagnostic[] => {
-  const merged = [
-    ...lintDiagnostics,
-    ...deadCodeDiagnostics,
-    ...(isDiffMode ? [] : checkReducedMotion(directory)),
-  ];
-  const filtered = userConfig ? filterIgnoredDiagnostics(merged, userConfig, directory) : merged;
-  return filterInlineSuppressions(filtered, directory);
+  const extraDiagnostics =
+    isDiffMode || !includeEnvironmentChecks ? [] : checkReducedMotion(directory);
+  const merged = [...lintDiagnostics, ...deadCodeDiagnostics, ...extraDiagnostics];
+  return mergeAndFilterDiagnostics(merged, directory, userConfig, readFileLinesSync);
 };

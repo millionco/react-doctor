@@ -1,11 +1,13 @@
 import path from "node:path";
-import { performance } from "node:perf_hooks";
 import type { Diagnostic, DiffInfo, ProjectInfo, ReactDoctorConfig, ScoreResult } from "./types.js";
-import { calculateScore } from "./utils/calculate-score.js";
-import { combineDiagnostics, computeJsxIncludePaths } from "./utils/combine-diagnostics.js";
+import { diagnoseCore } from "./core/diagnose-core.js";
+import { computeJsxIncludePaths } from "./utils/jsx-include-paths.js";
+import { checkReducedMotion } from "./utils/check-reduced-motion.js";
 import { discoverProject } from "./utils/discover-project.js";
 import { loadConfig } from "./utils/load-config.js";
+import { createNodeReadFileLinesSync } from "./utils/read-file-lines-node.js";
 import { resolveLintIncludePaths } from "./utils/resolve-lint-include-paths.js";
+import { calculateScore } from "./utils/calculate-score-node.js";
 import { runKnip } from "./utils/run-knip.js";
 import { runOxlint } from "./utils/run-oxlint.js";
 
@@ -29,68 +31,36 @@ export const diagnose = async (
   directory: string,
   options: DiagnoseOptions = {},
 ): Promise<DiagnoseResult> => {
-  const { includePaths = [] } = options;
-  const isDiffMode = includePaths.length > 0;
-
-  const startTime = performance.now();
   const resolvedDirectory = path.resolve(directory);
-  const projectInfo = discoverProject(resolvedDirectory);
   const userConfig = loadConfig(resolvedDirectory);
-
-  const effectiveLint = options.lint ?? userConfig?.lint ?? true;
-  const effectiveDeadCode = options.deadCode ?? userConfig?.deadCode ?? true;
-
-  if (!projectInfo.reactVersion) {
-    throw new Error("No React dependency found in package.json");
-  }
-
-  const jsxIncludePaths = computeJsxIncludePaths(includePaths);
+  const includePaths = options.includePaths ?? [];
+  const isDiffMode = includePaths.length > 0;
   const lintIncludePaths =
-    jsxIncludePaths ?? resolveLintIncludePaths(resolvedDirectory, userConfig);
+    computeJsxIncludePaths(includePaths) ?? resolveLintIncludePaths(resolvedDirectory, userConfig);
+  const readFileLinesSync = createNodeReadFileLinesSync(resolvedDirectory);
 
-  const emptyDiagnostics: Diagnostic[] = [];
-
-  const effectiveCustomRulesOnly = userConfig?.customRulesOnly ?? false;
-
-  const lintPromise = effectiveLint
-    ? runOxlint(
-        resolvedDirectory,
-        projectInfo.hasTypeScript,
-        projectInfo.framework,
-        projectInfo.hasReactCompiler,
-        lintIncludePaths,
-        undefined,
-        effectiveCustomRulesOnly,
-      ).catch((error: unknown) => {
-        console.error("Lint failed:", error);
-        return emptyDiagnostics;
-      })
-    : Promise.resolve(emptyDiagnostics);
-
-  const deadCodePromise =
-    effectiveDeadCode && !isDiffMode
-      ? runKnip(resolvedDirectory).catch((error: unknown) => {
-          console.error("Dead code analysis failed:", error);
-          return emptyDiagnostics;
-        })
-      : Promise.resolve(emptyDiagnostics);
-
-  const [lintDiagnostics, deadCodeDiagnostics] = await Promise.all([lintPromise, deadCodePromise]);
-  const diagnostics = combineDiagnostics(
-    lintDiagnostics,
-    deadCodeDiagnostics,
-    resolvedDirectory,
-    isDiffMode,
-    userConfig,
+  return diagnoseCore(
+    {
+      rootDirectory: resolvedDirectory,
+      readFileLinesSync,
+      loadUserConfig: () => userConfig,
+      discoverProjectInfo: () => discoverProject(resolvedDirectory),
+      calculateDiagnosticsScore: calculateScore,
+      getExtraDiagnostics: () => (isDiffMode ? [] : checkReducedMotion(resolvedDirectory)),
+      createRunners: ({ resolvedDirectory: projectRoot, projectInfo, userConfig: config }) => ({
+        runLint: () =>
+          runOxlint(
+            projectRoot,
+            projectInfo.hasTypeScript,
+            projectInfo.framework,
+            projectInfo.hasReactCompiler,
+            lintIncludePaths,
+            undefined,
+            config?.customRulesOnly ?? false,
+          ),
+        runDeadCode: () => runKnip(projectRoot),
+      }),
+    },
+    { ...options, lintIncludePaths },
   );
-
-  const elapsedMilliseconds = performance.now() - startTime;
-  const score = await calculateScore(diagnostics);
-
-  return {
-    diagnostics,
-    score,
-    project: projectInfo,
-    elapsedMilliseconds,
-  };
 };

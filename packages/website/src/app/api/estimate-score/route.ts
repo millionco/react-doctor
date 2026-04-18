@@ -1,8 +1,4 @@
-const PERFECT_SCORE = 100;
-const ERROR_RULE_PENALTY = 1.5;
-const WARNING_RULE_PENALTY = 0.75;
-const SCORE_GOOD_THRESHOLD = 75;
-const SCORE_OK_THRESHOLD = 50;
+import { getScoreLabel, scoreFromRuleCounts, countUniqueRules } from "react-doctor-core/browser";
 
 const ERROR_ESTIMATED_FIX_RATE = 0.85;
 const WARNING_ESTIMATED_FIX_RATE = 0.8;
@@ -19,35 +15,6 @@ interface DiagnosticInput {
   category: string;
   weight?: number;
 }
-
-const getScoreLabel = (score: number): string => {
-  if (score >= SCORE_GOOD_THRESHOLD) return "Great";
-  if (score >= SCORE_OK_THRESHOLD) return "Needs work";
-  return "Critical";
-};
-
-const scoreFromRuleCounts = (errorRuleCount: number, warningRuleCount: number): number => {
-  const penalty = errorRuleCount * ERROR_RULE_PENALTY + warningRuleCount * WARNING_RULE_PENALTY;
-  return Math.max(0, Math.round(PERFECT_SCORE - penalty));
-};
-
-const countUniqueRules = (
-  diagnostics: DiagnosticInput[],
-): { errorRuleCount: number; warningRuleCount: number } => {
-  const errorRules = new Set<string>();
-  const warningRules = new Set<string>();
-
-  for (const diagnostic of diagnostics) {
-    const ruleKey = `${diagnostic.plugin}/${diagnostic.rule}`;
-    if (diagnostic.severity === "error") {
-      errorRules.add(ruleKey);
-    } else {
-      warningRules.add(ruleKey);
-    }
-  }
-
-  return { errorRuleCount: errorRules.size, warningRuleCount: warningRules.size };
-};
 
 const isValidDiagnostic = (value: unknown): value is DiagnosticInput => {
   if (typeof value !== "object" || value === null) return false;

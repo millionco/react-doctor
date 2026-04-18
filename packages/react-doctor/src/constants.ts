@@ -1,16 +1,26 @@
+import {
+  ERROR_PREVIEW_LENGTH_CHARS,
+  ERROR_RULE_PENALTY,
+  JSX_FILE_PATTERN,
+  PERFECT_SCORE,
+  SCORE_GOOD_THRESHOLD,
+  SCORE_OK_THRESHOLD,
+  WARNING_RULE_PENALTY,
+} from "react-doctor-core";
+
 export const SOURCE_FILE_PATTERN = /\.(tsx?|jsx?)$/;
 
-export const JSX_FILE_PATTERN = /\.(tsx|jsx)$/;
+export {
+  ERROR_PREVIEW_LENGTH_CHARS,
+  ERROR_RULE_PENALTY,
+  JSX_FILE_PATTERN,
+  PERFECT_SCORE,
+  SCORE_GOOD_THRESHOLD,
+  SCORE_OK_THRESHOLD,
+  WARNING_RULE_PENALTY,
+};
 
 export const MILLISECONDS_PER_SECOND = 1000;
-
-export const ERROR_PREVIEW_LENGTH_CHARS = 200;
-
-export const PERFECT_SCORE = 100;
-
-export const SCORE_GOOD_THRESHOLD = 75;
-
-export const SCORE_OK_THRESHOLD = 50;
 
 export const SCORE_BAR_WIDTH_CHARS = 50;
 
@@ -37,10 +47,6 @@ export const OXLINT_MAX_FILES_PER_BATCH = 500;
 export const OFFLINE_MESSAGE = "Score calculated locally (offline mode).";
 
 export const DEFAULT_BRANCH_CANDIDATES = ["main", "master"];
-
-export const ERROR_RULE_PENALTY = 1.5;
-
-export const WARNING_RULE_PENALTY = 0.75;
 
 export const MAX_KNIP_RETRIES = 5;
 

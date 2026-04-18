@@ -21,7 +21,7 @@ export default defineConfig([
     entry: {
       cli: "./src/cli.ts",
     },
-    external: ["oxlint", "knip", "knip/session"],
+    external: ["oxlint", "knip", "knip/session", "react-doctor-core"],
     dts: true,
     target: "node18",
     platform: "node",
@@ -40,7 +40,7 @@ export default defineConfig([
     entry: {
       index: "./src/index.ts",
     },
-    external: ["oxlint", "knip", "knip/session"],
+    external: ["oxlint", "knip", "knip/session", "react-doctor-core"],
     dts: true,
     target: "node18",
     platform: "node",
@@ -48,7 +48,7 @@ export default defineConfig([
   },
   {
     entry: {
-      "react-doctor-plugin": "./src/plugin/index.ts",
+      "react-doctor-plugin": "../react-doctor-core/src/plugin/index.ts",
     },
     target: "node18",
     platform: "node",

@@ -1,0 +1,30 @@
+{
+  "name": "react-doctor-core",
+  "version": "0.0.38",
+  "description": "Browser-safe core logic for react-doctor (parsing, scoring, oxlint plugin)",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./browser": {
+      "types": "./src/browser.ts",
+      "default": "./src/browser.ts"
+    },
+    "./plugin/constants": {
+      "types": "./src/plugin/constants.ts",
+      "default": "./src/plugin/constants.ts"
+    }
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.4"
+  }
+}

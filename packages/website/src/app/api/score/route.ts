@@ -1,4 +1,4 @@
-import { PERFECT_SCORE, calculateScoreLocally } from "react-doctor-core/browser";
+import { calculateScoreLocally } from "react-doctor-core/browser";
 
 interface DiagnosticInput {
   filePath: string;
@@ -12,11 +12,6 @@ interface DiagnosticInput {
   category: string;
   weight?: number;
 }
-
-const calculateNumericScore = (diagnostics: DiagnosticInput[]): number => {
-  if (diagnostics.length === 0) return PERFECT_SCORE;
-  return calculateScoreLocally(diagnostics).score;
-};
 
 const isValidDiagnostic = (value: unknown): value is DiagnosticInput => {
   if (typeof value !== "object" || value === null) return false;

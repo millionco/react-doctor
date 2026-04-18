@@ -1,7 +1,7 @@
 {
   "name": "react-doctor-core",
   "version": "0.0.38",
-  "description": "Environment-agnostic (isomorphic) shared logic for react-doctor: diagnostic scoring, oxlint JSON parsing and normalization, and the oxlint rule plugin. Runtime-neutral; optional subpaths omit the plugin for smaller bundles. For web apps, depend on react-doctor-web instead of importing this package directly from client code.",
+  "description": "Runtime-agnostic react-doctor logic: scoring, oxlint output parsing, and the oxlint plugin (use react-doctor-web in browsers)",
   "license": "MIT",
   "type": "module",
   "exports": {

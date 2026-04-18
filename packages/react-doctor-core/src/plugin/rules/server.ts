@@ -3,9 +3,9 @@ import {
   AUTH_FUNCTION_NAMES,
   SERVER_ACTION_DIRECTORY_PATTERN,
   SERVER_ACTION_FILE_PATTERN,
-} from "../constants.js";
-import { hasDirective, hasUseServerDirective, walkAst } from "../helpers.js";
-import type { EsTreeNode, Rule, RuleContext } from "../types.js";
+} from "../constants";
+import { hasDirective, hasUseServerDirective, walkAst } from "../helpers";
+import type { EsTreeNode, Rule, RuleContext } from "../types";
 
 const containsAuthCheck = (statements: EsTreeNode[]): boolean => {
   let foundAuthCall = false;

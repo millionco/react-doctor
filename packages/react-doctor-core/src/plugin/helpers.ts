@@ -6,8 +6,8 @@ import {
   MUTATION_METHOD_NAMES,
   SETTER_PATTERN,
   UPPERCASE_PATTERN,
-} from "./constants.js";
-import type { EsTreeNode, RuleVisitors } from "./types.js";
+} from "./constants";
+import type { EsTreeNode, RuleVisitors } from "./types";
 
 export const walkAst = (node: EsTreeNode, visitor: (child: EsTreeNode) => void): void => {
   if (!node || typeof node !== "object") return;

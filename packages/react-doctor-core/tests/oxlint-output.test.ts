@@ -4,7 +4,7 @@ import {
   parseOxlintOutput,
   parseRuleCode,
   resolveDiagnosticCategory,
-} from "../src/oxlint-output.js";
+} from "../src/oxlint-output";
 
 describe("parseRuleCode", () => {
   it("parses eslint-style plugin(rule) codes", () => {

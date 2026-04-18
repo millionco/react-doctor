@@ -6,7 +6,7 @@ export type {
   OxlintOutput,
   OxlintSpan,
   ScoreResult,
-} from "./types.js";
+} from "./types";
 export {
   ERROR_PREVIEW_LENGTH_CHARS,
   ERROR_RULE_PENALTY,
@@ -15,17 +15,17 @@ export {
   SCORE_GOOD_THRESHOLD,
   SCORE_OK_THRESHOLD,
   WARNING_RULE_PENALTY,
-} from "./constants.js";
+} from "./constants";
 export {
   calculateScoreLocally,
   countUniqueRules,
   getScoreLabel,
   scoreFromRuleCounts,
-} from "./score.js";
+} from "./score";
 export {
   cleanDiagnosticMessage,
   parseOxlintOutput,
   parseRuleCode,
   resolveDiagnosticCategory,
-} from "./oxlint-output.js";
-export { default as reactDoctorOxlintPlugin } from "./plugin/index.js";
+} from "./oxlint-output";
+export { default as reactDoctorOxlintPlugin } from "./plugin/index";

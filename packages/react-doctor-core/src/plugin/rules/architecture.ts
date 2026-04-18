@@ -2,9 +2,9 @@ import {
   GENERIC_EVENT_SUFFIXES,
   GIANT_COMPONENT_LINE_THRESHOLD,
   RENDER_FUNCTION_PATTERN,
-} from "../constants.js";
-import { isComponentAssignment, isComponentDeclaration, isUppercaseName } from "../helpers.js";
-import type { EsTreeNode, Rule, RuleContext } from "../types.js";
+} from "../constants";
+import { isComponentAssignment, isComponentDeclaration, isUppercaseName } from "../helpers";
+import type { EsTreeNode, Rule, RuleContext } from "../types";
 
 export const noGenericHandlerNames: Rule = {
   create: (context: RuleContext) => ({

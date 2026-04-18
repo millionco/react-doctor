@@ -6,9 +6,9 @@ import {
   TANSTACK_QUERY_CLIENT_CLASS,
   TANSTACK_QUERY_HOOKS,
   UPPERCASE_PATTERN,
-} from "../constants.js";
-import { getEffectCallback, isHookCall, walkAst } from "../helpers.js";
-import type { EsTreeNode, Rule, RuleContext } from "../types.js";
+} from "../constants";
+import { getEffectCallback, isHookCall, walkAst } from "../helpers";
+import type { EsTreeNode, Rule, RuleContext } from "../types";
 
 export const queryStableQueryClient: Rule = {
   create: (context: RuleContext) => {

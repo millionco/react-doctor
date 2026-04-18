@@ -2,7 +2,7 @@ import {
   noGiantComponent,
   noNestedComponentDefinition,
   noRenderInRender,
-} from "./rules/architecture.js";
+} from "./rules/architecture";
 import {
   noBarrelImport,
   noFullLodashImport,
@@ -10,8 +10,8 @@ import {
   noUndeferredThirdParty,
   preferDynamicImport,
   useLazyMotion,
-} from "./rules/bundle-size.js";
-import { clientPassiveEventListeners } from "./rules/client.js";
+} from "./rules/bundle-size";
+import { clientPassiveEventListeners } from "./rules/client";
 import {
   noDarkModeGlow,
   noDisabledZoom,
@@ -28,12 +28,12 @@ import {
   noTinyText,
   noWideLetterSpacing,
   noZIndex9999,
-} from "./rules/design.js";
+} from "./rules/design";
 import {
   noArrayIndexAsKey,
   noPreventDefault,
   renderingConditionalRender,
-} from "./rules/correctness.js";
+} from "./rules/correctness";
 import {
   asyncParallel,
   jsBatchDomCss,
@@ -46,7 +46,7 @@ import {
   jsSetMapLookups,
   jsTosortedImmutable,
   jsFlatmapFilter,
-} from "./rules/js-performance.js";
+} from "./rules/js-performance";
 import {
   nextjsAsyncClientComponent,
   nextjsImageMissingSizes,
@@ -64,7 +64,7 @@ import {
   nextjsNoRedirectInTryCatch,
   nextjsNoSideEffectInGetHandler,
   nextjsNoUseSearchParamsWithoutSuspense,
-} from "./rules/nextjs.js";
+} from "./rules/nextjs";
 import {
   noGlobalCssVariableAnimation,
   noLargeAnimatedBlur,
@@ -78,7 +78,7 @@ import {
   renderingHydrationNoFlicker,
   renderingScriptDeferAsync,
   rerenderMemoWithDefaultValue,
-} from "./rules/performance.js";
+} from "./rules/performance";
 import {
   rnNoRawText,
   rnNoDeprecatedModules,
@@ -88,7 +88,7 @@ import {
   rnNoLegacyShadowStyles,
   rnPreferReanimated,
   rnNoSingleElementStyleArray,
-} from "./rules/react-native.js";
+} from "./rules/react-native";
 import {
   queryMutationMissingInvalidation,
   queryNoQueryInEffect,
@@ -96,9 +96,9 @@ import {
   queryNoUseQueryForMutation,
   queryNoVoidQueryFn,
   queryStableQueryClient,
-} from "./rules/tanstack-query.js";
-import { noEval, noSecretsInClientCode } from "./rules/security.js";
-import { serverAfterNonblocking, serverAuthActions } from "./rules/server.js";
+} from "./rules/tanstack-query";
+import { noEval, noSecretsInClientCode } from "./rules/security";
+import { serverAfterNonblocking, serverAuthActions } from "./rules/server";
 import {
   tanstackStartGetMutation,
   tanstackStartLoaderParallelFetch,
@@ -114,7 +114,7 @@ import {
   tanstackStartRoutePropertyOrder,
   tanstackStartServerFnMethodOrder,
   tanstackStartServerFnValidateInput,
-} from "./rules/tanstack-start.js";
+} from "./rules/tanstack-start";
 import {
   noCascadingSetState,
   noDerivedStateEffect,
@@ -125,8 +125,8 @@ import {
   rerenderDependencies,
   rerenderFunctionalSetstate,
   rerenderLazyStateInit,
-} from "./rules/state-and-effects.js";
-import type { RulePlugin } from "./types.js";
+} from "./rules/state-and-effects";
+import type { RulePlugin } from "./types";
 
 const plugin: RulePlugin = {
   meta: { name: "react-doctor" },

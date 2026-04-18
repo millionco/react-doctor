@@ -1,6 +1,6 @@
-import { PASSIVE_EVENT_NAMES } from "../constants.js";
-import { isMemberProperty } from "../helpers.js";
-import type { EsTreeNode, Rule, RuleContext } from "../types.js";
+import { PASSIVE_EVENT_NAMES } from "../constants";
+import { isMemberProperty } from "../helpers";
+import type { EsTreeNode, Rule, RuleContext } from "../types";
 
 export const clientPassiveEventListeners: Rule = {
   create: (context: RuleContext) => ({

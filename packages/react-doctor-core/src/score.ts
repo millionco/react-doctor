@@ -4,8 +4,8 @@ import {
   SCORE_GOOD_THRESHOLD,
   SCORE_OK_THRESHOLD,
   WARNING_RULE_PENALTY,
-} from "./constants.js";
-import type { Diagnostic, ScoreResult } from "./types.js";
+} from "./constants";
+import type { Diagnostic, ScoreResult } from "./types";
 
 export const getScoreLabel = (score: number): string => {
   if (score >= SCORE_GOOD_THRESHOLD) return "Great";

@@ -1,6 +1,6 @@
-import { INDEX_PARAMETER_NAMES } from "../constants.js";
-import { findJsxAttribute, walkAst } from "../helpers.js";
-import type { EsTreeNode, Rule, RuleContext } from "../types.js";
+import { INDEX_PARAMETER_NAMES } from "../constants";
+import { findJsxAttribute, walkAst } from "../helpers";
+import type { EsTreeNode, Rule, RuleContext } from "../types";
 
 const extractIndexName = (node: EsTreeNode): string | null => {
   if (node.type === "Identifier" && INDEX_PARAMETER_NAMES.has(node.name)) return node.name;

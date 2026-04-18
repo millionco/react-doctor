@@ -12,7 +12,7 @@ import {
   PAGES_DIRECTORY_PATTERN,
   POLYFILL_SCRIPT_PATTERN,
   ROUTE_HANDLER_FILE_PATTERN,
-} from "../constants.js";
+} from "../constants";
 import {
   containsFetchCall,
   findJsxAttribute,
@@ -25,8 +25,8 @@ import {
   isMemberProperty,
   isUppercaseName,
   walkAst,
-} from "../helpers.js";
-import type { EsTreeNode, Rule, RuleContext } from "../types.js";
+} from "../helpers";
+import type { EsTreeNode, Rule, RuleContext } from "../types";
 
 export const nextjsNoImgElement: Rule = {
   create: (context: RuleContext) => {

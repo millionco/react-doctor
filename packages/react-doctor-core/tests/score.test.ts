@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { Diagnostic } from "../src/types.js";
+import type { Diagnostic } from "../src/types";
 import {
   calculateScoreLocally,
   countUniqueRules,
   getScoreLabel,
   scoreFromRuleCounts,
-} from "../src/score.js";
+} from "../src/score";
 
 const sampleDiagnostic = (
   overrides: Partial<Diagnostic> & Pick<Diagnostic, "plugin" | "rule" | "severity">,

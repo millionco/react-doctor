@@ -1,5 +1,5 @@
-import { ERROR_PREVIEW_LENGTH_CHARS, JSX_FILE_PATTERN } from "./constants.js";
-import type { CleanedDiagnostic, Diagnostic, OxlintOutput } from "./types.js";
+import { ERROR_PREVIEW_LENGTH_CHARS, JSX_FILE_PATTERN } from "./constants";
+import type { CleanedDiagnostic, Diagnostic, OxlintOutput } from "./types";
 
 const PLUGIN_CATEGORY_MAP: Record<string, string> = {
   react: "Correctness",

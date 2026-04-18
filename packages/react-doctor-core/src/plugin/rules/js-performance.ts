@@ -5,9 +5,9 @@ import {
   SEQUENTIAL_AWAIT_THRESHOLD,
   STORAGE_OBJECTS,
   TEST_FILE_PATTERN,
-} from "../constants.js";
-import { createLoopAwareVisitors, isMemberProperty, walkAst } from "../helpers.js";
-import type { EsTreeNode, Rule, RuleContext } from "../types.js";
+} from "../constants";
+import { createLoopAwareVisitors, isMemberProperty, walkAst } from "../helpers";
+import type { EsTreeNode, Rule, RuleContext } from "../types";
 
 export const jsCombineIterations: Rule = {
   create: (context: RuleContext) => ({

@@ -3,8 +3,8 @@ import {
   SECRET_MIN_LENGTH_CHARS,
   SECRET_PATTERNS,
   SECRET_VARIABLE_PATTERN,
-} from "../constants.js";
-import type { EsTreeNode, Rule, RuleContext } from "../types.js";
+} from "../constants";
+import type { EsTreeNode, Rule, RuleContext } from "../types";
 
 export const noEval: Rule = {
   create: (context: RuleContext) => ({

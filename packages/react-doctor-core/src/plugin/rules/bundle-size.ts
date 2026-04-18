@@ -1,6 +1,6 @@
-import { BARREL_INDEX_SUFFIXES, HEAVY_LIBRARIES } from "../constants.js";
-import { findJsxAttribute, hasJsxAttribute } from "../helpers.js";
-import type { EsTreeNode, Rule, RuleContext } from "../types.js";
+import { BARREL_INDEX_SUFFIXES, HEAVY_LIBRARIES } from "../constants";
+import { findJsxAttribute, hasJsxAttribute } from "../helpers";
+import type { EsTreeNode, Rule, RuleContext } from "../types";
 
 export const noBarrelImport: Rule = {
   create: (context: RuleContext) => {

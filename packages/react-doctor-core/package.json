@@ -1,7 +1,7 @@
 {
   "name": "react-doctor-core",
   "version": "0.0.38",
-  "description": "Runtime-agnostic react-doctor logic: scoring, oxlint output parsing, and the oxlint plugin (use react-doctor-web in browsers)",
+  "description": "Core package for react doctor:",
   "license": "MIT",
   "type": "module",
   "exports": {

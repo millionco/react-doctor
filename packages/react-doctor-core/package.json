@@ -1,7 +1,7 @@
 {
   "name": "react-doctor-core",
   "version": "0.0.38",
-  "description": "Browser-safe core logic for react-doctor (parsing, scoring, oxlint plugin)",
+  "description": "Runtime-agnostic shared logic for react-doctor: diagnostic scoring, oxlint JSON parsing and normalization, and the oxlint rule plugin, with a browser-oriented entry that omits the plugin for lighter bundles",
   "license": "MIT",
   "type": "module",
   "exports": {

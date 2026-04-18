@@ -1,7 +1,7 @@
 {
   "name": "react-doctor-core",
   "version": "0.0.38",
-  "description": "Core package for react doctor:",
+  "description": "Core package for react doctor",
   "license": "MIT",
   "type": "module",
   "exports": {

@@ -1,27 +1,17 @@
-export interface DiagnosticInput {
-  filePath: string;
-  plugin: string;
-  rule: string;
-  severity: "error" | "warning";
-  message: string;
-  help: string;
-  line: number;
-  column: number;
-  category: string;
-  weight?: number;
-}
+import type { Diagnostic } from "react-doctor-web";
 
-export const isValidScoreApiDiagnostic = (value: unknown): value is DiagnosticInput => {
+export const isValidScoreApiDiagnostic = (value: unknown): value is Diagnostic => {
   if (typeof value !== "object" || value === null) return false;
+  const diagnosticRecord = value as Record<string, unknown>;
   return (
-    typeof Reflect.get(value, "filePath") === "string" &&
-    typeof Reflect.get(value, "plugin") === "string" &&
-    typeof Reflect.get(value, "rule") === "string" &&
-    (Reflect.get(value, "severity") === "error" || Reflect.get(value, "severity") === "warning") &&
-    typeof Reflect.get(value, "message") === "string" &&
-    typeof Reflect.get(value, "help") === "string" &&
-    typeof Reflect.get(value, "line") === "number" &&
-    typeof Reflect.get(value, "column") === "number" &&
-    typeof Reflect.get(value, "category") === "string"
+    typeof diagnosticRecord.filePath === "string" &&
+    typeof diagnosticRecord.plugin === "string" &&
+    typeof diagnosticRecord.rule === "string" &&
+    (diagnosticRecord.severity === "error" || diagnosticRecord.severity === "warning") &&
+    typeof diagnosticRecord.message === "string" &&
+    typeof diagnosticRecord.help === "string" &&
+    typeof diagnosticRecord.line === "number" &&
+    typeof diagnosticRecord.column === "number" &&
+    typeof diagnosticRecord.category === "string"
   );
 };

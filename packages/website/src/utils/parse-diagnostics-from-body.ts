@@ -1,5 +1,5 @@
 import { SCORE_API_CLIENT_ERROR_STATUS } from "../constants";
-import type { DiagnosticInput } from "./is-valid-score-api-diagnostic";
+import type { Diagnostic } from "react-doctor-web";
 import { isValidScoreApiDiagnostic } from "./is-valid-score-api-diagnostic";
 import { SCORE_API_CORS_HEADERS } from "./score-api-cors-headers";
 
@@ -7,6 +7,12 @@ const MISSING_DIAGNOSTICS_ARRAY_MESSAGE = "Request body must contain a 'diagnost
 
 const INVALID_DIAGNOSTIC_FIELDS_MESSAGE =
   "Each diagnostic must have 'filePath', 'plugin', 'rule', 'severity', 'message', 'help', 'line', 'column', and 'category'";
+
+const respondWithScoreApiClientError = (message: string): Response =>
+  Response.json(
+    { error: message },
+    { status: SCORE_API_CLIENT_ERROR_STATUS, headers: SCORE_API_CORS_HEADERS },
+  );
 
 const readDiagnosticsArray = (body: unknown): unknown[] | null => {
   if (typeof body !== "object" || body === null) return null;
@@ -16,16 +22,13 @@ const readDiagnosticsArray = (body: unknown): unknown[] | null => {
 
 export const parseDiagnosticsFromBody = (
   body: unknown,
-): { ok: true; diagnostics: DiagnosticInput[] } | { ok: false; response: Response } => {
+): { ok: true; diagnostics: Diagnostic[] } | { ok: false; response: Response } => {
   const diagnosticsArray = readDiagnosticsArray(body);
 
   if (diagnosticsArray === null) {
     return {
       ok: false,
-      response: Response.json(
-        { error: MISSING_DIAGNOSTICS_ARRAY_MESSAGE },
-        { status: SCORE_API_CLIENT_ERROR_STATUS, headers: SCORE_API_CORS_HEADERS },
-      ),
+      response: respondWithScoreApiClientError(MISSING_DIAGNOSTICS_ARRAY_MESSAGE),
     };
   }
 
@@ -36,10 +39,7 @@ export const parseDiagnosticsFromBody = (
   if (!isValidPayload) {
     return {
       ok: false,
-      response: Response.json(
-        { error: INVALID_DIAGNOSTIC_FIELDS_MESSAGE },
-        { status: SCORE_API_CLIENT_ERROR_STATUS, headers: SCORE_API_CORS_HEADERS },
-      ),
+      response: respondWithScoreApiClientError(INVALID_DIAGNOSTIC_FIELDS_MESSAGE),
     };
   }
 

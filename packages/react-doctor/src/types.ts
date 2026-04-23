@@ -141,7 +141,7 @@ export interface PromptMultiselectContext {
 
 export interface KnipResults {
   issues: {
-    files: Set<string>;
+    files: KnipIssueRecords | Set<string> | string[];
     dependencies: KnipIssueRecords;
     devDependencies: KnipIssueRecords;
     unlisted: KnipIssueRecords;

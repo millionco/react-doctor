@@ -4,6 +4,7 @@ import { main } from "knip";
 import { createOptions } from "knip/session";
 import { MAX_KNIP_RETRIES } from "../constants.js";
 import type { Diagnostic, KnipIssueRecords, KnipResults } from "../types.js";
+import { collectUnusedFilePaths } from "./collect-unused-file-paths.js";
 import { findMonorepoRoot } from "./find-monorepo-root.js";
 import { isFile } from "./is-file.js";
 
@@ -153,9 +154,9 @@ export const runKnip = async (rootDirectory: string): Promise<Diagnostic[]> => {
   const { issues } = knipResult;
   const diagnostics: Diagnostic[] = [];
 
-  for (const unusedFile of issues.files) {
+  for (const unusedFilePath of collectUnusedFilePaths(issues.files)) {
     diagnostics.push({
-      filePath: path.relative(rootDirectory, unusedFile),
+      filePath: path.relative(rootDirectory, unusedFilePath),
       plugin: "knip",
       rule: "files",
       severity: KNIP_SEVERITY_MAP["files"],

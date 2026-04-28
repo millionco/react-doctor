@@ -6,9 +6,9 @@ import {
   REACT_NATIVE_LIST_COMPONENTS,
   REACT_NATIVE_TEXT_COMPONENTS,
   REACT_NATIVE_TEXT_COMPONENT_KEYWORDS,
-} from "../constants.js";
-import { hasDirective, isMemberProperty } from "../helpers.js";
-import type { EsTreeNode, Rule, RuleContext } from "../types.js";
+} from "../constants";
+import { hasDirective, isMemberProperty } from "../helpers";
+import type { EsTreeNode, Rule, RuleContext } from "../types";
 
 const resolveJsxElementName = (openingElement: EsTreeNode): string | null => {
   const elementName = openingElement?.name;

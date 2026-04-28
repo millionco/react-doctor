@@ -10,9 +10,9 @@ import {
   TANSTACK_SERVER_FN_FILE_PATTERN,
   TANSTACK_SERVER_FN_NAMES,
   UPPERCASE_PATTERN,
-} from "../constants.js";
-import { findSideEffect, getCalleeName, walkAst } from "../helpers.js";
-import type { EsTreeNode, Rule, RuleContext } from "../types.js";
+} from "../constants";
+import { findSideEffect, getCalleeName, walkAst } from "../helpers";
+import type { EsTreeNode, Rule, RuleContext } from "../types";
 
 const getRouteOptionsObject = (node: EsTreeNode): EsTreeNode | null => {
   if (node.type !== "CallExpression") return null;

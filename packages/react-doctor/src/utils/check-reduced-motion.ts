@@ -1,6 +1,6 @@
 import { execSync } from "node:child_process";
 import path from "node:path";
-import { MOTION_LIBRARY_PACKAGES } from "../plugin/constants.js";
+import { MOTION_LIBRARY_PACKAGES } from "react-doctor-core/plugin/constants";
 import type { Diagnostic } from "../types.js";
 import { isFile } from "./is-file.js";
 import { readPackageJson } from "./read-package-json.js";

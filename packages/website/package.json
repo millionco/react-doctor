@@ -5,16 +5,19 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@vercel/analytics": "^1.6.1",
     "lucide-react": "^0.564.0",
     "next": "16.1.6",
     "react": "19.2.3",
+    "react-doctor-web": "workspace:*",
     "react-dom": "19.2.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.51.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

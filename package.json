@@ -12,11 +12,12 @@
   "scripts": {
     "dev": "pnpm --filter react-doctor run dev",
     "build": "pnpm --filter react-doctor run build",
-    "test": "pnpm --filter react-doctor run test",
+    "test": "pnpm --filter react-doctor-core run test && pnpm --filter react-doctor-web run typecheck && pnpm --filter react-doctor run test && pnpm --filter website run test:e2e",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
+    "typecheck": "pnpm --filter react-doctor run typecheck && pnpm --filter react-doctor-core run typecheck && pnpm --filter react-doctor-web run typecheck && pnpm --filter website exec tsc --noEmit",
     "changeset": "changeset",
     "version": "changeset version",
     "release": "pnpm build && changeset publish"

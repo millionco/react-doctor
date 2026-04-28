@@ -8,7 +8,7 @@ import {
   LOADING_STATE_PATTERN,
   MOTION_ANIMATE_PROPS,
   SCRIPT_LOADING_ATTRIBUTES,
-} from "../constants.js";
+} from "../constants";
 import {
   getEffectCallback,
   isComponentAssignment,
@@ -18,8 +18,8 @@ import {
   isSimpleExpression,
   isUppercaseName,
   walkAst,
-} from "../helpers.js";
-import type { EsTreeNode, Rule, RuleContext } from "../types.js";
+} from "../helpers";
+import type { EsTreeNode, Rule, RuleContext } from "../types";
 
 const isMemoCall = (node: EsTreeNode): boolean => {
   if (node.type !== "CallExpression") return false;

@@ -1,0 +1,23 @@
+{
+  "name": "react-doctor-web",
+  "version": "0.0.38",
+  "description": "Web entry for react-doctor (re-exports react-doctor-core for browsers)",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "react-doctor-core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.2"
+  }
+}

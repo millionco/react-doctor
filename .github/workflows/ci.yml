@@ -21,6 +21,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Install Playwright Chromium (website e2e)
+        run: pnpm --filter website exec playwright install chromium --with-deps
+
       - run: pnpm test
 
       - run: pnpm lint

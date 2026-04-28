@@ -4,7 +4,7 @@ import {
   HOOKS_WITH_DEPS,
   RELATED_USE_STATE_THRESHOLD,
   TRIVIAL_INITIALIZER_NAMES,
-} from "../constants.js";
+} from "../constants";
 import {
   containsFetchCall,
   countSetStateCalls,
@@ -17,8 +17,8 @@ import {
   isSetterIdentifier,
   isUppercaseName,
   walkAst,
-} from "../helpers.js";
-import type { EsTreeNode, Rule, RuleContext } from "../types.js";
+} from "../helpers";
+import type { EsTreeNode, Rule, RuleContext } from "../types";
 
 export const noDerivedStateEffect: Rule = {
   create: (context: RuleContext) => ({

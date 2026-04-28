@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  transpilePackages: ["react-doctor-web", "react-doctor-core"],
   rewrites: async () => {
     return {
       beforeFiles: [

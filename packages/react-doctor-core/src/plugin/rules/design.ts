@@ -11,9 +11,9 @@ import {
   TINY_TEXT_THRESHOLD_PX,
   WIDE_TRACKING_THRESHOLD_EM,
   Z_INDEX_ABSURD_THRESHOLD,
-} from "../constants.js";
-import { findJsxAttribute, walkAst } from "../helpers.js";
-import type { EsTreeNode, ParsedRgb, Rule, RuleContext } from "../types.js";
+} from "../constants";
+import { findJsxAttribute, walkAst } from "../helpers";
+import type { EsTreeNode, ParsedRgb, Rule, RuleContext } from "../types";
 
 const isOvershootCubicBezier = (value: string): boolean => {
   const match = value.match(

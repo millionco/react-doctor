@@ -1,0 +1,405 @@
+import { ERROR_PREVIEW_LENGTH_CHARS, JSX_FILE_PATTERN } from "./constants";
+import type { CleanedDiagnostic, Diagnostic, OxlintOutput } from "./types";
+
+const PLUGIN_CATEGORY_MAP: Record<string, string> = {
+  react: "Correctness",
+  "react-hooks": "Correctness",
+  "react-hooks-js": "React Compiler",
+  "react-perf": "Performance",
+  "jsx-a11y": "Accessibility",
+};
+
+const RULE_CATEGORY_MAP: Record<string, string> = {
+  "react-doctor/no-derived-state-effect": "State & Effects",
+  "react-doctor/no-fetch-in-effect": "State & Effects",
+  "react-doctor/no-cascading-set-state": "State & Effects",
+  "react-doctor/no-effect-event-handler": "State & Effects",
+  "react-doctor/no-derived-useState": "State & Effects",
+  "react-doctor/prefer-useReducer": "State & Effects",
+  "react-doctor/rerender-lazy-state-init": "Performance",
+  "react-doctor/rerender-functional-setstate": "Performance",
+  "react-doctor/rerender-dependencies": "State & Effects",
+
+  "react-doctor/no-generic-handler-names": "Architecture",
+  "react-doctor/no-giant-component": "Architecture",
+  "react-doctor/no-render-in-render": "Architecture",
+  "react-doctor/no-nested-component-definition": "Correctness",
+
+  "react-doctor/no-usememo-simple-expression": "Performance",
+  "react-doctor/no-layout-property-animation": "Performance",
+  "react-doctor/rerender-memo-with-default-value": "Performance",
+  "react-doctor/rendering-animate-svg-wrapper": "Performance",
+  "react-doctor/rendering-usetransition-loading": "Performance",
+  "react-doctor/rendering-hydration-no-flicker": "Performance",
+  "react-doctor/rendering-script-defer-async": "Performance",
+
+  "react-doctor/no-transition-all": "Performance",
+  "react-doctor/no-global-css-variable-animation": "Performance",
+  "react-doctor/no-large-animated-blur": "Performance",
+  "react-doctor/no-scale-from-zero": "Performance",
+  "react-doctor/no-permanent-will-change": "Performance",
+
+  "react-doctor/no-secrets-in-client-code": "Security",
+
+  "react-doctor/no-barrel-import": "Bundle Size",
+  "react-doctor/no-full-lodash-import": "Bundle Size",
+  "react-doctor/no-moment": "Bundle Size",
+  "react-doctor/prefer-dynamic-import": "Bundle Size",
+  "react-doctor/use-lazy-motion": "Bundle Size",
+  "react-doctor/no-undeferred-third-party": "Bundle Size",
+
+  "react-doctor/no-array-index-as-key": "Correctness",
+  "react-doctor/rendering-conditional-render": "Correctness",
+  "react-doctor/no-prevent-default": "Correctness",
+  "react-doctor/nextjs-no-img-element": "Next.js",
+  "react-doctor/nextjs-async-client-component": "Next.js",
+  "react-doctor/nextjs-no-a-element": "Next.js",
+  "react-doctor/nextjs-no-use-search-params-without-suspense": "Next.js",
+  "react-doctor/nextjs-no-client-fetch-for-server-data": "Next.js",
+  "react-doctor/nextjs-missing-metadata": "Next.js",
+  "react-doctor/nextjs-no-client-side-redirect": "Next.js",
+  "react-doctor/nextjs-no-redirect-in-try-catch": "Next.js",
+  "react-doctor/nextjs-image-missing-sizes": "Next.js",
+  "react-doctor/nextjs-no-native-script": "Next.js",
+  "react-doctor/nextjs-inline-script-missing-id": "Next.js",
+  "react-doctor/nextjs-no-font-link": "Next.js",
+  "react-doctor/nextjs-no-css-link": "Next.js",
+  "react-doctor/nextjs-no-polyfill-script": "Next.js",
+  "react-doctor/nextjs-no-head-import": "Next.js",
+  "react-doctor/nextjs-no-side-effect-in-get-handler": "Security",
+
+  "react-doctor/server-auth-actions": "Server",
+  "react-doctor/server-after-nonblocking": "Server",
+
+  "react-doctor/client-passive-event-listeners": "Performance",
+
+  "react-doctor/query-stable-query-client": "TanStack Query",
+  "react-doctor/query-no-rest-destructuring": "TanStack Query",
+  "react-doctor/query-no-void-query-fn": "TanStack Query",
+  "react-doctor/query-no-query-in-effect": "TanStack Query",
+  "react-doctor/query-mutation-missing-invalidation": "TanStack Query",
+  "react-doctor/query-no-usequery-for-mutation": "TanStack Query",
+
+  "react-doctor/no-inline-bounce-easing": "Performance",
+  "react-doctor/no-z-index-9999": "Architecture",
+  "react-doctor/no-inline-exhaustive-style": "Architecture",
+  "react-doctor/no-side-tab-border": "Architecture",
+  "react-doctor/no-pure-black-background": "Architecture",
+  "react-doctor/no-gradient-text": "Architecture",
+  "react-doctor/no-dark-mode-glow": "Architecture",
+  "react-doctor/no-justified-text": "Accessibility",
+  "react-doctor/no-tiny-text": "Accessibility",
+  "react-doctor/no-wide-letter-spacing": "Architecture",
+  "react-doctor/no-gray-on-colored-background": "Accessibility",
+  "react-doctor/no-layout-transition-inline": "Performance",
+  "react-doctor/no-disabled-zoom": "Accessibility",
+  "react-doctor/no-outline-none": "Accessibility",
+  "react-doctor/no-long-transition-duration": "Performance",
+
+  "react-doctor/js-flatmap-filter": "Performance",
+
+  "react-doctor/async-parallel": "Performance",
+
+  "react-doctor/rn-no-raw-text": "React Native",
+  "react-doctor/rn-no-deprecated-modules": "React Native",
+  "react-doctor/rn-no-legacy-expo-packages": "React Native",
+  "react-doctor/rn-no-dimensions-get": "React Native",
+  "react-doctor/rn-no-inline-flatlist-renderitem": "React Native",
+  "react-doctor/rn-no-legacy-shadow-styles": "React Native",
+  "react-doctor/rn-prefer-reanimated": "React Native",
+  "react-doctor/rn-no-single-element-style-array": "React Native",
+
+  "react-doctor/tanstack-start-route-property-order": "TanStack Start",
+  "react-doctor/tanstack-start-no-direct-fetch-in-loader": "TanStack Start",
+  "react-doctor/tanstack-start-server-fn-validate-input": "TanStack Start",
+  "react-doctor/tanstack-start-no-useeffect-fetch": "TanStack Start",
+  "react-doctor/tanstack-start-missing-head-content": "TanStack Start",
+  "react-doctor/tanstack-start-no-anchor-element": "TanStack Start",
+  "react-doctor/tanstack-start-server-fn-method-order": "TanStack Start",
+  "react-doctor/tanstack-start-no-navigate-in-render": "TanStack Start",
+  "react-doctor/tanstack-start-no-dynamic-server-fn-import": "TanStack Start",
+  "react-doctor/tanstack-start-no-use-server-in-handler": "TanStack Start",
+  "react-doctor/tanstack-start-no-secrets-in-loader": "Security",
+  "react-doctor/tanstack-start-get-mutation": "Security",
+  "react-doctor/tanstack-start-redirect-in-try-catch": "TanStack Start",
+  "react-doctor/tanstack-start-loader-parallel-fetch": "Performance",
+};
+
+const RULE_HELP_MAP: Record<string, string> = {
+  "no-derived-state-effect":
+    "For derived state, compute inline: `const x = fn(dep)`. For state resets on prop change, use a key prop: `<Component key={prop} />`. See https://react.dev/learn/you-might-not-need-an-effect",
+  "no-fetch-in-effect":
+    "Use `useQuery()` from @tanstack/react-query, `useSWR()`, or fetch in a Server Component instead",
+  "no-cascading-set-state":
+    "Combine into useReducer: `const [state, dispatch] = useReducer(reducer, initialState)`",
+  "no-effect-event-handler":
+    "Move the conditional logic into onClick, onChange, or onSubmit handlers directly",
+  "no-derived-useState":
+    "Remove useState and compute the value inline: `const value = transform(propName)`",
+  "prefer-useReducer":
+    "Group related state: `const [state, dispatch] = useReducer(reducer, { field1, field2, ... })`",
+  "rerender-lazy-state-init":
+    "Wrap in an arrow function so it only runs once: `useState(() => expensiveComputation())`",
+  "rerender-functional-setstate":
+    "Use the callback form: `setState(prev => prev + 1)` to always read the latest value",
+  "rerender-dependencies":
+    "Extract to a useMemo, useRef, or module-level constant so the reference is stable",
+
+  "no-generic-handler-names":
+    "Rename to describe the action: e.g. `handleSubmit` → `saveUserProfile`, `handleClick` → `toggleSidebar`",
+  "no-giant-component":
+    "Extract logical sections into focused components: `<UserHeader />`, `<UserActions />`, etc.",
+  "no-render-in-render":
+    "Extract to a named component: `const ListItem = ({ item }) => <div>{item.name}</div>`",
+  "no-nested-component-definition":
+    "Move to a separate file or to module scope above the parent component",
+
+  "no-usememo-simple-expression":
+    "Remove useMemo — property access, math, and ternaries are already cheap without memoization",
+  "no-layout-property-animation":
+    "Use `transform: translateX()` or `scale()` instead — they run on the compositor and skip layout/paint",
+  "rerender-memo-with-default-value":
+    "Move to module scope: `const EMPTY_ITEMS: Item[] = []` then use as the default value",
+  "rendering-animate-svg-wrapper":
+    "Wrap the SVG: `<motion.div animate={...}><svg>...</svg></motion.div>`",
+  "rendering-usetransition-loading":
+    "Replace with `const [isPending, startTransition] = useTransition()` — avoids a re-render for the loading state",
+  "rendering-hydration-no-flicker":
+    "Use `useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)` or add `suppressHydrationWarning` to the element",
+  "rendering-script-defer-async":
+    'Add `defer` for DOM-dependent scripts or `async` for independent ones (analytics). In Next.js, use `<Script strategy="afterInteractive" />` instead',
+
+  "no-transition-all":
+    'List specific properties: `transition: "opacity 200ms, transform 200ms"` — or in Tailwind use `transition-colors`, `transition-opacity`, or `transition-transform`',
+  "no-global-css-variable-animation":
+    "Set the variable on the nearest element instead of a parent, or use `@property` with `inherits: false` to prevent cascade. Better yet, use targeted `element.style.transform` updates",
+  "no-large-animated-blur":
+    "Keep blur radius under 10px, or apply blur to a smaller element. Large blurs multiply GPU memory usage with layer size",
+  "no-scale-from-zero":
+    "Use `initial={{ scale: 0.95, opacity: 0 }}` — elements should deflate like a balloon, not vanish into a point",
+  "no-permanent-will-change":
+    "Add will-change on animation start (`onMouseEnter`) and remove on end (`onAnimationEnd`). Permanent promotion wastes GPU memory and can degrade performance",
+
+  "no-secrets-in-client-code":
+    "Move to server-side `process.env.SECRET_NAME`. Only `NEXT_PUBLIC_*` vars are safe for the client (and should not contain secrets)",
+
+  "no-barrel-import":
+    "Import from the direct path: `import { Button } from './components/Button'` instead of `./components`",
+  "no-full-lodash-import":
+    "Import the specific function: `import debounce from 'lodash/debounce'` — saves ~70kb",
+  "no-moment":
+    "Replace with `import { format } from 'date-fns'` (tree-shakeable) or `import dayjs from 'dayjs'` (2kb)",
+  "prefer-dynamic-import":
+    "Use `const Component = dynamic(() => import('library'), { ssr: false })` from next/dynamic or React.lazy()",
+  "use-lazy-motion":
+    'Use `import { LazyMotion, m } from "framer-motion"` with `domAnimation` features — saves ~30kb',
+  "no-undeferred-third-party":
+    'Use `next/script` with `strategy="lazyOnload"` or add the `defer` attribute',
+
+  "no-inline-bounce-easing":
+    "Use `cubic-bezier(0.16, 1, 0.3, 1)` (ease-out-expo) for natural deceleration — objects in the real world don't bounce",
+  "no-z-index-9999":
+    "Define a z-index scale in your design tokens (e.g. dropdown: 10, modal: 20, toast: 30). Create a new stacking context with `isolation: isolate` instead of escalating values",
+  "no-inline-exhaustive-style":
+    "Move styles to a CSS class, CSS module, Tailwind utilities, or a styled component — inline objects with many properties hurt readability and create new references every render",
+  "no-side-tab-border":
+    "Use a subtler accent (box-shadow inset, background gradient, or border-bottom) instead of a thick one-sided border",
+  "no-pure-black-background":
+    "Tint the background slightly toward your brand hue — e.g. `#0a0a0f` or Tailwind's `bg-gray-950`. Pure black looks harsh on modern displays",
+  "no-gradient-text":
+    "Use solid text colors for readability. If you need emphasis, use font weight, size, or a distinct color instead of gradients",
+  "no-dark-mode-glow":
+    "Use a subtle `box-shadow` with neutral colors for depth, or `border` with low opacity. Colored glows on dark backgrounds are the default AI-generated aesthetic",
+  "no-justified-text":
+    "Use `text-align: left` for body text, or add `hyphens: auto` and `overflow-wrap: break-word` if you must justify",
+  "no-tiny-text":
+    "Use at least 12px for body content, 16px is ideal. Small text is hard to read, especially on high-DPI mobile screens",
+  "no-wide-letter-spacing":
+    "Reserve wide tracking (letter-spacing > 0.05em) for short uppercase labels, navigation items, and buttons — not body text",
+  "no-gray-on-colored-background":
+    "Use a darker shade of the background color for text, or white/near-white for contrast. Gray text on colored backgrounds looks washed out",
+  "no-layout-transition-inline":
+    "Use `transform` and `opacity` for transitions — they run on the compositor thread. For height animations, use `grid-template-rows: 0fr → 1fr`",
+  "no-disabled-zoom":
+    "Remove `user-scalable=no` and `maximum-scale` from the viewport meta tag. If your layout breaks at 200% zoom, fix the layout — don't punish users with disabilities",
+  "no-outline-none":
+    "Use `:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px }` to show focus only for keyboard users while hiding it for mouse clicks",
+  "no-long-transition-duration":
+    "Keep UI transitions under 1s — 100-150ms for instant feedback, 200-300ms for state changes, 300-500ms for layout changes. Use longer durations only for page-load hero animations",
+
+  "no-array-index-as-key":
+    "Use a stable unique identifier: `key={item.id}` or `key={item.slug}` — index keys break on reorder/filter",
+  "rendering-conditional-render":
+    "Change to `{items.length > 0 && <List />}` or use a ternary: `{items.length ? <List /> : null}`",
+  "no-prevent-default":
+    "Use `<form action={serverAction}>` (works without JS) or `<button>` instead of `<a>` with preventDefault",
+
+  "nextjs-no-img-element":
+    "`import Image from 'next/image'` — provides automatic WebP/AVIF, lazy loading, and responsive srcset",
+  "nextjs-async-client-component":
+    "Fetch data in a parent Server Component and pass it as props, or use useQuery/useSWR in the client component",
+  "nextjs-no-a-element":
+    "`import Link from 'next/link'` — enables client-side navigation, prefetching, and preserves scroll position",
+  "nextjs-no-use-search-params-without-suspense":
+    "Wrap the component using useSearchParams: `<Suspense fallback={<Skeleton />}><SearchComponent /></Suspense>`",
+  "nextjs-no-client-fetch-for-server-data":
+    "Remove 'use client' and fetch directly in the Server Component — no API round-trip, secrets stay on server",
+  "nextjs-missing-metadata":
+    "Add `export const metadata = { title: '...', description: '...' }` or `export async function generateMetadata()`",
+  "nextjs-no-client-side-redirect":
+    "Avoid redirects inside useEffect. Use an event handler, middleware, or server-side redirect (App Router: redirect() from next/navigation; Pages Router: getServerSideProps redirect)",
+  "nextjs-no-redirect-in-try-catch":
+    "Move the redirect/notFound call outside the try block, or add `unstable_rethrow(error)` in the catch",
+  "nextjs-image-missing-sizes":
+    'Add sizes for responsive behavior: `sizes="(max-width: 768px) 100vw, 50vw"` matching your layout breakpoints',
+  "nextjs-no-native-script":
+    '`import Script from "next/script"` — use `strategy="afterInteractive"` for analytics or `"lazyOnload"` for widgets',
+  "nextjs-inline-script-missing-id":
+    'Add `id="descriptive-name"` so Next.js can track, deduplicate, and re-execute the script correctly',
+  "nextjs-no-font-link":
+    '`import { Inter } from "next/font/google"` — self-hosted, zero layout shift, no render-blocking requests',
+  "nextjs-no-css-link":
+    "Import CSS directly: `import './styles.css'` or use CSS Modules: `import styles from './Button.module.css'`",
+  "nextjs-no-polyfill-script":
+    "Next.js includes polyfills for fetch, Promise, Object.assign, Array.from, and 50+ others automatically",
+  "nextjs-no-head-import":
+    "Use the Metadata API instead: `export const metadata = { title: '...' }` or `export async function generateMetadata()`",
+  "nextjs-no-side-effect-in-get-handler":
+    "Move the side effect to a POST handler and use a <form> or fetch with method POST — GET requests can be triggered by prefetching and are vulnerable to CSRF",
+
+  "server-auth-actions":
+    "Add `const session = await auth()` at the top and throw/redirect if unauthorized before any data access",
+  "server-after-nonblocking":
+    "`import { after } from 'next/server'` then wrap: `after(() => analytics.track(...))` — response isn't blocked",
+
+  "client-passive-event-listeners":
+    "Add `{ passive: true }` as the third argument: `addEventListener('scroll', handler, { passive: true })`",
+
+  "query-stable-query-client":
+    "Move `new QueryClient()` to module scope or wrap in `useState(() => new QueryClient())` — recreating it on every render resets the entire cache",
+  "query-no-rest-destructuring":
+    "Destructure only the fields you need: `const { data, isLoading } = useQuery(...)` — rest destructuring subscribes to all fields and causes extra re-renders",
+  "query-no-void-query-fn":
+    "queryFn must return a value for the cache. Use the `enabled` option to conditionally disable the query instead of returning undefined",
+  "query-no-query-in-effect":
+    "React Query manages refetching automatically via queryKey dependencies and the `enabled` option — manual refetch() in useEffect is usually unnecessary",
+  "query-mutation-missing-invalidation":
+    "Add `onSuccess: () => queryClient.invalidateQueries({ queryKey: ['...'] })` so cached data stays in sync after the mutation",
+  "query-no-usequery-for-mutation":
+    "Use `useMutation()` for POST/PUT/DELETE — it provides onSuccess/onError callbacks, doesn't auto-refetch, and correctly models write operations",
+
+  "js-flatmap-filter":
+    "Use `.flatMap(item => condition ? [value] : [])` — transforms and filters in a single pass instead of creating an intermediate array",
+
+  "async-parallel":
+    "Use `const [a, b] = await Promise.all([fetchA(), fetchB()])` to run independent operations concurrently",
+
+  "rn-no-raw-text":
+    "Wrap text in a `<Text>` component: `<Text>{value}</Text>` — raw strings outside `<Text>` crash on React Native",
+  "rn-no-deprecated-modules":
+    "Import from the community package instead — deprecated modules were removed from the react-native core",
+  "rn-no-legacy-expo-packages":
+    "Migrate to the recommended replacement package — legacy Expo packages are no longer maintained",
+  "rn-no-dimensions-get":
+    "Use `const { width, height } = useWindowDimensions()` — it updates reactively on rotation and resize",
+  "rn-no-inline-flatlist-renderitem":
+    "Extract renderItem to a named function or wrap in useCallback to avoid re-creating on every render",
+  "rn-no-legacy-shadow-styles":
+    "Use `boxShadow` for cross-platform shadows on the new architecture instead of platform-specific shadow properties",
+  "rn-prefer-reanimated":
+    "Use `import Animated from 'react-native-reanimated'` — animations run on the UI thread instead of the JS thread",
+  "rn-no-single-element-style-array":
+    "Use `style={value}` instead of `style={[value]}` — single-element arrays add unnecessary allocation",
+
+  "tanstack-start-route-property-order":
+    "Follow the order: params/validateSearch → loaderDeps → context → beforeLoad → loader → head. See https://tanstack.com/router/latest/docs/eslint/create-route-property-order",
+  "tanstack-start-no-direct-fetch-in-loader":
+    "Use `createServerFn()` from @tanstack/react-start — provides type-safe RPC, input validation, and proper server/client code splitting",
+  "tanstack-start-server-fn-validate-input":
+    "Add `.inputValidator(schema)` before `.handler()` — data crosses a network boundary and must be validated at runtime",
+  "tanstack-start-no-useeffect-fetch":
+    "Fetch data in the route `loader` instead — the router coordinates loading before rendering to avoid waterfalls",
+  "tanstack-start-missing-head-content":
+    "Add `<HeadContent />` inside `<head>` in your __root route — without it, route `head()` meta tags are silently dropped",
+  "tanstack-start-no-anchor-element":
+    "`import { Link } from '@tanstack/react-router'` — enables type-safe routes, preloading via `preload=\"intent\"`, and client-side navigation",
+  "tanstack-start-server-fn-method-order":
+    "Chain methods in order: .middleware() → .inputValidator() → .client() → .server() → .handler() — types depend on this sequence",
+  "tanstack-start-no-navigate-in-render":
+    "Use `throw redirect({ to: '/path' })` in `beforeLoad` or `loader` instead — navigate() during render causes hydration issues",
+  "tanstack-start-no-dynamic-server-fn-import":
+    "Use `import { myFn } from '~/utils/my.functions'` — the bundler replaces server code with RPC stubs only for static imports",
+  "tanstack-start-no-use-server-in-handler":
+    'TanStack Start handles server boundaries automatically via the Vite plugin — "use server" inside createServerFn causes compilation errors',
+  "tanstack-start-no-secrets-in-loader":
+    "Loaders are isomorphic (run on both server and client). Wrap secret access in `createServerFn()` so it stays server-only",
+  "tanstack-start-get-mutation":
+    "Use `createServerFn({ method: 'POST' })` for data modifications — GET requests can be triggered by prefetching and are vulnerable to CSRF",
+  "tanstack-start-redirect-in-try-catch":
+    "TanStack Router's `redirect()` and `notFound()` throw special errors caught by the router. Move them outside the try block or re-throw in the catch",
+  "tanstack-start-loader-parallel-fetch":
+    "Use `const [a, b] = await Promise.all([fetchA(), fetchB()])` to avoid request waterfalls in route loaders",
+};
+
+const FILEPATH_WITH_LOCATION_PATTERN = /\S+\.\w+:\d+:\d+[\s\S]*$/;
+
+const REACT_COMPILER_MESSAGE = "React Compiler can't optimize this code";
+
+export const cleanDiagnosticMessage = (
+  message: string,
+  help: string,
+  plugin: string,
+  rule: string,
+): CleanedDiagnostic => {
+  if (plugin === "react-hooks-js") {
+    const rawMessage = message.replace(FILEPATH_WITH_LOCATION_PATTERN, "").trim();
+    return { message: REACT_COMPILER_MESSAGE, help: rawMessage || help };
+  }
+  const cleaned = message.replace(FILEPATH_WITH_LOCATION_PATTERN, "").trim();
+  return { message: cleaned || message, help: help || RULE_HELP_MAP[rule] || "" };
+};
+
+export const parseRuleCode = (code: string): { plugin: string; rule: string } => {
+  const match = code.match(/^(.+)\((.+)\)$/);
+  if (!match) return { plugin: "unknown", rule: code };
+  return { plugin: match[1].replace(/^eslint-plugin-/, ""), rule: match[2] };
+};
+
+export const resolveDiagnosticCategory = (plugin: string, rule: string): string => {
+  const ruleKey = `${plugin}/${rule}`;
+  return RULE_CATEGORY_MAP[ruleKey] ?? PLUGIN_CATEGORY_MAP[plugin] ?? "Other";
+};
+
+export const parseOxlintOutput = (stdout: string): Diagnostic[] => {
+  if (!stdout) return [];
+
+  let output: OxlintOutput;
+  try {
+    output = JSON.parse(stdout) as OxlintOutput;
+  } catch {
+    throw new Error(
+      `Failed to parse oxlint output: ${stdout.slice(0, ERROR_PREVIEW_LENGTH_CHARS)}`,
+    );
+  }
+
+  return output.diagnostics
+    .filter((diagnostic) => diagnostic.code && JSX_FILE_PATTERN.test(diagnostic.filename))
+    .map((diagnostic) => {
+      const { plugin, rule } = parseRuleCode(diagnostic.code);
+      const primaryLabel = diagnostic.labels[0];
+
+      const cleaned = cleanDiagnosticMessage(diagnostic.message, diagnostic.help, plugin, rule);
+
+      return {
+        filePath: diagnostic.filename,
+        plugin,
+        rule,
+        severity: diagnostic.severity,
+        message: cleaned.message,
+        help: cleaned.help,
+        line: primaryLabel?.span.line ?? 0,
+        column: primaryLabel?.span.column ?? 0,
+        category: resolveDiagnosticCategory(plugin, rule),
+      };
+    });
+};

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MAX_KNIP_RETRIES } from "../src/constants.js";
 import { runKnip } from "../src/utils/run-knip.js";
 
 interface CapturedKnipOptions {
@@ -9,31 +10,56 @@ interface CapturedKnipOptions {
   workspace?: string;
 }
 
-const { capturedKnipCalls } = vi.hoisted(() => ({
-  capturedKnipCalls: [] as CapturedKnipOptions[],
+interface MockKnipState {
+  capturedKnipCalls: CapturedKnipOptions[];
+  parsedConfig: Record<string, unknown>;
+  mainCallCount: number;
+  mainImplementation: (() => Promise<unknown>) | null;
+}
+
+const EMPTY_KNIP_RESULT = {
+  issues: {
+    files: new Set<string>(),
+    dependencies: {},
+    devDependencies: {},
+    unlisted: {},
+    exports: {},
+    types: {},
+    duplicates: {},
+  },
+  counters: {},
+};
+
+const mockKnipState = vi.hoisted<MockKnipState>(() => ({
+  capturedKnipCalls: [],
+  parsedConfig: {},
+  mainCallCount: 0,
+  mainImplementation: null,
 }));
 
 vi.mock("knip", () => ({
-  main: async () => ({
-    issues: {
-      files: new Set<string>(),
-      dependencies: {},
-      devDependencies: {},
-      unlisted: {},
-      exports: {},
-      types: {},
-      duplicates: {},
-    },
-    counters: {},
-  }),
+  main: async () => {
+    mockKnipState.mainCallCount += 1;
+    if (mockKnipState.mainImplementation) {
+      return mockKnipState.mainImplementation();
+    }
+    return EMPTY_KNIP_RESULT;
+  },
 }));
 
 vi.mock("knip/session", () => ({
   createOptions: async (options: { cwd: string; workspace?: string }) => {
-    capturedKnipCalls.push({ cwd: options.cwd, workspace: options.workspace });
-    return { parsedConfig: {} };
+    mockKnipState.capturedKnipCalls.push({ cwd: options.cwd, workspace: options.workspace });
+    return { parsedConfig: mockKnipState.parsedConfig };
   },
 }));
+
+const resetMockKnipState = (): void => {
+  mockKnipState.capturedKnipCalls.length = 0;
+  mockKnipState.parsedConfig = {};
+  mockKnipState.mainCallCount = 0;
+  mockKnipState.mainImplementation = null;
+};
 
 const writeJson = (filePath: string, contents: unknown): void => {
   fs.writeFileSync(filePath, JSON.stringify(contents));
@@ -67,7 +93,7 @@ describe("runKnip", () => {
   let monorepoFixtureRoot: string | null = null;
 
   beforeEach(() => {
-    capturedKnipCalls.length = 0;
+    resetMockKnipState();
     monorepoFixtureRoot = null;
   });
 
@@ -83,9 +109,9 @@ describe("runKnip", () => {
 
     await runKnip(fixture.workspaceDirectory);
 
-    expect(capturedKnipCalls).toHaveLength(1);
-    expect(capturedKnipCalls[0].cwd).toBe(fixture.workspaceDirectory);
-    expect(capturedKnipCalls[0].workspace).toBeUndefined();
+    expect(mockKnipState.capturedKnipCalls).toHaveLength(1);
+    expect(mockKnipState.capturedKnipCalls[0].cwd).toBe(fixture.workspaceDirectory);
+    expect(mockKnipState.capturedKnipCalls[0].workspace).toBeUndefined();
   });
 
   it("prefers workspace-local config even when a root knip config exists", async () => {
@@ -94,8 +120,8 @@ describe("runKnip", () => {
 
     await runKnip(fixture.workspaceDirectory);
 
-    expect(capturedKnipCalls).toHaveLength(1);
-    expect(capturedKnipCalls[0].cwd).toBe(fixture.workspaceDirectory);
+    expect(mockKnipState.capturedKnipCalls).toHaveLength(1);
+    expect(mockKnipState.capturedKnipCalls[0].cwd).toBe(fixture.workspaceDirectory);
   });
 
   it("runs knip from the monorepo root with --workspace when no workspace-local config exists", async () => {
@@ -104,9 +130,9 @@ describe("runKnip", () => {
 
     await runKnip(fixture.workspaceDirectory);
 
-    expect(capturedKnipCalls).toHaveLength(1);
-    expect(capturedKnipCalls[0].cwd).toBe(fixture.monorepoRoot);
-    expect(capturedKnipCalls[0].workspace).toBe("foo");
+    expect(mockKnipState.capturedKnipCalls).toHaveLength(1);
+    expect(mockKnipState.capturedKnipCalls[0].cwd).toBe(fixture.monorepoRoot);
+    expect(mockKnipState.capturedKnipCalls[0].workspace).toBe("foo");
   });
 
   it("returns no diagnostics when dependencies are not installed", async () => {
@@ -117,9 +143,110 @@ describe("runKnip", () => {
       const diagnostics = await runKnip(standaloneRoot);
 
       expect(diagnostics).toEqual([]);
-      expect(capturedKnipCalls).toHaveLength(0);
+      expect(mockKnipState.capturedKnipCalls).toHaveLength(0);
     } finally {
       fs.rmSync(standaloneRoot, { recursive: true, force: true });
     }
+  });
+
+  describe("retry behavior on plugin failures", () => {
+    let standaloneRoot: string;
+
+    beforeEach(() => {
+      standaloneRoot = fs.mkdtempSync(path.join(os.tmpdir(), "run-knip-retry-"));
+      writeJson(path.join(standaloneRoot, "package.json"), { name: "standalone" });
+      fs.mkdirSync(path.join(standaloneRoot, "node_modules"));
+    });
+
+    afterEach(() => {
+      fs.rmSync(standaloneRoot, { recursive: true, force: true });
+    });
+
+    it("disables a recognized plugin and succeeds on retry", async () => {
+      mockKnipState.parsedConfig = { vite: true, next: true };
+      let attemptCount = 0;
+      mockKnipState.mainImplementation = async () => {
+        attemptCount += 1;
+        if (attemptCount === 1) {
+          throw new Error("Error loading /repo/vite.config.ts", {
+            cause: new Error("Cannot find module './missing'"),
+          });
+        }
+        return EMPTY_KNIP_RESULT;
+      };
+
+      const diagnostics = await runKnip(standaloneRoot);
+
+      expect(diagnostics).toEqual([]);
+      expect(mockKnipState.mainCallCount).toBe(2);
+      expect(mockKnipState.parsedConfig.vite).toBe(false);
+      expect(mockKnipState.parsedConfig.next).toBe(true);
+    });
+
+    it("ignores plugin names that are not part of the knip config", async () => {
+      mockKnipState.parsedConfig = { next: true };
+      const error = new Error("Error loading /repo/local.config.json");
+      mockKnipState.mainImplementation = async () => {
+        throw error;
+      };
+
+      await expect(runKnip(standaloneRoot)).rejects.toBe(error);
+
+      expect(mockKnipState.mainCallCount).toBe(1);
+      expect(mockKnipState.parsedConfig.next).toBe(true);
+    });
+
+    it("only disables each plugin once even if the same error repeats", async () => {
+      mockKnipState.parsedConfig = { vite: true };
+      const error = new Error("Error loading /repo/vite.config.ts");
+      mockKnipState.mainImplementation = async () => {
+        throw error;
+      };
+
+      await expect(runKnip(standaloneRoot)).rejects.toBe(error);
+
+      expect(mockKnipState.mainCallCount).toBe(2);
+      expect(mockKnipState.parsedConfig.vite).toBe(false);
+    });
+
+    it("rethrows the original error when no plugin can be extracted", async () => {
+      const error = new Error("Knip exploded");
+      mockKnipState.mainImplementation = async () => {
+        throw error;
+      };
+
+      await expect(runKnip(standaloneRoot)).rejects.toBe(error);
+
+      expect(mockKnipState.mainCallCount).toBe(1);
+    });
+
+    it("rethrows the most recent error after exhausting retries instead of `Unreachable`", async () => {
+      const sequencedErrors = [
+        new Error("Error loading /repo/vite.config.ts"),
+        new Error("Error loading /repo/next.config.ts"),
+        new Error("Error loading /repo/jest.config.ts"),
+        new Error("Error loading /repo/tailwind.config.ts"),
+        new Error("Error loading /repo/playwright.config.ts"),
+        new Error("Error loading /repo/cypress.config.ts"),
+      ];
+      mockKnipState.parsedConfig = {
+        vite: true,
+        next: true,
+        jest: true,
+        tailwind: true,
+        playwright: true,
+        cypress: true,
+      };
+      let attemptIndex = 0;
+      mockKnipState.mainImplementation = async () => {
+        const sequencedError = sequencedErrors[attemptIndex];
+        attemptIndex += 1;
+        throw sequencedError;
+      };
+
+      const lastSequencedError = sequencedErrors[sequencedErrors.length - 1];
+      await expect(runKnip(standaloneRoot)).rejects.toBe(lastSequencedError);
+      expect(mockKnipState.mainCallCount).toBe(MAX_KNIP_RETRIES + 1);
+    });
   });
 });

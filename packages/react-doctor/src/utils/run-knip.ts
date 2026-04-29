@@ -84,10 +84,18 @@ const TSCONFIG_FILENAMES = ["tsconfig.base.json", "tsconfig.json"];
 const resolveTsConfigFile = (directory: string): string | undefined =>
   TSCONFIG_FILENAMES.find((filename) => fs.existsSync(path.join(directory, filename)));
 
-const disableAllPlugins = (parsedConfig: Record<string, unknown>): void => {
-  for (const key of Object.keys(parsedConfig)) {
-    parsedConfig[key] = false;
+const tryDisableFailedPlugin = (
+  error: unknown,
+  parsedConfig: Record<string, unknown>,
+  disabledPlugins: Set<string>,
+): boolean => {
+  const failedPlugin = extractFailedPluginName(error);
+  if (!failedPlugin || !(failedPlugin in parsedConfig) || disabledPlugins.has(failedPlugin)) {
+    return false;
   }
+  disabledPlugins.add(failedPlugin);
+  parsedConfig[failedPlugin] = false;
+  return true;
 };
 
 const runKnipWithOptions = async (
@@ -106,30 +114,20 @@ const runKnipWithOptions = async (
 
   const parsedConfig = options.parsedConfig as Record<string, unknown>;
   const disabledPlugins = new Set<string>();
-  let didDisableAllPlugins = false;
+  let lastKnipError: unknown;
 
   for (let attempt = 0; attempt <= MAX_KNIP_RETRIES; attempt++) {
     try {
       return (await silenced(() => main(options))) as KnipResults;
     } catch (error) {
-      const failedPlugin = extractFailedPluginName(error);
-      if (failedPlugin && !disabledPlugins.has(failedPlugin)) {
-        disabledPlugins.add(failedPlugin);
-        parsedConfig[failedPlugin] = false;
-        continue;
-      }
-
-      // HACK: as a last resort, disable every plugin so file-only dead code
-      // detection still runs even when a plugin config we can't identify fails.
-      if (didDisableAllPlugins || attempt === MAX_KNIP_RETRIES) {
+      lastKnipError = error;
+      if (!tryDisableFailedPlugin(error, parsedConfig, disabledPlugins)) {
         throw error;
       }
-      disableAllPlugins(parsedConfig);
-      didDisableAllPlugins = true;
     }
   }
 
-  throw new Error("Unreachable");
+  throw lastKnipError;
 };
 
 const hasNodeModules = (directory: string): boolean => {

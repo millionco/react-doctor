@@ -27,6 +27,7 @@ import { colorizeByScore } from "./utils/colorize-by-score.js";
 import { combineDiagnostics } from "./utils/combine-diagnostics.js";
 import { computeJsxIncludePaths } from "./utils/jsx-include-paths.js";
 import { discoverProject, formatFrameworkName } from "./utils/discover-project.js";
+import { formatErrorChain } from "./utils/format-error-chain.js";
 import { type FramedLine, createFramedLine, printFramedBox } from "./utils/framed-box.js";
 import { groupBy } from "./utils/group-by.js";
 import { highlighter } from "./utils/highlighter.js";
@@ -522,8 +523,8 @@ export const scan = async (
         } catch (error) {
           didLintFail = true;
           if (!options.scoreOnly) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            const isNativeBindingError = errorMessage.includes("native binding");
+            const lintErrorChain = formatErrorChain(error);
+            const isNativeBindingError = lintErrorChain.includes("native binding");
 
             if (isNativeBindingError) {
               lintSpinner?.fail(
@@ -534,7 +535,7 @@ export const scan = async (
               );
             } else {
               lintSpinner?.fail("Lint checks failed (non-fatal, skipping).");
-              logger.error(errorMessage);
+              logger.error(lintErrorChain);
             }
           }
           return [];
@@ -556,7 +557,7 @@ export const scan = async (
             didDeadCodeFail = true;
             if (!options.scoreOnly) {
               deadCodeSpinner?.fail("Dead code detection failed (non-fatal, skipping).");
-              logger.error(String(error));
+              logger.error(formatErrorChain(error));
             }
             return [];
           }

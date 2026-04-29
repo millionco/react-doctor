@@ -288,7 +288,7 @@ const RULE_HELP_MAP: Record<string, string> = {
     "`import { after } from 'next/server'` then wrap: `after(() => analytics.track(...))` — response isn't blocked",
 
   "client-passive-event-listeners":
-    "Add `{ passive: true }` as the third argument: `addEventListener('scroll', handler, { passive: true })`",
+    "Add `{ passive: true }` as the third argument: `addEventListener('scroll', handler, { passive: true })`. Only do this if the handler does not call `event.preventDefault()`.",
 
   "query-stable-query-client":
     "Move `new QueryClient()` to module scope or wrap in `useState(() => new QueryClient())` — recreating it on every render resets the entire cache",

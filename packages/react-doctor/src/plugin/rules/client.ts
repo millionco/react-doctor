@@ -2,6 +2,9 @@ import { PASSIVE_EVENT_NAMES } from "../constants.js";
 import { isMemberProperty } from "../helpers.js";
 import type { EsTreeNode, Rule, RuleContext } from "../types.js";
 
+const PASSIVE_EVENT_LISTENER_MESSAGE =
+  "Listener without { passive: true } — improves scrolling performance, but only use it when the handler does not call event.preventDefault()";
+
 export const clientPassiveEventListeners: Rule = {
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
@@ -17,7 +20,7 @@ export const clientPassiveEventListeners: Rule = {
       if (!optionsArgument) {
         context.report({
           node,
-          message: `"${eventName}" listener without { passive: true } — blocks scrolling performance`,
+          message: `"${eventName}" ${PASSIVE_EVENT_LISTENER_MESSAGE}`,
         });
         return;
       }
@@ -36,7 +39,7 @@ export const clientPassiveEventListeners: Rule = {
       if (!hasPassiveTrue) {
         context.report({
           node,
-          message: `"${eventName}" listener without { passive: true } — blocks scrolling performance`,
+          message: `"${eventName}" ${PASSIVE_EVENT_LISTENER_MESSAGE}`,
         });
       }
     },

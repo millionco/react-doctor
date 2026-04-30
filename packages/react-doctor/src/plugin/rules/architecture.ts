@@ -117,3 +117,74 @@ export const noNestedComponentDefinition: Rule = {
     };
   },
 };
+
+const BOOLEAN_PROP_PREFIX_PATTERN = /^(?:is|has|should|can|show|hide|enable|disable|with)[A-Z]/;
+const BOOLEAN_PROP_THRESHOLD = 4;
+
+// HACK: components with many boolean props (isLoading, hasIcon, showHeader,
+// canEdit...) typically signal "many UI variants jammed into one component"
+// — a sign that the component should be split via composition (compound
+// components, explicit variant components). We use a name-based heuristic
+// because TypeScript types aren't visible at this AST layer.
+export const noManyBooleanProps: Rule = {
+  create: (context: RuleContext) => {
+    const checkParam = (param: EsTreeNode, componentName: string, reportNode: EsTreeNode): void => {
+      if (param.type !== "ObjectPattern") return;
+      const booleanLikePropNames: string[] = [];
+      for (const property of param.properties ?? []) {
+        if (property.type !== "Property") continue;
+        const keyName = property.key?.type === "Identifier" ? property.key.name : null;
+        if (!keyName) continue;
+        if (BOOLEAN_PROP_PREFIX_PATTERN.test(keyName)) {
+          booleanLikePropNames.push(keyName);
+        }
+      }
+      if (booleanLikePropNames.length >= BOOLEAN_PROP_THRESHOLD) {
+        context.report({
+          node: reportNode,
+          message: `Component "${componentName}" takes ${booleanLikePropNames.length} boolean-like props (${booleanLikePropNames.slice(0, 3).join(", ")}…) — consider compound components or explicit variants instead of stacking flags`,
+        });
+      }
+    };
+
+    return {
+      FunctionDeclaration(node: EsTreeNode) {
+        if (!isComponentDeclaration(node)) return;
+        const firstParam = node.params?.[0];
+        if (!firstParam) return;
+        checkParam(firstParam, node.id.name, node.id);
+      },
+      VariableDeclarator(node: EsTreeNode) {
+        if (!isComponentAssignment(node)) return;
+        const firstParam = node.init?.params?.[0];
+        if (!firstParam) return;
+        checkParam(firstParam, node.id.name, node.id);
+      },
+    };
+  },
+};
+
+// HACK: React 19+ deprecated `forwardRef` (refs are now regular props on
+// function components) and `useContext` (replaced by the more flexible
+// `use()`). Continuing to import them works on 19 but blocks adopting the
+// cleaner APIs and adds type/runtime indirection.
+const REACT_19_DEPRECATED_NAMED_IMPORTS = new Set(["forwardRef"]);
+
+export const noReact19DeprecatedApis: Rule = {
+  create: (context: RuleContext) => ({
+    ImportDeclaration(node: EsTreeNode) {
+      if (node.source?.value !== "react") return;
+      for (const specifier of node.specifiers ?? []) {
+        if (specifier.type !== "ImportSpecifier") continue;
+        const importedName = specifier.imported?.name;
+        if (!importedName) continue;
+        if (REACT_19_DEPRECATED_NAMED_IMPORTS.has(importedName)) {
+          context.report({
+            node: specifier,
+            message: `${importedName} is no longer needed on React 19+ — refs are regular props on function components; remove forwardRef and pass ref directly`,
+          });
+        }
+      }
+    },
+  }),
+};

@@ -33,6 +33,10 @@ const REACT_NATIVE_RULES: Record<string, RuleSeverity> = {
   "react-doctor/rn-no-legacy-shadow-styles": "warn",
   "react-doctor/rn-prefer-reanimated": "warn",
   "react-doctor/rn-no-single-element-style-array": "warn",
+  "react-doctor/rn-prefer-pressable": "warn",
+  "react-doctor/rn-prefer-expo-image": "warn",
+  "react-doctor/rn-no-non-native-navigator": "warn",
+  "react-doctor/rn-no-scroll-state": "error",
 };
 
 const TANSTACK_START_RULES: Record<string, RuleSeverity> = {
@@ -137,6 +141,7 @@ const GLOBAL_REACT_DOCTOR_RULES: Record<string, RuleSeverity> = {
   "react-doctor/no-fetch-in-effect": "warn",
   "react-doctor/no-cascading-set-state": "warn",
   "react-doctor/no-effect-event-handler": "warn",
+  "react-doctor/no-effect-event-in-deps": "error",
   "react-doctor/no-derived-useState": "warn",
   "react-doctor/prefer-useReducer": "warn",
   "react-doctor/rerender-lazy-state-init": "warn",
@@ -145,12 +150,15 @@ const GLOBAL_REACT_DOCTOR_RULES: Record<string, RuleSeverity> = {
 
   "react-doctor/no-giant-component": "warn",
   "react-doctor/no-render-in-render": "warn",
+  "react-doctor/no-many-boolean-props": "warn",
+  "react-doctor/no-react19-deprecated-apis": "warn",
   "react-doctor/no-nested-component-definition": "error",
 
   "react-doctor/no-usememo-simple-expression": "warn",
   "react-doctor/no-layout-property-animation": "error",
   "react-doctor/rerender-memo-with-default-value": "warn",
   "react-doctor/rendering-animate-svg-wrapper": "warn",
+  "react-doctor/rendering-hoist-jsx": "warn",
   "react-doctor/no-inline-prop-on-memo-component": "warn",
   "react-doctor/rendering-hydration-no-flicker": "warn",
   "react-doctor/rendering-script-defer-async": "warn",
@@ -171,6 +179,9 @@ const GLOBAL_REACT_DOCTOR_RULES: Record<string, RuleSeverity> = {
   "react-doctor/js-combine-iterations": "warn",
   "react-doctor/js-tosorted-immutable": "warn",
   "react-doctor/js-hoist-regexp": "warn",
+  "react-doctor/js-hoist-intl": "warn",
+  "react-doctor/js-cache-property-access": "warn",
+  "react-doctor/js-length-check-first": "warn",
   "react-doctor/js-min-max-loop": "warn",
   "react-doctor/js-set-map-lookups": "warn",
   "react-doctor/js-batch-dom-css": "warn",
@@ -179,6 +190,7 @@ const GLOBAL_REACT_DOCTOR_RULES: Record<string, RuleSeverity> = {
   "react-doctor/js-early-exit": "warn",
 
   "react-doctor/no-barrel-import": "warn",
+  "react-doctor/no-dynamic-import-path": "warn",
   "react-doctor/no-full-lodash-import": "warn",
   "react-doctor/no-moment": "warn",
   "react-doctor/prefer-dynamic-import": "warn",
@@ -191,6 +203,7 @@ const GLOBAL_REACT_DOCTOR_RULES: Record<string, RuleSeverity> = {
 
   "react-doctor/server-auth-actions": "error",
   "react-doctor/server-after-nonblocking": "warn",
+  "react-doctor/server-no-mutable-module-state": "error",
 
   "react-doctor/client-passive-event-listeners": "warn",
 

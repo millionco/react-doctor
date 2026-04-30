@@ -31,6 +31,7 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/no-fetch-in-effect": "State & Effects",
   "react-doctor/no-cascading-set-state": "State & Effects",
   "react-doctor/no-effect-event-handler": "State & Effects",
+  "react-doctor/no-effect-event-in-deps": "State & Effects",
   "react-doctor/no-derived-useState": "State & Effects",
   "react-doctor/prefer-useReducer": "State & Effects",
   "react-doctor/rerender-lazy-state-init": "Performance",
@@ -39,6 +40,8 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
 
   "react-doctor/no-generic-handler-names": "Architecture",
   "react-doctor/no-giant-component": "Architecture",
+  "react-doctor/no-many-boolean-props": "Architecture",
+  "react-doctor/no-react19-deprecated-apis": "Architecture",
   "react-doctor/no-render-in-render": "Architecture",
   "react-doctor/no-nested-component-definition": "Correctness",
 
@@ -46,6 +49,7 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/no-layout-property-animation": "Performance",
   "react-doctor/rerender-memo-with-default-value": "Performance",
   "react-doctor/rendering-animate-svg-wrapper": "Performance",
+  "react-doctor/rendering-hoist-jsx": "Performance",
   "react-doctor/rendering-usetransition-loading": "Performance",
   "react-doctor/rendering-hydration-no-flicker": "Performance",
   "react-doctor/rendering-script-defer-async": "Performance",
@@ -60,6 +64,7 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/no-secrets-in-client-code": "Security",
 
   "react-doctor/no-barrel-import": "Bundle Size",
+  "react-doctor/no-dynamic-import-path": "Bundle Size",
   "react-doctor/no-full-lodash-import": "Bundle Size",
   "react-doctor/no-moment": "Bundle Size",
   "react-doctor/prefer-dynamic-import": "Bundle Size",
@@ -88,6 +93,7 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
 
   "react-doctor/server-auth-actions": "Server",
   "react-doctor/server-after-nonblocking": "Server",
+  "react-doctor/server-no-mutable-module-state": "Server",
 
   "react-doctor/client-passive-event-listeners": "Performance",
 
@@ -118,6 +124,9 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/js-combine-iterations": "Performance",
   "react-doctor/js-tosorted-immutable": "Performance",
   "react-doctor/js-hoist-regexp": "Performance",
+  "react-doctor/js-hoist-intl": "Performance",
+  "react-doctor/js-cache-property-access": "Performance",
+  "react-doctor/js-length-check-first": "Performance",
   "react-doctor/js-min-max-loop": "Performance",
   "react-doctor/js-set-map-lookups": "Performance",
   "react-doctor/js-batch-dom-css": "Performance",
@@ -137,6 +146,10 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/rn-no-legacy-shadow-styles": "React Native",
   "react-doctor/rn-prefer-reanimated": "React Native",
   "react-doctor/rn-no-single-element-style-array": "React Native",
+  "react-doctor/rn-prefer-pressable": "React Native",
+  "react-doctor/rn-prefer-expo-image": "React Native",
+  "react-doctor/rn-no-non-native-navigator": "React Native",
+  "react-doctor/rn-no-scroll-state": "React Native",
 
   "react-doctor/tanstack-start-route-property-order": "TanStack Start",
   "react-doctor/tanstack-start-no-direct-fetch-in-loader": "TanStack Start",
@@ -173,11 +186,17 @@ const RULE_HELP_MAP: Record<string, string> = {
     "Use the callback form: `setState(prev => prev + 1)` to always read the latest value",
   "rerender-dependencies":
     "Extract to a useMemo, useRef, or module-level constant so the reference is stable",
+  "no-effect-event-in-deps":
+    "Call the useEffectEvent callback inside the effect body without listing it; its identity is intentionally unstable",
 
   "no-generic-handler-names":
     "Rename to describe the action: e.g. `handleSubmit` → `saveUserProfile`, `handleClick` → `toggleSidebar`",
   "no-giant-component":
     "Extract logical sections into focused components: `<UserHeader />`, `<UserActions />`, etc.",
+  "no-many-boolean-props":
+    "Split into compound components or named variants: `<Button.Primary />`, `<DialogConfirm />` instead of stacking `isPrimary`, `isConfirm` flags",
+  "no-react19-deprecated-apis":
+    "Pass `ref` as a regular prop on function components — `forwardRef` is no longer needed in React 19+",
   "no-render-in-render":
     "Extract to a named component: `const ListItem = ({ item }) => <div>{item.name}</div>`",
   "no-nested-component-definition":
@@ -191,6 +210,8 @@ const RULE_HELP_MAP: Record<string, string> = {
     "Move to module scope: `const EMPTY_ITEMS: Item[] = []` then use as the default value",
   "rendering-animate-svg-wrapper":
     "Wrap the SVG: `<motion.div animate={...}><svg>...</svg></motion.div>`",
+  "rendering-hoist-jsx":
+    "Move the static JSX to module scope: `const ICON = <svg>...</svg>` outside the component so it isn't recreated each render",
   "rendering-usetransition-loading":
     "Replace with `const [isPending, startTransition] = useTransition()` — avoids a re-render for the loading state",
   "rendering-hydration-no-flicker":
@@ -216,6 +237,8 @@ const RULE_HELP_MAP: Record<string, string> = {
 
   "no-barrel-import":
     "Import from the direct path: `import { Button } from './components/Button'` instead of `./components`",
+  "no-dynamic-import-path":
+    "Use a string-literal path: `import('./feature/heavy.js')` so the bundler can split this chunk",
   "no-full-lodash-import":
     "Import the specific function: `import debounce from 'lodash/debounce'` — saves ~70kb",
   "no-moment":
@@ -302,6 +325,8 @@ const RULE_HELP_MAP: Record<string, string> = {
     "Add `const session = await auth()` at the top and throw/redirect if unauthorized before any data access",
   "server-after-nonblocking":
     "`import { after } from 'next/server'` then wrap: `after(() => analytics.track(...))` — response isn't blocked",
+  "server-no-mutable-module-state":
+    "Move per-request data into the action body, headers/cookies, or a request-scope (React.cache, AsyncLocalStorage). Module-scope `let`/`var` is shared across requests.",
 
   "client-passive-event-listeners":
     "Add `{ passive: true }` as the third argument: `addEventListener('scroll', handler, { passive: true })`",
@@ -321,6 +346,12 @@ const RULE_HELP_MAP: Record<string, string> = {
 
   "js-flatmap-filter":
     "Use `.flatMap(item => condition ? [value] : [])` — transforms and filters in a single pass instead of creating an intermediate array",
+  "js-hoist-intl":
+    "Hoist `new Intl.NumberFormat(...)` to module scope or wrap in `useMemo` — Intl constructors allocate dozens of objects per locale lookup",
+  "js-cache-property-access":
+    "Hoist the deep member access into a const at the top of the loop body: `const { x, y } = obj.deeply.nested`",
+  "js-length-check-first":
+    "Short-circuit with `a.length === b.length && a.every((x, i) => x === b[i])` — unequal-length arrays exit immediately",
   "js-combine-iterations":
     "Combine `.map().filter()` (or similar chains) into a single pass with `.reduce()` or a `for...of` loop to avoid iterating the array twice",
   "js-tosorted-immutable":
@@ -362,6 +393,14 @@ const RULE_HELP_MAP: Record<string, string> = {
     "Use `import Animated from 'react-native-reanimated'` — animations run on the UI thread instead of the JS thread",
   "rn-no-single-element-style-array":
     "Use `style={value}` instead of `style={[value]}` — single-element arrays add unnecessary allocation",
+  "rn-prefer-pressable":
+    "Use `<Pressable>` from react-native (or react-native-gesture-handler) instead of legacy Touchable* components",
+  "rn-prefer-expo-image":
+    "Use `<Image>` from `expo-image` instead of `react-native` — same prop API, plus disk + memory caching, placeholders, and crossfades",
+  "rn-no-non-native-navigator":
+    "Use `@react-navigation/native-stack` (or `native-tabs` in v7+) for platform-native transitions and gestures",
+  "rn-no-scroll-state":
+    "Track scroll position with a Reanimated shared value (`useAnimatedScrollHandler`) or a ref — `setState` on every scroll event causes re-render storms",
 
   "tanstack-start-route-property-order":
     "Follow the order: params/validateSearch → loaderDeps → context → beforeLoad → loader → head. See https://tanstack.com/router/latest/docs/eslint/create-route-property-order",

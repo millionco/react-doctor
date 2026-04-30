@@ -56,6 +56,41 @@ export const serverAuthActions: Rule = {
   },
 };
 
+// HACK: in `"use server"` files, mutable module-level state (let/var) is
+// shared across concurrent requests. Different users can read each other's
+// data, and serverless cold-starts produce inconsistent state. Per-request
+// data must live inside the action, in headers/cookies, or in a request
+// scope (React.cache, AsyncLocalStorage, etc.).
+export const serverNoMutableModuleState: Rule = {
+  create: (context: RuleContext) => {
+    let fileHasUseServerDirective = false;
+
+    return {
+      Program(programNode: EsTreeNode) {
+        fileHasUseServerDirective = hasDirective(programNode, "use server");
+      },
+      VariableDeclaration(node: EsTreeNode) {
+        if (!fileHasUseServerDirective) return;
+        // Only flag top-level (Program-direct) declarations.
+        if (node.parent?.type !== "Program") return;
+        if (node.kind !== "let" && node.kind !== "var") return;
+
+        for (const declarator of node.declarations ?? []) {
+          // Static literal initializers (e.g. `let count = 0`) are still
+          // request-shared mutable state — flag them. But const/frozen
+          // immutable singletons are fine (different rule kind).
+          const variableName =
+            declarator.id?.type === "Identifier" ? declarator.id.name : "<unnamed>";
+          context.report({
+            node: declarator,
+            message: `Module-scoped ${node.kind} "${variableName}" in a "use server" file — this is shared across requests; move per-request data into the action body`,
+          });
+        }
+      },
+    };
+  },
+};
+
 export const serverAfterNonblocking: Rule = {
   create: (context: RuleContext) => {
     let fileHasUseServerDirective = false;

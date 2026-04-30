@@ -194,6 +194,53 @@ describe("runOxlint", () => {
         ruleSource: "rules/architecture.ts",
         severity: "error",
       },
+      "no-many-boolean-props": {
+        fixture: "new-rules.tsx",
+        ruleSource: "rules/architecture.ts",
+        category: "Architecture",
+      },
+      "no-react19-deprecated-apis": {
+        fixture: "legacy-react.tsx",
+        ruleSource: "rules/architecture.ts",
+        category: "Architecture",
+      },
+    },
+    () => basicReactDiagnostics,
+  );
+
+  describeRules(
+    "vercel-skill parity rules",
+    {
+      "no-dynamic-import-path": {
+        fixture: "new-rules.tsx",
+        ruleSource: "rules/bundle-size.ts",
+        category: "Bundle Size",
+      },
+      "rendering-hoist-jsx": {
+        fixture: "new-rules.tsx",
+        ruleSource: "rules/performance.ts",
+        category: "Performance",
+      },
+      "js-cache-property-access": {
+        fixture: "new-rules.tsx",
+        ruleSource: "rules/js-performance.ts",
+        category: "Performance",
+      },
+      "js-length-check-first": {
+        fixture: "new-rules.tsx",
+        ruleSource: "rules/js-performance.ts",
+        category: "Performance",
+      },
+      "js-hoist-intl": {
+        fixture: "new-rules.tsx",
+        ruleSource: "rules/js-performance.ts",
+        category: "Performance",
+      },
+      "no-effect-event-in-deps": {
+        fixture: "new-rules.tsx",
+        ruleSource: "rules/state-and-effects.ts",
+        severity: "error",
+      },
     },
     () => basicReactDiagnostics,
   );
@@ -418,6 +465,12 @@ describe("runOxlint", () => {
       "server-after-nonblocking": {
         fixture: "app/actions.tsx",
         ruleSource: "rules/server.ts",
+      },
+      "server-no-mutable-module-state": {
+        fixture: "app/actions.tsx",
+        ruleSource: "rules/server.ts",
+        severity: "error",
+        category: "Server",
       },
     },
     () => nextjsDiagnostics,

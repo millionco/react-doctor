@@ -7,7 +7,7 @@ import {
   REACT_NATIVE_TEXT_COMPONENTS,
   REACT_NATIVE_TEXT_COMPONENT_KEYWORDS,
 } from "../constants.js";
-import { hasDirective, isMemberProperty } from "../helpers.js";
+import { hasDirective, isMemberProperty, walkAst } from "../helpers.js";
 import type { EsTreeNode, Rule, RuleContext } from "../types.js";
 
 const resolveJsxElementName = (openingElement: EsTreeNode): string | null => {
@@ -271,6 +271,120 @@ export const rnNoSingleElementStyleArray: Rule = {
         node: expression,
         message: `Single-element style array on "${propName}" — use ${propName}={value} instead of ${propName}={[value]} to avoid unnecessary array allocation`,
       });
+    },
+  }),
+};
+
+const TOUCHABLE_COMPONENTS = new Set([
+  "TouchableOpacity",
+  "TouchableHighlight",
+  "TouchableWithoutFeedback",
+  "TouchableNativeFeedback",
+]);
+
+// HACK: TouchableOpacity / TouchableHighlight / TouchableWithoutFeedback /
+// TouchableNativeFeedback are legacy and feature-frozen. Pressable is the
+// modern, more configurable, more accessible replacement that works the
+// same on iOS, Android, and Fabric.
+export const rnPreferPressable: Rule = {
+  create: (context: RuleContext) => ({
+    ImportDeclaration(node: EsTreeNode) {
+      if (node.source?.value !== "react-native") return;
+      for (const specifier of node.specifiers ?? []) {
+        if (specifier.type !== "ImportSpecifier") continue;
+        const importedName = specifier.imported?.name;
+        if (!importedName || !TOUCHABLE_COMPONENTS.has(importedName)) continue;
+        context.report({
+          node: specifier,
+          message: `${importedName} is legacy — use <Pressable> from react-native (or react-native-gesture-handler) for modern press handling`,
+        });
+      }
+    },
+  }),
+};
+
+// HACK: react-native's built-in <Image> has no caching, no placeholders,
+// no progressive loading, and no priority hints. expo-image is a drop-in
+// replacement (same prop API plus more) with disk + memory caching, blur
+// placeholders, and crossfades — a major perceived-perf win for any list
+// or hero image.
+export const rnPreferExpoImage: Rule = {
+  create: (context: RuleContext) => ({
+    ImportDeclaration(node: EsTreeNode) {
+      if (node.source?.value !== "react-native") return;
+      for (const specifier of node.specifiers ?? []) {
+        if (specifier.type !== "ImportSpecifier") continue;
+        if (specifier.imported?.name !== "Image") continue;
+        context.report({
+          node: specifier,
+          message:
+            "Importing Image from react-native — prefer expo-image for caching, placeholders, and progressive loading (drop-in API)",
+        });
+      }
+    },
+  }),
+};
+
+const NON_NATIVE_NAVIGATOR_PACKAGES = new Set([
+  "@react-navigation/stack",
+  "@react-navigation/drawer",
+]);
+
+// HACK: @react-navigation/stack uses a JS-implemented stack with
+// imperfect native gesture/feel. native-stack (and native-tabs in v7+)
+// uses platform-native UINavigationController / Fragment, giving real
+// iOS/Android transitions, swipe-back, and large titles for free.
+export const rnNoNonNativeNavigator: Rule = {
+  create: (context: RuleContext) => ({
+    ImportDeclaration(node: EsTreeNode) {
+      const source = node.source?.value;
+      if (typeof source !== "string" || !NON_NATIVE_NAVIGATOR_PACKAGES.has(source)) return;
+      const replacement = source.replace("@react-navigation/", "@react-navigation/native-");
+      context.report({
+        node,
+        message: `${source} uses a JS-implemented navigator — use ${replacement} for native iOS/Android transitions and gestures`,
+      });
+    },
+  }),
+};
+
+// HACK: setting React state inside an onScroll handler triggers a re-render
+// at scroll-event frequency (60-120Hz). Use a Reanimated shared value
+// (useSharedValue + useAnimatedScrollHandler) or a ref + raf throttle so
+// the JS thread isn't pegged.
+export const rnNoScrollState: Rule = {
+  create: (context: RuleContext) => ({
+    JSXAttribute(node: EsTreeNode) {
+      if (node.name?.type !== "JSXIdentifier") return;
+      if (node.name.name !== "onScroll") return;
+      if (node.value?.type !== "JSXExpressionContainer") return;
+      const expression = node.value.expression;
+      if (
+        expression?.type !== "ArrowFunctionExpression" &&
+        expression?.type !== "FunctionExpression"
+      ) {
+        return;
+      }
+
+      let setStateCallNode: EsTreeNode | null = null;
+      walkAst(expression.body, (child: EsTreeNode) => {
+        if (setStateCallNode) return;
+        if (
+          child.type === "CallExpression" &&
+          child.callee?.type === "Identifier" &&
+          /^set[A-Z]/.test(child.callee.name)
+        ) {
+          setStateCallNode = child;
+        }
+      });
+
+      if (setStateCallNode) {
+        context.report({
+          node: setStateCallNode,
+          message:
+            "setState in onScroll triggers re-renders on every scroll event — use a Reanimated shared value (useAnimatedScrollHandler) or a ref to track scroll position",
+        });
+      }
     },
   }),
 };

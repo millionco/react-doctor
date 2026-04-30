@@ -478,3 +478,69 @@ export const renderingScriptDeferAsync: Rule = {
     },
   }),
 };
+
+// HACK: detect static JSX declared inside a component body — anything like
+// `const Header = <h1>Hi</h1>` inside a render function gets recreated on
+// every render. If the JSX has no expression containers referencing local
+// scope (no props, no state), it can be hoisted to module scope.
+const jsxReferencesLocalScope = (jsxNode: EsTreeNode): boolean => {
+  let referencesScope = false;
+  walkAst(jsxNode, (child: EsTreeNode) => {
+    if (referencesScope) return;
+    if (
+      child.type === "JSXExpressionContainer" &&
+      child.expression?.type !== "JSXEmptyExpression"
+    ) {
+      referencesScope = true;
+    }
+    if (child.type === "JSXSpreadAttribute") {
+      referencesScope = true;
+    }
+  });
+  return referencesScope;
+};
+
+export const renderingHoistJsx: Rule = {
+  create: (context: RuleContext) => {
+    let componentDepth = 0;
+
+    const isComponentLike = (node: EsTreeNode): boolean => {
+      if (node.type === "FunctionDeclaration" && node.id?.name && isUppercaseName(node.id.name)) {
+        return true;
+      }
+      if (node.type === "VariableDeclarator" && isComponentAssignment(node)) {
+        return true;
+      }
+      return false;
+    };
+
+    const enter = (node: EsTreeNode): void => {
+      if (isComponentLike(node)) componentDepth++;
+    };
+    const exit = (node: EsTreeNode): void => {
+      if (isComponentLike(node)) componentDepth = Math.max(0, componentDepth - 1);
+    };
+
+    return {
+      FunctionDeclaration: enter,
+      "FunctionDeclaration:exit": exit,
+      VariableDeclarator: enter,
+      "VariableDeclarator:exit": exit,
+      VariableDeclaration(node: EsTreeNode) {
+        if (componentDepth === 0) return;
+        if (node.kind !== "const") return;
+        for (const declarator of node.declarations ?? []) {
+          const init = declarator.init;
+          if (!init) continue;
+          if (init.type !== "JSXElement" && init.type !== "JSXFragment") continue;
+          if (jsxReferencesLocalScope(init)) continue;
+          const name = declarator.id?.type === "Identifier" ? declarator.id.name : "<unnamed>";
+          context.report({
+            node: declarator,
+            message: `Static JSX "${name}" inside a component — hoist to module scope so it isn't recreated each render`,
+          });
+        }
+      },
+    };
+  },
+};

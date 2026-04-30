@@ -663,3 +663,170 @@ export const rerenderStateOnlyInHandlers: Rule = {
     };
   },
 };
+
+// HACK: `useEffect(() => { window.addEventListener(name, handler);
+// return () => window.removeEventListener(name, handler); }, [handler])`
+// is the canonical "I want the latest handler" anti-pattern: every time
+// the parent re-renders with a new `handler` prop, the effect tears
+// down and re-subscribes. This thrashes the listener for no reason —
+// the subscription itself doesn't change, only the function it points
+// to. Store the handler in a ref (`handlerRef.current = handler` in a
+// separate effect or a layout effect) and have the registered listener
+// read `handlerRef.current()`, then take `handler` out of the deps.
+//
+// Heuristic: useEffect whose dep array contains an identifier (must be
+// a function-typed prop or local in practice — we approximate by
+// requiring it to also appear as the second argument to
+// `addEventListener`/`subscribe`-shaped calls inside the effect body).
+const SUBSCRIPTION_METHOD_NAMES = new Set(["addEventListener", "subscribe", "on", "addListener"]);
+
+export const advancedEventHandlerRefs: Rule = {
+  create: (context: RuleContext) => ({
+    CallExpression(node: EsTreeNode) {
+      if (!isHookCall(node, EFFECT_HOOK_NAMES)) return;
+      if ((node.arguments?.length ?? 0) < 2) return;
+      const callback = getEffectCallback(node);
+      if (!callback) return;
+      const depsNode = node.arguments[1];
+      if (depsNode.type !== "ArrayExpression" || !depsNode.elements?.length) return;
+
+      const depIdentifierNames = new Set<string>();
+      for (const element of depsNode.elements) {
+        if (element?.type === "Identifier") depIdentifierNames.add(element.name);
+      }
+      if (depIdentifierNames.size === 0) return;
+
+      // Look for an addEventListener (etc.) call inside the body whose
+      // second argument is one of our deps.
+      let registeredHandlerName: string | null = null;
+      walkAst(callback.body, (child: EsTreeNode) => {
+        if (registeredHandlerName) return;
+        if (child.type !== "CallExpression") return;
+        if (child.callee?.type !== "MemberExpression") return;
+        if (child.callee.property?.type !== "Identifier") return;
+        if (!SUBSCRIPTION_METHOD_NAMES.has(child.callee.property.name)) return;
+        const handlerArg = child.arguments?.[1];
+        if (handlerArg?.type !== "Identifier") return;
+        if (depIdentifierNames.has(handlerArg.name)) {
+          registeredHandlerName = handlerArg.name;
+        }
+      });
+
+      if (registeredHandlerName) {
+        context.report({
+          node,
+          message: `useEffect re-subscribes a "${registeredHandlerName}" listener every time the handler identity changes — store the handler in a ref and have the listener read \`handlerRef.current()\`, then drop it from the deps`,
+        });
+      }
+    },
+  }),
+};
+
+const DEFERRABLE_HOOK_NAMES = new Set(["useSearchParams", "useParams", "usePathname"]);
+
+const findHookCallBindings = (
+  componentBody: EsTreeNode,
+): Array<{ valueName: string; hookName: string; declarator: EsTreeNode }> => {
+  const bindings: Array<{ valueName: string; hookName: string; declarator: EsTreeNode }> = [];
+  if (componentBody?.type !== "BlockStatement") return bindings;
+
+  for (const statement of componentBody.body ?? []) {
+    if (statement.type !== "VariableDeclaration") continue;
+    for (const declarator of statement.declarations ?? []) {
+      if (declarator.id?.type !== "Identifier") continue;
+      if (declarator.init?.type !== "CallExpression") continue;
+      const callee = declarator.init.callee;
+      if (callee?.type !== "Identifier") continue;
+      if (!DEFERRABLE_HOOK_NAMES.has(callee.name)) continue;
+      bindings.push({
+        valueName: declarator.id.name,
+        hookName: callee.name,
+        declarator,
+      });
+    }
+  }
+  return bindings;
+};
+
+const isInsideEventHandler = (node: EsTreeNode): boolean => {
+  let cursor: EsTreeNode | null = node.parent ?? null;
+  while (cursor) {
+    if (
+      cursor.type === "ArrowFunctionExpression" ||
+      cursor.type === "FunctionExpression" ||
+      cursor.type === "FunctionDeclaration"
+    ) {
+      // If we hit a function whose grandparent is JSXAttribute / JSXExpressionContainer-in-handler,
+      // we're inside an event handler. Loop up to find that.
+      let outer: EsTreeNode | null = cursor.parent ?? null;
+      while (outer) {
+        if (outer.type === "JSXAttribute") {
+          const attrName = outer.name?.type === "JSXIdentifier" ? outer.name.name : null;
+          if (attrName && /^on[A-Z]/.test(attrName)) return true;
+          return false;
+        }
+        if (outer.type === "VariableDeclarator" || outer.type === "Program") return false;
+        outer = outer.parent ?? null;
+      }
+      return false;
+    }
+    cursor = cursor.parent ?? null;
+  }
+  return false;
+};
+
+// HACK: subscribing to `useSearchParams()` / `useParams()` /
+// `usePathname()` makes the component re-render whenever the URL state
+// changes — even when the component only reads the value inside an
+// onClick / onSubmit handler. In that case the value is read at click
+// time anyway; the subscription is wasted work.
+//
+// Better pattern: read inside the handler via the underlying API
+// (`new URL(window.location.href).searchParams`), or build a small
+// custom hook that exposes a `getSearchParams()` getter without
+// subscribing. The result is fewer renders without losing the data.
+//
+// Heuristic: hook value-name appears only inside arrow / function
+// expressions that are themselves bound to JSX `on*` attributes.
+export const rerenderDeferReadsHook: Rule = {
+  create: (context: RuleContext) => {
+    const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
+      if (!componentBody || componentBody.type !== "BlockStatement") return;
+      const bindings = findHookCallBindings(componentBody);
+      if (bindings.length === 0) return;
+
+      for (const binding of bindings) {
+        const referenceLocations: EsTreeNode[] = [];
+        walkAst(componentBody, (child: EsTreeNode) => {
+          if (child === binding.declarator.id) return;
+          if (child.type === "Identifier" && child.name === binding.valueName) {
+            referenceLocations.push(child);
+          }
+        });
+
+        // No references at all → unused, different rule.
+        if (referenceLocations.length === 0) continue;
+
+        // Every reference must be inside an event handler.
+        const allInHandlers = referenceLocations.every((ref) => isInsideEventHandler(ref));
+        if (!allInHandlers) continue;
+
+        context.report({
+          node: binding.declarator,
+          message: `${binding.hookName}() return is only read inside event handlers — defer the read into the handler (e.g. \`new URL(window.location.href).searchParams\`) so the component doesn't re-render on every URL change`,
+        });
+      }
+    };
+
+    return {
+      FunctionDeclaration(node: EsTreeNode) {
+        if (!node.id?.name || !isUppercaseName(node.id.name)) return;
+        checkComponent(node.body);
+      },
+      VariableDeclarator(node: EsTreeNode) {
+        if (!isComponentAssignment(node)) return;
+        checkComponent(node.init?.body);
+      },
+    };
+  },
+};

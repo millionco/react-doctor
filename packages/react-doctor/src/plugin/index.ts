@@ -43,6 +43,7 @@ import {
   renderingSvgPrecision,
 } from "./rules/correctness.js";
 import {
+  asyncAwaitInLoop,
   asyncParallel,
   jsBatchDomCss,
   jsCachePropertyAccess,
@@ -92,6 +93,7 @@ import {
   renderingHydrationNoFlicker,
   renderingScriptDeferAsync,
   renderingUsetransitionLoading,
+  rerenderDerivedStateFromHook,
   rerenderMemoBeforeEarlyReturn,
   rerenderMemoWithDefaultValue,
   rerenderTransitionsScroll,
@@ -102,6 +104,7 @@ import {
   rnBottomSheetPreferNative,
   rnListCallbackPerRow,
   rnListDataMapped,
+  rnListRecyclableWithoutTypes,
   rnNoDeprecatedModules,
   rnNoDimensionsGet,
   rnNoInlineFlatlistRenderitem,
@@ -135,6 +138,7 @@ import {
   serverAuthActions,
   serverCacheWithObjectLiteral,
   serverDedupProps,
+  serverFetchWithoutRevalidate,
   serverHoistStaticIo,
   serverNoMutableModuleState,
   serverSequentialIndependentAwait,
@@ -156,6 +160,7 @@ import {
   tanstackStartServerFnValidateInput,
 } from "./rules/tanstack-start.js";
 import {
+  advancedEventHandlerRefs,
   noCascadingSetState,
   noDerivedStateEffect,
   noDerivedUseState,
@@ -165,6 +170,7 @@ import {
   noPropCallbackInEffect,
   preferUseReducer,
   rerenderDependencies,
+  rerenderDeferReadsHook,
   rerenderFunctionalSetstate,
   rerenderLazyStateInit,
   rerenderStateOnlyInHandlers,
@@ -187,6 +193,8 @@ const plugin: RulePlugin = {
     "rerender-functional-setstate": rerenderFunctionalSetstate,
     "rerender-dependencies": rerenderDependencies,
     "rerender-state-only-in-handlers": rerenderStateOnlyInHandlers,
+    "rerender-defer-reads-hook": rerenderDeferReadsHook,
+    "advanced-event-handler-refs": advancedEventHandlerRefs,
 
     "no-generic-handler-names": noGenericHandlerNames,
     "no-giant-component": noGiantComponent,
@@ -202,7 +210,9 @@ const plugin: RulePlugin = {
     "rerender-memo-with-default-value": rerenderMemoWithDefaultValue,
     "rerender-memo-before-early-return": rerenderMemoBeforeEarlyReturn,
     "rerender-transitions-scroll": rerenderTransitionsScroll,
+    "rerender-derived-state-from-hook": rerenderDerivedStateFromHook,
     "async-defer-await": asyncDeferAwait,
+    "async-await-in-loop": asyncAwaitInLoop,
     "rendering-animate-svg-wrapper": renderingAnimateSvgWrapper,
     "rendering-hoist-jsx": renderingHoistJsx,
     "rendering-hydration-mismatch-time": renderingHydrationMismatchTime,
@@ -260,6 +270,7 @@ const plugin: RulePlugin = {
     "server-hoist-static-io": serverHoistStaticIo,
     "server-dedup-props": serverDedupProps,
     "server-sequential-independent-await": serverSequentialIndependentAwait,
+    "server-fetch-without-revalidate": serverFetchWithoutRevalidate,
 
     "client-passive-event-listeners": clientPassiveEventListeners,
     "client-localstorage-no-version": clientLocalstorageNoVersion,
@@ -298,6 +309,7 @@ const plugin: RulePlugin = {
     "rn-pressable-shared-value-mutation": rnPressableSharedValueMutation,
     "rn-list-data-mapped": rnListDataMapped,
     "rn-list-callback-per-row": rnListCallbackPerRow,
+    "rn-list-recyclable-without-types": rnListRecyclableWithoutTypes,
     "rn-animation-reaction-as-derived": rnAnimationReactionAsDerived,
     "rn-bottom-sheet-prefer-native": rnBottomSheetPreferNative,
     "rn-scrollview-dynamic-padding": rnScrollviewDynamicPadding,

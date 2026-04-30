@@ -39,6 +39,8 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/rerender-functional-setstate": "Performance",
   "react-doctor/rerender-dependencies": "State & Effects",
   "react-doctor/rerender-state-only-in-handlers": "Performance",
+  "react-doctor/rerender-defer-reads-hook": "Performance",
+  "react-doctor/advanced-event-handler-refs": "Performance",
 
   "react-doctor/no-generic-handler-names": "Architecture",
   "react-doctor/no-giant-component": "Architecture",
@@ -54,7 +56,9 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/rerender-memo-with-default-value": "Performance",
   "react-doctor/rerender-memo-before-early-return": "Performance",
   "react-doctor/rerender-transitions-scroll": "Performance",
+  "react-doctor/rerender-derived-state-from-hook": "Performance",
   "react-doctor/async-defer-await": "Performance",
+  "react-doctor/async-await-in-loop": "Performance",
   "react-doctor/rendering-animate-svg-wrapper": "Performance",
   "react-doctor/rendering-hoist-jsx": "Performance",
   "react-doctor/rendering-hydration-mismatch-time": "Correctness",
@@ -110,6 +114,7 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/server-hoist-static-io": "Server",
   "react-doctor/server-dedup-props": "Server",
   "react-doctor/server-sequential-independent-await": "Server",
+  "react-doctor/server-fetch-without-revalidate": "Server",
 
   "react-doctor/client-passive-event-listeners": "Performance",
   "react-doctor/client-localstorage-no-version": "Correctness",
@@ -174,6 +179,7 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/rn-pressable-shared-value-mutation": "React Native",
   "react-doctor/rn-list-data-mapped": "React Native",
   "react-doctor/rn-list-callback-per-row": "React Native",
+  "react-doctor/rn-list-recyclable-without-types": "React Native",
   "react-doctor/rn-animation-reaction-as-derived": "React Native",
   "react-doctor/rn-bottom-sheet-prefer-native": "React Native",
   "react-doctor/rn-scrollview-dynamic-padding": "React Native",
@@ -250,16 +256,28 @@ const RULE_HELP_MAP: Record<string, string> = {
     "Wrap the setState in startTransition (mark as non-urgent), use useDeferredValue, or stash in a ref + rAF throttle so scroll/pointer events don't trigger a re-render per fire",
   "rerender-state-only-in-handlers":
     "Replace useState with useRef when the value is only mutated and never read in render — `ref.current = ...` updates without re-rendering the component",
+  "rerender-defer-reads-hook":
+    "Read the URL state inside the handler (e.g. `new URL(window.location.href).searchParams`) so the component doesn't subscribe and re-render on every URL change",
+  "rerender-derived-state-from-hook":
+    'Use a threshold/media-query hook (e.g. `useMediaQuery("(max-width: 767px)")`) — the component re-renders only when the threshold flips, not every pixel',
+  "advanced-event-handler-refs":
+    "Store the handler in a ref and have the listener read `handlerRef.current()` — the subscription stays put while the latest handler is always called",
   "async-defer-await":
     "Move the `await` after the synchronous early-return guard so the skip path stays fast",
+  "async-await-in-loop":
+    "Collect the items and use `await Promise.all(items.map(...))` to run independent operations concurrently",
   "react-compiler-destructure-method":
     "Destructure the method up front: `const { push } = useRouter()` then call `push(...)` directly — clearer dependency graph and easier for React Compiler to memoize",
   "client-localstorage-no-version":
     'Bake a version into the storage key (e.g. "myKey:v1"); a future schema change can ignore old data instead of crashing on it',
   "server-sequential-independent-await":
     "Wrap independent awaits in `Promise.all([...])` so they race instead of waterfalling — second call doesn't depend on the first",
+  "server-fetch-without-revalidate":
+    'Pass `{ next: { revalidate: <seconds> } }` (or `cache: "no-store"` / `next: { tags: [...] }`) so stale cached data doesn\'t silently persist',
   "rn-list-callback-per-row":
     "Hoist the handler with useCallback at list scope and pass the row id as a primitive prop, so the row's memo() shallow-compare actually hits",
+  "rn-list-recyclable-without-types":
+    "Add `getItemType={item => item.kind}` so FlashList keeps separate recycle pools per item type — heterogeneous rows shouldn't share recycled cells",
   "rn-style-prefer-boxshadow":
     'Use the cross-platform CSS `boxShadow` string (RN v7+): `boxShadow: "0 2px 8px rgba(0,0,0,0.1)"` instead of platform-specific shadow*/elevation keys',
   "rendering-hydration-mismatch-time":

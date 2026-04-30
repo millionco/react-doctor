@@ -519,3 +519,114 @@ export const jsHoistIntl: Rule = {
     },
   }),
 };
+
+const findFirstAwaitOutsideNestedFunctions = (block: EsTreeNode): EsTreeNode | null => {
+  let firstAwait: EsTreeNode | null = null;
+  walkAst(block, (child: EsTreeNode) => {
+    if (firstAwait) return;
+    if (
+      child.type === "FunctionDeclaration" ||
+      child.type === "FunctionExpression" ||
+      child.type === "ArrowFunctionExpression"
+    ) {
+      // Don't descend into nested functions — their `await`s belong to
+      // their own async parent, not this loop.
+      return;
+    }
+    if (child.type === "AwaitExpression") {
+      firstAwait = child;
+    }
+  });
+  return firstAwait;
+};
+
+// HACK: `for (const x of items) { await fetch(x); }` runs the fetches
+// sequentially — each one waits for the previous to finish before
+// starting. If the calls are independent (which they almost always are
+// in a list-iteration loop), the total latency is N × per-call latency
+// instead of just per-call. `await Promise.all(items.map(fetch))` runs
+// them all concurrently. We flag any `await` inside `for…of`,
+// `for…in`, classic `for`, `while`, or `.forEach`/`.map` callback
+// bodies where `await` appears at the top level of the loop body.
+//
+// Notable exceptions we INTENTIONALLY do not exempt:
+//  - `for await (const x of asyncIterable)` — that's a different
+//    AST node (ForOfStatement with `await: true`); we skip those.
+//  - Loops where the next iteration depends on the previous result
+//    (e.g. paginated fetch). The plugin can't tell — accept some
+//    false positives in exchange for catching the common waterfall.
+const isFunctionishExpression = (node: EsTreeNode): boolean =>
+  node.type === "ArrowFunctionExpression" || node.type === "FunctionExpression";
+
+const ITERATION_METHOD_NAMES_WITH_CALLBACK = new Set([
+  "forEach",
+  "map",
+  "filter",
+  "reduce",
+  "reduceRight",
+  "find",
+  "findIndex",
+  "some",
+  "every",
+  "flatMap",
+]);
+
+export const asyncAwaitInLoop: Rule = {
+  create: (context: RuleContext) => {
+    const inspectLoopBody = (loopBody: EsTreeNode | null | undefined, label: string): void => {
+      if (!loopBody) return;
+      const firstAwait = findFirstAwaitOutsideNestedFunctions(loopBody);
+      if (firstAwait) {
+        context.report({
+          node: firstAwait,
+          message: `await inside a ${label} runs the calls sequentially — for independent operations, collect them and use \`await Promise.all(items.map(...))\` to run them concurrently`,
+        });
+      }
+    };
+
+    return {
+      ForStatement(node: EsTreeNode) {
+        inspectLoopBody(node.body, "for-loop");
+      },
+      ForInStatement(node: EsTreeNode) {
+        inspectLoopBody(node.body, "for…in loop");
+      },
+      ForOfStatement(node: EsTreeNode) {
+        // `for await (const x of …)` is the legitimate async-iterator
+        // pattern — skip it.
+        if (node.await) return;
+        inspectLoopBody(node.body, "for…of loop");
+      },
+      WhileStatement(node: EsTreeNode) {
+        inspectLoopBody(node.body, "while-loop");
+      },
+      DoWhileStatement(node: EsTreeNode) {
+        inspectLoopBody(node.body, "do-while loop");
+      },
+      CallExpression(node: EsTreeNode) {
+        // arr.forEach(async item => { await fn(item); }) — sequential
+        // because forEach doesn't await; even worse, the awaits are
+        // dropped on the floor (forEach ignores return values).
+        if (node.callee?.type !== "MemberExpression") return;
+        if (node.callee.property?.type !== "Identifier") return;
+        const methodName = node.callee.property.name;
+        if (!ITERATION_METHOD_NAMES_WITH_CALLBACK.has(methodName)) return;
+
+        const callback = node.arguments?.[0];
+        if (!callback || !isFunctionishExpression(callback)) return;
+        if (!callback.async) return;
+        const body = callback.body;
+        if (!body) return;
+        const targetBody = body.type === "BlockStatement" ? body : body;
+        const firstAwait = findFirstAwaitOutsideNestedFunctions(targetBody);
+        if (firstAwait) {
+          const message =
+            methodName === "forEach"
+              ? "Async callback in .forEach — return values are dropped, so awaits don't actually wait. Use a `for…of` loop or `await Promise.all(items.map(async (item) => {...}))`"
+              : `Async callback in .${methodName} — sequential awaits inside the callback waterfall. Use \`await Promise.all(items.map(async (item) => {...}))\` to run them concurrently`;
+          context.report({ node: firstAwait, message });
+        }
+      },
+    };
+  },
+};

@@ -918,3 +918,95 @@ export const asyncDeferAwait: Rule = {
     };
   },
 };
+
+const CONTINUOUS_VALUE_HOOK_PATTERN =
+  /^use(?:Window(?:Width|Height|Dimensions)|Scroll(?:Position|Y|X)|MousePosition|ResizeObserver|IntersectionObserver)/;
+
+// HACK: hooks that return a continuously-changing numeric value
+// (`useWindowWidth`, `useScrollPosition`, etc.) trigger a re-render on
+// every change. If the component only cares about a coarser boolean
+// derived from that value (`width < 768` → "is mobile"), it ends up
+// rendering on every pixel of resize. Use a media-query / threshold
+// hook (`useMediaQuery("(max-width: 767px)")`) which only fires when
+// the threshold flips.
+//
+// Heuristic: `const x = useFooBar(...)` immediately followed by a
+// `const y = x [<>=] literal` (or boolean expression on x), where y is
+// the only value referenced in the JSX.
+const isThresholdComparison = (node: EsTreeNode, valueName: string): boolean => {
+  if (node.type !== "BinaryExpression") return false;
+  if (!["<", "<=", ">", ">=", "===", "!==", "==", "!="].includes(node.operator)) return false;
+  const referencesContinuous =
+    (node.left?.type === "Identifier" && node.left.name === valueName) ||
+    (node.right?.type === "Identifier" && node.right.name === valueName);
+  if (!referencesContinuous) return false;
+  return node.left?.type === "Literal" || node.right?.type === "Literal";
+};
+
+const findThresholdDerivedBindings = (
+  componentBody: EsTreeNode,
+): Array<{ continuousName: string; hookName: string; declarator: EsTreeNode }> => {
+  const out: Array<{ continuousName: string; hookName: string; declarator: EsTreeNode }> = [];
+  if (componentBody?.type !== "BlockStatement") return out;
+  const statements = componentBody.body ?? [];
+
+  for (let i = 0; i < statements.length; i++) {
+    const stmt = statements[i];
+    if (stmt.type !== "VariableDeclaration") continue;
+
+    for (const declarator of stmt.declarations ?? []) {
+      if (declarator.id?.type !== "Identifier") continue;
+      const init = declarator.init;
+      if (init?.type !== "CallExpression") continue;
+      if (init.callee?.type !== "Identifier") continue;
+      if (!CONTINUOUS_VALUE_HOOK_PATTERN.test(init.callee.name)) continue;
+
+      const continuousName = declarator.id.name;
+      const hookName = init.callee.name;
+
+      // Look at the next statement(s) for a derived threshold binding.
+      for (let j = i + 1; j < statements.length; j++) {
+        const next = statements[j];
+        if (next.type !== "VariableDeclaration") break;
+        let foundThreshold = false;
+        for (const innerDecl of next.declarations ?? []) {
+          if (innerDecl.init && isThresholdComparison(innerDecl.init, continuousName)) {
+            foundThreshold = true;
+            break;
+          }
+        }
+        if (foundThreshold) {
+          out.push({ continuousName, hookName, declarator });
+          break;
+        }
+      }
+    }
+  }
+  return out;
+};
+
+export const rerenderDerivedStateFromHook: Rule = {
+  create: (context: RuleContext) => {
+    const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
+      if (!componentBody || componentBody.type !== "BlockStatement") return;
+      const bindings = findThresholdDerivedBindings(componentBody);
+      for (const binding of bindings) {
+        context.report({
+          node: binding.declarator,
+          message: `${binding.hookName}() returns a continuously-changing value but you only compare it to a threshold — use a media-query / threshold hook (e.g. \`useMediaQuery(\"(max-width: 767px)\")\`) so the component re-renders only when the threshold flips`,
+        });
+      }
+    };
+
+    return {
+      FunctionDeclaration(node: EsTreeNode) {
+        if (!node.id?.name || !isUppercaseName(node.id.name)) return;
+        checkComponent(node.body);
+      },
+      VariableDeclarator(node: EsTreeNode) {
+        if (!isComponentAssignment(node)) return;
+        checkComponent(node.init?.body);
+      },
+    };
+  },
+};

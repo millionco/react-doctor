@@ -305,6 +305,26 @@ describe("runOxlint", () => {
         ruleSource: "rules/architecture.ts",
         category: "Architecture",
       },
+      "async-await-in-loop": {
+        fixture: "async-and-handler-issues.tsx",
+        ruleSource: "rules/js-performance.ts",
+        category: "Performance",
+      },
+      "advanced-event-handler-refs": {
+        fixture: "async-and-handler-issues.tsx",
+        ruleSource: "rules/state-and-effects.ts",
+        category: "Performance",
+      },
+      "rerender-defer-reads-hook": {
+        fixture: "async-and-handler-issues.tsx",
+        ruleSource: "rules/state-and-effects.ts",
+        category: "Performance",
+      },
+      "rerender-derived-state-from-hook": {
+        fixture: "async-and-handler-issues.tsx",
+        ruleSource: "rules/performance.ts",
+        category: "Performance",
+      },
     },
     () => basicReactDiagnostics,
   );
@@ -552,6 +572,11 @@ describe("runOxlint", () => {
         category: "Server",
       },
       "server-sequential-independent-await": {
+        fixture: "app/dashboard/route.tsx",
+        ruleSource: "rules/server.ts",
+        category: "Server",
+      },
+      "server-fetch-without-revalidate": {
         fixture: "app/dashboard/route.tsx",
         ruleSource: "rules/server.ts",
         category: "Server",

@@ -204,11 +204,11 @@ const resolveDiffMode = async (
   diffInfo: DiffInfo | null,
   effectiveDiff: boolean | string | undefined,
   shouldSkipPrompts: boolean,
-  isScoreOnly: boolean,
+  isQuiet: boolean,
 ): Promise<boolean> => {
   if (effectiveDiff !== undefined && effectiveDiff !== false) {
     if (diffInfo) return true;
-    if (!isScoreOnly) {
+    if (!isQuiet) {
       logger.warn("No feature branch or uncommitted changes detected. Running full scan.");
       logger.break();
     }
@@ -220,7 +220,7 @@ const resolveDiffMode = async (
   const changedSourceFiles = filterSourceFiles(diffInfo.changedFiles);
   if (changedSourceFiles.length === 0) return false;
   if (shouldSkipPrompts) return false;
-  if (isScoreOnly) return false;
+  if (isQuiet) return false;
 
   const promptMessage = diffInfo.isCurrentChanges
     ? `Found ${changedSourceFiles.length} uncommitted changed files. Only scan those?`

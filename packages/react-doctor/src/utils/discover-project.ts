@@ -114,9 +114,13 @@ const countSourceFilesViaFilesystem = (rootDirectory: string): number => {
 };
 
 const countSourceFilesViaGit = (rootDirectory: string): number | null => {
+  // HACK: do NOT add --recurse-submodules — it's incompatible with
+  // --others / --exclude-standard and git rejects the combination, which
+  // would silently force every scan to fall back to the much slower
+  // filesystem walk in countSourceFilesViaFilesystem.
   const result = spawnSync(
     "git",
-    ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--recurse-submodules"],
+    ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
     {
       cwd: rootDirectory,
       encoding: "utf-8",

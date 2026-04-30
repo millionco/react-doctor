@@ -148,8 +148,7 @@ const NON_INTERACTIVE_ENVIRONMENT_VARIABLES = [
 const CI_ENVIRONMENT_VARIABLES = ["GITHUB_ACTIONS", "GITLAB_CI", "CIRCLECI"];
 
 const isNonInteractiveEnvironment = (): boolean =>
-  NON_INTERACTIVE_ENVIRONMENT_VARIABLES.some((envVariable) => Boolean(process.env[envVariable])) ||
-  process.env.CI === "true";
+  NON_INTERACTIVE_ENVIRONMENT_VARIABLES.some((envVariable) => Boolean(process.env[envVariable]));
 
 const isCiEnvironment = (): boolean =>
   CI_ENVIRONMENT_VARIABLES.some((envVariable) => Boolean(process.env[envVariable])) ||

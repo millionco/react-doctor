@@ -1,5 +1,3 @@
-import { FETCH_TIMEOUT_MS } from "../constants.js";
-
 interface GlobalProcessLike {
   env?: Record<string, string | undefined>;
   versions?: { node?: string };
@@ -32,21 +30,15 @@ interface ProxyFetchInit extends RequestInit {
   dispatcher?: object;
 }
 
+// HACK: caller (tryScoreFromApi) is responsible for the timeout via init.signal —
+// we don't double-apply one here. Our only contribution is the proxy dispatcher.
 export const proxyFetch: typeof fetch = async (url, init) => {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const proxyUrl = getProxyUrl();
+  const dispatcher = proxyUrl ? await createProxyDispatcher(proxyUrl) : null;
 
-  try {
-    const proxyUrl = getProxyUrl();
-    const dispatcher = proxyUrl ? await createProxyDispatcher(proxyUrl) : null;
-
-    const fetchInit: ProxyFetchInit = {
-      ...init,
-      signal: controller.signal,
-      ...(dispatcher ? { dispatcher } : {}),
-    };
-    return await fetch(url, fetchInit);
-  } finally {
-    clearTimeout(timeoutId);
-  }
+  const fetchInit: ProxyFetchInit = {
+    ...init,
+    ...(dispatcher ? { dispatcher } : {}),
+  };
+  return fetch(url, fetchInit);
 };

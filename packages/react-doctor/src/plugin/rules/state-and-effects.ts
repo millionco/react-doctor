@@ -158,26 +158,73 @@ export const noEffectEventHandler: Rule = {
 
 export const noDerivedUseState: Rule = {
   create: (context: RuleContext) => {
-    const componentPropNames = new Set<string>();
+    // HACK: track prop names per-component scope using a stack.  The
+    // previous shared `Set` was a pre-existing bug (names from ComponentA
+    // leaked into ComponentB) that became more visible after we extended
+    // `extractDestructuredPropNames` to recurse into nested patterns.
+    // Each component pushes its own Set on enter and pops on exit; the
+    // top-of-stack is what useState() calls check against.
+    const componentPropStack: Array<Set<string>> = [];
+
+    const enterComponent = (paramSource: EsTreeNode[] | undefined): void => {
+      const propNames = extractDestructuredPropNames(paramSource ?? []);
+      componentPropStack.push(propNames);
+    };
+    const exitComponent = (): void => {
+      componentPropStack.pop();
+    };
+
+    const isPropName = (name: string): boolean => {
+      for (let i = componentPropStack.length - 1; i >= 0; i--) {
+        if (componentPropStack[i].has(name)) return true;
+      }
+      return false;
+    };
 
     return {
       FunctionDeclaration(node: EsTreeNode) {
-        if (!node.id?.name || !isUppercaseName(node.id.name)) return;
-        for (const name of extractDestructuredPropNames(node.params ?? [])) {
-          componentPropNames.add(name);
+        if (!node.id?.name || !isUppercaseName(node.id.name)) {
+          // Push an empty scope so exit pops match correctly.
+          componentPropStack.push(new Set());
+          return;
         }
+        enterComponent(node.params);
       },
+      "FunctionDeclaration:exit": exitComponent,
       VariableDeclarator(node: EsTreeNode) {
         if (!isComponentAssignment(node)) return;
-        for (const name of extractDestructuredPropNames(node.init?.params ?? [])) {
-          componentPropNames.add(name);
+        enterComponent(node.init?.params);
+      },
+      "VariableDeclarator:exit"(node: EsTreeNode) {
+        if (!isComponentAssignment(node)) return;
+        exitComponent();
+      },
+      FunctionExpression() {
+        componentPropStack.push(new Set());
+      },
+      "FunctionExpression:exit": exitComponent,
+      ArrowFunctionExpression(node: EsTreeNode) {
+        // Arrow functions inside VariableDeclarator are handled by the
+        // VariableDeclarator visitor; bare arrows (e.g. callbacks) get
+        // an empty scope so nested useState calls don't false-positive
+        // against an outer component's props.
+        if (node.parent?.type === "VariableDeclarator" && isComponentAssignment(node.parent)) {
+          return;
         }
+        componentPropStack.push(new Set());
+      },
+      "ArrowFunctionExpression:exit"(node: EsTreeNode) {
+        if (node.parent?.type === "VariableDeclarator" && isComponentAssignment(node.parent)) {
+          return;
+        }
+        componentPropStack.pop();
       },
       CallExpression(node: EsTreeNode) {
         if (!isHookCall(node, "useState") || !node.arguments?.length) return;
+        if (componentPropStack.length === 0) return;
         const initializer = node.arguments[0];
 
-        if (initializer.type === "Identifier" && componentPropNames.has(initializer.name)) {
+        if (initializer.type === "Identifier" && isPropName(initializer.name)) {
           context.report({
             node,
             message: `useState initialized from prop "${initializer.name}" — if this value should stay in sync with the prop, derive it during render instead`,
@@ -193,7 +240,7 @@ export const noDerivedUseState: Rule = {
           }
           if (cursor?.type === "Identifier") rootIdentifierName = cursor.name;
 
-          if (rootIdentifierName && componentPropNames.has(rootIdentifierName)) {
+          if (rootIdentifierName && isPropName(rootIdentifierName)) {
             context.report({
               node,
               message: `useState initialized from prop "${rootIdentifierName}" — if this value should stay in sync with the prop, derive it during render instead`,

@@ -309,9 +309,12 @@ export const rerenderFunctionalSetstate: Rule = {
         argument.argument?.type === "Identifier" &&
         argument.argument.name === expectedStateName
       ) {
+        const display = argument.prefix
+          ? `${argument.operator}${argument.argument.name}`
+          : `${argument.argument.name}${argument.operator}`;
         context.report({
           node,
-          message: `${calleeName}(${argument.operator}${argument.argument.name}) — use functional update to avoid stale closures (and reading the post-increment value bug)`,
+          message: `${calleeName}(${display}) — use functional update to avoid stale closures (and reading the post-increment value bug)`,
         });
       }
     },

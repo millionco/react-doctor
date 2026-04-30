@@ -311,7 +311,7 @@ const program = new Command()
         !process.stdin.isTTY;
 
       if (!flags.offline && isCiEnvironment() && !isQuiet) {
-        logger.dim('CI detected — scoring locally (set "offline": false in config to override).');
+        logger.dim("CI detected — scoring locally.");
         logger.break();
       }
 

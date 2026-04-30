@@ -190,7 +190,9 @@ const resolveEffectiveDiff = (
   if (value === undefined) return undefined;
   if (typeof value === "boolean") return value;
   if (typeof value === "string") {
-    if (value.toLowerCase() === "false") return false;
+    const normalized = value.toLowerCase();
+    if (normalized === "false") return false;
+    if (normalized === "true") return true;
     if (value.length === 0) return undefined;
     return value;
   }
@@ -417,6 +419,12 @@ const program = new Command()
       const diffInfo = shouldDetectDiff ? getDiffInfo(resolvedDirectory, explicitBaseBranch) : null;
       const isDiffMode = await resolveDiffMode(diffInfo, effectiveDiff, shouldSkipPrompts, isQuiet);
 
+      // HACK: set the cancel-mode marker BEFORE the scan loop runs — if the
+      // user hits Ctrl-C mid-scan, the SIGINT handler reads currentReportMode
+      // for the JSON cancel report. Setting it after the loop completes
+      // means a cancelled diff scan would report mode: "full".
+      currentReportMode = isDiffMode ? "diff" : "full";
+
       if (isDiffMode && diffInfo && !isQuiet) {
         if (diffInfo.isCurrentChanges) {
           logger.log("Scanning uncommitted changes");
@@ -469,7 +477,6 @@ const program = new Command()
       }
 
       const reportMode: JsonReportMode = isDiffMode ? "diff" : "full";
-      currentReportMode = reportMode;
 
       if (isJsonMode) {
         writeJsonReport(

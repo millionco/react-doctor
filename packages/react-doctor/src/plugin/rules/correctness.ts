@@ -101,10 +101,15 @@ export const noArrayIndexAsKey: Rule = {
   }),
 };
 
+// HACK: <button> is intentionally omitted. <button type="submit"> (the
+// HTML default inside a form) has a real default action, so calling
+// preventDefault() on it is legitimate. The narrow case of
+// <button type="button"> would need attribute inspection plus form-scope
+// detection to be reliable; out of scope until we have evidence of real
+// false-negatives.
 const PREVENT_DEFAULT_ELEMENTS: Record<string, string[]> = {
   form: ["onSubmit"],
   a: ["onClick"],
-  button: ["onClick"],
 };
 
 const containsPreventDefaultCall = (node: EsTreeNode): boolean => {
@@ -127,10 +132,7 @@ const buildPreventDefaultMessage = (elementName: string): string => {
   if (elementName === "form") {
     return "preventDefault() on <form> onSubmit — form won't work without JavaScript. Consider using a server action for progressive enhancement";
   }
-  if (elementName === "a") {
-    return "preventDefault() on <a> onClick — use a <button> or routing component instead";
-  }
-  return "preventDefault() on a button click handler — buttons don't have a default action; remove the call or switch the element if you needed to suppress a real default";
+  return "preventDefault() on <a> onClick — use a <button> or routing component instead";
 };
 
 export const noPreventDefault: Rule = {

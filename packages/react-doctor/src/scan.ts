@@ -33,7 +33,7 @@ import { groupBy } from "./utils/group-by.js";
 import { highlighter } from "./utils/highlighter.js";
 import { indentMultilineText } from "./utils/indent-multiline-text.js";
 import { loadConfig } from "./utils/load-config.js";
-import { logger } from "./utils/logger.js";
+import { isLoggerSilent, logger, setLoggerSilent } from "./utils/logger.js";
 import { prompts } from "./utils/prompts.js";
 import {
   installNodeViaNvm,
@@ -43,7 +43,7 @@ import {
 import { resolveLintIncludePaths } from "./utils/resolve-lint-include-paths.js";
 import { runKnip } from "./utils/run-knip.js";
 import { runOxlint } from "./utils/run-oxlint.js";
-import { spinner } from "./utils/spinner.js";
+import { setSpinnerSilent, spinner } from "./utils/spinner.js";
 
 interface ScoreBarSegments {
   filledSegment: string;
@@ -356,14 +356,14 @@ const printSummary = (
 
 const resolveOxlintNode = async (
   isLintEnabled: boolean,
-  isScoreOnly: boolean,
+  isQuiet: boolean,
 ): Promise<string | null> => {
   if (!isLintEnabled) return null;
 
   const nodeResolution = resolveNodeForOxlint();
 
   if (nodeResolution) {
-    if (!nodeResolution.isCurrentNode && !isScoreOnly) {
+    if (!nodeResolution.isCurrentNode && !isQuiet) {
       logger.warn(
         `Node ${process.version} is unsupported by oxlint. Using Node ${nodeResolution.version} from nvm.`,
       );
@@ -372,7 +372,7 @@ const resolveOxlintNode = async (
     return nodeResolution.binaryPath;
   }
 
-  if (isScoreOnly) return null;
+  if (isQuiet) return null;
 
   logger.warn(
     `Node ${process.version} is not compatible with oxlint (requires ${OXLINT_NODE_REQUIREMENT}). Lint checks will be skipped.`,
@@ -418,6 +418,7 @@ interface ResolvedScanOptions {
   verbose: boolean;
   scoreOnly: boolean;
   offline: boolean;
+  silent: boolean;
   includePaths: string[];
   customRulesOnly: boolean;
   share: boolean;
@@ -432,6 +433,7 @@ const mergeScanOptions = (
   verbose: inputOptions.verbose ?? userConfig?.verbose ?? false,
   scoreOnly: inputOptions.scoreOnly ?? false,
   offline: inputOptions.offline ?? false,
+  silent: inputOptions.silent ?? false,
   includePaths: inputOptions.includePaths ?? [],
   customRulesOnly: userConfig?.customRulesOnly ?? false,
   share: userConfig?.share ?? true,
@@ -480,10 +482,33 @@ export const scan = async (
   inputOptions: ScanOptions = {},
 ): Promise<ScanResult> => {
   const startTime = performance.now();
-  const projectInfo = discoverProject(directory);
   const userConfig =
     inputOptions.configOverride !== undefined ? inputOptions.configOverride : loadConfig(directory);
   const options = mergeScanOptions(inputOptions, userConfig);
+
+  const wasLoggerSilent = isLoggerSilent();
+  if (options.silent) {
+    setLoggerSilent(true);
+    setSpinnerSilent(true);
+  }
+
+  try {
+    return await runScan(directory, options, userConfig, startTime);
+  } finally {
+    if (options.silent && !wasLoggerSilent) {
+      setLoggerSilent(false);
+      setSpinnerSilent(false);
+    }
+  }
+};
+
+const runScan = async (
+  directory: string,
+  options: ResolvedScanOptions,
+  userConfig: ReactDoctorConfig | null,
+  startTime: number,
+): Promise<ScanResult> => {
+  const projectInfo = discoverProject(directory);
   const { includePaths } = options;
   const isDiffMode = includePaths.length > 0;
 
@@ -502,7 +527,10 @@ export const scan = async (
   let didLintFail = false;
   let didDeadCodeFail = false;
 
-  const resolvedNodeBinaryPath = await resolveOxlintNode(options.lint, options.scoreOnly);
+  const resolvedNodeBinaryPath = await resolveOxlintNode(
+    options.lint,
+    options.scoreOnly || options.silent,
+  );
   if (options.lint && !resolvedNodeBinaryPath) didLintFail = true;
 
   const lintPromise = resolvedNodeBinaryPath
@@ -585,13 +613,21 @@ export const scan = async (
     : await calculateScore(diagnostics);
   const noScoreMessage = OFFLINE_MESSAGE;
 
+  const buildResult = (): ScanResult => ({
+    diagnostics,
+    scoreResult,
+    skippedChecks,
+    project: projectInfo,
+    elapsedMilliseconds,
+  });
+
   if (options.scoreOnly) {
     if (scoreResult) {
       logger.log(`${scoreResult.score}`);
     } else {
       logger.dim(noScoreMessage);
     }
-    return { diagnostics, scoreResult, skippedChecks };
+    return buildResult();
   }
 
   if (diagnostics.length === 0) {
@@ -613,7 +649,7 @@ export const scan = async (
     } else {
       logger.dim(`  ${noScoreMessage}`);
     }
-    return { diagnostics, scoreResult, skippedChecks };
+    return buildResult();
   }
 
   printDiagnostics(diagnostics, options.verbose);
@@ -637,5 +673,5 @@ export const scan = async (
     logger.warn(`  Note: ${skippedLabel} checks failed — score may be incomplete.`);
   }
 
-  return { diagnostics, scoreResult, skippedChecks };
+  return buildResult();
 };

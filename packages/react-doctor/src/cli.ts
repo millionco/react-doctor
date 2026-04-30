@@ -1,16 +1,28 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { performance } from "node:perf_hooks";
 import { Command } from "commander";
 import { runInstallSkill } from "./install-skill.js";
 import { scan } from "./scan.js";
-import type { Diagnostic, DiffInfo, FailOnLevel, ReactDoctorConfig, ScanOptions } from "./types.js";
+import type {
+  Diagnostic,
+  DiffInfo,
+  FailOnLevel,
+  JsonReport,
+  JsonReportMode,
+  ReactDoctorConfig,
+  ScanOptions,
+  ScanResult,
+} from "./types.js";
+import { buildJsonReport } from "./utils/build-json-report.js";
+import { buildJsonReportError } from "./utils/build-json-report-error.js";
 import { filterSourceFiles, getDiffInfo } from "./utils/get-diff-files.js";
 import { getStagedSourceFiles, materializeStagedFiles } from "./utils/get-staged-files.js";
 import { handleError } from "./utils/handle-error.js";
 import { highlighter } from "./utils/highlighter.js";
 import { loadConfig } from "./utils/load-config.js";
-import { logger } from "./utils/logger.js";
+import { logger, setLoggerSilent } from "./utils/logger.js";
 import { prompts } from "./utils/prompts.js";
 import { selectProjects } from "./utils/select-projects.js";
 
@@ -21,6 +33,7 @@ interface CliFlags {
   deadCode: boolean;
   verbose: boolean;
   score: boolean;
+  json: boolean;
   yes: boolean;
   no: boolean;
   offline: boolean;
@@ -102,7 +115,12 @@ const resolveCliScanOptions = (
     verbose: isCliOverride("verbose") ? Boolean(flags.verbose) : (userConfig?.verbose ?? false),
     scoreOnly: flags.score,
     offline: flags.offline,
+    silent: flags.json,
   };
+};
+
+const writeJsonReport = (report: JsonReport): void => {
+  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 };
 
 const resolveDiffMode = async (
@@ -151,6 +169,7 @@ const program = new Command()
   .option("--no-dead-code", "skip dead code detection")
   .option("--verbose", "show file details per rule")
   .option("--score", "output only the score")
+  .option("--json", "output a single structured JSON report (suppresses other output)")
   .option("-y, --yes", "skip prompts, scan all workspace projects")
   .option("-n, --no", "skip prompts, always run a full scan (decline diff-only)")
   .option("--project <name>", "select workspace project (comma-separated for multiple)")
@@ -161,30 +180,48 @@ const program = new Command()
   .option("--annotations", "output diagnostics as GitHub Actions annotations")
   .action(async (directory: string, flags: CliFlags) => {
     const isScoreOnly = flags.score;
+    const isJsonMode = flags.json;
+    const isQuiet = isScoreOnly || isJsonMode;
+    const resolvedDirectory = path.resolve(directory);
+    const jsonStartTime = performance.now();
+
+    if (isJsonMode) {
+      setLoggerSilent(true);
+    }
 
     try {
-      const resolvedDirectory = path.resolve(directory);
       const userConfig = loadConfig(resolvedDirectory);
 
-      if (!isScoreOnly) {
+      if (!isQuiet) {
         logger.log(`react-doctor v${VERSION}`);
         logger.break();
       }
 
       const scanOptions = resolveCliScanOptions(flags, userConfig, program);
       const shouldSkipPrompts =
-        flags.yes || flags.no || isAutomatedEnvironment() || !process.stdin.isTTY;
+        flags.yes || flags.no || isJsonMode || isAutomatedEnvironment() || !process.stdin.isTTY;
 
       if (flags.staged) {
         const stagedFiles = getStagedSourceFiles(resolvedDirectory);
         if (stagedFiles.length === 0) {
-          if (!isScoreOnly) {
+          if (isJsonMode) {
+            writeJsonReport(
+              buildJsonReport({
+                version: VERSION,
+                directory: resolvedDirectory,
+                mode: "staged",
+                diff: null,
+                scans: [],
+                totalElapsedMilliseconds: performance.now() - jsonStartTime,
+              }),
+            );
+          } else if (!isScoreOnly) {
             logger.dim("No staged source files found.");
           }
           return;
         }
 
-        if (!isScoreOnly) {
+        if (!isQuiet) {
           logger.log(`Scanning ${highlighter.info(`${stagedFiles.length}`)} staged files...`);
           logger.break();
         }
@@ -205,6 +242,23 @@ const program = new Command()
               ? diagnostic.filePath.replace(snapshot.tempDirectory, resolvedDirectory)
               : diagnostic.filePath,
           }));
+
+          if (isJsonMode) {
+            const remappedScanResult: ScanResult = {
+              ...scanResult,
+              diagnostics: remappedDiagnostics,
+            };
+            writeJsonReport(
+              buildJsonReport({
+                version: VERSION,
+                directory: resolvedDirectory,
+                mode: "staged",
+                diff: null,
+                scans: [{ directory: resolvedDirectory, result: remappedScanResult }],
+                totalElapsedMilliseconds: performance.now() - jsonStartTime,
+              }),
+            );
+          }
 
           if (flags.annotations) {
             printAnnotations(remappedDiagnostics);
@@ -234,14 +288,9 @@ const program = new Command()
       const effectiveDiff = isDiffCliOverride ? flags.diff : userConfig?.diff;
       const explicitBaseBranch = typeof effectiveDiff === "string" ? effectiveDiff : undefined;
       const diffInfo = getDiffInfo(resolvedDirectory, explicitBaseBranch);
-      const isDiffMode = await resolveDiffMode(
-        diffInfo,
-        effectiveDiff,
-        shouldSkipPrompts,
-        isScoreOnly,
-      );
+      const isDiffMode = await resolveDiffMode(diffInfo, effectiveDiff, shouldSkipPrompts, isQuiet);
 
-      if (isDiffMode && diffInfo && !isScoreOnly) {
+      if (isDiffMode && diffInfo && !isQuiet) {
         if (diffInfo.isCurrentChanges) {
           logger.log("Scanning uncommitted changes");
         } else {
@@ -253,6 +302,7 @@ const program = new Command()
       }
 
       const allDiagnostics: Diagnostic[] = [];
+      const completedScans: Array<{ directory: string; result: ScanResult }> = [];
 
       for (const projectDirectory of projectDirectories) {
         let includePaths: string[] | undefined;
@@ -261,7 +311,7 @@ const program = new Command()
           if (projectDiffInfo) {
             const changedSourceFiles = filterSourceFiles(projectDiffInfo.changedFiles);
             if (changedSourceFiles.length === 0) {
-              if (!isScoreOnly) {
+              if (!isQuiet) {
                 logger.dim(`No changed source files in ${projectDirectory}, skipping.`);
                 logger.break();
               }
@@ -271,15 +321,31 @@ const program = new Command()
           }
         }
 
-        if (!isScoreOnly) {
+        if (!isQuiet) {
           logger.dim(`Scanning ${projectDirectory}...`);
           logger.break();
         }
         const scanResult = await scan(projectDirectory, { ...scanOptions, includePaths });
         allDiagnostics.push(...scanResult.diagnostics);
-        if (!isScoreOnly) {
+        completedScans.push({ directory: projectDirectory, result: scanResult });
+        if (!isQuiet) {
           logger.break();
         }
+      }
+
+      const reportMode: JsonReportMode = isDiffMode ? "diff" : "full";
+
+      if (isJsonMode) {
+        writeJsonReport(
+          buildJsonReport({
+            version: VERSION,
+            directory: resolvedDirectory,
+            mode: reportMode,
+            diff: isDiffMode ? diffInfo : null,
+            scans: completedScans,
+            totalElapsedMilliseconds: performance.now() - jsonStartTime,
+          }),
+        );
       }
 
       if (flags.annotations) {
@@ -292,6 +358,18 @@ const program = new Command()
         process.exitCode = 1;
       }
     } catch (error) {
+      if (isJsonMode) {
+        writeJsonReport(
+          buildJsonReportError({
+            version: VERSION,
+            directory: resolvedDirectory,
+            error,
+            elapsedMilliseconds: performance.now() - jsonStartTime,
+          }),
+        );
+        process.exitCode = 1;
+        return;
+      }
       handleError(error);
     }
   })

@@ -4,6 +4,17 @@ let sharedInstance: ReturnType<typeof ora> | null = null;
 let activeCount = 0;
 const pendingTexts = new Set<string>();
 
+let isSilent = false;
+
+export const setSpinnerSilent = (silent: boolean): void => {
+  isSilent = silent;
+};
+
+const noopHandle = {
+  succeed: () => {},
+  fail: () => {},
+};
+
 const finalize = (method: "succeed" | "fail", originalText: string, displayText: string) => {
   pendingTexts.delete(originalText);
   activeCount--;
@@ -27,6 +38,8 @@ const finalize = (method: "succeed" | "fail", originalText: string, displayText:
 
 export const spinner = (text: string) => ({
   start() {
+    if (isSilent) return noopHandle;
+
     activeCount++;
     pendingTexts.add(text);
 

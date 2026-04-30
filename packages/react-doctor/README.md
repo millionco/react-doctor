@@ -81,15 +81,68 @@ The action outputs a `score` (0–100) you can use in subsequent steps.
 Usage: react-doctor [directory] [options]
 
 Options:
-  -v, --version     display the version number
-  --no-lint         skip linting
-  --no-dead-code    skip dead code detection
-  --verbose         show file details per rule
-  --score           output only the score
-  -y, --yes         skip prompts, scan all workspace projects
-  --project <name>  select workspace project (comma-separated for multiple)
-  --diff [base]     scan only files changed vs base branch
-  -h, --help        display help for command
+  -v, --version      display the version number
+  --no-lint          skip linting
+  --no-dead-code     skip dead code detection
+  --verbose          show file details per rule
+  --score            output only the score
+  --json             output a single structured JSON report (suppresses other output)
+  -y, --yes          skip prompts, scan all workspace projects
+  -n, --no           skip prompts, always run a full scan (decline diff-only)
+  --project <name>   select workspace project (comma-separated for multiple)
+  --diff [base]      scan only files changed vs base branch
+  --offline          skip telemetry (anonymous, not stored, only used to calculate score)
+  --staged           scan only staged (git index) files for pre-commit hooks
+  --fail-on <level>  exit with error code on diagnostics: error, warning, none
+  --annotations      output diagnostics as GitHub Actions annotations
+  -h, --help         display help for command
+```
+
+## JSON output
+
+Pass `--json` to get a single, parsable JSON object on stdout. All human-readable output, prompts, and the share link are suppressed; pipe straight into `jq`, `node`, or any other tool:
+
+```bash
+npx -y react-doctor@latest . --json | jq '.summary'
+```
+
+Exit code is `0` on success and `1` if the scan throws or `--fail-on` is triggered. Errors still produce a JSON object with `ok: false`, so the stdout is always a valid document.
+
+### Schema
+
+```ts
+interface JsonReport {
+  schemaVersion: 1;
+  version: string; // react-doctor version
+  ok: boolean; // false when an error was thrown
+  directory: string; // resolved root passed to the CLI
+  mode: "full" | "diff" | "staged";
+  diff: {
+    baseBranch: string;
+    currentBranch: string;
+    changedFileCount: number;
+    isCurrentChanges: boolean;
+  } | null;
+  projects: Array<{
+    directory: string;
+    project: ProjectInfo;
+    diagnostics: Diagnostic[];
+    score: { score: number; label: string } | null;
+    skippedChecks: string[];
+    elapsedMilliseconds: number;
+  }>;
+  diagnostics: Diagnostic[]; // flattened across all scanned projects
+  summary: {
+    errorCount: number;
+    warningCount: number;
+    affectedFileCount: number;
+    totalDiagnosticCount: number;
+    score: number | null; // worst project score, when available
+    scoreLabel: string | null;
+  };
+  elapsedMilliseconds: number; // total wall time across all projects
+  error?: { message: string; name: string }; // only present when ok=false
+}
 ```
 
 ## Browser API
@@ -182,6 +235,22 @@ interface Diagnostic {
   category: string;
 }
 ```
+
+To produce the same structured output the `--json` CLI flag emits, use `toJsonReport`:
+
+```js
+import { diagnose, toJsonReport, summarizeDiagnostics } from "react-doctor/api";
+
+const result = await diagnose(".");
+
+const report = toJsonReport(result, { version: "1.0.0" });
+console.log(JSON.stringify(report, null, 2));
+
+const counts = summarizeDiagnostics(result.diagnostics);
+console.log(`${counts.errorCount} errors, ${counts.warningCount} warnings`);
+```
+
+`react-doctor/api` also re-exports the `JsonReport`, `JsonReportSummary`, `JsonReportProjectEntry`, and `JsonReportMode` types, plus the lower-level `buildJsonReport` and `buildJsonReportError` builders if you need to assemble reports from multiple `diagnose()` calls.
 
 ## [Scores for popular open-source projects](https://react.doctor/leaderboard)
 

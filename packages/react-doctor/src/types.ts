@@ -98,6 +98,8 @@ export interface ScanResult {
   diagnostics: Diagnostic[];
   scoreResult: ScoreResult | null;
   skippedChecks: string[];
+  project: ProjectInfo;
+  elapsedMilliseconds: number;
 }
 
 export interface ScanOptions {
@@ -106,6 +108,7 @@ export interface ScanOptions {
   verbose?: boolean;
   scoreOnly?: boolean;
   offline?: boolean;
+  silent?: boolean;
   includePaths?: string[];
   configOverride?: ReactDoctorConfig | null;
 }
@@ -172,4 +175,48 @@ export interface ReactDoctorConfig {
   customRulesOnly?: boolean;
   share?: boolean;
   textComponents?: string[];
+}
+
+export type JsonReportMode = "full" | "diff" | "staged";
+
+export interface JsonReportDiffInfo {
+  baseBranch: string;
+  currentBranch: string;
+  changedFileCount: number;
+  isCurrentChanges: boolean;
+}
+
+export interface JsonReportProjectEntry {
+  directory: string;
+  project: ProjectInfo;
+  diagnostics: Diagnostic[];
+  score: ScoreResult | null;
+  skippedChecks: string[];
+  elapsedMilliseconds: number;
+}
+
+export interface JsonReportSummary {
+  errorCount: number;
+  warningCount: number;
+  affectedFileCount: number;
+  totalDiagnosticCount: number;
+  score: number | null;
+  scoreLabel: string | null;
+}
+
+export interface JsonReport {
+  schemaVersion: 1;
+  version: string;
+  ok: boolean;
+  directory: string;
+  mode: JsonReportMode;
+  diff: JsonReportDiffInfo | null;
+  projects: JsonReportProjectEntry[];
+  diagnostics: Diagnostic[];
+  summary: JsonReportSummary;
+  elapsedMilliseconds: number;
+  error?: {
+    message: string;
+    name: string;
+  };
 }

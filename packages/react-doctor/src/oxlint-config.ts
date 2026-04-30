@@ -213,6 +213,11 @@ const GLOBAL_REACT_DOCTOR_RULES: Record<string, RuleSeverity> = {
   "react-doctor/async-parallel": "warn",
 };
 
+// HACK: includes every rule that COULD be enabled by createOxlintConfig
+// regardless of framework / TanStack flags. Used only by
+// validateRuleRegistration to assert RULE_CATEGORY_MAP / RULE_HELP_MAP
+// metadata coverage; we want to catch metadata gaps for all conditional
+// rules, not just the ones active in the current scan's framework.
 export const ALL_REACT_DOCTOR_RULE_KEYS: ReadonlySet<string> = new Set([
   ...Object.keys(GLOBAL_REACT_DOCTOR_RULES),
   ...Object.keys(NEXTJS_RULES),

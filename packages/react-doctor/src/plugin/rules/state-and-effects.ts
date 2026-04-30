@@ -261,6 +261,15 @@ export const rerenderLazyStateInit: Rule = {
 
 const STATE_ARITHMETIC_OPERATORS = new Set(["+", "-", "*", "/", "%", "**"]);
 
+// HACK: derive the state variable name from the setter name. `setCount` →
+// `count`. We only flag arithmetic when one operand actually matches that
+// derived name; otherwise `setCount(1 + computedValue)` would false-positive
+// against any incidental Identifier on either side.
+const deriveStateVariableName = (setterName: string): string | null => {
+  if (!setterName.startsWith("set") || setterName.length < 4) return null;
+  return setterName.charAt(3).toLowerCase() + setterName.slice(4);
+};
+
 export const rerenderFunctionalSetstate: Rule = {
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
@@ -269,25 +278,36 @@ export const rerenderFunctionalSetstate: Rule = {
 
       const calleeName = node.callee.name;
       const argument = node.arguments[0];
+      const expectedStateName = deriveStateVariableName(calleeName);
 
       if (
         argument.type === "BinaryExpression" &&
         STATE_ARITHMETIC_OPERATORS.has(argument.operator) &&
-        (argument.left?.type === "Identifier" || argument.right?.type === "Identifier")
+        expectedStateName
       ) {
-        const stateIdentifier =
-          argument.left?.type === "Identifier" ? argument.left : argument.right;
-        context.report({
-          node,
-          message: `${calleeName}(${stateIdentifier.name} ${argument.operator} ...) — use functional update to avoid stale closures`,
-        });
-        return;
+        const matchesExpected = (operand: EsTreeNode | undefined): boolean =>
+          operand?.type === "Identifier" && operand.name === expectedStateName;
+
+        const stateIdentifier = matchesExpected(argument.left)
+          ? argument.left
+          : matchesExpected(argument.right)
+            ? argument.right
+            : null;
+
+        if (stateIdentifier) {
+          context.report({
+            node,
+            message: `${calleeName}(${stateIdentifier.name} ${argument.operator} ...) — use functional update to avoid stale closures`,
+          });
+          return;
+        }
       }
 
       if (
         argument.type === "UpdateExpression" &&
         (argument.operator === "++" || argument.operator === "--") &&
-        argument.argument?.type === "Identifier"
+        argument.argument?.type === "Identifier" &&
+        argument.argument.name === expectedStateName
       ) {
         context.report({
           node,

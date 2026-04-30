@@ -409,7 +409,12 @@ const program = new Command()
       const effectiveDiff = resolveEffectiveDiff(flags, userConfig, program);
       const explicitBaseBranch = typeof effectiveDiff === "string" ? effectiveDiff : undefined;
       const wantsDiffMode = effectiveDiff !== undefined && effectiveDiff !== false;
-      const diffInfo = wantsDiffMode ? getDiffInfo(resolvedDirectory, explicitBaseBranch) : null;
+      // HACK: also call getDiffInfo when we MIGHT prompt the user — without
+      // it, resolveDiffMode short-circuits at !diffInfo and the
+      // "Only scan changed files?" prompt never appears for users on a
+      // feature branch who didn't explicitly pass --diff.
+      const shouldDetectDiff = wantsDiffMode || (!shouldSkipPrompts && !isQuiet);
+      const diffInfo = shouldDetectDiff ? getDiffInfo(resolvedDirectory, explicitBaseBranch) : null;
       const isDiffMode = await resolveDiffMode(diffInfo, effectiveDiff, shouldSkipPrompts, isQuiet);
 
       if (isDiffMode && diffInfo && !isQuiet) {

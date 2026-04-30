@@ -158,21 +158,15 @@ export const noEffectEventHandler: Rule = {
 
 export const noDerivedUseState: Rule = {
   create: (context: RuleContext) => {
-    // HACK: track prop names per-component scope using a stack.  The
-    // previous shared `Set` was a pre-existing bug (names from ComponentA
-    // leaked into ComponentB) that became more visible after we extended
-    // `extractDestructuredPropNames` to recurse into nested patterns.
-    // Each component pushes its own Set on enter and pops on exit; the
-    // top-of-stack is what useState() calls check against.
+    // HACK: maintain a stack of per-component prop sets so a prop named X
+    // in ComponentA doesn't leak into ComponentB's useState checks. We
+    // only push/pop on FunctionDeclaration and component-shaped
+    // VariableDeclarator; FunctionExpression / ArrowFunctionExpression
+    // inside those don't get their own scope (avoids double-push when
+    // `const Foo = function () {…}` matches both visitors). useState
+    // initializers walk the stack top-to-bottom; nested callback params
+    // are not modeled here (a known limitation — pre-existing).
     const componentPropStack: Array<Set<string>> = [];
-
-    const enterComponent = (paramSource: EsTreeNode[] | undefined): void => {
-      const propNames = extractDestructuredPropNames(paramSource ?? []);
-      componentPropStack.push(propNames);
-    };
-    const exitComponent = (): void => {
-      componentPropStack.pop();
-    };
 
     const isPropName = (name: string): boolean => {
       for (let i = componentPropStack.length - 1; i >= 0; i--) {
@@ -183,40 +177,19 @@ export const noDerivedUseState: Rule = {
 
     return {
       FunctionDeclaration(node: EsTreeNode) {
-        if (!node.id?.name || !isUppercaseName(node.id.name)) {
-          // Push an empty scope so exit pops match correctly.
-          componentPropStack.push(new Set());
-          return;
-        }
-        enterComponent(node.params);
+        if (!node.id?.name || !isUppercaseName(node.id.name)) return;
+        componentPropStack.push(extractDestructuredPropNames(node.params ?? []));
       },
-      "FunctionDeclaration:exit": exitComponent,
+      "FunctionDeclaration:exit"(node: EsTreeNode) {
+        if (!node.id?.name || !isUppercaseName(node.id.name)) return;
+        componentPropStack.pop();
+      },
       VariableDeclarator(node: EsTreeNode) {
         if (!isComponentAssignment(node)) return;
-        enterComponent(node.init?.params);
+        componentPropStack.push(extractDestructuredPropNames(node.init?.params ?? []));
       },
       "VariableDeclarator:exit"(node: EsTreeNode) {
         if (!isComponentAssignment(node)) return;
-        exitComponent();
-      },
-      FunctionExpression() {
-        componentPropStack.push(new Set());
-      },
-      "FunctionExpression:exit": exitComponent,
-      ArrowFunctionExpression(node: EsTreeNode) {
-        // Arrow functions inside VariableDeclarator are handled by the
-        // VariableDeclarator visitor; bare arrows (e.g. callbacks) get
-        // an empty scope so nested useState calls don't false-positive
-        // against an outer component's props.
-        if (node.parent?.type === "VariableDeclarator" && isComponentAssignment(node.parent)) {
-          return;
-        }
-        componentPropStack.push(new Set());
-      },
-      "ArrowFunctionExpression:exit"(node: EsTreeNode) {
-        if (node.parent?.type === "VariableDeclarator" && isComponentAssignment(node.parent)) {
-          return;
-        }
         componentPropStack.pop();
       },
       CallExpression(node: EsTreeNode) {

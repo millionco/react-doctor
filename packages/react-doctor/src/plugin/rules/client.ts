@@ -6,7 +6,7 @@ export const clientPassiveEventListeners: Rule = {
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (!isMemberProperty(node.callee, "addEventListener")) return;
-      if (node.arguments?.length < 2) return;
+      if ((node.arguments?.length ?? 0) < 2) return;
 
       const eventNameNode = node.arguments[0];
       if (eventNameNode.type !== "Literal" || !PASSIVE_EVENT_NAMES.has(eventNameNode.value)) return;

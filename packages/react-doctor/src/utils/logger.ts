@@ -11,11 +11,11 @@ export const isLoggerSilent = (): boolean => isSilent;
 export const logger = {
   error(...args: unknown[]) {
     if (isSilent) return;
-    console.log(highlighter.error(args.join(" ")));
+    console.error(highlighter.error(args.join(" ")));
   },
   warn(...args: unknown[]) {
     if (isSilent) return;
-    console.log(highlighter.warn(args.join(" ")));
+    console.warn(highlighter.warn(args.join(" ")));
   },
   info(...args: unknown[]) {
     if (isSilent) return;

@@ -47,13 +47,13 @@ export const queryStableQueryClient: Rule = {
         }
       },
       CallExpression(node: EsTreeNode) {
-        if (node.callee?.type === "Identifier" && STABLE_HOOK_WRAPPERS.has(node.callee.name)) {
+        if (isHookCall(node, STABLE_HOOK_WRAPPERS)) {
           stableHookDepth++;
         }
       },
       "CallExpression:exit"(node: EsTreeNode) {
-        if (node.callee?.type === "Identifier" && STABLE_HOOK_WRAPPERS.has(node.callee.name)) {
-          stableHookDepth--;
+        if (isHookCall(node, STABLE_HOOK_WRAPPERS)) {
+          stableHookDepth = Math.max(0, stableHookDepth - 1);
         }
       },
       NewExpression(node: EsTreeNode) {

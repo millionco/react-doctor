@@ -9,6 +9,7 @@ const minimalProject: ProjectInfo = {
   framework: "vite",
   hasTypeScript: true,
   hasReactCompiler: false,
+  hasTanStackQuery: false,
   sourceFileCount: 1,
 };
 

@@ -1,5 +1,5 @@
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import type { Diagnostic } from "../src/types.js";
 import { runOxlint } from "../src/utils/run-oxlint.js";
 
@@ -40,23 +40,39 @@ let nextjsDiagnostics: Diagnostic[];
 let tanstackStartDiagnostics: Diagnostic[];
 
 describe("runOxlint", () => {
-  it("loads basic-react diagnostics", async () => {
-    basicReactDiagnostics = await runOxlint(BASIC_REACT_DIRECTORY, true, "unknown", false);
+  beforeAll(async () => {
+    basicReactDiagnostics = await runOxlint({
+      rootDirectory: BASIC_REACT_DIRECTORY,
+      hasTypeScript: true,
+      framework: "unknown",
+      hasReactCompiler: false,
+      hasTanStackQuery: true,
+    });
+    nextjsDiagnostics = await runOxlint({
+      rootDirectory: NEXTJS_APP_DIRECTORY,
+      hasTypeScript: true,
+      framework: "nextjs",
+      hasReactCompiler: false,
+      hasTanStackQuery: false,
+    });
+    tanstackStartDiagnostics = await runOxlint({
+      rootDirectory: TANSTACK_START_APP_DIRECTORY,
+      hasTypeScript: true,
+      framework: "tanstack-start",
+      hasReactCompiler: false,
+      hasTanStackQuery: false,
+    });
+  });
+
+  it("loads basic-react diagnostics", () => {
     expect(basicReactDiagnostics.length).toBeGreaterThan(0);
   });
 
-  it("loads nextjs diagnostics", async () => {
-    nextjsDiagnostics = await runOxlint(NEXTJS_APP_DIRECTORY, true, "nextjs", false);
+  it("loads nextjs diagnostics", () => {
     expect(nextjsDiagnostics.length).toBeGreaterThan(0);
   });
 
-  it("loads tanstack-start diagnostics", async () => {
-    tanstackStartDiagnostics = await runOxlint(
-      TANSTACK_START_APP_DIRECTORY,
-      true,
-      "tanstack-start",
-      false,
-    );
+  it("loads tanstack-start diagnostics", () => {
     expect(tanstackStartDiagnostics.length).toBeGreaterThan(0);
   });
 
@@ -94,13 +110,13 @@ describe("runOxlint", () => {
       "no-derived-state-effect": {
         fixture: "state-issues.tsx",
         ruleSource: "rules/state-and-effects.ts",
-        severity: "error",
+        severity: "warning",
         category: "State & Effects",
       },
       "no-fetch-in-effect": {
         fixture: "state-issues.tsx",
         ruleSource: "rules/state-and-effects.ts",
-        severity: "error",
+        severity: "warning",
       },
       "no-cascading-set-state": {
         fixture: "state-issues.tsx",
@@ -143,9 +159,14 @@ describe("runOxlint", () => {
 
   describe("nextjs router guidance", () => {
     it("does not recommend next/navigation for pages-router redirects", async () => {
-      const pagesRouterDiagnostics = await runOxlint(NEXTJS_APP_DIRECTORY, true, "nextjs", false, [
-        path.join(NEXTJS_APP_DIRECTORY, "src/pages/_app.tsx"),
-      ]);
+      const pagesRouterDiagnostics = await runOxlint({
+        rootDirectory: NEXTJS_APP_DIRECTORY,
+        hasTypeScript: true,
+        framework: "nextjs",
+        hasReactCompiler: false,
+        hasTanStackQuery: false,
+        includePaths: [path.join(NEXTJS_APP_DIRECTORY, "src/pages/_app.tsx")],
+      });
       const redirectIssue = pagesRouterDiagnostics.find(
         (diagnostic) => diagnostic.rule === "nextjs-no-client-side-redirect",
       );
@@ -310,7 +331,7 @@ describe("runOxlint", () => {
       "no-secrets-in-client-code": {
         fixture: "security-issues.tsx",
         ruleSource: "rules/security.ts",
-        severity: "error",
+        severity: "warning",
         category: "Security",
       },
     },
@@ -408,7 +429,7 @@ describe("runOxlint", () => {
       "query-stable-query-client": {
         fixture: "src/query-issues.tsx",
         ruleSource: "rules/tanstack-query.ts",
-        severity: "error",
+        severity: "warning",
         category: "TanStack Query",
       },
       "query-no-rest-destructuring": {
@@ -561,16 +582,17 @@ describe("runOxlint", () => {
   });
 
   describe("customRulesOnly mode", () => {
+    const buildCustomOnlyOptions = () => ({
+      rootDirectory: BASIC_REACT_DIRECTORY,
+      hasTypeScript: true,
+      framework: "unknown" as const,
+      hasReactCompiler: false,
+      hasTanStackQuery: true,
+      customRulesOnly: true,
+    });
+
     it("excludes builtin react/ and jsx-a11y/ rules when customRulesOnly is true", async () => {
-      const customOnlyDiagnostics = await runOxlint(
-        BASIC_REACT_DIRECTORY,
-        true,
-        "unknown",
-        false,
-        undefined,
-        undefined,
-        true,
-      );
+      const customOnlyDiagnostics = await runOxlint(buildCustomOnlyOptions());
 
       const builtinPluginDiagnostics = customOnlyDiagnostics.filter(
         (diagnostic) => diagnostic.plugin === "react" || diagnostic.plugin === "jsx-a11y",
@@ -579,15 +601,7 @@ describe("runOxlint", () => {
     });
 
     it("still includes react-doctor/* rules when customRulesOnly is true", async () => {
-      const customOnlyDiagnostics = await runOxlint(
-        BASIC_REACT_DIRECTORY,
-        true,
-        "unknown",
-        false,
-        undefined,
-        undefined,
-        true,
-      );
+      const customOnlyDiagnostics = await runOxlint(buildCustomOnlyOptions());
 
       const reactDoctorDiagnostics = customOnlyDiagnostics.filter(
         (diagnostic) => diagnostic.plugin === "react-doctor",

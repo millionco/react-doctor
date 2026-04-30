@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { Command } from "commander";
+import { CANONICAL_GITHUB_URL } from "./constants.js";
 import { runInstallSkill } from "./install-skill.js";
 import { scan } from "./scan.js";
 import type {
@@ -23,6 +24,7 @@ import { handleError } from "./utils/handle-error.js";
 import { highlighter } from "./utils/highlighter.js";
 import { loadConfig } from "./utils/load-config.js";
 import { logger, setLoggerSilent } from "./utils/logger.js";
+import { encodeAnnotationProperty, encodeAnnotationMessage } from "./utils/annotation-encoding.js";
 import { prompts } from "./utils/prompts.js";
 import { selectProjects } from "./utils/select-projects.js";
 
@@ -34,8 +36,9 @@ interface CliFlags {
   verbose: boolean;
   score: boolean;
   json: boolean;
+  jsonCompact: boolean;
   yes: boolean;
-  no: boolean;
+  full: boolean;
   offline: boolean;
   annotations: boolean;
   staged: boolean;
@@ -60,46 +63,97 @@ const resolveFailOnLevel = (
   flags: CliFlags,
   userConfig: ReactDoctorConfig | null,
 ): FailOnLevel => {
-  const resolvedFailOn =
-    programInstance.getOptionValueSource("failOn") === "cli"
-      ? flags.failOn
-      : (userConfig?.failOn ?? flags.failOn);
-  return isValidFailOnLevel(resolvedFailOn) ? resolvedFailOn : "none";
+  const isCliOverride = programInstance.getOptionValueSource("failOn") === "cli";
+  const sourceValue = isCliOverride ? flags.failOn : (userConfig?.failOn ?? flags.failOn);
+
+  if (isValidFailOnLevel(sourceValue)) return sourceValue;
+  logger.warn(
+    `Invalid failOn level "${sourceValue}". Expected one of: error, warning, none. Falling back to "none".`,
+  );
+  return "none";
 };
 
-const printAnnotations = (diagnostics: Diagnostic[]): void => {
+const printAnnotations = (diagnostics: Diagnostic[], routeToStderr: boolean): void => {
+  const writeLine = routeToStderr
+    ? (line: string) => process.stderr.write(`${line}\n`)
+    : (line: string) => process.stdout.write(`${line}\n`);
   for (const diagnostic of diagnostics) {
     const level = diagnostic.severity === "error" ? "error" : "warning";
     const title = `${diagnostic.plugin}/${diagnostic.rule}`;
-    const fileLocation =
-      diagnostic.line > 0
-        ? `file=${diagnostic.filePath},line=${diagnostic.line}`
-        : `file=${diagnostic.filePath}`;
-    console.log(`::${level} ${fileLocation},title=${title}::${diagnostic.message}`);
+    const fileSegment = `file=${encodeAnnotationProperty(diagnostic.filePath)}`;
+    const lineSegment = diagnostic.line > 0 ? `,line=${diagnostic.line}` : "";
+    const titleSegment = `,title=${encodeAnnotationProperty(title)}`;
+    const message = encodeAnnotationMessage(diagnostic.message);
+    writeLine(`::${level} ${fileSegment}${lineSegment}${titleSegment}::${message}`);
   }
 };
 
+let isJsonModeActive = false;
+let resolvedDirectoryForCancel: string | null = null;
+let cancelStartTime = 0;
+let currentReportMode: JsonReportMode = "full";
+
 const exitGracefully = () => {
+  if (isJsonModeActive) {
+    writeJsonReport(
+      buildJsonReportError({
+        version: VERSION,
+        directory: resolvedDirectoryForCancel ?? process.cwd(),
+        error: new Error("Scan cancelled by user (SIGINT/SIGTERM)"),
+        elapsedMilliseconds: performance.now() - cancelStartTime,
+        mode: currentReportMode,
+      }),
+    );
+    process.exit(130);
+  }
   logger.break();
   logger.log("Cancelled.");
   logger.break();
-  process.exit(0);
+  process.exit(130);
 };
 
 process.on("SIGINT", exitGracefully);
 process.on("SIGTERM", exitGracefully);
 
-const AUTOMATED_ENVIRONMENT_VARIABLES = [
+// HACK: env vars that mean "user is not at an interactive shell." We use this
+// to skip prompts but NOT to auto-flip --offline, because dev shells often
+// have JENKINS_URL / TF_BUILD set as ambient config without actually running
+// in CI.
+const NON_INTERACTIVE_ENVIRONMENT_VARIABLES = [
   "CI",
+  "GITHUB_ACTIONS",
+  "GITLAB_CI",
+  "BUILDKITE",
+  "JENKINS_URL",
+  "TF_BUILD",
+  "CODEBUILD_BUILD_ID",
+  "TEAMCITY_VERSION",
+  "BITBUCKET_BUILD_NUMBER",
+  "CIRCLECI",
+  "TRAVIS",
+  "DRONE",
   "CLAUDECODE",
+  "CLAUDE_CODE",
   "CURSOR_AGENT",
   "CODEX_CI",
   "OPENCODE",
   "AMP_HOME",
 ];
 
-const isAutomatedEnvironment = (): boolean =>
-  AUTOMATED_ENVIRONMENT_VARIABLES.some((envVariable) => Boolean(process.env[envVariable]));
+// HACK: only flip --offline by default for the narrowest set of CI signals
+// where we're confident the run is automated and a share URL would be
+// useless. Other tools that set non-interactive env vars (Jenkins agents,
+// Azure DevOps tasks running interactively, agentic coding sessions) still
+// get telemetry-on-by-default; users can pass --offline explicitly.
+const CI_ENVIRONMENT_VARIABLES = ["GITHUB_ACTIONS", "GITLAB_CI", "CIRCLECI"];
+
+const isNonInteractiveEnvironment = (): boolean =>
+  NON_INTERACTIVE_ENVIRONMENT_VARIABLES.some((envVariable) => Boolean(process.env[envVariable])) ||
+  process.env.CI === "true";
+
+const isCiEnvironment = (): boolean =>
+  CI_ENVIRONMENT_VARIABLES.some((envVariable) => Boolean(process.env[envVariable])) ||
+  process.env.CI === "true";
 
 const resolveCliScanOptions = (
   flags: CliFlags,
@@ -112,15 +166,38 @@ const resolveCliScanOptions = (
   return {
     lint: isCliOverride("lint") ? flags.lint : (userConfig?.lint ?? true),
     deadCode: isCliOverride("deadCode") ? flags.deadCode : (userConfig?.deadCode ?? true),
-    verbose: isCliOverride("verbose") ? Boolean(flags.verbose) : (userConfig?.verbose ?? false),
+    verbose: isCliOverride("verbose") ? flags.verbose : (userConfig?.verbose ?? false),
     scoreOnly: flags.score,
-    offline: flags.offline,
+    offline: flags.offline || isCiEnvironment(),
     silent: flags.json,
   };
 };
 
+let isCompactJsonOutput = false;
+
 const writeJsonReport = (report: JsonReport): void => {
-  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  const serialized = isCompactJsonOutput ? JSON.stringify(report) : JSON.stringify(report, null, 2);
+  process.stdout.write(`${serialized}\n`);
+};
+
+const resolveEffectiveDiff = (
+  flags: CliFlags,
+  userConfig: ReactDoctorConfig | null,
+  programInstance: Command,
+): boolean | string | undefined => {
+  const isDiffCliOverride = programInstance.getOptionValueSource("diff") === "cli";
+  const value = isDiffCliOverride ? flags.diff : userConfig?.diff;
+  if (value === undefined) return undefined;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    if (value.toLowerCase() === "false") return false;
+    if (value.length === 0) return undefined;
+    return value;
+  }
+  logger.warn(
+    `Invalid diff config value (expected boolean or string): ${typeof value}. Falling back to no diff.`,
+  );
+  return undefined;
 };
 
 const resolveDiffMode = async (
@@ -146,8 +223,8 @@ const resolveDiffMode = async (
   if (isScoreOnly) return false;
 
   const promptMessage = diffInfo.isCurrentChanges
-    ? `Found ${changedSourceFiles.length} uncommitted changed files. Only scan current changes?`
-    : `On branch ${diffInfo.currentBranch} (${changedSourceFiles.length} changed files vs ${diffInfo.baseBranch}). Only scan this branch?`;
+    ? `Found ${changedSourceFiles.length} uncommitted changed files. Only scan those?`
+    : `On branch ${diffInfo.currentBranch} (${changedSourceFiles.length} files changed vs ${diffInfo.baseBranch}). Only scan changed files?`;
 
   const { shouldScanChangedOnly } = await prompts({
     type: "confirm",
@@ -156,6 +233,26 @@ const resolveDiffMode = async (
     initial: true,
   });
   return Boolean(shouldScanChangedOnly);
+};
+
+const validateModeFlags = (flags: CliFlags): void => {
+  const exclusiveModes = [
+    flags.staged ? "--staged" : null,
+    flags.diff !== undefined && flags.diff !== false ? "--diff" : null,
+  ].filter((modeName): modeName is string => modeName !== null);
+
+  if (exclusiveModes.length > 1) {
+    throw new Error(`Cannot combine ${exclusiveModes.join(" and ")}; pick one mode.`);
+  }
+  if (flags.yes && flags.full) {
+    throw new Error("Cannot combine --yes and --full; pick one.");
+  }
+  if (flags.score && flags.json) {
+    throw new Error("Cannot combine --score and --json; pick one output mode.");
+  }
+  if (flags.annotations && (flags.json || flags.score)) {
+    throw new Error("--annotations cannot be combined with --json or --score.");
+  }
 };
 
 const program = new Command()
@@ -170,13 +267,14 @@ const program = new Command()
   .option("--verbose", "show file details per rule")
   .option("--score", "output only the score")
   .option("--json", "output a single structured JSON report (suppresses other output)")
+  .option("--json-compact", "with --json, emit compact JSON (no indentation)")
   .option("-y, --yes", "skip prompts, scan all workspace projects")
-  .option("-n, --no", "skip prompts, always run a full scan (decline diff-only)")
+  .option("--full", "skip prompts, always run a full scan (decline diff-only)")
   .option("--project <name>", "select workspace project (comma-separated for multiple)")
   .option("--diff [base]", "scan only files changed vs base branch")
   .option("--offline", "skip telemetry (anonymous, not stored, only used to calculate score)")
   .option("--staged", "scan only staged (git index) files for pre-commit hooks")
-  .option("--fail-on <level>", "exit with error code on diagnostics: error, warning, none", "none")
+  .option("--fail-on <level>", "exit with error code on diagnostics: error, warning, none", "error")
   .option("--annotations", "output diagnostics as GitHub Actions annotations")
   .action(async (directory: string, flags: CliFlags) => {
     const isScoreOnly = flags.score;
@@ -185,11 +283,18 @@ const program = new Command()
     const resolvedDirectory = path.resolve(directory);
     const jsonStartTime = performance.now();
 
+    isJsonModeActive = isJsonMode;
+    isCompactJsonOutput = Boolean(flags.jsonCompact);
+    resolvedDirectoryForCancel = resolvedDirectory;
+    cancelStartTime = jsonStartTime;
+
     if (isJsonMode) {
       setLoggerSilent(true);
     }
 
     try {
+      validateModeFlags(flags);
+
       const userConfig = loadConfig(resolvedDirectory);
 
       if (!isQuiet) {
@@ -199,9 +304,19 @@ const program = new Command()
 
       const scanOptions = resolveCliScanOptions(flags, userConfig, program);
       const shouldSkipPrompts =
-        flags.yes || flags.no || isJsonMode || isAutomatedEnvironment() || !process.stdin.isTTY;
+        flags.yes ||
+        flags.full ||
+        isJsonMode ||
+        isNonInteractiveEnvironment() ||
+        !process.stdin.isTTY;
+
+      if (!flags.offline && isCiEnvironment() && !isQuiet) {
+        logger.dim('CI detected — scoring locally (set "offline": false in config to override).');
+        logger.break();
+      }
 
       if (flags.staged) {
+        currentReportMode = "staged";
         const stagedFiles = getStagedSourceFiles(resolvedDirectory);
         if (stagedFiles.length === 0) {
           if (isJsonMode) {
@@ -226,10 +341,13 @@ const program = new Command()
           logger.break();
         }
 
-        const tempDirectory = mkdtempSync(path.join(tmpdir(), "react-doctor-staged-"));
-        const snapshot = materializeStagedFiles(resolvedDirectory, stagedFiles, tempDirectory);
-
+        let tempDirectory: string | null = null;
+        let cleanupSnapshot: (() => void) | null = null;
         try {
+          tempDirectory = mkdtempSync(path.join(tmpdir(), "react-doctor-staged-"));
+          const snapshot = materializeStagedFiles(resolvedDirectory, stagedFiles, tempDirectory);
+          cleanupSnapshot = snapshot.cleanup;
+
           const scanResult = await scan(snapshot.tempDirectory, {
             ...scanOptions,
             includePaths: snapshot.stagedFiles,
@@ -239,7 +357,7 @@ const program = new Command()
           const remappedDiagnostics = scanResult.diagnostics.map((diagnostic) => ({
             ...diagnostic,
             filePath: path.isAbsolute(diagnostic.filePath)
-              ? diagnostic.filePath.replace(snapshot.tempDirectory, resolvedDirectory)
+              ? diagnostic.filePath.replaceAll(snapshot.tempDirectory, resolvedDirectory)
               : diagnostic.filePath,
           }));
 
@@ -247,6 +365,10 @@ const program = new Command()
             const remappedScanResult: ScanResult = {
               ...scanResult,
               diagnostics: remappedDiagnostics,
+              project: {
+                ...scanResult.project,
+                rootDirectory: resolvedDirectory,
+              },
             };
             writeJsonReport(
               buildJsonReport({
@@ -261,7 +383,7 @@ const program = new Command()
           }
 
           if (flags.annotations) {
-            printAnnotations(remappedDiagnostics);
+            printAnnotations(remappedDiagnostics, isJsonMode);
           }
 
           if (
@@ -273,7 +395,7 @@ const program = new Command()
             process.exitCode = 1;
           }
         } finally {
-          snapshot.cleanup();
+          cleanupSnapshot?.();
         }
         return;
       }
@@ -284,10 +406,10 @@ const program = new Command()
         shouldSkipPrompts,
       );
 
-      const isDiffCliOverride = program.getOptionValueSource("diff") === "cli";
-      const effectiveDiff = isDiffCliOverride ? flags.diff : userConfig?.diff;
+      const effectiveDiff = resolveEffectiveDiff(flags, userConfig, program);
       const explicitBaseBranch = typeof effectiveDiff === "string" ? effectiveDiff : undefined;
-      const diffInfo = getDiffInfo(resolvedDirectory, explicitBaseBranch);
+      const wantsDiffMode = effectiveDiff !== undefined && effectiveDiff !== false;
+      const diffInfo = wantsDiffMode ? getDiffInfo(resolvedDirectory, explicitBaseBranch) : null;
       const isDiffMode = await resolveDiffMode(diffInfo, effectiveDiff, shouldSkipPrompts, isQuiet);
 
       if (isDiffMode && diffInfo && !isQuiet) {
@@ -307,7 +429,10 @@ const program = new Command()
       for (const projectDirectory of projectDirectories) {
         let includePaths: string[] | undefined;
         if (isDiffMode) {
-          const projectDiffInfo = getDiffInfo(projectDirectory, explicitBaseBranch);
+          const projectDiffInfo =
+            projectDirectory === resolvedDirectory
+              ? diffInfo
+              : getDiffInfo(projectDirectory, explicitBaseBranch);
           if (projectDiffInfo) {
             const changedSourceFiles = filterSourceFiles(projectDiffInfo.changedFiles);
             if (changedSourceFiles.length === 0) {
@@ -318,6 +443,11 @@ const program = new Command()
               continue;
             }
             includePaths = changedSourceFiles;
+          } else if (!isQuiet) {
+            logger.dim(
+              `Cannot detect diff for ${projectDirectory} (not a git repository?) — scanning all files.`,
+            );
+            logger.break();
           }
         }
 
@@ -334,6 +464,7 @@ const program = new Command()
       }
 
       const reportMode: JsonReportMode = isDiffMode ? "diff" : "full";
+      currentReportMode = reportMode;
 
       if (isJsonMode) {
         writeJsonReport(
@@ -349,7 +480,7 @@ const program = new Command()
       }
 
       if (flags.annotations) {
-        printAnnotations(allDiagnostics);
+        printAnnotations(allDiagnostics, isJsonMode);
       }
 
       if (
@@ -358,26 +489,40 @@ const program = new Command()
         process.exitCode = 1;
       }
     } catch (error) {
-      if (isJsonMode) {
-        writeJsonReport(
-          buildJsonReportError({
-            version: VERSION,
-            directory: resolvedDirectory,
-            error,
-            elapsedMilliseconds: performance.now() - jsonStartTime,
-          }),
-        );
+      try {
+        if (isJsonMode) {
+          writeJsonReport(
+            buildJsonReportError({
+              version: VERSION,
+              directory: resolvedDirectory,
+              error,
+              elapsedMilliseconds: performance.now() - jsonStartTime,
+              mode: currentReportMode,
+            }),
+          );
+          process.exitCode = 1;
+          return;
+        }
+        handleError(error);
+      } catch {
+        if (isJsonMode) {
+          process.stdout.write(
+            '{"schemaVersion":1,"ok":false,"error":{"message":"Internal error","name":"Error","chain":[]}}\n',
+          );
+        }
         process.exitCode = 1;
-        return;
       }
-      handleError(error);
     }
   })
   .addHelpText(
     "after",
     `
+${highlighter.dim("Configuration:")}
+  Place a ${highlighter.info("react-doctor.config.json")} (or ${highlighter.info('"reactDoctor"')} key in your package.json) in the project root.
+  CLI flags always override config values. See the README for the full schema.
+
 ${highlighter.dim("Learn more:")}
-  ${highlighter.info("https://github.com/millionco/react-doctor")}
+  ${highlighter.info(CANONICAL_GITHUB_URL)}
 `,
   );
 
@@ -385,16 +530,37 @@ program
   .command("install")
   .description("Install the react-doctor skill into your coding agents")
   .option("-y, --yes", "skip prompts, install for all detected agents")
-  .action(async (options: { yes?: boolean }) => {
+  .option("--dry-run", "show what would be installed without writing files")
+  .action(async (options: { yes?: boolean; dryRun?: boolean }) => {
     try {
-      await runInstallSkill({ yes: options.yes });
+      await runInstallSkill({ yes: options.yes, dryRun: options.dryRun });
     } catch (error) {
       handleError(error);
     }
   });
 
-const main = async () => {
-  await program.parseAsync();
-};
+process.stdout.on("error", (error: NodeJS.ErrnoException) => {
+  if (error.code === "EPIPE") process.exit(0);
+});
 
-main();
+program.parseAsync().catch((error: unknown) => {
+  if (isJsonModeActive) {
+    try {
+      writeJsonReport(
+        buildJsonReportError({
+          version: VERSION,
+          directory: resolvedDirectoryForCancel ?? process.cwd(),
+          error,
+          elapsedMilliseconds: performance.now() - cancelStartTime,
+          mode: currentReportMode,
+        }),
+      );
+    } catch {
+      process.stdout.write(
+        '{"schemaVersion":1,"ok":false,"error":{"message":"Internal error","name":"Error","chain":[]}}\n',
+      );
+    }
+    process.exit(1);
+  }
+  handleError(error);
+});

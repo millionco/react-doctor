@@ -3,7 +3,9 @@ import type { Framework } from "./types.js";
 
 const esmRequire = createRequire(import.meta.url);
 
-const NEXTJS_RULES: Record<string, string> = {
+type RuleSeverity = "error" | "warn" | "off";
+
+const NEXTJS_RULES: Record<string, RuleSeverity> = {
   "react-doctor/nextjs-no-img-element": "warn",
   "react-doctor/nextjs-async-client-component": "error",
   "react-doctor/nextjs-no-a-element": "warn",
@@ -22,7 +24,7 @@ const NEXTJS_RULES: Record<string, string> = {
   "react-doctor/nextjs-no-side-effect-in-get-handler": "error",
 };
 
-const REACT_NATIVE_RULES: Record<string, string> = {
+const REACT_NATIVE_RULES: Record<string, RuleSeverity> = {
   "react-doctor/rn-no-raw-text": "error",
   "react-doctor/rn-no-deprecated-modules": "error",
   "react-doctor/rn-no-legacy-expo-packages": "warn",
@@ -33,7 +35,7 @@ const REACT_NATIVE_RULES: Record<string, string> = {
   "react-doctor/rn-no-single-element-style-array": "warn",
 };
 
-const TANSTACK_START_RULES: Record<string, string> = {
+const TANSTACK_START_RULES: Record<string, RuleSeverity> = {
   "react-doctor/tanstack-start-route-property-order": "error",
   "react-doctor/tanstack-start-no-direct-fetch-in-loader": "warn",
   "react-doctor/tanstack-start-server-fn-validate-input": "warn",
@@ -50,33 +52,55 @@ const TANSTACK_START_RULES: Record<string, string> = {
   "react-doctor/tanstack-start-loader-parallel-fetch": "warn",
 };
 
-const REACT_COMPILER_RULES: Record<string, string> = {
-  "react-hooks-js/set-state-in-render": "error",
-  "react-hooks-js/immutability": "error",
-  "react-hooks-js/refs": "error",
-  "react-hooks-js/purity": "error",
-  "react-hooks-js/hooks": "error",
-  "react-hooks-js/set-state-in-effect": "error",
-  "react-hooks-js/globals": "error",
-  "react-hooks-js/error-boundaries": "error",
-  "react-hooks-js/preserve-manual-memoization": "error",
-  "react-hooks-js/unsupported-syntax": "error",
-  "react-hooks-js/component-hook-factories": "error",
-  "react-hooks-js/static-components": "error",
-  "react-hooks-js/use-memo": "error",
-  "react-hooks-js/void-use-memo": "error",
-  "react-hooks-js/incompatible-library": "error",
-  "react-hooks-js/todo": "error",
+const REACT_COMPILER_RULES: Record<string, RuleSeverity> = {
+  "react-hooks-js/set-state-in-render": "warn",
+  "react-hooks-js/immutability": "warn",
+  "react-hooks-js/refs": "warn",
+  "react-hooks-js/purity": "warn",
+  "react-hooks-js/hooks": "warn",
+  "react-hooks-js/set-state-in-effect": "warn",
+  "react-hooks-js/globals": "warn",
+  "react-hooks-js/error-boundaries": "warn",
+  "react-hooks-js/preserve-manual-memoization": "warn",
+  "react-hooks-js/unsupported-syntax": "warn",
+  "react-hooks-js/component-hook-factories": "warn",
+  "react-hooks-js/static-components": "warn",
+  "react-hooks-js/use-memo": "warn",
+  "react-hooks-js/void-use-memo": "warn",
+  "react-hooks-js/incompatible-library": "warn",
+  "react-hooks-js/todo": "warn",
 };
 
 interface OxlintConfigOptions {
   pluginPath: string;
   framework: Framework;
   hasReactCompiler: boolean;
+  hasTanStackQuery: boolean;
   customRulesOnly?: boolean;
 }
 
-const BUILTIN_REACT_RULES: Record<string, string> = {
+const resolveReactHooksJsPlugin = (
+  hasReactCompiler: boolean,
+  customRulesOnly: boolean,
+): Array<{ name: string; specifier: string }> => {
+  if (!hasReactCompiler || customRulesOnly) return [];
+  try {
+    return [{ name: "react-hooks-js", specifier: esmRequire.resolve("eslint-plugin-react-hooks") }];
+  } catch {
+    return [];
+  }
+};
+
+const TANSTACK_QUERY_RULES: Record<string, RuleSeverity> = {
+  "react-doctor/query-stable-query-client": "warn",
+  "react-doctor/query-no-rest-destructuring": "warn",
+  "react-doctor/query-no-void-query-fn": "warn",
+  "react-doctor/query-no-query-in-effect": "warn",
+  "react-doctor/query-mutation-missing-invalidation": "warn",
+  "react-doctor/query-no-usequery-for-mutation": "warn",
+};
+
+const BUILTIN_REACT_RULES: Record<string, RuleSeverity> = {
   "react/rules-of-hooks": "error",
   "react/no-direct-mutation-state": "error",
   "react/jsx-no-duplicate-props": "error",
@@ -91,7 +115,7 @@ const BUILTIN_REACT_RULES: Record<string, string> = {
   "react/no-unknown-property": "warn",
 };
 
-const BUILTIN_A11Y_RULES: Record<string, string> = {
+const BUILTIN_A11Y_RULES: Record<string, RuleSeverity> = {
   "jsx-a11y/alt-text": "error",
   "jsx-a11y/anchor-is-valid": "warn",
   "jsx-a11y/click-events-have-key-events": "warn",
@@ -108,10 +132,100 @@ const BUILTIN_A11Y_RULES: Record<string, string> = {
   "jsx-a11y/iframe-has-title": "warn",
 };
 
+const GLOBAL_REACT_DOCTOR_RULES: Record<string, RuleSeverity> = {
+  "react-doctor/no-derived-state-effect": "warn",
+  "react-doctor/no-fetch-in-effect": "warn",
+  "react-doctor/no-cascading-set-state": "warn",
+  "react-doctor/no-effect-event-handler": "warn",
+  "react-doctor/no-derived-useState": "warn",
+  "react-doctor/prefer-useReducer": "warn",
+  "react-doctor/rerender-lazy-state-init": "warn",
+  "react-doctor/rerender-functional-setstate": "warn",
+  "react-doctor/rerender-dependencies": "error",
+
+  "react-doctor/no-giant-component": "warn",
+  "react-doctor/no-render-in-render": "warn",
+  "react-doctor/no-nested-component-definition": "error",
+
+  "react-doctor/no-usememo-simple-expression": "warn",
+  "react-doctor/no-layout-property-animation": "error",
+  "react-doctor/rerender-memo-with-default-value": "warn",
+  "react-doctor/rendering-animate-svg-wrapper": "warn",
+  "react-doctor/no-inline-prop-on-memo-component": "warn",
+  "react-doctor/rendering-hydration-no-flicker": "warn",
+  "react-doctor/rendering-script-defer-async": "warn",
+  "react-doctor/rendering-usetransition-loading": "warn",
+
+  "react-doctor/no-transition-all": "warn",
+  "react-doctor/no-global-css-variable-animation": "error",
+  "react-doctor/no-large-animated-blur": "warn",
+  "react-doctor/no-scale-from-zero": "warn",
+  "react-doctor/no-permanent-will-change": "warn",
+
+  "react-doctor/no-eval": "error",
+  "react-doctor/no-secrets-in-client-code": "warn",
+
+  "react-doctor/no-generic-handler-names": "warn",
+
+  "react-doctor/js-flatmap-filter": "warn",
+  "react-doctor/js-combine-iterations": "warn",
+  "react-doctor/js-tosorted-immutable": "warn",
+  "react-doctor/js-hoist-regexp": "warn",
+  "react-doctor/js-min-max-loop": "warn",
+  "react-doctor/js-set-map-lookups": "warn",
+  "react-doctor/js-batch-dom-css": "warn",
+  "react-doctor/js-index-maps": "warn",
+  "react-doctor/js-cache-storage": "warn",
+  "react-doctor/js-early-exit": "warn",
+
+  "react-doctor/no-barrel-import": "warn",
+  "react-doctor/no-full-lodash-import": "warn",
+  "react-doctor/no-moment": "warn",
+  "react-doctor/prefer-dynamic-import": "warn",
+  "react-doctor/use-lazy-motion": "warn",
+  "react-doctor/no-undeferred-third-party": "warn",
+
+  "react-doctor/no-array-index-as-key": "warn",
+  "react-doctor/rendering-conditional-render": "warn",
+  "react-doctor/no-prevent-default": "warn",
+
+  "react-doctor/server-auth-actions": "error",
+  "react-doctor/server-after-nonblocking": "warn",
+
+  "react-doctor/client-passive-event-listeners": "warn",
+
+  "react-doctor/no-inline-bounce-easing": "warn",
+  "react-doctor/no-z-index-9999": "warn",
+  "react-doctor/no-inline-exhaustive-style": "warn",
+  "react-doctor/no-side-tab-border": "warn",
+  "react-doctor/no-pure-black-background": "warn",
+  "react-doctor/no-gradient-text": "warn",
+  "react-doctor/no-dark-mode-glow": "warn",
+  "react-doctor/no-justified-text": "warn",
+  "react-doctor/no-tiny-text": "warn",
+  "react-doctor/no-wide-letter-spacing": "warn",
+  "react-doctor/no-gray-on-colored-background": "warn",
+  "react-doctor/no-layout-transition-inline": "warn",
+  "react-doctor/no-disabled-zoom": "error",
+  "react-doctor/no-outline-none": "warn",
+  "react-doctor/no-long-transition-duration": "warn",
+
+  "react-doctor/async-parallel": "warn",
+};
+
+export const ALL_REACT_DOCTOR_RULE_KEYS: ReadonlySet<string> = new Set([
+  ...Object.keys(GLOBAL_REACT_DOCTOR_RULES),
+  ...Object.keys(NEXTJS_RULES),
+  ...Object.keys(REACT_NATIVE_RULES),
+  ...Object.keys(TANSTACK_START_RULES),
+  ...Object.keys(TANSTACK_QUERY_RULES),
+]);
+
 export const createOxlintConfig = ({
   pluginPath,
   framework,
   hasReactCompiler,
+  hasTanStackQuery,
   customRulesOnly = false,
 }: OxlintConfigOptions) => ({
   categories: {
@@ -123,92 +237,16 @@ export const createOxlintConfig = ({
     style: "off",
     nursery: "off",
   },
-  plugins: ["react", "jsx-a11y", ...(hasReactCompiler ? [] : ["react-perf"])],
-  jsPlugins: [
-    ...(hasReactCompiler && !customRulesOnly
-      ? [{ name: "react-hooks-js", specifier: esmRequire.resolve("eslint-plugin-react-hooks") }]
-      : []),
-    pluginPath,
-  ],
+  plugins: customRulesOnly ? [] : ["react", "jsx-a11y"],
+  jsPlugins: [...resolveReactHooksJsPlugin(hasReactCompiler, customRulesOnly), pluginPath],
   rules: {
     ...(customRulesOnly ? {} : BUILTIN_REACT_RULES),
     ...(customRulesOnly ? {} : BUILTIN_A11Y_RULES),
     ...(hasReactCompiler && !customRulesOnly ? REACT_COMPILER_RULES : {}),
-
-    "react-doctor/no-derived-state-effect": "error",
-    "react-doctor/no-fetch-in-effect": "error",
-    "react-doctor/no-cascading-set-state": "warn",
-    "react-doctor/no-effect-event-handler": "warn",
-    "react-doctor/no-derived-useState": "warn",
-    "react-doctor/prefer-useReducer": "warn",
-    "react-doctor/rerender-lazy-state-init": "warn",
-    "react-doctor/rerender-functional-setstate": "warn",
-    "react-doctor/rerender-dependencies": "error",
-
-    "react-doctor/no-giant-component": "warn",
-    "react-doctor/no-render-in-render": "warn",
-    "react-doctor/no-nested-component-definition": "error",
-
-    "react-doctor/no-usememo-simple-expression": "warn",
-    "react-doctor/no-layout-property-animation": "error",
-    "react-doctor/rerender-memo-with-default-value": "warn",
-    "react-doctor/rendering-animate-svg-wrapper": "warn",
-    "react-doctor/no-inline-prop-on-memo-component": "warn",
-    "react-doctor/rendering-hydration-no-flicker": "warn",
-    "react-doctor/rendering-script-defer-async": "warn",
-
-    "react-doctor/no-transition-all": "warn",
-    "react-doctor/no-global-css-variable-animation": "error",
-    "react-doctor/no-large-animated-blur": "warn",
-    "react-doctor/no-scale-from-zero": "warn",
-    "react-doctor/no-permanent-will-change": "warn",
-
-    "react-doctor/no-secrets-in-client-code": "error",
-
-    "react-doctor/js-flatmap-filter": "warn",
-
-    "react-doctor/no-barrel-import": "warn",
-    "react-doctor/no-full-lodash-import": "warn",
-    "react-doctor/no-moment": "warn",
-    "react-doctor/prefer-dynamic-import": "warn",
-    "react-doctor/use-lazy-motion": "warn",
-    "react-doctor/no-undeferred-third-party": "warn",
-
-    "react-doctor/no-array-index-as-key": "warn",
-    "react-doctor/rendering-conditional-render": "warn",
-    "react-doctor/no-prevent-default": "warn",
-
-    "react-doctor/server-auth-actions": "error",
-    "react-doctor/server-after-nonblocking": "warn",
-
-    "react-doctor/client-passive-event-listeners": "warn",
-
-    "react-doctor/query-stable-query-client": "error",
-    "react-doctor/query-no-rest-destructuring": "warn",
-    "react-doctor/query-no-void-query-fn": "warn",
-    "react-doctor/query-no-query-in-effect": "warn",
-    "react-doctor/query-mutation-missing-invalidation": "warn",
-    "react-doctor/query-no-usequery-for-mutation": "warn",
-
-    "react-doctor/no-inline-bounce-easing": "warn",
-    "react-doctor/no-z-index-9999": "warn",
-    "react-doctor/no-inline-exhaustive-style": "warn",
-    "react-doctor/no-side-tab-border": "warn",
-    "react-doctor/no-pure-black-background": "warn",
-    "react-doctor/no-gradient-text": "warn",
-    "react-doctor/no-dark-mode-glow": "warn",
-    "react-doctor/no-justified-text": "warn",
-    "react-doctor/no-tiny-text": "warn",
-    "react-doctor/no-wide-letter-spacing": "warn",
-    "react-doctor/no-gray-on-colored-background": "warn",
-    "react-doctor/no-layout-transition-inline": "warn",
-    "react-doctor/no-disabled-zoom": "error",
-    "react-doctor/no-outline-none": "warn",
-    "react-doctor/no-long-transition-duration": "warn",
-
-    "react-doctor/async-parallel": "warn",
+    ...GLOBAL_REACT_DOCTOR_RULES,
     ...(framework === "nextjs" ? NEXTJS_RULES : {}),
     ...(framework === "expo" || framework === "react-native" ? REACT_NATIVE_RULES : {}),
     ...(framework === "tanstack-start" ? TANSTACK_START_RULES : {}),
+    ...(hasTanStackQuery ? TANSTACK_QUERY_RULES : {}),
   },
 });

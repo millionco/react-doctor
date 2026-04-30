@@ -9,6 +9,9 @@ import {
 } from "./constants.js";
 import type { EsTreeNode, RuleVisitors } from "./types.js";
 
+// HACK: AST is acyclic except for `parent` back-references, which we skip.
+// No general-purpose cycle protection (WeakSet) is required as long as our
+// AST sources (oxlint, in-tree custom rules) don't introduce other cycles.
 export const walkAst = (node: EsTreeNode, visitor: (child: EsTreeNode) => void): void => {
   if (!node || typeof node !== "object") return;
   visitor(node);
@@ -249,18 +252,55 @@ export const findSideEffect = (node: EsTreeNode): string | null => {
   return sideEffectDescription;
 };
 
+// HACK: collects every locally-bound name introduced by a parameter list,
+// recursing into nested object/array patterns. We need every binding so
+// `noDerivedUseState` can detect e.g. `function Foo({ user: { name } })` →
+// `useState(name)` (false negative if we only added "user").
+const collectPatternNames = (pattern: EsTreeNode | null, into: Set<string>): void => {
+  if (!pattern) return;
+
+  if (pattern.type === "Identifier") {
+    into.add(pattern.name);
+    return;
+  }
+
+  if (pattern.type === "AssignmentPattern") {
+    collectPatternNames(pattern.left, into);
+    return;
+  }
+
+  if (pattern.type === "RestElement") {
+    collectPatternNames(pattern.argument, into);
+    return;
+  }
+
+  if (pattern.type === "ArrayPattern") {
+    for (const element of pattern.elements ?? []) {
+      collectPatternNames(element, into);
+    }
+    return;
+  }
+
+  if (pattern.type === "ObjectPattern") {
+    for (const property of pattern.properties ?? []) {
+      if (property.type === "RestElement") {
+        collectPatternNames(property.argument, into);
+        continue;
+      }
+      if (property.type === "Property") {
+        // The bound name lives in `property.value` (which may itself be
+        // a nested pattern). The `property.key` is the source-side name
+        // and only matters when it equals `property.value` (shorthand).
+        collectPatternNames(property.value, into);
+      }
+    }
+  }
+};
+
 export const extractDestructuredPropNames = (params: EsTreeNode[]): Set<string> => {
   const propNames = new Set<string>();
   for (const param of params) {
-    if (param.type === "ObjectPattern") {
-      for (const property of param.properties ?? []) {
-        if (property.type === "Property" && property.key?.type === "Identifier") {
-          propNames.add(property.key.name);
-        }
-      }
-    } else if (param.type === "Identifier") {
-      propNames.add(param.name);
-    }
+    collectPatternNames(param, propNames);
   }
   return propNames;
 };

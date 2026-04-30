@@ -3,9 +3,10 @@ const ERROR_RULE_PENALTY = 1.5;
 const WARNING_RULE_PENALTY = 0.75;
 const SCORE_GOOD_THRESHOLD = 75;
 const SCORE_OK_THRESHOLD = 50;
+const MAX_REQUEST_BODY_BYTES = 1_000_000;
+const MAX_DIAGNOSTICS_PER_REQUEST = 50_000;
 
 interface DiagnosticInput {
-  filePath: string;
   plugin: string;
   rule: string;
   severity: "error" | "warning";
@@ -14,7 +15,6 @@ interface DiagnosticInput {
   line: number;
   column: number;
   category: string;
-  weight?: number;
 }
 
 const getScoreLabel = (score: number): string => {
@@ -47,7 +47,6 @@ const isValidDiagnostic = (value: unknown): value is DiagnosticInput => {
   if (typeof value !== "object" || value === null) return false;
   const record = value as Record<string, unknown>;
   return (
-    typeof record.filePath === "string" &&
     typeof record.plugin === "string" &&
     typeof record.rule === "string" &&
     (record.severity === "error" || record.severity === "warning") &&
@@ -67,30 +66,45 @@ const CORS_HEADERS = {
 
 export const OPTIONS = (): Response => new Response(null, { status: 204, headers: CORS_HEADERS });
 
-export const POST = async (request: Request): Promise<Response> => {
-  const body = await request.json().catch(() => null);
-  console.log("[/api/score]", JSON.stringify(body));
+const respondError = (status: number, message: string): Response =>
+  Response.json({ error: message }, { status, headers: CORS_HEADERS });
 
-  if (!body || !Array.isArray(body.diagnostics)) {
-    return Response.json(
-      { error: "Request body must contain a 'diagnostics' array" },
-      { status: 400, headers: CORS_HEADERS },
-    );
+export const POST = async (request: Request): Promise<Response> => {
+  const contentLength = Number(request.headers.get("content-length") ?? "0");
+  if (contentLength > MAX_REQUEST_BODY_BYTES) {
+    return respondError(413, "Request body exceeds 1MB");
   }
 
-  const isValidPayload = body.diagnostics.every((entry: unknown) => isValidDiagnostic(entry));
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    body = null;
+  }
+
+  if (
+    !body ||
+    typeof body !== "object" ||
+    !Array.isArray((body as { diagnostics: unknown }).diagnostics)
+  ) {
+    return respondError(400, "Request body must contain a 'diagnostics' array");
+  }
+
+  const diagnostics = (body as { diagnostics: unknown[] }).diagnostics;
+  if (diagnostics.length > MAX_DIAGNOSTICS_PER_REQUEST) {
+    return respondError(413, "Too many diagnostics in a single request");
+  }
+
+  const isValidPayload = diagnostics.every((entry: unknown) => isValidDiagnostic(entry));
 
   if (!isValidPayload) {
-    return Response.json(
-      {
-        error:
-          "Each diagnostic must have 'filePath', 'plugin', 'rule', 'severity', 'message', 'help', 'line', 'column', and 'category'",
-      },
-      { status: 400, headers: CORS_HEADERS },
+    return respondError(
+      400,
+      "Each diagnostic must have 'plugin', 'rule', 'severity', 'message', 'help', 'line', 'column', and 'category'",
     );
   }
 
-  const score = calculateScore(body.diagnostics);
+  const score = calculateScore(diagnostics as DiagnosticInput[]);
 
   return Response.json({ score, label: getScoreLabel(score) }, { headers: CORS_HEADERS });
 };

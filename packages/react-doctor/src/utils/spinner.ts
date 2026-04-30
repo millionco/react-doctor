@@ -3,6 +3,7 @@ import ora from "ora";
 let sharedInstance: ReturnType<typeof ora> | null = null;
 let activeCount = 0;
 const pendingTexts = new Set<string>();
+const finalizedHandles = new WeakSet<object>();
 
 let isSilent = false;
 
@@ -10,16 +11,18 @@ export const setSpinnerSilent = (silent: boolean): void => {
   isSilent = silent;
 };
 
-const noopHandle = {
+export const isSpinnerSilent = (): boolean => isSilent;
+
+const noopHandle = Object.freeze({
   succeed: () => {},
   fail: () => {},
-};
+});
 
 const finalize = (method: "succeed" | "fail", originalText: string, displayText: string) => {
   pendingTexts.delete(originalText);
-  activeCount--;
+  activeCount = Math.max(0, activeCount - 1);
 
-  if (activeCount <= 0 || !sharedInstance) {
+  if (activeCount === 0 || !sharedInstance) {
     sharedInstance?.[method](displayText);
     sharedInstance = null;
     activeCount = 0;
@@ -49,9 +52,18 @@ export const spinner = (text: string) => ({
       sharedInstance.text = text;
     }
 
-    return {
-      succeed: (displayText: string) => finalize("succeed", text, displayText),
-      fail: (displayText: string) => finalize("fail", text, displayText),
+    const handle = {
+      succeed: (displayText: string) => {
+        if (finalizedHandles.has(handle)) return;
+        finalizedHandles.add(handle);
+        finalize("succeed", text, displayText);
+      },
+      fail: (displayText: string) => {
+        if (finalizedHandles.has(handle)) return;
+        finalizedHandles.add(handle);
+        finalize("fail", text, displayText);
+      },
     };
+    return handle;
   },
 });

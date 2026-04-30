@@ -1,5 +1,7 @@
-import { logger } from "./logger.js";
+import { CANONICAL_GITHUB_URL } from "../constants.js";
 import type { HandleErrorOptions } from "../types.js";
+import { formatErrorChain } from "./format-error-chain.js";
+import { logger } from "./logger.js";
 
 const DEFAULT_HANDLE_ERROR_OPTIONS: HandleErrorOptions = {
   shouldExit: true,
@@ -11,11 +13,9 @@ export const handleError = (
 ): void => {
   logger.break();
   logger.error("Something went wrong. Please check the error below for more details.");
-  logger.error("If the problem persists, please open an issue on GitHub.");
+  logger.error(`If the problem persists, please open an issue at ${CANONICAL_GITHUB_URL}/issues.`);
   logger.error("");
-  if (error instanceof Error) {
-    logger.error(error.message);
-  }
+  logger.error(formatErrorChain(error));
   logger.break();
   if (options.shouldExit) {
     process.exit(1);

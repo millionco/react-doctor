@@ -42,8 +42,6 @@ export const ERROR_RULE_PENALTY = 1.5;
 
 export const WARNING_RULE_PENALTY = 0.75;
 
-export const MAX_KNIP_RETRIES = 5;
-
 export const KNIP_CONFIG_LOCATIONS = [
   "knip.json",
   "knip.jsonc",
@@ -62,3 +60,12 @@ export const OXLINT_RECOMMENDED_NODE_MAJOR = 24;
 export const GIT_SHOW_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
 
 export const IGNORED_DIRECTORIES = new Set(["node_modules", "dist", "build", "coverage"]);
+
+export const CANONICAL_GITHUB_URL = "https://github.com/millionco/react-doctor";
+
+export const KNIP_TOTAL_ATTEMPTS = 6;
+
+export const PROXY_OUTPUT_MAX_BYTES = 50 * 1024 * 1024;
+
+export const buildNoReactDependencyError = (directory: string): string =>
+  `No React dependency found in ${directory}/package.json. Add "react" to dependencies (or peerDependencies) and re-run.`;

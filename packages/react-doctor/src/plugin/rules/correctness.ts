@@ -2,6 +2,8 @@ import { INDEX_PARAMETER_NAMES } from "../constants.js";
 import { findJsxAttribute, walkAst } from "../helpers.js";
 import type { EsTreeNode, Rule, RuleContext } from "../types.js";
 
+const STRING_COERCION_FUNCTIONS = new Set(["String", "Number"]);
+
 const extractIndexName = (node: EsTreeNode): string | null => {
   if (node.type === "Identifier" && INDEX_PARAMETER_NAMES.has(node.name)) return node.name;
 
@@ -26,11 +28,26 @@ const extractIndexName = (node: EsTreeNode): string | null => {
   if (
     node.type === "CallExpression" &&
     node.callee?.type === "Identifier" &&
-    node.callee.name === "String" &&
+    STRING_COERCION_FUNCTIONS.has(node.callee.name) &&
     node.arguments?.[0]?.type === "Identifier" &&
     INDEX_PARAMETER_NAMES.has(node.arguments[0].name)
   )
     return node.arguments[0].name;
+
+  if (
+    node.type === "BinaryExpression" &&
+    node.operator === "+" &&
+    ((node.left?.type === "Identifier" &&
+      INDEX_PARAMETER_NAMES.has(node.left.name) &&
+      node.right?.type === "Literal" &&
+      node.right.value === "") ||
+      (node.right?.type === "Identifier" &&
+        INDEX_PARAMETER_NAMES.has(node.right.name) &&
+        node.left?.type === "Literal" &&
+        node.left.value === ""))
+  ) {
+    return node.left?.type === "Identifier" ? node.left.name : node.right.name;
+  }
 
   return null;
 };
@@ -84,9 +101,10 @@ export const noArrayIndexAsKey: Rule = {
   }),
 };
 
-const PREVENT_DEFAULT_ELEMENTS: Record<string, string> = {
-  form: "onSubmit",
-  a: "onClick",
+const PREVENT_DEFAULT_ELEMENTS: Record<string, string[]> = {
+  form: ["onSubmit"],
+  a: ["onClick"],
+  button: ["onClick"],
 };
 
 const containsPreventDefaultCall = (node: EsTreeNode): boolean => {
@@ -105,35 +123,51 @@ const containsPreventDefaultCall = (node: EsTreeNode): boolean => {
   return didFindPreventDefault;
 };
 
+const buildPreventDefaultMessage = (elementName: string): string => {
+  if (elementName === "form") {
+    return "preventDefault() on <form> onSubmit — form won't work without JavaScript. Consider using a server action for progressive enhancement";
+  }
+  if (elementName === "a") {
+    return "preventDefault() on <a> onClick — use a <button> or routing component instead";
+  }
+  return "preventDefault() on a button click handler — buttons don't have a default action; remove the call or switch the element if you needed to suppress a real default";
+};
+
 export const noPreventDefault: Rule = {
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNode) {
       const elementName = node.name?.type === "JSXIdentifier" ? node.name.name : null;
       if (!elementName) return;
 
-      const targetEventProp = PREVENT_DEFAULT_ELEMENTS[elementName];
-      if (!targetEventProp) return;
+      const targetEventProps = PREVENT_DEFAULT_ELEMENTS[elementName];
+      if (!targetEventProps) return;
 
-      const eventAttribute = findJsxAttribute(node.attributes ?? [], targetEventProp);
-      if (!eventAttribute?.value || eventAttribute.value.type !== "JSXExpressionContainer") return;
+      for (const targetEventProp of targetEventProps) {
+        const eventAttribute = findJsxAttribute(node.attributes ?? [], targetEventProp);
+        if (!eventAttribute?.value || eventAttribute.value.type !== "JSXExpressionContainer")
+          continue;
 
-      const expression = eventAttribute.value.expression;
-      if (
-        expression?.type !== "ArrowFunctionExpression" &&
-        expression?.type !== "FunctionExpression"
-      )
+        const expression = eventAttribute.value.expression;
+        if (
+          expression?.type !== "ArrowFunctionExpression" &&
+          expression?.type !== "FunctionExpression"
+        )
+          continue;
+
+        if (!containsPreventDefaultCall(expression)) continue;
+
+        context.report({ node, message: buildPreventDefaultMessage(elementName) });
         return;
-
-      if (!containsPreventDefaultCall(expression)) return;
-
-      const message =
-        elementName === "form"
-          ? "preventDefault() on <form> onSubmit — form won't work without JavaScript. Consider using a server action for progressive enhancement"
-          : "preventDefault() on <a> onClick — use a <button> or routing component instead";
-
-      context.report({ node, message });
+      }
     },
   }),
+};
+
+const NUMERIC_NAME_HINTS = ["count", "length", "total", "size", "num"];
+
+const isNumericName = (name: string): boolean => {
+  const lowered = name.toLowerCase();
+  return NUMERIC_NAME_HINTS.some((hint) => lowered === hint || lowered.endsWith(hint));
 };
 
 export const renderingConditionalRender: Rule = {
@@ -144,15 +178,21 @@ export const renderingConditionalRender: Rule = {
       const isRightJsx = node.right?.type === "JSXElement" || node.right?.type === "JSXFragment";
       if (!isRightJsx) return;
 
-      if (
-        node.left?.type === "MemberExpression" &&
-        node.left.property?.type === "Identifier" &&
-        node.left.property.name === "length"
-      ) {
+      const left = node.left;
+      if (!left) return;
+
+      const isLengthMemberAccess =
+        left.type === "MemberExpression" &&
+        left.property?.type === "Identifier" &&
+        left.property.name === "length";
+
+      const isNumericIdentifier = left.type === "Identifier" && isNumericName(left.name);
+
+      if (isLengthMemberAccess || isNumericIdentifier) {
         context.report({
           node,
           message:
-            "Conditional rendering with .length can render '0' — use .length > 0 or Boolean(.length)",
+            "Conditional rendering with a numeric value can render '0' — use `value > 0`, `Boolean(value)`, or a ternary",
         });
       }
     },

@@ -22,7 +22,13 @@ let diagnostics: Diagnostic[];
 
 describe("namespace hook detection (React.useEffect, React.useState, etc.)", () => {
   it("loads diagnostics from namespace-hooks fixture", async () => {
-    diagnostics = await runOxlint(BASIC_REACT_DIRECTORY, true, "unknown", false);
+    diagnostics = await runOxlint({
+      rootDirectory: BASIC_REACT_DIRECTORY,
+      hasTypeScript: true,
+      framework: "unknown",
+      hasReactCompiler: false,
+      hasTanStackQuery: true,
+    });
     expect(diagnostics.length).toBeGreaterThan(0);
   });
 

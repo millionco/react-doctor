@@ -32,7 +32,7 @@ const BadgeSnippet = ({ searchParamsString }: BadgeSnippetProps) => {
         <a
           href={badgePreviewPath}
           target="_blank"
-          rel="noreferrer"
+          rel="noopener noreferrer"
           className="text-xs text-neutral-500 underline underline-offset-2 transition-colors hover:text-neutral-300"
         >
           Open SVG

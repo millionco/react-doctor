@@ -95,6 +95,17 @@ export const noInlinePropOnMemoComponent: Rule = {
   },
 };
 
+// Identifiers and member-access chains are technically "simple", but memoizing
+// them is sometimes intentional (stable reference passing). Only flag arithmetic
+// / literal trivial cases to keep false positives low.
+const isTriviallyCheapExpression = (node: EsTreeNode | null): boolean => {
+  if (!node) return false;
+  if (!isSimpleExpression(node)) return false;
+  if (node.type === "Identifier") return false;
+  if (node.type === "MemberExpression") return false;
+  return true;
+};
+
 export const noUsememoSimpleExpression: Rule = {
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
@@ -115,7 +126,7 @@ export const noUsememoSimpleExpression: Rule = {
         returnExpression = callback.body.body[0].argument;
       }
 
-      if (returnExpression && isSimpleExpression(returnExpression)) {
+      if (returnExpression && isTriviallyCheapExpression(returnExpression)) {
         context.report({
           node,
           message:
@@ -401,7 +412,7 @@ export const renderingUsetransitionLoading: Rule = {
 export const renderingHydrationNoFlicker: Rule = {
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
-      if (!isHookCall(node, EFFECT_HOOK_NAMES) || node.arguments?.length < 2) return;
+      if (!isHookCall(node, EFFECT_HOOK_NAMES) || (node.arguments?.length ?? 0) < 2) return;
 
       const depsNode = node.arguments[1];
       if (depsNode.type !== "ArrayExpression" || depsNode.elements?.length !== 0) return;

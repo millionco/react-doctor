@@ -1,9 +1,12 @@
 import path from "node:path";
 import type {
   Diagnostic,
+  DiagnoseOptions,
+  DiagnoseResult,
   DiffInfo,
   JsonReport,
   JsonReportDiffInfo,
+  JsonReportError,
   JsonReportMode,
   JsonReportProjectEntry,
   JsonReportSummary,
@@ -23,13 +26,15 @@ import { resolveLintIncludePaths } from "./utils/resolve-lint-include-paths.js";
 import { calculateScore } from "./utils/calculate-score-node.js";
 import { runKnip } from "./utils/run-knip.js";
 import { runOxlint } from "./utils/run-oxlint.js";
-import { summarizeDiagnostics } from "./utils/summarize-diagnostics.js";
 
 export type {
   Diagnostic,
+  DiagnoseOptions,
+  DiagnoseResult,
   DiffInfo,
   JsonReport,
   JsonReportDiffInfo,
+  JsonReportError,
   JsonReportMode,
   JsonReportProjectEntry,
   JsonReportSummary,
@@ -41,31 +46,15 @@ export { getDiffInfo, filterSourceFiles } from "./utils/get-diff-files.js";
 export { summarizeDiagnostics } from "./utils/summarize-diagnostics.js";
 export { buildJsonReport, buildJsonReportError };
 
-export interface DiagnoseOptions {
-  lint?: boolean;
-  deadCode?: boolean;
-  includePaths?: string[];
-}
-
-export interface DiagnoseResult {
-  diagnostics: Diagnostic[];
-  score: ScoreResult | null;
-  project: ProjectInfo;
-  elapsedMilliseconds: number;
-}
-
 interface ToJsonReportOptions {
-  version?: string;
+  version: string;
   directory?: string;
   mode?: JsonReportMode;
 }
 
-export const toJsonReport = (
-  result: DiagnoseResult,
-  options: ToJsonReportOptions = {},
-): JsonReport =>
+export const toJsonReport = (result: DiagnoseResult, options: ToJsonReportOptions): JsonReport =>
   buildJsonReport({
-    version: options.version ?? "0.0.0",
+    version: options.version,
     directory: options.directory ?? result.project.rootDirectory,
     mode: options.mode ?? "full",
     diff: null,
@@ -74,7 +63,7 @@ export const toJsonReport = (
         directory: result.project.rootDirectory,
         result: {
           diagnostics: result.diagnostics,
-          scoreResult: result.score,
+          score: result.score,
           skippedChecks: [],
           project: result.project,
           elapsedMilliseconds: result.elapsedMilliseconds,
@@ -106,15 +95,15 @@ export const diagnose = async (
       getExtraDiagnostics: () => (isDiffMode ? [] : checkReducedMotion(resolvedDirectory)),
       createRunners: ({ resolvedDirectory: projectRoot, projectInfo, userConfig: config }) => ({
         runLint: () =>
-          runOxlint(
-            projectRoot,
-            projectInfo.hasTypeScript,
-            projectInfo.framework,
-            projectInfo.hasReactCompiler,
-            lintIncludePaths,
-            undefined,
-            config?.customRulesOnly ?? false,
-          ),
+          runOxlint({
+            rootDirectory: projectRoot,
+            hasTypeScript: projectInfo.hasTypeScript,
+            framework: projectInfo.framework,
+            hasReactCompiler: projectInfo.hasReactCompiler,
+            hasTanStackQuery: projectInfo.hasTanStackQuery,
+            includePaths: lintIncludePaths,
+            customRulesOnly: config?.customRulesOnly ?? false,
+          }),
         runDeadCode: () => runKnip(projectRoot),
       }),
     },

@@ -5,6 +5,8 @@ import BadgeSnippet from "./badge-snippet";
 const PERFECT_SCORE = 100;
 const SCORE_GOOD_THRESHOLD = 75;
 const SCORE_OK_THRESHOLD = 50;
+const MAX_PROJECT_NAME_LENGTH = 100;
+const MAX_DISPLAY_COUNT = 99_999;
 const COMMAND = "npx -y react-doctor@latest .";
 const SHARE_BASE_URL = "https://www.react.doctor/share";
 const X_ICON_PATH =
@@ -21,6 +23,12 @@ interface ShareSearchParams {
 }
 
 const clampScore = (value: number): number => Math.max(0, Math.min(PERFECT_SCORE, value));
+const clampDisplayCount = (value: number): number =>
+  Math.max(0, Math.min(MAX_DISPLAY_COUNT, value));
+const clampProjectName = (value: string | undefined | null): string | null => {
+  if (!value) return null;
+  return value.length > MAX_PROJECT_NAME_LENGTH ? value.slice(0, MAX_PROJECT_NAME_LENGTH) : value;
+};
 
 const getScoreLabel = (score: number): string => {
   if (score >= SCORE_GOOD_THRESHOLD) return "Great";
@@ -57,10 +65,10 @@ export const generateMetadata = async ({
   searchParams: Promise<ShareSearchParams>;
 }): Promise<Metadata> => {
   const resolvedParams = await searchParams;
-  const projectName = resolvedParams.p ?? null;
+  const projectName = clampProjectName(resolvedParams.p ?? null);
   const score = clampScore(Number(resolvedParams.s) || 0);
-  const errorCount = Math.max(0, Number(resolvedParams.e) || 0);
-  const warningCount = Math.max(0, Number(resolvedParams.w) || 0);
+  const errorCount = clampDisplayCount(Number(resolvedParams.e) || 0);
+  const warningCount = clampDisplayCount(Number(resolvedParams.w) || 0);
   const label = getScoreLabel(score);
 
   const titlePrefix = projectName ? `${projectName} - ` : "";
@@ -92,11 +100,11 @@ export const generateMetadata = async ({
 
 const SharePage = async ({ searchParams }: { searchParams: Promise<ShareSearchParams> }) => {
   const resolvedParams = await searchParams;
-  const projectName = resolvedParams.p ?? null;
+  const projectName = clampProjectName(resolvedParams.p ?? null);
   const score = clampScore(Number(resolvedParams.s) || 0);
-  const errorCount = Math.max(0, Number(resolvedParams.e) || 0);
-  const warningCount = Math.max(0, Number(resolvedParams.w) || 0);
-  const fileCount = Math.max(0, Number(resolvedParams.f) || 0);
+  const errorCount = clampDisplayCount(Number(resolvedParams.e) || 0);
+  const warningCount = clampDisplayCount(Number(resolvedParams.w) || 0);
+  const fileCount = clampDisplayCount(Number(resolvedParams.f) || 0);
   const label = getScoreLabel(score);
 
   const shareSearchParams = new URLSearchParams();
@@ -154,7 +162,7 @@ const SharePage = async ({ searchParams }: { searchParams: Promise<ShareSearchPa
         <a
           href={twitterShareUrl}
           target="_blank"
-          rel="noreferrer"
+          rel="noopener noreferrer"
           className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap border border-white/20 bg-white px-3 py-1.5 text-black transition-all hover:bg-white/90 active:scale-[0.98]"
         >
           <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
@@ -165,7 +173,7 @@ const SharePage = async ({ searchParams }: { searchParams: Promise<ShareSearchPa
         <a
           href={linkedinShareUrl}
           target="_blank"
-          rel="noreferrer"
+          rel="noopener noreferrer"
           className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap border border-white/20 bg-white px-3 py-1.5 text-black transition-all hover:bg-white/90 active:scale-[0.98]"
         >
           <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">

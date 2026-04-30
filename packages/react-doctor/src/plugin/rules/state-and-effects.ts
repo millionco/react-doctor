@@ -23,7 +23,7 @@ import type { EsTreeNode, Rule, RuleContext } from "../types.js";
 export const noDerivedStateEffect: Rule = {
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
-      if (!isHookCall(node, EFFECT_HOOK_NAMES) || node.arguments.length < 2) return;
+      if (!isHookCall(node, EFFECT_HOOK_NAMES) || (node.arguments?.length ?? 0) < 2) return;
 
       const callback = getEffectCallback(node);
       if (!callback) return;
@@ -123,7 +123,7 @@ export const noCascadingSetState: Rule = {
 export const noEffectEventHandler: Rule = {
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
-      if (!isHookCall(node, EFFECT_HOOK_NAMES) || node.arguments.length < 2) return;
+      if (!isHookCall(node, EFFECT_HOOK_NAMES) || (node.arguments?.length ?? 0) < 2) return;
 
       const callback = getEffectCallback(node);
       if (!callback) return;
@@ -176,13 +176,29 @@ export const noDerivedUseState: Rule = {
       CallExpression(node: EsTreeNode) {
         if (!isHookCall(node, "useState") || !node.arguments?.length) return;
         const initializer = node.arguments[0];
-        if (initializer.type !== "Identifier") return;
 
-        if (componentPropNames.has(initializer.name)) {
+        if (initializer.type === "Identifier" && componentPropNames.has(initializer.name)) {
           context.report({
             node,
             message: `useState initialized from prop "${initializer.name}" — if this value should stay in sync with the prop, derive it during render instead`,
           });
+          return;
+        }
+
+        if (initializer.type === "MemberExpression" && !initializer.computed) {
+          let rootIdentifierName: string | null = null;
+          let cursor: EsTreeNode = initializer;
+          while (cursor?.type === "MemberExpression") {
+            cursor = cursor.object;
+          }
+          if (cursor?.type === "Identifier") rootIdentifierName = cursor.name;
+
+          if (rootIdentifierName && componentPropNames.has(rootIdentifierName)) {
+            context.report({
+              node,
+              message: `useState initialized from prop "${rootIdentifierName}" — if this value should stay in sync with the prop, derive it during render instead`,
+            });
+          }
         }
       },
     };
@@ -243,6 +259,8 @@ export const rerenderLazyStateInit: Rule = {
   }),
 };
 
+const STATE_ARITHMETIC_OPERATORS = new Set(["+", "-", "*", "/", "%", "**"]);
+
 export const rerenderFunctionalSetstate: Rule = {
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
@@ -251,14 +269,29 @@ export const rerenderFunctionalSetstate: Rule = {
 
       const calleeName = node.callee.name;
       const argument = node.arguments[0];
+
       if (
         argument.type === "BinaryExpression" &&
-        (argument.operator === "+" || argument.operator === "-") &&
-        argument.left?.type === "Identifier"
+        STATE_ARITHMETIC_OPERATORS.has(argument.operator) &&
+        (argument.left?.type === "Identifier" || argument.right?.type === "Identifier")
+      ) {
+        const stateIdentifier =
+          argument.left?.type === "Identifier" ? argument.left : argument.right;
+        context.report({
+          node,
+          message: `${calleeName}(${stateIdentifier.name} ${argument.operator} ...) — use functional update to avoid stale closures`,
+        });
+        return;
+      }
+
+      if (
+        argument.type === "UpdateExpression" &&
+        (argument.operator === "++" || argument.operator === "--") &&
+        argument.argument?.type === "Identifier"
       ) {
         context.report({
           node,
-          message: `${calleeName}(${argument.left.name} ${argument.operator} ...) — use functional update to avoid stale closures`,
+          message: `${calleeName}(${argument.operator}${argument.argument.name}) — use functional update to avoid stale closures (and reading the post-increment value bug)`,
         });
       }
     },

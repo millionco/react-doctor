@@ -10,6 +10,7 @@ const SAMPLE_PROJECT: ProjectInfo = {
   framework: "vite",
   hasTypeScript: true,
   hasReactCompiler: false,
+  hasTanStackQuery: false,
   sourceFileCount: 42,
 };
 
@@ -32,7 +33,7 @@ const buildSampleScan = (
   label = "Good",
 ): ScanResult => ({
   diagnostics,
-  scoreResult: { score, label },
+  score: { score, label },
   skippedChecks: [],
   project: SAMPLE_PROJECT,
   elapsedMilliseconds: 1234,
@@ -113,7 +114,7 @@ describe("buildJsonReport", () => {
       scans: [
         {
           directory: "/repo",
-          result: { ...buildSampleScan([]), scoreResult: null },
+          result: { ...buildSampleScan([]), score: null },
         },
       ],
       totalElapsedMilliseconds: 100,
@@ -140,7 +141,7 @@ describe("buildJsonReportError", () => {
     });
 
     expect(report.ok).toBe(false);
-    expect(report.error).toEqual({ message: "boom", name: "TypeError" });
+    expect(report.error).toEqual({ message: "boom", name: "TypeError", chain: ["boom"] });
     expect(report.diagnostics).toEqual([]);
     expect(report.projects).toEqual([]);
     expect(report.summary.totalDiagnosticCount).toBe(0);
@@ -153,6 +154,23 @@ describe("buildJsonReportError", () => {
       error: "raw failure",
       elapsedMilliseconds: 50,
     });
-    expect(report.error).toEqual({ message: "raw failure", name: "Error" });
+    expect(report.error).toEqual({
+      message: "raw failure",
+      name: "Error",
+      chain: ["raw failure"],
+    });
+  });
+
+  it("preserves the cause chain of nested errors", () => {
+    const root = new Error("root cause");
+    const middle = new Error("middle layer", { cause: root });
+    const top = new Error("top error", { cause: middle });
+    const report = buildJsonReportError({
+      version: "1.0.0",
+      directory: "/repo",
+      error: top,
+      elapsedMilliseconds: 1,
+    });
+    expect(report.error?.chain).toEqual(["top error", "middle layer", "root cause"]);
   });
 });

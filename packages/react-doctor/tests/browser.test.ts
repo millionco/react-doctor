@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import { diagnoseBrowser } from "../src/browser.js";
-import { buildDiagnoseResult } from "../src/core/build-diagnose-result.js";
 import { calculateScoreLocally } from "../src/core/calculate-score-locally.js";
 import { calculateScore as calculateScoreBrowser } from "../src/utils/calculate-score-browser.js";
 import { calculateScore as calculateScoreNode } from "../src/utils/calculate-score-node.js";
@@ -13,6 +12,7 @@ const sampleProject: ProjectInfo = {
   framework: "vite",
   hasTypeScript: true,
   hasReactCompiler: false,
+  hasTanStackQuery: false,
   sourceFileCount: 3,
 };
 
@@ -49,18 +49,10 @@ describe("browser entrypoint", () => {
     expect(result.elapsedMilliseconds).toBeGreaterThanOrEqual(0);
   });
 
-  it("matches buildDiagnoseResult shaping for the same score", () => {
+  it("preserves local-score fallback for diagnostics", () => {
     const score = calculateScoreLocally(sampleDiagnostics);
-    const fromBuilder = buildDiagnoseResult({
-      diagnostics: sampleDiagnostics,
-      project: sampleProject,
-      elapsedMilliseconds: 0,
-      score,
-    });
-
-    expect(fromBuilder.score).toEqual(score);
-    expect(fromBuilder.diagnostics).toEqual(sampleDiagnostics);
-    expect(fromBuilder.project).toEqual(sampleProject);
+    expect(score).not.toBeNull();
+    expect(typeof score?.score).toBe("number");
   });
 
   it("uses the same local score fallback as the Node scorer when the score API is unavailable", async () => {

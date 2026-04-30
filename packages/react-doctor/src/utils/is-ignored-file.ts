@@ -12,8 +12,13 @@ const toRelativePath = (filePath: string, rootDirectory: string): string => {
   return normalizedFilePath.replace(/^\.\//, "");
 };
 
-export const compileIgnoredFilePatterns = (userConfig: ReactDoctorConfig | null): RegExp[] =>
-  Array.isArray(userConfig?.ignore?.files) ? userConfig.ignore.files.map(compileGlobPattern) : [];
+export const compileIgnoredFilePatterns = (userConfig: ReactDoctorConfig | null): RegExp[] => {
+  const files = userConfig?.ignore?.files;
+  if (!Array.isArray(files)) return [];
+  return files
+    .filter((entry): entry is string => typeof entry === "string")
+    .map(compileGlobPattern);
+};
 
 export const isFileIgnoredByPatterns = (
   filePath: string,

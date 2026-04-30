@@ -8,9 +8,10 @@ import {
   ERROR_PREVIEW_LENGTH_CHARS,
   JSX_FILE_PATTERN,
   OXLINT_MAX_FILES_PER_BATCH,
+  PROXY_OUTPUT_MAX_BYTES,
   SPAWN_ARGS_MAX_LENGTH_CHARS,
 } from "../constants.js";
-import { createOxlintConfig } from "../oxlint-config.js";
+import { ALL_REACT_DOCTOR_RULE_KEYS, createOxlintConfig } from "../oxlint-config.js";
 import type { CleanedDiagnostic, Diagnostic, Framework, OxlintOutput } from "../types.js";
 import { neutralizeDisableDirectives } from "./neutralize-disable-directives.js";
 
@@ -20,8 +21,9 @@ const PLUGIN_CATEGORY_MAP: Record<string, string> = {
   react: "Correctness",
   "react-hooks": "Correctness",
   "react-hooks-js": "React Compiler",
-  "react-perf": "Performance",
+  "react-doctor": "Other",
   "jsx-a11y": "Accessibility",
+  knip: "Dead Code",
 };
 
 const RULE_CATEGORY_MAP: Record<string, string> = {
@@ -47,6 +49,7 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/rendering-usetransition-loading": "Performance",
   "react-doctor/rendering-hydration-no-flicker": "Performance",
   "react-doctor/rendering-script-defer-async": "Performance",
+  "react-doctor/no-inline-prop-on-memo-component": "Performance",
 
   "react-doctor/no-transition-all": "Performance",
   "react-doctor/no-global-css-variable-animation": "Performance",
@@ -112,6 +115,17 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/no-long-transition-duration": "Performance",
 
   "react-doctor/js-flatmap-filter": "Performance",
+  "react-doctor/js-combine-iterations": "Performance",
+  "react-doctor/js-tosorted-immutable": "Performance",
+  "react-doctor/js-hoist-regexp": "Performance",
+  "react-doctor/js-min-max-loop": "Performance",
+  "react-doctor/js-set-map-lookups": "Performance",
+  "react-doctor/js-batch-dom-css": "Performance",
+  "react-doctor/js-index-maps": "Performance",
+  "react-doctor/js-cache-storage": "Performance",
+  "react-doctor/js-early-exit": "Performance",
+
+  "react-doctor/no-eval": "Security",
 
   "react-doctor/async-parallel": "Performance",
 
@@ -183,6 +197,8 @@ const RULE_HELP_MAP: Record<string, string> = {
     "Use `useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)` or add `suppressHydrationWarning` to the element",
   "rendering-script-defer-async":
     'Add `defer` for DOM-dependent scripts or `async` for independent ones (analytics). In Next.js, use `<Script strategy="afterInteractive" />` instead',
+  "no-inline-prop-on-memo-component":
+    "Hoist the inline `() => ...` / `[]` / `{}` to a stable reference (useMemo, useCallback, or module scope) so the memoized child doesn't re-render every parent render",
 
   "no-transition-all":
     'List specific properties: `transition: "opacity 200ms, transform 200ms"` — or in Tailwind use `transition-colors`, `transition-opacity`, or `transition-transform`',
@@ -305,6 +321,27 @@ const RULE_HELP_MAP: Record<string, string> = {
 
   "js-flatmap-filter":
     "Use `.flatMap(item => condition ? [value] : [])` — transforms and filters in a single pass instead of creating an intermediate array",
+  "js-combine-iterations":
+    "Combine `.map().filter()` (or similar chains) into a single pass with `.reduce()` or a `for...of` loop to avoid iterating the array twice",
+  "js-tosorted-immutable":
+    "Use `array.toSorted()` (ES2023) instead of `[...array].sort()` for immutable sorting without the spread allocation",
+  "js-hoist-regexp":
+    "Hoist `new RegExp(...)` (or large regex literals) to a module-level constant so it isn't recompiled on every loop iteration",
+  "js-min-max-loop":
+    "Use `Math.min(...array)` / `Math.max(...array)` instead of sorting just to read the first or last element",
+  "js-set-map-lookups":
+    "Use a `Set` or `Map` for repeated membership tests / keyed lookups — `Array.includes`/`find` is O(n) per call",
+  "js-batch-dom-css":
+    "Batch DOM/CSS reads and writes — interleaving them inside a loop causes layout thrashing. Read first, then write",
+  "js-index-maps":
+    "Build an index `Map` once outside the loop instead of `array.find(...)` inside it",
+  "js-cache-storage":
+    "Cache repeated `localStorage`/`sessionStorage` reads in a local variable — each access serializes/deserializes",
+  "js-early-exit":
+    "Add an early `return` / `continue` to flatten deep nesting and short-circuit when the predicate is already known",
+
+  "no-eval":
+    "Use `JSON.parse` for serialized data, `Function(...)` (still careful) for trusted templates, or refactor to avoid dynamic code execution",
 
   "async-parallel":
     "Use `const [a, b] = await Promise.all([fetchA(), fetchB()])` to run independent operations concurrently",
@@ -433,6 +470,23 @@ const batchIncludePaths = (baseArgs: string[], includePaths: string[]): string[]
   return batches;
 };
 
+// HACK: Sanitize child env so a developer's NODE_OPTIONS=--inspect (or
+// --max-old-space-size=128, etc.) doesn't leak into oxlint and either spawn a
+// debugger port or starve it of memory. We also drop npm_config_* lifecycle
+// vars to keep oxlint from picking up package-manager state. PATH, HOME,
+// NODE_ENV, NODE_PATH, etc. pass through unchanged.
+const SANITIZED_ENV: NodeJS.ProcessEnv = (() => {
+  const sanitized: NodeJS.ProcessEnv = {};
+  for (const [name, value] of Object.entries(process.env)) {
+    if (name === "NODE_OPTIONS" || name === "NODE_DEBUG") continue;
+    if (name.startsWith("npm_config_")) continue;
+    sanitized[name] = value;
+  }
+  return sanitized;
+})();
+
+const OXLINT_SPAWN_TIMEOUT_MS = 5 * 60_000;
+
 const spawnOxlint = (
   args: string[],
   rootDirectory: string,
@@ -441,16 +495,64 @@ const spawnOxlint = (
   new Promise<string>((resolve, reject) => {
     const child = spawn(nodeBinaryPath, args, {
       cwd: rootDirectory,
+      env: SANITIZED_ENV,
     });
+
+    const timeoutHandle = setTimeout(() => {
+      child.kill("SIGKILL");
+      reject(
+        new Error(
+          `oxlint did not return within ${OXLINT_SPAWN_TIMEOUT_MS / 1000}s — please report`,
+        ),
+      );
+    }, OXLINT_SPAWN_TIMEOUT_MS);
+    timeoutHandle.unref?.();
 
     const stdoutBuffers: Buffer[] = [];
     const stderrBuffers: Buffer[] = [];
+    let stdoutByteCount = 0;
+    let stderrByteCount = 0;
+    let didKillForSize = false;
 
-    child.stdout.on("data", (buffer: Buffer) => stdoutBuffers.push(buffer));
-    child.stderr.on("data", (buffer: Buffer) => stderrBuffers.push(buffer));
+    const killIfTooLarge = (incomingBytes: number, isStdout: boolean): boolean => {
+      if (isStdout) {
+        stdoutByteCount += incomingBytes;
+      } else {
+        stderrByteCount += incomingBytes;
+      }
+      if (stdoutByteCount + stderrByteCount > PROXY_OUTPUT_MAX_BYTES && !didKillForSize) {
+        didKillForSize = true;
+        child.kill("SIGKILL");
+        return true;
+      }
+      return false;
+    };
 
-    child.on("error", (error) => reject(new Error(`Failed to run oxlint: ${error.message}`)));
-    child.on("close", (code, signal) => {
+    child.stdout.on("data", (buffer: Buffer) => {
+      if (didKillForSize) return;
+      stdoutBuffers.push(buffer);
+      killIfTooLarge(buffer.length, true);
+    });
+    child.stderr.on("data", (buffer: Buffer) => {
+      if (didKillForSize) return;
+      stderrBuffers.push(buffer);
+      killIfTooLarge(buffer.length, false);
+    });
+
+    child.on("error", (error) => {
+      clearTimeout(timeoutHandle);
+      reject(new Error(`Failed to run oxlint: ${error.message}`));
+    });
+    child.on("close", (_code, signal) => {
+      clearTimeout(timeoutHandle);
+      if (didKillForSize) {
+        reject(
+          new Error(
+            `oxlint output exceeded ${PROXY_OUTPUT_MAX_BYTES} bytes — scan a smaller subset with --diff or --staged`,
+          ),
+        );
+        return;
+      }
       if (signal) {
         const stderrOutput = Buffer.concat(stderrBuffers).toString("utf-8").trim();
         const hint =
@@ -471,17 +573,30 @@ const spawnOxlint = (
     });
   });
 
+const isOxlintOutput = (value: unknown): value is OxlintOutput => {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as { diagnostics?: unknown };
+  return Array.isArray(candidate.diagnostics);
+};
+
 const parseOxlintOutput = (stdout: string): Diagnostic[] => {
   if (!stdout) return [];
 
-  let output: OxlintOutput;
+  let parsed: unknown;
   try {
-    output = JSON.parse(stdout) as OxlintOutput;
+    parsed = JSON.parse(stdout);
   } catch {
     throw new Error(
       `Failed to parse oxlint output: ${stdout.slice(0, ERROR_PREVIEW_LENGTH_CHARS)}`,
     );
   }
+
+  if (!isOxlintOutput(parsed)) {
+    throw new Error(
+      `Unexpected oxlint output shape: ${stdout.slice(0, ERROR_PREVIEW_LENGTH_CHARS)}`,
+    );
+  }
+  const output = parsed;
 
   return output.diagnostics
     .filter((diagnostic) => diagnostic.code && JSX_FILE_PATTERN.test(diagnostic.filename))
@@ -505,32 +620,104 @@ const parseOxlintOutput = (stdout: string): Diagnostic[] => {
     });
 };
 
-export const runOxlint = async (
-  rootDirectory: string,
-  hasTypeScript: boolean,
-  framework: Framework,
-  hasReactCompiler: boolean,
-  includePaths?: string[],
-  nodeBinaryPath: string = process.execPath,
-  customRulesOnly = false,
-): Promise<Diagnostic[]> => {
+const TSCONFIG_FILENAMES = ["tsconfig.json", "tsconfig.base.json"];
+
+const resolveTsConfigRelativePath = (rootDirectory: string): string | null => {
+  for (const filename of TSCONFIG_FILENAMES) {
+    if (fs.existsSync(path.join(rootDirectory, filename))) {
+      return `./${filename}`;
+    }
+  }
+  return null;
+};
+
+interface RunOxlintOptions {
+  rootDirectory: string;
+  hasTypeScript: boolean;
+  framework: Framework;
+  hasReactCompiler: boolean;
+  hasTanStackQuery: boolean;
+  includePaths?: string[];
+  nodeBinaryPath?: string;
+  customRulesOnly?: boolean;
+}
+
+let didValidateRuleRegistration = false;
+
+const validateRuleRegistration = (): void => {
+  if (didValidateRuleRegistration) return;
+  didValidateRuleRegistration = true;
+  const missingHelp: string[] = [];
+  const missingCategory: string[] = [];
+  for (const fullKey of ALL_REACT_DOCTOR_RULE_KEYS) {
+    const ruleName = fullKey.replace(/^react-doctor\//, "");
+    if (!(fullKey in RULE_CATEGORY_MAP)) {
+      missingCategory.push(fullKey);
+    }
+    if (!(ruleName in RULE_HELP_MAP)) {
+      missingHelp.push(fullKey);
+    }
+  }
+  if (missingCategory.length > 0 || missingHelp.length > 0) {
+    const detail = [
+      missingCategory.length > 0
+        ? `Missing RULE_CATEGORY_MAP entries: ${missingCategory.join(", ")}`
+        : null,
+      missingHelp.length > 0 ? `Missing RULE_HELP_MAP entries: ${missingHelp.join(", ")}` : null,
+    ]
+      .filter((entry): entry is string => entry !== null)
+      .join("; ");
+    // HACK: warn rather than throw — never block the user's scan over a metadata gap.
+    console.warn(`[react-doctor] rule-registration drift: ${detail}`);
+  }
+};
+
+export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]> => {
+  const {
+    rootDirectory,
+    hasTypeScript,
+    framework,
+    hasReactCompiler,
+    hasTanStackQuery,
+    includePaths,
+    nodeBinaryPath = process.execPath,
+    customRulesOnly = false,
+  } = options;
+
+  validateRuleRegistration();
+
   if (includePaths !== undefined && includePaths.length === 0) {
     return [];
   }
 
-  const configPath = path.join(os.tmpdir(), `react-doctor-oxlintrc-${process.pid}.json`);
+  const configDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-oxlintrc-"));
+  const configPath = path.join(configDirectory, "oxlintrc.json");
   const pluginPath = resolvePluginPath();
-  const config = createOxlintConfig({ pluginPath, framework, hasReactCompiler, customRulesOnly });
+  const config = createOxlintConfig({
+    pluginPath,
+    framework,
+    hasReactCompiler,
+    hasTanStackQuery,
+    customRulesOnly,
+  });
   const restoreDisableDirectives = neutralizeDisableDirectives(rootDirectory, includePaths);
 
   try {
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+    const fileHandle = fs.openSync(configPath, "wx", 0o600);
+    try {
+      fs.writeFileSync(fileHandle, JSON.stringify(config));
+    } finally {
+      fs.closeSync(fileHandle);
+    }
 
     const oxlintBinary = resolveOxlintBinary();
     const baseArgs = [oxlintBinary, "-c", configPath, "--format", "json"];
 
     if (hasTypeScript) {
-      baseArgs.push("--tsconfig", "./tsconfig.json");
+      const tsconfigRelativePath = resolveTsConfigRelativePath(rootDirectory);
+      if (tsconfigRelativePath) {
+        baseArgs.push("--tsconfig", tsconfigRelativePath);
+      }
     }
 
     const fileBatches =
@@ -546,8 +733,6 @@ export const runOxlint = async (
     return allDiagnostics;
   } finally {
     restoreDisableDirectives();
-    if (fs.existsSync(configPath)) {
-      fs.unlinkSync(configPath);
-    }
+    fs.rmSync(configDirectory, { recursive: true, force: true });
   }
 };

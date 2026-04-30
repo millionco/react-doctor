@@ -8,6 +8,9 @@ const IMAGE_HEIGHT_PX = 630;
 const OG_BRAND_MARK_WIDTH_PX = 244;
 const OG_BRAND_MARK_HEIGHT_PX = 82;
 const OG_BRAND_MARK_PATH = "/react-doctor-og-banner.svg";
+const MAX_PROJECT_NAME_LENGTH = 100;
+const MAX_DISPLAY_COUNT = 99_999;
+const OG_CACHE_SECONDS = 60 * 60 * 24;
 
 const getScoreLabel = (score: number): string => {
   if (score >= SCORE_GOOD_THRESHOLD) return "Great";
@@ -21,14 +24,20 @@ const getScoreColor = (score: number): string => {
   return "#f87171";
 };
 
+const clampDisplayCount = (raw: number): number => Math.max(0, Math.min(MAX_DISPLAY_COUNT, raw));
+
 export const GET = (request: Request): ImageResponse => {
   const { searchParams } = new URL(request.url);
 
-  const projectName = searchParams.get("p") ?? null;
+  const rawProjectName = searchParams.get("p");
+  const projectName =
+    rawProjectName && rawProjectName.length > 0
+      ? rawProjectName.slice(0, MAX_PROJECT_NAME_LENGTH)
+      : null;
   const score = Math.max(0, Math.min(PERFECT_SCORE, Number(searchParams.get("s")) || 0));
-  const errorCount = Math.max(0, Number(searchParams.get("e")) || 0);
-  const warningCount = Math.max(0, Number(searchParams.get("w")) || 0);
-  const fileCount = Math.max(0, Number(searchParams.get("f")) || 0);
+  const errorCount = clampDisplayCount(Number(searchParams.get("e")) || 0);
+  const warningCount = clampDisplayCount(Number(searchParams.get("w")) || 0);
+  const fileCount = clampDisplayCount(Number(searchParams.get("f")) || 0);
   const scoreColor = getScoreColor(score);
   const brandMarkUrl = new URL(OG_BRAND_MARK_PATH, request.url).toString();
   const scoreBarPercent = (score / PERFECT_SCORE) * 100;
@@ -47,7 +56,12 @@ export const GET = (request: Request): ImageResponse => {
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
-        <img src={brandMarkUrl} width={OG_BRAND_MARK_WIDTH_PX} height={OG_BRAND_MARK_HEIGHT_PX} />
+        <img
+          src={brandMarkUrl}
+          alt="React Doctor"
+          width={OG_BRAND_MARK_WIDTH_PX}
+          height={OG_BRAND_MARK_HEIGHT_PX}
+        />
         {projectName && (
           <div
             style={{
@@ -113,6 +127,12 @@ export const GET = (request: Request): ImageResponse => {
         </div>
       )}
     </div>,
-    { width: IMAGE_WIDTH_PX, height: IMAGE_HEIGHT_PX },
+    {
+      width: IMAGE_WIDTH_PX,
+      height: IMAGE_HEIGHT_PX,
+      headers: {
+        "Cache-Control": `public, max-age=${OG_CACHE_SECONDS}, s-maxage=${OG_CACHE_SECONDS}, immutable`,
+      },
+    },
   );
 };

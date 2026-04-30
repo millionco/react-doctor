@@ -5,14 +5,19 @@ export const summarizeDiagnostics = (
   worstScore: number | null = null,
   worstScoreLabel: string | null = null,
 ): JsonReportSummary => {
-  const errorCount = diagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
-  const warningCount = diagnostics.filter((diagnostic) => diagnostic.severity === "warning").length;
-  const affectedFileCount = new Set(diagnostics.map((diagnostic) => diagnostic.filePath)).size;
+  let errorCount = 0;
+  let warningCount = 0;
+  const affectedFiles = new Set<string>();
+  for (const diagnostic of diagnostics) {
+    if (diagnostic.severity === "error") errorCount++;
+    else warningCount++;
+    affectedFiles.add(diagnostic.filePath);
+  }
 
   return {
     errorCount,
     warningCount,
-    affectedFileCount,
+    affectedFileCount: affectedFiles.size,
     totalDiagnosticCount: diagnostics.length,
     score: worstScore,
     scoreLabel: worstScoreLabel,

@@ -24,6 +24,7 @@ const buildDiagnoseResult = (): DiagnoseResult => ({
     framework: "vite",
     hasTypeScript: true,
     hasReactCompiler: false,
+    hasTanStackQuery: false,
     sourceFileCount: 12,
   },
   elapsedMilliseconds: 321,
@@ -55,9 +56,9 @@ describe("toJsonReport (Node API helper)", () => {
     expect(roundTripped.summary.score).toBe(88);
   });
 
-  it("defaults version when caller omits it", () => {
-    const report = toJsonReport(buildDiagnoseResult());
-    expect(report.version).toBe("0.0.0");
-    expect(report.directory).toBe("/virtual");
+  it("requires the caller to pass an explicit version (no silent default)", () => {
+    expect(() => toJsonReport(buildDiagnoseResult(), { version: "" })).not.toThrow();
+    const report = toJsonReport(buildDiagnoseResult(), { version: "9.9.9" });
+    expect(report.version).toBe("9.9.9");
   });
 });

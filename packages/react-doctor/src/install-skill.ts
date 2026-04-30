@@ -16,6 +16,7 @@ const SKILL_NAME = "react-doctor";
 
 interface InstallSkillOptions {
   yes?: boolean;
+  dryRun?: boolean;
 }
 
 const getSkillSourceDirectory = (): string => {
@@ -63,6 +64,15 @@ export const runInstallSkill = async (options: InstallSkillOptions = {}): Promis
       ).agents ?? []);
 
   if (selectedAgents.length === 0) return;
+
+  if (options.dryRun) {
+    logger.log(`Dry run — would install ${SKILL_NAME} skill for:`);
+    for (const agent of selectedAgents) {
+      logger.dim(`  - ${toDisplayName(agent)}`);
+    }
+    logger.dim(`  Source: ${sourceDir}`);
+    return;
+  }
 
   const installSpinner = spinner(`Installing ${SKILL_NAME} skill...`).start();
   const installedDirectories = new Set<string>();

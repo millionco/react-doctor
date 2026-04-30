@@ -1,3 +1,4 @@
+import { buildNoReactDependencyError } from "../../constants.js";
 import type { Diagnostic, ProjectInfo, ReactDoctorConfig, ScoreResult } from "../../types.js";
 import { buildDiagnoseTimedResult } from "../../core/build-result.js";
 import { calculateScore as calculateScoreBrowser } from "../../utils/calculate-score-browser.js";
@@ -22,7 +23,7 @@ export interface BrowserDiagnoseResult {
 
 export const diagnose = async (input: BrowserDiagnoseInput): Promise<BrowserDiagnoseResult> => {
   if (!input.project.reactVersion) {
-    throw new Error("No React dependency found in package.json");
+    throw new Error(buildNoReactDependencyError(input.rootDirectory));
   }
 
   const readFileLinesSync = createBrowserReadFileLinesSync(input.rootDirectory, input.projectFiles);

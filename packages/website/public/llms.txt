@@ -16,7 +16,7 @@ Use `--verbose` to see affected files and line numbers:
 npx -y react-doctor@latest . --verbose
 ```
 
-Use `--diff` to scan only changed files (branch changes or uncommitted changes):
+Use `--diff [base]` to scan only files changed vs a base branch (default: auto-detected `main`/`master`). On the default branch, scans uncommitted working-tree changes; on a feature branch, scans changes vs the base.
 
 ```bash
 npx -y react-doctor@latest . --verbose --diff
@@ -28,10 +28,46 @@ Use `--score` to output only the numeric score:
 npx -y react-doctor@latest . --score
 ```
 
+Use `--json` for a single structured JSON report (suppresses other output):
+
+```bash
+npx -y react-doctor@latest . --json | jq '.summary'
+```
+
 Use `-y` to skip prompts (required for non-interactive environments like CI or coding agents):
 
 ```bash
 npx -y react-doctor@latest . -y
+```
+
+Use `--staged` for pre-commit hooks (scans only staged files):
+
+```bash
+npx -y react-doctor@latest --staged
+```
+
+Use `--annotations` to emit GitHub Actions annotations:
+
+```bash
+npx -y react-doctor@latest . --annotations
+```
+
+Use `--fail-on <level>` to control exit codes (`error`, `warning`, `none`):
+
+```bash
+npx -y react-doctor@latest . --fail-on error
+```
+
+Use `--offline` to skip the score API (computes score locally):
+
+```bash
+npx -y react-doctor@latest . --offline
+```
+
+Install the skill into your coding agent (Claude Code, Cursor, Codex, Gemini CLI, OpenCode, Copilot, Factory Droid, Pi):
+
+```bash
+npx -y react-doctor@latest install
 ```
 
 ## Options
@@ -40,13 +76,21 @@ npx -y react-doctor@latest . -y
 Usage: react-doctor [directory] [options]
 
 Options:
-  -v, --version     display the version number
-  --no-lint         skip linting
-  --no-dead-code    skip dead code detection
-  --verbose         show file details per rule
-  --score           output only the score
-  -y, --yes         skip prompts, scan all workspace projects
-  --project <name>  select workspace project (comma-separated for multiple)
-  --diff [base]     scan only files changed vs base branch or uncommitted changes
-  -h, --help        display help for command
+  -v, --version      display the version number
+  --lint             enable linting (default: on)
+  --no-lint          skip linting
+  --dead-code        enable dead code detection (default: on)
+  --no-dead-code     skip dead code detection
+  --verbose          show file details per rule
+  --score            output only the score
+  --json             output a single structured JSON report (suppresses other output)
+  -y, --yes          skip prompts, scan all workspace projects
+  --full             skip prompts, always run a full scan (decline diff-only)
+  --project <name>   select workspace project (comma-separated for multiple)
+  --diff [base]      scan only files changed vs base branch or uncommitted changes
+  --offline          skip telemetry (anonymous, not stored, only used to calculate score)
+  --staged           scan only staged (git index) files for pre-commit hooks
+  --fail-on <level>  exit with error code on diagnostics: error, warning, none
+  --annotations      output diagnostics as GitHub Actions annotations
+  -h, --help         display help for command
 ```

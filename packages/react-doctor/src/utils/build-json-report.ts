@@ -30,14 +30,17 @@ const toJsonDiff = (diff: DiffInfo | null): JsonReportDiffInfo | null => {
 const findWorstScoredProject = (
   projects: JsonReportProjectEntry[],
 ): JsonReportProjectEntry | null => {
-  const scoredProjects = projects.filter((entry) => entry.score !== null);
-  if (scoredProjects.length === 0) return null;
-  return scoredProjects.reduce((lowest, current) =>
-    (current.score?.score ?? Number.POSITIVE_INFINITY) <
-    (lowest.score?.score ?? Number.POSITIVE_INFINITY)
-      ? current
-      : lowest,
-  );
+  let worst: JsonReportProjectEntry | null = null;
+  let worstScore = Number.POSITIVE_INFINITY;
+  for (const project of projects) {
+    const score = project.score?.score;
+    if (typeof score !== "number") continue;
+    if (score < worstScore) {
+      worstScore = score;
+      worst = project;
+    }
+  }
+  return worst;
 };
 
 export const buildJsonReport = (input: BuildJsonReportInput): JsonReport => {
@@ -45,7 +48,7 @@ export const buildJsonReport = (input: BuildJsonReportInput): JsonReport => {
     directory,
     project: result.project,
     diagnostics: result.diagnostics,
-    score: result.scoreResult,
+    score: result.score,
     skippedChecks: result.skippedChecks,
     elapsedMilliseconds: result.elapsedMilliseconds,
   }));
@@ -70,5 +73,6 @@ export const buildJsonReport = (input: BuildJsonReportInput): JsonReport => {
     diagnostics: flattenedDiagnostics,
     summary,
     elapsedMilliseconds: input.totalElapsedMilliseconds,
+    error: null,
   };
 };

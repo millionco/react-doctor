@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { performance } from "node:perf_hooks";
 import {
   MILLISECONDS_PER_SECOND,
+  buildNoReactDependencyError,
   OFFLINE_MESSAGE,
   OXLINT_NODE_REQUIREMENT,
   OXLINT_RECOMMENDED_NODE_MAJOR,
@@ -43,7 +44,7 @@ import {
 import { resolveLintIncludePaths } from "./utils/resolve-lint-include-paths.js";
 import { runKnip } from "./utils/run-knip.js";
 import { runOxlint } from "./utils/run-oxlint.js";
-import { setSpinnerSilent, spinner } from "./utils/spinner.js";
+import { isSpinnerSilent, setSpinnerSilent, spinner } from "./utils/spinner.js";
 
 interface ScoreBarSegments {
   filledSegment: string;
@@ -158,7 +159,7 @@ const formatRuleSummary = (ruleKey: string, ruleDiagnostics: Diagnostic[]): stri
 
 const writeDiagnosticsDirectory = (diagnostics: Diagnostic[]): string => {
   const outputDirectory = join(tmpdir(), `react-doctor-${randomUUID()}`);
-  mkdirSync(outputDirectory);
+  mkdirSync(outputDirectory, { recursive: true });
 
   const ruleGroups = groupBy(
     diagnostics,
@@ -171,7 +172,7 @@ const writeDiagnosticsDirectory = (diagnostics: Diagnostic[]): string => {
     writeFileSync(join(outputDirectory, fileName), formatRuleSummary(ruleKey, ruleDiagnostics));
   }
 
-  writeFileSync(join(outputDirectory, "diagnostics.json"), JSON.stringify(diagnostics, null, 2));
+  writeFileSync(join(outputDirectory, "diagnostics.json"), JSON.stringify(diagnostics));
 
   return outputDirectory;
 };
@@ -487,6 +488,7 @@ export const scan = async (
   const options = mergeScanOptions(inputOptions, userConfig);
 
   const wasLoggerSilent = isLoggerSilent();
+  const wasSpinnerSilent = isSpinnerSilent();
   if (options.silent) {
     setLoggerSilent(true);
     setSpinnerSilent(true);
@@ -495,9 +497,9 @@ export const scan = async (
   try {
     return await runScan(directory, options, userConfig, startTime);
   } finally {
-    if (options.silent && !wasLoggerSilent) {
-      setLoggerSilent(false);
-      setSpinnerSilent(false);
+    if (options.silent) {
+      setLoggerSilent(wasLoggerSilent);
+      setSpinnerSilent(wasSpinnerSilent);
     }
   }
 };
@@ -513,7 +515,7 @@ const runScan = async (
   const isDiffMode = includePaths.length > 0;
 
   if (!projectInfo.reactVersion) {
-    throw new Error("No React dependency found in package.json");
+    throw new Error(buildNoReactDependencyError(directory));
   }
 
   const jsxIncludePaths = computeJsxIncludePaths(includePaths);
@@ -537,15 +539,16 @@ const runScan = async (
     ? (async () => {
         const lintSpinner = options.scoreOnly ? null : spinner("Running lint checks...").start();
         try {
-          const lintDiagnostics = await runOxlint(
-            directory,
-            projectInfo.hasTypeScript,
-            projectInfo.framework,
-            projectInfo.hasReactCompiler,
-            lintIncludePaths,
-            resolvedNodeBinaryPath,
-            options.customRulesOnly,
-          );
+          const lintDiagnostics = await runOxlint({
+            rootDirectory: directory,
+            hasTypeScript: projectInfo.hasTypeScript,
+            framework: projectInfo.framework,
+            hasReactCompiler: projectInfo.hasReactCompiler,
+            hasTanStackQuery: projectInfo.hasTanStackQuery,
+            includePaths: lintIncludePaths,
+            nodeBinaryPath: resolvedNodeBinaryPath,
+            customRulesOnly: options.customRulesOnly,
+          });
           lintSpinner?.succeed("Running lint checks.");
           return lintDiagnostics;
         } catch (error) {
@@ -593,13 +596,13 @@ const runScan = async (
       : Promise.resolve<Diagnostic[]>([]);
 
   const [lintDiagnostics, deadCodeDiagnostics] = await Promise.all([lintPromise, deadCodePromise]);
-  const diagnostics = combineDiagnostics(
+  const diagnostics = combineDiagnostics({
     lintDiagnostics,
     deadCodeDiagnostics,
     directory,
     isDiffMode,
     userConfig,
-  );
+  });
 
   const elapsedMilliseconds = performance.now() - startTime;
 
@@ -615,7 +618,7 @@ const runScan = async (
 
   const buildResult = (): ScanResult => ({
     diagnostics,
-    scoreResult,
+    score: scoreResult,
     skippedChecks,
     project: projectInfo,
     elapsedMilliseconds,

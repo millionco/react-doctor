@@ -271,6 +271,7 @@ const finalize = (method: "succeed" | "fail", originalText: string, displayText:
 ```
 
 Calling `succeed`/`fail` twice on the same handle will:
+
 - Decrement `activeCount` past 0,
 - `pendingTexts.delete` an already-deleted key (silent no-op),
 - Then either call `sharedInstance?.[method]` against a `null` sharedInstance, or try to `stop()` and re-`start()` an instance that no longer matches the active count.
@@ -449,6 +450,7 @@ It is only re-exported on line 41 (which is a `export { … } from "..."` form t
 ### 🟠 3.6 `scan` (CLI) and `diagnose` (public API) duplicate the entire pipeline
 
 `src/scan.ts:scan` and `src/index.ts:diagnose` both:
+
 - resolve directory,
 - load user config,
 - compute jsx include paths,
@@ -541,28 +543,28 @@ Both live in `core/`. `buildDiagnoseTimedResult` (with a verb in the middle) and
 
 Counter-examples (all interfaces declared inside non-`types.ts` files):
 
-| File | Interface |
-|---|---|
-| `src/cli.ts:31` | `CliFlags` |
-| `src/scan.ts:48` | `ScoreBarSegments` |
-| `src/scan.ts:415` | `ResolvedScanOptions` |
-| `src/core/diagnose-core.ts:6,13,20,28` | `DiagnoseCoreOptions`, `DiagnoseCoreResult`, `DiagnoseRunnerContext`, `DiagnoseCoreDeps` |
-| `src/core/build-result.ts:4,14` | `BuildDiagnoseResultInput`, `BuildDiagnoseTimedResult` |
-| `src/core/build-diagnose-result.ts:3,10` | `BuildDiagnoseResultParams`, `DiagnoseResultShape` |
-| `src/core/try-score-from-api.ts:4` | `ScoreRequestFetch` |
-| `src/utils/build-json-report.ts:11` | `BuildJsonReportInput` |
-| `src/utils/build-json-report-error.ts:3` | `BuildJsonReportErrorInput` |
-| `src/utils/proxy-fetch.ts:3` | `GlobalProcessLike` |
-| `src/utils/resolve-compatible-node.ts:7,13` | `NodeVersion`, `NodeResolution` |
-| `src/utils/get-staged-files.ts:28` | `StagedSnapshot` |
-| `src/utils/discover-project.ts:157` | `CatalogCollection` |
-| `src/utils/detect-agents.ts:14` | `AgentMeta` |
-| `src/install-skill.ts:17` | `InstallSkillOptions` |
-| `src/adapters/browser/diagnose.ts:6,16` | `BrowserDiagnoseInput`, `BrowserDiagnoseResult` |
-| `src/adapters/browser/diagnose-browser.ts:7` | `DiagnoseBrowserInput` |
-| `src/adapters/browser/process-browser-diagnostics.ts:6,14` | `ProcessBrowserDiagnosticsInput`, `ProcessBrowserDiagnosticsResult` |
-| `src/index.ts:44,50,57` | `DiagnoseOptions`, `DiagnoseResult`, `ToJsonReportOptions` |
-| `src/plugin/types.ts` | `ReportDescriptor`, `RuleContext`, `Rule`, `RuleVisitors`, `RulePlugin`, `EsTreeNode`, `ParsedRgb` |
+| File                                                       | Interface                                                                                          |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `src/cli.ts:31`                                            | `CliFlags`                                                                                         |
+| `src/scan.ts:48`                                           | `ScoreBarSegments`                                                                                 |
+| `src/scan.ts:415`                                          | `ResolvedScanOptions`                                                                              |
+| `src/core/diagnose-core.ts:6,13,20,28`                     | `DiagnoseCoreOptions`, `DiagnoseCoreResult`, `DiagnoseRunnerContext`, `DiagnoseCoreDeps`           |
+| `src/core/build-result.ts:4,14`                            | `BuildDiagnoseResultInput`, `BuildDiagnoseTimedResult`                                             |
+| `src/core/build-diagnose-result.ts:3,10`                   | `BuildDiagnoseResultParams`, `DiagnoseResultShape`                                                 |
+| `src/core/try-score-from-api.ts:4`                         | `ScoreRequestFetch`                                                                                |
+| `src/utils/build-json-report.ts:11`                        | `BuildJsonReportInput`                                                                             |
+| `src/utils/build-json-report-error.ts:3`                   | `BuildJsonReportErrorInput`                                                                        |
+| `src/utils/proxy-fetch.ts:3`                               | `GlobalProcessLike`                                                                                |
+| `src/utils/resolve-compatible-node.ts:7,13`                | `NodeVersion`, `NodeResolution`                                                                    |
+| `src/utils/get-staged-files.ts:28`                         | `StagedSnapshot`                                                                                   |
+| `src/utils/discover-project.ts:157`                        | `CatalogCollection`                                                                                |
+| `src/utils/detect-agents.ts:14`                            | `AgentMeta`                                                                                        |
+| `src/install-skill.ts:17`                                  | `InstallSkillOptions`                                                                              |
+| `src/adapters/browser/diagnose.ts:6,16`                    | `BrowserDiagnoseInput`, `BrowserDiagnoseResult`                                                    |
+| `src/adapters/browser/diagnose-browser.ts:7`               | `DiagnoseBrowserInput`                                                                             |
+| `src/adapters/browser/process-browser-diagnostics.ts:6,14` | `ProcessBrowserDiagnosticsInput`, `ProcessBrowserDiagnosticsResult`                                |
+| `src/index.ts:44,50,57`                                    | `DiagnoseOptions`, `DiagnoseResult`, `ToJsonReportOptions`                                         |
+| `src/plugin/types.ts`                                      | `ReportDescriptor`, `RuleContext`, `Rule`, `RuleVisitors`, `RulePlugin`, `EsTreeNode`, `ParsedRgb` |
 
 Either move them into `types.ts` (the rule's literal reading) or relax the rule in AGENTS.md to "co-locate types with usage when private to a module."
 
@@ -671,34 +673,34 @@ Vitest finds them, but `vite.config.ts` `test.testTimeout: 30_000` (`packages/re
 
 ## 6. Smaller / Stylistic
 
-| Severity | File / Location | Issue |
-|---|---|---|
-| 🟢 | `src/utils/logger.ts:11-40` | All seven methods have the identical `if (isSilent) return;` prologue. A higher-order `silentSafe(fn)` wrapper would halve the code. |
-| 🟢 | `src/utils/format-error-chain.ts:1-21` | `getErrorChainMessages` and `formatErrorChain` are both exported; the former is only used inside `extract-failed-plugin-name.ts`. Consider keeping the function private or merging files. |
-| 🟢 | `src/utils/handle-error.ts:8-24` | `options: HandleErrorOptions` defaults to `DEFAULT_HANDLE_ERROR_OPTIONS`, which is referenced by no other call site. Either inline the default `shouldExit = true` parameter, or remove the unused customization point. |
-| 🟢 | `src/utils/discover-project.ts:170-232` `parsePnpmWorkspaceCatalogs` | Hand-rolled YAML parser with state machine. Will silently misparse multi-line strings, anchors, comments inside values. Use a real YAML lib (already pulled in transitively) or document the strict subset. |
-| 🟢 | `src/utils/discover-project.ts:314-336` `parsePnpmWorkspacePatterns` | Same hand-rolled YAML parsing; same concern. |
-| 🟢 | `src/utils/discover-project.ts:43-48` | `VITE_CONFIG_FILENAMES` misses `vite.config.mts` and `vitest.config.*` — Vite projects routinely use `.mts` now. |
-| 🟢 | `src/utils/detect-agents.ts:35-47` `isCommandAvailable` | Iterates `process.env.PATH` for every binary candidate per agent (8 agents × 1–2 binaries each × N PATH dirs = up to 800+ stat calls on first run). Memoize per-binary. Also doesn't handle Windows extensions (`.exe`, `.cmd`). |
-| 🟢 | `src/utils/select-projects.ts` | `selectProjects` (arrow const) is declared **before** the helper `const`s it calls (`resolveProjectFlag`, `printDiscoveredProjects`, `promptProjectSelection`). Works at runtime but reads as a TDZ smell; either reorder or convert helpers to function declarations. |
-| 🟢 | `src/scan.ts:444-478` `printProjectDetection` | Five sequential `spinner(...).start().succeed(...)` calls flicker on slow terminals. Either render statically or batch into one frame. |
-| 🟢 | `src/scan.ts:160-176` `writeDiagnosticsDirectory` | `mkdirSync(outputDirectory)` without `recursive: true` — works because `randomUUID` guarantees a fresh name, but inconsistent with the rest of the code which uses `recursive: true`. |
-| 🟢 | `src/utils/spinner.ts:13-16` `noopHandle` | Fresh object literal would be safer than a shared frozen reference (callers shouldn't mutate, but a shared instance invites it). Consider `Object.freeze`. |
-| 🟢 | `src/utils/run-oxlint.ts:359-375` `cleanDiagnosticMessage` | Two nearly identical branches; the `react-hooks-js` branch's fallback `rawMessage || help` is less defensive than the default branch's `cleaned || message` (does not consult `RULE_HELP_MAP`). Easy unification. |
-| 🟢 | `src/utils/check-reduced-motion.ts:42-50` | Uses `git grep` shell-style with quoted globs. On a non-git directory or sparse checkout this throws and falls into the catch as "no reduced-motion handling found", producing a false-positive diagnostic. |
-| 🟢 | `src/install-skill.ts:30-34` | When the skill directory is missing, the message says "Could not locate the react-doctor skill bundled with this package" but the build is what produces it (`vite.config.ts:9-17` `copySkillToDist`). If a user installs a partial tarball this silently exits — should at least print the expected `sourceDir`. |
-| 🟢 | `src/utils/install-skill-for-agent.ts:16-19` | `rmSync(installedSkillDirectory, { recursive: true, force: true })` then `cpSync` clobbers without warning. If the user has manually extended their skill, those edits are lost without a prompt. |
-| 🟢 | `src/utils/install-skill-for-agent.ts:5-20` | `alreadyInstalledDirectories` parameter is awkward — the caller in `install-skill.ts:67-78` builds a Set, passes it in, then re-adds after the call. The contract would be cleaner if the function returned the directory and let the caller manage the Set. |
-| 🟢 | `src/utils/get-staged-files.ts:54` | Hard-coded list of project config filenames `["tsconfig.json", "package.json", "react-doctor.config.json"]`. Misses `tsconfig.base.json`, `oxlint.json`, `.oxlintrc.json`, `knip.json`, etc., which means staged-mode scans can pick different configs than the working tree. |
-| 🟢 | `src/utils/proxy-fetch.ts:19-27` | Module-level mutable `let` flags (`isProxyUrlResolved`, `resolvedProxyUrl`) aren't necessary — the proxy URL is read from `process.env`, which is itself memoized. A simple `const` with `getProxyUrl = () => readEnvProxy()` is fine. |
-| 🟢 | `src/cli.ts:181-181` | `directory` defaults to `"."`; `path.resolve(".")` is `process.cwd()`. The default in commander's argument should probably be unset and the resolution explicit (`flags.directory ?? process.cwd()`) for testability. |
-| 🟢 | `src/cli.ts:405-409` | `main` is declared but only invoked once at the bottom. Just call `program.parseAsync()` directly. |
-| 🟢 | `tests/scan.test.ts:9-21` | `vi.mock("ora", ...)` provides a fake but doesn't constrain the API surface. If `ora` adds new methods that the spinner code starts using, this mock silently misbehaves rather than failing. |
-| 🟢 | `tests/browser.test.ts:67-82` | Stubs `globalThis.fetch` to throw, but doesn't unstub before other tests. Vitest's `vi.stubGlobal` is reset between files but not between `it`s — be explicit. |
-| 🟢 | `tests/run-oxlint.test.ts:38-61` | `let basicReactDiagnostics: Diagnostic[];` populated by an `it` block, then read by `describeRules`. If the first three `it`s are skipped/filtered (e.g. `--filter`), the latter blocks blow up with "Cannot read properties of undefined" — confusing failure mode. Use `beforeAll`. |
-| 🟢 | `src/types.ts:67-73` `PackageJson` | Doesn't model `catalog` / `catalogs` fields used by `discover-project.ts`, which is why §4.4 needs the `as Record<string, unknown>` casts. |
-| 🟢 | `src/utils/discover-project.ts:582-590` | `findDependencyInfoFromMonorepoRoot` is only called when neither `reactVersion` nor framework was found. But it walks the same directories as `findReactInWorkspaces` already did — duplicate filesystem traversal in the cold path. |
-| 🟢 | `src/utils/get-diff-files.ts:26-39` | Inner `for (const candidate ... of DEFAULT_BRANCH_CANDIDATES)` swallows all errors with `try { } catch {}` (note empty body). At minimum log at debug. |
+| Severity | File / Location                                                      | Issue                                                                                                                                                                                                                                                                                                             |
+| -------- | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- | -------------------------------------------------------- | --- | ------------------------------------------------------------ |
+| 🟢       | `src/utils/logger.ts:11-40`                                          | All seven methods have the identical `if (isSilent) return;` prologue. A higher-order `silentSafe(fn)` wrapper would halve the code.                                                                                                                                                                              |
+| 🟢       | `src/utils/format-error-chain.ts:1-21`                               | `getErrorChainMessages` and `formatErrorChain` are both exported; the former is only used inside `extract-failed-plugin-name.ts`. Consider keeping the function private or merging files.                                                                                                                         |
+| 🟢       | `src/utils/handle-error.ts:8-24`                                     | `options: HandleErrorOptions` defaults to `DEFAULT_HANDLE_ERROR_OPTIONS`, which is referenced by no other call site. Either inline the default `shouldExit = true` parameter, or remove the unused customization point.                                                                                           |
+| 🟢       | `src/utils/discover-project.ts:170-232` `parsePnpmWorkspaceCatalogs` | Hand-rolled YAML parser with state machine. Will silently misparse multi-line strings, anchors, comments inside values. Use a real YAML lib (already pulled in transitively) or document the strict subset.                                                                                                       |
+| 🟢       | `src/utils/discover-project.ts:314-336` `parsePnpmWorkspacePatterns` | Same hand-rolled YAML parsing; same concern.                                                                                                                                                                                                                                                                      |
+| 🟢       | `src/utils/discover-project.ts:43-48`                                | `VITE_CONFIG_FILENAMES` misses `vite.config.mts` and `vitest.config.*` — Vite projects routinely use `.mts` now.                                                                                                                                                                                                  |
+| 🟢       | `src/utils/detect-agents.ts:35-47` `isCommandAvailable`              | Iterates `process.env.PATH` for every binary candidate per agent (8 agents × 1–2 binaries each × N PATH dirs = up to 800+ stat calls on first run). Memoize per-binary. Also doesn't handle Windows extensions (`.exe`, `.cmd`).                                                                                  |
+| 🟢       | `src/utils/select-projects.ts`                                       | `selectProjects` (arrow const) is declared **before** the helper `const`s it calls (`resolveProjectFlag`, `printDiscoveredProjects`, `promptProjectSelection`). Works at runtime but reads as a TDZ smell; either reorder or convert helpers to function declarations.                                            |
+| 🟢       | `src/scan.ts:444-478` `printProjectDetection`                        | Five sequential `spinner(...).start().succeed(...)` calls flicker on slow terminals. Either render statically or batch into one frame.                                                                                                                                                                            |
+| 🟢       | `src/scan.ts:160-176` `writeDiagnosticsDirectory`                    | `mkdirSync(outputDirectory)` without `recursive: true` — works because `randomUUID` guarantees a fresh name, but inconsistent with the rest of the code which uses `recursive: true`.                                                                                                                             |
+| 🟢       | `src/utils/spinner.ts:13-16` `noopHandle`                            | Fresh object literal would be safer than a shared frozen reference (callers shouldn't mutate, but a shared instance invites it). Consider `Object.freeze`.                                                                                                                                                        |
+| 🟢       | `src/utils/run-oxlint.ts:359-375` `cleanDiagnosticMessage`           | Two nearly identical branches; the `react-hooks-js` branch's fallback `rawMessage                                                                                                                                                                                                                                 |     | help`is less defensive than the default branch's`cleaned |     | message`(does not consult`RULE_HELP_MAP`). Easy unification. |
+| 🟢       | `src/utils/check-reduced-motion.ts:42-50`                            | Uses `git grep` shell-style with quoted globs. On a non-git directory or sparse checkout this throws and falls into the catch as "no reduced-motion handling found", producing a false-positive diagnostic.                                                                                                       |
+| 🟢       | `src/install-skill.ts:30-34`                                         | When the skill directory is missing, the message says "Could not locate the react-doctor skill bundled with this package" but the build is what produces it (`vite.config.ts:9-17` `copySkillToDist`). If a user installs a partial tarball this silently exits — should at least print the expected `sourceDir`. |
+| 🟢       | `src/utils/install-skill-for-agent.ts:16-19`                         | `rmSync(installedSkillDirectory, { recursive: true, force: true })` then `cpSync` clobbers without warning. If the user has manually extended their skill, those edits are lost without a prompt.                                                                                                                 |
+| 🟢       | `src/utils/install-skill-for-agent.ts:5-20`                          | `alreadyInstalledDirectories` parameter is awkward — the caller in `install-skill.ts:67-78` builds a Set, passes it in, then re-adds after the call. The contract would be cleaner if the function returned the directory and let the caller manage the Set.                                                      |
+| 🟢       | `src/utils/get-staged-files.ts:54`                                   | Hard-coded list of project config filenames `["tsconfig.json", "package.json", "react-doctor.config.json"]`. Misses `tsconfig.base.json`, `oxlint.json`, `.oxlintrc.json`, `knip.json`, etc., which means staged-mode scans can pick different configs than the working tree.                                     |
+| 🟢       | `src/utils/proxy-fetch.ts:19-27`                                     | Module-level mutable `let` flags (`isProxyUrlResolved`, `resolvedProxyUrl`) aren't necessary — the proxy URL is read from `process.env`, which is itself memoized. A simple `const` with `getProxyUrl = () => readEnvProxy()` is fine.                                                                            |
+| 🟢       | `src/cli.ts:181-181`                                                 | `directory` defaults to `"."`; `path.resolve(".")` is `process.cwd()`. The default in commander's argument should probably be unset and the resolution explicit (`flags.directory ?? process.cwd()`) for testability.                                                                                             |
+| 🟢       | `src/cli.ts:405-409`                                                 | `main` is declared but only invoked once at the bottom. Just call `program.parseAsync()` directly.                                                                                                                                                                                                                |
+| 🟢       | `tests/scan.test.ts:9-21`                                            | `vi.mock("ora", ...)` provides a fake but doesn't constrain the API surface. If `ora` adds new methods that the spinner code starts using, this mock silently misbehaves rather than failing.                                                                                                                     |
+| 🟢       | `tests/browser.test.ts:67-82`                                        | Stubs `globalThis.fetch` to throw, but doesn't unstub before other tests. Vitest's `vi.stubGlobal` is reset between files but not between `it`s — be explicit.                                                                                                                                                    |
+| 🟢       | `tests/run-oxlint.test.ts:38-61`                                     | `let basicReactDiagnostics: Diagnostic[];` populated by an `it` block, then read by `describeRules`. If the first three `it`s are skipped/filtered (e.g. `--filter`), the latter blocks blow up with "Cannot read properties of undefined" — confusing failure mode. Use `beforeAll`.                             |
+| 🟢       | `src/types.ts:67-73` `PackageJson`                                   | Doesn't model `catalog` / `catalogs` fields used by `discover-project.ts`, which is why §4.4 needs the `as Record<string, unknown>` casts.                                                                                                                                                                        |
+| 🟢       | `src/utils/discover-project.ts:582-590`                              | `findDependencyInfoFromMonorepoRoot` is only called when neither `reactVersion` nor framework was found. But it walks the same directories as `findReactInWorkspaces` already did — duplicate filesystem traversal in the cold path.                                                                              |
+| 🟢       | `src/utils/get-diff-files.ts:26-39`                                  | Inner `for (const candidate ... of DEFAULT_BRANCH_CANDIDATES)` swallows all errors with `try { } catch {}` (note empty body). At minimum log at debug.                                                                                                                                                            |
 
 ---
 
@@ -1166,6 +1168,7 @@ The root `package.json` defines `typecheck: "turbo run typecheck"`, and `package
 ```
 
 Three Node versions in play:
+
 - CI builds on Node 24 (workflow).
 - `package.json` requires Node ≥22 (`engines`).
 - Vite pack `target: "node18"` (`packages/react-doctor/vite.config.ts:25, 42`).
@@ -1249,12 +1252,12 @@ For a tool that promises "one structured JSON report", consumers benefit from a 
 
 Per §3.7 their score field name differs. They also differ in:
 
-| Field | `DiagnoseResult` | `ScanResult` |
-|---|---|---|
+| Field                 | `DiagnoseResult`             | `ScanResult`                       |
+| --------------------- | ---------------------------- | ---------------------------------- |
 | `score`/`scoreResult` | `score: ScoreResult \| null` | `scoreResult: ScoreResult \| null` |
-| `skippedChecks` | not present | `skippedChecks: string[]` |
-| `project` | `ProjectInfo` | `ProjectInfo` |
-| `elapsedMilliseconds` | yes | yes |
+| `skippedChecks`       | not present                  | `skippedChecks: string[]`          |
+| `project`             | `ProjectInfo`                | `ProjectInfo`                      |
+| `elapsedMilliseconds` | yes                          | yes                                |
 
 A programmatic user who switches from `diagnose()` (the public API) to `scan()` (internal but exported in some subpath) gets a different shape. Pick one.
 
@@ -1388,45 +1391,45 @@ Documenting at least one downstream consumer (e.g. "to fail your CI on the score
 
 ## 14. Additional Smells & Smaller Issues
 
-| Severity | File / Location | Issue |
-|---|---|---|
-| 🟡 | `src/plugin/rules/tanstack-start.ts:206-256` | Every visitor in this file calls `context.getFilename?.()` and re-runs `TANSTACK_ROUTE_FILE_PATTERN.test(filename)` per node visited. For a 1000-line route file with thousands of CallExpressions/JSXAttributes, that's thousands of redundant regex tests per rule. Compute once at `create()` time. |
-| 🟡 | `src/plugin/rules/tanstack-start.ts:96-130` | `tanstackStartRoutePropertyOrder` returns at the first inversion via `return` inside the loop body — but the loop only emits ONE diagnostic per route. For a route with multiple inverted properties, only the first is reported. Either emit all of them, or document. |
-| 🟡 | `src/plugin/rules/tanstack-start.ts:310-359` | `tanstackStartServerFnMethodOrder` walks the chain from outermost to inner, then bails if `methodNames[methodNames.length - 1] !== ownMethodName`. This is to ensure the rule fires exactly once per chain (on the last method) — but the comparison is structural in a way that's brittle to chains with non-method intermediates. Worth a comment. |
-| 🟡 | `src/plugin/rules/architecture.ts:60-84` | `noRenderInRender` matches `RENDER_FUNCTION_PATTERN = /^render[A-Z]/`. So `renderlist` (lowercase L) is missed; `Renderer` is missed. The regex misses common "render-as-method" patterns like `myComponent.render()`. Probably fine for the heuristic but worth knowing. |
-| 🟡 | `src/plugin/rules/correctness.ts:139-160` | `renderingConditionalRender` only flags `someArr.length && <X />`. But `condition && <X />` where `condition` can be `0` (`{count && <X />}` where `count = 0`) is the same bug and isn't caught. Compare: it requires `MemberExpression` + `length`. |
-| 🟡 | `src/plugin/rules/security.ts:46-66` | `noSecretsInClientCode`: `literalValue.length > SECRET_MIN_LENGTH_CHARS` (=8). Real secrets are way longer (32–80 chars typically). 8 is too low — generates false positives on UI strings like "loading…" assigned to a variable named `loadingMessage` (matches `SECRET_VARIABLE_PATTERN` if name has `auth`, like `authMessage`). |
-| 🟡 | `src/plugin/rules/security.ts:67-72` | The fallback regex `SECRET_PATTERNS` is short — it covers Stripe (`sk_live_`/`sk_test_`), AWS, GitHub, GitLab, Slack, OpenAI. Misses Google API keys (`AIza[0-9A-Za-z\-_]{35}`), Firebase, Twilio, Supabase, etc. Probably fine for v1, but call it out. |
-| 🟡 | `src/plugin/rules/bundle-size.ts:5-27` | `noBarrelImport` uses a `didReportForFile` flag to fire once per file. But it's reset per `create()` invocation, which is per file — OK. However, `let didReportForFile = false` lives in the outer closure of every module-level rule. A reader might reasonably expect "once per file" to mean global. Worth a comment. |
-| 🟡 | `src/plugin/rules/bundle-size.ts:43-54` | `noMoment` only flags `import "moment"` literally. Misses `require("moment")`, `import("moment")` (dynamic), and `moment.js` via package alias. Edge cases. |
-| 🟡 | `src/plugin/rules/state-and-effects.ts:61-72` | `nonSetterIdentifiers.some(...)` followed by `.some(...)` — same array iterated twice. Minor. |
-| 🟡 | `src/plugin/rules/performance.ts:380-399` | `renderingUsetransitionLoading` requires the variable to be exactly named `isLoading`/`isPending`. Most projects use `isFetching`, `loading`, `pending` (without the `is` prefix). The rule's reach is narrower than the help text. |
-| 🟡 | `src/plugin/rules/performance.ts:269-291` | `noScaleFromZero` matches `scale: 0` only when the property name is exactly `scale`. Misses CSS `transform: "scale(0)"` (string), and React Native's `transform: [{ scale: 0 }]` (array of objects). |
-| 🟡 | `src/plugin/rules/performance.ts:401-426` | `renderingHydrationNoFlicker` requires the effect deps to be `[]` exactly. So `useEffect(setState, [stableValue])` with one dep that the linter-aware reader knows is stable is missed (could still flicker). |
-| 🟡 | `src/plugin/rules/correctness.ts:38-67` | `isInsideStaticPlaceholderMap` walks parents via `node.parent`. Several rules in the codebase rely on parent pointers — but oxlint's plugin host has historically required explicit parent linking. If parent pointers aren't set, this rule silently fails-open (no `parent` → loop never runs → `false`). |
-| 🟢 | `src/plugin/rules/design.ts:97-128` | `parseColorToRgb` uses `parseInt(.., 16)` and `parseInt(.., 10)` and `parseFloat`. CSS allows alpha channels in HEX (`#aabbccdd`). The `lab()`, `lch()`, `oklab()`, `oklch()`, and `color()` functions are entirely unparsed. |
-| 🟢 | `src/plugin/rules/design.ts:118` | `rgba?` regex doesn't support modern space-separated syntax `rgb(255 0 0 / 50%)` — only the comma-form. CSS Colors Level 4 has been stable for years. |
-| 🟢 | `src/plugin/rules/design.ts:251` | `BLUR_VALUE_PATTERN.exec(property.value.value)` — uses `.exec` on a global-like regex without `/g`. Fine but `match()` would read more naturally. |
-| 🟢 | `src/plugin/rules/design.ts:619` | `noTinyText` divides rem by 16 (root font-size). User-customized root font-sizes (`html { font-size: 18px }`) are a real thing for accessibility and the rule misses them. |
-| 🟢 | `src/plugin/rules/design.ts:683-697` | `noGrayOnColoredBackground` only matches Tailwind. Inline-style `color: '#888'` on `backgroundColor: '#3b82f6'` is not flagged. |
-| 🟢 | `src/plugin/rules/design.ts:723` | The reported message says "Transitioning layout property X causes layout thrash" but the regex matches `width|height|padding|margin` whether they're being transitioned **to** or **from** a value — it's about the `transition-property`, not the actual visible size change. Slightly imprecise. |
-| 🟢 | `src/plugin/rules/correctness.ts:5-35` | `extractIndexName` checks `INDEX_PARAMETER_NAMES = new Set(["index", "idx", "i"])` (constants:60). Misses `_index`, `currentIndex`, `position`, `pos`, `n`. Probably acceptable but the help text claims "Array index used as key" without acknowledging the heuristic. |
-| 🟢 | `src/plugin/rules/correctness.ts:139-160` | The rule's name is `renderingConditionalRender`. The category-mapped `Correctness` (run-oxlint:67) feels right, but the message ("can render '0'") is one of many issues with `&&` JSX rendering. The rule misses the broader pattern of `0 && <X />`. |
-| 🟢 | `src/plugin/rules/architecture.ts:6` | Imports `RENDER_FUNCTION_PATTERN` which is shared with `noRenderInRender`. But the regex also matches `renderToString` from `react-dom/server` if used as a JSX child — false positive. |
-| 🟢 | `src/plugin/rules/architecture.ts:11` | `node.value.type !== "JSXExpressionContainer"` — misses string-as-handler patterns (uncommon in React but valid). Negligible. |
-| 🟢 | `src/plugin/rules/security.ts:15-27` | The message for `setTimeout("code()", 1000)` says "use a function instead". This is actually deprecated and most modern bundlers/lints already flag it. The rule duplicates what newer JS tooling does. |
-| 🟢 | `src/plugin/rules/server.ts:38` | `declaration?.type !== "FunctionDeclaration"` — the rule misses `export const myAction = async () => { ... }` which is the more idiomatic Next.js form. Verified: `serverAuthActions` only fires on FunctionDeclaration exports. |
-| 🟢 | `src/plugin/rules/nextjs.ts:51-77` | `nextjsAsyncClientComponent` only checks `node.async` on `FunctionDeclaration`/`VariableDeclarator.init`. Misses `export default async function MyComponent() {}`. |
-| 🟢 | `src/plugin/rules/nextjs.ts:121-149` | `nextjsNoClientFetchForServerData` only fires when the file matches `PAGE_OR_LAYOUT_FILE_PATTERN \|\| PAGES_DIRECTORY_PATTERN`. So a co-located component used by a page doesn't trigger, even if it does the same fetch. The scope is more conservative than the help text suggests. |
-| 🟢 | `src/plugin/rules/tanstack-query.ts:172-213` | `queryMutationMissingInvalidation` walks the entire `optionsArgument` (incl. mutationFn) for any `invalidateQueries` call. So `mutationFn: () => fetch().then(...).then(() => qc.invalidateQueries())` (invalidating inside mutationFn instead of `onSuccess`) wrongly suppresses the warning. |
-| 🟢 | `src/plugin/rules/tanstack-query.ts:215-264` | `queryNoUseQueryForMutation` only inspects fetch calls with literal `method: "POST"` strings. Misses `method: requestMethod` (dynamic) and `method: HttpMethod.POST` (member). |
-| 🟢 | `src/plugin/rules/tanstack-start.ts:497-528` | `tanstackStartNoSecretsInLoader` checks only `process.env.X`. Misses `import.meta.env.X` (the Vite-native way to read env vars in TanStack Start). |
-| 🟢 | `src/plugin/rules/tanstack-start.ts:531-557` | `tanstackStartGetMutation` skips the rule if `chainInfo.specifiedMethod` is in `MUTATING_HTTP_METHODS`. But `method` could be `"post"` (lowercase) — the check `specifiedMethod.toUpperCase()` handles that. OK. But what if `method` is a variable? Then `specifiedMethod === null` and the rule continues, false-positive risk for dynamically-typed methods. |
-| 🟢 | `src/plugin/rules/react-native.ts:62-86` | `rnNoRawText` early-returns when the parent is a "text-handling" component (per `isTextHandlingComponent`). Component name detection is `JSXIdentifier` only — misses `<Heading.H1>`/`<Theme.Text>` member-expressions even though the heuristic clearly intends to allow them. |
-| 🟢 | `src/plugin/rules/react-native.ts:111-128` | `rnNoLegacyExpoPackages` uses `source.startsWith(`${packageName}/`)` for sub-imports. But `expo-permissions` matched by both the literal name and `"expo-permissions/some-sub-path"` — fine. However it doesn't respect path scoping, e.g. `@expo/vector-icons/MaterialIcons` matches `@expo/vector-icons/` and is flagged correctly. Fine. |
-| 🟢 | `src/plugin/rules/js-performance.ts:267-293` | `reportIfIndependent` returns silently if any later statement references an earlier one. But if statement #2 references statement #1's result and statement #3 is independent of both, the rule never reports the #3 candidate. Could split parallel groups instead of bailing entirely. |
-| 🟢 | `src/plugin/constants.ts:171-244` | `SECRET_FALSE_POSITIVE_SUFFIXES` has 60+ words. Combined with the simplistic `variableName.split("_").pop()` extraction in `noSecretsInClientCode`, a variable named `apiKeyHeader` gets `header` as suffix and is exempted. Fine. But `apiKey` (no underscore) gets the entire name as suffix, which doesn't match any in the set, so it's flagged. The word-splitting is `_`-only — camelCase variables are treated as one word. |
-| 🟢 | `src/plugin/constants.ts:261-263` | `INTERNAL_PAGE_PATH_PATTERN` is a long alternation. `(/internal/|/admin/...)` — the `(` prefix makes `(dashboard)` match parenthesized route groups in App Router. But the regex requires the `()` literally; if the project uses `[dashboard]` (parameterized), it doesn't match. |
+| Severity | File / Location                               | Issue                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| -------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 🟡       | `src/plugin/rules/tanstack-start.ts:206-256`  | Every visitor in this file calls `context.getFilename?.()` and re-runs `TANSTACK_ROUTE_FILE_PATTERN.test(filename)` per node visited. For a 1000-line route file with thousands of CallExpressions/JSXAttributes, that's thousands of redundant regex tests per rule. Compute once at `create()` time.                                                                                                                             |
+| 🟡       | `src/plugin/rules/tanstack-start.ts:96-130`   | `tanstackStartRoutePropertyOrder` returns at the first inversion via `return` inside the loop body — but the loop only emits ONE diagnostic per route. For a route with multiple inverted properties, only the first is reported. Either emit all of them, or document.                                                                                                                                                            |
+| 🟡       | `src/plugin/rules/tanstack-start.ts:310-359`  | `tanstackStartServerFnMethodOrder` walks the chain from outermost to inner, then bails if `methodNames[methodNames.length - 1] !== ownMethodName`. This is to ensure the rule fires exactly once per chain (on the last method) — but the comparison is structural in a way that's brittle to chains with non-method intermediates. Worth a comment.                                                                               |
+| 🟡       | `src/plugin/rules/architecture.ts:60-84`      | `noRenderInRender` matches `RENDER_FUNCTION_PATTERN = /^render[A-Z]/`. So `renderlist` (lowercase L) is missed; `Renderer` is missed. The regex misses common "render-as-method" patterns like `myComponent.render()`. Probably fine for the heuristic but worth knowing.                                                                                                                                                          |
+| 🟡       | `src/plugin/rules/correctness.ts:139-160`     | `renderingConditionalRender` only flags `someArr.length && <X />`. But `condition && <X />` where `condition` can be `0` (`{count && <X />}` where `count = 0`) is the same bug and isn't caught. Compare: it requires `MemberExpression` + `length`.                                                                                                                                                                              |
+| 🟡       | `src/plugin/rules/security.ts:46-66`          | `noSecretsInClientCode`: `literalValue.length > SECRET_MIN_LENGTH_CHARS` (=8). Real secrets are way longer (32–80 chars typically). 8 is too low — generates false positives on UI strings like "loading…" assigned to a variable named `loadingMessage` (matches `SECRET_VARIABLE_PATTERN` if name has `auth`, like `authMessage`).                                                                                               |
+| 🟡       | `src/plugin/rules/security.ts:67-72`          | The fallback regex `SECRET_PATTERNS` is short — it covers Stripe (`sk_live_`/`sk_test_`), AWS, GitHub, GitLab, Slack, OpenAI. Misses Google API keys (`AIza[0-9A-Za-z\-_]{35}`), Firebase, Twilio, Supabase, etc. Probably fine for v1, but call it out.                                                                                                                                                                           |
+| 🟡       | `src/plugin/rules/bundle-size.ts:5-27`        | `noBarrelImport` uses a `didReportForFile` flag to fire once per file. But it's reset per `create()` invocation, which is per file — OK. However, `let didReportForFile = false` lives in the outer closure of every module-level rule. A reader might reasonably expect "once per file" to mean global. Worth a comment.                                                                                                          |
+| 🟡       | `src/plugin/rules/bundle-size.ts:43-54`       | `noMoment` only flags `import "moment"` literally. Misses `require("moment")`, `import("moment")` (dynamic), and `moment.js` via package alias. Edge cases.                                                                                                                                                                                                                                                                        |
+| 🟡       | `src/plugin/rules/state-and-effects.ts:61-72` | `nonSetterIdentifiers.some(...)` followed by `.some(...)` — same array iterated twice. Minor.                                                                                                                                                                                                                                                                                                                                      |
+| 🟡       | `src/plugin/rules/performance.ts:380-399`     | `renderingUsetransitionLoading` requires the variable to be exactly named `isLoading`/`isPending`. Most projects use `isFetching`, `loading`, `pending` (without the `is` prefix). The rule's reach is narrower than the help text.                                                                                                                                                                                                |
+| 🟡       | `src/plugin/rules/performance.ts:269-291`     | `noScaleFromZero` matches `scale: 0` only when the property name is exactly `scale`. Misses CSS `transform: "scale(0)"` (string), and React Native's `transform: [{ scale: 0 }]` (array of objects).                                                                                                                                                                                                                               |
+| 🟡       | `src/plugin/rules/performance.ts:401-426`     | `renderingHydrationNoFlicker` requires the effect deps to be `[]` exactly. So `useEffect(setState, [stableValue])` with one dep that the linter-aware reader knows is stable is missed (could still flicker).                                                                                                                                                                                                                      |
+| 🟡       | `src/plugin/rules/correctness.ts:38-67`       | `isInsideStaticPlaceholderMap` walks parents via `node.parent`. Several rules in the codebase rely on parent pointers — but oxlint's plugin host has historically required explicit parent linking. If parent pointers aren't set, this rule silently fails-open (no `parent` → loop never runs → `false`).                                                                                                                        |
+| 🟢       | `src/plugin/rules/design.ts:97-128`           | `parseColorToRgb` uses `parseInt(.., 16)` and `parseInt(.., 10)` and `parseFloat`. CSS allows alpha channels in HEX (`#aabbccdd`). The `lab()`, `lch()`, `oklab()`, `oklch()`, and `color()` functions are entirely unparsed.                                                                                                                                                                                                      |
+| 🟢       | `src/plugin/rules/design.ts:118`              | `rgba?` regex doesn't support modern space-separated syntax `rgb(255 0 0 / 50%)` — only the comma-form. CSS Colors Level 4 has been stable for years.                                                                                                                                                                                                                                                                              |
+| 🟢       | `src/plugin/rules/design.ts:251`              | `BLUR_VALUE_PATTERN.exec(property.value.value)` — uses `.exec` on a global-like regex without `/g`. Fine but `match()` would read more naturally.                                                                                                                                                                                                                                                                                  |
+| 🟢       | `src/plugin/rules/design.ts:619`              | `noTinyText` divides rem by 16 (root font-size). User-customized root font-sizes (`html { font-size: 18px }`) are a real thing for accessibility and the rule misses them.                                                                                                                                                                                                                                                         |
+| 🟢       | `src/plugin/rules/design.ts:683-697`          | `noGrayOnColoredBackground` only matches Tailwind. Inline-style `color: '#888'` on `backgroundColor: '#3b82f6'` is not flagged.                                                                                                                                                                                                                                                                                                    |
+| 🟢       | `src/plugin/rules/design.ts:723`              | The reported message says "Transitioning layout property X causes layout thrash" but the regex matches `width                                                                                                                                                                                                                                                                                                                      | height                                                                                                                                                                                                    | padding | margin`whether they're being transitioned **to** or **from** a value — it's about the`transition-property`, not the actual visible size change. Slightly imprecise. |
+| 🟢       | `src/plugin/rules/correctness.ts:5-35`        | `extractIndexName` checks `INDEX_PARAMETER_NAMES = new Set(["index", "idx", "i"])` (constants:60). Misses `_index`, `currentIndex`, `position`, `pos`, `n`. Probably acceptable but the help text claims "Array index used as key" without acknowledging the heuristic.                                                                                                                                                            |
+| 🟢       | `src/plugin/rules/correctness.ts:139-160`     | The rule's name is `renderingConditionalRender`. The category-mapped `Correctness` (run-oxlint:67) feels right, but the message ("can render '0'") is one of many issues with `&&` JSX rendering. The rule misses the broader pattern of `0 && <X />`.                                                                                                                                                                             |
+| 🟢       | `src/plugin/rules/architecture.ts:6`          | Imports `RENDER_FUNCTION_PATTERN` which is shared with `noRenderInRender`. But the regex also matches `renderToString` from `react-dom/server` if used as a JSX child — false positive.                                                                                                                                                                                                                                            |
+| 🟢       | `src/plugin/rules/architecture.ts:11`         | `node.value.type !== "JSXExpressionContainer"` — misses string-as-handler patterns (uncommon in React but valid). Negligible.                                                                                                                                                                                                                                                                                                      |
+| 🟢       | `src/plugin/rules/security.ts:15-27`          | The message for `setTimeout("code()", 1000)` says "use a function instead". This is actually deprecated and most modern bundlers/lints already flag it. The rule duplicates what newer JS tooling does.                                                                                                                                                                                                                            |
+| 🟢       | `src/plugin/rules/server.ts:38`               | `declaration?.type !== "FunctionDeclaration"` — the rule misses `export const myAction = async () => { ... }` which is the more idiomatic Next.js form. Verified: `serverAuthActions` only fires on FunctionDeclaration exports.                                                                                                                                                                                                   |
+| 🟢       | `src/plugin/rules/nextjs.ts:51-77`            | `nextjsAsyncClientComponent` only checks `node.async` on `FunctionDeclaration`/`VariableDeclarator.init`. Misses `export default async function MyComponent() {}`.                                                                                                                                                                                                                                                                 |
+| 🟢       | `src/plugin/rules/nextjs.ts:121-149`          | `nextjsNoClientFetchForServerData` only fires when the file matches `PAGE_OR_LAYOUT_FILE_PATTERN \|\| PAGES_DIRECTORY_PATTERN`. So a co-located component used by a page doesn't trigger, even if it does the same fetch. The scope is more conservative than the help text suggests.                                                                                                                                              |
+| 🟢       | `src/plugin/rules/tanstack-query.ts:172-213`  | `queryMutationMissingInvalidation` walks the entire `optionsArgument` (incl. mutationFn) for any `invalidateQueries` call. So `mutationFn: () => fetch().then(...).then(() => qc.invalidateQueries())` (invalidating inside mutationFn instead of `onSuccess`) wrongly suppresses the warning.                                                                                                                                     |
+| 🟢       | `src/plugin/rules/tanstack-query.ts:215-264`  | `queryNoUseQueryForMutation` only inspects fetch calls with literal `method: "POST"` strings. Misses `method: requestMethod` (dynamic) and `method: HttpMethod.POST` (member).                                                                                                                                                                                                                                                     |
+| 🟢       | `src/plugin/rules/tanstack-start.ts:497-528`  | `tanstackStartNoSecretsInLoader` checks only `process.env.X`. Misses `import.meta.env.X` (the Vite-native way to read env vars in TanStack Start).                                                                                                                                                                                                                                                                                 |
+| 🟢       | `src/plugin/rules/tanstack-start.ts:531-557`  | `tanstackStartGetMutation` skips the rule if `chainInfo.specifiedMethod` is in `MUTATING_HTTP_METHODS`. But `method` could be `"post"` (lowercase) — the check `specifiedMethod.toUpperCase()` handles that. OK. But what if `method` is a variable? Then `specifiedMethod === null` and the rule continues, false-positive risk for dynamically-typed methods.                                                                    |
+| 🟢       | `src/plugin/rules/react-native.ts:62-86`      | `rnNoRawText` early-returns when the parent is a "text-handling" component (per `isTextHandlingComponent`). Component name detection is `JSXIdentifier` only — misses `<Heading.H1>`/`<Theme.Text>` member-expressions even though the heuristic clearly intends to allow them.                                                                                                                                                    |
+| 🟢       | `src/plugin/rules/react-native.ts:111-128`    | `rnNoLegacyExpoPackages` uses `source.startsWith(`${packageName}/`)` for sub-imports. But `expo-permissions` matched by both the literal name and `"expo-permissions/some-sub-path"` — fine. However it doesn't respect path scoping, e.g. `@expo/vector-icons/MaterialIcons` matches `@expo/vector-icons/` and is flagged correctly. Fine.                                                                                        |
+| 🟢       | `src/plugin/rules/js-performance.ts:267-293`  | `reportIfIndependent` returns silently if any later statement references an earlier one. But if statement #2 references statement #1's result and statement #3 is independent of both, the rule never reports the #3 candidate. Could split parallel groups instead of bailing entirely.                                                                                                                                           |
+| 🟢       | `src/plugin/constants.ts:171-244`             | `SECRET_FALSE_POSITIVE_SUFFIXES` has 60+ words. Combined with the simplistic `variableName.split("_").pop()` extraction in `noSecretsInClientCode`, a variable named `apiKeyHeader` gets `header` as suffix and is exempted. Fine. But `apiKey` (no underscore) gets the entire name as suffix, which doesn't match any in the set, so it's flagged. The word-splitting is `_`-only — camelCase variables are treated as one word. |
+| 🟢       | `src/plugin/constants.ts:261-263`             | `INTERNAL_PAGE_PATH_PATTERN` is a long alternation. `(/internal/                                                                                                                                                                                                                                                                                                                                                                   | /admin/...)`— the`(`prefix makes`(dashboard)`match parenthesized route groups in App Router. But the regex requires the`()`literally; if the project uses`[dashboard]` (parameterized), it doesn't match. |
 
 ---
 
@@ -1479,6 +1482,7 @@ export const POST = async (request: Request): Promise<Response> => {
 The CLI (`utils/calculate-score-node.ts:7-12` via `core/try-score-from-api.ts:25-30`) POSTs the **entire** `Diagnostic[]` array — which includes `filePath` for every diagnostic — to `https://www.react.doctor/api/score` whenever `--offline` isn't set (the default). The server-side `console.log(JSON.stringify(body))` then pipes those file paths into Vercel's logs / wherever the deployment lands.
 
 For a private monorepo the file paths reveal:
+
 - Internal directory names (`src/internal/admin/`, `packages/billing-private/`, etc.).
 - Component naming conventions and product feature names.
 - Sometimes credential filenames (`.env.example`, `secrets.tsx`).
@@ -1486,6 +1490,7 @@ For a private monorepo the file paths reveal:
 The README documents `--offline` as "Skip telemetry (anonymous, not stored, only used to calculate score)" (`cli.ts:177`). But the data is observably stored at minimum in process logs the moment it lands on the server. The user-facing copy is misleading.
 
 Mitigation options, ordered by ease:
+
 1. Strip `filePath` from the POSTed payload — only severity + plugin + rule are needed for scoring (per `calculate-score-locally.ts`).
 2. Disable the `console.log` (or scope it to development).
 3. Make `--offline` the default in CI (`AUTOMATED_ENVIRONMENT_VARIABLES` is already detected — flip the default there).
@@ -1586,24 +1591,26 @@ Same applies to `share/page.tsx:62-63` and `share/page.tsx:96-99`.
 ### 🟢 17.9 `/install-skill` script duplicates the install logic that already lives in the CLI
 
 The published `react-doctor` package has `runInstallSkill` (`src/install-skill.ts`) which:
+
 - Detects available agents via `detectAvailableAgents` (only **on PATH**, via `accessSync`).
 - Prompts before installing.
 - Writes to project-local `.agents/skills/` per `installSkillForAgent`.
 
 The website's `INSTALL_SCRIPT` (`/install-skill/route.ts:1-181`):
+
 - Detects via `[ -d "$HOME/.cursor" ]`-style heuristics (not PATH-aware).
 - Prompts nothing.
 - Writes to global `$HOME/...` paths (NOT the project).
 
 These are two different install philosophies that share neither code nor expected outcome:
 
-| | CLI (`react-doctor install`) | Website (`/install-skill`) |
-|---|---|---|
-| Agents | claude, codex, copilot, gemini, cursor, opencode, droid, pi | claude, amp, cursor, opencode, windsurf, antigravity, gemini, codex |
-| Detection | binary on PATH | `~/.X` directory |
-| Prompts | Yes (multiselect) | No |
-| Target | Project-local `.agents/skills/` | User-global `$HOME/...` |
-| SKILL.md content | `skills/react-doctor/SKILL.md` | Inlined string in route.ts |
+|                  | CLI (`react-doctor install`)                                | Website (`/install-skill`)                                          |
+| ---------------- | ----------------------------------------------------------- | ------------------------------------------------------------------- |
+| Agents           | claude, codex, copilot, gemini, cursor, opencode, droid, pi | claude, amp, cursor, opencode, windsurf, antigravity, gemini, codex |
+| Detection        | binary on PATH                                              | `~/.X` directory                                                    |
+| Prompts          | Yes (multiselect)                                           | No                                                                  |
+| Target           | Project-local `.agents/skills/`                             | User-global `$HOME/...`                                             |
+| SKILL.md content | `skills/react-doctor/SKILL.md`                              | Inlined string in route.ts                                          |
 
 Notably, `copilot`, `droid` (Factory), and `pi` are CLI-only; `amp`, `windsurf`, `antigravity` are website-only. Users get a different skill ecosystem depending on which install method they follow.
 
@@ -1614,10 +1621,12 @@ Notably, `copilot`, `droid` (Factory), and `pi` are CLI-only; `amp`, `windsurf`,
 3. `packages/website/src/app/install-skill/route.ts:40-57` (inlined `AGENTS_CONTENT` string — a separate piece of similar content).
 
 The descriptions diverge:
+
 - Canonical: "Use when finishing a feature, fixing a bug, before committing React code, or when the user wants to improve code quality or clean up a codebase."
 - Inlined #1/#2: "Run after making React changes to catch issues early. Use when reviewing code, finishing a feature, or fixing bugs in a React project."
 
 A maintainer updating the canonical file won't propagate edits to the curl-script users. Either:
+
 - Make `/install-skill` route read from `skills/react-doctor/SKILL.md` at build-time (Next.js `import` of the file content),
 - Or delete the route in favor of a `npx -y react-doctor@latest install` recommendation.
 
@@ -1627,18 +1636,18 @@ A maintainer updating the canonical file won't propagate edits to the curl-scrip
 
 The score formula, thresholds, labels, and ASCII branding are duplicated **seven** times across the repo:
 
-| File | Duplicates |
-|---|---|
-| `packages/react-doctor/src/core/calculate-score-locally.ts` | thresholds, label, scoring formula (canonical) |
-| `packages/react-doctor/src/scan.ts:208-225` | `getDoctorFace`, `printBranding` |
-| `packages/website/src/app/api/score/route.ts:1-44` | thresholds, label, scoring formula |
-| `packages/website/src/app/api/estimate-score/route.ts:1-50` | same + 2 extra "fix rate" constants |
-| `packages/website/src/app/share/page.tsx:5-41` | thresholds, label, color, `getDoctorFace` |
-| `packages/website/src/app/share/animated-score.tsx:5-37` | thresholds, label, color, `ScoreBar` |
-| `packages/website/src/app/share/og/route.tsx:3-22` | thresholds, label, color |
-| `packages/website/src/app/share/badge/route.ts:1-29` | thresholds, color (`getBadgeScoreColor`) |
-| `packages/website/src/app/leaderboard/page.tsx:5-23` | thresholds, label, color, `getDoctorFace`, `ScoreBar` |
-| `packages/website/src/components/terminal.tsx:18-186` | thresholds, label, color, `getDoctorFace`, `ScoreBar`, `ScoreGauge` |
+| File                                                        | Duplicates                                                          |
+| ----------------------------------------------------------- | ------------------------------------------------------------------- |
+| `packages/react-doctor/src/core/calculate-score-locally.ts` | thresholds, label, scoring formula (canonical)                      |
+| `packages/react-doctor/src/scan.ts:208-225`                 | `getDoctorFace`, `printBranding`                                    |
+| `packages/website/src/app/api/score/route.ts:1-44`          | thresholds, label, scoring formula                                  |
+| `packages/website/src/app/api/estimate-score/route.ts:1-50` | same + 2 extra "fix rate" constants                                 |
+| `packages/website/src/app/share/page.tsx:5-41`              | thresholds, label, color, `getDoctorFace`                           |
+| `packages/website/src/app/share/animated-score.tsx:5-37`    | thresholds, label, color, `ScoreBar`                                |
+| `packages/website/src/app/share/og/route.tsx:3-22`          | thresholds, label, color                                            |
+| `packages/website/src/app/share/badge/route.ts:1-29`        | thresholds, color (`getBadgeScoreColor`)                            |
+| `packages/website/src/app/leaderboard/page.tsx:5-23`        | thresholds, label, color, `getDoctorFace`, `ScoreBar`               |
+| `packages/website/src/components/terminal.tsx:18-186`       | thresholds, label, color, `getDoctorFace`, `ScoreBar`, `ScoreGauge` |
 
 If the team changes the threshold (say to 80 / 60 instead of 75 / 50) or the penalty (say `ERROR_RULE_PENALTY = 2`):
 
@@ -1974,6 +1983,7 @@ Same overrides in two locations. pnpm prefers `pnpm-workspace.yaml` when both ex
 ```
 
 ```packages/website/tsconfig.json (read separately)
+
 ```
 
 The website is a Next.js app (different lib/jsx settings). Sharing a base is fine, but the website will import its own tsconfig that overrides several keys; keep this in mind when adding strictness flags to root.
@@ -1986,27 +1996,27 @@ The README references `./assets/react-doctor-readme-logo-dark.svg` and `./assets
 
 ## 21. Minor / Stylistic (Pass 3)
 
-| Severity | File / Location | Issue |
-|---|---|---|
-| 🟡 | `packages/website/src/app/install-skill/route.ts` | The shell script uses `printf` with `\\n` and `${GREEN}/${RESET}` interpolation — fragile under macOS bash 3.2 (the default shell on macOS pre-Sonoma defaults). Use `echo` for newlines and avoid format-string interpolation of color codes. |
-| 🟡 | `packages/website/src/app/install-skill/route.ts:104-119` | Windsurf install path uses `grep -q "$MARKER" "$RULES_FILE"` to check idempotence. `grep -q` returns 0 for "found" but the script depends on `set -e` not killing it on "not found" (exit 1). The `if … then … else …` correctly handles this, but a shellcheck pass would catch fragile patterns. |
-| 🟡 | `packages/website/src/app/install-skill/route.ts:122` | `command -v agy` checks for "Antigravity" via the `agy` binary, but the project name documented elsewhere is "Antigravity" — the actual CLI binary may differ. Verify the binary name with the upstream tool. |
-| 🟡 | `packages/website/src/app/install-skill/route.ts:147-151` | The `openai.yaml` interface block is hard-coded with display_name `react-doctor` and a static description. If the script content changes (`SKILL_CONTENT`), this YAML is silently out of sync. |
-| 🟡 | `packages/website/src/app/install-skill/route.ts:156-162` | After agent-specific installs, the script unconditionally creates `.agents/$SKILL_NAME` in the current directory. But the route is hit via `curl ... | bash` — the "current directory" is wherever the user launched the curl, often `$HOME`, putting the agents dir at `$HOME/.agents/react-doctor`. Maybe intentional, but documented behavior would be clearer. |
-| 🟡 | `packages/website/src/components/terminal.tsx:289-301` | `try { localStorage.getItem(...) } catch {}` and `try { localStorage.setItem(...) } catch {}` patterns repeat — extract to a `safeLocalStorage` helper. Same pattern in `share/animated-score.tsx` and elsewhere. |
-| 🟡 | `packages/website/src/app/share/page.tsx:77-83` | `ogSearchParams.set("p", resolvedParams.p)` — the OG image route only uses `s`, `e`, `w` (and `p` for project name). `f` is set but the OG route's `getScoreColor`/render doesn't reference `f` for image visuals beyond the file count line. Probably fine, but worth aligning. |
-| 🟡 | `packages/website/src/app/share/page.tsx:54-91` | `generateMetadata` and the page component both re-run `clampScore(Number(s)…)` and the URL-search-params construction — duplicate validation. Extract a shared `parseShareSearchParams` helper. |
-| 🟡 | `packages/website/src/app/share/badge/route.ts:16` | `CACHE_MAX_AGE_SECONDS = 86400` (24h) — reasonable, but the OG image route doesn't follow the same convention (§19.11). |
-| 🟡 | `packages/website/src/app/share/badge/route.ts:32-36` | `computeScoreTextLength` charges `SLASH_WIDTH_10X` for `/` and `DIGIT_WIDTH_10X` for everything else. So if `score` is somehow `100/100`, `100/100` is 7 chars; the function correctly computes width. But for 1-digit scores `5/100`, the `5` and the three `1`,`0`,`0` digits all use the same width — fine. But `score >= 100` is impossible (clamped), so the function never sees more than 3-digit scores. Clean. |
-| 🟡 | `packages/website/src/app/share/badge/route.ts:50-71` | The SVG template is built via string concatenation with backtick template literals. User input `score` is interpolated directly into XML (`textLength="${scoreTextLength}"`). Since `score` is `Math.max(0, Math.min(100, Number(...)))`, it's clamped to a number — safe. But if any future contributor adds a string param without sanitization, XML injection becomes possible. Use a tiny escape function. |
-| 🟡 | `packages/website/src/app/leaderboard/leaderboard-entries.ts:146-148` | `RAW_ENTRIES.sort(...)` mutates the input array. If anything else imports `RAW_ENTRIES` (currently nothing), the sort order would be observed. Use `toSorted` (ES2023, Node 20+ which the project supports). |
-| 🟢 | `packages/react-doctor/CHANGELOG.md` | The version 0.0.41 / 0.0.40 entries say "fix" — entries 0.0.36 to 0.0.20 same. See §20.1. |
-| 🟢 | `packages/website/src/app/api/score/route.ts:46-60` | `isValidDiagnostic` enforces all 9 fields, but doesn't enforce that `severity` is `"error"|"warning"` strictly via discriminated narrowing — the predicate is correct but the resulting type doesn't help downstream. |
-| 🟢 | `packages/website/src/app/api/estimate-score/route.ts:7-8` | `ERROR_ESTIMATED_FIX_RATE = 0.85` and `WARNING_ESTIMATED_FIX_RATE = 0.8` — magic constants without explanation. What's the source? Worth a comment. |
-| 🟢 | `packages/website/src/app/install-skill/route.ts:1-181` | The script is 180 LOC of bash inside a 1-line export. If it grows, debugging is awful — no source maps, no line numbers, no syntax highlighting in most editors. Move to a `.sh` file imported via `fs.readFileSync` at build time. |
-| 🟢 | `packages/website/next.config.ts` | The `rewrites` block doesn't pin a status code or fall-through behavior. Default Next.js semantics work, but explicit is better. |
-| 🟢 | `tsconfig.json:7` | `declaration: true` at root + `noEmit: true` + `declarationMap: true` in package configs is mildly contradictory (`tsc --noEmit` doesn't emit anything, including declarations). The actual emit comes from vite-plus, not tsc. Worth a comment. |
-| 🟢 | `packages/react-doctor/CHANGELOG.md` | The entry for 0.0.42 is well-written (issue numbers, file paths, reasoning). The 0.0.39 entry (about IssueRecords) is also fine. The rest aren't. |
+| Severity | File / Location                                                       | Issue                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| -------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 🟡       | `packages/website/src/app/install-skill/route.ts`                     | The shell script uses `printf` with `\\n` and `${GREEN}/${RESET}` interpolation — fragile under macOS bash 3.2 (the default shell on macOS pre-Sonoma defaults). Use `echo` for newlines and avoid format-string interpolation of color codes.                                                                                                                                                                         |
+| 🟡       | `packages/website/src/app/install-skill/route.ts:104-119`             | Windsurf install path uses `grep -q "$MARKER" "$RULES_FILE"` to check idempotence. `grep -q` returns 0 for "found" but the script depends on `set -e` not killing it on "not found" (exit 1). The `if … then … else …` correctly handles this, but a shellcheck pass would catch fragile patterns.                                                                                                                     |
+| 🟡       | `packages/website/src/app/install-skill/route.ts:122`                 | `command -v agy` checks for "Antigravity" via the `agy` binary, but the project name documented elsewhere is "Antigravity" — the actual CLI binary may differ. Verify the binary name with the upstream tool.                                                                                                                                                                                                          |
+| 🟡       | `packages/website/src/app/install-skill/route.ts:147-151`             | The `openai.yaml` interface block is hard-coded with display_name `react-doctor` and a static description. If the script content changes (`SKILL_CONTENT`), this YAML is silently out of sync.                                                                                                                                                                                                                         |
+| 🟡       | `packages/website/src/app/install-skill/route.ts:156-162`             | After agent-specific installs, the script unconditionally creates `.agents/$SKILL_NAME` in the current directory. But the route is hit via `curl ...                                                                                                                                                                                                                                                                   | bash`— the "current directory" is wherever the user launched the curl, often`$HOME`, putting the agents dir at `$HOME/.agents/react-doctor`. Maybe intentional, but documented behavior would be clearer. |
+| 🟡       | `packages/website/src/components/terminal.tsx:289-301`                | `try { localStorage.getItem(...) } catch {}` and `try { localStorage.setItem(...) } catch {}` patterns repeat — extract to a `safeLocalStorage` helper. Same pattern in `share/animated-score.tsx` and elsewhere.                                                                                                                                                                                                      |
+| 🟡       | `packages/website/src/app/share/page.tsx:77-83`                       | `ogSearchParams.set("p", resolvedParams.p)` — the OG image route only uses `s`, `e`, `w` (and `p` for project name). `f` is set but the OG route's `getScoreColor`/render doesn't reference `f` for image visuals beyond the file count line. Probably fine, but worth aligning.                                                                                                                                       |
+| 🟡       | `packages/website/src/app/share/page.tsx:54-91`                       | `generateMetadata` and the page component both re-run `clampScore(Number(s)…)` and the URL-search-params construction — duplicate validation. Extract a shared `parseShareSearchParams` helper.                                                                                                                                                                                                                        |
+| 🟡       | `packages/website/src/app/share/badge/route.ts:16`                    | `CACHE_MAX_AGE_SECONDS = 86400` (24h) — reasonable, but the OG image route doesn't follow the same convention (§19.11).                                                                                                                                                                                                                                                                                                |
+| 🟡       | `packages/website/src/app/share/badge/route.ts:32-36`                 | `computeScoreTextLength` charges `SLASH_WIDTH_10X` for `/` and `DIGIT_WIDTH_10X` for everything else. So if `score` is somehow `100/100`, `100/100` is 7 chars; the function correctly computes width. But for 1-digit scores `5/100`, the `5` and the three `1`,`0`,`0` digits all use the same width — fine. But `score >= 100` is impossible (clamped), so the function never sees more than 3-digit scores. Clean. |
+| 🟡       | `packages/website/src/app/share/badge/route.ts:50-71`                 | The SVG template is built via string concatenation with backtick template literals. User input `score` is interpolated directly into XML (`textLength="${scoreTextLength}"`). Since `score` is `Math.max(0, Math.min(100, Number(...)))`, it's clamped to a number — safe. But if any future contributor adds a string param without sanitization, XML injection becomes possible. Use a tiny escape function.         |
+| 🟡       | `packages/website/src/app/leaderboard/leaderboard-entries.ts:146-148` | `RAW_ENTRIES.sort(...)` mutates the input array. If anything else imports `RAW_ENTRIES` (currently nothing), the sort order would be observed. Use `toSorted` (ES2023, Node 20+ which the project supports).                                                                                                                                                                                                           |
+| 🟢       | `packages/react-doctor/CHANGELOG.md`                                  | The version 0.0.41 / 0.0.40 entries say "fix" — entries 0.0.36 to 0.0.20 same. See §20.1.                                                                                                                                                                                                                                                                                                                              |
+| 🟢       | `packages/website/src/app/api/score/route.ts:46-60`                   | `isValidDiagnostic` enforces all 9 fields, but doesn't enforce that `severity` is `"error"                                                                                                                                                                                                                                                                                                                             | "warning"` strictly via discriminated narrowing — the predicate is correct but the resulting type doesn't help downstream.                                                                                |
+| 🟢       | `packages/website/src/app/api/estimate-score/route.ts:7-8`            | `ERROR_ESTIMATED_FIX_RATE = 0.85` and `WARNING_ESTIMATED_FIX_RATE = 0.8` — magic constants without explanation. What's the source? Worth a comment.                                                                                                                                                                                                                                                                    |
+| 🟢       | `packages/website/src/app/install-skill/route.ts:1-181`               | The script is 180 LOC of bash inside a 1-line export. If it grows, debugging is awful — no source maps, no line numbers, no syntax highlighting in most editors. Move to a `.sh` file imported via `fs.readFileSync` at build time.                                                                                                                                                                                    |
+| 🟢       | `packages/website/next.config.ts`                                     | The `rewrites` block doesn't pin a status code or fall-through behavior. Default Next.js semantics work, but explicit is better.                                                                                                                                                                                                                                                                                       |
+| 🟢       | `tsconfig.json:7`                                                     | `declaration: true` at root + `noEmit: true` + `declarationMap: true` in package configs is mildly contradictory (`tsc --noEmit` doesn't emit anything, including declarations). The actual emit comes from vite-plus, not tsc. Worth a comment.                                                                                                                                                                       |
+| 🟢       | `packages/react-doctor/CHANGELOG.md`                                  | The entry for 0.0.42 is well-written (issue numbers, file paths, reasoning). The 0.0.39 entry (about IssueRecords) is also fine. The rest aren't.                                                                                                                                                                                                                                                                      |
 
 ---
 
@@ -2288,12 +2298,12 @@ Recommended: delete `packages/website/public/install-skill.sh` and rely on the r
 
 ### 🟠 26.2 The `description` in skill content varies subtly across all three sources
 
-| Source | Description |
-|---|---|
+| Source                           | Description                                                                                                                                                                                                                                                   |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `skills/react-doctor/SKILL.md:3` | "Use when finishing a feature, fixing a bug, before committing React code, or when the user wants to improve code quality or clean up a codebase. Checks for score regression. Covers lint, dead code, accessibility, bundle size, architecture diagnostics." |
-| `route.ts:20` (SKILL_CONTENT) | "Run after making React changes to catch issues early. Use when reviewing code, finishing a feature, or fixing bugs in a React project." |
-| `public/install-skill.sh` | (same as route.ts SKILL_CONTENT) |
-| `route.ts:42` (AGENTS_CONTENT) | "Run after making React changes to catch issues early. Use when reviewing code, finishing a feature, or fixing bugs in a React project." |
+| `route.ts:20` (SKILL_CONTENT)    | "Run after making React changes to catch issues early. Use when reviewing code, finishing a feature, or fixing bugs in a React project."                                                                                                                      |
+| `public/install-skill.sh`        | (same as route.ts SKILL_CONTENT)                                                                                                                                                                                                                              |
+| `route.ts:42` (AGENTS_CONTENT)   | "Run after making React changes to catch issues early. Use when reviewing code, finishing a feature, or fixing bugs in a React project."                                                                                                                      |
 
 Three different audiences see different framings of when to invoke the skill. The canonical SKILL.md mentions accessibility and bundle size (which are real categories); the inlined version doesn't.
 
@@ -2653,21 +2663,23 @@ This pass focuses on user-facing string drift, README claims that don't match im
 
 A grep for `aidenybai|millionco` across the codebase shows the repo URL is split across two GitHub orgs:
 
-| File / Location | URL |
-|---|---|
-| `package.json:4, 6, 10` | `https://github.com/aidenybai/react-doctor` |
-| `packages/react-doctor/package.json:12, 14, 20` | `https://github.com/aidenybai/react-doctor` |
-| `packages/react-doctor/src/cli.ts:380` | `https://github.com/millionco/react-doctor` |
-| `packages/react-doctor/README.md:59` | `millionco/react-doctor@main` (Action recipe) |
-| `packages/react-doctor/README.md:277` | `https://github.com/millionco/react-doctor` (clone URL) |
+| File / Location                                    | URL                                                       |
+| -------------------------------------------------- | --------------------------------------------------------- |
+| `package.json:4, 6, 10`                            | `https://github.com/aidenybai/react-doctor`               |
+| `packages/react-doctor/package.json:12, 14, 20`    | `https://github.com/aidenybai/react-doctor`               |
+| `packages/react-doctor/src/cli.ts:380`             | `https://github.com/millionco/react-doctor`               |
+| `packages/react-doctor/README.md:59`               | `millionco/react-doctor@main` (Action recipe)             |
+| `packages/react-doctor/README.md:277`              | `https://github.com/millionco/react-doctor` (clone URL)   |
 | `packages/website/src/app/leaderboard/page.tsx:11` | `https://github.com/millionco/react-doctor/edit/main/...` |
-| `packages/website/src/components/terminal.tsx:30` | `https://github.com/millionco/react-doctor` |
+| `packages/website/src/components/terminal.tsx:30`  | `https://github.com/millionco/react-doctor`               |
 
 Six files point at `millionco/`; three point at `aidenybai/`. Either:
+
 - The repo was transferred or forked at some point and one set of URLs is stale.
 - `millionco` is the org alias for the published presence and `aidenybai` is the personal mirror.
 
 Either way, the inconsistency means:
+
 - A user clicking "Star on GitHub" from the website lands on `millionco`.
 - A user filing an issue from the npm package lands on `aidenybai`.
 - A CI workflow following the README's Action recipe (`millionco/react-doctor@main`) and a developer who follows the published `bugs.url` field lands on different repos.
@@ -2843,6 +2855,7 @@ Components in the fixture: `BounceEasingComponent`, `BounceAnimationComponent`, 
 Searching `tests/run-oxlint.test.ts` for any of these design-rule names: **zero matches**. The fixture is exercised when `await runOxlint(BASIC_REACT_DIRECTORY, true, "unknown", false)` runs, but no `describeRules` block asserts that the design rules fire on these components. A regression that disabled all 14 design rules would still produce a green test suite.
 
 Affected rules (all enabled in `oxlint-config.ts`):
+
 - `no-inline-bounce-easing`, `no-z-index-9999`, `no-inline-exhaustive-style`, `no-side-tab-border`, `no-pure-black-background`, `no-gradient-text`, `no-dark-mode-glow`, `no-justified-text`, `no-tiny-text`, `no-wide-letter-spacing`, `no-gray-on-colored-background`, `no-layout-transition-inline`, `no-disabled-zoom`, `no-outline-none`, `no-long-transition-duration`.
 
 Someone went to the trouble of writing 47 fixture components — but the wire-up to `describeRules` was never finished.
@@ -2893,6 +2906,7 @@ const DependencyLiteralComponent = () => {
 ```
 
 The test (`run-oxlint.test.ts:135-139`) asserts `rerender-dependencies` fires with severity `"error"`. But there's no test for:
+
 - Function-call deps (`[getOptions()]`) — the rule misses this case, but the fixture wouldn't tell us.
 - Spread-deps (`[...arr]`).
 - Conditional-expr deps (`[cond ? a : b]`).
@@ -2943,7 +2957,7 @@ Test (`run-oxlint.test.ts:82-89`):
   });
 ```
 
-This is a **negative** test (asserting no false positives), which is great. But there are no positive tests that the rule fires on a *truly* trivial expression — `useMemo(() => 1 + 1, [])`. Combined with §33.1, the design rules and the simple-expression rule both lack positive assertions.
+This is a **negative** test (asserting no false positives), which is great. But there are no positive tests that the rule fires on a _truly_ trivial expression — `useMemo(() => 1 + 1, [])`. Combined with §33.1, the design rules and the simple-expression rule both lack positive assertions.
 
 ### 🟡 33.7 `tanstack-start-app` and `nextjs-app` fixtures have no negative tests
 
@@ -2990,6 +3004,7 @@ I read `state-issues.tsx`, `architecture-issues.tsx`, `correctness-issues.tsx`, 
 ```
 
 When the user runs `react-doctor --staged --json`:
+
 1. Files are materialized into `snapshot.tempDirectory`.
 2. `scan(snapshot.tempDirectory, ...)` runs `discoverProject(snapshot.tempDirectory)`, which produces a `ProjectInfo` with `rootDirectory: snapshot.tempDirectory` (something like `/tmp/react-doctor-staged-AbCdEf/`).
 3. The diagnostics file paths are remapped — but `scanResult.project.rootDirectory` (and `projectName` if it falls back to `path.basename(directory)` because the staged copy of `package.json` lacks a name) is **not** remapped.
@@ -3032,6 +3047,7 @@ const config: NextConfig = {
 ```
 
 …has `hasReactCompiler === false`, which means `oxlint-config.ts:128, 136` won't add the React Compiler rules and `oxlint-config.ts:126` adds `react-perf` rules instead. The user gets:
+
 - Compiler-aware `react-hooks-js/*` rules NOT applied (false negatives).
 - `react-perf/*` rules ARE applied — which the compiler is supposed to obviate (false positives).
 
@@ -3081,7 +3097,7 @@ export const noCascadingSetState: Rule = {
 };
 ```
 
-React 18+ batches setState calls within the same event/effect tick automatically. The "cascading renders" framing is misleading — they don't actually cascade unless they use the prev-state callback that depends on each other. A more accurate rule would warn about *interdependent* setStates, not the count.
+React 18+ batches setState calls within the same event/effect tick automatically. The "cascading renders" framing is misleading — they don't actually cascade unless they use the prev-state callback that depends on each other. A more accurate rule would warn about _interdependent_ setStates, not the count.
 
 The fixture `state-issues.tsx:38-54` (`CascadingSetStateComponent`) sets three independent values on mount with `[]` deps. In React 18+ that's one render, not three.
 
@@ -3204,6 +3220,7 @@ const RAW_ENTRIES: LeaderboardEntry[] = [
 These numbers were presumably generated by running `react-doctor` on each project at some point. But the file is statically defined — no automation re-runs the scans. So if the scoring formula changes (e.g., `ERROR_RULE_PENALTY` tweak), the displayed scores diverge from what users would actually compute today. A reader trying to reproduce `tldraw: 84` by running `react-doctor` on tldraw might get a different number — confusing.
 
 Either:
+
 - Add a CI step that runs `react-doctor` against each leaderboard entry and updates the file (could be a slow scheduled job).
 - Or annotate each entry with the date and react-doctor version it was scored at.
 
@@ -3211,32 +3228,32 @@ Either:
 
 ## 36. Additional Findings (Pass 5)
 
-| Severity | File / Location | Issue |
-|---|---|---|
-| 🟠 | `packages/react-doctor/tests/fixtures/basic-react/src/security-issues.tsx` | The fixture has a single line `const apiKey = "sk_live_1234567890abcdef"`. This matches `SECRET_PATTERNS[0]` (`/^sk_live_/`) — but committed to a real-but-public open-source repo. While clearly not a real secret, secret-scanning tools (TruffleHog, GitGuardian, GitHub's secret scanner) will flag it on every PR, generating noise. Either prefix with `mockup_` or use a non-Stripe-pattern test value. |
-| 🟠 | `packages/react-doctor/src/utils/discover-project.ts:170-229` | The hand-rolled YAML parser for pnpm catalogs (`parsePnpmWorkspaceCatalogs`) silently mis-parses anchors, multi-line strings, comments inside values. A user with a `pnpm-workspace.yaml` containing `# react: ^19.2.0` (a commented-out catalog entry) — the parser would skip lines starting with `#` thanks to line 175, BUT inline comments (`react: ^19.0.0  # pinned`) would attach the comment to the value. The version then becomes `"^19.0.0  # pinned"` and downstream comparisons break. |
-| 🟠 | `packages/react-doctor/src/utils/discover-project.ts:122-123` | `countSourceFiles` only checks the local `git ls-files` output — but for monorepos using **submodules**, the `--recurse-submodules` flag is missing. Submodule files are uncounted. |
-| 🟠 | `packages/react-doctor/src/utils/run-knip.ts:63-80` | `silenced` overrides `console.log/info/warn/error` globally for the duration of the call. This races with concurrent operations. If `Promise.all` runs `silenced(knip)` and a non-silent operation logs in parallel, the non-silent operation's logs are also suppressed. The lint+deadcode promises in `scan.ts:541, 580` already run in parallel — knip's `silenced` is racing with the lint spinner. |
-| 🟡 | `packages/react-doctor/src/utils/get-staged-files.ts:14-15` | `output.split("\n").filter(Boolean)` — filenames containing newlines (legal on POSIX) are corrupted. `git diff --cached -z --name-only` (NUL-separated) would be safer. |
-| 🟡 | `packages/react-doctor/src/utils/discover-project.ts:107-119` | `countSourceFilesViaGit` and `listSourceFilesViaGit` (`resolve-lint-include-paths.ts:13-27`) both shell out to `git ls-files` and split on `\n` — same NUL-separator concern as §36 above. Filenames with embedded newlines (legal POSIX) would be split into spurious entries. |
-| 🟡 | `packages/react-doctor/src/utils/run-oxlint.ts:436-472` | `spawnOxlint` uses streaming buffers but never sets a `maxBuffer`. If oxlint produces multi-GB stderr (e.g., a mis-configured plugin), `Buffer.concat` allocates the whole thing in one go. `child_process.spawn` doesn't have an out-of-the-box max-output safeguard. |
-| 🟡 | `packages/react-doctor/src/utils/format-error-chain.ts:5` | `visitedErrors.add(currentError)` uses `Set` not `WeakSet`. The errors are kept alive for the duration of the function (which is short), so no real leak. But if the same logic is reused in long-lived code, switch to `WeakSet`. |
-| 🟡 | `packages/react-doctor/src/utils/colorize-by-score.ts:4-8` | When `score === 50` exactly, the function takes the `>=` branch (warn). When `score === 75` exactly, it takes the success branch. `tests/colorize-by-score.test.ts:23-35` confirms the boundary doesn't throw, but doesn't assert color: a regression that flipped `>=` to `>` in `colorizeByScore` (but not in `getScoreLabel`) would silently desync color from label. |
-| 🟡 | `packages/react-doctor/src/utils/highlighter.ts` | All five color functions are direct passthroughs to `picocolors`. If `picocolors` is replaced or upgraded with breaking changes, all callers are exposed. A thin wrapper that composed multiple colors (e.g., `dimRed`) doesn't exist, but the direct-passthrough means there's no one place to override the styling. Not currently a bug; a maintainability note. |
-| 🟢 | `packages/react-doctor/tests/fixtures/basic-react/tsconfig.json` | The fixture's `tsconfig.json` doesn't have `"jsx": "react-jsx"` set explicitly… wait, it does at line 3. Cancel this finding. |
-| 🟢 | `packages/react-doctor/tests/fixtures/basic-react/package.json` | `"private": true`, `dependencies: { react: ^19.0.0, react-dom: ^19.0.0 }` — but no `tsconfig` path setting and the file doesn't ship `"name"` matching the project. `discoverProject` falls back to `path.basename(directory)` for `projectName` when `name` is missing. Fine, but worth a comment in the fixture. |
-| 🟢 | `packages/react-doctor/tests/fixtures/basic-react/src/clean.tsx` | The fixture mixes "no-flag" cases with `MemberExpressionSetterCalls` (a regression test for `localStorage.setItem` not being mistaken for a state setter). A new contributor reading the file wouldn't realize the file is a regression-test cohort, not a "best practices" example. Move regression cases to a `regressions.tsx` and keep `clean.tsx` for unblemished examples. |
-| 🟢 | `packages/react-doctor/src/utils/get-diff-files.ts:13` | `branch === "HEAD"` check returns `null` for detached-HEAD state. But `--diff` from a detached HEAD is a real (rare) case — the user might want to compare against `origin/main`. Currently silently returns null and falls back to "no diff". Better: return a special value and let the caller decide. |
-| 🟢 | `packages/react-doctor/src/utils/get-staged-files.ts:18-26` | `readStagedContent` returns `result.stdout.toString()` (default UTF-8). For staged binary files (PNG, PDF) accidentally tracked, this corrupts. Per §27.7 (Pass 4) — flagged but worth re-noting because the `SOURCE_FILE_PATTERN` filter is the only line of defense, and it filters on extension, not content type. |
-| 🟢 | `packages/react-doctor/src/utils/handle-error.ts:15-17` | Prints generic "Something went wrong" before the actual error. Programmatic users of the CLI parsing stderr would see the boilerplate first; a more actionable error message would let `grep -E '^Error:'` work. |
-| 🟢 | `packages/react-doctor/src/utils/handle-error.ts:21-22` | `process.exit(1)` is unconditional when `shouldExit: true`. Inside an async pipeline (e.g., `await runInstallSkill`), this aborts cleanup. The `cli.ts:81` `exitGracefully` handler sets `process.exitCode = 0` for SIGINT but `handleError` slams `process.exit(1)`. If a SIGINT lands during `handleError`, behavior is undefined. |
-| 🟢 | `packages/react-doctor/src/utils/format-error-chain.ts:13-14` | `formatErrorMessage` uses `error.message \|\| error.name` — for an Error whose `message` is `""` AND `name` is `"Error"` (the default), this returns `"Error"`. Confusing. |
-| 🟢 | `packages/react-doctor/src/utils/install-skill-for-agent.ts:16-19` | `cpSync(skillSourceDirectory, installedSkillDirectory, { recursive: true })` — preserves source mtimes/permissions. If the bundled skill has `0644`, the user's installed copy is read-only-by-group, which is fine. But if the bundle ever ships an executable script, `cpSync` would not propagate the executable bit unless the source has it. Edge case. |
-| 🟢 | `packages/react-doctor/src/utils/check-reduced-motion.ts:43` | Uses `git grep` which isn't available in repos without a `.git` directory. Falls into the `catch` with a generic "no reduced-motion handling" diagnostic — false positive. |
-| 🟢 | `packages/react-doctor/src/utils/jsx-include-paths.ts:3-6` | The function is named `computeJsxIncludePaths` but actually filters to JSX/TSX files; it doesn't *compute* anything new. `filterToJsxFiles` would read more naturally. |
-| 🟢 | `packages/react-doctor/src/scan.ts:179-205` | `buildScoreBarSegments` uses `█` and `░`. Fine for most terminals but renders as box-drawing characters in older Windows console (cmd.exe). If react-doctor is run on Windows without a UTF-8 codepage, the bar is gibberish. |
-| 🟢 | `packages/react-doctor/src/utils/group-by.ts` | `groupBy` doesn't preserve insertion order if the same key appears multiple times. Wait, it does — `Map` preserves insertion order, and we always `push` to existing arrays. Fine. |
-| 🟢 | `packages/react-doctor/src/utils/install-skill-for-agent.ts:13-15` | `if (alreadyInstalledDirectories?.has(installedSkillDirectory)) { return installedSkillDirectory; }` — short-circuits cleanup. But the test `tests/install-skill-for-agent.test.ts:77-98` confirms this is intentional (shared `.agents/skills` for codex+cursor). Leaves a subtle bug: after the first install copies to the shared dir, the second agent's "install" doesn't verify the dir's contents are correct — relies on the first to have completed successfully. |
+| Severity | File / Location                                                            | Issue                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| -------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 🟠       | `packages/react-doctor/tests/fixtures/basic-react/src/security-issues.tsx` | The fixture has a single line `const apiKey = "sk_live_1234567890abcdef"`. This matches `SECRET_PATTERNS[0]` (`/^sk_live_/`) — but committed to a real-but-public open-source repo. While clearly not a real secret, secret-scanning tools (TruffleHog, GitGuardian, GitHub's secret scanner) will flag it on every PR, generating noise. Either prefix with `mockup_` or use a non-Stripe-pattern test value.                                                                                       |
+| 🟠       | `packages/react-doctor/src/utils/discover-project.ts:170-229`              | The hand-rolled YAML parser for pnpm catalogs (`parsePnpmWorkspaceCatalogs`) silently mis-parses anchors, multi-line strings, comments inside values. A user with a `pnpm-workspace.yaml` containing `# react: ^19.2.0` (a commented-out catalog entry) — the parser would skip lines starting with `#` thanks to line 175, BUT inline comments (`react: ^19.0.0  # pinned`) would attach the comment to the value. The version then becomes `"^19.0.0  # pinned"` and downstream comparisons break. |
+| 🟠       | `packages/react-doctor/src/utils/discover-project.ts:122-123`              | `countSourceFiles` only checks the local `git ls-files` output — but for monorepos using **submodules**, the `--recurse-submodules` flag is missing. Submodule files are uncounted.                                                                                                                                                                                                                                                                                                                  |
+| 🟠       | `packages/react-doctor/src/utils/run-knip.ts:63-80`                        | `silenced` overrides `console.log/info/warn/error` globally for the duration of the call. This races with concurrent operations. If `Promise.all` runs `silenced(knip)` and a non-silent operation logs in parallel, the non-silent operation's logs are also suppressed. The lint+deadcode promises in `scan.ts:541, 580` already run in parallel — knip's `silenced` is racing with the lint spinner.                                                                                              |
+| 🟡       | `packages/react-doctor/src/utils/get-staged-files.ts:14-15`                | `output.split("\n").filter(Boolean)` — filenames containing newlines (legal on POSIX) are corrupted. `git diff --cached -z --name-only` (NUL-separated) would be safer.                                                                                                                                                                                                                                                                                                                              |
+| 🟡       | `packages/react-doctor/src/utils/discover-project.ts:107-119`              | `countSourceFilesViaGit` and `listSourceFilesViaGit` (`resolve-lint-include-paths.ts:13-27`) both shell out to `git ls-files` and split on `\n` — same NUL-separator concern as §36 above. Filenames with embedded newlines (legal POSIX) would be split into spurious entries.                                                                                                                                                                                                                      |
+| 🟡       | `packages/react-doctor/src/utils/run-oxlint.ts:436-472`                    | `spawnOxlint` uses streaming buffers but never sets a `maxBuffer`. If oxlint produces multi-GB stderr (e.g., a mis-configured plugin), `Buffer.concat` allocates the whole thing in one go. `child_process.spawn` doesn't have an out-of-the-box max-output safeguard.                                                                                                                                                                                                                               |
+| 🟡       | `packages/react-doctor/src/utils/format-error-chain.ts:5`                  | `visitedErrors.add(currentError)` uses `Set` not `WeakSet`. The errors are kept alive for the duration of the function (which is short), so no real leak. But if the same logic is reused in long-lived code, switch to `WeakSet`.                                                                                                                                                                                                                                                                   |
+| 🟡       | `packages/react-doctor/src/utils/colorize-by-score.ts:4-8`                 | When `score === 50` exactly, the function takes the `>=` branch (warn). When `score === 75` exactly, it takes the success branch. `tests/colorize-by-score.test.ts:23-35` confirms the boundary doesn't throw, but doesn't assert color: a regression that flipped `>=` to `>` in `colorizeByScore` (but not in `getScoreLabel`) would silently desync color from label.                                                                                                                             |
+| 🟡       | `packages/react-doctor/src/utils/highlighter.ts`                           | All five color functions are direct passthroughs to `picocolors`. If `picocolors` is replaced or upgraded with breaking changes, all callers are exposed. A thin wrapper that composed multiple colors (e.g., `dimRed`) doesn't exist, but the direct-passthrough means there's no one place to override the styling. Not currently a bug; a maintainability note.                                                                                                                                   |
+| 🟢       | `packages/react-doctor/tests/fixtures/basic-react/tsconfig.json`           | The fixture's `tsconfig.json` doesn't have `"jsx": "react-jsx"` set explicitly… wait, it does at line 3. Cancel this finding.                                                                                                                                                                                                                                                                                                                                                                        |
+| 🟢       | `packages/react-doctor/tests/fixtures/basic-react/package.json`            | `"private": true`, `dependencies: { react: ^19.0.0, react-dom: ^19.0.0 }` — but no `tsconfig` path setting and the file doesn't ship `"name"` matching the project. `discoverProject` falls back to `path.basename(directory)` for `projectName` when `name` is missing. Fine, but worth a comment in the fixture.                                                                                                                                                                                   |
+| 🟢       | `packages/react-doctor/tests/fixtures/basic-react/src/clean.tsx`           | The fixture mixes "no-flag" cases with `MemberExpressionSetterCalls` (a regression test for `localStorage.setItem` not being mistaken for a state setter). A new contributor reading the file wouldn't realize the file is a regression-test cohort, not a "best practices" example. Move regression cases to a `regressions.tsx` and keep `clean.tsx` for unblemished examples.                                                                                                                     |
+| 🟢       | `packages/react-doctor/src/utils/get-diff-files.ts:13`                     | `branch === "HEAD"` check returns `null` for detached-HEAD state. But `--diff` from a detached HEAD is a real (rare) case — the user might want to compare against `origin/main`. Currently silently returns null and falls back to "no diff". Better: return a special value and let the caller decide.                                                                                                                                                                                             |
+| 🟢       | `packages/react-doctor/src/utils/get-staged-files.ts:18-26`                | `readStagedContent` returns `result.stdout.toString()` (default UTF-8). For staged binary files (PNG, PDF) accidentally tracked, this corrupts. Per §27.7 (Pass 4) — flagged but worth re-noting because the `SOURCE_FILE_PATTERN` filter is the only line of defense, and it filters on extension, not content type.                                                                                                                                                                                |
+| 🟢       | `packages/react-doctor/src/utils/handle-error.ts:15-17`                    | Prints generic "Something went wrong" before the actual error. Programmatic users of the CLI parsing stderr would see the boilerplate first; a more actionable error message would let `grep -E '^Error:'` work.                                                                                                                                                                                                                                                                                     |
+| 🟢       | `packages/react-doctor/src/utils/handle-error.ts:21-22`                    | `process.exit(1)` is unconditional when `shouldExit: true`. Inside an async pipeline (e.g., `await runInstallSkill`), this aborts cleanup. The `cli.ts:81` `exitGracefully` handler sets `process.exitCode = 0` for SIGINT but `handleError` slams `process.exit(1)`. If a SIGINT lands during `handleError`, behavior is undefined.                                                                                                                                                                 |
+| 🟢       | `packages/react-doctor/src/utils/format-error-chain.ts:13-14`              | `formatErrorMessage` uses `error.message \|\| error.name` — for an Error whose `message` is `""` AND `name` is `"Error"` (the default), this returns `"Error"`. Confusing.                                                                                                                                                                                                                                                                                                                           |
+| 🟢       | `packages/react-doctor/src/utils/install-skill-for-agent.ts:16-19`         | `cpSync(skillSourceDirectory, installedSkillDirectory, { recursive: true })` — preserves source mtimes/permissions. If the bundled skill has `0644`, the user's installed copy is read-only-by-group, which is fine. But if the bundle ever ships an executable script, `cpSync` would not propagate the executable bit unless the source has it. Edge case.                                                                                                                                         |
+| 🟢       | `packages/react-doctor/src/utils/check-reduced-motion.ts:43`               | Uses `git grep` which isn't available in repos without a `.git` directory. Falls into the `catch` with a generic "no reduced-motion handling" diagnostic — false positive.                                                                                                                                                                                                                                                                                                                           |
+| 🟢       | `packages/react-doctor/src/utils/jsx-include-paths.ts:3-6`                 | The function is named `computeJsxIncludePaths` but actually filters to JSX/TSX files; it doesn't _compute_ anything new. `filterToJsxFiles` would read more naturally.                                                                                                                                                                                                                                                                                                                               |
+| 🟢       | `packages/react-doctor/src/scan.ts:179-205`                                | `buildScoreBarSegments` uses `█` and `░`. Fine for most terminals but renders as box-drawing characters in older Windows console (cmd.exe). If react-doctor is run on Windows without a UTF-8 codepage, the bar is gibberish.                                                                                                                                                                                                                                                                        |
+| 🟢       | `packages/react-doctor/src/utils/group-by.ts`                              | `groupBy` doesn't preserve insertion order if the same key appears multiple times. Wait, it does — `Map` preserves insertion order, and we always `push` to existing arrays. Fine.                                                                                                                                                                                                                                                                                                                   |
+| 🟢       | `packages/react-doctor/src/utils/install-skill-for-agent.ts:13-15`         | `if (alreadyInstalledDirectories?.has(installedSkillDirectory)) { return installedSkillDirectory; }` — short-circuits cleanup. But the test `tests/install-skill-for-agent.test.ts:77-98` confirms this is intentional (shared `.agents/skills` for codex+cursor). Leaves a subtle bug: after the first install copies to the shared dir, the second agent's "install" doesn't verify the dir's contents are correct — relies on the first to have completed successfully.                           |
 
 ---
 
@@ -3271,7 +3288,7 @@ These are the highest-value follow-ups for a maintainer's next pass on top of Pa
 
 # Sixth Pass — Published Artifact Surface, Action Shell Injection, GitHub Comment Markdown Escape, Off-By-One Constants
 
-This pass focuses on the *built* `dist/` directory, GitHub Action shell handling, additional fixtures, and cross-cutting issues that only surface after looking at what users actually receive.
+This pass focuses on the _built_ `dist/` directory, GitHub Action shell handling, additional fixtures, and cross-cutting issues that only surface after looking at what users actually receive.
 
 ## 39. Published Artifact Bugs (`dist/`)
 
@@ -3291,6 +3308,7 @@ The browser bundle exports **6** symbols (`calculateScore, calculateScoreLocally
 The worker bundle exports only **5** (no `diagnoseCore`).
 
 Same for the type declarations:
+
 - `dist/browser.d.ts` re-exports `_ as ScoreResult, c as diagnoseCore, …` (16 names).
 - `dist/worker.d.ts` re-exports 13 names — **missing `diagnoseCore` AND `ScoreResult`**.
 
@@ -3354,6 +3372,7 @@ Plus `dist/react-doctor-plugin.js` is 128KB. Total CLI footprint ≈ 252KB just 
 ```
 
 `packages/react-doctor/package.json:26-28` `"files": ["dist"]` ships everything in `dist/`, including source maps. Source maps:
+
 - Roughly **double** the npm package size.
 - Include the original TypeScript source (any contents copied into the source maps).
 - Are useful for downstream debugging but expose internal file structure (e.g. `src/utils/run-knip.ts:118-130`'s retry loop).
@@ -3469,8 +3488,8 @@ no-fetch-in-effect: Use \`useQuery()\` from @tanstack/react-query
 
 …uses single backticks, which are safe inside a triple-backtick fence. But if any rule message ever contains triple backticks (some plugin authors do this; React Doctor's `RULE_HELP_MAP` has them in script-loading help: `"strategy="afterInteractive""` — wait that's regular quotes; let me check…). Even without triple-backticks today, a future rule contributor could break out of the fence via:
 
-- `` ```js ``  in help text  
-- A tools whose names contain backticks  
+- ` ```js ` in help text
+- A tools whose names contain backticks
 - Filenames with backticks (legal in Linux)
 
 A safer approach: use the four-backtick fence (` ```` `) and trust users not to have four-backtick content, or HTML-escape the output and use `<pre>`. Today's content is fine; the contract isn't.
@@ -3636,6 +3655,7 @@ This is the right behavior, but there's no logging that explains it. Add `logger
 ### 🟡 43.5 `selectProjects` discovery + `getDiffInfo` per project = O(N) git subprocess churn
 
 For `N` workspace projects:
+
 - `discoverReactSubprojects` or `listWorkspacePackages` runs `fs.readdirSync` recursively.
 - For each project, `discoverProject` reads `package.json` and probes for tsconfig, vite.config, etc.
 - For each project, `getDiffInfo` runs 3-4 git subprocesses.
@@ -3699,6 +3719,7 @@ $ wc -l client-issues.tsx
 ```
 
 Only one component (`ScrollListenerComponent`). The `clientPassiveEventListeners` rule is asserted (run-oxlint.test.ts:230-233). Good. But the fixture only tests the **positive** case (missing `{ passive: true }`). There's no:
+
 - Positive case with `{ passive: false }` (still missing — should fire).
 - Negative case with `{ passive: true }` (should not fire).
 - Negative case with `{ once: true, passive: true }` (should not fire).
@@ -3784,35 +3805,35 @@ The fixture uses class-expression syntax assigned to `const`. `queryStableQueryC
 
 ## 45. Additional Findings (Pass 6)
 
-| Severity | File / Location | Issue |
-|---|---|---|
-| 🟠 | `packages/react-doctor/src/utils/proxy-fetch.ts:19-27` | Module-level `let isProxyUrlResolved` and `let resolvedProxyUrl` cache the proxy URL forever after first read. `vi.stubEnv("HTTPS_PROXY", "http://newproxy")` between tests doesn't invalidate the cache. The `proxyFetch` function continues using the first-seen proxy, even if the env changed. Replace with a getter that re-reads each call (the env access is fast). |
-| 🟠 | `packages/react-doctor/src/utils/proxy-fetch.ts:34` | `try { … } catch { return null; }` — silently swallows undici load errors. If `undici` is somehow unavailable (custom Node build, polyfill mode), users get no feedback that their proxy isn't being honored. Should `console.warn` once. |
-| 🟠 | `packages/react-doctor/src/utils/proxy-fetch.ts:32` | `await import("undici")` runs **per call**. The Node module cache makes this ~free after the first call, but the dynamic `await` introduces a microtask hop on every call. For high-throughput callers, sync-import once at module load. |
-| 🟠 | `packages/react-doctor/src/utils/run-oxlint.ts:436-472` | `spawnOxlint` accumulates stdout/stderr in `Buffer[]` arrays without bound. If oxlint crashes after producing a multi-GB error stream, the array is fully realized into memory. Cap with a guard like `if (stdoutBuffers.reduce((s, b) => s + b.length, 0) > MAX_OUTPUT_BYTES) child.kill()`. |
-| 🟠 | `packages/react-doctor/src/utils/get-diff-files.ts:67-71` | `getUncommittedChangedFiles` runs `git diff --name-only --diff-filter=ACMR --relative HEAD`. This excludes deletions (`D`) — so a user who deleted a file in their working tree doesn't see it as "changed". Intentional (you can't lint a deleted file), but undocumented. The `--diff-filter=ACMR` means Added, Copied, Modified, Renamed — explicit list. Worth a comment. |
-| 🟠 | `packages/react-doctor/src/utils/get-staged-files.ts:7-15` | Same `--diff-filter=ACMR` filter on staged files. Pre-commit hooks running react-doctor on staged files won't see deletion-only PRs. |
-| 🟡 | `packages/react-doctor/dist/cli.js:13` | `execSync` is imported despite the recommendation to migrate to `spawnSync` (per §24, Pass 4). The published binary contains the command-injection-prone calls until §24.1's fix lands. |
-| 🟡 | `packages/react-doctor/dist/cli.js.map`, `dist/index.js.map`, `dist/react-doctor-plugin.js.map` | Source maps ship to npm and roughly double the package size. Per §39.6. |
-| 🟡 | `packages/react-doctor/src/scan.ts:484` | `const startTime = performance.now();` is captured before `loadConfig` runs. So the user-config-loading time is included in `elapsedMilliseconds`. For consistency with `index.ts:diagnose`, where `globalThis.performance.now()` is captured in `diagnoseCore` after some setup, the timing semantics differ slightly. Hard to notice but worth aligning. |
-| 🟡 | `packages/react-doctor/src/scan.ts:619` | `if (options.scoreOnly) { … }` — score-only mode skips the diagnostic-printing path BUT still calls `calculateScore` (line 612) and may hit the network. A user running `--score --offline` is fine, but `--score` (default) blocks for the API call. For a "just the score" user, this is unexpected latency. Worth a comment explaining the intent. |
-| 🟡 | `packages/react-doctor/src/scan.ts:611-613` | `scoreResult` is computed regardless of `scoreOnly`, `silent`, or `--json` mode. For a `--json --score` invocation (where the JSON report has score embedded), this is fine. But for a `--json` non-score run, the score is computed but the consumer might not care. Skip if `report.summary.score` isn't requested. |
-| 🟡 | `packages/react-doctor/src/utils/discover-project.ts:594-596` | `countSourceFiles(directory)` is called for every project on every invocation. For a 5000-file project, this runs `git ls-files` once and parses the output. For a monorepo with 50 projects, 50 invocations. Memoize per directory. |
-| 🟡 | `packages/react-doctor/src/utils/run-knip.ts:101-130` | `runKnipWithOptions` calls `silenced(() => createOptions(...))` and `silenced(() => main(options))` separately. The second call doesn't re-`silenced`-wrap; the first wrap saves the originals, restores on exit, then the second wrap saves THE NOW-RESTORED originals (correct), and so on. But if both calls overlap (they don't, sequentially), the override pattern would corrupt. For now, fine. |
-| 🟡 | `packages/react-doctor/src/scan.ts:486` | `const userConfig = inputOptions.configOverride !== undefined ? inputOptions.configOverride : loadConfig(directory);` — checks `!== undefined`, but `null` is a valid override (= no config). The triple-state (`undefined`, `null`, `Config`) is fragile. A typo using `??` instead of `!==` would change behavior. |
-| 🟡 | `packages/react-doctor/src/oxlint-config.ts:127-132` | `jsPlugins: [...(hasReactCompiler && !customRulesOnly ? [{ name: "react-hooks-js", specifier: esmRequire.resolve("eslint-plugin-react-hooks") }] : []), pluginPath]` — `esmRequire.resolve` is called even when the conditional excludes the entry, because of how the spread evaluates. Wait — it's inside the ternary, so it's only evaluated when the condition is true. But: if `eslint-plugin-react-hooks` is missing (not installed in a non-React-Compiler project), the resolve throws — even though the project doesn't need it. Edge case. |
-| 🟡 | `packages/react-doctor/src/utils/run-oxlint.ts:521` | `path.join(os.tmpdir(), `react-doctor-oxlintrc-${process.pid}.json`)` — predictable filename. A symlink attack on a multi-user system could replace the file between `writeFileSync` and oxlint reading it. Use `fs.openSync(filePath, 'wx', 0o600)` for atomic create-or-fail. |
-| 🟡 | `packages/react-doctor/src/utils/check-reduced-motion.ts:15-25` | `MISSING_REDUCED_MOTION_DIAGNOSTIC` is a module-level constant of type `Diagnostic`. Mutating it (no callers do, but a future contributor might) corrupts every subsequent invocation. `Object.freeze`. |
-| 🟡 | `packages/react-doctor/src/utils/spinner.ts:46-50` | `if (!sharedInstance) { sharedInstance = ora({ text }).start(); } else { sharedInstance.text = text; }` — when the shared instance already exists, `start()` is never called for the new request. ora's `text` setter just changes what's rendered. So the previous spinner's animation continues, but the displayed text is the second spinner's. If the second one finishes via `succeed`, the spinner line shows the success text. This racing-text behavior is hard to debug. |
-| 🟢 | `packages/react-doctor/src/utils/format-error-chain.ts:5-11` | `visitedErrors.add(currentError)` uses `Set`. Errors are short-lived, so no leak. But for `walkAst` (helpers.ts:12-28), the same circular-reference protection isn't there — see §28.7 (Pass 4). |
-| 🟢 | `packages/react-doctor/src/scan.ts:489-501` | The `wasLoggerSilent` capture happens ONCE before any `setLoggerSilent(true)` call. If the function is re-entered (it isn't today, but `scan()` could be called twice in parallel), the second invocation captures the now-silenced state and the restore logic is wrong. Per §1.9. |
-| 🟢 | `packages/react-doctor/src/utils/spinner.ts:13-16` | `noopHandle = { succeed: () => {}, fail: () => {} }` is a single shared object. Multiple callers receive the same reference. If anyone ever mutates it (e.g., adds a `.text` setter for compatibility with ora's interface), all callers see the mutation. `Object.freeze`. |
-| 🟢 | `packages/react-doctor/src/utils/colorize-by-score.ts:4-8` | Boundary at `>= 75` and `>= 50` — with thresholds in constants. But `getScoreLabel` (`calculate-score-locally.ts:11-14`) uses the same thresholds. They're duplicated as constants imported from constants.ts. If someone changes one threshold without the other, color and label desync. Already noted in §18 — confirmed in pass 6. |
-| 🟢 | `packages/react-doctor/src/utils/handle-error.ts:13-15` | The boilerplate "Something went wrong. Please check the error below for more details. If the problem persists, please open an issue on GitHub." — for users who already have the error and just want the technical message, this is noise. CLI output could distinguish "expected error" from "unexpected error" — most user errors (no React, no package.json) aren't `react-doctor` bugs. |
-| 🟢 | `packages/react-doctor/src/utils/handle-error.ts:13-15` | Doesn't include the GitHub URL ("open an issue on GitHub") — but per §31.1, the canonical URL is unclear (`aidenybai` vs `millionco`). A user trying to follow the advice can't find the right repo. |
-| 🟢 | `packages/react-doctor/src/utils/get-diff-files.ts:19-40` | `detectDefaultBranch` first tries `git symbolic-ref refs/remotes/origin/HEAD`, then falls back to `main`/`master` via the constant `DEFAULT_BRANCH_CANDIDATES`. For repos without a remote (local-only), the symbolic-ref fails, and the fallback works. But for repos with a remote whose HEAD ref doesn't exist (`origin/HEAD` not set), the symbolic-ref also fails. Run `git remote set-head origin --auto` once; the rule doesn't surface this fix. |
-| 🟢 | `packages/react-doctor/src/scan.ts:62-66` | `sortBySeverity` sorts based on first diagnostic's severity. If a rule has both `error` and `warning` severities (impossible in oxlint config but possible if rules are split), the "first" picks one arbitrarily. Edge case. |
-| 🟢 | `packages/react-doctor/src/utils/select-projects.ts:80-86` | `prompts({ type: "multiselect", … min: 1 })` — the `min: 1` enforces at least one selection, but if the user hits Ctrl-C, the `onCancel` handler in `prompts.ts` runs `process.exit(0)`, which is fine. But the message says "Run `npx react-doctor@latest --fix` to fix issues" — same `--fix`-doesn't-exist bug from §1.2 (Pass 1). Still unfixed. |
+| Severity | File / Location                                                                                 | Issue                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| -------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 🟠       | `packages/react-doctor/src/utils/proxy-fetch.ts:19-27`                                          | Module-level `let isProxyUrlResolved` and `let resolvedProxyUrl` cache the proxy URL forever after first read. `vi.stubEnv("HTTPS_PROXY", "http://newproxy")` between tests doesn't invalidate the cache. The `proxyFetch` function continues using the first-seen proxy, even if the env changed. Replace with a getter that re-reads each call (the env access is fast).                                                                                                                                                                           |
+| 🟠       | `packages/react-doctor/src/utils/proxy-fetch.ts:34`                                             | `try { … } catch { return null; }` — silently swallows undici load errors. If `undici` is somehow unavailable (custom Node build, polyfill mode), users get no feedback that their proxy isn't being honored. Should `console.warn` once.                                                                                                                                                                                                                                                                                                            |
+| 🟠       | `packages/react-doctor/src/utils/proxy-fetch.ts:32`                                             | `await import("undici")` runs **per call**. The Node module cache makes this ~free after the first call, but the dynamic `await` introduces a microtask hop on every call. For high-throughput callers, sync-import once at module load.                                                                                                                                                                                                                                                                                                             |
+| 🟠       | `packages/react-doctor/src/utils/run-oxlint.ts:436-472`                                         | `spawnOxlint` accumulates stdout/stderr in `Buffer[]` arrays without bound. If oxlint crashes after producing a multi-GB error stream, the array is fully realized into memory. Cap with a guard like `if (stdoutBuffers.reduce((s, b) => s + b.length, 0) > MAX_OUTPUT_BYTES) child.kill()`.                                                                                                                                                                                                                                                        |
+| 🟠       | `packages/react-doctor/src/utils/get-diff-files.ts:67-71`                                       | `getUncommittedChangedFiles` runs `git diff --name-only --diff-filter=ACMR --relative HEAD`. This excludes deletions (`D`) — so a user who deleted a file in their working tree doesn't see it as "changed". Intentional (you can't lint a deleted file), but undocumented. The `--diff-filter=ACMR` means Added, Copied, Modified, Renamed — explicit list. Worth a comment.                                                                                                                                                                        |
+| 🟠       | `packages/react-doctor/src/utils/get-staged-files.ts:7-15`                                      | Same `--diff-filter=ACMR` filter on staged files. Pre-commit hooks running react-doctor on staged files won't see deletion-only PRs.                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| 🟡       | `packages/react-doctor/dist/cli.js:13`                                                          | `execSync` is imported despite the recommendation to migrate to `spawnSync` (per §24, Pass 4). The published binary contains the command-injection-prone calls until §24.1's fix lands.                                                                                                                                                                                                                                                                                                                                                              |
+| 🟡       | `packages/react-doctor/dist/cli.js.map`, `dist/index.js.map`, `dist/react-doctor-plugin.js.map` | Source maps ship to npm and roughly double the package size. Per §39.6.                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| 🟡       | `packages/react-doctor/src/scan.ts:484`                                                         | `const startTime = performance.now();` is captured before `loadConfig` runs. So the user-config-loading time is included in `elapsedMilliseconds`. For consistency with `index.ts:diagnose`, where `globalThis.performance.now()` is captured in `diagnoseCore` after some setup, the timing semantics differ slightly. Hard to notice but worth aligning.                                                                                                                                                                                           |
+| 🟡       | `packages/react-doctor/src/scan.ts:619`                                                         | `if (options.scoreOnly) { … }` — score-only mode skips the diagnostic-printing path BUT still calls `calculateScore` (line 612) and may hit the network. A user running `--score --offline` is fine, but `--score` (default) blocks for the API call. For a "just the score" user, this is unexpected latency. Worth a comment explaining the intent.                                                                                                                                                                                                |
+| 🟡       | `packages/react-doctor/src/scan.ts:611-613`                                                     | `scoreResult` is computed regardless of `scoreOnly`, `silent`, or `--json` mode. For a `--json --score` invocation (where the JSON report has score embedded), this is fine. But for a `--json` non-score run, the score is computed but the consumer might not care. Skip if `report.summary.score` isn't requested.                                                                                                                                                                                                                                |
+| 🟡       | `packages/react-doctor/src/utils/discover-project.ts:594-596`                                   | `countSourceFiles(directory)` is called for every project on every invocation. For a 5000-file project, this runs `git ls-files` once and parses the output. For a monorepo with 50 projects, 50 invocations. Memoize per directory.                                                                                                                                                                                                                                                                                                                 |
+| 🟡       | `packages/react-doctor/src/utils/run-knip.ts:101-130`                                           | `runKnipWithOptions` calls `silenced(() => createOptions(...))` and `silenced(() => main(options))` separately. The second call doesn't re-`silenced`-wrap; the first wrap saves the originals, restores on exit, then the second wrap saves THE NOW-RESTORED originals (correct), and so on. But if both calls overlap (they don't, sequentially), the override pattern would corrupt. For now, fine.                                                                                                                                               |
+| 🟡       | `packages/react-doctor/src/scan.ts:486`                                                         | `const userConfig = inputOptions.configOverride !== undefined ? inputOptions.configOverride : loadConfig(directory);` — checks `!== undefined`, but `null` is a valid override (= no config). The triple-state (`undefined`, `null`, `Config`) is fragile. A typo using `??` instead of `!==` would change behavior.                                                                                                                                                                                                                                 |
+| 🟡       | `packages/react-doctor/src/oxlint-config.ts:127-132`                                            | `jsPlugins: [...(hasReactCompiler && !customRulesOnly ? [{ name: "react-hooks-js", specifier: esmRequire.resolve("eslint-plugin-react-hooks") }] : []), pluginPath]` — `esmRequire.resolve` is called even when the conditional excludes the entry, because of how the spread evaluates. Wait — it's inside the ternary, so it's only evaluated when the condition is true. But: if `eslint-plugin-react-hooks` is missing (not installed in a non-React-Compiler project), the resolve throws — even though the project doesn't need it. Edge case. |
+| 🟡       | `packages/react-doctor/src/utils/run-oxlint.ts:521`                                             | `path.join(os.tmpdir(), `react-doctor-oxlintrc-${process.pid}.json`)` — predictable filename. A symlink attack on a multi-user system could replace the file between `writeFileSync` and oxlint reading it. Use `fs.openSync(filePath, 'wx', 0o600)` for atomic create-or-fail.                                                                                                                                                                                                                                                                      |
+| 🟡       | `packages/react-doctor/src/utils/check-reduced-motion.ts:15-25`                                 | `MISSING_REDUCED_MOTION_DIAGNOSTIC` is a module-level constant of type `Diagnostic`. Mutating it (no callers do, but a future contributor might) corrupts every subsequent invocation. `Object.freeze`.                                                                                                                                                                                                                                                                                                                                              |
+| 🟡       | `packages/react-doctor/src/utils/spinner.ts:46-50`                                              | `if (!sharedInstance) { sharedInstance = ora({ text }).start(); } else { sharedInstance.text = text; }` — when the shared instance already exists, `start()` is never called for the new request. ora's `text` setter just changes what's rendered. So the previous spinner's animation continues, but the displayed text is the second spinner's. If the second one finishes via `succeed`, the spinner line shows the success text. This racing-text behavior is hard to debug.                                                                    |
+| 🟢       | `packages/react-doctor/src/utils/format-error-chain.ts:5-11`                                    | `visitedErrors.add(currentError)` uses `Set`. Errors are short-lived, so no leak. But for `walkAst` (helpers.ts:12-28), the same circular-reference protection isn't there — see §28.7 (Pass 4).                                                                                                                                                                                                                                                                                                                                                     |
+| 🟢       | `packages/react-doctor/src/scan.ts:489-501`                                                     | The `wasLoggerSilent` capture happens ONCE before any `setLoggerSilent(true)` call. If the function is re-entered (it isn't today, but `scan()` could be called twice in parallel), the second invocation captures the now-silenced state and the restore logic is wrong. Per §1.9.                                                                                                                                                                                                                                                                  |
+| 🟢       | `packages/react-doctor/src/utils/spinner.ts:13-16`                                              | `noopHandle = { succeed: () => {}, fail: () => {} }` is a single shared object. Multiple callers receive the same reference. If anyone ever mutates it (e.g., adds a `.text` setter for compatibility with ora's interface), all callers see the mutation. `Object.freeze`.                                                                                                                                                                                                                                                                          |
+| 🟢       | `packages/react-doctor/src/utils/colorize-by-score.ts:4-8`                                      | Boundary at `>= 75` and `>= 50` — with thresholds in constants. But `getScoreLabel` (`calculate-score-locally.ts:11-14`) uses the same thresholds. They're duplicated as constants imported from constants.ts. If someone changes one threshold without the other, color and label desync. Already noted in §18 — confirmed in pass 6.                                                                                                                                                                                                               |
+| 🟢       | `packages/react-doctor/src/utils/handle-error.ts:13-15`                                         | The boilerplate "Something went wrong. Please check the error below for more details. If the problem persists, please open an issue on GitHub." — for users who already have the error and just want the technical message, this is noise. CLI output could distinguish "expected error" from "unexpected error" — most user errors (no React, no package.json) aren't `react-doctor` bugs.                                                                                                                                                          |
+| 🟢       | `packages/react-doctor/src/utils/handle-error.ts:13-15`                                         | Doesn't include the GitHub URL ("open an issue on GitHub") — but per §31.1, the canonical URL is unclear (`aidenybai` vs `millionco`). A user trying to follow the advice can't find the right repo.                                                                                                                                                                                                                                                                                                                                                 |
+| 🟢       | `packages/react-doctor/src/utils/get-diff-files.ts:19-40`                                       | `detectDefaultBranch` first tries `git symbolic-ref refs/remotes/origin/HEAD`, then falls back to `main`/`master` via the constant `DEFAULT_BRANCH_CANDIDATES`. For repos without a remote (local-only), the symbolic-ref fails, and the fallback works. But for repos with a remote whose HEAD ref doesn't exist (`origin/HEAD` not set), the symbolic-ref also fails. Run `git remote set-head origin --auto` once; the rule doesn't surface this fix.                                                                                             |
+| 🟢       | `packages/react-doctor/src/scan.ts:62-66`                                                       | `sortBySeverity` sorts based on first diagnostic's severity. If a rule has both `error` and `warning` severities (impossible in oxlint config but possible if rules are split), the "first" picks one arbitrarily. Edge case.                                                                                                                                                                                                                                                                                                                        |
+| 🟢       | `packages/react-doctor/src/utils/select-projects.ts:80-86`                                      | `prompts({ type: "multiselect", … min: 1 })` — the `min: 1` enforces at least one selection, but if the user hits Ctrl-C, the `onCancel` handler in `prompts.ts` runs `process.exit(0)`, which is fine. But the message says "Run `npx react-doctor@latest --fix` to fix issues" — same `--fix`-doesn't-exist bug from §1.2 (Pass 1). Still unfixed.                                                                                                                                                                                                 |
 
 ---
 
@@ -3995,6 +4016,7 @@ Plus a runtime check that warns if the plugin is missing AND React Compiler is d
 react-doctor doesn't compile TypeScript at runtime — `oxlint` does its own parsing, and `knip` does its own. Why is TypeScript a runtime dep?
 
 Possibilities:
+
 1. **Knip needs it**: knip's docs say it requires TypeScript. Yes — `knip` calls `ts.createProgram` directly. So this IS needed by a transitive dep.
 2. **Defensive declaration**: the user almost certainly already has TypeScript installed; this is documenting the constraint.
 
@@ -4052,6 +4074,7 @@ Per §11.1 (Pass 2). The fallback string `"0.0.0"` is in the bundled output, not
 ### 🟠 51.1 Most fixture components fake their dependencies via local `const`
 
 Pattern: `const X = (...) => ...; export const SomeRoute = X(...)`. Used in:
+
 - `nextjs-app/src/app/page.tsx`: fakes `useSearchParams`, `router`, `redirect`, `Image`, `Script`.
 - `nextjs-app/src/pages/_app.tsx`: fakes `router`.
 - `basic-react/src/query-issues.tsx`: fakes `useQuery`, `useMutation`, `QueryClient`, `QueryClientProvider`, `queryClient`.
@@ -4107,7 +4130,7 @@ The rule `tanstackStartMissingHeadContent` checks for `<HeadContent />` (a compo
 const Scripts = () => <script />;
 ```
 
-The rule `nextjsNoNativeScript` fires on lowercase `<script>` (not `<Scripts>`). So this returns lowercase `<script />` which would fire. But this is a __root route in a TanStack Start app — it's not a Next.js project, so the next.js rules shouldn't apply (the framework auto-detection should prevent that). The TanStack Start fixture's package.json declares `@tanstack/react-router` and `@tanstack/react-start`, no `next`, so framework should resolve to `tanstack-start`. Good.
+The rule `nextjsNoNativeScript` fires on lowercase `<script>` (not `<Scripts>`). So this returns lowercase `<script />` which would fire. But this is a \_\_root route in a TanStack Start app — it's not a Next.js project, so the next.js rules shouldn't apply (the framework auto-detection should prevent that). The TanStack Start fixture's package.json declares `@tanstack/react-router` and `@tanstack/react-start`, no `next`, so framework should resolve to `tanstack-start`. Good.
 
 But the `rendering-script-defer-async` rule in the base ruleset (line 158, `"warn"`) DOES apply regardless of framework. So `<script />` (no src, no defer, no async) would be inspected. The rule (`renderingScriptDeferAsync` in performance.ts:428-470) requires `hasSrc` to fire, so `<script />` (no src attribute) is skipped. Good.
 
@@ -4165,31 +4188,31 @@ But `redirect("/login")` after `cookieStore.delete()` is unreachable in real Nex
 
 ## 52. Additional Findings (Pass 7)
 
-| Severity | File / Location | Issue |
-|---|---|---|
-| 🟠 | `packages/react-doctor/src/oxlint-config.ts:128-131` | The `eslint-plugin-react-hooks` resolved via `esmRequire.resolve("eslint-plugin-react-hooks")` — but only for `hasReactCompiler && !customRulesOnly`. If neither condition triggers, the plugin specifier isn't resolved. But the plugin is still in `dependencies` (per §50.2), so npm installs it for everyone. Wasted install. |
-| 🟠 | `packages/react-doctor/dist/index.js:9-15` | The dead `buildDiagnoseResult` identity wrapper from §3.3 (Pass 1) is shipped in `dist/index.js`. Confirmed. The `./api` consumer downloads 22 lines of identity code. |
-| 🟠 | `packages/react-doctor/dist/index.js:1` | `import { createRequire } from "node:module";` — even when only `./api` (Node-side) is consumed, this import is fine, but the same `createRequire` call appears in `./browser`'s chunked code, which is supposed to be browser-portable. If a bundler doesn't strip `node:module`, browser builds break. (Verified earlier: `dist/process-browser-diagnostics-…js` is the browser chunk; needs separate inspection.) |
-| 🟠 | `packages/react-doctor/src/utils/run-oxlint.ts:359-358` | `RULE_CATEGORY_MAP` includes entries for the dead 11 rules from §1.1 (Pass 1). Even if the rules never fire, the metadata is shipped. The dead 11 rules contribute ~11 KB of dead constant data to the bundle. |
-| 🟠 | `packages/react-doctor/src/utils/run-oxlint.ts:144-357` | `RULE_HELP_MAP` is 213 lines of help text for ~75 rules. Many of these correspond to dead rules (§1.1) — their help text never gets shown because the rule never fires. ~5 KB of dead text in the bundle. |
-| 🟡 | `packages/react-doctor/tests/fixtures/nextjs-app/src/app/logout/route.tsx:6-9` | `redirect("/login"); return NextResponse.json({ ok: true });` — the return is unreachable in real Next.js (since `redirect` throws). Logically broken fixture. |
-| 🟡 | `packages/react-doctor/src/oxlint-config.ts:118-125` | `categories: { ... "off" }` is necessary because oxlint defaults categories to `"warn"` for all built-in rules. But this means we have to explicitly allowlist every rule we want, AND blocklist every category. A future oxlint version that adds a new category (e.g., `experimental`) would have its rules auto-fire because the new category isn't `"off"` here. Fragile — should be `"*": "off"` if oxlint supported it. |
-| 🟡 | `packages/react-doctor/src/oxlint-config.ts:21` (NEXTJS_RULES) | Doesn't include `react-doctor/server-after-nonblocking` — even though the rule's primary use case is Next.js server actions. The rule is enabled globally (line 182) instead. Functional but logically misplaced. |
-| 🟡 | `packages/react-doctor/src/oxlint-config.ts:36-50` (TANSTACK_START_RULES) | Includes `react-doctor/tanstack-start-server-fn-validate-input` at `"warn"`. But the equivalent rules for Next.js (e.g., a hypothetical `nextjs-server-action-validate-input`) don't exist. Asymmetric coverage between the two server frameworks. |
-| 🟡 | `packages/react-doctor/src/oxlint-config.ts:53-70` (REACT_COMPILER_RULES) | All set to `"error"`. But the React Compiler is a beta feature; not every "compiler can't optimize this" warning is critical. A user who explicitly opts into the compiler with knowledge of its limitations would still get errors that block their build (with `--fail-on error`). Should default to `"warn"`. |
-| 🟡 | `packages/react-doctor/src/utils/run-oxlint.ts:506-553` | The function returns early when `includePaths.length === 0` (line 517) but doesn't restore disable directives or clean up the config file. Wait — there's no setup before that early return. So no cleanup needed. Fine. |
-| 🟡 | `packages/react-doctor/src/utils/run-oxlint.ts:524` | `restoreDisableDirectives()` is called in the finally block (line 548). But if the early return on line 517 had been hit AFTER the call to `neutralizeDisableDirectives` (a future refactor), the restore would never run. The finally is positioned correctly today; defensive ordering. |
-| 🟡 | `packages/react-doctor/src/cli.ts:208` | `flags.staged` is checked alongside `flags.diff`/`flags.project`/etc. But there's no explicit guard preventing `--staged --diff main` (mixing the two modes). The `--diff` is silently ignored (because `staged` mode returns early). Documenting the precedence: `--staged` wins, `--diff` ignored. |
-| 🟡 | `packages/react-doctor/src/cli.ts:233-237` | `scan(snapshot.tempDirectory, { ...scanOptions, includePaths: snapshot.stagedFiles, configOverride: userConfig })` — passes `userConfig` from the user's project root, but the scan runs against `snapshot.tempDirectory`. The config's `ignore.files` glob patterns are computed relative to the config's "directory" — but the scan directory is the temp dir. So `src/generated/**` in the config matches files in `<tempDir>/src/generated/**`, which is what we want (snapshot preserves structure). Good. But edge case: a config with **absolute** ignore paths (`/Users/me/proj/src/generated/**`) wouldn't match the temp dir. |
-| 🟡 | `packages/react-doctor/src/utils/run-oxlint.ts:506-553` | The function does a **lot** of setup work (config write, neutralize, plugin path resolution, batching) for every call. A monorepo scan with N projects calls this N times sequentially. Each call writes a fresh config to a PID-named tempfile — the same path is reused, but each call writes fresh content. If two scans were to run concurrently (different projects in parallel — not currently the case), they'd race on the config file. |
-| 🟡 | `packages/react-doctor/src/scan.ts:486` | `inputOptions.configOverride !== undefined` check is `!== undefined`, allowing `null` as a valid "override = use no config" signal. This three-state pattern (undefined, null, Config) is documented per §45 row 14 (Pass 6). Same finding here. |
-| 🟢 | `packages/react-doctor/src/utils/discover-project.ts:430-434` | `hasReactDependency` uses `REACT_DEPENDENCY_NAMES = new Set(["react", "react-native", "next"])`. Misses `preact` (which compiles to React-compatible APIs), `solid-js`/`vue` (different but adjacent ecosystems). If a user runs `react-doctor` on a Preact project, it correctly says "No React dependency found". Good. |
-| 🟢 | `packages/react-doctor/dist/cli.js:14` | `import { main } from "knip";` — the import is at the top of the bundle. If a user runs `react-doctor --no-dead-code`, the knip module is still loaded (and its initialization side-effects run) before the user's flag is checked. Marginal: knip's import cost is small. But the `--no-dead-code` user pays for it anyway. Lazy-load via dynamic import inside `runKnip`. |
-| 🟢 | `packages/react-doctor/src/oxlint-config.ts:79-92` | `BUILTIN_REACT_RULES` includes `"react/no-unknown-property": "warn"`. But this rule has known false positives in projects using Tailwind CSS (`tw` attribute), styled-components (`as` attribute), MDX (custom JSX attributes), etc. Without a way to extend the rule's allow-list, projects regularly hit warnings on legitimate usage. |
-| 🟢 | `packages/react-doctor/src/oxlint-config.ts:102` | `"jsx-a11y/no-autofocus": "warn"` — but autofocus on a single login form is a UX best practice. Fires on every `<input autoFocus />` regardless of context. The default level here is permissive (warn), but the README's `customRulesOnly` advice doesn't help if this is one of many a11y warnings. |
-| 🟢 | `packages/react-doctor/src/oxlint-config.ts:104` | `"jsx-a11y/heading-has-content": "warn"` — fires on `<h1>{titleVariable}</h1>` where the rule doesn't know `titleVariable` is non-empty. Many false positives. |
-| 🟢 | `packages/react-doctor/tests/fixtures/basic-react/src/correctness-issues.tsx:21-29` `PreventDefaultForm` | Tests `no-prevent-default` for `<form>`. The rule fires correctly. But the fixture doesn't cover the alternative `<a onClick={(e) => e.preventDefault()}>` case. Per §44.4 (Pass 6) — the rule's other branch is untested. |
-| 🟢 | `packages/react-doctor/tests/fixtures/nextjs-app/src/app/page.tsx:38-45` | `RedirectInTryCatchComponent` does `try { redirect("/dashboard") } catch { return <div>error</div> }`. The rule should fire. The local `redirect` is the false-positive issue (§48.2) — the rule fires on a fake. |
+| Severity | File / Location                                                                                          | Issue                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| -------- | -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 🟠       | `packages/react-doctor/src/oxlint-config.ts:128-131`                                                     | The `eslint-plugin-react-hooks` resolved via `esmRequire.resolve("eslint-plugin-react-hooks")` — but only for `hasReactCompiler && !customRulesOnly`. If neither condition triggers, the plugin specifier isn't resolved. But the plugin is still in `dependencies` (per §50.2), so npm installs it for everyone. Wasted install.                                                                                                                                                                                                                                                                                                       |
+| 🟠       | `packages/react-doctor/dist/index.js:9-15`                                                               | The dead `buildDiagnoseResult` identity wrapper from §3.3 (Pass 1) is shipped in `dist/index.js`. Confirmed. The `./api` consumer downloads 22 lines of identity code.                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| 🟠       | `packages/react-doctor/dist/index.js:1`                                                                  | `import { createRequire } from "node:module";` — even when only `./api` (Node-side) is consumed, this import is fine, but the same `createRequire` call appears in `./browser`'s chunked code, which is supposed to be browser-portable. If a bundler doesn't strip `node:module`, browser builds break. (Verified earlier: `dist/process-browser-diagnostics-…js` is the browser chunk; needs separate inspection.)                                                                                                                                                                                                                    |
+| 🟠       | `packages/react-doctor/src/utils/run-oxlint.ts:359-358`                                                  | `RULE_CATEGORY_MAP` includes entries for the dead 11 rules from §1.1 (Pass 1). Even if the rules never fire, the metadata is shipped. The dead 11 rules contribute ~11 KB of dead constant data to the bundle.                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| 🟠       | `packages/react-doctor/src/utils/run-oxlint.ts:144-357`                                                  | `RULE_HELP_MAP` is 213 lines of help text for ~75 rules. Many of these correspond to dead rules (§1.1) — their help text never gets shown because the rule never fires. ~5 KB of dead text in the bundle.                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| 🟡       | `packages/react-doctor/tests/fixtures/nextjs-app/src/app/logout/route.tsx:6-9`                           | `redirect("/login"); return NextResponse.json({ ok: true });` — the return is unreachable in real Next.js (since `redirect` throws). Logically broken fixture.                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| 🟡       | `packages/react-doctor/src/oxlint-config.ts:118-125`                                                     | `categories: { ... "off" }` is necessary because oxlint defaults categories to `"warn"` for all built-in rules. But this means we have to explicitly allowlist every rule we want, AND blocklist every category. A future oxlint version that adds a new category (e.g., `experimental`) would have its rules auto-fire because the new category isn't `"off"` here. Fragile — should be `"*": "off"` if oxlint supported it.                                                                                                                                                                                                           |
+| 🟡       | `packages/react-doctor/src/oxlint-config.ts:21` (NEXTJS_RULES)                                           | Doesn't include `react-doctor/server-after-nonblocking` — even though the rule's primary use case is Next.js server actions. The rule is enabled globally (line 182) instead. Functional but logically misplaced.                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| 🟡       | `packages/react-doctor/src/oxlint-config.ts:36-50` (TANSTACK_START_RULES)                                | Includes `react-doctor/tanstack-start-server-fn-validate-input` at `"warn"`. But the equivalent rules for Next.js (e.g., a hypothetical `nextjs-server-action-validate-input`) don't exist. Asymmetric coverage between the two server frameworks.                                                                                                                                                                                                                                                                                                                                                                                      |
+| 🟡       | `packages/react-doctor/src/oxlint-config.ts:53-70` (REACT_COMPILER_RULES)                                | All set to `"error"`. But the React Compiler is a beta feature; not every "compiler can't optimize this" warning is critical. A user who explicitly opts into the compiler with knowledge of its limitations would still get errors that block their build (with `--fail-on error`). Should default to `"warn"`.                                                                                                                                                                                                                                                                                                                        |
+| 🟡       | `packages/react-doctor/src/utils/run-oxlint.ts:506-553`                                                  | The function returns early when `includePaths.length === 0` (line 517) but doesn't restore disable directives or clean up the config file. Wait — there's no setup before that early return. So no cleanup needed. Fine.                                                                                                                                                                                                                                                                                                                                                                                                                |
+| 🟡       | `packages/react-doctor/src/utils/run-oxlint.ts:524`                                                      | `restoreDisableDirectives()` is called in the finally block (line 548). But if the early return on line 517 had been hit AFTER the call to `neutralizeDisableDirectives` (a future refactor), the restore would never run. The finally is positioned correctly today; defensive ordering.                                                                                                                                                                                                                                                                                                                                               |
+| 🟡       | `packages/react-doctor/src/cli.ts:208`                                                                   | `flags.staged` is checked alongside `flags.diff`/`flags.project`/etc. But there's no explicit guard preventing `--staged --diff main` (mixing the two modes). The `--diff` is silently ignored (because `staged` mode returns early). Documenting the precedence: `--staged` wins, `--diff` ignored.                                                                                                                                                                                                                                                                                                                                    |
+| 🟡       | `packages/react-doctor/src/cli.ts:233-237`                                                               | `scan(snapshot.tempDirectory, { ...scanOptions, includePaths: snapshot.stagedFiles, configOverride: userConfig })` — passes `userConfig` from the user's project root, but the scan runs against `snapshot.tempDirectory`. The config's `ignore.files` glob patterns are computed relative to the config's "directory" — but the scan directory is the temp dir. So `src/generated/**` in the config matches files in `<tempDir>/src/generated/**`, which is what we want (snapshot preserves structure). Good. But edge case: a config with **absolute** ignore paths (`/Users/me/proj/src/generated/**`) wouldn't match the temp dir. |
+| 🟡       | `packages/react-doctor/src/utils/run-oxlint.ts:506-553`                                                  | The function does a **lot** of setup work (config write, neutralize, plugin path resolution, batching) for every call. A monorepo scan with N projects calls this N times sequentially. Each call writes a fresh config to a PID-named tempfile — the same path is reused, but each call writes fresh content. If two scans were to run concurrently (different projects in parallel — not currently the case), they'd race on the config file.                                                                                                                                                                                         |
+| 🟡       | `packages/react-doctor/src/scan.ts:486`                                                                  | `inputOptions.configOverride !== undefined` check is `!== undefined`, allowing `null` as a valid "override = use no config" signal. This three-state pattern (undefined, null, Config) is documented per §45 row 14 (Pass 6). Same finding here.                                                                                                                                                                                                                                                                                                                                                                                        |
+| 🟢       | `packages/react-doctor/src/utils/discover-project.ts:430-434`                                            | `hasReactDependency` uses `REACT_DEPENDENCY_NAMES = new Set(["react", "react-native", "next"])`. Misses `preact` (which compiles to React-compatible APIs), `solid-js`/`vue` (different but adjacent ecosystems). If a user runs `react-doctor` on a Preact project, it correctly says "No React dependency found". Good.                                                                                                                                                                                                                                                                                                               |
+| 🟢       | `packages/react-doctor/dist/cli.js:14`                                                                   | `import { main } from "knip";` — the import is at the top of the bundle. If a user runs `react-doctor --no-dead-code`, the knip module is still loaded (and its initialization side-effects run) before the user's flag is checked. Marginal: knip's import cost is small. But the `--no-dead-code` user pays for it anyway. Lazy-load via dynamic import inside `runKnip`.                                                                                                                                                                                                                                                             |
+| 🟢       | `packages/react-doctor/src/oxlint-config.ts:79-92`                                                       | `BUILTIN_REACT_RULES` includes `"react/no-unknown-property": "warn"`. But this rule has known false positives in projects using Tailwind CSS (`tw` attribute), styled-components (`as` attribute), MDX (custom JSX attributes), etc. Without a way to extend the rule's allow-list, projects regularly hit warnings on legitimate usage.                                                                                                                                                                                                                                                                                                |
+| 🟢       | `packages/react-doctor/src/oxlint-config.ts:102`                                                         | `"jsx-a11y/no-autofocus": "warn"` — but autofocus on a single login form is a UX best practice. Fires on every `<input autoFocus />` regardless of context. The default level here is permissive (warn), but the README's `customRulesOnly` advice doesn't help if this is one of many a11y warnings.                                                                                                                                                                                                                                                                                                                                   |
+| 🟢       | `packages/react-doctor/src/oxlint-config.ts:104`                                                         | `"jsx-a11y/heading-has-content": "warn"` — fires on `<h1>{titleVariable}</h1>` where the rule doesn't know `titleVariable` is non-empty. Many false positives.                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| 🟢       | `packages/react-doctor/tests/fixtures/basic-react/src/correctness-issues.tsx:21-29` `PreventDefaultForm` | Tests `no-prevent-default` for `<form>`. The rule fires correctly. But the fixture doesn't cover the alternative `<a onClick={(e) => e.preventDefault()}>` case. Per §44.4 (Pass 6) — the rule's other branch is untested.                                                                                                                                                                                                                                                                                                                                                                                                              |
+| 🟢       | `packages/react-doctor/tests/fixtures/nextjs-app/src/app/page.tsx:38-45`                                 | `RedirectInTryCatchComponent` does `try { redirect("/dashboard") } catch { return <div>error</div> }`. The rule should fire. The local `redirect` is the false-positive issue (§48.2) — the rule fires on a fake.                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 ---
 
@@ -4232,19 +4255,22 @@ This pass focuses on artifacts that ship publicly (the website's `public/`), con
 ## Options
 
 ```
+
 Usage: react-doctor [directory] [options]
 
 Options:
-  -v, --version     display the version number
-  --no-lint         skip linting
-  --no-dead-code    skip dead code detection
-  --verbose         show file details per rule
-  --score           output only the score
-  -y, --yes         skip prompts, scan all workspace projects
-  --project <name>  select workspace project (comma-separated for multiple)
-  --diff [base]     scan only files changed vs base branch or uncommitted changes
-  -h, --help        display help for command
+-v, --version display the version number
+--no-lint skip linting
+--no-dead-code skip dead code detection
+--verbose show file details per rule
+--score output only the score
+-y, --yes skip prompts, scan all workspace projects
+--project <name> select workspace project (comma-separated for multiple)
+--diff [base] scan only files changed vs base branch or uncommitted changes
+-h, --help display help for command
+
 ```
+
 ```
 
 The actual CLI (`cli.ts:165-180`) supports:
@@ -4356,13 +4382,13 @@ But other agents using `.agents/skills/` (per `detect-agents.ts`) include `gemin
 
 ### 🔴 56.1 Four different `SCORE_BAR_WIDTH` values across the codebase
 
-| File | Constant | Value |
-|---|---|---|
-| `packages/react-doctor/src/constants.ts:15` | `SCORE_BAR_WIDTH_CHARS` | **50** |
-| `packages/website/src/app/share/animated-score.tsx:8` | `SCORE_BAR_WIDTH` | **30** |
-| `packages/website/src/components/terminal.tsx:19` | `SCORE_BAR_WIDTH_MOBILE` | **15** |
-| `packages/website/src/components/terminal.tsx:20` | `SCORE_BAR_WIDTH_DESKTOP` | **30** |
-| `packages/website/src/app/leaderboard/page.tsx:8` | `SCORE_BAR_WIDTH` | **20** |
+| File                                                  | Constant                  | Value  |
+| ----------------------------------------------------- | ------------------------- | ------ |
+| `packages/react-doctor/src/constants.ts:15`           | `SCORE_BAR_WIDTH_CHARS`   | **50** |
+| `packages/website/src/app/share/animated-score.tsx:8` | `SCORE_BAR_WIDTH`         | **30** |
+| `packages/website/src/components/terminal.tsx:19`     | `SCORE_BAR_WIDTH_MOBILE`  | **15** |
+| `packages/website/src/components/terminal.tsx:20`     | `SCORE_BAR_WIDTH_DESKTOP` | **30** |
+| `packages/website/src/app/leaderboard/page.tsx:8`     | `SCORE_BAR_WIDTH`         | **20** |
 
 The CLI prints a 50-character bar. The animated demo terminal shows 15 (mobile) or 30 (desktop) chars. The leaderboard shows 20 chars. The share-page shows 30 chars.
 
@@ -4494,6 +4520,7 @@ Worse: when `silenced` exits (its `finally` block runs after the deadCode finish
 No type annotation, no `unknown` cast. `packageJson` becomes `any`. Then `packageJson[PACKAGE_JSON_CONFIG_KEY]` is also `any`. The `isPlainObject` check narrows it back to `Record<string, unknown>`. But during the brief `any`-window, type errors in property access are suppressed.
 
 The earlier `JSON.parse` on line 16 explicitly types as `unknown`:
+
 ```js
 const parsed: unknown = JSON.parse(fileContent);
 ```
@@ -4511,6 +4538,7 @@ Inconsistent typing within the same file. The package.json branch is laxer.
 ```
 
 Both rules walk to `node.parent`. If oxlint's plugin host doesn't set `parent` references during traversal:
+
 - `noInlinePropOnMemoComponent` (`performance.ts:55-95`) silently fails — `openingElement` is undefined, the rule returns early at line 78, no diagnostic.
 - `rnNoInlineFlatlistRenderitem` (`react-native.ts:156-181`) silently fails — same pattern.
 
@@ -4538,6 +4566,7 @@ $ rg "node:fs/promises|fs\.promises" src/
 ```
 
 The codebase uses sync filesystem I/O exclusively. For a CLI tool that spawns long-running oxlint (multi-second), the sync I/O is rarely the bottleneck. But:
+
 - On Windows, file-locking behavior differs and can stall sync calls.
 - For the `--json` mode where the scan is the only operation, async I/O could overlap network calls (score API) with disk I/O (config reading).
 
@@ -4603,25 +4632,25 @@ Two asset dirs with overlapping but non-identical content. The README (a top-lev
 
 ## 60. Additional Findings (Pass 8)
 
-| Severity | File / Location | Issue |
-|---|---|---|
-| 🟠 | `packages/react-doctor/dist/cli.js` | The dist contains 2885 lines of bundled code. The published artifact embeds knip, picocolors, prompts, ora, commander, plus all the rule plugin metadata. A `--score`-only invocation downloads everything. A "lite" entry point that ships only the score-fetching path could trim 100KB+ for the most common case. |
-| 🟠 | `packages/website/public/install-skill.sh:65` | `mkdir -p "$SKILL_DIR"` — uses `-p` for "parents". But on a system where `$SKILL_DIR` already exists as a file (not directory), `mkdir -p` errors out. Bash version-specific behavior. Defensive: check `-d` before `mkdir -p`. |
-| 🟠 | `packages/website/public/install-skill.sh:67` | `printf '%s\n' "$SKILL_CONTENT" > "$SKILL_DIR/SKILL.md"` — the redirect `>` truncates and overwrites. If the user has a custom edit (e.g., they modified the SKILL.md to reference their own configuration), it's silently lost. No `--update` vs `--install` distinction. Per §20 row 17 (Pass 5) and §17.4 (Pass 3). |
-| 🟠 | `packages/website/public/install-skill.sh:107` | `grep -q "$MARKER" "$RULES_FILE"` matches anywhere in any line. If someone has `# Original React Doctor analysis (deprecated)` in their `global_rules.md`, the script considers react-doctor "already installed" and skips. Use `grep -qx "$MARKER"` to anchor. |
-| 🟠 | `packages/website/public/install-skill.sh:115` | `printf '%s\n' "$SKILL_CONTENT" >> "$RULES_FILE"` — appends. Bash's `printf` with `\n` includes a literal newline AFTER the output. The file gets the marker, an empty line, then the content, then an empty line at the end. Each subsequent install adds duplicate content because `grep -q` only finds the marker but doesn't dedup the body. |
-| 🟡 | `packages/website/public/install-skill.sh:73` | `if [ -d "$HOME/.amp" ]; then` — the comment above says "Amp Code". But Amp Code's actual install location is platform-specific (and changes between versions). A single hardcoded path won't catch all Amp Code installations. |
-| 🟡 | `packages/website/public/install-skill.sh:74` | `SKILL_DIR="$HOME/.config/amp/skills/$SKILL_NAME"` — note: writes to `~/.config/amp/...` even though detection was `~/.amp`. **The detection and install paths are inconsistent.** If Amp Code is installed at `~/.amp/...` but the install script writes to `~/.config/amp/...`, the skill is in the wrong location. Either Amp Code reads both, or this is broken. |
-| 🟡 | `packages/website/public/install-skill.sh:147-151` | The Codex-specific YAML write: `cat > "$SKILL_DIR/agents/openai.yaml" << 'YAMLEOF'` — uses single-quoted heredoc (no interpolation). The YAML's `display_name: "react-doctor"` is hard-coded. If `$SKILL_NAME` ever changes, the YAML is out of sync with the surrounding `$SKILL_NAME` references. |
-| 🟡 | `packages/react-doctor/src/scan.ts:159-176` | `writeDiagnosticsDirectory` creates a tempdir and writes per-rule txt files plus a `diagnostics.json`. The dir is left on disk forever — there's no cleanup. After many scans, the user's `os.tmpdir()` accumulates `react-doctor-${randomUUID()}/` directories. For a CI runner that scans on every PR, this could exhaust the tempdir. |
-| 🟡 | `packages/react-doctor/src/utils/discover-project.ts:166-167` | `const content = fs.readFileSync(workspacePath, "utf-8");` — reads `pnpm-workspace.yaml` synchronously. For monorepos with very large workspace files (rare but possible — Microsoft's monorepos are >MB), this blocks. Async via `fs/promises` would be better but requires propagating async through `discoverProject`. |
-| 🟡 | `packages/react-doctor/src/utils/discover-project.ts:511-512, 517-518` | `hasCompilerInConfigFile` reads each next.config / babel.config / vite.config / app.config file synchronously. For deeply-nested monorepos, this multiplies. Memoize per file path. |
-| 🟡 | `packages/react-doctor/src/scan.ts:174` | `JSON.stringify(diagnostics, null, 2)` for the temp `diagnostics.json` — pretty-print. For thousands of diagnostics, the file can be MB-sized. Compact JSON would shrink it 10x. |
-| 🟢 | `packages/website/public/llms.txt:9-11` | Only documents `npx -y react-doctor@latest .`, not `react-doctor` (without `npx -y`) for users who installed it. |
-| 🟢 | `packages/website/public/llms.txt:25-29` | Recommends `--score` for "output only the numeric score" but doesn't note that the API call to react.doctor still happens unless `--offline` is added. AI agents recommending `--score` to users for CI integration miss the data-leak risk per §17.1 (Pass 3). |
-| 🟢 | `packages/website/public/llms.txt` | The file doesn't include the `react-doctor.config.json` configuration schema. AI agents reading it wouldn't know the `customRulesOnly`, `share`, `failOn`, etc. options exist. |
-| 🟢 | `packages/website/public/llms.txt` | The file doesn't include the `react-doctor install` subcommand (separate from main scan). AI agents recommending workflows miss this. |
-| 🟢 | `assets/react-doctor-readme-logo-light.svg` and `-dark.svg` | Two-version logos for light/dark mode — typical README pattern. But the README's `<picture>` element uses `prefers-color-scheme` media query, which works on GitHub but not on npmjs.com (where the README is also rendered). On npm, the dark version always shows (or vice versa), regardless of the user's color scheme. |
+| Severity | File / Location                                                        | Issue                                                                                                                                                                                                                                                                                                                                                                |
+| -------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 🟠       | `packages/react-doctor/dist/cli.js`                                    | The dist contains 2885 lines of bundled code. The published artifact embeds knip, picocolors, prompts, ora, commander, plus all the rule plugin metadata. A `--score`-only invocation downloads everything. A "lite" entry point that ships only the score-fetching path could trim 100KB+ for the most common case.                                                 |
+| 🟠       | `packages/website/public/install-skill.sh:65`                          | `mkdir -p "$SKILL_DIR"` — uses `-p` for "parents". But on a system where `$SKILL_DIR` already exists as a file (not directory), `mkdir -p` errors out. Bash version-specific behavior. Defensive: check `-d` before `mkdir -p`.                                                                                                                                      |
+| 🟠       | `packages/website/public/install-skill.sh:67`                          | `printf '%s\n' "$SKILL_CONTENT" > "$SKILL_DIR/SKILL.md"` — the redirect `>` truncates and overwrites. If the user has a custom edit (e.g., they modified the SKILL.md to reference their own configuration), it's silently lost. No `--update` vs `--install` distinction. Per §20 row 17 (Pass 5) and §17.4 (Pass 3).                                               |
+| 🟠       | `packages/website/public/install-skill.sh:107`                         | `grep -q "$MARKER" "$RULES_FILE"` matches anywhere in any line. If someone has `# Original React Doctor analysis (deprecated)` in their `global_rules.md`, the script considers react-doctor "already installed" and skips. Use `grep -qx "$MARKER"` to anchor.                                                                                                      |
+| 🟠       | `packages/website/public/install-skill.sh:115`                         | `printf '%s\n' "$SKILL_CONTENT" >> "$RULES_FILE"` — appends. Bash's `printf` with `\n` includes a literal newline AFTER the output. The file gets the marker, an empty line, then the content, then an empty line at the end. Each subsequent install adds duplicate content because `grep -q` only finds the marker but doesn't dedup the body.                     |
+| 🟡       | `packages/website/public/install-skill.sh:73`                          | `if [ -d "$HOME/.amp" ]; then` — the comment above says "Amp Code". But Amp Code's actual install location is platform-specific (and changes between versions). A single hardcoded path won't catch all Amp Code installations.                                                                                                                                      |
+| 🟡       | `packages/website/public/install-skill.sh:74`                          | `SKILL_DIR="$HOME/.config/amp/skills/$SKILL_NAME"` — note: writes to `~/.config/amp/...` even though detection was `~/.amp`. **The detection and install paths are inconsistent.** If Amp Code is installed at `~/.amp/...` but the install script writes to `~/.config/amp/...`, the skill is in the wrong location. Either Amp Code reads both, or this is broken. |
+| 🟡       | `packages/website/public/install-skill.sh:147-151`                     | The Codex-specific YAML write: `cat > "$SKILL_DIR/agents/openai.yaml" << 'YAMLEOF'` — uses single-quoted heredoc (no interpolation). The YAML's `display_name: "react-doctor"` is hard-coded. If `$SKILL_NAME` ever changes, the YAML is out of sync with the surrounding `$SKILL_NAME` references.                                                                  |
+| 🟡       | `packages/react-doctor/src/scan.ts:159-176`                            | `writeDiagnosticsDirectory` creates a tempdir and writes per-rule txt files plus a `diagnostics.json`. The dir is left on disk forever — there's no cleanup. After many scans, the user's `os.tmpdir()` accumulates `react-doctor-${randomUUID()}/` directories. For a CI runner that scans on every PR, this could exhaust the tempdir.                             |
+| 🟡       | `packages/react-doctor/src/utils/discover-project.ts:166-167`          | `const content = fs.readFileSync(workspacePath, "utf-8");` — reads `pnpm-workspace.yaml` synchronously. For monorepos with very large workspace files (rare but possible — Microsoft's monorepos are >MB), this blocks. Async via `fs/promises` would be better but requires propagating async through `discoverProject`.                                            |
+| 🟡       | `packages/react-doctor/src/utils/discover-project.ts:511-512, 517-518` | `hasCompilerInConfigFile` reads each next.config / babel.config / vite.config / app.config file synchronously. For deeply-nested monorepos, this multiplies. Memoize per file path.                                                                                                                                                                                  |
+| 🟡       | `packages/react-doctor/src/scan.ts:174`                                | `JSON.stringify(diagnostics, null, 2)` for the temp `diagnostics.json` — pretty-print. For thousands of diagnostics, the file can be MB-sized. Compact JSON would shrink it 10x.                                                                                                                                                                                     |
+| 🟢       | `packages/website/public/llms.txt:9-11`                                | Only documents `npx -y react-doctor@latest .`, not `react-doctor` (without `npx -y`) for users who installed it.                                                                                                                                                                                                                                                     |
+| 🟢       | `packages/website/public/llms.txt:25-29`                               | Recommends `--score` for "output only the numeric score" but doesn't note that the API call to react.doctor still happens unless `--offline` is added. AI agents recommending `--score` to users for CI integration miss the data-leak risk per §17.1 (Pass 3).                                                                                                      |
+| 🟢       | `packages/website/public/llms.txt`                                     | The file doesn't include the `react-doctor.config.json` configuration schema. AI agents reading it wouldn't know the `customRulesOnly`, `share`, `failOn`, etc. options exist.                                                                                                                                                                                       |
+| 🟢       | `packages/website/public/llms.txt`                                     | The file doesn't include the `react-doctor install` subcommand (separate from main scan). AI agents recommending workflows miss this.                                                                                                                                                                                                                                |
+| 🟢       | `assets/react-doctor-readme-logo-light.svg` and `-dark.svg`            | Two-version logos for light/dark mode — typical README pattern. But the README's `<picture>` element uses `prefers-color-scheme` media query, which works on GitHub but not on npmjs.com (where the README is also rendered). On npm, the dark version always shows (or vice versa), regardless of the user's color scheme.                                          |
 
 ---
 
@@ -4714,6 +4743,7 @@ But there's a deeper inconsistency: the rest of the codebase routes "warnings" t
 ### 🟠 63.3 Logger has no level filtering
 
 The silent flag is binary — either all output or none. There's no way to:
+
 - Silence info/dim but keep error/warn ("quiet mode").
 - Silence everything except errors ("strict CI mode").
 - Show progress but suppress noise ("CI minimal output").
@@ -4755,6 +4785,7 @@ The current code does **no escaping**. Real-world breakage:
 3. **Messages containing `%`**: literal `%` characters in messages confuse the annotation parser if other escapes are nearby.
 
 Looking at the actual messages, e.g., `correctness.ts:154`:
+
 ```
 "Conditional rendering with .length can render '0' — use .length > 0 or Boolean(.length)"
 ```
@@ -4809,6 +4840,7 @@ Per §2.3 (Pass 1) and §27 (Pass 4) — `--annotations` flag is untested. A reg
 ```
 
 The `weight` field is set on:
+
 - All knip diagnostics (`weight: 1`).
 - The reduced-motion environment diagnostic (`weight: 2`).
 
@@ -4826,6 +4858,7 @@ Uses fixed penalties (`ERROR_RULE_PENALTY`/`WARNING_RULE_PENALTY`), with no refe
 Result: the `weight` field is **completely dead**. A reduced-motion violation (intended `weight: 2`) penalizes the score the same as any other warning. A knip dead-code warning (intended `weight: 1`) is the same.
 
 Either:
+
 - **Wire up `weight` to the scoring formula** (per-diagnostic penalty: `penalty = sum(d.weight ?? 1)` for matching severity).
 - **Delete the field and the three usage sites** to clean up the type.
 
@@ -4915,6 +4948,7 @@ Three sites throw the identical string `"No React dependency found in package.js
 ```
 
 Compare with `discover-project.ts:551`:
+
 ```
 throw new Error(`No package.json found in ${directory}`);
 ```
@@ -5000,11 +5034,13 @@ But the user has no idea the timeout happened. From their perspective, the score
 ```
 
 The bare catch swallows:
+
 - Network errors (intended).
 - `TypeError` from `parseScoreResult` (intended).
 - `SyntaxError` from `JSON.parse` if the response is invalid JSON (intended).
 
 But also:
+
 - Any programmer bug in `parseScoreResult` (e.g., a `Reflect.get` typo) — silently returns `null`.
 - A future code path adding more logic — accidentally swallowed.
 
@@ -5022,35 +5058,35 @@ Wait — `clearTimeout(timeoutId)` IS in the `finally` block. So the timeout is 
 
 ## 70. Additional Findings (Pass 9)
 
-| Severity | File / Location | Issue |
-|---|---|---|
-| 🟠 | `packages/react-doctor/src/scan.ts:611-613` | Even with `scoreOnly: true`, the network call to the score API still happens (unless `--offline`). For a `--score` user wanting fast output, this is unnecessary latency. Auto-prefer local scoring in `--score` mode. |
-| 🟠 | `packages/react-doctor/src/scan.ts:243` | `buildShareUrl` uses `params.set("p", projectName)`. `URLSearchParams.set` URL-encodes — but the projectName from `package.json#name` could contain `@`/`/` (scoped packages). These are correctly encoded (`%40`, `%2F`). But the **rendered URL in the share-link logger output** (line 353) shows the URL-encoded form, which is harder to read than `@scope/pkg` literal. Cosmetic. |
-| 🟠 | `packages/react-doctor/src/scan.ts:351-354` | The share URL is logged via `logger.dim` — silenced in `--json` mode. But the API call to `calculateScore` happens before the share URL is logged. So in `--json` mode, the URL isn't shown but the API call still happens. Per §17.1 (Pass 3) — the data is leaked even when the user doesn't see the URL. |
-| 🟠 | `packages/react-doctor/src/utils/get-diff-files.ts:84` | `explicitBaseBranch ?? detectDefaultBranch(directory)` — if `explicitBaseBranch === ""` (empty string from `--diff ""`), the `??` doesn't fall through. The empty branch flows into `git merge-base "" HEAD` which fails, and the catch returns `[]`. Ultimately the user gets a silent "no changed files" with no clear error. Validate at CLI entry. |
-| 🟠 | `packages/react-doctor/src/utils/get-diff-files.ts:5-17` | `getCurrentBranch` returns `null` for `"HEAD"` (detached state). But during `git bisect`, `git rebase`, or `git worktree`, the user might want a diff. Currently silently disables `--diff`. Document or surface. |
-| 🟡 | `packages/react-doctor/src/utils/get-diff-files.ts:7` | `git rev-parse --abbrev-ref HEAD` doesn't account for git submodules. Inside a submodule, it returns the submodule's branch, not the parent's. `--diff` would compute diffs against the submodule's main, which is usually a fixed vendor commit. Probably wrong intent. |
-| 🟡 | `packages/react-doctor/src/cli.ts:78` | `printAnnotations` writes to `console.log` directly, not via the logger. Bypasses `setLoggerSilent`. In `--json --annotations` mode, the JSON output gets contaminated with `::warning ...` lines. |
-| 🟡 | `packages/react-doctor/src/cli.ts:82-87` `exitGracefully` | Uses `process.exit(0)` (success) on SIGINT/SIGTERM. Bash convention is signal-as-failure (`128 + signal_number` = `130` for SIGINT). Tools that check exit codes (CI gates, parent shells) see "success" when the user actually canceled. Use `process.exit(130)` for SIGINT, `143` for SIGTERM. |
-| 🟡 | `packages/react-doctor/src/cli.ts:89-90` `process.on("SIGINT", exitGracefully)` | Both signal handlers call `exitGracefully` which prints "Cancelled.". On Windows, SIGINT is not reliably delivered (Node uses Windows-specific console events). Documented limitation. |
-| 🟡 | `packages/react-doctor/src/utils/run-oxlint.ts:514` | `nodeBinaryPath: string = process.execPath` — the default is the parent Node binary. But the parent might be running `pnpm`/`npx`/`tsx` wrapper. `process.execPath` returns the actual `node` binary, not the wrapper. Fine for spawn — the spawn doesn't use the wrapper's logic. But the user might assume `react-doctor` runs oxlint via `npx` or similar; it doesn't. |
-| 🟡 | `packages/react-doctor/src/scan.ts:486` | `inputOptions.configOverride !== undefined` — three states (undefined/null/Config). Per §45 row 14, §52 row 16. The `!== undefined` check uses identity comparison. `null` is intentionally a valid override meaning "no config". But a typo using `!= undefined` (loose) would also accept `null`. Either is intentional but underdocumented. |
-| 🟡 | `packages/react-doctor/src/utils/spinner.ts:22-26` | `if (activeCount <= 0 \|\| !sharedInstance) { sharedInstance?.[method](displayText); sharedInstance = null; activeCount = 0; return; }` — sets `activeCount = 0` even when it was already 0. Redundant. The `<=` includes 0, so the check itself is the issue: any negative count (impossible normally) would also enter this branch. Fine semantically; clamping is defensive. |
-| 🟡 | `packages/react-doctor/src/utils/run-oxlint.ts:524` | `const restoreDisableDirectives = neutralizeDisableDirectives(rootDirectory, includePaths);` — runs SYNCHRONOUSLY before the try block. If `neutralizeDisableDirectives` throws (e.g., permission error on a file), the function exits without writing the config or running oxlint. The error propagates to the caller. Fine. |
-| 🟡 | `packages/react-doctor/src/utils/check-reduced-motion.ts:43` | `git grep -ql -E "${PATTERN}" -- ${GLOBS}` runs in a shell. If the user's repo has a hook that intercepts `git grep` (rare), it would interfere. Also, on Windows without git-for-windows providing `grep`, this fails. |
-| 🟡 | `packages/react-doctor/src/utils/proxy-fetch.ts:31` | `// @ts-expect-error undici is bundled with Node.js 18+ but lacks standalone type declarations` — the comment says "Node.js 18+", but the project's `engines.node: >=22`. The comment is outdated. |
-| 🟡 | `packages/react-doctor/src/utils/proxy-fetch.ts:32` | `await import("undici")` — for users on Node ≥22 with `--no-extra-modules` (a hypothetical flag), the import could fail. The catch returns `null`. Today's Node versions all bundle undici, so this is defensive. |
-| 🟢 | `packages/react-doctor/src/utils/install-skill-for-agent.ts:13-15` | The early-return based on `alreadyInstalledDirectories?.has(installedSkillDirectory)` returns the directory but doesn't verify the existing install matches expected content. If a user manually edited the skill, the second install (even if fast-pathed) doesn't notice. |
-| 🟢 | `packages/react-doctor/src/utils/spinner.ts:13-16` `noopHandle` | Module-level shared singleton. Calls to `noopHandle.succeed`/`fail` from any caller modify the same object. Today these are no-ops, so no observable issue. If anyone ever mutates `noopHandle.text` (e.g., for compatibility with ora's interface), all callers see it. `Object.freeze`. |
-| 🟢 | `packages/react-doctor/src/utils/colorize-by-score.ts` and `core/calculate-score-locally.ts` | The `getScoreLabel` function appears in `calculate-score-locally.ts:11-14` and the website duplicates per §18 (Pass 3). The logic is in 7 places. Confirmed again — no new finding, just persistent. |
-| 🟢 | `packages/react-doctor/src/utils/handle-error.ts:13` | `logger.error("")` (empty arg) prints a blank line via the logger's empty-string-coloring path. Should use `logger.break()`. Inconsistent with `scan.ts:204, 206, 211, 220` which use `logger.break()`. |
-| 🟢 | `packages/react-doctor/src/utils/handle-error.ts:13-15` | The boilerplate "Something went wrong. Please check the error below for more details. If the problem persists, please open an issue on GitHub." doesn't include a URL. Per §31.1 (Pass 5), the canonical repo URL is unclear. Users following the advice can't find the right repo. |
-| 🟢 | `packages/react-doctor/src/utils/format-error-chain.ts:5-11` | `visitedErrors: Set<unknown>` — captures a strong reference to all errors in the chain. For a long-lived chain, this prevents GC. Errors are short-lived in practice; `WeakSet` would be safer for general use. |
-| 🟢 | `packages/react-doctor/src/utils/get-staged-files.ts:18-26` `readStagedContent` | Uses `result.stdout.toString()` (default UTF-8). Per §27.7, §36, §60 row 4 — binary file corruption. The `SOURCE_FILE_PATTERN` check filters by extension, but a `.tsx` containing invalid UTF-8 (e.g., a deliberately-corrupted file) would still corrupt. |
-| 🟢 | `packages/react-doctor/src/scan.ts:204-206` `printScoreGauge` | Uses `logger.log("  ${buildScoreBar(score)}")` and `logger.break()`. The two-space indent is hardcoded — not from a constant. Magic indent. Per §4.2 (Pass 1), constants should live in `constants.ts`. |
-| 🟢 | `packages/react-doctor/src/utils/framed-box.ts:27-28` | `Math.max(...framedLines.map(...))` — uses spread into Math.max. For very long arrays (> ~10K elements), spread can hit V8's argument stack limit. Edge case (rule output has dozens of lines max). |
-| 🟢 | `packages/react-doctor/src/utils/framed-box.ts:27-28` | Computes `maximumLineLength` from `plainText.length` — character count, not display width. Multi-byte characters (Chinese, Japanese, emoji) display as 2 columns but count as 1 character. The frame is misaligned for international content. |
-| 🟢 | `packages/react-doctor/src/utils/framed-box.ts:30` | `"─".repeat(maximumLineLength + ...)` — uses U+2500 (BOX DRAWINGS LIGHT HORIZONTAL). On Windows cmd.exe with default code page (CP437/CP1252), this renders as `?` or `─`. Older terminals may show garbage. |
+| Severity | File / Location                                                                              | Issue                                                                                                                                                                                                                                                                                                                                                                                   |
+| -------- | -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 🟠       | `packages/react-doctor/src/scan.ts:611-613`                                                  | Even with `scoreOnly: true`, the network call to the score API still happens (unless `--offline`). For a `--score` user wanting fast output, this is unnecessary latency. Auto-prefer local scoring in `--score` mode.                                                                                                                                                                  |
+| 🟠       | `packages/react-doctor/src/scan.ts:243`                                                      | `buildShareUrl` uses `params.set("p", projectName)`. `URLSearchParams.set` URL-encodes — but the projectName from `package.json#name` could contain `@`/`/` (scoped packages). These are correctly encoded (`%40`, `%2F`). But the **rendered URL in the share-link logger output** (line 353) shows the URL-encoded form, which is harder to read than `@scope/pkg` literal. Cosmetic. |
+| 🟠       | `packages/react-doctor/src/scan.ts:351-354`                                                  | The share URL is logged via `logger.dim` — silenced in `--json` mode. But the API call to `calculateScore` happens before the share URL is logged. So in `--json` mode, the URL isn't shown but the API call still happens. Per §17.1 (Pass 3) — the data is leaked even when the user doesn't see the URL.                                                                             |
+| 🟠       | `packages/react-doctor/src/utils/get-diff-files.ts:84`                                       | `explicitBaseBranch ?? detectDefaultBranch(directory)` — if `explicitBaseBranch === ""` (empty string from `--diff ""`), the `??` doesn't fall through. The empty branch flows into `git merge-base "" HEAD` which fails, and the catch returns `[]`. Ultimately the user gets a silent "no changed files" with no clear error. Validate at CLI entry.                                  |
+| 🟠       | `packages/react-doctor/src/utils/get-diff-files.ts:5-17`                                     | `getCurrentBranch` returns `null` for `"HEAD"` (detached state). But during `git bisect`, `git rebase`, or `git worktree`, the user might want a diff. Currently silently disables `--diff`. Document or surface.                                                                                                                                                                       |
+| 🟡       | `packages/react-doctor/src/utils/get-diff-files.ts:7`                                        | `git rev-parse --abbrev-ref HEAD` doesn't account for git submodules. Inside a submodule, it returns the submodule's branch, not the parent's. `--diff` would compute diffs against the submodule's main, which is usually a fixed vendor commit. Probably wrong intent.                                                                                                                |
+| 🟡       | `packages/react-doctor/src/cli.ts:78`                                                        | `printAnnotations` writes to `console.log` directly, not via the logger. Bypasses `setLoggerSilent`. In `--json --annotations` mode, the JSON output gets contaminated with `::warning ...` lines.                                                                                                                                                                                      |
+| 🟡       | `packages/react-doctor/src/cli.ts:82-87` `exitGracefully`                                    | Uses `process.exit(0)` (success) on SIGINT/SIGTERM. Bash convention is signal-as-failure (`128 + signal_number` = `130` for SIGINT). Tools that check exit codes (CI gates, parent shells) see "success" when the user actually canceled. Use `process.exit(130)` for SIGINT, `143` for SIGTERM.                                                                                        |
+| 🟡       | `packages/react-doctor/src/cli.ts:89-90` `process.on("SIGINT", exitGracefully)`              | Both signal handlers call `exitGracefully` which prints "Cancelled.". On Windows, SIGINT is not reliably delivered (Node uses Windows-specific console events). Documented limitation.                                                                                                                                                                                                  |
+| 🟡       | `packages/react-doctor/src/utils/run-oxlint.ts:514`                                          | `nodeBinaryPath: string = process.execPath` — the default is the parent Node binary. But the parent might be running `pnpm`/`npx`/`tsx` wrapper. `process.execPath` returns the actual `node` binary, not the wrapper. Fine for spawn — the spawn doesn't use the wrapper's logic. But the user might assume `react-doctor` runs oxlint via `npx` or similar; it doesn't.               |
+| 🟡       | `packages/react-doctor/src/scan.ts:486`                                                      | `inputOptions.configOverride !== undefined` — three states (undefined/null/Config). Per §45 row 14, §52 row 16. The `!== undefined` check uses identity comparison. `null` is intentionally a valid override meaning "no config". But a typo using `!= undefined` (loose) would also accept `null`. Either is intentional but underdocumented.                                          |
+| 🟡       | `packages/react-doctor/src/utils/spinner.ts:22-26`                                           | `if (activeCount <= 0 \|\| !sharedInstance) { sharedInstance?.[method](displayText); sharedInstance = null; activeCount = 0; return; }` — sets `activeCount = 0` even when it was already 0. Redundant. The `<=` includes 0, so the check itself is the issue: any negative count (impossible normally) would also enter this branch. Fine semantically; clamping is defensive.         |
+| 🟡       | `packages/react-doctor/src/utils/run-oxlint.ts:524`                                          | `const restoreDisableDirectives = neutralizeDisableDirectives(rootDirectory, includePaths);` — runs SYNCHRONOUSLY before the try block. If `neutralizeDisableDirectives` throws (e.g., permission error on a file), the function exits without writing the config or running oxlint. The error propagates to the caller. Fine.                                                          |
+| 🟡       | `packages/react-doctor/src/utils/check-reduced-motion.ts:43`                                 | `git grep -ql -E "${PATTERN}" -- ${GLOBS}` runs in a shell. If the user's repo has a hook that intercepts `git grep` (rare), it would interfere. Also, on Windows without git-for-windows providing `grep`, this fails.                                                                                                                                                                 |
+| 🟡       | `packages/react-doctor/src/utils/proxy-fetch.ts:31`                                          | `// @ts-expect-error undici is bundled with Node.js 18+ but lacks standalone type declarations` — the comment says "Node.js 18+", but the project's `engines.node: >=22`. The comment is outdated.                                                                                                                                                                                      |
+| 🟡       | `packages/react-doctor/src/utils/proxy-fetch.ts:32`                                          | `await import("undici")` — for users on Node ≥22 with `--no-extra-modules` (a hypothetical flag), the import could fail. The catch returns `null`. Today's Node versions all bundle undici, so this is defensive.                                                                                                                                                                       |
+| 🟢       | `packages/react-doctor/src/utils/install-skill-for-agent.ts:13-15`                           | The early-return based on `alreadyInstalledDirectories?.has(installedSkillDirectory)` returns the directory but doesn't verify the existing install matches expected content. If a user manually edited the skill, the second install (even if fast-pathed) doesn't notice.                                                                                                             |
+| 🟢       | `packages/react-doctor/src/utils/spinner.ts:13-16` `noopHandle`                              | Module-level shared singleton. Calls to `noopHandle.succeed`/`fail` from any caller modify the same object. Today these are no-ops, so no observable issue. If anyone ever mutates `noopHandle.text` (e.g., for compatibility with ora's interface), all callers see it. `Object.freeze`.                                                                                               |
+| 🟢       | `packages/react-doctor/src/utils/colorize-by-score.ts` and `core/calculate-score-locally.ts` | The `getScoreLabel` function appears in `calculate-score-locally.ts:11-14` and the website duplicates per §18 (Pass 3). The logic is in 7 places. Confirmed again — no new finding, just persistent.                                                                                                                                                                                    |
+| 🟢       | `packages/react-doctor/src/utils/handle-error.ts:13`                                         | `logger.error("")` (empty arg) prints a blank line via the logger's empty-string-coloring path. Should use `logger.break()`. Inconsistent with `scan.ts:204, 206, 211, 220` which use `logger.break()`.                                                                                                                                                                                 |
+| 🟢       | `packages/react-doctor/src/utils/handle-error.ts:13-15`                                      | The boilerplate "Something went wrong. Please check the error below for more details. If the problem persists, please open an issue on GitHub." doesn't include a URL. Per §31.1 (Pass 5), the canonical repo URL is unclear. Users following the advice can't find the right repo.                                                                                                     |
+| 🟢       | `packages/react-doctor/src/utils/format-error-chain.ts:5-11`                                 | `visitedErrors: Set<unknown>` — captures a strong reference to all errors in the chain. For a long-lived chain, this prevents GC. Errors are short-lived in practice; `WeakSet` would be safer for general use.                                                                                                                                                                         |
+| 🟢       | `packages/react-doctor/src/utils/get-staged-files.ts:18-26` `readStagedContent`              | Uses `result.stdout.toString()` (default UTF-8). Per §27.7, §36, §60 row 4 — binary file corruption. The `SOURCE_FILE_PATTERN` check filters by extension, but a `.tsx` containing invalid UTF-8 (e.g., a deliberately-corrupted file) would still corrupt.                                                                                                                             |
+| 🟢       | `packages/react-doctor/src/scan.ts:204-206` `printScoreGauge`                                | Uses `logger.log("  ${buildScoreBar(score)}")` and `logger.break()`. The two-space indent is hardcoded — not from a constant. Magic indent. Per §4.2 (Pass 1), constants should live in `constants.ts`.                                                                                                                                                                                 |
+| 🟢       | `packages/react-doctor/src/utils/framed-box.ts:27-28`                                        | `Math.max(...framedLines.map(...))` — uses spread into Math.max. For very long arrays (> ~10K elements), spread can hit V8's argument stack limit. Edge case (rule output has dozens of lines max).                                                                                                                                                                                     |
+| 🟢       | `packages/react-doctor/src/utils/framed-box.ts:27-28`                                        | Computes `maximumLineLength` from `plainText.length` — character count, not display width. Multi-byte characters (Chinese, Japanese, emoji) display as 2 columns but count as 1 character. The frame is misaligned for international content.                                                                                                                                           |
+| 🟢       | `packages/react-doctor/src/utils/framed-box.ts:30`                                           | `"─".repeat(maximumLineLength + ...)` — uses U+2500 (BOX DRAWINGS LIGHT HORIZONTAL). On Windows cmd.exe with default code page (CP437/CP1252), this renders as `?` or `─`. Older terminals may show garbage.                                                                                                                                                                            |
 
 ---
 
@@ -5112,6 +5148,7 @@ overrides:
 The entire build, test, and lint toolchain depends on `@voidzero-dev/vite-plus-core` and `@voidzero-dev/vite-plus-test`, **replacing** vite and vitest globally via pnpm overrides. This is VoidZero's pre-1.0 (`^0.1.15`) closed-beta toolchain.
 
 Risk surface:
+
 - **Pre-1.0 stability**: at 0.1.15-0.1.20, semver guarantees nothing across minor versions. Any patch could break.
 - **Single-vendor**: if VoidZero changes their licensing, deprecates the package, or pivots, the entire build pipeline becomes inoperable.
 - **Override scope**: replacing `vite` globally affects every transitive dep that requires vite (e.g., next.js for the website package). Subtle incompatibilities can creep in.
@@ -5151,6 +5188,7 @@ If a downstream tool like `vite-plus` ever expects TS 5 type semantics specifica
 ```
 
 pnpm 10's security feature: only listed packages can run their `postinstall` scripts during install. Three approved packages. **Doesn't include**:
+
 - `eslint-plugin-react-hooks` (runtime dep) — currently has no install scripts, but a future version could.
 - `oxlint` — Rust binaries built per-platform. May need install scripts on some platforms.
 - `knip` — currently has no install scripts.
@@ -5267,6 +5305,7 @@ For a new contributor, the lockfile is a wall of YAML. CI's `--frozen-lockfile` 
 ```
 
 Per §73.3. Multiple TypeScript versions in `node_modules` can lead to:
+
 - Subtle type mismatches (5.9.3 and 6.0.2 may have different `Iterable<T>` semantics, etc.).
 - IDE confusion: which `tsserver` runs depends on path resolution.
 - Bundle output differences if a transformer uses one TS version and a checker uses another.
@@ -5304,13 +5343,16 @@ Per §57.1 (Pass 8). Three Node type definitions concurrently. Minor disagreemen
 ```
 
 If `detectedAgents` is empty:
+
 - Line 38-44 prints the error and exits with code 1. Good.
 
 If `detectedAgents` is non-empty AND `skipPrompts === true` (because `-y` or non-TTY):
+
 - `selectedAgents = detectedAgents` (all agents). Installs to all.
 - `selectedAgents.length === 0` check at line 65 doesn't fire.
 
 If `detectedAgents` is non-empty AND `skipPrompts === false` (interactive mode):
+
 - Prompt asks user to select.
 - If user selects nothing (somehow), `selectedAgents.length === 0` → silent return.
 
@@ -5339,11 +5381,13 @@ const copySkillToDist = () => {
 ```
 
 Issues:
+
 1. **`process.cwd()`-based**: assumes the build runs from the package directory. If the user accidentally runs `vp pack` from the workspace root, `cwd()` is the root, and `../../skills/react-doctor` doesn't resolve. The `if (!fs.existsSync(skillSource)) return;` silently skips. The build "succeeds" but the published artifact lacks the skill.
 2. **Hardcoded `../../skills/react-doctor`** — tightly couples the package to its workspace layout. If anyone reorganizes the monorepo (e.g., flatten or move `skills/`), the path breaks silently.
 3. **`fs.rmSync` then `fs.mkdirSync` then `fs.cpSync`** — three sync ops that could fail individually. No error handling. A permission denied on `rmSync` would throw.
 
 A more robust approach:
+
 - Resolve `skillSource` from `import.meta.url` (relative to vite.config.ts itself).
 - Validate that the source exists — error with a clear message if not.
 - Wrap in a try/catch with actionable error.
@@ -5374,34 +5418,34 @@ Per §39.4 (Pass 6) — if `VERSION` env isn't set during release, the bundled b
 
 ## 78. Additional Findings (Pass 10)
 
-| Severity | File / Location | Issue |
-|---|---|---|
-| 🟠 | `pnpm-lock.yaml:8-9` | The overrides at the top of pnpm-lock include both `vite` and `vitest` replacements. But the lockfile is checked into git. If a contributor with an older pnpm version regenerates the lockfile, the lockfile format may change — a different contributor's pnpm 10 may then reject the updated lockfile. Pin pnpm version via `packageManager` field (already done at `package.json:39 "packageManager": "pnpm@10.29.1"`) — but Corepack must be enabled for it to take effect. Document in `CONTRIBUTING.md`. |
-| 🟠 | `package.json:39 "packageManager": "pnpm@10.29.1"` | No integrity hash. Modern Corepack (Node 20+) supports integrity hashes via `pnpm@10.29.1+sha256:...`. Without one, a malicious npm registry could serve a different pnpm version. For a security-sensitive project, add the hash. |
-| 🟠 | `packages/react-doctor/package.json:32` | Build command is `"build": "rm -rf dist && NODE_ENV=production vp pack"`. The `NODE_ENV=production` is sometimes ignored by `vp` if it doesn't honor the env var. Per `vite.config.ts`, no minification or dead-code elimination is wired up explicitly via `NODE_ENV` checks. So the env var has no effect. Dead code in the config. |
-| 🟠 | `packages/react-doctor/vite.config.ts:9-17 copySkillToDist` | Runs in the `build:done` hook. But Turbo's caching may consider the build's output to be `dist/**` (per `turbo.json:6`). If the cache hits, vite doesn't run, which means `copySkillToDist` doesn't run, which means the cached `dist/` is used as-is. If the cached `dist/skills/` is from a previous build with different skill content, the user gets stale content. Turbo cache invalidation should include `skills/**` as an input. |
-| 🟠 | `turbo.json:6` `outputs: ["dist/**"]` | Doesn't include `skills/**` as an input. So changes to `skills/react-doctor/SKILL.md` don't invalidate the build's cache. Per the previous row — Turbo serves stale artifacts. |
-| 🟡 | `packages/react-doctor/package.json:66 typescript: ">=5.0.4 <7"` | Range `>=5.0.4 <7` — accepts both TS 5 and TS 6. But the codebase wasn't tested against the full range. Some TS 6 features (e.g., new strict null check semantics) might not be backward-compatible with TS 5. CI tests against one specific version (`6.0.2`); 5.0.4 is untested. |
-| 🟡 | `packages/website/package.json:24 typescript: ^5` | Different version range than react-doctor's runtime dep. Website allows TS 5 only; react-doctor allows TS 5 OR 6. Disjoint ranges. |
-| 🟡 | `packages/react-doctor/src/utils/get-staged-files.ts:4` | Uses `GIT_SHOW_MAX_BUFFER_BYTES = 10 * 1024 * 1024` (10 MB). For a repo with very large staged files (image sprites, generated code), `git show :path` can exceed this. The `spawnSync` then throws ENOBUFS. Caught at line 12 (returns empty string), but the user has no visibility — staged scan silently misses files. |
-| 🟡 | `packages/react-doctor/src/constants.ts:62` | `GIT_SHOW_MAX_BUFFER_BYTES = 10 * 1024 * 1024` — but `GIT_LS_FILES_MAX_BUFFER_BYTES = 50 * 1024 * 1024` (50 MB). Inconsistent — `git show` of a large file is bounded smaller than `git ls-files`. Probably correct (one file vs the whole tree), but the rationale isn't documented. |
-| 🟡 | `packages/react-doctor/src/utils/get-staged-files.ts:12-15` | `spawnSync` catches errors via `result.error || result.status !== 0`. If `git` exits with non-zero (e.g., git LFS missing), the function returns `[]`. Silent. Add a `logger.warn`. |
-| 🟡 | `packages/react-doctor/src/utils/spinner.ts:46-50` | When `sharedInstance` exists and a new spinner is requested, the new spinner overwrites the old one's text but **doesn't preserve the old spinner's text**. The old spinner's progress is visually replaced. From the user's perspective, "Detecting dead code..." mid-run gets replaced with "Running lint checks..." even though both are running. Confusing. |
-| 🟡 | `packages/react-doctor/src/cli.ts:182` | `const isScoreOnly = flags.score;` — `flags.score` is a boolean (Commander defaults boolean options). `Boolean(flags.score)` is unnecessary but not wrong. The other booleans elsewhere don't use `Boolean()` wrapping; per §1.13 (Pass 1), this inconsistency was already noted. |
-| 🟡 | `packages/react-doctor/src/cli.ts:202-206` `shouldSkipPrompts` | The OR chain at the top of the action handler. If `flags.yes && flags.no` (both set), `shouldSkipPrompts === true`, but `effectiveDiff` resolves to `false` (because `--no` declined). The diff prompt is skipped — but should it have been declined or accepted? Ambiguous semantics for the combination. |
-| 🟢 | `packages/react-doctor/src/cli.ts:182-184` | `isQuiet = isScoreOnly || isJsonMode` — used to suppress `logger.log(...)` calls during scan. But `printAnnotations` (line 360) bypasses this check. So `--annotations --json` produces both JSON output AND annotations on stdout. Already noted §74.3. |
-| 🟢 | `packages/react-doctor/src/utils/get-staged-files.ts:52-60` | `materializeStagedFiles` iterates staged files, copies each. If there are 1000 staged files, this is 1000 sequential `git show` commands. Each spawns a subprocess. Could parallelize with `Promise.all`, but `spawnSync` is sync. Use `child_process.spawn` with promises for concurrency. |
-| 🟢 | `packages/react-doctor/src/install-skill.ts:30-34` | Sets `process.exitCode = 1` and returns. But the `action` block in `cli.ts:387-403` calls `await runInstallSkill(...)` and then catches errors. The exit code propagates because `process.exitCode` is process-global. Multiple install attempts in the same process (hypothetical) would leave exitCode at 1 even after a successful subsequent install. Reset at the start of each call. |
-| 🟢 | `pnpm-lock.yaml` | Doesn't track the operating system or CPU architecture per dep — pnpm 10's lockfile format. Native binaries (oxlint's per-arch builds, `@parcel/watcher`) are platform-specific but the lockfile lists all of them. Disk usage is higher than necessary on a single platform. |
-| 🟢 | `package.json:30 "@voidzero-dev/vite-plus-core": "^0.1.15"` is a **devDependency**, but `vite-plus` (which depends on it) is also declared. Redundant — installing `vite-plus` should pull in its peer. Confirms the explicit declaration is for IDE / tooling visibility. |
-| 🟢 | `vite.config.ts:27-29` env injection | Only injects `VERSION`. Other useful constants (`SCORE_API_URL`, `SHARE_BASE_URL`) are hardcoded in `constants.ts`. For a self-hosted react-doctor deployment that points at a different score API, the user would have to fork. Make these env-overridable. |
+| Severity | File / Location                                                                                                                                                                                                                                                            | Issue                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 🟠       | `pnpm-lock.yaml:8-9`                                                                                                                                                                                                                                                       | The overrides at the top of pnpm-lock include both `vite` and `vitest` replacements. But the lockfile is checked into git. If a contributor with an older pnpm version regenerates the lockfile, the lockfile format may change — a different contributor's pnpm 10 may then reject the updated lockfile. Pin pnpm version via `packageManager` field (already done at `package.json:39 "packageManager": "pnpm@10.29.1"`) — but Corepack must be enabled for it to take effect. Document in `CONTRIBUTING.md`. |
+| 🟠       | `package.json:39 "packageManager": "pnpm@10.29.1"`                                                                                                                                                                                                                         | No integrity hash. Modern Corepack (Node 20+) supports integrity hashes via `pnpm@10.29.1+sha256:...`. Without one, a malicious npm registry could serve a different pnpm version. For a security-sensitive project, add the hash.                                                                                                                                                                                                                                                                              |
+| 🟠       | `packages/react-doctor/package.json:32`                                                                                                                                                                                                                                    | Build command is `"build": "rm -rf dist && NODE_ENV=production vp pack"`. The `NODE_ENV=production` is sometimes ignored by `vp` if it doesn't honor the env var. Per `vite.config.ts`, no minification or dead-code elimination is wired up explicitly via `NODE_ENV` checks. So the env var has no effect. Dead code in the config.                                                                                                                                                                           |
+| 🟠       | `packages/react-doctor/vite.config.ts:9-17 copySkillToDist`                                                                                                                                                                                                                | Runs in the `build:done` hook. But Turbo's caching may consider the build's output to be `dist/**` (per `turbo.json:6`). If the cache hits, vite doesn't run, which means `copySkillToDist` doesn't run, which means the cached `dist/` is used as-is. If the cached `dist/skills/` is from a previous build with different skill content, the user gets stale content. Turbo cache invalidation should include `skills/**` as an input.                                                                        |
+| 🟠       | `turbo.json:6` `outputs: ["dist/**"]`                                                                                                                                                                                                                                      | Doesn't include `skills/**` as an input. So changes to `skills/react-doctor/SKILL.md` don't invalidate the build's cache. Per the previous row — Turbo serves stale artifacts.                                                                                                                                                                                                                                                                                                                                  |
+| 🟡       | `packages/react-doctor/package.json:66 typescript: ">=5.0.4 <7"`                                                                                                                                                                                                           | Range `>=5.0.4 <7` — accepts both TS 5 and TS 6. But the codebase wasn't tested against the full range. Some TS 6 features (e.g., new strict null check semantics) might not be backward-compatible with TS 5. CI tests against one specific version (`6.0.2`); 5.0.4 is untested.                                                                                                                                                                                                                              |
+| 🟡       | `packages/website/package.json:24 typescript: ^5`                                                                                                                                                                                                                          | Different version range than react-doctor's runtime dep. Website allows TS 5 only; react-doctor allows TS 5 OR 6. Disjoint ranges.                                                                                                                                                                                                                                                                                                                                                                              |
+| 🟡       | `packages/react-doctor/src/utils/get-staged-files.ts:4`                                                                                                                                                                                                                    | Uses `GIT_SHOW_MAX_BUFFER_BYTES = 10 * 1024 * 1024` (10 MB). For a repo with very large staged files (image sprites, generated code), `git show :path` can exceed this. The `spawnSync` then throws ENOBUFS. Caught at line 12 (returns empty string), but the user has no visibility — staged scan silently misses files.                                                                                                                                                                                      |
+| 🟡       | `packages/react-doctor/src/constants.ts:62`                                                                                                                                                                                                                                | `GIT_SHOW_MAX_BUFFER_BYTES = 10 * 1024 * 1024` — but `GIT_LS_FILES_MAX_BUFFER_BYTES = 50 * 1024 * 1024` (50 MB). Inconsistent — `git show` of a large file is bounded smaller than `git ls-files`. Probably correct (one file vs the whole tree), but the rationale isn't documented.                                                                                                                                                                                                                           |
+| 🟡       | `packages/react-doctor/src/utils/get-staged-files.ts:12-15`                                                                                                                                                                                                                | `spawnSync` catches errors via `result.error                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |     | result.status !== 0`. If `git`exits with non-zero (e.g., git LFS missing), the function returns`[]`. Silent. Add a `logger.warn`.                                                                                        |
+| 🟡       | `packages/react-doctor/src/utils/spinner.ts:46-50`                                                                                                                                                                                                                         | When `sharedInstance` exists and a new spinner is requested, the new spinner overwrites the old one's text but **doesn't preserve the old spinner's text**. The old spinner's progress is visually replaced. From the user's perspective, "Detecting dead code..." mid-run gets replaced with "Running lint checks..." even though both are running. Confusing.                                                                                                                                                 |
+| 🟡       | `packages/react-doctor/src/cli.ts:182`                                                                                                                                                                                                                                     | `const isScoreOnly = flags.score;` — `flags.score` is a boolean (Commander defaults boolean options). `Boolean(flags.score)` is unnecessary but not wrong. The other booleans elsewhere don't use `Boolean()` wrapping; per §1.13 (Pass 1), this inconsistency was already noted.                                                                                                                                                                                                                               |
+| 🟡       | `packages/react-doctor/src/cli.ts:202-206` `shouldSkipPrompts`                                                                                                                                                                                                             | The OR chain at the top of the action handler. If `flags.yes && flags.no` (both set), `shouldSkipPrompts === true`, but `effectiveDiff` resolves to `false` (because `--no` declined). The diff prompt is skipped — but should it have been declined or accepted? Ambiguous semantics for the combination.                                                                                                                                                                                                      |
+| 🟢       | `packages/react-doctor/src/cli.ts:182-184`                                                                                                                                                                                                                                 | `isQuiet = isScoreOnly                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |     | isJsonMode`— used to suppress`logger.log(...)`calls during scan. But`printAnnotations`(line 360) bypasses this check. So`--annotations --json` produces both JSON output AND annotations on stdout. Already noted §74.3. |
+| 🟢       | `packages/react-doctor/src/utils/get-staged-files.ts:52-60`                                                                                                                                                                                                                | `materializeStagedFiles` iterates staged files, copies each. If there are 1000 staged files, this is 1000 sequential `git show` commands. Each spawns a subprocess. Could parallelize with `Promise.all`, but `spawnSync` is sync. Use `child_process.spawn` with promises for concurrency.                                                                                                                                                                                                                     |
+| 🟢       | `packages/react-doctor/src/install-skill.ts:30-34`                                                                                                                                                                                                                         | Sets `process.exitCode = 1` and returns. But the `action` block in `cli.ts:387-403` calls `await runInstallSkill(...)` and then catches errors. The exit code propagates because `process.exitCode` is process-global. Multiple install attempts in the same process (hypothetical) would leave exitCode at 1 even after a successful subsequent install. Reset at the start of each call.                                                                                                                      |
+| 🟢       | `pnpm-lock.yaml`                                                                                                                                                                                                                                                           | Doesn't track the operating system or CPU architecture per dep — pnpm 10's lockfile format. Native binaries (oxlint's per-arch builds, `@parcel/watcher`) are platform-specific but the lockfile lists all of them. Disk usage is higher than necessary on a single platform.                                                                                                                                                                                                                                   |
+| 🟢       | `package.json:30 "@voidzero-dev/vite-plus-core": "^0.1.15"` is a **devDependency**, but `vite-plus` (which depends on it) is also declared. Redundant — installing `vite-plus` should pull in its peer. Confirms the explicit declaration is for IDE / tooling visibility. |
+| 🟢       | `vite.config.ts:27-29` env injection                                                                                                                                                                                                                                       | Only injects `VERSION`. Other useful constants (`SCORE_API_URL`, `SHARE_BASE_URL`) are hardcoded in `constants.ts`. For a self-hosted react-doctor deployment that points at a different score API, the user would have to fork. Make these env-overridable.                                                                                                                                                                                                                                                    |
 
 ---
 
 ## 79. Quick Wins (Pass 10)
 
 88. **Remove the duplicate `pnpm.overrides` from `package.json`** (§73.2) — keep `pnpm-workspace.yaml`.
-89. **Add `skills/**` to Turbo's input list** (§78 row 5) — fixes stale-cache bug where SKILL.md changes don't invalidate the build.
+89. **Add `skills/**` to Turbo's input list\*\* (§78 row 5) — fixes stale-cache bug where SKILL.md changes don't invalidate the build.
 90. **Validate `--staged + --diff` mode conflict** (§74.1) — log a warning when both are set.
 91. **Validate `--annotations` doesn't combine with `--json`/`--score`** (§74.3) — currently produces malformed output.
 92. **Pin one TypeScript version across the workspace** (§73.3, §75.2) — avoids two-version `node_modules`.
@@ -5494,6 +5538,7 @@ no-inline-prop-on-memo-component
 This is a **real shipped bug**.
 
 Verified:
+
 - `oxlint-config.ts:156 "react-doctor/no-inline-prop-on-memo-component": "warn"` — rule is enabled.
 - `plugin/index.ts:155 "no-inline-prop-on-memo-component": noInlinePropOnMemoComponent` — registered.
 - **NO entry** in `RULE_CATEGORY_MAP` (`run-oxlint.ts:27-141`).
@@ -5509,6 +5554,7 @@ const resolveDiagnosticCategory = (plugin: string, rule: string): string => {
 ```
 
 For `react-doctor/no-inline-prop-on-memo-component`:
+
 - `RULE_CATEGORY_MAP[ruleKey]` is `undefined` (no entry).
 - `PLUGIN_CATEGORY_MAP["react-doctor"]` is `undefined` (only `react`, `react-hooks`, etc. have entries).
 - Falls through to `"Other"`.
@@ -5521,6 +5567,7 @@ For `react-doctor/no-inline-prop-on-memo-component`:
 ```
 
 For this rule:
+
 - `help` from oxlint's diagnostic is `""` (the plugin's `context.report({ node, message })` only sets node + message, not help).
 - `RULE_HELP_MAP["no-inline-prop-on-memo-component"]` is `undefined`.
 - Final: `help: ""`.
@@ -5796,6 +5843,7 @@ Or wrap the catch body itself:
 `process.exit(1)` terminates the process synchronously, **without waiting for queued I/O to flush**. If the catch block's prior `logger.error(...)` calls are buffered in stdout (Node's stdout is async on Linux/macOS for TTY, sync for pipes), some output may be truncated.
 
 For the staged-mode flow specifically:
+
 - `cli.ts:282 snapshot.cleanup()` runs in the staged mode's `finally` block, deletes the temp directory.
 - If a non-JSON-mode error happens, `handleError(error)` → `process.exit(1)`. Cleanup runs first because it's in a `try/finally` block higher in the stack — but only because Node guarantees `finally` runs before the `process.exit`-bound throw propagates. Wait, `process.exit` doesn't throw — it terminates. So the `finally` block at staged-mode line 275 might NOT run if `handleError` is called before reaching it.
 
@@ -5858,6 +5906,7 @@ Plus a `--verbose` or `DEBUG=react-doctor:*` switch that enables them.
 §85.1, §85.2, §85.3 are three new findings that compound: any failure in error-reporting code itself doesn't gracefully degrade — it cascades to an unhandled rejection. For `--json` consumers (the documented contract: "stdout is always a valid document"), this is a contract violation under realistic conditions.
 
 The two genuinely high-value findings:
+
 - **§85.1** — wrap `main()` in a `.catch()`.
 - **§85.2** — make `buildJsonReportError` defensive about non-Error throws (Symbols, Proxies, broken `toString`).
 
@@ -5882,6 +5931,7 @@ This pass cross-references **rule severity** against **rule reliability**. A rul
 ```
 
 Per **§48.1** (Pass 7) and **§83.1** (Pass 12):
+
 - The TanStack Query rules fire on any function named `useQuery`/`useMutation`, regardless of import source.
 - The TanStack Query rules are enabled **unconditionally** — no `@tanstack/react-query` detection.
 - A vanilla React project with a custom `useQuery` hook AND a `class QueryClient { … }` (the kind of "I'm rolling my own query layer" code pre-React-Query) gets this rule firing as **error**, blocking CI for `--fail-on error` users.
@@ -5919,6 +5969,7 @@ Marking this as `error` while it has a documented false-positive surface (driven
 ```
 
 Per **§36 row 6** and **§36 row 7** (Pass 5):
+
 - `SECRET_MIN_LENGTH_CHARS = 8` (constants:7) is too low. Real secrets are 32–80 chars; UI strings often fit "loading message"-style 8+ char strings to a variable named `loadingMessage`.
 - `SECRET_VARIABLE_PATTERN` matches any name containing `auth`/`token`/`secret`/`credential`. So `authMessage = "Loading..."` (assuming `loadingMessage` doesn't match the false-positive suffix list — it doesn't, "message" isn't in the suffix exclusions) — wait, `message` IS in `SECRET_FALSE_POSITIVE_SUFFIXES` (line 143). OK.
 
@@ -6085,6 +6136,7 @@ A user with `react-doctor.config.json: { "ignore": { "files": [123, "src/foo.tsx
 3. `compileGlobPattern` does `pattern.replace(/\\/g, "/")` — `(123).replace` is `undefined`, throws `TypeError: pattern.replace is not a function`.
 
 The error propagates:
+
 - `compileIgnoredFilePatterns` doesn't catch.
 - `filterIgnoredDiagnostics` (caller) doesn't catch.
 - `mergeAndFilterDiagnostics` (caller) doesn't catch.
@@ -6092,6 +6144,7 @@ The error propagates:
 - `runScan` doesn't catch this specific error — `Promise.all([lintPromise, deadCodePromise])` resolves first, then `combineDiagnostics` runs synchronously and throws.
 
 The user sees:
+
 ```
 TypeError: pattern.replace is not a function
 ```
@@ -6116,7 +6169,9 @@ Or validate at config-load time and warn:
 if (parsed.ignore?.files) {
   const invalid = parsed.ignore.files.filter((f) => typeof f !== "string");
   if (invalid.length) {
-    logger.warn(`react-doctor.config.json: ignore.files contains ${invalid.length} non-string entries; ignoring them`);
+    logger.warn(
+      `react-doctor.config.json: ignore.files contains ${invalid.length} non-string entries; ignoring them`,
+    );
     parsed.ignore.files = parsed.ignore.files.filter((f) => typeof f === "string");
   }
 }
@@ -6189,6 +6244,7 @@ const isValidFailOnLevel = (level: string): level is FailOnLevel =>
 ```
 
 The validation IS present. But:
+
 - It's the only field with strict validation.
 - Falls through to `"none"` (the most-permissive option) on invalid input — per §43.1 (Pass 6) — silent CI breakage if the user typo's `"warning"` as `"warning "` (trailing space) or `"warn"` (matching the oxlint severity, not the failOn level).
 
@@ -6265,6 +6321,7 @@ That's `buildShareUrl` (line 232), `buildCountsSummaryLine` (line 296), and `sum
 ### 🟡 94.1 9 redundant passes per scan, all computing the same numbers
 
 Per scan output:
+
 - `printSummary` calls `buildCountsSummaryLine` → 3 passes.
 - `printSummary` calls `buildShareUrl` (when not offline) → 3 more passes.
 - `--json` mode calls `summarizeDiagnostics` (via `buildJsonReport`) → 3 more passes.
@@ -6310,6 +6367,7 @@ Then `mergeAndFilterDiagnostics`:
 ```
 
 Per project:
+
 - `[...lint, ...dead, ...extra]` — 1 allocation.
 - `filterIgnoredDiagnostics` — 1 allocation (filtered).
 - `filterInlineSuppressions` — 1 allocation (filtered).
@@ -6341,10 +6399,12 @@ const batchIncludePaths = (baseArgs: string[], includePaths: string[]): string[]
 ```
 
 `SPAWN_ARGS_MAX_LENGTH_CHARS = 24_000` (constants:31). For a project with 10K files at avg 100 chars per path:
+
 - 100 chars × 1 file per arg = ~240 files per batch ≤ `OXLINT_MAX_FILES_PER_BATCH = 500` → batches limited by char length.
 - 10K / 240 ≈ 42 batches. Each batch spawns oxlint (~300ms cold start). Total ~13s of pure spawn.
 
 For pathological paths (e.g., a Linux filesystem with deep nested dirs producing 4096-char paths):
+
 - 4096 chars per file × 5 files per batch = ~20K. Just under the limit.
 - 10K / 5 = **2,000 batches**.
 - 2,000 × 300ms = 600s = 10 minutes of pure spawn overhead.
@@ -6519,16 +6579,16 @@ The AST-walking rule files use literal node-type strings hundreds of times. From
 
 Every `node.type === "Identifier"`, `node.callee?.type === "MemberExpression"`, `node.value.type !== "JSXExpressionContainer"`, etc. uses a string literal that's never defined in one place. Grep counts (just for the high-frequency types):
 
-| Type string | ~Total occurrences |
-|---|---|
-| `"Identifier"` | ~107 |
-| `"CallExpression"` | ~50 |
-| `"Literal"` | ~50 |
-| `"MemberExpression"` | ~45 |
-| `"JSXIdentifier"` | ~35 |
-| `"ObjectExpression"` | ~25 |
-| `"JSXExpressionContainer"` | ~25 |
-| Plus ~30 other ESTree node types | ~150 |
+| Type string                      | ~Total occurrences |
+| -------------------------------- | ------------------ |
+| `"Identifier"`                   | ~107               |
+| `"CallExpression"`               | ~50                |
+| `"Literal"`                      | ~50                |
+| `"MemberExpression"`             | ~45                |
+| `"JSXIdentifier"`                | ~35                |
+| `"ObjectExpression"`             | ~25                |
+| `"JSXExpressionContainer"`       | ~25                |
+| Plus ~30 other ESTree node types | ~150               |
 
 A typo like `node.type === "Identifer"` (missing 'i') type-checks fine. The rule silently never fires. This is a structural risk for the entire plugin's correctness.
 
@@ -6687,25 +6747,25 @@ Script `06-types-outside-types-ts.sh`:
 22 interfaces declared in 17 files outside types.ts
 ```
 
-| File | Interfaces |
-|---|---|
-| `utils/resolve-compatible-node.ts` | NodeVersion, NodeResolution |
-| `scan.ts` | ScoreBarSegments, ResolvedScanOptions |
-| `core/diagnose-core.ts` | DiagnoseRunnerContext, DiagnoseCoreDeps |
-| `core/build-result.ts` | BuildDiagnoseResultInput, BuildDiagnoseTimedResult |
-| `core/build-diagnose-result.ts` | BuildDiagnoseResultParams, DiagnoseResultShape |
-| `utils/proxy-fetch.ts` | GlobalProcessLike |
-| `utils/get-staged-files.ts` | StagedSnapshot |
-| `utils/discover-project.ts` | CatalogCollection |
-| `utils/detect-agents.ts` | AgentMeta |
-| `utils/build-json-report.ts` | BuildJsonReportInput |
-| `utils/build-json-report-error.ts` | BuildJsonReportErrorInput |
-| `plugin/rules/tanstack-start.ts` | ServerFnChainInfo |
-| `oxlint-config.ts` | OxlintConfigOptions |
-| `install-skill.ts` | InstallSkillOptions |
-| `index.ts` | ToJsonReportOptions |
-| `core/try-score-from-api.ts` | ScoreRequestFetch |
-| `cli.ts` | CliFlags |
+| File                               | Interfaces                                         |
+| ---------------------------------- | -------------------------------------------------- |
+| `utils/resolve-compatible-node.ts` | NodeVersion, NodeResolution                        |
+| `scan.ts`                          | ScoreBarSegments, ResolvedScanOptions              |
+| `core/diagnose-core.ts`            | DiagnoseRunnerContext, DiagnoseCoreDeps            |
+| `core/build-result.ts`             | BuildDiagnoseResultInput, BuildDiagnoseTimedResult |
+| `core/build-diagnose-result.ts`    | BuildDiagnoseResultParams, DiagnoseResultShape     |
+| `utils/proxy-fetch.ts`             | GlobalProcessLike                                  |
+| `utils/get-staged-files.ts`        | StagedSnapshot                                     |
+| `utils/discover-project.ts`        | CatalogCollection                                  |
+| `utils/detect-agents.ts`           | AgentMeta                                          |
+| `utils/build-json-report.ts`       | BuildJsonReportInput                               |
+| `utils/build-json-report-error.ts` | BuildJsonReportErrorInput                          |
+| `plugin/rules/tanstack-start.ts`   | ServerFnChainInfo                                  |
+| `oxlint-config.ts`                 | OxlintConfigOptions                                |
+| `install-skill.ts`                 | InstallSkillOptions                                |
+| `index.ts`                         | ToJsonReportOptions                                |
+| `core/try-score-from-api.ts`       | ScoreRequestFetch                                  |
+| `cli.ts`                           | CliFlags                                           |
 
 22 interfaces violating AGENTS.md §5. Either move to `types.ts` (literal interpretation) or update AGENTS.md to clarify "module-private interfaces are allowed when they're only used in one file" (more pragmatic).
 
@@ -6723,18 +6783,18 @@ Script `04-type-casts.sh`:
 
 Real casts:
 
-| File:Line | Cast | Justifiable? |
-|---|---|---|
-| `run-oxlint.ts:479` | `JSON.parse(stdout) as OxlintOutput` | No — should validate. |
-| `proxy-fetch.ts:53` | `... as RequestInit` | Yes (undici dispatcher field) — already has `// HACK` comment. |
-| `detect-agents.ts:33` | `Object.keys(SUPPORTED_AGENTS) as SupportedAgent[]` | Could use `satisfies`. |
-| `run-knip.ts:115` | `options.parsedConfig as Record<string, unknown>` | Knip type shim is too loose. |
-| `run-knip.ts:121` | `... as KnipResults` | Same — fix shim. |
-| `discover-project.ts:263` | `packageJson as Record<string, unknown>` | The `PackageJson` type omits `catalog`/`catalogs` fields. Add to type. |
-| `discover-project.ts:271, 273, 289` | `... as Record<string, unknown>` (×3 more) | Same root cause as above. |
-| `load-config.ts:18` | `parsed as ReactDoctorConfig` | Should validate (per §92.7, Pass 15). |
-| `load-config.ts:35` | `embeddedConfig as ReactDoctorConfig` | Same. |
-| `cli.ts:50` | `level as FailOnLevel` | Inside the validator — actually OK, it's the `is` predicate context. |
+| File:Line                           | Cast                                                | Justifiable?                                                           |
+| ----------------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------- |
+| `run-oxlint.ts:479`                 | `JSON.parse(stdout) as OxlintOutput`                | No — should validate.                                                  |
+| `proxy-fetch.ts:53`                 | `... as RequestInit`                                | Yes (undici dispatcher field) — already has `// HACK` comment.         |
+| `detect-agents.ts:33`               | `Object.keys(SUPPORTED_AGENTS) as SupportedAgent[]` | Could use `satisfies`.                                                 |
+| `run-knip.ts:115`                   | `options.parsedConfig as Record<string, unknown>`   | Knip type shim is too loose.                                           |
+| `run-knip.ts:121`                   | `... as KnipResults`                                | Same — fix shim.                                                       |
+| `discover-project.ts:263`           | `packageJson as Record<string, unknown>`            | The `PackageJson` type omits `catalog`/`catalogs` fields. Add to type. |
+| `discover-project.ts:271, 273, 289` | `... as Record<string, unknown>` (×3 more)          | Same root cause as above.                                              |
+| `load-config.ts:18`                 | `parsed as ReactDoctorConfig`                       | Should validate (per §92.7, Pass 15).                                  |
+| `load-config.ts:35`                 | `embeddedConfig as ReactDoctorConfig`               | Same.                                                                  |
+| `cli.ts:50`                         | `level as FailOnLevel`                              | Inside the validator — actually OK, it's the `is` predicate context.   |
 
 Of 13 casts: **10 are unjustified** per AGENTS.md. 4 of them root-cause to weak `PackageJson` typing (could fix by widening the type once). 3 root-cause to weak external-package types (knip).
 
@@ -6744,13 +6804,13 @@ Of 13 casts: **10 are unjustified** per AGENTS.md. 4 of them root-cause to weak 
 
 Script `09-string-similarity.sh`:
 
-| Function | Defined in (file count) |
-|---|---|
-| `SCORE_GOOD_THRESHOLD = 75` | **9 files** (CLI constants.ts + 8 website files) |
-| `getScoreLabel` | **5 files** (CLI scan.ts + 4 website files) |
-| `getScoreColor`/`getScoreColorClass` | **5 files** |
-| `getDoctorFace` | **4 files** |
-| `ScoreBar` component | **3 files** |
+| Function                             | Defined in (file count)                          |
+| ------------------------------------ | ------------------------------------------------ |
+| `SCORE_GOOD_THRESHOLD = 75`          | **9 files** (CLI constants.ts + 8 website files) |
+| `getScoreLabel`                      | **5 files** (CLI scan.ts + 4 website files)      |
+| `getScoreColor`/`getScoreColorClass` | **5 files**                                      |
+| `getDoctorFace`                      | **4 files**                                      |
+| `ScoreBar` component                 | **3 files**                                      |
 
 Already covered (§18, §56.1, §56.2). The grep confirms the exact duplication count. **9 places to update if `SCORE_GOOD_THRESHOLD` ever changes from 75 to 80.**
 
@@ -6758,19 +6818,19 @@ Already covered (§18, §56.1, §56.2). The grep confirms the exact duplication 
 
 ## 102. AGENTS.md Compliance Summary (from scripts)
 
-| AGENTS.md Rule | Compliance | Findings |
-|---|---|---|
-| Use TypeScript interfaces over types | ✓ Mostly | 22 interfaces declared outside `types.ts` (§99) |
-| Keep all types in global scope | ✗ | Same as above |
-| Use arrow functions over `function` decls | ✓ | 0 `function` declarations found |
-| Never comment unless necessary | ✓ Mostly | 5 `// HACK:` comments, all justified |
-| Use kebab-case for files | ✓ | All filenames are kebab-case |
-| Use descriptive variable names | ✓ Mostly | A few short names but generally good |
-| Don't type cast (`as`) unless necessary | ✗ | 13 casts, 10 unjustified (§100) |
-| Remove unused code, don't repeat yourself | ✗ | 12 dead rules + cross-package score duplication + magic strings (§97, §101) |
-| Magic numbers in constants.ts | ⚠ | Most numbers are in constants.ts. **Magic STRINGS aren't** — 500+ literal AST type strings, 15 `"utf-8"`, 11 `"package.json"` (§97) |
-| One utility per file | ✗ | 11 files violate (§98) |
-| Use `Boolean` over `!!` | ✓ | 0 `!!` found |
+| AGENTS.md Rule                            | Compliance | Findings                                                                                                                            |
+| ----------------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Use TypeScript interfaces over types      | ✓ Mostly   | 22 interfaces declared outside `types.ts` (§99)                                                                                     |
+| Keep all types in global scope            | ✗          | Same as above                                                                                                                       |
+| Use arrow functions over `function` decls | ✓          | 0 `function` declarations found                                                                                                     |
+| Never comment unless necessary            | ✓ Mostly   | 5 `// HACK:` comments, all justified                                                                                                |
+| Use kebab-case for files                  | ✓          | All filenames are kebab-case                                                                                                        |
+| Use descriptive variable names            | ✓ Mostly   | A few short names but generally good                                                                                                |
+| Don't type cast (`as`) unless necessary   | ✗          | 13 casts, 10 unjustified (§100)                                                                                                     |
+| Remove unused code, don't repeat yourself | ✗          | 12 dead rules + cross-package score duplication + magic strings (§97, §101)                                                         |
+| Magic numbers in constants.ts             | ⚠          | Most numbers are in constants.ts. **Magic STRINGS aren't** — 500+ literal AST type strings, 15 `"utf-8"`, 11 `"package.json"` (§97) |
+| One utility per file                      | ✗          | 11 files violate (§98)                                                                                                              |
+| Use `Boolean` over `!!`                   | ✓          | 0 `!!` found                                                                                                                        |
 
 5 of 11 rules in violation. The biggest gap is "Magic STRINGS" — AGENTS.md only says "magic numbers" but the spirit applies. The biggest enforcement-grade gap is "One utility per file" (11 violators).
 
@@ -7017,8 +7077,15 @@ A central validator would catch this:
 
 ```ts
 const knownConfigFields: Set<keyof ReactDoctorConfig> = new Set([
-  "ignore", "lint", "deadCode", "verbose", "diff", "failOn",
-  "customRulesOnly", "share", "textComponents",
+  "ignore",
+  "lint",
+  "deadCode",
+  "verbose",
+  "diff",
+  "failOn",
+  "customRulesOnly",
+  "share",
+  "textComponents",
 ]);
 
 const validateConfig = (parsed: Record<string, unknown>): ReactDoctorConfig => {
@@ -7061,6 +7128,7 @@ Three new findings:
 - **§106.2 — `verbose` config field doesn't flow through the public `diagnose()` API.** Asymmetric: works in CLI, no-op when set in `react-doctor.config.json` and called via API. Either undocumented behavior gap or a real bug.
 
 Plus confirmation findings:
+
 - **§105.1** — only 1 truly dead export workspace-wide (`DiagnoseOptions`). Codebase is mostly clean.
 - **§106.1** — each config field has one canonical wiring point but no central validator.
 
@@ -7080,3 +7148,836 @@ After 18 passes:
 The script-driven approach in Passes 17–18 is reusable: `/tmp/rd-analysis/*.sh` can be re-run on any commit to detect regressions on the same axes. If a contributor adds an 8-positional-param function, `14-fn-arity-v2.sh` flags it. If a contributor adds a magic AST node-type string, `01-duplicate-strings.sh` flags it. If a contributor exports something nothing uses, `17-dead-exports-correct.sh` flags it.
 
 The pattern of **lens-switching + script-assistance** is the recipe for exhaustive review work. File-by-file is one lens; "trace this dimension end-to-end" is another. Each lens has its own diminishing return curve.
+
+---
+
+# Nineteenth Pass — Determinism + Cross-Platform Audit
+
+Lens: scripts (`/tmp/rd-analysis/18-determinism.sh`, `19-cross-platform.sh`) trace which operations make output non-deterministic and which assume Unix.
+
+## 108. Determinism Audit
+
+### 🟢 108.1 Codebase is mostly deterministic — small set of intentional non-determinism
+
+Script `18-determinism.sh` confirms:
+
+```text
+=== Math.random calls ===
+(none)
+
+=== Date.now / new Date calls ===
+(none)
+
+=== randomUUID calls ===
+scan.ts:160                          → tempdir name only
+
+=== performance.now / process.pid calls ===
+process-browser-diagnostics.ts:29   → startTime
+diagnose.ts:32                       → startTime
+run-oxlint.ts:521                    → process.pid in tempdir name
+cli.ts:186, 215, 258, 346, 367      → elapsedMilliseconds reporting
+scan.ts:484, 604                     → elapsedMilliseconds reporting
+
+=== toLocaleX / Intl ===
+(none)
+```
+
+Findings:
+
+- **Zero `Math.random`** — no probabilistic logic.
+- **Zero `Date.now` / `new Date`** — no wall-clock dependencies.
+- **Zero locale-dependent operations** — outputs identical regardless of `LANG`/`LC_ALL`.
+- `randomUUID()` is used **once** for tempdir naming.
+- `performance.now()` is used for elapsed-time reporting.
+- `process.pid` is used for the oxlint-config tempfile path.
+
+This is good hygiene. The non-determinism is confined to:
+
+1. **Tempdir paths** (`react-doctor-${randomUUID()}/` and `react-doctor-oxlintrc-${pid}.json`).
+2. **Elapsed-time fields** (`elapsedMilliseconds` in JSON report).
+
+Both are intentional. JSON consumers wanting reproducible diffs should ignore these fields.
+
+### 🟡 108.2 The diagnostics-tempdir path is logged via `logger.dim`
+
+```343:345:packages/react-doctor/src/scan.ts
+  try {
+    const diagnosticsDirectory = writeDiagnosticsDirectory(diagnostics);
+    logger.break();
+    logger.dim(`  Full diagnostics written to ${diagnosticsDirectory}`);
+```
+
+Per §108.1, `diagnosticsDirectory` is `tmpdir()/react-doctor-${randomUUID()}/`. The log line includes the UUID. A user piping `react-doctor . > log.txt && diff log-prev.txt log.txt` sees a diff every run because the UUID changes.
+
+Per §60 row 9 (Pass 8) — also covered as a tempdir-leak concern. Combined: the tempdir name is non-deterministic AND never cleaned up.
+
+A deterministic alternative: derive the dir name from the project's content hash (`hash(diagnostics)`). Same scan → same dir → easier to spot regressions.
+
+### 🟡 108.3 Diagnostic ORDER may not be deterministic across runs
+
+Diagnostics flow:
+
+1. `runOxlint` reads from oxlint's stdout. oxlint's traversal order is mostly deterministic per file, but for **multiple files** the order depends on filesystem iteration (stable on most systems, but not guaranteed).
+2. `runKnip` returns its issues. knip's `Object.values(records)` iteration order is insertion order in modern V8 — deterministic.
+3. `runOxlint` batches files (via `batchIncludePaths`). Each batch is awaited sequentially, so the ORDER of files within a batch is preserved, but the BATCH boundaries depend on file-name length and `SPAWN_ARGS_MAX_LENGTH_CHARS`.
+4. `combineDiagnostics` does `[...lint, ...dead, ...extra]` — order preserved.
+5. `mergeAndFilterDiagnostics` does `.filter(...)` — order preserved.
+
+For a single project, the diagnostic order should be reproducible. For a multi-project monorepo, the order depends on `selectProjects`'s iteration order (which depends on `discoverReactSubprojects`'s `readdirSync` — alphabetical on most filesystems, but not POSIX-guaranteed).
+
+A `--json` consumer that diffs reports across runs may see spurious reordering in monorepos. Sort diagnostics deterministically before output (e.g., by `(filePath, line, column, plugin, rule)`).
+
+---
+
+## 109. Cross-Platform Audit (Real Finding)
+
+### 🔴 109.1 Zero `process.platform` / `os.platform` checks anywhere — Unix is silently assumed
+
+```text
+$ rg 'process\.platform|os\.platform|win32|isWindows' src/
+(no matches)
+```
+
+Confirmed: **the codebase has zero platform-specific code paths**. Yet it uses:
+
+```text
+=== execSync / spawnSync calls (potentially Unix-only) ===
+resolve-compatible-node.ts:74    execSync(`"${binaryPath}" --version`)
+resolve-compatible-node.ts:88    execSync(`bash -c ". '${nvmScript}' && nvm install ${...}"`)
+check-reduced-motion.ts:43       execSync(`git grep -ql -E "${PATTERN}" -- ${GLOBS}`)
+get-diff-files.ts:7, 21, 31      execSync("git ...")
+get-diff-files.ts:44, 51, 67     execSync(`git ... ${VAR}`)
+```
+
+Cross-platform issues by line:
+
+- **`resolve-compatible-node.ts:88 bash -c …`** — Windows doesn't ship bash by default. Git Bash users have it; cmd.exe users don't. Falls into the `try/catch` and returns false (silent). The user gets "Failed to install Node via nvm" with no Windows-specific guidance.
+- **`check-reduced-motion.ts:43 git grep with quoted globs**: `— works on Git for Windows, but the glob expansion behavior differs across`cmd.exe`/`PowerShell`/Git Bash. The `'"_.ts" "_.tsx"'`-style quoted glob string assumes shell-quote semantics that Windows shells handle differently.
+- **`get-diff-files.ts:44 git merge-base ${baseBranch} HEAD`** — already covered as a command injection (§24.1, Pass 4). On Windows, the command-injection vector is via `cmd.exe`'s shell escaping rules, which differ from POSIX.
+
+Plus path normalization is partial:
+
+```text
+=== Backslash-to-forward-slash normalizers (Windows path support) ===
+create-browser-read-file-lines.ts:2  rootDirectory.replace(/\\/g, "/")
+is-ignored-file.ts:6                 rootDirectory.replace(/\\/g, "/")
+match-glob-pattern.ts:4              pattern.replace(/\\/g, "/")
+filter-diagnostics.ts:13             rootDirectory.replace(/\\/g, "/")
+```
+
+4 places normalize `\` → `/`. Acknowledges Windows paths exist. But other places don't normalize at all (e.g., `discover-project.ts`'s file-system traversal uses `path.join` which produces backslash-separated paths on Windows, and downstream comparisons might not normalize).
+
+The README has no "Supported platforms" section. The `package.json` `engines` field doesn't restrict OS. `action.yml:30 default: "20"` suggests the team assumes Linux runners.
+
+### 🟠 109.2 Platform support is implicit and undocumented
+
+A user installing react-doctor on Windows gets:
+
+- Most fs operations work via Node's cross-platform APIs (`path.join`, `fs.readFileSync`).
+- `git ...` execSync calls work IF Git for Windows is installed and on PATH.
+- `bash -c ...` fails unless Git Bash provides bash.
+- `git grep` with quoted globs works mostly.
+- nvm-based Node version management completely fails (nvm-windows is a separate tool with different CLI).
+- `process.exit(130)` / `process.exit(143)` (per §70 row 8) for SIGINT — Windows handles signals differently.
+
+Either:
+
+1. **Document Windows support as best-effort** in README.
+2. **Add Windows checks** at relevant entry points (`resolveNodeForOxlint` should detect `process.platform === "win32"` and skip the bash invocation).
+3. **CI matrix** — add `runs-on: windows-latest` to `.github/workflows/ci.yml` to catch regressions.
+
+Today's CI runs `ubuntu-latest` only (per §10.3, Pass 2). The team has no signal that Windows users hit specific failures.
+
+---
+
+## 110. The Take-Away (Pass 19)
+
+Two genuine findings:
+
+- **§109.1 — Zero platform branches despite heavy `bash`/`git grep` usage.** The code is silently Unix-only. Users on Windows hit failures with no clear error.
+- **§109.2 — Platform support is undocumented.** Either commit to Windows or commit to documenting Unix-only.
+
+Plus determinism confirmation findings:
+
+- **§108.1** — Codebase is intentionally deterministic except for tempdir paths and elapsed-time fields.
+- **§108.2** — The tempdir name in stdout breaks `diff log-prev.txt log.txt` workflows.
+- **§108.3** — Multi-project monorepo diagnostic ordering depends on `readdirSync` (filesystem-dependent).
+
+Lens: switched from "what's wrong with the code?" to "what's the deployment surface?". The cross-platform finding is sharpest because it's a real-user-impact gap — anyone trying to use react-doctor on Windows hits silent failures.
+
+After 19 passes:
+
+- Passes 1–10: file-by-file (~150).
+- Passes 11–14: cross-reference / gating / error-path / severity (~10).
+- Passes 15–16: taint / time-complexity (~6).
+- Passes 17–18: AGENTS.md compliance via scripts (~8).
+- Pass 19: determinism / cross-platform (~3).
+
+Yield is now ~3 per lens. Remaining unique lenses: inverse coverage (bad inputs to the public API), memory leaks, network failure modes. After ~Pass 22, lenses fundamentally overlap.
+
+---
+
+# Twentieth Pass — Comment Quality + Type Strictness Audit
+
+Lens: scripts (`21-comments.sh`, `22-type-narrowing.sh`) audit AGENTS.md "Never comment unless absolutely necessary" and TypeScript type strictness.
+
+## 111. Comment Audit (AGENTS.md Compliance)
+
+Script `21-comments.sh`:
+
+```text
+=== Single-line // comments not prefixed with HACK or @ts- ===
+constants.ts:30  // Use a conservative threshold...   (HACK continuation)
+constants.ts:34  // Cap each batch...                  (HACK continuation)
+proxy-fetch.ts:40  // which isn't part of...           (HACK continuation)
+run-knip.ts:145  // --workspace, so prefer...          (HACK continuation)
+
+=== Block comments /* ... */ ===
+discover-project.ts:354    /\*\*$/ regex pattern       (not a comment)
+
+=== TODO/FIXME/XXX ===
+(none)
+```
+
+### 🟢 111.1 Codebase has near-zero unjustified comments
+
+Per AGENTS.md "Never comment unless absolutely necessary." Result:
+
+- **5 `// HACK:` comments** — all justified per AGENTS.md (`// HACK: reason for hack`).
+- **0 `// TODO` / `// FIXME` / `// XXX`** — clean backlog hygiene.
+- **0 block `/* */` comments** in source code.
+- **4 continuation lines** of HACK blocks (acceptable).
+
+This is AGENTS.md compliance the codebase nails. New contributors should follow the existing pattern: only `// HACK: <reason>` comments, no narration.
+
+### 🟢 111.2 The 5 HACK comments are well-justified
+
+```text
+constants.ts:29-31    // HACK: Windows CreateProcessW limits ARG length
+constants.ts:33-35    // HACK: oxlint can SIGABRT on memory pressure
+proxy-fetch.ts:39-40  // HACK: undici dispatcher type isn't standard
+run-knip.ts:62        // HACK: knip dotenv pollutes console
+run-knip.ts:144-145   // HACK: knip ignores workspace-local config
+```
+
+Each is a real workaround for an external constraint, with a stated reason. Good HACK hygiene.
+
+---
+
+## 112. Type Strictness Audit
+
+Script `22-type-narrowing.sh`:
+
+```text
+=== Optional chain + nullish coalesce patterns ===
+~20 occurrences (userConfig?.field ?? default style)
+
+=== Repeated ?.?.? chains ===
+~10 occurrences (3+ optional chains in one expression)
+
+=== unknown type usages ===
+12+ occurrences (mostly in error / JSON parsing contexts — good)
+
+=== any type usages ===
+plugin/types.ts:26   [key: string]: any   ← only one!
+
+=== Non-null assertions (!) ===
+(none)
+```
+
+### 🟢 112.1 Zero non-null assertions (`!`) anywhere — good defensive typing
+
+The entire codebase has **zero `value!` non-null assertions**. This is unusually strict — most TypeScript codebases have dozens of `!` escape hatches. The team chose option-chaining + nullish-coalescing instead. Excellent.
+
+### 🟡 112.2 `any` type used exactly once — `EsTreeNode` index signature
+
+```24:27:packages/react-doctor/src/plugin/types.ts
+export interface EsTreeNode {
+  type: string;
+  [key: string]: any;
+}
+```
+
+The index signature `[key: string]: any` is a deliberate escape hatch for AST traversal. Rules write `node.callee.property.name` without narrowing — the index signature lets it compile.
+
+Trade-off:
+
+- ✓ Pragmatic — the rule files would explode in narrowing boilerplate without it.
+- ✗ Loses type safety — typos in property names compile fine. `node.callee.props.name` (typo: `props` for `property`) returns `any` and silently never matches.
+
+A stricter alternative is to import `@types/estree`'s ESTree types and use a discriminated union:
+
+```ts
+import type { Node, MemberExpression, Identifier, ... } from "estree";
+
+const isMemberExpression = (n: Node): n is MemberExpression => n.type === "MemberExpression";
+```
+
+This requires adding narrowing helpers but catches the typo at compile time. Real elegance vs. real boilerplate trade-off. The current `any` approach is the pragmatic choice for a codebase with 90+ rules.
+
+If the team commits to `@types/estree`, that's a multi-file refactor. The script-driven NODE constant from §97.1 is a halfway step that gets typo protection on the type-name side without changing the AST type system.
+
+### 🟡 112.3 Repeated `obj?.a?.b?.c ?? default` patterns
+
+Examples from `22-type-narrowing.sh`:
+
+```ts
+worstScoredProject?.score?.score ?? null;
+worstScoredProject?.score?.label ?? null;
+userConfig?.ignore?.files;
+typeAttribute?.value?.type;
+declarator?.id?.type;
+initializer.callee?.property?.name ?? "fn";
+```
+
+Each chain is fragile to AST/object shape changes. Two improvements:
+
+1. **Destructure-with-default**:
+
+```ts
+// Before:
+worstScoredProject?.score?.score ?? null;
+worstScoredProject?.score?.label ?? null;
+
+// After:
+const { score = null, label = null } = worstScoredProject?.score ?? {};
+```
+
+Avoids the double `?.` chain and reads more like "what fields does worstScoredProject.score have?".
+
+2. **Helper functions for AST shape narrowing** (per §112.2): `isCalleeIdentifier(callee): callee is { type: "Identifier"; name: string }`. Each rule file would import a few of these once, and the per-callsite optional-chain pattern disappears.
+
+### 🟢 112.4 `unknown` is used correctly throughout error-handling paths
+
+12 occurrences: error parameters in `extract-failed-plugin-name.ts`, `format-error-chain.ts`, `is-plain-object.ts`, `load-config.ts`, `run-knip.ts`. All are appropriate — caller widens to `unknown` for safety, then narrows via `instanceof Error` or `isPlainObject`.
+
+This is the inverse of the `any` problem: `unknown` forces narrowing. The codebase consistently does this for error handling. Good.
+
+---
+
+## 113. The Take-Away (Pass 20)
+
+This pass mostly _confirms_ AGENTS.md compliance for two axes the codebase nails:
+
+- **§111.1 — Comments are minimal and HACK-prefixed** (good compliance with "never comment unless necessary").
+- **§112.1 — Zero non-null assertions** (defensive typing).
+- **§112.4 — `unknown` is used consistently for error paths** (correct narrowing).
+
+The genuine new finding:
+
+- **§112.2 — One `any` type usage in `EsTreeNode`'s index signature.** Pragmatic escape hatch for the rule plugin's ~500-rule traversal code. Migrating to `@types/estree` discriminated unions would catch typos at compile time but is a multi-file refactor. Acknowledged trade-off rather than a bug.
+
+- **§112.3 — Repeated 3+ optional-chain expressions** could collapse to destructure-with-default for readability. Stylistic, not a bug.
+
+Lens: switched from "find bugs" to "audit compliance with AGENTS.md MUSTs." The codebase passes most AGENTS.md rules cleanly. The remaining AGENTS.md issues are the ones already documented (Pass 17 magic-string pollution, Pass 18 function arity, Pass 4.4 type casts).
+
+After 20 passes, the AGENTS.md compliance scorecard:
+
+| Rule                                 | Status                              |
+| ------------------------------------ | ----------------------------------- |
+| Use TypeScript interfaces over types | ✓ Mostly (22 outside types.ts, §99) |
+| Keep all types in global scope       | ✗ (§99)                             |
+| Arrow functions only                 | ✓                                   |
+| Never comment unless necessary       | ✓ (§111)                            |
+| kebab-case files                     | ✓                                   |
+| Descriptive variable names           | ✓                                   |
+| No `as` casts unless necessary       | ✗ (§100, 13 unjustified)            |
+| No repeated code (DRY)               | ✗ (§97, §101)                       |
+| Magic numbers in constants.ts        | ⚠ (§97 magic strings)               |
+| One utility per file                 | ✗ (§98, 11 violators)               |
+| Boolean over !!                      | ✓                                   |
+
+7 of 11 rules in compliance. The 4 violations have all been documented with concrete grep-counts and fix paths. The codebase is generally well-managed — most rules are followed, and the violations cluster around 3–4 systemic patterns.
+
+**This is probably the last meaningfully-novel pass.** Remaining lenses (inverse coverage, memory, network failure modes) will yield 1–2 more findings each but increasingly speculative. The actionable backlog is the executive summary + Passes 11–20's specific items.
+
+---
+
+## Pass 21 — Self-Review of the Fix Branch
+
+> Lens flip: every prior pass critiqued the **original** code. This pass critiques the **fixes** that were applied in response to Passes 1–20, looking for regressions, overabstraction, incomplete root-cause work, and "fixes" for problems that didn't exist.
+
+After applying ~75 distinct edits across the codebase, the diff is large enough (`82 files, +2670/-1346`) that several of the changes turned out to be regressions, half-measures, or unnecessary in retrospect. This pass walks the diff with a hostile eye.
+
+### 🔴 113.1 `action.yml` — `git checkout -- "$HEAD_REF"` permanently breaks branch checkout
+
+**Confirmed by direct test (`git checkout -- mybranch` → `error: pathspec 'mybranch' did not match any file(s) known to git`).**
+
+In response to §40.2 (flag-shaped variable values in `git`), the action.yml step was changed from:
+
+```bash
+git checkout "$HEAD_REF" 2>/dev/null || true
+```
+
+to:
+
+```bash
+git checkout -- "$HEAD_REF" 2>/dev/null || true
+```
+
+This is the wrong `--` semantics for `git checkout`. With `--`, git treats `$HEAD_REF` as a **pathspec**, not a branch ref. The command then errors ("pathspec did not match any file(s)") and is silently swallowed by `|| true`. The diff scan that follows runs against whatever HEAD was at runner setup, not against the PR head branch. **Diff mode is silently broken on every PR run.**
+
+The same misuse appears one line earlier:
+
+```bash
+git fetch origin -- "$DIFF_BASE" && git branch -f "$DIFF_BASE" FETCH_HEAD 2>/dev/null || true
+```
+
+`git fetch` does not document `--` as an option terminator before refspecs (only after, in some forms). Git versions vary — older versions error out, newer versions tolerate it. Either way, the intent (defending against `$DIFF_BASE` starting with a dash) is not achieved through this syntax.
+
+**Right fix:** validate the inputs explicitly before passing them as branch names:
+
+```bash
+case "$HEAD_REF" in -* ) echo "::error::HEAD_REF cannot start with -"; exit 1 ;; esac
+case "$DIFF_BASE" in -* ) echo "::error::DIFF_BASE cannot start with -"; exit 1 ;; esac
+git fetch origin "$DIFF_BASE" && git branch -f "$DIFF_BASE" FETCH_HEAD 2>/dev/null || true
+git checkout "$HEAD_REF" 2>/dev/null || true
+```
+
+Or use `git switch --discard-changes` / `git branch -f` directly.
+
+### 🔴 113.2 `tanstackStartNoSecretsInLoader.isLikelySecret` flags every non-public env var
+
+The fix for §6.x changed the rule from "flag everything that isn't `VITE_`-prefixed" to a keyword-aware `isLikelySecret` heuristic. The actual implementation:
+
+```ts
+const isLikelySecret = (envVarName: string): boolean => {
+  if (SAFE_BUILD_ENV_VARS.has(envVarName)) return false;
+  if (SECRET_KEYWORD_PATTERN.test(envVarName)) return true;
+  if (PUBLIC_ENV_PREFIXES.some((prefix) => envVarName.startsWith(prefix))) {
+    return SECRET_KEYWORD_PATTERN.test(envVarName);
+  }
+  return true; // ← falls through to true for any non-public var
+};
+```
+
+The terminal `return true` means **every non-public env var without a secret keyword still fires**: `process.env.DATABASE_URL`, `process.env.PORT`, `process.env.LOG_LEVEL`, `process.env.GITHUB_REPOSITORY`, etc. all get flagged inside a `loader`. This is the same false-positive surface as the original rule, just with extra code obscuring the bug.
+
+**The intended behavior is the simpler:**
+
+```ts
+const isLikelySecret = (envVarName: string): boolean => {
+  if (SAFE_BUILD_ENV_VARS.has(envVarName)) return false;
+  return SECRET_KEYWORD_PATTERN.test(envVarName);
+};
+```
+
+Public-prefix vars containing secret keywords (`VITE_API_KEY`) now fire — this is the genuine win the new logic added. But the catch-all `return true` undoes that win for non-public vars.
+
+### 🔴 113.3 `neutralizeDisableDirectives` SIGINT restore is a no-op in practice
+
+The fix for §1.5 (SIGINT during scan corrupts user files) added signal handlers inside `neutralize-disable-directives.ts`:
+
+```ts
+process.once("exit", onExit);
+for (const signal of FATAL_SIGNALS) {
+  process.once(signal, onSignal);
+}
+process.once("uncaughtException", onExit);
+```
+
+Two problems:
+
+1. **`exitGracefully` in `cli.ts` is registered _first_** and calls `process.exit(130)` synchronously. Node fires signal listeners in registration order. When SIGINT arrives, `exitGracefully` runs, immediately exits the process, and the file-restore listener inside `neutralize-disable-directives.ts` **never gets a chance to fire**. The fix for §1.5 is functionally a no-op on Ctrl-C.
+
+2. **`process.once("uncaughtException", onExit)` suppresses Node's default crash behavior.** Once a handler is registered for `uncaughtException`, Node no longer prints the stack trace and exits — it keeps running, with the developer's source files possibly still neutralized. The user sees a hung CLI with no error message. Worse than the original behavior (which crashed cleanly but left files corrupted).
+
+**Right fix:** the restore must happen unconditionally before `exitGracefully` calls `process.exit`. Either move restore registration into `cli.ts`'s SIGINT path, or have `runOxlint` register an exit handler that restores synchronously **before** invoking `exitGracefully`. The `uncaughtException` handler should `restore(); process.kill(process.pid, "SIGABRT")` rather than swallowing the crash.
+
+### 🔴 113.4 `silenced()` in `run-knip.ts` leaks knip warnings
+
+§36 / §58.4 flagged that `silenced()` hijacks the global console, racing with concurrent operations. The fix changed total silencing to regex-filtered silencing:
+
+```ts
+const knipNoise = /^\[dotenv|^Loading env|^\[knip\]/;
+console.log = filterCall(originalLog);
+// ...
+```
+
+Two regressions:
+
+1. **Knip plugin-resolution warnings** like `"Could not resolve plugin: nx"` (no `[knip]` prefix) **now print verbatim during a normal scan**. The original total silence hid these correctly.
+
+2. **The original "concurrent operations" claim was imaginary.** The Promise.all branches don't share `console`:
+   - `runOxlint` uses subprocess pipes (`child.stdout.on("data", ...)`).
+   - `ora` (spinner) writes via `process.stderr.write`, bypassing `console`.
+   - The score API uses `fetch`.
+
+   No concurrent code path in `runScan` actually calls `console.*` during the silenced window. The fix solved a problem that didn't exist while introducing real new noise.
+
+**Right fix:** revert to total silence (`console.log = () => {}`) — it was correct.
+
+### 🔴 113.5 `writeDiagnosticsDirectory` deletes user-visible output on exit
+
+The fix for §X (tempdir leak) added:
+
+```ts
+process.once("exit", cleanupOldDiagnosticsDirectories);
+```
+
+This deletes the per-rule `.txt` files **immediately when the CLI exits**. But the whole point of writing those files is that the CLI prints `Full diagnostics written to /tmp/react-doctor-XXXX` so the user can `cd` there and grep. After the fix:
+
+```
+$ react-doctor .
+... [scan output] ...
+Full diagnostics written to /tmp/react-doctor-abc123
+$ ls /tmp/react-doctor-abc123
+ls: cannot access '/tmp/react-doctor-abc123': No such file or directory  ← already deleted
+```
+
+Race-window: zero. The directory is gone before the user's prompt returns.
+
+**Right fix:** don't register an exit handler. The OS tmp reaper (cron `tmpfiles.d`, macOS `periodic daily`) already deletes `/tmp` entries older than ~3 days. The original "leak" was a non-leak — N CI runs accumulating tempdirs that get auto-cleaned within 72h is fine. If we really want eager cleanup, do it at next scan start (deletion of last run's output), not at this run's exit.
+
+### 🟠 113.6 `--score` mode forced to local scoring breaks GitHub Actions output contract
+
+The fix added:
+
+```ts
+const shouldScoreLocally = options.offline || options.scoreOnly;
+```
+
+So `--score` now always uses `calculateScoreLocally`, never the API. **Why this breaks the contract:** the action.yml step writes `score=$SCORE` to `$GITHUB_OUTPUT`, then a subsequent step builds a PR comment with `**Score:** \`${score}\` / 100`. The user clicks the share link → goes to `react.doctor/share/...` which displays the **API**-computed score.
+
+Today the local and API formulas are identical, so the numbers match. **The moment** the API server tunes its weights (different penalty per rule, project-size adjustments, ML scoring, etc., all of which §18 anticipates), the PR comment and the share link diverge silently.
+
+The original contract was: "the number you see in CI is the same number on react.doctor". The fix breaks that for a ~200ms perf gain on a single network round-trip. **The premise was wrong** — `--score` isn't a hot path; nobody calls it in a tight loop.
+
+**Right fix:** revert to default (API + local fallback). If perf matters, add a `--local-only` flag and let users opt in.
+
+### 🟠 113.7 `isAutomatedEnvironment()` silently flips `--offline` on Jenkins/TeamCity dev shells
+
+```ts
+const AUTOMATED_ENVIRONMENT_VARIABLES = [
+  "CI", "GITHUB_ACTIONS", "GITLAB_CI", "BUILDKITE", "JENKINS_URL", "TF_BUILD",
+  // ...
+];
+const scanOptions = {
+  offline: flags.offline || isAutomatedEnvironment(),
+};
+```
+
+Several of these env vars persist in dev shells:
+
+- `JENKINS_URL` is set in any shell where the developer pasted `export JENKINS_URL=...` in `~/.bashrc` to point their CLI tools at a CI server.
+- `TF_BUILD` is set inside any Azure DevOps agent, including interactive jobs developers `kubectl exec` into.
+- `BITBUCKET_BUILD_NUMBER` lingers in `bitbucket-pipelines run` local emulation.
+
+Result: those developers silently get local scoring without ever seeing a share URL or telemetry-opt-in dialog, and there's no log line saying "we detected CI and went offline". They debug missing score badges for hours.
+
+**Right fix:** flip offline only on `GITHUB_ACTIONS`, `GITLAB_CI`, `CI=true` (specific positive values, not just "set"), and require explicit `--offline` for the rest. Also log a one-liner: `[react-doctor] CI detected, scoring locally (use --no-offline to override)`.
+
+### 🟠 113.8 `process.exit(130)` on SIGINT/SIGTERM is a behavior contract break
+
+§70 row 8 said exit-0 on SIGINT was wrong, fix made it 130 (POSIX convention for "interrupted by signal 2"). But:
+
+- **Husky** and several pre-commit frameworks treat any non-zero exit from a hook as failure. A user running `react-doctor --staged` in `pre-commit` who hits Ctrl-C used to get a graceful "no changes committed", now gets a "pre-commit hook failed" error.
+- **GitHub Actions** with `continue-on-error: false` marks the whole job as failed on exit 130. Users who Ctrl-C a local rerun via `act` see red Xs.
+
+130 is technically correct per POSIX, but it changes user-visible behavior in shipped product. The change should have a CHANGELOG entry and probably a feature flag (`--cancel-exit-code 0`).
+
+### 🟠 113.9 `install-skill` website route writes `AGENTS.md` that the CLI doesn't ship
+
+The fix for §31 unified `install-skill/route.ts` content with `skills/react-doctor/SKILL.md`. **But it also added an `AGENTS_CONTENT` block** for which there is no canonical source file:
+
+```bash
+$ ls skills/react-doctor/
+SKILL.md       ← exists, single source of truth for SKILL_CONTENT
+                ← no AGENTS.md exists
+```
+
+So:
+
+- `curl https://react.doctor/install-skill | bash` → installs SKILL.md **and** AGENTS.md.
+- `npx react-doctor install` → installs only SKILL.md (because `cpSync` only copies what's in the bundle).
+
+Users on different install paths get different files, with different content, that drifts independently because there's no canonical AGENTS.md to validate against. **My fix replaced one drift bug (§31.4) with another.**
+
+**Right fix:** either (a) create `skills/react-doctor/AGENTS.md` as a real file and source both install paths from it, or (b) drop the `AGENTS_CONTENT` block from the website route entirely.
+
+### 🟠 113.10 `runOxlint` keeps a dual signature with silently-wrong defaults
+
+Refactor for §53.x introduced `RunOxlintOptions`:
+
+```ts
+export const runOxlint = async (
+  rootDirectoryOrOptions: string | RunOxlintOptions,
+  hasTypeScriptArg?: boolean,
+  frameworkArg?: Framework,
+  hasReactCompilerArg?: boolean,
+  includePathsArg?: string[],
+  nodeBinaryPathArg: string = process.execPath,
+  customRulesOnlyArg = false,
+): Promise<Diagnostic[]> => {
+  const options: RunOxlintOptions =
+    typeof rootDirectoryOrOptions === "string"
+      ? { rootDirectory: rootDirectoryOrOptions, hasTypeScript: hasTypeScriptArg ?? false,
+          framework: frameworkArg ?? "unknown", hasReactCompiler: hasReactCompilerArg ?? false,
+          hasTanStackQuery: false,  // ← always false in legacy mode!
+          includePaths: includePathsArg, ... }
+      : rootDirectoryOrOptions;
+  // ...
+};
+```
+
+Two problems:
+
+1. **No caller uses the positional form** after the in-tree tests were updated. The dual signature is dead code.
+2. **`hasTanStackQuery: false` is silently wrong** if any external consumer ever calls the legacy form on a TanStack Query project — they'll get reduced rule coverage with no warning.
+
+**Right fix:** drop the positional signature entirely. It's an internal utility, no public API guarantee.
+
+### 🟠 113.11 `validateRuleRegistration` builds a fake oxlint config purely to enumerate rule keys
+
+```ts
+export const collectAllReactDoctorRuleKeys = (): Set<string> => {
+  const allKeys = new Set<string>();
+  // ...
+  const baseConfig = createOxlintConfig({
+    pluginPath: "<placeholder>",
+    framework: "unknown",
+    hasReactCompiler: false,
+    hasTanStackQuery: false,
+    customRulesOnly: false,
+  });
+  for (const key of Object.keys(baseConfig.rules)) {
+    if (key.startsWith("react-doctor/")) allKeys.add(key);
+  }
+  return allKeys;
+};
+```
+
+Per scan, this builds a complete oxlint config (same shape as the real one minus framework rules) just to read its `rules` keys. Then `runOxlint` immediately builds **another** real config. Two `createOxlintConfig` calls, the first thrown away.
+
+The cleaner shape is:
+
+```ts
+export const ALL_REACT_DOCTOR_RULE_KEYS = new Set([
+  "react-doctor/no-derived-state-effect",
+  "react-doctor/no-fetch-in-effect",
+  // ...
+]);
+```
+
+Static. Compile-time-checkable against the rule plugin file. No fake config needed. Yes, this is repetition, but it's repetition the type system can enforce alignment for via `assert`-style tests.
+
+### 🟡 113.12 `extractDestructuredPropNames` recursion is incomplete
+
+§28.6 fix added alias handling:
+
+```ts
+const aliasIdentifier =
+  property.value?.type === "Identifier"
+    ? property.value
+    : property.value?.type === "AssignmentPattern" && property.value.left?.type === "Identifier"
+      ? property.value.left
+      : null;
+propNames.add(aliasIdentifier?.name ?? property.key.name);
+```
+
+Handles `{ user }`, `{ user: u }`, `{ user = default }`, `{ user: u = default }`. Does **not** handle nested destructure `{ user: { name } }` — falls through to `?? property.key.name` and adds `user`, missing `name`. Same false-negative class as before, just narrower.
+
+**Right fix:** if `property.value?.type === "ObjectPattern"`, recurse with `extractDestructuredPropNames([property.value])` and union the result.
+
+### 🟡 113.13 `findWorstScoredProject` single-vs-multi-project paths use different null-checks
+
+```ts
+const findWorstScoredProject = (projects) => {
+  if (projects.length === 0) return null;
+  if (projects.length === 1) return projects[0].score ? projects[0] : null;  // truthy check
+
+  let worst = null;
+  let worstScore = Number.POSITIVE_INFINITY;
+  for (const project of projects) {
+    const score = project.score?.score;
+    if (score === undefined) continue;  // explicit undefined check
+    if (score < worstScore) { worstScore = score; worst = project; }
+  }
+  return worst;
+};
+```
+
+Two paths, two null-handling styles. Truthy-checking `projects[0].score` rejects `null` and `undefined` — same behavior as the explicit check, but visually inconsistent. Easier to reason about with one strategy throughout.
+
+### 🟡 113.14 `tryScoreFromApi` only logs `AbortError`, swallows everything else
+
+Fix for §17.2 added partial logging:
+
+```ts
+} catch (error) {
+  if (isAbortError(error)) {
+    console.warn(`[react-doctor] Score API timed out after ${FETCH_TIMEOUT_MS / 1000}s — using local scoring`);
+  }
+  return null;
+}
+```
+
+`AbortError` is the timeout case. **DNS failures, 4xx/5xx responses parsing as non-JSON, network unreachable, TLS errors** all fall through to `return null` silently. The original report flagged the silent catch as bad UX; the fix only addressed one of the three failure modes.
+
+**Right fix:** at minimum log `error.message` regardless of error type:
+
+```ts
+} catch (error) {
+  const reason = error instanceof Error ? error.message : String(error);
+  console.warn(`[react-doctor] Score API unreachable (${reason}) — using local scoring`);
+  return null;
+}
+```
+
+### 🟡 113.15 `buildJsonReportError` always reports `mode: "full"`
+
+```ts
+return {
+  schemaVersion: 1, version: input.version, ok: false,
+  directory: input.directory,
+  mode: "full",  // ← hard-coded
+  diff: null, projects: [], diagnostics: [],
+  // ...
+};
+```
+
+If the error happened during `--staged` or `--diff` mode, the JSON consumer reads `mode: "full"` and may misclassify the report (e.g., a CI dashboard that filters "diff-mode failures only" will silently miss them).
+
+**Right fix:** plumb the mode through `BuildJsonReportErrorInput`, defaulting to `"full"` only when truly unknown.
+
+### 🟡 113.16 `ScoreRequestFetch` interface — overabstraction for a TS variance fix
+
+```ts
+interface ScoreRequestFetch {
+  (input: string | URL, init?: RequestInit): Promise<Response>;
+}
+
+const getGlobalFetch = (): ScoreRequestFetch | undefined =>
+  typeof fetch === "function" ? (fetch as ScoreRequestFetch) : undefined;
+```
+
+The standard Node `fetch` accepts `URL | RequestInfo | string | Request`. My narrower interface is cast-from. The cast works because the function-call shape is compatible, but a future refactor that uses `Request` objects internally would silently fail at runtime.
+
+**Right fix:** use `typeof fetch | undefined` and let TS variance handle it. If TS complains about a subtype assignment, cast at the **call site** (locally), not via a custom type alias used in one place.
+
+### 🟡 113.17 `resolveBoolean` helper used for trivial inline pattern
+
+```ts
+const resolveBoolean = (value: unknown, fallback: boolean): boolean =>
+  typeof value === "boolean" ? value : fallback;
+
+// 3 call sites:
+lint: isCliOverride("lint") ? flags.lint : resolveBoolean(userConfig?.lint, true),
+deadCode: ... resolveBoolean(userConfig?.deadCode, true),
+verbose: ... resolveBoolean(userConfig?.verbose, false),
+```
+
+A 1-line helper used in 3 places, all in the same function. Inlining is shorter and clearer:
+
+```ts
+lint: isCliOverride("lint") ? flags.lint : userConfig?.lint ?? true,
+```
+
+(The `??` form drops the `typeof === "boolean"` check, but if `userConfig.lint` is the wrong type we have bigger problems than the boolean coercion — schema validation should catch it earlier.)
+
+### 🟡 113.18 `walkAst` WeakSet protection — defending against a non-existent cycle
+
+```ts
+const walkAstInternal = (node, visitor, visited: WeakSet<EsTreeNode>): void => {
+  if (visited.has(node)) return;
+  visited.add(node);
+  // ...
+  for (const key of Object.keys(node)) {
+    if (key === "parent") continue;  // ← already handles the only known cycle
+    // ...
+  }
+};
+```
+
+The AST produced by oxlint and the in-tree custom rules has exactly one cycle source: `parent` references. We already skip those. The WeakSet adds N lookups per traversal for a problem that the parser doesn't introduce. It's defensive against a hypothetical future where someone adds back-references — but that's speculation.
+
+**Right fix:** remove the WeakSet, document the assumption (`// AST is acyclic except for parent`), keep the `parent` skip.
+
+### 🟡 113.19 `Object.freeze` on `MISSING_REDUCED_MOTION_DIAGNOSTIC` — defensive against non-existent mutation
+
+```ts
+const MISSING_REDUCED_MOTION_DIAGNOSTIC = Object.freeze({ /* ... */ });
+```
+
+The constant is exported and pushed into a diagnostics array. Nobody mutates it. The freeze adds 0 runtime safety in this codebase's call graph and 1 line of noise. (The original report flagged "could be frozen" as a defensive nicety, not an actual bug — implementing it without a real misuse is overengineering.)
+
+### 🟡 113.20 `buildSanitizedEnv` rebuilds full env per spawn
+
+```ts
+const buildSanitizedEnv = (): NodeJS.ProcessEnv => {
+  const sanitized: NodeJS.ProcessEnv = {};
+  for (const [name, value] of Object.entries(process.env)) {
+    if (name === "NODE_OPTIONS" || name === "NODE_DEBUG") continue;
+    if (name.startsWith("npm_config_")) continue;
+    sanitized[name] = value;
+  }
+  return sanitized;
+};
+
+// Called per batch:
+const child = spawn(nodeBinaryPath, args, { cwd, env: buildSanitizedEnv() });
+```
+
+For an N-batch scan, N copies of `process.env` (typically 200–500 keys) are made. Could be computed once at module load. Minor perf cost (~1ms × N batches) but the abstraction also has a docstring/code mismatch — comment claims "drop NODE_*-prefixed ones aside from NODE_ENV/NODE_PATH" but the code only drops `NODE_OPTIONS` and `NODE_DEBUG`.
+
+### 🟡 113.21 50MB output cap in `spawnOxlint` — defending against an unobserved oxlint bug
+
+```ts
+if (stdoutByteCount + stderrByteCount > PROXY_OUTPUT_MAX_BYTES && !didKillForSize) {
+  didKillForSize = true;
+  child.kill("SIGKILL");
+  return true;
+}
+```
+
+50MB is reasonable. But oxlint has never produced output anywhere near this in observed scans (largest monorepo tested produced ~30MB). The cap exists to defend against a future oxlint regression that hasn't happened. Hard to argue against (defense in depth) but the test coverage for this branch is zero — if it ever fires, we don't know the kill+reject cleanly returns versus orphaning the child stdout listener.
+
+### 🟡 113.22 `SECRET_MIN_LENGTH_CHARS` raised 8 → 24 simultaneously with severity downgrade
+
+Fix lowered `no-secrets-in-client-code` from `error` to `warn` AND raised the length threshold. Two changes in one. Combined effect:
+
+- **Before:** ` const apiKey = "abcd1234";` fires as **error**.
+- **After:** ` const apiKey = "abcd1234";` no longer fires (8 < 24). A 24-char real-world JWT or older API token still fires, but as **warn**.
+
+Real-world short tokens (8–23 chars) — older Stripe test keys (`tok_*` is variable length), some internal APIs, AWS access key IDs (20 chars) — now slip through entirely. **AWS access keys are 20 characters.** With the new threshold, `const accessKey = "AKIAIOSFODNN7EXAMPLE";` (the AWS docs example, 20 chars) doesn't fire, even though that exact pattern is what the rule should catch.
+
+**Right fix:** keep `SECRET_PATTERNS` (the regex-based check) at low threshold (8 chars, matches Stripe/OpenAI prefixes), apply `SECRET_MIN_LENGTH_CHARS = 24` only to the **name-based** heuristic. Two thresholds, separate codepaths.
+
+### Summary scorecard for Pass 21
+
+| Category                        | Count | Severity mix                                |
+| ------------------------------- | ----- | ------------------------------------------- |
+| Real regressions (broke things) | 5     | 5🔴                                         |
+| Half-measures / incomplete root | 6     | 3🟠 / 3🟡                                   |
+| Overabstractions / dead surface | 5     | 1🟠 / 4🟡                                   |
+| Imaginary-problem fixes         | 4     | 4🟡                                         |
+| Behavior contract changes       | 2     | 2🟠                                         |
+
+**Most-actionable items, in order:**
+
+1. **§113.1** — revert the `--` additions in `action.yml` (or replace with leading-dash validation). Diff mode is silently broken on every PR.
+2. **§113.5** — drop the exit-time tempdir cleanup. We're deleting user output.
+3. **§113.4** — revert `silenced()` to total console silence. The race was imaginary; the leaks are real.
+4. **§113.2** — fix `isLikelySecret` to drop the trailing `return true` (or just inline the simpler form).
+5. **§113.3** — relocate disable-directive restoration ahead of `process.exit(130)` in the SIGINT path; remove the `uncaughtException` handler.
+6. **§113.6** — restore API-first scoring in `--score` mode; perf gain wasn't worth the contract break.
+7. **§113.7** — narrow `isAutomatedEnvironment()` to the canonical `CI`-style env vars; log when offline mode auto-engages.
+8. **§113.9** — create `skills/react-doctor/AGENTS.md` (or drop `AGENTS_CONTENT` from the website route).
+
+**Lowest-priority but clean-up items:**
+
+- §113.10 — drop `runOxlint` legacy positional signature.
+- §113.11 — replace `collectAllReactDoctorRuleKeys` with a static set.
+- §113.16, §113.17, §113.18, §113.19 — undo the small overabstractions.
+
+---
+
+## Pass 21 Conclusion
+
+The original review was thorough enough that the fixes were a large diff. About 60% of the changes were correct root-cause fixes that pass scrutiny. About 25% were half-measures or required follow-up. About 15% were either regressions or solving the wrong problem.
+
+The biggest meta-mistake: **fixing too many things in one pass** without per-fix validation. Several of these regressions would have been caught by writing a test before the fix (especially §113.1, §113.2, §113.5, §113.6) but the volume of fixes meant they shipped on `pnpm test` passing alone.
+
+The pattern that recurs: **defensive fixes for problems that weren't real** (Object.freeze, WeakSet cycle protection, the buffer cap test surface, the `silenced()` race) added complexity without value. The pattern of **partial fixes** (`isLikelySecret`'s leftover `return true`, the SIGINT handler order, the AGENTS.md drift) suggests not running the full code path mentally after applying each change.
+
+Lessons: smaller PRs, one fix per commit, test-first for security/CI changes, and skip "defensive" changes unless tied to a real attack vector.

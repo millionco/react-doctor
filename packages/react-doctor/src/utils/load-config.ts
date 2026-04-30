@@ -3,6 +3,8 @@ import path from "node:path";
 import type { ReactDoctorConfig } from "../types.js";
 import { isFile } from "./is-file.js";
 import { isPlainObject } from "./is-plain-object.js";
+import { isMonorepoRoot } from "./find-monorepo-root.js";
+import { logger } from "./logger.js";
 
 const CONFIG_FILENAME = "react-doctor.config.json";
 const PACKAGE_JSON_CONFIG_KEY = "reactDoctor";
@@ -17,10 +19,10 @@ const loadConfigFromDirectory = (directory: string): ReactDoctorConfig | null =>
       if (isPlainObject(parsed)) {
         return parsed as ReactDoctorConfig;
       }
-      console.warn(`Warning: ${CONFIG_FILENAME} must be a JSON object, ignoring.`);
+      logger.warn(`${CONFIG_FILENAME} must be a JSON object, ignoring.`);
     } catch (error) {
-      console.warn(
-        `Warning: Failed to parse ${CONFIG_FILENAME}: ${error instanceof Error ? error.message : String(error)}`,
+      logger.warn(
+        `Failed to parse ${CONFIG_FILENAME}: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
@@ -29,10 +31,12 @@ const loadConfigFromDirectory = (directory: string): ReactDoctorConfig | null =>
   if (isFile(packageJsonPath)) {
     try {
       const fileContent = fs.readFileSync(packageJsonPath, "utf-8");
-      const packageJson = JSON.parse(fileContent);
-      const embeddedConfig = packageJson[PACKAGE_JSON_CONFIG_KEY];
-      if (isPlainObject(embeddedConfig)) {
-        return embeddedConfig as ReactDoctorConfig;
+      const packageJson: unknown = JSON.parse(fileContent);
+      if (isPlainObject(packageJson)) {
+        const embeddedConfig = packageJson[PACKAGE_JSON_CONFIG_KEY];
+        if (isPlainObject(embeddedConfig)) {
+          return embeddedConfig as ReactDoctorConfig;
+        }
       }
     } catch {
       return null;
@@ -42,16 +46,43 @@ const loadConfigFromDirectory = (directory: string): ReactDoctorConfig | null =>
   return null;
 };
 
+const isProjectBoundary = (directory: string): boolean => {
+  if (isFile(path.join(directory, ".git"))) return true;
+  if (fs.existsSync(path.join(directory, ".git"))) return true;
+  return isMonorepoRoot(directory);
+};
+
+const cachedConfigs = new Map<string, ReactDoctorConfig | null>();
+
 export const loadConfig = (rootDirectory: string): ReactDoctorConfig | null => {
+  const cached = cachedConfigs.get(rootDirectory);
+  if (cached !== undefined) return cached;
+
   const localConfig = loadConfigFromDirectory(rootDirectory);
-  if (localConfig) return localConfig;
+  if (localConfig) {
+    cachedConfigs.set(rootDirectory, localConfig);
+    return localConfig;
+  }
+
+  if (isProjectBoundary(rootDirectory)) {
+    cachedConfigs.set(rootDirectory, null);
+    return null;
+  }
 
   let ancestorDirectory = path.dirname(rootDirectory);
   while (ancestorDirectory !== path.dirname(ancestorDirectory)) {
     const ancestorConfig = loadConfigFromDirectory(ancestorDirectory);
-    if (ancestorConfig) return ancestorConfig;
+    if (ancestorConfig) {
+      cachedConfigs.set(rootDirectory, ancestorConfig);
+      return ancestorConfig;
+    }
+    if (isProjectBoundary(ancestorDirectory)) {
+      cachedConfigs.set(rootDirectory, null);
+      return null;
+    }
     ancestorDirectory = path.dirname(ancestorDirectory);
   }
 
+  cachedConfigs.set(rootDirectory, null);
   return null;
 };

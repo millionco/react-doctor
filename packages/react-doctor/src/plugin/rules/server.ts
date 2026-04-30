@@ -59,13 +59,27 @@ export const serverAuthActions: Rule = {
 export const serverAfterNonblocking: Rule = {
   create: (context: RuleContext) => {
     let fileHasUseServerDirective = false;
+    let serverFunctionDepth = 0;
+
+    const enterIfServerFunction = (node: EsTreeNode): void => {
+      if (hasUseServerDirective(node)) serverFunctionDepth++;
+    };
+    const leaveIfServerFunction = (node: EsTreeNode): void => {
+      if (hasUseServerDirective(node)) serverFunctionDepth = Math.max(0, serverFunctionDepth - 1);
+    };
 
     return {
       Program(programNode: EsTreeNode) {
         fileHasUseServerDirective = hasDirective(programNode, "use server");
       },
+      FunctionDeclaration: enterIfServerFunction,
+      "FunctionDeclaration:exit": leaveIfServerFunction,
+      FunctionExpression: enterIfServerFunction,
+      "FunctionExpression:exit": leaveIfServerFunction,
+      ArrowFunctionExpression: enterIfServerFunction,
+      "ArrowFunctionExpression:exit": leaveIfServerFunction,
       CallExpression(node: EsTreeNode) {
-        if (!fileHasUseServerDirective) return;
+        if (!fileHasUseServerDirective && serverFunctionDepth === 0) return;
         if (node.callee?.type !== "MemberExpression") return;
         if (node.callee.property?.type !== "Identifier") return;
 

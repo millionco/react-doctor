@@ -67,7 +67,7 @@ export const NavigateRoute = createFileRoute("/navigate")({
 
 export const SecretsRoute = createFileRoute("/secrets")({
   loader: async () => {
-    const secret = process.env.DATABASE_URL;
+    const secret = process.env.STRIPE_SECRET_KEY;
     return { secret };
   },
   component: () => <div />,

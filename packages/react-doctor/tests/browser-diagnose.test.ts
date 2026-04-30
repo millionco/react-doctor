@@ -9,6 +9,7 @@ const minimalProject: ProjectInfo = {
   framework: "unknown",
   hasTypeScript: false,
   hasReactCompiler: false,
+  hasTanStackQuery: false,
   sourceFileCount: 0,
 };
 

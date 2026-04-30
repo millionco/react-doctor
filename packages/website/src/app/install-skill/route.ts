@@ -65,6 +65,7 @@ else
 fi
 
 SKILL_NAME="react-doctor"
+MARKER="# React Doctor"
 INSTALLED=0
 
 SKILL_CONTENT=$(cat << 'EOF'
@@ -121,7 +122,6 @@ if command -v opencode &> /dev/null || [ -d "$HOME/.config/opencode" ]; then
 fi
 
 # Windsurf
-MARKER="# React Doctor"
 if [ -d "$HOME/.codeium" ] || [ -d "$HOME/Library/Application Support/Windsurf" ]; then
   mkdir -p "$HOME/.codeium/windsurf/memories"
   RULES_FILE="$HOME/.codeium/windsurf/memories/global_rules.md"
@@ -174,12 +174,18 @@ YAMLEOF
   INSTALLED=$((INSTALLED + 1))
 fi
 
-# Project-level .agents/
-AGENTS_DIR=".agents/$SKILL_NAME"
-mkdir -p "$AGENTS_DIR"
-printf '%s\\n' "$SKILL_CONTENT" > "$AGENTS_DIR/SKILL.md"
-printf '%s\\n' "$AGENTS_CONTENT" > "$AGENTS_DIR/AGENTS.md"
-printf "\${GREEN}✔\${RESET} .agents/\\n"
+# Project-level AGENTS.md (root). Append (with marker dedup) so we
+# don't clobber any existing project guidance the user already has.
+PROJECT_AGENTS_FILE="AGENTS.md"
+if [ -f "$PROJECT_AGENTS_FILE" ] && grep -q "$MARKER" "$PROJECT_AGENTS_FILE"; then
+  printf "\${GREEN}✔\${RESET} ./AGENTS.md \${DIM}(already installed)\${RESET}\\n"
+else
+  if [ -f "$PROJECT_AGENTS_FILE" ]; then
+    echo "" >> "$PROJECT_AGENTS_FILE"
+  fi
+  printf '%s\\n' "$AGENTS_CONTENT" >> "$PROJECT_AGENTS_FILE"
+  printf "\${GREEN}✔\${RESET} ./AGENTS.md\\n"
+fi
 INSTALLED=$((INSTALLED + 1))
 
 echo ""

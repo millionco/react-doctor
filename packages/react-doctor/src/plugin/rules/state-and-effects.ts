@@ -175,22 +175,40 @@ export const noDerivedUseState: Rule = {
       return false;
     };
 
+    const isFunctionLikeVariableDeclarator = (node: EsTreeNode): boolean => {
+      if (node.type !== "VariableDeclarator") return false;
+      return (
+        node.init?.type === "ArrowFunctionExpression" || node.init?.type === "FunctionExpression"
+      );
+    };
+
     return {
       FunctionDeclaration(node: EsTreeNode) {
-        if (!node.id?.name || !isUppercaseName(node.id.name)) return;
+        if (!node.id?.name || !isUppercaseName(node.id.name)) {
+          // Non-component FunctionDeclarations push an empty barrier so
+          // an outer component's props don't leak into the helper.
+          // Matches noPropCallbackInEffect's scope behavior.
+          componentPropStack.push(new Set());
+          return;
+        }
         componentPropStack.push(extractDestructuredPropNames(node.params ?? []));
       },
-      "FunctionDeclaration:exit"(node: EsTreeNode) {
-        if (!node.id?.name || !isUppercaseName(node.id.name)) return;
+      "FunctionDeclaration:exit"() {
         componentPropStack.pop();
       },
       VariableDeclarator(node: EsTreeNode) {
-        if (!isComponentAssignment(node)) return;
-        componentPropStack.push(extractDestructuredPropNames(node.init?.params ?? []));
+        if (isComponentAssignment(node)) {
+          componentPropStack.push(extractDestructuredPropNames(node.init?.params ?? []));
+          return;
+        }
+        if (isFunctionLikeVariableDeclarator(node)) {
+          componentPropStack.push(new Set());
+        }
       },
       "VariableDeclarator:exit"(node: EsTreeNode) {
-        if (!isComponentAssignment(node)) return;
-        componentPropStack.pop();
+        if (isComponentAssignment(node) || isFunctionLikeVariableDeclarator(node)) {
+          componentPropStack.pop();
+        }
       },
       CallExpression(node: EsTreeNode) {
         if (!isHookCall(node, "useState") || !node.arguments?.length) return;

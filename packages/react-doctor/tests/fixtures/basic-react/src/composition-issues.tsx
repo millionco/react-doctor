@@ -1,25 +1,33 @@
 import { useState, useEffect } from "react";
 
-// no-render-prop-children: any `renderXxx` JSX prop (other than the
-// FlatList allowlist) is a render-prop slot smell.
+// no-render-prop-children: 3+ render-prop slots on the same element is
+// the proliferation smell. A single render-prop (renderInput, renderItem)
+// is fine — those are common library APIs.
 const Modal = ({
   renderHeader,
   renderFooter,
+  renderActions,
   children,
 }: {
   renderHeader?: () => JSX.Element;
   renderFooter?: () => JSX.Element;
+  renderActions?: () => JSX.Element;
   children?: React.ReactNode;
 }) => (
   <div>
     {renderHeader?.()}
     <div>{children}</div>
+    {renderActions?.()}
     {renderFooter?.()}
   </div>
 );
 
 export const RenderPropMisuse = () => (
-  <Modal renderHeader={() => <h1>Title</h1>} renderFooter={() => <p>Footer</p>} />
+  <Modal
+    renderHeader={() => <h1>Title</h1>}
+    renderFooter={() => <p>Footer</p>}
+    renderActions={() => <button>OK</button>}
+  />
 );
 
 // no-polymorphic-children: switching on `typeof children`.

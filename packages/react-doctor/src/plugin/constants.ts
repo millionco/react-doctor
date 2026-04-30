@@ -4,6 +4,9 @@ export const RELATED_USE_STATE_THRESHOLD = 5;
 export const DEEP_NESTING_THRESHOLD = 3;
 export const DUPLICATE_STORAGE_READ_THRESHOLD = 2;
 export const SEQUENTIAL_AWAIT_THRESHOLD = 3;
+export const PROPERTY_ACCESS_REPEAT_THRESHOLD = 3;
+export const BOOLEAN_PROP_THRESHOLD = 4;
+export const RENDER_PROP_PROLIFERATION_THRESHOLD = 3;
 // Real-world API keys, tokens, and credentials are 24+ chars. 8 chars produced
 // many false positives on UI strings ("loading...", short captions, etc.).
 export const SECRET_MIN_LENGTH_CHARS = 24;

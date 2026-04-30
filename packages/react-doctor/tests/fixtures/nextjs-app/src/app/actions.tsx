@@ -3,6 +3,8 @@
 import { cache } from "react";
 
 let requestCount = 0;
+const userCache = new Map<string, { name: string }>();
+void userCache;
 
 const getUser = cache(async (params: { uid: number }) => {
   return { uid: params.uid, name: "Anon" };

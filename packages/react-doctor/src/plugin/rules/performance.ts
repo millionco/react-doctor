@@ -858,13 +858,13 @@ const isEarlyReturnIfStatement = (statement: EsTreeNode): boolean => {
 export const asyncDeferAwait: Rule = {
   create: (context: RuleContext) => {
     const inspectStatements = (statements: EsTreeNode[]): void => {
-      for (let i = 0; i < statements.length - 1; i++) {
-        const stmt = statements[i];
-        if (stmt.type !== "VariableDeclaration") continue;
+      for (let statementIndex = 0; statementIndex < statements.length - 1; statementIndex++) {
+        const currentStatement = statements[statementIndex];
+        if (currentStatement.type !== "VariableDeclaration") continue;
 
-        let awaitedBindingNames = new Set<string>();
+        const awaitedBindingNames = new Set<string>();
         let didAwait = false;
-        for (const declarator of stmt.declarations ?? []) {
+        for (const declarator of currentStatement.declarations ?? []) {
           if (declarator.init?.type === "AwaitExpression") {
             didAwait = true;
             if (declarator.id?.type === "Identifier") {
@@ -880,25 +880,25 @@ export const asyncDeferAwait: Rule = {
         }
         if (!didAwait) continue;
 
-        const next = statements[i + 1];
-        if (!isEarlyReturnIfStatement(next)) continue;
+        const nextStatement = statements[statementIndex + 1];
+        if (!isEarlyReturnIfStatement(nextStatement)) continue;
 
         const testIdentifiers = new Set<string>();
-        collectIdentifierNames(next.test, testIdentifiers);
+        collectIdentifierNames(nextStatement.test, testIdentifiers);
         const usesAwaitedBinding = [...awaitedBindingNames].some((name) =>
           testIdentifiers.has(name),
         );
         if (usesAwaitedBinding) continue;
 
         const consequentIdentifiers = new Set<string>();
-        collectIdentifierNames(next.consequent, consequentIdentifiers);
+        collectIdentifierNames(nextStatement.consequent, consequentIdentifiers);
         const consequentUsesAwaited = [...awaitedBindingNames].some((name) =>
           consequentIdentifiers.has(name),
         );
         if (consequentUsesAwaited) continue;
 
         context.report({
-          node: stmt,
+          node: currentStatement,
           message:
             "await blocks the function before an early-return that doesn't use the awaited value — move the await after the synchronous guard so the skip path stays fast",
         });
@@ -950,11 +950,11 @@ const findThresholdDerivedBindings = (
   if (componentBody?.type !== "BlockStatement") return out;
   const statements = componentBody.body ?? [];
 
-  for (let i = 0; i < statements.length; i++) {
-    const stmt = statements[i];
-    if (stmt.type !== "VariableDeclaration") continue;
+  for (let outerIndex = 0; outerIndex < statements.length; outerIndex++) {
+    const outerStatement = statements[outerIndex];
+    if (outerStatement.type !== "VariableDeclaration") continue;
 
-    for (const declarator of stmt.declarations ?? []) {
+    for (const declarator of outerStatement.declarations ?? []) {
       if (declarator.id?.type !== "Identifier") continue;
       const init = declarator.init;
       if (init?.type !== "CallExpression") continue;
@@ -965,11 +965,11 @@ const findThresholdDerivedBindings = (
       const hookName = init.callee.name;
 
       // Look at the next statement(s) for a derived threshold binding.
-      for (let j = i + 1; j < statements.length; j++) {
-        const next = statements[j];
-        if (next.type !== "VariableDeclaration") break;
+      for (let innerIndex = outerIndex + 1; innerIndex < statements.length; innerIndex++) {
+        const innerStatement = statements[innerIndex];
+        if (innerStatement.type !== "VariableDeclaration") break;
         let foundThreshold = false;
-        for (const innerDecl of next.declarations ?? []) {
+        for (const innerDecl of innerStatement.declarations ?? []) {
           if (innerDecl.init && isThresholdComparison(innerDecl.init, continuousName)) {
             foundThreshold = true;
             break;

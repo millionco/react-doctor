@@ -389,19 +389,12 @@ export const rnNoScrollState: Rule = {
   }),
 };
 
-const SCROLLVIEW_NAMES = new Set(["ScrollView", "Animated.ScrollView"]);
-
-const resolveJsxName = (openingElement: EsTreeNode): string | null => {
-  const name = openingElement?.name;
-  if (!name) return null;
-  if (name.type === "JSXIdentifier") return name.name;
-  if (name.type === "JSXMemberExpression") {
-    const objectName = name.object?.name;
-    const propertyName = name.property?.name;
-    if (objectName && propertyName) return `${objectName}.${propertyName}`;
-  }
-  return null;
-};
+// HACK: short-name only. `resolveJsxElementName` (defined at top of
+// file) returns the property name for JSXMemberExpression — e.g.
+// `Animated.ScrollView` resolves to `"ScrollView"`, which is what all
+// the existing `REACT_NATIVE_*` sets use. Allowlists below use the same
+// short-name form.
+const SCROLLVIEW_NAMES = new Set(["ScrollView"]);
 
 // HACK: <ScrollView>{items.map(...)}</ScrollView> renders every row in
 // memory — for any list longer than ~10 items this destroys scroll
@@ -411,7 +404,7 @@ const resolveJsxName = (openingElement: EsTreeNode): string | null => {
 export const rnNoScrollviewMappedList: Rule = {
   create: (context: RuleContext) => ({
     JSXElement(node: EsTreeNode) {
-      const elementName = resolveJsxName(node.openingElement);
+      const elementName = resolveJsxElementName(node.openingElement);
       if (!elementName || !SCROLLVIEW_NAMES.has(elementName)) return;
 
       for (const child of node.children ?? []) {
@@ -570,12 +563,12 @@ export const rnAnimateLayoutProperty: Rule = {
 export const rnPreferContentInsetAdjustment: Rule = {
   create: (context: RuleContext) => ({
     JSXElement(node: EsTreeNode) {
-      const elementName = resolveJsxName(node.openingElement);
+      const elementName = resolveJsxElementName(node.openingElement);
       if (elementName !== "SafeAreaView") return;
 
       for (const child of node.children ?? []) {
         if (child.type !== "JSXElement") continue;
-        const childName = resolveJsxName(child.openingElement);
+        const childName = resolveJsxElementName(child.openingElement);
         if (!childName || !SCROLLVIEW_NAMES.has(childName)) continue;
 
         context.report({
@@ -591,28 +584,34 @@ export const rnPreferContentInsetAdjustment: Rule = {
 
 const PRESS_HANDLER_PROP_NAMES = new Set(["onPressIn", "onPressOut"]);
 
-const handlerMutatesSharedValue = (handler: EsTreeNode): boolean => {
+const handlerMutatesIdentifier = (
+  handler: EsTreeNode,
+  sharedValueBindings: Set<string>,
+): boolean => {
   if (handler.type !== "ArrowFunctionExpression" && handler.type !== "FunctionExpression") {
     return false;
   }
+  if (sharedValueBindings.size === 0) return false;
   let didMutate = false;
   walkAst(handler.body, (child: EsTreeNode) => {
     if (didMutate) return;
-    // .value = ...
     if (
       child.type === "AssignmentExpression" &&
       child.left?.type === "MemberExpression" &&
+      child.left.object?.type === "Identifier" &&
+      sharedValueBindings.has(child.left.object.name) &&
       child.left.property?.type === "Identifier" &&
       child.left.property.name === "value"
     ) {
       didMutate = true;
     }
-    // .set(...)
     if (
       child.type === "CallExpression" &&
       child.callee?.type === "MemberExpression" &&
+      child.callee.object?.type === "Identifier" &&
+      sharedValueBindings.has(child.callee.object.name) &&
       child.callee.property?.type === "Identifier" &&
-      child.callee.property.name === "set"
+      (child.callee.property.name === "set" || child.callee.property.name === "value")
     ) {
       didMutate = true;
     }
@@ -624,39 +623,78 @@ const handlerMutatesSharedValue = (handler: EsTreeNode): boolean => {
 // the gesture across the JS bridge twice (press in → JS handler → set
 // shared value → animation kicks off), which is visibly stuttery on
 // Android. The Reanimated GestureDetector + Gesture.Tap() runs entirely
-// on the UI thread for native-feeling press feedback.
+// on the UI thread for native-feeling press feedback. We only flag when
+// the receiver is actually a `useSharedValue` binding to avoid
+// false-positives on `Map.prototype.set` / `ref.current.value =` etc.
 export const rnPressableSharedValueMutation: Rule = {
-  create: (context: RuleContext) => ({
-    JSXOpeningElement(node: EsTreeNode) {
-      const name = resolveJsxName(node);
-      if (name !== "Pressable") return;
+  create: (context: RuleContext) => {
+    const sharedValueBindingsByComponent: Array<Set<string>> = [];
 
-      for (const attr of node.attributes ?? []) {
-        if (attr.type !== "JSXAttribute") continue;
-        if (attr.name?.type !== "JSXIdentifier") continue;
-        if (!PRESS_HANDLER_PROP_NAMES.has(attr.name.name)) continue;
-        if (attr.value?.type !== "JSXExpressionContainer") continue;
-        const handler = attr.value.expression;
-        if (!handler) continue;
-        if (!handlerMutatesSharedValue(handler)) continue;
+    const enterScope = (): void => {
+      sharedValueBindingsByComponent.push(new Set());
+    };
+    const exitScope = (): void => {
+      sharedValueBindingsByComponent.pop();
+    };
+    const trackSharedValueBinding = (declarator: EsTreeNode): void => {
+      if (sharedValueBindingsByComponent.length === 0) return;
+      if (declarator.id?.type !== "Identifier") return;
+      if (declarator.init?.type !== "CallExpression") return;
+      const callee = declarator.init.callee;
+      if (callee?.type !== "Identifier") return;
+      if (callee.name !== "useSharedValue") return;
+      sharedValueBindingsByComponent[sharedValueBindingsByComponent.length - 1].add(
+        declarator.id.name,
+      );
+    };
 
-        context.report({
-          node: attr,
-          message: `<Pressable> ${attr.name.name} mutates a Reanimated shared value — use a Gesture.Tap() inside <GestureDetector> for press animations that stay on the UI thread`,
-        });
-      }
-    },
-  }),
+    return {
+      FunctionDeclaration: enterScope,
+      "FunctionDeclaration:exit": exitScope,
+      FunctionExpression: enterScope,
+      "FunctionExpression:exit": exitScope,
+      ArrowFunctionExpression: enterScope,
+      "ArrowFunctionExpression:exit": exitScope,
+      VariableDeclarator(node: EsTreeNode) {
+        trackSharedValueBinding(node);
+      },
+      JSXOpeningElement(node: EsTreeNode) {
+        const name = resolveJsxElementName(node);
+        if (name !== "Pressable") return;
+        if (sharedValueBindingsByComponent.length === 0) return;
+        const activeBindings = new Set<string>();
+        for (const frame of sharedValueBindingsByComponent) {
+          for (const binding of frame) activeBindings.add(binding);
+        }
+        if (activeBindings.size === 0) return;
+
+        for (const attr of node.attributes ?? []) {
+          if (attr.type !== "JSXAttribute") continue;
+          if (attr.name?.type !== "JSXIdentifier") continue;
+          if (!PRESS_HANDLER_PROP_NAMES.has(attr.name.name)) continue;
+          if (attr.value?.type !== "JSXExpressionContainer") continue;
+          const handler = attr.value.expression;
+          if (!handler) continue;
+          if (!handlerMutatesIdentifier(handler, activeBindings)) continue;
+
+          context.report({
+            node: attr,
+            message: `<Pressable> ${attr.name.name} mutates a Reanimated shared value — use a Gesture.Tap() inside <GestureDetector> for press animations that stay on the UI thread`,
+          });
+        }
+      },
+    };
+  },
 };
 
+// Short-name form: resolveJsxElementName drops the `Animated.` prefix,
+// so `<Animated.FlatList>` resolves to `"FlatList"` and matches here.
 const VIRTUALIZED_LIST_NAMES = new Set([
   "FlatList",
   "FlashList",
   "LegendList",
   "SectionList",
   "VirtualizedList",
-  "Animated.FlatList",
-  "Animated.SectionList",
 ]);
 
 // HACK: virtualized lists key off referential equality of `data`. Passing
@@ -667,7 +705,7 @@ const VIRTUALIZED_LIST_NAMES = new Set([
 export const rnListDataMapped: Rule = {
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNode) {
-      const elementName = resolveJsxName(node);
+      const elementName = resolveJsxElementName(node);
       if (!elementName || !VIRTUALIZED_LIST_NAMES.has(elementName)) return;
 
       for (const attr of node.attributes ?? []) {
@@ -711,48 +749,35 @@ export const rnAnimationReactionAsDerived: Rule = {
       }
 
       const body = reactionFn.body;
-      let assignmentCount = 0;
-      let firstAssignment: EsTreeNode | null = null;
-      let hasOtherSideEffect = false;
 
-      const inspect = (statementNode: EsTreeNode | null | undefined): void => {
-        if (!statementNode) return;
-        if (statementNode.type === "AssignmentExpression") {
-          if (
-            statementNode.left?.type === "MemberExpression" &&
-            statementNode.left.property?.type === "Identifier" &&
-            statementNode.left.property.name === "value"
-          ) {
-            assignmentCount++;
-            firstAssignment = statementNode;
-            return;
-          }
-        }
-        if (
-          statementNode.type === "CallExpression" &&
-          statementNode.callee?.type === "Identifier" &&
-          statementNode.callee.name === "runOnJS"
-        ) {
-          hasOtherSideEffect = true;
-        }
-      };
-
+      // We only fire when the reaction body is EXACTLY one statement
+      // and that statement is an assignment to another shared value's
+      // `.value`. Any additional statement (console.log, function call,
+      // condition, runOnJS, etc.) means useAnimatedReaction's
+      // side-effect semantics are wanted; useDerivedValue would change
+      // behavior.
+      let singleAssignment: EsTreeNode | null = null;
       if (body?.type === "BlockStatement") {
-        for (const stmt of body.body ?? []) {
-          if (stmt.type === "ExpressionStatement") inspect(stmt.expression);
-          else hasOtherSideEffect = true;
-        }
-      } else {
-        inspect(body);
+        const statements = body.body ?? [];
+        if (statements.length !== 1) return;
+        const onlyStatement = statements[0];
+        if (onlyStatement.type !== "ExpressionStatement") return;
+        singleAssignment = onlyStatement.expression;
+      } else if (body) {
+        // Concise arrow body like `(cur) => sv.value = cur`.
+        singleAssignment = body;
       }
+      if (!singleAssignment) return;
+      if (singleAssignment.type !== "AssignmentExpression") return;
+      if (singleAssignment.left?.type !== "MemberExpression") return;
+      if (singleAssignment.left.property?.type !== "Identifier") return;
+      if (singleAssignment.left.property.name !== "value") return;
 
-      if (assignmentCount === 1 && !hasOtherSideEffect && firstAssignment) {
-        context.report({
-          node,
-          message:
-            "useAnimatedReaction body is a single shared-value assignment — useDerivedValue is shorter and tracks dependencies natively",
-        });
-      }
+      context.report({
+        node,
+        message:
+          "useAnimatedReaction body is a single shared-value assignment — useDerivedValue is shorter and tracks dependencies natively",
+      });
     },
   }),
 };
@@ -792,7 +817,7 @@ export const rnBottomSheetPreferNative: Rule = {
 export const rnScrollviewDynamicPadding: Rule = {
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNode) {
-      const elementName = resolveJsxName(node);
+      const elementName = resolveJsxElementName(node);
       if (!elementName) return;
       if (
         !SCROLLVIEW_NAMES.has(elementName) &&
@@ -983,20 +1008,35 @@ const RECYCLABLE_LIST_NAMES = new Set(["FlashList", "LegendList"]);
 export const rnListRecyclableWithoutTypes: Rule = {
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNode) {
-      const elementName = resolveJsxName(node);
+      const elementName = resolveJsxElementName(node);
       if (!elementName || !RECYCLABLE_LIST_NAMES.has(elementName)) return;
 
-      let hasRecycleItems = false;
+      let hasRecycleItemsEnabled = false;
       let hasGetItemType = false;
 
       for (const attr of node.attributes ?? []) {
         if (attr.type !== "JSXAttribute") continue;
         if (attr.name?.type !== "JSXIdentifier") continue;
-        if (attr.name.name === "recycleItems") hasRecycleItems = true;
+        if (attr.name.name === "recycleItems") {
+          // Bare `recycleItems` (no `={...}`) → true. `recycleItems={true}`
+          // → true. `recycleItems={false}` → DISABLES recycling, so the
+          // rule shouldn't fire.
+          if (!attr.value) {
+            hasRecycleItemsEnabled = true;
+          } else if (
+            attr.value.type === "JSXExpressionContainer" &&
+            attr.value.expression?.type === "Literal"
+          ) {
+            hasRecycleItemsEnabled = attr.value.expression.value === true;
+          } else {
+            // Dynamic value: assume it can be true.
+            hasRecycleItemsEnabled = true;
+          }
+        }
         if (attr.name.name === "getItemType") hasGetItemType = true;
       }
 
-      if (hasRecycleItems && !hasGetItemType) {
+      if (hasRecycleItemsEnabled && !hasGetItemType) {
         context.report({
           node,
           message: `<${elementName} recycleItems> without \`getItemType\` — heterogeneous rows mount into the wrong recycled cells. Add \`getItemType={item => item.kind}\` so FlashList keeps separate recycle pools per type`,

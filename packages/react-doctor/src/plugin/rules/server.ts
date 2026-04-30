@@ -56,11 +56,28 @@ export const serverAuthActions: Rule = {
   },
 };
 
-// HACK: in `"use server"` files, mutable module-level state (let/var) is
-// shared across concurrent requests. Different users can read each other's
-// data, and serverless cold-starts produce inconsistent state. Per-request
-// data must live inside the action, in headers/cookies, or in a request
-// scope (React.cache, AsyncLocalStorage, etc.).
+const MUTABLE_CONTAINER_CONSTRUCTORS = new Set(["Map", "Set", "WeakMap", "WeakSet"]);
+
+const isMutableConstInitializer = (init: EsTreeNode | null | undefined): string | null => {
+  if (!init) return null;
+  if (init.type === "ArrayExpression") return "[]";
+  if (init.type === "ObjectExpression") return "{}";
+  if (
+    init.type === "NewExpression" &&
+    init.callee?.type === "Identifier" &&
+    MUTABLE_CONTAINER_CONSTRUCTORS.has(init.callee.name)
+  ) {
+    return `new ${init.callee.name}()`;
+  }
+  return null;
+};
+
+// HACK: in `"use server"` files, mutable module-level state (let/var, OR
+// const-bound mutable containers like Map/Set/WeakMap/Array) is shared
+// across concurrent requests. Different users can read each other's data,
+// and serverless cold-starts produce inconsistent state. Per-request data
+// must live inside the action, in headers/cookies, or in a request scope
+// (React.cache, AsyncLocalStorage, etc.).
 export const serverNoMutableModuleState: Rule = {
   create: (context: RuleContext) => {
     let fileHasUseServerDirective = false;
@@ -71,20 +88,29 @@ export const serverNoMutableModuleState: Rule = {
       },
       VariableDeclaration(node: EsTreeNode) {
         if (!fileHasUseServerDirective) return;
-        // Only flag top-level (Program-direct) declarations.
         if (node.parent?.type !== "Program") return;
-        if (node.kind !== "let" && node.kind !== "var") return;
 
         for (const declarator of node.declarations ?? []) {
-          // Static literal initializers (e.g. `let count = 0`) are still
-          // request-shared mutable state — flag them. But const/frozen
-          // immutable singletons are fine (different rule kind).
           const variableName =
             declarator.id?.type === "Identifier" ? declarator.id.name : "<unnamed>";
-          context.report({
-            node: declarator,
-            message: `Module-scoped ${node.kind} "${variableName}" in a "use server" file — this is shared across requests; move per-request data into the action body`,
-          });
+
+          if (node.kind === "let" || node.kind === "var") {
+            context.report({
+              node: declarator,
+              message: `Module-scoped ${node.kind} "${variableName}" in a "use server" file — this is shared across requests; move per-request data into the action body`,
+            });
+            continue;
+          }
+
+          // const + mutable container — same hazard, the binding is fixed
+          // but the contents leak across requests.
+          const containerKind = isMutableConstInitializer(declarator.init);
+          if (containerKind) {
+            context.report({
+              node: declarator,
+              message: `Module-scoped const "${variableName} = ${containerKind}" in a "use server" file — the container itself is shared across requests; move per-request data into the action body`,
+            });
+          }
         }
       },
     };
@@ -323,12 +349,58 @@ const getDerivingMethodName = (node: EsTreeNode): string | null => {
   return node.callee.property.name;
 };
 
-// HACK: route handlers (`export async function GET(request) { ... }` in
-// app/route.ts files) run on every request. Reading static assets via
+const PAGES_ROUTER_API_PATH_PATTERN = /\/pages\/api\//;
+
+const inspectHandlerBody = (
+  context: RuleContext,
+  handlerBody: EsTreeNode,
+  handlerLabel: string,
+  handlerParamNames: Set<string>,
+): void => {
+  walkAst(handlerBody, (child: EsTreeNode) => {
+    let staticCall: EsTreeNode | null = null;
+    if (isStaticIoCall(child)) staticCall = child;
+    else if (isFetchOfImportMetaUrl(child)) staticCall = child;
+    else if (
+      child.type === "AwaitExpression" &&
+      child.argument &&
+      (isStaticIoCall(child.argument) || isFetchOfImportMetaUrl(child.argument))
+    ) {
+      staticCall = child.argument;
+    }
+    if (!staticCall) return;
+    if (callReadsHandlerArgs(staticCall, handlerParamNames)) return;
+
+    const calleeText =
+      staticCall.callee?.type === "MemberExpression" &&
+      staticCall.callee.property?.type === "Identifier"
+        ? `${
+            staticCall.callee.object?.type === "Identifier" ? staticCall.callee.object.name : "?"
+          }.${staticCall.callee.property.name}`
+        : staticCall.callee?.type === "Identifier"
+          ? staticCall.callee.name
+          : "io";
+    context.report({
+      node: staticCall,
+      message: `${calleeText}() in ${handlerLabel} reads the same static asset every request — hoist to module scope so the read happens once at module load`,
+    });
+  });
+};
+
+const collectIdentifierParams = (params: EsTreeNode[]): Set<string> => {
+  const names = new Set<string>();
+  for (const param of params) {
+    if (param.type === "Identifier") names.add(param.name);
+  }
+  return names;
+};
+
+// HACK: route handlers run on every request — reading static assets via
 // `fs.readFileSync('./fonts/...')` or `fetch(new URL('./fonts/...',
-// import.meta.url))` re-reads the same file from disk per request. For
-// truly static input, hoist the read to module scope so the file is read
-// once at module load.
+// import.meta.url))` re-reads the same file from disk per request. We
+// catch BOTH App Router (`export async function GET/POST/...` in
+// `app/.../route.ts`) and Pages Router (`export default async function
+// handler(req, res)` in `pages/api/...`).
 export const serverHoistStaticIo: Rule = {
   create: (context: RuleContext) => ({
     ExportNamedDeclaration(node: EsTreeNode) {
@@ -336,43 +408,35 @@ export const serverHoistStaticIo: Rule = {
       if (declaration?.type !== "FunctionDeclaration") return;
       const handlerName = declaration.id?.name;
       if (!handlerName || !ROUTE_HANDLER_HTTP_METHODS.has(handlerName)) return;
-
-      const handlerParamNames = new Set<string>();
-      for (const param of declaration.params ?? []) {
-        if (param.type === "Identifier") handlerParamNames.add(param.name);
-      }
-
       if (declaration.body?.type !== "BlockStatement") return;
-      walkAst(declaration.body, (child: EsTreeNode) => {
-        let staticCall: EsTreeNode | null = null;
-        if (isStaticIoCall(child)) staticCall = child;
-        else if (isFetchOfImportMetaUrl(child)) staticCall = child;
-        else if (
-          child.type === "AwaitExpression" &&
-          child.argument &&
-          (isStaticIoCall(child.argument) || isFetchOfImportMetaUrl(child.argument))
-        ) {
-          staticCall = child.argument;
-        }
-        if (!staticCall) return;
-        if (callReadsHandlerArgs(staticCall, handlerParamNames)) return;
-
-        const calleeText =
-          staticCall.callee?.type === "MemberExpression" &&
-          staticCall.callee.property?.type === "Identifier"
-            ? `${
-                staticCall.callee.object?.type === "Identifier"
-                  ? staticCall.callee.object.name
-                  : "?"
-              }.${staticCall.callee.property.name}`
-            : staticCall.callee?.type === "Identifier"
-              ? staticCall.callee.name
-              : "io";
-        context.report({
-          node: staticCall,
-          message: `${calleeText}() in ${handlerName} route handler reads the same static asset every request — hoist to module scope so the read happens once at module load`,
-        });
-      });
+      inspectHandlerBody(
+        context,
+        declaration.body,
+        `${handlerName} route handler`,
+        collectIdentifierParams(declaration.params ?? []),
+      );
+    },
+    ExportDefaultDeclaration(node: EsTreeNode) {
+      const filename = context.getFilename?.() ?? "";
+      if (!PAGES_ROUTER_API_PATH_PATTERN.test(filename)) return;
+      const declaration = node.declaration;
+      if (
+        !declaration ||
+        (declaration.type !== "FunctionDeclaration" &&
+          declaration.type !== "FunctionExpression" &&
+          declaration.type !== "ArrowFunctionExpression")
+      ) {
+        return;
+      }
+      if (!declaration.async) return;
+      const body = declaration.body;
+      if (body?.type !== "BlockStatement") return;
+      inspectHandlerBody(
+        context,
+        body,
+        "pages/api handler",
+        collectIdentifierParams(declaration.params ?? []),
+      );
     },
   }),
 };
@@ -430,25 +494,25 @@ const declarationReadsAnyName = (declaration: EsTreeNode, names: Set<string>): b
 export const serverSequentialIndependentAwait: Rule = {
   create: (context: RuleContext) => {
     const inspectStatements = (statements: EsTreeNode[]): void => {
-      for (let i = 0; i < statements.length - 1; i++) {
-        const stmt = statements[i];
-        if (stmt.type !== "VariableDeclaration") continue;
-        if (!declarationStartsWithAwait(stmt)) continue;
-        const declaredNames = collectDeclaredNames(stmt);
+      for (let statementIndex = 0; statementIndex < statements.length - 1; statementIndex++) {
+        const currentStatement = statements[statementIndex];
+        if (currentStatement.type !== "VariableDeclaration") continue;
+        if (!declarationStartsWithAwait(currentStatement)) continue;
+        const declaredNames = collectDeclaredNames(currentStatement);
 
-        const next = statements[i + 1];
-        if (next.type !== "VariableDeclaration") continue;
-        if (!declarationStartsWithAwait(next)) continue;
+        const nextStatement = statements[statementIndex + 1];
+        if (nextStatement.type !== "VariableDeclaration") continue;
+        if (!declarationStartsWithAwait(nextStatement)) continue;
 
-        if (declarationReadsAnyName(next, declaredNames)) continue;
+        if (declarationReadsAnyName(nextStatement, declaredNames)) continue;
 
         context.report({
-          node: next,
+          node: nextStatement,
           message:
             "Sequential `await` without a data dependency on the previous result — wrap the independent calls in `Promise.all([...])` so they race instead of waterfalling",
         });
         // Skip past the next so we don't double-report a chain.
-        i++;
+        statementIndex++;
       }
     };
 
@@ -498,13 +562,20 @@ const objectExpressionHasNextRevalidate = (objectExpression: EsTreeNode): boolea
 // for tag-based invalidation). Forgetting this is a common silent-stale
 // data bug.
 //
-// Heuristic: `fetch(url)` in a file that lives under `app/` (route
-// handler / page / layout) without a config object — or with a config
-// object that omits both `cache` and `next.revalidate`/`next.tags`. We
-// can't reliably know "this is a Server Component" from the AST alone,
-// so we approximate by limiting to `app/` paths and skipping files
-// containing `"use client"`.
-const SERVER_FILE_PATH_PATTERN = /\/app\/[^/]+/;
+// Heuristic: `fetch(url)` in an App Router file (`app/.../route.ts(x)`,
+// `app/.../page.ts(x)`, `app/.../layout.ts(x)`) without a config object —
+// or with a config object that omits both `cache` and
+// `next.revalidate`/`next.tags`. We can't reliably know "this is a
+// Server Component" from the AST alone, so we approximate by:
+//   1. Path contains `/app/` AND filename matches one of the App Router
+//      file shapes (route|page|layout|template|loading|error|default
+//      with .ts(x)? extension), AND
+//   2. The file does not start with a `"use client"` directive, AND
+//   3. The path does not pass through `node_modules/` or `dist/`
+//      (vendored or built code).
+const APP_ROUTER_FILE_PATTERN =
+  /\/app\/(?:[^/]+\/)*(?:route|page|layout|template|loading|error|default)\.(?:tsx?|jsx?)$/;
+const NON_PROJECT_PATH_PATTERN = /\/(?:node_modules|dist|build|\.next)\//;
 
 export const serverFetchWithoutRevalidate: Rule = {
   create: (context: RuleContext) => {
@@ -513,11 +584,14 @@ export const serverFetchWithoutRevalidate: Rule = {
     return {
       Program(node: EsTreeNode) {
         const filename = context.getFilename?.() ?? "";
-        if (!SERVER_FILE_PATH_PATTERN.test(filename)) {
+        if (!APP_ROUTER_FILE_PATTERN.test(filename)) {
           isServerSideFile = false;
           return;
         }
-        // Skip files with "use client" directive.
+        if (NON_PROJECT_PATH_PATTERN.test(filename)) {
+          isServerSideFile = false;
+          return;
+        }
         const hasUseClient = (node.body ?? []).some(
           (statement: EsTreeNode) =>
             statement.type === "ExpressionStatement" &&

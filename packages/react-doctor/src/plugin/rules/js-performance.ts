@@ -2,6 +2,7 @@ import {
   CHAINABLE_ITERATION_METHODS,
   DEEP_NESTING_THRESHOLD,
   DUPLICATE_STORAGE_READ_THRESHOLD,
+  PROPERTY_ACCESS_REPEAT_THRESHOLD,
   SEQUENTIAL_AWAIT_THRESHOLD,
   STORAGE_OBJECTS,
   TEST_FILE_PATTERN,
@@ -336,8 +337,6 @@ export const jsFlatmapFilter: Rule = {
     },
   }),
 };
-
-const PROPERTY_ACCESS_REPEAT_THRESHOLD = 3;
 
 const buildMemberAccessKey = (node: EsTreeNode): string | null => {
   if (node.type === "Identifier") return node.name;

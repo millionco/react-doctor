@@ -169,8 +169,8 @@ export const noDerivedUseState: Rule = {
     const componentPropStack: Array<Set<string>> = [];
 
     const isPropName = (name: string): boolean => {
-      for (let i = componentPropStack.length - 1; i >= 0; i--) {
-        if (componentPropStack[i].has(name)) return true;
+      for (let stackIndex = componentPropStack.length - 1; stackIndex >= 0; stackIndex--) {
+        if (componentPropStack[stackIndex].has(name)) return true;
       }
       return false;
     };
@@ -404,8 +404,8 @@ export const noPropCallbackInEffect: Rule = {
     };
 
     const isPropName = (name: string): boolean => {
-      for (let i = componentPropParamStack.length - 1; i >= 0; i--) {
-        if (componentPropParamStack[i].has(name)) return true;
+      for (let stackIndex = componentPropParamStack.length - 1; stackIndex >= 0; stackIndex--) {
+        if (componentPropParamStack[stackIndex].has(name)) return true;
       }
       return false;
     };
@@ -499,8 +499,8 @@ export const noEffectEventInDeps: Rule = {
     const componentBindingStack: Array<Set<string>> = [];
 
     const isEffectEventBinding = (name: string): boolean => {
-      for (let i = componentBindingStack.length - 1; i >= 0; i--) {
-        if (componentBindingStack[i].has(name)) return true;
+      for (let stackIndex = componentBindingStack.length - 1; stackIndex >= 0; stackIndex--) {
+        if (componentBindingStack[stackIndex].has(name)) return true;
       }
       return false;
     };
@@ -595,15 +595,52 @@ const collectUseStateBindings = (
   return bindings;
 };
 
+// HACK: only collect return statements at the COMPONENT'S top level —
+// nested function bodies (effect cleanups, useMemo/useCallback callbacks)
+// have their own return semantics that aren't render output.
 const collectReturnExpressions = (componentBody: EsTreeNode): EsTreeNode[] => {
   if (componentBody?.type !== "BlockStatement") return [];
   const returns: EsTreeNode[] = [];
-  walkAst(componentBody, (child: EsTreeNode) => {
-    if (child.type === "ReturnStatement" && child.argument) {
-      returns.push(child.argument);
+  for (const statement of componentBody.body ?? []) {
+    if (statement.type === "ReturnStatement" && statement.argument) {
+      returns.push(statement.argument);
+      continue;
     }
-  });
+    // Walk into IfStatement / TryStatement etc. for early-return JSX,
+    // but stop at any nested function.
+    walkInsideStatementBlocks(statement, (child) => {
+      if (child.type === "ReturnStatement" && child.argument) {
+        returns.push(child.argument);
+      }
+    });
+  }
   return returns;
+};
+
+const walkInsideStatementBlocks = (
+  node: EsTreeNode,
+  visitor: (child: EsTreeNode) => void,
+): void => {
+  if (!node || typeof node !== "object") return;
+  if (
+    node.type === "FunctionDeclaration" ||
+    node.type === "FunctionExpression" ||
+    node.type === "ArrowFunctionExpression"
+  ) {
+    return;
+  }
+  visitor(node);
+  for (const key of Object.keys(node)) {
+    if (key === "parent") continue;
+    const child = node[key];
+    if (Array.isArray(child)) {
+      for (const item of child) {
+        if (item && typeof item === "object" && item.type) walkInsideStatementBlocks(item, visitor);
+      }
+    } else if (child && typeof child === "object" && child.type) {
+      walkInsideStatementBlocks(child, visitor);
+    }
+  }
 };
 
 const expressionReadsName = (expression: EsTreeNode, name: string): boolean => {
@@ -748,7 +785,24 @@ const findHookCallBindings = (
   return bindings;
 };
 
-const isInsideEventHandler = (node: EsTreeNode): boolean => {
+// HACK: collect names of identifiers passed as values to JSX `on*`
+// attributes — these are component-bound handlers (`onClick={handleClick}`).
+// Lets `isInsideEventHandler` resolve a function bound to a const back
+// to its handler usage in JSX.
+const collectHandlerBindingNames = (componentBody: EsTreeNode): Set<string> => {
+  const handlerNames = new Set<string>();
+  walkAst(componentBody, (child: EsTreeNode) => {
+    if (child.type !== "JSXAttribute") return;
+    if (child.name?.type !== "JSXIdentifier") return;
+    if (!/^on[A-Z]/.test(child.name.name)) return;
+    if (child.value?.type !== "JSXExpressionContainer") return;
+    const expression = child.value.expression;
+    if (expression?.type === "Identifier") handlerNames.add(expression.name);
+  });
+  return handlerNames;
+};
+
+const isInsideEventHandler = (node: EsTreeNode, handlerBindingNames: Set<string>): boolean => {
   let cursor: EsTreeNode | null = node.parent ?? null;
   while (cursor) {
     if (
@@ -756,8 +810,6 @@ const isInsideEventHandler = (node: EsTreeNode): boolean => {
       cursor.type === "FunctionExpression" ||
       cursor.type === "FunctionDeclaration"
     ) {
-      // If we hit a function whose grandparent is JSXAttribute / JSXExpressionContainer-in-handler,
-      // we're inside an event handler. Loop up to find that.
       let outer: EsTreeNode | null = cursor.parent ?? null;
       while (outer) {
         if (outer.type === "JSXAttribute") {
@@ -765,7 +817,11 @@ const isInsideEventHandler = (node: EsTreeNode): boolean => {
           if (attrName && /^on[A-Z]/.test(attrName)) return true;
           return false;
         }
-        if (outer.type === "VariableDeclarator" || outer.type === "Program") return false;
+        if (outer.type === "VariableDeclarator") {
+          const declaredName = outer.id?.type === "Identifier" ? outer.id.name : null;
+          return Boolean(declaredName && handlerBindingNames.has(declaredName));
+        }
+        if (outer.type === "Program") return false;
         outer = outer.parent ?? null;
       }
       return false;
@@ -794,6 +850,7 @@ export const rerenderDeferReadsHook: Rule = {
       if (!componentBody || componentBody.type !== "BlockStatement") return;
       const bindings = findHookCallBindings(componentBody);
       if (bindings.length === 0) return;
+      const handlerBindingNames = collectHandlerBindingNames(componentBody);
 
       for (const binding of bindings) {
         const referenceLocations: EsTreeNode[] = [];
@@ -804,11 +861,11 @@ export const rerenderDeferReadsHook: Rule = {
           }
         });
 
-        // No references at all → unused, different rule.
         if (referenceLocations.length === 0) continue;
 
-        // Every reference must be inside an event handler.
-        const allInHandlers = referenceLocations.every((ref) => isInsideEventHandler(ref));
+        const allInHandlers = referenceLocations.every((ref) =>
+          isInsideEventHandler(ref, handlerBindingNames),
+        );
         if (!allInHandlers) continue;
 
         context.report({

@@ -7981,3 +7981,673 @@ The biggest meta-mistake: **fixing too many things in one pass** without per-fix
 The pattern that recurs: **defensive fixes for problems that weren't real** (Object.freeze, WeakSet cycle protection, the buffer cap test surface, the `silenced()` race) added complexity without value. The pattern of **partial fixes** (`isLikelySecret`'s leftover `return true`, the SIGINT handler order, the AGENTS.md drift) suggests not running the full code path mentally after applying each change.
 
 Lessons: smaller PRs, one fix per commit, test-first for security/CI changes, and skip "defensive" changes unless tied to a real attack vector.
+
+---
+
+## Pass 22 — AGENTS.md compliance audit of the vercel-skill-rule additions
+
+> Lens flip again: now reviewing the **47 new vercel-skill-parity rules** added across 5 deep passes (commits `0b30bff`, `7bcbb94`, `9bbcb1e`, `5591f2d`, `4cdc01f` plus their Bugbot follow-ups) against the project's `AGENTS.md` rules.
+
+`AGENTS.md` defines 11 MUSTs:
+
+1. Use `@antfu/ni` (`ni`/`nr`/`nun`).
+2. Use TypeScript interfaces over types.
+3. Keep all types in the global scope.
+4. Use arrow functions over function declarations.
+5. Never comment unless absolutely necessary; HACK-prefix when forced.
+6. Use kebab-case for files.
+7. Descriptive variable names; avoid 1–2 character names; favor `did*` for booleans.
+8. Frequently re-evaluate variable names.
+9. Don't type-cast (`as`) unless absolutely necessary.
+10. Remove unused code; don't repeat yourself.
+11. Search the codebase, think of multiple solutions, then pick the most elegant one.
+12. Magic numbers in `constants.ts` with `SCREAMING_SNAKE_CASE_MS` / `_PX` units.
+13. One utility per file in `utils/`.
+14. `Boolean(x)` over `!!x`.
+
+Audit findings, ordered by severity:
+
+### 🟠 114.1 Real DRY violation: `resolveJsxName` duplicates `resolveJsxElementName` with subtly different semantics
+
+`packages/react-doctor/src/plugin/rules/react-native.ts` defines BOTH:
+
+```13:19:packages/react-doctor/src/plugin/rules/react-native.ts
+const resolveJsxElementName = (openingElement: EsTreeNode): string | null => {
+  const elementName = openingElement?.name;
+  if (!elementName) return null;
+  if (elementName.type === "JSXIdentifier") return elementName.name;
+  if (elementName.type === "JSXMemberExpression") return elementName.property?.name ?? null;
+  return null;
+};
+```
+
+```394:404:packages/react-doctor/src/plugin/rules/react-native.ts
+const resolveJsxName = (openingElement: EsTreeNode): string | null => {
+  const name = openingElement?.name;
+  if (!name) return null;
+  if (name.type === "JSXIdentifier") return name.name;
+  if (name.type === "JSXMemberExpression") {
+    const objectName = name.object?.name;
+    const propertyName = name.property?.name;
+    if (objectName && propertyName) return `${objectName}.${propertyName}`;
+  }
+  return null;
+};
+```
+
+These are not just duplicated — they return **different values** for `<Animated.ScrollView>`:
+- `resolveJsxElementName` → `"ScrollView"` (just the property)
+- `resolveJsxName` → `"Animated.ScrollView"` (full path)
+
+The new RN rules I added (rn-no-scrollview-mapped-list, rn-list-data-mapped, rn-prefer-content-inset-adjustment, rn-pressable-shared-value-mutation, rn-list-recyclable-without-types) all use `resolveJsxName` and have allowlists like `SCROLLVIEW_NAMES = new Set(["ScrollView", "Animated.ScrollView"])` — they explicitly handle both forms.
+
+The pre-existing `rnNoRawText` / `rnNoDeprecatedModules` use `resolveJsxElementName` and would NOT see `Animated.ScrollView` as `<ScrollView>` — they'd see it as `"ScrollView"` (just the property), which works for them.
+
+**Direct AGENTS.md violation:** "MUST: Remove unused code and don't repeat yourself."
+
+**Right fix:** consolidate into a single `resolveJsxName(node, options?)` helper that returns either the short or long form based on a flag, OR (cleaner) always returns the full form and have the consuming rules normalize. The fact that the two helpers return different values for the same input is a hidden footgun — a future maintainer adding a new rule will pick the wrong one.
+
+### 🟡 114.2 DRY violation: copy-pasted `walkAst`-based traversal helpers across rules
+
+Across the new code, several rules each define their own version of:
+
+- `findFirstAwaitOutsideNestedFunctions` (performance.ts:828)
+- `collectIdentifierNames` (performance.ts:828)
+- `collectReturnExpressions` (state-and-effects.ts:598)
+- `expressionReadsName` (state-and-effects.ts:609)
+- `collectUseStateBindings` (state-and-effects.ts:565)
+- `findHookCallBindings` / `findUseStateBindings` (state-and-effects.ts:727 + 565 — TWO bindings collectors that do almost the same thing)
+- `findReturnedObject` (react-native.ts:520) and `callbackReturnsJsx` (performance.ts:548) — both walk a function callback's body looking for what it returns.
+- `detectInlineRowHandlers` / `detectInlinePressHandlers` (react-native.ts:843) — see §114.4.
+
+Many of these have near-identical implementations. The right home is `packages/react-doctor/src/plugin/helpers.ts`, which already has `walkAst`, `containsFetchCall`, `findSideEffect`, `extractDestructuredPropNames`, etc. — exactly the same shape of utilities.
+
+**AGENTS.md violation:** "MUST: Remove unused code and don't repeat yourself."
+
+**Right fix:** extract the common helpers into `helpers.ts`. The savings would be ~100 lines of code and a single source of truth for these traversal patterns.
+
+### 🟡 114.3 Two `LIST_ROW_PRESS_HANDLER_PROPS` constants in react-native.ts
+
+```853:860:packages/react-doctor/src/plugin/rules/react-native.ts
+const LIST_ROW_PRESS_HANDLER_PROPS = new Set([
+  "onPress",
+  "onLongPress",
+  "onPressIn",
+  "onPressOut",
+  "onSelect",
+  "onClick",
+]);
+```
+
+Earlier in the same file, `PRESS_HANDLER_PROP_NAMES = new Set(["onPressIn", "onPressOut"])` exists for `rnPressableSharedValueMutation`. They overlap but aren't identical — and there's no signal in the names that one is "press IN/OUT only" vs "all press handlers."
+
+**AGENTS.md violation:** the broader naming guidance ("frequently re-evaluate and refactor variable names to be more accurate"). The current names don't say WHY they differ.
+
+**Right fix:** rename to `RN_INSTANT_PRESS_HANDLER_PROPS` (the IN/OUT pair) vs `RN_LIST_ROW_PRESS_HANDLER_PROPS` (the broader set), with a comment on each explaining why each rule picks its specific subset.
+
+### 🟡 114.4 `detectInlineRowHandlers` duplicated in two adjacent rule definitions
+
+In `react-native.ts` I introduced `detectInlinePressHandlers` (line 843) and a near-identical `detectInlineRowHandlers` (line 813) — both walk `renderItemFn.body` looking for inline arrow handlers on press-shaped JSX attrs. The first was the original implementation in pass 5 commit `5591f2d`; the second was the refactor that fixed Bugbot's "renderItemFunction inside a JSX attribute parent" issue. Only one survives in the final code, but the helper file picked up both during the merge.
+
+Going to grep to verify only one exists in the final commit:
+
+```bash
+$ rg "detectInline(Press|Row)Handlers" packages/react-doctor/src/plugin/rules/react-native.ts
+843:const detectInlineRowHandlers = (renderItemFn: EsTreeNode): EsTreeNode[] => {
+```
+
+Just one in the current file — false alarm. Skip.
+
+### 🟡 114.5 Magic numbers in rule files
+
+Two new rule constants live as module-level locals instead of in `constants.ts`:
+
+```340:packages/react-doctor/src/plugin/rules/js-performance.ts
+const PROPERTY_ACCESS_REPEAT_THRESHOLD = 3;
+```
+
+```122:packages/react-doctor/src/plugin/rules/architecture.ts
+const BOOLEAN_PROP_THRESHOLD = 4;
+```
+
+Pre-existing rule files use the same pattern (`CASCADING_SET_STATE_THRESHOLD` etc.) — they live in `plugin/constants.ts`, not in individual rule files. My new constants follow the same naming convention but skip the centralization step.
+
+**AGENTS.md violation:** "MUST: Put all magic numbers in `constants.ts` using `SCREAMING_SNAKE_CASE` with unit suffixes (`_MS`, `_PX`)."
+
+The `_MS`/`_PX` suffixes don't apply (these are counts, not units), but the centralization rule does. Move to `plugin/constants.ts`.
+
+### 🟡 114.6 Comments without HACK prefix in new code
+
+A handful of explanatory non-HACK comments slipped in:
+
+- `packages/react-doctor/src/plugin/rules/architecture.ts:205` — `// RN/FlatList APIs that legitimately MUST be functions.` (inside the `RENDER_PROP_ALLOWLIST` block)
+- `packages/react-doctor/src/plugin/rules/state-and-effects.ts:456` — `// Body must invoke a prop callback as a top-level expression.`
+- `packages/react-doctor/src/plugin/rules/state-and-effects.ts:679` — `// requiring it to also appear as the second argument to`
+- A few inline `// HACK:` comments at module top, which ARE the right shape, plus a few `// Heuristic:` comments that are just descriptive.
+
+**AGENTS.md says:** "MUST: Never comment unless absolutely necessary. If the code is a hack, prefix with `// HACK: reason`."
+
+These comments aren't strictly necessary — the code names are self-documenting (`RENDER_PROP_ALLOWLIST` already says "allowlist," for example). They're not WRONG-shape (HACK isn't required for non-hack comments), but the rule says "never comment unless absolutely necessary."
+
+**Right fix:** delete the redundant explanatory ones. Keep only the HACK-prefixed ones that explain non-obvious trade-offs.
+
+### 🟡 114.7 1-character index variables in for-loops
+
+Across the new rule code:
+
+```
+packages/react-doctor/src/plugin/rules/server.ts:433:      for (let i = 0; i < statements.length - 1; i++) {
+packages/react-doctor/src/plugin/rules/performance.ts:861:      for (let i = 0; i < statements.length - 1; i++) {
+packages/react-doctor/src/plugin/rules/performance.ts:953:  for (let i = 0; i < statements.length; i++) {
+packages/react-doctor/src/plugin/rules/performance.ts:968:      for (let j = i + 1; j < statements.length; j++) {
+packages/react-doctor/src/plugin/rules/state-and-effects.ts:172:      for (let i = componentPropStack.length - 1; i >= 0; i--) {
+packages/react-doctor/src/plugin/rules/state-and-effects.ts:407:      for (let i = componentPropParamStack.length - 1; i >= 0; i--) {
+packages/react-doctor/src/plugin/rules/state-and-effects.ts:502:      for (let i = componentBindingStack.length - 1; i >= 0; i--) {
+```
+
+**AGENTS.md violation:** "MUST: Use descriptive names for variables (avoid shorthands, or 1–2 character names)."
+
+The conventional `i` / `j` index variables in classic C-style for-loops conflict with the rule. Pre-existing code uses the same pattern in places, but the rule was added alongside this PR's rule additions without re-evaluating idiomatic JS naming.
+
+**Right fix:** rename to `statementIndex` / `outerStatementIndex` / `propStackDepth` etc. to make them readable. The existing in-tree `js-performance.ts:142` already uses `statementIndex` — my new code regressed.
+
+### 🟢 114.8 view-transitions.ts has TWO rules; AGENTS.md says "one utility per file in utils/"
+
+`packages/react-doctor/src/plugin/rules/view-transitions.ts` exports `noDocumentStartViewTransition` and `noFlushSync`.
+
+The "one utility per file" rule applies to **`utils/`**, not to plugin/rules. Plugin rule files are explicitly grouped (architecture.ts has 6 rules, state-and-effects.ts has 13 rules, react-native.ts has 23 rules, etc.). So this is intentional grouping and not a violation.
+
+Skip.
+
+### 🟢 114.9 No `as` casts, no `function` declarations, no `!!` coercion
+
+- `as` casts in plugin/rules/: zero in the new rule code. ✓
+- `function` declarations in new code: zero (excluding test fixtures, which use `export function GET()` for Next.js route handler signatures — that's the platform's required shape, not a style choice). ✓
+- `!!` coercion: zero in new rule code. ✓
+- All new file names are kebab-case (`view-transitions.ts`, `composition-issues.tsx`, `hydration-and-scroll-issues.tsx`, etc.). ✓
+
+These are clean.
+
+### 🟢 114.10 No new `type X = ...` aliases (interface-over-type rule satisfied)
+
+Across all new rule files, the only `type` declaration in the entire `src/` tree is `RuleSeverity` in `oxlint-config.ts:6`, and that's a string-literal union (`"error" | "warn" | "off"`) which can't be expressed as an interface. ✓
+
+### 114 Summary scorecard
+
+| AGENTS.md MUST | Status |
+| --- | --- |
+| `@antfu/ni` for installs | ✓ (no installs in this PR) |
+| Interface over type | ✓ |
+| Types in global scope | ✓ (all types in `types.ts`; rule-local interfaces are scoped to options-shapes) |
+| Arrow functions | ✓ |
+| Never comment unless necessary | ⚠ (§114.6 — a few extra explanatory comments) |
+| HACK prefix on hacks | ✓ (40+ HACK comments, all properly prefixed) |
+| kebab-case files | ✓ |
+| Descriptive variable names | ⚠ (§114.7 — `i`/`j` index vars in 7 places) |
+| Re-evaluate names | ⚠ (§114.3 — overlapping `*_PRESS_HANDLER_PROPS` constants) |
+| No `as` unless necessary | ✓ |
+| Remove unused code, no DRY | ❌ (§114.1 — `resolveJsxName` / `resolveJsxElementName` duplicate; §114.2 — copy-pasted traversal helpers) |
+| Magic numbers in constants.ts | ⚠ (§114.5 — 2 thresholds local to rule files) |
+| One utility per file (utils/) | ✓ (rules/ files are intentionally grouped) |
+| `Boolean(x)` over `!!x` | ✓ |
+
+**Most-actionable items, in order:**
+
+1. **§114.1** — collapse `resolveJsxName` / `resolveJsxElementName` into one helper. This isn't just style; the two return DIFFERENT values for `Animated.ScrollView`, which is a real footgun for future rule authors.
+2. **§114.2** — extract the duplicated AST traversal helpers (`collectIdentifierNames`, `expressionReadsName`, `collectReturnExpressions`, `collectUseStateBindings`) into `plugin/helpers.ts`. Saves ~100 lines and centralizes the logic.
+3. **§114.5** — move `PROPERTY_ACCESS_REPEAT_THRESHOLD` and `BOOLEAN_PROP_THRESHOLD` to `plugin/constants.ts`.
+4. **§114.7** — rename `i`/`j` index variables to descriptive names (`statementIndex`, etc.).
+5. **§114.6** — drop the 3 redundant explanatory comments.
+
+**The PR is broadly AGENTS.md-compliant** — the only RED-severity finding is §114.1, which is a real footgun (two helpers with the same name shape but different return values). The other items are warning-level cleanups that don't change behavior.
+
+Net assessment: **8 of 11 MUSTs cleanly satisfied, 3 partial violations** (§114.1, §114.2, §114.5/6/7 lumped under "DRY + magic numbers + comments"). The PR could absorb a small follow-up commit that consolidates these.
+
+---
+
+## Pass 23 — deeper rule-implementation bugs and false-positive risks
+
+> Lens: walk every NEW rule (the 47 added across 5 vercel-skill passes) and ask "what's the false-positive surface? what edge case does the AST miss?" — not style, not DRY, but actual diagnostic-quality bugs.
+
+### 🔴 115.1 `serverFetchWithoutRevalidate` regex matches `node_modules/foo/dist/app/...`
+
+```507:packages/react-doctor/src/plugin/rules/server.ts
+const SERVER_FILE_PATH_PATTERN = /\/app\/[^/]+/;
+```
+
+This pattern matches ANY path with an `/app/` segment, including:
+
+- `node_modules/some-package/dist/app/foo.js` (vendored code)
+- `packages/myapp/dist/app/page.js` (built artifact)
+- `node_modules/.pnpm/foo@1/dist/app/route.ts`
+
+Any `fetch()` in those files gets flagged with `react-doctor/server-fetch-without-revalidate`. The rule was supposed to gate on Next.js App Router files (`app/page.tsx`, `app/.../route.ts`), but the regex doesn't anchor on the project root.
+
+**Right fix:** anchor on a known project-relative prefix — e.g. require the full segment `^(?:[^/]*\/)?app\/` AND check the filename ends with `route.ts(x)?` / `page.ts(x)?` / `layout.ts(x)?`. Or use `context.getFilename` to resolve against the project root and gate on `^app/` only.
+
+This is RED because oxlint scans `dist/` and tracked-but-vendored code by default unless explicitly excluded — and many users will have `dist/app/...` or `node_modules/.../app/...` paths.
+
+### 🔴 115.2 `noRenderPropChildren` allowlist misses every major React library
+
+The allowlist:
+
+```204:packages/react-doctor/src/plugin/rules/architecture.ts
+const RENDER_PROP_ALLOWLIST = new Set([
+  // RN/FlatList APIs that legitimately MUST be functions.
+  "renderItem",
+  "renderSectionHeader",
+  "renderSectionFooter",
+  "renderScrollComponent",
+]);
+```
+
+Every other render-prop in the React ecosystem is missing:
+
+- **MUI Autocomplete:** `renderInput` (REQUIRED), `renderOption`, `renderTags`, `renderGroup`
+- **MUI DataGrid:** `renderCell`, `renderHeader`, `renderFooter`
+- **MUI Dialog/etc.:** `renderTransition`
+- **react-hook-form `<Controller>`:** `render` (different shape but same family)
+- **React Final Form:** `render`
+- **react-native-tab-view:** `renderTabBar`, `renderScene`
+- **react-pdf, react-grid-layout, react-virtualized, react-window** — all use render-props extensively.
+
+A single `<Autocomplete renderInput={...} renderOption={...} renderTags={...} />` will produce 3 warnings on idiomatic, library-required code.
+
+**Right fix:** either (a) make the allowlist substantially larger and curated by library, or (b) flip the rule to flag only when ≥3 render-props are on the SAME element (the actual smell — proliferation of slot props), not every individual occurrence.
+
+### 🔴 115.3 `rnPressableSharedValueMutation` fires on any `.value = X` or `.set(...)` call
+
+```594:621:packages/react-doctor/src/plugin/rules/react-native.ts
+const handlerMutatesSharedValue = (handler: EsTreeNode): boolean => {
+  if (handler.type !== "ArrowFunctionExpression" && handler.type !== "FunctionExpression") {
+    return false;
+  }
+  let didMutate = false;
+  walkAst(handler.body, (child: EsTreeNode) => {
+    if (didMutate) return;
+    // .value = ...
+    if (
+      child.type === "AssignmentExpression" &&
+      child.left?.type === "MemberExpression" &&
+      child.left.property?.type === "Identifier" &&
+      child.left.property.name === "value"
+    ) {
+      didMutate = true;
+    }
+    // .set(...)
+    if (
+      child.type === "CallExpression" &&
+      child.callee?.type === "MemberExpression" &&
+      child.callee.property?.type === "Identifier" &&
+      child.callee.property.name === "set"
+    ) {
+      didMutate = true;
+    }
+  });
+  return didMutate;
+};
+```
+
+There's no check that the receiver is actually a `useSharedValue` binding. Real-world false positives:
+
+- `<Pressable onPressIn={() => setOpen(true)} onPressOut={() => myMap.set(key, value)} />` — `Map.prototype.set` matches.
+- `<Pressable onPressIn={() => { ref.current.value = "x" }} />` — DOM `<input ref>` `.value` write matches.
+- `<Pressable onPressIn={() => formik.values.foo.value = "x" } />` — any object with a `.value` property matches.
+
+The rule was supposed to detect Reanimated shared-value mutation, but it can't tell the difference. It WILL fire on any `Pressable` whose handlers happen to use `.set`/`.value` for any reason.
+
+**Right fix:** track `useSharedValue` binding identifiers in component scope (similar to `noEffectEventInDeps`'s per-component stack), and only flag when the receiver is a known shared value.
+
+### 🟠 115.4 `reactCompilerDestructureMethod` is O(n²) per component
+
+```299:323:packages/react-doctor/src/plugin/rules/architecture.ts
+MemberExpression(node: EsTreeNode) {
+  if (componentBodyStack.length === 0) return;
+  // …
+  const componentBody = componentBodyStack[componentBodyStack.length - 1];
+  const hookSource = findHookSourceForBinding(componentBody, bindingName);
+  if (!hookSource) return;
+  // …
+}
+```
+
+`findHookSourceForBinding` walks the entire component body's top-level statements EVERY time. Inside a 100-statement component with 50 MemberExpressions (typical for a non-trivial render with classnames, conditionals, etc.), that's 5000 statement-iterations per component.
+
+For repos with many components, this multiplies. Existing rules that need cross-statement analysis (`noDerivedUseState`) collect bindings ONCE on component entry and look them up via Map.
+
+**Right fix:** on `enter` for component, compute `Map<bindingName, hookSource>` once and stash it on the stack frame. Lookup becomes O(1).
+
+### 🟠 115.5 `serverNoMutableModuleState` misses `const cache = new Map()`
+
+The rule only flags `let`/`var` at module scope:
+
+```76:packages/react-doctor/src/plugin/rules/server.ts
+if (node.kind !== "let" && node.kind !== "var") return;
+```
+
+But the most common shared-state pattern is:
+
+```ts
+"use server";
+
+const requestCache = new Map<string, User>();
+
+export async function fetchUser(id: string) {
+  if (requestCache.has(id)) return requestCache.get(id);
+  // ...
+  requestCache.set(id, user);
+  return user;
+}
+```
+
+`const requestCache` IS shared across requests. Any `Map`/`Set`/`WeakMap`/`Array` (with later mutations) at module scope in a `"use server"` file is exactly the same problem the rule was trying to catch — only the binding kind differs.
+
+**Right fix:** also flag `const X = new (Map|Set|WeakMap|Array)(…)` or `const X = []` at module scope in `"use server"` files. The literal-array branch is the most ambiguous (could be a config), so could be opt-in via a separate sub-rule.
+
+### 🟠 115.6 `serverHoistStaticIo` only catches App Router, misses Pages Router API
+
+The rule looks for `export async function GET/POST/PUT/...`:
+
+```215:packages/react-doctor/src/plugin/rules/server.ts
+const ROUTE_HANDLER_HTTP_METHODS = new Set([
+  "GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD",
+]);
+```
+
+But Pages Router (`pages/api/foo.ts`) uses:
+
+```ts
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  const fontData = fs.readFileSync('./fonts/Inter.ttf');
+  // ...
+}
+```
+
+This is `default async function handler(...)` — a default export. It's missed entirely. Same regression risk: every request re-reads the static file.
+
+**Right fix:** also flag `default async function` in files matching `pages/api/`. Also flag generic anonymous default-exported async functions in route-shaped files.
+
+### 🟠 115.7 `noManyBooleanProps` only fires on destructured params
+
+```117:131:packages/react-doctor/src/plugin/rules/architecture.ts
+const checkParam = (param: EsTreeNode, componentName: string, reportNode: EsTreeNode): void => {
+  if (param.type !== "ObjectPattern") return;
+  // …
+};
+```
+
+So `function FlagsButton(props: ManyBoolProps) { ... }` (Identifier param) is silently ignored. The rule misses every component that doesn't destructure inline. Many RN/MUI codebases use the non-destructured pattern intentionally for `props.children` access.
+
+**Right fix:** also count props from a TypeScript type annotation if available — but since oxlint doesn't pass type info, the practical workaround is to inspect `props.X` accesses inside the component body. If the body has ≥4 distinct `props.is*`/`props.has*`/`props.show*` accesses, flag the component.
+
+### 🟠 115.8 `rerenderDeferReadsHook` misses variable-bound handlers
+
+```459:484:packages/react-doctor/src/plugin/rules/state-and-effects.ts
+const isInsideEventHandler = (node: EsTreeNode): boolean => {
+  let cursor: EsTreeNode | null = node.parent ?? null;
+  while (cursor) {
+    if (
+      cursor.type === "ArrowFunctionExpression" ||
+      cursor.type === "FunctionExpression" ||
+      cursor.type === "FunctionDeclaration"
+    ) {
+      let outer: EsTreeNode | null = cursor.parent ?? null;
+      while (outer) {
+        if (outer.type === "JSXAttribute") {
+          // … check on*
+        }
+        if (outer.type === "VariableDeclarator" || outer.type === "Program") return false;
+        outer = outer.parent ?? null;
+      }
+      return false;
+    }
+    // …
+  }
+};
+```
+
+The check returns `false` when the function is bound to a `VariableDeclarator`. So this canonical pattern is missed:
+
+```tsx
+const ShareButton = () => {
+  const searchParams = useSearchParams();
+  const handleClick = () => {
+    const ref = searchParams.get("ref");
+    shareChat(ref);
+  };
+  return <button onClick={handleClick}>Share</button>;
+};
+```
+
+The rule's intent ("only used inside handlers") is correct, but `handleClick` is a perfectly normal handler, not "render-time use." We currently force devs to inline the arrow into JSX to trigger detection — which is the opposite of what most code style guides recommend.
+
+**Right fix:** if the function is bound to a `VariableDeclarator`, also check whether the declared name is later used as a JSX `on*` attribute value in the same component scope.
+
+### 🟠 115.9 `rnAnimationReactionAsDerived` misclassifies bodies with side-effects
+
+```556:582:packages/react-doctor/src/plugin/rules/react-native.ts
+const inspect = (statementNode: EsTreeNode | null | undefined): void => {
+  if (!statementNode) return;
+  if (statementNode.type === "AssignmentExpression") {
+    if (
+      statementNode.left?.type === "MemberExpression" &&
+      statementNode.left.property?.type === "Identifier" &&
+      statementNode.left.property.name === "value"
+    ) {
+      assignmentCount++;
+      firstAssignment = statementNode;
+      return;
+    }
+  }
+  if (
+    statementNode.type === "CallExpression" &&
+    statementNode.callee?.type === "Identifier" &&
+    statementNode.callee.name === "runOnJS"
+  ) {
+    hasOtherSideEffect = true;
+  }
+};
+// …
+if (assignmentCount === 1 && !hasOtherSideEffect && firstAssignment) {
+```
+
+`hasOtherSideEffect` is set ONLY for `runOnJS(...)` calls. Any other side effect — `console.log`, `analytics.track(...)`, custom function call — does NOT toggle `hasOtherSideEffect`, AND is also ignored by the visitor (the `inspect` function returns early on the assignment, doesn't check the rest).
+
+So:
+
+```ts
+useAnimatedReaction(
+  () => progress.value,
+  (current) => {
+    sv.value = 1 - current;
+    console.log(current);  // side effect, but…
+    fireEvent('progress', current);  // …also a side effect
+  }
+);
+```
+
+…would fire because `assignmentCount === 1` and `hasOtherSideEffect` (which only tracks `runOnJS`) stays false. Suggesting `useDerivedValue` here would BREAK the side-effecting behavior the user explicitly wanted from `useAnimatedReaction`.
+
+**Right fix:** the rule should require body-statement count = 1 AND that single statement to be the `.value =` assignment. Anything else (console, function call, conditional, anything) should disqualify.
+
+### 🟡 115.10 `rnListRecyclableWithoutTypes` doesn't handle `recycleItems={false}`
+
+```921:935:packages/react-doctor/src/plugin/rules/react-native.ts
+for (const attr of node.attributes ?? []) {
+  if (attr.type !== "JSXAttribute") continue;
+  if (attr.name?.type !== "JSXIdentifier") continue;
+  if (attr.name.name === "recycleItems") hasRecycleItems = true;
+  if (attr.name.name === "getItemType") hasGetItemType = true;
+}
+
+if (hasRecycleItems && !hasGetItemType) {
+  // report
+}
+```
+
+`<FlashList recycleItems={false} />` — the rule sees the attribute as PRESENT (the attribute name exists) and fires. But `recycleItems={false}` explicitly DISABLES recycling, so `getItemType` isn't needed.
+
+**Right fix:** check the attribute's `value`. If it's `JSXExpressionContainer` with `Literal {value: false}`, treat as off.
+
+### 🟡 115.11 `advancedEventHandlerRefs` conflates `subscribe`/`on`/`addListener` with `addEventListener`
+
+```475:480:packages/react-doctor/src/plugin/rules/state-and-effects.ts
+const SUBSCRIPTION_METHOD_NAMES = new Set([
+  "addEventListener",
+  "subscribe",
+  "on",
+  "addListener",
+]);
+```
+
+These have wildly different APIs:
+
+- `el.addEventListener(name, handler)` — DOM
+- `observable.subscribe(handler)` — RxJS
+- `socket.on(eventName, handler)` — EventEmitter / socket.io
+- `emitter.addListener(name, handler)` — Node EventEmitter
+
+For RxJS Observables, the "store handler in a ref" pattern doesn't apply at all — the RxJS subscription is owned by the calling code, and resubscribing on every parent render is sometimes correct behavior. But my rule flags it as "store in ref" indiscriminately.
+
+**Right fix:** narrow to `addEventListener` + `addListener` only (DOM + Node EventEmitter), where the ref-stable pattern reliably works. Or split into two rules with different recommendations.
+
+### 🟡 115.12 `noReact19DeprecatedApis` misses namespace imports
+
+```55:65:packages/react-doctor/src/plugin/rules/architecture.ts
+ImportDeclaration(node: EsTreeNode) {
+  if (node.source?.value !== "react") return;
+  for (const specifier of node.specifiers ?? []) {
+    if (specifier.type !== "ImportSpecifier") continue;
+    // …
+  }
+}
+```
+
+Specifically catches `import { forwardRef, useContext } from "react"`. Misses:
+
+- `import * as React from "react"; React.forwardRef(...)`
+- `import React from "react"; React.useContext(MyContext)`
+- `import { default as React } from "react"; React.forwardRef(...)`
+
+These are still common patterns, especially `React.forwardRef` in legacy codebases.
+
+**Right fix:** also visit `MemberExpression` where the object is the React namespace import binding.
+
+### 🟡 115.13 `asyncAwaitInLoop` produces a misleading message for `.forEach`
+
+```98:101:packages/react-doctor/src/plugin/rules/js-performance.ts
+methodName === "forEach"
+  ? "Async callback in .forEach — return values are dropped, so awaits don't actually wait. Use a `for…of` loop or `await Promise.all(items.map(async (item) => {...}))`"
+```
+
+This is correct — `forEach` doesn't await async callbacks. But for the OTHER `.map`/`.filter`/etc. branches, the message says "sequential awaits inside the callback waterfall" which is correct for the inner body but confuses the outer iteration semantics. `.map` on async callbacks DOES return a Promise[], which can then be `Promise.all`'d — that's an established pattern.
+
+The unified message could mislead a developer to think `items.map(async fn)` is broken; it's not, you just need `Promise.all` after.
+
+**Right fix:** specialize the `.forEach` message ("awaits dropped") vs the `.map`/`.filter` message ("intermediate Promise[] is fine, but the BODY of the callback shouldn't have multiple sequential awaits"). The current generic warning is fine for the MOST common case (`for…of`), but the iteration-method case needs nuance.
+
+### 🟡 115.14 `rerenderStateOnlyInHandlers` inspects only direct return statements
+
+```598:608:packages/react-doctor/src/plugin/rules/state-and-effects.ts
+const collectReturnExpressions = (componentBody: EsTreeNode): EsTreeNode[] => {
+  if (componentBody?.type !== "BlockStatement") return [];
+  const returns: EsTreeNode[] = [];
+  walkAst(componentBody, (child: EsTreeNode) => {
+    if (child.type === "ReturnStatement" && child.argument) {
+      returns.push(child.argument);
+    }
+  });
+  return returns;
+};
+```
+
+`walkAst` traverses nested functions too. So a `useEffect(() => { return cleanup; })` cleanup function's `return cleanup` is treated as a return expression, and `cleanup`'s identifiers are scanned. If the user had `const cleanup = () => clearInterval(timer)` and `state` was named `timer`, the rule would think `timer` IS read in render and skip flagging — false negative.
+
+**Right fix:** stop walking when we hit a nested function. Only collect return statements at the COMPONENT's immediate function-body level.
+
+### 🟡 115.15 `noPropCallbackInEffect` may flag memoized callbacks from custom hooks
+
+The rule flags `useEffect(() => parentCallback(state.x), [state.x, parentCallback])` where `parentCallback` is a prop. But in modern code, the prop is often a memoized callback from a custom hook (`useStableCallback`, `useEvent`, react-hook-form's `useWatch`, etc.) — the consumer EXPLICITLY guaranteed identity stability so the effect-callback pattern is safe.
+
+The rule has no way to know the prop is stable. False positive on idiomatic code that uses these hooks.
+
+**Right fix:** suppress when the prop's binding name matches `^use[A-Z]\w*Callback$` or matches a configurable allowlist of known stable-callback hook names. Or accept the false-positive and let users `// oxlint-disable-next-line` explicitly.
+
+### 🟡 115.16 Cross-rule contradiction: `rerender-functional-setstate` vs `rerender-state-only-in-handlers`
+
+For code like:
+
+```tsx
+const [count, setCount] = useState(0);
+const onClick = () => setCount(count + 1);
+return <button onClick={onClick} />;
+```
+
+- `rerender-functional-setstate` says: "Use `setCount(prev => prev + 1)` to avoid stale closures."
+- `rerender-state-only-in-handlers` (newly added) says: "useState `count` is updated but never read in render — use useRef."
+
+If the user "fixes" by adopting the first suggestion (`setCount(prev => prev + 1)`), the second rule still fires (count is now even more "transient"-looking). If they adopt the second (`useRef`), they break the rendering logic (the button needs to display the count).
+
+The example above DOES read `count` in render (`<button>{count}</button>` if rendered) — so `rerender-state-only-in-handlers` SHOULD skip. But if the example is `<button>Tap</button>` (no count display), only the second rule fires correctly.
+
+This isn't a bug per se but a UX issue: users who hit BOTH rules on the same component get contradictory guidance.
+
+**Right fix:** make `rerender-state-only-in-handlers` skip when `rerender-functional-setstate` already fires, OR document that the two are alternatives (use one or the other, not both). The current PR docs neither.
+
+### 🟢 115.17 `client-localstorage-no-version` only fires on string-literal keys
+
+```28:34:packages/react-doctor/src/plugin/rules/client.ts
+const keyArg = node.arguments?.[0];
+if (!keyArg) return;
+if (keyArg.type !== "Literal") return;
+if (typeof keyArg.value !== "string") return;
+```
+
+`localStorage.setItem(LOCAL_STORAGE_KEYS.user, JSON.stringify(...))` — Identifier-typed key, rule skips. Most production code uses centralized constants for keys, so the rule misses the common case. ACCEPTABLE because the rule can't see whether the constant is versioned.
+
+Skip; correct conservative behavior.
+
+### 🟢 115.18 `rnNoNonNativeNavigator` only flags two packages
+
+```45:48:packages/react-doctor/src/plugin/rules/react-native.ts
+const NON_NATIVE_NAVIGATOR_PACKAGES = new Set([
+  "@react-navigation/stack",
+  "@react-navigation/drawer",
+]);
+```
+
+Misses `react-native-navigation` (Wix) and other JS-implemented navigation libraries. ACCEPTABLE — RN ecosystem has many third-party navigators, and a comprehensive list would inflate. Document the policy if users ask.
+
+Skip.
+
+### Pass 23 summary scorecard
+
+| Severity | Count | Examples |
+| --- | --- | --- |
+| 🔴 Real false positive on common idiom / vendored code | 3 | §115.1 (vendored fetch), §115.2 (MUI/RHF render-props), §115.3 (any `.set`/`.value`) |
+| 🟠 Real bug or missed common case | 6 | §115.4 (O(n²) per component), §115.5 (`const Map()` server state), §115.6 (Pages Router missed), §115.7 (non-destructured props), §115.8 (variable-bound handlers), §115.9 (single-statement check too narrow) |
+| 🟡 False-positive risk in narrower cases | 7 | §115.10–§115.16 |
+| 🟢 Documented limitation, acceptable | 2 | §115.17, §115.18 |
+
+**Most-actionable items, in order:**
+
+1. **§115.1** — anchor `serverFetchWithoutRevalidate`'s file-path regex on project root + filename ends with `route|page|layout`. Single-regex change.
+2. **§115.2** — expand `RENDER_PROP_ALLOWLIST` (or pivot to "≥3 render-props on the same element"). Single-list change but needs library research.
+3. **§115.3** — add SharedValue binding tracking to `rnPressableSharedValueMutation`. Cribs `noEffectEventInDeps`'s per-component stack.
+4. **§115.4** — memoize `findHookSourceForBinding` results per-component on enter. Real perf win, easy fix.
+5. **§115.5** — extend `serverNoMutableModuleState` to flag `const X = new (Map|Set|WeakMap|Array)`. Lift the kind check to "any module-scope binding with a mutable initializer."
+6. **§115.6** — add Pages Router detection (`pages/api/...` path + `default async function`).
+7. **§115.7** — extend `noManyBooleanProps` to inspect `props.is*` accesses when destructure isn't used.
+8. **§115.8** — also resolve variable-bound handler names through `JSXAttribute on*` lookup.
+9. **§115.9** — tighten `rnAnimationReactionAsDerived` to require body length === 1.
+10. **§115.10** — ignore `recycleItems={false}` in `rnListRecyclableWithoutTypes`.
+
+The remaining items (§115.11–§115.18) are smaller polish.
+
+### Pass 23 conclusion
+
+The 47 new vercel-skill-parity rules add real value, but **3 of them produce false positives on common, idiomatic code** (§115.1, §115.2, §115.3). For a tool whose value proposition is "trust the score," that's enough to silently mislead users. A focused follow-up commit addressing §115.1–§115.6 would close the worst of these and keep the ruleset honest.
+
+The pattern that recurs in the new code: **detection rules without binding/scope tracking**. When a rule needs to know "is this identifier a SharedValue binding?" or "is this hook return only used inside handlers?" without proper scope analysis, the heuristics either over-fire or miss common patterns. The pre-existing rules with binding tracking (`noEffectEventInDeps`, `noDerivedUseState`) do this right; the new ones (`rnPressableSharedValueMutation`, `rerenderDeferReadsHook`, `noManyBooleanProps`) trade correctness for implementation simplicity.
+
+Lessons: when adding a rule that depends on "what kind of thing is this binding," invest in the per-component scope-tracking infrastructure. The few rules that already do it work well; the rules that skip it are the ones most likely to produce noise.

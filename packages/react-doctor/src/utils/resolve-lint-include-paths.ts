@@ -11,18 +11,22 @@ import type { ReactDoctorConfig } from "../types.js";
 import { compileIgnoredFilePatterns, isFileIgnoredByPatterns } from "./is-ignored-file.js";
 
 const listSourceFilesViaGit = (rootDirectory: string): string[] | null => {
-  const result = spawnSync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], {
-    cwd: rootDirectory,
-    encoding: "utf-8",
-    maxBuffer: GIT_LS_FILES_MAX_BUFFER_BYTES,
-  });
+  const result = spawnSync(
+    "git",
+    ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--recurse-submodules"],
+    {
+      cwd: rootDirectory,
+      encoding: "utf-8",
+      maxBuffer: GIT_LS_FILES_MAX_BUFFER_BYTES,
+    },
+  );
 
   if (result.error || result.status !== 0) {
     return null;
   }
 
   return result.stdout
-    .split("\n")
+    .split("\0")
     .filter((filePath) => filePath.length > 0 && SOURCE_FILE_PATTERN.test(filePath));
 };
 

@@ -40,7 +40,7 @@ npx -y react-doctor@latest . --verbose
 
 ## Install for your coding agent
 
-Teach your coding agent all 47+ React best practice rules. Run this at your project root:
+Teach your coding agent React best practices. Run this at your project root:
 
 ```bash
 npx -y react-doctor@latest install
@@ -71,7 +71,7 @@ Supports Claude Code, Codex, GitHub Copilot, Gemini CLI, Cursor, OpenCode, Facto
 | `github-token` |         | When set on `pull_request` events, posts findings as a PR comment |
 | `fail-on`      | `error` | Exit with error code on diagnostics: `error`, `warning`, `none`   |
 | `offline`      | `false` | Skip sending diagnostics to the react.doctor API                  |
-| `node-version` | `20`    | Node.js version to use                                            |
+| `node-version` | `22`    | Node.js version to use                                            |
 
 The action outputs a `score` (0–100) you can use in subsequent steps.
 
@@ -81,15 +81,68 @@ The action outputs a `score` (0–100) you can use in subsequent steps.
 Usage: react-doctor [directory] [options]
 
 Options:
-  -v, --version     display the version number
-  --no-lint         skip linting
-  --no-dead-code    skip dead code detection
-  --verbose         show file details per rule
-  --score           output only the score
-  -y, --yes         skip prompts, scan all workspace projects
-  --project <name>  select workspace project (comma-separated for multiple)
-  --diff [base]     scan only files changed vs base branch
-  -h, --help        display help for command
+  -v, --version      display the version number
+  --no-lint          skip linting
+  --no-dead-code     skip dead code detection
+  --verbose          show file details per rule
+  --score            output only the score
+  --json             output a single structured JSON report (suppresses other output)
+  -y, --yes          skip prompts, scan all workspace projects
+  --full             skip prompts, always run a full scan (decline diff-only)
+  --project <name>   select workspace project (comma-separated for multiple)
+  --diff [base]      scan only files changed vs base branch
+  --offline          skip telemetry (anonymous, not stored, only used to calculate score)
+  --staged           scan only staged (git index) files for pre-commit hooks
+  --fail-on <level>  exit with error code on diagnostics: error, warning, none
+  --annotations      output diagnostics as GitHub Actions annotations
+  -h, --help         display help for command
+```
+
+## JSON output
+
+Pass `--json` to get a single, parsable JSON object on stdout. All human-readable output, prompts, and the share link are suppressed; pipe straight into `jq`, `node`, or any other tool:
+
+```bash
+npx -y react-doctor@latest . --json | jq '.summary'
+```
+
+Exit code is `0` on success and `1` if the scan throws or `--fail-on` is triggered. Errors still produce a JSON object with `ok: false`, so the stdout is always a valid document.
+
+### Schema
+
+```ts
+interface JsonReport {
+  schemaVersion: 1;
+  version: string; // react-doctor version
+  ok: boolean; // false when an error was thrown
+  directory: string; // resolved root passed to the CLI
+  mode: "full" | "diff" | "staged";
+  diff: {
+    baseBranch: string;
+    currentBranch: string;
+    changedFileCount: number;
+    isCurrentChanges: boolean;
+  } | null;
+  projects: Array<{
+    directory: string;
+    project: ProjectInfo;
+    diagnostics: Diagnostic[];
+    score: { score: number; label: string } | null;
+    skippedChecks: string[];
+    elapsedMilliseconds: number;
+  }>;
+  diagnostics: Diagnostic[]; // flattened across all scanned projects
+  summary: {
+    errorCount: number;
+    warningCount: number;
+    affectedFileCount: number;
+    totalDiagnosticCount: number;
+    score: number | null; // worst project score, when available
+    scoreLabel: string | null;
+  };
+  elapsedMilliseconds: number; // total wall time across all projects
+  error?: { message: string; name: string }; // only present when ok=false
+}
 ```
 
 ## Browser API
@@ -127,6 +180,23 @@ You can also use the `"reactDoctor"` key in your `package.json` instead:
 
 If both exist, `react-doctor.config.json` takes precedence.
 
+### Inline suppressions
+
+Suppress a rule on a specific line with `// react-doctor-disable-line` or the next line with `// react-doctor-disable-next-line`:
+
+```tsx
+// react-doctor-disable-next-line react-doctor/no-cascading-set-state
+useEffect(() => {
+  setA(value);
+  setB(value);
+  setC(value);
+}, [value]);
+
+const value = expensiveComputation(); // react-doctor-disable-line react-doctor/no-usememo-simple-expression
+```
+
+Comma- or space-separate multiple rule ids on the same comment. With no rule id, the comment suppresses every diagnostic on that line.
+
 ### Config options
 
 | Key               | Type                             | Default  | Description                                                                                                                         |
@@ -153,7 +223,7 @@ import { diagnose } from "react-doctor/api";
 
 const result = await diagnose("./path/to/your/react-project");
 
-console.log(result.score); // { score: 82, label: "Good" } or null
+console.log(result.score); // { score: 82, label: "Great" } or null
 console.log(result.diagnostics); // Array of Diagnostic objects
 console.log(result.project); // Detected framework, React version, etc.
 ```
@@ -183,22 +253,47 @@ interface Diagnostic {
 }
 ```
 
-## [Scores for popular open-source projects](https://react.doctor/leaderboard)
+To produce the same structured output the `--json` CLI flag emits, use `toJsonReport`:
 
-| Project                                                | Score  | Share                                                                                   |
-| ------------------------------------------------------ | ------ | --------------------------------------------------------------------------------------- |
-| [tldraw](https://github.com/tldraw/tldraw)             | **84** | [view](https://www.react.doctor/share?p=tldraw&s=84&e=98&w=139&f=40)                    |
-| [excalidraw](https://github.com/excalidraw/excalidraw) | **84** | [view](https://www.react.doctor/share?p=%40excalidraw%2Fexcalidraw&s=84&e=2&w=196&f=80) |
-| [twenty](https://github.com/twentyhq/twenty)           | **78** | [view](https://www.react.doctor/share?p=twenty-front&s=78&e=99&w=293&f=268)             |
-| [plane](https://github.com/makeplane/plane)            | **78** | [view](https://www.react.doctor/share?p=web&s=78&e=7&w=525&f=292)                       |
-| [formbricks](https://github.com/formbricks/formbricks) | **75** | [view](https://www.react.doctor/share?p=%40formbricks%2Fweb&s=75&e=15&w=389&f=242)      |
-| [posthog](https://github.com/PostHog/posthog)          | **72** | [view](https://www.react.doctor/share?p=%40posthog%2Ffrontend&s=72&e=82&w=1177&f=585)   |
-| [supabase](https://github.com/supabase/supabase)       | **69** | [view](https://www.react.doctor/share?p=studio&s=69&e=74&w=1087&f=566)                  |
-| [onlook](https://github.com/onlook-dev/onlook)         | **69** | [view](https://www.react.doctor/share?p=%40onlook%2Fweb-client&s=69&e=64&w=418&f=178)   |
-| [payload](https://github.com/payloadcms/payload)       | **68** | [view](https://www.react.doctor/share?p=%40payloadcms%2Fui&s=68&e=139&w=408&f=298)      |
-| [sentry](https://github.com/getsentry/sentry)          | **64** | [view](https://www.react.doctor/share?p=sentry&s=64&e=94&w=1345&f=818)                  |
-| [cal.com](https://github.com/calcom/cal.com)           | **63** | [view](https://www.react.doctor/share?p=%40calcom%2Fweb&s=63&e=31&w=558&f=311)          |
-| [dub](https://github.com/dubinc/dub)                   | **62** | [view](https://www.react.doctor/share?p=web&s=62&e=52&w=966&f=457)                      |
+```js
+import { diagnose, toJsonReport, summarizeDiagnostics } from "react-doctor/api";
+
+const result = await diagnose(".");
+
+const report = toJsonReport(result, { version: "1.0.0" });
+console.log(JSON.stringify(report, null, 2));
+
+const counts = summarizeDiagnostics(result.diagnostics);
+console.log(`${counts.errorCount} errors, ${counts.warningCount} warnings`);
+```
+
+`react-doctor/api` also re-exports the `JsonReport`, `JsonReportSummary`, `JsonReportProjectEntry`, and `JsonReportMode` types, plus the lower-level `buildJsonReport` and `buildJsonReportError` builders if you need to assemble reports from multiple `diagnose()` calls.
+
+## Use the oxlint plugin standalone
+
+If you already use oxlint and just want React Doctor's rule set, register the plugin directly in your `.oxlintrc.json`:
+
+```jsonc
+{
+  "jsPlugins": [
+    {
+      "name": "react-doctor",
+      "specifier": "react-doctor/oxlint-plugin",
+    },
+  ],
+  "rules": {
+    "react-doctor/no-fetch-in-effect": "warn",
+    "react-doctor/no-derived-state-effect": "warn",
+    // ...pick the rules you want
+  },
+}
+```
+
+The full rule list is in [`oxlint-config.ts`](https://github.com/millionco/react-doctor/blob/main/packages/react-doctor/src/oxlint-config.ts).
+
+## Scores for popular open-source projects
+
+See the live leaderboard at [react.doctor/leaderboard](https://react.doctor/leaderboard) for current scores across React projects.
 
 ## Contributing
 
@@ -208,7 +303,7 @@ Want to contribute? Check out the codebase and submit a PR.
 git clone https://github.com/millionco/react-doctor
 cd react-doctor
 pnpm install
-pnpm -r run build
+pnpm build
 ```
 
 Run locally:

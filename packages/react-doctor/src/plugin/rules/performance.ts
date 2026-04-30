@@ -95,6 +95,17 @@ export const noInlinePropOnMemoComponent: Rule = {
   },
 };
 
+// Identifiers and member-access chains are technically "simple", but memoizing
+// them is sometimes intentional (stable reference passing). Only flag arithmetic
+// / literal trivial cases to keep false positives low.
+const isTriviallyCheapExpression = (node: EsTreeNode | null): boolean => {
+  if (!node) return false;
+  if (!isSimpleExpression(node)) return false;
+  if (node.type === "Identifier") return false;
+  if (node.type === "MemberExpression") return false;
+  return true;
+};
+
 export const noUsememoSimpleExpression: Rule = {
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
@@ -115,7 +126,7 @@ export const noUsememoSimpleExpression: Rule = {
         returnExpression = callback.body.body[0].argument;
       }
 
-      if (returnExpression && isSimpleExpression(returnExpression)) {
+      if (returnExpression && isTriviallyCheapExpression(returnExpression)) {
         context.report({
           node,
           message:
@@ -401,7 +412,7 @@ export const renderingUsetransitionLoading: Rule = {
 export const renderingHydrationNoFlicker: Rule = {
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
-      if (!isHookCall(node, EFFECT_HOOK_NAMES) || node.arguments?.length < 2) return;
+      if (!isHookCall(node, EFFECT_HOOK_NAMES) || (node.arguments?.length ?? 0) < 2) return;
 
       const depsNode = node.arguments[1];
       if (depsNode.type !== "ArrayExpression" || depsNode.elements?.length !== 0) return;
@@ -466,4 +477,444 @@ export const renderingScriptDeferAsync: Rule = {
       }
     },
   }),
+};
+
+// HACK: detect static JSX declared inside a component body — anything like
+// `const Header = <h1>Hi</h1>` inside a render function gets recreated on
+// every render. If the JSX has no expression containers referencing local
+// scope (no props, no state), it can be hoisted to module scope.
+const jsxReferencesLocalScope = (jsxNode: EsTreeNode): boolean => {
+  let referencesScope = false;
+  walkAst(jsxNode, (child: EsTreeNode) => {
+    if (referencesScope) return;
+    if (
+      child.type === "JSXExpressionContainer" &&
+      child.expression?.type !== "JSXEmptyExpression"
+    ) {
+      referencesScope = true;
+    }
+    if (child.type === "JSXSpreadAttribute") {
+      referencesScope = true;
+    }
+  });
+  return referencesScope;
+};
+
+export const renderingHoistJsx: Rule = {
+  create: (context: RuleContext) => {
+    let componentDepth = 0;
+
+    const isComponentLike = (node: EsTreeNode): boolean => {
+      if (node.type === "FunctionDeclaration" && node.id?.name && isUppercaseName(node.id.name)) {
+        return true;
+      }
+      if (node.type === "VariableDeclarator" && isComponentAssignment(node)) {
+        return true;
+      }
+      return false;
+    };
+
+    const enter = (node: EsTreeNode): void => {
+      if (isComponentLike(node)) componentDepth++;
+    };
+    const exit = (node: EsTreeNode): void => {
+      if (isComponentLike(node)) componentDepth = Math.max(0, componentDepth - 1);
+    };
+
+    return {
+      FunctionDeclaration: enter,
+      "FunctionDeclaration:exit": exit,
+      VariableDeclarator: enter,
+      "VariableDeclarator:exit": exit,
+      VariableDeclaration(node: EsTreeNode) {
+        if (componentDepth === 0) return;
+        if (node.kind !== "const") return;
+        for (const declarator of node.declarations ?? []) {
+          const init = declarator.init;
+          if (!init) continue;
+          if (init.type !== "JSXElement" && init.type !== "JSXFragment") continue;
+          if (jsxReferencesLocalScope(init)) continue;
+          const name = declarator.id?.type === "Identifier" ? declarator.id.name : "<unnamed>";
+          context.report({
+            node: declarator,
+            message: `Static JSX "${name}" inside a component — hoist to module scope so it isn't recreated each render`,
+          });
+        }
+      },
+    };
+  },
+};
+
+const callbackReturnsJsx = (callback: EsTreeNode | undefined): boolean => {
+  if (!callback) return false;
+  if (callback.type !== "ArrowFunctionExpression" && callback.type !== "FunctionExpression") {
+    return false;
+  }
+  const body = callback.body;
+  if (body?.type === "JSXElement" || body?.type === "JSXFragment") return true;
+  if (body?.type !== "BlockStatement") return false;
+  for (const stmt of body.body ?? []) {
+    if (
+      stmt.type === "ReturnStatement" &&
+      (stmt.argument?.type === "JSXElement" || stmt.argument?.type === "JSXFragment")
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const containsEarlyReturn = (ifStatement: EsTreeNode): boolean => {
+  const consequent = ifStatement.consequent;
+  if (!consequent) return false;
+  if (consequent.type === "ReturnStatement") return true;
+  if (consequent.type !== "BlockStatement") return false;
+  for (const stmt of consequent.body ?? []) {
+    if (stmt.type === "ReturnStatement") return true;
+  }
+  return false;
+};
+
+// HACK: `useMemo(() => <jsx/>)` followed by an early return wastes the
+// memoization — the useMemo callback runs every render even when the
+// component bails out (loading, gated, etc.). Better to extract the JSX
+// into a memoized child component so the parent's early return
+// short-circuits before the child renders.
+export const rerenderMemoBeforeEarlyReturn: Rule = {
+  create: (context: RuleContext) => {
+    const inspectFunctionBody = (statements: EsTreeNode[]): void => {
+      let memoNode: EsTreeNode | null = null;
+
+      for (const stmt of statements) {
+        if (!memoNode) {
+          if (stmt.type !== "VariableDeclaration") continue;
+          for (const declarator of stmt.declarations ?? []) {
+            const init = declarator.init;
+            if (
+              init?.type === "CallExpression" &&
+              isHookCall(init, "useMemo") &&
+              callbackReturnsJsx(init.arguments?.[0])
+            ) {
+              memoNode = declarator;
+              break;
+            }
+          }
+          continue;
+        }
+        if (stmt.type === "IfStatement" && containsEarlyReturn(stmt)) {
+          context.report({
+            node: memoNode,
+            message:
+              "useMemo returning JSX runs before an early return — extract the JSX into a memoized child component so the parent bails out before the subtree renders",
+          });
+          return;
+        }
+      }
+    };
+
+    return {
+      FunctionDeclaration(node: EsTreeNode) {
+        if (!isUppercaseName(node.id?.name ?? "")) return;
+        if (node.body?.type !== "BlockStatement") return;
+        inspectFunctionBody(node.body.body ?? []);
+      },
+      VariableDeclarator(node: EsTreeNode) {
+        if (!isComponentAssignment(node)) return;
+        const body = node.init?.body;
+        if (body?.type !== "BlockStatement") return;
+        inspectFunctionBody(body.body ?? []);
+      },
+    };
+  },
+};
+
+const NONDETERMINISTIC_RENDER_PATTERNS: Array<{
+  matches: (node: EsTreeNode) => boolean;
+  display: string;
+}> = [
+  {
+    display: "new Date()",
+    matches: (n) =>
+      n.type === "NewExpression" && n.callee?.type === "Identifier" && n.callee.name === "Date",
+  },
+  {
+    display: "Date.now()",
+    matches: (n) =>
+      n.type === "CallExpression" &&
+      n.callee?.type === "MemberExpression" &&
+      n.callee.object?.type === "Identifier" &&
+      n.callee.object.name === "Date" &&
+      n.callee.property?.type === "Identifier" &&
+      n.callee.property.name === "now",
+  },
+  {
+    display: "Math.random()",
+    matches: (n) =>
+      n.type === "CallExpression" &&
+      n.callee?.type === "MemberExpression" &&
+      n.callee.object?.type === "Identifier" &&
+      n.callee.object.name === "Math" &&
+      n.callee.property?.type === "Identifier" &&
+      n.callee.property.name === "random",
+  },
+  {
+    display: "performance.now()",
+    matches: (n) =>
+      n.type === "CallExpression" &&
+      n.callee?.type === "MemberExpression" &&
+      n.callee.object?.type === "Identifier" &&
+      n.callee.object.name === "performance" &&
+      n.callee.property?.type === "Identifier" &&
+      n.callee.property.name === "now",
+  },
+  {
+    display: "crypto.randomUUID()",
+    matches: (n) =>
+      n.type === "CallExpression" &&
+      n.callee?.type === "MemberExpression" &&
+      n.callee.object?.type === "Identifier" &&
+      n.callee.object.name === "crypto" &&
+      n.callee.property?.type === "Identifier" &&
+      n.callee.property.name === "randomUUID",
+  },
+];
+
+const findOpeningElementOfChild = (jsxNode: EsTreeNode): EsTreeNode | null => {
+  let cursor: EsTreeNode | null = jsxNode.parent ?? null;
+  while (cursor) {
+    if (cursor.type === "JSXElement") return cursor.openingElement;
+    if (cursor.type === "JSXFragment") return null;
+    cursor = cursor.parent ?? null;
+  }
+  return null;
+};
+
+const hasSuppressHydrationWarningAttribute = (openingElement: EsTreeNode | null): boolean => {
+  if (!openingElement) return false;
+  for (const attr of openingElement.attributes ?? []) {
+    if (
+      attr.type === "JSXAttribute" &&
+      attr.name?.type === "JSXIdentifier" &&
+      attr.name.name === "suppressHydrationWarning"
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const HIGH_FREQUENCY_DOM_EVENTS = new Set([
+  "scroll",
+  "mousemove",
+  "wheel",
+  "pointermove",
+  "touchmove",
+  "drag",
+]);
+
+const isAddEventListenerCall = (node: EsTreeNode): boolean => {
+  if (node.type !== "CallExpression") return false;
+  if (node.callee?.type !== "MemberExpression") return false;
+  if (node.callee.property?.type !== "Identifier") return false;
+  if (node.callee.property.name !== "addEventListener") return false;
+  return true;
+};
+
+const handlerCallsSetState = (handler: EsTreeNode): EsTreeNode | null => {
+  if (handler.type !== "ArrowFunctionExpression" && handler.type !== "FunctionExpression") {
+    return null;
+  }
+  let setStateCall: EsTreeNode | null = null;
+  walkAst(handler.body, (child: EsTreeNode) => {
+    if (setStateCall) return;
+    if (
+      child.type === "CallExpression" &&
+      child.callee?.type === "Identifier" &&
+      /^set[A-Z]/.test(child.callee.name)
+    ) {
+      setStateCall = child;
+    }
+  });
+  return setStateCall;
+};
+
+// HACK: scroll, mousemove, wheel, pointermove, and similar high-frequency
+// DOM events fire dozens to hundreds of times per second. Calling
+// `setState` from these handlers triggers a re-render on every event,
+// pegging the JS thread and causing the user-visible jank these
+// listeners were trying to react to. Use `useTransition`/`startTransition`
+// to mark the update as non-urgent (so the browser can interrupt it for
+// input), or stash the value in a ref + raf throttle, or use
+// `useDeferredValue`.
+export const rerenderTransitionsScroll: Rule = {
+  create: (context: RuleContext) => ({
+    CallExpression(node: EsTreeNode) {
+      if (!isAddEventListenerCall(node)) return;
+      const eventArg = node.arguments?.[0];
+      if (eventArg?.type !== "Literal") return;
+      const eventName = eventArg.value;
+      if (typeof eventName !== "string" || !HIGH_FREQUENCY_DOM_EVENTS.has(eventName)) return;
+
+      const handler = node.arguments?.[1];
+      if (!handler) return;
+      const setStateCall = handlerCallsSetState(handler);
+      if (!setStateCall) return;
+
+      // Skip if the setState is already wrapped in startTransition.
+      let cursor: EsTreeNode | null = setStateCall.parent ?? null;
+      while (cursor && cursor !== handler) {
+        if (
+          cursor.type === "CallExpression" &&
+          cursor.callee?.type === "Identifier" &&
+          (cursor.callee.name === "startTransition" ||
+            cursor.callee.name === "requestAnimationFrame" ||
+            cursor.callee.name === "requestIdleCallback")
+        ) {
+          return;
+        }
+        cursor = cursor.parent ?? null;
+      }
+
+      context.report({
+        node: setStateCall,
+        message: `setState in a "${eventName}" handler triggers re-renders at scroll/pointer frequency — wrap in startTransition (mark as non-urgent), use useDeferredValue, or stash in a ref + rAF throttle`,
+      });
+    },
+  }),
+};
+
+// HACK: rendering `new Date()`, `Date.now()`, `Math.random()`, etc.
+// directly inside JSX produces a different value on the server vs the
+// client, causing React's hydration mismatch warning. The fix is either
+// to wrap in `useEffect` + `useState` (so the dynamic value renders
+// only client-side) or to add `suppressHydrationWarning` to the parent
+// element when the mismatch is intentional.
+export const renderingHydrationMismatchTime: Rule = {
+  create: (context: RuleContext) => ({
+    JSXExpressionContainer(node: EsTreeNode) {
+      if (!node.expression) return;
+      const matched = NONDETERMINISTIC_RENDER_PATTERNS.find((pattern) =>
+        pattern.matches(node.expression),
+      );
+      // Direct call as the JSX child expression.
+      if (matched) {
+        const openingElement = findOpeningElementOfChild(node);
+        if (hasSuppressHydrationWarningAttribute(openingElement)) return;
+        context.report({
+          node,
+          message: `${matched.display} in JSX renders differently on server vs client — wrap in useEffect+useState (client-only) or add suppressHydrationWarning to the parent if intentional`,
+        });
+        return;
+      }
+
+      // Method-chained on a Date / Math / etc. — e.g. new Date().toLocaleString().
+      walkAst(node.expression, (child: EsTreeNode) => {
+        for (const pattern of NONDETERMINISTIC_RENDER_PATTERNS) {
+          if (pattern.matches(child)) {
+            const openingElement = findOpeningElementOfChild(node);
+            if (hasSuppressHydrationWarningAttribute(openingElement)) return;
+            context.report({
+              node: child,
+              message: `${pattern.display} reachable from JSX renders differently on server vs client — wrap in useEffect+useState (client-only) or add suppressHydrationWarning to the parent if intentional`,
+            });
+            return;
+          }
+        }
+      });
+    },
+  }),
+};
+
+const collectIdentifierNames = (node: EsTreeNode | null | undefined, into: Set<string>): void => {
+  if (!node) return;
+  walkAst(node, (child: EsTreeNode) => {
+    if (child.type === "Identifier") into.add(child.name);
+  });
+};
+
+const isEarlyReturnIfStatement = (statement: EsTreeNode): boolean => {
+  if (statement.type !== "IfStatement") return false;
+  const consequent = statement.consequent;
+  if (!consequent) return false;
+  if (consequent.type === "ReturnStatement") return true;
+  if (consequent.type !== "BlockStatement") return false;
+  for (const inner of consequent.body ?? []) {
+    if (inner.type === "ReturnStatement") return true;
+  }
+  return false;
+};
+
+// HACK: `const x = await something(); if (skip) return defaultValue;` —
+// the early-return doesn't depend on the awaited value, so the await
+// blocked the function for nothing on the skip path. Move the await
+// after the cheap synchronous guard so we only pay the latency when we
+// actually need the data.
+//
+// Heuristic: an awaited VariableDeclaration immediately followed by an
+// IfStatement whose test references no identifiers from the awaited
+// declaration. We require the if to be the very next statement to
+// stay precise (intervening statements would imply the awaited binding
+// is being prepared for use).
+export const asyncDeferAwait: Rule = {
+  create: (context: RuleContext) => {
+    const inspectStatements = (statements: EsTreeNode[]): void => {
+      for (let i = 0; i < statements.length - 1; i++) {
+        const stmt = statements[i];
+        if (stmt.type !== "VariableDeclaration") continue;
+
+        let awaitedBindingNames = new Set<string>();
+        let didAwait = false;
+        for (const declarator of stmt.declarations ?? []) {
+          if (declarator.init?.type === "AwaitExpression") {
+            didAwait = true;
+            if (declarator.id?.type === "Identifier") {
+              awaitedBindingNames.add(declarator.id.name);
+            } else if (declarator.id?.type === "ObjectPattern") {
+              for (const property of declarator.id.properties ?? []) {
+                if (property.type === "Property" && property.value?.type === "Identifier") {
+                  awaitedBindingNames.add(property.value.name);
+                }
+              }
+            }
+          }
+        }
+        if (!didAwait) continue;
+
+        const next = statements[i + 1];
+        if (!isEarlyReturnIfStatement(next)) continue;
+
+        const testIdentifiers = new Set<string>();
+        collectIdentifierNames(next.test, testIdentifiers);
+        const usesAwaitedBinding = [...awaitedBindingNames].some((name) =>
+          testIdentifiers.has(name),
+        );
+        if (usesAwaitedBinding) continue;
+
+        const consequentIdentifiers = new Set<string>();
+        collectIdentifierNames(next.consequent, consequentIdentifiers);
+        const consequentUsesAwaited = [...awaitedBindingNames].some((name) =>
+          consequentIdentifiers.has(name),
+        );
+        if (consequentUsesAwaited) continue;
+
+        context.report({
+          node: stmt,
+          message:
+            "await blocks the function before an early-return that doesn't use the awaited value — move the await after the synchronous guard so the skip path stays fast",
+        });
+      }
+    };
+
+    const enterFunction = (node: EsTreeNode): void => {
+      if (!node.async) return;
+      if (node.body?.type !== "BlockStatement") return;
+      inspectStatements(node.body.body ?? []);
+    };
+
+    return {
+      FunctionDeclaration: enterFunction,
+      FunctionExpression: enterFunction,
+      ArrowFunctionExpression: enterFunction,
+    };
+  },
 };

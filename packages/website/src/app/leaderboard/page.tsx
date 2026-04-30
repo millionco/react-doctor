@@ -43,9 +43,9 @@ const LeaderboardRow = ({ entry, rank }: { entry: ResolvedLeaderboardEntry; rank
       <span className="text-right text-neutral-600">{rank}</span>
 
       <a
-        href={entry.githubUrl}
+        href={entry.githubUrl.startsWith("https://github.com/") ? entry.githubUrl : "#"}
         target="_blank"
-        rel="noreferrer"
+        rel="noopener noreferrer"
         className="ml-2 truncate text-white transition-colors hover:text-blue-400 sm:ml-4"
       >
         {entry.name}
@@ -115,7 +115,7 @@ const LeaderboardPage = () => {
         <a
           href={CONTRIBUTE_URL}
           target="_blank"
-          rel="noreferrer"
+          rel="noopener noreferrer"
           className="text-green-400 transition-colors hover:text-green-300 hover:underline"
         >
           Add your project

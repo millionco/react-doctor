@@ -23,7 +23,7 @@ import type { EsTreeNode, Rule, RuleContext } from "../types.js";
 export const noDerivedStateEffect: Rule = {
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
-      if (!isHookCall(node, EFFECT_HOOK_NAMES) || node.arguments.length < 2) return;
+      if (!isHookCall(node, EFFECT_HOOK_NAMES) || (node.arguments?.length ?? 0) < 2) return;
 
       const callback = getEffectCallback(node);
       if (!callback) return;
@@ -123,7 +123,7 @@ export const noCascadingSetState: Rule = {
 export const noEffectEventHandler: Rule = {
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
-      if (!isHookCall(node, EFFECT_HOOK_NAMES) || node.arguments.length < 2) return;
+      if (!isHookCall(node, EFFECT_HOOK_NAMES) || (node.arguments?.length ?? 0) < 2) return;
 
       const callback = getEffectCallback(node);
       if (!callback) return;
@@ -158,31 +158,85 @@ export const noEffectEventHandler: Rule = {
 
 export const noDerivedUseState: Rule = {
   create: (context: RuleContext) => {
-    const componentPropNames = new Set<string>();
+    // HACK: maintain a stack of per-component prop sets so a prop named X
+    // in ComponentA doesn't leak into ComponentB's useState checks. We
+    // only push/pop on FunctionDeclaration and component-shaped
+    // VariableDeclarator; FunctionExpression / ArrowFunctionExpression
+    // inside those don't get their own scope (avoids double-push when
+    // `const Foo = function () {…}` matches both visitors). useState
+    // initializers walk the stack top-to-bottom; nested callback params
+    // are not modeled here (a known limitation — pre-existing).
+    const componentPropStack: Array<Set<string>> = [];
+
+    const isPropName = (name: string): boolean => {
+      for (let i = componentPropStack.length - 1; i >= 0; i--) {
+        if (componentPropStack[i].has(name)) return true;
+      }
+      return false;
+    };
+
+    const isFunctionLikeVariableDeclarator = (node: EsTreeNode): boolean => {
+      if (node.type !== "VariableDeclarator") return false;
+      return (
+        node.init?.type === "ArrowFunctionExpression" || node.init?.type === "FunctionExpression"
+      );
+    };
 
     return {
       FunctionDeclaration(node: EsTreeNode) {
-        if (!node.id?.name || !isUppercaseName(node.id.name)) return;
-        for (const name of extractDestructuredPropNames(node.params ?? [])) {
-          componentPropNames.add(name);
+        if (!node.id?.name || !isUppercaseName(node.id.name)) {
+          // Non-component FunctionDeclarations push an empty barrier so
+          // an outer component's props don't leak into the helper.
+          // Matches noPropCallbackInEffect's scope behavior.
+          componentPropStack.push(new Set());
+          return;
         }
+        componentPropStack.push(extractDestructuredPropNames(node.params ?? []));
+      },
+      "FunctionDeclaration:exit"() {
+        componentPropStack.pop();
       },
       VariableDeclarator(node: EsTreeNode) {
-        if (!isComponentAssignment(node)) return;
-        for (const name of extractDestructuredPropNames(node.init?.params ?? [])) {
-          componentPropNames.add(name);
+        if (isComponentAssignment(node)) {
+          componentPropStack.push(extractDestructuredPropNames(node.init?.params ?? []));
+          return;
+        }
+        if (isFunctionLikeVariableDeclarator(node)) {
+          componentPropStack.push(new Set());
+        }
+      },
+      "VariableDeclarator:exit"(node: EsTreeNode) {
+        if (isComponentAssignment(node) || isFunctionLikeVariableDeclarator(node)) {
+          componentPropStack.pop();
         }
       },
       CallExpression(node: EsTreeNode) {
         if (!isHookCall(node, "useState") || !node.arguments?.length) return;
+        if (componentPropStack.length === 0) return;
         const initializer = node.arguments[0];
-        if (initializer.type !== "Identifier") return;
 
-        if (componentPropNames.has(initializer.name)) {
+        if (initializer.type === "Identifier" && isPropName(initializer.name)) {
           context.report({
             node,
             message: `useState initialized from prop "${initializer.name}" — if this value should stay in sync with the prop, derive it during render instead`,
           });
+          return;
+        }
+
+        if (initializer.type === "MemberExpression" && !initializer.computed) {
+          let rootIdentifierName: string | null = null;
+          let cursor: EsTreeNode = initializer;
+          while (cursor?.type === "MemberExpression") {
+            cursor = cursor.object;
+          }
+          if (cursor?.type === "Identifier") rootIdentifierName = cursor.name;
+
+          if (rootIdentifierName && isPropName(rootIdentifierName)) {
+            context.report({
+              node,
+              message: `useState initialized from prop "${rootIdentifierName}" — if this value should stay in sync with the prop, derive it during render instead`,
+            });
+          }
         }
       },
     };
@@ -243,6 +297,17 @@ export const rerenderLazyStateInit: Rule = {
   }),
 };
 
+const STATE_ARITHMETIC_OPERATORS = new Set(["+", "-", "*", "/", "%", "**"]);
+
+// HACK: derive the state variable name from the setter name. `setCount` →
+// `count`. We only flag arithmetic when one operand actually matches that
+// derived name; otherwise `setCount(1 + computedValue)` would false-positive
+// against any incidental Identifier on either side.
+const deriveStateVariableName = (setterName: string): string | null => {
+  if (!setterName.startsWith("set") || setterName.length < 4) return null;
+  return setterName.charAt(3).toLowerCase() + setterName.slice(4);
+};
+
 export const rerenderFunctionalSetstate: Rule = {
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
@@ -251,14 +316,43 @@ export const rerenderFunctionalSetstate: Rule = {
 
       const calleeName = node.callee.name;
       const argument = node.arguments[0];
+      const expectedStateName = deriveStateVariableName(calleeName);
+
       if (
         argument.type === "BinaryExpression" &&
-        (argument.operator === "+" || argument.operator === "-") &&
-        argument.left?.type === "Identifier"
+        STATE_ARITHMETIC_OPERATORS.has(argument.operator) &&
+        expectedStateName
       ) {
+        const matchesExpected = (operand: EsTreeNode | undefined): boolean =>
+          operand?.type === "Identifier" && operand.name === expectedStateName;
+
+        const stateIdentifier = matchesExpected(argument.left)
+          ? argument.left
+          : matchesExpected(argument.right)
+            ? argument.right
+            : null;
+
+        if (stateIdentifier) {
+          context.report({
+            node,
+            message: `${calleeName}(${stateIdentifier.name} ${argument.operator} ...) — use functional update to avoid stale closures`,
+          });
+          return;
+        }
+      }
+
+      if (
+        argument.type === "UpdateExpression" &&
+        (argument.operator === "++" || argument.operator === "--") &&
+        argument.argument?.type === "Identifier" &&
+        argument.argument.name === expectedStateName
+      ) {
+        const display = argument.prefix
+          ? `${argument.operator}${argument.argument.name}`
+          : `${argument.argument.name}${argument.operator}`;
         context.report({
           node,
-          message: `${calleeName}(${argument.left.name} ${argument.operator} ...) — use functional update to avoid stale closures`,
+          message: `${calleeName}(${display}) — use functional update to avoid stale closures (and reading the post-increment value bug)`,
         });
       }
     },
@@ -291,4 +385,281 @@ export const rerenderDependencies: Rule = {
       }
     },
   }),
+};
+
+// HACK: `useEffect(() => parentCallback(state.x), [state.x])` is the
+// "lift state up via callback" anti-pattern: the child owns state, then
+// fires a parent callback every time the state changes to keep the
+// parent in sync. The parent has no real ground-truth state, just a
+// stale mirror. The right shape is to lift state into a Provider that
+// both child and parent read from; the child then doesn't need an
+// effect-driven sync at all.
+export const noPropCallbackInEffect: Rule = {
+  create: (context: RuleContext) => {
+    const componentPropParamStack: Array<Set<string>> = [];
+
+    const enterComponentParams = (params: EsTreeNode[] | undefined): void => {
+      const propNames = extractDestructuredPropNames(params ?? []);
+      componentPropParamStack.push(propNames);
+    };
+
+    const isPropName = (name: string): boolean => {
+      for (let i = componentPropParamStack.length - 1; i >= 0; i--) {
+        if (componentPropParamStack[i].has(name)) return true;
+      }
+      return false;
+    };
+
+    const isFunctionLikeVariableDeclarator = (node: EsTreeNode): boolean => {
+      if (node.type !== "VariableDeclarator") return false;
+      return (
+        node.init?.type === "ArrowFunctionExpression" || node.init?.type === "FunctionExpression"
+      );
+    };
+
+    return {
+      FunctionDeclaration(node: EsTreeNode) {
+        if (!node.id?.name || !isUppercaseName(node.id.name)) {
+          componentPropParamStack.push(new Set());
+          return;
+        }
+        enterComponentParams(node.params);
+      },
+      "FunctionDeclaration:exit"() {
+        componentPropParamStack.pop();
+      },
+      VariableDeclarator(node: EsTreeNode) {
+        if (isComponentAssignment(node)) {
+          enterComponentParams(node.init?.params);
+          return;
+        }
+        // Non-component arrow/function helpers also push an empty barrier
+        // so identifiers inside the helper don't resolve against an outer
+        // component's props (matches FunctionDeclaration handling).
+        if (isFunctionLikeVariableDeclarator(node)) {
+          componentPropParamStack.push(new Set());
+        }
+      },
+      "VariableDeclarator:exit"(node: EsTreeNode) {
+        if (isComponentAssignment(node) || isFunctionLikeVariableDeclarator(node)) {
+          componentPropParamStack.pop();
+        }
+      },
+      CallExpression(node: EsTreeNode) {
+        if (!isHookCall(node, EFFECT_HOOK_NAMES) || (node.arguments?.length ?? 0) < 2) return;
+        if (componentPropParamStack.length === 0) return;
+        const callback = getEffectCallback(node);
+        if (!callback) return;
+        const depsNode = node.arguments[1];
+        if (depsNode.type !== "ArrayExpression" || !depsNode.elements?.length) return;
+
+        // Body must invoke a prop callback as a top-level expression.
+        const bodyStatements = getCallbackStatements(callback);
+        for (const stmt of bodyStatements) {
+          let invokedPropName: string | null = null;
+          if (
+            stmt.type === "ExpressionStatement" &&
+            stmt.expression?.type === "CallExpression" &&
+            stmt.expression.callee?.type === "Identifier" &&
+            isPropName(stmt.expression.callee.name)
+          ) {
+            invokedPropName = stmt.expression.callee.name;
+          }
+          if (!invokedPropName) continue;
+
+          // Only flag if at least one dep is a non-prop (state-shape)
+          // identifier — otherwise the effect is just adapting to prop
+          // changes (legit pattern).
+          const hasStateLikeDep = depsNode.elements.some(
+            (element: EsTreeNode) => element?.type === "Identifier" && !isPropName(element.name),
+          );
+          if (!hasStateLikeDep) continue;
+
+          context.report({
+            node: stmt,
+            message: `useEffect calls prop callback "${invokedPropName}" with local state in deps — this is the "lift state via callback" anti-pattern; lift state into a shared Provider so both sides read the same source`,
+          });
+        }
+      },
+    };
+  },
+};
+
+// HACK: useEffectEvent's identity is intentionally unstable — it captures
+// the latest props/state on each call. Listing it in a useEffect/useMemo/
+// useCallback dep array fundamentally misuses the API and would cause the
+// effect to re-run constantly. The recommended pattern is to call the
+// effect-event from inside the effect body without listing it as a dep.
+//
+// Bindings are scoped per-component using a stack so a `useEffectEvent`
+// binding named `onChange` in ComponentA doesn't taint a regular variable
+// `onChange` in ComponentB in the same file.
+export const noEffectEventInDeps: Rule = {
+  create: (context: RuleContext) => {
+    const componentBindingStack: Array<Set<string>> = [];
+
+    const isEffectEventBinding = (name: string): boolean => {
+      for (let i = componentBindingStack.length - 1; i >= 0; i--) {
+        if (componentBindingStack[i].has(name)) return true;
+      }
+      return false;
+    };
+
+    const enterComponent = (): void => {
+      componentBindingStack.push(new Set());
+    };
+    const exitComponent = (): void => {
+      componentBindingStack.pop();
+    };
+
+    return {
+      FunctionDeclaration(node: EsTreeNode) {
+        if (!node.id?.name || !isUppercaseName(node.id.name)) return;
+        enterComponent();
+      },
+      "FunctionDeclaration:exit"(node: EsTreeNode) {
+        if (!node.id?.name || !isUppercaseName(node.id.name)) return;
+        exitComponent();
+      },
+      VariableDeclarator(node: EsTreeNode) {
+        if (isComponentAssignment(node)) {
+          enterComponent();
+          return;
+        }
+        if (componentBindingStack.length === 0) return;
+        if (node.id?.type !== "Identifier") return;
+        const init = node.init;
+        if (!init || init.type !== "CallExpression") return;
+        if (!isHookCall(init, "useEffectEvent")) return;
+        componentBindingStack[componentBindingStack.length - 1].add(node.id.name);
+      },
+      "VariableDeclarator:exit"(node: EsTreeNode) {
+        if (isComponentAssignment(node)) exitComponent();
+      },
+      CallExpression(node: EsTreeNode) {
+        if (!isHookCall(node, HOOKS_WITH_DEPS) || node.arguments.length < 2) return;
+        if (componentBindingStack.length === 0) return;
+        const depsNode = node.arguments[1];
+        if (depsNode.type !== "ArrayExpression") return;
+
+        for (const element of depsNode.elements ?? []) {
+          if (element?.type !== "Identifier") continue;
+          if (isEffectEventBinding(element.name)) {
+            context.report({
+              node: element,
+              message: `"${element.name}" is from useEffectEvent and must not be in the deps array — its identity is intentionally unstable; call it inside the effect without listing it`,
+            });
+          }
+        }
+      },
+    };
+  },
+};
+
+// HACK: a useState whose value is never read in the component's JSX
+// return is by definition not visual state — every setState triggers a
+// render that produces the same DOM. Use `useRef` (`ref.current = ...`)
+// so updates don't trigger re-renders. (For values read inside an
+// addEventListener-style callback, a ref also lets the handler always
+// see the latest value without re-subscribing each effect run.)
+const collectUseStateBindings = (
+  componentBody: EsTreeNode,
+): Array<{ valueName: string; setterName: string; declarator: EsTreeNode }> => {
+  const bindings: Array<{ valueName: string; setterName: string; declarator: EsTreeNode }> = [];
+  if (componentBody?.type !== "BlockStatement") return bindings;
+
+  for (const statement of componentBody.body ?? []) {
+    if (statement.type !== "VariableDeclaration") continue;
+    for (const declarator of statement.declarations ?? []) {
+      if (declarator.id?.type !== "ArrayPattern") continue;
+      const elements = declarator.id.elements ?? [];
+      if (elements.length < 2) continue;
+      const valueElement = elements[0];
+      const setterElement = elements[1];
+      if (
+        valueElement?.type !== "Identifier" ||
+        setterElement?.type !== "Identifier" ||
+        !isSetterIdentifier(setterElement.name)
+      ) {
+        continue;
+      }
+      if (declarator.init?.type !== "CallExpression") continue;
+      if (!isHookCall(declarator.init, "useState")) continue;
+      bindings.push({
+        valueName: valueElement.name,
+        setterName: setterElement.name,
+        declarator,
+      });
+    }
+  }
+  return bindings;
+};
+
+const collectReturnExpressions = (componentBody: EsTreeNode): EsTreeNode[] => {
+  if (componentBody?.type !== "BlockStatement") return [];
+  const returns: EsTreeNode[] = [];
+  walkAst(componentBody, (child: EsTreeNode) => {
+    if (child.type === "ReturnStatement" && child.argument) {
+      returns.push(child.argument);
+    }
+  });
+  return returns;
+};
+
+const expressionReadsName = (expression: EsTreeNode, name: string): boolean => {
+  let didRead = false;
+  walkAst(expression, (child: EsTreeNode) => {
+    if (didRead) return;
+    if (child.type === "Identifier" && child.name === name) didRead = true;
+  });
+  return didRead;
+};
+
+export const rerenderStateOnlyInHandlers: Rule = {
+  create: (context: RuleContext) => {
+    const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
+      if (!componentBody || componentBody.type !== "BlockStatement") return;
+      const bindings = collectUseStateBindings(componentBody);
+      if (bindings.length === 0) return;
+
+      const returnExpressions = collectReturnExpressions(componentBody);
+      if (returnExpressions.length === 0) return;
+
+      for (const binding of bindings) {
+        const isReadInReturn = returnExpressions.some((expression) =>
+          expressionReadsName(expression, binding.valueName),
+        );
+        if (isReadInReturn) continue;
+
+        let setterCalled = false;
+        walkAst(componentBody, (child: EsTreeNode) => {
+          if (setterCalled) return;
+          if (
+            child.type === "CallExpression" &&
+            child.callee?.type === "Identifier" &&
+            child.callee.name === binding.setterName
+          ) {
+            setterCalled = true;
+          }
+        });
+        if (!setterCalled) continue;
+
+        context.report({
+          node: binding.declarator,
+          message: `useState "${binding.valueName}" is updated but never read in the component's return — use useRef so updates don't trigger re-renders`,
+        });
+      }
+    };
+
+    return {
+      FunctionDeclaration(node: EsTreeNode) {
+        if (!node.id?.name || !isUppercaseName(node.id.name)) return;
+        checkComponent(node.body);
+      },
+      VariableDeclarator(node: EsTreeNode) {
+        if (!isComponentAssignment(node)) return;
+        checkComponent(node.init?.body);
+      },
+    };
+  },
 };

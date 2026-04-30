@@ -427,7 +427,7 @@ const Terminal = () => {
             <a
               href={GITHUB_URL}
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap border border-white/20 bg-white px-3 py-1.5 text-black transition-all hover:bg-white/90 active:scale-[0.98]"
             >
               <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24">

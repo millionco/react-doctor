@@ -1,4 +1,5 @@
 import {
+  EFFECT_HOOK_NAMES,
   MUTATING_HTTP_METHODS,
   SEQUENTIAL_AWAIT_THRESHOLD_FOR_LOADER,
   TANSTACK_MIDDLEWARE_METHOD_ORDER,
@@ -11,7 +12,7 @@ import {
   TANSTACK_SERVER_FN_NAMES,
   UPPERCASE_PATTERN,
 } from "../constants.js";
-import { findSideEffect, getCalleeName, walkAst } from "../helpers.js";
+import { findSideEffect, getCalleeName, isHookCall, walkAst } from "../helpers.js";
 import type { EsTreeNode, Rule, RuleContext } from "../types.js";
 
 const getRouteOptionsObject = (node: EsTreeNode): EsTreeNode | null => {
@@ -207,8 +208,7 @@ export const tanstackStartNoUseEffectFetch: Rule = {
       const isRouteFile = TANSTACK_ROUTE_FILE_PATTERN.test(filename);
       if (!isRouteFile) return;
 
-      if (node.callee?.type !== "Identifier") return;
-      if (node.callee.name !== "useEffect" && node.callee.name !== "useLayoutEffect") return;
+      if (!isHookCall(node, EFFECT_HOOK_NAMES)) return;
 
       const callback = node.arguments?.[0];
       if (!callback) return;
@@ -369,10 +369,7 @@ export const tanstackStartNoNavigateInRender: Rule = {
         const isRouteFile = TANSTACK_ROUTE_FILE_PATTERN.test(filename);
         if (!isRouteFile) return;
 
-        if (
-          node.callee?.type === "Identifier" &&
-          (node.callee.name === "useEffect" || node.callee.name === "useLayoutEffect")
-        ) {
+        if (isHookCall(node, EFFECT_HOOK_NAMES)) {
           effectDepth++;
         }
 
@@ -395,11 +392,8 @@ export const tanstackStartNoNavigateInRender: Rule = {
         const isRouteFile = TANSTACK_ROUTE_FILE_PATTERN.test(filename);
         if (!isRouteFile) return;
 
-        if (
-          node.callee?.type === "Identifier" &&
-          (node.callee.name === "useEffect" || node.callee.name === "useLayoutEffect")
-        ) {
-          effectDepth--;
+        if (isHookCall(node, EFFECT_HOOK_NAMES)) {
+          effectDepth = Math.max(0, effectDepth - 1);
         }
       },
       JSXAttribute(node: EsTreeNode) {
@@ -493,6 +487,18 @@ export const tanstackStartNoUseServerInHandler: Rule = {
   }),
 };
 
+const SAFE_BUILD_ENV_VARS = new Set(["NODE_ENV", "MODE", "DEV", "PROD"]);
+const SECRET_KEYWORD_PATTERN = /(?:secret|token|api[_]?key|password|private)/i;
+
+// HACK: only flag env vars whose name matches a secret keyword. A loader
+// reading process.env.DATABASE_URL or process.env.PORT is fine; what's not
+// fine is process.env.STRIPE_SECRET or process.env.NEXT_PUBLIC_API_KEY (the
+// latter being a misconfigured public-prefixed key).
+const isLikelySecret = (envVarName: string): boolean => {
+  if (SAFE_BUILD_ENV_VARS.has(envVarName)) return false;
+  return SECRET_KEYWORD_PATTERN.test(envVarName);
+};
+
 export const tanstackStartNoSecretsInLoader: Rule = {
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
@@ -507,20 +513,27 @@ export const tanstackStartNoSecretsInLoader: Rule = {
         const loaderValue = property.value ?? property;
         walkAst(loaderValue, (child: EsTreeNode) => {
           if (child.type !== "MemberExpression") return;
-          if (
+          const isProcessEnvAccess =
             child.object?.type === "MemberExpression" &&
             child.object.object?.type === "Identifier" &&
             child.object.object.name === "process" &&
             child.object.property?.type === "Identifier" &&
-            child.object.property.name === "env"
-          ) {
-            const envVarName = child.property?.type === "Identifier" ? child.property.name : null;
-            if (envVarName && !envVarName.startsWith("VITE_")) {
-              context.report({
-                node: child,
-                message: `process.env.${envVarName} in ${keyName} — loaders are isomorphic and may leak secrets to the client. Move to a createServerFn()`,
-              });
-            }
+            child.object.property.name === "env";
+          const isImportMetaEnvAccess =
+            child.object?.type === "MemberExpression" &&
+            child.object.object?.type === "MetaProperty" &&
+            child.object.property?.type === "Identifier" &&
+            child.object.property.name === "env";
+
+          if (!isProcessEnvAccess && !isImportMetaEnvAccess) return;
+
+          const envVarName = child.property?.type === "Identifier" ? child.property.name : null;
+          if (envVarName && isLikelySecret(envVarName)) {
+            const envSource = isImportMetaEnvAccess ? "import.meta.env" : "process.env";
+            context.report({
+              node: child,
+              message: `${envSource}.${envVarName} in ${keyName} — loaders are isomorphic and may leak secrets to the client. Move to a createServerFn()`,
+            });
           }
         });
       }
@@ -608,6 +621,9 @@ const hasTopLevelAwait = (statement: EsTreeNode): boolean => {
   }
   if (statement.type === "ReturnStatement") {
     return statement.argument?.type === "AwaitExpression";
+  }
+  if (statement.type === "ForOfStatement" && statement.await) {
+    return true;
   }
   return false;
 };

@@ -88,6 +88,52 @@ export const useLazyMotion: Rule = {
   }),
 };
 
+// HACK: bundlers can only tree-shake / split when the import target is a
+// statically-analyzable string literal. `import(variable)` or
+// `require(variable)` defeats trace targets and forces a fat bundle.
+export const noDynamicImportPath: Rule = {
+  create: (context: RuleContext) => ({
+    ImportExpression(node: EsTreeNode) {
+      const source = node.source;
+      if (source && source.type !== "Literal" && source.type !== "TemplateLiteral") {
+        context.report({
+          node,
+          message:
+            "Dynamic import path is not statically analyzable — use a string literal so the bundler can split this chunk",
+        });
+        return;
+      }
+      if (source?.type === "TemplateLiteral" && (source.expressions?.length ?? 0) > 0) {
+        context.report({
+          node,
+          message:
+            "Template literal with interpolation in dynamic import — use a string literal so the bundler can split this chunk",
+        });
+      }
+    },
+    CallExpression(node: EsTreeNode) {
+      if (node.callee?.type !== "Identifier" || node.callee.name !== "require") return;
+      const arg = node.arguments?.[0];
+      if (!arg) return;
+      if (arg.type !== "Literal" && arg.type !== "TemplateLiteral") {
+        context.report({
+          node,
+          message:
+            "Dynamic require() path is not statically analyzable — use a string literal so the bundler can trace this dependency",
+        });
+        return;
+      }
+      if (arg.type === "TemplateLiteral" && (arg.expressions?.length ?? 0) > 0) {
+        context.report({
+          node,
+          message:
+            "Template literal with interpolation in require() — use a string literal so the bundler can trace this dependency",
+        });
+      }
+    },
+  }),
+};
+
 export const noUndeferredThirdParty: Rule = {
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNode) {

@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { MOTION_LIBRARY_PACKAGES } from "../plugin/constants.js";
 import type { Diagnostic } from "../types.js";
@@ -7,7 +7,7 @@ import { readPackageJson } from "./read-package-json.js";
 
 const REDUCED_MOTION_GREP_PATTERN =
   "prefers-reduced-motion|useReducedMotion|MotionConfig|reducedMotion";
-const REDUCED_MOTION_FILE_GLOBS = '"*.ts" "*.tsx" "*.js" "*.jsx" "*.css" "*.scss"';
+const REDUCED_MOTION_FILE_GLOBS = ["*.ts", "*.tsx", "*.js", "*.jsx", "*.css", "*.scss"];
 
 const MISSING_REDUCED_MOTION_DIAGNOSTIC: Diagnostic = {
   filePath: "package.json",
@@ -20,7 +20,6 @@ const MISSING_REDUCED_MOTION_DIAGNOSTIC: Diagnostic = {
   line: 0,
   column: 0,
   category: "Accessibility",
-  weight: 2,
 };
 
 export const checkReducedMotion = (rootDirectory: string): Diagnostic[] => {
@@ -39,13 +38,12 @@ export const checkReducedMotion = (rootDirectory: string): Diagnostic[] => {
   }
   if (!hasMotionLibrary) return [];
 
-  try {
-    execSync(`git grep -ql -E "${REDUCED_MOTION_GREP_PATTERN}" -- ${REDUCED_MOTION_FILE_GLOBS}`, {
-      cwd: rootDirectory,
-      stdio: "pipe",
-    });
-    return [];
-  } catch {
-    return [MISSING_REDUCED_MOTION_DIAGNOSTIC];
-  }
+  const result = spawnSync(
+    "git",
+    ["grep", "-ql", "-E", REDUCED_MOTION_GREP_PATTERN, "--", ...REDUCED_MOTION_FILE_GLOBS],
+    { cwd: rootDirectory, stdio: ["ignore", "pipe", "pipe"] },
+  );
+  if (result.error) return [MISSING_REDUCED_MOTION_DIAGNOSTIC];
+  if (result.status === 0) return [];
+  return [MISSING_REDUCED_MOTION_DIAGNOSTIC];
 };

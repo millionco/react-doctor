@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MAX_KNIP_RETRIES } from "../src/constants.js";
+import { KNIP_TOTAL_ATTEMPTS } from "../src/constants.js";
 import { runKnip } from "../src/utils/run-knip.js";
 
 interface CapturedKnipOptions {
@@ -246,7 +246,7 @@ describe("runKnip", () => {
 
       const lastSequencedError = sequencedErrors[sequencedErrors.length - 1];
       await expect(runKnip(standaloneRoot)).rejects.toBe(lastSequencedError);
-      expect(mockKnipState.mainCallCount).toBe(MAX_KNIP_RETRIES + 1);
+      expect(mockKnipState.mainCallCount).toBe(KNIP_TOTAL_ATTEMPTS);
     });
   });
 });

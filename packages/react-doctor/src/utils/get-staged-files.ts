@@ -3,16 +3,18 @@ import fs from "node:fs";
 import path from "node:path";
 import { GIT_SHOW_MAX_BUFFER_BYTES, SOURCE_FILE_PATTERN } from "../constants.js";
 
+// HACK: --diff-filter=ACMR excludes Deleted (D) — staged-only scans cannot
+// lint files that no longer exist in the staging area.
 const getStagedFilePaths = (directory: string): string[] => {
   const result = spawnSync(
     "git",
-    ["diff", "--cached", "--name-only", "--diff-filter=ACMR", "--relative"],
+    ["diff", "--cached", "-z", "--name-only", "--diff-filter=ACMR", "--relative"],
     { cwd: directory, stdio: "pipe", maxBuffer: GIT_SHOW_MAX_BUFFER_BYTES },
   );
   if (result.error || result.status !== 0) return [];
-  const output = result.stdout.toString().trim();
+  const output = result.stdout.toString();
   if (!output) return [];
-  return output.split("\n").filter(Boolean);
+  return output.split("\0").filter((filePath) => filePath.length > 0);
 };
 
 const readStagedContent = (directory: string, relativePath: string): string | null => {
@@ -34,6 +36,19 @@ interface StagedSnapshot {
 export const getStagedSourceFiles = (directory: string): string[] =>
   getStagedFilePaths(directory).filter((filePath) => SOURCE_FILE_PATTERN.test(filePath));
 
+const PROJECT_CONFIG_FILENAMES = [
+  "tsconfig.json",
+  "tsconfig.base.json",
+  "package.json",
+  "react-doctor.config.json",
+  "knip.json",
+  "knip.jsonc",
+  ".knip.json",
+  ".knip.jsonc",
+  "oxlint.json",
+  ".oxlintrc.json",
+];
+
 export const materializeStagedFiles = (
   directory: string,
   stagedFiles: string[],
@@ -51,8 +66,7 @@ export const materializeStagedFiles = (
     materializedFiles.push(relativePath);
   }
 
-  const projectConfigFilenames = ["tsconfig.json", "package.json", "react-doctor.config.json"];
-  for (const configFilename of projectConfigFilenames) {
+  for (const configFilename of PROJECT_CONFIG_FILENAMES) {
     const sourcePath = path.join(directory, configFilename);
     const targetPath = path.join(tempDirectory, configFilename);
     if (fs.existsSync(sourcePath) && !fs.existsSync(targetPath)) {
@@ -66,7 +80,9 @@ export const materializeStagedFiles = (
     cleanup: () => {
       try {
         fs.rmSync(tempDirectory, { recursive: true, force: true });
-      } catch {}
+      } catch {
+        // Best-effort cleanup; tempdir reapers will eventually clean up.
+      }
     },
   };
 };

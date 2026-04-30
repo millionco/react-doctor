@@ -1,18 +1,23 @@
 import {
   noGenericHandlerNames,
   noGiantComponent,
+  noManyBooleanProps,
   noNestedComponentDefinition,
+  noReact19DeprecatedApis,
   noRenderInRender,
+  noRenderPropChildren,
+  reactCompilerDestructureMethod,
 } from "./rules/architecture.js";
 import {
   noBarrelImport,
+  noDynamicImportPath,
   noFullLodashImport,
   noMoment,
   noUndeferredThirdParty,
   preferDynamicImport,
   useLazyMotion,
 } from "./rules/bundle-size.js";
-import { clientPassiveEventListeners } from "./rules/client.js";
+import { clientLocalstorageNoVersion, clientPassiveEventListeners } from "./rules/client.js";
 import {
   noDarkModeGlow,
   noDisabledZoom,
@@ -32,21 +37,26 @@ import {
 } from "./rules/design.js";
 import {
   noArrayIndexAsKey,
+  noPolymorphicChildren,
   noPreventDefault,
   renderingConditionalRender,
+  renderingSvgPrecision,
 } from "./rules/correctness.js";
 import {
   asyncParallel,
   jsBatchDomCss,
+  jsCachePropertyAccess,
   jsCacheStorage,
   jsCombineIterations,
   jsEarlyExit,
+  jsFlatmapFilter,
+  jsHoistIntl,
   jsHoistRegexp,
   jsIndexMaps,
+  jsLengthCheckFirst,
   jsMinMaxLoop,
   jsSetMapLookups,
   jsTosortedImmutable,
-  jsFlatmapFilter,
 } from "./rules/js-performance.js";
 import {
   nextjsAsyncClientComponent,
@@ -67,7 +77,9 @@ import {
   nextjsNoUseSearchParamsWithoutSuspense,
 } from "./rules/nextjs.js";
 import {
+  asyncDeferAwait,
   noGlobalCssVariableAnimation,
+  noInlinePropOnMemoComponent,
   noLargeAnimatedBlur,
   noLayoutPropertyAnimation,
   noPermanentWillChange,
@@ -75,21 +87,39 @@ import {
   noTransitionAll,
   noUsememoSimpleExpression,
   renderingAnimateSvgWrapper,
-  noInlinePropOnMemoComponent,
+  renderingHoistJsx,
+  renderingHydrationMismatchTime,
   renderingHydrationNoFlicker,
   renderingScriptDeferAsync,
   renderingUsetransitionLoading,
+  rerenderMemoBeforeEarlyReturn,
   rerenderMemoWithDefaultValue,
+  rerenderTransitionsScroll,
 } from "./rules/performance.js";
 import {
-  rnNoRawText,
+  rnAnimateLayoutProperty,
+  rnAnimationReactionAsDerived,
+  rnBottomSheetPreferNative,
+  rnListCallbackPerRow,
+  rnListDataMapped,
   rnNoDeprecatedModules,
-  rnNoLegacyExpoPackages,
   rnNoDimensionsGet,
   rnNoInlineFlatlistRenderitem,
+  rnNoInlineObjectInListItem,
+  rnNoLegacyExpoPackages,
   rnNoLegacyShadowStyles,
-  rnPreferReanimated,
+  rnNoNonNativeNavigator,
+  rnNoRawText,
+  rnNoScrollState,
+  rnNoScrollviewMappedList,
   rnNoSingleElementStyleArray,
+  rnPreferContentInsetAdjustment,
+  rnPreferExpoImage,
+  rnPreferPressable,
+  rnPreferReanimated,
+  rnPressableSharedValueMutation,
+  rnScrollviewDynamicPadding,
+  rnStylePreferBoxShadow,
 } from "./rules/react-native.js";
 import {
   queryMutationMissingInvalidation,
@@ -100,7 +130,15 @@ import {
   queryStableQueryClient,
 } from "./rules/tanstack-query.js";
 import { noEval, noSecretsInClientCode } from "./rules/security.js";
-import { serverAfterNonblocking, serverAuthActions } from "./rules/server.js";
+import {
+  serverAfterNonblocking,
+  serverAuthActions,
+  serverCacheWithObjectLiteral,
+  serverDedupProps,
+  serverHoistStaticIo,
+  serverNoMutableModuleState,
+  serverSequentialIndependentAwait,
+} from "./rules/server.js";
 import {
   tanstackStartGetMutation,
   tanstackStartLoaderParallelFetch,
@@ -122,12 +160,16 @@ import {
   noDerivedStateEffect,
   noDerivedUseState,
   noEffectEventHandler,
+  noEffectEventInDeps,
   noFetchInEffect,
+  noPropCallbackInEffect,
   preferUseReducer,
   rerenderDependencies,
   rerenderFunctionalSetstate,
   rerenderLazyStateInit,
+  rerenderStateOnlyInHandlers,
 } from "./rules/state-and-effects.js";
+import { noDocumentStartViewTransition, noFlushSync } from "./rules/view-transitions.js";
 import type { RulePlugin } from "./types.js";
 
 const plugin: RulePlugin = {
@@ -137,21 +179,33 @@ const plugin: RulePlugin = {
     "no-fetch-in-effect": noFetchInEffect,
     "no-cascading-set-state": noCascadingSetState,
     "no-effect-event-handler": noEffectEventHandler,
+    "no-effect-event-in-deps": noEffectEventInDeps,
+    "no-prop-callback-in-effect": noPropCallbackInEffect,
     "no-derived-useState": noDerivedUseState,
     "prefer-useReducer": preferUseReducer,
     "rerender-lazy-state-init": rerenderLazyStateInit,
     "rerender-functional-setstate": rerenderFunctionalSetstate,
     "rerender-dependencies": rerenderDependencies,
+    "rerender-state-only-in-handlers": rerenderStateOnlyInHandlers,
 
     "no-generic-handler-names": noGenericHandlerNames,
     "no-giant-component": noGiantComponent,
+    "no-many-boolean-props": noManyBooleanProps,
+    "no-react19-deprecated-apis": noReact19DeprecatedApis,
+    "no-render-prop-children": noRenderPropChildren,
     "no-render-in-render": noRenderInRender,
     "no-nested-component-definition": noNestedComponentDefinition,
+    "react-compiler-destructure-method": reactCompilerDestructureMethod,
 
     "no-usememo-simple-expression": noUsememoSimpleExpression,
     "no-layout-property-animation": noLayoutPropertyAnimation,
     "rerender-memo-with-default-value": rerenderMemoWithDefaultValue,
+    "rerender-memo-before-early-return": rerenderMemoBeforeEarlyReturn,
+    "rerender-transitions-scroll": rerenderTransitionsScroll,
+    "async-defer-await": asyncDeferAwait,
     "rendering-animate-svg-wrapper": renderingAnimateSvgWrapper,
+    "rendering-hoist-jsx": renderingHoistJsx,
+    "rendering-hydration-mismatch-time": renderingHydrationMismatchTime,
     "no-inline-prop-on-memo-component": noInlinePropOnMemoComponent,
     "rendering-hydration-no-flicker": renderingHydrationNoFlicker,
     "rendering-script-defer-async": renderingScriptDeferAsync,
@@ -167,6 +221,7 @@ const plugin: RulePlugin = {
     "no-secrets-in-client-code": noSecretsInClientCode,
 
     "no-barrel-import": noBarrelImport,
+    "no-dynamic-import-path": noDynamicImportPath,
     "no-full-lodash-import": noFullLodashImport,
     "no-moment": noMoment,
     "prefer-dynamic-import": preferDynamicImport,
@@ -174,8 +229,12 @@ const plugin: RulePlugin = {
     "no-undeferred-third-party": noUndeferredThirdParty,
 
     "no-array-index-as-key": noArrayIndexAsKey,
+    "no-polymorphic-children": noPolymorphicChildren,
     "rendering-conditional-render": renderingConditionalRender,
+    "rendering-svg-precision": renderingSvgPrecision,
     "no-prevent-default": noPreventDefault,
+    "no-document-start-view-transition": noDocumentStartViewTransition,
+    "no-flush-sync": noFlushSync,
 
     "nextjs-no-img-element": nextjsNoImgElement,
     "nextjs-async-client-component": nextjsAsyncClientComponent,
@@ -196,12 +255,21 @@ const plugin: RulePlugin = {
 
     "server-auth-actions": serverAuthActions,
     "server-after-nonblocking": serverAfterNonblocking,
+    "server-no-mutable-module-state": serverNoMutableModuleState,
+    "server-cache-with-object-literal": serverCacheWithObjectLiteral,
+    "server-hoist-static-io": serverHoistStaticIo,
+    "server-dedup-props": serverDedupProps,
+    "server-sequential-independent-await": serverSequentialIndependentAwait,
 
     "client-passive-event-listeners": clientPassiveEventListeners,
+    "client-localstorage-no-version": clientLocalstorageNoVersion,
 
     "js-combine-iterations": jsCombineIterations,
     "js-tosorted-immutable": jsTosortedImmutable,
     "js-hoist-regexp": jsHoistRegexp,
+    "js-hoist-intl": jsHoistIntl,
+    "js-cache-property-access": jsCachePropertyAccess,
+    "js-length-check-first": jsLengthCheckFirst,
     "js-min-max-loop": jsMinMaxLoop,
     "js-set-map-lookups": jsSetMapLookups,
     "js-batch-dom-css": jsBatchDomCss,
@@ -219,6 +287,21 @@ const plugin: RulePlugin = {
     "rn-no-legacy-shadow-styles": rnNoLegacyShadowStyles,
     "rn-prefer-reanimated": rnPreferReanimated,
     "rn-no-single-element-style-array": rnNoSingleElementStyleArray,
+    "rn-prefer-pressable": rnPreferPressable,
+    "rn-prefer-expo-image": rnPreferExpoImage,
+    "rn-no-non-native-navigator": rnNoNonNativeNavigator,
+    "rn-no-scroll-state": rnNoScrollState,
+    "rn-no-scrollview-mapped-list": rnNoScrollviewMappedList,
+    "rn-no-inline-object-in-list-item": rnNoInlineObjectInListItem,
+    "rn-animate-layout-property": rnAnimateLayoutProperty,
+    "rn-prefer-content-inset-adjustment": rnPreferContentInsetAdjustment,
+    "rn-pressable-shared-value-mutation": rnPressableSharedValueMutation,
+    "rn-list-data-mapped": rnListDataMapped,
+    "rn-list-callback-per-row": rnListCallbackPerRow,
+    "rn-animation-reaction-as-derived": rnAnimationReactionAsDerived,
+    "rn-bottom-sheet-prefer-native": rnBottomSheetPreferNative,
+    "rn-scrollview-dynamic-padding": rnScrollviewDynamicPadding,
+    "rn-style-prefer-boxshadow": rnStylePreferBoxShadow,
 
     "tanstack-start-route-property-order": tanstackStartRoutePropertyOrder,
     "tanstack-start-no-direct-fetch-in-loader": tanstackStartNoDirectFetchInLoader,

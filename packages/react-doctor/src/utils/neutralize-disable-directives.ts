@@ -38,6 +38,30 @@ export const neutralizeDisableDirectives = (
   const filePaths = findFilesWithDisableDirectives(rootDirectory, includePaths);
   const originalContents = new Map<string, string>();
 
+  let isRestored = false;
+  const restore = () => {
+    if (isRestored) return;
+    isRestored = true;
+    for (const [absolutePath, originalContent] of originalContents) {
+      try {
+        fs.writeFileSync(absolutePath, originalContent);
+      } catch {
+        // Best-effort restore; surface manually if it fails.
+      }
+    }
+  };
+
+  // HACK: register an "exit" listener so that any path that goes through
+  // `process.exit(N)` (including the SIGINT path in cli.ts which calls
+  // process.exit(130)) triggers restoration synchronously before termination.
+  // We deliberately do NOT register an `uncaughtException` handler — that
+  // would suppress Node's default crash behavior and leave the process hung
+  // with no diagnostics. We also don't re-register the canonical SIGINT
+  // pattern here; cli.ts owns it and routes through process.exit, which
+  // covers us via the exit event.
+  const onExit = () => restore();
+  process.once("exit", onExit);
+
   for (const relativePath of filePaths) {
     const absolutePath = path.join(rootDirectory, relativePath);
 
@@ -56,8 +80,7 @@ export const neutralizeDisableDirectives = (
   }
 
   return () => {
-    for (const [absolutePath, originalContent] of originalContents) {
-      fs.writeFileSync(absolutePath, originalContent);
-    }
+    restore();
+    process.removeListener("exit", onExit);
   };
 };

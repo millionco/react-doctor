@@ -62,10 +62,16 @@ export const filterIgnoredDiagnostics = (
   rootDirectory: string,
   readFileLinesSync: (filePath: string) => string[] | null,
 ): Diagnostic[] => {
-  const ignoredRules = new Set(Array.isArray(config.ignore?.rules) ? config.ignore.rules : []);
+  const ignoredRules = new Set(
+    Array.isArray(config.ignore?.rules)
+      ? config.ignore.rules.filter((rule): rule is string => typeof rule === "string")
+      : [],
+  );
   const ignoredFilePatterns = compileIgnoredFilePatterns(config);
   const textComponentNames = new Set(
-    Array.isArray(config.textComponents) ? config.textComponents : [],
+    Array.isArray(config.textComponents)
+      ? config.textComponents.filter((name): name is string => typeof name === "string")
+      : [],
   );
   const hasTextComponents = textComponentNames.size > 0;
   const getFileLines = createFileLinesCache(rootDirectory, readFileLinesSync);

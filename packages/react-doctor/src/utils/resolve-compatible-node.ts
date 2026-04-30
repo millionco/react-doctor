@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -70,11 +70,9 @@ const findCompatibleNvmBinary = (): string | null => {
 };
 
 const getNodeVersionFromBinary = (binaryPath: string): string | null => {
-  try {
-    return execSync(`"${binaryPath}" --version`, { encoding: "utf-8" }).trim();
-  } catch {
-    return null;
-  }
+  const result = spawnSync(binaryPath, ["--version"], { encoding: "utf-8" });
+  if (result.error || result.status !== 0) return null;
+  return result.stdout.toString().trim();
 };
 
 export const installNodeViaNvm = (): boolean => {
@@ -84,14 +82,16 @@ export const installNodeViaNvm = (): boolean => {
   const nvmScript = path.join(nvmDirectory, "nvm.sh");
   if (!existsSync(nvmScript)) return false;
 
-  try {
-    execSync(`bash -c ". '${nvmScript}' && nvm install ${OXLINT_RECOMMENDED_NODE_MAJOR}"`, {
-      stdio: "inherit",
-    });
-    return findCompatibleNvmBinary() !== null;
-  } catch {
-    return false;
-  }
+  const result = spawnSync("bash", ["-c", '. "$NVM_SCRIPT" && nvm install "$NODE_MAJOR"'], {
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      NVM_SCRIPT: nvmScript,
+      NODE_MAJOR: String(OXLINT_RECOMMENDED_NODE_MAJOR),
+    },
+  });
+  if (result.error || result.status !== 0) return false;
+  return findCompatibleNvmBinary() !== null;
 };
 
 export const resolveNodeForOxlint = (): NodeResolution | null => {

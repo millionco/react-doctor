@@ -4,8 +4,10 @@ export const RELATED_USE_STATE_THRESHOLD = 5;
 export const DEEP_NESTING_THRESHOLD = 3;
 export const DUPLICATE_STORAGE_READ_THRESHOLD = 2;
 export const SEQUENTIAL_AWAIT_THRESHOLD = 3;
-export const SECRET_MIN_LENGTH_CHARS = 8;
-export const AUTH_CHECK_LOOKAHEAD_STATEMENTS = 3;
+// Real-world API keys, tokens, and credentials are 24+ chars. 8 chars produced
+// many false positives on UI strings ("loading...", short captions, etc.).
+export const SECRET_MIN_LENGTH_CHARS = 24;
+export const AUTH_CHECK_LOOKAHEAD_STATEMENTS = 10;
 
 export const LAYOUT_PROPERTIES = new Set([
   "width",
@@ -55,8 +57,8 @@ export const HEAVY_LIBRARIES = new Set([
   "draft-js",
 ]);
 
-export const FETCH_CALLEE_NAMES = new Set(["fetch"]);
-export const FETCH_MEMBER_OBJECTS = new Set(["axios", "ky", "got"]);
+export const FETCH_CALLEE_NAMES = new Set(["fetch", "ky", "got", "wretch", "ofetch"]);
+export const FETCH_MEMBER_OBJECTS = new Set(["axios", "ky", "got", "ofetch", "wretch", "request"]);
 export const INDEX_PARAMETER_NAMES = new Set(["index", "idx", "i"]);
 export const BARREL_INDEX_SUFFIXES = [
   "/index",

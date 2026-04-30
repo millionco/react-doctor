@@ -418,15 +418,16 @@ const getExportedGetHandlerBody = (node: EsTreeNode): EsTreeNode | null => {
   }
 
   if (declaration.type === "VariableDeclaration") {
-    const declarator = declaration.declarations?.[0];
-    if (
-      declarator?.id?.type === "Identifier" &&
-      declarator.id.name === "GET" &&
-      declarator.init &&
-      (declarator.init.type === "ArrowFunctionExpression" ||
-        declarator.init.type === "FunctionExpression")
-    ) {
-      return declarator.init.body;
+    for (const declarator of declaration.declarations ?? []) {
+      if (
+        declarator?.id?.type === "Identifier" &&
+        declarator.id.name === "GET" &&
+        declarator.init &&
+        (declarator.init.type === "ArrowFunctionExpression" ||
+          declarator.init.type === "FunctionExpression")
+      ) {
+        return declarator.init.body;
+      }
     }
   }
 

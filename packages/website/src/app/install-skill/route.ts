@@ -1,3 +1,56 @@
+// HACK: SKILL_MD_CONTENT and AGENTS_MD_CONTENT must stay in sync with the
+// canonical skills/react-doctor/{SKILL,AGENTS}.md at the repo root. The
+// react-doctor package's `tests/install-skill-content.test.ts` asserts this
+// at CI time. We embed the content rather than fs.readFileSync because
+// Next.js routes deployed to Vercel can't reliably read across-package
+// files at runtime.
+const SKILL_MD_CONTENT = `---
+name: react-doctor
+description: Use when finishing a feature, fixing a bug, before committing React code, or when the user wants to improve code quality or clean up a codebase. Checks for score regression. Covers lint, dead code, accessibility, bundle size, architecture diagnostics.
+version: "1.0.0"
+---
+
+# React Doctor
+
+Scans React codebases for security, performance, correctness, and architecture issues. Outputs a 0–100 health score.
+
+## After making React code changes:
+
+Run \\\`npx -y react-doctor@latest . --verbose --diff\\\` and check the score did not regress.
+
+If the score dropped, fix the regressions before committing.
+
+## For general cleanup or code improvement:
+
+Run \\\`npx -y react-doctor@latest . --verbose\\\` (without \\\`--diff\\\`) to scan the full codebase. Fix issues by severity — errors first, then warnings.
+
+## Command
+
+\\\`\\\`\\\`bash
+npx -y react-doctor@latest . --verbose --diff
+\\\`\\\`\\\`
+
+| Flag        | Purpose                                       |
+| ----------- | --------------------------------------------- |
+| \\\`.\\\`         | Scan current directory                        |
+| \\\`--verbose\\\` | Show affected files and line numbers per rule |
+| \\\`--diff\\\`    | Only scan changed files vs base branch        |
+| \\\`--score\\\`   | Output only the numeric score                 |`;
+
+const AGENTS_MD_CONTENT = `# React Doctor
+
+Use when finishing a feature, fixing a bug, before committing React code, or when the user wants to improve code quality or clean up a codebase.
+
+Scans React codebases for security, performance, correctness, and architecture issues. Outputs a 0–100 health score covering lint, dead code, accessibility, bundle size, and architecture diagnostics.
+
+## After making React code changes:
+
+Run \\\`npx -y react-doctor@latest . --verbose --diff\\\` and check the score did not regress.
+
+## For general cleanup:
+
+Run \\\`npx -y react-doctor@latest . --verbose\\\` to scan the full codebase. Fix errors first, then warnings.`;
+
 const INSTALL_SCRIPT = `#!/bin/bash
 set -e
 
@@ -15,44 +68,12 @@ SKILL_NAME="react-doctor"
 INSTALLED=0
 
 SKILL_CONTENT=$(cat << 'EOF'
----
-name: react-doctor
-description: Run after making React changes to catch issues early. Use when reviewing code, finishing a feature, or fixing bugs in a React project.
-version: 1.0.0
----
-
-# React Doctor
-
-Scans your React codebase for security, performance, correctness, and architecture issues. Outputs a 0-100 score with actionable diagnostics.
-
-## Usage
-
-\\\`\\\`\\\`bash
-npx -y react-doctor@latest . --verbose --diff
-\\\`\\\`\\\`
-
-## Workflow
-
-Run after making changes to catch issues early. Fix errors first, then re-run to verify the score improved.
+${SKILL_MD_CONTENT}
 EOF
 )
 
 AGENTS_CONTENT=$(cat << 'EOF'
-# React Doctor
-
-Run after making React changes to catch issues early. Use when reviewing code, finishing a feature, or fixing bugs in a React project.
-
-Scans your React codebase for security, performance, correctness, and architecture issues. Outputs a 0-100 score with actionable diagnostics.
-
-## Usage
-
-\\\`\\\`\\\`bash
-npx -y react-doctor@latest . --verbose --diff
-\\\`\\\`\\\`
-
-## Workflow
-
-Run after making changes to catch issues early. Fix errors first, then re-run to verify the score improved.
+${AGENTS_MD_CONTENT}
 EOF
 )
 

@@ -336,3 +336,186 @@ export const jsFlatmapFilter: Rule = {
     },
   }),
 };
+
+const PROPERTY_ACCESS_REPEAT_THRESHOLD = 3;
+
+const buildMemberAccessKey = (node: EsTreeNode): string | null => {
+  if (node.type === "Identifier") return node.name;
+  if (node.type === "ThisExpression") return "this";
+  if (node.type !== "MemberExpression" || node.computed) return null;
+  const objectKey = buildMemberAccessKey(node.object);
+  if (!objectKey) return null;
+  if (node.property?.type !== "Identifier") return null;
+  return `${objectKey}.${node.property.name}`;
+};
+
+// HACK: detect repeated deep `obj.a.b.c` reads inside the same loop —
+// JS engines can sometimes optimize, but reads through proxies, getters,
+// or hot user-code paths often benefit from caching the access in a const
+// at the top of the loop body. We require a member-expression depth ≥ 2
+// (two dots) and ≥ 3 occurrences in the same loop block to fire.
+export const jsCachePropertyAccess: Rule = {
+  create: (context: RuleContext) => {
+    const inspectLoopBody = (loopBody: EsTreeNode): void => {
+      const counts = new Map<string, { count: number; firstNode: EsTreeNode }>();
+      walkAst(loopBody, (child: EsTreeNode) => {
+        if (child.type !== "MemberExpression") return;
+        if (child.computed) return;
+        // Skip if this MemberExpression is itself nested inside another (only
+        // count the deepest reference per chain).
+        if (child.parent?.type === "MemberExpression" && child.parent.object === child) return;
+        const key = buildMemberAccessKey(child);
+        if (!key) return;
+        if (key.split(".").length < 3) return;
+        const existing = counts.get(key);
+        if (existing) {
+          existing.count++;
+        } else {
+          counts.set(key, { count: 1, firstNode: child });
+        }
+      });
+
+      for (const [key, { count, firstNode }] of counts) {
+        if (count >= PROPERTY_ACCESS_REPEAT_THRESHOLD) {
+          context.report({
+            node: firstNode,
+            message: `${key} is read ${count} times inside this loop — hoist into a const at the top of the loop body`,
+          });
+        }
+      }
+    };
+
+    const handleLoop = (node: EsTreeNode): void => {
+      if (node.body) inspectLoopBody(node.body);
+    };
+
+    return {
+      ForStatement: handleLoop,
+      ForInStatement: handleLoop,
+      ForOfStatement: handleLoop,
+      WhileStatement: handleLoop,
+      DoWhileStatement: handleLoop,
+    };
+  },
+};
+
+// HACK: when comparing two arrays element-by-element via .every / .some /
+// .reduce against another array, a length mismatch is the cheapest possible
+// shortcut. e.g. `a.length === b.length && a.every((x, i) => x === b[i])`
+// runs the every-loop only when lengths match.
+export const jsLengthCheckFirst: Rule = {
+  create: (context: RuleContext) => ({
+    CallExpression(node: EsTreeNode) {
+      if (node.callee?.type !== "MemberExpression") return;
+      if (node.callee.property?.type !== "Identifier") return;
+      if (node.callee.property.name !== "every") return;
+
+      const callback = node.arguments?.[0];
+      if (callback?.type !== "ArrowFunctionExpression" && callback?.type !== "FunctionExpression") {
+        return;
+      }
+      const params = callback.params ?? [];
+      if (params.length < 2) return; // need (item, index, ...) to address other array
+
+      // Look for `other[index]` access in the body, suggesting elementwise compare.
+      let referencesOtherArrayByIndex = false;
+      walkAst(callback.body, (child: EsTreeNode) => {
+        if (referencesOtherArrayByIndex) return;
+        if (
+          child.type === "MemberExpression" &&
+          child.computed &&
+          child.property?.type === "Identifier" &&
+          params[1]?.type === "Identifier" &&
+          child.property.name === params[1].name
+        ) {
+          referencesOtherArrayByIndex = true;
+        }
+      });
+
+      if (!referencesOtherArrayByIndex) return;
+
+      // Walk up to ensure we're not already inside a length-check guard.
+      let guard: EsTreeNode | null = node.parent ?? null;
+      while (guard && guard.type !== "LogicalExpression" && guard.type !== "IfStatement") {
+        guard = guard.parent ?? null;
+      }
+      if (guard?.type === "LogicalExpression" && guard.operator === "&&") {
+        const left = guard.left;
+        if (
+          left?.type === "BinaryExpression" &&
+          left.operator === "===" &&
+          (isMemberProperty(left.left, "length") || isMemberProperty(left.right, "length"))
+        ) {
+          return;
+        }
+      }
+
+      context.report({
+        node,
+        message:
+          ".every() over an array compared to another array — short-circuit with `a.length === b.length && a.every(...)` so unequal-length arrays exit immediately",
+      });
+    },
+  }),
+};
+
+// HACK: `new Intl.NumberFormat()` / `Intl.DateTimeFormat()` is expensive
+// (dozens of allocations per locale lookup). Allocating it inside a render
+// function or hot loop tanks scroll/list perf. Hoist to module scope or
+// wrap in useMemo.
+const INTL_CLASSES = new Set([
+  "NumberFormat",
+  "DateTimeFormat",
+  "Collator",
+  "RelativeTimeFormat",
+  "ListFormat",
+  "PluralRules",
+  "Segmenter",
+  "DisplayNames",
+]);
+
+const isIntlNewExpression = (node: EsTreeNode): boolean => {
+  if (node.type !== "NewExpression") return false;
+  const callee = node.callee;
+  if (
+    callee?.type === "MemberExpression" &&
+    callee.object?.type === "Identifier" &&
+    callee.object.name === "Intl" &&
+    callee.property?.type === "Identifier" &&
+    INTL_CLASSES.has(callee.property.name)
+  ) {
+    return true;
+  }
+  return false;
+};
+
+export const jsHoistIntl: Rule = {
+  create: (context: RuleContext) => ({
+    NewExpression(node: EsTreeNode) {
+      if (!isIntlNewExpression(node)) return;
+      // Walk up: if any enclosing function is a function/arrow, this is in
+      // a function body. Module-scope `new Intl.X()` is fine; we only flag
+      // when wrapped in a function (likely called per render or per item).
+      let cursor: EsTreeNode | null = node.parent ?? null;
+      let inFunctionBody = false;
+      while (cursor) {
+        if (
+          cursor.type === "FunctionDeclaration" ||
+          cursor.type === "FunctionExpression" ||
+          cursor.type === "ArrowFunctionExpression"
+        ) {
+          inFunctionBody = true;
+          break;
+        }
+        cursor = cursor.parent ?? null;
+      }
+      if (!inFunctionBody) return;
+
+      const className = node.callee.property?.name ?? "Intl";
+      context.report({
+        node,
+        message: `new Intl.${className}() inside a function — hoist to module scope or wrap in useMemo so it isn't recreated each call`,
+      });
+    },
+  }),
+};

@@ -8,9 +8,10 @@ import {
   ERROR_PREVIEW_LENGTH_CHARS,
   JSX_FILE_PATTERN,
   OXLINT_MAX_FILES_PER_BATCH,
+  PROXY_OUTPUT_MAX_BYTES,
   SPAWN_ARGS_MAX_LENGTH_CHARS,
 } from "../constants.js";
-import { createOxlintConfig } from "../oxlint-config.js";
+import { ALL_REACT_DOCTOR_RULE_KEYS, createOxlintConfig } from "../oxlint-config.js";
 import type { CleanedDiagnostic, Diagnostic, Framework, OxlintOutput } from "../types.js";
 import { neutralizeDisableDirectives } from "./neutralize-disable-directives.js";
 
@@ -20,8 +21,9 @@ const PLUGIN_CATEGORY_MAP: Record<string, string> = {
   react: "Correctness",
   "react-hooks": "Correctness",
   "react-hooks-js": "React Compiler",
-  "react-perf": "Performance",
+  "react-doctor": "Other",
   "jsx-a11y": "Accessibility",
+  knip: "Dead Code",
 };
 
 const RULE_CATEGORY_MAP: Record<string, string> = {
@@ -29,24 +31,37 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/no-fetch-in-effect": "State & Effects",
   "react-doctor/no-cascading-set-state": "State & Effects",
   "react-doctor/no-effect-event-handler": "State & Effects",
+  "react-doctor/no-effect-event-in-deps": "State & Effects",
+  "react-doctor/no-prop-callback-in-effect": "State & Effects",
   "react-doctor/no-derived-useState": "State & Effects",
   "react-doctor/prefer-useReducer": "State & Effects",
   "react-doctor/rerender-lazy-state-init": "Performance",
   "react-doctor/rerender-functional-setstate": "Performance",
   "react-doctor/rerender-dependencies": "State & Effects",
+  "react-doctor/rerender-state-only-in-handlers": "Performance",
 
   "react-doctor/no-generic-handler-names": "Architecture",
   "react-doctor/no-giant-component": "Architecture",
+  "react-doctor/no-many-boolean-props": "Architecture",
+  "react-doctor/no-react19-deprecated-apis": "Architecture",
+  "react-doctor/no-render-prop-children": "Architecture",
   "react-doctor/no-render-in-render": "Architecture",
   "react-doctor/no-nested-component-definition": "Correctness",
+  "react-doctor/react-compiler-destructure-method": "Architecture",
 
   "react-doctor/no-usememo-simple-expression": "Performance",
   "react-doctor/no-layout-property-animation": "Performance",
   "react-doctor/rerender-memo-with-default-value": "Performance",
+  "react-doctor/rerender-memo-before-early-return": "Performance",
+  "react-doctor/rerender-transitions-scroll": "Performance",
+  "react-doctor/async-defer-await": "Performance",
   "react-doctor/rendering-animate-svg-wrapper": "Performance",
+  "react-doctor/rendering-hoist-jsx": "Performance",
+  "react-doctor/rendering-hydration-mismatch-time": "Correctness",
   "react-doctor/rendering-usetransition-loading": "Performance",
   "react-doctor/rendering-hydration-no-flicker": "Performance",
   "react-doctor/rendering-script-defer-async": "Performance",
+  "react-doctor/no-inline-prop-on-memo-component": "Performance",
 
   "react-doctor/no-transition-all": "Performance",
   "react-doctor/no-global-css-variable-animation": "Performance",
@@ -57,6 +72,7 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/no-secrets-in-client-code": "Security",
 
   "react-doctor/no-barrel-import": "Bundle Size",
+  "react-doctor/no-dynamic-import-path": "Bundle Size",
   "react-doctor/no-full-lodash-import": "Bundle Size",
   "react-doctor/no-moment": "Bundle Size",
   "react-doctor/prefer-dynamic-import": "Bundle Size",
@@ -64,8 +80,12 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/no-undeferred-third-party": "Bundle Size",
 
   "react-doctor/no-array-index-as-key": "Correctness",
+  "react-doctor/no-polymorphic-children": "Architecture",
   "react-doctor/rendering-conditional-render": "Correctness",
+  "react-doctor/rendering-svg-precision": "Performance",
   "react-doctor/no-prevent-default": "Correctness",
+  "react-doctor/no-document-start-view-transition": "Correctness",
+  "react-doctor/no-flush-sync": "Performance",
   "react-doctor/nextjs-no-img-element": "Next.js",
   "react-doctor/nextjs-async-client-component": "Next.js",
   "react-doctor/nextjs-no-a-element": "Next.js",
@@ -85,8 +105,14 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
 
   "react-doctor/server-auth-actions": "Server",
   "react-doctor/server-after-nonblocking": "Server",
+  "react-doctor/server-no-mutable-module-state": "Server",
+  "react-doctor/server-cache-with-object-literal": "Server",
+  "react-doctor/server-hoist-static-io": "Server",
+  "react-doctor/server-dedup-props": "Server",
+  "react-doctor/server-sequential-independent-await": "Server",
 
   "react-doctor/client-passive-event-listeners": "Performance",
+  "react-doctor/client-localstorage-no-version": "Correctness",
 
   "react-doctor/query-stable-query-client": "TanStack Query",
   "react-doctor/query-no-rest-destructuring": "TanStack Query",
@@ -112,6 +138,20 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/no-long-transition-duration": "Performance",
 
   "react-doctor/js-flatmap-filter": "Performance",
+  "react-doctor/js-combine-iterations": "Performance",
+  "react-doctor/js-tosorted-immutable": "Performance",
+  "react-doctor/js-hoist-regexp": "Performance",
+  "react-doctor/js-hoist-intl": "Performance",
+  "react-doctor/js-cache-property-access": "Performance",
+  "react-doctor/js-length-check-first": "Performance",
+  "react-doctor/js-min-max-loop": "Performance",
+  "react-doctor/js-set-map-lookups": "Performance",
+  "react-doctor/js-batch-dom-css": "Performance",
+  "react-doctor/js-index-maps": "Performance",
+  "react-doctor/js-cache-storage": "Performance",
+  "react-doctor/js-early-exit": "Performance",
+
+  "react-doctor/no-eval": "Security",
 
   "react-doctor/async-parallel": "Performance",
 
@@ -123,6 +163,21 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/rn-no-legacy-shadow-styles": "React Native",
   "react-doctor/rn-prefer-reanimated": "React Native",
   "react-doctor/rn-no-single-element-style-array": "React Native",
+  "react-doctor/rn-prefer-pressable": "React Native",
+  "react-doctor/rn-prefer-expo-image": "React Native",
+  "react-doctor/rn-no-non-native-navigator": "React Native",
+  "react-doctor/rn-no-scroll-state": "React Native",
+  "react-doctor/rn-no-scrollview-mapped-list": "React Native",
+  "react-doctor/rn-no-inline-object-in-list-item": "React Native",
+  "react-doctor/rn-animate-layout-property": "React Native",
+  "react-doctor/rn-prefer-content-inset-adjustment": "React Native",
+  "react-doctor/rn-pressable-shared-value-mutation": "React Native",
+  "react-doctor/rn-list-data-mapped": "React Native",
+  "react-doctor/rn-list-callback-per-row": "React Native",
+  "react-doctor/rn-animation-reaction-as-derived": "React Native",
+  "react-doctor/rn-bottom-sheet-prefer-native": "React Native",
+  "react-doctor/rn-scrollview-dynamic-padding": "React Native",
+  "react-doctor/rn-style-prefer-boxshadow": "React Native",
 
   "react-doctor/tanstack-start-route-property-order": "TanStack Start",
   "react-doctor/tanstack-start-no-direct-fetch-in-loader": "TanStack Start",
@@ -159,11 +214,21 @@ const RULE_HELP_MAP: Record<string, string> = {
     "Use the callback form: `setState(prev => prev + 1)` to always read the latest value",
   "rerender-dependencies":
     "Extract to a useMemo, useRef, or module-level constant so the reference is stable",
+  "no-effect-event-in-deps":
+    "Call the useEffectEvent callback inside the effect body without listing it; its identity is intentionally unstable",
+  "no-prop-callback-in-effect":
+    "Lift the shared state into a Provider so both sides read the same source — no useEffect-driven sync needed",
 
   "no-generic-handler-names":
     "Rename to describe the action: e.g. `handleSubmit` → `saveUserProfile`, `handleClick` → `toggleSidebar`",
   "no-giant-component":
     "Extract logical sections into focused components: `<UserHeader />`, `<UserActions />`, etc.",
+  "no-many-boolean-props":
+    "Split into compound components or named variants: `<Button.Primary />`, `<DialogConfirm />` instead of stacking `isPrimary`, `isConfirm` flags",
+  "no-react19-deprecated-apis":
+    "Pass `ref` as a regular prop on function components — `forwardRef` is no longer needed in React 19+. Replace `useContext(X)` with `use(X)` for branch-aware context reads.",
+  "no-render-prop-children":
+    "Replace `renderXxx` props with compound subcomponents (e.g. `<Modal.Header>`) or `children` so the parent doesn't dictate every customization point",
   "no-render-in-render":
     "Extract to a named component: `const ListItem = ({ item }) => <div>{item.name}</div>`",
   "no-nested-component-definition":
@@ -177,12 +242,44 @@ const RULE_HELP_MAP: Record<string, string> = {
     "Move to module scope: `const EMPTY_ITEMS: Item[] = []` then use as the default value",
   "rendering-animate-svg-wrapper":
     "Wrap the SVG: `<motion.div animate={...}><svg>...</svg></motion.div>`",
+  "rendering-hoist-jsx":
+    "Move the static JSX to module scope: `const ICON = <svg>...</svg>` outside the component so it isn't recreated each render",
+  "rerender-memo-before-early-return":
+    "Extract the JSX into a memoized child component so the parent's early return short-circuits before the child renders",
+  "rerender-transitions-scroll":
+    "Wrap the setState in startTransition (mark as non-urgent), use useDeferredValue, or stash in a ref + rAF throttle so scroll/pointer events don't trigger a re-render per fire",
+  "rerender-state-only-in-handlers":
+    "Replace useState with useRef when the value is only mutated and never read in render — `ref.current = ...` updates without re-rendering the component",
+  "async-defer-await":
+    "Move the `await` after the synchronous early-return guard so the skip path stays fast",
+  "react-compiler-destructure-method":
+    "Destructure the method up front: `const { push } = useRouter()` then call `push(...)` directly — clearer dependency graph and easier for React Compiler to memoize",
+  "client-localstorage-no-version":
+    'Bake a version into the storage key (e.g. "myKey:v1"); a future schema change can ignore old data instead of crashing on it',
+  "server-sequential-independent-await":
+    "Wrap independent awaits in `Promise.all([...])` so they race instead of waterfalling — second call doesn't depend on the first",
+  "rn-list-callback-per-row":
+    "Hoist the handler with useCallback at list scope and pass the row id as a primitive prop, so the row's memo() shallow-compare actually hits",
+  "rn-style-prefer-boxshadow":
+    'Use the cross-platform CSS `boxShadow` string (RN v7+): `boxShadow: "0 2px 8px rgba(0,0,0,0.1)"` instead of platform-specific shadow*/elevation keys',
+  "rendering-hydration-mismatch-time":
+    "Wrap dynamic time/random values in useEffect+useState (client-only) or add suppressHydrationWarning to the parent if intentional",
+  "no-polymorphic-children":
+    "Expose explicit subcomponents (`<Button.Text>`, `<Button.Icon>`) so consumers don't need to switch on `typeof children`",
+  "rendering-svg-precision":
+    "Truncate path/points/transform decimals to 1–2 digits — sub-pixel precision adds bytes with no visible difference",
+  "no-document-start-view-transition":
+    "Render a <ViewTransition> component and update inside startTransition / useDeferredValue — React calls startViewTransition for you",
+  "no-flush-sync":
+    "Use startTransition for non-urgent updates — flushSync forces a sync flush that skips View Transitions and concurrent rendering",
   "rendering-usetransition-loading":
     "Replace with `const [isPending, startTransition] = useTransition()` — avoids a re-render for the loading state",
   "rendering-hydration-no-flicker":
     "Use `useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)` or add `suppressHydrationWarning` to the element",
   "rendering-script-defer-async":
     'Add `defer` for DOM-dependent scripts or `async` for independent ones (analytics). In Next.js, use `<Script strategy="afterInteractive" />` instead',
+  "no-inline-prop-on-memo-component":
+    "Hoist the inline `() => ...` / `[]` / `{}` to a stable reference (useMemo, useCallback, or module scope) so the memoized child doesn't re-render every parent render",
 
   "no-transition-all":
     'List specific properties: `transition: "opacity 200ms, transform 200ms"` — or in Tailwind use `transition-colors`, `transition-opacity`, or `transition-transform`',
@@ -200,6 +297,8 @@ const RULE_HELP_MAP: Record<string, string> = {
 
   "no-barrel-import":
     "Import from the direct path: `import { Button } from './components/Button'` instead of `./components`",
+  "no-dynamic-import-path":
+    "Use a string-literal path: `import('./feature/heavy.js')` so the bundler can split this chunk",
   "no-full-lodash-import":
     "Import the specific function: `import debounce from 'lodash/debounce'` — saves ~70kb",
   "no-moment":
@@ -286,6 +385,14 @@ const RULE_HELP_MAP: Record<string, string> = {
     "Add `const session = await auth()` at the top and throw/redirect if unauthorized before any data access",
   "server-after-nonblocking":
     "`import { after } from 'next/server'` then wrap: `after(() => analytics.track(...))` — response isn't blocked",
+  "server-no-mutable-module-state":
+    "Move per-request data into the action body, headers/cookies, or a request-scope (React.cache, AsyncLocalStorage). Module-scope `let`/`var` is shared across requests.",
+  "server-cache-with-object-literal":
+    "Pass primitives to React.cache()-wrapped functions — argument identity (not deep equality) is the dedup key, so a fresh `{}` per render bypasses the cache",
+  "server-hoist-static-io":
+    "Hoist the read to module scope: `const FONT_DATA = await fetch(new URL('./fonts/Inter.ttf', import.meta.url)).then(r => r.arrayBuffer())` runs once at module load",
+  "server-dedup-props":
+    "Pass the source array once and derive the projection on the client — passing both doubles RSC serialization bytes",
 
   "client-passive-event-listeners":
     "Add `{ passive: true }` as the third argument: `addEventListener('scroll', handler, { passive: true })`",
@@ -305,6 +412,33 @@ const RULE_HELP_MAP: Record<string, string> = {
 
   "js-flatmap-filter":
     "Use `.flatMap(item => condition ? [value] : [])` — transforms and filters in a single pass instead of creating an intermediate array",
+  "js-hoist-intl":
+    "Hoist `new Intl.NumberFormat(...)` to module scope or wrap in `useMemo` — Intl constructors allocate dozens of objects per locale lookup",
+  "js-cache-property-access":
+    "Hoist the deep member access into a const at the top of the loop body: `const { x, y } = obj.deeply.nested`",
+  "js-length-check-first":
+    "Short-circuit with `a.length === b.length && a.every((x, i) => x === b[i])` — unequal-length arrays exit immediately",
+  "js-combine-iterations":
+    "Combine `.map().filter()` (or similar chains) into a single pass with `.reduce()` or a `for...of` loop to avoid iterating the array twice",
+  "js-tosorted-immutable":
+    "Use `array.toSorted()` (ES2023) instead of `[...array].sort()` for immutable sorting without the spread allocation",
+  "js-hoist-regexp":
+    "Hoist `new RegExp(...)` (or large regex literals) to a module-level constant so it isn't recompiled on every loop iteration",
+  "js-min-max-loop":
+    "Use `Math.min(...array)` / `Math.max(...array)` instead of sorting just to read the first or last element",
+  "js-set-map-lookups":
+    "Use a `Set` or `Map` for repeated membership tests / keyed lookups — `Array.includes`/`find` is O(n) per call",
+  "js-batch-dom-css":
+    "Batch DOM/CSS reads and writes — interleaving them inside a loop causes layout thrashing. Read first, then write",
+  "js-index-maps":
+    "Build an index `Map` once outside the loop instead of `array.find(...)` inside it",
+  "js-cache-storage":
+    "Cache repeated `localStorage`/`sessionStorage` reads in a local variable — each access serializes/deserializes",
+  "js-early-exit":
+    "Add an early `return` / `continue` to flatten deep nesting and short-circuit when the predicate is already known",
+
+  "no-eval":
+    "Use `JSON.parse` for serialized data, `Function(...)` (still careful) for trusted templates, or refactor to avoid dynamic code execution",
 
   "async-parallel":
     "Use `const [a, b] = await Promise.all([fetchA(), fetchB()])` to run independent operations concurrently",
@@ -325,6 +459,32 @@ const RULE_HELP_MAP: Record<string, string> = {
     "Use `import Animated from 'react-native-reanimated'` — animations run on the UI thread instead of the JS thread",
   "rn-no-single-element-style-array":
     "Use `style={value}` instead of `style={[value]}` — single-element arrays add unnecessary allocation",
+  "rn-prefer-pressable":
+    "Use `<Pressable>` from react-native (or react-native-gesture-handler) instead of legacy Touchable* components",
+  "rn-prefer-expo-image":
+    "Use `<Image>` from `expo-image` instead of `react-native` — same prop API, plus disk + memory caching, placeholders, and crossfades",
+  "rn-no-non-native-navigator":
+    "Use `@react-navigation/native-stack` (or `native-tabs` in v7+) for platform-native transitions and gestures",
+  "rn-no-scroll-state":
+    "Track scroll position with a Reanimated shared value (`useAnimatedScrollHandler`) or a ref — `setState` on every scroll event causes re-render storms",
+  "rn-no-scrollview-mapped-list":
+    "Use FlashList, LegendList, or FlatList — `<ScrollView>{items.map(...)}</ScrollView>` mounts every row in memory",
+  "rn-no-inline-object-in-list-item":
+    "Hoist style/object props outside renderItem (StyleSheet.create, useMemo at list scope, or pass primitives) so memo() row components stop bailing",
+  "rn-animate-layout-property":
+    "Animate `transform: [{ translateX/Y }, { scale }]` and `opacity` instead of layout props — layout runs on the JS thread; transform/opacity run on the GPU compositor",
+  "rn-prefer-content-inset-adjustment":
+    'Drop the SafeAreaView wrapper and set `contentInsetAdjustmentBehavior="automatic"` on the ScrollView for native safe-area handling',
+  "rn-pressable-shared-value-mutation":
+    "Wrap in <GestureDetector gesture={Gesture.Tap()...}> so the press animation runs on the UI thread instead of bouncing across the JS bridge",
+  "rn-list-data-mapped":
+    "Wrap the projection in `useMemo(() => items.map(...), [items])` so the list's `data` prop has a stable reference across parent renders",
+  "rn-animation-reaction-as-derived":
+    "Replace useAnimatedReaction with `useDerivedValue(() => ..., [deps])` — shorter, native dependency tracking, no side-effect implication",
+  "rn-bottom-sheet-prefer-native":
+    'Use `<Modal presentationStyle="formSheet">` (RN v7+) for native gesture handling and snap points',
+  "rn-scrollview-dynamic-padding":
+    "Use `contentInset={{ bottom: dynamicValue }}` — the OS applies it as an offset without reflowing the scroll content",
 
   "tanstack-start-route-property-order":
     "Follow the order: params/validateSearch → loaderDeps → context → beforeLoad → loader → head. See https://tanstack.com/router/latest/docs/eslint/create-route-property-order",
@@ -433,6 +593,23 @@ const batchIncludePaths = (baseArgs: string[], includePaths: string[]): string[]
   return batches;
 };
 
+// HACK: Sanitize child env so a developer's NODE_OPTIONS=--inspect (or
+// --max-old-space-size=128, etc.) doesn't leak into oxlint and either spawn a
+// debugger port or starve it of memory. We also drop npm_config_* lifecycle
+// vars to keep oxlint from picking up package-manager state. PATH, HOME,
+// NODE_ENV, NODE_PATH, etc. pass through unchanged.
+const SANITIZED_ENV: NodeJS.ProcessEnv = (() => {
+  const sanitized: NodeJS.ProcessEnv = {};
+  for (const [name, value] of Object.entries(process.env)) {
+    if (name === "NODE_OPTIONS" || name === "NODE_DEBUG") continue;
+    if (name.startsWith("npm_config_")) continue;
+    sanitized[name] = value;
+  }
+  return sanitized;
+})();
+
+const OXLINT_SPAWN_TIMEOUT_MS = 5 * 60_000;
+
 const spawnOxlint = (
   args: string[],
   rootDirectory: string,
@@ -441,16 +618,64 @@ const spawnOxlint = (
   new Promise<string>((resolve, reject) => {
     const child = spawn(nodeBinaryPath, args, {
       cwd: rootDirectory,
+      env: SANITIZED_ENV,
     });
+
+    const timeoutHandle = setTimeout(() => {
+      child.kill("SIGKILL");
+      reject(
+        new Error(
+          `oxlint did not return within ${OXLINT_SPAWN_TIMEOUT_MS / 1000}s — please report`,
+        ),
+      );
+    }, OXLINT_SPAWN_TIMEOUT_MS);
+    timeoutHandle.unref?.();
 
     const stdoutBuffers: Buffer[] = [];
     const stderrBuffers: Buffer[] = [];
+    let stdoutByteCount = 0;
+    let stderrByteCount = 0;
+    let didKillForSize = false;
 
-    child.stdout.on("data", (buffer: Buffer) => stdoutBuffers.push(buffer));
-    child.stderr.on("data", (buffer: Buffer) => stderrBuffers.push(buffer));
+    const killIfTooLarge = (incomingBytes: number, isStdout: boolean): boolean => {
+      if (isStdout) {
+        stdoutByteCount += incomingBytes;
+      } else {
+        stderrByteCount += incomingBytes;
+      }
+      if (stdoutByteCount + stderrByteCount > PROXY_OUTPUT_MAX_BYTES && !didKillForSize) {
+        didKillForSize = true;
+        child.kill("SIGKILL");
+        return true;
+      }
+      return false;
+    };
 
-    child.on("error", (error) => reject(new Error(`Failed to run oxlint: ${error.message}`)));
-    child.on("close", (code, signal) => {
+    child.stdout.on("data", (buffer: Buffer) => {
+      if (didKillForSize) return;
+      stdoutBuffers.push(buffer);
+      killIfTooLarge(buffer.length, true);
+    });
+    child.stderr.on("data", (buffer: Buffer) => {
+      if (didKillForSize) return;
+      stderrBuffers.push(buffer);
+      killIfTooLarge(buffer.length, false);
+    });
+
+    child.on("error", (error) => {
+      clearTimeout(timeoutHandle);
+      reject(new Error(`Failed to run oxlint: ${error.message}`));
+    });
+    child.on("close", (_code, signal) => {
+      clearTimeout(timeoutHandle);
+      if (didKillForSize) {
+        reject(
+          new Error(
+            `oxlint output exceeded ${PROXY_OUTPUT_MAX_BYTES} bytes — scan a smaller subset with --diff or --staged`,
+          ),
+        );
+        return;
+      }
       if (signal) {
         const stderrOutput = Buffer.concat(stderrBuffers).toString("utf-8").trim();
         const hint =
@@ -471,17 +696,30 @@ const spawnOxlint = (
     });
   });
 
+const isOxlintOutput = (value: unknown): value is OxlintOutput => {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as { diagnostics?: unknown };
+  return Array.isArray(candidate.diagnostics);
+};
+
 const parseOxlintOutput = (stdout: string): Diagnostic[] => {
   if (!stdout) return [];
 
-  let output: OxlintOutput;
+  let parsed: unknown;
   try {
-    output = JSON.parse(stdout) as OxlintOutput;
+    parsed = JSON.parse(stdout);
   } catch {
     throw new Error(
       `Failed to parse oxlint output: ${stdout.slice(0, ERROR_PREVIEW_LENGTH_CHARS)}`,
     );
   }
+
+  if (!isOxlintOutput(parsed)) {
+    throw new Error(
+      `Unexpected oxlint output shape: ${stdout.slice(0, ERROR_PREVIEW_LENGTH_CHARS)}`,
+    );
+  }
+  const output = parsed;
 
   return output.diagnostics
     .filter((diagnostic) => diagnostic.code && JSX_FILE_PATTERN.test(diagnostic.filename))
@@ -505,32 +743,104 @@ const parseOxlintOutput = (stdout: string): Diagnostic[] => {
     });
 };
 
-export const runOxlint = async (
-  rootDirectory: string,
-  hasTypeScript: boolean,
-  framework: Framework,
-  hasReactCompiler: boolean,
-  includePaths?: string[],
-  nodeBinaryPath: string = process.execPath,
-  customRulesOnly = false,
-): Promise<Diagnostic[]> => {
+const TSCONFIG_FILENAMES = ["tsconfig.json", "tsconfig.base.json"];
+
+const resolveTsConfigRelativePath = (rootDirectory: string): string | null => {
+  for (const filename of TSCONFIG_FILENAMES) {
+    if (fs.existsSync(path.join(rootDirectory, filename))) {
+      return `./${filename}`;
+    }
+  }
+  return null;
+};
+
+interface RunOxlintOptions {
+  rootDirectory: string;
+  hasTypeScript: boolean;
+  framework: Framework;
+  hasReactCompiler: boolean;
+  hasTanStackQuery: boolean;
+  includePaths?: string[];
+  nodeBinaryPath?: string;
+  customRulesOnly?: boolean;
+}
+
+let didValidateRuleRegistration = false;
+
+const validateRuleRegistration = (): void => {
+  if (didValidateRuleRegistration) return;
+  didValidateRuleRegistration = true;
+  const missingHelp: string[] = [];
+  const missingCategory: string[] = [];
+  for (const fullKey of ALL_REACT_DOCTOR_RULE_KEYS) {
+    const ruleName = fullKey.replace(/^react-doctor\//, "");
+    if (!(fullKey in RULE_CATEGORY_MAP)) {
+      missingCategory.push(fullKey);
+    }
+    if (!(ruleName in RULE_HELP_MAP)) {
+      missingHelp.push(fullKey);
+    }
+  }
+  if (missingCategory.length > 0 || missingHelp.length > 0) {
+    const detail = [
+      missingCategory.length > 0
+        ? `Missing RULE_CATEGORY_MAP entries: ${missingCategory.join(", ")}`
+        : null,
+      missingHelp.length > 0 ? `Missing RULE_HELP_MAP entries: ${missingHelp.join(", ")}` : null,
+    ]
+      .filter((entry): entry is string => entry !== null)
+      .join("; ");
+    // HACK: warn rather than throw — never block the user's scan over a metadata gap.
+    console.warn(`[react-doctor] rule-registration drift: ${detail}`);
+  }
+};
+
+export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]> => {
+  const {
+    rootDirectory,
+    hasTypeScript,
+    framework,
+    hasReactCompiler,
+    hasTanStackQuery,
+    includePaths,
+    nodeBinaryPath = process.execPath,
+    customRulesOnly = false,
+  } = options;
+
+  validateRuleRegistration();
+
   if (includePaths !== undefined && includePaths.length === 0) {
     return [];
   }
 
-  const configPath = path.join(os.tmpdir(), `react-doctor-oxlintrc-${process.pid}.json`);
+  const configDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-oxlintrc-"));
+  const configPath = path.join(configDirectory, "oxlintrc.json");
   const pluginPath = resolvePluginPath();
-  const config = createOxlintConfig({ pluginPath, framework, hasReactCompiler, customRulesOnly });
+  const config = createOxlintConfig({
+    pluginPath,
+    framework,
+    hasReactCompiler,
+    hasTanStackQuery,
+    customRulesOnly,
+  });
   const restoreDisableDirectives = neutralizeDisableDirectives(rootDirectory, includePaths);
 
   try {
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+    const fileHandle = fs.openSync(configPath, "wx", 0o600);
+    try {
+      fs.writeFileSync(fileHandle, JSON.stringify(config));
+    } finally {
+      fs.closeSync(fileHandle);
+    }
 
     const oxlintBinary = resolveOxlintBinary();
     const baseArgs = [oxlintBinary, "-c", configPath, "--format", "json"];
 
     if (hasTypeScript) {
-      baseArgs.push("--tsconfig", "./tsconfig.json");
+      const tsconfigRelativePath = resolveTsConfigRelativePath(rootDirectory);
+      if (tsconfigRelativePath) {
+        baseArgs.push("--tsconfig", tsconfigRelativePath);
+      }
     }
 
     const fileBatches =
@@ -546,8 +856,6 @@ export const runOxlint = async (
     return allDiagnostics;
   } finally {
     restoreDisableDirectives();
-    if (fs.existsSync(configPath)) {
-      fs.unlinkSync(configPath);
-    }
+    fs.rmSync(configDirectory, { recursive: true, force: true });
   }
 };

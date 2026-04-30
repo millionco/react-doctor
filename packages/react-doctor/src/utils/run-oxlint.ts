@@ -51,8 +51,10 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/no-layout-property-animation": "Performance",
   "react-doctor/rerender-memo-with-default-value": "Performance",
   "react-doctor/rerender-memo-before-early-return": "Performance",
+  "react-doctor/rerender-transitions-scroll": "Performance",
   "react-doctor/rendering-animate-svg-wrapper": "Performance",
   "react-doctor/rendering-hoist-jsx": "Performance",
+  "react-doctor/rendering-hydration-mismatch-time": "Correctness",
   "react-doctor/rendering-usetransition-loading": "Performance",
   "react-doctor/rendering-hydration-no-flicker": "Performance",
   "react-doctor/rendering-script-defer-async": "Performance",
@@ -102,6 +104,8 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/server-after-nonblocking": "Server",
   "react-doctor/server-no-mutable-module-state": "Server",
   "react-doctor/server-cache-with-object-literal": "Server",
+  "react-doctor/server-hoist-static-io": "Server",
+  "react-doctor/server-dedup-props": "Server",
 
   "react-doctor/client-passive-event-listeners": "Performance",
 
@@ -163,6 +167,10 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/rn-animate-layout-property": "React Native",
   "react-doctor/rn-prefer-content-inset-adjustment": "React Native",
   "react-doctor/rn-pressable-shared-value-mutation": "React Native",
+  "react-doctor/rn-list-data-mapped": "React Native",
+  "react-doctor/rn-animation-reaction-as-derived": "React Native",
+  "react-doctor/rn-bottom-sheet-prefer-native": "React Native",
+  "react-doctor/rn-scrollview-dynamic-padding": "React Native",
 
   "react-doctor/tanstack-start-route-property-order": "TanStack Start",
   "react-doctor/tanstack-start-no-direct-fetch-in-loader": "TanStack Start",
@@ -231,6 +239,10 @@ const RULE_HELP_MAP: Record<string, string> = {
     "Move the static JSX to module scope: `const ICON = <svg>...</svg>` outside the component so it isn't recreated each render",
   "rerender-memo-before-early-return":
     "Extract the JSX into a memoized child component so the parent's early return short-circuits before the child renders",
+  "rerender-transitions-scroll":
+    "Wrap the setState in startTransition (mark as non-urgent), use useDeferredValue, or stash in a ref + rAF throttle so scroll/pointer events don't trigger a re-render per fire",
+  "rendering-hydration-mismatch-time":
+    "Wrap dynamic time/random values in useEffect+useState (client-only) or add suppressHydrationWarning to the parent if intentional",
   "no-polymorphic-children":
     "Expose explicit subcomponents (`<Button.Text>`, `<Button.Icon>`) so consumers don't need to switch on `typeof children`",
   "rendering-svg-precision":
@@ -356,6 +368,10 @@ const RULE_HELP_MAP: Record<string, string> = {
     "Move per-request data into the action body, headers/cookies, or a request-scope (React.cache, AsyncLocalStorage). Module-scope `let`/`var` is shared across requests.",
   "server-cache-with-object-literal":
     "Pass primitives to React.cache()-wrapped functions — argument identity (not deep equality) is the dedup key, so a fresh `{}` per render bypasses the cache",
+  "server-hoist-static-io":
+    "Hoist the read to module scope: `const FONT_DATA = await fetch(new URL('./fonts/Inter.ttf', import.meta.url)).then(r => r.arrayBuffer())` runs once at module load",
+  "server-dedup-props":
+    "Pass the source array once and derive the projection on the client — passing both doubles RSC serialization bytes",
 
   "client-passive-event-listeners":
     "Add `{ passive: true }` as the third argument: `addEventListener('scroll', handler, { passive: true })`",
@@ -440,6 +456,14 @@ const RULE_HELP_MAP: Record<string, string> = {
     'Drop the SafeAreaView wrapper and set `contentInsetAdjustmentBehavior="automatic"` on the ScrollView for native safe-area handling',
   "rn-pressable-shared-value-mutation":
     "Wrap in <GestureDetector gesture={Gesture.Tap()...}> so the press animation runs on the UI thread instead of bouncing across the JS bridge",
+  "rn-list-data-mapped":
+    "Wrap the projection in `useMemo(() => items.map(...), [items])` so the list's `data` prop has a stable reference across parent renders",
+  "rn-animation-reaction-as-derived":
+    "Replace useAnimatedReaction with `useDerivedValue(() => ..., [deps])` — shorter, native dependency tracking, no side-effect implication",
+  "rn-bottom-sheet-prefer-native":
+    'Use `<Modal presentationStyle="formSheet">` (RN v7+) for native gesture handling and snap points',
+  "rn-scrollview-dynamic-padding":
+    "Use `contentInset={{ bottom: dynamicValue }}` — the OS applies it as an offset without reflowing the scroll content",
 
   "tanstack-start-route-property-order":
     "Follow the order: params/validateSearch → loaderDeps → context → beforeLoad → loader → head. See https://tanstack.com/router/latest/docs/eslint/create-route-property-order",

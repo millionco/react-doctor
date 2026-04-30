@@ -42,6 +42,10 @@ const REACT_NATIVE_RULES: Record<string, RuleSeverity> = {
   "react-doctor/rn-animate-layout-property": "error",
   "react-doctor/rn-prefer-content-inset-adjustment": "warn",
   "react-doctor/rn-pressable-shared-value-mutation": "warn",
+  "react-doctor/rn-list-data-mapped": "warn",
+  "react-doctor/rn-animation-reaction-as-derived": "warn",
+  "react-doctor/rn-bottom-sheet-prefer-native": "warn",
+  "react-doctor/rn-scrollview-dynamic-padding": "warn",
 };
 
 const TANSTACK_START_RULES: Record<string, RuleSeverity> = {
@@ -165,8 +169,10 @@ const GLOBAL_REACT_DOCTOR_RULES: Record<string, RuleSeverity> = {
   "react-doctor/no-layout-property-animation": "error",
   "react-doctor/rerender-memo-with-default-value": "warn",
   "react-doctor/rerender-memo-before-early-return": "warn",
+  "react-doctor/rerender-transitions-scroll": "warn",
   "react-doctor/rendering-animate-svg-wrapper": "warn",
   "react-doctor/rendering-hoist-jsx": "warn",
+  "react-doctor/rendering-hydration-mismatch-time": "warn",
   "react-doctor/no-inline-prop-on-memo-component": "warn",
   "react-doctor/rendering-hydration-no-flicker": "warn",
   "react-doctor/rendering-script-defer-async": "warn",
@@ -217,6 +223,8 @@ const GLOBAL_REACT_DOCTOR_RULES: Record<string, RuleSeverity> = {
   "react-doctor/server-after-nonblocking": "warn",
   "react-doctor/server-no-mutable-module-state": "error",
   "react-doctor/server-cache-with-object-literal": "warn",
+  "react-doctor/server-hoist-static-io": "warn",
+  "react-doctor/server-dedup-props": "warn",
 
   "react-doctor/client-passive-event-listeners": "warn",
 

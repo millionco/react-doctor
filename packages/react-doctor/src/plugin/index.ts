@@ -86,14 +86,19 @@ import {
   noUsememoSimpleExpression,
   renderingAnimateSvgWrapper,
   renderingHoistJsx,
+  renderingHydrationMismatchTime,
   renderingHydrationNoFlicker,
   renderingScriptDeferAsync,
   renderingUsetransitionLoading,
   rerenderMemoBeforeEarlyReturn,
   rerenderMemoWithDefaultValue,
+  rerenderTransitionsScroll,
 } from "./rules/performance.js";
 import {
   rnAnimateLayoutProperty,
+  rnAnimationReactionAsDerived,
+  rnBottomSheetPreferNative,
+  rnListDataMapped,
   rnNoDeprecatedModules,
   rnNoDimensionsGet,
   rnNoInlineFlatlistRenderitem,
@@ -110,6 +115,7 @@ import {
   rnPreferPressable,
   rnPreferReanimated,
   rnPressableSharedValueMutation,
+  rnScrollviewDynamicPadding,
 } from "./rules/react-native.js";
 import {
   queryMutationMissingInvalidation,
@@ -124,6 +130,8 @@ import {
   serverAfterNonblocking,
   serverAuthActions,
   serverCacheWithObjectLiteral,
+  serverDedupProps,
+  serverHoistStaticIo,
   serverNoMutableModuleState,
 } from "./rules/server.js";
 import {
@@ -185,8 +193,10 @@ const plugin: RulePlugin = {
     "no-layout-property-animation": noLayoutPropertyAnimation,
     "rerender-memo-with-default-value": rerenderMemoWithDefaultValue,
     "rerender-memo-before-early-return": rerenderMemoBeforeEarlyReturn,
+    "rerender-transitions-scroll": rerenderTransitionsScroll,
     "rendering-animate-svg-wrapper": renderingAnimateSvgWrapper,
     "rendering-hoist-jsx": renderingHoistJsx,
+    "rendering-hydration-mismatch-time": renderingHydrationMismatchTime,
     "no-inline-prop-on-memo-component": noInlinePropOnMemoComponent,
     "rendering-hydration-no-flicker": renderingHydrationNoFlicker,
     "rendering-script-defer-async": renderingScriptDeferAsync,
@@ -238,6 +248,8 @@ const plugin: RulePlugin = {
     "server-after-nonblocking": serverAfterNonblocking,
     "server-no-mutable-module-state": serverNoMutableModuleState,
     "server-cache-with-object-literal": serverCacheWithObjectLiteral,
+    "server-hoist-static-io": serverHoistStaticIo,
+    "server-dedup-props": serverDedupProps,
 
     "client-passive-event-listeners": clientPassiveEventListeners,
 
@@ -273,6 +285,10 @@ const plugin: RulePlugin = {
     "rn-animate-layout-property": rnAnimateLayoutProperty,
     "rn-prefer-content-inset-adjustment": rnPreferContentInsetAdjustment,
     "rn-pressable-shared-value-mutation": rnPressableSharedValueMutation,
+    "rn-list-data-mapped": rnListDataMapped,
+    "rn-animation-reaction-as-derived": rnAnimationReactionAsDerived,
+    "rn-bottom-sheet-prefer-native": rnBottomSheetPreferNative,
+    "rn-scrollview-dynamic-padding": rnScrollviewDynamicPadding,
 
     "tanstack-start-route-property-order": tanstackStartRoutePropertyOrder,
     "tanstack-start-no-direct-fetch-in-loader": tanstackStartNoDirectFetchInLoader,

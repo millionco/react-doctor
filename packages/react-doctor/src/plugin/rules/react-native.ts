@@ -648,3 +648,185 @@ export const rnPressableSharedValueMutation: Rule = {
     },
   }),
 };
+
+const VIRTUALIZED_LIST_NAMES = new Set([
+  "FlatList",
+  "FlashList",
+  "LegendList",
+  "SectionList",
+  "VirtualizedList",
+  "Animated.FlatList",
+  "Animated.SectionList",
+]);
+
+// HACK: virtualized lists key off referential equality of `data`. Passing
+// `data={items.map(...)}` allocates a fresh array on every parent render,
+// which forces the list to re-key every row and bust its memo cache,
+// destroying scroll perf. Hoist the transform into a useMemo at list
+// scope or do the projection earlier in the parent.
+export const rnListDataMapped: Rule = {
+  create: (context: RuleContext) => ({
+    JSXOpeningElement(node: EsTreeNode) {
+      const elementName = resolveJsxName(node);
+      if (!elementName || !VIRTUALIZED_LIST_NAMES.has(elementName)) return;
+
+      for (const attr of node.attributes ?? []) {
+        if (attr.type !== "JSXAttribute") continue;
+        if (attr.name?.type !== "JSXIdentifier" || attr.name.name !== "data") continue;
+        if (attr.value?.type !== "JSXExpressionContainer") continue;
+        const expression = attr.value.expression;
+        if (expression?.type !== "CallExpression") continue;
+        if (expression.callee?.type !== "MemberExpression") continue;
+        if (expression.callee.property?.type !== "Identifier") continue;
+        const methodName = expression.callee.property.name;
+        if (methodName !== "map" && methodName !== "filter") continue;
+
+        context.report({
+          node: attr,
+          message: `<${elementName} data={items.${methodName}(...)}> allocates a fresh array per render — wrap in useMemo at list scope so the data reference stays stable across parent renders`,
+        });
+        return;
+      }
+    },
+  }),
+};
+
+// HACK: useAnimatedReaction with a body that does nothing but assign to
+// another shared value (`sv2.value = current`) is essentially what
+// useDerivedValue is for. useDerivedValue is shorter, opts into the
+// proper Reanimated dependency tracking, and avoids the side-effect
+// gloss that useAnimatedReaction implies (it's meant for cross-thread
+// reactions like calling runOnJS, not value derivation).
+export const rnAnimationReactionAsDerived: Rule = {
+  create: (context: RuleContext) => ({
+    CallExpression(node: EsTreeNode) {
+      if (node.callee?.type !== "Identifier" || node.callee.name !== "useAnimatedReaction") return;
+      const reactionFn = node.arguments?.[1];
+      if (!reactionFn) return;
+      if (
+        reactionFn.type !== "ArrowFunctionExpression" &&
+        reactionFn.type !== "FunctionExpression"
+      ) {
+        return;
+      }
+
+      const body = reactionFn.body;
+      let assignmentCount = 0;
+      let firstAssignment: EsTreeNode | null = null;
+      let hasOtherSideEffect = false;
+
+      const inspect = (statementNode: EsTreeNode | null | undefined): void => {
+        if (!statementNode) return;
+        if (statementNode.type === "AssignmentExpression") {
+          if (
+            statementNode.left?.type === "MemberExpression" &&
+            statementNode.left.property?.type === "Identifier" &&
+            statementNode.left.property.name === "value"
+          ) {
+            assignmentCount++;
+            firstAssignment = statementNode;
+            return;
+          }
+        }
+        if (
+          statementNode.type === "CallExpression" &&
+          statementNode.callee?.type === "Identifier" &&
+          statementNode.callee.name === "runOnJS"
+        ) {
+          hasOtherSideEffect = true;
+        }
+      };
+
+      if (body?.type === "BlockStatement") {
+        for (const stmt of body.body ?? []) {
+          if (stmt.type === "ExpressionStatement") inspect(stmt.expression);
+          else hasOtherSideEffect = true;
+        }
+      } else {
+        inspect(body);
+      }
+
+      if (assignmentCount === 1 && !hasOtherSideEffect && firstAssignment) {
+        context.report({
+          node,
+          message:
+            "useAnimatedReaction body is a single shared-value assignment — useDerivedValue is shorter and tracks dependencies natively",
+        });
+      }
+    },
+  }),
+};
+
+const JS_BOTTOM_SHEET_PACKAGES = new Set([
+  "@gorhom/bottom-sheet",
+  "react-native-bottom-sheet",
+  "react-native-modal-bottom-sheet",
+  "react-native-raw-bottom-sheet",
+]);
+
+// HACK: JS-implemented bottom sheets (gorhom/bottom-sheet et al.) do all
+// their gesture handling and animation on the JS thread, which is laggy
+// for the kind of velocity-tracking interactions a bottom sheet needs.
+// React Native v7+ ships a native form sheet via <Modal presentationStyle=
+// "formSheet"> that handles gestures, snap points, and detents on the
+// platform's native modal stack.
+export const rnBottomSheetPreferNative: Rule = {
+  create: (context: RuleContext) => ({
+    ImportDeclaration(node: EsTreeNode) {
+      const source = node.source?.value;
+      if (typeof source !== "string" || !JS_BOTTOM_SHEET_PACKAGES.has(source)) return;
+      context.report({
+        node,
+        message: `${source} is a JS-implemented bottom sheet — for v7+ RN, prefer <Modal presentationStyle="formSheet"> for native gesture handling and snap points`,
+      });
+    },
+  }),
+};
+
+// HACK: dynamic `paddingBottom`/`paddingTop` on `contentContainerStyle`
+// (e.g. `paddingBottom: keyboardHeight`) reflows the entire scroll
+// content every time the value changes — the rows visually shift, and
+// any sticky headers re-pin. The native equivalent is `contentInset`,
+// which the platform applies as an OS-level offset without re-laying out
+// the content.
+export const rnScrollviewDynamicPadding: Rule = {
+  create: (context: RuleContext) => ({
+    JSXOpeningElement(node: EsTreeNode) {
+      const elementName = resolveJsxName(node);
+      if (!elementName) return;
+      if (
+        !SCROLLVIEW_NAMES.has(elementName) &&
+        elementName !== "FlatList" &&
+        elementName !== "FlashList"
+      )
+        return;
+
+      for (const attr of node.attributes ?? []) {
+        if (attr.type !== "JSXAttribute") continue;
+        if (attr.name?.type !== "JSXIdentifier" || attr.name.name !== "contentContainerStyle")
+          continue;
+        if (attr.value?.type !== "JSXExpressionContainer") continue;
+        const expression = attr.value.expression;
+        if (expression?.type !== "ObjectExpression") continue;
+
+        for (const property of expression.properties ?? []) {
+          if (property.type !== "Property") continue;
+          if (property.key?.type !== "Identifier") continue;
+          const key = property.key.name;
+          if (key !== "paddingBottom" && key !== "paddingTop") continue;
+          // Static numeric value is fine — only flag dynamic identifiers /
+          // member expressions that change between renders.
+          const value = property.value;
+          if (!value) continue;
+          if (value.type === "Literal") continue;
+
+          context.report({
+            node: property,
+            message: `Dynamic ${key} on contentContainerStyle reflows the scroll content — use \`contentInset\` (OS-level offset, no relayout) instead`,
+          });
+          return;
+        }
+      }
+    },
+  }),
+};

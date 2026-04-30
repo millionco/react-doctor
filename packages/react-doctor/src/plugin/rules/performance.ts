@@ -627,3 +627,200 @@ export const rerenderMemoBeforeEarlyReturn: Rule = {
     };
   },
 };
+
+const NONDETERMINISTIC_RENDER_PATTERNS: Array<{
+  matches: (node: EsTreeNode) => boolean;
+  display: string;
+}> = [
+  {
+    display: "new Date()",
+    matches: (n) =>
+      n.type === "NewExpression" && n.callee?.type === "Identifier" && n.callee.name === "Date",
+  },
+  {
+    display: "Date.now()",
+    matches: (n) =>
+      n.type === "CallExpression" &&
+      n.callee?.type === "MemberExpression" &&
+      n.callee.object?.type === "Identifier" &&
+      n.callee.object.name === "Date" &&
+      n.callee.property?.type === "Identifier" &&
+      n.callee.property.name === "now",
+  },
+  {
+    display: "Math.random()",
+    matches: (n) =>
+      n.type === "CallExpression" &&
+      n.callee?.type === "MemberExpression" &&
+      n.callee.object?.type === "Identifier" &&
+      n.callee.object.name === "Math" &&
+      n.callee.property?.type === "Identifier" &&
+      n.callee.property.name === "random",
+  },
+  {
+    display: "performance.now()",
+    matches: (n) =>
+      n.type === "CallExpression" &&
+      n.callee?.type === "MemberExpression" &&
+      n.callee.object?.type === "Identifier" &&
+      n.callee.object.name === "performance" &&
+      n.callee.property?.type === "Identifier" &&
+      n.callee.property.name === "now",
+  },
+  {
+    display: "crypto.randomUUID()",
+    matches: (n) =>
+      n.type === "CallExpression" &&
+      n.callee?.type === "MemberExpression" &&
+      n.callee.object?.type === "Identifier" &&
+      n.callee.object.name === "crypto" &&
+      n.callee.property?.type === "Identifier" &&
+      n.callee.property.name === "randomUUID",
+  },
+];
+
+const findOpeningElementOfChild = (jsxNode: EsTreeNode): EsTreeNode | null => {
+  let cursor: EsTreeNode | null = jsxNode.parent ?? null;
+  while (cursor) {
+    if (cursor.type === "JSXElement") return cursor.openingElement;
+    if (cursor.type === "JSXFragment") return null;
+    cursor = cursor.parent ?? null;
+  }
+  return null;
+};
+
+const hasSuppressHydrationWarningAttribute = (openingElement: EsTreeNode | null): boolean => {
+  if (!openingElement) return false;
+  for (const attr of openingElement.attributes ?? []) {
+    if (
+      attr.type === "JSXAttribute" &&
+      attr.name?.type === "JSXIdentifier" &&
+      attr.name.name === "suppressHydrationWarning"
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const HIGH_FREQUENCY_DOM_EVENTS = new Set([
+  "scroll",
+  "mousemove",
+  "wheel",
+  "pointermove",
+  "touchmove",
+  "drag",
+]);
+
+const isAddEventListenerCall = (node: EsTreeNode): boolean => {
+  if (node.type !== "CallExpression") return false;
+  if (node.callee?.type !== "MemberExpression") return false;
+  if (node.callee.property?.type !== "Identifier") return false;
+  if (node.callee.property.name !== "addEventListener") return false;
+  return true;
+};
+
+const handlerCallsSetState = (handler: EsTreeNode): EsTreeNode | null => {
+  if (handler.type !== "ArrowFunctionExpression" && handler.type !== "FunctionExpression") {
+    return null;
+  }
+  let setStateCall: EsTreeNode | null = null;
+  walkAst(handler.body, (child: EsTreeNode) => {
+    if (setStateCall) return;
+    if (
+      child.type === "CallExpression" &&
+      child.callee?.type === "Identifier" &&
+      /^set[A-Z]/.test(child.callee.name)
+    ) {
+      setStateCall = child;
+    }
+  });
+  return setStateCall;
+};
+
+// HACK: scroll, mousemove, wheel, pointermove, and similar high-frequency
+// DOM events fire dozens to hundreds of times per second. Calling
+// `setState` from these handlers triggers a re-render on every event,
+// pegging the JS thread and causing the user-visible jank these
+// listeners were trying to react to. Use `useTransition`/`startTransition`
+// to mark the update as non-urgent (so the browser can interrupt it for
+// input), or stash the value in a ref + raf throttle, or use
+// `useDeferredValue`.
+export const rerenderTransitionsScroll: Rule = {
+  create: (context: RuleContext) => ({
+    CallExpression(node: EsTreeNode) {
+      if (!isAddEventListenerCall(node)) return;
+      const eventArg = node.arguments?.[0];
+      if (eventArg?.type !== "Literal") return;
+      const eventName = eventArg.value;
+      if (typeof eventName !== "string" || !HIGH_FREQUENCY_DOM_EVENTS.has(eventName)) return;
+
+      const handler = node.arguments?.[1];
+      if (!handler) return;
+      const setStateCall = handlerCallsSetState(handler);
+      if (!setStateCall) return;
+
+      // Skip if the setState is already wrapped in startTransition.
+      let cursor: EsTreeNode | null = setStateCall.parent ?? null;
+      while (cursor && cursor !== handler) {
+        if (
+          cursor.type === "CallExpression" &&
+          cursor.callee?.type === "Identifier" &&
+          (cursor.callee.name === "startTransition" ||
+            cursor.callee.name === "requestAnimationFrame" ||
+            cursor.callee.name === "requestIdleCallback")
+        ) {
+          return;
+        }
+        cursor = cursor.parent ?? null;
+      }
+
+      context.report({
+        node: setStateCall,
+        message: `setState in a "${eventName}" handler triggers re-renders at scroll/pointer frequency — wrap in startTransition (mark as non-urgent), use useDeferredValue, or stash in a ref + rAF throttle`,
+      });
+    },
+  }),
+};
+
+// HACK: rendering `new Date()`, `Date.now()`, `Math.random()`, etc.
+// directly inside JSX produces a different value on the server vs the
+// client, causing React's hydration mismatch warning. The fix is either
+// to wrap in `useEffect` + `useState` (so the dynamic value renders
+// only client-side) or to add `suppressHydrationWarning` to the parent
+// element when the mismatch is intentional.
+export const renderingHydrationMismatchTime: Rule = {
+  create: (context: RuleContext) => ({
+    JSXExpressionContainer(node: EsTreeNode) {
+      if (!node.expression) return;
+      const matched = NONDETERMINISTIC_RENDER_PATTERNS.find((pattern) =>
+        pattern.matches(node.expression),
+      );
+      // Direct call as the JSX child expression.
+      if (matched) {
+        const openingElement = findOpeningElementOfChild(node);
+        if (hasSuppressHydrationWarningAttribute(openingElement)) return;
+        context.report({
+          node,
+          message: `${matched.display} in JSX renders differently on server vs client — wrap in useEffect+useState (client-only) or add suppressHydrationWarning to the parent if intentional`,
+        });
+        return;
+      }
+
+      // Method-chained on a Date / Math / etc. — e.g. new Date().toLocaleString().
+      walkAst(node.expression, (child: EsTreeNode) => {
+        for (const pattern of NONDETERMINISTIC_RENDER_PATTERNS) {
+          if (pattern.matches(child)) {
+            const openingElement = findOpeningElementOfChild(node);
+            if (hasSuppressHydrationWarningAttribute(openingElement)) return;
+            context.report({
+              node: child,
+              message: `${pattern.display} reachable from JSX renders differently on server vs client — wrap in useEffect+useState (client-only) or add suppressHydrationWarning to the parent if intentional`,
+            });
+            return;
+          }
+        }
+      });
+    },
+  }),
+};

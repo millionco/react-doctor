@@ -275,6 +275,16 @@ describe("runOxlint", () => {
         ruleSource: "rules/view-transitions.ts",
         category: "Performance",
       },
+      "rendering-hydration-mismatch-time": {
+        fixture: "hydration-and-scroll-issues.tsx",
+        ruleSource: "rules/performance.ts",
+        category: "Correctness",
+      },
+      "rerender-transitions-scroll": {
+        fixture: "hydration-and-scroll-issues.tsx",
+        ruleSource: "rules/performance.ts",
+        category: "Performance",
+      },
     },
     () => basicReactDiagnostics,
   );
@@ -508,6 +518,16 @@ describe("runOxlint", () => {
       },
       "server-cache-with-object-literal": {
         fixture: "app/actions.tsx",
+        ruleSource: "rules/server.ts",
+        category: "Server",
+      },
+      "server-hoist-static-io": {
+        fixture: "app/og/route.tsx",
+        ruleSource: "rules/server.ts",
+        category: "Server",
+      },
+      "server-dedup-props": {
+        fixture: "app/users/page.tsx",
         ruleSource: "rules/server.ts",
         category: "Server",
       },

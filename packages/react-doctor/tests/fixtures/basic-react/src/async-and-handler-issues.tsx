@@ -20,6 +20,20 @@ export const trackAll = (events: string[]) => {
   });
 };
 
+// NEGATIVE case for async-await-in-loop: nested async function inside the
+// loop body — its `await` belongs to the inner function, not the loop.
+// This must NOT trigger the rule (regression coverage for the walkAst
+// skip-subtree fix).
+export const queueAllUsers = async (ids: string[]) => {
+  const callbacks: Array<() => Promise<void>> = [];
+  for (const id of ids) {
+    callbacks.push(async () => {
+      await fetchUser(id);
+    });
+  }
+  return callbacks;
+};
+
 // advanced-event-handler-refs: useEffect re-subscribes when handler prop
 // identity changes.
 export const Ticker = ({ onTick }: { onTick: () => void }) => {

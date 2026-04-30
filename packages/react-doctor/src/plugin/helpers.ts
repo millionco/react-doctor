@@ -10,11 +10,13 @@ import {
 import type { EsTreeNode, RuleVisitors } from "./types.js";
 
 // HACK: AST is acyclic except for `parent` back-references, which we skip.
-// No general-purpose cycle protection (WeakSet) is required as long as our
-// AST sources (oxlint, in-tree custom rules) don't introduce other cycles.
-export const walkAst = (node: EsTreeNode, visitor: (child: EsTreeNode) => void): void => {
+// Visitors may return `false` to prune the subtree below `node` (e.g. to
+// stop walking into nested functions when collecting `await` expressions
+// for the enclosing function only). Returning anything else (including
+// `undefined`, the natural value of statements) continues the walk.
+export const walkAst = (node: EsTreeNode, visitor: (child: EsTreeNode) => boolean | void): void => {
   if (!node || typeof node !== "object") return;
-  visitor(node);
+  if (visitor(node) === false) return;
   for (const key of Object.keys(node)) {
     if (key === "parent") continue;
     const child = node[key];

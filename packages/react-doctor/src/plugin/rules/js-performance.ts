@@ -521,16 +521,19 @@ export const jsHoistIntl: Rule = {
 
 const findFirstAwaitOutsideNestedFunctions = (block: EsTreeNode): EsTreeNode | null => {
   let firstAwait: EsTreeNode | null = null;
-  walkAst(block, (child: EsTreeNode) => {
-    if (firstAwait) return;
+  walkAst(block, (child: EsTreeNode): boolean | void => {
+    if (firstAwait) return false;
     if (
-      child.type === "FunctionDeclaration" ||
-      child.type === "FunctionExpression" ||
-      child.type === "ArrowFunctionExpression"
+      child !== block &&
+      (child.type === "FunctionDeclaration" ||
+        child.type === "FunctionExpression" ||
+        child.type === "ArrowFunctionExpression")
     ) {
       // Don't descend into nested functions — their `await`s belong to
-      // their own async parent, not this loop.
-      return;
+      // their own async parent, not this loop. (`child !== block` so we
+      // still walk the body of the loop callback itself when called with
+      // the callback's body.)
+      return false;
     }
     if (child.type === "AwaitExpression") {
       firstAwait = child;
@@ -616,8 +619,10 @@ export const asyncAwaitInLoop: Rule = {
         if (!callback.async) return;
         const body = callback.body;
         if (!body) return;
-        const targetBody = body.type === "BlockStatement" ? body : body;
-        const firstAwait = findFirstAwaitOutsideNestedFunctions(targetBody);
+        // `body` is either a BlockStatement (block body) or any
+        // expression (concise body, e.g. `async x => fetch(x)`); walkAst
+        // handles both, so we just walk `body` directly.
+        const firstAwait = findFirstAwaitOutsideNestedFunctions(body);
         if (firstAwait) {
           const message =
             methodName === "forEach"

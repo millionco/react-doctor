@@ -374,26 +374,61 @@ export const rerenderDependencies: Rule = {
 // useCallback dep array fundamentally misuses the API and would cause the
 // effect to re-run constantly. The recommended pattern is to call the
 // effect-event from inside the effect body without listing it as a dep.
+//
+// Bindings are scoped per-component using a stack so a `useEffectEvent`
+// binding named `onChange` in ComponentA doesn't taint a regular variable
+// `onChange` in ComponentB in the same file.
 export const noEffectEventInDeps: Rule = {
   create: (context: RuleContext) => {
-    const effectEventBindings = new Set<string>();
+    const componentBindingStack: Array<Set<string>> = [];
+
+    const isEffectEventBinding = (name: string): boolean => {
+      for (let i = componentBindingStack.length - 1; i >= 0; i--) {
+        if (componentBindingStack[i].has(name)) return true;
+      }
+      return false;
+    };
+
+    const enterComponent = (): void => {
+      componentBindingStack.push(new Set());
+    };
+    const exitComponent = (): void => {
+      componentBindingStack.pop();
+    };
 
     return {
+      FunctionDeclaration(node: EsTreeNode) {
+        if (!node.id?.name || !isUppercaseName(node.id.name)) return;
+        enterComponent();
+      },
+      "FunctionDeclaration:exit"(node: EsTreeNode) {
+        if (!node.id?.name || !isUppercaseName(node.id.name)) return;
+        exitComponent();
+      },
       VariableDeclarator(node: EsTreeNode) {
+        if (isComponentAssignment(node)) {
+          enterComponent();
+          return;
+        }
+        if (componentBindingStack.length === 0) return;
         if (node.id?.type !== "Identifier") return;
         const init = node.init;
         if (!init || init.type !== "CallExpression") return;
         if (!isHookCall(init, "useEffectEvent")) return;
-        effectEventBindings.add(node.id.name);
+        componentBindingStack[componentBindingStack.length - 1].add(node.id.name);
+      },
+      "VariableDeclarator:exit"(node: EsTreeNode) {
+        if (isComponentAssignment(node)) exitComponent();
       },
       CallExpression(node: EsTreeNode) {
         if (!isHookCall(node, HOOKS_WITH_DEPS) || node.arguments.length < 2) return;
+        if (componentBindingStack.length === 0) return;
         const depsNode = node.arguments[1];
         if (depsNode.type !== "ArrayExpression") return;
 
         for (const element of depsNode.elements ?? []) {
           if (element?.type !== "Identifier") continue;
-          if (effectEventBindings.has(element.name)) {
+          if (isEffectEventBinding(element.name)) {
             context.report({
               node: element,
               message: `"${element.name}" is from useEffectEvent and must not be in the deps array — its identity is intentionally unstable; call it inside the effect without listing it`,

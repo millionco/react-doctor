@@ -43,9 +43,11 @@ const REACT_NATIVE_RULES: Record<string, RuleSeverity> = {
   "react-doctor/rn-prefer-content-inset-adjustment": "warn",
   "react-doctor/rn-pressable-shared-value-mutation": "warn",
   "react-doctor/rn-list-data-mapped": "warn",
+  "react-doctor/rn-list-callback-per-row": "warn",
   "react-doctor/rn-animation-reaction-as-derived": "warn",
   "react-doctor/rn-bottom-sheet-prefer-native": "warn",
   "react-doctor/rn-scrollview-dynamic-padding": "warn",
+  "react-doctor/rn-style-prefer-boxshadow": "warn",
 };
 
 const TANSTACK_START_RULES: Record<string, RuleSeverity> = {
@@ -157,6 +159,7 @@ const GLOBAL_REACT_DOCTOR_RULES: Record<string, RuleSeverity> = {
   "react-doctor/rerender-lazy-state-init": "warn",
   "react-doctor/rerender-functional-setstate": "warn",
   "react-doctor/rerender-dependencies": "error",
+  "react-doctor/rerender-state-only-in-handlers": "warn",
 
   "react-doctor/no-giant-component": "warn",
   "react-doctor/no-render-in-render": "warn",
@@ -164,12 +167,14 @@ const GLOBAL_REACT_DOCTOR_RULES: Record<string, RuleSeverity> = {
   "react-doctor/no-react19-deprecated-apis": "warn",
   "react-doctor/no-render-prop-children": "warn",
   "react-doctor/no-nested-component-definition": "error",
+  "react-doctor/react-compiler-destructure-method": "warn",
 
   "react-doctor/no-usememo-simple-expression": "warn",
   "react-doctor/no-layout-property-animation": "error",
   "react-doctor/rerender-memo-with-default-value": "warn",
   "react-doctor/rerender-memo-before-early-return": "warn",
   "react-doctor/rerender-transitions-scroll": "warn",
+  "react-doctor/async-defer-await": "warn",
   "react-doctor/rendering-animate-svg-wrapper": "warn",
   "react-doctor/rendering-hoist-jsx": "warn",
   "react-doctor/rendering-hydration-mismatch-time": "warn",
@@ -225,8 +230,10 @@ const GLOBAL_REACT_DOCTOR_RULES: Record<string, RuleSeverity> = {
   "react-doctor/server-cache-with-object-literal": "warn",
   "react-doctor/server-hoist-static-io": "warn",
   "react-doctor/server-dedup-props": "warn",
+  "react-doctor/server-sequential-independent-await": "warn",
 
   "react-doctor/client-passive-event-listeners": "warn",
+  "react-doctor/client-localstorage-no-version": "warn",
 
   "react-doctor/no-inline-bounce-easing": "warn",
   "react-doctor/no-z-index-9999": "warn",

@@ -285,6 +285,26 @@ describe("runOxlint", () => {
         ruleSource: "rules/performance.ts",
         category: "Performance",
       },
+      "async-defer-await": {
+        fixture: "transient-and-async-issues.tsx",
+        ruleSource: "rules/performance.ts",
+        category: "Performance",
+      },
+      "rerender-state-only-in-handlers": {
+        fixture: "transient-and-async-issues.tsx",
+        ruleSource: "rules/state-and-effects.ts",
+        category: "Performance",
+      },
+      "client-localstorage-no-version": {
+        fixture: "transient-and-async-issues.tsx",
+        ruleSource: "rules/client.ts",
+        category: "Correctness",
+      },
+      "react-compiler-destructure-method": {
+        fixture: "transient-and-async-issues.tsx",
+        ruleSource: "rules/architecture.ts",
+        category: "Architecture",
+      },
     },
     () => basicReactDiagnostics,
   );
@@ -528,6 +548,11 @@ describe("runOxlint", () => {
       },
       "server-dedup-props": {
         fixture: "app/users/page.tsx",
+        ruleSource: "rules/server.ts",
+        category: "Server",
+      },
+      "server-sequential-independent-await": {
+        fixture: "app/dashboard/route.tsx",
         ruleSource: "rules/server.ts",
         category: "Server",
       },

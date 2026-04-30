@@ -555,3 +555,111 @@ export const noEffectEventInDeps: Rule = {
     };
   },
 };
+
+// HACK: a useState whose value is never read in the component's JSX
+// return is by definition not visual state — every setState triggers a
+// render that produces the same DOM. Use `useRef` (`ref.current = ...`)
+// so updates don't trigger re-renders. (For values read inside an
+// addEventListener-style callback, a ref also lets the handler always
+// see the latest value without re-subscribing each effect run.)
+const collectUseStateBindings = (
+  componentBody: EsTreeNode,
+): Array<{ valueName: string; setterName: string; declarator: EsTreeNode }> => {
+  const bindings: Array<{ valueName: string; setterName: string; declarator: EsTreeNode }> = [];
+  if (componentBody?.type !== "BlockStatement") return bindings;
+
+  for (const statement of componentBody.body ?? []) {
+    if (statement.type !== "VariableDeclaration") continue;
+    for (const declarator of statement.declarations ?? []) {
+      if (declarator.id?.type !== "ArrayPattern") continue;
+      const elements = declarator.id.elements ?? [];
+      if (elements.length < 2) continue;
+      const valueElement = elements[0];
+      const setterElement = elements[1];
+      if (
+        valueElement?.type !== "Identifier" ||
+        setterElement?.type !== "Identifier" ||
+        !isSetterIdentifier(setterElement.name)
+      ) {
+        continue;
+      }
+      if (declarator.init?.type !== "CallExpression") continue;
+      if (!isHookCall(declarator.init, "useState")) continue;
+      bindings.push({
+        valueName: valueElement.name,
+        setterName: setterElement.name,
+        declarator,
+      });
+    }
+  }
+  return bindings;
+};
+
+const collectReturnExpressions = (componentBody: EsTreeNode): EsTreeNode[] => {
+  if (componentBody?.type !== "BlockStatement") return [];
+  const returns: EsTreeNode[] = [];
+  walkAst(componentBody, (child: EsTreeNode) => {
+    if (child.type === "ReturnStatement" && child.argument) {
+      returns.push(child.argument);
+    }
+  });
+  return returns;
+};
+
+const expressionReadsName = (expression: EsTreeNode, name: string): boolean => {
+  let didRead = false;
+  walkAst(expression, (child: EsTreeNode) => {
+    if (didRead) return;
+    if (child.type === "Identifier" && child.name === name) didRead = true;
+  });
+  return didRead;
+};
+
+export const rerenderStateOnlyInHandlers: Rule = {
+  create: (context: RuleContext) => {
+    const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
+      if (!componentBody || componentBody.type !== "BlockStatement") return;
+      const bindings = collectUseStateBindings(componentBody);
+      if (bindings.length === 0) return;
+
+      const returnExpressions = collectReturnExpressions(componentBody);
+      if (returnExpressions.length === 0) return;
+
+      for (const binding of bindings) {
+        const isReadInReturn = returnExpressions.some((expression) =>
+          expressionReadsName(expression, binding.valueName),
+        );
+        if (isReadInReturn) continue;
+
+        let setterCalled = false;
+        walkAst(componentBody, (child: EsTreeNode) => {
+          if (setterCalled) return;
+          if (
+            child.type === "CallExpression" &&
+            child.callee?.type === "Identifier" &&
+            child.callee.name === binding.setterName
+          ) {
+            setterCalled = true;
+          }
+        });
+        if (!setterCalled) continue;
+
+        context.report({
+          node: binding.declarator,
+          message: `useState "${binding.valueName}" is updated but never read in the component's return — use useRef so updates don't trigger re-renders`,
+        });
+      }
+    };
+
+    return {
+      FunctionDeclaration(node: EsTreeNode) {
+        if (!node.id?.name || !isUppercaseName(node.id.name)) return;
+        checkComponent(node.body);
+      },
+      VariableDeclarator(node: EsTreeNode) {
+        if (!isComponentAssignment(node)) return;
+        checkComponent(node.init?.body);
+      },
+    };
+  },
+};

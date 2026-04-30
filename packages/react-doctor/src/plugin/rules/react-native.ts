@@ -830,3 +830,136 @@ export const rnScrollviewDynamicPadding: Rule = {
     },
   }),
 };
+
+const LIST_ROW_PRESS_HANDLER_PROPS = new Set([
+  "onPress",
+  "onLongPress",
+  "onPressIn",
+  "onPressOut",
+  "onSelect",
+  "onClick",
+]);
+
+const detectInlineRowHandlers = (renderItemFn: EsTreeNode): EsTreeNode[] => {
+  const inlineHandlers: EsTreeNode[] = [];
+  walkAst(renderItemFn.body, (child: EsTreeNode) => {
+    if (child.type !== "JSXAttribute") return;
+    if (child.name?.type !== "JSXIdentifier") return;
+    if (!LIST_ROW_PRESS_HANDLER_PROPS.has(child.name.name)) return;
+    if (child.value?.type !== "JSXExpressionContainer") return;
+    const expression = child.value.expression;
+    if (
+      expression?.type === "ArrowFunctionExpression" ||
+      expression?.type === "FunctionExpression"
+    ) {
+      inlineHandlers.push(child);
+    }
+  });
+  return inlineHandlers;
+};
+
+const isRenderItemJsxAttribute = (parent: EsTreeNode | undefined): boolean => {
+  if (parent?.type !== "JSXAttribute") return false;
+  const attrName = parent.name?.type === "JSXIdentifier" ? parent.name.name : null;
+  return attrName === "renderItem";
+};
+
+const isRenderItemFunction = (node: EsTreeNode): boolean => {
+  const parent = node.parent;
+  if (parent?.type !== "JSXExpressionContainer") return false;
+  return isRenderItemJsxAttribute(parent.parent);
+};
+
+// HACK: every row of a virtualized list invokes its `renderItem`
+// function — and any `() => onPress(item.id)` arrow created inside that
+// function is a fresh closure per row, per render. memo()-wrapped row
+// components see a different identity for the handler each time and
+// rerender even when the row data didn't change. Hoist the handler at
+// list scope (`const handlePress = useCallback((id) => ..., [])`) and
+// pass the row's id as a primitive prop.
+export const rnListCallbackPerRow: Rule = {
+  create: (context: RuleContext) => {
+    const inspect = (node: EsTreeNode): void => {
+      if (!isRenderItemFunction(node)) return;
+      const inlineHandlers = detectInlineRowHandlers(node);
+      for (const handler of inlineHandlers) {
+        const handlerName =
+          handler.name?.type === "JSXIdentifier" ? handler.name.name : "<handler>";
+        context.report({
+          node: handler,
+          message: `Inline ${handlerName} arrow inside renderItem creates a fresh closure per row — hoist with useCallback at list scope and pass the row id as a primitive prop`,
+        });
+      }
+    };
+
+    return {
+      ArrowFunctionExpression: inspect,
+      FunctionExpression: inspect,
+    };
+  },
+};
+
+const LEGACY_SHADOW_KEYS = new Set([
+  "shadowColor",
+  "shadowOffset",
+  "shadowOpacity",
+  "shadowRadius",
+  "elevation",
+]);
+
+const findLegacyShadowProperty = (
+  objectExpression: EsTreeNode,
+): { keyName: string; node: EsTreeNode } | null => {
+  for (const property of objectExpression.properties ?? []) {
+    if (property.type !== "Property") continue;
+    if (property.key?.type !== "Identifier") continue;
+    if (LEGACY_SHADOW_KEYS.has(property.key.name)) {
+      return { keyName: property.key.name, node: property };
+    }
+  }
+  return null;
+};
+
+// HACK: React Native v7+ supports the standard CSS `boxShadow` string
+// (`"0 2px 8px rgba(0,0,0,0.1)"`) which renders identically on iOS and
+// Android. The legacy `shadowColor`/`shadowOffset`/`shadowOpacity`/
+// `shadowRadius` keys only work on iOS, and `elevation` is Android-only,
+// so cross-platform code historically had to declare both — `boxShadow`
+// collapses that into one key.
+export const rnStylePreferBoxShadow: Rule = {
+  create: (context: RuleContext) => ({
+    JSXAttribute(node: EsTreeNode) {
+      if (node.name?.type !== "JSXIdentifier") return;
+      const attrName = node.name.name;
+      if (attrName !== "style" && !attrName.endsWith("Style")) return;
+      if (node.value?.type !== "JSXExpressionContainer") return;
+      const expression = node.value.expression;
+      if (expression?.type !== "ObjectExpression") return;
+      const match = findLegacyShadowProperty(expression);
+      if (!match) return;
+      context.report({
+        node: match.node,
+        message: `${match.keyName} is iOS/Android-platform-specific — use the cross-platform CSS \`boxShadow\` string (e.g. \`boxShadow: "0 2px 8px rgba(0,0,0,0.1)"\`) on RN v7+`,
+      });
+    },
+    CallExpression(node: EsTreeNode) {
+      if (node.callee?.type !== "MemberExpression") return;
+      if (node.callee.object?.type !== "Identifier") return;
+      if (node.callee.object.name !== "StyleSheet") return;
+      if (node.callee.property?.type !== "Identifier") return;
+      if (node.callee.property.name !== "create") return;
+      const arg = node.arguments?.[0];
+      if (arg?.type !== "ObjectExpression") return;
+      for (const property of arg.properties ?? []) {
+        if (property.type !== "Property") continue;
+        if (property.value?.type !== "ObjectExpression") continue;
+        const match = findLegacyShadowProperty(property.value);
+        if (!match) continue;
+        context.report({
+          node: match.node,
+          message: `${match.keyName} is iOS/Android-platform-specific — use the cross-platform CSS \`boxShadow\` string on RN v7+`,
+        });
+      }
+    },
+  }),
+};

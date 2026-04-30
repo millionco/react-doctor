@@ -6,6 +6,7 @@ import {
   noReact19DeprecatedApis,
   noRenderInRender,
   noRenderPropChildren,
+  reactCompilerDestructureMethod,
 } from "./rules/architecture.js";
 import {
   noBarrelImport,
@@ -16,7 +17,7 @@ import {
   preferDynamicImport,
   useLazyMotion,
 } from "./rules/bundle-size.js";
-import { clientPassiveEventListeners } from "./rules/client.js";
+import { clientLocalstorageNoVersion, clientPassiveEventListeners } from "./rules/client.js";
 import {
   noDarkModeGlow,
   noDisabledZoom,
@@ -76,6 +77,7 @@ import {
   nextjsNoUseSearchParamsWithoutSuspense,
 } from "./rules/nextjs.js";
 import {
+  asyncDeferAwait,
   noGlobalCssVariableAnimation,
   noInlinePropOnMemoComponent,
   noLargeAnimatedBlur,
@@ -98,6 +100,7 @@ import {
   rnAnimateLayoutProperty,
   rnAnimationReactionAsDerived,
   rnBottomSheetPreferNative,
+  rnListCallbackPerRow,
   rnListDataMapped,
   rnNoDeprecatedModules,
   rnNoDimensionsGet,
@@ -116,6 +119,7 @@ import {
   rnPreferReanimated,
   rnPressableSharedValueMutation,
   rnScrollviewDynamicPadding,
+  rnStylePreferBoxShadow,
 } from "./rules/react-native.js";
 import {
   queryMutationMissingInvalidation,
@@ -133,6 +137,7 @@ import {
   serverDedupProps,
   serverHoistStaticIo,
   serverNoMutableModuleState,
+  serverSequentialIndependentAwait,
 } from "./rules/server.js";
 import {
   tanstackStartGetMutation,
@@ -162,6 +167,7 @@ import {
   rerenderDependencies,
   rerenderFunctionalSetstate,
   rerenderLazyStateInit,
+  rerenderStateOnlyInHandlers,
 } from "./rules/state-and-effects.js";
 import { noDocumentStartViewTransition, noFlushSync } from "./rules/view-transitions.js";
 import type { RulePlugin } from "./types.js";
@@ -180,6 +186,7 @@ const plugin: RulePlugin = {
     "rerender-lazy-state-init": rerenderLazyStateInit,
     "rerender-functional-setstate": rerenderFunctionalSetstate,
     "rerender-dependencies": rerenderDependencies,
+    "rerender-state-only-in-handlers": rerenderStateOnlyInHandlers,
 
     "no-generic-handler-names": noGenericHandlerNames,
     "no-giant-component": noGiantComponent,
@@ -188,12 +195,14 @@ const plugin: RulePlugin = {
     "no-render-prop-children": noRenderPropChildren,
     "no-render-in-render": noRenderInRender,
     "no-nested-component-definition": noNestedComponentDefinition,
+    "react-compiler-destructure-method": reactCompilerDestructureMethod,
 
     "no-usememo-simple-expression": noUsememoSimpleExpression,
     "no-layout-property-animation": noLayoutPropertyAnimation,
     "rerender-memo-with-default-value": rerenderMemoWithDefaultValue,
     "rerender-memo-before-early-return": rerenderMemoBeforeEarlyReturn,
     "rerender-transitions-scroll": rerenderTransitionsScroll,
+    "async-defer-await": asyncDeferAwait,
     "rendering-animate-svg-wrapper": renderingAnimateSvgWrapper,
     "rendering-hoist-jsx": renderingHoistJsx,
     "rendering-hydration-mismatch-time": renderingHydrationMismatchTime,
@@ -250,8 +259,10 @@ const plugin: RulePlugin = {
     "server-cache-with-object-literal": serverCacheWithObjectLiteral,
     "server-hoist-static-io": serverHoistStaticIo,
     "server-dedup-props": serverDedupProps,
+    "server-sequential-independent-await": serverSequentialIndependentAwait,
 
     "client-passive-event-listeners": clientPassiveEventListeners,
+    "client-localstorage-no-version": clientLocalstorageNoVersion,
 
     "js-combine-iterations": jsCombineIterations,
     "js-tosorted-immutable": jsTosortedImmutable,
@@ -286,9 +297,11 @@ const plugin: RulePlugin = {
     "rn-prefer-content-inset-adjustment": rnPreferContentInsetAdjustment,
     "rn-pressable-shared-value-mutation": rnPressableSharedValueMutation,
     "rn-list-data-mapped": rnListDataMapped,
+    "rn-list-callback-per-row": rnListCallbackPerRow,
     "rn-animation-reaction-as-derived": rnAnimationReactionAsDerived,
     "rn-bottom-sheet-prefer-native": rnBottomSheetPreferNative,
     "rn-scrollview-dynamic-padding": rnScrollviewDynamicPadding,
+    "rn-style-prefer-boxshadow": rnStylePreferBoxShadow,
 
     "tanstack-start-route-property-order": tanstackStartRoutePropertyOrder,
     "tanstack-start-no-direct-fetch-in-loader": tanstackStartNoDirectFetchInLoader,

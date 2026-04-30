@@ -38,6 +38,7 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/rerender-lazy-state-init": "Performance",
   "react-doctor/rerender-functional-setstate": "Performance",
   "react-doctor/rerender-dependencies": "State & Effects",
+  "react-doctor/rerender-state-only-in-handlers": "Performance",
 
   "react-doctor/no-generic-handler-names": "Architecture",
   "react-doctor/no-giant-component": "Architecture",
@@ -46,12 +47,14 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/no-render-prop-children": "Architecture",
   "react-doctor/no-render-in-render": "Architecture",
   "react-doctor/no-nested-component-definition": "Correctness",
+  "react-doctor/react-compiler-destructure-method": "Architecture",
 
   "react-doctor/no-usememo-simple-expression": "Performance",
   "react-doctor/no-layout-property-animation": "Performance",
   "react-doctor/rerender-memo-with-default-value": "Performance",
   "react-doctor/rerender-memo-before-early-return": "Performance",
   "react-doctor/rerender-transitions-scroll": "Performance",
+  "react-doctor/async-defer-await": "Performance",
   "react-doctor/rendering-animate-svg-wrapper": "Performance",
   "react-doctor/rendering-hoist-jsx": "Performance",
   "react-doctor/rendering-hydration-mismatch-time": "Correctness",
@@ -106,8 +109,10 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/server-cache-with-object-literal": "Server",
   "react-doctor/server-hoist-static-io": "Server",
   "react-doctor/server-dedup-props": "Server",
+  "react-doctor/server-sequential-independent-await": "Server",
 
   "react-doctor/client-passive-event-listeners": "Performance",
+  "react-doctor/client-localstorage-no-version": "Correctness",
 
   "react-doctor/query-stable-query-client": "TanStack Query",
   "react-doctor/query-no-rest-destructuring": "TanStack Query",
@@ -168,9 +173,11 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/rn-prefer-content-inset-adjustment": "React Native",
   "react-doctor/rn-pressable-shared-value-mutation": "React Native",
   "react-doctor/rn-list-data-mapped": "React Native",
+  "react-doctor/rn-list-callback-per-row": "React Native",
   "react-doctor/rn-animation-reaction-as-derived": "React Native",
   "react-doctor/rn-bottom-sheet-prefer-native": "React Native",
   "react-doctor/rn-scrollview-dynamic-padding": "React Native",
+  "react-doctor/rn-style-prefer-boxshadow": "React Native",
 
   "react-doctor/tanstack-start-route-property-order": "TanStack Start",
   "react-doctor/tanstack-start-no-direct-fetch-in-loader": "TanStack Start",
@@ -241,6 +248,20 @@ const RULE_HELP_MAP: Record<string, string> = {
     "Extract the JSX into a memoized child component so the parent's early return short-circuits before the child renders",
   "rerender-transitions-scroll":
     "Wrap the setState in startTransition (mark as non-urgent), use useDeferredValue, or stash in a ref + rAF throttle so scroll/pointer events don't trigger a re-render per fire",
+  "rerender-state-only-in-handlers":
+    "Replace useState with useRef when the value is only mutated and never read in render — `ref.current = ...` updates without re-rendering the component",
+  "async-defer-await":
+    "Move the `await` after the synchronous early-return guard so the skip path stays fast",
+  "react-compiler-destructure-method":
+    "Destructure the method up front: `const { push } = useRouter()` then call `push(...)` directly — clearer dependency graph and easier for React Compiler to memoize",
+  "client-localstorage-no-version":
+    'Bake a version into the storage key (e.g. "myKey:v1"); a future schema change can ignore old data instead of crashing on it',
+  "server-sequential-independent-await":
+    "Wrap independent awaits in `Promise.all([...])` so they race instead of waterfalling — second call doesn't depend on the first",
+  "rn-list-callback-per-row":
+    "Hoist the handler with useCallback at list scope and pass the row id as a primitive prop, so the row's memo() shallow-compare actually hits",
+  "rn-style-prefer-boxshadow":
+    'Use the cross-platform CSS `boxShadow` string (RN v7+): `boxShadow: "0 2px 8px rgba(0,0,0,0.1)"` instead of platform-specific shadow*/elevation keys',
   "rendering-hydration-mismatch-time":
     "Wrap dynamic time/random values in useEffect+useState (client-only) or add suppressHydrationWarning to the parent if intentional",
   "no-polymorphic-children":

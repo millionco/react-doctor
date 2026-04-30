@@ -392,6 +392,13 @@ export const noPropCallbackInEffect: Rule = {
       return false;
     };
 
+    const isFunctionLikeVariableDeclarator = (node: EsTreeNode): boolean => {
+      if (node.type !== "VariableDeclarator") return false;
+      return (
+        node.init?.type === "ArrowFunctionExpression" || node.init?.type === "FunctionExpression"
+      );
+    };
+
     return {
       FunctionDeclaration(node: EsTreeNode) {
         if (!node.id?.name || !isUppercaseName(node.id.name)) {
@@ -404,12 +411,21 @@ export const noPropCallbackInEffect: Rule = {
         componentPropParamStack.pop();
       },
       VariableDeclarator(node: EsTreeNode) {
-        if (!isComponentAssignment(node)) return;
-        enterComponentParams(node.init?.params);
+        if (isComponentAssignment(node)) {
+          enterComponentParams(node.init?.params);
+          return;
+        }
+        // Non-component arrow/function helpers also push an empty barrier
+        // so identifiers inside the helper don't resolve against an outer
+        // component's props (matches FunctionDeclaration handling).
+        if (isFunctionLikeVariableDeclarator(node)) {
+          componentPropParamStack.push(new Set());
+        }
       },
       "VariableDeclarator:exit"(node: EsTreeNode) {
-        if (!isComponentAssignment(node)) return;
-        componentPropParamStack.pop();
+        if (isComponentAssignment(node) || isFunctionLikeVariableDeclarator(node)) {
+          componentPropParamStack.pop();
+        }
       },
       CallExpression(node: EsTreeNode) {
         if (!isHookCall(node, EFFECT_HOOK_NAMES) || (node.arguments?.length ?? 0) < 2) return;

@@ -190,9 +190,12 @@ const resolveEffectiveDiff = (
   if (value === undefined) return undefined;
   if (typeof value === "boolean") return value;
   if (typeof value === "string") {
-    const normalized = value.toLowerCase();
-    if (normalized === "false") return false;
-    if (normalized === "true") return true;
+    // HACK: coerce only the exact lowercase strings "true"/"false" — this
+    // catches the common case of `"diff": "false"` in JSON config without
+    // shadowing branch names like `True` / `FALSE` / `True-Branch` that a
+    // user might legitimately want to diff against.
+    if (value === "false") return false;
+    if (value === "true") return true;
     if (value.length === 0) return undefined;
     return value;
   }

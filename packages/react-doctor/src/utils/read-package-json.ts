@@ -4,6 +4,12 @@ import type { PackageJson } from "../types.js";
 
 const cachedPackageJsons = new Map<string, PackageJson>();
 
+// HACK: exposed so watch-mode / test-runner consumers can invalidate after
+// the user edits a package.json file between repeated diagnose() calls.
+export const clearPackageJsonCache = (): void => {
+  cachedPackageJsons.clear();
+};
+
 const readPackageJsonUncached = (packageJsonPath: string): PackageJson => {
   try {
     return JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));

@@ -19,8 +19,9 @@ import { computeJsxIncludePaths } from "./utils/jsx-include-paths.js";
 import { buildJsonReport } from "./utils/build-json-report.js";
 import { buildJsonReportError } from "./utils/build-json-report-error.js";
 import { checkReducedMotion } from "./utils/check-reduced-motion.js";
-import { discoverProject } from "./utils/discover-project.js";
-import { loadConfig } from "./utils/load-config.js";
+import { clearProjectCache, discoverProject } from "./utils/discover-project.js";
+import { clearConfigCache, loadConfig } from "./utils/load-config.js";
+import { clearPackageJsonCache } from "./utils/read-package-json.js";
 import { createNodeReadFileLinesSync } from "./utils/read-file-lines-node.js";
 import { resolveLintIncludePaths } from "./utils/resolve-lint-include-paths.js";
 import { calculateScore } from "./utils/calculate-score-node.js";
@@ -45,6 +46,17 @@ export type {
 export { getDiffInfo, filterSourceFiles } from "./utils/get-diff-files.js";
 export { summarizeDiagnostics } from "./utils/summarize-diagnostics.js";
 export { buildJsonReport, buildJsonReportError };
+
+// HACK: programmatic API consumers (watch-mode tools, test runners,
+// agentic CLI flows) call diagnose() repeatedly on the same directory.
+// project / config / package.json results are memoized at module scope
+// to keep CLI scans fast — this hook lets long-running consumers
+// invalidate when the underlying files change between calls.
+export const clearCaches = (): void => {
+  clearProjectCache();
+  clearConfigCache();
+  clearPackageJsonCache();
+};
 
 interface ToJsonReportOptions {
   version: string;

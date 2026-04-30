@@ -588,6 +588,13 @@ const detectReactCompiler = (directory: string, packageJson: PackageJson): boole
 
 const cachedProjectInfos = new Map<string, ProjectInfo>();
 
+// HACK: paired with clearConfigCache — exposed so programmatic API
+// consumers can re-detect after the project's package.json /
+// tsconfig.json / monorepo manifests change between diagnose() calls.
+export const clearProjectCache = (): void => {
+  cachedProjectInfos.clear();
+};
+
 export const discoverProject = (directory: string): ProjectInfo => {
   const cached = cachedProjectInfos.get(directory);
   if (cached !== undefined) return cached;

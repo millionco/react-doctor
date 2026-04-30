@@ -54,6 +54,16 @@ const isProjectBoundary = (directory: string): boolean => {
 
 const cachedConfigs = new Map<string, ReactDoctorConfig | null>();
 
+// HACK: expose a way to clear the module-level config cache so programmatic
+// API consumers (watch-mode tools, test runners, agentic CLI flows) can
+// re-detect after the user edits react-doctor.config.json or package.json
+// between calls. The cache is keyed by absolute directory; without a
+// cache-clear hook, repeated diagnose() calls would always hit the stale
+// first-resolution result.
+export const clearConfigCache = (): void => {
+  cachedConfigs.clear();
+};
+
 export const loadConfig = (rootDirectory: string): ReactDoctorConfig | null => {
   const cached = cachedConfigs.get(rootDirectory);
   if (cached !== undefined) return cached;

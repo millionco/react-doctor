@@ -388,3 +388,263 @@ export const rnNoScrollState: Rule = {
     },
   }),
 };
+
+const SCROLLVIEW_NAMES = new Set(["ScrollView", "Animated.ScrollView"]);
+
+const resolveJsxName = (openingElement: EsTreeNode): string | null => {
+  const name = openingElement?.name;
+  if (!name) return null;
+  if (name.type === "JSXIdentifier") return name.name;
+  if (name.type === "JSXMemberExpression") {
+    const objectName = name.object?.name;
+    const propertyName = name.property?.name;
+    if (objectName && propertyName) return `${objectName}.${propertyName}`;
+  }
+  return null;
+};
+
+// HACK: <ScrollView>{items.map(...)}</ScrollView> renders every row in
+// memory — for any list longer than ~10 items this destroys scroll
+// performance on lower-end devices. FlashList / LegendList / FlatList
+// recycle row components and only mount the visible window. The cost
+// of switching is tiny (same prop API) and the perf win is huge.
+export const rnNoScrollviewMappedList: Rule = {
+  create: (context: RuleContext) => ({
+    JSXElement(node: EsTreeNode) {
+      const elementName = resolveJsxName(node.openingElement);
+      if (!elementName || !SCROLLVIEW_NAMES.has(elementName)) return;
+
+      for (const child of node.children ?? []) {
+        if (child.type !== "JSXExpressionContainer") continue;
+        const expression = child.expression;
+        if (
+          expression?.type === "CallExpression" &&
+          expression.callee?.type === "MemberExpression" &&
+          expression.callee.property?.type === "Identifier" &&
+          expression.callee.property.name === "map"
+        ) {
+          context.report({
+            node: child,
+            message: `<${elementName}> rendering items.map(...) — use FlashList, LegendList, or FlatList so only visible rows mount`,
+          });
+          return;
+        }
+      }
+    },
+  }),
+};
+
+const RENDER_ITEM_PROP_NAMES = new Set([
+  "renderItem",
+  "renderSectionHeader",
+  "renderSectionFooter",
+]);
+
+// HACK: inside `renderItem`, JSX prop values that are object literals
+// (`style={{...}}`, `user={{...}}`, etc.) allocate a fresh object
+// reference per row. Any `memo()`-wrapped row component bails its
+// shallow-compare for that prop and rerenders even when the underlying
+// data didn't change. Hoist the object outside renderItem (StyleSheet,
+// constant, useMemo at list scope) or pass primitives into the row.
+export const rnNoInlineObjectInListItem: Rule = {
+  create: (context: RuleContext) => {
+    let renderItemDepth = 0;
+
+    const isRenderItemAttribute = (parent: EsTreeNode | undefined): boolean => {
+      if (parent?.type !== "JSXAttribute") return false;
+      const attrName = parent.name?.type === "JSXIdentifier" ? parent.name.name : null;
+      return attrName ? RENDER_ITEM_PROP_NAMES.has(attrName) : false;
+    };
+
+    const isRenderItemFunction = (node: EsTreeNode): boolean => {
+      if (node.type !== "ArrowFunctionExpression" && node.type !== "FunctionExpression") {
+        return false;
+      }
+      // Walk up: parent should be JSXExpressionContainer whose parent is JSXAttribute renderItem.
+      const expressionContainer = node.parent;
+      if (expressionContainer?.type !== "JSXExpressionContainer") return false;
+      return isRenderItemAttribute(expressionContainer.parent);
+    };
+
+    const enter = (node: EsTreeNode): void => {
+      if (isRenderItemFunction(node)) renderItemDepth++;
+    };
+    const exit = (node: EsTreeNode): void => {
+      if (isRenderItemFunction(node)) renderItemDepth = Math.max(0, renderItemDepth - 1);
+    };
+
+    return {
+      ArrowFunctionExpression: enter,
+      "ArrowFunctionExpression:exit": exit,
+      FunctionExpression: enter,
+      "FunctionExpression:exit": exit,
+      JSXAttribute(node: EsTreeNode) {
+        if (renderItemDepth === 0) return;
+        if (node.value?.type !== "JSXExpressionContainer") return;
+        if (node.value.expression?.type !== "ObjectExpression") return;
+        const propName = node.name?.type === "JSXIdentifier" ? node.name.name : "<unknown>";
+        context.report({
+          node,
+          message: `Inline object literal on "${propName}" inside renderItem — allocates a fresh reference per row and breaks memo() on the row component. Hoist outside renderItem or pass primitives`,
+        });
+      },
+    };
+  },
+};
+
+const REANIMATED_LAYOUT_KEYS = new Set([
+  "width",
+  "height",
+  "top",
+  "left",
+  "right",
+  "bottom",
+  "minWidth",
+  "minHeight",
+  "maxWidth",
+  "maxHeight",
+  "marginTop",
+  "marginBottom",
+  "marginLeft",
+  "marginRight",
+  "paddingTop",
+  "paddingBottom",
+  "paddingLeft",
+  "paddingRight",
+  "flex",
+  "flexBasis",
+  "flexGrow",
+  "flexShrink",
+]);
+
+const findReturnedObject = (callback: EsTreeNode): EsTreeNode | null => {
+  if (callback.type !== "ArrowFunctionExpression" && callback.type !== "FunctionExpression") {
+    return null;
+  }
+  const body = callback.body;
+  if (body?.type === "ObjectExpression") return body;
+  if (body?.type !== "BlockStatement") return null;
+  for (const stmt of body.body ?? []) {
+    if (stmt.type === "ReturnStatement" && stmt.argument?.type === "ObjectExpression") {
+      return stmt.argument;
+    }
+  }
+  return null;
+};
+
+// HACK: in Reanimated, `useAnimatedStyle(() => ({ height: …, width: … }))`
+// runs the animation on the JS layout thread (or worse, triggers actual
+// layout passes per frame). transform / opacity stay on the GPU
+// compositor. For anything driven by `withTiming` / `withSpring` /
+// shared values, animate `transform: [{ translateX/Y }, { scale }]` or
+// `opacity` instead.
+export const rnAnimateLayoutProperty: Rule = {
+  create: (context: RuleContext) => ({
+    CallExpression(node: EsTreeNode) {
+      if (node.callee?.type !== "Identifier" || node.callee.name !== "useAnimatedStyle") return;
+      const callback = node.arguments?.[0];
+      if (!callback) return;
+      const returnedObject = findReturnedObject(callback);
+      if (!returnedObject) return;
+
+      for (const property of returnedObject.properties ?? []) {
+        if (property.type !== "Property") continue;
+        if (property.key?.type !== "Identifier") continue;
+        if (!REANIMATED_LAYOUT_KEYS.has(property.key.name)) continue;
+
+        context.report({
+          node: property,
+          message: `useAnimatedStyle animating "${property.key.name}" — layout properties run on the layout thread; use transform: [{ translateX/Y }, { scale }] or opacity for GPU-accelerated animation`,
+        });
+      }
+    },
+  }),
+};
+
+// HACK: <SafeAreaView> wrapping <ScrollView> (or
+// `useSafeAreaInsets()` + `paddingTop: insets.top` in
+// `contentContainerStyle`) is the legacy way to handle safe areas.
+// Modern RN exposes `contentInsetAdjustmentBehavior="automatic"` which
+// the OS computes natively, integrating with sticky headers, large
+// titles, and keyboard avoidance for free.
+export const rnPreferContentInsetAdjustment: Rule = {
+  create: (context: RuleContext) => ({
+    JSXElement(node: EsTreeNode) {
+      const elementName = resolveJsxName(node.openingElement);
+      if (elementName !== "SafeAreaView") return;
+
+      for (const child of node.children ?? []) {
+        if (child.type !== "JSXElement") continue;
+        const childName = resolveJsxName(child.openingElement);
+        if (!childName || !SCROLLVIEW_NAMES.has(childName)) continue;
+
+        context.report({
+          node,
+          message:
+            '<SafeAreaView> wrapping <ScrollView> — set `contentInsetAdjustmentBehavior="automatic"` on the ScrollView and drop the SafeAreaView wrapper for native safe-area handling',
+        });
+        return;
+      }
+    },
+  }),
+};
+
+const PRESS_HANDLER_PROP_NAMES = new Set(["onPressIn", "onPressOut"]);
+
+const handlerMutatesSharedValue = (handler: EsTreeNode): boolean => {
+  if (handler.type !== "ArrowFunctionExpression" && handler.type !== "FunctionExpression") {
+    return false;
+  }
+  let didMutate = false;
+  walkAst(handler.body, (child: EsTreeNode) => {
+    if (didMutate) return;
+    // .value = ...
+    if (
+      child.type === "AssignmentExpression" &&
+      child.left?.type === "MemberExpression" &&
+      child.left.property?.type === "Identifier" &&
+      child.left.property.name === "value"
+    ) {
+      didMutate = true;
+    }
+    // .set(...)
+    if (
+      child.type === "CallExpression" &&
+      child.callee?.type === "MemberExpression" &&
+      child.callee.property?.type === "Identifier" &&
+      child.callee.property.name === "set"
+    ) {
+      didMutate = true;
+    }
+  });
+  return didMutate;
+};
+
+// HACK: <Pressable onPressIn={() => sv.value = withTiming(0.95)}> bounces
+// the gesture across the JS bridge twice (press in → JS handler → set
+// shared value → animation kicks off), which is visibly stuttery on
+// Android. The Reanimated GestureDetector + Gesture.Tap() runs entirely
+// on the UI thread for native-feeling press feedback.
+export const rnPressableSharedValueMutation: Rule = {
+  create: (context: RuleContext) => ({
+    JSXOpeningElement(node: EsTreeNode) {
+      const name = resolveJsxName(node);
+      if (name !== "Pressable") return;
+
+      for (const attr of node.attributes ?? []) {
+        if (attr.type !== "JSXAttribute") continue;
+        if (attr.name?.type !== "JSXIdentifier") continue;
+        if (!PRESS_HANDLER_PROP_NAMES.has(attr.name.name)) continue;
+        if (attr.value?.type !== "JSXExpressionContainer") continue;
+        const handler = attr.value.expression;
+        if (!handler) continue;
+        if (!handlerMutatesSharedValue(handler)) continue;
+
+        context.report({
+          node: attr,
+          message: `<Pressable> ${attr.name.name} mutates a Reanimated shared value — use a Gesture.Tap() inside <GestureDetector> for press animations that stay on the UI thread`,
+        });
+      }
+    },
+  }),
+};

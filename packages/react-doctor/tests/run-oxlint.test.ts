@@ -204,6 +204,11 @@ describe("runOxlint", () => {
         ruleSource: "rules/architecture.ts",
         category: "Architecture",
       },
+      "no-render-prop-children": {
+        fixture: "composition-issues.tsx",
+        ruleSource: "rules/architecture.ts",
+        category: "Architecture",
+      },
     },
     () => basicReactDiagnostics,
   );
@@ -218,6 +223,11 @@ describe("runOxlint", () => {
       },
       "rendering-hoist-jsx": {
         fixture: "new-rules.tsx",
+        ruleSource: "rules/performance.ts",
+        category: "Performance",
+      },
+      "rerender-memo-before-early-return": {
+        fixture: "composition-issues.tsx",
         ruleSource: "rules/performance.ts",
         category: "Performance",
       },
@@ -240,6 +250,30 @@ describe("runOxlint", () => {
         fixture: "new-rules.tsx",
         ruleSource: "rules/state-and-effects.ts",
         severity: "error",
+      },
+      "no-prop-callback-in-effect": {
+        fixture: "composition-issues.tsx",
+        ruleSource: "rules/state-and-effects.ts",
+      },
+      "no-polymorphic-children": {
+        fixture: "composition-issues.tsx",
+        ruleSource: "rules/correctness.ts",
+        category: "Architecture",
+      },
+      "rendering-svg-precision": {
+        fixture: "composition-issues.tsx",
+        ruleSource: "rules/correctness.ts",
+        category: "Performance",
+      },
+      "no-document-start-view-transition": {
+        fixture: "view-transitions-issues.tsx",
+        ruleSource: "rules/view-transitions.ts",
+        category: "Correctness",
+      },
+      "no-flush-sync": {
+        fixture: "view-transitions-issues.tsx",
+        ruleSource: "rules/view-transitions.ts",
+        category: "Performance",
       },
     },
     () => basicReactDiagnostics,
@@ -470,6 +504,11 @@ describe("runOxlint", () => {
         fixture: "app/actions.tsx",
         ruleSource: "rules/server.ts",
         severity: "error",
+        category: "Server",
+      },
+      "server-cache-with-object-literal": {
+        fixture: "app/actions.tsx",
+        ruleSource: "rules/server.ts",
         category: "Server",
       },
     },

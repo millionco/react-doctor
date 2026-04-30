@@ -210,3 +210,60 @@ export const renderingConditionalRender: Rule = {
     },
   }),
 };
+
+// HACK: `typeof children === "string"` (or `=== 'object'`) is a
+// polymorphic-children smell — the component switches behavior based on
+// what the consumer happened to pass. Better to expose explicit
+// subcomponents (`<Button.Text />`) so text always lands in the right
+// shape and the component's API is checked at compile time.
+export const noPolymorphicChildren: Rule = {
+  create: (context: RuleContext) => ({
+    BinaryExpression(node: EsTreeNode) {
+      if (node.operator !== "===" && node.operator !== "==") return;
+
+      const isTypeofChildren = (operand: EsTreeNode | undefined): boolean =>
+        operand?.type === "UnaryExpression" &&
+        operand.operator === "typeof" &&
+        operand.argument?.type === "Identifier" &&
+        operand.argument.name === "children";
+
+      if (!isTypeofChildren(node.left) && !isTypeofChildren(node.right)) return;
+
+      const isStringLiteral = (operand: EsTreeNode | undefined): boolean =>
+        operand?.type === "Literal" && operand.value === "string";
+
+      if (!isStringLiteral(node.left) && !isStringLiteral(node.right)) return;
+
+      context.report({
+        node,
+        message:
+          'Polymorphic `typeof children === "string"` check — expose explicit subcomponents (e.g. `<Button.Text>`) instead of branching on what the consumer passed',
+      });
+    },
+  }),
+};
+
+const SVG_PATH_HIGH_PRECISION_PATTERN = /\d+\.\d{4,}/;
+const SVG_PATH_ATTRIBUTES = new Set(["d", "points", "transform"]);
+
+// HACK: SVG path strings with 4+ decimals (e.g. `M 10.293847 20.847362`)
+// add bytes for sub-pixel precision the user can't see. Most editors
+// emit these by default; truncating to 1–2 decimals trims 30–50% off
+// markup with no visible difference.
+export const renderingSvgPrecision: Rule = {
+  create: (context: RuleContext) => ({
+    JSXAttribute(node: EsTreeNode) {
+      if (node.name?.type !== "JSXIdentifier") return;
+      if (!SVG_PATH_ATTRIBUTES.has(node.name.name)) return;
+      if (node.value?.type !== "Literal") return;
+      const value = node.value.value;
+      if (typeof value !== "string") return;
+      if (!SVG_PATH_HIGH_PRECISION_PATTERN.test(value)) return;
+
+      context.report({
+        node,
+        message: `SVG ${node.name.name} attribute uses 4+ decimal precision — truncate to 1–2 decimals to shrink markup with no visible difference`,
+      });
+    },
+  }),
+};

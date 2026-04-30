@@ -168,7 +168,12 @@ export const noManyBooleanProps: Rule = {
 // function components) and `useContext` (replaced by the more flexible
 // `use()`). Continuing to import them works on 19 but blocks adopting the
 // cleaner APIs and adds type/runtime indirection.
-const REACT_19_DEPRECATED_NAMED_IMPORTS = new Set(["forwardRef"]);
+const REACT_19_DEPRECATED_MESSAGES: Record<string, string> = {
+  forwardRef:
+    "forwardRef is no longer needed on React 19+ — refs are regular props on function components; remove forwardRef and pass ref directly",
+  useContext:
+    "useContext is superseded by `use()` on React 19+ — `use()` reads context conditionally inside hooks, branches, and loops; switch to `import { use } from 'react'`",
+};
 
 export const noReact19DeprecatedApis: Rule = {
   create: (context: RuleContext) => ({
@@ -178,12 +183,45 @@ export const noReact19DeprecatedApis: Rule = {
         if (specifier.type !== "ImportSpecifier") continue;
         const importedName = specifier.imported?.name;
         if (!importedName) continue;
-        if (REACT_19_DEPRECATED_NAMED_IMPORTS.has(importedName)) {
-          context.report({
-            node: specifier,
-            message: `${importedName} is no longer needed on React 19+ — refs are regular props on function components; remove forwardRef and pass ref directly`,
-          });
+        const message = REACT_19_DEPRECATED_MESSAGES[importedName];
+        if (message) {
+          context.report({ node: specifier, message });
         }
+      }
+    },
+  }),
+};
+
+const RENDER_PROP_PATTERN = /^render[A-Z]/;
+
+// HACK: render-prop attributes (e.g. `renderHeader`, `renderItem` —
+// EXCEPT React Native's standard FlatList/SectionList APIs) are a smell
+// in component composition. Each render prop is a slot-shaped function
+// that prevents using compound components (`<Composer.Header />` style)
+// and forces the parent to know about every customization point. Use
+// children/compound subcomponents for general composition, render-prop
+// only when the parent really must inject data per row.
+const RENDER_PROP_ALLOWLIST = new Set([
+  // RN/FlatList APIs that legitimately MUST be functions.
+  "renderItem",
+  "renderSectionHeader",
+  "renderSectionFooter",
+  "renderScrollComponent",
+]);
+
+export const noRenderPropChildren: Rule = {
+  create: (context: RuleContext) => ({
+    JSXOpeningElement(node: EsTreeNode) {
+      for (const attr of node.attributes ?? []) {
+        if (attr.type !== "JSXAttribute") continue;
+        if (attr.name?.type !== "JSXIdentifier") continue;
+        const name = attr.name.name;
+        if (!RENDER_PROP_PATTERN.test(name)) continue;
+        if (RENDER_PROP_ALLOWLIST.has(name)) continue;
+        context.report({
+          node: attr,
+          message: `"${name}" is a render-prop slot — prefer compound subcomponents or \`children\` for composition; render props lock the parent into knowing every customization point`,
+        });
       }
     },
   }),

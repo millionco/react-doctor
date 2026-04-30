@@ -37,6 +37,11 @@ const REACT_NATIVE_RULES: Record<string, RuleSeverity> = {
   "react-doctor/rn-prefer-expo-image": "warn",
   "react-doctor/rn-no-non-native-navigator": "warn",
   "react-doctor/rn-no-scroll-state": "error",
+  "react-doctor/rn-no-scrollview-mapped-list": "warn",
+  "react-doctor/rn-no-inline-object-in-list-item": "warn",
+  "react-doctor/rn-animate-layout-property": "error",
+  "react-doctor/rn-prefer-content-inset-adjustment": "warn",
+  "react-doctor/rn-pressable-shared-value-mutation": "warn",
 };
 
 const TANSTACK_START_RULES: Record<string, RuleSeverity> = {
@@ -142,6 +147,7 @@ const GLOBAL_REACT_DOCTOR_RULES: Record<string, RuleSeverity> = {
   "react-doctor/no-cascading-set-state": "warn",
   "react-doctor/no-effect-event-handler": "warn",
   "react-doctor/no-effect-event-in-deps": "error",
+  "react-doctor/no-prop-callback-in-effect": "warn",
   "react-doctor/no-derived-useState": "warn",
   "react-doctor/prefer-useReducer": "warn",
   "react-doctor/rerender-lazy-state-init": "warn",
@@ -152,11 +158,13 @@ const GLOBAL_REACT_DOCTOR_RULES: Record<string, RuleSeverity> = {
   "react-doctor/no-render-in-render": "warn",
   "react-doctor/no-many-boolean-props": "warn",
   "react-doctor/no-react19-deprecated-apis": "warn",
+  "react-doctor/no-render-prop-children": "warn",
   "react-doctor/no-nested-component-definition": "error",
 
   "react-doctor/no-usememo-simple-expression": "warn",
   "react-doctor/no-layout-property-animation": "error",
   "react-doctor/rerender-memo-with-default-value": "warn",
+  "react-doctor/rerender-memo-before-early-return": "warn",
   "react-doctor/rendering-animate-svg-wrapper": "warn",
   "react-doctor/rendering-hoist-jsx": "warn",
   "react-doctor/no-inline-prop-on-memo-component": "warn",
@@ -198,12 +206,17 @@ const GLOBAL_REACT_DOCTOR_RULES: Record<string, RuleSeverity> = {
   "react-doctor/no-undeferred-third-party": "warn",
 
   "react-doctor/no-array-index-as-key": "warn",
+  "react-doctor/no-polymorphic-children": "warn",
   "react-doctor/rendering-conditional-render": "warn",
+  "react-doctor/rendering-svg-precision": "warn",
   "react-doctor/no-prevent-default": "warn",
+  "react-doctor/no-document-start-view-transition": "warn",
+  "react-doctor/no-flush-sync": "warn",
 
   "react-doctor/server-auth-actions": "error",
   "react-doctor/server-after-nonblocking": "warn",
   "react-doctor/server-no-mutable-module-state": "error",
+  "react-doctor/server-cache-with-object-literal": "warn",
 
   "react-doctor/client-passive-event-listeners": "warn",
 

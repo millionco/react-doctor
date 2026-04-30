@@ -5,6 +5,7 @@ import {
   noNestedComponentDefinition,
   noReact19DeprecatedApis,
   noRenderInRender,
+  noRenderPropChildren,
 } from "./rules/architecture.js";
 import {
   noBarrelImport,
@@ -35,8 +36,10 @@ import {
 } from "./rules/design.js";
 import {
   noArrayIndexAsKey,
+  noPolymorphicChildren,
   noPreventDefault,
   renderingConditionalRender,
+  renderingSvgPrecision,
 } from "./rules/correctness.js";
 import {
   asyncParallel,
@@ -86,21 +89,27 @@ import {
   renderingHydrationNoFlicker,
   renderingScriptDeferAsync,
   renderingUsetransitionLoading,
+  rerenderMemoBeforeEarlyReturn,
   rerenderMemoWithDefaultValue,
 } from "./rules/performance.js";
 import {
+  rnAnimateLayoutProperty,
   rnNoDeprecatedModules,
   rnNoDimensionsGet,
   rnNoInlineFlatlistRenderitem,
+  rnNoInlineObjectInListItem,
   rnNoLegacyExpoPackages,
   rnNoLegacyShadowStyles,
   rnNoNonNativeNavigator,
   rnNoRawText,
   rnNoScrollState,
+  rnNoScrollviewMappedList,
   rnNoSingleElementStyleArray,
+  rnPreferContentInsetAdjustment,
   rnPreferExpoImage,
   rnPreferPressable,
   rnPreferReanimated,
+  rnPressableSharedValueMutation,
 } from "./rules/react-native.js";
 import {
   queryMutationMissingInvalidation,
@@ -114,6 +123,7 @@ import { noEval, noSecretsInClientCode } from "./rules/security.js";
 import {
   serverAfterNonblocking,
   serverAuthActions,
+  serverCacheWithObjectLiteral,
   serverNoMutableModuleState,
 } from "./rules/server.js";
 import {
@@ -139,11 +149,13 @@ import {
   noEffectEventHandler,
   noEffectEventInDeps,
   noFetchInEffect,
+  noPropCallbackInEffect,
   preferUseReducer,
   rerenderDependencies,
   rerenderFunctionalSetstate,
   rerenderLazyStateInit,
 } from "./rules/state-and-effects.js";
+import { noDocumentStartViewTransition, noFlushSync } from "./rules/view-transitions.js";
 import type { RulePlugin } from "./types.js";
 
 const plugin: RulePlugin = {
@@ -154,6 +166,7 @@ const plugin: RulePlugin = {
     "no-cascading-set-state": noCascadingSetState,
     "no-effect-event-handler": noEffectEventHandler,
     "no-effect-event-in-deps": noEffectEventInDeps,
+    "no-prop-callback-in-effect": noPropCallbackInEffect,
     "no-derived-useState": noDerivedUseState,
     "prefer-useReducer": preferUseReducer,
     "rerender-lazy-state-init": rerenderLazyStateInit,
@@ -164,12 +177,14 @@ const plugin: RulePlugin = {
     "no-giant-component": noGiantComponent,
     "no-many-boolean-props": noManyBooleanProps,
     "no-react19-deprecated-apis": noReact19DeprecatedApis,
+    "no-render-prop-children": noRenderPropChildren,
     "no-render-in-render": noRenderInRender,
     "no-nested-component-definition": noNestedComponentDefinition,
 
     "no-usememo-simple-expression": noUsememoSimpleExpression,
     "no-layout-property-animation": noLayoutPropertyAnimation,
     "rerender-memo-with-default-value": rerenderMemoWithDefaultValue,
+    "rerender-memo-before-early-return": rerenderMemoBeforeEarlyReturn,
     "rendering-animate-svg-wrapper": renderingAnimateSvgWrapper,
     "rendering-hoist-jsx": renderingHoistJsx,
     "no-inline-prop-on-memo-component": noInlinePropOnMemoComponent,
@@ -195,8 +210,12 @@ const plugin: RulePlugin = {
     "no-undeferred-third-party": noUndeferredThirdParty,
 
     "no-array-index-as-key": noArrayIndexAsKey,
+    "no-polymorphic-children": noPolymorphicChildren,
     "rendering-conditional-render": renderingConditionalRender,
+    "rendering-svg-precision": renderingSvgPrecision,
     "no-prevent-default": noPreventDefault,
+    "no-document-start-view-transition": noDocumentStartViewTransition,
+    "no-flush-sync": noFlushSync,
 
     "nextjs-no-img-element": nextjsNoImgElement,
     "nextjs-async-client-component": nextjsAsyncClientComponent,
@@ -218,6 +237,7 @@ const plugin: RulePlugin = {
     "server-auth-actions": serverAuthActions,
     "server-after-nonblocking": serverAfterNonblocking,
     "server-no-mutable-module-state": serverNoMutableModuleState,
+    "server-cache-with-object-literal": serverCacheWithObjectLiteral,
 
     "client-passive-event-listeners": clientPassiveEventListeners,
 
@@ -248,6 +268,11 @@ const plugin: RulePlugin = {
     "rn-prefer-expo-image": rnPreferExpoImage,
     "rn-no-non-native-navigator": rnNoNonNativeNavigator,
     "rn-no-scroll-state": rnNoScrollState,
+    "rn-no-scrollview-mapped-list": rnNoScrollviewMappedList,
+    "rn-no-inline-object-in-list-item": rnNoInlineObjectInListItem,
+    "rn-animate-layout-property": rnAnimateLayoutProperty,
+    "rn-prefer-content-inset-adjustment": rnPreferContentInsetAdjustment,
+    "rn-pressable-shared-value-mutation": rnPressableSharedValueMutation,
 
     "tanstack-start-route-property-order": tanstackStartRoutePropertyOrder,
     "tanstack-start-no-direct-fetch-in-loader": tanstackStartNoDirectFetchInLoader,

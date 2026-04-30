@@ -369,6 +369,88 @@ export const rerenderDependencies: Rule = {
   }),
 };
 
+// HACK: `useEffect(() => parentCallback(state.x), [state.x])` is the
+// "lift state up via callback" anti-pattern: the child owns state, then
+// fires a parent callback every time the state changes to keep the
+// parent in sync. The parent has no real ground-truth state, just a
+// stale mirror. The right shape is to lift state into a Provider that
+// both child and parent read from; the child then doesn't need an
+// effect-driven sync at all.
+export const noPropCallbackInEffect: Rule = {
+  create: (context: RuleContext) => {
+    const componentPropParamStack: Array<Set<string>> = [];
+
+    const enterComponentParams = (params: EsTreeNode[] | undefined): void => {
+      const propNames = extractDestructuredPropNames(params ?? []);
+      componentPropParamStack.push(propNames);
+    };
+
+    const isPropName = (name: string): boolean => {
+      for (let i = componentPropParamStack.length - 1; i >= 0; i--) {
+        if (componentPropParamStack[i].has(name)) return true;
+      }
+      return false;
+    };
+
+    return {
+      FunctionDeclaration(node: EsTreeNode) {
+        if (!node.id?.name || !isUppercaseName(node.id.name)) {
+          componentPropParamStack.push(new Set());
+          return;
+        }
+        enterComponentParams(node.params);
+      },
+      "FunctionDeclaration:exit"() {
+        componentPropParamStack.pop();
+      },
+      VariableDeclarator(node: EsTreeNode) {
+        if (!isComponentAssignment(node)) return;
+        enterComponentParams(node.init?.params);
+      },
+      "VariableDeclarator:exit"(node: EsTreeNode) {
+        if (!isComponentAssignment(node)) return;
+        componentPropParamStack.pop();
+      },
+      CallExpression(node: EsTreeNode) {
+        if (!isHookCall(node, EFFECT_HOOK_NAMES) || (node.arguments?.length ?? 0) < 2) return;
+        if (componentPropParamStack.length === 0) return;
+        const callback = getEffectCallback(node);
+        if (!callback) return;
+        const depsNode = node.arguments[1];
+        if (depsNode.type !== "ArrayExpression" || !depsNode.elements?.length) return;
+
+        // Body must invoke a prop callback as a top-level expression.
+        const bodyStatements = getCallbackStatements(callback);
+        for (const stmt of bodyStatements) {
+          let invokedPropName: string | null = null;
+          if (
+            stmt.type === "ExpressionStatement" &&
+            stmt.expression?.type === "CallExpression" &&
+            stmt.expression.callee?.type === "Identifier" &&
+            isPropName(stmt.expression.callee.name)
+          ) {
+            invokedPropName = stmt.expression.callee.name;
+          }
+          if (!invokedPropName) continue;
+
+          // Only flag if at least one dep is a non-prop (state-shape)
+          // identifier — otherwise the effect is just adapting to prop
+          // changes (legit pattern).
+          const hasStateLikeDep = depsNode.elements.some(
+            (element: EsTreeNode) => element?.type === "Identifier" && !isPropName(element.name),
+          );
+          if (!hasStateLikeDep) continue;
+
+          context.report({
+            node: stmt,
+            message: `useEffect calls prop callback "${invokedPropName}" with local state in deps — this is the "lift state via callback" anti-pattern; lift state into a shared Provider so both sides read the same source`,
+          });
+        }
+      },
+    };
+  },
+};
+
 // HACK: useEffectEvent's identity is intentionally unstable — it captures
 // the latest props/state on each call. Listing it in a useEffect/useMemo/
 // useCallback dep array fundamentally misuses the API and would cause the

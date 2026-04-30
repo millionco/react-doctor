@@ -32,6 +32,7 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/no-cascading-set-state": "State & Effects",
   "react-doctor/no-effect-event-handler": "State & Effects",
   "react-doctor/no-effect-event-in-deps": "State & Effects",
+  "react-doctor/no-prop-callback-in-effect": "State & Effects",
   "react-doctor/no-derived-useState": "State & Effects",
   "react-doctor/prefer-useReducer": "State & Effects",
   "react-doctor/rerender-lazy-state-init": "Performance",
@@ -42,12 +43,14 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/no-giant-component": "Architecture",
   "react-doctor/no-many-boolean-props": "Architecture",
   "react-doctor/no-react19-deprecated-apis": "Architecture",
+  "react-doctor/no-render-prop-children": "Architecture",
   "react-doctor/no-render-in-render": "Architecture",
   "react-doctor/no-nested-component-definition": "Correctness",
 
   "react-doctor/no-usememo-simple-expression": "Performance",
   "react-doctor/no-layout-property-animation": "Performance",
   "react-doctor/rerender-memo-with-default-value": "Performance",
+  "react-doctor/rerender-memo-before-early-return": "Performance",
   "react-doctor/rendering-animate-svg-wrapper": "Performance",
   "react-doctor/rendering-hoist-jsx": "Performance",
   "react-doctor/rendering-usetransition-loading": "Performance",
@@ -72,8 +75,12 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/no-undeferred-third-party": "Bundle Size",
 
   "react-doctor/no-array-index-as-key": "Correctness",
+  "react-doctor/no-polymorphic-children": "Architecture",
   "react-doctor/rendering-conditional-render": "Correctness",
+  "react-doctor/rendering-svg-precision": "Performance",
   "react-doctor/no-prevent-default": "Correctness",
+  "react-doctor/no-document-start-view-transition": "Correctness",
+  "react-doctor/no-flush-sync": "Performance",
   "react-doctor/nextjs-no-img-element": "Next.js",
   "react-doctor/nextjs-async-client-component": "Next.js",
   "react-doctor/nextjs-no-a-element": "Next.js",
@@ -94,6 +101,7 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/server-auth-actions": "Server",
   "react-doctor/server-after-nonblocking": "Server",
   "react-doctor/server-no-mutable-module-state": "Server",
+  "react-doctor/server-cache-with-object-literal": "Server",
 
   "react-doctor/client-passive-event-listeners": "Performance",
 
@@ -150,6 +158,11 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/rn-prefer-expo-image": "React Native",
   "react-doctor/rn-no-non-native-navigator": "React Native",
   "react-doctor/rn-no-scroll-state": "React Native",
+  "react-doctor/rn-no-scrollview-mapped-list": "React Native",
+  "react-doctor/rn-no-inline-object-in-list-item": "React Native",
+  "react-doctor/rn-animate-layout-property": "React Native",
+  "react-doctor/rn-prefer-content-inset-adjustment": "React Native",
+  "react-doctor/rn-pressable-shared-value-mutation": "React Native",
 
   "react-doctor/tanstack-start-route-property-order": "TanStack Start",
   "react-doctor/tanstack-start-no-direct-fetch-in-loader": "TanStack Start",
@@ -188,6 +201,8 @@ const RULE_HELP_MAP: Record<string, string> = {
     "Extract to a useMemo, useRef, or module-level constant so the reference is stable",
   "no-effect-event-in-deps":
     "Call the useEffectEvent callback inside the effect body without listing it; its identity is intentionally unstable",
+  "no-prop-callback-in-effect":
+    "Lift the shared state into a Provider so both sides read the same source — no useEffect-driven sync needed",
 
   "no-generic-handler-names":
     "Rename to describe the action: e.g. `handleSubmit` → `saveUserProfile`, `handleClick` → `toggleSidebar`",
@@ -196,7 +211,9 @@ const RULE_HELP_MAP: Record<string, string> = {
   "no-many-boolean-props":
     "Split into compound components or named variants: `<Button.Primary />`, `<DialogConfirm />` instead of stacking `isPrimary`, `isConfirm` flags",
   "no-react19-deprecated-apis":
-    "Pass `ref` as a regular prop on function components — `forwardRef` is no longer needed in React 19+",
+    "Pass `ref` as a regular prop on function components — `forwardRef` is no longer needed in React 19+. Replace `useContext(X)` with `use(X)` for branch-aware context reads.",
+  "no-render-prop-children":
+    "Replace `renderXxx` props with compound subcomponents (e.g. `<Modal.Header>`) or `children` so the parent doesn't dictate every customization point",
   "no-render-in-render":
     "Extract to a named component: `const ListItem = ({ item }) => <div>{item.name}</div>`",
   "no-nested-component-definition":
@@ -212,6 +229,16 @@ const RULE_HELP_MAP: Record<string, string> = {
     "Wrap the SVG: `<motion.div animate={...}><svg>...</svg></motion.div>`",
   "rendering-hoist-jsx":
     "Move the static JSX to module scope: `const ICON = <svg>...</svg>` outside the component so it isn't recreated each render",
+  "rerender-memo-before-early-return":
+    "Extract the JSX into a memoized child component so the parent's early return short-circuits before the child renders",
+  "no-polymorphic-children":
+    "Expose explicit subcomponents (`<Button.Text>`, `<Button.Icon>`) so consumers don't need to switch on `typeof children`",
+  "rendering-svg-precision":
+    "Truncate path/points/transform decimals to 1–2 digits — sub-pixel precision adds bytes with no visible difference",
+  "no-document-start-view-transition":
+    "Render a <ViewTransition> component and update inside startTransition / useDeferredValue — React calls startViewTransition for you",
+  "no-flush-sync":
+    "Use startTransition for non-urgent updates — flushSync forces a sync flush that skips View Transitions and concurrent rendering",
   "rendering-usetransition-loading":
     "Replace with `const [isPending, startTransition] = useTransition()` — avoids a re-render for the loading state",
   "rendering-hydration-no-flicker":
@@ -327,6 +354,8 @@ const RULE_HELP_MAP: Record<string, string> = {
     "`import { after } from 'next/server'` then wrap: `after(() => analytics.track(...))` — response isn't blocked",
   "server-no-mutable-module-state":
     "Move per-request data into the action body, headers/cookies, or a request-scope (React.cache, AsyncLocalStorage). Module-scope `let`/`var` is shared across requests.",
+  "server-cache-with-object-literal":
+    "Pass primitives to React.cache()-wrapped functions — argument identity (not deep equality) is the dedup key, so a fresh `{}` per render bypasses the cache",
 
   "client-passive-event-listeners":
     "Add `{ passive: true }` as the third argument: `addEventListener('scroll', handler, { passive: true })`",
@@ -401,6 +430,16 @@ const RULE_HELP_MAP: Record<string, string> = {
     "Use `@react-navigation/native-stack` (or `native-tabs` in v7+) for platform-native transitions and gestures",
   "rn-no-scroll-state":
     "Track scroll position with a Reanimated shared value (`useAnimatedScrollHandler`) or a ref — `setState` on every scroll event causes re-render storms",
+  "rn-no-scrollview-mapped-list":
+    "Use FlashList, LegendList, or FlatList — `<ScrollView>{items.map(...)}</ScrollView>` mounts every row in memory",
+  "rn-no-inline-object-in-list-item":
+    "Hoist style/object props outside renderItem (StyleSheet.create, useMemo at list scope, or pass primitives) so memo() row components stop bailing",
+  "rn-animate-layout-property":
+    "Animate `transform: [{ translateX/Y }, { scale }]` and `opacity` instead of layout props — layout runs on the JS thread; transform/opacity run on the GPU compositor",
+  "rn-prefer-content-inset-adjustment":
+    'Drop the SafeAreaView wrapper and set `contentInsetAdjustmentBehavior="automatic"` on the ScrollView for native safe-area handling',
+  "rn-pressable-shared-value-mutation":
+    "Wrap in <GestureDetector gesture={Gesture.Tap()...}> so the press animation runs on the UI thread instead of bouncing across the JS bridge",
 
   "tanstack-start-route-property-order":
     "Follow the order: params/validateSearch → loaderDeps → context → beforeLoad → loader → head. See https://tanstack.com/router/latest/docs/eslint/create-route-property-order",

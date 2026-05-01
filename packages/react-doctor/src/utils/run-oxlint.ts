@@ -413,7 +413,7 @@ const RULE_HELP_MAP: Record<string, string> = {
     "Pass the source array once and derive the projection on the client — passing both doubles RSC serialization bytes",
 
   "client-passive-event-listeners":
-    "Add `{ passive: true }` as the third argument: `addEventListener('scroll', handler, { passive: true })`",
+    "Add `{ passive: true }` as the third argument: `addEventListener('scroll', handler, { passive: true })`. Only do this if the handler does NOT call `event.preventDefault()` — passive listeners silently ignore `preventDefault()`, which breaks features like pull-to-refresh suppression, custom gestures, and nested-scroll containment.",
 
   "query-stable-query-client":
     "Move `new QueryClient()` to module scope or wrap in `useState(() => new QueryClient())` — recreating it on every render resets the entire cache",

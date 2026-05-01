@@ -68,7 +68,7 @@
     "test": "vp test run"
   },
   "dependencies": {
-    "agent-install": "0.0.3",
+    "agent-install": "0.0.4",
     "commander": "^14.0.3",
     "knip": "^6.3.1",
     "ora": "^9.3.0",

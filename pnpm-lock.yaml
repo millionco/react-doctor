@@ -34,8 +34,8 @@ importers:
   packages/react-doctor:
     dependencies:
       agent-install:
-        specifier: 0.0.3
-        version: 0.0.3
+        specifier: 0.0.4
+        version: 0.0.4
       commander:
         specifier: ^14.0.3
         version: 14.0.3
@@ -1837,8 +1837,8 @@ packages:
     engines: {node: '>=0.4.0'}
     hasBin: true
 
-  agent-install@0.0.3:
-    resolution: {integrity: sha512-0d7uubrSypKqryN2qvY4Hk1AsyMXjM2qLOIETH7Zl3j5eWSUp7Kc6NgnZGQUSa/r9siMLhcWYx6RjOVd4gnfhQ==}
+  agent-install@0.0.4:
+    resolution: {integrity: sha512-k3MkZIs7cLEaW6Kd4GYP/v3XrW0JegjBOS+T4Hy8NZvG/zX+3VlIF4YHF1Wblrx5+HXFkN6W3RHZhVGwm8S12A==}
     hasBin: true
 
   ajv@6.14.0:
@@ -4137,7 +4137,7 @@ snapshots:
 
   acorn@8.16.0: {}
 
-  agent-install@0.0.3:
+  agent-install@0.0.4:
     dependencies:
       '@iarna/toml': 2.2.5
       commander: 14.0.3

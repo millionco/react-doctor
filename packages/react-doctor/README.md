@@ -309,7 +309,7 @@ pnpm build
 Run locally:
 
 ```bash
-node packages/react-doctor/dist/cli.js /path/to/your/react-project
+node packages/react-doctor/bin/react-doctor.js /path/to/your/react-project
 ```
 
 ### License

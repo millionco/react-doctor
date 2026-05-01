@@ -29,9 +29,10 @@
     "directory": "packages/react-doctor"
   },
   "bin": {
-    "react-doctor": "./dist/cli.js"
+    "react-doctor": "./bin/react-doctor.js"
   },
   "files": [
+    "bin/**",
     "dist/**/*.js",
     "dist/**/*.d.ts",
     "dist/skills/**"

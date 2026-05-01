@@ -37,7 +37,7 @@ jobs:
         run: |
           cd packages/react-doctor
           pnpm build
-          BUILT_VERSION=$(node dist/cli.js --version)
+          BUILT_VERSION=$(node bin/react-doctor.js --version)
           echo "Built CLI reports version: $BUILT_VERSION"
           if [ -z "$BUILT_VERSION" ] || [ "$BUILT_VERSION" = "0.0.0" ]; then
             echo "Built CLI version is missing or 0.0.0; build env did not inject VERSION"

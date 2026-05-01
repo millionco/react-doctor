@@ -174,18 +174,11 @@ YAMLEOF
   INSTALLED=$((INSTALLED + 1))
 fi
 
-# Project-level SKILL.md (root). Append (with marker dedup) so we
-# don't clobber any existing project guidance the user already has.
-PROJECT_SKILL_FILE="SKILL.md"
-if [ -f "$PROJECT_SKILL_FILE" ] && grep -q "$MARKER" "$PROJECT_SKILL_FILE"; then
-  printf "\${GREEN}✔\${RESET} ./SKILL.md \${DIM}(already installed)\${RESET}\\n"
-else
-  if [ -f "$PROJECT_SKILL_FILE" ]; then
-    echo "" >> "$PROJECT_SKILL_FILE"
-  fi
-  printf '%s\\n' "$SKILL_CONTENT" >> "$PROJECT_SKILL_FILE"
-  printf "\${GREEN}✔\${RESET} ./SKILL.md\\n"
-fi
+# Project-level skill: .agents/skills/$SKILL_NAME/SKILL.md
+PROJECT_SKILL_DIR=".agents/skills/$SKILL_NAME"
+mkdir -p "$PROJECT_SKILL_DIR"
+printf '%s\\n' "$SKILL_CONTENT" > "$PROJECT_SKILL_DIR/SKILL.md"
+printf "\${GREEN}✔\${RESET} .agents/skills/$SKILL_NAME/\\n"
 INSTALLED=$((INSTALLED + 1))
 
 echo ""

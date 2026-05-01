@@ -56,11 +56,24 @@ describe("runInstallSkill", () => {
       yes: true,
       sourceDir: fixture.sourceDir,
       projectRoot: fixture.projectRoot,
+      detectedAgents: ["cursor"],
     });
     expect(process.exitCode).toBe(1);
   });
 
-  it("throws when SKILL.md exists but has no parseable frontmatter (H1)", async () => {
+  it("exits with code 1 when no agents are detected", async () => {
+    writeValidSkill(fixture.sourceDir);
+    await runInstallSkill({
+      yes: true,
+      sourceDir: fixture.sourceDir,
+      projectRoot: fixture.projectRoot,
+      detectedAgents: [],
+    });
+    expect(process.exitCode).toBe(1);
+    expect(existsSync(path.join(fixture.projectRoot, ".agents"))).toBe(false);
+  });
+
+  it("throws when SKILL.md exists but has no parseable frontmatter (H1 silent-success regression guard)", async () => {
     // HACK: agent-install's discoverSkills returns an empty array for
     // SKILL.md without `name:` / `description:` frontmatter. Before the
     // fix, our wrapper only checked `failed.length > 0` and reported
@@ -74,11 +87,12 @@ describe("runInstallSkill", () => {
         yes: true,
         sourceDir: fixture.sourceDir,
         projectRoot: fixture.projectRoot,
+        detectedAgents: ["cursor"],
       }),
     ).rejects.toThrow(/Could not parse SKILL\.md/);
   });
 
-  it("throws when frontmatter is missing the required `description` field (H1)", async () => {
+  it("throws when frontmatter is missing the required `description` field (H1 regression guard)", async () => {
     writeFileSync(
       path.join(fixture.sourceDir, "SKILL.md"),
       "---\nname: react-doctor\n---\n# react-doctor\n",
@@ -88,6 +102,7 @@ describe("runInstallSkill", () => {
         yes: true,
         sourceDir: fixture.sourceDir,
         projectRoot: fixture.projectRoot,
+        detectedAgents: ["cursor"],
       }),
     ).rejects.toThrow(/Could not parse SKILL\.md/);
   });
@@ -99,9 +114,49 @@ describe("runInstallSkill", () => {
       dryRun: true,
       sourceDir: fixture.sourceDir,
       projectRoot: fixture.projectRoot,
+      detectedAgents: ["cursor", "claude-code"],
     });
     expect(existsSync(path.join(fixture.projectRoot, ".agents"))).toBe(false);
     expect(existsSync(path.join(fixture.projectRoot, ".claude"))).toBe(false);
     expect(existsSync(path.join(fixture.projectRoot, ".factory"))).toBe(false);
+  });
+
+  it("installs the skill into the universal .agents/skills directory for a universal agent", async () => {
+    writeValidSkill(fixture.sourceDir);
+    await runInstallSkill({
+      yes: true,
+      sourceDir: fixture.sourceDir,
+      projectRoot: fixture.projectRoot,
+      detectedAgents: ["cursor"],
+    });
+    expect(existsSync(path.join(fixture.projectRoot, ".agents/skills/react-doctor/SKILL.md"))).toBe(
+      true,
+    );
+  });
+
+  it("installs the skill into a vendor-specific directory for a non-universal agent", async () => {
+    writeValidSkill(fixture.sourceDir);
+    await runInstallSkill({
+      yes: true,
+      sourceDir: fixture.sourceDir,
+      projectRoot: fixture.projectRoot,
+      detectedAgents: ["claude-code"],
+    });
+    expect(existsSync(path.join(fixture.projectRoot, ".claude/skills/react-doctor/SKILL.md"))).toBe(
+      true,
+    );
+  });
+
+  it("installs the skill into .factory/skills for the droid agent (upstream agent-install@0.0.3)", async () => {
+    writeValidSkill(fixture.sourceDir);
+    await runInstallSkill({
+      yes: true,
+      sourceDir: fixture.sourceDir,
+      projectRoot: fixture.projectRoot,
+      detectedAgents: ["droid"],
+    });
+    expect(
+      existsSync(path.join(fixture.projectRoot, ".factory/skills/react-doctor/SKILL.md")),
+    ).toBe(true);
   });
 });

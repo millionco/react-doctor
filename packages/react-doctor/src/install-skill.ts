@@ -16,6 +16,7 @@ interface InstallSkillOptions {
   // Overrides for tests; production callers leave these unset.
   sourceDir?: string;
   projectRoot?: string;
+  detectedAgents?: SkillAgentType[];
 }
 
 const getSkillSourceDirectory = (): string => {
@@ -33,7 +34,7 @@ export const runInstallSkill = async (options: InstallSkillOptions = {}): Promis
     return;
   }
 
-  const detectedAgents = await detectAvailableAgents();
+  const detectedAgents = options.detectedAgents ?? (await detectAvailableAgents());
   if (detectedAgents.length === 0) {
     logger.error("No supported coding agents detected.");
     logger.dim(

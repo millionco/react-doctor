@@ -176,6 +176,8 @@ fi
 
 # Project-level AGENTS.md (root). Append (with marker dedup) so we
 # don't clobber any existing project guidance the user already has.
+# We use SKILL_CONTENT (the richer one with frontmatter + command
+# table) here, matching the Windsurf branch above.
 PROJECT_AGENTS_FILE="AGENTS.md"
 if [ -f "$PROJECT_AGENTS_FILE" ] && grep -q "$MARKER" "$PROJECT_AGENTS_FILE"; then
   printf "\${GREEN}✔\${RESET} ./AGENTS.md \${DIM}(already installed)\${RESET}\\n"
@@ -183,7 +185,7 @@ else
   if [ -f "$PROJECT_AGENTS_FILE" ]; then
     echo "" >> "$PROJECT_AGENTS_FILE"
   fi
-  printf '%s\\n' "$AGENTS_CONTENT" >> "$PROJECT_AGENTS_FILE"
+  printf '%s\\n' "$SKILL_CONTENT" >> "$PROJECT_AGENTS_FILE"
   printf "\${GREEN}✔\${RESET} ./AGENTS.md\\n"
 fi
 INSTALLED=$((INSTALLED + 1))

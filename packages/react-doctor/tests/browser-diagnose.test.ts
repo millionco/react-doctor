@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { diagnose } from "../src/adapters/browser/diagnose.js";
 import type { Diagnostic, ProjectInfo } from "../src/types.js";
 

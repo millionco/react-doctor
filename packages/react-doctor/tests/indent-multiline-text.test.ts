@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { indentMultilineText } from "../src/utils/indent-multiline-text.js";
 
 describe("indentMultilineText", () => {

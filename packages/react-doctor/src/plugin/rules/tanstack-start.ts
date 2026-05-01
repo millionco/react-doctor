@@ -360,25 +360,41 @@ export const tanstackStartServerFnMethodOrder: Rule = {
 
 export const tanstackStartNoNavigateInRender: Rule = {
   create: (context: RuleContext) => {
-    let effectDepth = 0;
+    // HACK: only callbacks that React calls LATER are safe scopes for
+    // navigate() — useEffect / useLayoutEffect (post-commit), useCallback
+    // / useMemo (cached, fired by event handlers later), and JSX `onXxx`
+    // attributes (event handlers). Synchronous-iteration callbacks like
+    // `arr.forEach(item => navigate(item))` execute during render, so
+    // they must NOT be treated as deferred — they're still render-time
+    // side effects. A pure function-depth counter would skip them and
+    // miss real bugs; the explicit allow-list is the correct boundary.
+    let deferredCallbackDepth = 0;
     let eventHandlerDepth = 0;
+
+    const isDeferredHookCall = (node: EsTreeNode): boolean =>
+      isHookCall(node, EFFECT_HOOK_NAMES) ||
+      isHookCall(node, "useCallback") ||
+      isHookCall(node, "useMemo");
+
+    const isEventHandlerAttribute = (node: EsTreeNode): boolean =>
+      node.name?.type === "JSXIdentifier" &&
+      typeof node.name.name === "string" &&
+      node.name.name.startsWith("on") &&
+      UPPERCASE_PATTERN.test(node.name.name.charAt(2));
 
     return {
       CallExpression(node: EsTreeNode) {
         const filename = context.getFilename?.() ?? "";
-        const isRouteFile = TANSTACK_ROUTE_FILE_PATTERN.test(filename);
-        if (!isRouteFile) return;
+        if (!TANSTACK_ROUTE_FILE_PATTERN.test(filename)) return;
 
-        if (isHookCall(node, EFFECT_HOOK_NAMES)) {
-          effectDepth++;
-        }
+        if (isDeferredHookCall(node)) deferredCallbackDepth++;
 
-        if (effectDepth > 0 || eventHandlerDepth > 0) return;
+        if (deferredCallbackDepth > 0 || eventHandlerDepth > 0) return;
 
         if (
           node.callee?.type === "Identifier" &&
           node.callee.name === "navigate" &&
-          node.arguments?.length > 0
+          (node.arguments?.length ?? 0) > 0
         ) {
           context.report({
             node,
@@ -389,37 +405,21 @@ export const tanstackStartNoNavigateInRender: Rule = {
       },
       "CallExpression:exit"(node: EsTreeNode) {
         const filename = context.getFilename?.() ?? "";
-        const isRouteFile = TANSTACK_ROUTE_FILE_PATTERN.test(filename);
-        if (!isRouteFile) return;
-
-        if (isHookCall(node, EFFECT_HOOK_NAMES)) {
-          effectDepth = Math.max(0, effectDepth - 1);
+        if (!TANSTACK_ROUTE_FILE_PATTERN.test(filename)) return;
+        if (isDeferredHookCall(node)) {
+          deferredCallbackDepth = Math.max(0, deferredCallbackDepth - 1);
         }
       },
       JSXAttribute(node: EsTreeNode) {
         const filename = context.getFilename?.() ?? "";
-        const isRouteFile = TANSTACK_ROUTE_FILE_PATTERN.test(filename);
-        if (!isRouteFile) return;
-
-        if (
-          node.name?.type === "JSXIdentifier" &&
-          node.name.name.startsWith("on") &&
-          UPPERCASE_PATTERN.test(node.name.name.charAt(2))
-        ) {
-          eventHandlerDepth++;
-        }
+        if (!TANSTACK_ROUTE_FILE_PATTERN.test(filename)) return;
+        if (isEventHandlerAttribute(node)) eventHandlerDepth++;
       },
       "JSXAttribute:exit"(node: EsTreeNode) {
         const filename = context.getFilename?.() ?? "";
-        const isRouteFile = TANSTACK_ROUTE_FILE_PATTERN.test(filename);
-        if (!isRouteFile) return;
-
-        if (
-          node.name?.type === "JSXIdentifier" &&
-          node.name.name.startsWith("on") &&
-          UPPERCASE_PATTERN.test(node.name.name.charAt(2))
-        ) {
-          eventHandlerDepth--;
+        if (!TANSTACK_ROUTE_FILE_PATTERN.test(filename)) return;
+        if (isEventHandlerAttribute(node)) {
+          eventHandlerDepth = Math.max(0, eventHandlerDepth - 1);
         }
       },
     };

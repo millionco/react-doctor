@@ -7,10 +7,10 @@ import { fileURLToPath } from "node:url";
 import {
   ERROR_PREVIEW_LENGTH_CHARS,
   JSX_FILE_PATTERN,
-  OXLINT_MAX_FILES_PER_BATCH,
   PROXY_OUTPUT_MAX_BYTES,
-  SPAWN_ARGS_MAX_LENGTH_CHARS,
 } from "../constants.js";
+import { batchIncludePaths } from "./batch-include-paths.js";
+import { collectIgnorePatterns } from "./collect-ignore-patterns.js";
 import { ALL_REACT_DOCTOR_RULE_KEYS, createOxlintConfig } from "../oxlint-config.js";
 import type { CleanedDiagnostic, Diagnostic, Framework, OxlintOutput } from "../types.js";
 import { neutralizeDisableDirectives } from "./neutralize-disable-directives.js";
@@ -580,37 +580,6 @@ const resolveDiagnosticCategory = (plugin: string, rule: string): string => {
   return RULE_CATEGORY_MAP[ruleKey] ?? PLUGIN_CATEGORY_MAP[plugin] ?? "Other";
 };
 
-const estimateArgsLength = (args: string[]): number =>
-  args.reduce((total, argument) => total + argument.length + 1, 0);
-
-const batchIncludePaths = (baseArgs: string[], includePaths: string[]): string[][] => {
-  const baseArgsLength = estimateArgsLength(baseArgs);
-  const batches: string[][] = [];
-  let currentBatch: string[] = [];
-  let currentBatchLength = baseArgsLength;
-
-  for (const filePath of includePaths) {
-    const entryLength = filePath.length + 1;
-    const exceedsArgLength =
-      currentBatch.length > 0 && currentBatchLength + entryLength > SPAWN_ARGS_MAX_LENGTH_CHARS;
-    const exceedsFileCount = currentBatch.length >= OXLINT_MAX_FILES_PER_BATCH;
-
-    if (exceedsArgLength || exceedsFileCount) {
-      batches.push(currentBatch);
-      currentBatch = [];
-      currentBatchLength = baseArgsLength;
-    }
-    currentBatch.push(filePath);
-    currentBatchLength += entryLength;
-  }
-
-  if (currentBatch.length > 0) {
-    batches.push(currentBatch);
-  }
-
-  return batches;
-};
-
 // HACK: Sanitize child env so a developer's NODE_OPTIONS=--inspect (or
 // --max-old-space-size=128, etc.) doesn't leak into oxlint and either spawn a
 // debugger port or starve it of memory. We also drop npm_config_* lifecycle
@@ -723,9 +692,16 @@ const isOxlintOutput = (value: unknown): value is OxlintOutput => {
 const parseOxlintOutput = (stdout: string): Diagnostic[] => {
   if (!stdout) return [];
 
+  // HACK: oxlint sometimes prepends a notice line to stdout (e.g. when
+  // every input was ignored — "No files found to lint. Please check…").
+  // Skip any leading non-JSON noise by jumping to the first `{` we see;
+  // the remainder is the actual report. Locale- and wording-agnostic.
+  const jsonStart = stdout.indexOf("{");
+  const sanitizedStdout = jsonStart > 0 ? stdout.slice(jsonStart) : stdout;
+
   let parsed: unknown;
   try {
-    parsed = JSON.parse(stdout);
+    parsed = JSON.parse(sanitizedStdout);
   } catch {
     throw new Error(
       `Failed to parse oxlint output: ${stdout.slice(0, ERROR_PREVIEW_LENGTH_CHARS)}`,
@@ -781,6 +757,14 @@ interface RunOxlintOptions {
   includePaths?: string[];
   nodeBinaryPath?: string;
   customRulesOnly?: boolean;
+  /**
+   * When `true` (default), pre-existing `// eslint-disable*` / `// oxlint-disable*`
+   * comments in source files are LEFT ALONE — oxlint will apply them
+   * normally, suppressing react-doctor diagnostics on those lines.
+   * When `false`, those comment markers are temporarily neutralized
+   * so react-doctor sees through every prior suppression (audit mode).
+   */
+  respectInlineDisables?: boolean;
 }
 
 let didValidateRuleRegistration = false;
@@ -823,6 +807,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     includePaths,
     nodeBinaryPath = process.execPath,
     customRulesOnly = false,
+    respectInlineDisables = true,
   } = options;
 
   validateRuleRegistration();
@@ -841,7 +826,12 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     hasTanStackQuery,
     customRulesOnly,
   });
-  const restoreDisableDirectives = neutralizeDisableDirectives(rootDirectory, includePaths);
+  // HACK: only neutralize disable comments in audit mode. Default
+  // behavior respects the user's existing `// eslint-disable*` /
+  // `// oxlint-disable*` directives — we let oxlint apply them.
+  const restoreDisableDirectives = respectInlineDisables
+    ? () => {}
+    : neutralizeDisableDirectives(rootDirectory, includePaths);
 
   try {
     const fileHandle = fs.openSync(configPath, "wx", 0o600);
@@ -859,6 +849,20 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       if (tsconfigRelativePath) {
         baseArgs.push("--tsconfig", tsconfigRelativePath);
       }
+    }
+
+    // HACK: pass every ignore source via a single combined `--ignore-path`
+    // file (cheap on `baseArgs` length) rather than N `--ignore-pattern`
+    // entries (which would inflate per-batch arg length and shrink the
+    // file-count budget on large diffs). The combined file MUST include
+    // `.eslintignore` patterns because `--ignore-path` overrides oxlint's
+    // automatic `.eslintignore` lookup — that responsibility now lives
+    // in `collectIgnorePatterns`.
+    const combinedPatterns = collectIgnorePatterns(rootDirectory);
+    if (combinedPatterns.length > 0) {
+      const combinedIgnorePath = path.join(configDirectory, "combined.ignore");
+      fs.writeFileSync(combinedIgnorePath, `${combinedPatterns.join("\n")}\n`);
+      baseArgs.push("--ignore-path", combinedIgnorePath);
     }
 
     const fileBatches =

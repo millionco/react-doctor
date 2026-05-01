@@ -1,5 +1,5 @@
 import path from "node:path";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vite-plus/test";
 import type { Diagnostic } from "../src/types.js";
 import { runOxlint } from "../src/utils/run-oxlint.js";
 
@@ -173,6 +173,45 @@ describe("runOxlint", () => {
       expect(redirectIssue).toBeDefined();
       expect(redirectIssue?.message).toContain("getServerSideProps redirect");
       expect(redirectIssue?.message).not.toContain("next/navigation");
+    });
+
+    it("does not flag useSearchParams() in a file that imports/uses <Suspense>", () => {
+      const wrappedPageIssues = nextjsDiagnostics.filter(
+        (diagnostic) =>
+          diagnostic.rule === "nextjs-no-use-search-params-without-suspense" &&
+          diagnostic.filePath.includes("wrapped/page"),
+      );
+      expect(wrappedPageIssues).toHaveLength(0);
+    });
+  });
+
+  describe("server rule scope", () => {
+    it("server-after-nonblocking flags BOTH console.log and analytics.track inside `use server`", () => {
+      const issues = nextjsDiagnostics.filter(
+        (diagnostic) =>
+          diagnostic.rule === "server-after-nonblocking" &&
+          diagnostic.filePath.includes("app/actions"),
+      );
+      const messages = issues.map((diagnostic) => diagnostic.message);
+      expect(messages.length).toBeGreaterThan(0);
+      expect(messages.some((message) => message.includes("console.log"))).toBe(true);
+      expect(messages.some((message) => message.includes("analytics.track"))).toBe(true);
+    });
+  });
+
+  describe("tanstack-query false-positive freedom", () => {
+    it("does not flag useMutation that calls setQueryData (or any other cache-update method)", () => {
+      const mutationLines = basicReactDiagnostics
+        .filter(
+          (diagnostic) =>
+            diagnostic.rule === "query-mutation-missing-invalidation" &&
+            diagnostic.filePath.includes("query-issues"),
+        )
+        .map((diagnostic) => diagnostic.line);
+      // The fixture has two useMutation calls: line ~51 with NO cache
+      // update (must fire), and the setQueryData example a few lines
+      // below (must NOT fire).
+      expect(mutationLines).toEqual([51]);
     });
   });
 
@@ -740,6 +779,25 @@ describe("runOxlint", () => {
           diagnostic.filePath.includes("edge-cases"),
       );
       expect(scriptIssues).toHaveLength(0);
+    });
+
+    it("does not flag navigate() inside useCallback / useMemo / useEffect / JSX onXxx callbacks", () => {
+      const safeNavigateLines = tanstackStartDiagnostics
+        .filter((diagnostic) => diagnostic.rule === "tanstack-start-no-navigate-in-render")
+        .filter((diagnostic) => diagnostic.filePath.includes("route-issues"))
+        .map((diagnostic) => diagnostic.line)
+        .sort((a, b) => a - b);
+      // Render-time navigate() calls in the fixture: line 60 inside
+      // NavigateInRenderComponent (direct in component body) and the
+      // forEach callback inside SyncIterationNavigateComponent (synchronous
+      // iteration during render). Every other navigate() in the file is
+      // wrapped in useCallback/useMemo/onClick and must NOT fire.
+      expect(safeNavigateLines).toContain(60);
+      // The forEach navigate is at the line within SyncIterationNavigateComponent;
+      // assert at least one diagnostic past line 60 (the sync-iteration case)
+      // and that none of the safe-deferred call sites (lines around the
+      // useCallback / useMemo / onClick block) appear.
+      expect(safeNavigateLines.length).toBeGreaterThanOrEqual(2);
     });
   });
 

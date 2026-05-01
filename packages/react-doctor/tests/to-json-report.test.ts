@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { toJsonReport } from "../src/index.js";
 import type { DiagnoseResult } from "../src/index.js";
 

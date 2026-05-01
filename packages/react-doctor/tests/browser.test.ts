@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { diagnoseBrowser } from "../src/browser.js";
 import { calculateScoreLocally } from "../src/core/calculate-score-locally.js";
 import { calculateScore as calculateScoreBrowser } from "../src/utils/calculate-score-browser.js";

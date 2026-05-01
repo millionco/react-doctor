@@ -212,20 +212,26 @@ const isMutatingDbCall = (node: EsTreeNode): boolean => {
   return property?.type === "Identifier" && MUTATION_METHOD_NAMES.has(property.name);
 };
 
+// HACK: extracted so `findSideEffect` can re-use the EXACT same shape
+// predicate when it goes hunting for the literal method to render in
+// the diagnostic. Previously `findSideEffect` used a looser `key.name
+// === "method"` predicate and could pick a non-Literal `method:` entry
+// (when duplicate keys are present), producing
+// `"fetch() with method undefined"` in the message.
+const isMutatingMethodProperty = (property: EsTreeNode): boolean =>
+  property.type === "Property" &&
+  property.key?.type === "Identifier" &&
+  property.key.name === "method" &&
+  property.value?.type === "Literal" &&
+  typeof property.value.value === "string" &&
+  MUTATING_HTTP_METHODS.has(property.value.value.toUpperCase());
+
 const isMutatingFetchCall = (node: EsTreeNode): boolean => {
   if (node.type !== "CallExpression") return false;
   if (node.callee?.type !== "Identifier" || node.callee.name !== "fetch") return false;
   const optionsArgument = node.arguments?.[1];
   if (!optionsArgument || optionsArgument.type !== "ObjectExpression") return false;
-  return optionsArgument.properties?.some(
-    (property: EsTreeNode) =>
-      property.type === "Property" &&
-      property.key?.type === "Identifier" &&
-      property.key.name === "method" &&
-      property.value?.type === "Literal" &&
-      typeof property.value.value === "string" &&
-      MUTATING_HTTP_METHODS.has(property.value.value.toUpperCase()),
-  );
+  return Boolean(optionsArgument.properties?.some(isMutatingMethodProperty));
 };
 
 export const findSideEffect = (node: EsTreeNode): string | null => {
@@ -239,10 +245,11 @@ export const findSideEffect = (node: EsTreeNode): string | null => {
       const methodName = child.callee.property.name;
       sideEffectDescription = `headers().${methodName}()`;
     } else if (isMutatingFetchCall(child)) {
-      const methodProperty = child.arguments[1].properties.find(
-        (property: EsTreeNode) =>
-          property.key?.type === "Identifier" && property.key.name === "method",
-      );
+      // HACK: re-use the EXACT predicate `isMutatingFetchCall` already
+      // matched on so we can't pick a non-Literal duplicate `method:`
+      // entry by mistake (a looser `key.name === "method"` predicate
+      // would).
+      const methodProperty = child.arguments[1].properties.find(isMutatingMethodProperty);
       sideEffectDescription = `fetch() with method ${methodProperty.value.value}`;
     } else if (isMutatingDbCall(child)) {
       const methodName = child.callee.property.name;

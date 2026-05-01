@@ -993,7 +993,7 @@ export const rerenderDerivedStateFromHook: Rule = {
       for (const binding of bindings) {
         context.report({
           node: binding.declarator,
-          message: `${binding.hookName}() returns a continuously-changing value but you only compare it to a threshold — use a media-query / threshold hook (e.g. \`useMediaQuery(\"(max-width: 767px)\")\`) so the component re-renders only when the threshold flips`,
+          message: `${binding.hookName}() returns a continuously-changing value but you only compare it to a threshold — use a media-query / threshold hook (e.g. \`useMediaQuery("(max-width: 767px)")\`) so the component re-renders only when the threshold flips`,
         });
       }
     };

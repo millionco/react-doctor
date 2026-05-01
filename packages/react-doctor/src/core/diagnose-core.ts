@@ -87,6 +87,11 @@ export const diagnoseCore = async (
         })
       : Promise.resolve(emptyDiagnostics);
 
+  // HACK: both runners catch their own errors today, but `Promise.allSettled`
+  // is the load-bearing safety net for the case where a future runner
+  // is refactored without a `.catch()`. Surfacing the rejection via
+  // `console.error` and returning [] keeps `diagnose()` resilient and
+  // is cheaper than a second look at the bug-report log.
   const [lintSettled, deadCodeSettled] = await Promise.allSettled([lintPromise, deadCodePromise]);
   const lintDiagnostics = lintSettled.status === "fulfilled" ? lintSettled.value : emptyDiagnostics;
   const deadCodeDiagnostics =

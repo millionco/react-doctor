@@ -232,6 +232,21 @@ export const TANSTACK_MUTATION_HOOKS = new Set(["useMutation"]);
 
 export const TANSTACK_QUERY_CLIENT_CLASS = "QueryClient";
 
+// Every queryClient method that legitimately keeps the cache in sync
+// after a mutation. `query-mutation-missing-invalidation` looks for ANY
+// of these inside `onSuccess` (etc.); flagging only `invalidateQueries`
+// produced false positives on `setQueryData`, `resetQueries`, and so on.
+export const QUERY_CACHE_UPDATE_METHODS = new Set([
+  "invalidateQueries",
+  "setQueryData",
+  "setQueriesData",
+  "resetQueries",
+  "refetchQueries",
+  "removeQueries",
+  "cancelQueries",
+  "clear",
+]);
+
 export const STABLE_HOOK_WRAPPERS = new Set(["useState", "useMemo", "useRef"]);
 
 export const SCRIPT_LOADING_ATTRIBUTES = new Set(["defer", "async"]);

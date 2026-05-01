@@ -42,6 +42,7 @@ interface CliFlags {
   offline: boolean;
   annotations: boolean;
   staged: boolean;
+  respectInlineDisables: boolean;
   project?: string;
   diff?: boolean | string;
   failOn: string;
@@ -169,6 +170,9 @@ const resolveCliScanOptions = (
     scoreOnly: flags.score,
     offline: flags.offline || isCiEnvironment(),
     silent: flags.json,
+    respectInlineDisables: isCliOverride("respectInlineDisables")
+      ? flags.respectInlineDisables
+      : (userConfig?.respectInlineDisables ?? true),
   };
 };
 
@@ -177,6 +181,28 @@ let isCompactJsonOutput = false;
 const writeJsonReport = (report: JsonReport): void => {
   const serialized = isCompactJsonOutput ? JSON.stringify(report) : JSON.stringify(report, null, 2);
   process.stdout.write(`${serialized}\n`);
+};
+
+// HACK: only the exact lowercase `"true"` / `"false"` literals are
+// coerced to booleans — anything else stays as a (case-sensitive) branch
+// name so that real branches like `True-Branch` / `FALSE-vN` aren't
+// silently turned into a flag.
+const coerceDiffValue = (value: unknown): boolean | string | undefined => {
+  if (value === undefined) return undefined;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    if (value.length === 0) return undefined;
+    if (value === "false") return false;
+    if (value === "true") return true;
+    return value;
+  }
+  // HACK: write directly to stderr so the warning is visible even in
+  // `--json` mode (where the logger is silenced to keep stdout a
+  // single valid JSON document).
+  process.stderr.write(
+    `[react-doctor] invalid diff value (expected boolean or string): ${typeof value}. Falling back to no diff.\n`,
+  );
+  return undefined;
 };
 
 const resolveEffectiveDiff = (
@@ -190,23 +216,8 @@ const resolveEffectiveDiff = (
   // has any diff value.
   if (flags.full) return false;
   const isDiffCliOverride = programInstance.getOptionValueSource("diff") === "cli";
-  const value = isDiffCliOverride ? flags.diff : userConfig?.diff;
-  if (value === undefined) return undefined;
-  if (typeof value === "boolean") return value;
-  if (typeof value === "string") {
-    // HACK: coerce only the exact lowercase strings "true"/"false" — this
-    // catches the common case of `"diff": "false"` in JSON config without
-    // shadowing branch names like `True` / `FALSE` / `True-Branch` that a
-    // user might legitimately want to diff against.
-    if (value === "false") return false;
-    if (value === "true") return true;
-    if (value.length === 0) return undefined;
-    return value;
-  }
-  logger.warn(
-    `Invalid diff config value (expected boolean or string): ${typeof value}. Falling back to no diff.`,
-  );
-  return undefined;
+  const rawValue = isDiffCliOverride ? flags.diff : userConfig?.diff;
+  return coerceDiffValue(rawValue);
 };
 
 const resolveDiffMode = async (
@@ -245,9 +256,13 @@ const resolveDiffMode = async (
 };
 
 const validateModeFlags = (flags: CliFlags): void => {
+  // HACK: use the same coercion as resolveEffectiveDiff so a bare
+  // `--diff false` (or `--diff ""`) is treated as "no diff" and doesn't
+  // trip the mutual-exclusion check against --staged.
+  const coercedDiff = coerceDiffValue(flags.diff);
   const exclusiveModes = [
     flags.staged ? "--staged" : null,
-    flags.diff !== undefined && flags.diff !== false ? "--diff" : null,
+    coercedDiff !== undefined && coercedDiff !== false ? "--diff" : null,
   ].filter((modeName): modeName is string => modeName !== null);
 
   if (exclusiveModes.length > 1) {
@@ -278,13 +293,24 @@ const program = new Command()
   .option("--json", "output a single structured JSON report (suppresses other output)")
   .option("--json-compact", "with --json, emit compact JSON (no indentation)")
   .option("-y, --yes", "skip prompts, scan all workspace projects")
-  .option("--full", "skip prompts, always run a full scan (decline diff-only)")
+  .option("--full", "force a full scan (overrides any `diff` value in config or `--diff`)")
   .option("--project <name>", "select workspace project (comma-separated for multiple)")
-  .option("--diff [base]", "scan only files changed vs base branch")
+  .option(
+    "--diff [base]",
+    "scan only files changed vs base branch (pass `false` to disable; overridden by --full)",
+  )
   .option("--offline", "skip telemetry (anonymous, not stored, only used to calculate score)")
   .option("--staged", "scan only staged (git index) files for pre-commit hooks")
   .option("--fail-on <level>", "exit with error code on diagnostics: error, warning, none", "error")
   .option("--annotations", "output diagnostics as GitHub Actions annotations")
+  .option(
+    "--respect-inline-disables",
+    "respect inline `// eslint-disable*` / `// oxlint-disable*` comments (default)",
+  )
+  .option(
+    "--no-respect-inline-disables",
+    "audit mode: neutralize inline lint suppressions before scanning",
+  )
   .action(async (directory: string, flags: CliFlags) => {
     const isScoreOnly = flags.score;
     const isJsonMode = flags.json;

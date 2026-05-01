@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import type { Diagnostic, ReactDoctorConfig } from "../src/types.js";
 import { filterIgnoredDiagnostics } from "../src/utils/filter-diagnostics.js";
 import { createNodeReadFileLinesSync } from "../src/utils/read-file-lines-node.js";

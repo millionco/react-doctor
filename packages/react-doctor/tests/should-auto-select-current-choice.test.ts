@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { shouldAutoSelectCurrentChoice } from "../src/utils/should-auto-select-current-choice.js";
 
 describe("shouldAutoSelectCurrentChoice", () => {

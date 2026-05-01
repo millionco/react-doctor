@@ -347,13 +347,18 @@ export const reactCompilerDestructureMethod: Rule = {
       return false;
     };
 
+    // HACK: push UNCONDITIONALLY for every component so push/pop stay
+    // balanced. A concise-arrow component (`const Foo = () => <div />`)
+    // has no BlockStatement body and therefore no hook bindings, but it
+    // still triggers the matching `:exit` — without an unconditional
+    // push, the exit would pop the *outer* component's frame and silently
+    // drop diagnostics on every member access in the parent. The empty
+    // Map returned by `buildHookBindingMap` for non-Block bodies is the
+    // correct semantic for "this component declares zero hook bindings".
     const enter = (node: EsTreeNode): void => {
-      if (isComponent(node)) {
-        const body = node.type === "FunctionDeclaration" ? node.body : node.init?.body;
-        if (body?.type === "BlockStatement") {
-          hookBindingMapStack.push(buildHookBindingMap(body));
-        }
-      }
+      if (!isComponent(node)) return;
+      const body = node.type === "FunctionDeclaration" ? node.body : node.init?.body;
+      hookBindingMapStack.push(buildHookBindingMap(body));
     };
     const exit = (node: EsTreeNode): void => {
       if (isComponent(node)) hookBindingMapStack.pop();

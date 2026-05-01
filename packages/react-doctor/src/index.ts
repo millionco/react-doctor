@@ -19,6 +19,7 @@ import { computeJsxIncludePaths } from "./utils/jsx-include-paths.js";
 import { buildJsonReport } from "./utils/build-json-report.js";
 import { buildJsonReportError } from "./utils/build-json-report-error.js";
 import { checkReducedMotion } from "./utils/check-reduced-motion.js";
+import { clearIgnorePatternsCache } from "./utils/collect-ignore-patterns.js";
 import { clearProjectCache, discoverProject } from "./utils/discover-project.js";
 import { clearConfigCache, loadConfig } from "./utils/load-config.js";
 import { clearPackageJsonCache } from "./utils/read-package-json.js";
@@ -56,6 +57,7 @@ export const clearCaches = (): void => {
   clearProjectCache();
   clearConfigCache();
   clearPackageJsonCache();
+  clearIgnorePatternsCache();
 };
 
 interface ToJsonReportOptions {
@@ -115,6 +117,8 @@ export const diagnose = async (
             hasTanStackQuery: projectInfo.hasTanStackQuery,
             includePaths: lintIncludePaths,
             customRulesOnly: config?.customRulesOnly ?? false,
+            respectInlineDisables:
+              options.respectInlineDisables ?? config?.respectInlineDisables ?? true,
           }),
         runDeadCode: () => runKnip(projectRoot),
       }),

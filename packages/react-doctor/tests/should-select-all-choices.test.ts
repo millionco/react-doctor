@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { shouldSelectAllChoices } from "../src/utils/should-select-all-choices.js";
 
 describe("shouldSelectAllChoices", () => {

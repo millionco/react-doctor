@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { extractFailedPluginName } from "../src/utils/extract-failed-plugin-name.js";
 
 describe("extractFailedPluginName", () => {

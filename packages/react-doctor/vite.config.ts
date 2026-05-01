@@ -31,8 +31,14 @@ export default defineConfig({
       env: {
         VERSION: process.env.VERSION ?? packageJson.version,
       },
+      // HACK: no shebang on dist/cli.js — the published `bin` entry is
+      // bin/react-doctor.js, which owns the `#!/usr/bin/env node` line
+      // (and the V8 compile-cache warm-up). dist/cli.js is loaded via
+      // `await import(...)` from that shim, where a stray shebang on
+      // line 1 isn't useful and just bloats the bundle. (Programmatic
+      // `import "react-doctor"` consumers don't care either way — Node
+      // ignores a shebang in ESM imports — but we don't need it there.)
       fixedExtension: false,
-      banner: "#!/usr/bin/env node",
       hooks: {
         "build:done": () => {
           copySkillToDist();

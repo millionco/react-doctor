@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { buildJsonReport } from "../src/utils/build-json-report.js";
 import { buildJsonReportError } from "../src/utils/build-json-report-error.js";
 import type { Diagnostic, ProjectInfo, ScanResult } from "../src/types.js";

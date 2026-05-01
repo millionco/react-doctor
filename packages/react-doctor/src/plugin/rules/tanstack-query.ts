@@ -1,6 +1,7 @@
 import {
   EFFECT_HOOK_NAMES,
   MUTATING_HTTP_METHODS,
+  QUERY_CACHE_UPDATE_METHODS,
   STABLE_HOOK_WRAPPERS,
   TANSTACK_MUTATION_HOOKS,
   TANSTACK_QUERY_CLIENT_CLASS,
@@ -188,24 +189,25 @@ export const queryMutationMissingInvalidation: Rule = {
 
       if (!hasMutationFn) return;
 
-      let hasInvalidation = false;
+      let hasCacheUpdate = false;
       walkAst(optionsArgument, (child: EsTreeNode) => {
-        if (hasInvalidation) return;
+        if (hasCacheUpdate) return false;
         if (
           child.type === "CallExpression" &&
           child.callee?.type === "MemberExpression" &&
           child.callee.property?.type === "Identifier" &&
-          child.callee.property.name === "invalidateQueries"
+          QUERY_CACHE_UPDATE_METHODS.has(child.callee.property.name)
         ) {
-          hasInvalidation = true;
+          hasCacheUpdate = true;
+          return false;
         }
       });
 
-      if (!hasInvalidation) {
+      if (!hasCacheUpdate) {
         context.report({
           node,
           message:
-            "useMutation without invalidateQueries — stale data may remain cached after the mutation. Add onSuccess with queryClient.invalidateQueries()",
+            "useMutation without a cache update — stale data may remain after the mutation. Call queryClient.invalidateQueries / setQueryData / resetQueries / refetchQueries inside onSuccess (or trigger a router refresh)",
         });
       }
     },

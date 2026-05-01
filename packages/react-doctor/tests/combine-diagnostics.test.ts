@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import type { Diagnostic, ReactDoctorConfig } from "../src/types.js";
 import { combineDiagnostics } from "../src/utils/combine-diagnostics.js";
 import { computeJsxIncludePaths } from "../src/utils/jsx-include-paths.js";

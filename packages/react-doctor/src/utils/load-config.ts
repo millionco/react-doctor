@@ -5,6 +5,7 @@ import { isFile } from "./is-file.js";
 import { isPlainObject } from "./is-plain-object.js";
 import { isMonorepoRoot } from "./find-monorepo-root.js";
 import { logger } from "./logger.js";
+import { validateConfigTypes } from "./validate-config-types.js";
 
 const CONFIG_FILENAME = "react-doctor.config.json";
 const PACKAGE_JSON_CONFIG_KEY = "reactDoctor";
@@ -17,7 +18,7 @@ const loadConfigFromDirectory = (directory: string): ReactDoctorConfig | null =>
       const fileContent = fs.readFileSync(configFilePath, "utf-8");
       const parsed: unknown = JSON.parse(fileContent);
       if (isPlainObject(parsed)) {
-        return parsed as ReactDoctorConfig;
+        return validateConfigTypes(parsed as ReactDoctorConfig);
       }
       logger.warn(`${CONFIG_FILENAME} must be a JSON object, ignoring.`);
     } catch (error) {
@@ -35,7 +36,7 @@ const loadConfigFromDirectory = (directory: string): ReactDoctorConfig | null =>
       if (isPlainObject(packageJson)) {
         const embeddedConfig = packageJson[PACKAGE_JSON_CONFIG_KEY];
         if (isPlainObject(embeddedConfig)) {
-          return embeddedConfig as ReactDoctorConfig;
+          return validateConfigTypes(embeddedConfig as ReactDoctorConfig);
         }
       }
     } catch {
@@ -46,11 +47,11 @@ const loadConfigFromDirectory = (directory: string): ReactDoctorConfig | null =>
   return null;
 };
 
-const isProjectBoundary = (directory: string): boolean => {
-  if (isFile(path.join(directory, ".git"))) return true;
-  if (fs.existsSync(path.join(directory, ".git"))) return true;
-  return isMonorepoRoot(directory);
-};
+// HACK: `.git` exists either as a directory (regular repo) or a file
+// (git worktree pointing back to the main .git dir). `fs.existsSync`
+// covers both — no need for a separate `isFile` check.
+const isProjectBoundary = (directory: string): boolean =>
+  fs.existsSync(path.join(directory, ".git")) || isMonorepoRoot(directory);
 
 const cachedConfigs = new Map<string, ReactDoctorConfig | null>();
 

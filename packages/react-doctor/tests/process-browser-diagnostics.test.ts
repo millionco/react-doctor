@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { processBrowserDiagnostics } from "../src/adapters/browser/process-browser-diagnostics.js";
 import type { Diagnostic, ReactDoctorConfig } from "../src/types.js";
 

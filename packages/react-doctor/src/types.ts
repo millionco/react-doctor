@@ -101,6 +101,11 @@ export interface DiagnoseOptions {
   deadCode?: boolean;
   verbose?: boolean;
   includePaths?: string[];
+  /**
+   * Per-call override for `ReactDoctorConfig.respectInlineDisables`.
+   * See that field's docs for the full contract.
+   */
+  respectInlineDisables?: boolean;
 }
 
 export interface DiagnoseResult {
@@ -127,6 +132,7 @@ export interface ScanOptions {
   silent?: boolean;
   includePaths?: string[];
   configOverride?: ReactDoctorConfig | null;
+  respectInlineDisables?: boolean;
 }
 
 export interface DiffInfo {
@@ -191,6 +197,21 @@ export interface ReactDoctorConfig {
   customRulesOnly?: boolean;
   share?: boolean;
   textComponents?: string[];
+  /**
+   * Whether to respect inline `// eslint-disable*` / `// oxlint-disable*`
+   * comments in source files. Default: `true`.
+   *
+   * File-level ignores (`.gitignore`, `.eslintignore`, `.oxlintignore`,
+   * `.prettierignore`, `.gitattributes` `linguist-vendored` /
+   * `linguist-generated`) are ALWAYS honored regardless of this option
+   * — they typically point at vendored or generated code that
+   * genuinely shouldn't be linted at all.
+   *
+   * Set to `false` for "audit mode": every inline suppression is
+   * neutralized so react-doctor reports every diagnostic regardless
+   * of historical hide-comments.
+   */
+  respectInlineDisables?: boolean;
 }
 
 export type JsonReportMode = "full" | "diff" | "staged";

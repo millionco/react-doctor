@@ -55,6 +55,22 @@ const MutationMissingInvalidation = () => {
   return <button onClick={() => mutation.mutate({ title: "New" })}>Add</button>;
 };
 
+// Regression: setQueryData (in-place patch) is a valid cache-update
+// pattern and must not fire `query-mutation-missing-invalidation`.
+// Pre-fix, only `invalidateQueries` was treated as a sync — this hit
+// every code path that used setQueryData / resetQueries / etc.
+const setQueryDataClient = { setQueryData: (_key: any, _value: any) => {} };
+const MutationWithSetQueryData = () => {
+  const mutation = useMutation({
+    mutationFn: (newTodo: any) =>
+      fetch("/api/todos", { method: "POST", body: JSON.stringify(newTodo) }),
+    onSuccess: (created: any) => {
+      setQueryDataClient.setQueryData(["todos"], (old: any) => [...old, created]);
+    },
+  });
+  return <button onClick={() => mutation.mutate({ title: "New" })}>Add</button>;
+};
+
 const UseQueryForMutation = () => {
   const result = useQuery({
     queryKey: ["create-user"],
@@ -69,5 +85,6 @@ export {
   VoidQueryFn,
   RefetchInEffect,
   MutationMissingInvalidation,
+  MutationWithSetQueryData,
   UseQueryForMutation,
 };

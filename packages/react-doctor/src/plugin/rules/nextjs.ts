@@ -105,17 +105,64 @@ export const nextjsNoAElement: Rule = {
   }),
 };
 
+// HACK: file-level proxy for "is the developer aware of the Suspense
+// requirement?". Cross-file ancestor analysis would catch every case
+// correctly but isn't tractable in a per-file lint pass; the official
+// `@next/next/no-use-search-params-without-suspense-bailout` rule uses
+// the same heuristic. If <Suspense> appears anywhere in the file (as a
+// JSX element OR a named import from React) we trust the developer is
+// rendering the useSearchParams() consumer behind it.
+//
+// KNOWN LIMITATION (false negative): a file that imports `Suspense`
+// from React for an unrelated reason (re-export, type reference, etc.)
+// silences ALL `useSearchParams()` reports in that file. We accept the
+// trade-off because a false POSITIVE here is much louder for end users
+// than a false negative.
+const fileMentionsSuspense = (programNode: EsTreeNode): boolean => {
+  let didSee = false;
+  walkAst(programNode, (child: EsTreeNode) => {
+    if (didSee) return false;
+    if (
+      child.type === "JSXOpeningElement" &&
+      child.name?.type === "JSXIdentifier" &&
+      child.name.name === "Suspense"
+    ) {
+      didSee = true;
+      return false;
+    }
+    if (child.type === "ImportDeclaration" && child.source?.value === "react") {
+      const importsSuspense = (child.specifiers ?? []).some(
+        (specifier: EsTreeNode) =>
+          specifier.type === "ImportSpecifier" && specifier.imported?.name === "Suspense",
+      );
+      if (importsSuspense) {
+        didSee = true;
+        return false;
+      }
+    }
+  });
+  return didSee;
+};
+
 export const nextjsNoUseSearchParamsWithoutSuspense: Rule = {
-  create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNode) {
-      if (!isHookCall(node, "useSearchParams")) return;
-      context.report({
-        node,
-        message:
-          "useSearchParams() requires a <Suspense> boundary — without one, the entire page bails out to client-side rendering",
-      });
-    },
-  }),
+  create: (context: RuleContext) => {
+    let hasSuspenseInFile = false;
+
+    return {
+      Program(programNode: EsTreeNode) {
+        hasSuspenseInFile = fileMentionsSuspense(programNode);
+      },
+      CallExpression(node: EsTreeNode) {
+        if (hasSuspenseInFile) return;
+        if (!isHookCall(node, "useSearchParams")) return;
+        context.report({
+          node,
+          message:
+            "useSearchParams() requires a <Suspense> boundary — without one, the entire page bails out to client-side rendering",
+        });
+      },
+    };
+  },
 };
 
 export const nextjsNoClientFetchForServerData: Rule = {

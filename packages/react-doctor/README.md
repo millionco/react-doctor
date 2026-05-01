@@ -141,7 +141,12 @@ interface JsonReport {
     scoreLabel: string | null;
   };
   elapsedMilliseconds: number; // total wall time across all projects
-  error?: { message: string; name: string }; // only present when ok=false
+  error: {
+    message: string;
+    name: string;
+    chain: string[]; // outer error message first, every `error.cause`
+    // unwrapped after; chain[0] always equals `message`
+  } | null; // null on success, populated when ok=false
 }
 ```
 
@@ -197,20 +202,48 @@ const value = expensiveComputation(); // react-doctor-disable-line react-doctor/
 
 Comma- or space-separate multiple rule ids on the same comment. With no rule id, the comment suppresses every diagnostic on that line.
 
+### Respecting your existing project ignores
+
+By default, React Doctor honors all of the ignore-style files your project already has, so you don't need to maintain a separate "what should react-doctor skip" list:
+
+| File                                                         | What gets skipped                                                                                                                                                     |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.gitignore`                                                 | files git ignores (oxlint default)                                                                                                                                    |
+| `.eslintignore`                                              | files eslint skips (oxlint default)                                                                                                                                   |
+| `.oxlintignore`                                              | files oxlint skips (added via `--ignore-pattern` so `.eslintignore` still applies)                                                                                    |
+| `.prettierignore`                                            | files prettier skips — typically vendored code, generated builds, and lockfiles                                                                                       |
+| `.gitattributes` (`linguist-vendored`, `linguist-generated`) | paths GitHub's linguist library hides from language stats; if it's not "your" code by GitHub's reckoning, it shouldn't be audited as your code by react-doctor either |
+
+React Doctor also respects inline lint suppressions in source files:
+
+- `// oxlint-disable`, `// oxlint-disable-line`, `// oxlint-disable-next-line` — with or without rule ids.
+- `// eslint-disable`, `// eslint-disable-line`, `// eslint-disable-next-line` — oxlint reads both prefixes interchangeably.
+
+> Note: `.editorconfig` is intentionally NOT consulted. It describes editor settings (indent size, charset, end-of-line) and has no concept of "files to skip" — there's nothing in it that would change what react-doctor lints.
+
+If you want React Doctor to ignore those inline suppressions and audit your codebase for everything (useful for one-off "what does my project actually score?" runs), set:
+
+```jsonc
+{ "respectInlineDisables": false }
+```
+
+This only neutralizes the inline `// eslint-disable*` / `// oxlint-disable*` comments — the file-level ignore lists above are always honored, even in audit mode, because they typically point at vendored or generated code that genuinely shouldn't be linted.
+
 ### Config options
 
-| Key               | Type                             | Default  | Description                                                                                                                         |
-| ----------------- | -------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `ignore.rules`    | `string[]`                       | `[]`     | Rules to suppress, using the `plugin/rule` format shown in diagnostic output (e.g. `react/no-danger`, `knip/exports`, `knip/types`) |
-| `ignore.files`    | `string[]`                       | `[]`     | File paths to exclude, supports glob patterns (`src/generated/**`, `**/*.test.tsx`)                                                 |
-| `lint`            | `boolean`                        | `true`   | Enable/disable lint checks (same as `--no-lint`)                                                                                    |
-| `deadCode`        | `boolean`                        | `true`   | Enable/disable dead code detection (same as `--no-dead-code`)                                                                       |
-| `verbose`         | `boolean`                        | `false`  | Show file details per rule (same as `--verbose`)                                                                                    |
-| `diff`            | `boolean \| string`              | —        | Force diff mode (`true`) or pin a base branch (`"main"`). Set to `false` to disable auto-detection.                                 |
-| `failOn`          | `"error" \| "warning" \| "none"` | `"none"` | Exit with error code on diagnostics of the given severity or above                                                                  |
-| `customRulesOnly` | `boolean`                        | `false`  | Disable built-in react/jsx-a11y/compiler rules, keeping only `react-doctor/*` plugin rules                                          |
-| `share`           | `boolean`                        | `true`   | Show the share-your-results URL after scanning                                                                                      |
-| `textComponents`  | `string[]`                       | `[]`     | React Native only. Component names whose children should not trigger `rn-no-raw-text` (e.g. `["MyText", "Label.Bold"]`)             |
+| Key                     | Type                             | Default  | Description                                                                                                                                                                                                                                          |
+| ----------------------- | -------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ignore.rules`          | `string[]`                       | `[]`     | Rules to suppress, using the `plugin/rule` format shown in diagnostic output (e.g. `react/no-danger`, `knip/exports`, `knip/types`)                                                                                                                  |
+| `ignore.files`          | `string[]`                       | `[]`     | File paths to exclude, supports glob patterns (`src/generated/**`, `**/*.test.tsx`)                                                                                                                                                                  |
+| `lint`                  | `boolean`                        | `true`   | Enable/disable lint checks (same as `--no-lint`)                                                                                                                                                                                                     |
+| `deadCode`              | `boolean`                        | `true`   | Enable/disable dead code detection (same as `--no-dead-code`)                                                                                                                                                                                        |
+| `verbose`               | `boolean`                        | `false`  | Show file details per rule (same as `--verbose`)                                                                                                                                                                                                     |
+| `diff`                  | `boolean \| string`              | —        | Force diff mode (`true`) or pin a base branch (`"main"`). Set to `false` to disable auto-detection.                                                                                                                                                  |
+| `failOn`                | `"error" \| "warning" \| "none"` | `"none"` | Exit with error code on diagnostics of the given severity or above                                                                                                                                                                                   |
+| `customRulesOnly`       | `boolean`                        | `false`  | Disable built-in react/jsx-a11y/compiler rules, keeping only `react-doctor/*` plugin rules                                                                                                                                                           |
+| `share`                 | `boolean`                        | `true`   | Show the share-your-results URL after scanning                                                                                                                                                                                                       |
+| `textComponents`        | `string[]`                       | `[]`     | React Native only. Component names whose children should not trigger `rn-no-raw-text` (e.g. `["MyText", "Label.Bold"]`)                                                                                                                              |
+| `respectInlineDisables` | `boolean`                        | `true`   | Respect inline `// eslint-disable*` / `// oxlint-disable*` comments. Set `false` for audit mode. File-level ignores (`.gitignore`, `.eslintignore`, `.oxlintignore`, `.prettierignore`, `.gitattributes` linguist annotations) are always respected. |
 
 CLI flags always override config values.
 

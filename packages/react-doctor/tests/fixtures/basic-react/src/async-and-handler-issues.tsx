@@ -34,6 +34,19 @@ export const queueAllUsers = async (ids: string[]) => {
   return callbacks;
 };
 
+// NEGATIVE case for async-await-in-loop: `Promise.all(items.map(async …))`
+// is the canonical parallel-async pattern. The awaits inside the map
+// callback produce Promises that `Promise.all` awaits concurrently, so the
+// rule must NOT fire here (regression coverage for the Promise.all-wrap
+// false-positive fix).
+export const fetchAllUsersParallel = async (ids: string[]) => {
+  return Promise.all(
+    ids.map(async (id) => {
+      return await fetchUser(id);
+    }),
+  );
+};
+
 // advanced-event-handler-refs: useEffect re-subscribes when handler prop
 // identity changes.
 export const Ticker = ({ onTick }: { onTick: () => void }) => {

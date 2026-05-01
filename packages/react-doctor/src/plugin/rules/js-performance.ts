@@ -573,6 +573,26 @@ const ITERATION_METHOD_NAMES_WITH_CALLBACK = new Set([
   "flatMap",
 ]);
 
+// HACK: `await Promise.all(items.map(async item => { await fetch(item); }))`
+// is the canonical PARALLEL-async pattern — not a bug. The async callbacks
+// produce an array of promises that `Promise.all` (and friends) await
+// concurrently. Don't flag `.map` (or `.flatMap`) when its result flows
+// directly into one of the concurrency combinators. We only recognise
+// direct member calls (`Promise.all(...)`) since that's how 99% of code
+// writes it; `Promise["all"](...)` etc. are rare enough to accept.
+const PROMISE_CONCURRENCY_METHODS = new Set(["all", "allSettled", "race", "any"]);
+
+const isWrappedInPromiseConcurrency = (mapCall: EsTreeNode): boolean => {
+  const parent = mapCall.parent;
+  if (parent?.type !== "CallExpression") return false;
+  if (parent.arguments?.[0] !== mapCall) return false;
+  const callee = parent.callee;
+  if (callee?.type !== "MemberExpression" || callee.computed) return false;
+  if (callee.object?.type !== "Identifier" || callee.object.name !== "Promise") return false;
+  if (callee.property?.type !== "Identifier") return false;
+  return PROMISE_CONCURRENCY_METHODS.has(callee.property.name);
+};
+
 export const asyncAwaitInLoop: Rule = {
   create: (context: RuleContext) => {
     const inspectLoopBody = (loopBody: EsTreeNode | null | undefined, label: string): void => {
@@ -619,6 +639,13 @@ export const asyncAwaitInLoop: Rule = {
         if (!callback.async) return;
         const body = callback.body;
         if (!body) return;
+
+        if (
+          (methodName === "map" || methodName === "flatMap") &&
+          isWrappedInPromiseConcurrency(node)
+        ) {
+          return;
+        }
         // `body` is either a BlockStatement (block body) or any
         // expression (concise body, e.g. `async x => fetch(x)`); walkAst
         // handles both, so we just walk `body` directly.

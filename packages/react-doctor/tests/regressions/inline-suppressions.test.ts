@@ -28,14 +28,17 @@ afterAll(() => {
 });
 
 // HACK: each test allocates its own per-test directory so they can run
-// in parallel without racing on the same `src/App.tsx` file.
+// in parallel without racing on the same `src/app.tsx` file.
+// NOTE: filename case must match `buildDiagnostic`'s default `filePath:
+// "src/app.tsx"` — Linux CI is case-sensitive and resolving a diagnostic
+// with a mismatched case returns `null`, so no suppression is applied.
 const runFilter = (
   caseId: string,
   fileContents: string,
   diagnostics: Diagnostic[],
 ): Diagnostic[] => {
   const projectDir = path.join(tempRoot, caseId);
-  writeFile(path.join(projectDir, "src", "App.tsx"), fileContents);
+  writeFile(path.join(projectDir, "src", "app.tsx"), fileContents);
   return filterInlineSuppressions(diagnostics, projectDir, createNodeReadFileLinesSync(projectDir));
 };
 

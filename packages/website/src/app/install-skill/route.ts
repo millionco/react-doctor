@@ -174,19 +174,17 @@ YAMLEOF
   INSTALLED=$((INSTALLED + 1))
 fi
 
-# Project-level AGENTS.md (root). Append (with marker dedup) so we
+# Project-level SKILL.md (root). Append (with marker dedup) so we
 # don't clobber any existing project guidance the user already has.
-# We use SKILL_CONTENT (the richer one with frontmatter + command
-# table) here, matching the Windsurf branch above.
-PROJECT_AGENTS_FILE="AGENTS.md"
-if [ -f "$PROJECT_AGENTS_FILE" ] && grep -q "$MARKER" "$PROJECT_AGENTS_FILE"; then
-  printf "\${GREEN}✔\${RESET} ./AGENTS.md \${DIM}(already installed)\${RESET}\\n"
+PROJECT_SKILL_FILE="SKILL.md"
+if [ -f "$PROJECT_SKILL_FILE" ] && grep -q "$MARKER" "$PROJECT_SKILL_FILE"; then
+  printf "\${GREEN}✔\${RESET} ./SKILL.md \${DIM}(already installed)\${RESET}\\n"
 else
-  if [ -f "$PROJECT_AGENTS_FILE" ]; then
-    echo "" >> "$PROJECT_AGENTS_FILE"
+  if [ -f "$PROJECT_SKILL_FILE" ]; then
+    echo "" >> "$PROJECT_SKILL_FILE"
   fi
-  printf '%s\\n' "$SKILL_CONTENT" >> "$PROJECT_AGENTS_FILE"
-  printf "\${GREEN}✔\${RESET} ./AGENTS.md\\n"
+  printf '%s\\n' "$SKILL_CONTENT" >> "$PROJECT_SKILL_FILE"
+  printf "\${GREEN}✔\${RESET} ./SKILL.md\\n"
 fi
 INSTALLED=$((INSTALLED + 1))
 

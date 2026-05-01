@@ -1,22 +1,21 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  detectAvailableAgents,
-  type SupportedAgent,
-  toDisplayName,
-} from "./utils/detect-agents.js";
+import { installSkillsFromSource, SKILL_MANIFEST_FILE, type SkillAgentType } from "agent-install";
+import { SKILL_NAME } from "./constants.js";
+import { detectAvailableAgents } from "./utils/detect-agents.js";
 import { highlighter } from "./utils/highlighter.js";
-import { installSkillForAgent } from "./utils/install-skill-for-agent.js";
 import { logger } from "./utils/logger.js";
 import { prompts } from "./utils/prompts.js";
 import { spinner } from "./utils/spinner.js";
-
-const SKILL_NAME = "react-doctor";
+import { toDisplayName } from "./utils/to-display-name.js";
 
 interface InstallSkillOptions {
   yes?: boolean;
   dryRun?: boolean;
+  // Overrides for tests; production callers leave these unset.
+  sourceDir?: string;
+  projectRoot?: string;
 }
 
 const getSkillSourceDirectory = (): string => {
@@ -25,28 +24,29 @@ const getSkillSourceDirectory = (): string => {
 };
 
 export const runInstallSkill = async (options: InstallSkillOptions = {}): Promise<void> => {
-  const projectRoot = process.cwd();
-  const sourceDir = getSkillSourceDirectory();
+  const projectRoot = options.projectRoot ?? process.cwd();
+  const sourceDir = options.sourceDir ?? getSkillSourceDirectory();
 
-  if (!existsSync(path.join(sourceDir, "SKILL.md"))) {
+  if (!existsSync(path.join(sourceDir, SKILL_MANIFEST_FILE))) {
     logger.error(`Could not locate the ${SKILL_NAME} skill bundled with this package.`);
     process.exitCode = 1;
     return;
   }
 
-  const detectedAgents = detectAvailableAgents();
+  const detectedAgents = await detectAvailableAgents();
   if (detectedAgents.length === 0) {
-    logger.error("No supported coding agents detected on your PATH.");
+    logger.error("No supported coding agents detected.");
     logger.dim(
-      "  Supported: Claude Code, Codex, GitHub Copilot, Gemini CLI, Cursor, OpenCode, Factory Droid, Pi.",
+      "  Looked for binaries on PATH (claude, codex, cursor, droid, gemini, copilot, opencode, pi)",
     );
+    logger.dim("  and config dirs in $HOME (~/.claude, ~/.cursor, ~/.codex, ~/.gemini, ...).");
     process.exitCode = 1;
     return;
   }
 
   const skipPrompts = Boolean(options.yes) || !process.stdin.isTTY;
 
-  const selectedAgents: SupportedAgent[] = skipPrompts
+  const selectedAgents: SkillAgentType[] = skipPrompts
     ? detectedAgents
     : ((
         await prompts({
@@ -75,18 +75,32 @@ export const runInstallSkill = async (options: InstallSkillOptions = {}): Promis
   }
 
   const installSpinner = spinner(`Installing ${SKILL_NAME} skill...`).start();
-  const installedDirectories = new Set<string>();
-  for (const agent of selectedAgents) {
-    const installedDirectory = installSkillForAgent(
-      projectRoot,
-      agent,
-      sourceDir,
-      SKILL_NAME,
-      installedDirectories,
+  try {
+    const installResult = await installSkillsFromSource({
+      source: sourceDir,
+      agents: selectedAgents,
+      cwd: projectRoot,
+      mode: "copy",
+    });
+
+    if (installResult.skills.length === 0) {
+      throw new Error(
+        `Could not parse ${SKILL_MANIFEST_FILE} for ${SKILL_NAME} (missing or invalid frontmatter).`,
+      );
+    }
+    if (installResult.failed.length > 0) {
+      throw new Error(
+        installResult.failed
+          .map((failure) => `${toDisplayName(failure.agent)}: ${failure.error}`)
+          .join("\n"),
+      );
+    }
+
+    installSpinner.succeed(
+      `${SKILL_NAME} skill installed for ${selectedAgents.map(toDisplayName).join(", ")}.`,
     );
-    installedDirectories.add(installedDirectory);
+  } catch (error) {
+    installSpinner.fail(`Failed to install ${SKILL_NAME} skill.`);
+    throw error;
   }
-  installSpinner.succeed(
-    `${SKILL_NAME} skill installed for ${selectedAgents.map(toDisplayName).join(", ")}.`,
-  );
 };

@@ -48,7 +48,7 @@ npx -y react-doctor@latest install
 
 You'll be prompted to pick which detected agents to install for. Pass `--yes` to skip prompts and install for every detected agent.
 
-Supports Claude Code, Codex, GitHub Copilot, Gemini CLI, Cursor, OpenCode, Factory Droid, and Pi.
+Supports Claude Code, Codex, Cursor, Factory Droid, Gemini CLI, GitHub Copilot, Goose, OpenCode, Pi, Windsurf, Roo Code, Cline, and Kilo Code. Detection is the union of CLI binaries on `$PATH` and config dirs in `$HOME` (`~/.claude`, `~/.cursor`, `~/.codex`, `~/.factory`, `~/.pi`, etc.).
 
 ## GitHub Actions
 

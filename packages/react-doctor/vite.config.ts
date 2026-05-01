@@ -9,12 +9,34 @@ const packageJson = JSON.parse(fs.readFileSync(path.join(packageRoot, "package.j
   version: string;
 };
 
+// HACK: agent-install's parseSkillManifest silently returns `null` when
+// frontmatter is missing or invalid `name:` / `description:` fields,
+// which caused `react-doctor install` to print success while writing
+// zero files (see review-report.md H1). Validate at build time so a
+// broken SKILL.md is caught here, not at install time.
+const assertSkillManifestParseable = (manifestPath: string): void => {
+  const raw = fs.readFileSync(manifestPath, "utf8");
+  const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!match) {
+    throw new Error(`SKILL.md at ${manifestPath} is missing YAML frontmatter (--- ... ---).`);
+  }
+  const frontmatter = match[1] ?? "";
+  const hasName = /^[ \t]*name[ \t]*:[ \t]*\S/m.test(frontmatter);
+  const hasDescription = /^[ \t]*description[ \t]*:[ \t]*\S/m.test(frontmatter);
+  if (!hasName || !hasDescription) {
+    throw new Error(
+      `SKILL.md at ${manifestPath} must declare both "name:" and "description:" in frontmatter (got name=${hasName}, description=${hasDescription}).`,
+    );
+  }
+};
+
 const copySkillToDist = () => {
   const skillSource = path.resolve(packageRoot, "../../skills/react-doctor");
   const skillTarget = path.resolve(packageRoot, "dist/skills/react-doctor");
   if (!fs.existsSync(skillSource)) {
     throw new Error(`Skill source missing at ${skillSource}; expected to ship dist/skills/`);
   }
+  assertSkillManifestParseable(path.join(skillSource, "SKILL.md"));
   fs.rmSync(skillTarget, { recursive: true, force: true });
   fs.mkdirSync(skillTarget, { recursive: true });
   fs.cpSync(skillSource, skillTarget, { recursive: true });

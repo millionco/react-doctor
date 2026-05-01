@@ -63,6 +63,8 @@ export const IGNORED_DIRECTORIES = new Set(["node_modules", "dist", "build", "co
 
 export const CANONICAL_GITHUB_URL = "https://github.com/millionco/react-doctor";
 
+export const SKILL_NAME = "react-doctor";
+
 export const KNIP_TOTAL_ATTEMPTS = 6;
 
 export const PROXY_OUTPUT_MAX_BYTES = 50 * 1024 * 1024;

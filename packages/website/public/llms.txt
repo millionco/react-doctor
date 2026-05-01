@@ -64,7 +64,7 @@ Use `--offline` to skip the score API (computes score locally):
 npx -y react-doctor@latest . --offline
 ```
 
-Install the skill into your coding agent (Claude Code, Cursor, Codex, Gemini CLI, OpenCode, Copilot, Factory Droid, Pi):
+Install the skill into your coding agent (Claude Code, Codex, Cursor, Factory Droid, Gemini CLI, GitHub Copilot, Goose, OpenCode, Pi, Windsurf, Roo Code, Cline, Kilo Code):
 
 ```bash
 npx -y react-doctor@latest install

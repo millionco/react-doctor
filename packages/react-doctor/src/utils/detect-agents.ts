@@ -1,36 +1,24 @@
 import { accessSync, constants, statSync } from "node:fs";
 import path from "node:path";
+import { detectInstalledSkillAgents, getSkillAgentTypes, type SkillAgentType } from "agent-install";
 
-export type SupportedAgent =
-  | "claude"
-  | "codex"
-  | "copilot"
-  | "gemini"
-  | "cursor"
-  | "opencode"
-  | "droid"
-  | "pi";
-
-interface AgentMeta {
-  readonly binaries: readonly string[];
-  readonly displayName: string;
-  readonly skillDir: string;
-}
-
-const AGENTS_SKILL_DIR = ".agents/skills";
-
-const SUPPORTED_AGENTS: Record<SupportedAgent, AgentMeta> = {
-  claude: { binaries: ["claude"], displayName: "Claude Code", skillDir: ".claude/skills" },
-  codex: { binaries: ["codex"], displayName: "Codex", skillDir: AGENTS_SKILL_DIR },
-  copilot: { binaries: ["copilot"], displayName: "GitHub Copilot", skillDir: AGENTS_SKILL_DIR },
-  gemini: { binaries: ["gemini"], displayName: "Gemini CLI", skillDir: AGENTS_SKILL_DIR },
-  cursor: { binaries: ["cursor", "agent"], displayName: "Cursor", skillDir: AGENTS_SKILL_DIR },
-  opencode: { binaries: ["opencode"], displayName: "OpenCode", skillDir: AGENTS_SKILL_DIR },
-  droid: { binaries: ["droid"], displayName: "Factory Droid", skillDir: ".factory/skills" },
-  pi: { binaries: ["pi", "omegon"], displayName: "Pi", skillDir: AGENTS_SKILL_DIR },
+// HACK: PATH binaries we use as a *supplementary* detection signal on top
+// of agent-install's filesystem detection. This catches users who just
+// installed a CLI but haven't run it yet (no ~/.claude / ~/.cursor / etc.
+// on disk yet). Only includes agents whose CLI ships an obvious binary
+// name; FS-only agents (Goose, Windsurf, Roo, Cline, Kilo) rely entirely
+// on agent-install's detection. "universal" is a synthetic install
+// target with no binary or config dir.
+const PATH_BINARIES: Partial<Record<SkillAgentType, readonly string[]>> = {
+  "claude-code": ["claude"],
+  codex: ["codex"],
+  cursor: ["cursor", "agent"],
+  droid: ["droid"],
+  "gemini-cli": ["gemini"],
+  "github-copilot": ["copilot"],
+  opencode: ["opencode"],
+  pi: ["pi", "omegon"],
 };
-
-export const ALL_SUPPORTED_AGENTS = Object.keys(SUPPORTED_AGENTS) as SupportedAgent[];
 
 const isCommandAvailable = (command: string): boolean => {
   const pathDirectories = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
@@ -46,9 +34,25 @@ const isCommandAvailable = (command: string): boolean => {
   return false;
 };
 
-export const detectAvailableAgents = (): SupportedAgent[] =>
-  ALL_SUPPORTED_AGENTS.filter((agent) => SUPPORTED_AGENTS[agent].binaries.some(isCommandAvailable));
+const detectPathAvailableAgents = (): SkillAgentType[] => {
+  const detected: SkillAgentType[] = [];
+  for (const [agent, binaries] of Object.entries(PATH_BINARIES) as Array<
+    [SkillAgentType, readonly string[]]
+  >) {
+    if (binaries.some(isCommandAvailable)) detected.push(agent);
+  }
+  return detected;
+};
 
-export const toDisplayName = (agent: SupportedAgent): string => SUPPORTED_AGENTS[agent].displayName;
-
-export const toSkillDir = (agent: SupportedAgent): string => SUPPORTED_AGENTS[agent].skillDir;
+// Returns the union of PATH-detected agents (CLI binaries on $PATH) and
+// agent-install's filesystem-detected agents (~/.claude, ~/.cursor, etc.).
+// Order follows agent-install's `getSkillAgentTypes()` for deterministic
+// UI; the synthetic "universal" type is filtered out because it isn't a
+// user-facing agent.
+export const detectAvailableAgents = async (): Promise<SkillAgentType[]> => {
+  const detected = new Set<SkillAgentType>([
+    ...detectPathAvailableAgents(),
+    ...(await detectInstalledSkillAgents()),
+  ]);
+  return getSkillAgentTypes().filter((agent) => agent !== "universal" && detected.has(agent));
+};

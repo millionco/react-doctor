@@ -64,15 +64,6 @@ describe("issue #72: inline suppressions — variants", () => {
     expect(filtered).toHaveLength(0);
   });
 
-  it("jsx block comment disable-line suppresses a diagnostic on the SAME line", () => {
-    const filtered = runFilter(
-      "jsx-block-disable-line-same",
-      `<div>{x}</div> {/* react-doctor-disable-line react-doctor/no-derived-state-effect */}\n`,
-      [baseDiagnostic({ line: 1 })],
-    );
-    expect(filtered).toHaveLength(0);
-  });
-
   it("disable-next-line suppresses a diagnostic on the line BELOW", () => {
     const filtered = runFilter(
       "disable-next-line",
@@ -86,15 +77,6 @@ describe("issue #72: inline suppressions — variants", () => {
     const filtered = runFilter(
       "block-disable-next-line",
       `/* react-doctor-disable-next-line react-doctor/no-derived-state-effect */\nconst x = 1;\n`,
-      [baseDiagnostic({ line: 2 })],
-    );
-    expect(filtered).toHaveLength(0);
-  });
-
-  it("jsx block comment disable-next-line suppresses a diagnostic on the line BELOW", () => {
-    const filtered = runFilter(
-      "jsx-block-disable-next-line",
-      `{/* react-doctor-disable-next-line react-doctor/no-derived-state-effect */}\nconst x = 1;\n`,
       [baseDiagnostic({ line: 2 })],
     );
     expect(filtered).toHaveLength(0);

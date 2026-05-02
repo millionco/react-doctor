@@ -15,8 +15,8 @@ const resolveCandidateReadPath = (rootDirectory: string, filePath: string): stri
 };
 
 const OPENING_TAG_PATTERN = /<([A-Z][\w.]*)/;
-const DISABLE_NEXT_LINE_PATTERN = /(?:\/\/|\{?\/\*)\s*react-doctor-disable-next-line\b(?:\s+(.+?))?(?:\s*\*\/\}?)?\s*$/;
-const DISABLE_LINE_PATTERN = /(?:\/\/|\{?\/\*)\s*react-doctor-disable-line\b(?:\s+(.+?))?(?:\s*\*\/\}?)?\s*$/;
+const DISABLE_NEXT_LINE_PATTERN = /(?:\/\/|\{?\/\*)\s*react-doctor-disable-next-line\b(?:\s+((?!\*\/).+?))?\s*(?:\*\/\}?)?\s*$/;
+const DISABLE_LINE_PATTERN = /(?:\/\/|\{?\/\*)\s*react-doctor-disable-line\b(?:\s+((?!\*\/).+?))?\s*(?:\*\/\}?)?\s*$/;
 
 const createFileLinesCache = (
   rootDirectory: string,

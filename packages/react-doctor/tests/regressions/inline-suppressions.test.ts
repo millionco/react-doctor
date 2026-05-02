@@ -133,6 +133,30 @@ describe("issue #72: inline suppressions — variants", () => {
     ]);
     expect(filtered).toHaveLength(0);
   });
+
+  it("a bare block disable-line comment suppresses EVERY diagnostic on that line", () => {
+    const filtered = runFilter(
+      "bare-block-disable-line",
+      `const x = 1; /* react-doctor-disable-line */\n`,
+      [
+        baseDiagnostic({ rule: "no-derived-state-effect", line: 1 }),
+        baseDiagnostic({ rule: "no-fetch-in-effect", line: 1 }),
+      ],
+    );
+    expect(filtered).toHaveLength(0);
+  });
+
+  it("a bare block disable-next-line comment suppresses EVERY diagnostic on the line BELOW", () => {
+    const filtered = runFilter(
+      "bare-block-disable-next-line",
+      `/* react-doctor-disable-next-line */\nconst x = 1;\n`,
+      [
+        baseDiagnostic({ rule: "no-derived-state-effect", line: 2 }),
+        baseDiagnostic({ rule: "no-fetch-in-effect", line: 2 }),
+      ],
+    );
+    expect(filtered).toHaveLength(0);
+  });
 });
 
 describe("issue #72: inline suppressions — boundary safety", () => {

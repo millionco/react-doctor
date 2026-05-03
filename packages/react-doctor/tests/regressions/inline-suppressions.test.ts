@@ -99,6 +99,70 @@ describe("issue #72: inline suppressions — variants", () => {
   });
 });
 
+describe("issue #144: inline suppressions — block comment forms", () => {
+  it("plain block disable-next-line suppresses the line BELOW", () => {
+    const filtered = runFilter(
+      "block-disable-next-line",
+      `/* react-doctor-disable-next-line react-doctor/no-derived-state-effect */\nconst x = 1;\n`,
+      [baseDiagnostic({ line: 2 })],
+    );
+    expect(filtered).toHaveLength(0);
+  });
+
+  it("plain block disable-line suppresses the SAME line", () => {
+    const filtered = runFilter(
+      "block-disable-line",
+      `const x = 1; /* react-doctor-disable-line react-doctor/no-derived-state-effect */\n`,
+      [baseDiagnostic({ line: 1 })],
+    );
+    expect(filtered).toHaveLength(0);
+  });
+
+  it("JSX-style block disable-next-line `{/* … */}` works for tsx files", () => {
+    const filtered = runFilter(
+      "jsx-block-disable-next-line",
+      `{/* react-doctor-disable-next-line react/no-danger */}\n<div dangerouslySetInnerHTML={{ __html }} />\n`,
+      [baseDiagnostic({ plugin: "react", rule: "no-danger", line: 2 })],
+    );
+    expect(filtered).toHaveLength(0);
+  });
+
+  it("JSX-style block disable-line `{/* … */}` works for tsx files", () => {
+    const filtered = runFilter(
+      "jsx-block-disable-line",
+      `<div dangerouslySetInnerHTML={{ __html }} /> {/* react-doctor-disable-line react/no-danger */}\n`,
+      [baseDiagnostic({ plugin: "react", rule: "no-danger", line: 1 })],
+    );
+    expect(filtered).toHaveLength(0);
+  });
+
+  it("block bare disable-next-line `{/* … */}` (no rule id) suppresses EVERY diagnostic on the next line", () => {
+    const filtered = runFilter(
+      "jsx-block-bare",
+      `{/* react-doctor-disable-next-line */}\n<div dangerouslySetInnerHTML={{ __html }} />\n`,
+      [
+        baseDiagnostic({ plugin: "react", rule: "no-danger", line: 2 }),
+        baseDiagnostic({ plugin: "react-doctor", rule: "no-derived-state-effect", line: 2 }),
+      ],
+    );
+    expect(filtered).toHaveLength(0);
+  });
+
+  it("block comma-separated rule list inside `{/* … */}` suppresses only listed rules", () => {
+    const filtered = runFilter(
+      "jsx-block-comma",
+      `{/* react-doctor-disable-next-line react-doctor/no-derived-state-effect, react-doctor/no-fetch-in-effect */}\nconst x = 1;\n`,
+      [
+        baseDiagnostic({ rule: "no-derived-state-effect", line: 2 }),
+        baseDiagnostic({ rule: "no-fetch-in-effect", line: 2 }),
+        baseDiagnostic({ rule: "no-cascading-set-state", line: 2 }),
+      ],
+    );
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0].rule).toBe("no-cascading-set-state");
+  });
+});
+
 describe("issue #72: inline suppressions — boundary safety", () => {
   it("disable-line on line N does NOT suppress diagnostics on line N+1", () => {
     const filtered = runFilter(

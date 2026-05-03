@@ -15,8 +15,16 @@ const resolveCandidateReadPath = (rootDirectory: string, filePath: string): stri
 };
 
 const OPENING_TAG_PATTERN = /<([A-Z][\w.]*)/;
-const DISABLE_NEXT_LINE_PATTERN = /\/\/\s*react-doctor-disable-next-line\b(?:\s+(.+))?/;
-const DISABLE_LINE_PATTERN = /\/\/\s*react-doctor-disable-line\b(?:\s+(.+))?/;
+// Matches either line comments (`// react-doctor-disable-…`) or block
+// comments (`/* react-doctor-disable-… */`, including the JSX form
+// `{/* … */}`). Capture group 1 is the optional rule list, restricted
+// to characters that legally appear in plugin/rule identifiers and
+// their separators (`,`, whitespace) so it can never absorb the
+// block-comment terminator `*/` or the JSX `}`.
+const DISABLE_NEXT_LINE_PATTERN =
+  /(?:\/\/|\/\*)\s*react-doctor-disable-next-line\b(?:\s+([\w/\-.,\s]+?))?\s*(?:\*\/)?\s*\}?\s*$/;
+const DISABLE_LINE_PATTERN =
+  /(?:\/\/|\/\*)\s*react-doctor-disable-line\b(?:\s+([\w/\-.,\s]+?))?\s*(?:\*\/)?\s*\}?\s*$/;
 
 const createFileLinesCache = (
   rootDirectory: string,

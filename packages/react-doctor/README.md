@@ -200,6 +200,14 @@ useEffect(() => {
 const value = expensiveComputation(); // react-doctor-disable-line react-doctor/no-usememo-simple-expression
 ```
 
+Block comments work too — useful inside JSX where `//` line comments aren't legal:
+
+<!-- prettier-ignore -->
+```tsx
+{/* react-doctor-disable-next-line react/no-danger */}
+<div dangerouslySetInnerHTML={{ __html }} />
+```
+
 Comma- or space-separate multiple rule ids on the same comment. With no rule id, the comment suppresses every diagnostic on that line.
 
 ### Respecting your existing project ignores

@@ -6,6 +6,7 @@ import {
   TRIVIAL_INITIALIZER_NAMES,
 } from "../constants.js";
 import {
+  collectPatternNames,
   containsFetchCall,
   countSetStateCalls,
   extractDestructuredPropNames,
@@ -651,43 +652,6 @@ const collectIdentifierNames = (expression: EsTreeNode): Set<string> => {
   return names;
 };
 
-// Collect every identifier name extracted from a binding pattern
-// (`Identifier`, `ObjectPattern`, `ArrayPattern`, `RestElement`, etc.).
-const collectBindingNames = (pattern: EsTreeNode | null | undefined): string[] => {
-  if (!pattern) return [];
-  const names: string[] = [];
-  const visit = (node: EsTreeNode | null | undefined): void => {
-    if (!node) return;
-    switch (node.type) {
-      case "Identifier":
-        names.push(node.name);
-        return;
-      case "ObjectPattern":
-        for (const property of node.properties ?? []) {
-          if (property.type === "RestElement") {
-            visit(property.argument);
-          } else {
-            visit(property.value ?? property.key);
-          }
-        }
-        return;
-      case "ArrayPattern":
-        for (const element of node.elements ?? []) visit(element);
-        return;
-      case "RestElement":
-        visit(node.argument);
-        return;
-      case "AssignmentPattern":
-        visit(node.left);
-        return;
-      default:
-        return;
-    }
-  };
-  visit(pattern);
-  return names;
-};
-
 // Build a "name -> identifiers it transitively depends on" graph for
 // every top-level VariableDeclarator in the component body. Includes
 // names referenced anywhere inside the initializer (deps arrays, nested
@@ -697,12 +661,14 @@ const collectBindingNames = (pattern: EsTreeNode | null | undefined): string[] =
 const buildLocalDependencyGraph = (componentBody: EsTreeNode): Map<string, Set<string>> => {
   const graph = new Map<string, Set<string>>();
   if (componentBody?.type !== "BlockStatement") return graph;
+  const declaredNames = new Set<string>();
   for (const statement of componentBody.body ?? []) {
     if (statement.type !== "VariableDeclaration") continue;
     for (const declarator of statement.declarations ?? []) {
       if (!declarator.init) continue;
       const dependencyNames = collectIdentifierNames(declarator.init);
-      const declaredNames = collectBindingNames(declarator.id);
+      declaredNames.clear();
+      collectPatternNames(declarator.id, declaredNames);
       for (const declaredName of declaredNames) {
         const existing = graph.get(declaredName);
         if (existing === undefined) {

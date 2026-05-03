@@ -265,7 +265,7 @@ export const findSideEffect = (node: EsTreeNode): string | null => {
 // recursing into nested object/array patterns. We need every binding so
 // `noDerivedUseState` can detect e.g. `function Foo({ user: { name } })` →
 // `useState(name)` (false negative if we only added "user").
-const collectPatternNames = (pattern: EsTreeNode | null, into: Set<string>): void => {
+export const collectPatternNames = (pattern: EsTreeNode | null, into: Set<string>): void => {
   if (!pattern) return;
 
   if (pattern.type === "Identifier") {

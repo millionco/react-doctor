@@ -52,7 +52,6 @@
   previously hand-rolled).
 
   Behavior changes:
-
   - **Detection** is now the union of CLI binaries on `$PATH` (the previous
     signal) and config dirs in `$HOME` (`~/.claude`, `~/.cursor`,
     `~/.codex`, `~/.factory`, `~/.pi`, etc.). This catches agents the user

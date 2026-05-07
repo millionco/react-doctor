@@ -135,6 +135,22 @@ const ConditionalSetStateInRenderComponent = ({ count }: { count: number }) => {
   return <h1>{prevCount}</h1>;
 };
 
+declare const externalStore: {
+  subscribe: (listener: () => void) => () => void;
+  getSnapshot: () => number;
+};
+
+const SubscribeStorePatternComponent = () => {
+  const [snapshot, setSnapshot] = useState(externalStore.getSnapshot());
+  useEffect(() => {
+    const unsubscribe = externalStore.subscribe(() => {
+      setSnapshot(externalStore.getSnapshot());
+    });
+    return unsubscribe;
+  }, []);
+  return <div>{snapshot}</div>;
+};
+
 const UncontrolledInputComponent = () => {
   // HACK: explicit `<string | undefined>` keeps TypeScript happy while the
   // RUNTIME initializer stays undefined — that's what trips the
@@ -169,5 +185,6 @@ export {
   DirectStateMutationComponent,
   SetStateInRenderComponent,
   ConditionalSetStateInRenderComponent,
+  SubscribeStorePatternComponent,
   UncontrolledInputComponent,
 };

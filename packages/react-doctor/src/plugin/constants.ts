@@ -346,6 +346,36 @@ export const MUTATING_ROUTE_SEGMENTS = new Set([
 
 export const EFFECT_HOOK_NAMES = new Set(["useEffect", "useLayoutEffect"]);
 export const HOOKS_WITH_DEPS = new Set(["useEffect", "useLayoutEffect", "useMemo", "useCallback"]);
+
+// Subscription-shaped method names recognized by `prefer-use-sync-external-store`.
+// Covers the canonical `store.subscribe`, the browser `addEventListener` /
+// `addListener`, the EventEmitter `on` / `watch` / `listen`, and shorter
+// store APIs like Jotai's `store.sub`. The detector cares only about the
+// AST shape (one of these is the property name of a MemberExpression
+// callee), never the library that implemented them.
+export const SUBSCRIPTION_METHOD_NAMES = new Set([
+  "subscribe",
+  "addEventListener",
+  "addListener",
+  "on",
+  "watch",
+  "listen",
+  "sub",
+]);
+
+// Methods that pair with the subscription methods above as their cleanup
+// counterparts. Used to recognize a valid `return () => removeEventListener(...)`
+// cleanup form even when the subscribe call is `addEventListener` rather
+// than a `subscribe()` whose return value gets re-bound.
+export const UNSUBSCRIPTION_METHOD_NAMES = new Set([
+  "unsubscribe",
+  "removeEventListener",
+  "removeListener",
+  "off",
+  "unwatch",
+  "unlisten",
+  "unsub",
+]);
 export const CHAINABLE_ITERATION_METHODS = new Set(["map", "filter", "forEach", "flatMap"]);
 export const STORAGE_OBJECTS = new Set(["localStorage", "sessionStorage"]);
 

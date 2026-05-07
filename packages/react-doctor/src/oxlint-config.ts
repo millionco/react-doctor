@@ -238,6 +238,7 @@ export const GLOBAL_REACT_DOCTOR_RULES: Record<string, RuleSeverity> = {
   "react-doctor/no-direct-state-mutation": "warn",
   "react-doctor/no-set-state-in-render": "warn",
   "react-doctor/prefer-useReducer": "warn",
+  "react-doctor/prefer-use-sync-external-store": "warn",
   "react-doctor/rerender-lazy-state-init": "warn",
   "react-doctor/rerender-functional-setstate": "warn",
   "react-doctor/rerender-dependencies": "error",

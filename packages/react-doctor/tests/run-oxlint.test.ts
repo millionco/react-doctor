@@ -170,6 +170,12 @@ describe("runOxlint", () => {
         severity: "warning",
         category: "State & Effects",
       },
+      "prefer-use-sync-external-store": {
+        fixture: "state-issues.tsx",
+        ruleSource: "rules/state-and-effects.ts",
+        severity: "warning",
+        category: "State & Effects",
+      },
     },
     () => basicReactDiagnostics,
   );

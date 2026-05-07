@@ -53,6 +53,7 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/no-direct-state-mutation": "State & Effects",
   "react-doctor/no-set-state-in-render": "State & Effects",
   "react-doctor/prefer-useReducer": "State & Effects",
+  "react-doctor/prefer-use-sync-external-store": "State & Effects",
   "react-doctor/rerender-lazy-state-init": "Performance",
   "react-doctor/rerender-functional-setstate": "Performance",
   "react-doctor/rerender-dependencies": "State & Effects",
@@ -250,6 +251,8 @@ const RULE_HELP_MAP: Record<string, string> = {
     "Move the setter call into a `useEffect`, an event handler, or replace the state with a value computed during render. Calling a setter at render time triggers another render, which calls the setter again — an infinite loop",
   "prefer-useReducer":
     "Group related state: `const [state, dispatch] = useReducer(reducer, { field1, field2, ... })`",
+  "prefer-use-sync-external-store":
+    "Replace the `useState(getSnapshot())` + `useEffect(() => store.subscribe(() => setSnapshot(getSnapshot())))` pair with `useSyncExternalStore(store.subscribe, getSnapshot)`. The hook handles tearing during concurrent renders and SSR snapshots; the manual subscribe pattern doesn't",
   "rerender-lazy-state-init":
     "Wrap in an arrow function so it only runs once: `useState(() => expensiveComputation())`",
   "rerender-functional-setstate":

@@ -48,6 +48,7 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/no-cascading-set-state": "State & Effects",
   "react-doctor/no-effect-event-handler": "State & Effects",
   "react-doctor/no-effect-event-in-deps": "State & Effects",
+  "react-doctor/no-event-trigger-state": "State & Effects",
   "react-doctor/no-prop-callback-in-effect": "State & Effects",
   "react-doctor/no-derived-useState": "State & Effects",
   "react-doctor/no-direct-state-mutation": "State & Effects",
@@ -242,6 +243,8 @@ const RULE_HELP_MAP: Record<string, string> = {
     "Combine into useReducer: `const [state, dispatch] = useReducer(reducer, initialState)`",
   "no-effect-event-handler":
     "Move the conditional logic into onClick, onChange, or onSubmit handlers directly",
+  "no-event-trigger-state":
+    "Delete the trigger state (`useState(null)` plus the `useEffect` that watches it) and call the side-effect (`post(...)` / `navigate(...)` / `track(...)`) directly inside the event handler that previously called the setter. State should not exist purely to schedule effect runs",
   "no-derived-useState":
     "Remove useState and compute the value inline: `const value = transform(propName)`",
   "no-direct-state-mutation":

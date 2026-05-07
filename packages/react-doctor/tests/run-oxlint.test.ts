@@ -170,6 +170,12 @@ describe("runOxlint", () => {
         severity: "warning",
         category: "State & Effects",
       },
+      "no-event-trigger-state": {
+        fixture: "state-issues.tsx",
+        ruleSource: "rules/state-and-effects.ts",
+        severity: "warning",
+        category: "State & Effects",
+      },
     },
     () => basicReactDiagnostics,
   );

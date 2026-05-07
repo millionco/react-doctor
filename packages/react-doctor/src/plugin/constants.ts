@@ -346,6 +346,56 @@ export const MUTATING_ROUTE_SEGMENTS = new Set([
 
 export const EFFECT_HOOK_NAMES = new Set(["useEffect", "useLayoutEffect"]);
 export const HOOKS_WITH_DEPS = new Set(["useEffect", "useLayoutEffect", "useMemo", "useCallback"]);
+
+// Used by `no-event-trigger-state` to recognize when a useEffect body
+// is performing the §6 anti-pattern from "You Might Not Need an Effect"
+// — running an event-shaped side effect (POST, navigation, notification,
+// analytics) that the user actually triggered with a button click.
+// Tightly scoped on purpose — adding a callee name here can produce
+// false positives on pure helper functions, so the bar is "this name
+// almost always denotes a fire-and-forget user-action effect."
+export const EVENT_TRIGGERED_SIDE_EFFECT_CALLEES = new Set([
+  // Network shorthand verbs (article uses `post`)
+  "fetch",
+  "post",
+  "put",
+  "patch",
+  "del",
+  // Common HTTP client wrappers
+  "ky",
+  "got",
+  "wretch",
+  "ofetch",
+  // Navigation
+  "navigate",
+  "navigateTo",
+  // UI side effects
+  "showNotification",
+  "toast",
+  "alert",
+  "confirm",
+  // Analytics
+  "track",
+  "logEvent",
+  "logVisit",
+  "captureEvent",
+]);
+
+// Recognized when the call shape is `<obj>.<method>(...)` — covers
+// `axios.post`, `api.post`, `router.push`, `analytics.track`,
+// `posthog.capture`, etc. without enumerating every possible object.
+export const EVENT_TRIGGERED_SIDE_EFFECT_MEMBER_METHODS = new Set([
+  "post",
+  "put",
+  "patch",
+  "delete",
+  "push",
+  "replace",
+  "navigate",
+  "capture",
+  "track",
+  "logEvent",
+]);
 export const CHAINABLE_ITERATION_METHODS = new Set(["map", "filter", "forEach", "flatMap"]);
 export const STORAGE_OBJECTS = new Set(["localStorage", "sessionStorage"]);
 

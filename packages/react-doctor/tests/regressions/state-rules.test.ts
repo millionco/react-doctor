@@ -219,6 +219,197 @@ export const Loader = () => {
   });
 });
 
+describe("no-event-trigger-state", () => {
+  it("flags the article §6 `if (jsonToSubmit !== null) post(...)` POST-trigger shape", async () => {
+    // https://react.dev/learn/you-might-not-need-an-effect#sending-a-post-request
+    const projectDir = setupReactProject(tempRoot, "no-event-trigger-state-post", {
+      files: {
+        "src/Form.tsx": `import { useEffect, useState } from "react";
+
+declare const post: (url: string, body: unknown) => void;
+
+export const Form = () => {
+  const [firstName, setFirstName] = useState("");
+  const [jsonToSubmit, setJsonToSubmit] = useState<{ firstName: string } | null>(null);
+  useEffect(() => {
+    if (jsonToSubmit !== null) {
+      post("/api/register", jsonToSubmit);
+    }
+  }, [jsonToSubmit]);
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        setJsonToSubmit({ firstName });
+      }}
+    >
+      <input value={firstName} onChange={(event) => setFirstName(event.target.value)} />
+    </form>
+  );
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "no-event-trigger-state");
+    expect(hits).toHaveLength(1);
+    expect(hits[0].message).toContain("jsonToSubmit");
+    expect(hits[0].message).toContain("post");
+  });
+
+  it("flags `axios.post` member call inside the trigger guard", async () => {
+    const projectDir = setupReactProject(tempRoot, "no-event-trigger-state-axios", {
+      files: {
+        "src/Submit.tsx": `import { useEffect, useState } from "react";
+
+declare const axios: { post: (url: string, body: unknown) => void };
+
+export const Submit = () => {
+  const [pendingPayload, setPendingPayload] = useState<{ id: number } | null>(null);
+  useEffect(() => {
+    if (pendingPayload !== null) {
+      axios.post("/api/submit", pendingPayload);
+    }
+  }, [pendingPayload]);
+  return <button onClick={() => setPendingPayload({ id: 1 })}>Submit</button>;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "no-event-trigger-state");
+    expect(hits).toHaveLength(1);
+    expect(hits[0].message).toContain("axios.post");
+  });
+
+  it("flags the bare-truthy guard with `navigate(...)` in the body", async () => {
+    const projectDir = setupReactProject(tempRoot, "no-event-trigger-state-navigate", {
+      files: {
+        "src/Wizard.tsx": `import { useEffect, useState } from "react";
+
+declare const navigate: (path: string) => void;
+
+export const Wizard = () => {
+  const [destination, setDestination] = useState<string | null>(null);
+  useEffect(() => {
+    if (destination) {
+      navigate(destination);
+    }
+  }, [destination]);
+  return <button onClick={() => setDestination("/next")}>Next</button>;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "no-event-trigger-state");
+    expect(hits).toHaveLength(1);
+    expect(hits[0].message).toContain("navigate");
+  });
+
+  it("does NOT flag the article's GOOD analytics-on-mount example", async () => {
+    // https://react.dev/learn/you-might-not-need-an-effect#sending-a-post-request
+    // The mount-time analytics POST is a legitimate effect — empty deps,
+    // no trigger state, runs once because the form was displayed.
+    const projectDir = setupReactProject(tempRoot, "no-event-trigger-state-analytics", {
+      files: {
+        "src/AnalyticsForm.tsx": `import { useEffect, useState } from "react";
+
+declare const post: (url: string, body: unknown) => void;
+
+export const AnalyticsForm = () => {
+  const [firstName, setFirstName] = useState("");
+  useEffect(() => {
+    post("/analytics/event", { eventName: "visit_form" });
+  }, []);
+  return <input value={firstName} onChange={(event) => setFirstName(event.target.value)} />;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "no-event-trigger-state");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("does NOT flag when the trigger state is also written outside event handlers", async () => {
+    // If the state is also set by other reactive logic (another effect,
+    // top-of-render adjustment), it's not "purely a trigger" — the user
+    // may have legitimate reasons to re-react when it changes.
+    const projectDir = setupReactProject(tempRoot, "no-event-trigger-state-non-handler-write", {
+      files: {
+        "src/Mixed.tsx": `import { useEffect, useState } from "react";
+
+declare const post: (url: string, body: unknown) => void;
+
+export const Mixed = ({ initial }: { initial: { id: number } | null }) => {
+  const [payload, setPayload] = useState<{ id: number } | null>(null);
+  useEffect(() => {
+    setPayload(initial);
+  }, [initial]);
+  useEffect(() => {
+    if (payload !== null) {
+      post("/api/sync", payload);
+    }
+  }, [payload]);
+  return <button onClick={() => setPayload({ id: 99 })}>Override</button>;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "no-event-trigger-state");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("does NOT flag when the consequent has no recognized side-effect", async () => {
+    const projectDir = setupReactProject(tempRoot, "no-event-trigger-state-no-side-effect", {
+      files: {
+        "src/Computed.tsx": `import { useEffect, useState } from "react";
+
+declare const compute: (value: number) => number;
+
+export const Computed = () => {
+  const [seed, setSeed] = useState<number | null>(null);
+  useEffect(() => {
+    if (seed !== null) {
+      compute(seed);
+    }
+  }, [seed]);
+  return <button onClick={() => setSeed(7)}>Set</button>;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "no-event-trigger-state");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("does NOT flag when the dep is a prop (no local setter at all)", async () => {
+    const projectDir = setupReactProject(tempRoot, "no-event-trigger-state-prop-dep", {
+      files: {
+        "src/Notify.tsx": `import { useEffect } from "react";
+
+declare const showNotification: (message: string) => void;
+
+export const Notify = ({ message }: { message: string | null }) => {
+  useEffect(() => {
+    if (message !== null) {
+      showNotification(message);
+    }
+  }, [message]);
+  return <span />;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "no-event-trigger-state");
+    expect(hits).toHaveLength(0);
+  });
+});
+
 describe("no-uncontrolled-input", () => {
   it("flags `value` without onChange / readOnly", async () => {
     const projectDir = setupReactProject(tempRoot, "no-uncontrolled-input-no-onchange", {

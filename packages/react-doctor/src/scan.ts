@@ -234,7 +234,7 @@ const printHiddenDiagnosticsSummary = (hiddenRuleGroups: [string, Diagnostic[]][
   );
 
   logger.log(`  ${renderedParts.join("  ")}`);
-  logger.dim("    Run `npx react-doctor@latest . --verbose` to get all details");
+  grayLine("    Run `npx react-doctor@latest . --verbose` to get all details");
   logger.break();
 };
 
@@ -314,66 +314,47 @@ const buildScoreBar = (score: number): string => {
   return colorizeByScore(filledSegment, score) + highlighter.dim(emptySegment);
 };
 
-const printScoreGauge = (score: number, label: string): void => {
-  const scoreDisplay = colorizeByScore(`${score}`, score);
-  const labelDisplay = colorizeByScore(label, score);
-  logger.log(`  ${scoreDisplay} / ${PERFECT_SCORE}  ${labelDisplay}`);
-  logger.break();
-  logger.log(`  ${buildScoreBar(score)}`);
-  logger.break();
-};
-
 const getDoctorFace = (score: number): string[] => {
   if (score >= SCORE_GOOD_THRESHOLD) return ["◠ ◠", " ▽ "];
   if (score >= SCORE_OK_THRESHOLD) return ["• •", " ─ "];
   return ["x x", " ▽ "];
 };
 
-const buildFaceLines = (score: number): { plainLines: string[]; renderedLines: string[] } => {
+const BRANDING_LINE = `React Doctor ${highlighter.dim("(www.react.doctor)")}`;
+
+const buildFaceRenderedLines = (score: number): string[] => {
   const [eyes, mouth] = getDoctorFace(score);
   const colorize = (text: string) => colorizeByScore(text, score);
-  const plainLines = ["┌─────┐", `│ ${eyes} │`, `│ ${mouth} │`, "└─────┘"];
-  const renderedLines = plainLines.map(colorize);
-  return { plainLines, renderedLines };
-};
-
-const printBranding = (score?: number): void => {
-  if (score !== undefined) {
-    const { renderedLines } = buildFaceLines(score);
-    for (const renderedLine of renderedLines) {
-      logger.log(`  ${renderedLine}`);
-    }
-  }
-  logger.log(`  React Doctor ${highlighter.dim("(www.react.doctor)")}`);
-  logger.break();
+  return ["┌─────┐", `│ ${eyes} │`, `│ ${mouth} │`, "└─────┘"].map(colorize);
 };
 
 const printScoreHeader = (scoreResult: ScoreResult): void => {
-  const { plainLines, renderedLines } = buildFaceLines(scoreResult.score);
-  const faceWidth = Math.max(...plainLines.map((plainLine) => plainLine.length));
-  const facePadding = " ".repeat(faceWidth);
+  const renderedFaceLines = buildFaceRenderedLines(scoreResult.score);
 
   const scoreNumber = colorizeByScore(`${scoreResult.score}`, scoreResult.score);
   const scoreLabel = colorizeByScore(scoreResult.label, scoreResult.score);
   const scoreLine = `${scoreNumber} ${highlighter.dim(`/ ${PERFECT_SCORE}`)} ${scoreLabel}`;
   const scoreBarLine = buildScoreBar(scoreResult.score);
-  const brandingLine = `React Doctor ${highlighter.dim("(www.react.doctor)")}`;
 
-  const rightColumnLines = [scoreLine, scoreBarLine, brandingLine, ""];
+  const rightColumnLines = [scoreLine, scoreBarLine, BRANDING_LINE, ""];
 
-  for (let lineIndex = 0; lineIndex < plainLines.length; lineIndex += 1) {
-    const renderedFacePart = renderedLines[lineIndex] ?? facePadding;
+  for (let lineIndex = 0; lineIndex < renderedFaceLines.length; lineIndex += 1) {
     const rightColumnContent = rightColumnLines[lineIndex] ?? "";
     const separator = rightColumnContent.length > 0 ? "  " : "";
-    logger.log(`  ${renderedFacePart}${separator}${rightColumnContent}`);
+    logger.log(`  ${renderedFaceLines[lineIndex]}${separator}${rightColumnContent}`);
   }
 
   logger.break();
 };
 
+const printBrandingOnlyHeader = (): void => {
+  logger.log(`  ${BRANDING_LINE}`);
+  logger.break();
+};
+
 const printNoScoreHeader = (noScoreMessage: string): void => {
-  logger.log(`  React Doctor ${highlighter.dim("(www.react.doctor)")}`);
-  logger.log(`  ${highlighter.dim(noScoreMessage)}`);
+  logger.log(`  ${BRANDING_LINE}`);
+  logger.log(`  ${highlighter.gray(noScoreMessage)}`);
   logger.break();
 };
 
@@ -784,13 +765,12 @@ const runScan = async (
     }
     logger.break();
     if (hasSkippedChecks) {
-      printBranding();
-      logger.dim("  Score not shown — some checks could not complete.");
+      printBrandingOnlyHeader();
+      logger.log(highlighter.gray("  Score not shown — some checks could not complete."));
     } else if (scoreResult) {
-      printBranding(scoreResult.score);
-      printScoreGauge(scoreResult.score, scoreResult.label);
+      printScoreHeader(scoreResult);
     } else {
-      logger.dim(`  ${noScoreMessage}`);
+      printNoScoreHeader(noScoreMessage);
     }
     return buildResult();
   }

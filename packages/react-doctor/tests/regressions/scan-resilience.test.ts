@@ -350,6 +350,30 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
     expect(hasReactHooksJsPluginEntry).toBe(false);
   });
 
+  it("emits every react-hooks-js rule at error severity (so they fail CI under --fail-on error)", () => {
+    // Regression for the silent severity downgrade introduced in PR
+    // #140: every `react-hooks-js/*` entry got mass-converted from
+    // `"error"` to `"warn"`, which made "React Compiler can't optimize
+    // this code" diagnostics stop counting toward `errorCount` and
+    // stop tripping the GitHub Action's default `--fail-on error`.
+    // Each compiler diagnostic represents an unoptimizable component
+    // shape — surfacing as warnings hid real perf regressions.
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/react-doctor-plugin.js",
+      framework: "unknown",
+      hasReactCompiler: true,
+      hasTanStackQuery: false,
+    });
+
+    const compilerSeverities = Object.entries(config.rules)
+      .filter(([ruleKey]) => ruleKey.startsWith("react-hooks-js/"))
+      .map(([ruleKey, severity]) => ({ ruleKey, severity }));
+
+    expect(compilerSeverities.length).toBeGreaterThan(0);
+    const nonErrorEntries = compilerSeverities.filter((entry) => entry.severity !== "error");
+    expect(nonErrorEntries).toEqual([]);
+  });
+
   it("only enables react-hooks-js rules that the resolved plugin actually exports", async () => {
     // The workspace pins eslint-plugin-react-hooks@7, so every
     // configured react-hooks-js/* rule MUST exist in the loaded

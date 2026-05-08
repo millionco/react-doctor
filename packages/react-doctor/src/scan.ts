@@ -98,8 +98,7 @@ const buildVerboseSiteMap = (diagnostics: Diagnostic[]): Map<string, VerboseSite
   return fileSites;
 };
 
-const formatSiteCountLabel = (count: number): string =>
-  `${count} ${count === 1 ? "site" : "sites"}`;
+const formatSiteCountBadge = (count: number): string => (count > 1 ? `×${count}` : "");
 
 const computeRuleNameColumnWidth = (ruleKeys: string[]): number => {
   const longestRuleNameLength = ruleKeys.reduce(
@@ -114,6 +113,10 @@ const padRuleNameToColumn = (ruleName: string, columnWidth: number): string => {
   return ruleName + " ".repeat(columnWidth - ruleName.length);
 };
 
+const grayLine = (text: string): void => {
+  logger.log(highlighter.gray(text));
+};
+
 const printCompactRuleGroupLine = (
   ruleKey: string,
   ruleDiagnostics: Diagnostic[],
@@ -122,10 +125,16 @@ const printCompactRuleGroupLine = (
   const firstDiagnostic = ruleDiagnostics[0];
   const severitySymbol = firstDiagnostic.severity === "error" ? "✗" : "⚠";
   const icon = colorizeBySeverity(severitySymbol, firstDiagnostic.severity);
-  const paddedRuleName = padRuleNameToColumn(ruleKey, ruleNameColumnWidth);
-  const colorizedRuleName = colorizeBySeverity(paddedRuleName, firstDiagnostic.severity);
-  const siteCountLabel = highlighter.dim(formatSiteCountLabel(ruleDiagnostics.length));
-  logger.log(`  ${icon} ${colorizedRuleName} ${siteCountLabel}`);
+  const siteCountBadge = formatSiteCountBadge(ruleDiagnostics.length);
+  const ruleNameRendering =
+    siteCountBadge.length > 0
+      ? colorizeBySeverity(
+          padRuleNameToColumn(ruleKey, ruleNameColumnWidth),
+          firstDiagnostic.severity,
+        )
+      : colorizeBySeverity(ruleKey, firstDiagnostic.severity);
+  const trailingBadge = siteCountBadge.length > 0 ? ` ${highlighter.gray(siteCountBadge)}` : "";
+  logger.log(`  ${icon} ${ruleNameRendering}${trailingBadge}`);
 };
 
 const printDetailedRuleGroup = (
@@ -136,14 +145,14 @@ const printDetailedRuleGroup = (
 ): void => {
   printCompactRuleGroupLine(ruleKey, ruleDiagnostics, ruleNameColumnWidth);
   const firstDiagnostic = ruleDiagnostics[0];
-  logger.dim(indentMultilineText(firstDiagnostic.message, "      "));
+  grayLine(indentMultilineText(firstDiagnostic.message, "      "));
   if (firstDiagnostic.help) {
-    logger.dim(indentMultilineText(`→ ${firstDiagnostic.help}`, "      "));
+    grayLine(indentMultilineText(`→ ${firstDiagnostic.help}`, "      "));
   }
   const firstLocation = ruleDiagnostics.find((diagnostic) => diagnostic.line > 0);
   if (firstLocation) {
     const locationPath = toRelativePath(firstLocation.filePath, rootDirectory);
-    logger.dim(`      ${locationPath}:${firstLocation.line}`);
+    grayLine(`      ${locationPath}:${firstLocation.line}`);
   }
   logger.break();
 };
@@ -155,21 +164,21 @@ const printVerboseRuleGroup = (
 ): void => {
   printCompactRuleGroupLine(ruleKey, ruleDiagnostics, ruleNameColumnWidth);
   const firstDiagnostic = ruleDiagnostics[0];
-  logger.dim(indentMultilineText(firstDiagnostic.message, "      "));
+  grayLine(indentMultilineText(firstDiagnostic.message, "      "));
   if (firstDiagnostic.help) {
-    logger.dim(indentMultilineText(`→ ${firstDiagnostic.help}`, "      "));
+    grayLine(indentMultilineText(`→ ${firstDiagnostic.help}`, "      "));
   }
   const fileSites = buildVerboseSiteMap(ruleDiagnostics);
   for (const [filePath, sites] of fileSites) {
     if (sites.length > 0) {
       for (const site of sites) {
-        logger.dim(`      ${filePath}:${site.line}`);
+        grayLine(`      ${filePath}:${site.line}`);
         if (site.suppressionHint) {
-          logger.dim(`        ↳ ${site.suppressionHint}`);
+          grayLine(`        ↳ ${site.suppressionHint}`);
         }
       }
     } else {
-      logger.dim(`      ${filePath}`);
+      grayLine(`      ${filePath}`);
     }
   }
   logger.break();

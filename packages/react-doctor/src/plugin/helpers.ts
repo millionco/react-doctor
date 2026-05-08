@@ -387,7 +387,7 @@ export const collectPatternNames = (pattern: EsTreeNode | null, into: Set<string
   }
 };
 
-export const extractDestructuredPropNames = (params: EsTreeNode[]): Set<string> => {
+const extractDestructuredPropNames = (params: EsTreeNode[]): Set<string> => {
   const propNames = new Set<string>();
   for (const param of params) {
     collectPatternNames(param, propNames);
@@ -395,11 +395,11 @@ export const extractDestructuredPropNames = (params: EsTreeNode[]): Set<string> 
   return propNames;
 };
 
-// HACK: barrier-frame predicate shared by every rule that pushes an
-// empty stack frame on a non-component arrow / function-expression
-// VariableDeclarator so closed-over names from an outer component
-// don't leak into the helper's prop check.
-export const isFunctionLikeVariableDeclarator = (node: EsTreeNode): boolean => {
+// HACK: barrier-frame predicate used by `createComponentPropStackTracker`
+// — a non-component arrow / function-expression VariableDeclarator
+// pushes an empty stack frame so closed-over names from an outer
+// component don't leak into the helper's prop check.
+const isFunctionLikeVariableDeclarator = (node: EsTreeNode): boolean => {
   if (node.type !== "VariableDeclarator") return false;
   return node.init?.type === "ArrowFunctionExpression" || node.init?.type === "FunctionExpression";
 };

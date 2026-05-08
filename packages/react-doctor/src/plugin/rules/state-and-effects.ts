@@ -1971,22 +1971,17 @@ const findMutableDepIssue = (
 //       prop Identifier or a MemberExpression rooted in a prop
 //   (2) `useEffect(() => setX(<propExpr'>), [<propRoot>])` where
 //       <propExpr'> is structurally identical to <propExpr> from (1)
+// Follow call chains so a prop-rooted method call counts:
+// `useState(value.toUpperCase())` resolves to root "value". Safe for
+// mirror-detection because the structural-equality check on the setter
+// argument still requires the SAME call shape — it won't match
+// `setX(value.toLowerCase())`.
 const getPropRootName = (
   expression: EsTreeNode | null | undefined,
   propNames: Set<string>,
 ): string | null => {
-  if (!expression) return null;
-  if (expression.type === "Identifier" && propNames.has(expression.name)) {
-    return expression.name;
-  }
-  // Follow call chains so a prop-rooted method call counts:
-  // `useState(value.toUpperCase())` resolves to root "value". This is
-  // safe for mirror-detection because the structural-equality check
-  // on the setter argument still requires the SAME call shape — it
-  // won't match `setX(value.toLowerCase())`.
   const rootName = getRootIdentifierName(expression, { followCallChains: true });
-  if (rootName !== null && propNames.has(rootName)) return rootName;
-  return null;
+  return rootName !== null && propNames.has(rootName) ? rootName : null;
 };
 
 interface MirrorBinding {

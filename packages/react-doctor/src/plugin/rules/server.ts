@@ -303,15 +303,6 @@ const callReadsHandlerArgs = (call: EsTreeNode, handlerParamNames: Set<string>):
 
 const DERIVING_ARRAY_METHODS = new Set(["toSorted", "toReversed", "filter", "map", "slice"]);
 
-const expressionDerivesFromIdentifier = (node: EsTreeNode, identifierName: string): boolean => {
-  if (node.type !== "CallExpression") return false;
-  const callee = node.callee;
-  if (callee?.type !== "MemberExpression") return false;
-  if (callee.property?.type !== "Identifier") return false;
-  if (!DERIVING_ARRAY_METHODS.has(callee.property.name)) return false;
-  return getRootIdentifierName(callee, { followCallChains: true }) === identifierName;
-};
-
 // HACK: passing both `<Client list={items} sortedList={items.toSorted()} />`
 // (or any pair of derivations of the same source) doubles the bytes
 // React serializes across the RSC wire. The client gets two copies of
@@ -333,12 +324,11 @@ export const serverDedupProps: Rule = {
         if (expression.type === "Identifier") {
           identifierAttributes.set(expression.name, attr.name.name);
         } else if (expression.type === "CallExpression") {
+          const derivingMethod = getDerivingMethodName(expression);
+          if (!derivingMethod || !DERIVING_ARRAY_METHODS.has(derivingMethod)) continue;
           const root = getRootIdentifierName(expression, { followCallChains: true });
-          if (root && DERIVING_ARRAY_METHODS.has(getDerivingMethodName(expression) ?? "")) {
-            if (expressionDerivesFromIdentifier(expression, root)) {
-              derivedAttributes.push({ propName: attr.name.name, rootName: root, node: attr });
-            }
-          }
+          if (!root) continue;
+          derivedAttributes.push({ propName: attr.name.name, rootName: root, node: attr });
         }
       }
 

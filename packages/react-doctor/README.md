@@ -9,7 +9,7 @@
 
 Your agent writes bad React, this catches it.
 
-One command scans your codebase and outputs a **0 to 100 health score** with actionable diagnostics. 
+One command scans your codebase and outputs a **0 to 100 health score** with actionable diagnostics.
 
 Works with Next.js, Vite, and React Native.
 
@@ -106,13 +106,11 @@ The same rule set ships as both an oxlint plugin and an ESLint plugin, so you ca
 
 ```jsonc
 {
-  "jsPlugins": [
-    { "name": "react-doctor", "specifier": "react-doctor/oxlint-plugin" }
-  ],
+  "jsPlugins": [{ "name": "react-doctor", "specifier": "react-doctor/oxlint-plugin" }],
   "rules": {
     "react-doctor/no-fetch-in-effect": "warn",
-    "react-doctor/no-derived-state-effect": "warn"
-  }
+    "react-doctor/no-derived-state-effect": "warn",
+  },
 }
 ```
 
@@ -131,7 +129,6 @@ export default [
 ```
 
 The full rule list lives in [`oxlint-config.ts`](https://github.com/millionco/react-doctor/blob/main/packages/react-doctor/src/oxlint-config.ts).
-
 
 ## CLI reference
 
@@ -186,9 +183,9 @@ import { diagnose, toJsonReport, summarizeDiagnostics } from "react-doctor/api";
 
 const result = await diagnose("./path/to/your/react-project");
 
-console.log(result.score);       // { score: 82, label: "Great" } or null
+console.log(result.score); // { score: 82, label: "Great" } or null
 console.log(result.diagnostics); // Diagnostic[]
-console.log(result.project);     // detected framework, React version, etc.
+console.log(result.project); // detected framework, React version, etc.
 ```
 
 `diagnose` accepts a second argument: `{ lint?: boolean, deadCode?: boolean }`.

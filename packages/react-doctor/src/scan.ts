@@ -70,16 +70,21 @@ const sortBySeverity = (diagnosticGroups: [string, Diagnostic[]][]): [string, Di
 const collectAffectedFiles = (diagnostics: Diagnostic[]): Set<string> =>
   new Set(diagnostics.map((diagnostic) => diagnostic.filePath));
 
-const buildFileLineMap = (diagnostics: Diagnostic[]): Map<string, number[]> => {
-  const fileLines = new Map<string, number[]>();
+interface VerboseSiteEntry {
+  line: number;
+  suppressionHint?: string;
+}
+
+const buildVerboseSiteMap = (diagnostics: Diagnostic[]): Map<string, VerboseSiteEntry[]> => {
+  const fileSites = new Map<string, VerboseSiteEntry[]>();
   for (const diagnostic of diagnostics) {
-    const lines = fileLines.get(diagnostic.filePath) ?? [];
+    const sites = fileSites.get(diagnostic.filePath) ?? [];
     if (diagnostic.line > 0) {
-      lines.push(diagnostic.line);
+      sites.push({ line: diagnostic.line, suppressionHint: diagnostic.suppressionHint });
     }
-    fileLines.set(diagnostic.filePath, lines);
+    fileSites.set(diagnostic.filePath, sites);
   }
-  return fileLines;
+  return fileSites;
 };
 
 const printDiagnostics = (diagnostics: Diagnostic[], isVerbose: boolean): void => {
@@ -103,12 +108,15 @@ const printDiagnostics = (diagnostics: Diagnostic[], isVerbose: boolean): void =
     }
 
     if (isVerbose) {
-      const fileLines = buildFileLineMap(ruleDiagnostics);
+      const fileSites = buildVerboseSiteMap(ruleDiagnostics);
 
-      for (const [filePath, lines] of fileLines) {
-        if (lines.length > 0) {
-          for (const line of lines) {
-            logger.dim(`  ${filePath}:${line}`);
+      for (const [filePath, sites] of fileSites) {
+        if (sites.length > 0) {
+          for (const site of sites) {
+            logger.dim(`  ${filePath}:${site.line}`);
+            if (site.suppressionHint) {
+              logger.dim(`    ↳ ${site.suppressionHint}`);
+            }
           }
         } else {
           logger.dim(`  ${filePath}`);
@@ -129,7 +137,6 @@ const formatElapsedTime = (elapsedMilliseconds: number): string => {
 
 const formatRuleSummary = (ruleKey: string, ruleDiagnostics: Diagnostic[]): string => {
   const firstDiagnostic = ruleDiagnostics[0];
-  const fileLines = buildFileLineMap(ruleDiagnostics);
 
   const sections = [
     `Rule: ${ruleKey}`,
@@ -145,10 +152,14 @@ const formatRuleSummary = (ruleKey: string, ruleDiagnostics: Diagnostic[]): stri
   }
 
   sections.push("", "Files:");
-  for (const [filePath, lines] of fileLines) {
-    if (lines.length > 0) {
-      for (const line of lines) {
-        sections.push(`  ${filePath}:${line}`);
+  const fileSites = buildVerboseSiteMap(ruleDiagnostics);
+  for (const [filePath, sites] of fileSites) {
+    if (sites.length > 0) {
+      for (const site of sites) {
+        sections.push(`  ${filePath}:${site.line}`);
+        if (site.suppressionHint) {
+          sections.push(`    ${site.suppressionHint}`);
+        }
       }
     } else {
       sections.push(`  ${filePath}`);
@@ -611,6 +622,7 @@ const runScan = async (
     directory,
     isDiffMode,
     userConfig,
+    respectInlineDisables: options.respectInlineDisables,
   });
 
   const elapsedMilliseconds = performance.now() - startTime;

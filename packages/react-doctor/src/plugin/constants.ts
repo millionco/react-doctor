@@ -263,6 +263,49 @@ export const TRIVIAL_INITIALIZER_NAMES = new Set([
   "parseFloat",
 ]);
 
+// Used by `noDerivedStateEffect` to decide whether a derived-state
+// expression is "expensive enough" to recommend `useMemo` over plain
+// inline computation. Coercion / parsing / boundary helpers are cheap
+// and should still get the "compute during render" message.
+// MemberExpression callees (e.g. `Math.floor`, `Date.now`) are
+// recognized via BUILTIN_GLOBAL_NAMESPACE_NAMES (the chain root), not
+// here — putting "Math" or "Date" in this set wouldn't match because
+// the expensive-derivation walker reads the *property* name.
+export const TRIVIAL_DERIVATION_CALLEE_NAMES = new Set([
+  "Boolean",
+  "String",
+  "Number",
+  "Array",
+  "Object",
+  "parseInt",
+  "parseFloat",
+  "isNaN",
+  "isFinite",
+  "BigInt",
+  "Symbol",
+]);
+
+// Built-in JS globals whose method calls (`Math.floor(x)`,
+// `Date.now()`, `JSON.parse(x)`, …) are not reactive reads and don't
+// count as "expensive derivations". The chain root is what matters —
+// `Math.floor(raw)` should only treat `raw` as a reactive read, and
+// the call itself should be classified as trivial regardless of which
+// method is invoked.
+export const BUILTIN_GLOBAL_NAMESPACE_NAMES = new Set([
+  "Math",
+  "Date",
+  "JSON",
+  "Object",
+  "Array",
+  "Number",
+  "String",
+  "Boolean",
+  "RegExp",
+  "Symbol",
+  "BigInt",
+  "Reflect",
+]);
+
 export const SETTER_PATTERN = /^set[A-Z]/;
 export const RENDER_FUNCTION_PATTERN = /^render[A-Z]/;
 export const UPPERCASE_PATTERN = /^[A-Z]/;

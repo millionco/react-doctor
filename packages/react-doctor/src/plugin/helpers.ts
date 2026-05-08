@@ -46,6 +46,21 @@ export const isMemberProperty = (node: EsTreeNode, propertyName: string): boolea
   node.property?.type === "Identifier" &&
   node.property.name === propertyName;
 
+// HACK: walk a MemberExpression chain (computed or not) down to the
+// underlying root identifier. `state.nested.items` → "state",
+// `items[0]` → "items". Returns null if the chain bottoms out at
+// anything other than a plain Identifier (e.g. a CallExpression,
+// `this`, etc.). Bare Identifiers also resolve to themselves.
+export const getRootIdentifierName = (node: EsTreeNode | undefined | null): string | null => {
+  if (!node) return null;
+  if (node.type === "Identifier") return node.name;
+  let cursor: EsTreeNode | undefined = node;
+  while (cursor?.type === "MemberExpression") {
+    cursor = cursor.object;
+  }
+  return cursor?.type === "Identifier" ? cursor.name : null;
+};
+
 // HACK: structural equality for "value-shaped" expressions used by
 // detectors that need to assert two reads of the same external value
 // (e.g. `prefer-use-sync-external-store` checks that the

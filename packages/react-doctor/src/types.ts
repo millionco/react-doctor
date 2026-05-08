@@ -62,6 +62,7 @@ export interface Diagnostic {
   line: number;
   column: number;
   category: string;
+  suppressionHint?: string;
 }
 
 export interface PackageJson {
@@ -182,9 +183,15 @@ export interface CleanedDiagnostic {
   help: string;
 }
 
+export interface ReactDoctorIgnoreOverride {
+  files: string[];
+  rules?: string[];
+}
+
 interface ReactDoctorIgnoreConfig {
   rules?: string[];
   files?: string[];
+  overrides?: ReactDoctorIgnoreOverride[];
 }
 
 export interface ReactDoctorConfig {
@@ -198,8 +205,8 @@ export interface ReactDoctorConfig {
   share?: boolean;
   textComponents?: string[];
   /**
-   * Whether to respect inline `// eslint-disable*` / `// oxlint-disable*`
-   * comments in source files. Default: `true`.
+   * Whether to respect inline `// eslint-disable*`, `// oxlint-disable*`,
+   * and `// react-doctor-disable*` comments in source files. Default: `true`.
    *
    * File-level ignores (`.gitignore`, `.eslintignore`, `.oxlintignore`,
    * `.prettierignore`, `.gitattributes` `linguist-vendored` /

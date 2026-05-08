@@ -11,6 +11,7 @@ interface CombineDiagnosticsInput {
   userConfig: ReactDoctorConfig | null;
   readFileLinesSync?: (filePath: string) => string[] | null;
   includeEnvironmentChecks?: boolean;
+  respectInlineDisables?: boolean;
 }
 
 export const combineDiagnostics = (input: CombineDiagnosticsInput): Diagnostic[] => {
@@ -22,9 +23,12 @@ export const combineDiagnostics = (input: CombineDiagnosticsInput): Diagnostic[]
     userConfig,
     readFileLinesSync = createNodeReadFileLinesSync(directory),
     includeEnvironmentChecks = true,
+    respectInlineDisables,
   } = input;
   const extraDiagnostics =
     isDiffMode || !includeEnvironmentChecks ? [] : checkReducedMotion(directory);
   const merged = [...lintDiagnostics, ...deadCodeDiagnostics, ...extraDiagnostics];
-  return mergeAndFilterDiagnostics(merged, directory, userConfig, readFileLinesSync);
+  return mergeAndFilterDiagnostics(merged, directory, userConfig, readFileLinesSync, {
+    respectInlineDisables,
+  });
 };

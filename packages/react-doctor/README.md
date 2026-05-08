@@ -7,9 +7,11 @@
 [![version](https://img.shields.io/npm/v/react-doctor?style=flat&colorA=000000&colorB=000000)](https://npmjs.com/package/react-doctor)
 [![downloads](https://img.shields.io/npm/dt/react-doctor.svg?style=flat&colorA=000000&colorB=000000)](https://npmjs.com/package/react-doctor)
 
-Let coding agents diagnose and fix your React code.
+Your agent writes bad React, this catches it
 
-One command scans your codebase for security, performance, correctness, and architecture issues, then outputs a **0–100 score** with actionable diagnostics.
+One command scans your codebase for security, performance, correctness, and architecture issues, then outputs a **0-100 score** with actionable diagnostics.
+
+Works with Next.js, Vite, React Native, fix your app in minutes
 
 ### [See it in action →](https://react.doctor)
 
@@ -81,22 +83,39 @@ The action outputs a `score` (0–100) you can use in subsequent steps.
 Usage: react-doctor [directory] [options]
 
 Options:
-  -v, --version      display the version number
-  --no-lint          skip linting
-  --no-dead-code     skip dead code detection
-  --verbose          show file details per rule
-  --score            output only the score
-  --json             output a single structured JSON report (suppresses other output)
-  -y, --yes          skip prompts, scan all workspace projects
-  --full             skip prompts, always run a full scan (decline diff-only)
-  --project <name>   select workspace project (comma-separated for multiple)
-  --diff [base]      scan only files changed vs base branch
-  --offline          skip telemetry (anonymous, not stored, only used to calculate score)
-  --staged           scan only staged (git index) files for pre-commit hooks
-  --fail-on <level>  exit with error code on diagnostics: error, warning, none
-  --annotations      output diagnostics as GitHub Actions annotations
-  -h, --help         display help for command
+  -v, --version       display the version number
+  --no-lint           skip linting
+  --no-dead-code      skip dead code detection
+  --verbose           show file details per rule
+  --score             output only the score
+  --json              output a single structured JSON report (suppresses other output)
+  -y, --yes           skip prompts, scan all workspace projects
+  --full              skip prompts, always run a full scan (decline diff-only)
+  --project <name>    select workspace project (comma-separated for multiple)
+  --diff [base]       scan only files changed vs base branch
+  --offline           skip telemetry (anonymous, not stored, only used to calculate score)
+  --staged            scan only staged (git index) files for pre-commit hooks
+  --fail-on <level>   exit with error code on diagnostics: error, warning, none
+  --annotations         output diagnostics as GitHub Actions annotations
+  --explain <file:line> diagnose why a rule fired or why a suppression didn't apply at a specific location (alias: --why)
+  -h, --help            display help for command
 ```
+
+### `--explain <file:line>`
+
+When a rule keeps firing despite a `react-doctor-disable-next-line` you wrote, pass `--explain <file:line>` (mirroring `rustc --explain <error-code>`) to ask the scanner what it sees at one specific site:
+
+```bash
+npx -y react-doctor@latest --explain components/projects/Snapshot.tsx:254
+```
+
+Output names the rule, severity, and category, then prints any nearby suppression comment that didn't apply with an explanation — wrong rule list (suggesting the comma form), or a code-line gap (suggesting moving the comment or extracting the surrounding code into a helper).
+
+In a monorepo, the path is auto-resolved to the workspace package that owns the file; `--project <name>` overrides that and forces a specific project.
+
+The same hint is also attached to every diagnostic inline when running with `--verbose` and is included in `--json` output as `diagnostic.suppressionHint`. If you're debugging more than one site at once, prefer `--verbose` over running `--explain` repeatedly.
+
+`--why` is a hidden alias of `--explain` for users coming from the issue's vocabulary.
 
 ## JSON output
 
@@ -158,7 +177,13 @@ Create a `react-doctor.config.json` in your project root to customize behavior:
 {
   "ignore": {
     "rules": ["react/no-danger", "jsx-a11y/no-autofocus", "knip/exports"],
-    "files": ["src/generated/**"]
+    "files": ["src/generated/**"],
+    "overrides": [
+      {
+        "files": ["components/diff/**"],
+        "rules": ["react-doctor/no-array-index-as-key"]
+      }
+    ]
   }
 }
 ```
@@ -177,6 +202,29 @@ You can also use the `"reactDoctor"` key in your `package.json` instead:
 
 If both exist, `react-doctor.config.json` takes precedence.
 
+### Per-file rule overrides
+
+`ignore.files` is all-or-nothing — every rule is silenced for matched files. When a single rule is legitimately violated in one directory but the rest of the rule set should still apply there, use `ignore.overrides` instead:
+
+```json
+{
+  "ignore": {
+    "overrides": [
+      {
+        "files": ["components/diff/**"],
+        "rules": ["react-doctor/no-array-index-as-key"]
+      },
+      {
+        "files": ["components/search/HighlightedSnippet.tsx"],
+        "rules": ["react/no-danger"]
+      }
+    ]
+  }
+}
+```
+
+Each entry is `{ files: string[], rules?: string[] }`. A diagnostic is dropped when its file matches any entry's globs AND its `plugin/rule` id is listed in that entry's rules. Omit `rules` (or pass `[]`) to suppress every rule for the matched files.
+
 ### Inline suppressions
 
 Suppress a rule on a specific line with `// react-doctor-disable-line` or the next line with `// react-doctor-disable-next-line`:
@@ -192,6 +240,22 @@ useEffect(() => {
 const value = expensiveComputation(); // react-doctor-disable-line react-doctor/no-usememo-simple-expression
 ```
 
+#### Multiple rules on one comment
+
+When two rules co-fire on the same line, **comma- or space-separate the rule ids on a single comment** — stacking two single-rule comments does not work, and the inner comment shadows the outer one:
+
+```tsx
+// react-doctor-disable-next-line react-doctor/no-derived-state-effect, react-doctor/no-fetch-in-effect
+useEffect(() => {
+  setFull(`${first} ${last}`);
+  fetch(`/users/${id}`);
+}, [first, last, id]);
+```
+
+A bare comment with no rule id suppresses every diagnostic on the targeted line.
+
+#### Block comments and JSX
+
 Block comments work too — useful inside JSX where `//` line comments aren't legal:
 
 <!-- prettier-ignore -->
@@ -200,7 +264,22 @@ Block comments work too — useful inside JSX where `//` line comments aren't le
 <div dangerouslySetInnerHTML={{ __html }} />
 ```
 
-Comma- or space-separate multiple rule ids on the same comment. With no rule id, the comment suppresses every diagnostic on that line.
+#### Multi-line JSX elements
+
+When a rule reports an attribute on a later line of a multi-line JSX element, putting the comment **immediately above the opening tag** suppresses diagnostics anywhere inside the tag's attribute list (matching the ESLint convention). You don't need to inline a JSX comment between the `<Tag` and the offending attribute:
+
+<!-- prettier-ignore -->
+```tsx
+{/* react-doctor-disable-next-line react-doctor/no-array-index-as-key */}
+<li
+  key={`item-${index}`}
+  role="button"
+>
+  {item.label}
+</li>
+```
+
+Coverage extends through the closing `>` of the opening tag, not into children — children of the element keep their normal lint coverage.
 
 ### Respecting your existing project ignores
 
@@ -227,7 +306,7 @@ If you want React Doctor to ignore those inline suppressions and audit your code
 { "respectInlineDisables": false }
 ```
 
-This only neutralizes the inline `// eslint-disable*` / `// oxlint-disable*` comments — the file-level ignore lists above are always honored, even in audit mode, because they typically point at vendored or generated code that genuinely shouldn't be linted.
+This neutralizes the inline `// eslint-disable*`, `// oxlint-disable*`, and `// react-doctor-disable*` comments — the file-level ignore lists above are always honored, even in audit mode, because they typically point at vendored or generated code that genuinely shouldn't be linted.
 
 ### Adopting your existing oxlint / eslint rules
 
@@ -267,6 +346,7 @@ To opt out completely, set:
 | ------------------------- | -------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `ignore.rules`            | `string[]`                       | `[]`     | Rules to suppress, using the `plugin/rule` format shown in diagnostic output (e.g. `react/no-danger`, `knip/exports`, `knip/types`)                                                                                                                                                                                                        |
 | `ignore.files`            | `string[]`                       | `[]`     | File paths to exclude, supports glob patterns (`src/generated/**`, `**/*.test.tsx`)                                                                                                                                                                                                                                                        |
+| `ignore.overrides`        | `Override[]`                     | `[]`     | Per-glob rule ignore. Each entry pairs a `files` glob list with a `rules` list — diagnostics matching both are dropped. Lets you turn off one noisy rule for one directory without losing coverage of unrelated rules. Omit `rules` (or pass `[]`) to suppress every rule for the matched files (equivalent to extending `ignore.files`).  |
 | `lint`                    | `boolean`                        | `true`   | Enable/disable lint checks (same as `--no-lint`)                                                                                                                                                                                                                                                                                           |
 | `deadCode`                | `boolean`                        | `true`   | Enable/disable dead code detection (same as `--no-dead-code`)                                                                                                                                                                                                                                                                              |
 | `verbose`                 | `boolean`                        | `false`  | Show file details per rule (same as `--verbose`)                                                                                                                                                                                                                                                                                           |
@@ -275,7 +355,7 @@ To opt out completely, set:
 | `customRulesOnly`         | `boolean`                        | `false`  | Disable built-in react/jsx-a11y/compiler rules, keeping only `react-doctor/*` plugin rules                                                                                                                                                                                                                                                 |
 | `share`                   | `boolean`                        | `true`   | Show the share-your-results URL after scanning                                                                                                                                                                                                                                                                                             |
 | `textComponents`          | `string[]`                       | `[]`     | React Native only. Component names whose children should not trigger `rn-no-raw-text` (e.g. `["MyText", "Label.Bold"]`)                                                                                                                                                                                                                    |
-| `respectInlineDisables`   | `boolean`                        | `true`   | Respect inline `// eslint-disable*` / `// oxlint-disable*` comments. Set `false` for audit mode. File-level ignores (`.gitignore`, `.eslintignore`, `.oxlintignore`, `.prettierignore`, `.gitattributes` linguist annotations) are always respected.                                                                                       |
+| `respectInlineDisables`   | `boolean`                        | `true`   | Respect inline `// eslint-disable*`, `// oxlint-disable*`, and `// react-doctor-disable*` comments. Set `false` for audit mode. File-level ignores (`.gitignore`, `.eslintignore`, `.oxlintignore`, `.prettierignore`, `.gitattributes` linguist annotations) are always respected.                                                        |
 | `adoptExistingLintConfig` | `boolean`                        | `true`   | Merge the project's existing JSON oxlint / eslint config (`.oxlintrc.json` or `.eslintrc.json`, walking up to the nearest project boundary) into the scan via oxlint's `extends`. Diagnostics from those rules count toward the score. Flat / JS / TS configs are skipped; category-level enables don't apply (use rule-level severities). |
 
 CLI flags always override config values.
@@ -316,6 +396,9 @@ interface Diagnostic {
   line: number;
   column: number;
   category: string;
+  // Populated when a `react-doctor-disable-next-line` exists nearby
+  // but didn't apply — explains why so users can fix the suppression.
+  suppressionHint?: string;
 }
 ```
 

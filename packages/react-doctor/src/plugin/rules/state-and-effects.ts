@@ -1,10 +1,12 @@
 import {
+  BUILTIN_GLOBAL_NAMESPACE_NAMES,
   CASCADING_SET_STATE_THRESHOLD,
   EFFECT_HOOK_NAMES,
   HOOKS_WITH_DEPS,
   MUTATING_ARRAY_METHODS,
   RELATED_USE_STATE_THRESHOLD,
   SUBSCRIPTION_METHOD_NAMES,
+  TRIVIAL_DERIVATION_CALLEE_NAMES,
   TRIVIAL_INITIALIZER_NAMES,
   UNSUBSCRIPTION_METHOD_NAMES,
 } from "../constants.js";
@@ -16,6 +18,7 @@ import {
   extractDestructuredPropNames,
   getCallbackStatements,
   getEffectCallback,
+  getRootIdentifierName,
   isComponentAssignment,
   isHookCall,
   isSetterCall,
@@ -24,6 +27,63 @@ import {
   walkAst,
 } from "../helpers.js";
 import type { EsTreeNode, Rule, RuleContext } from "../types.js";
+
+// HACK: AST-aware walker for "what reactive values does this expression
+// actually READ?". The plain `walkAst` adds every Identifier it sees,
+// which over-counts in two ways:
+//   - the CALLEE of a CallExpression (`getFilteredTodos(...)`) is a
+//     function reference, almost always module-scoped and stable —
+//     React's exhaustive-deps lint correctly omits these from deps.
+//   - the PROPERTY of a non-computed MemberExpression (`obj.foo`) is
+//     a static identifier, not a separate reactive read; only `obj`
+//     is the reactive value.
+// Without this, `setX(getFilteredTodos(todos, filter))` would treat
+// `getFilteredTodos` as a missing dep and bail before the §2 "expensive
+// derivation" branch could fire.
+const collectValueIdentifierNames = (node: EsTreeNode | null | undefined, into: string[]): void => {
+  if (!node || typeof node !== "object") return;
+  if (node.type === "CallExpression") {
+    if (node.callee?.type === "MemberExpression") {
+      // For `state.method(arg)`, `state` is a reactive read; `method`
+      // is not. Skip the callee chain entirely when its root is a
+      // built-in global (`Math.floor`, `JSON.parse`, ...) — those
+      // aren't reactive reads either.
+      const rootName = getRootIdentifierName(node.callee);
+      if (!rootName || !BUILTIN_GLOBAL_NAMESPACE_NAMES.has(rootName)) {
+        collectValueIdentifierNames(node.callee.object, into);
+      }
+    }
+    for (const argument of node.arguments ?? []) {
+      collectValueIdentifierNames(argument, into);
+    }
+    return;
+  }
+  if (node.type === "MemberExpression") {
+    const rootName = getRootIdentifierName(node);
+    if (!rootName || !BUILTIN_GLOBAL_NAMESPACE_NAMES.has(rootName)) {
+      collectValueIdentifierNames(node.object, into);
+    }
+    if (node.computed) collectValueIdentifierNames(node.property, into);
+    return;
+  }
+  if (node.type === "Identifier") {
+    into.push(node.name);
+    return;
+  }
+  for (const key of Object.keys(node)) {
+    if (key === "parent" || key === "type") continue;
+    const child = node[key];
+    if (Array.isArray(child)) {
+      for (const item of child) {
+        if (item && typeof item === "object" && item.type) {
+          collectValueIdentifierNames(item, into);
+        }
+      }
+    } else if (child && typeof child === "object" && child.type) {
+      collectValueIdentifierNames(child, into);
+    }
+  }
+};
 
 export const noDerivedStateEffect: Rule = {
   create: (context: RuleContext) => ({
@@ -54,16 +114,44 @@ export const noDerivedStateEffect: Rule = {
 
       let allArgumentsDeriveFromDeps = true;
       let hasAnyDependencyReference = false;
+      // §2 of "You Might Not Need an Effect" branches the suggested
+      // fix on whether the derivation is potentially expensive. A
+      // setter argument that contains a user-defined CallExpression
+      // (e.g. `setVisibleTodos(getFilteredTodos(todos, filter))`)
+      // gets the `useMemo` recommendation; pure data shaping like
+      // `firstName + " " + lastName` keeps the cheaper "compute
+      // during render" message.
+      let hasExpensiveDerivation = false;
       for (const statement of statements) {
         const setStateArguments = statement.expression.arguments;
         if (!setStateArguments?.length) continue;
 
-        const referencedIdentifiers: string[] = [];
+        const valueIdentifierNames: string[] = [];
+        collectValueIdentifierNames(setStateArguments[0], valueIdentifierNames);
+
         walkAst(setStateArguments[0], (child: EsTreeNode) => {
-          if (child.type === "Identifier") referencedIdentifiers.push(child.name);
+          if (child.type !== "CallExpression") return;
+          if (child.callee?.type === "MemberExpression") {
+            // `Math.floor(x)` / `Date.now()` are trivial regardless
+            // of the property — gate on the chain root, not the
+            // method name (which would never match TRIVIAL_*).
+            const rootName = getRootIdentifierName(child.callee);
+            if (rootName && BUILTIN_GLOBAL_NAMESPACE_NAMES.has(rootName)) return;
+            hasExpensiveDerivation = true;
+            return;
+          }
+          if (child.callee?.type === "Identifier") {
+            const calleeName = child.callee.name;
+            if (
+              !TRIVIAL_DERIVATION_CALLEE_NAMES.has(calleeName) &&
+              !isSetterIdentifier(calleeName)
+            ) {
+              hasExpensiveDerivation = true;
+            }
+          }
         });
 
-        const nonSetterIdentifiers = referencedIdentifiers.filter(
+        const nonSetterIdentifiers = valueIdentifierNames.filter(
           (name) => !isSetterIdentifier(name),
         );
 
@@ -77,14 +165,28 @@ export const noDerivedStateEffect: Rule = {
         }
       }
 
-      if (allArgumentsDeriveFromDeps) {
-        context.report({
-          node,
-          message: hasAnyDependencyReference
-            ? "Derived state in useEffect — compute during render instead"
-            : "State reset in useEffect — use a key prop to reset component state when props change",
-        });
+      if (!allArgumentsDeriveFromDeps) return;
+
+      // HACK: a user-defined function call inside the setter arg
+      // (`setFilteredItems(applyFilters())`) closes over reactive
+      // values implicitly — it's a derivation, not a "state reset".
+      // Without this, a zero-arg call would leave the identifier list
+      // empty and the message would vacuously default to the wrong
+      // "state reset" branch.
+      if (hasExpensiveDerivation) hasAnyDependencyReference = true;
+
+      let message: string;
+      if (!hasAnyDependencyReference) {
+        message =
+          "State reset in useEffect — use a key prop to reset component state when props change";
+      } else if (hasExpensiveDerivation) {
+        message =
+          "Derived state in useEffect — wrap the calculation in useMemo([deps]) (or compute it directly during render if it isn't expensive)";
+      } else {
+        message = "Derived state in useEffect — compute during render instead";
       }
+
+      context.report({ node, message });
     },
   }),
 };
@@ -146,17 +248,23 @@ export const noEffectEventHandler: Rule = {
       if (statements.length !== 1) return;
 
       const soleStatement = statements[0];
-      if (
-        soleStatement.type === "IfStatement" &&
-        soleStatement.test?.type === "Identifier" &&
-        dependencyNames.has(soleStatement.test.name)
-      ) {
-        context.report({
-          node,
-          message:
-            "useEffect simulating an event handler — move logic to an actual event handler instead",
-        });
-      }
+      if (soleStatement.type !== "IfStatement") return;
+
+      // HACK: §5 of "You Might Not Need an Effect" uses
+      // `if (product.isInCart)` — a MemberExpression, not a bare
+      // Identifier. The earlier detector hard-required `Identifier`
+      // and missed the article's literal example. Walk the test
+      // down to its root identifier so both shapes match:
+      //   if (isOpen)            → root = "isOpen"
+      //   if (product.isInCart)  → root = "product"
+      const rootIdentifierName = getRootIdentifierName(soleStatement.test);
+      if (!rootIdentifierName || !dependencyNames.has(rootIdentifierName)) return;
+
+      context.report({
+        node,
+        message:
+          "useEffect simulating an event handler — move logic to an actual event handler instead",
+      });
     },
   }),
 };
@@ -173,9 +281,17 @@ export const noDerivedUseState: Rule = {
     // are not modeled here (a known limitation — pre-existing).
     const componentPropStack: Array<Set<string>> = [];
 
+    // HACK: empty stack frames are barriers — pushed when entering a
+    // non-component FunctionDeclaration / ArrowFunctionExpression so
+    // identifiers inside the helper don't resolve against an outer
+    // component's props (a closed-over `value` is NOT a prop of the
+    // helper). Stop the walk at the first empty frame so the lookup
+    // honors the barrier the visitor pushed.
     const isPropName = (name: string): boolean => {
       for (let stackIndex = componentPropStack.length - 1; stackIndex >= 0; stackIndex--) {
-        if (componentPropStack[stackIndex].has(name)) return true;
+        const frame = componentPropStack[stackIndex];
+        if (frame.size === 0) return false;
+        if (frame.has(name)) return true;
       }
       return false;
     };
@@ -408,9 +524,16 @@ export const noPropCallbackInEffect: Rule = {
       componentPropParamStack.push(propNames);
     };
 
+    // HACK: empty stack frames are barriers — pushed when entering a
+    // non-component FunctionDeclaration / ArrowFunctionExpression so
+    // identifiers inside the helper don't resolve against an outer
+    // component's props. Stop the walk at the first empty frame so
+    // the lookup honors the barrier the visitor pushed.
     const isPropName = (name: string): boolean => {
       for (let stackIndex = componentPropParamStack.length - 1; stackIndex >= 0; stackIndex--) {
-        if (componentPropParamStack[stackIndex].has(name)) return true;
+        const frame = componentPropParamStack[stackIndex];
+        if (frame.size === 0) return false;
+        if (frame.has(name)) return true;
       }
       return false;
     };
@@ -964,19 +1087,6 @@ export const rerenderDeferReadsHook: Rule = {
   },
 };
 
-// HACK: walk a MemberExpression chain (computed or not) down to the
-// underlying root identifier, so `state.nested.items.push(x)` and
-// `items[0]` both report against `state` / `items` respectively.
-// Returns null if the chain bottoms out at anything other than a plain
-// Identifier (e.g. a call expression, `this`, etc.).
-const getMemberRootName = (node: EsTreeNode | undefined): string | null => {
-  let cursor: EsTreeNode | undefined = node;
-  while (cursor?.type === "MemberExpression") {
-    cursor = cursor.object;
-  }
-  return cursor?.type === "Identifier" ? cursor.name : null;
-};
-
 // HACK: walks the component AST while tracking which state names are
 // SHADOWED in the current scope by a nested function's params or
 // var/let/const declarations. Without this, a handler that locally
@@ -1057,7 +1167,7 @@ export const noDirectStateMutation: Rule = {
         (child: EsTreeNode, currentlyShadowed: ReadonlySet<string>) => {
           if (child.type === "AssignmentExpression") {
             if (child.left?.type !== "MemberExpression") return;
-            const rootName = getMemberRootName(child.left);
+            const rootName = getRootIdentifierName(child.left);
             if (!rootName || !stateValueToSetter.has(rootName)) return;
             if (currentlyShadowed.has(rootName)) return;
             const setterName = stateValueToSetter.get(rootName);
@@ -1074,7 +1184,7 @@ export const noDirectStateMutation: Rule = {
             if (callee.property?.type !== "Identifier") return;
             const methodName = callee.property.name;
             if (!MUTATING_ARRAY_METHODS.has(methodName)) return;
-            const rootName = getMemberRootName(callee.object);
+            const rootName = getRootIdentifierName(callee.object);
             if (!rootName || !stateValueToSetter.has(rootName)) return;
             if (currentlyShadowed.has(rootName)) return;
             const setterName = stateValueToSetter.get(rootName);

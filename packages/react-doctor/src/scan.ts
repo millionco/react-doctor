@@ -462,26 +462,27 @@ const printSummary = (
   noScoreMessage: string,
   isOffline: boolean,
 ): void => {
+  printCategoryBreakdown(buildCategoryBreakdown(diagnostics));
+
   if (scoreResult) {
     printScoreHeader(scoreResult);
   } else {
     printNoScoreHeader(noScoreMessage);
   }
 
-  printCategoryBreakdown(buildCategoryBreakdown(diagnostics));
-
   printCountsSummaryLine(diagnostics, totalSourceFileCount, elapsedMilliseconds);
-
-  if (!isOffline) {
-    const shareUrl = buildShareUrl(diagnostics, scoreResult, projectName);
-    logger.log(`  ${highlighter.bold("→ Share your results:")} ${highlighter.info(shareUrl)}`);
-  }
 
   try {
     const diagnosticsDirectory = writeDiagnosticsDirectory(diagnostics);
     logger.log(highlighter.gray(`  Full diagnostics written to ${diagnosticsDirectory}`));
   } catch {
     /* swallow — failing to write the dump shouldn't block the summary */
+  }
+
+  if (!isOffline) {
+    logger.break();
+    const shareUrl = buildShareUrl(diagnostics, scoreResult, projectName);
+    logger.log(`  ${highlighter.bold("→ Share your results:")} ${highlighter.info(shareUrl)}`);
   }
 };
 

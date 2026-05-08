@@ -7,4 +7,5 @@ export const highlighter = {
   success: pc.green,
   dim: pc.dim,
   gray: pc.gray,
+  bold: pc.bold,
 };

@@ -474,12 +474,12 @@ const printSummary = (
 
   if (!isOffline) {
     const shareUrl = buildShareUrl(diagnostics, scoreResult, projectName);
-    logger.dim(`  Share your results: ${highlighter.info(shareUrl)}`);
+    logger.log(`  ${highlighter.bold("→ Share your results:")} ${highlighter.info(shareUrl)}`);
   }
 
   try {
     const diagnosticsDirectory = writeDiagnosticsDirectory(diagnostics);
-    logger.dim(`  Full diagnostics written to ${diagnosticsDirectory}`);
+    logger.log(highlighter.gray(`  Full diagnostics written to ${diagnosticsDirectory}`));
   } catch {
     /* swallow — failing to write the dump shouldn't block the summary */
   }

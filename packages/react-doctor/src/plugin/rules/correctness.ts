@@ -10,22 +10,55 @@ import type { EsTreeNode, Rule, RuleContext } from "../types.js";
 
 const STRING_COERCION_FUNCTIONS = new Set(["String", "Number"]);
 
-const extractIndexName = (node: EsTreeNode): string | null => {
-  if (node.type === "Identifier" && INDEX_PARAMETER_NAMES.has(node.name)) return node.name;
+const isFunctionLikeExpression = (node: EsTreeNode): boolean =>
+  node.type === "ArrowFunctionExpression" || node.type === "FunctionExpression";
+
+const isFunctionBoundary = (node: EsTreeNode): boolean =>
+  isFunctionLikeExpression(node) || node.type === "FunctionDeclaration";
+
+const isMapCallback = (node: EsTreeNode): boolean =>
+  isFunctionLikeExpression(node) &&
+  node.parent?.type === "CallExpression" &&
+  node.parent.callee?.type === "MemberExpression" &&
+  node.parent.callee.property?.type === "Identifier" &&
+  node.parent.callee.property.name === "map" &&
+  node.parent.arguments?.[0] === node;
+
+const findEnclosingMapCallback = (node: EsTreeNode): EsTreeNode | null => {
+  let current = node.parent;
+  while (current) {
+    if (isFunctionBoundary(current)) return isMapCallback(current) ? current : null;
+    current = current.parent;
+  }
+  return null;
+};
+
+const buildIndexParameterNames = (mapCallback: EsTreeNode | null): Set<string> => {
+  const indexNames = new Set(INDEX_PARAMETER_NAMES);
+  const indexParameter = mapCallback?.params?.[1];
+  if (indexParameter?.type === "Identifier") indexNames.add(indexParameter.name);
+  return indexNames;
+};
+
+const extractIndexName = (
+  node: EsTreeNode | null | undefined,
+  indexNames: Set<string> = INDEX_PARAMETER_NAMES,
+): string | null => {
+  if (!node) return null;
+  if (node.type === "Identifier" && indexNames.has(node.name)) return node.name;
 
   if (node.type === "TemplateLiteral") {
-    const indexExpression = node.expressions?.find(
-      (expression: EsTreeNode) =>
-        expression.type === "Identifier" && INDEX_PARAMETER_NAMES.has(expression.name),
-    );
-    if (indexExpression) return indexExpression.name;
+    for (const expression of node.expressions ?? []) {
+      const indexName = extractIndexName(expression, indexNames);
+      if (indexName) return indexName;
+    }
   }
 
   if (
     node.type === "CallExpression" &&
     node.callee?.type === "MemberExpression" &&
     node.callee.object?.type === "Identifier" &&
-    INDEX_PARAMETER_NAMES.has(node.callee.object.name) &&
+    indexNames.has(node.callee.object.name) &&
     node.callee.property?.type === "Identifier" &&
     node.callee.property.name === "toString"
   )
@@ -36,26 +69,46 @@ const extractIndexName = (node: EsTreeNode): string | null => {
     node.callee?.type === "Identifier" &&
     STRING_COERCION_FUNCTIONS.has(node.callee.name) &&
     node.arguments?.[0]?.type === "Identifier" &&
-    INDEX_PARAMETER_NAMES.has(node.arguments[0].name)
+    indexNames.has(node.arguments[0].name)
   )
     return node.arguments[0].name;
 
-  if (
-    node.type === "BinaryExpression" &&
-    node.operator === "+" &&
-    ((node.left?.type === "Identifier" &&
-      INDEX_PARAMETER_NAMES.has(node.left.name) &&
-      node.right?.type === "Literal" &&
-      node.right.value === "") ||
-      (node.right?.type === "Identifier" &&
-        INDEX_PARAMETER_NAMES.has(node.right.name) &&
-        node.left?.type === "Literal" &&
-        node.left.value === ""))
-  ) {
-    return node.left?.type === "Identifier" ? node.left.name : node.right.name;
+  if (node.type === "BinaryExpression" && node.operator === "+") {
+    return extractIndexName(node.left, indexNames) ?? extractIndexName(node.right, indexNames);
   }
 
   return null;
+};
+
+const findTopLevelVariableInitializer = (
+  mapCallback: EsTreeNode,
+  variableName: string,
+): EsTreeNode | null => {
+  if (mapCallback.body?.type !== "BlockStatement") return null;
+  for (const statement of mapCallback.body.body ?? []) {
+    if (statement.type !== "VariableDeclaration") continue;
+    for (const declaration of statement.declarations ?? []) {
+      if (declaration.id?.type === "Identifier" && declaration.id.name === variableName) {
+        return declaration.init ?? null;
+      }
+    }
+  }
+  return null;
+};
+
+const extractIndexNameFromKeyExpression = (
+  node: EsTreeNode,
+  expression: EsTreeNode,
+): string | null => {
+  const mapCallback = findEnclosingMapCallback(node);
+  const indexNames = buildIndexParameterNames(mapCallback);
+  const directIndexName = extractIndexName(expression, indexNames);
+  if (directIndexName) return directIndexName;
+  if (!mapCallback || expression.type !== "Identifier") return null;
+  return extractIndexName(
+    findTopLevelVariableInitializer(mapCallback, expression.name),
+    indexNames,
+  );
 };
 
 const isInsideStaticPlaceholderMap = (node: EsTreeNode): boolean => {
@@ -95,7 +148,7 @@ export const noArrayIndexAsKey: Rule = {
       if (node.name?.type !== "JSXIdentifier" || node.name.name !== "key") return;
       if (!node.value || node.value.type !== "JSXExpressionContainer") return;
 
-      const indexName = extractIndexName(node.value.expression);
+      const indexName = extractIndexNameFromKeyExpression(node, node.value.expression);
       if (!indexName) return;
       if (isInsideStaticPlaceholderMap(node)) return;
 

@@ -54,4 +54,20 @@ describe("findJsxOpenerSpan", () => {
   it("returns null for closing tags (no opener match)", () => {
     expect(findJsxOpenerSpan(["</li>"], 0)).toBeNull();
   });
+
+  it("handles `<Foo<T>` followed by self-close `/>` on the same line", () => {
+    expect(findJsxOpenerSpan(["<Foo<Item> />"], 0)).toBe(0);
+  });
+
+  it("handles `<Foo<T>>` (generic + immediate close) on a single line", () => {
+    expect(findJsxOpenerSpan(["<Foo<Item>>"], 0)).toBe(0);
+  });
+
+  it("does NOT mistake `<` inside string attributes for a generic opener", () => {
+    expect(findJsxOpenerSpan(['<Foo title="<not-a-tag>" />'], 0)).toBe(0);
+  });
+
+  it("ignores a `<Tag` match that comes after code + `//` on the same line", () => {
+    expect(findJsxOpenerSpan(['const x = "y"; // <Foo bar={x} />'], 0)).toBeNull();
+  });
 });

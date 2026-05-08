@@ -16,11 +16,8 @@ export interface SuppressionEvaluation {
 const formatLineGap = (gapLineCount: number): string =>
   `${gapLineCount} line${gapLineCount === 1 ? "" : "s"}`;
 
-const findChainSuppressor = (
-  comments: StackedDisableComment[],
-  ruleId: string,
-): StackedDisableComment | undefined =>
-  comments.find((comment) => comment.isInChain && isRuleListedInComment(comment.ruleList, ruleId));
+const hasChainSuppressor = (comments: StackedDisableComment[], ruleId: string): boolean =>
+  comments.some((comment) => comment.isInChain && isRuleListedInComment(comment.ruleList, ruleId));
 
 const findAdjacentRuleListMismatch = (
   comments: StackedDisableComment[],
@@ -86,7 +83,7 @@ export const evaluateSuppression = (
   }
 
   const directComments = findStackedDisableCommentsAbove(lines, diagnosticLineIndex);
-  if (findChainSuppressor(directComments, ruleId)) {
+  if (hasChainSuppressor(directComments, ruleId)) {
     return { isSuppressed: true, nearMissHint: null };
   }
 
@@ -95,7 +92,7 @@ export const evaluateSuppression = (
     openerStartIndex !== null && openerStartIndex > 0
       ? findStackedDisableCommentsAbove(lines, openerStartIndex)
       : [];
-  if (findChainSuppressor(openerComments, ruleId)) {
+  if (hasChainSuppressor(openerComments, ruleId)) {
     return { isSuppressed: true, nearMissHint: null };
   }
 

@@ -25,13 +25,11 @@ const isOpenerMatchInsideLineComment = (line: string, openerCharIndex: number): 
 };
 
 const findOpenerTagOnLine = (line: string): { startCharIndex: number } | null => {
-  JSX_OPENER_TAG_PATTERN.lastIndex = 0;
-  let match: RegExpExecArray | null = JSX_OPENER_TAG_PATTERN.exec(line);
-  while (match !== null) {
+  for (const match of line.matchAll(JSX_OPENER_TAG_PATTERN)) {
+    if (match.index === undefined) continue;
     if (!isOpenerMatchInsideLineComment(line, match.index)) {
       return { startCharIndex: match.index + match[0].length };
     }
-    match = JSX_OPENER_TAG_PATTERN.exec(line);
   }
   return null;
 };

@@ -124,34 +124,6 @@ export const noCascadingSetState: Rule = {
   }),
 };
 
-// HACK: shared with noEventTriggerState's `findTriggeredSideEffectCalleeName`
-// — when noEffectEventHandler's predicate matches but the consequent
-// has a recognized event-triggered side-effect callee (and the dep is
-// state-typed), noEventTriggerState owns the diagnostic. Anything
-// else (custom function calls, DOM mutation, etc.) keeps belonging
-// to noEffectEventHandler. Keeping the two rules' callee allowlists
-// in sync here is important; both share the constants imported above.
-const consequentCallsTriggeredSideEffect = (consequentNode: EsTreeNode): boolean => {
-  let didFind = false;
-  walkAst(consequentNode, (child: EsTreeNode) => {
-    if (didFind) return false;
-    if (child.type !== "CallExpression") return;
-    const callee = child.callee;
-    if (callee?.type === "Identifier" && EVENT_TRIGGERED_SIDE_EFFECT_CALLEES.has(callee.name)) {
-      didFind = true;
-      return;
-    }
-    if (
-      callee?.type === "MemberExpression" &&
-      callee.property?.type === "Identifier" &&
-      EVENT_TRIGGERED_SIDE_EFFECT_MEMBER_METHODS.has(callee.property.name)
-    ) {
-      didFind = true;
-    }
-  });
-  return didFind;
-};
-
 export const noEffectEventHandler: Rule = {
   create: (context: RuleContext) => {
     // HACK: track per-component useState value names so we can defer
@@ -250,9 +222,12 @@ export const noEffectEventHandler: Rule = {
           // rule then reports. Match noEventTriggerState's full set
           // here: state-typed dep + recognized side-effect callee in
           // the consequent.
+          // Reuse noEventTriggerState's helper instead of duplicating
+          // the AST walk + constant lookups; "function would fire"
+          // ↔ "callee was found in the consequent".
           if (
             isStateValueName(soleStatement.test.name) &&
-            consequentCallsTriggeredSideEffect(soleStatement.consequent)
+            findTriggeredSideEffectCalleeName(soleStatement.consequent) !== null
           ) {
             return;
           }

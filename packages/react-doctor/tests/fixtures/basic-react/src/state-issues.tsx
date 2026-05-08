@@ -135,6 +135,15 @@ const ConditionalSetStateInRenderComponent = ({ count }: { count: number }) => {
   return <h1>{prevCount}</h1>;
 };
 
+const PreferUseEffectEventComponent = ({ onSearch }: { onSearch: (q: string) => void }) => {
+  const [query, setQuery] = useState("");
+  useEffect(() => {
+    const id = setTimeout(() => onSearch(query), 300);
+    return () => clearTimeout(id);
+  }, [query, onSearch]);
+  return <input value={query} onChange={(event) => setQuery(event.target.value)} />;
+};
+
 const UncontrolledInputComponent = () => {
   // HACK: explicit `<string | undefined>` keeps TypeScript happy while the
   // RUNTIME initializer stays undefined — that's what trips the
@@ -169,5 +178,6 @@ export {
   DirectStateMutationComponent,
   SetStateInRenderComponent,
   ConditionalSetStateInRenderComponent,
+  PreferUseEffectEventComponent,
   UncontrolledInputComponent,
 };

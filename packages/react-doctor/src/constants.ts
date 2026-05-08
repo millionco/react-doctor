@@ -96,3 +96,7 @@ export const JSX_OPENER_SCAN_MAX_LINES = 32;
 // HACK: lookback cap for stacked / near-miss disable-next-line scanning.
 // Larger gaps stop being intentional suppressions and become noise.
 export const SUPPRESSION_NEAR_MISS_MAX_LINES = 10;
+
+// `useEffectEvent` requires React 19+. Below the threshold, the rule
+// that suggests it (`prefer-use-effect-event`) stays silent.
+export const USE_EFFECT_EVENT_MIN_MAJOR = 19;

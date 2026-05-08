@@ -389,6 +389,32 @@ export const MUTATING_ROUTE_SEGMENTS = new Set([
 
 export const EFFECT_HOOK_NAMES = new Set(["useEffect", "useLayoutEffect"]);
 export const HOOKS_WITH_DEPS = new Set(["useEffect", "useLayoutEffect", "useMemo", "useCallback"]);
+
+// Direct CallExpression callees whose function argument is a "sub-handler"
+// — code that runs asynchronously, in response to an event the React render
+// can't observe. Calling a reactive value from inside a sub-handler is the
+// classic case for `useEffectEvent` (see "Separating Events from Effects").
+export const SUB_HANDLER_DIRECT_CALLEE_NAMES = new Set([
+  "setTimeout",
+  "setInterval",
+  "requestAnimationFrame",
+  "requestIdleCallback",
+  "queueMicrotask",
+]);
+
+// MemberExpression-callee property names whose function arguments are
+// sub-handlers. Same set as `SUBSCRIPTION_METHOD_NAMES` from the
+// `prefer-use-sync-external-store` family — kept as a sibling constant
+// rather than a re-export so the two rules can evolve independently.
+export const SUB_HANDLER_MEMBER_METHOD_NAMES = new Set([
+  "subscribe",
+  "addEventListener",
+  "addListener",
+  "on",
+  "watch",
+  "listen",
+  "sub",
+]);
 export const CHAINABLE_ITERATION_METHODS = new Set(["map", "filter", "forEach", "flatMap"]);
 export const STORAGE_OBJECTS = new Set(["localStorage", "sessionStorage"]);
 

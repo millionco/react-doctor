@@ -52,6 +52,7 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/no-derived-useState": "State & Effects",
   "react-doctor/no-direct-state-mutation": "State & Effects",
   "react-doctor/no-set-state-in-render": "State & Effects",
+  "react-doctor/prefer-use-effect-event": "State & Effects",
   "react-doctor/prefer-useReducer": "State & Effects",
   "react-doctor/rerender-lazy-state-init": "Performance",
   "react-doctor/rerender-functional-setstate": "Performance",
@@ -248,6 +249,8 @@ const RULE_HELP_MAP: Record<string, string> = {
     "Replace the mutation with a setter call that produces a new reference: `setItems([...items, newItem])`, `setItems(items.filter(x => x !== target))`, `setItems(items.toSorted(...))`. React only re-renders on a new reference, so in-place updates are silently dropped",
   "no-set-state-in-render":
     "Move the setter call into a `useEffect`, an event handler, or replace the state with a value computed during render. Calling a setter at render time triggers another render, which calls the setter again — an infinite loop",
+  "prefer-use-effect-event":
+    "Wrap the callback with `useEffectEvent(callback)` (React 19+) and call the resulting binding from inside the sub-handler. The Effect Event captures the latest props/state without being a reactive dep, so the effect doesn't re-subscribe on every parent render. See https://react.dev/reference/react/useEffectEvent",
   "prefer-useReducer":
     "Group related state: `const [state, dispatch] = useReducer(reducer, { field1, field2, ... })`",
   "rerender-lazy-state-init":

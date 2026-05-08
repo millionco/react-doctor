@@ -5,6 +5,8 @@ import {
   HOOKS_WITH_DEPS,
   MUTATING_ARRAY_METHODS,
   RELATED_USE_STATE_THRESHOLD,
+  SUB_HANDLER_DIRECT_CALLEE_NAMES,
+  SUB_HANDLER_MEMBER_METHOD_NAMES,
   TRIVIAL_DERIVATION_CALLEE_NAMES,
   TRIVIAL_INITIALIZER_NAMES,
 } from "../constants.js";
@@ -1259,6 +1261,334 @@ export const noSetStateInRender: Rule = {
       VariableDeclarator(node: EsTreeNode) {
         if (!isComponentAssignment(node)) return;
         checkComponent(node.init?.body);
+      },
+    };
+  },
+};
+
+// HACK: From "Separating Events from Effects" — when a function-typed
+// prop (or local callback) is read from an effect ONLY inside a sub-
+// handler (setTimeout / addEventListener / store.subscribe / etc.),
+// listing it in the dep array forces the whole effect to re-synchronize
+// every time its identity changes. The article's recommended fix is
+// `useEffectEvent`, which is React 19+. The rule is registered as
+// version-gated in `oxlint-config.ts` (USE_EFFECT_EVENT_MIN_MAJOR) so
+// pre-19 projects don't see noisy diagnostics for an API they don't
+// have.
+//
+//   function SearchInput({ onSearch }) {
+//     const [query, setQuery] = useState('');
+//     useEffect(() => {
+//       const id = setTimeout(() => onSearch(query), 300);  // sub-handler
+//       return () => clearTimeout(id);
+//     }, [query, onSearch]);   // 🔴 onSearch in deps
+//   }
+//
+//   →
+//
+//   function SearchInput({ onSearch }) {
+//     const [query, setQuery] = useState('');
+//     const onSearchEvent = useEffectEvent(onSearch);
+//     useEffect(() => {
+//       const id = setTimeout(() => onSearchEvent(query), 300);
+//       return () => clearTimeout(id);
+//     }, [query]);             // ✅ no callback in deps
+//   }
+//
+// Detector pre-conditions (all must hold) — chosen to keep FPs near zero:
+//   (1) useEffect with at least 2 dep array elements, all Identifiers
+//       (the rule needs the deps array to be exhaustive — no spread,
+//       no MemberExpression elements)
+//   (2) at least one dep `F` is a function-shaped reactive value:
+//         - a destructured prop (uses the existing prop-stack scaffold), OR
+//         - a local declared via `const F = useCallback(...)`
+//   (3) every read of `F` inside the effect body sits inside a sub-
+//       handler (setTimeout / setInterval / requestAnimationFrame /
+//       requestIdleCallback / queueMicrotask, OR
+//       `<obj>.subscribe|addEventListener|addListener|on|watch|listen|sub(...)`)
+//   (4) `F` is NEVER read at the effect's own top level (calling F as
+//       part of the start-sync expression is a true reactive read and
+//       must stay in deps; the rule deliberately doesn't fire then)
+
+// HACK: only `useCallback` returns a guaranteed function value.
+// `useMemo` can return any type, including a function — but treating
+// every `useMemo` binding as function-typed would produce false
+// positives for memoized objects that incidentally appear in deps.
+// Conservative: only flag callbacks coming from `useCallback`.
+const collectFunctionTypedLocalBindings = (componentBody: EsTreeNode): Set<string> => {
+  const functionTypedLocals = new Set<string>();
+  if (componentBody?.type !== "BlockStatement") return functionTypedLocals;
+  for (const statement of componentBody.body ?? []) {
+    if (statement.type !== "VariableDeclaration") continue;
+    for (const declarator of statement.declarations ?? []) {
+      if (declarator.id?.type !== "Identifier") continue;
+      if (declarator.init?.type !== "CallExpression") continue;
+      if (!isHookCall(declarator.init, "useCallback")) continue;
+      functionTypedLocals.add(declarator.id.name);
+    }
+  }
+  return functionTypedLocals;
+};
+
+const findEnclosingFunctionInsideEffect = (
+  identifierNode: EsTreeNode,
+  effectCallback: EsTreeNode,
+): EsTreeNode | null => {
+  let cursor: EsTreeNode | null = identifierNode.parent ?? null;
+  while (cursor && cursor !== effectCallback) {
+    if (
+      cursor.type === "ArrowFunctionExpression" ||
+      cursor.type === "FunctionExpression" ||
+      cursor.type === "FunctionDeclaration"
+    ) {
+      return cursor;
+    }
+    cursor = cursor.parent ?? null;
+  }
+  return null;
+};
+
+const isCallExpressionWithSubHandlerCallee = (callExpression: EsTreeNode): boolean => {
+  if (callExpression?.type !== "CallExpression") return false;
+  const callee = callExpression.callee;
+  if (callee?.type === "Identifier" && SUB_HANDLER_DIRECT_CALLEE_NAMES.has(callee.name)) {
+    return true;
+  }
+  if (
+    callee?.type === "MemberExpression" &&
+    callee.property?.type === "Identifier" &&
+    SUB_HANDLER_MEMBER_METHOD_NAMES.has(callee.property.name)
+  ) {
+    return true;
+  }
+  return false;
+};
+
+const getSubHandlerCalleeName = (callExpression: EsTreeNode): string | null => {
+  if (callExpression?.type !== "CallExpression") return null;
+  const callee = callExpression.callee;
+  if (callee?.type === "Identifier") return callee.name;
+  if (callee?.type === "MemberExpression" && callee.property?.type === "Identifier") {
+    return callee.property.name;
+  }
+  return null;
+};
+
+// HACK: handles the dominant real-world shape where the handler is
+// bound to a const before being passed to addEventListener / subscribe:
+//
+//   const handler = (event) => onKey(event.key);
+//   window.addEventListener('keydown', handler);
+//   return () => window.removeEventListener('keydown', handler);
+//
+// Walks up to the function-level node (the arrow expression) and checks
+// for either a direct sub-handler argument position OR a const binding
+// whose Identifier appears as an argument to a sub-handler call later
+// in the same effect body.
+const findSubHandlerForEnclosingFunction = (
+  enclosingFunction: EsTreeNode,
+  effectCallback: EsTreeNode,
+): EsTreeNode | null => {
+  const directParent = enclosingFunction.parent;
+  if (
+    directParent?.type === "CallExpression" &&
+    directParent.arguments?.includes(enclosingFunction) &&
+    isCallExpressionWithSubHandlerCallee(directParent)
+  ) {
+    return directParent;
+  }
+
+  if (directParent?.type !== "VariableDeclarator") return null;
+  if (directParent.id?.type !== "Identifier") return null;
+  const localName: string = directParent.id.name;
+
+  let matchingSubHandlerCall: EsTreeNode | null = null;
+  walkAst(effectCallback, (child: EsTreeNode) => {
+    if (matchingSubHandlerCall) return false;
+    if (child.type !== "CallExpression") return;
+    if (!isCallExpressionWithSubHandlerCallee(child)) return;
+    for (const argument of child.arguments ?? []) {
+      if (argument?.type === "Identifier" && argument.name === localName) {
+        matchingSubHandlerCall = child;
+        return false;
+      }
+    }
+  });
+  return matchingSubHandlerCall;
+};
+
+interface CallableReadClassification {
+  hasAnyRead: boolean;
+  allReadsAreInSubHandlers: boolean;
+  firstSubHandlerName: string | null;
+}
+
+const classifyCallableReadsInsideEffect = (
+  callableName: string,
+  effectCallback: EsTreeNode,
+): CallableReadClassification => {
+  let hasAnyRead = false;
+  let allReadsAreInSubHandlers = true;
+  let firstSubHandlerName: string | null = null;
+
+  walkAst(effectCallback, (child: EsTreeNode) => {
+    if (child.type !== "Identifier") return;
+    if (child.name !== callableName) return;
+    // Skip the dep-array entry itself (Identifier inside the effect's
+    // own ArrayExpression — we walked the whole effect node, not just
+    // its callback). `walkAst` is given the callback only, but the
+    // safety check is cheap.
+    const parent = child.parent;
+    if (parent?.type === "ArrayExpression") return;
+    // Property-name positions of MemberExpressions don't count as a read
+    // unless the property access is computed.
+    if (parent?.type === "MemberExpression" && !parent.computed && parent.property === child) {
+      return;
+    }
+    // Object property keys (`{ onSearch: onSearch }`) don't count if
+    // they're the key, only if they're the value. Shorthand properties
+    // (`{ onSearch }`) are values though.
+    if (
+      parent?.type === "Property" &&
+      !parent.computed &&
+      !parent.shorthand &&
+      parent.key === child
+    ) {
+      return;
+    }
+
+    hasAnyRead = true;
+
+    const enclosingFunction = findEnclosingFunctionInsideEffect(child, effectCallback);
+    if (!enclosingFunction) {
+      // Read at the top level of the effect body — true reactive read,
+      // useEffectEvent isn't appropriate here.
+      allReadsAreInSubHandlers = false;
+      return;
+    }
+    const subHandlerCall = findSubHandlerForEnclosingFunction(enclosingFunction, effectCallback);
+    if (!subHandlerCall) {
+      allReadsAreInSubHandlers = false;
+      return;
+    }
+    if (firstSubHandlerName === null) {
+      firstSubHandlerName = getSubHandlerCalleeName(subHandlerCall);
+    }
+  });
+
+  return { hasAnyRead, allReadsAreInSubHandlers, firstSubHandlerName };
+};
+
+export const preferUseEffectEvent: Rule = {
+  create: (context: RuleContext) => {
+    const componentPropParamStack: Array<Set<string>> = [];
+
+    // HACK: empty frames are intentional barriers — pushed when entering
+    // a non-component FunctionDeclaration / ArrowFunctionExpression so
+    // identifiers inside the helper don't resolve against an outer
+    // component's props (a closed-over `value` is NOT a prop of the
+    // inner function). Treat the first empty frame as a stop, otherwise
+    // `function Outer({ value }) { function Inner() { ... } }` would
+    // leak `value` into Inner's prop check.
+    const isPropName = (name: string): boolean => {
+      for (let frameIndex = componentPropParamStack.length - 1; frameIndex >= 0; frameIndex--) {
+        const frame = componentPropParamStack[frameIndex];
+        if (frame.size === 0) return false;
+        if (frame.has(name)) return true;
+      }
+      return false;
+    };
+
+    const isFunctionLikeVariableDeclarator = (node: EsTreeNode): boolean => {
+      if (node.type !== "VariableDeclarator") return false;
+      return (
+        node.init?.type === "ArrowFunctionExpression" || node.init?.type === "FunctionExpression"
+      );
+    };
+
+    const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
+      if (!componentBody || componentBody.type !== "BlockStatement") return;
+      const functionTypedLocalBindings = collectFunctionTypedLocalBindings(componentBody);
+
+      // HACK: only visit useEffects that are direct top-level statements
+      // of the component body — useEffects inside nested helpers are
+      // rules-of-hooks violations to be caught elsewhere, and the
+      // current component's prop set wouldn't apply to identifiers
+      // closed over inside a helper anyway.
+      for (const statement of componentBody.body ?? []) {
+        if (statement.type !== "ExpressionStatement") continue;
+        const effectCall = statement.expression;
+        if (effectCall?.type !== "CallExpression") continue;
+        if (!isHookCall(effectCall, EFFECT_HOOK_NAMES)) continue;
+        if ((effectCall.arguments?.length ?? 0) < 2) continue;
+
+        const depsNode = effectCall.arguments[1];
+        if (depsNode.type !== "ArrayExpression") continue;
+        const depElements = depsNode.elements ?? [];
+        if (depElements.length < 2) continue;
+        if (!depElements.every((element: EsTreeNode | null) => element?.type === "Identifier")) {
+          continue;
+        }
+
+        const callback = getEffectCallback(effectCall);
+        if (!callback) continue;
+
+        for (const depElement of depElements) {
+          if (!depElement) continue;
+          const depName: string = depElement.name;
+          // HACK: a destructured prop is treated as function-typed
+          // ONLY if its name matches the React `on[A-Z]` callback
+          // convention. Without this filter the rule false-positived
+          // on scalar props (a `prefix` string read inside a
+          // setTimeout would be told to wrap in `useEffectEvent`,
+          // which makes no semantic sense for non-function values).
+          // The local-binding path already restricts to `useCallback`
+          // returns; this brings the prop path to parity.
+          const isFunctionTypedPropDep = isPropName(depName) && /^on[A-Z]/.test(depName);
+          const isFunctionTypedLocalDep = functionTypedLocalBindings.has(depName);
+          if (!isFunctionTypedPropDep && !isFunctionTypedLocalDep) continue;
+
+          const classification = classifyCallableReadsInsideEffect(depName, callback);
+          if (!classification.hasAnyRead) continue;
+          if (!classification.allReadsAreInSubHandlers) continue;
+
+          const subHandlerLabel = classification.firstSubHandlerName
+            ? `\`${classification.firstSubHandlerName}\``
+            : "an async sub-handler";
+          context.report({
+            node: depElement,
+            message: `"${depName}" is read only inside ${subHandlerLabel} — wrap it with useEffectEvent and remove it from the dep array so the effect doesn't re-synchronize on every parent render`,
+          });
+        }
+      }
+    };
+
+    return {
+      FunctionDeclaration(node: EsTreeNode) {
+        if (!node.id?.name || !isUppercaseName(node.id.name)) {
+          componentPropParamStack.push(new Set());
+          return;
+        }
+        componentPropParamStack.push(extractDestructuredPropNames(node.params ?? []));
+        checkComponent(node.body);
+      },
+      "FunctionDeclaration:exit"() {
+        componentPropParamStack.pop();
+      },
+      VariableDeclarator(node: EsTreeNode) {
+        if (isComponentAssignment(node)) {
+          componentPropParamStack.push(extractDestructuredPropNames(node.init?.params ?? []));
+          checkComponent(node.init?.body);
+          return;
+        }
+        if (isFunctionLikeVariableDeclarator(node)) {
+          componentPropParamStack.push(new Set());
+        }
+      },
+      "VariableDeclarator:exit"(node: EsTreeNode) {
+        if (isComponentAssignment(node) || isFunctionLikeVariableDeclarator(node)) {
+          componentPropParamStack.pop();
+        }
       },
     };
   },

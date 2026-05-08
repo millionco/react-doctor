@@ -1,5 +1,9 @@
 import { createRequire } from "node:module";
-import { REACT_19_DEPRECATION_MIN_MAJOR, REACT_DOM_LEGACY_API_MIN_MAJOR } from "./constants.js";
+import {
+  REACT_19_DEPRECATION_MIN_MAJOR,
+  REACT_DOM_LEGACY_API_MIN_MAJOR,
+  USE_EFFECT_EVENT_MIN_MAJOR,
+} from "./constants.js";
 import type { Framework } from "./types.js";
 
 const esmRequire = createRequire(import.meta.url);
@@ -237,6 +241,7 @@ export const GLOBAL_REACT_DOCTOR_RULES: Record<string, RuleSeverity> = {
   "react-doctor/no-derived-useState": "warn",
   "react-doctor/no-direct-state-mutation": "warn",
   "react-doctor/no-set-state-in-render": "warn",
+  "react-doctor/prefer-use-effect-event": "warn",
   "react-doctor/prefer-useReducer": "warn",
   "react-doctor/rerender-lazy-state-init": "warn",
   "react-doctor/rerender-functional-setstate": "warn",
@@ -376,6 +381,7 @@ const VERSION_GATED_RULE_IDS: ReadonlyMap<string, number> = new Map([
   ["react-doctor/no-react19-deprecated-apis", REACT_19_DEPRECATION_MIN_MAJOR],
   ["react-doctor/no-default-props", REACT_19_DEPRECATION_MIN_MAJOR],
   ["react-doctor/no-react-dom-deprecated-apis", REACT_DOM_LEGACY_API_MIN_MAJOR],
+  ["react-doctor/prefer-use-effect-event", USE_EFFECT_EVENT_MIN_MAJOR],
 ]);
 
 const filterRulesByReactMajor = (

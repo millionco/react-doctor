@@ -100,3 +100,9 @@ export const SUPPRESSION_NEAR_MISS_MAX_LINES = 10;
 // `useEffectEvent` requires React 19+. Below the threshold, the rule
 // that suggests it (`prefer-use-effect-event`) stays silent.
 export const USE_EFFECT_EVENT_MIN_MAJOR = 19;
+
+// Cap how many rule groups the non-verbose diagnostics list prints
+// before collapsing the remainder into a single summary line. Keeps
+// the default output scannable while pointing users at `--verbose`
+// for the full breakdown.
+export const MAX_RULE_GROUPS_SHOWN_NON_VERBOSE = 3;

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
 import {
+  MAX_RULE_GROUPS_SHOWN_NON_VERBOSE,
   MILLISECONDS_PER_SECOND,
   buildNoReactDependencyError,
   OFFLINE_MESSAGE,
@@ -60,11 +61,12 @@ const SEVERITY_ORDER: Record<Diagnostic["severity"], number> = {
 const colorizeBySeverity = (text: string, severity: Diagnostic["severity"]): string =>
   severity === "error" ? highlighter.error(text) : highlighter.warn(text);
 
-const sortBySeverity = (diagnosticGroups: [string, Diagnostic[]][]): [string, Diagnostic[]][] =>
+const sortByImportance = (diagnosticGroups: [string, Diagnostic[]][]): [string, Diagnostic[]][] =>
   diagnosticGroups.toSorted(([, diagnosticsA], [, diagnosticsB]) => {
-    const severityA = SEVERITY_ORDER[diagnosticsA[0].severity];
-    const severityB = SEVERITY_ORDER[diagnosticsB[0].severity];
-    return severityA - severityB;
+    const severityDelta =
+      SEVERITY_ORDER[diagnosticsA[0].severity] - SEVERITY_ORDER[diagnosticsB[0].severity];
+    if (severityDelta !== 0) return severityDelta;
+    return diagnosticsB.length - diagnosticsA.length;
   });
 
 const collectAffectedFiles = (diagnostics: Diagnostic[]): Set<string> =>
@@ -93,9 +95,15 @@ const printDiagnostics = (diagnostics: Diagnostic[], isVerbose: boolean): void =
     (diagnostic) => `${diagnostic.plugin}/${diagnostic.rule}`,
   );
 
-  const sortedRuleGroups = sortBySeverity([...ruleGroups.entries()]);
+  const sortedRuleGroups = sortByImportance([...ruleGroups.entries()]);
+  const visibleRuleGroups = isVerbose
+    ? sortedRuleGroups
+    : sortedRuleGroups.slice(0, MAX_RULE_GROUPS_SHOWN_NON_VERBOSE);
+  const hiddenRuleGroups = isVerbose
+    ? []
+    : sortedRuleGroups.slice(MAX_RULE_GROUPS_SHOWN_NON_VERBOSE);
 
-  for (const [, ruleDiagnostics] of sortedRuleGroups) {
+  for (const [, ruleDiagnostics] of visibleRuleGroups) {
     const firstDiagnostic = ruleDiagnostics[0];
     const severitySymbol = firstDiagnostic.severity === "error" ? "✗" : "⚠";
     const icon = colorizeBySeverity(severitySymbol, firstDiagnostic.severity);
@@ -126,6 +134,32 @@ const printDiagnostics = (diagnostics: Diagnostic[], isVerbose: boolean): void =
 
     logger.break();
   }
+
+  if (hiddenRuleGroups.length > 0) {
+    printHiddenDiagnosticsSummary(hiddenRuleGroups);
+  }
+};
+
+const printHiddenDiagnosticsSummary = (hiddenRuleGroups: [string, Diagnostic[]][]): void => {
+  const hiddenDiagnostics = hiddenRuleGroups.flatMap(([, ruleDiagnostics]) => ruleDiagnostics);
+  const hiddenErrorCount = hiddenDiagnostics.filter(
+    (diagnostic) => diagnostic.severity === "error",
+  ).length;
+  const hiddenWarningCount = hiddenDiagnostics.length - hiddenErrorCount;
+
+  const summaryParts: string[] = [];
+  if (hiddenErrorCount > 0) {
+    const errorText = `✗ ${hiddenErrorCount} more error${hiddenErrorCount === 1 ? "" : "s"}`;
+    summaryParts.push(highlighter.error(errorText));
+  }
+  if (hiddenWarningCount > 0) {
+    const warningText = `⚠ ${hiddenWarningCount} more warning${hiddenWarningCount === 1 ? "" : "s"}`;
+    summaryParts.push(highlighter.warn(warningText));
+  }
+
+  logger.log(`  ${summaryParts.join("  ")}`);
+  logger.dim(`    Run \`npx react-doctor@latest . --verbose\` to get all details`);
+  logger.break();
 };
 
 const formatElapsedTime = (elapsedMilliseconds: number): string => {
@@ -177,7 +211,7 @@ const writeDiagnosticsDirectory = (diagnostics: Diagnostic[]): string => {
     diagnostics,
     (diagnostic) => `${diagnostic.plugin}/${diagnostic.rule}`,
   );
-  const sortedRuleGroups = sortBySeverity([...ruleGroups.entries()]);
+  const sortedRuleGroups = sortByImportance([...ruleGroups.entries()]);
 
   for (const [ruleKey, ruleDiagnostics] of sortedRuleGroups) {
     const fileName = ruleKey.replace(/\//g, "--") + ".txt";

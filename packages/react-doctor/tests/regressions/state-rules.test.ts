@@ -414,6 +414,46 @@ export const Submit = () => {
     expect(hits.length).toBeGreaterThanOrEqual(1);
   });
 
+  it("KEEPS no-effect-event-handler warning when state-typed dep has a non-allowlisted callee (Bugbot #155 round 3)", async () => {
+    // Regression: round-2 deference was too eager — it skipped
+    // no-effect-event-handler whenever the trigger was a useState
+    // value, but no-event-trigger-state has a tighter side-effect-
+    // callee allowlist. \`customAction()\` isn't in the allowlist, so
+    // no-event-trigger-state would NOT fire — and the round-2
+    // version then silently dropped the warning. Now no-effect-
+    // event-handler fires unless BOTH predicates match.
+    const projectDir = setupReactProject(
+      tempRoot,
+      "no-event-trigger-state-no-overshadow-on-custom-callee",
+      {
+        files: {
+          "src/Custom.tsx": `import { useEffect, useState } from "react";
+
+declare const customAction: () => void;
+
+export const Custom = () => {
+  const [trigger, setTrigger] = useState(false);
+  useEffect(() => {
+    if (trigger) {
+      customAction();
+    }
+  }, [trigger]);
+  return <button onClick={() => setTrigger(true)}>Go</button>;
+};
+`,
+        },
+      },
+    );
+
+    const handlerHits = await collectRuleHits(projectDir, "no-effect-event-handler");
+    const triggerHits = await collectRuleHits(projectDir, "no-event-trigger-state");
+    // customAction isn't in the side-effect allowlist → no-event-
+    // trigger-state stays silent. no-effect-event-handler MUST still
+    // warn (otherwise we silently dropped the diagnostic).
+    expect(handlerHits.length).toBe(1);
+    expect(triggerHits.length).toBe(0);
+  });
+
   it("does NOT double-warn with no-effect-event-handler on the bare-truthy state shape (Bugbot #155 round 2)", async () => {
     // Regression: \`if (destination) navigate(destination)\` previously
     // triggered BOTH no-effect-event-handler and no-event-trigger-state.

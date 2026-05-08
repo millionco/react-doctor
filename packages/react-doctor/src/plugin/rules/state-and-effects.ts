@@ -124,13 +124,42 @@ export const noCascadingSetState: Rule = {
   }),
 };
 
+// HACK: shared with noEventTriggerState's `findTriggeredSideEffectCalleeName`
+// — when noEffectEventHandler's predicate matches but the consequent
+// has a recognized event-triggered side-effect callee (and the dep is
+// state-typed), noEventTriggerState owns the diagnostic. Anything
+// else (custom function calls, DOM mutation, etc.) keeps belonging
+// to noEffectEventHandler. Keeping the two rules' callee allowlists
+// in sync here is important; both share the constants imported above.
+const consequentCallsTriggeredSideEffect = (consequentNode: EsTreeNode): boolean => {
+  let didFind = false;
+  walkAst(consequentNode, (child: EsTreeNode) => {
+    if (didFind) return false;
+    if (child.type !== "CallExpression") return;
+    const callee = child.callee;
+    if (callee?.type === "Identifier" && EVENT_TRIGGERED_SIDE_EFFECT_CALLEES.has(callee.name)) {
+      didFind = true;
+      return;
+    }
+    if (
+      callee?.type === "MemberExpression" &&
+      callee.property?.type === "Identifier" &&
+      EVENT_TRIGGERED_SIDE_EFFECT_MEMBER_METHODS.has(callee.property.name)
+    ) {
+      didFind = true;
+    }
+  });
+  return didFind;
+};
+
 export const noEffectEventHandler: Rule = {
   create: (context: RuleContext) => {
     // HACK: track per-component useState value names so we can defer
     // to noEventTriggerState when the trigger guard is a state-typed
-    // dep. Otherwise both rules report on the same line with
-    // overlapping but differently-worded messages, doubling diagnostic
-    // noise on the canonical state-trigger shape.
+    // dep AND the consequent matches the side-effect-callee allowlist.
+    // Without the second predicate the deference silently drops
+    // warnings on `if (trigger) customAction()` shapes where the
+    // callee isn't in noEventTriggerState's allowlist.
     const useStateValueNamesStack: Array<Set<string>> = [];
     const collectUseStateValueNames = (componentBody: EsTreeNode): Set<string> => {
       const stateNames = new Set<string>();
@@ -213,9 +242,20 @@ export const noEffectEventHandler: Rule = {
           soleStatement.test?.type === "Identifier" &&
           dependencyNames.has(soleStatement.test.name)
         ) {
-          // Defer to noEventTriggerState — it produces a more
-          // specific diagnostic when the trigger is a useState value.
-          if (isStateValueName(soleStatement.test.name)) return;
+          // Defer to noEventTriggerState ONLY when its diagnostic
+          // would actually fire. Its narrower preconditions (single
+          // dep, side-effect-callee allowlist) mean a deference based
+          // only on isStateValueName silently drops warnings for
+          // shapes like `if (trigger) customAction();` where neither
+          // rule then reports. Match noEventTriggerState's full set
+          // here: state-typed dep + recognized side-effect callee in
+          // the consequent.
+          if (
+            isStateValueName(soleStatement.test.name) &&
+            consequentCallsTriggeredSideEffect(soleStatement.consequent)
+          ) {
+            return;
+          }
           context.report({
             node,
             message:

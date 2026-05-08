@@ -24,6 +24,7 @@ import type {
   ScanResult,
   ScoreResult,
 } from "./types.js";
+import { buildHiddenDiagnosticsSummary } from "./utils/build-hidden-diagnostics-summary.js";
 import { calculateScore, calculateScoreLocally } from "./utils/calculate-score.js";
 import { colorizeByScore } from "./utils/colorize-by-score.js";
 import { combineDiagnostics } from "./utils/combine-diagnostics.js";
@@ -142,23 +143,12 @@ const printDiagnostics = (diagnostics: Diagnostic[], isVerbose: boolean): void =
 
 const printHiddenDiagnosticsSummary = (hiddenRuleGroups: [string, Diagnostic[]][]): void => {
   const hiddenDiagnostics = hiddenRuleGroups.flatMap(([, ruleDiagnostics]) => ruleDiagnostics);
-  const hiddenErrorCount = hiddenDiagnostics.filter(
-    (diagnostic) => diagnostic.severity === "error",
-  ).length;
-  const hiddenWarningCount = hiddenDiagnostics.length - hiddenErrorCount;
+  const renderedParts = buildHiddenDiagnosticsSummary(hiddenDiagnostics).map((part) =>
+    colorizeBySeverity(part.text, part.severity),
+  );
 
-  const summaryParts: string[] = [];
-  if (hiddenErrorCount > 0) {
-    const errorText = `✗ ${hiddenErrorCount} more error${hiddenErrorCount === 1 ? "" : "s"}`;
-    summaryParts.push(highlighter.error(errorText));
-  }
-  if (hiddenWarningCount > 0) {
-    const warningText = `⚠ ${hiddenWarningCount} more warning${hiddenWarningCount === 1 ? "" : "s"}`;
-    summaryParts.push(highlighter.warn(warningText));
-  }
-
-  logger.log(`  ${summaryParts.join("  ")}`);
-  logger.dim(`    Run \`npx react-doctor@latest . --verbose\` to get all details`);
+  logger.log(`  ${renderedParts.join("  ")}`);
+  logger.dim("    Run `npx react-doctor@latest . --verbose` to get all details");
   logger.break();
 };
 

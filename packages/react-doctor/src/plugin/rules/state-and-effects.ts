@@ -1277,6 +1277,18 @@ export const noEventTriggerState: Rule = {
       );
       if (handlerOnlyWriteStateNames.size === 0) return;
 
+      // HACK: a state read in render (e.g. `<input value={query} />`)
+      // is dual-purpose — it controls UI AND triggers the effect.
+      // Calling it "exists only to schedule the effect" is wrong; the
+      // user can't just delete the state. Reuse the same render-
+      // reachability machinery that `rerenderStateOnlyInHandlers`
+      // uses to filter these out (transitive dep graph + walk from
+      // return expressions).
+      const returnExpressions = collectReturnExpressions(componentBody);
+      const dependencyGraph = buildLocalDependencyGraph(componentBody);
+      const directRenderNames = collectRenderReachableNames(returnExpressions);
+      const renderReachableNames = expandTransitiveDependencies(directRenderNames, dependencyGraph);
+
       walkAst(componentBody, (effectCall: EsTreeNode) => {
         if (effectCall.type !== "CallExpression") return;
         if (!isHookCall(effectCall, EFFECT_HOOK_NAMES)) return;
@@ -1289,6 +1301,9 @@ export const noEventTriggerState: Rule = {
         const depElement = depsNode.elements[0];
         if (depElement?.type !== "Identifier") return;
         if (!handlerOnlyWriteStateNames.has(depElement.name)) return;
+        // Dual-purpose state — used in render too. Don't claim it
+        // "exists only to schedule" the effect.
+        if (renderReachableNames.has(depElement.name)) return;
 
         const callback = getEffectCallback(effectCall);
         if (!callback) return;

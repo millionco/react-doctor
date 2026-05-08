@@ -386,6 +386,34 @@ export const Computed = () => {
     expect(hits).toHaveLength(0);
   });
 
+  it("does NOT flag dual-purpose state that's also read in render (Bugbot #155)", async () => {
+    // Regression: \`query\` is BOTH the controlled-input value AND the
+    // effect trigger. We can't tell the user to "delete the state"
+    // because the input depends on it. Render-reachability check
+    // skips this case.
+    const projectDir = setupReactProject(tempRoot, "no-event-trigger-state-render-reachable", {
+      files: {
+        "src/Search.tsx": `import { useEffect, useState } from "react";
+
+declare const track: (eventName: string, payload: string) => void;
+
+export const Search = () => {
+  const [query, setQuery] = useState("");
+  useEffect(() => {
+    if (query) {
+      track("search", query);
+    }
+  }, [query]);
+  return <input value={query} onChange={(event) => setQuery(event.target.value)} />;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "no-event-trigger-state");
+    expect(hits).toHaveLength(0);
+  });
+
   it("does NOT flag when the dep is a prop (no local setter at all)", async () => {
     const projectDir = setupReactProject(tempRoot, "no-event-trigger-state-prop-dep", {
       files: {

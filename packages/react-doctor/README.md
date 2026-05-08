@@ -103,15 +103,19 @@ Options:
 
 ### `--explain <file:line>`
 
-When a rule keeps firing despite a `react-doctor-disable-next-line` you wrote, pass `--explain <file:line>` (mirroring `rustc --explain <error-code>`) to ask the scanner what it sees:
+When a rule keeps firing despite a `react-doctor-disable-next-line` you wrote, pass `--explain <file:line>` (mirroring `rustc --explain <error-code>`) to ask the scanner what it sees at one specific site:
 
 ```bash
 npx -y react-doctor@latest --explain components/projects/Snapshot.tsx:254
 ```
 
-`--why` is a hidden alias of `--explain` for users coming from the issue's vocabulary.
+Output names the rule, severity, and category, then prints any nearby suppression comment that didn't apply with an explanation — wrong rule list (suggesting the comma form), or a code-line gap (suggesting moving the comment or extracting the surrounding code into a helper).
 
-Output names the rule, prints any nearby suppression comment that didn't apply, and explains why — wrong rule list (suggesting the comma form), or a code-line gap (suggesting moving the comment or extracting the surrounding code into a helper). The same hint is also attached to each diagnostic inline when running with `--verbose` and is included in `--json` output as `diagnostic.suppressionHint`.
+In a monorepo, the path is auto-resolved to the workspace package that owns the file; `--project <name>` overrides that and forces a specific project.
+
+The same hint is also attached to every diagnostic inline when running with `--verbose` and is included in `--json` output as `diagnostic.suppressionHint`. If you're debugging more than one site at once, prefer `--verbose` over running `--explain` repeatedly.
+
+`--why` is a hidden alias of `--explain` for users coming from the issue's vocabulary.
 
 ## JSON output
 
@@ -302,7 +306,7 @@ If you want React Doctor to ignore those inline suppressions and audit your code
 { "respectInlineDisables": false }
 ```
 
-This only neutralizes the inline `// eslint-disable*` / `// oxlint-disable*` comments — the file-level ignore lists above are always honored, even in audit mode, because they typically point at vendored or generated code that genuinely shouldn't be linted.
+This neutralizes the inline `// eslint-disable*`, `// oxlint-disable*`, and `// react-doctor-disable*` comments — the file-level ignore lists above are always honored, even in audit mode, because they typically point at vendored or generated code that genuinely shouldn't be linted.
 
 ### Adopting your existing oxlint / eslint rules
 
@@ -351,7 +355,7 @@ To opt out completely, set:
 | `customRulesOnly`         | `boolean`                        | `false`  | Disable built-in react/jsx-a11y/compiler rules, keeping only `react-doctor/*` plugin rules                                                                                                                                                                                                                                                 |
 | `share`                   | `boolean`                        | `true`   | Show the share-your-results URL after scanning                                                                                                                                                                                                                                                                                             |
 | `textComponents`          | `string[]`                       | `[]`     | React Native only. Component names whose children should not trigger `rn-no-raw-text` (e.g. `["MyText", "Label.Bold"]`)                                                                                                                                                                                                                    |
-| `respectInlineDisables`   | `boolean`                        | `true`   | Respect inline `// eslint-disable*` / `// oxlint-disable*` comments. Set `false` for audit mode. File-level ignores (`.gitignore`, `.eslintignore`, `.oxlintignore`, `.prettierignore`, `.gitattributes` linguist annotations) are always respected.                                                                                       |
+| `respectInlineDisables`   | `boolean`                        | `true`   | Respect inline `// eslint-disable*`, `// oxlint-disable*`, and `// react-doctor-disable*` comments. Set `false` for audit mode. File-level ignores (`.gitignore`, `.eslintignore`, `.oxlintignore`, `.prettierignore`, `.gitattributes` linguist annotations) are always respected.                                                        |
 | `adoptExistingLintConfig` | `boolean`                        | `true`   | Merge the project's existing JSON oxlint / eslint config (`.oxlintrc.json` or `.eslintrc.json`, walking up to the nearest project boundary) into the scan via oxlint's `extends`. Diagnostics from those rules count toward the score. Flat / JS / TS configs are skipped; category-level enables don't apply (use rule-level severities). |
 
 CLI flags always override config values.

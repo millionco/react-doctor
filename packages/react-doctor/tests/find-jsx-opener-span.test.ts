@@ -9,7 +9,21 @@ describe("findJsxOpenerSpan", () => {
 
   it("returns null when the line has no JSX opener tag", () => {
     expect(findJsxOpenerSpan(["const x = 1;"], 0)).toBeNull();
-    expect(findJsxOpenerSpan(["// comment about <Foo>"], 0)).not.toBeNull();
+  });
+
+  it("ignores `<Tag` matches that sit inside a `//` line comment", () => {
+    expect(findJsxOpenerSpan(["// some note about <Foo>"], 0)).toBeNull();
+    expect(findJsxOpenerSpan(["const x = 1; // see <Foo bar={x} />"], 0)).toBeNull();
+  });
+
+  it("handles TypeScript generic JSX components by tracking inner < / > pairs", () => {
+    const lines = ["<List<Item>", "  data={items}", "/>"];
+    expect(findJsxOpenerSpan(lines, 0)).toBe(2);
+  });
+
+  it("handles nested generic constraints inside the opener", () => {
+    const lines = ["<Form<Schema<Item>>", "  onSubmit={fn}", "/>"];
+    expect(findJsxOpenerSpan(lines, 0)).toBe(2);
   });
 
   it("walks across lines to find the closing > of a multi-line opener", () => {

@@ -3,9 +3,8 @@ import {
   compileIgnoreOverrides,
   isDiagnosticIgnoredByOverrides,
 } from "./apply-ignore-overrides.js";
-import { classifySuppressionNearMiss } from "./classify-suppression-near-miss.js";
+import { evaluateSuppression } from "./evaluate-suppression.js";
 import { compileIgnoredFilePatterns, isFileIgnoredByPatterns } from "./is-ignored-file.js";
-import { isRuleSuppressedAt } from "./is-rule-suppressed-at.js";
 
 const OPENING_TAG_PATTERN = /<([A-Z][\w.]*)/;
 
@@ -111,9 +110,10 @@ export const filterInlineSuppressions = (
     const ruleIdentifier = `${diagnostic.plugin}/${diagnostic.rule}`;
     const diagnosticLineIndex = diagnostic.line - 1;
 
-    if (isRuleSuppressedAt(lines, diagnosticLineIndex, ruleIdentifier)) return [];
-
-    const suppressionHint = classifySuppressionNearMiss(lines, diagnosticLineIndex, ruleIdentifier);
-    return suppressionHint ? [{ ...diagnostic, suppressionHint }] : [diagnostic];
+    const evaluation = evaluateSuppression(lines, diagnosticLineIndex, ruleIdentifier);
+    if (evaluation.isSuppressed) return [];
+    return evaluation.nearMissHint
+      ? [{ ...diagnostic, suppressionHint: evaluation.nearMissHint }]
+      : [diagnostic];
   });
 };

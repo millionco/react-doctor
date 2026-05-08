@@ -232,6 +232,29 @@ describe("issue #158: disable-next-line covers multi-line JSX opening tags", () 
     );
     expect(filtered).toHaveLength(0);
   });
+
+  it("does NOT suppress when the `<Tag` lives in a `//` line comment above the diagnostic", () => {
+    const filtered = runFilter(
+      "jsx-fake-opener-line-comment",
+      `// react-doctor-disable-next-line react-doctor/no-derived-state-effect\n` +
+        `// docs example: <Foo bar={x} />\n` +
+        `if (x > 1) doStuff();\n`,
+      [baseDiagnostic({ line: 3 })],
+    );
+    expect(filtered).toHaveLength(1);
+  });
+
+  it("recognizes generic-typed JSX components (`<List<Item>`) so attribute-line diagnostics still suppress", () => {
+    const filtered = runFilter(
+      "jsx-multiline-generic-component",
+      `// react-doctor-disable-next-line react-doctor/no-derived-state-effect\n` +
+        `<List<Item>\n` +
+        `  data={items}\n` +
+        `/>\n`,
+      [baseDiagnostic({ line: 3 })],
+    );
+    expect(filtered).toHaveLength(0);
+  });
 });
 
 describe("issue #159: stacked disable-next-line comments", () => {

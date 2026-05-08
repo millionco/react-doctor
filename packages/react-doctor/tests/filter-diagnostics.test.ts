@@ -171,6 +171,186 @@ describe("filterIgnoredDiagnostics", () => {
     expect(filtered[0].filePath).toContain("pages/Home.tsx");
   });
 
+  it("ignore.overrides scopes a rule to specific files without losing coverage of unrelated rules", () => {
+    const diagnostics = [
+      createDiagnostic({
+        plugin: "react-doctor",
+        rule: "no-array-index-as-key",
+        filePath: "components/diff/Hunk.tsx",
+      }),
+      createDiagnostic({
+        plugin: "react-doctor",
+        rule: "no-cascading-set-state",
+        filePath: "components/diff/Hunk.tsx",
+      }),
+      createDiagnostic({
+        plugin: "react-doctor",
+        rule: "no-array-index-as-key",
+        filePath: "components/list/Items.tsx",
+      }),
+    ];
+    const config: ReactDoctorConfig = {
+      ignore: {
+        overrides: [
+          {
+            files: ["components/diff/**"],
+            rules: ["react-doctor/no-array-index-as-key"],
+          },
+        ],
+      },
+    };
+
+    const filtered = filterIgnoredDiagnostics(
+      diagnostics,
+      config,
+      TEST_ROOT_DIRECTORY,
+      testReadFileLines,
+    );
+
+    expect(filtered).toHaveLength(2);
+    expect(
+      filtered.some(
+        (diagnostic) =>
+          diagnostic.filePath === "components/diff/Hunk.tsx" &&
+          diagnostic.rule === "no-array-index-as-key",
+      ),
+    ).toBe(false);
+    expect(
+      filtered.some(
+        (diagnostic) =>
+          diagnostic.filePath === "components/diff/Hunk.tsx" &&
+          diagnostic.rule === "no-cascading-set-state",
+      ),
+    ).toBe(true);
+    expect(
+      filtered.some(
+        (diagnostic) =>
+          diagnostic.filePath === "components/list/Items.tsx" &&
+          diagnostic.rule === "no-array-index-as-key",
+      ),
+    ).toBe(true);
+  });
+
+  it("ignore.overrides with no rules list suppresses every rule for the matched files", () => {
+    const diagnostics = [
+      createDiagnostic({ plugin: "react", rule: "no-danger", filePath: "src/legacy/A.tsx" }),
+      createDiagnostic({
+        plugin: "react-doctor",
+        rule: "no-cascading-set-state",
+        filePath: "src/legacy/A.tsx",
+      }),
+      createDiagnostic({ plugin: "react", rule: "no-danger", filePath: "src/modern/B.tsx" }),
+    ];
+    const config: ReactDoctorConfig = {
+      ignore: {
+        overrides: [{ files: ["src/legacy/**"] }],
+      },
+    };
+
+    const filtered = filterIgnoredDiagnostics(
+      diagnostics,
+      config,
+      TEST_ROOT_DIRECTORY,
+      testReadFileLines,
+    );
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0].filePath).toBe("src/modern/B.tsx");
+  });
+
+  it("ignore.overrides emits stderr warnings for malformed entries instead of silently treating rules-as-string as 'ignore everything'", () => {
+    const stderrWrites: string[] = [];
+    const originalWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = ((chunk: string | Uint8Array): boolean => {
+      stderrWrites.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf-8"));
+      return true;
+    }) as typeof process.stderr.write;
+
+    try {
+      const diagnostics = [
+        createDiagnostic({
+          plugin: "react-doctor",
+          rule: "no-array-index-as-key",
+          filePath: "components/diff/A.tsx",
+        }),
+        createDiagnostic({
+          plugin: "react-doctor",
+          rule: "no-cascading-set-state",
+          filePath: "components/diff/A.tsx",
+        }),
+      ];
+      const config: ReactDoctorConfig = {
+        ignore: {
+          overrides: [
+            {
+              files: ["components/diff/**"],
+              // @ts-expect-error: intentionally malformed for the validation test.
+              rules: "react-doctor/no-array-index-as-key",
+            },
+          ],
+        },
+      };
+
+      const filtered = filterIgnoredDiagnostics(
+        diagnostics,
+        config,
+        TEST_ROOT_DIRECTORY,
+        testReadFileLines,
+      );
+
+      const combinedStderr = stderrWrites.join("");
+      expect(combinedStderr).toContain("ignore.overrides[0].rules");
+      // Both diagnostics drop because the malformed entry was treated as
+      // "no rules listed" → suppress every rule for matched files. The
+      // warning above tells the user that's why.
+      expect(filtered).toHaveLength(0);
+    } finally {
+      process.stderr.write = originalWrite;
+    }
+  });
+
+  it("ignore.overrides accepts multiple entries and combines them additively", () => {
+    const diagnostics = [
+      createDiagnostic({
+        plugin: "react-doctor",
+        rule: "no-array-index-as-key",
+        filePath: "components/diff/A.tsx",
+      }),
+      createDiagnostic({
+        plugin: "react",
+        rule: "no-danger",
+        filePath: "components/search/Highlight.tsx",
+      }),
+      createDiagnostic({
+        plugin: "react-doctor",
+        rule: "no-cascading-set-state",
+        filePath: "components/search/Highlight.tsx",
+      }),
+    ];
+    const config: ReactDoctorConfig = {
+      ignore: {
+        overrides: [
+          {
+            files: ["components/diff/**"],
+            rules: ["react-doctor/no-array-index-as-key"],
+          },
+          {
+            files: ["components/search/Highlight.tsx"],
+            rules: ["react/no-danger"],
+          },
+        ],
+      },
+    };
+
+    const filtered = filterIgnoredDiagnostics(
+      diagnostics,
+      config,
+      TEST_ROOT_DIRECTORY,
+      testReadFileLines,
+    );
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0].rule).toBe("no-cascading-set-state");
+  });
+
   it("handles knip rule identifiers", () => {
     const diagnostics = [
       createDiagnostic({ plugin: "knip", rule: "exports" }),

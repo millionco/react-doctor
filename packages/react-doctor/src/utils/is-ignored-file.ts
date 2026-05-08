@@ -1,16 +1,6 @@
 import type { ReactDoctorConfig } from "../types.js";
 import { compileGlobPattern } from "./match-glob-pattern.js";
-
-const toRelativePath = (filePath: string, rootDirectory: string): string => {
-  const normalizedFilePath = filePath.replace(/\\/g, "/");
-  const normalizedRoot = rootDirectory.replace(/\\/g, "/").replace(/\/$/, "") + "/";
-
-  if (normalizedFilePath.startsWith(normalizedRoot)) {
-    return normalizedFilePath.slice(normalizedRoot.length);
-  }
-
-  return normalizedFilePath.replace(/^\.\//, "");
-};
+import { toRelativePath } from "./to-relative-path.js";
 
 export const compileIgnoredFilePatterns = (userConfig: ReactDoctorConfig | null): RegExp[] => {
   const files = userConfig?.ignore?.files;

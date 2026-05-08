@@ -263,6 +263,49 @@ export const TRIVIAL_INITIALIZER_NAMES = new Set([
   "parseFloat",
 ]);
 
+// Used by `noDerivedStateEffect` to decide whether a derived-state
+// expression is "expensive enough" to recommend `useMemo` over plain
+// inline computation. Coercion / parsing / boundary helpers are cheap
+// and should still get the "compute during render" message.
+// MemberExpression callees (e.g. `Math.floor`, `Date.now`) are
+// recognized via BUILTIN_GLOBAL_NAMESPACE_NAMES (the chain root), not
+// here — putting "Math" or "Date" in this set wouldn't match because
+// the expensive-derivation walker reads the *property* name.
+export const TRIVIAL_DERIVATION_CALLEE_NAMES = new Set([
+  "Boolean",
+  "String",
+  "Number",
+  "Array",
+  "Object",
+  "parseInt",
+  "parseFloat",
+  "isNaN",
+  "isFinite",
+  "BigInt",
+  "Symbol",
+]);
+
+// Built-in JS globals whose method calls (`Math.floor(x)`,
+// `Date.now()`, `JSON.parse(x)`, …) are not reactive reads and don't
+// count as "expensive derivations". The chain root is what matters —
+// `Math.floor(raw)` should only treat `raw` as a reactive read, and
+// the call itself should be classified as trivial regardless of which
+// method is invoked.
+export const BUILTIN_GLOBAL_NAMESPACE_NAMES = new Set([
+  "Math",
+  "Date",
+  "JSON",
+  "Object",
+  "Array",
+  "Number",
+  "String",
+  "Boolean",
+  "RegExp",
+  "Symbol",
+  "BigInt",
+  "Reflect",
+]);
+
 export const SETTER_PATTERN = /^set[A-Z]/;
 export const RENDER_FUNCTION_PATTERN = /^render[A-Z]/;
 export const UPPERCASE_PATTERN = /^[A-Z]/;
@@ -346,6 +389,36 @@ export const MUTATING_ROUTE_SEGMENTS = new Set([
 
 export const EFFECT_HOOK_NAMES = new Set(["useEffect", "useLayoutEffect"]);
 export const HOOKS_WITH_DEPS = new Set(["useEffect", "useLayoutEffect", "useMemo", "useCallback"]);
+
+// Subscription-shaped method names recognized by `prefer-use-sync-external-store`.
+// Covers the canonical `store.subscribe`, the browser `addEventListener` /
+// `addListener`, the EventEmitter `on` / `watch` / `listen`, and shorter
+// store APIs like Jotai's `store.sub`. The detector cares only about the
+// AST shape (one of these is the property name of a MemberExpression
+// callee), never the library that implemented them.
+export const SUBSCRIPTION_METHOD_NAMES = new Set([
+  "subscribe",
+  "addEventListener",
+  "addListener",
+  "on",
+  "watch",
+  "listen",
+  "sub",
+]);
+
+// Methods that pair with the subscription methods above as their cleanup
+// counterparts. Used to recognize a valid `return () => removeEventListener(...)`
+// cleanup form even when the subscribe call is `addEventListener` rather
+// than a `subscribe()` whose return value gets re-bound.
+export const UNSUBSCRIPTION_METHOD_NAMES = new Set([
+  "unsubscribe",
+  "removeEventListener",
+  "removeListener",
+  "off",
+  "unwatch",
+  "unlisten",
+  "unsub",
+]);
 
 // Used by `no-event-trigger-state` to recognize when a useEffect body
 // is performing the §6 anti-pattern from "You Might Not Need an Effect"

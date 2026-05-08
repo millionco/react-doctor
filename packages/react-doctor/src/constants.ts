@@ -88,3 +88,11 @@ export const buildNoReactDependencyError = (directory: string): string =>
 export const REACT_19_DEPRECATION_MIN_MAJOR = 19;
 
 export const REACT_DOM_LEGACY_API_MIN_MAJOR = 18;
+
+// HACK: lookahead cap for JSX opener-span scanning; bounds worst-case
+// work on pathological files. Real openers stay well under this.
+export const JSX_OPENER_SCAN_MAX_LINES = 32;
+
+// HACK: lookback cap for stacked / near-miss disable-next-line scanning.
+// Larger gaps stop being intentional suppressions and become noise.
+export const SUPPRESSION_NEAR_MISS_MAX_LINES = 10;

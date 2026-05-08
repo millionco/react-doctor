@@ -1,5 +1,12 @@
 import type { Diagnostic, ReactDoctorConfig } from "../types.js";
+import {
+  compileIgnoreOverrides,
+  isDiagnosticIgnoredByOverrides,
+} from "./apply-ignore-overrides.js";
+import { evaluateSuppression } from "./evaluate-suppression.js";
 import { compileIgnoredFilePatterns, isFileIgnoredByPatterns } from "./is-ignored-file.js";
+
+const OPENING_TAG_PATTERN = /<([A-Z][\w.]*)/;
 
 const resolveCandidateReadPath = (rootDirectory: string, filePath: string): string => {
   const normalizedFile = filePath.replace(/\\/g, "/");
@@ -13,18 +20,6 @@ const resolveCandidateReadPath = (rootDirectory: string, filePath: string): stri
   const root = rootDirectory.replace(/\\/g, "/").replace(/\/$/, "");
   return `${root}/${normalizedFile.replace(/^\.\//, "")}`;
 };
-
-const OPENING_TAG_PATTERN = /<([A-Z][\w.]*)/;
-// Matches either line comments (`// react-doctor-disable-…`) or block
-// comments (`/* react-doctor-disable-… */`, including the JSX form
-// `{/* … */}`). Capture group 1 is the optional rule list, restricted
-// to characters that legally appear in plugin/rule identifiers and
-// their separators (`,`, whitespace) so it can never absorb the
-// block-comment terminator `*/` or the JSX `}`.
-const DISABLE_NEXT_LINE_PATTERN =
-  /(?:\/\/|\/\*)\s*react-doctor-disable-next-line\b(?:\s+([\w/\-.,\s]+?))?\s*(?:\*\/)?\s*\}?\s*$/;
-const DISABLE_LINE_PATTERN =
-  /(?:\/\/|\/\*)\s*react-doctor-disable-line\b(?:\s+([\w/\-.,\s]+?))?\s*(?:\*\/)?\s*\}?\s*$/;
 
 const createFileLinesCache = (
   rootDirectory: string,
@@ -59,11 +54,6 @@ const isInsideTextComponent = (
   return false;
 };
 
-const isRuleSuppressed = (commentRules: string | undefined, ruleId: string): boolean => {
-  if (!commentRules?.trim()) return true;
-  return commentRules.split(/[,\s]+/).some((rule) => rule.trim() === ruleId);
-};
-
 export const filterIgnoredDiagnostics = (
   diagnostics: Diagnostic[],
   config: ReactDoctorConfig,
@@ -76,6 +66,7 @@ export const filterIgnoredDiagnostics = (
       : [],
   );
   const ignoredFilePatterns = compileIgnoredFilePatterns(config);
+  const compiledOverrides = compileIgnoreOverrides(config);
   const textComponentNames = new Set(
     Array.isArray(config.textComponents)
       ? config.textComponents.filter((name): name is string => typeof name === "string")
@@ -86,13 +77,11 @@ export const filterIgnoredDiagnostics = (
 
   return diagnostics.filter((diagnostic) => {
     const ruleIdentifier = `${diagnostic.plugin}/${diagnostic.rule}`;
-    if (ignoredRules.has(ruleIdentifier)) {
-      return false;
-    }
-
+    if (ignoredRules.has(ruleIdentifier)) return false;
     if (isFileIgnoredByPatterns(diagnostic.filePath, rootDirectory, ignoredFilePatterns)) {
       return false;
     }
+    if (isDiagnosticIgnoredByOverrides(diagnostic, rootDirectory, compiledOverrides)) return false;
 
     if (hasTextComponents && diagnostic.rule === "rn-no-raw-text" && diagnostic.line > 0) {
       const lines = getFileLines(diagnostic.filePath);
@@ -112,28 +101,19 @@ export const filterInlineSuppressions = (
 ): Diagnostic[] => {
   const getFileLines = createFileLinesCache(rootDirectory, readFileLinesSync);
 
-  return diagnostics.filter((diagnostic) => {
-    if (diagnostic.line <= 0) return true;
+  return diagnostics.flatMap((diagnostic) => {
+    if (diagnostic.line <= 0) return [diagnostic];
 
     const lines = getFileLines(diagnostic.filePath);
-    if (!lines) return true;
+    if (!lines) return [diagnostic];
 
-    const ruleId = `${diagnostic.plugin}/${diagnostic.rule}`;
+    const ruleIdentifier = `${diagnostic.plugin}/${diagnostic.rule}`;
+    const diagnosticLineIndex = diagnostic.line - 1;
 
-    const currentLine = lines[diagnostic.line - 1];
-    if (currentLine) {
-      const lineMatch = currentLine.match(DISABLE_LINE_PATTERN);
-      if (lineMatch && isRuleSuppressed(lineMatch[1], ruleId)) return false;
-    }
-
-    if (diagnostic.line >= 2) {
-      const previousLine = lines[diagnostic.line - 2];
-      if (previousLine) {
-        const nextLineMatch = previousLine.match(DISABLE_NEXT_LINE_PATTERN);
-        if (nextLineMatch && isRuleSuppressed(nextLineMatch[1], ruleId)) return false;
-      }
-    }
-
-    return true;
+    const evaluation = evaluateSuppression(lines, diagnosticLineIndex, ruleIdentifier);
+    if (evaluation.isSuppressed) return [];
+    return evaluation.nearMissHint
+      ? [{ ...diagnostic, suppressionHint: evaluation.nearMissHint }]
+      : [diagnostic];
   });
 };

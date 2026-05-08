@@ -1,4 +1,5 @@
 import {
+  BUILTIN_GLOBAL_NAMESPACE_NAMES,
   CASCADING_SET_STATE_THRESHOLD,
   EFFECT_HOOK_NAMES,
   EVENT_TRIGGERED_SIDE_EFFECT_CALLEES,
@@ -6,15 +7,20 @@ import {
   HOOKS_WITH_DEPS,
   MUTATING_ARRAY_METHODS,
   RELATED_USE_STATE_THRESHOLD,
+  SUBSCRIPTION_METHOD_NAMES,
+  TRIVIAL_DERIVATION_CALLEE_NAMES,
   TRIVIAL_INITIALIZER_NAMES,
+  UNSUBSCRIPTION_METHOD_NAMES,
 } from "../constants.js";
 import {
+  areExpressionsStructurallyEqual,
   collectPatternNames,
   containsFetchCall,
   countSetStateCalls,
   extractDestructuredPropNames,
   getCallbackStatements,
   getEffectCallback,
+  getRootIdentifierName,
   isComponentAssignment,
   isHookCall,
   isSetterCall,
@@ -23,6 +29,63 @@ import {
   walkAst,
 } from "../helpers.js";
 import type { EsTreeNode, Rule, RuleContext } from "../types.js";
+
+// HACK: AST-aware walker for "what reactive values does this expression
+// actually READ?". The plain `walkAst` adds every Identifier it sees,
+// which over-counts in two ways:
+//   - the CALLEE of a CallExpression (`getFilteredTodos(...)`) is a
+//     function reference, almost always module-scoped and stable —
+//     React's exhaustive-deps lint correctly omits these from deps.
+//   - the PROPERTY of a non-computed MemberExpression (`obj.foo`) is
+//     a static identifier, not a separate reactive read; only `obj`
+//     is the reactive value.
+// Without this, `setX(getFilteredTodos(todos, filter))` would treat
+// `getFilteredTodos` as a missing dep and bail before the §2 "expensive
+// derivation" branch could fire.
+const collectValueIdentifierNames = (node: EsTreeNode | null | undefined, into: string[]): void => {
+  if (!node || typeof node !== "object") return;
+  if (node.type === "CallExpression") {
+    if (node.callee?.type === "MemberExpression") {
+      // For `state.method(arg)`, `state` is a reactive read; `method`
+      // is not. Skip the callee chain entirely when its root is a
+      // built-in global (`Math.floor`, `JSON.parse`, ...) — those
+      // aren't reactive reads either.
+      const rootName = getRootIdentifierName(node.callee);
+      if (!rootName || !BUILTIN_GLOBAL_NAMESPACE_NAMES.has(rootName)) {
+        collectValueIdentifierNames(node.callee.object, into);
+      }
+    }
+    for (const argument of node.arguments ?? []) {
+      collectValueIdentifierNames(argument, into);
+    }
+    return;
+  }
+  if (node.type === "MemberExpression") {
+    const rootName = getRootIdentifierName(node);
+    if (!rootName || !BUILTIN_GLOBAL_NAMESPACE_NAMES.has(rootName)) {
+      collectValueIdentifierNames(node.object, into);
+    }
+    if (node.computed) collectValueIdentifierNames(node.property, into);
+    return;
+  }
+  if (node.type === "Identifier") {
+    into.push(node.name);
+    return;
+  }
+  for (const key of Object.keys(node)) {
+    if (key === "parent" || key === "type") continue;
+    const child = node[key];
+    if (Array.isArray(child)) {
+      for (const item of child) {
+        if (item && typeof item === "object" && item.type) {
+          collectValueIdentifierNames(item, into);
+        }
+      }
+    } else if (child && typeof child === "object" && child.type) {
+      collectValueIdentifierNames(child, into);
+    }
+  }
+};
 
 export const noDerivedStateEffect: Rule = {
   create: (context: RuleContext) => ({
@@ -53,16 +116,44 @@ export const noDerivedStateEffect: Rule = {
 
       let allArgumentsDeriveFromDeps = true;
       let hasAnyDependencyReference = false;
+      // §2 of "You Might Not Need an Effect" branches the suggested
+      // fix on whether the derivation is potentially expensive. A
+      // setter argument that contains a user-defined CallExpression
+      // (e.g. `setVisibleTodos(getFilteredTodos(todos, filter))`)
+      // gets the `useMemo` recommendation; pure data shaping like
+      // `firstName + " " + lastName` keeps the cheaper "compute
+      // during render" message.
+      let hasExpensiveDerivation = false;
       for (const statement of statements) {
         const setStateArguments = statement.expression.arguments;
         if (!setStateArguments?.length) continue;
 
-        const referencedIdentifiers: string[] = [];
+        const valueIdentifierNames: string[] = [];
+        collectValueIdentifierNames(setStateArguments[0], valueIdentifierNames);
+
         walkAst(setStateArguments[0], (child: EsTreeNode) => {
-          if (child.type === "Identifier") referencedIdentifiers.push(child.name);
+          if (child.type !== "CallExpression") return;
+          if (child.callee?.type === "MemberExpression") {
+            // `Math.floor(x)` / `Date.now()` are trivial regardless
+            // of the property — gate on the chain root, not the
+            // method name (which would never match TRIVIAL_*).
+            const rootName = getRootIdentifierName(child.callee);
+            if (rootName && BUILTIN_GLOBAL_NAMESPACE_NAMES.has(rootName)) return;
+            hasExpensiveDerivation = true;
+            return;
+          }
+          if (child.callee?.type === "Identifier") {
+            const calleeName = child.callee.name;
+            if (
+              !TRIVIAL_DERIVATION_CALLEE_NAMES.has(calleeName) &&
+              !isSetterIdentifier(calleeName)
+            ) {
+              hasExpensiveDerivation = true;
+            }
+          }
         });
 
-        const nonSetterIdentifiers = referencedIdentifiers.filter(
+        const nonSetterIdentifiers = valueIdentifierNames.filter(
           (name) => !isSetterIdentifier(name),
         );
 
@@ -76,14 +167,28 @@ export const noDerivedStateEffect: Rule = {
         }
       }
 
-      if (allArgumentsDeriveFromDeps) {
-        context.report({
-          node,
-          message: hasAnyDependencyReference
-            ? "Derived state in useEffect — compute during render instead"
-            : "State reset in useEffect — use a key prop to reset component state when props change",
-        });
+      if (!allArgumentsDeriveFromDeps) return;
+
+      // HACK: a user-defined function call inside the setter arg
+      // (`setFilteredItems(applyFilters())`) closes over reactive
+      // values implicitly — it's a derivation, not a "state reset".
+      // Without this, a zero-arg call would leave the identifier list
+      // empty and the message would vacuously default to the wrong
+      // "state reset" branch.
+      if (hasExpensiveDerivation) hasAnyDependencyReference = true;
+
+      let message: string;
+      if (!hasAnyDependencyReference) {
+        message =
+          "State reset in useEffect — use a key prop to reset component state when props change";
+      } else if (hasExpensiveDerivation) {
+        message =
+          "Derived state in useEffect — wrap the calculation in useMemo([deps]) (or compute it directly during render if it isn't expensive)";
+      } else {
+        message = "Derived state in useEffect — compute during render instead";
       }
+
+      context.report({ node, message });
     },
   }),
 };
@@ -209,34 +314,41 @@ export const noEffectEventHandler: Rule = {
         if (statements.length !== 1) return;
 
         const soleStatement = statements[0];
+        if (soleStatement.type !== "IfStatement") return;
+
+        // HACK: §5 of "You Might Not Need an Effect" uses
+        // `if (product.isInCart)` — a MemberExpression, not a bare
+        // Identifier. The earlier detector hard-required `Identifier`
+        // and missed the article's literal example. Walk the test
+        // down to its root identifier so both shapes match:
+        //   if (isOpen)            → root = "isOpen"
+        //   if (product.isInCart)  → root = "product"
+        const rootIdentifierName = getRootIdentifierName(soleStatement.test);
+        if (!rootIdentifierName || !dependencyNames.has(rootIdentifierName)) return;
+
+        // Defer to noEventTriggerState ONLY when its diagnostic
+        // would actually fire. Its narrower preconditions (single
+        // dep, side-effect-callee allowlist) mean a deference based
+        // only on isStateValueName silently drops warnings for
+        // shapes like `if (trigger) customAction();` where neither
+        // rule then reports. Match noEventTriggerState's full set
+        // here: state-typed dep + recognized side-effect callee in
+        // the consequent.
+        // Reuse noEventTriggerState's helper instead of duplicating
+        // the AST walk + constant lookups; "function would fire"
+        // ↔ "callee was found in the consequent".
         if (
-          soleStatement.type === "IfStatement" &&
-          soleStatement.test?.type === "Identifier" &&
-          dependencyNames.has(soleStatement.test.name)
+          isStateValueName(rootIdentifierName) &&
+          findTriggeredSideEffectCalleeName(soleStatement.consequent) !== null
         ) {
-          // Defer to noEventTriggerState ONLY when its diagnostic
-          // would actually fire. Its narrower preconditions (single
-          // dep, side-effect-callee allowlist) mean a deference based
-          // only on isStateValueName silently drops warnings for
-          // shapes like `if (trigger) customAction();` where neither
-          // rule then reports. Match noEventTriggerState's full set
-          // here: state-typed dep + recognized side-effect callee in
-          // the consequent.
-          // Reuse noEventTriggerState's helper instead of duplicating
-          // the AST walk + constant lookups; "function would fire"
-          // ↔ "callee was found in the consequent".
-          if (
-            isStateValueName(soleStatement.test.name) &&
-            findTriggeredSideEffectCalleeName(soleStatement.consequent) !== null
-          ) {
-            return;
-          }
-          context.report({
-            node,
-            message:
-              "useEffect simulating an event handler — move logic to an actual event handler instead",
-          });
+          return;
         }
+
+        context.report({
+          node,
+          message:
+            "useEffect simulating an event handler — move logic to an actual event handler instead",
+        });
       },
     };
   },
@@ -254,9 +366,17 @@ export const noDerivedUseState: Rule = {
     // are not modeled here (a known limitation — pre-existing).
     const componentPropStack: Array<Set<string>> = [];
 
+    // HACK: empty stack frames are barriers — pushed when entering a
+    // non-component FunctionDeclaration / ArrowFunctionExpression so
+    // identifiers inside the helper don't resolve against an outer
+    // component's props (a closed-over `value` is NOT a prop of the
+    // helper). Stop the walk at the first empty frame so the lookup
+    // honors the barrier the visitor pushed.
     const isPropName = (name: string): boolean => {
       for (let stackIndex = componentPropStack.length - 1; stackIndex >= 0; stackIndex--) {
-        if (componentPropStack[stackIndex].has(name)) return true;
+        const frame = componentPropStack[stackIndex];
+        if (frame.size === 0) return false;
+        if (frame.has(name)) return true;
       }
       return false;
     };
@@ -489,9 +609,16 @@ export const noPropCallbackInEffect: Rule = {
       componentPropParamStack.push(propNames);
     };
 
+    // HACK: empty stack frames are barriers — pushed when entering a
+    // non-component FunctionDeclaration / ArrowFunctionExpression so
+    // identifiers inside the helper don't resolve against an outer
+    // component's props. Stop the walk at the first empty frame so
+    // the lookup honors the barrier the visitor pushed.
     const isPropName = (name: string): boolean => {
       for (let stackIndex = componentPropParamStack.length - 1; stackIndex >= 0; stackIndex--) {
-        if (componentPropParamStack[stackIndex].has(name)) return true;
+        const frame = componentPropParamStack[stackIndex];
+        if (frame.size === 0) return false;
+        if (frame.has(name)) return true;
       }
       return false;
     };
@@ -869,7 +996,10 @@ export const rerenderStateOnlyInHandlers: Rule = {
 // a function-typed prop or local in practice — we approximate by
 // requiring it to also appear as the second argument to
 // `addEventListener`/`subscribe`-shaped calls inside the effect body).
-const SUBSCRIPTION_METHOD_NAMES = new Set(["addEventListener", "subscribe", "on", "addListener"]);
+// The shared `SUBSCRIPTION_METHOD_NAMES` set comes from `constants.ts`
+// so this rule and `prefer-use-sync-external-store` agree on what
+// counts as a subscription-shaped call (zustand/Redux `subscribe`,
+// browser `addEventListener`, EventEmitter `on`, etc.).
 
 export const advancedEventHandlerRefs: Rule = {
   create: (context: RuleContext) => ({
@@ -1042,19 +1172,6 @@ export const rerenderDeferReadsHook: Rule = {
   },
 };
 
-// HACK: walk a MemberExpression chain (computed or not) down to the
-// underlying root identifier, so `state.nested.items.push(x)` and
-// `items[0]` both report against `state` / `items` respectively.
-// Returns null if the chain bottoms out at anything other than a plain
-// Identifier (e.g. a call expression, `this`, etc.).
-const getMemberRootName = (node: EsTreeNode | undefined): string | null => {
-  let cursor: EsTreeNode | undefined = node;
-  while (cursor?.type === "MemberExpression") {
-    cursor = cursor.object;
-  }
-  return cursor?.type === "Identifier" ? cursor.name : null;
-};
-
 // HACK: walks the component AST while tracking which state names are
 // SHADOWED in the current scope by a nested function's params or
 // var/let/const declarations. Without this, a handler that locally
@@ -1135,7 +1252,7 @@ export const noDirectStateMutation: Rule = {
         (child: EsTreeNode, currentlyShadowed: ReadonlySet<string>) => {
           if (child.type === "AssignmentExpression") {
             if (child.left?.type !== "MemberExpression") return;
-            const rootName = getMemberRootName(child.left);
+            const rootName = getRootIdentifierName(child.left);
             if (!rootName || !stateValueToSetter.has(rootName)) return;
             if (currentlyShadowed.has(rootName)) return;
             const setterName = stateValueToSetter.get(rootName);
@@ -1152,7 +1269,7 @@ export const noDirectStateMutation: Rule = {
             if (callee.property?.type !== "Identifier") return;
             const methodName = callee.property.name;
             if (!MUTATING_ARRAY_METHODS.has(methodName)) return;
-            const rootName = getMemberRootName(callee.object);
+            const rootName = getRootIdentifierName(callee.object);
             if (!rootName || !stateValueToSetter.has(rootName)) return;
             if (currentlyShadowed.has(rootName)) return;
             const setterName = stateValueToSetter.get(rootName);
@@ -1221,6 +1338,252 @@ export const noSetStateInRender: Rule = {
         context.report({
           node: setterCall,
           message: `${setterIdentifierName}() called unconditionally at the top of render — causes an infinite re-render loop. Move into a useEffect or an event handler. (To derive state from props, guard the call: \`if (prev !== prop) ${setterIdentifierName}(prop)\`)`,
+        });
+      }
+    };
+
+    return {
+      FunctionDeclaration(node: EsTreeNode) {
+        if (!node.id?.name || !isUppercaseName(node.id.name)) return;
+        checkComponent(node.body);
+      },
+      VariableDeclarator(node: EsTreeNode) {
+        if (!isComponentAssignment(node)) return;
+        checkComponent(node.init?.body);
+      },
+    };
+  },
+};
+
+// HACK: §11 of "You Might Not Need an Effect" + the linked
+// `useSyncExternalStore` docs warn that pairing a `useState(getSnapshot())`
+// with a `useEffect(() => store.subscribe(() => setSnapshot(getSnapshot())))`
+// reimplements `useSyncExternalStore` in user space — incorrectly.
+// The hand-rolled version doesn't support concurrent rendering,
+// allows tearing during transitions, and lacks server-snapshot
+// support during hydration.
+//
+// We require a four-vertex AST match before reporting:
+//
+//   (1) useEffect with empty deps                   `[]`
+//   (2) body declares `const u = X.subscribe(handler)` OR
+//       directly invokes a subscription method      X.addEventListener(...)
+//   (3) cleanup is a `return` that either returns the unsubscribe
+//       binding directly OR returns a closure that unsubscribes
+//   (4) handler is a single `setY(<getter>)` whose `<getter>`
+//       is structurally equal to the matching useState's initializer
+//
+// The combined match is so specific that real-world false positives
+// are essentially impossible.
+const findUseEffectsInComponent = (componentBody: EsTreeNode | undefined): EsTreeNode[] => {
+  const effectCalls: EsTreeNode[] = [];
+  if (componentBody?.type !== "BlockStatement") return effectCalls;
+  for (const statement of componentBody.body ?? []) {
+    walkAst(statement, (child: EsTreeNode) => {
+      if (child.type === "CallExpression" && isHookCall(child, EFFECT_HOOK_NAMES)) {
+        effectCalls.push(child);
+      }
+    });
+  }
+  return effectCalls;
+};
+
+const findSubscriptionCall = (
+  effectBodyStatements: EsTreeNode[],
+): { call: EsTreeNode; boundUnsubscribeName: string | null } | null => {
+  for (const statement of effectBodyStatements) {
+    if (statement.type === "VariableDeclaration") {
+      for (const declarator of statement.declarations ?? []) {
+        const init = declarator.init;
+        if (init?.type !== "CallExpression") continue;
+        if (init.callee?.type !== "MemberExpression") continue;
+        if (init.callee.property?.type !== "Identifier") continue;
+        if (!SUBSCRIPTION_METHOD_NAMES.has(init.callee.property.name)) continue;
+        const boundUnsubscribeName =
+          declarator.id?.type === "Identifier" ? declarator.id.name : null;
+        return { call: init, boundUnsubscribeName };
+      }
+    }
+    if (statement.type === "ExpressionStatement") {
+      const expression = statement.expression;
+      if (expression?.type !== "CallExpression") continue;
+      if (expression.callee?.type !== "MemberExpression") continue;
+      if (expression.callee.property?.type !== "Identifier") continue;
+      if (!SUBSCRIPTION_METHOD_NAMES.has(expression.callee.property.name)) continue;
+      return { call: expression, boundUnsubscribeName: null };
+    }
+  }
+  return null;
+};
+
+// HACK: `window.addEventListener("online", onChange)` is the dominant
+// real-world shape — the handler is declared as a separate `const` in
+// the effect body so it can be shared with `removeEventListener` in the
+// cleanup. We have to resolve the Identifier argument back to its
+// locally-declared arrow/function init before the structural setter
+// check can run.
+const getSubscriptionHandlerArgument = (
+  subscribeCall: EsTreeNode,
+  effectBodyStatements: EsTreeNode[],
+): EsTreeNode | null => {
+  for (const argument of subscribeCall.arguments ?? []) {
+    if (argument.type === "ArrowFunctionExpression" || argument.type === "FunctionExpression") {
+      return argument;
+    }
+    if (argument.type === "Identifier") {
+      for (const statement of effectBodyStatements) {
+        if (statement.type !== "VariableDeclaration") continue;
+        for (const declarator of statement.declarations ?? []) {
+          if (declarator.id?.type !== "Identifier") continue;
+          if (declarator.id.name !== argument.name) continue;
+          const init = declarator.init;
+          if (init?.type === "ArrowFunctionExpression" || init?.type === "FunctionExpression") {
+            return init;
+          }
+        }
+      }
+    }
+  }
+  return null;
+};
+
+const getSingleSetterCallFromHandler = (
+  handler: EsTreeNode,
+): { setterName: string; setterArgument: EsTreeNode } | null => {
+  const handlerStatements = getCallbackStatements(handler);
+  if (handlerStatements.length !== 1) return null;
+  const onlyStatement = handlerStatements[0];
+  const expression =
+    onlyStatement.type === "ExpressionStatement" ? onlyStatement.expression : onlyStatement;
+  if (expression?.type !== "CallExpression") return null;
+  if (expression.callee?.type !== "Identifier") return null;
+  if (!isSetterIdentifier(expression.callee.name)) return null;
+  if (!expression.arguments?.length) return null;
+  return {
+    setterName: expression.callee.name,
+    setterArgument: expression.arguments[0],
+  };
+};
+
+const cleanupReleasesSubscription = (
+  effectBodyStatements: EsTreeNode[],
+  boundUnsubscribeName: string | null,
+): boolean => {
+  const lastStatement = effectBodyStatements[effectBodyStatements.length - 1];
+  if (lastStatement?.type !== "ReturnStatement") return false;
+  const returnedValue = lastStatement.argument;
+  if (!returnedValue) return false;
+
+  if (
+    boundUnsubscribeName &&
+    returnedValue.type === "Identifier" &&
+    returnedValue.name === boundUnsubscribeName
+  ) {
+    return true;
+  }
+
+  if (
+    returnedValue.type === "ArrowFunctionExpression" ||
+    returnedValue.type === "FunctionExpression"
+  ) {
+    let didReleaseSubscription = false;
+    walkAst(returnedValue, (child: EsTreeNode) => {
+      if (didReleaseSubscription) return;
+      if (child.type !== "CallExpression") return;
+
+      if (
+        boundUnsubscribeName &&
+        child.callee?.type === "Identifier" &&
+        child.callee.name === boundUnsubscribeName
+      ) {
+        didReleaseSubscription = true;
+        return;
+      }
+
+      if (
+        child.callee?.type === "MemberExpression" &&
+        child.callee.property?.type === "Identifier" &&
+        UNSUBSCRIPTION_METHOD_NAMES.has(child.callee.property.name)
+      ) {
+        didReleaseSubscription = true;
+      }
+    });
+    return didReleaseSubscription;
+  }
+
+  return false;
+};
+
+export const preferUseSyncExternalStore: Rule = {
+  create: (context: RuleContext) => {
+    const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
+      if (!componentBody || componentBody.type !== "BlockStatement") return;
+
+      const useStateBindings = collectUseStateBindings(componentBody);
+      if (useStateBindings.length === 0) return;
+
+      const useStateInitializerByValueName = new Map<string, EsTreeNode>();
+      for (const binding of useStateBindings) {
+        const useStateCall = binding.declarator.init;
+        const initializerArgument = useStateCall?.arguments?.[0];
+        if (!initializerArgument) continue;
+        // HACK: useState(() => getSnapshot()) — unwrap the lazy
+        // initializer so the structural match against the
+        // subscribe-handler's setter argument still resolves.
+        if (
+          (initializerArgument.type === "ArrowFunctionExpression" ||
+            initializerArgument.type === "FunctionExpression") &&
+          initializerArgument.body?.type !== "BlockStatement"
+        ) {
+          useStateInitializerByValueName.set(binding.valueName, initializerArgument.body);
+        } else {
+          useStateInitializerByValueName.set(binding.valueName, initializerArgument);
+        }
+      }
+
+      const setterNameToValueName = new Map<string, string>();
+      for (const binding of useStateBindings) {
+        setterNameToValueName.set(binding.setterName, binding.valueName);
+      }
+
+      for (const effectCall of findUseEffectsInComponent(componentBody)) {
+        if ((effectCall.arguments?.length ?? 0) < 2) continue;
+        const depsNode = effectCall.arguments[1];
+        if (depsNode.type !== "ArrayExpression") continue;
+        if ((depsNode.elements?.length ?? 0) !== 0) continue;
+
+        const callback = getEffectCallback(effectCall);
+        if (!callback || callback.body?.type !== "BlockStatement") continue;
+        const effectBodyStatements = callback.body.body ?? [];
+        if (effectBodyStatements.length < 2) continue;
+
+        const subscription = findSubscriptionCall(effectBodyStatements);
+        if (!subscription) continue;
+
+        const handler = getSubscriptionHandlerArgument(subscription.call, effectBodyStatements);
+        if (!handler) continue;
+
+        const setterPayload = getSingleSetterCallFromHandler(handler);
+        if (!setterPayload) continue;
+
+        const valueName = setterNameToValueName.get(setterPayload.setterName);
+        if (!valueName) continue;
+
+        const useStateInitializer = useStateInitializerByValueName.get(valueName);
+        if (!useStateInitializer) continue;
+
+        if (!areExpressionsStructurallyEqual(useStateInitializer, setterPayload.setterArgument)) {
+          continue;
+        }
+
+        if (!cleanupReleasesSubscription(effectBodyStatements, subscription.boundUnsubscribeName)) {
+          continue;
+        }
+
+        const matchingBinding = useStateBindings.find((binding) => binding.valueName === valueName);
+        context.report({
+          node: matchingBinding?.declarator ?? effectCall,
+          message: `useState "${valueName}" is synchronized with an external store via useEffect — replace this useState + useEffect pair with useSyncExternalStore(subscribe, getSnapshot) to avoid tearing during concurrent renders`,
         });
       }
     };

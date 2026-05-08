@@ -46,6 +46,57 @@ export const isMemberProperty = (node: EsTreeNode, propertyName: string): boolea
   node.property?.type === "Identifier" &&
   node.property.name === propertyName;
 
+// HACK: walk a MemberExpression chain (computed or not) down to the
+// underlying root identifier. `state.nested.items` → "state",
+// `items[0]` → "items". Returns null if the chain bottoms out at
+// anything other than a plain Identifier (e.g. a CallExpression,
+// `this`, etc.). Bare Identifiers also resolve to themselves.
+export const getRootIdentifierName = (node: EsTreeNode | undefined | null): string | null => {
+  if (!node) return null;
+  if (node.type === "Identifier") return node.name;
+  let cursor: EsTreeNode | undefined = node;
+  while (cursor?.type === "MemberExpression") {
+    cursor = cursor.object;
+  }
+  return cursor?.type === "Identifier" ? cursor.name : null;
+};
+
+// HACK: structural equality for "value-shaped" expressions used by
+// detectors that need to assert two reads of the same external value
+// (e.g. `prefer-use-sync-external-store` checks that the
+// `useState(getSnapshot())` initializer matches the
+// `setSnapshot(getSnapshot())` inside the subscribe handler).
+// Deliberately conservative — we only model Identifier / Literal /
+// MemberExpression / CallExpression because any other shape
+// (assignments, ternaries, template strings) shouldn't be relied on
+// for a "same external store read" claim.
+export const areExpressionsStructurallyEqual = (
+  a: EsTreeNode | null | undefined,
+  b: EsTreeNode | null | undefined,
+): boolean => {
+  if (!a || !b) return a === b;
+  if (a.type !== b.type) return false;
+  if (a.type === "Identifier") return a.name === b.name;
+  if (a.type === "Literal") return a.value === b.value;
+  if (a.type === "MemberExpression") {
+    if (a.computed !== b.computed) return false;
+    return (
+      areExpressionsStructurallyEqual(a.object, b.object) &&
+      areExpressionsStructurallyEqual(a.property, b.property)
+    );
+  }
+  if (a.type === "CallExpression") {
+    if (!areExpressionsStructurallyEqual(a.callee, b.callee)) return false;
+    const argumentsA = a.arguments ?? [];
+    const argumentsB = b.arguments ?? [];
+    if (argumentsA.length !== argumentsB.length) return false;
+    return argumentsA.every((argument: EsTreeNode, index: number) =>
+      areExpressionsStructurallyEqual(argument, argumentsB[index]),
+    );
+  }
+  return false;
+};
+
 export const getEffectCallback = (node: EsTreeNode): EsTreeNode | null => {
   if (!node.arguments?.length) return null;
   const callback = node.arguments[0];

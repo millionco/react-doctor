@@ -163,6 +163,144 @@ describe("issue #144: inline suppressions — block comment forms", () => {
   });
 });
 
+describe("issue #158: disable-next-line covers multi-line JSX opening tags", () => {
+  it("suppresses an attribute-line diagnostic when the comment sits above the JSX opener", () => {
+    const filtered = runFilter(
+      "jsx-multiline-opener-line-comment",
+      `// react-doctor-disable-next-line react-doctor/no-derived-state-effect\n` +
+        `<li\n` +
+        `  key={"x"}\n` +
+        `  role="button"\n` +
+        `>\n` +
+        `</li>\n`,
+      [baseDiagnostic({ line: 3 })],
+    );
+    expect(filtered).toHaveLength(0);
+  });
+
+  it("works with the JSX block-comment form `{/* … */}` above the opener", () => {
+    const filtered = runFilter(
+      "jsx-multiline-opener-block-comment",
+      `<>\n` +
+        `  {/* react-doctor-disable-next-line react-doctor/no-derived-state-effect */}\n` +
+        `  <li\n` +
+        `    key={"x"}\n` +
+        `  >\n` +
+        `  </li>\n` +
+        `</>\n`,
+      [baseDiagnostic({ line: 4 })],
+    );
+    expect(filtered).toHaveLength(0);
+  });
+
+  it("does NOT extend coverage to children inside the element body (only to the opening tag)", () => {
+    const filtered = runFilter(
+      "jsx-multiline-opener-children-not-covered",
+      `// react-doctor-disable-next-line react-doctor/no-derived-state-effect\n` +
+        `<li\n` +
+        `  key={"x"}\n` +
+        `>\n` +
+        `  text\n` +
+        `</li>\n`,
+      [baseDiagnostic({ line: 5 })],
+    );
+    expect(filtered).toHaveLength(1);
+  });
+
+  it("ignores `>` characters inside `{...}` expressions when finding the opener's close", () => {
+    const filtered = runFilter(
+      "jsx-multiline-opener-with-expression",
+      `// react-doctor-disable-next-line react-doctor/no-derived-state-effect\n` +
+        `<Banner\n` +
+        `  show={count > 0}\n` +
+        `  onClick={() => doStuff()}\n` +
+        `/>\n`,
+      [baseDiagnostic({ line: 3 })],
+    );
+    expect(filtered).toHaveLength(0);
+  });
+
+  it("still suppresses when the comment sits inside the opener attributes (issue #144 form)", () => {
+    const filtered = runFilter(
+      "jsx-comment-inside-opener",
+      `<li\n` +
+        `  {/* react-doctor-disable-next-line react-doctor/no-derived-state-effect */}\n` +
+        `  key={"x"}\n` +
+        `>\n` +
+        `</li>\n`,
+      [baseDiagnostic({ line: 3 })],
+    );
+    expect(filtered).toHaveLength(0);
+  });
+
+  it("does NOT suppress when the `<Tag` lives in a `//` line comment above the diagnostic", () => {
+    const filtered = runFilter(
+      "jsx-fake-opener-line-comment",
+      `// react-doctor-disable-next-line react-doctor/no-derived-state-effect\n` +
+        `// docs example: <Foo bar={x} />\n` +
+        `if (x > 1) doStuff();\n`,
+      [baseDiagnostic({ line: 3 })],
+    );
+    expect(filtered).toHaveLength(1);
+  });
+
+  it("recognizes generic-typed JSX components (`<List<Item>`) so attribute-line diagnostics still suppress", () => {
+    const filtered = runFilter(
+      "jsx-multiline-generic-component",
+      `// react-doctor-disable-next-line react-doctor/no-derived-state-effect\n` +
+        `<List<Item>\n` +
+        `  data={items}\n` +
+        `/>\n`,
+      [baseDiagnostic({ line: 3 })],
+    );
+    expect(filtered).toHaveLength(0);
+  });
+});
+
+describe("issue #159: stacked disable-next-line comments", () => {
+  it("two stacked single-rule comments suppress two co-firing rules on the next line", () => {
+    const filtered = runFilter(
+      "stacked-two-rules",
+      `// react-doctor-disable-next-line react-doctor/no-derived-state-effect\n` +
+        `// react-doctor-disable-next-line react-doctor/no-fetch-in-effect\n` +
+        `const x = 1;\n`,
+      [
+        baseDiagnostic({ rule: "no-derived-state-effect", line: 3 }),
+        baseDiagnostic({ rule: "no-fetch-in-effect", line: 3 }),
+      ],
+    );
+    expect(filtered).toHaveLength(0);
+  });
+
+  it("three stacked single-rule comments all apply", () => {
+    const filtered = runFilter(
+      "stacked-three-rules",
+      `// react-doctor-disable-next-line react-doctor/no-derived-state-effect\n` +
+        `// react-doctor-disable-next-line react-doctor/no-fetch-in-effect\n` +
+        `// react-doctor-disable-next-line react-doctor/no-cascading-set-state\n` +
+        `useEffect(() => {});\n`,
+      [
+        baseDiagnostic({ rule: "no-derived-state-effect", line: 4 }),
+        baseDiagnostic({ rule: "no-fetch-in-effect", line: 4 }),
+        baseDiagnostic({ rule: "no-cascading-set-state", line: 4 }),
+      ],
+    );
+    expect(filtered).toHaveLength(0);
+  });
+
+  it("a code line between stacked comments breaks the chain", () => {
+    const filtered = runFilter(
+      "stacked-broken-chain",
+      `// react-doctor-disable-next-line react-doctor/no-derived-state-effect\n` +
+        `const intervening = 1;\n` +
+        `// react-doctor-disable-next-line react-doctor/no-fetch-in-effect\n` +
+        `const x = 1;\n`,
+      [baseDiagnostic({ rule: "no-derived-state-effect", line: 4 })],
+    );
+    expect(filtered).toHaveLength(1);
+  });
+});
+
 describe("issue #72: inline suppressions — boundary safety", () => {
   it("disable-line on line N does NOT suppress diagnostics on line N+1", () => {
     const filtered = runFilter(

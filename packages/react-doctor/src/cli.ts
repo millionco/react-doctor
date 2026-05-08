@@ -2,7 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import { CANONICAL_GITHUB_URL } from "./constants.js";
 import { runInstallSkill } from "./install-skill.js";
 import { scan } from "./scan.js";
@@ -25,8 +25,11 @@ import { highlighter } from "./utils/highlighter.js";
 import { loadConfig } from "./utils/load-config.js";
 import { logger, setLoggerSilent } from "./utils/logger.js";
 import { encodeAnnotationProperty, encodeAnnotationMessage } from "./utils/annotation-encoding.js";
+import { findOwningProjectDirectory } from "./utils/find-owning-project.js";
+import { parseFileLineArgument } from "./utils/parse-file-line-argument.js";
 import { prompts } from "./utils/prompts.js";
 import { selectProjects } from "./utils/select-projects.js";
+import { toRelativePath } from "./utils/to-relative-path.js";
 
 const VERSION = process.env.VERSION ?? "0.0.0";
 
@@ -45,6 +48,8 @@ interface CliFlags {
   respectInlineDisables: boolean;
   project?: string;
   diff?: boolean | string;
+  explain?: string;
+  why?: string;
   failOn: string;
 }
 
@@ -255,6 +260,82 @@ const resolveDiffMode = async (
   return Boolean(shouldScanChangedOnly);
 };
 
+interface ExplainContext {
+  resolvedDirectory: string;
+  userConfig: ReactDoctorConfig | null;
+  scanOptions: ScanOptions;
+  projectFlag: string | undefined;
+}
+
+const colorizeRuleByDiagnostic = (text: string, severity: Diagnostic["severity"]): string =>
+  severity === "error" ? highlighter.error(text) : highlighter.warn(text);
+
+const runExplain = async (fileLineArgument: string, context: ExplainContext): Promise<void> => {
+  const { filePath, line } = parseFileLineArgument(fileLineArgument);
+  const targetDirectory = await resolveExplainTargetDirectory(filePath, context);
+
+  const scanResult = await scan(targetDirectory, {
+    ...context.scanOptions,
+    silent: true,
+    offline: true,
+    configOverride: context.userConfig,
+  });
+
+  const requestedRelativePath = toRelativePath(filePath, targetDirectory);
+  const matchingDiagnostics = scanResult.diagnostics.filter(
+    (diagnostic) =>
+      diagnostic.line === line &&
+      toRelativePath(diagnostic.filePath, targetDirectory) === requestedRelativePath,
+  );
+
+  if (matchingDiagnostics.length === 0) {
+    logger.log(`No react-doctor diagnostics at ${filePath}:${line}.`);
+    return;
+  }
+
+  for (const diagnostic of matchingDiagnostics) {
+    const ruleIdentifier = `${diagnostic.plugin}/${diagnostic.rule}`;
+    const severitySymbol = diagnostic.severity === "error" ? "✗" : "⚠";
+    const colorizedRule = colorizeRuleByDiagnostic(ruleIdentifier, diagnostic.severity);
+    const severityLabel = colorizeRuleByDiagnostic(diagnostic.severity, diagnostic.severity);
+    logger.log(
+      `${severitySymbol} ${colorizedRule} ${highlighter.dim(`(${severityLabel})`)} — ${diagnostic.message}`,
+    );
+    if (diagnostic.category) logger.dim(`  Category: ${diagnostic.category}`);
+    if (diagnostic.help) logger.dim(`  ${diagnostic.help}`);
+    if (diagnostic.suppressionHint) {
+      logger.break();
+      logger.log(`  Suppression diagnosis: ${diagnostic.suppressionHint}`);
+    } else {
+      logger.dim(
+        "  No nearby react-doctor-disable-next-line comment was detected — add one immediately above this line to suppress.",
+      );
+    }
+    logger.break();
+  }
+};
+
+const resolveExplainTargetDirectory = async (
+  filePath: string,
+  context: ExplainContext,
+): Promise<string> => {
+  if (context.projectFlag) {
+    const matchedDirectories = await selectProjects(
+      context.resolvedDirectory,
+      context.projectFlag,
+      true,
+    );
+    if (matchedDirectories.length === 0) return context.resolvedDirectory;
+    if (matchedDirectories.length > 1) {
+      throw new Error(
+        `--explain takes a single project; --project resolved to ${matchedDirectories.length} projects.`,
+      );
+    }
+    return matchedDirectories[0];
+  }
+  return findOwningProjectDirectory(context.resolvedDirectory, filePath);
+};
+
 const validateModeFlags = (flags: CliFlags): void => {
   // HACK: use the same coercion as resolveEffectiveDiff so a bare
   // `--diff false` (or `--diff ""`) is treated as "no diff" and doesn't
@@ -276,6 +357,18 @@ const validateModeFlags = (flags: CliFlags): void => {
   }
   if (flags.annotations && (flags.json || flags.score)) {
     throw new Error("--annotations cannot be combined with --json or --score.");
+  }
+  if (flags.explain !== undefined && flags.why !== undefined) {
+    throw new Error("Use --explain or --why, not both — they're aliases of the same flag.");
+  }
+  const explainArgument = flags.explain ?? flags.why;
+  if (
+    explainArgument !== undefined &&
+    (flags.json || flags.score || flags.annotations || flags.staged)
+  ) {
+    throw new Error(
+      "--explain cannot be combined with --json, --score, --annotations, or --staged.",
+    );
   }
 };
 
@@ -304,6 +397,11 @@ const program = new Command()
   .option("--fail-on <level>", "exit with error code on diagnostics: error, warning, none", "error")
   .option("--annotations", "output diagnostics as GitHub Actions annotations")
   .option(
+    "--explain <file:line>",
+    "diagnose why a rule fired or why a suppression didn't apply at a specific location",
+  )
+  .addOption(new Option("--why <file:line>", "alias for --explain").hideHelp())
+  .option(
     "--respect-inline-disables",
     "respect inline `// eslint-disable*` / `// oxlint-disable*` comments (default)",
   )
@@ -331,6 +429,17 @@ const program = new Command()
       validateModeFlags(flags);
 
       const userConfig = loadConfig(resolvedDirectory);
+
+      const explainArgument = flags.explain ?? flags.why;
+      if (explainArgument !== undefined) {
+        await runExplain(explainArgument, {
+          resolvedDirectory,
+          userConfig,
+          scanOptions: resolveCliScanOptions(flags, userConfig, program),
+          projectFlag: flags.project,
+        });
+        return;
+      }
 
       if (!isQuiet) {
         logger.log(`react-doctor v${VERSION}`);

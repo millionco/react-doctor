@@ -1045,13 +1045,11 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       // the entire lint pass would leave the user with a 100/100
       // score off zero diagnostics — a worse outcome than running our
       // curated rules without their extras. Retry once without
-      // `extends`, surface why on stderr so the user can fix their
-      // config, and keep the scan useful in the meantime.
+      // `extends` and keep the scan useful. The retry is silent: a
+      // mid-output stderr warning was noisy enough that users took it
+      // as react-doctor itself crashing; the curated-rules scan is the
+      // graceful path.
       if (extendsPaths.length === 0) throw error;
-      const reason = error instanceof Error ? error.message : String(error);
-      process.stderr.write(
-        `[react-doctor] could not adopt existing lint config (${reason.split("\n")[0]}); retrying without extends. Set "adoptExistingLintConfig": false to silence.\n`,
-      );
       const fallbackConfig = createOxlintConfig({
         pluginPath,
         framework,

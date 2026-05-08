@@ -950,9 +950,9 @@ describe("runOxlint", () => {
     it("falls back to a curated-rules-only scan when the user's config breaks oxlint", async () => {
       const stderrChunks: string[] = [];
       const originalStderrWrite = process.stderr.write.bind(process.stderr);
-      // HACK: capture the retry warning we write to stderr so we can
-      // assert the user-facing message; vitest's spy helpers also work
-      // but a direct override keeps the assertion shape readable.
+      // HACK: capture stderr so we can assert the silent-retry contract —
+      // a previous build wrote a "could not adopt existing lint config"
+      // warning here, which users mistook for react-doctor crashing.
       process.stderr.write = ((chunk: string | Uint8Array) => {
         stderrChunks.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf-8"));
         return true;
@@ -979,8 +979,8 @@ describe("runOxlint", () => {
       expect(didResolve).toBe(true);
 
       const stderrOutput = stderrChunks.join("");
-      expect(stderrOutput).toContain("could not adopt existing lint config");
-      expect(stderrOutput).toContain("retrying without extends");
+      expect(stderrOutput).not.toContain("could not adopt existing lint config");
+      expect(stderrOutput).not.toContain("retrying without extends");
     });
   });
 });

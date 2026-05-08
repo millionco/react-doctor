@@ -386,6 +386,64 @@ export const Computed = () => {
     expect(hits).toHaveLength(0);
   });
 
+  it("flags `undefined !== state` (reversed sentinel ordering, Bugbot #155 round 2)", async () => {
+    // Regression: \`undefined\` is parsed as Identifier, not Literal.
+    // Naive "first Identifier wins" picked \`"undefined"\` for
+    // reversed-ordering BinaryExpressions and silently dropped the
+    // violation. Prefer the non-sentinel side.
+    const projectDir = setupReactProject(tempRoot, "no-event-trigger-state-reversed-undefined", {
+      files: {
+        "src/Submit.tsx": `import { useEffect, useState } from "react";
+
+declare const post: (url: string, body: unknown) => void;
+
+export const Submit = () => {
+  const [pendingPayload, setPendingPayload] = useState<{ id: number } | null>(null);
+  useEffect(() => {
+    if (undefined !== pendingPayload) {
+      post("/api/submit", pendingPayload);
+    }
+  }, [pendingPayload]);
+  return <button onClick={() => setPendingPayload({ id: 1 })}>Submit</button>;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "no-event-trigger-state");
+    expect(hits.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("does NOT double-warn with no-effect-event-handler on the bare-truthy state shape (Bugbot #155 round 2)", async () => {
+    // Regression: \`if (destination) navigate(destination)\` previously
+    // triggered BOTH no-effect-event-handler and no-event-trigger-state.
+    // The former now defers to the latter when the dep is a useState
+    // value.
+    const projectDir = setupReactProject(tempRoot, "no-event-trigger-state-no-double-warn", {
+      files: {
+        "src/Wizard.tsx": `import { useEffect, useState } from "react";
+
+declare const navigate: (path: string) => void;
+
+export const Wizard = () => {
+  const [destination, setDestination] = useState<string | null>(null);
+  useEffect(() => {
+    if (destination) {
+      navigate(destination);
+    }
+  }, [destination]);
+  return <button onClick={() => setDestination("/next")}>Next</button>;
+};
+`,
+      },
+    });
+
+    const triggerHits = await collectRuleHits(projectDir, "no-event-trigger-state");
+    const handlerHits = await collectRuleHits(projectDir, "no-effect-event-handler");
+    expect(triggerHits.length).toBe(1);
+    expect(handlerHits.length).toBe(0);
+  });
+
   it("does NOT flag dual-purpose state that's also read in render (Bugbot #155)", async () => {
     // Regression: \`query\` is BOTH the controlled-input value AND the
     // effect trigger. We can't tell the user to "delete the state"

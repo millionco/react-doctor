@@ -125,39 +125,106 @@ export const noCascadingSetState: Rule = {
 };
 
 export const noEffectEventHandler: Rule = {
-  create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNode) {
-      if (!isHookCall(node, EFFECT_HOOK_NAMES) || (node.arguments?.length ?? 0) < 2) return;
-
-      const callback = getEffectCallback(node);
-      if (!callback) return;
-
-      const depsNode = node.arguments[1];
-      if (depsNode.type !== "ArrayExpression" || !depsNode.elements?.length) return;
-
-      const dependencyNames = new Set(
-        depsNode.elements
-          .filter((element: EsTreeNode) => element?.type === "Identifier")
-          .map((element: EsTreeNode) => element.name),
-      );
-
-      const statements = getCallbackStatements(callback);
-      if (statements.length !== 1) return;
-
-      const soleStatement = statements[0];
-      if (
-        soleStatement.type === "IfStatement" &&
-        soleStatement.test?.type === "Identifier" &&
-        dependencyNames.has(soleStatement.test.name)
-      ) {
-        context.report({
-          node,
-          message:
-            "useEffect simulating an event handler — move logic to an actual event handler instead",
-        });
+  create: (context: RuleContext) => {
+    // HACK: track per-component useState value names so we can defer
+    // to noEventTriggerState when the trigger guard is a state-typed
+    // dep. Otherwise both rules report on the same line with
+    // overlapping but differently-worded messages, doubling diagnostic
+    // noise on the canonical state-trigger shape.
+    const useStateValueNamesStack: Array<Set<string>> = [];
+    const collectUseStateValueNames = (componentBody: EsTreeNode): Set<string> => {
+      const stateNames = new Set<string>();
+      if (componentBody?.type !== "BlockStatement") return stateNames;
+      for (const statement of componentBody.body ?? []) {
+        if (statement.type !== "VariableDeclaration") continue;
+        for (const declarator of statement.declarations ?? []) {
+          if (declarator.id?.type !== "ArrayPattern") continue;
+          if (declarator.init?.type !== "CallExpression") continue;
+          if (!isHookCall(declarator.init, "useState")) continue;
+          const valueElement = declarator.id.elements?.[0];
+          if (valueElement?.type === "Identifier") stateNames.add(valueElement.name);
+        }
       }
-    },
-  }),
+      return stateNames;
+    };
+    const isStateValueName = (name: string): boolean => {
+      for (let frameIndex = useStateValueNamesStack.length - 1; frameIndex >= 0; frameIndex--) {
+        if (useStateValueNamesStack[frameIndex].has(name)) return true;
+      }
+      return false;
+    };
+
+    return {
+      FunctionDeclaration(node: EsTreeNode) {
+        if (!node.id?.name || !isUppercaseName(node.id.name)) {
+          useStateValueNamesStack.push(new Set());
+          return;
+        }
+        useStateValueNamesStack.push(collectUseStateValueNames(node.body));
+      },
+      "FunctionDeclaration:exit"() {
+        useStateValueNamesStack.pop();
+      },
+      VariableDeclarator(node: EsTreeNode) {
+        if (isComponentAssignment(node)) {
+          useStateValueNamesStack.push(collectUseStateValueNames(node.init?.body));
+          return;
+        }
+        if (
+          node.init?.type === "ArrowFunctionExpression" ||
+          node.init?.type === "FunctionExpression"
+        ) {
+          useStateValueNamesStack.push(new Set());
+        }
+      },
+      "VariableDeclarator:exit"(node: EsTreeNode) {
+        if (isComponentAssignment(node)) {
+          useStateValueNamesStack.pop();
+          return;
+        }
+        if (
+          node.init?.type === "ArrowFunctionExpression" ||
+          node.init?.type === "FunctionExpression"
+        ) {
+          useStateValueNamesStack.pop();
+        }
+      },
+      CallExpression(node: EsTreeNode) {
+        if (!isHookCall(node, EFFECT_HOOK_NAMES) || (node.arguments?.length ?? 0) < 2) return;
+
+        const callback = getEffectCallback(node);
+        if (!callback) return;
+
+        const depsNode = node.arguments[1];
+        if (depsNode.type !== "ArrayExpression" || !depsNode.elements?.length) return;
+
+        const dependencyNames = new Set(
+          depsNode.elements
+            .filter((element: EsTreeNode) => element?.type === "Identifier")
+            .map((element: EsTreeNode) => element.name),
+        );
+
+        const statements = getCallbackStatements(callback);
+        if (statements.length !== 1) return;
+
+        const soleStatement = statements[0];
+        if (
+          soleStatement.type === "IfStatement" &&
+          soleStatement.test?.type === "Identifier" &&
+          dependencyNames.has(soleStatement.test.name)
+        ) {
+          // Defer to noEventTriggerState — it produces a more
+          // specific diagnostic when the trigger is a useState value.
+          if (isStateValueName(soleStatement.test.name)) return;
+          context.report({
+            node,
+            message:
+              "useEffect simulating an event handler — move logic to an actual event handler instead",
+          });
+        }
+      },
+    };
+  },
 };
 
 export const noDerivedUseState: Rule = {
@@ -1187,14 +1254,27 @@ export const noSetStateInRender: Rule = {
 // click; (4) is the strongest signal that the state exists *only* to
 // schedule the effect, distinguishing this from §5 (event-shared logic
 // triggered by props) which already has its own rule.
+// HACK: in JS, `undefined` is parsed as an Identifier (not a Literal
+// like `null`). For `x !== undefined`, both sides of the
+// BinaryExpression are Identifiers, so a naive "first Identifier
+// wins" pick can return `"undefined"` instead of the trigger state
+// name — silently dropping the violation for the reversed
+// (`undefined !== x`) ordering. Skip the `undefined` / `null`
+// sentinel side so the actual state Identifier is what we return.
+const SENTINEL_IDENTIFIER_NAMES = new Set(["undefined", "NaN", "null"]);
+
+const isSentinelIdentifier = (node: EsTreeNode): boolean =>
+  node?.type === "Identifier" && SENTINEL_IDENTIFIER_NAMES.has(node.name);
+
 const getTriggerGuardRootName = (testNode: EsTreeNode): string | null => {
   if (!testNode) return null;
   if (testNode.type === "Identifier") return testNode.name;
   if (testNode.type === "BinaryExpression") {
     if (!["!==", "===", "!=", "=="].includes(testNode.operator)) return null;
-    const sides = [testNode.left, testNode.right];
-    for (const side of sides) {
-      if (side?.type === "Identifier") return side.name;
+    for (const side of [testNode.left, testNode.right]) {
+      if (side?.type === "Identifier" && !isSentinelIdentifier(side)) {
+        return side.name;
+      }
     }
     return null;
   }

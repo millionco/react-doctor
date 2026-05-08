@@ -25,6 +25,7 @@ import { highlighter } from "./utils/highlighter.js";
 import { loadConfig } from "./utils/load-config.js";
 import { logger, setLoggerSilent } from "./utils/logger.js";
 import { encodeAnnotationProperty, encodeAnnotationMessage } from "./utils/annotation-encoding.js";
+import { findOwningProjectDirectory } from "./utils/find-owning-project.js";
 import { parseFileLineArgument } from "./utils/parse-file-line-argument.js";
 import { prompts } from "./utils/prompts.js";
 import { selectProjects } from "./utils/select-projects.js";
@@ -259,23 +260,32 @@ const resolveDiffMode = async (
   return Boolean(shouldScanChangedOnly);
 };
 
-const runExplain = async (
-  fileLineArgument: string,
-  resolvedDirectory: string,
-  userConfig: ReactDoctorConfig | null,
-): Promise<void> => {
+interface ExplainContext {
+  resolvedDirectory: string;
+  userConfig: ReactDoctorConfig | null;
+  scanOptions: ScanOptions;
+  projectFlag: string | undefined;
+}
+
+const colorizeRuleByDiagnostic = (text: string, severity: Diagnostic["severity"]): string =>
+  severity === "error" ? highlighter.error(text) : highlighter.warn(text);
+
+const runExplain = async (fileLineArgument: string, context: ExplainContext): Promise<void> => {
   const { filePath, line } = parseFileLineArgument(fileLineArgument);
-  const scanResult = await scan(resolvedDirectory, {
+  const targetDirectory = await resolveExplainTargetDirectory(filePath, context);
+
+  const scanResult = await scan(targetDirectory, {
+    ...context.scanOptions,
     silent: true,
     offline: true,
-    configOverride: userConfig,
+    configOverride: context.userConfig,
   });
 
-  const requestedRelativePath = toRelativePath(filePath, resolvedDirectory);
+  const requestedRelativePath = toRelativePath(filePath, targetDirectory);
   const matchingDiagnostics = scanResult.diagnostics.filter(
     (diagnostic) =>
       diagnostic.line === line &&
-      toRelativePath(diagnostic.filePath, resolvedDirectory) === requestedRelativePath,
+      toRelativePath(diagnostic.filePath, targetDirectory) === requestedRelativePath,
   );
 
   if (matchingDiagnostics.length === 0) {
@@ -285,7 +295,13 @@ const runExplain = async (
 
   for (const diagnostic of matchingDiagnostics) {
     const ruleIdentifier = `${diagnostic.plugin}/${diagnostic.rule}`;
-    logger.log(`${highlighter.error(ruleIdentifier)} — ${diagnostic.message}`);
+    const severitySymbol = diagnostic.severity === "error" ? "✗" : "⚠";
+    const colorizedRule = colorizeRuleByDiagnostic(ruleIdentifier, diagnostic.severity);
+    const severityLabel = colorizeRuleByDiagnostic(diagnostic.severity, diagnostic.severity);
+    logger.log(
+      `${severitySymbol} ${colorizedRule} ${highlighter.dim(`(${severityLabel})`)} — ${diagnostic.message}`,
+    );
+    if (diagnostic.category) logger.dim(`  Category: ${diagnostic.category}`);
     if (diagnostic.help) logger.dim(`  ${diagnostic.help}`);
     if (diagnostic.suppressionHint) {
       logger.break();
@@ -297,6 +313,27 @@ const runExplain = async (
     }
     logger.break();
   }
+};
+
+const resolveExplainTargetDirectory = async (
+  filePath: string,
+  context: ExplainContext,
+): Promise<string> => {
+  if (context.projectFlag) {
+    const matchedDirectories = await selectProjects(
+      context.resolvedDirectory,
+      context.projectFlag,
+      true,
+    );
+    if (matchedDirectories.length === 0) return context.resolvedDirectory;
+    if (matchedDirectories.length > 1) {
+      throw new Error(
+        `--explain takes a single project; --project resolved to ${matchedDirectories.length} projects.`,
+      );
+    }
+    return matchedDirectories[0];
+  }
+  return findOwningProjectDirectory(context.resolvedDirectory, filePath);
 };
 
 const validateModeFlags = (flags: CliFlags): void => {
@@ -395,7 +432,12 @@ const program = new Command()
 
       const explainArgument = flags.explain ?? flags.why;
       if (explainArgument !== undefined) {
-        await runExplain(explainArgument, resolvedDirectory, userConfig);
+        await runExplain(explainArgument, {
+          resolvedDirectory,
+          userConfig,
+          scanOptions: resolveCliScanOptions(flags, userConfig, program),
+          projectFlag: flags.project,
+        });
         return;
       }
 

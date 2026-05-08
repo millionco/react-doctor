@@ -257,6 +257,57 @@ describe("filterIgnoredDiagnostics", () => {
     expect(filtered[0].filePath).toBe("src/modern/B.tsx");
   });
 
+  it("ignore.overrides emits stderr warnings for malformed entries instead of silently treating rules-as-string as 'ignore everything'", () => {
+    const stderrWrites: string[] = [];
+    const originalWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = ((chunk: string | Uint8Array): boolean => {
+      stderrWrites.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf-8"));
+      return true;
+    }) as typeof process.stderr.write;
+
+    try {
+      const diagnostics = [
+        createDiagnostic({
+          plugin: "react-doctor",
+          rule: "no-array-index-as-key",
+          filePath: "components/diff/A.tsx",
+        }),
+        createDiagnostic({
+          plugin: "react-doctor",
+          rule: "no-cascading-set-state",
+          filePath: "components/diff/A.tsx",
+        }),
+      ];
+      const config: ReactDoctorConfig = {
+        ignore: {
+          overrides: [
+            {
+              files: ["components/diff/**"],
+              // @ts-expect-error: intentionally malformed for the validation test.
+              rules: "react-doctor/no-array-index-as-key",
+            },
+          ],
+        },
+      };
+
+      const filtered = filterIgnoredDiagnostics(
+        diagnostics,
+        config,
+        TEST_ROOT_DIRECTORY,
+        testReadFileLines,
+      );
+
+      const combinedStderr = stderrWrites.join("");
+      expect(combinedStderr).toContain("ignore.overrides[0].rules");
+      // Both diagnostics drop because the malformed entry was treated as
+      // "no rules listed" → suppress every rule for matched files. The
+      // warning above tells the user that's why.
+      expect(filtered).toHaveLength(0);
+    } finally {
+      process.stderr.write = originalWrite;
+    }
+  });
+
   it("ignore.overrides accepts multiple entries and combines them additively", () => {
     const diagnostics = [
       createDiagnostic({

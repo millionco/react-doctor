@@ -120,6 +120,8 @@ export const diagnose = async (
 
   const effectiveLint = options.lint ?? userConfig?.lint ?? true;
   const effectiveDeadCode = options.deadCode ?? userConfig?.deadCode ?? true;
+  const effectiveRespectInlineDisables =
+    options.respectInlineDisables ?? userConfig?.respectInlineDisables ?? true;
 
   const lintPromise = effectiveLint
     ? runOxlint({
@@ -130,8 +132,7 @@ export const diagnose = async (
         hasTanStackQuery: projectInfo.hasTanStackQuery,
         includePaths: lintIncludePaths,
         customRulesOnly: userConfig?.customRulesOnly ?? false,
-        respectInlineDisables:
-          options.respectInlineDisables ?? userConfig?.respectInlineDisables ?? true,
+        respectInlineDisables: effectiveRespectInlineDisables,
         adoptExistingLintConfig: userConfig?.adoptExistingLintConfig ?? true,
       }).catch((error: unknown) => {
         console.error("Lint failed:", error);
@@ -162,6 +163,7 @@ export const diagnose = async (
     resolvedDirectory,
     userConfig,
     readFileLinesSync,
+    { respectInlineDisables: effectiveRespectInlineDisables },
   );
   const elapsedMilliseconds = globalThis.performance.now() - startTime;
   const score = await calculateScore(diagnostics);

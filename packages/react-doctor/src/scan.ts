@@ -622,6 +622,7 @@ const runScan = async (
     directory,
     isDiffMode,
     userConfig,
+    respectInlineDisables: options.respectInlineDisables,
   });
 
   const elapsedMilliseconds = performance.now() - startTime;

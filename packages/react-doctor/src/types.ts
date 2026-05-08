@@ -205,8 +205,8 @@ export interface ReactDoctorConfig {
   share?: boolean;
   textComponents?: string[];
   /**
-   * Whether to respect inline `// eslint-disable*` / `// oxlint-disable*`
-   * comments in source files. Default: `true`.
+   * Whether to respect inline `// eslint-disable*`, `// oxlint-disable*`,
+   * and `// react-doctor-disable*` comments in source files. Default: `true`.
    *
    * File-level ignores (`.gitignore`, `.eslintignore`, `.oxlintignore`,
    * `.prettierignore`, `.gitattributes` `linguist-vendored` /

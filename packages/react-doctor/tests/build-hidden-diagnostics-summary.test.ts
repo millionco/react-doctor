@@ -1,19 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
-import type { Diagnostic } from "../src/types.js";
 import { buildHiddenDiagnosticsSummary } from "../src/utils/build-hidden-diagnostics-summary.js";
-
-const buildDiagnostic = (overrides: Partial<Diagnostic> = {}): Diagnostic => ({
-  filePath: "src/app.tsx",
-  plugin: "react-doctor",
-  rule: "test-rule",
-  severity: "warning",
-  message: "x",
-  help: "",
-  line: 1,
-  column: 1,
-  category: "Test",
-  ...overrides,
-});
+import { buildDiagnostic } from "./regressions/_helpers.js";
 
 describe("buildHiddenDiagnosticsSummary", () => {
   it("returns an empty array when no diagnostics are hidden", () => {

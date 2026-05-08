@@ -634,48 +634,50 @@ const NONDETERMINISTIC_RENDER_PATTERNS: Array<{
 }> = [
   {
     display: "new Date()",
-    matches: (n) =>
-      n.type === "NewExpression" && n.callee?.type === "Identifier" && n.callee.name === "Date",
+    matches: (node) =>
+      node.type === "NewExpression" &&
+      node.callee?.type === "Identifier" &&
+      node.callee.name === "Date",
   },
   {
     display: "Date.now()",
-    matches: (n) =>
-      n.type === "CallExpression" &&
-      n.callee?.type === "MemberExpression" &&
-      n.callee.object?.type === "Identifier" &&
-      n.callee.object.name === "Date" &&
-      n.callee.property?.type === "Identifier" &&
-      n.callee.property.name === "now",
+    matches: (node) =>
+      node.type === "CallExpression" &&
+      node.callee?.type === "MemberExpression" &&
+      node.callee.object?.type === "Identifier" &&
+      node.callee.object.name === "Date" &&
+      node.callee.property?.type === "Identifier" &&
+      node.callee.property.name === "now",
   },
   {
     display: "Math.random()",
-    matches: (n) =>
-      n.type === "CallExpression" &&
-      n.callee?.type === "MemberExpression" &&
-      n.callee.object?.type === "Identifier" &&
-      n.callee.object.name === "Math" &&
-      n.callee.property?.type === "Identifier" &&
-      n.callee.property.name === "random",
+    matches: (node) =>
+      node.type === "CallExpression" &&
+      node.callee?.type === "MemberExpression" &&
+      node.callee.object?.type === "Identifier" &&
+      node.callee.object.name === "Math" &&
+      node.callee.property?.type === "Identifier" &&
+      node.callee.property.name === "random",
   },
   {
     display: "performance.now()",
-    matches: (n) =>
-      n.type === "CallExpression" &&
-      n.callee?.type === "MemberExpression" &&
-      n.callee.object?.type === "Identifier" &&
-      n.callee.object.name === "performance" &&
-      n.callee.property?.type === "Identifier" &&
-      n.callee.property.name === "now",
+    matches: (node) =>
+      node.type === "CallExpression" &&
+      node.callee?.type === "MemberExpression" &&
+      node.callee.object?.type === "Identifier" &&
+      node.callee.object.name === "performance" &&
+      node.callee.property?.type === "Identifier" &&
+      node.callee.property.name === "now",
   },
   {
     display: "crypto.randomUUID()",
-    matches: (n) =>
-      n.type === "CallExpression" &&
-      n.callee?.type === "MemberExpression" &&
-      n.callee.object?.type === "Identifier" &&
-      n.callee.object.name === "crypto" &&
-      n.callee.property?.type === "Identifier" &&
-      n.callee.property.name === "randomUUID",
+    matches: (node) =>
+      node.type === "CallExpression" &&
+      node.callee?.type === "MemberExpression" &&
+      node.callee.object?.type === "Identifier" &&
+      node.callee.object.name === "crypto" &&
+      node.callee.property?.type === "Identifier" &&
+      node.callee.property.name === "randomUUID",
   },
 ];
 

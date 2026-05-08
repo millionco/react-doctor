@@ -9,6 +9,16 @@ import {
 } from "./constants.js";
 import type { EsTreeNode, RuleVisitors } from "./types.js";
 
+interface ComponentPropStackTrackerCallbacks {
+  onComponentEnter?: (componentBody: EsTreeNode | undefined) => void;
+}
+
+interface ComponentPropStackTracker {
+  isPropName: (name: string) => boolean;
+  getCurrentPropNames: () => Set<string>;
+  visitors: RuleVisitors;
+}
+
 // HACK: AST is acyclic except for `parent` back-references, which we skip.
 // Visitors may return `false` to prune the subtree below `node` (e.g. to
 // stop walking into nested functions when collecting `await` expressions
@@ -383,4 +393,86 @@ export const extractDestructuredPropNames = (params: EsTreeNode[]): Set<string> 
     collectPatternNames(param, propNames);
   }
   return propNames;
+};
+
+// HACK: barrier-frame predicate shared by every rule that pushes an
+// empty stack frame on a non-component arrow / function-expression
+// VariableDeclarator so closed-over names from an outer component
+// don't leak into the helper's prop check.
+export const isFunctionLikeVariableDeclarator = (node: EsTreeNode): boolean => {
+  if (node.type !== "VariableDeclarator") return false;
+  return node.init?.type === "ArrowFunctionExpression" || node.init?.type === "FunctionExpression";
+};
+
+// HACK: every rule that walks "what props does the enclosing component
+// have?" needs the SAME prop-stack machinery — push the destructured
+// param set on FunctionDeclaration / VariableDeclarator entry, push
+// an empty barrier for non-component nested helpers (so closed-over
+// names don't leak in), pop on exit. Four rules previously inlined
+// near-identical copies of this — they now compose this tracker.
+//
+// `isPropName(name)` is the lookup form most rules want during a
+// CallExpression visit (returns false at the first barrier).
+//
+// `getCurrentPropNames()` returns a snapshot — useful when the rule
+// runs eagerly on component entry instead of deferring to a later
+// CallExpression visit.
+//
+// `onComponentEnter(body)` is invoked AFTER the prop set is pushed,
+// from inside the FunctionDeclaration / VariableDeclarator visitor —
+// rules that compute everything once per component (e.g. mirror-prop
+// detection) hook in here.
+export const createComponentPropStackTracker = (
+  callbacks?: ComponentPropStackTrackerCallbacks,
+): ComponentPropStackTracker => {
+  const propParamStack: Array<Set<string>> = [];
+
+  const isPropName = (name: string): boolean => {
+    for (let frameIndex = propParamStack.length - 1; frameIndex >= 0; frameIndex--) {
+      const frame = propParamStack[frameIndex];
+      if (frame.size === 0) return false;
+      if (frame.has(name)) return true;
+    }
+    return false;
+  };
+
+  const getCurrentPropNames = (): Set<string> => {
+    for (let frameIndex = propParamStack.length - 1; frameIndex >= 0; frameIndex--) {
+      const frame = propParamStack[frameIndex];
+      if (frame.size === 0) return new Set();
+      return frame;
+    }
+    return new Set();
+  };
+
+  const visitors: RuleVisitors = {
+    FunctionDeclaration(node: EsTreeNode) {
+      if (!node.id?.name || !isUppercaseName(node.id.name)) {
+        propParamStack.push(new Set());
+        return;
+      }
+      propParamStack.push(extractDestructuredPropNames(node.params ?? []));
+      callbacks?.onComponentEnter?.(node.body);
+    },
+    "FunctionDeclaration:exit"() {
+      propParamStack.pop();
+    },
+    VariableDeclarator(node: EsTreeNode) {
+      if (isComponentAssignment(node)) {
+        propParamStack.push(extractDestructuredPropNames(node.init?.params ?? []));
+        callbacks?.onComponentEnter?.(node.init?.body);
+        return;
+      }
+      if (isFunctionLikeVariableDeclarator(node)) {
+        propParamStack.push(new Set());
+      }
+    },
+    "VariableDeclarator:exit"(node: EsTreeNode) {
+      if (isComponentAssignment(node) || isFunctionLikeVariableDeclarator(node)) {
+        propParamStack.pop();
+      }
+    },
+  };
+
+  return { isPropName, getCurrentPropNames, visitors };
 };

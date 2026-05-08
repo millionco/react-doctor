@@ -1590,6 +1590,40 @@ export const Subscribe = () => {
     expect(hits).toHaveLength(0);
   });
 
+  it("recognizes the generic teardown vocabulary (`cleanup`, `dispose`, `destroy`, `teardown`) as a release call", async () => {
+    // The release-callee allowlist now lives in `constants.ts` as
+    // `CLEANUP_LIKE_RELEASE_CALLEE_NAMES`. Each of the generic
+    // teardown verbs satisfies the cleanup check on its own — no
+    // false positive on this shape.
+    for (const releaseName of ["cleanup", "dispose", "destroy", "teardown"]) {
+      const projectDir = setupReactProject(
+        tempRoot,
+        `effect-needs-cleanup-generic-teardown-${releaseName}`,
+        {
+          files: {
+            "src/Subscribe.tsx": `import { useEffect } from "react";
+
+declare const store: { subscribe: (handler: () => void) => { ${releaseName}: () => void } };
+declare const handler: () => void;
+
+export const Subscribe = () => {
+  useEffect(() => {
+    const handle = store.subscribe(handler);
+    const ${releaseName} = () => handle.${releaseName}();
+    return () => ${releaseName}();
+  }, []);
+  return <span />;
+};
+`,
+          },
+        },
+      );
+
+      const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
+      expect(hits).toHaveLength(0);
+    }
+  });
+
   it("does NOT flag a BlockStatement that explicitly returns a subscribe call (Bugbot #157, sibling form)", async () => {
     const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-return-subscribe", {
       files: {
@@ -1716,6 +1750,33 @@ export const Mismatch = ({ value }: { value: string }) => {
 
     const hits = await collectRuleHits(projectDir, "no-mirror-prop-effect");
     expect(hits).toHaveLength(0);
+  });
+
+  it("flags a method-call mirror — `useState(value.toUpperCase())` paired with `setX(value.toUpperCase())`", async () => {
+    // `getPropRootName` now follows call chains so a prop-rooted
+    // method call counts as the prop root, and the structural-
+    // equality check uses the shared helper that handles
+    // CallExpression. Both upgrades are required to detect this
+    // shape — the previous narrow local helper missed it silently.
+    const projectDir = setupReactProject(tempRoot, "no-mirror-prop-effect-method-call", {
+      files: {
+        "src/Capitalize.tsx": `import { useEffect, useState } from "react";
+
+export const Capitalize = ({ value }: { value: string }) => {
+  const [draft, setDraft] = useState(value.toUpperCase());
+  useEffect(() => {
+    setDraft(value.toUpperCase());
+  }, [value]);
+  return <span>{draft}</span>;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "no-mirror-prop-effect");
+    expect(hits).toHaveLength(1);
+    expect(hits[0].message).toContain("draft");
+    expect(hits[0].message).toContain("value");
   });
 
   it("does NOT flag a useEffect inside a nested helper that closes over an outer prop", async () => {

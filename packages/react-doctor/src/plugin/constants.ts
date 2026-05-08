@@ -310,6 +310,13 @@ export const SETTER_PATTERN = /^set[A-Z]/;
 export const RENDER_FUNCTION_PATTERN = /^render[A-Z]/;
 export const UPPERCASE_PATTERN = /^[A-Z]/;
 export const PAGE_FILE_PATTERN = /\/page\.(tsx?|jsx?)$/;
+
+// React's idiomatic event-handler prop convention — `onClick`, `onChange`,
+// `onSearch`, etc. Used by `prefer-use-effect-event` to decide whether a
+// destructured prop dep should be treated as function-typed. Without this
+// filter the rule false-positives on scalar props that happen to be
+// destructured.
+export const REACT_HANDLER_PROP_PATTERN = /^on[A-Z]/;
 export const PAGE_OR_LAYOUT_FILE_PATTERN = /\/(page|layout)\.(tsx?|jsx?)$/;
 
 export const INTERNAL_PAGE_PATH_PATTERN =
@@ -412,6 +419,14 @@ export const TIMER_AND_SCHEDULER_DIRECT_CALLEE_NAMES = new Set([
 
 export const SUB_HANDLER_DIRECT_CALLEE_NAMES = TIMER_AND_SCHEDULER_DIRECT_CALLEE_NAMES;
 
+// Timer registrations that ALWAYS need a corresponding cleanup call
+// (a stricter subset of the scheduler list above — `requestAnimationFrame`
+// and friends already invoke once and self-clean, but `setTimeout` /
+// `setInterval` keep firing until explicitly cleared).
+export const TIMER_CALLEE_NAMES_REQUIRING_CLEANUP = new Set(["setInterval", "setTimeout"]);
+
+export const TIMER_CLEANUP_CALLEE_NAMES = new Set(["clearInterval", "clearTimeout"]);
+
 // Globals whose values mutate outside the React data flow. Listing
 // them as deps doesn't trigger a re-run when they change because
 // React compares deps with `Object.is` during render — and the read
@@ -455,6 +470,20 @@ export const UNSUBSCRIPTION_METHOD_NAMES = new Set([
   "unwatch",
   "unlisten",
   "unsub",
+]);
+
+// Identifier names recognized as "this is a release/teardown call"
+// when they appear as a direct call inside an effect's cleanup
+// return — covers both library unsubscribe shorthands
+// (UNSUBSCRIPTION_METHOD_NAMES) and the generic teardown vocabulary
+// (`cleanup`, `dispose`, `destroy`, `teardown`). Matched
+// case-insensitively at the call site.
+export const CLEANUP_LIKE_RELEASE_CALLEE_NAMES = new Set([
+  ...UNSUBSCRIPTION_METHOD_NAMES,
+  "cleanup",
+  "dispose",
+  "destroy",
+  "teardown",
 ]);
 
 // Used by `no-effect-chain` to decide whether an effect is doing

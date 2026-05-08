@@ -1,6 +1,7 @@
 import {
   BUILTIN_GLOBAL_NAMESPACE_NAMES,
   CASCADING_SET_STATE_THRESHOLD,
+  CLEANUP_LIKE_RELEASE_CALLEE_NAMES,
   EFFECT_HOOK_NAMES,
   EVENT_TRIGGERED_NAVIGATION_METHOD_NAMES,
   EVENT_TRIGGERED_SIDE_EFFECT_CALLEES,
@@ -14,9 +15,12 @@ import {
   MUTABLE_GLOBAL_ROOTS,
   MUTATING_ARRAY_METHODS,
   NAVIGATION_RECEIVER_NAMES,
+  REACT_HANDLER_PROP_PATTERN,
   RELATED_USE_STATE_THRESHOLD,
   SUB_HANDLER_DIRECT_CALLEE_NAMES,
   SUBSCRIPTION_METHOD_NAMES,
+  TIMER_CALLEE_NAMES_REQUIRING_CLEANUP,
+  TIMER_CLEANUP_CALLEE_NAMES,
   TRIVIAL_DERIVATION_CALLEE_NAMES,
   TRIVIAL_INITIALIZER_NAMES,
   UNSUBSCRIPTION_METHOD_NAMES,
@@ -26,7 +30,7 @@ import {
   collectPatternNames,
   containsFetchCall,
   countSetStateCalls,
-  extractDestructuredPropNames,
+  createComponentPropStackTracker,
   getCallbackStatements,
   getEffectCallback,
   getRootIdentifierName,
@@ -94,15 +98,6 @@ const collectValueIdentifierNames = (node: EsTreeNode | null | undefined, into: 
       collectValueIdentifierNames(child, into);
     }
   }
-};
-
-// HACK: barrier-frame predicate shared by every rule that pushes an
-// empty stack frame on a non-component arrow / function-expression
-// VariableDeclarator so closed-over names from an outer component
-// don't leak into the helper's prop check.
-const isFunctionLikeVariableDeclarator = (node: EsTreeNode): boolean => {
-  if (node.type !== "VariableDeclarator") return false;
-  return node.init?.type === "ArrowFunctionExpression" || node.init?.type === "FunctionExpression";
 };
 
 export const noDerivedStateEffect: Rule = {
@@ -304,65 +299,15 @@ export const noEffectEventHandler: Rule = {
 
 export const noDerivedUseState: Rule = {
   create: (context: RuleContext) => {
-    // HACK: maintain a stack of per-component prop sets so a prop named X
-    // in ComponentA doesn't leak into ComponentB's useState checks. We
-    // only push/pop on FunctionDeclaration and component-shaped
-    // VariableDeclarator; FunctionExpression / ArrowFunctionExpression
-    // inside those don't get their own scope (avoids double-push when
-    // `const Foo = function () {…}` matches both visitors). useState
-    // initializers walk the stack top-to-bottom; nested callback params
-    // are not modeled here (a known limitation — pre-existing).
-    const componentPropStack: Array<Set<string>> = [];
-
-    // HACK: empty stack frames are barriers — pushed when entering a
-    // non-component FunctionDeclaration / ArrowFunctionExpression so
-    // identifiers inside the helper don't resolve against an outer
-    // component's props (a closed-over `value` is NOT a prop of the
-    // helper). Stop the walk at the first empty frame so the lookup
-    // honors the barrier the visitor pushed.
-    const isPropName = (name: string): boolean => {
-      for (let stackIndex = componentPropStack.length - 1; stackIndex >= 0; stackIndex--) {
-        const frame = componentPropStack[stackIndex];
-        if (frame.size === 0) return false;
-        if (frame.has(name)) return true;
-      }
-      return false;
-    };
+    const propStackTracker = createComponentPropStackTracker();
 
     return {
-      FunctionDeclaration(node: EsTreeNode) {
-        if (!node.id?.name || !isUppercaseName(node.id.name)) {
-          // Non-component FunctionDeclarations push an empty barrier so
-          // an outer component's props don't leak into the helper.
-          // Matches noPropCallbackInEffect's scope behavior.
-          componentPropStack.push(new Set());
-          return;
-        }
-        componentPropStack.push(extractDestructuredPropNames(node.params ?? []));
-      },
-      "FunctionDeclaration:exit"() {
-        componentPropStack.pop();
-      },
-      VariableDeclarator(node: EsTreeNode) {
-        if (isComponentAssignment(node)) {
-          componentPropStack.push(extractDestructuredPropNames(node.init?.params ?? []));
-          return;
-        }
-        if (isFunctionLikeVariableDeclarator(node)) {
-          componentPropStack.push(new Set());
-        }
-      },
-      "VariableDeclarator:exit"(node: EsTreeNode) {
-        if (isComponentAssignment(node) || isFunctionLikeVariableDeclarator(node)) {
-          componentPropStack.pop();
-        }
-      },
+      ...propStackTracker.visitors,
       CallExpression(node: EsTreeNode) {
         if (!isHookCall(node, "useState") || !node.arguments?.length) return;
-        if (componentPropStack.length === 0) return;
         const initializer = node.arguments[0];
 
-        if (initializer.type === "Identifier" && isPropName(initializer.name)) {
+        if (initializer.type === "Identifier" && propStackTracker.isPropName(initializer.name)) {
           context.report({
             node,
             message: `useState initialized from prop "${initializer.name}" — if this value should stay in sync with the prop, derive it during render instead`,
@@ -372,7 +317,7 @@ export const noDerivedUseState: Rule = {
 
         if (initializer.type === "MemberExpression" && !initializer.computed) {
           const rootIdentifierName = getRootIdentifierName(initializer);
-          if (rootIdentifierName && isPropName(rootIdentifierName)) {
+          if (rootIdentifierName && propStackTracker.isPropName(rootIdentifierName)) {
             context.report({
               node,
               message: `useState initialized from prop "${rootIdentifierName}" — if this value should stay in sync with the prop, derive it during render instead`,
@@ -594,74 +539,27 @@ export const rerenderDependencies: Rule = {
 // effect-driven sync at all.
 export const noPropCallbackInEffect: Rule = {
   create: (context: RuleContext) => {
-    const componentPropParamStack: Array<Set<string>> = [];
-
-    const enterComponentParams = (params: EsTreeNode[] | undefined): void => {
-      const propNames = extractDestructuredPropNames(params ?? []);
-      componentPropParamStack.push(propNames);
-    };
-
-    // HACK: empty stack frames are barriers — pushed when entering a
-    // non-component FunctionDeclaration / ArrowFunctionExpression so
-    // identifiers inside the helper don't resolve against an outer
-    // component's props. Stop the walk at the first empty frame so
-    // the lookup honors the barrier the visitor pushed.
-    const isPropName = (name: string): boolean => {
-      for (let stackIndex = componentPropParamStack.length - 1; stackIndex >= 0; stackIndex--) {
-        const frame = componentPropParamStack[stackIndex];
-        if (frame.size === 0) return false;
-        if (frame.has(name)) return true;
-      }
-      return false;
-    };
+    const propStackTracker = createComponentPropStackTracker();
 
     return {
-      FunctionDeclaration(node: EsTreeNode) {
-        if (!node.id?.name || !isUppercaseName(node.id.name)) {
-          componentPropParamStack.push(new Set());
-          return;
-        }
-        enterComponentParams(node.params);
-      },
-      "FunctionDeclaration:exit"() {
-        componentPropParamStack.pop();
-      },
-      VariableDeclarator(node: EsTreeNode) {
-        if (isComponentAssignment(node)) {
-          enterComponentParams(node.init?.params);
-          return;
-        }
-        // Non-component arrow/function helpers also push an empty barrier
-        // so identifiers inside the helper don't resolve against an outer
-        // component's props (matches FunctionDeclaration handling).
-        if (isFunctionLikeVariableDeclarator(node)) {
-          componentPropParamStack.push(new Set());
-        }
-      },
-      "VariableDeclarator:exit"(node: EsTreeNode) {
-        if (isComponentAssignment(node) || isFunctionLikeVariableDeclarator(node)) {
-          componentPropParamStack.pop();
-        }
-      },
+      ...propStackTracker.visitors,
       CallExpression(node: EsTreeNode) {
         if (!isHookCall(node, EFFECT_HOOK_NAMES) || (node.arguments?.length ?? 0) < 2) return;
-        if (componentPropParamStack.length === 0) return;
         const callback = getEffectCallback(node);
         if (!callback) return;
         const depsNode = node.arguments[1];
         if (depsNode.type !== "ArrayExpression" || !depsNode.elements?.length) return;
 
-        // Body must invoke a prop callback as a top-level expression.
         const bodyStatements = getCallbackStatements(callback);
-        for (const stmt of bodyStatements) {
+        for (const bodyStatement of bodyStatements) {
           let invokedPropName: string | null = null;
           if (
-            stmt.type === "ExpressionStatement" &&
-            stmt.expression?.type === "CallExpression" &&
-            stmt.expression.callee?.type === "Identifier" &&
-            isPropName(stmt.expression.callee.name)
+            bodyStatement.type === "ExpressionStatement" &&
+            bodyStatement.expression?.type === "CallExpression" &&
+            bodyStatement.expression.callee?.type === "Identifier" &&
+            propStackTracker.isPropName(bodyStatement.expression.callee.name)
           ) {
-            invokedPropName = stmt.expression.callee.name;
+            invokedPropName = bodyStatement.expression.callee.name;
           }
           if (!invokedPropName) continue;
 
@@ -669,12 +567,13 @@ export const noPropCallbackInEffect: Rule = {
           // identifier — otherwise the effect is just adapting to prop
           // changes (legit pattern).
           const hasStateLikeDep = depsNode.elements.some(
-            (element: EsTreeNode) => element?.type === "Identifier" && !isPropName(element.name),
+            (element: EsTreeNode) =>
+              element?.type === "Identifier" && !propStackTracker.isPropName(element.name),
           );
           if (!hasStateLikeDep) continue;
 
           context.report({
-            node: stmt,
+            node: bodyStatement,
             message: `useEffect calls prop callback "${invokedPropName}" with local state in deps — this is the "lift state via callback" anti-pattern; lift state into a shared Provider so both sides read the same source`,
           });
         }
@@ -1669,9 +1568,7 @@ const findTriggeredSideEffectCalleeName = (consequentNode: EsTreeNode): string |
       const isUnambiguousMethod = EVENT_TRIGGERED_SIDE_EFFECT_MEMBER_METHODS.has(propertyName);
       const isNavigationMethod = EVENT_TRIGGERED_NAVIGATION_METHOD_NAMES.has(propertyName);
       if (!isUnambiguousMethod && !isNavigationMethod) return;
-      let cursor: EsTreeNode | undefined = callee;
-      while (cursor?.type === "MemberExpression") cursor = cursor.object;
-      const rootName = cursor?.type === "Identifier" ? cursor.name : null;
+      const rootName = getRootIdentifierName(callee);
       if (isNavigationMethod && (rootName === null || !NAVIGATION_RECEIVER_NAMES.has(rootName))) {
         return;
       }
@@ -2047,10 +1944,9 @@ const findMutableDepIssue = (
     return { kind: "ref-current", rootName: depElement.object.name };
   }
 
-  let cursor: EsTreeNode | undefined = depElement;
-  while (cursor?.type === "MemberExpression") cursor = cursor.object;
-  if (cursor?.type === "Identifier" && MUTABLE_GLOBAL_ROOTS.has(cursor.name)) {
-    return { kind: "global", rootName: cursor.name };
+  const rootName = getRootIdentifierName(depElement);
+  if (rootName !== null && MUTABLE_GLOBAL_ROOTS.has(rootName)) {
+    return { kind: "global", rootName };
   }
   return null;
 };
@@ -2075,23 +1971,6 @@ const findMutableDepIssue = (
 //       prop Identifier or a MemberExpression rooted in a prop
 //   (2) `useEffect(() => setX(<propExpr'>), [<propRoot>])` where
 //       <propExpr'> is structurally identical to <propExpr> from (1)
-const arePropExpressionsStructurallyEqual = (
-  a: EsTreeNode | null | undefined,
-  b: EsTreeNode | null | undefined,
-): boolean => {
-  if (!a || !b) return a === b;
-  if (a.type !== b.type) return false;
-  if (a.type === "Identifier") return a.name === b.name;
-  if (a.type === "MemberExpression") {
-    if (a.computed !== b.computed) return false;
-    return (
-      arePropExpressionsStructurallyEqual(a.object, b.object) &&
-      arePropExpressionsStructurallyEqual(a.property, b.property)
-    );
-  }
-  return false;
-};
-
 const getPropRootName = (
   expression: EsTreeNode | null | undefined,
   propNames: Set<string>,
@@ -2100,13 +1979,22 @@ const getPropRootName = (
   if (expression.type === "Identifier" && propNames.has(expression.name)) {
     return expression.name;
   }
-  if (expression.type === "MemberExpression") {
-    let cursor: EsTreeNode | undefined = expression;
-    while (cursor?.type === "MemberExpression") cursor = cursor.object;
-    if (cursor?.type === "Identifier" && propNames.has(cursor.name)) return cursor.name;
-  }
+  // Follow call chains so a prop-rooted method call counts:
+  // `useState(value.toUpperCase())` resolves to root "value". This is
+  // safe for mirror-detection because the structural-equality check
+  // on the setter argument still requires the SAME call shape — it
+  // won't match `setX(value.toLowerCase())`.
+  const rootName = getRootIdentifierName(expression, { followCallChains: true });
+  if (rootName !== null && propNames.has(rootName)) return rootName;
   return null;
 };
+
+interface MirrorBinding {
+  valueName: string;
+  setterName: string;
+  initializer: EsTreeNode;
+  propRootName: string;
+}
 
 // HACK: From "Lifecycle of Reactive Effects":
 //
@@ -2122,29 +2010,12 @@ const getPropRootName = (
 //   - addEventListener (browser DOM, EventTarget-shaped libs)
 //   - subscribe / addListener / on / watch / listen / sub
 //   - setInterval / setTimeout (without explicit clear)
-const SUBSCRIBE_LIKE_METHOD_NAMES = new Set([
-  "addEventListener",
-  "subscribe",
-  "addListener",
-  "on",
-  "watch",
-  "listen",
-  "sub",
-]);
-
-const TIMER_CALLEE_NAMES_REQUIRING_CLEANUP = new Set(["setInterval", "setTimeout"]);
-
-const TIMER_CLEANUP_CALLEE_NAMES = new Set(["clearInterval", "clearTimeout"]);
-
-const UNSUBSCRIBE_LIKE_METHOD_NAMES = new Set([
-  "removeEventListener",
-  "unsubscribe",
-  "removeListener",
-  "off",
-  "unwatch",
-  "unlisten",
-  "unsub",
-]);
+//
+// The subscribe / unsubscribe method allowlists live in `constants.ts`
+// (`SUBSCRIPTION_METHOD_NAMES`, `UNSUBSCRIPTION_METHOD_NAMES`) so the
+// cleanup-needed detector and the prefer-use-sync-external-store
+// detector share a single source of truth. Inline duplicates would
+// silently drift out of sync as new library shapes get added.
 
 interface SubscribeLikeUsage {
   kind: "subscribe" | "timer";
@@ -2161,10 +2032,10 @@ const findSubscribeLikeUsages = (callback: EsTreeNode): SubscribeLikeUsage[] => 
   // argument body during the walk.
   let cleanupArgument: EsTreeNode | null = null;
   if (callback.body?.type === "BlockStatement") {
-    const stmts = callback.body.body ?? [];
-    const lastStmt = stmts[stmts.length - 1];
-    if (lastStmt?.type === "ReturnStatement" && lastStmt.argument) {
-      cleanupArgument = lastStmt.argument;
+    const callbackStatements = callback.body.body ?? [];
+    const lastCallbackStatement = callbackStatements[callbackStatements.length - 1];
+    if (lastCallbackStatement?.type === "ReturnStatement" && lastCallbackStatement.argument) {
+      cleanupArgument = lastCallbackStatement.argument;
     }
   }
 
@@ -2186,7 +2057,7 @@ const findSubscribeLikeUsages = (callback: EsTreeNode): SubscribeLikeUsage[] => 
     if (
       child.callee?.type === "MemberExpression" &&
       child.callee.property?.type === "Identifier" &&
-      SUBSCRIBE_LIKE_METHOD_NAMES.has(child.callee.property.name)
+      SUBSCRIPTION_METHOD_NAMES.has(child.callee.property.name)
     ) {
       usages.push({
         kind: "subscribe",
@@ -2201,7 +2072,7 @@ const isSubscribeLikeCallExpression = (node: EsTreeNode): boolean => {
   if (node?.type !== "CallExpression") return false;
   if (node.callee?.type !== "MemberExpression") return false;
   if (node.callee.property?.type !== "Identifier") return false;
-  return SUBSCRIBE_LIKE_METHOD_NAMES.has(node.callee.property.name);
+  return SUBSCRIPTION_METHOD_NAMES.has(node.callee.property.name);
 };
 
 const effectHasCleanupRelease = (callback: EsTreeNode): boolean => {
@@ -2247,22 +2118,18 @@ const effectHasCleanupRelease = (callback: EsTreeNode): boolean => {
     if (
       callee?.type === "MemberExpression" &&
       callee.property?.type === "Identifier" &&
-      UNSUBSCRIBE_LIKE_METHOD_NAMES.has(callee.property.name)
+      UNSUBSCRIPTION_METHOD_NAMES.has(callee.property.name)
     ) {
       didFindRelease = true;
       return;
     }
-    // Direct call to an Identifier whose name suggests an unsubscribe
-    // binding (e.g. `return () => unsubscribe()`). The set mirrors the
-    // method names recognized in UNSUBSCRIBE_LIKE_METHOD_NAMES so a
-    // `const unsub = store.subscribe(handler); return () => unsub();`
-    // shape is recognized as cleanup.
-    if (
-      callee?.type === "Identifier" &&
-      /^(unsubscribe|unsub|removeListener|removeEventListener|off|unwatch|unlisten|cleanup|dispose|destroy|teardown)$/i.test(
-        callee.name,
-      )
-    ) {
+    // Direct call to an Identifier whose name SAYS "release this
+    // resource" (e.g. `return () => unsubscribe()` or
+    // `return () => cleanup()`). The allowlist lives in `constants.ts`
+    // as `CLEANUP_LIKE_RELEASE_CALLEE_NAMES` so it stays in lockstep
+    // with `UNSUBSCRIPTION_METHOD_NAMES` plus the generic teardown
+    // vocabulary (`cleanup` / `dispose` / `destroy` / `teardown`).
+    if (callee?.type === "Identifier" && CLEANUP_LIKE_RELEASE_CALLEE_NAMES.has(callee.name)) {
       didFindRelease = true;
     }
   });
@@ -2297,33 +2164,11 @@ export const effectNeedsCleanup: Rule = {
 
 export const noMirrorPropEffect: Rule = {
   create: (context: RuleContext) => {
-    const componentPropParamStack: Array<Set<string>> = [];
-
-    // HACK: empty frames pushed for non-component nested helpers act as
-    // barriers — `function Outer({ value }) { function Inner() { ... } }`
-    // must not leak `value` into Inner's prop set, even though Inner
-    // closes over it lexically. Walk top-down and stop at the first
-    // empty frame.
-    const getCurrentPropNames = (): Set<string> => {
-      for (let frameIndex = componentPropParamStack.length - 1; frameIndex >= 0; frameIndex--) {
-        const frame = componentPropParamStack[frameIndex];
-        if (frame.size === 0) return new Set();
-        return frame;
-      }
-      return new Set();
-    };
-
-    const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
+    const checkComponent = (componentBody: EsTreeNode | undefined): void => {
       if (!componentBody || componentBody.type !== "BlockStatement") return;
-      const propNames = getCurrentPropNames();
+      const propNames = propStackTracker.getCurrentPropNames();
       if (propNames.size === 0) return;
 
-      interface MirrorBinding {
-        valueName: string;
-        setterName: string;
-        initializer: EsTreeNode;
-        propRootName: string;
-      }
       const mirrorBindings: MirrorBinding[] = [];
 
       for (const statement of componentBody.body ?? []) {
@@ -2393,7 +2238,7 @@ export const noMirrorPropEffect: Rule = {
           (binding) =>
             binding.setterName === expression.callee.name &&
             binding.propRootName === depElement.name &&
-            arePropExpressionsStructurallyEqual(binding.initializer, setterArgument),
+            areExpressionsStructurallyEqual(binding.initializer, setterArgument),
         );
         if (!matchedBinding) continue;
 
@@ -2404,34 +2249,11 @@ export const noMirrorPropEffect: Rule = {
       }
     };
 
-    return {
-      FunctionDeclaration(node: EsTreeNode) {
-        if (!node.id?.name || !isUppercaseName(node.id.name)) {
-          componentPropParamStack.push(new Set());
-          return;
-        }
-        componentPropParamStack.push(extractDestructuredPropNames(node.params ?? []));
-        checkComponent(node.body);
-      },
-      "FunctionDeclaration:exit"() {
-        componentPropParamStack.pop();
-      },
-      VariableDeclarator(node: EsTreeNode) {
-        if (isComponentAssignment(node)) {
-          componentPropParamStack.push(extractDestructuredPropNames(node.init?.params ?? []));
-          checkComponent(node.init?.body);
-          return;
-        }
-        if (isFunctionLikeVariableDeclarator(node)) {
-          componentPropParamStack.push(new Set());
-        }
-      },
-      "VariableDeclarator:exit"(node: EsTreeNode) {
-        if (isComponentAssignment(node) || isFunctionLikeVariableDeclarator(node)) {
-          componentPropParamStack.pop();
-        }
-      },
-    };
+    const propStackTracker = createComponentPropStackTracker({
+      onComponentEnter: checkComponent,
+    });
+
+    return propStackTracker.visitors;
   },
 };
 
@@ -2663,18 +2485,7 @@ const classifyCallableReadsInsideEffect = (
 
 export const preferUseEffectEvent: Rule = {
   create: (context: RuleContext) => {
-    const componentPropParamStack: Array<Set<string>> = [];
-
-    const isPropName = (name: string): boolean => {
-      for (let frameIndex = componentPropParamStack.length - 1; frameIndex >= 0; frameIndex--) {
-        const frame = componentPropParamStack[frameIndex];
-        if (frame.size === 0) return false;
-        if (frame.has(name)) return true;
-      }
-      return false;
-    };
-
-    const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
+    const checkComponent = (componentBody: EsTreeNode | undefined): void => {
       if (!componentBody || componentBody.type !== "BlockStatement") return;
       const functionTypedLocalBindings = collectFunctionTypedLocalBindings(componentBody);
 
@@ -2703,7 +2514,8 @@ export const preferUseEffectEvent: Rule = {
           // ONLY if its name matches the React `on[A-Z]` callback
           // convention. Without this filter the rule false-positived
           // on scalar props.
-          const isFunctionTypedPropDep = isPropName(depName) && /^on[A-Z]/.test(depName);
+          const isFunctionTypedPropDep =
+            propStackTracker.isPropName(depName) && REACT_HANDLER_PROP_PATTERN.test(depName);
           const isFunctionTypedLocalDep = functionTypedLocalBindings.has(depName);
           if (!isFunctionTypedPropDep && !isFunctionTypedLocalDep) continue;
 
@@ -2722,33 +2534,10 @@ export const preferUseEffectEvent: Rule = {
       }
     };
 
-    return {
-      FunctionDeclaration(node: EsTreeNode) {
-        if (!node.id?.name || !isUppercaseName(node.id.name)) {
-          componentPropParamStack.push(new Set());
-          return;
-        }
-        componentPropParamStack.push(extractDestructuredPropNames(node.params ?? []));
-        checkComponent(node.body);
-      },
-      "FunctionDeclaration:exit"() {
-        componentPropParamStack.pop();
-      },
-      VariableDeclarator(node: EsTreeNode) {
-        if (isComponentAssignment(node)) {
-          componentPropParamStack.push(extractDestructuredPropNames(node.init?.params ?? []));
-          checkComponent(node.init?.body);
-          return;
-        }
-        if (isFunctionLikeVariableDeclarator(node)) {
-          componentPropParamStack.push(new Set());
-        }
-      },
-      "VariableDeclarator:exit"(node: EsTreeNode) {
-        if (isComponentAssignment(node) || isFunctionLikeVariableDeclarator(node)) {
-          componentPropParamStack.pop();
-        }
-      },
-    };
+    const propStackTracker = createComponentPropStackTracker({
+      onComponentEnter: checkComponent,
+    });
+
+    return propStackTracker.visitors;
   },
 };

@@ -417,8 +417,6 @@ export const TIMER_AND_SCHEDULER_DIRECT_CALLEE_NAMES = new Set([
   "queueMicrotask",
 ]);
 
-export const SUB_HANDLER_DIRECT_CALLEE_NAMES = TIMER_AND_SCHEDULER_DIRECT_CALLEE_NAMES;
-
 // Timer registrations that ALWAYS need a corresponding cleanup call
 // (a stricter subset of the scheduler list above — `requestAnimationFrame`
 // and friends already invoke once and self-clean, but `setTimeout` /
@@ -575,6 +573,12 @@ export const EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS = new Set([
 // network/analytics side effects. Detection still works via the
 // receiver-bound member-call shape (`analytics.track(...)`,
 // `api.del(...)`) in `EVENT_TRIGGERED_SIDE_EFFECT_MEMBER_METHODS`.
+//
+// `post` / `put` / `patch` are KEPT here — the canonical "You Might
+// Not Need an Effect" §6 example is `post(jsonToSubmit)` as a bare
+// callee, so removing them would silently miss the textbook case.
+// The trade-off (FPs on user helpers named `post(...)`) is acceptable
+// at this scope.
 export const EVENT_TRIGGERED_SIDE_EFFECT_CALLEES = new Set([
   ...FETCH_CALLEE_NAMES,
   // Network shorthand verbs (article uses `post`)

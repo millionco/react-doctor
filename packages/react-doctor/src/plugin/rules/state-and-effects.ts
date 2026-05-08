@@ -17,8 +17,8 @@ import {
   NAVIGATION_RECEIVER_NAMES,
   REACT_HANDLER_PROP_PATTERN,
   RELATED_USE_STATE_THRESHOLD,
-  SUB_HANDLER_DIRECT_CALLEE_NAMES,
   SUBSCRIPTION_METHOD_NAMES,
+  TIMER_AND_SCHEDULER_DIRECT_CALLEE_NAMES,
   TIMER_CALLEE_NAMES_REQUIRING_CLEANUP,
   TIMER_CLEANUP_CALLEE_NAMES,
   TRIVIAL_DERIVATION_CALLEE_NAMES,
@@ -41,6 +41,7 @@ import {
   isSetterIdentifier,
   isUppercaseName,
   walkAst,
+  walkInsideStatementBlocks,
 } from "../helpers.js";
 import type { EsTreeNode, Rule, RuleContext } from "../types.js";
 
@@ -686,32 +687,6 @@ const collectReturnExpressions = (componentBody: EsTreeNode): EsTreeNode[] => {
     });
   }
   return returns;
-};
-
-const walkInsideStatementBlocks = (
-  node: EsTreeNode,
-  visitor: (child: EsTreeNode) => void,
-): void => {
-  if (!node || typeof node !== "object") return;
-  if (
-    node.type === "FunctionDeclaration" ||
-    node.type === "FunctionExpression" ||
-    node.type === "ArrowFunctionExpression"
-  ) {
-    return;
-  }
-  visitor(node);
-  for (const key of Object.keys(node)) {
-    if (key === "parent") continue;
-    const child = node[key];
-    if (Array.isArray(child)) {
-      for (const item of child) {
-        if (item && typeof item === "object" && item.type) walkInsideStatementBlocks(item, visitor);
-      }
-    } else if (child && typeof child === "object" && child.type) {
-      walkInsideStatementBlocks(child, visitor);
-    }
-  }
 };
 
 const collectIdentifierNames = (expression: EsTreeNode): Set<string> => {
@@ -2353,9 +2328,9 @@ export const noMutableInDeps: Rule = {
 //         - a destructured prop named `on[A-Z]…`, OR
 //         - a local declared via `const F = useCallback(...)`
 //   (3) every read of `F` inside the effect body sits inside a sub-
-//       handler (SUB_HANDLER_DIRECT_CALLEE_NAMES, OR a MemberExpression
-//       whose property is in SUBSCRIPTION_METHOD_NAMES — same set the
-//       prefer-use-sync-external-store family uses)
+//       handler (TIMER_AND_SCHEDULER_DIRECT_CALLEE_NAMES, OR a
+//       MemberExpression whose property is in SUBSCRIPTION_METHOD_NAMES
+//       — same set the prefer-use-sync-external-store family uses)
 //   (4) `F` is NEVER read at the effect's own top level
 const collectFunctionTypedLocalBindings = (componentBody: EsTreeNode): Set<string> => {
   const functionTypedLocals = new Set<string>();
@@ -2393,7 +2368,7 @@ const findEnclosingFunctionInsideEffect = (
 const isCallExpressionWithSubHandlerCallee = (callExpression: EsTreeNode): boolean => {
   if (callExpression?.type !== "CallExpression") return false;
   const callee = callExpression.callee;
-  if (callee?.type === "Identifier" && SUB_HANDLER_DIRECT_CALLEE_NAMES.has(callee.name)) {
+  if (callee?.type === "Identifier" && TIMER_AND_SCHEDULER_DIRECT_CALLEE_NAMES.has(callee.name)) {
     return true;
   }
   if (

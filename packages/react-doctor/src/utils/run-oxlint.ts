@@ -848,9 +848,13 @@ interface RunOxlintOptions {
   hasTanStackQuery: boolean;
   /**
    * Major version of React detected for the project. Forwarded to
-   * `createOxlintConfig` so React-19-deprecation rules only fire on
-   * projects where they actually apply. `null` means "unknown — leave
-   * those rules enabled".
+   * `createOxlintConfig`, which gates rules directionally:
+   *   - `"deprecation-warning"` rules (e.g. `no-default-props`) stay
+   *     enabled when this is `null` so mid-migration projects still
+   *     get the warning even if version detection failed.
+   *   - `"prefer-newer-api"` rules (e.g. `prefer-use-effect-event`) are
+   *     skipped when this is `null` to avoid recommending APIs that
+   *     may not exist in the consumer's React version.
    */
   reactMajorVersion?: number | null;
   includePaths?: string[];

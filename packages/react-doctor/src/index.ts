@@ -24,6 +24,7 @@ import { clearProjectCache, discoverProject } from "./utils/discover-project.js"
 import { computeJsxIncludePaths } from "./utils/jsx-include-paths.js";
 import { clearConfigCache, loadConfig } from "./utils/load-config.js";
 import { mergeAndFilterDiagnostics } from "./utils/merge-and-filter-diagnostics.js";
+import { parseReactMajor } from "./utils/parse-react-major.js";
 import { clearPackageJsonCache } from "./utils/read-package-json.js";
 import { createNodeReadFileLinesSync } from "./utils/read-file-lines-node.js";
 import { resolveLintIncludePaths } from "./utils/resolve-lint-include-paths.js";
@@ -130,6 +131,7 @@ export const diagnose = async (
         framework: projectInfo.framework,
         hasReactCompiler: projectInfo.hasReactCompiler,
         hasTanStackQuery: projectInfo.hasTanStackQuery,
+        reactMajorVersion: parseReactMajor(projectInfo.reactVersion),
         includePaths: lintIncludePaths,
         customRulesOnly: userConfig?.customRulesOnly ?? false,
         respectInlineDisables: effectiveRespectInlineDisables,

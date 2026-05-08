@@ -53,6 +53,41 @@ export const walkAst = (node: EsTreeNode, visitor: (child: EsTreeNode) => boolea
   }
 };
 
+// HACK: variant of `walkAst` that descends through control-flow blocks
+// (IfStatement / TryStatement / SwitchCase / loops / labels) but stops
+// at any nested function boundary. Used by rules that ask "what runs
+// SYNCHRONOUSLY inside this effect's body?" — counts the
+// `if (cond) setX(...)` write but ignores the deferred
+// `setTimeout(() => setX(...))` one.
+//
+// Unlike `walkAst`, this one does not support pruning via `false`
+// return — descent is always complete except at function boundaries.
+export const walkInsideStatementBlocks = (
+  node: EsTreeNode,
+  visitor: (child: EsTreeNode) => void,
+): void => {
+  if (!node || typeof node !== "object") return;
+  if (
+    node.type === "FunctionDeclaration" ||
+    node.type === "FunctionExpression" ||
+    node.type === "ArrowFunctionExpression"
+  ) {
+    return;
+  }
+  visitor(node);
+  for (const key of Object.keys(node)) {
+    if (key === "parent") continue;
+    const child = node[key];
+    if (Array.isArray(child)) {
+      for (const item of child) {
+        if (item && typeof item === "object" && item.type) walkInsideStatementBlocks(item, visitor);
+      }
+    } else if (child && typeof child === "object" && child.type) {
+      walkInsideStatementBlocks(child, visitor);
+    }
+  }
+};
+
 export const isSetterIdentifier = (name: string): boolean => SETTER_PATTERN.test(name);
 
 export const isSetterCall = (node: EsTreeNode): boolean =>

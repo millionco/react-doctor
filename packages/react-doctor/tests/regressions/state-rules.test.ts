@@ -839,6 +839,57 @@ export const Submit = () => {
     expect(hits.length).toBeGreaterThanOrEqual(1);
   });
 
+  it("does NOT misclassify Array.prototype.push as an event-triggered side effect", async () => {
+    // Regression: \`push\` is BOTH a router method (router.push("/foo"))
+    // AND a built-in Array method ([1,2].push(3)). The receiver gates
+    // the diagnostic — only router-shaped receivers count.
+    const projectDir = setupReactProject(tempRoot, "no-event-trigger-state-array-push", {
+      files: {
+        "src/Logger.tsx": `import { useEffect, useState } from "react";
+
+const auditLog: string[] = [];
+
+export const Logger = () => {
+  const [event, setEvent] = useState<string | null>(null);
+  useEffect(() => {
+    if (event) {
+      auditLog.push(event);
+    }
+  }, [event]);
+  return <button onClick={() => setEvent("clicked")}>Click</button>;
+};
+`,
+      },
+    });
+
+    const triggerHits = await collectRuleHits(projectDir, "no-event-trigger-state");
+    expect(triggerHits.length).toBe(0);
+  });
+
+  it("DOES still flag router.push as an event-triggered side effect", async () => {
+    const projectDir = setupReactProject(tempRoot, "no-event-trigger-state-router-push", {
+      files: {
+        "src/Wizard.tsx": `import { useEffect, useState } from "react";
+
+declare const router: { push: (path: string) => void };
+
+export const Wizard = () => {
+  const [destination, setDestination] = useState<string | null>(null);
+  useEffect(() => {
+    if (destination) {
+      router.push(destination);
+    }
+  }, [destination]);
+  return <button onClick={() => setDestination("/next")}>Next</button>;
+};
+`,
+      },
+    });
+
+    const triggerHits = await collectRuleHits(projectDir, "no-event-trigger-state");
+    expect(triggerHits.length).toBe(1);
+  });
+
   it("KEEPS no-effect-event-handler warning when state-typed dep has a non-allowlisted callee (Bugbot #155 round 3)", async () => {
     // Regression: round-2 deference was too eager — it skipped
     // no-effect-event-handler whenever the trigger was a useState
@@ -879,12 +930,18 @@ export const Custom = () => {
     expect(triggerHits.length).toBe(0);
   });
 
-  it("does NOT double-warn with no-effect-event-handler on the bare-truthy state shape (Bugbot #155 round 2)", async () => {
-    // Regression: \`if (destination) navigate(destination)\` previously
-    // triggered BOTH no-effect-event-handler and no-event-trigger-state.
-    // The former now defers to the latter when the dep is a useState
-    // value.
-    const projectDir = setupReactProject(tempRoot, "no-event-trigger-state-no-double-warn", {
+  it("intentionally double-warns on the bare-truthy state shape (handler + trigger-state both fire)", async () => {
+    // Regression: \`if (destination) navigate(destination)\` triggers
+    // BOTH no-effect-event-handler and no-event-trigger-state. An
+    // earlier implementation tried to defer the former to the latter,
+    // but that deference silently dropped diagnostics whenever the
+    // narrower rule's preconditions (handler-only writes,
+    // not render-reachable, etc.) didn't hold. Both rules now fire
+    // independently — the messages frame the same code differently
+    // ("this useEffect simulates a handler" vs "this state exists
+    // only to schedule navigate from an effect") so a duplicate is
+    // strictly better than a silent drop.
+    const projectDir = setupReactProject(tempRoot, "no-event-trigger-state-double-warn", {
       files: {
         "src/Wizard.tsx": `import { useEffect, useState } from "react";
 
@@ -906,7 +963,7 @@ export const Wizard = () => {
     const triggerHits = await collectRuleHits(projectDir, "no-event-trigger-state");
     const handlerHits = await collectRuleHits(projectDir, "no-effect-event-handler");
     expect(triggerHits.length).toBe(1);
-    expect(handlerHits.length).toBe(0);
+    expect(handlerHits.length).toBe(1);
   });
 
   it("does NOT flag dual-purpose state that's also read in render (Bugbot #155)", async () => {

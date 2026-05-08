@@ -2,6 +2,7 @@ import {
   BUILTIN_GLOBAL_NAMESPACE_NAMES,
   CASCADING_SET_STATE_THRESHOLD,
   EFFECT_HOOK_NAMES,
+  EVENT_TRIGGERED_NAVIGATION_METHOD_NAMES,
   EVENT_TRIGGERED_SIDE_EFFECT_CALLEES,
   EVENT_TRIGGERED_SIDE_EFFECT_MEMBER_METHODS,
   EXTERNAL_SYNC_AMBIGUOUS_HTTP_METHOD_NAMES,
@@ -12,6 +13,7 @@ import {
   HOOKS_WITH_DEPS,
   MUTABLE_GLOBAL_ROOTS,
   MUTATING_ARRAY_METHODS,
+  NAVIGATION_RECEIVER_NAMES,
   RELATED_USE_STATE_THRESHOLD,
   SUB_HANDLER_DIRECT_CALLEE_NAMES,
   SUBSCRIPTION_METHOD_NAMES,
@@ -246,128 +248,58 @@ export const noCascadingSetState: Rule = {
 };
 
 export const noEffectEventHandler: Rule = {
-  create: (context: RuleContext) => {
-    // HACK: track per-component useState value names so we can defer
-    // to noEventTriggerState when the trigger guard is a state-typed
-    // dep AND the consequent matches the side-effect-callee allowlist.
-    // Without the second predicate the deference silently drops
-    // warnings on `if (trigger) customAction()` shapes where the
-    // callee isn't in noEventTriggerState's allowlist.
-    const useStateValueNamesStack: Array<Set<string>> = [];
-    const collectUseStateValueNames = (componentBody: EsTreeNode): Set<string> => {
-      const stateNames = new Set<string>();
-      if (componentBody?.type !== "BlockStatement") return stateNames;
-      for (const statement of componentBody.body ?? []) {
-        if (statement.type !== "VariableDeclaration") continue;
-        for (const declarator of statement.declarations ?? []) {
-          if (declarator.id?.type !== "ArrayPattern") continue;
-          if (declarator.init?.type !== "CallExpression") continue;
-          if (!isHookCall(declarator.init, "useState")) continue;
-          const valueElement = declarator.id.elements?.[0];
-          if (valueElement?.type === "Identifier") stateNames.add(valueElement.name);
-        }
-      }
-      return stateNames;
-    };
-    const isStateValueName = (name: string): boolean => {
-      for (let frameIndex = useStateValueNamesStack.length - 1; frameIndex >= 0; frameIndex--) {
-        if (useStateValueNamesStack[frameIndex].has(name)) return true;
-      }
-      return false;
-    };
+  create: (context: RuleContext) => ({
+    CallExpression(node: EsTreeNode) {
+      if (!isHookCall(node, EFFECT_HOOK_NAMES) || (node.arguments?.length ?? 0) < 2) return;
 
-    return {
-      FunctionDeclaration(node: EsTreeNode) {
-        if (!node.id?.name || !isUppercaseName(node.id.name)) {
-          useStateValueNamesStack.push(new Set());
-          return;
-        }
-        useStateValueNamesStack.push(collectUseStateValueNames(node.body));
-      },
-      "FunctionDeclaration:exit"() {
-        useStateValueNamesStack.pop();
-      },
-      VariableDeclarator(node: EsTreeNode) {
-        if (isComponentAssignment(node)) {
-          useStateValueNamesStack.push(collectUseStateValueNames(node.init?.body));
-          return;
-        }
-        if (
-          node.init?.type === "ArrowFunctionExpression" ||
-          node.init?.type === "FunctionExpression"
-        ) {
-          useStateValueNamesStack.push(new Set());
-        }
-      },
-      "VariableDeclarator:exit"(node: EsTreeNode) {
-        if (isComponentAssignment(node)) {
-          useStateValueNamesStack.pop();
-          return;
-        }
-        if (
-          node.init?.type === "ArrowFunctionExpression" ||
-          node.init?.type === "FunctionExpression"
-        ) {
-          useStateValueNamesStack.pop();
-        }
-      },
-      CallExpression(node: EsTreeNode) {
-        if (!isHookCall(node, EFFECT_HOOK_NAMES) || (node.arguments?.length ?? 0) < 2) return;
+      const callback = getEffectCallback(node);
+      if (!callback) return;
 
-        const callback = getEffectCallback(node);
-        if (!callback) return;
+      const depsNode = node.arguments[1];
+      if (depsNode.type !== "ArrayExpression" || !depsNode.elements?.length) return;
 
-        const depsNode = node.arguments[1];
-        if (depsNode.type !== "ArrayExpression" || !depsNode.elements?.length) return;
+      const dependencyNames = new Set(
+        depsNode.elements
+          .filter((element: EsTreeNode) => element?.type === "Identifier")
+          .map((element: EsTreeNode) => element.name),
+      );
 
-        const dependencyNames = new Set(
-          depsNode.elements
-            .filter((element: EsTreeNode) => element?.type === "Identifier")
-            .map((element: EsTreeNode) => element.name),
-        );
+      const statements = getCallbackStatements(callback);
+      if (statements.length !== 1) return;
 
-        const statements = getCallbackStatements(callback);
-        if (statements.length !== 1) return;
+      const soleStatement = statements[0];
+      if (soleStatement.type !== "IfStatement") return;
 
-        const soleStatement = statements[0];
-        if (soleStatement.type !== "IfStatement") return;
+      // HACK: §5 of "You Might Not Need an Effect" uses
+      // `if (product.isInCart)` — a MemberExpression, not a bare
+      // Identifier. The earlier detector hard-required `Identifier`
+      // and missed the article's literal example. Walk the test
+      // down to its root identifier so both shapes match:
+      //   if (isOpen)            → root = "isOpen"
+      //   if (product.isInCart)  → root = "product"
+      const rootIdentifierName = getRootIdentifierName(soleStatement.test);
+      if (!rootIdentifierName || !dependencyNames.has(rootIdentifierName)) return;
 
-        // HACK: §5 of "You Might Not Need an Effect" uses
-        // `if (product.isInCart)` — a MemberExpression, not a bare
-        // Identifier. The earlier detector hard-required `Identifier`
-        // and missed the article's literal example. Walk the test
-        // down to its root identifier so both shapes match:
-        //   if (isOpen)            → root = "isOpen"
-        //   if (product.isInCart)  → root = "product"
-        const rootIdentifierName = getRootIdentifierName(soleStatement.test);
-        if (!rootIdentifierName || !dependencyNames.has(rootIdentifierName)) return;
-
-        // Defer to noEventTriggerState ONLY when its diagnostic
-        // would actually fire. Its narrower preconditions (single
-        // dep, side-effect-callee allowlist) mean a deference based
-        // only on isStateValueName silently drops warnings for
-        // shapes like `if (trigger) customAction();` where neither
-        // rule then reports. Match noEventTriggerState's full set
-        // here: state-typed dep + recognized side-effect callee in
-        // the consequent.
-        // Reuse noEventTriggerState's helper instead of duplicating
-        // the AST walk + constant lookups; "function would fire"
-        // ↔ "callee was found in the consequent".
-        if (
-          isStateValueName(rootIdentifierName) &&
-          findTriggeredSideEffectCalleeName(soleStatement.consequent) !== null
-        ) {
-          return;
-        }
-
-        context.report({
-          node,
-          message:
-            "useEffect simulating an event handler — move logic to an actual event handler instead",
-        });
-      },
-    };
-  },
+      // Don't defer to `noEventTriggerState` here. The previous
+      // implementation tried to ("if the body looks event-shaped,
+      // let the more specific rule report"), but that deference
+      // could silently drop diagnostics: `noEventTriggerState`
+      // requires several preconditions this visitor can't cheaply
+      // verify (single dep, handler-only writes for that state,
+      // and not render-reachable). When any of those failed, the
+      // narrow rule didn't fire AND this rule deferred, so the
+      // user got nothing. Both rules fire independently — the two
+      // messages frame the same code differently ("this useEffect
+      // simulates a handler" vs "this state exists only to schedule
+      // X from an effect") and a duplicate diagnostic is strictly
+      // better than a silent drop.
+      context.report({
+        node,
+        message:
+          "useEffect simulating an event handler — move logic to an actual event handler instead",
+      });
+    },
+  }),
 };
 
 export const noDerivedUseState: Rule = {
@@ -439,13 +371,7 @@ export const noDerivedUseState: Rule = {
         }
 
         if (initializer.type === "MemberExpression" && !initializer.computed) {
-          let rootIdentifierName: string | null = null;
-          let cursor: EsTreeNode = initializer;
-          while (cursor?.type === "MemberExpression") {
-            cursor = cursor.object;
-          }
-          if (cursor?.type === "Identifier") rootIdentifierName = cursor.name;
-
+          const rootIdentifierName = getRootIdentifierName(initializer);
           if (rootIdentifierName && isPropName(rootIdentifierName)) {
             context.report({
               node,
@@ -1738,15 +1664,18 @@ const findTriggeredSideEffectCalleeName = (consequentNode: EsTreeNode): string |
       foundCalleeName = callee.name;
       return;
     }
-    if (
-      callee?.type === "MemberExpression" &&
-      callee.property?.type === "Identifier" &&
-      EVENT_TRIGGERED_SIDE_EFFECT_MEMBER_METHODS.has(callee.property.name)
-    ) {
+    if (callee?.type === "MemberExpression" && callee.property?.type === "Identifier") {
+      const propertyName = callee.property.name;
+      const isUnambiguousMethod = EVENT_TRIGGERED_SIDE_EFFECT_MEMBER_METHODS.has(propertyName);
+      const isNavigationMethod = EVENT_TRIGGERED_NAVIGATION_METHOD_NAMES.has(propertyName);
+      if (!isUnambiguousMethod && !isNavigationMethod) return;
       let cursor: EsTreeNode | undefined = callee;
       while (cursor?.type === "MemberExpression") cursor = cursor.object;
       const rootName = cursor?.type === "Identifier" ? cursor.name : null;
-      foundCalleeName = rootName ? `${rootName}.${callee.property.name}` : callee.property.name;
+      if (isNavigationMethod && (rootName === null || !NAVIGATION_RECEIVER_NAMES.has(rootName))) {
+        return;
+      }
+      foundCalleeName = rootName ? `${rootName}.${propertyName}` : propertyName;
     }
   });
   return foundCalleeName;
@@ -1925,16 +1854,14 @@ const collectWrittenStateNamesInEffect = (
 };
 
 const isExternalSyncEffect = (effectCallback: EsTreeNode): boolean => {
+  // A cleanup return is the strongest signal that the effect owns
+  // an external resource — once we see one, we don't need to inspect
+  // the body for an external-sync call shape.
   if (effectCallback.body?.type === "BlockStatement") {
     const statements = effectCallback.body.body ?? [];
     for (const statement of statements) {
       if (statement.type === "ReturnStatement" && statement.argument) return true;
     }
-  } else if (effectCallback.body?.type !== "BlockStatement") {
-    // Concise arrow body — `useEffect(() => something())`. If the
-    // expression itself is an external sync call, the effect is
-    // single-statement-external; otherwise it can't be a chain link
-    // anyway because chains require setter calls in the body.
   }
 
   let didFindExternalCall = false;
@@ -1984,13 +1911,10 @@ const isExternalSyncEffect = (effectCallback: EsTreeNode): boolean => {
       // etc.). Only count them when the receiver looks like an HTTP
       // client.
       if (EXTERNAL_SYNC_AMBIGUOUS_HTTP_METHOD_NAMES.has(propertyName)) {
-        let receiverCursor: EsTreeNode | undefined = child.callee.object;
-        while (receiverCursor?.type === "MemberExpression") {
-          receiverCursor = receiverCursor.object;
-        }
+        const receiverRootName = getRootIdentifierName(child.callee.object);
         if (
-          receiverCursor?.type === "Identifier" &&
-          EXTERNAL_SYNC_HTTP_CLIENT_RECEIVERS.has(receiverCursor.name)
+          receiverRootName !== null &&
+          EXTERNAL_SYNC_HTTP_CLIENT_RECEIVERS.has(receiverRootName)
         ) {
           didFindExternalCall = true;
         }

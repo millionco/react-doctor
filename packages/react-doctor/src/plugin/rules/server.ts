@@ -1,5 +1,5 @@
 import { AUTH_CHECK_LOOKAHEAD_STATEMENTS, AUTH_FUNCTION_NAMES } from "../constants.js";
-import { hasDirective, hasUseServerDirective, walkAst } from "../helpers.js";
+import { getRootIdentifierName, hasDirective, hasUseServerDirective, walkAst } from "../helpers.js";
 import type { EsTreeNode, Rule, RuleContext } from "../types.js";
 
 const containsAuthCheck = (statements: EsTreeNode[]): boolean => {
@@ -303,30 +303,13 @@ const callReadsHandlerArgs = (call: EsTreeNode, handlerParamNames: Set<string>):
 
 const DERIVING_ARRAY_METHODS = new Set(["toSorted", "toReversed", "filter", "map", "slice"]);
 
-const getRootIdentifierName = (node: EsTreeNode): string | null => {
-  let cursor: EsTreeNode = node;
-  while (cursor && (cursor.type === "MemberExpression" || cursor.type === "CallExpression")) {
-    if (cursor.type === "MemberExpression") {
-      cursor = cursor.object;
-    } else if (cursor.type === "CallExpression") {
-      const callee = cursor.callee;
-      if (callee?.type === "MemberExpression") {
-        cursor = callee.object;
-      } else {
-        return null;
-      }
-    }
-  }
-  return cursor?.type === "Identifier" ? cursor.name : null;
-};
-
 const expressionDerivesFromIdentifier = (node: EsTreeNode, identifierName: string): boolean => {
   if (node.type !== "CallExpression") return false;
   const callee = node.callee;
   if (callee?.type !== "MemberExpression") return false;
   if (callee.property?.type !== "Identifier") return false;
   if (!DERIVING_ARRAY_METHODS.has(callee.property.name)) return false;
-  return getRootIdentifierName(callee) === identifierName;
+  return getRootIdentifierName(callee, { followCallChains: true }) === identifierName;
 };
 
 // HACK: passing both `<Client list={items} sortedList={items.toSorted()} />`
@@ -350,7 +333,7 @@ export const serverDedupProps: Rule = {
         if (expression.type === "Identifier") {
           identifierAttributes.set(expression.name, attr.name.name);
         } else if (expression.type === "CallExpression") {
-          const root = getRootIdentifierName(expression);
+          const root = getRootIdentifierName(expression, { followCallChains: true });
           if (root && DERIVING_ARRAY_METHODS.has(getDerivingMethodName(expression) ?? "")) {
             if (expressionDerivesFromIdentifier(expression, root)) {
               derivedAttributes.push({ propName: attr.name.name, rootName: root, node: attr });

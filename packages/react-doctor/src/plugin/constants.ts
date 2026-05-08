@@ -390,17 +390,27 @@ export const MUTATING_ROUTE_SEGMENTS = new Set([
 export const EFFECT_HOOK_NAMES = new Set(["useEffect", "useLayoutEffect"]);
 export const HOOKS_WITH_DEPS = new Set(["useEffect", "useLayoutEffect", "useMemo", "useCallback"]);
 
-// Direct CallExpression callees whose function argument is a "sub-handler"
-// — code that runs asynchronously, in response to an event the React render
-// can't observe. Calling a reactive value from inside a sub-handler is the
-// classic case for `useEffectEvent` (see "Separating Events from Effects").
-export const SUB_HANDLER_DIRECT_CALLEE_NAMES = new Set([
+// Direct CallExpression callees that schedule a callback to run later,
+// outside the current render's microtask. Two distinct rules consume this
+// set, so the names below intentionally describe the shape (timers and
+// schedulers) rather than either rule's interpretation.
+//
+// Consumers:
+//   - `prefer-use-effect-event` treats them as "sub-handler" boundaries:
+//     calling a reactive value from inside the scheduled callback is the
+//     classic case for `useEffectEvent` (see "Separating Events from
+//     Effects").
+//   - `no-effect-chain` treats them as external-sync direct callees so a
+//     useEffect that only schedules timers is exempt from the chain rule.
+export const TIMER_AND_SCHEDULER_DIRECT_CALLEE_NAMES = new Set([
   "setTimeout",
   "setInterval",
   "requestAnimationFrame",
   "requestIdleCallback",
   "queueMicrotask",
 ]);
+
+export const SUB_HANDLER_DIRECT_CALLEE_NAMES = TIMER_AND_SCHEDULER_DIRECT_CALLEE_NAMES;
 
 // Globals whose values mutate outside the React data flow. Listing
 // them as deps doesn't trigger a re-run when they change because
@@ -415,86 +425,6 @@ export const MUTABLE_GLOBAL_ROOTS = new Set([
   "history",
   "screen",
   "performance",
-]);
-
-// Used by `no-effect-chain` to decide whether an effect is doing
-// "real" external-system synchronization (in which case effects on
-// either side of the chain are exempt, per the article's own caveat
-// about cascading network fetches) versus pure internal reactivity
-// (which is the anti-pattern). A cleanup return is the strongest
-// signal; the curated method list covers the rest.
-// Member-method names that, on their own, mark a call as external
-// sync regardless of receiver. These are unambiguous in real React
-// codebases — they don't clash with built-in JS APIs.
-export const EXTERNAL_SYNC_MEMBER_METHOD_NAMES = new Set([
-  // Subscriptions / event listeners
-  "subscribe",
-  "addEventListener",
-  "addListener",
-  "on",
-  "watch",
-  "listen",
-  "sub",
-  // Imperative widget lifecycle (createConnection().connect()/.disconnect())
-  "connect",
-  "disconnect",
-  "open",
-  "close",
-  // Mutating HTTP verbs — `*.post(url, body)` is essentially always
-  // a network call. (`delete` is moved to the ambiguous set below
-  // because Map / Set / URLSearchParams / Headers / FormData /
-  // WeakMap all expose `.delete(...)` as a built-in method.)
-  "fetch",
-  "post",
-  "put",
-  "patch",
-]);
-
-// HACK: `get`, `head`, `options` are HTTP verbs but ALSO names of
-// universal data-structure methods (`Map.get`, `URLSearchParams.get`,
-// `FormData.get`, `Headers.get`, `WeakMap.get`, `Set.has`, etc.). We
-// only treat them as external-sync calls when the receiver is a
-// recognized HTTP-client-shaped name. Lets the `axios.get(...)`
-// cascade case work without false-classifying `params.get('id')` as
-// external sync.
-export const EXTERNAL_SYNC_HTTP_CLIENT_RECEIVERS = new Set([
-  "axios",
-  "ky",
-  "got",
-  "wretch",
-  "ofetch",
-  "api",
-  "client",
-  "http",
-  "request",
-  "fetcher",
-]);
-
-export const EXTERNAL_SYNC_AMBIGUOUS_HTTP_METHOD_NAMES = new Set([
-  "get",
-  "head",
-  "options",
-  "delete",
-]);
-
-export const EXTERNAL_SYNC_DIRECT_CALLEE_NAMES = new Set([
-  "fetch",
-  "ky",
-  "got",
-  "wretch",
-  "ofetch",
-  "setInterval",
-  "setTimeout",
-  "requestAnimationFrame",
-  "requestIdleCallback",
-  "queueMicrotask",
-]);
-
-export const EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS = new Set([
-  "IntersectionObserver",
-  "MutationObserver",
-  "ResizeObserver",
-  "PerformanceObserver",
 ]);
 
 // Subscription-shaped method names recognized by `prefer-use-sync-external-store`.
@@ -527,6 +457,79 @@ export const UNSUBSCRIPTION_METHOD_NAMES = new Set([
   "unsub",
 ]);
 
+// Used by `no-effect-chain` to decide whether an effect is doing
+// "real" external-system synchronization (in which case effects on
+// either side of the chain are exempt, per the article's own caveat
+// about cascading network fetches) versus pure internal reactivity
+// (which is the anti-pattern). A cleanup return is the strongest
+// signal; the curated method list covers the rest.
+//
+// Member-method names that, on their own, mark a call as external
+// sync regardless of receiver. These are unambiguous in real React
+// codebases — they don't clash with built-in JS APIs.
+//
+// Layered on top of `SUBSCRIPTION_METHOD_NAMES` so the subscribe-shape
+// detector and the external-sync detector can never disagree about
+// which method names are "subscriptions."
+export const EXTERNAL_SYNC_MEMBER_METHOD_NAMES = new Set([
+  ...SUBSCRIPTION_METHOD_NAMES,
+  // Imperative widget lifecycle (createConnection().connect()/.disconnect())
+  "connect",
+  "disconnect",
+  "open",
+  "close",
+  // Mutating HTTP verbs — `*.post(url, body)` is essentially always
+  // a network call. (`delete` is moved to the ambiguous set below
+  // because Map / Set / URLSearchParams / Headers / FormData /
+  // WeakMap all expose `.delete(...)` as a built-in method.)
+  "fetch",
+  "post",
+  "put",
+  "patch",
+]);
+
+// HACK: `get`, `head`, `options` are HTTP verbs but ALSO names of
+// universal data-structure methods (`Map.get`, `URLSearchParams.get`,
+// `FormData.get`, `Headers.get`, `WeakMap.get`, `Set.has`, etc.). We
+// only treat them as external-sync calls when the receiver is a
+// recognized HTTP-client-shaped name. Lets the `axios.get(...)`
+// cascade case work without false-classifying `params.get('id')` as
+// external sync.
+//
+// Layered on top of `FETCH_MEMBER_OBJECTS` (the canonical HTTP-client
+// receiver list used by `containsFetchCall`) so adding a new client
+// name in one place propagates to both detectors.
+export const EXTERNAL_SYNC_HTTP_CLIENT_RECEIVERS = new Set([
+  ...FETCH_MEMBER_OBJECTS,
+  "api",
+  "client",
+  "http",
+  "fetcher",
+]);
+
+export const EXTERNAL_SYNC_AMBIGUOUS_HTTP_METHOD_NAMES = new Set([
+  "get",
+  "head",
+  "options",
+  "delete",
+]);
+
+// Direct callees that mark an effect body as external-sync. Combines
+// the shared HTTP-client direct-callee list (`FETCH_CALLEE_NAMES`)
+// with the timer / scheduler list above so all three rule families
+// share a single source of truth for these names.
+export const EXTERNAL_SYNC_DIRECT_CALLEE_NAMES = new Set([
+  ...FETCH_CALLEE_NAMES,
+  ...TIMER_AND_SCHEDULER_DIRECT_CALLEE_NAMES,
+]);
+
+export const EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS = new Set([
+  "IntersectionObserver",
+  "MutationObserver",
+  "ResizeObserver",
+  "PerformanceObserver",
+]);
+
 // Used by `no-event-trigger-state` to recognize when a useEffect body
 // is performing the §6 anti-pattern from "You Might Not Need an Effect"
 // — running an event-shaped side effect (POST, navigation, notification,
@@ -534,18 +537,15 @@ export const UNSUBSCRIPTION_METHOD_NAMES = new Set([
 // Tightly scoped on purpose — adding a callee name here can produce
 // false positives on pure helper functions, so the bar is "this name
 // almost always denotes a fire-and-forget user-action effect."
+// Layered on top of `FETCH_CALLEE_NAMES` so adding a new HTTP client
+// shorthand in one place propagates to every detector that recognizes it.
 export const EVENT_TRIGGERED_SIDE_EFFECT_CALLEES = new Set([
+  ...FETCH_CALLEE_NAMES,
   // Network shorthand verbs (article uses `post`)
-  "fetch",
   "post",
   "put",
   "patch",
   "del",
-  // Common HTTP client wrappers
-  "ky",
-  "got",
-  "wretch",
-  "ofetch",
   // Navigation
   "navigate",
   "navigateTo",
@@ -562,19 +562,36 @@ export const EVENT_TRIGGERED_SIDE_EFFECT_CALLEES = new Set([
 ]);
 
 // Recognized when the call shape is `<obj>.<method>(...)` — covers
-// `axios.post`, `api.post`, `router.push`, `analytics.track`,
-// `posthog.capture`, etc. without enumerating every possible object.
+// `axios.post`, `api.post`, `analytics.track`, `posthog.capture`,
+// etc. without enumerating every possible object. Names here are
+// unambiguous: they don't clash with built-in JS prototype methods
+// or common application code.
 export const EVENT_TRIGGERED_SIDE_EFFECT_MEMBER_METHODS = new Set([
   "post",
   "put",
   "patch",
   "delete",
-  "push",
-  "replace",
   "navigate",
   "capture",
   "track",
   "logEvent",
+]);
+
+// HACK: `push` and `replace` are router methods (`router.push("/foo")`,
+// `history.replace("/bar")`) but ALSO universal Array / String prototype
+// methods. `[1, 2].push(3)` and `"a".replace("b", "c")` are NOT event-
+// shaped side effects — calling `setX` after them in a useEffect is
+// usually fine. We only treat them as event-triggered side effects when
+// the receiver looks router-shaped. Keeps the false-positive rate down
+// without losing the `router.push(...)` / `history.replace(...)` cases.
+export const EVENT_TRIGGERED_NAVIGATION_METHOD_NAMES = new Set(["push", "replace"]);
+
+export const NAVIGATION_RECEIVER_NAMES = new Set([
+  "router",
+  "navigation",
+  "navigator",
+  "history",
+  "location",
 ]);
 export const CHAINABLE_ITERATION_METHODS = new Set(["map", "filter", "forEach", "flatMap"]);
 export const STORAGE_OBJECTS = new Set(["localStorage", "sessionStorage"]);

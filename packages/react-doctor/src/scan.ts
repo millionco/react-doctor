@@ -4,6 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
 import {
+  CATEGORY_BAR_WIDTH_CHARS,
+  CATEGORY_LABEL_COLUMN_WIDTH_CHARS,
+  MAX_DETAILED_RULE_GROUPS_NON_VERBOSE,
   MAX_RULE_GROUPS_SHOWN_NON_VERBOSE,
   MILLISECONDS_PER_SECOND,
   buildNoReactDependencyError,
@@ -11,6 +14,7 @@ import {
   OXLINT_NODE_REQUIREMENT,
   OXLINT_RECOMMENDED_NODE_MAJOR,
   PERFECT_SCORE,
+  RULE_NAME_COLUMN_WIDTH_CHARS,
   SCORE_BAR_WIDTH_CHARS,
   SCORE_GOOD_THRESHOLD,
   SCORE_OK_THRESHOLD,
@@ -24,6 +28,10 @@ import type {
   ScanResult,
   ScoreResult,
 } from "./types.js";
+import {
+  buildCategoryBreakdown,
+  type CategoryBreakdownEntry,
+} from "./utils/build-category-breakdown.js";
 import { buildHiddenDiagnosticsSummary } from "./utils/build-hidden-diagnostics-summary.js";
 import { calculateScore, calculateScoreLocally } from "./utils/calculate-score.js";
 import { colorizeByScore } from "./utils/colorize-by-score.js";
@@ -31,10 +39,10 @@ import { combineDiagnostics } from "./utils/combine-diagnostics.js";
 import { computeJsxIncludePaths } from "./utils/jsx-include-paths.js";
 import { discoverProject, formatFrameworkName } from "./utils/discover-project.js";
 import { formatErrorChain } from "./utils/format-error-chain.js";
-import { type FramedLine, createFramedLine, printFramedBox } from "./utils/framed-box.js";
 import { groupBy } from "./utils/group-by.js";
 import { highlighter } from "./utils/highlighter.js";
 import { indentMultilineText } from "./utils/indent-multiline-text.js";
+import { toRelativePath } from "./utils/to-relative-path.js";
 import { loadConfig } from "./utils/load-config.js";
 import { isLoggerSilent, logger, setLoggerSilent } from "./utils/logger.js";
 import { prompts } from "./utils/prompts.js";
@@ -90,7 +98,88 @@ const buildVerboseSiteMap = (diagnostics: Diagnostic[]): Map<string, VerboseSite
   return fileSites;
 };
 
-const printDiagnostics = (diagnostics: Diagnostic[], isVerbose: boolean): void => {
+const formatSiteCountLabel = (count: number): string =>
+  `${count} ${count === 1 ? "site" : "sites"}`;
+
+const computeRuleNameColumnWidth = (ruleKeys: string[]): number => {
+  const longestRuleNameLength = ruleKeys.reduce(
+    (longest, ruleKey) => Math.max(longest, ruleKey.length),
+    0,
+  );
+  return Math.max(RULE_NAME_COLUMN_WIDTH_CHARS, longestRuleNameLength);
+};
+
+const padRuleNameToColumn = (ruleName: string, columnWidth: number): string => {
+  if (ruleName.length >= columnWidth) return ruleName;
+  return ruleName + " ".repeat(columnWidth - ruleName.length);
+};
+
+const printCompactRuleGroupLine = (
+  ruleKey: string,
+  ruleDiagnostics: Diagnostic[],
+  ruleNameColumnWidth: number,
+): void => {
+  const firstDiagnostic = ruleDiagnostics[0];
+  const severitySymbol = firstDiagnostic.severity === "error" ? "✗" : "⚠";
+  const icon = colorizeBySeverity(severitySymbol, firstDiagnostic.severity);
+  const paddedRuleName = padRuleNameToColumn(ruleKey, ruleNameColumnWidth);
+  const colorizedRuleName = colorizeBySeverity(paddedRuleName, firstDiagnostic.severity);
+  const siteCountLabel = highlighter.dim(formatSiteCountLabel(ruleDiagnostics.length));
+  logger.log(`  ${icon} ${colorizedRuleName} ${siteCountLabel}`);
+};
+
+const printDetailedRuleGroup = (
+  ruleKey: string,
+  ruleDiagnostics: Diagnostic[],
+  rootDirectory: string,
+  ruleNameColumnWidth: number,
+): void => {
+  printCompactRuleGroupLine(ruleKey, ruleDiagnostics, ruleNameColumnWidth);
+  const firstDiagnostic = ruleDiagnostics[0];
+  logger.dim(indentMultilineText(firstDiagnostic.message, "      "));
+  if (firstDiagnostic.help) {
+    logger.dim(indentMultilineText(`→ ${firstDiagnostic.help}`, "      "));
+  }
+  const firstLocation = ruleDiagnostics.find((diagnostic) => diagnostic.line > 0);
+  if (firstLocation) {
+    const locationPath = toRelativePath(firstLocation.filePath, rootDirectory);
+    logger.dim(`      ${locationPath}:${firstLocation.line}`);
+  }
+  logger.break();
+};
+
+const printVerboseRuleGroup = (
+  ruleKey: string,
+  ruleDiagnostics: Diagnostic[],
+  ruleNameColumnWidth: number,
+): void => {
+  printCompactRuleGroupLine(ruleKey, ruleDiagnostics, ruleNameColumnWidth);
+  const firstDiagnostic = ruleDiagnostics[0];
+  logger.dim(indentMultilineText(firstDiagnostic.message, "      "));
+  if (firstDiagnostic.help) {
+    logger.dim(indentMultilineText(`→ ${firstDiagnostic.help}`, "      "));
+  }
+  const fileSites = buildVerboseSiteMap(ruleDiagnostics);
+  for (const [filePath, sites] of fileSites) {
+    if (sites.length > 0) {
+      for (const site of sites) {
+        logger.dim(`      ${filePath}:${site.line}`);
+        if (site.suppressionHint) {
+          logger.dim(`        ↳ ${site.suppressionHint}`);
+        }
+      }
+    } else {
+      logger.dim(`      ${filePath}`);
+    }
+  }
+  logger.break();
+};
+
+const printDiagnostics = (
+  diagnostics: Diagnostic[],
+  isVerbose: boolean,
+  rootDirectory: string,
+): void => {
   const ruleGroups = groupBy(
     diagnostics,
     (diagnostic) => `${diagnostic.plugin}/${diagnostic.rule}`,
@@ -104,35 +193,23 @@ const printDiagnostics = (diagnostics: Diagnostic[], isVerbose: boolean): void =
     ? []
     : sortedRuleGroups.slice(MAX_RULE_GROUPS_SHOWN_NON_VERBOSE);
 
-  for (const [, ruleDiagnostics] of visibleRuleGroups) {
-    const firstDiagnostic = ruleDiagnostics[0];
-    const severitySymbol = firstDiagnostic.severity === "error" ? "✗" : "⚠";
-    const icon = colorizeBySeverity(severitySymbol, firstDiagnostic.severity);
-    const count = ruleDiagnostics.length;
-    const countLabel = count > 1 ? colorizeBySeverity(` (${count})`, firstDiagnostic.severity) : "";
+  const ruleNameColumnWidth = computeRuleNameColumnWidth(
+    visibleRuleGroups.map(([ruleKey]) => ruleKey),
+  );
 
-    logger.log(`  ${icon} ${firstDiagnostic.message}${countLabel}`);
-    if (firstDiagnostic.help) {
-      logger.dim(indentMultilineText(firstDiagnostic.help, "    "));
-    }
-
+  visibleRuleGroups.forEach(([ruleKey, ruleDiagnostics], visibleIndex) => {
     if (isVerbose) {
-      const fileSites = buildVerboseSiteMap(ruleDiagnostics);
-
-      for (const [filePath, sites] of fileSites) {
-        if (sites.length > 0) {
-          for (const site of sites) {
-            logger.dim(`  ${filePath}:${site.line}`);
-            if (site.suppressionHint) {
-              logger.dim(`    ↳ ${site.suppressionHint}`);
-            }
-          }
-        } else {
-          logger.dim(`  ${filePath}`);
-        }
-      }
+      printVerboseRuleGroup(ruleKey, ruleDiagnostics, ruleNameColumnWidth);
+      return;
     }
+    if (visibleIndex < MAX_DETAILED_RULE_GROUPS_NON_VERBOSE) {
+      printDetailedRuleGroup(ruleKey, ruleDiagnostics, rootDirectory, ruleNameColumnWidth);
+      return;
+    }
+    printCompactRuleGroupLine(ruleKey, ruleDiagnostics, ruleNameColumnWidth);
+  });
 
+  if (visibleRuleGroups.length > MAX_DETAILED_RULE_GROUPS_NON_VERBOSE && !isVerbose) {
     logger.break();
   }
 
@@ -223,11 +300,6 @@ const buildScoreBarSegments = (score: number): ScoreBarSegments => {
   };
 };
 
-const buildPlainScoreBar = (score: number): string => {
-  const { filledSegment, emptySegment } = buildScoreBarSegments(score);
-  return `${filledSegment}${emptySegment}`;
-};
-
 const buildScoreBar = (score: number): string => {
   const { filledSegment, emptySegment } = buildScoreBarSegments(score);
   return colorizeByScore(filledSegment, score) + highlighter.dim(emptySegment);
@@ -248,16 +320,83 @@ const getDoctorFace = (score: number): string[] => {
   return ["x x", " ▽ "];
 };
 
+const buildFaceLines = (score: number): { plainLines: string[]; renderedLines: string[] } => {
+  const [eyes, mouth] = getDoctorFace(score);
+  const colorize = (text: string) => colorizeByScore(text, score);
+  const plainLines = ["┌─────┐", `│ ${eyes} │`, `│ ${mouth} │`, "└─────┘"];
+  const renderedLines = plainLines.map(colorize);
+  return { plainLines, renderedLines };
+};
+
 const printBranding = (score?: number): void => {
   if (score !== undefined) {
-    const [eyes, mouth] = getDoctorFace(score);
-    const colorize = (text: string) => colorizeByScore(text, score);
-    logger.log(colorize("  ┌─────┐"));
-    logger.log(colorize(`  │ ${eyes} │`));
-    logger.log(colorize(`  │ ${mouth} │`));
-    logger.log(colorize("  └─────┘"));
+    const { renderedLines } = buildFaceLines(score);
+    for (const renderedLine of renderedLines) {
+      logger.log(`  ${renderedLine}`);
+    }
   }
   logger.log(`  React Doctor ${highlighter.dim("(www.react.doctor)")}`);
+  logger.break();
+};
+
+const printScoreHeader = (scoreResult: ScoreResult): void => {
+  const { plainLines, renderedLines } = buildFaceLines(scoreResult.score);
+  const faceWidth = Math.max(...plainLines.map((plainLine) => plainLine.length));
+  const facePadding = " ".repeat(faceWidth);
+
+  const scoreNumber = colorizeByScore(`${scoreResult.score}`, scoreResult.score);
+  const scoreLabel = colorizeByScore(scoreResult.label, scoreResult.score);
+  const scoreLine = `${scoreNumber} ${highlighter.dim(`/ ${PERFECT_SCORE}`)} ${scoreLabel}`;
+  const scoreBarLine = buildScoreBar(scoreResult.score);
+  const brandingLine = `React Doctor ${highlighter.dim("(www.react.doctor)")}`;
+
+  const rightColumnLines = [scoreLine, scoreBarLine, brandingLine, ""];
+
+  for (let lineIndex = 0; lineIndex < plainLines.length; lineIndex += 1) {
+    const renderedFacePart = renderedLines[lineIndex] ?? facePadding;
+    const rightColumnContent = rightColumnLines[lineIndex] ?? "";
+    const separator = rightColumnContent.length > 0 ? "  " : "";
+    logger.log(`  ${renderedFacePart}${separator}${rightColumnContent}`);
+  }
+
+  logger.break();
+};
+
+const printNoScoreHeader = (noScoreMessage: string): void => {
+  logger.log(`  React Doctor ${highlighter.dim("(www.react.doctor)")}`);
+  logger.log(`  ${highlighter.dim(noScoreMessage)}`);
+  logger.break();
+};
+
+const buildCategoryBar = (count: number, maximumCount: number, useErrorColor: boolean): string => {
+  if (maximumCount === 0) return highlighter.dim("░".repeat(CATEGORY_BAR_WIDTH_CHARS));
+  const filledCount = Math.max(1, Math.round((count / maximumCount) * CATEGORY_BAR_WIDTH_CHARS));
+  const cappedFilledCount = Math.min(filledCount, CATEGORY_BAR_WIDTH_CHARS);
+  const emptyCount = CATEGORY_BAR_WIDTH_CHARS - cappedFilledCount;
+  const filledSegment = "█".repeat(cappedFilledCount);
+  const emptySegment = "░".repeat(emptyCount);
+  const colorizedFilled = useErrorColor
+    ? highlighter.error(filledSegment)
+    : highlighter.warn(filledSegment);
+  return `${colorizedFilled}${highlighter.dim(emptySegment)}`;
+};
+
+const padCategoryLabel = (categoryLabel: string): string => {
+  if (categoryLabel.length >= CATEGORY_LABEL_COLUMN_WIDTH_CHARS) return categoryLabel;
+  return categoryLabel + " ".repeat(CATEGORY_LABEL_COLUMN_WIDTH_CHARS - categoryLabel.length);
+};
+
+const printCategoryBreakdown = (entries: CategoryBreakdownEntry[]): void => {
+  if (entries.length === 0) return;
+  const maximumCount = Math.max(...entries.map((entry) => entry.totalCount));
+  logger.dim("  By category");
+  for (const entry of entries) {
+    const paddedLabel = padCategoryLabel(entry.category);
+    const categoryBar = buildCategoryBar(entry.totalCount, maximumCount, entry.errorCount > 0);
+    const totalCountDisplay = String(entry.totalCount);
+    const errorBadge = entry.errorCount > 0 ? ` ${highlighter.error(`${entry.errorCount}×`)}` : "";
+    logger.log(`    ${paddedLabel}${categoryBar} ${totalCountDisplay}${errorBadge}`);
+  }
   logger.break();
 };
 
@@ -280,85 +419,29 @@ const buildShareUrl = (
   return `${SHARE_BASE_URL}?${params.toString()}`;
 };
 
-const buildBrandingLines = (
-  scoreResult: ScoreResult | null,
-  noScoreMessage: string,
-): FramedLine[] => {
-  const lines: FramedLine[] = [];
-
-  if (scoreResult) {
-    const [eyes, mouth] = getDoctorFace(scoreResult.score);
-    const scoreColorizer = (text: string): string => colorizeByScore(text, scoreResult.score);
-
-    lines.push(createFramedLine("┌─────┐", scoreColorizer("┌─────┐")));
-    lines.push(createFramedLine(`│ ${eyes} │`, scoreColorizer(`│ ${eyes} │`)));
-    lines.push(createFramedLine(`│ ${mouth} │`, scoreColorizer(`│ ${mouth} │`)));
-    lines.push(createFramedLine("└─────┘", scoreColorizer("└─────┘")));
-    lines.push(
-      createFramedLine(
-        "React Doctor (www.react.doctor)",
-        `React Doctor ${highlighter.dim("(www.react.doctor)")}`,
-      ),
-    );
-    lines.push(createFramedLine(""));
-
-    const scoreLinePlainText = `${scoreResult.score} / ${PERFECT_SCORE}  ${scoreResult.label}`;
-    const scoreLineRenderedText = `${colorizeByScore(String(scoreResult.score), scoreResult.score)} / ${PERFECT_SCORE}  ${colorizeByScore(scoreResult.label, scoreResult.score)}`;
-    lines.push(createFramedLine(scoreLinePlainText, scoreLineRenderedText));
-    lines.push(createFramedLine(""));
-    lines.push(
-      createFramedLine(buildPlainScoreBar(scoreResult.score), buildScoreBar(scoreResult.score)),
-    );
-    lines.push(createFramedLine(""));
-  } else {
-    lines.push(
-      createFramedLine(
-        "React Doctor (www.react.doctor)",
-        `React Doctor ${highlighter.dim("(www.react.doctor)")}`,
-      ),
-    );
-    lines.push(createFramedLine(""));
-    lines.push(createFramedLine(noScoreMessage, highlighter.dim(noScoreMessage)));
-    lines.push(createFramedLine(""));
-  }
-
-  return lines;
-};
-
-const buildCountsSummaryLine = (
+const printCountsSummaryLine = (
   diagnostics: Diagnostic[],
   totalSourceFileCount: number,
   elapsedMilliseconds: number,
-): FramedLine => {
+): void => {
   const errorCount = diagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
   const warningCount = diagnostics.filter((diagnostic) => diagnostic.severity === "warning").length;
   const affectedFileCount = collectAffectedFiles(diagnostics).size;
-  const elapsed = formatElapsedTime(elapsedMilliseconds);
+  const totalIssueCount = diagnostics.length;
+  const elapsedTimeLabel = formatElapsedTime(elapsedMilliseconds);
 
-  const plainParts: string[] = [];
-  const renderedParts: string[] = [];
-
-  if (errorCount > 0) {
-    const errorText = `✗ ${errorCount} error${errorCount === 1 ? "" : "s"}`;
-    plainParts.push(errorText);
-    renderedParts.push(highlighter.error(errorText));
-  }
-  if (warningCount > 0) {
-    const warningText = `⚠ ${warningCount} warning${warningCount === 1 ? "" : "s"}`;
-    plainParts.push(warningText);
-    renderedParts.push(highlighter.warn(warningText));
-  }
-
+  const issueCountColor =
+    errorCount > 0 ? highlighter.error : warningCount > 0 ? highlighter.warn : highlighter.dim;
+  const issueCountText = `${totalIssueCount} ${totalIssueCount === 1 ? "issue" : "issues"}`;
   const fileCountText =
     totalSourceFileCount > 0
       ? `across ${affectedFileCount}/${totalSourceFileCount} files`
       : `across ${affectedFileCount} file${affectedFileCount === 1 ? "" : "s"}`;
-  const elapsedTimeText = `in ${elapsed}`;
+  const elapsedTimeText = `in ${elapsedTimeLabel}`;
 
-  plainParts.push(fileCountText, elapsedTimeText);
-  renderedParts.push(highlighter.dim(fileCountText), highlighter.dim(elapsedTimeText));
-
-  return createFramedLine(plainParts.join("  "), renderedParts.join("  "));
+  logger.log(
+    `  ${issueCountColor(issueCountText)} ${highlighter.dim(`${fileCountText}  ${elapsedTimeText}`)}`,
+  );
 };
 
 const printSummary = (
@@ -370,24 +453,26 @@ const printSummary = (
   noScoreMessage: string,
   isOffline: boolean,
 ): void => {
-  const summaryFramedLines = [
-    ...buildBrandingLines(scoreResult, noScoreMessage),
-    buildCountsSummaryLine(diagnostics, totalSourceFileCount, elapsedMilliseconds),
-  ];
-  printFramedBox(summaryFramedLines);
-
-  try {
-    const diagnosticsDirectory = writeDiagnosticsDirectory(diagnostics);
-    logger.break();
-    logger.dim(`  Full diagnostics written to ${diagnosticsDirectory}`);
-  } catch {
-    logger.break();
+  if (scoreResult) {
+    printScoreHeader(scoreResult);
+  } else {
+    printNoScoreHeader(noScoreMessage);
   }
+
+  printCategoryBreakdown(buildCategoryBreakdown(diagnostics));
+
+  printCountsSummaryLine(diagnostics, totalSourceFileCount, elapsedMilliseconds);
 
   if (!isOffline) {
     const shareUrl = buildShareUrl(diagnostics, scoreResult, projectName);
-    logger.break();
     logger.dim(`  Share your results: ${highlighter.info(shareUrl)}`);
+  }
+
+  try {
+    const diagnosticsDirectory = writeDiagnosticsDirectory(diagnostics);
+    logger.dim(`  Full diagnostics written to ${diagnosticsDirectory}`);
+  } catch {
+    /* swallow — failing to write the dump shouldn't block the summary */
   }
 };
 
@@ -700,7 +785,7 @@ const runScan = async (
     return buildResult();
   }
 
-  printDiagnostics(diagnostics, options.verbose);
+  printDiagnostics(diagnostics, options.verbose, directory);
 
   const displayedSourceFileCount = isDiffMode ? includePaths.length : lintSourceFileCount;
 

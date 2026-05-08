@@ -135,6 +135,30 @@ const ConditionalSetStateInRenderComponent = ({ count }: { count: number }) => {
   return <h1>{prevCount}</h1>;
 };
 
+const EffectNeedsCleanupComponent = () => {
+  const [, setNow] = useState(0);
+  useEffect(() => {
+    setInterval(() => setNow(Date.now()), 1000);
+  }, []);
+  return <span />;
+};
+
+const MirrorPropEffectComponent = ({ value }: { value: string }) => {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+  return <input value={draft} onChange={(event) => setDraft(event.target.value)} />;
+};
+
+const MutableInDepsComponent = ({ token }: { token: string }) => {
+  void token;
+  useEffect(() => {
+    document.title = location.pathname;
+  }, [location.pathname]);
+  return <div />;
+};
+
 const PreferUseEffectEventComponent = ({ onSearch }: { onSearch: (q: string) => void }) => {
   const [query, setQuery] = useState("");
   useEffect(() => {
@@ -142,6 +166,68 @@ const PreferUseEffectEventComponent = ({ onSearch }: { onSearch: (q: string) => 
     return () => clearTimeout(id);
   }, [query, onSearch]);
   return <input value={query} onChange={(event) => setQuery(event.target.value)} />;
+};
+
+declare const externalStore: {
+  subscribe: (listener: () => void) => () => void;
+  getSnapshot: () => number;
+};
+
+const SubscribeStorePatternComponent = () => {
+  const [snapshot, setSnapshot] = useState(externalStore.getSnapshot());
+  useEffect(() => {
+    const unsubscribe = externalStore.subscribe(() => {
+      setSnapshot(externalStore.getSnapshot());
+    });
+    return unsubscribe;
+  }, []);
+  return <div>{snapshot}</div>;
+};
+
+declare const post: (url: string, body: unknown) => void;
+
+const EventTriggerStateComponent = () => {
+  const [firstName, setFirstName] = useState("");
+  const [jsonToSubmit, setJsonToSubmit] = useState<{ firstName: string } | null>(null);
+  useEffect(() => {
+    if (jsonToSubmit !== null) {
+      post("/api/register", jsonToSubmit);
+    }
+  }, [jsonToSubmit]);
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        setJsonToSubmit({ firstName });
+      }}
+    >
+      <input value={firstName} onChange={(event) => setFirstName(event.target.value)} />
+    </form>
+  );
+};
+
+interface Card {
+  gold: boolean;
+}
+
+const EffectChainComponent = ({ card }: { card: Card | null }) => {
+  const [goldCount, setGoldCount] = useState(0);
+  const [round, setRound] = useState(1);
+  useEffect(() => {
+    if (card !== null && card.gold) {
+      setGoldCount((c) => c + 1);
+    }
+  }, [card]);
+  useEffect(() => {
+    if (goldCount > 3) {
+      setRound((r) => r + 1);
+    }
+  }, [goldCount]);
+  return (
+    <div>
+      {goldCount} {round}
+    </div>
+  );
 };
 
 const UncontrolledInputComponent = () => {
@@ -178,6 +264,12 @@ export {
   DirectStateMutationComponent,
   SetStateInRenderComponent,
   ConditionalSetStateInRenderComponent,
+  EffectNeedsCleanupComponent,
+  MirrorPropEffectComponent,
+  MutableInDepsComponent,
   PreferUseEffectEventComponent,
+  SubscribeStorePatternComponent,
+  EventTriggerStateComponent,
+  EffectChainComponent,
   UncontrolledInputComponent,
 };

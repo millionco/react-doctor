@@ -45,21 +45,27 @@ const PLUGIN_CATEGORY_MAP: Record<string, string> = {
 const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/no-derived-state-effect": "State & Effects",
   "react-doctor/no-fetch-in-effect": "State & Effects",
+  "react-doctor/no-mirror-prop-effect": "State & Effects",
+  "react-doctor/no-mutable-in-deps": "State & Effects",
   "react-doctor/no-cascading-set-state": "State & Effects",
+  "react-doctor/no-effect-chain": "State & Effects",
   "react-doctor/no-effect-event-handler": "State & Effects",
   "react-doctor/no-effect-event-in-deps": "State & Effects",
+  "react-doctor/no-event-trigger-state": "State & Effects",
   "react-doctor/no-prop-callback-in-effect": "State & Effects",
   "react-doctor/no-derived-useState": "State & Effects",
   "react-doctor/no-direct-state-mutation": "State & Effects",
   "react-doctor/no-set-state-in-render": "State & Effects",
   "react-doctor/prefer-use-effect-event": "State & Effects",
   "react-doctor/prefer-useReducer": "State & Effects",
+  "react-doctor/prefer-use-sync-external-store": "State & Effects",
   "react-doctor/rerender-lazy-state-init": "Performance",
   "react-doctor/rerender-functional-setstate": "Performance",
   "react-doctor/rerender-dependencies": "State & Effects",
   "react-doctor/rerender-state-only-in-handlers": "Performance",
   "react-doctor/rerender-defer-reads-hook": "Performance",
   "react-doctor/advanced-event-handler-refs": "Performance",
+  "react-doctor/effect-needs-cleanup": "State & Effects",
 
   "react-doctor/no-generic-handler-names": "Architecture",
   "react-doctor/no-giant-component": "Architecture",
@@ -239,10 +245,18 @@ const RULE_HELP_MAP: Record<string, string> = {
     "For derived state, compute inline: `const x = fn(dep)`. For state resets on prop change, use a key prop: `<Component key={prop} />`. See https://react.dev/learn/you-might-not-need-an-effect",
   "no-fetch-in-effect":
     "Use `useQuery()` from @tanstack/react-query, `useSWR()`, or fetch in a Server Component instead",
+  "no-mirror-prop-effect":
+    "Delete both the `useState` and the `useEffect` and read the prop directly during render. Mirroring a prop into local state forces a stale first render before the effect re-syncs",
+  "no-mutable-in-deps":
+    "Read mutable values (`location.pathname`, `ref.current`) inside the effect body instead of in the deps array, or subscribe with `useSyncExternalStore`. Mutations to these don't trigger re-renders, so listing them in deps doesn't make the effect react to changes",
   "no-cascading-set-state":
     "Combine into useReducer: `const [state, dispatch] = useReducer(reducer, initialState)`",
+  "no-effect-chain":
+    "Compute as much as possible during render (e.g. `const isGameOver = round > 5`) and write all related state inside the event handler that originally fires the chain. Each effect link adds an extra render and makes the code rigid as requirements evolve",
   "no-effect-event-handler":
     "Move the conditional logic into onClick, onChange, or onSubmit handlers directly",
+  "no-event-trigger-state":
+    "Delete the trigger state (`useState(null)` plus the `useEffect` that watches it) and call the side-effect (`post(...)` / `navigate(...)` / `track(...)`) directly inside the event handler that previously called the setter. State should not exist purely to schedule effect runs",
   "no-derived-useState":
     "Remove useState and compute the value inline: `const value = transform(propName)`",
   "no-direct-state-mutation":
@@ -253,6 +267,8 @@ const RULE_HELP_MAP: Record<string, string> = {
     "Wrap the callback with `useEffectEvent(callback)` (React 19+) and call the resulting binding from inside the sub-handler. The Effect Event captures the latest props/state without being a reactive dep, so the effect doesn't re-subscribe on every parent render. See https://react.dev/reference/react/useEffectEvent",
   "prefer-useReducer":
     "Group related state: `const [state, dispatch] = useReducer(reducer, { field1, field2, ... })`",
+  "prefer-use-sync-external-store":
+    "Replace the `useState(getSnapshot())` + `useEffect(() => store.subscribe(() => setSnapshot(getSnapshot())))` pair with `useSyncExternalStore(store.subscribe, getSnapshot)`. The hook handles tearing during concurrent renders and SSR snapshots; the manual subscribe pattern doesn't",
   "rerender-lazy-state-init":
     "Wrap in an arrow function so it only runs once: `useState(() => expensiveComputation())`",
   "rerender-functional-setstate":
@@ -309,6 +325,8 @@ const RULE_HELP_MAP: Record<string, string> = {
     'Use a threshold/media-query hook (e.g. `useMediaQuery("(max-width: 767px)")`) — the component re-renders only when the threshold flips, not every pixel',
   "advanced-event-handler-refs":
     "Store the handler in a ref and have the listener read `handlerRef.current()` — the subscription stays put while the latest handler is always called",
+  "effect-needs-cleanup":
+    "Return a cleanup function that releases the subscription / timer: `return () => target.removeEventListener(name, handler)` for listeners, `return () => clearInterval(id)` / `clearTimeout(id)` for timers, or `return unsubscribe` if the subscribe call already returned one",
   "async-defer-await":
     "Move the `await` after the synchronous early-return guard so the skip path stays fast",
   "async-await-in-loop":

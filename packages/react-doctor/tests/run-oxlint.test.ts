@@ -123,10 +123,34 @@ describe("runOxlint", () => {
         ruleSource: "rules/state-and-effects.ts",
         severity: "warning",
       },
+      "no-mirror-prop-effect": {
+        fixture: "state-issues.tsx",
+        ruleSource: "rules/state-and-effects.ts",
+        severity: "warning",
+        category: "State & Effects",
+      },
+      "no-mutable-in-deps": {
+        fixture: "state-issues.tsx",
+        ruleSource: "rules/state-and-effects.ts",
+        severity: "error",
+        category: "State & Effects",
+      },
+      "effect-needs-cleanup": {
+        fixture: "state-issues.tsx",
+        ruleSource: "rules/state-and-effects.ts",
+        severity: "error",
+        category: "State & Effects",
+      },
       "no-cascading-set-state": {
         fixture: "state-issues.tsx",
         ruleSource: "rules/state-and-effects.ts",
         severity: "warning",
+      },
+      "no-effect-chain": {
+        fixture: "state-issues.tsx",
+        ruleSource: "rules/state-and-effects.ts",
+        severity: "warning",
+        category: "State & Effects",
       },
       "no-effect-event-handler": {
         fixture: "state-issues.tsx",
@@ -137,6 +161,12 @@ describe("runOxlint", () => {
         fixture: "state-issues.tsx",
         ruleSource: "rules/state-and-effects.ts",
         severity: "warning",
+      },
+      "prefer-use-effect-event": {
+        fixture: "state-issues.tsx",
+        ruleSource: "rules/state-and-effects.ts",
+        severity: "warning",
+        category: "State & Effects",
       },
       "prefer-useReducer": {
         fixture: "state-issues.tsx",
@@ -170,7 +200,13 @@ describe("runOxlint", () => {
         severity: "warning",
         category: "State & Effects",
       },
-      "prefer-use-effect-event": {
+      "prefer-use-sync-external-store": {
+        fixture: "state-issues.tsx",
+        ruleSource: "rules/state-and-effects.ts",
+        severity: "warning",
+        category: "State & Effects",
+      },
+      "no-event-trigger-state": {
         fixture: "state-issues.tsx",
         ruleSource: "rules/state-and-effects.ts",
         severity: "warning",

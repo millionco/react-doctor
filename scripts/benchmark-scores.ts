@@ -35,8 +35,7 @@ interface BenchmarkResult {
   errorMessage: string | null;
 }
 
-const gh = (args: string): string =>
-  execSync(`gh ${args}`, { encoding: "utf-8" }).trim();
+const gh = (args: string): string => execSync(`gh ${args}`, { encoding: "utf-8" }).trim();
 
 const getLatestRunId = (): number => {
   const output = gh(
@@ -157,9 +156,7 @@ const main = async (): Promise<void> => {
     const results = await Promise.all(
       artifacts.map(({ id }) => downloadAndParseArtifact(id, tempDirectory)),
     );
-    const validResults = results.filter(
-      (result): result is BenchmarkResult => result !== null,
-    );
+    const validResults = results.filter((result): result is BenchmarkResult => result !== null);
 
     if (validResults.length === 0) {
       console.error("No valid benchmark results found");

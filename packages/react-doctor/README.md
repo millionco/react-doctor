@@ -142,7 +142,7 @@ Options:
   -v, --version           display the version number
   --no-lint               skip linting
   --no-dead-code          skip dead code detection
-  --verbose               show file details per rule
+  --verbose               show every rule and per-file details (default shows top 3 rules)
   --score                 output only the score
   --json                  output a single structured JSON report
   -y, --yes               skip prompts, scan all workspace projects

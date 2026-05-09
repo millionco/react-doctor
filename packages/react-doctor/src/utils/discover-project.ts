@@ -303,6 +303,20 @@ const resolveCatalogVersion = (
     if (version) return version;
   }
 
+  if (workspaces && !Array.isArray(workspaces) && isPlainObject(workspaces.catalogs)) {
+    const namedCatalog = catalogName ? workspaces.catalogs[catalogName] : undefined;
+    if (namedCatalog && isPlainObject(namedCatalog)) {
+      const version = resolveVersionFromCatalog(namedCatalog, packageName);
+      if (version) return version;
+    }
+    for (const catalogEntries of Object.values(workspaces.catalogs)) {
+      if (isPlainObject(catalogEntries)) {
+        const version = resolveVersionFromCatalog(catalogEntries, packageName);
+        if (version) return version;
+      }
+    }
+  }
+
   if (rootDirectory) {
     const pnpmCatalogs = parsePnpmWorkspaceCatalogs(rootDirectory);
     const pnpmVersion = resolveCatalogVersionFromCollection(pnpmCatalogs, packageName, catalogName);

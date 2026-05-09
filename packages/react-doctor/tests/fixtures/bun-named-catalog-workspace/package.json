@@ -1,0 +1,15 @@
+{
+  "name": "bun-named-catalog-workspace",
+  "private": true,
+  "workspaces": {
+    "packages": [
+      "apps/*"
+    ],
+    "catalogs": {
+      "react19": {
+        "react": "^19.1.4",
+        "react-dom": "^19.1.4"
+      }
+    }
+  }
+}

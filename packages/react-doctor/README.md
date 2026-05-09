@@ -88,7 +88,18 @@ useEffect(() => {
 }, [value]);
 ```
 
-When two rules fire on the same line, comma-separate the rule ids on a single comment. Block comments work inside JSX:
+When multiple rules fire on the same line, you can either:
+
+- list them on one comment (comma-separated), or
+- stack multiple `react-doctor-disable-next-line` comments (one per rule) directly above the line.
+
+```tsx
+// react-doctor-disable-next-line react-doctor/rerender-state-only-in-handlers
+// react-doctor-disable-next-line react-doctor/no-derived-useState
+const [localSearch, setLocalSearch] = useState(searchQuery);
+```
+
+Block comments work inside JSX:
 
 <!-- prettier-ignore -->
 ```tsx

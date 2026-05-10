@@ -82,6 +82,24 @@ export const TANSTACK_START_RULES: Record<string, RuleSeverity> = {
 // `"warn"` as part of a broader refactor, which made "React Compiler
 // can't optimize this code" diagnostics stop counting toward
 // `errorCount` and stop failing CI; restored here.
+// HACK: complementary rule surface from
+// `eslint-plugin-react-you-might-not-need-an-effect` (#187). These
+// fire alongside react-doctor's native `state-and-effects` rules when
+// the plugin is installed, providing additional anti-pattern
+// detection for effects. Severities are `warn` to match the rest of
+// the effects-rule cohort and avoid changing CI pass/fail behavior
+// for projects that adopt the plugin.
+const YOU_MIGHT_NOT_NEED_EFFECT_RULES: Record<string, RuleSeverity> = {
+  "effect/no-derived-state": "warn",
+  "effect/no-chain-state-updates": "warn",
+  "effect/no-event-handler": "warn",
+  "effect/no-adjust-state-on-prop-change": "warn",
+  "effect/no-reset-all-state-on-prop-change": "warn",
+  "effect/no-pass-live-state-to-parent": "warn",
+  "effect/no-pass-data-to-parent": "warn",
+  "effect/no-initialize-state": "warn",
+};
+
 const REACT_COMPILER_RULES: Record<string, RuleSeverity> = {
   "react-hooks-js/set-state-in-render": "error",
   "react-hooks-js/immutability": "error",
@@ -123,10 +141,12 @@ interface OxlintConfigOptions {
   extendsPaths?: string[];
 }
 
-interface ReactHooksJsPluginEntry {
+interface JsPluginEntry {
   name: string;
   specifier: string;
 }
+
+type ReactHooksJsPluginEntry = JsPluginEntry;
 
 interface ResolvedReactHooksJsPlugin {
   entry: ReactHooksJsPluginEntry;
@@ -171,6 +191,34 @@ const resolveReactHooksJsPlugin = (
   }
   return {
     entry: { name: "react-hooks-js", specifier: pluginSpecifier },
+    availableRuleNames: readPluginRuleNames(pluginSpecifier),
+  };
+};
+
+interface ResolvedYouMightNotNeedEffectPlugin {
+  entry: JsPluginEntry;
+  availableRuleNames: ReadonlySet<string>;
+}
+
+// HACK: oxlint-namespaces this third-party ESLint plugin under
+// `effect` so the long upstream package name doesn't clutter rule
+// keys. Issue #187 — adds the plugin's complementary rule surface
+// alongside react-doctor's native `state-and-effects` rules. The
+// plugin is opt-in: skipped when not installed (peer is optional).
+const YOU_MIGHT_NOT_NEED_EFFECT_NAMESPACE = "effect";
+
+const resolveYouMightNotNeedEffectPlugin = (
+  customRulesOnly: boolean,
+): ResolvedYouMightNotNeedEffectPlugin | null => {
+  if (customRulesOnly) return null;
+  let pluginSpecifier: string;
+  try {
+    pluginSpecifier = esmRequire.resolve("eslint-plugin-react-you-might-not-need-an-effect");
+  } catch {
+    return null;
+  }
+  return {
+    entry: { name: YOU_MIGHT_NOT_NEED_EFFECT_NAMESPACE, specifier: pluginSpecifier },
     availableRuleNames: readPluginRuleNames(pluginSpecifier),
   };
 };
@@ -476,6 +524,19 @@ export const createOxlintConfig = ({
         reactHooksJsPlugin.availableRuleNames,
       )
     : {};
+
+  const youMightNotNeedEffectPlugin = resolveYouMightNotNeedEffectPlugin(customRulesOnly);
+  const youMightNotNeedEffectRules = youMightNotNeedEffectPlugin
+    ? filterRulesToAvailable(
+        YOU_MIGHT_NOT_NEED_EFFECT_RULES,
+        YOU_MIGHT_NOT_NEED_EFFECT_NAMESPACE,
+        youMightNotNeedEffectPlugin.availableRuleNames,
+      )
+    : {};
+
+  const jsPlugins: JsPluginEntry[] = [];
+  if (reactHooksJsPlugin) jsPlugins.push(reactHooksJsPlugin.entry);
+  if (youMightNotNeedEffectPlugin) jsPlugins.push(youMightNotNeedEffectPlugin.entry);
   // HACK: oxlint merges configs from first to last, with later entries
   // overriding earlier ones — and the local config always overrides
   // every entry in `extends`. So adding the user's existing oxlintrc
@@ -497,11 +558,12 @@ export const createOxlintConfig = ({
       nursery: "off",
     },
     plugins: customRulesOnly ? [] : ["react", "jsx-a11y"],
-    jsPlugins: reactHooksJsPlugin ? [reactHooksJsPlugin.entry, pluginPath] : [pluginPath],
+    jsPlugins: [...jsPlugins, pluginPath],
     rules: {
       ...(customRulesOnly ? {} : BUILTIN_REACT_RULES),
       ...(customRulesOnly ? {} : BUILTIN_A11Y_RULES),
       ...reactCompilerRules,
+      ...youMightNotNeedEffectRules,
       ...filterRulesByReactMajor(GLOBAL_REACT_DOCTOR_RULES, reactMajorVersion),
       ...(framework === "nextjs" ? NEXTJS_RULES : {}),
       ...(framework === "expo" || framework === "react-native" ? REACT_NATIVE_RULES : {}),

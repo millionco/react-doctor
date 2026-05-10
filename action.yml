@@ -89,9 +89,14 @@ runs:
         INPUT_DIRECTORY: ${{ inputs.directory }}
         INPUT_OFFLINE: ${{ inputs.offline }}
       run: |
-        SCORE_ARGS=("$INPUT_DIRECTORY" "--score")
+        # HACK: --score is an output-collection step, not a gate. Force
+        # --fail-on none so older react-doctor releases (which exit
+        # non-zero when the score lands in the "Needs work" band, even
+        # though the value itself is the only meaningful signal here)
+        # don't fail the composite action under `set -e -o pipefail`.
+        SCORE_ARGS=("$INPUT_DIRECTORY" "--score" "--fail-on" "none")
         if [ "$INPUT_OFFLINE" = "true" ]; then SCORE_ARGS+=("--offline"); fi
-        SCORE=$(npx -y react-doctor@latest "${SCORE_ARGS[@]}" 2>/dev/null | tail -1 | tr -d '[:space:]')
+        SCORE=$(npx -y react-doctor@latest "${SCORE_ARGS[@]}" 2>/dev/null | tail -1 | tr -d '[:space:]') || true
         if [[ -n "$SCORE" && "$SCORE" =~ ^[0-9]+$ ]]; then
           echo "score=$SCORE" >> "$GITHUB_OUTPUT"
         fi

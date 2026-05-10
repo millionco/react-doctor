@@ -531,6 +531,7 @@ const program = new Command()
           }
 
           if (
+            !isScoreOnly &&
             shouldFailForDiagnostics(
               remappedDiagnostics,
               resolveFailOnLevel(program, flags, userConfig),
@@ -638,6 +639,7 @@ const program = new Command()
       }
 
       if (
+        !isScoreOnly &&
         shouldFailForDiagnostics(allDiagnostics, resolveFailOnLevel(program, flags, userConfig))
       ) {
         process.exitCode = 1;

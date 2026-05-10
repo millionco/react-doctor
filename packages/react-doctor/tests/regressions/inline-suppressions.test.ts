@@ -299,6 +299,33 @@ describe("issue #159: stacked disable-next-line comments", () => {
     );
     expect(filtered).toHaveLength(1);
   });
+
+  it("issue repro: stacked single-rule disables both apply on a useState line", () => {
+    const filtered = runFilter(
+      "stacked-issue-repro",
+      `// react-doctor-disable-next-line react-doctor/rerender-state-only-in-handlers -- read in render via useDebounce\n` +
+        `// react-doctor-disable-next-line react-doctor/no-derived-useState -- searchQuery is the initial value; user can type before debounce commits\n` +
+        `const [localSearch, setLocalSearch] = useState(searchQuery);\n`,
+      [
+        baseDiagnostic({ rule: "rerender-state-only-in-handlers", line: 3 }),
+        baseDiagnostic({ rule: "no-derived-useState", line: 3 }),
+      ],
+    );
+    expect(filtered).toHaveLength(0);
+  });
+
+  it("equivalent comma-separated form (referenced in #159) also suppresses both rules", () => {
+    const filtered = runFilter(
+      "stacked-issue-repro-comma",
+      `// react-doctor-disable-next-line react-doctor/rerender-state-only-in-handlers, react-doctor/no-derived-useState -- searchQuery initial; read in render via useDebounce\n` +
+        `const [localSearch, setLocalSearch] = useState(searchQuery);\n`,
+      [
+        baseDiagnostic({ rule: "rerender-state-only-in-handlers", line: 2 }),
+        baseDiagnostic({ rule: "no-derived-useState", line: 2 }),
+      ],
+    );
+    expect(filtered).toHaveLength(0);
+  });
 });
 
 describe("issue #72: inline suppressions — boundary safety", () => {

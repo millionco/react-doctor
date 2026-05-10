@@ -1,7 +1,15 @@
 import { SUPPRESSION_NEAR_MISS_MAX_LINES } from "../constants.js";
 
+// HACK: the rule-list capture is intentionally permissive ([^\r\n]*?) so
+// it matches any content following `disable-next-line`. The narrower
+// `[\w/\-.,\s]` class previously excluded common comment punctuation
+// (`;`, `:`, `(`, `'`, …) which silently prevented the regex from
+// matching at all whenever someone added an explanatory `-- ...` tail
+// (#159). The captured string is later split at ` -- ` and tokenized
+// in isRuleListedInComment, so only the rule-id tokens before the
+// description are tested against the diagnostic's rule.
 const DISABLE_NEXT_LINE_PATTERN =
-  /(?:\/\/|\/\*)\s*react-doctor-disable-next-line\b(?:\s+([\w/\-.,\s]+?))?\s*(?:\*\/)?\s*\}?\s*$/;
+  /(?:\/\/|\/\*)\s*react-doctor-disable-next-line\b(?:\s+([^\r\n]*?))?\s*(?:\*\/)?\s*\}?\s*$/;
 
 export interface StackedDisableComment {
   commentLineIndex: number;

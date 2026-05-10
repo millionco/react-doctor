@@ -6,7 +6,7 @@ import {
 import { isRuleListedInComment } from "./is-rule-listed-in-comment.js";
 
 const DISABLE_LINE_PATTERN =
-  /(?:\/\/|\/\*)\s*react-doctor-disable-line\b(?:\s+([\w/\-.,\s]+?))?\s*(?:\*\/)?\s*\}?\s*$/;
+  /(?:\/\/|\/\*)\s*react-doctor-disable-line\b(?:\s+([^\r\n]*?))?\s*(?:\*\/)?\s*\}?\s*$/;
 
 export interface SuppressionEvaluation {
   isSuppressed: boolean;

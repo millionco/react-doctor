@@ -122,7 +122,7 @@ export const Debounced = ({ onChange }: { onChange: (value: string) => void }) =
     expect(rejection).toBeInstanceOf(AmbiguousProjectError);
     const ambiguousError = rejection as AmbiguousProjectError;
     expect(ambiguousError.directory).toBe(wrapperDir);
-    expect([...ambiguousError.candidates].sort()).toEqual(["admin", "web"]);
+    expect(ambiguousError.candidates.toSorted()).toEqual(["admin", "web"]);
   });
 
   describe("react-doctor.config.json rootDir redirect", () => {

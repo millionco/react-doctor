@@ -523,7 +523,16 @@ const findReactInWorkspaces = (rootDirectory: string, packageJson: PackageJson):
         result.framework = info.framework;
       }
 
-      if (result.reactVersion && result.tailwindVersion && result.framework !== "unknown") {
+      // HACK: deliberately don't add `result.tailwindVersion` to the
+      // early-exit predicate. Tailwind is collected opportunistically
+      // here — but a non-Tailwind monorepo would never satisfy that
+      // gate, forcing us to read every workspace package.json on every
+      // scan. The hot path (react-only project, possibly large
+      // monorepo) keeps the original short-circuit; Tailwind users
+      // either declare it on the leaf (no walk needed) or via a
+      // catalog at the monorepo root (resolved by the cheap
+      // resolveCatalogVersion path before this fallback even runs).
+      if (result.reactVersion && result.framework !== "unknown") {
         return result;
       }
     }
@@ -702,6 +711,15 @@ export const discoverProject = (directory: string): ProjectInfo => {
     );
   }
 
+  // HACK: gate the cheap monorepo-root catalog read on either dep
+  // missing — it's a single readPackageJson + parsePnpmWorkspaceCatalogs
+  // call, free to run opportunistically for Tailwind in a non-Tailwind
+  // project. The expensive walks below (findReactInWorkspaces,
+  // findDependencyInfoFromMonorepoRoot) intentionally do NOT include
+  // `!tailwindVersion` in their gates — those iterate every workspace
+  // package.json, which a React-only monorepo with hundreds of
+  // workspace packages should not pay the cost of just to confirm
+  // Tailwind isn't there.
   if (!reactVersion || !tailwindVersion) {
     const monorepoRoot = findMonorepoRoot(directory);
     if (monorepoRoot) {
@@ -728,7 +746,7 @@ export const discoverProject = (directory: string): ProjectInfo => {
     }
   }
 
-  if (!reactVersion || !tailwindVersion || framework === "unknown") {
+  if (!reactVersion || framework === "unknown") {
     const workspaceInfo = findReactInWorkspaces(directory, packageJson);
     if (!reactVersion && workspaceInfo.reactVersion) {
       reactVersion = workspaceInfo.reactVersion;
@@ -741,10 +759,7 @@ export const discoverProject = (directory: string): ProjectInfo => {
     }
   }
 
-  if (
-    (!reactVersion || !tailwindVersion || framework === "unknown") &&
-    !isMonorepoRoot(directory)
-  ) {
+  if ((!reactVersion || framework === "unknown") && !isMonorepoRoot(directory)) {
     const monorepoInfo = findDependencyInfoFromMonorepoRoot(directory);
     if (!reactVersion) {
       reactVersion = monorepoInfo.reactVersion;

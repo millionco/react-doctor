@@ -151,10 +151,11 @@ Options:
   --fail-on <level>       exit with error on diagnostics: error, warning, none
   --annotations           output diagnostics as GitHub Actions annotations
   --explain <file:line>   diagnose why a rule fired or why a suppression didn't apply
+  --why <file:line>       alias for --explain
   -h, --help              display help
 ```
 
-When a suppression isn't working, `--explain <file:line>` reports what the scanner sees at that location, including why a nearby `react-doctor-disable-next-line` didn't apply. The same hint surfaces inline with `--verbose` and in `--json` output as `diagnostic.suppressionHint`.
+When a suppression isn't working, `--explain <file:line>` (or its alias `--why <file:line>`) reports what the scanner sees at that location, including why a nearby `react-doctor-disable-next-line` didn't apply. The diagnosis distinguishes the common failure modes — adjacent comment for a different rule (use the comma form), a code line between the comment and the diagnostic (the chain is broken), or no nearby suppression at all. The same hint surfaces inline with `--verbose` for every flagged site, and in `--json` output as `diagnostic.suppressionHint`, so a single scan doubles as a suppression audit without a separate flag.
 
 `--json` produces a parsable object on stdout with all human-readable output suppressed. Errors still produce a JSON object with `ok: false`, so stdout is always a valid document.
 

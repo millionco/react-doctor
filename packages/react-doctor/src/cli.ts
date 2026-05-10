@@ -2,7 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
-import { Command, Option } from "commander";
+import { Command } from "commander";
 import { CANONICAL_GITHUB_URL } from "./constants.js";
 import { runInstallSkill } from "./install-skill.js";
 import { scan } from "./scan.js";
@@ -400,7 +400,7 @@ const program = new Command()
     "--explain <file:line>",
     "diagnose why a rule fired or why a suppression didn't apply at a specific location",
   )
-  .addOption(new Option("--why <file:line>", "alias for --explain").hideHelp())
+  .option("--why <file:line>", "alias for --explain")
   .option(
     "--respect-inline-disables",
     "respect inline `// eslint-disable*` / `// oxlint-disable*` comments (default)",

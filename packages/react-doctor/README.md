@@ -65,10 +65,7 @@ Create a `react-doctor.config.json` in your project root:
     "overrides": [
       {
         "files": ["components/modules/diff/**"],
-        "rules": [
-          "react-doctor/no-array-index-as-key",
-          "react-doctor/no-render-in-render"
-        ]
+        "rules": ["react-doctor/no-array-index-as-key", "react-doctor/no-render-in-render"]
       },
       {
         "files": ["components/search/HighlightedSnippet.tsx"],

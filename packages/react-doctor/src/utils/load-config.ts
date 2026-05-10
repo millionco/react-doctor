@@ -10,7 +10,18 @@ import { validateConfigTypes } from "./validate-config-types.js";
 const CONFIG_FILENAME = "react-doctor.config.json";
 const PACKAGE_JSON_CONFIG_KEY = "reactDoctor";
 
-const loadConfigFromDirectory = (directory: string): ReactDoctorConfig | null => {
+export interface LoadedReactDoctorConfig {
+  config: ReactDoctorConfig;
+  /**
+   * Absolute path of the directory that contained the resolved config
+   * file (or `package.json` with the `reactDoctor` key). Path-valued
+   * config fields like `rootDir` are resolved relative to this
+   * directory, never the CWD.
+   */
+  sourceDirectory: string;
+}
+
+const loadConfigFromDirectory = (directory: string): LoadedReactDoctorConfig | null => {
   const configFilePath = path.join(directory, CONFIG_FILENAME);
 
   if (isFile(configFilePath)) {
@@ -18,7 +29,10 @@ const loadConfigFromDirectory = (directory: string): ReactDoctorConfig | null =>
       const fileContent = fs.readFileSync(configFilePath, "utf-8");
       const parsed: unknown = JSON.parse(fileContent);
       if (isPlainObject(parsed)) {
-        return validateConfigTypes(parsed as ReactDoctorConfig);
+        return {
+          config: validateConfigTypes(parsed as ReactDoctorConfig),
+          sourceDirectory: directory,
+        };
       }
       logger.warn(`${CONFIG_FILENAME} must be a JSON object, ignoring.`);
     } catch (error) {
@@ -36,7 +50,10 @@ const loadConfigFromDirectory = (directory: string): ReactDoctorConfig | null =>
       if (isPlainObject(packageJson)) {
         const embeddedConfig = packageJson[PACKAGE_JSON_CONFIG_KEY];
         if (isPlainObject(embeddedConfig)) {
-          return validateConfigTypes(embeddedConfig as ReactDoctorConfig);
+          return {
+            config: validateConfigTypes(embeddedConfig as ReactDoctorConfig),
+            sourceDirectory: directory,
+          };
         }
       }
     } catch {
@@ -53,7 +70,7 @@ const loadConfigFromDirectory = (directory: string): ReactDoctorConfig | null =>
 const isProjectBoundary = (directory: string): boolean =>
   fs.existsSync(path.join(directory, ".git")) || isMonorepoRoot(directory);
 
-const cachedConfigs = new Map<string, ReactDoctorConfig | null>();
+const cachedConfigs = new Map<string, LoadedReactDoctorConfig | null>();
 
 // HACK: expose a way to clear the module-level config cache so programmatic
 // API consumers (watch-mode tools, test runners, agentic CLI flows) can
@@ -65,7 +82,7 @@ export const clearConfigCache = (): void => {
   cachedConfigs.clear();
 };
 
-export const loadConfig = (rootDirectory: string): ReactDoctorConfig | null => {
+export const loadConfigWithSource = (rootDirectory: string): LoadedReactDoctorConfig | null => {
   const cached = cachedConfigs.get(rootDirectory);
   if (cached !== undefined) return cached;
 
@@ -97,3 +114,6 @@ export const loadConfig = (rootDirectory: string): ReactDoctorConfig | null => {
   cachedConfigs.set(rootDirectory, null);
   return null;
 };
+
+export const loadConfig = (rootDirectory: string): ReactDoctorConfig | null =>
+  loadConfigWithSource(rootDirectory)?.config ?? null;

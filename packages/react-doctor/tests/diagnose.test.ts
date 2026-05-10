@@ -1,9 +1,10 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterAll, describe, expect, it } from "vite-plus/test";
+import { afterAll, beforeEach, describe, expect, it } from "vite-plus/test";
 
 import { AmbiguousProjectError, diagnose } from "../src/index.js";
+import { clearConfigCache } from "../src/utils/load-config.js";
 import { setupReactProject } from "./regressions/_helpers.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-diagnose-api-"));
@@ -122,5 +123,79 @@ export const Debounced = ({ onChange }: { onChange: (value: string) => void }) =
     const ambiguousError = rejection as AmbiguousProjectError;
     expect(ambiguousError.directory).toBe(wrapperDir);
     expect([...ambiguousError.candidates].sort()).toEqual(["admin", "web"]);
+  });
+
+  describe("react-doctor.config.json rootDir redirect", () => {
+    beforeEach(() => {
+      clearConfigCache();
+    });
+
+    it("redirects diagnose() to config.rootDir resolved relative to the config file location", async () => {
+      const wrapperDir = path.join(tempRoot, "diagnose-rootdir-redirect");
+      fs.mkdirSync(wrapperDir, { recursive: true });
+      setupReactProject(wrapperDir, "web");
+      setupReactProject(wrapperDir, "admin");
+      fs.writeFileSync(
+        path.join(wrapperDir, "react-doctor.config.json"),
+        JSON.stringify({ rootDir: "web" }),
+      );
+
+      const result = await diagnose(wrapperDir, { lint: false, deadCode: false });
+      expect(result.project.rootDirectory).toBe(path.join(wrapperDir, "web"));
+    });
+
+    it("disambiguates a wrapper that would otherwise throw AmbiguousProjectError", async () => {
+      const wrapperDir = path.join(tempRoot, "diagnose-rootdir-disambiguates");
+      fs.mkdirSync(wrapperDir, { recursive: true });
+      setupReactProject(wrapperDir, "web");
+      setupReactProject(wrapperDir, "admin");
+      fs.writeFileSync(
+        path.join(wrapperDir, "react-doctor.config.json"),
+        JSON.stringify({ rootDir: "admin" }),
+      );
+
+      const result = await diagnose(wrapperDir, { lint: false, deadCode: false });
+      expect(result.project.rootDirectory).toBe(path.join(wrapperDir, "admin"));
+    });
+
+    it("resolves rootDir against the ancestor config file location, not the requested directory", async () => {
+      const repoRoot = path.join(tempRoot, "diagnose-rootdir-ancestor");
+      const childDir = path.join(repoRoot, "packages", "ui");
+      fs.mkdirSync(childDir, { recursive: true });
+      setupReactProject(repoRoot, "apps/web");
+      fs.writeFileSync(
+        path.join(repoRoot, "react-doctor.config.json"),
+        JSON.stringify({ rootDir: "apps/web" }),
+      );
+
+      const result = await diagnose(childDir, { lint: false, deadCode: false });
+      expect(result.project.rootDirectory).toBe(path.join(repoRoot, "apps", "web"));
+    });
+
+    it("ignores rootDir that does not exist and falls back to the requested directory", async () => {
+      const wrapperDir = path.join(tempRoot, "diagnose-rootdir-missing");
+      fs.mkdirSync(wrapperDir, { recursive: true });
+      setupReactProject(wrapperDir, "web");
+      fs.writeFileSync(
+        path.join(wrapperDir, "react-doctor.config.json"),
+        JSON.stringify({ rootDir: "does-not-exist" }),
+      );
+
+      const result = await diagnose(wrapperDir, { lint: false, deadCode: false });
+      expect(result.project.rootDirectory).toBe(path.join(wrapperDir, "web"));
+    });
+
+    it("honors an absolute rootDir path", async () => {
+      const wrapperDir = path.join(tempRoot, "diagnose-rootdir-absolute");
+      fs.mkdirSync(wrapperDir, { recursive: true });
+      const targetDir = setupReactProject(wrapperDir, "web");
+      fs.writeFileSync(
+        path.join(wrapperDir, "react-doctor.config.json"),
+        JSON.stringify({ rootDir: targetDir }),
+      );
+
+      const result = await diagnose(wrapperDir, { lint: false, deadCode: false });
+      expect(result.project.rootDirectory).toBe(targetDir);
+    });
   });
 });

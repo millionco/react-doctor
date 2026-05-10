@@ -19,6 +19,7 @@ import {
   SHARE_BASE_URL,
 } from "./constants.js";
 import { NoReactDependencyError } from "./errors.js";
+import { resolveConfigRootDir } from "./utils/resolve-config-root-dir.js";
 import type {
   Diagnostic,
   ProjectInfo,
@@ -38,7 +39,7 @@ import { groupBy } from "./utils/group-by.js";
 import { highlighter } from "./utils/highlighter.js";
 import { indentMultilineText } from "./utils/indent-multiline-text.js";
 import { toRelativePath } from "./utils/to-relative-path.js";
-import { loadConfig } from "./utils/load-config.js";
+import { loadConfigWithSource } from "./utils/load-config.js";
 import { isLoggerSilent, logger, setLoggerSilent } from "./utils/logger.js";
 import { prompts } from "./utils/prompts.js";
 import { wrapIndentedText } from "./utils/wrap-indented-text.js";
@@ -645,8 +646,25 @@ export const scan = async (
   inputOptions: ScanOptions = {},
 ): Promise<ScanResult> => {
   const startTime = performance.now();
-  const userConfig =
-    inputOptions.configOverride !== undefined ? inputOptions.configOverride : loadConfig(directory);
+
+  // configOverride means the caller (typically the CLI) already resolved
+  // both the config and any rootDir redirect; trust their directory
+  // verbatim. Otherwise honor `rootDir` from the loaded config so direct
+  // programmatic `scan()` callers get the same redirect as `diagnose()`.
+  let scanDirectory = directory;
+  let userConfig: ReactDoctorConfig | null;
+  if (inputOptions.configOverride !== undefined) {
+    userConfig = inputOptions.configOverride;
+  } else {
+    const loadedConfig = loadConfigWithSource(directory);
+    const redirectedDirectory = resolveConfigRootDir(
+      loadedConfig?.config ?? null,
+      loadedConfig?.sourceDirectory ?? null,
+    );
+    if (redirectedDirectory) scanDirectory = redirectedDirectory;
+    userConfig = loadedConfig?.config ?? null;
+  }
+
   const options = mergeScanOptions(inputOptions, userConfig);
 
   const wasLoggerSilent = isLoggerSilent();
@@ -657,7 +675,7 @@ export const scan = async (
   }
 
   try {
-    return await runScan(directory, options, userConfig, startTime);
+    return await runScan(scanDirectory, options, userConfig, startTime);
   } finally {
     if (options.silent) {
       setLoggerSilent(wasLoggerSilent);

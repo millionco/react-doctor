@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
-import { loadConfig } from "../src/utils/load-config.js";
+import { clearConfigCache, loadConfig, loadConfigWithSource } from "../src/utils/load-config.js";
 
 const tempRootDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-config-test-"));
 
@@ -249,6 +249,65 @@ describe("loadConfig", () => {
       );
       const config = loadConfig(arrayConfigDirectory);
       expect(config).toBeNull();
+    });
+  });
+
+  describe("loadConfigWithSource", () => {
+    it("returns the directory the config was loaded from", () => {
+      const sourceDir = path.join(tempRootDirectory, "with-source");
+      fs.mkdirSync(sourceDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(sourceDir, "react-doctor.config.json"),
+        JSON.stringify({ rootDir: "apps/web" }),
+      );
+      clearConfigCache();
+      const loaded = loadConfigWithSource(sourceDir);
+      expect(loaded?.sourceDirectory).toBe(sourceDir);
+      expect(loaded?.config.rootDir).toBe("apps/web");
+    });
+
+    it("returns the ancestor directory when the config lives upstream", () => {
+      const ancestorDir = path.join(tempRootDirectory, "with-source-ancestor");
+      const childDir = path.join(ancestorDir, "packages", "ui");
+      fs.mkdirSync(childDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(ancestorDir, "react-doctor.config.json"),
+        JSON.stringify({ rootDir: "apps/web" }),
+      );
+      clearConfigCache();
+      const loaded = loadConfigWithSource(childDir);
+      expect(loaded?.sourceDirectory).toBe(ancestorDir);
+    });
+  });
+
+  describe("rootDir validation", () => {
+    it("strips a non-string rootDir and warns", () => {
+      const badRootDirDir = path.join(tempRootDirectory, "bad-root-dir");
+      fs.mkdirSync(badRootDirDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(badRootDirDir, "react-doctor.config.json"),
+        JSON.stringify({ rootDir: 42 }),
+      );
+      clearConfigCache();
+      const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+      const config = loadConfig(badRootDirDir);
+      expect(config?.rootDir).toBeUndefined();
+      expect(stderrSpy).toHaveBeenCalledWith(
+        expect.stringContaining(`config field "rootDir" must be a string`),
+      );
+      stderrSpy.mockRestore();
+    });
+
+    it("preserves a valid string rootDir untouched", () => {
+      const goodRootDirDir = path.join(tempRootDirectory, "good-root-dir");
+      fs.mkdirSync(goodRootDirDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(goodRootDirDir, "react-doctor.config.json"),
+        JSON.stringify({ rootDir: "apps/web" }),
+      );
+      clearConfigCache();
+      const config = loadConfig(goodRootDirDir);
+      expect(config?.rootDir).toBe("apps/web");
     });
   });
 

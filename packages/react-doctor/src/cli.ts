@@ -22,7 +22,8 @@ import { filterSourceFiles, getDiffInfo } from "./utils/get-diff-files.js";
 import { getStagedSourceFiles, materializeStagedFiles } from "./utils/get-staged-files.js";
 import { handleError } from "./utils/handle-error.js";
 import { highlighter } from "./utils/highlighter.js";
-import { loadConfig } from "./utils/load-config.js";
+import { loadConfigWithSource } from "./utils/load-config.js";
+import { resolveConfigRootDir } from "./utils/resolve-config-root-dir.js";
 import { logger, setLoggerSilent } from "./utils/logger.js";
 import { encodeAnnotationProperty, encodeAnnotationMessage } from "./utils/annotation-encoding.js";
 import { findOwningProjectDirectory } from "./utils/find-owning-project.js";
@@ -413,12 +414,12 @@ const program = new Command()
     const isScoreOnly = flags.score;
     const isJsonMode = flags.json;
     const isQuiet = isScoreOnly || isJsonMode;
-    const resolvedDirectory = path.resolve(directory);
+    const requestedDirectory = path.resolve(directory);
     const jsonStartTime = performance.now();
 
     isJsonModeActive = isJsonMode;
     isCompactJsonOutput = Boolean(flags.jsonCompact);
-    resolvedDirectoryForCancel = resolvedDirectory;
+    resolvedDirectoryForCancel = requestedDirectory;
     cancelStartTime = jsonStartTime;
 
     if (isJsonMode) {
@@ -428,7 +429,20 @@ const program = new Command()
     try {
       validateModeFlags(flags);
 
-      const userConfig = loadConfig(resolvedDirectory);
+      const loadedConfig = loadConfigWithSource(requestedDirectory);
+      const userConfig = loadedConfig?.config ?? null;
+      const redirectedDirectory = resolveConfigRootDir(
+        loadedConfig?.config ?? null,
+        loadedConfig?.sourceDirectory ?? null,
+      );
+      const resolvedDirectory = redirectedDirectory ?? requestedDirectory;
+      resolvedDirectoryForCancel = resolvedDirectory;
+      if (redirectedDirectory && !isQuiet) {
+        logger.dim(
+          `Redirected to ${highlighter.info(toRelativePath(resolvedDirectory, requestedDirectory))} via react-doctor config "rootDir".`,
+        );
+        logger.break();
+      }
 
       const explainArgument = flags.explain ?? flags.why;
       if (explainArgument !== undefined) {
@@ -648,7 +662,7 @@ const program = new Command()
           writeJsonReport(
             buildJsonReportError({
               version: VERSION,
-              directory: resolvedDirectory,
+              directory: resolvedDirectoryForCancel ?? requestedDirectory,
               error,
               elapsedMilliseconds: performance.now() - jsonStartTime,
               mode: currentReportMode,

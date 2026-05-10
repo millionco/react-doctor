@@ -204,6 +204,24 @@ export interface ReactDoctorConfig {
   failOn?: FailOnLevel;
   customRulesOnly?: boolean;
   share?: boolean;
+  /**
+   * Redirect react-doctor at a different project directory than the one
+   * it was invoked against. Resolved relative to the location of the
+   * config file that declared this field (NOT relative to the CWD), so
+   * the redirect is stable no matter where the CLI / `diagnose()` is
+   * run from. Absolute paths are used as-is.
+   *
+   * Typical use: a monorepo root holds the only `react-doctor.config.json`
+   * (so editor tooling and child commands all find it), but the React
+   * app lives in `apps/web`. Setting `"rootDir": "apps/web"` makes
+   * every invocation that loads this config scan that subproject
+   * without anyone needing to `cd` first or pass an explicit path.
+   *
+   * Ignored if the resolved path does not exist or is not a directory
+   * (a warning is emitted and react-doctor falls back to the originally
+   * requested directory).
+   */
+  rootDir?: string;
   textComponents?: string[];
   /**
    * Names of components that safely route string-only children through a

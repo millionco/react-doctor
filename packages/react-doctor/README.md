@@ -82,10 +82,10 @@ If you have a JSON oxlint or eslint config (`.oxlintrc.json` or `.eslintrc.json`
 
 When the following ESLint plugins are installed in the scanned project (or hoisted in your monorepo), React Doctor folds their rules into the same scan. Both are listed as **optional peer dependencies** — install only what you want.
 
-| Plugin | Adds | Namespace |
-| --- | --- | --- |
-| [`eslint-plugin-react-hooks`](https://www.npmjs.com/package/eslint-plugin-react-hooks) (v6 or v7) | The React Compiler frontend's correctness rules — fired when a React Compiler is detected in the project. | `react-hooks-js/*` |
-| [`eslint-plugin-react-you-might-not-need-an-effect`](https://github.com/nickjvandyke/eslint-plugin-react-you-might-not-need-an-effect) (v0.10+) | Complementary effects-as-anti-pattern rules (`no-derived-state`, `no-chain-state-updates`, `no-event-handler`, `no-pass-data-to-parent`, …) that run alongside React Doctor's native State & Effects rules. | `effect/*` |
+| Plugin                                                                                                                                          | Adds                                                                                                                                                                                                        | Namespace          |
+| ----------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| [`eslint-plugin-react-hooks`](https://www.npmjs.com/package/eslint-plugin-react-hooks) (v6 or v7)                                               | The React Compiler frontend's correctness rules — fired when a React Compiler is detected in the project.                                                                                                   | `react-hooks-js/*` |
+| [`eslint-plugin-react-you-might-not-need-an-effect`](https://github.com/nickjvandyke/eslint-plugin-react-you-might-not-need-an-effect) (v0.10+) | Complementary effects-as-anti-pattern rules (`no-derived-state`, `no-chain-state-updates`, `no-event-handler`, `no-pass-data-to-parent`, …) that run alongside React Doctor's native State & Effects rules. | `effect/*`         |
 
 ### Inline suppressions
 

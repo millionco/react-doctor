@@ -288,12 +288,14 @@ const resolveCatalogVersion = (
 ): string | null => {
   const allDependencies = collectAllDependencies(packageJson);
   const rawVersion = allDependencies[packageName];
+  // HACK: prefer the caller-provided reference when present, but fall
+  // through (?? rather than !== undefined) when the leaf had no
+  // catalog reference of its own. That way a root package.json that
+  // happens to declare its own `react: "catalog:<group>"` still drives
+  // the named lookup, instead of being silently ignored just because
+  // the leaf passed `null`.
   const catalogName =
-    explicitCatalogReference !== undefined
-      ? explicitCatalogReference
-      : rawVersion
-        ? extractCatalogName(rawVersion)
-        : null;
+    explicitCatalogReference ?? (rawVersion ? extractCatalogName(rawVersion) : null);
 
   if (isPlainObject(packageJson.catalog)) {
     const version = resolveVersionFromCatalog(packageJson.catalog, packageName);

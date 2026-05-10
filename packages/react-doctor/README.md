@@ -64,15 +64,28 @@ Create a `react-doctor.config.json` in your project root:
     "files": ["src/generated/**"],
     "overrides": [
       {
-        "files": ["components/diff/**"],
-        "rules": ["react-doctor/no-array-index-as-key"]
+        "files": ["components/modules/diff/**"],
+        "rules": [
+          "react-doctor/no-array-index-as-key",
+          "react-doctor/no-render-in-render"
+        ]
+      },
+      {
+        "files": ["components/search/HighlightedSnippet.tsx"],
+        "rules": ["react/no-danger"]
       }
     ]
   }
 }
 ```
 
-`ignore.rules` silences a rule everywhere. `ignore.files` silences every rule on matched files. `ignore.overrides` silences specific rules in specific directories. You can also use the `"reactDoctor"` key in `package.json`. CLI flags always override config values.
+Three nested keys, three layers of granularity — pick the narrowest one that fits:
+
+- **`ignore.rules`** silences a rule across the whole codebase.
+- **`ignore.files`** silences **every** rule on the matched files (use sparingly — it loses coverage for unrelated rules).
+- **`ignore.overrides`** silences only the listed rules on the matched files, leaving every other rule active. This is what you want when a single file (or glob) legitimately needs an exemption from one or two rules but should still be scanned for everything else.
+
+You can also use the `"reactDoctor"` key in `package.json`. CLI flags always override config values.
 
 React Doctor respects `.gitignore`, `.eslintignore`, `.oxlintignore`, `.prettierignore`, and `linguist-vendored` / `linguist-generated` annotations in `.gitattributes`. Inline `// eslint-disable*` and `// oxlint-disable*` comments are honored too.
 

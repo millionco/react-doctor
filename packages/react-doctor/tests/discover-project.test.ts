@@ -33,6 +33,60 @@ describe("discoverProject", () => {
     expect(projectInfo.reactVersion).toBe("^18.0.0 || ^19.0.0");
   });
 
+  it("detects Tailwind version from devDependencies when present", () => {
+    const projectDirectory = path.join(tempDirectory, "tw-from-dev-deps");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "tw-app",
+        dependencies: { react: "^19.0.0" },
+        devDependencies: { tailwindcss: "^3.4.1" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.tailwindVersion).toBe("^3.4.1");
+  });
+
+  it("returns null tailwindVersion when neither the project nor its monorepo root depend on Tailwind", () => {
+    const projectDirectory = path.join(tempDirectory, "tw-not-installed");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "no-tw-app",
+        dependencies: { react: "^19.0.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.tailwindVersion).toBeNull();
+  });
+
+  it("resolves Tailwind version from a pnpm workspace catalog", () => {
+    const monorepoRoot = path.join(tempDirectory, "tw-from-pnpm-catalog");
+    fs.mkdirSync(path.join(monorepoRoot, "packages", "ui"), { recursive: true });
+    fs.writeFileSync(
+      path.join(monorepoRoot, "pnpm-workspace.yaml"),
+      "packages:\n  - packages/*\n\ncatalog:\n  react: ^19.0.0\n  tailwindcss: ^4.0.0\n",
+    );
+    fs.writeFileSync(
+      path.join(monorepoRoot, "package.json"),
+      JSON.stringify({ name: "monorepo", private: true }),
+    );
+    fs.writeFileSync(
+      path.join(monorepoRoot, "packages", "ui", "package.json"),
+      JSON.stringify({
+        name: "ui",
+        dependencies: { react: "catalog:", tailwindcss: "catalog:" },
+      }),
+    );
+
+    const projectInfo = discoverProject(path.join(monorepoRoot, "packages", "ui"));
+    expect(projectInfo.tailwindVersion).toBe("^4.0.0");
+  });
+
   it("throws when package.json is missing", () => {
     expect(() => discoverProject("/nonexistent/path")).toThrow("No package.json found");
   });

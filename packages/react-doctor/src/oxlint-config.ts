@@ -2,9 +2,12 @@ import { createRequire } from "node:module";
 import {
   REACT_19_DEPRECATION_MIN_MAJOR,
   REACT_DOM_LEGACY_API_MIN_MAJOR,
+  TAILWIND_SIZE_SHORTHAND_MIN_MAJOR,
+  TAILWIND_SIZE_SHORTHAND_MIN_MINOR,
   USE_EFFECT_EVENT_MIN_MAJOR,
 } from "./constants.js";
 import type { Framework } from "./types.js";
+import { isTailwindAtLeast, parseTailwindMajorMinor } from "./utils/parse-tailwind-major-minor.js";
 
 const esmRequire = createRequire(import.meta.url);
 
@@ -132,6 +135,16 @@ interface OxlintConfigOptions {
    * rules enabled" to err on the side of surfacing the migration nudge.
    */
   reactMajorVersion?: number | null;
+  /**
+   * Raw `tailwindcss` dependency spec from the project's package.json
+   * (or the resolved monorepo / catalog version). Forwarded to the
+   * Tailwind-version-gated rule filter, which suppresses rules that
+   * suggest utilities not yet shipped in the detected Tailwind line
+   * (e.g. `size-N` requires v3.4+). `null` / unparseable specs are
+   * treated as "unknown — assume latest", matching the React-major
+   * fallback.
+   */
+  tailwindVersion?: string | null;
   /**
    * Absolute paths to extra configs that should be merged into the
    * generated oxlint config via the `extends` field. Used to fold the
@@ -496,6 +509,41 @@ const filterRulesByReactMajor = (
   );
 };
 
+// HACK: parallel registry to VERSION_GATED_RULE_IDS for Tailwind-gated
+// rules. We only model `prefer-newer-api` here today: every rule below
+// suggests a Tailwind utility that landed in a specific minor and
+// would emit nonsense diagnostics on older codebases. If we ever ship
+// a Tailwind-deprecation rule (e.g. flagging `decoration-clone` →
+// `box-decoration-clone` for v4), revisit and add a `mode` field
+// matching the React side.
+interface TailwindVersionGate {
+  minMajor: number;
+  minMinor: number;
+}
+const TAILWIND_VERSION_GATED_RULE_IDS: ReadonlyMap<string, TailwindVersionGate> = new Map([
+  [
+    "react-doctor/design-no-redundant-size-axes",
+    {
+      minMajor: TAILWIND_SIZE_SHORTHAND_MIN_MAJOR,
+      minMinor: TAILWIND_SIZE_SHORTHAND_MIN_MINOR,
+    },
+  ],
+]);
+
+const filterRulesByTailwindVersion = (
+  rules: Record<string, RuleSeverity>,
+  tailwindVersion: string | null,
+): Record<string, RuleSeverity> => {
+  const detected = parseTailwindMajorMinor(tailwindVersion);
+  return Object.fromEntries(
+    Object.entries(rules).filter(([ruleKey]) => {
+      const gate = TAILWIND_VERSION_GATED_RULE_IDS.get(ruleKey);
+      if (gate === undefined) return true;
+      return isTailwindAtLeast(detected, { major: gate.minMajor, minor: gate.minMinor });
+    }),
+  );
+};
+
 export const createOxlintConfig = ({
   pluginPath,
   framework,
@@ -503,6 +551,7 @@ export const createOxlintConfig = ({
   hasTanStackQuery,
   customRulesOnly = false,
   reactMajorVersion = null,
+  tailwindVersion = null,
   extendsPaths = [],
 }: OxlintConfigOptions) => {
   // HACK: REACT_COMPILER_RULES live under the `react-hooks-js` plugin
@@ -564,7 +613,10 @@ export const createOxlintConfig = ({
       ...(customRulesOnly ? {} : BUILTIN_A11Y_RULES),
       ...reactCompilerRules,
       ...youMightNotNeedEffectRules,
-      ...filterRulesByReactMajor(GLOBAL_REACT_DOCTOR_RULES, reactMajorVersion),
+      ...filterRulesByTailwindVersion(
+        filterRulesByReactMajor(GLOBAL_REACT_DOCTOR_RULES, reactMajorVersion),
+        tailwindVersion,
+      ),
       ...(framework === "nextjs" ? NEXTJS_RULES : {}),
       ...(framework === "expo" || framework === "react-native" ? REACT_NATIVE_RULES : {}),
       ...(framework === "tanstack-start" ? TANSTACK_START_RULES : {}),

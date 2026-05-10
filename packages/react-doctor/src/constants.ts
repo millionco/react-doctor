@@ -97,6 +97,15 @@ export const SUPPRESSION_NEAR_MISS_MAX_LINES = 10;
 // that suggests it (`prefer-use-effect-event`) stays silent.
 export const USE_EFFECT_EVENT_MIN_MAJOR = 19;
 
+// HACK: minimum Tailwind major.minor for the `size-N` shorthand. The
+// rule that suggests collapsing `w-N h-N` (`design-no-redundant-size-axes`)
+// requires Tailwind v3.4+ — recommending `size-N` to a v3.0…v3.3
+// project would generate classes that simply don't compile. Below
+// the threshold the rule stays silent. v4 inherits the shorthand,
+// so a single major.minor floor covers every supported Tailwind line.
+export const TAILWIND_SIZE_SHORTHAND_MIN_MAJOR = 3;
+export const TAILWIND_SIZE_SHORTHAND_MIN_MINOR = 4;
+
 // In the default human output, show several category sections like an
 // audit report, but cap each section so one noisy category does not
 // bury the rest of the scan.

@@ -21,6 +21,7 @@ const buildDiagnoseResult = (): DiagnoseResult => ({
     rootDirectory: "/virtual",
     projectName: "virtual-app",
     reactVersion: "19.0.0",
+    tailwindVersion: null,
     framework: "vite",
     hasTypeScript: true,
     hasReactCompiler: false,

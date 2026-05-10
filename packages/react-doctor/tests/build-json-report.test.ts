@@ -7,6 +7,7 @@ const SAMPLE_PROJECT: ProjectInfo = {
   rootDirectory: "/repo",
   projectName: "sample-app",
   reactVersion: "19.0.0",
+  tailwindVersion: null,
   framework: "vite",
   hasTypeScript: true,
   hasReactCompiler: false,

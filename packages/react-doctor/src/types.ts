@@ -15,6 +15,16 @@ export interface ProjectInfo {
   rootDirectory: string;
   projectName: string;
   reactVersion: string | null;
+  /**
+   * Raw `tailwindcss` dependency spec from the project (and its
+   * monorepo root / pnpm catalog / Bun catalog). `null` when the
+   * project doesn't depend on Tailwind, or when only a tag /
+   * workspace protocol could be resolved. Tailwind-version-gated
+   * rules (e.g. `design-no-redundant-size-axes` requires v3.4+ for
+   * the `size-N` shorthand) parse this through
+   * `parseTailwindMajorMinor` to decide whether to fire.
+   */
+  tailwindVersion: string | null;
   framework: Framework;
   hasTypeScript: boolean;
   hasReactCompiler: boolean;
@@ -84,6 +94,7 @@ export interface PackageJson {
 
 export interface DependencyInfo {
   reactVersion: string | null;
+  tailwindVersion: string | null;
   framework: Framework;
 }
 

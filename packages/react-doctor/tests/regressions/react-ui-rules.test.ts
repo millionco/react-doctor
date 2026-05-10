@@ -138,6 +138,71 @@ describe("design-no-redundant-size-axes", () => {
     const hits = await collectRuleHits(projectDir, "design-no-redundant-size-axes");
     expect(hits).toHaveLength(0);
   });
+
+  it("fires on Tailwind v3.4 (the version that introduced size-N)", async () => {
+    const projectDir = setupReactProject(tempRoot, "no-size-axes-tw-3-4", {
+      files: {
+        "src/Avatar.tsx": `export const Avatar = () => <div className="w-10 h-10" />;\n`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "design-no-redundant-size-axes", {
+      tailwindVersion: "^3.4.0",
+    });
+    expect(hits).toHaveLength(1);
+  });
+
+  it("fires on Tailwind v4 (size-N inherited from v3.4+)", async () => {
+    const projectDir = setupReactProject(tempRoot, "no-size-axes-tw-4", {
+      files: {
+        "src/Avatar.tsx": `export const Avatar = () => <div className="w-10 h-10" />;\n`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "design-no-redundant-size-axes", {
+      tailwindVersion: "^4.0.0",
+    });
+    expect(hits).toHaveLength(1);
+  });
+
+  it("stays silent on Tailwind v3.3 (size-N would not compile there)", async () => {
+    const projectDir = setupReactProject(tempRoot, "no-size-axes-tw-3-3", {
+      files: {
+        "src/Avatar.tsx": `export const Avatar = () => <div className="w-10 h-10" />;\n`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "design-no-redundant-size-axes", {
+      tailwindVersion: "^3.3.0",
+    });
+    expect(hits).toHaveLength(0);
+  });
+
+  it("stays silent on Tailwind v2 (predates the size-N shorthand entirely)", async () => {
+    const projectDir = setupReactProject(tempRoot, "no-size-axes-tw-2", {
+      files: {
+        "src/Avatar.tsx": `export const Avatar = () => <div className="w-10 h-10" />;\n`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "design-no-redundant-size-axes", {
+      tailwindVersion: "^2.2.0",
+    });
+    expect(hits).toHaveLength(0);
+  });
+
+  it("fires when tailwindVersion is unknown (null) — assume latest, surface the rule", async () => {
+    const projectDir = setupReactProject(tempRoot, "no-size-axes-tw-null", {
+      files: {
+        "src/Avatar.tsx": `export const Avatar = () => <div className="w-10 h-10" />;\n`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "design-no-redundant-size-axes", {
+      tailwindVersion: null,
+    });
+    expect(hits).toHaveLength(1);
+  });
 });
 
 describe("design-no-space-on-flex-children", () => {

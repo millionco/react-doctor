@@ -875,6 +875,16 @@ interface RunOxlintOptions {
    * React major.
    */
   reactMajorVersion?: number | null;
+  /**
+   * Raw `tailwindcss` dependency spec (already resolved across pnpm /
+   * Bun catalogs and monorepo roots). Forwarded to `createOxlintConfig`
+   * which suppresses rules that recommend utilities not yet shipped
+   * in the detected Tailwind line — e.g. `design-no-redundant-size-axes`
+   * suggests `size-N`, which only landed in Tailwind v3.4. `null`
+   * (no Tailwind dep, or only a tag/workspace spec) is treated
+   * optimistically: assume latest Tailwind, leave every gated rule on.
+   */
+  tailwindVersion?: string | null;
   includePaths?: string[];
   nodeBinaryPath?: string;
   customRulesOnly?: boolean;
@@ -934,6 +944,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     hasReactCompiler,
     hasTanStackQuery,
     reactMajorVersion = null,
+    tailwindVersion = null,
     includePaths,
     nodeBinaryPath = process.execPath,
     customRulesOnly = false,
@@ -977,6 +988,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     hasTanStackQuery,
     customRulesOnly,
     reactMajorVersion,
+    tailwindVersion,
     extendsPaths,
   });
   // HACK: only neutralize disable comments in audit mode. Default
@@ -1059,6 +1071,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         hasTanStackQuery,
         customRulesOnly,
         reactMajorVersion,
+        tailwindVersion,
         extendsPaths: [],
       });
       writeOxlintConfig(fallbackConfig);

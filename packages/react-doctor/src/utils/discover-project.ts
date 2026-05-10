@@ -273,10 +273,27 @@ const resolveCatalogVersion = (
   packageJson: PackageJson,
   packageName: string,
   rootDirectory?: string,
+  // HACK: when this resolver runs against the MONOREPO ROOT
+  // package.json (which typically has no `react` dep of its own),
+  // the catalog reference must come from the LEAF package that
+  // actually wrote `"react": "catalog:react19"`. Without an explicit
+  // reference, the named-catalog lookup below would always fall
+  // through to the `Object.values()` scan and return an arbitrary
+  // group — losing fidelity when multiple grouped catalogs (e.g.
+  // `react18` and `react19`) define the same package at different
+  // versions. Callers that already have the leaf's catalog reference
+  // pass it in; everyone else falls back to the in-this-package
+  // dependency, which still covers the common single-package case.
+  explicitCatalogReference?: string | null,
 ): string | null => {
   const allDependencies = collectAllDependencies(packageJson);
   const rawVersion = allDependencies[packageName];
-  const catalogName = rawVersion ? extractCatalogName(rawVersion) : null;
+  const catalogName =
+    explicitCatalogReference !== undefined
+      ? explicitCatalogReference
+      : rawVersion
+        ? extractCatalogName(rawVersion)
+        : null;
 
   if (isPlainObject(packageJson.catalog)) {
     const version = resolveVersionFromCatalog(packageJson.catalog, packageName);
@@ -442,7 +459,18 @@ const findDependencyInfoFromMonorepoRoot = (directory: string): DependencyInfo =
 
   const rootPackageJson = readPackageJson(monorepoPackageJsonPath);
   const rootInfo = extractDependencyInfo(rootPackageJson);
-  const catalogVersion = resolveCatalogVersion(rootPackageJson, "react", monorepoRoot);
+  const leafPackageJsonPath = path.join(directory, "package.json");
+  const leafCatalogReference = isFile(leafPackageJsonPath)
+    ? (extractCatalogName(
+        collectAllDependencies(readPackageJson(leafPackageJsonPath)).react ?? "",
+      ) ?? null)
+    : null;
+  const catalogVersion = resolveCatalogVersion(
+    rootPackageJson,
+    "react",
+    monorepoRoot,
+    leafCatalogReference,
+  );
   const workspaceInfo = findReactInWorkspaces(monorepoRoot, rootPackageJson);
 
   return {
@@ -621,8 +649,15 @@ export const discoverProject = (directory: string): ProjectInfo => {
   const packageJson = readPackageJson(packageJsonPath);
   let { reactVersion, framework } = extractDependencyInfo(packageJson);
 
+  // HACK: capture the catalog reference (e.g. `catalog:react19`) from
+  // the LEAF package once so every fallback resolver below can route
+  // named-catalog lookups to the right group, even when the root
+  // package.json has no `react` dependency to derive a name from.
+  const leafCatalogReference =
+    extractCatalogName(collectAllDependencies(packageJson).react ?? "") ?? null;
+
   if (!reactVersion) {
-    reactVersion = resolveCatalogVersion(packageJson, "react", directory);
+    reactVersion = resolveCatalogVersion(packageJson, "react", directory, leafCatalogReference);
   }
 
   if (!reactVersion) {
@@ -631,7 +666,12 @@ export const discoverProject = (directory: string): ProjectInfo => {
       const monorepoPackageJsonPath = path.join(monorepoRoot, "package.json");
       if (isFile(monorepoPackageJsonPath)) {
         const rootPackageJson = readPackageJson(monorepoPackageJsonPath);
-        reactVersion = resolveCatalogVersion(rootPackageJson, "react", monorepoRoot);
+        reactVersion = resolveCatalogVersion(
+          rootPackageJson,
+          "react",
+          monorepoRoot,
+          leafCatalogReference,
+        );
       }
     }
   }

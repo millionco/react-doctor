@@ -1,0 +1,19 @@
+{
+  "name": "bun-multiple-grouped-catalogs",
+  "private": true,
+  "workspaces": {
+    "packages": [
+      "apps/*"
+    ],
+    "catalogs": {
+      "react18": {
+        "react": "18.3.1",
+        "react-dom": "18.3.1"
+      },
+      "react19": {
+        "react": "19.2.0",
+        "react-dom": "19.2.0"
+      }
+    }
+  }
+}

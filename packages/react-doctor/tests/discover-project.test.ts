@@ -73,6 +73,13 @@ describe("discoverProject", () => {
     expect(projectInfo.reactVersion).toBe("19.2.0");
   });
 
+  it("picks the leaf-referenced group when multiple Bun grouped catalogs define the same package", () => {
+    const projectInfo = discoverProject(
+      path.join(FIXTURES_DIRECTORY, "bun-multiple-grouped-catalogs", "apps", "web"),
+    );
+    expect(projectInfo.reactVersion).toBe("19.2.0");
+  });
+
   it("resolves React version when only in peerDependencies with catalog reference", () => {
     const monorepoRoot = path.join(tempDirectory, "peer-deps-catalog-root");
     fs.mkdirSync(path.join(monorepoRoot, "packages", "ui"), { recursive: true });

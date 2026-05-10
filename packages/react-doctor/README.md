@@ -41,17 +41,42 @@ Works with Claude Code, Cursor, Codex, OpenCode, and 50+ other agents.
 
 ## GitHub Actions
 
+A composite action ships with this repository. Drop it into `.github/workflows/react-doctor.yml`:
+
 ```yaml
-- uses: actions/checkout@v5
-  with:
-    fetch-depth: 0 # required for --diff
-- uses: millionco/react-doctor@main
-  with:
-    diff: main
-    github-token: ${{ secrets.GITHUB_TOKEN }}
+name: React Doctor
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write # required to post PR comments
+
+jobs:
+  react-doctor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # required for `diff`
+      - uses: millionco/react-doctor@main
+        with:
+          diff: main
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-When `github-token` is set on `pull_request` events, findings are posted as a PR comment. The action also outputs a `score` (0 to 100) you can use in subsequent steps.
+When `github-token` is set on `pull_request` events, findings are posted (and updated) as a PR comment. The action also exposes a `score` output (0–100) you can use in subsequent steps.
+
+**Inputs:** `directory`, `verbose`, `project`, `diff`, `github-token`, `fail-on` (`error` / `warning` / `none`), `offline`, `node-version`. See [`action.yml`](https://github.com/millionco/react-doctor/blob/main/action.yml) for full descriptions.
+
+Prefer not to add a marketplace action? The bare `npx` form works too:
+
+```yaml
+- run: npx -y react-doctor@latest --fail-on warning
+```
 
 ## Configuration
 

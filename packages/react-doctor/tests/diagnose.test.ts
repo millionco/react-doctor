@@ -73,4 +73,29 @@ export const Debounced = ({ onChange }: { onChange: (value: string) => void }) =
     );
     expect(preferUseEffectEventHits.length).toBeGreaterThanOrEqual(1);
   });
+
+  // Regression: external review pipelines (e.g. the Vercel AI Code
+  // Review sandbox) call `diagnose()` on the cloned repo root. Some
+  // repos place their app code under `apps/web` (or similar) with NO
+  // root `package.json`, which previously crashed the runner with
+  // `No package.json found in <repo>`. We now fall back to the first
+  // nested package.json that has a React dependency.
+  it("falls back to a nested React subproject when the requested directory has no root package.json", async () => {
+    const wrapperDir = path.join(tempRoot, "diagnose-no-root-package");
+    fs.mkdirSync(wrapperDir, { recursive: true });
+    setupReactProject(wrapperDir, "web");
+
+    const result = await diagnose(wrapperDir, { lint: false, deadCode: false });
+    expect(result.project.rootDirectory).toBe(path.join(wrapperDir, "web"));
+    expect(result.project.reactVersion).toBe("^19.0.0");
+  });
+
+  it("throws a clear error when the directory has no root package.json and no nested React project", async () => {
+    const emptyDir = path.join(tempRoot, "diagnose-no-react-anywhere");
+    fs.mkdirSync(emptyDir, { recursive: true });
+
+    await expect(diagnose(emptyDir, { lint: false, deadCode: false })).rejects.toThrow(
+      "No React project found in",
+    );
+  });
 });

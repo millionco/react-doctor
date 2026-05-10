@@ -27,6 +27,7 @@ import { mergeAndFilterDiagnostics } from "./utils/merge-and-filter-diagnostics.
 import { parseReactMajor } from "./utils/parse-react-major.js";
 import { clearPackageJsonCache } from "./utils/read-package-json.js";
 import { createNodeReadFileLinesSync } from "./utils/read-file-lines-node.js";
+import { resolveDiagnoseTarget } from "./utils/resolve-diagnose-target.js";
 import { resolveLintIncludePaths } from "./utils/resolve-lint-include-paths.js";
 import { runKnip } from "./utils/run-knip.js";
 import { runOxlint } from "./utils/run-oxlint.js";
@@ -105,7 +106,13 @@ export const diagnose = async (
   options: DiagnoseOptions = {},
 ): Promise<DiagnoseResult> => {
   const startTime = globalThis.performance.now();
-  const resolvedDirectory = path.resolve(directory);
+  const requestedDirectory = path.resolve(directory);
+  const resolvedDirectory = resolveDiagnoseTarget(requestedDirectory);
+  if (!resolvedDirectory) {
+    throw new Error(
+      `No React project found in ${requestedDirectory}. Expected a package.json at the directory root or a nested package.json with a React dependency.`,
+    );
+  }
   const userConfig = loadConfig(resolvedDirectory);
   const includePaths = options.includePaths ?? [];
   const isDiffMode = includePaths.length > 0;

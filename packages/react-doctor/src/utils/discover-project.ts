@@ -6,6 +6,7 @@ import {
   IGNORED_DIRECTORIES,
   SOURCE_FILE_PATTERN,
 } from "../constants.js";
+import { PackageJsonNotFoundError } from "../errors.js";
 import type {
   DependencyInfo,
   Framework,
@@ -599,7 +600,7 @@ export const discoverProject = (directory: string): ProjectInfo => {
 
   const packageJsonPath = path.join(directory, "package.json");
   if (!isFile(packageJsonPath)) {
-    throw new Error(`No package.json found in ${directory}`);
+    throw new PackageJsonNotFoundError(directory);
   }
 
   const packageJson = readPackageJson(packageJsonPath);

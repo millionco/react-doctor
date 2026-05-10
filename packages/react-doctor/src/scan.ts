@@ -7,7 +7,6 @@ import {
   MAX_CATEGORY_GROUPS_SHOWN_NON_VERBOSE,
   MAX_RULE_GROUPS_PER_CATEGORY_NON_VERBOSE,
   MILLISECONDS_PER_SECOND,
-  buildNoReactDependencyError,
   OFFLINE_MESSAGE,
   OXLINT_NODE_REQUIREMENT,
   OXLINT_RECOMMENDED_NODE_MAJOR,
@@ -19,6 +18,7 @@ import {
   SCORE_OK_THRESHOLD,
   SHARE_BASE_URL,
 } from "./constants.js";
+import { NoReactDependencyError } from "./errors.js";
 import type {
   Diagnostic,
   ProjectInfo,
@@ -677,7 +677,7 @@ const runScan = async (
   const isDiffMode = includePaths.length > 0;
 
   if (!projectInfo.reactVersion) {
-    throw new Error(buildNoReactDependencyError(directory));
+    throw new NoReactDependencyError(directory);
   }
 
   const jsxIncludePaths = computeJsxIncludePaths(includePaths);

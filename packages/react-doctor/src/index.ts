@@ -1,5 +1,5 @@
 import path from "node:path";
-import { buildNoReactDependencyError } from "./constants.js";
+import { NoReactDependencyError, ProjectNotFoundError } from "./errors.js";
 import type {
   Diagnostic,
   DiagnoseOptions,
@@ -50,6 +50,13 @@ export type {
 export { getDiffInfo, filterSourceFiles } from "./utils/get-diff-files.js";
 export { summarizeDiagnostics } from "./utils/summarize-diagnostics.js";
 export { buildJsonReport, buildJsonReportError };
+export {
+  ReactDoctorError,
+  ProjectNotFoundError,
+  NoReactDependencyError,
+  PackageJsonNotFoundError,
+  isReactDoctorError,
+} from "./errors.js";
 
 // HACK: programmatic API consumers (watch-mode tools, test runners,
 // agentic CLI flows) call diagnose() repeatedly on the same directory.
@@ -109,9 +116,7 @@ export const diagnose = async (
   const requestedDirectory = path.resolve(directory);
   const resolvedDirectory = resolveDiagnoseTarget(requestedDirectory);
   if (!resolvedDirectory) {
-    throw new Error(
-      `No React project found in ${requestedDirectory}. Expected a package.json at the directory root or a nested package.json with a React dependency.`,
-    );
+    throw new ProjectNotFoundError(requestedDirectory);
   }
   const userConfig = loadConfig(resolvedDirectory);
   const includePaths = options.includePaths ?? [];
@@ -119,7 +124,7 @@ export const diagnose = async (
   const projectInfo = discoverProject(resolvedDirectory);
 
   if (!projectInfo.reactVersion) {
-    throw new Error(buildNoReactDependencyError(resolvedDirectory));
+    throw new NoReactDependencyError(resolvedDirectory);
   }
 
   const lintIncludePaths =

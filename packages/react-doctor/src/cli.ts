@@ -624,7 +624,11 @@ const program = new Command()
           logger.dim(`Scanning ${projectDirectory}...`);
           logger.break();
         }
-        const scanResult = await scan(projectDirectory, { ...scanOptions, includePaths });
+        const scanResult = await scan(projectDirectory, {
+          ...scanOptions,
+          includePaths,
+          configOverride: userConfig,
+        });
         allDiagnostics.push(...scanResult.diagnostics);
         completedScans.push({ directory: projectDirectory, result: scanResult });
         if (!isQuiet) {

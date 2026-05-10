@@ -3,6 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it, vi } from "vite-plus/test";
 import { scan } from "../src/scan.js";
+import { clearConfigCache } from "../src/utils/load-config.js";
+import { setupReactProject } from "./regressions/_helpers.js";
 
 const FIXTURES_DIRECTORY = path.resolve(import.meta.dirname, "fixtures");
 
@@ -79,6 +81,62 @@ describe("scan", () => {
       expect(elapsedMilliseconds).toBeLessThan(30_000);
     } finally {
       consoleSpy.mockRestore();
+    }
+  });
+
+  // Regression: when the CLI passes `configOverride`, scan() must trust
+  // the directory it was given and skip the rootDir redirect — otherwise
+  // an ancestor config with `rootDir: "apps/web"` would re-route every
+  // workspace-package scan back to apps/web. (Bugbot review #200.)
+  it("does NOT re-apply rootDir redirect when configOverride is supplied", async () => {
+    clearConfigCache();
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-rootdir-override-"));
+    try {
+      const adminProjectDirectory = setupReactProject(tempDirectory, "admin");
+      setupReactProject(tempDirectory, "web");
+      fs.writeFileSync(
+        path.join(tempDirectory, "react-doctor.config.json"),
+        JSON.stringify({ rootDir: "web" }),
+      );
+
+      const result = await scan(adminProjectDirectory, {
+        lint: false,
+        deadCode: false,
+        configOverride: null,
+      });
+
+      expect(result.project.rootDirectory).toBe(adminProjectDirectory);
+    } finally {
+      consoleSpy.mockRestore();
+      fs.rmSync(tempDirectory, { recursive: true, force: true });
+    }
+  });
+
+  // Counterpart: when no configOverride is supplied (direct programmatic
+  // scan() call), rootDir redirection IS honored — same contract as
+  // diagnose().
+  it("DOES apply rootDir redirect when called without configOverride", async () => {
+    clearConfigCache();
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-rootdir-honor-"));
+    try {
+      const webProjectDirectory = setupReactProject(tempDirectory, "web");
+      setupReactProject(tempDirectory, "admin");
+      fs.writeFileSync(
+        path.join(tempDirectory, "react-doctor.config.json"),
+        JSON.stringify({ rootDir: "web" }),
+      );
+
+      const result = await scan(tempDirectory, {
+        lint: false,
+        deadCode: false,
+      });
+
+      expect(result.project.rootDirectory).toBe(webProjectDirectory);
+    } finally {
+      consoleSpy.mockRestore();
+      fs.rmSync(tempDirectory, { recursive: true, force: true });
     }
   });
 });

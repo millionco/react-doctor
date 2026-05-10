@@ -298,9 +298,25 @@ const resolveCatalogVersion = (
   }
 
   const workspaces = packageJson.workspaces;
-  if (workspaces && !Array.isArray(workspaces) && isPlainObject(workspaces.catalog)) {
-    const version = resolveVersionFromCatalog(workspaces.catalog, packageName);
-    if (version) return version;
+  if (workspaces && !Array.isArray(workspaces)) {
+    if (isPlainObject(workspaces.catalog)) {
+      const version = resolveVersionFromCatalog(workspaces.catalog, packageName);
+      if (version) return version;
+    }
+
+    if (isPlainObject(workspaces.catalogs)) {
+      const namedCatalog = catalogName ? workspaces.catalogs[catalogName] : undefined;
+      if (namedCatalog && isPlainObject(namedCatalog)) {
+        const version = resolveVersionFromCatalog(namedCatalog, packageName);
+        if (version) return version;
+      }
+      for (const catalogEntries of Object.values(workspaces.catalogs)) {
+        if (isPlainObject(catalogEntries)) {
+          const version = resolveVersionFromCatalog(catalogEntries, packageName);
+          if (version) return version;
+        }
+      }
+    }
   }
 
   if (rootDirectory) {

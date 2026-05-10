@@ -66,6 +66,13 @@ describe("discoverProject", () => {
     expect(projectInfo.reactVersion).toBe("^19.1.4");
   });
 
+  it("resolves React version from Bun grouped workspace catalog", () => {
+    const projectInfo = discoverProject(
+      path.join(FIXTURES_DIRECTORY, "bun-grouped-catalog", "apps", "web"),
+    );
+    expect(projectInfo.reactVersion).toBe("19.2.0");
+  });
+
   it("resolves React version when only in peerDependencies with catalog reference", () => {
     const monorepoRoot = path.join(tempDirectory, "peer-deps-catalog-root");
     fs.mkdirSync(path.join(monorepoRoot, "packages", "ui"), { recursive: true });

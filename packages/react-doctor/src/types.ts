@@ -71,7 +71,13 @@ export interface PackageJson {
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
-  workspaces?: string[] | { packages?: string[]; catalog?: Record<string, string> };
+  workspaces?:
+    | string[]
+    | {
+        packages?: string[];
+        catalog?: Record<string, string>;
+        catalogs?: Record<string, Record<string, string>>;
+      };
   catalog?: unknown;
   catalogs?: unknown;
 }

@@ -42,5 +42,20 @@ export class PackageJsonNotFoundError extends ReactDoctorError {
   }
 }
 
+export class AmbiguousProjectError extends ReactDoctorError {
+  override readonly name = "AmbiguousProjectError";
+  readonly directory: string;
+  readonly candidates: readonly string[];
+
+  constructor(directory: string, candidates: readonly string[], options?: ErrorOptions) {
+    super(
+      `Multiple React projects found under ${directory} (${candidates.length} candidates): ${candidates.join(", ")}. Re-run diagnose() with one of those subdirectories, or iterate them yourself.`,
+      options,
+    );
+    this.directory = directory;
+    this.candidates = candidates;
+  }
+}
+
 export const isReactDoctorError = (value: unknown): value is ReactDoctorError =>
   value instanceof ReactDoctorError;

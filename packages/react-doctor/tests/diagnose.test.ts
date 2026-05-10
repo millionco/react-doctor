@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 
-import { diagnose } from "../src/index.js";
+import { AmbiguousProjectError, diagnose } from "../src/index.js";
 import { setupReactProject } from "./regressions/_helpers.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-diagnose-api-"));
@@ -97,5 +97,30 @@ export const Debounced = ({ onChange }: { onChange: (value: string) => void }) =
     await expect(diagnose(emptyDir, { lint: false, deadCode: false })).rejects.toThrow(
       "No React project found in",
     );
+  });
+
+  // Regression: when the requested directory has no root package.json AND
+  // there are multiple nested React projects, `diagnose()` previously
+  // silently picked whichever one `readdirSync` returned first. That's a
+  // footgun for monorepo callers (e.g. apps/web vs apps/admin). The
+  // single-result programmatic API now surfaces ambiguity via a typed
+  // error so the caller can disambiguate explicitly.
+  it("throws AmbiguousProjectError when there are multiple nested React subprojects and no root package.json", async () => {
+    const wrapperDir = path.join(tempRoot, "diagnose-ambiguous-nested");
+    fs.mkdirSync(wrapperDir, { recursive: true });
+    setupReactProject(wrapperDir, "web");
+    setupReactProject(wrapperDir, "admin");
+
+    await expect(diagnose(wrapperDir, { lint: false, deadCode: false })).rejects.toBeInstanceOf(
+      AmbiguousProjectError,
+    );
+
+    const rejection = await diagnose(wrapperDir, { lint: false, deadCode: false }).catch(
+      (error: unknown) => error,
+    );
+    expect(rejection).toBeInstanceOf(AmbiguousProjectError);
+    const ambiguousError = rejection as AmbiguousProjectError;
+    expect(ambiguousError.directory).toBe(wrapperDir);
+    expect([...ambiguousError.candidates].sort()).toEqual(["admin", "web"]);
   });
 });

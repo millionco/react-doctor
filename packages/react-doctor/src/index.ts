@@ -55,6 +55,7 @@ export {
   ProjectNotFoundError,
   NoReactDependencyError,
   PackageJsonNotFoundError,
+  AmbiguousProjectError,
   isReactDoctorError,
 } from "./errors.js";
 

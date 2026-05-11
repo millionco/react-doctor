@@ -20,4 +20,12 @@ describe("wrapIndentedText", () => {
       ].join("\n"),
     );
   });
+
+  it("splits long words and indents only when prefix consumes width", () => {
+    expect(wrapIndentedText("supercalifragilistic", "  ", 10)).toBe(
+      ["  supercal", "  ifragili", "  stic"].join("\n"),
+    );
+
+    expect(wrapIndentedText("alpha\nbeta", "      ", 4)).toBe("      alpha\n      beta");
+  });
 });

@@ -46,6 +46,16 @@ describe("get-staged-files", () => {
     expect(getStagedSourceFiles(directory)).toEqual(["src/app.tsx"]);
   });
 
+  it("returns an empty list outside a git repository", () => {
+    const nonGitDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-not-git-"));
+
+    try {
+      expect(getStagedSourceFiles(nonGitDirectory)).toEqual([]);
+    } finally {
+      fs.rmSync(nonGitDirectory, { recursive: true, force: true });
+    }
+  });
+
   it("materializes staged files and copies project config files", () => {
     const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-staged-copy-"));
     writeFile(directory, "src/app.tsx", "export const App = () => <main />;\n");
@@ -61,5 +71,14 @@ describe("get-staged-files", () => {
 
     snapshot.cleanup();
     expect(fs.existsSync(tempDirectory)).toBe(false);
+  });
+
+  it("skips staged paths when git cannot read their staged content", () => {
+    const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-staged-copy-"));
+    const snapshot = materializeStagedFiles(directory, ["src/missing.tsx"], tempDirectory);
+
+    expect(snapshot.stagedFiles).toEqual([]);
+
+    snapshot.cleanup();
   });
 });

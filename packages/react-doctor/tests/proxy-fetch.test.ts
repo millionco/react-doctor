@@ -20,6 +20,7 @@ vi.mock("undici", () => ({
 
 describe("proxyFetch", () => {
   const originalFetch = globalThis.fetch;
+  const originalProcessDescriptor = Object.getOwnPropertyDescriptor(globalThis, "process");
   const originalProxyEnvironment = {
     HTTPS_PROXY: process.env.HTTPS_PROXY,
     https_proxy: process.env.https_proxy,
@@ -37,6 +38,9 @@ describe("proxyFetch", () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    if (originalProcessDescriptor) {
+      Object.defineProperty(globalThis, "process", originalProcessDescriptor);
+    }
     for (const [name, value] of Object.entries(originalProxyEnvironment)) {
       if (value === undefined) {
         delete process.env[name];
@@ -53,6 +57,19 @@ describe("proxyFetch", () => {
     await proxyFetch("https://example.com", { method: "POST" });
 
     expect(fetchMock).toHaveBeenCalledWith("https://example.com", { method: "POST" });
+  });
+
+  it("calls fetch without dispatcher when global process does not look like Node", async () => {
+    const fetchMock = vi.fn(async () => new Response("ok"));
+    globalThis.fetch = fetchMock;
+    Object.defineProperty(globalThis, "process", {
+      configurable: true,
+      value: { versions: {} },
+    });
+
+    await proxyFetch("https://example.com");
+
+    expect(fetchMock).toHaveBeenCalledWith("https://example.com", {});
   });
 
   it("adds an undici dispatcher when HTTPS_PROXY is set", async () => {

@@ -117,6 +117,7 @@ export interface DiagnoseOptions {
    * See that field's docs for the full contract.
    */
   respectInlineDisables?: boolean;
+  packageJsonPath?: string;
 }
 
 export interface DiagnoseResult {
@@ -144,6 +145,7 @@ export interface ScanOptions {
   includePaths?: string[];
   configOverride?: ReactDoctorConfig | null;
   respectInlineDisables?: boolean;
+  packageJsonPath?: string;
 }
 
 export interface DiffInfo {

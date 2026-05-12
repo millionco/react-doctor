@@ -715,16 +715,16 @@ export const clearProjectCache = (): void => {
   cachedProjectInfos.clear();
 };
 
-export const discoverProject = (directory: string): ProjectInfo => {
+export const discoverProject = (directory: string, packageJsonPath?: string): ProjectInfo => {
   const cached = cachedProjectInfos.get(directory);
   if (cached !== undefined) return cached;
 
-  const packageJsonPath = path.join(directory, "package.json");
-  if (!isFile(packageJsonPath)) {
+  const resolvedPackageJsonPath = packageJsonPath ?? path.join(directory, "package.json");
+  if (!isFile(resolvedPackageJsonPath)) {
     throw new PackageJsonNotFoundError(directory);
   }
 
-  const packageJson = readPackageJson(packageJsonPath);
+  const packageJson = readPackageJson(resolvedPackageJsonPath);
   let { reactVersion, tailwindVersion, framework } = extractDependencyInfo(packageJson);
 
   // HACK: capture the catalog reference (e.g. `catalog:react19`) from

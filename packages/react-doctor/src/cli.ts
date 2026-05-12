@@ -52,6 +52,7 @@ interface CliFlags {
   explain?: string;
   why?: string;
   failOn: string;
+  packageJson?: string;
 }
 
 const VALID_FAIL_ON_LEVELS = new Set<FailOnLevel>(["error", "warning", "none"]);
@@ -179,6 +180,7 @@ const resolveCliScanOptions = (
     respectInlineDisables: isCliOverride("respectInlineDisables")
       ? flags.respectInlineDisables
       : (userConfig?.respectInlineDisables ?? true),
+    packageJsonPath: flags.packageJson,
   };
 };
 
@@ -409,6 +411,10 @@ const program = new Command()
   .option(
     "--no-respect-inline-disables",
     "audit mode: neutralize inline lint suppressions before scanning",
+  )
+  .option(
+    "--package-json <path>",
+    "path to a custom package.json, defaults to <directory>/package.json",
   )
   .action(async (directory: string, flags: CliFlags) => {
     const isScoreOnly = flags.score;

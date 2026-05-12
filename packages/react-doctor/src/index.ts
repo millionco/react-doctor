@@ -139,7 +139,7 @@ export const diagnose = async (
     initialLoadedConfig?.config ?? loadConfigWithSource(resolvedDirectory)?.config ?? null;
   const includePaths = options.includePaths ?? [];
   const isDiffMode = includePaths.length > 0;
-  const projectInfo = discoverProject(resolvedDirectory);
+  const projectInfo = discoverProject(resolvedDirectory, options.packageJsonPath);
 
   if (!projectInfo.reactVersion) {
     throw new NoReactDependencyError(resolvedDirectory);

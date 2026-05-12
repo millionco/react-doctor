@@ -213,6 +213,7 @@ Options:
   --annotations           output diagnostics as GitHub Actions annotations
   --explain <file:line>   diagnose why a rule fired or why a suppression didn't apply
   --why <file:line>       alias for --explain
+  --package-json <path>   path to a custom package.json (default: <directory>/package.json)
   -h, --help              display help
 ```
 

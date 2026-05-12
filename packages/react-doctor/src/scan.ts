@@ -589,6 +589,7 @@ interface ResolvedScanOptions {
   respectInlineDisables: boolean;
   adoptExistingLintConfig: boolean;
   ignoredTags: ReadonlySet<string>;
+  packageJsonPath?: string;
 }
 
 const buildIgnoredTags = (userConfig: ReactDoctorConfig | null): ReadonlySet<string> => {
@@ -616,6 +617,7 @@ const mergeScanOptions = (
     inputOptions.respectInlineDisables ?? userConfig?.respectInlineDisables ?? true,
   adoptExistingLintConfig: userConfig?.adoptExistingLintConfig ?? true,
   ignoredTags: buildIgnoredTags(userConfig),
+  packageJsonPath: inputOptions.packageJsonPath,
 });
 
 const printProjectDetection = (
@@ -712,7 +714,7 @@ const runScan = async (
   userConfig: ReactDoctorConfig | null,
   startTime: number,
 ): Promise<ScanResult> => {
-  const projectInfo = discoverProject(directory);
+  const projectInfo = discoverProject(directory, options.packageJsonPath);
   const { includePaths } = options;
   const isDiffMode = includePaths.length > 0;
 

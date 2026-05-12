@@ -42,6 +42,18 @@ export const jsCombineIterations: Rule = {
         if (isBooleanOrIdentityFilter) return;
       }
 
+      const innerReceiver = innerCall.callee.object;
+      if (
+        innerReceiver?.type === "CallExpression" &&
+        innerReceiver.callee?.type === "MemberExpression" &&
+        innerReceiver.callee.property?.type === "Identifier" &&
+        (innerReceiver.callee.property.name === "values" ||
+          innerReceiver.callee.property.name === "entries" ||
+          innerReceiver.callee.property.name === "keys")
+      ) {
+        return;
+      }
+
       context.report({
         node,
         message: `.${innerMethod}().${outerMethod}() iterates the array twice — combine into a single loop with .reduce() or for...of`,

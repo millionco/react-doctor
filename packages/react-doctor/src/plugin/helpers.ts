@@ -361,6 +361,16 @@ const isMutatingFetchCall = (node: EsTreeNode): boolean => {
   return Boolean(optionsArgument.properties?.some(isMutatingMethodProperty));
 };
 
+const isHeadersChainCall = (node: EsTreeNode): boolean => {
+  if (node.type !== "CallExpression" || node.callee?.type !== "MemberExpression") return false;
+  let cursor: EsTreeNode | undefined = node.callee.object;
+  while (cursor?.type === "MemberExpression") {
+    if (cursor.property?.type === "Identifier" && cursor.property.name === "headers") return true;
+    cursor = cursor.object;
+  }
+  return false;
+};
+
 export const findSideEffect = (node: EsTreeNode): string | null => {
   let sideEffectDescription: string | null = null;
   walkAst(node, (child: EsTreeNode) => {
@@ -378,7 +388,7 @@ export const findSideEffect = (node: EsTreeNode): string | null => {
       // would).
       const methodProperty = child.arguments[1].properties.find(isMutatingMethodProperty);
       sideEffectDescription = `fetch() with method ${methodProperty.value.value}`;
-    } else if (isMutatingDbCall(child)) {
+    } else if (isMutatingDbCall(child) && !isHeadersChainCall(child)) {
       const methodName = child.callee.property.name;
       const objectName =
         child.callee.object?.type === "Identifier" ? child.callee.object.name : null;

@@ -279,6 +279,26 @@ When on a feature branch without explicit flags, you'll be prompted: "Only scan 
 
 `--staged` and `--diff` cannot be combined. Both modes skip dead-code detection (knip needs the full project to detect unused files).
 
+### Pre-commit integration with husky + lint-staged
+
+Wire react-doctor into your pre-commit hook to catch issues before they're committed:
+
+```bash
+npx husky add .husky/pre-commit "npx lint-staged"
+```
+
+Then configure lint-staged in `package.json`:
+
+```json
+{
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": "react-doctor --staged --fail-on error --yes"
+  }
+}
+```
+
+This scans only the staged files using `--staged`, failing the commit if any error-severity diagnostics are found. Use `--fail-on warning` for a stricter gate, or `--json` for machine-parseable output in custom workflows.
+
 ## Agent and CI integration
 
 React Doctor detects 50+ coding agents (Claude Code, Cursor, Codex, OpenCode, Windsurf, and more) and adapts its behavior automatically:

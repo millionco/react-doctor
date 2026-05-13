@@ -15,6 +15,8 @@ const TOUCHABLE_COMPONENTS = new Set([
 // modern, more configurable, more accessible replacement that works the
 // same on iOS, Android, and Fabric.
 export const rnPreferPressable = defineRule<Rule>({
+  recommendation:
+    "Use `<Pressable>` from react-native (or react-native-gesture-handler) instead of legacy Touchable* components",
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNode) {
       if (node.source?.value !== "react-native") return;

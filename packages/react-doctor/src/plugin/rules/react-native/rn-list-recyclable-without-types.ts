@@ -21,6 +21,8 @@ import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
 const RECYCLABLE_LIST_NAMES = new Set(["FlashList", "LegendList"]);
 
 export const rnListRecyclableWithoutTypes = defineRule<Rule>({
+  recommendation:
+    "Add `getItemType={item => item.kind}` so FlashList keeps separate recycle pools per item type — heterogeneous rows shouldn't share recycled cells",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNode) {
       const elementName = resolveJsxElementName(node);

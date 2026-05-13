@@ -70,8 +70,10 @@ const reportTestUtilsImports = (node: EsTreeNode, context: RuleContext): void =>
   }
 };
 
-export const noReactDomDeprecatedApis = defineRule<Rule>(
-  createDeprecatedReactImportRule({
+export const noReactDomDeprecatedApis = defineRule<Rule>({
+  recommendation:
+    "Switch the legacy `react-dom` root API (`render` / `hydrate` / `unmountComponentAtNode`) to `createRoot` / `hydrateRoot` / `root.unmount()` from `react-dom/client`. Replace `findDOMNode` with a ref. The whole `react-dom/test-utils` entry point is removed in React 19 — use `act` from `react` and `fireEvent` / `render` from `@testing-library/react`. Only enabled on projects detected as React 18+.",
+  ...createDeprecatedReactImportRule({
     source: "react-dom",
     messages: REACT_DOM_DEPRECATED_MESSAGES,
     handleExtraSource: (node, context) => {
@@ -80,4 +82,4 @@ export const noReactDomDeprecatedApis = defineRule<Rule>(
       return true;
     },
   }),
-);
+});

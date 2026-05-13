@@ -5,6 +5,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const queryNoRestDestructuring = defineRule<Rule>({
+  recommendation:
+    "Destructure only the fields you need: `const { data, isLoading } = useQuery(...)` — rest destructuring subscribes to all fields and causes extra re-renders",
   create: (context: RuleContext) => ({
     VariableDeclarator(node: EsTreeNode) {
       if (node.id?.type !== "ObjectPattern") return;

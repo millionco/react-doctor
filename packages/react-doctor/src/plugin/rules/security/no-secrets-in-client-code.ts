@@ -10,6 +10,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const noSecretsInClientCode = defineRule<Rule>({
+  recommendation:
+    "Move to server-side `process.env.SECRET_NAME`. Only `NEXT_PUBLIC_*` vars are safe for the client (and should not contain secrets)",
   create: (context: RuleContext) => ({
     VariableDeclarator(node: EsTreeNode) {
       if (node.id?.type !== "Identifier") return;

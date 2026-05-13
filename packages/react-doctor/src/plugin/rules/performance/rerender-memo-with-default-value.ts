@@ -6,6 +6,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const rerenderMemoWithDefaultValue = defineRule<Rule>({
+  recommendation:
+    "Move to module scope: `const EMPTY_ITEMS: Item[] = []` then use as the default value",
   create: (context: RuleContext) => {
     const checkDefaultProps = (params: EsTreeNode[]): void => {
       for (const param of params) {

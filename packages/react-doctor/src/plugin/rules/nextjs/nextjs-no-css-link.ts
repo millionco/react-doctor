@@ -6,6 +6,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const nextjsNoCssLink = defineRule<Rule>({
+  recommendation:
+    "Import CSS directly: `import './styles.css'` or use CSS Modules: `import styles from './Button.module.css'`",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNode) {
       if (node.name?.type !== "JSXIdentifier" || node.name.name !== "link") return;

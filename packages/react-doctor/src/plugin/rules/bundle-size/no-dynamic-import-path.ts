@@ -7,6 +7,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 // statically-analyzable string literal. `import(variable)` or
 // `require(variable)` defeats trace targets and forces a fat bundle.
 export const noDynamicImportPath = defineRule<Rule>({
+  recommendation:
+    "Use a string-literal path: `import('./feature/heavy.js')` so the bundler can split this chunk",
   create: (context: RuleContext) => ({
     ImportExpression(node: EsTreeNode) {
       const source = node.source;

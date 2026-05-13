@@ -6,6 +6,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const nextjsNoFontLink = defineRule<Rule>({
+  recommendation:
+    '`import { Inter } from "next/font/google"` — self-hosted, zero layout shift, no render-blocking requests',
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNode) {
       if (node.name?.type !== "JSXIdentifier" || node.name.name !== "link") return;

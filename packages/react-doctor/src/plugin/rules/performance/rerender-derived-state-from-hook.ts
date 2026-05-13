@@ -72,6 +72,8 @@ const findThresholdDerivedBindings = (
 };
 
 export const rerenderDerivedStateFromHook = defineRule<Rule>({
+  recommendation:
+    'Use a threshold/media-query hook (e.g. `useMediaQuery("(max-width: 767px)")`) — the component re-renders only when the threshold flips, not every pixel',
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || componentBody.type !== "BlockStatement") return;

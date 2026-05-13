@@ -8,6 +8,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const preferUseReducer = defineRule<Rule>({
+  recommendation:
+    "Group related state: `const [state, dispatch] = useReducer(reducer, { field1, field2, ... })`",
   create: (context: RuleContext) => {
     const reportExcessiveUseState = (body: EsTreeNode, componentName: string): void => {
       if (body.type !== "BlockStatement") return;

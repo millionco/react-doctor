@@ -5,6 +5,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const noRenderInRender = defineRule<Rule>({
+  recommendation:
+    "Extract to a named component: `const ListItem = ({ item }) => <div>{item.name}</div>`",
   create: (context: RuleContext) => ({
     JSXExpressionContainer(node: EsTreeNode) {
       const expression = node.expression;

@@ -5,6 +5,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const jsEarlyExit = defineRule<Rule>({
+  recommendation:
+    "Add an early `return` / `continue` to flatten deep nesting and short-circuit when the predicate is already known",
   create: (context: RuleContext) => ({
     IfStatement(node: EsTreeNode) {
       if (node.consequent?.type !== "BlockStatement" || !node.consequent.body) return;

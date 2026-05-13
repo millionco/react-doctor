@@ -4,6 +4,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const tanstackStartNoUseServerInHandler = defineRule<Rule>({
+  recommendation:
+    'TanStack Start handles server boundaries automatically via the Vite plugin — "use server" inside createServerFn causes compilation errors',
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (node.callee?.type !== "MemberExpression") return;

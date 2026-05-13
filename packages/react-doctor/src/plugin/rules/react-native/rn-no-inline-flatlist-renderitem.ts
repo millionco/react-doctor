@@ -6,6 +6,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
 
 export const rnNoInlineFlatlistRenderitem = defineRule<Rule>({
+  recommendation:
+    "Extract renderItem to a named function or wrap in useCallback to avoid re-creating on every render",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNode) {
       if (node.name?.type !== "JSXIdentifier" || node.name.name !== "renderItem") return;

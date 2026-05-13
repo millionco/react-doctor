@@ -50,6 +50,8 @@ const handlerMutatesIdentifier = (
 // the receiver is actually a `useSharedValue` binding to avoid
 // false-positives on `Map.prototype.set` / `ref.current.value =` etc.
 export const rnPressableSharedValueMutation = defineRule<Rule>({
+  recommendation:
+    "Wrap in <GestureDetector gesture={Gesture.Tap()...}> so the press animation runs on the UI thread instead of bouncing across the JS bridge",
   create: (context: RuleContext) => {
     const sharedValueBindingsByComponent: Array<Set<string>> = [];
 

@@ -52,6 +52,8 @@ const APP_ROUTER_FILE_PATTERN =
 const NON_PROJECT_PATH_PATTERN = /\/(?:node_modules|dist|build|\.next)\//;
 
 export const serverFetchWithoutRevalidate = defineRule<Rule>({
+  recommendation:
+    'Pass `{ next: { revalidate: <seconds> } }` (or `cache: "no-store"` / `next: { tags: [...] }`) so stale cached data doesn\'t silently persist',
   create: (context: RuleContext) => {
     let isServerSideFile = false;
 

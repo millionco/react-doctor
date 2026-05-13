@@ -5,6 +5,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const jsTosortedImmutable = defineRule<Rule>({
+  recommendation:
+    "Use `array.toSorted()` (ES2023) instead of `[...array].sort()` for immutable sorting without the spread allocation",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (!isMemberProperty(node.callee, "sort")) return;

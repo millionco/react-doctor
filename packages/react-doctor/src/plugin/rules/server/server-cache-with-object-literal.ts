@@ -10,6 +10,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 // underlying fetch runs twice per request. Pass primitives (or memoize
 // the argument object once at module/route scope).
 export const serverCacheWithObjectLiteral = defineRule<Rule>({
+  recommendation:
+    "Pass primitives to React.cache()-wrapped functions — argument identity (not deep equality) is the dedup key, so a fresh `{}` per render bypasses the cache",
   create: (context: RuleContext) => {
     const cachedFunctionNames = new Set<string>();
 

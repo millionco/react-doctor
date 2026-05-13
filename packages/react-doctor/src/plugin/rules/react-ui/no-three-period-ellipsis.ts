@@ -6,6 +6,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isInsideExcludedAncestor } from "./utils/is-inside-excluded-ancestor.js";
 
 export const noThreePeriodEllipsis = defineRule<Rule>({
+  recommendation:
+    'Use the typographic ellipsis "…" (or `&hellip;`) instead of three periods — pairs with action-with-followup labels ("Rename…", "Loading…")',
   create: (context: RuleContext) => ({
     JSXText(jsxTextNode: EsTreeNode) {
       const textValue = typeof jsxTextNode.value === "string" ? jsxTextNode.value : "";

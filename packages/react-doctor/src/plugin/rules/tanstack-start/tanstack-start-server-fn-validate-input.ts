@@ -6,6 +6,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { walkServerFnChain } from "./utils/walk-server-fn-chain.js";
 
 export const tanstackStartServerFnValidateInput = defineRule<Rule>({
+  recommendation:
+    "Add `.inputValidator(schema)` before `.handler()` — data crosses a network boundary and must be validated at runtime",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (node.callee?.type !== "MemberExpression") return;

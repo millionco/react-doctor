@@ -5,6 +5,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const noBarrelImport = defineRule<Rule>({
+  recommendation:
+    "Import from the direct path: `import { Button } from './components/Button'` instead of `./components`",
   create: (context: RuleContext) => {
     let didReportForFile = false;
 

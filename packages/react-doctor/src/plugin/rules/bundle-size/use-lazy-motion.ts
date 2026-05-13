@@ -4,6 +4,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const useLazyMotion = defineRule<Rule>({
+  recommendation:
+    'Use `import { LazyMotion, m } from "framer-motion"` with `domAnimation` features — saves ~30kb',
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNode) {
       const source = node.source?.value;

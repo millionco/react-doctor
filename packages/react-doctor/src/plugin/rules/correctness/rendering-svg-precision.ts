@@ -12,6 +12,8 @@ const SVG_PATH_ATTRIBUTES = new Set(["d", "points", "transform"]);
 // emit these by default; truncating to 1–2 decimals trims 30–50% off
 // markup with no visible difference.
 export const renderingSvgPrecision = defineRule<Rule>({
+  recommendation:
+    "Truncate path/points/transform decimals to 1–2 digits — sub-pixel precision adds bytes with no visible difference",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNode) {
       if (node.name?.type !== "JSXIdentifier") return;

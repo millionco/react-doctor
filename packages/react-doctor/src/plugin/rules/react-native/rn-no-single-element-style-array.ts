@@ -4,6 +4,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const rnNoSingleElementStyleArray = defineRule<Rule>({
+  recommendation:
+    "Use `style={value}` instead of `style={[value]}` — single-element arrays add unnecessary allocation",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNode) {
       const propName = node.name?.type === "JSXIdentifier" ? node.name.name : null;

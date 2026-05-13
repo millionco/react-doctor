@@ -11,6 +11,8 @@ import { SCROLLVIEW_NAMES } from "./utils/scrollview_names.js";
 // recycle row components and only mount the visible window. The cost
 // of switching is tiny (same prop API) and the perf win is huge.
 export const rnNoScrollviewMappedList = defineRule<Rule>({
+  recommendation:
+    "Use FlashList, LegendList, or FlatList — `<ScrollView>{items.map(...)}</ScrollView>` mounts every row in memory",
   create: (context: RuleContext) => ({
     JSXElement(node: EsTreeNode) {
       const elementName = resolveJsxElementName(node.openingElement);

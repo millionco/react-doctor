@@ -29,6 +29,8 @@ const hasTopLevelAwait = (statement: EsTreeNode): boolean => {
 };
 
 export const tanstackStartLoaderParallelFetch = defineRule<Rule>({
+  recommendation:
+    "Use `const [a, b] = await Promise.all([fetchA(), fetchB()])` to avoid request waterfalls in route loaders",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       const optionsObject = getRouteOptionsObject(node);

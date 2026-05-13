@@ -5,6 +5,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const tanstackStartNoDynamicServerFnImport = defineRule<Rule>({
+  recommendation:
+    "Use `import { myFn } from '~/utils/my.functions'` — the bundler replaces server code with RPC stubs only for static imports",
   create: (context: RuleContext) => ({
     ImportExpression(node: EsTreeNode) {
       const source = node.source;

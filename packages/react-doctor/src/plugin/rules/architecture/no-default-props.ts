@@ -13,6 +13,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 // recommendation is the same either way — switch to ES6 default params
 // in destructured props — so the guidance is uniform.
 export const noDefaultProps = defineRule<Rule>({
+  recommendation:
+    'React 19 removes `Component.defaultProps` for function components. Move the defaults into the destructured props parameter: `function Foo({ size = "md", variant = "primary" })` instead of `Foo.defaultProps = { size: "md", variant: "primary" }`.',
   create: (context: RuleContext) => ({
     AssignmentExpression(node: EsTreeNode) {
       if (node.operator !== "=") return;

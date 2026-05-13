@@ -44,6 +44,8 @@ const buildPreventDefaultMessage = (elementName: string): string => {
 };
 
 export const noPreventDefault = defineRule<Rule>({
+  recommendation:
+    "Use `<form action={serverAction}>` (works without JS) or `<button>` instead of `<a>` with preventDefault",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNode) {
       const elementName = node.name?.type === "JSXIdentifier" ? node.name.name : null;

@@ -48,6 +48,8 @@ const handlerCallsSetState = (handler: EsTreeNode): EsTreeNode | null => {
 // input), or stash the value in a ref + raf throttle, or use
 // `useDeferredValue`.
 export const rerenderTransitionsScroll = defineRule<Rule>({
+  recommendation:
+    "Wrap the setState in startTransition (mark as non-urgent), use useDeferredValue, or stash in a ref + rAF throttle so scroll/pointer events don't trigger a re-render per fire",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (!isAddEventListenerCall(node)) return;

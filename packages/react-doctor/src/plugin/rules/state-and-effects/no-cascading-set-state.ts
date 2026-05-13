@@ -8,6 +8,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const noCascadingSetState = defineRule<Rule>({
+  recommendation:
+    "Combine into useReducer: `const [state, dispatch] = useReducer(reducer, initialState)`",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (!isHookCall(node, EFFECT_HOOK_NAMES)) return;

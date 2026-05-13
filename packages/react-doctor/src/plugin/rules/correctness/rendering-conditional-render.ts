@@ -21,6 +21,8 @@ const isNumericName = (name: string): boolean => {
 };
 
 export const renderingConditionalRender = defineRule<Rule>({
+  recommendation:
+    "Change to `{items.length > 0 && <List />}` or use a ternary: `{items.length ? <List /> : null}`",
   create: (context: RuleContext) => ({
     LogicalExpression(node: EsTreeNode) {
       if (node.operator !== "&&") return;

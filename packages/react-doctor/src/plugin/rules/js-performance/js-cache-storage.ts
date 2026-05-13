@@ -6,6 +6,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const jsCacheStorage = defineRule<Rule>({
+  recommendation:
+    "Cache repeated `localStorage`/`sessionStorage` reads in a local variable — each access serializes/deserializes",
   create: (context: RuleContext) => {
     const storageReadCounts = new Map<string, number>();
 

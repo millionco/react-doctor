@@ -73,6 +73,8 @@ const collectValueIdentifierNames = (node: EsTreeNode | null | undefined, into: 
 };
 
 export const noDerivedStateEffect = defineRule<Rule>({
+  recommendation:
+    "For derived state, compute inline: `const x = fn(dep)`. For state resets on prop change, use a key prop: `<Component key={prop} />`. See https://react.dev/learn/you-might-not-need-an-effect",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (!isHookCall(node, EFFECT_HOOK_NAMES) || (node.arguments?.length ?? 0) < 2) return;

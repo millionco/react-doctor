@@ -5,6 +5,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const tanstackStartNoAnchorElement = defineRule<Rule>({
+  recommendation:
+    "`import { Link } from '@tanstack/react-router'` — enables type-safe routes, preloading via `preload=\"intent\"`, and client-side navigation",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNode) {
       const filename = context.getFilename?.() ?? "";

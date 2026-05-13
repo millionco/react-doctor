@@ -12,6 +12,8 @@ import { SCROLLVIEW_NAMES } from "./utils/scrollview_names.js";
 // the OS computes natively, integrating with sticky headers, large
 // titles, and keyboard avoidance for free.
 export const rnPreferContentInsetAdjustment = defineRule<Rule>({
+  recommendation:
+    'Drop the SafeAreaView wrapper and set `contentInsetAdjustmentBehavior="automatic"` on the ScrollView for native safe-area handling',
   create: (context: RuleContext) => ({
     JSXElement(node: EsTreeNode) {
       const elementName = resolveJsxElementName(node.openingElement);

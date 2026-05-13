@@ -7,6 +7,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const tanstackStartNoUseEffectFetch = defineRule<Rule>({
+  recommendation:
+    "Fetch data in the route `loader` instead — the router coordinates loading before rendering to avoid waterfalls",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       const filename = context.getFilename?.() ?? "";

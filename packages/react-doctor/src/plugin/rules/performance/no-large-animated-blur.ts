@@ -9,6 +9,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const noLargeAnimatedBlur = defineRule<Rule>({
+  recommendation:
+    "Keep blur radius under 10px, or apply blur to a smaller element. Large blurs multiply GPU memory usage with layer size",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNode) {
       if (node.name?.type !== "JSXIdentifier") return;

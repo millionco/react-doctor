@@ -4,6 +4,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const noScaleFromZero = defineRule<Rule>({
+  recommendation:
+    "Use `initial={{ scale: 0.95, opacity: 0 }}` — elements should deflate like a balloon, not vanish into a point",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNode) {
       if (node.name?.type !== "JSXIdentifier") return;

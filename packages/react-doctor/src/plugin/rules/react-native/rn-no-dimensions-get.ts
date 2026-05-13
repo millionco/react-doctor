@@ -5,6 +5,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const rnNoDimensionsGet = defineRule<Rule>({
+  recommendation:
+    "Use `const { width, height } = useWindowDimensions()` — it updates reactively on rotation and resize",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (node.callee?.type !== "MemberExpression") return;

@@ -88,6 +88,8 @@ const hasSuppressHydrationWarningAttribute = (openingElement: EsTreeNode | null)
 // only client-side) or to add `suppressHydrationWarning` to the parent
 // element when the mismatch is intentional.
 export const renderingHydrationMismatchTime = defineRule<Rule>({
+  recommendation:
+    "Wrap dynamic time/random values in useEffect+useState (client-only) or add suppressHydrationWarning to the parent if intentional",
   create: (context: RuleContext) => ({
     JSXExpressionContainer(node: EsTreeNode) {
       if (!node.expression) return;

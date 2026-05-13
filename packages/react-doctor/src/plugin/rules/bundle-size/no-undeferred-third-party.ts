@@ -6,6 +6,7 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const noUndeferredThirdParty = defineRule<Rule>({
+  recommendation: 'Use `next/script` with `strategy="lazyOnload"` or add the `defer` attribute',
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNode) {
       if (node.name?.type !== "JSXIdentifier" || node.name.name !== "script") return;

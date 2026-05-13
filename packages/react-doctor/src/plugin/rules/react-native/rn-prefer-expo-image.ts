@@ -9,6 +9,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 // placeholders, and crossfades — a major perceived-perf win for any list
 // or hero image.
 export const rnPreferExpoImage = defineRule<Rule>({
+  recommendation:
+    "Use `<Image>` from `expo-image` instead of `react-native` — same prop API, plus disk + memory caching, placeholders, and crossfades",
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNode) {
       if (node.source?.value !== "react-native") return;

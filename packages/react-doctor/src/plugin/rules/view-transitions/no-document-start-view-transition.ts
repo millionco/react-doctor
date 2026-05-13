@@ -10,6 +10,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 // call startViewTransition for you (around startTransition, useDeferredValue,
 // or Suspense reveals).
 export const noDocumentStartViewTransition = defineRule<Rule>({
+  recommendation:
+    "Render a <ViewTransition> component and update inside startTransition / useDeferredValue — React calls startViewTransition for you",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       const callee = node.callee;

@@ -4,6 +4,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const rnPreferReanimated = defineRule<Rule>({
+  recommendation:
+    "Use `import Animated from 'react-native-reanimated'` — animations run on the UI thread instead of the JS thread",
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNode) {
       if (node.source?.value !== "react-native") return;

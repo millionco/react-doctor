@@ -16,6 +16,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 // binding named `onChange` in ComponentA doesn't taint a regular variable
 // `onChange` in ComponentB in the same file.
 export const noEffectEventInDeps = defineRule<Rule>({
+  recommendation:
+    "Call the useEffectEvent callback inside the effect body without listing it; its identity is intentionally unstable",
   create: (context: RuleContext) => {
     const componentBindings = createComponentBindingStackTracker({
       onVariableDeclarator: (declaratorNode: EsTreeNode) => {

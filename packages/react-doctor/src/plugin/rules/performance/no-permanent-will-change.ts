@@ -4,6 +4,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const noPermanentWillChange = defineRule<Rule>({
+  recommendation:
+    "Add will-change on animation start (`onMouseEnter`) and remove on end (`onAnimationEnd`). Permanent promotion wastes GPU memory and can degrade performance",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNode) {
       if (node.name?.type !== "JSXIdentifier" || node.name.name !== "style") return;

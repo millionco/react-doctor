@@ -5,6 +5,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const nextjsNoRedirectInTryCatch = defineRule<Rule>({
+  recommendation:
+    "Move the redirect/notFound call outside the try block, or add `unstable_rethrow(error)` in the catch",
   create: (context: RuleContext) => {
     let tryCatchDepth = 0;
 

@@ -5,6 +5,7 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const renderingAnimateSvgWrapper = defineRule<Rule>({
+  recommendation: "Wrap the SVG: `<motion.div animate={...}><svg>...</svg></motion.div>`",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNode) {
       if (node.name?.type !== "JSXIdentifier" || node.name.name !== "svg") return;

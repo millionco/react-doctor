@@ -9,6 +9,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 // (a single actionable diagnostic per file) instead of on every call
 // site, which would clutter output for files with several flushSync()s.
 export const noFlushSync = defineRule<Rule>({
+  recommendation:
+    "Use startTransition for non-urgent updates — flushSync forces a sync flush that skips View Transitions and concurrent rendering",
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNode) {
       if (node.source?.value !== "react-dom") return;

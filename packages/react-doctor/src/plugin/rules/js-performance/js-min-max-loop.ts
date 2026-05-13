@@ -5,6 +5,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const jsMinMaxLoop = defineRule<Rule>({
+  recommendation:
+    "Use `Math.min(...array)` / `Math.max(...array)` instead of sorting just to read the first or last element",
   create: (context: RuleContext) => ({
     MemberExpression(node: EsTreeNode) {
       if (!node.computed) return;

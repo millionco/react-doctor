@@ -20,6 +20,8 @@ const VIRTUALIZED_LIST_NAMES = new Set([
 // destroying scroll perf. Hoist the transform into a useMemo at list
 // scope or do the projection earlier in the parent.
 export const rnListDataMapped = defineRule<Rule>({
+  recommendation:
+    "Wrap the projection in `useMemo(() => items.map(...), [items])` so the list's `data` prop has a stable reference across parent renders",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNode) {
       const elementName = resolveJsxElementName(node);

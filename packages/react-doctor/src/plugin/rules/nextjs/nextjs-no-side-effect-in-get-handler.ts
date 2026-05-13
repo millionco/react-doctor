@@ -41,6 +41,8 @@ const getExportedGetHandlerBody = (node: EsTreeNode): EsTreeNode | null => {
 };
 
 export const nextjsNoSideEffectInGetHandler = defineRule<Rule>({
+  recommendation:
+    "Move the side effect to a POST handler and use a <form> or fetch with method POST — GET requests can be triggered by prefetching and are vulnerable to CSRF",
   create: (context: RuleContext) => ({
     ExportNamedDeclaration(node: EsTreeNode) {
       const filename = context.getFilename?.() ?? "";

@@ -6,6 +6,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const rerenderLazyStateInit = defineRule<Rule>({
+  recommendation:
+    "Wrap in an arrow function so it only runs once: `useState(() => expensiveComputation())`",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (!isHookCall(node, "useState") || !node.arguments?.length) return;

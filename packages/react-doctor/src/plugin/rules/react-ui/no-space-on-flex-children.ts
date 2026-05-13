@@ -9,6 +9,8 @@ const tokenizeClassName = (classNameValue: string): string[] =>
   classNameValue.split(/\s+/).filter(Boolean);
 
 export const noSpaceOnFlexChildren = defineRule<Rule>({
+  recommendation:
+    "Use `gap-*` on the flex/grid parent. `space-x-*` / `space-y-*` produce phantom gaps when a sibling is conditionally rendered, lose vertical spacing on wrapped lines, and don't mirror in RTL",
   create: (context: RuleContext) => ({
     JSXAttribute(jsxAttribute: EsTreeNode) {
       if (jsxAttribute.name?.type !== "JSXIdentifier" || jsxAttribute.name.name !== "className") {

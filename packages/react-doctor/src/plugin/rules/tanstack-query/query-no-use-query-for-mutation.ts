@@ -6,6 +6,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const queryNoUseQueryForMutation = defineRule<Rule>({
+  recommendation:
+    "Use `useMutation()` for POST/PUT/DELETE — it provides onSuccess/onError callbacks, doesn't auto-refetch, and correctly models write operations",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       const calleeName = node.callee?.type === "Identifier" ? node.callee.name : null;

@@ -31,6 +31,8 @@ const buildDefaultPaletteRegex = (): RegExp => {
 const DEFAULT_PALETTE_REGEX = buildDefaultPaletteRegex();
 
 export const noDefaultTailwindPalette = defineRule<Rule>({
+  recommendation:
+    "Replace `indigo-*` / `gray-*` / `slate-*` with project tokens, your brand color, or a less-default neutral (`zinc`, `neutral`, `stone`)",
   create: (context: RuleContext) => ({
     JSXAttribute(jsxAttribute: EsTreeNode) {
       if (jsxAttribute.name?.type !== "JSXIdentifier" || jsxAttribute.name.name !== "className") {

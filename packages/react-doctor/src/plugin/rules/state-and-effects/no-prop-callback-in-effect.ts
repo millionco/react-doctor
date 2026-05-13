@@ -16,6 +16,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 // both child and parent read from; the child then doesn't need an
 // effect-driven sync at all.
 export const noPropCallbackInEffect = defineRule<Rule>({
+  recommendation:
+    "Lift the shared state into a Provider so both sides read the same source — no useEffect-driven sync needed",
   create: (context: RuleContext) => {
     const propStackTracker = createComponentPropStackTracker();
 

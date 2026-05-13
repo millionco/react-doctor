@@ -5,6 +5,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const queryNoVoidQueryFn = defineRule<Rule>({
+  recommendation:
+    "queryFn must return a value for the cache. Use the `enabled` option to conditionally disable the query instead of returning undefined",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       const calleeName = node.callee?.type === "Identifier" ? node.callee.name : null;

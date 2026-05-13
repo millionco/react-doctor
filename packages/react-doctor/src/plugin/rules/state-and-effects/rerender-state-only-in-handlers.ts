@@ -12,6 +12,8 @@ import { collectRenderReachableNames } from "./utils/collect-render-reachable-na
 import { expandTransitiveDependencies } from "./utils/expand-transitive-dependencies.js";
 
 export const rerenderStateOnlyInHandlers = defineRule<Rule>({
+  recommendation:
+    "Replace useState with useRef when the value is only mutated and never read in render — `ref.current = ...` updates without re-rendering the component",
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || componentBody.type !== "BlockStatement") return;

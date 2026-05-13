@@ -10,6 +10,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 // gloss that useAnimatedReaction implies (it's meant for cross-thread
 // reactions like calling runOnJS, not value derivation).
 export const rnAnimationReactionAsDerived = defineRule<Rule>({
+  recommendation:
+    "Replace useAnimatedReaction with `useDerivedValue(() => ..., [deps])` — shorter, native dependency tracking, no side-effect implication",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (node.callee?.type !== "Identifier" || node.callee.name !== "useAnimatedReaction") return;

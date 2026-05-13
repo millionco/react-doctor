@@ -26,6 +26,8 @@ const reportLegacyShadowProperties = (objectExpression: EsTreeNode, context: Rul
 };
 
 export const rnNoLegacyShadowStyles = defineRule<Rule>({
+  recommendation:
+    "Use `boxShadow` for cross-platform shadows on the new architecture instead of platform-specific shadow properties",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNode) {
       if (node.name?.type !== "JSXIdentifier" || node.name.name !== "style") return;

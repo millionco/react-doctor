@@ -7,6 +7,8 @@ import { getRouteOptionsObject } from "./utils/get-route-options-object.js";
 import { getPropertyKeyName } from "./utils/get-property-key-name.js";
 
 export const tanstackStartNoDirectFetchInLoader = defineRule<Rule>({
+  recommendation:
+    "Use `createServerFn()` from @tanstack/react-start — provides type-safe RPC, input validation, and proper server/client code splitting",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       const optionsObject = getRouteOptionsObject(node);

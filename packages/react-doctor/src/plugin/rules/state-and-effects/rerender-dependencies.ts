@@ -6,6 +6,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const rerenderDependencies = defineRule<Rule>({
+  recommendation:
+    "Extract to a useMemo, useRef, or module-level constant so the reference is stable",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (!isHookCall(node, HOOKS_WITH_DEPS) || node.arguments.length < 2) return;

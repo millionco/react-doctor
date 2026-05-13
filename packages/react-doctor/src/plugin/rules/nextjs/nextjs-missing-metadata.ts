@@ -5,6 +5,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const nextjsMissingMetadata = defineRule<Rule>({
+  recommendation:
+    "Add `export const metadata = { title: '...', description: '...' }` or `export async function generateMetadata()`",
   create: (context: RuleContext) => ({
     Program(programNode: EsTreeNode) {
       const filename = context.getFilename?.() ?? "";

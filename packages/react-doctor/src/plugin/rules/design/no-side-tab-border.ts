@@ -53,6 +53,8 @@ const BORDER_SIDE_WIDTH_KEYS = new Set([
 ]);
 
 export const noSideTabBorder = defineRule<Rule>({
+  recommendation:
+    "Use a subtler accent (box-shadow inset, background gradient, or border-bottom) instead of a thick one-sided border",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNode) {
       const expression = getInlineStyleExpression(node);

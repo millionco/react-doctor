@@ -50,6 +50,8 @@ const findReturnedObject = (callback: EsTreeNode): EsTreeNode | null => {
 // shared values, animate `transform: [{ translateX/Y }, { scale }]` or
 // `opacity` instead.
 export const rnAnimateLayoutProperty = defineRule<Rule>({
+  recommendation:
+    "Animate `transform: [{ translateX/Y }, { scale }]` and `opacity` instead of layout props — layout runs on the JS thread; transform/opacity run on the GPU compositor",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (node.callee?.type !== "Identifier" || node.callee.name !== "useAnimatedStyle") return;

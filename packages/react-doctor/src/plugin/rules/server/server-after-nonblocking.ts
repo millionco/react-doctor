@@ -43,6 +43,8 @@ const isDeferrableSideEffectCall = (objectName: string, methodName: string): boo
 };
 
 export const serverAfterNonblocking = defineRule<Rule>({
+  recommendation:
+    "`import { after } from 'next/server'` then wrap: `after(() => analytics.track(...))` — response isn't blocked",
   create: (context: RuleContext) => {
     let fileHasUseServerDirective = false;
     let serverFunctionDepth = 0;

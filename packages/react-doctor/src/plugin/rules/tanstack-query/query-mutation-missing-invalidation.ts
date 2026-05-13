@@ -6,6 +6,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const queryMutationMissingInvalidation = defineRule<Rule>({
+  recommendation:
+    "Add `onSuccess: () => queryClient.invalidateQueries({ queryKey: ['...'] })` so cached data stays in sync after the mutation",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       const calleeName = node.callee?.type === "Identifier" ? node.callee.name : null;

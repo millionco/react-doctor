@@ -7,6 +7,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const noDerivedUseState = defineRule<Rule>({
+  recommendation:
+    "Remove useState and compute the value inline: `const value = transform(propName)`",
   create: (context: RuleContext) => {
     const propStackTracker = createComponentPropStackTracker();
 

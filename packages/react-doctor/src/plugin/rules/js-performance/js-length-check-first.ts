@@ -10,6 +10,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 // shortcut. e.g. `a.length === b.length && a.every((x, i) => x === b[i])`
 // runs the every-loop only when lengths match.
 export const jsLengthCheckFirst = defineRule<Rule>({
+  recommendation:
+    "Short-circuit with `a.length === b.length && a.every((x, i) => x === b[i])` — unequal-length arrays exit immediately",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (node.callee?.type !== "MemberExpression") return;

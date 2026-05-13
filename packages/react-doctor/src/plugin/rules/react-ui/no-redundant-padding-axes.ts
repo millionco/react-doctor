@@ -8,6 +8,8 @@ import { collectAxisShorthandPairs } from "./utils/collect-axis-shorthand-pairs.
 import { hasResponsivePrefix } from "./utils/has-responsive-prefix.js";
 
 export const noRedundantPaddingAxes = defineRule<Rule>({
+  recommendation:
+    "Collapse `px-N py-N` to `p-N` when both axes match. Keep them split only when one axis varies at a breakpoint (`py-2 md:py-3`)",
   create: (context: RuleContext) => ({
     JSXAttribute(jsxAttribute: EsTreeNode) {
       if (jsxAttribute.name?.type !== "JSXIdentifier" || jsxAttribute.name.name !== "className") {

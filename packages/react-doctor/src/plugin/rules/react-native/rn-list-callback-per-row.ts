@@ -51,6 +51,8 @@ const isRenderItemFunction = (node: EsTreeNode): boolean => {
 // list scope (`const handlePress = useCallback((id) => ..., [])`) and
 // pass the row's id as a primitive prop.
 export const rnListCallbackPerRow = defineRule<Rule>({
+  recommendation:
+    "Hoist the handler with useCallback at list scope and pass the row id as a primitive prop, so the row's memo() shallow-compare actually hits",
   create: (context: RuleContext) => {
     const inspect = (node: EsTreeNode): void => {
       if (!isRenderItemFunction(node)) return;

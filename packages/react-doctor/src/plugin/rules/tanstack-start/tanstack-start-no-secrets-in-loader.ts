@@ -20,6 +20,8 @@ const isLikelySecret = (envVarName: string): boolean => {
 };
 
 export const tanstackStartNoSecretsInLoader = defineRule<Rule>({
+  recommendation:
+    "Loaders are isomorphic (run on both server and client). Wrap secret access in `createServerFn()` so it stays server-only",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       const optionsObject = getRouteOptionsObject(node);

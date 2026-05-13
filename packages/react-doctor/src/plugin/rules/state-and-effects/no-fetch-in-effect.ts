@@ -8,6 +8,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const noFetchInEffect = defineRule<Rule>({
+  recommendation:
+    "Use `useQuery()` from @tanstack/react-query, `useSWR()`, or fetch in a Server Component instead",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (!isHookCall(node, EFFECT_HOOK_NAMES)) return;

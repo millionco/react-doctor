@@ -5,6 +5,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const rnNoDeprecatedModules = defineRule<Rule>({
+  recommendation:
+    "Import from the community package instead — deprecated modules were removed from the react-native core",
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNode) {
       if (node.source?.value !== "react-native") return;

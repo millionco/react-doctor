@@ -19,8 +19,17 @@ import {
   RULE_METADATA,
   createOxlintConfig,
 } from "./oxlint-config.js";
+import reactDoctorPlugin from "../../plugin/index.js";
 import type { CleanedDiagnostic, Diagnostic, OxlintOutput, ProjectInfo } from "../../types.js";
 import { neutralizeDisableDirectives } from "../diagnostics/neutralize-disable-directives.js";
+
+// Reads the rule's recommendation off its `defineRule({...})` metadata
+// (colocated in `plugin/rules/<bucket>/<rule>.ts`). Returns undefined when
+// the rule isn't a react-doctor rule (oxlint surfaces diagnostics from
+// builtin / community plugins too) or the rule simply doesn't ship a
+// recommendation yet.
+const getRuleRecommendation = (ruleName: string): string | undefined =>
+  reactDoctorPlugin.rules[ruleName]?.recommendation;
 
 const esmRequire = createRequire(import.meta.url);
 
@@ -246,382 +255,6 @@ const RULE_CATEGORY_MAP: Record<string, string> = {
   "react-doctor/tanstack-start-loader-parallel-fetch": "Performance",
 };
 
-const RULE_HELP_MAP: Record<string, string> = {
-  "no-derived-state-effect":
-    "For derived state, compute inline: `const x = fn(dep)`. For state resets on prop change, use a key prop: `<Component key={prop} />`. See https://react.dev/learn/you-might-not-need-an-effect",
-  "no-fetch-in-effect":
-    "Use `useQuery()` from @tanstack/react-query, `useSWR()`, or fetch in a Server Component instead",
-  "no-mirror-prop-effect":
-    "Delete both the `useState` and the `useEffect` and read the prop directly during render. Mirroring a prop into local state forces a stale first render before the effect re-syncs",
-  "no-mutable-in-deps":
-    "Read mutable values (`location.pathname`, `ref.current`) inside the effect body instead of in the deps array, or subscribe with `useSyncExternalStore`. Mutations to these don't trigger re-renders, so listing them in deps doesn't make the effect react to changes",
-  "no-cascading-set-state":
-    "Combine into useReducer: `const [state, dispatch] = useReducer(reducer, initialState)`",
-  "no-effect-chain":
-    "Compute as much as possible during render (e.g. `const isGameOver = round > 5`) and write all related state inside the event handler that originally fires the chain. Each effect link adds an extra render and makes the code rigid as requirements evolve",
-  "no-effect-event-handler":
-    "Move the conditional logic into onClick, onChange, or onSubmit handlers directly",
-  "no-event-trigger-state":
-    "Delete the trigger state (`useState(null)` plus the `useEffect` that watches it) and call the side-effect (`post(...)` / `navigate(...)` / `track(...)`) directly inside the event handler that previously called the setter. State should not exist purely to schedule effect runs",
-  "no-derived-useState":
-    "Remove useState and compute the value inline: `const value = transform(propName)`",
-  "no-direct-state-mutation":
-    "Replace the mutation with a setter call that produces a new reference: `setItems([...items, newItem])`, `setItems(items.filter(x => x !== target))`, `setItems(items.toSorted(...))`. React only re-renders on a new reference, so in-place updates are silently dropped",
-  "no-set-state-in-render":
-    "Move the setter call into a `useEffect`, an event handler, or replace the state with a value computed during render. Calling a setter at render time triggers another render, which calls the setter again — an infinite loop",
-  "prefer-use-effect-event":
-    "Wrap the callback with `useEffectEvent(callback)` (React 19+) and call the resulting binding from inside the sub-handler. The Effect Event captures the latest props/state without being a reactive dep, so the effect doesn't re-subscribe on every parent render. See https://react.dev/reference/react/useEffectEvent",
-  "prefer-useReducer":
-    "Group related state: `const [state, dispatch] = useReducer(reducer, { field1, field2, ... })`",
-  "prefer-use-sync-external-store":
-    "Replace the `useState(getSnapshot())` + `useEffect(() => store.subscribe(() => setSnapshot(getSnapshot())))` pair with `useSyncExternalStore(store.subscribe, getSnapshot)`. The hook handles tearing during concurrent renders and SSR snapshots; the manual subscribe pattern doesn't",
-  "rerender-lazy-state-init":
-    "Wrap in an arrow function so it only runs once: `useState(() => expensiveComputation())`",
-  "rerender-functional-setstate":
-    "Use the callback form: `setState(prev => prev + 1)` to always read the latest value",
-  "rerender-dependencies":
-    "Extract to a useMemo, useRef, or module-level constant so the reference is stable",
-  "no-effect-event-in-deps":
-    "Call the useEffectEvent callback inside the effect body without listing it; its identity is intentionally unstable",
-  "no-prop-callback-in-effect":
-    "Lift the shared state into a Provider so both sides read the same source — no useEffect-driven sync needed",
-
-  "no-generic-handler-names":
-    "Rename to describe the action: e.g. `handleSubmit` → `saveUserProfile`, `handleClick` → `toggleSidebar`",
-  "no-giant-component":
-    "Extract logical sections into focused components: `<UserHeader />`, `<UserActions />`, etc.",
-  "no-many-boolean-props":
-    "Split into compound components or named variants: `<Button.Primary />`, `<DialogConfirm />` instead of stacking `isPrimary`, `isConfirm` flags",
-  "no-react19-deprecated-apis":
-    "Pass `ref` as a regular prop on function components — `forwardRef` is no longer needed in React 19+. Replace `useContext(X)` with `use(X)` for branch-aware context reads. Only enabled on projects detected as React 19+.",
-  "no-legacy-class-lifecycles":
-    "Move side effects in `componentWillMount` to `componentDidMount`; replace `componentWillReceiveProps` with `componentDidUpdate` (compare prevProps) or the static `getDerivedStateFromProps` for pure state derivation; replace `componentWillUpdate` with `getSnapshotBeforeUpdate` paired with `componentDidUpdate`. The `UNSAFE_` prefix only silences the warning — React 19 removes both forms.",
-  "no-legacy-context-api":
-    "Replace `childContextTypes` + `getChildContext` with `const MyContext = createContext(...)` + `<MyContext.Provider value={...}>`; replace `contextTypes` with `static contextType = MyContext` (single context) or `useContext()` / `use()` from a function component. The provider and every consumer must migrate together — partial migrations leave consumers reading the wrong context.",
-  "no-default-props":
-    'React 19 removes `Component.defaultProps` for function components. Move the defaults into the destructured props parameter: `function Foo({ size = "md", variant = "primary" })` instead of `Foo.defaultProps = { size: "md", variant: "primary" }`.',
-  "no-react-dom-deprecated-apis":
-    "Switch the legacy `react-dom` root API (`render` / `hydrate` / `unmountComponentAtNode`) to `createRoot` / `hydrateRoot` / `root.unmount()` from `react-dom/client`. Replace `findDOMNode` with a ref. The whole `react-dom/test-utils` entry point is removed in React 19 — use `act` from `react` and `fireEvent` / `render` from `@testing-library/react`. Only enabled on projects detected as React 18+.",
-  "no-render-prop-children":
-    "Replace `renderXxx` props with compound subcomponents (e.g. `<Modal.Header>`) or `children` so the parent doesn't dictate every customization point",
-  "no-render-in-render":
-    "Extract to a named component: `const ListItem = ({ item }) => <div>{item.name}</div>`",
-  "no-nested-component-definition":
-    "Move to a separate file or to module scope above the parent component",
-
-  "no-usememo-simple-expression":
-    "Remove useMemo — property access, math, and ternaries are already cheap without memoization",
-  "no-layout-property-animation":
-    "Use `transform: translateX()` or `scale()` instead — they run on the compositor and skip layout/paint",
-  "rerender-memo-with-default-value":
-    "Move to module scope: `const EMPTY_ITEMS: Item[] = []` then use as the default value",
-  "rendering-animate-svg-wrapper":
-    "Wrap the SVG: `<motion.div animate={...}><svg>...</svg></motion.div>`",
-  "rendering-hoist-jsx":
-    "Move the static JSX to module scope: `const ICON = <svg>...</svg>` outside the component so it isn't recreated each render",
-  "rerender-memo-before-early-return":
-    "Extract the JSX into a memoized child component so the parent's early return short-circuits before the child renders",
-  "rerender-transitions-scroll":
-    "Wrap the setState in startTransition (mark as non-urgent), use useDeferredValue, or stash in a ref + rAF throttle so scroll/pointer events don't trigger a re-render per fire",
-  "rerender-state-only-in-handlers":
-    "Replace useState with useRef when the value is only mutated and never read in render — `ref.current = ...` updates without re-rendering the component",
-  "rerender-defer-reads-hook":
-    "Read the URL state inside the handler (e.g. `new URL(window.location.href).searchParams`) so the component doesn't subscribe and re-render on every URL change",
-  "rerender-derived-state-from-hook":
-    'Use a threshold/media-query hook (e.g. `useMediaQuery("(max-width: 767px)")`) — the component re-renders only when the threshold flips, not every pixel',
-  "advanced-event-handler-refs":
-    "Store the handler in a ref and have the listener read `handlerRef.current()` — the subscription stays put while the latest handler is always called",
-  "effect-needs-cleanup":
-    "Return a cleanup function that releases the subscription / timer: `return () => target.removeEventListener(name, handler)` for listeners, `return () => clearInterval(id)` / `clearTimeout(id)` for timers, or `return unsubscribe` if the subscribe call already returned one",
-  "async-defer-await":
-    "Move the `await` after the synchronous early-return guard so the skip path stays fast",
-  "async-await-in-loop":
-    "Collect the items and use `await Promise.all(items.map(...))` to run independent operations concurrently",
-  "react-compiler-destructure-method":
-    "Destructure the method up front: `const { push } = useRouter()` then call `push(...)` directly — clearer dependency graph and easier for React Compiler to memoize",
-  "client-localstorage-no-version":
-    'Bake a version into the storage key (e.g. "myKey:v1"); a future schema change can ignore old data instead of crashing on it',
-  "server-sequential-independent-await":
-    "Wrap independent awaits in `Promise.all([...])` so they race instead of waterfalling — second call doesn't depend on the first",
-  "server-fetch-without-revalidate":
-    'Pass `{ next: { revalidate: <seconds> } }` (or `cache: "no-store"` / `next: { tags: [...] }`) so stale cached data doesn\'t silently persist',
-  "rn-list-callback-per-row":
-    "Hoist the handler with useCallback at list scope and pass the row id as a primitive prop, so the row's memo() shallow-compare actually hits",
-  "rn-list-recyclable-without-types":
-    "Add `getItemType={item => item.kind}` so FlashList keeps separate recycle pools per item type — heterogeneous rows shouldn't share recycled cells",
-  "rn-style-prefer-boxshadow":
-    'Use the cross-platform CSS `boxShadow` string (RN v7+): `boxShadow: "0 2px 8px rgba(0,0,0,0.1)"` instead of platform-specific shadow*/elevation keys',
-  "rendering-hydration-mismatch-time":
-    "Wrap dynamic time/random values in useEffect+useState (client-only) or add suppressHydrationWarning to the parent if intentional",
-  "no-polymorphic-children":
-    "Expose explicit subcomponents (`<Button.Text>`, `<Button.Icon>`) so consumers don't need to switch on `typeof children`",
-  "rendering-svg-precision":
-    "Truncate path/points/transform decimals to 1–2 digits — sub-pixel precision adds bytes with no visible difference",
-  "no-document-start-view-transition":
-    "Render a <ViewTransition> component and update inside startTransition / useDeferredValue — React calls startViewTransition for you",
-  "no-flush-sync":
-    "Use startTransition for non-urgent updates — flushSync forces a sync flush that skips View Transitions and concurrent rendering",
-  "rendering-usetransition-loading":
-    "Replace with `const [isPending, startTransition] = useTransition()` — avoids a re-render for the loading state",
-  "rendering-hydration-no-flicker":
-    "Use `useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)` or add `suppressHydrationWarning` to the element",
-  "rendering-script-defer-async":
-    'Add `defer` for DOM-dependent scripts or `async` for independent ones (analytics). In Next.js, use `<Script strategy="afterInteractive" />` instead',
-  "no-inline-prop-on-memo-component":
-    "Hoist the inline `() => ...` / `[]` / `{}` to a stable reference (useMemo, useCallback, or module scope) so the memoized child doesn't re-render every parent render",
-
-  "no-transition-all":
-    'List specific properties: `transition: "opacity 200ms, transform 200ms"` — or in Tailwind use `transition-colors`, `transition-opacity`, or `transition-transform`',
-  "no-global-css-variable-animation":
-    "Set the variable on the nearest element instead of a parent, or use `@property` with `inherits: false` to prevent cascade. Better yet, use targeted `element.style.transform` updates",
-  "no-large-animated-blur":
-    "Keep blur radius under 10px, or apply blur to a smaller element. Large blurs multiply GPU memory usage with layer size",
-  "no-scale-from-zero":
-    "Use `initial={{ scale: 0.95, opacity: 0 }}` — elements should deflate like a balloon, not vanish into a point",
-  "no-permanent-will-change":
-    "Add will-change on animation start (`onMouseEnter`) and remove on end (`onAnimationEnd`). Permanent promotion wastes GPU memory and can degrade performance",
-
-  "no-secrets-in-client-code":
-    "Move to server-side `process.env.SECRET_NAME`. Only `NEXT_PUBLIC_*` vars are safe for the client (and should not contain secrets)",
-
-  "no-barrel-import":
-    "Import from the direct path: `import { Button } from './components/Button'` instead of `./components`",
-  "no-dynamic-import-path":
-    "Use a string-literal path: `import('./feature/heavy.js')` so the bundler can split this chunk",
-  "no-full-lodash-import":
-    "Import the specific function: `import debounce from 'lodash/debounce'` — saves ~70kb",
-  "no-moment":
-    "Replace with `import { format } from 'date-fns'` (tree-shakeable) or `import dayjs from 'dayjs'` (2kb)",
-  "prefer-dynamic-import":
-    "Use `const Component = dynamic(() => import('library'), { ssr: false })` from next/dynamic or React.lazy()",
-  "use-lazy-motion":
-    'Use `import { LazyMotion, m } from "framer-motion"` with `domAnimation` features — saves ~30kb',
-  "no-undeferred-third-party":
-    'Use `next/script` with `strategy="lazyOnload"` or add the `defer` attribute',
-
-  "no-inline-bounce-easing":
-    "Use `cubic-bezier(0.16, 1, 0.3, 1)` (ease-out-expo) for natural deceleration — objects in the real world don't bounce",
-  "no-z-index-9999":
-    "Define a z-index scale in your design tokens (e.g. dropdown: 10, modal: 20, toast: 30). Create a new stacking context with `isolation: isolate` instead of escalating values",
-  "no-inline-exhaustive-style":
-    "Move styles to a CSS class, CSS module, Tailwind utilities, or a styled component — inline objects with many properties hurt readability and create new references every render",
-  "no-side-tab-border":
-    "Use a subtler accent (box-shadow inset, background gradient, or border-bottom) instead of a thick one-sided border",
-  "no-pure-black-background":
-    "Tint the background slightly toward your brand hue — e.g. `#0a0a0f` or Tailwind's `bg-gray-950`. Pure black looks harsh on modern displays",
-  "no-gradient-text":
-    "Use solid text colors for readability. If you need emphasis, use font weight, size, or a distinct color instead of gradients",
-  "no-dark-mode-glow":
-    "Use a subtle `box-shadow` with neutral colors for depth, or `border` with low opacity. Colored glows on dark backgrounds are the default AI-generated aesthetic",
-  "no-justified-text":
-    "Use `text-align: left` for body text, or add `hyphens: auto` and `overflow-wrap: break-word` if you must justify",
-  "no-tiny-text":
-    "Use at least 12px for body content, 16px is ideal. Small text is hard to read, especially on high-DPI mobile screens",
-  "no-wide-letter-spacing":
-    "Reserve wide tracking (letter-spacing > 0.05em) for short uppercase labels, navigation items, and buttons — not body text",
-  "no-gray-on-colored-background":
-    "Use a darker shade of the background color for text, or white/near-white for contrast. Gray text on colored backgrounds looks washed out",
-  "no-layout-transition-inline":
-    "Use `transform` and `opacity` for transitions — they run on the compositor thread. For height animations, use `grid-template-rows: 0fr → 1fr`",
-  "no-disabled-zoom":
-    "Remove `user-scalable=no` and `maximum-scale` from the viewport meta tag. If your layout breaks at 200% zoom, fix the layout — don't punish users with disabilities",
-  "no-outline-none":
-    "Use `:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px }` to show focus only for keyboard users while hiding it for mouse clicks",
-  "no-long-transition-duration":
-    "Keep UI transitions under 1s — 100-150ms for instant feedback, 200-300ms for state changes, 300-500ms for layout changes. Use longer durations only for page-load hero animations",
-
-  "design-no-bold-heading":
-    "Use `font-semibold` (600) or `font-medium` (500) on headings — 700+ crushes letter counter shapes at display sizes",
-  "design-no-redundant-padding-axes":
-    "Collapse `px-N py-N` to `p-N` when both axes match. Keep them split only when one axis varies at a breakpoint (`py-2 md:py-3`)",
-  "design-no-redundant-size-axes":
-    "Collapse `w-N h-N` to `size-N` (Tailwind v3.4+) when both axes match",
-  "design-no-space-on-flex-children":
-    "Use `gap-*` on the flex/grid parent. `space-x-*` / `space-y-*` produce phantom gaps when a sibling is conditionally rendered, lose vertical spacing on wrapped lines, and don't mirror in RTL",
-  "design-no-three-period-ellipsis":
-    'Use the typographic ellipsis "…" (or `&hellip;`) instead of three periods — pairs with action-with-followup labels ("Rename…", "Loading…")',
-  "design-no-default-tailwind-palette":
-    "Replace `indigo-*` / `gray-*` / `slate-*` with project tokens, your brand color, or a less-default neutral (`zinc`, `neutral`, `stone`)",
-  "design-no-vague-button-label":
-    'Name the action: "Save changes" instead of "Continue", "Send invite" instead of "Submit", "Delete account" instead of "OK". The label IS the button\'s accessible name',
-
-  "no-array-index-as-key":
-    "Use a stable unique identifier: `key={item.id}` or `key={item.slug}` — index keys break on reorder/filter",
-  "rendering-conditional-render":
-    "Change to `{items.length > 0 && <List />}` or use a ternary: `{items.length ? <List /> : null}`",
-  "no-prevent-default":
-    "Use `<form action={serverAction}>` (works without JS) or `<button>` instead of `<a>` with preventDefault",
-  "no-uncontrolled-input":
-    'Pass an explicit initial value to `useState` (e.g. `useState("")` instead of `useState()`), add `onChange` (or `readOnly` to opt out) when you supply `value`, and drop `defaultValue` on controlled inputs — React ignores it',
-
-  "nextjs-no-img-element":
-    "`import Image from 'next/image'` — provides automatic WebP/AVIF, lazy loading, and responsive srcset",
-  "nextjs-async-client-component":
-    "Fetch data in a parent Server Component and pass it as props, or use useQuery/useSWR in the client component",
-  "nextjs-no-a-element":
-    "`import Link from 'next/link'` — enables client-side navigation, prefetching, and preserves scroll position",
-  "nextjs-no-use-search-params-without-suspense":
-    "Wrap the component using useSearchParams: `<Suspense fallback={<Skeleton />}><SearchComponent /></Suspense>`",
-  "nextjs-no-client-fetch-for-server-data":
-    "Remove 'use client' and fetch directly in the Server Component — no API round-trip, secrets stay on server",
-  "nextjs-missing-metadata":
-    "Add `export const metadata = { title: '...', description: '...' }` or `export async function generateMetadata()`",
-  "nextjs-no-client-side-redirect":
-    "Avoid redirects inside useEffect. Use an event handler, middleware, or server-side redirect (App Router: redirect() from next/navigation; Pages Router: getServerSideProps redirect)",
-  "nextjs-no-redirect-in-try-catch":
-    "Move the redirect/notFound call outside the try block, or add `unstable_rethrow(error)` in the catch",
-  "nextjs-image-missing-sizes":
-    'Add sizes for responsive behavior: `sizes="(max-width: 768px) 100vw, 50vw"` matching your layout breakpoints',
-  "nextjs-no-native-script":
-    '`import Script from "next/script"` — use `strategy="afterInteractive"` for analytics or `"lazyOnload"` for widgets',
-  "nextjs-inline-script-missing-id":
-    'Add `id="descriptive-name"` so Next.js can track, deduplicate, and re-execute the script correctly',
-  "nextjs-no-font-link":
-    '`import { Inter } from "next/font/google"` — self-hosted, zero layout shift, no render-blocking requests',
-  "nextjs-no-css-link":
-    "Import CSS directly: `import './styles.css'` or use CSS Modules: `import styles from './Button.module.css'`",
-  "nextjs-no-polyfill-script":
-    "Next.js includes polyfills for fetch, Promise, Object.assign, Array.from, and 50+ others automatically",
-  "nextjs-no-head-import":
-    "Use the Metadata API instead: `export const metadata = { title: '...' }` or `export async function generateMetadata()`",
-  "nextjs-no-side-effect-in-get-handler":
-    "Move the side effect to a POST handler and use a <form> or fetch with method POST — GET requests can be triggered by prefetching and are vulnerable to CSRF",
-
-  "server-auth-actions":
-    "Add `const session = await auth()` at the top and throw/redirect if unauthorized before any data access",
-  "server-after-nonblocking":
-    "`import { after } from 'next/server'` then wrap: `after(() => analytics.track(...))` — response isn't blocked",
-  "server-no-mutable-module-state":
-    "Move per-request data into the action body, headers/cookies, or a request-scope (React.cache, AsyncLocalStorage). Module-scope `let`/`var` is shared across requests.",
-  "server-cache-with-object-literal":
-    "Pass primitives to React.cache()-wrapped functions — argument identity (not deep equality) is the dedup key, so a fresh `{}` per render bypasses the cache",
-  "server-hoist-static-io":
-    "Hoist the read to module scope: `const FONT_DATA = await fetch(new URL('./fonts/Inter.ttf', import.meta.url)).then(r => r.arrayBuffer())` runs once at module load",
-  "server-dedup-props":
-    "Pass the source array once and derive the projection on the client — passing both doubles RSC serialization bytes",
-
-  "client-passive-event-listeners":
-    "Add `{ passive: true }` as the third argument: `addEventListener('scroll', handler, { passive: true })`. Only do this if the handler does NOT call `event.preventDefault()` — passive listeners silently ignore `preventDefault()`, which breaks features like pull-to-refresh suppression, custom gestures, and nested-scroll containment.",
-
-  "query-stable-query-client":
-    "Move `new QueryClient()` to module scope or wrap in `useState(() => new QueryClient())` — recreating it on every render resets the entire cache",
-  "query-no-rest-destructuring":
-    "Destructure only the fields you need: `const { data, isLoading } = useQuery(...)` — rest destructuring subscribes to all fields and causes extra re-renders",
-  "query-no-void-query-fn":
-    "queryFn must return a value for the cache. Use the `enabled` option to conditionally disable the query instead of returning undefined",
-  "query-no-query-in-effect":
-    "React Query manages refetching automatically via queryKey dependencies and the `enabled` option — manual refetch() in useEffect is usually unnecessary",
-  "query-mutation-missing-invalidation":
-    "Add `onSuccess: () => queryClient.invalidateQueries({ queryKey: ['...'] })` so cached data stays in sync after the mutation",
-  "query-no-usequery-for-mutation":
-    "Use `useMutation()` for POST/PUT/DELETE — it provides onSuccess/onError callbacks, doesn't auto-refetch, and correctly models write operations",
-
-  "js-flatmap-filter":
-    "Use `.flatMap(item => condition ? [value] : [])` — transforms and filters in a single pass instead of creating an intermediate array",
-  "js-hoist-intl":
-    "Hoist `new Intl.NumberFormat(...)` to module scope or wrap in `useMemo` — Intl constructors allocate dozens of objects per locale lookup",
-  "js-cache-property-access":
-    "Hoist the deep member access into a const at the top of the loop body: `const { x, y } = obj.deeply.nested`",
-  "js-length-check-first":
-    "Short-circuit with `a.length === b.length && a.every((x, i) => x === b[i])` — unequal-length arrays exit immediately",
-  "js-combine-iterations":
-    "Combine `.map().filter()` (or similar chains) into a single pass with `.reduce()` or a `for...of` loop to avoid iterating the array twice",
-  "js-tosorted-immutable":
-    "Use `array.toSorted()` (ES2023) instead of `[...array].sort()` for immutable sorting without the spread allocation",
-  "js-hoist-regexp":
-    "Hoist `new RegExp(...)` (or large regex literals) to a module-level constant so it isn't recompiled on every loop iteration",
-  "js-min-max-loop":
-    "Use `Math.min(...array)` / `Math.max(...array)` instead of sorting just to read the first or last element",
-  "js-set-map-lookups":
-    "Use a `Set` or `Map` for repeated membership tests / keyed lookups — `Array.includes`/`find` is O(n) per call",
-  "js-batch-dom-css":
-    "Batch DOM/CSS reads and writes — interleaving them inside a loop causes layout thrashing. Read first, then write",
-  "js-index-maps":
-    "Build an index `Map` once outside the loop instead of `array.find(...)` inside it",
-  "js-cache-storage":
-    "Cache repeated `localStorage`/`sessionStorage` reads in a local variable — each access serializes/deserializes",
-  "js-early-exit":
-    "Add an early `return` / `continue` to flatten deep nesting and short-circuit when the predicate is already known",
-
-  "no-eval":
-    "Use `JSON.parse` for serialized data, `Function(...)` (still careful) for trusted templates, or refactor to avoid dynamic code execution",
-
-  "async-parallel":
-    "Use `const [a, b] = await Promise.all([fetchA(), fetchB()])` to run independent operations concurrently",
-
-  "rn-no-raw-text":
-    "Wrap text in a `<Text>` component: `<Text>{value}</Text>` — raw strings outside `<Text>` crash on React Native",
-  "rn-no-deprecated-modules":
-    "Import from the community package instead — deprecated modules were removed from the react-native core",
-  "rn-no-legacy-expo-packages":
-    "Migrate to the recommended replacement package — legacy Expo packages are no longer maintained",
-  "rn-no-dimensions-get":
-    "Use `const { width, height } = useWindowDimensions()` — it updates reactively on rotation and resize",
-  "rn-no-inline-flatlist-renderitem":
-    "Extract renderItem to a named function or wrap in useCallback to avoid re-creating on every render",
-  "rn-no-legacy-shadow-styles":
-    "Use `boxShadow` for cross-platform shadows on the new architecture instead of platform-specific shadow properties",
-  "rn-prefer-reanimated":
-    "Use `import Animated from 'react-native-reanimated'` — animations run on the UI thread instead of the JS thread",
-  "rn-no-single-element-style-array":
-    "Use `style={value}` instead of `style={[value]}` — single-element arrays add unnecessary allocation",
-  "rn-prefer-pressable":
-    "Use `<Pressable>` from react-native (or react-native-gesture-handler) instead of legacy Touchable* components",
-  "rn-prefer-expo-image":
-    "Use `<Image>` from `expo-image` instead of `react-native` — same prop API, plus disk + memory caching, placeholders, and crossfades",
-  "rn-no-non-native-navigator":
-    "Use `@react-navigation/native-stack` (or `native-tabs` in v7+) for platform-native transitions and gestures",
-  "rn-no-scroll-state":
-    "Track scroll position with a Reanimated shared value (`useAnimatedScrollHandler`) or a ref — `setState` on every scroll event causes re-render storms",
-  "rn-no-scrollview-mapped-list":
-    "Use FlashList, LegendList, or FlatList — `<ScrollView>{items.map(...)}</ScrollView>` mounts every row in memory",
-  "rn-no-inline-object-in-list-item":
-    "Hoist style/object props outside renderItem (StyleSheet.create, useMemo at list scope, or pass primitives) so memo() row components stop bailing",
-  "rn-animate-layout-property":
-    "Animate `transform: [{ translateX/Y }, { scale }]` and `opacity` instead of layout props — layout runs on the JS thread; transform/opacity run on the GPU compositor",
-  "rn-prefer-content-inset-adjustment":
-    'Drop the SafeAreaView wrapper and set `contentInsetAdjustmentBehavior="automatic"` on the ScrollView for native safe-area handling',
-  "rn-pressable-shared-value-mutation":
-    "Wrap in <GestureDetector gesture={Gesture.Tap()...}> so the press animation runs on the UI thread instead of bouncing across the JS bridge",
-  "rn-list-data-mapped":
-    "Wrap the projection in `useMemo(() => items.map(...), [items])` so the list's `data` prop has a stable reference across parent renders",
-  "rn-animation-reaction-as-derived":
-    "Replace useAnimatedReaction with `useDerivedValue(() => ..., [deps])` — shorter, native dependency tracking, no side-effect implication",
-  "rn-bottom-sheet-prefer-native":
-    'Use `<Modal presentationStyle="formSheet">` (RN v7+) for native gesture handling and snap points',
-  "rn-scrollview-dynamic-padding":
-    "Use `contentInset={{ bottom: dynamicValue }}` — the OS applies it as an offset without reflowing the scroll content",
-
-  "tanstack-start-route-property-order":
-    "Follow the order: params/validateSearch → loaderDeps → context → beforeLoad → loader → head. See https://tanstack.com/router/latest/docs/eslint/create-route-property-order",
-  "tanstack-start-no-direct-fetch-in-loader":
-    "Use `createServerFn()` from @tanstack/react-start — provides type-safe RPC, input validation, and proper server/client code splitting",
-  "tanstack-start-server-fn-validate-input":
-    "Add `.inputValidator(schema)` before `.handler()` — data crosses a network boundary and must be validated at runtime",
-  "tanstack-start-no-useeffect-fetch":
-    "Fetch data in the route `loader` instead — the router coordinates loading before rendering to avoid waterfalls",
-  "tanstack-start-missing-head-content":
-    "Add `<HeadContent />` inside `<head>` in your __root route — without it, route `head()` meta tags are silently dropped",
-  "tanstack-start-no-anchor-element":
-    "`import { Link } from '@tanstack/react-router'` — enables type-safe routes, preloading via `preload=\"intent\"`, and client-side navigation",
-  "tanstack-start-server-fn-method-order":
-    "Chain methods in order: .middleware() → .inputValidator() → .client() → .server() → .handler() — types depend on this sequence",
-  "tanstack-start-no-navigate-in-render":
-    "Use `throw redirect({ to: '/path' })` in `beforeLoad` or `loader` instead — navigate() during render causes hydration issues",
-  "tanstack-start-no-dynamic-server-fn-import":
-    "Use `import { myFn } from '~/utils/my.functions'` — the bundler replaces server code with RPC stubs only for static imports",
-  "tanstack-start-no-use-server-in-handler":
-    'TanStack Start handles server boundaries automatically via the Vite plugin — "use server" inside createServerFn causes compilation errors',
-  "tanstack-start-no-secrets-in-loader":
-    "Loaders are isomorphic (run on both server and client). Wrap secret access in `createServerFn()` so it stays server-only",
-  "tanstack-start-get-mutation":
-    "Use `createServerFn({ method: 'POST' })` for data modifications — GET requests can be triggered by prefetching and are vulnerable to CSRF",
-  "tanstack-start-redirect-in-try-catch":
-    "TanStack Router's `redirect()` and `notFound()` throw special errors caught by the router. Move them outside the try block or re-throw in the catch",
-  "tanstack-start-loader-parallel-fetch":
-    "Use `const [a, b] = await Promise.all([fetchA(), fetchB()])` to avoid request waterfalls in route loaders",
-};
-
 const FILEPATH_WITH_LOCATION_PATTERN = /\S+\.\w+:\d+:\d+[\s\S]*$/;
 
 const REACT_COMPILER_MESSAGE = "React Compiler can't optimize this code";
@@ -646,7 +279,7 @@ const cleanDiagnosticMessage = (
     return { message: REACT_COMPILER_MESSAGE, help: rawMessage || help };
   }
   const cleaned = message.replace(FILEPATH_WITH_LOCATION_PATTERN, "").trim();
-  return { message: cleaned || message, help: help || lookupOwnString(RULE_HELP_MAP, rule) || "" };
+  return { message: cleaned || message, help: help || getRuleRecommendation(rule) || "" };
 };
 
 const parseRuleCode = (code: string): { plugin: string; rule: string } => {
@@ -884,7 +517,7 @@ const validateRuleRegistration = (): void => {
     if (!Object.hasOwn(RULE_CATEGORY_MAP, fullKey)) {
       missingCategory.push(fullKey);
     }
-    if (!Object.hasOwn(RULE_HELP_MAP, ruleName)) {
+    if (!getRuleRecommendation(ruleName)) {
       missingHelp.push(fullKey);
     }
     if (FRAMEWORK_SPECIFIC_RULE_KEYS.has(fullKey) && !RULE_METADATA.has(fullKey)) {
@@ -896,7 +529,9 @@ const validateRuleRegistration = (): void => {
       missingCategory.length > 0
         ? `Missing RULE_CATEGORY_MAP entries: ${missingCategory.join(", ")}`
         : null,
-      missingHelp.length > 0 ? `Missing RULE_HELP_MAP entries: ${missingHelp.join(", ")}` : null,
+      missingHelp.length > 0
+        ? `Missing rule recommendations (add to defineRule call): ${missingHelp.join(", ")}`
+        : null,
       missingMetadata.length > 0
         ? `Missing RULE_METADATA entries: ${missingMetadata.join(", ")}`
         : null,

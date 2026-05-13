@@ -12,6 +12,8 @@ import { SCROLLVIEW_NAMES } from "./utils/scrollview_names.js";
 // which the platform applies as an OS-level offset without re-laying out
 // the content.
 export const rnScrollviewDynamicPadding = defineRule<Rule>({
+  recommendation:
+    "Use `contentInset={{ bottom: dynamicValue }}` — the OS applies it as an offset without reflowing the scroll content",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNode) {
       const elementName = resolveJsxElementName(node);

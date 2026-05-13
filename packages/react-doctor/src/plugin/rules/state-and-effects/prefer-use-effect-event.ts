@@ -220,6 +220,8 @@ const classifyCallableReadsInsideEffect = (
 };
 
 export const preferUseEffectEvent = defineRule<Rule>({
+  recommendation:
+    "Wrap the callback with `useEffectEvent(callback)` (React 19+) and call the resulting binding from inside the sub-handler. The Effect Event captures the latest props/state without being a reactive dep, so the effect doesn't re-subscribe on every parent render. See https://react.dev/reference/react/useEffectEvent",
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | undefined): void => {
       if (!componentBody || componentBody.type !== "BlockStatement") return;

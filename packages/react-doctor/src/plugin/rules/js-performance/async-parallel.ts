@@ -34,6 +34,8 @@ const reportIfIndependent = (statements: EsTreeNode[], context: RuleContext): vo
 };
 
 export const asyncParallel = defineRule<Rule>({
+  recommendation:
+    "Use `const [a, b] = await Promise.all([fetchA(), fetchB()])` to run independent operations concurrently",
   create: (context: RuleContext) => {
     const filename = context.getFilename?.() ?? "";
     const isTestFile = TEST_FILE_PATTERN.test(filename);

@@ -15,6 +15,8 @@ const RENDER_PROP_PATTERN = /^render[A-Z]/;
 // of "many slots cobbled together where compound components or
 // `children` would be cleaner".
 export const noRenderPropChildren = defineRule<Rule>({
+  recommendation:
+    "Replace `renderXxx` props with compound subcomponents (e.g. `<Modal.Header>`) or `children` so the parent doesn't dictate every customization point",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNode) {
       const renderPropAttrs: Array<{ name: string; node: EsTreeNode }> = [];

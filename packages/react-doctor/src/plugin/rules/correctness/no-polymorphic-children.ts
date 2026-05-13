@@ -9,6 +9,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 // subcomponents (`<Button.Text />`) so text always lands in the right
 // shape and the component's API is checked at compile time.
 export const noPolymorphicChildren = defineRule<Rule>({
+  recommendation:
+    "Expose explicit subcomponents (`<Button.Text>`, `<Button.Icon>`) so consumers don't need to switch on `typeof children`",
   create: (context: RuleContext) => ({
     BinaryExpression(node: EsTreeNode) {
       if (node.operator !== "===" && node.operator !== "==") return;

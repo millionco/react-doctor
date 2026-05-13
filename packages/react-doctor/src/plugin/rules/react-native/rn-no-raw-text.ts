@@ -54,6 +54,8 @@ const isTextHandlingComponent = (elementName: string): boolean => {
 const WEB_FILE_EXTENSION_PATTERN = /\.web\.[jt]sx?$/;
 
 export const rnNoRawText = defineRule<Rule>({
+  recommendation:
+    "Wrap text in a `<Text>` component: `<Text>{value}</Text>` — raw strings outside `<Text>` crash on React Native",
   create: (context: RuleContext) => {
     let isWebOnlyFile = false;
     let isDomComponentFile = false;

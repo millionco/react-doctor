@@ -165,6 +165,8 @@ const isLikelyStringReceiver = (receiver: EsTreeNode | null | undefined): boolea
 };
 
 export const jsSetMapLookups = defineRule<Rule>({
+  recommendation:
+    "Use a `Set` or `Map` for repeated membership tests / keyed lookups — `Array.includes`/`find` is O(n) per call",
   create: (context: RuleContext) =>
     createLoopAwareVisitors({
       CallExpression(node: EsTreeNode) {

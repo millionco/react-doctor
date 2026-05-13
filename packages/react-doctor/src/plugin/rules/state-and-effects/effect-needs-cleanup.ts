@@ -159,6 +159,8 @@ const effectHasCleanupRelease = (callback: EsTreeNode): boolean => {
 };
 
 export const effectNeedsCleanup = defineRule<Rule>({
+  recommendation:
+    "Return a cleanup function that releases the subscription / timer: `return () => target.removeEventListener(name, handler)` for listeners, `return () => clearInterval(id)` / `clearTimeout(id)` for timers, or `return unsubscribe` if the subscribe call already returned one",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (!isHookCall(node, EFFECT_HOOK_NAMES)) return;

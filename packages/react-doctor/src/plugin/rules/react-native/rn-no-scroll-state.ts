@@ -9,6 +9,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 // (useSharedValue + useAnimatedScrollHandler) or a ref + raf throttle so
 // the JS thread isn't pegged.
 export const rnNoScrollState = defineRule<Rule>({
+  recommendation:
+    "Track scroll position with a Reanimated shared value (`useAnimatedScrollHandler`) or a ref — `setState` on every scroll event causes re-render storms",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNode) {
       if (node.name?.type !== "JSXIdentifier") return;

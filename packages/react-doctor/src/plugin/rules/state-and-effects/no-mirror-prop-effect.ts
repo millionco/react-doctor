@@ -52,6 +52,8 @@ interface MirrorBinding {
 }
 
 export const noMirrorPropEffect = defineRule<Rule>({
+  recommendation:
+    "Delete both the `useState` and the `useEffect` and read the prop directly during render. Mirroring a prop into local state forces a stale first render before the effect re-syncs",
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | undefined): void => {
       if (!componentBody || componentBody.type !== "BlockStatement") return;

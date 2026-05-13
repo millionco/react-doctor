@@ -22,6 +22,8 @@ const isMotionElement = (attributeNode: EsTreeNode): boolean => {
 };
 
 export const noLayoutPropertyAnimation = defineRule<Rule>({
+  recommendation:
+    "Use `transform: translateX()` or `scale()` instead — they run on the compositor and skip layout/paint",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNode) {
       if (node.name?.type !== "JSXIdentifier" || !MOTION_ANIMATE_PROPS.has(node.name.name)) return;

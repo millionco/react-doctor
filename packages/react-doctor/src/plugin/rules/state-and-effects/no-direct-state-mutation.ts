@@ -73,6 +73,8 @@ const walkComponentRespectingShadows = (
 };
 
 export const noDirectStateMutation = defineRule<Rule>({
+  recommendation:
+    "Replace the mutation with a setter call that produces a new reference: `setItems([...items, newItem])`, `setItems(items.filter(x => x !== target))`, `setItems(items.toSorted(...))`. React only re-renders on a new reference, so in-place updates are silently dropped",
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || componentBody.type !== "BlockStatement") return;

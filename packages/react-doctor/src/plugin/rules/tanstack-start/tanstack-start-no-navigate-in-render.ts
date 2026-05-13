@@ -10,6 +10,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const tanstackStartNoNavigateInRender = defineRule<Rule>({
+  recommendation:
+    "Use `throw redirect({ to: '/path' })` in `beforeLoad` or `loader` instead — navigate() during render causes hydration issues",
   create: (context: RuleContext) => {
     // HACK: only callbacks that React calls LATER are safe scopes for
     // navigate() — useEffect / useLayoutEffect (post-commit), useCallback

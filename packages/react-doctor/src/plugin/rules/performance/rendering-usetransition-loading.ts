@@ -6,6 +6,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const renderingUsetransitionLoading = defineRule<Rule>({
+  recommendation:
+    "Replace with `const [isPending, startTransition] = useTransition()` — avoids a re-render for the loading state",
   create: (context: RuleContext) => ({
     VariableDeclarator(node: EsTreeNode) {
       if (node.id?.type !== "ArrayPattern" || !node.id.elements?.length) return;

@@ -10,6 +10,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const queryStableQueryClient = defineRule<Rule>({
+  recommendation:
+    "Move `new QueryClient()` to module scope or wrap in `useState(() => new QueryClient())` — recreating it on every render resets the entire cache",
   create: (context: RuleContext) => {
     let componentDepth = 0;
     let stableHookDepth = 0;

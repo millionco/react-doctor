@@ -34,6 +34,8 @@ const isIntlNewExpression = (node: EsTreeNode): boolean => {
 };
 
 export const jsHoistIntl = defineRule<Rule>({
+  recommendation:
+    "Hoist `new Intl.NumberFormat(...)` to module scope or wrap in `useMemo` — Intl constructors allocate dozens of objects per locale lookup",
   create: (context: RuleContext) => ({
     NewExpression(node: EsTreeNode) {
       if (!isIntlNewExpression(node)) return;

@@ -17,6 +17,8 @@ const JS_BOTTOM_SHEET_PACKAGES = new Set([
 // "formSheet"> that handles gestures, snap points, and detents on the
 // platform's native modal stack.
 export const rnBottomSheetPreferNative = defineRule<Rule>({
+  recommendation:
+    'Use `<Modal presentationStyle="formSheet">` (RN v7+) for native gesture handling and snap points',
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNode) {
       const source = node.source?.value;

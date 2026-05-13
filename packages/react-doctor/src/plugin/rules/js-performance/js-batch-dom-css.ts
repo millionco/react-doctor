@@ -4,6 +4,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const jsBatchDomCss = defineRule<Rule>({
+  recommendation:
+    "Batch DOM/CSS reads and writes — interleaving them inside a loop causes layout thrashing. Read first, then write",
   create: (context: RuleContext) => {
     const isStyleAssignment = (node: EsTreeNode): boolean =>
       node.type === "ExpressionStatement" &&

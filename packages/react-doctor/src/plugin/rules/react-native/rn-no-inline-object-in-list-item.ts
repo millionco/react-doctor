@@ -16,6 +16,8 @@ const RENDER_ITEM_PROP_NAMES = new Set([
 // data didn't change. Hoist the object outside renderItem (StyleSheet,
 // constant, useMemo at list scope) or pass primitives into the row.
 export const rnNoInlineObjectInListItem = defineRule<Rule>({
+  recommendation:
+    "Hoist style/object props outside renderItem (StyleSheet.create, useMemo at list scope, or pass primitives) so memo() row components stop bailing",
   create: (context: RuleContext) => {
     let renderItemDepth = 0;
 

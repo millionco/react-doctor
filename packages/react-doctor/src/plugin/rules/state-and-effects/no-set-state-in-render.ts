@@ -34,6 +34,8 @@ const isUnconditionalSetterCallStatement = (
 };
 
 export const noSetStateInRender = defineRule<Rule>({
+  recommendation:
+    "Move the setter call into a `useEffect`, an event handler, or replace the state with a value computed during render. Calling a setter at render time triggers another render, which calls the setter again — an infinite loop",
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || componentBody.type !== "BlockStatement") return;

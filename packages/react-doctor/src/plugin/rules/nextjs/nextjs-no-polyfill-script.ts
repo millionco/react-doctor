@@ -6,6 +6,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const nextjsNoPolyfillScript = defineRule<Rule>({
+  recommendation:
+    "Next.js includes polyfills for fetch, Promise, Object.assign, Array.from, and 50+ others automatically",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNode) {
       if (node.name?.type !== "JSXIdentifier") return;

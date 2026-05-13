@@ -5,6 +5,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const jsIndexMaps = defineRule<Rule>({
+  recommendation:
+    "Build an index `Map` once outside the loop instead of `array.find(...)` inside it",
   create: (context: RuleContext) =>
     createLoopAwareVisitors({
       CallExpression(node: EsTreeNode) {

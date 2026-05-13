@@ -9,6 +9,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const noEffectEventHandler = defineRule<Rule>({
+  recommendation:
+    "Move the conditional logic into onClick, onChange, or onSubmit handlers directly",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (!isHookCall(node, EFFECT_HOOK_NAMES) || (node.arguments?.length ?? 0) < 2) return;

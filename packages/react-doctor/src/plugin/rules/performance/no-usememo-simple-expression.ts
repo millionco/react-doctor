@@ -17,6 +17,8 @@ const isTriviallyCheapExpression = (node: EsTreeNode | null): boolean => {
 };
 
 export const noUsememoSimpleExpression = defineRule<Rule>({
+  recommendation:
+    "Remove useMemo — property access, math, and ternaries are already cheap without memoization",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (!isHookCall(node, "useMemo")) return;

@@ -5,6 +5,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const nextjsNoImgElement = defineRule<Rule>({
+  recommendation:
+    "`import Image from 'next/image'` — provides automatic WebP/AVIF, lazy loading, and responsive srcset",
   create: (context: RuleContext) => {
     const filename = context.getFilename?.() ?? "";
     const isOgRoute = OG_ROUTE_PATTERN.test(filename);

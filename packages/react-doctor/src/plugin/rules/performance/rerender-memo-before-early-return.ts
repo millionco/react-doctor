@@ -5,19 +5,23 @@ import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const callbackReturnsJsx = (callback: EsTreeNode | undefined): boolean => {
   if (!callback) return false;
-  if (callback.type !== "ArrowFunctionExpression" && callback.type !== "FunctionExpression") {
+  if (
+    !isNodeOfType(callback, "ArrowFunctionExpression") &&
+    !isNodeOfType(callback, "FunctionExpression")
+  ) {
     return false;
   }
   const body = callback.body;
-  if (body?.type === "JSXElement" || body?.type === "JSXFragment") return true;
-  if (body?.type !== "BlockStatement") return false;
+  if (isNodeOfType(body, "JSXElement") || isNodeOfType(body, "JSXFragment")) return true;
+  if (!isNodeOfType(body, "BlockStatement")) return false;
   for (const stmt of body.body ?? []) {
     if (
-      stmt.type === "ReturnStatement" &&
-      (stmt.argument?.type === "JSXElement" || stmt.argument?.type === "JSXFragment")
+      isNodeOfType(stmt, "ReturnStatement") &&
+      (isNodeOfType(stmt.argument, "JSXElement") || isNodeOfType(stmt.argument, "JSXFragment"))
     ) {
       return true;
     }
@@ -28,10 +32,10 @@ const callbackReturnsJsx = (callback: EsTreeNode | undefined): boolean => {
 const containsEarlyReturn = (ifStatement: EsTreeNode): boolean => {
   const consequent = ifStatement.consequent;
   if (!consequent) return false;
-  if (consequent.type === "ReturnStatement") return true;
-  if (consequent.type !== "BlockStatement") return false;
+  if (isNodeOfType(consequent, "ReturnStatement")) return true;
+  if (!isNodeOfType(consequent, "BlockStatement")) return false;
   for (const stmt of consequent.body ?? []) {
-    if (stmt.type === "ReturnStatement") return true;
+    if (isNodeOfType(stmt, "ReturnStatement")) return true;
   }
   return false;
 };
@@ -50,11 +54,11 @@ export const rerenderMemoBeforeEarlyReturn = defineRule<Rule>({
 
       for (const stmt of statements) {
         if (!memoNode) {
-          if (stmt.type !== "VariableDeclaration") continue;
+          if (!isNodeOfType(stmt, "VariableDeclaration")) continue;
           for (const declarator of stmt.declarations ?? []) {
             const init = declarator.init;
             if (
-              init?.type === "CallExpression" &&
+              isNodeOfType(init, "CallExpression") &&
               isHookCall(init, "useMemo") &&
               callbackReturnsJsx(init.arguments?.[0])
             ) {
@@ -64,7 +68,7 @@ export const rerenderMemoBeforeEarlyReturn = defineRule<Rule>({
           }
           continue;
         }
-        if (stmt.type === "IfStatement" && containsEarlyReturn(stmt)) {
+        if (isNodeOfType(stmt, "IfStatement") && containsEarlyReturn(stmt)) {
           context.report({
             node: memoNode,
             message:
@@ -78,13 +82,13 @@ export const rerenderMemoBeforeEarlyReturn = defineRule<Rule>({
     return {
       FunctionDeclaration(node: EsTreeNode) {
         if (!isUppercaseName(node.id?.name ?? "")) return;
-        if (node.body?.type !== "BlockStatement") return;
+        if (!isNodeOfType(node.body, "BlockStatement")) return;
         inspectFunctionBody(node.body.body ?? []);
       },
       VariableDeclarator(node: EsTreeNode) {
         if (!isComponentAssignment(node)) return;
         const body = node.init?.body;
-        if (body?.type !== "BlockStatement") return;
+        if (!isNodeOfType(body, "BlockStatement")) return;
         inspectFunctionBody(body.body ?? []);
       },
     };

@@ -7,6 +7,7 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const UNCONTROLLED_INPUT_TAGS = new Set(["input", "textarea", "select"]);
 
@@ -22,29 +23,29 @@ const VALUE_PARTNER_ATTRIBUTES = ["onChange", "readOnly"];
 
 const getInputTypeLiteral = (attributes: EsTreeNode[]): string | null => {
   const typeAttribute = findJsxAttribute(attributes, "type");
-  if (!typeAttribute || typeAttribute.value?.type !== "Literal") return null;
+  if (!typeAttribute || !isNodeOfType(typeAttribute.value, "Literal")) return null;
   const value = typeAttribute.value.value;
   return typeof value === "string" ? value : null;
 };
 
 const isUseStateUndefinedInitializer = (init: EsTreeNode | null | undefined): boolean => {
-  if (!init || init.type !== "CallExpression") return false;
+  if (!init || !isNodeOfType(init, "CallExpression")) return false;
   if (!isHookCall(init, "useState")) return false;
   const args = init.arguments ?? [];
   if (args.length === 0) return true;
   const firstArgument = args[0];
-  return firstArgument?.type === "Identifier" && firstArgument.name === "undefined";
+  return isNodeOfType(firstArgument, "Identifier") && firstArgument.name === "undefined";
 };
 
 const collectUndefinedInitialStateNames = (componentBody: EsTreeNode): Set<string> => {
   const stateNames = new Set<string>();
-  if (componentBody?.type !== "BlockStatement") return stateNames;
+  if (!isNodeOfType(componentBody, "BlockStatement")) return stateNames;
   for (const statement of componentBody.body ?? []) {
-    if (statement.type !== "VariableDeclaration") continue;
+    if (!isNodeOfType(statement, "VariableDeclaration")) continue;
     for (const declarator of statement.declarations ?? []) {
-      if (declarator.id?.type !== "ArrayPattern") continue;
+      if (!isNodeOfType(declarator.id, "ArrayPattern")) continue;
       const valueElement = declarator.id.elements?.[0];
-      if (valueElement?.type !== "Identifier") continue;
+      if (!isNodeOfType(valueElement, "Identifier")) continue;
       if (!isUseStateUndefinedInitializer(declarator.init)) continue;
       stateNames.add(valueElement.name);
     }
@@ -53,7 +54,7 @@ const collectUndefinedInitialStateNames = (componentBody: EsTreeNode): Set<strin
 };
 
 const hasJsxSpreadAttribute = (attributes: EsTreeNode[]): boolean =>
-  attributes.some((attribute) => attribute.type === "JSXSpreadAttribute");
+  attributes.some((attribute) => isNodeOfType(attribute, "JSXSpreadAttribute"));
 
 // HACK: catches three uncontrolled-input mistakes that React's static
 // rule set misses:
@@ -80,14 +81,13 @@ export const noUncontrolledInput = defineRule<Rule>({
       // wrapper; walk the JSX expression directly. There are no useState
       // declarations to collect for the undefined-initializer check, so an
       // empty set is correct.
-      const undefinedInitialStateNames =
-        componentBody.type === "BlockStatement"
-          ? collectUndefinedInitialStateNames(componentBody)
-          : new Set<string>();
+      const undefinedInitialStateNames = isNodeOfType(componentBody, "BlockStatement")
+        ? collectUndefinedInitialStateNames(componentBody)
+        : new Set<string>();
 
       walkAst(componentBody, (child: EsTreeNode) => {
-        if (child.type !== "JSXOpeningElement") return;
-        if (child.name?.type !== "JSXIdentifier") return;
+        if (!isNodeOfType(child, "JSXOpeningElement")) return;
+        if (!isNodeOfType(child.name, "JSXIdentifier")) return;
         const tagName = child.name.name;
         if (!UNCONTROLLED_INPUT_TAGS.has(tagName)) return;
 
@@ -107,8 +107,8 @@ export const noUncontrolledInput = defineRule<Rule>({
         );
 
         if (
-          valueAttribute.value?.type === "JSXExpressionContainer" &&
-          valueAttribute.value.expression?.type === "Identifier" &&
+          isNodeOfType(valueAttribute.value, "JSXExpressionContainer") &&
+          isNodeOfType(valueAttribute.value.expression, "Identifier") &&
           undefinedInitialStateNames.has(valueAttribute.value.expression.name)
         ) {
           const stateName = valueAttribute.value.expression.name;

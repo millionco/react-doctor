@@ -3,6 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const nextjsNoImgElement = defineRule<Rule>({
   recommendation:
@@ -14,7 +15,7 @@ export const nextjsNoImgElement = defineRule<Rule>({
     return {
       JSXOpeningElement(node: EsTreeNode) {
         if (isOgRoute) return;
-        if (node.name?.type === "JSXIdentifier" && node.name.name === "img") {
+        if (isNodeOfType(node.name, "JSXIdentifier") && node.name.name === "img") {
           context.report({
             node,
             message:

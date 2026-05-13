@@ -13,6 +13,7 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isCleanupReturn } from "./utils/is-cleanup-return.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // HACK: §11 of "You Might Not Need an Effect" + the linked
 // `useSyncExternalStore` docs warn that pairing a `useState(getSnapshot())`
@@ -36,10 +37,10 @@ import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
 // are essentially impossible.
 const findUseEffectsInComponent = (componentBody: EsTreeNode | undefined): EsTreeNode[] => {
   const effectCalls: EsTreeNode[] = [];
-  if (componentBody?.type !== "BlockStatement") return effectCalls;
+  if (!isNodeOfType(componentBody, "BlockStatement")) return effectCalls;
   for (const statement of componentBody.body ?? []) {
     walkAst(statement, (child: EsTreeNode) => {
-      if (child.type === "CallExpression" && isHookCall(child, EFFECT_HOOK_NAMES)) {
+      if (isNodeOfType(child, "CallExpression") && isHookCall(child, EFFECT_HOOK_NAMES)) {
         effectCalls.push(child);
       }
     });
@@ -51,23 +52,24 @@ const findSubscriptionCall = (
   effectBodyStatements: EsTreeNode[],
 ): { call: EsTreeNode; boundUnsubscribeName: string | null } | null => {
   for (const statement of effectBodyStatements) {
-    if (statement.type === "VariableDeclaration") {
+    if (isNodeOfType(statement, "VariableDeclaration")) {
       for (const declarator of statement.declarations ?? []) {
         const init = declarator.init;
-        if (init?.type !== "CallExpression") continue;
-        if (init.callee?.type !== "MemberExpression") continue;
-        if (init.callee.property?.type !== "Identifier") continue;
+        if (!isNodeOfType(init, "CallExpression")) continue;
+        if (!isNodeOfType(init.callee, "MemberExpression")) continue;
+        if (!isNodeOfType(init.callee.property, "Identifier")) continue;
         if (!SUBSCRIPTION_METHOD_NAMES.has(init.callee.property.name)) continue;
-        const boundUnsubscribeName =
-          declarator.id?.type === "Identifier" ? declarator.id.name : null;
+        const boundUnsubscribeName = isNodeOfType(declarator.id, "Identifier")
+          ? declarator.id.name
+          : null;
         return { call: init, boundUnsubscribeName };
       }
     }
-    if (statement.type === "ExpressionStatement") {
+    if (isNodeOfType(statement, "ExpressionStatement")) {
       const expression = statement.expression;
-      if (expression?.type !== "CallExpression") continue;
-      if (expression.callee?.type !== "MemberExpression") continue;
-      if (expression.callee.property?.type !== "Identifier") continue;
+      if (!isNodeOfType(expression, "CallExpression")) continue;
+      if (!isNodeOfType(expression.callee, "MemberExpression")) continue;
+      if (!isNodeOfType(expression.callee.property, "Identifier")) continue;
       if (!SUBSCRIPTION_METHOD_NAMES.has(expression.callee.property.name)) continue;
       return { call: expression, boundUnsubscribeName: null };
     }
@@ -86,17 +88,23 @@ const getSubscriptionHandlerArgument = (
   effectBodyStatements: EsTreeNode[],
 ): EsTreeNode | null => {
   for (const argument of subscribeCall.arguments ?? []) {
-    if (argument.type === "ArrowFunctionExpression" || argument.type === "FunctionExpression") {
+    if (
+      isNodeOfType(argument, "ArrowFunctionExpression") ||
+      isNodeOfType(argument, "FunctionExpression")
+    ) {
       return argument;
     }
-    if (argument.type === "Identifier") {
+    if (isNodeOfType(argument, "Identifier")) {
       for (const statement of effectBodyStatements) {
-        if (statement.type !== "VariableDeclaration") continue;
+        if (!isNodeOfType(statement, "VariableDeclaration")) continue;
         for (const declarator of statement.declarations ?? []) {
-          if (declarator.id?.type !== "Identifier") continue;
+          if (!isNodeOfType(declarator.id, "Identifier")) continue;
           if (declarator.id.name !== argument.name) continue;
           const init = declarator.init;
-          if (init?.type === "ArrowFunctionExpression" || init?.type === "FunctionExpression") {
+          if (
+            isNodeOfType(init, "ArrowFunctionExpression") ||
+            isNodeOfType(init, "FunctionExpression")
+          ) {
             return init;
           }
         }
@@ -112,10 +120,11 @@ const getSingleSetterCallFromHandler = (
   const handlerStatements = getCallbackStatements(handler);
   if (handlerStatements.length !== 1) return null;
   const onlyStatement = handlerStatements[0];
-  const expression =
-    onlyStatement.type === "ExpressionStatement" ? onlyStatement.expression : onlyStatement;
-  if (expression?.type !== "CallExpression") return null;
-  if (expression.callee?.type !== "Identifier") return null;
+  const expression = isNodeOfType(onlyStatement, "ExpressionStatement")
+    ? onlyStatement.expression
+    : onlyStatement;
+  if (!isNodeOfType(expression, "CallExpression")) return null;
+  if (!isNodeOfType(expression.callee, "Identifier")) return null;
   if (!isSetterIdentifier(expression.callee.name)) return null;
   if (!expression.arguments?.length) return null;
   return {
@@ -129,7 +138,7 @@ const cleanupReleasesSubscription = (
   boundUnsubscribeName: string | null,
 ): boolean => {
   const lastStatement = effectBodyStatements[effectBodyStatements.length - 1];
-  if (lastStatement?.type !== "ReturnStatement") return false;
+  if (!isNodeOfType(lastStatement, "ReturnStatement")) return false;
   const knownBoundReleaseNames = new Set<string>();
   if (boundUnsubscribeName) knownBoundReleaseNames.add(boundUnsubscribeName);
   return isCleanupReturn(lastStatement.argument, knownBoundReleaseNames);
@@ -140,7 +149,7 @@ export const preferUseSyncExternalStore = defineRule<Rule>({
     "Replace the `useState(getSnapshot())` + `useEffect(() => store.subscribe(() => setSnapshot(getSnapshot())))` pair with `useSyncExternalStore(store.subscribe, getSnapshot)`. The hook handles tearing during concurrent renders and SSR snapshots; the manual subscribe pattern doesn't",
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
-      if (!componentBody || componentBody.type !== "BlockStatement") return;
+      if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
 
       const useStateBindings = collectUseStateBindings(componentBody);
       if (useStateBindings.length === 0) return;
@@ -154,9 +163,9 @@ export const preferUseSyncExternalStore = defineRule<Rule>({
         // initializer so the structural match against the
         // subscribe-handler's setter argument still resolves.
         if (
-          (initializerArgument.type === "ArrowFunctionExpression" ||
-            initializerArgument.type === "FunctionExpression") &&
-          initializerArgument.body?.type !== "BlockStatement"
+          (isNodeOfType(initializerArgument, "ArrowFunctionExpression") ||
+            isNodeOfType(initializerArgument, "FunctionExpression")) &&
+          !isNodeOfType(initializerArgument.body, "BlockStatement")
         ) {
           useStateInitializerByValueName.set(binding.valueName, initializerArgument.body);
         } else {
@@ -172,11 +181,11 @@ export const preferUseSyncExternalStore = defineRule<Rule>({
       for (const effectCall of findUseEffectsInComponent(componentBody)) {
         if ((effectCall.arguments?.length ?? 0) < 2) continue;
         const depsNode = effectCall.arguments[1];
-        if (depsNode.type !== "ArrayExpression") continue;
+        if (!isNodeOfType(depsNode, "ArrayExpression")) continue;
         if ((depsNode.elements?.length ?? 0) !== 0) continue;
 
         const callback = getEffectCallback(effectCall);
-        if (!callback || callback.body?.type !== "BlockStatement") continue;
+        if (!callback || !isNodeOfType(callback.body, "BlockStatement")) continue;
         const effectBodyStatements = callback.body.body ?? [];
         if (effectBodyStatements.length < 2) continue;
 

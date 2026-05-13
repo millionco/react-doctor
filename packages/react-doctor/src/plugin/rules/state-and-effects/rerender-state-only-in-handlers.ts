@@ -10,13 +10,14 @@ import { collectReturnExpressions } from "./utils/collect-return-expressions.js"
 import { buildLocalDependencyGraph } from "./utils/build-local-dependency-graph.js";
 import { collectRenderReachableNames } from "./utils/collect-render-reachable-names.js";
 import { expandTransitiveDependencies } from "./utils/expand-transitive-dependencies.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const rerenderStateOnlyInHandlers = defineRule<Rule>({
   recommendation:
     "Replace useState with useRef when the value is only mutated and never read in render — `ref.current = ...` updates without re-rendering the component",
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
-      if (!componentBody || componentBody.type !== "BlockStatement") return;
+      if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
       const bindings = collectUseStateBindings(componentBody);
       if (bindings.length === 0) return;
 
@@ -34,8 +35,8 @@ export const rerenderStateOnlyInHandlers = defineRule<Rule>({
         walkAst(componentBody, (child: EsTreeNode) => {
           if (setterCalled) return;
           if (
-            child.type === "CallExpression" &&
-            child.callee?.type === "Identifier" &&
+            isNodeOfType(child, "CallExpression") &&
+            isNodeOfType(child.callee, "Identifier") &&
             child.callee.name === binding.setterName
           ) {
             setterCalled = true;

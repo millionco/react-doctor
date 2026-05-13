@@ -6,6 +6,7 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const queryNoQueryInEffect = defineRule<Rule>({
   recommendation:
@@ -18,9 +19,9 @@ export const queryNoQueryInEffect = defineRule<Rule>({
       if (!callback) return;
 
       walkAst(callback, (child: EsTreeNode) => {
-        if (child.type !== "CallExpression") return;
+        if (!isNodeOfType(child, "CallExpression")) return;
 
-        const calleeName = child.callee?.type === "Identifier" ? child.callee.name : null;
+        const calleeName = isNodeOfType(child.callee, "Identifier") ? child.callee.name : null;
 
         if (calleeName === "refetch") {
           context.report({

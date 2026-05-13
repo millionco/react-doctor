@@ -10,21 +10,22 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getOpeningElementTagName } from "./utils/get-opening-element-tag-name.js";
 import { getClassNameLiteral } from "./utils/get-class-name-literal.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const getInlineStyleObjectExpression = (jsxAttribute: EsTreeNode): EsTreeNode | null => {
-  if (jsxAttribute.name?.type !== "JSXIdentifier" || jsxAttribute.name.name !== "style") {
+  if (!isNodeOfType(jsxAttribute.name, "JSXIdentifier") || jsxAttribute.name.name !== "style") {
     return null;
   }
-  if (jsxAttribute.value?.type !== "JSXExpressionContainer") return null;
+  if (!isNodeOfType(jsxAttribute.value, "JSXExpressionContainer")) return null;
   const expression = jsxAttribute.value.expression;
-  if (expression?.type !== "ObjectExpression") return null;
+  if (!isNodeOfType(expression, "ObjectExpression")) return null;
   return expression;
 };
 
 const getStylePropertyKeyName = (objectProperty: EsTreeNode): string | null => {
-  if (objectProperty.type !== "Property") return null;
-  if (objectProperty.key?.type === "Identifier") return objectProperty.key.name;
-  if (objectProperty.key?.type === "Literal" && typeof objectProperty.key.value === "string") {
+  if (!isNodeOfType(objectProperty, "Property")) return null;
+  if (isNodeOfType(objectProperty.key, "Identifier")) return objectProperty.key.name;
+  if (isNodeOfType(objectProperty.key, "Literal") && typeof objectProperty.key.value === "string") {
     return objectProperty.key.value;
   }
   return null;
@@ -33,8 +34,9 @@ const getStylePropertyKeyName = (objectProperty: EsTreeNode): string | null => {
 const getStylePropertyNumericValue = (objectProperty: EsTreeNode): number | null => {
   const valueNode = objectProperty.value;
   if (!valueNode) return null;
-  if (valueNode.type === "Literal" && typeof valueNode.value === "number") return valueNode.value;
-  if (valueNode.type === "Literal" && typeof valueNode.value === "string") {
+  if (isNodeOfType(valueNode, "Literal") && typeof valueNode.value === "number")
+    return valueNode.value;
+  if (isNodeOfType(valueNode, "Literal") && typeof valueNode.value === "string") {
     const parsed = parseFloat(valueNode.value);
     return Number.isFinite(parsed) ? parsed : null;
   }

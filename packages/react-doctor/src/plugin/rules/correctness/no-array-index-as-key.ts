@@ -3,52 +3,55 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const STRING_COERCION_FUNCTIONS = new Set(["String", "Number"]);
 
 const extractIndexName = (node: EsTreeNode): string | null => {
-  if (node.type === "Identifier" && INDEX_PARAMETER_NAMES.has(node.name)) return node.name;
+  if (isNodeOfType(node, "Identifier") && INDEX_PARAMETER_NAMES.has(node.name)) return node.name;
 
-  if (node.type === "TemplateLiteral") {
-    const indexExpression = node.expressions?.find(
-      (expression: EsTreeNode) =>
-        expression.type === "Identifier" && INDEX_PARAMETER_NAMES.has(expression.name),
-    );
-    if (indexExpression) return indexExpression.name;
+  if (isNodeOfType(node, "TemplateLiteral")) {
+    for (const expression of node.expressions ?? []) {
+      if (isNodeOfType(expression, "Identifier") && INDEX_PARAMETER_NAMES.has(expression.name)) {
+        return expression.name;
+      }
+    }
   }
 
   if (
-    node.type === "CallExpression" &&
-    node.callee?.type === "MemberExpression" &&
-    node.callee.object?.type === "Identifier" &&
+    isNodeOfType(node, "CallExpression") &&
+    isNodeOfType(node.callee, "MemberExpression") &&
+    isNodeOfType(node.callee.object, "Identifier") &&
     INDEX_PARAMETER_NAMES.has(node.callee.object.name) &&
-    node.callee.property?.type === "Identifier" &&
+    isNodeOfType(node.callee.property, "Identifier") &&
     node.callee.property.name === "toString"
   )
     return node.callee.object.name;
 
   if (
-    node.type === "CallExpression" &&
-    node.callee?.type === "Identifier" &&
+    isNodeOfType(node, "CallExpression") &&
+    isNodeOfType(node.callee, "Identifier") &&
     STRING_COERCION_FUNCTIONS.has(node.callee.name) &&
-    node.arguments?.[0]?.type === "Identifier" &&
+    isNodeOfType(node.arguments?.[0], "Identifier") &&
     INDEX_PARAMETER_NAMES.has(node.arguments[0].name)
   )
     return node.arguments[0].name;
 
   if (
-    node.type === "BinaryExpression" &&
+    isNodeOfType(node, "BinaryExpression") &&
     node.operator === "+" &&
-    ((node.left?.type === "Identifier" &&
+    ((isNodeOfType(node.left, "Identifier") &&
       INDEX_PARAMETER_NAMES.has(node.left.name) &&
-      node.right?.type === "Literal" &&
+      isNodeOfType(node.right, "Literal") &&
       node.right.value === "") ||
-      (node.right?.type === "Identifier" &&
+      (isNodeOfType(node.right, "Identifier") &&
         INDEX_PARAMETER_NAMES.has(node.right.name) &&
-        node.left?.type === "Literal" &&
+        isNodeOfType(node.left, "Literal") &&
         node.left.value === ""))
   ) {
-    return node.left?.type === "Identifier" ? node.left.name : node.right.name;
+    if (isNodeOfType(node.left, "Identifier")) return node.left.name;
+    if (isNodeOfType(node.right, "Identifier")) return node.right.name;
+    return null;
   }
 
   return null;
@@ -59,24 +62,26 @@ const isInsideStaticPlaceholderMap = (node: EsTreeNode): boolean => {
   while (current.parent) {
     current = current.parent;
     if (
-      current.type === "CallExpression" &&
-      current.callee?.type === "MemberExpression" &&
-      current.callee.property?.name === "map"
+      isNodeOfType(current, "CallExpression") &&
+      isNodeOfType(current.callee, "MemberExpression") &&
+      isNodeOfType(current.callee.property, "Identifier") &&
+      current.callee.property.name === "map"
     ) {
       const receiver = current.callee.object;
-      if (receiver?.type === "CallExpression") {
+      if (isNodeOfType(receiver, "CallExpression")) {
         const callee = receiver.callee;
         if (
-          callee?.type === "MemberExpression" &&
-          callee.object?.type === "Identifier" &&
+          isNodeOfType(callee, "MemberExpression") &&
+          isNodeOfType(callee.object, "Identifier") &&
           callee.object.name === "Array" &&
-          callee.property?.name === "from"
+          isNodeOfType(callee.property, "Identifier") &&
+          callee.property.name === "from"
         )
           return true;
       }
       if (
-        receiver?.type === "NewExpression" &&
-        receiver.callee?.type === "Identifier" &&
+        isNodeOfType(receiver, "NewExpression") &&
+        isNodeOfType(receiver.callee, "Identifier") &&
         receiver.callee.name === "Array"
       )
         return true;
@@ -90,8 +95,8 @@ export const noArrayIndexAsKey = defineRule<Rule>({
     "Use a stable unique identifier: `key={item.id}` or `key={item.slug}` — index keys break on reorder/filter",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNode) {
-      if (node.name?.type !== "JSXIdentifier" || node.name.name !== "key") return;
-      if (!node.value || node.value.type !== "JSXExpressionContainer") return;
+      if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "key") return;
+      if (!node.value || !isNodeOfType(node.value, "JSXExpressionContainer")) return;
 
       const indexName = extractIndexName(node.value.expression);
       if (!indexName) return;

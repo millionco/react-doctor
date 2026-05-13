@@ -2,6 +2,8 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { getImportedName } from "../../utils/get-imported-name.js";
 
 export const rnPreferReanimated = defineRule<Rule>({
   recommendation:
@@ -11,8 +13,8 @@ export const rnPreferReanimated = defineRule<Rule>({
       if (node.source?.value !== "react-native") return;
 
       for (const specifier of node.specifiers ?? []) {
-        if (specifier.type !== "ImportSpecifier") continue;
-        if (specifier.imported?.name !== "Animated") continue;
+        if (!isNodeOfType(specifier, "ImportSpecifier")) continue;
+        if (getImportedName(specifier) !== "Animated") continue;
 
         context.report({
           node: specifier,

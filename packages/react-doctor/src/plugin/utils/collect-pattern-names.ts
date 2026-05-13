@@ -1,4 +1,5 @@
 import type { EsTreeNode } from "./es-tree-node.js";
+import { isNodeOfType } from "./is-node-of-type.js";
 
 // HACK: collects every locally-bound name introduced by a parameter list,
 // recursing into nested object/array patterns. We need every binding so
@@ -7,35 +8,35 @@ import type { EsTreeNode } from "./es-tree-node.js";
 export const collectPatternNames = (pattern: EsTreeNode | null, into: Set<string>): void => {
   if (!pattern) return;
 
-  if (pattern.type === "Identifier") {
+  if (isNodeOfType(pattern, "Identifier")) {
     into.add(pattern.name);
     return;
   }
 
-  if (pattern.type === "AssignmentPattern") {
+  if (isNodeOfType(pattern, "AssignmentPattern")) {
     collectPatternNames(pattern.left, into);
     return;
   }
 
-  if (pattern.type === "RestElement") {
+  if (isNodeOfType(pattern, "RestElement")) {
     collectPatternNames(pattern.argument, into);
     return;
   }
 
-  if (pattern.type === "ArrayPattern") {
+  if (isNodeOfType(pattern, "ArrayPattern")) {
     for (const element of pattern.elements ?? []) {
       collectPatternNames(element, into);
     }
     return;
   }
 
-  if (pattern.type === "ObjectPattern") {
+  if (isNodeOfType(pattern, "ObjectPattern")) {
     for (const property of pattern.properties ?? []) {
-      if (property.type === "RestElement") {
+      if (isNodeOfType(property, "RestElement")) {
         collectPatternNames(property.argument, into);
         continue;
       }
-      if (property.type === "Property") {
+      if (isNodeOfType(property, "Property")) {
         // The bound name lives in `property.value` (which may itself be
         // a nested pattern). The `property.key` is the source-side name
         // and only matters when it equals `property.value` (shorthand).

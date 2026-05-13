@@ -2,23 +2,24 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const isFetchCall = (node: EsTreeNode): boolean => {
-  if (node.type !== "CallExpression") return false;
-  return node.callee?.type === "Identifier" && node.callee.name === "fetch";
+  if (!isNodeOfType(node, "CallExpression")) return false;
+  return isNodeOfType(node.callee, "Identifier") && node.callee.name === "fetch";
 };
 
 const objectExpressionHasNextRevalidate = (objectExpression: EsTreeNode): boolean => {
-  if (objectExpression.type !== "ObjectExpression") return false;
+  if (!isNodeOfType(objectExpression, "ObjectExpression")) return false;
   for (const property of objectExpression.properties ?? []) {
-    if (property.type !== "Property") continue;
-    if (property.key?.type !== "Identifier") continue;
+    if (!isNodeOfType(property, "Property")) continue;
+    if (!isNodeOfType(property.key, "Identifier")) continue;
     if (property.key.name === "cache") return true;
     if (property.key.name !== "next") continue;
-    if (property.value?.type !== "ObjectExpression") return true;
+    if (!isNodeOfType(property.value, "ObjectExpression")) return true;
     for (const innerProperty of property.value.properties ?? []) {
-      if (innerProperty.type !== "Property") continue;
-      if (innerProperty.key?.type !== "Identifier") continue;
+      if (!isNodeOfType(innerProperty, "Property")) continue;
+      if (!isNodeOfType(innerProperty.key, "Identifier")) continue;
       if (innerProperty.key.name === "revalidate" || innerProperty.key.name === "tags") {
         return true;
       }
@@ -70,8 +71,8 @@ export const serverFetchWithoutRevalidate = defineRule<Rule>({
         }
         const hasUseClient = (node.body ?? []).some(
           (statement: EsTreeNode) =>
-            statement.type === "ExpressionStatement" &&
-            statement.expression?.type === "Literal" &&
+            isNodeOfType(statement, "ExpressionStatement") &&
+            isNodeOfType(statement.expression, "Literal") &&
             statement.expression.value === "use client",
         );
         isServerSideFile = !hasUseClient;
@@ -85,7 +86,7 @@ export const serverFetchWithoutRevalidate = defineRule<Rule>({
 
         const urlArg = node.arguments?.[0];
         const urlText =
-          urlArg?.type === "Literal" && typeof urlArg.value === "string"
+          isNodeOfType(urlArg, "Literal") && typeof urlArg.value === "string"
             ? `"${urlArg.value}"`
             : "url";
         context.report({

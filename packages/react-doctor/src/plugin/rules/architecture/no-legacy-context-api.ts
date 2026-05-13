@@ -3,6 +3,7 @@ import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // HACK: legacy context (`childContextTypes` + `getChildContext` on
 // providers, `contextTypes` on consumers) was deprecated in 16.3, warns
@@ -27,11 +28,11 @@ const buildLegacyContextMessage = (memberName: string): string => {
 const isInsideClassBody = (node: EsTreeNode): boolean => {
   let current = node.parent;
   while (current) {
-    if (current.type === "ClassBody") return true;
+    if (isNodeOfType(current, "ClassBody")) return true;
     if (
-      current.type === "FunctionDeclaration" ||
-      current.type === "FunctionExpression" ||
-      current.type === "ArrowFunctionExpression"
+      isNodeOfType(current, "FunctionDeclaration") ||
+      isNodeOfType(current, "FunctionExpression") ||
+      isNodeOfType(current, "ArrowFunctionExpression")
     ) {
       return false;
     }
@@ -46,9 +47,12 @@ export const noLegacyContextApi = defineRule<Rule>({
   create: (context: RuleContext) => {
     const checkMember = (memberNode: EsTreeNode | undefined): void => {
       if (!memberNode) return;
-      if (memberNode.type !== "MethodDefinition" && memberNode.type !== "PropertyDefinition")
+      if (
+        !isNodeOfType(memberNode, "MethodDefinition") &&
+        !isNodeOfType(memberNode, "PropertyDefinition")
+      )
         return;
-      if (memberNode.key?.type !== "Identifier") return;
+      if (!isNodeOfType(memberNode.key, "Identifier")) return;
       if (!LEGACY_CONTEXT_NAMES.has(memberNode.key.name)) return;
       context.report({
         node: memberNode.key,
@@ -65,11 +69,11 @@ export const noLegacyContextApi = defineRule<Rule>({
       AssignmentExpression(node: EsTreeNode) {
         if (node.operator !== "=") return;
         const left = node.left;
-        if (left?.type !== "MemberExpression") return;
+        if (!isNodeOfType(left, "MemberExpression")) return;
         if (left.computed) return;
-        if (left.property?.type !== "Identifier") return;
+        if (!isNodeOfType(left.property, "Identifier")) return;
         if (!LEGACY_CONTEXT_NAMES.has(left.property.name)) return;
-        if (left.object?.type !== "Identifier") return;
+        if (!isNodeOfType(left.object, "Identifier")) return;
         if (!isUppercaseName(left.object.name)) return;
         if (isInsideClassBody(node)) return;
         context.report({

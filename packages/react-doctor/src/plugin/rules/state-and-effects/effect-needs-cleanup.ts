@@ -13,6 +13,7 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isSubscribeLikeCallExpression } from "./utils/is-subscribe-like-call-expression.js";
 import { isCleanupReturn } from "./utils/is-cleanup-return.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // HACK: From "Lifecycle of Reactive Effects":
 //
@@ -48,20 +49,20 @@ const findSubscribeLikeUsages = (callback: EsTreeNode): SubscribeLikeUsage[] => 
   // got counted as a usage. Detect and skip the cleanup ReturnStatement's
   // argument body during the walk.
   let cleanupArgument: EsTreeNode | null = null;
-  if (callback.body?.type === "BlockStatement") {
+  if (isNodeOfType(callback.body, "BlockStatement")) {
     const callbackStatements = callback.body.body ?? [];
     const lastCallbackStatement = callbackStatements[callbackStatements.length - 1];
-    if (lastCallbackStatement?.type === "ReturnStatement" && lastCallbackStatement.argument) {
+    if (isNodeOfType(lastCallbackStatement, "ReturnStatement") && lastCallbackStatement.argument) {
       cleanupArgument = lastCallbackStatement.argument;
     }
   }
 
   walkAst(callback, (child: EsTreeNode) => {
     if (child === cleanupArgument) return false;
-    if (child.type !== "CallExpression") return;
+    if (!isNodeOfType(child, "CallExpression")) return;
 
     if (
-      child.callee?.type === "Identifier" &&
+      isNodeOfType(child.callee, "Identifier") &&
       TIMER_CALLEE_NAMES_REQUIRING_CLEANUP.has(child.callee.name)
     ) {
       usages.push({
@@ -72,8 +73,8 @@ const findSubscribeLikeUsages = (callback: EsTreeNode): SubscribeLikeUsage[] => 
     }
 
     if (
-      child.callee?.type === "MemberExpression" &&
-      child.callee.property?.type === "Identifier" &&
+      isNodeOfType(child.callee, "MemberExpression") &&
+      isNodeOfType(child.callee.property, "Identifier") &&
       SUBSCRIPTION_METHOD_NAMES.has(child.callee.property.name)
     ) {
       usages.push({
@@ -93,19 +94,19 @@ const findSubscribeLikeUsages = (callback: EsTreeNode): SubscribeLikeUsage[] => 
 // previous "any Identifier is fine" behavior.
 const collectReleasableBindingNames = (effectCallback: EsTreeNode): Set<string> => {
   const releasableNames = new Set<string>();
-  if (effectCallback.body?.type !== "BlockStatement") return releasableNames;
+  if (!isNodeOfType(effectCallback.body, "BlockStatement")) return releasableNames;
   for (const statement of effectCallback.body.body ?? []) {
-    if (statement.type !== "VariableDeclaration") continue;
+    if (!isNodeOfType(statement, "VariableDeclaration")) continue;
     for (const declarator of statement.declarations ?? []) {
-      if (declarator.id?.type !== "Identifier") continue;
+      if (!isNodeOfType(declarator.id, "Identifier")) continue;
       const init = declarator.init;
-      if (!init || init.type !== "CallExpression") continue;
+      if (!init || !isNodeOfType(init, "CallExpression")) continue;
       if (isSubscribeLikeCallExpression(init)) {
         releasableNames.add(declarator.id.name);
         continue;
       }
       if (
-        init.callee?.type === "Identifier" &&
+        isNodeOfType(init.callee, "Identifier") &&
         TIMER_CALLEE_NAMES_REQUIRING_CLEANUP.has(init.callee.name)
       ) {
         releasableNames.add(declarator.id.name);
@@ -126,7 +127,7 @@ const effectHasCleanupRelease = (callback: EsTreeNode): boolean => {
   // For subscribe-shaped calls we know the return value is the
   // unsubscribe — accept this case before the BlockStatement-only
   // checks below.
-  if (callback.body?.type !== "BlockStatement") {
+  if (!isNodeOfType(callback.body, "BlockStatement")) {
     return isSubscribeLikeCallExpression(callback.body);
   }
   const knownBoundReleaseNames = collectReleasableBindingNames(callback);
@@ -150,7 +151,7 @@ const effectHasCleanupRelease = (callback: EsTreeNode): boolean => {
   let didFindCleanupReturn = false;
   walkInsideStatementBlocks(callback.body, (child: EsTreeNode) => {
     if (didFindCleanupReturn) return;
-    if (child.type !== "ReturnStatement") return;
+    if (!isNodeOfType(child, "ReturnStatement")) return;
     if (isCleanupReturn(child.argument, knownBoundReleaseNames)) {
       didFindCleanupReturn = true;
     }

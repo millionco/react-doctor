@@ -7,6 +7,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
 import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import { getStylePropertyNumberValue } from "./utils/get-style-property-number-value.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const noZIndex9999 = defineRule<Rule>({
   recommendation:
@@ -30,21 +31,27 @@ export const noZIndex9999 = defineRule<Rule>({
       }
     },
     CallExpression(node: EsTreeNode) {
-      if (node.callee?.type !== "MemberExpression") return;
-      if (node.callee.property?.type !== "Identifier" || node.callee.property.name !== "create")
+      if (!isNodeOfType(node.callee, "MemberExpression")) return;
+      if (
+        !isNodeOfType(node.callee.property, "Identifier") ||
+        node.callee.property.name !== "create"
+      )
         return;
-      if (node.callee.object?.type !== "Identifier" || node.callee.object.name !== "StyleSheet")
+      if (
+        !isNodeOfType(node.callee.object, "Identifier") ||
+        node.callee.object.name !== "StyleSheet"
+      )
         return;
 
       const argument = node.arguments?.[0];
-      if (!argument || argument.type !== "ObjectExpression") return;
+      if (!argument || !isNodeOfType(argument, "ObjectExpression")) return;
 
       walkAst(argument, (child: EsTreeNode) => {
-        if (child.type !== "Property") return;
+        if (!isNodeOfType(child, "Property")) return;
         const key = getStylePropertyKey(child);
         if (key !== "zIndex") return;
 
-        if (child.value?.type === "Literal" && typeof child.value.value === "number") {
+        if (isNodeOfType(child.value, "Literal") && typeof child.value.value === "number") {
           const zValue = child.value.value;
           if (Math.abs(zValue) >= Z_INDEX_ABSURD_THRESHOLD) {
             context.report({

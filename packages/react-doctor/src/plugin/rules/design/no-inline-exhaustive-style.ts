@@ -4,6 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const noInlineExhaustiveStyle = defineRule<Rule>({
   recommendation:
@@ -14,7 +15,7 @@ export const noInlineExhaustiveStyle = defineRule<Rule>({
       if (!expression) return;
 
       const propertyCount =
-        expression.properties?.filter((property: EsTreeNode) => property.type === "Property")
+        expression.properties?.filter((property: EsTreeNode) => isNodeOfType(property, "Property"))
           .length ?? 0;
 
       if (propertyCount >= INLINE_STYLE_PROPERTY_THRESHOLD) {

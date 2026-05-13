@@ -4,6 +4,7 @@ import { isSimpleExpression } from "../../utils/is-simple-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // Identifiers and member-access chains are technically "simple", but memoizing
 // them is sometimes intentional (stable reference passing). Only flag arithmetic
@@ -11,8 +12,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 const isTriviallyCheapExpression = (node: EsTreeNode | null): boolean => {
   if (!node) return false;
   if (!isSimpleExpression(node)) return false;
-  if (node.type === "Identifier") return false;
-  if (node.type === "MemberExpression") return false;
+  if (isNodeOfType(node, "Identifier")) return false;
+  if (isNodeOfType(node, "MemberExpression")) return false;
   return true;
 };
 
@@ -25,15 +26,18 @@ export const noUsememoSimpleExpression = defineRule<Rule>({
 
       const callback = node.arguments?.[0];
       if (!callback) return;
-      if (callback.type !== "ArrowFunctionExpression" && callback.type !== "FunctionExpression")
+      if (
+        !isNodeOfType(callback, "ArrowFunctionExpression") &&
+        !isNodeOfType(callback, "FunctionExpression")
+      )
         return;
 
       let returnExpression = null;
-      if (callback.body?.type !== "BlockStatement") {
+      if (!isNodeOfType(callback.body, "BlockStatement")) {
         returnExpression = callback.body;
       } else if (
         callback.body.body?.length === 1 &&
-        callback.body.body[0].type === "ReturnStatement"
+        isNodeOfType(callback.body.body[0], "ReturnStatement")
       ) {
         returnExpression = callback.body.body[0].argument;
       }

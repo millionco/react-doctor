@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // Short-name form: resolveJsxElementName drops the `Animated.` prefix,
 // so `<Animated.FlatList>` resolves to `"FlatList"` and matches here.
@@ -28,13 +29,13 @@ export const rnListDataMapped = defineRule<Rule>({
       if (!elementName || !VIRTUALIZED_LIST_NAMES.has(elementName)) return;
 
       for (const attr of node.attributes ?? []) {
-        if (attr.type !== "JSXAttribute") continue;
-        if (attr.name?.type !== "JSXIdentifier" || attr.name.name !== "data") continue;
-        if (attr.value?.type !== "JSXExpressionContainer") continue;
+        if (!isNodeOfType(attr, "JSXAttribute")) continue;
+        if (!isNodeOfType(attr.name, "JSXIdentifier") || attr.name.name !== "data") continue;
+        if (!isNodeOfType(attr.value, "JSXExpressionContainer")) continue;
         const expression = attr.value.expression;
-        if (expression?.type !== "CallExpression") continue;
-        if (expression.callee?.type !== "MemberExpression") continue;
-        if (expression.callee.property?.type !== "Identifier") continue;
+        if (!isNodeOfType(expression, "CallExpression")) continue;
+        if (!isNodeOfType(expression.callee, "MemberExpression")) continue;
+        if (!isNodeOfType(expression.callee.property, "Identifier")) continue;
         const methodName = expression.callee.property.name;
         if (methodName !== "map" && methodName !== "filter") continue;
 

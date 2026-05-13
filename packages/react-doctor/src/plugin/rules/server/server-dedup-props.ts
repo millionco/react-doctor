@@ -3,13 +3,14 @@ import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const DERIVING_ARRAY_METHODS = new Set(["toSorted", "toReversed", "filter", "map", "slice"]);
 
 const getDerivingMethodName = (node: EsTreeNode): string | null => {
-  if (node.type !== "CallExpression") return null;
-  if (node.callee?.type !== "MemberExpression") return null;
-  if (node.callee.property?.type !== "Identifier") return null;
+  if (!isNodeOfType(node, "CallExpression")) return null;
+  if (!isNodeOfType(node.callee, "MemberExpression")) return null;
+  if (!isNodeOfType(node.callee.property, "Identifier")) return null;
   return node.callee.property.name;
 };
 
@@ -27,15 +28,15 @@ export const serverDedupProps = defineRule<Rule>({
       const derivedAttributes: Array<{ propName: string; rootName: string; node: EsTreeNode }> = [];
 
       for (const attr of node.attributes ?? []) {
-        if (attr.type !== "JSXAttribute") continue;
-        if (attr.name?.type !== "JSXIdentifier") continue;
-        if (attr.value?.type !== "JSXExpressionContainer") continue;
+        if (!isNodeOfType(attr, "JSXAttribute")) continue;
+        if (!isNodeOfType(attr.name, "JSXIdentifier")) continue;
+        if (!isNodeOfType(attr.value, "JSXExpressionContainer")) continue;
         const expression = attr.value.expression;
         if (!expression) continue;
 
-        if (expression.type === "Identifier") {
+        if (isNodeOfType(expression, "Identifier")) {
           identifierAttributes.set(expression.name, attr.name.name);
-        } else if (expression.type === "CallExpression") {
+        } else if (isNodeOfType(expression, "CallExpression")) {
           const derivingMethod = getDerivingMethodName(expression);
           if (!derivingMethod || !DERIVING_ARRAY_METHODS.has(derivingMethod)) continue;
           const root = getRootIdentifierName(expression, { followCallChains: true });

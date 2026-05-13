@@ -2,6 +2,7 @@ import { TANSTACK_SERVER_FN_NAMES } from "../../../constants.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { getCalleeName } from "../../../utils/get-callee-name.js";
 import type { ServerFnChainInfo } from "./server-fn-chain-info.js";
+import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 
 export const walkServerFnChain = (outerNode: EsTreeNode): ServerFnChainInfo => {
   const result: ServerFnChainInfo = {
@@ -12,19 +13,20 @@ export const walkServerFnChain = (outerNode: EsTreeNode): ServerFnChainInfo => {
 
   let currentNode: EsTreeNode = outerNode.callee?.object;
 
-  while (currentNode?.type === "CallExpression") {
+  while (isNodeOfType(currentNode, "CallExpression")) {
     const calleeName = getCalleeName(currentNode);
 
     if (calleeName && TANSTACK_SERVER_FN_NAMES.has(calleeName)) {
       result.isServerFnChain = true;
 
       const optionsArgument = currentNode.arguments?.[0];
-      if (optionsArgument?.type === "ObjectExpression") {
+      if (isNodeOfType(optionsArgument, "ObjectExpression")) {
         for (const property of optionsArgument.properties ?? []) {
           if (
-            property.key?.type === "Identifier" &&
+            isNodeOfType(property, "Property") &&
+            isNodeOfType(property.key, "Identifier") &&
             property.key.name === "method" &&
-            property.value?.type === "Literal" &&
+            isNodeOfType(property.value, "Literal") &&
             typeof property.value.value === "string"
           ) {
             result.specifiedMethod = property.value.value;
@@ -37,7 +39,7 @@ export const walkServerFnChain = (outerNode: EsTreeNode): ServerFnChainInfo => {
       result.hasInputValidator = true;
     }
 
-    if (currentNode.callee?.type === "MemberExpression") {
+    if (isNodeOfType(currentNode.callee, "MemberExpression")) {
       currentNode = currentNode.callee.object;
     } else {
       break;

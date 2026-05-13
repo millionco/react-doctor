@@ -3,6 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const nextjsMissingMetadata = defineRule<Rule>({
   recommendation:
@@ -14,16 +15,16 @@ export const nextjsMissingMetadata = defineRule<Rule>({
       if (INTERNAL_PAGE_PATH_PATTERN.test(filename)) return;
 
       const hasMetadataExport = programNode.body?.some((statement: EsTreeNode) => {
-        if (statement.type !== "ExportNamedDeclaration") return false;
+        if (!isNodeOfType(statement, "ExportNamedDeclaration")) return false;
         const declaration = statement.declaration;
-        if (declaration?.type === "VariableDeclaration") {
+        if (isNodeOfType(declaration, "VariableDeclaration")) {
           return declaration.declarations?.some(
             (declarator: EsTreeNode) =>
-              declarator.id?.type === "Identifier" &&
+              isNodeOfType(declarator.id, "Identifier") &&
               (declarator.id.name === "metadata" || declarator.id.name === "generateMetadata"),
           );
         }
-        if (declaration?.type === "FunctionDeclaration") {
+        if (isNodeOfType(declaration, "FunctionDeclaration")) {
           return declaration.id?.name === "generateMetadata";
         }
         return false;

@@ -6,6 +6,7 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const describeClientSideNavigation = (
   node: EsTreeNode,
@@ -15,18 +16,23 @@ const describeClientSideNavigation = (
     ? "handle navigation in an event handler, getServerSideProps redirect, or middleware"
     : "use redirect() from next/navigation or handle navigation in an event handler";
 
-  if (node.type === "CallExpression" && node.callee?.type === "MemberExpression") {
-    const objectName = node.callee.object?.type === "Identifier" ? node.callee.object.name : null;
-    const methodName =
-      node.callee.property?.type === "Identifier" ? node.callee.property.name : null;
+  if (isNodeOfType(node, "CallExpression") && isNodeOfType(node.callee, "MemberExpression")) {
+    const objectName = isNodeOfType(node.callee.object, "Identifier")
+      ? node.callee.object.name
+      : null;
+    const methodName = isNodeOfType(node.callee.property, "Identifier")
+      ? node.callee.property.name
+      : null;
     if (objectName === "router" && (methodName === "push" || methodName === "replace")) {
       return `router.${methodName}() in useEffect — ${redirectGuidance}`;
     }
   }
 
-  if (node.type === "AssignmentExpression" && node.left?.type === "MemberExpression") {
-    const objectName = node.left.object?.type === "Identifier" ? node.left.object.name : null;
-    const propertyName = node.left.property?.type === "Identifier" ? node.left.property.name : null;
+  if (isNodeOfType(node, "AssignmentExpression") && isNodeOfType(node.left, "MemberExpression")) {
+    const objectName = isNodeOfType(node.left.object, "Identifier") ? node.left.object.name : null;
+    const propertyName = isNodeOfType(node.left.property, "Identifier")
+      ? node.left.property.name
+      : null;
     if (objectName === "window" && propertyName === "location") {
       return `window.location assignment in useEffect — ${redirectGuidance}`;
     }

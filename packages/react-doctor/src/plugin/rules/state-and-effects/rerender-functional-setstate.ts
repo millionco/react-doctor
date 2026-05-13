@@ -3,6 +3,7 @@ import { isSetterCall } from "../../utils/is-setter-call.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const STATE_ARITHMETIC_OPERATORS = new Set(["+", "-", "*", "/", "%", "**"]);
 
@@ -28,12 +29,12 @@ export const rerenderFunctionalSetstate = defineRule<Rule>({
       const expectedStateName = deriveStateVariableName(calleeName);
 
       if (
-        argument.type === "BinaryExpression" &&
+        isNodeOfType(argument, "BinaryExpression") &&
         STATE_ARITHMETIC_OPERATORS.has(argument.operator) &&
         expectedStateName
       ) {
         const matchesExpected = (operand: EsTreeNode | undefined): boolean =>
-          operand?.type === "Identifier" && operand.name === expectedStateName;
+          isNodeOfType(operand, "Identifier") && operand.name === expectedStateName;
 
         const stateIdentifier = matchesExpected(argument.left)
           ? argument.left
@@ -41,7 +42,7 @@ export const rerenderFunctionalSetstate = defineRule<Rule>({
             ? argument.right
             : null;
 
-        if (stateIdentifier) {
+        if (isNodeOfType(stateIdentifier, "Identifier")) {
           context.report({
             node,
             message: `${calleeName}(${stateIdentifier.name} ${argument.operator} ...) — use functional update to avoid stale closures`,
@@ -51,9 +52,9 @@ export const rerenderFunctionalSetstate = defineRule<Rule>({
       }
 
       if (
-        argument.type === "UpdateExpression" &&
+        isNodeOfType(argument, "UpdateExpression") &&
         (argument.operator === "++" || argument.operator === "--") &&
-        argument.argument?.type === "Identifier" &&
+        isNodeOfType(argument.argument, "Identifier") &&
         argument.argument.name === expectedStateName
       ) {
         const display = argument.prefix
@@ -77,11 +78,11 @@ export const rerenderFunctionalSetstate = defineRule<Rule>({
       // Detect when one of the spread sources structurally references
       // the derived state variable: `setX([...x, ...])` or
       // `setX({ ...x, key: value })`.
-      if (expectedStateName && argument.type === "ArrayExpression") {
+      if (expectedStateName && isNodeOfType(argument, "ArrayExpression")) {
         const spreadsState = (argument.elements ?? []).some(
           (element: EsTreeNode | null) =>
-            element?.type === "SpreadElement" &&
-            element.argument?.type === "Identifier" &&
+            isNodeOfType(element, "SpreadElement") &&
+            isNodeOfType(element.argument, "Identifier") &&
             element.argument.name === expectedStateName,
         );
         if (spreadsState) {
@@ -93,11 +94,11 @@ export const rerenderFunctionalSetstate = defineRule<Rule>({
         }
       }
 
-      if (expectedStateName && argument.type === "ObjectExpression") {
+      if (expectedStateName && isNodeOfType(argument, "ObjectExpression")) {
         const spreadsState = (argument.properties ?? []).some(
           (property: EsTreeNode | null) =>
-            property?.type === "SpreadElement" &&
-            property.argument?.type === "Identifier" &&
+            isNodeOfType(property, "SpreadElement") &&
+            isNodeOfType(property.argument, "Identifier") &&
             property.argument.name === expectedStateName,
         );
         if (spreadsState) {

@@ -4,6 +4,7 @@ import { isHookCall } from "../../utils/is-hook-call.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const rerenderDependencies = defineRule<Rule>({
   recommendation:
@@ -12,18 +13,18 @@ export const rerenderDependencies = defineRule<Rule>({
     CallExpression(node: EsTreeNode) {
       if (!isHookCall(node, HOOKS_WITH_DEPS) || node.arguments.length < 2) return;
       const depsNode = node.arguments[1];
-      if (depsNode.type !== "ArrayExpression") return;
+      if (!isNodeOfType(depsNode, "ArrayExpression")) return;
 
       for (const element of depsNode.elements ?? []) {
         if (!element) continue;
-        if (element.type === "ObjectExpression") {
+        if (isNodeOfType(element, "ObjectExpression")) {
           context.report({
             node: element,
             message:
               "Object literal in useEffect deps — creates new reference every render, causing infinite re-runs",
           });
         }
-        if (element.type === "ArrayExpression") {
+        if (isNodeOfType(element, "ArrayExpression")) {
           context.report({
             node: element,
             message:
@@ -36,7 +37,10 @@ export const rerenderDependencies = defineRule<Rule>({
         // (if it doesn't read reactive values) or wrap it in
         // `useCallback`. Covered by `Removing Effect Dependencies` §
         // "Does some reactive value change unintentionally?".
-        if (element.type === "ArrowFunctionExpression" || element.type === "FunctionExpression") {
+        if (
+          isNodeOfType(element, "ArrowFunctionExpression") ||
+          isNodeOfType(element, "FunctionExpression")
+        ) {
           context.report({
             node: element,
             message:

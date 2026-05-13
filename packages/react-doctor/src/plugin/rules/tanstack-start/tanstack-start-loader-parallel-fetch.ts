@@ -5,24 +5,25 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getRouteOptionsObject } from "./utils/get-route-options-object.js";
 import { getPropertyKeyName } from "./utils/get-property-key-name.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const hasTopLevelAwait = (statement: EsTreeNode): boolean => {
-  if (statement.type === "VariableDeclaration") {
-    return statement.declarations?.some(
-      (declarator: EsTreeNode) => declarator.init?.type === "AwaitExpression",
+  if (isNodeOfType(statement, "VariableDeclaration")) {
+    return statement.declarations?.some((declarator: EsTreeNode) =>
+      isNodeOfType(declarator.init, "AwaitExpression"),
     );
   }
-  if (statement.type === "ExpressionStatement") {
+  if (isNodeOfType(statement, "ExpressionStatement")) {
     return (
-      statement.expression?.type === "AwaitExpression" ||
-      (statement.expression?.type === "AssignmentExpression" &&
-        statement.expression.right?.type === "AwaitExpression")
+      isNodeOfType(statement.expression, "AwaitExpression") ||
+      (isNodeOfType(statement.expression, "AssignmentExpression") &&
+        isNodeOfType(statement.expression.right, "AwaitExpression"))
     );
   }
-  if (statement.type === "ReturnStatement") {
-    return statement.argument?.type === "AwaitExpression";
+  if (isNodeOfType(statement, "ReturnStatement")) {
+    return isNodeOfType(statement.argument, "AwaitExpression");
   }
-  if (statement.type === "ForOfStatement" && statement.await) {
+  if (isNodeOfType(statement, "ForOfStatement") && statement.await) {
     return true;
   }
   return false;
@@ -44,13 +45,13 @@ export const tanstackStartLoaderParallelFetch = defineRule<Rule>({
         const loaderValue = property.value;
         if (
           !loaderValue ||
-          (loaderValue.type !== "ArrowFunctionExpression" &&
-            loaderValue.type !== "FunctionExpression")
+          (!isNodeOfType(loaderValue, "ArrowFunctionExpression") &&
+            !isNodeOfType(loaderValue, "FunctionExpression"))
         )
           continue;
 
         const functionBody = loaderValue.body;
-        if (!functionBody || functionBody.type !== "BlockStatement") continue;
+        if (!functionBody || !isNodeOfType(functionBody, "BlockStatement")) continue;
 
         let sequentialAwaitCount = 0;
         for (const statement of functionBody.body ?? []) {

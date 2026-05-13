@@ -4,6 +4,7 @@ import { isMemberProperty } from "../../utils/is-member-property.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const jsCacheStorage = defineRule<Rule>({
   recommendation:
@@ -15,11 +16,11 @@ export const jsCacheStorage = defineRule<Rule>({
       CallExpression(node: EsTreeNode) {
         if (!isMemberProperty(node.callee, "getItem")) return;
         if (
-          node.callee.object?.type !== "Identifier" ||
+          !isNodeOfType(node.callee.object, "Identifier") ||
           !STORAGE_OBJECTS.has(node.callee.object.name)
         )
           return;
-        if (node.arguments?.[0]?.type !== "Literal") return;
+        if (!isNodeOfType(node.arguments?.[0], "Literal")) return;
 
         const storageKey = String(node.arguments[0].value);
         const readCount = (storageReadCounts.get(storageKey) ?? 0) + 1;

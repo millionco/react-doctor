@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // HACK: <FlashList recycleItems> (or LegendList) reuses row component
 // instances across rows. For HETEROGENEOUS lists (rows of different
@@ -32,8 +33,8 @@ export const rnListRecyclableWithoutTypes = defineRule<Rule>({
       let hasGetItemType = false;
 
       for (const attr of node.attributes ?? []) {
-        if (attr.type !== "JSXAttribute") continue;
-        if (attr.name?.type !== "JSXIdentifier") continue;
+        if (!isNodeOfType(attr, "JSXAttribute")) continue;
+        if (!isNodeOfType(attr.name, "JSXIdentifier")) continue;
         if (attr.name.name === "recycleItems") {
           // Bare `recycleItems` (no `={...}`) → true. `recycleItems={true}`
           // → true. `recycleItems={false}` → DISABLES recycling, so the
@@ -41,8 +42,8 @@ export const rnListRecyclableWithoutTypes = defineRule<Rule>({
           if (!attr.value) {
             hasRecycleItemsEnabled = true;
           } else if (
-            attr.value.type === "JSXExpressionContainer" &&
-            attr.value.expression?.type === "Literal"
+            isNodeOfType(attr.value, "JSXExpressionContainer") &&
+            isNodeOfType(attr.value.expression, "Literal")
           ) {
             hasRecycleItemsEnabled = attr.value.expression.value === true;
           } else {

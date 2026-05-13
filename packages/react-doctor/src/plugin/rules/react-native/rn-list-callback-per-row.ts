@@ -3,6 +3,7 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const LIST_ROW_PRESS_HANDLER_PROPS = new Set([
   "onPress",
@@ -16,14 +17,14 @@ const LIST_ROW_PRESS_HANDLER_PROPS = new Set([
 const detectInlineRowHandlers = (renderItemFn: EsTreeNode): EsTreeNode[] => {
   const inlineHandlers: EsTreeNode[] = [];
   walkAst(renderItemFn.body, (child: EsTreeNode) => {
-    if (child.type !== "JSXAttribute") return;
-    if (child.name?.type !== "JSXIdentifier") return;
+    if (!isNodeOfType(child, "JSXAttribute")) return;
+    if (!isNodeOfType(child.name, "JSXIdentifier")) return;
     if (!LIST_ROW_PRESS_HANDLER_PROPS.has(child.name.name)) return;
-    if (child.value?.type !== "JSXExpressionContainer") return;
+    if (!isNodeOfType(child.value, "JSXExpressionContainer")) return;
     const expression = child.value.expression;
     if (
-      expression?.type === "ArrowFunctionExpression" ||
-      expression?.type === "FunctionExpression"
+      isNodeOfType(expression, "ArrowFunctionExpression") ||
+      isNodeOfType(expression, "FunctionExpression")
     ) {
       inlineHandlers.push(child);
     }
@@ -32,14 +33,14 @@ const detectInlineRowHandlers = (renderItemFn: EsTreeNode): EsTreeNode[] => {
 };
 
 const isRenderItemJsxAttribute = (parent: EsTreeNode | null | undefined): boolean => {
-  if (parent?.type !== "JSXAttribute") return false;
-  const attrName = parent.name?.type === "JSXIdentifier" ? parent.name.name : null;
+  if (!isNodeOfType(parent, "JSXAttribute")) return false;
+  const attrName = isNodeOfType(parent.name, "JSXIdentifier") ? parent.name.name : null;
   return attrName === "renderItem";
 };
 
 const isRenderItemFunction = (node: EsTreeNode): boolean => {
   const parent = node.parent;
-  if (parent?.type !== "JSXExpressionContainer") return false;
+  if (!isNodeOfType(parent, "JSXExpressionContainer")) return false;
   return isRenderItemJsxAttribute(parent.parent);
 };
 
@@ -58,8 +59,9 @@ export const rnListCallbackPerRow = defineRule<Rule>({
       if (!isRenderItemFunction(node)) return;
       const inlineHandlers = detectInlineRowHandlers(node);
       for (const handler of inlineHandlers) {
-        const handlerName =
-          handler.name?.type === "JSXIdentifier" ? handler.name.name : "<handler>";
+        const handlerName = isNodeOfType(handler.name, "JSXIdentifier")
+          ? handler.name.name
+          : "<handler>";
         context.report({
           node: handler,
           message: `Inline ${handlerName} arrow inside renderItem creates a fresh closure per row — hoist with useCallback at list scope and pass the row id as a primitive prop`,

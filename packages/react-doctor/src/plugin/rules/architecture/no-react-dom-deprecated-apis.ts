@@ -3,6 +3,8 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { createDeprecatedReactImportRule } from "./utils/create-deprecated-react-import-rule.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { getImportedName } from "../../utils/get-imported-name.js";
 
 // HACK: companion to `noReact19DeprecatedApis` for the react-dom side
 // of the React 19 migration. Catches the legacy root API (render /
@@ -57,8 +59,8 @@ const buildTestUtilsMessage = (importedName: string): string => {
 
 const reportTestUtilsImports = (node: EsTreeNode, context: RuleContext): void => {
   for (const specifier of node.specifiers ?? []) {
-    if (specifier.type === "ImportSpecifier") {
-      const importedName = specifier.imported?.name ?? "default";
+    if (isNodeOfType(specifier, "ImportSpecifier")) {
+      const importedName = getImportedName(specifier) ?? "default";
       context.report({ node: specifier, message: buildTestUtilsMessage(importedName) });
       continue;
     }

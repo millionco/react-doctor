@@ -6,6 +6,7 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const BOOLEAN_PROP_PREFIX_PATTERN = /^(?:is|has|should|can|show|hide|enable|disable|with)[A-Z]/;
 
@@ -16,11 +17,11 @@ const collectBooleanLikePropsFromBody = (
   const found = new Set<string>();
   if (!componentBody) return found;
   walkAst(componentBody, (child: EsTreeNode) => {
-    if (child.type !== "MemberExpression") return;
+    if (!isNodeOfType(child, "MemberExpression")) return;
     if (child.computed) return;
-    if (child.object?.type !== "Identifier") return;
+    if (!isNodeOfType(child.object, "Identifier")) return;
     if (child.object.name !== propsParamName) return;
-    if (child.property?.type !== "Identifier") return;
+    if (!isNodeOfType(child.property, "Identifier")) return;
     if (!BOOLEAN_PROP_PREFIX_PATTERN.test(child.property.name)) return;
     found.add(child.property.name);
   });
@@ -59,11 +60,11 @@ export const noManyBooleanProps = defineRule<Rule>({
       reportNode: EsTreeNode,
     ): void => {
       if (!param) return;
-      if (param.type === "ObjectPattern") {
+      if (isNodeOfType(param, "ObjectPattern")) {
         const booleanLikePropNames: string[] = [];
         for (const property of param.properties ?? []) {
-          if (property.type !== "Property") continue;
-          const keyName = property.key?.type === "Identifier" ? property.key.name : null;
+          if (!isNodeOfType(property, "Property")) continue;
+          const keyName = isNodeOfType(property.key, "Identifier") ? property.key.name : null;
           if (!keyName) continue;
           if (BOOLEAN_PROP_PREFIX_PATTERN.test(keyName)) {
             booleanLikePropNames.push(keyName);
@@ -72,7 +73,7 @@ export const noManyBooleanProps = defineRule<Rule>({
         reportIfMany(booleanLikePropNames, componentName, reportNode);
         return;
       }
-      if (param.type === "Identifier") {
+      if (isNodeOfType(param, "Identifier")) {
         const accessed = collectBooleanLikePropsFromBody(body, param.name);
         reportIfMany([...accessed], componentName, reportNode);
       }

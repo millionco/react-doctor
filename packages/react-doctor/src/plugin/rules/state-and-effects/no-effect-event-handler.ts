@@ -7,6 +7,7 @@ import { isHookCall } from "../../utils/is-hook-call.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const noEffectEventHandler = defineRule<Rule>({
   recommendation:
@@ -19,19 +20,18 @@ export const noEffectEventHandler = defineRule<Rule>({
       if (!callback) return;
 
       const depsNode = node.arguments[1];
-      if (depsNode.type !== "ArrayExpression" || !depsNode.elements?.length) return;
+      if (!isNodeOfType(depsNode, "ArrayExpression") || !depsNode.elements?.length) return;
 
-      const dependencyNames = new Set(
-        depsNode.elements
-          .filter((element: EsTreeNode) => element?.type === "Identifier")
-          .map((element: EsTreeNode) => element.name),
-      );
+      const dependencyNames = new Set<string>();
+      for (const element of depsNode.elements ?? []) {
+        if (isNodeOfType(element, "Identifier")) dependencyNames.add(element.name);
+      }
 
       const statements = getCallbackStatements(callback);
       if (statements.length !== 1) return;
 
       const soleStatement = statements[0];
-      if (soleStatement.type !== "IfStatement") return;
+      if (!isNodeOfType(soleStatement, "IfStatement")) return;
 
       // HACK: §5 of "You Might Not Need an Effect" uses
       // `if (product.isInCart)` — a MemberExpression, not a bare

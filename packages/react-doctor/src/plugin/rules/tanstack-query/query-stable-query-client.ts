@@ -8,6 +8,7 @@ import { isHookCall } from "../../utils/is-hook-call.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const queryStableQueryClient = defineRule<Rule>({
   recommendation:
@@ -29,20 +30,20 @@ export const queryStableQueryClient = defineRule<Rule>({
       },
       VariableDeclarator(node: EsTreeNode) {
         if (
-          node.id?.type === "Identifier" &&
+          isNodeOfType(node.id, "Identifier") &&
           UPPERCASE_PATTERN.test(node.id.name) &&
-          (node.init?.type === "ArrowFunctionExpression" ||
-            node.init?.type === "FunctionExpression")
+          (isNodeOfType(node.init, "ArrowFunctionExpression") ||
+            isNodeOfType(node.init, "FunctionExpression"))
         ) {
           componentDepth++;
         }
       },
       "VariableDeclarator:exit"(node: EsTreeNode) {
         if (
-          node.id?.type === "Identifier" &&
+          isNodeOfType(node.id, "Identifier") &&
           UPPERCASE_PATTERN.test(node.id.name) &&
-          (node.init?.type === "ArrowFunctionExpression" ||
-            node.init?.type === "FunctionExpression")
+          (isNodeOfType(node.init, "ArrowFunctionExpression") ||
+            isNodeOfType(node.init, "FunctionExpression"))
         ) {
           componentDepth--;
         }
@@ -60,7 +61,10 @@ export const queryStableQueryClient = defineRule<Rule>({
       NewExpression(node: EsTreeNode) {
         if (componentDepth <= 0) return;
         if (stableHookDepth > 0) return;
-        if (node.callee?.type !== "Identifier" || node.callee.name !== TANSTACK_QUERY_CLIENT_CLASS)
+        if (
+          !isNodeOfType(node.callee, "Identifier") ||
+          node.callee.name !== TANSTACK_QUERY_CLIENT_CLASS
+        )
           return;
 
         context.report({

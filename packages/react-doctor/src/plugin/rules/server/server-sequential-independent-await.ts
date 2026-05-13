@@ -3,6 +3,7 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // HACK: in async route handlers and Server Components, two consecutive
 // `await fetch()` (or any awaited calls) where the second one doesn't
@@ -18,19 +19,22 @@ import type { RuleContext } from "../../utils/rule-context.js";
 const collectDeclaredNames = (declaration: EsTreeNode): Set<string> => {
   const names = new Set<string>();
   for (const declarator of declaration.declarations ?? []) {
-    if (declarator.id?.type === "Identifier") {
+    if (isNodeOfType(declarator.id, "Identifier")) {
       names.add(declarator.id.name);
-    } else if (declarator.id?.type === "ObjectPattern") {
+    } else if (isNodeOfType(declarator.id, "ObjectPattern")) {
       for (const property of declarator.id.properties ?? []) {
-        if (property.type === "Property" && property.value?.type === "Identifier") {
+        if (isNodeOfType(property, "Property") && isNodeOfType(property.value, "Identifier")) {
           names.add(property.value.name);
-        } else if (property.type === "RestElement" && property.argument?.type === "Identifier") {
+        } else if (
+          isNodeOfType(property, "RestElement") &&
+          isNodeOfType(property.argument, "Identifier")
+        ) {
           names.add(property.argument.name);
         }
       }
-    } else if (declarator.id?.type === "ArrayPattern") {
+    } else if (isNodeOfType(declarator.id, "ArrayPattern")) {
       for (const element of declarator.id.elements ?? []) {
-        if (element?.type === "Identifier") names.add(element.name);
+        if (isNodeOfType(element, "Identifier")) names.add(element.name);
       }
     }
   }
@@ -39,7 +43,7 @@ const collectDeclaredNames = (declaration: EsTreeNode): Set<string> => {
 
 const declarationStartsWithAwait = (declaration: EsTreeNode): boolean => {
   for (const declarator of declaration.declarations ?? []) {
-    if (declarator.init?.type === "AwaitExpression") return true;
+    if (isNodeOfType(declarator.init, "AwaitExpression")) return true;
   }
   return false;
 };
@@ -49,7 +53,7 @@ const declarationReadsAnyName = (declaration: EsTreeNode, names: Set<string>): b
   let didRead = false;
   walkAst(declaration, (child: EsTreeNode) => {
     if (didRead) return;
-    if (child.type === "Identifier" && names.has(child.name)) didRead = true;
+    if (isNodeOfType(child, "Identifier") && names.has(child.name)) didRead = true;
   });
   return didRead;
 };
@@ -61,12 +65,12 @@ export const serverSequentialIndependentAwait = defineRule<Rule>({
     const inspectStatements = (statements: EsTreeNode[]): void => {
       for (let statementIndex = 0; statementIndex < statements.length - 1; statementIndex++) {
         const currentStatement = statements[statementIndex];
-        if (currentStatement.type !== "VariableDeclaration") continue;
+        if (!isNodeOfType(currentStatement, "VariableDeclaration")) continue;
         if (!declarationStartsWithAwait(currentStatement)) continue;
         const declaredNames = collectDeclaredNames(currentStatement);
 
         const nextStatement = statements[statementIndex + 1];
-        if (nextStatement.type !== "VariableDeclaration") continue;
+        if (!isNodeOfType(nextStatement, "VariableDeclaration")) continue;
         if (!declarationStartsWithAwait(nextStatement)) continue;
 
         if (declarationReadsAnyName(nextStatement, declaredNames)) continue;
@@ -83,7 +87,7 @@ export const serverSequentialIndependentAwait = defineRule<Rule>({
 
     const visitFunctionBody = (node: EsTreeNode): void => {
       if (!node.async) return;
-      if (node.body?.type !== "BlockStatement") return;
+      if (!isNodeOfType(node.body, "BlockStatement")) return;
       inspectStatements(node.body.body ?? []);
     };
 

@@ -4,43 +4,45 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const queryNoUseQueryForMutation = defineRule<Rule>({
   recommendation:
     "Use `useMutation()` for POST/PUT/DELETE — it provides onSuccess/onError callbacks, doesn't auto-refetch, and correctly models write operations",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
-      const calleeName = node.callee?.type === "Identifier" ? node.callee.name : null;
+      const calleeName = isNodeOfType(node.callee, "Identifier") ? node.callee.name : null;
 
       if (!calleeName || !TANSTACK_QUERY_HOOKS.has(calleeName)) return;
 
       const optionsArgument = node.arguments?.[0];
-      if (!optionsArgument || optionsArgument.type !== "ObjectExpression") return;
+      if (!optionsArgument || !isNodeOfType(optionsArgument, "ObjectExpression")) return;
 
       const queryFnProperty = optionsArgument.properties?.find(
         (property: EsTreeNode) =>
-          property.type === "Property" &&
-          property.key?.type === "Identifier" &&
+          isNodeOfType(property, "Property") &&
+          isNodeOfType(property.key, "Identifier") &&
           property.key.name === "queryFn",
       );
 
-      if (!queryFnProperty?.value) return;
+      if (!queryFnProperty || !isNodeOfType(queryFnProperty, "Property") || !queryFnProperty.value)
+        return;
 
       let hasMutatingFetch = false;
       walkAst(queryFnProperty.value, (child: EsTreeNode) => {
         if (hasMutatingFetch) return;
-        if (child.type !== "CallExpression") return;
-        if (child.callee?.type !== "Identifier" || child.callee.name !== "fetch") return;
+        if (!isNodeOfType(child, "CallExpression")) return;
+        if (!isNodeOfType(child.callee, "Identifier") || child.callee.name !== "fetch") return;
 
         const optionsArg = child.arguments?.[1];
-        if (!optionsArg || optionsArg.type !== "ObjectExpression") return;
+        if (!optionsArg || !isNodeOfType(optionsArg, "ObjectExpression")) return;
 
         const methodProperty = optionsArg.properties?.find(
           (property: EsTreeNode) =>
-            property.type === "Property" &&
-            property.key?.type === "Identifier" &&
+            isNodeOfType(property, "Property") &&
+            isNodeOfType(property.key, "Identifier") &&
             property.key.name === "method" &&
-            property.value?.type === "Literal" &&
+            isNodeOfType(property.value, "Literal") &&
             typeof property.value.value === "string" &&
             MUTATING_HTTP_METHODS.has(property.value.value.toUpperCase()),
         );

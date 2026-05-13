@@ -4,6 +4,7 @@ import { isMutatingDbCall } from "./is-mutating-db-call.js";
 import { isMutatingFetchCall } from "./is-mutating-fetch-call.js";
 import { isMutatingMethodProperty } from "./is-mutating-method-property.js";
 import { walkAst } from "./walk-ast.js";
+import { isNodeOfType } from "./is-node-of-type.js";
 
 export const findSideEffect = (node: EsTreeNode): string | null => {
   let sideEffectDescription: string | null = null;
@@ -24,8 +25,9 @@ export const findSideEffect = (node: EsTreeNode): string | null => {
       sideEffectDescription = `fetch() with method ${methodProperty.value.value}`;
     } else if (isMutatingDbCall(child)) {
       const methodName = child.callee.property.name;
-      const objectName =
-        child.callee.object?.type === "Identifier" ? child.callee.object.name : null;
+      const objectName = isNodeOfType(child.callee.object, "Identifier")
+        ? child.callee.object.name
+        : null;
       sideEffectDescription = objectName ? `${objectName}.${methodName}()` : `.${methodName}()`;
     }
   });

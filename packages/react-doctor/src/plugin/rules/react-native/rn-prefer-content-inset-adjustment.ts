@@ -4,6 +4,7 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
 import { SCROLLVIEW_NAMES } from "./utils/scrollview_names.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // HACK: <SafeAreaView> wrapping <ScrollView> (or
 // `useSafeAreaInsets()` + `paddingTop: insets.top` in
@@ -20,7 +21,7 @@ export const rnPreferContentInsetAdjustment = defineRule<Rule>({
       if (elementName !== "SafeAreaView") return;
 
       for (const child of node.children ?? []) {
-        if (child.type !== "JSXElement") continue;
+        if (!isNodeOfType(child, "JSXElement")) continue;
         const childName = resolveJsxElementName(child.openingElement);
         if (!childName || !SCROLLVIEW_NAMES.has(childName)) continue;
 

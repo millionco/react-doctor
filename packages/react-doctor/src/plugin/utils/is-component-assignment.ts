@@ -1,9 +1,11 @@
 import type { EsTreeNode } from "./es-tree-node.js";
 import { isUppercaseName } from "./is-uppercase-name.js";
+import { isNodeOfType } from "./is-node-of-type.js";
 
 export const isComponentAssignment = (node: EsTreeNode): boolean =>
-  node.type === "VariableDeclarator" &&
-  node.id?.type === "Identifier" &&
+  isNodeOfType(node, "VariableDeclarator") &&
+  isNodeOfType(node.id, "Identifier") &&
   isUppercaseName(node.id.name) &&
   Boolean(node.init) &&
-  (node.init.type === "ArrowFunctionExpression" || node.init.type === "FunctionExpression");
+  (isNodeOfType(node.init, "ArrowFunctionExpression") ||
+    isNodeOfType(node.init, "FunctionExpression"));

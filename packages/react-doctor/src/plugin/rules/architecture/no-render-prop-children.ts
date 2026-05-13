@@ -3,6 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const RENDER_PROP_PATTERN = /^render[A-Z]/;
 
@@ -21,8 +22,8 @@ export const noRenderPropChildren = defineRule<Rule>({
     JSXOpeningElement(node: EsTreeNode) {
       const renderPropAttrs: Array<{ name: string; node: EsTreeNode }> = [];
       for (const attr of node.attributes ?? []) {
-        if (attr.type !== "JSXAttribute") continue;
-        if (attr.name?.type !== "JSXIdentifier") continue;
+        if (!isNodeOfType(attr, "JSXAttribute")) continue;
+        if (!isNodeOfType(attr.name, "JSXIdentifier")) continue;
         const name = attr.name.name;
         if (!RENDER_PROP_PATTERN.test(name)) continue;
         renderPropAttrs.push({ name, node: attr });

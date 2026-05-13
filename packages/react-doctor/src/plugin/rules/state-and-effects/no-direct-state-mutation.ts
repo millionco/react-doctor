@@ -8,6 +8,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // HACK: walks the component AST while tracking which state names are
 // SHADOWED in the current scope by a nested function's params or
@@ -22,9 +23,9 @@ const collectFunctionLocalBindings = (functionNode: EsTreeNode): Set<string> => 
   for (const param of functionNode.params ?? []) {
     collectPatternNames(param, localBindings);
   }
-  if (functionNode.body?.type === "BlockStatement") {
+  if (isNodeOfType(functionNode.body, "BlockStatement")) {
     for (const statement of functionNode.body.body ?? []) {
-      if (statement.type !== "VariableDeclaration") continue;
+      if (!isNodeOfType(statement, "VariableDeclaration")) continue;
       for (const declarator of statement.declarations ?? []) {
         collectPatternNames(declarator.id, localBindings);
       }
@@ -34,9 +35,9 @@ const collectFunctionLocalBindings = (functionNode: EsTreeNode): Set<string> => 
 };
 
 const isFunctionLikeNode = (node: EsTreeNode): boolean =>
-  node.type === "FunctionDeclaration" ||
-  node.type === "FunctionExpression" ||
-  node.type === "ArrowFunctionExpression";
+  isNodeOfType(node, "FunctionDeclaration") ||
+  isNodeOfType(node, "FunctionExpression") ||
+  isNodeOfType(node, "ArrowFunctionExpression");
 
 const walkComponentRespectingShadows = (
   node: EsTreeNode,
@@ -77,7 +78,7 @@ export const noDirectStateMutation = defineRule<Rule>({
     "Replace the mutation with a setter call that produces a new reference: `setItems([...items, newItem])`, `setItems(items.filter(x => x !== target))`, `setItems(items.toSorted(...))`. React only re-renders on a new reference, so in-place updates are silently dropped",
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
-      if (!componentBody || componentBody.type !== "BlockStatement") return;
+      if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
       const bindings = collectUseStateBindings(componentBody);
       if (bindings.length === 0) return;
 
@@ -89,8 +90,8 @@ export const noDirectStateMutation = defineRule<Rule>({
         componentBody,
         new Set(),
         (child: EsTreeNode, currentlyShadowed: ReadonlySet<string>) => {
-          if (child.type === "AssignmentExpression") {
-            if (child.left?.type !== "MemberExpression") return;
+          if (isNodeOfType(child, "AssignmentExpression")) {
+            if (!isNodeOfType(child.left, "MemberExpression")) return;
             const rootName = getRootIdentifierName(child.left);
             if (!rootName || !stateValueToSetter.has(rootName)) return;
             if (currentlyShadowed.has(rootName)) return;
@@ -102,10 +103,10 @@ export const noDirectStateMutation = defineRule<Rule>({
             return;
           }
 
-          if (child.type === "CallExpression") {
+          if (isNodeOfType(child, "CallExpression")) {
             const callee = child.callee;
-            if (callee?.type !== "MemberExpression") return;
-            if (callee.property?.type !== "Identifier") return;
+            if (!isNodeOfType(callee, "MemberExpression")) return;
+            if (!isNodeOfType(callee.property, "Identifier")) return;
             const methodName = callee.property.name;
             if (!MUTATING_ARRAY_METHODS.has(methodName)) return;
             const rootName = getRootIdentifierName(callee.object);

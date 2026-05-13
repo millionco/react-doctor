@@ -1,4 +1,5 @@
 import type { EsTreeNode } from "./es-tree-node.js";
+import { isNodeOfType } from "./is-node-of-type.js";
 
 export const findJsxAttribute = (
   attributes: EsTreeNode[],
@@ -6,7 +7,7 @@ export const findJsxAttribute = (
 ): EsTreeNode | undefined =>
   attributes?.find(
     (attribute: EsTreeNode) =>
-      attribute.type === "JSXAttribute" &&
-      attribute.name?.type === "JSXIdentifier" &&
+      isNodeOfType(attribute, "JSXAttribute") &&
+      isNodeOfType(attribute.name, "JSXIdentifier") &&
       attribute.name.name === attributeName,
   );

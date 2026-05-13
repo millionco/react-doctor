@@ -4,6 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const PRESS_HANDLER_PROP_NAMES = new Set(["onPressIn", "onPressOut"]);
 
@@ -11,7 +12,10 @@ const handlerMutatesIdentifier = (
   handler: EsTreeNode,
   sharedValueBindings: Set<string>,
 ): boolean => {
-  if (handler.type !== "ArrowFunctionExpression" && handler.type !== "FunctionExpression") {
+  if (
+    !isNodeOfType(handler, "ArrowFunctionExpression") &&
+    !isNodeOfType(handler, "FunctionExpression")
+  ) {
     return false;
   }
   if (sharedValueBindings.size === 0) return false;
@@ -19,21 +23,21 @@ const handlerMutatesIdentifier = (
   walkAst(handler.body, (child: EsTreeNode) => {
     if (didMutate) return;
     if (
-      child.type === "AssignmentExpression" &&
-      child.left?.type === "MemberExpression" &&
-      child.left.object?.type === "Identifier" &&
+      isNodeOfType(child, "AssignmentExpression") &&
+      isNodeOfType(child.left, "MemberExpression") &&
+      isNodeOfType(child.left.object, "Identifier") &&
       sharedValueBindings.has(child.left.object.name) &&
-      child.left.property?.type === "Identifier" &&
+      isNodeOfType(child.left.property, "Identifier") &&
       child.left.property.name === "value"
     ) {
       didMutate = true;
     }
     if (
-      child.type === "CallExpression" &&
-      child.callee?.type === "MemberExpression" &&
-      child.callee.object?.type === "Identifier" &&
+      isNodeOfType(child, "CallExpression") &&
+      isNodeOfType(child.callee, "MemberExpression") &&
+      isNodeOfType(child.callee.object, "Identifier") &&
       sharedValueBindings.has(child.callee.object.name) &&
-      child.callee.property?.type === "Identifier" &&
+      isNodeOfType(child.callee.property, "Identifier") &&
       (child.callee.property.name === "set" || child.callee.property.name === "value")
     ) {
       didMutate = true;
@@ -63,10 +67,10 @@ export const rnPressableSharedValueMutation = defineRule<Rule>({
     };
     const trackSharedValueBinding = (declarator: EsTreeNode): void => {
       if (sharedValueBindingsByComponent.length === 0) return;
-      if (declarator.id?.type !== "Identifier") return;
-      if (declarator.init?.type !== "CallExpression") return;
+      if (!isNodeOfType(declarator.id, "Identifier")) return;
+      if (!isNodeOfType(declarator.init, "CallExpression")) return;
       const callee = declarator.init.callee;
-      if (callee?.type !== "Identifier") return;
+      if (!isNodeOfType(callee, "Identifier")) return;
       if (callee.name !== "useSharedValue") return;
       sharedValueBindingsByComponent[sharedValueBindingsByComponent.length - 1].add(
         declarator.id.name,
@@ -94,10 +98,10 @@ export const rnPressableSharedValueMutation = defineRule<Rule>({
         if (activeBindings.size === 0) return;
 
         for (const attr of node.attributes ?? []) {
-          if (attr.type !== "JSXAttribute") continue;
-          if (attr.name?.type !== "JSXIdentifier") continue;
+          if (!isNodeOfType(attr, "JSXAttribute")) continue;
+          if (!isNodeOfType(attr.name, "JSXIdentifier")) continue;
           if (!PRESS_HANDLER_PROP_NAMES.has(attr.name.name)) continue;
-          if (attr.value?.type !== "JSXExpressionContainer") continue;
+          if (!isNodeOfType(attr.value, "JSXExpressionContainer")) continue;
           const handler = attr.value.expression;
           if (!handler) continue;
           if (!handlerMutatesIdentifier(handler, activeBindings)) continue;

@@ -7,6 +7,7 @@ import { walkInsideStatementBlocks } from "../../utils/walk-inside-statement-blo
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // HACK: `useEffect(() => parentCallback(state.x), [state.x])` is the
 // "lift state up via callback" anti-pattern: the child owns state, then
@@ -28,14 +29,14 @@ export const noPropCallbackInEffect = defineRule<Rule>({
         const callback = getEffectCallback(node);
         if (!callback) return;
         const depsNode = node.arguments[1];
-        if (depsNode.type !== "ArrayExpression" || !depsNode.elements?.length) return;
+        if (!isNodeOfType(depsNode, "ArrayExpression") || !depsNode.elements?.length) return;
 
         // Only flag if at least one dep is a non-prop (state-shape)
         // identifier — otherwise the effect is just adapting to prop
         // changes (legit pattern).
-        const hasStateLikeDep = depsNode.elements.some(
-          (element: EsTreeNode) =>
-            element?.type === "Identifier" && !propStackTracker.isPropName(element.name),
+        const hasStateLikeDep = (depsNode.elements ?? []).some(
+          (element) =>
+            isNodeOfType(element, "Identifier") && !propStackTracker.isPropName(element.name),
         );
         if (!hasStateLikeDep) return;
 
@@ -47,8 +48,8 @@ export const noPropCallbackInEffect = defineRule<Rule>({
         // (lift state via callback).
         const reportedNodes = new Set<EsTreeNode>();
         walkInsideStatementBlocks(callback.body, (child: EsTreeNode) => {
-          if (child.type !== "CallExpression") return;
-          if (child.callee?.type !== "Identifier") return;
+          if (!isNodeOfType(child, "CallExpression")) return;
+          if (!isNodeOfType(child.callee, "Identifier")) return;
           const calleeName = child.callee.name;
           if (!propStackTracker.isPropName(calleeName)) return;
           if (reportedNodes.has(child)) return;

@@ -8,14 +8,15 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const noSecretsInClientCode = defineRule<Rule>({
   recommendation:
     "Move to server-side `process.env.SECRET_NAME`. Only `NEXT_PUBLIC_*` vars are safe for the client (and should not contain secrets)",
   create: (context: RuleContext) => ({
     VariableDeclarator(node: EsTreeNode) {
-      if (node.id?.type !== "Identifier") return;
-      if (node.init?.type !== "Literal" || typeof node.init.value !== "string") return;
+      if (!isNodeOfType(node.id, "Identifier")) return;
+      if (!isNodeOfType(node.init, "Literal") || typeof node.init.value !== "string") return;
 
       const variableName = node.id.name;
       const literalValue = node.init.value;

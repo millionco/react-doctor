@@ -4,6 +4,7 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
 import { SCROLLVIEW_NAMES } from "./utils/scrollview_names.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // HACK: <ScrollView>{items.map(...)}</ScrollView> renders every row in
 // memory — for any list longer than ~10 items this destroys scroll
@@ -19,12 +20,12 @@ export const rnNoScrollviewMappedList = defineRule<Rule>({
       if (!elementName || !SCROLLVIEW_NAMES.has(elementName)) return;
 
       for (const child of node.children ?? []) {
-        if (child.type !== "JSXExpressionContainer") continue;
+        if (!isNodeOfType(child, "JSXExpressionContainer")) continue;
         const expression = child.expression;
         if (
-          expression?.type === "CallExpression" &&
-          expression.callee?.type === "MemberExpression" &&
-          expression.callee.property?.type === "Identifier" &&
+          isNodeOfType(expression, "CallExpression") &&
+          isNodeOfType(expression.callee, "MemberExpression") &&
+          isNodeOfType(expression.callee.property, "Identifier") &&
           expression.callee.property.name === "map"
         ) {
           context.report({

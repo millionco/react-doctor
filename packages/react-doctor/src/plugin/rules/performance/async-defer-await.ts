@@ -3,22 +3,23 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const collectIdentifierNames = (node: EsTreeNode | null | undefined, into: Set<string>): void => {
   if (!node) return;
   walkAst(node, (child: EsTreeNode) => {
-    if (child.type === "Identifier") into.add(child.name);
+    if (isNodeOfType(child, "Identifier")) into.add(child.name);
   });
 };
 
 const isEarlyReturnIfStatement = (statement: EsTreeNode): boolean => {
-  if (statement.type !== "IfStatement") return false;
+  if (!isNodeOfType(statement, "IfStatement")) return false;
   const consequent = statement.consequent;
   if (!consequent) return false;
-  if (consequent.type === "ReturnStatement") return true;
-  if (consequent.type !== "BlockStatement") return false;
+  if (isNodeOfType(consequent, "ReturnStatement")) return true;
+  if (!isNodeOfType(consequent, "BlockStatement")) return false;
   for (const inner of consequent.body ?? []) {
-    if (inner.type === "ReturnStatement") return true;
+    if (isNodeOfType(inner, "ReturnStatement")) return true;
   }
   return false;
 };
@@ -41,18 +42,21 @@ export const asyncDeferAwait = defineRule<Rule>({
     const inspectStatements = (statements: EsTreeNode[]): void => {
       for (let statementIndex = 0; statementIndex < statements.length - 1; statementIndex++) {
         const currentStatement = statements[statementIndex];
-        if (currentStatement.type !== "VariableDeclaration") continue;
+        if (!isNodeOfType(currentStatement, "VariableDeclaration")) continue;
 
         const awaitedBindingNames = new Set<string>();
         let didAwait = false;
         for (const declarator of currentStatement.declarations ?? []) {
-          if (declarator.init?.type === "AwaitExpression") {
+          if (isNodeOfType(declarator.init, "AwaitExpression")) {
             didAwait = true;
-            if (declarator.id?.type === "Identifier") {
+            if (isNodeOfType(declarator.id, "Identifier")) {
               awaitedBindingNames.add(declarator.id.name);
-            } else if (declarator.id?.type === "ObjectPattern") {
+            } else if (isNodeOfType(declarator.id, "ObjectPattern")) {
               for (const property of declarator.id.properties ?? []) {
-                if (property.type === "Property" && property.value?.type === "Identifier") {
+                if (
+                  isNodeOfType(property, "Property") &&
+                  isNodeOfType(property.value, "Identifier")
+                ) {
                   awaitedBindingNames.add(property.value.name);
                 }
               }
@@ -88,7 +92,7 @@ export const asyncDeferAwait = defineRule<Rule>({
 
     const enterFunction = (node: EsTreeNode): void => {
       if (!node.async) return;
-      if (node.body?.type !== "BlockStatement") return;
+      if (!isNodeOfType(node.body, "BlockStatement")) return;
       inspectStatements(node.body.body ?? []);
     };
 

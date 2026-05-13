@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const REANIMATED_LAYOUT_KEYS = new Set([
   "width",
@@ -29,14 +30,17 @@ const REANIMATED_LAYOUT_KEYS = new Set([
 ]);
 
 const findReturnedObject = (callback: EsTreeNode): EsTreeNode | null => {
-  if (callback.type !== "ArrowFunctionExpression" && callback.type !== "FunctionExpression") {
+  if (
+    !isNodeOfType(callback, "ArrowFunctionExpression") &&
+    !isNodeOfType(callback, "FunctionExpression")
+  ) {
     return null;
   }
   const body = callback.body;
-  if (body?.type === "ObjectExpression") return body;
-  if (body?.type !== "BlockStatement") return null;
+  if (isNodeOfType(body, "ObjectExpression")) return body;
+  if (!isNodeOfType(body, "BlockStatement")) return null;
   for (const stmt of body.body ?? []) {
-    if (stmt.type === "ReturnStatement" && stmt.argument?.type === "ObjectExpression") {
+    if (isNodeOfType(stmt, "ReturnStatement") && isNodeOfType(stmt.argument, "ObjectExpression")) {
       return stmt.argument;
     }
   }
@@ -54,15 +58,16 @@ export const rnAnimateLayoutProperty = defineRule<Rule>({
     "Animate `transform: [{ translateX/Y }, { scale }]` and `opacity` instead of layout props — layout runs on the JS thread; transform/opacity run on the GPU compositor",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
-      if (node.callee?.type !== "Identifier" || node.callee.name !== "useAnimatedStyle") return;
+      if (!isNodeOfType(node.callee, "Identifier") || node.callee.name !== "useAnimatedStyle")
+        return;
       const callback = node.arguments?.[0];
       if (!callback) return;
       const returnedObject = findReturnedObject(callback);
       if (!returnedObject) return;
 
       for (const property of returnedObject.properties ?? []) {
-        if (property.type !== "Property") continue;
-        if (property.key?.type !== "Identifier") continue;
+        if (!isNodeOfType(property, "Property")) continue;
+        if (!isNodeOfType(property.key, "Identifier")) continue;
         if (!REANIMATED_LAYOUT_KEYS.has(property.key.name)) continue;
 
         context.report({

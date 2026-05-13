@@ -23,6 +23,7 @@ import { collectRenderReachableNames } from "./utils/collect-render-reachable-na
 import { expandTransitiveDependencies } from "./utils/expand-transitive-dependencies.js";
 import { collectHandlerBindingNames } from "./utils/collect-handler-binding-names.js";
 import { isInsideEventHandler } from "./utils/is-inside-event-handler.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // HACK: §6 of "You Might Not Need an Effect" — sending a POST request:
 //
@@ -65,28 +66,28 @@ import { isInsideEventHandler } from "./utils/is-inside-event-handler.js";
 const SENTINEL_IDENTIFIER_NAMES = new Set(["undefined", "NaN", "null"]);
 
 const isSentinelIdentifier = (node: EsTreeNode): boolean =>
-  node?.type === "Identifier" && SENTINEL_IDENTIFIER_NAMES.has(node.name);
+  isNodeOfType(node, "Identifier") && SENTINEL_IDENTIFIER_NAMES.has(node.name);
 
 const getTriggerGuardRootName = (testNode: EsTreeNode): string | null => {
   if (!testNode) return null;
-  if (testNode.type === "Identifier") return testNode.name;
-  if (testNode.type === "BinaryExpression") {
+  if (isNodeOfType(testNode, "Identifier")) return testNode.name;
+  if (isNodeOfType(testNode, "BinaryExpression")) {
     if (!["!==", "===", "!=", "=="].includes(testNode.operator)) return null;
     for (const side of [testNode.left, testNode.right]) {
-      if (side?.type === "Identifier" && !isSentinelIdentifier(side)) {
+      if (isNodeOfType(side, "Identifier") && !isSentinelIdentifier(side)) {
         return side.name;
       }
     }
     return null;
   }
   if (
-    testNode.type === "MemberExpression" &&
-    testNode.property?.type === "Identifier" &&
+    isNodeOfType(testNode, "MemberExpression") &&
+    isNodeOfType(testNode.property, "Identifier") &&
     testNode.property.name === "length"
   ) {
-    if (testNode.object?.type === "Identifier") return testNode.object.name;
+    if (isNodeOfType(testNode.object, "Identifier")) return testNode.object.name;
   }
-  if (testNode.type === "UnaryExpression" && testNode.operator === "!") {
+  if (isNodeOfType(testNode, "UnaryExpression") && testNode.operator === "!") {
     return getTriggerGuardRootName(testNode.argument);
   }
   return null;
@@ -96,13 +97,16 @@ const findTriggeredSideEffectCalleeName = (consequentNode: EsTreeNode): string |
   let foundCalleeName: string | null = null;
   walkAst(consequentNode, (child: EsTreeNode) => {
     if (foundCalleeName) return false;
-    if (child.type !== "CallExpression") return;
+    if (!isNodeOfType(child, "CallExpression")) return;
     const callee = child.callee;
-    if (callee?.type === "Identifier" && EVENT_TRIGGERED_SIDE_EFFECT_CALLEES.has(callee.name)) {
+    if (
+      isNodeOfType(callee, "Identifier") &&
+      EVENT_TRIGGERED_SIDE_EFFECT_CALLEES.has(callee.name)
+    ) {
       foundCalleeName = callee.name;
       return;
     }
-    if (callee?.type === "MemberExpression" && callee.property?.type === "Identifier") {
+    if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
       const propertyName = callee.property.name;
       const isUnambiguousMethod = EVENT_TRIGGERED_SIDE_EFFECT_MEMBER_METHODS.has(propertyName);
       const isNavigationMethod = EVENT_TRIGGERED_NAVIGATION_METHOD_NAMES.has(propertyName);
@@ -128,8 +132,8 @@ const collectHandlerOnlyWriteStateNames = (
     let areAllSetterCallsInHandlers = true;
     walkAst(componentBody, (child: EsTreeNode) => {
       if (!areAllSetterCallsInHandlers) return false;
-      if (child.type !== "CallExpression") return;
-      if (child.callee?.type !== "Identifier") return;
+      if (!isNodeOfType(child, "CallExpression")) return;
+      if (!isNodeOfType(child.callee, "Identifier")) return;
       if (child.callee.name !== binding.setterName) return;
       didFindAnySetterCall = true;
       if (!isInsideEventHandler(child, handlerBindingNames)) {
@@ -148,7 +152,7 @@ export const noEventTriggerState = defineRule<Rule>({
     "Delete the trigger state (`useState(null)` plus the `useEffect` that watches it) and call the side-effect (`post(...)` / `navigate(...)` / `track(...)`) directly inside the event handler that previously called the setter. State should not exist purely to schedule effect runs",
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
-      if (!componentBody || componentBody.type !== "BlockStatement") return;
+      if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
 
       const useStateBindings = collectUseStateBindings(componentBody);
       if (useStateBindings.length === 0) return;
@@ -174,16 +178,16 @@ export const noEventTriggerState = defineRule<Rule>({
       const renderReachableNames = expandTransitiveDependencies(directRenderNames, dependencyGraph);
 
       walkAst(componentBody, (effectCall: EsTreeNode) => {
-        if (effectCall.type !== "CallExpression") return;
+        if (!isNodeOfType(effectCall, "CallExpression")) return;
         if (!isHookCall(effectCall, EFFECT_HOOK_NAMES)) return;
         if ((effectCall.arguments?.length ?? 0) < 2) return;
 
         const depsNode = effectCall.arguments[1];
-        if (depsNode.type !== "ArrayExpression") return;
+        if (!isNodeOfType(depsNode, "ArrayExpression")) return;
         if ((depsNode.elements?.length ?? 0) !== 1) return;
 
         const depElement = depsNode.elements[0];
-        if (depElement?.type !== "Identifier") return;
+        if (!isNodeOfType(depElement, "Identifier")) return;
         if (!handlerOnlyWriteStateNames.has(depElement.name)) return;
         // Dual-purpose state — used in render too. Don't claim it
         // "exists only to schedule" the effect.
@@ -195,7 +199,7 @@ export const noEventTriggerState = defineRule<Rule>({
         const bodyStatements = getCallbackStatements(callback);
         if (bodyStatements.length !== 1) return;
         const soleStatement = bodyStatements[0];
-        if (soleStatement.type !== "IfStatement") return;
+        if (!isNodeOfType(soleStatement, "IfStatement")) return;
 
         const guardRootName = getTriggerGuardRootName(soleStatement.test);
         if (guardRootName !== depElement.name) return;

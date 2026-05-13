@@ -5,6 +5,7 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getRouteOptionsObject } from "./utils/get-route-options-object.js";
 import { getPropertyKeyName } from "./utils/get-property-key-name.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const SAFE_BUILD_ENV_VARS = new Set(["NODE_ENV", "MODE", "DEV", "PROD"]);
 
@@ -34,22 +35,24 @@ export const tanstackStartNoSecretsInLoader = defineRule<Rule>({
 
         const loaderValue = property.value ?? property;
         walkAst(loaderValue, (child: EsTreeNode) => {
-          if (child.type !== "MemberExpression") return;
+          if (!isNodeOfType(child, "MemberExpression")) return;
           const isProcessEnvAccess =
-            child.object?.type === "MemberExpression" &&
-            child.object.object?.type === "Identifier" &&
+            isNodeOfType(child.object, "MemberExpression") &&
+            isNodeOfType(child.object.object, "Identifier") &&
             child.object.object.name === "process" &&
-            child.object.property?.type === "Identifier" &&
+            isNodeOfType(child.object.property, "Identifier") &&
             child.object.property.name === "env";
           const isImportMetaEnvAccess =
-            child.object?.type === "MemberExpression" &&
-            child.object.object?.type === "MetaProperty" &&
-            child.object.property?.type === "Identifier" &&
+            isNodeOfType(child.object, "MemberExpression") &&
+            isNodeOfType(child.object.object, "MetaProperty") &&
+            isNodeOfType(child.object.property, "Identifier") &&
             child.object.property.name === "env";
 
           if (!isProcessEnvAccess && !isImportMetaEnvAccess) return;
 
-          const envVarName = child.property?.type === "Identifier" ? child.property.name : null;
+          const envVarName = isNodeOfType(child.property, "Identifier")
+            ? child.property.name
+            : null;
           if (envVarName && isLikelySecret(envVarName)) {
             const envSource = isImportMetaEnvAccess ? "import.meta.env" : "process.env";
             context.report({

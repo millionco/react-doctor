@@ -1,4 +1,5 @@
 import type { EsTreeNode } from "./es-tree-node.js";
+import { isNodeOfType } from "./is-node-of-type.js";
 
 // HACK: walk a MemberExpression chain (computed or not) down to the
 // underlying root identifier. `state.nested.items` -> "state",
@@ -16,21 +17,21 @@ export const getRootIdentifierName = (
   options?: { followCallChains?: boolean },
 ): string | null => {
   if (!node) return null;
-  if (node.type === "Identifier") return node.name;
+  if (isNodeOfType(node, "Identifier")) return node.name;
   const followCallChains = options?.followCallChains === true;
   let cursor: EsTreeNode | undefined = node;
   while (cursor) {
-    if (cursor.type === "MemberExpression") {
+    if (isNodeOfType(cursor, "MemberExpression")) {
       cursor = cursor.object;
       continue;
     }
-    if (followCallChains && cursor.type === "CallExpression") {
-      const callee = cursor.callee;
-      if (callee?.type !== "MemberExpression") return null;
+    if (followCallChains && isNodeOfType(cursor, "CallExpression")) {
+      const callee: EsTreeNode | null | undefined = cursor.callee;
+      if (!isNodeOfType(callee, "MemberExpression")) return null;
       cursor = callee.object;
       continue;
     }
     break;
   }
-  return cursor?.type === "Identifier" ? cursor.name : null;
+  return isNodeOfType(cursor, "Identifier") ? cursor.name : null;
 };

@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // HACK: `new Intl.NumberFormat()` / `Intl.DateTimeFormat()` is expensive
 // (dozens of allocations per locale lookup). Allocating it inside a render
@@ -19,13 +20,13 @@ const INTL_CLASSES = new Set([
 ]);
 
 const isIntlNewExpression = (node: EsTreeNode): boolean => {
-  if (node.type !== "NewExpression") return false;
+  if (!isNodeOfType(node, "NewExpression")) return false;
   const callee = node.callee;
   if (
-    callee?.type === "MemberExpression" &&
-    callee.object?.type === "Identifier" &&
+    isNodeOfType(callee, "MemberExpression") &&
+    isNodeOfType(callee.object, "Identifier") &&
     callee.object.name === "Intl" &&
-    callee.property?.type === "Identifier" &&
+    isNodeOfType(callee.property, "Identifier") &&
     INTL_CLASSES.has(callee.property.name)
   ) {
     return true;
@@ -46,9 +47,9 @@ export const jsHoistIntl = defineRule<Rule>({
       let inFunctionBody = false;
       while (cursor) {
         if (
-          cursor.type === "FunctionDeclaration" ||
-          cursor.type === "FunctionExpression" ||
-          cursor.type === "ArrowFunctionExpression"
+          isNodeOfType(cursor, "FunctionDeclaration") ||
+          isNodeOfType(cursor, "FunctionExpression") ||
+          isNodeOfType(cursor, "ArrowFunctionExpression")
         ) {
           inFunctionBody = true;
           break;

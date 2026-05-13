@@ -6,16 +6,17 @@ import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const preferUseReducer = defineRule<Rule>({
   recommendation:
     "Group related state: `const [state, dispatch] = useReducer(reducer, { field1, field2, ... })`",
   create: (context: RuleContext) => {
     const reportExcessiveUseState = (body: EsTreeNode, componentName: string): void => {
-      if (body.type !== "BlockStatement") return;
+      if (!isNodeOfType(body, "BlockStatement")) return;
       let useStateCount = 0;
       for (const statement of body.body ?? []) {
-        if (statement.type !== "VariableDeclaration") continue;
+        if (!isNodeOfType(statement, "VariableDeclaration")) continue;
         for (const declarator of statement.declarations ?? []) {
           if (declarator.init && isHookCall(declarator.init, "useState")) useStateCount++;
         }

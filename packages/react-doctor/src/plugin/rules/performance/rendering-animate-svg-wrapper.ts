@@ -3,17 +3,18 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const renderingAnimateSvgWrapper = defineRule<Rule>({
   recommendation: "Wrap the SVG: `<motion.div animate={...}><svg>...</svg></motion.div>`",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNode) {
-      if (node.name?.type !== "JSXIdentifier" || node.name.name !== "svg") return;
+      if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "svg") return;
 
       const hasAnimationProp = node.attributes?.some(
         (attribute: EsTreeNode) =>
-          attribute.type === "JSXAttribute" &&
-          attribute.name?.type === "JSXIdentifier" &&
+          isNodeOfType(attribute, "JSXAttribute") &&
+          isNodeOfType(attribute.name, "JSXIdentifier") &&
           MOTION_ANIMATE_PROPS.has(attribute.name.name),
       );
 

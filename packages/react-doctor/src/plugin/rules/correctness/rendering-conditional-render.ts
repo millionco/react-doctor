@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const NUMERIC_NAME_HINTS = ["count", "length", "total", "size", "num"];
 
@@ -27,18 +28,19 @@ export const renderingConditionalRender = defineRule<Rule>({
     LogicalExpression(node: EsTreeNode) {
       if (node.operator !== "&&") return;
 
-      const isRightJsx = node.right?.type === "JSXElement" || node.right?.type === "JSXFragment";
+      const isRightJsx =
+        isNodeOfType(node.right, "JSXElement") || isNodeOfType(node.right, "JSXFragment");
       if (!isRightJsx) return;
 
       const left = node.left;
       if (!left) return;
 
       const isLengthMemberAccess =
-        left.type === "MemberExpression" &&
-        left.property?.type === "Identifier" &&
+        isNodeOfType(left, "MemberExpression") &&
+        isNodeOfType(left.property, "Identifier") &&
         left.property.name === "length";
 
-      const isNumericIdentifier = left.type === "Identifier" && isNumericName(left.name);
+      const isNumericIdentifier = isNodeOfType(left, "Identifier") && isNumericName(left.name);
 
       if (isLengthMemberAccess || isNumericIdentifier) {
         context.report({

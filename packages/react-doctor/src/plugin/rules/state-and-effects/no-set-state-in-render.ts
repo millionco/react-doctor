@@ -5,6 +5,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // HACK: an UNCONDITIONAL setter call at a component's render path
 // triggers an infinite re-render loop ("Maximum update depth exceeded").
@@ -24,11 +25,11 @@ const isUnconditionalSetterCallStatement = (
   statement: EsTreeNode,
   setterNames: ReadonlySet<string>,
 ): EsTreeNode | null => {
-  if (statement.type !== "ExpressionStatement") return null;
+  if (!isNodeOfType(statement, "ExpressionStatement")) return null;
   const expression = statement.expression;
-  if (expression?.type !== "CallExpression") return null;
+  if (!isNodeOfType(expression, "CallExpression")) return null;
   const callee = expression.callee;
-  if (callee?.type !== "Identifier") return null;
+  if (!isNodeOfType(callee, "Identifier")) return null;
   if (!setterNames.has(callee.name)) return null;
   return expression;
 };
@@ -38,7 +39,7 @@ export const noSetStateInRender = defineRule<Rule>({
     "Move the setter call into a `useEffect`, an event handler, or replace the state with a value computed during render. Calling a setter at render time triggers another render, which calls the setter again — an infinite loop",
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
-      if (!componentBody || componentBody.type !== "BlockStatement") return;
+      if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
       const setterNames = new Set(
         collectUseStateBindings(componentBody).map((binding) => binding.setterName),
       );

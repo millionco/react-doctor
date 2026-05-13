@@ -3,6 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // HACK: methods that ALWAYS return a string when called on a string
 // receiver. Used to recognize `.toLowerCase().includes(x)` chains as
@@ -131,34 +132,34 @@ const STRING_TYPED_IDENTIFIER_NAMES: ReadonlySet<string> = new Set([
 // is obviously a string, so the Set rewrite suggestion doesn't apply.
 const isLikelyStringReceiver = (receiver: EsTreeNode | null | undefined): boolean => {
   if (!receiver) return false;
-  if (receiver.type === "Literal" && typeof receiver.value === "string") return true;
-  if (receiver.type === "TemplateLiteral") return true;
+  if (isNodeOfType(receiver, "Literal") && typeof receiver.value === "string") return true;
+  if (isNodeOfType(receiver, "TemplateLiteral")) return true;
   if (
-    receiver.type === "CallExpression" &&
-    receiver.callee?.type === "Identifier" &&
+    isNodeOfType(receiver, "CallExpression") &&
+    isNodeOfType(receiver.callee, "Identifier") &&
     receiver.callee.name === "String"
   ) {
     return true;
   }
   if (
-    receiver.type === "CallExpression" &&
-    receiver.callee?.type === "MemberExpression" &&
-    receiver.callee.property?.type === "Identifier" &&
+    isNodeOfType(receiver, "CallExpression") &&
+    isNodeOfType(receiver.callee, "MemberExpression") &&
+    isNodeOfType(receiver.callee.property, "Identifier") &&
     STRING_RETURNING_METHODS.has(receiver.callee.property.name)
   ) {
     return true;
   }
-  if (receiver.type === "MemberExpression" && receiver.property?.type === "Identifier") {
+  if (isNodeOfType(receiver, "MemberExpression") && isNodeOfType(receiver.property, "Identifier")) {
     if (STRING_TYPED_PROPERTY_NAMES.has(receiver.property.name)) return true;
   }
   if (
-    receiver.type === "ChainExpression" &&
+    isNodeOfType(receiver, "ChainExpression") &&
     receiver.expression &&
     isLikelyStringReceiver(receiver.expression)
   ) {
     return true;
   }
-  if (receiver.type === "Identifier" && STRING_TYPED_IDENTIFIER_NAMES.has(receiver.name)) {
+  if (isNodeOfType(receiver, "Identifier") && STRING_TYPED_IDENTIFIER_NAMES.has(receiver.name)) {
     return true;
   }
   return false;
@@ -170,7 +171,10 @@ export const jsSetMapLookups = defineRule<Rule>({
   create: (context: RuleContext) =>
     createLoopAwareVisitors({
       CallExpression(node: EsTreeNode) {
-        if (node.callee?.type !== "MemberExpression" || node.callee.property?.type !== "Identifier")
+        if (
+          !isNodeOfType(node.callee, "MemberExpression") ||
+          !isNodeOfType(node.callee.property, "Identifier")
+        )
           return;
         const methodName = node.callee.property.name;
         if (methodName !== "includes" && methodName !== "indexOf") return;

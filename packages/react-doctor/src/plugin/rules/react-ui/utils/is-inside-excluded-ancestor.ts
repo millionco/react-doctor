@@ -2,11 +2,12 @@ import { ELLIPSIS_EXCLUDED_TAG_NAMES } from "../../../constants.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { findJsxAttribute } from "../../../utils/find-jsx-attribute.js";
 import { getOpeningElementTagName } from "./get-opening-element-tag-name.js";
+import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 
 export const isInsideExcludedAncestor = (jsxTextNode: EsTreeNode): boolean => {
   let cursor = jsxTextNode.parent;
   while (cursor) {
-    if (cursor.type === "JSXElement") {
+    if (isNodeOfType(cursor, "JSXElement")) {
       const tagName = getOpeningElementTagName(cursor.openingElement);
       if (tagName && ELLIPSIS_EXCLUDED_TAG_NAMES.has(tagName.toLowerCase())) return true;
       const translateAttribute = findJsxAttribute(
@@ -14,7 +15,7 @@ export const isInsideExcludedAncestor = (jsxTextNode: EsTreeNode): boolean => {
         "translate",
       );
       if (
-        translateAttribute?.value?.type === "Literal" &&
+        isNodeOfType(translateAttribute?.value, "Literal") &&
         translateAttribute.value.value === "no"
       ) {
         return true;

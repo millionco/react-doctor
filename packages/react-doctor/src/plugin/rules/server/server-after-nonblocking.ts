@@ -4,6 +4,7 @@ import { hasUseServerDirective } from "../../utils/has-use-server-directive.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // HACK: a (object, method) pair counts as "deferrable side effect" when
 // it either (a) is a synchronous `console.log/info/warn` (still cheap,
@@ -68,11 +69,12 @@ export const serverAfterNonblocking = defineRule<Rule>({
       "ArrowFunctionExpression:exit": leaveIfServerFunction,
       CallExpression(node: EsTreeNode) {
         if (!fileHasUseServerDirective && serverFunctionDepth === 0) return;
-        if (node.callee?.type !== "MemberExpression") return;
-        if (node.callee.property?.type !== "Identifier") return;
+        if (!isNodeOfType(node.callee, "MemberExpression")) return;
+        if (!isNodeOfType(node.callee.property, "Identifier")) return;
 
-        const objectName =
-          node.callee.object?.type === "Identifier" ? node.callee.object.name : null;
+        const objectName = isNodeOfType(node.callee.object, "Identifier")
+          ? node.callee.object.name
+          : null;
         if (!objectName) return;
 
         const methodName = node.callee.property.name;

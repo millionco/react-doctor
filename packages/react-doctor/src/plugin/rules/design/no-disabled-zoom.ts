@@ -3,23 +3,24 @@ import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const noDisabledZoom = defineRule<Rule>({
   recommendation:
     "Remove `user-scalable=no` and `maximum-scale` from the viewport meta tag. If your layout breaks at 200% zoom, fix the layout — don't punish users with disabilities",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNode) {
-      if (node.name?.type !== "JSXIdentifier" || node.name.name !== "meta") return;
+      if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "meta") return;
 
       const nameAttr = findJsxAttribute(node.attributes ?? [], "name");
       if (!nameAttr?.value) return;
-      const nameValue = nameAttr.value.type === "Literal" ? nameAttr.value.value : null;
+      const nameValue = isNodeOfType(nameAttr.value, "Literal") ? nameAttr.value.value : null;
       if (nameValue !== "viewport") return;
 
       const contentAttr = findJsxAttribute(node.attributes ?? [], "content");
       if (!contentAttr?.value) return;
       const contentValue =
-        contentAttr.value.type === "Literal" && typeof contentAttr.value.value === "string"
+        isNodeOfType(contentAttr.value, "Literal") && typeof contentAttr.value.value === "string"
           ? contentAttr.value.value
           : null;
       if (!contentValue) return;

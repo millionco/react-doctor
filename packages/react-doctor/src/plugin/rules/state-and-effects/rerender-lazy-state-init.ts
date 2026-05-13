@@ -4,6 +4,7 @@ import { isHookCall } from "../../utils/is-hook-call.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const rerenderLazyStateInit = defineRule<Rule>({
   recommendation:
@@ -12,12 +13,14 @@ export const rerenderLazyStateInit = defineRule<Rule>({
     CallExpression(node: EsTreeNode) {
       if (!isHookCall(node, "useState") || !node.arguments?.length) return;
       const initializer = node.arguments[0];
-      if (initializer.type !== "CallExpression") return;
+      if (!isNodeOfType(initializer, "CallExpression")) return;
 
-      const calleeName =
-        initializer.callee?.type === "Identifier"
-          ? initializer.callee.name
-          : (initializer.callee?.property?.name ?? "fn");
+      const callee = initializer.callee;
+      const calleeName = isNodeOfType(callee, "Identifier")
+        ? callee.name
+        : isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")
+          ? callee.property.name
+          : "fn";
 
       if (TRIVIAL_INITIALIZER_NAMES.has(calleeName)) return;
 

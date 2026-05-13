@@ -4,6 +4,7 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // HACK: when comparing two arrays element-by-element via .every / .some /
 // .reduce against another array, a length mismatch is the cheapest possible
@@ -14,12 +15,15 @@ export const jsLengthCheckFirst = defineRule<Rule>({
     "Short-circuit with `a.length === b.length && a.every((x, i) => x === b[i])` — unequal-length arrays exit immediately",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
-      if (node.callee?.type !== "MemberExpression") return;
-      if (node.callee.property?.type !== "Identifier") return;
+      if (!isNodeOfType(node.callee, "MemberExpression")) return;
+      if (!isNodeOfType(node.callee.property, "Identifier")) return;
       if (node.callee.property.name !== "every") return;
 
       const callback = node.arguments?.[0];
-      if (callback?.type !== "ArrowFunctionExpression" && callback?.type !== "FunctionExpression") {
+      if (
+        !isNodeOfType(callback, "ArrowFunctionExpression") &&
+        !isNodeOfType(callback, "FunctionExpression")
+      ) {
         return;
       }
       const params = callback.params ?? [];
@@ -30,10 +34,10 @@ export const jsLengthCheckFirst = defineRule<Rule>({
       walkAst(callback.body, (child: EsTreeNode) => {
         if (referencesOtherArrayByIndex) return;
         if (
-          child.type === "MemberExpression" &&
+          isNodeOfType(child, "MemberExpression") &&
           child.computed &&
-          child.property?.type === "Identifier" &&
-          params[1]?.type === "Identifier" &&
+          isNodeOfType(child.property, "Identifier") &&
+          isNodeOfType(params[1], "Identifier") &&
           child.property.name === params[1].name
         ) {
           referencesOtherArrayByIndex = true;
@@ -44,13 +48,17 @@ export const jsLengthCheckFirst = defineRule<Rule>({
 
       // Walk up to ensure we're not already inside a length-check guard.
       let guard: EsTreeNode | null = node.parent ?? null;
-      while (guard && guard.type !== "LogicalExpression" && guard.type !== "IfStatement") {
+      while (
+        guard &&
+        !isNodeOfType(guard, "LogicalExpression") &&
+        !isNodeOfType(guard, "IfStatement")
+      ) {
         guard = guard.parent ?? null;
       }
-      if (guard?.type === "LogicalExpression" && guard.operator === "&&") {
+      if (isNodeOfType(guard, "LogicalExpression") && guard.operator === "&&") {
         const left = guard.left;
         if (
-          left?.type === "BinaryExpression" &&
+          isNodeOfType(left, "BinaryExpression") &&
           left.operator === "===" &&
           (isMemberProperty(left.left, "length") || isMemberProperty(left.right, "length"))
         ) {

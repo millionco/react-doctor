@@ -6,6 +6,7 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const containsAuthCheck = (statements: EsTreeNode[]): boolean => {
   let foundAuthCall = false;
@@ -13,14 +14,17 @@ const containsAuthCheck = (statements: EsTreeNode[]): boolean => {
     walkAst(statement, (child: EsTreeNode) => {
       if (foundAuthCall) return;
       let callNode: EsTreeNode | null = null;
-      if (child.type === "CallExpression") {
+      if (isNodeOfType(child, "CallExpression")) {
         callNode = child;
-      } else if (child.type === "AwaitExpression" && child.argument?.type === "CallExpression") {
+      } else if (
+        isNodeOfType(child, "AwaitExpression") &&
+        isNodeOfType(child.argument, "CallExpression")
+      ) {
         callNode = child.argument;
       }
 
       if (
-        callNode?.callee?.type === "Identifier" &&
+        isNodeOfType(callNode?.callee, "Identifier") &&
         AUTH_FUNCTION_NAMES.has(callNode.callee.name)
       ) {
         foundAuthCall = true;
@@ -42,7 +46,7 @@ export const serverAuthActions = defineRule<Rule>({
       },
       ExportNamedDeclaration(node: EsTreeNode) {
         const declaration = node.declaration;
-        if (declaration?.type !== "FunctionDeclaration" || !declaration?.async) return;
+        if (!isNodeOfType(declaration, "FunctionDeclaration") || !declaration?.async) return;
 
         const isServerAction = fileHasUseServerDirective || hasUseServerDirective(declaration);
         if (!isServerAction) return;

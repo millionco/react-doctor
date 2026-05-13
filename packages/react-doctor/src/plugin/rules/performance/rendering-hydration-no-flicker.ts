@@ -6,6 +6,7 @@ import { isSetterCall } from "../../utils/is-setter-call.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const renderingHydrationNoFlicker = defineRule<Rule>({
   recommendation:
@@ -15,17 +16,21 @@ export const renderingHydrationNoFlicker = defineRule<Rule>({
       if (!isHookCall(node, EFFECT_HOOK_NAMES) || (node.arguments?.length ?? 0) < 2) return;
 
       const depsNode = node.arguments[1];
-      if (depsNode.type !== "ArrayExpression" || depsNode.elements?.length !== 0) return;
+      if (!isNodeOfType(depsNode, "ArrayExpression") || depsNode.elements?.length !== 0) return;
 
       const callback = getEffectCallback(node);
       if (!callback) return;
 
-      const bodyStatements =
-        callback.body?.type === "BlockStatement" ? callback.body.body : [callback.body];
+      const bodyStatements = isNodeOfType(callback.body, "BlockStatement")
+        ? callback.body.body
+        : [callback.body];
       if (!bodyStatements || bodyStatements.length !== 1) return;
 
       const soleStatement = bodyStatements[0];
-      if (soleStatement?.type === "ExpressionStatement" && isSetterCall(soleStatement.expression)) {
+      if (
+        isNodeOfType(soleStatement, "ExpressionStatement") &&
+        isSetterCall(soleStatement.expression)
+      ) {
         context.report({
           node,
           message:

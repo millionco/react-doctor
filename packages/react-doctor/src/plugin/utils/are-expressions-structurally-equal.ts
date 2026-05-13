@@ -1,4 +1,5 @@
 import type { EsTreeNode } from "./es-tree-node.js";
+import { isNodeOfType } from "./is-node-of-type.js";
 
 // HACK: structural equality for "value-shaped" expressions used by
 // detectors that need to assert two reads of the same external value
@@ -15,16 +16,16 @@ export const areExpressionsStructurallyEqual = (
 ): boolean => {
   if (!a || !b) return a === b;
   if (a.type !== b.type) return false;
-  if (a.type === "Identifier") return a.name === b.name;
-  if (a.type === "Literal") return a.value === b.value;
-  if (a.type === "MemberExpression") {
+  if (isNodeOfType(a, "Identifier")) return a.name === b.name;
+  if (isNodeOfType(a, "Literal")) return a.value === b.value;
+  if (isNodeOfType(a, "MemberExpression")) {
     if (a.computed !== b.computed) return false;
     return (
       areExpressionsStructurallyEqual(a.object, b.object) &&
       areExpressionsStructurallyEqual(a.property, b.property)
     );
   }
-  if (a.type === "CallExpression") {
+  if (isNodeOfType(a, "CallExpression")) {
     if (!areExpressionsStructurallyEqual(a.callee, b.callee)) return false;
     const argumentsA = a.arguments ?? [];
     const argumentsB = b.arguments ?? [];

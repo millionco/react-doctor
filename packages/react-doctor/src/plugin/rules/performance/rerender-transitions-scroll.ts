@@ -3,6 +3,7 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const HIGH_FREQUENCY_DOM_EVENTS = new Set([
   "scroll",
@@ -14,23 +15,26 @@ const HIGH_FREQUENCY_DOM_EVENTS = new Set([
 ]);
 
 const isAddEventListenerCall = (node: EsTreeNode): boolean => {
-  if (node.type !== "CallExpression") return false;
-  if (node.callee?.type !== "MemberExpression") return false;
-  if (node.callee.property?.type !== "Identifier") return false;
+  if (!isNodeOfType(node, "CallExpression")) return false;
+  if (!isNodeOfType(node.callee, "MemberExpression")) return false;
+  if (!isNodeOfType(node.callee.property, "Identifier")) return false;
   if (node.callee.property.name !== "addEventListener") return false;
   return true;
 };
 
 const handlerCallsSetState = (handler: EsTreeNode): EsTreeNode | null => {
-  if (handler.type !== "ArrowFunctionExpression" && handler.type !== "FunctionExpression") {
+  if (
+    !isNodeOfType(handler, "ArrowFunctionExpression") &&
+    !isNodeOfType(handler, "FunctionExpression")
+  ) {
     return null;
   }
   let setStateCall: EsTreeNode | null = null;
   walkAst(handler.body, (child: EsTreeNode) => {
     if (setStateCall) return;
     if (
-      child.type === "CallExpression" &&
-      child.callee?.type === "Identifier" &&
+      isNodeOfType(child, "CallExpression") &&
+      isNodeOfType(child.callee, "Identifier") &&
       /^set[A-Z]/.test(child.callee.name)
     ) {
       setStateCall = child;
@@ -54,7 +58,7 @@ export const rerenderTransitionsScroll = defineRule<Rule>({
     CallExpression(node: EsTreeNode) {
       if (!isAddEventListenerCall(node)) return;
       const eventArg = node.arguments?.[0];
-      if (eventArg?.type !== "Literal") return;
+      if (!isNodeOfType(eventArg, "Literal")) return;
       const eventName = eventArg.value;
       if (typeof eventName !== "string" || !HIGH_FREQUENCY_DOM_EVENTS.has(eventName)) return;
 
@@ -67,8 +71,8 @@ export const rerenderTransitionsScroll = defineRule<Rule>({
       let cursor: EsTreeNode | null = setStateCall.parent ?? null;
       while (cursor && cursor !== handler) {
         if (
-          cursor.type === "CallExpression" &&
-          cursor.callee?.type === "Identifier" &&
+          isNodeOfType(cursor, "CallExpression") &&
+          isNodeOfType(cursor.callee, "Identifier") &&
           (cursor.callee.name === "startTransition" ||
             cursor.callee.name === "requestAnimationFrame" ||
             cursor.callee.name === "requestIdleCallback")

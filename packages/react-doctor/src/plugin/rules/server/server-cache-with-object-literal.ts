@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // HACK: `cache(fn)` from React keys deduplication on REFERENCE equality
 // of the function arguments. Calling the cached function with object
@@ -17,25 +18,25 @@ export const serverCacheWithObjectLiteral = defineRule<Rule>({
 
     return {
       VariableDeclarator(node: EsTreeNode) {
-        if (node.id?.type !== "Identifier") return;
+        if (!isNodeOfType(node.id, "Identifier")) return;
         const init = node.init;
-        if (init?.type !== "CallExpression") return;
+        if (!isNodeOfType(init, "CallExpression")) return;
         const callee = init.callee;
         const isCacheCall =
-          (callee?.type === "Identifier" && callee.name === "cache") ||
-          (callee?.type === "MemberExpression" &&
-            callee.object?.type === "Identifier" &&
+          (isNodeOfType(callee, "Identifier") && callee.name === "cache") ||
+          (isNodeOfType(callee, "MemberExpression") &&
+            isNodeOfType(callee.object, "Identifier") &&
             callee.object.name === "React" &&
-            callee.property?.type === "Identifier" &&
+            isNodeOfType(callee.property, "Identifier") &&
             callee.property.name === "cache");
         if (!isCacheCall) return;
         cachedFunctionNames.add(node.id.name);
       },
       CallExpression(node: EsTreeNode) {
-        if (node.callee?.type !== "Identifier") return;
+        if (!isNodeOfType(node.callee, "Identifier")) return;
         if (!cachedFunctionNames.has(node.callee.name)) return;
         const firstArg = node.arguments?.[0];
-        if (firstArg?.type !== "ObjectExpression") return;
+        if (!isNodeOfType(firstArg, "ObjectExpression")) return;
 
         context.report({
           node,

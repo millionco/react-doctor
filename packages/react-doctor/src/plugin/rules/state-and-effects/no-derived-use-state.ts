@@ -5,6 +5,7 @@ import { isHookCall } from "../../utils/is-hook-call.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const noDerivedUseState = defineRule<Rule>({
   recommendation:
@@ -18,7 +19,10 @@ export const noDerivedUseState = defineRule<Rule>({
         if (!isHookCall(node, "useState") || !node.arguments?.length) return;
         const initializer = node.arguments[0];
 
-        if (initializer.type === "Identifier" && propStackTracker.isPropName(initializer.name)) {
+        if (
+          isNodeOfType(initializer, "Identifier") &&
+          propStackTracker.isPropName(initializer.name)
+        ) {
           context.report({
             node,
             message: `useState initialized from prop "${initializer.name}" — if this value should stay in sync with the prop, derive it during render instead`,
@@ -26,7 +30,7 @@ export const noDerivedUseState = defineRule<Rule>({
           return;
         }
 
-        if (initializer.type === "MemberExpression" && !initializer.computed) {
+        if (isNodeOfType(initializer, "MemberExpression") && !initializer.computed) {
           const rootIdentifierName = getRootIdentifierName(initializer);
           if (rootIdentifierName && propStackTracker.isPropName(rootIdentifierName)) {
             context.report({

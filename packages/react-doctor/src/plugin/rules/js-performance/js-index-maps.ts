@@ -3,6 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const jsIndexMaps = defineRule<Rule>({
   recommendation:
@@ -10,7 +11,10 @@ export const jsIndexMaps = defineRule<Rule>({
   create: (context: RuleContext) =>
     createLoopAwareVisitors({
       CallExpression(node: EsTreeNode) {
-        if (node.callee?.type !== "MemberExpression" || node.callee.property?.type !== "Identifier")
+        if (
+          !isNodeOfType(node.callee, "MemberExpression") ||
+          !isNodeOfType(node.callee.property, "Identifier")
+        )
           return;
         const methodName = node.callee.property.name;
         if (methodName === "find" || methodName === "findIndex") {

@@ -3,6 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const tanstackStartNoAnchorElement = defineRule<Rule>({
   recommendation:
@@ -13,24 +14,24 @@ export const tanstackStartNoAnchorElement = defineRule<Rule>({
       const isRouteFile = TANSTACK_ROUTE_FILE_PATTERN.test(filename);
       if (!isRouteFile) return;
 
-      if (node.name?.type !== "JSXIdentifier" || node.name.name !== "a") return;
+      if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "a") return;
 
       const attributes = node.attributes ?? [];
       const hrefAttribute = attributes.find(
         (attribute: EsTreeNode) =>
-          attribute.type === "JSXAttribute" &&
-          attribute.name?.type === "JSXIdentifier" &&
+          isNodeOfType(attribute, "JSXAttribute") &&
+          isNodeOfType(attribute.name, "JSXIdentifier") &&
           attribute.name.name === "href",
       );
 
       if (!hrefAttribute?.value) return;
 
       let hrefValue: string | null = null;
-      if (hrefAttribute.value.type === "Literal") {
+      if (isNodeOfType(hrefAttribute.value, "Literal")) {
         hrefValue = hrefAttribute.value.value;
       } else if (
-        hrefAttribute.value.type === "JSXExpressionContainer" &&
-        hrefAttribute.value.expression?.type === "Literal"
+        isNodeOfType(hrefAttribute.value, "JSXExpressionContainer") &&
+        isNodeOfType(hrefAttribute.value.expression, "Literal")
       ) {
         hrefValue = hrefAttribute.value.expression.value;
       }

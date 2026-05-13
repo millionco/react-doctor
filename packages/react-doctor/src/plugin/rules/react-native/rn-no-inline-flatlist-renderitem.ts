@@ -4,25 +4,26 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const rnNoInlineFlatlistRenderitem = defineRule<Rule>({
   recommendation:
     "Extract renderItem to a named function or wrap in useCallback to avoid re-creating on every render",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNode) {
-      if (node.name?.type !== "JSXIdentifier" || node.name.name !== "renderItem") return;
-      if (!node.value || node.value.type !== "JSXExpressionContainer") return;
+      if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "renderItem") return;
+      if (!node.value || !isNodeOfType(node.value, "JSXExpressionContainer")) return;
 
       const openingElement = node.parent;
-      if (!openingElement || openingElement.type !== "JSXOpeningElement") return;
+      if (!openingElement || !isNodeOfType(openingElement, "JSXOpeningElement")) return;
 
       const listComponentName = resolveJsxElementName(openingElement);
       if (!listComponentName || !REACT_NATIVE_LIST_COMPONENTS.has(listComponentName)) return;
 
       const expression = node.value.expression;
       if (
-        expression?.type !== "ArrowFunctionExpression" &&
-        expression?.type !== "FunctionExpression"
+        !isNodeOfType(expression, "ArrowFunctionExpression") &&
+        !isNodeOfType(expression, "FunctionExpression")
       )
         return;
 

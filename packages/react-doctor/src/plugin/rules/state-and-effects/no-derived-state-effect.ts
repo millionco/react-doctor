@@ -14,6 +14,7 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // HACK: AST-aware walker for "what reactive values does this expression
 // actually READ?". The plain `walkAst` adds every Identifier it sees,
@@ -29,8 +30,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 // derivation" branch could fire.
 const collectValueIdentifierNames = (node: EsTreeNode | null | undefined, into: string[]): void => {
   if (!node || typeof node !== "object") return;
-  if (node.type === "CallExpression") {
-    if (node.callee?.type === "MemberExpression") {
+  if (isNodeOfType(node, "CallExpression")) {
+    if (isNodeOfType(node.callee, "MemberExpression")) {
       // For `state.method(arg)`, `state` is a reactive read; `method`
       // is not. Skip the callee chain entirely when its root is a
       // built-in global (`Math.floor`, `JSON.parse`, ...) — those
@@ -45,7 +46,7 @@ const collectValueIdentifierNames = (node: EsTreeNode | null | undefined, into: 
     }
     return;
   }
-  if (node.type === "MemberExpression") {
+  if (isNodeOfType(node, "MemberExpression")) {
     const rootName = getRootIdentifierName(node);
     if (!rootName || !BUILTIN_GLOBAL_NAMESPACE_NAMES.has(rootName)) {
       collectValueIdentifierNames(node.object, into);
@@ -53,7 +54,7 @@ const collectValueIdentifierNames = (node: EsTreeNode | null | undefined, into: 
     if (node.computed) collectValueIdentifierNames(node.property, into);
     return;
   }
-  if (node.type === "Identifier") {
+  if (isNodeOfType(node, "Identifier")) {
     into.push(node.name);
     return;
   }
@@ -83,20 +84,19 @@ export const noDerivedStateEffect = defineRule<Rule>({
       if (!callback) return;
 
       const depsNode = node.arguments[1];
-      if (depsNode.type !== "ArrayExpression" || !depsNode.elements?.length) return;
+      if (!isNodeOfType(depsNode, "ArrayExpression") || !depsNode.elements?.length) return;
 
-      const dependencyNames = new Set(
-        depsNode.elements
-          .filter((element: EsTreeNode) => element?.type === "Identifier")
-          .map((element: EsTreeNode) => element.name),
-      );
+      const dependencyNames = new Set<string>();
+      for (const element of depsNode.elements ?? []) {
+        if (isNodeOfType(element, "Identifier")) dependencyNames.add(element.name);
+      }
       if (dependencyNames.size === 0) return;
 
       const statements = getCallbackStatements(callback);
       if (statements.length === 0) return;
 
       const containsOnlySetStateCalls = statements.every((statement: EsTreeNode) => {
-        if (statement.type !== "ExpressionStatement") return false;
+        if (!isNodeOfType(statement, "ExpressionStatement")) return false;
         return isSetterCall(statement.expression);
       });
       if (!containsOnlySetStateCalls) return;
@@ -119,8 +119,8 @@ export const noDerivedStateEffect = defineRule<Rule>({
         collectValueIdentifierNames(setStateArguments[0], valueIdentifierNames);
 
         walkAst(setStateArguments[0], (child: EsTreeNode) => {
-          if (child.type !== "CallExpression") return;
-          if (child.callee?.type === "MemberExpression") {
+          if (!isNodeOfType(child, "CallExpression")) return;
+          if (isNodeOfType(child.callee, "MemberExpression")) {
             // `Math.floor(x)` / `Date.now()` are trivial regardless
             // of the property — gate on the chain root, not the
             // method name (which would never match TRIVIAL_*).
@@ -129,7 +129,7 @@ export const noDerivedStateEffect = defineRule<Rule>({
             hasExpensiveDerivation = true;
             return;
           }
-          if (child.callee?.type === "Identifier") {
+          if (isNodeOfType(child.callee, "Identifier")) {
             const calleeName = child.callee.name;
             if (
               !TRIVIAL_DERIVATION_CALLEE_NAMES.has(calleeName) &&

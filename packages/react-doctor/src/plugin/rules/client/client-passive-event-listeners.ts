@@ -4,6 +4,7 @@ import { isMemberProperty } from "../../utils/is-member-property.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const clientPassiveEventListeners = defineRule<Rule>({
   recommendation:
@@ -14,7 +15,12 @@ export const clientPassiveEventListeners = defineRule<Rule>({
       if ((node.arguments?.length ?? 0) < 2) return;
 
       const eventNameNode = node.arguments[0];
-      if (eventNameNode.type !== "Literal" || !PASSIVE_EVENT_NAMES.has(eventNameNode.value)) return;
+      if (
+        !isNodeOfType(eventNameNode, "Literal") ||
+        typeof eventNameNode.value !== "string" ||
+        !PASSIVE_EVENT_NAMES.has(eventNameNode.value)
+      )
+        return;
 
       const eventName = eventNameNode.value;
       const optionsArgument = node.arguments[2];
@@ -27,14 +33,14 @@ export const clientPassiveEventListeners = defineRule<Rule>({
         return;
       }
 
-      if (optionsArgument.type !== "ObjectExpression") return;
+      if (!isNodeOfType(optionsArgument, "ObjectExpression")) return;
 
       const hasPassiveTrue = optionsArgument.properties?.some(
         (property: EsTreeNode) =>
-          property.type === "Property" &&
-          property.key?.type === "Identifier" &&
+          isNodeOfType(property, "Property") &&
+          isNodeOfType(property.key, "Identifier") &&
           property.key.name === "passive" &&
-          property.value?.type === "Literal" &&
+          isNodeOfType(property.value, "Literal") &&
           property.value.value === true,
       );
 

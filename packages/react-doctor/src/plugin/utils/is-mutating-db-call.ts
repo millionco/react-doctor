@@ -1,8 +1,10 @@
 import { MUTATION_METHOD_NAMES } from "../constants.js";
 import type { EsTreeNode } from "./es-tree-node.js";
+import { isNodeOfType } from "./is-node-of-type.js";
 
 export const isMutatingDbCall = (node: EsTreeNode): boolean => {
-  if (node.type !== "CallExpression" || node.callee?.type !== "MemberExpression") return false;
+  if (!isNodeOfType(node, "CallExpression") || !isNodeOfType(node.callee, "MemberExpression"))
+    return false;
   const { property } = node.callee;
-  return property?.type === "Identifier" && MUTATION_METHOD_NAMES.has(property.name);
+  return isNodeOfType(property, "Identifier") && MUTATION_METHOD_NAMES.has(property.name);
 };

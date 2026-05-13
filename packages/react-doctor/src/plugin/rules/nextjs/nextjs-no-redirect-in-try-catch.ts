@@ -3,6 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const nextjsNoRedirectInTryCatch = defineRule<Rule>({
   recommendation:
@@ -19,7 +20,7 @@ export const nextjsNoRedirectInTryCatch = defineRule<Rule>({
       },
       CallExpression(node: EsTreeNode) {
         if (tryCatchDepth === 0) return;
-        if (node.callee?.type !== "Identifier") return;
+        if (!isNodeOfType(node.callee, "Identifier")) return;
         if (!NEXTJS_NAVIGATION_FUNCTIONS.has(node.callee.name)) return;
 
         context.report({

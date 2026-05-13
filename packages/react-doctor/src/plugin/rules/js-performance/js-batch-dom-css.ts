@@ -2,17 +2,18 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const jsBatchDomCss = defineRule<Rule>({
   recommendation:
     "Batch DOM/CSS reads and writes — interleaving them inside a loop causes layout thrashing. Read first, then write",
   create: (context: RuleContext) => {
     const isStyleAssignment = (node: EsTreeNode): boolean =>
-      node.type === "ExpressionStatement" &&
-      node.expression?.type === "AssignmentExpression" &&
-      node.expression.left?.type === "MemberExpression" &&
-      node.expression.left.object?.type === "MemberExpression" &&
-      node.expression.left.object.property?.type === "Identifier" &&
+      isNodeOfType(node, "ExpressionStatement") &&
+      isNodeOfType(node.expression, "AssignmentExpression") &&
+      isNodeOfType(node.expression.left, "MemberExpression") &&
+      isNodeOfType(node.expression.left.object, "MemberExpression") &&
+      isNodeOfType(node.expression.left.object.property, "Identifier") &&
       node.expression.left.object.property.name === "style";
 
     return {

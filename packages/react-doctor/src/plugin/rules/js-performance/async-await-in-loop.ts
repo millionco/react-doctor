@@ -3,6 +3,7 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const findFirstAwaitOutsideNestedFunctions = (block: EsTreeNode): EsTreeNode | null => {
   let firstAwait: EsTreeNode | null = null;
@@ -10,9 +11,9 @@ const findFirstAwaitOutsideNestedFunctions = (block: EsTreeNode): EsTreeNode | n
     if (firstAwait) return false;
     if (
       child !== block &&
-      (child.type === "FunctionDeclaration" ||
-        child.type === "FunctionExpression" ||
-        child.type === "ArrowFunctionExpression")
+      (isNodeOfType(child, "FunctionDeclaration") ||
+        isNodeOfType(child, "FunctionExpression") ||
+        isNodeOfType(child, "ArrowFunctionExpression"))
     ) {
       // Don't descend into nested functions — their `await`s belong to
       // their own async parent, not this loop. (`child !== block` so we
@@ -20,7 +21,7 @@ const findFirstAwaitOutsideNestedFunctions = (block: EsTreeNode): EsTreeNode | n
       // the callback's body.)
       return false;
     }
-    if (child.type === "AwaitExpression") {
+    if (isNodeOfType(child, "AwaitExpression")) {
       firstAwait = child;
     }
   });
@@ -44,16 +45,16 @@ const isAwaitingSleepLikeCall = (awaitNode: EsTreeNode): boolean => {
   const argument = awaitNode.argument;
   if (!argument) return false;
 
-  if (argument.type === "CallExpression") {
+  if (isNodeOfType(argument, "CallExpression")) {
     if (
-      argument.callee?.type === "Identifier" &&
+      isNodeOfType(argument.callee, "Identifier") &&
       SLEEP_LIKE_FUNCTION_NAMES.has(argument.callee.name)
     ) {
       return true;
     }
     if (
-      argument.callee?.type === "MemberExpression" &&
-      argument.callee.property?.type === "Identifier" &&
+      isNodeOfType(argument.callee, "MemberExpression") &&
+      isNodeOfType(argument.callee.property, "Identifier") &&
       SLEEP_LIKE_FUNCTION_NAMES.has(argument.callee.property.name)
     ) {
       return true;
@@ -64,36 +65,40 @@ const isAwaitingSleepLikeCall = (awaitNode: EsTreeNode): boolean => {
 };
 
 const collectPatternIdentifiers = (pattern: EsTreeNode, target: Set<string>): void => {
-  if (pattern.type === "Identifier") {
+  if (isNodeOfType(pattern, "Identifier")) {
     target.add(pattern.name);
-  } else if (pattern.type === "ObjectPattern") {
+  } else if (isNodeOfType(pattern, "ObjectPattern")) {
     for (const property of pattern.properties ?? []) {
-      if (property.type === "Property" && property.value) {
+      if (isNodeOfType(property, "Property") && property.value) {
         collectPatternIdentifiers(property.value, target);
-      } else if (property.type === "RestElement" && property.argument) {
+      } else if (isNodeOfType(property, "RestElement") && property.argument) {
         collectPatternIdentifiers(property.argument, target);
       }
     }
-  } else if (pattern.type === "ArrayPattern") {
+  } else if (isNodeOfType(pattern, "ArrayPattern")) {
     for (const element of pattern.elements ?? []) {
       if (element) collectPatternIdentifiers(element, target);
     }
-  } else if (pattern.type === "AssignmentPattern" && pattern.left) {
+  } else if (isNodeOfType(pattern, "AssignmentPattern") && pattern.left) {
     collectPatternIdentifiers(pattern.left, target);
   }
 };
 
 const isFunctionishExpression = (node: EsTreeNode): boolean =>
-  node.type === "ArrowFunctionExpression" || node.type === "FunctionExpression";
+  isNodeOfType(node, "ArrowFunctionExpression") || isNodeOfType(node, "FunctionExpression");
 
 const collectAssignedIdentifiers = (block: EsTreeNode): Set<string> => {
   const assigned = new Set<string>();
   walkAst(block, (child: EsTreeNode): boolean | void => {
-    if (isFunctionishExpression(child) || child.type === "FunctionDeclaration") return false;
-    if (child.type === "AssignmentExpression" && child.left) {
+    if (isFunctionishExpression(child) || isNodeOfType(child, "FunctionDeclaration")) return false;
+    if (isNodeOfType(child, "AssignmentExpression") && child.left) {
       collectPatternIdentifiers(child.left, assigned);
     }
-    if (child.type === "VariableDeclarator" && child.id && child.init?.type === "AwaitExpression") {
+    if (
+      isNodeOfType(child, "VariableDeclarator") &&
+      child.id &&
+      isNodeOfType(child.init, "AwaitExpression")
+    ) {
       collectPatternIdentifiers(child.id, assigned);
     }
   });
@@ -103,11 +108,14 @@ const collectAssignedIdentifiers = (block: EsTreeNode): Set<string> => {
 const collectAwaitedArgIdentifiers = (block: EsTreeNode): Set<string> => {
   const referenced = new Set<string>();
   walkAst(block, (child: EsTreeNode): boolean | void => {
-    if (isFunctionishExpression(child) || child.type === "FunctionDeclaration") return false;
-    if (child.type !== "AwaitExpression" || !child.argument) return;
+    if (isFunctionishExpression(child) || isNodeOfType(child, "FunctionDeclaration")) return false;
+    if (!isNodeOfType(child, "AwaitExpression") || !child.argument) return;
     walkAst(child.argument, (innerChild: EsTreeNode) => {
-      if (innerChild.type === "Identifier") referenced.add(innerChild.name);
-      if (innerChild.type === "MemberExpression" && innerChild.object?.type === "Identifier") {
+      if (isNodeOfType(innerChild, "Identifier")) referenced.add(innerChild.name);
+      if (
+        isNodeOfType(innerChild, "MemberExpression") &&
+        isNodeOfType(innerChild.object, "Identifier")
+      ) {
         referenced.add(innerChild.object.name);
       }
     });
@@ -132,8 +140,8 @@ const loopBodyHasOnlySleepLikeAwaits = (block: EsTreeNode): boolean => {
   let allAreSleepLike = true;
   let foundAny = false;
   walkAst(block, (child: EsTreeNode): boolean | void => {
-    if (isFunctionishExpression(child) || child.type === "FunctionDeclaration") return false;
-    if (child.type === "AwaitExpression") {
+    if (isFunctionishExpression(child) || isNodeOfType(child, "FunctionDeclaration")) return false;
+    if (isNodeOfType(child, "AwaitExpression")) {
       foundAny = true;
       if (!isAwaitingSleepLikeCall(child)) allAreSleepLike = false;
     }
@@ -165,12 +173,12 @@ const PROMISE_CONCURRENCY_METHODS = new Set(["all", "allSettled", "race", "any"]
 
 const isWrappedInPromiseConcurrency = (mapCall: EsTreeNode): boolean => {
   const parent = mapCall.parent;
-  if (parent?.type !== "CallExpression") return false;
+  if (!isNodeOfType(parent, "CallExpression")) return false;
   if (parent.arguments?.[0] !== mapCall) return false;
   const callee = parent.callee;
-  if (callee?.type !== "MemberExpression" || callee.computed) return false;
-  if (callee.object?.type !== "Identifier" || callee.object.name !== "Promise") return false;
-  if (callee.property?.type !== "Identifier") return false;
+  if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return false;
+  if (!isNodeOfType(callee.object, "Identifier") || callee.object.name !== "Promise") return false;
+  if (!isNodeOfType(callee.property, "Identifier")) return false;
   return PROMISE_CONCURRENCY_METHODS.has(callee.property.name);
 };
 
@@ -214,8 +222,8 @@ export const asyncAwaitInLoop = defineRule<Rule>({
         // arr.forEach(async item => { await fn(item); }) — sequential
         // because forEach doesn't await; even worse, the awaits are
         // dropped on the floor (forEach ignores return values).
-        if (node.callee?.type !== "MemberExpression") return;
-        if (node.callee.property?.type !== "Identifier") return;
+        if (!isNodeOfType(node.callee, "MemberExpression")) return;
+        if (!isNodeOfType(node.callee.property, "Identifier")) return;
         const methodName = node.callee.property.name;
         if (!ITERATION_METHOD_NAMES_WITH_CALLBACK.has(methodName)) return;
 

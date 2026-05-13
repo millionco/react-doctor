@@ -4,6 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getClassNameLiteral } from "./utils/get-class-name-literal.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const tokenizeClassName = (classNameValue: string): string[] =>
   classNameValue.split(/\s+/).filter(Boolean);
@@ -13,7 +14,10 @@ export const noSpaceOnFlexChildren = defineRule<Rule>({
     "Use `gap-*` on the flex/grid parent. `space-x-*` / `space-y-*` produce phantom gaps when a sibling is conditionally rendered, lose vertical spacing on wrapped lines, and don't mirror in RTL",
   create: (context: RuleContext) => ({
     JSXAttribute(jsxAttribute: EsTreeNode) {
-      if (jsxAttribute.name?.type !== "JSXIdentifier" || jsxAttribute.name.name !== "className") {
+      if (
+        !isNodeOfType(jsxAttribute.name, "JSXIdentifier") ||
+        jsxAttribute.name.name !== "className"
+      ) {
         return;
       }
       const classNameLiteral = getClassNameLiteral(jsxAttribute);

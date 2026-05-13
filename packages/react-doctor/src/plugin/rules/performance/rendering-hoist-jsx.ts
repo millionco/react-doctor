@@ -5,6 +5,7 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // HACK: detect static JSX declared inside a component body — anything like
 // `const Header = <h1>Hi</h1>` inside a render function gets recreated on
@@ -15,12 +16,12 @@ const jsxReferencesLocalScope = (jsxNode: EsTreeNode): boolean => {
   walkAst(jsxNode, (child: EsTreeNode) => {
     if (referencesScope) return;
     if (
-      child.type === "JSXExpressionContainer" &&
-      child.expression?.type !== "JSXEmptyExpression"
+      isNodeOfType(child, "JSXExpressionContainer") &&
+      !isNodeOfType(child.expression, "JSXEmptyExpression")
     ) {
       referencesScope = true;
     }
-    if (child.type === "JSXSpreadAttribute") {
+    if (isNodeOfType(child, "JSXSpreadAttribute")) {
       referencesScope = true;
     }
   });
@@ -34,10 +35,14 @@ export const renderingHoistJsx = defineRule<Rule>({
     let componentDepth = 0;
 
     const isComponentLike = (node: EsTreeNode): boolean => {
-      if (node.type === "FunctionDeclaration" && node.id?.name && isUppercaseName(node.id.name)) {
+      if (
+        isNodeOfType(node, "FunctionDeclaration") &&
+        node.id?.name &&
+        isUppercaseName(node.id.name)
+      ) {
         return true;
       }
-      if (node.type === "VariableDeclarator" && isComponentAssignment(node)) {
+      if (isNodeOfType(node, "VariableDeclarator") && isComponentAssignment(node)) {
         return true;
       }
       return false;
@@ -61,9 +66,9 @@ export const renderingHoistJsx = defineRule<Rule>({
         for (const declarator of node.declarations ?? []) {
           const init = declarator.init;
           if (!init) continue;
-          if (init.type !== "JSXElement" && init.type !== "JSXFragment") continue;
+          if (!isNodeOfType(init, "JSXElement") && !isNodeOfType(init, "JSXFragment")) continue;
           if (jsxReferencesLocalScope(init)) continue;
-          const name = declarator.id?.type === "Identifier" ? declarator.id.name : "<unnamed>";
+          const name = isNodeOfType(declarator.id, "Identifier") ? declarator.id.name : "<unnamed>";
           context.report({
             node: declarator,
             message: `Static JSX "${name}" inside a component — hoist to module scope so it isn't recreated each render`,

@@ -4,6 +4,7 @@ import { findSideEffect } from "../../utils/find-side-effect.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const extractMutatingRouteSegment = (filename: string): string | null => {
   const segments = filename.split("/");
@@ -15,22 +16,22 @@ const extractMutatingRouteSegment = (filename: string): string | null => {
 };
 
 const getExportedGetHandlerBody = (node: EsTreeNode): EsTreeNode | null => {
-  if (node.type !== "ExportNamedDeclaration") return null;
+  if (!isNodeOfType(node, "ExportNamedDeclaration")) return null;
   const declaration = node.declaration;
   if (!declaration) return null;
 
-  if (declaration.type === "FunctionDeclaration" && declaration.id?.name === "GET") {
+  if (isNodeOfType(declaration, "FunctionDeclaration") && declaration.id?.name === "GET") {
     return declaration.body;
   }
 
-  if (declaration.type === "VariableDeclaration") {
+  if (isNodeOfType(declaration, "VariableDeclaration")) {
     for (const declarator of declaration.declarations ?? []) {
       if (
-        declarator?.id?.type === "Identifier" &&
+        isNodeOfType(declarator?.id, "Identifier") &&
         declarator.id.name === "GET" &&
         declarator.init &&
-        (declarator.init.type === "ArrowFunctionExpression" ||
-          declarator.init.type === "FunctionExpression")
+        (isNodeOfType(declarator.init, "ArrowFunctionExpression") ||
+          isNodeOfType(declarator.init, "FunctionExpression"))
       ) {
         return declarator.init.body;
       }

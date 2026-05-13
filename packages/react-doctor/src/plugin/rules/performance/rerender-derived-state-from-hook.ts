@@ -4,6 +4,7 @@ import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const CONTINUOUS_VALUE_HOOK_PATTERN =
   /^use(?:Window(?:Width|Height|Dimensions)|Scroll(?:Position|Y|X)|MousePosition|ResizeObserver|IntersectionObserver)/;
@@ -20,31 +21,31 @@ const CONTINUOUS_VALUE_HOOK_PATTERN =
 // `const y = x [<>=] literal` (or boolean expression on x), where y is
 // the only value referenced in the JSX.
 const isThresholdComparison = (node: EsTreeNode, valueName: string): boolean => {
-  if (node.type !== "BinaryExpression") return false;
+  if (!isNodeOfType(node, "BinaryExpression")) return false;
   if (!["<", "<=", ">", ">=", "===", "!==", "==", "!="].includes(node.operator)) return false;
   const referencesContinuous =
-    (node.left?.type === "Identifier" && node.left.name === valueName) ||
-    (node.right?.type === "Identifier" && node.right.name === valueName);
+    (isNodeOfType(node.left, "Identifier") && node.left.name === valueName) ||
+    (isNodeOfType(node.right, "Identifier") && node.right.name === valueName);
   if (!referencesContinuous) return false;
-  return node.left?.type === "Literal" || node.right?.type === "Literal";
+  return isNodeOfType(node.left, "Literal") || isNodeOfType(node.right, "Literal");
 };
 
 const findThresholdDerivedBindings = (
   componentBody: EsTreeNode,
 ): Array<{ continuousName: string; hookName: string; declarator: EsTreeNode }> => {
   const out: Array<{ continuousName: string; hookName: string; declarator: EsTreeNode }> = [];
-  if (componentBody?.type !== "BlockStatement") return out;
+  if (!isNodeOfType(componentBody, "BlockStatement")) return out;
   const statements = componentBody.body ?? [];
 
   for (let outerIndex = 0; outerIndex < statements.length; outerIndex++) {
     const outerStatement = statements[outerIndex];
-    if (outerStatement.type !== "VariableDeclaration") continue;
+    if (!isNodeOfType(outerStatement, "VariableDeclaration")) continue;
 
     for (const declarator of outerStatement.declarations ?? []) {
-      if (declarator.id?.type !== "Identifier") continue;
+      if (!isNodeOfType(declarator.id, "Identifier")) continue;
       const init = declarator.init;
-      if (init?.type !== "CallExpression") continue;
-      if (init.callee?.type !== "Identifier") continue;
+      if (!isNodeOfType(init, "CallExpression")) continue;
+      if (!isNodeOfType(init.callee, "Identifier")) continue;
       if (!CONTINUOUS_VALUE_HOOK_PATTERN.test(init.callee.name)) continue;
 
       const continuousName = declarator.id.name;
@@ -53,7 +54,7 @@ const findThresholdDerivedBindings = (
       // Look at the next statement(s) for a derived threshold binding.
       for (let innerIndex = outerIndex + 1; innerIndex < statements.length; innerIndex++) {
         const innerStatement = statements[innerIndex];
-        if (innerStatement.type !== "VariableDeclaration") break;
+        if (!isNodeOfType(innerStatement, "VariableDeclaration")) break;
         let foundThreshold = false;
         for (const innerDecl of innerStatement.declarations ?? []) {
           if (innerDecl.init && isThresholdComparison(innerDecl.init, continuousName)) {
@@ -76,7 +77,7 @@ export const rerenderDerivedStateFromHook = defineRule<Rule>({
     'Use a threshold/media-query hook (e.g. `useMediaQuery("(max-width: 767px)")`) — the component re-renders only when the threshold flips, not every pixel',
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
-      if (!componentBody || componentBody.type !== "BlockStatement") return;
+      if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
       const bindings = findThresholdDerivedBindings(componentBody);
       for (const binding of bindings) {
         context.report({

@@ -4,23 +4,24 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const queryMutationMissingInvalidation = defineRule<Rule>({
   recommendation:
     "Add `onSuccess: () => queryClient.invalidateQueries({ queryKey: ['...'] })` so cached data stays in sync after the mutation",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
-      const calleeName = node.callee?.type === "Identifier" ? node.callee.name : null;
+      const calleeName = isNodeOfType(node.callee, "Identifier") ? node.callee.name : null;
 
       if (!calleeName || !TANSTACK_MUTATION_HOOKS.has(calleeName)) return;
 
       const optionsArgument = node.arguments?.[0];
-      if (!optionsArgument || optionsArgument.type !== "ObjectExpression") return;
+      if (!optionsArgument || !isNodeOfType(optionsArgument, "ObjectExpression")) return;
 
       const hasMutationFn = optionsArgument.properties?.some(
         (property: EsTreeNode) =>
-          property.type === "Property" &&
-          property.key?.type === "Identifier" &&
+          isNodeOfType(property, "Property") &&
+          isNodeOfType(property.key, "Identifier") &&
           property.key.name === "mutationFn",
       );
 
@@ -30,9 +31,9 @@ export const queryMutationMissingInvalidation = defineRule<Rule>({
       walkAst(optionsArgument, (child: EsTreeNode) => {
         if (hasCacheUpdate) return false;
         if (
-          child.type === "CallExpression" &&
-          child.callee?.type === "MemberExpression" &&
-          child.callee.property?.type === "Identifier" &&
+          isNodeOfType(child, "CallExpression") &&
+          isNodeOfType(child.callee, "MemberExpression") &&
+          isNodeOfType(child.callee.property, "Identifier") &&
           QUERY_CACHE_UPDATE_METHODS.has(child.callee.property.name)
         ) {
           hasCacheUpdate = true;

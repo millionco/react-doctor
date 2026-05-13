@@ -1,13 +1,14 @@
 import { collectPatternNames } from "../../../utils/collect-pattern-names.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { collectIdentifierNames } from "./collect-identifier-names.js";
+import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 
 export const buildLocalDependencyGraph = (componentBody: EsTreeNode): Map<string, Set<string>> => {
   const graph = new Map<string, Set<string>>();
-  if (componentBody?.type !== "BlockStatement") return graph;
+  if (!isNodeOfType(componentBody, "BlockStatement")) return graph;
   const declaredNames = new Set<string>();
   for (const statement of componentBody.body ?? []) {
-    if (statement.type !== "VariableDeclaration") continue;
+    if (!isNodeOfType(statement, "VariableDeclaration")) continue;
     for (const declarator of statement.declarations ?? []) {
       if (!declarator.init) continue;
       const dependencyNames = collectIdentifierNames(declarator.init);

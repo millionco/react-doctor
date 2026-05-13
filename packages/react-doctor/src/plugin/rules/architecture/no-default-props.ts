@@ -3,6 +3,7 @@ import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // HACK: React 19 removes `Component.defaultProps` for FUNCTION components
 // (class components still tolerate it but the team recommends ES6
@@ -19,10 +20,11 @@ export const noDefaultProps = defineRule<Rule>({
     AssignmentExpression(node: EsTreeNode) {
       if (node.operator !== "=") return;
       const left = node.left;
-      if (left?.type !== "MemberExpression") return;
+      if (!isNodeOfType(left, "MemberExpression")) return;
       if (left.computed) return;
-      if (left.property?.type !== "Identifier" || left.property.name !== "defaultProps") return;
-      if (left.object?.type !== "Identifier") return;
+      if (!isNodeOfType(left.property, "Identifier") || left.property.name !== "defaultProps")
+        return;
+      if (!isNodeOfType(left.object, "Identifier")) return;
       if (!isUppercaseName(left.object.name)) return;
       context.report({
         node: left,

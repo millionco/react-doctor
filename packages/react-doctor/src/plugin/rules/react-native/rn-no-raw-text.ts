@@ -9,6 +9,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const truncateText = (text: string): string =>
   text.length > RAW_TEXT_PREVIEW_MAX_CHARS
@@ -16,31 +17,31 @@ const truncateText = (text: string): string =>
     : text;
 
 const isRawTextContent = (child: EsTreeNode): boolean => {
-  if (child.type === "JSXText") return Boolean(child.value?.trim());
-  if (child.type !== "JSXExpressionContainer" || !child.expression) return false;
+  if (isNodeOfType(child, "JSXText")) return Boolean(child.value?.trim());
+  if (!isNodeOfType(child, "JSXExpressionContainer") || !child.expression) return false;
 
   const expression = child.expression;
   return (
-    (expression.type === "Literal" &&
+    (isNodeOfType(expression, "Literal") &&
       (typeof expression.value === "string" || typeof expression.value === "number")) ||
-    expression.type === "TemplateLiteral"
+    isNodeOfType(expression, "TemplateLiteral")
   );
 };
 
 const getRawTextDescription = (child: EsTreeNode): string => {
-  if (child.type === "JSXText") {
+  if (isNodeOfType(child, "JSXText")) {
     return `"${truncateText(child.value.trim())}"`;
   }
 
-  if (child.type === "JSXExpressionContainer" && child.expression) {
+  if (isNodeOfType(child, "JSXExpressionContainer") && child.expression) {
     const expression = child.expression;
-    if (expression.type === "Literal" && typeof expression.value === "string") {
+    if (isNodeOfType(expression, "Literal") && typeof expression.value === "string") {
       return `"${truncateText(expression.value)}"`;
     }
-    if (expression.type === "Literal" && typeof expression.value === "number") {
+    if (isNodeOfType(expression, "Literal") && typeof expression.value === "number") {
       return `{${expression.value}}`;
     }
-    if (expression.type === "TemplateLiteral") return "template literal";
+    if (isNodeOfType(expression, "TemplateLiteral")) return "template literal";
   }
 
   return "text content";

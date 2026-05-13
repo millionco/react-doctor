@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // HACK: useAnimatedReaction with a body that does nothing but assign to
 // another shared value (`sv2.value = current`) is essentially what
@@ -14,12 +15,13 @@ export const rnAnimationReactionAsDerived = defineRule<Rule>({
     "Replace useAnimatedReaction with `useDerivedValue(() => ..., [deps])` — shorter, native dependency tracking, no side-effect implication",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
-      if (node.callee?.type !== "Identifier" || node.callee.name !== "useAnimatedReaction") return;
+      if (!isNodeOfType(node.callee, "Identifier") || node.callee.name !== "useAnimatedReaction")
+        return;
       const reactionFn = node.arguments?.[1];
       if (!reactionFn) return;
       if (
-        reactionFn.type !== "ArrowFunctionExpression" &&
-        reactionFn.type !== "FunctionExpression"
+        !isNodeOfType(reactionFn, "ArrowFunctionExpression") &&
+        !isNodeOfType(reactionFn, "FunctionExpression")
       ) {
         return;
       }
@@ -33,20 +35,20 @@ export const rnAnimationReactionAsDerived = defineRule<Rule>({
       // side-effect semantics are wanted; useDerivedValue would change
       // behavior.
       let singleAssignment: EsTreeNode | null = null;
-      if (body?.type === "BlockStatement") {
+      if (isNodeOfType(body, "BlockStatement")) {
         const statements = body.body ?? [];
         if (statements.length !== 1) return;
         const onlyStatement = statements[0];
-        if (onlyStatement.type !== "ExpressionStatement") return;
+        if (!isNodeOfType(onlyStatement, "ExpressionStatement")) return;
         singleAssignment = onlyStatement.expression;
       } else if (body) {
         // Concise arrow body like `(cur) => sv.value = cur`.
         singleAssignment = body;
       }
       if (!singleAssignment) return;
-      if (singleAssignment.type !== "AssignmentExpression") return;
-      if (singleAssignment.left?.type !== "MemberExpression") return;
-      if (singleAssignment.left.property?.type !== "Identifier") return;
+      if (!isNodeOfType(singleAssignment, "AssignmentExpression")) return;
+      if (!isNodeOfType(singleAssignment.left, "MemberExpression")) return;
+      if (!isNodeOfType(singleAssignment.left.property, "Identifier")) return;
       if (singleAssignment.left.property.name !== "value") return;
 
       context.report({

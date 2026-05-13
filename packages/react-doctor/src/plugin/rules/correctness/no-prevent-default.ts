@@ -4,6 +4,7 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // HACK: <button> is intentionally omitted. <button type="submit"> (the
 // HTML default inside a form) has a real default action, so calling
@@ -25,9 +26,9 @@ const containsPreventDefaultCall = (node: EsTreeNode): boolean => {
   walkAst(node, (child) => {
     if (didFindPreventDefault) return;
     if (
-      child.type === "CallExpression" &&
-      child.callee?.type === "MemberExpression" &&
-      child.callee.property?.type === "Identifier" &&
+      isNodeOfType(child, "CallExpression") &&
+      isNodeOfType(child.callee, "MemberExpression") &&
+      isNodeOfType(child.callee.property, "Identifier") &&
       child.callee.property.name === "preventDefault"
     ) {
       didFindPreventDefault = true;
@@ -48,7 +49,7 @@ export const noPreventDefault = defineRule<Rule>({
     "Use `<form action={serverAction}>` (works without JS) or `<button>` instead of `<a>` with preventDefault",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNode) {
-      const elementName = node.name?.type === "JSXIdentifier" ? node.name.name : null;
+      const elementName = isNodeOfType(node.name, "JSXIdentifier") ? node.name.name : null;
       if (!elementName) return;
 
       const targetEventProps = PREVENT_DEFAULT_ELEMENTS.get(elementName);
@@ -56,13 +57,13 @@ export const noPreventDefault = defineRule<Rule>({
 
       for (const targetEventProp of targetEventProps) {
         const eventAttribute = findJsxAttribute(node.attributes ?? [], targetEventProp);
-        if (!eventAttribute?.value || eventAttribute.value.type !== "JSXExpressionContainer")
+        if (!eventAttribute?.value || !isNodeOfType(eventAttribute.value, "JSXExpressionContainer"))
           continue;
 
         const expression = eventAttribute.value.expression;
         if (
-          expression?.type !== "ArrowFunctionExpression" &&
-          expression?.type !== "FunctionExpression"
+          !isNodeOfType(expression, "ArrowFunctionExpression") &&
+          !isNodeOfType(expression, "FunctionExpression")
         )
           continue;
 

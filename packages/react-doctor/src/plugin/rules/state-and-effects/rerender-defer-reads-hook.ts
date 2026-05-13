@@ -7,6 +7,7 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { collectHandlerBindingNames } from "./utils/collect-handler-binding-names.js";
 import { isInsideEventHandler } from "./utils/is-inside-event-handler.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const DEFERRABLE_HOOK_NAMES = new Set(["useSearchParams", "useParams", "usePathname"]);
 
@@ -14,15 +15,15 @@ const findHookCallBindings = (
   componentBody: EsTreeNode,
 ): Array<{ valueName: string; hookName: string; declarator: EsTreeNode }> => {
   const bindings: Array<{ valueName: string; hookName: string; declarator: EsTreeNode }> = [];
-  if (componentBody?.type !== "BlockStatement") return bindings;
+  if (!isNodeOfType(componentBody, "BlockStatement")) return bindings;
 
   for (const statement of componentBody.body ?? []) {
-    if (statement.type !== "VariableDeclaration") continue;
+    if (!isNodeOfType(statement, "VariableDeclaration")) continue;
     for (const declarator of statement.declarations ?? []) {
-      if (declarator.id?.type !== "Identifier") continue;
-      if (declarator.init?.type !== "CallExpression") continue;
+      if (!isNodeOfType(declarator.id, "Identifier")) continue;
+      if (!isNodeOfType(declarator.init, "CallExpression")) continue;
       const callee = declarator.init.callee;
-      if (callee?.type !== "Identifier") continue;
+      if (!isNodeOfType(callee, "Identifier")) continue;
       if (!DEFERRABLE_HOOK_NAMES.has(callee.name)) continue;
       bindings.push({
         valueName: declarator.id.name,
@@ -52,7 +53,7 @@ export const rerenderDeferReadsHook = defineRule<Rule>({
     "Read the URL state inside the handler (e.g. `new URL(window.location.href).searchParams`) so the component doesn't subscribe and re-render on every URL change",
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
-      if (!componentBody || componentBody.type !== "BlockStatement") return;
+      if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
       const bindings = findHookCallBindings(componentBody);
       if (bindings.length === 0) return;
       const handlerBindingNames = collectHandlerBindingNames(componentBody);
@@ -61,7 +62,7 @@ export const rerenderDeferReadsHook = defineRule<Rule>({
         const referenceLocations: EsTreeNode[] = [];
         walkAst(componentBody, (child: EsTreeNode) => {
           if (child === binding.declarator.id) return;
-          if (child.type === "Identifier" && child.name === binding.valueName) {
+          if (isNodeOfType(child, "Identifier") && child.name === binding.valueName) {
             referenceLocations.push(child);
           }
         });

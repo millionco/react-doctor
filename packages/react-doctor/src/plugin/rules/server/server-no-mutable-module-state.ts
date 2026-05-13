@@ -3,16 +3,17 @@ import { hasDirective } from "../../utils/has-directive.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const MUTABLE_CONTAINER_CONSTRUCTORS = new Set(["Map", "Set", "WeakMap", "WeakSet"]);
 
 const isMutableConstInitializer = (init: EsTreeNode | null | undefined): string | null => {
   if (!init) return null;
-  if (init.type === "ArrayExpression") return "[]";
-  if (init.type === "ObjectExpression") return "{}";
+  if (isNodeOfType(init, "ArrayExpression")) return "[]";
+  if (isNodeOfType(init, "ObjectExpression")) return "{}";
   if (
-    init.type === "NewExpression" &&
-    init.callee?.type === "Identifier" &&
+    isNodeOfType(init, "NewExpression") &&
+    isNodeOfType(init.callee, "Identifier") &&
     MUTABLE_CONTAINER_CONSTRUCTORS.has(init.callee.name)
   ) {
     return `new ${init.callee.name}()`;
@@ -38,11 +39,12 @@ export const serverNoMutableModuleState = defineRule<Rule>({
       },
       VariableDeclaration(node: EsTreeNode) {
         if (!fileHasUseServerDirective) return;
-        if (node.parent?.type !== "Program") return;
+        if (!isNodeOfType(node.parent, "Program")) return;
 
         for (const declarator of node.declarations ?? []) {
-          const variableName =
-            declarator.id?.type === "Identifier" ? declarator.id.name : "<unnamed>";
+          const variableName = isNodeOfType(declarator.id, "Identifier")
+            ? declarator.id.name
+            : "<unnamed>";
 
           if (node.kind === "let" || node.kind === "var") {
             context.report({

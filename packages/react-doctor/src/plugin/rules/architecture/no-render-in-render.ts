@@ -3,6 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const noRenderInRender = defineRule<Rule>({
   recommendation:
@@ -10,14 +11,14 @@ export const noRenderInRender = defineRule<Rule>({
   create: (context: RuleContext) => ({
     JSXExpressionContainer(node: EsTreeNode) {
       const expression = node.expression;
-      if (expression?.type !== "CallExpression") return;
+      if (!isNodeOfType(expression, "CallExpression")) return;
 
       let calleeName: string | null = null;
-      if (expression.callee?.type === "Identifier") {
+      if (isNodeOfType(expression.callee, "Identifier")) {
         calleeName = expression.callee.name;
       } else if (
-        expression.callee?.type === "MemberExpression" &&
-        expression.callee.property?.type === "Identifier"
+        isNodeOfType(expression.callee, "MemberExpression") &&
+        isNodeOfType(expression.callee.property, "Identifier")
       ) {
         calleeName = expression.callee.property.name;
       }

@@ -3,6 +3,7 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // HACK: setting React state inside an onScroll handler triggers a re-render
 // at scroll-event frequency (60-120Hz). Use a Reanimated shared value
@@ -13,13 +14,13 @@ export const rnNoScrollState = defineRule<Rule>({
     "Track scroll position with a Reanimated shared value (`useAnimatedScrollHandler`) or a ref — `setState` on every scroll event causes re-render storms",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNode) {
-      if (node.name?.type !== "JSXIdentifier") return;
+      if (!isNodeOfType(node.name, "JSXIdentifier")) return;
       if (node.name.name !== "onScroll") return;
-      if (node.value?.type !== "JSXExpressionContainer") return;
+      if (!isNodeOfType(node.value, "JSXExpressionContainer")) return;
       const expression = node.value.expression;
       if (
-        expression?.type !== "ArrowFunctionExpression" &&
-        expression?.type !== "FunctionExpression"
+        !isNodeOfType(expression, "ArrowFunctionExpression") &&
+        !isNodeOfType(expression, "FunctionExpression")
       ) {
         return;
       }
@@ -28,8 +29,8 @@ export const rnNoScrollState = defineRule<Rule>({
       walkAst(expression.body, (child: EsTreeNode) => {
         if (setStateCallNode) return;
         if (
-          child.type === "CallExpression" &&
-          child.callee?.type === "Identifier" &&
+          isNodeOfType(child, "CallExpression") &&
+          isNodeOfType(child.callee, "Identifier") &&
           /^set[A-Z]/.test(child.callee.name)
         ) {
           setStateCallNode = child;

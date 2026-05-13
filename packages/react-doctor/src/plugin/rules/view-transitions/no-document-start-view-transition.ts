@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // HACK: in React's <ViewTransition> world, calling
 // `document.startViewTransition()` directly bypasses React's lifecycle
@@ -15,9 +16,12 @@ export const noDocumentStartViewTransition = defineRule<Rule>({
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       const callee = node.callee;
-      if (callee?.type !== "MemberExpression") return;
-      if (callee.object?.type !== "Identifier" || callee.object.name !== "document") return;
-      if (callee.property?.type !== "Identifier" || callee.property.name !== "startViewTransition")
+      if (!isNodeOfType(callee, "MemberExpression")) return;
+      if (!isNodeOfType(callee.object, "Identifier") || callee.object.name !== "document") return;
+      if (
+        !isNodeOfType(callee.property, "Identifier") ||
+        callee.property.name !== "startViewTransition"
+      )
         return;
       context.report({
         node,

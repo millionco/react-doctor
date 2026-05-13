@@ -4,6 +4,7 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
 import { SCROLLVIEW_NAMES } from "./utils/scrollview_names.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // HACK: dynamic `paddingBottom`/`paddingTop` on `contentContainerStyle`
 // (e.g. `paddingBottom: keyboardHeight`) reflows the entire scroll
@@ -26,23 +27,23 @@ export const rnScrollviewDynamicPadding = defineRule<Rule>({
         return;
 
       for (const attr of node.attributes ?? []) {
-        if (attr.type !== "JSXAttribute") continue;
-        if (attr.name?.type !== "JSXIdentifier" || attr.name.name !== "contentContainerStyle")
+        if (!isNodeOfType(attr, "JSXAttribute")) continue;
+        if (!isNodeOfType(attr.name, "JSXIdentifier") || attr.name.name !== "contentContainerStyle")
           continue;
-        if (attr.value?.type !== "JSXExpressionContainer") continue;
+        if (!isNodeOfType(attr.value, "JSXExpressionContainer")) continue;
         const expression = attr.value.expression;
-        if (expression?.type !== "ObjectExpression") continue;
+        if (!isNodeOfType(expression, "ObjectExpression")) continue;
 
         for (const property of expression.properties ?? []) {
-          if (property.type !== "Property") continue;
-          if (property.key?.type !== "Identifier") continue;
+          if (!isNodeOfType(property, "Property")) continue;
+          if (!isNodeOfType(property.key, "Identifier")) continue;
           const key = property.key.name;
           if (key !== "paddingBottom" && key !== "paddingTop") continue;
           // Static numeric value is fine — only flag dynamic identifiers /
           // member expressions that change between renders.
           const value = property.value;
           if (!value) continue;
-          if (value.type === "Literal") continue;
+          if (isNodeOfType(value, "Literal")) continue;
 
           context.report({
             node: property,

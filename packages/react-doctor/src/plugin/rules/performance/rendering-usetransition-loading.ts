@@ -4,20 +4,23 @@ import { isHookCall } from "../../utils/is-hook-call.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const renderingUsetransitionLoading = defineRule<Rule>({
   recommendation:
     "Replace with `const [isPending, startTransition] = useTransition()` — avoids a re-render for the loading state",
   create: (context: RuleContext) => ({
     VariableDeclarator(node: EsTreeNode) {
-      if (node.id?.type !== "ArrayPattern" || !node.id.elements?.length) return;
+      if (!isNodeOfType(node.id, "ArrayPattern") || !node.id.elements?.length) return;
       if (!node.init || !isHookCall(node.init, "useState")) return;
       if (!node.init.arguments?.length) return;
 
       const initializer = node.init.arguments[0];
-      if (initializer.type !== "Literal" || initializer.value !== false) return;
+      if (!isNodeOfType(initializer, "Literal") || initializer.value !== false) return;
 
-      const stateVariableName = node.id.elements[0]?.name;
+      if (!isNodeOfType(node.id, "ArrayPattern")) return;
+      const firstBinding = node.id.elements[0];
+      const stateVariableName = isNodeOfType(firstBinding, "Identifier") ? firstBinding.name : null;
       if (!stateVariableName || !LOADING_STATE_PATTERN.test(stateVariableName)) return;
 
       context.report({

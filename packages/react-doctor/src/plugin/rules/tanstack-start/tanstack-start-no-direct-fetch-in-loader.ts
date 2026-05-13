@@ -5,6 +5,7 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getRouteOptionsObject } from "./utils/get-route-options-object.js";
 import { getPropertyKeyName } from "./utils/get-property-key-name.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const tanstackStartNoDirectFetchInLoader = defineRule<Rule>({
   recommendation:
@@ -21,8 +22,8 @@ export const tanstackStartNoDirectFetchInLoader = defineRule<Rule>({
 
         const loaderValue = property.value ?? property;
         walkAst(loaderValue, (child: EsTreeNode) => {
-          if (child.type !== "CallExpression") return;
-          if (child.callee?.type === "Identifier" && child.callee.name === "fetch") {
+          if (!isNodeOfType(child, "CallExpression")) return;
+          if (isNodeOfType(child.callee, "Identifier") && child.callee.name === "fetch") {
             context.report({
               node: child,
               message:

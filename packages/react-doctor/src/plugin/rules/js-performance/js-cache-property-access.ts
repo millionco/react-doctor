@@ -4,14 +4,15 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const buildMemberAccessKey = (node: EsTreeNode): string | null => {
-  if (node.type === "Identifier") return node.name;
-  if (node.type === "ThisExpression") return "this";
-  if (node.type !== "MemberExpression" || node.computed) return null;
+  if (isNodeOfType(node, "Identifier")) return node.name;
+  if (isNodeOfType(node, "ThisExpression")) return "this";
+  if (!isNodeOfType(node, "MemberExpression") || node.computed) return null;
   const objectKey = buildMemberAccessKey(node.object);
   if (!objectKey) return null;
-  if (node.property?.type !== "Identifier") return null;
+  if (!isNodeOfType(node.property, "Identifier")) return null;
   return `${objectKey}.${node.property.name}`;
 };
 
@@ -27,11 +28,11 @@ export const jsCachePropertyAccess = defineRule<Rule>({
     const inspectLoopBody = (loopBody: EsTreeNode): void => {
       const counts = new Map<string, { count: number; firstNode: EsTreeNode }>();
       walkAst(loopBody, (child: EsTreeNode) => {
-        if (child.type !== "MemberExpression") return;
+        if (!isNodeOfType(child, "MemberExpression")) return;
         if (child.computed) return;
         // Skip if this MemberExpression is itself nested inside another (only
         // count the deepest reference per chain).
-        if (child.parent?.type === "MemberExpression" && child.parent.object === child) return;
+        if (isNodeOfType(child.parent, "MemberExpression") && child.parent.object === child) return;
         const key = buildMemberAccessKey(child);
         if (!key) return;
         if (key.split(".").length < 3) return;

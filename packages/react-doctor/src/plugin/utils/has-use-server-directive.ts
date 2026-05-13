@@ -1,11 +1,12 @@
 import type { EsTreeNode } from "./es-tree-node.js";
+import { isNodeOfType } from "./is-node-of-type.js";
 
 export const hasUseServerDirective = (node: EsTreeNode): boolean => {
-  if (node.body?.type !== "BlockStatement") return false;
+  if (!isNodeOfType(node.body, "BlockStatement")) return false;
   return Boolean(
     node.body.body?.some(
       (statement: EsTreeNode) =>
-        statement.type === "ExpressionStatement" && statement.directive === "use server",
+        isNodeOfType(statement, "ExpressionStatement") && statement.directive === "use server",
     ),
   );
 };

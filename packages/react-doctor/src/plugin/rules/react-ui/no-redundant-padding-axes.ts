@@ -6,13 +6,17 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { getClassNameLiteral } from "./utils/get-class-name-literal.js";
 import { collectAxisShorthandPairs } from "./utils/collect-axis-shorthand-pairs.js";
 import { hasResponsivePrefix } from "./utils/has-responsive-prefix.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const noRedundantPaddingAxes = defineRule<Rule>({
   recommendation:
     "Collapse `px-N py-N` to `p-N` when both axes match. Keep them split only when one axis varies at a breakpoint (`py-2 md:py-3`)",
   create: (context: RuleContext) => ({
     JSXAttribute(jsxAttribute: EsTreeNode) {
-      if (jsxAttribute.name?.type !== "JSXIdentifier" || jsxAttribute.name.name !== "className") {
+      if (
+        !isNodeOfType(jsxAttribute.name, "JSXIdentifier") ||
+        jsxAttribute.name.name !== "className"
+      ) {
         return;
       }
       const classNameLiteral = getClassNameLiteral(jsxAttribute);

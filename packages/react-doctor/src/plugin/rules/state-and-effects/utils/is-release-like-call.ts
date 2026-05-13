@@ -4,20 +4,21 @@ import {
   UNSUBSCRIPTION_METHOD_NAMES,
 } from "../../../constants.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
+import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 
 export const isReleaseLikeCall = (
   callNode: EsTreeNode,
   knownBoundReleaseNames: ReadonlySet<string>,
 ): boolean => {
-  if (callNode?.type !== "CallExpression") return false;
+  if (!isNodeOfType(callNode, "CallExpression")) return false;
   const callee = callNode.callee;
-  if (callee?.type === "Identifier") {
+  if (isNodeOfType(callee, "Identifier")) {
     if (TIMER_CLEANUP_CALLEE_NAMES.has(callee.name)) return true;
     if (CLEANUP_LIKE_RELEASE_CALLEE_NAMES.has(callee.name)) return true;
     if (knownBoundReleaseNames.has(callee.name)) return true;
     return false;
   }
-  if (callee?.type === "MemberExpression" && callee.property?.type === "Identifier") {
+  if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
     return UNSUBSCRIPTION_METHOD_NAMES.has(callee.property.name);
   }
   return false;

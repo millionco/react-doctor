@@ -6,6 +6,7 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // HACK: `useEffect(() => { window.addEventListener(name, handler);
 // return () => window.removeEventListener(name, handler); }, [handler])`
@@ -35,11 +36,11 @@ export const advancedEventHandlerRefs = defineRule<Rule>({
       const callback = getEffectCallback(node);
       if (!callback) return;
       const depsNode = node.arguments[1];
-      if (depsNode.type !== "ArrayExpression" || !depsNode.elements?.length) return;
+      if (!isNodeOfType(depsNode, "ArrayExpression") || !depsNode.elements?.length) return;
 
       const depIdentifierNames = new Set<string>();
       for (const element of depsNode.elements) {
-        if (element?.type === "Identifier") depIdentifierNames.add(element.name);
+        if (isNodeOfType(element, "Identifier")) depIdentifierNames.add(element.name);
       }
       if (depIdentifierNames.size === 0) return;
 
@@ -48,12 +49,12 @@ export const advancedEventHandlerRefs = defineRule<Rule>({
       let registeredHandlerName: string | null = null;
       walkAst(callback.body, (child: EsTreeNode) => {
         if (registeredHandlerName) return;
-        if (child.type !== "CallExpression") return;
-        if (child.callee?.type !== "MemberExpression") return;
-        if (child.callee.property?.type !== "Identifier") return;
+        if (!isNodeOfType(child, "CallExpression")) return;
+        if (!isNodeOfType(child.callee, "MemberExpression")) return;
+        if (!isNodeOfType(child.callee.property, "Identifier")) return;
         if (!SUBSCRIPTION_METHOD_NAMES.has(child.callee.property.name)) return;
         const handlerArg = child.arguments?.[1];
-        if (handlerArg?.type !== "Identifier") return;
+        if (!isNodeOfType(handlerArg, "Identifier")) return;
         if (depIdentifierNames.has(handlerArg.name)) {
           registeredHandlerName = handlerArg.name;
         }

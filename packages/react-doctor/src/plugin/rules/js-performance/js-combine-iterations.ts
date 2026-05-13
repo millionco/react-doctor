@@ -3,13 +3,17 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const jsCombineIterations = defineRule<Rule>({
   recommendation:
     "Combine `.map().filter()` (or similar chains) into a single pass with `.reduce()` or a `for...of` loop to avoid iterating the array twice",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
-      if (node.callee?.type !== "MemberExpression" || node.callee.property?.type !== "Identifier")
+      if (
+        !isNodeOfType(node.callee, "MemberExpression") ||
+        !isNodeOfType(node.callee.property, "Identifier")
+      )
         return;
 
       const outerMethod = node.callee.property.name;
@@ -17,9 +21,9 @@ export const jsCombineIterations = defineRule<Rule>({
 
       const innerCall = node.callee.object;
       if (
-        innerCall?.type !== "CallExpression" ||
-        innerCall.callee?.type !== "MemberExpression" ||
-        innerCall.callee.property?.type !== "Identifier"
+        !isNodeOfType(innerCall, "CallExpression") ||
+        !isNodeOfType(innerCall.callee, "MemberExpression") ||
+        !isNodeOfType(innerCall.callee.property, "Identifier")
       )
         return;
 
@@ -29,11 +33,11 @@ export const jsCombineIterations = defineRule<Rule>({
       if (innerMethod === "map" && outerMethod === "filter") {
         const filterArgument = node.arguments?.[0];
         const isBooleanOrIdentityFilter =
-          (filterArgument?.type === "Identifier" && filterArgument.name === "Boolean") ||
-          (filterArgument?.type === "ArrowFunctionExpression" &&
+          (isNodeOfType(filterArgument, "Identifier") && filterArgument.name === "Boolean") ||
+          (isNodeOfType(filterArgument, "ArrowFunctionExpression") &&
             filterArgument.params?.length === 1 &&
-            filterArgument.body?.type === "Identifier" &&
-            filterArgument.params[0]?.type === "Identifier" &&
+            isNodeOfType(filterArgument.body, "Identifier") &&
+            isNodeOfType(filterArgument.params[0], "Identifier") &&
             filterArgument.body.name === filterArgument.params[0].name);
         if (isBooleanOrIdentityFilter) return;
       }

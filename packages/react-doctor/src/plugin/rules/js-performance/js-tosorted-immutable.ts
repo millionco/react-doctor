@@ -3,6 +3,7 @@ import { isMemberProperty } from "../../utils/is-member-property.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const jsTosortedImmutable = defineRule<Rule>({
   recommendation:
@@ -13,9 +14,9 @@ export const jsTosortedImmutable = defineRule<Rule>({
 
       const receiver = node.callee.object;
       if (
-        receiver?.type === "ArrayExpression" &&
+        isNodeOfType(receiver, "ArrayExpression") &&
         receiver.elements?.length === 1 &&
-        receiver.elements[0]?.type === "SpreadElement"
+        isNodeOfType(receiver.elements[0], "SpreadElement")
       ) {
         context.report({
           node,

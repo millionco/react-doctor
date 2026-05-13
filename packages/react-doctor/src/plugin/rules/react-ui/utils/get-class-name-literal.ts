@@ -1,16 +1,20 @@
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
+import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 
 export const getClassNameLiteral = (classAttribute: EsTreeNode): string | null => {
   if (!classAttribute.value) return null;
-  if (classAttribute.value.type === "Literal" && typeof classAttribute.value.value === "string") {
+  if (
+    isNodeOfType(classAttribute.value, "Literal") &&
+    typeof classAttribute.value.value === "string"
+  ) {
     return classAttribute.value.value;
   }
-  if (classAttribute.value.type === "JSXExpressionContainer") {
+  if (isNodeOfType(classAttribute.value, "JSXExpressionContainer")) {
     const expression = classAttribute.value.expression;
-    if (expression?.type === "Literal" && typeof expression.value === "string") {
+    if (isNodeOfType(expression, "Literal") && typeof expression.value === "string") {
       return expression.value;
     }
-    if (expression?.type === "TemplateLiteral" && expression.quasis?.length === 1) {
+    if (isNodeOfType(expression, "TemplateLiteral") && expression.quasis?.length === 1) {
       return expression.quasis[0].value?.raw ?? null;
     }
   }

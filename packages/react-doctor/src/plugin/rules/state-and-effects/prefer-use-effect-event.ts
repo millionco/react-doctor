@@ -12,6 +12,7 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // HACK: From "Separating Events from Effects" — when a function-typed
 // prop (or local callback) is read from an effect ONLY inside a sub-
@@ -43,12 +44,12 @@ import type { RuleContext } from "../../utils/rule-context.js";
 //   (4) `F` is NEVER read at the effect's own top level
 const collectFunctionTypedLocalBindings = (componentBody: EsTreeNode): Set<string> => {
   const functionTypedLocals = new Set<string>();
-  if (componentBody?.type !== "BlockStatement") return functionTypedLocals;
+  if (!isNodeOfType(componentBody, "BlockStatement")) return functionTypedLocals;
   for (const statement of componentBody.body ?? []) {
-    if (statement.type !== "VariableDeclaration") continue;
+    if (!isNodeOfType(statement, "VariableDeclaration")) continue;
     for (const declarator of statement.declarations ?? []) {
-      if (declarator.id?.type !== "Identifier") continue;
-      if (declarator.init?.type !== "CallExpression") continue;
+      if (!isNodeOfType(declarator.id, "Identifier")) continue;
+      if (!isNodeOfType(declarator.init, "CallExpression")) continue;
       if (!isHookCall(declarator.init, "useCallback")) continue;
       functionTypedLocals.add(declarator.id.name);
     }
@@ -63,9 +64,9 @@ const findEnclosingFunctionInsideEffect = (
   let cursor: EsTreeNode | null = identifierNode.parent ?? null;
   while (cursor && cursor !== effectCallback) {
     if (
-      cursor.type === "ArrowFunctionExpression" ||
-      cursor.type === "FunctionExpression" ||
-      cursor.type === "FunctionDeclaration"
+      isNodeOfType(cursor, "ArrowFunctionExpression") ||
+      isNodeOfType(cursor, "FunctionExpression") ||
+      isNodeOfType(cursor, "FunctionDeclaration")
     ) {
       return cursor;
     }
@@ -75,14 +76,17 @@ const findEnclosingFunctionInsideEffect = (
 };
 
 const isCallExpressionWithSubHandlerCallee = (callExpression: EsTreeNode): boolean => {
-  if (callExpression?.type !== "CallExpression") return false;
+  if (!isNodeOfType(callExpression, "CallExpression")) return false;
   const callee = callExpression.callee;
-  if (callee?.type === "Identifier" && TIMER_AND_SCHEDULER_DIRECT_CALLEE_NAMES.has(callee.name)) {
+  if (
+    isNodeOfType(callee, "Identifier") &&
+    TIMER_AND_SCHEDULER_DIRECT_CALLEE_NAMES.has(callee.name)
+  ) {
     return true;
   }
   if (
-    callee?.type === "MemberExpression" &&
-    callee.property?.type === "Identifier" &&
+    isNodeOfType(callee, "MemberExpression") &&
+    isNodeOfType(callee.property, "Identifier") &&
     SUBSCRIPTION_METHOD_NAMES.has(callee.property.name)
   ) {
     return true;
@@ -91,10 +95,10 @@ const isCallExpressionWithSubHandlerCallee = (callExpression: EsTreeNode): boole
 };
 
 const getSubHandlerCalleeName = (callExpression: EsTreeNode): string | null => {
-  if (callExpression?.type !== "CallExpression") return null;
+  if (!isNodeOfType(callExpression, "CallExpression")) return null;
   const callee = callExpression.callee;
-  if (callee?.type === "Identifier") return callee.name;
-  if (callee?.type === "MemberExpression" && callee.property?.type === "Identifier") {
+  if (isNodeOfType(callee, "Identifier")) return callee.name;
+  if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
     return callee.property.name;
   }
   return null;
@@ -118,19 +122,22 @@ const getSubHandlerCalleeName = (callExpression: EsTreeNode): string | null => {
 //   let handler; handler = (e) => ... → AssignmentExpression binding
 const getEnclosingFunctionBindingName = (enclosingFunction: EsTreeNode): string | null => {
   if (
-    enclosingFunction.type === "FunctionDeclaration" &&
-    enclosingFunction.id?.type === "Identifier"
+    isNodeOfType(enclosingFunction, "FunctionDeclaration") &&
+    isNodeOfType(enclosingFunction.id, "Identifier")
   ) {
     return enclosingFunction.id.name;
   }
   const directParent = enclosingFunction.parent;
-  if (directParent?.type === "VariableDeclarator" && directParent.id?.type === "Identifier") {
+  if (
+    isNodeOfType(directParent, "VariableDeclarator") &&
+    isNodeOfType(directParent.id, "Identifier")
+  ) {
     return directParent.id.name;
   }
   if (
-    directParent?.type === "AssignmentExpression" &&
+    isNodeOfType(directParent, "AssignmentExpression") &&
     directParent.right === enclosingFunction &&
-    directParent.left?.type === "Identifier"
+    isNodeOfType(directParent.left, "Identifier")
   ) {
     return directParent.left.name;
   }
@@ -143,8 +150,8 @@ const findSubHandlerForEnclosingFunction = (
 ): EsTreeNode | null => {
   const directParent = enclosingFunction.parent;
   if (
-    directParent?.type === "CallExpression" &&
-    directParent.arguments?.includes(enclosingFunction) &&
+    isNodeOfType(directParent, "CallExpression") &&
+    (directParent.arguments ?? []).some((arg: EsTreeNode | null) => arg === enclosingFunction) &&
     isCallExpressionWithSubHandlerCallee(directParent)
   ) {
     return directParent;
@@ -156,10 +163,10 @@ const findSubHandlerForEnclosingFunction = (
   let matchingSubHandlerCall: EsTreeNode | null = null;
   walkAst(effectCallback, (child: EsTreeNode) => {
     if (matchingSubHandlerCall) return false;
-    if (child.type !== "CallExpression") return;
+    if (!isNodeOfType(child, "CallExpression")) return;
     if (!isCallExpressionWithSubHandlerCallee(child)) return;
     for (const argument of child.arguments ?? []) {
-      if (argument?.type === "Identifier" && argument.name === localName) {
+      if (isNodeOfType(argument, "Identifier") && argument.name === localName) {
         matchingSubHandlerCall = child;
         return false;
       }
@@ -183,15 +190,15 @@ const classifyCallableReadsInsideEffect = (
   let firstSubHandlerName: string | null = null;
 
   walkAst(effectCallback, (child: EsTreeNode) => {
-    if (child.type !== "Identifier") return;
+    if (!isNodeOfType(child, "Identifier")) return;
     if (child.name !== callableName) return;
     const parent = child.parent;
-    if (parent?.type === "ArrayExpression") return;
-    if (parent?.type === "MemberExpression" && !parent.computed && parent.property === child) {
+    if (isNodeOfType(parent, "ArrayExpression")) return;
+    if (isNodeOfType(parent, "MemberExpression") && !parent.computed && parent.property === child) {
       return;
     }
     if (
-      parent?.type === "Property" &&
+      isNodeOfType(parent, "Property") &&
       !parent.computed &&
       !parent.shorthand &&
       parent.key === child
@@ -224,21 +231,23 @@ export const preferUseEffectEvent = defineRule<Rule>({
     "Wrap the callback with `useEffectEvent(callback)` (React 19+) and call the resulting binding from inside the sub-handler. The Effect Event captures the latest props/state without being a reactive dep, so the effect doesn't re-subscribe on every parent render. See https://react.dev/reference/react/useEffectEvent",
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | undefined): void => {
-      if (!componentBody || componentBody.type !== "BlockStatement") return;
+      if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
       const functionTypedLocalBindings = collectFunctionTypedLocalBindings(componentBody);
 
       for (const statement of componentBody.body ?? []) {
-        if (statement.type !== "ExpressionStatement") continue;
+        if (!isNodeOfType(statement, "ExpressionStatement")) continue;
         const effectCall = statement.expression;
-        if (effectCall?.type !== "CallExpression") continue;
+        if (!isNodeOfType(effectCall, "CallExpression")) continue;
         if (!isHookCall(effectCall, EFFECT_HOOK_NAMES)) continue;
         if ((effectCall.arguments?.length ?? 0) < 2) continue;
 
         const depsNode = effectCall.arguments[1];
-        if (depsNode.type !== "ArrayExpression") continue;
+        if (!isNodeOfType(depsNode, "ArrayExpression")) continue;
         const depElements = depsNode.elements ?? [];
         if (depElements.length < 2) continue;
-        if (!depElements.every((element: EsTreeNode | null) => element?.type === "Identifier")) {
+        if (
+          !depElements.every((element: EsTreeNode | null) => isNodeOfType(element, "Identifier"))
+        ) {
           continue;
         }
 
@@ -246,7 +255,7 @@ export const preferUseEffectEvent = defineRule<Rule>({
         if (!callback) continue;
 
         for (const depElement of depElements) {
-          if (!depElement) continue;
+          if (!isNodeOfType(depElement, "Identifier")) continue;
           const depName: string = depElement.name;
           // HACK: a destructured prop is treated as function-typed
           // ONLY if its name matches the React `on[A-Z]` callback

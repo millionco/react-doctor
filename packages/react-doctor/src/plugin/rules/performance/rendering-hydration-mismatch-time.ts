@@ -3,6 +3,7 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const NONDETERMINISTIC_RENDER_PATTERNS: Array<{
   matches: (node: EsTreeNode) => boolean;
@@ -11,48 +12,48 @@ const NONDETERMINISTIC_RENDER_PATTERNS: Array<{
   {
     display: "new Date()",
     matches: (node) =>
-      node.type === "NewExpression" &&
-      node.callee?.type === "Identifier" &&
+      isNodeOfType(node, "NewExpression") &&
+      isNodeOfType(node.callee, "Identifier") &&
       node.callee.name === "Date",
   },
   {
     display: "Date.now()",
     matches: (node) =>
-      node.type === "CallExpression" &&
-      node.callee?.type === "MemberExpression" &&
-      node.callee.object?.type === "Identifier" &&
+      isNodeOfType(node, "CallExpression") &&
+      isNodeOfType(node.callee, "MemberExpression") &&
+      isNodeOfType(node.callee.object, "Identifier") &&
       node.callee.object.name === "Date" &&
-      node.callee.property?.type === "Identifier" &&
+      isNodeOfType(node.callee.property, "Identifier") &&
       node.callee.property.name === "now",
   },
   {
     display: "Math.random()",
     matches: (node) =>
-      node.type === "CallExpression" &&
-      node.callee?.type === "MemberExpression" &&
-      node.callee.object?.type === "Identifier" &&
+      isNodeOfType(node, "CallExpression") &&
+      isNodeOfType(node.callee, "MemberExpression") &&
+      isNodeOfType(node.callee.object, "Identifier") &&
       node.callee.object.name === "Math" &&
-      node.callee.property?.type === "Identifier" &&
+      isNodeOfType(node.callee.property, "Identifier") &&
       node.callee.property.name === "random",
   },
   {
     display: "performance.now()",
     matches: (node) =>
-      node.type === "CallExpression" &&
-      node.callee?.type === "MemberExpression" &&
-      node.callee.object?.type === "Identifier" &&
+      isNodeOfType(node, "CallExpression") &&
+      isNodeOfType(node.callee, "MemberExpression") &&
+      isNodeOfType(node.callee.object, "Identifier") &&
       node.callee.object.name === "performance" &&
-      node.callee.property?.type === "Identifier" &&
+      isNodeOfType(node.callee.property, "Identifier") &&
       node.callee.property.name === "now",
   },
   {
     display: "crypto.randomUUID()",
     matches: (node) =>
-      node.type === "CallExpression" &&
-      node.callee?.type === "MemberExpression" &&
-      node.callee.object?.type === "Identifier" &&
+      isNodeOfType(node, "CallExpression") &&
+      isNodeOfType(node.callee, "MemberExpression") &&
+      isNodeOfType(node.callee.object, "Identifier") &&
       node.callee.object.name === "crypto" &&
-      node.callee.property?.type === "Identifier" &&
+      isNodeOfType(node.callee.property, "Identifier") &&
       node.callee.property.name === "randomUUID",
   },
 ];
@@ -60,8 +61,8 @@ const NONDETERMINISTIC_RENDER_PATTERNS: Array<{
 const findOpeningElementOfChild = (jsxNode: EsTreeNode): EsTreeNode | null => {
   let cursor: EsTreeNode | null = jsxNode.parent ?? null;
   while (cursor) {
-    if (cursor.type === "JSXElement") return cursor.openingElement;
-    if (cursor.type === "JSXFragment") return null;
+    if (isNodeOfType(cursor, "JSXElement")) return cursor.openingElement;
+    if (isNodeOfType(cursor, "JSXFragment")) return null;
     cursor = cursor.parent ?? null;
   }
   return null;
@@ -71,8 +72,8 @@ const hasSuppressHydrationWarningAttribute = (openingElement: EsTreeNode | null)
   if (!openingElement) return false;
   for (const attr of openingElement.attributes ?? []) {
     if (
-      attr.type === "JSXAttribute" &&
-      attr.name?.type === "JSXIdentifier" &&
+      isNodeOfType(attr, "JSXAttribute") &&
+      isNodeOfType(attr.name, "JSXIdentifier") &&
       attr.name.name === "suppressHydrationWarning"
     ) {
       return true;

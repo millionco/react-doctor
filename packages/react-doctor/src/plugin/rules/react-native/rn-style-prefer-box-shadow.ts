@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const LEGACY_SHADOW_KEYS = new Set([
   "shadowColor",
@@ -15,8 +16,8 @@ const findLegacyShadowProperty = (
   objectExpression: EsTreeNode,
 ): { keyName: string; node: EsTreeNode } | null => {
   for (const property of objectExpression.properties ?? []) {
-    if (property.type !== "Property") continue;
-    if (property.key?.type !== "Identifier") continue;
+    if (!isNodeOfType(property, "Property")) continue;
+    if (!isNodeOfType(property.key, "Identifier")) continue;
     if (LEGACY_SHADOW_KEYS.has(property.key.name)) {
       return { keyName: property.key.name, node: property };
     }
@@ -35,12 +36,12 @@ export const rnStylePreferBoxShadow = defineRule<Rule>({
     'Use the cross-platform CSS `boxShadow` string (RN v7+): `boxShadow: "0 2px 8px rgba(0,0,0,0.1)"` instead of platform-specific shadow*/elevation keys',
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNode) {
-      if (node.name?.type !== "JSXIdentifier") return;
+      if (!isNodeOfType(node.name, "JSXIdentifier")) return;
       const attrName = node.name.name;
       if (attrName !== "style" && !attrName.endsWith("Style")) return;
-      if (node.value?.type !== "JSXExpressionContainer") return;
+      if (!isNodeOfType(node.value, "JSXExpressionContainer")) return;
       const expression = node.value.expression;
-      if (expression?.type !== "ObjectExpression") return;
+      if (!isNodeOfType(expression, "ObjectExpression")) return;
       const match = findLegacyShadowProperty(expression);
       if (!match) return;
       context.report({
@@ -49,16 +50,16 @@ export const rnStylePreferBoxShadow = defineRule<Rule>({
       });
     },
     CallExpression(node: EsTreeNode) {
-      if (node.callee?.type !== "MemberExpression") return;
-      if (node.callee.object?.type !== "Identifier") return;
+      if (!isNodeOfType(node.callee, "MemberExpression")) return;
+      if (!isNodeOfType(node.callee.object, "Identifier")) return;
       if (node.callee.object.name !== "StyleSheet") return;
-      if (node.callee.property?.type !== "Identifier") return;
+      if (!isNodeOfType(node.callee.property, "Identifier")) return;
       if (node.callee.property.name !== "create") return;
       const arg = node.arguments?.[0];
-      if (arg?.type !== "ObjectExpression") return;
+      if (!isNodeOfType(arg, "ObjectExpression")) return;
       for (const property of arg.properties ?? []) {
-        if (property.type !== "Property") continue;
-        if (property.value?.type !== "ObjectExpression") continue;
+        if (!isNodeOfType(property, "Property")) continue;
+        if (!isNodeOfType(property.value, "ObjectExpression")) continue;
         const match = findLegacyShadowProperty(property.value);
         if (!match) continue;
         context.report({

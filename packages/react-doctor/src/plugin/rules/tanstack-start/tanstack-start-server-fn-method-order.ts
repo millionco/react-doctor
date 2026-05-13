@@ -3,37 +3,41 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const tanstackStartServerFnMethodOrder = defineRule<Rule>({
   recommendation:
     "Chain methods in order: .middleware() → .inputValidator() → .client() → .server() → .handler() — types depend on this sequence",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
-      if (node.callee?.type !== "MemberExpression") return;
+      if (!isNodeOfType(node.callee, "MemberExpression")) return;
 
       const methodNames: string[] = [];
       let currentNode: EsTreeNode = node;
 
       while (
-        currentNode?.type === "CallExpression" &&
-        currentNode.callee?.type === "MemberExpression"
+        isNodeOfType(currentNode, "CallExpression") &&
+        isNodeOfType(currentNode.callee, "MemberExpression")
       ) {
-        const methodName =
-          currentNode.callee.property?.type === "Identifier"
-            ? currentNode.callee.property.name
-            : null;
+        const methodName = isNodeOfType(currentNode.callee.property, "Identifier")
+          ? currentNode.callee.property.name
+          : null;
         if (methodName) methodNames.unshift(methodName);
         currentNode = currentNode.callee.object;
       }
 
-      if (currentNode?.type === "CallExpression" && currentNode.callee?.type === "Identifier") {
+      if (
+        isNodeOfType(currentNode, "CallExpression") &&
+        isNodeOfType(currentNode.callee, "Identifier")
+      ) {
         if (!TANSTACK_SERVER_FN_NAMES.has(currentNode.callee.name)) return;
       } else {
         return;
       }
 
-      const ownMethodName =
-        node.callee.property?.type === "Identifier" ? node.callee.property.name : null;
+      const ownMethodName = isNodeOfType(node.callee.property, "Identifier")
+        ? node.callee.property.name
+        : null;
       if (methodNames[methodNames.length - 1] !== ownMethodName) return;
 
       const orderSensitiveMethods = methodNames.filter((name) =>

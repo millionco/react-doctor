@@ -10,6 +10,7 @@ import { isSetterIdentifier } from "../../utils/is-setter-identifier.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // HACK: §1 of "You Might Not Need an Effect" — mirroring a prop into
 // local state with a useEffect that re-syncs it. The combined shape
@@ -56,28 +57,28 @@ export const noMirrorPropEffect = defineRule<Rule>({
     "Delete both the `useState` and the `useEffect` and read the prop directly during render. Mirroring a prop into local state forces a stale first render before the effect re-syncs",
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | undefined): void => {
-      if (!componentBody || componentBody.type !== "BlockStatement") return;
+      if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
       const propNames = propStackTracker.getCurrentPropNames();
       if (propNames.size === 0) return;
 
       const mirrorBindings: MirrorBinding[] = [];
 
       for (const statement of componentBody.body ?? []) {
-        if (statement.type !== "VariableDeclaration") continue;
+        if (!isNodeOfType(statement, "VariableDeclaration")) continue;
         for (const declarator of statement.declarations ?? []) {
-          if (declarator.id?.type !== "ArrayPattern") continue;
+          if (!isNodeOfType(declarator.id, "ArrayPattern")) continue;
           const elements = declarator.id.elements ?? [];
           if (elements.length < 2) continue;
           const valueElement = elements[0];
           const setterElement = elements[1];
           if (
-            valueElement?.type !== "Identifier" ||
-            setterElement?.type !== "Identifier" ||
+            !isNodeOfType(valueElement, "Identifier") ||
+            !isNodeOfType(setterElement, "Identifier") ||
             !isSetterIdentifier(setterElement.name)
           ) {
             continue;
           }
-          if (declarator.init?.type !== "CallExpression") continue;
+          if (!isNodeOfType(declarator.init, "CallExpression")) continue;
           if (!isHookCall(declarator.init, "useState")) continue;
           const initializer = declarator.init.arguments?.[0];
           if (!initializer) continue;
@@ -100,14 +101,14 @@ export const noMirrorPropEffect = defineRule<Rule>({
       // component's surface — its outer prop set wouldn't apply
       // anyway.
       for (const statement of componentBody.body ?? []) {
-        if (statement.type !== "ExpressionStatement") continue;
+        if (!isNodeOfType(statement, "ExpressionStatement")) continue;
         const effectCall = statement.expression;
-        if (effectCall?.type !== "CallExpression") continue;
+        if (!isNodeOfType(effectCall, "CallExpression")) continue;
         if (!isHookCall(effectCall, EFFECT_HOOK_NAMES)) continue;
         if ((effectCall.arguments?.length ?? 0) < 2) continue;
 
         const depsNode = effectCall.arguments[1];
-        if (depsNode.type !== "ArrayExpression") continue;
+        if (!isNodeOfType(depsNode, "ArrayExpression")) continue;
         // HACK: previously required EXACTLY one dep, which silently
         // missed the legitimate `useEffect(() => setX(value), [value, otherDep])`
         // mirror shape. Now we accept any deps array as long as the
@@ -115,7 +116,7 @@ export const noMirrorPropEffect = defineRule<Rule>({
         // unused inside the body is a separate (exhaustive-deps) concern.
         const depIdentifierNames = new Set<string>();
         for (const element of depsNode.elements ?? []) {
-          if (element?.type === "Identifier") depIdentifierNames.add(element.name);
+          if (isNodeOfType(element, "Identifier")) depIdentifierNames.add(element.name);
         }
         if (depIdentifierNames.size === 0) continue;
 
@@ -124,17 +125,19 @@ export const noMirrorPropEffect = defineRule<Rule>({
         const bodyStatements = getCallbackStatements(callback);
         if (bodyStatements.length !== 1) continue;
         const onlyStatement = bodyStatements[0];
-        const expression =
-          onlyStatement.type === "ExpressionStatement" ? onlyStatement.expression : onlyStatement;
-        if (expression?.type !== "CallExpression") continue;
-        if (expression.callee?.type !== "Identifier") continue;
+        const expression = isNodeOfType(onlyStatement, "ExpressionStatement")
+          ? onlyStatement.expression
+          : onlyStatement;
+        if (!isNodeOfType(expression, "CallExpression")) continue;
+        if (!isNodeOfType(expression.callee, "Identifier")) continue;
         if (!isSetterIdentifier(expression.callee.name)) continue;
         if (!expression.arguments?.length) continue;
         const setterArgument = expression.arguments[0];
 
+        const calleeName = expression.callee.name;
         const matchedBinding = mirrorBindings.find(
           (binding) =>
-            binding.setterName === expression.callee.name &&
+            binding.setterName === calleeName &&
             depIdentifierNames.has(binding.propRootName) &&
             areExpressionsStructurallyEqual(binding.initializer, setterArgument),
         );

@@ -8,6 +8,7 @@ import { isHookCall } from "../../utils/is-hook-call.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const tanstackStartNoNavigateInRender = defineRule<Rule>({
   recommendation:
@@ -30,7 +31,7 @@ export const tanstackStartNoNavigateInRender = defineRule<Rule>({
       isHookCall(node, "useMemo");
 
     const isEventHandlerAttribute = (node: EsTreeNode): boolean =>
-      node.name?.type === "JSXIdentifier" &&
+      isNodeOfType(node.name, "JSXIdentifier") &&
       typeof node.name.name === "string" &&
       node.name.name.startsWith("on") &&
       UPPERCASE_PATTERN.test(node.name.name.charAt(2));
@@ -45,7 +46,7 @@ export const tanstackStartNoNavigateInRender = defineRule<Rule>({
         if (deferredCallbackDepth > 0 || eventHandlerDepth > 0) return;
 
         if (
-          node.callee?.type === "Identifier" &&
+          isNodeOfType(node.callee, "Identifier") &&
           node.callee.name === "navigate" &&
           (node.arguments?.length ?? 0) > 0
         ) {

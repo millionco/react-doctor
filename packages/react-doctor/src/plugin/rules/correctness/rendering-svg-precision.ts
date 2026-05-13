@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const SVG_PATH_HIGH_PRECISION_PATTERN = /\d+\.\d{4,}/;
 
@@ -16,9 +17,9 @@ export const renderingSvgPrecision = defineRule<Rule>({
     "Truncate path/points/transform decimals to 1–2 digits — sub-pixel precision adds bytes with no visible difference",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNode) {
-      if (node.name?.type !== "JSXIdentifier") return;
+      if (!isNodeOfType(node.name, "JSXIdentifier")) return;
       if (!SVG_PATH_ATTRIBUTES.has(node.name.name)) return;
-      if (node.value?.type !== "Literal") return;
+      if (!isNodeOfType(node.value, "Literal")) return;
       const value = node.value.value;
       if (typeof value !== "string") return;
       if (!SVG_PATH_HIGH_PRECISION_PATTERN.test(value)) return;

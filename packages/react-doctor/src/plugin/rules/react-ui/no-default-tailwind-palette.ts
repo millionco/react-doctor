@@ -8,6 +8,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getClassNameLiteral } from "./utils/get-class-name-literal.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const buildDefaultPaletteRegex = (): RegExp => {
   const utilityPrefixGroup = TAILWIND_PALETTE_UTILITY_PREFIXES.join("|");
@@ -35,7 +36,10 @@ export const noDefaultTailwindPalette = defineRule<Rule>({
     "Replace `indigo-*` / `gray-*` / `slate-*` with project tokens, your brand color, or a less-default neutral (`zinc`, `neutral`, `stone`)",
   create: (context: RuleContext) => ({
     JSXAttribute(jsxAttribute: EsTreeNode) {
-      if (jsxAttribute.name?.type !== "JSXIdentifier" || jsxAttribute.name.name !== "className") {
+      if (
+        !isNodeOfType(jsxAttribute.name, "JSXIdentifier") ||
+        jsxAttribute.name.name !== "className"
+      ) {
         return;
       }
       const classNameLiteral = getClassNameLiteral(jsxAttribute);

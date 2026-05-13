@@ -3,6 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const tanstackStartNoDynamicServerFnImport = defineRule<Rule>({
   recommendation:
@@ -13,9 +14,9 @@ export const tanstackStartNoDynamicServerFnImport = defineRule<Rule>({
       if (!source) return;
 
       let importPath: string | null = null;
-      if (source.type === "Literal" && typeof source.value === "string") {
+      if (isNodeOfType(source, "Literal") && typeof source.value === "string") {
         importPath = source.value;
-      } else if (source.type === "TemplateLiteral" && source.quasis?.length === 1) {
+      } else if (isNodeOfType(source, "TemplateLiteral") && source.quasis?.length === 1) {
         importPath = source.quasis[0].value?.raw ?? null;
       }
 

@@ -3,13 +3,14 @@ import { hasJsxAttribute } from "../../utils/has-jsx-attribute.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const nextjsInlineScriptMissingId = defineRule<Rule>({
   recommendation:
     'Add `id="descriptive-name"` so Next.js can track, deduplicate, and re-execute the script correctly',
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNode) {
-      if (node.name?.type !== "JSXIdentifier" || node.name.name !== "Script") return;
+      if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "Script") return;
       const attributes = node.attributes ?? [];
 
       if (hasJsxAttribute(attributes, "src")) return;

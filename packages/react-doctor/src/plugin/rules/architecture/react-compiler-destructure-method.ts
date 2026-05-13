@@ -4,6 +4,7 @@ import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const HOOK_OBJECTS_WITH_METHODS = new Map<string, Set<string>>([
   ["useRouter", new Set(["push", "replace", "back", "forward", "refresh", "prefetch"])],
@@ -20,14 +21,14 @@ const HOOK_OBJECTS_WITH_METHODS = new Map<string, Set<string>>([
 // access.
 const buildHookBindingMap = (componentBody: EsTreeNode): Map<string, string> => {
   const result = new Map<string, string>();
-  if (componentBody?.type !== "BlockStatement") return result;
+  if (!isNodeOfType(componentBody, "BlockStatement")) return result;
   for (const statement of componentBody.body ?? []) {
-    if (statement.type !== "VariableDeclaration") continue;
+    if (!isNodeOfType(statement, "VariableDeclaration")) continue;
     for (const declarator of statement.declarations ?? []) {
-      if (declarator.id?.type !== "Identifier") continue;
-      if (declarator.init?.type !== "CallExpression") continue;
+      if (!isNodeOfType(declarator.id, "Identifier")) continue;
+      if (!isNodeOfType(declarator.init, "CallExpression")) continue;
       const callee = declarator.init.callee;
-      if (callee?.type !== "Identifier") continue;
+      if (!isNodeOfType(callee, "Identifier")) continue;
       result.set(declarator.id.name, callee.name);
     }
   }
@@ -53,10 +54,10 @@ export const reactCompilerDestructureMethod = defineRule<Rule>({
     const hookBindingMapStack: Array<Map<string, string>> = [];
 
     const isComponent = (node: EsTreeNode): boolean => {
-      if (node.type === "FunctionDeclaration") {
+      if (isNodeOfType(node, "FunctionDeclaration")) {
         return Boolean(node.id?.name && isUppercaseName(node.id.name));
       }
-      if (node.type === "VariableDeclarator") {
+      if (isNodeOfType(node, "VariableDeclarator")) {
         return isComponentAssignment(node);
       }
       return false;
@@ -72,7 +73,7 @@ export const reactCompilerDestructureMethod = defineRule<Rule>({
     // correct semantic for "this component declares zero hook bindings".
     const enter = (node: EsTreeNode): void => {
       if (!isComponent(node)) return;
-      const body = node.type === "FunctionDeclaration" ? node.body : node.init?.body;
+      const body = isNodeOfType(node, "FunctionDeclaration") ? node.body : node.init?.body;
       hookBindingMapStack.push(buildHookBindingMap(body));
     };
     const exit = (node: EsTreeNode): void => {
@@ -87,8 +88,8 @@ export const reactCompilerDestructureMethod = defineRule<Rule>({
       MemberExpression(node: EsTreeNode) {
         if (hookBindingMapStack.length === 0) return;
         if (node.computed) return;
-        if (node.object?.type !== "Identifier") return;
-        if (node.property?.type !== "Identifier") return;
+        if (!isNodeOfType(node.object, "Identifier")) return;
+        if (!isNodeOfType(node.property, "Identifier")) return;
 
         const bindingName = node.object.name;
         const methodName = node.property.name;
@@ -99,7 +100,7 @@ export const reactCompilerDestructureMethod = defineRule<Rule>({
         const allowedMethods = HOOK_OBJECTS_WITH_METHODS.get(hookSource);
         if (!allowedMethods || !allowedMethods.has(methodName)) return;
 
-        if (node.parent?.type !== "CallExpression" || node.parent.callee !== node) return;
+        if (!isNodeOfType(node.parent, "CallExpression") || node.parent.callee !== node) return;
 
         context.report({
           node,

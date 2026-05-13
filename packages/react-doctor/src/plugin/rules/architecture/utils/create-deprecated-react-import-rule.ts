@@ -1,3 +1,5 @@
+import { getImportedName } from "../../../utils/get-imported-name.js";
+import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import type { RuleContext } from "../../../utils/rule-context.js";
 import type { Rule } from "../../../utils/rule.js";
@@ -19,16 +21,16 @@ export const createDeprecatedReactImportRule = ({
         if (sourceValue !== source) return;
 
         for (const specifier of node.specifiers ?? []) {
-          if (specifier.type === "ImportSpecifier") {
-            const importedName = specifier.imported?.name;
+          if (isNodeOfType(specifier, "ImportSpecifier")) {
+            const importedName = getImportedName(specifier);
             if (!importedName) continue;
             const message = messages.get(importedName);
             if (message) context.report({ node: specifier, message });
             continue;
           }
           if (
-            specifier.type === "ImportDefaultSpecifier" ||
-            specifier.type === "ImportNamespaceSpecifier"
+            isNodeOfType(specifier, "ImportDefaultSpecifier") ||
+            isNodeOfType(specifier, "ImportNamespaceSpecifier")
           ) {
             const localName = specifier.local?.name;
             if (localName) namespaceBindings.add(localName);
@@ -38,9 +40,9 @@ export const createDeprecatedReactImportRule = ({
       MemberExpression(node: EsTreeNode) {
         if (namespaceBindings.size === 0) return;
         if (node.computed) return;
-        if (node.object?.type !== "Identifier") return;
+        if (!isNodeOfType(node.object, "Identifier")) return;
         if (!namespaceBindings.has(node.object.name)) return;
-        if (node.property?.type !== "Identifier") return;
+        if (!isNodeOfType(node.property, "Identifier")) return;
         const message = messages.get(node.property.name);
         if (message) context.report({ node, message });
       },

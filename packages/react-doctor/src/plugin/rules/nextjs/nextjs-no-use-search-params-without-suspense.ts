@@ -4,6 +4,8 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { getImportedName } from "../../utils/get-imported-name.js";
 
 // HACK: file-level proxy for "is the developer aware of the Suspense
 // requirement?". Cross-file ancestor analysis would catch every case
@@ -23,17 +25,17 @@ const fileMentionsSuspense = (programNode: EsTreeNode): boolean => {
   walkAst(programNode, (child: EsTreeNode) => {
     if (didSee) return false;
     if (
-      child.type === "JSXOpeningElement" &&
-      child.name?.type === "JSXIdentifier" &&
+      isNodeOfType(child, "JSXOpeningElement") &&
+      isNodeOfType(child.name, "JSXIdentifier") &&
       child.name.name === "Suspense"
     ) {
       didSee = true;
       return false;
     }
-    if (child.type === "ImportDeclaration" && child.source?.value === "react") {
+    if (isNodeOfType(child, "ImportDeclaration") && child.source?.value === "react") {
       const importsSuspense = (child.specifiers ?? []).some(
         (specifier: EsTreeNode) =>
-          specifier.type === "ImportSpecifier" && specifier.imported?.name === "Suspense",
+          isNodeOfType(specifier, "ImportSpecifier") && getImportedName(specifier) === "Suspense",
       );
       if (importsSuspense) {
         didSee = true;

@@ -5,6 +5,7 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const tanstackStartNoUseEffectFetch = defineRule<Rule>({
   recommendation:
@@ -24,8 +25,8 @@ export const tanstackStartNoUseEffectFetch = defineRule<Rule>({
       walkAst(callback, (child: EsTreeNode) => {
         if (hasFetchCall) return;
         if (
-          child.type === "CallExpression" &&
-          child.callee?.type === "Identifier" &&
+          isNodeOfType(child, "CallExpression") &&
+          isNodeOfType(child.callee, "Identifier") &&
           child.callee.name === "fetch"
         ) {
           hasFetchCall = true;

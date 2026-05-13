@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // HACK: the three legacy class lifecycles `componentWillMount`,
 // `componentWillReceiveProps`, and `componentWillUpdate` are unsafe
@@ -59,9 +60,12 @@ export const noLegacyClassLifecycles = defineRule<Rule>({
   create: (context: RuleContext) => {
     const checkMember = (memberNode: EsTreeNode | undefined): void => {
       if (!memberNode) return;
-      if (memberNode.type !== "MethodDefinition" && memberNode.type !== "PropertyDefinition")
+      if (
+        !isNodeOfType(memberNode, "MethodDefinition") &&
+        !isNodeOfType(memberNode, "PropertyDefinition")
+      )
         return;
-      if (memberNode.key?.type !== "Identifier") return;
+      if (!isNodeOfType(memberNode.key, "Identifier")) return;
       const message = buildLegacyLifecycleMessage(memberNode.key.name);
       if (message) context.report({ node: memberNode.key, message });
     };

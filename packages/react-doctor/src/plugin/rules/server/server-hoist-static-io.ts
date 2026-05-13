@@ -3,6 +3,7 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const ROUTE_HANDLER_HTTP_METHODS = new Set([
   "GET",
@@ -27,32 +28,32 @@ const STATIC_IO_FUNCTIONS = new Set([
 
 const isStaticIoCall = (call: EsTreeNode): boolean => {
   // fs.readFileSync(...) / fsPromises.readFile(...) / fs.promises.readFile(...).
-  if (call.type !== "CallExpression") return false;
+  if (!isNodeOfType(call, "CallExpression")) return false;
   const callee = call.callee;
-  if (callee?.type === "Identifier" && STATIC_IO_FUNCTIONS.has(callee.name)) {
+  if (isNodeOfType(callee, "Identifier") && STATIC_IO_FUNCTIONS.has(callee.name)) {
     return true;
   }
-  if (callee?.type !== "MemberExpression") return false;
-  const propertyName = callee.property?.type === "Identifier" ? callee.property.name : null;
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  const propertyName = isNodeOfType(callee.property, "Identifier") ? callee.property.name : null;
   if (!propertyName || !STATIC_IO_FUNCTIONS.has(propertyName)) return false;
   return true;
 };
 
 const isFetchOfImportMetaUrl = (call: EsTreeNode): boolean => {
   // fetch(new URL("./fonts/Inter.ttf", import.meta.url))
-  if (call.type !== "CallExpression") return false;
-  if (call.callee?.type !== "Identifier" || call.callee.name !== "fetch") return false;
+  if (!isNodeOfType(call, "CallExpression")) return false;
+  if (!isNodeOfType(call.callee, "Identifier") || call.callee.name !== "fetch") return false;
   const arg = call.arguments?.[0];
   if (!arg) return false;
-  if (arg.type !== "NewExpression") return false;
-  if (arg.callee?.type !== "Identifier" || arg.callee.name !== "URL") return false;
+  if (!isNodeOfType(arg, "NewExpression")) return false;
+  if (!isNodeOfType(arg.callee, "Identifier") || arg.callee.name !== "URL") return false;
   const secondArg = arg.arguments?.[1];
   if (!secondArg) return false;
   // Match `import.meta.url` — MemberExpression on MetaProperty.
   return (
-    secondArg.type === "MemberExpression" &&
-    secondArg.object?.type === "MetaProperty" &&
-    secondArg.property?.type === "Identifier" &&
+    isNodeOfType(secondArg, "MemberExpression") &&
+    isNodeOfType(secondArg.object, "MetaProperty") &&
+    isNodeOfType(secondArg.property, "Identifier") &&
     secondArg.property.name === "url"
   );
 };
@@ -62,7 +63,7 @@ const callReadsHandlerArgs = (call: EsTreeNode, handlerParamNames: Set<string>):
   let referencesArg = false;
   walkAst(call, (child: EsTreeNode) => {
     if (referencesArg) return;
-    if (child.type === "Identifier" && handlerParamNames.has(child.name)) {
+    if (isNodeOfType(child, "Identifier") && handlerParamNames.has(child.name)) {
       referencesArg = true;
     }
   });
@@ -82,7 +83,7 @@ const inspectHandlerBody = (
     if (isStaticIoCall(child)) staticCall = child;
     else if (isFetchOfImportMetaUrl(child)) staticCall = child;
     else if (
-      child.type === "AwaitExpression" &&
+      isNodeOfType(child, "AwaitExpression") &&
       child.argument &&
       (isStaticIoCall(child.argument) || isFetchOfImportMetaUrl(child.argument))
     ) {
@@ -92,12 +93,14 @@ const inspectHandlerBody = (
     if (callReadsHandlerArgs(staticCall, handlerParamNames)) return;
 
     const calleeText =
-      staticCall.callee?.type === "MemberExpression" &&
-      staticCall.callee.property?.type === "Identifier"
+      isNodeOfType(staticCall.callee, "MemberExpression") &&
+      isNodeOfType(staticCall.callee.property, "Identifier")
         ? `${
-            staticCall.callee.object?.type === "Identifier" ? staticCall.callee.object.name : "?"
+            isNodeOfType(staticCall.callee.object, "Identifier")
+              ? staticCall.callee.object.name
+              : "?"
           }.${staticCall.callee.property.name}`
-        : staticCall.callee?.type === "Identifier"
+        : isNodeOfType(staticCall.callee, "Identifier")
           ? staticCall.callee.name
           : "io";
     context.report({
@@ -110,7 +113,7 @@ const inspectHandlerBody = (
 const collectIdentifierParams = (params: EsTreeNode[]): Set<string> => {
   const names = new Set<string>();
   for (const param of params) {
-    if (param.type === "Identifier") names.add(param.name);
+    if (isNodeOfType(param, "Identifier")) names.add(param.name);
   }
   return names;
 };
@@ -127,10 +130,10 @@ export const serverHoistStaticIo = defineRule<Rule>({
   create: (context: RuleContext) => ({
     ExportNamedDeclaration(node: EsTreeNode) {
       const declaration = node.declaration;
-      if (declaration?.type !== "FunctionDeclaration") return;
+      if (!isNodeOfType(declaration, "FunctionDeclaration")) return;
       const handlerName = declaration.id?.name;
       if (!handlerName || !ROUTE_HANDLER_HTTP_METHODS.has(handlerName)) return;
-      if (declaration.body?.type !== "BlockStatement") return;
+      if (!isNodeOfType(declaration.body, "BlockStatement")) return;
       inspectHandlerBody(
         context,
         declaration.body,
@@ -144,15 +147,15 @@ export const serverHoistStaticIo = defineRule<Rule>({
       const declaration = node.declaration;
       if (
         !declaration ||
-        (declaration.type !== "FunctionDeclaration" &&
-          declaration.type !== "FunctionExpression" &&
-          declaration.type !== "ArrowFunctionExpression")
+        (!isNodeOfType(declaration, "FunctionDeclaration") &&
+          !isNodeOfType(declaration, "FunctionExpression") &&
+          !isNodeOfType(declaration, "ArrowFunctionExpression"))
       ) {
         return;
       }
       if (!declaration.async) return;
       const body = declaration.body;
-      if (body?.type !== "BlockStatement") return;
+      if (!isNodeOfType(body, "BlockStatement")) return;
       inspectHandlerBody(
         context,
         body,

@@ -3,6 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const tanstackStartRedirectInTryCatch = defineRule<Rule>({
   recommendation:
@@ -29,8 +30,8 @@ export const tanstackStartRedirectInTryCatch = defineRule<Rule>({
         if (catchClauseDepth > 0) return;
 
         const argument = node.argument;
-        if (argument?.type !== "CallExpression") return;
-        if (argument.callee?.type !== "Identifier") return;
+        if (!isNodeOfType(argument, "CallExpression")) return;
+        if (!isNodeOfType(argument.callee, "Identifier")) return;
         if (!TANSTACK_REDIRECT_FUNCTIONS.has(argument.callee.name)) return;
 
         context.report({

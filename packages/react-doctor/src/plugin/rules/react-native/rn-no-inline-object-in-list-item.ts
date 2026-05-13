@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const RENDER_ITEM_PROP_NAMES = new Set([
   "renderItem",
@@ -22,18 +23,21 @@ export const rnNoInlineObjectInListItem = defineRule<Rule>({
     let renderItemDepth = 0;
 
     const isRenderItemAttribute = (parent: EsTreeNode | null | undefined): boolean => {
-      if (parent?.type !== "JSXAttribute") return false;
-      const attrName = parent.name?.type === "JSXIdentifier" ? parent.name.name : null;
+      if (!isNodeOfType(parent, "JSXAttribute")) return false;
+      const attrName = isNodeOfType(parent.name, "JSXIdentifier") ? parent.name.name : null;
       return attrName ? RENDER_ITEM_PROP_NAMES.has(attrName) : false;
     };
 
     const isRenderItemFunction = (node: EsTreeNode): boolean => {
-      if (node.type !== "ArrowFunctionExpression" && node.type !== "FunctionExpression") {
+      if (
+        !isNodeOfType(node, "ArrowFunctionExpression") &&
+        !isNodeOfType(node, "FunctionExpression")
+      ) {
         return false;
       }
       // Walk up: parent should be JSXExpressionContainer whose parent is JSXAttribute renderItem.
       const expressionContainer = node.parent;
-      if (expressionContainer?.type !== "JSXExpressionContainer") return false;
+      if (!isNodeOfType(expressionContainer, "JSXExpressionContainer")) return false;
       return isRenderItemAttribute(expressionContainer.parent);
     };
 
@@ -51,9 +55,9 @@ export const rnNoInlineObjectInListItem = defineRule<Rule>({
       "FunctionExpression:exit": exit,
       JSXAttribute(node: EsTreeNode) {
         if (renderItemDepth === 0) return;
-        if (node.value?.type !== "JSXExpressionContainer") return;
-        if (node.value.expression?.type !== "ObjectExpression") return;
-        const propName = node.name?.type === "JSXIdentifier" ? node.name.name : "<unknown>";
+        if (!isNodeOfType(node.value, "JSXExpressionContainer")) return;
+        if (!isNodeOfType(node.value.expression, "ObjectExpression")) return;
+        const propName = isNodeOfType(node.name, "JSXIdentifier") ? node.name.name : "<unknown>";
         context.report({
           node,
           message: `Inline object literal on "${propName}" inside renderItem — allocates a fresh reference per row and breaks memo() on the row component. Hoist outside renderItem or pass primitives`,

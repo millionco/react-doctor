@@ -8,6 +8,7 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // HACK: "Lifecycle of Reactive Effects" — Can global or mutable
 // values be dependencies? — calls out that `location.pathname`,
@@ -29,12 +30,12 @@ import type { RuleContext } from "../../utils/rule-context.js";
 // mutable property reads are the bug.
 const collectUseRefBindingNames = (componentBody: EsTreeNode): Set<string> => {
   const useRefBindings = new Set<string>();
-  if (componentBody?.type !== "BlockStatement") return useRefBindings;
+  if (!isNodeOfType(componentBody, "BlockStatement")) return useRefBindings;
   for (const statement of componentBody.body ?? []) {
-    if (statement.type !== "VariableDeclaration") continue;
+    if (!isNodeOfType(statement, "VariableDeclaration")) continue;
     for (const declarator of statement.declarations ?? []) {
-      if (declarator.id?.type !== "Identifier") continue;
-      if (declarator.init?.type !== "CallExpression") continue;
+      if (!isNodeOfType(declarator.id, "Identifier")) continue;
+      if (!isNodeOfType(declarator.init, "CallExpression")) continue;
       if (!isHookCall(declarator.init, "useRef")) continue;
       useRefBindings.add(declarator.id.name);
     }
@@ -46,13 +47,13 @@ const findMutableDepIssue = (
   depElement: EsTreeNode,
   useRefBindingNames: Set<string>,
 ): { kind: "global" | "ref-current"; rootName: string } | null => {
-  if (depElement.type !== "MemberExpression") return null;
+  if (!isNodeOfType(depElement, "MemberExpression")) return null;
 
   if (
-    depElement.property?.type === "Identifier" &&
+    isNodeOfType(depElement.property, "Identifier") &&
     depElement.property.name === "current" &&
     !depElement.computed &&
-    depElement.object?.type === "Identifier" &&
+    isNodeOfType(depElement.object, "Identifier") &&
     useRefBindingNames.has(depElement.object.name)
   ) {
     return { kind: "ref-current", rootName: depElement.object.name };
@@ -70,15 +71,15 @@ export const noMutableInDeps = defineRule<Rule>({
     "Read mutable values (`location.pathname`, `ref.current`) inside the effect body instead of in the deps array, or subscribe with `useSyncExternalStore`. Mutations to these don't trigger re-renders, so listing them in deps doesn't make the effect react to changes",
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
-      if (!componentBody || componentBody.type !== "BlockStatement") return;
+      if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
       const useRefBindingNames = collectUseRefBindingNames(componentBody);
 
       walkAst(componentBody, (child: EsTreeNode) => {
-        if (child.type !== "CallExpression") return;
+        if (!isNodeOfType(child, "CallExpression")) return;
         if (!isHookCall(child, HOOKS_WITH_DEPS)) return;
         if ((child.arguments?.length ?? 0) < 2) return;
         const depsNode = child.arguments[1];
-        if (depsNode.type !== "ArrayExpression") return;
+        if (!isNodeOfType(depsNode, "ArrayExpression")) return;
 
         for (const element of depsNode.elements ?? []) {
           if (!element) continue;

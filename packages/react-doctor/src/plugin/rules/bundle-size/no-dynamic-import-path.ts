@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // HACK: bundlers can only tree-shake / split when the import target is a
 // statically-analyzable string literal. `import(variable)` or
@@ -12,7 +13,7 @@ export const noDynamicImportPath = defineRule<Rule>({
   create: (context: RuleContext) => ({
     ImportExpression(node: EsTreeNode) {
       const source = node.source;
-      if (source && source.type !== "Literal" && source.type !== "TemplateLiteral") {
+      if (source && !isNodeOfType(source, "Literal") && !isNodeOfType(source, "TemplateLiteral")) {
         context.report({
           node,
           message:
@@ -20,7 +21,7 @@ export const noDynamicImportPath = defineRule<Rule>({
         });
         return;
       }
-      if (source?.type === "TemplateLiteral" && (source.expressions?.length ?? 0) > 0) {
+      if (isNodeOfType(source, "TemplateLiteral") && (source.expressions?.length ?? 0) > 0) {
         context.report({
           node,
           message:
@@ -29,10 +30,10 @@ export const noDynamicImportPath = defineRule<Rule>({
       }
     },
     CallExpression(node: EsTreeNode) {
-      if (node.callee?.type !== "Identifier" || node.callee.name !== "require") return;
+      if (!isNodeOfType(node.callee, "Identifier") || node.callee.name !== "require") return;
       const arg = node.arguments?.[0];
       if (!arg) return;
-      if (arg.type !== "Literal" && arg.type !== "TemplateLiteral") {
+      if (!isNodeOfType(arg, "Literal") && !isNodeOfType(arg, "TemplateLiteral")) {
         context.report({
           node,
           message:
@@ -40,7 +41,7 @@ export const noDynamicImportPath = defineRule<Rule>({
         });
         return;
       }
-      if (arg.type === "TemplateLiteral" && (arg.expressions?.length ?? 0) > 0) {
+      if (isNodeOfType(arg, "TemplateLiteral") && (arg.expressions?.length ?? 0) > 0) {
         context.report({
           node,
           message:

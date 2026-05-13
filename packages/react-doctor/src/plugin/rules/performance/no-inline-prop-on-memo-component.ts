@@ -2,15 +2,16 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const isMemoCall = (node: EsTreeNode): boolean => {
-  if (node.type !== "CallExpression") return false;
-  if (node.callee?.type === "Identifier" && node.callee.name === "memo") return true;
+  if (!isNodeOfType(node, "CallExpression")) return false;
+  if (isNodeOfType(node.callee, "Identifier") && node.callee.name === "memo") return true;
   if (
-    node.callee?.type === "MemberExpression" &&
-    node.callee.object?.type === "Identifier" &&
+    isNodeOfType(node.callee, "MemberExpression") &&
+    isNodeOfType(node.callee.object, "Identifier") &&
     node.callee.object.name === "React" &&
-    node.callee.property?.type === "Identifier" &&
+    isNodeOfType(node.callee.property, "Identifier") &&
     node.callee.property.name === "memo"
   )
     return true;
@@ -19,17 +20,18 @@ const isMemoCall = (node: EsTreeNode): boolean => {
 
 const isInlineReference = (node: EsTreeNode): string | null => {
   if (
-    node.type === "ArrowFunctionExpression" ||
-    node.type === "FunctionExpression" ||
-    (node.type === "CallExpression" &&
-      node.callee?.type === "MemberExpression" &&
-      node.callee.property?.name === "bind")
+    isNodeOfType(node, "ArrowFunctionExpression") ||
+    isNodeOfType(node, "FunctionExpression") ||
+    (isNodeOfType(node, "CallExpression") &&
+      isNodeOfType(node.callee, "MemberExpression") &&
+      isNodeOfType(node.callee.property, "Identifier") &&
+      node.callee.property.name === "bind")
   )
     return "functions";
 
-  if (node.type === "ObjectExpression") return "objects";
-  if (node.type === "ArrayExpression") return "Arrays";
-  if (node.type === "JSXElement" || node.type === "JSXFragment") return "JSX";
+  if (isNodeOfType(node, "ObjectExpression")) return "objects";
+  if (isNodeOfType(node, "ArrayExpression")) return "Arrays";
+  if (isNodeOfType(node, "JSXElement") || isNodeOfType(node, "JSXFragment")) return "JSX";
 
   return null;
 };
@@ -42,7 +44,7 @@ export const noInlinePropOnMemoComponent = defineRule<Rule>({
 
     return {
       VariableDeclarator(node: EsTreeNode) {
-        if (node.id?.type !== "Identifier" || !node.init) return;
+        if (!isNodeOfType(node.id, "Identifier") || !node.init) return;
         if (isMemoCall(node.init)) {
           memoizedComponentNames.add(node.id.name);
         }
@@ -50,19 +52,19 @@ export const noInlinePropOnMemoComponent = defineRule<Rule>({
       ExportDefaultDeclaration(node: EsTreeNode) {
         if (node.declaration && isMemoCall(node.declaration)) {
           const innerArgument = node.declaration.arguments?.[0];
-          if (innerArgument?.type === "Identifier") {
+          if (isNodeOfType(innerArgument, "Identifier")) {
             memoizedComponentNames.add(innerArgument.name);
           }
         }
       },
       JSXAttribute(node: EsTreeNode) {
-        if (!node.value || node.value.type !== "JSXExpressionContainer") return;
+        if (!node.value || !isNodeOfType(node.value, "JSXExpressionContainer")) return;
 
         const openingElement = node.parent;
-        if (!openingElement || openingElement.type !== "JSXOpeningElement") return;
+        if (!openingElement || !isNodeOfType(openingElement, "JSXOpeningElement")) return;
 
         let elementName: string | null = null;
-        if (openingElement.name?.type === "JSXIdentifier") {
+        if (isNodeOfType(openingElement.name, "JSXIdentifier")) {
           elementName = openingElement.name.name;
         }
         if (!elementName || !memoizedComponentNames.has(elementName)) return;

@@ -4,6 +4,7 @@ import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const rerenderMemoWithDefaultValue = defineRule<Rule>({
   recommendation:
@@ -11,19 +12,28 @@ export const rerenderMemoWithDefaultValue = defineRule<Rule>({
   create: (context: RuleContext) => {
     const checkDefaultProps = (params: EsTreeNode[]): void => {
       for (const param of params) {
-        if (param.type !== "ObjectPattern") continue;
+        if (!isNodeOfType(param, "ObjectPattern")) continue;
         for (const property of param.properties ?? []) {
-          if (property.type !== "Property" || property.value?.type !== "AssignmentPattern")
+          if (
+            !isNodeOfType(property, "Property") ||
+            !isNodeOfType(property.value, "AssignmentPattern")
+          )
             continue;
           const defaultValue = property.value.right;
-          if (defaultValue?.type === "ObjectExpression" && defaultValue.properties?.length === 0) {
+          if (
+            isNodeOfType(defaultValue, "ObjectExpression") &&
+            defaultValue.properties?.length === 0
+          ) {
             context.report({
               node: defaultValue,
               message:
                 "Default prop value {} creates a new object reference every render — extract to a module-level constant",
             });
           }
-          if (defaultValue?.type === "ArrayExpression" && defaultValue.elements?.length === 0) {
+          if (
+            isNodeOfType(defaultValue, "ArrayExpression") &&
+            defaultValue.elements?.length === 0
+          ) {
             context.report({
               node: defaultValue,
               message:

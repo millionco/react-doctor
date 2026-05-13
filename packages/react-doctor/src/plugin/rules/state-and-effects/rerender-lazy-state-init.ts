@@ -16,11 +16,15 @@ export const rerenderLazyStateInit = defineRule<Rule>({
       if (!isNodeOfType(initializer, "CallExpression")) return;
 
       const callee = initializer.callee;
+      const memberPropertyName =
+        isNodeOfType(callee, "MemberExpression") &&
+        (isNodeOfType(callee.property, "Identifier") ||
+          isNodeOfType(callee.property, "PrivateIdentifier"))
+          ? callee.property.name
+          : null;
       const calleeName = isNodeOfType(callee, "Identifier")
         ? callee.name
-        : isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")
-          ? callee.property.name
-          : "fn";
+        : (memberPropertyName ?? "fn");
 
       if (TRIVIAL_INITIALIZER_NAMES.has(calleeName)) return;
 

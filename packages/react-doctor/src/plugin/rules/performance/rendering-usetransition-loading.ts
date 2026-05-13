@@ -18,7 +18,6 @@ export const renderingUsetransitionLoading = defineRule<Rule>({
       const initializer = node.init.arguments[0];
       if (!isNodeOfType(initializer, "Literal") || initializer.value !== false) return;
 
-      if (!isNodeOfType(node.id, "ArrayPattern")) return;
       const firstBinding = node.id.elements[0];
       const stateVariableName = isNodeOfType(firstBinding, "Identifier") ? firstBinding.name : null;
       if (!stateVariableName || !LOADING_STATE_PATTERN.test(stateVariableName)) return;

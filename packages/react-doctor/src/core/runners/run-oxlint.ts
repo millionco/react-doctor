@@ -19,7 +19,7 @@ import {
   RULE_METADATA,
   createOxlintConfig,
 } from "./oxlint-config.js";
-import reactDoctorPlugin from "../../plugin/index.js";
+import reactDoctorPlugin from "../../plugin/react-doctor-plugin.js";
 import type { CleanedDiagnostic, Diagnostic, OxlintOutput, ProjectInfo } from "../../types.js";
 import { neutralizeDisableDirectives } from "../diagnostics/neutralize-disable-directives.js";
 

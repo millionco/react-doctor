@@ -76,7 +76,7 @@ export default defineConfig({
       fixedExtension: false,
     },
     {
-      entry: { "react-doctor-plugin": "./src/plugin/index.ts" },
+      entry: { "react-doctor-plugin": "./src/plugin/react-doctor-plugin.ts" },
       target: "node22",
       platform: "node",
       fixedExtension: false,

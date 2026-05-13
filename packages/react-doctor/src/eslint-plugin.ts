@@ -1,4 +1,4 @@
-import oxlintPlugin from "./plugin/index.js";
+import oxlintPlugin from "./plugin/react-doctor-plugin.js";
 import {
   GLOBAL_REACT_DOCTOR_RULES,
   NEXTJS_RULES,

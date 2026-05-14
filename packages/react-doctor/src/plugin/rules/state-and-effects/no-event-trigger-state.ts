@@ -4,7 +4,7 @@ import {
   EVENT_TRIGGERED_SIDE_EFFECT_CALLEES,
   EVENT_TRIGGERED_SIDE_EFFECT_MEMBER_METHODS,
   NAVIGATION_RECEIVER_NAMES,
-} from "../../constants.js";
+} from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getCallbackStatements } from "../../utils/get-callback-statements.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";

@@ -1,9 +1,9 @@
+import { TIMER_AND_SCHEDULER_DIRECT_CALLEE_NAMES } from "../../constants/dom.js";
 import {
   EFFECT_HOOK_NAMES,
   REACT_HANDLER_PROP_PATTERN,
   SUBSCRIPTION_METHOD_NAMES,
-  TIMER_AND_SCHEDULER_DIRECT_CALLEE_NAMES,
-} from "../../constants.js";
+} from "../../constants/react.js";
 import { createComponentPropStackTracker } from "../../utils/create-component-prop-stack-tracker.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";

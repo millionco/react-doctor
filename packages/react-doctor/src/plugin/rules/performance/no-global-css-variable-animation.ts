@@ -1,4 +1,4 @@
-import { ANIMATION_CALLBACK_NAMES } from "../../constants.js";
+import { ANIMATION_CALLBACK_NAMES } from "../../constants/style.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { isMemberProperty } from "../../utils/is-member-property.js";
 import { walkAst } from "../../utils/walk-ast.js";

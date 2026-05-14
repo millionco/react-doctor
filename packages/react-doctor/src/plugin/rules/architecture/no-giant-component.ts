@@ -1,4 +1,4 @@
-import { GIANT_COMPONENT_LINE_THRESHOLD } from "../../constants.js";
+import { GIANT_COMPONENT_LINE_THRESHOLD } from "../../constants/thresholds.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";

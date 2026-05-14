@@ -1,4 +1,4 @@
-import { DEEP_NESTING_THRESHOLD } from "../../constants.js";
+import { DEEP_NESTING_THRESHOLD } from "../../constants/thresholds.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";

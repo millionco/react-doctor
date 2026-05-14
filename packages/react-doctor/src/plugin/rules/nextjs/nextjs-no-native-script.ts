@@ -1,4 +1,4 @@
-import { EXECUTABLE_SCRIPT_TYPES } from "../../constants.js";
+import { EXECUTABLE_SCRIPT_TYPES } from "../../constants/dom.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import type { Rule } from "../../utils/rule.js";

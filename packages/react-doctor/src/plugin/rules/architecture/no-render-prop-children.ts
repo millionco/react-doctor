@@ -1,4 +1,4 @@
-import { RENDER_PROP_PROLIFERATION_THRESHOLD } from "../../constants.js";
+import { RENDER_PROP_PROLIFERATION_THRESHOLD } from "../../constants/thresholds.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";

@@ -1,8 +1,5 @@
-import {
-  EFFECT_HOOK_NAMES,
-  SUBSCRIPTION_METHOD_NAMES,
-  TIMER_CALLEE_NAMES_REQUIRING_CLEANUP,
-} from "../../constants.js";
+import { TIMER_CALLEE_NAMES_REQUIRING_CLEANUP } from "../../constants/dom.js";
+import { EFFECT_HOOK_NAMES, SUBSCRIPTION_METHOD_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { isHookCall } from "../../utils/is-hook-call.js";

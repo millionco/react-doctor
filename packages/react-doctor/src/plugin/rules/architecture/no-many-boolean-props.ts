@@ -1,4 +1,4 @@
-import { BOOLEAN_PROP_THRESHOLD } from "../../constants.js";
+import { BOOLEAN_PROP_THRESHOLD } from "../../constants/thresholds.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isComponentDeclaration } from "../../utils/is-component-declaration.js";

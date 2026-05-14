@@ -1,4 +1,4 @@
-import { TANSTACK_ROUTE_PROPERTY_ORDER } from "../../constants.js";
+import { TANSTACK_ROUTE_PROPERTY_ORDER } from "../../constants/tanstack.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";

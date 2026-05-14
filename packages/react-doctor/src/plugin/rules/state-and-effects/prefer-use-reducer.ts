@@ -1,4 +1,4 @@
-import { RELATED_USE_STATE_THRESHOLD } from "../../constants.js";
+import { RELATED_USE_STATE_THRESHOLD } from "../../constants/thresholds.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isHookCall } from "../../utils/is-hook-call.js";

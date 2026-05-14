@@ -1,4 +1,4 @@
-import { EFFECT_HOOK_NAMES, SUBSCRIPTION_METHOD_NAMES } from "../../constants.js";
+import { EFFECT_HOOK_NAMES, SUBSCRIPTION_METHOD_NAMES } from "../../constants/react.js";
 import { areExpressionsStructurallyEqual } from "../../utils/are-expressions-structurally-equal.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getCallbackStatements } from "../../utils/get-callback-statements.js";

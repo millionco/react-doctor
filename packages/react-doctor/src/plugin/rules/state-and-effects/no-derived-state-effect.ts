@@ -1,8 +1,5 @@
-import {
-  BUILTIN_GLOBAL_NAMESPACE_NAMES,
-  EFFECT_HOOK_NAMES,
-  TRIVIAL_DERIVATION_CALLEE_NAMES,
-} from "../../constants.js";
+import { BUILTIN_GLOBAL_NAMESPACE_NAMES } from "../../constants/js.js";
+import { EFFECT_HOOK_NAMES, TRIVIAL_DERIVATION_CALLEE_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getCallbackStatements } from "../../utils/get-callback-statements.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";

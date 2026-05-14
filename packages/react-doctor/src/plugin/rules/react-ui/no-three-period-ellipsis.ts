@@ -1,4 +1,4 @@
-import { TRAILING_THREE_PERIOD_ELLIPSIS_PATTERN } from "../../constants.js";
+import { TRAILING_THREE_PERIOD_ELLIPSIS_PATTERN } from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";

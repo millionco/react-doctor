@@ -1,4 +1,4 @@
-import { FLEX_OR_GRID_DISPLAY_TOKENS, SPACE_AXIS_PATTERN } from "../../constants.js";
+import { FLEX_OR_GRID_DISPLAY_TOKENS, SPACE_AXIS_PATTERN } from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";

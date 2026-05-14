@@ -1,4 +1,4 @@
-import { LOOP_TYPES } from "../constants.js";
+import { LOOP_TYPES } from "../constants/js.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { RuleVisitors } from "./rule-visitors.js";
 

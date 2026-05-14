@@ -1,4 +1,4 @@
-import { ELLIPSIS_EXCLUDED_TAG_NAMES } from "../../../constants.js";
+import { ELLIPSIS_EXCLUDED_TAG_NAMES } from "../../../constants/design.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { findJsxAttribute } from "../../../utils/find-jsx-attribute.js";
 import { getOpeningElementTagName } from "./get-opening-element-tag-name.js";

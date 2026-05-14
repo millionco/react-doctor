@@ -1,4 +1,4 @@
-import { TINY_TEXT_THRESHOLD_PX } from "../../constants.js";
+import { TINY_TEXT_THRESHOLD_PX } from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";

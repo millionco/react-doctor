@@ -1,4 +1,5 @@
-import { CASCADING_SET_STATE_THRESHOLD, EFFECT_HOOK_NAMES } from "../../constants.js";
+import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
+import { CASCADING_SET_STATE_THRESHOLD } from "../../constants/thresholds.js";
 import { countSetStateCalls } from "../../utils/count-set-state-calls.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";

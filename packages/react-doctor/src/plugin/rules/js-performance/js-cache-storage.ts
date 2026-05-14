@@ -1,4 +1,5 @@
-import { DUPLICATE_STORAGE_READ_THRESHOLD, STORAGE_OBJECTS } from "../../constants.js";
+import { STORAGE_OBJECTS } from "../../constants/dom.js";
+import { DUPLICATE_STORAGE_READ_THRESHOLD } from "../../constants/thresholds.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { isMemberProperty } from "../../utils/is-member-property.js";
 import type { Rule } from "../../utils/rule.js";

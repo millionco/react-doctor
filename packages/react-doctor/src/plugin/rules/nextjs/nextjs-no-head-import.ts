@@ -1,4 +1,4 @@
-import { APP_DIRECTORY_PATTERN } from "../../constants.js";
+import { APP_DIRECTORY_PATTERN } from "../../constants/nextjs.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";

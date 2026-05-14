@@ -2,7 +2,7 @@ import {
   TAILWIND_DEFAULT_PALETTE_NAMES,
   TAILWIND_DEFAULT_PALETTE_STOPS,
   TAILWIND_PALETTE_UTILITY_PREFIXES,
-} from "../../constants.js";
+} from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";

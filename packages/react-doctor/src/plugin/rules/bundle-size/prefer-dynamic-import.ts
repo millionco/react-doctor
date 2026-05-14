@@ -1,4 +1,4 @@
-import { HEAVY_LIBRARIES } from "../../constants.js";
+import { HEAVY_LIBRARIES } from "../../constants/library.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";

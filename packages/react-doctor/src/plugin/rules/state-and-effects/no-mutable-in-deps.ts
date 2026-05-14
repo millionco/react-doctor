@@ -1,4 +1,5 @@
-import { HOOKS_WITH_DEPS, MUTABLE_GLOBAL_ROOTS } from "../../constants.js";
+import { MUTABLE_GLOBAL_ROOTS } from "../../constants/dom.js";
+import { HOOKS_WITH_DEPS } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";

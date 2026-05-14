@@ -5,9 +5,11 @@ import {
   REACT_NATIVE_RULES,
   TANSTACK_QUERY_RULES,
   TANSTACK_START_RULES,
-  type RuleSeverity,
-} from "./core/runners/oxlint-config.js";
-import type { EsTreeNode, Rule as PluginRule, RuleVisitors } from "./plugin/types.js";
+} from "./core/runners/oxlint/react-doctor-rules.js";
+import type { EsTreeNode } from "./plugin/utils/es-tree-node.js";
+import type { Rule as PluginRule } from "./plugin/utils/rule.js";
+import type { RuleSeverity } from "./core/runners/oxlint/types.js";
+import type { RuleVisitors } from "./plugin/utils/rule-visitors.js";
 
 interface EslintRuleContext {
   report: (descriptor: { node: EsTreeNode; message: string }) => void;

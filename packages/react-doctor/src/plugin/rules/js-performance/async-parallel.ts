@@ -1,4 +1,5 @@
-import { SEQUENTIAL_AWAIT_THRESHOLD, TEST_FILE_PATTERN } from "../../constants.js";
+import { TEST_FILE_PATTERN } from "../../constants/js.js";
+import { SEQUENTIAL_AWAIT_THRESHOLD } from "../../constants/thresholds.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";

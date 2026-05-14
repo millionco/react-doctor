@@ -1,4 +1,4 @@
-import { INLINE_STYLE_PROPERTY_THRESHOLD } from "../../constants.js";
+import { INLINE_STYLE_PROPERTY_THRESHOLD } from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";

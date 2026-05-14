@@ -1,4 +1,4 @@
-import { QUERY_CACHE_UPDATE_METHODS, TANSTACK_MUTATION_HOOKS } from "../../constants.js";
+import { QUERY_CACHE_UPDATE_METHODS, TANSTACK_MUTATION_HOOKS } from "../../constants/tanstack.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";

@@ -1,4 +1,4 @@
-import { MUTATING_HTTP_METHODS } from "../constants.js";
+import { MUTATING_HTTP_METHODS } from "../constants/library.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 

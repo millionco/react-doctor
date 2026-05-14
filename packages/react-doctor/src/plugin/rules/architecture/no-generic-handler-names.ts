@@ -1,4 +1,4 @@
-import { GENERIC_EVENT_SUFFIXES } from "../../constants.js";
+import { GENERIC_EVENT_SUFFIXES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";

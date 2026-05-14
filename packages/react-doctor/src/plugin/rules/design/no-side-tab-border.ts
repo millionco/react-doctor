@@ -2,7 +2,7 @@ import {
   SIDE_TAB_BORDER_WIDTH_WITHOUT_RADIUS_PX,
   SIDE_TAB_BORDER_WIDTH_WITH_RADIUS_PX,
   SIDE_TAB_TAILWIND_WIDTH_WITHOUT_RADIUS,
-} from "../../constants.js";
+} from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";

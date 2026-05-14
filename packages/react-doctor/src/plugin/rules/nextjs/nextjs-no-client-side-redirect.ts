@@ -1,4 +1,5 @@
-import { EFFECT_HOOK_NAMES, PAGES_DIRECTORY_PATTERN } from "../../constants.js";
+import { PAGES_DIRECTORY_PATTERN } from "../../constants/nextjs.js";
+import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { isHookCall } from "../../utils/is-hook-call.js";

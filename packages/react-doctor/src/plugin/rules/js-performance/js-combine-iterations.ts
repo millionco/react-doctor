@@ -1,4 +1,4 @@
-import { CHAINABLE_ITERATION_METHODS } from "../../constants.js";
+import { CHAINABLE_ITERATION_METHODS } from "../../constants/js.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";

@@ -13,11 +13,11 @@ import { batchIncludePaths } from "./batch-include-paths.js";
 import { canOxlintExtendConfig } from "./can-oxlint-extend-config.js";
 import { collectIgnorePatterns } from "../config/collect-ignore-patterns.js";
 import { detectUserLintConfigPaths } from "./detect-user-lint-config.js";
+import { createOxlintConfig } from "./oxlint/config.js";
 import {
   ALL_REACT_DOCTOR_RULE_KEYS,
   FRAMEWORK_SPECIFIC_RULE_KEYS,
-  createOxlintConfig,
-} from "./oxlint-config.js";
+} from "./oxlint/react-doctor-rules.js";
 import reactDoctorPlugin from "../../plugin/react-doctor-plugin.js";
 import type { CleanedDiagnostic, Diagnostic, OxlintOutput, ProjectInfo } from "../../types.js";
 import { neutralizeDisableDirectives } from "../diagnostics/neutralize-disable-directives.js";

@@ -1,4 +1,4 @@
-import { TANSTACK_SERVER_FN_NAMES } from "../../../constants.js";
+import { TANSTACK_SERVER_FN_NAMES } from "../../../constants/tanstack.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { getCalleeName } from "../../../utils/get-callee-name.js";
 import type { ServerFnChainInfo } from "./server-fn-chain-info.js";

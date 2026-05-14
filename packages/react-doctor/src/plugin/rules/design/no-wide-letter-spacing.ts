@@ -1,4 +1,4 @@
-import { WIDE_TRACKING_THRESHOLD_EM } from "../../constants.js";
+import { WIDE_TRACKING_THRESHOLD_EM } from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";

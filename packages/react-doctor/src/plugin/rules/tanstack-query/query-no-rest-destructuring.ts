@@ -1,4 +1,4 @@
-import { TANSTACK_QUERY_HOOKS } from "../../constants.js";
+import { TANSTACK_QUERY_HOOKS } from "../../constants/tanstack.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";

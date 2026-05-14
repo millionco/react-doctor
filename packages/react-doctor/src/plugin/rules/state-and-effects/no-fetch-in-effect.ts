@@ -1,4 +1,4 @@
-import { EFFECT_HOOK_NAMES } from "../../constants.js";
+import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { containsFetchCall } from "../../utils/contains-fetch-call.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";

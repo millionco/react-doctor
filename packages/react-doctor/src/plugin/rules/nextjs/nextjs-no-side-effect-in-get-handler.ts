@@ -1,4 +1,4 @@
-import { MUTATING_ROUTE_SEGMENTS, ROUTE_HANDLER_FILE_PATTERN } from "../../constants.js";
+import { MUTATING_ROUTE_SEGMENTS, ROUTE_HANDLER_FILE_PATTERN } from "../../constants/nextjs.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findSideEffect } from "../../utils/find-side-effect.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";

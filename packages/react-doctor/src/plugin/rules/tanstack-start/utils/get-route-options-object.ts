@@ -1,4 +1,4 @@
-import { TANSTACK_ROUTE_CREATION_FUNCTIONS } from "../../../constants.js";
+import { TANSTACK_ROUTE_CREATION_FUNCTIONS } from "../../../constants/tanstack.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";

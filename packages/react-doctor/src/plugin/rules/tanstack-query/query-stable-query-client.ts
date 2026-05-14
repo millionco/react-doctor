@@ -1,8 +1,5 @@
-import {
-  STABLE_HOOK_WRAPPERS,
-  TANSTACK_QUERY_CLIENT_CLASS,
-  UPPERCASE_PATTERN,
-} from "../../constants.js";
+import { STABLE_HOOK_WRAPPERS, UPPERCASE_PATTERN } from "../../constants/react.js";
+import { TANSTACK_QUERY_CLIENT_CLASS } from "../../constants/tanstack.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";

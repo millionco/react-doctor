@@ -2,7 +2,7 @@ import {
   BLUR_VALUE_PATTERN,
   LARGE_BLUR_THRESHOLD_PX,
   MOTION_ANIMATE_PROPS,
-} from "../../constants.js";
+} from "../../constants/style.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";

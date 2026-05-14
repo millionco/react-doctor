@@ -1,4 +1,4 @@
-import { SEQUENTIAL_AWAIT_THRESHOLD_FOR_LOADER } from "../../constants.js";
+import { SEQUENTIAL_AWAIT_THRESHOLD_FOR_LOADER } from "../../constants/tanstack.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";

@@ -1,4 +1,4 @@
-import { TANSTACK_ROOT_ROUTE_FILE_PATTERN } from "../../constants.js";
+import { TANSTACK_ROOT_ROUTE_FILE_PATTERN } from "../../constants/tanstack.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";

@@ -1,4 +1,7 @@
-import { DARK_BACKGROUND_CHANNEL_MAX, DARK_GLOW_BLUR_THRESHOLD_PX } from "../../constants.js";
+import {
+  DARK_BACKGROUND_CHANNEL_MAX,
+  DARK_GLOW_BLUR_THRESHOLD_PX,
+} from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { ParsedRgb } from "../../utils/parsed-rgb.js";

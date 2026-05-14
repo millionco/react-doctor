@@ -1,4 +1,4 @@
-import { VAGUE_BUTTON_LABELS } from "../../constants.js";
+import { VAGUE_BUTTON_LABELS } from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";

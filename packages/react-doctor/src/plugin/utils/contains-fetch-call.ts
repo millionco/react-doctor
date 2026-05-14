@@ -1,4 +1,4 @@
-import { FETCH_CALLEE_NAMES, FETCH_MEMBER_OBJECTS } from "../constants.js";
+import { FETCH_CALLEE_NAMES, FETCH_MEMBER_OBJECTS } from "../constants/library.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { walkAst } from "./walk-ast.js";
 import { isNodeOfType } from "./is-node-of-type.js";

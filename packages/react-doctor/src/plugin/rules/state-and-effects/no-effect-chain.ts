@@ -1,11 +1,11 @@
+import { EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS } from "../../constants/dom.js";
 import {
   EFFECT_HOOK_NAMES,
   EXTERNAL_SYNC_AMBIGUOUS_HTTP_METHOD_NAMES,
   EXTERNAL_SYNC_DIRECT_CALLEE_NAMES,
   EXTERNAL_SYNC_HTTP_CLIENT_RECEIVERS,
   EXTERNAL_SYNC_MEMBER_METHOD_NAMES,
-  EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS,
-} from "../../constants.js";
+} from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";

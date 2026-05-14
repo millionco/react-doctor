@@ -1,4 +1,4 @@
-import { POLYFILL_SCRIPT_PATTERN } from "../../constants.js";
+import { POLYFILL_SCRIPT_PATTERN } from "../../constants/nextjs.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import type { Rule } from "../../utils/rule.js";

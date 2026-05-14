@@ -1,4 +1,5 @@
-import { EFFECT_HOOK_NAMES, TANSTACK_ROUTE_FILE_PATTERN } from "../../constants.js";
+import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
+import { TANSTACK_ROUTE_FILE_PATTERN } from "../../constants/tanstack.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { walkAst } from "../../utils/walk-ast.js";

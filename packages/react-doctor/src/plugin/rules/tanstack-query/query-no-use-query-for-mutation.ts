@@ -1,4 +1,5 @@
-import { MUTATING_HTTP_METHODS, TANSTACK_QUERY_HOOKS } from "../../constants.js";
+import { MUTATING_HTTP_METHODS } from "../../constants/library.js";
+import { TANSTACK_QUERY_HOOKS } from "../../constants/tanstack.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";

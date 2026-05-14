@@ -1,8 +1,5 @@
-import {
-  EFFECT_HOOK_NAMES,
-  PAGES_DIRECTORY_PATTERN,
-  PAGE_OR_LAYOUT_FILE_PATTERN,
-} from "../../constants.js";
+import { PAGES_DIRECTORY_PATTERN, PAGE_OR_LAYOUT_FILE_PATTERN } from "../../constants/nextjs.js";
+import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { containsFetchCall } from "../../utils/contains-fetch-call.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";

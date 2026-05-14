@@ -1,4 +1,4 @@
-import { INDEX_PARAMETER_NAMES } from "../../constants.js";
+import { INDEX_PARAMETER_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";

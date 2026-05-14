@@ -1,4 +1,4 @@
-import { TRIVIAL_INITIALIZER_NAMES } from "../../constants.js";
+import { TRIVIAL_INITIALIZER_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import type { Rule } from "../../utils/rule.js";

@@ -1,4 +1,4 @@
-import { BARREL_INDEX_SUFFIXES } from "../../constants.js";
+import { BARREL_INDEX_SUFFIXES } from "../../constants/dom.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";

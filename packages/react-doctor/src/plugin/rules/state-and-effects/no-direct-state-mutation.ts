@@ -1,4 +1,4 @@
-import { MUTATING_ARRAY_METHODS } from "../../constants.js";
+import { MUTATING_ARRAY_METHODS } from "../../constants/js.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";

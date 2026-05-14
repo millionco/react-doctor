@@ -1,4 +1,4 @@
-import { Z_INDEX_ABSURD_THRESHOLD } from "../../constants.js";
+import { Z_INDEX_ABSURD_THRESHOLD } from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";

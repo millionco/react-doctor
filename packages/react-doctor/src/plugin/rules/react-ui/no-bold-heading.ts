@@ -2,7 +2,7 @@ import {
   HEADING_TAG_NAMES,
   HEAVY_HEADING_FONT_WEIGHT_MIN,
   HEAVY_HEADING_TAILWIND_WEIGHTS,
-} from "../../constants.js";
+} from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";

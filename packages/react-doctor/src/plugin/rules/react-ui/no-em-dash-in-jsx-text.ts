@@ -1,4 +1,4 @@
-import { EM_DASH_CHARACTER } from "../../constants.js";
+import { EM_DASH_CHARACTER } from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";

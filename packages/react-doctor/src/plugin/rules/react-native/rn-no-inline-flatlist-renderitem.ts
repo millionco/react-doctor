@@ -1,4 +1,4 @@
-import { REACT_NATIVE_LIST_COMPONENTS } from "../../constants.js";
+import { REACT_NATIVE_LIST_COMPONENTS } from "../../constants/react-native.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";

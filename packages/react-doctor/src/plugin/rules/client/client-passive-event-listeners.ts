@@ -1,4 +1,4 @@
-import { PASSIVE_EVENT_NAMES } from "../../constants.js";
+import { PASSIVE_EVENT_NAMES } from "../../constants/dom.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { isMemberProperty } from "../../utils/is-member-property.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";

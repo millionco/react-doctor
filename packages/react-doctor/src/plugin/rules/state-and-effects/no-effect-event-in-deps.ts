@@ -1,4 +1,4 @@
-import { HOOKS_WITH_DEPS } from "../../constants.js";
+import { HOOKS_WITH_DEPS } from "../../constants/react.js";
 import { createComponentBindingStackTracker } from "../../utils/create-component-binding-stack-tracker.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { isHookCall } from "../../utils/is-hook-call.js";

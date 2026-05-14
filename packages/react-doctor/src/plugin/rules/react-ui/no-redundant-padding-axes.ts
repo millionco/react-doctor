@@ -1,4 +1,7 @@
-import { PADDING_HORIZONTAL_AXIS_PATTERN, PADDING_VERTICAL_AXIS_PATTERN } from "../../constants.js";
+import {
+  PADDING_HORIZONTAL_AXIS_PATTERN,
+  PADDING_VERTICAL_AXIS_PATTERN,
+} from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";

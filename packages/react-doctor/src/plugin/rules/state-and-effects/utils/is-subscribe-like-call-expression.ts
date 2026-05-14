@@ -1,4 +1,4 @@
-import { SUBSCRIPTION_METHOD_NAMES } from "../../../constants.js";
+import { SUBSCRIPTION_METHOD_NAMES } from "../../../constants/react.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 

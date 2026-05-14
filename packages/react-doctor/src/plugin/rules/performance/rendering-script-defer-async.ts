@@ -1,4 +1,4 @@
-import { EXECUTABLE_SCRIPT_TYPES, SCRIPT_LOADING_ATTRIBUTES } from "../../constants.js";
+import { EXECUTABLE_SCRIPT_TYPES, SCRIPT_LOADING_ATTRIBUTES } from "../../constants/dom.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";

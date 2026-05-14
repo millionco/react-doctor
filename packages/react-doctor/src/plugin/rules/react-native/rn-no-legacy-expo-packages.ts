@@ -1,4 +1,4 @@
-import { LEGACY_EXPO_PACKAGE_REPLACEMENTS } from "../../constants.js";
+import { LEGACY_EXPO_PACKAGE_REPLACEMENTS } from "../../constants/react-native.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";

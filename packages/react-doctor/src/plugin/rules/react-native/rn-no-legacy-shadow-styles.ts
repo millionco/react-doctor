@@ -1,4 +1,4 @@
-import { LEGACY_SHADOW_STYLE_PROPERTIES } from "../../constants.js";
+import { LEGACY_SHADOW_STYLE_PROPERTIES } from "../../constants/react-native.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { isMemberProperty } from "../../utils/is-member-property.js";
 import type { Rule } from "../../utils/rule.js";

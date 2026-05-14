@@ -1,4 +1,4 @@
-import { MUTATING_HTTP_METHODS } from "../../constants.js";
+import { MUTATING_HTTP_METHODS } from "../../constants/library.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findSideEffect } from "../../utils/find-side-effect.js";
 import type { Rule } from "../../utils/rule.js";

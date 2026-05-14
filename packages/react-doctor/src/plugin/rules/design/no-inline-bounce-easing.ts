@@ -1,4 +1,4 @@
-import { BOUNCE_ANIMATION_NAMES } from "../../constants.js";
+import { BOUNCE_ANIMATION_NAMES } from "../../constants/style.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";

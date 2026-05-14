@@ -199,7 +199,7 @@ import {
   rerenderStateOnlyInHandlers,
 } from "./rules/state-and-effects.js";
 import { noDocumentStartViewTransition, noFlushSync } from "./rules/view-transitions.js";
-import type { RulePlugin } from "./types.js";
+import type { RulePlugin } from "./utils/rule-plugin.js";
 
 const plugin: RulePlugin = {
   meta: { name: "react-doctor" },

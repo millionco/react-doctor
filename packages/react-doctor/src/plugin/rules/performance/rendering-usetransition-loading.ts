@@ -1,4 +1,4 @@
-import { LOADING_STATE_PATTERN } from "../../constants.js";
+import { LOADING_STATE_PATTERN } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import type { Rule } from "../../utils/rule.js";

@@ -36,7 +36,7 @@ import { afterAll, describe, expect, it } from "vite-plus/test";
 
 import { OXLINT_MAX_FILES_PER_BATCH, SPAWN_ARGS_MAX_LENGTH_CHARS } from "../../src/constants.js";
 import { calculateScoreLocally } from "../../src/core/scoring/calculate-score-locally.js";
-import { createOxlintConfig } from "../../src/core/runners/oxlint-config.js";
+import { createOxlintConfig } from "../../src/core/runners/oxlint/config.js";
 import { batchIncludePaths } from "../../src/core/runners/batch-include-paths.js";
 import { discoverProject } from "../../src/core/detection/discover-project.js";
 import { extractFailedPluginName } from "../../src/core/runners/extract-failed-plugin-name.js";

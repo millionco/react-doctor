@@ -1,4 +1,7 @@
-import { TANSTACK_MIDDLEWARE_METHOD_ORDER, TANSTACK_SERVER_FN_NAMES } from "../../constants.js";
+import {
+  TANSTACK_MIDDLEWARE_METHOD_ORDER,
+  TANSTACK_SERVER_FN_NAMES,
+} from "../../constants/tanstack.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";

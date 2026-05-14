@@ -2,7 +2,7 @@ import {
   RAW_TEXT_PREVIEW_MAX_CHARS,
   REACT_NATIVE_TEXT_COMPONENTS,
   REACT_NATIVE_TEXT_COMPONENT_KEYWORDS,
-} from "../../constants.js";
+} from "../../constants/react-native.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { hasDirective } from "../../utils/has-directive.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";

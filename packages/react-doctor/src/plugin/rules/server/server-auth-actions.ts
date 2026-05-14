@@ -1,4 +1,4 @@
-import { AUTH_CHECK_LOOKAHEAD_STATEMENTS, AUTH_FUNCTION_NAMES } from "../../constants.js";
+import { AUTH_CHECK_LOOKAHEAD_STATEMENTS, AUTH_FUNCTION_NAMES } from "../../constants/security.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { hasDirective } from "../../utils/has-directive.js";
 import { hasUseServerDirective } from "../../utils/has-use-server-directive.js";

@@ -1,4 +1,4 @@
-import { PROPERTY_ACCESS_REPEAT_THRESHOLD } from "../../constants.js";
+import { PROPERTY_ACCESS_REPEAT_THRESHOLD } from "../../constants/thresholds.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";

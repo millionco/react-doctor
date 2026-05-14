@@ -1,4 +1,4 @@
-import { LONG_TRANSITION_DURATION_THRESHOLD_MS } from "../../constants.js";
+import { LONG_TRANSITION_DURATION_THRESHOLD_MS } from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";

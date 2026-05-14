@@ -1,8 +1,8 @@
+import { TIMER_CLEANUP_CALLEE_NAMES } from "../../../constants/dom.js";
 import {
   CLEANUP_LIKE_RELEASE_CALLEE_NAMES,
-  TIMER_CLEANUP_CALLEE_NAMES,
   UNSUBSCRIPTION_METHOD_NAMES,
-} from "../../../constants.js";
+} from "../../../constants/react.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 

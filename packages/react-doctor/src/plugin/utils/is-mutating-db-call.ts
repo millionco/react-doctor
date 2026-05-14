@@ -1,4 +1,4 @@
-import { MUTATION_METHOD_NAMES } from "../constants.js";
+import { MUTATION_METHOD_NAMES } from "../constants/library.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 

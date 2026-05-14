@@ -1,4 +1,4 @@
-import { EFFECT_HOOK_NAMES } from "../../constants.js";
+import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { createComponentPropStackTracker } from "../../utils/create-component-prop-stack-tracker.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";

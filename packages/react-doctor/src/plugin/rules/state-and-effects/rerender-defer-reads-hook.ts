@@ -8,6 +8,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { collectHandlerBindingNames } from "./utils/collect-handler-binding-names.js";
 import { isInsideEventHandler } from "./utils/is-inside-event-handler.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const DEFERRABLE_HOOK_NAMES = new Set(["useSearchParams", "useParams", "usePathname"]);
 
@@ -72,7 +73,11 @@ export const rerenderDeferReadsHook = defineRule<Rule>({
       for (const binding of bindings) {
         const referenceLocations: EsTreeNode[] = [];
         walkAst(componentBody, (child: EsTreeNode) => {
-          if (child === binding.declarator.id) return;
+          if (
+            isNodeOfType(binding.declarator, "VariableDeclarator") &&
+            child === binding.declarator.id
+          )
+            return;
           if (isNodeOfType(child, "Identifier") && child.name === binding.valueName) {
             referenceLocations.push(child);
           }
@@ -93,13 +98,18 @@ export const rerenderDeferReadsHook = defineRule<Rule>({
     };
 
     return {
-      FunctionDeclaration(node: EsTreeNode) {
+      FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
         if (!node.id?.name || !isUppercaseName(node.id.name)) return;
         checkComponent(node.body);
       },
-      VariableDeclarator(node: EsTreeNode) {
+      VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
         if (!isComponentAssignment(node)) return;
-        checkComponent(node.init?.body);
+        if (
+          !isNodeOfType(node.init, "ArrowFunctionExpression") &&
+          !isNodeOfType(node.init, "FunctionExpression")
+        )
+          return;
+        checkComponent(node.init.body);
       },
     };
   },

@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const REANIMATED_LAYOUT_KEYS = new Set([
   "width",
@@ -29,7 +30,7 @@ const REANIMATED_LAYOUT_KEYS = new Set([
   "flexShrink",
 ]);
 
-const findReturnedObject = (callback: EsTreeNode): EsTreeNode | null => {
+const findReturnedObject = (callback: EsTreeNode): EsTreeNodeOfType<"ObjectExpression"> | null => {
   if (
     !isNodeOfType(callback, "ArrowFunctionExpression") &&
     !isNodeOfType(callback, "FunctionExpression")
@@ -67,7 +68,7 @@ export const rnAnimateLayoutProperty = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNode) {
+    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isNodeOfType(node.callee, "Identifier") || node.callee.name !== "useAnimatedStyle")
         return;
       const callback = node.arguments?.[0];

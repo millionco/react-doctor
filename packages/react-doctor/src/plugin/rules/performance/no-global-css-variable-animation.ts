@@ -6,6 +6,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noGlobalCssVariableAnimation = defineRule<Rule>({
   framework: "global",
@@ -22,7 +23,7 @@ export const noGlobalCssVariableAnimation = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNode) {
+    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isNodeOfType(node.callee, "Identifier")) return;
       if (!ANIMATION_CALLBACK_NAMES.has(node.callee.name)) return;
 

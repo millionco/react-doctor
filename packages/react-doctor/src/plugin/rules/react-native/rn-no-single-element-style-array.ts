@@ -1,8 +1,8 @@
 import { defineRule } from "../../utils/define-rule.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const rnNoSingleElementStyleArray = defineRule<Rule>({
   requires: ["react-native"],
@@ -18,7 +18,7 @@ export const rnNoSingleElementStyleArray = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    JSXAttribute(node: EsTreeNode) {
+    JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const propName = isNodeOfType(node.name, "JSXIdentifier") ? node.name.name : null;
       if (!propName) return;
       if (propName !== "style" && !propName.endsWith("Style")) return;

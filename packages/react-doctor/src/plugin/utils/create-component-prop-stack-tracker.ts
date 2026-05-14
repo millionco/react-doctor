@@ -4,6 +4,7 @@ import type { EsTreeNode } from "./es-tree-node.js";
 import { extractDestructuredPropNames } from "./extract-destructured-prop-names.js";
 import { isComponentAssignment } from "./is-component-assignment.js";
 import { isFunctionLikeVariableDeclarator } from "./is-function-like-variable-declarator.js";
+import { isNodeOfType } from "./is-node-of-type.js";
 import { isUppercaseName } from "./is-uppercase-name.js";
 import type { RuleVisitors } from "./rule-visitors.js";
 
@@ -50,7 +51,8 @@ export const createComponentPropStackTracker = (
 
   const visitors: RuleVisitors = {
     FunctionDeclaration(node: EsTreeNode) {
-      if (!node.id?.name || !isUppercaseName(node.id.name)) {
+      if (!isNodeOfType(node, "FunctionDeclaration")) return;
+      if (!node.id || !isUppercaseName(node.id.name)) {
         propParamStack.push(new Set());
         return;
       }
@@ -61,9 +63,18 @@ export const createComponentPropStackTracker = (
       propParamStack.pop();
     },
     VariableDeclarator(node: EsTreeNode) {
+      if (!isNodeOfType(node, "VariableDeclarator")) return;
       if (isComponentAssignment(node)) {
-        propParamStack.push(extractDestructuredPropNames(node.init?.params ?? []));
-        callbacks?.onComponentEnter?.(node.init?.body);
+        const initializer = node.init;
+        if (
+          isNodeOfType(initializer, "ArrowFunctionExpression") ||
+          isNodeOfType(initializer, "FunctionExpression")
+        ) {
+          propParamStack.push(extractDestructuredPropNames(initializer.params ?? []));
+          callbacks?.onComponentEnter?.(initializer.body);
+        } else {
+          propParamStack.push(new Set());
+        }
         return;
       }
       if (isFunctionLikeVariableDeclarator(node)) {
@@ -71,6 +82,7 @@ export const createComponentPropStackTracker = (
       }
     },
     "VariableDeclarator:exit"(node: EsTreeNode) {
+      if (!isNodeOfType(node, "VariableDeclarator")) return;
       if (isComponentAssignment(node) || isFunctionLikeVariableDeclarator(node)) {
         propParamStack.pop();
       }

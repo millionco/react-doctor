@@ -7,6 +7,7 @@ import { isNodeOfType } from "./is-node-of-type.js";
 // so callers that want a plain name string need both narrowings. Returns
 // undefined for any other node shape so rules can early-return safely.
 export const getImportedName = (importSpecifier: EsTreeNode): string | undefined => {
+  if (!isNodeOfType(importSpecifier, "ImportSpecifier")) return undefined;
   const imported = importSpecifier.imported;
   if (isNodeOfType(imported, "Identifier")) return imported.name;
   if (isNodeOfType(imported, "Literal") && typeof imported.value === "string") {

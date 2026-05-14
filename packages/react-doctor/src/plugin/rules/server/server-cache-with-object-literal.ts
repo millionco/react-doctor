@@ -1,8 +1,8 @@
 import { defineRule } from "../../utils/define-rule.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // HACK: `cache(fn)` from React keys deduplication on REFERENCE equality
 // of the function arguments. Calling the cached function with object
@@ -28,7 +28,7 @@ export const serverCacheWithObjectLiteral = defineRule<Rule>({
     const cachedFunctionNames = new Set<string>();
 
     return {
-      VariableDeclarator(node: EsTreeNode) {
+      VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
         if (!isNodeOfType(node.id, "Identifier")) return;
         const init = node.init;
         if (!isNodeOfType(init, "CallExpression")) return;
@@ -43,7 +43,7 @@ export const serverCacheWithObjectLiteral = defineRule<Rule>({
         if (!isCacheCall) return;
         cachedFunctionNames.add(node.id.name);
       },
-      CallExpression(node: EsTreeNode) {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (!isNodeOfType(node.callee, "Identifier")) return;
         if (!cachedFunctionNames.has(node.callee.name)) return;
         const firstArg = node.arguments?.[0];

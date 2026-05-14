@@ -5,6 +5,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // HACK: <button> is intentionally omitted. <button type="submit"> (the
 // HTML default inside a form) has a real default action, so calling
@@ -57,7 +58,7 @@ export const noPreventDefault = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    JSXOpeningElement(node: EsTreeNode) {
+    JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const elementName = isNodeOfType(node.name, "JSXIdentifier") ? node.name.name : null;
       if (!elementName) return;
 

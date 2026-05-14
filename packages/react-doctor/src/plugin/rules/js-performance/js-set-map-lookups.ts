@@ -4,6 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // HACK: methods that ALWAYS return a string when called on a string
 // receiver. Used to recognize `.toLowerCase().includes(x)` chains as
@@ -180,7 +181,7 @@ export const jsSetMapLookups = defineRule<Rule>({
   ],
   create: (context: RuleContext) =>
     createLoopAwareVisitors({
-      CallExpression(node: EsTreeNode) {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (
           !isNodeOfType(node.callee, "MemberExpression") ||
           !isNodeOfType(node.callee.property, "Identifier")

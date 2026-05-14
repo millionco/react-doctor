@@ -5,6 +5,7 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noInlineExhaustiveStyle = defineRule<Rule>({
   framework: "global",
@@ -20,7 +21,7 @@ export const noInlineExhaustiveStyle = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    JSXAttribute(node: EsTreeNode) {
+    JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);
       if (!expression) return;
 

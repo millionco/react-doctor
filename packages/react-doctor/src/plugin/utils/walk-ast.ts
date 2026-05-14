@@ -9,9 +9,10 @@ import { isAstNode } from "./is-ast-node.js";
 export const walkAst = (node: EsTreeNode, visitor: (child: EsTreeNode) => boolean | void): void => {
   if (!node || typeof node !== "object") return;
   if (visitor(node) === false) return;
-  for (const key of Object.keys(node)) {
+  const nodeRecord = node as unknown as Record<string, unknown>;
+  for (const key of Object.keys(nodeRecord)) {
     if (key === "parent") continue;
-    const child = node[key];
+    const child = nodeRecord[key];
     if (Array.isArray(child)) {
       for (const item of child) {
         if (isAstNode(item)) walkAst(item, visitor);

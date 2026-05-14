@@ -1,9 +1,9 @@
 import { OG_ROUTE_PATTERN } from "../../constants.js";
 import { defineRule } from "../../utils/define-rule.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const nextjsNoImgElement = defineRule<Rule>({
   requires: ["nextjs"],
@@ -24,7 +24,7 @@ export const nextjsNoImgElement = defineRule<Rule>({
     const isOgRoute = OG_ROUTE_PATTERN.test(filename);
 
     return {
-      JSXOpeningElement(node: EsTreeNode) {
+      JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (isOgRoute) return;
         if (isNodeOfType(node.name, "JSXIdentifier") && node.name.name === "img") {
           context.report({

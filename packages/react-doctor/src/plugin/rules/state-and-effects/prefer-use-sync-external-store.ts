@@ -14,6 +14,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isCleanupReturn } from "./utils/is-cleanup-return.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // HACK: §11 of "You Might Not Need an Effect" + the linked
 // `useSyncExternalStore` docs warn that pairing a `useState(getSnapshot())`
@@ -87,6 +88,7 @@ const getSubscriptionHandlerArgument = (
   subscribeCall: EsTreeNode,
   effectBodyStatements: EsTreeNode[],
 ): EsTreeNode | null => {
+  if (!isNodeOfType(subscribeCall, "CallExpression")) return null;
   for (const argument of subscribeCall.arguments ?? []) {
     if (
       isNodeOfType(argument, "ArrowFunctionExpression") ||
@@ -167,7 +169,8 @@ export const preferUseSyncExternalStore = defineRule<Rule>({
       const useStateInitializerByValueName = new Map<string, EsTreeNode>();
       for (const binding of useStateBindings) {
         const useStateCall = binding.declarator.init;
-        const initializerArgument = useStateCall?.arguments?.[0];
+        if (!useStateCall || !isNodeOfType(useStateCall, "CallExpression")) continue;
+        const initializerArgument = useStateCall.arguments?.[0];
         if (!initializerArgument) continue;
         // HACK: useState(() => getSnapshot()) — unwrap the lazy
         // initializer so the structural match against the
@@ -189,13 +192,20 @@ export const preferUseSyncExternalStore = defineRule<Rule>({
       }
 
       for (const effectCall of findUseEffectsInComponent(componentBody)) {
+        if (!isNodeOfType(effectCall, "CallExpression")) continue;
         if ((effectCall.arguments?.length ?? 0) < 2) continue;
         const depsNode = effectCall.arguments[1];
         if (!isNodeOfType(depsNode, "ArrayExpression")) continue;
         if ((depsNode.elements?.length ?? 0) !== 0) continue;
 
         const callback = getEffectCallback(effectCall);
-        if (!callback || !isNodeOfType(callback.body, "BlockStatement")) continue;
+        if (
+          !callback ||
+          (!isNodeOfType(callback, "ArrowFunctionExpression") &&
+            !isNodeOfType(callback, "FunctionExpression"))
+        )
+          continue;
+        if (!isNodeOfType(callback.body, "BlockStatement")) continue;
         const effectBodyStatements = callback.body.body ?? [];
         if (effectBodyStatements.length < 2) continue;
 
@@ -231,13 +241,18 @@ export const preferUseSyncExternalStore = defineRule<Rule>({
     };
 
     return {
-      FunctionDeclaration(node: EsTreeNode) {
+      FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
         if (!node.id?.name || !isUppercaseName(node.id.name)) return;
         checkComponent(node.body);
       },
-      VariableDeclarator(node: EsTreeNode) {
+      VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
         if (!isComponentAssignment(node)) return;
-        checkComponent(node.init?.body);
+        if (
+          !isNodeOfType(node.init, "ArrowFunctionExpression") &&
+          !isNodeOfType(node.init, "FunctionExpression")
+        )
+          return;
+        checkComponent(node.init.body);
       },
     };
   },

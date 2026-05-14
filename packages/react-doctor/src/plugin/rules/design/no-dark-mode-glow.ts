@@ -10,6 +10,7 @@ import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import { parseColorToRgb } from "./utils/parse-color-to-rgb.js";
 import { hasColorChroma } from "./utils/has-color-chroma.js";
 import { isPureBlackColor } from "./utils/is-pure-black-color.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const splitShadowLayers = (shadowValue: string): string[] => shadowValue.split(/,(?![^(]*\))/);
 
@@ -81,7 +82,7 @@ export const noDarkModeGlow = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    JSXAttribute(node: EsTreeNode) {
+    JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);
       if (!expression) return;
 

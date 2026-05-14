@@ -9,6 +9,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const tanstackStartNoNavigateInRender = defineRule<Rule>({
   requires: ["tanstack-start"],
@@ -43,13 +44,14 @@ export const tanstackStartNoNavigateInRender = defineRule<Rule>({
       isHookCall(node, "useMemo");
 
     const isEventHandlerAttribute = (node: EsTreeNode): boolean =>
+      isNodeOfType(node, "JSXAttribute") &&
       isNodeOfType(node.name, "JSXIdentifier") &&
       typeof node.name.name === "string" &&
       node.name.name.startsWith("on") &&
       UPPERCASE_PATTERN.test(node.name.name.charAt(2));
 
     return {
-      CallExpression(node: EsTreeNode) {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         const filename = context.getFilename?.() ?? "";
         if (!TANSTACK_ROUTE_FILE_PATTERN.test(filename)) return;
 
@@ -76,7 +78,7 @@ export const tanstackStartNoNavigateInRender = defineRule<Rule>({
           deferredCallbackDepth = Math.max(0, deferredCallbackDepth - 1);
         }
       },
-      JSXAttribute(node: EsTreeNode) {
+      JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
         const filename = context.getFilename?.() ?? "";
         if (!TANSTACK_ROUTE_FILE_PATTERN.test(filename)) return;
         if (isEventHandlerAttribute(node)) eventHandlerDepth++;

@@ -4,6 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const tanstackStartMissingHeadContent = defineRule<Rule>({
   requires: ["tanstack-start"],
@@ -22,7 +23,7 @@ export const tanstackStartMissingHeadContent = defineRule<Rule>({
     let hasHeadContentElement = false;
 
     return {
-      JSXOpeningElement(node: EsTreeNode) {
+      JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         const filename = context.getFilename?.() ?? "";
         const isRootRouteFile = TANSTACK_ROOT_ROUTE_FILE_PATTERN.test(filename);
         if (!isRootRouteFile) return;

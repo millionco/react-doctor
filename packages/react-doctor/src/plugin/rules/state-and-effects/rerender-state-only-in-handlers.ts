@@ -11,6 +11,7 @@ import { buildLocalDependencyGraph } from "./utils/build-local-dependency-graph.
 import { collectRenderReachableNames } from "./utils/collect-render-reachable-names.js";
 import { expandTransitiveDependencies } from "./utils/expand-transitive-dependencies.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const rerenderStateOnlyInHandlers = defineRule<Rule>({
   framework: "global",
@@ -62,13 +63,18 @@ export const rerenderStateOnlyInHandlers = defineRule<Rule>({
     };
 
     return {
-      FunctionDeclaration(node: EsTreeNode) {
+      FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
         if (!node.id?.name || !isUppercaseName(node.id.name)) return;
         checkComponent(node.body);
       },
-      VariableDeclarator(node: EsTreeNode) {
+      VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
         if (!isComponentAssignment(node)) return;
-        checkComponent(node.init?.body);
+        if (
+          !isNodeOfType(node.init, "ArrowFunctionExpression") &&
+          !isNodeOfType(node.init, "FunctionExpression")
+        )
+          return;
+        checkComponent(node.init.body);
       },
     };
   },

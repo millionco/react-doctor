@@ -6,6 +6,7 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { getImportedName } from "../../utils/get-imported-name.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // HACK: file-level proxy for "is the developer aware of the Suspense
 // requirement?". Cross-file ancestor analysis would catch every case
@@ -65,10 +66,10 @@ export const nextjsNoUseSearchParamsWithoutSuspense = defineRule<Rule>({
     let hasSuspenseInFile = false;
 
     return {
-      Program(programNode: EsTreeNode) {
+      Program(programNode: EsTreeNodeOfType<"Program">) {
         hasSuspenseInFile = fileMentionsSuspense(programNode);
       },
-      CallExpression(node: EsTreeNode) {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (hasSuspenseInFile) return;
         if (!isHookCall(node, "useSearchParams")) return;
         context.report({

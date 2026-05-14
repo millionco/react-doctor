@@ -11,8 +11,12 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { getOpeningElementTagName } from "./utils/get-opening-element-tag-name.js";
 import { getClassNameLiteral } from "./utils/get-class-name-literal.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-const getInlineStyleObjectExpression = (jsxAttribute: EsTreeNode): EsTreeNode | null => {
+const getInlineStyleObjectExpression = (
+  jsxAttribute: EsTreeNode,
+): EsTreeNodeOfType<"ObjectExpression"> | null => {
+  if (!isNodeOfType(jsxAttribute, "JSXAttribute")) return null;
   if (!isNodeOfType(jsxAttribute.name, "JSXIdentifier") || jsxAttribute.name.name !== "style") {
     return null;
   }
@@ -32,6 +36,7 @@ const getStylePropertyKeyName = (objectProperty: EsTreeNode): string | null => {
 };
 
 const getStylePropertyNumericValue = (objectProperty: EsTreeNode): number | null => {
+  if (!isNodeOfType(objectProperty, "Property")) return null;
   const valueNode = objectProperty.value;
   if (!valueNode) return null;
   if (isNodeOfType(valueNode, "Literal") && typeof valueNode.value === "number")
@@ -57,7 +62,7 @@ export const noBoldHeading = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    JSXOpeningElement(openingNode: EsTreeNode) {
+    JSXOpeningElement(openingNode: EsTreeNodeOfType<"JSXOpeningElement">) {
       const tagName = getOpeningElementTagName(openingNode);
       if (!tagName || !HEADING_TAG_NAMES.has(tagName)) return;
 

@@ -1,5 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { createDeprecatedReactImportRule } from "./utils/create-deprecated-react-import-rule.js";
@@ -57,7 +57,10 @@ const buildTestUtilsMessage = (importedName: string): string => {
   return `react-dom/test-utils is removed in React 19. ${replacementText}`;
 };
 
-const reportTestUtilsImports = (node: EsTreeNode, context: RuleContext): void => {
+const reportTestUtilsImports = (
+  node: EsTreeNodeOfType<"ImportDeclaration">,
+  context: RuleContext,
+): void => {
   for (const specifier of node.specifiers ?? []) {
     if (isNodeOfType(specifier, "ImportSpecifier")) {
       const importedName = getImportedName(specifier) ?? "default";

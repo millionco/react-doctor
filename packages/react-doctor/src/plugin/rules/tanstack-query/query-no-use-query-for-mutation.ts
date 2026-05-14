@@ -5,6 +5,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const queryNoUseQueryForMutation = defineRule<Rule>({
   requires: ["tanstack-query"],
@@ -22,7 +23,7 @@ export const queryNoUseQueryForMutation = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNode) {
+    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const calleeName = isNodeOfType(node.callee, "Identifier") ? node.callee.name : null;
 
       if (!calleeName || !TANSTACK_QUERY_HOOKS.has(calleeName)) return;

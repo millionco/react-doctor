@@ -1,12 +1,15 @@
 import { LEGACY_SHADOW_STYLE_PROPERTIES } from "../../constants.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { isMemberProperty } from "../../utils/is-member-property.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-const reportLegacyShadowProperties = (objectExpression: EsTreeNode, context: RuleContext): void => {
+const reportLegacyShadowProperties = (
+  objectExpression: EsTreeNodeOfType<"ObjectExpression">,
+  context: RuleContext,
+): void => {
   const legacyShadowPropertyNames: string[] = [];
 
   for (const property of objectExpression.properties ?? []) {
@@ -41,7 +44,7 @@ export const rnNoLegacyShadowStyles = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    JSXAttribute(node: EsTreeNode) {
+    JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "style") return;
       if (!isNodeOfType(node.value, "JSXExpressionContainer")) return;
 
@@ -57,7 +60,7 @@ export const rnNoLegacyShadowStyles = defineRule<Rule>({
         }
       }
     },
-    CallExpression(node: EsTreeNode) {
+    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isNodeOfType(node.callee, "MemberExpression")) return;
       if (
         !isNodeOfType(node.callee.object, "Identifier") ||

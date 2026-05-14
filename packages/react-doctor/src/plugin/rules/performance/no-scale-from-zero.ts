@@ -1,8 +1,8 @@
 import { defineRule } from "../../utils/define-rule.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noScaleFromZero = defineRule<Rule>({
   framework: "global",
@@ -18,7 +18,7 @@ export const noScaleFromZero = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    JSXAttribute(node: EsTreeNode) {
+    JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       if (!isNodeOfType(node.name, "JSXIdentifier")) return;
       if (node.name.name !== "initial" && node.name.name !== "exit") return;
       if (!isNodeOfType(node.value, "JSXExpressionContainer")) return;

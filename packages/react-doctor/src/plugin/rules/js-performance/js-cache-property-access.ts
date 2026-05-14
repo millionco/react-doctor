@@ -66,6 +66,15 @@ export const jsCachePropertyAccess = defineRule<Rule>({
     };
 
     const handleLoop = (node: EsTreeNode): void => {
+      if (
+        !isNodeOfType(node, "ForStatement") &&
+        !isNodeOfType(node, "ForInStatement") &&
+        !isNodeOfType(node, "ForOfStatement") &&
+        !isNodeOfType(node, "WhileStatement") &&
+        !isNodeOfType(node, "DoWhileStatement")
+      ) {
+        return;
+      }
       if (node.body) inspectLoopBody(node.body);
     };
 

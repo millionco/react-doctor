@@ -1,9 +1,9 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // HACK: React 19 removes `Component.defaultProps` for FUNCTION components
 // (class components still tolerate it but the team recommends ES6
@@ -29,7 +29,7 @@ export const noDefaultProps = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    AssignmentExpression(node: EsTreeNode) {
+    AssignmentExpression(node: EsTreeNodeOfType<"AssignmentExpression">) {
       if (node.operator !== "=") return;
       const left = node.left;
       if (!isNodeOfType(left, "MemberExpression")) return;

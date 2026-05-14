@@ -1,8 +1,8 @@
 import { defineRule } from "../../utils/define-rule.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // HACK: bundlers can only tree-shake / split when the import target is a
 // statically-analyzable string literal. `import(variable)` or
@@ -20,7 +20,7 @@ export const noDynamicImportPath = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    ImportExpression(node: EsTreeNode) {
+    ImportExpression(node: EsTreeNodeOfType<"ImportExpression">) {
       const source = node.source;
       if (source && !isNodeOfType(source, "Literal") && !isNodeOfType(source, "TemplateLiteral")) {
         context.report({
@@ -38,7 +38,7 @@ export const noDynamicImportPath = defineRule<Rule>({
         });
       }
     },
-    CallExpression(node: EsTreeNode) {
+    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isNodeOfType(node.callee, "Identifier") || node.callee.name !== "require") return;
       const arg = node.arguments?.[0];
       if (!arg) return;

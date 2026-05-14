@@ -1,12 +1,21 @@
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
+import type { EsTreeNodeOfType } from "../../../utils/es-tree-node-of-type.js";
 import { isHookCall } from "../../../utils/is-hook-call.js";
 import { isSetterIdentifier } from "../../../utils/is-setter-identifier.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 
 export const collectUseStateBindings = (
   componentBody: EsTreeNode,
-): Array<{ valueName: string; setterName: string; declarator: EsTreeNode }> => {
-  const bindings: Array<{ valueName: string; setterName: string; declarator: EsTreeNode }> = [];
+): Array<{
+  valueName: string;
+  setterName: string;
+  declarator: EsTreeNodeOfType<"VariableDeclarator">;
+}> => {
+  const bindings: Array<{
+    valueName: string;
+    setterName: string;
+    declarator: EsTreeNodeOfType<"VariableDeclarator">;
+  }> = [];
   if (!isNodeOfType(componentBody, "BlockStatement")) return bindings;
 
   for (const statement of componentBody.body ?? []) {

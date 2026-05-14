@@ -4,6 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const NONDETERMINISTIC_RENDER_PATTERNS: Array<{
   matches: (node: EsTreeNode) => boolean;
@@ -69,7 +70,7 @@ const findOpeningElementOfChild = (jsxNode: EsTreeNode): EsTreeNode | null => {
 };
 
 const hasSuppressHydrationWarningAttribute = (openingElement: EsTreeNode | null): boolean => {
-  if (!openingElement) return false;
+  if (!openingElement || !isNodeOfType(openingElement, "JSXOpeningElement")) return false;
   for (const attr of openingElement.attributes ?? []) {
     if (
       isNodeOfType(attr, "JSXAttribute") &&
@@ -102,7 +103,7 @@ export const renderingHydrationMismatchTime = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    JSXExpressionContainer(node: EsTreeNode) {
+    JSXExpressionContainer(node: EsTreeNodeOfType<"JSXExpressionContainer">) {
       if (!node.expression) return;
       const matched = NONDETERMINISTIC_RENDER_PATTERNS.find((pattern) =>
         pattern.matches(node.expression),

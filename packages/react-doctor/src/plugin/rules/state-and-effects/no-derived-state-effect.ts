@@ -15,6 +15,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // HACK: AST-aware walker for "what reactive values does this expression
 // actually READ?". The plain `walkAst` adds every Identifier it sees,
@@ -58,17 +59,18 @@ const collectValueIdentifierNames = (node: EsTreeNode | null | undefined, into: 
     into.push(node.name);
     return;
   }
-  for (const key of Object.keys(node)) {
+  const nodeRecord = node as unknown as Record<string, unknown>;
+  for (const key of Object.keys(nodeRecord)) {
     if (key === "parent" || key === "type") continue;
-    const child = node[key];
+    const child = nodeRecord[key];
     if (Array.isArray(child)) {
       for (const item of child) {
-        if (item && typeof item === "object" && item.type) {
-          collectValueIdentifierNames(item, into);
+        if (item && typeof item === "object" && "type" in item) {
+          collectValueIdentifierNames(item as EsTreeNode, into);
         }
       }
-    } else if (child && typeof child === "object" && child.type) {
-      collectValueIdentifierNames(child, into);
+    } else if (child && typeof child === "object" && "type" in child) {
+      collectValueIdentifierNames(child as EsTreeNode, into);
     }
   }
 };
@@ -87,7 +89,7 @@ export const noDerivedStateEffect = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNode) {
+    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isHookCall(node, EFFECT_HOOK_NAMES) || (node.arguments?.length ?? 0) < 2) return;
 
       const callback = getEffectCallback(node);
@@ -122,6 +124,8 @@ export const noDerivedStateEffect = defineRule<Rule>({
       // during render" message.
       let hasExpensiveDerivation = false;
       for (const statement of statements) {
+        if (!isNodeOfType(statement, "ExpressionStatement")) continue;
+        if (!isNodeOfType(statement.expression, "CallExpression")) continue;
         const setStateArguments = statement.expression.arguments;
         if (!setStateArguments?.length) continue;
 

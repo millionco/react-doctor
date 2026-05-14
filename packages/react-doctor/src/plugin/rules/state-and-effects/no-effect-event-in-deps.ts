@@ -6,6 +6,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // HACK: useEffectEvent's identity is intentionally unstable — it captures
 // the latest props/state on each call. Listing it in a useEffect/useMemo/
@@ -33,6 +34,7 @@ export const noEffectEventInDeps = defineRule<Rule>({
   create: (context: RuleContext) => {
     const componentBindings = createComponentBindingStackTracker({
       onVariableDeclarator: (declaratorNode: EsTreeNode) => {
+        if (!isNodeOfType(declaratorNode, "VariableDeclarator")) return;
         if (!isNodeOfType(declaratorNode.id, "Identifier")) return;
         const initializer = declaratorNode.init;
         if (!initializer || !isNodeOfType(initializer, "CallExpression")) return;
@@ -43,7 +45,7 @@ export const noEffectEventInDeps = defineRule<Rule>({
 
     return {
       ...componentBindings.visitors,
-      CallExpression(node: EsTreeNode) {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (!isHookCall(node, HOOKS_WITH_DEPS) || node.arguments.length < 2) return;
         if (!componentBindings.isInsideComponent()) return;
         const depsNode = node.arguments[1];

@@ -5,10 +5,10 @@ import {
   SECRET_VARIABLE_PATTERN,
 } from "../../constants.js";
 import { defineRule } from "../../utils/define-rule.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noSecretsInClientCode = defineRule<Rule>({
   framework: "global",
@@ -24,7 +24,7 @@ export const noSecretsInClientCode = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    VariableDeclarator(node: EsTreeNode) {
+    VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
       if (!isNodeOfType(node.id, "Identifier")) return;
       if (!isNodeOfType(node.init, "Literal") || typeof node.init.value !== "string") return;
 

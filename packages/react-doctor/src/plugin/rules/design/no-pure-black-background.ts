@@ -1,5 +1,4 @@
 import { defineRule } from "../../utils/define-rule.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
@@ -7,6 +6,7 @@ import { getStylePropertyStringValue } from "./utils/get-style-property-string-v
 import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import { isPureBlackColor } from "./utils/is-pure-black-color.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noPureBlackBackground = defineRule<Rule>({
   tags: ["design", "test-noise"],
@@ -22,7 +22,7 @@ export const noPureBlackBackground = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    JSXAttribute(node: EsTreeNode) {
+    JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);
       if (!expression) return;
 
@@ -40,7 +40,7 @@ export const noPureBlackBackground = defineRule<Rule>({
         }
       }
     },
-    JSXOpeningElement(node: EsTreeNode) {
+    JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const classStr = getStringFromClassNameAttr(node);
       if (!classStr) return;
 

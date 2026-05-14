@@ -6,6 +6,7 @@ import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js
 import { getStylePropertyStringValue } from "./utils/get-style-property-string-value.js";
 import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import { getStylePropertyNumberValue } from "./utils/get-style-property-number-value.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noOutlineNone = defineRule<Rule>({
   framework: "global",
@@ -21,7 +22,7 @@ export const noOutlineNone = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    JSXAttribute(node: EsTreeNode) {
+    JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);
       if (!expression) return;
 

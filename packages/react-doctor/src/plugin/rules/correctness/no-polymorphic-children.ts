@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // HACK: `typeof children === "string"` (or `=== 'object'`) is a
 // polymorphic-children smell — the component switches behavior based on
@@ -24,7 +25,7 @@ export const noPolymorphicChildren = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    BinaryExpression(node: EsTreeNode) {
+    BinaryExpression(node: EsTreeNodeOfType<"BinaryExpression">) {
       if (node.operator !== "===" && node.operator !== "==") return;
 
       const isTypeofChildren = (operand: EsTreeNode | undefined): boolean =>

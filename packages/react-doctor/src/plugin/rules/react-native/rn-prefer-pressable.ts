@@ -1,9 +1,9 @@
 import { defineRule } from "../../utils/define-rule.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { getImportedName } from "../../utils/get-imported-name.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const TOUCHABLE_COMPONENTS = new Set([
   "TouchableOpacity",
@@ -30,7 +30,7 @@ export const rnPreferPressable = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    ImportDeclaration(node: EsTreeNode) {
+    ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       if (node.source?.value !== "react-native") return;
       for (const specifier of node.specifiers ?? []) {
         if (!isNodeOfType(specifier, "ImportSpecifier")) continue;

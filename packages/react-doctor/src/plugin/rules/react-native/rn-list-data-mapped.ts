@@ -1,9 +1,9 @@
 import { defineRule } from "../../utils/define-rule.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // Short-name form: resolveJsxElementName drops the `Animated.` prefix,
 // so `<Animated.FlatList>` resolves to `"FlatList"` and matches here.
@@ -35,7 +35,7 @@ export const rnListDataMapped = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    JSXOpeningElement(node: EsTreeNode) {
+    JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const elementName = resolveJsxElementName(node);
       if (!elementName || !VIRTUALIZED_LIST_NAMES.has(elementName)) return;
 

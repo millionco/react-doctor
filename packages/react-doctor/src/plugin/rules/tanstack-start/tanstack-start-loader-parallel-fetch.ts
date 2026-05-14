@@ -6,10 +6,11 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { getRouteOptionsObject } from "./utils/get-route-options-object.js";
 import { getPropertyKeyName } from "./utils/get-property-key-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const hasTopLevelAwait = (statement: EsTreeNode): boolean => {
   if (isNodeOfType(statement, "VariableDeclaration")) {
-    return statement.declarations?.some((declarator: EsTreeNode) =>
+    return statement.declarations?.some((declarator) =>
       isNodeOfType(declarator.init, "AwaitExpression"),
     );
   }
@@ -45,7 +46,7 @@ export const tanstackStartLoaderParallelFetch = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNode) {
+    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const optionsObject = getRouteOptionsObject(node);
       if (!optionsObject) return;
 
@@ -53,6 +54,7 @@ export const tanstackStartLoaderParallelFetch = defineRule<Rule>({
       for (const property of properties) {
         const keyName = getPropertyKeyName(property);
         if (keyName !== "loader") continue;
+        if (!isNodeOfType(property, "Property")) continue;
 
         const loaderValue = property.value;
         if (

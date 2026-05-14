@@ -16,21 +16,21 @@ export const areExpressionsStructurallyEqual = (
 ): boolean => {
   if (!a || !b) return a === b;
   if (a.type !== b.type) return false;
-  if (isNodeOfType(a, "Identifier")) return a.name === b.name;
-  if (isNodeOfType(a, "Literal")) return a.value === b.value;
-  if (isNodeOfType(a, "MemberExpression")) {
+  if (isNodeOfType(a, "Identifier") && isNodeOfType(b, "Identifier")) return a.name === b.name;
+  if (isNodeOfType(a, "Literal") && isNodeOfType(b, "Literal")) return a.value === b.value;
+  if (isNodeOfType(a, "MemberExpression") && isNodeOfType(b, "MemberExpression")) {
     if (a.computed !== b.computed) return false;
     return (
       areExpressionsStructurallyEqual(a.object, b.object) &&
       areExpressionsStructurallyEqual(a.property, b.property)
     );
   }
-  if (isNodeOfType(a, "CallExpression")) {
+  if (isNodeOfType(a, "CallExpression") && isNodeOfType(b, "CallExpression")) {
     if (!areExpressionsStructurallyEqual(a.callee, b.callee)) return false;
     const argumentsA = a.arguments ?? [];
     const argumentsB = b.arguments ?? [];
     if (argumentsA.length !== argumentsB.length) return false;
-    return argumentsA.every((argument: EsTreeNode, index: number) =>
+    return argumentsA.every((argument, index: number) =>
       areExpressionsStructurallyEqual(argument, argumentsB[index]),
     );
   }

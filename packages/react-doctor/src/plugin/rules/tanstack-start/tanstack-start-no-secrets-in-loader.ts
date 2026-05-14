@@ -6,6 +6,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { getRouteOptionsObject } from "./utils/get-route-options-object.js";
 import { getPropertyKeyName } from "./utils/get-property-key-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const SAFE_BUILD_ENV_VARS = new Set(["NODE_ENV", "MODE", "DEV", "PROD"]);
 
@@ -36,7 +37,7 @@ export const tanstackStartNoSecretsInLoader = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNode) {
+    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const optionsObject = getRouteOptionsObject(node);
       if (!optionsObject) return;
 
@@ -45,7 +46,7 @@ export const tanstackStartNoSecretsInLoader = defineRule<Rule>({
         const keyName = getPropertyKeyName(property);
         if (keyName !== "loader" && keyName !== "beforeLoad") continue;
 
-        const loaderValue = property.value ?? property;
+        const loaderValue = isNodeOfType(property, "Property") ? property.value : property;
         walkAst(loaderValue, (child: EsTreeNode) => {
           if (!isNodeOfType(child, "MemberExpression")) return;
           const isProcessEnvAccess =

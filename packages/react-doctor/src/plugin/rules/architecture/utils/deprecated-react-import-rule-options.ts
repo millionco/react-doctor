@@ -1,4 +1,4 @@
-import type { EsTreeNode } from "../../../utils/es-tree-node.js";
+import type { EsTreeNodeOfType } from "../../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../../utils/rule-context.js";
 
 export interface DeprecatedReactImportRuleOptions {
@@ -12,5 +12,8 @@ export interface DeprecatedReactImportRuleOptions {
    * `react-dom/test-utils` (whole entry point gone in React 19).
    * Return `true` to mark "handled, skip the standard branch".
    */
-  handleExtraSource?: (node: EsTreeNode, context: RuleContext) => boolean;
+  handleExtraSource?: (
+    node: EsTreeNodeOfType<"ImportDeclaration">,
+    context: RuleContext,
+  ) => boolean;
 }

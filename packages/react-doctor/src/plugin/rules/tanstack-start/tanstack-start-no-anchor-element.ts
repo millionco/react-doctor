@@ -1,9 +1,9 @@
 import { TANSTACK_ROUTE_FILE_PATTERN } from "../../constants.js";
 import { defineRule } from "../../utils/define-rule.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const tanstackStartNoAnchorElement = defineRule<Rule>({
   requires: ["tanstack-start"],
@@ -20,7 +20,7 @@ export const tanstackStartNoAnchorElement = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    JSXOpeningElement(node: EsTreeNode) {
+    JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const filename = context.getFilename?.() ?? "";
       const isRouteFile = TANSTACK_ROUTE_FILE_PATTERN.test(filename);
       if (!isRouteFile) return;
@@ -29,15 +29,16 @@ export const tanstackStartNoAnchorElement = defineRule<Rule>({
 
       const attributes = node.attributes ?? [];
       const hrefAttribute = attributes.find(
-        (attribute: EsTreeNode) =>
+        (attribute) =>
           isNodeOfType(attribute, "JSXAttribute") &&
           isNodeOfType(attribute.name, "JSXIdentifier") &&
           attribute.name.name === "href",
       );
 
-      if (!hrefAttribute?.value) return;
+      if (!hrefAttribute || !isNodeOfType(hrefAttribute, "JSXAttribute")) return;
+      if (!hrefAttribute.value) return;
 
-      let hrefValue: string | null = null;
+      let hrefValue: string | number | bigint | boolean | RegExp | null = null;
       if (isNodeOfType(hrefAttribute.value, "Literal")) {
         hrefValue = hrefAttribute.value.value;
       } else if (

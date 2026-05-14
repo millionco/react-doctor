@@ -1,10 +1,10 @@
 import { DUPLICATE_STORAGE_READ_THRESHOLD, STORAGE_OBJECTS } from "../../constants.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { isMemberProperty } from "../../utils/is-member-property.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const jsCacheStorage = defineRule<Rule>({
   framework: "global",
@@ -23,7 +23,7 @@ export const jsCacheStorage = defineRule<Rule>({
     const storageReadCounts = new Map<string, number>();
 
     return {
-      CallExpression(node: EsTreeNode) {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (!isMemberProperty(node.callee, "getItem")) return;
         if (
           !isNodeOfType(node.callee.object, "Identifier") ||

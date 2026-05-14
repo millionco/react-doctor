@@ -8,9 +8,9 @@ import { defineRule } from "../../utils/define-rule.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { hasDirective } from "../../utils/has-directive.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const nextjsNoClientFetchForServerData = defineRule<Rule>({
   requires: ["nextjs"],
@@ -31,10 +31,10 @@ export const nextjsNoClientFetchForServerData = defineRule<Rule>({
     let fileHasUseClient = false;
 
     return {
-      Program(programNode: EsTreeNode) {
+      Program(programNode: EsTreeNodeOfType<"Program">) {
         fileHasUseClient = hasDirective(programNode, "use client");
       },
-      CallExpression(node: EsTreeNode) {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (!fileHasUseClient || !isHookCall(node, EFFECT_HOOK_NAMES)) return;
 
         const callback = getEffectCallback(node);

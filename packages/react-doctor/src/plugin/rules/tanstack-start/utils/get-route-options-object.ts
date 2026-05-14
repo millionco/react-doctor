@@ -1,8 +1,11 @@
 import { TANSTACK_ROUTE_CREATION_FUNCTIONS } from "../../../constants.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
+import type { EsTreeNodeOfType } from "../../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 
-export const getRouteOptionsObject = (node: EsTreeNode): EsTreeNode | null => {
+export const getRouteOptionsObject = (
+  node: EsTreeNode,
+): EsTreeNodeOfType<"ObjectExpression"> | null => {
   if (!isNodeOfType(node, "CallExpression")) return null;
 
   const callee = node.callee;

@@ -5,6 +5,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // HACK: when comparing two arrays element-by-element via .every / .some /
 // .reduce against another array, a length mismatch is the cheapest possible
@@ -23,7 +24,7 @@ export const jsLengthCheckFirst = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNode) {
+    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isNodeOfType(node.callee, "MemberExpression")) return;
       if (!isNodeOfType(node.callee.property, "Identifier")) return;
       if (node.callee.property.name !== "every") return;

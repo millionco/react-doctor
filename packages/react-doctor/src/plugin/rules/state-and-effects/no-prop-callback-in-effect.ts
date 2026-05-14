@@ -8,6 +8,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // HACK: `useEffect(() => parentCallback(state.x), [state.x])` is the
 // "lift state up via callback" anti-pattern: the child owns state, then
@@ -34,10 +35,15 @@ export const noPropCallbackInEffect = defineRule<Rule>({
 
     return {
       ...propStackTracker.visitors,
-      CallExpression(node: EsTreeNode) {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (!isHookCall(node, EFFECT_HOOK_NAMES) || (node.arguments?.length ?? 0) < 2) return;
         const callback = getEffectCallback(node);
-        if (!callback) return;
+        if (
+          !callback ||
+          (!isNodeOfType(callback, "ArrowFunctionExpression") &&
+            !isNodeOfType(callback, "FunctionExpression"))
+        )
+          return;
         const depsNode = node.arguments[1];
         if (!isNodeOfType(depsNode, "ArrayExpression") || !depsNode.elements?.length) return;
 

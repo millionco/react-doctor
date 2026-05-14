@@ -14,6 +14,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isSubscribeLikeCallExpression } from "./utils/is-subscribe-like-call-expression.js";
 import { isCleanupReturn } from "./utils/is-cleanup-return.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // HACK: From "Lifecycle of Reactive Effects":
 //
@@ -42,6 +43,12 @@ interface SubscribeLikeUsage {
 
 const findSubscribeLikeUsages = (callback: EsTreeNode): SubscribeLikeUsage[] => {
   const usages: SubscribeLikeUsage[] = [];
+  if (
+    !isNodeOfType(callback, "ArrowFunctionExpression") &&
+    !isNodeOfType(callback, "FunctionExpression")
+  ) {
+    return usages;
+  }
   // HACK: timer/subscribe calls inside the EFFECT'S CLEANUP RETURN
   // are not new registrations — they're the disposal step. The old
   // walker traversed the full callback including any returned
@@ -94,6 +101,12 @@ const findSubscribeLikeUsages = (callback: EsTreeNode): SubscribeLikeUsage[] => 
 // previous "any Identifier is fine" behavior.
 const collectReleasableBindingNames = (effectCallback: EsTreeNode): Set<string> => {
   const releasableNames = new Set<string>();
+  if (
+    !isNodeOfType(effectCallback, "ArrowFunctionExpression") &&
+    !isNodeOfType(effectCallback, "FunctionExpression")
+  ) {
+    return releasableNames;
+  }
   if (!isNodeOfType(effectCallback.body, "BlockStatement")) return releasableNames;
   for (const statement of effectCallback.body.body ?? []) {
     if (!isNodeOfType(statement, "VariableDeclaration")) continue;
@@ -117,6 +130,12 @@ const collectReleasableBindingNames = (effectCallback: EsTreeNode): Set<string> 
 };
 
 const effectHasCleanupRelease = (callback: EsTreeNode): boolean => {
+  if (
+    !isNodeOfType(callback, "ArrowFunctionExpression") &&
+    !isNodeOfType(callback, "FunctionExpression")
+  ) {
+    return false;
+  }
   // HACK: expression-body arrows are the dominant shape for trivial
   // subscribe-only effects:
   //
@@ -173,7 +192,7 @@ export const effectNeedsCleanup = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNode) {
+    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isHookCall(node, EFFECT_HOOK_NAMES)) return;
       const callback = getEffectCallback(node);
       if (!callback) return;

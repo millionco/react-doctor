@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const LEGACY_SHADOW_KEYS = new Set([
   "shadowColor",
@@ -13,7 +14,7 @@ const LEGACY_SHADOW_KEYS = new Set([
 ]);
 
 const findLegacyShadowProperty = (
-  objectExpression: EsTreeNode,
+  objectExpression: EsTreeNodeOfType<"ObjectExpression">,
 ): { keyName: string; node: EsTreeNode } | null => {
   for (const property of objectExpression.properties ?? []) {
     if (!isNodeOfType(property, "Property")) continue;
@@ -47,7 +48,7 @@ export const rnStylePreferBoxShadow = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    JSXAttribute(node: EsTreeNode) {
+    JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       if (!isNodeOfType(node.name, "JSXIdentifier")) return;
       const attrName = node.name.name;
       if (attrName !== "style" && !attrName.endsWith("Style")) return;
@@ -61,7 +62,7 @@ export const rnStylePreferBoxShadow = defineRule<Rule>({
         message: `${match.keyName} is iOS/Android-platform-specific — use the cross-platform CSS \`boxShadow\` string (e.g. \`boxShadow: "0 2px 8px rgba(0,0,0,0.1)"\`) on RN v7+`,
       });
     },
-    CallExpression(node: EsTreeNode) {
+    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isNodeOfType(node.callee, "MemberExpression")) return;
       if (!isNodeOfType(node.callee.object, "Identifier")) return;
       if (node.callee.object.name !== "StyleSheet") return;

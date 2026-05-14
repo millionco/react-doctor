@@ -16,6 +16,12 @@ const LIST_ROW_PRESS_HANDLER_PROPS = new Set([
 
 const detectInlineRowHandlers = (renderItemFn: EsTreeNode): EsTreeNode[] => {
   const inlineHandlers: EsTreeNode[] = [];
+  if (
+    !isNodeOfType(renderItemFn, "ArrowFunctionExpression") &&
+    !isNodeOfType(renderItemFn, "FunctionExpression")
+  ) {
+    return inlineHandlers;
+  }
   walkAst(renderItemFn.body, (child: EsTreeNode) => {
     if (!isNodeOfType(child, "JSXAttribute")) return;
     if (!isNodeOfType(child.name, "JSXIdentifier")) return;
@@ -70,9 +76,10 @@ export const rnListCallbackPerRow = defineRule<Rule>({
       if (!isRenderItemFunction(node)) return;
       const inlineHandlers = detectInlineRowHandlers(node);
       for (const handler of inlineHandlers) {
-        const handlerName = isNodeOfType(handler.name, "JSXIdentifier")
-          ? handler.name.name
-          : "<handler>";
+        const handlerName =
+          isNodeOfType(handler, "JSXAttribute") && isNodeOfType(handler.name, "JSXIdentifier")
+            ? handler.name.name
+            : "<handler>";
         context.report({
           node: handler,
           message: `Inline ${handlerName} arrow inside renderItem creates a fresh closure per row — hoist with useCallback at list scope and pass the row id as a primitive prop`,

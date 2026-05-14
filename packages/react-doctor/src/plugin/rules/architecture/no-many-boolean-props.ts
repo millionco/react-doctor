@@ -7,6 +7,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const BOOLEAN_PROP_PREFIX_PATTERN = /^(?:is|has|should|can|show|hide|enable|disable|with)[A-Z]/;
 
@@ -91,13 +92,19 @@ export const noManyBooleanProps = defineRule<Rule>({
     };
 
     return {
-      FunctionDeclaration(node: EsTreeNode) {
-        if (!isComponentDeclaration(node)) return;
+      FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
+        if (!isComponentDeclaration(node) || !node.id) return;
         checkComponent(node.params?.[0], node.body, node.id.name, node.id);
       },
-      VariableDeclarator(node: EsTreeNode) {
+      VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
         if (!isComponentAssignment(node)) return;
-        checkComponent(node.init?.params?.[0], node.init?.body, node.id.name, node.id);
+        if (!isNodeOfType(node.id, "Identifier")) return;
+        if (
+          !isNodeOfType(node.init, "ArrowFunctionExpression") &&
+          !isNodeOfType(node.init, "FunctionExpression")
+        )
+          return;
+        checkComponent(node.init.params?.[0], node.init.body, node.id.name, node.id);
       },
     };
   },

@@ -9,6 +9,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const queryStableQueryClient = defineRule<Rule>({
   requires: ["tanstack-query"],
@@ -30,17 +31,21 @@ export const queryStableQueryClient = defineRule<Rule>({
     let stableHookDepth = 0;
 
     return {
-      FunctionDeclaration(node: EsTreeNode) {
+      FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
         if (node.id?.name && UPPERCASE_PATTERN.test(node.id.name)) {
           componentDepth++;
         }
       },
       "FunctionDeclaration:exit"(node: EsTreeNode) {
-        if (node.id?.name && UPPERCASE_PATTERN.test(node.id.name)) {
+        if (
+          isNodeOfType(node, "FunctionDeclaration") &&
+          node.id?.name &&
+          UPPERCASE_PATTERN.test(node.id.name)
+        ) {
           componentDepth--;
         }
       },
-      VariableDeclarator(node: EsTreeNode) {
+      VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
         if (
           isNodeOfType(node.id, "Identifier") &&
           UPPERCASE_PATTERN.test(node.id.name) &&
@@ -52,6 +57,7 @@ export const queryStableQueryClient = defineRule<Rule>({
       },
       "VariableDeclarator:exit"(node: EsTreeNode) {
         if (
+          isNodeOfType(node, "VariableDeclarator") &&
           isNodeOfType(node.id, "Identifier") &&
           UPPERCASE_PATTERN.test(node.id.name) &&
           (isNodeOfType(node.init, "ArrowFunctionExpression") ||
@@ -60,7 +66,7 @@ export const queryStableQueryClient = defineRule<Rule>({
           componentDepth--;
         }
       },
-      CallExpression(node: EsTreeNode) {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (isHookCall(node, STABLE_HOOK_WRAPPERS)) {
           stableHookDepth++;
         }
@@ -70,7 +76,7 @@ export const queryStableQueryClient = defineRule<Rule>({
           stableHookDepth = Math.max(0, stableHookDepth - 1);
         }
       },
-      NewExpression(node: EsTreeNode) {
+      NewExpression(node: EsTreeNodeOfType<"NewExpression">) {
         if (componentDepth <= 0) return;
         if (stableHookDepth > 0) return;
         if (

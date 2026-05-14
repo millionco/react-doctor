@@ -7,6 +7,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const describeClientSideNavigation = (
   node: EsTreeNode,
@@ -62,7 +63,7 @@ export const nextjsNoClientSideRedirect = defineRule<Rule>({
     const isPagesRouterFile = PAGES_DIRECTORY_PATTERN.test(filename);
 
     return {
-      CallExpression(node: EsTreeNode) {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (!isHookCall(node, EFFECT_HOOK_NAMES)) return;
         const callback = getEffectCallback(node);
         if (!callback) return;

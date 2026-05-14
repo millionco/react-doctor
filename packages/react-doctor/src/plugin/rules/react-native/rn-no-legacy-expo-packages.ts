@@ -1,8 +1,8 @@
 import { LEGACY_EXPO_PACKAGE_REPLACEMENTS } from "../../constants.js";
 import { defineRule } from "../../utils/define-rule.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const rnNoLegacyExpoPackages = defineRule<Rule>({
   requires: ["react-native"],
@@ -18,7 +18,7 @@ export const rnNoLegacyExpoPackages = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    ImportDeclaration(node: EsTreeNode) {
+    ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       const source = node.source?.value;
       if (typeof source !== "string") return;
 

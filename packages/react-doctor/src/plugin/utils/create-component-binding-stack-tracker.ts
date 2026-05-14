@@ -2,6 +2,7 @@ import type { ComponentBindingStackTracker } from "./component-binding-stack-tra
 import type { ComponentBindingStackTrackerCallbacks } from "./component-binding-stack-tracker-callbacks.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { isComponentAssignment } from "./is-component-assignment.js";
+import { isNodeOfType } from "./is-node-of-type.js";
 import { isUppercaseName } from "./is-uppercase-name.js";
 import type { RuleVisitors } from "./rule-visitors.js";
 
@@ -43,11 +44,13 @@ export const createComponentBindingStackTracker = (
 
   const visitors: RuleVisitors = {
     FunctionDeclaration(node: EsTreeNode) {
-      if (!node.id?.name || !isUppercaseName(node.id.name)) return;
+      if (!isNodeOfType(node, "FunctionDeclaration")) return;
+      if (!node.id || !isUppercaseName(node.id.name)) return;
       componentBindingStack.push(new Set());
     },
     "FunctionDeclaration:exit"(node: EsTreeNode) {
-      if (!node.id?.name || !isUppercaseName(node.id.name)) return;
+      if (!isNodeOfType(node, "FunctionDeclaration")) return;
+      if (!node.id || !isUppercaseName(node.id.name)) return;
       componentBindingStack.pop();
     },
     VariableDeclarator(node: EsTreeNode) {

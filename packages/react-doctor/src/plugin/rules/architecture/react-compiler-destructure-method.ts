@@ -5,6 +5,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const HOOK_OBJECTS_WITH_METHODS = new Map<string, Set<string>>([
   ["useRouter", new Set(["push", "replace", "back", "forward", "refresh", "prefetch"])],
@@ -19,9 +20,9 @@ const HOOK_OBJECTS_WITH_METHODS = new Map<string, Set<string>>([
 // declarations once per component on enter, so subsequent
 // MemberExpression visitors don't re-walk the whole body for every
 // access.
-const buildHookBindingMap = (componentBody: EsTreeNode): Map<string, string> => {
+const buildHookBindingMap = (componentBody: EsTreeNode | null | undefined): Map<string, string> => {
   const result = new Map<string, string>();
-  if (!isNodeOfType(componentBody, "BlockStatement")) return result;
+  if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return result;
   for (const statement of componentBody.body ?? []) {
     if (!isNodeOfType(statement, "VariableDeclaration")) continue;
     for (const declarator of statement.declarations ?? []) {
@@ -82,7 +83,17 @@ export const reactCompilerDestructureMethod = defineRule<Rule>({
     // correct semantic for "this component declares zero hook bindings".
     const enter = (node: EsTreeNode): void => {
       if (!isComponent(node)) return;
-      const body = isNodeOfType(node, "FunctionDeclaration") ? node.body : node.init?.body;
+      let body: EsTreeNode | null | undefined;
+      if (isNodeOfType(node, "FunctionDeclaration")) {
+        body = node.body;
+      } else if (isNodeOfType(node, "VariableDeclarator")) {
+        const initializer = node.init;
+        body =
+          isNodeOfType(initializer, "ArrowFunctionExpression") ||
+          isNodeOfType(initializer, "FunctionExpression")
+            ? initializer.body
+            : null;
+      }
       hookBindingMapStack.push(buildHookBindingMap(body));
     };
     const exit = (node: EsTreeNode): void => {
@@ -94,7 +105,7 @@ export const reactCompilerDestructureMethod = defineRule<Rule>({
       "FunctionDeclaration:exit": exit,
       VariableDeclarator: enter,
       "VariableDeclarator:exit": exit,
-      MemberExpression(node: EsTreeNode) {
+      MemberExpression(node: EsTreeNodeOfType<"MemberExpression">) {
         if (hookBindingMapStack.length === 0) return;
         if (node.computed) return;
         if (!isNodeOfType(node.object, "Identifier")) return;

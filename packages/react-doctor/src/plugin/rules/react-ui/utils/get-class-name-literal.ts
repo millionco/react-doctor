@@ -2,6 +2,7 @@ import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 
 export const getClassNameLiteral = (classAttribute: EsTreeNode): string | null => {
+  if (!isNodeOfType(classAttribute, "JSXAttribute")) return null;
   if (!classAttribute.value) return null;
   if (
     isNodeOfType(classAttribute.value, "Literal") &&

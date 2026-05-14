@@ -1,9 +1,9 @@
 import { INTERNAL_PAGE_PATH_PATTERN, PAGE_FILE_PATTERN } from "../../constants.js";
 import { defineRule } from "../../utils/define-rule.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const nextjsMissingMetadata = defineRule<Rule>({
   requires: ["nextjs"],
@@ -20,17 +20,17 @@ export const nextjsMissingMetadata = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    Program(programNode: EsTreeNode) {
+    Program(programNode: EsTreeNodeOfType<"Program">) {
       const filename = context.getFilename?.() ?? "";
       if (!PAGE_FILE_PATTERN.test(filename)) return;
       if (INTERNAL_PAGE_PATH_PATTERN.test(filename)) return;
 
-      const hasMetadataExport = programNode.body?.some((statement: EsTreeNode) => {
+      const hasMetadataExport = programNode.body?.some((statement) => {
         if (!isNodeOfType(statement, "ExportNamedDeclaration")) return false;
         const declaration = statement.declaration;
         if (isNodeOfType(declaration, "VariableDeclaration")) {
           return declaration.declarations?.some(
-            (declarator: EsTreeNode) =>
+            (declarator) =>
               isNodeOfType(declarator.id, "Identifier") &&
               (declarator.id.name === "metadata" || declarator.id.name === "generateMetadata"),
           );

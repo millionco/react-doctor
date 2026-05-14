@@ -4,6 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const ROUTE_HANDLER_HTTP_METHODS = new Set([
   "GET",
@@ -91,6 +92,7 @@ const inspectHandlerBody = (
     }
     if (!staticCall) return;
     if (callReadsHandlerArgs(staticCall, handlerParamNames)) return;
+    if (!isNodeOfType(staticCall, "CallExpression")) return;
 
     const calleeText =
       isNodeOfType(staticCall.callee, "MemberExpression") &&
@@ -139,7 +141,7 @@ export const serverHoistStaticIo = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    ExportNamedDeclaration(node: EsTreeNode) {
+    ExportNamedDeclaration(node: EsTreeNodeOfType<"ExportNamedDeclaration">) {
       const declaration = node.declaration;
       if (!isNodeOfType(declaration, "FunctionDeclaration")) return;
       const handlerName = declaration.id?.name;
@@ -152,7 +154,7 @@ export const serverHoistStaticIo = defineRule<Rule>({
         collectIdentifierParams(declaration.params ?? []),
       );
     },
-    ExportDefaultDeclaration(node: EsTreeNode) {
+    ExportDefaultDeclaration(node: EsTreeNodeOfType<"ExportDefaultDeclaration">) {
       const filename = context.getFilename?.() ?? "";
       if (!PAGES_ROUTER_API_PATH_PATTERN.test(filename)) return;
       const declaration = node.declaration;

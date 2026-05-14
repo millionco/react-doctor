@@ -6,6 +6,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // HACK: detect static JSX declared inside a component body — anything like
 // `const Header = <h1>Hi</h1>` inside a render function gets recreated on
@@ -71,7 +72,7 @@ export const renderingHoistJsx = defineRule<Rule>({
       "FunctionDeclaration:exit": exit,
       VariableDeclarator: enter,
       "VariableDeclarator:exit": exit,
-      VariableDeclaration(node: EsTreeNode) {
+      VariableDeclaration(node: EsTreeNodeOfType<"VariableDeclaration">) {
         if (componentDepth === 0) return;
         if (node.kind !== "const") return;
         for (const declarator of node.declarations ?? []) {

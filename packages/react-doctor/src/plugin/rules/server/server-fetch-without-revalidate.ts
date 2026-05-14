@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const isFetchCall = (node: EsTreeNode): boolean => {
   if (!isNodeOfType(node, "CallExpression")) return false;
@@ -69,7 +70,7 @@ export const serverFetchWithoutRevalidate = defineRule<Rule>({
     let isServerSideFile = false;
 
     return {
-      Program(node: EsTreeNode) {
+      Program(node: EsTreeNodeOfType<"Program">) {
         const filename = context.getFilename?.() ?? "";
         if (!APP_ROUTER_FILE_PATTERN.test(filename)) {
           isServerSideFile = false;
@@ -87,7 +88,7 @@ export const serverFetchWithoutRevalidate = defineRule<Rule>({
         );
         isServerSideFile = !hasUseClient;
       },
-      CallExpression(node: EsTreeNode) {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (!isServerSideFile) return;
         if (!isFetchCall(node)) return;
 

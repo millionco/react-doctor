@@ -5,6 +5,7 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const PRESS_HANDLER_PROP_NAMES = new Set(["onPressIn", "onPressOut"]);
 
@@ -79,6 +80,7 @@ export const rnPressableSharedValueMutation = defineRule<Rule>({
     };
     const trackSharedValueBinding = (declarator: EsTreeNode): void => {
       if (sharedValueBindingsByComponent.length === 0) return;
+      if (!isNodeOfType(declarator, "VariableDeclarator")) return;
       if (!isNodeOfType(declarator.id, "Identifier")) return;
       if (!isNodeOfType(declarator.init, "CallExpression")) return;
       const callee = declarator.init.callee;
@@ -96,10 +98,10 @@ export const rnPressableSharedValueMutation = defineRule<Rule>({
       "FunctionExpression:exit": exitScope,
       ArrowFunctionExpression: enterScope,
       "ArrowFunctionExpression:exit": exitScope,
-      VariableDeclarator(node: EsTreeNode) {
+      VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
         trackSharedValueBinding(node);
       },
-      JSXOpeningElement(node: EsTreeNode) {
+      JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         const name = resolveJsxElementName(node);
         if (name !== "Pressable") return;
         if (sharedValueBindingsByComponent.length === 0) return;

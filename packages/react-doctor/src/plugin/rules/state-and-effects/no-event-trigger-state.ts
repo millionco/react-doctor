@@ -24,6 +24,7 @@ import { expandTransitiveDependencies } from "./utils/expand-transitive-dependen
 import { collectHandlerBindingNames } from "./utils/collect-handler-binding-names.js";
 import { isInsideEventHandler } from "./utils/is-inside-event-handler.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // HACK: §6 of "You Might Not Need an Effect" — sending a POST request:
 //
@@ -225,13 +226,18 @@ export const noEventTriggerState = defineRule<Rule>({
     };
 
     return {
-      FunctionDeclaration(node: EsTreeNode) {
+      FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
         if (!node.id?.name || !isUppercaseName(node.id.name)) return;
         checkComponent(node.body);
       },
-      VariableDeclarator(node: EsTreeNode) {
+      VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
         if (!isComponentAssignment(node)) return;
-        checkComponent(node.init?.body);
+        if (
+          !isNodeOfType(node.init, "ArrowFunctionExpression") &&
+          !isNodeOfType(node.init, "FunctionExpression")
+        )
+          return;
+        checkComponent(node.init.body);
       },
     };
   },

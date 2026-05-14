@@ -19,6 +19,7 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // HACK: §7 of "You Might Not Need an Effect" — chains of computations:
 //
@@ -66,6 +67,7 @@ const findTopLevelEffectCalls = (componentBody: EsTreeNode): EsTreeNode[] => {
 
 const collectDepIdentifierNames = (effectNode: EsTreeNode): Set<string> => {
   const depNames = new Set<string>();
+  if (!isNodeOfType(effectNode, "CallExpression")) return depNames;
   const depsNode = effectNode.arguments?.[1];
   if (!isNodeOfType(depsNode, "ArrayExpression")) return depNames;
   for (const element of depsNode.elements ?? []) {
@@ -86,6 +88,12 @@ const collectWrittenStateNamesInEffect = (
   setterToStateName: Map<string, string>,
 ): Set<string> => {
   const writtenStateNames = new Set<string>();
+  if (
+    !isNodeOfType(effectCallback, "ArrowFunctionExpression") &&
+    !isNodeOfType(effectCallback, "FunctionExpression")
+  ) {
+    return writtenStateNames;
+  }
   walkInsideStatementBlocks(effectCallback.body, (child: EsTreeNode) => {
     if (!isNodeOfType(child, "CallExpression")) return;
     if (!isNodeOfType(child.callee, "Identifier")) return;
@@ -122,6 +130,12 @@ const isFunctionShapedReturn = (returnedValue: EsTreeNode): boolean => {
 };
 
 const isExternalSyncEffect = (effectCallback: EsTreeNode): boolean => {
+  if (
+    !isNodeOfType(effectCallback, "ArrowFunctionExpression") &&
+    !isNodeOfType(effectCallback, "FunctionExpression")
+  ) {
+    return false;
+  }
   // A cleanup return is the strongest signal that the effect owns
   // an external resource — once we see one, we don't need to inspect
   // the body for an external-sync call shape.
@@ -275,13 +289,18 @@ export const noEffectChain = defineRule<Rule>({
     };
 
     return {
-      FunctionDeclaration(node: EsTreeNode) {
+      FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
         if (!node.id?.name || !isUppercaseName(node.id.name)) return;
         checkComponent(node.body);
       },
-      VariableDeclarator(node: EsTreeNode) {
+      VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
         if (!isComponentAssignment(node)) return;
-        checkComponent(node.init?.body);
+        if (
+          !isNodeOfType(node.init, "ArrowFunctionExpression") &&
+          !isNodeOfType(node.init, "FunctionExpression")
+        )
+          return;
+        checkComponent(node.init.body);
       },
     };
   },

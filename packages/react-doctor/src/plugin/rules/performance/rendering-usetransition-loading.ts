@@ -1,10 +1,10 @@
 import { LOADING_STATE_PATTERN } from "../../constants.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const renderingUsetransitionLoading = defineRule<Rule>({
   framework: "global",
@@ -21,9 +21,10 @@ export const renderingUsetransitionLoading = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    VariableDeclarator(node: EsTreeNode) {
+    VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
       if (!isNodeOfType(node.id, "ArrayPattern") || !node.id.elements?.length) return;
       if (!node.init || !isHookCall(node.init, "useState")) return;
+      if (!isNodeOfType(node.init, "CallExpression")) return;
       if (!node.init.arguments?.length) return;
 
       const initializer = node.init.arguments[0];

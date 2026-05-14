@@ -4,6 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const findFirstAwaitOutsideNestedFunctions = (block: EsTreeNode): EsTreeNode | null => {
   let firstAwait: EsTreeNode | null = null;
@@ -42,6 +43,7 @@ const SLEEP_LIKE_FUNCTION_NAMES = new Set([
 ]);
 
 const isAwaitingSleepLikeCall = (awaitNode: EsTreeNode): boolean => {
+  if (!isNodeOfType(awaitNode, "AwaitExpression")) return false;
   const argument = awaitNode.argument;
   if (!argument) return false;
 
@@ -84,7 +86,9 @@ const collectPatternIdentifiers = (pattern: EsTreeNode, target: Set<string>): vo
   }
 };
 
-const isFunctionishExpression = (node: EsTreeNode): boolean =>
+const isFunctionishExpression = (
+  node: EsTreeNode,
+): node is EsTreeNodeOfType<"ArrowFunctionExpression"> | EsTreeNodeOfType<"FunctionExpression"> =>
   isNodeOfType(node, "ArrowFunctionExpression") || isNodeOfType(node, "FunctionExpression");
 
 const collectAssignedIdentifiers = (block: EsTreeNode): Set<string> => {
@@ -210,25 +214,25 @@ export const asyncAwaitInLoop = defineRule<Rule>({
     };
 
     return {
-      ForStatement(node: EsTreeNode) {
+      ForStatement(node: EsTreeNodeOfType<"ForStatement">) {
         inspectLoopBody(node.body, "for-loop");
       },
-      ForInStatement(node: EsTreeNode) {
+      ForInStatement(node: EsTreeNodeOfType<"ForInStatement">) {
         inspectLoopBody(node.body, "for…in loop");
       },
-      ForOfStatement(node: EsTreeNode) {
+      ForOfStatement(node: EsTreeNodeOfType<"ForOfStatement">) {
         // `for await (const x of …)` is the legitimate async-iterator
         // pattern — skip it.
         if (node.await) return;
         inspectLoopBody(node.body, "for…of loop");
       },
-      WhileStatement(node: EsTreeNode) {
+      WhileStatement(node: EsTreeNodeOfType<"WhileStatement">) {
         inspectLoopBody(node.body, "while-loop");
       },
-      DoWhileStatement(node: EsTreeNode) {
+      DoWhileStatement(node: EsTreeNodeOfType<"DoWhileStatement">) {
         inspectLoopBody(node.body, "do-while loop");
       },
-      CallExpression(node: EsTreeNode) {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         // arr.forEach(async item => { await fn(item); }) — sequential
         // because forEach doesn't await; even worse, the awaits are
         // dropped on the floor (forEach ignores return values).

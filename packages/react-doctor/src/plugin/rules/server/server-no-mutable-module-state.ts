@@ -4,6 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const MUTABLE_CONTAINER_CONSTRUCTORS = new Set(["Map", "Set", "WeakMap", "WeakSet"]);
 
@@ -45,10 +46,10 @@ export const serverNoMutableModuleState = defineRule<Rule>({
     let fileHasUseServerDirective = false;
 
     return {
-      Program(programNode: EsTreeNode) {
+      Program(programNode: EsTreeNodeOfType<"Program">) {
         fileHasUseServerDirective = hasDirective(programNode, "use server");
       },
-      VariableDeclaration(node: EsTreeNode) {
+      VariableDeclaration(node: EsTreeNodeOfType<"VariableDeclaration">) {
         if (!fileHasUseServerDirective) return;
         if (!isNodeOfType(node.parent, "Program")) return;
 

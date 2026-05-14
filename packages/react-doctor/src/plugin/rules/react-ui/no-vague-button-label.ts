@@ -5,6 +5,7 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getOpeningElementTagName } from "./utils/get-opening-element-tag-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const isButtonLikeTagName = (tagName: string): boolean => {
   if (tagName === "button") return true;
@@ -13,6 +14,8 @@ const isButtonLikeTagName = (tagName: string): boolean => {
 };
 
 const collectJsxLabelText = (jsxElementNode: EsTreeNode): string | null => {
+  if (!isNodeOfType(jsxElementNode, "JSXElement") && !isNodeOfType(jsxElementNode, "JSXFragment"))
+    return null;
   const childList = jsxElementNode.children ?? [];
   if (childList.length === 0) return null;
   const collectedFragments: string[] = [];
@@ -66,7 +69,7 @@ export const noVagueButtonLabel = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    JSXElement(jsxElementNode: EsTreeNode) {
+    JSXElement(jsxElementNode: EsTreeNodeOfType<"JSXElement">) {
       const tagName = getOpeningElementTagName(jsxElementNode.openingElement);
       if (!tagName || !isButtonLikeTagName(tagName)) return;
       const labelText = collectJsxLabelText(jsxElementNode);

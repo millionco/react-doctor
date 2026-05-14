@@ -1,9 +1,11 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isComponentDeclaration } from "../../utils/is-component-declaration.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noNestedComponentDefinition = defineRule<Rule>({
   framework: "global",
@@ -22,8 +24,8 @@ export const noNestedComponentDefinition = defineRule<Rule>({
     const componentStack: string[] = [];
 
     return {
-      FunctionDeclaration(node: EsTreeNode) {
-        if (!isComponentDeclaration(node)) return;
+      FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
+        if (!isComponentDeclaration(node) || !node.id) return;
         if (componentStack.length > 0) {
           context.report({
             node: node.id,
@@ -35,8 +37,9 @@ export const noNestedComponentDefinition = defineRule<Rule>({
       "FunctionDeclaration:exit"(node: EsTreeNode) {
         if (isComponentDeclaration(node)) componentStack.pop();
       },
-      VariableDeclarator(node: EsTreeNode) {
+      VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
         if (!isComponentAssignment(node)) return;
+        if (!isNodeOfType(node.id, "Identifier")) return;
         if (componentStack.length > 0) {
           context.report({
             node: node.id,

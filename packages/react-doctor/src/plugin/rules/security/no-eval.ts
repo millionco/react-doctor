@@ -1,8 +1,8 @@
 import { defineRule } from "../../utils/define-rule.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noEval = defineRule<Rule>({
   framework: "global",
@@ -17,7 +17,7 @@ export const noEval = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNode) {
+    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (isNodeOfType(node.callee, "Identifier") && node.callee.name === "eval") {
         context.report({
           node,
@@ -38,7 +38,7 @@ export const noEval = defineRule<Rule>({
         });
       }
     },
-    NewExpression(node: EsTreeNode) {
+    NewExpression(node: EsTreeNodeOfType<"NewExpression">) {
       if (isNodeOfType(node.callee, "Identifier") && node.callee.name === "Function") {
         context.report({
           node,

@@ -10,6 +10,7 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const truncateText = (text: string): string =>
   text.length > RAW_TEXT_PREVIEW_MAX_CHARS
@@ -72,12 +73,12 @@ export const rnNoRawText = defineRule<Rule>({
     let isDomComponentFile = false;
 
     return {
-      Program(programNode: EsTreeNode) {
+      Program(programNode: EsTreeNodeOfType<"Program">) {
         isDomComponentFile = hasDirective(programNode, "use dom");
         const filename = context.getFilename?.() ?? "";
         isWebOnlyFile = WEB_FILE_EXTENSION_PATTERN.test(filename);
       },
-      JSXElement(node: EsTreeNode) {
+      JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
         if (isDomComponentFile || isWebOnlyFile) return;
 
         const elementName = resolveJsxElementName(node.openingElement);

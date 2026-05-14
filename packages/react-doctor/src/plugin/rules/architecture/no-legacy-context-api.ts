@@ -4,6 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // HACK: legacy context (`childContextTypes` + `getChildContext` on
 // providers, `contextTypes` on consumers) was deprecated in 16.3, warns
@@ -72,12 +73,12 @@ export const noLegacyContextApi = defineRule<Rule>({
     };
 
     return {
-      ClassBody(node: EsTreeNode) {
+      ClassBody(node: EsTreeNodeOfType<"ClassBody">) {
         for (const member of node.body ?? []) {
           checkMember(member);
         }
       },
-      AssignmentExpression(node: EsTreeNode) {
+      AssignmentExpression(node: EsTreeNodeOfType<"AssignmentExpression">) {
         if (node.operator !== "=") return;
         const left = node.left;
         if (!isNodeOfType(left, "MemberExpression")) return;

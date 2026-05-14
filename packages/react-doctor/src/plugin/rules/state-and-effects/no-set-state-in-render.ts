@@ -6,6 +6,7 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // HACK: an UNCONDITIONAL setter call at a component's render path
 // triggers an infinite re-render loop ("Maximum update depth exceeded").
@@ -59,6 +60,8 @@ export const noSetStateInRender = defineRule<Rule>({
       for (const statement of componentBody.body ?? []) {
         const setterCall = isUnconditionalSetterCallStatement(statement, setterNames);
         if (!setterCall) continue;
+        if (!isNodeOfType(setterCall, "CallExpression")) continue;
+        if (!isNodeOfType(setterCall.callee, "Identifier")) continue;
         const setterIdentifierName = setterCall.callee.name;
         context.report({
           node: setterCall,
@@ -68,13 +71,18 @@ export const noSetStateInRender = defineRule<Rule>({
     };
 
     return {
-      FunctionDeclaration(node: EsTreeNode) {
+      FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
         if (!node.id?.name || !isUppercaseName(node.id.name)) return;
         checkComponent(node.body);
       },
-      VariableDeclarator(node: EsTreeNode) {
+      VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
         if (!isComponentAssignment(node)) return;
-        checkComponent(node.init?.body);
+        if (
+          !isNodeOfType(node.init, "ArrowFunctionExpression") &&
+          !isNodeOfType(node.init, "FunctionExpression")
+        )
+          return;
+        checkComponent(node.init.body);
       },
     };
   },

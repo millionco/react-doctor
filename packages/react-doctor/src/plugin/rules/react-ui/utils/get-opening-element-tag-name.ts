@@ -5,6 +5,7 @@ export const getOpeningElementTagName = (
   openingElement: EsTreeNode | null | undefined,
 ): string | null => {
   if (!openingElement) return null;
+  if (!isNodeOfType(openingElement, "JSXOpeningElement")) return null;
   if (isNodeOfType(openingElement.name, "JSXIdentifier")) return openingElement.name.name;
   if (isNodeOfType(openingElement.name, "JSXMemberExpression")) {
     let cursor: EsTreeNode = openingElement.name;

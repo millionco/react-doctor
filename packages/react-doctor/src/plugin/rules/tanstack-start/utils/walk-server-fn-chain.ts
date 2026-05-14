@@ -11,7 +11,9 @@ export const walkServerFnChain = (outerNode: EsTreeNode): ServerFnChainInfo => {
     hasInputValidator: false,
   };
 
-  let currentNode: EsTreeNode = outerNode.callee?.object;
+  if (!isNodeOfType(outerNode, "CallExpression")) return result;
+  if (!isNodeOfType(outerNode.callee, "MemberExpression")) return result;
+  let currentNode: EsTreeNode = outerNode.callee.object;
 
   while (isNodeOfType(currentNode, "CallExpression")) {
     const calleeName = getCalleeName(currentNode);

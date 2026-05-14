@@ -9,6 +9,7 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // HACK: walks the component AST while tracking which state names are
 // SHADOWED in the current scope by a nested function's params or
@@ -20,6 +21,13 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 // >99% of real-world shadowing cases without false positives.
 const collectFunctionLocalBindings = (functionNode: EsTreeNode): Set<string> => {
   const localBindings = new Set<string>();
+  if (
+    !isNodeOfType(functionNode, "FunctionDeclaration") &&
+    !isNodeOfType(functionNode, "FunctionExpression") &&
+    !isNodeOfType(functionNode, "ArrowFunctionExpression")
+  ) {
+    return localBindings;
+  }
   for (const param of functionNode.params ?? []) {
     collectPatternNames(param, localBindings);
   }
@@ -58,17 +66,18 @@ const walkComponentRespectingShadows = (
 
   visit(node, shadowedStateNames);
 
-  for (const key of Object.keys(node)) {
+  const nodeRecord = node as unknown as Record<string, unknown>;
+  for (const key of Object.keys(nodeRecord)) {
     if (key === "parent") continue;
-    const child = node[key];
+    const child = nodeRecord[key];
     if (Array.isArray(child)) {
       for (const item of child) {
-        if (item && typeof item === "object" && item.type) {
-          walkComponentRespectingShadows(item, nextShadowedStateNames, visit);
+        if (item && typeof item === "object" && "type" in item) {
+          walkComponentRespectingShadows(item as EsTreeNode, nextShadowedStateNames, visit);
         }
       }
-    } else if (child && typeof child === "object" && child.type) {
-      walkComponentRespectingShadows(child, nextShadowedStateNames, visit);
+    } else if (child && typeof child === "object" && "type" in child) {
+      walkComponentRespectingShadows(child as EsTreeNode, nextShadowedStateNames, visit);
     }
   }
 };
@@ -132,13 +141,18 @@ export const noDirectStateMutation = defineRule<Rule>({
     };
 
     return {
-      FunctionDeclaration(node: EsTreeNode) {
+      FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
         if (!node.id?.name || !isUppercaseName(node.id.name)) return;
         checkComponent(node.body);
       },
-      VariableDeclarator(node: EsTreeNode) {
+      VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
         if (!isComponentAssignment(node)) return;
-        checkComponent(node.init?.body);
+        if (
+          !isNodeOfType(node.init, "ArrowFunctionExpression") &&
+          !isNodeOfType(node.init, "FunctionExpression")
+        )
+          return;
+        checkComponent(node.init.body);
       },
     };
   },

@@ -6,6 +6,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const callbackReturnsJsx = (callback: EsTreeNode | undefined): boolean => {
   if (!callback) return false;
@@ -30,6 +31,7 @@ const callbackReturnsJsx = (callback: EsTreeNode | undefined): boolean => {
 };
 
 const containsEarlyReturn = (ifStatement: EsTreeNode): boolean => {
+  if (!isNodeOfType(ifStatement, "IfStatement")) return false;
   const consequent = ifStatement.consequent;
   if (!consequent) return false;
   if (isNodeOfType(consequent, "ReturnStatement")) return true;
@@ -91,14 +93,19 @@ export const rerenderMemoBeforeEarlyReturn = defineRule<Rule>({
     };
 
     return {
-      FunctionDeclaration(node: EsTreeNode) {
+      FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
         if (!isUppercaseName(node.id?.name ?? "")) return;
         if (!isNodeOfType(node.body, "BlockStatement")) return;
         inspectFunctionBody(node.body.body ?? []);
       },
-      VariableDeclarator(node: EsTreeNode) {
+      VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
         if (!isComponentAssignment(node)) return;
-        const body = node.init?.body;
+        if (
+          !isNodeOfType(node.init, "ArrowFunctionExpression") &&
+          !isNodeOfType(node.init, "FunctionExpression")
+        )
+          return;
+        const body = node.init.body;
         if (!isNodeOfType(body, "BlockStatement")) return;
         inspectFunctionBody(body.body ?? []);
       },

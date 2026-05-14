@@ -5,6 +5,7 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { walkServerFnChain } from "./utils/walk-server-fn-chain.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const tanstackStartServerFnValidateInput = defineRule<Rule>({
   requires: ["tanstack-start"],
@@ -22,7 +23,7 @@ export const tanstackStartServerFnValidateInput = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNode) {
+    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isNodeOfType(node.callee, "MemberExpression")) return;
       if (!isNodeOfType(node.callee.property, "Identifier")) return;
       if (node.callee.property.name !== "handler") return;
@@ -45,8 +46,10 @@ export const tanstackStartServerFnValidateInput = defineRule<Rule>({
         if (
           isNodeOfType(child, "ObjectPattern") &&
           child.properties?.some(
-            (property: EsTreeNode) =>
-              isNodeOfType(property.key, "Identifier") && property.key.name === "data",
+            (property) =>
+              isNodeOfType(property, "Property") &&
+              isNodeOfType(property.key, "Identifier") &&
+              property.key.name === "data",
           )
         ) {
           accessesData = true;

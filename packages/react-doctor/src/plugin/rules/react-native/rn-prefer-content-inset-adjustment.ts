@@ -1,10 +1,10 @@
 import { defineRule } from "../../utils/define-rule.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
 import { SCROLLVIEW_NAMES } from "./utils/scrollview_names.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // HACK: <SafeAreaView> wrapping <ScrollView> (or
 // `useSafeAreaInsets()` + `paddingTop: insets.top` in
@@ -26,7 +26,7 @@ export const rnPreferContentInsetAdjustment = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    JSXElement(node: EsTreeNode) {
+    JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
       const elementName = resolveJsxElementName(node.openingElement);
       if (elementName !== "SafeAreaView") return;
 

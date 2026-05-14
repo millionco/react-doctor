@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // HACK: `new Intl.NumberFormat()` / `Intl.DateTimeFormat()` is expensive
 // (dozens of allocations per locale lookup). Allocating it inside a render
@@ -49,7 +50,7 @@ export const jsHoistIntl = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    NewExpression(node: EsTreeNode) {
+    NewExpression(node: EsTreeNodeOfType<"NewExpression">) {
       if (!isIntlNewExpression(node)) return;
       // Walk up: if any enclosing function is a function/arrow, this is in
       // a function body. Module-scope `new Intl.X()` is fine; we only flag
@@ -69,7 +70,11 @@ export const jsHoistIntl = defineRule<Rule>({
       }
       if (!inFunctionBody) return;
 
-      const className = node.callee.property?.name ?? "Intl";
+      const className =
+        isNodeOfType(node.callee, "MemberExpression") &&
+        isNodeOfType(node.callee.property, "Identifier")
+          ? node.callee.property.name
+          : "Intl";
       context.report({
         node,
         message: `new Intl.${className}() inside a function — hoist to module scope or wrap in useMemo so it isn't recreated each call`,

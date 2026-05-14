@@ -1,9 +1,9 @@
 import { getImportedName } from "../../../utils/get-imported-name.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
-import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import type { RuleContext } from "../../../utils/rule-context.js";
 import type { Rule } from "../../../utils/rule.js";
 import type { DeprecatedReactImportRuleOptions } from "./deprecated-react-import-rule-options.js";
+import type { EsTreeNodeOfType } from "../../../utils/es-tree-node-of-type.js";
 
 // Returns only the `create` slot so the per-rule defineRule call owns the
 // framework / severity / category / recommendation metadata — the factory
@@ -18,7 +18,7 @@ export const createDeprecatedReactImportRule = ({
     const namespaceBindings = new Set<string>();
 
     return {
-      ImportDeclaration(node: EsTreeNode) {
+      ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
         const sourceValue = node.source?.value;
         if (typeof sourceValue !== "string") return;
         if (handleExtraSource?.(node, context)) return;
@@ -41,7 +41,7 @@ export const createDeprecatedReactImportRule = ({
           }
         }
       },
-      MemberExpression(node: EsTreeNode) {
+      MemberExpression(node: EsTreeNodeOfType<"MemberExpression">) {
         if (namespaceBindings.size === 0) return;
         if (node.computed) return;
         if (!isNodeOfType(node.object, "Identifier")) return;

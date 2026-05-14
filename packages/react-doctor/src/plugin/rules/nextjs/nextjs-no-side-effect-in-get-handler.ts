@@ -5,6 +5,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const extractMutatingRouteSegment = (filename: string): string | null => {
   const segments = filename.split("/");
@@ -57,7 +58,7 @@ export const nextjsNoSideEffectInGetHandler = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    ExportNamedDeclaration(node: EsTreeNode) {
+    ExportNamedDeclaration(node: EsTreeNodeOfType<"ExportNamedDeclaration">) {
       const filename = context.getFilename?.() ?? "";
       if (!ROUTE_HANDLER_FILE_PATTERN.test(filename)) return;
 

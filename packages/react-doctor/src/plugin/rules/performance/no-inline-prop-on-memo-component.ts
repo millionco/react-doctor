@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const isMemoCall = (node: EsTreeNode): boolean => {
   if (!isNodeOfType(node, "CallExpression")) return false;
@@ -53,21 +54,25 @@ export const noInlinePropOnMemoComponent = defineRule<Rule>({
     const memoizedComponentNames = new Set<string>();
 
     return {
-      VariableDeclarator(node: EsTreeNode) {
+      VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
         if (!isNodeOfType(node.id, "Identifier") || !node.init) return;
         if (isMemoCall(node.init)) {
           memoizedComponentNames.add(node.id.name);
         }
       },
-      ExportDefaultDeclaration(node: EsTreeNode) {
-        if (node.declaration && isMemoCall(node.declaration)) {
+      ExportDefaultDeclaration(node: EsTreeNodeOfType<"ExportDefaultDeclaration">) {
+        if (
+          node.declaration &&
+          isNodeOfType(node.declaration, "CallExpression") &&
+          isMemoCall(node.declaration)
+        ) {
           const innerArgument = node.declaration.arguments?.[0];
           if (isNodeOfType(innerArgument, "Identifier")) {
             memoizedComponentNames.add(innerArgument.name);
           }
         }
       },
-      JSXAttribute(node: EsTreeNode) {
+      JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
         if (!node.value || !isNodeOfType(node.value, "JSXExpressionContainer")) return;
 
         const openingElement = node.parent;

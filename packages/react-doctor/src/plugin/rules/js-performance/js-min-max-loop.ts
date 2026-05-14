@@ -1,9 +1,9 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { isMemberProperty } from "../../utils/is-member-property.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const jsMinMaxLoop = defineRule<Rule>({
   framework: "global",
@@ -18,7 +18,7 @@ export const jsMinMaxLoop = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    MemberExpression(node: EsTreeNode) {
+    MemberExpression(node: EsTreeNodeOfType<"MemberExpression">) {
       if (!node.computed) return;
 
       const object = node.object;

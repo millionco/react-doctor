@@ -1,10 +1,10 @@
 import { TANSTACK_ROUTE_PROPERTY_ORDER } from "../../constants.js";
 import { defineRule } from "../../utils/define-rule.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getRouteOptionsObject } from "./utils/get-route-options-object.js";
 import { getPropertyKeyName } from "./utils/get-property-key-name.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const tanstackStartRoutePropertyOrder = defineRule<Rule>({
   requires: ["tanstack-start"],
@@ -22,11 +22,11 @@ export const tanstackStartRoutePropertyOrder = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNode) {
+    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const optionsObject = getRouteOptionsObject(node);
       if (!optionsObject) return;
 
-      const properties: EsTreeNode[] = optionsObject.properties ?? [];
+      const properties = optionsObject.properties ?? [];
       const orderedPropertyNames: string[] = [];
       for (const property of properties) {
         const propertyName = getPropertyKeyName(property);

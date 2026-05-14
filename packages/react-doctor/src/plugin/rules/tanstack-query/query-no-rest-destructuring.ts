@@ -4,6 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const queryNoRestDestructuring = defineRule<Rule>({
   requires: ["tanstack-query"],
@@ -19,7 +20,7 @@ export const queryNoRestDestructuring = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    VariableDeclarator(node: EsTreeNode) {
+    VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
       if (!isNodeOfType(node.id, "ObjectPattern")) return;
       if (!node.init || !isNodeOfType(node.init, "CallExpression")) return;
 

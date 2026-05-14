@@ -1,12 +1,12 @@
 import { SIZE_HEIGHT_AXIS_PATTERN, SIZE_WIDTH_AXIS_PATTERN } from "../../constants.js";
 import { defineRule } from "../../utils/define-rule.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getClassNameLiteral } from "./utils/get-class-name-literal.js";
 import { collectAxisShorthandPairs } from "./utils/collect-axis-shorthand-pairs.js";
 import { hasResponsivePrefix } from "./utils/has-responsive-prefix.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noRedundantSizeAxes = defineRule<Rule>({
   requires: ["tailwind:3.4"],
@@ -22,7 +22,7 @@ export const noRedundantSizeAxes = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    JSXAttribute(jsxAttribute: EsTreeNode) {
+    JSXAttribute(jsxAttribute: EsTreeNodeOfType<"JSXAttribute">) {
       if (
         !isNodeOfType(jsxAttribute.name, "JSXIdentifier") ||
         jsxAttribute.name.name !== "className"

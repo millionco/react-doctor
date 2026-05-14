@@ -1,7 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const NON_NATIVE_NAVIGATOR_PACKAGES = new Set([
   "@react-navigation/stack",
@@ -28,7 +28,7 @@ export const rnNoNonNativeNavigator = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    ImportDeclaration(node: EsTreeNode) {
+    ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       const source = node.source?.value;
       if (typeof source !== "string" || !NON_NATIVE_NAVIGATOR_PACKAGES.has(source)) return;
       const replacement = source.replace("@react-navigation/", "@react-navigation/native-");

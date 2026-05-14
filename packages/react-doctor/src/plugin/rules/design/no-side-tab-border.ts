@@ -14,6 +14,7 @@ import { parseColorToRgb } from "./utils/parse-color-to-rgb.js";
 import { hasColorChroma } from "./utils/has-color-chroma.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
 import { getStylePropertyNumberValue } from "./utils/get-style-property-number-value.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const isNeutralBorderColor = (value: string): boolean => {
   const trimmed = value.trim().toLowerCase();
@@ -66,7 +67,7 @@ export const noSideTabBorder = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    JSXAttribute(node: EsTreeNode) {
+    JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);
       if (!expression) return;
 
@@ -136,7 +137,7 @@ export const noSideTabBorder = defineRule<Rule>({
         }
       }
     },
-    JSXOpeningElement(node: EsTreeNode) {
+    JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const classStr = getStringFromClassNameAttr(node);
       if (!classStr) return;
 

@@ -4,6 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const renderingScriptDeferAsync = defineRule<Rule>({
   framework: "global",
@@ -18,7 +19,7 @@ export const renderingScriptDeferAsync = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    JSXOpeningElement(node: EsTreeNode) {
+    JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "script") return;
 
       const attributes = node.attributes ?? [];
@@ -32,13 +33,15 @@ export const renderingScriptDeferAsync = defineRule<Rule>({
       if (!hasSrc) return;
 
       const typeAttribute = attributes.find(
-        (attr: EsTreeNode) =>
+        (attr) =>
           isNodeOfType(attr, "JSXAttribute") &&
           isNodeOfType(attr.name, "JSXIdentifier") &&
           attr.name.name === "type",
       );
-      const typeValue = isNodeOfType(typeAttribute?.value, "Literal")
-        ? typeAttribute.value.value
+      const typeAttributeValue =
+        typeAttribute && isNodeOfType(typeAttribute, "JSXAttribute") ? typeAttribute.value : null;
+      const typeValue = isNodeOfType(typeAttributeValue, "Literal")
+        ? typeAttributeValue.value
         : null;
       if (typeof typeValue === "string" && !EXECUTABLE_SCRIPT_TYPES.has(typeValue)) return;
       if (typeValue === "module") return;

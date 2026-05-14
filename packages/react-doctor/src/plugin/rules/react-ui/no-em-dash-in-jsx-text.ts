@@ -1,9 +1,9 @@
 import { EM_DASH_CHARACTER } from "../../constants.js";
 import { defineRule } from "../../utils/define-rule.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isInsideExcludedAncestor } from "./utils/is-inside-excluded-ancestor.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noEmDashInJsxText = defineRule<Rule>({
   framework: "global",
@@ -18,7 +18,7 @@ export const noEmDashInJsxText = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    JSXText(jsxTextNode: EsTreeNode) {
+    JSXText(jsxTextNode: EsTreeNodeOfType<"JSXText">) {
       const textValue = typeof jsxTextNode.value === "string" ? jsxTextNode.value : "";
       if (!textValue.includes(EM_DASH_CHARACTER)) return;
       if (isInsideExcludedAncestor(jsxTextNode)) return;

@@ -24,9 +24,10 @@ export const walkInsideStatementBlocks = (
     return;
   }
   visitor(node);
-  for (const key of Object.keys(node)) {
+  const nodeRecord = node as unknown as Record<string, unknown>;
+  for (const key of Object.keys(nodeRecord)) {
     if (key === "parent") continue;
-    const child = node[key];
+    const child = nodeRecord[key];
     if (Array.isArray(child)) {
       for (const item of child) {
         if (isAstNode(item)) walkInsideStatementBlocks(item, visitor);

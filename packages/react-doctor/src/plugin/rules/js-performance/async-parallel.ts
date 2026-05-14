@@ -5,6 +5,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const reportIfIndependent = (statements: EsTreeNode[], context: RuleContext): void => {
   const declaredNames = new Set<string>();
@@ -52,7 +53,7 @@ export const asyncParallel = defineRule<Rule>({
     const isTestFile = TEST_FILE_PATTERN.test(filename);
 
     return {
-      BlockStatement(node: EsTreeNode) {
+      BlockStatement(node: EsTreeNodeOfType<"BlockStatement">) {
         if (isTestFile) return;
         const consecutiveAwaitStatements: EsTreeNode[] = [];
 

@@ -7,6 +7,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const containsAuthCheck = (statements: EsTreeNode[]): boolean => {
   let foundAuthCall = false;
@@ -52,10 +53,10 @@ export const serverAuthActions = defineRule<Rule>({
     let fileHasUseServerDirective = false;
 
     return {
-      Program(programNode: EsTreeNode) {
+      Program(programNode: EsTreeNodeOfType<"Program">) {
         fileHasUseServerDirective = hasDirective(programNode, "use server");
       },
-      ExportNamedDeclaration(node: EsTreeNode) {
+      ExportNamedDeclaration(node: EsTreeNodeOfType<"ExportNamedDeclaration">) {
         const declaration = node.declaration;
         if (!isNodeOfType(declaration, "FunctionDeclaration") || !declaration?.async) return;
 

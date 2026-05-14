@@ -1,10 +1,12 @@
 import { GIANT_COMPONENT_LINE_THRESHOLD } from "../../constants.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noGiantComponent = defineRule<Rule>({
   framework: "global",
@@ -36,12 +38,13 @@ export const noGiantComponent = defineRule<Rule>({
     };
 
     return {
-      FunctionDeclaration(node: EsTreeNode) {
+      FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
         if (!node.id?.name || !isUppercaseName(node.id.name)) return;
         reportOversizedComponent(node.id, node.id.name, node);
       },
-      VariableDeclarator(node: EsTreeNode) {
+      VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
         if (!isComponentAssignment(node)) return;
+        if (!isNodeOfType(node.id, "Identifier") || !node.init) return;
         reportOversizedComponent(node.id, node.id.name, node.init);
       },
     };

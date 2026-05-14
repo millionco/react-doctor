@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const RENDER_ITEM_PROP_NAMES = new Set([
   "renderItem",
@@ -64,7 +65,7 @@ export const rnNoInlineObjectInListItem = defineRule<Rule>({
       "ArrowFunctionExpression:exit": exit,
       FunctionExpression: enter,
       "FunctionExpression:exit": exit,
-      JSXAttribute(node: EsTreeNode) {
+      JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
         if (renderItemDepth === 0) return;
         if (!isNodeOfType(node.value, "JSXExpressionContainer")) return;
         if (!isNodeOfType(node.value.expression, "ObjectExpression")) return;

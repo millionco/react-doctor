@@ -1,10 +1,10 @@
 import { REACT_NATIVE_LIST_COMPONENTS } from "../../constants.js";
 import { defineRule } from "../../utils/define-rule.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const rnNoInlineFlatlistRenderitem = defineRule<Rule>({
   requires: ["react-native"],
@@ -21,7 +21,7 @@ export const rnNoInlineFlatlistRenderitem = defineRule<Rule>({
     },
   ],
   create: (context: RuleContext) => ({
-    JSXAttribute(node: EsTreeNode) {
+    JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "renderItem") return;
       if (!node.value || !isNodeOfType(node.value, "JSXExpressionContainer")) return;
 

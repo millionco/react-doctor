@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const jsBatchDomCss = defineRule<Rule>({
   framework: "global",
@@ -26,7 +27,7 @@ export const jsBatchDomCss = defineRule<Rule>({
       node.expression.left.object.property.name === "style";
 
     return {
-      BlockStatement(node: EsTreeNode) {
+      BlockStatement(node: EsTreeNodeOfType<"BlockStatement">) {
         const statements = node.body ?? [];
         for (let statementIndex = 1; statementIndex < statements.length; statementIndex++) {
           if (

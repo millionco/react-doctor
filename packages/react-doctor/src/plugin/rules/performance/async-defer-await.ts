@@ -76,6 +76,7 @@ export const asyncDeferAwait = defineRule<Rule>({
 
         const nextStatement = statements[statementIndex + 1];
         if (!isEarlyReturnIfStatement(nextStatement)) continue;
+        if (!isNodeOfType(nextStatement, "IfStatement")) continue;
 
         const testIdentifiers = new Set<string>();
         collectIdentifierNames(nextStatement.test, testIdentifiers);
@@ -100,6 +101,13 @@ export const asyncDeferAwait = defineRule<Rule>({
     };
 
     const enterFunction = (node: EsTreeNode): void => {
+      if (
+        !isNodeOfType(node, "FunctionDeclaration") &&
+        !isNodeOfType(node, "FunctionExpression") &&
+        !isNodeOfType(node, "ArrowFunctionExpression")
+      ) {
+        return;
+      }
       if (!node.async) return;
       if (!isNodeOfType(node.body, "BlockStatement")) return;
       inspectStatements(node.body.body ?? []);

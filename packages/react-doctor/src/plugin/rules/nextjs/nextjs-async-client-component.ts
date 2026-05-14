@@ -1,10 +1,11 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { hasDirective } from "../../utils/has-directive.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const nextjsAsyncClientComponent = defineRule<Rule>({
   requires: ["nextjs"],
@@ -25,10 +26,10 @@ export const nextjsAsyncClientComponent = defineRule<Rule>({
     let fileHasUseClient = false;
 
     return {
-      Program(programNode: EsTreeNode) {
+      Program(programNode: EsTreeNodeOfType<"Program">) {
         fileHasUseClient = hasDirective(programNode, "use client");
       },
-      FunctionDeclaration(node: EsTreeNode) {
+      FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
         if (!fileHasUseClient || !node.async) return;
         if (!node.id?.name || !isUppercaseName(node.id.name)) return;
         context.report({
@@ -36,9 +37,16 @@ export const nextjsAsyncClientComponent = defineRule<Rule>({
           message: `Async client component "${node.id.name}" — client components cannot be async`,
         });
       },
-      VariableDeclarator(node: EsTreeNode) {
+      VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
         if (!fileHasUseClient) return;
-        if (!isComponentAssignment(node) || !node.init?.async) return;
+        if (!isComponentAssignment(node)) return;
+        if (
+          !isNodeOfType(node.init, "ArrowFunctionExpression") &&
+          !isNodeOfType(node.init, "FunctionExpression")
+        )
+          return;
+        if (!node.init.async) return;
+        if (!isNodeOfType(node.id, "Identifier")) return;
         context.report({
           node,
           message: `Async client component "${node.id.name}" — client components cannot be async`,

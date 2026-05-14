@@ -18,6 +18,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 // level of the same block to keep precision high.
 const collectDeclaredNames = (declaration: EsTreeNode): Set<string> => {
   const names = new Set<string>();
+  if (!isNodeOfType(declaration, "VariableDeclaration")) return names;
   for (const declarator of declaration.declarations ?? []) {
     if (isNodeOfType(declarator.id, "Identifier")) {
       names.add(declarator.id.name);
@@ -42,6 +43,7 @@ const collectDeclaredNames = (declaration: EsTreeNode): Set<string> => {
 };
 
 const declarationStartsWithAwait = (declaration: EsTreeNode): boolean => {
+  if (!isNodeOfType(declaration, "VariableDeclaration")) return false;
   for (const declarator of declaration.declarations ?? []) {
     if (isNodeOfType(declarator.init, "AwaitExpression")) return true;
   }
@@ -97,6 +99,13 @@ export const serverSequentialIndependentAwait = defineRule<Rule>({
     };
 
     const visitFunctionBody = (node: EsTreeNode): void => {
+      if (
+        !isNodeOfType(node, "FunctionDeclaration") &&
+        !isNodeOfType(node, "FunctionExpression") &&
+        !isNodeOfType(node, "ArrowFunctionExpression")
+      ) {
+        return;
+      }
       if (!node.async) return;
       if (!isNodeOfType(node.body, "BlockStatement")) return;
       inspectStatements(node.body.body ?? []);

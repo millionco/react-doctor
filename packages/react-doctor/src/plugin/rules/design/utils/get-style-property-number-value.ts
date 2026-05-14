@@ -2,6 +2,7 @@ import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 
 export const getStylePropertyNumberValue = (property: EsTreeNode): number | null => {
+  if (!isNodeOfType(property, "Property")) return null;
   if (isNodeOfType(property.value, "Literal") && typeof property.value.value === "number") {
     return property.value.value;
   }

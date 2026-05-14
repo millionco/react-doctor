@@ -42,8 +42,11 @@ export const ALL_REACT_DOCTOR_RULE_KEYS: ReadonlySet<string> = new Set(
 // Just the framework-gated rules (`framework !== "global"`) — these need
 // an explicit `requires: [...]` capability gate or they won't activate on
 // any project. Used by `validateRuleRegistration` to enforce that gate.
-export const FRAMEWORK_SPECIFIC_RULE_KEYS: ReadonlySet<string> = new Set(
-  Object.entries(reactDoctorPlugin.rules)
-    .filter(([, rule]) => rule.framework !== "global")
-    .map(([ruleId]) => formatFullKey(ruleId)),
-);
+const collectFrameworkSpecificRuleKeys = (): ReadonlySet<string> => {
+  const collected = new Set<string>();
+  for (const [ruleId, rule] of Object.entries(reactDoctorPlugin.rules)) {
+    if (rule.framework !== "global") collected.add(formatFullKey(ruleId));
+  }
+  return collected;
+};
+export const FRAMEWORK_SPECIFIC_RULE_KEYS = collectFrameworkSpecificRuleKeys();

@@ -5,11 +5,18 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const nextjsNoHeadImport = defineRule<Rule>({
+  requires: ["nextjs"],
   framework: "nextjs",
   severity: "error",
   category: "Next.js",
   recommendation:
     "Use the Metadata API instead: `export const metadata = { title: '...' }` or `export async function generateMetadata()`",
+  examples: [
+    {
+      before: "import Head from 'next/head';\n<Head><title>About</title></Head>",
+      after: "export const metadata = { title: 'About' };",
+    },
+  ],
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNode) {
       if (node.source?.value !== "next/head") return;

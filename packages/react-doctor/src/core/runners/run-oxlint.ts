@@ -16,7 +16,6 @@ import { detectUserLintConfigPaths } from "./detect-user-lint-config.js";
 import {
   ALL_REACT_DOCTOR_RULE_KEYS,
   FRAMEWORK_SPECIFIC_RULE_KEYS,
-  RULE_METADATA,
   createOxlintConfig,
 } from "./oxlint-config.js";
 import reactDoctorPlugin from "../../plugin/react-doctor-plugin.js";
@@ -324,7 +323,7 @@ const validateRuleRegistration = (): void => {
     if (!getRuleRecommendation(ruleName)) {
       missingHelp.push(fullKey);
     }
-    if (FRAMEWORK_SPECIFIC_RULE_KEYS.has(fullKey) && !RULE_METADATA.has(fullKey)) {
+    if (FRAMEWORK_SPECIFIC_RULE_KEYS.has(fullKey) && !reactDoctorPlugin.rules[ruleName]?.requires) {
       missingMetadata.push(fullKey);
     }
   }
@@ -337,7 +336,7 @@ const validateRuleRegistration = (): void => {
         ? `Missing rule recommendations (add to defineRule call): ${missingHelp.join(", ")}`
         : null,
       missingMetadata.length > 0
-        ? `Missing RULE_METADATA entries: ${missingMetadata.join(", ")}`
+        ? `Missing rule \`requires\` capability gate (add to defineRule call): ${missingMetadata.join(", ")}`
         : null,
     ]
       .filter((entry): entry is string => entry !== null)

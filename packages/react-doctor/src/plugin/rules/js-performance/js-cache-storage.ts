@@ -12,6 +12,13 @@ export const jsCacheStorage = defineRule<Rule>({
   category: "Performance",
   recommendation:
     "Cache repeated `localStorage`/`sessionStorage` reads in a local variable — each access serializes/deserializes",
+  examples: [
+    {
+      before:
+        "const a = localStorage.getItem('prefs');\nconst b = localStorage.getItem('prefs');\nconst c = localStorage.getItem('prefs');",
+      after: "const prefs = localStorage.getItem('prefs');\nuse(prefs);",
+    },
+  ],
   create: (context: RuleContext) => {
     const storageReadCounts = new Map<string, number>();
 

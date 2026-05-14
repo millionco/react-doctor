@@ -7,11 +7,19 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const nextjsNoNativeScript = defineRule<Rule>({
+  requires: ["nextjs"],
   framework: "nextjs",
   severity: "warn",
   category: "Next.js",
   recommendation:
     '`import Script from "next/script"` — use `strategy="afterInteractive"` for analytics or `"lazyOnload"` for widgets',
+  examples: [
+    {
+      before: '<script src="https://example.com/analytics.js" />',
+      after:
+        'import Script from \'next/script\';\n<Script src="https://example.com/analytics.js" strategy="afterInteractive" />',
+    },
+  ],
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNode) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "script") return;

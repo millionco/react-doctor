@@ -40,7 +40,7 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<string> => 
 
 export const shouldEnableRule = (
   requires: ReadonlyArray<string> | undefined,
-  tags: ReadonlySet<string>,
+  tags: ReadonlyArray<string> | undefined,
   capabilities: ReadonlySet<string>,
   ignoredTags: ReadonlySet<string>,
 ): boolean => {
@@ -49,8 +49,10 @@ export const shouldEnableRule = (
       if (!capabilities.has(capability)) return false;
     }
   }
-  for (const tag of tags) {
-    if (ignoredTags.has(tag)) return false;
+  if (tags) {
+    for (const tag of tags) {
+      if (ignoredTags.has(tag)) return false;
+    }
   }
   return true;
 };

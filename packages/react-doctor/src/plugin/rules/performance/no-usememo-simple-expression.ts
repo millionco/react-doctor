@@ -23,6 +23,12 @@ export const noUsememoSimpleExpression = defineRule<Rule>({
   category: "Performance",
   recommendation:
     "Remove useMemo — property access, math, and ternaries are already cheap without memoization",
+  examples: [
+    {
+      before: "const doubled = useMemo(() => count * 2, [count]);",
+      after: "const doubled = count * 2;",
+    },
+  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (!isHookCall(node, "useMemo")) return;

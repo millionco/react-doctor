@@ -12,6 +12,12 @@ export const noJustifiedText = defineRule<Rule>({
   category: "Accessibility",
   recommendation:
     "Use `text-align: left` for body text, or add `hyphens: auto` and `overflow-wrap: break-word` if you must justify",
+  examples: [
+    {
+      before: "<p style={{ textAlign: 'justify' }}>Long body copy…</p>",
+      after: "<p style={{ textAlign: 'left' }}>Long body copy…</p>",
+    },
+  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNode) {
       const expression = getInlineStyleExpression(node);

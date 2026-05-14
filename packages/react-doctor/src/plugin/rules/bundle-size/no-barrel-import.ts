@@ -10,6 +10,12 @@ export const noBarrelImport = defineRule<Rule>({
   category: "Bundle Size",
   recommendation:
     "Import from the direct path: `import { Button } from './components/Button'` instead of `./components`",
+  examples: [
+    {
+      before: "import { Button } from './components';",
+      after: "import { Button } from './components/Button';",
+    },
+  ],
   create: (context: RuleContext) => {
     let didReportForFile = false;
 

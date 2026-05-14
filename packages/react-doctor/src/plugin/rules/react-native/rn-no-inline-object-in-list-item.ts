@@ -17,11 +17,19 @@ const RENDER_ITEM_PROP_NAMES = new Set([
 // data didn't change. Hoist the object outside renderItem (StyleSheet,
 // constant, useMemo at list scope) or pass primitives into the row.
 export const rnNoInlineObjectInListItem = defineRule<Rule>({
+  requires: ["react-native"],
   framework: "react-native",
   severity: "warn",
   category: "React Native",
   recommendation:
     "Hoist style/object props outside renderItem (StyleSheet.create, useMemo at list scope, or pass primitives) so memo() row components stop bailing",
+  examples: [
+    {
+      before: "renderItem={({ item }) => <Row item={item} style={{ padding: 8 }} />}",
+      after:
+        "const ROW_STYLE = { padding: 8 };\nrenderItem={({ item }) => <Row item={item} style={ROW_STYLE} />}",
+    },
+  ],
   create: (context: RuleContext) => {
     let renderItemDepth = 0;
 

@@ -79,6 +79,12 @@ export const noDirectStateMutation = defineRule<Rule>({
   category: "State & Effects",
   recommendation:
     "Replace the mutation with a setter call that produces a new reference: `setItems([...items, newItem])`, `setItems(items.filter(x => x !== target))`, `setItems(items.toSorted(...))`. React only re-renders on a new reference, so in-place updates are silently dropped",
+  examples: [
+    {
+      before: "items.push(newItem);\nsetItems(items);",
+      after: "setItems([...items, newItem]);",
+    },
+  ],
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;

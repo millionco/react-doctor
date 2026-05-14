@@ -9,6 +9,12 @@ export const noMoment = defineRule<Rule>({
   category: "Bundle Size",
   recommendation:
     "Replace with `import { format } from 'date-fns'` (tree-shakeable) or `import dayjs from 'dayjs'` (2kb)",
+  examples: [
+    {
+      before: "import moment from 'moment';\nmoment().format('YYYY-MM-DD');",
+      after: "import dayjs from 'dayjs';\ndayjs().format('YYYY-MM-DD');",
+    },
+  ],
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNode) {
       if (node.source?.value === "moment") {

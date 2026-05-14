@@ -34,6 +34,12 @@ export const clientLocalstorageNoVersion = defineRule<Rule>({
   category: "Correctness",
   recommendation:
     'Bake a version into the storage key (e.g. "myKey:v1"); a future schema change can ignore old data instead of crashing on it',
+  examples: [
+    {
+      before: "localStorage.setItem('prefs', JSON.stringify(preferences));",
+      after: "localStorage.setItem('prefs:v1', JSON.stringify(preferences));",
+    },
+  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (!isNodeOfType(node.callee, "MemberExpression")) return;

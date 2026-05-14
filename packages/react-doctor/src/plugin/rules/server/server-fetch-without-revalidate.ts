@@ -58,6 +58,13 @@ export const serverFetchWithoutRevalidate = defineRule<Rule>({
   category: "Server",
   recommendation:
     'Pass `{ next: { revalidate: <seconds> } }` (or `cache: "no-store"` / `next: { tags: [...] }`) so stale cached data doesn\'t silently persist',
+  examples: [
+    {
+      before: "const data = await fetch('https://api.example.com/feed').then((r) => r.json());",
+      after:
+        "const data = await fetch('https://api.example.com/feed', { next: { revalidate: 60 } }).then((r) => r.json());",
+    },
+  ],
   create: (context: RuleContext) => {
     let isServerSideFile = false;
 

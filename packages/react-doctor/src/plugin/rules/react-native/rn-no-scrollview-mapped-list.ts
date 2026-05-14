@@ -12,11 +12,18 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 // recycle row components and only mount the visible window. The cost
 // of switching is tiny (same prop API) and the perf win is huge.
 export const rnNoScrollviewMappedList = defineRule<Rule>({
+  requires: ["react-native"],
   framework: "react-native",
   severity: "warn",
   category: "React Native",
   recommendation:
     "Use FlashList, LegendList, or FlatList — `<ScrollView>{items.map(...)}</ScrollView>` mounts every row in memory",
+  examples: [
+    {
+      before: "<ScrollView>{items.map((item) => <Row key={item.id} item={item} />)}</ScrollView>",
+      after: "<FlatList data={items} keyExtractor={(item) => item.id} renderItem={renderRow} />",
+    },
+  ],
   create: (context: RuleContext) => ({
     JSXElement(node: EsTreeNode) {
       const elementName = resolveJsxElementName(node.openingElement);

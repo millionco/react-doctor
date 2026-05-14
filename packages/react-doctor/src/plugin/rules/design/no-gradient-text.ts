@@ -8,11 +8,19 @@ import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
 
 export const noGradientText = defineRule<Rule>({
+  tags: ["design", "test-noise"],
   framework: "global",
   severity: "warn",
   category: "Architecture",
   recommendation:
     "Use solid text colors for readability. If you need emphasis, use font weight, size, or a distinct color instead of gradients",
+  examples: [
+    {
+      before:
+        '<h1 className="bg-clip-text text-transparent bg-gradient-to-r from-blue-500 to-purple-500">Welcome</h1>',
+      after: '<h1 className="text-blue-600 font-bold">Welcome</h1>',
+    },
+  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNode) {
       const expression = getInlineStyleExpression(node);

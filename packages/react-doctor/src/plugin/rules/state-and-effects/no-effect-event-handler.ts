@@ -15,6 +15,12 @@ export const noEffectEventHandler = defineRule<Rule>({
   category: "State & Effects",
   recommendation:
     "Move the conditional logic into onClick, onChange, or onSubmit handlers directly",
+  examples: [
+    {
+      before: "useEffect(() => {\n  if (clicked) track('click');\n}, [clicked]);",
+      after: "const onClick = () => { setClicked(true); track('click'); };",
+    },
+  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (!isHookCall(node, EFFECT_HOOK_NAMES) || (node.arguments?.length ?? 0) < 2) return;

@@ -13,6 +13,14 @@ export const noGlobalCssVariableAnimation = defineRule<Rule>({
   category: "Performance",
   recommendation:
     "Set the variable on the nearest element instead of a parent, or use `@property` with `inherits: false` to prevent cascade. Better yet, use targeted `element.style.transform` updates",
+  examples: [
+    {
+      before:
+        "requestAnimationFrame(() => {\n  document.documentElement.style.setProperty('--scroll-y', String(y));\n});",
+      after:
+        "requestAnimationFrame(() => {\n  targetEl.style.transform = `translateY(${y}px)`;\n});",
+    },
+  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (!isNodeOfType(node.callee, "Identifier")) return;

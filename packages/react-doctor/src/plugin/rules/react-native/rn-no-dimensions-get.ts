@@ -6,11 +6,18 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const rnNoDimensionsGet = defineRule<Rule>({
+  requires: ["react-native"],
   framework: "react-native",
   severity: "warn",
   category: "React Native",
   recommendation:
     "Use `const { width, height } = useWindowDimensions()` — it updates reactively on rotation and resize",
+  examples: [
+    {
+      before: "const { width } = Dimensions.get('window');",
+      after: "const { width } = useWindowDimensions();",
+    },
+  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (!isNodeOfType(node.callee, "MemberExpression")) return;

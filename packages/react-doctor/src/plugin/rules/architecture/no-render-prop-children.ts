@@ -21,6 +21,14 @@ export const noRenderPropChildren = defineRule<Rule>({
   category: "Architecture",
   recommendation:
     "Replace `renderXxx` props with compound subcomponents (e.g. `<Modal.Header>`) or `children` so the parent doesn't dictate every customization point",
+  examples: [
+    {
+      before:
+        "<Modal\n  renderHeader={() => <h1>Title</h1>}\n  renderBody={() => <p>Body</p>}\n  renderFooter={() => <button>Close</button>}\n/>",
+      after:
+        "<Modal>\n  <Modal.Header>Title</Modal.Header>\n  <Modal.Body>Body</Modal.Body>\n  <Modal.Footer><button>Close</button></Modal.Footer>\n</Modal>",
+    },
+  ],
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNode) {
       const renderPropAttrs: Array<{ name: string; node: EsTreeNode }> = [];

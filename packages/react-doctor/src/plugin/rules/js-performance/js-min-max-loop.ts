@@ -11,6 +11,12 @@ export const jsMinMaxLoop = defineRule<Rule>({
   category: "Performance",
   recommendation:
     "Use `Math.min(...array)` / `Math.max(...array)` instead of sorting just to read the first or last element",
+  examples: [
+    {
+      before: "const min = numbers.sort((a, b) => a - b)[0];",
+      after: "const min = Math.min(...numbers);",
+    },
+  ],
   create: (context: RuleContext) => ({
     MemberExpression(node: EsTreeNode) {
       if (!node.computed) return;

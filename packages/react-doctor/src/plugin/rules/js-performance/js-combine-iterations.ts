@@ -11,6 +11,13 @@ export const jsCombineIterations = defineRule<Rule>({
   category: "Performance",
   recommendation:
     "Combine `.map().filter()` (or similar chains) into a single pass with `.reduce()` or a `for...of` loop to avoid iterating the array twice",
+  examples: [
+    {
+      before: "users.map((u) => u.name).filter((name) => name.startsWith('A'));",
+      after:
+        "users.reduce((acc, u) => { if (u.name.startsWith('A')) acc.push(u.name); return acc; }, []);",
+    },
+  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (

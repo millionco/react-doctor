@@ -53,6 +53,12 @@ export const reactCompilerDestructureMethod = defineRule<Rule>({
   category: "Architecture",
   recommendation:
     "Destructure the method up front: `const { push } = useRouter()` then call `push(...)` directly — clearer dependency graph and easier for React Compiler to memoize",
+  examples: [
+    {
+      before: "const router = useRouter();\nrouter.push('/home');",
+      after: "const { push } = useRouter();\npush('/home');",
+    },
+  ],
   create: (context: RuleContext) => {
     const hookBindingMapStack: Array<Map<string, string>> = [];
 

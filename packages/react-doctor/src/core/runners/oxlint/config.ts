@@ -1,3 +1,4 @@
+import reactDoctorPlugin from "../../../plugin/react-doctor-plugin.js";
 import { buildCapabilities, shouldEnableRule } from "./capabilities.js";
 import {
   filterRulesToAvailable,
@@ -6,17 +7,10 @@ import {
   YOU_MIGHT_NOT_NEED_EFFECT_NAMESPACE,
 } from "./plugin-resolution.js";
 import type { JsPluginEntry } from "./plugin-resolution.js";
-import { RULE_METADATA } from "./rule-metadata.js";
 import {
   BUILTIN_A11Y_RULES,
   BUILTIN_REACT_RULES,
-  FRAMEWORK_SPECIFIC_RULE_KEYS,
-  GLOBAL_REACT_DOCTOR_RULES,
-  NEXTJS_RULES,
   REACT_COMPILER_RULES,
-  REACT_NATIVE_RULES,
-  TANSTACK_QUERY_RULES,
-  TANSTACK_START_RULES,
   YOU_MIGHT_NOT_NEED_EFFECT_RULES,
 } from "./rule-maps.js";
 import type { OxlintConfigOptions, RuleSeverity } from "./types.js";
@@ -53,25 +47,14 @@ export const createOxlintConfig = ({
   const capabilities = buildCapabilities(project);
 
   const enabledReactDoctorRules: Record<string, RuleSeverity> = {};
-  const allRuleMaps = [
-    GLOBAL_REACT_DOCTOR_RULES,
-    NEXTJS_RULES,
-    REACT_NATIVE_RULES,
-    TANSTACK_START_RULES,
-    TANSTACK_QUERY_RULES,
-  ];
-  for (const ruleMap of allRuleMaps) {
-    for (const [ruleKey, severity] of Object.entries(ruleMap)) {
-      const metadata = RULE_METADATA.get(ruleKey);
-      if (!metadata) {
-        if (FRAMEWORK_SPECIFIC_RULE_KEYS.has(ruleKey)) continue;
-        enabledReactDoctorRules[ruleKey] = severity;
-        continue;
-      }
-      if (shouldEnableRule(metadata.requires, metadata.tags, capabilities, ignoredTags)) {
-        enabledReactDoctorRules[ruleKey] = severity;
-      }
-    }
+  for (const [ruleId, rule] of Object.entries(reactDoctorPlugin.rules)) {
+    const fullKey = `react-doctor/${ruleId}`;
+    // Framework-specific rules MUST opt in via a `requires` capability
+    // (e.g. `requires: ["nextjs"]`). Global rules ship without `requires`
+    // and activate unconditionally once any tag filters pass.
+    if (rule.framework !== "global" && !rule.requires) continue;
+    if (!shouldEnableRule(rule.requires, rule.tags, capabilities, ignoredTags)) continue;
+    enabledReactDoctorRules[fullKey] = rule.severity;
   }
 
   return {

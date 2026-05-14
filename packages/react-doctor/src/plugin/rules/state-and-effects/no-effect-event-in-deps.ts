@@ -22,6 +22,14 @@ export const noEffectEventInDeps = defineRule<Rule>({
   category: "State & Effects",
   recommendation:
     "Call the useEffectEvent callback inside the effect body without listing it; its identity is intentionally unstable",
+  examples: [
+    {
+      before:
+        "const onTick = useEffectEvent(() => log(value));\nuseEffect(() => {\n  const id = setInterval(onTick, 1000);\n  return () => clearInterval(id);\n}, [onTick]);",
+      after:
+        "const onTick = useEffectEvent(() => log(value));\nuseEffect(() => {\n  const id = setInterval(onTick, 1000);\n  return () => clearInterval(id);\n}, []);",
+    },
+  ],
   create: (context: RuleContext) => {
     const componentBindings = createComponentBindingStackTracker({
       onVariableDeclarator: (declaratorNode: EsTreeNode) => {

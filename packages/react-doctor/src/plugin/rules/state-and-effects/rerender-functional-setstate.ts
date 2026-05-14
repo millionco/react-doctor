@@ -22,6 +22,12 @@ export const rerenderFunctionalSetstate = defineRule<Rule>({
   category: "Performance",
   recommendation:
     "Use the callback form: `setState(prev => prev + 1)` to always read the latest value",
+  examples: [
+    {
+      before: "setCount(count + 1);\nsetCount(count + 1);",
+      after: "setCount((prev) => prev + 1);\nsetCount((prev) => prev + 1);",
+    },
+  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (!isSetterCall(node)) return;

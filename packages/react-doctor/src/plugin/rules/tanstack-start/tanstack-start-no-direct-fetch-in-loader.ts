@@ -8,11 +8,19 @@ import { getPropertyKeyName } from "./utils/get-property-key-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const tanstackStartNoDirectFetchInLoader = defineRule<Rule>({
+  requires: ["tanstack-start"],
   framework: "tanstack-start",
   severity: "warn",
   category: "TanStack Start",
   recommendation:
     "Use `createServerFn()` from @tanstack/react-start — provides type-safe RPC, input validation, and proper server/client code splitting",
+  examples: [
+    {
+      before: "loader: async () => { return await fetch('/api/users').then((r) => r.json()); }",
+      after:
+        "const getUsers = createServerFn().handler(async () => db.users.findMany());\nloader: async () => await getUsers();",
+    },
+  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       const optionsObject = getRouteOptionsObject(node);

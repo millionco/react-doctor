@@ -52,11 +52,19 @@ const isRenderItemFunction = (node: EsTreeNode): boolean => {
 // list scope (`const handlePress = useCallback((id) => ..., [])`) and
 // pass the row's id as a primitive prop.
 export const rnListCallbackPerRow = defineRule<Rule>({
+  requires: ["react-native"],
   framework: "react-native",
   severity: "warn",
   category: "React Native",
   recommendation:
     "Hoist the handler with useCallback at list scope and pass the row id as a primitive prop, so the row's memo() shallow-compare actually hits",
+  examples: [
+    {
+      before: "renderItem={({ item }) => <Row id={item.id} onSelect={() => select(item.id)} />}",
+      after:
+        "const onSelect = useCallback((id) => select(id), [select]);\nrenderItem={({ item }) => <Row id={item.id} onSelect={onSelect} />}",
+    },
+  ],
   create: (context: RuleContext) => {
     const inspect = (node: EsTreeNode): void => {
       if (!isRenderItemFunction(node)) return;

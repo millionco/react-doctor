@@ -13,6 +13,12 @@ export const noLongTransitionDuration = defineRule<Rule>({
   category: "Performance",
   recommendation:
     "Keep UI transitions under 1s — 100-150ms for instant feedback, 200-300ms for state changes, 300-500ms for layout changes. Use longer durations only for page-load hero animations",
+  examples: [
+    {
+      before: "<div style={{ transition: 'opacity 2s ease' }} />",
+      after: "<div style={{ transition: 'opacity 200ms ease' }} />",
+    },
+  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNode) {
       const expression = getInlineStyleExpression(node);

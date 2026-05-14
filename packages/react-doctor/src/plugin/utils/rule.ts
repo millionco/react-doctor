@@ -17,8 +17,17 @@ export type RuleFramework =
 
 export interface Rule {
   category?: string;
-  framework?: RuleFramework;
-  severity?: RuleSeverity;
+  framework: RuleFramework;
+  severity: RuleSeverity;
+  // Activation predicates: list of project capability tokens (e.g.
+  // `"react:19"`, `"nextjs"`, `"tailwind:3.4"`) that ALL must be satisfied
+  // for the rule to be enabled. Omit for rules that always apply once
+  // their framework gate (`framework` field above) is met.
+  requires?: ReadonlyArray<string>;
+  // Behavioral tags (e.g. `"test-noise"`, `"design"`) consumed by
+  // `--ignore-tag` / `shouldEnableRule` to opt families of rules in
+  // or out of a scan independently of the framework gate.
+  tags?: ReadonlyArray<string>;
   recommendation?: string;
   examples?: RuleExample[];
   create: (context: RuleContext) => RuleVisitors;

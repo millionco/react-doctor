@@ -66,11 +66,20 @@ const isBackgroundDark = (bgValue: string): boolean => {
 };
 
 export const noDarkModeGlow = defineRule<Rule>({
+  tags: ["design", "test-noise"],
   framework: "global",
   severity: "warn",
   category: "Architecture",
   recommendation:
     "Use a subtle `box-shadow` with neutral colors for depth, or `border` with low opacity. Colored glows on dark backgrounds are the default AI-generated aesthetic",
+  examples: [
+    {
+      before:
+        "<div style={{ backgroundColor: '#000', boxShadow: '0 0 40px rgb(168, 85, 247)' }} />",
+      after:
+        "<div style={{ backgroundColor: '#0a0a0f', boxShadow: '0 1px 2px rgba(0,0,0,0.2)' }} />",
+    },
+  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNode) {
       const expression = getInlineStyleExpression(node);

@@ -11,11 +11,18 @@ import { getImportedName } from "../../utils/get-imported-name.js";
 // placeholders, and crossfades — a major perceived-perf win for any list
 // or hero image.
 export const rnPreferExpoImage = defineRule<Rule>({
+  requires: ["react-native"],
   framework: "react-native",
   severity: "warn",
   category: "React Native",
   recommendation:
     "Use `<Image>` from `expo-image` instead of `react-native` — same prop API, plus disk + memory caching, placeholders, and crossfades",
+  examples: [
+    {
+      before: "import { Image } from 'react-native';\n<Image source={{ uri }} />",
+      after: "import { Image } from 'expo-image';\n<Image source={{ uri }} />",
+    },
+  ],
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNode) {
       if (node.source?.value !== "react-native") return;

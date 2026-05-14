@@ -60,6 +60,12 @@ export const noLegacyClassLifecycles = defineRule<Rule>({
   category: "Correctness",
   recommendation:
     "Move side effects in `componentWillMount` to `componentDidMount`; replace `componentWillReceiveProps` with `componentDidUpdate` (compare prevProps) or the static `getDerivedStateFromProps` for pure state derivation; replace `componentWillUpdate` with `getSnapshotBeforeUpdate` paired with `componentDidUpdate`. The `UNSAFE_` prefix only silences the warning — React 19 removes both forms.",
+  examples: [
+    {
+      before: "class Profile extends Component {\n  componentWillMount() { this.fetchData(); }\n}",
+      after: "class Profile extends Component {\n  componentDidMount() { this.fetchData(); }\n}",
+    },
+  ],
   create: (context: RuleContext) => {
     const checkMember = (memberNode: EsTreeNode | undefined): void => {
       if (!memberNode) return;

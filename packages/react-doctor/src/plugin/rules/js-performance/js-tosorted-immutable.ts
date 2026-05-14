@@ -11,6 +11,12 @@ export const jsTosortedImmutable = defineRule<Rule>({
   category: "Performance",
   recommendation:
     "Use `array.toSorted()` (ES2023) instead of `[...array].sort()` for immutable sorting without the spread allocation",
+  examples: [
+    {
+      before: "const sorted = [...items].sort((a, b) => a.id - b.id);",
+      after: "const sorted = items.toSorted((a, b) => a.id - b.id);",
+    },
+  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (!isMemberProperty(node.callee, "sort")) return;

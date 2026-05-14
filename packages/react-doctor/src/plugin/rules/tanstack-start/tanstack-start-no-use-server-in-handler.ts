@@ -5,11 +5,19 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const tanstackStartNoUseServerInHandler = defineRule<Rule>({
+  requires: ["tanstack-start"],
   framework: "tanstack-start",
   severity: "error",
   category: "TanStack Start",
   recommendation:
     'TanStack Start handles server boundaries automatically via the Vite plugin — "use server" inside createServerFn causes compilation errors',
+  examples: [
+    {
+      before:
+        "createServerFn().handler(async () => {\n  'use server';\n  return db.user.findMany();\n});",
+      after: "createServerFn().handler(async () => db.user.findMany());",
+    },
+  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (!isNodeOfType(node.callee, "MemberExpression")) return;

@@ -7,11 +7,20 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const queryNoUseQueryForMutation = defineRule<Rule>({
+  requires: ["tanstack-query"],
   framework: "tanstack-query",
   severity: "warn",
   category: "TanStack Query",
   recommendation:
     "Use `useMutation()` for POST/PUT/DELETE — it provides onSuccess/onError callbacks, doesn't auto-refetch, and correctly models write operations",
+  examples: [
+    {
+      before:
+        "useQuery({ queryKey: ['delete', id], queryFn: () => fetch(`/api/users/${id}`, { method: 'DELETE' }) });",
+      after:
+        "const mutation = useMutation({ mutationFn: (id) => fetch(`/api/users/${id}`, { method: 'DELETE' }) });",
+    },
+  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       const calleeName = isNodeOfType(node.callee, "Identifier") ? node.callee.name : null;

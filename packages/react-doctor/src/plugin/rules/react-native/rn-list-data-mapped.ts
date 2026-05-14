@@ -21,11 +21,19 @@ const VIRTUALIZED_LIST_NAMES = new Set([
 // destroying scroll perf. Hoist the transform into a useMemo at list
 // scope or do the projection earlier in the parent.
 export const rnListDataMapped = defineRule<Rule>({
+  requires: ["react-native"],
   framework: "react-native",
   severity: "warn",
   category: "React Native",
   recommendation:
     "Wrap the projection in `useMemo(() => items.map(...), [items])` so the list's `data` prop has a stable reference across parent renders",
+  examples: [
+    {
+      before: "<FlatList data={items.map((i) => ({ ...i, label: i.name }))} />",
+      after:
+        "const data = useMemo(() => items.map((i) => ({ ...i, label: i.name })), [items]);\n<FlatList data={data} />",
+    },
+  ],
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNode) {
       const elementName = resolveJsxElementName(node);

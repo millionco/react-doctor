@@ -6,11 +6,18 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const nextjsImageMissingSizes = defineRule<Rule>({
+  requires: ["nextjs"],
   framework: "nextjs",
   severity: "warn",
   category: "Next.js",
   recommendation:
     'Add sizes for responsive behavior: `sizes="(max-width: 768px) 100vw, 50vw"` matching your layout breakpoints',
+  examples: [
+    {
+      before: '<Image src="/hero.jpg" alt="Hero" fill />',
+      after: '<Image src="/hero.jpg" alt="Hero" fill sizes="(max-width: 768px) 100vw, 50vw" />',
+    },
+  ],
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNode) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "Image") return;

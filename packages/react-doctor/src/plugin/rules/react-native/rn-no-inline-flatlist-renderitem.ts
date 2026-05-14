@@ -7,11 +7,19 @@ import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const rnNoInlineFlatlistRenderitem = defineRule<Rule>({
+  requires: ["react-native"],
   framework: "react-native",
   severity: "warn",
   category: "React Native",
   recommendation:
     "Extract renderItem to a named function or wrap in useCallback to avoid re-creating on every render",
+  examples: [
+    {
+      before: "<FlatList data={items} renderItem={({ item }) => <Row item={item} />} />",
+      after:
+        "const renderItem = useCallback(({ item }) => <Row item={item} />, []);\n<FlatList data={items} renderItem={renderItem} />",
+    },
+  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNode) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "renderItem") return;

@@ -10,6 +10,13 @@ export const noPermanentWillChange = defineRule<Rule>({
   category: "Performance",
   recommendation:
     "Add will-change on animation start (`onMouseEnter`) and remove on end (`onAnimationEnd`). Permanent promotion wastes GPU memory and can degrade performance",
+  examples: [
+    {
+      before: "<div style={{ willChange: 'transform' }} />",
+      after:
+        "const [isHover, setHover] = useState(false);\n<div\n  onMouseEnter={() => setHover(true)}\n  onTransitionEnd={() => setHover(false)}\n  style={{ willChange: isHover ? 'transform' : 'auto' }}\n/>",
+    },
+  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNode) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "style") return;

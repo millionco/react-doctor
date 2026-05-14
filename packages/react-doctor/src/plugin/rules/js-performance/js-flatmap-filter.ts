@@ -10,6 +10,12 @@ export const jsFlatmapFilter = defineRule<Rule>({
   category: "Performance",
   recommendation:
     "Use `.flatMap(item => condition ? [value] : [])` — transforms and filters in a single pass instead of creating an intermediate array",
+  examples: [
+    {
+      before: "items.map((item) => item.value).filter(Boolean);",
+      after: "items.flatMap((item) => (item.value ? [item.value] : []));",
+    },
+  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (

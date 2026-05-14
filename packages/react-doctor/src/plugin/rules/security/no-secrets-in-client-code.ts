@@ -16,6 +16,13 @@ export const noSecretsInClientCode = defineRule<Rule>({
   category: "Security",
   recommendation:
     "Move to server-side `process.env.SECRET_NAME`. Only `NEXT_PUBLIC_*` vars are safe for the client (and should not contain secrets)",
+  examples: [
+    {
+      before:
+        "'use client';\nconst apiKey = 'sk_live_abc123def456ghi789';\nfetch(`/api?key=${apiKey}`);",
+      after: "'use client';\nfetch('/api/proxy');",
+    },
+  ],
   create: (context: RuleContext) => ({
     VariableDeclarator(node: EsTreeNode) {
       if (!isNodeOfType(node.id, "Identifier")) return;

@@ -7,11 +7,19 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const queryMutationMissingInvalidation = defineRule<Rule>({
+  requires: ["tanstack-query"],
   framework: "tanstack-query",
   severity: "warn",
   category: "TanStack Query",
   recommendation:
     "Add `onSuccess: () => queryClient.invalidateQueries({ queryKey: ['...'] })` so cached data stays in sync after the mutation",
+  examples: [
+    {
+      before: "useMutation({ mutationFn: createUser });",
+      after:
+        "useMutation({\n  mutationFn: createUser,\n  onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),\n});",
+    },
+  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       const calleeName = isNodeOfType(node.callee, "Identifier") ? node.callee.name : null;

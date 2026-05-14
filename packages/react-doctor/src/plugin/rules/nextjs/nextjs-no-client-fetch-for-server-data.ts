@@ -13,11 +13,20 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const nextjsNoClientFetchForServerData = defineRule<Rule>({
+  requires: ["nextjs"],
   framework: "nextjs",
   severity: "warn",
   category: "Next.js",
   recommendation:
     "Remove 'use client' and fetch directly in the Server Component — no API round-trip, secrets stay on server",
+  examples: [
+    {
+      before:
+        "'use client';\nexport default function Page() {\n  const [data, setData] = useState();\n  useEffect(() => { fetch('/api/posts').then((r) => r.json()).then(setData); }, []);\n  return <List data={data} />;\n}",
+      after:
+        "export default async function Page() {\n  const data = await fetch('https://api.example.com/posts').then((r) => r.json());\n  return <List data={data} />;\n}",
+    },
+  ],
   create: (context: RuleContext) => {
     let fileHasUseClient = false;
 

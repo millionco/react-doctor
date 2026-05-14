@@ -42,6 +42,14 @@ export const noManyBooleanProps = defineRule<Rule>({
   category: "Architecture",
   recommendation:
     "Split into compound components or named variants: `<Button.Primary />`, `<DialogConfirm />` instead of stacking `isPrimary`, `isConfirm` flags",
+  examples: [
+    {
+      before:
+        "function Button({ isPrimary, isLoading, hasIcon, isDisabled, showSpinner }) {\n  return <button />;\n}",
+      after:
+        "function PrimaryButton({ disabled, icon }) {\n  return <button disabled={disabled}>{icon}</button>;\n}",
+    },
+  ],
   create: (context: RuleContext) => {
     const reportIfMany = (
       booleanLikePropNames: string[],

@@ -45,11 +45,18 @@ const describeClientSideNavigation = (
 };
 
 export const nextjsNoClientSideRedirect = defineRule<Rule>({
+  requires: ["nextjs"],
   framework: "nextjs",
   severity: "warn",
   category: "Next.js",
   recommendation:
     "Avoid redirects inside useEffect. Use an event handler, middleware, or server-side redirect (App Router: redirect() from next/navigation; Pages Router: getServerSideProps redirect)",
+  examples: [
+    {
+      before: "useEffect(() => {\n  if (!user) router.push('/login');\n}, [user]);",
+      after: "import { redirect } from 'next/navigation';\nif (!user) redirect('/login');",
+    },
+  ],
   create: (context: RuleContext) => {
     const filename = context.getFilename?.() ?? "";
     const isPagesRouterFile = PAGES_DIRECTORY_PATTERN.test(filename);

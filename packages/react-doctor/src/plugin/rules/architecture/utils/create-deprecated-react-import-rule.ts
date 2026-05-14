@@ -5,11 +5,15 @@ import type { RuleContext } from "../../../utils/rule-context.js";
 import type { Rule } from "../../../utils/rule.js";
 import type { DeprecatedReactImportRuleOptions } from "./deprecated-react-import-rule-options.js";
 
+// Returns only the `create` slot so the per-rule defineRule call owns the
+// framework / severity / category / recommendation metadata — the factory
+// shouldn't double-specify those (which would either silently win via spread
+// order or trip a `specified more than once` typecheck error).
 export const createDeprecatedReactImportRule = ({
   source,
   messages,
   handleExtraSource,
-}: DeprecatedReactImportRuleOptions): Rule => ({
+}: DeprecatedReactImportRuleOptions): Pick<Rule, "create"> => ({
   create: (context: RuleContext) => {
     const namespaceBindings = new Set<string>();
 

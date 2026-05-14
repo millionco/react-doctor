@@ -15,6 +15,14 @@ export const noPolymorphicChildren = defineRule<Rule>({
   category: "Architecture",
   recommendation:
     "Expose explicit subcomponents (`<Button.Text>`, `<Button.Icon>`) so consumers don't need to switch on `typeof children`",
+  examples: [
+    {
+      before:
+        "function Button({ children }) {\n  if (typeof children === 'string') return <span>{children}</span>;\n  return <div>{children}</div>;\n}",
+      after:
+        "function Button({ children }) { return <div>{children}</div>; }\nButton.Text = ({ children }) => <span>{children}</span>;",
+    },
+  ],
   create: (context: RuleContext) => ({
     BinaryExpression(node: EsTreeNode) {
       if (node.operator !== "===" && node.operator !== "==") return;

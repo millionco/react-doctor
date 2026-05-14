@@ -10,6 +10,12 @@ export const noEval = defineRule<Rule>({
   category: "Security",
   recommendation:
     "Use `JSON.parse` for serialized data, `Function(...)` (still careful) for trusted templates, or refactor to avoid dynamic code execution",
+  examples: [
+    {
+      before: "const config = eval(rawConfigString);",
+      after: "const config = JSON.parse(rawConfigString);",
+    },
+  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (isNodeOfType(node.callee, "Identifier") && node.callee.name === "eval") {

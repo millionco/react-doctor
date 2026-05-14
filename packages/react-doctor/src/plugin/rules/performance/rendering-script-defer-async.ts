@@ -11,6 +11,12 @@ export const renderingScriptDeferAsync = defineRule<Rule>({
   category: "Performance",
   recommendation:
     'Add `defer` for DOM-dependent scripts or `async` for independent ones (analytics). In Next.js, use `<Script strategy="afterInteractive" />` instead',
+  examples: [
+    {
+      before: '<script src="/widget.js" />',
+      after: '<script src="/widget.js" defer />',
+    },
+  ],
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNode) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "script") return;

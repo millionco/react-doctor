@@ -77,6 +77,13 @@ export const noUncontrolledInput = defineRule<Rule>({
   category: "Correctness",
   recommendation:
     'Pass an explicit initial value to `useState` (e.g. `useState("")` instead of `useState()`), add `onChange` (or `readOnly` to opt out) when you supply `value`, and drop `defaultValue` on controlled inputs — React ignores it',
+  examples: [
+    {
+      before: "const [name, setName] = useState();\nreturn <input value={name} />;",
+      after:
+        "const [name, setName] = useState('');\nreturn <input value={name} onChange={(e) => setName(e.target.value)} />;",
+    },
+  ],
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody) return;

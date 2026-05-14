@@ -13,6 +13,12 @@ export const noDynamicImportPath = defineRule<Rule>({
   category: "Bundle Size",
   recommendation:
     "Use a string-literal path: `import('./feature/heavy.js')` so the bundler can split this chunk",
+  examples: [
+    {
+      before: "const mod = await import(`./locales/${locale}.js`);",
+      after: "const mod = await import('./locales/en.js');",
+    },
+  ],
   create: (context: RuleContext) => ({
     ImportExpression(node: EsTreeNode) {
       const source = node.source;

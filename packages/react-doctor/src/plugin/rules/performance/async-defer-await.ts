@@ -41,6 +41,12 @@ export const asyncDeferAwait = defineRule<Rule>({
   category: "Performance",
   recommendation:
     "Move the `await` after the synchronous early-return guard so the skip path stays fast",
+  examples: [
+    {
+      before: "const data = await fetchData();\nif (!enabled) return;\nuse(data);",
+      after: "if (!enabled) return;\nconst data = await fetchData();\nuse(data);",
+    },
+  ],
   create: (context: RuleContext) => {
     const inspectStatements = (statements: EsTreeNode[]): void => {
       for (let statementIndex = 0; statementIndex < statements.length - 1; statementIndex++) {

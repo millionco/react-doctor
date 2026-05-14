@@ -33,6 +33,14 @@ export const serverNoMutableModuleState = defineRule<Rule>({
   category: "Server",
   recommendation:
     "Move per-request data into the action body, headers/cookies, or a request-scope (React.cache, AsyncLocalStorage). Module-scope `let`/`var` is shared across requests.",
+  examples: [
+    {
+      before:
+        "'use server';\nlet currentUser: User | null = null;\nexport async function action() { currentUser = await getUser(); }",
+      after:
+        "'use server';\nimport { cookies } from 'next/headers';\nexport async function action() {\n  const user = await getUser();\n  cookies().set('uid', user.id);\n}",
+    },
+  ],
   create: (context: RuleContext) => {
     let fileHasUseServerDirective = false;
 

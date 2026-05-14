@@ -6,11 +6,18 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const nextjsInlineScriptMissingId = defineRule<Rule>({
+  requires: ["nextjs"],
   framework: "nextjs",
   severity: "warn",
   category: "Next.js",
   recommendation:
     'Add `id="descriptive-name"` so Next.js can track, deduplicate, and re-execute the script correctly',
+  examples: [
+    {
+      before: '<Script>{"window.dataLayer = window.dataLayer || []"}</Script>',
+      after: '<Script id="gtm-init">{"window.dataLayer = window.dataLayer || []"}</Script>',
+    },
+  ],
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNode) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "Script") return;

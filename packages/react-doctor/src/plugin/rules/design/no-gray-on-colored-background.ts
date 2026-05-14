@@ -10,6 +10,12 @@ export const noGrayOnColoredBackground = defineRule<Rule>({
   category: "Accessibility",
   recommendation:
     "Use a darker shade of the background color for text, or white/near-white for contrast. Gray text on colored backgrounds looks washed out",
+  examples: [
+    {
+      before: '<div className="bg-blue-600 text-gray-400">Highlighted</div>',
+      after: '<div className="bg-blue-600 text-white">Highlighted</div>',
+    },
+  ],
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNode) {
       const classStr = getStringFromClassNameAttr(node);

@@ -96,6 +96,12 @@ export const noArrayIndexAsKey = defineRule<Rule>({
   category: "Correctness",
   recommendation:
     "Use a stable unique identifier: `key={item.id}` or `key={item.slug}` — index keys break on reorder/filter",
+  examples: [
+    {
+      before: "items.map((item, index) => <Row key={index} item={item} />)",
+      after: "items.map((item) => <Row key={item.id} item={item} />)",
+    },
+  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNode) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "key") return;

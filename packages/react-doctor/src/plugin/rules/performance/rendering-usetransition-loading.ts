@@ -12,6 +12,14 @@ export const renderingUsetransitionLoading = defineRule<Rule>({
   category: "Performance",
   recommendation:
     "Replace with `const [isPending, startTransition] = useTransition()` — avoids a re-render for the loading state",
+  examples: [
+    {
+      before:
+        "const [isLoading, setLoading] = useState(false);\nconst onClick = () => { setLoading(true); doFilter(); setLoading(false); };",
+      after:
+        "const [isPending, startTransition] = useTransition();\nconst onClick = () => startTransition(() => doFilter());",
+    },
+  ],
   create: (context: RuleContext) => ({
     VariableDeclarator(node: EsTreeNode) {
       if (!isNodeOfType(node.id, "ArrayPattern") || !node.id.elements?.length) return;

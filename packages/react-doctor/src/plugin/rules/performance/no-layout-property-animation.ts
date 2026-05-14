@@ -29,6 +29,12 @@ export const noLayoutPropertyAnimation = defineRule<Rule>({
   category: "Performance",
   recommendation:
     "Use `transform: translateX()` or `scale()` instead — they run on the compositor and skip layout/paint",
+  examples: [
+    {
+      before: "<div animate={{ left: 100, width: 200 }} />",
+      after: "<div animate={{ x: 100, scaleX: 2 }} />",
+    },
+  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNode) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || !MOTION_ANIMATE_PROPS.has(node.name.name))

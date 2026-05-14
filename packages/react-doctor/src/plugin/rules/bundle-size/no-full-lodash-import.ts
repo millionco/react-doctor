@@ -9,6 +9,12 @@ export const noFullLodashImport = defineRule<Rule>({
   category: "Bundle Size",
   recommendation:
     "Import the specific function: `import debounce from 'lodash/debounce'` — saves ~70kb",
+  examples: [
+    {
+      before: "import { debounce } from 'lodash';",
+      after: "import debounce from 'lodash/debounce';",
+    },
+  ],
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNode) {
       const source = node.source?.value;

@@ -12,6 +12,13 @@ export const rerenderDependencies = defineRule<Rule>({
   category: "State & Effects",
   recommendation:
     "Extract to a useMemo, useRef, or module-level constant so the reference is stable",
+  examples: [
+    {
+      before: "useEffect(() => subscribe({ id }), [{ id }]);",
+      after:
+        "const options = useMemo(() => ({ id }), [id]);\nuseEffect(() => subscribe(options), [options]);",
+    },
+  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (!isHookCall(node, HOOKS_WITH_DEPS) || node.arguments.length < 2) return;

@@ -150,6 +150,13 @@ export const preferUseSyncExternalStore = defineRule<Rule>({
   category: "State & Effects",
   recommendation:
     "Replace the `useState(getSnapshot())` + `useEffect(() => store.subscribe(() => setSnapshot(getSnapshot())))` pair with `useSyncExternalStore(store.subscribe, getSnapshot)`. The hook handles tearing during concurrent renders and SSR snapshots; the manual subscribe pattern doesn't",
+  examples: [
+    {
+      before:
+        "const [snapshot, setSnapshot] = useState(store.getSnapshot());\nuseEffect(() => store.subscribe(() => setSnapshot(store.getSnapshot())), []);",
+      after: "const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);",
+    },
+  ],
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;

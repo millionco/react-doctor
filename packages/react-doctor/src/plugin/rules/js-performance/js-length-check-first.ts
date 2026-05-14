@@ -16,6 +16,12 @@ export const jsLengthCheckFirst = defineRule<Rule>({
   category: "Performance",
   recommendation:
     "Short-circuit with `a.length === b.length && a.every((x, i) => x === b[i])` — unequal-length arrays exit immediately",
+  examples: [
+    {
+      before: "const isEqual = a.every((x, i) => x === b[i]);",
+      after: "const isEqual = a.length === b.length && a.every((x, i) => x === b[i]);",
+    },
+  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (!isNodeOfType(node.callee, "MemberExpression")) return;

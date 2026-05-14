@@ -94,6 +94,13 @@ export const renderingHydrationMismatchTime = defineRule<Rule>({
   category: "Correctness",
   recommendation:
     "Wrap dynamic time/random values in useEffect+useState (client-only) or add suppressHydrationWarning to the parent if intentional",
+  examples: [
+    {
+      before: "return <span>{new Date().toLocaleString()}</span>;",
+      after:
+        "const [now, setNow] = useState<string>();\nuseEffect(() => setNow(new Date().toLocaleString()), []);\nreturn <span>{now}</span>;",
+    },
+  ],
   create: (context: RuleContext) => ({
     JSXExpressionContainer(node: EsTreeNode) {
       if (!node.expression) return;

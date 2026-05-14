@@ -11,6 +11,13 @@ export const jsIndexMaps = defineRule<Rule>({
   category: "Performance",
   recommendation:
     "Build an index `Map` once outside the loop instead of `array.find(...)` inside it",
+  examples: [
+    {
+      before: "for (const id of ids) {\n  const user = users.find((u) => u.id === id);\n}",
+      after:
+        "const usersById = new Map(users.map((u) => [u.id, u]));\nfor (const id of ids) {\n  const user = usersById.get(id);\n}",
+    },
+  ],
   create: (context: RuleContext) =>
     createLoopAwareVisitors({
       CallExpression(node: EsTreeNode) {

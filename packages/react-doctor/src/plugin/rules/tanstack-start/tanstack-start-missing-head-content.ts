@@ -6,11 +6,18 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const tanstackStartMissingHeadContent = defineRule<Rule>({
+  requires: ["tanstack-start"],
   framework: "tanstack-start",
   severity: "warn",
   category: "TanStack Start",
   recommendation:
     "Add `<HeadContent />` inside `<head>` in your __root route — without it, route `head()` meta tags are silently dropped",
+  examples: [
+    {
+      before: "<html><head><title>App</title></head><body><Outlet /></body></html>",
+      after: "<html><head><HeadContent /></head><body><Outlet /></body></html>",
+    },
+  ],
   create: (context: RuleContext) => {
     let hasHeadContentElement = false;
 

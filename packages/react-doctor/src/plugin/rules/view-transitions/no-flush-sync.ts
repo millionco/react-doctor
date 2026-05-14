@@ -16,6 +16,12 @@ export const noFlushSync = defineRule<Rule>({
   category: "Performance",
   recommendation:
     "Use startTransition for non-urgent updates — flushSync forces a sync flush that skips View Transitions and concurrent rendering",
+  examples: [
+    {
+      before: "import { flushSync } from 'react-dom';\nflushSync(() => setItems(next));",
+      after: "import { startTransition } from 'react';\nstartTransition(() => setItems(next));",
+    },
+  ],
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNode) {
       if (node.source?.value !== "react-dom") return;

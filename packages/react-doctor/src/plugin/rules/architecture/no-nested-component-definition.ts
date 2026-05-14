@@ -10,6 +10,14 @@ export const noNestedComponentDefinition = defineRule<Rule>({
   severity: "error",
   category: "Correctness",
   recommendation: "Move to a separate file or to module scope above the parent component",
+  examples: [
+    {
+      before:
+        "function Page() {\n  function Header() { return <h1>Hi</h1>; }\n  return <Header />;\n}",
+      after:
+        "function Header() { return <h1>Hi</h1>; }\nfunction Page() {\n  return <Header />;\n}",
+    },
+  ],
   create: (context: RuleContext) => {
     const componentStack: string[] = [];
 

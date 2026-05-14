@@ -13,6 +13,14 @@ export const noDerivedUseState = defineRule<Rule>({
   category: "State & Effects",
   recommendation:
     "Remove useState and compute the value inline: `const value = transform(propName)`",
+  examples: [
+    {
+      before:
+        "function List({ items }) {\n  const [filtered, setFiltered] = useState(items.filter((i) => i.active));\n  return <Rows items={filtered} />;\n}",
+      after:
+        "function List({ items }) {\n  const filtered = items.filter((i) => i.active);\n  return <Rows items={filtered} />;\n}",
+    },
+  ],
   create: (context: RuleContext) => {
     const propStackTracker = createComponentPropStackTracker();
 

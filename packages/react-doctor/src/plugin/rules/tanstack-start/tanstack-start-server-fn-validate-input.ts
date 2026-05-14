@@ -7,11 +7,20 @@ import { walkServerFnChain } from "./utils/walk-server-fn-chain.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const tanstackStartServerFnValidateInput = defineRule<Rule>({
+  requires: ["tanstack-start"],
   framework: "tanstack-start",
   severity: "warn",
   category: "TanStack Start",
   recommendation:
     "Add `.inputValidator(schema)` before `.handler()` — data crosses a network boundary and must be validated at runtime",
+  examples: [
+    {
+      before:
+        "createServerFn({ method: 'POST' }).handler(async ({ data }) => db.user.create({ data }));",
+      after:
+        "createServerFn({ method: 'POST' })\n  .inputValidator(z.object({ name: z.string(), email: z.string().email() }))\n  .handler(async ({ data }) => db.user.create({ data }));",
+    },
+  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (!isNodeOfType(node.callee, "MemberExpression")) return;

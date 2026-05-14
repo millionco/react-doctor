@@ -7,11 +7,19 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const nextjsNoFontLink = defineRule<Rule>({
+  requires: ["nextjs"],
   framework: "nextjs",
   severity: "warn",
   category: "Next.js",
   recommendation:
     '`import { Inter } from "next/font/google"` — self-hosted, zero layout shift, no render-blocking requests',
+  examples: [
+    {
+      before: '<link href="https://fonts.googleapis.com/css2?family=Inter" rel="stylesheet" />',
+      after:
+        "import { Inter } from 'next/font/google';\nconst inter = Inter({ subsets: ['latin'] });\n<body className={inter.className}>…</body>",
+    },
+  ],
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNode) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "link") return;

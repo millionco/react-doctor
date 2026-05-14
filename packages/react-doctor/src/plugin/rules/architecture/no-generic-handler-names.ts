@@ -11,6 +11,14 @@ export const noGenericHandlerNames = defineRule<Rule>({
   category: "Architecture",
   recommendation:
     "Rename to describe the action: e.g. `handleSubmit` → `saveUserProfile`, `handleClick` → `toggleSidebar`",
+  examples: [
+    {
+      before:
+        "const handleClick = () => setOpen(true);\nreturn <button onClick={handleClick}>Open</button>;",
+      after:
+        "const openSidebar = () => setOpen(true);\nreturn <button onClick={openSidebar}>Open</button>;",
+    },
+  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNode) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || !node.name.name.startsWith("on")) return;

@@ -40,6 +40,14 @@ export const noSetStateInRender = defineRule<Rule>({
   category: "State & Effects",
   recommendation:
     "Move the setter call into a `useEffect`, an event handler, or replace the state with a value computed during render. Calling a setter at render time triggers another render, which calls the setter again — an infinite loop",
+  examples: [
+    {
+      before:
+        "function Page() {\n  const [c, setC] = useState(0);\n  setC(c + 1);\n  return <div>{c}</div>;\n}",
+      after:
+        "function Page() {\n  const [c, setC] = useState(0);\n  const onClick = () => setC(c + 1);\n  return <button onClick={onClick}>{c}</button>;\n}",
+    },
+  ],
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;

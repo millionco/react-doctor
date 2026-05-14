@@ -13,6 +13,13 @@ export const noCascadingSetState = defineRule<Rule>({
   category: "State & Effects",
   recommendation:
     "Combine into useReducer: `const [state, dispatch] = useReducer(reducer, initialState)`",
+  examples: [
+    {
+      before:
+        "useEffect(() => {\n  setLoading(false);\n  setError(null);\n  setData(payload);\n  setStep(2);\n}, [payload]);",
+      after: "dispatch({ type: 'LOADED', payload });",
+    },
+  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (!isHookCall(node, EFFECT_HOOK_NAMES)) return;

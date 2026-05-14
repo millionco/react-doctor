@@ -14,6 +14,14 @@ export const renderingHydrationNoFlicker = defineRule<Rule>({
   category: "Performance",
   recommendation:
     "Use `useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)` or add `suppressHydrationWarning` to the element",
+  examples: [
+    {
+      before:
+        "const [mounted, setMounted] = useState(false);\nuseEffect(() => { setMounted(true); }, []);",
+      after:
+        "const theme = useSyncExternalStore(subscribeToTheme, () => getTheme(), () => 'light');",
+    },
+  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (!isHookCall(node, EFFECT_HOOK_NAMES) || (node.arguments?.length ?? 0) < 2) return;

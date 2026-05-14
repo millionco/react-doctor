@@ -5,11 +5,18 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const rnNoLegacyExpoPackages = defineRule<Rule>({
+  requires: ["react-native"],
   framework: "react-native",
   severity: "warn",
   category: "React Native",
   recommendation:
     "Migrate to the recommended replacement package — legacy Expo packages are no longer maintained",
+  examples: [
+    {
+      before: "import * as Permissions from 'expo-permissions';",
+      after: "import * as MediaLibrary from 'expo-media-library';",
+    },
+  ],
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNode) {
       const source = node.source?.value;

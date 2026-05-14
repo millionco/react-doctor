@@ -12,6 +12,12 @@ export const rerenderLazyStateInit = defineRule<Rule>({
   category: "Performance",
   recommendation:
     "Wrap in an arrow function so it only runs once: `useState(() => expensiveComputation())`",
+  examples: [
+    {
+      before: "const [tree, setTree] = useState(buildHugeTree(items));",
+      after: "const [tree, setTree] = useState(() => buildHugeTree(items));",
+    },
+  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (!isHookCall(node, "useState") || !node.arguments?.length) return;

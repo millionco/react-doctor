@@ -11,6 +11,13 @@ export const noRenderInRender = defineRule<Rule>({
   category: "Architecture",
   recommendation:
     "Extract to a named component: `const ListItem = ({ item }) => <div>{item.name}</div>`",
+  examples: [
+    {
+      before: "return <div>{renderItem(item)}</div>;",
+      after:
+        "const ListItem = ({ item }) => <div>{item.name}</div>;\nreturn <ListItem item={item} />;",
+    },
+  ],
   create: (context: RuleContext) => ({
     JSXExpressionContainer(node: EsTreeNode) {
       const expression = node.expression;

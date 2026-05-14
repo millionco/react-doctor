@@ -26,11 +26,20 @@ const REACT_19_DEPRECATED_MESSAGES = new Map<string, string>([
 ]);
 
 export const noReact19DeprecatedApis = defineRule<Rule>({
+  requires: ["react:19"],
+  tags: ["test-noise"],
   framework: "global",
   severity: "warn",
   category: "Architecture",
   recommendation:
     "Pass `ref` as a regular prop on function components — `forwardRef` is no longer needed in React 19+. Replace `useContext(X)` with `use(X)` for branch-aware context reads. Only enabled on projects detected as React 19+.",
+  examples: [
+    {
+      before:
+        "import { forwardRef } from 'react';\nconst Input = forwardRef((props, ref) => <input ref={ref} {...props} />);",
+      after: "const Input = ({ ref, ...props }) => <input ref={ref} {...props} />;",
+    },
+  ],
   ...createDeprecatedReactImportRule({
     source: "react",
     messages: REACT_19_DEPRECATED_MESSAGES,

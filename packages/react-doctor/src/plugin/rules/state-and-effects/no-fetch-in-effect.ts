@@ -13,6 +13,14 @@ export const noFetchInEffect = defineRule<Rule>({
   category: "State & Effects",
   recommendation:
     "Use `useQuery()` from @tanstack/react-query, `useSWR()`, or fetch in a Server Component instead",
+  examples: [
+    {
+      before:
+        "useEffect(() => {\n  fetch('/api/user').then((r) => r.json()).then(setUser);\n}, []);",
+      after:
+        "const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => fetch('/api/user').then((r) => r.json()) });",
+    },
+  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (!isHookCall(node, EFFECT_HOOK_NAMES)) return;

@@ -12,6 +12,12 @@ export const noLayoutTransitionInline = defineRule<Rule>({
   category: "Performance",
   recommendation:
     "Use `transform` and `opacity` for transitions — they run on the compositor thread. For height animations, use `grid-template-rows: 0fr → 1fr`",
+  examples: [
+    {
+      before: "<div style={{ transition: 'width 300ms ease' }} />",
+      after: "<div style={{ transition: 'transform 300ms ease' }} />",
+    },
+  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNode) {
       const expression = getInlineStyleExpression(node);

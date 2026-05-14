@@ -15,6 +15,12 @@ export const noZIndex9999 = defineRule<Rule>({
   category: "Architecture",
   recommendation:
     "Define a z-index scale in your design tokens (e.g. dropdown: 10, modal: 20, toast: 30). Create a new stacking context with `isolation: isolate` instead of escalating values",
+  examples: [
+    {
+      before: "<div style={{ zIndex: 9999, position: 'fixed' }} />",
+      after: "<div style={{ zIndex: 30, position: 'fixed', isolation: 'isolate' }} />",
+    },
+  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNode) {
       const expression = getInlineStyleExpression(node);

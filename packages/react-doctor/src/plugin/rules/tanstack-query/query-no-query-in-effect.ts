@@ -9,11 +9,19 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const queryNoQueryInEffect = defineRule<Rule>({
+  requires: ["tanstack-query"],
   framework: "tanstack-query",
   severity: "warn",
   category: "TanStack Query",
   recommendation:
     "React Query manages refetching automatically via queryKey dependencies and the `enabled` option — manual refetch() in useEffect is usually unnecessary",
+  examples: [
+    {
+      before:
+        "const { refetch } = useQuery({ queryKey: ['user', id], queryFn });\nuseEffect(() => { refetch(); }, [id]);",
+      after: "useQuery({ queryKey: ['user', id], queryFn });",
+    },
+  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (!isHookCall(node, EFFECT_HOOK_NAMES)) return;

@@ -7,11 +7,20 @@ import { getRouteOptionsObject } from "./utils/get-route-options-object.js";
 import { getPropertyKeyName } from "./utils/get-property-key-name.js";
 
 export const tanstackStartRoutePropertyOrder = defineRule<Rule>({
+  requires: ["tanstack-start"],
   framework: "tanstack-start",
   severity: "error",
   category: "TanStack Start",
   recommendation:
     "Follow the order: params/validateSearch → loaderDeps → context → beforeLoad → loader → head. See https://tanstack.com/router/latest/docs/eslint/create-route-property-order",
+  examples: [
+    {
+      before:
+        "createFileRoute('/users')({\n  loader: fetchUsers,\n  beforeLoad: authCheck,\n  validateSearch: schema,\n});",
+      after:
+        "createFileRoute('/users')({\n  validateSearch: schema,\n  beforeLoad: authCheck,\n  loader: fetchUsers,\n});",
+    },
+  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       const optionsObject = getRouteOptionsObject(node);

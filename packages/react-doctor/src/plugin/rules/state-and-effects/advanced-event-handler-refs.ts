@@ -32,6 +32,14 @@ export const advancedEventHandlerRefs = defineRule<Rule>({
   category: "Performance",
   recommendation:
     "Store the handler in a ref and have the listener read `handlerRef.current()` — the subscription stays put while the latest handler is always called",
+  examples: [
+    {
+      before:
+        "useEffect(() => {\n  window.addEventListener('keydown', onKeyDown);\n  return () => window.removeEventListener('keydown', onKeyDown);\n}, [onKeyDown]);",
+      after:
+        "const onKeyDownRef = useRef(onKeyDown);\nonKeyDownRef.current = onKeyDown;\nuseEffect(() => {\n  const listener = (e) => onKeyDownRef.current(e);\n  window.addEventListener('keydown', listener);\n  return () => window.removeEventListener('keydown', listener);\n}, []);",
+    },
+  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       if (!isHookCall(node, EFFECT_HOOK_NAMES)) return;

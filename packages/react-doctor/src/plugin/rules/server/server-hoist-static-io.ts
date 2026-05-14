@@ -130,6 +130,14 @@ export const serverHoistStaticIo = defineRule<Rule>({
   category: "Server",
   recommendation:
     "Hoist the read to module scope: `const FONT_DATA = await fetch(new URL('./fonts/Inter.ttf', import.meta.url)).then(r => r.arrayBuffer())` runs once at module load",
+  examples: [
+    {
+      before:
+        "export async function GET() {\n  const data = await fs.readFile('./static/data.json', 'utf8');\n  return Response.json(JSON.parse(data));\n}",
+      after:
+        "const DATA = JSON.parse(await fs.readFile('./static/data.json', 'utf8'));\nexport async function GET() { return Response.json(DATA); }",
+    },
+  ],
   create: (context: RuleContext) => ({
     ExportNamedDeclaration(node: EsTreeNode) {
       const declaration = node.declaration;

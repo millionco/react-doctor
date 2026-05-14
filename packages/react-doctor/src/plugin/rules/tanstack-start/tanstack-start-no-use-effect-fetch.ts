@@ -8,11 +8,20 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const tanstackStartNoUseEffectFetch = defineRule<Rule>({
+  requires: ["tanstack-start"],
   framework: "tanstack-start",
   severity: "warn",
   category: "TanStack Start",
   recommendation:
     "Fetch data in the route `loader` instead — the router coordinates loading before rendering to avoid waterfalls",
+  examples: [
+    {
+      before:
+        "function Component() {\n  useEffect(() => { fetch('/api/user').then((r) => r.json()).then(setUser); }, []);\n}",
+      after:
+        "export const Route = createFileRoute('/users')({\n  loader: () => fetch('/api/user').then((r) => r.json()),\n});",
+    },
+  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNode) {
       const filename = context.getFilename?.() ?? "";

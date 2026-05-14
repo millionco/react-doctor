@@ -14,6 +14,12 @@ export const noWideLetterSpacing = defineRule<Rule>({
   category: "Architecture",
   recommendation:
     "Reserve wide tracking (letter-spacing > 0.05em) for short uppercase labels, navigation items, and buttons — not body text",
+  examples: [
+    {
+      before: "<p style={{ letterSpacing: '0.15em' }}>Long body copy spans many words.</p>",
+      after: "<p style={{ letterSpacing: 'normal' }}>Long body copy spans many words.</p>",
+    },
+  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNode) {
       const expression = getInlineStyleExpression(node);

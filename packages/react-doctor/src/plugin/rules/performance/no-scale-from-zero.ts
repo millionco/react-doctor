@@ -10,6 +10,13 @@ export const noScaleFromZero = defineRule<Rule>({
   category: "Performance",
   recommendation:
     "Use `initial={{ scale: 0.95, opacity: 0 }}` — elements should deflate like a balloon, not vanish into a point",
+  examples: [
+    {
+      before: "<motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} />",
+      after:
+        "<motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} />",
+    },
+  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNode) {
       if (!isNodeOfType(node.name, "JSXIdentifier")) return;

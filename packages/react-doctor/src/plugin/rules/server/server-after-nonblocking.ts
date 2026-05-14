@@ -49,6 +49,14 @@ export const serverAfterNonblocking = defineRule<Rule>({
   category: "Server",
   recommendation:
     "`import { after } from 'next/server'` then wrap: `after(() => analytics.track(...))` — response isn't blocked",
+  examples: [
+    {
+      before:
+        "'use server';\nexport async function action() {\n  await save();\n  await analytics.track('save');\n}",
+      after:
+        "'use server';\nimport { after } from 'next/server';\nexport async function action() {\n  await save();\n  after(() => analytics.track('save'));\n}",
+    },
+  ],
   create: (context: RuleContext) => {
     let fileHasUseServerDirective = false;
     let serverFunctionDepth = 0;

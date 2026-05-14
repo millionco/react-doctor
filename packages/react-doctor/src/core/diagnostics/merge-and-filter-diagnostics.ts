@@ -1,4 +1,4 @@
-import { RULE_METADATA } from "../runners/oxlint-config.js";
+import reactDoctorPlugin from "../../plugin/react-doctor-plugin.js";
 import type { Diagnostic, ReactDoctorConfig } from "../../types.js";
 import { filterIgnoredDiagnostics, filterInlineSuppressions } from "./filter-diagnostics.js";
 import { isLikelyBuildEntry } from "../config/is-likely-build-entry.js";
@@ -29,9 +29,9 @@ const shouldAutoSuppress = (diagnostic: Diagnostic, directory: string): boolean 
     if (isBuildEntry) return true;
   }
 
-  const ruleKey = `${diagnostic.plugin}/${diagnostic.rule}`;
-  const metadata = RULE_METADATA.get(ruleKey);
-  if (metadata?.tags.has("test-noise")) {
+  const rule =
+    diagnostic.plugin === "react-doctor" ? reactDoctorPlugin.rules[diagnostic.rule] : null;
+  if (rule?.tags?.includes("test-noise")) {
     let isTest = testFileResultCache.get(filePath);
     if (isTest === undefined) {
       isTest = isTestFilePath(filePath);

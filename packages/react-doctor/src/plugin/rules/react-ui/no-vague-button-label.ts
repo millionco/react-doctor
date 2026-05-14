@@ -53,11 +53,18 @@ const collectJsxLabelText = (jsxElementNode: EsTreeNode): string | null => {
 };
 
 export const noVagueButtonLabel = defineRule<Rule>({
+  tags: ["design", "test-noise"],
   framework: "global",
   severity: "warn",
   category: "Accessibility",
   recommendation:
     'Name the action: "Save changes" instead of "Continue", "Send invite" instead of "Submit", "Delete account" instead of "OK". The label IS the button\'s accessible name',
+  examples: [
+    {
+      before: "<button>Submit</button>",
+      after: "<button>Send invite</button>",
+    },
+  ],
   create: (context: RuleContext) => ({
     JSXElement(jsxElementNode: EsTreeNode) {
       const tagName = getOpeningElementTagName(jsxElementNode.openingElement);

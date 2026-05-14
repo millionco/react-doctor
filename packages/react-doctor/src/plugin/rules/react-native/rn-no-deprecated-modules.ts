@@ -7,11 +7,18 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { getImportedName } from "../../utils/get-imported-name.js";
 
 export const rnNoDeprecatedModules = defineRule<Rule>({
+  requires: ["react-native"],
   framework: "react-native",
   severity: "error",
   category: "React Native",
   recommendation:
     "Import from the community package instead — deprecated modules were removed from the react-native core",
+  examples: [
+    {
+      before: "import { AsyncStorage } from 'react-native';",
+      after: "import AsyncStorage from '@react-native-async-storage/async-storage';",
+    },
+  ],
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNode) {
       if (node.source?.value !== "react-native") return;

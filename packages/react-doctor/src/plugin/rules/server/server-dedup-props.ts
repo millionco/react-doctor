@@ -25,6 +25,12 @@ export const serverDedupProps = defineRule<Rule>({
   category: "Server",
   recommendation:
     "Pass the source array once and derive the projection on the client — passing both doubles RSC serialization bytes",
+  examples: [
+    {
+      before: "<ClientList items={items} itemNames={items.map((i) => i.name)} />",
+      after: "<ClientList items={items} />",
+    },
+  ],
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNode) {
       const identifierAttributes: Map<string, string> = new Map();

@@ -18,6 +18,12 @@ export const renderingSvgPrecision = defineRule<Rule>({
   category: "Performance",
   recommendation:
     "Truncate path/points/transform decimals to 1–2 digits — sub-pixel precision adds bytes with no visible difference",
+  examples: [
+    {
+      before: '<path d="M 10.293847 20.847362 L 30.918273 40.123456" />',
+      after: '<path d="M 10.3 20.8 L 30.9 40.1" />',
+    },
+  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNode) {
       if (!isNodeOfType(node.name, "JSXIdentifier")) return;

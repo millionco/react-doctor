@@ -11,11 +11,20 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const tanstackStartNoNavigateInRender = defineRule<Rule>({
+  requires: ["tanstack-start"],
   framework: "tanstack-start",
   severity: "warn",
   category: "TanStack Start",
   recommendation:
     "Use `throw redirect({ to: '/path' })` in `beforeLoad` or `loader` instead — navigate() during render causes hydration issues",
+  examples: [
+    {
+      before:
+        "function Page() {\n  const navigate = useNavigate();\n  if (!user) navigate({ to: '/login' });\n  return <Profile />;\n}",
+      after:
+        "export const Route = createFileRoute('/profile')({\n  beforeLoad: () => { if (!user) throw redirect({ to: '/login' }); },\n});",
+    },
+  ],
   create: (context: RuleContext) => {
     // HACK: only callbacks that React calls LATER are safe scopes for
     // navigate() — useEffect / useLayoutEffect (post-commit), useCallback

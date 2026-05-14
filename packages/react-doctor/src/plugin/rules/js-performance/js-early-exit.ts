@@ -11,6 +11,14 @@ export const jsEarlyExit = defineRule<Rule>({
   category: "Performance",
   recommendation:
     "Add an early `return` / `continue` to flatten deep nesting and short-circuit when the predicate is already known",
+  examples: [
+    {
+      before:
+        "if (user) {\n  if (user.isActive) {\n    if (user.canEdit) {\n      save(user);\n    }\n  }\n}",
+      after:
+        "if (!user) return;\nif (!user.isActive) return;\nif (!user.canEdit) return;\nsave(user);",
+    },
+  ],
   create: (context: RuleContext) => ({
     IfStatement(node: EsTreeNode) {
       if (!isNodeOfType(node.consequent, "BlockStatement") || !node.consequent.body) return;

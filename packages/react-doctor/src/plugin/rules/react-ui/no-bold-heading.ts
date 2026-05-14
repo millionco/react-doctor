@@ -44,11 +44,18 @@ const getStylePropertyNumericValue = (objectProperty: EsTreeNode): number | null
 };
 
 export const noBoldHeading = defineRule<Rule>({
+  tags: ["design", "test-noise"],
   framework: "global",
   severity: "warn",
   category: "Architecture",
   recommendation:
     "Use `font-semibold` (600) or `font-medium` (500) on headings — 700+ crushes letter counter shapes at display sizes",
+  examples: [
+    {
+      before: '<h1 className="font-black text-5xl">Welcome</h1>',
+      after: '<h1 className="font-semibold text-5xl">Welcome</h1>',
+    },
+  ],
   create: (context: RuleContext) => ({
     JSXOpeningElement(openingNode: EsTreeNode) {
       const tagName = getOpeningElementTagName(openingNode);

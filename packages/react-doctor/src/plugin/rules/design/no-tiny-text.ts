@@ -14,6 +14,12 @@ export const noTinyText = defineRule<Rule>({
   category: "Accessibility",
   recommendation:
     "Use at least 12px for body content, 16px is ideal. Small text is hard to read, especially on high-DPI mobile screens",
+  examples: [
+    {
+      before: "<span style={{ fontSize: 9 }}>Body text</span>",
+      after: "<span style={{ fontSize: 14 }}>Body text</span>",
+    },
+  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNode) {
       const expression = getInlineStyleExpression(node);

@@ -1,6 +1,17 @@
 const REGEX_SPECIAL_CHARACTERS = /[.+^${}()|[\]\\]/g;
 
+const MAX_PATTERN_LENGTH = 500;
+const MAX_WILDCARDS = 20;
+
 export const compileGlobPattern = (pattern: string): RegExp => {
+  if (pattern.length > MAX_PATTERN_LENGTH) {
+    throw new Error(`Glob pattern exceeds maximum length of ${MAX_PATTERN_LENGTH}`);
+  }
+
+  const wildcardCount = (pattern.match(/[*?]/g) || []).length;
+  if (wildcardCount > MAX_WILDCARDS) {
+    throw new Error(`Glob pattern exceeds maximum wildcard count of ${MAX_WILDCARDS}`);
+  }
   const normalizedPattern = pattern.replace(/\\/g, "/").replace(/^\//, "");
 
   let regexSource = "^";

@@ -6,6 +6,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const jsCombineIterations = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "Performance",
   recommendation:
     "Combine `.map().filter()` (or similar chains) into a single pass with `.reduce()` or a `for...of` loop to avoid iterating the array twice",

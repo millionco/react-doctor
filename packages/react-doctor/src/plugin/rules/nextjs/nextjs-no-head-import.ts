@@ -5,6 +5,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const nextjsNoHeadImport = defineRule<Rule>({
+  framework: "nextjs",
+  severity: "error",
   category: "Next.js",
   recommendation:
     "Use the Metadata API instead: `export const metadata = { title: '...' }` or `export async function generateMetadata()`",

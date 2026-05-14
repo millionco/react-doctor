@@ -13,6 +13,8 @@ import { expandTransitiveDependencies } from "./utils/expand-transitive-dependen
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const rerenderStateOnlyInHandlers = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "Performance",
   recommendation:
     "Replace useState with useRef when the value is only mutated and never read in render — `ref.current = ...` updates without re-rendering the component",

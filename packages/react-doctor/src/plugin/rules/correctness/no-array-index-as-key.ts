@@ -91,6 +91,8 @@ const isInsideStaticPlaceholderMap = (node: EsTreeNode): boolean => {
 };
 
 export const noArrayIndexAsKey = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "Correctness",
   recommendation:
     "Use a stable unique identifier: `key={item.id}` or `key={item.slug}` — index keys break on reorder/filter",

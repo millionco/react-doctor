@@ -7,6 +7,8 @@ import { getStylePropertyStringValue } from "./utils/get-style-property-string-v
 import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 
 export const noLayoutTransitionInline = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "Performance",
   recommendation:
     "Use `transform` and `opacity` for transitions — they run on the compositor thread. For height animations, use `grid-template-rows: 0fr → 1fr`",

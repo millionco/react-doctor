@@ -7,6 +7,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const nextjsAsyncClientComponent = defineRule<Rule>({
+  framework: "nextjs",
+  severity: "error",
   category: "Next.js",
   recommendation:
     "Fetch data in a parent Server Component and pass it as props, or use useQuery/useSWR in the client component",

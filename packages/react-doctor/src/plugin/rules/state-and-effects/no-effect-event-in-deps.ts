@@ -17,6 +17,8 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 // binding named `onChange` in ComponentA doesn't taint a regular variable
 // `onChange` in ComponentB in the same file.
 export const noEffectEventInDeps = defineRule<Rule>({
+  framework: "global",
+  severity: "error",
   category: "State & Effects",
   recommendation:
     "Call the useEffectEvent callback inside the effect body without listing it; its identity is intentionally unstable",

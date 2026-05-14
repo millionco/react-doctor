@@ -11,6 +11,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const tanstackStartNoNavigateInRender = defineRule<Rule>({
+  framework: "tanstack-start",
+  severity: "warn",
   category: "TanStack Start",
   recommendation:
     "Use `throw redirect({ to: '/path' })` in `beforeLoad` or `loader` instead — navigate() during render causes hydration issues",

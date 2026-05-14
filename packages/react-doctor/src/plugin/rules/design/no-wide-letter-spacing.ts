@@ -9,6 +9,8 @@ import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import { getStylePropertyNumberValue } from "./utils/get-style-property-number-value.js";
 
 export const noWideLetterSpacing = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "Architecture",
   recommendation:
     "Reserve wide tracking (letter-spacing > 0.05em) for short uppercase labels, navigation items, and buttons — not body text",

@@ -73,6 +73,8 @@ const findThresholdDerivedBindings = (
 };
 
 export const rerenderDerivedStateFromHook = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "Performance",
   recommendation:
     'Use a threshold/media-query hook (e.g. `useMediaQuery("(max-width: 767px)")`) — the component re-renders only when the threshold flips, not every pixel',

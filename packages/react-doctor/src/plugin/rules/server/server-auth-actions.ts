@@ -35,6 +35,8 @@ const containsAuthCheck = (statements: EsTreeNode[]): boolean => {
 };
 
 export const serverAuthActions = defineRule<Rule>({
+  framework: "global",
+  severity: "error",
   category: "Server",
   recommendation:
     "Add `const session = await auth()` at the top and throw/redirect if unauthorized before any data access",

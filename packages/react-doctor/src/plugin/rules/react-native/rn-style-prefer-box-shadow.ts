@@ -32,6 +32,8 @@ const findLegacyShadowProperty = (
 // so cross-platform code historically had to declare both — `boxShadow`
 // collapses that into one key.
 export const rnStylePreferBoxShadow = defineRule<Rule>({
+  framework: "react-native",
+  severity: "warn",
   category: "React Native",
   recommendation:
     'Use the cross-platform CSS `boxShadow` string (RN v7+): `boxShadow: "0 2px 8px rgba(0,0,0,0.1)"` instead of platform-specific shadow*/elevation keys',

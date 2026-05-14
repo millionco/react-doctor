@@ -10,6 +10,8 @@ import { getStylePropertyNumberValue } from "./utils/get-style-property-number-v
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const noZIndex9999 = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "Architecture",
   recommendation:
     "Define a z-index scale in your design tokens (e.g. dropdown: 10, modal: 20, toast: 30). Create a new stacking context with `isolation: isolate` instead of escalating values",

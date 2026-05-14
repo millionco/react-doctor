@@ -8,6 +8,8 @@ import { getStylePropertyStringValue } from "./utils/get-style-property-string-v
 import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 
 export const noLongTransitionDuration = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "Performance",
   recommendation:
     "Keep UI transitions under 1s — 100-150ms for instant feedback, 200-300ms for state changes, 300-500ms for layout changes. Use longer durations only for page-load hero animations",

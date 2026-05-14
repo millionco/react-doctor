@@ -53,6 +53,8 @@ interface MirrorBinding {
 }
 
 export const noMirrorPropEffect = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "State & Effects",
   recommendation:
     "Delete both the `useState` and the `useEffect` and read the prop directly during render. Mirroring a prop into local state forces a stale first render before the effect re-syncs",

@@ -27,6 +27,8 @@ const reportLegacyShadowProperties = (objectExpression: EsTreeNode, context: Rul
 };
 
 export const rnNoLegacyShadowStyles = defineRule<Rule>({
+  framework: "react-native",
+  severity: "warn",
   category: "React Native",
   recommendation:
     "Use `boxShadow` for cross-platform shadows on the new architecture instead of platform-specific shadow properties",

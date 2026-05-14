@@ -6,6 +6,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const jsMinMaxLoop = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "Performance",
   recommendation:
     "Use `Math.min(...array)` / `Math.max(...array)` instead of sorting just to read the first or last element",

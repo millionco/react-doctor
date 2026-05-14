@@ -11,6 +11,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const noSecretsInClientCode = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "Security",
   recommendation:
     "Move to server-side `process.env.SECRET_NAME`. Only `NEXT_PUBLIC_*` vars are safe for the client (and should not contain secrets)",

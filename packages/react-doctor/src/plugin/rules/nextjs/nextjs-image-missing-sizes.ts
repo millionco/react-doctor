@@ -6,6 +6,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const nextjsImageMissingSizes = defineRule<Rule>({
+  framework: "nextjs",
+  severity: "warn",
   category: "Next.js",
   recommendation:
     'Add sizes for responsive behavior: `sizes="(max-width: 768px) 100vw, 50vw"` matching your layout breakpoints',

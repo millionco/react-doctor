@@ -7,6 +7,8 @@ import { getStylePropertyStringValue } from "./utils/get-style-property-string-v
 import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 
 export const noJustifiedText = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "Accessibility",
   recommendation:
     "Use `text-align: left` for body text, or add `hyphens: auto` and `overflow-wrap: break-word` if you must justify",

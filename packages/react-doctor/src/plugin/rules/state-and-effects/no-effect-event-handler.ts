@@ -10,6 +10,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const noEffectEventHandler = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "State & Effects",
   recommendation:
     "Move the conditional logic into onClick, onChange, or onSubmit handlers directly",

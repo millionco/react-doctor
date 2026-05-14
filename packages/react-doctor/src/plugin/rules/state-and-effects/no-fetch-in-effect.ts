@@ -8,6 +8,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const noFetchInEffect = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "State & Effects",
   recommendation:
     "Use `useQuery()` from @tanstack/react-query, `useSWR()`, or fetch in a Server Component instead",

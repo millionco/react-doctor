@@ -6,6 +6,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const nextjsNoImgElement = defineRule<Rule>({
+  framework: "nextjs",
+  severity: "warn",
   category: "Next.js",
   recommendation:
     "`import Image from 'next/image'` — provides automatic WebP/AVIF, lazy loading, and responsive srcset",

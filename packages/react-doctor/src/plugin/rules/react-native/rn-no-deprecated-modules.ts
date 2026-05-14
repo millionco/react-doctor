@@ -7,6 +7,8 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { getImportedName } from "../../utils/get-imported-name.js";
 
 export const rnNoDeprecatedModules = defineRule<Rule>({
+  framework: "react-native",
+  severity: "error",
   category: "React Native",
   recommendation:
     "Import from the community package instead — deprecated modules were removed from the react-native core",

@@ -32,6 +32,8 @@ const buildDefaultPaletteRegex = (): RegExp => {
 const DEFAULT_PALETTE_REGEX = buildDefaultPaletteRegex();
 
 export const noDefaultTailwindPalette = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "Architecture",
   recommendation:
     "Replace `indigo-*` / `gray-*` / `slate-*` with project tokens, your brand color, or a less-default neutral (`zinc`, `neutral`, `stone`)",

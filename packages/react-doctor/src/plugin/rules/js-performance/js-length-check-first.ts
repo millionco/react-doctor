@@ -11,6 +11,8 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 // shortcut. e.g. `a.length === b.length && a.every((x, i) => x === b[i])`
 // runs the every-loop only when lengths match.
 export const jsLengthCheckFirst = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "Performance",
   recommendation:
     "Short-circuit with `a.length === b.length && a.every((x, i) => x === b[i])` — unequal-length arrays exit immediately",

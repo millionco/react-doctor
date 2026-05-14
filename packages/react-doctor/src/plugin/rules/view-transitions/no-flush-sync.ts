@@ -11,6 +11,8 @@ import { getImportedName } from "../../utils/get-imported-name.js";
 // (a single actionable diagnostic per file) instead of on every call
 // site, which would clutter output for files with several flushSync()s.
 export const noFlushSync = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "Performance",
   recommendation:
     "Use startTransition for non-urgent updates — flushSync forces a sync flush that skips View Transitions and concurrent rendering",

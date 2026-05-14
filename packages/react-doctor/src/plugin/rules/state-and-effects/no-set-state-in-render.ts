@@ -35,6 +35,8 @@ const isUnconditionalSetterCallStatement = (
 };
 
 export const noSetStateInRender = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "State & Effects",
   recommendation:
     "Move the setter call into a `useEffect`, an event handler, or replace the state with a value computed during render. Calling a setter at render time triggers another render, which calls the setter again — an infinite loop",

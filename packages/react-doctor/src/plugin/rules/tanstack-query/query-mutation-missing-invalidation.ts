@@ -7,6 +7,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const queryMutationMissingInvalidation = defineRule<Rule>({
+  framework: "tanstack-query",
+  severity: "warn",
   category: "TanStack Query",
   recommendation:
     "Add `onSuccess: () => queryClient.invalidateQueries({ queryKey: ['...'] })` so cached data stays in sync after the mutation",

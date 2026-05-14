@@ -7,6 +7,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const renderingUsetransitionLoading = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "Performance",
   recommendation:
     "Replace with `const [isPending, startTransition] = useTransition()` — avoids a re-render for the loading state",

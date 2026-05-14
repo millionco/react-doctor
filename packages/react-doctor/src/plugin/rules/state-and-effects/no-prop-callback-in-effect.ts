@@ -17,6 +17,8 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 // both child and parent read from; the child then doesn't need an
 // effect-driven sync at all.
 export const noPropCallbackInEffect = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "State & Effects",
   recommendation:
     "Lift the shared state into a Provider so both sides read the same source — no useEffect-driven sync needed",

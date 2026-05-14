@@ -13,6 +13,8 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 // the OS computes natively, integrating with sticky headers, large
 // titles, and keyboard avoidance for free.
 export const rnPreferContentInsetAdjustment = defineRule<Rule>({
+  framework: "react-native",
+  severity: "warn",
   category: "React Native",
   recommendation:
     'Drop the SafeAreaView wrapper and set `contentInsetAdjustmentBehavior="automatic"` on the ScrollView for native safe-area handling',

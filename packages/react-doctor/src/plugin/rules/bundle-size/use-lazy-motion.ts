@@ -6,6 +6,8 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { getImportedName } from "../../utils/get-imported-name.js";
 
 export const useLazyMotion = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "Bundle Size",
   recommendation:
     'Use `import { LazyMotion, m } from "framer-motion"` with `domAnimation` features — saves ~30kb',

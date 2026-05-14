@@ -5,6 +5,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
 
 export const noGrayOnColoredBackground = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "Accessibility",
   recommendation:
     "Use a darker shade of the background color for text, or white/near-white for contrast. Gray text on colored backgrounds looks washed out",

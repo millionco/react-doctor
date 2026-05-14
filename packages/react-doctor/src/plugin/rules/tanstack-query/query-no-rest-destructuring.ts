@@ -6,6 +6,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const queryNoRestDestructuring = defineRule<Rule>({
+  framework: "tanstack-query",
+  severity: "warn",
   category: "TanStack Query",
   recommendation:
     "Destructure only the fields you need: `const { data, isLoading } = useQuery(...)` — rest destructuring subscribes to all fields and causes extra re-renders",

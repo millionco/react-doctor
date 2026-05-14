@@ -6,6 +6,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const rnNoDimensionsGet = defineRule<Rule>({
+  framework: "react-native",
+  severity: "warn",
   category: "React Native",
   recommendation:
     "Use `const { width, height } = useWindowDimensions()` — it updates reactively on rotation and resize",

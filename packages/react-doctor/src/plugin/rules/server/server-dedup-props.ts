@@ -20,6 +20,8 @@ const getDerivingMethodName = (node: EsTreeNode): string | null => {
 // roughly the same array; one of the props is redundant. Have the
 // client derive what it needs from the single source prop instead.
 export const serverDedupProps = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "Server",
   recommendation:
     "Pass the source array once and derive the projection on the client — passing both doubles RSC serialization bytes",

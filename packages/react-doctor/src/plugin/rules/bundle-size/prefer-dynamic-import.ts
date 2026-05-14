@@ -5,6 +5,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const preferDynamicImport = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "Bundle Size",
   recommendation:
     "Use `const Component = dynamic(() => import('library'), { ssr: false })` from next/dynamic or React.lazy()",

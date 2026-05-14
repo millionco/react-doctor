@@ -7,6 +7,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const noGiantComponent = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "Architecture",
   recommendation:
     "Extract logical sections into focused components: `<UserHeader />`, `<UserActions />`, etc.",

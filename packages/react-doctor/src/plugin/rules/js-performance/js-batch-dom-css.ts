@@ -5,6 +5,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const jsBatchDomCss = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "Performance",
   recommendation:
     "Batch DOM/CSS reads and writes — interleaving them inside a loop causes layout thrashing. Read first, then write",

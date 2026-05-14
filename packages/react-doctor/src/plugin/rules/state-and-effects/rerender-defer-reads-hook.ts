@@ -49,6 +49,8 @@ const findHookCallBindings = (
 // Heuristic: hook value-name appears only inside arrow / function
 // expressions that are themselves bound to JSX `on*` attributes.
 export const rerenderDeferReadsHook = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "Performance",
   recommendation:
     "Read the URL state inside the handler (e.g. `new URL(window.location.href).searchParams`) so the component doesn't subscribe and re-render on every URL change",

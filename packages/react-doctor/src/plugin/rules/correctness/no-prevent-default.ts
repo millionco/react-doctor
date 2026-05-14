@@ -45,6 +45,8 @@ const buildPreventDefaultMessage = (elementName: string): string => {
 };
 
 export const noPreventDefault = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "Correctness",
   recommendation:
     "Use `<form action={serverAction}>` (works without JS) or `<button>` instead of `<a>` with preventDefault",

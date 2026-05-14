@@ -5,6 +5,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const rnNoSingleElementStyleArray = defineRule<Rule>({
+  framework: "react-native",
+  severity: "warn",
   category: "React Native",
   recommendation:
     "Use `style={value}` instead of `style={[value]}` — single-element arrays add unnecessary allocation",

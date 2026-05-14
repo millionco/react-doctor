@@ -37,6 +37,8 @@ const collectBooleanLikePropsFromBody = (
 // (`function Foo(props) { props.isPrimary }`) by walking member-access
 // patterns on the parameter binding.
 export const noManyBooleanProps = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "Architecture",
   recommendation:
     "Split into compound components or named variants: `<Button.Primary />`, `<DialogConfirm />` instead of stacking `isPrimary`, `isConfirm` flags",

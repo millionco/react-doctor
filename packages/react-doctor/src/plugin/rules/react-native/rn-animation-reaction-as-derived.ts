@@ -11,6 +11,8 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 // gloss that useAnimatedReaction implies (it's meant for cross-thread
 // reactions like calling runOnJS, not value derivation).
 export const rnAnimationReactionAsDerived = defineRule<Rule>({
+  framework: "react-native",
+  severity: "warn",
   category: "React Native",
   recommendation:
     "Replace useAnimatedReaction with `useDerivedValue(() => ..., [deps])` — shorter, native dependency tracking, no side-effect implication",

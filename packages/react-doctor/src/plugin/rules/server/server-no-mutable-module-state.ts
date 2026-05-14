@@ -28,6 +28,8 @@ const isMutableConstInitializer = (init: EsTreeNode | null | undefined): string 
 // must live inside the action, in headers/cookies, or in a request scope
 // (React.cache, AsyncLocalStorage, etc.).
 export const serverNoMutableModuleState = defineRule<Rule>({
+  framework: "global",
+  severity: "error",
   category: "Server",
   recommendation:
     "Move per-request data into the action body, headers/cookies, or a request-scope (React.cache, AsyncLocalStorage). Module-scope `let`/`var` is shared across requests.",

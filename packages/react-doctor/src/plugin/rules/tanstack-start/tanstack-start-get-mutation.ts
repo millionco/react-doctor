@@ -8,6 +8,8 @@ import { walkServerFnChain } from "./utils/walk-server-fn-chain.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const tanstackStartGetMutation = defineRule<Rule>({
+  framework: "tanstack-start",
+  severity: "warn",
   category: "Security",
   recommendation:
     "Use `createServerFn({ method: 'POST' })` for data modifications — GET requests can be triggered by prefetching and are vulnerable to CSRF",

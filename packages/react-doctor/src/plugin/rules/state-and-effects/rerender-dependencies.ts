@@ -7,6 +7,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const rerenderDependencies = defineRule<Rule>({
+  framework: "global",
+  severity: "error",
   category: "State & Effects",
   recommendation:
     "Extract to a useMemo, useRef, or module-level constant so the reference is stable",

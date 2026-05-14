@@ -6,6 +6,8 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const noNestedComponentDefinition = defineRule<Rule>({
+  framework: "global",
+  severity: "error",
   category: "Correctness",
   recommendation: "Move to a separate file or to module scope above the parent component",
   create: (context: RuleContext) => {

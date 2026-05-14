@@ -6,6 +6,8 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { getImportedName } from "../../utils/get-imported-name.js";
 
 export const rnPreferReanimated = defineRule<Rule>({
+  framework: "react-native",
+  severity: "warn",
   category: "React Native",
   recommendation:
     "Use `import Animated from 'react-native-reanimated'` — animations run on the UI thread instead of the JS thread",

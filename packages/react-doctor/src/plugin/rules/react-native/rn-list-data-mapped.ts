@@ -21,6 +21,8 @@ const VIRTUALIZED_LIST_NAMES = new Set([
 // destroying scroll perf. Hoist the transform into a useMemo at list
 // scope or do the projection earlier in the parent.
 export const rnListDataMapped = defineRule<Rule>({
+  framework: "react-native",
+  severity: "warn",
   category: "React Native",
   recommendation:
     "Wrap the projection in `useMemo(() => items.map(...), [items])` so the list's `data` prop has a stable reference across parent renders",

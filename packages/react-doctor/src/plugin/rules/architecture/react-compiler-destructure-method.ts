@@ -48,6 +48,8 @@ const buildHookBindingMap = (componentBody: EsTreeNode): Map<string, string> => 
 // where `router` is bound to a `useRouter()` call in the same component.
 // We don't fire when the binding is destructured already.
 export const reactCompilerDestructureMethod = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "Architecture",
   recommendation:
     "Destructure the method up front: `const { push } = useRouter()` then call `push(...)` directly — clearer dependency graph and easier for React Compiler to memoize",

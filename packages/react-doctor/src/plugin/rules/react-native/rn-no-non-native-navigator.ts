@@ -13,6 +13,8 @@ const NON_NATIVE_NAVIGATOR_PACKAGES = new Set([
 // uses platform-native UINavigationController / Fragment, giving real
 // iOS/Android transitions, swipe-back, and large titles for free.
 export const rnNoNonNativeNavigator = defineRule<Rule>({
+  framework: "react-native",
+  severity: "warn",
   category: "React Native",
   recommendation:
     "Use `@react-navigation/native-stack` (or `native-tabs` in v7+) for platform-native transitions and gestures",

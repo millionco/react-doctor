@@ -6,6 +6,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const tanstackStartServerFnMethodOrder = defineRule<Rule>({
+  framework: "tanstack-start",
+  severity: "error",
   category: "TanStack Start",
   recommendation:
     "Chain methods in order: .middleware() → .inputValidator() → .client() → .server() → .handler() — types depend on this sequence",

@@ -11,6 +11,8 @@ import { getImportedName } from "../../utils/get-imported-name.js";
 // placeholders, and crossfades — a major perceived-perf win for any list
 // or hero image.
 export const rnPreferExpoImage = defineRule<Rule>({
+  framework: "react-native",
+  severity: "warn",
   category: "React Native",
   recommendation:
     "Use `<Image>` from `expo-image` instead of `react-native` — same prop API, plus disk + memory caching, placeholders, and crossfades",

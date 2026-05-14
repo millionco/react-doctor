@@ -27,6 +27,8 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 // counts as a subscription-shaped call (zustand/Redux `subscribe`,
 // browser `addEventListener`, EventEmitter `on`, etc.).
 export const advancedEventHandlerRefs = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "Performance",
   recommendation:
     "Store the handler in a ref and have the listener read `handlerRef.current()` — the subscription stays put while the latest handler is always called",

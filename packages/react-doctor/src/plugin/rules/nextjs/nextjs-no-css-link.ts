@@ -7,6 +7,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const nextjsNoCssLink = defineRule<Rule>({
+  framework: "nextjs",
+  severity: "warn",
   category: "Next.js",
   recommendation:
     "Import CSS directly: `import './styles.css'` or use CSS Modules: `import styles from './Button.module.css'`",

@@ -9,6 +9,8 @@ import { isPureBlackColor } from "./utils/is-pure-black-color.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
 
 export const noPureBlackBackground = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "Architecture",
   recommendation:
     "Tint the background slightly toward your brand hue — e.g. `#0a0a0f` or Tailwind's `bg-gray-950`. Pure black looks harsh on modern displays",

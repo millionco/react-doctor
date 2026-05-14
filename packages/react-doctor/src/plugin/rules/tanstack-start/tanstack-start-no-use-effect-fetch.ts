@@ -8,6 +8,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const tanstackStartNoUseEffectFetch = defineRule<Rule>({
+  framework: "tanstack-start",
+  severity: "warn",
   category: "TanStack Start",
   recommendation:
     "Fetch data in the route `loader` instead — the router coordinates loading before rendering to avoid waterfalls",

@@ -8,6 +8,8 @@ import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
 
 export const noGradientText = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "Architecture",
   recommendation:
     "Use solid text colors for readability. If you need emphasis, use font weight, size, or a distinct color instead of gradients",

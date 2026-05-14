@@ -42,6 +42,8 @@ const getExportedGetHandlerBody = (node: EsTreeNode): EsTreeNode | null => {
 };
 
 export const nextjsNoSideEffectInGetHandler = defineRule<Rule>({
+  framework: "nextjs",
+  severity: "error",
   category: "Security",
   recommendation:
     "Move the side effect to a POST handler and use a <form> or fetch with method POST — GET requests can be triggered by prefetching and are vulnerable to CSRF",

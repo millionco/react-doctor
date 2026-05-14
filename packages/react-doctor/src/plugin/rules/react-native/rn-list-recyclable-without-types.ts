@@ -22,6 +22,8 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 const RECYCLABLE_LIST_NAMES = new Set(["FlashList", "LegendList"]);
 
 export const rnListRecyclableWithoutTypes = defineRule<Rule>({
+  framework: "react-native",
+  severity: "warn",
   category: "React Native",
   recommendation:
     "Add `getItemType={item => item.kind}` so FlashList keeps separate recycle pools per item type — heterogeneous rows shouldn't share recycled cells",

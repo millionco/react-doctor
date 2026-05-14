@@ -11,6 +11,8 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 // call startViewTransition for you (around startTransition, useDeferredValue,
 // or Suspense reveals).
 export const noDocumentStartViewTransition = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "Correctness",
   recommendation:
     "Render a <ViewTransition> component and update inside startTransition / useDeferredValue — React calls startViewTransition for you",

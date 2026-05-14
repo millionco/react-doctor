@@ -7,6 +7,8 @@ import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const noInlineExhaustiveStyle = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "Architecture",
   recommendation:
     "Move styles to a CSS class, CSS module, Tailwind utilities, or a styled component — inline objects with many properties hurt readability and create new references every render",

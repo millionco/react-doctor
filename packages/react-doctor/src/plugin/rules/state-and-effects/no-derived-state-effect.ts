@@ -74,6 +74,8 @@ const collectValueIdentifierNames = (node: EsTreeNode | null | undefined, into: 
 };
 
 export const noDerivedStateEffect = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "State & Effects",
   recommendation:
     "For derived state, compute inline: `const x = fn(dep)`. For state resets on prop change, use a key prop: `<Component key={prop} />`. See https://react.dev/learn/you-might-not-need-an-effect",

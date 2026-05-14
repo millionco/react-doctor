@@ -9,6 +9,8 @@ import { hasResponsivePrefix } from "./utils/has-responsive-prefix.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const noRedundantPaddingAxes = defineRule<Rule>({
+  framework: "global",
+  severity: "warn",
   category: "Architecture",
   recommendation:
     "Collapse `px-N py-N` to `p-N` when both axes match. Keep them split only when one axis varies at a breakpoint (`py-2 md:py-3`)",

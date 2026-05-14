@@ -11,6 +11,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const queryStableQueryClient = defineRule<Rule>({
+  framework: "tanstack-query",
+  severity: "warn",
   category: "TanStack Query",
   recommendation:
     "Move `new QueryClient()` to module scope or wrap in `useState(() => new QueryClient())` — recreating it on every render resets the entire cache",

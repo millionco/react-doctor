@@ -43,6 +43,7 @@ export { isMemberProperty } from "./is-member-property.js";
 export { isMutatingDbCall } from "./is-mutating-db-call.js";
 export { isMutatingFetchCall } from "./is-mutating-fetch-call.js";
 export { isMutatingMethodProperty } from "./is-mutating-method-property.js";
+export { isResponseHeadersCall } from "./is-response-headers-call.js";
 export { isNodeOfType } from "./is-node-of-type.js";
 export { isSetterCall } from "./is-setter-call.js";
 export { isSetterIdentifier } from "./is-setter-identifier.js";

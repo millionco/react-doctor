@@ -3,6 +3,7 @@ import { isCookiesOrHeadersCall } from "./is-cookies-or-headers-call.js";
 import { isMutatingDbCall } from "./is-mutating-db-call.js";
 import { isMutatingFetchCall } from "./is-mutating-fetch-call.js";
 import { isMutatingMethodProperty } from "./is-mutating-method-property.js";
+import { isResponseHeadersCall } from "./is-response-headers-call.js";
 import { walkAst } from "./walk-ast.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 
@@ -10,6 +11,8 @@ export const findSideEffect = (node: EsTreeNode): string | null => {
   let sideEffectDescription: string | null = null;
   walkAst(node, (child: EsTreeNode) => {
     if (sideEffectDescription) return;
+    // Skip response.headers.set/append/delete - these are response header operations, not server state mutation
+    if (isResponseHeadersCall(child)) return;
     if (isCookiesOrHeadersCall(child, "cookies")) {
       const methodName = child.callee.property.name;
       sideEffectDescription = `cookies().${methodName}()`;

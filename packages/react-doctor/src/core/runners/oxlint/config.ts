@@ -12,7 +12,7 @@ import {
   BUILTIN_REACT_RULES,
   REACT_COMPILER_RULES,
   YOU_MIGHT_NOT_NEED_EFFECT_RULES,
-} from "./rule-maps.js";
+} from "./external-plugin-rules.js";
 import type { OxlintConfigOptions, RuleSeverity } from "./types.js";
 
 export const createOxlintConfig = ({

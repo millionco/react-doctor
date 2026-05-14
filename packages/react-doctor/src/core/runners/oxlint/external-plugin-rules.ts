@@ -1,26 +1,12 @@
-import reactDoctorPlugin from "../../../plugin/react-doctor-plugin.js";
-import type { RuleFramework } from "../../../plugin/utils/rule.js";
 import type { RuleSeverity } from "./types.js";
 
-// Derives a `{ "react-doctor/<rule-id>": <severity> }` map from the rule
-// registry by filtering on each rule's colocated `framework` field. Every
-// react-doctor rule ships `framework` + `severity` next to its `create`
-// function in `defineRule({...})`; rule-maps.ts no longer owns these.
-const collectRulesByFramework = (frameworkName: RuleFramework): Record<string, RuleSeverity> => {
-  const collected: Record<string, RuleSeverity> = {};
-  for (const [ruleId, rule] of Object.entries(reactDoctorPlugin.rules)) {
-    if (rule.framework === frameworkName && rule.severity) {
-      collected[`react-doctor/${ruleId}`] = rule.severity;
-    }
-  }
-  return collected;
-};
-
-export const GLOBAL_REACT_DOCTOR_RULES = collectRulesByFramework("global");
-export const NEXTJS_RULES = collectRulesByFramework("nextjs");
-export const REACT_NATIVE_RULES = collectRulesByFramework("react-native");
-export const TANSTACK_START_RULES = collectRulesByFramework("tanstack-start");
-export const TANSTACK_QUERY_RULES = collectRulesByFramework("tanstack-query");
+// These four maps enumerate rules from OTHER plugins (not react-doctor's own
+// registry) that the scan opts into via the generated oxlint config. They
+// don't have a colocated `defineRule({...})` source like our rules do — the
+// rule definitions live inside their respective npm packages — so the
+// `<rule-key, severity>` pairs have to be enumerated by hand here. New
+// entries land here when we adopt another rule from an upstream plugin or
+// when we want a non-default severity for one already adopted.
 
 // HACK: every diagnostic from `eslint-plugin-react-hooks` (the React
 // Compiler frontend, oxlint-namespaced as `react-hooks-js`) ships at
@@ -99,23 +85,3 @@ export const BUILTIN_A11Y_RULES: Record<string, RuleSeverity> = {
   "jsx-a11y/no-distracting-elements": "error",
   "jsx-a11y/iframe-has-title": "warn",
 };
-
-// HACK: includes every rule that COULD be enabled by createOxlintConfig
-// regardless of framework / TanStack flags. Used only by
-// validateRuleRegistration to assert RULE_CATEGORY_MAP / RULE_HELP_MAP
-// metadata coverage; we want to catch metadata gaps for all conditional
-// rules, not just the ones active in the current scan's framework.
-export const ALL_REACT_DOCTOR_RULE_KEYS: ReadonlySet<string> = new Set([
-  ...Object.keys(GLOBAL_REACT_DOCTOR_RULES),
-  ...Object.keys(NEXTJS_RULES),
-  ...Object.keys(REACT_NATIVE_RULES),
-  ...Object.keys(TANSTACK_START_RULES),
-  ...Object.keys(TANSTACK_QUERY_RULES),
-]);
-
-export const FRAMEWORK_SPECIFIC_RULE_KEYS: ReadonlySet<string> = new Set([
-  ...Object.keys(NEXTJS_RULES),
-  ...Object.keys(REACT_NATIVE_RULES),
-  ...Object.keys(TANSTACK_START_RULES),
-  ...Object.keys(TANSTACK_QUERY_RULES),
-]);

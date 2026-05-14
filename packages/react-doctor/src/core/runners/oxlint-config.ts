@@ -6,6 +6,6 @@ export {
   REACT_NATIVE_RULES,
   TANSTACK_QUERY_RULES,
   TANSTACK_START_RULES,
-} from "./oxlint/rule-maps.js";
+} from "./oxlint/react-doctor-rules.js";
 export { createOxlintConfig } from "./oxlint/config.js";
 export type { RuleSeverity } from "./oxlint/types.js";

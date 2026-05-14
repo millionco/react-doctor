@@ -29,6 +29,7 @@ const isJsonStringifyCall = (node: EsTreeNode): boolean => {
 };
 
 export const clientLocalstorageNoVersion = defineRule<Rule>({
+  category: "Correctness",
   recommendation:
     'Bake a version into the storage key (e.g. "myKey:v1"); a future schema change can ignore old data instead of crashing on it',
   create: (context: RuleContext) => ({

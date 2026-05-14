@@ -7,6 +7,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const nextjsNoFontLink = defineRule<Rule>({
+  category: "Next.js",
   recommendation:
     '`import { Inter } from "next/font/google"` — self-hosted, zero layout shift, no render-blocking requests',
   create: (context: RuleContext) => ({

@@ -6,6 +6,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const jsTosortedImmutable = defineRule<Rule>({
+  category: "Performance",
   recommendation:
     "Use `array.toSorted()` (ES2023) instead of `[...array].sort()` for immutable sorting without the spread allocation",
   create: (context: RuleContext) => ({

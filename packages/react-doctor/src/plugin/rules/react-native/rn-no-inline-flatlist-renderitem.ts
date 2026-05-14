@@ -7,6 +7,7 @@ import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const rnNoInlineFlatlistRenderitem = defineRule<Rule>({
+  category: "React Native",
   recommendation:
     "Extract renderItem to a named function or wrap in useCallback to avoid re-creating on every render",
   create: (context: RuleContext) => ({

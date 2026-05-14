@@ -5,6 +5,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const noEval = defineRule<Rule>({
+  category: "Security",
   recommendation:
     "Use `JSON.parse` for serialized data, `Function(...)` (still careful) for trusted templates, or refactor to avoid dynamic code execution",
   create: (context: RuleContext) => ({

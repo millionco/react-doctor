@@ -10,6 +10,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 // (useSharedValue + useAnimatedScrollHandler) or a ref + raf throttle so
 // the JS thread isn't pegged.
 export const rnNoScrollState = defineRule<Rule>({
+  category: "React Native",
   recommendation:
     "Track scroll position with a Reanimated shared value (`useAnimatedScrollHandler`) or a ref — `setState` on every scroll event causes re-render storms",
   create: (context: RuleContext) => ({

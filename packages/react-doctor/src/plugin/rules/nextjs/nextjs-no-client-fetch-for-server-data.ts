@@ -13,6 +13,7 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const nextjsNoClientFetchForServerData = defineRule<Rule>({
+  category: "Next.js",
   recommendation:
     "Remove 'use client' and fetch directly in the Server Component — no API round-trip, secrets stay on server",
   create: (context: RuleContext) => {

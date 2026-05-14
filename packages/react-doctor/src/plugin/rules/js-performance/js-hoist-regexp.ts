@@ -6,6 +6,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const jsHoistRegexp = defineRule<Rule>({
+  category: "Performance",
   recommendation:
     "Hoist `new RegExp(...)` (or large regex literals) to a module-level constant so it isn't recompiled on every loop iteration",
   create: (context: RuleContext) =>

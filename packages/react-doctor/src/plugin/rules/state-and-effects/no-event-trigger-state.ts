@@ -148,6 +148,7 @@ const collectHandlerOnlyWriteStateNames = (
 };
 
 export const noEventTriggerState = defineRule<Rule>({
+  category: "State & Effects",
   recommendation:
     "Delete the trigger state (`useState(null)` plus the `useEffect` that watches it) and call the side-effect (`post(...)` / `navigate(...)` / `track(...)`) directly inside the event handler that previously called the setter. State should not exist purely to schedule effect runs",
   create: (context: RuleContext) => {

@@ -8,6 +8,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 // statically-analyzable string literal. `import(variable)` or
 // `require(variable)` defeats trace targets and forces a fat bundle.
 export const noDynamicImportPath = defineRule<Rule>({
+  category: "Bundle Size",
   recommendation:
     "Use a string-literal path: `import('./feature/heavy.js')` so the bundler can split this chunk",
   create: (context: RuleContext) => ({

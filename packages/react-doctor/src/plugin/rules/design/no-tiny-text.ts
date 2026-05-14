@@ -9,6 +9,7 @@ import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import { getStylePropertyNumberValue } from "./utils/get-style-property-number-value.js";
 
 export const noTinyText = defineRule<Rule>({
+  category: "Accessibility",
   recommendation:
     "Use at least 12px for body content, 16px is ideal. Small text is hard to read, especially on high-DPI mobile screens",
   create: (context: RuleContext) => ({

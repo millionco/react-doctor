@@ -7,6 +7,7 @@ import { getRouteOptionsObject } from "./utils/get-route-options-object.js";
 import { getPropertyKeyName } from "./utils/get-property-key-name.js";
 
 export const tanstackStartRoutePropertyOrder = defineRule<Rule>({
+  category: "TanStack Start",
   recommendation:
     "Follow the order: params/validateSearch → loaderDeps → context → beforeLoad → loader → head. See https://tanstack.com/router/latest/docs/eslint/create-route-property-order",
   create: (context: RuleContext) => ({

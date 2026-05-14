@@ -67,6 +67,7 @@ const findMutableDepIssue = (
 };
 
 export const noMutableInDeps = defineRule<Rule>({
+  category: "State & Effects",
   recommendation:
     "Read mutable values (`location.pathname`, `ref.current`) inside the effect body instead of in the deps array, or subscribe with `useSyncExternalStore`. Mutations to these don't trigger re-renders, so listing them in deps doesn't make the effect react to changes",
   create: (context: RuleContext) => {

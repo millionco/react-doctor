@@ -17,6 +17,7 @@ const deriveStateVariableName = (setterName: string): string | null => {
 };
 
 export const rerenderFunctionalSetstate = defineRule<Rule>({
+  category: "Performance",
   recommendation:
     "Use the callback form: `setState(prev => prev + 1)` to always read the latest value",
   create: (context: RuleContext) => ({

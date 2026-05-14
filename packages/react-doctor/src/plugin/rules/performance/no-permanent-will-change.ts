@@ -5,6 +5,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const noPermanentWillChange = defineRule<Rule>({
+  category: "Performance",
   recommendation:
     "Add will-change on animation start (`onMouseEnter`) and remove on end (`onAnimationEnd`). Permanent promotion wastes GPU memory and can degrade performance",
   create: (context: RuleContext) => ({

@@ -7,6 +7,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const nextjsNoPolyfillScript = defineRule<Rule>({
+  category: "Next.js",
   recommendation:
     "Next.js includes polyfills for fetch, Promise, Object.assign, Array.from, and 50+ others automatically",
   create: (context: RuleContext) => ({

@@ -6,6 +6,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const noRenderInRender = defineRule<Rule>({
+  category: "Architecture",
   recommendation:
     "Extract to a named component: `const ListItem = ({ item }) => <div>{item.name}</div>`",
   create: (context: RuleContext) => ({

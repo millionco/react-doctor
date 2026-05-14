@@ -7,6 +7,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const nextjsNoNativeScript = defineRule<Rule>({
+  category: "Next.js",
   recommendation:
     '`import Script from "next/script"` — use `strategy="afterInteractive"` for analytics or `"lazyOnload"` for widgets',
   create: (context: RuleContext) => ({

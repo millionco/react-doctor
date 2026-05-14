@@ -7,6 +7,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const jsCacheStorage = defineRule<Rule>({
+  category: "Performance",
   recommendation:
     "Cache repeated `localStorage`/`sessionStorage` reads in a local variable — each access serializes/deserializes",
   create: (context: RuleContext) => {

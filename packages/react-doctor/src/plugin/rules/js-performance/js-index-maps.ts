@@ -6,6 +6,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const jsIndexMaps = defineRule<Rule>({
+  category: "Performance",
   recommendation:
     "Build an index `Map` once outside the loop instead of `array.find(...)` inside it",
   create: (context: RuleContext) =>

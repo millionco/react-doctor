@@ -5,6 +5,7 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const rnNoLegacyExpoPackages = defineRule<Rule>({
+  category: "React Native",
   recommendation:
     "Migrate to the recommended replacement package — legacy Expo packages are no longer maintained",
   create: (context: RuleContext) => ({

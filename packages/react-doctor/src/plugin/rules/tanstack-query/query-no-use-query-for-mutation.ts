@@ -7,6 +7,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const queryNoUseQueryForMutation = defineRule<Rule>({
+  category: "TanStack Query",
   recommendation:
     "Use `useMutation()` for POST/PUT/DELETE — it provides onSuccess/onError callbacks, doesn't auto-refetch, and correctly models write operations",
   create: (context: RuleContext) => ({

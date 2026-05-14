@@ -5,6 +5,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const noTransitionAll = defineRule<Rule>({
+  category: "Performance",
   recommendation:
     'List specific properties: `transition: "opacity 200ms, transform 200ms"` — or in Tailwind use `transition-colors`, `transition-opacity`, or `transition-transform`',
   create: (context: RuleContext) => ({

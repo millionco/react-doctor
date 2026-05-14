@@ -8,6 +8,7 @@ import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import { getStylePropertyNumberValue } from "./utils/get-style-property-number-value.js";
 
 export const noOutlineNone = defineRule<Rule>({
+  category: "Accessibility",
   recommendation:
     "Use `:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px }` to show focus only for keyboard users while hiding it for mouse clicks",
   create: (context: RuleContext) => ({

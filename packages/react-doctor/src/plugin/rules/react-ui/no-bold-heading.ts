@@ -44,6 +44,7 @@ const getStylePropertyNumericValue = (objectProperty: EsTreeNode): number | null
 };
 
 export const noBoldHeading = defineRule<Rule>({
+  category: "Architecture",
   recommendation:
     "Use `font-semibold` (600) or `font-medium` (500) on headings — 700+ crushes letter counter shapes at display sizes",
   create: (context: RuleContext) => ({

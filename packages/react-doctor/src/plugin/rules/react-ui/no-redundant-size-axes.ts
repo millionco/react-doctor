@@ -9,6 +9,7 @@ import { hasResponsivePrefix } from "./utils/has-responsive-prefix.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const noRedundantSizeAxes = defineRule<Rule>({
+  category: "Architecture",
   recommendation: "Collapse `w-N h-N` to `size-N` (Tailwind v3.4+) when both axes match",
   create: (context: RuleContext) => ({
     JSXAttribute(jsxAttribute: EsTreeNode) {

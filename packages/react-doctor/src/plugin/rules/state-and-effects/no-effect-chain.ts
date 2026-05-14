@@ -210,6 +210,7 @@ interface EffectInfo {
 }
 
 export const noEffectChain = defineRule<Rule>({
+  category: "State & Effects",
   recommendation:
     "Compute as much as possible during render (e.g. `const isGameOver = round > 5`) and write all related state inside the event handler that originally fires the chain. Each effect link adds an extra render and makes the code rigid as requirements evolve",
   create: (context: RuleContext) => {

@@ -36,6 +36,7 @@ const reportIfIndependent = (statements: EsTreeNode[], context: RuleContext): vo
 };
 
 export const asyncParallel = defineRule<Rule>({
+  category: "Performance",
   recommendation:
     "Use `const [a, b] = await Promise.all([fetchA(), fetchB()])` to run independent operations concurrently",
   create: (context: RuleContext) => {

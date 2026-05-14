@@ -6,6 +6,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const nextjsNoAElement = defineRule<Rule>({
+  category: "Next.js",
   recommendation:
     "`import Link from 'next/link'` — enables client-side navigation, prefetching, and preserves scroll position",
   create: (context: RuleContext) => ({

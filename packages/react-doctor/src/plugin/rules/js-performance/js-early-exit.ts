@@ -6,6 +6,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const jsEarlyExit = defineRule<Rule>({
+  category: "Performance",
   recommendation:
     "Add an early `return` / `continue` to flatten deep nesting and short-circuit when the predicate is already known",
   create: (context: RuleContext) => ({

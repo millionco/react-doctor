@@ -5,6 +5,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const tanstackStartNoUseServerInHandler = defineRule<Rule>({
+  category: "TanStack Start",
   recommendation:
     'TanStack Start handles server boundaries automatically via the Vite plugin — "use server" inside createServerFn causes compilation errors',
   create: (context: RuleContext) => ({

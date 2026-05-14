@@ -31,6 +31,13 @@ import { neutralizeDisableDirectives } from "../diagnostics/neutralize-disable-d
 const getRuleRecommendation = (ruleName: string): string | undefined =>
   reactDoctorPlugin.rules[ruleName]?.recommendation;
 
+// Same shape as `getRuleRecommendation`, but for the diagnostic category
+// (`State & Effects`, `Performance`, …) the rule rolls up under in the
+// scan summary. Used by `resolveDiagnosticCategory` below and by
+// `validateRuleRegistration` to assert per-rule metadata coverage.
+const getRuleCategory = (ruleName: string): string | undefined =>
+  reactDoctorPlugin.rules[ruleName]?.category;
+
 const esmRequire = createRequire(import.meta.url);
 
 const PLUGIN_CATEGORY_MAP: Record<string, string> = {
@@ -56,203 +63,6 @@ const PLUGIN_CATEGORY_MAP: Record<string, string> = {
   vitest: "Correctness",
   jest: "Correctness",
   nextjs: "Next.js",
-};
-
-const RULE_CATEGORY_MAP: Record<string, string> = {
-  "react-doctor/no-derived-state-effect": "State & Effects",
-  "react-doctor/no-fetch-in-effect": "State & Effects",
-  "react-doctor/no-mirror-prop-effect": "State & Effects",
-  "react-doctor/no-mutable-in-deps": "State & Effects",
-  "react-doctor/no-cascading-set-state": "State & Effects",
-  "react-doctor/no-effect-chain": "State & Effects",
-  "react-doctor/no-effect-event-handler": "State & Effects",
-  "react-doctor/no-effect-event-in-deps": "State & Effects",
-  "react-doctor/no-event-trigger-state": "State & Effects",
-  "react-doctor/no-prop-callback-in-effect": "State & Effects",
-  "react-doctor/no-derived-useState": "State & Effects",
-  "react-doctor/no-direct-state-mutation": "State & Effects",
-  "react-doctor/no-set-state-in-render": "State & Effects",
-  "react-doctor/prefer-use-effect-event": "State & Effects",
-  "react-doctor/prefer-useReducer": "State & Effects",
-  "react-doctor/prefer-use-sync-external-store": "State & Effects",
-  "react-doctor/rerender-lazy-state-init": "Performance",
-  "react-doctor/rerender-functional-setstate": "Performance",
-  "react-doctor/rerender-dependencies": "State & Effects",
-  "react-doctor/rerender-state-only-in-handlers": "Performance",
-  "react-doctor/rerender-defer-reads-hook": "Performance",
-  "react-doctor/advanced-event-handler-refs": "Performance",
-  "react-doctor/effect-needs-cleanup": "State & Effects",
-
-  "react-doctor/no-generic-handler-names": "Architecture",
-  "react-doctor/no-giant-component": "Architecture",
-  "react-doctor/no-many-boolean-props": "Architecture",
-  "react-doctor/no-react19-deprecated-apis": "Architecture",
-  "react-doctor/no-render-prop-children": "Architecture",
-  "react-doctor/no-render-in-render": "Architecture",
-  "react-doctor/no-nested-component-definition": "Correctness",
-  "react-doctor/react-compiler-destructure-method": "Architecture",
-  "react-doctor/no-legacy-class-lifecycles": "Correctness",
-  "react-doctor/no-legacy-context-api": "Correctness",
-  "react-doctor/no-default-props": "Architecture",
-  "react-doctor/no-react-dom-deprecated-apis": "Architecture",
-
-  "react-doctor/no-usememo-simple-expression": "Performance",
-  "react-doctor/no-layout-property-animation": "Performance",
-  "react-doctor/rerender-memo-with-default-value": "Performance",
-  "react-doctor/rerender-memo-before-early-return": "Performance",
-  "react-doctor/rerender-transitions-scroll": "Performance",
-  "react-doctor/rerender-derived-state-from-hook": "Performance",
-  "react-doctor/async-defer-await": "Performance",
-  "react-doctor/async-await-in-loop": "Performance",
-  "react-doctor/rendering-animate-svg-wrapper": "Performance",
-  "react-doctor/rendering-hoist-jsx": "Performance",
-  "react-doctor/rendering-hydration-mismatch-time": "Correctness",
-  "react-doctor/rendering-usetransition-loading": "Performance",
-  "react-doctor/rendering-hydration-no-flicker": "Performance",
-  "react-doctor/rendering-script-defer-async": "Performance",
-  "react-doctor/no-inline-prop-on-memo-component": "Performance",
-
-  "react-doctor/no-transition-all": "Performance",
-  "react-doctor/no-global-css-variable-animation": "Performance",
-  "react-doctor/no-large-animated-blur": "Performance",
-  "react-doctor/no-scale-from-zero": "Performance",
-  "react-doctor/no-permanent-will-change": "Performance",
-
-  "react-doctor/no-secrets-in-client-code": "Security",
-
-  "react-doctor/no-barrel-import": "Bundle Size",
-  "react-doctor/no-dynamic-import-path": "Bundle Size",
-  "react-doctor/no-full-lodash-import": "Bundle Size",
-  "react-doctor/no-moment": "Bundle Size",
-  "react-doctor/prefer-dynamic-import": "Bundle Size",
-  "react-doctor/use-lazy-motion": "Bundle Size",
-  "react-doctor/no-undeferred-third-party": "Bundle Size",
-
-  "react-doctor/no-array-index-as-key": "Correctness",
-  "react-doctor/no-polymorphic-children": "Architecture",
-  "react-doctor/rendering-conditional-render": "Correctness",
-  "react-doctor/rendering-svg-precision": "Performance",
-  "react-doctor/no-prevent-default": "Correctness",
-  "react-doctor/no-uncontrolled-input": "Correctness",
-  "react-doctor/no-document-start-view-transition": "Correctness",
-  "react-doctor/no-flush-sync": "Performance",
-  "react-doctor/nextjs-no-img-element": "Next.js",
-  "react-doctor/nextjs-async-client-component": "Next.js",
-  "react-doctor/nextjs-no-a-element": "Next.js",
-  "react-doctor/nextjs-no-use-search-params-without-suspense": "Next.js",
-  "react-doctor/nextjs-no-client-fetch-for-server-data": "Next.js",
-  "react-doctor/nextjs-missing-metadata": "Next.js",
-  "react-doctor/nextjs-no-client-side-redirect": "Next.js",
-  "react-doctor/nextjs-no-redirect-in-try-catch": "Next.js",
-  "react-doctor/nextjs-image-missing-sizes": "Next.js",
-  "react-doctor/nextjs-no-native-script": "Next.js",
-  "react-doctor/nextjs-inline-script-missing-id": "Next.js",
-  "react-doctor/nextjs-no-font-link": "Next.js",
-  "react-doctor/nextjs-no-css-link": "Next.js",
-  "react-doctor/nextjs-no-polyfill-script": "Next.js",
-  "react-doctor/nextjs-no-head-import": "Next.js",
-  "react-doctor/nextjs-no-side-effect-in-get-handler": "Security",
-
-  "react-doctor/server-auth-actions": "Server",
-  "react-doctor/server-after-nonblocking": "Server",
-  "react-doctor/server-no-mutable-module-state": "Server",
-  "react-doctor/server-cache-with-object-literal": "Server",
-  "react-doctor/server-hoist-static-io": "Server",
-  "react-doctor/server-dedup-props": "Server",
-  "react-doctor/server-sequential-independent-await": "Server",
-  "react-doctor/server-fetch-without-revalidate": "Server",
-
-  "react-doctor/client-passive-event-listeners": "Performance",
-  "react-doctor/client-localstorage-no-version": "Correctness",
-
-  "react-doctor/query-stable-query-client": "TanStack Query",
-  "react-doctor/query-no-rest-destructuring": "TanStack Query",
-  "react-doctor/query-no-void-query-fn": "TanStack Query",
-  "react-doctor/query-no-query-in-effect": "TanStack Query",
-  "react-doctor/query-mutation-missing-invalidation": "TanStack Query",
-  "react-doctor/query-no-usequery-for-mutation": "TanStack Query",
-
-  "react-doctor/no-inline-bounce-easing": "Performance",
-  "react-doctor/no-z-index-9999": "Architecture",
-  "react-doctor/no-inline-exhaustive-style": "Architecture",
-  "react-doctor/no-side-tab-border": "Architecture",
-  "react-doctor/no-pure-black-background": "Architecture",
-  "react-doctor/no-gradient-text": "Architecture",
-  "react-doctor/no-dark-mode-glow": "Architecture",
-  "react-doctor/no-justified-text": "Accessibility",
-  "react-doctor/no-tiny-text": "Accessibility",
-  "react-doctor/no-wide-letter-spacing": "Architecture",
-  "react-doctor/no-gray-on-colored-background": "Accessibility",
-  "react-doctor/no-layout-transition-inline": "Performance",
-  "react-doctor/no-disabled-zoom": "Accessibility",
-  "react-doctor/no-outline-none": "Accessibility",
-  "react-doctor/no-long-transition-duration": "Performance",
-
-  "react-doctor/design-no-bold-heading": "Architecture",
-  "react-doctor/design-no-redundant-padding-axes": "Architecture",
-  "react-doctor/design-no-redundant-size-axes": "Architecture",
-  "react-doctor/design-no-space-on-flex-children": "Architecture",
-  "react-doctor/design-no-three-period-ellipsis": "Architecture",
-  "react-doctor/design-no-default-tailwind-palette": "Architecture",
-  "react-doctor/design-no-vague-button-label": "Accessibility",
-
-  "react-doctor/js-flatmap-filter": "Performance",
-  "react-doctor/js-combine-iterations": "Performance",
-  "react-doctor/js-tosorted-immutable": "Performance",
-  "react-doctor/js-hoist-regexp": "Performance",
-  "react-doctor/js-hoist-intl": "Performance",
-  "react-doctor/js-cache-property-access": "Performance",
-  "react-doctor/js-length-check-first": "Performance",
-  "react-doctor/js-min-max-loop": "Performance",
-  "react-doctor/js-set-map-lookups": "Performance",
-  "react-doctor/js-batch-dom-css": "Performance",
-  "react-doctor/js-index-maps": "Performance",
-  "react-doctor/js-cache-storage": "Performance",
-  "react-doctor/js-early-exit": "Performance",
-
-  "react-doctor/no-eval": "Security",
-
-  "react-doctor/async-parallel": "Performance",
-
-  "react-doctor/rn-no-raw-text": "React Native",
-  "react-doctor/rn-no-deprecated-modules": "React Native",
-  "react-doctor/rn-no-legacy-expo-packages": "React Native",
-  "react-doctor/rn-no-dimensions-get": "React Native",
-  "react-doctor/rn-no-inline-flatlist-renderitem": "React Native",
-  "react-doctor/rn-no-legacy-shadow-styles": "React Native",
-  "react-doctor/rn-prefer-reanimated": "React Native",
-  "react-doctor/rn-no-single-element-style-array": "React Native",
-  "react-doctor/rn-prefer-pressable": "React Native",
-  "react-doctor/rn-prefer-expo-image": "React Native",
-  "react-doctor/rn-no-non-native-navigator": "React Native",
-  "react-doctor/rn-no-scroll-state": "React Native",
-  "react-doctor/rn-no-scrollview-mapped-list": "React Native",
-  "react-doctor/rn-no-inline-object-in-list-item": "React Native",
-  "react-doctor/rn-animate-layout-property": "React Native",
-  "react-doctor/rn-prefer-content-inset-adjustment": "React Native",
-  "react-doctor/rn-pressable-shared-value-mutation": "React Native",
-  "react-doctor/rn-list-data-mapped": "React Native",
-  "react-doctor/rn-list-callback-per-row": "React Native",
-  "react-doctor/rn-list-recyclable-without-types": "React Native",
-  "react-doctor/rn-animation-reaction-as-derived": "React Native",
-  "react-doctor/rn-bottom-sheet-prefer-native": "React Native",
-  "react-doctor/rn-scrollview-dynamic-padding": "React Native",
-  "react-doctor/rn-style-prefer-boxshadow": "React Native",
-
-  "react-doctor/tanstack-start-route-property-order": "TanStack Start",
-  "react-doctor/tanstack-start-no-direct-fetch-in-loader": "TanStack Start",
-  "react-doctor/tanstack-start-server-fn-validate-input": "TanStack Start",
-  "react-doctor/tanstack-start-no-useeffect-fetch": "TanStack Start",
-  "react-doctor/tanstack-start-missing-head-content": "TanStack Start",
-  "react-doctor/tanstack-start-no-anchor-element": "TanStack Start",
-  "react-doctor/tanstack-start-server-fn-method-order": "TanStack Start",
-  "react-doctor/tanstack-start-no-navigate-in-render": "TanStack Start",
-  "react-doctor/tanstack-start-no-dynamic-server-fn-import": "TanStack Start",
-  "react-doctor/tanstack-start-no-use-server-in-handler": "TanStack Start",
-  "react-doctor/tanstack-start-no-secrets-in-loader": "Security",
-  "react-doctor/tanstack-start-get-mutation": "Security",
-  "react-doctor/tanstack-start-redirect-in-try-catch": "TanStack Start",
-  "react-doctor/tanstack-start-loader-parallel-fetch": "Performance",
 };
 
 const FILEPATH_WITH_LOCATION_PATTERN = /\S+\.\w+:\d+:\d+[\s\S]*$/;
@@ -307,14 +117,8 @@ const resolvePluginPath = (): string => {
   return pluginPath;
 };
 
-const resolveDiagnosticCategory = (plugin: string, rule: string): string => {
-  const ruleKey = `${plugin}/${rule}`;
-  return (
-    lookupOwnString(RULE_CATEGORY_MAP, ruleKey) ??
-    lookupOwnString(PLUGIN_CATEGORY_MAP, plugin) ??
-    "Other"
-  );
-};
+const resolveDiagnosticCategory = (plugin: string, rule: string): string =>
+  getRuleCategory(rule) ?? lookupOwnString(PLUGIN_CATEGORY_MAP, plugin) ?? "Other";
 
 // HACK: Sanitize child env so a developer's NODE_OPTIONS=--inspect (or
 // --max-old-space-size=128, etc.) doesn't leak into oxlint and either spawn a
@@ -514,7 +318,7 @@ const validateRuleRegistration = (): void => {
   const missingMetadata: string[] = [];
   for (const fullKey of ALL_REACT_DOCTOR_RULE_KEYS) {
     const ruleName = fullKey.replace(/^react-doctor\//, "");
-    if (!Object.hasOwn(RULE_CATEGORY_MAP, fullKey)) {
+    if (!getRuleCategory(ruleName)) {
       missingCategory.push(fullKey);
     }
     if (!getRuleRecommendation(ruleName)) {
@@ -527,7 +331,7 @@ const validateRuleRegistration = (): void => {
   if (missingCategory.length > 0 || missingHelp.length > 0 || missingMetadata.length > 0) {
     const detail = [
       missingCategory.length > 0
-        ? `Missing RULE_CATEGORY_MAP entries: ${missingCategory.join(", ")}`
+        ? `Missing rule categories (add to defineRule call): ${missingCategory.join(", ")}`
         : null,
       missingHelp.length > 0
         ? `Missing rule recommendations (add to defineRule call): ${missingHelp.join(", ")}`

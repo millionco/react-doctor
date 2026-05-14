@@ -29,6 +29,7 @@ const jsxReferencesLocalScope = (jsxNode: EsTreeNode): boolean => {
 };
 
 export const renderingHoistJsx = defineRule<Rule>({
+  category: "Performance",
   recommendation:
     "Move the static JSX to module scope: `const ICON = <svg>...</svg>` outside the component so it isn't recreated each render",
   create: (context: RuleContext) => {

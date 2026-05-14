@@ -13,6 +13,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 // which the platform applies as an OS-level offset without re-laying out
 // the content.
 export const rnScrollviewDynamicPadding = defineRule<Rule>({
+  category: "React Native",
   recommendation:
     "Use `contentInset={{ bottom: dynamicValue }}` — the OS applies it as an offset without reflowing the scroll content",
   create: (context: RuleContext) => ({

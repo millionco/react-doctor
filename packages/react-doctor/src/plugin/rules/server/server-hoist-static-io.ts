@@ -125,6 +125,7 @@ const collectIdentifierParams = (params: EsTreeNode[]): Set<string> => {
 // `app/.../route.ts`) and Pages Router (`export default async function
 // handler(req, res)` in `pages/api/...`).
 export const serverHoistStaticIo = defineRule<Rule>({
+  category: "Server",
   recommendation:
     "Hoist the read to module scope: `const FONT_DATA = await fetch(new URL('./fonts/Inter.ttf', import.meta.url)).then(r => r.arrayBuffer())` runs once at module load",
   create: (context: RuleContext) => ({

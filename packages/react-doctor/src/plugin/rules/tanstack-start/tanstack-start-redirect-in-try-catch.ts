@@ -6,6 +6,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const tanstackStartRedirectInTryCatch = defineRule<Rule>({
+  category: "TanStack Start",
   recommendation:
     "TanStack Router's `redirect()` and `notFound()` throw special errors caught by the router. Move them outside the try block or re-throw in the catch",
   create: (context: RuleContext) => {

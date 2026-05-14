@@ -7,6 +7,7 @@ import { walkServerFnChain } from "./utils/walk-server-fn-chain.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const tanstackStartServerFnValidateInput = defineRule<Rule>({
+  category: "TanStack Start",
   recommendation:
     "Add `.inputValidator(schema)` before `.handler()` — data crosses a network boundary and must be validated at runtime",
   create: (context: RuleContext) => ({

@@ -21,6 +21,7 @@ const isLikelySecret = (envVarName: string): boolean => {
 };
 
 export const tanstackStartNoSecretsInLoader = defineRule<Rule>({
+  category: "Security",
   recommendation:
     "Loaders are isomorphic (run on both server and client). Wrap secret access in `createServerFn()` so it stays server-only",
   create: (context: RuleContext) => ({

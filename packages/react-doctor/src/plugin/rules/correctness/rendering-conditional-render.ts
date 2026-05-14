@@ -22,6 +22,7 @@ const isNumericName = (name: string): boolean => {
 };
 
 export const renderingConditionalRender = defineRule<Rule>({
+  category: "Correctness",
   recommendation:
     "Change to `{items.length > 0 && <List />}` or use a ternary: `{items.length ? <List /> : null}`",
   create: (context: RuleContext) => ({

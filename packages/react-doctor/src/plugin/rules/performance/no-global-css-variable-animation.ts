@@ -8,6 +8,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const noGlobalCssVariableAnimation = defineRule<Rule>({
+  category: "Performance",
   recommendation:
     "Set the variable on the nearest element instead of a parent, or use `@property` with `inherits: false` to prevent cascade. Better yet, use targeted `element.style.transform` updates",
   create: (context: RuleContext) => ({

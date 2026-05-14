@@ -8,6 +8,7 @@ import { getPropertyKeyName } from "./utils/get-property-key-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const tanstackStartNoDirectFetchInLoader = defineRule<Rule>({
+  category: "TanStack Start",
   recommendation:
     "Use `createServerFn()` from @tanstack/react-start — provides type-safe RPC, input validation, and proper server/client code splitting",
   create: (context: RuleContext) => ({

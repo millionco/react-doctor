@@ -9,6 +9,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const preferUseReducer = defineRule<Rule>({
+  category: "State & Effects",
   recommendation:
     "Group related state: `const [state, dispatch] = useReducer(reducer, { field1, field2, ... })`",
   create: (context: RuleContext) => {

@@ -6,6 +6,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const nextjsNoRedirectInTryCatch = defineRule<Rule>({
+  category: "Next.js",
   recommendation:
     "Move the redirect/notFound call outside the try block, or add `unstable_rethrow(error)` in the catch",
   create: (context: RuleContext) => {

@@ -72,6 +72,7 @@ const hasJsxSpreadAttribute = (attributes: EsTreeNode[]): boolean =>
 // `defaultValue` via spread, and we can't see through it without scope
 // analysis. False-negative > false-positive on a heavily used pattern.
 export const noUncontrolledInput = defineRule<Rule>({
+  category: "Correctness",
   recommendation:
     'Pass an explicit initial value to `useState` (e.g. `useState("")` instead of `useState()`), add `onChange` (or `readOnly` to opt out) when you supply `value`, and drop `defaultValue` on controlled inputs — React ignores it',
   create: (context: RuleContext) => {

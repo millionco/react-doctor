@@ -59,6 +59,7 @@ const declarationReadsAnyName = (declaration: EsTreeNode, names: Set<string>): b
 };
 
 export const serverSequentialIndependentAwait = defineRule<Rule>({
+  category: "Server",
   recommendation:
     "Wrap independent awaits in `Promise.all([...])` so they race instead of waterfalling — second call doesn't depend on the first",
   create: (context: RuleContext) => {

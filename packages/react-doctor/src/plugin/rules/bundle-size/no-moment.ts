@@ -4,6 +4,7 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const noMoment = defineRule<Rule>({
+  category: "Bundle Size",
   recommendation:
     "Replace with `import { format } from 'date-fns'` (tree-shakeable) or `import dayjs from 'dayjs'` (2kb)",
   create: (context: RuleContext) => ({

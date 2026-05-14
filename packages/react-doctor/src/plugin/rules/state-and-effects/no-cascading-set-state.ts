@@ -8,6 +8,7 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const noCascadingSetState = defineRule<Rule>({
+  category: "State & Effects",
   recommendation:
     "Combine into useReducer: `const [state, dispatch] = useReducer(reducer, initialState)`",
   create: (context: RuleContext) => ({

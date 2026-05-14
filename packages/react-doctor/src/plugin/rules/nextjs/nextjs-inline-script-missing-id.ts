@@ -6,6 +6,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 export const nextjsInlineScriptMissingId = defineRule<Rule>({
+  category: "Next.js",
   recommendation:
     'Add `id="descriptive-name"` so Next.js can track, deduplicate, and re-execute the script correctly',
   create: (context: RuleContext) => ({

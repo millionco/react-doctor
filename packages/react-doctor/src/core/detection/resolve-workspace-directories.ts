@@ -21,13 +21,16 @@ export const resolveWorkspaceDirectories = (rootDirectory: string, pattern: stri
     return [];
   }
 
-  return fs
-    .readdirSync(baseDirectory)
-    .map((entry) => path.join(baseDirectory, entry, suffixAfterWildcard))
-    .filter(
-      (entryPath) =>
-        fs.existsSync(entryPath) &&
-        fs.statSync(entryPath).isDirectory() &&
-        isFile(path.join(entryPath, "package.json")),
-    );
+  const resolved: string[] = [];
+  for (const entry of fs.readdirSync(baseDirectory)) {
+    const entryPath = path.join(baseDirectory, entry, suffixAfterWildcard);
+    if (
+      fs.existsSync(entryPath) &&
+      fs.statSync(entryPath).isDirectory() &&
+      isFile(path.join(entryPath, "package.json"))
+    ) {
+      resolved.push(entryPath);
+    }
+  }
+  return resolved;
 };

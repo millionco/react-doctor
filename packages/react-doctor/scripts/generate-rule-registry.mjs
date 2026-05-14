@@ -53,8 +53,14 @@ for (const filePath of collectPerRuleFiles(PLUGIN_RULES_ROOT)) {
     process.exit(1);
   }
   const ruleId = idMatch[1];
+  // Force POSIX separators — `path.relative()` returns backslashes on
+  // Windows, which TypeScript module resolution rejects.
   const relativeImport =
-    "./" + path.relative(path.dirname(REGISTRY_OUTPUT), filePath).replace(/\.ts$/, ".js");
+    "./" +
+    path
+      .relative(path.dirname(REGISTRY_OUTPUT), filePath)
+      .replaceAll(path.sep, "/")
+      .replace(/\.ts$/, ".js");
   ruleEntries.push({ ruleId, identifier, relativeImport });
 }
 

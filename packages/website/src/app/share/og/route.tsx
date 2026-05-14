@@ -12,6 +12,81 @@ const MAX_PROJECT_NAME_LENGTH = 100;
 const MAX_DISPLAY_COUNT = 99_999;
 const OG_CACHE_SECONDS = 60 * 60 * 24;
 
+const containerStyle = {
+  width: "100%",
+  height: "100%",
+  display: "flex",
+  flexDirection: "column",
+  backgroundColor: "#0a0a0a",
+  fontFamily: "monospace",
+  padding: "60px 80px",
+  justifyContent: "center",
+};
+
+const brandRowStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "24px",
+};
+
+const projectNameStyle = {
+  display: "flex",
+  marginLeft: "auto",
+  fontSize: "24px",
+  color: "#a3a3a3",
+};
+
+const scoreRowStyle = {
+  display: "flex",
+  alignItems: "baseline",
+  gap: "16px",
+  marginTop: "48px",
+};
+
+const scoreStyle = {
+  fontSize: "120px",
+  color: scoreColor,
+  fontWeight: 700,
+  lineHeight: 1,
+};
+
+const scoreMaxStyle = {
+  fontSize: "40px",
+  color: "#525252",
+  lineHeight: 1,
+};
+
+const scoreLabelStyle = {
+  fontSize: "40px",
+  color: scoreColor,
+  lineHeight: 1,
+  marginLeft: "8px",
+};
+
+const progressBarStyle = {
+  display: "flex",
+  width: "100%",
+  height: "16px",
+  backgroundColor: "#1a1a1a",
+  borderRadius: "8px",
+  marginTop: "32px",
+  overflow: "hidden",
+};
+
+const progressFillStyle = {
+  width: `${scoreBarPercent}%`,
+  height: "100%",
+  backgroundColor: scoreColor,
+  borderRadius: "8px",
+};
+
+const detailsRowStyle = {
+  display: "flex",
+  gap: "24px",
+  marginTop: "36px",
+  fontSize: "24px",
+};
+
 const getScoreColor = (score: number): string => {
   if (score >= SCORE_GOOD_THRESHOLD) return "#4ade80";
   if (score >= SCORE_OK_THRESHOLD) return "#eab308";
@@ -37,72 +112,29 @@ export const GET = (request: Request): ImageResponse => {
   const scoreBarPercent = (score / PERFECT_SCORE) * 100;
 
   return new ImageResponse(
-    <div
-      style={{
-        width: "100%",
-        height: "100%",
-        display: "flex",
-        flexDirection: "column",
-        backgroundColor: "#0a0a0a",
-        fontFamily: "monospace",
-        padding: "60px 80px",
-        justifyContent: "center",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
+    <div style={containerStyle}>
+      <div style={brandRowStyle}>
         <img
           src={brandMarkUrl}
           alt="React Doctor"
           width={OG_BRAND_MARK_WIDTH_PX}
           height={OG_BRAND_MARK_HEIGHT_PX}
         />
-        {projectName && (
-          <div
-            style={{
-              display: "flex",
-              marginLeft: "auto",
-              fontSize: "24px",
-              color: "#a3a3a3",
-            }}
-          >
-            {projectName}
-          </div>
-        )}
+        {projectName && <div style={projectNameStyle}>{projectName}</div>}
       </div>
 
-      <div style={{ display: "flex", alignItems: "baseline", gap: "16px", marginTop: "48px" }}>
-        <span style={{ fontSize: "120px", color: scoreColor, fontWeight: 700, lineHeight: 1 }}>
-          {score}
-        </span>
-        <span style={{ fontSize: "40px", color: "#525252", lineHeight: 1 }}>/ {PERFECT_SCORE}</span>
-        <span style={{ fontSize: "40px", color: scoreColor, lineHeight: 1, marginLeft: "8px" }}>
-          {getScoreLabel(score)}
-        </span>
+      <div style={scoreRowStyle}>
+        <span style={scoreStyle}>{score}</span>
+        <span style={scoreMaxStyle}>/ {PERFECT_SCORE}</span>
+        <span style={scoreLabelStyle}>{getScoreLabel(score)}</span>
       </div>
 
-      <div
-        style={{
-          display: "flex",
-          width: "100%",
-          height: "16px",
-          backgroundColor: "#1a1a1a",
-          borderRadius: "8px",
-          marginTop: "32px",
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            width: `${scoreBarPercent}%`,
-            height: "100%",
-            backgroundColor: scoreColor,
-            borderRadius: "8px",
-          }}
-        />
+      <div style={progressBarStyle}>
+        <div style={progressFillStyle} />
       </div>
 
       {(errorCount > 0 || warningCount > 0 || fileCount > 0) && (
-        <div style={{ display: "flex", gap: "24px", marginTop: "36px", fontSize: "24px" }}>
+        <div style={detailsRowStyle}>
           {errorCount > 0 && (
             <span style={{ color: "#f87171" }}>
               {errorCount} error{errorCount === 1 ? "" : "s"}

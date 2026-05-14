@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Image from "next/image";
 import { Copy, Check, ChevronRight, RotateCcw } from "lucide-react";
 import { PERFECT_SCORE } from "@/constants";
 import { getDoctorFace } from "@/utils/get-doctor-face";
@@ -271,6 +272,8 @@ const Terminal = () => {
     const run = async () => {
       await sleep(INITIAL_DELAY_MS);
 
+      // Intentionally sequential for typing effect
+      // eslint-disable-next-line no-await-in-loop
       for (let index = 0; index <= COMMAND.length; index++) {
         if (cancelled) return;
         update({ typedCommand: COMMAND.slice(0, index) });
@@ -284,6 +287,8 @@ const Terminal = () => {
       update({ showVersion: true });
       await sleep(POST_VERSION_DELAY_MS);
 
+      // Intentionally sequential for diagnostic reveal effect
+      // eslint-disable-next-line no-await-in-loop
       for (let index = 0; index < DIAGNOSTICS.length; index++) {
         if (cancelled) return;
         update({ visibleDiagnosticCount: index + 1 });
@@ -295,6 +300,8 @@ const Terminal = () => {
 
       await sleep(SCORE_REVEAL_DELAY_MS);
 
+      // Intentionally sequential for score animation effect
+      // eslint-disable-next-line no-await-in-loop
       for (let frame = 0; frame <= SCORE_FRAME_COUNT; frame++) {
         if (cancelled) return;
         update({ score: Math.round(easeOutCubic(frame / SCORE_FRAME_COUNT) * TARGET_SCORE) });
@@ -329,7 +336,7 @@ const Terminal = () => {
         <FadeIn>
           <Spacer />
           <div className="flex items-center gap-2">
-            <img src="/favicon.svg" alt="React Doctor" width={24} height={24} />
+            <Image src="/favicon.svg" alt="React Doctor" width={24} height={24} />
             react-doctor
           </div>
           <div className="text-neutral-500">Your agent writes bad React, this catches it.</div>

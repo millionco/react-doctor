@@ -30,17 +30,19 @@ const AnimatedScore = ({ targetScore }: { targetScore: number }) => {
   useEffect(() => {
     let cancelled = false;
     let frame = 0;
+    let timeoutId: NodeJS.Timeout;
 
     const animate = () => {
       if (cancelled || frame > SCORE_FRAME_COUNT) return;
       setAnimatedScore(Math.round(easeOutCubic(frame / SCORE_FRAME_COUNT) * targetScore));
       frame++;
-      setTimeout(animate, SCORE_FRAME_DELAY_MS);
+      timeoutId = setTimeout(animate, SCORE_FRAME_DELAY_MS);
     };
 
     animate();
     return () => {
       cancelled = true;
+      clearTimeout(timeoutId);
     };
   }, [targetScore]);
 

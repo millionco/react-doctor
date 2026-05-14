@@ -1,6 +1,4 @@
-"use client";
-
-import { useState } from "react";
+import Image from "next/image";
 
 const COPY_FEEDBACK_DURATION_MS = 2000;
 const BADGE_BASE_URL = "https://www.react.doctor/share/badge";
@@ -28,7 +26,7 @@ const BadgeSnippet = ({ searchParamsString }: BadgeSnippetProps) => {
     <div className="mt-8">
       <div className="text-neutral-500">Add a badge to your README:</div>
       <div className="mt-3 flex flex-wrap items-center gap-3">
-        <img src={badgePreviewPath} alt="React Doctor score badge" height={20} className="block" />
+        <Image src={badgePreviewPath} alt="React Doctor score badge" height={20} width={80} className="block" />
         <a
           href={badgePreviewPath}
           target="_blank"

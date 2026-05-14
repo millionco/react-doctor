@@ -333,6 +333,16 @@ const isCookiesOrHeadersCall = (node: EsTreeNode, methodName: string): boolean =
   return object.callee.name === methodName;
 };
 
+// Check for response.headers.set(), response.headers.append(), response.headers.delete()
+// These are setting response headers, not mutating server state
+const isResponseHeadersCall = (node: EsTreeNode): boolean => {
+  if (node.type !== "CallExpression" || node.callee?.type !== "MemberExpression") return false;
+  const { object, property } = node.callee;
+  if (property?.type !== "Identifier" || !MUTATION_METHOD_NAMES.has(property.name)) return false;
+  if (object?.type !== "MemberExpression" || object.object?.type !== "Identifier" || object.property?.type !== "Identifier") return false;
+  return object.object.name === "response" && object.property.name === "headers";
+};
+
 const isMutatingDbCall = (node: EsTreeNode): boolean => {
   if (node.type !== "CallExpression" || node.callee?.type !== "MemberExpression") return false;
   const { property } = node.callee;
@@ -365,6 +375,8 @@ export const findSideEffect = (node: EsTreeNode): string | null => {
   let sideEffectDescription: string | null = null;
   walkAst(node, (child: EsTreeNode) => {
     if (sideEffectDescription) return;
+    // Skip response.headers.set/append/delete - these are response header operations, not server state mutation
+    if (isResponseHeadersCall(child)) return;
     if (isCookiesOrHeadersCall(child, "cookies")) {
       const methodName = child.callee.property.name;
       sideEffectDescription = `cookies().${methodName}()`;

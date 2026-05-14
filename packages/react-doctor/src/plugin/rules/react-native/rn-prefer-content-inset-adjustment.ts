@@ -13,6 +13,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // the OS computes natively, integrating with sticky headers, large
 // titles, and keyboard avoidance for free.
 export const rnPreferContentInsetAdjustment = defineRule<Rule>({
+  id: "rn-prefer-content-inset-adjustment",
   requires: ["react-native"],
   framework: "react-native",
   severity: "warn",

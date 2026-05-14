@@ -46,6 +46,7 @@ const buildPreventDefaultMessage = (elementName: string): string => {
 };
 
 export const noPreventDefault = defineRule<Rule>({
+  id: "no-prevent-default",
   framework: "global",
   severity: "warn",
   category: "Correctness",

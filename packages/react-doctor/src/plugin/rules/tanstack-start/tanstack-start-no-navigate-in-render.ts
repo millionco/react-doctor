@@ -9,6 +9,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const tanstackStartNoNavigateInRender = defineRule<Rule>({
+  id: "tanstack-start-no-navigate-in-render",
   requires: ["tanstack-start"],
   framework: "tanstack-start",
   severity: "warn",

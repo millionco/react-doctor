@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { DependencyInfo } from "../../types.js";
+import type { DependencyInfo } from "../../types/project-info.js";
 import { isFile } from "../is-file.js";
 import { collectAllDependencies } from "./collect-all-dependencies.js";
 import { EMPTY_DEPENDENCY_INFO, extractDependencyInfo } from "./extract-dependency-info.js";

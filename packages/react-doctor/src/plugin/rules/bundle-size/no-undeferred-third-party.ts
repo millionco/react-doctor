@@ -7,6 +7,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noUndeferredThirdParty = defineRule<Rule>({
+  id: "no-undeferred-third-party",
   framework: "global",
   severity: "warn",
   category: "Bundle Size",

@@ -38,6 +38,7 @@ const isInlineReference = (node: EsTreeNode): string | null => {
 };
 
 export const noInlinePropOnMemoComponent = defineRule<Rule>({
+  id: "no-inline-prop-on-memo-component",
   framework: "global",
   severity: "warn",
   category: "Performance",

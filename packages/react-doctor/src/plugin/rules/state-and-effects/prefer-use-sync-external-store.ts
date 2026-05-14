@@ -147,6 +147,7 @@ const cleanupReleasesSubscription = (
 };
 
 export const preferUseSyncExternalStore = defineRule<Rule>({
+  id: "prefer-use-sync-external-store",
   framework: "global",
   severity: "warn",
   category: "State & Effects",

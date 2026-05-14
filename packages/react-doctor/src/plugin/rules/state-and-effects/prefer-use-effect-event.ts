@@ -227,6 +227,7 @@ const classifyCallableReadsInsideEffect = (
 };
 
 export const preferUseEffectEvent = defineRule<Rule>({
+  id: "prefer-use-effect-event",
   requires: ["react:19"],
   tags: ["test-noise"],
   framework: "global",

@@ -6,6 +6,7 @@ import { isInsideExcludedAncestor } from "./utils/is-inside-excluded-ancestor.js
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noThreePeriodEllipsis = defineRule<Rule>({
+  id: "design-no-three-period-ellipsis",
   tags: ["design", "test-noise"],
   framework: "global",
   severity: "warn",

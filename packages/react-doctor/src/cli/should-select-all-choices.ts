@@ -1,4 +1,4 @@
-import type { PromptMultiselectChoiceState } from "../types.js";
+import type { PromptMultiselectChoiceState } from "../types/prompts.js";
 
 export const shouldSelectAllChoices = (choiceStates: PromptMultiselectChoiceState[]): boolean => {
   const enabledChoiceStates = choiceStates.filter((choiceState) => !choiceState.disabled);

@@ -18,6 +18,7 @@ const deriveStateVariableName = (setterName: string): string | null => {
 };
 
 export const rerenderFunctionalSetstate = defineRule<Rule>({
+  id: "rerender-functional-setstate",
   framework: "global",
   severity: "warn",
   category: "Performance",

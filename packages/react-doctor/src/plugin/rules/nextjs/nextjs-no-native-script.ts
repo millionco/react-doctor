@@ -7,6 +7,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const nextjsNoNativeScript = defineRule<Rule>({
+  id: "nextjs-no-native-script",
   requires: ["nextjs"],
   framework: "nextjs",
   severity: "warn",

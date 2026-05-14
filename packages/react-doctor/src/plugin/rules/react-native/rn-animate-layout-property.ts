@@ -55,6 +55,7 @@ const findReturnedObject = (callback: EsTreeNode): EsTreeNodeOfType<"ObjectExpre
 // shared values, animate `transform: [{ translateX/Y }, { scale }]` or
 // `opacity` instead.
 export const rnAnimateLayoutProperty = defineRule<Rule>({
+  id: "rn-animate-layout-property",
   requires: ["react-native"],
   framework: "react-native",
   severity: "error",

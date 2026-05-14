@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { WorkspacePackage } from "../../types.js";
+import type { WorkspacePackage } from "../../types/project-info.js";
 import { isFile } from "../is-file.js";
 import { getWorkspacePatterns } from "./get-workspace-patterns.js";
 import { hasReactDependency } from "./has-react-dependency.js";

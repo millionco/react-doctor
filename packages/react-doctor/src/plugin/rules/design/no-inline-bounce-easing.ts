@@ -27,6 +27,7 @@ const hasBounceAnimationName = (value: string): boolean => {
 };
 
 export const noInlineBounceEasing = defineRule<Rule>({
+  id: "no-inline-bounce-easing",
   framework: "global",
   severity: "warn",
   category: "Performance",

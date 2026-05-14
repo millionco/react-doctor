@@ -11,6 +11,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // call startViewTransition for you (around startTransition, useDeferredValue,
 // or Suspense reveals).
 export const noDocumentStartViewTransition = defineRule<Rule>({
+  id: "no-document-start-view-transition",
   framework: "global",
   severity: "warn",
   category: "Correctness",

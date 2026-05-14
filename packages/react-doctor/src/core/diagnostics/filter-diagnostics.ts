@@ -1,4 +1,5 @@
-import type { Diagnostic, ReactDoctorConfig } from "../../types.js";
+import type { ReactDoctorConfig } from "../../types/config.js";
+import type { Diagnostic } from "../../types/diagnostic.js";
 import {
   compileIgnoreOverrides,
   isDiagnosticIgnoredByOverrides,

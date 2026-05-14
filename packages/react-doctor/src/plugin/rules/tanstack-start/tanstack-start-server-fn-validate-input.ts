@@ -8,6 +8,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const tanstackStartServerFnValidateInput = defineRule<Rule>({
+  id: "tanstack-start-server-fn-validate-input",
   requires: ["tanstack-start"],
   framework: "tanstack-start",
   severity: "warn",

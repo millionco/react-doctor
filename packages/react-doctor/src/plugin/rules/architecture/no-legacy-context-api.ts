@@ -43,6 +43,7 @@ const isInsideClassBody = (node: EsTreeNode): boolean => {
 };
 
 export const noLegacyContextApi = defineRule<Rule>({
+  id: "no-legacy-context-api",
   framework: "global",
   severity: "error",
   category: "Correctness",

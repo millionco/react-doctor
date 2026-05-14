@@ -21,6 +21,7 @@ const VIRTUALIZED_LIST_NAMES = new Set([
 // destroying scroll perf. Hoist the transform into a useMemo at list
 // scope or do the projection earlier in the parent.
 export const rnListDataMapped = defineRule<Rule>({
+  id: "rn-list-data-mapped",
   requires: ["react-native"],
   framework: "react-native",
   severity: "warn",

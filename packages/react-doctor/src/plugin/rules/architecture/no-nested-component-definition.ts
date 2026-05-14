@@ -8,6 +8,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noNestedComponentDefinition = defineRule<Rule>({
+  id: "no-nested-component-definition",
   framework: "global",
   severity: "error",
   category: "Correctness",

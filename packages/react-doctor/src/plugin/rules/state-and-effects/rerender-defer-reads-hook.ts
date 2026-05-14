@@ -50,6 +50,7 @@ const findHookCallBindings = (
 // Heuristic: hook value-name appears only inside arrow / function
 // expressions that are themselves bound to JSX `on*` attributes.
 export const rerenderDeferReadsHook = defineRule<Rule>({
+  id: "rerender-defer-reads-hook",
   framework: "global",
   severity: "warn",
   category: "Performance",

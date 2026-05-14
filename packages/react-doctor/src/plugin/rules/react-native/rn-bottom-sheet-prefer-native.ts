@@ -17,6 +17,7 @@ const JS_BOTTOM_SHEET_PACKAGES = new Set([
 // "formSheet"> that handles gestures, snap points, and detents on the
 // platform's native modal stack.
 export const rnBottomSheetPreferNative = defineRule<Rule>({
+  id: "rn-bottom-sheet-prefer-native",
   requires: ["react-native"],
   framework: "react-native",
   severity: "warn",

@@ -1,4 +1,5 @@
-import type { Diagnostic, ReactDoctorConfig } from "../../types.js";
+import type { ReactDoctorConfig } from "../../types/config.js";
+import type { Diagnostic } from "../../types/diagnostic.js";
 import { checkReducedMotion } from "../scoring/check-reduced-motion.js";
 import { createNodeReadFileLinesSync } from "../read-file-lines-node.js";
 import { mergeAndFilterDiagnostics } from "./merge-and-filter-diagnostics.js";

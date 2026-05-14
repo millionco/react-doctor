@@ -33,6 +33,7 @@ const findLegacyShadowProperty = (
 // so cross-platform code historically had to declare both — `boxShadow`
 // collapses that into one key.
 export const rnStylePreferBoxShadow = defineRule<Rule>({
+  id: "rn-style-prefer-boxshadow",
   requires: ["react-native"],
   framework: "react-native",
   severity: "warn",

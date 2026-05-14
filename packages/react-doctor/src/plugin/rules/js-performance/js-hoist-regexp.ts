@@ -6,6 +6,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const jsHoistRegexp = defineRule<Rule>({
+  id: "js-hoist-regexp",
   framework: "global",
   severity: "warn",
   category: "Performance",

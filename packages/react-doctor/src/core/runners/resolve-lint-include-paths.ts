@@ -7,7 +7,7 @@ import {
   JSX_FILE_PATTERN,
   SOURCE_FILE_PATTERN,
 } from "../../constants.js";
-import type { ReactDoctorConfig } from "../../types.js";
+import type { ReactDoctorConfig } from "../../types/config.js";
 import { compileIgnoredFilePatterns, isFileIgnoredByPatterns } from "../config/is-ignored-file.js";
 
 const listSourceFilesViaGit = (rootDirectory: string): string[] | null => {

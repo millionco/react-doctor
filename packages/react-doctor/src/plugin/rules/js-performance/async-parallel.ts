@@ -38,6 +38,7 @@ const reportIfIndependent = (statements: EsTreeNode[], context: RuleContext): vo
 };
 
 export const asyncParallel = defineRule<Rule>({
+  id: "async-parallel",
   framework: "global",
   severity: "warn",
   category: "Performance",

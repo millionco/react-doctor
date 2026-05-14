@@ -1,4 +1,4 @@
-import type { DependencyInfo, PackageJson } from "../../types.js";
+import type { DependencyInfo, PackageJson } from "../../types/project-info.js";
 import { collectAllDependencies } from "./collect-all-dependencies.js";
 import { detectFramework } from "./detect-framework.js";
 import { isCatalogReference } from "./resolve-catalog-version.js";

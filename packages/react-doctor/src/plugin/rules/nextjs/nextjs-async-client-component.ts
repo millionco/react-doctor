@@ -8,6 +8,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const nextjsAsyncClientComponent = defineRule<Rule>({
+  id: "nextjs-async-client-component",
   requires: ["nextjs"],
   framework: "nextjs",
   severity: "error",

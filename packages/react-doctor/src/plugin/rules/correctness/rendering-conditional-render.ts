@@ -22,6 +22,7 @@ const isNumericName = (name: string): boolean => {
 };
 
 export const renderingConditionalRender = defineRule<Rule>({
+  id: "rendering-conditional-render",
   framework: "global",
   severity: "warn",
   category: "Correctness",

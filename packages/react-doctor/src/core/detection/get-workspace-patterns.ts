@@ -1,4 +1,4 @@
-import type { PackageJson } from "../../types.js";
+import type { PackageJson } from "../../types/project-info.js";
 import { getNxWorkspaceDirectories } from "./get-nx-workspace-directories.js";
 import { parsePnpmWorkspacePatterns } from "./parse-pnpm-workspace-patterns.js";
 

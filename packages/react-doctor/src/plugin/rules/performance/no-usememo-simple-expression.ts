@@ -19,6 +19,7 @@ const isTriviallyCheapExpression = (node: EsTreeNode | null): boolean => {
 };
 
 export const noUsememoSimpleExpression = defineRule<Rule>({
+  id: "no-usememo-simple-expression",
   framework: "global",
   severity: "warn",
   category: "Performance",

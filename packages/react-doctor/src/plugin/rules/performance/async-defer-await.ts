@@ -36,6 +36,7 @@ const isEarlyReturnIfStatement = (statement: EsTreeNode): boolean => {
 // stay precise (intervening statements would imply the awaited binding
 // is being prepared for use).
 export const asyncDeferAwait = defineRule<Rule>({
+  id: "async-defer-await",
   framework: "global",
   severity: "warn",
   category: "Performance",

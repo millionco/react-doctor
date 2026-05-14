@@ -16,6 +16,14 @@ export type RuleFramework =
   | "tanstack-query";
 
 export interface Rule {
+  // Public-facing rule identifier — what users put in their oxlint config
+  // (`react-doctor/<id>`) and what shows up in diagnostic output. Owned by
+  // the rule itself (not its filename or export-variable name) because
+  // some rule-ids carry historical prefixes the file path doesn't —
+  // e.g. `react-ui/no-bold-heading.ts` registers as `design-no-bold-heading`.
+  // Read by `scripts/generate-rule-registry.mjs` to build the plugin's
+  // rule map; CI rejects duplicates and drift.
+  id: string;
   category?: string;
   framework: RuleFramework;
   severity: RuleSeverity;

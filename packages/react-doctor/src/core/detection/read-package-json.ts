@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { PackageJson } from "../../types.js";
+import type { PackageJson } from "../../types/project-info.js";
 
 const cachedPackageJsons = new Map<string, PackageJson>();
 

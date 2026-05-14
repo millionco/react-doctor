@@ -1,4 +1,4 @@
-import type { Framework } from "../../types.js";
+import type { Framework } from "../../types/project-info.js";
 
 const FRAMEWORK_PACKAGES: Record<string, Framework> = {
   next: "nextjs",

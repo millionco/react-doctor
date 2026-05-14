@@ -6,6 +6,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noGenericHandlerNames = defineRule<Rule>({
+  id: "no-generic-handler-names",
   framework: "global",
   severity: "warn",
   category: "Architecture",

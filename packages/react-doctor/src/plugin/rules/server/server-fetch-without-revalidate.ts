@@ -54,6 +54,7 @@ const APP_ROUTER_FILE_PATTERN =
 const NON_PROJECT_PATH_PATTERN = /\/(?:node_modules|dist|build|\.next)\//;
 
 export const serverFetchWithoutRevalidate = defineRule<Rule>({
+  id: "server-fetch-without-revalidate",
   framework: "global",
   severity: "warn",
   category: "Server",

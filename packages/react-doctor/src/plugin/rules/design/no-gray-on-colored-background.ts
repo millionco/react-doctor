@@ -5,6 +5,7 @@ import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-a
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noGrayOnColoredBackground = defineRule<Rule>({
+  id: "no-gray-on-colored-background",
   framework: "global",
   severity: "warn",
   category: "Accessibility",

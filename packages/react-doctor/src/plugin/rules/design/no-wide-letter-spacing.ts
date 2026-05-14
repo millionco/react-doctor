@@ -10,6 +10,7 @@ import { getStylePropertyNumberValue } from "./utils/get-style-property-number-v
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noWideLetterSpacing = defineRule<Rule>({
+  id: "no-wide-letter-spacing",
   framework: "global",
   severity: "warn",
   category: "Architecture",

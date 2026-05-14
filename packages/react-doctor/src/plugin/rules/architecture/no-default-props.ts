@@ -14,6 +14,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // recommendation is the same either way — switch to ES6 default params
 // in destructured props — so the guidance is uniform.
 export const noDefaultProps = defineRule<Rule>({
+  id: "no-default-props",
   requires: ["react:19"],
   tags: ["test-noise"],
   framework: "global",

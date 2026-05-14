@@ -1,5 +1,6 @@
 import { SHARE_BASE_URL } from "../constants.js";
-import type { Diagnostic, ScoreResult } from "../types.js";
+import type { Diagnostic } from "../types/diagnostic.js";
+import type { ScoreResult } from "../types/score.js";
 import { highlighter } from "../core/highlighter.js";
 import { logger } from "../core/logger.js";
 import { collectAffectedFiles, formatElapsedTime } from "./render-diagnostics.js";

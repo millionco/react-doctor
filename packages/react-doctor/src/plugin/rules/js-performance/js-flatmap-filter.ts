@@ -5,6 +5,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const jsFlatmapFilter = defineRule<Rule>({
+  id: "js-flatmap-filter",
   framework: "global",
   severity: "warn",
   category: "Performance",

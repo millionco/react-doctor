@@ -5,7 +5,8 @@ import {
   SCORE_OK_THRESHOLD,
   WARNING_RULE_PENALTY,
 } from "../../constants.js";
-import type { Diagnostic, ScoreResult } from "../../types.js";
+import type { Diagnostic } from "../../types/diagnostic.js";
+import type { ScoreResult } from "../../types/score.js";
 
 interface ScoreBreakdown {
   errorRules: string[];

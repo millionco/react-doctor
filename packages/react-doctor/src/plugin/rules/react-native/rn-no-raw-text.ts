@@ -56,6 +56,7 @@ const isTextHandlingComponent = (elementName: string): boolean => {
 const WEB_FILE_EXTENSION_PATTERN = /\.web\.[jt]sx?$/;
 
 export const rnNoRawText = defineRule<Rule>({
+  id: "rn-no-raw-text",
   requires: ["react-native"],
   framework: "react-native",
   severity: "error",

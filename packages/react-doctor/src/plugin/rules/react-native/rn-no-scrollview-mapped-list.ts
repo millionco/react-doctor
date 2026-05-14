@@ -12,6 +12,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // recycle row components and only mount the visible window. The cost
 // of switching is tiny (same prop API) and the perf win is huge.
 export const rnNoScrollviewMappedList = defineRule<Rule>({
+  id: "rn-no-scrollview-mapped-list",
   requires: ["react-native"],
   framework: "react-native",
   severity: "warn",

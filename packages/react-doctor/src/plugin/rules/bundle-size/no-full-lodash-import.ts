@@ -4,6 +4,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noFullLodashImport = defineRule<Rule>({
+  id: "no-full-lodash-import",
   framework: "global",
   severity: "warn",
   category: "Bundle Size",

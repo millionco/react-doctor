@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { DependencyInfo, PackageJson } from "../../types.js";
+import type { DependencyInfo, PackageJson } from "../../types/project-info.js";
 import { EMPTY_DEPENDENCY_INFO, extractDependencyInfo } from "./extract-dependency-info.js";
 import { getWorkspacePatterns } from "./get-workspace-patterns.js";
 import { readPackageJson } from "./read-package-json.js";

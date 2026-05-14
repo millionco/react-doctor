@@ -7,6 +7,7 @@ import { getImportedName } from "../../utils/get-imported-name.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const rnNoDeprecatedModules = defineRule<Rule>({
+  id: "rn-no-deprecated-modules",
   requires: ["react-native"],
   framework: "react-native",
   severity: "error",

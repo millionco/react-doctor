@@ -25,6 +25,7 @@ const isMotionElement = (attributeNode: EsTreeNode): boolean => {
 };
 
 export const noLayoutPropertyAnimation = defineRule<Rule>({
+  id: "no-layout-property-animation",
   framework: "global",
   severity: "error",
   category: "Performance",

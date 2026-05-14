@@ -83,6 +83,7 @@ const walkComponentRespectingShadows = (
 };
 
 export const noDirectStateMutation = defineRule<Rule>({
+  id: "no-direct-state-mutation",
   framework: "global",
   severity: "warn",
   category: "State & Effects",

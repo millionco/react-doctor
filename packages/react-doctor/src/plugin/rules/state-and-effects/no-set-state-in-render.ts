@@ -36,6 +36,7 @@ const isUnconditionalSetterCallStatement = (
 };
 
 export const noSetStateInRender = defineRule<Rule>({
+  id: "no-set-state-in-render",
   framework: "global",
   severity: "warn",
   category: "State & Effects",

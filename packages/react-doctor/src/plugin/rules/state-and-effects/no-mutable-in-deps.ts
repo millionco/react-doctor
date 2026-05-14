@@ -69,6 +69,7 @@ const findMutableDepIssue = (
 };
 
 export const noMutableInDeps = defineRule<Rule>({
+  id: "no-mutable-in-deps",
   framework: "global",
   severity: "error",
   category: "State & Effects",

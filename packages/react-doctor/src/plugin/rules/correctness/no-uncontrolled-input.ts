@@ -73,6 +73,7 @@ const hasJsxSpreadAttribute = (attributes: EsTreeNode[]): boolean =>
 // `defaultValue` via spread, and we can't see through it without scope
 // analysis. False-negative > false-positive on a heavily used pattern.
 export const noUncontrolledInput = defineRule<Rule>({
+  id: "no-uncontrolled-input",
   framework: "global",
   severity: "warn",
   category: "Correctness",

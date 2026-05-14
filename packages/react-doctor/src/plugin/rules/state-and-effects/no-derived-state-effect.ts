@@ -73,6 +73,7 @@ const collectValueIdentifierNames = (node: EsTreeNode | null | undefined, into: 
 };
 
 export const noDerivedStateEffect = defineRule<Rule>({
+  id: "no-derived-state-effect",
   framework: "global",
   severity: "warn",
   category: "State & Effects",

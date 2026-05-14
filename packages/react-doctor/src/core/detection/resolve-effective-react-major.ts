@@ -1,4 +1,4 @@
-import type { PackageJson } from "../../types.js";
+import type { PackageJson } from "../../types/project-info.js";
 import { parseReactMajor } from "./parse-react-major.js";
 import { peerRangeMinMajor } from "./parse-react-peer-range.js";
 

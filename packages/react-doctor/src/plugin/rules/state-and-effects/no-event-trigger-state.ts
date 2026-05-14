@@ -149,6 +149,7 @@ const collectHandlerOnlyWriteStateNames = (
 };
 
 export const noEventTriggerState = defineRule<Rule>({
+  id: "no-event-trigger-state",
   framework: "global",
   severity: "warn",
   category: "State & Effects",

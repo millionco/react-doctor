@@ -26,6 +26,7 @@ const REACT_19_DEPRECATED_MESSAGES = new Map<string, string>([
 ]);
 
 export const noReact19DeprecatedApis = defineRule<Rule>({
+  id: "no-react19-deprecated-apis",
   requires: ["react:19"],
   tags: ["test-noise"],
   framework: "global",

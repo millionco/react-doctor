@@ -5,7 +5,7 @@ import {
   OUTPUT_DETAIL_WRAP_WIDTH_CHARS,
   RULE_NAME_COLUMN_WIDTH_CHARS,
 } from "../constants.js";
-import type { Diagnostic } from "../types.js";
+import type { Diagnostic } from "../types/diagnostic.js";
 import { buildHiddenDiagnosticsSummary } from "./build-hidden-diagnostics-summary.js";
 import { groupBy } from "../core/group-by.js";
 import { highlighter } from "../core/highlighter.js";

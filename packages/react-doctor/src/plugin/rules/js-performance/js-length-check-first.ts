@@ -12,6 +12,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // shortcut. e.g. `a.length === b.length && a.every((x, i) => x === b[i])`
 // runs the every-loop only when lengths match.
 export const jsLengthCheckFirst = defineRule<Rule>({
+  id: "js-length-check-first",
   framework: "global",
   severity: "warn",
   category: "Performance",

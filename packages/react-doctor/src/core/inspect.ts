@@ -16,7 +16,9 @@ import { printProjectDetection } from "../cli/render-project-detection.js";
 import { printSummary } from "../cli/render-summary.js";
 import { resolveOxlintNode } from "../cli/resolve-oxlint-node.js";
 import { NoReactDependencyError } from "../errors.js";
-import type { Diagnostic, ReactDoctorConfig, InspectOptions, InspectResult } from "../types.js";
+import type { ReactDoctorConfig } from "../types/config.js";
+import type { Diagnostic } from "../types/diagnostic.js";
+import type { InspectOptions, InspectResult } from "../types/inspect.js";
 import {
   calculateScore,
   calculateScoreBreakdown,

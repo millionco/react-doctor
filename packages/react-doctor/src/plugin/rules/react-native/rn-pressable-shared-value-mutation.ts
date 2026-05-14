@@ -55,6 +55,7 @@ const handlerMutatesIdentifier = (
 // the receiver is actually a `useSharedValue` binding to avoid
 // false-positives on `Map.prototype.set` / `ref.current.value =` etc.
 export const rnPressableSharedValueMutation = defineRule<Rule>({
+  id: "rn-pressable-shared-value-mutation",
   requires: ["react-native"],
   framework: "react-native",
   severity: "warn",

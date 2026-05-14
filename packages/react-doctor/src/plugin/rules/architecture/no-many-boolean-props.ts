@@ -38,6 +38,7 @@ const collectBooleanLikePropsFromBody = (
 // (`function Foo(props) { props.isPrimary }`) by walking member-access
 // patterns on the parameter binding.
 export const noManyBooleanProps = defineRule<Rule>({
+  id: "no-many-boolean-props",
   framework: "global",
   severity: "warn",
   category: "Architecture",

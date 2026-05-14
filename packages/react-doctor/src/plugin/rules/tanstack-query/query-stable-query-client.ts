@@ -9,6 +9,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const queryStableQueryClient = defineRule<Rule>({
+  id: "query-stable-query-client",
   requires: ["tanstack-query"],
   framework: "tanstack-query",
   severity: "warn",

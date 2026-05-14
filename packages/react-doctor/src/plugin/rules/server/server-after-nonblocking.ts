@@ -45,6 +45,7 @@ const isDeferrableSideEffectCall = (objectName: string, methodName: string): boo
 };
 
 export const serverAfterNonblocking = defineRule<Rule>({
+  id: "server-after-nonblocking",
   framework: "global",
   severity: "warn",
   category: "Server",

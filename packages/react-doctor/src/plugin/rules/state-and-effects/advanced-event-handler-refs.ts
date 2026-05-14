@@ -28,6 +28,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // counts as a subscription-shaped call (zustand/Redux `subscribe`,
 // browser `addEventListener`, EventEmitter `on`, etc.).
 export const advancedEventHandlerRefs = defineRule<Rule>({
+  id: "advanced-event-handler-refs",
   framework: "global",
   severity: "warn",
   category: "Performance",

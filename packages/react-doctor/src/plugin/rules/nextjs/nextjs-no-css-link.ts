@@ -7,6 +7,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const nextjsNoCssLink = defineRule<Rule>({
+  id: "nextjs-no-css-link",
   requires: ["nextjs"],
   framework: "nextjs",
   severity: "warn",

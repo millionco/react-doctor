@@ -19,7 +19,8 @@ import {
   FRAMEWORK_SPECIFIC_RULE_KEYS,
 } from "./oxlint/react-doctor-rules.js";
 import reactDoctorPlugin from "../../plugin/react-doctor-plugin.js";
-import type { CleanedDiagnostic, Diagnostic, OxlintOutput, ProjectInfo } from "../../types.js";
+import type { CleanedDiagnostic, Diagnostic, OxlintOutput } from "../../types/diagnostic.js";
+import type { ProjectInfo } from "../../types/project-info.js";
 import { neutralizeDisableDirectives } from "../diagnostics/neutralize-disable-directives.js";
 
 // Reads the rule's recommendation off its `defineRule({...})` metadata

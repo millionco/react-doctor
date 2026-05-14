@@ -6,6 +6,7 @@ import { getImportedName } from "../../utils/get-imported-name.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const rnPreferReanimated = defineRule<Rule>({
+  id: "rn-prefer-reanimated",
   requires: ["react-native"],
   framework: "react-native",
   severity: "warn",

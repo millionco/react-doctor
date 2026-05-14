@@ -53,6 +53,7 @@ interface MirrorBinding {
 }
 
 export const noMirrorPropEffect = defineRule<Rule>({
+  id: "no-mirror-prop-effect",
   framework: "global",
   severity: "warn",
   category: "State & Effects",

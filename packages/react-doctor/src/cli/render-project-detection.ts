@@ -1,4 +1,5 @@
-import type { ProjectInfo, ReactDoctorConfig } from "../types.js";
+import type { ReactDoctorConfig } from "../types/config.js";
+import type { ProjectInfo } from "../types/project-info.js";
 import { formatFrameworkName } from "../core/detection/discover-project.js";
 import { highlighter } from "../core/highlighter.js";
 import { logger } from "../core/logger.js";

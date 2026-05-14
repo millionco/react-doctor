@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
 import basePrompts, { type PromptObject, type Answers } from "prompts";
-import type { PromptMultiselectContext } from "../types.js";
+import type { PromptMultiselectContext } from "../types/prompts.js";
 import { logger } from "../core/logger.js";
 import { shouldAutoSelectCurrentChoice } from "./should-auto-select-current-choice.js";
 import { shouldSelectAllChoices } from "./should-select-all-choices.js";

@@ -22,6 +22,7 @@ const isLikelySecret = (envVarName: string): boolean => {
 };
 
 export const tanstackStartNoSecretsInLoader = defineRule<Rule>({
+  id: "tanstack-start-no-secrets-in-loader",
   requires: ["tanstack-start"],
   framework: "tanstack-start",
   severity: "error",

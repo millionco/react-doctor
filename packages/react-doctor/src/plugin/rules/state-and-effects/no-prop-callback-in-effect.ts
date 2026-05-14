@@ -18,6 +18,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // both child and parent read from; the child then doesn't need an
 // effect-driven sync at all.
 export const noPropCallbackInEffect = defineRule<Rule>({
+  id: "no-prop-callback-in-effect",
   framework: "global",
   severity: "warn",
   category: "State & Effects",

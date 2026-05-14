@@ -76,6 +76,7 @@ const reportTestUtilsImports = (
 };
 
 export const noReactDomDeprecatedApis = defineRule<Rule>({
+  id: "no-react-dom-deprecated-apis",
   requires: ["react:18"],
   tags: ["test-noise"],
   framework: "global",

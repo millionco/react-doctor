@@ -61,6 +61,7 @@ const declarationReadsAnyName = (declaration: EsTreeNode, names: Set<string>): b
 };
 
 export const serverSequentialIndependentAwait = defineRule<Rule>({
+  id: "server-sequential-independent-await",
   framework: "global",
   severity: "warn",
   category: "Server",

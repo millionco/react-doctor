@@ -36,6 +36,7 @@ const containsAuthCheck = (statements: EsTreeNode[]): boolean => {
 };
 
 export const serverAuthActions = defineRule<Rule>({
+  id: "server-auth-actions",
   framework: "global",
   severity: "error",
   category: "Server",

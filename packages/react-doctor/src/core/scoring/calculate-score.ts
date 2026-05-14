@@ -1,4 +1,5 @@
-import type { Diagnostic, ScoreResult } from "../../types.js";
+import type { Diagnostic } from "../../types/diagnostic.js";
+import type { ScoreResult } from "../../types/score.js";
 import { calculateScoreLocally } from "./calculate-score-locally.js";
 import { tryScoreFromApi } from "./try-score-from-api.js";
 import { proxyFetch } from "./proxy-fetch.js";

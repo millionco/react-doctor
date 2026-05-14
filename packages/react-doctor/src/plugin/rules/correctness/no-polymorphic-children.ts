@@ -11,6 +11,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // subcomponents (`<Button.Text />`) so text always lands in the right
 // shape and the component's API is checked at compile time.
 export const noPolymorphicChildren = defineRule<Rule>({
+  id: "no-polymorphic-children",
   framework: "global",
   severity: "warn",
   category: "Architecture",

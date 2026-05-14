@@ -6,6 +6,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const nextjsImageMissingSizes = defineRule<Rule>({
+  id: "nextjs-image-missing-sizes",
   requires: ["nextjs"],
   framework: "nextjs",
   severity: "warn",

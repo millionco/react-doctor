@@ -8,6 +8,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const jsCacheStorage = defineRule<Rule>({
+  id: "js-cache-storage",
   framework: "global",
   severity: "warn",
   category: "Performance",

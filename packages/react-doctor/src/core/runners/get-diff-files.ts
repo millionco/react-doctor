@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { DEFAULT_BRANCH_CANDIDATES, SOURCE_FILE_PATTERN } from "../../constants.js";
-import type { DiffInfo } from "../../types.js";
+import type { DiffInfo } from "../../types/inspect.js";
 
 const runGit = (cwd: string, args: string[]): string | null => {
   const result = spawnSync("git", args, {

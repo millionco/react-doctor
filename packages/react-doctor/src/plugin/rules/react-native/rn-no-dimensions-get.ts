@@ -6,6 +6,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const rnNoDimensionsGet = defineRule<Rule>({
+  id: "rn-no-dimensions-get",
   requires: ["react-native"],
   framework: "react-native",
   severity: "warn",

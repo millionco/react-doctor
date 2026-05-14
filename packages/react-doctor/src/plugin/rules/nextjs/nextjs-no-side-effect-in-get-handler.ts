@@ -43,6 +43,7 @@ const getExportedGetHandlerBody = (node: EsTreeNode): EsTreeNode | null => {
 };
 
 export const nextjsNoSideEffectInGetHandler = defineRule<Rule>({
+  id: "nextjs-no-side-effect-in-get-handler",
   requires: ["nextjs"],
   framework: "nextjs",
   severity: "error",

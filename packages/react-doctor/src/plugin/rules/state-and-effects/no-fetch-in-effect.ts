@@ -8,6 +8,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noFetchInEffect = defineRule<Rule>({
+  id: "no-fetch-in-effect",
   framework: "global",
   severity: "warn",
   category: "State & Effects",

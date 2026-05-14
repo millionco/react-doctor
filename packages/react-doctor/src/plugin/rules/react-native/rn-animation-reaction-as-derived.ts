@@ -12,6 +12,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // gloss that useAnimatedReaction implies (it's meant for cross-thread
 // reactions like calling runOnJS, not value derivation).
 export const rnAnimationReactionAsDerived = defineRule<Rule>({
+  id: "rn-animation-reaction-as-derived",
   requires: ["react-native"],
   framework: "react-native",
   severity: "warn",

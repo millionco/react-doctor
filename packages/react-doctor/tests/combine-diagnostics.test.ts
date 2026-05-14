@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
-import type { Diagnostic, ReactDoctorConfig } from "../src/types.js";
+import type { ReactDoctorConfig } from "../src/types/config.js";
+import type { Diagnostic } from "../src/types/diagnostic.js";
 import { combineDiagnostics } from "../src/core/diagnostics/combine-diagnostics.js";
 import { computeJsxIncludePaths } from "../src/core/runners/jsx-include-paths.js";
 

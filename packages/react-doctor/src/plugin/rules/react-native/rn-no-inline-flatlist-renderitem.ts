@@ -7,6 +7,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const rnNoInlineFlatlistRenderitem = defineRule<Rule>({
+  id: "rn-no-inline-flatlist-renderitem",
   requires: ["react-native"],
   framework: "react-native",
   severity: "warn",

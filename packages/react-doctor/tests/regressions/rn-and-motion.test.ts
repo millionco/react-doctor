@@ -16,7 +16,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 
-import type { ReactDoctorConfig } from "../../src/types.js";
+import type { ReactDoctorConfig } from "../../src/types/config.js";
 import { checkReducedMotion } from "../../src/core/scoring/check-reduced-motion.js";
 import { filterIgnoredDiagnostics } from "../../src/core/diagnostics/filter-diagnostics.js";
 import { mergeAndFilterDiagnostics } from "../../src/core/diagnostics/merge-and-filter-diagnostics.js";

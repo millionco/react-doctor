@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 import { buildJsonReport } from "../src/core/build-json-report.js";
 import { buildJsonReportError } from "../src/core/build-json-report-error.js";
-import type { Diagnostic, ProjectInfo, InspectResult } from "../src/types.js";
+import type { Diagnostic } from "../src/types/diagnostic.js";
+import type { InspectResult } from "../src/types/inspect.js";
+import type { ProjectInfo } from "../src/types/project-info.js";
 
 const SAMPLE_PROJECT: ProjectInfo = {
   rootDirectory: "/repo",

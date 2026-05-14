@@ -17,6 +17,7 @@ const RENDER_PROP_PATTERN = /^render[A-Z]/;
 // of "many slots cobbled together where compound components or
 // `children` would be cleaner".
 export const noRenderPropChildren = defineRule<Rule>({
+  id: "no-render-prop-children",
   framework: "global",
   severity: "warn",
   category: "Architecture",

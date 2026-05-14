@@ -22,6 +22,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 const RECYCLABLE_LIST_NAMES = new Set(["FlashList", "LegendList"]);
 
 export const rnListRecyclableWithoutTypes = defineRule<Rule>({
+  id: "rn-list-recyclable-without-types",
   requires: ["react-native"],
   framework: "react-native",
   severity: "warn",

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { ReactDoctorConfig } from "../../types.js";
+import type { ReactDoctorConfig } from "../../types/config.js";
 import { logger } from "../logger.js";
 
 export const resolveConfigRootDir = (

@@ -8,6 +8,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // statically-analyzable string literal. `import(variable)` or
 // `require(variable)` defeats trace targets and forces a fat bundle.
 export const noDynamicImportPath = defineRule<Rule>({
+  id: "no-dynamic-import-path",
   framework: "global",
   severity: "warn",
   category: "Bundle Size",

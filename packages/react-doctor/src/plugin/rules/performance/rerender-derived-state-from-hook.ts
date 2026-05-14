@@ -74,6 +74,7 @@ const findThresholdDerivedBindings = (
 };
 
 export const rerenderDerivedStateFromHook = defineRule<Rule>({
+  id: "rerender-derived-state-from-hook",
   framework: "global",
   severity: "warn",
   category: "Performance",

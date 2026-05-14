@@ -32,6 +32,7 @@ const buildDefaultPaletteRegex = (): RegExp => {
 const DEFAULT_PALETTE_REGEX = buildDefaultPaletteRegex();
 
 export const noDefaultTailwindPalette = defineRule<Rule>({
+  id: "design-no-default-tailwind-palette",
   tags: ["design", "test-noise"],
   framework: "global",
   severity: "warn",

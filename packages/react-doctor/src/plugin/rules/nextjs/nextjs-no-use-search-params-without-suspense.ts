@@ -48,6 +48,7 @@ const fileMentionsSuspense = (programNode: EsTreeNode): boolean => {
 };
 
 export const nextjsNoUseSearchParamsWithoutSuspense = defineRule<Rule>({
+  id: "nextjs-no-use-search-params-without-suspense",
   requires: ["nextjs"],
   framework: "nextjs",
   severity: "warn",

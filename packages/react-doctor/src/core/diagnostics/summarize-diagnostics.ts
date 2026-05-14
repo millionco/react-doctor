@@ -1,4 +1,5 @@
-import type { Diagnostic, JsonReportSummary } from "../../types.js";
+import type { Diagnostic } from "../../types/diagnostic.js";
+import type { JsonReportSummary } from "../../types/inspect.js";
 
 export const summarizeDiagnostics = (
   diagnostics: Diagnostic[],

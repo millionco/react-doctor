@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { MOTION_LIBRARY_PACKAGES } from "../../plugin/constants/style.js";
-import type { Diagnostic } from "../../types.js";
+import type { Diagnostic } from "../../types/diagnostic.js";
 import { isFile } from "../is-file.js";
 import { readPackageJson } from "../detection/read-package-json.js";
 

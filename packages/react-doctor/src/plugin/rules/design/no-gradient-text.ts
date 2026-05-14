@@ -8,6 +8,7 @@ import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-a
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noGradientText = defineRule<Rule>({
+  id: "no-gradient-text",
   tags: ["design", "test-noise"],
   framework: "global",
   severity: "warn",

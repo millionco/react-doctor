@@ -1,4 +1,4 @@
-import type { JsonReportMode } from "../types.js";
+import type { JsonReportMode } from "../types/inspect.js";
 
 interface CliState {
   isJsonModeActive: boolean;

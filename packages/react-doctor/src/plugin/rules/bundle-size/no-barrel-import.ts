@@ -5,6 +5,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noBarrelImport = defineRule<Rule>({
+  id: "no-barrel-import",
   framework: "global",
   severity: "warn",
   category: "Bundle Size",

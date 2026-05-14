@@ -13,6 +13,7 @@ const SVG_PATH_ATTRIBUTES = new Set(["d", "points", "transform"]);
 // emit these by default; truncating to 1–2 decimals trims 30–50% off
 // markup with no visible difference.
 export const renderingSvgPrecision = defineRule<Rule>({
+  id: "rendering-svg-precision",
   framework: "global",
   severity: "warn",
   category: "Performance",

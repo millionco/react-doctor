@@ -31,6 +31,7 @@ const hasTopLevelAwait = (statement: EsTreeNode): boolean => {
 };
 
 export const tanstackStartLoaderParallelFetch = defineRule<Rule>({
+  id: "tanstack-start-loader-parallel-fetch",
   requires: ["tanstack-start"],
   framework: "tanstack-start",
   severity: "warn",

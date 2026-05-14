@@ -1,4 +1,4 @@
-import type { ProjectInfo } from "../../types.js";
+import type { ProjectInfo } from "../../types/project-info.js";
 
 const cachedProjectInfos = new Map<string, ProjectInfo>();
 

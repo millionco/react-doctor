@@ -1,6 +1,6 @@
 import { logger } from "../core/logger.js";
 import { filterSourceFiles } from "../core/runners/get-diff-files.js";
-import type { DiffInfo } from "../types.js";
+import type { DiffInfo } from "../types/inspect.js";
 import { prompts } from "./prompts.js";
 
 export const resolveDiffMode = async (

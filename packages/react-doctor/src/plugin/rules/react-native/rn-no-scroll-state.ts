@@ -11,6 +11,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // (useSharedValue + useAnimatedScrollHandler) or a ref + raf throttle so
 // the JS thread isn't pegged.
 export const rnNoScrollState = defineRule<Rule>({
+  id: "rn-no-scroll-state",
   requires: ["react-native"],
   framework: "react-native",
   severity: "error",

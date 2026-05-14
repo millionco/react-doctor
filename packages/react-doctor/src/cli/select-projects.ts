@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { WorkspacePackage } from "../types.js";
+import type { WorkspacePackage } from "../types/project-info.js";
 import {
   discoverReactSubprojects,
   listWorkspacePackages,

@@ -1,5 +1,5 @@
 import { CANONICAL_GITHUB_URL } from "../constants.js";
-import type { HandleErrorOptions } from "../types.js";
+import type { HandleErrorOptions } from "../types/handle-error.js";
 import { formatErrorChain } from "../core/format-error-chain.js";
 import { logger } from "../core/logger.js";
 

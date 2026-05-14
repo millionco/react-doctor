@@ -90,6 +90,7 @@ const hasSuppressHydrationWarningAttribute = (openingElement: EsTreeNode | null)
 // only client-side) or to add `suppressHydrationWarning` to the parent
 // element when the mismatch is intentional.
 export const renderingHydrationMismatchTime = defineRule<Rule>({
+  id: "rendering-hydration-mismatch-time",
   framework: "global",
   severity: "warn",
   category: "Correctness",

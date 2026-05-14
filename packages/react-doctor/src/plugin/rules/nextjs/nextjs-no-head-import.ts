@@ -5,6 +5,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const nextjsNoHeadImport = defineRule<Rule>({
+  id: "nextjs-no-head-import",
   requires: ["nextjs"],
   framework: "nextjs",
   severity: "error",

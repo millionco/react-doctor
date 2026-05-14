@@ -1,5 +1,6 @@
 import { FETCH_TIMEOUT_MS, SCORE_API_URL } from "../../constants.js";
-import type { Diagnostic, ScoreResult } from "../../types.js";
+import type { Diagnostic } from "../../types/diagnostic.js";
+import type { ScoreResult } from "../../types/score.js";
 
 const parseScoreResult = (value: unknown): ScoreResult | null => {
   if (typeof value !== "object" || value === null) return null;

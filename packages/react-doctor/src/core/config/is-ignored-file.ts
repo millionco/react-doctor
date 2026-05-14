@@ -1,4 +1,4 @@
-import type { ReactDoctorConfig } from "../../types.js";
+import type { ReactDoctorConfig } from "../../types/config.js";
 import { compileGlobPattern } from "./match-glob-pattern.js";
 import { toRelativePath } from "../to-relative-path.js";
 

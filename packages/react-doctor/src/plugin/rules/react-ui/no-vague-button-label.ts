@@ -56,6 +56,7 @@ const collectJsxLabelText = (jsxElementNode: EsTreeNode): string | null => {
 };
 
 export const noVagueButtonLabel = defineRule<Rule>({
+  id: "design-no-vague-button-label",
   tags: ["design", "test-noise"],
   framework: "global",
   severity: "warn",

@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import type { ReactDoctorConfig } from "../types.js";
+import type { ReactDoctorConfig } from "../types/config.js";
 import type { CliFlags } from "./cli-flags.js";
 import { coerceDiffValue } from "./coerce-diff-value.js";
 

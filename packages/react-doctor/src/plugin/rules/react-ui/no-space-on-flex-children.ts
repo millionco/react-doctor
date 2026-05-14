@@ -10,6 +10,7 @@ const tokenizeClassName = (classNameValue: string): string[] =>
   classNameValue.split(/\s+/).filter(Boolean);
 
 export const noSpaceOnFlexChildren = defineRule<Rule>({
+  id: "design-no-space-on-flex-children",
   tags: ["design", "test-noise"],
   framework: "global",
   severity: "warn",

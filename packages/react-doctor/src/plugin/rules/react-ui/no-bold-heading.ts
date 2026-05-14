@@ -49,6 +49,7 @@ const getStylePropertyNumericValue = (objectProperty: EsTreeNode): number | null
 };
 
 export const noBoldHeading = defineRule<Rule>({
+  id: "design-no-bold-heading",
   tags: ["design", "test-noise"],
   framework: "global",
   severity: "warn",

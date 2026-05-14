@@ -1,4 +1,4 @@
-import type { PackageJson } from "../../types.js";
+import type { PackageJson } from "../../types/project-info.js";
 
 export const collectAllDependencies = (packageJson: PackageJson): Record<string, string> => ({
   ...packageJson.peerDependencies,

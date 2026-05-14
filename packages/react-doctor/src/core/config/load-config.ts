@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { ReactDoctorConfig } from "../../types.js";
+import type { ReactDoctorConfig } from "../../types/config.js";
 import { isFile } from "../is-file.js";
 import { isPlainObject } from "../is-plain-object.js";
 import { isMonorepoRoot } from "../detection/find-monorepo-root.js";

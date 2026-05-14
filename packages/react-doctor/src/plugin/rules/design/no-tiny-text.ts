@@ -9,6 +9,7 @@ import { getStylePropertyNumberValue } from "./utils/get-style-property-number-v
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noTinyText = defineRule<Rule>({
+  id: "no-tiny-text",
   framework: "global",
   severity: "warn",
   category: "Accessibility",

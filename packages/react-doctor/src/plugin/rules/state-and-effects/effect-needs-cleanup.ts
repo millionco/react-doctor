@@ -176,6 +176,7 @@ const effectHasCleanupRelease = (callback: EsTreeNode): boolean => {
 };
 
 export const effectNeedsCleanup = defineRule<Rule>({
+  id: "effect-needs-cleanup",
   framework: "global",
   severity: "error",
   category: "State & Effects",

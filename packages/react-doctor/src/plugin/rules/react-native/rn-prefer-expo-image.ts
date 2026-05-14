@@ -11,6 +11,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // placeholders, and crossfades — a major perceived-perf win for any list
 // or hero image.
 export const rnPreferExpoImage = defineRule<Rule>({
+  id: "rn-prefer-expo-image",
   requires: ["react-native"],
   framework: "react-native",
   severity: "warn",

@@ -9,6 +9,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noGiantComponent = defineRule<Rule>({
+  id: "no-giant-component",
   framework: "global",
   severity: "warn",
   category: "Architecture",

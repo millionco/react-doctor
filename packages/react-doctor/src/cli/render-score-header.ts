@@ -4,7 +4,7 @@ import {
   SCORE_GOOD_THRESHOLD,
   SCORE_OK_THRESHOLD,
 } from "../constants.js";
-import type { ScoreResult } from "../types.js";
+import type { ScoreResult } from "../types/score.js";
 import { colorizeByScore } from "./colorize-by-score.js";
 import { highlighter } from "../core/highlighter.js";
 import { logger } from "../core/logger.js";

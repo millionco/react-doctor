@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { IGNORED_DIRECTORIES } from "../../constants.js";
-import type { PackageJson, WorkspacePackage } from "../../types.js";
+import type { PackageJson, WorkspacePackage } from "../../types/project-info.js";
 import { isFile } from "../is-file.js";
 import { getNxWorkspaceDirectories } from "./get-nx-workspace-directories.js";
 import { hasReactDependency } from "./has-react-dependency.js";

@@ -1,4 +1,4 @@
-import type { JsonReport, JsonReportMode } from "../types.js";
+import type { JsonReport, JsonReportMode } from "../types/inspect.js";
 import { getErrorChainMessages } from "./format-error-chain.js";
 
 interface BuildJsonReportErrorInput {

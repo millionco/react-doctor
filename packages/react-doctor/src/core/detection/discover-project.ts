@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { PackageJsonNotFoundError } from "../../errors.js";
-import type { ProjectInfo } from "../../types.js";
+import type { ProjectInfo } from "../../types/project-info.js";
 import { isFile } from "../is-file.js";
 import { collectAllDependencies } from "./collect-all-dependencies.js";
 import { countSourceFiles } from "./count-source-files.js";

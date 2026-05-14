@@ -1,6 +1,6 @@
 import type { Command } from "commander";
 import { logger } from "../core/logger.js";
-import type { FailOnLevel, ReactDoctorConfig } from "../types.js";
+import type { FailOnLevel, ReactDoctorConfig } from "../types/config.js";
 import type { CliFlags } from "./cli-flags.js";
 
 const VALID_FAIL_ON_LEVELS = new Set<FailOnLevel>(["error", "warning", "none"]);

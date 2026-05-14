@@ -187,6 +187,7 @@ const isWrappedInPromiseConcurrency = (mapCall: EsTreeNode): boolean => {
 };
 
 export const asyncAwaitInLoop = defineRule<Rule>({
+  id: "async-await-in-loop",
   framework: "global",
   severity: "warn",
   category: "Performance",

@@ -1,4 +1,4 @@
-import type { KnipIssueRecords } from "../../types.js";
+import type { KnipIssueRecords } from "../../types/knip.js";
 import { isPlainObject } from "../is-plain-object.js";
 
 export const collectUnusedFilePaths = (

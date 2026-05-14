@@ -167,6 +167,7 @@ const isLikelyStringReceiver = (receiver: EsTreeNode | null | undefined): boolea
 };
 
 export const jsSetMapLookups = defineRule<Rule>({
+  id: "js-set-map-lookups",
   framework: "global",
   severity: "warn",
   category: "Performance",

@@ -1,4 +1,4 @@
-import type { ReactDoctorConfig } from "../../types.js";
+import type { ReactDoctorConfig } from "../../types/config.js";
 
 // Boolean fields where the user might write `"true"` / `"false"` strings
 // in JSON by mistake. We coerce-and-warn rather than silently accept the

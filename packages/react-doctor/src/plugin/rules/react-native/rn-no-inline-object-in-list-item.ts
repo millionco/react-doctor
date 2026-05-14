@@ -18,6 +18,7 @@ const RENDER_ITEM_PROP_NAMES = new Set([
 // data didn't change. Hoist the object outside renderItem (StyleSheet,
 // constant, useMemo at list scope) or pass primitives into the row.
 export const rnNoInlineObjectInListItem = defineRule<Rule>({
+  id: "rn-no-inline-object-in-list-item",
   requires: ["react-native"],
   framework: "react-native",
   severity: "warn",

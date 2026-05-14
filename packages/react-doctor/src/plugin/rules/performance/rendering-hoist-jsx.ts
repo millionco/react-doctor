@@ -30,6 +30,7 @@ const jsxReferencesLocalScope = (jsxNode: EsTreeNode): boolean => {
 };
 
 export const renderingHoistJsx = defineRule<Rule>({
+  id: "rendering-hoist-jsx",
   framework: "global",
   severity: "warn",
   category: "Performance",

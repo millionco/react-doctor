@@ -53,6 +53,7 @@ const handlerCallsSetState = (handler: EsTreeNode): EsTreeNode | null => {
 // input), or stash the value in a ref + raf throttle, or use
 // `useDeferredValue`.
 export const rerenderTransitionsScroll = defineRule<Rule>({
+  id: "rerender-transitions-scroll",
   framework: "global",
   severity: "warn",
   category: "Performance",

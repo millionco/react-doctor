@@ -70,6 +70,7 @@ const isBackgroundDark = (bgValue: string): boolean => {
 };
 
 export const noDarkModeGlow = defineRule<Rule>({
+  id: "no-dark-mode-glow",
   tags: ["design", "test-noise"],
   framework: "global",
   severity: "warn",

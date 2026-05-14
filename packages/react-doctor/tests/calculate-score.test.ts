@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { calculateScoreLocally } from "../src/core/scoring/calculate-score-locally.js";
 import { tryScoreFromApi } from "../src/core/scoring/try-score-from-api.js";
 import { calculateScore } from "../src/core/scoring/calculate-score.js";
-import type { Diagnostic } from "../src/types.js";
+import type { Diagnostic } from "../src/types/diagnostic.js";
 
 const sampleDiagnostics: Diagnostic[] = [
   {

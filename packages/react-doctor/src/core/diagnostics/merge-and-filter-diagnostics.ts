@@ -1,5 +1,6 @@
 import reactDoctorPlugin from "../../plugin/react-doctor-plugin.js";
-import type { Diagnostic, ReactDoctorConfig } from "../../types.js";
+import type { ReactDoctorConfig } from "../../types/config.js";
+import type { Diagnostic } from "../../types/diagnostic.js";
 import { filterIgnoredDiagnostics, filterInlineSuppressions } from "./filter-diagnostics.js";
 import { isLikelyBuildEntry } from "../config/is-likely-build-entry.js";
 import { isTestFilePath } from "../config/is-test-file.js";

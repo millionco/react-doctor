@@ -6,6 +6,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const nextjsMissingMetadata = defineRule<Rule>({
+  id: "nextjs-missing-metadata",
   requires: ["nextjs"],
   framework: "nextjs",
   severity: "warn",

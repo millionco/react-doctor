@@ -11,6 +11,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // underlying fetch runs twice per request. Pass primitives (or memoize
 // the argument object once at module/route scope).
 export const serverCacheWithObjectLiteral = defineRule<Rule>({
+  id: "server-cache-with-object-literal",
   framework: "global",
   severity: "warn",
   category: "Server",

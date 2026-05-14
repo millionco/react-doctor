@@ -1,9 +1,9 @@
 import path from "node:path";
 import { NoReactDependencyError, ProjectNotFoundError } from "./errors.js";
+import type { ReactDoctorConfig } from "./types/config.js";
+import type { DiagnoseOptions, DiagnoseResult } from "./types/diagnose.js";
+import type { Diagnostic } from "./types/diagnostic.js";
 import type {
-  Diagnostic,
-  DiagnoseOptions,
-  DiagnoseResult,
   DiffInfo,
   JsonReport,
   JsonReportDiffInfo,
@@ -11,10 +11,9 @@ import type {
   JsonReportMode,
   JsonReportProjectEntry,
   JsonReportSummary,
-  ProjectInfo,
-  ReactDoctorConfig,
-  ScoreResult,
-} from "./types.js";
+} from "./types/inspect.js";
+import type { ProjectInfo } from "./types/project-info.js";
+import type { ScoreResult } from "./types/score.js";
 import { buildJsonReport } from "./core/build-json-report.js";
 import { buildJsonReportError } from "./core/build-json-report-error.js";
 import { calculateScore } from "./core/scoring/calculate-score.js";

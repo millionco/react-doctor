@@ -10,6 +10,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const queryNoQueryInEffect = defineRule<Rule>({
+  id: "query-no-query-in-effect",
   requires: ["tanstack-query"],
   framework: "tanstack-query",
   severity: "warn",

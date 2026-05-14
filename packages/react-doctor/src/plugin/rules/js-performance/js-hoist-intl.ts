@@ -36,6 +36,7 @@ const isIntlNewExpression = (node: EsTreeNode): boolean => {
 };
 
 export const jsHoistIntl = defineRule<Rule>({
+  id: "js-hoist-intl",
   framework: "global",
   severity: "warn",
   category: "Performance",

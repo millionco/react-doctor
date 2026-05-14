@@ -54,6 +54,7 @@ const BORDER_SIDE_WIDTH_KEYS = new Set([
 ]);
 
 export const noSideTabBorder = defineRule<Rule>({
+  id: "no-side-tab-border",
   tags: ["design", "test-noise"],
   framework: "global",
   severity: "warn",

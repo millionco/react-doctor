@@ -9,6 +9,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noGlobalCssVariableAnimation = defineRule<Rule>({
+  id: "no-global-css-variable-animation",
   framework: "global",
   severity: "error",
   category: "Performance",

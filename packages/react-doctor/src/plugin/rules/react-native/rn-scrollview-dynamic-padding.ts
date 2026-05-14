@@ -13,6 +13,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // which the platform applies as an OS-level offset without re-laying out
 // the content.
 export const rnScrollviewDynamicPadding = defineRule<Rule>({
+  id: "rn-scrollview-dynamic-padding",
   requires: ["react-native"],
   framework: "react-native",
   severity: "warn",

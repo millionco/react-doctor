@@ -224,6 +224,7 @@ interface EffectInfo {
 }
 
 export const noEffectChain = defineRule<Rule>({
+  id: "no-effect-chain",
   framework: "global",
   severity: "warn",
   category: "State & Effects",

@@ -7,6 +7,7 @@ import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noJustifiedText = defineRule<Rule>({
+  id: "no-justified-text",
   framework: "global",
   severity: "warn",
   category: "Accessibility",

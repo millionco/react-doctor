@@ -8,6 +8,7 @@ import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noLongTransitionDuration = defineRule<Rule>({
+  id: "no-long-transition-duration",
   framework: "global",
   severity: "warn",
   category: "Performance",

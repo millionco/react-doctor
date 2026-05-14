@@ -1,4 +1,4 @@
-import type { PackageJson } from "../../types.js";
+import type { PackageJson } from "../../types/project-info.js";
 import { collectAllDependencies } from "./collect-all-dependencies.js";
 
 const TANSTACK_QUERY_PACKAGES = new Set([

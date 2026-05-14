@@ -5,6 +5,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const preferDynamicImport = defineRule<Rule>({
+  id: "prefer-dynamic-import",
   framework: "global",
   severity: "warn",
   category: "Bundle Size",

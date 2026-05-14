@@ -7,6 +7,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const queryNoVoidQueryFn = defineRule<Rule>({
+  id: "query-no-void-query-fn",
   requires: ["tanstack-query"],
   framework: "tanstack-query",
   severity: "warn",

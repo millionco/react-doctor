@@ -10,6 +10,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const nextjsNoClientFetchForServerData = defineRule<Rule>({
+  id: "nextjs-no-client-fetch-for-server-data",
   requires: ["nextjs"],
   framework: "nextjs",
   severity: "warn",

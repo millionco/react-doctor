@@ -127,6 +127,7 @@ const collectIdentifierParams = (params: EsTreeNode[]): Set<string> => {
 // `app/.../route.ts`) and Pages Router (`export default async function
 // handler(req, res)` in `pages/api/...`).
 export const serverHoistStaticIo = defineRule<Rule>({
+  id: "server-hoist-static-io",
   framework: "global",
   severity: "warn",
   category: "Server",

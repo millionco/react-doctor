@@ -11,6 +11,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // (a single actionable diagnostic per file) instead of on every call
 // site, which would clutter output for files with several flushSync()s.
 export const noFlushSync = defineRule<Rule>({
+  id: "no-flush-sync",
   framework: "global",
   severity: "warn",
   category: "Performance",

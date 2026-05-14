@@ -13,6 +13,7 @@ const NON_NATIVE_NAVIGATOR_PACKAGES = new Set([
 // uses platform-native UINavigationController / Fragment, giving real
 // iOS/Android transitions, swipe-back, and large titles for free.
 export const rnNoNonNativeNavigator = defineRule<Rule>({
+  id: "rn-no-non-native-navigator",
   requires: ["react-native"],
   framework: "react-native",
   severity: "warn",

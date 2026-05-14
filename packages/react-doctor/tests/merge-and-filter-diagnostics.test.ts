@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 
-import type { Diagnostic } from "../src/types.js";
+import type { Diagnostic } from "../src/types/diagnostic.js";
 import { createNodeReadFileLinesSync } from "../src/core/read-file-lines-node.js";
 import { mergeAndFilterDiagnostics } from "../src/core/diagnostics/merge-and-filter-diagnostics.js";
 import { buildDiagnostic, writeFile } from "./regressions/_helpers.js";

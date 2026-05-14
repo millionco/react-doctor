@@ -58,6 +58,7 @@ const isRenderItemFunction = (node: EsTreeNode): boolean => {
 // list scope (`const handlePress = useCallback((id) => ..., [])`) and
 // pass the row's id as a primitive prop.
 export const rnListCallbackPerRow = defineRule<Rule>({
+  id: "rn-list-callback-per-row",
   requires: ["react-native"],
   framework: "react-native",
   severity: "warn",

@@ -29,6 +29,7 @@ const isMutableConstInitializer = (init: EsTreeNode | null | undefined): string 
 // must live inside the action, in headers/cookies, or in a request scope
 // (React.cache, AsyncLocalStorage, etc.).
 export const serverNoMutableModuleState = defineRule<Rule>({
+  id: "server-no-mutable-module-state",
   framework: "global",
   severity: "error",
   category: "Server",

@@ -5,6 +5,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const rnNoLegacyExpoPackages = defineRule<Rule>({
+  id: "rn-no-legacy-expo-packages",
   requires: ["react-native"],
   framework: "react-native",
   severity: "warn",

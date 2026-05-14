@@ -1,4 +1,4 @@
-import type { JsonReport } from "../types.js";
+import type { JsonReport } from "../types/inspect.js";
 import { cliState } from "./cli-state.js";
 
 export const writeJsonReport = (report: JsonReport): void => {

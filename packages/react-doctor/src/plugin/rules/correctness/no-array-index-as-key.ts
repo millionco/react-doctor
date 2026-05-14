@@ -92,6 +92,7 @@ const isInsideStaticPlaceholderMap = (node: EsTreeNode): boolean => {
 };
 
 export const noArrayIndexAsKey = defineRule<Rule>({
+  id: "no-array-index-as-key",
   framework: "global",
   severity: "warn",
   category: "Correctness",

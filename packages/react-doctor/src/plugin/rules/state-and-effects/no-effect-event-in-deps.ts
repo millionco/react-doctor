@@ -18,6 +18,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // binding named `onChange` in ComponentA doesn't taint a regular variable
 // `onChange` in ComponentB in the same file.
 export const noEffectEventInDeps = defineRule<Rule>({
+  id: "no-effect-event-in-deps",
   framework: "global",
   severity: "error",
   category: "State & Effects",

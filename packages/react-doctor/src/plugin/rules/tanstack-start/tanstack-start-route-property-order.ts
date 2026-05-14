@@ -7,6 +7,7 @@ import { getPropertyKeyName } from "./utils/get-property-key-name.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const tanstackStartRoutePropertyOrder = defineRule<Rule>({
+  id: "tanstack-start-route-property-order",
   requires: ["tanstack-start"],
   framework: "tanstack-start",
   severity: "error",

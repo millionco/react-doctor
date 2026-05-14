@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Diagnostic } from "../types.js";
+import type { Diagnostic } from "../types/diagnostic.js";
 import { groupBy } from "../core/group-by.js";
 import { formatRuleSummary, sortRuleGroupsByImportance } from "./render-diagnostics.js";
 

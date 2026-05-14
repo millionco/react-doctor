@@ -56,6 +56,7 @@ const buildLegacyLifecycleMessage = (originalName: string): string | null => {
 };
 
 export const noLegacyClassLifecycles = defineRule<Rule>({
+  id: "no-legacy-class-lifecycles",
   framework: "global",
   severity: "error",
   category: "Correctness",

@@ -59,9 +59,11 @@
   },
   "scripts": {
     "dev": "vp pack --watch",
-    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && NODE_ENV=production vp pack",
-    "typecheck": "tsc --noEmit",
-    "test": "vp test run"
+    "build": "pnpm gen && node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && NODE_ENV=production vp pack",
+    "gen": "node ./scripts/generate-rule-registry.mjs",
+    "gen:check": "node ./scripts/generate-rule-registry.mjs && git diff --exit-code -- src/plugin/rule-registry.ts",
+    "typecheck": "pnpm gen && tsc --noEmit",
+    "test": "pnpm gen && vp test run"
   },
   "dependencies": {
     "agent-install": "0.0.5",

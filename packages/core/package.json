@@ -20,7 +20,8 @@
     "@react-doctor/project-info": "workspace:*",
     "@react-doctor/types": "workspace:*",
     "oxlint": "^1.63.0",
-    "oxlint-plugin-react-doctor": "workspace:*"
+    "oxlint-plugin-react-doctor": "workspace:*",
+    "typescript": "^6.0.3"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

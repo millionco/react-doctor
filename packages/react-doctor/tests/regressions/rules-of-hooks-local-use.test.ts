@@ -3,7 +3,6 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 import { runOxlint } from "@react-doctor/core";
-import { shouldSuppressLocalUseHookDiagnostic } from "../../../core/src/runners/oxlint/should-suppress-local-use-hook-diagnostic.js";
 import { buildTestProject, setupReactProject } from "./_helpers.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-rules-of-hooks-fp-"));
@@ -62,44 +61,140 @@ describe("rules-of-hooks local use false positives", () => {
     ).toBe(true);
   });
 
-  it("does not suppress diagnostics for async methods named use", () => {
-    const sourceText = `
-      import { use } from "react";
-
-      export const fixture = {
-        async use() {
-          use(Promise.resolve("ok"));
-        },
-      };
-    `;
-    const projectDir = setupReactProject(tempRoot, "react-use-async-method", {
+  it("does not report a local use binding after non-ASCII source text", async () => {
+    const projectDir = setupReactProject(tempRoot, "local-use-non-ascii", {
       files: {
-        "src/fixture.ts": sourceText,
+        "src/fixtures.ts": `
+          const label = "測試";
+
+          export const fixture = async ({ use }: { use: () => void }) => {
+            console.log(label, use());
+          };
+        `,
       },
     });
 
-    const asyncOffset = sourceText.indexOf("async use");
-    const useCallOffset = sourceText.indexOf('use(Promise.resolve("ok"))');
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
 
     expect(
-      shouldSuppressLocalUseHookDiagnostic(
-        {
-          code: "react-hooks(rules-of-hooks)",
-          message: 'React Hook "use" cannot be called in an async function.',
-          filename: path.join(projectDir, "src/fixture.ts"),
-          labels: [
-            {
-              label: 'React Hook "use" cannot be called in an async function.',
-              span: { offset: useCallOffset, length: "use".length },
-            },
-            {
-              label: "This function is async.",
-              span: { offset: asyncOffset, length: "async".length },
-            },
-          ],
-        },
-        projectDir,
+      diagnostics.filter(
+        (diagnostic) => diagnostic.plugin === "react-hooks" && diagnostic.rule === "rules-of-hooks",
       ),
-    ).toBe(false);
+    ).toHaveLength(0);
+  });
+
+  it("does not report a local use binding in generic async arrows", async () => {
+    const projectDir = setupReactProject(tempRoot, "local-use-generic-arrow", {
+      files: {
+        "src/fixtures.ts": `
+          interface Fixture<TValue> {
+            use: () => TValue;
+          }
+
+          export const fixture = async <TValue,>({ use }: Fixture<TValue>) => {
+            console.log(use());
+          };
+        `,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      diagnostics.filter(
+        (diagnostic) => diagnostic.plugin === "react-hooks" && diagnostic.rule === "rules-of-hooks",
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("does not report a non-React import aliased to use", async () => {
+    const projectDir = setupReactProject(tempRoot, "local-use-import-alias", {
+      files: {
+        "src/fixtures.ts": `
+          import { fixtureUse as use } from "./helpers";
+
+          export const fixture = async () => {
+            console.log(use());
+          };
+        `,
+        "src/helpers.ts": `
+          export const fixtureUse = () => undefined;
+        `,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      diagnostics.filter(
+        (diagnostic) => diagnostic.plugin === "react-hooks" && diagnostic.rule === "rules-of-hooks",
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("still reports React use aliases inside async components", async () => {
+    const projectDir = setupReactProject(tempRoot, "react-use-alias", {
+      files: {
+        "src/App.tsx": `
+          import { use as reactUse } from "react";
+
+          export const App = async () => {
+            const use = reactUse;
+            use(Promise.resolve("ok"));
+            return null;
+          };
+        `,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      diagnostics.some(
+        (diagnostic) => diagnostic.plugin === "react-hooks" && diagnostic.rule === "rules-of-hooks",
+      ),
+    ).toBe(true);
+  });
+
+  it("does not let loop-scoped use bindings suppress outer React use", async () => {
+    const projectDir = setupReactProject(tempRoot, "react-use-after-loop-binding", {
+      files: {
+        "src/App.tsx": `
+          import { use } from "react";
+
+          export const App = async () => {
+            for (const use of [() => undefined]) {
+              use();
+            }
+
+            use(Promise.resolve("ok"));
+            return null;
+          };
+        `,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      diagnostics.some(
+        (diagnostic) => diagnostic.plugin === "react-hooks" && diagnostic.rule === "rules-of-hooks",
+      ),
+    ).toBe(true);
   });
 });

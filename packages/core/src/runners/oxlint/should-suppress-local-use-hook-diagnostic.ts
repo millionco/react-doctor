@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import * as ts from "typescript";
 
 interface OxlintSpan {
   offset: number;
@@ -18,161 +19,346 @@ interface OxlintDiagnosticCandidate {
   labels: OxlintLabel[];
 }
 
+interface ReactImportBindings {
+  namespaceNames: Set<string>;
+  useImportNames: Set<string>;
+}
+
+interface BindingResolution {
+  isReactUseBinding: boolean;
+}
+
 const RULES_OF_HOOKS_CODE = "react-hooks(rules-of-hooks)";
 const REACT_HOOK_USE_MESSAGE_PREFIX = 'React Hook "use"';
-const ASYNC_FUNCTION_LABEL = "This function is async.";
+const REACT_MODULE_SOURCE = "react";
 const USE_IDENTIFIER = "use";
 
-const IDENTIFIER_CHARACTER_PATTERN = /[$\w]/;
-
-const isIdentifierCharacter = (character: string | undefined): boolean =>
-  character !== undefined && IDENTIFIER_CHARACTER_PATTERN.test(character);
-
-const skipWhitespace = (sourceText: string, offset: number): number => {
-  let currentOffset = offset;
-  while (/\s/.test(sourceText[currentOffset] ?? "")) {
-    currentOffset++;
-  }
-  return currentOffset;
+const getScriptKind = (filename: string): ts.ScriptKind => {
+  if (filename.endsWith(".tsx")) return ts.ScriptKind.TSX;
+  if (filename.endsWith(".jsx")) return ts.ScriptKind.JSX;
+  if (filename.endsWith(".ts")) return ts.ScriptKind.TS;
+  return ts.ScriptKind.JS;
 };
 
-const findMatchingDelimiter = (
-  sourceText: string,
-  openOffset: number,
-  openDelimiter: string,
-  closeDelimiter: string,
-): number => {
-  let depth = 0;
-  for (let offset = openOffset; offset < sourceText.length; offset++) {
-    const character = sourceText[offset];
-    if (character === openDelimiter) depth++;
-    if (character === closeDelimiter) {
-      depth--;
-      if (depth === 0) return offset;
+const getUtf16Offset = (sourceText: string, utf8Offset: number): number =>
+  Buffer.from(sourceText).subarray(0, utf8Offset).toString("utf8").length;
+
+const getModuleSource = (node: ts.Node): string | null => {
+  let currentNode: ts.Node | undefined = node;
+  while (currentNode) {
+    if (ts.isImportDeclaration(currentNode) && ts.isStringLiteral(currentNode.moduleSpecifier)) {
+      return currentNode.moduleSpecifier.text;
     }
+    currentNode = currentNode.parent;
   }
-  return -1;
+  return null;
 };
 
-const findTopLevelCharacter = (text: string, targetCharacters: ReadonlySet<string>): number => {
-  const delimiterStack: string[] = [];
-  const closingToOpening = new Map([
-    [")", "("],
-    ["}", "{"],
-    ["]", "["],
-  ]);
+const getImportedName = (importSpecifier: ts.ImportSpecifier): string =>
+  importSpecifier.propertyName?.text ?? importSpecifier.name.text;
 
-  for (let index = 0; index < text.length; index++) {
-    const character = text[index];
-    if (character === "(" || character === "{" || character === "[") {
-      delimiterStack.push(character);
+const collectReactImportBindings = (sourceFile: ts.SourceFile): ReactImportBindings => {
+  const namespaceNames = new Set<string>();
+  const useImportNames = new Set<string>();
+
+  for (const statement of sourceFile.statements) {
+    if (!ts.isImportDeclaration(statement)) continue;
+    if (!ts.isStringLiteral(statement.moduleSpecifier)) continue;
+    if (statement.moduleSpecifier.text !== REACT_MODULE_SOURCE) continue;
+
+    const importClause = statement.importClause;
+    if (!importClause) continue;
+    if (importClause.name) namespaceNames.add(importClause.name.text);
+
+    const namedBindings = importClause.namedBindings;
+    if (!namedBindings) continue;
+    if (ts.isNamespaceImport(namedBindings)) {
+      namespaceNames.add(namedBindings.name.text);
       continue;
     }
-    const openingDelimiter = closingToOpening.get(character ?? "");
-    if (openingDelimiter) {
-      if (delimiterStack.at(-1) === openingDelimiter) delimiterStack.pop();
-      continue;
-    }
-    if (delimiterStack.length === 0 && targetCharacters.has(character ?? "")) {
-      return index;
+
+    for (const importSpecifier of namedBindings.elements) {
+      if (getImportedName(importSpecifier) === USE_IDENTIFIER) {
+        useImportNames.add(importSpecifier.name.text);
+      }
     }
   }
 
-  return -1;
+  return { namespaceNames, useImportNames };
 };
 
-const splitTopLevel = (text: string, separator: string): string[] => {
-  const parts: string[] = [];
-  let startIndex = 0;
-  let depth = 0;
+const getPropertyName = (node: ts.PropertyName | undefined): string | null => {
+  if (!node) return null;
+  if (ts.isIdentifier(node) || ts.isStringLiteral(node) || ts.isNumericLiteral(node))
+    return node.text;
+  return null;
+};
 
-  for (let index = 0; index < text.length; index++) {
-    const character = text[index];
-    if (character === "(" || character === "{" || character === "[") depth++;
-    if (character === ")" || character === "}" || character === "]") depth--;
-    if (character === separator && depth === 0) {
-      parts.push(text.slice(startIndex, index));
-      startIndex = index + separator.length;
-    }
+const unwrapExpression = (expression: ts.Expression): ts.Expression => {
+  let currentExpression = expression;
+  while (
+    ts.isParenthesizedExpression(currentExpression) ||
+    ts.isAsExpression(currentExpression) ||
+    ts.isSatisfiesExpression(currentExpression) ||
+    ts.isNonNullExpression(currentExpression) ||
+    ts.isTypeAssertionExpression(currentExpression)
+  ) {
+    currentExpression = currentExpression.expression;
   }
-  parts.push(text.slice(startIndex));
-  return parts;
+  return currentExpression;
 };
 
-const getBindingPattern = (parameterText: string): string => {
-  const boundaryIndex = findTopLevelCharacter(parameterText, new Set([":", "="]));
-  const rawPattern = boundaryIndex === -1 ? parameterText : parameterText.slice(0, boundaryIndex);
-  return rawPattern
-    .trim()
-    .replace(/^\.\.\./, "")
-    .trim();
-};
-
-const getFirstIdentifier = (text: string): string | null => {
-  const match = text.trim().match(/^[$A-Z_a-z][$\w]*/);
-  return match?.[0] ?? null;
-};
-
-const bindingPatternHasUse = (patternText: string): boolean => {
-  const pattern = patternText.trim();
-  if (!pattern) return false;
-  if (pattern.startsWith("{") && pattern.endsWith("}")) {
-    return objectBindingPatternHasUse(pattern.slice(1, -1));
+const isReactUseExpression = (
+  expression: ts.Expression | undefined,
+  reactImportBindings: ReactImportBindings,
+): boolean => {
+  if (!expression) return false;
+  const unwrappedExpression = unwrapExpression(expression);
+  if (ts.isIdentifier(unwrappedExpression)) {
+    return reactImportBindings.useImportNames.has(unwrappedExpression.text);
   }
-  if (pattern.startsWith("[") && pattern.endsWith("]")) {
-    return splitTopLevel(pattern.slice(1, -1), ",").some((part) =>
-      bindingPatternHasUse(getBindingPattern(part)),
-    );
+  if (
+    ts.isPropertyAccessExpression(unwrappedExpression) &&
+    unwrappedExpression.name.text === USE_IDENTIFIER &&
+    ts.isIdentifier(unwrappedExpression.expression)
+  ) {
+    return reactImportBindings.namespaceNames.has(unwrappedExpression.expression.text);
   }
-  return getFirstIdentifier(pattern) === USE_IDENTIFIER;
+  if (
+    ts.isElementAccessExpression(unwrappedExpression) &&
+    ts.isStringLiteral(unwrappedExpression.argumentExpression) &&
+    unwrappedExpression.argumentExpression.text === USE_IDENTIFIER &&
+    ts.isIdentifier(unwrappedExpression.expression)
+  ) {
+    return reactImportBindings.namespaceNames.has(unwrappedExpression.expression.text);
+  }
+  return false;
 };
 
-const objectBindingPatternHasUse = (patternText: string): boolean =>
-  splitTopLevel(patternText, ",").some((propertyText) => {
-    const property = propertyText
-      .trim()
-      .replace(/^\.\.\./, "")
-      .trim();
-    if (!property) return false;
-    const colonIndex = findTopLevelCharacter(property, new Set([":"]));
-    if (colonIndex === -1) {
-      return getFirstIdentifier(getBindingPattern(property)) === USE_IDENTIFIER;
-    }
-    return bindingPatternHasUse(getBindingPattern(property.slice(colonIndex + 1)));
-  });
+const findBindingElement = (identifier: ts.Identifier): ts.BindingElement | null => {
+  let currentNode: ts.Node | undefined = identifier.parent;
+  while (currentNode) {
+    if (ts.isBindingElement(currentNode)) return currentNode;
+    if (ts.isVariableDeclaration(currentNode) || ts.isParameter(currentNode)) return null;
+    currentNode = currentNode.parent;
+  }
+  return null;
+};
 
-const parametersHaveUseBinding = (parametersText: string): boolean =>
-  splitTopLevel(parametersText, ",").some((parameterText) =>
-    bindingPatternHasUse(getBindingPattern(parameterText)),
+const isReactUseObjectBinding = (
+  identifier: ts.Identifier,
+  variableDeclaration: ts.VariableDeclaration,
+  reactImportBindings: ReactImportBindings,
+): boolean => {
+  const bindingElement = findBindingElement(identifier);
+  if (!bindingElement) return false;
+  if (!ts.isObjectBindingPattern(bindingElement.parent)) return false;
+  if (!variableDeclaration.initializer) return false;
+  const initializer = unwrapExpression(variableDeclaration.initializer);
+  if (!ts.isIdentifier(initializer) || !reactImportBindings.namespaceNames.has(initializer.text)) {
+    return false;
+  }
+  return (
+    getPropertyName(bindingElement.propertyName) === USE_IDENTIFIER || !bindingElement.propertyName
   );
+};
 
-const getAsyncFunctionParametersText = (
-  sourceText: string,
-  asyncOffset: number,
-  useCallOffset: number,
-): string | null => {
-  let offset = skipWhitespace(sourceText, asyncOffset + "async".length);
-  if (sourceText.startsWith("function", offset)) {
-    offset += "function".length;
-    const openParenOffset = sourceText.indexOf("(", offset);
-    if (openParenOffset === -1 || openParenOffset > useCallOffset) return null;
-    const closeParenOffset = findMatchingDelimiter(sourceText, openParenOffset, "(", ")");
-    if (closeParenOffset === -1 || closeParenOffset > useCallOffset) return null;
-    return sourceText.slice(openParenOffset + 1, closeParenOffset);
+const findUseBindingIdentifier = (bindingName: ts.BindingName): ts.Identifier | null => {
+  if (ts.isIdentifier(bindingName)) return bindingName.text === USE_IDENTIFIER ? bindingName : null;
+
+  for (const element of bindingName.elements) {
+    if (ts.isOmittedExpression(element)) continue;
+    const nestedIdentifier = findUseBindingIdentifier(element.name);
+    if (nestedIdentifier) return nestedIdentifier;
   }
 
-  offset = skipWhitespace(sourceText, offset);
-  if (sourceText[offset] === "(") {
-    const closeParenOffset = findMatchingDelimiter(sourceText, offset, "(", ")");
-    if (closeParenOffset === -1 || closeParenOffset > useCallOffset) return null;
-    return sourceText.slice(offset + 1, closeParenOffset);
-  }
+  return null;
+};
 
-  const parameterStartOffset = offset;
-  while (isIdentifierCharacter(sourceText[offset])) offset++;
-  const nextOffset = skipWhitespace(sourceText, offset);
-  if (!sourceText.startsWith("=>", nextOffset)) return null;
-  return sourceText.slice(parameterStartOffset, offset);
+const getVariableDeclarationResolution = (
+  variableDeclaration: ts.VariableDeclaration,
+  reactImportBindings: ReactImportBindings,
+): BindingResolution | null => {
+  const bindingIdentifier = findUseBindingIdentifier(variableDeclaration.name);
+  if (!bindingIdentifier) return null;
+  return {
+    isReactUseBinding:
+      isReactUseExpression(variableDeclaration.initializer, reactImportBindings) ||
+      isReactUseObjectBinding(bindingIdentifier, variableDeclaration, reactImportBindings),
+  };
+};
+
+const getImportResolution = (node: ts.Node): BindingResolution | null => {
+  if (ts.isImportSpecifier(node) && node.name.text === USE_IDENTIFIER) {
+    return {
+      isReactUseBinding:
+        getModuleSource(node) === REACT_MODULE_SOURCE && getImportedName(node) === USE_IDENTIFIER,
+    };
+  }
+  if (ts.isNamespaceImport(node) && node.name.text === USE_IDENTIFIER) {
+    return { isReactUseBinding: false };
+  }
+  if (ts.isImportClause(node) && node.name?.text === USE_IDENTIFIER) {
+    return { isReactUseBinding: false };
+  }
+  return null;
+};
+
+const getDeclarationResolution = (
+  node: ts.Node,
+  reactImportBindings: ReactImportBindings,
+): BindingResolution | null => {
+  const importResolution = getImportResolution(node);
+  if (importResolution) return importResolution;
+
+  if (ts.isVariableDeclaration(node)) {
+    return getVariableDeclarationResolution(node, reactImportBindings);
+  }
+  if (ts.isParameter(node)) {
+    return findUseBindingIdentifier(node.name) ? { isReactUseBinding: false } : null;
+  }
+  if (ts.isFunctionDeclaration(node) && node.name?.text === USE_IDENTIFIER) {
+    return { isReactUseBinding: false };
+  }
+  if (ts.isClassDeclaration(node) && node.name?.text === USE_IDENTIFIER) {
+    return { isReactUseBinding: false };
+  }
+  return null;
+};
+
+const isNestedScopeBoundary = (node: ts.Node, scopeNode: ts.Node): boolean =>
+  node !== scopeNode &&
+  (ts.isFunctionLike(node) ||
+    ts.isClassLike(node) ||
+    ts.isBlock(node) ||
+    ts.isForStatement(node) ||
+    ts.isForInStatement(node) ||
+    ts.isForOfStatement(node) ||
+    ts.isCatchClause(node) ||
+    ts.isSourceFile(node) ||
+    ts.isModuleBlock(node));
+
+const findResolutionInSubtree = (
+  node: ts.Node,
+  scopeNode: ts.Node,
+  useOffset: number,
+  reactImportBindings: ReactImportBindings,
+  sourceFile: ts.SourceFile,
+): BindingResolution | null => {
+  const nodeStart = node.getStart(sourceFile);
+  if (nodeStart > useOffset) return null;
+
+  const declarationResolution = getDeclarationResolution(node, reactImportBindings);
+  if (declarationResolution) return declarationResolution;
+  if (isNestedScopeBoundary(node, scopeNode)) return null;
+
+  let resolution: BindingResolution | null = null;
+  ts.forEachChild(node, (child) => {
+    if (resolution) return;
+    resolution = findResolutionInSubtree(
+      child,
+      scopeNode,
+      useOffset,
+      reactImportBindings,
+      sourceFile,
+    );
+  });
+  return resolution;
+};
+
+const findResolutionInFunctionParameters = (
+  node: ts.Node,
+  reactImportBindings: ReactImportBindings,
+): BindingResolution | null => {
+  if (!ts.isFunctionLike(node)) return null;
+  for (const parameter of node.parameters) {
+    const parameterResolution = getDeclarationResolution(parameter, reactImportBindings);
+    if (parameterResolution) return parameterResolution;
+  }
+  return null;
+};
+
+const findResolutionInScope = (
+  scopeNode: ts.Node,
+  useOffset: number,
+  reactImportBindings: ReactImportBindings,
+  sourceFile: ts.SourceFile,
+): BindingResolution | null => {
+  const parameterResolution = findResolutionInFunctionParameters(scopeNode, reactImportBindings);
+  if (parameterResolution) return parameterResolution;
+
+  let resolution: BindingResolution | null = null;
+  ts.forEachChild(scopeNode, (child) => {
+    if (resolution) return;
+    resolution = findResolutionInSubtree(
+      child,
+      scopeNode,
+      useOffset,
+      reactImportBindings,
+      sourceFile,
+    );
+  });
+  return resolution;
+};
+
+const isScopeNode = (node: ts.Node): boolean =>
+  ts.isSourceFile(node) ||
+  ts.isBlock(node) ||
+  ts.isModuleBlock(node) ||
+  ts.isFunctionLike(node) ||
+  ts.isForStatement(node) ||
+  ts.isForInStatement(node) ||
+  ts.isForOfStatement(node) ||
+  ts.isCatchClause(node);
+
+const resolveUseBinding = (
+  useIdentifier: ts.Identifier,
+  useOffset: number,
+  reactImportBindings: ReactImportBindings,
+  sourceFile: ts.SourceFile,
+): BindingResolution | null => {
+  let currentNode: ts.Node | undefined = useIdentifier.parent;
+  while (currentNode) {
+    if (isScopeNode(currentNode)) {
+      const resolution = findResolutionInScope(
+        currentNode,
+        useOffset,
+        reactImportBindings,
+        sourceFile,
+      );
+      if (resolution) return resolution;
+    }
+    currentNode = currentNode.parent;
+  }
+  return null;
+};
+
+const isUseCallIdentifier = (node: ts.Identifier): boolean =>
+  node.text === USE_IDENTIFIER &&
+  ts.isCallExpression(node.parent) &&
+  node.parent.expression === node;
+
+const findUseCallIdentifier = (
+  sourceFile: ts.SourceFile,
+  useOffset: number,
+): ts.Identifier | null => {
+  let matchedIdentifier: ts.Identifier | null = null;
+
+  const visit = (node: ts.Node): void => {
+    if (matchedIdentifier) return;
+    if (
+      ts.isIdentifier(node) &&
+      isUseCallIdentifier(node) &&
+      node.getStart(sourceFile) === useOffset
+    ) {
+      matchedIdentifier = node;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
+  return matchedIdentifier;
 };
 
 export const shouldSuppressLocalUseHookDiagnostic = (
@@ -183,8 +369,6 @@ export const shouldSuppressLocalUseHookDiagnostic = (
   if (!diagnostic.message.startsWith(REACT_HOOK_USE_MESSAGE_PREFIX)) return false;
   const primaryLabel = diagnostic.labels[0];
   if (!primaryLabel) return false;
-  const asyncLabel = diagnostic.labels.find((label) => label.label === ASYNC_FUNCTION_LABEL);
-  if (!asyncLabel) return false;
 
   const absolutePath = path.isAbsolute(diagnostic.filename)
     ? diagnostic.filename
@@ -197,20 +381,22 @@ export const shouldSuppressLocalUseHookDiagnostic = (
     return false;
   }
 
-  if (
-    sourceText.slice(primaryLabel.span.offset, primaryLabel.span.offset + USE_IDENTIFIER.length) !==
-    USE_IDENTIFIER
-  ) {
-    return false;
-  }
-  if (sourceText[primaryLabel.span.offset - 1] === ".") return false;
-  const nextOffset = skipWhitespace(sourceText, primaryLabel.span.offset + USE_IDENTIFIER.length);
-  if (sourceText[nextOffset] !== "(") return false;
-
-  const parametersText = getAsyncFunctionParametersText(
+  const sourceFile = ts.createSourceFile(
+    absolutePath,
     sourceText,
-    asyncLabel.span.offset,
-    primaryLabel.span.offset,
+    ts.ScriptTarget.Latest,
+    true,
+    getScriptKind(absolutePath),
   );
-  return parametersText !== null && parametersHaveUseBinding(parametersText);
+  const useOffset = getUtf16Offset(sourceText, primaryLabel.span.offset);
+  const useIdentifier = findUseCallIdentifier(sourceFile, useOffset);
+  if (!useIdentifier) return false;
+
+  const bindingResolution = resolveUseBinding(
+    useIdentifier,
+    useOffset,
+    collectReactImportBindings(sourceFile),
+    sourceFile,
+  );
+  return bindingResolution !== null && !bindingResolution.isReactUseBinding;
 };

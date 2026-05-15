@@ -33,6 +33,22 @@ describe("discoverProject", () => {
     expect(projectInfo.reactVersion).toBe("^18.0.0 || ^19.0.0");
   });
 
+  it("detects React version from devDependencies only", () => {
+    const projectDirectory = path.join(tempDirectory, "react-in-dev-deps-only");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "react-in-dev-deps-only",
+        devDependencies: { react: "^18.3.1", "react-dom": "^18.3.1" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.reactVersion).toBe("^18.3.1");
+    expect(projectInfo.reactMajorVersion).toBe(18);
+  });
+
   it("detects Tailwind version from devDependencies when present", () => {
     const projectDirectory = path.join(tempDirectory, "tw-from-dev-deps");
     fs.mkdirSync(projectDirectory, { recursive: true });
@@ -127,6 +143,36 @@ describe("discoverProject", () => {
     expect(projectInfo.reactVersion).toBe("19.2.0");
   });
 
+  it("resolves React version from a Bun grouped catalog when the leaf also uses devDependencies", () => {
+    const monorepoRoot = path.join(tempDirectory, "bun-grouped-catalog-dev-deps");
+    fs.mkdirSync(path.join(monorepoRoot, "apps", "web"), { recursive: true });
+    fs.writeFileSync(
+      path.join(monorepoRoot, "package.json"),
+      JSON.stringify({
+        name: "monorepo",
+        private: true,
+        workspaces: ["apps/*"],
+        catalogs: {
+          react19: {
+            react: "19.2.1",
+            "react-dom": "19.2.1",
+          },
+        },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(monorepoRoot, "apps", "web", "package.json"),
+      JSON.stringify({
+        name: "web",
+        devDependencies: { react: "catalog:react19", "react-dom": "catalog:react19" },
+      }),
+    );
+
+    const projectInfo = discoverProject(path.join(monorepoRoot, "apps", "web"));
+    expect(projectInfo.reactVersion).toBe("19.2.1");
+    expect(projectInfo.reactMajorVersion).toBe(19);
+  });
+
   it("picks the leaf-referenced group when multiple Bun grouped catalogs define the same package", () => {
     const projectInfo = discoverProject(
       path.join(FIXTURES_DIRECTORY, "bun-multiple-grouped-catalogs", "apps", "web"),
@@ -213,6 +259,30 @@ describe("discoverProject", () => {
     expect(projectInfo.reactVersion).toBe("^19.0.0");
   });
 
+  it("discovers React and framework from workspace packages when scanning a monorepo root", () => {
+    const monorepoRoot = path.join(tempDirectory, "root-project-from-workspace-packages");
+    fs.mkdirSync(path.join(monorepoRoot, "apps", "web"), { recursive: true });
+    fs.writeFileSync(
+      path.join(monorepoRoot, "package.json"),
+      JSON.stringify({
+        name: "monorepo-root",
+        private: true,
+        workspaces: ["apps/*"],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(monorepoRoot, "apps", "web", "package.json"),
+      JSON.stringify({
+        name: "web",
+        dependencies: { next: "^15.0.0", react: "^19.0.0", "react-dom": "^19.0.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(monorepoRoot);
+    expect(projectInfo.reactVersion).toBe("^19.0.0");
+    expect(projectInfo.framework).toBe("nextjs");
+  });
+
   it("does not detect React Compiler when next.config sets reactCompiler to false", () => {
     const projectDirectory = path.join(tempDirectory, "next-react-compiler-disabled");
     fs.mkdirSync(projectDirectory, { recursive: true });
@@ -271,6 +341,26 @@ describe("listWorkspacePackages", () => {
     expect(packageNames).toContain("monorepo-root");
     expect(packageNames).toContain("ui");
     expect(packages).toHaveLength(2);
+  });
+
+  it("supports package.json workspaces object form", () => {
+    const rootDirectory = path.join(tempDirectory, "workspace-object-form");
+    const appDirectory = path.join(rootDirectory, "apps", "web");
+    fs.mkdirSync(appDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({
+        name: "workspace-object-root",
+        workspaces: { packages: ["apps/*"] },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(appDirectory, "package.json"),
+      JSON.stringify({ name: "web", dependencies: { react: "^19.0.0" } }),
+    );
+
+    const packages = listWorkspacePackages(rootDirectory);
+    expect(packages).toEqual([{ name: "web", directory: appDirectory }]);
   });
 });
 

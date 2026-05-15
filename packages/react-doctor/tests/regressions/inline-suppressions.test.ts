@@ -89,6 +89,31 @@ describe("issue #72: inline suppressions — variants", () => {
     expect(filtered).toHaveLength(0);
   });
 
+  it("ignores rationale text after `--` in comma-separated rule lists", () => {
+    const filtered = runFilter(
+      "description-tail-comma-list",
+      `// react-doctor-disable-next-line react-doctor/no-derived-state-effect, react-doctor/no-fetch-in-effect -- generated fixture keeps both patterns\nconst x = 1;\n`,
+      [
+        baseDiagnostic({ rule: "no-derived-state-effect", line: 2 }),
+        baseDiagnostic({ rule: "no-fetch-in-effect", line: 2 }),
+      ],
+    );
+    expect(filtered).toHaveLength(0);
+  });
+
+  it("does not treat rationale words after `--` as rule ids", () => {
+    const filtered = runFilter(
+      "description-tail-not-rule",
+      `// react-doctor-disable-next-line react-doctor/no-derived-state-effect -- no-fetch-in-effect appears only in prose\nconst x = 1;\n`,
+      [
+        baseDiagnostic({ rule: "no-derived-state-effect", line: 2 }),
+        baseDiagnostic({ rule: "no-fetch-in-effect", line: 2 }),
+      ],
+    );
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0].rule).toBe("no-fetch-in-effect");
+  });
+
   it("a bare disable comment (no rule id) suppresses EVERY diagnostic on that line", () => {
     const filtered = runFilter("bare-comment", `const x = 1; // react-doctor-disable-line\n`, [
       baseDiagnostic({ rule: "no-derived-state-effect", line: 1 }),
@@ -159,6 +184,15 @@ describe("issue #144: inline suppressions — block comment forms", () => {
     );
     expect(filtered).toHaveLength(1);
     expect(filtered[0].rule).toBe("no-cascading-set-state");
+  });
+
+  it("block comment rule lists also ignore rationale text after `--`", () => {
+    const filtered = runFilter(
+      "jsx-block-description-tail",
+      `{/* react-doctor-disable-next-line react-doctor/no-derived-state-effect -- intentional generated mirror */}\nconst x = 1;\n`,
+      [baseDiagnostic({ rule: "no-derived-state-effect", line: 2 })],
+    );
+    expect(filtered).toHaveLength(0);
   });
 });
 

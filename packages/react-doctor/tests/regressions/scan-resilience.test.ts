@@ -73,6 +73,33 @@ describe("issue #46 + #84: oxlint include-path batching", () => {
     expect(batches.flat()).toEqual(includePaths);
   });
 
+  it("batchIncludePaths keeps an exact OXLINT_MAX_FILES_PER_BATCH boundary in one batch", () => {
+    const baseArgs = ["oxlint", "-c", "/tmp/oxlintrc.json", "--format", "json"];
+    const includePaths = Array.from(
+      { length: OXLINT_MAX_FILES_PER_BATCH },
+      (_, index) => `src/exact-${index}.tsx`,
+    );
+
+    const batches = batchIncludePaths(baseArgs, includePaths);
+
+    expect(batches).toHaveLength(1);
+    expect(batches[0]).toEqual(includePaths);
+  });
+
+  it("batchIncludePaths never drops paths when splitting long mixed path sets", () => {
+    const baseArgs = ["oxlint", "-c", "/tmp/oxlintrc.json", "--format", "json"];
+    const longSegment = "nested-directory".repeat(12);
+    const includePaths = Array.from({ length: 350 }, (_, index) =>
+      index % 2 === 0 ? `src/${longSegment}/file-${index}.tsx` : `src/file-${index}.tsx`,
+    );
+
+    const batches = batchIncludePaths(baseArgs, includePaths);
+
+    expect(batches.length).toBeGreaterThan(1);
+    expect(new Set(batches.flat()).size).toBe(includePaths.length);
+    expect(batches.flat()).toEqual(includePaths);
+  });
+
   it("batchIncludePaths splits when paths would exceed SPAWN_ARGS_MAX_LENGTH_CHARS (Windows ENAMETOOLONG)", () => {
     const baseArgs = ["oxlint", "-c", "/tmp/oxlintrc.json", "--format", "json"];
     // Each path is 200 chars; 200 paths = ~40k chars, well past Windows

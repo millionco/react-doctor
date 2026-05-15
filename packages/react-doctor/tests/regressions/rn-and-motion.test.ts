@@ -251,6 +251,50 @@ export const App = () => (
     expect(diagnostics).toHaveLength(0);
   });
 
+  it("does not emit require-reduced-motion when useReducedMotion is present in source", () => {
+    const projectDir = path.join(tempRoot, "issue-94-use-reduced-motion");
+    fs.mkdirSync(path.join(projectDir, "src"), { recursive: true });
+    writeJson(path.join(projectDir, "package.json"), {
+      name: "issue-94-use-reduced-motion",
+      dependencies: { react: "^19.0.0", "framer-motion": "^11.0.0" },
+    });
+    writeFile(
+      path.join(projectDir, "src", "App.tsx"),
+      `import { useReducedMotion } from "framer-motion";
+export const App = () => {
+  const shouldReduceMotion = useReducedMotion();
+  return <div data-reduce-motion={String(shouldReduceMotion)} />;
+};
+`,
+    );
+    initGitRepo(projectDir, { commit: true });
+
+    const diagnostics = checkReducedMotion(projectDir);
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("does not emit require-reduced-motion when prefers-reduced-motion appears in CSS", () => {
+    const projectDir = path.join(tempRoot, "issue-94-css-media-query");
+    fs.mkdirSync(path.join(projectDir, "src"), { recursive: true });
+    writeJson(path.join(projectDir, "package.json"), {
+      name: "issue-94-css-media-query",
+      dependencies: { react: "^19.0.0", motion: "^12.0.0" },
+    });
+    writeFile(
+      path.join(projectDir, "src", "styles.css"),
+      `@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms;
+  }
+}
+`,
+    );
+    initGitRepo(projectDir, { commit: true });
+
+    const diagnostics = checkReducedMotion(projectDir);
+    expect(diagnostics).toHaveLength(0);
+  });
+
   it("emits require-reduced-motion when motion library is present without ANY handling", () => {
     const projectDir = path.join(tempRoot, "issue-94-negative");
     fs.mkdirSync(path.join(projectDir, "src"), { recursive: true });

@@ -29,3 +29,18 @@ export const MUTATION_METHOD_NAMES = new Set([
 ]);
 
 export const MUTATING_HTTP_METHODS = new Set(["POST", "PUT", "DELETE", "PATCH"]);
+
+export const SAFE_MUTABLE_CONSTRUCTOR_NAMES = new Set([
+  "Map",
+  "Set",
+  "WeakMap",
+  "WeakSet",
+  "Headers",
+  "URLSearchParams",
+  "FormData",
+  "Response",
+  "NextResponse",
+]);
+
+export const RESPONSE_FACTORY_OBJECTS = new Set(["Response", "NextResponse"]);
+export const RESPONSE_FACTORY_METHODS = new Set(["json", "redirect", "next", "rewrite", "error"]);

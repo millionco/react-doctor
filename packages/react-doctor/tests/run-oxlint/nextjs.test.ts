@@ -64,6 +64,35 @@ describe("runOxlint", () => {
     });
   });
 
+  describe("nextjs-no-side-effect-in-get-handler scope", () => {
+    it("does not fire on response.headers.set/append/delete or local Map/Set/Headers/URLSearchParams", () => {
+      const documentsRouteIssues = nextjsDiagnostics.filter(
+        (diagnostic) =>
+          diagnostic.rule === "nextjs-no-side-effect-in-get-handler" &&
+          diagnostic.filePath.includes("api/documents"),
+      );
+      expect(documentsRouteIssues).toHaveLength(0);
+    });
+
+    it("does not fire on cron route handlers", () => {
+      const cronRouteIssues = nextjsDiagnostics.filter(
+        (diagnostic) =>
+          diagnostic.rule === "nextjs-no-side-effect-in-get-handler" &&
+          diagnostic.filePath.includes("api/cron"),
+      );
+      expect(cronRouteIssues).toHaveLength(0);
+    });
+
+    it("still flags drizzle, module-level cache, mutating fetch, and aliased cookies in admin route", () => {
+      const adminRouteIssues = nextjsDiagnostics.filter(
+        (diagnostic) =>
+          diagnostic.rule === "nextjs-no-side-effect-in-get-handler" &&
+          diagnostic.filePath.includes("api/admin"),
+      );
+      expect(adminRouteIssues.length).toBeGreaterThan(0);
+    });
+  });
+
   describeRules(
     "nextjs rules",
     {

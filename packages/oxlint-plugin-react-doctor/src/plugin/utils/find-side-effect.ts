@@ -2,6 +2,16 @@ import { MUTATING_HTTP_METHODS, MUTATION_METHOD_NAMES } from "../constants/libra
 import type { EsTreeNode } from "./es-tree-node.js";
 import { walkAst } from "./walk-ast.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { isSafeReceiverChain } from "./is-safe-receiver-chain.js";
+
+export interface FindSideEffectOptions {
+  locallyScopedSafeBindings?: Set<string>;
+  locallyScopedCookieBindings?: Set<string>;
+}
+
+const EMPTY_BINDING_SET = new Set<string>();
+
+const COOKIE_MUTATION_METHOD_NAMES = new Set(["set", "append", "delete"]);
 
 // HACK: extracted so `findSideEffect` can re-use the EXACT same shape
 // predicate when it goes hunting for the literal method to render in
@@ -17,22 +27,38 @@ const isMutatingMethodProperty = (property: EsTreeNode): boolean =>
   typeof property.value.value === "string" &&
   MUTATING_HTTP_METHODS.has(property.value.value.toUpperCase());
 
-const isCookiesOrHeadersCall = (node: EsTreeNode, methodName: string): boolean => {
-  if (!isNodeOfType(node, "CallExpression") || !isNodeOfType(node.callee, "MemberExpression"))
-    return false;
-  const { object, property } = node.callee;
-  if (!isNodeOfType(property, "Identifier") || !MUTATION_METHOD_NAMES.has(property.name))
-    return false;
-  if (!isNodeOfType(object, "CallExpression") || !isNodeOfType(object.callee, "Identifier"))
-    return false;
-  return object.callee.name === methodName;
+const isDirectCookiesCall = (node: EsTreeNode): boolean =>
+  isNodeOfType(node, "CallExpression") &&
+  isNodeOfType(node.callee, "Identifier") &&
+  node.callee.name === "cookies";
+
+const isAwaitedCookiesCall = (node: EsTreeNode): boolean =>
+  isNodeOfType(node, "AwaitExpression") && node.argument
+    ? isDirectCookiesCall(node.argument)
+    : false;
+
+const isCookieReceiver = (
+  receiverNode: EsTreeNode,
+  locallyScopedCookieBindings: Set<string>,
+): boolean => {
+  if (isDirectCookiesCall(receiverNode)) return true;
+  if (isAwaitedCookiesCall(receiverNode)) return true;
+  if (isNodeOfType(receiverNode, "Identifier")) {
+    return locallyScopedCookieBindings.has(receiverNode.name);
+  }
+  return false;
 };
 
-const isMutatingDbCall = (node: EsTreeNode): boolean => {
-  if (!isNodeOfType(node, "CallExpression") || !isNodeOfType(node.callee, "MemberExpression"))
-    return false;
-  const { property } = node.callee;
-  return isNodeOfType(property, "Identifier") && MUTATION_METHOD_NAMES.has(property.name);
+const getCookieMutationMethodName = (
+  node: EsTreeNode,
+  locallyScopedCookieBindings: Set<string>,
+): string | null => {
+  if (!isNodeOfType(node, "CallExpression")) return null;
+  if (!isNodeOfType(node.callee, "MemberExpression")) return null;
+  if (!isNodeOfType(node.callee.property, "Identifier")) return null;
+  if (!COOKIE_MUTATION_METHOD_NAMES.has(node.callee.property.name)) return null;
+  if (!isCookieReceiver(node.callee.object, locallyScopedCookieBindings)) return null;
+  return node.callee.property.name;
 };
 
 const isMutatingFetchCall = (node: EsTreeNode): boolean => {
@@ -43,31 +69,44 @@ const isMutatingFetchCall = (node: EsTreeNode): boolean => {
   return Boolean(optionsArgument.properties?.some(isMutatingMethodProperty));
 };
 
-const getCookiesOrHeadersMethodName = (
-  child: EsTreeNode,
-  apiName: "cookies" | "headers",
-): string | null => {
-  if (!isCookiesOrHeadersCall(child, apiName)) return null;
-  if (!isNodeOfType(child, "CallExpression")) return null;
-  if (!isNodeOfType(child.callee, "MemberExpression")) return null;
-  if (!isNodeOfType(child.callee.property, "Identifier")) return null;
-  return child.callee.property.name;
+const isMutatingDbCall = (node: EsTreeNode, locallyScopedSafeBindings: Set<string>): boolean => {
+  if (!isNodeOfType(node, "CallExpression") || !isNodeOfType(node.callee, "MemberExpression"))
+    return false;
+  const { property, object } = node.callee;
+  if (!isNodeOfType(property, "Identifier") || !MUTATION_METHOD_NAMES.has(property.name))
+    return false;
+  if (isSafeReceiverChain(object, locallyScopedSafeBindings)) return false;
+  return true;
 };
 
-export const findSideEffect = (node: EsTreeNode): string | null => {
+const getDbCallDescription = (node: EsTreeNode): string => {
+  if (!isNodeOfType(node, "CallExpression")) return ".unknown()";
+  if (!isNodeOfType(node.callee, "MemberExpression")) return ".unknown()";
+  if (!isNodeOfType(node.callee.property, "Identifier")) return ".unknown()";
+  const methodName = node.callee.property.name;
+  const rootObjectName = isNodeOfType(node.callee.object, "Identifier")
+    ? node.callee.object.name
+    : null;
+  return rootObjectName ? `${rootObjectName}.${methodName}()` : `.${methodName}()`;
+};
+
+export const findSideEffect = (
+  node: EsTreeNode,
+  options: FindSideEffectOptions = {},
+): string | null => {
+  const locallyScopedSafeBindings = options.locallyScopedSafeBindings ?? EMPTY_BINDING_SET;
+  const locallyScopedCookieBindings = options.locallyScopedCookieBindings ?? EMPTY_BINDING_SET;
+
   let sideEffectDescription: string | null = null;
   walkAst(node, (child: EsTreeNode) => {
     if (sideEffectDescription) return;
-    const cookiesMethodName = getCookiesOrHeadersMethodName(child, "cookies");
-    if (cookiesMethodName) {
-      sideEffectDescription = `cookies().${cookiesMethodName}()`;
+
+    const cookieMethodName = getCookieMutationMethodName(child, locallyScopedCookieBindings);
+    if (cookieMethodName) {
+      sideEffectDescription = `cookies().${cookieMethodName}()`;
       return;
     }
-    const headersMethodName = getCookiesOrHeadersMethodName(child, "headers");
-    if (headersMethodName) {
-      sideEffectDescription = `headers().${headersMethodName}()`;
-      return;
-    }
+
     if (isMutatingFetchCall(child) && isNodeOfType(child, "CallExpression")) {
       // HACK: re-use the EXACT predicate `isMutatingFetchCall` already
       // matched on so we can't pick a non-Literal duplicate `method:`
@@ -83,14 +122,11 @@ export const findSideEffect = (node: EsTreeNode): string | null => {
       )
         return;
       sideEffectDescription = `fetch() with method ${methodProperty.value.value}`;
-    } else if (isMutatingDbCall(child) && isNodeOfType(child, "CallExpression")) {
-      if (!isNodeOfType(child.callee, "MemberExpression")) return;
-      if (!isNodeOfType(child.callee.property, "Identifier")) return;
-      const methodName = child.callee.property.name;
-      const objectName = isNodeOfType(child.callee.object, "Identifier")
-        ? child.callee.object.name
-        : null;
-      sideEffectDescription = objectName ? `${objectName}.${methodName}()` : `.${methodName}()`;
+      return;
+    }
+
+    if (isMutatingDbCall(child, locallyScopedSafeBindings)) {
+      sideEffectDescription = getDbCallDescription(child);
     }
   });
   return sideEffectDescription;

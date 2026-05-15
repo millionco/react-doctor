@@ -239,6 +239,95 @@ export const BlockScopedDerived = () => {
     ).toHaveLength(0);
   });
 
+  it("does NOT flag state read through an assigned render value", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-146-assigned-render-value", {
+      files: {
+        "src/assigned-render-value.tsx": `import { useEffect, useState } from "react";
+
+export const AssignedRenderValue = ({ href }: { href: string }) => {
+  const [sessionId, setSessionId] = useState<string | undefined>();
+
+  useEffect(() => {
+    setSessionId("session-1");
+  }, []);
+
+  let nextHref = href;
+  if (href.includes("example.com") && sessionId) {
+    nextHref = href + "#session_id=" + sessionId;
+  }
+
+  return <a href={nextHref}>Open</a>;
+};
+`,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      findStateOnlyInHandlersDiagnostics(diagnostics, "src/assigned-render-value.tsx"),
+    ).toHaveLength(0);
+  });
+
+  it("does NOT flag state read only through an assignment guard", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-146-assignment-guard", {
+      files: {
+        "src/assignment-guard.tsx": `import { useState } from "react";
+
+export const AssignmentGuard = () => {
+  const [view, setView] = useState("login");
+
+  let label = "Log in";
+  if (view === "login") {
+    label = "Create account";
+  }
+
+  return <button onClick={() => setView("signup")}>{label}</button>;
+};
+`,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      findStateOnlyInHandlersDiagnostics(diagnostics, "src/assignment-guard.tsx"),
+    ).toHaveLength(0);
+  });
+
+  it("does NOT flag state read through a destructuring assignment default", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-146-destructuring-assignment", {
+      files: {
+        "src/destructuring-assignment.tsx": `import { useState } from "react";
+
+export const DestructuringAssignment = ({ providedLabel }: { providedLabel?: string }) => {
+  const [view, setView] = useState("login");
+
+  let label = "Log in";
+  ({ label = view } = { label: providedLabel });
+
+  return <button onClick={() => setView("signup")}>{label}</button>;
+};
+`,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      findStateOnlyInHandlersDiagnostics(diagnostics, "src/destructuring-assignment.tsx"),
+    ).toHaveLength(0);
+  });
+
   it("does NOT flag state read through a destructuring default used in JSX", async () => {
     const projectDir = setupReactProject(tempRoot, "issue-146-destructuring-default", {
       files: {
@@ -547,6 +636,102 @@ export const NamedHandlerReadOnly = () => {
 
     expect(
       findStateOnlyInHandlersDiagnostics(diagnostics, "src/named-handler-read-only.tsx").length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("DOES flag state read only inside an aliased JSX event handler", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-146-aliased-handler-read-only", {
+      files: {
+        "src/aliased-handler-read-only.tsx": `import { useState } from "react";
+
+declare const track: (value: string) => void;
+
+export const AliasedHandlerReadOnly = () => {
+  const [view, setView] = useState("login");
+
+  const handleClick = () => {
+    track(view);
+    setView("signup");
+  };
+  const click = handleClick;
+
+  return <button onClick={click}>Continue</button>;
+};
+`,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      findStateOnlyInHandlersDiagnostics(diagnostics, "src/aliased-handler-read-only.tsx").length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("DOES flag state read only inside a member JSX event handler", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-146-member-handler-read-only", {
+      files: {
+        "src/member-handler-read-only.tsx": `import { useState } from "react";
+
+declare const track: (value: string) => void;
+
+export const MemberHandlerReadOnly = () => {
+  const [view, setView] = useState("login");
+
+  const handlers = {
+    click: () => {
+      track(view);
+      setView("signup");
+    },
+  };
+
+  return <button onClick={handlers.click}>Continue</button>;
+};
+`,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      findStateOnlyInHandlersDiagnostics(diagnostics, "src/member-handler-read-only.tsx").length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("DOES flag state read only inside a React.useCallback event handler", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-146-react-usecallback-handler", {
+      files: {
+        "src/react-usecallback-handler.tsx": `import React, { useState } from "react";
+
+declare const track: (value: string) => void;
+
+export const ReactUseCallbackHandler = () => {
+  const [view, setView] = useState("login");
+
+  const handleClick = React.useCallback(() => {
+    track(view);
+    setView("signup");
+  }, [view]);
+
+  return <button onClick={handleClick}>Continue</button>;
+};
+`,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      findStateOnlyInHandlersDiagnostics(diagnostics, "src/react-usecallback-handler.tsx").length,
     ).toBeGreaterThan(0);
   });
 

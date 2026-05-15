@@ -6,9 +6,60 @@ const isFunctionLike = (node: EsTreeNode): boolean =>
   isNodeOfType(node, "FunctionExpression") || isNodeOfType(node, "ArrowFunctionExpression");
 
 const isUseCallbackCall = (node: EsTreeNode): boolean =>
-  isNodeOfType(node, "CallExpression") &&
-  isNodeOfType(node.callee, "Identifier") &&
-  node.callee.name === "useCallback";
+  isNodeOfType(node, "CallExpression") && getCalleeName(node.callee) === "useCallback";
+
+const getCalleeName = (node: EsTreeNode): string | null => {
+  if (isNodeOfType(node, "Identifier")) return node.name;
+  if (isNodeOfType(node, "MemberExpression")) return getStaticMemberPropertyName(node);
+  return null;
+};
+
+const getStaticMemberPropertyName = (node: EsTreeNode): string | null => {
+  if (!isNodeOfType(node, "MemberExpression")) return null;
+  if (node.computed) return null;
+  if (isNodeOfType(node.property, "Identifier")) return node.property.name;
+  return null;
+};
+
+const getStaticMemberReferenceName = (node: EsTreeNode): string | null => {
+  if (!isNodeOfType(node, "MemberExpression")) return null;
+  if (!isNodeOfType(node.object, "Identifier")) return null;
+  const propertyName = getStaticMemberPropertyName(node);
+  return propertyName ? `${node.object.name}.${propertyName}` : null;
+};
+
+const getStaticPropertyKeyName = (node: EsTreeNode): string | null => {
+  if (!isNodeOfType(node, "Property")) return null;
+  if (node.computed) return null;
+  if (isNodeOfType(node.key, "Identifier")) return node.key.name;
+  if (isNodeOfType(node.key, "Literal")) return String(node.key.value);
+  return null;
+};
+
+const isFunctionLikeReference = (
+  node: EsTreeNode,
+  functionLikeLocalNames: Set<string>,
+): boolean => {
+  if (isFunctionLike(node) || isUseCallbackCall(node)) return true;
+  if (isNodeOfType(node, "Identifier")) return functionLikeLocalNames.has(node.name);
+  const memberReferenceName = getStaticMemberReferenceName(node);
+  return Boolean(memberReferenceName && functionLikeLocalNames.has(memberReferenceName));
+};
+
+const addObjectPropertyFunctionNames = (
+  objectName: string,
+  node: EsTreeNode,
+  functionLikeLocalNames: Set<string>,
+): void => {
+  if (!isNodeOfType(node, "ObjectExpression")) return;
+  for (const property of node.properties ?? []) {
+    if (!isNodeOfType(property, "Property")) continue;
+    const propertyName = getStaticPropertyKeyName(property);
+    if (!propertyName) continue;
+    if (!isFunctionLikeReference(property.value, functionLikeLocalNames)) continue;
+    functionLikeLocalNames.add(`${objectName}.${propertyName}`);
+  }
+};
 
 const addVariableDeclarationFunctionNames = (
   statement: EsTreeNode,
@@ -18,10 +69,14 @@ const addVariableDeclarationFunctionNames = (
   const declaredNames = new Set<string>();
   for (const declarator of statement.declarations ?? []) {
     if (!declarator.init) continue;
-    if (!isFunctionLike(declarator.init) && !isUseCallbackCall(declarator.init)) continue;
     declaredNames.clear();
     collectPatternNames(declarator.id, declaredNames);
-    for (const declaredName of declaredNames) functionLikeLocalNames.add(declaredName);
+    for (const declaredName of declaredNames) {
+      if (isFunctionLikeReference(declarator.init, functionLikeLocalNames)) {
+        functionLikeLocalNames.add(declaredName);
+      }
+      addObjectPropertyFunctionNames(declaredName, declarator.init, functionLikeLocalNames);
+    }
   }
 };
 
@@ -95,6 +150,10 @@ const collectStatementListFunctionNames = (
 export const collectFunctionLikeLocalNames = (componentBody: EsTreeNode): Set<string> => {
   const functionLikeLocalNames = new Set<string>();
   if (!isNodeOfType(componentBody, "BlockStatement")) return functionLikeLocalNames;
-  collectStatementListFunctionNames(componentBody.body, functionLikeLocalNames);
+  let previousSize = -1;
+  while (previousSize !== functionLikeLocalNames.size) {
+    previousSize = functionLikeLocalNames.size;
+    collectStatementListFunctionNames(componentBody.body, functionLikeLocalNames);
+  }
   return functionLikeLocalNames;
 };

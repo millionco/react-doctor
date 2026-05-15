@@ -19,6 +19,15 @@ const addDependencies = (
   for (const dependencyName of dependencyNames) existing.add(dependencyName);
 };
 
+const addDependencyNames = (into: Set<string>, dependencyNames: Set<string>): void => {
+  for (const dependencyName of dependencyNames) into.add(dependencyName);
+};
+
+const getPatternDefaultReferenceNames = (
+  pattern: EsTreeNode,
+  eventHandlerReferenceNames: Set<string>,
+): Set<string> => collectPatternDefaultReferenceNames(pattern, eventHandlerReferenceNames);
+
 const addVariableDeclarationDependencies = (
   graph: Map<string, Set<string>>,
   statement: EsTreeNode,
@@ -32,12 +41,10 @@ const addVariableDeclarationDependencies = (
       declarator.init,
       eventHandlerReferenceNames,
     );
-    for (const defaultReferenceName of collectPatternDefaultReferenceNames(
-      declarator.id,
-      eventHandlerReferenceNames,
-    )) {
-      dependencyNames.add(defaultReferenceName);
-    }
+    addDependencyNames(
+      dependencyNames,
+      getPatternDefaultReferenceNames(declarator.id, eventHandlerReferenceNames),
+    );
     declaredNames.clear();
     collectPatternNames(declarator.id, declaredNames);
     for (const declaredName of declaredNames) {
@@ -46,11 +53,112 @@ const addVariableDeclarationDependencies = (
   }
 };
 
+const addAssignmentExpressionDependencies = (
+  graph: Map<string, Set<string>>,
+  expression: EsTreeNode,
+  assignedNames: Set<string>,
+  eventHandlerReferenceNames: Set<string>,
+  controlDependencyNames: Set<string>,
+): void => {
+  if (!isNodeOfType(expression, "AssignmentExpression")) return;
+  const dependencyNames = collectComponentScopeReferenceNames(
+    expression.right,
+    eventHandlerReferenceNames,
+  );
+  addDependencyNames(
+    dependencyNames,
+    getPatternDefaultReferenceNames(expression.left, eventHandlerReferenceNames),
+  );
+  addDependencyNames(dependencyNames, controlDependencyNames);
+  if (expression.operator !== "=") {
+    addDependencyNames(
+      dependencyNames,
+      collectComponentScopeReferenceNames(expression.left, eventHandlerReferenceNames),
+    );
+  }
+  assignedNames.clear();
+  collectPatternNames(expression.left, assignedNames);
+  for (const assignedName of assignedNames) {
+    addDependencies(graph, assignedName, dependencyNames);
+  }
+};
+
+const collectExpressionDependencies = (
+  graph: Map<string, Set<string>>,
+  expression: EsTreeNode,
+  assignedNames: Set<string>,
+  eventHandlerReferenceNames: Set<string>,
+  controlDependencyNames: Set<string>,
+): void => {
+  if (isNodeOfType(expression, "AssignmentExpression")) {
+    addAssignmentExpressionDependencies(
+      graph,
+      expression,
+      assignedNames,
+      eventHandlerReferenceNames,
+      controlDependencyNames,
+    );
+    return;
+  }
+
+  if (isNodeOfType(expression, "SequenceExpression")) {
+    for (const subExpression of expression.expressions ?? []) {
+      collectExpressionDependencies(
+        graph,
+        subExpression,
+        assignedNames,
+        eventHandlerReferenceNames,
+        controlDependencyNames,
+      );
+    }
+    return;
+  }
+
+  if (isNodeOfType(expression, "ConditionalExpression")) {
+    const branchControlDependencyNames = new Set(controlDependencyNames);
+    addDependencyNames(
+      branchControlDependencyNames,
+      collectComponentScopeReferenceNames(expression.test, eventHandlerReferenceNames),
+    );
+    collectExpressionDependencies(
+      graph,
+      expression.consequent,
+      assignedNames,
+      eventHandlerReferenceNames,
+      branchControlDependencyNames,
+    );
+    collectExpressionDependencies(
+      graph,
+      expression.alternate,
+      assignedNames,
+      eventHandlerReferenceNames,
+      branchControlDependencyNames,
+    );
+    return;
+  }
+
+  if (isNodeOfType(expression, "LogicalExpression")) {
+    const rightControlDependencyNames = new Set(controlDependencyNames);
+    addDependencyNames(
+      rightControlDependencyNames,
+      collectComponentScopeReferenceNames(expression.left, eventHandlerReferenceNames),
+    );
+    collectExpressionDependencies(
+      graph,
+      expression.right,
+      assignedNames,
+      eventHandlerReferenceNames,
+      rightControlDependencyNames,
+    );
+  }
+};
+
 const collectStatementDependencies = (
   graph: Map<string, Set<string>>,
   statement: EsTreeNode,
   declaredNames: Set<string>,
   eventHandlerReferenceNames: Set<string>,
+  controlDependencyNames: Set<string>,
 ): void => {
   if (isNodeOfType(statement, "VariableDeclaration")) {
     addVariableDeclarationDependencies(graph, statement, declaredNames, eventHandlerReferenceNames);
@@ -67,22 +175,51 @@ const collectStatementDependencies = (
     return;
   }
 
+  if (isNodeOfType(statement, "ExpressionStatement")) {
+    collectExpressionDependencies(
+      graph,
+      statement.expression,
+      declaredNames,
+      eventHandlerReferenceNames,
+      controlDependencyNames,
+    );
+    return;
+  }
+
+  if (isNodeOfType(statement, "AssignmentExpression")) {
+    addAssignmentExpressionDependencies(
+      graph,
+      statement,
+      declaredNames,
+      eventHandlerReferenceNames,
+      controlDependencyNames,
+    );
+    return;
+  }
+
   if (isNodeOfType(statement, "BlockStatement")) {
     collectStatementListDependencies(
       graph,
       statement.body,
       declaredNames,
       eventHandlerReferenceNames,
+      controlDependencyNames,
     );
     return;
   }
 
   if (isNodeOfType(statement, "IfStatement")) {
+    const branchControlDependencyNames = new Set(controlDependencyNames);
+    addDependencyNames(
+      branchControlDependencyNames,
+      collectComponentScopeReferenceNames(statement.test, eventHandlerReferenceNames),
+    );
     collectStatementDependencies(
       graph,
       statement.consequent,
       declaredNames,
       eventHandlerReferenceNames,
+      branchControlDependencyNames,
     );
     if (statement.alternate)
       collectStatementDependencies(
@@ -90,30 +227,50 @@ const collectStatementDependencies = (
         statement.alternate,
         declaredNames,
         eventHandlerReferenceNames,
+        branchControlDependencyNames,
       );
     return;
   }
 
   if (isNodeOfType(statement, "SwitchStatement")) {
     for (const switchCase of statement.cases ?? []) {
+      const caseControlDependencyNames = new Set(controlDependencyNames);
+      addDependencyNames(
+        caseControlDependencyNames,
+        collectComponentScopeReferenceNames(statement.discriminant, eventHandlerReferenceNames),
+      );
+      if (switchCase.test) {
+        addDependencyNames(
+          caseControlDependencyNames,
+          collectComponentScopeReferenceNames(switchCase.test, eventHandlerReferenceNames),
+        );
+      }
       collectStatementListDependencies(
         graph,
         switchCase.consequent,
         declaredNames,
         eventHandlerReferenceNames,
+        caseControlDependencyNames,
       );
     }
     return;
   }
 
   if (isNodeOfType(statement, "TryStatement")) {
-    collectStatementDependencies(graph, statement.block, declaredNames, eventHandlerReferenceNames);
+    collectStatementDependencies(
+      graph,
+      statement.block,
+      declaredNames,
+      eventHandlerReferenceNames,
+      controlDependencyNames,
+    );
     if (statement.handler)
       collectStatementDependencies(
         graph,
         statement.handler.body,
         declaredNames,
         eventHandlerReferenceNames,
+        controlDependencyNames,
       );
     if (statement.finalizer)
       collectStatementDependencies(
@@ -121,6 +278,7 @@ const collectStatementDependencies = (
         statement.finalizer,
         declaredNames,
         eventHandlerReferenceNames,
+        controlDependencyNames,
       );
     return;
   }
@@ -132,8 +290,22 @@ const collectStatementDependencies = (
         statement.init,
         declaredNames,
         eventHandlerReferenceNames,
+        controlDependencyNames,
       );
-    collectStatementDependencies(graph, statement.body, declaredNames, eventHandlerReferenceNames);
+    const loopControlDependencyNames = new Set(controlDependencyNames);
+    if (statement.test) {
+      addDependencyNames(
+        loopControlDependencyNames,
+        collectComponentScopeReferenceNames(statement.test, eventHandlerReferenceNames),
+      );
+    }
+    collectStatementDependencies(
+      graph,
+      statement.body,
+      declaredNames,
+      eventHandlerReferenceNames,
+      loopControlDependencyNames,
+    );
     return;
   }
 
@@ -146,17 +318,45 @@ const collectStatementDependencies = (
         eventHandlerReferenceNames,
       );
     }
-    collectStatementDependencies(graph, statement.body, declaredNames, eventHandlerReferenceNames);
+    const loopControlDependencyNames = new Set(controlDependencyNames);
+    addDependencyNames(
+      loopControlDependencyNames,
+      collectComponentScopeReferenceNames(statement.right, eventHandlerReferenceNames),
+    );
+    collectStatementDependencies(
+      graph,
+      statement.body,
+      declaredNames,
+      eventHandlerReferenceNames,
+      loopControlDependencyNames,
+    );
     return;
   }
 
   if (isNodeOfType(statement, "WhileStatement") || isNodeOfType(statement, "DoWhileStatement")) {
-    collectStatementDependencies(graph, statement.body, declaredNames, eventHandlerReferenceNames);
+    const loopControlDependencyNames = new Set(controlDependencyNames);
+    addDependencyNames(
+      loopControlDependencyNames,
+      collectComponentScopeReferenceNames(statement.test, eventHandlerReferenceNames),
+    );
+    collectStatementDependencies(
+      graph,
+      statement.body,
+      declaredNames,
+      eventHandlerReferenceNames,
+      loopControlDependencyNames,
+    );
     return;
   }
 
   if (isNodeOfType(statement, "LabeledStatement")) {
-    collectStatementDependencies(graph, statement.body, declaredNames, eventHandlerReferenceNames);
+    collectStatementDependencies(
+      graph,
+      statement.body,
+      declaredNames,
+      eventHandlerReferenceNames,
+      controlDependencyNames,
+    );
   }
 };
 
@@ -165,9 +365,16 @@ const collectStatementListDependencies = (
   statements: EsTreeNode[] | undefined,
   declaredNames: Set<string>,
   eventHandlerReferenceNames: Set<string>,
+  controlDependencyNames: Set<string>,
 ): void => {
   for (const statement of statements ?? []) {
-    collectStatementDependencies(graph, statement, declaredNames, eventHandlerReferenceNames);
+    collectStatementDependencies(
+      graph,
+      statement,
+      declaredNames,
+      eventHandlerReferenceNames,
+      controlDependencyNames,
+    );
   }
 };
 
@@ -183,6 +390,7 @@ export const buildLocalDependencyGraph = (
     componentBody.body,
     declaredNames,
     eventHandlerReferenceNames,
+    new Set(),
   );
   return graph;
 };

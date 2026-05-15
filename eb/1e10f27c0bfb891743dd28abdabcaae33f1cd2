@@ -1,0 +1,26 @@
+packages/oxlint-plugin-react-doctor/src/plugin/utils/is-cookies-call.ts
+  s_d5e3f2d2865d90::t_ea80337d905f12 1-7
+packages/oxlint-plugin-react-doctor/src/plugin/utils/is-cookies-or-awaited-cookies-call.ts
+  s_d5e3f2d2865d90::t_e9b23a0f8bc2e9 1-15
+packages/oxlint-plugin-react-doctor/src/plugin/utils/collect-locally-scoped-cookie-bindings.ts
+  s_d5e3f2d2865d90::t_7c2362b30a375c 3,12
+packages/oxlint-plugin-react-doctor/src/plugin/utils/find-side-effect.ts
+  s_d5e3f2d2865d90::t_5709552723dfe3 35
+  s_d5e3f2d2865d90::t_2cbe7af107e6cb 3,6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "eb1e10f27c0bfb891743dd28abdabcaae33f1cd2",
+  "prompts": {},
+  "sessions": {
+    "s_d5e3f2d2865d90": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "365c04ae-6b54-4143-b7cf-a0e6d02f6efe",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

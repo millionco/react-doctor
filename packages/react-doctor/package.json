@@ -79,8 +79,7 @@
     "@types/prompts": "^2.4.9",
     "@typescript-eslint/types": "^8.59.3",
     "eslint-plugin-react-hooks": "^7.1.1",
-    "eslint-plugin-react-you-might-not-need-an-effect": "^0.10.1",
-    "fallow": "^2.74.0"
+    "eslint-plugin-react-you-might-not-need-an-effect": "^0.10.1"
   },
   "peerDependencies": {
     "eslint-plugin-react-hooks": "^6 || ^7",

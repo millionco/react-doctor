@@ -929,4 +929,34 @@ export const ForOfShadowedIterable = () => {
       findStateOnlyInHandlersDiagnostics(diagnostics, "src/for-of-shadowed-iterable.tsx"),
     ).toHaveLength(0);
   });
+
+  it("DOES flag state when only a shadowed catch parameter is returned", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-146-shadowed-catch-parameter", {
+      files: {
+        "src/shadowed-catch-parameter.tsx": `import { useState } from "react";
+
+export const ShadowedCatchParameter = () => {
+  const [error, setError] = useState("tracked");
+
+  try {
+    throw new Error("boom");
+  } catch (error) {
+    return <span>{String(error)}</span>;
+  }
+
+  return <button onClick={() => setError("next")}>Retry</button>;
+};
+`,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      findStateOnlyInHandlersDiagnostics(diagnostics, "src/shadowed-catch-parameter.tsx").length,
+    ).toBeGreaterThan(0);
+  });
 });

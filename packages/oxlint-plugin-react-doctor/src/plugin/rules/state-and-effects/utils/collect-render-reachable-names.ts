@@ -131,7 +131,7 @@ const collectRenderReachableNamesFromStatement = (
     );
     const handlerHasReturn = statement.handler
       ? collectRenderReachableNamesFromStatement(
-          statement.handler.body,
+          statement.handler,
           names,
           scope,
           eventHandlerReferenceNames,
@@ -146,6 +146,17 @@ const collectRenderReachableNamesFromStatement = (
         )
       : false;
     return blockHasReturn || handlerHasReturn || finalizerHasReturn;
+  }
+
+  if (isNodeOfType(statement, "CatchClause")) {
+    const catchScope = createBlockBindingScope(scope);
+    addPatternBindings(statement.param, catchScope);
+    return collectRenderReachableNamesFromStatement(
+      statement.body,
+      names,
+      catchScope,
+      eventHandlerReferenceNames,
+    );
   }
 
   if (isNodeOfType(statement, "WhileStatement") || isNodeOfType(statement, "DoWhileStatement")) {

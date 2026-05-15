@@ -277,7 +277,7 @@ const collectStatementDependencies = (
     if (statement.handler)
       collectStatementDependencies(
         graph,
-        statement.handler.body,
+        statement.handler,
         scope,
         eventHandlerReferenceNames,
         controlDependencyNames,
@@ -290,6 +290,19 @@ const collectStatementDependencies = (
         eventHandlerReferenceNames,
         controlDependencyNames,
       );
+    return;
+  }
+
+  if (isNodeOfType(statement, "CatchClause")) {
+    const catchScope = createBlockBindingScope(scope);
+    addPatternBindings(statement.param, catchScope);
+    collectStatementDependencies(
+      graph,
+      statement.body,
+      catchScope,
+      eventHandlerReferenceNames,
+      controlDependencyNames,
+    );
     return;
   }
 

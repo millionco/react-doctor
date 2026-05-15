@@ -1,0 +1,57 @@
+packages/oxlint-plugin-react-doctor/src/plugin/utils/is-safe-mutable-receiver-source.ts
+  s_d5e3f2d2865d90::t_52609097ec8b4d 1-29,40-54,68-69
+  s_d5e3f2d2865d90::t_4fa324575355be 30-39
+  s_d5e3f2d2865d90::t_17bf611f04cdce 55-67
+packages/oxlint-plugin-react-doctor/src/plugin/rules/tanstack-start/tanstack-start-get-mutation.ts
+  s_d5e3f2d2865d90::t_b771aba3f44a1b 39-44
+  s_d5e3f2d2865d90::t_3cd4628faae76c 2-3
+packages/react-doctor/tests/regressions/nextjs-get-side-effects.test.ts
+  s_d5e3f2d2865d90::t_00d792fd3de14e 36
+  s_d5e3f2d2865d90::t_362bb07a105618 1-35,37-383,385-482
+  s_d5e3f2d2865d90::t_e98554662aba12 384
+packages/oxlint-plugin-react-doctor/src/plugin/constants/thresholds.ts
+  s_d5e3f2d2865d90::t_cb8ea04fbfec92 10
+packages/oxlint-plugin-react-doctor/src/plugin/utils/collect-locally-scoped-cookie-bindings.ts
+  s_d5e3f2d2865d90::t_0ff635c4b4ac2b 1-31
+packages/oxlint-plugin-react-doctor/src/plugin/constants/library.ts
+  s_d5e3f2d2865d90::t_081ee45968fee6 32-46
+packages/oxlint-plugin-react-doctor/src/plugin/constants/nextjs.ts
+  s_d5e3f2d2865d90::t_210e3ff9b42287 27-28
+packages/react-doctor/tests/fixtures/nextjs-app/src/app/api/cron/refresh/route.tsx
+  s_d5e3f2d2865d90::t_cc863587f571c6 1-12
+packages/oxlint-plugin-react-doctor/src/plugin/rules/nextjs/nextjs-no-side-effect-in-get-handler.ts
+  s_d5e3f2d2865d90::t_8b77bbe36a36f0 1-8,12-13,26-61,63,66,71-137,139-140,142,144-154,156,159-192,202-203,205-241
+packages/react-doctor/tests/fixtures/nextjs-app/src/app/api/admin/route.tsx
+  s_d5e3f2d2865d90::t_b38ab9850f8de7 1-22
+packages/oxlint-plugin-react-doctor/src/plugin/utils/find-side-effect.ts
+  s_d5e3f2d2865d90::t_b2e78c4ee28d3e 5-14,30-49,52-61,73-79,82-99,103-106,109,125-129
+  s_d5e3f2d2865d90::t_84cb006d0d206f 72
+packages/oxlint-plugin-react-doctor/src/plugin/utils/is-safe-receiver-chain.ts
+  s_d5e3f2d2865d90::t_a90e4978c3c3e2 1-38
+packages/react-doctor/tests/run-oxlint/nextjs.test.ts
+  s_d5e3f2d2865d90::t_32eccf6265106f 67-95
+.changeset/nextjs-get-side-effect-false-positives.md
+  s_d5e3f2d2865d90::t_31c4dd0701abeb 1-19,21-31,33-36,39-46
+  s_d5e3f2d2865d90::t_84cb006d0d206f 20,32,37-38
+packages/oxlint-plugin-react-doctor/src/plugin/utils/collect-locally-scoped-safe-bindings.ts
+  s_d5e3f2d2865d90::t_3f945e118b114e 1-16
+packages/react-doctor/tests/fixtures/nextjs-app/src/app/api/documents/[id]/route.tsx
+  s_d5e3f2d2865d90::t_1f7db201bf3ad1 1-41,43
+  s_d5e3f2d2865d90::t_84cb006d0d206f 42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "ce14ae703c3ab9a55d7a4d0cb9ba8c205eec8696",
+  "prompts": {},
+  "sessions": {
+    "s_d5e3f2d2865d90": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "365c04ae-6b54-4143-b7cf-a0e6d02f6efe",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

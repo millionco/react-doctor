@@ -1,33 +1,31 @@
 import { AUTH_CHECK_LOOKAHEAD_STATEMENTS, AUTH_FUNCTION_NAMES } from "../../constants/security.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { getCalleeName } from "../../utils/get-callee-name.js";
 import { hasDirective } from "../../utils/has-directive.js";
 import { hasUseServerDirective } from "../../utils/has-use-server-directive.js";
-import { walkAst } from "../../utils/walk-ast.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { walkAst } from "../../utils/walk-ast.js";
 
+// `getCalleeName` already resolves both `getSession()` (Identifier callee)
+// and `auth0.getSession()` / `supabase.auth.getSession()` (MemberExpression
+// callee, returning the final property name). Routing every CallExpression
+// through it collapses what was a two-branch identifier-vs-member check —
+// and silently fixed issue #206 / #239 in one repo by catching ~139
+// previously-missed `auth0.getSession()` server actions. `walkAst` already
+// descends into `AwaitExpression`/`ChainExpression` children, so awaited
+// (`await auth0.getSession()`) and optional-chained (`auth0?.getSession()`)
+// variants fall out for free.
 const containsAuthCheck = (statements: EsTreeNode[]): boolean => {
   let foundAuthCall = false;
   for (const statement of statements) {
     walkAst(statement, (child: EsTreeNode) => {
       if (foundAuthCall) return;
-      let callNode: EsTreeNode | null = null;
-      if (isNodeOfType(child, "CallExpression")) {
-        callNode = child;
-      } else if (
-        isNodeOfType(child, "AwaitExpression") &&
-        isNodeOfType(child.argument, "CallExpression")
-      ) {
-        callNode = child.argument;
-      }
-
-      if (
-        isNodeOfType(callNode?.callee, "Identifier") &&
-        AUTH_FUNCTION_NAMES.has(callNode.callee.name)
-      ) {
+      const calleeName = getCalleeName(child);
+      if (calleeName !== null && AUTH_FUNCTION_NAMES.has(calleeName)) {
         foundAuthCall = true;
       }
     });

@@ -897,4 +897,36 @@ export const ReturnedShadowedBlockLocal = ({ enabled }: { enabled: boolean }) =>
       findStateOnlyInHandlersDiagnostics(diagnostics, "src/returned-shadowed-block-local.tsx"),
     ).toHaveLength(0);
   });
+
+  it("does NOT flag state read by a for-of iterable before a shadowed loop binding", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-146-for-of-shadowed-iterable", {
+      files: {
+        "src/for-of-shadowed-iterable.tsx": `import { useState } from "react";
+
+interface TreeNode {
+  children: string[];
+}
+
+export const ForOfShadowedIterable = () => {
+  const [item, setItem] = useState<TreeNode>({ children: ["Continue"] });
+
+  for (const item of item.children) {
+    return <button onClick={() => setItem({ children: ["Done"] })}>{item}</button>;
+  }
+
+  return <button onClick={() => setItem({ children: ["Done"] })}>Empty</button>;
+};
+`,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      findStateOnlyInHandlersDiagnostics(diagnostics, "src/for-of-shadowed-iterable.tsx"),
+    ).toHaveLength(0);
+  });
 });

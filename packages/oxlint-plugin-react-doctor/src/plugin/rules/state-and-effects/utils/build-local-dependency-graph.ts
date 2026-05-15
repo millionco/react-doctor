@@ -321,6 +321,11 @@ const collectStatementDependencies = (
   }
 
   if (isNodeOfType(statement, "ForInStatement") || isNodeOfType(statement, "ForOfStatement")) {
+    const loopControlDependencyNames = new Set(controlDependencyNames);
+    addDependencyNames(
+      loopControlDependencyNames,
+      collectScopedReferenceNames(statement.right, scope, eventHandlerReferenceNames),
+    );
     const loopScope = createBlockBindingScope(scope);
     if (isNodeOfType(statement.left, "VariableDeclaration")) {
       addVariableDeclarationDependencies(
@@ -330,11 +335,6 @@ const collectStatementDependencies = (
         eventHandlerReferenceNames,
       );
     }
-    const loopControlDependencyNames = new Set(controlDependencyNames);
-    addDependencyNames(
-      loopControlDependencyNames,
-      collectScopedReferenceNames(statement.right, loopScope, eventHandlerReferenceNames),
-    );
     collectStatementDependencies(
       graph,
       statement.body,

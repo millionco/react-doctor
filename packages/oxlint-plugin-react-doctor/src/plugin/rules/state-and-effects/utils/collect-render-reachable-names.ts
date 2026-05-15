@@ -196,11 +196,14 @@ const collectRenderReachableNamesFromStatement = (
   }
 
   if (isNodeOfType(statement, "ForInStatement") || isNodeOfType(statement, "ForOfStatement")) {
+    const rightNames = collectScopedReferenceNames(
+      statement.right,
+      scope,
+      eventHandlerReferenceNames,
+    );
     const loopScope = createBlockBindingScope(scope);
     if (isNodeOfType(statement.left, "VariableDeclaration")) {
       addDeclarationBindings(statement.left, loopScope);
-    } else {
-      addPatternBindings(statement.left, loopScope);
     }
     const bodyHasReturn = collectRenderReachableNamesFromStatement(
       statement.body,
@@ -209,10 +212,7 @@ const collectRenderReachableNamesFromStatement = (
       eventHandlerReferenceNames,
     );
     if (!bodyHasReturn) return false;
-    addNames(
-      names,
-      collectScopedReferenceNames(statement.right, loopScope, eventHandlerReferenceNames),
-    );
+    addNames(names, rightNames);
     return true;
   }
 

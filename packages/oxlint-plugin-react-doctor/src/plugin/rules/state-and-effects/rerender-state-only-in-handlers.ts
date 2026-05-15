@@ -32,7 +32,7 @@ export const rerenderStateOnlyInHandlers = defineRule<Rule>({
       const eventHandlerReferenceNames = collectFunctionLikeLocalNames(componentBody);
       const dependencyGraph = buildLocalDependencyGraph(componentBody, eventHandlerReferenceNames);
       const directRenderNames = collectRenderReachableNames(
-        renderReachableExpressions,
+        componentBody,
         eventHandlerReferenceNames,
       );
       const renderReachableNames = expandTransitiveDependencies(directRenderNames, dependencyGraph);

@@ -1,10 +1,15 @@
-import { collectPatternNames } from "../../../utils/collect-pattern-names.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import {
-  collectComponentScopeReferenceNames,
-  collectPatternDefaultReferenceNames,
-} from "./collect-component-scope-reference-names.js";
+  addPatternBindings,
+  collectPatternAssignmentNames,
+  collectScopedPatternDefaultReferenceNames,
+  collectScopedReferenceNames,
+  createBlockBindingScope,
+  createComponentBindingScope,
+  getVariableDeclarationScope,
+  type BindingScope,
+} from "./scope-aware-reference-names.js";
 
 const addDependencies = (
   graph: Map<string, Set<string>>,
@@ -25,28 +30,28 @@ const addDependencyNames = (into: Set<string>, dependencyNames: Set<string>): vo
 
 const getPatternDefaultReferenceNames = (
   pattern: EsTreeNode,
+  scope: BindingScope,
   eventHandlerReferenceNames: Set<string>,
-): Set<string> => collectPatternDefaultReferenceNames(pattern, eventHandlerReferenceNames);
+): Set<string> =>
+  collectScopedPatternDefaultReferenceNames(pattern, scope, eventHandlerReferenceNames);
 
 const addVariableDeclarationDependencies = (
   graph: Map<string, Set<string>>,
   statement: EsTreeNode,
-  declaredNames: Set<string>,
+  scope: BindingScope,
   eventHandlerReferenceNames: Set<string>,
 ): void => {
   if (!isNodeOfType(statement, "VariableDeclaration")) return;
+  const declarationScope = getVariableDeclarationScope(statement, scope);
   for (const declarator of statement.declarations ?? []) {
-    if (!declarator.init) continue;
-    const dependencyNames = collectComponentScopeReferenceNames(
-      declarator.init,
-      eventHandlerReferenceNames,
-    );
+    const dependencyNames = declarator.init
+      ? collectScopedReferenceNames(declarator.init, scope, eventHandlerReferenceNames)
+      : new Set<string>();
     addDependencyNames(
       dependencyNames,
-      getPatternDefaultReferenceNames(declarator.id, eventHandlerReferenceNames),
+      getPatternDefaultReferenceNames(declarator.id, scope, eventHandlerReferenceNames),
     );
-    declaredNames.clear();
-    collectPatternNames(declarator.id, declaredNames);
+    const declaredNames = addPatternBindings(declarator.id, declarationScope);
     for (const declaredName of declaredNames) {
       addDependencies(graph, declaredName, dependencyNames);
     }
@@ -56,28 +61,28 @@ const addVariableDeclarationDependencies = (
 const addAssignmentExpressionDependencies = (
   graph: Map<string, Set<string>>,
   expression: EsTreeNode,
-  assignedNames: Set<string>,
+  scope: BindingScope,
   eventHandlerReferenceNames: Set<string>,
   controlDependencyNames: Set<string>,
 ): void => {
   if (!isNodeOfType(expression, "AssignmentExpression")) return;
-  const dependencyNames = collectComponentScopeReferenceNames(
+  const dependencyNames = collectScopedReferenceNames(
     expression.right,
+    scope,
     eventHandlerReferenceNames,
   );
   addDependencyNames(
     dependencyNames,
-    getPatternDefaultReferenceNames(expression.left, eventHandlerReferenceNames),
+    getPatternDefaultReferenceNames(expression.left, scope, eventHandlerReferenceNames),
   );
   addDependencyNames(dependencyNames, controlDependencyNames);
   if (expression.operator !== "=") {
     addDependencyNames(
       dependencyNames,
-      collectComponentScopeReferenceNames(expression.left, eventHandlerReferenceNames),
+      collectScopedReferenceNames(expression.left, scope, eventHandlerReferenceNames),
     );
   }
-  assignedNames.clear();
-  collectPatternNames(expression.left, assignedNames);
+  const assignedNames = collectPatternAssignmentNames(expression.left, scope);
   for (const assignedName of assignedNames) {
     addDependencies(graph, assignedName, dependencyNames);
   }
@@ -86,7 +91,7 @@ const addAssignmentExpressionDependencies = (
 const collectExpressionDependencies = (
   graph: Map<string, Set<string>>,
   expression: EsTreeNode,
-  assignedNames: Set<string>,
+  scope: BindingScope,
   eventHandlerReferenceNames: Set<string>,
   controlDependencyNames: Set<string>,
 ): void => {
@@ -94,7 +99,7 @@ const collectExpressionDependencies = (
     addAssignmentExpressionDependencies(
       graph,
       expression,
-      assignedNames,
+      scope,
       eventHandlerReferenceNames,
       controlDependencyNames,
     );
@@ -106,7 +111,7 @@ const collectExpressionDependencies = (
       collectExpressionDependencies(
         graph,
         subExpression,
-        assignedNames,
+        scope,
         eventHandlerReferenceNames,
         controlDependencyNames,
       );
@@ -118,19 +123,19 @@ const collectExpressionDependencies = (
     const branchControlDependencyNames = new Set(controlDependencyNames);
     addDependencyNames(
       branchControlDependencyNames,
-      collectComponentScopeReferenceNames(expression.test, eventHandlerReferenceNames),
+      collectScopedReferenceNames(expression.test, scope, eventHandlerReferenceNames),
     );
     collectExpressionDependencies(
       graph,
       expression.consequent,
-      assignedNames,
+      scope,
       eventHandlerReferenceNames,
       branchControlDependencyNames,
     );
     collectExpressionDependencies(
       graph,
       expression.alternate,
-      assignedNames,
+      scope,
       eventHandlerReferenceNames,
       branchControlDependencyNames,
     );
@@ -141,12 +146,12 @@ const collectExpressionDependencies = (
     const rightControlDependencyNames = new Set(controlDependencyNames);
     addDependencyNames(
       rightControlDependencyNames,
-      collectComponentScopeReferenceNames(expression.left, eventHandlerReferenceNames),
+      collectScopedReferenceNames(expression.left, scope, eventHandlerReferenceNames),
     );
     collectExpressionDependencies(
       graph,
       expression.right,
-      assignedNames,
+      scope,
       eventHandlerReferenceNames,
       rightControlDependencyNames,
     );
@@ -156,21 +161,24 @@ const collectExpressionDependencies = (
 const collectStatementDependencies = (
   graph: Map<string, Set<string>>,
   statement: EsTreeNode,
-  declaredNames: Set<string>,
+  scope: BindingScope,
   eventHandlerReferenceNames: Set<string>,
   controlDependencyNames: Set<string>,
 ): void => {
   if (isNodeOfType(statement, "VariableDeclaration")) {
-    addVariableDeclarationDependencies(graph, statement, declaredNames, eventHandlerReferenceNames);
+    addVariableDeclarationDependencies(graph, statement, scope, eventHandlerReferenceNames);
     return;
   }
 
   if (isNodeOfType(statement, "FunctionDeclaration")) {
     if (!statement.id?.name) return;
+    const declaredNames = addPatternBindings(statement.id, scope);
+    const declaredName = declaredNames.values().next().value;
+    if (!declaredName) return;
     addDependencies(
       graph,
-      statement.id.name,
-      collectComponentScopeReferenceNames(statement, eventHandlerReferenceNames),
+      declaredName,
+      collectScopedReferenceNames(statement, scope, eventHandlerReferenceNames),
     );
     return;
   }
@@ -179,7 +187,7 @@ const collectStatementDependencies = (
     collectExpressionDependencies(
       graph,
       statement.expression,
-      declaredNames,
+      scope,
       eventHandlerReferenceNames,
       controlDependencyNames,
     );
@@ -190,7 +198,7 @@ const collectStatementDependencies = (
     addAssignmentExpressionDependencies(
       graph,
       statement,
-      declaredNames,
+      scope,
       eventHandlerReferenceNames,
       controlDependencyNames,
     );
@@ -198,10 +206,11 @@ const collectStatementDependencies = (
   }
 
   if (isNodeOfType(statement, "BlockStatement")) {
+    const blockScope = createBlockBindingScope(scope);
     collectStatementListDependencies(
       graph,
       statement.body,
-      declaredNames,
+      blockScope,
       eventHandlerReferenceNames,
       controlDependencyNames,
     );
@@ -212,12 +221,12 @@ const collectStatementDependencies = (
     const branchControlDependencyNames = new Set(controlDependencyNames);
     addDependencyNames(
       branchControlDependencyNames,
-      collectComponentScopeReferenceNames(statement.test, eventHandlerReferenceNames),
+      collectScopedReferenceNames(statement.test, scope, eventHandlerReferenceNames),
     );
     collectStatementDependencies(
       graph,
       statement.consequent,
-      declaredNames,
+      scope,
       eventHandlerReferenceNames,
       branchControlDependencyNames,
     );
@@ -225,7 +234,7 @@ const collectStatementDependencies = (
       collectStatementDependencies(
         graph,
         statement.alternate,
-        declaredNames,
+        scope,
         eventHandlerReferenceNames,
         branchControlDependencyNames,
       );
@@ -237,18 +246,19 @@ const collectStatementDependencies = (
       const caseControlDependencyNames = new Set(controlDependencyNames);
       addDependencyNames(
         caseControlDependencyNames,
-        collectComponentScopeReferenceNames(statement.discriminant, eventHandlerReferenceNames),
+        collectScopedReferenceNames(statement.discriminant, scope, eventHandlerReferenceNames),
       );
       if (switchCase.test) {
         addDependencyNames(
           caseControlDependencyNames,
-          collectComponentScopeReferenceNames(switchCase.test, eventHandlerReferenceNames),
+          collectScopedReferenceNames(switchCase.test, scope, eventHandlerReferenceNames),
         );
       }
+      const caseScope = createBlockBindingScope(scope);
       collectStatementListDependencies(
         graph,
         switchCase.consequent,
-        declaredNames,
+        caseScope,
         eventHandlerReferenceNames,
         caseControlDependencyNames,
       );
@@ -260,7 +270,7 @@ const collectStatementDependencies = (
     collectStatementDependencies(
       graph,
       statement.block,
-      declaredNames,
+      scope,
       eventHandlerReferenceNames,
       controlDependencyNames,
     );
@@ -268,7 +278,7 @@ const collectStatementDependencies = (
       collectStatementDependencies(
         graph,
         statement.handler.body,
-        declaredNames,
+        scope,
         eventHandlerReferenceNames,
         controlDependencyNames,
       );
@@ -276,7 +286,7 @@ const collectStatementDependencies = (
       collectStatementDependencies(
         graph,
         statement.finalizer,
-        declaredNames,
+        scope,
         eventHandlerReferenceNames,
         controlDependencyNames,
       );
@@ -284,11 +294,12 @@ const collectStatementDependencies = (
   }
 
   if (isNodeOfType(statement, "ForStatement")) {
+    const loopScope = createBlockBindingScope(scope);
     if (statement.init)
       collectStatementDependencies(
         graph,
         statement.init,
-        declaredNames,
+        loopScope,
         eventHandlerReferenceNames,
         controlDependencyNames,
       );
@@ -296,13 +307,13 @@ const collectStatementDependencies = (
     if (statement.test) {
       addDependencyNames(
         loopControlDependencyNames,
-        collectComponentScopeReferenceNames(statement.test, eventHandlerReferenceNames),
+        collectScopedReferenceNames(statement.test, loopScope, eventHandlerReferenceNames),
       );
     }
     collectStatementDependencies(
       graph,
       statement.body,
-      declaredNames,
+      loopScope,
       eventHandlerReferenceNames,
       loopControlDependencyNames,
     );
@@ -310,23 +321,24 @@ const collectStatementDependencies = (
   }
 
   if (isNodeOfType(statement, "ForInStatement") || isNodeOfType(statement, "ForOfStatement")) {
+    const loopScope = createBlockBindingScope(scope);
     if (isNodeOfType(statement.left, "VariableDeclaration")) {
       addVariableDeclarationDependencies(
         graph,
         statement.left,
-        declaredNames,
+        loopScope,
         eventHandlerReferenceNames,
       );
     }
     const loopControlDependencyNames = new Set(controlDependencyNames);
     addDependencyNames(
       loopControlDependencyNames,
-      collectComponentScopeReferenceNames(statement.right, eventHandlerReferenceNames),
+      collectScopedReferenceNames(statement.right, loopScope, eventHandlerReferenceNames),
     );
     collectStatementDependencies(
       graph,
       statement.body,
-      declaredNames,
+      loopScope,
       eventHandlerReferenceNames,
       loopControlDependencyNames,
     );
@@ -337,12 +349,12 @@ const collectStatementDependencies = (
     const loopControlDependencyNames = new Set(controlDependencyNames);
     addDependencyNames(
       loopControlDependencyNames,
-      collectComponentScopeReferenceNames(statement.test, eventHandlerReferenceNames),
+      collectScopedReferenceNames(statement.test, scope, eventHandlerReferenceNames),
     );
     collectStatementDependencies(
       graph,
       statement.body,
-      declaredNames,
+      scope,
       eventHandlerReferenceNames,
       loopControlDependencyNames,
     );
@@ -353,7 +365,7 @@ const collectStatementDependencies = (
     collectStatementDependencies(
       graph,
       statement.body,
-      declaredNames,
+      scope,
       eventHandlerReferenceNames,
       controlDependencyNames,
     );
@@ -363,7 +375,7 @@ const collectStatementDependencies = (
 const collectStatementListDependencies = (
   graph: Map<string, Set<string>>,
   statements: EsTreeNode[] | undefined,
-  declaredNames: Set<string>,
+  scope: BindingScope,
   eventHandlerReferenceNames: Set<string>,
   controlDependencyNames: Set<string>,
 ): void => {
@@ -371,7 +383,7 @@ const collectStatementListDependencies = (
     collectStatementDependencies(
       graph,
       statement,
-      declaredNames,
+      scope,
       eventHandlerReferenceNames,
       controlDependencyNames,
     );
@@ -384,11 +396,11 @@ export const buildLocalDependencyGraph = (
 ): Map<string, Set<string>> => {
   const graph = new Map<string, Set<string>>();
   if (!isNodeOfType(componentBody, "BlockStatement")) return graph;
-  const declaredNames = new Set<string>();
+  const scope = createComponentBindingScope();
   collectStatementListDependencies(
     graph,
     componentBody.body,
-    declaredNames,
+    scope,
     eventHandlerReferenceNames,
     new Set(),
   );

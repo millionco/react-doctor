@@ -1,9 +1,12 @@
 import { collectPatternNames } from "../../../utils/collect-pattern-names.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
-
-const isFunctionLike = (node: EsTreeNode): boolean =>
-  isNodeOfType(node, "FunctionExpression") || isNodeOfType(node, "ArrowFunctionExpression");
+import {
+  getStaticMemberPropertyName,
+  getStaticMemberReferenceName,
+  getStaticPropertyKeyName,
+  isFunctionLike,
+} from "./event-handler-reference.js";
 
 const isUseCallbackCall = (node: EsTreeNode): boolean =>
   isNodeOfType(node, "CallExpression") && getCalleeName(node.callee) === "useCallback";
@@ -11,28 +14,6 @@ const isUseCallbackCall = (node: EsTreeNode): boolean =>
 const getCalleeName = (node: EsTreeNode): string | null => {
   if (isNodeOfType(node, "Identifier")) return node.name;
   if (isNodeOfType(node, "MemberExpression")) return getStaticMemberPropertyName(node);
-  return null;
-};
-
-const getStaticMemberPropertyName = (node: EsTreeNode): string | null => {
-  if (!isNodeOfType(node, "MemberExpression")) return null;
-  if (node.computed) return null;
-  if (isNodeOfType(node.property, "Identifier")) return node.property.name;
-  return null;
-};
-
-const getStaticMemberReferenceName = (node: EsTreeNode): string | null => {
-  if (!isNodeOfType(node, "MemberExpression")) return null;
-  if (!isNodeOfType(node.object, "Identifier")) return null;
-  const propertyName = getStaticMemberPropertyName(node);
-  return propertyName ? `${node.object.name}.${propertyName}` : null;
-};
-
-const getStaticPropertyKeyName = (node: EsTreeNode): string | null => {
-  if (!isNodeOfType(node, "Property")) return null;
-  if (node.computed) return null;
-  if (isNodeOfType(node.key, "Identifier")) return node.key.name;
-  if (isNodeOfType(node.key, "Literal")) return String(node.key.value);
   return null;
 };
 

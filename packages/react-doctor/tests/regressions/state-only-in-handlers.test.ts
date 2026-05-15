@@ -836,4 +836,65 @@ export const ShadowedRenderCallback = () => {
       findStateOnlyInHandlersDiagnostics(diagnostics, "src/shadowed-render-callback.tsx").length,
     ).toBeGreaterThan(0);
   });
+
+  it("DOES flag state when only a shadowed block local with the same name reads it", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-146-shadowed-block-local", {
+      files: {
+        "src/shadowed-block-local.tsx": `import { useState } from "react";
+
+export const ShadowedBlockLocal = ({ enabled }: { enabled: boolean }) => {
+  const [view, setView] = useState("login");
+
+  if (enabled) {
+    const label = view === "login" ? "Log in" : "Create account";
+    void label;
+  }
+
+  const label = "Continue";
+
+  return <button onClick={() => setView("signup")}>{label}</button>;
+};
+`,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      findStateOnlyInHandlersDiagnostics(diagnostics, "src/shadowed-block-local.tsx").length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("does NOT flag state read through a returned shadowed block local", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-146-returned-shadowed-block-local", {
+      files: {
+        "src/returned-shadowed-block-local.tsx": `import { useState } from "react";
+
+export const ReturnedShadowedBlockLocal = ({ enabled }: { enabled: boolean }) => {
+  const [view, setView] = useState("login");
+  const label = "Continue";
+
+  if (enabled) {
+    const label = view === "login" ? "Log in" : "Create account";
+    return <button onClick={() => setView("signup")}>{label}</button>;
+  }
+
+  return <button onClick={() => setView("signup")}>{label}</button>;
+};
+`,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      findStateOnlyInHandlersDiagnostics(diagnostics, "src/returned-shadowed-block-local.tsx"),
+    ).toHaveLength(0);
+  });
 });

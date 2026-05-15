@@ -41,6 +41,59 @@ const findStateOnlyInHandlersDiagnostics = (
   );
 
 describe("issue #146: rerenderStateOnlyInHandlers — no false positives via indirection", () => {
+  it("does NOT flag state read by an early-return guard", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-146-early-return-guard", {
+      files: {
+        "src/auth-form.tsx": `import { useState } from "react";
+
+export const AuthForm = () => {
+  const [view, setView] = useState("login");
+
+  if (view === "login") {
+    return <button onClick={() => setView("signup")}>Create account</button>;
+  }
+
+  return <button onClick={() => setView("login")}>Log in</button>;
+};
+`,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(findStateOnlyInHandlersDiagnostics(diagnostics, "src/auth-form.tsx")).toHaveLength(0);
+  });
+
+  it("does NOT flag state read by a switch that chooses the returned branch", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-146-switch-render-branch", {
+      files: {
+        "src/auth-panel.tsx": `import { useState } from "react";
+
+export const AuthPanel = () => {
+  const [view, setView] = useState("login");
+
+  switch (view) {
+    case "login":
+      return <button onClick={() => setView("signup")}>Create account</button>;
+    default:
+      return <button onClick={() => setView("login")}>Log in</button>;
+  }
+};
+`,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(findStateOnlyInHandlersDiagnostics(diagnostics, "src/auth-panel.tsx")).toHaveLength(0);
+  });
+
   it("does NOT flag state read through a useMemo whose result is used in JSX", async () => {
     const projectDir = setupReactProject(tempRoot, "issue-146-usememo", {
       files: {

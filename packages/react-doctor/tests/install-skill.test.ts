@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { runInstallSkill } from "../src/cli/install-skill.js";
-import { setLoggerSilent } from "../src/core/logger.js";
+import { setLoggerSilent } from "@react-doctor/core";
 import { setSpinnerSilent } from "../src/cli/spinner.js";
 
 interface InstallSkillFixture {

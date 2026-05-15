@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { peerRangeMinMajor } from "../src/core/parse-react-peer-range.js";
+import { peerRangeMinMajor } from "@react-doctor/project-info";
 
 describe("peerRangeMinMajor", () => {
   it("returns the lowest concrete major from OR ranges", () => {

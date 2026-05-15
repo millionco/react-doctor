@@ -3,11 +3,10 @@ import {
   SCORE_BAR_WIDTH_CHARS,
   SCORE_GOOD_THRESHOLD,
   SCORE_OK_THRESHOLD,
-} from "../constants.js";
-import type { ScoreResult } from "../types/score.js";
+} from "@react-doctor/core";
+import type { ScoreResult } from "@react-doctor/types";
 import { colorizeByScore } from "./colorize-by-score.js";
-import { highlighter } from "../core/highlighter.js";
-import { logger } from "../core/logger.js";
+import { highlighter, logger } from "@react-doctor/core";
 
 interface ScoreBarSegments {
   filledSegment: string;

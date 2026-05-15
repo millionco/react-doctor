@@ -3,17 +3,20 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import type { Command } from "commander";
-import { buildJsonReport } from "../../core/build-json-report.js";
-import { buildJsonReportError } from "../../core/build-json-report-error.js";
-import { loadConfigWithSource } from "../../core/load-config.js";
-import { resolveConfigRootDir } from "../../core/resolve-config-root-dir.js";
-import { highlighter } from "../../core/highlighter.js";
-import { inspect } from "../../core/inspect.js";
-import { logger, setLoggerSilent } from "../../core/logger.js";
-import { filterSourceFiles, getDiffInfo } from "../../core/get-diff-files.js";
-import { toRelativePath } from "../../core/to-relative-path.js";
-import type { Diagnostic } from "../../types/diagnostic.js";
-import type { InspectResult, JsonReportMode } from "../../types/inspect.js";
+import {
+  buildJsonReport,
+  buildJsonReportError,
+  filterSourceFiles,
+  getDiffInfo,
+  highlighter,
+  loadConfigWithSource,
+  logger,
+  resolveConfigRootDir,
+  setLoggerSilent,
+  toRelativePath,
+} from "@react-doctor/core";
+import { inspect } from "../../inspect.js";
+import type { Diagnostic, InspectResult, JsonReportMode } from "@react-doctor/types";
 import type { CliFlags } from "../cli-flags.js";
 import { cliState } from "../cli-state.js";
 import { getStagedSourceFiles, materializeStagedFiles } from "../get-staged-files.js";

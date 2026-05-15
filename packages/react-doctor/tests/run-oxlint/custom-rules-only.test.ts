@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { runOxlint } from "../../src/core/run-oxlint.js";
+import { runOxlint } from "@react-doctor/core";
 import { buildTestProject } from "../regressions/_helpers.js";
 import { BASIC_REACT_DIRECTORY } from "./_helpers.js";
 

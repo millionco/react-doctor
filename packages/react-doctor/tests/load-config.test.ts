@@ -2,7 +2,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
-import { clearConfigCache, loadConfig, loadConfigWithSource } from "../src/core/load-config.js";
+import { clearConfigCache, loadConfigWithSource } from "@react-doctor/core";
+import type { ReactDoctorConfig } from "@react-doctor/types";
+
+const loadConfig = (rootDirectory: string): ReactDoctorConfig | null =>
+  loadConfigWithSource(rootDirectory)?.config ?? null;
 
 const tempRootDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-config-test-"));
 

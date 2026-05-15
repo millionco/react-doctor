@@ -1,8 +1,5 @@
-import { SHARE_BASE_URL } from "../constants.js";
-import type { Diagnostic } from "../types/diagnostic.js";
-import type { ScoreResult } from "../types/score.js";
-import { highlighter } from "../core/highlighter.js";
-import { logger } from "../core/logger.js";
+import { highlighter, logger, SHARE_BASE_URL } from "@react-doctor/core";
+import type { Diagnostic, ScoreResult } from "@react-doctor/types";
 import { collectAffectedFiles, formatElapsedTime } from "./render-diagnostics.js";
 import { printNoScoreHeader, printScoreHeader } from "./render-score-header.js";
 import { writeDiagnosticsDirectory } from "./write-diagnostics-directory.js";

@@ -1,11 +1,12 @@
-import { OXLINT_NODE_REQUIREMENT, OXLINT_RECOMMENDED_NODE_MAJOR } from "../constants.js";
-import { logger } from "../core/logger.js";
-import { prompts } from "./prompts.js";
 import {
   installNodeViaNvm,
   isNvmInstalled,
+  logger,
+  OXLINT_NODE_REQUIREMENT,
+  OXLINT_RECOMMENDED_NODE_MAJOR,
   resolveNodeForOxlint,
-} from "../core/resolve-compatible-node.js";
+} from "@react-doctor/core";
+import { prompts } from "./prompts.js";
 
 export const resolveOxlintNode = async (
   isLintEnabled: boolean,

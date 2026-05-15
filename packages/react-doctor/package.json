@@ -46,23 +46,13 @@
     "./api": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    },
-    "./oxlint-plugin": {
-      "types": "./dist/react-doctor-plugin.d.ts",
-      "default": "./dist/react-doctor-plugin.js"
-    },
-    "./eslint-plugin": {
-      "types": "./dist/eslint-plugin.d.ts",
-      "default": "./dist/eslint-plugin.js"
     }
   },
   "scripts": {
     "dev": "vp pack --watch",
-    "build": "pnpm gen && node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && NODE_ENV=production vp pack",
-    "gen": "node ./scripts/generate-rule-registry.mjs",
-    "gen:check": "node ./scripts/generate-rule-registry.mjs && git diff --exit-code -- src/plugin/rule-registry.ts",
-    "typecheck": "pnpm gen && tsc --noEmit",
-    "test": "pnpm gen && vp test run"
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && NODE_ENV=production vp pack",
+    "typecheck": "tsc --noEmit",
+    "test": "vp test run"
   },
   "dependencies": {
     "agent-install": "0.0.5",
@@ -74,8 +64,10 @@
     "typescript": ">=5.0.4 <7"
   },
   "devDependencies": {
+    "@react-doctor/core": "workspace:*",
+    "@react-doctor/project-info": "workspace:*",
+    "@react-doctor/types": "workspace:*",
     "@types/prompts": "^2.4.9",
-    "@typescript-eslint/types": "^8.59.3",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-you-might-not-need-an-effect": "^0.10.1"
   },

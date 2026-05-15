@@ -1,4 +1,4 @@
-import type { JsonReportMode } from "../types/inspect.js";
+import type { JsonReportMode } from "@react-doctor/types";
 
 interface CliState {
   isJsonModeActive: boolean;

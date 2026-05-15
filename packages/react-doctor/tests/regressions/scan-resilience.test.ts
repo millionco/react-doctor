@@ -9,7 +9,6 @@
  *               SIGABRT @ 2.8GB RAM) doesn't blow up
  *   #53  — source file count must fall back to filesystem walk when not
  *          inside a git repo
- *   #89  — `--offline` calculates the score locally (no network round trip)
  *   #115 — `--staged` snapshots git INDEX content (not working tree) so
  *          partially-staged hunks behave correctly
  *   #141 — REACT_COMPILER_RULES must not be enabled in the oxlint config
@@ -28,19 +27,15 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 
-import { OXLINT_MAX_FILES_PER_BATCH, SPAWN_ARGS_MAX_LENGTH_CHARS } from "../../src/constants.js";
-import { calculateScoreLocally } from "../../src/core/calculate-score-locally.js";
-import { createOxlintConfig } from "../../src/core/runners/oxlint/config.js";
-import { batchIncludePaths } from "../../src/core/batch-include-paths.js";
-import { discoverProject } from "../../src/core/discover-project.js";
-import { getStagedSourceFiles, materializeStagedFiles } from "../../src/cli/get-staged-files.js";
 import {
-  buildDiagnostic,
-  buildTestProject,
-  initGitRepo,
-  writeFile,
-  writeJson,
-} from "./_helpers.js";
+  batchIncludePaths,
+  createOxlintConfig,
+  OXLINT_MAX_FILES_PER_BATCH,
+  SPAWN_ARGS_MAX_LENGTH_CHARS,
+} from "@react-doctor/core";
+import { discoverProject } from "@react-doctor/project-info";
+import { getStagedSourceFiles, materializeStagedFiles } from "../../src/cli/get-staged-files.js";
+import { buildTestProject, initGitRepo, writeFile, writeJson } from "./_helpers.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-scan-resilience-"));
 
@@ -124,34 +119,6 @@ describe("issue #53: source file count fallback for non-git directories", () => 
 
     const projectInfo = discoverProject(projectDir);
     expect(projectInfo.sourceFileCount).toBeGreaterThanOrEqual(3);
-  });
-});
-
-describe("issue #89: --offline produces a score calculated locally", () => {
-  it("calculateScoreLocally returns a non-null score with a valid label", () => {
-    const score = calculateScoreLocally([
-      buildDiagnostic({ severity: "error", rule: "rule-a" }),
-      buildDiagnostic({ severity: "warning", rule: "rule-b" }),
-      buildDiagnostic({ severity: "warning", rule: "rule-b" }), // duplicate rule, dedup'd
-    ]);
-    expect(score).not.toBeNull();
-    expect(score.score).toBeGreaterThan(0);
-    expect(score.score).toBeLessThanOrEqual(100);
-    expect(["Great", "Needs work", "Critical"]).toContain(score.label);
-  });
-
-  it("returns 100/Great when there are no diagnostics", () => {
-    expect(calculateScoreLocally([])).toEqual({ score: 100, label: "Great" });
-  });
-
-  it("does not require any network access", async () => {
-    // Sanity: no `fetch` involvement in the local scoring path.
-    const calculateSource = fs.readFileSync(
-      path.resolve(import.meta.dirname, "../../src/core/calculate-score-locally.ts"),
-      "utf8",
-    );
-    expect(calculateSource).not.toContain("fetch(");
-    expect(calculateSource).not.toContain("api/score");
   });
 });
 

@@ -1,0 +1,45 @@
+{
+  "name": "@react-doctor/core",
+  "version": "0.1.6",
+  "private": true,
+  "description": "Internal: diagnostic engine for React Doctor (lint runner, scoring, config, suppressions). Not published.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && NODE_ENV=production vp pack",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@react-doctor/project-info": "workspace:*",
+    "@react-doctor/types": "workspace:*",
+    "oxlint": "^1.63.0",
+    "oxlint-plugin-react-doctor": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-you-might-not-need-an-effect": "^0.10.1"
+  },
+  "peerDependencies": {
+    "eslint-plugin-react-hooks": "^6 || ^7",
+    "eslint-plugin-react-you-might-not-need-an-effect": "^0.10"
+  },
+  "peerDependenciesMeta": {
+    "eslint-plugin-react-hooks": {
+      "optional": true
+    },
+    "eslint-plugin-react-you-might-not-need-an-effect": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

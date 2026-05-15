@@ -1,5 +1,5 @@
 import ora from "ora";
-import { SPINNER_INDENT_CHARS } from "../constants.js";
+import { SPINNER_INDENT_CHARS } from "@react-doctor/core";
 
 let sharedInstance: ReturnType<typeof ora> | null = null;
 let activeCount = 0;

@@ -1,5 +1,4 @@
-import { SCORE_GOOD_THRESHOLD, SCORE_OK_THRESHOLD } from "../constants.js";
-import { highlighter } from "../core/highlighter.js";
+import { highlighter, SCORE_GOOD_THRESHOLD, SCORE_OK_THRESHOLD } from "@react-doctor/core";
 
 export const colorizeByScore = (text: string, score: number): string => {
   if (score >= SCORE_GOOD_THRESHOLD) return highlighter.success(text);

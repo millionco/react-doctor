@@ -1,6 +1,5 @@
-import { logger } from "../core/logger.js";
-import { filterSourceFiles } from "../core/get-diff-files.js";
-import type { DiffInfo } from "../types/inspect.js";
+import { filterSourceFiles, logger } from "@react-doctor/core";
+import type { DiffInfo } from "@react-doctor/types";
 import { prompts } from "./prompts.js";
 
 export const resolveDiffMode = async (

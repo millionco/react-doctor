@@ -12,7 +12,7 @@
   "type": "module",
   "scripts": {
     "dev": "turbo run dev --filter=react-doctor",
-    "build": "turbo run build --filter=react-doctor",
+    "build": "turbo run build",
     "test": "turbo run test --filter=react-doctor",
     "typecheck": "turbo run typecheck",
     "lint": "vp lint",

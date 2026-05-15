@@ -1,0 +1,25 @@
+{
+  "name": "@react-doctor/types",
+  "version": "0.1.6",
+  "private": true,
+  "description": "Internal type-only package for React Doctor. Not published.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && NODE_ENV=production vp pack",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

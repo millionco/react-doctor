@@ -161,13 +161,13 @@ For multi-line JSX, putting the comment immediately above the opening tag covers
 
 ## Lint plugin (standalone)
 
-The same rule set ships as both an oxlint plugin and an ESLint plugin, so you can wire it into whichever lint engine your project already runs.
+The same rule set ships as both an oxlint plugin and an ESLint plugin, so you can wire it into whichever lint engine your project already runs. These are published as separate packages, so you can install just the lint integration without pulling in the full CLI.
 
-**oxlint** in `.oxlintrc.json`:
+**oxlint** in `.oxlintrc.json` (install [`oxlint-plugin-react-doctor`](https://npmjs.com/package/oxlint-plugin-react-doctor)):
 
 ```jsonc
 {
-  "jsPlugins": [{ "name": "react-doctor", "specifier": "react-doctor/oxlint-plugin" }],
+  "jsPlugins": [{ "name": "react-doctor", "specifier": "oxlint-plugin-react-doctor" }],
   "rules": {
     "react-doctor/no-fetch-in-effect": "warn",
     "react-doctor/no-derived-state-effect": "warn",
@@ -175,10 +175,10 @@ The same rule set ships as both an oxlint plugin and an ESLint plugin, so you ca
 }
 ```
 
-**ESLint** flat config:
+**ESLint** flat config (install [`eslint-plugin-react-doctor`](https://npmjs.com/package/eslint-plugin-react-doctor)):
 
 ```js
-import reactDoctor from "react-doctor/eslint-plugin";
+import reactDoctor from "eslint-plugin-react-doctor";
 
 export default [
   reactDoctor.configs.recommended,
@@ -189,7 +189,7 @@ export default [
 ];
 ```
 
-The full rule list lives in [`oxlint-config.ts`](https://github.com/millionco/react-doctor/blob/main/packages/react-doctor/src/oxlint-config.ts).
+The full rule list lives in [`packages/oxlint-plugin-react-doctor/src/plugin/rules`](https://github.com/millionco/react-doctor/tree/main/packages/oxlint-plugin-react-doctor/src/plugin/rules).
 
 ## CLI reference
 
@@ -207,7 +207,7 @@ Options:
   --project <name>        select workspace project (comma-separated for multiple)
   --diff [base]           scan only files changed vs base branch
   --staged                scan only staged files (for pre-commit hooks)
-  --offline               skip telemetry
+  --offline               skip the score API and share URL (no score shown)
   --fail-on <level>       exit with error on diagnostics: error, warning, none
   --annotations           output diagnostics as GitHub Actions annotations
   --explain <file:line>   diagnose why a rule fired or why a suppression didn't apply
@@ -245,18 +245,17 @@ When a suppression isn't working, `--explain <file:line>` (or its alias `--why <
 
 `ignore.tags` suppresses entire categories of rules by tag. For example, `"tags": ["design"]` disables all opinionated design rules (gradient text, pure black backgrounds, side tab borders, default Tailwind palettes). Available tags: `"design"`.
 
-`offline` skips the score API call and calculates the score locally. Automatically enabled in CI environments (GitHub Actions, GitLab CI, CircleCI). Set `true` in config to always score locally.
+`offline` skips the score API entirely — no score is shown and no share URL is generated. Automatically enabled in CI environments (GitHub Actions, GitLab CI, CircleCI) so CI runs don't depend on the network.
 
 ## Scoring
 
 The health score formula: `100 - (unique_error_rules x 1.5) - (unique_warning_rules x 0.75)`.
 
-Key details:
+Scoring runs on react.doctor's API and is **network-dependent**: without a successful API round-trip (or under `--offline`) the score is omitted and the rest of the report still renders normally. Key details:
 
 - The score counts **unique rules triggered**, not total instances. Fixing 49 of 50 `no-barrel-import` violations does not change the score; fixing all 50 removes the 0.75 penalty for that rule.
 - Error-severity rules cost 1.5 points each. Warning-severity rules cost 0.75 points each.
 - Category breakdowns shown in the output are for display only and do not weight the score.
-- Run `--verbose` to see which exact rules contributed to the score and how the penalty was computed.
 
 Score labels: 75+ is **Great**, 50 to 74 is **Needs work**, under 50 is **Critical**.
 
@@ -285,7 +284,7 @@ React Doctor detects 50+ coding agents (Claude Code, Cursor, Codex, OpenCode, Wi
 - **Exit codes**: `--fail-on error` (default) exits non-zero when error-severity diagnostics are found. Use `--fail-on warning` or `--fail-on none` to tune CI gating.
 - **Programmatic API**: `import { diagnose } from "react-doctor/api"` for direct integration in scripts and automation.
 
-In CI environments, prompts are automatically skipped and scoring runs locally (offline mode).
+In CI environments, prompts are automatically skipped and `--offline` is implied (no network round-trip; score is omitted from the output).
 
 ## Node.js API
 

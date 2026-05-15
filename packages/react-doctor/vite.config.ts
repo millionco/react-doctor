@@ -46,7 +46,7 @@ export default defineConfig({
   pack: [
     {
       entry: { cli: "./src/cli/index.ts" },
-      deps: { neverBundle: ["oxlint"] },
+      deps: { neverBundle: ["oxlint", "oxlint-plugin-react-doctor"] },
       dts: true,
       target: "node22",
       platform: "node",
@@ -69,27 +69,11 @@ export default defineConfig({
     },
     {
       entry: { index: "./src/index.ts" },
-      deps: { neverBundle: ["oxlint"] },
+      deps: { neverBundle: ["oxlint", "oxlint-plugin-react-doctor"] },
       dts: true,
       target: "node22",
       platform: "node",
       fixedExtension: false,
-    },
-    {
-      entry: { "react-doctor-plugin": "./src/plugin/react-doctor-plugin.ts" },
-      target: "node22",
-      platform: "node",
-      fixedExtension: false,
-    },
-    {
-      entry: { "eslint-plugin": "./src/eslint-plugin.ts" },
-      dts: true,
-      target: "node22",
-      platform: "node",
-      fixedExtension: false,
-      env: {
-        VERSION: process.env.VERSION ?? packageJson.version,
-      },
     },
   ],
   test: {

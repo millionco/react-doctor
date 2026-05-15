@@ -1,4 +1,4 @@
-import type { JsonReport } from "../types/inspect.js";
+import type { JsonReport } from "@react-doctor/types";
 import { cliState } from "./cli-state.js";
 
 export const writeJsonReport = (report: JsonReport): void => {

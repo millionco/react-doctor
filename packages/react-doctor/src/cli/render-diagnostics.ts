@@ -4,14 +4,11 @@ import {
   MILLISECONDS_PER_SECOND,
   OUTPUT_DETAIL_WRAP_WIDTH_CHARS,
   RULE_NAME_COLUMN_WIDTH_CHARS,
-} from "../constants.js";
-import type { Diagnostic } from "../types/diagnostic.js";
+} from "@react-doctor/core";
+import type { Diagnostic } from "@react-doctor/types";
 import { buildHiddenDiagnosticsSummary } from "./build-hidden-diagnostics-summary.js";
-import { groupBy } from "../core/group-by.js";
-import { highlighter } from "../core/highlighter.js";
+import { groupBy, highlighter, logger, toRelativePath } from "@react-doctor/core";
 import { indentMultilineText } from "./indent-multiline-text.js";
-import { logger } from "../core/logger.js";
-import { toRelativePath } from "../core/to-relative-path.js";
 import { wrapIndentedText } from "./wrap-indented-text.js";
 
 const SEVERITY_ORDER: Record<Diagnostic["severity"], number> = {

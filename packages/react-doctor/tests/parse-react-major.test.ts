@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { parseReactMajor } from "../src/core/parse-react-major.js";
+import { parseReactMajor } from "@react-doctor/project-info";
 
 describe("parseReactMajor", () => {
   it("extracts the major from caret/tilde/exact ranges", () => {

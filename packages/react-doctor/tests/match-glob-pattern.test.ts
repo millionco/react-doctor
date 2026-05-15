@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { compileGlobPattern } from "../src/core/match-glob-pattern.js";
+import { compileGlobPattern } from "@react-doctor/core";
 
 const matchGlobPattern = (filePath: string, pattern: string): boolean =>
   compileGlobPattern(pattern).test(filePath.replace(/\\/g, "/"));

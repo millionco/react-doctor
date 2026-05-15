@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { GIT_SHOW_MAX_BUFFER_BYTES, SOURCE_FILE_PATTERN } from "../constants.js";
+import { GIT_SHOW_MAX_BUFFER_BYTES, SOURCE_FILE_PATTERN } from "@react-doctor/core";
 
 // HACK: --diff-filter=ACMR excludes Deleted (D) — staged-only scans cannot
 // lint files that no longer exist in the staging area.

@@ -2,7 +2,7 @@
   "$schema": "https://unpkg.com/@changesets/config@3.1.2/schema.json",
   "changelog": ["@changesets/changelog-github", { "repo": "millionco/react-doctor" }],
   "commit": false,
-  "fixed": [],
+  "fixed": [["react-doctor", "eslint-plugin-react-doctor", "oxlint-plugin-react-doctor"]],
   "linked": [],
   "access": "public",
   "baseBranch": "main",

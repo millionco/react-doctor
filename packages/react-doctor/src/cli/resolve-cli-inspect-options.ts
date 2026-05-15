@@ -1,6 +1,5 @@
 import type { Command } from "commander";
-import type { ReactDoctorConfig } from "../types/config.js";
-import type { InspectOptions } from "../types/inspect.js";
+import type { InspectOptions, ReactDoctorConfig } from "@react-doctor/types";
 import type { CliFlags } from "./cli-flags.js";
 import { isCiEnvironment } from "./is-ci-environment.js";
 

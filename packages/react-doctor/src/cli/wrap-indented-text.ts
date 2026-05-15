@@ -1,3 +1,5 @@
+import { indentMultilineText } from "./indent-multiline-text.js";
+
 const wrapLine = (lineText: string, contentWidth: number): string[] => {
   if (lineText.length <= contentWidth) return [lineText];
 
@@ -27,7 +29,7 @@ const wrapLine = (lineText: string, contentWidth: number): string[] => {
 
 export const wrapIndentedText = (text: string, linePrefix: string, width: number): string => {
   const contentWidth = width - linePrefix.length;
-  if (contentWidth <= 0) return indentOnly(text, linePrefix);
+  if (contentWidth <= 0) return indentMultilineText(text, linePrefix);
 
   return text
     .split("\n")
@@ -35,9 +37,3 @@ export const wrapIndentedText = (text: string, linePrefix: string, width: number
     .map((lineText) => `${linePrefix}${lineText}`)
     .join("\n");
 };
-
-const indentOnly = (text: string, linePrefix: string): string =>
-  text
-    .split("\n")
-    .map((lineText) => `${linePrefix}${lineText}`)
-    .join("\n");

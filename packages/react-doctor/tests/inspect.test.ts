@@ -2,8 +2,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it, vi } from "vite-plus/test";
-import { inspect } from "../src/core/inspect.js";
-import { clearConfigCache } from "../src/core/load-config.js";
+import { inspect } from "../src/inspect.js";
+import { clearConfigCache } from "@react-doctor/core";
 import { setupReactProject } from "./regressions/_helpers.js";
 
 const FIXTURES_DIRECTORY = path.resolve(import.meta.dirname, "fixtures");

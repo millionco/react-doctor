@@ -21,7 +21,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 
-import { runOxlint } from "../../src/core/run-oxlint.js";
+import { runOxlint } from "@react-doctor/core";
 import { buildTestProject, setupReactProject } from "./_helpers.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-state-only-in-handlers-"));

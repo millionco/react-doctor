@@ -1,8 +1,6 @@
-import type { ReactDoctorConfig } from "../types/config.js";
-import type { ProjectInfo } from "../types/project-info.js";
-import { formatFrameworkName } from "../core/discover-project.js";
-import { highlighter } from "../core/highlighter.js";
-import { logger } from "../core/logger.js";
+import type { ProjectInfo, ReactDoctorConfig } from "@react-doctor/types";
+import { formatFrameworkName } from "@react-doctor/project-info";
+import { highlighter, logger } from "@react-doctor/core";
 import { spinner } from "./spinner.js";
 
 export const printProjectDetection = (

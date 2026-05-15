@@ -1,7 +1,7 @@
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
-import type { Diagnostic } from "../src/types/diagnostic.js";
-import { runOxlint } from "../src/core/run-oxlint.js";
+import type { Diagnostic } from "@react-doctor/types";
+import { runOxlint } from "@react-doctor/core";
 import { buildTestProject } from "./regressions/_helpers.js";
 
 const FIXTURES_DIRECTORY = path.resolve(import.meta.dirname, "fixtures");

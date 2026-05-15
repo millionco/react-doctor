@@ -1,9 +1,31 @@
 import path from "node:path";
-import { NoReactDependencyError, ProjectNotFoundError } from "./errors.js";
-import type { ReactDoctorConfig } from "./types/config.js";
-import type { DiagnoseOptions, DiagnoseResult } from "./types/diagnose.js";
-import type { Diagnostic } from "./types/diagnostic.js";
+import {
+  buildJsonReport,
+  buildJsonReportError,
+  calculateScore,
+  clearAutoSuppressionCaches,
+  clearConfigCache,
+  clearIgnorePatternsCache,
+  combineDiagnostics,
+  computeJsxIncludePaths,
+  createNodeReadFileLinesSync,
+  loadConfigWithSource,
+  resolveConfigRootDir,
+  resolveDiagnoseTarget,
+  resolveLintIncludePaths,
+  runOxlint,
+} from "@react-doctor/core";
+import {
+  clearPackageJsonCache,
+  clearProjectCache,
+  discoverProject,
+  NoReactDependencyError,
+  ProjectNotFoundError,
+} from "@react-doctor/project-info";
 import type {
+  Diagnostic,
+  DiagnoseOptions,
+  DiagnoseResult,
   DiffInfo,
   JsonReport,
   JsonReportDiffInfo,
@@ -11,24 +33,10 @@ import type {
   JsonReportMode,
   JsonReportProjectEntry,
   JsonReportSummary,
-} from "./types/inspect.js";
-import type { ProjectInfo } from "./types/project-info.js";
-import type { ScoreResult } from "./types/score.js";
-import { buildJsonReport } from "./core/build-json-report.js";
-import { buildJsonReportError } from "./core/build-json-report-error.js";
-import { calculateScore } from "./core/calculate-score.js";
-import { clearIgnorePatternsCache } from "./core/collect-ignore-patterns.js";
-import { combineDiagnostics } from "./core/combine-diagnostics.js";
-import { clearAutoSuppressionCaches } from "./core/merge-and-filter-diagnostics.js";
-import { clearProjectCache, discoverProject } from "./core/discover-project.js";
-import { computeJsxIncludePaths } from "./core/jsx-include-paths.js";
-import { clearConfigCache, loadConfigWithSource } from "./core/load-config.js";
-import { clearPackageJsonCache } from "./core/read-package-json.js";
-import { createNodeReadFileLinesSync } from "./core/read-file-lines-node.js";
-import { resolveConfigRootDir } from "./core/resolve-config-root-dir.js";
-import { resolveDiagnoseTarget } from "./core/resolve-diagnose-target.js";
-import { resolveLintIncludePaths } from "./core/resolve-lint-include-paths.js";
-import { runOxlint } from "./core/run-oxlint.js";
+  ProjectInfo,
+  ReactDoctorConfig,
+  ScoreResult,
+} from "@react-doctor/types";
 
 export type {
   Diagnostic,
@@ -45,8 +53,7 @@ export type {
   ReactDoctorConfig,
   ScoreResult,
 };
-export { getDiffInfo, filterSourceFiles } from "./core/get-diff-files.js";
-export { summarizeDiagnostics } from "./core/summarize-diagnostics.js";
+export { getDiffInfo, filterSourceFiles, summarizeDiagnostics } from "@react-doctor/core";
 export { buildJsonReport, buildJsonReportError };
 export {
   ReactDoctorError,
@@ -55,7 +62,7 @@ export {
   PackageJsonNotFoundError,
   AmbiguousProjectError,
   isReactDoctorError,
-} from "./errors.js";
+} from "@react-doctor/project-info";
 
 // HACK: programmatic API consumers (watch-mode tools, test runners,
 // agentic CLI flows) call diagnose() repeatedly on the same directory.

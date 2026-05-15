@@ -1,0 +1,58 @@
+{
+  "name": "eslint-plugin-react-doctor",
+  "version": "0.1.6",
+  "description": "ESLint plugin for React Doctor: diagnose React codebases for security, performance, correctness, accessibility, bundle-size, and architecture issues",
+  "keywords": [
+    "accessibility",
+    "eslint",
+    "eslint-plugin",
+    "eslintplugin",
+    "linter",
+    "nextjs",
+    "performance",
+    "react",
+    "react-compiler",
+    "react-native",
+    "security",
+    "tanstack",
+    "typescript"
+  ],
+  "homepage": "https://github.com/millionco/react-doctor#readme",
+  "bugs": {
+    "url": "https://github.com/millionco/react-doctor/issues"
+  },
+  "license": "MIT",
+  "author": "Aiden Bai",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/millionco/react-doctor.git",
+    "directory": "packages/eslint-plugin-react-doctor"
+  },
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.d.ts"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "dev": "vp pack --watch",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && NODE_ENV=production vp pack",
+    "typecheck": "tsc --noEmit",
+    "test": "vp test run"
+  },
+  "dependencies": {
+    "oxlint-plugin-react-doctor": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

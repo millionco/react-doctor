@@ -1,15 +1,9 @@
-import { CANONICAL_GITHUB_URL } from "../constants.js";
-import type { HandleErrorOptions } from "../types/handle-error.js";
-import { formatErrorChain } from "../core/format-error-chain.js";
-import { logger } from "../core/logger.js";
-
-const DEFAULT_HANDLE_ERROR_OPTIONS: HandleErrorOptions = {
-  shouldExit: true,
-};
+import { CANONICAL_GITHUB_URL, formatErrorChain, logger } from "@react-doctor/core";
+import type { HandleErrorOptions } from "@react-doctor/types";
 
 export const handleError = (
   error: unknown,
-  options: HandleErrorOptions = DEFAULT_HANDLE_ERROR_OPTIONS,
+  options: HandleErrorOptions = { shouldExit: true },
 ): void => {
   logger.break();
   logger.error("Something went wrong. Please check the error below for more details.");

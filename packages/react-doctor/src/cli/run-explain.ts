@@ -1,10 +1,6 @@
-import { highlighter } from "../core/highlighter.js";
-import { inspect } from "../core/inspect.js";
-import { logger } from "../core/logger.js";
-import { toRelativePath } from "../core/to-relative-path.js";
-import type { ReactDoctorConfig } from "../types/config.js";
-import type { Diagnostic } from "../types/diagnostic.js";
-import type { InspectOptions } from "../types/inspect.js";
+import { highlighter, logger, toRelativePath } from "@react-doctor/core";
+import { inspect } from "../inspect.js";
+import type { Diagnostic, InspectOptions, ReactDoctorConfig } from "@react-doctor/types";
 import { findOwningProjectDirectory } from "./find-owning-project.js";
 import { parseFileLineArgument } from "./parse-file-line-argument.js";
 import { selectProjects } from "./select-projects.js";

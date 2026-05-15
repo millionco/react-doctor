@@ -34,6 +34,61 @@ importers:
         specifier: ^0.1.15
         version: 0.1.20(@types/node@25.6.0)(esbuild@0.27.3)(jiti@2.6.1)(terser@5.46.0)(typescript@6.0.3)(vite@7.3.1(@types/node@25.6.0)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.46.0)(yaml@2.8.3))(yaml@2.8.3)
 
+  packages/core:
+    dependencies:
+      '@react-doctor/project-info':
+        specifier: workspace:*
+        version: link:../project-info
+      '@react-doctor/types':
+        specifier: workspace:*
+        version: link:../types
+      oxlint:
+        specifier: ^1.63.0
+        version: 1.63.0(oxlint-tsgolint@0.22.1)
+      oxlint-plugin-react-doctor:
+        specifier: workspace:*
+        version: link:../oxlint-plugin-react-doctor
+    devDependencies:
+      '@types/node':
+        specifier: ^25.6.0
+        version: 25.6.0
+      eslint-plugin-react-hooks:
+        specifier: ^7.1.1
+        version: 7.1.1(eslint@9.39.2(jiti@2.6.1))
+      eslint-plugin-react-you-might-not-need-an-effect:
+        specifier: ^0.10.1
+        version: 0.10.1(eslint@9.39.2(jiti@2.6.1))
+
+  packages/eslint-plugin-react-doctor:
+    dependencies:
+      oxlint-plugin-react-doctor:
+        specifier: workspace:*
+        version: link:../oxlint-plugin-react-doctor
+    devDependencies:
+      '@types/node':
+        specifier: ^25.6.0
+        version: 25.6.0
+
+  packages/oxlint-plugin-react-doctor:
+    dependencies:
+      '@typescript-eslint/types':
+        specifier: ^8.59.3
+        version: 8.59.3
+    devDependencies:
+      '@types/node':
+        specifier: ^25.6.0
+        version: 25.6.0
+
+  packages/project-info:
+    dependencies:
+      '@react-doctor/types':
+        specifier: workspace:*
+        version: link:../types
+    devDependencies:
+      '@types/node':
+        specifier: ^25.6.0
+        version: 25.6.0
+
   packages/react-doctor:
     dependencies:
       agent-install:
@@ -58,18 +113,30 @@ importers:
         specifier: '>=5.0.4 <7'
         version: 5.9.3
     devDependencies:
+      '@react-doctor/core':
+        specifier: workspace:*
+        version: link:../core
+      '@react-doctor/project-info':
+        specifier: workspace:*
+        version: link:../project-info
+      '@react-doctor/types':
+        specifier: workspace:*
+        version: link:../types
       '@types/prompts':
         specifier: ^2.4.9
         version: 2.4.9
-      '@typescript-eslint/types':
-        specifier: ^8.59.3
-        version: 8.59.3
       eslint-plugin-react-hooks:
         specifier: ^7.1.1
         version: 7.1.1(eslint@9.39.2(jiti@2.6.1))
       eslint-plugin-react-you-might-not-need-an-effect:
         specifier: ^0.10.1
         version: 0.10.1(eslint@9.39.2(jiti@2.6.1))
+
+  packages/types:
+    devDependencies:
+      '@types/node':
+        specifier: ^25.6.0
+        version: 25.6.0
 
   packages/website:
     dependencies:
@@ -1281,9 +1348,6 @@ packages:
   '@types/node@12.20.55':
     resolution: {integrity: sha512-J8xLz7q2OFulZ2cyGTLE1TbbZcjpno7FaN6zdJNrgAdrJ+DZzh/uFR6YrTb4C+nXakvud8Q4+rbhoIWlYQbUFQ==}
 
-  '@types/node@20.19.33':
-    resolution: {integrity: sha512-Rs1bVAIdBs5gbTIKza/tgpMuG1k3U/UMJLWecIMxNdJFDMzcM5LOiLVRYh3PilWEYDIeUDv7bpiHPLPsbydGcw==}
-
   '@types/node@25.6.0':
     resolution: {integrity: sha512-+qIYRKdNYJwY3vRCZMdJbPLJAtGjQBudzZzdzwQYkEPQd+PJGixUL5QfvCLDaULoLv+RhT3LDkwEfKaAkgSmNQ==}
 
@@ -2442,9 +2506,6 @@ packages:
     engines: {node: '>=14.17'}
     hasBin: true
 
-  undici-types@6.21.0:
-    resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
-
   undici-types@7.19.2:
     resolution: {integrity: sha512-qYVnV5OEm2AW8cJMCpdV20CDyaN3g0AjDlOGf1OW4iaDEx8MwdtChUp4zu4H0VP3nDRF/8RKWH+IPp9uW0YGZg==}
 
@@ -3466,17 +3527,13 @@ snapshots:
 
   '@types/node@12.20.55': {}
 
-  '@types/node@20.19.33':
-    dependencies:
-      undici-types: 6.21.0
-
   '@types/node@25.6.0':
     dependencies:
       undici-types: 7.19.2
 
   '@types/prompts@2.4.9':
     dependencies:
-      '@types/node': 20.19.33
+      '@types/node': 25.6.0
       kleur: 3.0.3
 
   '@types/react-dom@19.2.3(@types/react@19.2.14)':
@@ -4527,8 +4584,6 @@ snapshots:
   typescript@5.9.3: {}
 
   typescript@6.0.3: {}
-
-  undici-types@6.21.0: {}
 
   undici-types@7.19.2: {}
 

@@ -1,4 +1,4 @@
-import type { PromptMultiselectChoiceState } from "../types/prompts.js";
+import type { PromptMultiselectChoiceState } from "@react-doctor/types";
 
 export const shouldAutoSelectCurrentChoice = (
   choiceStates: PromptMultiselectChoiceState[],

@@ -239,6 +239,57 @@ export const BlockScopedDerived = () => {
     ).toHaveLength(0);
   });
 
+  it("does NOT flag state read through a destructuring default used in JSX", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-146-destructuring-default", {
+      files: {
+        "src/destructuring-default.tsx": `import { useState } from "react";
+
+export const DestructuringDefault = ({ label: providedLabel }: { label?: string }) => {
+  const [view, setView] = useState("login");
+  const { label = view } = { label: providedLabel };
+
+  return <button onClick={() => setView("signup")}>{label}</button>;
+};
+`,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      findStateOnlyInHandlersDiagnostics(diagnostics, "src/destructuring-default.tsx"),
+    ).toHaveLength(0);
+  });
+
+  it("does NOT flag state read through a function parameter default used in JSX", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-146-parameter-default", {
+      files: {
+        "src/parameter-default.tsx": `import { useState } from "react";
+
+export const ParameterDefault = () => {
+  const [view, setView] = useState("login");
+
+  const getLabel = (label = view) => label;
+
+  return <button onClick={() => setView("signup")}>{getLabel()}</button>;
+};
+`,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      findStateOnlyInHandlersDiagnostics(diagnostics, "src/parameter-default.tsx"),
+    ).toHaveLength(0);
+  });
+
   it("does NOT flag state read inside a render-time callback", async () => {
     const projectDir = setupReactProject(tempRoot, "issue-146-render-callback", {
       files: {
@@ -297,6 +348,33 @@ export const OnPrefixedDataProp = () => {
 
     expect(
       findStateOnlyInHandlersDiagnostics(diagnostics, "src/on-prefixed-data-prop.tsx"),
+    ).toHaveLength(0);
+  });
+
+  it("does NOT flag state passed through an aliased non-function on-prefixed prop", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-146-on-prefixed-data-alias", {
+      files: {
+        "src/on-prefixed-data-alias.tsx": `import { useState } from "react";
+
+declare const CustomThing: (props: { onState: string }) => null;
+
+export const OnPrefixedDataAlias = () => {
+  const [view, setView] = useState("login");
+  const visibleState = view;
+
+  return <CustomThing onState={visibleState} />;
+};
+`,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      findStateOnlyInHandlersDiagnostics(diagnostics, "src/on-prefixed-data-alias.tsx"),
     ).toHaveLength(0);
   });
 
@@ -373,6 +451,39 @@ export const ScrollTracker = () => {
     ).toBeGreaterThan(0);
   });
 
+  it("DOES flag state read only inside a named custom JSX event handler", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-146-custom-named-handler-read-only", {
+      files: {
+        "src/custom-named-handler-read-only.tsx": `import { useState } from "react";
+
+declare const CustomButton: (props: { onClick: () => void; children: React.ReactNode }) => null;
+declare const track: (value: string) => void;
+
+export const CustomNamedHandlerReadOnly = () => {
+  const [view, setView] = useState("login");
+
+  const handleClick = () => {
+    track(view);
+    setView("signup");
+  };
+
+  return <CustomButton onClick={handleClick}>Continue</CustomButton>;
+};
+`,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      findStateOnlyInHandlersDiagnostics(diagnostics, "src/custom-named-handler-read-only.tsx")
+        .length,
+    ).toBeGreaterThan(0);
+  });
+
   it("DOES flag state read only inside a JSX event handler", async () => {
     const projectDir = setupReactProject(tempRoot, "issue-146-handler-read-only", {
       files: {
@@ -436,6 +547,42 @@ export const NamedHandlerReadOnly = () => {
 
     expect(
       findStateOnlyInHandlersDiagnostics(diagnostics, "src/named-handler-read-only.tsx").length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("DOES flag state read only inside a named spread JSX event handler", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-146-named-spread-handler-read-only", {
+      files: {
+        "src/named-spread-handler-read-only.tsx": `import { useState } from "react";
+
+declare const track: (value: string) => void;
+
+export const NamedSpreadHandlerReadOnly = () => {
+  const [view, setView] = useState("login");
+
+  const handleClick = () => {
+    track(view);
+    setView("signup");
+  };
+
+  const buttonProps = {
+    onClick: handleClick,
+  };
+
+  return <button {...buttonProps}>Continue</button>;
+};
+`,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      findStateOnlyInHandlersDiagnostics(diagnostics, "src/named-spread-handler-read-only.tsx")
+        .length,
     ).toBeGreaterThan(0);
   });
 

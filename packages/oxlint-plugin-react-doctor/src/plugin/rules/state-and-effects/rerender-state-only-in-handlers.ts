@@ -10,6 +10,7 @@ import { collectRenderReachableExpressions } from "./utils/collect-render-reacha
 import { buildLocalDependencyGraph } from "./utils/build-local-dependency-graph.js";
 import { collectRenderReachableNames } from "./utils/collect-render-reachable-names.js";
 import { expandTransitiveDependencies } from "./utils/expand-transitive-dependencies.js";
+import { collectFunctionLikeLocalNames } from "./utils/collect-function-like-local-names.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -28,8 +29,12 @@ export const rerenderStateOnlyInHandlers = defineRule<Rule>({
       const renderReachableExpressions = collectRenderReachableExpressions(componentBody);
       if (renderReachableExpressions.length === 0) return;
 
-      const dependencyGraph = buildLocalDependencyGraph(componentBody);
-      const directRenderNames = collectRenderReachableNames(renderReachableExpressions);
+      const eventHandlerReferenceNames = collectFunctionLikeLocalNames(componentBody);
+      const dependencyGraph = buildLocalDependencyGraph(componentBody, eventHandlerReferenceNames);
+      const directRenderNames = collectRenderReachableNames(
+        renderReachableExpressions,
+        eventHandlerReferenceNames,
+      );
       const renderReachableNames = expandTransitiveDependencies(directRenderNames, dependencyGraph);
 
       for (const binding of bindings) {

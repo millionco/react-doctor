@@ -21,6 +21,7 @@ import { collectRenderReachableExpressions } from "./utils/collect-render-reacha
 import { buildLocalDependencyGraph } from "./utils/build-local-dependency-graph.js";
 import { collectRenderReachableNames } from "./utils/collect-render-reachable-names.js";
 import { expandTransitiveDependencies } from "./utils/expand-transitive-dependencies.js";
+import { collectFunctionLikeLocalNames } from "./utils/collect-function-like-local-names.js";
 import { collectHandlerBindingNames } from "./utils/collect-handler-binding-names.js";
 import { isInsideEventHandler } from "./utils/is-inside-event-handler.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -176,8 +177,12 @@ export const noEventTriggerState = defineRule<Rule>({
       // uses to filter these out (transitive dep graph + walk from
       // render-reachable expressions).
       const renderReachableExpressions = collectRenderReachableExpressions(componentBody);
-      const dependencyGraph = buildLocalDependencyGraph(componentBody);
-      const directRenderNames = collectRenderReachableNames(renderReachableExpressions);
+      const eventHandlerReferenceNames = collectFunctionLikeLocalNames(componentBody);
+      const dependencyGraph = buildLocalDependencyGraph(componentBody, eventHandlerReferenceNames);
+      const directRenderNames = collectRenderReachableNames(
+        renderReachableExpressions,
+        eventHandlerReferenceNames,
+      );
       const renderReachableNames = expandTransitiveDependencies(directRenderNames, dependencyGraph);
 
       walkAst(componentBody, (effectCall: EsTreeNode) => {

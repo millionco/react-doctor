@@ -3,10 +3,16 @@ import { collectComponentScopeReferenceNames } from "./collect-component-scope-r
 
 export const collectRenderReachableNames = (
   renderReachableExpressions: EsTreeNode[],
+  eventHandlerReferenceNames: Set<string> = new Set(),
 ): Set<string> => {
   const names = new Set<string>();
   for (const expression of renderReachableExpressions) {
-    for (const name of collectComponentScopeReferenceNames(expression)) names.add(name);
+    for (const name of collectComponentScopeReferenceNames(
+      expression,
+      eventHandlerReferenceNames,
+    )) {
+      names.add(name);
+    }
   }
   return names;
 };

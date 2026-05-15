@@ -93,6 +93,14 @@ const bindingNameHasIdentifier = (bindingName: ts.BindingName, identifierName: s
 const getDirectBindingIdentifier = (bindingName: ts.BindingName): ts.Identifier | null =>
   ts.isIdentifier(bindingName) ? bindingName : null;
 
+const isReactUseObjectBindingElement = (bindingElement: ts.BindingElement): boolean => {
+  const bindingIdentifier = getDirectBindingIdentifier(bindingElement.name);
+  if (!bindingIdentifier) return false;
+  if (!bindingElement.propertyName) return bindingIdentifier.text === USE_IDENTIFIER;
+  const propertyName = getStaticPropertyName(bindingElement.propertyName);
+  return propertyName === USE_IDENTIFIER;
+};
+
 const isReactRequireCall = (expression: ts.Expression): boolean => {
   const unwrappedExpression = unwrapExpression(expression);
   return (
@@ -124,12 +132,10 @@ const collectReactObjectBindingNames = (
   useImportNames: Set<string>,
 ): void => {
   for (const bindingElement of bindingPattern.elements) {
-    const propertyName = getStaticPropertyName(bindingElement.propertyName);
-    if (bindingElement.propertyName && propertyName !== null && propertyName !== USE_IDENTIFIER) {
-      continue;
-    }
     const bindingIdentifier = getDirectBindingIdentifier(bindingElement.name);
-    if (bindingIdentifier) useImportNames.add(bindingIdentifier.text);
+    if (bindingIdentifier && isReactUseObjectBindingElement(bindingElement)) {
+      useImportNames.add(bindingIdentifier.text);
+    }
   }
 };
 
@@ -140,8 +146,7 @@ const isReactObjectBindingName = (
   bindingPattern.elements.some((bindingElement) => {
     const bindingIdentifier = getDirectBindingIdentifier(bindingElement.name);
     if (bindingIdentifier?.text !== identifierName) return false;
-    const propertyName = getStaticPropertyName(bindingElement.propertyName);
-    return !bindingElement.propertyName || propertyName === null || propertyName === USE_IDENTIFIER;
+    return isReactUseObjectBindingElement(bindingElement);
   });
 
 const isReactRequireBindingDeclaration = (node: ts.Node, identifierName: string): boolean => {
@@ -360,9 +365,7 @@ const isReactUseObjectBinding = (
   ) {
     return false;
   }
-  if (!bindingElement.propertyName) return true;
-  const propertyName = getStaticPropertyName(bindingElement.propertyName);
-  return propertyName === null || propertyName === USE_IDENTIFIER;
+  return isReactUseObjectBindingElement(bindingElement);
 };
 
 const getVariableDeclarationResolution = (

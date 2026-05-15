@@ -16,6 +16,7 @@ import { clientLocalstorageNoVersion } from "./rules/client/client-localstorage-
 import { clientPassiveEventListeners } from "./rules/client/client-passive-event-listeners.js";
 import { noBoldHeading } from "./rules/react-ui/no-bold-heading.js";
 import { noDefaultTailwindPalette } from "./rules/react-ui/no-default-tailwind-palette.js";
+import { noEmDashInJsxText } from "./rules/react-ui/no-em-dash-in-jsx-text.js";
 import { noRedundantPaddingAxes } from "./rules/react-ui/no-redundant-padding-axes.js";
 import { noRedundantSizeAxes } from "./rules/react-ui/no-redundant-size-axes.js";
 import { noSpaceOnFlexChildren } from "./rules/react-ui/no-space-on-flex-children.js";
@@ -225,6 +226,11 @@ export const ruleRegistry: Record<string, Rule> = {
   },
   "design-no-default-tailwind-palette": {
     ...noDefaultTailwindPalette,
+    framework: "global",
+    category: "Architecture",
+  },
+  "design-no-em-dash-in-jsx-text": {
+    ...noEmDashInJsxText,
     framework: "global",
     category: "Architecture",
   },

@@ -299,6 +299,37 @@ describe("design-no-three-period-ellipsis", () => {
   });
 });
 
+describe("design-no-em-dash-in-jsx-text", () => {
+  it("flags em dashes in JSX text", async () => {
+    const projectDir = setupReactProject(tempRoot, "no-em-dash-pos", {
+      files: {
+        "src/Message.tsx": `export const Message = () => <p>Ready — deploy now</p>;\n`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "design-no-em-dash-in-jsx-text");
+    expect(hits).toHaveLength(1);
+    expect(hits[0].message).toContain("Em dash");
+  });
+
+  it("does not flag em dashes in code-like or non-translated text", async () => {
+    const projectDir = setupReactProject(tempRoot, "no-em-dash-neg", {
+      files: {
+        "src/Snippet.tsx": `export const Snippet = () => (
+  <div>
+    <code>git log --oneline — docs</code>
+    <span translate="no">Acme — Internal</span>
+  </div>
+);
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "design-no-em-dash-in-jsx-text");
+    expect(hits).toHaveLength(0);
+  });
+});
+
 describe("design-no-default-tailwind-palette", () => {
   it("flags indigo / gray / slate Tailwind utilities", async () => {
     const projectDir = setupReactProject(tempRoot, "no-default-palette-pos", {

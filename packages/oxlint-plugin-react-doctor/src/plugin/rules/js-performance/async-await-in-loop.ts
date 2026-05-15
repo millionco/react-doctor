@@ -98,13 +98,6 @@ const collectAssignedIdentifiers = (block: EsTreeNode): Set<string> => {
     if (isNodeOfType(child, "AssignmentExpression") && child.left) {
       collectPatternIdentifiers(child.left, assigned);
     }
-    if (
-      isNodeOfType(child, "VariableDeclarator") &&
-      child.id &&
-      isNodeOfType(child.init, "AwaitExpression")
-    ) {
-      collectPatternIdentifiers(child.id, assigned);
-    }
   });
   return assigned;
 };
@@ -245,8 +238,6 @@ export const asyncAwaitInLoop = defineRule<Rule>({
         ) {
           return;
         }
-        if (loopBodyHasOnlySleepLikeAwaits(body)) return;
-        if (hasLoopCarriedDependency(body)) return;
         const firstAwait = findFirstAwaitOutsideNestedFunctions(body);
         if (firstAwait) {
           const message =

@@ -247,6 +247,33 @@ describe("rules-of-hooks local use false positives", () => {
     ).toBe(true);
   });
 
+  it("does not treat namespace shorthand destructuring for other React exports as React use", async () => {
+    const projectDir = setupReactProject(tempRoot, "local-use-from-react-namespace-shorthand", {
+      files: {
+        "src/fixtures.ts": `
+          import * as React from "react";
+
+          export const fixture = async () => {
+            const { useState } = React;
+            const use = useState;
+            console.log(use());
+          };
+        `,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      diagnostics.filter(
+        (diagnostic) => diagnostic.plugin === "react-hooks" && diagnostic.rule === "rules-of-hooks",
+      ),
+    ).toHaveLength(0);
+  });
+
   it("still reports React use after namespace destructuring aliases", async () => {
     const projectDir = setupReactProject(tempRoot, "react-use-namespace-destructure-alias", {
       files: {
@@ -273,6 +300,32 @@ describe("rules-of-hooks local use false positives", () => {
         (diagnostic) => diagnostic.plugin === "react-hooks" && diagnostic.rule === "rules-of-hooks",
       ),
     ).toBe(true);
+  });
+
+  it("does not treat CommonJS shorthand destructuring for other React exports as React use", async () => {
+    const projectDir = setupReactProject(tempRoot, "local-use-from-commonjs-shorthand", {
+      files: {
+        "src/fixtures.js": `
+          const { useState } = require("react");
+
+          export const fixture = async () => {
+            const use = useState;
+            console.log(use());
+          };
+        `,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      diagnostics.filter(
+        (diagnostic) => diagnostic.plugin === "react-hooks" && diagnostic.rule === "rules-of-hooks",
+      ),
+    ).toHaveLength(0);
   });
 
   it("still reports CommonJS React use aliases inside async components", async () => {

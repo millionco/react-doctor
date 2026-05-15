@@ -182,6 +182,39 @@ export const Preview = ({ mime, src }: { mime: string; src: string }) => {
     expect(findStateOnlyInHandlersDiagnostics(diagnostics, "src/preview.tsx")).toHaveLength(0);
   });
 
+  it("does NOT flag state read inside a render-time callback", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-146-render-callback", {
+      files: {
+        "src/render-callback.tsx": `import { useState } from "react";
+
+const labels = ["primary", "secondary"];
+
+export const RenderCallback = () => {
+  const [selectedLabel, setSelectedLabel] = useState("primary");
+
+  return (
+    <div>
+      {labels.map((label) => (
+        <span data-active={label === selectedLabel}>{label}</span>
+      ))}
+      <button onClick={() => setSelectedLabel("secondary")}>Select secondary</button>
+    </div>
+  );
+};
+`,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(findStateOnlyInHandlersDiagnostics(diagnostics, "src/render-callback.tsx")).toHaveLength(
+      0,
+    );
+  });
+
   it("does NOT flag state passed as the value of a context provider", async () => {
     const projectDir = setupReactProject(tempRoot, "issue-146-context", {
       files: {
@@ -252,6 +285,138 @@ export const ScrollTracker = () => {
 
     expect(
       findStateOnlyInHandlersDiagnostics(diagnostics, "src/scroll-tracker.tsx").length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("DOES flag state read only inside a JSX event handler", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-146-handler-read-only", {
+      files: {
+        "src/handler-read-only.tsx": `import { useState } from "react";
+
+declare const track: (value: string) => void;
+
+export const HandlerReadOnly = () => {
+  const [view, setView] = useState("login");
+
+  return (
+    <button
+      onClick={() => {
+        track(view);
+        setView("signup");
+      }}
+    >
+      Continue
+    </button>
+  );
+};
+`,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      findStateOnlyInHandlersDiagnostics(diagnostics, "src/handler-read-only.tsx").length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("DOES flag state read only inside a named JSX event handler", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-146-named-handler-read-only", {
+      files: {
+        "src/named-handler-read-only.tsx": `import { useState } from "react";
+
+declare const track: (value: string) => void;
+
+export const NamedHandlerReadOnly = () => {
+  const [view, setView] = useState("login");
+
+  const handleClick = () => {
+    track(view);
+    setView("signup");
+  };
+
+  return <button onClick={handleClick}>Continue</button>;
+};
+`,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      findStateOnlyInHandlersDiagnostics(diagnostics, "src/named-handler-read-only.tsx").length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("DOES flag state read only inside a spread JSX event handler", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-146-spread-handler-read-only", {
+      files: {
+        "src/spread-handler-read-only.tsx": `import { useState } from "react";
+
+declare const track: (value: string) => void;
+
+export const SpreadHandlerReadOnly = () => {
+  const [view, setView] = useState("login");
+
+  const buttonProps = {
+    onClick: () => {
+      track(view);
+      setView("signup");
+    },
+  };
+
+  return <button {...buttonProps}>Continue</button>;
+};
+`,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      findStateOnlyInHandlersDiagnostics(diagnostics, "src/spread-handler-read-only.tsx").length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("DOES flag state when only a shadowed render callback parameter uses the same name", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-146-shadowed-render-callback", {
+      files: {
+        "src/shadowed-render-callback.tsx": `import { useState } from "react";
+
+const views = ["login", "signup"];
+
+export const ShadowedRenderCallback = () => {
+  const [view, setView] = useState("login");
+
+  return (
+    <div>
+      {views.map((view) => (
+        <span>{view}</span>
+      ))}
+      <button onClick={() => setView("signup")}>Continue</button>
+    </div>
+  );
+};
+`,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      findStateOnlyInHandlersDiagnostics(diagnostics, "src/shadowed-render-callback.tsx").length,
     ).toBeGreaterThan(0);
   });
 });

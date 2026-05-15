@@ -1,15 +1,12 @@
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
-import { walkAst } from "../../../utils/walk-ast.js";
-import { isNodeOfType } from "../../../utils/is-node-of-type.js";
+import { collectComponentScopeReferenceNames } from "./collect-component-scope-reference-names.js";
 
 export const collectRenderReachableNames = (
   renderReachableExpressions: EsTreeNode[],
 ): Set<string> => {
   const names = new Set<string>();
   for (const expression of renderReachableExpressions) {
-    walkAst(expression, (child: EsTreeNode) => {
-      if (isNodeOfType(child, "Identifier")) names.add(child.name);
-    });
+    for (const name of collectComponentScopeReferenceNames(expression)) names.add(name);
   }
   return names;
 };

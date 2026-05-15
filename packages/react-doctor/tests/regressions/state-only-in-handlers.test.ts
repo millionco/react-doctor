@@ -182,6 +182,63 @@ export const Preview = ({ mime, src }: { mime: string; src: string }) => {
     expect(findStateOnlyInHandlersDiagnostics(diagnostics, "src/preview.tsx")).toHaveLength(0);
   });
 
+  it("does NOT flag state read through a function declaration used in JSX", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-146-function-declaration", {
+      files: {
+        "src/function-declaration.tsx": `import { useState } from "react";
+
+export const FunctionDeclaration = () => {
+  const [view, setView] = useState("login");
+
+  function getLabel() {
+    return view === "login" ? "Log in" : "Create account";
+  }
+
+  return <button onClick={() => setView("signup")}>{getLabel()}</button>;
+};
+`,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      findStateOnlyInHandlersDiagnostics(diagnostics, "src/function-declaration.tsx"),
+    ).toHaveLength(0);
+  });
+
+  it("does NOT flag state read through a block-scoped derived value before return", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-146-block-scoped-derived", {
+      files: {
+        "src/block-scoped-derived.tsx": `import { useState } from "react";
+
+export const BlockScopedDerived = () => {
+  const [view, setView] = useState("login");
+
+  if (view === "login") {
+    const label = view === "login" ? "Create account" : "Log in";
+    return <button onClick={() => setView("signup")}>{label}</button>;
+  }
+
+  return <button onClick={() => setView("login")}>Log in</button>;
+};
+`,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      findStateOnlyInHandlersDiagnostics(diagnostics, "src/block-scoped-derived.tsx"),
+    ).toHaveLength(0);
+  });
+
   it("does NOT flag state read inside a render-time callback", async () => {
     const projectDir = setupReactProject(tempRoot, "issue-146-render-callback", {
       files: {

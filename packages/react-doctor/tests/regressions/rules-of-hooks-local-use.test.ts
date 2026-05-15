@@ -168,6 +168,62 @@ describe("rules-of-hooks local use false positives", () => {
     ).toBe(true);
   });
 
+  it("still reports computed React use destructuring inside async components", async () => {
+    const projectDir = setupReactProject(tempRoot, "react-use-computed-destructure", {
+      files: {
+        "src/App.tsx": `
+          import * as React from "react";
+
+          export const App = async () => {
+            const { ["use"]: use } = React;
+            use(Promise.resolve("ok"));
+            return null;
+          };
+        `,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      diagnostics.some(
+        (diagnostic) => diagnostic.plugin === "react-hooks" && diagnostic.rule === "rules-of-hooks",
+      ),
+    ).toBe(true);
+  });
+
+  it("still reports CommonJS React use aliases inside async components", async () => {
+    const projectDir = setupReactProject(tempRoot, "react-use-commonjs", {
+      files: {
+        "src/App.js": `
+          const React = require("react");
+          const { use } = React;
+          const reactUse = require("react").use;
+
+          export const App = async () => {
+            use(Promise.resolve("ok"));
+            reactUse(Promise.resolve("ok"));
+            return null;
+          };
+        `,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      diagnostics.some(
+        (diagnostic) => diagnostic.plugin === "react-hooks" && diagnostic.rule === "rules-of-hooks",
+      ),
+    ).toBe(true);
+  });
+
   it("does not let loop-scoped use bindings suppress outer React use", async () => {
     const projectDir = setupReactProject(tempRoot, "react-use-after-loop-binding", {
       files: {

@@ -7,11 +7,27 @@ interface ReactImportBindings {
 
 export interface BindingResolution {
   isReactUseBinding: boolean;
+  isReactNamespaceBinding: boolean;
 }
 
 const REACT_MODULE_SOURCE = "react";
 const REQUIRE_IDENTIFIER = "require";
 const USE_IDENTIFIER = "use";
+
+const LOCAL_BINDING_RESOLUTION: BindingResolution = {
+  isReactUseBinding: false,
+  isReactNamespaceBinding: false,
+};
+
+const REACT_NAMESPACE_BINDING_RESOLUTION: BindingResolution = {
+  isReactUseBinding: false,
+  isReactNamespaceBinding: true,
+};
+
+const REACT_USE_BINDING_RESOLUTION: BindingResolution = {
+  isReactUseBinding: true,
+  isReactNamespaceBinding: false,
+};
 
 const getScriptKind = (filename: string): ts.ScriptKind => {
   if (filename.endsWith(".tsx")) return ts.ScriptKind.TSX;
@@ -250,13 +266,24 @@ const isReactNamespaceExpression = (
   expression: ts.Expression,
   reactImportBindings: ReactImportBindings,
   sourceFile: ts.SourceFile,
+  visitedDeclarations: Set<ts.Node>,
 ): boolean => {
   const unwrappedExpression = unwrapExpression(expression);
+  if (isReactRequireCall(unwrappedExpression)) return true;
+  if (!ts.isIdentifier(unwrappedExpression)) return false;
+  if (
+    reactImportBindings.namespaceNames.has(unwrappedExpression.text) &&
+    !isIdentifierShadowedByLocalBinding(unwrappedExpression, sourceFile)
+  ) {
+    return true;
+  }
   return (
-    isReactRequireCall(unwrappedExpression) ||
-    (ts.isIdentifier(unwrappedExpression) &&
-      reactImportBindings.namespaceNames.has(unwrappedExpression.text) &&
-      !isIdentifierShadowedByLocalBinding(unwrappedExpression, sourceFile))
+    resolveIdentifierBinding(
+      unwrappedExpression,
+      reactImportBindings,
+      sourceFile,
+      visitedDeclarations,
+    )?.isReactNamespaceBinding ?? false
   );
 };
 
@@ -288,7 +315,12 @@ const isReactUseExpression = (
   if (
     ts.isPropertyAccessExpression(unwrappedExpression) &&
     unwrappedExpression.name.text === USE_IDENTIFIER &&
-    isReactNamespaceExpression(unwrappedExpression.expression, reactImportBindings, sourceFile)
+    isReactNamespaceExpression(
+      unwrappedExpression.expression,
+      reactImportBindings,
+      sourceFile,
+      visitedDeclarations,
+    )
   ) {
     return true;
   }
@@ -301,6 +333,7 @@ const isReactUseExpression = (
       unwrappedExpression.expression,
       reactImportBindings,
       sourceFile,
+      visitedDeclarations,
     );
   }
   return false;
@@ -311,13 +344,19 @@ const isReactUseObjectBinding = (
   variableDeclaration: ts.VariableDeclaration,
   reactImportBindings: ReactImportBindings,
   sourceFile: ts.SourceFile,
+  visitedDeclarations: Set<ts.Node>,
 ): boolean => {
   const bindingElement = findBindingElement(identifier);
   if (!bindingElement) return false;
   if (!ts.isObjectBindingPattern(bindingElement.parent)) return false;
   if (!variableDeclaration.initializer) return false;
   if (
-    !isReactNamespaceExpression(variableDeclaration.initializer, reactImportBindings, sourceFile)
+    !isReactNamespaceExpression(
+      variableDeclaration.initializer,
+      reactImportBindings,
+      sourceFile,
+      visitedDeclarations,
+    )
   ) {
     return false;
   }
@@ -336,36 +375,52 @@ const getVariableDeclarationResolution = (
   const bindingIdentifier = findBindingIdentifier(variableDeclaration.name, identifierName);
   if (!bindingIdentifier) return null;
   if (visitedDeclarations.has(variableDeclaration)) return null;
-  visitedDeclarations.add(variableDeclaration);
+  const nestedVisitedDeclarations = new Set(visitedDeclarations);
+  nestedVisitedDeclarations.add(variableDeclaration);
+  const isDirectBinding = ts.isIdentifier(variableDeclaration.name);
+  const isReactNamespaceBinding =
+    isDirectBinding &&
+    variableDeclaration.initializer !== undefined &&
+    isReactNamespaceExpression(
+      variableDeclaration.initializer,
+      reactImportBindings,
+      sourceFile,
+      new Set(nestedVisitedDeclarations),
+    );
   return {
+    isReactNamespaceBinding,
     isReactUseBinding:
       isReactUseExpression(
         variableDeclaration.initializer,
         reactImportBindings,
         sourceFile,
-        visitedDeclarations,
+        new Set(nestedVisitedDeclarations),
       ) ||
       isReactUseObjectBinding(
         bindingIdentifier,
         variableDeclaration,
         reactImportBindings,
         sourceFile,
+        new Set(nestedVisitedDeclarations),
       ),
   };
 };
 
 const getImportResolution = (node: ts.Node, identifierName: string): BindingResolution | null => {
   if (ts.isImportSpecifier(node) && node.name.text === identifierName) {
-    return {
-      isReactUseBinding:
-        getModuleSource(node) === REACT_MODULE_SOURCE && getImportedName(node) === USE_IDENTIFIER,
-    };
+    return getModuleSource(node) === REACT_MODULE_SOURCE && getImportedName(node) === USE_IDENTIFIER
+      ? REACT_USE_BINDING_RESOLUTION
+      : LOCAL_BINDING_RESOLUTION;
   }
   if (ts.isNamespaceImport(node) && node.name.text === identifierName) {
-    return { isReactUseBinding: false };
+    return getModuleSource(node) === REACT_MODULE_SOURCE
+      ? REACT_NAMESPACE_BINDING_RESOLUTION
+      : LOCAL_BINDING_RESOLUTION;
   }
   if (ts.isImportClause(node) && node.name?.text === identifierName) {
-    return { isReactUseBinding: false };
+    return getModuleSource(node) === REACT_MODULE_SOURCE
+      ? REACT_NAMESPACE_BINDING_RESOLUTION
+      : LOCAL_BINDING_RESOLUTION;
   }
   return null;
 };
@@ -390,15 +445,13 @@ const getDeclarationResolution = (
     );
   }
   if (ts.isParameter(node)) {
-    return bindingNameHasIdentifier(node.name, identifierName)
-      ? { isReactUseBinding: false }
-      : null;
+    return bindingNameHasIdentifier(node.name, identifierName) ? LOCAL_BINDING_RESOLUTION : null;
   }
   if (ts.isFunctionDeclaration(node) && node.name?.text === identifierName) {
-    return { isReactUseBinding: false };
+    return LOCAL_BINDING_RESOLUTION;
   }
   if (ts.isClassDeclaration(node) && node.name?.text === identifierName) {
-    return { isReactUseBinding: false };
+    return LOCAL_BINDING_RESOLUTION;
   }
   return null;
 };

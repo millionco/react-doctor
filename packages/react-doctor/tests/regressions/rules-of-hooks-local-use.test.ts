@@ -304,6 +304,35 @@ describe("rules-of-hooks local use false positives", () => {
     ).toBe(true);
   });
 
+  it("still reports local CommonJS React use aliases inside async components", async () => {
+    const projectDir = setupReactProject(tempRoot, "react-use-local-commonjs", {
+      files: {
+        "src/App.js": `
+          export const App = async () => {
+            const React = require("react");
+            const { use } = React;
+            const reactUse = React.use;
+
+            use(Promise.resolve("ok"));
+            reactUse(Promise.resolve("ok"));
+            return null;
+          };
+        `,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      diagnostics.some(
+        (diagnostic) => diagnostic.plugin === "react-hooks" && diagnostic.rule === "rules-of-hooks",
+      ),
+    ).toBe(true);
+  });
+
   it("does not let loop-scoped use bindings suppress outer React use", async () => {
     const projectDir = setupReactProject(tempRoot, "react-use-after-loop-binding", {
       files: {

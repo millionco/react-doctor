@@ -6,7 +6,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
-import { collectReturnExpressions } from "./utils/collect-return-expressions.js";
+import { collectRenderReachableExpressions } from "./utils/collect-render-reachable-expressions.js";
 import { buildLocalDependencyGraph } from "./utils/build-local-dependency-graph.js";
 import { collectRenderReachableNames } from "./utils/collect-render-reachable-names.js";
 import { expandTransitiveDependencies } from "./utils/expand-transitive-dependencies.js";
@@ -25,11 +25,11 @@ export const rerenderStateOnlyInHandlers = defineRule<Rule>({
       const bindings = collectUseStateBindings(componentBody);
       if (bindings.length === 0) return;
 
-      const returnExpressions = collectReturnExpressions(componentBody);
-      if (returnExpressions.length === 0) return;
+      const renderReachableExpressions = collectRenderReachableExpressions(componentBody);
+      if (renderReachableExpressions.length === 0) return;
 
       const dependencyGraph = buildLocalDependencyGraph(componentBody);
-      const directRenderNames = collectRenderReachableNames(returnExpressions);
+      const directRenderNames = collectRenderReachableNames(renderReachableExpressions);
       const renderReachableNames = expandTransitiveDependencies(directRenderNames, dependencyGraph);
 
       for (const binding of bindings) {

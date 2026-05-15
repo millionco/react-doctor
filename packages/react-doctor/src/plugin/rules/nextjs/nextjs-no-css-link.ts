@@ -9,17 +9,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 export const nextjsNoCssLink = defineRule<Rule>({
   id: "nextjs-no-css-link",
   requires: ["nextjs"],
-  framework: "nextjs",
   severity: "warn",
-  category: "Next.js",
   recommendation:
     "Import CSS directly: `import './styles.css'` or use CSS Modules: `import styles from './Button.module.css'`",
-  examples: [
-    {
-      before: '<link rel="stylesheet" href="/styles/main.css" />',
-      after: "import './styles/main.css';",
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "link") return;

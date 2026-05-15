@@ -44,19 +44,10 @@ const isInsideClassBody = (node: EsTreeNode): boolean => {
 
 export const noLegacyContextApi = defineRule<Rule>({
   id: "no-legacy-context-api",
-  framework: "global",
   severity: "error",
   category: "Correctness",
   recommendation:
     "Replace `childContextTypes` + `getChildContext` with `const MyContext = createContext(...)` + `<MyContext.Provider value={...}>`; replace `contextTypes` with `static contextType = MyContext` (single context) or `useContext()` / `use()` from a function component. The provider and every consumer must migrate together — partial migrations leave consumers reading the wrong context.",
-  examples: [
-    {
-      before:
-        "class Provider extends Component {\n  static childContextTypes = { theme: PropTypes.string };\n  getChildContext() { return { theme: this.state.theme }; }\n}",
-      after:
-        "const ThemeContext = createContext('light');\nconst Provider = ({ children }) => (\n  <ThemeContext.Provider value={theme}>{children}</ThemeContext.Provider>\n);",
-    },
-  ],
   create: (context: RuleContext) => {
     const checkMember = (memberNode: EsTreeNode | undefined): void => {
       if (!memberNode) return;

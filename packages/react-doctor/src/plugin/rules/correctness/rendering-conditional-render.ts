@@ -23,17 +23,9 @@ const isNumericName = (name: string): boolean => {
 
 export const renderingConditionalRender = defineRule<Rule>({
   id: "rendering-conditional-render",
-  framework: "global",
   severity: "warn",
-  category: "Correctness",
   recommendation:
     "Change to `{items.length > 0 && <List />}` or use a ternary: `{items.length ? <List /> : null}`",
-  examples: [
-    {
-      before: "{items.length && <List items={items} />}",
-      after: "{items.length > 0 && <List items={items} />}",
-    },
-  ],
   create: (context: RuleContext) => ({
     LogicalExpression(node: EsTreeNodeOfType<"LogicalExpression">) {
       if (node.operator !== "&&") return;

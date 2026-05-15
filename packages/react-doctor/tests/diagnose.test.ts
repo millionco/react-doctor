@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterAll, beforeEach, describe, expect, it } from "vite-plus/test";
 
 import { AmbiguousProjectError, diagnose } from "../src/index.js";
-import { clearConfigCache } from "../src/core/config/load-config.js";
+import { clearConfigCache } from "../src/core/load-config.js";
 import { setupReactProject } from "./regressions/_helpers.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-diagnose-api-"));

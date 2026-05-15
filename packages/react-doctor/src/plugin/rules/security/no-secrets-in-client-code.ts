@@ -12,18 +12,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noSecretsInClientCode = defineRule<Rule>({
   id: "no-secrets-in-client-code",
-  framework: "global",
   severity: "warn",
-  category: "Security",
   recommendation:
     "Move to server-side `process.env.SECRET_NAME`. Only `NEXT_PUBLIC_*` vars are safe for the client (and should not contain secrets)",
-  examples: [
-    {
-      before:
-        "'use client';\nconst apiKey = 'sk_live_abc123def456ghi789';\nfetch(`/api?key=${apiKey}`);",
-      after: "'use client';\nfetch('/api/proxy');",
-    },
-  ],
   create: (context: RuleContext) => ({
     VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
       if (!isNodeOfType(node.id, "Identifier")) return;

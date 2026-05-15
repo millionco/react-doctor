@@ -19,18 +19,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // effect-driven sync at all.
 export const noPropCallbackInEffect = defineRule<Rule>({
   id: "no-prop-callback-in-effect",
-  framework: "global",
   severity: "warn",
-  category: "State & Effects",
   recommendation:
     "Lift the shared state into a Provider so both sides read the same source — no useEffect-driven sync needed",
-  examples: [
-    {
-      before: "useEffect(() => {\n  onChange(value);\n}, [value, onChange]);",
-      after:
-        "// Share state via context instead of mirroring through an onChange callback in an effect.\nconst { value, setValue } = useContext(FormContext);",
-    },
-  ],
   create: (context: RuleContext) => {
     const propStackTracker = createComponentPropStackTracker();
 

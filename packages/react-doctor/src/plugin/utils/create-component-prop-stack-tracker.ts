@@ -1,12 +1,35 @@
-import type { ComponentPropStackTracker } from "./component-prop-stack-tracker.js";
+import { collectPatternNames } from "./collect-pattern-names.js";
 import type { ComponentPropStackTrackerCallbacks } from "./component-prop-stack-tracker-callbacks.js";
 import type { EsTreeNode } from "./es-tree-node.js";
-import { extractDestructuredPropNames } from "./extract-destructured-prop-names.js";
 import { isComponentAssignment } from "./is-component-assignment.js";
-import { isFunctionLikeVariableDeclarator } from "./is-function-like-variable-declarator.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isUppercaseName } from "./is-uppercase-name.js";
 import type { RuleVisitors } from "./rule-visitors.js";
+
+export interface ComponentPropStackTracker {
+  isPropName: (name: string) => boolean;
+  getCurrentPropNames: () => Set<string>;
+  visitors: RuleVisitors;
+}
+
+const extractDestructuredPropNames = (params: EsTreeNode[]): Set<string> => {
+  const propNames = new Set<string>();
+  for (const param of params) {
+    collectPatternNames(param, propNames);
+  }
+  return propNames;
+};
+
+// HACK: barrier-frame predicate - a non-component arrow / function-expression
+// VariableDeclarator pushes an empty stack frame so closed-over names from
+// an outer component don't leak into the helper's prop check.
+const isFunctionLikeVariableDeclarator = (node: EsTreeNode): boolean => {
+  if (!isNodeOfType(node, "VariableDeclarator")) return false;
+  return (
+    isNodeOfType(node.init, "ArrowFunctionExpression") ||
+    isNodeOfType(node.init, "FunctionExpression")
+  );
+};
 
 // HACK: every rule that walks "what props does the enclosing component
 // have?" needs the SAME prop-stack machinery - push the destructured

@@ -9,17 +9,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 export const rnNoDeprecatedModules = defineRule<Rule>({
   id: "rn-no-deprecated-modules",
   requires: ["react-native"],
-  framework: "react-native",
   severity: "error",
-  category: "React Native",
   recommendation:
     "Import from the community package instead — deprecated modules were removed from the react-native core",
-  examples: [
-    {
-      before: "import { AsyncStorage } from 'react-native';",
-      after: "import AsyncStorage from '@react-native-async-storage/async-storage';",
-    },
-  ],
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       if (node.source?.value !== "react-native") return;

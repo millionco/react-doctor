@@ -7,18 +7,10 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noDisabledZoom = defineRule<Rule>({
   id: "no-disabled-zoom",
-  framework: "global",
   severity: "error",
   category: "Accessibility",
   recommendation:
     "Remove `user-scalable=no` and `maximum-scale` from the viewport meta tag. If your layout breaks at 200% zoom, fix the layout — don't punish users with disabilities",
-  examples: [
-    {
-      before:
-        '<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />',
-      after: '<meta name="viewport" content="width=device-width, initial-scale=1" />',
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "meta") return;

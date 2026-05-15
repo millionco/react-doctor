@@ -19,17 +19,9 @@ const TOUCHABLE_COMPONENTS = new Set([
 export const rnPreferPressable = defineRule<Rule>({
   id: "rn-prefer-pressable",
   requires: ["react-native"],
-  framework: "react-native",
   severity: "warn",
-  category: "React Native",
   recommendation:
     "Use `<Pressable>` from react-native (or react-native-gesture-handler) instead of legacy Touchable* components",
-  examples: [
-    {
-      before: "<TouchableOpacity onPress={onPress}><Text>Tap</Text></TouchableOpacity>",
-      after: "<Pressable onPress={onPress}><Text>Tap</Text></Pressable>",
-    },
-  ],
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       if (node.source?.value !== "react-native") return;

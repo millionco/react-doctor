@@ -1,27 +1,28 @@
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { CASCADING_SET_STATE_THRESHOLD } from "../../constants/thresholds.js";
-import { countSetStateCalls } from "../../utils/count-set-state-calls.js";
 import { defineRule } from "../../utils/define-rule.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
+import { isSetterCall } from "../../utils/is-setter-call.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { walkAst } from "../../utils/walk-ast.js";
+
+const countSetStateCalls = (node: EsTreeNode): number => {
+  let setStateCallCount = 0;
+  walkAst(node, (child) => {
+    if (isSetterCall(child)) setStateCallCount++;
+  });
+  return setStateCallCount;
+};
 
 export const noCascadingSetState = defineRule<Rule>({
   id: "no-cascading-set-state",
-  framework: "global",
   severity: "warn",
-  category: "State & Effects",
   recommendation:
     "Combine into useReducer: `const [state, dispatch] = useReducer(reducer, initialState)`",
-  examples: [
-    {
-      before:
-        "useEffect(() => {\n  setLoading(false);\n  setError(null);\n  setData(payload);\n  setStep(2);\n}, [payload]);",
-      after: "dispatch({ type: 'LOADED', payload });",
-    },
-  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isHookCall(node, EFFECT_HOOK_NAMES)) return;

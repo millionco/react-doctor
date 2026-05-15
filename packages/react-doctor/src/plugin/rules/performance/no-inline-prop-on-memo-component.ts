@@ -39,18 +39,9 @@ const isInlineReference = (node: EsTreeNode): string | null => {
 
 export const noInlinePropOnMemoComponent = defineRule<Rule>({
   id: "no-inline-prop-on-memo-component",
-  framework: "global",
   severity: "warn",
-  category: "Performance",
   recommendation:
     "Hoist the inline `() => ...` / `[]` / `{}` to a stable reference (useMemo, useCallback, or module scope) so the memoized child doesn't re-render every parent render",
-  examples: [
-    {
-      before: "const Row = memo(RowImpl);\nreturn <Row onSelect={() => doThing()} items={[]} />;",
-      after:
-        "const Row = memo(RowImpl);\nconst onSelect = useCallback(() => doThing(), []);\nconst items = useMemo(() => [], []);\nreturn <Row onSelect={onSelect} items={items} />;",
-    },
-  ],
   create: (context: RuleContext) => {
     const memoizedComponentNames = new Set<string>();
 

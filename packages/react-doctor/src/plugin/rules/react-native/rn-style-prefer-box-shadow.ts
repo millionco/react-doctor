@@ -35,19 +35,9 @@ const findLegacyShadowProperty = (
 export const rnStylePreferBoxShadow = defineRule<Rule>({
   id: "rn-style-prefer-boxshadow",
   requires: ["react-native"],
-  framework: "react-native",
   severity: "warn",
-  category: "React Native",
   recommendation:
     'Use the cross-platform CSS `boxShadow` string (RN v7+): `boxShadow: "0 2px 8px rgba(0,0,0,0.1)"` instead of platform-specific shadow*/elevation keys',
-  examples: [
-    {
-      before:
-        "const styles = StyleSheet.create({\n  card: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 4 },\n});",
-      after:
-        "const styles = StyleSheet.create({\n  card: { boxShadow: '0 2px 8px rgba(0,0,0,0.1)' },\n});",
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       if (!isNodeOfType(node.name, "JSXIdentifier")) return;

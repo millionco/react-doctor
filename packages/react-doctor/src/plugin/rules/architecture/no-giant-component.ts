@@ -10,18 +10,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noGiantComponent = defineRule<Rule>({
   id: "no-giant-component",
-  framework: "global",
   severity: "warn",
-  category: "Architecture",
   recommendation:
     "Extract logical sections into focused components: `<UserHeader />`, `<UserActions />`, etc.",
-  examples: [
-    {
-      before: "function UserPage() {\n  // …300+ lines of JSX, hooks, and handlers…\n}",
-      after:
-        "function UserPage() {\n  return (\n    <>\n      <UserHeader />\n      <UserActions />\n    </>\n  );\n}",
-    },
-  ],
   create: (context: RuleContext) => {
     const reportOversizedComponent = (
       nameNode: EsTreeNode,

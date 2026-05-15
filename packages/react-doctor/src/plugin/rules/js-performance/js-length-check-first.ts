@@ -13,17 +13,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // runs the every-loop only when lengths match.
 export const jsLengthCheckFirst = defineRule<Rule>({
   id: "js-length-check-first",
-  framework: "global",
   severity: "warn",
-  category: "Performance",
   recommendation:
     "Short-circuit with `a.length === b.length && a.every((x, i) => x === b[i])` — unequal-length arrays exit immediately",
-  examples: [
-    {
-      before: "const isEqual = a.every((x, i) => x === b[i]);",
-      after: "const isEqual = a.length === b.length && a.every((x, i) => x === b[i]);",
-    },
-  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isNodeOfType(node.callee, "MemberExpression")) return;

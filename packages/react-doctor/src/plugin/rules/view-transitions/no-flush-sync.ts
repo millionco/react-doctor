@@ -12,17 +12,10 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // site, which would clutter output for files with several flushSync()s.
 export const noFlushSync = defineRule<Rule>({
   id: "no-flush-sync",
-  framework: "global",
   severity: "warn",
   category: "Performance",
   recommendation:
     "Use startTransition for non-urgent updates — flushSync forces a sync flush that skips View Transitions and concurrent rendering",
-  examples: [
-    {
-      before: "import { flushSync } from 'react-dom';\nflushSync(() => setItems(next));",
-      after: "import { startTransition } from 'react';\nstartTransition(() => setItems(next));",
-    },
-  ],
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       if (node.source?.value !== "react-dom") return;

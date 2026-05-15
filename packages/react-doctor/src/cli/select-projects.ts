@@ -1,9 +1,6 @@
 import path from "node:path";
 import type { WorkspacePackage } from "../types/project-info.js";
-import {
-  discoverReactSubprojects,
-  listWorkspacePackages,
-} from "../core/detection/discover-project.js";
+import { discoverReactSubprojects, listWorkspacePackages } from "../core/discover-project.js";
 import { highlighter } from "../core/highlighter.js";
 import { logger } from "../core/logger.js";
 import { prompts } from "./prompts.js";

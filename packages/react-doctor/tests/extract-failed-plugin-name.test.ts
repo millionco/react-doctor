@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { extractFailedPluginName } from "../src/core/runners/extract-failed-plugin-name.js";
+import { extractFailedPluginName } from "../src/core/extract-failed-plugin-name.js";
 
 describe("extractFailedPluginName", () => {
   it("extracts plugin name from POSIX-style paths", () => {

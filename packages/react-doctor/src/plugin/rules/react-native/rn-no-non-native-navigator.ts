@@ -15,19 +15,9 @@ const NON_NATIVE_NAVIGATOR_PACKAGES = new Set([
 export const rnNoNonNativeNavigator = defineRule<Rule>({
   id: "rn-no-non-native-navigator",
   requires: ["react-native"],
-  framework: "react-native",
   severity: "warn",
-  category: "React Native",
   recommendation:
     "Use `@react-navigation/native-stack` (or `native-tabs` in v7+) for platform-native transitions and gestures",
-  examples: [
-    {
-      before:
-        "import { createStackNavigator } from '@react-navigation/stack';\nconst Stack = createStackNavigator();",
-      after:
-        "import { createNativeStackNavigator } from '@react-navigation/native-stack';\nconst Stack = createNativeStackNavigator();",
-    },
-  ],
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       const source = node.source?.value;

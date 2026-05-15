@@ -8,18 +8,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const rerenderDependencies = defineRule<Rule>({
   id: "rerender-dependencies",
-  framework: "global",
   severity: "error",
-  category: "State & Effects",
   recommendation:
     "Extract to a useMemo, useRef, or module-level constant so the reference is stable",
-  examples: [
-    {
-      before: "useEffect(() => subscribe({ id }), [{ id }]);",
-      after:
-        "const options = useMemo(() => ({ id }), [id]);\nuseEffect(() => subscribe(options), [options]);",
-    },
-  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isHookCall(node, HOOKS_WITH_DEPS) || node.arguments.length < 2) return;

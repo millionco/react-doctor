@@ -54,18 +54,9 @@ const handlerCallsSetState = (handler: EsTreeNode): EsTreeNode | null => {
 // `useDeferredValue`.
 export const rerenderTransitionsScroll = defineRule<Rule>({
   id: "rerender-transitions-scroll",
-  framework: "global",
   severity: "warn",
-  category: "Performance",
   recommendation:
     "Wrap the setState in startTransition (mark as non-urgent), use useDeferredValue, or stash in a ref + rAF throttle so scroll/pointer events don't trigger a re-render per fire",
-  examples: [
-    {
-      before: "window.addEventListener('scroll', (e) => {\n  setScrollY(window.scrollY);\n});",
-      after:
-        "window.addEventListener('scroll', (e) => {\n  startTransition(() => setScrollY(window.scrollY));\n});",
-    },
-  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isAddEventListenerCall(node)) return;

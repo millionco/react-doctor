@@ -6,17 +6,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noTransitionAll = defineRule<Rule>({
   id: "no-transition-all",
-  framework: "global",
   severity: "warn",
-  category: "Performance",
   recommendation:
     'List specific properties: `transition: "opacity 200ms, transform 200ms"` — or in Tailwind use `transition-colors`, `transition-opacity`, or `transition-transform`',
-  examples: [
-    {
-      before: "<div style={{ transition: 'all 200ms ease' }} />",
-      after: "<div style={{ transition: 'opacity 200ms ease, transform 200ms ease' }} />",
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "style") return;

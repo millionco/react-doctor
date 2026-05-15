@@ -10,19 +10,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 export const nextjsAsyncClientComponent = defineRule<Rule>({
   id: "nextjs-async-client-component",
   requires: ["nextjs"],
-  framework: "nextjs",
   severity: "error",
-  category: "Next.js",
   recommendation:
     "Fetch data in a parent Server Component and pass it as props, or use useQuery/useSWR in the client component",
-  examples: [
-    {
-      before:
-        "'use client';\nexport default async function Page() {\n  const data = await fetch('/api/data').then((r) => r.json());\n  return <div>{data.title}</div>;\n}",
-      after:
-        "'use client';\nimport useSWR from 'swr';\nexport default function Page() {\n  const { data } = useSWR('/api/data', (u) => fetch(u).then((r) => r.json()));\n  return <div>{data?.title}</div>;\n}",
-    },
-  ],
   create: (context: RuleContext) => {
     let fileHasUseClient = false;
 

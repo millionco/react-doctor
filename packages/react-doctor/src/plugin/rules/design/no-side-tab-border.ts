@@ -56,17 +56,9 @@ const BORDER_SIDE_WIDTH_KEYS = new Set([
 export const noSideTabBorder = defineRule<Rule>({
   id: "no-side-tab-border",
   tags: ["design", "test-noise"],
-  framework: "global",
   severity: "warn",
-  category: "Architecture",
   recommendation:
     "Use a subtler accent (box-shadow inset, background gradient, or border-bottom) instead of a thick one-sided border",
-  examples: [
-    {
-      before: '<div className="border-l-4 border-blue-500 p-4">Tab</div>',
-      after: '<div className="shadow-[inset_2px_0_0_theme(colors.blue.500)] p-4">Tab</div>',
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);

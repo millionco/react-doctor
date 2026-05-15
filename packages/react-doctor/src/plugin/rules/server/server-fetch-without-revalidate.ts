@@ -55,18 +55,9 @@ const NON_PROJECT_PATH_PATTERN = /\/(?:node_modules|dist|build|\.next)\//;
 
 export const serverFetchWithoutRevalidate = defineRule<Rule>({
   id: "server-fetch-without-revalidate",
-  framework: "global",
   severity: "warn",
-  category: "Server",
   recommendation:
     'Pass `{ next: { revalidate: <seconds> } }` (or `cache: "no-store"` / `next: { tags: [...] }`) so stale cached data doesn\'t silently persist',
-  examples: [
-    {
-      before: "const data = await fetch('https://api.example.com/feed').then((r) => r.json());",
-      after:
-        "const data = await fetch('https://api.example.com/feed', { next: { revalidate: 60 } }).then((r) => r.json());",
-    },
-  ],
   create: (context: RuleContext) => {
     let isServerSideFile = false;
 

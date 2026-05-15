@@ -37,19 +37,9 @@ const containsAuthCheck = (statements: EsTreeNode[]): boolean => {
 
 export const serverAuthActions = defineRule<Rule>({
   id: "server-auth-actions",
-  framework: "global",
   severity: "error",
-  category: "Server",
   recommendation:
     "Add `const session = await auth()` at the top and throw/redirect if unauthorized before any data access",
-  examples: [
-    {
-      before:
-        "'use server';\nexport async function deletePost(id: string) {\n  await db.post.delete({ where: { id } });\n}",
-      after:
-        "'use server';\nexport async function deletePost(id: string) {\n  const session = await auth();\n  if (!session) throw new Error('Unauthorized');\n  await db.post.delete({ where: { id } });\n}",
-    },
-  ],
   create: (context: RuleContext) => {
     let fileHasUseServerDirective = false;
 

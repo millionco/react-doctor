@@ -10,18 +10,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 export const noGradientText = defineRule<Rule>({
   id: "no-gradient-text",
   tags: ["design", "test-noise"],
-  framework: "global",
   severity: "warn",
-  category: "Architecture",
   recommendation:
     "Use solid text colors for readability. If you need emphasis, use font weight, size, or a distinct color instead of gradients",
-  examples: [
-    {
-      before:
-        '<h1 className="bg-clip-text text-transparent bg-gradient-to-r from-blue-500 to-purple-500">Welcome</h1>',
-      after: '<h1 className="text-blue-600 font-bold">Welcome</h1>',
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);

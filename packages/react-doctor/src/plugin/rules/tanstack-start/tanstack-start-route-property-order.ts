@@ -9,19 +9,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 export const tanstackStartRoutePropertyOrder = defineRule<Rule>({
   id: "tanstack-start-route-property-order",
   requires: ["tanstack-start"],
-  framework: "tanstack-start",
   severity: "error",
-  category: "TanStack Start",
   recommendation:
     "Follow the order: params/validateSearch → loaderDeps → context → beforeLoad → loader → head. See https://tanstack.com/router/latest/docs/eslint/create-route-property-order",
-  examples: [
-    {
-      before:
-        "createFileRoute('/users')({\n  loader: fetchUsers,\n  beforeLoad: authCheck,\n  validateSearch: schema,\n});",
-      after:
-        "createFileRoute('/users')({\n  validateSearch: schema,\n  beforeLoad: authCheck,\n  loader: fetchUsers,\n});",
-    },
-  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const optionsObject = getRouteOptionsObject(node);

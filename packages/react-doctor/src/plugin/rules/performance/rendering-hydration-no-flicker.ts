@@ -10,19 +10,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const renderingHydrationNoFlicker = defineRule<Rule>({
   id: "rendering-hydration-no-flicker",
-  framework: "global",
   severity: "warn",
-  category: "Performance",
   recommendation:
     "Use `useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)` or add `suppressHydrationWarning` to the element",
-  examples: [
-    {
-      before:
-        "const [mounted, setMounted] = useState(false);\nuseEffect(() => { setMounted(true); }, []);",
-      after:
-        "const theme = useSyncExternalStore(subscribeToTheme, () => getTheme(), () => 'light');",
-    },
-  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isHookCall(node, EFFECT_HOOK_NAMES) || (node.arguments?.length ?? 0) < 2) return;

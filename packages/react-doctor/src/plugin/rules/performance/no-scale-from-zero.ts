@@ -6,18 +6,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noScaleFromZero = defineRule<Rule>({
   id: "no-scale-from-zero",
-  framework: "global",
   severity: "warn",
-  category: "Performance",
   recommendation:
     "Use `initial={{ scale: 0.95, opacity: 0 }}` — elements should deflate like a balloon, not vanish into a point",
-  examples: [
-    {
-      before: "<motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} />",
-      after:
-        "<motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} />",
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       if (!isNodeOfType(node.name, "JSXIdentifier")) return;

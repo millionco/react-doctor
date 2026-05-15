@@ -9,17 +9,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 export const queryNoRestDestructuring = defineRule<Rule>({
   id: "query-no-rest-destructuring",
   requires: ["tanstack-query"],
-  framework: "tanstack-query",
   severity: "warn",
-  category: "TanStack Query",
   recommendation:
     "Destructure only the fields you need: `const { data, isLoading } = useQuery(...)` — rest destructuring subscribes to all fields and causes extra re-renders",
-  examples: [
-    {
-      before: "const { data, ...rest } = useQuery({ queryKey: ['user'], queryFn });",
-      after: "const { data, isLoading } = useQuery({ queryKey: ['user'], queryFn });",
-    },
-  ],
   create: (context: RuleContext) => ({
     VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
       if (!isNodeOfType(node.id, "ObjectPattern")) return;

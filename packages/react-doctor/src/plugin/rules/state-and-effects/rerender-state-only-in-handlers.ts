@@ -15,18 +15,10 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const rerenderStateOnlyInHandlers = defineRule<Rule>({
   id: "rerender-state-only-in-handlers",
-  framework: "global",
   severity: "warn",
   category: "Performance",
   recommendation:
     "Replace useState with useRef when the value is only mutated and never read in render — `ref.current = ...` updates without re-rendering the component",
-  examples: [
-    {
-      before:
-        "const [clicks, setClicks] = useState(0);\nconst onClick = () => setClicks(clicks + 1);",
-      after: "const clicksRef = useRef(0);\nconst onClick = () => { clicksRef.current += 1; };",
-    },
-  ],
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;

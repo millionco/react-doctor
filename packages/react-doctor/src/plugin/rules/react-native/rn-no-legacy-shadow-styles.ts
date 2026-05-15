@@ -32,18 +32,9 @@ const reportLegacyShadowProperties = (
 export const rnNoLegacyShadowStyles = defineRule<Rule>({
   id: "rn-no-legacy-shadow-styles",
   requires: ["react-native"],
-  framework: "react-native",
   severity: "warn",
-  category: "React Native",
   recommendation:
     "Use `boxShadow` for cross-platform shadows on the new architecture instead of platform-specific shadow properties",
-  examples: [
-    {
-      before:
-        "<View style={{ shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 4, elevation: 3 }} />",
-      after: "<View style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }} />",
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "style") return;

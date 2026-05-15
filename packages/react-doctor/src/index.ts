@@ -16,20 +16,20 @@ import type { ProjectInfo } from "./types/project-info.js";
 import type { ScoreResult } from "./types/score.js";
 import { buildJsonReport } from "./core/build-json-report.js";
 import { buildJsonReportError } from "./core/build-json-report-error.js";
-import { calculateScore } from "./core/scoring/calculate-score.js";
-import { clearIgnorePatternsCache } from "./core/config/collect-ignore-patterns.js";
-import { combineDiagnostics } from "./core/diagnostics/combine-diagnostics.js";
-import { clearAutoSuppressionCaches } from "./core/diagnostics/merge-and-filter-diagnostics.js";
-import { clearProjectCache, discoverProject } from "./core/detection/discover-project.js";
-import { computeJsxIncludePaths } from "./core/runners/jsx-include-paths.js";
-import { clearConfigCache, loadConfigWithSource } from "./core/config/load-config.js";
-import { clearPackageJsonCache } from "./core/detection/read-package-json.js";
+import { calculateScore } from "./core/calculate-score.js";
+import { clearIgnorePatternsCache } from "./core/collect-ignore-patterns.js";
+import { combineDiagnostics } from "./core/combine-diagnostics.js";
+import { clearAutoSuppressionCaches } from "./core/merge-and-filter-diagnostics.js";
+import { clearProjectCache, discoverProject } from "./core/discover-project.js";
+import { computeJsxIncludePaths } from "./core/jsx-include-paths.js";
+import { clearConfigCache, loadConfigWithSource } from "./core/load-config.js";
+import { clearPackageJsonCache } from "./core/read-package-json.js";
 import { createNodeReadFileLinesSync } from "./core/read-file-lines-node.js";
-import { resolveConfigRootDir } from "./core/config/resolve-config-root-dir.js";
-import { resolveDiagnoseTarget } from "./core/config/resolve-diagnose-target.js";
-import { resolveLintIncludePaths } from "./core/runners/resolve-lint-include-paths.js";
-import { runKnip } from "./core/runners/run-knip.js";
-import { runOxlint } from "./core/runners/run-oxlint.js";
+import { resolveConfigRootDir } from "./core/resolve-config-root-dir.js";
+import { resolveDiagnoseTarget } from "./core/resolve-diagnose-target.js";
+import { resolveLintIncludePaths } from "./core/resolve-lint-include-paths.js";
+import { runKnip } from "./core/run-knip.js";
+import { runOxlint } from "./core/run-oxlint.js";
 
 export type {
   Diagnostic,
@@ -46,8 +46,8 @@ export type {
   ReactDoctorConfig,
   ScoreResult,
 };
-export { getDiffInfo, filterSourceFiles } from "./core/runners/get-diff-files.js";
-export { summarizeDiagnostics } from "./core/diagnostics/summarize-diagnostics.js";
+export { getDiffInfo, filterSourceFiles } from "./core/get-diff-files.js";
+export { summarizeDiagnostics } from "./core/summarize-diagnostics.js";
 export { buildJsonReport, buildJsonReportError };
 export {
   ReactDoctorError,

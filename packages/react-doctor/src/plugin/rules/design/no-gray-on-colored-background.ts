@@ -6,17 +6,10 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noGrayOnColoredBackground = defineRule<Rule>({
   id: "no-gray-on-colored-background",
-  framework: "global",
   severity: "warn",
   category: "Accessibility",
   recommendation:
     "Use a darker shade of the background color for text, or white/near-white for contrast. Gray text on colored backgrounds looks washed out",
-  examples: [
-    {
-      before: '<div className="bg-blue-600 text-gray-400">Highlighted</div>',
-      after: '<div className="bg-blue-600 text-white">Highlighted</div>',
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const classStr = getStringFromClassNameAttr(node);

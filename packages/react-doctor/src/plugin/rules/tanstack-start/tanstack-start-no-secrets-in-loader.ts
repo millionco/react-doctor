@@ -24,19 +24,10 @@ const isLikelySecret = (envVarName: string): boolean => {
 export const tanstackStartNoSecretsInLoader = defineRule<Rule>({
   id: "tanstack-start-no-secrets-in-loader",
   requires: ["tanstack-start"],
-  framework: "tanstack-start",
   severity: "error",
   category: "Security",
   recommendation:
     "Loaders are isomorphic (run on both server and client). Wrap secret access in `createServerFn()` so it stays server-only",
-  examples: [
-    {
-      before:
-        "loader: async () => fetch('https://api.stripe.com/v1/customers', { headers: { Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}` } })",
-      after:
-        "const listCustomers = createServerFn().handler(async () => fetch('https://api.stripe.com/v1/customers', { headers: { Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}` } }));\nloader: async () => await listCustomers();",
-    },
-  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const optionsObject = getRouteOptionsObject(node);

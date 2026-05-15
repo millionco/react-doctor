@@ -15,17 +15,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 export const rnScrollviewDynamicPadding = defineRule<Rule>({
   id: "rn-scrollview-dynamic-padding",
   requires: ["react-native"],
-  framework: "react-native",
   severity: "warn",
-  category: "React Native",
   recommendation:
     "Use `contentInset={{ bottom: dynamicValue }}` — the OS applies it as an offset without reflowing the scroll content",
-  examples: [
-    {
-      before: "<ScrollView contentContainerStyle={{ paddingBottom: keyboardHeight }} />",
-      after: "<ScrollView contentInset={{ bottom: keyboardHeight }} />",
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const elementName = resolveJsxElementName(node);

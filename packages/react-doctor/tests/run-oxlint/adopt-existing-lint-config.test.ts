@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { runOxlint } from "../../src/core/runners/run-oxlint.js";
+import { runOxlint } from "../../src/core/run-oxlint.js";
 import { buildTestProject } from "../regressions/_helpers.js";
 import { USER_OXLINT_CONFIG_BROKEN_DIRECTORY, USER_OXLINT_CONFIG_DIRECTORY } from "./_helpers.js";
 

@@ -8,18 +8,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 export const rnPreferReanimated = defineRule<Rule>({
   id: "rn-prefer-reanimated",
   requires: ["react-native"],
-  framework: "react-native",
   severity: "warn",
-  category: "React Native",
   recommendation:
     "Use `import Animated from 'react-native-reanimated'` — animations run on the UI thread instead of the JS thread",
-  examples: [
-    {
-      before: "import { Animated } from 'react-native';\nAnimated.timing(value, { toValue: 1 });",
-      after:
-        "import Animated, { withTiming, useSharedValue } from 'react-native-reanimated';\nconst value = useSharedValue(0);\nvalue.value = withTiming(1);",
-    },
-  ],
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       if (node.source?.value !== "react-native") return;

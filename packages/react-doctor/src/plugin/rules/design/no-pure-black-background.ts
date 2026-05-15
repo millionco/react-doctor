@@ -11,17 +11,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 export const noPureBlackBackground = defineRule<Rule>({
   id: "no-pure-black-background",
   tags: ["design", "test-noise"],
-  framework: "global",
   severity: "warn",
-  category: "Architecture",
   recommendation:
     "Tint the background slightly toward your brand hue — e.g. `#0a0a0f` or Tailwind's `bg-gray-950`. Pure black looks harsh on modern displays",
-  examples: [
-    {
-      before: "<div style={{ backgroundColor: '#000' }} />",
-      after: "<div style={{ backgroundColor: '#0a0a0f' }} />",
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);

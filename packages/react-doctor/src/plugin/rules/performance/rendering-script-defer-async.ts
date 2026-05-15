@@ -8,17 +8,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const renderingScriptDeferAsync = defineRule<Rule>({
   id: "rendering-script-defer-async",
-  framework: "global",
   severity: "warn",
-  category: "Performance",
   recommendation:
     'Add `defer` for DOM-dependent scripts or `async` for independent ones (analytics). In Next.js, use `<Script strategy="afterInteractive" />` instead',
-  examples: [
-    {
-      before: '<script src="/widget.js" />',
-      after: '<script src="/widget.js" defer />',
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "script") return;

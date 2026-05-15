@@ -9,18 +9,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 export const rnNoInlineFlatlistRenderitem = defineRule<Rule>({
   id: "rn-no-inline-flatlist-renderitem",
   requires: ["react-native"],
-  framework: "react-native",
   severity: "warn",
-  category: "React Native",
   recommendation:
     "Extract renderItem to a named function or wrap in useCallback to avoid re-creating on every render",
-  examples: [
-    {
-      before: "<FlatList data={items} renderItem={({ item }) => <Row item={item} />} />",
-      after:
-        "const renderItem = useCallback(({ item }) => <Row item={item} />, []);\n<FlatList data={items} renderItem={renderItem} />",
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "renderItem") return;

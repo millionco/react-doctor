@@ -12,16 +12,9 @@ export const noRedundantSizeAxes = defineRule<Rule>({
   id: "design-no-redundant-size-axes",
   requires: ["tailwind:3.4"],
   tags: ["design", "test-noise"],
-  framework: "global",
   severity: "warn",
   category: "Architecture",
   recommendation: "Collapse `w-N h-N` to `size-N` (Tailwind v3.4+) when both axes match",
-  examples: [
-    {
-      before: '<div className="w-8 h-8 rounded-full" />',
-      after: '<div className="size-8 rounded-full" />',
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXAttribute(jsxAttribute: EsTreeNodeOfType<"JSXAttribute">) {
       if (

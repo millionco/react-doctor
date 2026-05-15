@@ -5,7 +5,7 @@ import {
   installNodeViaNvm,
   isNvmInstalled,
   resolveNodeForOxlint,
-} from "../core/runners/resolve-compatible-node.js";
+} from "../core/resolve-compatible-node.js";
 
 export const resolveOxlintNode = async (
   isLintEnabled: boolean,

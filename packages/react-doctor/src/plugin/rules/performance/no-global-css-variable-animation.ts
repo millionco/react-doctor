@@ -10,19 +10,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noGlobalCssVariableAnimation = defineRule<Rule>({
   id: "no-global-css-variable-animation",
-  framework: "global",
   severity: "error",
-  category: "Performance",
   recommendation:
     "Set the variable on the nearest element instead of a parent, or use `@property` with `inherits: false` to prevent cascade. Better yet, use targeted `element.style.transform` updates",
-  examples: [
-    {
-      before:
-        "requestAnimationFrame(() => {\n  document.documentElement.style.setProperty('--scroll-y', String(y));\n});",
-      after:
-        "requestAnimationFrame(() => {\n  targetEl.style.transform = `translateY(${y}px)`;\n});",
-    },
-  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isNodeOfType(node.callee, "Identifier")) return;

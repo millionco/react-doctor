@@ -11,17 +11,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noEffectEventHandler = defineRule<Rule>({
   id: "no-effect-event-handler",
-  framework: "global",
   severity: "warn",
-  category: "State & Effects",
   recommendation:
     "Move the conditional logic into onClick, onChange, or onSubmit handlers directly",
-  examples: [
-    {
-      before: "useEffect(() => {\n  if (clicked) track('click');\n}, [clicked]);",
-      after: "const onClick = () => { setClicked(true); track('click'); };",
-    },
-  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isHookCall(node, EFFECT_HOOK_NAMES) || (node.arguments?.length ?? 0) < 2) return;

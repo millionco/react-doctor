@@ -13,18 +13,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 export const rnNoScrollState = defineRule<Rule>({
   id: "rn-no-scroll-state",
   requires: ["react-native"],
-  framework: "react-native",
   severity: "error",
-  category: "React Native",
   recommendation:
     "Track scroll position with a Reanimated shared value (`useAnimatedScrollHandler`) or a ref — `setState` on every scroll event causes re-render storms",
-  examples: [
-    {
-      before: "<ScrollView onScroll={(e) => setScrollY(e.nativeEvent.contentOffset.y)} />",
-      after:
-        "const scrollY = useSharedValue(0);\nconst handler = useAnimatedScrollHandler((e) => { scrollY.value = e.contentOffset.y; });\n<Animated.ScrollView onScroll={handler} />",
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       if (!isNodeOfType(node.name, "JSXIdentifier")) return;

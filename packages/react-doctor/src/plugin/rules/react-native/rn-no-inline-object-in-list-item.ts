@@ -20,18 +20,9 @@ const RENDER_ITEM_PROP_NAMES = new Set([
 export const rnNoInlineObjectInListItem = defineRule<Rule>({
   id: "rn-no-inline-object-in-list-item",
   requires: ["react-native"],
-  framework: "react-native",
   severity: "warn",
-  category: "React Native",
   recommendation:
     "Hoist style/object props outside renderItem (StyleSheet.create, useMemo at list scope, or pass primitives) so memo() row components stop bailing",
-  examples: [
-    {
-      before: "renderItem={({ item }) => <Row item={item} style={{ padding: 8 }} />}",
-      after:
-        "const ROW_STYLE = { padding: 8 };\nrenderItem={({ item }) => <Row item={item} style={ROW_STYLE} />}",
-    },
-  ],
   create: (context: RuleContext) => {
     let renderItemDepth = 0;
 

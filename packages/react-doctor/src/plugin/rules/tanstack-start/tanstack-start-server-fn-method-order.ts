@@ -12,17 +12,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 export const tanstackStartServerFnMethodOrder = defineRule<Rule>({
   id: "tanstack-start-server-fn-method-order",
   requires: ["tanstack-start"],
-  framework: "tanstack-start",
   severity: "error",
-  category: "TanStack Start",
   recommendation:
     "Chain methods in order: .middleware() → .inputValidator() → .client() → .server() → .handler() — types depend on this sequence",
-  examples: [
-    {
-      before: "createServerFn().handler(fn).inputValidator(schema);",
-      after: "createServerFn().inputValidator(schema).handler(fn);",
-    },
-  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isNodeOfType(node.callee, "MemberExpression")) return;

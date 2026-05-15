@@ -1,8 +1,13 @@
 import { TANSTACK_SERVER_FN_NAMES } from "../../../constants/tanstack.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { getCalleeName } from "../../../utils/get-callee-name.js";
-import type { ServerFnChainInfo } from "./server-fn-chain-info.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
+
+export interface ServerFnChainInfo {
+  isServerFnChain: boolean;
+  specifiedMethod: string | null;
+  hasInputValidator: boolean;
+}
 
 export const walkServerFnChain = (outerNode: EsTreeNode): ServerFnChainInfo => {
   const result: ServerFnChainInfo = {

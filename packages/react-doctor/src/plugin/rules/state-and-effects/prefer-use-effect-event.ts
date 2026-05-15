@@ -230,19 +230,9 @@ export const preferUseEffectEvent = defineRule<Rule>({
   id: "prefer-use-effect-event",
   requires: ["react:19"],
   tags: ["test-noise"],
-  framework: "global",
   severity: "warn",
-  category: "State & Effects",
   recommendation:
     "Wrap the callback with `useEffectEvent(callback)` (React 19+) and call the resulting binding from inside the sub-handler. The Effect Event captures the latest props/state without being a reactive dep, so the effect doesn't re-subscribe on every parent render. See https://react.dev/reference/react/useEffectEvent",
-  examples: [
-    {
-      before:
-        "useEffect(() => {\n  const id = setInterval(() => onTick(count), 1000);\n  return () => clearInterval(id);\n}, [onTick, count]);",
-      after:
-        "const onTickEvent = useEffectEvent(() => onTick(count));\nuseEffect(() => {\n  const id = setInterval(() => onTickEvent(), 1000);\n  return () => clearInterval(id);\n}, []);",
-    },
-  ],
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;

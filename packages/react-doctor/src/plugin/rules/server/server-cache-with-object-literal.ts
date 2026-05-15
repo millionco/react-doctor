@@ -12,19 +12,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // the argument object once at module/route scope).
 export const serverCacheWithObjectLiteral = defineRule<Rule>({
   id: "server-cache-with-object-literal",
-  framework: "global",
   severity: "warn",
-  category: "Server",
   recommendation:
     "Pass primitives to React.cache()-wrapped functions — argument identity (not deep equality) is the dedup key, so a fresh `{}` per render bypasses the cache",
-  examples: [
-    {
-      before:
-        "const getUser = cache(async (opts) => db.users.find(opts));\ngetUser({ id: userId });",
-      after:
-        "const getUser = cache(async (id: string) => db.users.findById(id));\ngetUser(userId);",
-    },
-  ],
   create: (context: RuleContext) => {
     const cachedFunctionNames = new Set<string>();
 

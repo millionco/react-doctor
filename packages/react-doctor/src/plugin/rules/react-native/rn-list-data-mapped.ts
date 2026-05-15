@@ -23,18 +23,9 @@ const VIRTUALIZED_LIST_NAMES = new Set([
 export const rnListDataMapped = defineRule<Rule>({
   id: "rn-list-data-mapped",
   requires: ["react-native"],
-  framework: "react-native",
   severity: "warn",
-  category: "React Native",
   recommendation:
     "Wrap the projection in `useMemo(() => items.map(...), [items])` so the list's `data` prop has a stable reference across parent renders",
-  examples: [
-    {
-      before: "<FlatList data={items.map((i) => ({ ...i, label: i.name }))} />",
-      after:
-        "const data = useMemo(() => items.map((i) => ({ ...i, label: i.name })), [items]);\n<FlatList data={data} />",
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const elementName = resolveJsxElementName(node);

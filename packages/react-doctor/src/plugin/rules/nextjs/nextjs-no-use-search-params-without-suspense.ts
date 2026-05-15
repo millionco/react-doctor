@@ -50,19 +50,9 @@ const fileMentionsSuspense = (programNode: EsTreeNode): boolean => {
 export const nextjsNoUseSearchParamsWithoutSuspense = defineRule<Rule>({
   id: "nextjs-no-use-search-params-without-suspense",
   requires: ["nextjs"],
-  framework: "nextjs",
   severity: "warn",
-  category: "Next.js",
   recommendation:
     "Wrap the component using useSearchParams: `<Suspense fallback={<Skeleton />}><SearchComponent /></Suspense>`",
-  examples: [
-    {
-      before:
-        "export default function Page() {\n  const params = useSearchParams();\n  return <Results q={params.get('q')} />;\n}",
-      after:
-        "import { Suspense } from 'react';\nexport default function Page() {\n  return (\n    <Suspense fallback={<Skeleton />}>\n      <SearchResults />\n    </Suspense>\n  );\n}",
-    },
-  ],
   create: (context: RuleContext) => {
     let hasSuspenseInFile = false;
 

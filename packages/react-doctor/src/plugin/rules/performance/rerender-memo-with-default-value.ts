@@ -9,18 +9,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const rerenderMemoWithDefaultValue = defineRule<Rule>({
   id: "rerender-memo-with-default-value",
-  framework: "global",
   severity: "warn",
-  category: "Performance",
   recommendation:
     "Move to module scope: `const EMPTY_ITEMS: Item[] = []` then use as the default value",
-  examples: [
-    {
-      before: "function List({ items = [] }) { return <ul>{items.map(...)} </ul>; }",
-      after:
-        "const EMPTY_ITEMS: Item[] = [];\nfunction List({ items = EMPTY_ITEMS }) { return <ul>{items.map(...)} </ul>; }",
-    },
-  ],
   create: (context: RuleContext) => {
     const checkDefaultProps = (params: EsTreeNode[]): void => {
       for (const param of params) {

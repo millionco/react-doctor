@@ -1,11 +1,34 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
-import { isSimpleExpression } from "../../utils/is-simple-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+
+const isSimpleExpression = (node: EsTreeNode | null): boolean => {
+  if (!node) return false;
+  switch (node.type) {
+    case "Identifier":
+    case "Literal":
+    case "TemplateLiteral":
+      return true;
+    case "BinaryExpression":
+      return isSimpleExpression(node.left) && isSimpleExpression(node.right);
+    case "UnaryExpression":
+      return isSimpleExpression(node.argument);
+    case "MemberExpression":
+      return !node.computed && isSimpleExpression(node.object);
+    case "ConditionalExpression":
+      return (
+        isSimpleExpression(node.test) &&
+        isSimpleExpression(node.consequent) &&
+        isSimpleExpression(node.alternate)
+      );
+    default:
+      return false;
+  }
+};
 
 // Identifiers and member-access chains are technically "simple", but memoizing
 // them is sometimes intentional (stable reference passing). Only flag arithmetic
@@ -20,17 +43,9 @@ const isTriviallyCheapExpression = (node: EsTreeNode | null): boolean => {
 
 export const noUsememoSimpleExpression = defineRule<Rule>({
   id: "no-usememo-simple-expression",
-  framework: "global",
   severity: "warn",
-  category: "Performance",
   recommendation:
     "Remove useMemo — property access, math, and ternaries are already cheap without memoization",
-  examples: [
-    {
-      before: "const doubled = useMemo(() => count * 2, [count]);",
-      after: "const doubled = count * 2;",
-    },
-  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isHookCall(node, "useMemo")) return;

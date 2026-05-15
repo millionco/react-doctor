@@ -9,18 +9,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noInlineExhaustiveStyle = defineRule<Rule>({
   id: "no-inline-exhaustive-style",
-  framework: "global",
   severity: "warn",
-  category: "Architecture",
   recommendation:
     "Move styles to a CSS class, CSS module, Tailwind utilities, or a styled component — inline objects with many properties hurt readability and create new references every render",
-  examples: [
-    {
-      before:
-        "<div style={{ display: 'flex', padding: 16, margin: 8, color: 'white', background: '#000', borderRadius: 8, fontSize: 14 }} />",
-      after: '<div className="card" />',
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);

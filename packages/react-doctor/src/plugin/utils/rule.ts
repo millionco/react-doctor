@@ -1,5 +1,4 @@
 import type { RuleContext } from "./rule-context.js";
-import type { RuleExample } from "./rule-example.js";
 import type { RuleVisitors } from "./rule-visitors.js";
 
 export type RuleSeverity = "error" | "warn";
@@ -21,22 +20,28 @@ export interface Rule {
   // the rule itself (not its filename or export-variable name) because
   // some rule-ids carry historical prefixes the file path doesn't —
   // e.g. `react-ui/no-bold-heading.ts` registers as `design-no-bold-heading`.
-  // Read by `scripts/generate-rule-registry.mjs` to build the plugin's
-  // rule map; CI rejects duplicates and drift.
   id: string;
-  category?: string;
-  framework: RuleFramework;
   severity: RuleSeverity;
+  // Category override — when present, takes precedence over the bucket
+  // default the codegen emits (most rules let the bucket choose, e.g. a
+  // rule under `tanstack-start/` defaults to "TanStack Start"; a few
+  // override to "Security" or "Performance"). Codegen-only field; rules
+  // never need to set `framework` (always derived from bucket).
+  category?: string;
+  // Synthesized by codegen from the rule's bucket directory — set on the
+  // entries in `rule-registry.ts`, not on the individual `defineRule({...})`
+  // calls. Reading `rule.framework` at runtime works because the registry
+  // is what consumers iterate.
+  framework?: RuleFramework;
   // Activation predicates: list of project capability tokens (e.g.
   // `"react:19"`, `"nextjs"`, `"tailwind:3.4"`) that ALL must be satisfied
   // for the rule to be enabled. Omit for rules that always apply once
-  // their framework gate (`framework` field above) is met.
+  // their framework gate is met.
   requires?: ReadonlyArray<string>;
   // Behavioral tags (e.g. `"test-noise"`, `"design"`) consumed by
   // `--ignore-tag` / `shouldEnableRule` to opt families of rules in
   // or out of a scan independently of the framework gate.
   tags?: ReadonlyArray<string>;
   recommendation?: string;
-  examples?: RuleExample[];
   create: (context: RuleContext) => RuleVisitors;
 }

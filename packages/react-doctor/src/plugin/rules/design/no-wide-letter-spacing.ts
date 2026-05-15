@@ -11,17 +11,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noWideLetterSpacing = defineRule<Rule>({
   id: "no-wide-letter-spacing",
-  framework: "global",
   severity: "warn",
-  category: "Architecture",
   recommendation:
     "Reserve wide tracking (letter-spacing > 0.05em) for short uppercase labels, navigation items, and buttons — not body text",
-  examples: [
-    {
-      before: "<p style={{ letterSpacing: '0.15em' }}>Long body copy spans many words.</p>",
-      after: "<p style={{ letterSpacing: 'normal' }}>Long body copy spans many words.</p>",
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);

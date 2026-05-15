@@ -8,19 +8,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const renderingUsetransitionLoading = defineRule<Rule>({
   id: "rendering-usetransition-loading",
-  framework: "global",
   severity: "warn",
-  category: "Performance",
   recommendation:
     "Replace with `const [isPending, startTransition] = useTransition()` — avoids a re-render for the loading state",
-  examples: [
-    {
-      before:
-        "const [isLoading, setLoading] = useState(false);\nconst onClick = () => { setLoading(true); doFilter(); setLoading(false); };",
-      after:
-        "const [isPending, startTransition] = useTransition();\nconst onClick = () => startTransition(() => doFilter());",
-    },
-  ],
   create: (context: RuleContext) => ({
     VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
       if (!isNodeOfType(node.id, "ArrayPattern") || !node.id.elements?.length) return;

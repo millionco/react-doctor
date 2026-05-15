@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
-import { readIgnoreFile } from "../src/core/config/read-ignore-file.js";
+import { readIgnoreFile } from "../src/core/read-ignore-file.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-read-ignore-"));
 

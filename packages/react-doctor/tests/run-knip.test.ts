@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { KNIP_TOTAL_ATTEMPTS } from "../src/constants.js";
-import { runKnip } from "../src/core/runners/run-knip.js";
+import { runKnip } from "../src/core/run-knip.js";
 
 interface CapturedKnipOptions {
   cwd: string;

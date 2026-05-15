@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { collectUnusedFilePaths } from "../src/core/runners/collect-unused-file-paths.js";
+import { collectUnusedFilePaths } from "../src/core/collect-unused-file-paths.js";
 
 describe("collectUnusedFilePaths", () => {
   it("extracts file paths from a knip 6.x IssueRecords object", () => {

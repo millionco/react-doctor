@@ -19,17 +19,10 @@ const deriveStateVariableName = (setterName: string): string | null => {
 
 export const rerenderFunctionalSetstate = defineRule<Rule>({
   id: "rerender-functional-setstate",
-  framework: "global",
   severity: "warn",
   category: "Performance",
   recommendation:
     "Use the callback form: `setState(prev => prev + 1)` to always read the latest value",
-  examples: [
-    {
-      before: "setCount(count + 1);\nsetCount(count + 1);",
-      after: "setCount((prev) => prev + 1);\nsetCount((prev) => prev + 1);",
-    },
-  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isSetterCall(node)) return;

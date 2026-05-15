@@ -225,18 +225,9 @@ interface EffectInfo {
 
 export const noEffectChain = defineRule<Rule>({
   id: "no-effect-chain",
-  framework: "global",
   severity: "warn",
-  category: "State & Effects",
   recommendation:
     "Compute as much as possible during render (e.g. `const isGameOver = round > 5`) and write all related state inside the event handler that originally fires the chain. Each effect link adds an extra render and makes the code rigid as requirements evolve",
-  examples: [
-    {
-      before:
-        "useEffect(() => { setIsGameOver(round > 5); }, [round]);\nuseEffect(() => { if (isGameOver) setShowModal(true); }, [isGameOver]);",
-      after: "const isGameOver = round > 5;\nconst showModal = isGameOver;",
-    },
-  ],
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;

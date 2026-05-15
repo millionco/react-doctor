@@ -9,17 +9,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // `require(variable)` defeats trace targets and forces a fat bundle.
 export const noDynamicImportPath = defineRule<Rule>({
   id: "no-dynamic-import-path",
-  framework: "global",
   severity: "warn",
-  category: "Bundle Size",
   recommendation:
     "Use a string-literal path: `import('./feature/heavy.js')` so the bundler can split this chunk",
-  examples: [
-    {
-      before: "const mod = await import(`./locales/${locale}.js`);",
-      after: "const mod = await import('./locales/en.js');",
-    },
-  ],
   create: (context: RuleContext) => ({
     ImportExpression(node: EsTreeNodeOfType<"ImportExpression">) {
       const source = node.source;

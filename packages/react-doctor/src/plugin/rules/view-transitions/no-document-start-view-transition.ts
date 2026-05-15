@@ -12,18 +12,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // or Suspense reveals).
 export const noDocumentStartViewTransition = defineRule<Rule>({
   id: "no-document-start-view-transition",
-  framework: "global",
   severity: "warn",
-  category: "Correctness",
   recommendation:
     "Render a <ViewTransition> component and update inside startTransition / useDeferredValue — React calls startViewTransition for you",
-  examples: [
-    {
-      before: "document.startViewTransition(() => {\n  setRoute(nextRoute);\n});",
-      after:
-        "<ViewTransition>{children}</ViewTransition>\n// updates wrapped in startTransition trigger view transitions automatically",
-    },
-  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const callee = node.callee;

@@ -57,17 +57,9 @@ const findReturnedObject = (callback: EsTreeNode): EsTreeNodeOfType<"ObjectExpre
 export const rnAnimateLayoutProperty = defineRule<Rule>({
   id: "rn-animate-layout-property",
   requires: ["react-native"],
-  framework: "react-native",
   severity: "error",
-  category: "React Native",
   recommendation:
     "Animate `transform: [{ translateX/Y }, { scale }]` and `opacity` instead of layout props — layout runs on the JS thread; transform/opacity run on the GPU compositor",
-  examples: [
-    {
-      before: "const style = useAnimatedStyle(() => ({ width: progress.value * 200 }));",
-      after: "const style = useAnimatedStyle(() => ({ transform: [{ scaleX: progress.value }] }));",
-    },
-  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isNodeOfType(node.callee, "Identifier") || node.callee.name !== "useAnimatedStyle")

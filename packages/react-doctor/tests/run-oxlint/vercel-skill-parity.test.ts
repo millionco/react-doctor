@@ -1,6 +1,6 @@
 import { beforeAll, describe } from "vite-plus/test";
 import type { Diagnostic } from "../../src/types/diagnostic.js";
-import { runOxlint } from "../../src/core/runners/run-oxlint.js";
+import { runOxlint } from "../../src/core/run-oxlint.js";
 import { buildTestProject } from "../regressions/_helpers.js";
 import { BASIC_REACT_DIRECTORY, describeRules } from "./_helpers.js";
 

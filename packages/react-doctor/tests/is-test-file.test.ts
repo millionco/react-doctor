@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { isTestFilePath } from "../src/core/config/is-test-file.js";
+import { isTestFilePath } from "../src/core/is-test-file.js";
 
 describe("isTestFilePath", () => {
   it("recognizes `.test.*` and `.spec.*` suffixes across JS/TS variants", () => {

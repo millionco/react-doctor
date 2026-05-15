@@ -47,17 +47,9 @@ const buildPreventDefaultMessage = (elementName: string): string => {
 
 export const noPreventDefault = defineRule<Rule>({
   id: "no-prevent-default",
-  framework: "global",
   severity: "warn",
-  category: "Correctness",
   recommendation:
     "Use `<form action={serverAction}>` (works without JS) or `<button>` instead of `<a>` with preventDefault",
-  examples: [
-    {
-      before: "<form onSubmit={(e) => { e.preventDefault(); save(); }}>",
-      after: "<form action={saveAction}>",
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const elementName = isNodeOfType(node.name, "JSXIdentifier") ? node.name.name : null;

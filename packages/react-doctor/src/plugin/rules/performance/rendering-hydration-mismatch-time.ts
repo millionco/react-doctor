@@ -91,18 +91,10 @@ const hasSuppressHydrationWarningAttribute = (openingElement: EsTreeNode | null)
 // element when the mismatch is intentional.
 export const renderingHydrationMismatchTime = defineRule<Rule>({
   id: "rendering-hydration-mismatch-time",
-  framework: "global",
   severity: "warn",
   category: "Correctness",
   recommendation:
     "Wrap dynamic time/random values in useEffect+useState (client-only) or add suppressHydrationWarning to the parent if intentional",
-  examples: [
-    {
-      before: "return <span>{new Date().toLocaleString()}</span>;",
-      after:
-        "const [now, setNow] = useState<string>();\nuseEffect(() => setNow(new Date().toLocaleString()), []);\nreturn <span>{now}</span>;",
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXExpressionContainer(node: EsTreeNodeOfType<"JSXExpressionContainer">) {
       if (!node.expression) return;

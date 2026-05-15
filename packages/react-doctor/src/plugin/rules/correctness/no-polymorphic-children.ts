@@ -12,19 +12,10 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // shape and the component's API is checked at compile time.
 export const noPolymorphicChildren = defineRule<Rule>({
   id: "no-polymorphic-children",
-  framework: "global",
   severity: "warn",
   category: "Architecture",
   recommendation:
     "Expose explicit subcomponents (`<Button.Text>`, `<Button.Icon>`) so consumers don't need to switch on `typeof children`",
-  examples: [
-    {
-      before:
-        "function Button({ children }) {\n  if (typeof children === 'string') return <span>{children}</span>;\n  return <div>{children}</div>;\n}",
-      after:
-        "function Button({ children }) { return <div>{children}</div>; }\nButton.Text = ({ children }) => <span>{children}</span>;",
-    },
-  ],
   create: (context: RuleContext) => ({
     BinaryExpression(node: EsTreeNodeOfType<"BinaryExpression">) {
       if (node.operator !== "===" && node.operator !== "==") return;

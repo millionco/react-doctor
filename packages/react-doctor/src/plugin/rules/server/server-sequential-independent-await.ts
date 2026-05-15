@@ -62,19 +62,9 @@ const declarationReadsAnyName = (declaration: EsTreeNode, names: Set<string>): b
 
 export const serverSequentialIndependentAwait = defineRule<Rule>({
   id: "server-sequential-independent-await",
-  framework: "global",
   severity: "warn",
-  category: "Server",
   recommendation:
     "Wrap independent awaits in `Promise.all([...])` so they race instead of waterfalling — second call doesn't depend on the first",
-  examples: [
-    {
-      before:
-        "export default async function Page() {\n  const user = await getUser();\n  const posts = await getPosts();\n  return <Layout user={user} posts={posts} />;\n}",
-      after:
-        "export default async function Page() {\n  const [user, posts] = await Promise.all([getUser(), getPosts()]);\n  return <Layout user={user} posts={posts} />;\n}",
-    },
-  ],
   create: (context: RuleContext) => {
     const inspectStatements = (statements: EsTreeNode[]): void => {
       for (let statementIndex = 0; statementIndex < statements.length - 1; statementIndex++) {

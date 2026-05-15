@@ -1,7 +1,7 @@
 import path from "node:path";
 import { beforeAll, describe, expect, it } from "vite-plus/test";
 import type { Diagnostic } from "../../src/types/diagnostic.js";
-import { runOxlint } from "../../src/core/runners/run-oxlint.js";
+import { runOxlint } from "../../src/core/run-oxlint.js";
 import { buildTestProject } from "../regressions/_helpers.js";
 import { NEXTJS_APP_DIRECTORY, describeRules } from "./_helpers.js";
 

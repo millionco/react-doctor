@@ -7,17 +7,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const jsBatchDomCss = defineRule<Rule>({
   id: "js-batch-dom-css",
-  framework: "global",
   severity: "warn",
-  category: "Performance",
   recommendation:
     "Batch DOM/CSS reads and writes — interleaving them inside a loop causes layout thrashing. Read first, then write",
-  examples: [
-    {
-      before: "el.style.width = '100px';\nel.style.height = '50px';\nel.style.color = 'red';",
-      after: "el.style.cssText = 'width: 100px; height: 50px; color: red;';",
-    },
-  ],
   create: (context: RuleContext) => {
     const isStyleAssignment = (node: EsTreeNode): boolean =>
       isNodeOfType(node, "ExpressionStatement") &&

@@ -28,17 +28,10 @@ const hasBounceAnimationName = (value: string): boolean => {
 
 export const noInlineBounceEasing = defineRule<Rule>({
   id: "no-inline-bounce-easing",
-  framework: "global",
   severity: "warn",
   category: "Performance",
   recommendation:
     "Use `cubic-bezier(0.16, 1, 0.3, 1)` (ease-out-expo) for natural deceleration — objects in the real world don't bounce",
-  examples: [
-    {
-      before: "<div style={{ transition: 'transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1)' }} />",
-      after: "<div style={{ transition: 'transform 200ms cubic-bezier(0.16, 1, 0.3, 1)' }} />",
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);

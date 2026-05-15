@@ -54,18 +54,9 @@ interface MirrorBinding {
 
 export const noMirrorPropEffect = defineRule<Rule>({
   id: "no-mirror-prop-effect",
-  framework: "global",
   severity: "warn",
-  category: "State & Effects",
   recommendation:
     "Delete both the `useState` and the `useEffect` and read the prop directly during render. Mirroring a prop into local state forces a stale first render before the effect re-syncs",
-  examples: [
-    {
-      before:
-        "function Profile({ user }) {\n  const [name, setName] = useState(user.name);\n  useEffect(() => { setName(user.name); }, [user.name]);\n  return <span>{name}</span>;\n}",
-      after: "function Profile({ user }) { return <span>{user.name}</span>; }",
-    },
-  ],
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;

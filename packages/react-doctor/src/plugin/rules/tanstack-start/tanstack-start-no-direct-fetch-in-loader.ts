@@ -11,18 +11,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 export const tanstackStartNoDirectFetchInLoader = defineRule<Rule>({
   id: "tanstack-start-no-direct-fetch-in-loader",
   requires: ["tanstack-start"],
-  framework: "tanstack-start",
   severity: "warn",
-  category: "TanStack Start",
   recommendation:
     "Use `createServerFn()` from @tanstack/react-start — provides type-safe RPC, input validation, and proper server/client code splitting",
-  examples: [
-    {
-      before: "loader: async () => { return await fetch('/api/users').then((r) => r.json()); }",
-      after:
-        "const getUsers = createServerFn().handler(async () => db.users.findMany());\nloader: async () => await getUsers();",
-    },
-  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const optionsObject = getRouteOptionsObject(node);

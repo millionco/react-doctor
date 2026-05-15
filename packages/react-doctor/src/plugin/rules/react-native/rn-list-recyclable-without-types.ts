@@ -24,17 +24,9 @@ const RECYCLABLE_LIST_NAMES = new Set(["FlashList", "LegendList"]);
 export const rnListRecyclableWithoutTypes = defineRule<Rule>({
   id: "rn-list-recyclable-without-types",
   requires: ["react-native"],
-  framework: "react-native",
   severity: "warn",
-  category: "React Native",
   recommendation:
     "Add `getItemType={item => item.kind}` so FlashList keeps separate recycle pools per item type — heterogeneous rows shouldn't share recycled cells",
-  examples: [
-    {
-      before: "<FlashList data={items} renderItem={renderItem} />",
-      after: "<FlashList data={items} renderItem={renderItem} getItemType={(item) => item.kind} />",
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const elementName = resolveJsxElementName(node);

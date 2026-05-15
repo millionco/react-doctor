@@ -58,17 +58,9 @@ const WEB_FILE_EXTENSION_PATTERN = /\.web\.[jt]sx?$/;
 export const rnNoRawText = defineRule<Rule>({
   id: "rn-no-raw-text",
   requires: ["react-native"],
-  framework: "react-native",
   severity: "error",
-  category: "React Native",
   recommendation:
     "Wrap text in a `<Text>` component: `<Text>{value}</Text>` — raw strings outside `<Text>` crash on React Native",
-  examples: [
-    {
-      before: "<View>Hello {name}</View>",
-      after: "<View><Text>Hello {name}</Text></View>",
-    },
-  ],
   create: (context: RuleContext) => {
     let isWebOnlyFile = false;
     let isDomComponentFile = false;

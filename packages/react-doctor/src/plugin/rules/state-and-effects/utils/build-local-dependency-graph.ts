@@ -1,7 +1,15 @@
 import { collectPatternNames } from "../../../utils/collect-pattern-names.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
-import { collectIdentifierNames } from "./collect-identifier-names.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
+import { walkAst } from "../../../utils/walk-ast.js";
+
+const collectIdentifierNames = (expression: EsTreeNode): Set<string> => {
+  const names = new Set<string>();
+  walkAst(expression, (child: EsTreeNode) => {
+    if (isNodeOfType(child, "Identifier")) names.add(child.name);
+  });
+  return names;
+};
 
 export const buildLocalDependencyGraph = (componentBody: EsTreeNode): Map<string, Set<string>> => {
   const graph = new Map<string, Set<string>>();

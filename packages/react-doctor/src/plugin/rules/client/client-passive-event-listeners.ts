@@ -9,17 +9,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const clientPassiveEventListeners = defineRule<Rule>({
   id: "client-passive-event-listeners",
-  framework: "global",
   severity: "warn",
-  category: "Performance",
   recommendation:
     "Add `{ passive: true }` as the third argument: `addEventListener('scroll', handler, { passive: true })`. Only do this if the handler does NOT call `event.preventDefault()` — passive listeners silently ignore `preventDefault()`, which breaks features like pull-to-refresh suppression, custom gestures, and nested-scroll containment.",
-  examples: [
-    {
-      before: "window.addEventListener('scroll', onScroll);",
-      after: "window.addEventListener('scroll', onScroll, { passive: true });",
-    },
-  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isMemberProperty(node.callee, "addEventListener")) return;

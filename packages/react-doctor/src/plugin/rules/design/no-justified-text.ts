@@ -8,17 +8,10 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noJustifiedText = defineRule<Rule>({
   id: "no-justified-text",
-  framework: "global",
   severity: "warn",
   category: "Accessibility",
   recommendation:
     "Use `text-align: left` for body text, or add `hyphens: auto` and `overflow-wrap: break-word` if you must justify",
-  examples: [
-    {
-      before: "<p style={{ textAlign: 'justify' }}>Long body copy…</p>",
-      after: "<p style={{ textAlign: 'left' }}>Long body copy…</p>",
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);

@@ -17,7 +17,7 @@ import path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 
 import type { Diagnostic } from "../../src/types/diagnostic.js";
-import { filterInlineSuppressions } from "../../src/core/diagnostics/filter-diagnostics.js";
+import { filterInlineSuppressions } from "../../src/core/filter-diagnostics.js";
 import { createNodeReadFileLinesSync } from "../../src/core/read-file-lines-node.js";
 import { buildDiagnostic, writeFile } from "./_helpers.js";
 

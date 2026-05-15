@@ -13,17 +13,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 export const rnPreferExpoImage = defineRule<Rule>({
   id: "rn-prefer-expo-image",
   requires: ["react-native"],
-  framework: "react-native",
   severity: "warn",
-  category: "React Native",
   recommendation:
     "Use `<Image>` from `expo-image` instead of `react-native` — same prop API, plus disk + memory caching, placeholders, and crossfades",
-  examples: [
-    {
-      before: "import { Image } from 'react-native';\n<Image source={{ uri }} />",
-      after: "import { Image } from 'expo-image';\n<Image source={{ uri }} />",
-    },
-  ],
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       if (node.source?.value !== "react-native") return;

@@ -11,17 +11,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noLargeAnimatedBlur = defineRule<Rule>({
   id: "no-large-animated-blur",
-  framework: "global",
   severity: "warn",
-  category: "Performance",
   recommendation:
     "Keep blur radius under 10px, or apply blur to a smaller element. Large blurs multiply GPU memory usage with layer size",
-  examples: [
-    {
-      before: "<div style={{ backdropFilter: 'blur(40px)' }} />",
-      after: "<div style={{ backdropFilter: 'blur(8px)' }} />",
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       if (!isNodeOfType(node.name, "JSXIdentifier")) return;

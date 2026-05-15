@@ -8,18 +8,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 export const nextjsMissingMetadata = defineRule<Rule>({
   id: "nextjs-missing-metadata",
   requires: ["nextjs"],
-  framework: "nextjs",
   severity: "warn",
-  category: "Next.js",
   recommendation:
     "Add `export const metadata = { title: '...', description: '...' }` or `export async function generateMetadata()`",
-  examples: [
-    {
-      before: "export default function Page() {\n  return <div>About</div>;\n}",
-      after:
-        "export const metadata = { title: 'About', description: 'About our team' };\nexport default function Page() {\n  return <div>About</div>;\n}",
-    },
-  ],
   create: (context: RuleContext) => ({
     Program(programNode: EsTreeNodeOfType<"Program">) {
       const filename = context.getFilename?.() ?? "";

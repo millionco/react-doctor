@@ -11,19 +11,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const preferUseReducer = defineRule<Rule>({
   id: "prefer-useReducer",
-  framework: "global",
   severity: "warn",
-  category: "State & Effects",
   recommendation:
     "Group related state: `const [state, dispatch] = useReducer(reducer, { field1, field2, ... })`",
-  examples: [
-    {
-      before:
-        "const [name, setName] = useState('');\nconst [email, setEmail] = useState('');\nconst [age, setAge] = useState(0);\nconst [step, setStep] = useState(0);\nconst [error, setError] = useState(null);",
-      after:
-        "const [form, dispatch] = useReducer(formReducer, { name: '', email: '', age: 0, step: 0, error: null });",
-    },
-  ],
   create: (context: RuleContext) => {
     const reportExcessiveUseState = (body: EsTreeNode, componentName: string): void => {
       if (!isNodeOfType(body, "BlockStatement")) return;

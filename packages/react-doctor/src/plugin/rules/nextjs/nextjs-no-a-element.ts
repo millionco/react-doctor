@@ -8,17 +8,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 export const nextjsNoAElement = defineRule<Rule>({
   id: "nextjs-no-a-element",
   requires: ["nextjs"],
-  framework: "nextjs",
   severity: "warn",
-  category: "Next.js",
   recommendation:
     "`import Link from 'next/link'` — enables client-side navigation, prefetching, and preserves scroll position",
-  examples: [
-    {
-      before: '<a href="/about">About</a>',
-      after: "import Link from 'next/link';\n<Link href=\"/about\">About</Link>",
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "a") return;

@@ -6,7 +6,7 @@ import type {
   JsonReportProjectEntry,
   InspectResult,
 } from "../types/inspect.js";
-import { summarizeDiagnostics } from "./diagnostics/summarize-diagnostics.js";
+import { summarizeDiagnostics } from "./summarize-diagnostics.js";
 
 interface BuildJsonReportInput {
   version: string;

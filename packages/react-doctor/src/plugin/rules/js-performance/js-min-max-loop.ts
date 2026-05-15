@@ -7,17 +7,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const jsMinMaxLoop = defineRule<Rule>({
   id: "js-min-max-loop",
-  framework: "global",
   severity: "warn",
-  category: "Performance",
   recommendation:
     "Use `Math.min(...array)` / `Math.max(...array)` instead of sorting just to read the first or last element",
-  examples: [
-    {
-      before: "const min = numbers.sort((a, b) => a - b)[0];",
-      after: "const min = Math.min(...numbers);",
-    },
-  ],
   create: (context: RuleContext) => ({
     MemberExpression(node: EsTreeNodeOfType<"MemberExpression">) {
       if (!node.computed) return;

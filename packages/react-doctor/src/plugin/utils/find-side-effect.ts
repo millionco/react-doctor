@@ -1,10 +1,47 @@
+import { MUTATING_HTTP_METHODS, MUTATION_METHOD_NAMES } from "../constants/library.js";
 import type { EsTreeNode } from "./es-tree-node.js";
-import { isCookiesOrHeadersCall } from "./is-cookies-or-headers-call.js";
-import { isMutatingDbCall } from "./is-mutating-db-call.js";
-import { isMutatingFetchCall } from "./is-mutating-fetch-call.js";
-import { isMutatingMethodProperty } from "./is-mutating-method-property.js";
 import { walkAst } from "./walk-ast.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+
+// HACK: extracted so `findSideEffect` can re-use the EXACT same shape
+// predicate when it goes hunting for the literal method to render in
+// the diagnostic. Previously `findSideEffect` used a looser `key.name
+// === "method"` predicate and could pick a non-Literal `method:` entry
+// (when duplicate keys are present), producing
+// `"fetch() with method undefined"` in the message.
+const isMutatingMethodProperty = (property: EsTreeNode): boolean =>
+  isNodeOfType(property, "Property") &&
+  isNodeOfType(property.key, "Identifier") &&
+  property.key.name === "method" &&
+  isNodeOfType(property.value, "Literal") &&
+  typeof property.value.value === "string" &&
+  MUTATING_HTTP_METHODS.has(property.value.value.toUpperCase());
+
+const isCookiesOrHeadersCall = (node: EsTreeNode, methodName: string): boolean => {
+  if (!isNodeOfType(node, "CallExpression") || !isNodeOfType(node.callee, "MemberExpression"))
+    return false;
+  const { object, property } = node.callee;
+  if (!isNodeOfType(property, "Identifier") || !MUTATION_METHOD_NAMES.has(property.name))
+    return false;
+  if (!isNodeOfType(object, "CallExpression") || !isNodeOfType(object.callee, "Identifier"))
+    return false;
+  return object.callee.name === methodName;
+};
+
+const isMutatingDbCall = (node: EsTreeNode): boolean => {
+  if (!isNodeOfType(node, "CallExpression") || !isNodeOfType(node.callee, "MemberExpression"))
+    return false;
+  const { property } = node.callee;
+  return isNodeOfType(property, "Identifier") && MUTATION_METHOD_NAMES.has(property.name);
+};
+
+const isMutatingFetchCall = (node: EsTreeNode): boolean => {
+  if (!isNodeOfType(node, "CallExpression")) return false;
+  if (!isNodeOfType(node.callee, "Identifier") || node.callee.name !== "fetch") return false;
+  const optionsArgument = node.arguments?.[1];
+  if (!optionsArgument || !isNodeOfType(optionsArgument, "ObjectExpression")) return false;
+  return Boolean(optionsArgument.properties?.some(isMutatingMethodProperty));
+};
 
 const getCookiesOrHeadersMethodName = (
   child: EsTreeNode,

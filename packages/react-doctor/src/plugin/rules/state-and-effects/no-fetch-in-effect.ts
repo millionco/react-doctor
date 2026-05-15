@@ -9,19 +9,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noFetchInEffect = defineRule<Rule>({
   id: "no-fetch-in-effect",
-  framework: "global",
   severity: "warn",
-  category: "State & Effects",
   recommendation:
     "Use `useQuery()` from @tanstack/react-query, `useSWR()`, or fetch in a Server Component instead",
-  examples: [
-    {
-      before:
-        "useEffect(() => {\n  fetch('/api/user').then((r) => r.json()).then(setUser);\n}, []);",
-      after:
-        "const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => fetch('/api/user').then((r) => r.json()) });",
-    },
-  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isHookCall(node, EFFECT_HOOK_NAMES)) return;

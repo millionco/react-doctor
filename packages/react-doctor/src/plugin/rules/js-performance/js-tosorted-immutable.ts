@@ -7,17 +7,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const jsTosortedImmutable = defineRule<Rule>({
   id: "js-tosorted-immutable",
-  framework: "global",
   severity: "warn",
-  category: "Performance",
   recommendation:
     "Use `array.toSorted()` (ES2023) instead of `[...array].sort()` for immutable sorting without the spread allocation",
-  examples: [
-    {
-      before: "const sorted = [...items].sort((a, b) => a.id - b.id);",
-      after: "const sorted = items.toSorted((a, b) => a.id - b.id);",
-    },
-  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isMemberProperty(node.callee, "sort")) return;

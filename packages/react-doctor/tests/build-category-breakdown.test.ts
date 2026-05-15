@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { buildCategoryBreakdown } from "../src/core/scoring/build-category-breakdown.js";
+import { buildCategoryBreakdown } from "../src/core/build-category-breakdown.js";
 import { buildDiagnostic } from "./regressions/_helpers.js";
 
 describe("buildCategoryBreakdown", () => {

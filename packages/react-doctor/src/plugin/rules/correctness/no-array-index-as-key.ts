@@ -93,17 +93,9 @@ const isInsideStaticPlaceholderMap = (node: EsTreeNode): boolean => {
 
 export const noArrayIndexAsKey = defineRule<Rule>({
   id: "no-array-index-as-key",
-  framework: "global",
   severity: "warn",
-  category: "Correctness",
   recommendation:
     "Use a stable unique identifier: `key={item.id}` or `key={item.slug}` — index keys break on reorder/filter",
-  examples: [
-    {
-      before: "items.map((item, index) => <Row key={index} item={item} />)",
-      after: "items.map((item) => <Row key={item.id} item={item} />)",
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "key") return;

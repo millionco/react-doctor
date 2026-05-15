@@ -19,18 +19,9 @@ const JS_BOTTOM_SHEET_PACKAGES = new Set([
 export const rnBottomSheetPreferNative = defineRule<Rule>({
   id: "rn-bottom-sheet-prefer-native",
   requires: ["react-native"],
-  framework: "react-native",
   severity: "warn",
-  category: "React Native",
   recommendation:
     'Use `<Modal presentationStyle="formSheet">` (RN v7+) for native gesture handling and snap points',
-  examples: [
-    {
-      before:
-        "import BottomSheet from '@gorhom/bottom-sheet';\n<BottomSheet snapPoints={['25%', '50%']} />",
-      after: '<Modal presentationStyle="formSheet" visible={visible}>{children}</Modal>',
-    },
-  ],
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       const source = node.source?.value;

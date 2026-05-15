@@ -150,18 +150,9 @@ const collectHandlerOnlyWriteStateNames = (
 
 export const noEventTriggerState = defineRule<Rule>({
   id: "no-event-trigger-state",
-  framework: "global",
   severity: "warn",
-  category: "State & Effects",
   recommendation:
     "Delete the trigger state (`useState(null)` plus the `useEffect` that watches it) and call the side-effect (`post(...)` / `navigate(...)` / `track(...)`) directly inside the event handler that previously called the setter. State should not exist purely to schedule effect runs",
-  examples: [
-    {
-      before:
-        "const [submit, setSubmit] = useState(null);\nuseEffect(() => { if (submit) post(submit); }, [submit]);\nconst onSubmit = (data) => setSubmit(data);",
-      after: "const onSubmit = (data) => post(data);",
-    },
-  ],
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;

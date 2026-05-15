@@ -10,18 +10,10 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noOutlineNone = defineRule<Rule>({
   id: "no-outline-none",
-  framework: "global",
   severity: "warn",
   category: "Accessibility",
   recommendation:
     "Use `:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px }` to show focus only for keyboard users while hiding it for mouse clicks",
-  examples: [
-    {
-      before: "<button style={{ outline: 'none' }}>Click me</button>",
-      after:
-        "<button style={{ outline: 'none', boxShadow: '0 0 0 2px var(--color-accent)' }}>Click me</button>",
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);

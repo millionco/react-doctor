@@ -33,19 +33,10 @@ const hasTopLevelAwait = (statement: EsTreeNode): boolean => {
 export const tanstackStartLoaderParallelFetch = defineRule<Rule>({
   id: "tanstack-start-loader-parallel-fetch",
   requires: ["tanstack-start"],
-  framework: "tanstack-start",
   severity: "warn",
   category: "Performance",
   recommendation:
     "Use `const [a, b] = await Promise.all([fetchA(), fetchB()])` to avoid request waterfalls in route loaders",
-  examples: [
-    {
-      before:
-        "loader: async () => {\n  const user = await getUser();\n  const posts = await getPosts();\n  return { user, posts };\n}",
-      after:
-        "loader: async () => {\n  const [user, posts] = await Promise.all([getUser(), getPosts()]);\n  return { user, posts };\n}",
-    },
-  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const optionsObject = getRouteOptionsObject(node);

@@ -12,19 +12,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 export const nextjsNoClientFetchForServerData = defineRule<Rule>({
   id: "nextjs-no-client-fetch-for-server-data",
   requires: ["nextjs"],
-  framework: "nextjs",
   severity: "warn",
-  category: "Next.js",
   recommendation:
     "Remove 'use client' and fetch directly in the Server Component — no API round-trip, secrets stay on server",
-  examples: [
-    {
-      before:
-        "'use client';\nexport default function Page() {\n  const [data, setData] = useState();\n  useEffect(() => { fetch('/api/posts').then((r) => r.json()).then(setData); }, []);\n  return <List data={data} />;\n}",
-      after:
-        "export default async function Page() {\n  const data = await fetch('https://api.example.com/posts').then((r) => r.json());\n  return <List data={data} />;\n}",
-    },
-  ],
   create: (context: RuleContext) => {
     let fileHasUseClient = false;
 

@@ -14,18 +14,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 export const rnAnimationReactionAsDerived = defineRule<Rule>({
   id: "rn-animation-reaction-as-derived",
   requires: ["react-native"],
-  framework: "react-native",
   severity: "warn",
-  category: "React Native",
   recommendation:
     "Replace useAnimatedReaction with `useDerivedValue(() => ..., [deps])` — shorter, native dependency tracking, no side-effect implication",
-  examples: [
-    {
-      before:
-        "useAnimatedReaction(\n  () => offset.value,\n  (current) => { progress.value = current / 100; }\n);",
-      after: "const progress = useDerivedValue(() => offset.value / 100);",
-    },
-  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isNodeOfType(node.callee, "Identifier") || node.callee.name !== "useAnimatedReaction")

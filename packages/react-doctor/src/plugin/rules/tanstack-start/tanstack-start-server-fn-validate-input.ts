@@ -10,19 +10,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 export const tanstackStartServerFnValidateInput = defineRule<Rule>({
   id: "tanstack-start-server-fn-validate-input",
   requires: ["tanstack-start"],
-  framework: "tanstack-start",
   severity: "warn",
-  category: "TanStack Start",
   recommendation:
     "Add `.inputValidator(schema)` before `.handler()` — data crosses a network boundary and must be validated at runtime",
-  examples: [
-    {
-      before:
-        "createServerFn({ method: 'POST' }).handler(async ({ data }) => db.user.create({ data }));",
-      after:
-        "createServerFn({ method: 'POST' })\n  .inputValidator(z.object({ name: z.string(), email: z.string().email() }))\n  .handler(async ({ data }) => db.user.create({ data }));",
-    },
-  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isNodeOfType(node.callee, "MemberExpression")) return;

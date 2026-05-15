@@ -51,19 +51,10 @@ const findHookCallBindings = (
 // expressions that are themselves bound to JSX `on*` attributes.
 export const rerenderDeferReadsHook = defineRule<Rule>({
   id: "rerender-defer-reads-hook",
-  framework: "global",
   severity: "warn",
   category: "Performance",
   recommendation:
     "Read the URL state inside the handler (e.g. `new URL(window.location.href).searchParams`) so the component doesn't subscribe and re-render on every URL change",
-  examples: [
-    {
-      before:
-        "const params = useSearchParams();\nconst onClick = () => fetch('/api?' + params.toString());",
-      after:
-        "const onClick = () => {\n  const params = new URL(window.location.href).searchParams;\n  fetch('/api?' + params.toString());\n};",
-    },
-  ],
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;

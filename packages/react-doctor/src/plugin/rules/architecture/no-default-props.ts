@@ -17,18 +17,9 @@ export const noDefaultProps = defineRule<Rule>({
   id: "no-default-props",
   requires: ["react:19"],
   tags: ["test-noise"],
-  framework: "global",
   severity: "warn",
-  category: "Architecture",
   recommendation:
     'React 19 removes `Component.defaultProps` for function components. Move the defaults into the destructured props parameter: `function Foo({ size = "md", variant = "primary" })` instead of `Foo.defaultProps = { size: "md", variant: "primary" }`.',
-  examples: [
-    {
-      before:
-        'function Button({ size, variant }) { return <button />; }\nButton.defaultProps = { size: "md", variant: "primary" };',
-      after: 'function Button({ size = "md", variant = "primary" }) { return <button />; }',
-    },
-  ],
   create: (context: RuleContext) => ({
     AssignmentExpression(node: EsTreeNodeOfType<"AssignmentExpression">) {
       if (node.operator !== "=") return;

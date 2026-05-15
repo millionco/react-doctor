@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { sanitizeKnipConfigPatterns } from "../src/core/runners/sanitize-knip-config-patterns.js";
+import { sanitizeKnipConfigPatterns } from "../src/core/sanitize-knip-config-patterns.js";
 
 describe("sanitizeKnipConfigPatterns", () => {
   it("removes empty string values at the top level", () => {

@@ -57,19 +57,9 @@ const handlerMutatesIdentifier = (
 export const rnPressableSharedValueMutation = defineRule<Rule>({
   id: "rn-pressable-shared-value-mutation",
   requires: ["react-native"],
-  framework: "react-native",
   severity: "warn",
-  category: "React Native",
   recommendation:
     "Wrap in <GestureDetector gesture={Gesture.Tap()...}> so the press animation runs on the UI thread instead of bouncing across the JS bridge",
-  examples: [
-    {
-      before:
-        "<Pressable onPressIn={() => { scale.value = 0.95; }} onPressOut={() => { scale.value = 1; }} />",
-      after:
-        "const tap = Gesture.Tap().onBegin(() => { scale.value = 0.95; }).onFinalize(() => { scale.value = 1; });\n<GestureDetector gesture={tap}><Animated.View /></GestureDetector>",
-    },
-  ],
   create: (context: RuleContext) => {
     const sharedValueBindingsByComponent: Array<Set<string>> = [];
 

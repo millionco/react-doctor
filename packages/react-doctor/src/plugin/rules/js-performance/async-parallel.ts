@@ -39,17 +39,9 @@ const reportIfIndependent = (statements: EsTreeNode[], context: RuleContext): vo
 
 export const asyncParallel = defineRule<Rule>({
   id: "async-parallel",
-  framework: "global",
   severity: "warn",
-  category: "Performance",
   recommendation:
     "Use `const [a, b] = await Promise.all([fetchA(), fetchB()])` to run independent operations concurrently",
-  examples: [
-    {
-      before: "const user = await fetchUser();\nconst posts = await fetchPosts();",
-      after: "const [user, posts] = await Promise.all([fetchUser(), fetchPosts()]);",
-    },
-  ],
   create: (context: RuleContext) => {
     const filename = context.getFilename?.() ?? "";
     const isTestFile = TEST_FILE_PATTERN.test(filename);

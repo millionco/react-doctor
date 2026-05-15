@@ -19,8 +19,8 @@ import { afterAll, describe, expect, it } from "vite-plus/test";
 import {
   clearIgnorePatternsCache,
   collectIgnorePatterns,
-} from "../../src/core/config/collect-ignore-patterns.js";
-import { runOxlint } from "../../src/core/runners/run-oxlint.js";
+} from "../../src/core/collect-ignore-patterns.js";
+import { runOxlint } from "../../src/core/run-oxlint.js";
 import { buildTestProject, setupReactProject } from "./_helpers.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-respect-lint-ignores-"));

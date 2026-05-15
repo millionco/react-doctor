@@ -22,17 +22,9 @@ const getDerivingMethodName = (node: EsTreeNode): string | null => {
 // client derive what it needs from the single source prop instead.
 export const serverDedupProps = defineRule<Rule>({
   id: "server-dedup-props",
-  framework: "global",
   severity: "warn",
-  category: "Server",
   recommendation:
     "Pass the source array once and derive the projection on the client — passing both doubles RSC serialization bytes",
-  examples: [
-    {
-      before: "<ClientList items={items} itemNames={items.map((i) => i.name)} />",
-      after: "<ClientList items={items} />",
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const identifierAttributes: Map<string, string> = new Map();

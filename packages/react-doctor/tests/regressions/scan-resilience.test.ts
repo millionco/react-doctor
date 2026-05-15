@@ -35,13 +35,13 @@ import path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 
 import { OXLINT_MAX_FILES_PER_BATCH, SPAWN_ARGS_MAX_LENGTH_CHARS } from "../../src/constants.js";
-import { calculateScoreLocally } from "../../src/core/scoring/calculate-score-locally.js";
+import { calculateScoreLocally } from "../../src/core/calculate-score-locally.js";
 import { createOxlintConfig } from "../../src/core/runners/oxlint/config.js";
-import { batchIncludePaths } from "../../src/core/runners/batch-include-paths.js";
-import { discoverProject } from "../../src/core/detection/discover-project.js";
-import { extractFailedPluginName } from "../../src/core/runners/extract-failed-plugin-name.js";
+import { batchIncludePaths } from "../../src/core/batch-include-paths.js";
+import { discoverProject } from "../../src/core/discover-project.js";
+import { extractFailedPluginName } from "../../src/core/extract-failed-plugin-name.js";
 import { getStagedSourceFiles, materializeStagedFiles } from "../../src/cli/get-staged-files.js";
-import { sanitizeKnipConfigPatterns } from "../../src/core/runners/sanitize-knip-config-patterns.js";
+import { sanitizeKnipConfigPatterns } from "../../src/core/sanitize-knip-config-patterns.js";
 import {
   buildDiagnostic,
   buildTestProject,
@@ -165,7 +165,7 @@ describe("issue #89: --offline produces a score calculated locally", () => {
   it("does not require any network access", async () => {
     // Sanity: no `fetch` involvement in the local scoring path.
     const calculateSource = fs.readFileSync(
-      path.resolve(import.meta.dirname, "../../src/core/scoring/calculate-score-locally.ts"),
+      path.resolve(import.meta.dirname, "../../src/core/calculate-score-locally.ts"),
       "utf8",
     );
     expect(calculateSource).not.toContain("fetch(");

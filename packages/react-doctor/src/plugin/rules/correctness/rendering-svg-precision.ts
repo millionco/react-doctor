@@ -14,17 +14,10 @@ const SVG_PATH_ATTRIBUTES = new Set(["d", "points", "transform"]);
 // markup with no visible difference.
 export const renderingSvgPrecision = defineRule<Rule>({
   id: "rendering-svg-precision",
-  framework: "global",
   severity: "warn",
   category: "Performance",
   recommendation:
     "Truncate path/points/transform decimals to 1–2 digits — sub-pixel precision adds bytes with no visible difference",
-  examples: [
-    {
-      before: '<path d="M 10.293847 20.847362 L 30.918273 40.123456" />',
-      after: '<path d="M 10.3 20.8 L 30.9 40.1" />',
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       if (!isNodeOfType(node.name, "JSXIdentifier")) return;

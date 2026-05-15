@@ -15,17 +15,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 export const rnPreferContentInsetAdjustment = defineRule<Rule>({
   id: "rn-prefer-content-inset-adjustment",
   requires: ["react-native"],
-  framework: "react-native",
   severity: "warn",
-  category: "React Native",
   recommendation:
     'Drop the SafeAreaView wrapper and set `contentInsetAdjustmentBehavior="automatic"` on the ScrollView for native safe-area handling',
-  examples: [
-    {
-      before: "<SafeAreaView><ScrollView>{children}</ScrollView></SafeAreaView>",
-      after: '<ScrollView contentInsetAdjustmentBehavior="automatic">{children}</ScrollView>',
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
       const elementName = resolveJsxElementName(node.openingElement);

@@ -1,6 +1,6 @@
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
-import { findMonorepoRoot, isMonorepoRoot } from "../src/core/detection/find-monorepo-root.js";
+import { findMonorepoRoot, isMonorepoRoot } from "../src/core/find-monorepo-root.js";
 
 const FIXTURES_DIRECTORY = path.resolve(import.meta.dirname, "fixtures");
 

@@ -8,19 +8,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 export const tanstackStartRedirectInTryCatch = defineRule<Rule>({
   id: "tanstack-start-redirect-in-try-catch",
   requires: ["tanstack-start"],
-  framework: "tanstack-start",
   severity: "warn",
-  category: "TanStack Start",
   recommendation:
     "TanStack Router's `redirect()` and `notFound()` throw special errors caught by the router. Move them outside the try block or re-throw in the catch",
-  examples: [
-    {
-      before:
-        "try {\n  const user = await load();\n  if (!user) throw redirect({ to: '/login' });\n} catch (e) { log(e); }",
-      after:
-        "let user;\ntry { user = await load(); } catch (e) { log(e); }\nif (!user) throw redirect({ to: '/login' });",
-    },
-  ],
   create: (context: RuleContext) => {
     let tryBlockDepth = 0;
     let catchClauseDepth = 0;

@@ -1,8 +1,5 @@
 import type { ProjectInfo } from "../../../types/project-info.js";
-import {
-  isTailwindAtLeast,
-  parseTailwindMajorMinor,
-} from "../../detection/parse-tailwind-major-minor.js";
+import { isTailwindAtLeast, parseTailwindMajorMinor } from "../../parse-tailwind-major-minor.js";
 
 export const buildCapabilities = (project: ProjectInfo): ReadonlySet<string> => {
   const capabilities = new Set<string>();

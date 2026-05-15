@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { classifySuppressionNearMiss } from "../src/core/diagnostics/classify-suppression-near-miss.js";
+import { classifySuppressionNearMiss } from "../src/core/classify-suppression-near-miss.js";
 
 const linesOf = (source: string): string[] => source.split("\n");
 

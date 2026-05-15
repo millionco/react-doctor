@@ -8,16 +8,8 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noUndeferredThirdParty = defineRule<Rule>({
   id: "no-undeferred-third-party",
-  framework: "global",
   severity: "warn",
-  category: "Bundle Size",
   recommendation: 'Use `next/script` with `strategy="lazyOnload"` or add the `defer` attribute',
-  examples: [
-    {
-      before: '<script src="https://cdn.example.com/widget.js" />',
-      after: '<script src="https://cdn.example.com/widget.js" defer />',
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "script") return;

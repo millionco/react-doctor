@@ -9,19 +9,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 export const queryNoVoidQueryFn = defineRule<Rule>({
   id: "query-no-void-query-fn",
   requires: ["tanstack-query"],
-  framework: "tanstack-query",
   severity: "warn",
-  category: "TanStack Query",
   recommendation:
     "queryFn must return a value for the cache. Use the `enabled` option to conditionally disable the query instead of returning undefined",
-  examples: [
-    {
-      before:
-        "useQuery({ queryKey: ['user', id], queryFn: () => { if (!id) return; return fetchUser(id); } });",
-      after:
-        "useQuery({ queryKey: ['user', id], queryFn: () => fetchUser(id), enabled: Boolean(id) });",
-    },
-  ],
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const calleeName = isNodeOfType(node.callee, "Identifier") ? node.callee.name : null;

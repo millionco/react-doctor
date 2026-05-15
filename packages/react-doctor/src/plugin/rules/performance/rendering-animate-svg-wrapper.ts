@@ -8,16 +8,8 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const renderingAnimateSvgWrapper = defineRule<Rule>({
   id: "rendering-animate-svg-wrapper",
-  framework: "global",
   severity: "warn",
-  category: "Performance",
   recommendation: "Wrap the SVG: `<motion.div animate={...}><svg>...</svg></motion.div>`",
-  examples: [
-    {
-      before: "<svg animate={{ rotate: 360 }}><circle r={10} /></svg>",
-      after: "<motion.div animate={{ rotate: 360 }}><svg><circle r={10} /></svg></motion.div>",
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "svg") return;

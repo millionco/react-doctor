@@ -7,17 +7,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 export const rnNoSingleElementStyleArray = defineRule<Rule>({
   id: "rn-no-single-element-style-array",
   requires: ["react-native"],
-  framework: "react-native",
   severity: "warn",
-  category: "React Native",
   recommendation:
     "Use `style={value}` instead of `style={[value]}` — single-element arrays add unnecessary allocation",
-  examples: [
-    {
-      before: "<View style={[styles.card]} />",
-      after: "<View style={styles.card} />",
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const propName = isNodeOfType(node.name, "JSXIdentifier") ? node.name.name : null;

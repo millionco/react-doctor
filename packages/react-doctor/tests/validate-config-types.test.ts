@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { ReactDoctorConfig } from "../src/types/config.js";
-import { validateConfigTypes } from "../src/core/config/validate-config-types.js";
+import { validateConfigTypes } from "../src/core/validate-config-types.js";
 
 // HACK: validator writes warnings directly to `process.stderr` so they
 // stay visible in `--json` mode (where the logger is silenced). Spy on

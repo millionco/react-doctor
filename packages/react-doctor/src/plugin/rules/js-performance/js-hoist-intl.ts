@@ -37,19 +37,9 @@ const isIntlNewExpression = (node: EsTreeNode): boolean => {
 
 export const jsHoistIntl = defineRule<Rule>({
   id: "js-hoist-intl",
-  framework: "global",
   severity: "warn",
-  category: "Performance",
   recommendation:
     "Hoist `new Intl.NumberFormat(...)` to module scope or wrap in `useMemo` — Intl constructors allocate dozens of objects per locale lookup",
-  examples: [
-    {
-      before:
-        "function Price({ amount }) {\n  const fmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });\n  return <span>{fmt.format(amount)}</span>;\n}",
-      after:
-        "const PRICE_FORMATTER = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });\nfunction Price({ amount }) {\n  return <span>{PRICE_FORMATTER.format(amount)}</span>;\n}",
-    },
-  ],
   create: (context: RuleContext) => ({
     NewExpression(node: EsTreeNodeOfType<"NewExpression">) {
       if (!isIntlNewExpression(node)) return;

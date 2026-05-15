@@ -8,19 +8,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const useLazyMotion = defineRule<Rule>({
   id: "use-lazy-motion",
-  framework: "global",
   severity: "warn",
-  category: "Bundle Size",
   recommendation:
     'Use `import { LazyMotion, m } from "framer-motion"` with `domAnimation` features — saves ~30kb',
-  examples: [
-    {
-      before:
-        "import { motion } from 'framer-motion';\nreturn <motion.div animate={{ x: 100 }} />;",
-      after:
-        "import { LazyMotion, domAnimation, m } from 'framer-motion';\nreturn <LazyMotion features={domAnimation}><m.div animate={{ x: 100 }} /></LazyMotion>;",
-    },
-  ],
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       const source = node.source?.value;

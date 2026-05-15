@@ -8,17 +8,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 export const tanstackStartNoDynamicServerFnImport = defineRule<Rule>({
   id: "tanstack-start-no-dynamic-server-fn-import",
   requires: ["tanstack-start"],
-  framework: "tanstack-start",
   severity: "error",
-  category: "TanStack Start",
   recommendation:
     "Use `import { myFn } from '~/utils/my.functions'` — the bundler replaces server code with RPC stubs only for static imports",
-  examples: [
-    {
-      before: "const { myServerFn } = await import('~/utils/my.functions');",
-      after: "import { myServerFn } from '~/utils/my.functions';",
-    },
-  ],
   create: (context: RuleContext) => ({
     ImportExpression(node: EsTreeNodeOfType<"ImportExpression">) {
       const source = node.source;

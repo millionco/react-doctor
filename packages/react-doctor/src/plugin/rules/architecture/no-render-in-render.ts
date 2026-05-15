@@ -7,18 +7,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noRenderInRender = defineRule<Rule>({
   id: "no-render-in-render",
-  framework: "global",
   severity: "warn",
-  category: "Architecture",
   recommendation:
     "Extract to a named component: `const ListItem = ({ item }) => <div>{item.name}</div>`",
-  examples: [
-    {
-      before: "return <div>{renderItem(item)}</div>;",
-      after:
-        "const ListItem = ({ item }) => <div>{item.name}</div>;\nreturn <ListItem item={item} />;",
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXExpressionContainer(node: EsTreeNodeOfType<"JSXExpressionContainer">) {
       const expression = node.expression;

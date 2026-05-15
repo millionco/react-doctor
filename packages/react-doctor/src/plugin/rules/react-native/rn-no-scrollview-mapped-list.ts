@@ -14,17 +14,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 export const rnNoScrollviewMappedList = defineRule<Rule>({
   id: "rn-no-scrollview-mapped-list",
   requires: ["react-native"],
-  framework: "react-native",
   severity: "warn",
-  category: "React Native",
   recommendation:
     "Use FlashList, LegendList, or FlatList — `<ScrollView>{items.map(...)}</ScrollView>` mounts every row in memory",
-  examples: [
-    {
-      before: "<ScrollView>{items.map((item) => <Row key={item.id} item={item} />)}</ScrollView>",
-      after: "<FlatList data={items} keyExtractor={(item) => item.id} renderItem={renderRow} />",
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
       const elementName = resolveJsxElementName(node.openingElement);

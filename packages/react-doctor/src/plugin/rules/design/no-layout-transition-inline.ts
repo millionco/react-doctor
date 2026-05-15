@@ -8,17 +8,10 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noLayoutTransitionInline = defineRule<Rule>({
   id: "no-layout-transition-inline",
-  framework: "global",
   severity: "warn",
   category: "Performance",
   recommendation:
     "Use `transform` and `opacity` for transitions — they run on the compositor thread. For height animations, use `grid-template-rows: 0fr → 1fr`",
-  examples: [
-    {
-      before: "<div style={{ transition: 'width 300ms ease' }} />",
-      after: "<div style={{ transition: 'transform 300ms ease' }} />",
-    },
-  ],
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);

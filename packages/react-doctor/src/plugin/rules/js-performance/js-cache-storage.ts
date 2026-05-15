@@ -9,18 +9,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const jsCacheStorage = defineRule<Rule>({
   id: "js-cache-storage",
-  framework: "global",
   severity: "warn",
-  category: "Performance",
   recommendation:
     "Cache repeated `localStorage`/`sessionStorage` reads in a local variable — each access serializes/deserializes",
-  examples: [
-    {
-      before:
-        "const a = localStorage.getItem('prefs');\nconst b = localStorage.getItem('prefs');\nconst c = localStorage.getItem('prefs');",
-      after: "const prefs = localStorage.getItem('prefs');\nuse(prefs);",
-    },
-  ],
   create: (context: RuleContext) => {
     const storageReadCounts = new Map<string, number>();
 

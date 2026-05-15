@@ -1,7 +1,6 @@
 import { performance } from "node:perf_hooks";
 import {
   OXLINT_NODE_REQUIREMENT,
-  SCORE_UNAVAILABLE_OFFLINE_MESSAGE,
   calculateScore,
   combineDiagnostics,
   computeJsxIncludePaths,
@@ -199,9 +198,15 @@ const runInspect = async (
   // HACK: --offline opts out of the score API entirely; without a
   // local fallback (intentional — scoring lives on the server) we
   // simply skip the score in offline mode and the renderer shows the
-  // "score unavailable" branch.
+  // "score unavailable" branch. The message distinguishes the two
+  // null sources — `--offline` (user-requested) vs API failure (the
+  // network round-trip didn't return a usable score) — so the
+  // renderer doesn't claim offline mode when the user is online but
+  // the API was unreachable.
   const scoreResult = options.offline ? null : await calculateScore(diagnostics);
-  const noScoreMessage = SCORE_UNAVAILABLE_OFFLINE_MESSAGE;
+  const noScoreMessage = options.offline
+    ? "Score unavailable in offline mode."
+    : "Score unavailable (could not reach the score API).";
 
   const buildResult = (): InspectResult => ({
     diagnostics,

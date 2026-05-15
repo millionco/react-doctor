@@ -1,4 +1,12 @@
-export const SOURCE_FILE_PATTERN = /\.(tsx?|jsx?)$/;
+// SOURCE_FILE_PATTERN, GIT_LS_FILES_MAX_BUFFER_BYTES, and
+// IGNORED_DIRECTORIES live in @react-doctor/project-info (which core
+// already depends on). Re-exported here so core consumers don't have
+// to know which package owns each constant.
+export {
+  GIT_LS_FILES_MAX_BUFFER_BYTES,
+  IGNORED_DIRECTORIES,
+  SOURCE_FILE_PATTERN,
+} from "@react-doctor/project-info";
 
 export const JSX_FILE_PATTERN = /\.(tsx|jsx)$/;
 
@@ -20,8 +28,6 @@ export const SHARE_BASE_URL = "https://www.react.doctor/share";
 
 export const FETCH_TIMEOUT_MS = 10_000;
 
-export const GIT_LS_FILES_MAX_BUFFER_BYTES = 50 * 1024 * 1024;
-
 // HACK: Windows CreateProcessW limits total command-line length to 32,767 chars.
 // Use a conservative threshold to leave room for the executable path and quoting overhead.
 export const SPAWN_ARGS_MAX_LENGTH_CHARS = 24_000;
@@ -29,8 +35,6 @@ export const SPAWN_ARGS_MAX_LENGTH_CHARS = 24_000;
 // HACK: oxlint can SIGABRT on very large file sets due to memory pressure.
 // Cap each batch to avoid OOM crashes on projects with 100+ source files.
 export const OXLINT_MAX_FILES_PER_BATCH = 500;
-
-export const SCORE_UNAVAILABLE_OFFLINE_MESSAGE = "Score unavailable in offline mode.";
 
 export const DEFAULT_BRANCH_CANDIDATES = ["main", "master"];
 
@@ -46,21 +50,6 @@ export const OXLINT_NODE_REQUIREMENT = "^20.19.0 || >=22.12.0";
 export const OXLINT_RECOMMENDED_NODE_MAJOR = 24;
 
 export const GIT_SHOW_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
-
-export const IGNORED_DIRECTORIES = new Set([
-  ".git",
-  ".next",
-  ".nuxt",
-  ".output",
-  ".svelte-kit",
-  ".turbo",
-  "build",
-  "coverage",
-  "dist",
-  "node_modules",
-  "out",
-  "storybook-static",
-]);
 
 export const CANONICAL_GITHUB_URL = "https://github.com/millionco/react-doctor";
 

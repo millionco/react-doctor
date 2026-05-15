@@ -168,6 +168,58 @@ describe("rules-of-hooks local use false positives", () => {
     ).toBe(true);
   });
 
+  it("does not report when a local parameter shadows a React use alias", async () => {
+    const projectDir = setupReactProject(tempRoot, "local-use-shadows-react-alias", {
+      files: {
+        "src/fixtures.ts": `
+          import { use as reactUse } from "react";
+
+          export const fixture = async ({ reactUse }: { reactUse: () => void }) => {
+            const use = reactUse;
+            console.log(use());
+          };
+        `,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      diagnostics.filter(
+        (diagnostic) => diagnostic.plugin === "react-hooks" && diagnostic.rule === "rules-of-hooks",
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("does not report when a local parameter shadows a React namespace", async () => {
+    const projectDir = setupReactProject(tempRoot, "local-use-shadows-react-namespace", {
+      files: {
+        "src/fixtures.ts": `
+          import * as React from "react";
+
+          export const fixture = async ({ React }: { React: { use: () => void } }) => {
+            const { use } = React;
+            console.log(use());
+          };
+        `,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      diagnostics.filter(
+        (diagnostic) => diagnostic.plugin === "react-hooks" && diagnostic.rule === "rules-of-hooks",
+      ),
+    ).toHaveLength(0);
+  });
+
   it("still reports computed React use destructuring inside async components", async () => {
     const projectDir = setupReactProject(tempRoot, "react-use-computed-destructure", {
       files: {
@@ -176,6 +228,34 @@ describe("rules-of-hooks local use false positives", () => {
 
           export const App = async () => {
             const { ["use"]: use } = React;
+            use(Promise.resolve("ok"));
+            return null;
+          };
+        `,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      diagnostics.some(
+        (diagnostic) => diagnostic.plugin === "react-hooks" && diagnostic.rule === "rules-of-hooks",
+      ),
+    ).toBe(true);
+  });
+
+  it("still reports React use after namespace destructuring aliases", async () => {
+    const projectDir = setupReactProject(tempRoot, "react-use-namespace-destructure-alias", {
+      files: {
+        "src/App.tsx": `
+          import * as React from "react";
+
+          export const App = async () => {
+            const { use: reactUse } = React;
+            const use = reactUse;
             use(Promise.resolve("ok"));
             return null;
           };
@@ -252,5 +332,32 @@ describe("rules-of-hooks local use false positives", () => {
         (diagnostic) => diagnostic.plugin === "react-hooks" && diagnostic.rule === "rules-of-hooks",
       ),
     ).toBe(true);
+  });
+
+  it("does not report hoisted local use function declarations", async () => {
+    const projectDir = setupReactProject(tempRoot, "local-use-hoisted-function", {
+      files: {
+        "src/fixtures.ts": `
+          export const fixture = async () => {
+            console.log(use());
+
+            function use() {
+              return undefined;
+            }
+          };
+        `,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      diagnostics.filter(
+        (diagnostic) => diagnostic.plugin === "react-hooks" && diagnostic.rule === "rules-of-hooks",
+      ),
+    ).toHaveLength(0);
   });
 });

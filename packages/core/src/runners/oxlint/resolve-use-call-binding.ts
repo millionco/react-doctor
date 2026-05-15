@@ -10,6 +10,7 @@ export interface BindingResolution {
 }
 
 const REACT_MODULE_SOURCE = "react";
+const REQUIRE_IDENTIFIER = "require";
 const USE_IDENTIFIER = "use";
 
 const getScriptKind = (filename: string): ts.ScriptKind => {
@@ -49,24 +50,39 @@ const getStaticPropertyName = (node: ts.PropertyName | undefined): string | null
   return null;
 };
 
-const findUseBindingIdentifier = (bindingName: ts.BindingName): ts.Identifier | null => {
-  if (ts.isIdentifier(bindingName)) return bindingName.text === USE_IDENTIFIER ? bindingName : null;
+const findBindingIdentifier = (
+  bindingName: ts.BindingName,
+  identifierName: string,
+): ts.Identifier | null => {
+  if (ts.isIdentifier(bindingName)) return bindingName.text === identifierName ? bindingName : null;
 
   for (const element of bindingName.elements) {
     if (ts.isOmittedExpression(element)) continue;
-    const nestedIdentifier = findUseBindingIdentifier(element.name);
+    const nestedIdentifier = findBindingIdentifier(element.name, identifierName);
     if (nestedIdentifier) return nestedIdentifier;
   }
 
   return null;
 };
 
+const bindingNameHasIdentifier = (bindingName: ts.BindingName, identifierName: string): boolean => {
+  if (ts.isIdentifier(bindingName)) return bindingName.text === identifierName;
+
+  return bindingName.elements.some((element) => {
+    if (ts.isOmittedExpression(element)) return false;
+    return bindingNameHasIdentifier(element.name, identifierName);
+  });
+};
+
+const getDirectBindingIdentifier = (bindingName: ts.BindingName): ts.Identifier | null =>
+  ts.isIdentifier(bindingName) ? bindingName : null;
+
 const isReactRequireCall = (expression: ts.Expression): boolean => {
   const unwrappedExpression = unwrapExpression(expression);
   return (
     ts.isCallExpression(unwrappedExpression) &&
     ts.isIdentifier(unwrappedExpression.expression) &&
-    unwrappedExpression.expression.text === "require" &&
+    unwrappedExpression.expression.text === REQUIRE_IDENTIFIER &&
     unwrappedExpression.arguments.length === 1 &&
     ts.isStringLiteral(unwrappedExpression.arguments[0]) &&
     unwrappedExpression.arguments[0].text === REACT_MODULE_SOURCE
@@ -96,9 +112,30 @@ const collectReactObjectBindingNames = (
     if (bindingElement.propertyName && propertyName !== null && propertyName !== USE_IDENTIFIER) {
       continue;
     }
-    const bindingIdentifier = findUseBindingIdentifier(bindingElement.name);
+    const bindingIdentifier = getDirectBindingIdentifier(bindingElement.name);
     if (bindingIdentifier) useImportNames.add(bindingIdentifier.text);
   }
+};
+
+const isReactObjectBindingName = (
+  bindingPattern: ts.ObjectBindingPattern,
+  identifierName: string,
+): boolean =>
+  bindingPattern.elements.some((bindingElement) => {
+    const bindingIdentifier = getDirectBindingIdentifier(bindingElement.name);
+    if (bindingIdentifier?.text !== identifierName) return false;
+    const propertyName = getStaticPropertyName(bindingElement.propertyName);
+    return !bindingElement.propertyName || propertyName === null || propertyName === USE_IDENTIFIER;
+  });
+
+const isReactRequireBindingDeclaration = (node: ts.Node, identifierName: string): boolean => {
+  if (!ts.isVariableDeclaration(node)) return false;
+  if (!node.initializer) return false;
+  if (!isReactRequireCall(node.initializer)) return false;
+  if (ts.isIdentifier(node.name)) return node.name.text === identifierName;
+  return (
+    ts.isObjectBindingPattern(node.name) && isReactObjectBindingName(node.name, identifierName)
+  );
 };
 
 const collectReactImportBindings = (sourceFile: ts.SourceFile): ReactImportBindings => {
@@ -146,44 +183,6 @@ const collectReactImportBindings = (sourceFile: ts.SourceFile): ReactImportBindi
   return { namespaceNames, useImportNames };
 };
 
-const isReactNamespaceExpression = (
-  expression: ts.Expression,
-  reactImportBindings: ReactImportBindings,
-): boolean => {
-  const unwrappedExpression = unwrapExpression(expression);
-  return (
-    isReactRequireCall(unwrappedExpression) ||
-    (ts.isIdentifier(unwrappedExpression) &&
-      reactImportBindings.namespaceNames.has(unwrappedExpression.text))
-  );
-};
-
-const isReactUseExpression = (
-  expression: ts.Expression | undefined,
-  reactImportBindings: ReactImportBindings,
-): boolean => {
-  if (!expression) return false;
-  const unwrappedExpression = unwrapExpression(expression);
-  if (ts.isIdentifier(unwrappedExpression)) {
-    return reactImportBindings.useImportNames.has(unwrappedExpression.text);
-  }
-  if (
-    ts.isPropertyAccessExpression(unwrappedExpression) &&
-    unwrappedExpression.name.text === USE_IDENTIFIER &&
-    isReactNamespaceExpression(unwrappedExpression.expression, reactImportBindings)
-  ) {
-    return true;
-  }
-  if (
-    ts.isElementAccessExpression(unwrappedExpression) &&
-    ts.isStringLiteral(unwrappedExpression.argumentExpression) &&
-    unwrappedExpression.argumentExpression.text === USE_IDENTIFIER
-  ) {
-    return isReactNamespaceExpression(unwrappedExpression.expression, reactImportBindings);
-  }
-  return false;
-};
-
 const findBindingElement = (identifier: ts.Identifier): ts.BindingElement | null => {
   let currentNode: ts.Node | undefined = identifier.parent;
   while (currentNode) {
@@ -194,16 +193,132 @@ const findBindingElement = (identifier: ts.Identifier): ts.BindingElement | null
   return null;
 };
 
+const declarationBindsIdentifier = (node: ts.Node, identifierName: string): boolean => {
+  if (ts.isVariableDeclaration(node) || ts.isParameter(node)) {
+    return bindingNameHasIdentifier(node.name, identifierName);
+  }
+  if (ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) {
+    return node.name?.text === identifierName;
+  }
+  return false;
+};
+
+const isScopeBoundary = (node: ts.Node): boolean =>
+  ts.isFunctionLike(node) ||
+  ts.isClassLike(node) ||
+  ts.isBlock(node) ||
+  ts.isForStatement(node) ||
+  ts.isForInStatement(node) ||
+  ts.isForOfStatement(node) ||
+  ts.isCatchClause(node) ||
+  ts.isSourceFile(node) ||
+  ts.isModuleBlock(node);
+
+const scopeContainsNonImportBinding = (
+  node: ts.Node,
+  scopeNode: ts.Node,
+  identifierName: string,
+): boolean => {
+  if (isReactRequireBindingDeclaration(node, identifierName)) return false;
+  if (declarationBindsIdentifier(node, identifierName)) return true;
+  if (node !== scopeNode && isScopeBoundary(node)) return false;
+
+  let didFindBinding = false;
+  ts.forEachChild(node, (child) => {
+    if (didFindBinding) return;
+    didFindBinding = scopeContainsNonImportBinding(child, scopeNode, identifierName);
+  });
+  return didFindBinding;
+};
+
+const isIdentifierShadowedByLocalBinding = (
+  identifier: ts.Identifier,
+  sourceFile: ts.SourceFile,
+): boolean => {
+  let currentNode: ts.Node | undefined = identifier.parent;
+  while (currentNode) {
+    if (isScopeNode(currentNode)) {
+      if (scopeContainsNonImportBinding(currentNode, currentNode, identifier.text)) return true;
+    }
+    if (currentNode === sourceFile) return false;
+    currentNode = currentNode.parent;
+  }
+  return false;
+};
+
+const isReactNamespaceExpression = (
+  expression: ts.Expression,
+  reactImportBindings: ReactImportBindings,
+  sourceFile: ts.SourceFile,
+): boolean => {
+  const unwrappedExpression = unwrapExpression(expression);
+  return (
+    isReactRequireCall(unwrappedExpression) ||
+    (ts.isIdentifier(unwrappedExpression) &&
+      reactImportBindings.namespaceNames.has(unwrappedExpression.text) &&
+      !isIdentifierShadowedByLocalBinding(unwrappedExpression, sourceFile))
+  );
+};
+
+const isReactUseExpression = (
+  expression: ts.Expression | undefined,
+  reactImportBindings: ReactImportBindings,
+  sourceFile: ts.SourceFile,
+  visitedDeclarations: Set<ts.Node>,
+): boolean => {
+  if (!expression) return false;
+  const unwrappedExpression = unwrapExpression(expression);
+  if (ts.isIdentifier(unwrappedExpression)) {
+    if (
+      reactImportBindings.useImportNames.has(unwrappedExpression.text) &&
+      !isIdentifierShadowedByLocalBinding(unwrappedExpression, sourceFile)
+    ) {
+      return true;
+    }
+    if (unwrappedExpression.text === USE_IDENTIFIER) return false;
+    return (
+      resolveIdentifierBinding(
+        unwrappedExpression,
+        reactImportBindings,
+        sourceFile,
+        visitedDeclarations,
+      )?.isReactUseBinding ?? false
+    );
+  }
+  if (
+    ts.isPropertyAccessExpression(unwrappedExpression) &&
+    unwrappedExpression.name.text === USE_IDENTIFIER &&
+    isReactNamespaceExpression(unwrappedExpression.expression, reactImportBindings, sourceFile)
+  ) {
+    return true;
+  }
+  if (
+    ts.isElementAccessExpression(unwrappedExpression) &&
+    ts.isStringLiteral(unwrappedExpression.argumentExpression) &&
+    unwrappedExpression.argumentExpression.text === USE_IDENTIFIER
+  ) {
+    return isReactNamespaceExpression(
+      unwrappedExpression.expression,
+      reactImportBindings,
+      sourceFile,
+    );
+  }
+  return false;
+};
+
 const isReactUseObjectBinding = (
   identifier: ts.Identifier,
   variableDeclaration: ts.VariableDeclaration,
   reactImportBindings: ReactImportBindings,
+  sourceFile: ts.SourceFile,
 ): boolean => {
   const bindingElement = findBindingElement(identifier);
   if (!bindingElement) return false;
   if (!ts.isObjectBindingPattern(bindingElement.parent)) return false;
   if (!variableDeclaration.initializer) return false;
-  if (!isReactNamespaceExpression(variableDeclaration.initializer, reactImportBindings)) {
+  if (
+    !isReactNamespaceExpression(variableDeclaration.initializer, reactImportBindings, sourceFile)
+  ) {
     return false;
   }
   if (!bindingElement.propertyName) return true;
@@ -213,28 +328,43 @@ const isReactUseObjectBinding = (
 
 const getVariableDeclarationResolution = (
   variableDeclaration: ts.VariableDeclaration,
+  identifierName: string,
   reactImportBindings: ReactImportBindings,
+  sourceFile: ts.SourceFile,
+  visitedDeclarations: Set<ts.Node>,
 ): BindingResolution | null => {
-  const bindingIdentifier = findUseBindingIdentifier(variableDeclaration.name);
+  const bindingIdentifier = findBindingIdentifier(variableDeclaration.name, identifierName);
   if (!bindingIdentifier) return null;
+  if (visitedDeclarations.has(variableDeclaration)) return null;
+  visitedDeclarations.add(variableDeclaration);
   return {
     isReactUseBinding:
-      isReactUseExpression(variableDeclaration.initializer, reactImportBindings) ||
-      isReactUseObjectBinding(bindingIdentifier, variableDeclaration, reactImportBindings),
+      isReactUseExpression(
+        variableDeclaration.initializer,
+        reactImportBindings,
+        sourceFile,
+        visitedDeclarations,
+      ) ||
+      isReactUseObjectBinding(
+        bindingIdentifier,
+        variableDeclaration,
+        reactImportBindings,
+        sourceFile,
+      ),
   };
 };
 
-const getImportResolution = (node: ts.Node): BindingResolution | null => {
-  if (ts.isImportSpecifier(node) && node.name.text === USE_IDENTIFIER) {
+const getImportResolution = (node: ts.Node, identifierName: string): BindingResolution | null => {
+  if (ts.isImportSpecifier(node) && node.name.text === identifierName) {
     return {
       isReactUseBinding:
         getModuleSource(node) === REACT_MODULE_SOURCE && getImportedName(node) === USE_IDENTIFIER,
     };
   }
-  if (ts.isNamespaceImport(node) && node.name.text === USE_IDENTIFIER) {
+  if (ts.isNamespaceImport(node) && node.name.text === identifierName) {
     return { isReactUseBinding: false };
   }
-  if (ts.isImportClause(node) && node.name?.text === USE_IDENTIFIER) {
+  if (ts.isImportClause(node) && node.name?.text === identifierName) {
     return { isReactUseBinding: false };
   }
   return null;
@@ -242,49 +372,55 @@ const getImportResolution = (node: ts.Node): BindingResolution | null => {
 
 const getDeclarationResolution = (
   node: ts.Node,
+  identifierName: string,
   reactImportBindings: ReactImportBindings,
+  sourceFile: ts.SourceFile,
+  visitedDeclarations: Set<ts.Node>,
 ): BindingResolution | null => {
-  const importResolution = getImportResolution(node);
+  const importResolution = getImportResolution(node, identifierName);
   if (importResolution) return importResolution;
 
   if (ts.isVariableDeclaration(node)) {
-    return getVariableDeclarationResolution(node, reactImportBindings);
+    return getVariableDeclarationResolution(
+      node,
+      identifierName,
+      reactImportBindings,
+      sourceFile,
+      visitedDeclarations,
+    );
   }
   if (ts.isParameter(node)) {
-    return findUseBindingIdentifier(node.name) ? { isReactUseBinding: false } : null;
+    return bindingNameHasIdentifier(node.name, identifierName)
+      ? { isReactUseBinding: false }
+      : null;
   }
-  if (ts.isFunctionDeclaration(node) && node.name?.text === USE_IDENTIFIER) {
+  if (ts.isFunctionDeclaration(node) && node.name?.text === identifierName) {
     return { isReactUseBinding: false };
   }
-  if (ts.isClassDeclaration(node) && node.name?.text === USE_IDENTIFIER) {
+  if (ts.isClassDeclaration(node) && node.name?.text === identifierName) {
     return { isReactUseBinding: false };
   }
   return null;
 };
 
 const isNestedScopeBoundary = (node: ts.Node, scopeNode: ts.Node): boolean =>
-  node !== scopeNode &&
-  (ts.isFunctionLike(node) ||
-    ts.isClassLike(node) ||
-    ts.isBlock(node) ||
-    ts.isForStatement(node) ||
-    ts.isForInStatement(node) ||
-    ts.isForOfStatement(node) ||
-    ts.isCatchClause(node) ||
-    ts.isSourceFile(node) ||
-    ts.isModuleBlock(node));
+  node !== scopeNode && isScopeBoundary(node);
 
 const findResolutionInSubtree = (
   node: ts.Node,
   scopeNode: ts.Node,
-  useOffset: number,
+  identifierName: string,
   reactImportBindings: ReactImportBindings,
   sourceFile: ts.SourceFile,
+  visitedDeclarations: Set<ts.Node>,
 ): BindingResolution | null => {
-  const nodeStart = node.getStart(sourceFile);
-  if (nodeStart > useOffset) return null;
-
-  const declarationResolution = getDeclarationResolution(node, reactImportBindings);
+  const declarationResolution = getDeclarationResolution(
+    node,
+    identifierName,
+    reactImportBindings,
+    sourceFile,
+    visitedDeclarations,
+  );
   if (declarationResolution) return declarationResolution;
   if (isNestedScopeBoundary(node, scopeNode)) return null;
 
@@ -294,9 +430,10 @@ const findResolutionInSubtree = (
     resolution = findResolutionInSubtree(
       child,
       scopeNode,
-      useOffset,
+      identifierName,
       reactImportBindings,
       sourceFile,
+      visitedDeclarations,
     );
   });
   return resolution;
@@ -304,11 +441,18 @@ const findResolutionInSubtree = (
 
 const findResolutionInFunctionParameters = (
   node: ts.Node,
+  identifierName: string,
   reactImportBindings: ReactImportBindings,
 ): BindingResolution | null => {
   if (!ts.isFunctionLike(node)) return null;
   for (const parameter of node.parameters) {
-    const parameterResolution = getDeclarationResolution(parameter, reactImportBindings);
+    const parameterResolution = getDeclarationResolution(
+      parameter,
+      identifierName,
+      reactImportBindings,
+      parameter.getSourceFile(),
+      new Set(),
+    );
     if (parameterResolution) return parameterResolution;
   }
   return null;
@@ -316,11 +460,16 @@ const findResolutionInFunctionParameters = (
 
 const findResolutionInScope = (
   scopeNode: ts.Node,
-  useOffset: number,
+  identifierName: string,
   reactImportBindings: ReactImportBindings,
   sourceFile: ts.SourceFile,
+  visitedDeclarations: Set<ts.Node>,
 ): BindingResolution | null => {
-  const parameterResolution = findResolutionInFunctionParameters(scopeNode, reactImportBindings);
+  const parameterResolution = findResolutionInFunctionParameters(
+    scopeNode,
+    identifierName,
+    reactImportBindings,
+  );
   if (parameterResolution) return parameterResolution;
 
   let resolution: BindingResolution | null = null;
@@ -329,38 +478,32 @@ const findResolutionInScope = (
     resolution = findResolutionInSubtree(
       child,
       scopeNode,
-      useOffset,
+      identifierName,
       reactImportBindings,
       sourceFile,
+      visitedDeclarations,
     );
   });
   return resolution;
 };
 
-const isScopeNode = (node: ts.Node): boolean =>
-  ts.isSourceFile(node) ||
-  ts.isBlock(node) ||
-  ts.isModuleBlock(node) ||
-  ts.isFunctionLike(node) ||
-  ts.isForStatement(node) ||
-  ts.isForInStatement(node) ||
-  ts.isForOfStatement(node) ||
-  ts.isCatchClause(node);
+const isScopeNode = isScopeBoundary;
 
-const resolveUseBinding = (
-  useIdentifier: ts.Identifier,
-  useOffset: number,
+const resolveIdentifierBinding = (
+  identifier: ts.Identifier,
   reactImportBindings: ReactImportBindings,
   sourceFile: ts.SourceFile,
+  visitedDeclarations = new Set<ts.Node>(),
 ): BindingResolution | null => {
-  let currentNode: ts.Node | undefined = useIdentifier.parent;
+  let currentNode: ts.Node | undefined = identifier.parent;
   while (currentNode) {
     if (isScopeNode(currentNode)) {
       const resolution = findResolutionInScope(
         currentNode,
-        useOffset,
+        identifier.text,
         reactImportBindings,
         sourceFile,
+        visitedDeclarations,
       );
       if (resolution) return resolution;
     }
@@ -412,9 +555,8 @@ export const resolveUseCallBinding = (
   const useOffset = getUtf16Offset(sourceText, utf8Offset);
   const useIdentifier = findUseCallIdentifier(sourceFile, useOffset);
   if (!useIdentifier) return null;
-  return resolveUseBinding(
+  return resolveIdentifierBinding(
     useIdentifier,
-    useOffset,
     collectReactImportBindings(sourceFile),
     sourceFile,
   );

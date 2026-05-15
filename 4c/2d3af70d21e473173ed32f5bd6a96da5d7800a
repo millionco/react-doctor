@@ -1,0 +1,25 @@
+.changeset/server-auth-actions-member-call.md
+  s_fd528823e8d35d::t_15dd7d35669bfb 1-27
+packages/react-doctor/tests/regressions/server-auth-actions-member-call.test.ts
+  s_fd528823e8d35d::t_cd7cf510b87508 1-200,205-224
+  s_fd528823e8d35d::t_d38ff5b8ad7eb7 201-204
+packages/oxlint-plugin-react-doctor/src/plugin/rules/server/server-auth-actions.ts
+  s_fd528823e8d35d::t_802cf1beeb65ae 6
+  s_fd528823e8d35d::t_71f477d91a7ae3 3,8,11,13-21,27-28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "4c2d3af70d21e473173ed32f5bd6a96da5d7800a",
+  "prompts": {},
+  "sessions": {
+    "s_fd528823e8d35d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "",
+        "model": ""
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

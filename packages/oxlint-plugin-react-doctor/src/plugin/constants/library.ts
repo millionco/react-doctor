@@ -28,4 +28,8 @@ export const MUTATION_METHOD_NAMES = new Set([
   "append",
 ]);
 
+export const HEADERS_API_MUTATION_METHOD_NAMES = new Set(["append", "delete", "set"]);
+
+export const REQUEST_SCOPED_MUTATION_CONSTRUCTOR_NAMES = new Set(["Headers", "Map", "Set"]);
+
 export const MUTATING_HTTP_METHODS = new Set(["POST", "PUT", "DELETE", "PATCH"]);

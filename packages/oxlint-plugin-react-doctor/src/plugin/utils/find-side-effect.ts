@@ -1,4 +1,9 @@
-import { MUTATING_HTTP_METHODS, MUTATION_METHOD_NAMES } from "../constants/library.js";
+import {
+  HEADERS_API_MUTATION_METHOD_NAMES,
+  MUTATING_HTTP_METHODS,
+  MUTATION_METHOD_NAMES,
+  REQUEST_SCOPED_MUTATION_CONSTRUCTOR_NAMES,
+} from "../constants/library.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { walkAst } from "./walk-ast.js";
 import { isNodeOfType } from "./is-node-of-type.js";
@@ -26,6 +31,60 @@ const isCookiesOrHeadersCall = (node: EsTreeNode, methodName: string): boolean =
   if (!isNodeOfType(object, "CallExpression") || !isNodeOfType(object.callee, "Identifier"))
     return false;
   return object.callee.name === methodName;
+};
+
+const isRequestScopedMutationInitializer = (node: EsTreeNode): boolean =>
+  isNodeOfType(node, "NewExpression") &&
+  isNodeOfType(node.callee, "Identifier") &&
+  REQUEST_SCOPED_MUTATION_CONSTRUCTOR_NAMES.has(node.callee.name);
+
+const collectRequestScopedMutationBindings = (node: EsTreeNode): Set<string> => {
+  const bindings = new Set<string>();
+  walkAst(node, (child: EsTreeNode) => {
+    if (!isNodeOfType(child, "VariableDeclarator")) return;
+    if (!isNodeOfType(child.id, "Identifier")) return;
+    if (!child.init || !isRequestScopedMutationInitializer(child.init)) return;
+    bindings.add(child.id.name);
+  });
+  return bindings;
+};
+
+const isRequestScopedMutationCall = (
+  node: EsTreeNode,
+  requestScopedMutationBindings: Set<string>,
+): boolean => {
+  if (!isNodeOfType(node, "CallExpression") || !isNodeOfType(node.callee, "MemberExpression"))
+    return false;
+  const { object, property } = node.callee;
+  if (!isNodeOfType(object, "Identifier")) return false;
+  if (!isNodeOfType(property, "Identifier")) return false;
+  return requestScopedMutationBindings.has(object.name) && MUTATION_METHOD_NAMES.has(property.name);
+};
+
+const isHeadersApiMutationCall = (node: EsTreeNode): boolean => {
+  if (!isNodeOfType(node, "CallExpression") || !isNodeOfType(node.callee, "MemberExpression"))
+    return false;
+  const { object, property } = node.callee;
+  if (
+    !isNodeOfType(property, "Identifier") ||
+    !HEADERS_API_MUTATION_METHOD_NAMES.has(property.name)
+  )
+    return false;
+  if (!isNodeOfType(object, "MemberExpression")) return false;
+  return isNodeOfType(object.property, "Identifier") && object.property.name === "headers";
+};
+
+const isHeadersFunctionMutationCall = (node: EsTreeNode): boolean => {
+  if (!isNodeOfType(node, "CallExpression") || !isNodeOfType(node.callee, "MemberExpression"))
+    return false;
+  const { object, property } = node.callee;
+  if (
+    !isNodeOfType(property, "Identifier") ||
+    !HEADERS_API_MUTATION_METHOD_NAMES.has(property.name)
+  )
+    return false;
+  if (!isNodeOfType(object, "CallExpression")) return false;
+  return isNodeOfType(object.callee, "Identifier") && object.callee.name === "headers";
 };
 
 const isMutatingDbCall = (node: EsTreeNode): boolean => {
@@ -56,8 +115,11 @@ const getCookiesOrHeadersMethodName = (
 
 export const findSideEffect = (node: EsTreeNode): string | null => {
   let sideEffectDescription: string | null = null;
+  const requestScopedMutationBindings = collectRequestScopedMutationBindings(node);
   walkAst(node, (child: EsTreeNode) => {
     if (sideEffectDescription) return;
+    if (isHeadersApiMutationCall(child) || isHeadersFunctionMutationCall(child)) return;
+    if (isRequestScopedMutationCall(child, requestScopedMutationBindings)) return;
     const cookiesMethodName = getCookiesOrHeadersMethodName(child, "cookies");
     if (cookiesMethodName) {
       sideEffectDescription = `cookies().${cookiesMethodName}()`;

@@ -48,6 +48,15 @@ describe("runOxlint", () => {
       );
       expect(wrappedPageIssues).toHaveLength(0);
     });
+
+    it("does not flag response header shaping in GET route handlers", () => {
+      const headerRouteIssues = nextjsDiagnostics.filter(
+        (diagnostic) =>
+          diagnostic.rule === "nextjs-no-side-effect-in-get-handler" &&
+          diagnostic.filePath.includes("app/headers/route"),
+      );
+      expect(headerRouteIssues).toHaveLength(0);
+    });
   });
 
   describe("server rule scope", () => {

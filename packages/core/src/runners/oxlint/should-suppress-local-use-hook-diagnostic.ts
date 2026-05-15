@@ -170,6 +170,8 @@ const getAsyncFunctionParametersText = (
 
   const parameterStartOffset = offset;
   while (isIdentifierCharacter(sourceText[offset])) offset++;
+  const nextOffset = skipWhitespace(sourceText, offset);
+  if (!sourceText.startsWith("=>", nextOffset)) return null;
   return sourceText.slice(parameterStartOffset, offset);
 };
 

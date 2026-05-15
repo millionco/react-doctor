@@ -7,6 +7,7 @@
 Status: confirmed current, open.
 
 Links:
+
 - Issue: https://github.com/millionco/react-doctor/issues/206
 - PRs: https://github.com/millionco/react-doctor/pull/209, https://github.com/millionco/react-doctor/pull/211, https://github.com/millionco/react-doctor/pull/233, https://github.com/millionco/react-doctor/pull/238, https://github.com/millionco/react-doctor/pull/251
 
@@ -21,11 +22,13 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
 ```
 
 Why it matters:
+
 - One Next.js 14 codebase got 138 errors.
 - Reporter said 0 were real side effects.
 - Workaround required 138 inline suppressions.
 
 Fix:
+
 - Skip `response.headers.set/append/delete`.
 - Skip local request-scoped `Map` / `Set` created inside the handler.
 - Decide and document `cookies().set()` / `headers().set()` semantics.
@@ -38,6 +41,7 @@ Fix:
 Status: confirmed current, open.
 
 Links:
+
 - Issue: https://github.com/millionco/react-doctor/issues/239
 - PR: https://github.com/millionco/react-doctor/pull/240
 
@@ -48,15 +52,16 @@ await auth0.getSession();
 ```
 
 Why it matters:
+
 - Reporter saw 139 false positives.
 - Current check only accepts bare identifiers:
 
 ```ts
-isNodeOfType(callNode?.callee, "Identifier") &&
-AUTH_FUNCTION_NAMES.has(callNode.callee.name)
+isNodeOfType(callNode?.callee, "Identifier") && AUTH_FUNCTION_NAMES.has(callNode.callee.name);
 ```
 
 Fix:
+
 - Accept member calls whose final property is in `AUTH_FUNCTION_NAMES`.
 - Cover `auth0.getSession()`, `ctx.auth.getUser()`, `clerkClient.getUser()`, `session.auth()`.
 - Add project config allowlist for custom auth guards.
@@ -71,16 +76,13 @@ Link: https://github.com/millionco/react-doctor/issues/241
 Repro:
 
 ```ts
-const [flowRow] = await db
-  .select()
-  .from(flowsTable)
-  .where(eq(flowsTable.seq, flowSeq))
-  .limit(1);
+const [flowRow] = await db.select().from(flowsTable).where(eq(flowsTable.seq, flowSeq)).limit(1);
 
 if (!flowRow) return [];
 ```
 
 Fix:
+
 - Add recursive binding collection for `ArrayPattern`, nested patterns, rest elements, and assignment patterns.
 - Add tests for `[row]`, `[, row]`, `[row = fallback]`, `{ rows: [row] }`.
 
@@ -89,18 +91,21 @@ Fix:
 Status: confirmed current.
 
 Sources:
+
 - Screenshot: `async-parallel` in `SettingsPanels.browser.tsx`.
 - Screenshot: ordered test-like `render -> expect -> click -> expect`.
 - Dogfood issues: https://github.com/millionco/react-doctor/issues/216, https://github.com/millionco/react-doctor/issues/219
 - Related PR: https://github.com/millionco/react-doctor/pull/238
 
 Current problem:
+
 - `async-parallel.ts` uses a narrow local `TEST_FILE_PATTERN`.
 - It misses `tests/`, `test/`, `__tests__/`, `e2e/`, `playwright/`, `cypress/`, fixtures, mocks, and `.browser.tsx`.
 - It is not tagged `test-noise`, so shared test suppression does not apply.
 - Dogfood warnings also include intentional `async-await-in-loop` animation/delay sequences.
 
 Fix:
+
 - Tag `async-parallel` as `test-noise` or use shared `isTestFilePath()`.
 - Suppress in files importing Playwright, Testing Library, Vitest, Jest, or browser test helpers.
 - Do not parallelize `render`, `expect`, `locator.click`, `page.click`, setup/teardown, or ordered UI assertions.
@@ -112,15 +117,18 @@ Fix:
 Status: confirmed current.
 
 Sources:
+
 - Screenshot: `rn-no-raw-text` in `apps/web/src/components/ThreadTerminalDrawer.tsx`.
 - Issues: https://github.com/millionco/react-doctor/issues/93, https://github.com/millionco/react-doctor/issues/100, https://github.com/millionco/react-doctor/issues/180, https://github.com/millionco/react-doctor/issues/183
 
 Current problem:
+
 - `rn-no-raw-text.ts` only skips `.web.[jt]sx?` and `"use dom"`.
 - It does not understand `apps/web/**` or package framework boundaries.
 - `rawTextWrapperComponents` helps RN wrappers, not web-package scoping.
 
 Fix:
+
 - Scope RN rules to packages detected as React Native / Expo.
 - Skip RN rules in web, docs, Storybook, Docusaurus, Next/Vite/React DOM packages.
 - Add mixed-monorepo fixture: `apps/web` plus `apps/native`.
@@ -131,13 +139,16 @@ Fix:
 Status: confirmed current.
 
 Source:
+
 - Screenshot: SPA/client-only app got server-action advice for `<form onSubmit preventDefault()>`.
 
 Current problem:
+
 - `no-prevent-default.ts` always recommends server actions for form submit handlers.
 - It has no framework/server-capability gate.
 
 Fix:
+
 - Split generic form semantics from server-action advice.
 - Only recommend server actions in server-capable frameworks.
 - In SPA/client-only apps, suppress the form variant or use client-appropriate wording.
@@ -149,13 +160,16 @@ Fix:
 Status: confirmed current.
 
 Source:
+
 - Screenshot: `.every()` warning fired even though the same condition already checked length equality.
 
 Current problem:
+
 - Rule checks only nearest logical expression's immediate `left`.
 - It misses length guards inside larger `&&` chains.
 
 Fix:
+
 - Flatten surrounding `&&` chains.
 - Search previous operands for matching length equality.
 - Confirm `.every()` receiver and indexed array match the guard.
@@ -166,16 +180,22 @@ Fix:
 Status: open.
 
 Links:
+
 - Issue: https://github.com/millionco/react-doctor/issues/205
 - PR: https://github.com/millionco/react-doctor/pull/212
 
 Repro:
 
 ```ts
-const oddDoubles = numbers.values().filter((value) => value % 2 === 1).map((value) => 2 * value).toArray();
+const oddDoubles = numbers
+  .values()
+  .filter((value) => value % 2 === 1)
+  .map((value) => 2 * value)
+  .toArray();
 ```
 
 Fix:
+
 - Detect chains rooted in `.values()`, `.entries()`, `.keys()`, generators, and Iterator helpers.
 - Keep flagging eager array chains like `array.filter(...).map(...)`.
 
@@ -184,10 +204,12 @@ Fix:
 Status: confirmed current.
 
 Source:
+
 - Screenshot: `w-5 h-5 -> size-5` from `design-no-redundant-size-axes`.
 - Feedback: weak signal from a "React reviewer."
 
 Fix:
+
 - Make `design` rules opt-in, score-neutral, collapsed, or hidden from PR comments by default.
 - Add category/surface controls for CLI, PR comments, score, and CI failure.
 - Keep Tailwind version gating, but do not let style cleanup dilute React findings.
@@ -197,9 +219,11 @@ Fix:
 Status: hosted/product, confirmed by screenshot.
 
 Source:
+
 - Screenshot: score 70, "Needs Improvement", "Below 90", but "This PR leaves the React health score unchanged."
 
 Fix:
+
 - Track baseline score, PR score, delta, new diagnostics, and fixed diagnostics.
 - Use neutral wording when unchanged:
   - `Repository score remains 70/100. This PR did not introduce React Review regressions.`
@@ -213,6 +237,7 @@ Status: confirmed current, open.
 Link: https://github.com/millionco/react-doctor/pull/243
 
 Fix:
+
 - Add max pattern length and max wildcard count.
 - Reject pathological patterns with clear config errors.
 - Prefer a proven glob matcher if possible.
@@ -227,11 +252,13 @@ Status: confirmed current.
 Link: https://github.com/millionco/react-doctor/issues/89
 
 Current problem:
+
 - `inspect.ts` omits score in offline mode.
 - README says offline skips score API and no score is shown.
 - `action.yml` says offline will "calculate score locally."
 
 Fix:
+
 - Implement local score calculation or update `action.yml` and marketplace docs.
 - Add tests for `--offline`, `--score --offline`, Action offline score output, and CI auto-offline.
 
@@ -242,11 +269,13 @@ Status: confirmed current.
 Link: https://github.com/millionco/react-doctor/pull/246
 
 Current problem:
+
 - PR #246 removed Knip/dead-code analysis.
 - README still says React Doctor reports dead code.
 - `skills/react-doctor/SKILL.md` still advertises dead code coverage.
 
 Fix:
+
 - Remove current dead-code claims from README, marketplace copy, hosted copy, and skill docs.
 - Add migration note: dead-code analysis was removed; use Knip directly.
 
@@ -255,15 +284,18 @@ Fix:
 Status: confirmed current.
 
 Links:
+
 - https://github.com/millionco/react-doctor/issues/75
 - https://github.com/millionco/react-doctor/issues/79
 
 Current problem:
+
 - README still uses `uses: millionco/react-doctor@main`.
 - `@main` was explicitly reported as supply-chain risk.
 - No `.github/workflows/release.yml` was found.
 
 Fix:
+
 - Recommend stable action tags.
 - Ensure release workflow exists.
 - Ensure released action inputs match docs.
@@ -276,6 +308,7 @@ Status: partially addressed.
 Link: https://github.com/millionco/react-doctor/issues/81
 
 Fix:
+
 - Add `annotations` input.
 - Pass `--annotations` when enabled.
 - Document annotations-only, comments-only, or both.
@@ -285,6 +318,7 @@ Fix:
 Status: partially addressed.
 
 Fix:
+
 - Support per-rule/per-tag controls for severity, score contribution, PR comment visibility, CLI visibility, and CI failure.
 - Use this for `design`, `test-noise`, React Native, server-action, and migration-hint rules.
 
@@ -293,6 +327,7 @@ Fix:
 Status: partially addressed.
 
 Fix:
+
 - Audit every rule.
 - Tag noisy test rules:
   - async parallel/defer rules,
@@ -307,10 +342,12 @@ Fix:
 Status: partially addressed.
 
 Sources:
+
 - Issue #206 suppression friction.
 - Historical issues: #144, #158, #159, #161.
 
 Fix:
+
 - Show exact suppression snippet in PR comments.
 - Accept bare rule IDs when unambiguous.
 - Support rationale after `--`.
@@ -322,11 +359,13 @@ Fix:
 Status: open.
 
 Links:
+
 - Issue: https://github.com/millionco/react-doctor/issues/203
 - PR: https://github.com/millionco/react-doctor/pull/213
 - Related: #74, #115, #31
 
 Fix:
+
 - Land or replace #213.
 - Explain `--diff`, `--staged`, `--full`, partially staged files, and index-vs-working-tree behavior.
 - Add recipes for Husky, lint-staged, Lefthook, and pre-commit.
@@ -336,10 +375,12 @@ Fix:
 Status: open duplicate PRs.
 
 Links:
+
 - https://github.com/millionco/react-doctor/pull/214
 - https://github.com/millionco/react-doctor/pull/32
 
 Fix:
+
 - Pick `--package-json <path>` or another stable API.
 - Avoid cache bugs when same source dir is analyzed with different manifests.
 - Close duplicate PR.
@@ -349,11 +390,13 @@ Fix:
 Status: partially addressed.
 
 Sources:
+
 - "No React dependency found" reports in Bun workspaces, catalog setups, and non-standard `package.json` layouts.
 - Related fixed issues: #27, #87, #101, #105, #116, #191.
 - Related open PRs: #192, #214, #32.
 
 Fix:
+
 - Keep regression coverage for pnpm/Bun catalogs, grouped catalogs, peer deps, and dev deps.
 - Improve error text with nearest detected package and suggested `--package-json` / `--project` fix.
 - Do not regress root-project and monorepo package discovery.
@@ -365,6 +408,7 @@ Status: open.
 Link: https://github.com/millionco/react-doctor/pull/252
 
 Fix:
+
 - Ensure server/config/test exclusions do not hide real client leaks.
 - Add fixtures for Vite, Next, CRA, Gatsby, TanStack Start.
 - Keep value-pattern secret detection active where appropriate.
@@ -374,13 +418,16 @@ Fix:
 Status: open PRs, recurring feedback.
 
 Links:
+
 - https://github.com/millionco/react-doctor/pull/254
 - https://github.com/millionco/react-doctor/pull/186
 
 Sources:
+
 - Users reported `forwardRef` and React 18-compatible library patterns being penalized.
 
 Fix:
+
 - Do not apply React 19-only advice to React 18 packages.
 - Respect library peer dependency ranges.
 - Add fixtures for `forwardRef`, library exports, local `use`, and React 18/19 split behavior.
@@ -390,11 +437,13 @@ Fix:
 Status: partially addressed.
 
 Sources:
+
 - High RAM / OOM / SIGABRT reports on large monorepos.
 - Historical dead-code crashes: #77, #132, #135, #149.
 - Historical large command/path issue: #46.
 
 Fix:
+
 - Keep crash regressions even after Knip removal.
 - Add clearer partial-output/error reporting for scan aborts.
 - Document memory expectations and large-repo mitigations.
@@ -405,11 +454,13 @@ Fix:
 Status: hosted/product.
 
 User confusion:
+
 - "Should we use react doctor or react review?"
 - "Is there additional benefit if already using react-doctor?"
 - "So a react-doctor clone?"
 
 Fix:
+
 - React Doctor: local CLI, packages, CI command, offline/local workflows.
 - React Review: hosted dashboard, GitHub App, PR comments, baseline/delta, team workflow.
 - Add "Already using React Doctor?" migration path.
@@ -419,6 +470,7 @@ Fix:
 Status: hosted/product.
 
 Fix:
+
 - Audit private repo auth path.
 - Distinguish not installed, missing permission, private repo, rate limit, unsupported host, and backend failure.
 - Add reconnect/retry path.
@@ -428,9 +480,11 @@ Fix:
 Status: hosted/product.
 
 Source:
+
 - Self-hosted GitLab user said they feel left out.
 
 Fix:
+
 - Decide support level for GitLab SaaS, self-hosted GitLab, generic CI annotations, and webhook-based hosted Review.
 - Publish current workaround using CLI JSON/SARIF or CI output.
 - Add GitLab CI recipe if hosted integration is not immediate.
@@ -440,11 +494,13 @@ Fix:
 Status: hosted/product.
 
 Sources:
+
 - Fintech user cannot install third-party GHAs.
 - User saw scary full-account GitHub access.
 - User installed but could not see lints.
 
 Fix:
+
 - Make GitHub App, OAuth, GHA, CLI, and enterprise/self-hosted paths explicit.
 - Explain selected-repo vs account-wide access before redirect.
 - Add states for waiting, queued, running, no issues, comment failed, repo access failed, unsupported project, backend error.
@@ -455,11 +511,13 @@ Fix:
 Status: partially addressed.
 
 Links:
+
 - https://github.com/millionco/react-doctor/issues/35
 - https://github.com/millionco/react-doctor/issues/89
 - https://github.com/millionco/react-doctor/issues/92
 
 Fix:
+
 - Explain what CLI sends to score/share APIs.
 - Explain what `--offline` disables.
 - Explain hosted Review repo/code access.
@@ -470,11 +528,13 @@ Fix:
 Status: partially addressed.
 
 Sources:
+
 - 89 -> 49.
 - 93 -> 68.
 - 44/100 with hundreds of warnings.
 
 Fix:
+
 - Add release notes for material rule changes.
 - Show why scores changed: new rules, changed severities, formula, unique error/warning rules.
 - Avoid encouraging blind 100/100 chasing.
@@ -484,6 +544,7 @@ Fix:
 Status: partially addressed.
 
 Fix:
+
 - Publish mapping for marketing version, npm version, action tag, and hosted Review version.
 - Include rule diff and expected score impact in releases.
 
@@ -492,11 +553,13 @@ Fix:
 Status: partially addressed.
 
 Links:
+
 - #47
 - #60
 - #88
 
 Fix:
+
 - Confirm current JSON/report/share outputs.
 - Document local-only report workflow.
 - Add SARIF or generic report path if needed for non-GitHub CI.
@@ -506,10 +569,12 @@ Fix:
 Status: partially addressed.
 
 Sources:
+
 - Users asked for simple "block merge if score < X" behavior.
 - Existing scoring/delta feedback shows absolute thresholds can be misleading.
 
 Fix:
+
 - Document `fail-on`, score thresholds, annotations, and PR comments together.
 - Separate "fail on new regressions" from "fail because baseline score is below threshold."
 - Add examples for advisory mode, regression-only mode, and strict threshold mode.
@@ -521,9 +586,11 @@ Fix:
 Status: product.
 
 Source:
+
 - User suggested detecting dangerous configs like `pull_request_target` plus shared caches.
 
 Candidate checks:
+
 - `pull_request_target` on untrusted PRs.
 - Shared caches in publish/release pipelines.
 - Cache poisoning.
@@ -538,9 +605,11 @@ Candidate checks:
 Status: product.
 
 Source:
+
 - User said they did not naturally feel a strong urge to install a "react review bot."
 
 Better wedges:
+
 - Catch bad agent-generated React before merge.
 - Stop hooks/rendering/server-client bugs in PRs.
 - Framework-aware React CI guardrail.
@@ -552,10 +621,12 @@ Better wedges:
 Status: hosted/product.
 
 Sources:
+
 - v1 feedback called out dashboard/error states and PR comment quality.
 - Competitive feedback criticized whimsical, filler, low-value, or over-broad bot comments.
 
 Fix:
+
 - Put new regressions first and baseline findings separately.
 - Collapse low-value warnings by default.
 - Keep comments concise, serious, and actionable.
@@ -566,6 +637,7 @@ Fix:
 Status: platform.
 
 Fix:
+
 - Decide no support, best effort, Preact-specific mode, or rule subset.
 - Detect `preact`, `preact/compat`, and `@preact/signals`.
 - Document unsupported React-specific rules.
@@ -575,10 +647,12 @@ Fix:
 Status: partially addressed.
 
 Links:
+
 - Support: #21, #65, #64
 - False positives: #93, #100, #180, #183
 
 Fix:
+
 - Publish RN support matrix.
 - Document `rawTextWrapperComponents`.
 - Fix web-package and `Platform.OS === "web"` scoping.
@@ -590,6 +664,7 @@ Status: open.
 Link: https://github.com/millionco/react-doctor/pull/164
 
 Decision:
+
 - HIR may reduce AST heuristic false positives.
 - Do not merge until false-positive policy is stable and regressions prove it improves real cases.
 
@@ -600,6 +675,7 @@ Status: open.
 Link: https://github.com/millionco/react-doctor/pull/173
 
 Decision:
+
 - Useful for local exploration.
 - Not a blocker for PR trust, install, or false-positive quality.
 - Keep behind subcommand or beta flag.
@@ -609,9 +685,11 @@ Decision:
 Status: product.
 
 Source:
+
 - Requests mention Vue, Angular, Svelte, TypeScript, Python, Solid, and broader agent-friendly-code checks.
 
 Decision:
+
 - Keep React Doctor React-only, or create separate rule packs/products.
 - If broadening, separate branding and diagnostics so React-specific quality is not diluted.
 

@@ -55,7 +55,10 @@ const collectReturnExpressionsFromStatement = (
   }
 
   if (isNodeOfType(statement, "TryStatement")) {
-    const blockHasReturn = collectReturnExpressionsFromStatement(statement.block, returnExpressions);
+    const blockHasReturn = collectReturnExpressionsFromStatement(
+      statement.block,
+      returnExpressions,
+    );
     const handlerHasReturn = statement.handler
       ? collectReturnExpressionsFromStatement(statement.handler.body, returnExpressions)
       : false;

@@ -9,6 +9,8 @@
  *   #94      — `MotionConfig reducedMotion="user"` must satisfy the
  *              reduced-motion accessibility check (so the rule doesn't
  *              false-positive when handling is delegated to the provider)
+ *   #76      — `@expo/vector-icons` is not deprecated and must not be
+ *              flagged by the legacy Expo package rule.
  */
 
 import fs from "node:fs";
@@ -224,6 +226,51 @@ describe("issue #183: rawTextWrapperComponents suppresses string-only wrapper ch
     );
     expect(filtered).toHaveLength(1);
     expect(filtered[0].line).toBe(3);
+  });
+});
+
+describe("issue #76: @expo/vector-icons is not treated as a legacy Expo package", () => {
+  it("does not flag @expo/vector-icons while still flagging deprecated Expo packages", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-76-vector-icons", {
+      files: {
+        "src/App.tsx": `import { Ionicons } from "@expo/vector-icons";
+import { Audio } from "expo-av";
+
+export const App = () => (
+  <>
+    <Ionicons name="home" size={24} />
+    <Audio.Sound />
+  </>
+);
+`,
+      },
+      packageJsonExtras: {
+        dependencies: {
+          react: "^19.0.0",
+          "react-native": "^0.79.0",
+          "@expo/vector-icons": "^14.0.0",
+          "expo-av": "^15.0.0",
+        },
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({
+        rootDirectory: projectDir,
+        framework: "react-native",
+      }),
+    });
+
+    const legacyExpoIssues = diagnostics.filter(
+      (diagnostic) => diagnostic.rule === "rn-no-legacy-expo-packages",
+    );
+    expect(
+      legacyExpoIssues.some((diagnostic) => diagnostic.message.includes("@expo/vector-icons")),
+    ).toBe(false);
+    expect(legacyExpoIssues.some((diagnostic) => diagnostic.message.includes("expo-av"))).toBe(
+      true,
+    );
   });
 });
 

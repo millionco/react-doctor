@@ -1,4 +1,4 @@
-import { beforeAll, describe } from "vite-plus/test";
+import { beforeAll, describe, expect, it } from "vite-plus/test";
 import type { Diagnostic } from "@react-doctor/types";
 import { runOxlint } from "@react-doctor/core";
 import { buildTestProject } from "../regressions/_helpers.js";
@@ -79,4 +79,17 @@ describe("runOxlint", () => {
     },
     () => basicReactDiagnostics,
   );
+
+  it("issue #138: passive event listener warning mentions preventDefault risk", () => {
+    const passiveListenerIssue = basicReactDiagnostics.find(
+      (diagnostic) => diagnostic.rule === "client-passive-event-listeners",
+    );
+
+    expect(
+      passiveListenerIssue,
+      "expected client-passive-event-listeners diagnostic",
+    ).toBeDefined();
+    expect(passiveListenerIssue?.message).toContain("preventDefault");
+    expect(passiveListenerIssue?.message).toContain("passive listeners silently ignore");
+  });
 });

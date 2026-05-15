@@ -56,10 +56,6 @@ export const LEGACY_EXPO_PACKAGE_REPLACEMENTS = new Map<string, string>([
     "expo-permissions",
     "the permissions API in each module (e.g. Camera.requestPermissionsAsync())",
   ],
-  [
-    "@expo/vector-icons",
-    "expo-symbols or expo-image (see https://docs.expo.dev/versions/latest/sdk/symbols/)",
-  ],
 ]);
 
 export const REACT_NATIVE_LIST_COMPONENTS = new Set([

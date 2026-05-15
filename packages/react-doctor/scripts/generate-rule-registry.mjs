@@ -106,10 +106,18 @@ for (const entry of ruleEntries) {
 const importLines = ruleEntries
   .map((entry) => `import { ${entry.identifier} } from "${entry.relativeImport}";`)
   .join("\n");
+// Pre-format each entry across multiple lines so prettier's `format:check`
+// has nothing to rewrite. Single-line entries would be reformatted when
+// they exceed the 100-char default width, and the registry-overwrite-on-
+// codegen contract would loop forever.
 const registryLines = ruleEntries
   .map(
     (entry) =>
-      `  "${entry.ruleId}": { ...${entry.identifier}, framework: "${entry.framework}", category: "${entry.category}" },`,
+      `  "${entry.ruleId}": {\n` +
+      `    ...${entry.identifier},\n` +
+      `    framework: "${entry.framework}",\n` +
+      `    category: "${entry.category}",\n` +
+      `  },`,
   )
   .join("\n");
 

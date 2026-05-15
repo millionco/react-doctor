@@ -120,6 +120,13 @@ const collectExpressionDependencies = (
   }
 
   if (isNodeOfType(expression, "ConditionalExpression")) {
+    collectExpressionDependencies(
+      graph,
+      expression.test,
+      scope,
+      eventHandlerReferenceNames,
+      controlDependencyNames,
+    );
     const branchControlDependencyNames = new Set(controlDependencyNames);
     addDependencyNames(
       branchControlDependencyNames,
@@ -143,6 +150,13 @@ const collectExpressionDependencies = (
   }
 
   if (isNodeOfType(expression, "LogicalExpression")) {
+    collectExpressionDependencies(
+      graph,
+      expression.left,
+      scope,
+      eventHandlerReferenceNames,
+      controlDependencyNames,
+    );
     const rightControlDependencyNames = new Set(controlDependencyNames);
     addDependencyNames(
       rightControlDependencyNames,

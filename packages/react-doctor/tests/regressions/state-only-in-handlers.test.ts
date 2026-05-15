@@ -959,4 +959,31 @@ export const ShadowedCatchParameter = () => {
       findStateOnlyInHandlersDiagnostics(diagnostics, "src/shadowed-catch-parameter.tsx").length,
     ).toBeGreaterThan(0);
   });
+
+  it("does NOT flag state read through a logical-expression left assignment", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-146-logical-left-assignment", {
+      files: {
+        "src/logical-left-assignment.tsx": `import { useState } from "react";
+
+export const LogicalLeftAssignment = () => {
+  const [view, setView] = useState("login");
+
+  let label = "Continue";
+  (label = view) && label.length > 0;
+
+  return <button onClick={() => setView("signup")}>{label}</button>;
+};
+`,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      findStateOnlyInHandlersDiagnostics(diagnostics, "src/logical-left-assignment.tsx"),
+    ).toHaveLength(0);
+  });
 });

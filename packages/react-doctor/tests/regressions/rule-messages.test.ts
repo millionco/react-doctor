@@ -12,8 +12,6 @@
  *                router type: Pages Router users should NOT be told to
  *                use `next/navigation` (which they don't have access to);
  *                App Router users SHOULD see that suggestion.
- *   #55       — Next.js JSON-LD scripts are data, not executable native
- *               scripts that should be replaced with `next/script`.
  */
 
 import fs from "node:fs";

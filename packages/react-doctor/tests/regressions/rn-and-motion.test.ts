@@ -9,8 +9,6 @@
  *   #94      — `MotionConfig reducedMotion="user"` must satisfy the
  *              reduced-motion accessibility check (so the rule doesn't
  *              false-positive when handling is delegated to the provider)
- *   #76      — `@expo/vector-icons` is not deprecated and must not be
- *              flagged by the legacy Expo package rule.
  */
 
 import fs from "node:fs";

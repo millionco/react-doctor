@@ -13,6 +13,7 @@ import { canOxlintExtendConfig } from "./can-oxlint-extend-config.js";
 import { collectIgnorePatterns } from "./collect-ignore-patterns.js";
 import { detectUserLintConfigPaths } from "./detect-user-lint-config.js";
 import { createOxlintConfig } from "./runners/oxlint/config.js";
+import { shouldSuppressLocalUseHookDiagnostic } from "./runners/oxlint/should-suppress-local-use-hook-diagnostic.js";
 import reactDoctorPlugin, {
   ALL_REACT_DOCTOR_RULE_KEYS,
   FRAMEWORK_SPECIFIC_RULE_KEYS,
@@ -219,7 +220,7 @@ const isOxlintOutput = (value: unknown): value is OxlintOutput => {
   return Array.isArray(candidate.diagnostics);
 };
 
-const parseOxlintOutput = (stdout: string): Diagnostic[] => {
+const parseOxlintOutput = (stdout: string, rootDirectory: string): Diagnostic[] => {
   if (!stdout) return [];
 
   // HACK: oxlint sometimes prepends a notice line to stdout (e.g. when
@@ -255,6 +256,7 @@ const parseOxlintOutput = (stdout: string): Diagnostic[] => {
   // extensions we count as source files everywhere else.
   return output.diagnostics
     .filter((diagnostic) => diagnostic.code && SOURCE_FILE_PATTERN.test(diagnostic.filename))
+    .filter((diagnostic) => !shouldSuppressLocalUseHookDiagnostic(diagnostic, rootDirectory))
     .map((diagnostic) => {
       const { plugin, rule } = parseRuleCode(diagnostic.code);
       const primaryLabel = diagnostic.labels[0];
@@ -439,7 +441,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       for (const batch of fileBatches) {
         const batchArgs = [...baseArgs, ...batch];
         const stdout = await spawnOxlint(batchArgs, rootDirectory, nodeBinaryPath);
-        allDiagnostics.push(...parseOxlintOutput(stdout));
+        allDiagnostics.push(...parseOxlintOutput(stdout, rootDirectory));
       }
       return allDiagnostics;
     };

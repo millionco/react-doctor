@@ -67,6 +67,32 @@ export const AuthForm = () => {
     expect(findStateOnlyInHandlersDiagnostics(diagnostics, "src/auth-form.tsx")).toHaveLength(0);
   });
 
+  it("does NOT flag state read by an inline early-return guard", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-146-inline-early-return-guard", {
+      files: {
+        "src/inline-auth-form.tsx": `import { useState } from "react";
+
+export const InlineAuthForm = () => {
+  const [view, setView] = useState("login");
+
+  if (view === "login") return <button onClick={() => setView("signup")}>Create account</button>;
+
+  return <button onClick={() => setView("login")}>Log in</button>;
+};
+`,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      findStateOnlyInHandlersDiagnostics(diagnostics, "src/inline-auth-form.tsx"),
+    ).toHaveLength(0);
+  });
+
   it("does NOT flag state read by a switch that chooses the returned branch", async () => {
     const projectDir = setupReactProject(tempRoot, "issue-146-switch-render-branch", {
       files: {

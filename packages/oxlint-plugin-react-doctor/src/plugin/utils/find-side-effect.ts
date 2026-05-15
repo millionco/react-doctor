@@ -1,8 +1,9 @@
 import { MUTATING_HTTP_METHODS, MUTATION_METHOD_NAMES } from "../constants/library.js";
 import type { EsTreeNode } from "./es-tree-node.js";
-import { walkAst } from "./walk-ast.js";
+import { isCookiesOrAwaitedCookiesCall } from "./is-cookies-or-awaited-cookies-call.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isSafeReceiverChain } from "./is-safe-receiver-chain.js";
+import { walkAst } from "./walk-ast.js";
 
 export interface FindSideEffectOptions {
   locallyScopedSafeBindings?: Set<string>;
@@ -27,22 +28,11 @@ const isMutatingMethodProperty = (property: EsTreeNode): boolean =>
   typeof property.value.value === "string" &&
   MUTATING_HTTP_METHODS.has(property.value.value.toUpperCase());
 
-const isDirectCookiesCall = (node: EsTreeNode): boolean =>
-  isNodeOfType(node, "CallExpression") &&
-  isNodeOfType(node.callee, "Identifier") &&
-  node.callee.name === "cookies";
-
-const isAwaitedCookiesCall = (node: EsTreeNode): boolean =>
-  isNodeOfType(node, "AwaitExpression") && node.argument
-    ? isDirectCookiesCall(node.argument)
-    : false;
-
 const isCookieReceiver = (
   receiverNode: EsTreeNode,
   locallyScopedCookieBindings: Set<string>,
 ): boolean => {
-  if (isDirectCookiesCall(receiverNode)) return true;
-  if (isAwaitedCookiesCall(receiverNode)) return true;
+  if (isCookiesOrAwaitedCookiesCall(receiverNode)) return true;
   if (isNodeOfType(receiverNode, "Identifier")) {
     return locallyScopedCookieBindings.has(receiverNode.name);
   }

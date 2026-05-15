@@ -38,7 +38,6 @@ describe("inspect", () => {
     try {
       await inspect(path.join(FIXTURES_DIRECTORY, "basic-react"), {
         lint: true,
-        deadCode: false,
       });
     } finally {
       consoleSpy.mockRestore();
@@ -48,7 +47,7 @@ describe("inspect", () => {
   it("throws when React dependency is missing", async () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     try {
-      await expect(inspect(noReactTempDirectory, { lint: true, deadCode: false })).rejects.toThrow(
+      await expect(inspect(noReactTempDirectory, { lint: true })).rejects.toThrow(
         "No React dependency found",
       );
     } finally {
@@ -61,20 +60,18 @@ describe("inspect", () => {
     try {
       await inspect(path.join(FIXTURES_DIRECTORY, "basic-react"), {
         lint: false,
-        deadCode: false,
       });
     } finally {
       consoleSpy.mockRestore();
     }
   });
 
-  it("runs lint and dead code in parallel when both enabled", async () => {
+  it("completes lint within the timeout budget", async () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     try {
       const startTime = performance.now();
       await inspect(path.join(FIXTURES_DIRECTORY, "basic-react"), {
         lint: true,
-        deadCode: true,
       });
       const elapsedMilliseconds = performance.now() - startTime;
 
@@ -102,7 +99,6 @@ describe("inspect", () => {
 
       const result = await inspect(adminProjectDirectory, {
         lint: false,
-        deadCode: false,
         configOverride: null,
       });
 
@@ -130,7 +126,6 @@ describe("inspect", () => {
 
       const result = await inspect(tempDirectory, {
         lint: false,
-        deadCode: false,
       });
 
       expect(result.project.rootDirectory).toBe(webProjectDirectory);

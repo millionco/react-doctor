@@ -21,7 +21,7 @@ describe("loadConfig", () => {
         path.join(configDirectory, "react-doctor.config.json"),
         JSON.stringify({
           ignore: {
-            rules: ["react/no-danger", "knip/exports"],
+            rules: ["react/no-danger", "react-doctor/no-giant-component"],
             files: ["src/generated/**"],
           },
         }),
@@ -32,7 +32,7 @@ describe("loadConfig", () => {
       const config = loadConfig(configDirectory);
       expect(config).toEqual({
         ignore: {
-          rules: ["react/no-danger", "knip/exports"],
+          rules: ["react/no-danger", "react-doctor/no-giant-component"],
           files: ["src/generated/**"],
         },
       });
@@ -130,7 +130,6 @@ describe("loadConfig", () => {
         JSON.stringify({
           ignore: { rules: ["react/no-danger"] },
           lint: true,
-          deadCode: false,
           verbose: true,
           diff: "main",
         }),
@@ -142,7 +141,6 @@ describe("loadConfig", () => {
       expect(config).toEqual({
         ignore: { rules: ["react/no-danger"] },
         lint: true,
-        deadCode: false,
         verbose: true,
         diff: "main",
       });

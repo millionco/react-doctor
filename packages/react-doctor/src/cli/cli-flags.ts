@@ -1,6 +1,5 @@
 export interface CliFlags {
   lint: boolean;
-  deadCode: boolean;
   verbose: boolean;
   score: boolean;
   json: boolean;

@@ -28,7 +28,6 @@ import { createNodeReadFileLinesSync } from "./core/read-file-lines-node.js";
 import { resolveConfigRootDir } from "./core/resolve-config-root-dir.js";
 import { resolveDiagnoseTarget } from "./core/resolve-diagnose-target.js";
 import { resolveLintIncludePaths } from "./core/resolve-lint-include-paths.js";
-import { runKnip } from "./core/run-knip.js";
 import { runOxlint } from "./core/run-oxlint.js";
 
 export type {
@@ -100,15 +99,6 @@ export const toJsonReport = (result: DiagnoseResult, options: ToJsonReportOption
 
 const EMPTY_DIAGNOSTICS: Diagnostic[] = [];
 
-const settledOrEmpty = <T extends Diagnostic[]>(
-  settled: PromiseSettledResult<T>,
-  label: string,
-): T | Diagnostic[] => {
-  if (settled.status === "fulfilled") return settled.value;
-  console.error(`${label} rejected:`, settled.reason);
-  return EMPTY_DIAGNOSTICS;
-};
-
 export const diagnose = async (
   directory: string,
   options: DiagnoseOptions = {},
@@ -148,14 +138,13 @@ export const diagnose = async (
   const readFileLinesSync = createNodeReadFileLinesSync(resolvedDirectory);
 
   const effectiveLint = options.lint ?? userConfig?.lint ?? true;
-  const effectiveDeadCode = options.deadCode ?? userConfig?.deadCode ?? true;
   const effectiveRespectInlineDisables =
     options.respectInlineDisables ?? userConfig?.respectInlineDisables ?? true;
 
   const ignoredTags = new Set<string>(userConfig?.ignore?.tags ?? []);
 
-  const lintPromise = effectiveLint
-    ? runOxlint({
+  const lintDiagnostics = effectiveLint
+    ? await runOxlint({
         rootDirectory: resolvedDirectory,
         project: projectInfo,
         includePaths: lintIncludePaths,
@@ -167,28 +156,10 @@ export const diagnose = async (
         console.error("Lint failed:", error);
         return EMPTY_DIAGNOSTICS;
       })
-    : Promise.resolve(EMPTY_DIAGNOSTICS);
-
-  const deadCodePromise =
-    effectiveDeadCode && !isDiffMode
-      ? runKnip(resolvedDirectory, userConfig?.entryFiles).catch((error: unknown) => {
-          console.error("Dead code analysis failed:", error);
-          return EMPTY_DIAGNOSTICS;
-        })
-      : Promise.resolve(EMPTY_DIAGNOSTICS);
-
-  // HACK: both runners catch their own errors today, but `Promise.allSettled`
-  // is the load-bearing safety net for the case where a future runner
-  // is refactored without a `.catch()`. Surfacing the rejection via
-  // `console.error` and returning [] keeps `diagnose()` resilient and
-  // is cheaper than a second look at the bug-report log.
-  const [lintSettled, deadCodeSettled] = await Promise.allSettled([lintPromise, deadCodePromise]);
-  const lintDiagnostics = settledOrEmpty(lintSettled, "Lint");
-  const deadCodeDiagnostics = settledOrEmpty(deadCodeSettled, "Dead code");
+    : EMPTY_DIAGNOSTICS;
 
   const diagnostics = combineDiagnostics({
     lintDiagnostics,
-    deadCodeDiagnostics,
     directory: resolvedDirectory,
     isDiffMode,
     userConfig,

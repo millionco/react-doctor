@@ -199,7 +199,6 @@ Usage: react-doctor [directory] [options]
 Options:
   -v, --version           display the version number
   --no-lint               skip linting
-  --no-dead-code          skip dead code detection
   --verbose               show every rule and per-file details (default shows top 3 rules)
   --score                 output only the score
   --json                  output a single structured JSON report
@@ -228,7 +227,6 @@ When a suppression isn't working, `--explain <file:line>` (or its alias `--why <
 | `ignore.files`             | `string[]`                       | `[]`     |
 | `ignore.overrides`         | `{ files, rules? }[]`            | `[]`     |
 | `lint`                     | `boolean`                        | `true`   |
-| `deadCode`                 | `boolean`                        | `true`   |
 | `verbose`                  | `boolean`                        | `false`  |
 | `diff`                     | `boolean \| string`              |          |
 | `failOn`                   | `"error" \| "warning" \| "none"` | `"none"` |
@@ -240,15 +238,12 @@ When a suppression isn't working, `--explain <file:line>` (or its alias `--why <
 | `respectInlineDisables`    | `boolean`                        | `true`   |
 | `adoptExistingLintConfig`  | `boolean`                        | `true`   |
 | `ignore.tags`              | `string[]`                       | `[]`     |
-| `entryFiles`               | `string[]`                       | `[]`     |
 
 `textComponents` is the broad escape hatch for `rn-no-raw-text` — list components that themselves behave like React Native's `<Text>` (custom `Typography`, `NativeTabs.Trigger.Label`, etc.) and the rule will treat them as text containers regardless of what their children look like.
 
 `rawTextWrapperComponents` is the narrower option for components that are not text elements but safely route string-only children through an internal `<Text>` (e.g. `heroui-native`'s `Button`, which stringifies its children and renders them through a `ButtonLabel`). Listed wrappers suppress `rn-no-raw-text` only when their children are entirely stringifiable. A wrapper with mixed children — e.g. `<Button>Save<Icon /></Button>` — still reports because the wrapper can't safely route raw text alongside a sibling JSX element.
 
 `ignore.tags` suppresses entire categories of rules by tag. For example, `"tags": ["design"]` disables all opinionated design rules (gradient text, pure black backgrounds, side tab borders, default Tailwind palettes). Available tags: `"design"`.
-
-`entryFiles` tells the dead-code detector about files that are executed directly but not imported (test runner configs, eval scripts, CLI entry points). These are forwarded to [knip](https://knip.dev) as additional entry points. Example: `"entryFiles": ["scripts/*.ts", "evalite.config.ts"]`. If your project already has a `knip.json`, those entry points are respected automatically.
 
 `offline` skips the score API call and calculates the score locally. Automatically enabled in CI environments (GitHub Actions, GitLab CI, CircleCI). Set `true` in config to always score locally.
 
@@ -277,7 +272,7 @@ React Doctor can scan only changed files instead of the full project:
 
 When on a feature branch without explicit flags, you'll be prompted: "Only scan changed files?" This prompt is suppressed in CI, `--json` mode, and non-interactive environments.
 
-`--staged` and `--diff` cannot be combined. Both modes skip dead-code detection (knip needs the full project to detect unused files).
+`--staged` and `--diff` cannot be combined.
 
 ## Agent and CI integration
 
@@ -304,7 +299,7 @@ console.log(result.diagnostics); // Diagnostic[]
 console.log(result.project); // detected framework, React version, etc.
 ```
 
-`diagnose` accepts a second argument: `{ lint?: boolean, deadCode?: boolean }`.
+`diagnose` accepts a second argument: `{ lint?: boolean }`.
 
 ```js
 const report = toJsonReport(result, { version: "1.0.0" });

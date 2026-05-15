@@ -6,7 +6,6 @@ import { mergeAndFilterDiagnostics } from "./merge-and-filter-diagnostics.js";
 
 interface CombineDiagnosticsInput {
   lintDiagnostics: Diagnostic[];
-  deadCodeDiagnostics: Diagnostic[];
   directory: string;
   isDiffMode: boolean;
   userConfig: ReactDoctorConfig | null;
@@ -18,7 +17,6 @@ interface CombineDiagnosticsInput {
 export const combineDiagnostics = (input: CombineDiagnosticsInput): Diagnostic[] => {
   const {
     lintDiagnostics,
-    deadCodeDiagnostics,
     directory,
     isDiffMode,
     userConfig,
@@ -28,7 +26,7 @@ export const combineDiagnostics = (input: CombineDiagnosticsInput): Diagnostic[]
   } = input;
   const extraDiagnostics =
     isDiffMode || !includeEnvironmentChecks ? [] : checkReducedMotion(directory);
-  const merged = [...lintDiagnostics, ...deadCodeDiagnostics, ...extraDiagnostics];
+  const merged = [...lintDiagnostics, ...extraDiagnostics];
   return mergeAndFilterDiagnostics(merged, directory, userConfig, readFileLinesSync, {
     respectInlineDisables,
   });

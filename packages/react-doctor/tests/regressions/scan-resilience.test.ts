@@ -4,8 +4,6 @@
  * one bad input" failure mode.
  *
  * Covered closed issues:
- *   #29  — `extractFailedPluginName` must never throw on undefined / null
- *          / non-Error inputs (the "cannot read 'match' of undefined" crash)
  *   #46 + #84 — oxlint must batch include-paths so a 1k+-file diff
  *               (Windows ENAMETOOLONG) or 70+ test file batch (oxlint
  *               SIGABRT @ 2.8GB RAM) doesn't blow up
@@ -14,10 +12,6 @@
  *   #89  — `--offline` calculates the score locally (no network round trip)
  *   #115 — `--staged` snapshots git INDEX content (not working tree) so
  *          partially-staged hunks behave correctly
- *   #149 — empty / whitespace-only pattern strings reaching knip cause
- *          `picomatch` to throw `Expected pattern to be a non-empty
- *          string`, killing the whole dead-code step. The sanitizer
- *          strips them before `main()` runs.
  *   #141 — REACT_COMPILER_RULES must not be enabled in the oxlint config
  *          unless the `react-hooks-js` plugin actually resolved —
  *          otherwise oxlint errors with "Plugin 'react-hooks-js' not found".
@@ -39,9 +33,7 @@ import { calculateScoreLocally } from "../../src/core/calculate-score-locally.js
 import { createOxlintConfig } from "../../src/core/runners/oxlint/config.js";
 import { batchIncludePaths } from "../../src/core/batch-include-paths.js";
 import { discoverProject } from "../../src/core/discover-project.js";
-import { extractFailedPluginName } from "../../src/core/extract-failed-plugin-name.js";
 import { getStagedSourceFiles, materializeStagedFiles } from "../../src/cli/get-staged-files.js";
-import { sanitizeKnipConfigPatterns } from "../../src/core/sanitize-knip-config-patterns.js";
 import {
   buildDiagnostic,
   buildTestProject,
@@ -54,16 +46,6 @@ const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-scan-resilience-"));
 
 afterAll(() => {
   fs.rmSync(tempRoot, { recursive: true, force: true });
-});
-
-describe("issue #29: extract-failed-plugin-name handles bad inputs safely", () => {
-  it("never throws on undefined / null / non-Error inputs", () => {
-    expect(extractFailedPluginName(undefined)).toBeNull();
-    expect(extractFailedPluginName(null)).toBeNull();
-    expect(extractFailedPluginName({})).toBeNull();
-    expect(extractFailedPluginName({ message: undefined })).toBeNull();
-    expect(extractFailedPluginName(42)).toBeNull();
-  });
 });
 
 describe("issue #46 + #84: oxlint include-path batching", () => {
@@ -227,31 +209,6 @@ describe("issue #115: --staged uses git INDEX content, not working tree", () => 
     writeJson(path.join(repoDir, "package.json"), { name: "empty-staged" });
     initGitRepo(repoDir);
     expect(getStagedSourceFiles(repoDir)).toEqual([]);
-  });
-});
-
-describe("issue #149: empty pattern strings cannot reach knip's picomatch matchers", () => {
-  it("strips empty/whitespace-only patterns from arrays, scalars, and nested plugin configs", () => {
-    const parsedConfig: Record<string, unknown> = {
-      entry: ["src/index.ts", "", "  "],
-      project: "",
-      ignore: ["", "node_modules/**"],
-      vite: { config: ["", "vite.config.ts"], entry: "  " },
-      workspaces: {
-        "packages/foo": { entry: ["", "src/index.ts"], ignore: "" },
-      },
-    };
-
-    sanitizeKnipConfigPatterns(parsedConfig);
-
-    expect(parsedConfig).toEqual({
-      entry: ["src/index.ts"],
-      ignore: ["node_modules/**"],
-      vite: { config: ["vite.config.ts"] },
-      workspaces: {
-        "packages/foo": { entry: ["src/index.ts"] },
-      },
-    });
   });
 });
 

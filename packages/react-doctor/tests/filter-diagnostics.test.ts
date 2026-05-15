@@ -76,7 +76,11 @@ describe("filterIgnoredDiagnostics", () => {
   it("filters by both rules and files together", () => {
     const diagnostics = [
       createDiagnostic({ plugin: "react", rule: "no-danger", filePath: "src/app.tsx" }),
-      createDiagnostic({ plugin: "knip", rule: "exports", filePath: "src/generated/api.tsx" }),
+      createDiagnostic({
+        plugin: "jsx-a11y",
+        rule: "no-autofocus",
+        filePath: "src/generated/api.tsx",
+      }),
       createDiagnostic({
         plugin: "react-doctor",
         rule: "no-giant-component",
@@ -103,7 +107,7 @@ describe("filterIgnoredDiagnostics", () => {
   it("keeps all diagnostics when no rules or files match", () => {
     const diagnostics = [
       createDiagnostic({ plugin: "react", rule: "no-danger" }),
-      createDiagnostic({ plugin: "knip", rule: "exports" }),
+      createDiagnostic({ plugin: "jsx-a11y", rule: "no-autofocus" }),
     ];
     const config: ReactDoctorConfig = {
       ignore: {
@@ -350,27 +354,5 @@ describe("filterIgnoredDiagnostics", () => {
     );
     expect(filtered).toHaveLength(1);
     expect(filtered[0].rule).toBe("no-cascading-set-state");
-  });
-
-  it("handles knip rule identifiers", () => {
-    const diagnostics = [
-      createDiagnostic({ plugin: "knip", rule: "exports" }),
-      createDiagnostic({ plugin: "knip", rule: "types" }),
-      createDiagnostic({ plugin: "knip", rule: "files" }),
-    ];
-    const config: ReactDoctorConfig = {
-      ignore: {
-        rules: ["knip/exports", "knip/types"],
-      },
-    };
-
-    const filtered = filterIgnoredDiagnostics(
-      diagnostics,
-      config,
-      TEST_ROOT_DIRECTORY,
-      testReadFileLines,
-    );
-    expect(filtered).toHaveLength(1);
-    expect(filtered[0].rule).toBe("files");
   });
 });

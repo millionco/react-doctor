@@ -5,7 +5,6 @@ import type { ReactDoctorConfig } from "../types/config.js";
 // string (which JS treats as truthy and bypasses the negation path).
 const BOOLEAN_FIELD_NAMES = [
   "lint",
-  "deadCode",
   "verbose",
   "customRulesOnly",
   "share",

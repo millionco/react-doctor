@@ -41,10 +41,6 @@ const PROJECT_CONFIG_FILENAMES = [
   "tsconfig.base.json",
   "package.json",
   "react-doctor.config.json",
-  "knip.json",
-  "knip.jsonc",
-  ".knip.json",
-  ".knip.jsonc",
   "oxlint.json",
   ".oxlintrc.json",
 ];

@@ -38,17 +38,6 @@ export const ERROR_RULE_PENALTY = 1.5;
 
 export const WARNING_RULE_PENALTY = 0.75;
 
-export const KNIP_CONFIG_LOCATIONS = [
-  "knip.json",
-  "knip.jsonc",
-  ".knip.json",
-  ".knip.jsonc",
-  "knip.ts",
-  "knip.js",
-  "knip.config.ts",
-  "knip.config.js",
-];
-
 // JSON-format oxlint / eslint configs react-doctor can fold into the
 // scan via oxlint's `extends` field. JS / TS configs need a runtime
 // to evaluate and aren't supported by oxlint's `extends`. Listed in
@@ -80,8 +69,6 @@ export const IGNORED_DIRECTORIES = new Set([
 export const CANONICAL_GITHUB_URL = "https://github.com/millionco/react-doctor";
 
 export const SKILL_NAME = "react-doctor";
-
-export const KNIP_TOTAL_ATTEMPTS = 6;
 
 export const PROXY_OUTPUT_MAX_BYTES = 50 * 1024 * 1024;
 

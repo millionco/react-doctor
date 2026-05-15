@@ -33,13 +33,11 @@ import { loadConfigWithSource } from "./load-config.js";
 import { isLoggerSilent, logger, setLoggerSilent } from "./logger.js";
 import { resolveConfigRootDir } from "./resolve-config-root-dir.js";
 import { resolveLintIncludePaths } from "./resolve-lint-include-paths.js";
-import { runKnip } from "./run-knip.js";
 import { runOxlint } from "./run-oxlint.js";
 import { isSpinnerSilent, setSpinnerSilent, spinner } from "../cli/spinner.js";
 
 interface ResolvedInspectOptions {
   lint: boolean;
-  deadCode: boolean;
   verbose: boolean;
   scoreOnly: boolean;
   offline: boolean;
@@ -65,7 +63,6 @@ const mergeInspectOptions = (
   userConfig: ReactDoctorConfig | null,
 ): ResolvedInspectOptions => ({
   lint: inputOptions.lint ?? userConfig?.lint ?? true,
-  deadCode: inputOptions.deadCode ?? userConfig?.deadCode ?? true,
   verbose: inputOptions.verbose ?? userConfig?.verbose ?? false,
   scoreOnly: inputOptions.scoreOnly ?? false,
   offline: inputOptions.offline ?? false,
@@ -145,7 +142,6 @@ const runInspect = async (
   }
 
   let didLintFail = false;
-  let didDeadCodeFail = false;
 
   const resolvedNodeBinaryPath = await resolveOxlintNode(
     options.lint,
@@ -192,31 +188,9 @@ const runInspect = async (
       })()
     : Promise.resolve<Diagnostic[]>([]);
 
-  const deadCodePromise =
-    options.deadCode && !isDiffMode
-      ? (async () => {
-          const deadCodeSpinner = options.scoreOnly
-            ? null
-            : spinner("Detecting dead code...").start();
-          try {
-            const knipDiagnostics = await runKnip(directory, userConfig?.entryFiles);
-            deadCodeSpinner?.succeed("Detecting dead code.");
-            return knipDiagnostics;
-          } catch (error) {
-            didDeadCodeFail = true;
-            if (!options.scoreOnly) {
-              deadCodeSpinner?.fail("Dead code detection failed (non-fatal, skipping).");
-              logger.error(formatErrorChain(error));
-            }
-            return [];
-          }
-        })()
-      : Promise.resolve<Diagnostic[]>([]);
-
-  const [lintDiagnostics, deadCodeDiagnostics] = await Promise.all([lintPromise, deadCodePromise]);
+  const lintDiagnostics = await lintPromise;
   const diagnostics = combineDiagnostics({
     lintDiagnostics,
-    deadCodeDiagnostics,
     directory,
     isDiffMode,
     userConfig,
@@ -227,7 +201,6 @@ const runInspect = async (
 
   const skippedChecks: string[] = [];
   if (didLintFail) skippedChecks.push("lint");
-  if (didDeadCodeFail) skippedChecks.push("dead code");
   const hasSkippedChecks = skippedChecks.length > 0;
 
   const scoreResult = options.offline

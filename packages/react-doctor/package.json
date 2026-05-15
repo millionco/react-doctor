@@ -5,7 +5,6 @@
   "keywords": [
     "accessibility",
     "diagnostics",
-    "knip",
     "linter",
     "nextjs",
     "oxlint",
@@ -68,7 +67,6 @@
   "dependencies": {
     "agent-install": "0.0.5",
     "commander": "^14.0.3",
-    "knip": "^6.10.0",
     "ora": "^9.4.0",
     "oxlint": "^1.63.0",
     "picocolors": "^1.1.1",

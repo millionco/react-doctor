@@ -38,7 +38,7 @@ export const Debounced = ({ onChange }: { onChange: (value: string) => void }) =
       },
     });
 
-    const result = await diagnose(projectDir, { lint: true, deadCode: false });
+    const result = await diagnose(projectDir, { lint: true });
     const preferUseEffectEventHits = result.diagnostics.filter(
       (diagnostic) => diagnostic.rule === "prefer-use-effect-event",
     );
@@ -68,7 +68,7 @@ export const Debounced = ({ onChange }: { onChange: (value: string) => void }) =
       },
     });
 
-    const result = await diagnose(projectDir, { lint: true, deadCode: false });
+    const result = await diagnose(projectDir, { lint: true });
     const preferUseEffectEventHits = result.diagnostics.filter(
       (diagnostic) => diagnostic.rule === "prefer-use-effect-event",
     );
@@ -86,7 +86,7 @@ export const Debounced = ({ onChange }: { onChange: (value: string) => void }) =
     fs.mkdirSync(wrapperDir, { recursive: true });
     setupReactProject(wrapperDir, "web");
 
-    const result = await diagnose(wrapperDir, { lint: false, deadCode: false });
+    const result = await diagnose(wrapperDir, { lint: false });
     expect(result.project.rootDirectory).toBe(path.join(wrapperDir, "web"));
     expect(result.project.reactVersion).toBe("^19.0.0");
   });
@@ -96,7 +96,7 @@ export const Debounced = ({ onChange }: { onChange: (value: string) => void }) =
     fs.mkdirSync(wrapperDir, { recursive: true });
     setupReactProject(wrapperDir, "apps/web");
 
-    const result = await diagnose(wrapperDir, { lint: false, deadCode: false });
+    const result = await diagnose(wrapperDir, { lint: false });
     expect(result.project.rootDirectory).toBe(path.join(wrapperDir, "apps", "web"));
     expect(result.project.reactVersion).toBe("^19.0.0");
   });
@@ -105,9 +105,7 @@ export const Debounced = ({ onChange }: { onChange: (value: string) => void }) =
     const emptyDir = path.join(tempRoot, "diagnose-no-react-anywhere");
     fs.mkdirSync(emptyDir, { recursive: true });
 
-    await expect(diagnose(emptyDir, { lint: false, deadCode: false })).rejects.toThrow(
-      "No React project found in",
-    );
+    await expect(diagnose(emptyDir, { lint: false })).rejects.toThrow("No React project found in");
   });
 
   // Regression: when the requested directory has no root package.json AND
@@ -122,13 +120,11 @@ export const Debounced = ({ onChange }: { onChange: (value: string) => void }) =
     setupReactProject(wrapperDir, "web");
     setupReactProject(wrapperDir, "admin");
 
-    await expect(diagnose(wrapperDir, { lint: false, deadCode: false })).rejects.toBeInstanceOf(
+    await expect(diagnose(wrapperDir, { lint: false })).rejects.toBeInstanceOf(
       AmbiguousProjectError,
     );
 
-    const rejection = await diagnose(wrapperDir, { lint: false, deadCode: false }).catch(
-      (error: unknown) => error,
-    );
+    const rejection = await diagnose(wrapperDir, { lint: false }).catch((error: unknown) => error);
     expect(rejection).toBeInstanceOf(AmbiguousProjectError);
     const ambiguousError = rejection as AmbiguousProjectError;
     expect(ambiguousError.directory).toBe(wrapperDir);
@@ -150,7 +146,7 @@ export const Debounced = ({ onChange }: { onChange: (value: string) => void }) =
         JSON.stringify({ rootDir: "web" }),
       );
 
-      const result = await diagnose(wrapperDir, { lint: false, deadCode: false });
+      const result = await diagnose(wrapperDir, { lint: false });
       expect(result.project.rootDirectory).toBe(path.join(wrapperDir, "web"));
     });
 
@@ -164,7 +160,7 @@ export const Debounced = ({ onChange }: { onChange: (value: string) => void }) =
         JSON.stringify({ rootDir: "admin" }),
       );
 
-      const result = await diagnose(wrapperDir, { lint: false, deadCode: false });
+      const result = await diagnose(wrapperDir, { lint: false });
       expect(result.project.rootDirectory).toBe(path.join(wrapperDir, "admin"));
     });
 
@@ -178,7 +174,7 @@ export const Debounced = ({ onChange }: { onChange: (value: string) => void }) =
         JSON.stringify({ rootDir: "apps/web" }),
       );
 
-      const result = await diagnose(childDir, { lint: false, deadCode: false });
+      const result = await diagnose(childDir, { lint: false });
       expect(result.project.rootDirectory).toBe(path.join(repoRoot, "apps", "web"));
     });
 
@@ -191,7 +187,7 @@ export const Debounced = ({ onChange }: { onChange: (value: string) => void }) =
         JSON.stringify({ rootDir: "does-not-exist" }),
       );
 
-      const result = await diagnose(wrapperDir, { lint: false, deadCode: false });
+      const result = await diagnose(wrapperDir, { lint: false });
       expect(result.project.rootDirectory).toBe(path.join(wrapperDir, "web"));
     });
 
@@ -204,7 +200,7 @@ export const Debounced = ({ onChange }: { onChange: (value: string) => void }) =
         JSON.stringify({ rootDir: targetDir }),
       );
 
-      const result = await diagnose(wrapperDir, { lint: false, deadCode: false });
+      const result = await diagnose(wrapperDir, { lint: false });
       expect(result.project.rootDirectory).toBe(targetDir);
     });
   });

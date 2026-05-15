@@ -14,7 +14,6 @@ export const resolveCliInspectOptions = (
 
   return {
     lint: isCliOverride("lint") ? flags.lint : (userConfig?.lint ?? true),
-    deadCode: isCliOverride("deadCode") ? flags.deadCode : (userConfig?.deadCode ?? true),
     verbose: isCliOverride("verbose") ? flags.verbose : (userConfig?.verbose ?? false),
     scoreOnly: flags.score,
     offline: flags.offline || (userConfig?.offline ?? false) || isCiEnvironment(),

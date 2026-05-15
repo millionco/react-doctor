@@ -5,12 +5,12 @@
  *
  * Covered closed issues:
  *   #43 — silent global `npm install -g` removed and must not return
- *   #50 — `--lint` and `--dead-code` exist as positive flags so they can
- *         override a config that disables them
+ *   #50 — `--lint` exists as a positive flag so it can override a config
+ *         that disables it
  *   #66 + #81 — GitHub Actions annotation-property encoding
  *   #92 — `share: false` config option exists in the schema and is read
  *         by the scan banner
- *   #135 — dead-code failures surface in `skippedChecks`, never silently
+ *   #135 — lint failures surface in `skippedChecks`, never silently
  */
 
 import fs from "node:fs";
@@ -71,18 +71,16 @@ const captureScanOutput = async (
   }
 };
 
-describe("issue #50: CLI flags can re-enable lint/dead-code that config disabled", () => {
+describe("issue #50: CLI flags can re-enable lint that config disabled", () => {
   it("inspect(directory, { lint: true }) overrides a `lint: false` config", async () => {
     const projectDir = setupMinimalReactProject("issue-50-lint");
     writeJson(path.join(projectDir, "react-doctor.config.json"), {
       lint: false,
-      deadCode: false,
     });
     // Pass lint:true explicitly — the resolved options must include lint=true
     // even though the config said false.
     const { result } = await captureScanOutput(projectDir, {
       lint: true,
-      deadCode: true,
       offline: true,
       silent: true,
     });
@@ -97,11 +95,9 @@ describe("issue #50: CLI flags can re-enable lint/dead-code that config disabled
     writeJson(path.join(projectDir, "react-doctor.config.json"), { lint: true });
     const { result } = await captureScanOutput(projectDir, {
       lint: false,
-      deadCode: false,
       offline: true,
       silent: true,
     });
-    // With lint disabled, no lint diagnostics can appear. Knip is also off.
     expect(result.diagnostics.filter((d) => d.plugin === "react-doctor")).toHaveLength(0);
   });
 });
@@ -194,7 +190,6 @@ export const Cart = () => {
 
     const { stdout } = await captureScanOutput(projectDir, {
       lint: true,
-      deadCode: false,
       offline: true,
     });
     const normalizedStdout = stripAnsi(stdout);
@@ -209,12 +204,11 @@ export const Cart = () => {
   });
 });
 
-describe("issue #135: dead-code failures surface in skippedChecks", () => {
+describe("issue #135: lint failures surface in skippedChecks", () => {
   it("inspect() returns a `skippedChecks` array on the result", async () => {
     const projectDir = setupMinimalReactProject("issue-135");
     const { result } = await captureScanOutput(projectDir, {
       lint: false,
-      deadCode: false,
       offline: true,
       silent: true,
     });

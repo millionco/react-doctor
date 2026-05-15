@@ -19,7 +19,6 @@ describe("validateConfigTypes", () => {
   it("passes through proper boolean values untouched", () => {
     const input: ReactDoctorConfig = {
       lint: true,
-      deadCode: false,
       verbose: true,
       respectInlineDisables: false,
     };
@@ -57,10 +56,10 @@ describe("validateConfigTypes", () => {
   it("strips invalid types (numbers, objects) with a warning so the field falls back to the default", () => {
     const result = validateConfigTypes({
       lint: 42 as unknown as boolean,
-      deadCode: {} as unknown as boolean,
+      verbose: {} as unknown as boolean,
     });
     expect(result.lint).toBeUndefined();
-    expect(result.deadCode).toBeUndefined();
+    expect(result.verbose).toBeUndefined();
     expect(stderrSpy).toHaveBeenCalledTimes(2);
   });
 

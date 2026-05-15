@@ -2,7 +2,6 @@ import reactDoctorPlugin from "../plugin/react-doctor-plugin.js";
 import type { ReactDoctorConfig } from "../types/config.js";
 import type { Diagnostic } from "../types/diagnostic.js";
 import { filterIgnoredDiagnostics, filterInlineSuppressions } from "./filter-diagnostics.js";
-import { isLikelyBuildEntry } from "./is-likely-build-entry.js";
 import { isTestFilePath } from "./is-test-file.js";
 
 interface MergeAndFilterOptions {
@@ -10,25 +9,13 @@ interface MergeAndFilterOptions {
 }
 
 const testFileResultCache = new Map<string, boolean>();
-const buildEntryResultCache = new Map<string, boolean>();
 
 export const clearAutoSuppressionCaches = (): void => {
   testFileResultCache.clear();
-  buildEntryResultCache.clear();
 };
 
-const shouldAutoSuppress = (diagnostic: Diagnostic, directory: string): boolean => {
+const shouldAutoSuppress = (diagnostic: Diagnostic): boolean => {
   const filePath = diagnostic.filePath;
-
-  if (diagnostic.plugin === "knip" && diagnostic.rule === "files") {
-    const cacheKey = `${directory}:${filePath}`;
-    let isBuildEntry = buildEntryResultCache.get(cacheKey);
-    if (isBuildEntry === undefined) {
-      isBuildEntry = isLikelyBuildEntry(filePath, directory);
-      buildEntryResultCache.set(cacheKey, isBuildEntry);
-    }
-    if (isBuildEntry) return true;
-  }
 
   const rule =
     diagnostic.plugin === "react-doctor" ? reactDoctorPlugin.rules[diagnostic.rule] : null;
@@ -51,9 +38,7 @@ export const mergeAndFilterDiagnostics = (
   readFileLinesSync: (filePath: string) => string[] | null,
   options: MergeAndFilterOptions = {},
 ): Diagnostic[] => {
-  const autoFiltered = mergedDiagnostics.filter(
-    (diagnostic) => !shouldAutoSuppress(diagnostic, directory),
-  );
+  const autoFiltered = mergedDiagnostics.filter((diagnostic) => !shouldAutoSuppress(diagnostic));
   const filtered = userConfig
     ? filterIgnoredDiagnostics(autoFiltered, userConfig, directory, readFileLinesSync)
     : autoFiltered;

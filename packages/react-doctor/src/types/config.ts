@@ -15,7 +15,6 @@ interface ReactDoctorIgnoreConfig {
 export interface ReactDoctorConfig {
   ignore?: ReactDoctorIgnoreConfig;
   lint?: boolean;
-  deadCode?: boolean;
   verbose?: boolean;
   diff?: boolean | string;
   failOn?: FailOnLevel;
@@ -98,5 +97,4 @@ export interface ReactDoctorConfig {
    * Set to `false` to scan only react-doctor's curated rule set.
    */
   adoptExistingLintConfig?: boolean;
-  entryFiles?: string[];
 }

@@ -4,7 +4,6 @@ import type { ScoreResult } from "./score.js";
 
 export interface DiagnoseOptions {
   lint?: boolean;
-  deadCode?: boolean;
   verbose?: boolean;
   includePaths?: string[];
   /**

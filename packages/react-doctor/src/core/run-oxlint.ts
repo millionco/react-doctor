@@ -46,7 +46,6 @@ const PLUGIN_CATEGORY_MAP: Record<string, string> = {
   "react-hooks-js": "React Compiler",
   "react-doctor": "Other",
   "jsx-a11y": "Accessibility",
-  knip: "Dead Code",
   effect: "State & Effects",
   // Plugins users commonly enable in their own oxlint / eslint config
   // and that react-doctor folds into the scan via `extends`. Sensible

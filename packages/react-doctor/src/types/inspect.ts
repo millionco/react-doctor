@@ -13,7 +13,6 @@ export interface InspectResult {
 
 export interface InspectOptions {
   lint?: boolean;
-  deadCode?: boolean;
   verbose?: boolean;
   scoreOnly?: boolean;
   offline?: boolean;

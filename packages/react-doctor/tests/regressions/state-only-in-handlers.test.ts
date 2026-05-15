@@ -215,6 +215,34 @@ export const RenderCallback = () => {
     );
   });
 
+  it("does NOT flag state passed to a non-function on-prefixed prop", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-146-on-prefixed-data-prop", {
+      files: {
+        "src/on-prefixed-data-prop.tsx": `import { useState } from "react";
+
+declare const CustomThing: (props: { onState: string; onPayload: string }) => null;
+
+export const OnPrefixedDataProp = () => {
+  const [view, setView] = useState("login");
+
+  const props = { onPayload: view };
+
+  return <CustomThing onState={view} {...props} />;
+};
+`,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      findStateOnlyInHandlersDiagnostics(diagnostics, "src/on-prefixed-data-prop.tsx"),
+    ).toHaveLength(0);
+  });
+
   it("does NOT flag state passed as the value of a context provider", async () => {
     const projectDir = setupReactProject(tempRoot, "issue-146-context", {
       files: {

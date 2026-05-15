@@ -57,10 +57,15 @@ const visitVariableDeclaration = (
 const visitProperty = (node: EsTreeNode, names: Set<string>, scope: Set<string>): void => {
   if (!isNodeOfType(node, "Property")) return;
   const propertyName = getStaticPropertyKeyName(node);
-  if (propertyName && /^on[A-Z]/.test(propertyName)) return;
+  if (propertyName && isEventHandlerName(propertyName) && isFunctionLike(node.value)) return;
   if (node.computed) visitNode(node.key, names, scope);
   visitNode(node.value, names, scope);
 };
+
+const isFunctionLike = (node: EsTreeNode): boolean =>
+  isNodeOfType(node, "FunctionExpression") || isNodeOfType(node, "ArrowFunctionExpression");
+
+const isEventHandlerName = (name: string): boolean => /^on[A-Z]/.test(name);
 
 const getStaticPropertyKeyName = (node: EsTreeNode): string | null => {
   if (!isNodeOfType(node, "Property")) return null;
@@ -119,8 +124,26 @@ const visitCatchClause = (node: EsTreeNode, names: Set<string>, scope: Set<strin
 const visitJsxAttribute = (node: EsTreeNode, names: Set<string>, scope: Set<string>): void => {
   if (!isNodeOfType(node, "JSXAttribute")) return;
   const attributeName = isNodeOfType(node.name, "JSXIdentifier") ? node.name.name : null;
-  if (attributeName && /^on[A-Z]/.test(attributeName)) return;
-  if (node.value) visitNode(node.value, names, scope);
+  if (!node.value) return;
+  if (attributeName && isEventHandlerName(attributeName) && isIntrinsicJsxAttribute(node)) return;
+  if (
+    attributeName &&
+    isEventHandlerName(attributeName) &&
+    isNodeOfType(node.value, "JSXExpressionContainer") &&
+    isFunctionLike(node.value.expression)
+  ) {
+    return;
+  }
+  visitNode(node.value, names, scope);
+};
+
+const isIntrinsicJsxAttribute = (node: EsTreeNode): boolean => {
+  if (!isNodeOfType(node, "JSXAttribute")) return false;
+  const openingElement = node.parent;
+  if (!isNodeOfType(openingElement, "JSXOpeningElement")) return false;
+  const elementName = openingElement.name;
+  if (!isNodeOfType(elementName, "JSXIdentifier")) return false;
+  return /^[a-z]/.test(elementName.name);
 };
 
 const visitNode = (node: EsTreeNode, names: Set<string>, scope: Set<string>): void => {

@@ -24,6 +24,8 @@ export const APP_DIRECTORY_PATTERN = /\/app\//;
 
 export const ROUTE_HANDLER_FILE_PATTERN = /\/route\.(tsx?|jsx?)$/;
 
+export const CRON_ROUTE_PATTERN = /\/(?:cron|jobs\/cron)(?:\/|$)/i;
+
 export const MUTATING_ROUTE_SEGMENTS = new Set([
   "logout",
   "log-out",

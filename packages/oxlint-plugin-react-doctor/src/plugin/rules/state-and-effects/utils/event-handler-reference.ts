@@ -13,11 +13,14 @@ export const getStaticMemberPropertyName = (node: EsTreeNode): string | null => 
   return null;
 };
 
-export const getStaticMemberReferenceName = (node: EsTreeNode): string | null => {
+export const getStaticMemberReferenceName = (
+  node: EsTreeNode,
+  resolveName: (name: string) => string = (name) => name,
+): string | null => {
   if (!isNodeOfType(node, "MemberExpression")) return null;
   if (!isNodeOfType(node.object, "Identifier")) return null;
   const propertyName = getStaticMemberPropertyName(node);
-  return propertyName ? `${node.object.name}.${propertyName}` : null;
+  return propertyName ? `${resolveName(node.object.name)}.${propertyName}` : null;
 };
 
 export const getStaticPropertyKeyName = (node: EsTreeNode): string | null => {
@@ -31,10 +34,12 @@ export const getStaticPropertyKeyName = (node: EsTreeNode): string | null => {
 export const isEventHandlerValue = (
   node: EsTreeNode,
   eventHandlerReferenceNames: Set<string>,
+  resolveName: (name: string) => string = (name) => name,
 ): boolean => {
   if (isFunctionLike(node)) return true;
-  if (isNodeOfType(node, "Identifier")) return eventHandlerReferenceNames.has(node.name);
-  const memberReferenceName = getStaticMemberReferenceName(node);
+  if (isNodeOfType(node, "Identifier"))
+    return eventHandlerReferenceNames.has(resolveName(node.name));
+  const memberReferenceName = getStaticMemberReferenceName(node, resolveName);
   return Boolean(memberReferenceName && eventHandlerReferenceNames.has(memberReferenceName));
 };
 

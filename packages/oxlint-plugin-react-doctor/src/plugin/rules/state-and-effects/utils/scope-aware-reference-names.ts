@@ -238,7 +238,9 @@ const collectPropertyReferenceNames = (
   if (
     propertyName &&
     isEventHandlerName(propertyName) &&
-    isEventHandlerValue(node.value, eventHandlerReferenceNames)
+    isEventHandlerValue(node.value, eventHandlerReferenceNames, (name) =>
+      resolveBindingName(scope, name),
+    )
   ) {
     return new Set();
   }
@@ -344,7 +346,9 @@ const collectJsxAttributeReferenceNames = (
     attributeName &&
     isEventHandlerName(attributeName) &&
     isNodeOfType(node.value, "JSXExpressionContainer") &&
-    isEventHandlerValue(node.value.expression, eventHandlerReferenceNames)
+    isEventHandlerValue(node.value.expression, eventHandlerReferenceNames, (name) =>
+      resolveBindingName(scope, name),
+    )
   ) {
     return new Set();
   }

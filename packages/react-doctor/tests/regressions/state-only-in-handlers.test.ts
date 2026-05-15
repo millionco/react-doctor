@@ -960,6 +960,82 @@ export const ShadowedCatchParameter = () => {
     ).toBeGreaterThan(0);
   });
 
+  it("does NOT let a shadowed block handler prune a rendered custom on prop", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-146-shadowed-handler-on-prop", {
+      files: {
+        "src/shadowed-handler-on-prop.tsx": `import { useState } from "react";
+
+interface PanelProps {
+  onCommit: () => void;
+  onValue: string;
+}
+
+declare const Panel: (props: PanelProps) => null;
+
+export const ShadowedHandlerOnProp = () => {
+  const [handler, setHandler] = useState("login");
+
+  if (true) {
+    const handler = () => {};
+    void handler;
+  }
+
+  return <Panel onValue={handler} onCommit={() => setHandler("signup")} />;
+};
+`,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      findStateOnlyInHandlersDiagnostics(diagnostics, "src/shadowed-handler-on-prop.tsx"),
+    ).toHaveLength(0);
+  });
+
+  it("DOES flag state read only through a scoped custom event handler", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-146-scoped-custom-event-handler", {
+      files: {
+        "src/scoped-custom-event-handler.tsx": `import { useState } from "react";
+
+interface PanelProps {
+  onCommit: () => void;
+}
+
+declare const Panel: (props: PanelProps) => null;
+declare const track: (value: string) => void;
+
+export const ScopedCustomEventHandler = ({ enabled }: { enabled: boolean }) => {
+  const [view, setView] = useState("login");
+
+  if (enabled) {
+    const handleCommit = () => {
+      track(view);
+      setView("signup");
+    };
+
+    return <Panel onCommit={handleCommit} />;
+  }
+
+  return <Panel onCommit={() => setView("signup")} />;
+};
+`,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+    });
+
+    expect(
+      findStateOnlyInHandlersDiagnostics(diagnostics, "src/scoped-custom-event-handler.tsx").length,
+    ).toBeGreaterThan(0);
+  });
+
   it("does NOT flag state read through a logical-expression left assignment", async () => {
     const projectDir = setupReactProject(tempRoot, "issue-146-logical-left-assignment", {
       files: {

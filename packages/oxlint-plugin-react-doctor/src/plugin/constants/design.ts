@@ -84,7 +84,14 @@ export const VAGUE_BUTTON_LABELS = new Set([
   "done",
 ]);
 
-export const ELLIPSIS_EXCLUDED_TAG_NAMES = new Set(["code", "pre", "kbd", "samp", "var", "tt"]);
+export const TYPOGRAPHY_PUNCTUATION_EXCLUDED_TAG_NAMES = new Set([
+  "code",
+  "pre",
+  "kbd",
+  "samp",
+  "var",
+  "tt",
+]);
 
 // HACK: trailing boundary uses a LOOKAHEAD `(?=...)` so the whitespace
 // between Tailwind tokens isn't consumed. With a consuming `(?:$|\s|:)`

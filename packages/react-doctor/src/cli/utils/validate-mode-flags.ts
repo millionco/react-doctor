@@ -1,7 +1,7 @@
-import type { CliFlags } from "./cli-flags.js";
+import type { InspectFlags } from "./inspect-flags.js";
 import { coerceDiffValue } from "./coerce-diff-value.js";
 
-export const validateModeFlags = (flags: CliFlags): void => {
+export const validateModeFlags = (flags: InspectFlags): void => {
   // HACK: use the same coercion as resolveEffectiveDiff so a bare
   // `--diff false` (or `--diff ""`) is treated as "no diff" and doesn't
   // trip the mutual-exclusion check against --staged.

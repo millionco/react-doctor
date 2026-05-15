@@ -2,7 +2,7 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:f
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { detectAvailableAgents } from "../src/cli/detect-agents.js";
+import { detectAvailableAgents } from "../src/cli/utils/detect-agents.js";
 
 const writeExecutable = (binDir: string, binaryName: string): void => {
   const binaryPath = path.join(binDir, binaryName);

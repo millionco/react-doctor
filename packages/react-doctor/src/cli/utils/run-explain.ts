@@ -1,5 +1,5 @@
 import { highlighter, logger, toRelativePath } from "@react-doctor/core";
-import { inspect } from "../inspect.js";
+import { inspect } from "../../inspect.js";
 import type { Diagnostic, InspectOptions, ReactDoctorConfig } from "@react-doctor/types";
 import { findOwningProjectDirectory } from "./find-owning-project.js";
 import { parseFileLineArgument } from "./parse-file-line-argument.js";

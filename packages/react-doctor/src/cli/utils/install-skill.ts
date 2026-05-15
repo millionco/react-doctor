@@ -10,6 +10,7 @@ import {
 import { highlighter, logger, SKILL_NAME } from "@react-doctor/core";
 import { detectAvailableAgents } from "./detect-agents.js";
 import { prompts } from "./prompts.js";
+import { shouldSkipPrompts } from "./should-skip-prompts.js";
 import { spinner } from "./spinner.js";
 
 interface InstallSkillOptions {
@@ -47,7 +48,7 @@ export const runInstallSkill = async (options: InstallSkillOptions = {}): Promis
     return;
   }
 
-  const skipPrompts = Boolean(options.yes) || !process.stdin.isTTY;
+  const skipPrompts = shouldSkipPrompts({ yes: options.yes });
 
   const selectedAgents: SkillAgentType[] = skipPrompts
     ? detectedAgents

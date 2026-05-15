@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { parseFileLineArgument } from "../src/cli/parse-file-line-argument.js";
+import { parseFileLineArgument } from "../src/cli/utils/parse-file-line-argument.js";
 
 describe("parseFileLineArgument", () => {
   it("parses `path:line` into its parts", () => {

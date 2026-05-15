@@ -2,9 +2,9 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { runInstallSkill } from "../src/cli/install-skill.js";
+import { runInstallSkill } from "../src/cli/utils/install-skill.js";
 import { setLoggerSilent } from "@react-doctor/core";
-import { setSpinnerSilent } from "../src/cli/spinner.js";
+import { setSpinnerSilent } from "../src/cli/utils/spinner.js";
 
 interface InstallSkillFixture {
   projectRoot: string;

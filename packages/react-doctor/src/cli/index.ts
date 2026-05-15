@@ -1,13 +1,11 @@
-import { performance } from "node:perf_hooks";
 import { Command } from "commander";
-import { buildJsonReportError, CANONICAL_GITHUB_URL, highlighter } from "@react-doctor/core";
-import { cliState } from "./cli-state.js";
-import { createInspectAction } from "./commands/inspect.js";
+import { CANONICAL_GITHUB_URL, highlighter } from "@react-doctor/core";
+import { inspectAction } from "./commands/inspect.js";
 import { installAction } from "./commands/install.js";
-import { exitGracefully } from "./exit-gracefully.js";
-import { handleError } from "./handle-error.js";
-import { VERSION } from "./version.js";
-import { writeJsonReport } from "./write-json-report.js";
+import { exitGracefully } from "./utils/exit-gracefully.js";
+import { handleError } from "./utils/handle-error.js";
+import { isJsonModeActive, writeJsonErrorReport } from "./utils/json-mode.js";
+import { VERSION } from "./utils/version.js";
 
 process.on("SIGINT", exitGracefully);
 process.on("SIGTERM", exitGracefully);
@@ -32,7 +30,10 @@ const program = new Command()
   )
   .option("--offline", "skip the score API and the share URL (no score is shown)")
   .option("--staged", "scan only staged (git index) files for pre-commit hooks")
-  .option("--fail-on <level>", "exit with error code on diagnostics: error, warning, none", "error")
+  .option(
+    "--fail-on <level>",
+    "exit with error code on diagnostics: error, warning, none (default: error)",
+  )
   .option("--annotations", "output diagnostics as GitHub Actions annotations")
   .option(
     "--explain <file:line>",
@@ -59,13 +60,15 @@ ${highlighter.dim("Learn more:")}
 `,
   );
 
-program.action(createInspectAction(program));
+program.action(inspectAction);
 
 program
   .command("install")
+  .alias("setup")
   .description("Install the react-doctor skill into your coding agents")
   .option("-y, --yes", "skip prompts, install for all detected agents")
   .option("--dry-run", "show what would be installed without writing files")
+  .option("-c, --cwd <cwd>", "working directory", process.cwd())
   .action(installAction);
 
 // HACK: when stdout is piped into a process that closes early (e.g.
@@ -76,22 +79,8 @@ process.stdout.on("error", (error: NodeJS.ErrnoException) => {
 });
 
 program.parseAsync().catch((error: unknown) => {
-  if (cliState.isJsonModeActive) {
-    try {
-      writeJsonReport(
-        buildJsonReportError({
-          version: VERSION,
-          directory: cliState.resolvedDirectoryForCancel ?? process.cwd(),
-          error,
-          elapsedMilliseconds: performance.now() - cliState.cancelStartTime,
-          mode: cliState.currentReportMode,
-        }),
-      );
-    } catch {
-      process.stdout.write(
-        '{"schemaVersion":1,"ok":false,"error":{"message":"Internal error","name":"Error","chain":[]}}\n',
-      );
-    }
+  if (isJsonModeActive()) {
+    writeJsonErrorReport(error);
     process.exit(1);
   }
   handleError(error);

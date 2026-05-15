@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { indentMultilineText } from "../src/cli/indent-multiline-text.js";
+import { indentMultilineText } from "../src/cli/utils/indent-multiline-text.js";
 
 describe("indentMultilineText", () => {
   it("adds the prefix to a single line", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { buildHiddenDiagnosticsSummary } from "../src/cli/build-hidden-diagnostics-summary.js";
+import { buildHiddenDiagnosticsSummary } from "../src/cli/utils/build-hidden-diagnostics-summary.js";
 import { buildDiagnostic } from "./regressions/_helpers.js";
 
 describe("buildHiddenDiagnosticsSummary", () => {

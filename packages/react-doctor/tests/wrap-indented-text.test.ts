@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { wrapIndentedText } from "../src/cli/wrap-indented-text.js";
+import { wrapIndentedText } from "../src/cli/utils/wrap-indented-text.js";
 
 const TEST_WRAP_WIDTH_CHARS = 36;
 

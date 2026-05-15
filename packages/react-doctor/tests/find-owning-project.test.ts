@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
-import { findOwningProjectDirectory } from "../src/cli/find-owning-project.js";
+import { findOwningProjectDirectory } from "../src/cli/utils/find-owning-project.js";
 import { setupReactProject, writeJson } from "./regressions/_helpers.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-find-owning-project-"));

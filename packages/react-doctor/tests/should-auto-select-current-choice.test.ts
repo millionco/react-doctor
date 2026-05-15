@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { shouldAutoSelectCurrentChoice } from "../src/cli/should-auto-select-current-choice.js";
+import { shouldAutoSelectCurrentChoice } from "../src/cli/utils/should-auto-select-current-choice.js";
 
 describe("shouldAutoSelectCurrentChoice", () => {
   it("returns true when nothing is selected and cursor is on an enabled choice", () => {

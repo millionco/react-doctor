@@ -21,16 +21,16 @@ import type {
   InspectResult,
   ReactDoctorConfig,
 } from "@react-doctor/types";
-import { printDiagnostics } from "./cli/render-diagnostics.js";
-import { printProjectDetection } from "./cli/render-project-detection.js";
+import { printDiagnostics } from "./cli/utils/render-diagnostics.js";
+import { printProjectDetection } from "./cli/utils/render-project-detection.js";
 import {
   printBrandingOnlyHeader,
   printNoScoreHeader,
   printScoreHeader,
-} from "./cli/render-score-header.js";
-import { printSummary } from "./cli/render-summary.js";
-import { resolveOxlintNode } from "./cli/resolve-oxlint-node.js";
-import { isSpinnerSilent, setSpinnerSilent, spinner } from "./cli/spinner.js";
+} from "./cli/utils/render-score-header.js";
+import { printSummary } from "./cli/utils/render-summary.js";
+import { resolveOxlintNode } from "./cli/utils/resolve-oxlint-node.js";
+import { isSpinnerSilent, setSpinnerSilent, spinner } from "./cli/utils/spinner.js";
 
 interface ResolvedInspectOptions {
   lint: boolean;

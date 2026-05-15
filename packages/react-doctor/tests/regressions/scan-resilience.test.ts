@@ -34,7 +34,10 @@ import {
   SPAWN_ARGS_MAX_LENGTH_CHARS,
 } from "@react-doctor/core";
 import { discoverProject } from "@react-doctor/project-info";
-import { getStagedSourceFiles, materializeStagedFiles } from "../../src/cli/get-staged-files.js";
+import {
+  getStagedSourceFiles,
+  materializeStagedFiles,
+} from "../../src/cli/utils/get-staged-files.js";
 import { buildTestProject, initGitRepo, writeFile, writeJson } from "./_helpers.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-scan-resilience-"));

@@ -23,7 +23,7 @@ import type { InspectResult, ReactDoctorConfig } from "@react-doctor/types";
 import {
   encodeAnnotationProperty,
   encodeAnnotationMessage,
-} from "../../src/cli/annotation-encoding.js";
+} from "../../src/cli/utils/annotation-encoding.js";
 import { setupReactProject, writeFile, writeJson } from "./_helpers.js";
 
 const PACKAGE_ROOT = path.resolve(import.meta.dirname, "..", "..");

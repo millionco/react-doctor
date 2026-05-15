@@ -4,7 +4,7 @@ export default defineConfig({
   pack: [
     {
       entry: { index: "./src/index.ts" },
-      deps: { neverBundle: ["oxlint", "oxlint-plugin-react-doctor", "typescript"] },
+      deps: { neverBundle: ["oxlint", "oxlint-plugin-react-doctor"] },
       dts: true,
       target: "node22",
       platform: "node",

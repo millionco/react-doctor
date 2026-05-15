@@ -255,8 +255,12 @@ const parseOxlintOutput = (stdout: string, rootDirectory: string): Diagnostic[] 
   // erased their score impact. SOURCE_FILE_PATTERN matches the same
   // extensions we count as source files everywhere else.
   return output.diagnostics
-    .filter((diagnostic) => diagnostic.code && SOURCE_FILE_PATTERN.test(diagnostic.filename))
-    .filter((diagnostic) => !shouldSuppressLocalUseHookDiagnostic(diagnostic, rootDirectory))
+    .filter(
+      (diagnostic) =>
+        diagnostic.code &&
+        SOURCE_FILE_PATTERN.test(diagnostic.filename) &&
+        !shouldSuppressLocalUseHookDiagnostic(diagnostic, rootDirectory),
+    )
     .map((diagnostic) => {
       const { plugin, rule } = parseRuleCode(diagnostic.code);
       const primaryLabel = diagnostic.labels[0];

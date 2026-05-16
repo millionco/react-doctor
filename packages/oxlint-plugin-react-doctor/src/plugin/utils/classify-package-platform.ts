@@ -7,6 +7,7 @@ import path from "node:path";
 // `react-dom` / Next / Vite host package, not with mobile RN.
 const REACT_NATIVE_DEPENDENCY_NAMES: ReadonlySet<string> = new Set([
   "react-native",
+  "react-native-tvos",
   "expo",
   "expo-router",
   "@expo/cli",
@@ -14,9 +15,19 @@ const REACT_NATIVE_DEPENDENCY_NAMES: ReadonlySet<string> = new Set([
   "@expo/metro-runtime",
   "react-native-windows",
   "react-native-macos",
-  "@react-native/metro-config",
-  "@react-native-community/cli",
 ]);
+
+// Scoped namespaces whose member packages are RN-only by construction.
+// Anything published under `@react-native/*` or `@react-native-*` (the
+// two community-owned namespaces) is mobile-only — covers
+// `@react-native/babel-preset`, `@react-native-firebase/app`,
+// `@react-native-community/cli`, `@react-native-async-storage/async-storage`,
+// and the dozens of other community packages without us having to
+// enumerate them.
+const REACT_NATIVE_DEPENDENCY_PREFIXES: ReadonlyArray<string> = [
+  "@react-native/",
+  "@react-native-",
+];
 
 // Packages that mark the manifest as a web-only React target. If a manifest
 // contains one of these AND has no React Native indicator, every React
@@ -53,14 +64,6 @@ const WEB_FRAMEWORK_DEPENDENCY_NAMES: ReadonlySet<string> = new Set([
 const cachedPlatformByPackageDirectory = new Map<string, PackagePlatform>();
 const cachedPackageDirectoryByFilename = new Map<string, string | null>();
 
-// HACK: exposed so tests can clear results between independent fixtures.
-// Without this, a fixture in `/tmp/A` and a re-created fixture at the
-// same path would share stale state. Production code never invalidates.
-export const clearClassifyPackagePlatformCache = (): void => {
-  cachedPlatformByPackageDirectory.clear();
-  cachedPackageDirectoryByFilename.clear();
-};
-
 const findNearestPackageDirectory = (filename: string): string | null => {
   if (!filename) return null;
 
@@ -94,6 +97,11 @@ interface PackageJsonDependencyView {
   devDependencies?: Record<string, unknown>;
   peerDependencies?: Record<string, unknown>;
   optionalDependencies?: Record<string, unknown>;
+  // Metro's resolution key — libraries that ship an RN-only entry
+  // point declare this field at the manifest root (string path) so
+  // Metro picks it over `main` / `module`. Treated as a strong
+  // RN-only signal for the owning package.
+  "react-native"?: unknown;
 }
 
 const readPackageJsonSafe = (packageJsonPath: string): PackageJsonDependencyView | null => {
@@ -112,32 +120,40 @@ const readPackageJsonSafe = (packageJsonPath: string): PackageJsonDependencyView
   }
 };
 
-const isReactNativeAware = (packageJson: PackageJsonDependencyView): boolean => {
-  for (const section of [
-    packageJson.dependencies,
-    packageJson.devDependencies,
-    packageJson.peerDependencies,
-    packageJson.optionalDependencies,
-  ]) {
+const DEPENDENCY_SECTION_NAMES = [
+  "dependencies",
+  "devDependencies",
+  "peerDependencies",
+  "optionalDependencies",
+] as const satisfies ReadonlyArray<keyof PackageJsonDependencyView>;
+
+const iterateDependencyNames = function* (
+  packageJson: PackageJsonDependencyView,
+): Generator<string> {
+  for (const sectionName of DEPENDENCY_SECTION_NAMES) {
+    const section = packageJson[sectionName];
     if (!section) continue;
     for (const dependencyName of Object.keys(section)) {
-      if (REACT_NATIVE_DEPENDENCY_NAMES.has(dependencyName)) return true;
+      yield dependencyName;
     }
+  }
+};
+
+const matchesReactNativeNamespace = (dependencyName: string): boolean =>
+  REACT_NATIVE_DEPENDENCY_PREFIXES.some((prefix) => dependencyName.startsWith(prefix));
+
+const isReactNativeAware = (packageJson: PackageJsonDependencyView): boolean => {
+  if (typeof packageJson["react-native"] === "string") return true;
+  for (const dependencyName of iterateDependencyNames(packageJson)) {
+    if (REACT_NATIVE_DEPENDENCY_NAMES.has(dependencyName)) return true;
+    if (matchesReactNativeNamespace(dependencyName)) return true;
   }
   return false;
 };
 
 const isWebFrameworkOnly = (packageJson: PackageJsonDependencyView): boolean => {
-  for (const section of [
-    packageJson.dependencies,
-    packageJson.devDependencies,
-    packageJson.peerDependencies,
-    packageJson.optionalDependencies,
-  ]) {
-    if (!section) continue;
-    for (const dependencyName of Object.keys(section)) {
-      if (WEB_FRAMEWORK_DEPENDENCY_NAMES.has(dependencyName)) return true;
-    }
+  for (const dependencyName of iterateDependencyNames(packageJson)) {
+    if (WEB_FRAMEWORK_DEPENDENCY_NAMES.has(dependencyName)) return true;
   }
   return false;
 };

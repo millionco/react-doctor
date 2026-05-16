@@ -109,7 +109,7 @@ describe("mixed RN + web monorepo: rn-* rules respect package boundaries", () =>
     expect(storybookDiagnostics).toHaveLength(0);
   });
 
-  it("does not fire rn-* on shared packages that declare neither RN nor a web framework (falls back to the project-level framework hint)", () => {
+  it("falls back to the project-level framework hint on shared packages that declare neither RN nor a web framework (rule stays ACTIVE)", () => {
     // The shared package has only `react` listed — neither
     // `react-native`/`expo` nor a web framework. Without a clear local
     // signal we fall back to the project-level framework setting (here
@@ -1127,5 +1127,235 @@ describe("rn-* rules other than rn-no-raw-text: package gating", () => {
         diagnostic.filePath.replaceAll("\\", "/").includes("siblings/web-sibling/"),
     );
     expect(webSiblingRn).toHaveLength(0);
+  });
+});
+
+describe("React Native package classification: namespace prefixes and Metro `react-native` field", () => {
+  it("classifies a package as RN when it declares a `@react-native-firebase/*` dependency (prefix match)", async () => {
+    // `@react-native-firebase/app` lives under the `@react-native-`
+    // community namespace. The closed-set check in the previous
+    // implementation missed it; the prefix match recognises every
+    // member of the namespace without us having to enumerate them.
+    const projectDir = setupReactProject(tempRoot, "rn-namespace-prefix-match", {
+      packageJsonExtras: {
+        dependencies: {
+          react: "^19.0.0",
+          "@react-native-firebase/app": "^21.0.0",
+        },
+      },
+      files: {
+        "src/Screen.tsx": `export const Screen = () => <View>RN firebase package</View>;\n`,
+      },
+    });
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text").length).toBeGreaterThan(0);
+  });
+
+  it("classifies a package as RN when it declares Metro's top-level `react-native` resolution field (library manifest)", async () => {
+    // RN-only libraries set the top-level `react-native` field so Metro
+    // resolves an RN-specific entry over `main` / `module`. The mere
+    // presence of the field is enough to classify the package as
+    // RN-aware even when its dep list is otherwise empty.
+    const projectDir = setupReactProject(tempRoot, "rn-metro-resolution-field", {
+      packageJsonExtras: {
+        dependencies: { react: "^19.0.0" },
+        "react-native": "./dist/native/index.js",
+      },
+      files: {
+        "src/Screen.tsx": `export const Screen = () => <View>Metro field library</View>;\n`,
+      },
+    });
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text").length).toBeGreaterThan(0);
+  });
+});
+
+describe("rn-no-raw-text: Platform.select fork (canonical RN platform-fork helper)", () => {
+  const setupPlatformSelectProject = (caseId: string, sourceCode: string): string =>
+    setupReactProject(tempRoot, caseId, {
+      packageJsonExtras: { dependencies: { react: "^19.0.0", "react-native": "0.76.0" } },
+      files: { "src/Screen.tsx": sourceCode },
+    });
+
+  it("skips raw text in the `web` arm of `Platform.select({ web: ..., default: ... })`", async () => {
+    const projectDir = setupPlatformSelectProject(
+      "platform-select-web-arm",
+      `import { Platform, View } from "react-native";
+
+export const Screen = () =>
+  Platform.select({
+    web: <View>Web fallback markup</View>,
+    default: null,
+  });
+`,
+    );
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text")).toHaveLength(0);
+  });
+
+  it("STILL fires raw text in non-web arms of `Platform.select` (`default`, `ios`, `android`)", async () => {
+    const projectDir = setupPlatformSelectProject(
+      "platform-select-default-arm-still-fires",
+      `import { Platform, View } from "react-native";
+
+export const Screen = () =>
+  Platform.select({
+    web: null,
+    default: <View>Native fallback that crashes</View>,
+  });
+`,
+    );
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text").length).toBeGreaterThan(0);
+  });
+
+  it("recognises the string-quoted property key form `{ \"web\": ... }`", async () => {
+    const projectDir = setupPlatformSelectProject(
+      "platform-select-string-key",
+      `import { Platform, View } from "react-native";
+
+export const Screen = () =>
+  Platform.select({
+    "web": <View>Web</View>,
+    default: null,
+  });
+`,
+    );
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text")).toHaveLength(0);
+  });
+});
+
+describe("rn-no-raw-text: TS / chain wrapping around the Platform.OS read", () => {
+  it("recognises `Platform?.OS === \"web\"` (optional chain)", async () => {
+    const projectDir = setupReactProject(tempRoot, "platform-os-optional-chain", {
+      packageJsonExtras: { dependencies: { react: "^19.0.0", "react-native": "0.76.0" } },
+      files: {
+        "src/Screen.tsx": `import { Platform, View } from "react-native";
+
+export const Screen = () => {
+  if (Platform?.OS === "web") {
+    return <View>Optional-chain web</View>;
+  }
+  return null;
+};
+`,
+      },
+    });
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text")).toHaveLength(0);
+  });
+
+  it("recognises `Platform.OS! === \"web\"` (TS non-null assertion)", async () => {
+    const projectDir = setupReactProject(tempRoot, "platform-os-non-null-assertion", {
+      packageJsonExtras: { dependencies: { react: "^19.0.0", "react-native": "0.76.0" } },
+      files: {
+        "src/Screen.tsx": `import { Platform, View } from "react-native";
+
+export const Screen = () => {
+  if (Platform.OS! === "web") {
+    return <View>Non-null asserted web</View>;
+  }
+  return null;
+};
+`,
+      },
+    });
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text")).toHaveLength(0);
+  });
+});
+
+describe("rn-no-raw-text: scope-boundary pruning (no nested-helper false negatives)", () => {
+  it("STILL fires raw text inside a callback hoisted out of a Platform.OS branch", async () => {
+    // `renderInner`'s body sits inside the `Platform.OS === "web"`
+    // alternate from the caller's perspective, but the function itself
+    // is hoisted to top level — it could be called from anywhere, so
+    // its raw text must not inherit the parent branch's exemption. The
+    // walker stops at the function boundary.
+    const projectDir = setupReactProject(tempRoot, "platform-os-scope-boundary-pruning", {
+      packageJsonExtras: { dependencies: { react: "^19.0.0", "react-native": "0.76.0" } },
+      files: {
+        "src/Screen.tsx": `import { Platform, View } from "react-native";
+
+const renderInner = () => <View>Hoisted raw text</View>;
+
+export const Screen = () => (Platform.OS === "web" ? renderInner() : null);
+`,
+      },
+    });
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text").length).toBeGreaterThan(0);
+  });
+});
+
+describe("inverted monorepo: web-rooted project with an RN workspace still loads rn-* rules", () => {
+  it("fires rn-no-raw-text on the mobile workspace even when the entry-point `framework` is web-only", async () => {
+    // The entry-point project's framework resolves to `nextjs` here
+    // (we pass `framework: "nextjs"` explicitly), but
+    // `hasReactNativeWorkspace` is `true` because the discovered
+    // workspaces include an Expo app. Without the inverted-gate fix
+    // the capability builder dropped every `requires: ["react-native"]`
+    // rule before the file-level wrapper ever got to run.
+    const projectDir = setupReactProject(tempRoot, "inverted-monorepo-web-rooted", {
+      packageJsonExtras: {
+        dependencies: { next: "^14.0.0", react: "^19.0.0", "react-dom": "^19.0.0" },
+        // pnpm-shaped workspaces field also works; npm/yarn flat list
+        // is more portable across the test fixtures.
+        workspaces: ["apps/*"],
+      },
+      files: {
+        "apps/web/src/Page.tsx": `export const Page = () => <View>Web entry</View>;\n`,
+      },
+    });
+    writeJson(path.join(projectDir, "apps", "web", "package.json"), {
+      name: "web",
+      dependencies: { next: "^14.0.0", react: "^19.0.0", "react-dom": "^19.0.0" },
+    });
+    writeJson(path.join(projectDir, "apps", "mobile", "package.json"), {
+      name: "mobile",
+      dependencies: { react: "^19.0.0", "react-native": "0.76.0", expo: "^51.0.0" },
+    });
+    writeFile(
+      path.join(projectDir, "apps", "mobile", "src", "Screen.tsx"),
+      `import { View } from "react-native";\nexport const Screen = () => <View>Mobile entry</View>;\n`,
+    );
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: {
+        ...buildTestProject({ rootDirectory: projectDir, framework: "nextjs" }),
+        hasReactNativeWorkspace: true,
+      },
+    });
+
+    const rnHits = findDiagnosticsByRule(diagnostics, "rn-no-raw-text");
+    const normalizedPaths = rnHits.map((diagnostic) => diagnostic.filePath.replaceAll("\\", "/"));
+    expect(normalizedPaths.some((filePath) => filePath.includes("apps/mobile/"))).toBe(true);
+    expect(normalizedPaths.some((filePath) => filePath.includes("apps/web/"))).toBe(false);
   });
 });

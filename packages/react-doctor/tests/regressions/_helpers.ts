@@ -113,16 +113,18 @@ export interface BuildTestProjectOptions {
 
 export const buildTestProject = (options: BuildTestProjectOptions): ProjectInfo => {
   const reactMajorVersion = options.reactMajorVersion ?? 19;
+  const framework = options.framework ?? "unknown";
   return {
     rootDirectory: options.rootDirectory,
     projectName: path.basename(options.rootDirectory),
     reactVersion: reactMajorVersion !== null ? `^${reactMajorVersion}.0.0` : null,
     reactMajorVersion,
     tailwindVersion: options.tailwindVersion ?? null,
-    framework: options.framework ?? "unknown",
+    framework,
     hasTypeScript: options.hasTypeScript ?? true,
     hasReactCompiler: options.hasReactCompiler ?? false,
     hasTanStackQuery: options.hasTanStackQuery ?? false,
+    hasReactNativeWorkspace: framework === "expo" || framework === "react-native",
     sourceFileCount: 0,
   };
 };
@@ -150,16 +152,18 @@ export const collectRuleHits = async (
   const reactMajorVersion = Object.hasOwn(options, "reactMajorVersion")
     ? (options.reactMajorVersion ?? null)
     : 19;
+  const framework = options.framework ?? "unknown";
   const project: ProjectInfo = {
     rootDirectory: projectDir,
     projectName: path.basename(projectDir),
     reactVersion: reactMajorVersion !== null ? `^${reactMajorVersion}.0.0` : null,
     reactMajorVersion,
     tailwindVersion: options.tailwindVersion ?? null,
-    framework: options.framework ?? "unknown",
+    framework,
     hasTypeScript: true,
     hasReactCompiler: options.hasReactCompiler ?? false,
     hasTanStackQuery: options.hasTanStackQuery ?? false,
+    hasReactNativeWorkspace: framework === "react-native",
     sourceFileCount: 0,
   };
   const diagnostics = await runOxlint({

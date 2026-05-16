@@ -1,4 +1,5 @@
 import { classifyPackagePlatform } from "./classify-package-platform.js";
+import { getReactDoctorStringSetting } from "./get-react-doctor-setting.js";
 import type { RuleContext } from "./rule-context.js";
 
 // File extensions whose presence in the filename means "force this file
@@ -14,22 +15,6 @@ const WEB_FILE_EXTENSION_PATTERN = /\.web\.[cm]?[jt]sx?$/;
 // back into RN-only checks even when the package classification (or
 // project framework) doesn't already cover them.
 const NATIVE_FILE_EXTENSION_PATTERN = /\.(?:ios|android|native)\.[cm]?[jt]sx?$/;
-
-const getReactDoctorStringSetting = (
-  settings: RuleContext["settings"],
-  settingName: string,
-): string | undefined => {
-  const reactDoctorSettings = settings?.["react-doctor"];
-  if (
-    typeof reactDoctorSettings !== "object" ||
-    reactDoctorSettings === null ||
-    Array.isArray(reactDoctorSettings)
-  ) {
-    return undefined;
-  }
-  const settingValue = Object.getOwnPropertyDescriptor(reactDoctorSettings, settingName)?.value;
-  return typeof settingValue === "string" ? settingValue : undefined;
-};
 
 // Returns true when react-native rules should be evaluated for `filename`
 // given the surrounding `context.settings["react-doctor"].framework` hint.

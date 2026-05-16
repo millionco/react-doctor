@@ -5,7 +5,17 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<string> => 
   const capabilities = new Set<string>();
 
   capabilities.add(project.framework);
-  if (project.framework === "expo" || project.framework === "react-native") {
+  if (
+    project.framework === "expo" ||
+    project.framework === "react-native" ||
+    project.hasReactNativeWorkspace
+  ) {
+    // `hasReactNativeWorkspace` covers the inverted case the
+    // file-level gate alone cannot reach: a web-rooted monorepo
+    // (`next` / `vite` at the entry point) whose `apps/mobile`
+    // workspace targets React Native. Without this, every `rn-*`
+    // rule is dropped before the file-level package boundary in
+    // `oxlint-plugin-react-doctor` ever runs.
     capabilities.add("react-native");
   }
 

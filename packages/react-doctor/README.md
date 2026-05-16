@@ -247,6 +247,28 @@ When a suppression isn't working, `--explain <file:line>` (or its alias `--why <
 
 `offline` skips the score API entirely — no score is shown and no share URL is generated. Automatically enabled in CI environments (GitHub Actions, GitLab CI, CircleCI) so CI runs don't depend on the network.
 
+### React Native rules in mixed monorepos
+
+`rn-*` rules respect per-package boundaries automatically. In a mixed React Native + web monorepo (`apps/mobile` alongside `apps/web` / `apps/vite-app` / `packages/storybook` / `apps/docs`), every `rn-*` rule walks up to the file's nearest `package.json` before running:
+
+- Packages that declare `react-native`, `react-native-tvos`, `expo`, `expo-router`, `@expo/*`, `react-native-windows`, `react-native-macos`, anything under the `@react-native/` or `@react-native-` namespaces (`@react-native-firebase/app`, `@react-native-async-storage/async-storage`, …), or Metro's top-level `"react-native"` resolution field → rules ON.
+- Packages that declare a web-only framework (`next`, `vite`, `react-scripts`, `gatsby`, `@remix-run/*`, `@docusaurus/*`, `@storybook/*`, or plain `react-dom` without an RN sibling) → rules OFF.
+- Packages with no clear local signal → fall back to the project-level framework detection.
+
+File extensions override the package classification when they're unambiguous: `*.web.tsx` / `*.web.jsx` are always skipped (Metro resolves these only against `react-native-web`); `*.ios.tsx` / `*.android.tsx` / `*.native.tsx` are always scanned (mobile-only).
+
+The detection is bidirectional: a web-rooted monorepo (root `package.json` declares `next` or `vite`) still loads the `rn-*` rules when any workspace targets React Native — the file-level boundary then keeps them silent on the web workspaces and active on the mobile ones.
+
+`rn-no-raw-text` additionally short-circuits raw text inside platform-fork branches:
+
+- `if (Platform.OS === "web") { … }` consequent — and the `else` branch of `if (Platform.OS !== "web")`.
+- `Platform.OS === "web" ? <X /> : …` ternaries, `Platform.OS === "web" && <X />` short-circuits, and the reversed-operand form `"web" === Platform.OS`.
+- `switch (Platform.OS) { case "web": … }` case bodies (other cases still report).
+- `Platform.select({ web: <X />, default: <Y /> })` — only the `web` arm is exempt.
+- `Platform?.OS === "web"` (optional chain) and `Platform.OS! === "web"` (TS non-null assertion) parse the same way as the bare form.
+
+The walker stops at function and `Program` boundaries — JSX defined inside a callback hoisted out of a `Platform.OS` branch does not inherit the parent guard. Negative platform checks like `Platform.OS === "ios"` are deliberately NOT treated as web exemptions; only the explicit web branch is.
+
 ## Scoring
 
 The health score formula: `100 - (unique_error_rules x 1.5) - (unique_warning_rules x 0.75)`.

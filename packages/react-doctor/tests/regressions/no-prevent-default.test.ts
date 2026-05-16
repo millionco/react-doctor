@@ -404,3 +404,372 @@ describe("no-prevent-default — unknown framework", () => {
     expect(formHits[0].message).toContain("form won't work without JavaScript");
   });
 });
+
+// AST-shape edge cases — all run with `framework: "unknown"` so the
+// expectations describe the AST walk + attribute guards independently
+// of any framework branching. If the rule's `containsPreventDefaultCall`
+// walker or `findJsxAttribute` lookup regresses, these fire first.
+describe("no-prevent-default — AST shape edge cases", () => {
+  it("flags an async arrow handler that calls preventDefault()", async () => {
+    const projectDir = setupReactProject(tempRoot, "ast-async-arrow", {
+      files: {
+        "src/sign-up.tsx": `export const SignUp = () => (
+  <form
+    onSubmit={async (event) => {
+      event.preventDefault();
+      await Promise.resolve();
+    }}
+  >
+    <input />
+  </form>
+);
+`,
+      },
+    });
+
+    const formHits = await getPreventDefaultHits(projectDir, { framework: "unknown" });
+    expect(formHits).toHaveLength(1);
+  });
+
+  it("flags a FunctionExpression (non-arrow) handler that calls preventDefault()", async () => {
+    const projectDir = setupReactProject(tempRoot, "ast-function-expression", {
+      files: {
+        "src/sign-up.tsx": `export const SignUp = () => (
+  <form
+    onSubmit={function handle(event) {
+      event.preventDefault();
+    }}
+  >
+    <input />
+  </form>
+);
+`,
+      },
+    });
+
+    const formHits = await getPreventDefaultHits(projectDir, { framework: "unknown" });
+    expect(formHits).toHaveLength(1);
+  });
+
+  it("does NOT flag a referenced handler (rule cannot see into named references)", async () => {
+    // HACK: pins the current limitation. The rule only inspects inline
+    // ArrowFunctionExpression / FunctionExpression handlers; once the
+    // handler is hoisted to a named binding the rule body conservatively
+    // skips it. A future precision PR could chase the reference, but
+    // until then this regression documents the conscious gap so we
+    // don't accidentally regress in the other direction.
+    const projectDir = setupReactProject(tempRoot, "ast-referenced-handler", {
+      files: {
+        "src/sign-up.tsx": `const handleSubmit = (event: { preventDefault: () => void }) => {
+  event.preventDefault();
+};
+
+export const SignUp = () => (
+  <form onSubmit={handleSubmit}>
+    <input />
+  </form>
+);
+`,
+      },
+    });
+
+    await expect(getPreventDefaultHits(projectDir, { framework: "unknown" })).resolves.toEqual([]);
+  });
+
+  it("flags preventDefault() reached through a nested closure inside the handler", async () => {
+    const projectDir = setupReactProject(tempRoot, "ast-nested-closure", {
+      files: {
+        "src/sign-up.tsx": `export const SignUp = () => (
+  <form
+    onSubmit={(event) => {
+      const stop = () => event.preventDefault();
+      stop();
+    }}
+  >
+    <input />
+  </form>
+);
+`,
+      },
+    });
+
+    const formHits = await getPreventDefaultHits(projectDir, { framework: "unknown" });
+    expect(formHits).toHaveLength(1);
+  });
+
+  it("flags a block-body handler that returns the preventDefault() call", async () => {
+    const projectDir = setupReactProject(tempRoot, "ast-block-return", {
+      files: {
+        "src/sign-up.tsx": `export const SignUp = () => (
+  <form
+    onSubmit={(event) => {
+      return event.preventDefault();
+    }}
+  >
+    <input />
+  </form>
+);
+`,
+      },
+    });
+
+    const formHits = await getPreventDefaultHits(projectDir, { framework: "unknown" });
+    expect(formHits).toHaveLength(1);
+  });
+
+  it("flags a self-closing <form onSubmit={...} />", async () => {
+    const projectDir = setupReactProject(tempRoot, "ast-self-closing", {
+      files: {
+        "src/sign-up.tsx": `export const SignUp = () => (
+  <form
+    onSubmit={(event) => {
+      event.preventDefault();
+    }}
+  />
+);
+`,
+      },
+    });
+
+    const formHits = await getPreventDefaultHits(projectDir, { framework: "unknown" });
+    expect(formHits).toHaveLength(1);
+  });
+
+  it("flags a <form> rendered inside a .map() callback", async () => {
+    const projectDir = setupReactProject(tempRoot, "ast-mapped-form", {
+      files: {
+        "src/sign-up-list.tsx": `export const SignUpList = ({ rows }: { rows: { id: string }[] }) => (
+  <>
+    {rows.map((row) => (
+      <form
+        key={row.id}
+        onSubmit={(event) => {
+          event.preventDefault();
+        }}
+      >
+        <input name={row.id} />
+      </form>
+    ))}
+  </>
+);
+`,
+      },
+    });
+
+    const formHits = await getPreventDefaultHits(projectDir, { framework: "unknown" });
+    expect(formHits).toHaveLength(1);
+  });
+
+  it("flags every <form> independently when two appear in the same file", async () => {
+    const projectDir = setupReactProject(tempRoot, "ast-two-forms", {
+      files: {
+        "src/sign-up.tsx": `export const SignUp = () => (
+  <>
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+      }}
+    >
+      <input name="first" />
+    </form>
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+      }}
+    >
+      <input name="second" />
+    </form>
+  </>
+);
+`,
+      },
+    });
+
+    const formHits = await getPreventDefaultHits(projectDir, { framework: "unknown" });
+    expect(formHits).toHaveLength(2);
+  });
+
+  it("does NOT flag <form onSubmitCapture> (attribute-name guard)", async () => {
+    const projectDir = setupReactProject(tempRoot, "ast-on-submit-capture", {
+      files: {
+        "src/sign-up.tsx": `export const SignUp = () => (
+  <form
+    onSubmitCapture={(event) => {
+      event.preventDefault();
+    }}
+  >
+    <input />
+  </form>
+);
+`,
+      },
+    });
+
+    await expect(getPreventDefaultHits(projectDir, { framework: "unknown" })).resolves.toEqual([]);
+  });
+
+  it("does NOT flag <a onClickCapture> (attribute-name guard)", async () => {
+    const projectDir = setupReactProject(tempRoot, "ast-on-click-capture", {
+      files: {
+        "src/pager.tsx": `export const Pager = () => (
+  <a
+    href="#"
+    onClickCapture={(event) => {
+      event.preventDefault();
+    }}
+  >
+    Next
+  </a>
+);
+`,
+      },
+    });
+
+    await expect(getPreventDefaultHits(projectDir, { framework: "unknown" })).resolves.toEqual([]);
+  });
+
+  it("does NOT flag <form onSubmit={undefined}> (handler isn't an arrow/function expression)", async () => {
+    const projectDir = setupReactProject(tempRoot, "ast-undefined-handler", {
+      files: {
+        "src/sign-up.tsx": `export const SignUp = () => (
+  <form onSubmit={undefined}>
+    <input />
+  </form>
+);
+`,
+      },
+    });
+
+    await expect(getPreventDefaultHits(projectDir, { framework: "unknown" })).resolves.toEqual([]);
+  });
+
+  it("does NOT flag a capitalized <A> user component (anchor tag-name guard)", async () => {
+    const projectDir = setupReactProject(tempRoot, "ast-capitalized-anchor", {
+      files: {
+        "src/pager.tsx": `import { A } from "./anchor";
+
+export const Pager = () => (
+  <A
+    onClick={(event: { preventDefault: () => void }) => {
+      event.preventDefault();
+    }}
+  >
+    Next
+  </A>
+);
+`,
+        "src/anchor.tsx": `interface AnchorProps {
+  onClick: (event: { preventDefault: () => void }) => void;
+  children: React.ReactNode;
+}
+
+export const A = (props: AnchorProps) => <a onClick={props.onClick}>{props.children}</a>;
+`,
+      },
+    });
+
+    await expect(getPreventDefaultHits(projectDir, { framework: "unknown" })).resolves.toEqual([]);
+  });
+
+  it("still flags <a> when other unrelated attributes are present (target, rel, etc.)", async () => {
+    const projectDir = setupReactProject(tempRoot, "ast-anchor-extra-attrs", {
+      files: {
+        "src/pager.tsx": `export const Pager = () => (
+  <a
+    href="https://example.com"
+    target="_blank"
+    rel="noopener noreferrer"
+    onClick={(event) => {
+      event.preventDefault();
+    }}
+  >
+    External
+  </a>
+);
+`,
+      },
+    });
+
+    const anchorHits = await getPreventDefaultHits(projectDir, { framework: "unknown" });
+    expect(anchorHits).toHaveLength(1);
+    expect(anchorHits[0].message).toContain("<button>");
+  });
+});
+
+// Optional chaining produces `ChainExpression > CallExpression(optional)
+// > MemberExpression(optional, property=Identifier "preventDefault")`
+// in ESTree. The rule's generic `walkAst` traverses the ChainExpression
+// wrapper transparently and matches the inner CallExpression. This pins
+// that behavior so a future "switch to a stricter walker" refactor has
+// to consciously re-add coverage if it changes.
+describe("no-prevent-default — optional chaining", () => {
+  it("flags `event?.preventDefault?.()` in a <form> handler", async () => {
+    const projectDir = setupReactProject(tempRoot, "optional-chain-form", {
+      files: {
+        "src/sign-up.tsx": `export const SignUp = () => (
+  <form
+    onSubmit={(event) => {
+      event?.preventDefault?.();
+    }}
+  >
+    <input />
+  </form>
+);
+`,
+      },
+    });
+
+    const formHits = await getPreventDefaultHits(projectDir, { framework: "unknown" });
+    expect(formHits).toHaveLength(1);
+  });
+
+  it("flags `event?.preventDefault()` in an <a> handler (half-optional chain)", async () => {
+    const projectDir = setupReactProject(tempRoot, "optional-chain-anchor", {
+      files: {
+        "src/pager.tsx": `export const Pager = () => (
+  <a
+    href="#"
+    onClick={(event) => {
+      event?.preventDefault();
+    }}
+  >
+    Next
+  </a>
+);
+`,
+      },
+    });
+
+    const anchorHits = await getPreventDefaultHits(projectDir, { framework: "unknown" });
+    expect(anchorHits).toHaveLength(1);
+  });
+});
+
+// Currently `framework: "nextjs"` resolves the same way for App Router
+// and Pages Router. Pages Router has no RSC Server Actions; the
+// `<form action={serverAction}>` recommendation only literally applies
+// to App Router. We still ship the same "server action" message in
+// both routers because (a) the broader "use a form action for
+// progressive enhancement" idea is still correct on Pages Router via
+// classic `<form action="/api/route" method="POST">`, and (b) we don't
+// yet have per-file router-type detection in this rule.
+//
+// Pin the current behavior so a future router-aware precision PR
+// (mirroring `nextjs-no-client-side-redirect`'s split) has to flip
+// these assertions intentionally.
+describe("no-prevent-default — Next.js Pages Router (precision-debt pin)", () => {
+  it("still fires with server-action wording on Pages Router forms (acknowledged limitation)", async () => {
+    const projectDir = setupReactProject(tempRoot, "next-pages-form", {
+      packageJsonExtras: {
+        dependencies: { next: "^15.0.0", react: "^19.0.0", "react-dom": "^19.0.0" },
+      },
+      files: {
+        "src/pages/login.tsx": FORM_PREVENT_DEFAULT_SOURCE,
+      },
+    });
+
+    const formHits = await getPreventDefaultHits(projectDir, { framework: "nextjs" });
+    expect(formHits).toHaveLength(1);
+    expect(formHits[0].message).toContain("server action");
+  });
+});

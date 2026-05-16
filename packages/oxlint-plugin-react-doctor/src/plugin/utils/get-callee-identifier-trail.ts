@@ -10,9 +10,16 @@ import { isNodeOfType } from "./is-node-of-type.js";
 // rightmost identifier against UI-flow / sequencing tables without
 // having to enumerate every possible chain shape.
 export const getCalleeIdentifierTrail = (call: EsTreeNode | null | undefined): string[] => {
-  if (!isNodeOfType(call, "CallExpression") && !isNodeOfType(call, "NewExpression")) return [];
+  // Optional-chained awaits (`await page?.click()`) parse as a
+  // `ChainExpression` wrapping the underlying `CallExpression`, so the
+  // entry guard must peel any wrapping chain layers before checking
+  // for the call/new — otherwise the trail would silently come back
+  // empty and the UI-flow / sequencing signal would be missed.
+  let entry: EsTreeNode | null | undefined = call;
+  while (isNodeOfType(entry, "ChainExpression")) entry = entry.expression;
+  if (!isNodeOfType(entry, "CallExpression") && !isNodeOfType(entry, "NewExpression")) return [];
   const trail: string[] = [];
-  let cursor: EsTreeNode | null | undefined = call.callee;
+  let cursor: EsTreeNode | null | undefined = entry.callee;
   while (cursor) {
     if (isNodeOfType(cursor, "ChainExpression")) {
       cursor = cursor.expression;

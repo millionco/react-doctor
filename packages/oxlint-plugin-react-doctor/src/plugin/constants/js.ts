@@ -114,14 +114,20 @@ export const TEST_LIBRARY_IMPORT_SOURCES: ReadonlySet<string> = new Set([
 // Source-prefix matches catch sub-paths and scoped extensions that the
 // `TEST_LIBRARY_IMPORT_SOURCES` set can't enumerate exhaustively
 // (`vitest/browser`, `@vitest/spy`, `@playwright/test/reporter`, etc.).
+// Every entry MUST end in `/` so the prefix can only match a subpath
+// — a bare prefix like `@storybook/test` would also subsume
+// `@storybook/test-runner` and `@storybook/testing-library`, both of
+// which are already enumerated in the exact set above and may diverge
+// independently in the future.
 export const TEST_LIBRARY_IMPORT_SOURCE_PREFIXES: ReadonlyArray<string> = [
   "vitest/",
   "@vitest/",
   "@jest/",
   "@testing-library/",
   "@playwright/",
-  "@storybook/test",
-  "@storybook/testing-library",
+  "@storybook/test/",
+  "@storybook/test-runner/",
+  "@storybook/testing-library/",
   "@cypress/",
   "@nuxt/test-utils/",
 ];

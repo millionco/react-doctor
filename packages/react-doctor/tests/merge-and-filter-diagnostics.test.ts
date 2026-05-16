@@ -4,7 +4,11 @@ import path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 
 import type { Diagnostic } from "@react-doctor/types";
-import { createNodeReadFileLinesSync, mergeAndFilterDiagnostics } from "@react-doctor/core";
+import {
+  clearAutoSuppressionCaches,
+  createNodeReadFileLinesSync,
+  mergeAndFilterDiagnostics,
+} from "@react-doctor/core";
 import { buildDiagnostic, writeFile } from "./regressions/_helpers.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-merge-and-filter-"));
@@ -62,5 +66,81 @@ describe("mergeAndFilterDiagnostics — respectInlineDisables option", () => {
       { respectInlineDisables: false },
     );
     expect(filtered).toHaveLength(0);
+  });
+});
+
+describe("mergeAndFilterDiagnostics — test-noise tag auto-suppression for async-parallel", () => {
+  const projectDir = path.join(tempRoot, "test-noise-async-parallel");
+  const readNoop = () => null;
+  const asyncParallelDiagnostic = (filePath: string): Diagnostic =>
+    buildDiagnostic({
+      rule: "async-parallel",
+      filePath,
+      line: 1,
+      column: 1,
+    });
+
+  it("auto-suppresses async-parallel in `*.test.tsx` files", () => {
+    clearAutoSuppressionCaches();
+    const filtered = mergeAndFilterDiagnostics(
+      [asyncParallelDiagnostic("src/dashboard.test.tsx")],
+      projectDir,
+      null,
+      readNoop,
+      { respectInlineDisables: false },
+    );
+    expect(filtered).toHaveLength(0);
+  });
+
+  it("auto-suppresses async-parallel inside `__tests__/` directories", () => {
+    clearAutoSuppressionCaches();
+    const filtered = mergeAndFilterDiagnostics(
+      [asyncParallelDiagnostic("src/utils/__tests__/load-data.ts")],
+      projectDir,
+      null,
+      readNoop,
+      { respectInlineDisables: false },
+    );
+    expect(filtered).toHaveLength(0);
+  });
+
+  it("auto-suppresses async-parallel inside Playwright/Cypress/e2e directories", () => {
+    clearAutoSuppressionCaches();
+    const filtered = mergeAndFilterDiagnostics(
+      [
+        asyncParallelDiagnostic("playwright/checkout.spec.ts"),
+        asyncParallelDiagnostic("cypress/e2e/login.cy.ts"),
+        asyncParallelDiagnostic("e2e/onboarding.ts"),
+      ],
+      projectDir,
+      null,
+      readNoop,
+      { respectInlineDisables: false },
+    );
+    expect(filtered).toHaveLength(0);
+  });
+
+  it("auto-suppresses async-parallel for Windows-slashed test paths", () => {
+    clearAutoSuppressionCaches();
+    const filtered = mergeAndFilterDiagnostics(
+      [asyncParallelDiagnostic("src\\components\\Button.test.tsx")],
+      projectDir,
+      null,
+      readNoop,
+      { respectInlineDisables: false },
+    );
+    expect(filtered).toHaveLength(0);
+  });
+
+  it("still surfaces async-parallel in plain production files", () => {
+    clearAutoSuppressionCaches();
+    const filtered = mergeAndFilterDiagnostics(
+      [asyncParallelDiagnostic("src/server/load-dashboard.ts")],
+      projectDir,
+      null,
+      readNoop,
+      { respectInlineDisables: false },
+    );
+    expect(filtered).toHaveLength(1);
   });
 });

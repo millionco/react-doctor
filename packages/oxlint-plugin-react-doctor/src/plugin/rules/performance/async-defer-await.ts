@@ -1,15 +1,29 @@
 import { defineRule } from "../../utils/define-rule.js";
-import { walkAst } from "../../utils/walk-ast.js";
+import { collectPatternDefaultReferenceNames } from "../../utils/collect-pattern-default-reference-names.js";
+import { collectPatternNames } from "../../utils/collect-pattern-names.js";
+import { collectReferenceIdentifierNames } from "../../utils/collect-reference-identifier-names.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
-const collectIdentifierNames = (node: EsTreeNode | null | undefined, into: Set<string>): void => {
-  if (!node) return;
-  walkAst(node, (child: EsTreeNode) => {
-    if (isNodeOfType(child, "Identifier")) into.add(child.name);
-  });
+const collectDeclaratorDependencyIdentifierNames = (
+  declarator: EsTreeNode,
+  into: Set<string>,
+): void => {
+  if (!isNodeOfType(declarator, "VariableDeclarator")) return;
+  collectReferenceIdentifierNames(declarator.init, into);
+  collectPatternDefaultReferenceNames(declarator.id, into);
+};
+
+const hasAnyIdentifierName = (
+  identifierNames: ReadonlySet<string>,
+  candidateNames: ReadonlySet<string>,
+): boolean => {
+  for (const candidateName of candidateNames) {
+    if (identifierNames.has(candidateName)) return true;
+  }
+  return false;
 };
 
 const isEarlyReturnIfStatement = (statement: EsTreeNode): boolean => {
@@ -51,18 +65,13 @@ export const asyncDeferAwait = defineRule<Rule>({
         for (const declarator of currentStatement.declarations ?? []) {
           if (isNodeOfType(declarator.init, "AwaitExpression")) {
             didAwait = true;
-            if (isNodeOfType(declarator.id, "Identifier")) {
-              awaitedBindingNames.add(declarator.id.name);
-            } else if (isNodeOfType(declarator.id, "ObjectPattern")) {
-              for (const property of declarator.id.properties ?? []) {
-                if (
-                  isNodeOfType(property, "Property") &&
-                  isNodeOfType(property.value, "Identifier")
-                ) {
-                  awaitedBindingNames.add(property.value.name);
-                }
-              }
-            }
+            collectPatternNames(declarator.id, awaitedBindingNames);
+            continue;
+          }
+          const dependencyIdentifiers = new Set<string>();
+          collectDeclaratorDependencyIdentifierNames(declarator, dependencyIdentifiers);
+          if (hasAnyIdentifierName(dependencyIdentifiers, awaitedBindingNames)) {
+            collectPatternNames(declarator.id, awaitedBindingNames);
           }
         }
         if (!didAwait) continue;
@@ -72,16 +81,15 @@ export const asyncDeferAwait = defineRule<Rule>({
         if (!isNodeOfType(nextStatement, "IfStatement")) continue;
 
         const testIdentifiers = new Set<string>();
-        collectIdentifierNames(nextStatement.test, testIdentifiers);
-        const usesAwaitedBinding = [...awaitedBindingNames].some((name) =>
-          testIdentifiers.has(name),
-        );
+        collectReferenceIdentifierNames(nextStatement.test, testIdentifiers);
+        const usesAwaitedBinding = hasAnyIdentifierName(testIdentifiers, awaitedBindingNames);
         if (usesAwaitedBinding) continue;
 
         const consequentIdentifiers = new Set<string>();
-        collectIdentifierNames(nextStatement.consequent, consequentIdentifiers);
-        const consequentUsesAwaited = [...awaitedBindingNames].some((name) =>
-          consequentIdentifiers.has(name),
+        collectReferenceIdentifierNames(nextStatement.consequent, consequentIdentifiers);
+        const consequentUsesAwaited = hasAnyIdentifierName(
+          consequentIdentifiers,
+          awaitedBindingNames,
         );
         if (consequentUsesAwaited) continue;
 

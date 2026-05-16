@@ -134,26 +134,22 @@ Fix:
 - Add mixed-monorepo fixture: `apps/web` plus `apps/native`.
 - Add `Platform.OS === "web"` branch handling for cross-platform files.
 
-### [ ] Make `no-prevent-default` framework-aware
+### [x] Make `no-prevent-default` framework-aware
 
-Status: confirmed current.
+Status: landed on `main`.
 
 Source:
 
 - Screenshot: SPA/client-only app got server-action advice for `<form onSubmit preventDefault()>`.
 
-Current problem:
+Done:
 
-- `no-prevent-default.ts` always recommends server actions for form submit handlers.
-- It has no framework/server-capability gate.
-
-Fix:
-
-- Split generic form semantics from server-action advice.
-- Only recommend server actions in server-capable frameworks.
-- In SPA/client-only apps, suppress the form variant or use client-appropriate wording.
-- Keep `<a onClick preventDefault()>` guidance separate.
-- Add regressions for Vite SPA, Next App Router, and dialog/local-only forms.
+- Split form-variant diagnostic by framework capability:
+  - server-capable (`nextjs` / `tanstack-start` / `remix`) → fire with the existing "server action" wording.
+  - client-only / SPA / mobile (`vite` / `cra` / `gatsby` / `react-native` / `expo`) → suppress the `<form>` warning entirely (`preventDefault()` is the canonical SPA pattern).
+  - `unknown` framework → still fire, but with framework-neutral wording (no "server action" jargon).
+- Kept `<a onClick preventDefault()>` guidance unchanged across all frameworks.
+- Added `packages/react-doctor/tests/regressions/no-prevent-default.test.ts` covering Vite SPA (form/anchor/dialog/local-only/capitalized `<Form>`/handler-without-preventDefault), Next.js App Router (server-action wording, dialog precision-debt pin, anchor inside conditional handler), TanStack Start, Remix, CRA, Gatsby, Expo (react-native-web), bare React Native, and `unknown` (neutral wording + arrow-concise-body coverage).
 
 ### [ ] Fix `js-length-check-first` guard detection
 

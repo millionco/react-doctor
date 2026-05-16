@@ -95,8 +95,12 @@ export interface CollectRuleHitsOptions {
    * for rules like `design-no-redundant-size-axes`.
    */
   tailwindVersion?: string | null;
-  /** Project framework hint (default: "unknown"). Set to "react-native" for RN-only rules. */
-  framework?: "unknown" | "react-native";
+  /**
+   * Project framework hint (default: "unknown"). Set to "react-native"
+   * or "expo" to activate the `rn-*` rule bucket (both add the
+   * `react-native` capability in `buildCapabilities`).
+   */
+  framework?: "unknown" | "react-native" | "expo";
   hasReactCompiler?: boolean;
   hasTanStackQuery?: boolean;
 }
@@ -163,7 +167,7 @@ export const collectRuleHits = async (
     hasTypeScript: true,
     hasReactCompiler: options.hasReactCompiler ?? false,
     hasTanStackQuery: options.hasTanStackQuery ?? false,
-    hasReactNativeWorkspace: framework === "react-native",
+    hasReactNativeWorkspace: framework === "react-native" || framework === "expo",
     sourceFileCount: 0,
   };
   const diagnostics = await runOxlint({

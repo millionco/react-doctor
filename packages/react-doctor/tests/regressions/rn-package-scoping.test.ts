@@ -33,7 +33,8 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 
 import { runOxlint } from "@react-doctor/core";
-import type { Diagnostic } from "@react-doctor/types";
+import { discoverProject } from "@react-doctor/project-info";
+import type { Diagnostic, PackageJson } from "@react-doctor/types";
 import { buildTestProject, setupReactProject, writeFile, writeJson } from "./_helpers.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-rn-scope-"));
@@ -1221,7 +1222,7 @@ export const Screen = () =>
     expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text").length).toBeGreaterThan(0);
   });
 
-  it("recognises the string-quoted property key form `{ \"web\": ... }`", async () => {
+  it('recognises the string-quoted property key form `{ "web": ... }`', async () => {
     const projectDir = setupPlatformSelectProject(
       "platform-select-string-key",
       `import { Platform, View } from "react-native";
@@ -1242,7 +1243,7 @@ export const Screen = () =>
 });
 
 describe("rn-no-raw-text: TS / chain wrapping around the Platform.OS read", () => {
-  it("recognises `Platform?.OS === \"web\"` (optional chain)", async () => {
+  it('recognises `Platform?.OS === "web"` (optional chain)', async () => {
     const projectDir = setupReactProject(tempRoot, "platform-os-optional-chain", {
       packageJsonExtras: { dependencies: { react: "^19.0.0", "react-native": "0.76.0" } },
       files: {
@@ -1264,7 +1265,7 @@ export const Screen = () => {
     expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text")).toHaveLength(0);
   });
 
-  it("recognises `Platform.OS! === \"web\"` (TS non-null assertion)", async () => {
+  it('recognises `Platform.OS! === "web"` (TS non-null assertion)', async () => {
     const projectDir = setupReactProject(tempRoot, "platform-os-non-null-assertion", {
       packageJsonExtras: { dependencies: { react: "^19.0.0", "react-native": "0.76.0" } },
       files: {
@@ -1358,4 +1359,131 @@ describe("inverted monorepo: web-rooted project with an RN workspace still loads
     expect(normalizedPaths.some((filePath) => filePath.includes("apps/mobile/"))).toBe(true);
     expect(normalizedPaths.some((filePath) => filePath.includes("apps/web/"))).toBe(false);
   });
+});
+
+// Each entry encodes a single RN "signal" the two predicates have to
+// agree on — added once here, exercised against BOTH layers below.
+//
+//   project-info side: `discoverProject(...).hasReactNativeWorkspace`
+//                      gates whether the `react-native` capability is
+//                      added in `buildCapabilities`, deciding if any
+//                      `rn-*` rule loads at all.
+//
+//   oxlint plugin side: `classifyPackagePlatform` (called by every
+//                       `rn-*` rule via `wrapReactNativeRule`)
+//                       decides whether a given file's nearest
+//                       `package.json` is treated as RN-aware.
+//
+// When someone adds a new package name to one side and forgets the
+// other, the sync table below catches the drift on its next test run.
+interface ReactNativeSignal {
+  description: string;
+  // `packageJsonExtras` is splatted into the workspace package.json.
+  // Use `dependencies` / `devDependencies` / `peerDependencies` /
+  // `optionalDependencies` / `"react-native"` to pin the RN signal
+  // shape under test.
+  packageJsonExtras: Partial<PackageJson> & { "react-native"?: string };
+}
+
+const REACT_NATIVE_SIGNALS: ReadonlyArray<ReactNativeSignal> = [
+  {
+    description: "bare `react-native` dependency",
+    packageJsonExtras: { dependencies: { "react-native": "0.76.0" } },
+  },
+  {
+    description: "`react-native-tvos` dependency",
+    packageJsonExtras: { dependencies: { "react-native-tvos": "0.76.0-0" } },
+  },
+  {
+    description: "`expo` + `expo-router` dependencies",
+    packageJsonExtras: {
+      dependencies: { expo: "^51.0.0", "expo-router": "^3.5.0" },
+    },
+  },
+  {
+    description: "`react-native` in `peerDependencies` only",
+    packageJsonExtras: { peerDependencies: { "react-native": "*" } },
+  },
+  {
+    description: "`react-native` in `devDependencies` only",
+    packageJsonExtras: { devDependencies: { "react-native": "0.76.0" } },
+  },
+  {
+    description: "`react-native` in `optionalDependencies` only",
+    packageJsonExtras: { optionalDependencies: { "react-native": "0.76.0" } },
+  },
+  {
+    description: "`@react-native-firebase/app` namespace dependency",
+    packageJsonExtras: { dependencies: { "@react-native-firebase/app": "^21.0.0" } },
+  },
+  {
+    description: "`@react-native/metro-config` namespace dependency",
+    packageJsonExtras: { devDependencies: { "@react-native/metro-config": "^0.76.0" } },
+  },
+  {
+    description: "Metro's top-level `react-native` resolution field (library manifest)",
+    packageJsonExtras: { "react-native": "./dist/native/index.js" },
+  },
+];
+
+describe("RN signal sync table: project-info and oxlint plugin RN detection MUST agree", () => {
+  // Project-info side — discoverProject is what populates
+  // `hasReactNativeWorkspace`. Exercising it inside a Next-rooted
+  // workspace catches signals that classify the file as RN
+  // (oxlint plugin) but never get the capability added
+  // (project-info) — the silent drop that prevents the rule from
+  // ever running.
+  for (const signal of REACT_NATIVE_SIGNALS) {
+    it(`discoverProject — ${signal.description} → hasReactNativeWorkspace: true`, () => {
+      const rootDirectory = fs.mkdtempSync(path.join(tempRoot, "rn-signal-discover-"));
+      const mobileDirectory = path.join(rootDirectory, "apps", "mobile");
+      fs.mkdirSync(mobileDirectory, { recursive: true });
+      writeJson(path.join(rootDirectory, "package.json"), {
+        name: "sync-root",
+        dependencies: { next: "^14.0.0", react: "^19.0.0", "react-dom": "^19.0.0" },
+        workspaces: ["apps/*"],
+      });
+      writeJson(path.join(mobileDirectory, "package.json"), {
+        name: "mobile",
+        dependencies: { react: "^19.0.0" },
+        ...signal.packageJsonExtras,
+      });
+
+      const projectInfo = discoverProject(rootDirectory);
+      expect(projectInfo.hasReactNativeWorkspace).toBe(true);
+    });
+  }
+
+  // Plugin side — classifyPackagePlatform is called inside the rule
+  // wrapper; the observable is whether `rn-no-raw-text` fires on a
+  // file inside the workspace. Exercising it here catches the
+  // inverse drift — a signal that's caught at the project level but
+  // missed at the file level, which would mean rn-* rules load
+  // globally and then over-fire on the same RN package.
+  for (const signal of REACT_NATIVE_SIGNALS) {
+    it(`classifyPackagePlatform — ${signal.description} → file classifies as RN`, async () => {
+      const projectDirectory = setupReactProject(
+        tempRoot,
+        `rn-signal-classify-${signal.description.replace(/[^a-z0-9]/gi, "-")}`,
+        {
+          packageJsonExtras: {
+            ...signal.packageJsonExtras,
+            dependencies: {
+              react: "^19.0.0",
+              ...(signal.packageJsonExtras.dependencies ?? {}),
+            },
+          },
+          files: {
+            "src/Screen.tsx": `export const Screen = () => <View>raw</View>;\n`,
+          },
+        },
+      );
+
+      const diagnostics = await runOxlint({
+        rootDirectory: projectDirectory,
+        project: buildTestProject({ rootDirectory: projectDirectory, framework: "react-native" }),
+      });
+      expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text").length).toBeGreaterThan(0);
+    });
+  }
 });

@@ -1,40 +1,13 @@
-import type { PackageJson } from "@react-doctor/types";
-
-// Known package names that mean "this manifest targets React Native".
-// Kept in sync with `oxlint-plugin-react-doctor`'s
-// `classify-package-platform.ts` so the file-level rule gate and the
-// project-level capability gate agree about what counts as RN.
-// `react-native-web` is deliberately absent — it's a DOM compat layer
-// that lives in web hosts (Next / Vite), not a mobile target.
-const REACT_NATIVE_DEPENDENCY_NAMES: ReadonlySet<string> = new Set([
-  "react-native",
-  "react-native-tvos",
-  "expo",
-  "expo-router",
-  "@expo/cli",
-  "@expo/metro-config",
-  "@expo/metro-runtime",
-  "react-native-windows",
-  "react-native-macos",
-]);
-
-const REACT_NATIVE_DEPENDENCY_PREFIXES: ReadonlyArray<string> = [
-  "@react-native/",
-  "@react-native-",
-];
+import { isReactNativeDependencyName, type PackageJson } from "@react-doctor/types";
 
 interface PackageJsonWithReactNativeField extends PackageJson {
   "react-native"?: unknown;
 }
 
-const matchesReactNativeNamespace = (dependencyName: string): boolean =>
-  REACT_NATIVE_DEPENDENCY_PREFIXES.some((prefix) => dependencyName.startsWith(prefix));
-
 const containsAnyReactNativeDependency = (section: Record<string, string> | undefined): boolean => {
   if (!section) return false;
   for (const dependencyName of Object.keys(section)) {
-    if (REACT_NATIVE_DEPENDENCY_NAMES.has(dependencyName)) return true;
-    if (matchesReactNativeNamespace(dependencyName)) return true;
+    if (isReactNativeDependencyName(dependencyName)) return true;
   }
   return false;
 };

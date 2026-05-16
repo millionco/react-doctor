@@ -1,33 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-
-// Packages whose presence in a manifest definitively marks the package as
-// a React Native (mobile-first) target. `react-native-web` is intentionally
-// NOT included here — it's a web compatibility layer and is paired with a
-// `react-dom` / Next / Vite host package, not with mobile RN.
-const REACT_NATIVE_DEPENDENCY_NAMES: ReadonlySet<string> = new Set([
-  "react-native",
-  "react-native-tvos",
-  "expo",
-  "expo-router",
-  "@expo/cli",
-  "@expo/metro-config",
-  "@expo/metro-runtime",
-  "react-native-windows",
-  "react-native-macos",
-]);
-
-// Scoped namespaces whose member packages are RN-only by construction.
-// Anything published under `@react-native/*` or `@react-native-*` (the
-// two community-owned namespaces) is mobile-only — covers
-// `@react-native/babel-preset`, `@react-native-firebase/app`,
-// `@react-native-community/cli`, `@react-native-async-storage/async-storage`,
-// and the dozens of other community packages without us having to
-// enumerate them.
-const REACT_NATIVE_DEPENDENCY_PREFIXES: ReadonlyArray<string> = [
-  "@react-native/",
-  "@react-native-",
-];
+import { isReactNativeDependencyName } from "@react-doctor/types";
 
 // Packages that mark the manifest as a web-only React target. If a manifest
 // contains one of these AND has no React Native indicator, every React
@@ -139,14 +112,10 @@ const iterateDependencyNames = function* (
   }
 };
 
-const matchesReactNativeNamespace = (dependencyName: string): boolean =>
-  REACT_NATIVE_DEPENDENCY_PREFIXES.some((prefix) => dependencyName.startsWith(prefix));
-
 const isReactNativeAware = (packageJson: PackageJsonDependencyView): boolean => {
   if (typeof packageJson["react-native"] === "string") return true;
   for (const dependencyName of iterateDependencyNames(packageJson)) {
-    if (REACT_NATIVE_DEPENDENCY_NAMES.has(dependencyName)) return true;
-    if (matchesReactNativeNamespace(dependencyName)) return true;
+    if (isReactNativeDependencyName(dependencyName)) return true;
   }
   return false;
 };

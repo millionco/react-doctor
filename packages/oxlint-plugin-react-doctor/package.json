@@ -52,6 +52,7 @@
     "@typescript-eslint/types": "^8.59.3"
   },
   "devDependencies": {
+    "@react-doctor/types": "workspace:*",
     "@types/node": "^25.6.0"
   },
   "engines": {

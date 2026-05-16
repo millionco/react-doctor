@@ -34,8 +34,15 @@ export const GENERIC_AUTH_METHOD_NAMES = new Set(["getUser"]);
 // purpose — we accept obvious auth providers (auth/clerk/session/jwt/
 // supabase…) and skip ambiguous nouns like "user" that show up in
 // non-auth namespaces (`userAnalytics`, `userStore`, …).
+//
+// Every alternative MUST be a substring that can actually appear in a
+// JavaScript identifier — i.e. no hyphens. `buildDottedReceiverSource`
+// only emits Identifier names joined by `.`, so any alternative with
+// `-` is dead code (it can never match). `auth` already covers most
+// "better-auth" and "iron-session" usage via the canonical `auth`
+// re-export those libraries ship.
 export const AUTH_OBJECT_PATTERN =
-  /(?:^|[._])(?:auth|authn|authz|clerk|session|jwt|firebase|supabase|nextauth|kinde|workos|stytch|descope|cognito|propelauth|lucia|iron-session|better-auth)/i;
+  /(?:^|[._])(?:auth|authn|authz|clerk|session|jwt|firebase|supabase|nextauth|kinde|workos|stytch|descope|cognito|propelauth|lucia)/i;
 
 export const SECRET_PATTERNS = [
   /^sk_live_/,

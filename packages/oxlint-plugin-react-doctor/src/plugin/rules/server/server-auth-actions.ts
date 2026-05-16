@@ -5,6 +5,7 @@ import {
   GENERIC_AUTH_METHOD_NAMES,
 } from "../../constants/security.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { getReactDoctorStringArraySetting } from "../../utils/get-react-doctor-setting.js";
 import { hasDirective } from "../../utils/has-directive.js";
 import { hasUseServerDirective } from "../../utils/has-use-server-directive.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -14,14 +15,56 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
+type AsyncFunctionLikeNode =
+  | EsTreeNodeOfType<"FunctionDeclaration">
+  | EsTreeNodeOfType<"FunctionExpression">
+  | EsTreeNodeOfType<"ArrowFunctionExpression">;
+
+const isAsyncFunctionLikeNode = (
+  node: EsTreeNode | null | undefined,
+): node is AsyncFunctionLikeNode => {
+  if (!node) return false;
+  if (
+    !isNodeOfType(node, "FunctionDeclaration") &&
+    !isNodeOfType(node, "FunctionExpression") &&
+    !isNodeOfType(node, "ArrowFunctionExpression")
+  ) {
+    return false;
+  }
+  return Boolean(node.async);
+};
+
+const unwrapTypeWrappedCallee = (node: EsTreeNode | null | undefined): EsTreeNode | null => {
+  let currentNode: EsTreeNode | null | undefined = node;
+  while (currentNode) {
+    if (
+      isNodeOfType(currentNode, "TSAsExpression") ||
+      isNodeOfType(currentNode, "TSNonNullExpression") ||
+      isNodeOfType(currentNode, "TSTypeAssertion") ||
+      isNodeOfType(currentNode, "TSSatisfiesExpression") ||
+      isNodeOfType(currentNode, "TSInstantiationExpression")
+    ) {
+      currentNode = currentNode.expression;
+      continue;
+    }
+    if (isNodeOfType(currentNode, "ChainExpression")) {
+      currentNode = currentNode.expression;
+      continue;
+    }
+    return currentNode;
+  }
+  return null;
+};
+
 const buildDottedReceiverSource = (receiverNode: EsTreeNode | null | undefined): string => {
-  if (!receiverNode) return "";
-  if (isNodeOfType(receiverNode, "Identifier")) return receiverNode.name;
-  if (isNodeOfType(receiverNode, "ThisExpression")) return "this";
-  if (isNodeOfType(receiverNode, "MemberExpression")) {
-    const objectSource = buildDottedReceiverSource(receiverNode.object);
-    const propertyName = isNodeOfType(receiverNode.property, "Identifier")
-      ? receiverNode.property.name
+  const unwrapped = unwrapTypeWrappedCallee(receiverNode);
+  if (!unwrapped) return "";
+  if (isNodeOfType(unwrapped, "Identifier")) return unwrapped.name;
+  if (isNodeOfType(unwrapped, "ThisExpression")) return "this";
+  if (isNodeOfType(unwrapped, "MemberExpression")) {
+    const objectSource = buildDottedReceiverSource(unwrapped.object);
+    const propertyName = isNodeOfType(unwrapped.property, "Identifier")
+      ? unwrapped.property.name
       : "";
     if (!propertyName) return objectSource;
     return objectSource ? `${objectSource}.${propertyName}` : propertyName;
@@ -44,7 +87,8 @@ const getAuthCallName = (
   allowedFunctionNames: ReadonlySet<string>,
   genericMethodNames: ReadonlySet<string>,
 ): string | null => {
-  const calleeNode = callExpression.callee;
+  const calleeNode = unwrapTypeWrappedCallee(callExpression.callee);
+  if (!calleeNode) return null;
   if (isNodeOfType(calleeNode, "Identifier")) {
     return allowedFunctionNames.has(calleeNode.name) ? calleeNode.name : null;
   }
@@ -60,26 +104,30 @@ const getAuthCallName = (
   return null;
 };
 
+const isFunctionLikeNode = (node: EsTreeNode): boolean =>
+  isNodeOfType(node, "FunctionDeclaration") ||
+  isNodeOfType(node, "FunctionExpression") ||
+  isNodeOfType(node, "ArrowFunctionExpression");
+
 const containsAuthCheck = (
-  statements: EsTreeNode[],
+  rootNodes: EsTreeNode[],
   allowedFunctionNames: ReadonlySet<string>,
   genericMethodNames: ReadonlySet<string>,
 ): boolean => {
   let foundAuthCall = false;
-  for (const statement of statements) {
-    walkAst(statement, (child: EsTreeNode) => {
+  for (const rootNode of rootNodes) {
+    walkAst(rootNode, (child: EsTreeNode) => {
       if (foundAuthCall) return;
-      let callNode: EsTreeNode | null = null;
-      if (isNodeOfType(child, "CallExpression")) {
-        callNode = child;
-      } else if (
-        isNodeOfType(child, "AwaitExpression") &&
-        isNodeOfType(child.argument, "CallExpression")
-      ) {
-        callNode = child.argument;
-      }
-      if (!isNodeOfType(callNode, "CallExpression")) return;
-      if (getAuthCallName(callNode, allowedFunctionNames, genericMethodNames)) {
+      // Prune at any function-like node. A call to `auth()` inside a
+      // helper that the action never invokes does not protect the
+      // action, so we restrict the search to expressions evaluated
+      // directly by the action's top-level statements. This also
+      // covers a hoisted-helper top-level statement (a
+      // FunctionDeclaration as a root) — we don't want its inner
+      // `auth()` to count either.
+      if (isFunctionLikeNode(child)) return false;
+      if (!isNodeOfType(child, "CallExpression")) return;
+      if (getAuthCallName(child, allowedFunctionNames, genericMethodNames)) {
         foundAuthCall = true;
       }
     });
@@ -87,21 +135,75 @@ const containsAuthCheck = (
   return foundAuthCall;
 };
 
-const getReactDoctorStringArraySetting = (
-  settings: RuleContext["settings"],
-  settingName: string,
-): ReadonlyArray<string> => {
-  const reactDoctorSettings = settings?.["react-doctor"];
-  if (
-    typeof reactDoctorSettings !== "object" ||
-    reactDoctorSettings === null ||
-    Array.isArray(reactDoctorSettings)
-  ) {
-    return [];
+const getAuthScanRoots = (functionNode: AsyncFunctionLikeNode): EsTreeNode[] => {
+  const bodyNode = functionNode.body;
+  if (!bodyNode) return [];
+  if (isNodeOfType(bodyNode, "BlockStatement")) {
+    return (bodyNode.body ?? []).slice(0, AUTH_CHECK_LOOKAHEAD_STATEMENTS);
   }
-  const settingValue = Object.getOwnPropertyDescriptor(reactDoctorSettings, settingName)?.value;
-  if (!Array.isArray(settingValue)) return [];
-  return settingValue.filter((entry): entry is string => typeof entry === "string" && entry !== "");
+  // Concise-body arrow (`async () => somethingExpr`): the body IS the
+  // (only) expression — treat it as the single root to scan.
+  return [bodyNode];
+};
+
+interface ServerActionCandidate {
+  functionNode: AsyncFunctionLikeNode;
+  displayName: string;
+  reportNode: EsTreeNode;
+}
+
+const inspectServerAction = (
+  candidate: ServerActionCandidate,
+  fileHasUseServerDirective: boolean,
+  allowedFunctionNames: ReadonlySet<string>,
+  context: RuleContext,
+): void => {
+  const isServerAction = fileHasUseServerDirective || hasUseServerDirective(candidate.functionNode);
+  if (!isServerAction) return;
+
+  const rootNodes = getAuthScanRoots(candidate.functionNode);
+  if (containsAuthCheck(rootNodes, allowedFunctionNames, GENERIC_AUTH_METHOD_NAMES)) return;
+
+  context.report({
+    node: candidate.reportNode,
+    message: `Server action "${candidate.displayName}" — add auth check (auth(), getSession(), etc.) at the top`,
+  });
+};
+
+const collectCandidatesFromVariableDeclaration = (
+  variableDeclaration: EsTreeNodeOfType<"VariableDeclaration">,
+): ServerActionCandidate[] => {
+  const candidates: ServerActionCandidate[] = [];
+  for (const declarator of variableDeclaration.declarations ?? []) {
+    if (!isAsyncFunctionLikeNode(declarator.init)) continue;
+    const bindingNode = isNodeOfType(declarator.id, "Identifier") ? declarator.id : null;
+    candidates.push({
+      functionNode: declarator.init,
+      displayName: bindingNode?.name ?? "anonymous",
+      reportNode: bindingNode ?? declarator,
+    });
+  }
+  return candidates;
+};
+
+const getCandidateFromDefaultDeclaration = (
+  node: EsTreeNodeOfType<"ExportDefaultDeclaration">,
+): ServerActionCandidate | null => {
+  const declaration = node.declaration;
+  if (!isAsyncFunctionLikeNode(declaration)) return null;
+  // Only FunctionDeclaration / FunctionExpression carry an `id`;
+  // arrow functions never do. Fall back to "default" when missing.
+  const functionId =
+    (isNodeOfType(declaration, "FunctionDeclaration") ||
+      isNodeOfType(declaration, "FunctionExpression")) &&
+    declaration.id
+      ? declaration.id
+      : null;
+  return {
+    functionNode: declaration,
+    displayName: functionId?.name ?? "default",
+    reportNode: functionId ?? node,
+  };
 };
 
 export const serverAuthActions = defineRule<Rule>({
@@ -123,28 +225,34 @@ export const serverAuthActions = defineRule<Rule>({
         ? new Set([...AUTH_FUNCTION_NAMES, ...customAuthFunctionNames])
         : AUTH_FUNCTION_NAMES;
 
+    const inspect = (candidate: ServerActionCandidate): void =>
+      inspectServerAction(candidate, fileHasUseServerDirective, allowedFunctionNames, context);
+
     return {
       Program(programNode: EsTreeNodeOfType<"Program">) {
         fileHasUseServerDirective = hasDirective(programNode, "use server");
       },
       ExportNamedDeclaration(node: EsTreeNodeOfType<"ExportNamedDeclaration">) {
         const declaration = node.declaration;
-        if (!isNodeOfType(declaration, "FunctionDeclaration") || !declaration?.async) return;
-
-        const isServerAction = fileHasUseServerDirective || hasUseServerDirective(declaration);
-        if (!isServerAction) return;
-
-        const firstStatements = (declaration.body?.body ?? []).slice(
-          0,
-          AUTH_CHECK_LOOKAHEAD_STATEMENTS,
-        );
-        if (!containsAuthCheck(firstStatements, allowedFunctionNames, GENERIC_AUTH_METHOD_NAMES)) {
-          const functionName = declaration.id?.name ?? "anonymous";
-          context.report({
-            node: declaration.id ?? node,
-            message: `Server action "${functionName}" — add auth check (auth(), getSession(), etc.) at the top`,
+        if (!declaration) return;
+        if (isAsyncFunctionLikeNode(declaration)) {
+          if (!isNodeOfType(declaration, "FunctionDeclaration")) return;
+          inspect({
+            functionNode: declaration,
+            displayName: declaration.id?.name ?? "anonymous",
+            reportNode: declaration.id ?? node,
           });
+          return;
         }
+        if (isNodeOfType(declaration, "VariableDeclaration")) {
+          for (const candidate of collectCandidatesFromVariableDeclaration(declaration)) {
+            inspect(candidate);
+          }
+        }
+      },
+      ExportDefaultDeclaration(node: EsTreeNodeOfType<"ExportDefaultDeclaration">) {
+        const candidate = getCandidateFromDefaultDeclaration(node);
+        if (candidate) inspect(candidate);
       },
     };
   },

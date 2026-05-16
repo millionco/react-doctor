@@ -225,4 +225,190 @@ export async function publishPost(postId: string) {
     });
     expect(issues).toHaveLength(1);
   });
+
+  it("flags `export default async function` missing an auth check", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "default-export-named-missing", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts":
+          buildServerActionFile(`export default async function deleteAccount(accountId: string) {
+  return { accountId, deleted: true };
+}`),
+      },
+    });
+    const issues = await collectAuthActionIssues(projectDirectory);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain("deleteAccount");
+  });
+
+  it("accepts `export default async function` when an auth check is present", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "default-export-named-ok", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`import { auth } from "@/lib/auth";
+
+export default async function deleteAccount(accountId: string) {
+  const session = await auth();
+  if (!session) throw new Error("unauthorized");
+  return { accountId, deleted: true };
+}`),
+      },
+    });
+    await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
+  });
+
+  it("flags anonymous default-export async functions missing an auth check", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "default-export-anonymous-missing", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts":
+          buildServerActionFile(`export default async function (accountId: string) {
+  return { accountId, deleted: true };
+}`),
+      },
+    });
+    const issues = await collectAuthActionIssues(projectDirectory);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain("default");
+  });
+
+  it("flags `export const fn = async () => {}` missing an auth check", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "const-arrow-missing", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts":
+          buildServerActionFile(`export const deleteAccount = async (accountId: string) => {
+  return { accountId, deleted: true };
+};`),
+      },
+    });
+    const issues = await collectAuthActionIssues(projectDirectory);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain("deleteAccount");
+  });
+
+  it("accepts `export const fn = async () => {}` when an auth check is present", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "const-arrow-ok", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`import { auth } from "@/lib/auth";
+
+export const deleteAccount = async (accountId: string) => {
+  const session = await auth();
+  if (!session) throw new Error("unauthorized");
+  return { accountId, deleted: true };
+};`),
+      },
+    });
+    await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
+  });
+
+  it("flags concise-body arrow exports without an auth call", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "const-arrow-concise-missing", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`import { performDelete } from "@/lib/delete";
+
+export const deleteAccount = async (accountId: string) => performDelete(accountId);`),
+      },
+    });
+    const issues = await collectAuthActionIssues(projectDirectory);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain("deleteAccount");
+  });
+
+  it("accepts concise-body arrow exports whose body IS the auth call", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "const-arrow-concise-ok", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`import { auth } from "@/lib/auth";
+
+export const refreshSession = async () => auth();`),
+      },
+    });
+    await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
+  });
+
+  it("flags `export const fn = async function() {}` missing an auth check", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "const-function-expression-missing", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts":
+          buildServerActionFile(`export const deleteAccount = async function (accountId: string) {
+  return { accountId, deleted: true };
+};`),
+      },
+    });
+    const issues = await collectAuthActionIssues(projectDirectory);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain("deleteAccount");
+  });
+
+  it("does not count auth() inside a nested helper as protecting the action", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "nested-helper-not-counted", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`import { auth } from "@/lib/auth";
+
+export async function deleteAccount(accountId: string) {
+  async function unusedHelper() {
+    return await auth();
+  }
+  return { accountId, deleted: true };
+}`),
+      },
+    });
+    const issues = await collectAuthActionIssues(projectDirectory);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain("deleteAccount");
+  });
+
+  it("accepts optional-chained member auth calls (`auth0?.getSession()`)", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "optional-chain-member-call", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`import { auth0 } from "@/lib/auth0";
+
+export async function readProfile(profileId: string) {
+  const session = await auth0?.getSession();
+  if (!session) throw new Error("unauthorized");
+  return { profileId, sessionId: session.id };
+}`),
+      },
+    });
+    await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
+  });
+
+  it("accepts auth calls hidden behind a non-null assertion (`auth!()`)", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "ts-non-null-assertion-callee", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`import { auth } from "@/lib/auth";
+
+export async function publishPost(postId: string) {
+  const session = await auth!();
+  if (!session) throw new Error("unauthorized");
+  return { postId, publishedBy: session.userId };
+}`),
+      },
+    });
+    await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
+  });
+
+  it("accepts auth calls hidden behind an `as` cast (`(auth as AuthFn)()`)", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "ts-as-cast-callee", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`import { auth } from "@/lib/auth";
+type AuthFn = () => Promise<{ userId: string } | null>;
+
+export async function archiveProject(projectId: string) {
+  const session = await (auth as AuthFn)();
+  if (!session) throw new Error("unauthorized");
+  return { projectId, archivedBy: session.userId };
+}`),
+      },
+    });
+    await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
+  });
 });

@@ -58,6 +58,20 @@ export interface ReactDoctorConfig {
    */
   rawTextWrapperComponents?: string[];
   /**
+   * Project-level allowlist of function names that the
+   * `server-auth-actions` rule treats as an auth check at the top of
+   * a server action. Names are accepted whether called as a bare
+   * identifier (`myAuthGuard()`) or as the final property of a
+   * member call (`ctx.myAuthGuard()`); unlike the built-in default
+   * list, user-provided names are treated as distinctive and never
+   * subject to receiver-object disambiguation.
+   *
+   * Use this to teach react-doctor about custom auth guards in
+   * codebases that wrap their auth library — e.g. a project-local
+   * `requireWorkspaceMember` or `ensureSignedIn`.
+   */
+  serverAuthFunctionNames?: string[];
+  /**
    * Whether to respect inline `// eslint-disable*`, `// oxlint-disable*`,
    * and `// react-doctor-disable*` comments in source files. Default: `true`.
    *

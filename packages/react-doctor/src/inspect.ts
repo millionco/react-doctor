@@ -159,6 +159,7 @@ const runInspect = async (
             respectInlineDisables: options.respectInlineDisables,
             adoptExistingLintConfig: options.adoptExistingLintConfig,
             ignoredTags: options.ignoredTags,
+            userConfig,
             onPartialFailure: (reason) => lintPartialFailures.push(reason),
           });
           lintSpinner?.succeed("Running lint checks.");

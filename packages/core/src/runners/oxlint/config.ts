@@ -23,6 +23,7 @@ export interface OxlintConfigOptions {
   customRulesOnly?: boolean;
   extendsPaths?: string[];
   ignoredTags?: ReadonlySet<string>;
+  serverAuthFunctionNames?: ReadonlyArray<string>;
 }
 
 const resolveSettingsRootDirectory = (rootDirectory: string): string => {
@@ -36,6 +37,7 @@ export const createOxlintConfig = ({
   customRulesOnly = false,
   extendsPaths = [],
   ignoredTags = new Set<string>(),
+  serverAuthFunctionNames,
 }: OxlintConfigOptions) => {
   const reactHooksJsPlugin = resolveReactHooksJsPlugin(project.hasReactCompiler, customRulesOnly);
   const reactCompilerRules = reactHooksJsPlugin
@@ -89,6 +91,9 @@ export const createOxlintConfig = ({
       "react-doctor": {
         framework: project.framework,
         rootDirectory: resolveSettingsRootDirectory(project.rootDirectory),
+        ...(serverAuthFunctionNames && serverAuthFunctionNames.length > 0
+          ? { serverAuthFunctionNames: [...serverAuthFunctionNames] }
+          : {}),
       },
     },
     rules: {

@@ -529,3 +529,603 @@ describe("React Native rules in nested files (file-level package detection)", ()
     expect(outerHits.length).toBeGreaterThan(0);
   });
 });
+
+describe("rn-no-raw-text: Platform.OS via switch statement", () => {
+  const setupPlatformOsProject = (caseId: string, sourceCode: string): string =>
+    setupReactProject(tempRoot, caseId, {
+      packageJsonExtras: { dependencies: { react: "^19.0.0", "react-native": "0.76.0" } },
+      files: { "src/Screen.tsx": sourceCode },
+    });
+
+  it("skips raw text inside `switch (Platform.OS) { case 'web': … }`", async () => {
+    const projectDir = setupPlatformOsProject(
+      "platform-os-switch-case-web",
+      `import { Platform, Text, View } from "react-native";
+
+export const Screen = () => {
+  switch (Platform.OS) {
+    case "web":
+      return <View>Web fallback markup</View>;
+    case "ios":
+      return <Text>iOS</Text>;
+    default:
+      return null;
+  }
+};
+`,
+    );
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text")).toHaveLength(0);
+  });
+
+  it("STILL fires inside `switch (Platform.OS) { case 'ios': <raw View/> }` (only the web case is exempt)", async () => {
+    const projectDir = setupPlatformOsProject(
+      "platform-os-switch-case-ios-still-fires",
+      `import { Platform, View } from "react-native";
+
+export const Screen = () => {
+  switch (Platform.OS) {
+    case "web":
+      return null;
+    case "ios":
+      return <View>iOS raw text that would crash</View>;
+    default:
+      return null;
+  }
+};
+`,
+    );
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text").length).toBeGreaterThan(0);
+  });
+
+  it("does NOT treat `switch (someOtherDiscriminant) { case 'web': … }` as a Platform.OS branch", async () => {
+    const projectDir = setupPlatformOsProject(
+      "platform-os-switch-wrong-discriminant",
+      `import { View } from "react-native";
+
+declare const target: string;
+
+export const Screen = () => {
+  switch (target) {
+    case "web":
+      return <View>Wrong discriminant — still RN territory</View>;
+    default:
+      return null;
+  }
+};
+`,
+    );
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text").length).toBeGreaterThan(0);
+  });
+});
+
+describe("rn-no-raw-text: nested branches and other Platform.OS shapes", () => {
+  const setupPlatformOsProject = (caseId: string, sourceCode: string): string =>
+    setupReactProject(tempRoot, caseId, {
+      packageJsonExtras: { dependencies: { react: "^19.0.0", "react-native": "0.76.0" } },
+      files: { "src/Screen.tsx": sourceCode },
+    });
+
+  it("skips raw text inside an intermediate guard nested in the web branch", async () => {
+    const projectDir = setupPlatformOsProject(
+      "platform-os-nested-guard",
+      `import { Platform, View } from "react-native";
+
+declare const someFlag: boolean;
+
+export const Screen = () => {
+  if (Platform.OS === "web") {
+    if (someFlag) {
+      return <View>Web branch, gated by an inner flag</View>;
+    }
+  }
+  return null;
+};
+`,
+    );
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text")).toHaveLength(0);
+  });
+
+  it("skips raw text inside an `else if (Platform.OS === 'web')` arm of an else-if chain", async () => {
+    const projectDir = setupPlatformOsProject(
+      "platform-os-else-if-chain",
+      `import { Platform, Text, View } from "react-native";
+
+declare const someFlag: boolean;
+
+export const Screen = () => {
+  if (someFlag) {
+    return <Text>flag</Text>;
+  } else if (Platform.OS === "web") {
+    return <View>Web fallback</View>;
+  }
+  return null;
+};
+`,
+    );
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text")).toHaveLength(0);
+  });
+
+  it("STILL fires inside a compound `if (Platform.OS === 'web' && someFlag)` consequent — compound tests are NOT exempt (conservative)", async () => {
+    // Rationale: a `LogicalExpression` test could pivot on either
+    // operand at runtime, and the walker only inspects the immediate
+    // `BinaryExpression`. We deliberately err on the side of FIRING
+    // here so the file with a compound web guard is still scanned —
+    // users wanting to opt out can split the condition.
+    const projectDir = setupPlatformOsProject(
+      "platform-os-compound-test",
+      `import { Platform, View } from "react-native";
+
+declare const someFlag: boolean;
+
+export const Screen = () => {
+  if (Platform.OS === "web" && someFlag) {
+    return <View>Compound condition raw text</View>;
+  }
+  return null;
+};
+`,
+    );
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text").length).toBeGreaterThan(0);
+  });
+
+  it("STILL fires raw text rendered after an early `if (Platform.OS !== 'web') return null;` (early-return is NOT exempt, pinned as a known limitation)", async () => {
+    // Pin the negative case: even though control-flow analysis WOULD
+    // mark every JSX node after the early return as web-only, the
+    // ancestor-walker doesn't model returns. Documenting the
+    // limitation in a test keeps the rationale visible.
+    const projectDir = setupPlatformOsProject(
+      "platform-os-early-return",
+      `import { Platform, View } from "react-native";
+
+export const Screen = () => {
+  if (Platform.OS !== "web") return null;
+  return <View>After the early return — still flagged</View>;
+};
+`,
+    );
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text").length).toBeGreaterThan(0);
+  });
+
+  it("does NOT treat negated equality (`!(Platform.OS === 'web')`) as a web branch", async () => {
+    const projectDir = setupPlatformOsProject(
+      "platform-os-negated",
+      `import { Platform, View } from "react-native";
+
+export const Screen = () => {
+  if (!(Platform.OS === "web")) {
+    return <View>Negated equality consequent — NOT the web branch</View>;
+  }
+  return null;
+};
+`,
+    );
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text").length).toBeGreaterThan(0);
+  });
+
+  it("does NOT treat a non-strict equality check (`Platform.OS == 'web'`) as a web branch (strict-equality only)", async () => {
+    const projectDir = setupPlatformOsProject(
+      "platform-os-loose-equality",
+      `import { Platform, View } from "react-native";
+
+export const Screen = () => {
+  // eslint-disable-next-line eqeqeq
+  if (Platform.OS == "web") {
+    return <View>Loose equality — not exempt</View>;
+  }
+  return null;
+};
+`,
+    );
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text").length).toBeGreaterThan(0);
+  });
+
+  it("does NOT treat computed-member access (`Platform['OS'] === 'web'`) as a web branch (conservative)", async () => {
+    const projectDir = setupPlatformOsProject(
+      "platform-os-computed-access",
+      `import { Platform, View } from "react-native";
+
+export const Screen = () => {
+  if (Platform["OS"] === "web") {
+    return <View>Computed access — not matched</View>;
+  }
+  return null;
+};
+`,
+    );
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text").length).toBeGreaterThan(0);
+  });
+});
+
+describe("classify-package-platform: dependency-section coverage", () => {
+  it("classifies a package with `react-native` only in `peerDependencies` as react-native", async () => {
+    const projectDir = setupReactProject(tempRoot, "rn-peer-only", {
+      packageJsonExtras: {
+        dependencies: { react: "^19.0.0" },
+        peerDependencies: { "react-native": ">=0.74.0" },
+      },
+      files: {
+        "src/Screen.tsx": `import { View } from "react-native";\nexport const Screen = () => <View>raw</View>;\n`,
+      },
+    });
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text").length).toBeGreaterThan(0);
+  });
+
+  it("classifies a package with `react-native` only in `devDependencies` as react-native", async () => {
+    const projectDir = setupReactProject(tempRoot, "rn-dev-only", {
+      packageJsonExtras: {
+        dependencies: { react: "^19.0.0" },
+        devDependencies: { "react-native": "0.76.0" },
+      },
+      files: {
+        "src/Screen.tsx": `import { View } from "react-native";\nexport const Screen = () => <View>raw</View>;\n`,
+      },
+    });
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text").length).toBeGreaterThan(0);
+  });
+
+  it("classifies a package with `react-native` only in `optionalDependencies` as react-native", async () => {
+    const projectDir = setupReactProject(tempRoot, "rn-optional-only", {
+      packageJsonExtras: {
+        dependencies: { react: "^19.0.0" },
+        optionalDependencies: { "react-native": "0.76.0" },
+      },
+      files: {
+        "src/Screen.tsx": `import { View } from "react-native";\nexport const Screen = () => <View>raw</View>;\n`,
+      },
+    });
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text").length).toBeGreaterThan(0);
+  });
+
+  it("classifies a package with `expo-router` only as react-native (Expo Router implies an Expo/RN target)", async () => {
+    const projectDir = setupReactProject(tempRoot, "expo-router-only", {
+      packageJsonExtras: {
+        dependencies: { react: "^19.0.0", "expo-router": "^3.5.0" },
+      },
+      files: {
+        "src/Screen.tsx": `export const Screen = () => <View>raw</View>;\n`,
+      },
+    });
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text").length).toBeGreaterThan(0);
+  });
+
+  it("treats a manifest with BOTH `react-native` AND `next` as react-native (RN priority — react-native-web shape)", async () => {
+    const projectDir = setupReactProject(tempRoot, "rn-and-next-mixed", {
+      packageJsonExtras: {
+        dependencies: {
+          react: "^19.0.0",
+          "react-native": "0.76.0",
+          next: "^14.0.0",
+          "react-dom": "^19.0.0",
+        },
+      },
+      files: {
+        "src/Screen.tsx": `import { View } from "react-native";\nexport const Screen = () => <View>raw on RN</View>;\n`,
+      },
+    });
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    // RN wins over Next when both are declared — the package targets
+    // mobile too, so rules must keep firing.
+    expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text").length).toBeGreaterThan(0);
+  });
+});
+
+describe("classify-package-platform: malformed and empty manifest fallbacks", () => {
+  it("treats a malformed package.json as 'unknown' and falls back to the project-level framework hint (active)", async () => {
+    const projectDir = path.join(tempRoot, "malformed-pkg");
+    fs.mkdirSync(path.join(projectDir, "src"), { recursive: true });
+    fs.writeFileSync(path.join(projectDir, "package.json"), "{ not valid json,,,");
+    writeFile(
+      path.join(projectDir, "tsconfig.json"),
+      JSON.stringify({
+        compilerOptions: { jsx: "preserve", target: "es2022", module: "esnext" },
+      }),
+    );
+    writeFile(
+      path.join(projectDir, "src", "Screen.tsx"),
+      `export const Screen = () => <View>raw</View>;\n`,
+    );
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text").length).toBeGreaterThan(0);
+  });
+
+  it("treats an empty `{}` package.json as 'unknown' and falls back to the project-level framework", async () => {
+    const projectDir = path.join(tempRoot, "empty-pkg");
+    fs.mkdirSync(path.join(projectDir, "src"), { recursive: true });
+    writeJson(path.join(projectDir, "package.json"), {});
+    writeJson(path.join(projectDir, "tsconfig.json"), {
+      compilerOptions: { jsx: "preserve", target: "es2022", module: "esnext" },
+    });
+    writeFile(
+      path.join(projectDir, "src", "Screen.tsx"),
+      `export const Screen = () => <View>raw</View>;\n`,
+    );
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text").length).toBeGreaterThan(0);
+  });
+
+  it("with the project framework set to 'nextjs' and a malformed sub-package.json, RN rules stay inactive (capability gate never enables them)", async () => {
+    const projectDir = path.join(tempRoot, "framework-next-malformed-pkg");
+    fs.mkdirSync(path.join(projectDir, "src"), { recursive: true });
+    fs.writeFileSync(path.join(projectDir, "package.json"), "{ bad");
+    writeJson(path.join(projectDir, "tsconfig.json"), {
+      compilerOptions: { jsx: "preserve", target: "es2022", module: "esnext" },
+    });
+    writeFile(
+      path.join(projectDir, "src", "Page.tsx"),
+      `export const Page = () => <View>raw</View>;\n`,
+    );
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "nextjs" }),
+    });
+    // The project-level capability gate (`requires: ["react-native"]`)
+    // prevents the rule from even loading when the project framework
+    // is `nextjs`. Pin that this remains true regardless of file-level
+    // ambiguity.
+    expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text")).toHaveLength(0);
+  });
+});
+
+describe("classify-package-platform: file-extension overrides win over package classification", () => {
+  it("`.web.tsx` is skipped even when the enclosing package declares `react-native`", async () => {
+    const projectDir = setupReactProject(tempRoot, "rn-pkg-with-web-extension", {
+      packageJsonExtras: {
+        dependencies: { react: "^19.0.0", "react-native": "0.76.0" },
+      },
+      files: {
+        "src/Screen.web.tsx": `export const Screen = () => <View>web</View>;\n`,
+      },
+    });
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text")).toHaveLength(0);
+  });
+
+  it("`.ios.tsx` is scanned even when the enclosing package declares a web framework (force-on for native targets)", async () => {
+    const projectDir = setupReactProject(tempRoot, "web-pkg-with-ios-extension", {
+      packageJsonExtras: {
+        dependencies: { react: "^19.0.0", "react-dom": "^19.0.0", next: "^14.0.0" },
+      },
+      files: {
+        "src/Screen.ios.tsx": `export const Screen = () => <View>iOS</View>;\n`,
+      },
+    });
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text").length).toBeGreaterThan(0);
+  });
+
+  it("`.web.jsx` is skipped (matches the same `.web.[cm]?[jt]sx?` pattern as `.web.tsx`)", async () => {
+    const projectDir = setupReactProject(tempRoot, "rn-pkg-web-jsx-extension", {
+      packageJsonExtras: {
+        dependencies: { react: "^19.0.0", "react-native": "0.76.0" },
+      },
+      files: {
+        "src/Screen.web.jsx": `export const Screen = () => <View>jsx web</View>;\n`,
+      },
+    });
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text")).toHaveLength(0);
+  });
+
+  it("`.web.tsx.bak` or other suffixed names do NOT trigger the web-extension skip (regex anchored to end-of-name)", async () => {
+    // The .bak suffix means oxlint won't even scan the file (not a
+    // source extension), so we instead use a filename that DOES end
+    // in .tsx but contains `.web` as a non-trailing segment.
+    const projectDir = setupReactProject(tempRoot, "rn-pkg-confusable-name", {
+      packageJsonExtras: {
+        dependencies: { react: "^19.0.0", "react-native": "0.76.0" },
+      },
+      files: {
+        // `Screen.web.theme.tsx` does NOT end with `.web.tsx`, so the
+        // web-extension shortcut should NOT trigger — the file should
+        // be scanned as a normal RN file.
+        "src/Screen.web.theme.tsx": `export const Screen = () => <View>not web-only</View>;\n`,
+      },
+    });
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text").length).toBeGreaterThan(0);
+  });
+});
+
+describe("project-level framework fallback when package classification is ambiguous", () => {
+  it("with `framework: 'expo'` at the project level and an ambiguous package, RN rules fire", async () => {
+    const projectDir = setupReactProject(tempRoot, "ambiguous-pkg-expo-fallback", {
+      packageJsonExtras: {
+        // No RN or web framework keys, just plain react.
+        dependencies: { react: "^19.0.0" },
+      },
+      files: {
+        "src/Screen.tsx": `export const Screen = () => <View>raw</View>;\n`,
+      },
+    });
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "expo" }),
+    });
+    expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text").length).toBeGreaterThan(0);
+  });
+});
+
+describe("classify-package-platform: cache safety across independent packages", () => {
+  it("classifies two same-cased package names in distinct directories independently (cache key is the directory path)", async () => {
+    const rnDir = setupReactProject(tempRoot, "cache-safety-rn-A", {
+      packageJsonExtras: {
+        dependencies: { react: "^19.0.0", "react-native": "0.76.0" },
+      },
+      files: {
+        "src/Screen.tsx": `export const Screen = () => <View>RN raw</View>;\n`,
+      },
+    });
+    const webDir = setupReactProject(tempRoot, "cache-safety-web-A", {
+      packageJsonExtras: {
+        dependencies: { react: "^19.0.0", "react-dom": "^19.0.0", next: "^14.0.0" },
+      },
+      files: {
+        "src/Screen.tsx": `export const Screen = () => <View>web</View>;\n`,
+      },
+    });
+
+    const rnDiagnostics = await runOxlint({
+      rootDirectory: rnDir,
+      project: buildTestProject({ rootDirectory: rnDir, framework: "react-native" }),
+    });
+    const webDiagnostics = await runOxlint({
+      rootDirectory: webDir,
+      project: buildTestProject({ rootDirectory: webDir, framework: "react-native" }),
+    });
+
+    expect(findDiagnosticsByRule(rnDiagnostics, "rn-no-raw-text").length).toBeGreaterThan(0);
+    expect(findDiagnosticsByRule(webDiagnostics, "rn-no-raw-text")).toHaveLength(0);
+  });
+});
+
+describe('rn-no-raw-text: "use dom" directive composition with package gating', () => {
+  it("`use dom` short-circuits even inside an RN package", async () => {
+    const projectDir = setupReactProject(tempRoot, "use-dom-in-rn-pkg", {
+      packageJsonExtras: {
+        dependencies: { react: "^19.0.0", "react-native": "0.76.0" },
+      },
+      files: {
+        "src/Dom.tsx": `"use dom";\nexport const Dom = () => <div>Web rendered</div>;\n`,
+      },
+    });
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    expect(findDiagnosticsByRule(diagnostics, "rn-no-raw-text")).toHaveLength(0);
+  });
+});
+
+describe("rn-* rules other than rn-no-raw-text: package gating", () => {
+  it("rn-prefer-pressable is silenced on a Next.js sub-package that legitimately imports from react-native (e.g. via solito/react-native-web)", async () => {
+    const projectDir = setupReactProject(tempRoot, "rn-prefer-pressable-on-web", {
+      packageJsonExtras: {
+        dependencies: {
+          react: "^19.0.0",
+          "react-dom": "^19.0.0",
+          next: "^14.0.0",
+        },
+      },
+      files: {
+        // TouchableOpacity import would normally trip rn-prefer-pressable.
+        "src/Web.tsx": `import { TouchableOpacity } from "react-native";\nexport const Web = () => <TouchableOpacity />;\n`,
+      },
+    });
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    expect(findDiagnosticsByRule(diagnostics, "rn-prefer-pressable")).toHaveLength(0);
+  });
+
+  it("rn-no-deprecated-modules fires on an RN package even when sibling web sub-packages exist", async () => {
+    const projectDir = setupReactProject(tempRoot, "rn-deprecated-mobile-with-web-sibling", {
+      packageJsonExtras: {
+        dependencies: { react: "^19.0.0", "react-native": "0.76.0" },
+      },
+      files: {
+        "src/index.ts": `import { AsyncStorage } from "react-native";\nvoid AsyncStorage;\n`,
+      },
+    });
+    // Drop a web-only sibling package nearby.
+    writeJson(path.join(projectDir, "siblings", "web-sibling", "package.json"), {
+      name: "web-sibling",
+      dependencies: { next: "^14.0.0", react: "^19.0.0", "react-dom": "^19.0.0" },
+    });
+    writeFile(
+      path.join(projectDir, "siblings", "web-sibling", "src", "Web.tsx"),
+      `export const Web = () => <View>web</View>;\n`,
+    );
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    const deprecatedHits = findDiagnosticsByRule(diagnostics, "rn-no-deprecated-modules");
+    expect(deprecatedHits.length).toBeGreaterThan(0);
+    // No rn-* diagnostic should be reported against the web sibling.
+    const webSiblingRn = diagnostics.filter(
+      (diagnostic) =>
+        diagnostic.rule.startsWith("rn-") &&
+        diagnostic.filePath.replaceAll("\\", "/").includes("siblings/web-sibling/"),
+    );
+    expect(webSiblingRn).toHaveLength(0);
+  });
+});

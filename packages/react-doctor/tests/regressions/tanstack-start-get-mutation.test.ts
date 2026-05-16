@@ -41,9 +41,7 @@ const CREATE_SERVER_FN_STUB = `const chainable: any = new Proxy(
 const createServerFn = (_options?: any) => chainable;
 `;
 
-const buildTanstackProject = (
-  caseId: string,
-): { rootDirectory: string; project: ProjectInfo } => {
+const buildTanstackProject = (caseId: string): { rootDirectory: string; project: ProjectInfo } => {
   const rootDirectory = setupReactProject(tempRoot, caseId);
   return {
     rootDirectory,

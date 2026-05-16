@@ -803,8 +803,10 @@ describe("js-combine-iterations", () => {
     });
 
     const hits = await collectRuleHits(projectDir, "js-combine-iterations");
-    expect(hits).toHaveLength(1);
-    expect(hits[0].message).toContain(".filter().map()");
+    expect(hits).toHaveLength(2);
+    const messages = hits.map((hit) => hit.message);
+    expect(messages.some((message) => message.includes(".flatMap().filter()"))).toBe(true);
+    expect(messages.some((message) => message.includes(".filter().map()"))).toBe(true);
   });
 
   it("does not flag .values().flatMap().filter().map() Iterator-helper chains", async () => {

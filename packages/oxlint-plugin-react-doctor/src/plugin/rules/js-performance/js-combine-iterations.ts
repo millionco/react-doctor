@@ -39,9 +39,7 @@ const isIteratorProducingCall = (
   return false;
 };
 
-const isChainPassThroughCall = (
-  callExpression: EsTreeNodeOfType<"CallExpression">,
-): boolean => {
+const isChainPassThroughCall = (callExpression: EsTreeNodeOfType<"CallExpression">): boolean => {
   const callee = callExpression.callee;
   if (!isNodeOfType(callee, "MemberExpression")) return false;
   if (!isNodeOfType(callee.property, "Identifier")) return false;

@@ -46,4 +46,13 @@ export const MUTATING_ARRAY_METHODS = new Set([
 
 export const CHAINABLE_ITERATION_METHODS = new Set(["map", "filter", "forEach", "flatMap"]);
 
+// Method names that, when invoked on a non-`Object` receiver, yield a
+// lazy iterator instead of an array. `arr.values()`, `map.entries()`,
+// `set.keys()`, `urlSearchParams.values()`, etc. all surface as
+// Iterator-helper-bearing iterators (`.filter()`/`.map()`/`.flatMap()`
+// on them stay single-pass). The capital-`O` global `Object`'s
+// `values`/`keys`/`entries` are eager and array-returning, so the
+// detection in `js-combine-iterations` filters that receiver out.
+export const ITERATOR_PRODUCING_METHOD_NAMES = new Set(["values", "keys", "entries"]);
+
 export const TEST_FILE_PATTERN = /\.(?:test|spec|stories)\.[tj]sx?$/;

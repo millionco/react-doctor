@@ -55,8 +55,6 @@ export const CHAINABLE_ITERATION_METHODS = new Set(["map", "filter", "forEach", 
 // detection in `js-combine-iterations` filters that receiver out.
 export const ITERATOR_PRODUCING_METHOD_NAMES = new Set(["values", "keys", "entries"]);
 
-export const TEST_FILE_PATTERN = /\.(?:test|spec|stories)\.[tj]sx?$/;
-
 // Vitest browser mode / Storybook test-runner / Playwright Component
 // Testing conventionally put the React under-test in a `*.browser.tsx`
 // (or `*.browser.jsx`) module. These files *render* the component and

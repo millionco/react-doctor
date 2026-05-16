@@ -287,4 +287,260 @@ describe("async-defer-await", () => {
     const hits = await collectRuleHits(projectDir, "async-defer-await");
     expect(hits).toHaveLength(4);
   });
+
+  it("does not flag derived guards regardless of declarator order", async () => {
+    const projectDir = setupReactProject(tempRoot, "async-defer-await-backward-derived", {
+      files: {
+        "src/load-flows.ts": `
+          interface FlowRow {
+            id: string;
+          }
+
+          declare const selectFlow: (flowSeq: number) => Promise<FlowRow | null>;
+
+          export const loadFlowWithBackwardDerivedGuard = async (flowSeq: number) => {
+            const isMissingFlow = !flowRow, flowRow = await selectFlow(flowSeq);
+            if (isMissingFlow) return [];
+            return [flowRow!.id];
+          };
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "async-defer-await");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("does not flag guards derived through a chain of intervening declarations", async () => {
+    const projectDir = setupReactProject(tempRoot, "async-defer-await-intervening-derivation", {
+      files: {
+        "src/load-flows.ts": `
+          interface FlowRow {
+            id: string;
+          }
+
+          declare const selectFlow: (flowSeq: number) => Promise<FlowRow | null>;
+          declare const normalizeFlow: (row: FlowRow | null) => { id: string } | null;
+
+          export const loadFlowWithDerivationChain = async (flowSeq: number) => {
+            const flowRow = await selectFlow(flowSeq);
+            const normalized = normalizeFlow(flowRow);
+            const isMissing = !normalized;
+            if (isMissing) return [];
+            return [normalized!.id];
+          };
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "async-defer-await");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("flags awaits buried in wrapper expressions when the guard is unrelated", async () => {
+    const projectDir = setupReactProject(tempRoot, "async-defer-await-wrapped-init", {
+      files: {
+        "src/load-flows.ts": `
+          interface FlowRow {
+            id: string;
+          }
+
+          declare const selectFlow: (flowSeq: number) => Promise<{ row: FlowRow }>;
+          declare const selectMaybeFlow: (flowSeq: number) => Promise<FlowRow | null>;
+          declare const transform: <T>(value: T) => T;
+          declare const fallbackFlow: FlowRow;
+          declare const shouldSkip: boolean;
+
+          export const loadFlowFromMember = async (flowSeq: number) => {
+            const flowRow = (await selectFlow(flowSeq)).row;
+            if (shouldSkip) return [];
+            return [flowRow.id];
+          };
+
+          export const loadFlowFromCallArg = async (flowSeq: number) => {
+            const wrappedRow = transform(await selectFlow(flowSeq));
+            if (shouldSkip) return [];
+            return [wrappedRow.row.id];
+          };
+
+          export const loadFlowFromAwaitInPatternDefault = async (flowSeq: number) => {
+            const { value = await selectMaybeFlow(flowSeq) } = {} as { value?: FlowRow | null };
+            if (shouldSkip) return [];
+            return [value?.id ?? fallbackFlow.id];
+          };
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "async-defer-await");
+    expect(hits).toHaveLength(3);
+  });
+
+  it("flags bare-await statements when followed by an unrelated guard", async () => {
+    const projectDir = setupReactProject(tempRoot, "async-defer-await-bare-await", {
+      files: {
+        "src/flush.ts": `
+          declare const flushQueue: () => Promise<void>;
+          declare const shouldSkip: boolean;
+
+          export const drainQueue = async () => {
+            await flushQueue();
+            if (shouldSkip) return;
+            return;
+          };
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "async-defer-await");
+    expect(hits).toHaveLength(1);
+  });
+
+  it("flags the earliest of multiple consecutive awaits before an unrelated guard", async () => {
+    const projectDir = setupReactProject(tempRoot, "async-defer-await-multi-await", {
+      files: {
+        "src/load-flows.ts": `
+          interface FlowRow {
+            id: string;
+          }
+
+          declare const selectFlowA: () => Promise<FlowRow>;
+          declare const selectFlowB: () => Promise<FlowRow>;
+          declare const shouldSkip: boolean;
+
+          export const loadTwoFlows = async () => {
+            const flowA = await selectFlowA();
+            const flowB = await selectFlowB();
+            if (shouldSkip) return [];
+            return [flowA.id, flowB.id];
+          };
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "async-defer-await");
+    expect(hits).toHaveLength(1);
+    expect(hits[0].message).toContain("await blocks the function");
+  });
+
+  it("flags awaits even when the early exit is a throw", async () => {
+    const projectDir = setupReactProject(tempRoot, "async-defer-await-throw-exit", {
+      files: {
+        "src/load-flows.ts": `
+          interface FlowRow {
+            id: string;
+          }
+
+          declare const selectFlow: (flowSeq: number) => Promise<FlowRow>;
+          declare const shouldSkip: boolean;
+
+          export const loadFlowOrThrow = async (flowSeq: number) => {
+            const flowRow = await selectFlow(flowSeq);
+            if (shouldSkip) throw new Error("skipped");
+            return [flowRow.id];
+          };
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "async-defer-await");
+    expect(hits).toHaveLength(1);
+  });
+
+  it("flags awaits inside nested blocks (try / if-body / for-body)", async () => {
+    const projectDir = setupReactProject(tempRoot, "async-defer-await-nested-blocks", {
+      files: {
+        "src/load-flows.ts": `
+          interface FlowRow {
+            id: string;
+          }
+
+          declare const selectFlow: (flowSeq: number) => Promise<FlowRow>;
+          declare const shouldSkip: boolean;
+
+          export const loadFlowInsideTry = async (flowSeq: number) => {
+            try {
+              const flowRow = await selectFlow(flowSeq);
+              if (shouldSkip) return [];
+              return [flowRow.id];
+            } catch {
+              return [];
+            }
+          };
+
+          export const loadFlowInsideIfBody = async (flowSeq: number, enabled: boolean) => {
+            if (enabled) {
+              const flowRow = await selectFlow(flowSeq);
+              if (shouldSkip) return [];
+              return [flowRow.id];
+            }
+            return [];
+          };
+
+          export const loadFlowInsideForBody = async (flowSeqs: number[]) => {
+            const results: string[] = [];
+            for (const flowSeq of flowSeqs) {
+              const flowRow = await selectFlow(flowSeq);
+              if (shouldSkip) continue;
+              results.push(flowRow.id);
+            }
+            return results;
+          };
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "async-defer-await");
+    expect(hits).toHaveLength(3);
+  });
+
+  it("flags awaits when a nested function in the guard merely shadows the awaited name", async () => {
+    const projectDir = setupReactProject(tempRoot, "async-defer-await-shadowed-name", {
+      files: {
+        "src/load-flows.ts": `
+          interface FlowRow {
+            id: string;
+            unrelated: boolean;
+          }
+
+          declare const selectFlow: () => Promise<FlowRow>;
+          declare const otherFlow: FlowRow;
+
+          export const loadFlowWithShadowingGuard = async () => {
+            const flowRow = await selectFlow();
+            if (((flowRow: FlowRow) => flowRow.unrelated)(otherFlow)) return [];
+            return [flowRow.id];
+          };
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "async-defer-await");
+    expect(hits).toHaveLength(1);
+  });
+
+  it("flags awaits when the guard only mentions the awaited name in a type position", async () => {
+    const projectDir = setupReactProject(tempRoot, "async-defer-await-type-only-mention", {
+      files: {
+        "src/load-flows.ts": `
+          interface FlowRow {
+            id: string;
+          }
+
+          declare const selectFlow: () => Promise<FlowRow>;
+          declare const otherFlow: unknown;
+          declare const shouldSkip: boolean;
+
+          export const loadFlowWithAsAssertion = async () => {
+            const flowRow = await selectFlow();
+            if (shouldSkip && (otherFlow as typeof flowRow).id === "") return [];
+            return [flowRow.id];
+          };
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "async-defer-await");
+    expect(hits).toHaveLength(1);
+  });
 });

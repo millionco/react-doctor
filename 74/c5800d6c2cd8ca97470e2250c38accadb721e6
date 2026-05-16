@@ -1,0 +1,199 @@
+scripts/rule-prompts/batch-12-state-effects-b.json
+  s_30dc02b88e6b9d::t_493bbd44db697b 1-46
+scripts/rule-prompts/batch-10-ui-query.json
+  s_a9f5923b02ce99::t_3ac1a610a4f256 1-58
+scripts/rule-prompts/batch-08-react-native-a.json
+  s_5e3e39a07fdcb7::t_d3f84bfa63ab41 1-11,13-50
+  s_5e3e39a07fdcb7::t_6debb37a1aacf6 12
+scripts/rule-prompts/batch-11-state-effects-a.json
+  s_320f30d0a78dbb::t_cd32df04a713f2 1-50
+scripts/rule-prompts/batch-13-tanstack-start.json
+  s_c139e008b9075f::t_30c47d828cd4ac 1-58
+scripts/list-rule-paths.mjs
+  s_bf16a28f7e4ca7::t_1e98b59ba6c37f 1-50
+scripts/rule-prompts/batch-09-react-native-b.json
+  s_81bcdb6e46394c::t_c393b8765a4986 39
+  s_81bcdb6e46394c::t_f856b1e9f2ef57 1-6,8-38,40-50
+  s_81bcdb6e46394c::t_04f5851fedd3e0 7
+scripts/rule-prompts/batch-14-external-effect-hooks.json
+  s_5196ab2fb421a6::t_ad0edff5320618 1-98
+scripts/rule-prompts/batch-02-misc.json
+  s_f0d5be64a47472::t_35caf01eff3d84 1-54
+scripts/rule-prompts/batch-15-external-jsx-a11y.json
+  s_c5f366a5ddbd25::t_c7ee35e36a396d 1-58
+scripts/rule-prompts/batch-06-nextjs.json
+  s_6a941620ac5b7b::t_dcee446d581cee 1-66
+scripts/rule-prompts/batch-01-architecture.json
+  s_77b4043a0f5d04::t_5c9d276f87b9ea 1-50
+scripts/merge-rule-prompts.mjs
+  s_bf16a28f7e4ca7::t_956c2861b56e99 72
+  s_bf16a28f7e4ca7::t_8d169a6552acb4 2-5
+  s_bf16a28f7e4ca7::t_f4f091561b5056 30,46,50,66
+  s_bf16a28f7e4ca7::t_a3bb632279f904 1,6-12,14-29,31-45,47-49,51-65,67-71,73
+  s_bf16a28f7e4ca7::t_d4bc10f8289e3a 13
+scripts/rule-prompts/batch-05-js-performance.json
+  s_ed135e4c5ec629::t_8d8921e8108353 1-62
+scripts/generate-rules-json.mjs
+  s_bf16a28f7e4ca7::t_e274485762f411 156
+  s_bf16a28f7e4ca7::t_82d983a4457234 7-16,23,27-30,32-37,39-43,45-56,59-69,71,74,79-85,88-100,104-125,127-139,141-145,149-154,158-160
+  s_bf16a28f7e4ca7::t_4487b2e4a37769 1,17-22,24-26,70,72-73,75-78,86-87,101-103,147-148,155,157
+  s_bf16a28f7e4ca7::t_80ab2a3183512c 31
+  s_bf16a28f7e4ca7::t_f4f091561b5056 38,44,57-58,126,140,146
+  s_bf16a28f7e4ca7::t_8c773ad37794db 2-6
+scripts/print-batch-input.mjs
+  s_bf16a28f7e4ca7::t_f4f091561b5056 43
+  s_bf16a28f7e4ca7::t_cf51c2fde2f43f 1-42,44-79
+scripts/rule-prompts/batch-07-performance.json
+  s_a04f5dd95b374e::t_4bf8fbde110974 1-39,41-78
+  s_a04f5dd95b374e::t_f506cfec2322a7 40
+scripts/rule-prompts/batch-04-design.json
+  s_e63c7432e7199d::t_6543b14c404e4e 1-62
+scripts/rule-prompts/batch-16-external-react.json
+  s_645555bc55869d::t_51a9c740cf3588 1-50
+scripts/rule-prompts/batch-03-correctness-server.json
+  s_4ce68cc2ca901d::t_e4378d07ba075b 1-58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "74c5800d6c2cd8ca97470e2250c38accadb721e6",
+  "prompts": {},
+  "sessions": {
+    "s_30dc02b88e6b9d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "9659d3be-5334-40c8-a084-c4ff93086b4d",
+        "model": "claude-opus-4-7-thinking-max-fast"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    },
+    "s_320f30d0a78dbb": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "73fb548d-5364-475f-95d4-295adccf3167",
+        "model": "claude-opus-4-7-thinking-max-fast"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    },
+    "s_4ce68cc2ca901d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "e80f28be-6df5-48d8-8d58-eacedec41668",
+        "model": "claude-opus-4-7-thinking-max-fast"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    },
+    "s_5196ab2fb421a6": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "1040769c-3eb4-45b8-b5cd-1cfb566c1c19",
+        "model": "claude-opus-4-7-thinking-max-fast"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    },
+    "s_5e3e39a07fdcb7": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ff2df6aa-6b0c-41ca-a3f8-5b3503ac4b8b",
+        "model": "claude-opus-4-7-thinking-max-fast"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    },
+    "s_645555bc55869d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "282cf1ed-ebab-4b71-9602-cc326b222dfd",
+        "model": "claude-opus-4-7-thinking-max-fast"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    },
+    "s_6a941620ac5b7b": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "160e4c29-bb7a-4eba-b11a-8b1192e0acfe",
+        "model": "claude-opus-4-7-thinking-max-fast"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    },
+    "s_77b4043a0f5d04": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ed43f3d1-26ed-4393-8423-f36253a39689",
+        "model": "claude-opus-4-7-thinking-max-fast"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    },
+    "s_81bcdb6e46394c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "47e3a0fa-1f31-4439-bf7e-b38d4d077c3c",
+        "model": "claude-opus-4-7-thinking-max-fast"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    },
+    "s_a04f5dd95b374e": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "69ce61ff-f0f0-402d-abbc-341bdd6f1839",
+        "model": "claude-opus-4-7-thinking-max-fast"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    },
+    "s_a9f5923b02ce99": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "4eb02e11-0c2b-468c-94fc-d809a0d74b74",
+        "model": "claude-opus-4-7-thinking-max-fast"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    },
+    "s_bf16a28f7e4ca7": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a75bc1f1-7fc2-44b0-9b39-97afcd6331e7",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    },
+    "s_c139e008b9075f": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "308c52ea-28dc-41fc-ad0a-9bcbab412df8",
+        "model": "claude-opus-4-7-thinking-max-fast"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    },
+    "s_c5f366a5ddbd25": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a627c418-42e3-4dbe-ae6e-c9bcdd3c8ecf",
+        "model": "claude-opus-4-7-thinking-max-fast"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    },
+    "s_e63c7432e7199d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "006fa045-999c-41e9-b931-4db7a1a0e1ad",
+        "model": "claude-opus-4-7-thinking-max-fast"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    },
+    "s_ed135e4c5ec629": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "bdc6aa57-41b1-47c8-b90a-213b5e06ca19",
+        "model": "claude-opus-4-7-thinking-max-fast"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    },
+    "s_f0d5be64a47472": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "50036e01-3441-4257-8319-c74a049a8c4c",
+        "model": "claude-opus-4-7-thinking-max-fast"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

@@ -7,29 +7,13 @@ import {
 import { defineRule } from "../../utils/define-rule.js";
 import { classifySecretFileExposure } from "../../utils/classify-secret-file-exposure.js";
 import { getIdentifierTrailingWord } from "../../utils/get-identifier-trailing-word.js";
+import { getReactDoctorStringSetting } from "../../utils/get-react-doctor-setting.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { hasDirective } from "../../utils/has-directive.js";
 import { isInsideServerOnlyScope } from "../../utils/is-inside-server-only-scope.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-
-const getReactDoctorStringSetting = (
-  settings: RuleContext["settings"],
-  settingName: string,
-): string | undefined => {
-  const reactDoctorSettings = settings?.["react-doctor"];
-  if (
-    typeof reactDoctorSettings !== "object" ||
-    reactDoctorSettings === null ||
-    Array.isArray(reactDoctorSettings)
-  ) {
-    return undefined;
-  }
-
-  const settingValue = Object.getOwnPropertyDescriptor(reactDoctorSettings, settingName)?.value;
-  return typeof settingValue === "string" ? settingValue : undefined;
-};
 
 export const noSecretsInClientCode = defineRule<Rule>({
   id: "no-secrets-in-client-code",

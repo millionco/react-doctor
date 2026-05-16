@@ -159,6 +159,7 @@ export const diagnose = async (
         respectInlineDisables: effectiveRespectInlineDisables,
         adoptExistingLintConfig: userConfig?.adoptExistingLintConfig ?? true,
         ignoredTags,
+        userConfig,
       }).catch((error: unknown) => {
         console.error("Lint failed:", error);
         return EMPTY_DIAGNOSTICS;

@@ -20,7 +20,13 @@ import reactDoctorPlugin, {
   ALL_REACT_DOCTOR_RULE_KEYS,
   FRAMEWORK_SPECIFIC_RULE_KEYS,
 } from "oxlint-plugin-react-doctor";
-import type { CleanedDiagnostic, Diagnostic, OxlintOutput, ProjectInfo } from "@react-doctor/types";
+import type {
+  CleanedDiagnostic,
+  Diagnostic,
+  OxlintOutput,
+  ProjectInfo,
+  ReactDoctorConfig,
+} from "@react-doctor/types";
 import { buildNoSecretsRecommendation } from "./utils/build-no-secrets-recommendation.js";
 import { neutralizeDisableDirectives } from "./neutralize-disable-directives.js";
 
@@ -343,6 +349,14 @@ interface RunOxlintOptions {
   adoptExistingLintConfig?: boolean;
   ignoredTags?: ReadonlySet<string>;
   /**
+   * Optional react-doctor user config (already-loaded
+   * `react-doctor.config.json` or `package.json#reactDoctor`). When
+   * provided, project-level knobs the rule surface honors — currently
+   * `serverAuthFunctionNames` — are forwarded to the generated oxlint
+   * settings so plugin rules can read them via `context.settings`.
+   */
+  userConfig?: ReactDoctorConfig | null;
+  /**
    * Called once per soft-fail event (e.g. a batch hit
    * `OXLINT_SPAWN_TIMEOUT_MS` and was skipped). The lint scan keeps
    * going on remaining batches; the caller is expected to surface the
@@ -401,8 +415,15 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     respectInlineDisables = true,
     adoptExistingLintConfig = true,
     ignoredTags = new Set<string>(),
+    userConfig,
     onPartialFailure,
   } = options;
+
+  const serverAuthFunctionNames = Array.isArray(userConfig?.serverAuthFunctionNames)
+    ? userConfig.serverAuthFunctionNames.filter(
+        (entry): entry is string => typeof entry === "string" && entry.length > 0,
+      )
+    : undefined;
 
   validateRuleRegistration();
 
@@ -439,6 +460,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     customRulesOnly,
     extendsPaths,
     ignoredTags,
+    serverAuthFunctionNames,
   });
   // HACK: only neutralize disable comments in audit mode. Default
   // behavior respects the user's existing `// eslint-disable*` /
@@ -571,6 +593,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         customRulesOnly,
         extendsPaths: [],
         ignoredTags,
+        serverAuthFunctionNames,
       });
       writeOxlintConfig(fallbackConfig);
       return await spawnLintBatches();

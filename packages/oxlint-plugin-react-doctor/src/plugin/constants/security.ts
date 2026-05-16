@@ -17,6 +17,33 @@ export const AUTH_FUNCTION_NAMES = new Set([
   "validateSession",
 ]);
 
+// Auth function names that are too generic to recognize on their own
+// when called as a method (e.g. `analytics.getUser()` is not an auth
+// check). For these names a member call is only accepted when the
+// receiver expression looks auth-related per AUTH_OBJECT_PATTERN.
+// Bare identifier calls (`getUser()`) stay accepted because callers
+// who import `getUser` from an auth library normally do so as the
+// canonical name; renaming an analytics helper to bare `getUser`
+// would be unusual.
+export const GENERIC_AUTH_METHOD_NAMES = new Set(["getUser"]);
+
+// Receiver-expression substrings that signal an auth-related namespace
+// when paired with a generic method name like `.getUser()`. Matched
+// case-insensitively against the dotted source of the member-call
+// receiver (e.g. `ctx.auth`, `auth0`, `clerkClient`). Kept tight on
+// purpose — we accept obvious auth providers (auth/clerk/session/jwt/
+// supabase…) and skip ambiguous nouns like "user" that show up in
+// non-auth namespaces (`userAnalytics`, `userStore`, …).
+//
+// Every alternative MUST be a substring that can actually appear in a
+// JavaScript identifier — i.e. no hyphens. `buildDottedReceiverSource`
+// only emits Identifier names joined by `.`, so any alternative with
+// `-` is dead code (it can never match). `auth` already covers most
+// "better-auth" and "iron-session" usage via the canonical `auth`
+// re-export those libraries ship.
+export const AUTH_OBJECT_PATTERN =
+  /(?:^|[._])(?:auth|authn|authz|clerk|session|jwt|firebase|supabase|nextauth|kinde|workos|stytch|descope|cognito|propelauth|lucia)/i;
+
 export const SECRET_PATTERNS = [
   /^sk_live_/,
   /^sk_test_/,

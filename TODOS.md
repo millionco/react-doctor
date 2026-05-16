@@ -175,14 +175,14 @@ Fix:
 - Confirm `.every()` receiver and indexed array match the guard.
 - Add regression with screenshot shape.
 
-### [ ] Fix `js-combine-iterations` on lazy Iterator helpers
+### [x] Fix `js-combine-iterations` on lazy Iterator helpers
 
-Status: open.
+Status: fixed.
 
 Links:
 
 - Issue: https://github.com/millionco/react-doctor/issues/205
-- PR: https://github.com/millionco/react-doctor/pull/212
+- Superseded PR: https://github.com/millionco/react-doctor/pull/212
 
 Repro:
 
@@ -194,10 +194,12 @@ const oddDoubles = numbers
   .toArray();
 ```
 
-Fix:
+Done:
 
-- Detect chains rooted in `.values()`, `.entries()`, `.keys()`, generators, and Iterator helpers.
-- Keep flagging eager array chains like `array.filter(...).map(...)`.
+- Walks the chain inward from the inner call's receiver, treating `.values()`/`.keys()`/`.entries()` (on non-`Object` receivers), `Iterator.from(...)`, and syntactically-declared generators (`function* gen() {}`, `const gen = function*() {}`) as iterator-rooted and skipping the rule.
+- Continues past chainable iteration methods (`map`/`filter`/`flatMap`/`forEach`); stops at unknown / materializing calls (`.toArray()`, `Array.from(...)`, plain identifiers) so eager array chains keep firing.
+- Excludes `Object.values/keys/entries(...)` from iterator detection because they return arrays.
+- Regression coverage in `tests/regressions/js-performance-rules.test.ts` for eager arrays (still flagged), `.values/.keys/.entries` on Map/Set/array (not flagged), `Object.*` (still flagged), `.toArray()` and `Array.from()` materialization (still flagged), `Iterator.from()`, hoisted and const-bound generators, optional chaining, `.flatMap()` walks, the existing Boolean / identity filter exclusions, and a documented imported-generator false positive.
 
 ### [ ] Demote design/Tailwind cleanup from default PR comments
 

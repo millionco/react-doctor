@@ -1,0 +1,19 @@
+packages/react-doctor/tests/regressions/tanstack-start-get-mutation.test.ts
+  s_d5e3f2d2865d90::t_10eb02df2e260b 44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "71ecf0a4de17718572dc9624ebae729ea2f91dcf",
+  "prompts": {},
+  "sessions": {
+    "s_d5e3f2d2865d90": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "365c04ae-6b54-4143-b7cf-a0e6d02f6efe",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

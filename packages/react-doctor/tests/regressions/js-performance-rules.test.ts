@@ -884,3 +884,153 @@ describe("js-combine-iterations", () => {
     expect(hits[0].filePath).toContain("use-gen.ts");
   });
 });
+
+describe("js-length-check-first", () => {
+  it("does not flag .every() when a length guard sits earlier in a longer && chain", async () => {
+    const projectDir = setupReactProject(tempRoot, "length-check-first-and-chain-guard", {
+      files: {
+        "src/compare.ts": `
+          export const areArraysEqual = (a: number[], b: number[], shouldCompare: boolean) => {
+            return (
+              shouldCompare &&
+              a.length === b.length &&
+              a.every((value, index) => value === b[index])
+            );
+          };
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "js-length-check-first");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("does not flag .every() when the length guard precedes other operands", async () => {
+    const projectDir = setupReactProject(tempRoot, "length-check-first-length-then-extra", {
+      files: {
+        "src/compare.ts": `
+          declare const log: (message: string) => boolean;
+          export const areArraysEqualWithLog = (a: number[], b: number[]) => {
+            return (
+              a.length === b.length &&
+              log("comparing") &&
+              a.every((value, index) => value === b[index])
+            );
+          };
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "js-length-check-first");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("does not flag .every() when length operands are swapped or use ==", async () => {
+    const projectDir = setupReactProject(tempRoot, "length-check-first-swapped-and-loose", {
+      files: {
+        "src/compare.ts": `
+          export const swappedOperands = (a: number[], b: number[]) =>
+            b.length === a.length && a.every((value, index) => value === b[index]);
+
+          export const looseEquality = (a: number[], b: number[]) =>
+            a.length == b.length && a.every((value, index) => value === b[index]);
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "js-length-check-first");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("does not flag .every() guarded through member-expression receivers", async () => {
+    const projectDir = setupReactProject(tempRoot, "length-check-first-member-receivers", {
+      files: {
+        "src/compare.ts": `
+          interface Pair {
+            left: number[];
+            right: number[];
+          }
+          export const areMembersEqual = (pair: Pair) =>
+            pair.left.length === pair.right.length &&
+            pair.left.every((value, index) => value === pair.right[index]);
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "js-length-check-first");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("does not flag .every() guarded outside a nested || branch", async () => {
+    const projectDir = setupReactProject(tempRoot, "length-check-first-nested-or", {
+      files: {
+        "src/compare.ts": `
+          declare const fastPath: (a: number[], b: number[]) => boolean;
+          export const areArraysEqualOrFast = (a: number[], b: number[]) =>
+            a.length === b.length &&
+            (fastPath(a, b) || a.every((value, index) => value === b[index]));
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "js-length-check-first");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("still flags .every() when no length guard exists in the surrounding && chain", async () => {
+    const projectDir = setupReactProject(tempRoot, "length-check-first-missing-guard", {
+      files: {
+        "src/compare.ts": `
+          export const areArraysEqual = (a: number[], b: number[]) =>
+            a.every((value, index) => value === b[index]);
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "js-length-check-first");
+    expect(hits).toHaveLength(1);
+    expect(hits[0].message).toContain(".every()");
+  });
+
+  it("still flags .every() when the length check runs after the iteration", async () => {
+    const projectDir = setupReactProject(tempRoot, "length-check-first-guard-after-every", {
+      files: {
+        "src/compare.ts": `
+          export const compareThenCheck = (a: number[], b: number[]) =>
+            a.every((value, index) => value === b[index]) && a.length === b.length;
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "js-length-check-first");
+    expect(hits).toHaveLength(1);
+  });
+
+  it("still flags .every() when the length guard compares unrelated arrays", async () => {
+    const projectDir = setupReactProject(tempRoot, "length-check-first-mismatched-arrays", {
+      files: {
+        "src/compare.ts": `
+          export const compareWithUnrelatedGuard = (a: number[], b: number[], c: number[]) =>
+            a.length === c.length && a.every((value, index) => value === b[index]);
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "js-length-check-first");
+    expect(hits).toHaveLength(1);
+  });
+
+  it("still flags .every() when the surrounding chain uses an inequality operator", async () => {
+    const projectDir = setupReactProject(tempRoot, "length-check-first-inequality-guard", {
+      files: {
+        "src/compare.ts": `
+          export const compareWithGteGuard = (a: number[], b: number[]) =>
+            a.length >= b.length && a.every((value, index) => value === b[index]);
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "js-length-check-first");
+    expect(hits).toHaveLength(1);
+  });
+});

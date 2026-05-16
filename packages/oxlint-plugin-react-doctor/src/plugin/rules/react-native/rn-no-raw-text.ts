@@ -5,6 +5,7 @@ import {
 } from "../../constants/react-native.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { hasDirective } from "../../utils/has-directive.js";
+import { isInsidePlatformOsWebBranch } from "../../utils/is-inside-platform-os-web-branch.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -53,8 +54,6 @@ const isTextHandlingComponent = (elementName: string): boolean => {
   return [...REACT_NATIVE_TEXT_COMPONENT_KEYWORDS].some((keyword) => elementName.includes(keyword));
 };
 
-const WEB_FILE_EXTENSION_PATTERN = /\.web\.[jt]sx?$/;
-
 export const rnNoRawText = defineRule<Rule>({
   id: "rn-no-raw-text",
   requires: ["react-native"],
@@ -62,20 +61,31 @@ export const rnNoRawText = defineRule<Rule>({
   recommendation:
     "Wrap text in a `<Text>` component: `<Text>{value}</Text>` — raw strings outside `<Text>` crash on React Native",
   create: (context: RuleContext) => {
-    let isWebOnlyFile = false;
+    // The package-boundary gate (`isReactNativeFileActive`) lives on the
+    // rule wrapper applied at registry load — by the time we get here
+    // the file is confirmed to belong to a React Native / Expo package
+    // (or to be ambiguous enough that we err on the side of running).
+    // The only file-level branch we still need is "use dom", which is
+    // Expo Router's directive that opts a single file into being rendered
+    // in a WebView as DOM rather than on React Native primitives.
     let isDomComponentFile = false;
 
     return {
       Program(programNode: EsTreeNodeOfType<"Program">) {
         isDomComponentFile = hasDirective(programNode, "use dom");
-        const filename = context.getFilename?.() ?? "";
-        isWebOnlyFile = WEB_FILE_EXTENSION_PATTERN.test(filename);
       },
       JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
-        if (isDomComponentFile || isWebOnlyFile) return;
+        if (isDomComponentFile) return;
 
         const elementName = resolveJsxElementName(node.openingElement);
         if (elementName && isTextHandlingComponent(elementName)) return;
+
+        // `Platform.OS === "web"` branches deliberately render web markup
+        // (raw text, div/span trees, etc.) when the app is bundled by
+        // react-native-web. Skipping the JSX subtree here mirrors the
+        // package-level boundary handled by the wrapper — same rationale,
+        // narrower scope.
+        if (isInsidePlatformOsWebBranch(node)) return;
 
         for (const child of node.children ?? []) {
           if (!isRawTextContent(child)) continue;

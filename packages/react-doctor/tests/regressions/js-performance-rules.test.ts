@@ -544,3 +544,341 @@ describe("async-defer-await", () => {
     expect(hits).toHaveLength(1);
   });
 });
+
+describe("js-combine-iterations", () => {
+  it("still flags eager array .filter().map() chains", async () => {
+    const projectDir = setupReactProject(tempRoot, "combine-eager-array-chain", {
+      files: {
+        "src/sum-positives.ts": `
+          export const sumPositives = (numbers: number[]) =>
+            numbers.filter((value) => value > 0).map((value) => value * 2);
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "js-combine-iterations");
+    expect(hits).toHaveLength(1);
+    expect(hits[0].message).toContain(".filter().map()");
+  });
+
+  it("does not flag .values().filter().map() Iterator-helper chains (issue #205 repro)", async () => {
+    const projectDir = setupReactProject(tempRoot, "combine-iterator-helper-values-filter-map", {
+      files: {
+        "src/odd-doubles.ts": `
+          export const oddDoubles = (numbers: number[]) =>
+            numbers
+              .values()
+              .filter((value) => value % 2 === 1)
+              .map((value) => 2 * value)
+              .toArray();
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "js-combine-iterations");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("does not flag .values().map().filter() (walks past intermediate lazy step)", async () => {
+    const projectDir = setupReactProject(tempRoot, "combine-iterator-helper-values-map-filter", {
+      files: {
+        "src/odd-doubles.ts": `
+          export const oddDoubles = (numbers: number[]) =>
+            numbers
+              .values()
+              .map((value) => value * 2)
+              .filter((value) => value % 2 === 0)
+              .toArray();
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "js-combine-iterations");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("does not flag .entries() chains on a Map", async () => {
+    const projectDir = setupReactProject(tempRoot, "combine-iterator-helper-map-entries", {
+      files: {
+        "src/serialize.ts": `
+          export const serialize = (lookup: Map<string, number>) =>
+            lookup
+              .entries()
+              .map(([key, value]) => key + ":" + value)
+              .filter((entry) => entry.length > 1)
+              .toArray();
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "js-combine-iterations");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("does not flag .keys() chains on a Set", async () => {
+    const projectDir = setupReactProject(tempRoot, "combine-iterator-helper-set-keys", {
+      files: {
+        "src/list-allowed.ts": `
+          export const listAllowed = (allowed: Set<string>) =>
+            allowed
+              .keys()
+              .filter((value) => value.length > 0)
+              .map((value) => value.toUpperCase())
+              .toArray();
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "js-combine-iterations");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("still flags Object.values(...).map().filter() because it is array-eager", async () => {
+    const projectDir = setupReactProject(tempRoot, "combine-object-values-still-eager", {
+      files: {
+        "src/list-active-values.ts": `
+          export const listActiveValues = (lookup: Record<string, { active: boolean; label: string }>) =>
+            Object.values(lookup)
+              .map((entry) => entry.label)
+              .filter((label) => label.length > 0);
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "js-combine-iterations");
+    expect(hits).toHaveLength(1);
+    expect(hits[0].message).toContain(".map().filter()");
+  });
+
+  it("still flags Object.entries(...).filter().map() because it is array-eager", async () => {
+    const projectDir = setupReactProject(tempRoot, "combine-object-entries-still-eager", {
+      files: {
+        "src/list-keys.ts": `
+          export const listKeys = (lookup: Record<string, number>) =>
+            Object.entries(lookup)
+              .filter(([, value]) => value > 0)
+              .map(([key]) => key);
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "js-combine-iterations");
+    expect(hits).toHaveLength(1);
+    expect(hits[0].message).toContain(".filter().map()");
+  });
+
+  it("flags chains where .toArray() materializes the iterator before .filter().map()", async () => {
+    const projectDir = setupReactProject(tempRoot, "combine-iterator-toarray-materialization", {
+      files: {
+        "src/materialized.ts": `
+          export const materialized = (numbers: number[]) =>
+            numbers
+              .values()
+              .toArray()
+              .filter((value) => value > 0)
+              .map((value) => value * 2);
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "js-combine-iterations");
+    expect(hits).toHaveLength(1);
+    expect(hits[0].message).toContain(".filter().map()");
+  });
+
+  it("flags Array.from(iterator).filter().map() because the array is materialized", async () => {
+    const projectDir = setupReactProject(tempRoot, "combine-array-from-still-eager", {
+      files: {
+        "src/from-iterator.ts": `
+          declare const incoming: Iterable<number>;
+          export const fromIterator = () =>
+            Array.from(incoming)
+              .filter((value) => value > 0)
+              .map((value) => value * 2);
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "js-combine-iterations");
+    expect(hits).toHaveLength(1);
+    expect(hits[0].message).toContain(".filter().map()");
+  });
+
+  it("does not flag Iterator.from(...) chains", async () => {
+    const projectDir = setupReactProject(tempRoot, "combine-iterator-from", {
+      files: {
+        "src/wrap.ts": `
+          declare const Iterator: { from: <T>(value: Iterable<T>) => { map: <U>(fn: (value: T) => U) => any; filter: (fn: (value: T) => boolean) => any; toArray: () => T[]; }; };
+
+          export const wrap = (numbers: number[]) =>
+            Iterator.from(numbers)
+              .map((value) => value + 1)
+              .filter((value) => value % 2 === 0)
+              .toArray();
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "js-combine-iterations");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("does not flag chains rooted in a hoisted generator declaration", async () => {
+    const projectDir = setupReactProject(tempRoot, "combine-hoisted-generator", {
+      files: {
+        "src/from-generator.ts": `
+          export const fromGenerator = () =>
+            countUp()
+              .filter((value) => value % 2 === 0)
+              .map((value) => value * 2)
+              .toArray();
+
+          function* countUp(): IterableIterator<number> {
+            let cursor = 0;
+            while (cursor < 10) {
+              yield cursor++;
+            }
+          }
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "js-combine-iterations");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("does not flag chains rooted in a const-bound generator function expression", async () => {
+    const projectDir = setupReactProject(tempRoot, "combine-const-bound-generator", {
+      files: {
+        "src/from-generator-expression.ts": `
+          const countUp = function* (): IterableIterator<number> {
+            let cursor = 0;
+            while (cursor < 10) {
+              yield cursor++;
+            }
+          };
+
+          export const fromGenerator = () =>
+            countUp()
+              .filter((value) => value % 2 === 0)
+              .map((value) => value * 2)
+              .toArray();
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "js-combine-iterations");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("does not flag optional-chained Iterator-helper chains", async () => {
+    const projectDir = setupReactProject(tempRoot, "combine-optional-chain-iterator", {
+      files: {
+        "src/optional-chain.ts": `
+          export const fromOptional = (numbers?: number[]) =>
+            numbers
+              ?.values()
+              ?.filter((value) => value > 0)
+              ?.map((value) => value * 2)
+              ?.toArray();
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "js-combine-iterations");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("still flags array .flatMap().filter().map() chains when the root is a plain array", async () => {
+    const projectDir = setupReactProject(tempRoot, "combine-eager-flatmap-array", {
+      files: {
+        "src/flatten.ts": `
+          export const flatten = (groups: number[][]) =>
+            groups
+              .flatMap((group) => group)
+              .filter((value) => value > 0)
+              .map((value) => value * 2);
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "js-combine-iterations");
+    expect(hits).toHaveLength(1);
+    expect(hits[0].message).toContain(".filter().map()");
+  });
+
+  it("does not flag .values().flatMap().filter().map() Iterator-helper chains", async () => {
+    const projectDir = setupReactProject(tempRoot, "combine-iterator-flatmap-chain", {
+      files: {
+        "src/flatten-iterator.ts": `
+          export const flattenIterator = (groups: number[][]) =>
+            groups
+              .values()
+              .flatMap((group) => group.values())
+              .filter((value) => value > 0)
+              .map((value) => value * 2)
+              .toArray();
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "js-combine-iterations");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("preserves the .map().filter(Boolean) exclusion for plain arrays", async () => {
+    const projectDir = setupReactProject(tempRoot, "combine-map-filter-boolean-exclusion", {
+      files: {
+        "src/active-names.ts": `
+          export const activeNames = (users: Array<{ active: boolean; name: string }>) =>
+            users.map((user) => (user.active ? user.name : null)).filter(Boolean);
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "js-combine-iterations");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("preserves the .map().filter(x => x) identity-filter exclusion for plain arrays", async () => {
+    const projectDir = setupReactProject(tempRoot, "combine-map-filter-identity-exclusion", {
+      files: {
+        "src/active-names.ts": `
+          export const activeNames = (users: Array<{ active: boolean; name: string }>) =>
+            users.map((user) => (user.active ? user.name : null)).filter((name) => name);
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "js-combine-iterations");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("still flags chains rooted in an imported generator-like identifier (no cross-file analysis)", async () => {
+    const projectDir = setupReactProject(tempRoot, "combine-imported-generator-still-flagged", {
+      files: {
+        "src/gen.ts": `
+          export function* countUp(): IterableIterator<number> {
+            let cursor = 0;
+            while (cursor < 5) {
+              yield cursor++;
+            }
+          }
+        `,
+        "src/use-gen.ts": `
+          import { countUp } from "./gen.js";
+
+          export const fromGenerator = () =>
+            countUp()
+              .filter((value) => value % 2 === 0)
+              .map((value) => value * 2)
+              .toArray();
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "js-combine-iterations");
+    expect(hits).toHaveLength(1);
+    expect(hits[0].filePath).toContain("use-gen.ts");
+  });
+});

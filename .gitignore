@@ -8,3 +8,14 @@ review-report.md
 review-*.md
 *.review.md
 *.tgz
+
+# Local-only: rule-catalog generators and per-rule prompts. The generated
+# `rules.json` and the prompts themselves live in the (private) evals repo;
+# only the source rules under packages/oxlint-plugin-react-doctor/src/plugin/rules
+# belong in this open-source codebase.
+/scripts/generate-rules-json.mjs
+/scripts/list-rule-paths.mjs
+/scripts/merge-rule-prompts.mjs
+/scripts/print-batch-input.mjs
+/scripts/rule-prompts/
+/rules.json

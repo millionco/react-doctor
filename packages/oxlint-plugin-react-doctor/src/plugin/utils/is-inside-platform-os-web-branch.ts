@@ -63,11 +63,12 @@ const classifyPlatformOsBinaryTest = (
 //   Platform.OS === "web" ? <node here /> : …
 //   Platform.OS === "web" && <node here />
 //   Platform.OS !== "web" || <node here />   (logical short-circuit web path)
+//   switch (Platform.OS) { case "web": …node here… }
 //
-// The walk stops at the nearest function/Program boundary that doesn't
-// satisfy any of those — additional outer Platform.OS checks could be
-// considered too, but a single enclosing branch is enough for the
-// idiomatic "skip raw text on web" pattern we want to support.
+// Nested intermediate guards (`if (someOtherFlag) { …node here… }`
+// inside the web branch) are transparent — the walker continues
+// upward until it finds the enclosing Platform.OS check or hits the
+// top of the file.
 export const isInsidePlatformOsWebBranch = (node: EsTreeNode): boolean => {
   let child: EsTreeNode = node;
   let parent: EsTreeNode | null | undefined = node.parent;
@@ -92,6 +93,19 @@ export const isInsidePlatformOsWebBranch = (node: EsTreeNode): boolean => {
         if (parent.operator === "&&" && classification.isWebBranch) return true;
         if (parent.operator === "||" && classification.isNonWebBranch) return true;
       }
+    } else if (
+      isNodeOfType(parent, "SwitchCase") &&
+      isWebStringLiteral(parent.test) &&
+      isNodeOfType(parent.parent, "SwitchStatement") &&
+      isPlatformOsMemberExpression(parent.parent.discriminant)
+    ) {
+      // `switch (Platform.OS) { case "web": <node here /> … }` — the
+      // SwitchCase node's `test` is the literal `"web"` and its parent
+      // SwitchStatement's `discriminant` is `Platform.OS`. We only
+      // match when the current child is one of the case's `consequent`
+      // statements (not the case's `test` itself). `.some(===)` avoids
+      // the array-typing mismatch between `Statement[]` and `EsTreeNode`.
+      if (parent.consequent.some((statement) => statement === child)) return true;
     }
     child = parent;
     parent = parent.parent ?? null;

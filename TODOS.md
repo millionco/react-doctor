@@ -155,25 +155,25 @@ Fix:
 - Keep `<a onClick preventDefault()>` guidance separate.
 - Add regressions for Vite SPA, Next App Router, and dialog/local-only forms.
 
-### [ ] Fix `js-length-check-first` guard detection
+### [x] Fix `js-length-check-first` guard detection
 
-Status: confirmed current.
+Status: fixed.
 
 Source:
 
 - Screenshot: `.every()` warning fired even though the same condition already checked length equality.
 
-Current problem:
+Previous problem:
 
-- Rule checks only nearest logical expression's immediate `left`.
-- It misses length guards inside larger `&&` chains.
+- Rule checked only the nearest logical expression's immediate `left`.
+- It missed length guards inside larger `&&` chains.
 
 Fix:
 
-- Flatten surrounding `&&` chains.
-- Search previous operands for matching length equality.
-- Confirm `.every()` receiver and indexed array match the guard.
-- Add regression with screenshot shape.
+- Walk up `&&` (and transparently-walk-through `||`/`??`/`ChainExpression`) ancestors so any short-circuiting guard is visible.
+- Flatten the collected `&&` chain so each operand can be inspected independently.
+- Match the guard's `length`-equality operands structurally against the `.every()` receiver and the array indexed inside the callback.
+- Regression covers the multi-operand `&&` chain shape from the screenshot plus member-receiver, swapped-side, nested-`||`, and negative cases.
 
 ### [x] Fix `js-combine-iterations` on lazy Iterator helpers
 

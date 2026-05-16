@@ -30,6 +30,9 @@ afterAll(() => {
 describe("rn-no-deprecated-modules — prototype-pollution defense", () => {
   it("does NOT flag `import { constructor } from 'react-native'` (or other Object.prototype names)", async () => {
     const projectDir = setupReactProject(tempRoot, "rn-deprecated-proto-import", {
+      packageJsonExtras: {
+        dependencies: { react: "^19.0.0", "react-native": "0.76.0" },
+      },
       files: {
         "src/index.ts": `import { constructor, toString, hasOwnProperty } from "react-native";
 
@@ -48,6 +51,9 @@ void hasOwnProperty;
 
   it("STILL flags a real removed RN export (`AsyncStorage`)", async () => {
     const projectDir = setupReactProject(tempRoot, "rn-deprecated-real-hit", {
+      packageJsonExtras: {
+        dependencies: { react: "^19.0.0", "react-native": "0.76.0" },
+      },
       files: {
         "src/index.ts": `import { AsyncStorage } from "react-native";
 

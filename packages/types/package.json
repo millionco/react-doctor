@@ -2,7 +2,7 @@
   "name": "@react-doctor/types",
   "version": "0.2.0-beta.2",
   "private": true,
-  "description": "Internal type-only package for React Doctor. Not published.",
+  "description": "Internal shared types and constants for React Doctor. Not published.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,

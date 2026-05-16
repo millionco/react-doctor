@@ -78,6 +78,9 @@ importers:
         specifier: ^8.59.3
         version: 8.59.3
     devDependencies:
+      '@react-doctor/types':
+        specifier: workspace:*
+        version: link:../types
       '@types/node':
         specifier: ^25.6.0
         version: 25.6.0

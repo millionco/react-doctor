@@ -882,6 +882,207 @@ describe("discoverReactSubprojects", () => {
   });
 });
 
+describe("discoverProject — hasReactNativeWorkspace", () => {
+  it("is true when the entry-point package itself declares `react-native`", () => {
+    const projectDirectory = path.join(tempDirectory, "rn-aware-self");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "mobile-app",
+        dependencies: { react: "^19.0.0", "react-native": "0.76.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.hasReactNativeWorkspace).toBe(true);
+  });
+
+  it("is true when the entry-point package declares `expo`", () => {
+    const projectDirectory = path.join(tempDirectory, "rn-aware-expo");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "expo-app",
+        dependencies: { react: "^19.0.0", expo: "^51.0.0", "expo-router": "^3.5.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.hasReactNativeWorkspace).toBe(true);
+  });
+
+  it("is true when a workspace sibling declares `react-native` even if the root is web-only (inverted-gate fixture)", () => {
+    // Root `package.json` is Next.js-shaped; `apps/mobile` is an Expo
+    // workspace. The capability gate in `buildCapabilities` keys off
+    // this bit so `rn-*` rules still load on `apps/mobile` despite
+    // the root framework being `nextjs`. Without the workspace walk
+    // the bit would be `false` and every `rn-*` rule would be
+    // dropped at the project level before the file-level wrapper
+    // could ever silence them.
+    const rootDirectory = path.join(tempDirectory, "inverted-monorepo");
+    const webDirectory = path.join(rootDirectory, "apps", "web");
+    const mobileDirectory = path.join(rootDirectory, "apps", "mobile");
+    fs.mkdirSync(webDirectory, { recursive: true });
+    fs.mkdirSync(mobileDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({
+        name: "inverted-monorepo",
+        dependencies: { next: "^14.0.0", react: "^19.0.0", "react-dom": "^19.0.0" },
+        workspaces: ["apps/*"],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(webDirectory, "package.json"),
+      JSON.stringify({
+        name: "web",
+        dependencies: { next: "^14.0.0", react: "^19.0.0", "react-dom": "^19.0.0" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(mobileDirectory, "package.json"),
+      JSON.stringify({
+        name: "mobile",
+        dependencies: { react: "^19.0.0", "react-native": "0.76.0", expo: "^51.0.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(rootDirectory);
+    expect(projectInfo.hasReactNativeWorkspace).toBe(true);
+  });
+
+  it("is true when a workspace lists `react-native` only in `optionalDependencies` (parity with the file-level classifier)", () => {
+    // pinned because the project-info predicate previously only
+    // walked `dependencies` / `devDependencies` / `peerDependencies`
+    // while the oxlint plugin's `classifyPackagePlatform` also walks
+    // `optionalDependencies`. The drift meant a workspace with
+    // `react-native` in optionalDependencies would classify as RN
+    // for the file-level rule gate but stay invisible to the
+    // project-level capability gate, dropping every `rn-*` rule.
+    const rootDirectory = path.join(tempDirectory, "inverted-monorepo-opt-deps");
+    const mobileDirectory = path.join(rootDirectory, "apps", "mobile");
+    fs.mkdirSync(mobileDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({
+        name: "opt-deps-root",
+        dependencies: { next: "^14.0.0", react: "^19.0.0", "react-dom": "^19.0.0" },
+        workspaces: ["apps/*"],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(mobileDirectory, "package.json"),
+      JSON.stringify({
+        name: "mobile",
+        dependencies: { react: "^19.0.0" },
+        optionalDependencies: { "react-native": "0.76.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(rootDirectory);
+    expect(projectInfo.hasReactNativeWorkspace).toBe(true);
+  });
+
+  it("is true when a workspace declares only an `@react-native-*` namespace dependency (prefix match)", () => {
+    const rootDirectory = path.join(tempDirectory, "inverted-monorepo-namespace");
+    const mobileDirectory = path.join(rootDirectory, "apps", "mobile");
+    fs.mkdirSync(mobileDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({
+        name: "namespace-root",
+        dependencies: { next: "^14.0.0", react: "^19.0.0", "react-dom": "^19.0.0" },
+        workspaces: ["apps/*"],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(mobileDirectory, "package.json"),
+      JSON.stringify({
+        name: "mobile",
+        dependencies: { react: "^19.0.0", "@react-native-firebase/app": "^21.0.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(rootDirectory);
+    expect(projectInfo.hasReactNativeWorkspace).toBe(true);
+  });
+
+  it("is true when a workspace library sets Metro's top-level `react-native` resolution field", () => {
+    const rootDirectory = path.join(tempDirectory, "inverted-monorepo-metro-field");
+    const libDirectory = path.join(rootDirectory, "packages", "native-lib");
+    fs.mkdirSync(libDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({
+        name: "metro-field-root",
+        dependencies: { next: "^14.0.0", react: "^19.0.0", "react-dom": "^19.0.0" },
+        workspaces: ["packages/*"],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(libDirectory, "package.json"),
+      JSON.stringify({
+        name: "native-lib",
+        dependencies: { react: "^19.0.0" },
+        "react-native": "./dist/native/index.js",
+      }),
+    );
+
+    const projectInfo = discoverProject(rootDirectory);
+    expect(projectInfo.hasReactNativeWorkspace).toBe(true);
+  });
+
+  it("is false on a pure web monorepo where no workspace declares any RN dependency", () => {
+    const rootDirectory = path.join(tempDirectory, "pure-web-monorepo");
+    const webDirectory = path.join(rootDirectory, "apps", "web");
+    const docsDirectory = path.join(rootDirectory, "apps", "docs");
+    fs.mkdirSync(webDirectory, { recursive: true });
+    fs.mkdirSync(docsDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({
+        name: "pure-web",
+        dependencies: { next: "^14.0.0", react: "^19.0.0", "react-dom": "^19.0.0" },
+        workspaces: ["apps/*"],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(webDirectory, "package.json"),
+      JSON.stringify({
+        name: "web",
+        dependencies: { next: "^14.0.0", react: "^19.0.0", "react-dom": "^19.0.0" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(docsDirectory, "package.json"),
+      JSON.stringify({
+        name: "docs",
+        dependencies: { "@docusaurus/core": "^3.4.0", react: "^19.0.0", "react-dom": "^19.0.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(rootDirectory);
+    expect(projectInfo.hasReactNativeWorkspace).toBe(false);
+  });
+
+  it("is false on a single-package web project (no workspaces, no RN deps)", () => {
+    const projectDirectory = path.join(tempDirectory, "single-web-app");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "single-web",
+        dependencies: { next: "^14.0.0", react: "^19.0.0", "react-dom": "^19.0.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.hasReactNativeWorkspace).toBe(false);
+  });
+});
+
 describe("formatFrameworkName", () => {
   it("formats known frameworks", () => {
     expect(formatFrameworkName("nextjs")).toBe("Next.js");

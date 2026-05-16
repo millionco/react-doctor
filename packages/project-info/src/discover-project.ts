@@ -10,6 +10,7 @@ import { findDependencyInfoFromMonorepoRoot } from "./find-dependency-info-from-
 import { findMonorepoRoot, isMonorepoRoot } from "./find-monorepo-root.js";
 import { findReactInWorkspaces } from "./find-react-in-workspaces.js";
 import { getDependencyDeclaration } from "./utils/get-dependency-declaration.js";
+import { hasReactNativeWorkspaceAnywhere } from "./has-react-native-workspace-anywhere.js";
 import { hasTanStackQuery } from "./has-tanstack-query.js";
 import { readPackageJson } from "./read-package-json.js";
 import { isCatalogReference, resolveCatalogVersion } from "./resolve-catalog-version.js";
@@ -145,6 +146,16 @@ export const discoverProject = (directory: string): ProjectInfo => {
   const hasTypeScript = fs.existsSync(path.join(directory, "tsconfig.json"));
   const sourceFileCount = countSourceFiles(directory);
 
+  // The capability gate in `buildCapabilities` keys off this bit so
+  // `rn-*` rules also load on web-rooted monorepos (a `next` root
+  // with an `apps/mobile` Expo workspace, etc.). Skip the workspace
+  // walk when the root itself already classifies as RN — the bit is
+  // trivially true in that case.
+  const hasReactNativeWorkspace =
+    framework === "expo" ||
+    framework === "react-native" ||
+    hasReactNativeWorkspaceAnywhere(directory, packageJson);
+
   const projectInfo: ProjectInfo = {
     rootDirectory: directory,
     projectName,
@@ -155,6 +166,7 @@ export const discoverProject = (directory: string): ProjectInfo => {
     hasTypeScript,
     hasReactCompiler: detectReactCompiler(directory, packageJson),
     hasTanStackQuery: hasTanStackQuery(packageJson),
+    hasReactNativeWorkspace,
     sourceFileCount,
   };
   cachedProjectInfos.set(directory, projectInfo);

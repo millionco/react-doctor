@@ -21,4 +21,9 @@ export type {
   WorkspacePackage,
 } from "./project-info.js";
 export type { PromptMultiselectChoiceState, PromptMultiselectContext } from "./prompts.js";
+export {
+  REACT_NATIVE_DEPENDENCY_NAMES,
+  REACT_NATIVE_DEPENDENCY_PREFIXES,
+  isReactNativeDependencyName,
+} from "./react-native-dependency-names.js";
 export type { ScoreResult } from "./score.js";

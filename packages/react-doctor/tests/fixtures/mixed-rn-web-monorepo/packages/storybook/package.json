@@ -1,0 +1,13 @@
+{
+  "name": "design-storybook",
+  "private": true,
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@storybook/react": "^8.3.0",
+    "@storybook/react-vite": "^8.3.0",
+    "storybook": "^8.3.0"
+  }
+}

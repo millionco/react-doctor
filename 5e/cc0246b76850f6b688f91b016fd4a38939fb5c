@@ -1,0 +1,19 @@
+.gitignore
+  s_bf16a28f7e4ca7::t_e034b5c09eb05a 11-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "5ecc0246b76850f6b688f91b016fd4a38939fb5c",
+  "prompts": {},
+  "sessions": {
+    "s_bf16a28f7e4ca7": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a75bc1f1-7fc2-44b0-9b39-97afcd6331e7",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

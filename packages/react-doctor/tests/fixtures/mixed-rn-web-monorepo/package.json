@@ -1,0 +1,8 @@
+{
+  "name": "mixed-rn-web-monorepo",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
+}

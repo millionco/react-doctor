@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "jsx": "preserve",
+    "strict": false,
+    "target": "es2022",
+    "module": "esnext"
+  }
+}

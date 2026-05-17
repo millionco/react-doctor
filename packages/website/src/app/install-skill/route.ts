@@ -27,7 +27,7 @@ if ! command -v npx >/dev/null 2>&1; then
 fi
 
 printf "\${GREEN}→\${RESET} Installing react-doctor skill via npx react-doctor install...\\n"
-exec npx -y react-doctor@latest install --yes
+exec npx react-doctor@latest install --yes
 `;
 
 export const GET = (): Response =>

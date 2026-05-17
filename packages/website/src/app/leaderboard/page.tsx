@@ -7,7 +7,7 @@ import { getScoreColorClass } from "@/utils/get-score-color-class";
 
 const SCORE_BAR_WIDTH = 20;
 const REVALIDATE_SECONDS = 60 * 60;
-const COMMAND = "npx -y react-doctor@latest .";
+const COMMAND = "npx react-doctor@latest";
 const BENCHMARKS_REPO_URL = "https://github.com/millionco/react-doctor-benchmarks";
 const LEADERBOARD_URL =
   "https://raw.githubusercontent.com/millionco/react-doctor-benchmarks/main/results/leaderboard.json";

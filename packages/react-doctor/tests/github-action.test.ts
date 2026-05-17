@@ -33,7 +33,7 @@ describe("GitHub Action contract", () => {
 
     expect(scoreStep).toContain("--score");
     expect(scoreStep).toContain('"--fail-on" "none"');
-    expect(scoreStep).toContain("SCORE=$(npx -y react-doctor@latest");
+    expect(scoreStep).toContain("SCORE=$(npx react-doctor@latest");
     expect(scoreStep).toContain("|| true");
   });
 

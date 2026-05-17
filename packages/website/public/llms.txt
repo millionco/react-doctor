@@ -7,67 +7,67 @@ Diagnose React codebase health. Scans for security, performance, correctness, an
 Run this at your project root:
 
 ```bash
-npx -y react-doctor@latest .
+npx react-doctor@latest
 ```
 
 Use `--verbose` to see affected files and line numbers:
 
 ```bash
-npx -y react-doctor@latest . --verbose
+npx react-doctor@latest --verbose
 ```
 
 Use `--diff [base]` to scan only files changed vs a base branch (default: auto-detected `main`/`master`). On the default branch, scans uncommitted working-tree changes; on a feature branch, scans changes vs the base.
 
 ```bash
-npx -y react-doctor@latest . --verbose --diff
+npx react-doctor@latest --verbose --diff
 ```
 
 Use `--score` to output only the numeric score:
 
 ```bash
-npx -y react-doctor@latest . --score
+npx react-doctor@latest --score
 ```
 
 Use `--json` for a single structured JSON report (suppresses other output):
 
 ```bash
-npx -y react-doctor@latest . --json | jq '.summary'
+npx react-doctor@latest --json | jq '.summary'
 ```
 
 Use `-y` to skip prompts (required for non-interactive environments like CI or coding agents):
 
 ```bash
-npx -y react-doctor@latest . -y
+npx react-doctor@latest -y
 ```
 
 Use `--staged` for pre-commit hooks (scans only staged files):
 
 ```bash
-npx -y react-doctor@latest --staged
+npx react-doctor@latest --staged
 ```
 
 Use `--annotations` to emit GitHub Actions annotations:
 
 ```bash
-npx -y react-doctor@latest . --annotations
+npx react-doctor@latest --annotations
 ```
 
 Use `--fail-on <level>` to control exit codes (`error`, `warning`, `none`):
 
 ```bash
-npx -y react-doctor@latest . --fail-on error
+npx react-doctor@latest --fail-on error
 ```
 
 Use `--offline` to skip the score API (computes score locally):
 
 ```bash
-npx -y react-doctor@latest . --offline
+npx react-doctor@latest --offline
 ```
 
 Install the skill into your coding agent (50+ agents supported via agent-install: Claude Code, Codex, Cursor, Factory Droid, Gemini CLI, GitHub Copilot, Goose, OpenCode, Pi, Windsurf, Roo Code, Cline, Kilo Code, Warp, Replit, OpenHands, Continue, and more):
 
 ```bash
-npx -y react-doctor@latest install
+npx react-doctor@latest install
 ```
 
 ## Options

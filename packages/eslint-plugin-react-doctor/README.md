@@ -75,7 +75,7 @@ export default [
 This package only ships the ESLint plugin. To run React Doctor's full scan (with scoring, JSON reports, agent integration, etc.), use the main CLI:
 
 ```bash
-npx -y react-doctor@latest .
+npx react-doctor@latest
 ```
 
 See the [React Doctor README](https://github.com/millionco/react-doctor#readme) for the full feature set.

@@ -82,9 +82,9 @@ runs:
           # so style cleanup doesn't dilute meaningful React findings
           # in the sticky PR comment. Configure overrides via
           # config.surfaces.{prComment,ciFailure} in react-doctor.config.json.
-          npx -y react-doctor@latest "$INPUT_DIRECTORY" "${FLAGS[@]}" --pr-comment | tee "$OUTPUT_FILE"
+          npx react-doctor@latest "$INPUT_DIRECTORY" "${FLAGS[@]}" --pr-comment | tee "$OUTPUT_FILE"
         else
-          npx -y react-doctor@latest "$INPUT_DIRECTORY" "${FLAGS[@]}"
+          npx react-doctor@latest "$INPUT_DIRECTORY" "${FLAGS[@]}"
         fi
 
     - id: score
@@ -101,7 +101,7 @@ runs:
         # don't fail the composite action under `set -e -o pipefail`.
         SCORE_ARGS=("$INPUT_DIRECTORY" "--score" "--fail-on" "none")
         if [ "$INPUT_OFFLINE" = "true" ]; then SCORE_ARGS+=("--offline"); fi
-        SCORE=$(npx -y react-doctor@latest "${SCORE_ARGS[@]}" 2>/dev/null | tail -1 | tr -d '[:space:]') || true
+        SCORE=$(npx react-doctor@latest "${SCORE_ARGS[@]}" 2>/dev/null | tail -1 | tr -d '[:space:]') || true
         if [[ -n "$SCORE" && "$SCORE" =~ ^[0-9]+$ ]]; then
           echo "score=$SCORE" >> "$GITHUB_OUTPUT"
         fi

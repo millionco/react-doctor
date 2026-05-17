@@ -20,7 +20,7 @@ Works with Next.js, Vite, and React Native.
 Run this at your project root:
 
 ```bash
-npx -y react-doctor@latest .
+npx react-doctor@latest
 ```
 
 You'll get a score (75+ Great, 50 to 74 Needs work, under 50 Critical) and a list of issues across state & effects, performance, architecture, security, accessibility, and dead code. Rules toggle automatically based on your framework and React version.
@@ -32,7 +32,7 @@ https://github.com/user-attachments/assets/07cc88d9-9589-44c3-aa73-5d603cb1c570
 Teach your coding agent React best practices so it stops writing the bad code in the first place.
 
 ```bash
-npx -y react-doctor@latest install
+npx react-doctor@latest install
 ```
 
 You'll be prompted to pick which detected agents to install for. Pass `--yes` to skip prompts.
@@ -75,7 +75,7 @@ When `github-token` is set on `pull_request` events, findings are posted (and up
 Prefer not to add a marketplace action? The bare `npx` form works too:
 
 ```yaml
-- run: npx -y react-doctor@latest --fail-on warning
+- run: npx react-doctor@latest --fail-on warning
 ```
 
 ## Configuration

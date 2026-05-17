@@ -1,108 +1,119 @@
-import reactDoctorPlugin from "./plugin/react-doctor-plugin.js";
+import { reactDoctorRules } from "./plugin/rule-registry.js";
 import type { RuleFramework } from "./plugin/utils/rule.js";
 import type { OxlintRuleSeverity } from "./types.js";
 
-const formatFullKey = (ruleId: string): string => `react-doctor/${ruleId}`;
+interface RuleMapEntry {
+  key: string;
+  severity: OxlintRuleSeverity;
+}
 
-const collectRulesByFramework = (
-  frameworkName: RuleFramework,
-): Record<string, OxlintRuleSeverity> => {
-  const collected: Record<string, OxlintRuleSeverity> = {};
-  for (const [ruleId, rule] of Object.entries(reactDoctorPlugin.rules)) {
-    if (rule.framework === frameworkName && rule.severity) {
-      collected[formatFullKey(ruleId)] = rule.severity;
-    }
-  }
-  return collected;
-};
+const toRuleMap = (rules: ReadonlyArray<RuleMapEntry>): Record<string, OxlintRuleSeverity> =>
+  Object.fromEntries(rules.map((rule) => [rule.key, rule.severity]));
+
+const collectReactDoctorRulesByFramework = (frameworkName: RuleFramework) =>
+  reactDoctorRules.filter((rule) => rule.framework === frameworkName);
+
+const collectExternalRulesBySource = (source: string) =>
+  EXTERNAL_RULES.filter((rule) => rule.source === source);
 
 const collectFrameworkSpecificRuleKeys = (): ReadonlySet<string> => {
   const collected = new Set<string>();
-  for (const [ruleId, rule] of Object.entries(reactDoctorPlugin.rules)) {
-    if (rule.framework !== "global") collected.add(formatFullKey(ruleId));
+  for (const rule of reactDoctorRules) {
+    if (rule.framework !== "global") collected.add(rule.key);
   }
   return collected;
 };
 
-export const RECOMMENDED_RULES = collectRulesByFramework("global");
-export const NEXTJS_RULES = collectRulesByFramework("nextjs");
-export const REACT_NATIVE_RULES = collectRulesByFramework("react-native");
-export const TANSTACK_START_RULES = collectRulesByFramework("tanstack-start");
-export const TANSTACK_QUERY_RULES = collectRulesByFramework("tanstack-query");
-export const ALL_REACT_DOCTOR_RULES: Record<string, OxlintRuleSeverity> = {
-  ...RECOMMENDED_RULES,
-  ...NEXTJS_RULES,
-  ...REACT_NATIVE_RULES,
-  ...TANSTACK_START_RULES,
-  ...TANSTACK_QUERY_RULES,
-};
+export const REACT_DOCTOR_RULES = reactDoctorRules;
+
+export const EXTERNAL_RULES = [
+  { key: "react-hooks-js/set-state-in-render", source: "react-compiler", severity: "error" },
+  { key: "react-hooks-js/immutability", source: "react-compiler", severity: "error" },
+  { key: "react-hooks-js/refs", source: "react-compiler", severity: "error" },
+  { key: "react-hooks-js/purity", source: "react-compiler", severity: "error" },
+  { key: "react-hooks-js/hooks", source: "react-compiler", severity: "error" },
+  { key: "react-hooks-js/set-state-in-effect", source: "react-compiler", severity: "error" },
+  { key: "react-hooks-js/globals", source: "react-compiler", severity: "error" },
+  { key: "react-hooks-js/error-boundaries", source: "react-compiler", severity: "error" },
+  {
+    key: "react-hooks-js/preserve-manual-memoization",
+    source: "react-compiler",
+    severity: "error",
+  },
+  { key: "react-hooks-js/unsupported-syntax", source: "react-compiler", severity: "error" },
+  {
+    key: "react-hooks-js/component-hook-factories",
+    source: "react-compiler",
+    severity: "error",
+  },
+  { key: "react-hooks-js/static-components", source: "react-compiler", severity: "error" },
+  { key: "react-hooks-js/use-memo", source: "react-compiler", severity: "error" },
+  { key: "react-hooks-js/void-use-memo", source: "react-compiler", severity: "error" },
+  { key: "react-hooks-js/incompatible-library", source: "react-compiler", severity: "error" },
+  { key: "react-hooks-js/todo", source: "react-compiler", severity: "error" },
+  { key: "effect/no-derived-state", source: "you-might-not-need-effect", severity: "warn" },
+  { key: "effect/no-chain-state-updates", source: "you-might-not-need-effect", severity: "warn" },
+  { key: "effect/no-event-handler", source: "you-might-not-need-effect", severity: "warn" },
+  {
+    key: "effect/no-adjust-state-on-prop-change",
+    source: "you-might-not-need-effect",
+    severity: "warn",
+  },
+  {
+    key: "effect/no-reset-all-state-on-prop-change",
+    source: "you-might-not-need-effect",
+    severity: "warn",
+  },
+  {
+    key: "effect/no-pass-live-state-to-parent",
+    source: "you-might-not-need-effect",
+    severity: "warn",
+  },
+  { key: "effect/no-pass-data-to-parent", source: "you-might-not-need-effect", severity: "warn" },
+  { key: "effect/no-initialize-state", source: "you-might-not-need-effect", severity: "warn" },
+  { key: "react/rules-of-hooks", source: "builtin-react", severity: "error" },
+  { key: "react/no-direct-mutation-state", source: "builtin-react", severity: "error" },
+  { key: "react/jsx-no-duplicate-props", source: "builtin-react", severity: "error" },
+  { key: "react/jsx-key", source: "builtin-react", severity: "error" },
+  { key: "react/no-children-prop", source: "builtin-react", severity: "warn" },
+  { key: "react/no-danger", source: "builtin-react", severity: "warn" },
+  { key: "react/jsx-no-script-url", source: "builtin-react", severity: "error" },
+  { key: "react/no-render-return-value", source: "builtin-react", severity: "warn" },
+  { key: "react/no-string-refs", source: "builtin-react", severity: "warn" },
+  { key: "react/no-is-mounted", source: "builtin-react", severity: "warn" },
+  { key: "react/require-render-return", source: "builtin-react", severity: "error" },
+  { key: "react/no-unknown-property", source: "builtin-react", severity: "warn" },
+  { key: "jsx-a11y/alt-text", source: "builtin-a11y", severity: "error" },
+  { key: "jsx-a11y/anchor-is-valid", source: "builtin-a11y", severity: "warn" },
+  { key: "jsx-a11y/click-events-have-key-events", source: "builtin-a11y", severity: "warn" },
+  { key: "jsx-a11y/no-static-element-interactions", source: "builtin-a11y", severity: "warn" },
+  { key: "jsx-a11y/role-has-required-aria-props", source: "builtin-a11y", severity: "error" },
+  { key: "jsx-a11y/no-autofocus", source: "builtin-a11y", severity: "warn" },
+  { key: "jsx-a11y/heading-has-content", source: "builtin-a11y", severity: "warn" },
+  { key: "jsx-a11y/html-has-lang", source: "builtin-a11y", severity: "warn" },
+  { key: "jsx-a11y/no-redundant-roles", source: "builtin-a11y", severity: "warn" },
+  { key: "jsx-a11y/scope", source: "builtin-a11y", severity: "warn" },
+  { key: "jsx-a11y/tabindex-no-positive", source: "builtin-a11y", severity: "warn" },
+  { key: "jsx-a11y/label-has-associated-control", source: "builtin-a11y", severity: "warn" },
+  { key: "jsx-a11y/no-distracting-elements", source: "builtin-a11y", severity: "error" },
+  { key: "jsx-a11y/iframe-has-title", source: "builtin-a11y", severity: "warn" },
+] as const;
+
+export const RULES = [...REACT_DOCTOR_RULES, ...EXTERNAL_RULES] as const;
+
+export const RECOMMENDED_RULES = toRuleMap(collectReactDoctorRulesByFramework("global"));
+export const NEXTJS_RULES = toRuleMap(collectReactDoctorRulesByFramework("nextjs"));
+export const REACT_NATIVE_RULES = toRuleMap(collectReactDoctorRulesByFramework("react-native"));
+export const TANSTACK_START_RULES = toRuleMap(collectReactDoctorRulesByFramework("tanstack-start"));
+export const TANSTACK_QUERY_RULES = toRuleMap(collectReactDoctorRulesByFramework("tanstack-query"));
+export const ALL_REACT_DOCTOR_RULES = toRuleMap(REACT_DOCTOR_RULES);
 export const ALL_REACT_DOCTOR_RULE_KEYS: ReadonlySet<string> = new Set(
-  Object.keys(reactDoctorPlugin.rules).map(formatFullKey),
+  REACT_DOCTOR_RULES.map((rule) => rule.key),
 );
 export const FRAMEWORK_SPECIFIC_RULE_KEYS = collectFrameworkSpecificRuleKeys();
-
-// HACK: every diagnostic from `eslint-plugin-react-hooks` ships at `"error"`
-// severity. These represent React Compiler bailout shapes, so CI should fail.
-export const REACT_COMPILER_RULES: Record<string, OxlintRuleSeverity> = {
-  "react-hooks-js/set-state-in-render": "error",
-  "react-hooks-js/immutability": "error",
-  "react-hooks-js/refs": "error",
-  "react-hooks-js/purity": "error",
-  "react-hooks-js/hooks": "error",
-  "react-hooks-js/set-state-in-effect": "error",
-  "react-hooks-js/globals": "error",
-  "react-hooks-js/error-boundaries": "error",
-  "react-hooks-js/preserve-manual-memoization": "error",
-  "react-hooks-js/unsupported-syntax": "error",
-  "react-hooks-js/component-hook-factories": "error",
-  "react-hooks-js/static-components": "error",
-  "react-hooks-js/use-memo": "error",
-  "react-hooks-js/void-use-memo": "error",
-  "react-hooks-js/incompatible-library": "error",
-  "react-hooks-js/todo": "error",
-};
-
-// HACK: complementary optional rule surface from
-// `eslint-plugin-react-you-might-not-need-an-effect` (#187).
-export const YOU_MIGHT_NOT_NEED_EFFECT_RULES: Record<string, OxlintRuleSeverity> = {
-  "effect/no-derived-state": "warn",
-  "effect/no-chain-state-updates": "warn",
-  "effect/no-event-handler": "warn",
-  "effect/no-adjust-state-on-prop-change": "warn",
-  "effect/no-reset-all-state-on-prop-change": "warn",
-  "effect/no-pass-live-state-to-parent": "warn",
-  "effect/no-pass-data-to-parent": "warn",
-  "effect/no-initialize-state": "warn",
-};
-
-export const BUILTIN_REACT_RULES: Record<string, OxlintRuleSeverity> = {
-  "react/rules-of-hooks": "error",
-  "react/no-direct-mutation-state": "error",
-  "react/jsx-no-duplicate-props": "error",
-  "react/jsx-key": "error",
-  "react/no-children-prop": "warn",
-  "react/no-danger": "warn",
-  "react/jsx-no-script-url": "error",
-  "react/no-render-return-value": "warn",
-  "react/no-string-refs": "warn",
-  "react/no-is-mounted": "warn",
-  "react/require-render-return": "error",
-  "react/no-unknown-property": "warn",
-};
-
-export const BUILTIN_A11Y_RULES: Record<string, OxlintRuleSeverity> = {
-  "jsx-a11y/alt-text": "error",
-  "jsx-a11y/anchor-is-valid": "warn",
-  "jsx-a11y/click-events-have-key-events": "warn",
-  "jsx-a11y/no-static-element-interactions": "warn",
-  "jsx-a11y/role-has-required-aria-props": "error",
-  "jsx-a11y/no-autofocus": "warn",
-  "jsx-a11y/heading-has-content": "warn",
-  "jsx-a11y/html-has-lang": "warn",
-  "jsx-a11y/no-redundant-roles": "warn",
-  "jsx-a11y/scope": "warn",
-  "jsx-a11y/tabindex-no-positive": "warn",
-  "jsx-a11y/label-has-associated-control": "warn",
-  "jsx-a11y/no-distracting-elements": "error",
-  "jsx-a11y/iframe-has-title": "warn",
-};
+export const REACT_COMPILER_RULES = toRuleMap(collectExternalRulesBySource("react-compiler"));
+export const YOU_MIGHT_NOT_NEED_EFFECT_RULES = toRuleMap(
+  collectExternalRulesBySource("you-might-not-need-effect"),
+);
+export const BUILTIN_REACT_RULES = toRuleMap(collectExternalRulesBySource("builtin-react"));
+export const BUILTIN_A11Y_RULES = toRuleMap(collectExternalRulesBySource("builtin-a11y"));

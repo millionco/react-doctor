@@ -78,8 +78,16 @@ for (const bucket of fs.readdirSync(PLUGIN_RULES_ROOT, { withFileTypes: true }))
       process.exit(1);
     }
     const categoryMatch = source.match(/^\s*category:\s*"([^"]+)",?\s*$/m);
+    const severityMatch = source.match(/^\s*severity:\s*"(error|warn)",?\s*$/m);
+    if (!severityMatch) {
+      console.error(
+        `Rule file missing \`severity: "error" | "warn"\` field: ${path.relative(PACKAGE_ROOT, filePath)}`,
+      );
+      process.exit(1);
+    }
     const ruleId = idMatch[1];
     const category = categoryMatch ? categoryMatch[1] : defaultCategory;
+    const severity = severityMatch[1];
     // Force POSIX separators — `path.relative()` returns backslashes on
     // Windows, which TypeScript module resolution rejects.
     const relativeImport =
@@ -88,7 +96,7 @@ for (const bucket of fs.readdirSync(PLUGIN_RULES_ROOT, { withFileTypes: true }))
         .relative(path.dirname(REGISTRY_OUTPUT), filePath)
         .replaceAll(path.sep, "/")
         .replace(/\.ts$/, ".js");
-    ruleEntries.push({ ruleId, identifier, relativeImport, framework, category });
+    ruleEntries.push({ ruleId, identifier, relativeImport, framework, category, severity });
   }
 }
 
@@ -121,6 +129,20 @@ const registryLines = ruleEntries
   )
   .join("\n");
 
+const ruleLines = ruleEntries
+  .map(
+    (entry) =>
+      `  {\n` +
+      `    key: "react-doctor/${entry.ruleId}",\n` +
+      `    id: "${entry.ruleId}",\n` +
+      `    source: "react-doctor",\n` +
+      `    framework: "${entry.framework}",\n` +
+      `    category: "${entry.category}",\n` +
+      `    severity: "${entry.severity}",\n` +
+      `  },`,
+  )
+  .join("\n");
+
 const generatedSource = `// GENERATED FILE — do not edit by hand. Run \`pnpm gen\` to regenerate.
 // Source of truth: every \`export const <name> = defineRule({ id: "...", ... })\`
 // under \`src/plugin/rules/<bucket>/<name>.ts\`. The rule's \`framework\` and
@@ -136,6 +158,10 @@ ${importLines}
 export const ruleRegistry: Record<string, Rule> = {
 ${registryLines}
 };
+
+export const reactDoctorRules = [
+${ruleLines}
+] as const;
 `;
 
 fs.writeFileSync(REGISTRY_OUTPUT, generatedSource);

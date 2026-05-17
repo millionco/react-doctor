@@ -118,17 +118,6 @@ const importLines = ruleEntries
 // has nothing to rewrite. Single-line entries would be reformatted when
 // they exceed the 100-char default width, and the registry-overwrite-on-
 // codegen contract would loop forever.
-const registryLines = ruleEntries
-  .map(
-    (entry) =>
-      `  "${entry.ruleId}": {\n` +
-      `    ...${entry.identifier},\n` +
-      `    framework: "${entry.framework}",\n` +
-      `    category: "${entry.category}",\n` +
-      `  },`,
-  )
-  .join("\n");
-
 const ruleLines = ruleEntries
   .map(
     (entry) =>
@@ -139,6 +128,11 @@ const ruleLines = ruleEntries
       `    framework: "${entry.framework}",\n` +
       `    category: "${entry.category}",\n` +
       `    severity: "${entry.severity}",\n` +
+      `    rule: {\n` +
+      `      ...${entry.identifier},\n` +
+      `      framework: "${entry.framework}",\n` +
+      `      category: "${entry.category}",\n` +
+      `    },\n` +
       `  },`,
   )
   .join("\n");
@@ -155,13 +149,13 @@ import type { Rule } from "./utils/rule.js";
 
 ${importLines}
 
-export const ruleRegistry: Record<string, Rule> = {
-${registryLines}
-};
-
 export const reactDoctorRules = [
 ${ruleLines}
 ] as const;
+
+export const ruleRegistry: Record<string, Rule> = Object.fromEntries(
+  reactDoctorRules.map((rule) => [rule.id, rule.rule]),
+);
 `;
 
 fs.writeFileSync(REGISTRY_OUTPUT, generatedSource);

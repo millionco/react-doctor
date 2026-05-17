@@ -43,5 +43,4 @@ export * from "./utils/match-glob-pattern.js";
 export * from "./utils/to-relative-path.js";
 export * from "./runners/oxlint/capabilities.js";
 export * from "./runners/oxlint/config.js";
-export * from "./runners/oxlint/external-plugin-rules.js";
 export * from "./runners/oxlint/plugin-resolution.js";

@@ -1,22 +1,48 @@
-import type { OxlintRuleSeverity } from "oxlint-plugin-react-doctor";
+import reactDoctorPlugin from "./plugin/react-doctor-plugin.js";
+import type { RuleFramework } from "./plugin/utils/rule.js";
+import type { OxlintRuleSeverity } from "./types.js";
 
-// These four maps enumerate rules from OTHER plugins (not react-doctor's own
-// registry) that the scan opts into via the generated oxlint config. They
-// don't have a colocated `defineRule({...})` source like our rules do — the
-// rule definitions live inside their respective npm packages — so the
-// `<rule-key, severity>` pairs have to be enumerated by hand here. New
-// entries land here when we adopt another rule from an upstream plugin or
-// when we want a non-default severity for one already adopted.
+const formatFullKey = (ruleId: string): string => `react-doctor/${ruleId}`;
 
-// HACK: every diagnostic from `eslint-plugin-react-hooks` (the React
-// Compiler frontend, oxlint-namespaced as `react-hooks-js`) ships at
-// `"error"` severity. Each one represents a code shape the compiler
-// cannot optimize - leaving the surrounding component un-memoized at
-// runtime - so we want the GitHub Action's default `--fail-on error`
-// to trip on these. PR #140 silently downgraded the whole map to
-// `"warn"` as part of a broader refactor, which made "React Compiler
-// can't optimize this code" diagnostics stop counting toward
-// `errorCount` and stop failing CI; restored here.
+const collectRulesByFramework = (
+  frameworkName: RuleFramework,
+): Record<string, OxlintRuleSeverity> => {
+  const collected: Record<string, OxlintRuleSeverity> = {};
+  for (const [ruleId, rule] of Object.entries(reactDoctorPlugin.rules)) {
+    if (rule.framework === frameworkName && rule.severity) {
+      collected[formatFullKey(ruleId)] = rule.severity;
+    }
+  }
+  return collected;
+};
+
+const collectFrameworkSpecificRuleKeys = (): ReadonlySet<string> => {
+  const collected = new Set<string>();
+  for (const [ruleId, rule] of Object.entries(reactDoctorPlugin.rules)) {
+    if (rule.framework !== "global") collected.add(formatFullKey(ruleId));
+  }
+  return collected;
+};
+
+export const RECOMMENDED_RULES = collectRulesByFramework("global");
+export const NEXTJS_RULES = collectRulesByFramework("nextjs");
+export const REACT_NATIVE_RULES = collectRulesByFramework("react-native");
+export const TANSTACK_START_RULES = collectRulesByFramework("tanstack-start");
+export const TANSTACK_QUERY_RULES = collectRulesByFramework("tanstack-query");
+export const ALL_REACT_DOCTOR_RULES: Record<string, OxlintRuleSeverity> = {
+  ...RECOMMENDED_RULES,
+  ...NEXTJS_RULES,
+  ...REACT_NATIVE_RULES,
+  ...TANSTACK_START_RULES,
+  ...TANSTACK_QUERY_RULES,
+};
+export const ALL_REACT_DOCTOR_RULE_KEYS: ReadonlySet<string> = new Set(
+  Object.keys(reactDoctorPlugin.rules).map(formatFullKey),
+);
+export const FRAMEWORK_SPECIFIC_RULE_KEYS = collectFrameworkSpecificRuleKeys();
+
+// HACK: every diagnostic from `eslint-plugin-react-hooks` ships at `"error"`
+// severity. These represent React Compiler bailout shapes, so CI should fail.
 export const REACT_COMPILER_RULES: Record<string, OxlintRuleSeverity> = {
   "react-hooks-js/set-state-in-render": "error",
   "react-hooks-js/immutability": "error",
@@ -36,13 +62,8 @@ export const REACT_COMPILER_RULES: Record<string, OxlintRuleSeverity> = {
   "react-hooks-js/todo": "error",
 };
 
-// HACK: complementary rule surface from
-// `eslint-plugin-react-you-might-not-need-an-effect` (#187). These
-// fire alongside react-doctor's native `state-and-effects` rules when
-// the plugin is installed, providing additional anti-pattern
-// detection for effects. Severities are `warn` to match the rest of
-// the effects-rule cohort and avoid changing CI pass/fail behavior
-// for projects that adopt the plugin.
+// HACK: complementary optional rule surface from
+// `eslint-plugin-react-you-might-not-need-an-effect` (#187).
 export const YOU_MIGHT_NOT_NEED_EFFECT_RULES: Record<string, OxlintRuleSeverity> = {
   "effect/no-derived-state": "warn",
   "effect/no-chain-state-updates": "warn",

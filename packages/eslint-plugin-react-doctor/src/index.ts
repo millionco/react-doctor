@@ -1,7 +1,8 @@
 import oxlintPlugin, {
-  GLOBAL_REACT_DOCTOR_RULES,
+  ALL_REACT_DOCTOR_RULES,
   NEXTJS_RULES,
   REACT_NATIVE_RULES,
+  RECOMMENDED_RULES,
   TANSTACK_QUERY_RULES,
   TANSTACK_START_RULES,
 } from "oxlint-plugin-react-doctor";
@@ -54,7 +55,7 @@ interface EslintPlugin {
 const PLUGIN_NAMESPACE = "react-doctor";
 const RULE_DOCS_BASE_URL = "https://react.doctor/rules";
 
-const recommendedRuleKeys = new Set(Object.keys(GLOBAL_REACT_DOCTOR_RULES));
+const recommendedRuleKeys = new Set(Object.keys(RECOMMENDED_RULES));
 
 const wrapAsEslintRule = (ruleName: string, ruleImpl: PluginRule): EslintRule => ({
   meta: {
@@ -87,14 +88,6 @@ const buildFlatConfig = (
   rules: { ...ruleSet },
 });
 
-const ALL_RULES_AT_RECOMMENDED_SEVERITY: Record<string, OxlintRuleSeverity> = {
-  ...GLOBAL_REACT_DOCTOR_RULES,
-  ...NEXTJS_RULES,
-  ...REACT_NATIVE_RULES,
-  ...TANSTACK_START_RULES,
-  ...TANSTACK_QUERY_RULES,
-};
-
 const eslintPlugin: EslintPlugin = {
   meta: {
     name: PLUGIN_NAMESPACE,
@@ -102,12 +95,12 @@ const eslintPlugin: EslintPlugin = {
   },
   rules: eslintShapedRules,
   configs: {
-    recommended: buildFlatConfig("recommended", GLOBAL_REACT_DOCTOR_RULES),
+    recommended: buildFlatConfig("recommended", RECOMMENDED_RULES),
     next: buildFlatConfig("next", NEXTJS_RULES),
     "react-native": buildFlatConfig("react-native", REACT_NATIVE_RULES),
     "tanstack-start": buildFlatConfig("tanstack-start", TANSTACK_START_RULES),
     "tanstack-query": buildFlatConfig("tanstack-query", TANSTACK_QUERY_RULES),
-    all: buildFlatConfig("all", ALL_RULES_AT_RECOMMENDED_SEVERITY),
+    all: buildFlatConfig("all", ALL_REACT_DOCTOR_RULES),
   },
 };
 

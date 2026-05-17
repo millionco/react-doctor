@@ -1,5 +1,10 @@
 import fs from "node:fs";
-import reactDoctorPlugin from "oxlint-plugin-react-doctor";
+import reactDoctorPlugin, {
+  BUILTIN_A11Y_RULES,
+  BUILTIN_REACT_RULES,
+  REACT_COMPILER_RULES,
+  YOU_MIGHT_NOT_NEED_EFFECT_RULES,
+} from "oxlint-plugin-react-doctor";
 import type { OxlintRuleSeverity } from "oxlint-plugin-react-doctor";
 import type { ProjectInfo } from "@react-doctor/types";
 import { buildCapabilities, shouldEnableRule } from "./capabilities.js";
@@ -10,12 +15,6 @@ import {
   YOU_MIGHT_NOT_NEED_EFFECT_NAMESPACE,
 } from "./plugin-resolution.js";
 import type { JsPluginEntry } from "./plugin-resolution.js";
-import {
-  BUILTIN_A11Y_RULES,
-  BUILTIN_REACT_RULES,
-  REACT_COMPILER_RULES,
-  YOU_MIGHT_NOT_NEED_EFFECT_RULES,
-} from "./external-plugin-rules.js";
 
 export interface OxlintConfigOptions {
   pluginPath: string;

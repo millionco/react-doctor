@@ -1,0 +1,19 @@
+AGENTS.md
+  s_4e0e9aa457a2ea::t_64eb18bef2bdc1 20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "638a0663c96040ff03977b486b76ed4492d910de",
+  "prompts": {},
+  "sessions": {
+    "s_4e0e9aa457a2ea": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "9e763256-fec3-4e0d-b79d-5ae8e0a376e0",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

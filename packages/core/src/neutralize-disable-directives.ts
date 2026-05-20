@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { readDirectoryEntries } from "@react-doctor/project-info";
 import {
   GIT_LS_FILES_MAX_BUFFER_BYTES,
   IGNORED_DIRECTORIES,
@@ -69,12 +70,7 @@ const findFilesWithDisableDirectivesViaFilesystem = (
   while (stack.length > 0) {
     const current = stack.pop();
     if (current === undefined) continue;
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(current, { withFileTypes: true });
-    } catch {
-      continue;
-    }
+    const entries = readDirectoryEntries(current);
     for (const entry of entries) {
       if (entry.isDirectory()) {
         if (entry.name.startsWith(".") || IGNORED_DIRECTORIES.has(entry.name)) continue;

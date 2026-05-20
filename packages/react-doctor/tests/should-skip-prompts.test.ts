@@ -41,6 +41,7 @@ const NON_INTERACTIVE_ENV_VARS = [
   "CODEX_CI",
   "OPENCODE",
   "AMP_HOME",
+  "GIT_DIR",
 ] as const;
 
 describe("shouldSkipPrompts", () => {
@@ -107,6 +108,14 @@ describe("shouldSkipPrompts", () => {
 
   it("returns true when CURSOR_AGENT env var is set (agent shell)", () => {
     process.env.CURSOR_AGENT = "1";
+    expect(shouldSkipPrompts()).toBe(true);
+  });
+
+  // `GIT_DIR` is set by git itself whenever it invokes a hook (per
+  // `git-hooks(5)`), which means lefthook / husky / pre-commit /
+  // simple-git-hooks are all covered without per-tool env vars.
+  it("returns true when GIT_DIR is set (git hook execution)", () => {
+    process.env.GIT_DIR = "/repo/.git";
     expect(shouldSkipPrompts()).toBe(true);
   });
 });

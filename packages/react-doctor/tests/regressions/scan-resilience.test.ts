@@ -33,7 +33,14 @@ import {
   OXLINT_MAX_FILES_PER_BATCH,
   SPAWN_ARGS_MAX_LENGTH_CHARS,
 } from "@react-doctor/core";
-import { discoverProject } from "@react-doctor/project-info";
+import {
+  clearPackageJsonCache,
+  discoverProject,
+  discoverReactSubprojects,
+  isDirectory,
+  readDirectoryEntries,
+  readPackageJson,
+} from "@react-doctor/project-info";
 import {
   getStagedSourceFiles,
   materializeStagedFiles,
@@ -149,6 +156,117 @@ describe("issue #53: source file count fallback for non-git directories", () => 
 
     const projectInfo = discoverProject(projectDir);
     expect(projectInfo.sourceFileCount).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe("issue #275 + #290: filesystem walks tolerate EPERM/EACCES (macOS Library/Accounts)", () => {
+  // On macOS, certain directories like ~/Library/Accounts are protected
+  // by TCC and throw EPERM on readdir even for the owning user. If the
+  // CLI is run from a parent directory (e.g. $HOME), the recursive
+  // discovery walk would crash the entire scan with:
+  //   EPERM: operation not permitted, scandir '/Users/<user>/Library/Accounts'
+  // The fix swallows ignorable readdir errors (EPERM, EACCES, ENOENT,
+  // ENOTDIR) and continues the walk so a single unreadable directory
+  // can't take down the whole run.
+  it("readDirectoryEntries returns [] for a non-existent path", () => {
+    const missingDirectory = path.join(tempRoot, "issue-275-missing-directory");
+    expect(readDirectoryEntries(missingDirectory)).toEqual([]);
+  });
+
+  it("readDirectoryEntries returns [] for a path that points at a file (ENOTDIR)", () => {
+    const filePath = path.join(tempRoot, "issue-275-not-a-directory.txt");
+    writeFile(filePath, "not a directory\n");
+    expect(readDirectoryEntries(filePath)).toEqual([]);
+  });
+
+  // Posix permission bits behave the way we expect on linux + macOS in CI.
+  // Skipped on Windows where chmod 0 doesn't deny readdir to the owner.
+  it("readDirectoryEntries returns [] for an unreadable directory (EACCES) on posix", () => {
+    if (process.platform === "win32") return;
+    if (process.getuid?.() === 0) return;
+
+    const unreadableDirectory = path.join(tempRoot, "issue-275-unreadable");
+    fs.mkdirSync(unreadableDirectory, { recursive: true });
+    fs.writeFileSync(path.join(unreadableDirectory, "child.txt"), "hidden\n");
+    fs.chmodSync(unreadableDirectory, 0o000);
+    try {
+      expect(readDirectoryEntries(unreadableDirectory)).toEqual([]);
+    } finally {
+      fs.chmodSync(unreadableDirectory, 0o755);
+    }
+  });
+
+  it("discoverReactSubprojects skips unreadable nested directories and keeps walking", () => {
+    if (process.platform === "win32") return;
+    if (process.getuid?.() === 0) return;
+
+    const walkRoot = path.join(tempRoot, "issue-275-walk-root");
+    fs.mkdirSync(walkRoot, { recursive: true });
+
+    writeJson(path.join(walkRoot, "accessible-app", "package.json"), {
+      name: "accessible-app",
+      dependencies: { react: "^19.0.0" },
+    });
+
+    const unreadableSibling = path.join(walkRoot, "Library", "Accounts");
+    fs.mkdirSync(unreadableSibling, { recursive: true });
+    fs.chmodSync(unreadableSibling, 0o000);
+
+    try {
+      const subprojects = discoverReactSubprojects(walkRoot);
+      const subprojectNames = subprojects.map((subproject) => subproject.name);
+      expect(subprojectNames).toContain("accessible-app");
+    } finally {
+      fs.chmodSync(unreadableSibling, 0o755);
+    }
+  });
+
+  // Same root cause as the readdir crash, one level deeper: when the
+  // walk reaches a package.json under a TCC-protected directory, the
+  // subsequent fs.readFileSync would throw EPERM and bring down the
+  // whole scan. Mirror EISDIR/EACCES handling for EPERM (macOS TCC)
+  // and ENOENT (race during long walks) so the unreadable manifest
+  // gets treated as an empty package.json instead of a fatal error.
+  it("readPackageJson returns {} for an unreadable manifest (EPERM/EACCES) on posix", () => {
+    if (process.platform === "win32") return;
+    if (process.getuid?.() === 0) return;
+
+    const projectDir = path.join(tempRoot, "issue-275-unreadable-manifest");
+    fs.mkdirSync(projectDir, { recursive: true });
+    const manifestPath = path.join(projectDir, "package.json");
+    writeJson(manifestPath, { name: "hidden", dependencies: { react: "^19.0.0" } });
+    clearPackageJsonCache();
+    fs.chmodSync(manifestPath, 0o000);
+    try {
+      expect(readPackageJson(manifestPath)).toEqual({});
+    } finally {
+      fs.chmodSync(manifestPath, 0o644);
+      clearPackageJsonCache();
+    }
+  });
+
+  it("readPackageJson returns {} when the manifest no longer exists (ENOENT)", () => {
+    const missingPath = path.join(tempRoot, "issue-275-missing-manifest", "package.json");
+    clearPackageJsonCache();
+    expect(readPackageJson(missingPath)).toEqual({});
+  });
+
+  // Resolves the unsafe `fs.existsSync && fs.statSync().isDirectory()`
+  // pattern that throws on EPERM if existsSync somehow returned true
+  // but statSync was denied (narrow race / TCC interaction).
+  it("isDirectory returns false rather than throwing for an inaccessible path", () => {
+    if (process.platform === "win32") return;
+    if (process.getuid?.() === 0) return;
+
+    const outerDirectory = path.join(tempRoot, "issue-275-isdir-outer");
+    const childDirectory = path.join(outerDirectory, "child");
+    fs.mkdirSync(childDirectory, { recursive: true });
+    fs.chmodSync(outerDirectory, 0o000);
+    try {
+      expect(isDirectory(childDirectory)).toBe(false);
+    } finally {
+      fs.chmodSync(outerDirectory, 0o755);
+    }
   });
 });
 

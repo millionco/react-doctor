@@ -447,16 +447,16 @@ Top React codebases scanned by React Doctor, ranked by score. Updated automatica
 <!-- prettier-ignore -->
 | #  | Repo | Score |
 | -- | ---- | ----: |
-| 1  | [executor](https://github.com/RhysSullivan/executor) | 94 |
+| 1  | [executor](https://github.com/RhysSullivan/executor) | 96 |
 | 2  | [nodejs.org](https://github.com/nodejs/nodejs.org) | 86 |
-| 3  | [tldraw](https://github.com/tldraw/tldraw) | 70 |
-| 4  | [t3code](https://github.com/pingdotgg/t3code) | 68 |
+| 3  | [tldraw](https://github.com/tldraw/tldraw) | 71 |
+| 4  | [t3code](https://github.com/pingdotgg/t3code) | 69 |
 | 5  | [better-auth](https://github.com/better-auth/better-auth) | 64 |
-| 6  | [excalidraw](https://github.com/excalidraw/excalidraw) | 63 |
-| 7  | [mastra](https://github.com/mastra-ai/mastra) | 63 |
+| 6  | [mastra](https://github.com/mastra-ai/mastra) | 63 |
+| 7  | [excalidraw](https://github.com/excalidraw/excalidraw) | 62 |
 | 8  | [payload](https://github.com/payloadcms/payload) | 60 |
 | 9  | [typebot](https://github.com/baptisteArno/typebot.io) | 57 |
-| 10 | [plane](https://github.com/makeplane/plane) | 56 |
+| 10 | [medusajs/admin](https://github.com/medusajs/medusa) | 56 |
 
 <!-- LEADERBOARD:END -->
 

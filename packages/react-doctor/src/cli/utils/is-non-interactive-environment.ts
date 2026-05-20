@@ -1,7 +1,13 @@
 // HACK: env vars that mean "user is not at an interactive shell." We use this
-// to skip prompts but NOT to auto-flip --offline, because dev shells often
-// have JENKINS_URL / TF_BUILD set as ambient config without actually running
-// in CI.
+// to skip prompts and disable the spinner animation but NOT to auto-flip
+// --offline, because dev shells often have JENKINS_URL / TF_BUILD set as
+// ambient config without actually running in CI.
+//
+// `GIT_DIR` is set by git itself whenever it invokes a hook (per
+// `git-hooks(5)`), which covers lefthook, husky, simple-git-hooks,
+// pre-commit, and anything else that lives in `.git/hooks/`. That's the
+// canonical "I'm inside a git hook" signal and dodges the issue #293
+// spinner hang for every hook manager at once.
 const NON_INTERACTIVE_ENVIRONMENT_VARIABLES = [
   "CI",
   "GITHUB_ACTIONS",
@@ -21,6 +27,7 @@ const NON_INTERACTIVE_ENVIRONMENT_VARIABLES = [
   "CODEX_CI",
   "OPENCODE",
   "AMP_HOME",
+  "GIT_DIR",
 ];
 
 export const isNonInteractiveEnvironment = (): boolean =>

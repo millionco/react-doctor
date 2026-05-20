@@ -1,17 +1,10 @@
 # react-doctor
 
-## 0.2.1
-
-### Patch Changes
-
-- Make filesystem walks tolerate EPERM/EACCES (macOS Library)
-
-- Updated dependencies []:
-  - oxlint-plugin-react-doctor@0.2.1
-
 ## 0.2.0
 
 ### Minor Changes
+
+- fix
 
 - [`5be2ead`](https://github.com/millionco/react-doctor/commit/5be2eadd90b2248b28b228fad306808cec1bf758) Thanks [@aidenybai](https://github.com/aidenybai)! - Add configuration-level controls for React Doctor's rule output. Users can now set top-level `rules` and `categories` severity overrides, tune individual output surfaces (`cli`, `prComment`, `score`, and `ciFailure`) by tag/category/rule id, and rely on registered rule-family tags such as `design`, `react-native`, `server-action`, `test-noise`, and `migration-hint` for broad filtering.
 

@@ -30,47 +30,6 @@ export const HEAVY_HEADING_TAILWIND_WEIGHTS = new Set([
   "font-black",
 ]);
 
-export const TAILWIND_DEFAULT_PALETTE_NAMES = ["indigo", "gray", "slate"];
-
-// HACK: the canonical Tailwind v3/v4 numeric color stops. Anchoring the
-// `design-no-default-tailwind-palette` regex to this exact set (rather
-// than `\d{2,3}`) avoids false-positiving on Radix Colors integrations
-// that map non-Tailwind stops onto Tailwind utilities (`text-gray-11`,
-// `text-gray-12`, `text-gray-10` are Radix scale numbers, not Tailwind
-// defaults — flagging them as "the Tailwind template default" is wrong).
-export const TAILWIND_DEFAULT_PALETTE_STOPS = [
-  "50",
-  "100",
-  "200",
-  "300",
-  "400",
-  "500",
-  "600",
-  "700",
-  "800",
-  "900",
-  "950",
-];
-
-export const TAILWIND_PALETTE_UTILITY_PREFIXES = [
-  "text",
-  "bg",
-  "border",
-  "ring",
-  "fill",
-  "stroke",
-  "from",
-  "to",
-  "via",
-  "decoration",
-  "divide",
-  "outline",
-  "placeholder",
-  "caret",
-  "accent",
-  "shadow",
-];
-
 export const VAGUE_BUTTON_LABELS = new Set([
   "continue",
   "submit",

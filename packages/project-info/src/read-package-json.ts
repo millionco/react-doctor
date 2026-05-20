@@ -19,7 +19,12 @@ const readPackageJsonUncached = (packageJsonPath: string): PackageJson => {
     }
     if (error instanceof Error && "code" in error) {
       const { code } = error as { code: string };
-      if (code === "EISDIR" || code === "EACCES") {
+      // EISDIR — packageJsonPath unexpectedly pointed at a directory.
+      // EACCES / EPERM — POSIX denial and macOS TCC denial respectively
+      // (e.g., a package.json inside ~/Library/Accounts when the scan
+      // root is $HOME). ENOENT — file disappeared between the isFile()
+      // probe upstream and this read (race during long walks).
+      if (code === "EISDIR" || code === "EACCES" || code === "EPERM" || code === "ENOENT") {
         return {};
       }
     }

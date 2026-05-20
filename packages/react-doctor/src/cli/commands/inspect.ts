@@ -196,8 +196,9 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       if (diffInfo.isCurrentChanges) {
         logger.log("Scanning uncommitted changes");
       } else {
+        const currentBranchLabel = diffInfo.currentBranch ?? "(detached HEAD)";
         logger.log(
-          `Scanning changes: ${highlighter.info(diffInfo.currentBranch)} → ${highlighter.info(diffInfo.baseBranch)}`,
+          `Scanning changes: ${highlighter.info(currentBranchLabel)} → ${highlighter.info(diffInfo.baseBranch)}`,
         );
       }
       logger.break();

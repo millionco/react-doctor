@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import {
@@ -6,6 +5,7 @@ import {
   IGNORED_DIRECTORIES,
   SOURCE_FILE_PATTERN,
 } from "./constants.js";
+import { readDirectoryEntries } from "./utils/read-directory-entries.js";
 
 const countSourceFilesViaFilesystem = (rootDirectory: string): number => {
   let count = 0;
@@ -13,7 +13,7 @@ const countSourceFilesViaFilesystem = (rootDirectory: string): number => {
 
   while (stack.length > 0) {
     const currentDirectory = stack.pop()!;
-    const entries = fs.readdirSync(currentDirectory, { withFileTypes: true });
+    const entries = readDirectoryEntries(currentDirectory);
 
     for (const entry of entries) {
       if (entry.isDirectory()) {

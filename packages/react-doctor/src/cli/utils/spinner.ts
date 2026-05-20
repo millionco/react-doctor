@@ -1,10 +1,6 @@
 import ora from "ora";
 import { SPINNER_INDENT_CHARS } from "@react-doctor/core";
-
-let sharedInstance: ReturnType<typeof ora> | null = null;
-let activeCount = 0;
-const pendingTexts = new Set<string>();
-const finalizedHandles = new WeakSet<object>();
+import { isSpinnerInteractive } from "./is-spinner-interactive.js";
 
 let isSilent = false;
 
@@ -19,52 +15,35 @@ const noopHandle = Object.freeze({
   fail: () => {},
 });
 
-const finalize = (method: "succeed" | "fail", originalText: string, displayText: string) => {
-  pendingTexts.delete(originalText);
-  activeCount = Math.max(0, activeCount - 1);
-
-  if (activeCount === 0 || !sharedInstance) {
-    sharedInstance?.[method](displayText);
-    sharedInstance = null;
-    activeCount = 0;
-    return;
-  }
-
-  sharedInstance.stop();
-  ora({ text: displayText, indent: SPINNER_INDENT_CHARS }).start()[method](displayText);
-
-  const [remainingText] = pendingTexts;
-  if (remainingText) {
-    sharedInstance.text = remainingText;
-  }
-  sharedInstance.start();
-};
-
 export const spinner = (text: string) => ({
   start() {
     if (isSilent) return noopHandle;
 
-    activeCount++;
-    pendingTexts.add(text);
+    // HACK: ora renders to `stderr` by default and computes lines-to-
+    // clear with `Math.ceil(width / stream.columns)`. In a Git pre-push
+    // hook or under `script(1)`, stderr inherits the TTY but `columns`
+    // is 0, producing `Infinity` clears and pegging a core (issue #293).
+    // `isSpinnerInteractive` demotes ora to one-shot succeed/fail lines
+    // in that case (and in CI, agent shells, git hooks via `GIT_DIR`,
+    // and `TERM=dumb`). Stream and guard share one fd so they can't
+    // disagree about which `columns` value matters.
+    const stream = process.stderr;
+    const isEnabled = isSpinnerInteractive(stream);
+    const instance = ora({ text, indent: SPINNER_INDENT_CHARS, isEnabled, stream });
+    if (isEnabled) instance.start();
 
-    if (!sharedInstance) {
-      sharedInstance = ora({ text, indent: SPINNER_INDENT_CHARS }).start();
-    } else {
-      sharedInstance.text = text;
-    }
-
-    const handle = {
-      succeed: (displayText: string) => {
-        if (finalizedHandles.has(handle)) return;
-        finalizedHandles.add(handle);
-        finalize("succeed", text, displayText);
+    let didFinalize = false;
+    return {
+      succeed(displayText: string) {
+        if (didFinalize) return;
+        didFinalize = true;
+        instance.succeed(displayText);
       },
-      fail: (displayText: string) => {
-        if (finalizedHandles.has(handle)) return;
-        finalizedHandles.add(handle);
-        finalize("fail", text, displayText);
+      fail(displayText: string) {
+        if (didFinalize) return;
+        didFinalize = true;
+        instance.fail(displayText);
       },
     };
-    return handle;
   },
 });

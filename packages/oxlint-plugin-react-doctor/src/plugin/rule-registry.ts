@@ -15,7 +15,6 @@ import { asyncParallel } from "./rules/js-performance/async-parallel.js";
 import { clientLocalstorageNoVersion } from "./rules/client/client-localstorage-no-version.js";
 import { clientPassiveEventListeners } from "./rules/client/client-passive-event-listeners.js";
 import { noBoldHeading } from "./rules/react-ui/no-bold-heading.js";
-import { noDefaultTailwindPalette } from "./rules/react-ui/no-default-tailwind-palette.js";
 import { noEmDashInJsxText } from "./rules/react-ui/no-em-dash-in-jsx-text.js";
 import { noRedundantPaddingAxes } from "./rules/react-ui/no-redundant-padding-axes.js";
 import { noRedundantSizeAxes } from "./rules/react-ui/no-redundant-size-axes.js";
@@ -276,19 +275,6 @@ export const reactDoctorRules = [
     severity: "warn",
     rule: {
       ...noBoldHeading,
-      framework: "global",
-      category: "Architecture",
-    },
-  },
-  {
-    key: "react-doctor/design-no-default-tailwind-palette",
-    id: "design-no-default-tailwind-palette",
-    source: "react-doctor",
-    framework: "global",
-    category: "Architecture",
-    severity: "warn",
-    rule: {
-      ...noDefaultTailwindPalette,
       framework: "global",
       category: "Architecture",
     },

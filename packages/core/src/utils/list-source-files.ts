@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
-import fs from "node:fs";
 import path from "node:path";
+import { readDirectoryEntries } from "@react-doctor/project-info";
 import {
   GIT_LS_FILES_MAX_BUFFER_BYTES,
   IGNORED_DIRECTORIES,
@@ -38,7 +38,7 @@ const listSourceFilesViaFilesystem = (rootDirectory: string): string[] => {
 
   while (stack.length > 0) {
     const currentDirectory = stack.pop()!;
-    const entries = fs.readdirSync(currentDirectory, { withFileTypes: true });
+    const entries = readDirectoryEntries(currentDirectory);
 
     for (const entry of entries) {
       const absolutePath = path.join(currentDirectory, entry.name);

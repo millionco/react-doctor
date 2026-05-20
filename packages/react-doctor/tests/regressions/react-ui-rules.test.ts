@@ -330,67 +330,6 @@ describe("design-no-em-dash-in-jsx-text", () => {
   });
 });
 
-describe("design-no-default-tailwind-palette", () => {
-  it("flags indigo / gray / slate Tailwind utilities", async () => {
-    const projectDir = setupReactProject(tempRoot, "no-default-palette-pos", {
-      files: {
-        "src/Hero.tsx": `export const Hero = () => (
-  <div>
-    <button className="bg-indigo-600 text-white">Sign up</button>
-    <p className="text-gray-600">Free for 30 days.</p>
-    <div className="bg-slate-50 border border-slate-200" />
-  </div>
-);
-`,
-      },
-    });
-
-    const hits = await collectRuleHits(projectDir, "design-no-default-tailwind-palette");
-    expect(hits.length).toBeGreaterThanOrEqual(3);
-  });
-
-  it("does not flag zinc / neutral / stone", async () => {
-    const projectDir = setupReactProject(tempRoot, "no-default-palette-neg", {
-      files: {
-        "src/Hero.tsx": `export const Hero = () => (
-  <div>
-    <button className="bg-zinc-900 text-white">Sign up</button>
-    <p className="text-neutral-700">Free for 30 days.</p>
-    <div className="bg-stone-50" />
-  </div>
-);
-`,
-      },
-    });
-
-    const hits = await collectRuleHits(projectDir, "design-no-default-tailwind-palette");
-    expect(hits).toHaveLength(0);
-  });
-
-  // HACK: regression for the over-broad `\d{2,3}` stop pattern. Radix
-  // Colors (and similar custom themes) re-purpose Tailwind utility
-  // prefixes for a 1..12 step scale (`text-gray-11`, `bg-slate-2`),
-  // which is NOT the Tailwind template default and must not be flagged.
-  it("does not flag custom-scale stops outside the canonical Tailwind palette (Radix Colors style)", async () => {
-    const projectDir = setupReactProject(tempRoot, "no-default-palette-radix", {
-      files: {
-        "src/Card.tsx": `export const Card = () => (
-  <div>
-    <p className="text-gray-11">caption</p>
-    <p className="text-gray-12">heading</p>
-    <div className="bg-slate-2 border border-slate-6" />
-    <span className="text-indigo-1">accent</span>
-  </div>
-);
-`,
-      },
-    });
-
-    const hits = await collectRuleHits(projectDir, "design-no-default-tailwind-palette");
-    expect(hits).toHaveLength(0);
-  });
-});
-
 describe("design-no-vague-button-label", () => {
   it("flags vague <button> labels", async () => {
     const projectDir = setupReactProject(tempRoot, "no-vague-button-pos", {

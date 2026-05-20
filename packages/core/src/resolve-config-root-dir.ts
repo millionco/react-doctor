@@ -1,5 +1,5 @@
-import fs from "node:fs";
 import path from "node:path";
+import { isDirectory } from "@react-doctor/project-info";
 import type { ReactDoctorConfig } from "@react-doctor/types";
 import { logger } from "./logger.js";
 
@@ -21,7 +21,7 @@ export const resolveConfigRootDir = (
 
   if (resolvedRootDir === configSourceDirectory) return null;
 
-  if (!fs.existsSync(resolvedRootDir) || !fs.statSync(resolvedRootDir).isDirectory()) {
+  if (!isDirectory(resolvedRootDir)) {
     logger.warn(
       `react-doctor config "rootDir" points to "${rawRootDir}" (resolved to ${resolvedRootDir}), which is not a directory. Ignoring.`,
     );

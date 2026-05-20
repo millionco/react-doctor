@@ -84,7 +84,13 @@ export const getDiffInfo = (directory: string, explicitBaseBranch?: string): Dif
   }
 
   const currentBranch = getCurrentBranch(directory);
-  if (!currentBranch) return null;
+  // Detached HEAD (e.g. GitHub Actions `pull_request` checks out
+  // `refs/pull/N/merge`) is fine as long as the caller supplied an
+  // explicit base — `git merge-base <base> HEAD` resolves without a
+  // branch name. Without an explicit base we still bail out, since
+  // `detectDefaultBranch` can't infer "what did this PR change" from
+  // a bare commit hash.
+  if (!currentBranch && !explicitBaseBranch) return null;
 
   const baseBranch = explicitBaseBranch ?? detectDefaultBranch(directory);
   if (!baseBranch) return null;
@@ -95,7 +101,7 @@ export const getDiffInfo = (directory: string, explicitBaseBranch?: string): Dif
     );
   }
 
-  if (currentBranch === baseBranch) {
+  if (currentBranch !== null && currentBranch === baseBranch) {
     const uncommittedFiles = getUncommittedChangedFiles(directory);
     if (uncommittedFiles.length === 0) return null;
     return { currentBranch, baseBranch, changedFiles: uncommittedFiles, isCurrentChanges: true };

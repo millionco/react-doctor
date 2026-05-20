@@ -1,8 +1,9 @@
-import fs from "node:fs";
 import path from "node:path";
 import { IGNORED_DIRECTORIES } from "./constants.js";
 import type { PackageJson, WorkspacePackage } from "@react-doctor/types";
+import { isDirectory } from "./utils/is-directory.js";
 import { isFile } from "./utils/is-file.js";
+import { readDirectoryEntries } from "./utils/read-directory-entries.js";
 import { getNxWorkspaceDirectories } from "./get-nx-workspace-directories.js";
 import { hasReactDependency } from "./has-react-dependency.js";
 import { listWorkspacePackages } from "./list-workspace-packages.js";
@@ -63,9 +64,9 @@ const discoverReactSubprojectsByFilesystem = (rootDirectory: string): WorkspaceP
       }
     }
 
-    const entries = fs
-      .readdirSync(currentDirectory, { withFileTypes: true })
-      .toSorted((firstEntry, secondEntry) => firstEntry.name.localeCompare(secondEntry.name));
+    const entries = readDirectoryEntries(currentDirectory).toSorted((firstEntry, secondEntry) =>
+      firstEntry.name.localeCompare(secondEntry.name),
+    );
 
     for (const entry of entries) {
       if (
@@ -84,7 +85,7 @@ const discoverReactSubprojectsByFilesystem = (rootDirectory: string): WorkspaceP
 };
 
 export const discoverReactSubprojects = (rootDirectory: string): WorkspacePackage[] => {
-  if (!fs.existsSync(rootDirectory) || !fs.statSync(rootDirectory).isDirectory()) return [];
+  if (!isDirectory(rootDirectory)) return [];
 
   const manifestPackages = listManifestWorkspacePackages(rootDirectory);
   if (manifestPackages.length > 0) return manifestPackages;

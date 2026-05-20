@@ -46,7 +46,13 @@ export interface InspectOptions {
 }
 
 export interface DiffInfo {
-  currentBranch: string;
+  /**
+   * `null` when `HEAD` is detached (e.g. GitHub Actions `pull_request`
+   * runs that check out `refs/pull/N/merge`). The diff itself still
+   * resolves via `git merge-base <base> HEAD`; callers should render
+   * this case as `"(detached HEAD)"` or similar.
+   */
+  currentBranch: string | null;
   baseBranch: string;
   changedFiles: string[];
   isCurrentChanges?: boolean;
@@ -56,7 +62,8 @@ export type JsonReportMode = "full" | "diff" | "staged";
 
 export interface JsonReportDiffInfo {
   baseBranch: string;
-  currentBranch: string;
+  /** `null` when `HEAD` is detached — see `DiffInfo.currentBranch`. */
+  currentBranch: string | null;
   changedFileCount: number;
   isCurrentChanges: boolean;
 }

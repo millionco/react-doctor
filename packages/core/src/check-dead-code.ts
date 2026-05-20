@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import { analyze, defineConfig } from "deslop-js";
 import type { Diagnostic, ReactDoctorConfig } from "@react-doctor/types";
 import { collectIgnorePatterns } from "./collect-ignore-patterns.js";
 import { readIgnoreFile } from "./read-ignore-file.js";
@@ -52,6 +51,12 @@ const toRelativeFilePath = (rootDirectory: string, filePath: string): string => 
 export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diagnostic[]> => {
   const { rootDirectory, userConfig } = options;
   if (!fs.existsSync(path.join(rootDirectory, "package.json"))) return [];
+
+  // HACK: lazy-load so a missing/incompatible native oxc binding inside
+  // deslop-js can't crash module evaluation of @react-doctor/core
+  // (which the entire CLI imports). The caller's try/catch then
+  // catches the import failure and degrades gracefully.
+  const { analyze, defineConfig } = await import("deslop-js");
 
   const ignorePatterns = collectDeadCodeIgnorePatterns(rootDirectory, userConfig);
   const result = await analyze(

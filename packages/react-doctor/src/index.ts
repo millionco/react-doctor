@@ -96,7 +96,10 @@ export const toJsonReport = (result: DiagnoseResult, options: ToJsonReportOption
         result: {
           diagnostics: result.diagnostics,
           score: result.score,
-          skippedChecks: [],
+          skippedChecks: result.skippedChecks,
+          ...(result.skippedCheckReasons
+            ? { skippedCheckReasons: result.skippedCheckReasons }
+            : {}),
           project: result.project,
           elapsedMilliseconds: result.elapsedMilliseconds,
         },
@@ -169,11 +172,16 @@ export const diagnose = async (
     : Promise.resolve(EMPTY_DIAGNOSTICS);
 
   // Skip dead-code in diff mode (reachability is whole-project).
-  // Silently swallow failures so a deslop crash never breaks the
-  // programmatic API consumer's lint result.
+  // Failure is non-fatal — empty diagnostics fall through and the
+  // failure surfaces via `skippedChecks` so programmatic consumers
+  // can detect that the pass didn't run to completion.
   const shouldRunDeadCode = effectiveDeadCode && !isDiffMode;
+  let deadCodeFailureReason: string | null = null;
   const deadCodePromise = shouldRunDeadCode
-    ? checkDeadCode({ rootDirectory: resolvedDirectory, userConfig }).catch(() => EMPTY_DIAGNOSTICS)
+    ? checkDeadCode({ rootDirectory: resolvedDirectory, userConfig }).catch((error: unknown) => {
+        deadCodeFailureReason = error instanceof Error ? error.message : String(error);
+        return EMPTY_DIAGNOSTICS;
+      })
     : Promise.resolve(EMPTY_DIAGNOSTICS);
 
   const [lintDiagnostics, deadCodeDiagnostics] = await Promise.all([lintPromise, deadCodePromise]);
@@ -190,5 +198,19 @@ export const diagnose = async (
   const elapsedMilliseconds = globalThis.performance.now() - startTime;
   const score = await calculateScore(diagnostics);
 
-  return { diagnostics, score, project: projectInfo, elapsedMilliseconds };
+  const skippedChecks: string[] = [];
+  const skippedCheckReasons: Record<string, string> = {};
+  if (deadCodeFailureReason !== null) {
+    skippedChecks.push("dead-code");
+    skippedCheckReasons["dead-code"] = deadCodeFailureReason;
+  }
+
+  return {
+    diagnostics,
+    score,
+    skippedChecks,
+    ...(Object.keys(skippedCheckReasons).length > 0 ? { skippedCheckReasons } : {}),
+    project: projectInfo,
+    elapsedMilliseconds,
+  };
 };

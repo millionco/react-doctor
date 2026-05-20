@@ -18,6 +18,14 @@ export interface DiagnoseOptions {
 export interface DiagnoseResult {
   diagnostics: Diagnostic[];
   score: ScoreResult | null;
+  /**
+   * Checks that did not run to completion (e.g. `"dead-code"` when the
+   * `deslop-js` native binding crashed). Empty when everything ran.
+   * Mirrors `InspectResult.skippedChecks`.
+   */
+  skippedChecks: string[];
+  /** See `InspectResult.skippedCheckReasons`. */
+  skippedCheckReasons?: Record<string, string>;
   project: ProjectInfo;
   elapsedMilliseconds: number;
 }

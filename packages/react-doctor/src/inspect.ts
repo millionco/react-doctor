@@ -144,6 +144,9 @@ const runInspect = async (
   let lintFailureReason: string | null = null;
   const lintPartialFailures: string[] = [];
 
+  let didDeadCodeFail = false;
+  let deadCodeFailureReason: string | null = null;
+
   // Dead-code reachability is a whole-project property — skip in
   // diff / staged mode, matching how `checkReducedMotion` is gated
   // in `combineDiagnostics`.
@@ -157,6 +160,19 @@ const runInspect = async (
     didLintFail = true;
     lintFailureReason = `oxlint native binding not found for Node ${process.version}; expected one matching ${OXLINT_NODE_REQUIREMENT}`;
   }
+
+  // Kick off dead-code analysis in parallel with lint, but defer its
+  // spinner until the lint spinner finalizes — each `spinner()` call
+  // returns its own ora instance, so two concurrent starts would have
+  // both frame loops writing to stderr and produce garbled output.
+  const deadCodeWork = shouldRunDeadCode
+    ? checkDeadCode({ rootDirectory: directory, userConfig })
+    : Promise.resolve<Diagnostic[]>([]);
+  // HACK: attach a no-op handler synchronously so a rejection during
+  // the lint await window doesn't trigger Node's unhandled-rejection
+  // warning. The deferred await below routes the real error into the
+  // spinner + skippedChecks tracking.
+  deadCodeWork.catch(() => {});
 
   const lintPromise = resolvedNodeBinaryPath
     ? (async () => {
@@ -200,27 +216,26 @@ const runInspect = async (
       })()
     : Promise.resolve<Diagnostic[]>([]);
 
-  // HACK: silent fallback. Dead-code analysis is additive — a deslop
-  // crash (missing node_modules, malformed tsconfig, parser bug on
-  // an exotic file) shouldn't surface a red error or fail the scan.
-  // Finalize the spinner with the success text either way so the
-  // failure is invisible.
-  const deadCodePromise = shouldRunDeadCode
-    ? (async () => {
+  const lintDiagnostics = await lintPromise;
+
+  const deadCodeDiagnostics = shouldRunDeadCode
+    ? await (async () => {
         const deadCodeSpinner = options.scoreOnly
           ? null
           : spinner("Analyzing dead code...").start();
         try {
-          return await checkDeadCode({ rootDirectory: directory, userConfig });
-        } catch {
-          return [];
-        } finally {
+          const result = await deadCodeWork;
           deadCodeSpinner?.succeed("Analyzing dead code.");
+          return result;
+        } catch (error) {
+          didDeadCodeFail = true;
+          deadCodeFailureReason = formatErrorChain(error);
+          deadCodeSpinner?.fail("Dead-code analysis failed (non-fatal, skipping).");
+          return [];
         }
       })()
-    : Promise.resolve<Diagnostic[]>([]);
+    : [];
 
-  const [lintDiagnostics, deadCodeDiagnostics] = await Promise.all([lintPromise, deadCodePromise]);
   const diagnostics = combineDiagnostics({
     lintDiagnostics,
     directory,
@@ -234,6 +249,7 @@ const runInspect = async (
 
   const skippedChecks: string[] = [];
   if (didLintFail) skippedChecks.push("lint");
+  if (didDeadCodeFail) skippedChecks.push("dead-code");
   const hasSkippedChecks = skippedChecks.length > 0;
 
   // HACK: --offline opts out of the score API entirely; without a
@@ -263,6 +279,9 @@ const runInspect = async (
     // batch) but some batches timed out — surface the partial-failure
     // notes so JSON consumers see why a few files weren't checked.
     skippedCheckReasons["lint:partial"] = lintPartialFailures.join("; ");
+  }
+  if (didDeadCodeFail && deadCodeFailureReason !== null) {
+    skippedCheckReasons["dead-code"] = deadCodeFailureReason;
   }
 
   const buildResult = (): InspectResult => ({

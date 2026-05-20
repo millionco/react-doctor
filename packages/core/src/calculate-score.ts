@@ -1,3 +1,4 @@
+import { gzipSync } from "node:zlib";
 import { FETCH_TIMEOUT_MS, SCORE_API_URL } from "./constants.js";
 import type { Diagnostic, ScoreResult } from "@react-doctor/types";
 
@@ -27,10 +28,16 @@ export const calculateScore = async (diagnostics: Diagnostic[]): Promise<ScoreRe
   const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   try {
+    const requestBody = JSON.stringify({ diagnostics: stripFilePaths(diagnostics) });
+    const compressedBody = gzipSync(requestBody);
+
     const response = await fetch(SCORE_API_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ diagnostics: stripFilePaths(diagnostics) }),
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Encoding": "gzip",
+      },
+      body: compressedBody,
       signal: controller.signal,
     });
 

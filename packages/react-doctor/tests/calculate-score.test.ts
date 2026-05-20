@@ -1,3 +1,4 @@
+import { gunzipSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { calculateScore } from "@react-doctor/core";
 import type { Diagnostic } from "@react-doctor/types";
@@ -53,9 +54,11 @@ describe("calculateScore", () => {
   });
 
   it("parses a well-formed API response and strips file paths from the request body", async () => {
-    let capturedBody: string | undefined;
+    let capturedBody: BodyInit | null | undefined;
+    let capturedHeaders: HeadersInit | undefined;
     stubFetch(async (_url, init) => {
-      capturedBody = init?.body as string;
+      capturedBody = init?.body;
+      capturedHeaders = init?.headers;
       return new Response(JSON.stringify(apiScoreResponse), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -65,9 +68,13 @@ describe("calculateScore", () => {
     const result = await calculateScore(sampleDiagnostics);
 
     expect(result).toEqual(apiScoreResponse);
-    const parsedBody: { diagnostics: Array<Record<string, unknown>> } = JSON.parse(
-      capturedBody ?? "{}",
-    );
+    const headerRecord = capturedHeaders as Record<string, string> | undefined;
+    expect(headerRecord?.["Content-Encoding"]).toBe("gzip");
+    const compressedBytes = capturedBody as Uint8Array;
+    expect(compressedBytes).toBeInstanceOf(Uint8Array);
+    const decompressedJson = gunzipSync(compressedBytes).toString("utf8");
+    const parsedBody: { diagnostics: Array<Record<string, unknown>> } =
+      JSON.parse(decompressedJson);
     expect(parsedBody.diagnostics).toHaveLength(1);
     expect(parsedBody.diagnostics[0]).not.toHaveProperty("filePath");
     expect(parsedBody.diagnostics[0]).toMatchObject({

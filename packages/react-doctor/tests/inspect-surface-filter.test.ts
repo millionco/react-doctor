@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { inspect } from "../src/inspect.js";
 import path from "node:path";
+import { gunzipSync } from "node:zlib";
 import reactDoctorPlugin from "oxlint-plugin-react-doctor";
 
 vi.mock("ora", () => ({
@@ -24,12 +25,24 @@ interface CapturedFetchCall {
   body: string;
 }
 
+const decodeRequestBody = (init: RequestInit | undefined): string => {
+  const rawBody = init?.body;
+  if (!rawBody) return "";
+  const encoding = new Headers(init?.headers ?? {}).get("content-encoding")?.toLowerCase() ?? "";
+  if (rawBody instanceof Uint8Array) {
+    return encoding === "gzip"
+      ? gunzipSync(rawBody).toString("utf8")
+      : Buffer.from(rawBody).toString("utf8");
+  }
+  return String(rawBody);
+};
+
 const stubScoreFetchAndCapture = (): { captured: CapturedFetchCall[] } => {
   const captured: CapturedFetchCall[] = [];
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
-      captured.push({ url, body: String(init?.body ?? "") });
+      captured.push({ url, body: decodeRequestBody(init) });
       return new Response(JSON.stringify({ score: 90, label: "Great" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },

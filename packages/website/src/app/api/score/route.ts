@@ -65,11 +65,27 @@ export const OPTIONS = (): Response => new Response(null, { status: 204, headers
 const respondError = (status: number, message: string): Response =>
   Response.json({ error: message }, { status, headers: CORS_HEADERS });
 
+class DecompressedBodyTooLargeError extends Error {
+  constructor() {
+    super("decompressed body exceeds limit");
+    this.name = "DecompressedBodyTooLargeError";
+  }
+}
+
+const isBufferTooLargeError = (error: unknown): boolean =>
+  error instanceof Error && (error as NodeJS.ErrnoException).code === "ERR_BUFFER_TOO_LARGE";
+
 const decodeRequestBody = async (request: Request): Promise<unknown> => {
   const contentEncoding = request.headers.get("content-encoding")?.toLowerCase() ?? "";
   if (contentEncoding === "gzip") {
     const rawBody = Buffer.from(await request.arrayBuffer());
-    const decompressed = gunzipSync(rawBody, { maxOutputLength: MAX_DECOMPRESSED_BODY_BYTES });
+    let decompressed: Buffer;
+    try {
+      decompressed = gunzipSync(rawBody, { maxOutputLength: MAX_DECOMPRESSED_BODY_BYTES });
+    } catch (error) {
+      if (isBufferTooLargeError(error)) throw new DecompressedBodyTooLargeError();
+      throw error;
+    }
     return JSON.parse(decompressed.toString("utf8"));
   }
   return request.json();
@@ -86,7 +102,10 @@ export const POST = async (request: Request): Promise<Response> => {
   let body: unknown;
   try {
     body = await decodeRequestBody(request);
-  } catch {
+  } catch (error) {
+    if (error instanceof DecompressedBodyTooLargeError) {
+      return respondError(413, "Decompressed request body exceeds 25MB");
+    }
     body = null;
   }
 

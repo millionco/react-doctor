@@ -2,12 +2,13 @@ import {
   CHAINABLE_ITERATION_METHODS,
   ITERATOR_PRODUCING_METHOD_NAMES,
 } from "../../constants/js.js";
+import { SMALL_LITERAL_ARRAY_MAX_ELEMENTS } from "../../constants/thresholds.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
 const isIteratorProducingCall = (
@@ -65,11 +66,6 @@ const isReceiverChainIteratorRooted = (
   }
   return false;
 };
-
-// Small literal array root: `[a, b, c].map(...).filter(...)` —
-// iterating an ≤8-element literal twice is negligible cost; the
-// rewrite to a single-pass reduce hurts readability.
-const SMALL_LITERAL_ARRAY_MAX_ELEMENTS = 8;
 
 // `.filter(x => x != null)` — type-narrowing predicate. The
 // `.map().filter()` form is the canonical "transform then narrow to

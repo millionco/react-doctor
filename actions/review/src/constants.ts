@@ -1,5 +1,5 @@
 export const STICKY_COMMENT_MARKER = "<!-- react-doctor-review -->";
-export const INLINE_COMMENT_MARKER = "<!-- react-doctor-review-inline -->";
+export const INLINE_COMMENT_MARKER_PREFIX = "<!-- react-doctor-review-inline:";
 
 export const MAX_INLINE_COMMENTS_COUNT = 25;
 

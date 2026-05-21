@@ -8,7 +8,6 @@ import {
 } from "react-doctor/api";
 import type { Diagnostic, ProjectInfo } from "@react-doctor/types";
 import { discoverReactSubprojects } from "@react-doctor/project-info";
-import { INLINE_COMMENT_MARKER } from "./constants.ts";
 
 export interface ChangedFile {
   filename: string;
@@ -298,7 +297,7 @@ export const buildThreadKey = (relativePath: string, line: number, rule: string)
   `${relativePath}:${line}|${rule}`;
 
 export const formatInlineCommentBody = (diagnostic: ReviewDiagnostic): string => {
-  const lines: string[] = [INLINE_COMMENT_MARKER];
+  const lines: string[] = [];
   lines.push(`**${diagnostic.rule}** (${diagnostic.severity})`);
   lines.push("");
   lines.push(diagnostic.message);

@@ -3,7 +3,7 @@ import { graphql } from "@octokit/graphql";
 import {
   CHECK_RUN_NAME,
   GITHUB_GRAPHQL_PAGE_SIZE,
-  INLINE_COMMENT_MARKER,
+  INLINE_COMMENT_MARKER_PREFIX,
   STICKY_COMMENT_MARKER,
 } from "./constants.ts";
 import type { ChangedFile, InlineCommentCandidate } from "./pipeline.ts";
@@ -149,7 +149,7 @@ const fetchAllReviewThreads = async (
 const THREAD_KEY_HEADER_PATTERN = /^<!-- react-doctor-review-inline:([^\n]+?) -->/m;
 
 const buildInlineCommentBodyWithKey = (threadKey: string, body: string): string =>
-  `<!-- react-doctor-review-inline:${threadKey} -->\n${body}`;
+  `${INLINE_COMMENT_MARKER_PREFIX}${threadKey} -->\n${body}`;
 
 const extractThreadKeyFromBody = (body: string): string | null => {
   const match = body.match(THREAD_KEY_HEADER_PATTERN);
@@ -157,7 +157,7 @@ const extractThreadKeyFromBody = (body: string): string | null => {
 };
 
 const isOwnedReviewThread = (thread: ReviewThread): boolean =>
-  thread.comments.nodes.some((comment) => comment.body.includes(INLINE_COMMENT_MARKER));
+  thread.comments.nodes.some((comment) => comment.body.includes(INLINE_COMMENT_MARKER_PREFIX));
 
 export interface ReconcileInlineThreadsResult {
   activeThreadKeys: Set<string>;

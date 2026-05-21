@@ -1,0 +1,47 @@
+name: "React Doctor Review"
+description: "Review React pull requests with inline doctor diagnostics, a sticky summary comment, thread reconciliation, and a check run."
+branding:
+  icon: "activity"
+  color: "blue"
+
+inputs:
+  token:
+    description: "GitHub token used to read the PR, post inline comments, upsert the sticky summary, and create the check run. Defaults to the workflow token; pass a PAT or App installation token to comment on fork PRs or to brand the bot identity."
+    default: ${{ github.token }}
+  directory:
+    description: "Project directory to scan, relative to the consumer's checkout. Defaults to the checkout root."
+    default: "."
+  node-version:
+    description: "Node.js version to use on the runner."
+    default: "22"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - uses: pnpm/action-setup@v4
+
+    - name: Install action dependencies
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      env:
+        CI: "true"
+      run: pnpm install --frozen-lockfile --filter "@react-doctor/review-action..." --filter "react-doctor..."
+
+    - name: Build react-doctor workspace packages
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: pnpm --filter react-doctor build
+
+    - name: Run React Doctor PR review
+      shell: bash
+      working-directory: ${{ inputs.directory }}
+      env:
+        REACT_DOCTOR_TOKEN: ${{ inputs.token }}
+        INPUT_DIRECTORY: ${{ inputs.directory }}
+        ACTION_REVIEW_DIR: ${{ github.action_path }}/actions/review
+      run: |
+        pnpm --dir "$ACTION_REVIEW_DIR" exec tsx "$ACTION_REVIEW_DIR/src/index.ts"

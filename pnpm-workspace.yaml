@@ -1,5 +1,6 @@
 packages:
   - "packages/*"
+  - "actions/*"
 
 overrides:
   vite: npm:@voidzero-dev/vite-plus-core@^0.1.15

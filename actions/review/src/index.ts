@@ -345,7 +345,7 @@ const handleNotAReactProject = async (
   await completeCheckRun(client, context, checkRunHandle, {
     conclusion: "skipped",
     title: CHECK_RUN_NAME,
-    summary: "Not a React project — no diagnostics produced.",
+    summary: "Not a React project - no diagnostics produced.",
   });
   await deleteStickyComment(client, context);
 };

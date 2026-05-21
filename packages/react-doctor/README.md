@@ -49,7 +49,7 @@ Two composite actions ship with this repository.
 
 ### PR Review (recommended)
 
-The root action mirrors the hosted [react.review](https://react.review) bot's doctor-only flow as a self-hosted action — inline diagnostics on net-new violations, a sticky summary comment, automatic thread resolution when fixes land, and a check run on the PR head SHA. No hosted service required.
+The root action mirrors the hosted [react.review](https://react.review) bot's doctor-only flow as a self-hosted action: inline diagnostics on net-new violations, a sticky summary comment, automatic thread resolution when fixes land, and a check run on the PR head SHA. No hosted service required.
 
 ```yaml
 name: React Doctor Review
@@ -80,7 +80,7 @@ The Review action diffs head diagnostics against the merge-base, posts inline co
 
 ### Scan + sticky comment (legacy)
 
-The older composite action — a single `npx react-doctor` scan with an optional sticky PR comment — lives at [`actions/inspect/action.yml`](https://github.com/millionco/react-doctor/blob/main/actions/inspect/action.yml):
+The older composite action (a single `npx react-doctor` scan with an optional sticky PR comment) lives at [`actions/inspect/action.yml`](https://github.com/millionco/react-doctor/blob/main/actions/inspect/action.yml):
 
 ```yaml
 name: React Doctor

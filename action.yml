@@ -29,7 +29,7 @@ runs:
       working-directory: ${{ github.action_path }}
       env:
         CI: "true"
-      # HACK: filter by package path, not name — the root workspace and
+      # HACK: filter by package path, not name - the root workspace and
       # packages/react-doctor share the name "react-doctor", and a bare
       # --filter react-doctor matches both, which pulls the website
       # workspace into the install scope unnecessarily.
@@ -43,7 +43,7 @@ runs:
       # `--filter react-doctor` is ambiguous; the path filter pins it to
       # packages/react-doctor. Turbo's `dependsOn: ["^build"]` then builds
       # the four workspace deps (@react-doctor/core, /types, /project-info,
-      # oxlint-plugin-react-doctor) in topological order — required because
+      # oxlint-plugin-react-doctor) in topological order - required because
       # `vp pack` treats workspace deps as external imports, not bundled.
       # Skipping turbo and running `pnpm build` directly in packages/
       # react-doctor produces a dist/ that crashes at runtime with

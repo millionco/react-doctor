@@ -332,11 +332,11 @@ const scoreLabel = (score: number): string => {
 const formatScoreLine = (headScore: number | null, baseScore: number | null): string => {
   if (headScore === null) return "_Score unavailable._";
   const label = scoreLabel(headScore);
-  if (baseScore === null) return `**Score:** ${headScore}/100 — ${label}`;
+  if (baseScore === null) return `**Score:** ${headScore}/100 - ${label}`;
   const delta = headScore - baseScore;
-  if (delta === 0) return `**Score:** ${headScore}/100 — ${label} (unchanged from base)`;
+  if (delta === 0) return `**Score:** ${headScore}/100 - ${label} (unchanged from base)`;
   const sign = delta > 0 ? "+" : "";
-  return `**Score:** ${headScore}/100 — ${label} (${sign}${delta} vs base ${baseScore})`;
+  return `**Score:** ${headScore}/100 - ${label} (${sign}${delta} vs base ${baseScore})`;
 };
 
 const formatProjectTable = (projects: ReviewProjectSummary[]): string => {
@@ -345,8 +345,8 @@ const formatProjectTable = (projects: ReviewProjectSummary[]): string => {
   rows.push("| Project | Directory | Framework | React | Files | Errors | Warnings | Score |");
   rows.push("| --- | --- | --- | --- | ---: | ---: | ---: | ---: |");
   for (const project of projects) {
-    const reactVersion = project.reactVersion ?? "—";
-    const score = project.score === null ? "—" : `${project.score}`;
+    const reactVersion = project.reactVersion ?? "-";
+    const score = project.score === null ? "-" : `${project.score}`;
     rows.push(
       `| ${project.projectName} | \`${project.relativeDirectory}\` | ${project.framework} | ${reactVersion} | ${project.sourceFileCount} | ${project.errorCount} | ${project.warningCount} | ${score} |`,
     );
@@ -359,7 +359,7 @@ const formatDiagnosticList = (diagnostics: ReviewDiagnostic[], maxEntries: numbe
   const visible = diagnostics.slice(0, maxEntries);
   const lines = visible.map(
     (diagnostic) =>
-      `- \`${diagnostic.relativePath}:${diagnostic.line}\` — **${diagnostic.rule}** (${diagnostic.severity}) — ${diagnostic.message}`,
+      `- \`${diagnostic.relativePath}:${diagnostic.line}\` - **${diagnostic.rule}** (${diagnostic.severity}) - ${diagnostic.message}`,
   );
   if (diagnostics.length > visible.length) {
     lines.push(`- _…and ${diagnostics.length - visible.length} more_`);
@@ -368,7 +368,7 @@ const formatDiagnosticList = (diagnostics: ReviewDiagnostic[], maxEntries: numbe
 };
 
 const REACT_DOCTOR_FOOTER =
-  "_Reviewed by [react-doctor](https://github.com/millionco/react-doctor) — local CI, no hosted service._";
+  "_Reviewed by [react-doctor](https://github.com/millionco/react-doctor) - local CI, no hosted service._";
 
 const PROMPT_BLOCK = [
   "<details><summary>Have your agent fix these</summary>",

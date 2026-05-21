@@ -42,13 +42,13 @@ importers:
       '@octokit/rest':
         specifier: ^22.0.1
         version: 22.0.1
+      '@react-doctor/project-info':
+        specifier: workspace:*
+        version: link:../../packages/project-info
       react-doctor:
         specifier: workspace:*
         version: link:../../packages/react-doctor
     devDependencies:
-      '@react-doctor/project-info':
-        specifier: workspace:*
-        version: link:../../packages/project-info
       '@react-doctor/types':
         specifier: workspace:*
         version: link:../../packages/types

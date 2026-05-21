@@ -37,14 +37,18 @@ runs:
 
     - name: Build react-doctor
       shell: bash
-      working-directory: ${{ github.action_path }}/packages/react-doctor
-      # HACK: don't filter from the workspace root — the root package and
-      # packages/react-doctor share the name "react-doctor", and the bare
-      # --filter resolves to the root, whose `build` script is
-      # `turbo run build` (which fans out to every workspace, including
-      # website — whose Next.js dep the filtered install above
-      # intentionally skipped). Run the package's `build` script directly.
-      run: pnpm build
+      working-directory: ${{ github.action_path }}
+      # HACK: filter turbo by package path, not by name. Both the workspace
+      # root and packages/react-doctor are named "react-doctor", so a bare
+      # `--filter react-doctor` is ambiguous; the path filter pins it to
+      # packages/react-doctor. Turbo's `dependsOn: ["^build"]` then builds
+      # the four workspace deps (@react-doctor/core, /types, /project-info,
+      # oxlint-plugin-react-doctor) in topological order — required because
+      # `vp pack` treats workspace deps as external imports, not bundled.
+      # Skipping turbo and running `pnpm build` directly in packages/
+      # react-doctor produces a dist/ that crashes at runtime with
+      # ERR_MODULE_NOT_FOUND on `@react-doctor/core`.
+      run: pnpm exec turbo run build --filter=./packages/react-doctor
 
     - name: Run React Doctor PR review
       shell: bash

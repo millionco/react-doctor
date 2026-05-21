@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 
 const REPOSITORY_ROOT = path.resolve(import.meta.dirname, "..", "..", "..");
-const ACTION_YAML_PATH = path.join(REPOSITORY_ROOT, "action.yml");
+const ACTION_YAML_PATH = path.join(REPOSITORY_ROOT, "actions", "inspect", "action.yml");
 
 const readActionYaml = (): string => fs.readFileSync(ACTION_YAML_PATH, "utf8");
 const normalizeWhitespace = (value: string): string => value.replace(/\s+/g, " ");

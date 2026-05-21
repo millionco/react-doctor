@@ -2,12 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import {
-  isReactDoctorError,
-  NoReactDependencyError,
-  PackageJsonNotFoundError,
-  ProjectNotFoundError,
-} from "react-doctor/api";
+import { isReactDoctorError } from "react-doctor/api";
 import { BASE_WORKTREE_DIR_NAME, CHECK_RUN_NAME, MAX_INLINE_COMMENTS_COUNT } from "./constants.ts";
 import {
   buildInlineCommentCandidates,
@@ -17,6 +12,7 @@ import {
   formatPendingReviewComment,
   formatRegressionComment,
   getReviewCheckAssessment,
+  isMissingReactProjectError,
   runDiagnoseAcrossWorkspace,
 } from "./pipeline.ts";
 import type { ChangedFile, DiagnoseSnapshot, InlineCommentCandidate } from "./pipeline.ts";
@@ -168,11 +164,6 @@ const capCandidates = (
   const fresh = candidates.filter((candidate) => !activeThreadKeys.has(candidate.threadKey));
   return fresh.slice(0, MAX_INLINE_COMMENTS_COUNT);
 };
-
-const isMissingReactProjectError = (error: unknown): boolean =>
-  error instanceof NoReactDependencyError ||
-  error instanceof PackageJsonNotFoundError ||
-  error instanceof ProjectNotFoundError;
 
 const logInfo = (message: string): void => {
   console.log(`[react-doctor-review] ${message}`);

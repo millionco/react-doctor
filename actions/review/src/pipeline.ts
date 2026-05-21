@@ -244,6 +244,9 @@ const indexDiagnosticsByKey = (
   return indexed;
 };
 
+const positionKey = (diagnostic: ReviewDiagnostic): string =>
+  `${diagnostic.line}:${diagnostic.column}`;
+
 export const computeDiagnosticsDelta = (
   headDiagnostics: ReviewDiagnostic[],
   baseDiagnostics: ReviewDiagnostic[],
@@ -254,17 +257,37 @@ export const computeDiagnosticsDelta = (
   const newDiagnostics: ReviewDiagnostic[] = [];
   const fixedDiagnostics: ReviewDiagnostic[] = [];
 
-  for (const [key, headOccurrences] of headByKey) {
-    const baseCount = baseByKey.get(key)?.length ?? 0;
-    if (headOccurrences.length > baseCount) {
-      newDiagnostics.push(...headOccurrences.slice(baseCount));
+  // For each (relativePath, rule, message) key, diff at the
+  // (line, column) granularity so we identify which specific
+  // occurrence is genuinely new vs which one merely shifted lines.
+  // Slicing the head bucket by count (the previous approach) systematically
+  // picked the highest-line occurrences as "new", which mis-attributed
+  // novelty when the new instance was at a lower line than an existing one.
+  const allKeys = new Set<string>([...headByKey.keys(), ...baseByKey.keys()]);
+  for (const key of allKeys) {
+    const headOccurrences = headByKey.get(key) ?? [];
+    const baseOccurrences = baseByKey.get(key) ?? [];
+    const basePositionCounts = new Map<string, number>();
+    for (const baseOccurrence of baseOccurrences) {
+      const positionId = positionKey(baseOccurrence);
+      basePositionCounts.set(positionId, (basePositionCounts.get(positionId) ?? 0) + 1);
     }
-  }
-
-  for (const [key, baseOccurrences] of baseByKey) {
-    const headCount = headByKey.get(key)?.length ?? 0;
-    if (baseOccurrences.length > headCount) {
-      fixedDiagnostics.push(...baseOccurrences.slice(headCount));
+    for (const headOccurrence of headOccurrences) {
+      const positionId = positionKey(headOccurrence);
+      const remaining = basePositionCounts.get(positionId) ?? 0;
+      if (remaining > 0) {
+        basePositionCounts.set(positionId, remaining - 1);
+        continue;
+      }
+      newDiagnostics.push(headOccurrence);
+    }
+    for (const baseOccurrence of baseOccurrences) {
+      const positionId = positionKey(baseOccurrence);
+      const remaining = basePositionCounts.get(positionId) ?? 0;
+      if (remaining > 0) {
+        basePositionCounts.set(positionId, remaining - 1);
+        fixedDiagnostics.push(baseOccurrence);
+      }
     }
   }
 

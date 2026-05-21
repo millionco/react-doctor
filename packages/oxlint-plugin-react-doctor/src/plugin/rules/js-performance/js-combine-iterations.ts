@@ -269,6 +269,11 @@ export const jsCombineIterations = defineRule<Rule>({
               filterArgument.body.name === filterArgument.params[0].name);
           if (isBooleanOrIdentityFilter) return;
           if (isNullFilteringPredicate(filterArgument as EsTreeNode | null | undefined)) return;
+          // `.map(transform).filter((x): x is T => …)` — TS type predicate
+          // narrows the result element type; rewriting to `.reduce()`
+          // loses the narrowing (same rationale as the `.filter().map()`
+          // branch below).
+          if (isTypePredicateArrow(filterArgument as EsTreeNode | null | undefined)) return;
         }
         if (innerMethod === "filter" && outerMethod === "map") {
           const filterArgument = (innerCall as EsTreeNodeOfType<"CallExpression">).arguments?.[0];

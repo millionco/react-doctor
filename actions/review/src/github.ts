@@ -146,7 +146,7 @@ const fetchAllReviewThreads = async (
   return threads;
 };
 
-const THREAD_KEY_HEADER_PATTERN = /^<!-- react-doctor-review-inline:([^\s]+) -->/m;
+const THREAD_KEY_HEADER_PATTERN = /^<!-- react-doctor-review-inline:([^\n]+?) -->/m;
 
 const buildInlineCommentBodyWithKey = (threadKey: string, body: string): string =>
   `<!-- react-doctor-review-inline:${threadKey} -->\n${body}`;

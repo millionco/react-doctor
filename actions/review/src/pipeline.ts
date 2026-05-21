@@ -76,22 +76,17 @@ export const parseAddedLineContents = (patch: string | null | undefined): Map<nu
 
     const firstChar = rawLine.charAt(0);
     if (firstChar === "+") {
-      if (rawLine.startsWith("+++ ")) continue;
       addedLineContents.set(currentNewLine, rawLine.slice(1));
       currentNewLine += 1;
-    } else if (firstChar === "-") {
-      if (rawLine.startsWith("--- ")) continue;
     } else if (firstChar === " " || rawLine.length === 0) {
       currentNewLine += 1;
-    } else if (firstChar === "\\") {
-      continue;
     }
   }
 
   return addedLineContents;
 };
 
-const isMissingReactProjectError = (error: unknown): boolean =>
+export const isMissingReactProjectError = (error: unknown): boolean =>
   error instanceof NoReactDependencyError ||
   error instanceof PackageJsonNotFoundError ||
   error instanceof ProjectNotFoundError;

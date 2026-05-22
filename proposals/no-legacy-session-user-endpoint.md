@@ -1,0 +1,150 @@
+# Proposal: `react-doctor/no-legacy-session-user-endpoint`
+
+> **Status**: 🟡 Auto-discovered draft proposal. **Not yet implemented.** Maintainer review wanted before any code lands.
+
+|                             |                                        |
+| --------------------------- | -------------------------------------- |
+| Category                    | `correctness`                          |
+| Severity                    | `error`                                |
+| Source clusters             | `NEW::no-legacy-session-user-endpoint` |
+| Independent draft proposals | 1                                      |
+| Backing evidence units      | 1                                      |
+
+## Sources
+
+Discovered by the [react-doctor-evals discovery flywheel](https://github.com/millionco/react-doctor-evals/pull/11) mining bug-fix evidence across React OSS repos. The pipeline below produced this proposal:
+
+```
+OSS repo → Vercel Sandbox miner → EvidenceUnit → RuleDrafter (LLM) → RuleDedupe → THIS PR
+```
+
+### Backing evidence
+
+- [`freeCodeCamp/freeCodeCamp` — `api/src/routes/protected/user.ts` (FixCommitMeta)](https://github.com/freeCodeCamp/freeCodeCamp/commit/9714ae3b700cda3b33dd97ccb87b9feccd8ce6de)
+
+## Validation prompt
+
+FP-aware guidance for the [react-review agent](https://github.com/millionco/react-review) when triaging this rule:
+
+> Flag only live calls or route definitions that reference the removed `/user/get-session-user` path. Ignore intentional compatibility shims, mock servers, fixtures, and tests that are explicitly documenting old behavior. Also ignore unrelated helper functions that merely accept a path string and never issue a request.
+
+## Fix prompt
+
+Actionable fix suggestion surfaced to the user when the rule fires:
+
+> Switch every caller and route to `/user/session-user`. If you keep a temporary compatibility alias, remove it once the migration is complete so the old path cannot be used again.
+
+```ts
+fetch("/user/session-user");
+```
+
+## Positive fixture (SHOULD trigger)
+
+```tsx
+import { useEffect } from "react";
+
+export function Profile() {
+  useEffect(() => {
+    fetch("/user/get-session-user");
+  }, []);
+
+  return null;
+}
+```
+
+## Negative fixture (should NOT trigger)
+
+```tsx
+import { useEffect } from "react";
+
+export function Profile() {
+  useEffect(() => {
+    fetch("/user/session-user");
+  }, []);
+
+  return null;
+}
+```
+
+## Proposed AST detector
+
+Would land at `packages/oxlint-plugin-react-doctor/src/plugin/rules/correctness/no-legacy-session-user-endpoint.ts`:
+
+```ts
+import { defineRule } from "../../utils/define-rule.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import type { Rule } from "../../utils/rule.js";
+import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+
+const LEGACY_ENDPOINT_PATH = "/user/get-session-user";
+const MODERN_ENDPOINT_PATH = "/user/session-user";
+
+const MEMBER_HTTP_METHODS = new Set([
+  "get",
+  "post",
+  "put",
+  "patch",
+  "delete",
+  "fetch",
+  "request",
+]);
+const DIRECT_HTTP_CALLS = new Set(["fetch", "request"]);
+
+const getStaticStringValue = (
+  node: EsTreeNode | null | undefined
+): string | null => {
+  if (!node) return null;
+  if (isNodeOfType(node, "Literal") && typeof node.value === "string")
+    return node.value;
+  if (isNodeOfType(node, "TemplateLiteral") && node.expressions.length === 0) {
+    return node.quasis[0]?.value.cooked ?? node.quasis[0]?.value.raw ?? null;
+  }
+  return null;
+};
+
+const isLegacySessionUserEndpointCall = (
+  node: EsTreeNodeOfType<"CallExpression">
+): boolean => {
+  const firstArgument = node.arguments?.[0];
+  if (getStaticStringValue(firstArgument) !== LEGACY_ENDPOINT_PATH)
+    return false;
+
+  const callee = node.callee;
+  if (isNodeOfType(callee, "Identifier")) {
+    return DIRECT_HTTP_CALLS.has(callee.name);
+  }
+  if (
+    isNodeOfType(callee, "MemberExpression") &&
+    isNodeOfType(callee.property, "Identifier")
+  ) {
+    return MEMBER_HTTP_METHODS.has(callee.property.name);
+  }
+  return false;
+};
+
+export const noLegacySessionUserEndpoint = defineRule<Rule>({
+  id: "no-legacy-session-user-endpoint",
+  category: "Correctness",
+  severity: "error",
+  tags: ["migration-hint"],
+  recommendation:
+    "Use `/user/session-user` instead of the removed `/user/get-session-user` endpoint, and delete any compatibility alias once every caller is migrated",
+  create: (context: RuleContext) => ({
+    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+      if (!isLegacySessionUserEndpointCall(node)) return;
+      context.report({
+        node: node.arguments?.[0] ?? node,
+        message: `Legacy endpoint \"${LEGACY_ENDPOINT_PATH}\" — switch to \"${MODERN_ENDPOINT_PATH}\" because \"/user/get-session-user\" was removed`,
+      });
+    },
+  }),
+});
+```
+
+---
+
+<sub>
+Generated by `rde discover` (see [millionco/react-doctor-evals#11](https://github.com/millionco/react-doctor-evals/pull/11) for the pipeline). Implementation, test fixtures, and rule registration are deliberately deferred — this PR exists for maintainer triage of the proposal only. Reject, edit-and-approve, or merge after wiring as you see fit.
+</sub>

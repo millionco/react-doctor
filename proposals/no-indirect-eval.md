@@ -1,0 +1,153 @@
+# Proposal: `react-doctor/no-indirect-eval`
+
+> **Status**: 🟡 Auto-discovered draft proposal. **Not yet implemented.** Maintainer review wanted before any code lands.
+
+|                             |                         |
+| --------------------------- | ----------------------- |
+| Category                    | `security`              |
+| Severity                    | `error`                 |
+| Source clusters             | `NEW::no-indirect-eval` |
+| Independent draft proposals | 1                       |
+| Backing evidence units      | 1                       |
+
+## Sources
+
+Discovered by the [react-doctor-evals discovery flywheel](https://github.com/millionco/react-doctor-evals/pull/11) mining bug-fix evidence across React OSS repos. The pipeline below produced this proposal:
+
+```
+OSS repo → Vercel Sandbox miner → EvidenceUnit → RuleDrafter (LLM) → RuleDedupe → THIS PR
+```
+
+### Backing evidence
+
+- [`facebook/react` — `packages/react-client/src/ReactClientDebugConfigPlain.js` (DisableChurnMeta)](https://github.com/facebook/react/commit/ed4bd540ca67f1c4db65f009ad726a5ae1a0af01)
+
+## Validation prompt
+
+FP-aware guidance for the [react-review agent](https://github.com/millionco/react-review) when triaging this rule:
+
+> Flag only when the global `eval` function is reached indirectly, such as `(0, eval)(...)` or `window.eval(...)`. Do not flag shadowed locals named `eval`, or ordinary methods like `obj.eval()` that are not the built-in global function. A common false positive is fixture or test code that defines `const eval = ...` as a stub.
+
+## Fix prompt
+
+Actionable fix suggestion surfaced to the user when the rule fires:
+
+> Remove the indirection and keep the dynamic execution explicit only if it is truly unavoidable. In most cases, replace the `eval` path with a parser or structured API.
+
+```ts
+// Before
+(0, eval)(source);
+
+// After
+eval(source);
+```
+
+## Positive fixture (SHOULD trigger)
+
+```tsx
+export function Widget({ source }) {
+  return <button onClick={() => (0, eval)(source)}>Run</button>;
+}
+```
+
+## Negative fixture (should NOT trigger)
+
+```tsx
+export function Widget({ source }) {
+  const eval = (value) => value;
+  return <button onClick={() => (0, eval)(source)}>Run</button>;
+}
+```
+
+## Proposed AST detector
+
+Would land at `packages/oxlint-plugin-react-doctor/src/plugin/rules/security/no-indirect-eval.ts`:
+
+```ts
+import { defineRule } from "../../utils/define-rule.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import type { Rule } from "../../utils/rule.js";
+import type { RuleContext } from "../../utils/rule-context.js";
+
+const GLOBAL_EVAL_RECEIVER_NAMES = new Set([
+  "globalThis",
+  "window",
+  "self",
+  "global",
+  "frames",
+]);
+
+const isGlobalEvalReference = (
+  node: EsTreeNode,
+  context: RuleContext
+): boolean =>
+  isNodeOfType(node, "Identifier") &&
+  node.name === "eval" &&
+  context.scopes.isGlobalReference(node);
+
+const isGlobalEvalReceiver = (
+  node: EsTreeNode,
+  context: RuleContext
+): boolean =>
+  isNodeOfType(node, "Identifier") &&
+  GLOBAL_EVAL_RECEIVER_NAMES.has(node.name) &&
+  context.scopes.isGlobalReference(node);
+
+const isIndirectEvalCall = (
+  node: EsTreeNode,
+  context: RuleContext
+): boolean => {
+  if (!isNodeOfType(node, "CallExpression")) return false;
+
+  const callee = stripParenExpression(node.callee as EsTreeNode);
+
+  if (isNodeOfType(callee, "SequenceExpression")) {
+    const lastExpression = callee.expressions[callee.expressions.length - 1];
+    if (!lastExpression) return false;
+    return isGlobalEvalReference(
+      stripParenExpression(lastExpression as EsTreeNode),
+      context
+    );
+  }
+
+  if (isNodeOfType(callee, "MemberExpression") && !callee.computed) {
+    if (
+      !isNodeOfType(callee.property, "Identifier") ||
+      callee.property.name !== "eval"
+    )
+      return false;
+    return isGlobalEvalReceiver(
+      stripParenExpression(callee.object as EsTreeNode),
+      context
+    );
+  }
+
+  return false;
+};
+
+export const noIndirectEval = defineRule<Rule>({
+  id: "no-indirect-eval",
+  severity: "error",
+  recommendation:
+    "Avoid hiding eval behind indirection such as `(0, eval)` or `window.eval`. Remove the dynamic code execution if possible; if evaluation is truly unavoidable, keep it explicit so it is easy to review and lint.",
+  create: (context: RuleContext) => ({
+    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+      if (!isIndirectEvalCall(node, context)) return;
+      context.report({
+        node,
+        message:
+          "Indirect eval call hides dynamic code execution and bypasses direct eval checks. Call eval explicitly or replace it with a safer parser or API.",
+      });
+    },
+  }),
+});
+```
+
+---
+
+<sub>
+Generated by `rde discover` (see [millionco/react-doctor-evals#11](https://github.com/millionco/react-doctor-evals/pull/11) for the pipeline). Implementation, test fixtures, and rule registration are deliberately deferred — this PR exists for maintainer triage of the proposal only. Reject, edit-and-approve, or merge after wiring as you see fit.
+</sub>

@@ -6,8 +6,16 @@ import path from "node:path";
 import {
   ERROR_PREVIEW_LENGTH_CHARS,
   OXLINT_OUTPUT_MAX_BYTES,
+  OXLINT_SPAWN_TIMEOUT_MS as DEFAULT_OXLINT_SPAWN_TIMEOUT_MS,
   SOURCE_FILE_PATTERN,
 } from "./constants.js";
+import {
+  isSplittableReactDoctorError,
+  OxlintBatchExceeded,
+  OxlintOutputUnparseable,
+  OxlintSpawnFailed,
+  ReactDoctorError,
+} from "./errors.js";
 import { batchIncludePaths } from "./batch-include-paths.js";
 import { buildRuleSeverityControls } from "./build-rule-severity-controls.js";
 import { canOxlintExtendConfig } from "./can-oxlint-extend-config.js";
@@ -143,25 +151,19 @@ const SANITIZED_ENV: NodeJS.ProcessEnv = (() => {
   return sanitized;
 })();
 
-// HACK: per-batch (NOT per-project) wall-clock budget. Each batch is
-// at most `OXLINT_MAX_FILES_PER_BATCH` (= 100) files, and a healthy
-// batch finishes in well under a second on every project in the eval
-// corpus. 60s leaves an enormous safety margin; anything longer is a
-// signal that ONE specific file or rule has runaway behavior on the
-// shape of this project. Combined with the binary-split recovery in
-// `spawnLintBatches`, large pathological batches now narrow down to
-// the single offending file rather than killing the whole scan as
-// the previous 5-min budget did on supabase/studio.
-//
 // HACK: env override (`REACT_DOCTOR_OXLINT_SPAWN_TIMEOUT_MS`) so the
-// evals harness can raise the budget when running under Vercel Sandbox
-// microVMs, where the oxlint native binding is markedly slower than on
-// a developer laptop and the default 60s starves every batch.
+// evals harness can raise the per-batch budget when running under
+// Vercel Sandbox microVMs, where the oxlint native binding is markedly
+// slower than on a developer laptop and the default starves every
+// batch. The default (and the docstring naming the regression that
+// pinned it) lives in constants.ts. Tests can override via the
+// OxlintSpawnTimeoutMs Context.Reference once the Linter service
+// wraps this function in PR 3.
 const OXLINT_SPAWN_TIMEOUT_MS = (() => {
   const raw = process.env["REACT_DOCTOR_OXLINT_SPAWN_TIMEOUT_MS"];
-  if (raw === undefined) return 60_000;
+  if (raw === undefined) return DEFAULT_OXLINT_SPAWN_TIMEOUT_MS;
   const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed <= 0) return 60_000;
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_OXLINT_SPAWN_TIMEOUT_MS;
   return parsed;
 })();
 
@@ -178,12 +180,13 @@ const spawnOxlint = (
 
     const timeoutHandle = setTimeout(() => {
       child.kill("SIGKILL");
-      // HACK: message string is grepped by `isSplittableOxlintBatchError`
-      // — keep "did not return within" in the prefix.
       reject(
-        new Error(
-          `oxlint did not return within ${OXLINT_SPAWN_TIMEOUT_MS / 1000}s — please report`,
-        ),
+        new ReactDoctorError({
+          reason: new OxlintBatchExceeded({
+            kind: "timeout",
+            detail: `${OXLINT_SPAWN_TIMEOUT_MS / 1000}s budget exceeded`,
+          }),
+        }),
       );
     }, OXLINT_SPAWN_TIMEOUT_MS);
     timeoutHandle.unref?.();
@@ -221,46 +224,48 @@ const spawnOxlint = (
 
     child.on("error", (error) => {
       clearTimeout(timeoutHandle);
-      reject(new Error(`Failed to run oxlint: ${error.message}`));
+      reject(new ReactDoctorError({ reason: new OxlintSpawnFailed({ cause: error }) }));
     });
     child.on("close", (_code, signal) => {
       clearTimeout(timeoutHandle);
       if (didKillForSize) {
         reject(
-          new Error(
-            `oxlint output exceeded ${OXLINT_OUTPUT_MAX_BYTES} bytes — scan a smaller subset with --diff or --staged`,
-          ),
+          new ReactDoctorError({
+            reason: new OxlintBatchExceeded({
+              kind: "output-too-large",
+              detail: `exceeded ${OXLINT_OUTPUT_MAX_BYTES} bytes — scan a smaller subset with --diff or --staged`,
+            }),
+          }),
         );
         return;
       }
       if (signal) {
         const stderrOutput = Buffer.concat(stderrBuffers).toString("utf-8").trim();
-        const hint =
-          signal === "SIGABRT" ? " (out of memory — try scanning fewer files with --diff)" : "";
-        const detail = stderrOutput ? `: ${stderrOutput}` : "";
-        reject(new Error(`oxlint was killed by ${signal}${hint}${detail}`));
+        const isOom = signal === "SIGABRT";
+        const detailParts: string[] = [`killed by ${signal}`];
+        if (isOom) detailParts.push("try scanning fewer files with --diff");
+        if (stderrOutput) detailParts.push(stderrOutput);
+        reject(
+          new ReactDoctorError({
+            reason: new OxlintBatchExceeded({
+              kind: isOom ? "oom" : "killed",
+              detail: detailParts.join(" — "),
+            }),
+          }),
+        );
         return;
       }
       const output = Buffer.concat(stdoutBuffers).toString("utf-8").trim();
       if (!output) {
         const stderrOutput = Buffer.concat(stderrBuffers).toString("utf-8").trim();
         if (stderrOutput) {
-          reject(new Error(`Failed to run oxlint: ${stderrOutput}`));
+          reject(new ReactDoctorError({ reason: new OxlintSpawnFailed({ cause: stderrOutput }) }));
           return;
         }
       }
       resolve(output);
     });
   });
-
-const isSplittableOxlintBatchError = (error: unknown): boolean => {
-  if (!(error instanceof Error)) return false;
-  return (
-    error.message.includes("did not return within") ||
-    error.message.includes("output exceeded") ||
-    error.message.includes("out of memory")
-  );
-};
 
 const isOxlintOutput = (value: unknown): value is OxlintOutput => {
   if (typeof value !== "object" || value === null) return false;
@@ -286,15 +291,19 @@ const parseOxlintOutput = (
   try {
     parsed = JSON.parse(sanitizedStdout);
   } catch {
-    throw new Error(
-      `Failed to parse oxlint output: ${stdout.slice(0, ERROR_PREVIEW_LENGTH_CHARS)}`,
-    );
+    throw new ReactDoctorError({
+      reason: new OxlintOutputUnparseable({
+        preview: stdout.slice(0, ERROR_PREVIEW_LENGTH_CHARS),
+      }),
+    });
   }
 
   if (!isOxlintOutput(parsed)) {
-    throw new Error(
-      `Unexpected oxlint output shape: ${stdout.slice(0, ERROR_PREVIEW_LENGTH_CHARS)}`,
-    );
+    throw new ReactDoctorError({
+      reason: new OxlintOutputUnparseable({
+        preview: stdout.slice(0, ERROR_PREVIEW_LENGTH_CHARS),
+      }),
+    });
   }
   const output = parsed;
 
@@ -565,7 +574,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
           const stdout = await spawnOxlint(batchArgs, rootDirectory, nodeBinaryPath);
           return parseOxlintOutput(stdout, project, rootDirectory);
         } catch (error) {
-          if (!isSplittableOxlintBatchError(error)) throw error;
+          if (!isSplittableReactDoctorError(error)) throw error;
           if (batch.length <= 1) {
             // Single-file batch still fails with a splittable error —
             // drop the file, record it, and let the scan continue.

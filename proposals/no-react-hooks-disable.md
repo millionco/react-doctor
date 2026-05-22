@@ -1,0 +1,141 @@
+# Proposal: `react-doctor/no-react-hooks-disable`
+
+> **Status**: 🟡 Auto-discovered draft proposal. **Not yet implemented.** Maintainer review wanted before any code lands.
+
+|                             |                               |
+| --------------------------- | ----------------------------- |
+| Category                    | `correctness`                 |
+| Severity                    | `warn`                        |
+| Source clusters             | `NEW::no-react-hooks-disable` |
+| Independent draft proposals | 1                             |
+| Backing evidence units      | 1                             |
+
+## Sources
+
+Discovered by the [react-doctor-evals discovery flywheel](https://github.com/millionco/react-doctor-evals/pull/11) mining bug-fix evidence across React OSS repos. The pipeline below produced this proposal:
+
+```
+OSS repo → Vercel Sandbox miner → EvidenceUnit → RuleDrafter (LLM) → RuleDedupe → THIS PR
+```
+
+### Backing evidence
+
+- [`facebook/react` — `fixtures/eslint-v10/index.js` (DisableChurnMeta)](https://github.com/facebook/react/commit/e8c6362678c8bc86a02b8444d2c3f597b3dc4e22)
+
+## Validation prompt
+
+FP-aware guidance for the [react-review agent](https://github.com/millionco/react-review) when triaging this rule:
+
+> Check whether this is production React code or an intentionally invalid fixture, test, story, or migration sample. Also verify the `react-hooks/*` disable comment is immediately attached to a real hook call; stray suppressions with no hook on the target line should not be reported. The finding is strongest when the comment hides a conditional hook call or a missing-deps effect in shipped code.
+
+## Fix prompt
+
+Actionable fix suggestion surfaced to the user when the rule fires:
+
+> Remove the `eslint-disable-next-line react-hooks/*` comment and fix the hook shape or dependency list instead. For conditional work, keep the hook at the top level and branch inside it:
+
+```tsx
+useEffect(() => {
+  if (!enabled) return;
+  doSomething(value);
+}, [enabled, value]);
+```
+
+## Positive fixture (SHOULD trigger)
+
+```tsx
+function Example({ value }) {
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    console.log(value);
+  }, []);
+}
+```
+
+## Negative fixture (should NOT trigger)
+
+```tsx
+function Example({ value }) {
+  useEffect(() => {
+    console.log(value);
+  }, [value]);
+}
+```
+
+## Proposed AST detector
+
+Would land at `packages/oxlint-plugin-react-doctor/src/plugin/rules/correctness/no-react-hooks-disable.ts`:
+
+```ts
+import fs from "node:fs";
+import { defineRule } from "../../utils/define-rule.js";
+import { getCalleeName } from "../../utils/get-callee-name.js";
+import { isReactHookName } from "../../utils/is-react-hook-name.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import type { Rule } from "../../utils/rule.js";
+import type { RuleContext } from "../../utils/rule-context.js";
+
+const REACT_HOOKS_DISABLE_PATTERN =
+  /eslint-disable-(?:next-line|line)\s+react-hooks\//;
+
+const collectSuppressedHookCallLines = (sourceText: string): Set<number> => {
+  const suppressedHookCallLines = new Set<number>();
+  const lines = sourceText.split(/\r?\n/);
+
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+    const lineText = lines[lineIndex];
+    if (!REACT_HOOKS_DISABLE_PATTERN.test(lineText)) continue;
+
+    if (lineText.includes("eslint-disable-next-line")) {
+      suppressedHookCallLines.add(lineIndex + 2);
+    }
+
+    if (lineText.includes("eslint-disable-line")) {
+      suppressedHookCallLines.add(lineIndex + 1);
+    }
+  }
+
+  return suppressedHookCallLines;
+};
+
+export const noReactHooksDisable = defineRule<Rule>({
+  id: "no-react-hooks-disable",
+  severity: "warn",
+  recommendation:
+    "Fix the hook-order or dependency bug directly instead of silencing react-hooks lint rules. Move the branch inside the hook, extract a custom hook, or list the real dependencies.",
+  create: (context: RuleContext) => {
+    const filename = context.getFilename?.();
+    if (!filename) return {};
+
+    let sourceText: string;
+    try {
+      sourceText = fs.readFileSync(filename, "utf8");
+    } catch {
+      return {};
+    }
+
+    const suppressedHookCallLines = collectSuppressedHookCallLines(sourceText);
+    if (suppressedHookCallLines.size === 0) return {};
+
+    return {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        const calleeName = getCalleeName(node);
+        if (!calleeName || !isReactHookName(calleeName)) return;
+        if (!node.loc || !suppressedHookCallLines.has(node.loc.start.line))
+          return;
+
+        context.report({
+          node,
+          message: `React hook "${calleeName}" is hidden behind a react-hooks disable comment — fix the hook or dependency bug instead of silencing the rule`,
+        });
+      },
+    };
+  },
+});
+```
+
+---
+
+<sub>
+Generated by `rde discover` (see [millionco/react-doctor-evals#11](https://github.com/millionco/react-doctor-evals/pull/11) for the pipeline). Implementation, test fixtures, and rule registration are deliberately deferred — this PR exists for maintainer triage of the proposal only. Reject, edit-and-approve, or merge after wiring as you see fit.
+</sub>

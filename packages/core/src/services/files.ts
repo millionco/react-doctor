@@ -67,7 +67,7 @@ export class Files extends Context.Service<
           Effect.sync(() => {
             const prefix = filePath.endsWith(Path.sep) ? filePath : `${filePath}${Path.sep}`;
             for (const absolute of tree.keys()) {
-              if (absolute === filePath || absolute.startsWith(prefix)) return true;
+              if (absolute.startsWith(prefix)) return true;
             }
             return false;
           }),

@@ -101,4 +101,15 @@ describe("Files.layerInMemory", () => {
     expect(dir).toBe(true);
     expect(notDir).toBe(false);
   });
+
+  it("isDirectory returns false for a path that exists as a file", async () => {
+    const result = await runWithLayer(
+      Files.layerInMemory(tree),
+      Effect.gen(function* () {
+        const files = yield* Files;
+        return yield* files.isDirectory("/repo/src/index.ts");
+      }),
+    );
+    expect(result).toBe(false);
+  });
 });

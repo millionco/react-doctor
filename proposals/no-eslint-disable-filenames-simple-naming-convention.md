@@ -1,0 +1,141 @@
+# Proposal: `react-doctor/no-eslint-disable-filenames-simple-naming-convention`
+
+> **Status**: 🟡 Auto-discovered draft proposal. **Not yet implemented.** Maintainer review wanted before any code lands.
+
+|                             |                                                             |
+| --------------------------- | ----------------------------------------------------------- |
+| Category                    | `Architecture`                                              |
+| Severity                    | `warn`                                                      |
+| Source clusters             | `NEW::no-eslint-disable-filenames-simple-naming-convention` |
+| Independent draft proposals | 1                                                           |
+| Backing evidence units      | 1                                                           |
+
+## Sources
+
+Discovered by the [react-doctor-evals discovery flywheel](https://github.com/millionco/react-doctor-evals/pull/11) mining bug-fix evidence across React OSS repos. The pipeline below produced this proposal:
+
+```
+OSS repo → Vercel Sandbox miner → EvidenceUnit → RuleDrafter (LLM) → RuleDedupe → THIS PR
+```
+
+### Backing evidence
+
+- [`freeCodeCamp/freeCodeCamp` — `tools/challenge-editor/api/.lintstagedrc.mjs` (DisableChurnMeta)](https://github.com/freeCodeCamp/freeCodeCamp/commit/79087ca9fd352c67c92dd04566baf08d4a0c801d)
+
+## Validation prompt
+
+FP-aware guidance for the [react-review agent](https://github.com/millionco/react-review) when triaging this rule:
+
+> Confirm the file actually contains an inline `eslint-disable` or `oxlint-disable` directive for `filenames-simple/naming-convention`. Do not flag ordinary prose comments, suppressions for unrelated rules, or generated/vendor files that are already excluded by project lint config. If the project intentionally allows this filename pattern via rule configuration, treat it as a false positive.
+
+## Fix prompt
+
+Actionable fix suggestion surfaced to the user when the rule fires:
+
+> Remove the suppression and either rename the file or update the naming-rule config instead. For example:
+
+```js
+// before
+/* eslint-disable filenames-simple/naming-convention */
+export default createLintStagedConfig(import.meta.dirname);
+
+// after
+export default createLintStagedConfig(import.meta.dirname);
+```
+
+If the filename must stay as-is, prefer an explicit ignore/allowlist entry over an inline disable comment.
+
+## Positive fixture (SHOULD trigger)
+
+```tsx
+/* eslint-disable filenames-simple/naming-convention */
+export function App() {
+  return <div />;
+}
+```
+
+## Negative fixture (should NOT trigger)
+
+```tsx
+export function App() {
+  return <div />;
+}
+```
+
+## Proposed AST detector
+
+Would land at `packages/oxlint-plugin-react-doctor/src/plugin/rules/Architecture/no-eslint-disable-filenames-simple-naming-convention.ts`:
+
+```ts
+import { defineRule } from "../../utils/define-rule.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import type { Rule } from "../../utils/rule.js";
+
+interface CommentLike {
+  value?: unknown;
+  text?: unknown;
+}
+
+interface ProgramWithComments extends EsTreeNodeOfType<"Program"> {
+  comments?: ReadonlyArray<CommentLike>;
+  leadingComments?: ReadonlyArray<CommentLike>;
+  trailingComments?: ReadonlyArray<CommentLike>;
+}
+
+const DISABLE_DIRECTIVE_PATTERN =
+  /(?:^|\b)(?:eslint|oxlint)-disable(?:-next-line|-line|-file)?\b/i;
+const TARGET_RULE_NAME = "filenames-simple/naming-convention";
+
+const getCommentText = (comment: CommentLike): string | null => {
+  if (typeof comment.value === "string") return comment.value;
+  if (typeof comment.text === "string") return comment.text;
+  return null;
+};
+
+const hasTargetDisableComment = (programNode: ProgramWithComments): boolean => {
+  const commentGroups = [
+    programNode.comments,
+    programNode.leadingComments,
+    programNode.trailingComments,
+  ];
+
+  for (const comments of commentGroups) {
+    if (!Array.isArray(comments)) continue;
+
+    for (const comment of comments) {
+      if (!comment || typeof comment !== "object") continue;
+
+      const commentText = getCommentText(comment);
+      if (!commentText) continue;
+      if (!DISABLE_DIRECTIVE_PATTERN.test(commentText)) continue;
+      if (commentText.includes(TARGET_RULE_NAME)) return true;
+    }
+  }
+
+  return false;
+};
+
+export const noEslintDisableFilenamesSimpleNamingConvention = defineRule<Rule>({
+  id: "no-eslint-disable-filenames-simple-naming-convention",
+  severity: "warn",
+  category: "Architecture",
+  recommendation:
+    "Remove the inline disable and either rename the file or adjust the naming rule's ignore list instead.",
+  create: (context) => ({
+    Program(node: ProgramWithComments) {
+      if (!hasTargetDisableComment(node)) return;
+      context.report({
+        node,
+        message:
+          "Don't suppress `filenames-simple/naming-convention` with an eslint-disable comment.",
+      });
+    },
+  }),
+});
+```
+
+---
+
+<sub>
+Generated by `rde discover` (see [millionco/react-doctor-evals#11](https://github.com/millionco/react-doctor-evals/pull/11) for the pipeline). Implementation, test fixtures, and rule registration are deliberately deferred — this PR exists for maintainer triage of the proposal only. Reject, edit-and-approve, or merge after wiring as you see fit.
+</sub>

@@ -1,0 +1,152 @@
+# Proposal: `react-doctor/no-disable-rules-of-hooks`
+
+> **Status**: 🟡 Auto-discovered draft proposal. **Not yet implemented.** Maintainer review wanted before any code lands.
+
+|                             |                                  |
+| --------------------------- | -------------------------------- |
+| Category                    | `state-and-effects`              |
+| Severity                    | `warn`                           |
+| Source clusters             | `NEW::no-disable-rules-of-hooks` |
+| Independent draft proposals | 1                                |
+| Backing evidence units      | 1                                |
+
+## Sources
+
+Discovered by the [react-doctor-evals discovery flywheel](https://github.com/millionco/react-doctor-evals/pull/11) mining bug-fix evidence across React OSS repos. The pipeline below produced this proposal:
+
+```
+OSS repo → Vercel Sandbox miner → EvidenceUnit → RuleDrafter (LLM) → RuleDedupe → THIS PR
+```
+
+### Backing evidence
+
+- [`facebook/react` — `fixtures/eslint-v10/index.js` (DisableChurnMeta)](https://github.com/facebook/react/commit/e8c6362678c8bc86a02b8444d2c3f597b3dc4e22)
+
+## Validation prompt
+
+FP-aware guidance for the [react-review agent](https://github.com/millionco/react-review) when triaging this rule:
+
+> Confirm this is a real production file, not a test fixture, docs snippet, or generated sample where a hook-rule suppression is intentional. Also verify the comment is specifically disabling `react-hooks/rules-of-hooks`, not a different `react-hooks` rule. If the hook is genuinely conditional, the fix is to restructure the control flow rather than keep the suppression.
+
+## Fix prompt
+
+Actionable fix suggestion surfaced to the user when the rule fires:
+
+> Remove the disable comment and keep the hook call unconditional. If the behavior depends on a condition, move the branch inside the hook or split the branch into its own component.
+
+```js
+function Component({ enabled }) {
+  useEffect(() => {
+    if (!enabled) return;
+    subscribe();
+  }, [enabled]);
+}
+```
+
+## Positive fixture (SHOULD trigger)
+
+```tsx
+function Component({ enabled }) {
+  if (enabled) {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    useEffect(() => {});
+  }
+}
+```
+
+## Negative fixture (should NOT trigger)
+
+```tsx
+function Component() {
+  useEffect(() => {});
+}
+```
+
+## Proposed AST detector
+
+Would land at `packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-disable-rules-of-hooks.ts`:
+
+```ts
+import { defineRule } from "../../utils/define-rule.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { walkAst } from "../../utils/walk-ast.js";
+import type { Rule } from "../../utils/rule.js";
+import type { RuleContext } from "../../utils/rule-context.js";
+
+interface CommentLike {
+  loc?: {
+    start: {
+      line: number;
+      column: number;
+    };
+  };
+  value: string;
+}
+
+interface ProgramWithComments extends EsTreeNodeOfType<"Program"> {
+  comments?: ReadonlyArray<CommentLike>;
+}
+
+const DISABLE_RULE_PATTERN =
+  /eslint-disable(?:-(?:next-)?line)?\s+.*react-hooks\/rules-of-hooks\b/;
+
+const getProgramComments = (
+  programNode: EsTreeNodeOfType<"Program">
+): ReadonlyArray<CommentLike> => {
+  const programWithComments = programNode as ProgramWithComments;
+  return programWithComments.comments ?? [];
+};
+
+const findClosestNodeAfterLine = (
+  root: EsTreeNode,
+  line: number
+): EsTreeNode | null => {
+  let closestNode: EsTreeNode | null = null;
+  let closestLine = Number.POSITIVE_INFINITY;
+  let closestColumn = Number.POSITIVE_INFINITY;
+
+  walkAst(root, (child) => {
+    const start = child.loc?.start;
+    if (!start || start.line <= line) return;
+    if (
+      start.line < closestLine ||
+      (start.line === closestLine && start.column < closestColumn)
+    ) {
+      closestNode = child;
+      closestLine = start.line;
+      closestColumn = start.column;
+    }
+  });
+
+  return closestNode;
+};
+
+export const noDisableRulesOfHooks = defineRule<Rule>({
+  id: "no-disable-rules-of-hooks",
+  severity: "warn",
+  recommendation:
+    "Remove the `eslint-disable-next-line react-hooks/rules-of-hooks` comment and make the hook unconditional instead.",
+  create: (context: RuleContext) => ({
+    Program(programNode: EsTreeNodeOfType<"Program">) {
+      for (const comment of getProgramComments(programNode)) {
+        if (!DISABLE_RULE_PATTERN.test(comment.value)) continue;
+        const commentLine = comment.loc?.start.line;
+        if (!commentLine) continue;
+        const targetNode = findClosestNodeAfterLine(programNode, commentLine);
+        context.report({
+          node: targetNode ?? programNode,
+          message:
+            "Avoid disabling react-hooks/rules-of-hooks here; move the hook call to the top level or split the conditional branch into a separate component.",
+        });
+      }
+    },
+  }),
+});
+```
+
+---
+
+<sub>
+Generated by `rde discover` (see [millionco/react-doctor-evals#11](https://github.com/millionco/react-doctor-evals/pull/11) for the pipeline). Implementation, test fixtures, and rule registration are deliberately deferred — this PR exists for maintainer triage of the proposal only. Reject, edit-and-approve, or merge after wiring as you see fit.
+</sub>

@@ -354,6 +354,55 @@ Decision:
 - Keep React Doctor React-only, or create separate rule packs / products.
 - If broadening, separate branding and diagnostics so React-specific quality is not diluted.
 
+## Effect v4 runtime follow-ups
+
+The Effect v4 rewrite (#405, #410, #411, #412, #414, #417) landed the
+runtime; the items below are the deliberately-deferred consolidation
+work flagged in the per-PR descriptions.
+
+- [ ] **Collapse `@react-doctor/project-info` into `@react-doctor/core`.**
+      Naming collision blocks the move: `project-info/src/errors.ts` exports
+      `ReactDoctorError` as the legacy `Error` base class for thrown
+      `ProjectNotFoundError` / `NoReactDependencyError` / `AmbiguousProjectError`;
+      `core/src/errors.ts` exports `ReactDoctorError` as the new
+      `Schema.TaggedErrorClass` runtime wrapper. Both names ship via
+      `react-doctor`'s public re-exports. Resolve by either renaming the
+      tagged class (large rename across the runtime) or by re-exporting
+      with `as Legacy*` aliases (uglier surface). Defer until we decide
+      the public-API direction for v1.0.
+
+- [ ] **Collapse `@react-doctor/types` into `@react-doctor/core`.**
+      Blocked by the same `ReactDoctorError` collision plus a circular-dep
+      risk: `oxlint-plugin-react-doctor` imports
+      `isReactNativeDependencyName` from `@react-doctor/types`. If types
+      moves into core, oxlint-plugin would have to depend on core (which
+      already depends on oxlint-plugin) — cycle. Resolve by hoisting the
+      RN dependency constants into oxlint-plugin (it's the only direct
+      consumer; project-info reads them transitively).
+
+- [ ] **Extract `@react-doctor/cli` workspace package.**
+      Currently `packages/react-doctor/src/cli/` holds ~40 commander +
+      rendering files. Moving them into a dedicated `@react-doctor/cli`
+      package would let `react-doctor` shrink to a published front-door
+      (one-liner `index.ts` + bin shim). Mechanical but tedious — every
+      caller of `cli/utils/*` needs its import updated. No correctness
+      benefit; purely organizational.
+
+- [ ] **Decompose `core/src/run-oxlint.ts` into Effect Stream combinators.**
+      Today `Linter.layerOxlint` calls `Effect.runSync(Ref.update(...))`
+      inside `runOxlint`'s `onPartialFailure` callback because `runOxlint`
+      is callback-shaped. If `runOxlint` returned a `Stream<Diagnostic,
+ReactDoctorError>` natively, the sync bridge disappears. Documented
+      as a HACK in `core/src/services/linter.ts`.
+
+- [ ] **`Reporter.layerCapture` for production.** Today production
+      uses `Reporter.layerNoop` — the orchestrator returns the full
+      diagnostic array via `Stream.runCollect`, so the reporter has no
+      consumer. The eval harness uses `Reporter.layerNdjson(path)`. A
+      future LSP / watch mode would need either `layerCapture` exposed at
+      the api layer or a `Reporter.layerLsp` that pushes
+      `connection.sendDiagnostics`. Slot exists; integration is downstream.
+
 ## Historical Regression Ledger
 
 GitHub issues referenced below are all CLOSED; the entries kept here

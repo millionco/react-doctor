@@ -19,13 +19,122 @@
 - MUST: Use Boolean over !!.
 - MUST: Never write changesets (`.changeset/*.md`) or edit `CHANGELOG.md`. Changesets and changelog entries are authored by humans at release time, not by agents.
 
+## Package Layout
+
+```
+packages/
+  core/                          PRIVATE  the diagnostic engine
+    src/
+      errors.ts                  tagged Schema.TaggedErrorClass leaves + ReactDoctorError union
+      schemas.ts                 Diagnostic / Severity / JsonReport / buildDiagnosticIdentity
+      refs.ts                    Context.Reference for ambient env config
+      paths.ts                   Schema.brand for OxlintBinaryPath / NodeBinaryPath
+      run-inspect.ts             streaming orchestrator (the heart)
+      build-diagnostic-pipeline  per-element filter pipeline (single source of truth)
+      services/                  8 Context.Service classes (Files, Project, Config,
+                                 Linter, DeadCode, Score, Reporter, Progress)
+                                 + LintPartialFailures
+      ...                        rest of the lint / score / suppression engine
+  api/                           PRIVATE  programmatic diagnose() (Effect.runPromise shell)
+  project-info/                  PRIVATE  legacy React project discovery (still separate
+                                 from core to avoid a circular dep with oxlint-plugin
+                                 over the shared isReactNativeDependencyName helper —
+                                 see TODOS.md for the planned consolidation)
+  types/                         PRIVATE  shared cross-package type interfaces +
+                                 React Native dependency name constants
+  react-doctor/                  PUBLISHED  CLI + public inspect() + bin
+  oxlint-plugin-react-doctor/    PUBLISHED  the 100+ rules
+  eslint-plugin-react-doctor/    PUBLISHED  ESLint mirror of the oxlint plugin
+  website/                       PRIVATE   docs site
+```
+
+## Effect v4 Conventions
+
+Built on `effect@4.0.0-beta.70`. See `tmp/effect/.patterns/effect.md` (cloned reference)
+and `~/Developer/react-doctor-evals/src/` (the application that pioneered these patterns
+for this codebase) for canonical examples.
+
+### Imports
+
+- ALWAYS: `import * as Schema from "effect/Schema"`, `import * as Effect from "effect/Effect"`,
+  `import * as Cause from "effect/Cause"`, etc. — one module per import line.
+- NEVER: `import { Schema, Effect } from "effect"` — the umbrella import inflates the
+  type-resolution graph and contradicts what every other Effect codebase does.
+
+### Errors
+
+- Every fallible service fails with `ReactDoctorError` (`reason: Schema.Union([...])`)
+- Each leaf is a `Schema.TaggedErrorClass<Self>()("Tag", { fields })` with a
+  `get message()` getter (NOT `message =`) returning a human string.
+- Opaque causes use `Cause.pretty(Cause.fail(this.cause))` in the message body.
+- Renderers dispatch on `error.reason._tag`, NEVER on `error.message.includes(...)`.
+- `formatReactDoctorError(error)` / `isReactDoctorError(error)` / `isSplittableReactDoctorError(error)`
+  live in `core/src/errors.ts`. Use them; don't add new error-shape helpers.
+
+### Services
+
+- `Context.Service<Self, Interface>()("react-doctor/Name", { make: ... })` — short
+  prefix in the identifier (matches react-doctor-evals' `rde/X` shape).
+- Service method bodies use `Effect.fnUntraced` for hot paths, `Effect.sync` for
+  one-liners. Test layers + orchestration use `Effect.gen`.
+- `Service.of({ ... })` everywhere inside `Layer.succeed` / `make:` — never
+  `{ ... } as const`.
+- `Layer.effect` when the service has init work (e.g. `Cache.make`); `Layer.succeed`
+  when stateless.
+- Method takes a single object arg when there are >1 parameters
+  (e.g. `Files.readLines({ filePath, rootDirectory })`).
+
+### Layer naming
+
+- `layerNode` for the production Node.js implementation.
+- `layerOf(value)` for the test layer that returns a pre-supplied value.
+- `layerInMemory(Map)` for filesystem-shaped services backed by an in-memory tree.
+- `layerCapture` for the test layer that records calls into a `Ref` exposed via a
+  sibling `*Capture` service (e.g. `ReporterCapture`, `ProgressCapture`).
+- `layerNoop` for the production layer that has void-return / discard semantics
+  (Reporter, Progress). Analyzers (Linter, DeadCode) use `layerOf([])` instead.
+- `layerComposite(backends)` for the slot a future second backend plugs into.
+- Implementation-specific names: `layerOxlint`, `layerHttp`, `layerNdjson(path)`,
+  `layerOra(factory)`.
+
+### Schemas
+
+- Use `Schema.Class<Self>("Name")({ fields })` for wire records.
+- Use `Schema.Literals(["a", "b"])` for unions of literals (plural), `Schema.Literal(1)`
+  for single literals.
+- `Schema.NullOr(X)` for `X | null`; `Schema.optional(X)` for `X?`.
+- `Schema.brand("X")` via `.pipe()` for branded primitives.
+- Schema for wire types (Diagnostic, JsonReport); interfaces for arg types
+  (InspectInput, LintInput) — avoid runtime encode/decode cost on hot paths.
+
+### Ambient config
+
+- Env-var reads + cache paths go through `Context.Reference<T>("react-doctor/X", { defaultValue })`.
+  See `core/src/refs.ts`. Tests override via `Layer.succeed(MyRef, ...)`.
+
 ## Testing
+
+Tests live alongside source in each package's `tests/` directory:
+
+- `packages/core/tests/` — service tests + run-inspect orchestration tests
+- `packages/api/tests/` — api shell tests
+- `packages/react-doctor/tests/` — CLI + end-to-end fixture tests
+
+Test framework is `vite-plus/test` (the existing vitest wrapper).
 
 Run checks always before committing with:
 
 ```bash
-pnpm test # runs e2e tests
+pnpm test         # all packages
 pnpm lint
-pnpm typecheck # runs type checking
-pnpm format
+pnpm typecheck
+pnpm format       # use `format:check` to verify only
+pnpm smoke:json-report   # validates the built CLI's JSON output against the schema
 ```
+
+## Reference reading
+
+- `tmp/effect/.patterns/effect.md` — canonical Effect v4 idioms (cloned for reference,
+  gitignored)
+- `~/Developer/react-doctor-evals/src/` — sister application this codebase's runtime
+  patterns are modeled on (Schemas.ts, Runner.ts, Worker.ts, errors.ts shapes)

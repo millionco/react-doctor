@@ -579,7 +579,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
             // Single-file batch still fails with a splittable error —
             // drop the file, record it, and let the scan continue.
             droppedFiles.push(...batch);
-            if (firstDropReason === null && error instanceof Error) {
+            if (firstDropReason === null) {
               firstDropReason = error.message;
             }
             return [];

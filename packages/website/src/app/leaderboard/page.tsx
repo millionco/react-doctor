@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { PERFECT_SCORE } from "@/constants";
 import { clampScore } from "@/utils/clamp-score";
@@ -116,7 +117,7 @@ const LeaderboardPage = async () => {
           href="/"
           className="inline-flex items-center gap-2 text-neutral-500 transition-colors hover:text-neutral-300"
         >
-          <img src="/favicon.svg" alt="React Doctor" width={20} height={20} />
+          <Image src="/favicon.svg" alt="React Doctor" width={20} height={20} unoptimized />
           <span>react-doctor</span>
         </Link>
       </div>

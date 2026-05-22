@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Image from "next/image";
 import { Copy, Check, ChevronRight, RotateCcw } from "lucide-react";
 import { PERFECT_SCORE } from "@/constants";
 import { getDoctorFace } from "@/utils/get-doctor-face";
@@ -86,8 +87,25 @@ const DIAGNOSTICS: RuleDiagnostic[] = [
 
 const easeOutCubic = (progress: number) => 1 - Math.pow(1 - progress, 3);
 
-const sleep = (milliseconds: number) =>
-  new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+const sleep = (milliseconds: number, signal: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason);
+      return;
+    }
+    const timeoutId = setTimeout(() => {
+      signal.removeEventListener("abort", handleAbort);
+      resolve();
+    }, milliseconds);
+    const handleAbort = () => {
+      clearTimeout(timeoutId);
+      reject(signal.reason);
+    };
+    signal.addEventListener("abort", handleAbort, { once: true });
+  });
+
+const isAbortError = (error: unknown): boolean =>
+  error instanceof DOMException && error.name === "AbortError";
 
 const Spacer = () => <div className="min-h-[1.4em]" />;
 
@@ -262,59 +280,56 @@ const Terminal = () => {
       return;
     }
 
-    let cancelled = false;
+    const abortController = new AbortController();
+    const { signal } = abortController;
 
     const update = (patch: Partial<AnimationState>) => {
-      if (!cancelled) setState((previous) => ({ ...previous, ...patch }));
+      if (signal.aborted) return;
+      setState((previous) => ({ ...previous, ...patch }));
     };
 
     const run = async () => {
-      await sleep(INITIAL_DELAY_MS);
+      await sleep(INITIAL_DELAY_MS, signal);
 
       for (let index = 0; index <= COMMAND.length; index++) {
-        if (cancelled) return;
         update({ typedCommand: COMMAND.slice(0, index) });
-        await sleep(TYPING_DELAY_MS);
+        await sleep(TYPING_DELAY_MS, signal);
       }
 
       update({ isTyping: false });
-      await sleep(POST_COMMAND_DELAY_MS);
-      if (cancelled) return;
+      await sleep(POST_COMMAND_DELAY_MS, signal);
 
       update({ showVersion: true });
-      await sleep(POST_VERSION_DELAY_MS);
+      await sleep(POST_VERSION_DELAY_MS, signal);
 
       for (let index = 0; index < DIAGNOSTICS.length; index++) {
-        if (cancelled) return;
         update({ visibleDiagnosticCount: index + 1 });
         const jitteredDelay =
           DIAGNOSTIC_MIN_DELAY_MS +
           Math.random() * (DIAGNOSTIC_MAX_DELAY_MS - DIAGNOSTIC_MIN_DELAY_MS);
-        await sleep(jitteredDelay);
+        await sleep(jitteredDelay, signal);
       }
 
-      await sleep(SCORE_REVEAL_DELAY_MS);
+      await sleep(SCORE_REVEAL_DELAY_MS, signal);
 
       for (let frame = 0; frame <= SCORE_FRAME_COUNT; frame++) {
-        if (cancelled) return;
         update({ score: Math.round(easeOutCubic(frame / SCORE_FRAME_COUNT) * TARGET_SCORE) });
-        await sleep(SCORE_FRAME_DELAY_MS);
+        await sleep(SCORE_FRAME_DELAY_MS, signal);
       }
 
-      await sleep(POST_SCORE_DELAY_MS);
-      if (cancelled) return;
+      await sleep(POST_SCORE_DELAY_MS, signal);
       update({ showCountsSummary: true });
 
-      await sleep(POST_SCORE_DELAY_MS);
-      if (cancelled) return;
+      await sleep(POST_SCORE_DELAY_MS, signal);
       update({ showCta: true });
       markAnimationCompleted();
     };
 
-    run();
-    return () => {
-      cancelled = true;
-    };
+    run().catch((error) => {
+      if (!isAbortError(error)) throw error;
+    });
+
+    return () => abortController.abort();
   }, []);
 
   return (
@@ -329,7 +344,7 @@ const Terminal = () => {
         <FadeIn>
           <Spacer />
           <div className="flex items-center gap-2">
-            <img src="/favicon.svg" alt="React Doctor" width={24} height={24} />
+            <Image src="/favicon.svg" alt="React Doctor" width={24} height={24} unoptimized />
             react-doctor
           </div>
           <div className="text-neutral-500">Your agent writes bad React, this catches it.</div>

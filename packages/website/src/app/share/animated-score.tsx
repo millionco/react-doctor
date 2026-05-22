@@ -28,19 +28,19 @@ const AnimatedScore = ({ targetScore }: { targetScore: number }) => {
   const [animatedScore, setAnimatedScore] = useState(0);
 
   useEffect(() => {
-    let cancelled = false;
     let frame = 0;
+    let pendingTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
     const animate = () => {
-      if (cancelled || frame > SCORE_FRAME_COUNT) return;
+      if (frame > SCORE_FRAME_COUNT) return;
       setAnimatedScore(Math.round(easeOutCubic(frame / SCORE_FRAME_COUNT) * targetScore));
       frame++;
-      setTimeout(animate, SCORE_FRAME_DELAY_MS);
+      pendingTimeoutId = setTimeout(animate, SCORE_FRAME_DELAY_MS);
     };
 
     animate();
     return () => {
-      cancelled = true;
+      if (pendingTimeoutId !== null) clearTimeout(pendingTimeoutId);
     };
   }, [targetScore]);
 

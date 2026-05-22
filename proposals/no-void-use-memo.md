@@ -1,0 +1,141 @@
+# Proposal: `react-doctor/no-void-use-memo`
+
+> **Status**: 🟡 Auto-discovered draft proposal. **Not yet implemented.** Maintainer review wanted before any code lands.
+
+|                             |                         |
+| --------------------------- | ----------------------- |
+| Category                    | `performance`           |
+| Severity                    | `warn`                  |
+| Source clusters             | `NEW::no-void-use-memo` |
+| Independent draft proposals | 2                       |
+| Backing evidence units      | 1                       |
+
+## Sources
+
+Discovered by the [react-doctor-evals discovery flywheel](https://github.com/millionco/react-doctor-evals/pull/11) mining bug-fix evidence across React OSS repos. The pipeline below produced this proposal:
+
+```
+OSS repo → Vercel Sandbox miner → EvidenceUnit → RuleDrafter (LLM) → RuleDedupe → THIS PR
+```
+
+### Backing evidence
+
+- [`facebook/react` — `fixtures/eslint-v10/index.js` (DisableChurnMeta)](https://github.com/facebook/react/commit/e8c6362678c8bc86a02b8444d2c3f597b3dc4e22)
+
+## Validation prompt
+
+FP-aware guidance for the [react-review agent](https://github.com/millionco/react-review) when triaging this rule:
+
+> Check whether the flagged `useMemo` callback actually returns a value on all relevant paths. Typical false positives are intentionally side-effectful test fixtures, callbacks that return from nested helper functions rather than the `useMemo` callback itself, and non-React `useMemo` lookalikes. If the callback returns `undefined`/`void` by design or the code is already guarded by a local lint-disable for a fixture, treat it as a likely false positive.
+
+## Fix prompt
+
+Actionable fix suggestion surfaced to the user when the rule fires:
+
+> `useMemo` should produce a value. If you're only performing side effects like logging, subscriptions, or imperative updates, move that work into `useEffect` instead; if you are computing data, return the computed result from the callback.
+
+```tsx
+useEffect(() => {
+  console.log(value);
+}, [value]);
+
+const doubled = useMemo(() => value * 2, [value]);
+```
+
+## Positive fixture (SHOULD trigger)
+
+```tsx
+function Component({ value }) {
+  useMemo(() => {
+    console.log(value);
+  }, [value]);
+
+  return null;
+}
+```
+
+## Negative fixture (should NOT trigger)
+
+```tsx
+function Component({ value }) {
+  const doubled = useMemo(() => value * 2, [value]);
+  return <div>{doubled}</div>;
+}
+```
+
+## Proposed AST detector
+
+Would land at `packages/oxlint-plugin-react-doctor/src/plugin/rules/performance/no-void-use-memo.ts`:
+
+```ts
+import { defineRule } from "../../utils/define-rule.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isHookCall } from "../../utils/is-hook-call.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { Rule } from "../../utils/rule.js";
+import type { RuleContext } from "../../utils/rule-context.js";
+import { walkAst } from "../../utils/walk-ast.js";
+
+const isFunctionishNode = (node: EsTreeNode): boolean =>
+  isNodeOfType(node, "ArrowFunctionExpression") ||
+  isNodeOfType(node, "FunctionExpression") ||
+  isNodeOfType(node, "FunctionDeclaration");
+
+const isVoidLikeExpression = (node: EsTreeNode): boolean =>
+  (isNodeOfType(node, "Identifier") && node.name === "undefined") ||
+  (isNodeOfType(node, "UnaryExpression") && node.operator === "void");
+
+const callbackReturnsAValue = (callback: EsTreeNode): boolean => {
+  if (
+    !isNodeOfType(callback, "ArrowFunctionExpression") &&
+    !isNodeOfType(callback, "FunctionExpression")
+  ) {
+    return false;
+  }
+
+  if (!isNodeOfType(callback.body, "BlockStatement")) {
+    return true;
+  }
+
+  let hasValueReturn = false;
+  walkAst(callback.body, (child: EsTreeNode): boolean | void => {
+    if (hasValueReturn) return false;
+    if (child !== callback.body && isFunctionishNode(child)) return false;
+    if (!isNodeOfType(child, "ReturnStatement") || !child.argument) return;
+    if (isVoidLikeExpression(child.argument)) return;
+    hasValueReturn = true;
+  });
+
+  return hasValueReturn;
+};
+
+export const noVoidUseMemo = defineRule<Rule>({
+  id: "no-void-use-memo",
+  tags: ["test-noise"],
+  severity: "warn",
+  recommendation:
+    "Use useMemo only for computed values that are returned from the callback. Move side effects to useEffect, or return the memoized value from the callback instead.",
+  create: (context: RuleContext) => ({
+    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+      if (!isHookCall(node, "useMemo")) return;
+
+      const callback = node.arguments?.[0];
+      if (!callback) return;
+      if (callbackReturnsAValue(callback)) return;
+
+      context.report({
+        node,
+        message:
+          "useMemo callback does not return a value — use useEffect for side effects, or return the computed value from the callback",
+      });
+    },
+  }),
+});
+```
+
+---
+
+<sub>
+Generated by `rde discover` (see [millionco/react-doctor-evals#11](https://github.com/millionco/react-doctor-evals/pull/11) for the pipeline). Implementation, test fixtures, and rule registration are deliberately deferred — this PR exists for maintainer triage of the proposal only. Reject, edit-and-approve, or merge after wiring as you see fit.
+</sub>

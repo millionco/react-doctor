@@ -34,6 +34,25 @@ importers:
         specifier: ^0.1.15
         version: 0.1.20(@types/node@25.6.0)(esbuild@0.27.3)(jiti@2.6.1)(terser@5.46.0)(typescript@6.0.3)(vite@7.3.1(@types/node@25.6.0)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.46.0)(yaml@2.9.0))(yaml@2.9.0)
 
+  packages/api:
+    dependencies:
+      '@react-doctor/core':
+        specifier: workspace:*
+        version: link:../core
+      '@react-doctor/project-info':
+        specifier: workspace:*
+        version: link:../project-info
+      '@react-doctor/types':
+        specifier: workspace:*
+        version: link:../types
+      effect:
+        specifier: 4.0.0-beta.70
+        version: 4.0.0-beta.70
+    devDependencies:
+      '@types/node':
+        specifier: ^25.6.0
+        version: 25.6.0
+
   packages/core:
     dependencies:
       '@react-doctor/project-info':
@@ -146,6 +165,9 @@ importers:
         specifier: '>=5.0.4 <7'
         version: 5.9.3
     devDependencies:
+      '@react-doctor/api':
+        specifier: workspace:*
+        version: link:../api
       '@react-doctor/core':
         specifier: workspace:*
         version: link:../core

@@ -8,7 +8,7 @@ import type { Diagnostic, ProjectInfo, ReactDoctorConfig, ScoreResult } from "@r
 import { buildDiagnosticPipeline } from "./build-diagnostic-pipeline.js";
 import { checkReducedMotion } from "./check-reduced-motion.js";
 import { computeJsxIncludePaths } from "./jsx-include-paths.js";
-import { ReactDoctorError, type ReactDoctorErrorReason } from "./errors.js";
+import { NoReactDependency, ReactDoctorError, type ReactDoctorErrorReason } from "./errors.js";
 import { resolveLintIncludePaths } from "./resolve-lint-include-paths.js";
 import { Config, type ResolvedConfig } from "./services/config.js";
 import { DeadCode } from "./services/dead-code.js";
@@ -131,6 +131,11 @@ export const runInspect = <HooksR = never>(
     const scanDirectory = resolvedConfig.resolvedDirectory;
 
     const project = yield* projectService.discover(scanDirectory);
+    if (project.reactVersion === null) {
+      return yield* new ReactDoctorError({
+        reason: new NoReactDependency({ directory: scanDirectory }),
+      });
+    }
 
     const jsxIncludePaths = computeJsxIncludePaths([...input.includePaths]);
     const lintIncludePaths =

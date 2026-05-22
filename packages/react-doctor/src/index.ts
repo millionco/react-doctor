@@ -1,28 +1,11 @@
-import path from "node:path";
 import {
   buildJsonReport,
   buildJsonReportError,
-  calculateScore,
-  checkDeadCode,
   clearAutoSuppressionCaches,
   clearConfigCache,
   clearIgnorePatternsCache,
-  combineDiagnostics,
-  computeJsxIncludePaths,
-  createNodeReadFileLinesSync,
-  loadConfigWithSource,
-  resolveConfigRootDir,
-  resolveDiagnoseTarget,
-  resolveLintIncludePaths,
-  runOxlint,
 } from "@react-doctor/core";
-import {
-  clearPackageJsonCache,
-  clearProjectCache,
-  discoverProject,
-  NoReactDependencyError,
-  ProjectNotFoundError,
-} from "@react-doctor/project-info";
+import { clearPackageJsonCache, clearProjectCache } from "@react-doctor/project-info";
 import type {
   Diagnostic,
   DiagnoseOptions,
@@ -108,109 +91,4 @@ export const toJsonReport = (result: DiagnoseResult, options: ToJsonReportOption
     totalElapsedMilliseconds: result.elapsedMilliseconds,
   });
 
-const EMPTY_DIAGNOSTICS: Diagnostic[] = [];
-
-export const diagnose = async (
-  directory: string,
-  options: DiagnoseOptions = {},
-): Promise<DiagnoseResult> => {
-  const startTime = globalThis.performance.now();
-  const requestedDirectory = path.resolve(directory);
-
-  // Load config first against the requested directory so a `rootDir`
-  // redirect applies BEFORE we hunt for nested React subprojects. This
-  // is the documented escape hatch for monorepos that hold the only
-  // react-doctor config at the repo root but want scans to target a
-  // subproject like `apps/web`.
-  const initialLoadedConfig = loadConfigWithSource(requestedDirectory);
-  const redirectedDirectory = resolveConfigRootDir(
-    initialLoadedConfig?.config ?? null,
-    initialLoadedConfig?.sourceDirectory ?? null,
-  );
-  const directoryAfterRedirect = redirectedDirectory ?? requestedDirectory;
-
-  const resolvedDirectory = resolveDiagnoseTarget(directoryAfterRedirect);
-  if (!resolvedDirectory) {
-    throw new ProjectNotFoundError(directoryAfterRedirect);
-  }
-
-  const userConfig =
-    initialLoadedConfig?.config ?? loadConfigWithSource(resolvedDirectory)?.config ?? null;
-  const includePaths = options.includePaths ?? [];
-  const isDiffMode = includePaths.length > 0;
-  const projectInfo = discoverProject(resolvedDirectory);
-
-  if (!projectInfo.reactVersion) {
-    throw new NoReactDependencyError(resolvedDirectory);
-  }
-
-  const lintIncludePaths =
-    computeJsxIncludePaths(includePaths) ?? resolveLintIncludePaths(resolvedDirectory, userConfig);
-  const readFileLinesSync = createNodeReadFileLinesSync(resolvedDirectory);
-
-  const effectiveLint = options.lint ?? userConfig?.lint ?? true;
-  const effectiveDeadCode = options.deadCode ?? userConfig?.deadCode ?? true;
-  const effectiveRespectInlineDisables =
-    options.respectInlineDisables ?? userConfig?.respectInlineDisables ?? true;
-
-  const ignoredTags = new Set<string>(userConfig?.ignore?.tags ?? []);
-
-  const lintPromise = effectiveLint
-    ? runOxlint({
-        rootDirectory: resolvedDirectory,
-        project: projectInfo,
-        includePaths: lintIncludePaths,
-        customRulesOnly: userConfig?.customRulesOnly ?? false,
-        respectInlineDisables: effectiveRespectInlineDisables,
-        adoptExistingLintConfig: userConfig?.adoptExistingLintConfig ?? true,
-        ignoredTags,
-        userConfig,
-      }).catch((error: unknown) => {
-        console.error("Lint failed:", error);
-        return EMPTY_DIAGNOSTICS;
-      })
-    : Promise.resolve(EMPTY_DIAGNOSTICS);
-
-  // Skip dead-code in diff mode (reachability is whole-project).
-  // Failure is non-fatal — empty diagnostics fall through and the
-  // failure surfaces via `skippedChecks` so programmatic consumers
-  // can detect that the pass didn't run to completion.
-  const shouldRunDeadCode = effectiveDeadCode && !isDiffMode;
-  let deadCodeFailureReason: string | null = null;
-  const deadCodePromise = shouldRunDeadCode
-    ? checkDeadCode({ rootDirectory: resolvedDirectory, userConfig }).catch((error: unknown) => {
-        deadCodeFailureReason = error instanceof Error ? error.message : String(error);
-        return EMPTY_DIAGNOSTICS;
-      })
-    : Promise.resolve(EMPTY_DIAGNOSTICS);
-
-  const [lintDiagnostics, deadCodeDiagnostics] = await Promise.all([lintPromise, deadCodePromise]);
-
-  const diagnostics = combineDiagnostics({
-    lintDiagnostics,
-    directory: resolvedDirectory,
-    isDiffMode,
-    userConfig,
-    readFileLinesSync,
-    respectInlineDisables: effectiveRespectInlineDisables,
-    extraDiagnostics: deadCodeDiagnostics,
-  });
-  const elapsedMilliseconds = globalThis.performance.now() - startTime;
-  const score = await calculateScore(diagnostics);
-
-  const skippedChecks: string[] = [];
-  const skippedCheckReasons: Record<string, string> = {};
-  if (deadCodeFailureReason !== null) {
-    skippedChecks.push("dead-code");
-    skippedCheckReasons["dead-code"] = deadCodeFailureReason;
-  }
-
-  return {
-    diagnostics,
-    score,
-    skippedChecks,
-    ...(Object.keys(skippedCheckReasons).length > 0 ? { skippedCheckReasons } : {}),
-    project: projectInfo,
-    elapsedMilliseconds,
-  };
-};
+export { diagnose } from "@react-doctor/api";

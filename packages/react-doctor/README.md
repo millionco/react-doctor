@@ -74,16 +74,6 @@ When `github-token` is set on `pull_request` events, findings are posted (and up
 
 **Inputs:** `directory`, `verbose`, `project`, `diff`, `github-token`, `fail-on` (`error` / `warning` / `none`), `offline`, `annotations`, `node-version`. See [`action.yml`](https://github.com/millionco/react-doctor/blob/main/action.yml) for full descriptions.
 
-#### Pinning the action for hardened CI
-
-The examples above use `@main` for readability. Because `main` is a mutable branch, anything pushed to it runs in your workflow at the next trigger — combined with `pull-requests: write` (needed for sticky PR comments) that is real supply-chain surface. For production pipelines, pin to a specific commit SHA instead:
-
-```yaml
-- uses: millionco/react-doctor@<full-commit-sha> # e.g. 6543a86f9dfe86c894bd71361fc2c46d8d9c967d
-```
-
-Grab the SHA from the [Releases](https://github.com/millionco/react-doctor/releases) page or `git ls-remote https://github.com/millionco/react-doctor` and let [Dependabot](https://docs.github.com/en/code-security/dependabot/working-with-dependabot/keeping-your-actions-up-to-date-with-dependabot) bump it. Tools like [`pin-github-action`](https://github.com/mheap/pin-github-action) can SHA-pin every action in a workflow at once.
-
 #### PR feedback modes
 
 Pick one or both; they're independent.

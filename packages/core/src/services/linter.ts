@@ -1,11 +1,30 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import type { Diagnostic, ProjectInfo, ReactDoctorConfig } from "@react-doctor/types";
 import { OxlintSpawnFailed, ReactDoctorError } from "../errors.js";
 import { runOxlint } from "../run-oxlint.js";
-import { Reporter } from "./reporter.js";
+
+/**
+ * Per-batch soft-failure channel from linters (e.g. one batch hit
+ * the timeout and was dropped). Separate from `Reporter` because
+ * production uses `Reporter.layerNoop` to keep diagnostics from
+ * being captured server-side — but partial failures MUST always
+ * surface to the orchestrator so the JSON report's
+ * `skippedCheckReasons["lint:partial"]` is populated. Tests provide
+ * a pre-populated Ref to exercise downstream rendering.
+ */
+export class LintPartialFailures extends Context.Service<
+  LintPartialFailures,
+  Ref.Ref<ReadonlyArray<string>>
+>()("react-doctor/LintPartialFailures") {
+  static readonly layerLive = Layer.effect(
+    LintPartialFailures,
+    Ref.make<ReadonlyArray<string>>([]),
+  );
+}
 
 export interface LintInput {
   readonly rootDirectory: string;
@@ -46,19 +65,21 @@ const ensureReactDoctorError = (cause: unknown): ReactDoctorError =>
 export class Linter extends Context.Service<
   Linter,
   {
-    readonly run: (input: LintInput) => Stream.Stream<Diagnostic, ReactDoctorError, Reporter>;
+    readonly run: (
+      input: LintInput,
+    ) => Stream.Stream<Diagnostic, ReactDoctorError, LintPartialFailures>;
   }
 >()("react-doctor/Linter") {
   /**
-   * Wraps the existing `runOxlint`. Soft per-batch failures
-   * (one batch hit the timeout and was dropped, oxlint reported file
-   * IDs that couldn't be linted) flow through `Reporter.partialFailure`
-   * so the orchestrator surfaces them via `skippedCheckReasons["lint:partial"]`
-   * without the stream itself becoming a failure channel for
-   * non-fatal events.
+   * Wraps the existing `runOxlint`. Per-batch soft failures (one
+   * batch hit the timeout and was dropped, oxlint reported file IDs
+   * that couldn't be linted) flow into the `LintPartialFailures`
+   * Ref so the orchestrator surfaces them via
+   * `skippedCheckReasons["lint:partial"]` without the stream itself
+   * becoming a failure channel for non-fatal events.
    *
    * HACK: runOxlint's onPartialFailure is callback-shaped, so we
-   * `Effect.runSync` the reporter call inside the callback. Acceptable
+   * `Effect.runSync(Ref.update(...))` inside the callback. Acceptable
    * until runOxlint itself returns a Stream natively (follow-up PR
    * after this stack lands).
    */
@@ -68,7 +89,7 @@ export class Linter extends Context.Service<
       run: (input) =>
         Stream.unwrap(
           Effect.gen(function* () {
-            const reporter = yield* Reporter;
+            const partialFailures = yield* LintPartialFailures;
             const diagnostics = yield* Effect.tryPromise({
               try: () =>
                 runOxlint({
@@ -82,7 +103,9 @@ export class Linter extends Context.Service<
                   ignoredTags: input.ignoredTags,
                   userConfig: input.userConfig ?? null,
                   onPartialFailure: (reason) => {
-                    Effect.runSync(reporter.partialFailure(reason));
+                    Effect.runSync(
+                      Ref.update(partialFailures, (existing) => [...existing, reason]),
+                    );
                   },
                 }),
               catch: ensureReactDoctorError,

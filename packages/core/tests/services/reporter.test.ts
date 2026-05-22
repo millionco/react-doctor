@@ -18,12 +18,11 @@ const sampleDiagnostic = new Diagnostic({
 });
 
 describe("Reporter.layerNoop", () => {
-  it("emit and partialFailure return without effect", async () => {
+  it("emit and finalize return without effect", async () => {
     const exit = await Effect.runPromiseExit(
       Effect.gen(function* () {
         const reporter = yield* Reporter;
         yield* reporter.emit(sampleDiagnostic);
-        yield* reporter.partialFailure("oxlint dropped 1 file");
         yield* reporter.finalize;
         return "ok";
       }).pipe(Effect.provide(Reporter.layerNoop)),
@@ -33,20 +32,18 @@ describe("Reporter.layerNoop", () => {
 });
 
 describe("Reporter.layerCapture", () => {
-  it("records emitted diagnostics and partial failures into ReporterCapture Ref", async () => {
+  it("records emitted diagnostics into ReporterCapture Ref", async () => {
     const captured = await Effect.runPromise(
       Effect.gen(function* () {
         const reporter = yield* Reporter;
         yield* reporter.emit(sampleDiagnostic);
         yield* reporter.emit(sampleDiagnostic);
-        yield* reporter.partialFailure("batch 3 timed out");
         const ref = yield* ReporterCapture;
         return yield* Ref.get(ref);
       }).pipe(Effect.provide(Reporter.layerCapture)),
     );
-    expect(captured.diagnostics).toHaveLength(2);
-    expect(captured.diagnostics[0].rule).toBe("no-danger");
-    expect(captured.partialFailures).toEqual(["batch 3 timed out"]);
+    expect(captured).toHaveLength(2);
+    expect(captured[0].rule).toBe("no-danger");
   });
 
   it("provides both Reporter and ReporterCapture via a single Layer.provide", async () => {
@@ -56,20 +53,19 @@ describe("Reporter.layerCapture", () => {
         const ref = yield* ReporterCapture;
         yield* reporter.emit(sampleDiagnostic);
         const state = yield* Ref.get(ref);
-        return state.diagnostics.length;
+        return state.length;
       }).pipe(Effect.provide(Reporter.layerCapture)),
     );
     expect(result).toBe(1);
   });
 
-  it("starts with empty diagnostics and partialFailures", async () => {
+  it("starts with empty diagnostics", async () => {
     const captured = await Effect.runPromise(
       Effect.gen(function* () {
         const ref = yield* ReporterCapture;
         return yield* Ref.get(ref);
       }).pipe(Effect.provide(Layer.mergeAll(Reporter.layerCapture))),
     );
-    expect(captured.diagnostics).toEqual([]);
-    expect(captured.partialFailures).toEqual([]);
+    expect(captured).toEqual([]);
   });
 });

@@ -3,7 +3,7 @@ import { buildRuleSeverityControls } from "./build-rule-severity-controls.js";
 import { getDiagnosticRuleIdentity } from "./get-diagnostic-rule-identity.js";
 import { resolveRuleSeverityOverride } from "./resolve-rule-severity-override.js";
 
-const SEVERITY_FOR_OVERRIDE: Record<
+export const SEVERITY_FOR_OVERRIDE: Record<
   Exclude<RuleSeverityOverride, "off">,
   Diagnostic["severity"]
 > = {
@@ -11,7 +11,7 @@ const SEVERITY_FOR_OVERRIDE: Record<
   warn: "warning",
 };
 
-const restampSeverity = (
+export const restampSeverity = (
   diagnostic: Diagnostic,
   override: Exclude<RuleSeverityOverride, "off">,
 ): Diagnostic => {

@@ -13,7 +13,7 @@ const JSX_CHILD_OPEN_PATTERN = /<[A-Za-z]/;
 const escapeRegExpSpecials = (rawText: string): string =>
   rawText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-const resolveCandidateReadPath = (rootDirectory: string, filePath: string): string => {
+export const resolveCandidateReadPath = (rootDirectory: string, filePath: string): string => {
   const normalizedFile = filePath.replace(/\\/g, "/");
   if (
     normalizedFile.startsWith("/") ||

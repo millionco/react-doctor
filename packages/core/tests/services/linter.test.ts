@@ -4,8 +4,7 @@ import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import { describe, expect, it } from "vite-plus/test";
 import type { Diagnostic, ProjectInfo } from "@react-doctor/types";
-import { Linter, type LintInput } from "../../src/services/linter.js";
-import { Reporter, ReporterCapture } from "../../src/services/reporter.js";
+import { LintPartialFailures, Linter, type LintInput } from "../../src/services/linter.js";
 
 const sampleProject: ProjectInfo = {
   rootDirectory: "/repo",
@@ -45,7 +44,9 @@ describe("Linter.layerOf", () => {
         const linter = yield* Linter;
         return yield* Stream.runCollect(linter.run(lintInput));
       }).pipe(
-        Effect.provide(Layer.mergeAll(Linter.layerOf([sampleDiagnostic]), Reporter.layerNoop)),
+        Effect.provide(
+          Layer.mergeAll(Linter.layerOf([sampleDiagnostic]), LintPartialFailures.layerLive),
+        ),
       ),
     );
     expect(Array.from(collected)).toEqual([sampleDiagnostic]);
@@ -56,7 +57,7 @@ describe("Linter.layerOf", () => {
       Effect.gen(function* () {
         const linter = yield* Linter;
         return yield* Stream.runCollect(linter.run(lintInput));
-      }).pipe(Effect.provide(Layer.mergeAll(Linter.layerOf([]), Reporter.layerNoop))),
+      }).pipe(Effect.provide(Layer.mergeAll(Linter.layerOf([]), LintPartialFailures.layerLive))),
     );
     expect(Array.from(collected)).toEqual([]);
   });
@@ -76,7 +77,10 @@ describe("Linter.layerComposite", () => {
         return yield* Stream.runCollect(linter.run(lintInput));
       }).pipe(
         Effect.provide(
-          Layer.mergeAll(Linter.layerComposite([backendA, backendB]), Reporter.layerNoop),
+          Layer.mergeAll(
+            Linter.layerComposite([backendA, backendB]),
+            LintPartialFailures.layerLive,
+          ),
         ),
       ),
     );
@@ -89,18 +93,20 @@ describe("Linter.layerComposite", () => {
       Effect.gen(function* () {
         const linter = yield* Linter;
         return yield* Stream.runCollect(linter.run(lintInput));
-      }).pipe(Effect.provide(Layer.mergeAll(Linter.layerComposite([]), Reporter.layerNoop))),
+      }).pipe(
+        Effect.provide(Layer.mergeAll(Linter.layerComposite([]), LintPartialFailures.layerLive)),
+      ),
     );
     expect(Array.from(collected)).toEqual([]);
   });
 
-  it("shares the same Reporter across all backends", async () => {
+  it("shares the same LintPartialFailures Ref across all backends", async () => {
     const backendA = Linter.of({
       run: () =>
         Stream.unwrap(
           Effect.gen(function* () {
-            const reporter = yield* Reporter;
-            yield* reporter.partialFailure("from-a");
+            const ref = yield* LintPartialFailures;
+            yield* Ref.update(ref, (existing) => [...existing, "from-a"]);
             return Stream.empty;
           }),
         ),
@@ -109,24 +115,27 @@ describe("Linter.layerComposite", () => {
       run: () =>
         Stream.unwrap(
           Effect.gen(function* () {
-            const reporter = yield* Reporter;
-            yield* reporter.partialFailure("from-b");
+            const ref = yield* LintPartialFailures;
+            yield* Ref.update(ref, (existing) => [...existing, "from-b"]);
             return Stream.empty;
           }),
         ),
     });
-    const captured = await Effect.runPromise(
+    const failures = await Effect.runPromise(
       Effect.gen(function* () {
         const linter = yield* Linter;
         yield* Stream.runCollect(linter.run(lintInput));
-        const ref = yield* ReporterCapture;
+        const ref = yield* LintPartialFailures;
         return yield* Ref.get(ref);
       }).pipe(
         Effect.provide(
-          Layer.mergeAll(Linter.layerComposite([backendA, backendB]), Reporter.layerCapture),
+          Layer.mergeAll(
+            Linter.layerComposite([backendA, backendB]),
+            LintPartialFailures.layerLive,
+          ),
         ),
       ),
     );
-    expect(captured.partialFailures).toEqual(["from-a", "from-b"]);
+    expect(failures).toEqual(["from-a", "from-b"]);
   });
 });

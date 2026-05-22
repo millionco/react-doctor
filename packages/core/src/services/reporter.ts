@@ -14,32 +14,25 @@ import { Diagnostic } from "../schemas.js";
  */
 export class ReporterCapture extends Context.Service<
   ReporterCapture,
-  Ref.Ref<{
-    readonly diagnostics: ReadonlyArray<Diagnostic>;
-    readonly partialFailures: ReadonlyArray<string>;
-  }>
+  Ref.Ref<ReadonlyArray<Diagnostic>>
 >()("react-doctor/ReporterCapture") {
-  static readonly layer = Layer.effect(
-    ReporterCapture,
-    Ref.make({
-      diagnostics: [] as ReadonlyArray<Diagnostic>,
-      partialFailures: [] as ReadonlyArray<string>,
-    }),
-  );
+  static readonly layer = Layer.effect(ReporterCapture, Ref.make<ReadonlyArray<Diagnostic>>([]));
 }
 
 /**
- * `Reporter` is the single side-channel for "things happened" during
- * the diagnostic pipeline. The orchestrator returns the final
- * diagnostic array via `Stream.runCollect` regardless, so production
- * uses `layerNoop`; `layerCapture` powers tests; `layerNdjson` ships
- * diagnostics + partial failures to disk for the eval harness.
+ * `Reporter` consumes the diagnostic stream a single element at a
+ * time. Production uses `layerNoop` since the orchestrator already
+ * returns the diagnostic array via `Stream.runCollect` — Reporter
+ * is the *side-channel* for an LSP host's `publishDiagnostics`, an
+ * NDJSON cache, or a SARIF reporter to plug into without changing
+ * the orchestrator. Partial failures live in `LintPartialFailures`,
+ * not here, so the production noop layer doesn't accidentally drop
+ * them.
  */
 export class Reporter extends Context.Service<
   Reporter,
   {
     readonly emit: (diagnostic: Diagnostic) => Effect.Effect<void>;
-    readonly partialFailure: (reason: string) => Effect.Effect<void>;
     readonly finalize: Effect.Effect<void>;
   }
 >()("react-doctor/Reporter") {
@@ -47,7 +40,6 @@ export class Reporter extends Context.Service<
     Reporter,
     Reporter.of({
       emit: () => Effect.void,
-      partialFailure: () => Effect.void,
       finalize: Effect.void,
     }),
   );
@@ -56,16 +48,7 @@ export class Reporter extends Context.Service<
     Reporter,
     Effect.map(ReporterCapture, (captured) =>
       Reporter.of({
-        emit: (diagnostic) =>
-          Ref.update(captured, (current) => ({
-            ...current,
-            diagnostics: [...current.diagnostics, diagnostic],
-          })),
-        partialFailure: (reason) =>
-          Ref.update(captured, (current) => ({
-            ...current,
-            partialFailures: [...current.partialFailures, reason],
-          })),
+        emit: (diagnostic) => Ref.update(captured, (existing) => [...existing, diagnostic]),
         finalize: Effect.void,
       }),
     ),
@@ -74,9 +57,7 @@ export class Reporter extends Context.Service<
   /**
    * Append-only NDJSON reporter. Schema-encodes each diagnostic at
    * the wire boundary so the eval harness reads back via the same
-   * `Diagnostic` schema. Partial failures get tagged lines
-   * (`{"_tag":"PartialFailure","reason":"..."}`) so a stream consumer
-   * can route them separately.
+   * `Diagnostic` schema.
    */
   static readonly layerNdjson = (filePath: string): Layer.Layer<Reporter> =>
     Layer.effect(
@@ -91,16 +72,11 @@ export class Reporter extends Context.Service<
             fs.writeSync(handle, `${JSON.stringify(encode(diagnostic))}\n`);
           });
 
-        const partialFailure = (reason: string): Effect.Effect<void> =>
-          Effect.sync(() => {
-            fs.writeSync(handle, `${JSON.stringify({ _tag: "PartialFailure", reason })}\n`);
-          });
-
         const finalize = Effect.sync(() => {
           fs.closeSync(handle);
         });
 
-        return Reporter.of({ emit, partialFailure, finalize });
+        return Reporter.of({ emit, finalize });
       }),
     );
 }

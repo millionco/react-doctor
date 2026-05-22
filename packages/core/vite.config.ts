@@ -7,6 +7,7 @@ export default defineConfig({
       deps: {
         neverBundle: [
           "deslop-js",
+          "effect",
           "oxc-parser",
           "oxc-resolver",
           "oxlint",
@@ -20,4 +21,7 @@ export default defineConfig({
       fixedExtension: false,
     },
   ],
+  test: {
+    testTimeout: 30_000,
+  },
 });

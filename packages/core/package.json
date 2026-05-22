@@ -14,6 +14,7 @@
   },
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && NODE_ENV=production vp pack",
+    "test": "vp test run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -13,7 +13,7 @@
   "scripts": {
     "dev": "turbo run dev --filter=react-doctor",
     "build": "turbo run build",
-    "test": "turbo run test --filter=react-doctor",
+    "test": "turbo run test --filter=react-doctor --filter=@react-doctor/core",
     "typecheck": "turbo run typecheck",
     "lint": "vp lint",
     "lint:fix": "vp lint --fix",

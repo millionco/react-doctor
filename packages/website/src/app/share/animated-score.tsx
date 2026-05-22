@@ -30,9 +30,10 @@ const AnimatedScore = ({ targetScore }: { targetScore: number }) => {
   useEffect(() => {
     let frame = 0;
     let pendingTimeoutId: ReturnType<typeof setTimeout> | null = null;
+    let isCancelled = false;
 
     const animate = () => {
-      if (frame > SCORE_FRAME_COUNT) return;
+      if (isCancelled || frame > SCORE_FRAME_COUNT) return;
       setAnimatedScore(Math.round(easeOutCubic(frame / SCORE_FRAME_COUNT) * targetScore));
       frame++;
       pendingTimeoutId = setTimeout(animate, SCORE_FRAME_DELAY_MS);
@@ -40,6 +41,7 @@ const AnimatedScore = ({ targetScore }: { targetScore: number }) => {
 
     animate();
     return () => {
+      isCancelled = true;
       if (pendingTimeoutId !== null) clearTimeout(pendingTimeoutId);
     };
   }, [targetScore]);

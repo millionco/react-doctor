@@ -1,11 +1,7 @@
 import { highlighter, logger, SHARE_BASE_URL } from "@react-doctor/core";
 import type { Diagnostic, ScoreResult } from "@react-doctor/types";
 import { collectAffectedFiles, formatElapsedTime } from "./render-diagnostics.js";
-import {
-  printNoScoreHeader,
-  printReactReviewCta,
-  printScoreHeader,
-} from "./render-score-header.js";
+import { printNoScoreHeader, printScoreHeader } from "./render-score-header.js";
 import { writeDiagnosticsDirectory } from "./write-diagnostics-directory.js";
 
 const buildShareUrl = (
@@ -81,6 +77,5 @@ export const printSummary = (
     const shareUrl = buildShareUrl(diagnostics, scoreResult, projectName);
     logger.log(`  ${highlighter.bold("→ Share your results:")} ${highlighter.info(shareUrl)}`);
     logger.break();
-    printReactReviewCta();
   }
 };

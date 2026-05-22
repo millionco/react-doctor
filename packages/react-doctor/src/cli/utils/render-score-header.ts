@@ -1,6 +1,5 @@
 import {
   PERFECT_SCORE,
-  REACT_REVIEW_URL,
   SCORE_BAR_WIDTH_CHARS,
   SCORE_GOOD_THRESHOLD,
   SCORE_OK_THRESHOLD,
@@ -70,18 +69,5 @@ export const printBrandingOnlyHeader = (): void => {
 export const printNoScoreHeader = (noScoreMessage: string): void => {
   logger.log(`  ${BRANDING_LINE}`);
   logger.log(`  ${highlighter.gray(noScoreMessage)}`);
-  logger.break();
-};
-
-export const printReactReviewCta = (): void => {
-  logger.log(
-    `  ${highlighter.bold("→ Catch these issues on every PR:")} ${highlighter.info(REACT_REVIEW_URL)}`,
-  );
-  logger.log(
-    `  ${highlighter.dim("React Review is a GitHub App built on React Doctor, and it runs on each pull request,")}`,
-  );
-  logger.log(
-    `  ${highlighter.dim("posts new issues as inline review comments, and tracks your team's score over time.")}`,
-  );
   logger.break();
 };

@@ -26,8 +26,6 @@ export const SCORE_API_URL = "https://www.react.doctor/api/score";
 
 export const SHARE_BASE_URL = "https://www.react.doctor/share";
 
-export const REACT_REVIEW_URL = "https://react.review";
-
 export const FETCH_TIMEOUT_MS = 10_000;
 
 // HACK: Windows CreateProcessW limits total command-line length to 32,767 chars.

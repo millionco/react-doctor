@@ -6,6 +6,7 @@ import {
   calculateScore,
   filterDiagnosticsForSurface,
   highlighter,
+  layerOtlp,
   loadConfigWithSource,
   OXLINT_NODE_REQUIREMENT,
   ReactDoctorError,
@@ -279,9 +280,17 @@ const runInspectWithRuntime = async (
   // check a flag itself. Driven by Effect's built-in Console
   // reference, which is `Context.Reference<Console>` with the
   // default value `globalThis.console`.
+  // Otlp layer is a no-op unless REACT_DOCTOR_OTLP_ENDPOINT /
+  // REACT_DOCTOR_OTLP_AUTH_HEADER are set, so we always provide it
+  // regardless of `options.silent` — the silent toggle only swaps
+  // the Console reference, not the tracer.
   const programWithLayers = options.silent
-    ? program.pipe(Effect.provide(layers), Effect.provideService(Console.Console, silentConsole))
-    : program.pipe(Effect.provide(layers));
+    ? program.pipe(
+        Effect.provide(layers),
+        Effect.provideService(Console.Console, silentConsole),
+        Effect.provide(layerOtlp),
+      )
+    : program.pipe(Effect.provide(layers), Effect.provide(layerOtlp));
   const { output, finalHandle: finalSpinnerHandle } = await Effect.runPromise(
     restoreLegacyThrow(programWithLayers),
   );

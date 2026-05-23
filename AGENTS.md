@@ -168,10 +168,15 @@ for this codebase) for canonical examples.
   keys use dotted namespacing (`inspect.directory`, `inspect.isCi`).
 - Per-service-method spans come from `Effect.fn("Service.method")` — see Services section
   above. The two compose: `runInspect` is the parent span, every `Service.method` is a child.
-- Production observability layer (when wired): `Otlp.layerJson({ baseUrl, resource, headers })`
-  from `effect/unstable/observability/Otlp` + `NodeHttpClient.layerUndici`. Eval reference:
-  `react-doctor-evals/src/Observability.ts → layerAxiom`. Not currently wired in
-  react-doctor; the spans are in place so it's a one-liner when an end user opts in.
+- Production observability layer is `layerOtlp` in `core/src/observability.ts`
+  (wired into both `inspect()` and `diagnose()`). It's a no-op unless the user
+  sets BOTH `REACT_DOCTOR_OTLP_ENDPOINT` (e.g. `https://api.axiom.co`) and
+  `REACT_DOCTOR_OTLP_AUTH_HEADER` (e.g. `Bearer <token>`) in the environment.
+  When both are set, it provides `Otlp.layerJson({...})` from
+  `effect/unstable/observability/Otlp` with `NodeHttpClient.layerUndici` as the
+  transport, so every `Effect.fn("Service.method")` span and every top-level
+  `Effect.withSpan("...")` ships to the configured backend. Eval reference:
+  `react-doctor-evals/src/Observability.ts → layerAxiom`.
 
 ### Console / logging
 

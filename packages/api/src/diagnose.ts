@@ -5,6 +5,7 @@ import {
   Config,
   DeadCode,
   Files,
+  layerOtlp,
   Linter,
   LintPartialFailures,
   loadConfigWithSource,
@@ -94,6 +95,10 @@ export const diagnose = async (
   const output: InspectOutput = await Effect.runPromise(
     program.pipe(
       Effect.provide(buildLayerStack()),
+      // Opt-in OTLP exporter. No-op unless REACT_DOCTOR_OTLP_ENDPOINT
+      // + REACT_DOCTOR_OTLP_AUTH_HEADER are set in the environment;
+      // see `core/observability.ts` for the env-driven config.
+      Effect.provide(layerOtlp),
       Effect.catchReasons(
         "ReactDoctorError",
         {

@@ -674,6 +674,20 @@ Source code never leaves your machine. There is no telemetry pipeline, no file u
 
 For the hosted React Review product on [react.doctor](https://react.doctor), the GitHub App reads repository contents through GitHub's standard installation-scoped access in order to compute the same diagnostics server-side; review the App permissions screen before installing.
 
+## OpenTelemetry tracing (opt-in)
+
+Every internal service method (`Project.discover`, `Linter.run`, `Config.resolve`, `Score.compute`, etc.) is instrumented as a named span; the top-level `runInspect` orchestrator is the parent span. By default the spans run in-process and don't ship anywhere.
+
+To export spans to an OTLP-compatible backend (Axiom, Honeycomb, Datadog, Tempo, etc.), set both env vars before running:
+
+```bash
+REACT_DOCTOR_OTLP_ENDPOINT="https://api.axiom.co" \
+REACT_DOCTOR_OTLP_AUTH_HEADER="Bearer $AXIOM_TOKEN" \
+react-doctor
+```
+
+If either var is missing, no exporter is attached and there's no network traffic. Both the CLI (`inspect()`) and the programmatic `diagnose()` API honor these.
+
 ## Leaderboard
 
 Top React codebases scanned by React Doctor, ranked by score. Updated automatically from [millionco/react-doctor-benchmarks](https://github.com/millionco/react-doctor-benchmarks).

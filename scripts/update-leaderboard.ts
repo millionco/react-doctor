@@ -37,12 +37,38 @@ const fetchLeaderboard = async (): Promise<LeaderboardFile> => {
   return (await response.json()) as LeaderboardFile;
 };
 
+const isSafeGithubUrl = (candidate: unknown): candidate is string => {
+  if (typeof candidate !== "string") return false;
+  try {
+    const parsed = new URL(candidate);
+    return parsed.protocol === "https:" && parsed.host === "github.com";
+  } catch {
+    return false;
+  }
+};
+
+const escapeMarkdownTableCell = (text: string): string =>
+  text
+    .replaceAll("\\", "\\\\")
+    .replaceAll("|", "\\|")
+    .replaceAll("[", "\\[")
+    .replaceAll("]", "\\]")
+    .replaceAll("`", "\\`")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll(/[\r\n]+/g, " ");
+
 const renderLeaderboardTable = (entries: LeaderboardEntry[]): string => {
   const header = ["| #  | Repo | Score |", "| -- | ---- | ----: |"];
-  const rows = entries.slice(0, LEADERBOARD_TOP_COUNT).map((entry, innerIndex) => {
-    const rank = String(innerIndex + 1).padEnd(2, " ");
-    return `| ${rank} | [${entry.name}](${entry.githubUrl}) | ${entry.score} |`;
-  });
+  const rows = entries
+    .filter((entry) => isSafeGithubUrl(entry.githubUrl) && Number.isFinite(entry.score))
+    .slice(0, LEADERBOARD_TOP_COUNT)
+    .map((entry, innerIndex) => {
+      const rank = String(innerIndex + 1).padEnd(2, " ");
+      const safeName = escapeMarkdownTableCell(entry.name);
+      const safeUrl = encodeURI(entry.githubUrl);
+      return `| ${rank} | [${safeName}](${safeUrl}) | ${entry.score} |`;
+    });
   return [...header, ...rows].join("\n");
 };
 

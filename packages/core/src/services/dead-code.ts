@@ -32,15 +32,20 @@ export class DeadCode extends Context.Service<
     DeadCode.of({
       run: (input) =>
         Stream.unwrap(
-          Effect.tryPromise({
-            try: () =>
-              checkDeadCode({
-                rootDirectory: input.rootDirectory,
-                userConfig: input.userConfig,
-              }),
-            catch: (cause) =>
-              new ReactDoctorError({ reason: new DeadCodeAnalysisFailed({ cause }) }),
-          }).pipe(Effect.map((diagnostics) => Stream.fromIterable(diagnostics))),
+          // `Effect.fn("DeadCode.run")` so the dead-code analysis
+          // surfaces as a single named span in OTel traces (parent
+          // of the per-call `Effect.tryPromise`).
+          Effect.fn("DeadCode.run")(function* () {
+            return yield* Effect.tryPromise({
+              try: () =>
+                checkDeadCode({
+                  rootDirectory: input.rootDirectory,
+                  userConfig: input.userConfig,
+                }),
+              catch: (cause) =>
+                new ReactDoctorError({ reason: new DeadCodeAnalysisFailed({ cause }) }),
+            }).pipe(Effect.map((diagnostics) => Stream.fromIterable(diagnostics)));
+          })(),
         ),
     }),
   );

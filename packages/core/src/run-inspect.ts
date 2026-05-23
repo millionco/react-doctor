@@ -117,6 +117,13 @@ export const runInspect = <HooksR = never>(
   ReactDoctorError,
   Project | Config | DeadCode | Files | Linter | LintPartialFailures | Reporter | Score | HooksR
 > =>
+  // `Effect.withSpan("runInspect", { attributes })` turns the entire
+  // orchestrator into a single named OTel span; child service spans
+  // (`Project.discover`, `Linter.run`, `DeadCode.run`, `Score.compute`)
+  // hang off it. With no tracing layer provided, zero runtime cost.
+  // With `Otlp.layerJson(...)` provided, the user gets the whole
+  // scan as one trace — same shape as `react-doctor-evals`'
+  // `Runner.run` / `WorkerPool.invoke` instrumentation.
   Effect.gen(function* () {
     const projectService = yield* Project;
     const configService = yield* Config;
@@ -250,7 +257,16 @@ export const runInspect = <HooksR = never>(
       didDeadCodeFail: deadCodeFailureState.didFail,
       deadCodeFailureReason: deadCodeFailureState.reason,
     };
-  });
+  }).pipe(
+    Effect.withSpan("runInspect", {
+      attributes: {
+        "inspect.directory": input.directory,
+        "inspect.includePathCount": input.includePaths.length,
+        "inspect.runDeadCode": input.runDeadCode,
+        "inspect.isCi": input.isCi,
+      },
+    }),
+  );
 
 /**
  * Default layer stack for the production CLI / programmatic API:

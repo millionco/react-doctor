@@ -40,7 +40,11 @@ export class Config extends Context.Service<
           }),
       });
       return Config.of({
-        resolve: (directory) => Cache.get(cache, directory),
+        // `Effect.fn("Config.resolve")` adds an OTel-compatible span
+        // name; canonical eval pattern.
+        resolve: Effect.fn("Config.resolve")(function* (directory: string) {
+          return yield* Cache.get(cache, directory);
+        }),
       });
     }),
   );

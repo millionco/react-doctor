@@ -114,6 +114,10 @@ for this codebase) for canonical examples.
   prefix in the identifier (matches react-doctor-evals' `rde/X` shape).
 - Service method bodies use `Effect.fnUntraced` for hot paths, `Effect.sync` for
   one-liners. Test layers + orchestration use `Effect.gen`.
+- **`Effect.fn("Service.method")`** for non-trivial methods so they surface as
+  named spans in OTel traces. Production cost is zero when no tracer layer is
+  provided; with `Otlp.layerJson(...)` users see one span per service call.
+  Canonical eval pattern (`react-doctor-evals/src/Runner.ts` → every method).
 - `Service.of({ ... })` everywhere inside `Layer.succeed` / `make:` — never
   `{ ... } as const`.
 - `Layer.effect` when the service has init work (e.g. `Cache.make`); `Layer.succeed`
@@ -148,6 +152,23 @@ for this codebase) for canonical examples.
 
 - Env-var reads + cache paths go through `Context.Reference<T>("react-doctor/X", { defaultValue })`.
   See `core/src/refs.ts`. Tests override via `Layer.succeed(MyRef, ...)`.
+- Secrets (API tokens, signing keys) should prefer `Config.redacted("ENV_NAME")` over
+  `Context.Reference` so they auto-redact in logs / traces. Group with `Config.all({ ... })`
+  at the service constructor when you need several. (Pattern from
+  `react-doctor-evals/src/GitHub.ts` — not yet used in this codebase; document
+  the convention so the first secret-shaped config does it right.)
+
+### Observability
+
+- Wrap the top-level entry of a multi-step operation in `Effect.withSpan("name", { attributes })`.
+  See `core/src/run-inspect.ts → runInspect` for the canonical shape. Attribute
+  keys use dotted namespacing (`inspect.directory`, `inspect.isCi`).
+- Per-service-method spans come from `Effect.fn("Service.method")` — see Services section
+  above. The two compose: `runInspect` is the parent span, every `Service.method` is a child.
+- Production observability layer (when wired): `Otlp.layerJson({ baseUrl, resource, headers })`
+  from `effect/unstable/observability/Otlp` + `NodeHttpClient.layerUndici`. Eval reference:
+  `react-doctor-evals/src/Observability.ts → layerAxiom`. Not currently wired in
+  react-doctor; the spans are in place so it's a one-liner when an end user opts in.
 
 ### Console / logging
 

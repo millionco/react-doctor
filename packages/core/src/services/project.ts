@@ -46,11 +46,17 @@ export class Project extends Context.Service<
   static readonly layerNode = Layer.succeed(
     Project,
     Project.of({
-      discover: (directory) =>
-        Effect.try({
+      // `Effect.fn("Project.discover")` adds an OTel-compatible span
+      // name to every invocation. Canonical eval pattern from
+      // `react-doctor-evals/src/Runner.ts` / `ReactDoctorV2.ts` —
+      // free observability with zero runtime cost when no tracer
+      // layer is provided.
+      discover: Effect.fn("Project.discover")(function* (directory: string) {
+        return yield* Effect.try({
           try: () => discoverProjectSync(directory),
           catch: (cause) => translateProjectInfoError(cause, directory),
-        }),
+        });
+      }),
     }),
   );
 

@@ -88,7 +88,13 @@ export class Linter extends Context.Service<
     Linter.of({
       run: (input) =>
         Stream.unwrap(
-          Effect.gen(function* () {
+          // `Effect.fn("Linter.run")` lights up the lint pass as a
+          // single named span in OTel traces. Wraps the inner
+          // `runOxlint` call + the partial-failure Ref drain so a
+          // user attaching `Otlp.layerJson` sees one parent span
+          // ("Linter.run") with `Effect.tryPromise` + `Ref.update`
+          // children.
+          Effect.fn("Linter.run")(function* () {
             const partialFailures = yield* LintPartialFailures;
             const collectedFailures: string[] = [];
             const diagnostics = yield* Effect.tryPromise({
@@ -113,7 +119,7 @@ export class Linter extends Context.Service<
               yield* Ref.update(partialFailures, (existing) => [...existing, ...collectedFailures]);
             }
             return Stream.fromIterable(diagnostics);
-          }),
+          })(),
         ),
     }),
   );

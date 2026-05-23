@@ -21,16 +21,23 @@ export class Score extends Context.Service<
    * for the linter contract, and the renderer distinguishes "user
    * opted out" from "we tried and failed" via a separate `noScoreMessage`
    * the caller picks based on `--offline`.
+   *
+   * `Effect.fn("Score.compute")` wraps the body so the effect carries
+   * an OpenTelemetry-compatible span name out of the box (canonical
+   * eval pattern from `react-doctor-evals/src/Runner.ts`). Zero runtime
+   * cost when no tracing layer is provided; surfaces in
+   * `Otlp.layerJson` traces when one is.
    */
   static readonly layerHttp = Layer.succeed(
     Score,
     Score.of({
-      compute: (input) =>
-        Effect.promise(() =>
+      compute: Effect.fn("Score.compute")(function* (input: ComputeInput) {
+        return yield* Effect.promise(() =>
           calculateScore([...input.diagnostics], { isCi: input.isCi }).catch(
             (): ScoreResult | null => null,
           ),
-        ),
+        );
+      }),
     }),
   );
 

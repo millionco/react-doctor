@@ -48,11 +48,26 @@ const formatGeneratedAt = (isoTimestamp: string): string => {
   return `${parsedDate.toISOString().replace("T", " ").slice(0, 16)} UTC`;
 };
 
+const isSafeGithubUrl = (candidate: unknown): candidate is string => {
+  if (typeof candidate !== "string") return false;
+  try {
+    const parsed = new URL(candidate);
+    return parsed.protocol === "https:" && parsed.host === "github.com";
+  } catch {
+    return false;
+  }
+};
+
+const sanitizeLeaderboardEntries = (entries: LeaderboardEntry[]): LeaderboardEntry[] =>
+  entries.filter((entry) => isSafeGithubUrl(entry.githubUrl));
+
 const fetchLeaderboard = async (): Promise<LeaderboardFile | null> => {
   try {
     const response = await fetch(LEADERBOARD_URL, { next: { revalidate: REVALIDATE_SECONDS } });
     if (!response.ok) return null;
-    return (await response.json()) as LeaderboardFile;
+    const payload = (await response.json()) as LeaderboardFile;
+    if (!payload || !Array.isArray(payload.entries)) return null;
+    return { ...payload, entries: sanitizeLeaderboardEntries(payload.entries) };
   } catch {
     return null;
   }

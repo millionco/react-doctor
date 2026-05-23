@@ -207,5 +207,8 @@ export const validateConfigTypes = (config: ReactDoctorConfig): ReactDoctorConfi
       validateSeverityMap(fieldName, value),
     );
   }
+  applyFieldValidator(config, validated, "plugins", (value) =>
+    validateStringArrayField("plugins", value),
+  );
   return validated;
 };

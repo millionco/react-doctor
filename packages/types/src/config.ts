@@ -248,4 +248,40 @@ export interface ReactDoctorConfig {
    * single category, use `ignore.tags` instead.
    */
   categories?: Record<string, RuleSeverityOverride>;
+  /**
+   * User-defined oxlint plugins to load alongside the built-in
+   * `react-doctor` plugin. Each entry is either:
+   *
+   * - A **relative path** to a JS / TS file (resolved relative to
+   *   the directory of the config file that declared it — NOT the
+   *   CWD), e.g. `"./lint/my-rules.js"`.
+   * - An **npm package name**, e.g. `"react-doctor-plugin-team-conventions"`.
+   *
+   * The module must default-export an oxlint-shaped plugin:
+   * `{ meta: { name: string }, rules: Record<string, HostRule> }`.
+   * Use `defineRule` from `oxlint-plugin-react-doctor` for the
+   * cleanest authoring shape — see CONTRIBUTING.md → "Writing a
+   * custom plugin" for the full template.
+   *
+   * Rules from a user plugin are **opt-in by default**: a rule
+   * doesn't run unless `rules: { "<plugin-name>/<rule>": "warn" | "error" }`
+   * explicitly enables it. (Mirrors how `defaultEnabled: false`
+   * rules behave in the built-in plugin.) Once enabled, the rule
+   * flows through every react-doctor surface (CLI / PR comment /
+   * score / CI gate) the same as a built-in rule.
+   *
+   * ```json
+   * {
+   *   "plugins": [
+   *     "./lint/my-team-rules.js",
+   *     "react-doctor-plugin-shopify-conventions"
+   *   ],
+   *   "rules": {
+   *     "my-team-rules/no-bare-fetch": "error",
+   *     "shopify-conventions/use-polaris-tokens": "warn"
+   *   }
+   * }
+   * ```
+   */
+  plugins?: string[];
 }

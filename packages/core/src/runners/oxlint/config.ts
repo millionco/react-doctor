@@ -8,7 +8,7 @@ import type { ProjectInfo, RuleSeverityControls } from "@react-doctor/types";
 import { resolveRuleSeverityOverride } from "../../resolve-rule-severity-override.js";
 import { buildCapabilities, shouldEnableRule } from "./capabilities.js";
 import { filterRulesToAvailable, resolveReactHooksJsPlugin } from "./plugin-resolution.js";
-import type { JsPluginEntry } from "./plugin-resolution.js";
+import type { JsPluginEntry, ResolvedUserPlugin } from "./plugin-resolution.js";
 
 export interface OxlintConfigOptions {
   pluginPath: string;
@@ -18,6 +18,14 @@ export interface OxlintConfigOptions {
   ignoredTags?: ReadonlySet<string>;
   serverAuthFunctionNames?: ReadonlyArray<string>;
   severityControls?: RuleSeverityControls;
+  /**
+   * User-declared plugins from `react-doctor.config.json`'s
+   * `plugins: [...]`, already resolved + introspected via
+   * `resolveUserPlugins`. Each plugin's rules are opt-in: they don't
+   * run unless `severityControls.rules["<plugin-name>/<rule>"]` is
+   * set to `"warn"` or `"error"`.
+   */
+  userPlugins?: ReadonlyArray<ResolvedUserPlugin>;
 }
 
 const resolveSettingsRootDirectory = (rootDirectory: string): string => {
@@ -38,6 +46,28 @@ const applyRuleSeverityControls = (
   return enabledRules;
 };
 
+/**
+ * Builds the `rules` entries for one user-declared plugin. Rules are
+ * opt-in: a rule never registers unless `severityControls.rules`
+ * explicitly sets it to `"warn"` or `"error"`. This mirrors the
+ * built-in plugin's `defaultEnabled: false` behavior so installing
+ * a third-party plugin doesn't surprise the user with a flood of
+ * new diagnostics on the first scan.
+ */
+const buildUserPluginRules = (
+  userPlugin: ResolvedUserPlugin,
+  severityControls: RuleSeverityControls | undefined,
+): Record<string, OxlintRuleSeverity> => {
+  const enabled: Record<string, OxlintRuleSeverity> = {};
+  for (const ruleName of userPlugin.availableRuleNames) {
+    const ruleKey = `${userPlugin.entry.name}/${ruleName}`;
+    const explicitSeverity = resolveRuleSeverityOverride({ ruleKey }, severityControls);
+    if (explicitSeverity === undefined || explicitSeverity === "off") continue;
+    enabled[ruleKey] = explicitSeverity;
+  }
+  return enabled;
+};
+
 export const createOxlintConfig = ({
   pluginPath,
   project,
@@ -46,6 +76,7 @@ export const createOxlintConfig = ({
   ignoredTags = new Set<string>(),
   serverAuthFunctionNames,
   severityControls,
+  userPlugins = [],
 }: OxlintConfigOptions) => {
   const reactHooksJsPlugin = resolveReactHooksJsPlugin(project.hasReactCompiler, customRulesOnly);
   const reactCompilerRules = reactHooksJsPlugin
@@ -89,6 +120,18 @@ export const createOxlintConfig = ({
     enabledReactDoctorRules[registryEntry.key] = severity;
   }
 
+  // Fold every user-declared plugin's enabled rules + add its
+  // resolved specifier to `jsPlugins` so oxlint loads it alongside
+  // the built-in react-doctor plugin. Order: react-hooks-js (when
+  // present) → user plugins → react-doctor itself. The react-doctor
+  // plugin stays last so its rules can reference earlier plugins'
+  // settings if a future composition pattern needs that hook.
+  const userPluginRules: Record<string, OxlintRuleSeverity> = {};
+  for (const userPlugin of userPlugins) {
+    Object.assign(userPluginRules, buildUserPluginRules(userPlugin, severityControls));
+    jsPlugins.push(userPlugin.entry);
+  }
+
   return {
     ...(extendsPaths.length > 0 ? { extends: extendsPaths } : {}),
     categories: {
@@ -104,7 +147,8 @@ export const createOxlintConfig = ({
     // and `jsx-a11y/*` rule has been ported into `react-doctor/*`. The
     // empty `plugins:` array is intentional; rules come exclusively
     // from our codegen-built registry plus configured npm-shipped
-    // plugins (react-hooks-js for the React Compiler frontend etc.).
+    // plugins (react-hooks-js for the React Compiler frontend etc.)
+    // and any user-declared plugins from `config.plugins`.
     plugins: [],
     jsPlugins: [...jsPlugins, pluginPath],
     settings: {
@@ -119,6 +163,7 @@ export const createOxlintConfig = ({
     rules: {
       ...reactCompilerRules,
       ...enabledReactDoctorRules,
+      ...userPluginRules,
     },
   };
 };

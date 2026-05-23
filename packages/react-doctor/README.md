@@ -290,6 +290,65 @@ Block comments work inside JSX:
 
 For multi-line JSX, putting the comment immediately above the opening tag covers the entire attribute list (matching ESLint convention).
 
+## Custom rules (user plugins)
+
+Drop your own oxlint-shaped plugin into `react-doctor.config.json`'s `plugins` field and react-doctor runs your rules alongside the built-in ones. Useful for team-specific conventions ("no `<Box>` outside `packages/ui`", "all API calls go through `lib/client`", etc.) that don't belong upstream.
+
+### 1. Write the plugin
+
+Create a file anywhere in your repo. The shape is the oxlint plugin contract — a default-exported `{ meta: { name }, rules: { ... } }`. Each rule's `create(context)` returns ESTree-style visitors.
+
+```js
+// lint/team-conventions.cjs
+const noBareFetchRule = {
+  create: (context) => ({
+    CallExpression(node) {
+      if (node.callee.type === "Identifier" && node.callee.name === "fetch") {
+        context.report({
+          node,
+          message:
+            "Use `lib/client.request()` instead of bare `fetch` — keeps auth + tracing consistent.",
+        });
+      }
+    },
+  }),
+};
+
+module.exports = {
+  meta: { name: "team-conventions" },
+  rules: {
+    "no-bare-fetch": noBareFetchRule,
+  },
+};
+```
+
+For a richer authoring experience (TypeScript types, severity defaults, recommendation strings, category metadata, the `defineRule` helper), install [`oxlint-plugin-react-doctor`](https://npmjs.com/package/oxlint-plugin-react-doctor) and import `defineRule` + the `RulePlugin` types — the built-in plugin uses the same SDK.
+
+### 2. Register the plugin in `react-doctor.config.json`
+
+`plugins` accepts either a **relative path** (resolved relative to the config file) or an **npm package name**:
+
+```json
+{
+  "plugins": ["./lint/team-conventions.cjs", "react-doctor-plugin-shopify-conventions"],
+  "rules": {
+    "team-conventions/no-bare-fetch": "error",
+    "shopify-conventions/use-polaris-tokens": "warn"
+  }
+}
+```
+
+### 3. Run
+
+`npx react-doctor .` picks up the plugin and flows its diagnostics through every surface (CLI / PR comment / score / `--fail-on` gate) the same as built-in rules.
+
+### Notes
+
+- **Opt-in by default**: a user-plugin rule only runs when `rules: { "<plugin-name>/<rule>": "warn" | "error" }` explicitly enables it. Mirrors how `defaultEnabled: false` built-in rules behave so installing a third-party plugin doesn't surprise you with a flood of new diagnostics on the first scan.
+- **Namespace**: rule keys are `<plugin.meta.name>/<rule-name>`. If the plugin omits `meta.name`, react-doctor uses a slugified filename (e.g. `./lint/team-conventions.cjs` → `team-conventions`).
+- **Failure tolerance**: a plugin entry that can't be resolved or doesn't look like an oxlint plugin logs a warning and is skipped — your scan keeps going. Run with `--verbose` to see resolution diagnostics.
+- **Per-rule severity / ignore / surfaces**: every existing severity / ignore / surface knob (`rules`, `categories`, `ignore.{paths, rules, tags}`, `surfaces.{cli, prComment, score, ciFailure}`) treats user-plugin rules the same as built-in rules. You can demote a user-plugin rule out of CI without touching the rule's source.
+
 ## Lint plugin (standalone)
 
 The same rule set ships as both an oxlint plugin and an ESLint plugin, so you can wire it into whichever lint engine your project already runs. These are published as separate packages, so you can install just the lint integration without pulling in the full CLI.

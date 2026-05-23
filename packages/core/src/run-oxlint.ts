@@ -19,6 +19,7 @@ import {
 import { batchIncludePaths } from "./batch-include-paths.js";
 import { buildRuleSeverityControls } from "./build-rule-severity-controls.js";
 import { canOxlintExtendConfig } from "./can-oxlint-extend-config.js";
+import { resolveUserPlugins } from "./runners/oxlint/plugin-resolution.js";
 import { collectIgnorePatterns } from "./collect-ignore-patterns.js";
 import { detectUserLintConfigPaths } from "./detect-user-lint-config.js";
 import { dedupeDiagnostics } from "./utils/dedupe-diagnostics.js";
@@ -476,6 +477,13 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
   // Drop them up front so the scan starts in the same state the fallback
   // would land in, with no stderr noise.
   const extendsPaths = detectedConfigPaths.filter(canOxlintExtendConfig);
+  // Resolve user-declared plugins (`config.plugins: [...]`) relative
+  // to the project root (the scan root, which is `react-doctor.config.json`'s
+  // own directory in the common case). Each resolved plugin
+  // contributes its rules + its specifier to the generated
+  // oxlintrc.json; failures are warned and skipped so a typo in
+  // one entry doesn't block the rest of the scan.
+  const userPlugins = resolveUserPlugins(userConfig?.plugins, rootDirectory);
   const config = createOxlintConfig({
     pluginPath,
     project,
@@ -484,6 +492,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     ignoredTags,
     serverAuthFunctionNames,
     severityControls,
+    userPlugins,
   });
   // HACK: only neutralize disable comments in audit mode. Default
   // behavior respects the user's existing `// eslint-disable*` /

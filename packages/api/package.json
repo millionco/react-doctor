@@ -19,8 +19,6 @@
   },
   "dependencies": {
     "@react-doctor/core": "workspace:*",
-    "@react-doctor/project-info": "workspace:*",
-    "@react-doctor/types": "workspace:*",
     "effect": "4.0.0-beta.70"
   },
   "devDependencies": {

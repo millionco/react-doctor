@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { JsonReport } from "@react-doctor/types";
+import type { JsonReport } from "@react-doctor/core";
 import {
   enableJsonMode,
   isJsonModeActive,

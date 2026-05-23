@@ -1,7 +1,7 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import type { Diagnostic, ScoreResult } from "@react-doctor/types";
+import type { Diagnostic, ScoreResult } from "../types/index.js";
 import { calculateScore } from "../calculate-score.js";
 
 interface ComputeInput {

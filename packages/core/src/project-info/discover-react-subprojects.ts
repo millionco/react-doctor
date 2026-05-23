@@ -1,6 +1,6 @@
 import path from "node:path";
 import { IGNORED_DIRECTORIES } from "./constants.js";
-import type { PackageJson, WorkspacePackage } from "@react-doctor/types";
+import type { PackageJson, WorkspacePackage } from "../types/index.js";
 import { isDirectory } from "./utils/is-directory.js";
 import { isFile } from "./utils/is-file.js";
 import { readDirectoryEntries } from "./utils/read-directory-entries.js";

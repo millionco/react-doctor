@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
-import type { Diagnostic, ProjectInfo, ReactDoctorConfig } from "@react-doctor/types";
+import type { Diagnostic, ProjectInfo, ReactDoctorConfig } from "../types/index.js";
 import { OxlintSpawnFailed, ReactDoctorError } from "../errors.js";
 import { runOxlint } from "../run-oxlint.js";
 

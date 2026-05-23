@@ -16,7 +16,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 
-import type { ReactDoctorConfig } from "@react-doctor/types";
+import type { ReactDoctorConfig } from "@react-doctor/core";
 import {
   checkReducedMotion,
   createNodeReadFileLinesSync,

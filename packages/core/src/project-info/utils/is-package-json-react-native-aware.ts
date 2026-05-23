@@ -1,4 +1,4 @@
-import { isReactNativeDependencyName, type PackageJson } from "@react-doctor/types";
+import { isReactNativeDependencyName, type PackageJson } from "../../types/index.js";
 
 interface PackageJsonWithReactNativeField extends PackageJson {
   "react-native"?: unknown;

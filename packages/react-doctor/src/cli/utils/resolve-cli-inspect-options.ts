@@ -1,4 +1,4 @@
-import type { InspectOptions, ReactDoctorConfig } from "@react-doctor/types";
+import type { InspectOptions, ReactDoctorConfig } from "@react-doctor/core";
 import type { InspectFlags } from "./inspect-flags.js";
 import { isCiEnvironment } from "./is-ci-environment.js";
 

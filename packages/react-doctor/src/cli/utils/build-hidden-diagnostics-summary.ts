@@ -1,4 +1,4 @@
-import type { Diagnostic } from "@react-doctor/types";
+import type { Diagnostic } from "@react-doctor/core";
 
 interface HiddenDiagnosticsSummaryPart {
   severity: Diagnostic["severity"];

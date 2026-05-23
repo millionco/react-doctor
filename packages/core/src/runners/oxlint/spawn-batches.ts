@@ -1,4 +1,4 @@
-import type { Diagnostic, ProjectInfo } from "@react-doctor/types";
+import type { Diagnostic, ProjectInfo } from "../../types/index.js";
 import { isSplittableReactDoctorError } from "../../errors.js";
 import { dedupeDiagnostics } from "../../utils/dedupe-diagnostics.js";
 import { parseOxlintOutput } from "./parse-output.js";

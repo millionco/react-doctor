@@ -1,4 +1,4 @@
-import type { PackageJson } from "@react-doctor/types";
+import type { PackageJson } from "../types/index.js";
 
 const TANSTACK_QUERY_PACKAGES = new Set([
   "@tanstack/react-query",

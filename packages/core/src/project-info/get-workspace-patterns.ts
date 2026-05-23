@@ -1,4 +1,4 @@
-import type { PackageJson } from "@react-doctor/types";
+import type { PackageJson } from "../types/index.js";
 import { getNxWorkspaceDirectories } from "./get-nx-workspace-directories.js";
 import { parsePnpmWorkspacePatterns } from "./parse-pnpm-workspace-patterns.js";
 

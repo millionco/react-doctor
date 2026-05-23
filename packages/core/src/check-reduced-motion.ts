@@ -1,8 +1,8 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { MOTION_LIBRARY_PACKAGES } from "oxlint-plugin-react-doctor";
-import type { Diagnostic } from "@react-doctor/types";
-import { isFile, readPackageJson } from "@react-doctor/project-info";
+import type { Diagnostic } from "./types/index.js";
+import { isFile, readPackageJson } from "./project-info/index.js";
 
 const REDUCED_MOTION_GREP_PATTERN =
   "prefers-reduced-motion|useReducedMotion|MotionConfig|reducedMotion";

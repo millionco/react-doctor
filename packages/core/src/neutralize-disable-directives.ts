@@ -1,7 +1,7 @@
 import * as Effect from "effect/Effect";
 import fs from "node:fs";
 import path from "node:path";
-import { readDirectoryEntries } from "@react-doctor/project-info";
+import { readDirectoryEntries } from "./project-info/index.js";
 import { IGNORED_DIRECTORIES, SOURCE_FILE_PATTERN } from "./constants.js";
 import { Git } from "./services/git.js";
 

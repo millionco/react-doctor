@@ -7,7 +7,7 @@ import {
   highlighter,
   isReactDoctorError,
 } from "@react-doctor/core";
-import type { HandleErrorOptions } from "@react-doctor/types";
+import type { HandleErrorOptions } from "@react-doctor/core";
 
 /**
  * Effect-typed renderer: every message routes through `Console.error`

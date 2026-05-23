@@ -1,6 +1,6 @@
 import path from "node:path";
 import { beforeAll, describe, expect, it } from "vite-plus/test";
-import type { Diagnostic } from "@react-doctor/types";
+import type { Diagnostic } from "@react-doctor/core";
 import { runOxlint } from "@react-doctor/core";
 import { buildTestProject } from "../regressions/_helpers.js";
 import { describeRules, NEXTJS_APP_DIRECTORY } from "./_helpers.js";

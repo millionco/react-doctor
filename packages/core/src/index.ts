@@ -1,9 +1,16 @@
+export * from "./types/index.js";
+export * from "./project-info/index.js";
 export * from "./build-diagnostic-pipeline.js";
 export * from "./errors.js";
 export * from "./paths.js";
 export * from "./refs.js";
 export * from "./run-inspect.js";
-export * from "./schemas.js";
+// Selective re-exports from `./schemas.js` only — most class names
+// (Diagnostic, JsonReport, JsonReportSummary, …) collide with the
+// TypeScript-type definitions in `./types/index.js`. Consumers that
+// need the Schema classes import directly via
+// `@react-doctor/core/schemas` or the in-tree relative path.
+export { Severity, JsonReportV1, buildDiagnosticIdentity } from "./schemas.js";
 export * from "./services/config.js";
 export * from "./services/dead-code.js";
 export * from "./services/files.js";

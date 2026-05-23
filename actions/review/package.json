@@ -12,11 +12,10 @@
   "dependencies": {
     "@octokit/graphql": "^9.0.3",
     "@octokit/rest": "^22.0.1",
-    "@react-doctor/project-info": "workspace:*",
+    "@react-doctor/core": "workspace:*",
     "react-doctor": "workspace:*"
   },
   "devDependencies": {
-    "@react-doctor/types": "workspace:*",
     "@types/node": "^25.6.0",
     "tsx": "^4.22.3",
     "typescript": "^6.0.3"

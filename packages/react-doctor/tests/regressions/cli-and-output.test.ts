@@ -19,7 +19,7 @@ import path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 
 import { inspect } from "../../src/inspect.js";
-import type { InspectResult, ReactDoctorConfig } from "@react-doctor/types";
+import type { InspectResult, ReactDoctorConfig } from "@react-doctor/core";
 import {
   encodeAnnotationProperty,
   encodeAnnotationMessage,

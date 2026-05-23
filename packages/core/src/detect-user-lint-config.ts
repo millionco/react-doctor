@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { ADOPTABLE_LINT_CONFIG_FILENAMES } from "./constants.js";
-import { isFile, isMonorepoRoot } from "@react-doctor/project-info";
+import { isFile, isMonorepoRoot } from "./project-info/index.js";
 
 const findFirstLintConfigInDirectory = (directory: string): string | null => {
   for (const filename of ADOPTABLE_LINT_CONFIG_FILENAMES) {

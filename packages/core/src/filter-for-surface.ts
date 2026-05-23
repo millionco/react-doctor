@@ -3,7 +3,7 @@ import type {
   DiagnosticSurface,
   ReactDoctorConfig,
   SurfaceControls,
-} from "@react-doctor/types";
+} from "./types/index.js";
 import { DEFAULT_SURFACE_EXCLUDED_TAGS } from "./diagnostic-surface.js";
 import { getDiagnosticRuleIdentity } from "./get-diagnostic-rule-identity.js";
 

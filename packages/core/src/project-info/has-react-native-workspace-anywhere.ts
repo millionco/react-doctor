@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { PackageJson } from "@react-doctor/types";
+import type { PackageJson } from "../types/index.js";
 import { getWorkspacePatterns } from "./get-workspace-patterns.js";
 import { readPackageJson } from "./read-package-json.js";
 import { resolveWorkspaceDirectories } from "./resolve-workspace-directories.js";

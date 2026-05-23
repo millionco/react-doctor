@@ -1,6 +1,6 @@
 import { performance } from "node:perf_hooks";
 import { buildJsonReportError } from "@react-doctor/core";
-import type { JsonReport, JsonReportMode } from "@react-doctor/types";
+import type { JsonReport, JsonReportMode } from "@react-doctor/core";
 import { INTERNAL_ERROR_JSON_FALLBACK } from "./constants.js";
 import { VERSION } from "./version.js";
 

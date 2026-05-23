@@ -1,4 +1,4 @@
-import type { PackageJson } from "@react-doctor/types";
+import type { PackageJson } from "../types/index.js";
 
 const REACT_DEPENDENCY_NAMES = new Set(["react", "react-native", "next"]);
 

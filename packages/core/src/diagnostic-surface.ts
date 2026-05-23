@@ -1,4 +1,4 @@
-import type { DiagnosticSurface } from "@react-doctor/types";
+import type { DiagnosticSurface } from "./types/index.js";
 
 export const DIAGNOSTIC_SURFACES = [
   "cli",

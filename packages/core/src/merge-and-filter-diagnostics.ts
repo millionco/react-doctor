@@ -1,5 +1,5 @@
 import reactDoctorPlugin from "oxlint-plugin-react-doctor";
-import type { Diagnostic, ReactDoctorConfig } from "@react-doctor/types";
+import type { Diagnostic, ReactDoctorConfig } from "./types/index.js";
 import { applySeverityControls } from "./apply-severity-controls.js";
 import { filterIgnoredDiagnostics, filterInlineSuppressions } from "./filter-diagnostics.js";
 import { isTestFilePath } from "./is-test-file.js";

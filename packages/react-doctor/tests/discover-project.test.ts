@@ -7,7 +7,7 @@ import {
   discoverReactSubprojects,
   formatFrameworkName,
   listWorkspacePackages,
-} from "@react-doctor/project-info";
+} from "@react-doctor/core";
 
 const FIXTURES_DIRECTORY = path.resolve(import.meta.dirname, "fixtures");
 const VALID_FRAMEWORKS = ["nextjs", "vite", "cra", "remix", "gatsby", "unknown"];

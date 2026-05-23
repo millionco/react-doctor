@@ -2,8 +2,8 @@ import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import fs from "node:fs";
 import path from "node:path";
-import type { ReactDoctorConfig } from "@react-doctor/types";
-import { isFile, isMonorepoRoot, isPlainObject } from "@react-doctor/project-info";
+import type { ReactDoctorConfig } from "./types/index.js";
+import { isFile, isMonorepoRoot, isPlainObject } from "./project-info/index.js";
 import { validateConfigTypes } from "./validate-config-types.js";
 
 const warn = (message: string): void => {

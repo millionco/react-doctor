@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { clearConfigCache, loadConfigWithSource } from "@react-doctor/core";
-import type { ReactDoctorConfig } from "@react-doctor/types";
+import type { ReactDoctorConfig } from "@react-doctor/core";
 
 const loadConfig = (rootDirectory: string): ReactDoctorConfig | null =>
   loadConfigWithSource(rootDirectory)?.config ?? null;

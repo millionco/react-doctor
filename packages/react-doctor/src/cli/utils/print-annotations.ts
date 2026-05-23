@@ -1,4 +1,4 @@
-import type { Diagnostic } from "@react-doctor/types";
+import type { Diagnostic } from "@react-doctor/core";
 import { encodeAnnotationMessage, encodeAnnotationProperty } from "./annotation-encoding.js";
 
 export const printAnnotations = (diagnostics: Diagnostic[], routeToStderr: boolean): void => {

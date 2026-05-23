@@ -1,4 +1,4 @@
-import type { DependencyInfo, PackageJson } from "@react-doctor/types";
+import type { DependencyInfo, PackageJson } from "../types/index.js";
 import { detectFramework } from "./detect-framework.js";
 import { isConcreteDependencyVersion } from "./utils/is-concrete-dependency-version.js";
 import { isCatalogReference } from "./resolve-catalog-version.js";

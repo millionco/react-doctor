@@ -6,7 +6,7 @@ import {
   isDiagnosticOnSurface,
   isDiagnosticSurface,
 } from "@react-doctor/core";
-import type { Diagnostic, ReactDoctorConfig } from "@react-doctor/types";
+import type { Diagnostic, ReactDoctorConfig } from "@react-doctor/core";
 
 const designDiagnostic: Diagnostic = {
   filePath: "src/App.tsx",

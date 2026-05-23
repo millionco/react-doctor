@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { DiffInfo } from "@react-doctor/types";
+import type { DiffInfo } from "@react-doctor/core";
 import { resolveDiffMode } from "../src/cli/utils/resolve-diff-mode.js";
 
 interface ConsoleWarnHandle {

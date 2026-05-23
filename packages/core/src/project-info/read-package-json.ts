@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { PackageJson } from "@react-doctor/types";
+import type { PackageJson } from "../types/index.js";
 
 const cachedPackageJsons = new Map<string, PackageJson>();
 

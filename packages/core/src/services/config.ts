@@ -2,7 +2,7 @@ import * as Cache from "effect/Cache";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import type { ReactDoctorConfig } from "@react-doctor/types";
+import type { ReactDoctorConfig } from "../types/index.js";
 import { loadConfigWithSource } from "../load-config.js";
 import { resolveConfigRootDir } from "../resolve-config-root-dir.js";
 

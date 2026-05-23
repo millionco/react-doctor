@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 
 import { runOxlint } from "@react-doctor/core";
-import type { Diagnostic, ReactDoctorConfig } from "@react-doctor/types";
+import type { Diagnostic, ReactDoctorConfig } from "@react-doctor/core";
 import { buildTestProject, setupReactProject } from "./_helpers.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-server-auth-actions-"));

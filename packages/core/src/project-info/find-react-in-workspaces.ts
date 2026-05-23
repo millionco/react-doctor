@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { DependencyInfo, PackageJson } from "@react-doctor/types";
+import type { DependencyInfo, PackageJson } from "../types/index.js";
 import { EMPTY_DEPENDENCY_INFO, extractDependencyInfo } from "./extract-dependency-info.js";
 import { getDependencyDeclaration } from "./utils/get-dependency-declaration.js";
 import { getWorkspacePatterns } from "./get-workspace-patterns.js";

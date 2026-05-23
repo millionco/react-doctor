@@ -1,4 +1,4 @@
-import type { Diagnostic, JsonReportSummary } from "@react-doctor/types";
+import type { Diagnostic, JsonReportSummary } from "./types/index.js";
 
 export const summarizeDiagnostics = (
   diagnostics: Diagnostic[],

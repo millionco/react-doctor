@@ -59,7 +59,7 @@ export class JsonReportError extends Schema.Class<JsonReportError>("JsonReportEr
 /**
  * Schema for a single project entry within a JsonReport. `project` is
  * `Schema.Unknown` for now because `ProjectInfo` is still a hand-written
- * interface in `@react-doctor/types`; it gets a real schema when the
+ * interface in `@react-doctor/core`; it gets a real schema when the
  * `Project` service lands and at that point this field tightens.
  */
 export class JsonReportProjectEntry extends Schema.Class<JsonReportProjectEntry>(

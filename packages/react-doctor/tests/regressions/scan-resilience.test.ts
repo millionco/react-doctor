@@ -40,7 +40,7 @@ import {
   isDirectory,
   readDirectoryEntries,
   readPackageJson,
-} from "@react-doctor/project-info";
+} from "@react-doctor/core";
 import {
   getStagedSourceFiles,
   materializeStagedFiles,

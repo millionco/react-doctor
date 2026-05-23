@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { ReactDoctorConfig } from "@react-doctor/types";
+import type { ReactDoctorConfig } from "@react-doctor/core";
 import { validateConfigTypes } from "@react-doctor/core";
 
 // HACK: validator writes warnings directly to `process.stderr` so they

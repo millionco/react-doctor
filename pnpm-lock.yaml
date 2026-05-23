@@ -42,16 +42,13 @@ importers:
       '@octokit/rest':
         specifier: ^22.0.1
         version: 22.0.1
-      '@react-doctor/project-info':
+      '@react-doctor/core':
         specifier: workspace:*
-        version: link:../../packages/project-info
+        version: link:../../packages/core
       react-doctor:
         specifier: workspace:*
         version: link:../../packages/react-doctor
     devDependencies:
-      '@react-doctor/types':
-        specifier: workspace:*
-        version: link:../../packages/types
       '@types/node':
         specifier: ^25.6.0
         version: 25.6.0
@@ -67,12 +64,6 @@ importers:
       '@react-doctor/core':
         specifier: workspace:*
         version: link:../core
-      '@react-doctor/project-info':
-        specifier: workspace:*
-        version: link:../project-info
-      '@react-doctor/types':
-        specifier: workspace:*
-        version: link:../types
       effect:
         specifier: 4.0.0-beta.70
         version: 4.0.0-beta.70
@@ -86,12 +77,6 @@ importers:
       '@effect/platform-node':
         specifier: 4.0.0-beta.70
         version: 4.0.0-beta.70(effect@4.0.0-beta.70)(ioredis@5.10.1)
-      '@react-doctor/project-info':
-        specifier: workspace:*
-        version: link:../project-info
-      '@react-doctor/types':
-        specifier: workspace:*
-        version: link:../types
       deslop-js:
         specifier: ^0.0.12
         version: 0.0.12(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
@@ -146,25 +131,12 @@ importers:
         specifier: ^5.0.1
         version: 5.0.1
     devDependencies:
-      '@react-doctor/types':
-        specifier: workspace:*
-        version: link:../types
       '@types/node':
         specifier: ^25.6.0
         version: 25.6.0
       oxc-parser:
         specifier: ^0.132.0
         version: 0.132.0
-
-  packages/project-info:
-    dependencies:
-      '@react-doctor/types':
-        specifier: workspace:*
-        version: link:../types
-    devDependencies:
-      '@types/node':
-        specifier: ^25.6.0
-        version: 25.6.0
 
   packages/react-doctor:
     dependencies:
@@ -199,12 +171,6 @@ importers:
       '@react-doctor/core':
         specifier: workspace:*
         version: link:../core
-      '@react-doctor/project-info':
-        specifier: workspace:*
-        version: link:../project-info
-      '@react-doctor/types':
-        specifier: workspace:*
-        version: link:../types
       '@types/prompts':
         specifier: ^2.4.9
         version: 2.4.9
@@ -217,12 +183,6 @@ importers:
       ora:
         specifier: ^9.4.0
         version: 9.4.0
-
-  packages/types:
-    devDependencies:
-      '@types/node':
-        specifier: ^25.6.0
-        version: 25.6.0
 
   packages/website:
     dependencies:

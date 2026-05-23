@@ -1,4 +1,4 @@
-import type { Diagnostic } from "@react-doctor/types";
+import type { Diagnostic } from "../types/index.js";
 
 // HACK: oxlint plugin rules occasionally emit the same diagnostic
 // twice (e.g. when a rule's listener visits the same AST node through

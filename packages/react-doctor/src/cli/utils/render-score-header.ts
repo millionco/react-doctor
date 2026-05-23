@@ -7,7 +7,7 @@ import {
   SCORE_GOOD_THRESHOLD,
   SCORE_OK_THRESHOLD,
 } from "@react-doctor/core";
-import type { ScoreResult } from "@react-doctor/types";
+import type { ScoreResult } from "@react-doctor/core";
 import { colorizeByScore } from "./colorize-by-score.js";
 
 interface ScoreBarSegments {

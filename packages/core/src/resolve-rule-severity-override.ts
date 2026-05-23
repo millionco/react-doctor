@@ -1,4 +1,4 @@
-import type { RuleSeverityControls, RuleSeverityOverride } from "@react-doctor/types";
+import type { RuleSeverityControls, RuleSeverityOverride } from "./types/index.js";
 import { getEquivalentRuleKeys } from "./rule-key-aliases.js";
 
 interface RuleOverrideLookupInput {

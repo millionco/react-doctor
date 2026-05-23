@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { Diagnostic, ReactDoctorConfig } from "@react-doctor/types";
+import type { Diagnostic, ReactDoctorConfig } from "./types/index.js";
 import { collectIgnorePatterns } from "./collect-ignore-patterns.js";
 import { readIgnoreFile } from "./read-ignore-file.js";
 import { toRelativePath } from "./utils/to-relative-path.js";

@@ -1,8 +1,8 @@
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import { highlighter } from "@react-doctor/core";
-import { formatFrameworkName } from "@react-doctor/project-info";
-import type { ProjectInfo, ReactDoctorConfig } from "@react-doctor/types";
+import { formatFrameworkName } from "@react-doctor/core";
+import type { ProjectInfo, ReactDoctorConfig } from "@react-doctor/core";
 import { spinner } from "./spinner.js";
 
 export interface PrintProjectDetectionInput {

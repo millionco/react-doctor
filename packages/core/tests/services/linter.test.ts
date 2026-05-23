@@ -3,7 +3,7 @@ import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import { describe, expect, it } from "vite-plus/test";
-import type { Diagnostic, ProjectInfo } from "@react-doctor/types";
+import type { Diagnostic, ProjectInfo } from "@react-doctor/core";
 import { LintPartialFailures, Linter, type LintInput } from "../../src/services/linter.js";
 
 const sampleProject: ProjectInfo = {

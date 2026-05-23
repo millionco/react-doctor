@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { PackageJson } from "@react-doctor/types";
+import type { PackageJson } from "../types/index.js";
 import { isFile } from "./utils/is-file.js";
 import { isPlainObject } from "./utils/is-plain-object.js";
 

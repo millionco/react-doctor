@@ -1,4 +1,4 @@
-import type { Diagnostic, ReactDoctorConfig, RuleSeverityOverride } from "@react-doctor/types";
+import type { Diagnostic, ReactDoctorConfig, RuleSeverityOverride } from "./types/index.js";
 import { buildRuleSeverityControls } from "./build-rule-severity-controls.js";
 import { getDiagnosticRuleIdentity } from "./get-diagnostic-rule-identity.js";
 import { resolveRuleSeverityOverride } from "./resolve-rule-severity-override.js";

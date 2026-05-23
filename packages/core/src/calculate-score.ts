@@ -1,6 +1,6 @@
 import { gzipSync } from "node:zlib";
 import { FETCH_TIMEOUT_MS, SCORE_API_URL } from "./constants.js";
-import type { Diagnostic, ScoreResult } from "@react-doctor/types";
+import type { Diagnostic, ScoreResult } from "./types/index.js";
 
 const parseScoreResult = (value: unknown): ScoreResult | null => {
   if (typeof value !== "object" || value === null) return null;

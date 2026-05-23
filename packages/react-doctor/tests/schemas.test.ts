@@ -2,13 +2,18 @@ import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 import {
   buildDiagnosticIdentity,
-  Diagnostic,
-  JsonReport,
   JsonReportV1,
   NodeBinaryPath,
   OxlintBinaryPath,
   Severity,
 } from "@react-doctor/core";
+// `Diagnostic` and `JsonReport` are imported directly from the
+// `schemas.js` module rather than the package barrel because the
+// barrel intentionally elides them — the same names exist as TS
+// types in `@react-doctor/core`'s `types/` subtree, and re-exporting
+// the Schema versions would collide. The Schema versions ARE the
+// in-tree validators; consumers wanting them reach in directly.
+import { Diagnostic, JsonReport } from "@react-doctor/core/schemas";
 
 describe("Diagnostic schema", () => {
   it("decodes the minimal shape (required fields only)", () => {

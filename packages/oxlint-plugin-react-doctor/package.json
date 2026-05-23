@@ -57,7 +57,6 @@
     "eslint-visitor-keys": "^5.0.1"
   },
   "devDependencies": {
-    "@react-doctor/types": "workspace:*",
     "@types/node": "^25.6.0",
     "oxc-parser": "^0.132.0"
   },

@@ -1,7 +1,7 @@
 import * as Effect from "effect/Effect";
 import { SOURCE_FILE_PATTERN } from "./constants.js";
 import { Git } from "./services/git.js";
-import type { DiffInfo } from "@react-doctor/types";
+import type { DiffInfo } from "./types/index.js";
 
 /**
  * Programmatic façade over `Git.diffSelection`. Async because the

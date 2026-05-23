@@ -1,4 +1,4 @@
-import type { ReactDoctorConfig } from "@react-doctor/types";
+import type { ReactDoctorConfig } from "@react-doctor/core";
 import type { InspectFlags } from "./inspect-flags.js";
 import { coerceDiffValue } from "./coerce-diff-value.js";
 

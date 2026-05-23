@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { beforeAll, describe, expect, it } from "vite-plus/test";
-import type { Diagnostic } from "@react-doctor/types";
+import type { Diagnostic } from "@react-doctor/core";
 import { runOxlint } from "@react-doctor/core";
 import { buildTestProject, collectRuleHits, setupReactProject } from "../regressions/_helpers.js";
 import { BASIC_REACT_DIRECTORY, describeRules } from "./_helpers.js";

@@ -19,6 +19,12 @@ export {
 
 export { MOTION_LIBRARY_PACKAGES } from "./plugin/constants/style.js";
 
+export {
+  REACT_NATIVE_DEPENDENCY_NAMES,
+  REACT_NATIVE_DEPENDENCY_PREFIXES,
+  isReactNativeDependencyName,
+} from "./react-native-dependency-names.js";
+
 export type { OxlintRuleSeverity } from "./types.js";
 export type { EsTreeNode } from "./plugin/utils/es-tree-node.js";
 export type { Rule, RuleFramework, RuleSeverity } from "./plugin/utils/rule.js";

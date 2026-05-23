@@ -1,7 +1,7 @@
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import { highlighter, SHARE_BASE_URL } from "@react-doctor/core";
-import type { Diagnostic, ScoreResult } from "@react-doctor/types";
+import type { Diagnostic, ScoreResult } from "@react-doctor/core";
 import { collectAffectedFiles, formatElapsedTime } from "./render-diagnostics.js";
 import { printNoScoreHeader, printScoreHeader } from "./render-score-header.js";
 import { writeDiagnosticsDirectory } from "./write-diagnostics-directory.js";

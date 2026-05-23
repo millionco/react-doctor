@@ -1,4 +1,4 @@
-import type { PackageJson } from "@react-doctor/types";
+import type { PackageJson } from "../../types/index.js";
 import { extractCatalogName } from "../resolve-catalog-version.js";
 
 export interface DependencyDeclaration {

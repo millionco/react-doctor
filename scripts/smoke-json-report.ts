@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as Schema from "effect/Schema";
-import { JsonReport } from "@react-doctor/core";
+import { JsonReport } from "@react-doctor/core/schemas";
 
 const SCRIPT_DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = resolve(SCRIPT_DIRECTORY, "..");

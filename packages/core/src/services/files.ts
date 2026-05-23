@@ -2,7 +2,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Path from "node:path";
-import { isDirectory as isDirectoryNode, isFile as isFileNode } from "@react-doctor/project-info";
+import { isDirectory as isDirectoryNode, isFile as isFileNode } from "../project-info/index.js";
 import { createNodeReadFileLinesSync } from "../read-file-lines-node.js";
 import { listSourceFiles as listSourceFilesNode } from "../utils/list-source-files.js";
 

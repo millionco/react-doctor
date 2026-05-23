@@ -1,4 +1,4 @@
-import type { ReactDoctorConfig, RuleSeverityControls } from "@react-doctor/types";
+import type { ReactDoctorConfig, RuleSeverityControls } from "./types/index.js";
 
 /**
  * Assembles the internal `RuleSeverityControls` shape from a user

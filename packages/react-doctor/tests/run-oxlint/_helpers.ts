@@ -1,6 +1,6 @@
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
-import type { Diagnostic } from "@react-doctor/types";
+import type { Diagnostic } from "@react-doctor/core";
 
 const FIXTURES_DIRECTORY = path.resolve(import.meta.dirname, "..", "fixtures");
 export const BASIC_REACT_DIRECTORY = path.join(FIXTURES_DIRECTORY, "basic-react");

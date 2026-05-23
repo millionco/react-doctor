@@ -1,4 +1,4 @@
-import type { JsonReport, JsonReportMode } from "@react-doctor/types";
+import type { JsonReport, JsonReportMode } from "./types/index.js";
 import { formatReactDoctorError, isReactDoctorError } from "./errors.js";
 import { getErrorChainMessages } from "./format-error-chain.js";
 

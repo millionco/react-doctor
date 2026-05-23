@@ -1,4 +1,4 @@
-import type { Framework } from "@react-doctor/types";
+import type { Framework } from "../types/index.js";
 
 const FRAMEWORK_PACKAGES: Record<string, Framework> = {
   next: "nextjs",

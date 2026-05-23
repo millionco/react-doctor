@@ -9,7 +9,7 @@ import {
   Reporter,
   Score,
 } from "@react-doctor/core";
-import type { ReactDoctorConfig } from "@react-doctor/types";
+import type { ReactDoctorConfig } from "@react-doctor/core";
 
 export interface BuildRuntimeLayersInput {
   readonly directory: string;

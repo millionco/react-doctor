@@ -7,7 +7,7 @@ export type {
   ProjectInfo,
   ReactDoctorConfig,
   ScoreResult,
-} from "@react-doctor/types";
+} from "@react-doctor/core";
 export {
   ReactDoctorError,
   ProjectNotFoundError,
@@ -15,4 +15,4 @@ export {
   PackageJsonNotFoundError,
   AmbiguousProjectError,
   isReactDoctorError,
-} from "@react-doctor/project-info";
+} from "@react-doctor/core";

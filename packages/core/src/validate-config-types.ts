@@ -3,7 +3,7 @@ import type {
   ReactDoctorConfig,
   RuleSeverityOverride,
   SurfaceControls,
-} from "@react-doctor/types";
+} from "./types/index.js";
 import { DIAGNOSTIC_SURFACES, isDiagnosticSurface } from "./diagnostic-surface.js";
 import { warnConfigIssue } from "./utils/warn-config-issue.js";
 

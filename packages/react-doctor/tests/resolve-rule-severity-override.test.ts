@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import type { RuleSeverityControls } from "@react-doctor/types";
+import type { RuleSeverityControls } from "@react-doctor/core";
 import { resolveRuleSeverityOverride } from "@react-doctor/core";
 
 describe("resolveRuleSeverityOverride", () => {

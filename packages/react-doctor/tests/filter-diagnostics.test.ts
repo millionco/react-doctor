@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import type { Diagnostic, ReactDoctorConfig } from "@react-doctor/types";
+import type { Diagnostic, ReactDoctorConfig } from "@react-doctor/core";
 import { createNodeReadFileLinesSync, filterIgnoredDiagnostics } from "@react-doctor/core";
 
 const TEST_ROOT_DIRECTORY = "/home/user/project";

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { buildJsonReport, buildJsonReportError } from "@react-doctor/core";
-import type { Diagnostic, InspectResult, ProjectInfo } from "@react-doctor/types";
+import type { Diagnostic, InspectResult, ProjectInfo } from "@react-doctor/core";
 
 const SAMPLE_PROJECT: ProjectInfo = {
   rootDirectory: "/repo",

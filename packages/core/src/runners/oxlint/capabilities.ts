@@ -1,5 +1,5 @@
-import type { ProjectInfo } from "@react-doctor/types";
-import { isTailwindAtLeast, parseTailwindMajorMinor } from "@react-doctor/project-info";
+import type { ProjectInfo } from "../../types/index.js";
+import { isTailwindAtLeast, parseTailwindMajorMinor } from "../../project-info/index.js";
 
 export const buildCapabilities = (project: ProjectInfo): ReadonlySet<string> => {
   const capabilities = new Set<string>();

@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { DependencyInfo } from "@react-doctor/types";
+import type { DependencyInfo } from "../types/index.js";
 import { isFile } from "./utils/is-file.js";
 import { EMPTY_DEPENDENCY_INFO, extractDependencyInfo } from "./extract-dependency-info.js";
 import { findMonorepoRoot } from "./find-monorepo-root.js";

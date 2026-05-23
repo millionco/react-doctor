@@ -1,4 +1,4 @@
-import type { Diagnostic, FailOnLevel } from "@react-doctor/types";
+import type { Diagnostic, FailOnLevel } from "@react-doctor/core";
 
 export const shouldFailForDiagnostics = (
   diagnostics: Diagnostic[],

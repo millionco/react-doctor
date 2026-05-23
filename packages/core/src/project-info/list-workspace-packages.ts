@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { WorkspacePackage } from "@react-doctor/types";
+import type { WorkspacePackage } from "../types/index.js";
 import { isFile } from "./utils/is-file.js";
 import { getWorkspacePatterns } from "./get-workspace-patterns.js";
 import { hasReactDependency } from "./has-react-dependency.js";

@@ -2,7 +2,7 @@ import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import { describe, expect, it } from "vite-plus/test";
-import type { ProjectInfo } from "@react-doctor/types";
+import type { ProjectInfo } from "@react-doctor/core";
 import { ReactDoctorError } from "../../src/errors.js";
 import { Project } from "../../src/services/project.js";
 

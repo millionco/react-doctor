@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { runOxlint } from "@react-doctor/core";
-import type { Diagnostic, ProjectInfo } from "@react-doctor/types";
+import type { Diagnostic, ProjectInfo } from "@react-doctor/core";
 
 export const writeFile = (filePath: string, contents: string): void => {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });

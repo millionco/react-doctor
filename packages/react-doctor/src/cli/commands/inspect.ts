@@ -14,7 +14,7 @@ import {
   toRelativePath,
 } from "@react-doctor/core";
 import { inspect } from "../../inspect.js";
-import type { Diagnostic, InspectResult } from "@react-doctor/types";
+import type { Diagnostic, InspectResult } from "@react-doctor/core";
 import { cliLogger as logger } from "../utils/cli-logger.js";
 import { STAGED_FILES_TEMP_DIR_PREFIX } from "../utils/constants.js";
 import { getStagedSourceFiles, materializeStagedFiles } from "../utils/get-staged-files.js";

@@ -1,4 +1,4 @@
-import type { PackageJson } from "@react-doctor/types";
+import type { PackageJson } from "../types/index.js";
 import { parseReactMajor } from "./parse-react-major.js";
 import { hasUpperBoundOnlyPeerRange, peerRangeMinMajor } from "./parse-react-peer-range.js";
 

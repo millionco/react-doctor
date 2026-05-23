@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { dedupeDiagnostics } from "@react-doctor/core";
-import type { Diagnostic } from "@react-doctor/types";
+import type { Diagnostic } from "@react-doctor/core";
 
 const buildDiagnostic = (overrides: Partial<Diagnostic> = {}): Diagnostic => ({
   filePath: "src/App.tsx",

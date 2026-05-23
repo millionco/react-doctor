@@ -1,9 +1,5 @@
 import path from "node:path";
-import {
-  AmbiguousProjectError,
-  discoverReactSubprojects,
-  isFile,
-} from "@react-doctor/project-info";
+import { AmbiguousProjectError, discoverReactSubprojects, isFile } from "./project-info/index.js";
 
 export const resolveDiagnoseTarget = (directory: string): string | null => {
   if (isFile(path.join(directory, "package.json"))) return directory;

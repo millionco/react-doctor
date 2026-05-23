@@ -1,5 +1,5 @@
 import reactDoctorPlugin from "oxlint-plugin-react-doctor";
-import type { Diagnostic } from "@react-doctor/types";
+import type { Diagnostic } from "./types/index.js";
 
 export interface DiagnosticRuleIdentity {
   ruleKey: string;

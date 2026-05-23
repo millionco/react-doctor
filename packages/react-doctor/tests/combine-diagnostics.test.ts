@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import type { Diagnostic, ReactDoctorConfig } from "@react-doctor/types";
+import type { Diagnostic, ReactDoctorConfig } from "@react-doctor/core";
 import { combineDiagnostics, computeJsxIncludePaths } from "@react-doctor/core";
 
 const createDiagnostic = (overrides: Partial<Diagnostic> = {}): Diagnostic => ({

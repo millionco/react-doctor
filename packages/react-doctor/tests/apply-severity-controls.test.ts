@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import type { Diagnostic, ReactDoctorConfig } from "@react-doctor/types";
+import type { Diagnostic, ReactDoctorConfig } from "@react-doctor/core";
 import { applySeverityControls } from "@react-doctor/core";
 
 const designDiagnostic: Diagnostic = {

@@ -1,5 +1,5 @@
-import type { Diagnostic, ReactDoctorConfig, ReactDoctorIgnoreOverride } from "@react-doctor/types";
-import { isPlainObject } from "@react-doctor/project-info";
+import type { Diagnostic, ReactDoctorConfig, ReactDoctorIgnoreOverride } from "./types/index.js";
+import { isPlainObject } from "./project-info/index.js";
 import { compileGlobPatternsLenient } from "./utils/match-glob-pattern.js";
 import { toRelativePath } from "./utils/to-relative-path.js";
 import { warnConfigIssue } from "./utils/warn-config-issue.js";

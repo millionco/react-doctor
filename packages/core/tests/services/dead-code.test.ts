@@ -2,7 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Stream from "effect/Stream";
 import { describe, expect, it } from "vite-plus/test";
-import type { Diagnostic, ProjectInfo } from "@react-doctor/types";
+import type { Diagnostic, ProjectInfo } from "@react-doctor/core";
 import { DeadCode } from "../../src/services/dead-code.js";
 
 const sampleDiagnostic: Diagnostic = {

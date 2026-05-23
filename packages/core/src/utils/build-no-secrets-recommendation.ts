@@ -1,5 +1,5 @@
-import type { ProjectInfo } from "@react-doctor/types";
-import { formatFrameworkName } from "@react-doctor/project-info";
+import type { ProjectInfo } from "../types/index.js";
+import { formatFrameworkName } from "../project-info/index.js";
 import { getPublicEnvPrefix } from "./get-public-env-prefix.js";
 
 export const buildNoSecretsRecommendation = (

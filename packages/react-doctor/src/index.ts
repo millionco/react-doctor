@@ -4,8 +4,9 @@ import {
   clearAutoSuppressionCaches,
   clearConfigCache,
   clearIgnorePatternsCache,
+  clearPackageJsonCache,
+  clearProjectCache,
 } from "@react-doctor/core";
-import { clearPackageJsonCache, clearProjectCache } from "@react-doctor/project-info";
 import type {
   Diagnostic,
   DiagnoseOptions,
@@ -20,7 +21,7 @@ import type {
   ProjectInfo,
   ReactDoctorConfig,
   ScoreResult,
-} from "@react-doctor/types";
+} from "@react-doctor/core";
 
 export type {
   Diagnostic,
@@ -39,6 +40,14 @@ export type {
 };
 export { getDiffInfo, filterSourceFiles, summarizeDiagnostics } from "@react-doctor/core";
 export { buildJsonReport, buildJsonReportError };
+// `ReactDoctorError` is the tagged Schema class from
+// `@react-doctor/core`, used by the new Effect pipeline.
+// `isReactDoctorError` narrows to that tagged class.
+// The four narrow errors below are still plain JS Error subclasses —
+// they're thrown synchronously by `discoverProject` /
+// `resolveDiagnoseTarget` / `readPackageJson` BEFORE the Effect
+// runtime takes over, so callers can `try/catch` them without
+// Effect-aware machinery.
 export {
   ReactDoctorError,
   ProjectNotFoundError,
@@ -46,7 +55,8 @@ export {
   PackageJsonNotFoundError,
   AmbiguousProjectError,
   isReactDoctorError,
-} from "@react-doctor/project-info";
+  isProjectDiscoveryError,
+} from "@react-doctor/core";
 
 // HACK: programmatic API consumers (watch-mode tools, test runners,
 // agentic CLI flows) call diagnose() repeatedly on the same directory.

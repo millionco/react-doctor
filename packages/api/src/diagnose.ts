@@ -20,8 +20,8 @@ import {
   AmbiguousProjectError,
   NoReactDependencyError,
   ProjectNotFoundError,
-} from "@react-doctor/project-info";
-import type { DiagnoseOptions, DiagnoseResult } from "@react-doctor/types";
+} from "@react-doctor/core";
+import type { DiagnoseOptions, DiagnoseResult } from "@react-doctor/core";
 
 const buildLayerStack = () =>
   Layer.mergeAll(

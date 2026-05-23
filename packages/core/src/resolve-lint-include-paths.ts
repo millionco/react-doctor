@@ -1,5 +1,5 @@
 import { JSX_FILE_PATTERN } from "./constants.js";
-import type { ReactDoctorConfig } from "@react-doctor/types";
+import type { ReactDoctorConfig } from "./types/index.js";
 import { compileIgnoredFilePatterns, isFileIgnoredByPatterns } from "./is-ignored-file.js";
 import { listSourceFiles } from "./utils/list-source-files.js";
 

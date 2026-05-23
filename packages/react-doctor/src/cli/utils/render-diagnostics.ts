@@ -10,7 +10,7 @@ import {
   RULE_NAME_COLUMN_WIDTH_CHARS,
   toRelativePath,
 } from "@react-doctor/core";
-import type { Diagnostic } from "@react-doctor/types";
+import type { Diagnostic } from "@react-doctor/core";
 import { buildHiddenDiagnosticsSummary } from "./build-hidden-diagnostics-summary.js";
 import { indentMultilineText } from "./indent-multiline-text.js";
 import { wrapIndentedText } from "./wrap-indented-text.js";

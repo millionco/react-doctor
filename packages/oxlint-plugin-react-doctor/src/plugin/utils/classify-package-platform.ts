@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { isReactNativeDependencyName } from "@react-doctor/types";
+import { isReactNativeDependencyName } from "../../react-native-dependency-names.js";
 
 // Packages that mark the manifest as a web-only React target. If a manifest
 // contains one of these AND has no React Native indicator, every React

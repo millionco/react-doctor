@@ -5,7 +5,7 @@ import type {
   JsonReportMode,
   JsonReportProjectEntry,
   InspectResult,
-} from "@react-doctor/types";
+} from "./types/index.js";
 import { summarizeDiagnostics } from "./summarize-diagnostics.js";
 
 interface BuildJsonReportInput {

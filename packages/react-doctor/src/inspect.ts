@@ -18,7 +18,7 @@ import {
   AmbiguousProjectError,
   NoReactDependencyError,
   ProjectNotFoundError,
-} from "@react-doctor/project-info";
+} from "@react-doctor/core";
 import type {
   Diagnostic,
   DiagnosticSurface,
@@ -26,7 +26,7 @@ import type {
   InspectResult,
   ReactDoctorConfig,
   ScoreResult,
-} from "@react-doctor/types";
+} from "@react-doctor/core";
 import { printDiagnostics } from "./cli/utils/render-diagnostics.js";
 import { printProjectDetection } from "./cli/utils/render-project-detection.js";
 import {

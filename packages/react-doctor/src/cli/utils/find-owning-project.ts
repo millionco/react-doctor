@@ -1,5 +1,5 @@
 import path from "node:path";
-import { discoverReactSubprojects, listWorkspacePackages } from "@react-doctor/project-info";
+import { discoverReactSubprojects, listWorkspacePackages } from "@react-doctor/core";
 
 export const findOwningProjectDirectory = (rootDirectory: string, filePath: string): string => {
   const absoluteFile = path.isAbsolute(filePath) ? filePath : path.resolve(rootDirectory, filePath);

@@ -7,8 +7,8 @@ import {
   NoReactDependencyError,
   PackageJsonNotFoundError,
   ProjectNotFoundError,
-} from "@react-doctor/project-info";
-import type { ProjectInfo } from "@react-doctor/types";
+} from "../project-info/index.js";
+import type { ProjectInfo } from "../types/index.js";
 import {
   AmbiguousProject,
   NoReactDependency,

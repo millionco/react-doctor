@@ -16,7 +16,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 
-import type { Diagnostic } from "@react-doctor/types";
+import type { Diagnostic } from "@react-doctor/core";
 import { createNodeReadFileLinesSync, filterInlineSuppressions } from "@react-doctor/core";
 import { buildDiagnostic, writeFile } from "./_helpers.js";
 

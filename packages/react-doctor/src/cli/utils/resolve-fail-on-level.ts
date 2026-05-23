@@ -1,4 +1,4 @@
-import type { FailOnLevel, ReactDoctorConfig } from "@react-doctor/types";
+import type { FailOnLevel, ReactDoctorConfig } from "@react-doctor/core";
 import { cliLogger as logger } from "./cli-logger.js";
 import type { InspectFlags } from "./inspect-flags.js";
 

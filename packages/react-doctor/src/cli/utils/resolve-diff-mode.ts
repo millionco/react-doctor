@@ -1,5 +1,5 @@
 import { filterSourceFiles } from "@react-doctor/core";
-import type { DiffInfo } from "@react-doctor/types";
+import type { DiffInfo } from "@react-doctor/core";
 import { cliLogger as logger } from "./cli-logger.js";
 import { prompts } from "./prompts.js";
 

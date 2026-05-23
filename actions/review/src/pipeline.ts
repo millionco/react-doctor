@@ -5,8 +5,8 @@ import {
   PackageJsonNotFoundError,
   ProjectNotFoundError,
 } from "react-doctor/api";
-import type { Diagnostic, ProjectInfo } from "@react-doctor/types";
-import { discoverReactSubprojects } from "@react-doctor/project-info";
+import type { Diagnostic, ProjectInfo } from "@react-doctor/core";
+import { discoverReactSubprojects } from "@react-doctor/core";
 
 export interface ChangedFile {
   filename: string;

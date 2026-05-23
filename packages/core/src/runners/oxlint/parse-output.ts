@@ -1,5 +1,10 @@
 import reactDoctorPlugin from "oxlint-plugin-react-doctor";
-import type { CleanedDiagnostic, Diagnostic, OxlintOutput, ProjectInfo } from "@react-doctor/types";
+import type {
+  CleanedDiagnostic,
+  Diagnostic,
+  OxlintOutput,
+  ProjectInfo,
+} from "../../types/index.js";
 import { ERROR_PREVIEW_LENGTH_CHARS, SOURCE_FILE_PATTERN } from "../../constants.js";
 import { OxlintOutputUnparseable, ReactDoctorError } from "../../errors.js";
 import { buildNoSecretsRecommendation } from "../../utils/build-no-secrets-recommendation.js";

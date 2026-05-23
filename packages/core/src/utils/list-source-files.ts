@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
-import { readDirectoryEntries } from "@react-doctor/project-info";
+import { readDirectoryEntries } from "../project-info/index.js";
 import {
   GIT_LS_FILES_MAX_BUFFER_BYTES,
   IGNORED_DIRECTORIES,

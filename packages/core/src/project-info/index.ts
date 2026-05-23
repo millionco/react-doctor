@@ -12,12 +12,11 @@ export { peerRangeMinMajor } from "./parse-react-peer-range.js";
 export { parseTailwindMajorMinor, isTailwindAtLeast } from "./parse-tailwind-major-minor.js";
 export { findMonorepoRoot, isMonorepoRoot } from "./find-monorepo-root.js";
 export {
-  ReactDoctorError,
   ProjectNotFoundError,
   NoReactDependencyError,
   PackageJsonNotFoundError,
   AmbiguousProjectError,
-  isReactDoctorError,
+  isProjectDiscoveryError,
 } from "./errors.js";
 export { isDirectory } from "./utils/is-directory.js";
 export { isFile } from "./utils/is-file.js";

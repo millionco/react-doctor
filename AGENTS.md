@@ -25,8 +25,15 @@
 packages/
   core/                          PRIVATE  the diagnostic engine
     src/
+      types/                     PRIVATE shared cross-package TS types (DiagnoseOptions,
+                                 ProjectInfo, JsonReport, …) — no runtime code
+      project-info/              project discovery (discoverProject, findMonorepoRoot,
+                                 framework detection, narrow Error subclasses thrown
+                                 BEFORE the Effect runtime takes over)
       errors.ts                  tagged Schema.TaggedErrorClass leaves + ReactDoctorError union
       schemas.ts                 Diagnostic / Severity / JsonReport / buildDiagnosticIdentity
+                                 (also exposed as `@react-doctor/core/schemas` subpath
+                                 since the names overlap the TS types above)
       refs.ts                    Context.Reference for ambient env config
       paths.ts                   Schema.brand for OxlintBinaryPath / NodeBinaryPath
       run-inspect.ts             streaming orchestrator (the heart)
@@ -36,14 +43,10 @@ packages/
                                  NodeResolver, StagedFiles) + LintPartialFailures
       ...                        rest of the lint / score / suppression engine
   api/                           PRIVATE  programmatic diagnose() (Effect.runPromise shell)
-  project-info/                  PRIVATE  legacy React project discovery (still separate
-                                 from core to avoid a circular dep with oxlint-plugin
-                                 over the shared isReactNativeDependencyName helper —
-                                 see TODOS.md for the planned consolidation)
-  types/                         PRIVATE  shared cross-package type interfaces +
-                                 React Native dependency name constants
   react-doctor/                  PUBLISHED  CLI + public inspect() + bin
-  oxlint-plugin-react-doctor/    PUBLISHED  the 100+ rules
+  oxlint-plugin-react-doctor/    PUBLISHED  the 100+ rules, owns the canonical
+                                 `react-native-dependency-names.ts` (re-exported from
+                                 core to break the rule-package ↔ core cycle)
   eslint-plugin-react-doctor/    PUBLISHED  ESLint mirror of the oxlint plugin
   website/                       PRIVATE   docs site
 ```

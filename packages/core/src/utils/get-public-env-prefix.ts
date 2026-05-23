@@ -1,4 +1,4 @@
-import type { Framework } from "@react-doctor/types";
+import type { Framework } from "../types/index.js";
 
 export const getPublicEnvPrefix = (framework: Framework): string | null => {
   switch (framework) {

@@ -1,12 +1,12 @@
 // SOURCE_FILE_PATTERN, GIT_LS_FILES_MAX_BUFFER_BYTES, and
-// IGNORED_DIRECTORIES live in @react-doctor/project-info (which core
-// already depends on). Re-exported here so core consumers don't have
-// to know which package owns each constant.
+// IGNORED_DIRECTORIES live in `./project-info/constants.js`
+// (the project-discovery subtree). Re-exported here so core
+// consumers don't have to know which subtree owns each constant.
 export {
   GIT_LS_FILES_MAX_BUFFER_BYTES,
   IGNORED_DIRECTORIES,
   SOURCE_FILE_PATTERN,
-} from "@react-doctor/project-info";
+} from "./project-info/constants.js";
 
 export const JSX_FILE_PATTERN = /\.(tsx|jsx)$/;
 

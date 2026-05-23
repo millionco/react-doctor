@@ -1,5 +1,5 @@
 import { beforeAll, describe } from "vite-plus/test";
-import type { Diagnostic } from "@react-doctor/types";
+import type { Diagnostic } from "@react-doctor/core";
 import { runOxlint } from "@react-doctor/core";
 import { buildTestProject } from "../regressions/_helpers.js";
 import { BASIC_REACT_DIRECTORY, describeRules } from "./_helpers.js";

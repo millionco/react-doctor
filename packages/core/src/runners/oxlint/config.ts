@@ -4,7 +4,7 @@ import reactDoctorPlugin, {
   REACT_DOCTOR_RULES,
 } from "oxlint-plugin-react-doctor";
 import type { OxlintRuleSeverity } from "oxlint-plugin-react-doctor";
-import type { ProjectInfo, RuleSeverityControls } from "@react-doctor/types";
+import type { ProjectInfo, RuleSeverityControls } from "../../types/index.js";
 import { resolveRuleSeverityOverride } from "../../resolve-rule-severity-override.js";
 import { buildCapabilities, shouldEnableRule } from "./capabilities.js";
 import { filterRulesToAvailable, resolveReactHooksJsPlugin } from "./plugin-resolution.js";

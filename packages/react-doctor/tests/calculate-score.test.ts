@@ -1,7 +1,7 @@
 import { gunzipSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { calculateScore } from "@react-doctor/core";
-import type { Diagnostic } from "@react-doctor/types";
+import type { Diagnostic } from "@react-doctor/core";
 
 const sampleDiagnostics: Diagnostic[] = [
   {

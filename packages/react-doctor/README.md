@@ -15,8 +15,6 @@ Works with Next.js, Vite, and React Native.
 
 ### [See it in action →](https://react.doctor)
 
-> **React Doctor vs React Review.** React Doctor is the local-first **CLI and lint plugins** in this repo: offline-friendly, scriptable, runs anywhere. React Review is the hosted product on [react.doctor](https://react.doctor) (GitHub App, dashboard, PR comments, baseline / delta tracking). They share the same rule set; pick the CLI when you want a one-shot scan or self-hosted CI, and add React Review when you also want a hosted dashboard and review team workflow. Already using the CLI? React Review augments it without replacing it.
-
 ## Install
 
 Run this at your project root:

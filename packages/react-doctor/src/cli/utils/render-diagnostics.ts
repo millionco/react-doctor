@@ -1,3 +1,5 @@
+import * as Console from "effect/Console";
+import * as Effect from "effect/Effect";
 import {
   groupBy,
   highlighter,
@@ -7,7 +9,6 @@ import {
   OUTPUT_DETAIL_WRAP_WIDTH_CHARS,
   RULE_NAME_COLUMN_WIDTH_CHARS,
   toRelativePath,
-  type LoggerWriter,
 } from "@react-doctor/core";
 import type { Diagnostic } from "@react-doctor/types";
 import { buildHiddenDiagnosticsSummary } from "./build-hidden-diagnostics-summary.js";
@@ -82,20 +83,16 @@ const padRuleNameToColumn = (ruleName: string, columnWidth: number): string => {
   return ruleName + " ".repeat(columnWidth - ruleName.length);
 };
 
-const grayLine = (text: string, logger: LoggerWriter): void => {
-  logger.log(highlighter.gray(text));
-};
+const grayLine = (text: string): string => highlighter.gray(text);
 
-const grayWrappedLine = (text: string, linePrefix: string, logger: LoggerWriter): void => {
-  grayLine(wrapIndentedText(text, linePrefix, OUTPUT_DETAIL_WRAP_WIDTH_CHARS), logger);
-};
+const grayWrappedLine = (text: string, linePrefix: string): string =>
+  grayLine(wrapIndentedText(text, linePrefix, OUTPUT_DETAIL_WRAP_WIDTH_CHARS));
 
-const printCompactRuleGroupLine = (
+const buildCompactRuleGroupLine = (
   ruleKey: string,
   ruleDiagnostics: Diagnostic[],
   ruleNameColumnWidth: number,
-  logger: LoggerWriter,
-): void => {
+): string => {
   const firstDiagnostic = ruleDiagnostics[0];
   const severitySymbol = firstDiagnostic.severity === "error" ? "✗" : "⚠";
   const icon = colorizeBySeverity(severitySymbol, firstDiagnostic.severity);
@@ -108,7 +105,7 @@ const printCompactRuleGroupLine = (
         )
       : colorizeBySeverity(ruleKey, firstDiagnostic.severity);
   const trailingBadge = siteCountBadge.length > 0 ? ` ${highlighter.gray(siteCountBadge)}` : "";
-  logger.log(`  ${icon} ${ruleNameRendering}${trailingBadge}`);
+  return `  ${icon} ${ruleNameRendering}${trailingBadge}`;
 };
 
 const getWorstSeverity = (diagnostics: Diagnostic[]): Diagnostic["severity"] =>
@@ -140,12 +137,11 @@ const buildCategoryDiagnosticGroups = (diagnostics: Diagnostic[]): CategoryDiagn
     });
 };
 
-const printDefaultRuleGroup = (
+const buildDefaultRuleGroupLines = (
   ruleKey: string,
   ruleDiagnostics: Diagnostic[],
   rootDirectory: string,
-  logger: LoggerWriter,
-): void => {
+): ReadonlyArray<string> => {
   const firstDiagnostic = ruleDiagnostics[0];
   const ruleTitle = toRuleTitle(firstDiagnostic.rule);
   const severitySymbol = firstDiagnostic.severity === "error" ? "✗" : "⚠";
@@ -153,88 +149,94 @@ const printDefaultRuleGroup = (
   const siteCountBadge = formatSiteCountBadge(ruleDiagnostics.length);
   const trailingBadge = siteCountBadge.length > 0 ? ` ${highlighter.gray(siteCountBadge)}` : "";
 
-  logger.log(`  ${icon} ${ruleTitle}${trailingBadge}`);
-  grayWrappedLine(firstDiagnostic.message, "    ", logger);
+  const lines: string[] = [];
+  lines.push(`  ${icon} ${ruleTitle}${trailingBadge}`);
+  lines.push(grayWrappedLine(firstDiagnostic.message, "    "));
   if (firstDiagnostic.help) {
-    grayWrappedLine(firstDiagnostic.help, "    ", logger);
+    lines.push(grayWrappedLine(firstDiagnostic.help, "    "));
   }
   if (firstDiagnostic.url) {
-    grayLine(`    ${firstDiagnostic.url}`, logger);
+    lines.push(grayLine(`    ${firstDiagnostic.url}`));
   }
   const firstLocation = ruleDiagnostics.find((diagnostic) => diagnostic.line > 0);
   if (firstLocation) {
     const locationPath = toRelativePath(firstLocation.filePath, rootDirectory);
-    grayLine(`    ${locationPath}:${firstLocation.line}`, logger);
+    lines.push(grayLine(`    ${locationPath}:${firstLocation.line}`));
   }
+  return lines;
 };
 
-const printDefaultCategoryGroup = (
+const buildDefaultCategoryGroupLines = (
   categoryGroup: CategoryDiagnosticGroup,
   visibleRuleGroups: [string, Diagnostic[]][],
   rootDirectory: string,
-  logger: LoggerWriter,
-): void => {
+): ReadonlyArray<string> => {
   const issueCount = formatIssueCount(categoryGroup.diagnostics.length);
-  logger.log(`${highlighter.bold(categoryGroup.category)} ${highlighter.dim(issueCount)}`);
+  const lines: string[] = [
+    `${highlighter.bold(categoryGroup.category)} ${highlighter.dim(issueCount)}`,
+  ];
   for (const [ruleKey, ruleDiagnostics] of visibleRuleGroups) {
-    printDefaultRuleGroup(ruleKey, ruleDiagnostics, rootDirectory, logger);
+    lines.push(...buildDefaultRuleGroupLines(ruleKey, ruleDiagnostics, rootDirectory));
   }
-  logger.break();
+  lines.push("");
+  return lines;
 };
 
-const printVerboseRuleGroup = (
+const buildVerboseRuleGroupLines = (
   ruleKey: string,
   ruleDiagnostics: Diagnostic[],
   ruleNameColumnWidth: number,
-  logger: LoggerWriter,
-): void => {
-  printCompactRuleGroupLine(ruleKey, ruleDiagnostics, ruleNameColumnWidth, logger);
+): ReadonlyArray<string> => {
+  const lines: string[] = [];
+  lines.push(buildCompactRuleGroupLine(ruleKey, ruleDiagnostics, ruleNameColumnWidth));
   const firstDiagnostic = ruleDiagnostics[0];
-  grayLine(indentMultilineText(firstDiagnostic.message, "      "), logger);
+  lines.push(grayLine(indentMultilineText(firstDiagnostic.message, "      ")));
   if (firstDiagnostic.help) {
-    grayLine(indentMultilineText(`→ ${firstDiagnostic.help}`, "      "), logger);
+    lines.push(grayLine(indentMultilineText(`→ ${firstDiagnostic.help}`, "      ")));
   }
   const fileSites = buildVerboseSiteMap(ruleDiagnostics);
   for (const [filePath, sites] of fileSites) {
     if (sites.length > 0) {
       for (const site of sites) {
-        grayLine(`      ${filePath}:${site.line}`, logger);
+        lines.push(grayLine(`      ${filePath}:${site.line}`));
         if (site.suppressionHint) {
-          grayLine(`        ↳ ${site.suppressionHint}`, logger);
+          lines.push(grayLine(`        ↳ ${site.suppressionHint}`));
         }
       }
     } else {
-      grayLine(`      ${filePath}`, logger);
+      lines.push(grayLine(`      ${filePath}`));
     }
   }
-  logger.break();
+  lines.push("");
+  return lines;
 };
 
-const printHiddenDiagnosticsSummary = (
+const buildHiddenDiagnosticsLines = (
   hiddenRuleGroups: [string, Diagnostic[]][],
-  logger: LoggerWriter,
-): void => {
+): ReadonlyArray<string> => {
   const hiddenDiagnostics = hiddenRuleGroups.flatMap(([, ruleDiagnostics]) => ruleDiagnostics);
   const renderedParts = buildHiddenDiagnosticsSummary(hiddenDiagnostics).map((part) => {
     const [icon, ...labelParts] = part.text.split(" ");
     return `${colorizeBySeverity(icon, part.severity)} ${highlighter.dim(labelParts.join(" "))}`;
   });
 
-  logger.log(`  ${renderedParts.join("  ")}`);
-  grayLine("    Run `npx react-doctor@latest . --verbose` to get all details", logger);
-  logger.break();
+  return [
+    `  ${renderedParts.join("  ")}`,
+    grayLine("    Run `npx react-doctor@latest . --verbose` to get all details"),
+    "",
+  ];
 };
 
-const printDefaultDiagnostics = (
+const buildDefaultDiagnosticsLines = (
   diagnostics: Diagnostic[],
   rootDirectory: string,
-  logger: LoggerWriter,
-): void => {
+): ReadonlyArray<string> => {
   const categoryGroups = buildCategoryDiagnosticGroups(diagnostics);
   const hiddenRuleGroups: [string, Diagnostic[]][] = [];
   const visibleCategoryGroups = categoryGroups.slice(0, MAX_CATEGORY_GROUPS_SHOWN_NON_VERBOSE);
   const hiddenCategoryGroups = categoryGroups.slice(MAX_CATEGORY_GROUPS_SHOWN_NON_VERBOSE);
 
+  const lines: string[] = [];
   for (const categoryGroup of visibleCategoryGroups) {
     const visibleRuleGroups = categoryGroup.ruleGroups.slice(
       0,
@@ -243,7 +245,7 @@ const printDefaultDiagnostics = (
     const remainingRuleGroups = categoryGroup.ruleGroups.slice(
       MAX_RULE_GROUPS_PER_CATEGORY_NON_VERBOSE,
     );
-    printDefaultCategoryGroup(categoryGroup, visibleRuleGroups, rootDirectory, logger);
+    lines.push(...buildDefaultCategoryGroupLines(categoryGroup, visibleRuleGroups, rootDirectory));
     hiddenRuleGroups.push(...remainingRuleGroups);
   }
   hiddenRuleGroups.push(
@@ -251,36 +253,43 @@ const printDefaultDiagnostics = (
   );
 
   if (hiddenRuleGroups.length > 0) {
-    printHiddenDiagnosticsSummary(hiddenRuleGroups, logger);
+    lines.push(...buildHiddenDiagnosticsLines(hiddenRuleGroups));
   }
+  return lines;
 };
 
+/**
+ * Effect-typed diagnostics renderer. Internal helpers build the
+ * line array purely; the IO happens once at the boundary with a
+ * single Effect.forEach over Console.log so failures or fiber
+ * interruption produce predictable partial output.
+ */
 export const printDiagnostics = (
   diagnostics: Diagnostic[],
   isVerbose: boolean,
   rootDirectory: string,
-  logger: LoggerWriter,
-): void => {
-  if (!isVerbose) {
-    printDefaultDiagnostics(diagnostics, rootDirectory, logger);
-    return;
-  }
-
-  const ruleGroups = groupBy(
-    diagnostics,
-    (diagnostic) => `${diagnostic.plugin}/${diagnostic.rule}`,
-  );
-  const sortedRuleGroups = sortByImportance([...ruleGroups.entries()]);
-  const visibleRuleGroups = sortedRuleGroups;
-
-  const ruleNameColumnWidth = computeRuleNameColumnWidth(
-    visibleRuleGroups.map(([ruleKey]) => ruleKey),
-  );
-
-  visibleRuleGroups.forEach(([ruleKey, ruleDiagnostics]) => {
-    printVerboseRuleGroup(ruleKey, ruleDiagnostics, ruleNameColumnWidth, logger);
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    let lines: ReadonlyArray<string>;
+    if (!isVerbose) {
+      lines = buildDefaultDiagnosticsLines(diagnostics, rootDirectory);
+    } else {
+      const ruleGroups = groupBy(
+        diagnostics,
+        (diagnostic) => `${diagnostic.plugin}/${diagnostic.rule}`,
+      );
+      const sortedRuleGroups = sortByImportance([...ruleGroups.entries()]);
+      const ruleNameColumnWidth = computeRuleNameColumnWidth(
+        sortedRuleGroups.map(([ruleKey]) => ruleKey),
+      );
+      lines = sortedRuleGroups.flatMap(([ruleKey, ruleDiagnostics]) =>
+        buildVerboseRuleGroupLines(ruleKey, ruleDiagnostics, ruleNameColumnWidth),
+      );
+    }
+    for (const line of lines) {
+      yield* Console.log(line);
+    }
   });
-};
 
 export const formatElapsedTime = (elapsedMilliseconds: number): string => {
   if (elapsedMilliseconds < MILLISECONDS_PER_SECOND) {

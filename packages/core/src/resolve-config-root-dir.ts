@@ -1,7 +1,8 @@
+import * as Console from "effect/Console";
+import * as Effect from "effect/Effect";
 import path from "node:path";
 import { isDirectory } from "@react-doctor/project-info";
 import type { ReactDoctorConfig } from "@react-doctor/types";
-import { logger } from "./logger.js";
 
 export const resolveConfigRootDir = (
   config: ReactDoctorConfig | null,
@@ -22,8 +23,10 @@ export const resolveConfigRootDir = (
   if (resolvedRootDir === configSourceDirectory) return null;
 
   if (!isDirectory(resolvedRootDir)) {
-    logger.warn(
-      `react-doctor config "rootDir" points to "${rawRootDir}" (resolved to ${resolvedRootDir}), which is not a directory. Ignoring.`,
+    Effect.runSync(
+      Console.warn(
+        `react-doctor config "rootDir" points to "${rawRootDir}" (resolved to ${resolvedRootDir}), which is not a directory. Ignoring.`,
+      ),
     );
     return null;
   }

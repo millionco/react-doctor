@@ -2,20 +2,20 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
+import * as Effect from "effect/Effect";
 import {
   buildJsonReport,
-  consoleLogger,
   filterDiagnosticsForSurface,
   filterSourceFiles,
   getDiffInfo,
   highlighter,
   loadConfigWithSource,
-  logger,
   resolveConfigRootDir,
   toRelativePath,
 } from "@react-doctor/core";
 import { inspect } from "../../inspect.js";
 import type { Diagnostic, InspectResult } from "@react-doctor/types";
+import { cliLogger as logger } from "../utils/cli-logger.js";
 import { STAGED_FILES_TEMP_DIR_PREFIX } from "../utils/constants.js";
 import { getStagedSourceFiles, materializeStagedFiles } from "../utils/get-staged-files.js";
 import type { InspectFlags } from "../utils/inspect-flags.js";
@@ -81,7 +81,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
     }
 
     if (!isQuiet) {
-      printBrandedHeader(consoleLogger);
+      Effect.runSync(printBrandedHeader);
     }
 
     const scanOptions = resolveCliInspectOptions(flags, userConfig);

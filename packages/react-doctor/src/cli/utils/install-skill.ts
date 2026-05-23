@@ -7,7 +7,8 @@ import {
   SKILL_MANIFEST_FILE,
   type SkillAgentType,
 } from "agent-install";
-import { highlighter, logger, SKILL_NAME } from "@react-doctor/core";
+import { highlighter, SKILL_NAME } from "@react-doctor/core";
+import { cliLogger as logger } from "./cli-logger.js";
 import { detectAvailableAgents } from "./detect-agents.js";
 import { prompts } from "./prompts.js";
 import { shouldSkipPrompts } from "./should-skip-prompts.js";

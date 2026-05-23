@@ -1,4 +1,4 @@
-import { consoleLogger } from "@react-doctor/core";
+import * as Effect from "effect/Effect";
 import { handleError } from "../utils/handle-error.js";
 import { runInstallSkill } from "../utils/install-skill.js";
 import { printBrandedHeader } from "../utils/print-branded-header.js";
@@ -13,7 +13,7 @@ interface InstallCommandOptions {
 }
 
 export const installAction = async (options: InstallCommandOptions): Promise<void> => {
-  printBrandedHeader(consoleLogger);
+  Effect.runSync(printBrandedHeader);
   try {
     await runInstallSkill({
       yes: options.yes,

@@ -1,10 +1,11 @@
+import * as Console from "effect/Console";
+import * as Effect from "effect/Effect";
 import {
   highlighter,
   PERFECT_SCORE,
   SCORE_BAR_WIDTH_CHARS,
   SCORE_GOOD_THRESHOLD,
   SCORE_OK_THRESHOLD,
-  type LoggerWriter,
 } from "@react-doctor/core";
 import type { ScoreResult } from "@react-doctor/types";
 import { colorizeByScore } from "./colorize-by-score.js";
@@ -43,32 +44,34 @@ const buildFaceRenderedLines = (score: number): string[] => {
   return ["┌─────┐", `│ ${eyes} │`, `│ ${mouth} │`, "└─────┘"].map(colorize);
 };
 
-export const printScoreHeader = (scoreResult: ScoreResult, logger: LoggerWriter): void => {
-  const renderedFaceLines = buildFaceRenderedLines(scoreResult.score);
+export const printScoreHeader = (scoreResult: ScoreResult): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    const renderedFaceLines = buildFaceRenderedLines(scoreResult.score);
 
-  const scoreNumber = colorizeByScore(`${scoreResult.score}`, scoreResult.score);
-  const scoreLabel = colorizeByScore(scoreResult.label, scoreResult.score);
-  const scoreLine = `${scoreNumber} ${highlighter.dim(`/ ${PERFECT_SCORE}`)} ${scoreLabel}`;
-  const scoreBarLine = buildScoreBar(scoreResult.score);
+    const scoreNumber = colorizeByScore(`${scoreResult.score}`, scoreResult.score);
+    const scoreLabel = colorizeByScore(scoreResult.label, scoreResult.score);
+    const scoreLine = `${scoreNumber} ${highlighter.dim(`/ ${PERFECT_SCORE}`)} ${scoreLabel}`;
+    const scoreBarLine = buildScoreBar(scoreResult.score);
 
-  const rightColumnLines = [scoreLine, scoreBarLine, BRANDING_LINE, ""];
+    const rightColumnLines = [scoreLine, scoreBarLine, BRANDING_LINE, ""];
 
-  for (let lineIndex = 0; lineIndex < renderedFaceLines.length; lineIndex += 1) {
-    const rightColumnContent = rightColumnLines[lineIndex] ?? "";
-    const separator = rightColumnContent.length > 0 ? "  " : "";
-    logger.log(`  ${renderedFaceLines[lineIndex]}${separator}${rightColumnContent}`);
-  }
+    for (let lineIndex = 0; lineIndex < renderedFaceLines.length; lineIndex += 1) {
+      const rightColumnContent = rightColumnLines[lineIndex] ?? "";
+      const separator = rightColumnContent.length > 0 ? "  " : "";
+      yield* Console.log(`  ${renderedFaceLines[lineIndex]}${separator}${rightColumnContent}`);
+    }
 
-  logger.break();
-};
+    yield* Console.log("");
+  });
 
-export const printBrandingOnlyHeader = (logger: LoggerWriter): void => {
-  logger.log(`  ${BRANDING_LINE}`);
-  logger.break();
-};
+export const printBrandingOnlyHeader: Effect.Effect<void> = Effect.gen(function* () {
+  yield* Console.log(`  ${BRANDING_LINE}`);
+  yield* Console.log("");
+});
 
-export const printNoScoreHeader = (noScoreMessage: string, logger: LoggerWriter): void => {
-  logger.log(`  ${BRANDING_LINE}`);
-  logger.log(`  ${highlighter.gray(noScoreMessage)}`);
-  logger.break();
-};
+export const printNoScoreHeader = (noScoreMessage: string): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    yield* Console.log(`  ${BRANDING_LINE}`);
+    yield* Console.log(`  ${highlighter.gray(noScoreMessage)}`);
+    yield* Console.log("");
+  });

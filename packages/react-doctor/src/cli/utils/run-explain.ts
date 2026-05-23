@@ -1,4 +1,5 @@
-import { highlighter, logger, toRelativePath } from "@react-doctor/core";
+import { highlighter, toRelativePath } from "@react-doctor/core";
+import { cliLogger as logger } from "./cli-logger.js";
 import { inspect } from "../../inspect.js";
 import type { Diagnostic, InspectOptions, ReactDoctorConfig } from "@react-doctor/types";
 import { findOwningProjectDirectory } from "./find-owning-project.js";

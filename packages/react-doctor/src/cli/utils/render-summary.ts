@@ -1,4 +1,6 @@
-import { highlighter, SHARE_BASE_URL, type LoggerWriter } from "@react-doctor/core";
+import * as Console from "effect/Console";
+import * as Effect from "effect/Effect";
+import { highlighter, SHARE_BASE_URL } from "@react-doctor/core";
 import type { Diagnostic, ScoreResult } from "@react-doctor/types";
 import { collectAffectedFiles, formatElapsedTime } from "./render-diagnostics.js";
 import { printNoScoreHeader, printScoreHeader } from "./render-score-header.js";
@@ -27,57 +29,67 @@ const printCountsSummaryLine = (
   diagnostics: Diagnostic[],
   totalSourceFileCount: number,
   elapsedMilliseconds: number,
-  logger: LoggerWriter,
-): void => {
-  const errorCount = diagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
-  const warningCount = diagnostics.filter((diagnostic) => diagnostic.severity === "warning").length;
-  const affectedFileCount = collectAffectedFiles(diagnostics).size;
-  const totalIssueCount = diagnostics.length;
-  const elapsedTimeLabel = formatElapsedTime(elapsedMilliseconds);
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    const errorCount = diagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
+    const warningCount = diagnostics.filter(
+      (diagnostic) => diagnostic.severity === "warning",
+    ).length;
+    const affectedFileCount = collectAffectedFiles(diagnostics).size;
+    const totalIssueCount = diagnostics.length;
+    const elapsedTimeLabel = formatElapsedTime(elapsedMilliseconds);
 
-  const issueCountColor =
-    errorCount > 0 ? highlighter.error : warningCount > 0 ? highlighter.warn : highlighter.dim;
-  const issueCountText = `${totalIssueCount} ${totalIssueCount === 1 ? "issue" : "issues"}`;
-  const fileCountText =
-    totalSourceFileCount > 0
-      ? `across ${affectedFileCount}/${totalSourceFileCount} files`
-      : `across ${affectedFileCount} file${affectedFileCount === 1 ? "" : "s"}`;
-  const elapsedTimeText = `in ${elapsedTimeLabel}`;
+    const issueCountColor =
+      errorCount > 0 ? highlighter.error : warningCount > 0 ? highlighter.warn : highlighter.dim;
+    const issueCountText = `${totalIssueCount} ${totalIssueCount === 1 ? "issue" : "issues"}`;
+    const fileCountText =
+      totalSourceFileCount > 0
+        ? `across ${affectedFileCount}/${totalSourceFileCount} files`
+        : `across ${affectedFileCount} file${affectedFileCount === 1 ? "" : "s"}`;
+    const elapsedTimeText = `in ${elapsedTimeLabel}`;
 
-  logger.log(
-    `  ${issueCountColor(issueCountText)} ${highlighter.dim(`${fileCountText}  ${elapsedTimeText}`)}`,
-  );
-};
+    yield* Console.log(
+      `  ${issueCountColor(issueCountText)} ${highlighter.dim(`${fileCountText}  ${elapsedTimeText}`)}`,
+    );
+  });
 
-export const printSummary = (
-  diagnostics: Diagnostic[],
-  elapsedMilliseconds: number,
-  scoreResult: ScoreResult | null,
-  projectName: string,
-  totalSourceFileCount: number,
-  noScoreMessage: string,
-  isOffline: boolean,
-  logger: LoggerWriter,
-): void => {
-  if (scoreResult) {
-    printScoreHeader(scoreResult, logger);
-  } else {
-    printNoScoreHeader(noScoreMessage, logger);
-  }
+export interface PrintSummaryInput {
+  readonly diagnostics: Diagnostic[];
+  readonly elapsedMilliseconds: number;
+  readonly scoreResult: ScoreResult | null;
+  readonly projectName: string;
+  readonly totalSourceFileCount: number;
+  readonly noScoreMessage: string;
+  readonly isOffline: boolean;
+}
 
-  printCountsSummaryLine(diagnostics, totalSourceFileCount, elapsedMilliseconds, logger);
+export const printSummary = (input: PrintSummaryInput): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    if (input.scoreResult) {
+      yield* printScoreHeader(input.scoreResult);
+    } else {
+      yield* printNoScoreHeader(input.noScoreMessage);
+    }
 
-  try {
-    const diagnosticsDirectory = writeDiagnosticsDirectory(diagnostics);
-    logger.log(highlighter.gray(`  Full diagnostics written to ${diagnosticsDirectory}`));
-  } catch {
-    /* swallow — failing to write the dump shouldn't block the summary */
-  }
+    yield* printCountsSummaryLine(
+      input.diagnostics,
+      input.totalSourceFileCount,
+      input.elapsedMilliseconds,
+    );
 
-  if (!isOffline) {
-    logger.break();
-    const shareUrl = buildShareUrl(diagnostics, scoreResult, projectName);
-    logger.log(`  ${highlighter.bold("→ Share your results:")} ${highlighter.info(shareUrl)}`);
-    logger.break();
-  }
-};
+    try {
+      const diagnosticsDirectory = writeDiagnosticsDirectory(input.diagnostics);
+      yield* Console.log(highlighter.gray(`  Full diagnostics written to ${diagnosticsDirectory}`));
+    } catch {
+      /* swallow — failing to write the dump shouldn't block the summary */
+    }
+
+    if (!input.isOffline) {
+      yield* Console.log("");
+      const shareUrl = buildShareUrl(input.diagnostics, input.scoreResult, input.projectName);
+      yield* Console.log(
+        `  ${highlighter.bold("→ Share your results:")} ${highlighter.info(shareUrl)}`,
+      );
+      yield* Console.log("");
+    }
+  });

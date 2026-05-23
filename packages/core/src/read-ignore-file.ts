@@ -1,5 +1,6 @@
+import * as Console from "effect/Console";
+import * as Effect from "effect/Effect";
 import fs from "node:fs";
-import { logger } from "./logger.js";
 
 // HACK: per gitignore spec, a leading `\#` means a literal `#` in the
 // pattern (used to match files literally named `#config`), and `\!`
@@ -26,7 +27,7 @@ export const readIgnoreFile = (filePath: string): string[] => {
   } catch (error) {
     const errnoCode = (error as NodeJS.ErrnoException | null)?.code;
     if (errnoCode && errnoCode !== "ENOENT") {
-      logger.warn(`Could not read ignore file ${filePath}: ${errnoCode}`);
+      Effect.runSync(Console.warn(`Could not read ignore file ${filePath}: ${errnoCode}`));
     }
     return [];
   }

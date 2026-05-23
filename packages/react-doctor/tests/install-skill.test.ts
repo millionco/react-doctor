@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { runInstallSkill } from "../src/cli/utils/install-skill.js";
-import { setLoggerSilent } from "@react-doctor/core";
 import { setSpinnerSilent } from "../src/cli/utils/spinner.js";
+import { silenceConsoleForTest } from "./helpers/silence-console.js";
 
 interface InstallSkillFixture {
   projectRoot: string;
@@ -35,19 +35,20 @@ const writeValidSkill = (sourceDir: string): void => {
 describe("runInstallSkill", () => {
   let fixture: InstallSkillFixture;
   let originalExitCode: number | string | undefined;
+  let restoreConsole: () => void;
 
   beforeEach(() => {
     fixture = setupFixture();
     originalExitCode = process.exitCode;
     process.exitCode = 0;
-    setLoggerSilent(true);
+    restoreConsole = silenceConsoleForTest();
     setSpinnerSilent(true);
   });
 
   afterEach(() => {
     fixture.cleanup();
     process.exitCode = originalExitCode;
-    setLoggerSilent(false);
+    restoreConsole();
     setSpinnerSilent(false);
   });
 

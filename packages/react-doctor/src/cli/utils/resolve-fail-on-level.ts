@@ -1,5 +1,5 @@
-import { logger } from "@react-doctor/core";
 import type { FailOnLevel, ReactDoctorConfig } from "@react-doctor/types";
+import { cliLogger as logger } from "./cli-logger.js";
 import type { InspectFlags } from "./inspect-flags.js";
 
 const VALID_FAIL_ON_LEVELS = new Set<FailOnLevel>(["error", "warning", "none"]);

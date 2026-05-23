@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { setLoggerSilent } from "@react-doctor/core";
+import { silenceConsoleForTest } from "./helpers/silence-console.js";
 
 // HACK: vi.mock is hoisted above the imports it replaces. The mock factory
 // runs before any non-mock import, so we re-import inside each test to get
@@ -13,16 +13,17 @@ import { runInstallSkill } from "../src/cli/utils/install-skill.js";
 
 describe("installAction (Commander action wrapper)", () => {
   let originalExitCode: number | string | undefined;
+  let restoreConsole: () => void;
 
   beforeEach(() => {
-    setLoggerSilent(true);
+    restoreConsole = silenceConsoleForTest();
     originalExitCode = process.exitCode;
     process.exitCode = 0;
     vi.mocked(runInstallSkill).mockReset();
   });
 
   afterEach(() => {
-    setLoggerSilent(false);
+    restoreConsole();
     process.exitCode = originalExitCode;
   });
 

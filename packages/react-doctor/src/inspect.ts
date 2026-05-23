@@ -1,4 +1,5 @@
 import { performance } from "node:perf_hooks";
+import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
@@ -13,7 +14,6 @@ import {
   Linter,
   LintPartialFailures,
   loadConfigWithSource,
-  Logger,
   OXLINT_NODE_REQUIREMENT,
   Project,
   ReactDoctorError,
@@ -22,7 +22,6 @@ import {
   runInspect as runInspectEffect,
   Score,
   type InspectOutput,
-  type LoggerWriter,
   type ReactDoctorErrorReason,
 } from "@react-doctor/core";
 import {
@@ -48,6 +47,22 @@ import {
 import { printSummary } from "./cli/utils/render-summary.js";
 import { resolveOxlintNode } from "./cli/utils/resolve-oxlint-node.js";
 import { isSpinnerSilent, setSpinnerSilent, spinner } from "./cli/utils/spinner.js";
+
+// HACK: console object whose methods are no-ops. Provided via
+// `Effect.provideService(Console.Console, silentConsole)` to suppress
+// every `Console.log` / `error` / `warn` under `--silent`. Leans on
+// Effect's built-in Console reference (`ConsoleRef`, default value
+// `globalThis.console`) instead of a parallel logger abstraction.
+// `globalThis.console` exposes ~30 methods (count, table, time, …);
+// the cast says "this object covers the usage that Effect's Console
+// module routes through" without stubbing every one.
+const silentConsole = new Proxy({} as Console.Console, {
+  get: () => () => undefined,
+});
+
+const runConsole = (effect: Effect.Effect<void>): void => {
+  Effect.runSync(effect);
+};
 
 interface ResolvedInspectOptions {
   lint: boolean;
@@ -140,8 +155,9 @@ export const inspect = async (
   // HACK: spinner.ts still has module-level silent state (used by
   // printProjectDetection's internal spinner() calls). Mirror the
   // silent flag here until that file moves to a Progress service in
-  // a follow-up PR. Logger-side silent is handled cleanly via
-  // Logger.layerSilent provided to the Effect program.
+  // a follow-up PR. Console-side silent is handled by swapping the
+  // global Console reference for `silentConsole` inside the program
+  // (see `runInspectWithRuntime`).
   const wasSpinnerSilent = isSpinnerSilent();
   if (options.silent) setSpinnerSilent(true);
 
@@ -196,7 +212,6 @@ const runInspectWithRuntime = async (
   const configLayer = hasConfigOverride
     ? Config.layerOf({ config: userConfig, resolvedDirectory: directory })
     : Config.layerNode;
-  const loggerLayer = options.silent ? Logger.layerSilent : Logger.layerConsole;
 
   const layers = Layer.mergeAll(
     Project.layerNode,
@@ -207,11 +222,9 @@ const runInspectWithRuntime = async (
     deadCodeLayer,
     Reporter.layerNoop,
     scoreLayer,
-    loggerLayer,
   );
 
   const program = Effect.gen(function* () {
-    const logger = yield* Logger;
     const spinnerRef = yield* Ref.make<SpinnerHandle | null>(null);
 
     const output = yield* runInspectEffect(
@@ -231,14 +244,13 @@ const runInspectWithRuntime = async (
           Effect.gen(function* () {
             const lintSourceFileCount = lintIncludePaths?.length ?? projectInfo.sourceFileCount;
             if (!options.scoreOnly) {
-              printProjectDetection(
+              yield* printProjectDetection({
                 projectInfo,
                 userConfig,
                 isDiffMode,
-                options.includePaths,
+                includePaths: options.includePaths,
                 lintSourceFileCount,
-                logger,
-              );
+              });
             }
             if (options.lint && resolvedNodeBinaryPath && !options.scoreOnly && !options.silent) {
               const handle = spinner("Running lint checks...").start();
@@ -257,17 +269,29 @@ const runInspectWithRuntime = async (
     );
 
     const finalHandle = yield* Ref.get(spinnerRef);
-    return { output, finalHandle, logger };
+    return { output, finalHandle };
   });
 
   let output: InspectOutput;
   let finalSpinnerHandle: SpinnerHandle | null;
-  let logger: LoggerWriter;
   try {
-    const programResult = await Effect.runPromise(program.pipe(Effect.provide(layers)));
+    const programResult = await Effect.runPromise(
+      // HACK: silent mode swaps the global Console for one whose
+      // log / error / warn / info / debug methods are no-ops, so
+      // every `yield* Console.log(...)` inside the renderers below
+      // becomes a tree-shakeable noop without each call having to
+      // check a flag itself. Driven by Effect's built-in Console
+      // reference, which is `Context.Reference<Console>` with the
+      // default value `globalThis.console`.
+      options.silent
+        ? program.pipe(
+            Effect.provide(layers),
+            Effect.provideService(Console.Console, silentConsole),
+          )
+        : program.pipe(Effect.provide(layers)),
+    );
     output = programResult.output;
     finalSpinnerHandle = programResult.finalHandle;
-    logger = programResult.logger;
   } catch (cause) {
     if (isReactDoctorError(cause)) restoreLegacyThrow(cause);
     throw cause;
@@ -296,12 +320,16 @@ const runInspectWithRuntime = async (
       finalSpinnerHandle.fail(
         `Lint checks failed — oxlint native binding not found (Node ${process.version}).`,
       );
-      logger.dim(
-        `  Upgrade to Node ${OXLINT_NODE_REQUIREMENT} or run: npx -p oxlint@latest react-doctor@latest`,
+      runConsole(
+        Console.log(
+          highlighter.gray(
+            `  Upgrade to Node ${OXLINT_NODE_REQUIREMENT} or run: npx -p oxlint@latest react-doctor@latest`,
+          ),
+        ),
       );
     } else {
       finalSpinnerHandle.fail("Lint checks failed (non-fatal, skipping).");
-      logger.error(lintFailureReason);
+      runConsole(Console.error(lintFailureReason));
     }
   }
 
@@ -339,7 +367,7 @@ const runInspectWithRuntime = async (
       : await calculateScore([...scoreDiagnostics], { isCi: options.isCi });
 
   const elapsedMilliseconds = performance.now() - startTime;
-  return finalizeAndRender({
+  const finalizeInput: FinalizeInput = {
     options,
     elapsedMilliseconds,
     diagnostics: inspectDiagnostics,
@@ -352,8 +380,13 @@ const runInspectWithRuntime = async (
     didDeadCodeFail: output.didDeadCodeFail,
     deadCodeFailureReason: output.deadCodeFailureReason,
     directory: output.resolvedDirectory,
-    logger,
-  });
+  };
+  const result = await Effect.runPromise(
+    finalizeAndRender(finalizeInput).pipe(
+      options.silent ? Effect.provideService(Console.Console, silentConsole) : (program) => program,
+    ),
+  );
+  return result;
 };
 
 interface FinalizeInput {
@@ -369,126 +402,126 @@ interface FinalizeInput {
   didDeadCodeFail: boolean;
   deadCodeFailureReason: string | null;
   directory: string;
-  logger: LoggerWriter;
 }
 
-const finalizeAndRender = (input: FinalizeInput): InspectResult => {
-  const {
-    options,
-    elapsedMilliseconds,
-    diagnostics,
-    score,
-    project,
-    userConfig,
-    didLintFail,
-    lintFailureReason,
-    lintPartialFailures,
-    didDeadCodeFail,
-    deadCodeFailureReason,
-    directory,
-    logger,
-  } = input;
+const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =>
+  Effect.gen(function* () {
+    const {
+      options,
+      elapsedMilliseconds,
+      diagnostics,
+      score,
+      project,
+      userConfig,
+      didLintFail,
+      lintFailureReason,
+      lintPartialFailures,
+      didDeadCodeFail,
+      deadCodeFailureReason,
+      directory,
+    } = input;
 
-  const skippedChecks: string[] = [];
-  if (didLintFail) skippedChecks.push("lint");
-  if (didDeadCodeFail) skippedChecks.push("dead-code");
-  const hasSkippedChecks = skippedChecks.length > 0;
+    const skippedChecks: string[] = [];
+    if (didLintFail) skippedChecks.push("lint");
+    if (didDeadCodeFail) skippedChecks.push("dead-code");
+    const hasSkippedChecks = skippedChecks.length > 0;
 
-  const noScoreMessage = options.offline
-    ? "Score unavailable in offline mode."
-    : "Score unavailable (could not reach the score API).";
+    const noScoreMessage = options.offline
+      ? "Score unavailable in offline mode."
+      : "Score unavailable (could not reach the score API).";
 
-  const skippedCheckReasons: Record<string, string> = {};
-  if (didLintFail && lintFailureReason !== null) {
-    skippedCheckReasons.lint = lintFailureReason;
-  } else if (lintPartialFailures.length > 0) {
-    skippedCheckReasons["lint:partial"] = lintPartialFailures.join("; ");
-  }
-  if (didDeadCodeFail && deadCodeFailureReason !== null) {
-    skippedCheckReasons["dead-code"] = deadCodeFailureReason;
-  }
-
-  const buildResult = (): InspectResult => ({
-    diagnostics: [...diagnostics],
-    score,
-    skippedChecks,
-    ...(Object.keys(skippedCheckReasons).length > 0 ? { skippedCheckReasons } : {}),
-    project,
-    elapsedMilliseconds,
-  });
-
-  if (options.scoreOnly) {
-    if (score) {
-      logger.log(`${score.score}`);
-    } else {
-      logger.dim(noScoreMessage);
+    const skippedCheckReasons: Record<string, string> = {};
+    if (didLintFail && lintFailureReason !== null) {
+      skippedCheckReasons.lint = lintFailureReason;
+    } else if (lintPartialFailures.length > 0) {
+      skippedCheckReasons["lint:partial"] = lintPartialFailures.join("; ");
     }
-    return buildResult();
-  }
+    if (didDeadCodeFail && deadCodeFailureReason !== null) {
+      skippedCheckReasons["dead-code"] = deadCodeFailureReason;
+    }
 
-  const surfaceDiagnostics = filterDiagnosticsForSurface(
-    [...diagnostics],
-    options.outputSurface,
-    userConfig,
-  );
-  const demotedDiagnosticCount = diagnostics.length - surfaceDiagnostics.length;
-  const isDiffMode = options.includePaths.length > 0;
-  const lintSourceFileCount = isDiffMode ? options.includePaths.length : project.sourceFileCount;
+    const buildResult = (): InspectResult => ({
+      diagnostics: [...diagnostics],
+      score,
+      skippedChecks,
+      ...(Object.keys(skippedCheckReasons).length > 0 ? { skippedCheckReasons } : {}),
+      project,
+      elapsedMilliseconds,
+    });
 
-  if (surfaceDiagnostics.length === 0) {
+    if (options.scoreOnly) {
+      if (score) {
+        yield* Console.log(`${score.score}`);
+      } else {
+        yield* Console.log(highlighter.gray(noScoreMessage));
+      }
+      return buildResult();
+    }
+
+    const surfaceDiagnostics = filterDiagnosticsForSurface(
+      [...diagnostics],
+      options.outputSurface,
+      userConfig,
+    );
+    const demotedDiagnosticCount = diagnostics.length - surfaceDiagnostics.length;
+    const isDiffMode = options.includePaths.length > 0;
+    const lintSourceFileCount = isDiffMode ? options.includePaths.length : project.sourceFileCount;
+
+    if (surfaceDiagnostics.length === 0) {
+      if (hasSkippedChecks) {
+        const skippedLabel = skippedChecks.join(" and ");
+        yield* Console.warn(
+          `No issues detected, but ${skippedLabel} checks failed — results are incomplete.`,
+        );
+      } else if (demotedDiagnosticCount > 0) {
+        yield* Console.log(
+          highlighter.success(
+            `No issues found! (${demotedDiagnosticCount} demoted from the ${options.outputSurface} surface — see config.surfaces.)`,
+          ),
+        );
+      } else {
+        yield* Console.log(highlighter.success("No issues found!"));
+      }
+      yield* Console.log("");
+      if (hasSkippedChecks) {
+        yield* printBrandingOnlyHeader;
+        yield* Console.log(highlighter.gray("  Score not shown — some checks could not complete."));
+      } else if (score) {
+        yield* printScoreHeader(score);
+      } else {
+        yield* printNoScoreHeader(noScoreMessage);
+      }
+      return buildResult();
+    }
+
+    yield* Console.log("");
+    yield* printDiagnostics([...surfaceDiagnostics], options.verbose, directory);
+
+    if (demotedDiagnosticCount > 0) {
+      yield* Console.log(
+        highlighter.gray(
+          `  ${demotedDiagnosticCount} demoted from the ${options.outputSurface} surface (e.g. design cleanup) — run \`npx react-doctor@latest .\` locally for the full list.`,
+        ),
+      );
+      yield* Console.log("");
+    }
+
+    const shouldShowShareLink = !options.offline && options.share && !options.isCi;
+    yield* printSummary({
+      diagnostics: [...surfaceDiagnostics],
+      elapsedMilliseconds,
+      scoreResult: score,
+      projectName: project.projectName,
+      totalSourceFileCount: lintSourceFileCount,
+      noScoreMessage,
+      isOffline: !shouldShowShareLink,
+    });
+
     if (hasSkippedChecks) {
       const skippedLabel = skippedChecks.join(" and ");
-      logger.warn(
-        `No issues detected, but ${skippedLabel} checks failed — results are incomplete.`,
-      );
-    } else if (demotedDiagnosticCount > 0) {
-      logger.success(
-        `No issues found! (${demotedDiagnosticCount} demoted from the ${options.outputSurface} surface — see config.surfaces.)`,
-      );
-    } else {
-      logger.success("No issues found!");
+      yield* Console.log("");
+      yield* Console.warn(`  Note: ${skippedLabel} checks failed — score may be incomplete.`);
     }
-    logger.break();
-    if (hasSkippedChecks) {
-      printBrandingOnlyHeader(logger);
-      logger.log(highlighter.gray("  Score not shown — some checks could not complete."));
-    } else if (score) {
-      printScoreHeader(score, logger);
-    } else {
-      printNoScoreHeader(noScoreMessage, logger);
-    }
+
     return buildResult();
-  }
-
-  logger.break();
-  printDiagnostics(surfaceDiagnostics, options.verbose, directory, logger);
-
-  if (demotedDiagnosticCount > 0) {
-    logger.log(
-      highlighter.gray(
-        `  ${demotedDiagnosticCount} demoted from the ${options.outputSurface} surface (e.g. design cleanup) — run \`npx react-doctor@latest .\` locally for the full list.`,
-      ),
-    );
-    logger.break();
-  }
-
-  const shouldShowShareLink = !options.offline && options.share && !options.isCi;
-  printSummary(
-    surfaceDiagnostics,
-    elapsedMilliseconds,
-    score,
-    project.projectName,
-    lintSourceFileCount,
-    noScoreMessage,
-    !shouldShowShareLink,
-    logger,
-  );
-
-  if (hasSkippedChecks) {
-    const skippedLabel = skippedChecks.join(" and ");
-    logger.break();
-    logger.warn(`  Note: ${skippedLabel} checks failed — score may be incomplete.`);
-  }
-
-  return buildResult();
-};
+  });

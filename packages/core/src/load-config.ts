@@ -1,9 +1,14 @@
+import * as Console from "effect/Console";
+import * as Effect from "effect/Effect";
 import fs from "node:fs";
 import path from "node:path";
 import type { ReactDoctorConfig } from "@react-doctor/types";
 import { isFile, isMonorepoRoot, isPlainObject } from "@react-doctor/project-info";
-import { logger } from "./logger.js";
 import { validateConfigTypes } from "./validate-config-types.js";
+
+const warn = (message: string): void => {
+  Effect.runSync(Console.warn(message));
+};
 
 const CONFIG_FILENAME = "react-doctor.config.json";
 const PACKAGE_JSON_CONFIG_KEY = "reactDoctor";
@@ -32,9 +37,9 @@ const loadConfigFromDirectory = (directory: string): LoadedReactDoctorConfig | n
           sourceDirectory: directory,
         };
       }
-      logger.warn(`${CONFIG_FILENAME} must be a JSON object, ignoring.`);
+      warn(`${CONFIG_FILENAME} must be a JSON object, ignoring.`);
     } catch (error) {
-      logger.warn(
+      warn(
         `Failed to parse ${CONFIG_FILENAME}: ${error instanceof Error ? error.message : String(error)}`,
       );
     }

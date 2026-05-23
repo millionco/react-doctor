@@ -31,9 +31,9 @@ packages/
       paths.ts                   Schema.brand for OxlintBinaryPath / NodeBinaryPath
       run-inspect.ts             streaming orchestrator (the heart)
       build-diagnostic-pipeline  per-element filter pipeline (single source of truth)
-      services/                  8 Context.Service classes (Files, Project, Config,
-                                 Linter, DeadCode, Score, Reporter, Progress)
-                                 + LintPartialFailures
+      services/                  10 Context.Service classes (Files, Git, Project,
+                                 Config, Linter, DeadCode, Score, Reporter, Progress,
+                                 NodeResolver, StagedFiles) + LintPartialFailures
       ...                        rest of the lint / score / suppression engine
   api/                           PRIVATE  programmatic diagnose() (Effect.runPromise shell)
   project-info/                  PRIVATE  legacy React project discovery (still separate
@@ -111,6 +111,23 @@ for this codebase) for canonical examples.
 
 - Env-var reads + cache paths go through `Context.Reference<T>("react-doctor/X", { defaultValue })`.
   See `core/src/refs.ts`. Tests override via `Layer.succeed(MyRef, ...)`.
+
+### Console / logging
+
+- ALWAYS: `import * as Console from "effect/Console"` and `yield* Console.log(...)` /
+  `Console.warn(...)` / `Console.error(...)` from inside renderers, services, and any
+  Effect-typed code. Effect's `Console` is a `Context.Reference` whose default sink is
+  `globalThis.console`, so the production path is identical to a raw `console.log`
+  while remaining swappable for tests / silent mode.
+- NEVER: invent a parallel `Logger` / `LoggerWriter` abstraction. The historical custom
+  Logger service was removed when the renderer pipeline went Effect-typed; the only
+  remaining bridge is `cli/utils/cli-logger.ts`, a thin sync wrapper around
+  `Effect.runSync(Console.X)` for imperative CLI helpers that aren't yet `Effect.gen`.
+- Silent mode is `Effect.provideService(Console.Console, silentConsole)` (renderer
+  pipeline) or `installSilentConsole()` (JSON mode, which monkey-patches the global
+  console because the surrounding CLI command body is imperative). Both routes leave
+  the underlying `Console.*` Effect intact — there is no `if (silent) return` check
+  at any call site.
 
 ## Testing
 

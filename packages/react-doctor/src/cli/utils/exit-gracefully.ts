@@ -1,4 +1,4 @@
-import { logger } from "@react-doctor/core";
+import { cliLogger as logger } from "./cli-logger.js";
 import { SIGINT_EXIT_CODE } from "./constants.js";
 import { isJsonModeActive, writeJsonErrorReport } from "./json-mode.js";
 

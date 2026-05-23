@@ -56,7 +56,7 @@
   },
   "dependencies": {
     "agent-install": "0.0.5",
-    "deslop-js": "^0.0.11",
+    "deslop-js": "^0.0.12",
     "effect": "4.0.0-beta.70",
     "oxlint": "^1.66.0",
     "oxlint-plugin-react-doctor": "workspace:*",

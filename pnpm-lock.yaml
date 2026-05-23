@@ -62,8 +62,8 @@ importers:
         specifier: workspace:*
         version: link:../types
       deslop-js:
-        specifier: ^0.0.11
-        version: 0.0.11(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
+        specifier: ^0.0.12
+        version: 0.0.12(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
       effect:
         specifier: 4.0.0-beta.70
         version: 4.0.0-beta.70
@@ -141,8 +141,8 @@ importers:
         specifier: 0.0.5
         version: 0.0.5
       deslop-js:
-        specifier: ^0.0.11
-        version: 0.0.11(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
+        specifier: ^0.0.12
+        version: 0.0.12(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
       effect:
         specifier: 4.0.0-beta.70
         version: 4.0.0-beta.70
@@ -2070,8 +2070,8 @@ packages:
   deep-is@0.1.4:
     resolution: {integrity: sha512-oIPzksmTg4/MriiaYGO+okXDT7ztn/w3Eptv/+gSIdMdKsJo0u4CfYNFJPy+4SKMuCqGw2wxnA+URMg3t8a/bQ==}
 
-  deslop-js@0.0.11:
-    resolution: {integrity: sha512-WWlKBhKxqoar4Y2DcQHeltXgobiRAWLVNMdmDvIrW+vuLyIj24HJUo70nw06K6lRCHpFctJmivJX8Z7UCM3Yqw==}
+  deslop-js@0.0.12:
+    resolution: {integrity: sha512-DsoVhhrgdqjkHxD9zFFJS7r+wDkbbpbdYVfwTNo6s89xTDbZQ9xW0EOd17a45Cfo1z0KxJQkjtJi/fHZ/LpBPA==}
 
   detect-indent@6.1.0:
     resolution: {integrity: sha512-reYkTUJAZb9gUuZ2RvVCNhVHdg62RHnJ7WJl8ftMi4diZ6NWlciOzQN88pUhSELEwflJht4oQDv0F0BMlwaYtA==}
@@ -4497,7 +4497,7 @@ snapshots:
 
   deep-is@0.1.4: {}
 
-  deslop-js@0.0.11(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0):
+  deslop-js@0.0.12(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0):
     dependencies:
       '@oxc-project/types': 0.132.0
       fast-glob: 3.3.3

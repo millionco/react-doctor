@@ -58,6 +58,22 @@ export const OXLINT_RECOMMENDED_NODE_MAJOR = 24;
 
 export const GIT_SHOW_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
 
+/**
+ * Project-config files that `StagedFiles.materialize` copies into
+ * the temp directory alongside staged sources so oxlint resolves
+ * `tsconfig` / `package.json` / lint configs the same way it would
+ * in the working tree. Hoisted out of the staged-files helper so
+ * the constant lives next to the rest of the IO budget knobs.
+ */
+export const STAGED_FILES_PROJECT_CONFIG_FILENAMES = [
+  "tsconfig.json",
+  "tsconfig.base.json",
+  "package.json",
+  "react-doctor.config.json",
+  "oxlint.json",
+  ".oxlintrc.json",
+] as const;
+
 export const CANONICAL_GITHUB_URL = "https://github.com/millionco/react-doctor";
 
 export const SKILL_NAME = "react-doctor";

@@ -78,10 +78,10 @@ export class Linter extends Context.Service<
    * `skippedCheckReasons["lint:partial"]` without the stream itself
    * becoming a failure channel for non-fatal events.
    *
-   * HACK: runOxlint's onPartialFailure is callback-shaped, so we
-   * `Effect.runSync(Ref.update(...))` inside the callback. Acceptable
-   * until runOxlint itself returns a Stream natively (follow-up PR
-   * after this stack lands).
+   * runOxlint's `onPartialFailure` callback is invoked synchronously
+   * during the await, so we collect into a closure-captured array
+   * and apply the Ref update once after the promise resolves — no
+   * Effect.runSync bridge required.
    */
   static readonly layerOxlint = Layer.succeed(
     Linter,
@@ -90,6 +90,7 @@ export class Linter extends Context.Service<
         Stream.unwrap(
           Effect.gen(function* () {
             const partialFailures = yield* LintPartialFailures;
+            const collectedFailures: string[] = [];
             const diagnostics = yield* Effect.tryPromise({
               try: () =>
                 runOxlint({
@@ -103,13 +104,14 @@ export class Linter extends Context.Service<
                   ignoredTags: input.ignoredTags,
                   userConfig: input.userConfig ?? null,
                   onPartialFailure: (reason) => {
-                    Effect.runSync(
-                      Ref.update(partialFailures, (existing) => [...existing, reason]),
-                    );
+                    collectedFailures.push(reason);
                   },
                 }),
               catch: ensureReactDoctorError,
             });
+            if (collectedFailures.length > 0) {
+              yield* Ref.update(partialFailures, (existing) => [...existing, ...collectedFailures]);
+            }
             return Stream.fromIterable(diagnostics);
           }),
         ),

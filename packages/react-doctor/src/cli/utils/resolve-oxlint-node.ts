@@ -1,10 +1,9 @@
+import * as Effect from "effect/Effect";
 import {
-  installNodeViaNvm,
-  isNvmInstalled,
   logger,
+  NodeResolver,
   OXLINT_NODE_REQUIREMENT,
   OXLINT_RECOMMENDED_NODE_MAJOR,
-  resolveNodeForOxlint,
 } from "@react-doctor/core";
 import { prompts } from "./prompts.js";
 
@@ -14,16 +13,25 @@ export const resolveOxlintNode = async (
 ): Promise<string | null> => {
   if (!isLintEnabled) return null;
 
-  const nodeResolution = resolveNodeForOxlint();
+  const runWithResolver = <Value>(
+    program: Effect.Effect<Value, never, NodeResolver>,
+  ): Promise<Value> => Effect.runPromise(program.pipe(Effect.provide(NodeResolver.layerNode)));
 
-  if (nodeResolution) {
-    if (!nodeResolution.isCurrentNode && !isQuiet) {
+  const initial = await runWithResolver(
+    Effect.gen(function* () {
+      const resolver = yield* NodeResolver;
+      return yield* resolver.resolve();
+    }),
+  );
+
+  if (initial !== null) {
+    if (!initial.isCurrentNode && !isQuiet) {
       logger.warn(
-        `Node ${process.version} is unsupported by oxlint. Using Node ${nodeResolution.version} from nvm.`,
+        `Node ${process.version} is unsupported by oxlint. Using Node ${initial.version} from nvm.`,
       );
       logger.break();
     }
-    return nodeResolution.binaryPath;
+    return initial.binaryPath;
   }
 
   if (isQuiet) return null;
@@ -32,7 +40,14 @@ export const resolveOxlintNode = async (
     `Node ${process.version} is not compatible with oxlint (requires ${OXLINT_NODE_REQUIREMENT}). Lint checks will be skipped.`,
   );
 
-  if (isNvmInstalled() && process.stdin.isTTY) {
+  const isNvmInstalled = await runWithResolver(
+    Effect.gen(function* () {
+      const resolver = yield* NodeResolver;
+      return yield* resolver.isNvmInstalled();
+    }),
+  );
+
+  if (isNvmInstalled && process.stdin.isTTY) {
     const { shouldInstallNode } = await prompts({
       type: "confirm",
       name: "shouldInstallNode",
@@ -42,19 +57,25 @@ export const resolveOxlintNode = async (
 
     if (shouldInstallNode) {
       logger.break();
-      const freshResolution = installNodeViaNvm() ? resolveNodeForOxlint() : null;
-      if (freshResolution) {
+      const fresh = await runWithResolver(
+        Effect.gen(function* () {
+          const resolver = yield* NodeResolver;
+          const didInstall = yield* resolver.installViaNvm();
+          return didInstall ? yield* resolver.resolve() : null;
+        }),
+      );
+      if (fresh) {
         logger.break();
-        logger.success(`Node ${freshResolution.version} installed. Using it for lint checks.`);
+        logger.success(`Node ${fresh.version} installed. Using it for lint checks.`);
         logger.break();
-        return freshResolution.binaryPath;
+        return fresh.binaryPath;
       }
       logger.break();
       logger.warn("Failed to install Node via nvm. Skipping lint checks.");
       logger.break();
       return null;
     }
-  } else if (isNvmInstalled()) {
+  } else if (isNvmInstalled) {
     logger.dim(`  Run: nvm install ${OXLINT_RECOMMENDED_NODE_MAJOR}`);
   } else {
     logger.dim(

@@ -271,7 +271,7 @@ describe("issue #275 + #290: filesystem walks tolerate EPERM/EACCES (macOS Libra
 });
 
 describe("issue #115: --staged uses git INDEX content, not working tree", () => {
-  it("getStagedSourceFiles returns staged JSX/TSX paths from the index", () => {
+  it("getStagedSourceFiles returns staged JSX/TSX paths from the index", async () => {
     const repoDir = path.join(tempRoot, "issue-115-paths");
     fs.mkdirSync(path.join(repoDir, "src"), { recursive: true });
     writeJson(path.join(repoDir, "package.json"), { name: "staged-paths" });
@@ -281,12 +281,12 @@ describe("issue #115: --staged uses git INDEX content, not working tree", () => 
     initGitRepo(repoDir);
     spawnSync("git", ["add", "src/App.tsx", "src/ignored.txt"], { cwd: repoDir });
 
-    const stagedFiles = getStagedSourceFiles(repoDir);
+    const stagedFiles = await getStagedSourceFiles(repoDir);
     expect(stagedFiles).toContain("src/App.tsx");
     expect(stagedFiles).not.toContain("src/ignored.txt");
   });
 
-  it("materializeStagedFiles snapshots INDEX content even when working tree differs", () => {
+  it("materializeStagedFiles snapshots INDEX content even when working tree differs", async () => {
     const repoDir = path.join(tempRoot, "issue-115-snapshot");
     fs.mkdirSync(path.join(repoDir, "src"), { recursive: true });
     writeJson(path.join(repoDir, "package.json"), { name: "staged-snapshot" });
@@ -301,11 +301,11 @@ describe("issue #115: --staged uses git INDEX content, not working tree", () => 
     spawnSync("git", ["add", "src/App.tsx"], { cwd: repoDir });
     writeFile(path.join(repoDir, "src", "App.tsx"), "export const WORKING_TREE = 3;\n");
 
-    const stagedFiles = getStagedSourceFiles(repoDir);
+    const stagedFiles = await getStagedSourceFiles(repoDir);
     expect(stagedFiles).toEqual(["src/App.tsx"]);
 
     const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rd-staged-snapshot-"));
-    const snapshot = materializeStagedFiles(repoDir, stagedFiles, tempDirectory);
+    const snapshot = await materializeStagedFiles(repoDir, stagedFiles, tempDirectory);
     try {
       const snapshotted = fs.readFileSync(
         path.join(snapshot.tempDirectory, "src", "App.tsx"),
@@ -318,12 +318,12 @@ describe("issue #115: --staged uses git INDEX content, not working tree", () => 
     }
   });
 
-  it("getStagedSourceFiles returns [] for a repo with nothing staged", () => {
+  it("getStagedSourceFiles returns [] for a repo with nothing staged", async () => {
     const repoDir = path.join(tempRoot, "issue-115-empty");
     fs.mkdirSync(repoDir, { recursive: true });
     writeJson(path.join(repoDir, "package.json"), { name: "empty-staged" });
     initGitRepo(repoDir);
-    expect(getStagedSourceFiles(repoDir)).toEqual([]);
+    await expect(getStagedSourceFiles(repoDir)).resolves.toEqual([]);
   });
 });
 

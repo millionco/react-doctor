@@ -57,6 +57,7 @@ export default defineConfig({
         // stay external.
         alwaysBundle: ["commander", "ora"],
         neverBundle: [
+          "@effect/platform-node",
           "agent-install",
           // HACK: deslop-js wraps oxc-parser / oxc-resolver, both of
           // which load platform-specific NAPI bindings via require().
@@ -106,6 +107,7 @@ export default defineConfig({
       deps: {
         alwaysBundle: ["commander", "ora"],
         neverBundle: [
+          "@effect/platform-node",
           "agent-install",
           "deslop-js",
           "effect",

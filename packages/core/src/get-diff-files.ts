@@ -5,25 +5,28 @@ import { Git, type GitDiffSelection } from "./services/git.js";
 import type { DiffInfo } from "@react-doctor/types";
 
 /**
- * Legacy synchronous façade. New callers should pull the `Git`
- * service directly via `yield* Git` inside their own Effect rather
- * than going through this wrapper — it exists so the existing CLI
- * code paths that aren't yet Effect-typed don't need to change.
+ * Programmatic façade over `Git.diffSelection`. Async because the
+ * Git service now runs through Effect's `ChildProcess` (true
+ * subprocess spawn, not `spawnSync`).
  *
- * Errors are unwrapped back into the historical `Error` shape:
+ * Errors are unwrapped back into the historical `Error` shape so
+ * existing thrown-class consumers continue to work:
  *  - empty base branch → `Error("Diff base branch cannot be empty.")`
- *  - non-existent base → `Error('Diff base branch "X" does not exist (run \`git fetch\` to update remote refs).')`
- *  - any other git failure → propagated cause
+ *  - non-existent base → `Error('Diff base branch "X" does not exist ...')`
+ *  - any other git failure → propagated cause via `Effect.runPromise`
  */
-export const getDiffInfo = (directory: string, explicitBaseBranch?: string): DiffInfo | null => {
-  const program = Effect.gen(function* () {
-    const git = yield* Git;
-    return yield* git.diffSelection({ directory, explicitBaseBranch });
-  });
-
+export const getDiffInfo = async (
+  directory: string,
+  explicitBaseBranch?: string,
+): Promise<DiffInfo | null> => {
   let selection: GitDiffSelection | null;
   try {
-    selection = runProgram(program);
+    selection = await Effect.runPromise(
+      Effect.gen(function* () {
+        const git = yield* Git;
+        return yield* git.diffSelection({ directory, explicitBaseBranch });
+      }).pipe(Effect.provide(Git.layerNode)),
+    );
   } catch (cause) {
     if (cause instanceof ReactDoctorError) {
       if (cause.reason instanceof GitBaseBranchInvalid) {
@@ -44,9 +47,6 @@ export const getDiffInfo = (directory: string, explicitBaseBranch?: string): Dif
     ...(selection.isCurrentChanges ? { isCurrentChanges: true } : {}),
   };
 };
-
-const runProgram = <Value>(program: Effect.Effect<Value, ReactDoctorError, Git>): Value =>
-  Effect.runSync(program.pipe(Effect.provide(Git.layerNode)));
 
 export const filterSourceFiles = (filePaths: string[]): string[] =>
   filePaths.filter((filePath) => SOURCE_FILE_PATTERN.test(filePath));

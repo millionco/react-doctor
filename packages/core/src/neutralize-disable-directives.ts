@@ -7,10 +7,10 @@ import { Git } from "./services/git.js";
 
 const DISABLE_DIRECTIVE_PATTERN = /(eslint|oxlint)-disable/;
 
-const findFilesWithDisableDirectivesViaGit = (
+const findFilesWithDisableDirectivesViaGit = async (
   rootDirectory: string,
   includePaths?: string[],
-): string[] | null => {
+): Promise<string[] | null> => {
   const program = Effect.gen(function* () {
     const git = yield* Git;
     return yield* git.grep({
@@ -25,7 +25,7 @@ const findFilesWithDisableDirectivesViaGit = (
 
   let grepResult: { readonly status: number; readonly stdout: string } | null;
   try {
-    grepResult = Effect.runSync(program.pipe(Effect.provide(Git.layerNode)));
+    grepResult = await Effect.runPromise(program.pipe(Effect.provide(Git.layerNode)));
   } catch {
     return null;
   }
@@ -83,8 +83,11 @@ const findFilesWithDisableDirectivesViaFilesystem = (
   return matches;
 };
 
-const findFilesWithDisableDirectives = (rootDirectory: string, includePaths?: string[]): string[] =>
-  findFilesWithDisableDirectivesViaGit(rootDirectory, includePaths) ??
+const findFilesWithDisableDirectives = async (
+  rootDirectory: string,
+  includePaths?: string[],
+): Promise<string[]> =>
+  (await findFilesWithDisableDirectivesViaGit(rootDirectory, includePaths)) ??
   findFilesWithDisableDirectivesViaFilesystem(rootDirectory, includePaths);
 
 const neutralizeContent = (content: string): string =>
@@ -92,11 +95,11 @@ const neutralizeContent = (content: string): string =>
     .replaceAll("eslint-disable", "eslint_disable")
     .replaceAll("oxlint-disable", "oxlint_disable");
 
-export const neutralizeDisableDirectives = (
+export const neutralizeDisableDirectives = async (
   rootDirectory: string,
   includePaths?: string[],
-): (() => void) => {
-  const filePaths = findFilesWithDisableDirectives(rootDirectory, includePaths);
+): Promise<() => void> => {
+  const filePaths = await findFilesWithDisableDirectives(rootDirectory, includePaths);
   const originalContents = new Map<string, string>();
 
   let isRestored = false;

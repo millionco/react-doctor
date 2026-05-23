@@ -1,8 +1,11 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { spawnSync, type SpawnSyncOptionsWithStringEncoding } from "node:child_process";
-import { DEFAULT_BRANCH_CANDIDATES, GIT_LS_FILES_MAX_BUFFER_BYTES } from "../constants.js";
+import * as Stream from "effect/Stream";
+import * as ChildProcess from "effect/unstable/process/ChildProcess";
+import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner";
+import { DEFAULT_BRANCH_CANDIDATES } from "../constants.js";
 import {
   GitBaseBranchInvalid,
   GitBaseBranchMissing,
@@ -10,49 +13,11 @@ import {
   ReactDoctorError,
 } from "../errors.js";
 
-interface GitInvocationOptions {
-  readonly maxBufferBytes?: number;
-  readonly allowNonZeroExit?: boolean;
-}
-
 interface GitInvocationResult {
-  readonly status: number | null;
+  readonly status: number;
   readonly stdout: string;
   readonly stderr: string;
 }
-
-/**
- * Internal Effect-typed git invocation. Wraps `spawnSync` so callers
- * stay synchronous (matches the existing react-doctor diff API). The
- * `Git` service exposes higher-level methods on top of this primitive
- * so call sites never touch `spawnSync` directly.
- */
-const invokeGitSync = (
-  directory: string,
-  args: ReadonlyArray<string>,
-  options: GitInvocationOptions = {},
-): Effect.Effect<GitInvocationResult, ReactDoctorError> =>
-  Effect.try({
-    try: (): GitInvocationResult => {
-      const spawnOptions: SpawnSyncOptionsWithStringEncoding = {
-        cwd: directory,
-        stdio: ["ignore", "pipe", "pipe"],
-        encoding: "utf-8",
-        maxBuffer: options.maxBufferBytes ?? GIT_LS_FILES_MAX_BUFFER_BYTES,
-      };
-      const result = spawnSync("git", [...args], spawnOptions);
-      if (result.error) throw result.error;
-      return {
-        status: result.status,
-        stdout: result.stdout?.toString() ?? "",
-        stderr: result.stderr?.toString() ?? "",
-      };
-    },
-    catch: (cause) =>
-      new ReactDoctorError({
-        reason: new GitInvocationFailed({ args: [...args], directory, cause }),
-      }),
-  });
 
 const trimOrNull = (value: string): string | null => {
   const trimmed = value.trim();
@@ -79,6 +44,13 @@ interface GitDiffSelectionInput {
 }
 
 interface GitShowOptions {
+  /**
+   * Soft limit on the maximum bytes `git show :<path>` may return.
+   * Currently advisory — `ChildProcess`'s stream-based reader has
+   * no built-in cap. Kept on the interface so callers can document
+   * their expectations and so a future `Stream.takeWhile` byte
+   * counter can enforce it without changing call sites.
+   */
   readonly maxBufferBytes?: number;
 }
 
@@ -98,17 +70,16 @@ interface GitGrepResult {
 }
 
 /**
- * `Git` wraps every `git`-via-`spawnSync` call react-doctor makes
- * (current branch detection, diff-base resolution, `git diff`,
- * `git diff --cached`, `git grep`, `git show :<path>`) behind a
- * service interface so tests can swap in `layerOf({ ... })` snapshots
- * without spinning up a real repository, and so future async
- * conversion (via `ChildProcess` from `effect/unstable/process`) can
- * happen without disturbing call sites.
+ * `Git` wraps every `git`-via-subprocess call react-doctor makes
+ * behind a `Context.Service`. The production layer (`layerNode`)
+ * runs commands through Effect's `ChildProcessSpawner` + `ChildProcess.make`
+ * (from `effect/unstable/process`), so spawning, stdio draining,
+ * scope-bound cleanup, and error tagging all live inside the
+ * Effect runtime — no `node:child_process` imports outside this
+ * file. Tests swap in `layerOf({ ... })` for a deterministic snapshot.
  *
- * All methods raise `ReactDoctorError` with a `GitInvocationFailed`
- * reason when `git` itself can't run; "git ran but produced no
- * matches" still resolves successfully (with `null` / `[]`).
+ * All methods fail with `ReactDoctorError`; "git ran but produced
+ * no matches" still resolves successfully (with `null` / `[]`).
  */
 export class Git extends Context.Service<
   Git,
@@ -148,171 +119,211 @@ export class Git extends Context.Service<
     readonly grep: (input: GitGrepInput) => Effect.Effect<GitGrepResult | null, ReactDoctorError>;
   }
 >()("react-doctor/Git") {
-  static readonly layerNode: Layer.Layer<Git> = Layer.sync(Git, () => {
-    const currentBranch = (directory: string): Effect.Effect<string | null, ReactDoctorError> =>
-      invokeGitSync(directory, ["rev-parse", "--abbrev-ref", "HEAD"]).pipe(
-        Effect.map((result) => {
-          if (result.status !== 0) return null;
-          const branch = trimOrNull(result.stdout);
-          return branch === "HEAD" ? null : branch;
-        }),
-      );
+  static readonly layerNode: Layer.Layer<Git> = Layer.effect(
+    Git,
+    Effect.gen(function* () {
+      const spawner = yield* ChildProcessSpawner;
 
-    const defaultBranch = (directory: string): Effect.Effect<string | null, ReactDoctorError> =>
-      Effect.gen(function* () {
-        const symref = yield* invokeGitSync(directory, [
-          "symbolic-ref",
-          "refs/remotes/origin/HEAD",
-        ]);
-        if (symref.status === 0) {
-          const trimmed = trimOrNull(symref.stdout);
-          if (trimmed !== null) return trimmed.replace("refs/remotes/origin/", "");
-        }
-        const candidateRefs = DEFAULT_BRANCH_CANDIDATES.map(
-          (candidate) => `refs/heads/${candidate}`,
-        );
-        const candidates = yield* invokeGitSync(directory, [
-          "for-each-ref",
-          "--format=%(refname:short)",
-          ...candidateRefs,
-        ]);
-        if (candidates.status !== 0) return null;
-        return trimOrNull(candidates.stdout.split("\n")[0] ?? "");
-      });
-
-    const branchExists = (
-      directory: string,
-      branch: string,
-    ): Effect.Effect<boolean, ReactDoctorError> =>
-      invokeGitSync(directory, ["rev-parse", "--verify", branch]).pipe(
-        Effect.map((result) => result.status === 0),
-      );
-
-    return Git.of({
-      currentBranch,
-      defaultBranch,
-      branchExists,
-      diffSelection: ({ directory, explicitBaseBranch }) =>
-        Effect.gen(function* () {
-          if (explicitBaseBranch !== undefined && explicitBaseBranch.trim().length === 0) {
-            return yield* Effect.fail(
-              new ReactDoctorError({
-                reason: new GitBaseBranchInvalid({
-                  detail: "Diff base branch cannot be empty.",
-                }),
-              }),
+      /**
+       * Spawns `git <args>` via Effect's `ChildProcess` + the
+       * captured `ChildProcessSpawner`. Drains stdout / stderr /
+       * exitCode in parallel so the pipe never blocks on a full
+       * buffer, and folds any `PlatformError` (binary missing,
+       * ENOENT, EACCES, …) into the tagged `ReactDoctorError({
+       * reason: GitInvocationFailed })` so the rest of the codebase
+       * sees a single failure channel.
+       */
+      const runGit = (
+        directory: string,
+        args: ReadonlyArray<string>,
+      ): Effect.Effect<GitInvocationResult, ReactDoctorError> =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const handle = yield* spawner.spawn(
+              // HACK: `extendEnv: true` is required for the spawned
+              // git to inherit `process.env.PATH` — without it Effect's
+              // `ChildProcess` defaults to an empty env and `spawn`
+              // immediately fails with `ENOENT: git` even when git is
+              // on the user's PATH. (`spawnSync` inherited PATH by
+              // default; ChildProcess's option flips the polarity.)
+              ChildProcess.make("git", [...args], { cwd: directory, extendEnv: true }),
             );
+            const [stdout, stderr, status] = yield* Effect.all(
+              [
+                Stream.mkString(Stream.decodeText(handle.stdout)),
+                Stream.mkString(Stream.decodeText(handle.stderr)),
+                handle.exitCode,
+              ],
+              { concurrency: 3 },
+            );
+            return { status, stdout, stderr } satisfies GitInvocationResult;
+          }),
+        ).pipe(
+          Effect.catchTag(
+            "PlatformError",
+            (cause) =>
+              new ReactDoctorError({
+                reason: new GitInvocationFailed({ args: [...args], directory, cause }),
+              }),
+          ),
+        );
+
+      const currentBranch = (directory: string): Effect.Effect<string | null, ReactDoctorError> =>
+        runGit(directory, ["rev-parse", "--abbrev-ref", "HEAD"]).pipe(
+          Effect.map((result) => {
+            if (result.status !== 0) return null;
+            const branch = trimOrNull(result.stdout);
+            return branch === "HEAD" ? null : branch;
+          }),
+        );
+
+      const defaultBranch = (directory: string): Effect.Effect<string | null, ReactDoctorError> =>
+        Effect.gen(function* () {
+          const symref = yield* runGit(directory, ["symbolic-ref", "refs/remotes/origin/HEAD"]);
+          if (symref.status === 0) {
+            const trimmed = trimOrNull(symref.stdout);
+            if (trimmed !== null) return trimmed.replace("refs/remotes/origin/", "");
           }
+          const candidateRefs = DEFAULT_BRANCH_CANDIDATES.map(
+            (candidate) => `refs/heads/${candidate}`,
+          );
+          const candidates = yield* runGit(directory, [
+            "for-each-ref",
+            "--format=%(refname:short)",
+            ...candidateRefs,
+          ]);
+          if (candidates.status !== 0) return null;
+          return trimOrNull(candidates.stdout.split("\n")[0] ?? "");
+        });
 
-          const resolvedCurrentBranch = yield* currentBranch(directory);
-          // Detached HEAD is still scannable when an explicit base
-          // resolves a merge-base, so we only abandon when both the
-          // branch is detached AND the caller didn't pin a base.
-          if (resolvedCurrentBranch === null && explicitBaseBranch === undefined) return null;
+      const branchExists = (
+        directory: string,
+        branch: string,
+      ): Effect.Effect<boolean, ReactDoctorError> =>
+        runGit(directory, ["rev-parse", "--verify", branch]).pipe(
+          Effect.map((result) => result.status === 0),
+        );
 
-          const baseBranch = explicitBaseBranch ?? (yield* defaultBranch(directory));
-          if (baseBranch === null) return null;
-
-          if (explicitBaseBranch !== undefined) {
-            const exists = yield* branchExists(directory, explicitBaseBranch);
-            if (!exists) {
+      return Git.of({
+        currentBranch,
+        defaultBranch,
+        branchExists,
+        diffSelection: ({ directory, explicitBaseBranch }) =>
+          Effect.gen(function* () {
+            if (explicitBaseBranch !== undefined && explicitBaseBranch.trim().length === 0) {
               return yield* Effect.fail(
                 new ReactDoctorError({
-                  reason: new GitBaseBranchMissing({ branch: explicitBaseBranch }),
+                  reason: new GitBaseBranchInvalid({
+                    detail: "Diff base branch cannot be empty.",
+                  }),
                 }),
               );
             }
-          }
 
-          if (resolvedCurrentBranch !== null && resolvedCurrentBranch === baseBranch) {
-            const uncommitted = yield* invokeGitSync(directory, [
+            const resolvedCurrentBranch = yield* currentBranch(directory);
+            // Detached HEAD is still scannable when an explicit base
+            // resolves a merge-base, so we only abandon when both the
+            // branch is detached AND the caller didn't pin a base.
+            if (resolvedCurrentBranch === null && explicitBaseBranch === undefined) return null;
+
+            const baseBranch = explicitBaseBranch ?? (yield* defaultBranch(directory));
+            if (baseBranch === null) return null;
+
+            if (explicitBaseBranch !== undefined) {
+              const exists = yield* branchExists(directory, explicitBaseBranch);
+              if (!exists) {
+                return yield* Effect.fail(
+                  new ReactDoctorError({
+                    reason: new GitBaseBranchMissing({ branch: explicitBaseBranch }),
+                  }),
+                );
+              }
+            }
+
+            if (resolvedCurrentBranch !== null && resolvedCurrentBranch === baseBranch) {
+              const uncommitted = yield* runGit(directory, [
+                "diff",
+                "-z",
+                "--name-only",
+                "--diff-filter=ACMR",
+                "--relative",
+                "HEAD",
+              ]);
+              if (uncommitted.status !== 0) return null;
+              const files = splitNullSeparated(uncommitted.stdout);
+              if (files.length === 0) return null;
+              return {
+                currentBranch: resolvedCurrentBranch,
+                baseBranch,
+                changedFiles: files,
+                isCurrentChanges: true,
+              } satisfies GitDiffSelection;
+            }
+
+            const mergeBase = yield* runGit(directory, ["merge-base", baseBranch, "HEAD"]);
+            if (mergeBase.status !== 0) return null;
+            const mergeBaseRef = trimOrNull(mergeBase.stdout);
+            if (mergeBaseRef === null) return null;
+
+            const diff = yield* runGit(directory, [
               "diff",
               "-z",
               "--name-only",
               "--diff-filter=ACMR",
               "--relative",
-              "HEAD",
+              mergeBaseRef,
             ]);
-            if (uncommitted.status !== 0) return null;
-            const files = splitNullSeparated(uncommitted.stdout);
-            if (files.length === 0) return null;
+            if (diff.status !== 0) return null;
             return {
               currentBranch: resolvedCurrentBranch,
               baseBranch,
-              changedFiles: files,
-              isCurrentChanges: true,
+              changedFiles: splitNullSeparated(diff.stdout),
+              isCurrentChanges: false,
             } satisfies GitDiffSelection;
-          }
-
-          const mergeBase = yield* invokeGitSync(directory, ["merge-base", baseBranch, "HEAD"]);
-          if (mergeBase.status !== 0) return null;
-          const mergeBaseRef = trimOrNull(mergeBase.stdout);
-          if (mergeBaseRef === null) return null;
-
-          const diff = yield* invokeGitSync(directory, [
+          }),
+        stagedFilePaths: (directory) =>
+          runGit(directory, [
             "diff",
+            "--cached",
             "-z",
             "--name-only",
             "--diff-filter=ACMR",
             "--relative",
-            mergeBaseRef,
-          ]);
-          if (diff.status !== 0) return null;
-          return {
-            currentBranch: resolvedCurrentBranch,
-            baseBranch,
-            changedFiles: splitNullSeparated(diff.stdout),
-            isCurrentChanges: false,
-          } satisfies GitDiffSelection;
-        }),
-      stagedFilePaths: (directory) =>
-        invokeGitSync(directory, [
-          "diff",
-          "--cached",
-          "-z",
-          "--name-only",
-          "--diff-filter=ACMR",
-          "--relative",
-        ]).pipe(
-          Effect.map((result) => {
-            if (result.status !== 0) return [] as ReadonlyArray<string>;
-            return splitNullSeparated(result.stdout);
+          ]).pipe(
+            Effect.map((result) => {
+              if (result.status !== 0) return [] as ReadonlyArray<string>;
+              return splitNullSeparated(result.stdout);
+            }),
+          ),
+        showStagedContent: (directory, relativePath) =>
+          runGit(directory, ["show", `:${relativePath}`]).pipe(
+            Effect.map((result) => (result.status === 0 ? result.stdout : null)),
+          ),
+        grep: (input) =>
+          Effect.gen(function* () {
+            const args: string[] = ["grep"];
+            if (input.listMatchingFiles ?? true) args.push("-l");
+            if (input.includeUntracked ?? false) args.push("--untracked");
+            if (input.extendedRegexp ?? false) args.push("-E");
+            args.push(input.pattern);
+            if (input.includePaths && input.includePaths.length > 0) {
+              args.push("--", ...input.includePaths);
+            }
+            const result = yield* runGit(input.directory, args);
+            // Status 128 = "not a git repo" → caller should fall back.
+            if (result.status === 128) return null;
+            return { status: result.status, stdout: result.stdout } satisfies GitGrepResult;
           }),
-        ),
-      showStagedContent: (directory, relativePath, options) =>
-        invokeGitSync(directory, ["show", `:${relativePath}`], {
-          maxBufferBytes: options?.maxBufferBytes,
-        }).pipe(Effect.map((result) => (result.status === 0 ? result.stdout : null))),
-      grep: (input) =>
-        Effect.gen(function* () {
-          const args: string[] = ["grep"];
-          if (input.listMatchingFiles ?? true) args.push("-l");
-          if (input.includeUntracked ?? false) args.push("--untracked");
-          if (input.extendedRegexp ?? false) args.push("-E");
-          args.push(input.pattern);
-          if (input.includePaths && input.includePaths.length > 0) {
-            args.push("--", ...input.includePaths);
-          }
-          const result = yield* invokeGitSync(input.directory, args, {
-            maxBufferBytes: input.maxBufferBytes,
-          });
-          // Status null = git wasn't found (already raised by `invokeGitSync`).
-          // Status 128 = not a git repo → caller should fall back.
-          if (result.status === null || result.status === 128) return null;
-          return { status: result.status, stdout: result.stdout } satisfies GitGrepResult;
-        }),
-    });
-  });
+      });
+    }),
+  ).pipe(Layer.provide(NodeServices.layer));
 
   /**
-   * Test layer driven by a deterministic `Map<command, response>`.
-   * Each key is the joined git argv (e.g. `"diff -z --name-only ..."`)
-   * and each value is the canned `GitInvocationResult`. Unknown
-   * commands resolve to a `status: 1, stdout: ""` (mirroring
-   * "ran but no output") so tests don't have to enumerate every
-   * subcommand the production path might issue. Two convenience
-   * snapshots — `currentBranch` and `stagedFiles` — short-circuit
-   * the two most common test fixtures.
+   * Test layer driven by a deterministic snapshot. Each key is a
+   * convenience pre-canned response so tests don't have to enumerate
+   * every subcommand the production path might issue. Missing keys
+   * resolve to safe defaults (current branch null, no staged files,
+   * grep returns null = "git unavailable, fall back").
    */
   static readonly layerOf = (snapshot: {
     readonly currentBranch?: string | null;

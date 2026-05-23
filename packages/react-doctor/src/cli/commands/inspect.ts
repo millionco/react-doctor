@@ -89,7 +89,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
 
     if (flags.staged) {
       setJsonReportMode("staged");
-      const stagedFiles = getStagedSourceFiles(resolvedDirectory);
+      const stagedFiles = await getStagedSourceFiles(resolvedDirectory);
       if (stagedFiles.length === 0) {
         if (isJsonMode) {
           writeJsonReport(
@@ -114,7 +114,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       }
 
       const tempDirectory = mkdtempSync(path.join(tmpdir(), STAGED_FILES_TEMP_DIR_PREFIX));
-      const snapshot = materializeStagedFiles(resolvedDirectory, stagedFiles, tempDirectory);
+      const snapshot = await materializeStagedFiles(resolvedDirectory, stagedFiles, tempDirectory);
       try {
         const scanResult = await inspect(snapshot.tempDirectory, {
           ...scanOptions,
@@ -178,7 +178,9 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
     // "Only scan changed files?" prompt never appears for users on a
     // feature branch who didn't explicitly pass --diff.
     const shouldDetectDiff = wantsDiffMode || (!skipPrompts && !isQuiet);
-    const diffInfo = shouldDetectDiff ? getDiffInfo(resolvedDirectory, explicitBaseBranch) : null;
+    const diffInfo = shouldDetectDiff
+      ? await getDiffInfo(resolvedDirectory, explicitBaseBranch)
+      : null;
     const isDiffMode = await resolveDiffMode(diffInfo, effectiveDiff, skipPrompts, isQuiet);
 
     // HACK: set the report-mode marker BEFORE the scan loop runs — if the
@@ -208,7 +210,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         const projectDiffInfo =
           projectDirectory === resolvedDirectory
             ? diffInfo
-            : getDiffInfo(projectDirectory, explicitBaseBranch);
+            : await getDiffInfo(projectDirectory, explicitBaseBranch);
         if (projectDiffInfo) {
           const changedSourceFiles = filterSourceFiles(projectDiffInfo.changedFiles);
           if (changedSourceFiles.length === 0) {

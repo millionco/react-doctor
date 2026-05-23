@@ -490,7 +490,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
   // `// oxlint-disable*` directives — we let oxlint apply them.
   const restoreDisableDirectives = respectInlineDisables
     ? () => {}
-    : neutralizeDisableDirectives(rootDirectory, includePaths);
+    : await neutralizeDisableDirectives(rootDirectory, includePaths);
 
   try {
     const oxlintBinary = resolveOxlintBinary();

@@ -6,6 +6,7 @@ export default defineConfig({
       entry: { index: "./src/index.ts" },
       deps: {
         neverBundle: [
+          "@effect/platform-node",
           "deslop-js",
           "effect",
           "oxc-parser",

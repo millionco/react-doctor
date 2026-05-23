@@ -62,7 +62,7 @@ const buildPullRequestCheckoutFixture = (
 };
 
 describe("issue #298: --diff respects explicit base on detached HEAD", () => {
-  it("returns the changed file when given an explicit base branch and HEAD is detached", () => {
+  it("returns the changed file when given an explicit base branch and HEAD is detached", async () => {
     const { repoDir, changedFilePath } = buildPullRequestCheckoutFixture("detached-with-base");
 
     // Sanity-check the fixture: `rev-parse --abbrev-ref HEAD` returns
@@ -73,24 +73,24 @@ describe("issue #298: --diff respects explicit base on detached HEAD", () => {
     });
     expect(headRef.stdout.toString().trim()).toBe("HEAD");
 
-    const diffInfo = getDiffInfo(repoDir, "master");
+    const diffInfo = await getDiffInfo(repoDir, "master");
     expect(diffInfo).not.toBeNull();
     expect(diffInfo?.baseBranch).toBe("master");
     expect(diffInfo?.currentBranch).toBeNull();
     expect(diffInfo?.changedFiles).toEqual([changedFilePath]);
   });
 
-  it("still returns null on detached HEAD when no explicit base is given (cannot infer scope)", () => {
+  it("still returns null on detached HEAD when no explicit base is given (cannot infer scope)", async () => {
     const { repoDir } = buildPullRequestCheckoutFixture("detached-no-base");
-    expect(getDiffInfo(repoDir)).toBeNull();
+    await expect(getDiffInfo(repoDir)).resolves.toBeNull();
   });
 
-  it("still throws the existing 'base does not exist' error on detached HEAD with a bogus base", () => {
+  it("still throws the existing 'base does not exist' error on detached HEAD with a bogus base", async () => {
     const { repoDir } = buildPullRequestCheckoutFixture("detached-bogus-base");
-    expect(() => getDiffInfo(repoDir, "origin/does-not-exist")).toThrow(/does not exist/);
+    await expect(getDiffInfo(repoDir, "origin/does-not-exist")).rejects.toThrow(/does not exist/);
   });
 
-  it("keeps the attached-HEAD path working when explicit base is given", () => {
+  it("keeps the attached-HEAD path working when explicit base is given", async () => {
     const repoDir = path.join(tempRoot, "attached-with-base");
     fs.mkdirSync(repoDir, { recursive: true });
     writeFile(path.join(repoDir, "src", "app.tsx"), "export const App = () => null;\n");
@@ -102,7 +102,7 @@ describe("issue #298: --diff respects explicit base on detached HEAD", () => {
     writeFile(path.join(repoDir, changedFilePath), "export const Feature = () => null;\n");
     commitAll(repoDir, "add feature");
 
-    const diffInfo = getDiffInfo(repoDir, "main");
+    const diffInfo = await getDiffInfo(repoDir, "main");
     expect(diffInfo).not.toBeNull();
     expect(diffInfo?.currentBranch).toBe("feature");
     expect(diffInfo?.baseBranch).toBe("main");

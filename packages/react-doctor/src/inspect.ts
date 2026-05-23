@@ -329,7 +329,7 @@ const runInspectWithRuntime = async (
       );
     } else {
       finalSpinnerHandle.fail("Lint checks failed (non-fatal, skipping).");
-      runConsole(Console.error(lintFailureReason));
+      runConsole(Console.error(highlighter.error(lintFailureReason)));
     }
   }
 
@@ -471,7 +471,9 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       if (hasSkippedChecks) {
         const skippedLabel = skippedChecks.join(" and ");
         yield* Console.warn(
-          `No issues detected, but ${skippedLabel} checks failed — results are incomplete.`,
+          highlighter.warn(
+            `No issues detected, but ${skippedLabel} checks failed — results are incomplete.`,
+          ),
         );
       } else if (demotedDiagnosticCount > 0) {
         yield* Console.log(
@@ -520,7 +522,9 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
     if (hasSkippedChecks) {
       const skippedLabel = skippedChecks.join(" and ");
       yield* Console.log("");
-      yield* Console.warn(`  Note: ${skippedLabel} checks failed — score may be incomplete.`);
+      yield* Console.warn(
+        highlighter.warn(`  Note: ${skippedLabel} checks failed — score may be incomplete.`),
+      );
     }
 
     return buildResult();

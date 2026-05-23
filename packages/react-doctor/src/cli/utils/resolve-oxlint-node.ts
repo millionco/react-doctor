@@ -8,7 +8,8 @@ import {
 } from "@react-doctor/core";
 import { prompts } from "./prompts.js";
 
-const consoleWarn = (message: string): Effect.Effect<void> => Console.warn(message);
+const consoleWarn = (message: string): Effect.Effect<void> =>
+  Console.warn(highlighter.warn(message));
 const consoleBreak: Effect.Effect<void> = Console.log("");
 const consoleDim = (message: string): Effect.Effect<void> => Console.log(highlighter.gray(message));
 const consoleSuccess = (message: string): Effect.Effect<void> =>

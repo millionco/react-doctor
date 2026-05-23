@@ -4,6 +4,7 @@ import {
   CANONICAL_GITHUB_URL,
   formatErrorChain,
   formatReactDoctorError,
+  highlighter,
   isReactDoctorError,
 } from "@react-doctor/core";
 import type { HandleErrorOptions } from "@react-doctor/types";
@@ -11,18 +12,26 @@ import type { HandleErrorOptions } from "@react-doctor/types";
 /**
  * Effect-typed renderer: every message routes through `Console.error`
  * so test runs can swap `Console` to a capture sink and the output
- * appears in the right stream (stderr) in production.
+ * appears in the right stream (stderr) in production. Lines stay
+ * red-highlighted (matches the historical `consoleLogger.error`
+ * contract) so the user sees a clearly distinguished error block.
  */
 export const handleErrorEffect = (error: unknown): Effect.Effect<void> =>
   Effect.gen(function* () {
     yield* Console.error("");
-    yield* Console.error("Something went wrong. Please check the error below for more details.");
     yield* Console.error(
-      `If the problem persists, please open an issue at ${CANONICAL_GITHUB_URL}/issues.`,
+      highlighter.error("Something went wrong. Please check the error below for more details."),
+    );
+    yield* Console.error(
+      highlighter.error(
+        `If the problem persists, please open an issue at ${CANONICAL_GITHUB_URL}/issues.`,
+      ),
     );
     yield* Console.error("");
     yield* Console.error(
-      isReactDoctorError(error) ? formatReactDoctorError(error) : formatErrorChain(error),
+      highlighter.error(
+        isReactDoctorError(error) ? formatReactDoctorError(error) : formatErrorChain(error),
+      ),
     );
     yield* Console.error("");
   });

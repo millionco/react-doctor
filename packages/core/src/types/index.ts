@@ -29,15 +29,13 @@ export type {
   WorkspacePackage,
 } from "./project-info.js";
 export type { PromptMultiselectChoiceState, PromptMultiselectContext } from "./prompts.js";
-// `REACT_NATIVE_DEPENDENCY_NAMES` / `isReactNativeDependencyName`
-// live in `oxlint-plugin-react-doctor` (the heaviest consumer — the
-// per-file rule gate). Re-exported here so core consumers can import
-// the constant without reaching into the plugin package directly,
-// and so this index keeps its role as the one-stop shared-types
-// barrel for the workspace.
-export {
-  REACT_NATIVE_DEPENDENCY_NAMES,
-  REACT_NATIVE_DEPENDENCY_PREFIXES,
-  isReactNativeDependencyName,
-} from "oxlint-plugin-react-doctor";
+// `isReactNativeDependencyName` / `REACT_NATIVE_DEPENDENCY_NAMES`
+// are intentionally NOT re-exported here — re-exporting from
+// `oxlint-plugin-react-doctor` would force every consumer of the
+// types barrel (including `discoverProject`) to load the entire
+// 286-rule plugin at module-init time. The project-discovery side
+// owns a tiny standalone copy in
+// `core/src/project-info/internal-rn-dependency-names.ts`;
+// rule-side consumers import from the plugin package directly.
+// See that file for the duplication rationale.
 export type { ScoreResult } from "./score.js";

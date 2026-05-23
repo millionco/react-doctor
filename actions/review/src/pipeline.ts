@@ -1,7 +1,6 @@
 import path from "node:path";
-import { diagnose } from "react-doctor/api";
 import {
-  isReactDoctorError,
+  diagnose,
   NoReactDependencyError,
   PackageJsonNotFoundError,
   ProjectNotFoundError,
@@ -208,7 +207,12 @@ export const runDiagnoseAcrossWorkspace = async (
         totalSourceFiles += result.project.sourceFileCount;
       }
     } catch (error) {
-      if (isMissingReactProjectError(error) || isReactDoctorError(error)) continue;
+      // Only project-discovery failures should silently skip the
+      // workspace entry. AmbiguousProjectError is also a
+      // ReactDoctorError but means "multiple React roots found here"
+      // — propagating it surfaces the misconfiguration instead of
+      // silently dropping the project from the workspace fan-out.
+      if (isMissingReactProjectError(error)) continue;
       throw error;
     }
   }

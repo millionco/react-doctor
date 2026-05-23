@@ -2,7 +2,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { isReactDoctorError } from "react-doctor/api";
 import { BASE_WORKTREE_DIR_NAME, CHECK_RUN_NAME, MAX_INLINE_COMMENTS_COUNT } from "./constants.ts";
 import {
   buildInlineCommentCandidates,
@@ -68,10 +67,19 @@ const readPullRequestContext = (): PullRequestContext => {
   const [owner, repo] = baseRepoFullName.split("/");
   if (!owner || !repo) throw new Error(`Could not parse owner/repo from ${baseRepoFullName}.`);
 
-  const headRepoFullName = pullRequest.head.repo?.full_name ?? baseRepoFullName;
-  const isFork = headRepoFullName !== baseRepoFullName;
-  const headOwner = pullRequest.head.repo?.owner.login ?? owner;
-  const headRepo = pullRequest.head.repo?.full_name.split("/")[1] ?? repo;
+  // HACK: `pull_request.head.repo` is nullable (deleted forks,
+  // restricted fork metadata, etc.). Earlier code did
+  // `pullRequest.head.repo?.full_name.split("/")[1]`, where `?.`
+  // only guards `repo` — `full_name` would be undefined and `.split`
+  // crashes. Funnel every field through the same `headRepoMeta`
+  // guard so a null head repo produces a clean "same-repo PR"
+  // snapshot instead of a runtime throw, and `isFork` is correctly
+  // false only when `head.repo` is present AND matches the base repo.
+  const headRepoMeta = pullRequest.head.repo;
+  const headRepoFullName = headRepoMeta?.full_name ?? baseRepoFullName;
+  const isFork = headRepoMeta !== null && headRepoFullName !== baseRepoFullName;
+  const headOwner = headRepoMeta?.owner.login ?? owner;
+  const headRepo = headRepoMeta?.full_name.split("/")[1] ?? repo;
 
   return {
     owner,
@@ -220,7 +228,12 @@ const main = async (): Promise<void> => {
         runDiagnoseAcrossWorkspace(worktreeDirectory),
       ]);
     } catch (error) {
-      if (isMissingReactProjectError(error) || isReactDoctorError(error)) {
+      // Only project-discovery failures collapse to the friendly
+      // "not a React project" outcome. AmbiguousProjectError (also
+      // a ReactDoctorError) means "multiple React roots found" —
+      // propagating it surfaces the misconfiguration instead of
+      // silently posting a misleading "Not a React project" check.
+      if (isMissingReactProjectError(error)) {
         await handleNotAReactProject(client, context, checkRunHandle);
         return;
       }

@@ -11,6 +11,7 @@ permissions:
 
 jobs:
   update:
+    if: github.repository == 'millionco/react-doctor'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5

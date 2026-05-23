@@ -18,6 +18,20 @@ export interface StagedSnapshot {
 }
 
 /**
+ * Zip-Slip defense: `git diff --cached --name-only` is the source
+ * of `relativePath`, and git normalizes paths during ordinary
+ * `git add`. But a deliberately crafted index entry (via
+ * `git update-index --add`, a malicious pack, or a symlinked
+ * working tree) can include `..` segments that escape the temp
+ * tree. Resolve the candidate against the temp dir and reject any
+ * result that lands outside it before `writeFileSync` runs.
+ */
+const isPathInsideDirectory = (childAbsolutePath: string, parentAbsolutePath: string): boolean => {
+  const relative = path.relative(parentAbsolutePath, childAbsolutePath);
+  return Boolean(relative) && !relative.startsWith("..") && !path.isAbsolute(relative);
+};
+
+/**
  * `StagedFiles` materializes the git-staged source files of a
  * directory into a temp tree (mirroring the project layout and
  * carrying over a fixed set of project config files) so oxlint can
@@ -67,6 +81,7 @@ export class StagedFiles extends Context.Service<
         materialize: ({ directory, stagedFiles, tempDirectory }) =>
           Effect.gen(function* () {
             const materializedFiles: string[] = [];
+            const resolvedTempDirectory = path.resolve(tempDirectory);
             for (const relativePath of stagedFiles) {
               // Per-file git failures (missing binary, buffer overflow,
               // spawn errors) must NOT sink the whole snapshot — the
@@ -80,17 +95,21 @@ export class StagedFiles extends Context.Service<
                 })
                 .pipe(Effect.orElseSucceed(() => null as string | null));
               if (content === null) continue;
-              const targetPath = path.join(tempDirectory, relativePath);
+              const candidateTargetPath = path.resolve(resolvedTempDirectory, relativePath);
+              // Zip-Slip defense — skip any path that escapes the temp dir.
+              if (!isPathInsideDirectory(candidateTargetPath, resolvedTempDirectory)) {
+                continue;
+              }
               yield* Effect.sync(() => {
-                fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-                fs.writeFileSync(targetPath, content);
+                fs.mkdirSync(path.dirname(candidateTargetPath), { recursive: true });
+                fs.writeFileSync(candidateTargetPath, content);
               });
               materializedFiles.push(relativePath);
             }
             yield* Effect.sync(() => {
               for (const configFilename of STAGED_FILES_PROJECT_CONFIG_FILENAMES) {
                 const sourcePath = path.join(directory, configFilename);
-                const targetPath = path.join(tempDirectory, configFilename);
+                const targetPath = path.join(resolvedTempDirectory, configFilename);
                 if (fs.existsSync(sourcePath) && !fs.existsSync(targetPath)) {
                   fs.cpSync(sourcePath, targetPath);
                 }

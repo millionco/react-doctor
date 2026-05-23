@@ -24,6 +24,29 @@ const trimOrNull = (value: string): string | null => {
   return trimmed.length === 0 ? null : trimmed;
 };
 
+/**
+ * Defense against `--diff <evil>` git-flag injection (CVE-2018-17456
+ * shape). `git rev-parse --verify <ref>` and `git merge-base <ref>
+ * HEAD` take the next positional as a refname — but a value starting
+ * with `-` (e.g. `--upload-pack=evil`) is parsed as an option
+ * instead. The composite-action `case "$DIFF_BASE" in -*)` guard
+ * already blocks the most common CI shape; this hardens the library
+ * boundary so local-CLI callers and other consumers don't have to
+ * re-implement the check.
+ *
+ * Rejects: empty, leading `-`, leading/trailing `.`, embedded `..`,
+ * `@{` reflog suffix, or any character outside `[A-Za-z0-9_./-]`.
+ */
+const SAFE_GIT_REVISION_PATTERN = /^[A-Za-z0-9_./-]+$/;
+
+const isSafeGitRevision = (candidate: string): boolean => {
+  if (candidate.length === 0) return false;
+  if (candidate.startsWith("-")) return false;
+  if (candidate.startsWith(".") || candidate.endsWith(".")) return false;
+  if (candidate.includes("..") || candidate.includes("@{")) return false;
+  return SAFE_GIT_REVISION_PATTERN.test(candidate);
+};
+
 const splitNullSeparated = (value: string): ReadonlyArray<string> =>
   value.split("\0").filter((entry) => entry.length > 0);
 
@@ -215,6 +238,15 @@ export class Git extends Context.Service<
                 new ReactDoctorError({
                   reason: new GitBaseBranchInvalid({
                     detail: "Diff base branch cannot be empty.",
+                  }),
+                }),
+              );
+            }
+            if (explicitBaseBranch !== undefined && !isSafeGitRevision(explicitBaseBranch)) {
+              return yield* Effect.fail(
+                new ReactDoctorError({
+                  reason: new GitBaseBranchInvalid({
+                    detail: `Diff base branch "${explicitBaseBranch}" is not a valid git ref name (must match [A-Za-z0-9_./-] without leading '-', '..', or '@{').`,
                   }),
                 }),
               );

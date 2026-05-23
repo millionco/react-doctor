@@ -188,3 +188,51 @@ describe("ReactDoctorError shapes raised by Git", () => {
     expect(error.message).toContain("release/9.9");
   });
 });
+
+describe("Git.diffSelection — git-flag injection (CVE-2018-17456 shape)", () => {
+  /**
+   * Defense-in-depth regression for `--diff <evil>`: the service
+   * MUST reject suspicious refnames BEFORE forwarding them to
+   * `git rev-parse --verify` / `git merge-base`, where a leading
+   * `-` would be interpreted as a git option (e.g.
+   * `--upload-pack=evil`). Composite-action callers also guard with
+   * `case "$DIFF_BASE" in -*)`, but the library boundary owns the
+   * library boundary.
+   *
+   * Tests use `Git.layerNode` (production layer) because the
+   * validation runs BEFORE any subprocess spawn — the test never
+   * reaches `ChildProcess.spawn` so no `git` binary is required.
+   */
+  const expectInvalid = async (badRef: string) => {
+    const program = Effect.gen(function* () {
+      const git = yield* Git;
+      return yield* git.diffSelection({ directory: "/repo", explicitBaseBranch: badRef });
+    });
+    const exit = await Effect.runPromiseExit(program.pipe(Effect.provide(Git.layerNode)));
+    expect(exit._tag).toBe("Failure");
+  };
+
+  it("rejects a leading dash (git option-injection shape)", async () => {
+    await expectInvalid("--upload-pack=evil");
+  });
+
+  it("rejects refnames with `..` (rev-range injection)", async () => {
+    await expectInvalid("main..origin/main");
+  });
+
+  it("rejects refnames containing `@{` (reflog suffix)", async () => {
+    await expectInvalid("main@{1}");
+  });
+
+  it("rejects refnames containing spaces or shell metacharacters", async () => {
+    await expectInvalid("main; rm -rf /");
+  });
+
+  it("rejects refnames starting with a dot", async () => {
+    await expectInvalid(".main");
+  });
+
+  it("rejects empty refnames (legacy contract)", async () => {
+    await expectInvalid("");
+  });
+});

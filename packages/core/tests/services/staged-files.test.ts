@@ -104,6 +104,63 @@ describe("StagedFiles.layerNode regression — per-file git failures", () => {
   });
 });
 
+describe("StagedFiles.layerNode — Zip-Slip defense (path traversal)", () => {
+  let tempDirectory2: string;
+
+  beforeEach(() => {
+    tempDirectory2 = fs.mkdtempSync(path.join(os.tmpdir(), "rd-staged-zipslip-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tempDirectory2, { recursive: true, force: true });
+  });
+
+  /**
+   * Security regression: a malicious / pathological index entry can
+   * contain `..` segments. The previous `path.join(tempDir, relPath)`
+   * happily resolved outside the temp dir; `materialize` must reject
+   * any candidate that lands outside `resolvedTempDirectory` BEFORE
+   * `writeFileSync` runs (the standard Zip-Slip defense shape).
+   */
+  it("skips a staged path that resolves outside the temp directory", async () => {
+    const escapingGit = Layer.succeed(
+      Git,
+      Git.of({
+        currentBranch: () => Effect.succeed(null),
+        defaultBranch: () => Effect.succeed(null),
+        branchExists: () => Effect.succeed(false),
+        diffSelection: () => Effect.succeed(null),
+        stagedFilePaths: () => Effect.succeed(["../escaped.ts", "src/inside.ts"]),
+        showStagedContent: (_directory, relativePath) =>
+          Effect.succeed(
+            relativePath === "../escaped.ts"
+              ? "// would land outside the temp dir\n"
+              : "// inside the temp dir\n",
+          ),
+        grep: () => Effect.succeed(null),
+      } satisfies Context.Tag.Service<typeof Git>),
+    );
+
+    const layer = StagedFiles.layerNode.pipe(Layer.provide(escapingGit));
+
+    const snapshot = await Effect.runPromise(
+      Effect.gen(function* () {
+        const staged = yield* StagedFiles;
+        return yield* staged.materialize({
+          directory: "/repo",
+          stagedFiles: ["../escaped.ts", "src/inside.ts"],
+          tempDirectory: tempDirectory2,
+        });
+      }).pipe(Effect.provide(layer)),
+    );
+
+    expect(snapshot.stagedFiles).toEqual(["src/inside.ts"]);
+    expect(fs.existsSync(path.join(tempDirectory2, "src/inside.ts"))).toBe(true);
+    // The escaping path must not have been written anywhere on disk.
+    expect(fs.existsSync(path.resolve(tempDirectory2, "..", "escaped.ts"))).toBe(false);
+  });
+});
+
 describe("StagedFiles.layerOf (deterministic test layer)", () => {
   it("returns the snapshot's source files unchanged", async () => {
     const layer = StagedFiles.layerOf({

@@ -150,6 +150,12 @@ const materializeBaseWorktree = (
 ): string => {
   const worktreeDirectory = resolveBaseWorktreeDirectory();
   fs.rmSync(worktreeDirectory, { recursive: true, force: true });
+  // HACK: an interrupted prior run can leave the worktree registered
+  // in `.git/worktrees/` even after the directory is removed. Without
+  // a `worktree prune` first, `worktree add` fails with "already
+  // registered" and the whole review aborts. `tryRunGit` because a
+  // fresh repo has nothing to prune.
+  tryRunGit(["worktree", "prune"], headDirectory);
 
   const remoteUrl = `https://x-access-token:${token}@github.com/${baseRepoFullName}.git`;
   const remoteName = "react-doctor-base";
@@ -209,6 +215,33 @@ const main = async (): Promise<void> => {
   const token = resolveToken();
   const client = createGitHubClient(token);
   const headDirectory = resolveHeadDirectory();
+
+  // Verify the workspace HEAD matches `pull_request.head.sha`. On
+  // `pull_request` events, `actions/checkout` defaults to the
+  // synthetic merge commit (`refs/pull/N/merge`), so without an
+  // explicit `ref: ${{ github.event.pull_request.head.sha }}` the
+  // diagnostics would be computed against the merge result while
+  // the inline reviews + check run annotate the head commit —
+  // line numbers can disagree, producing silently wrong comments.
+  // Warn loudly when this happens so the workflow gets fixed
+  // instead of shipping misleading reviews.
+  const workspaceHeadSha = (() => {
+    try {
+      return execFileSync("git", ["rev-parse", "HEAD"], {
+        cwd: headDirectory,
+        encoding: "utf-8",
+      }).trim();
+    } catch {
+      return null;
+    }
+  })();
+  if (workspaceHeadSha !== null && workspaceHeadSha !== context.headSha) {
+    logWarning(
+      `Workspace HEAD (${workspaceHeadSha.slice(0, 7)}) does not match pull_request.head.sha (${context.headSha.slice(0, 7)}). ` +
+        `actions/checkout defaults to the synthetic merge commit on pull_request events — add ` +
+        `\`ref: \${{ github.event.pull_request.head.sha }}\` to the checkout step so diagnostic line numbers match the SHA the action annotates.`,
+    );
+  }
 
   let pendingCommentPosted = false;
   let worktreeDirectory: string | null = null;

@@ -15,7 +15,15 @@ jobs:
   review:
     runs-on: ubuntu-latest
     steps:
+      # Check out the PR head SHA explicitly. By default,
+      # `actions/checkout` on a `pull_request` event checks out the
+      # synthetic merge commit (`refs/pull/N/merge`), so HEAD would
+      # disagree with `pull_request.head.sha` — the SHA the action
+      # annotates with inline reviews and the check run. Pin to the
+      # head SHA so diagnostic line numbers match what the user sees
+      # on GitHub.
       - uses: actions/checkout@v5
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
       - uses: ./

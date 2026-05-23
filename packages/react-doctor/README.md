@@ -68,8 +68,14 @@ jobs:
   review:
     runs-on: ubuntu-latest
     steps:
+      # The `ref` line is required: `actions/checkout` on `pull_request`
+      # defaults to the synthetic merge commit, so HEAD would
+      # disagree with `pull_request.head.sha` (the SHA the action
+      # annotates) and diagnostic line numbers wouldn't match what
+      # GitHub shows in the PR diff.
       - uses: actions/checkout@v5
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
       - uses: millionco/react-doctor@main
 ```

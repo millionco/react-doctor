@@ -1,6 +1,6 @@
 import type { ProjectInfo, ReactDoctorConfig } from "@react-doctor/types";
 import { formatFrameworkName } from "@react-doctor/project-info";
-import { highlighter, logger } from "@react-doctor/core";
+import { highlighter, type LoggerWriter } from "@react-doctor/core";
 import { spinner } from "./spinner.js";
 
 export const printProjectDetection = (
@@ -8,7 +8,8 @@ export const printProjectDetection = (
   userConfig: ReactDoctorConfig | null,
   isDiffMode: boolean,
   includePaths: string[],
-  lintSourceFileCount?: number,
+  lintSourceFileCount: number | undefined,
+  logger: LoggerWriter,
 ): void => {
   const frameworkLabel = formatFrameworkName(projectInfo.framework);
   const languageLabel = projectInfo.hasTypeScript ? "TypeScript" : "JavaScript";

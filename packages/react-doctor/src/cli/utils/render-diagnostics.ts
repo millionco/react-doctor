@@ -1,13 +1,16 @@
 import {
+  groupBy,
+  highlighter,
   MAX_CATEGORY_GROUPS_SHOWN_NON_VERBOSE,
   MAX_RULE_GROUPS_PER_CATEGORY_NON_VERBOSE,
   MILLISECONDS_PER_SECOND,
   OUTPUT_DETAIL_WRAP_WIDTH_CHARS,
   RULE_NAME_COLUMN_WIDTH_CHARS,
+  toRelativePath,
+  type LoggerWriter,
 } from "@react-doctor/core";
 import type { Diagnostic } from "@react-doctor/types";
 import { buildHiddenDiagnosticsSummary } from "./build-hidden-diagnostics-summary.js";
-import { groupBy, highlighter, logger, toRelativePath } from "@react-doctor/core";
 import { indentMultilineText } from "./indent-multiline-text.js";
 import { wrapIndentedText } from "./wrap-indented-text.js";
 
@@ -79,18 +82,19 @@ const padRuleNameToColumn = (ruleName: string, columnWidth: number): string => {
   return ruleName + " ".repeat(columnWidth - ruleName.length);
 };
 
-const grayLine = (text: string): void => {
+const grayLine = (text: string, logger: LoggerWriter): void => {
   logger.log(highlighter.gray(text));
 };
 
-const grayWrappedLine = (text: string, linePrefix: string): void => {
-  grayLine(wrapIndentedText(text, linePrefix, OUTPUT_DETAIL_WRAP_WIDTH_CHARS));
+const grayWrappedLine = (text: string, linePrefix: string, logger: LoggerWriter): void => {
+  grayLine(wrapIndentedText(text, linePrefix, OUTPUT_DETAIL_WRAP_WIDTH_CHARS), logger);
 };
 
 const printCompactRuleGroupLine = (
   ruleKey: string,
   ruleDiagnostics: Diagnostic[],
   ruleNameColumnWidth: number,
+  logger: LoggerWriter,
 ): void => {
   const firstDiagnostic = ruleDiagnostics[0];
   const severitySymbol = firstDiagnostic.severity === "error" ? "✗" : "⚠";
@@ -140,6 +144,7 @@ const printDefaultRuleGroup = (
   ruleKey: string,
   ruleDiagnostics: Diagnostic[],
   rootDirectory: string,
+  logger: LoggerWriter,
 ): void => {
   const firstDiagnostic = ruleDiagnostics[0];
   const ruleTitle = toRuleTitle(firstDiagnostic.rule);
@@ -149,17 +154,17 @@ const printDefaultRuleGroup = (
   const trailingBadge = siteCountBadge.length > 0 ? ` ${highlighter.gray(siteCountBadge)}` : "";
 
   logger.log(`  ${icon} ${ruleTitle}${trailingBadge}`);
-  grayWrappedLine(firstDiagnostic.message, "    ");
+  grayWrappedLine(firstDiagnostic.message, "    ", logger);
   if (firstDiagnostic.help) {
-    grayWrappedLine(firstDiagnostic.help, "    ");
+    grayWrappedLine(firstDiagnostic.help, "    ", logger);
   }
   if (firstDiagnostic.url) {
-    grayLine(`    ${firstDiagnostic.url}`);
+    grayLine(`    ${firstDiagnostic.url}`, logger);
   }
   const firstLocation = ruleDiagnostics.find((diagnostic) => diagnostic.line > 0);
   if (firstLocation) {
     const locationPath = toRelativePath(firstLocation.filePath, rootDirectory);
-    grayLine(`    ${locationPath}:${firstLocation.line}`);
+    grayLine(`    ${locationPath}:${firstLocation.line}`, logger);
   }
 };
 
@@ -167,11 +172,12 @@ const printDefaultCategoryGroup = (
   categoryGroup: CategoryDiagnosticGroup,
   visibleRuleGroups: [string, Diagnostic[]][],
   rootDirectory: string,
+  logger: LoggerWriter,
 ): void => {
   const issueCount = formatIssueCount(categoryGroup.diagnostics.length);
   logger.log(`${highlighter.bold(categoryGroup.category)} ${highlighter.dim(issueCount)}`);
   for (const [ruleKey, ruleDiagnostics] of visibleRuleGroups) {
-    printDefaultRuleGroup(ruleKey, ruleDiagnostics, rootDirectory);
+    printDefaultRuleGroup(ruleKey, ruleDiagnostics, rootDirectory, logger);
   }
   logger.break();
 };
@@ -180,30 +186,34 @@ const printVerboseRuleGroup = (
   ruleKey: string,
   ruleDiagnostics: Diagnostic[],
   ruleNameColumnWidth: number,
+  logger: LoggerWriter,
 ): void => {
-  printCompactRuleGroupLine(ruleKey, ruleDiagnostics, ruleNameColumnWidth);
+  printCompactRuleGroupLine(ruleKey, ruleDiagnostics, ruleNameColumnWidth, logger);
   const firstDiagnostic = ruleDiagnostics[0];
-  grayLine(indentMultilineText(firstDiagnostic.message, "      "));
+  grayLine(indentMultilineText(firstDiagnostic.message, "      "), logger);
   if (firstDiagnostic.help) {
-    grayLine(indentMultilineText(`→ ${firstDiagnostic.help}`, "      "));
+    grayLine(indentMultilineText(`→ ${firstDiagnostic.help}`, "      "), logger);
   }
   const fileSites = buildVerboseSiteMap(ruleDiagnostics);
   for (const [filePath, sites] of fileSites) {
     if (sites.length > 0) {
       for (const site of sites) {
-        grayLine(`      ${filePath}:${site.line}`);
+        grayLine(`      ${filePath}:${site.line}`, logger);
         if (site.suppressionHint) {
-          grayLine(`        ↳ ${site.suppressionHint}`);
+          grayLine(`        ↳ ${site.suppressionHint}`, logger);
         }
       }
     } else {
-      grayLine(`      ${filePath}`);
+      grayLine(`      ${filePath}`, logger);
     }
   }
   logger.break();
 };
 
-const printHiddenDiagnosticsSummary = (hiddenRuleGroups: [string, Diagnostic[]][]): void => {
+const printHiddenDiagnosticsSummary = (
+  hiddenRuleGroups: [string, Diagnostic[]][],
+  logger: LoggerWriter,
+): void => {
   const hiddenDiagnostics = hiddenRuleGroups.flatMap(([, ruleDiagnostics]) => ruleDiagnostics);
   const renderedParts = buildHiddenDiagnosticsSummary(hiddenDiagnostics).map((part) => {
     const [icon, ...labelParts] = part.text.split(" ");
@@ -211,11 +221,15 @@ const printHiddenDiagnosticsSummary = (hiddenRuleGroups: [string, Diagnostic[]][
   });
 
   logger.log(`  ${renderedParts.join("  ")}`);
-  grayLine("    Run `npx react-doctor@latest . --verbose` to get all details");
+  grayLine("    Run `npx react-doctor@latest . --verbose` to get all details", logger);
   logger.break();
 };
 
-const printDefaultDiagnostics = (diagnostics: Diagnostic[], rootDirectory: string): void => {
+const printDefaultDiagnostics = (
+  diagnostics: Diagnostic[],
+  rootDirectory: string,
+  logger: LoggerWriter,
+): void => {
   const categoryGroups = buildCategoryDiagnosticGroups(diagnostics);
   const hiddenRuleGroups: [string, Diagnostic[]][] = [];
   const visibleCategoryGroups = categoryGroups.slice(0, MAX_CATEGORY_GROUPS_SHOWN_NON_VERBOSE);
@@ -229,7 +243,7 @@ const printDefaultDiagnostics = (diagnostics: Diagnostic[], rootDirectory: strin
     const remainingRuleGroups = categoryGroup.ruleGroups.slice(
       MAX_RULE_GROUPS_PER_CATEGORY_NON_VERBOSE,
     );
-    printDefaultCategoryGroup(categoryGroup, visibleRuleGroups, rootDirectory);
+    printDefaultCategoryGroup(categoryGroup, visibleRuleGroups, rootDirectory, logger);
     hiddenRuleGroups.push(...remainingRuleGroups);
   }
   hiddenRuleGroups.push(
@@ -237,7 +251,7 @@ const printDefaultDiagnostics = (diagnostics: Diagnostic[], rootDirectory: strin
   );
 
   if (hiddenRuleGroups.length > 0) {
-    printHiddenDiagnosticsSummary(hiddenRuleGroups);
+    printHiddenDiagnosticsSummary(hiddenRuleGroups, logger);
   }
 };
 
@@ -245,9 +259,10 @@ export const printDiagnostics = (
   diagnostics: Diagnostic[],
   isVerbose: boolean,
   rootDirectory: string,
+  logger: LoggerWriter,
 ): void => {
   if (!isVerbose) {
-    printDefaultDiagnostics(diagnostics, rootDirectory);
+    printDefaultDiagnostics(diagnostics, rootDirectory, logger);
     return;
   }
 
@@ -263,7 +278,7 @@ export const printDiagnostics = (
   );
 
   visibleRuleGroups.forEach(([ruleKey, ruleDiagnostics]) => {
-    printVerboseRuleGroup(ruleKey, ruleDiagnostics, ruleNameColumnWidth);
+    printVerboseRuleGroup(ruleKey, ruleDiagnostics, ruleNameColumnWidth, logger);
   });
 };
 

@@ -320,7 +320,12 @@ const main = async (): Promise<void> => {
       newDiagnostics
         .filter((diagnostic) => diagnostic.severity === "error")
         .map((diagnostic) =>
-          buildThreadKey(diagnostic.relativePath, diagnostic.line, diagnostic.rule),
+          buildThreadKey(
+            diagnostic.relativePath,
+            diagnostic.line,
+            diagnostic.rule,
+            diagnostic.message,
+          ),
         ),
     );
     for (const candidate of inlineCandidates) {

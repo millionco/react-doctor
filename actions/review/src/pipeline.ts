@@ -317,8 +317,38 @@ export const computeDiagnosticsDelta = (
   return { newDiagnostics, fixedDiagnostics };
 };
 
-export const buildThreadKey = (relativePath: string, line: number, rule: string): string =>
-  `${relativePath}:${line}|${rule}`;
+/**
+ * Compact, stable hash of a diagnostic message so two violations
+ * with the same `(path, line, rule)` but different messages stay
+ * distinct in the thread-key space. Crockford base32-ish encoding
+ * of the FNV-1a 32-bit hash keeps the key short while remaining
+ * deterministic across runs (vs. e.g. encoding the full message,
+ * which would blow up comment-marker length and break in
+ * messages containing the marker delimiter).
+ */
+const messageDigest = (message: string): string => {
+  let hash = 2166136261;
+  for (let index = 0; index < message.length; index += 1) {
+    hash ^= message.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+};
+
+/**
+ * Composite key for matching inline review threads across runs.
+ * `(relativePath, line, rule, message-hash)` mirrors the
+ * `(path, rule, message)` identity used by `computeDiagnosticsDelta`
+ * — without the message component, two net-new errors with the
+ * same rule on one line but different messages would collapse to
+ * one thread, hiding the second violation.
+ */
+export const buildThreadKey = (
+  relativePath: string,
+  line: number,
+  rule: string,
+  message: string,
+): string => `${relativePath}:${line}|${rule}|${messageDigest(message)}`;
 
 export const formatInlineCommentBody = (diagnostic: ReviewDiagnostic): string => {
   const lines: string[] = [];
@@ -357,7 +387,12 @@ export const buildInlineCommentCandidates = (
       relativePath: diagnostic.relativePath,
       line: diagnostic.line,
       body: formatInlineCommentBody(diagnostic),
-      threadKey: buildThreadKey(diagnostic.relativePath, diagnostic.line, diagnostic.rule),
+      threadKey: buildThreadKey(
+        diagnostic.relativePath,
+        diagnostic.line,
+        diagnostic.rule,
+        diagnostic.message,
+      ),
     });
   }
   return candidates;

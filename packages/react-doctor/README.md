@@ -345,8 +345,8 @@ For a richer authoring experience (TypeScript types, severity defaults, recommen
 ### Notes
 
 - **Opt-in by default**: a user-plugin rule only runs when `rules: { "<plugin-name>/<rule>": "warn" | "error" }` explicitly enables it. Mirrors how `defaultEnabled: false` built-in rules behave so installing a third-party plugin doesn't surprise you with a flood of new diagnostics on the first scan.
-- **Namespace**: rule keys are `<plugin.meta.name>/<rule-name>`. If the plugin omits `meta.name`, react-doctor uses a slugified filename (e.g. `./lint/team-conventions.cjs` → `team-conventions`).
-- **Failure tolerance**: a plugin entry that can't be resolved or doesn't look like an oxlint plugin logs a warning and is skipped — your scan keeps going. Run with `--verbose` to see resolution diagnostics.
+- **`meta.name` is required**: rule keys are `<plugin.meta.name>/<rule-name>`. A plugin without `meta.name` is rejected (with a warning) so rule keys in `config.rules` can't silently change when a file gets renamed.
+- **Failure tolerance**: a plugin entry that can't be resolved or doesn't look like an oxlint plugin logs a warning to stderr and is skipped — your scan keeps going.
 - **Per-rule severity / ignore / surfaces**: every existing severity / ignore / surface knob (`rules`, `categories`, `ignore.{paths, rules, tags}`, `surfaces.{cli, prComment, score, ciFailure}`) treats user-plugin rules the same as built-in rules. You can demote a user-plugin rule out of CI without touching the rule's source.
 
 ## Lint plugin (standalone)

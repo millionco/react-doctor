@@ -132,8 +132,8 @@ describe("user plugins (config.plugins)", () => {
     expect(diagnostics.filter((d) => d.plugin === "does-not-exist")).toEqual([]);
   });
 
-  it("falls back to a slugified namespace when the plugin omits `meta.name`", async () => {
-    const projectDir = setupReactProject(tempRoot, "slug-fallback", {
+  it("skips a plugin that omits `meta.name` (required, no slug fallback)", async () => {
+    const projectDir = setupReactProject(tempRoot, "meta-name-required", {
       files: {
         "src/App.tsx": `export const App = () => <div>FORBIDDEN content</div>;\n`,
         "lint/anonymous-plugin.cjs": `
@@ -156,12 +156,13 @@ module.exports = { rules: { "no-forbidden-word": noForbiddenWordRule } };
       project: buildTestProject({ rootDirectory: projectDir }),
       userConfig: {
         plugins: ["./lint/anonymous-plugin.cjs"],
-        // Namespace is the slug of "anonymous-plugin.cjs" → "anonymous-plugin".
+        // Any namespace the user tries here matches nothing — the plugin
+        // is rejected for missing `meta.name` before any rules register.
         rules: { "anonymous-plugin/no-forbidden-word": "error" },
       },
     });
 
     const userHits = diagnostics.filter((diagnostic) => diagnostic.rule === "no-forbidden-word");
-    expect(userHits.length).toBeGreaterThan(0);
+    expect(userHits).toEqual([]);
   });
 });

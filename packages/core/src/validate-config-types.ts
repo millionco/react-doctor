@@ -5,6 +5,7 @@ import type {
   SurfaceControls,
 } from "@react-doctor/types";
 import { DIAGNOSTIC_SURFACES, isDiagnosticSurface } from "./diagnostic-surface.js";
+import { warnConfigIssue } from "./utils/warn-config-issue.js";
 
 const VALID_RULE_SEVERITIES: ReadonlyArray<RuleSeverityOverride> = ["error", "warn", "off"];
 
@@ -37,13 +38,6 @@ const SEVERITY_FIELD_NAMES = ["rules", "categories"] as const satisfies Readonly
   keyof ReactDoctorConfig
 >;
 
-// HACK: write to stderr directly so the warning is visible even in
-// `--json` mode (where the logger is silenced to keep stdout a single
-// valid JSON document). Same pattern as `coerceDiffValue` in cli.ts.
-const warnConfigField = (message: string): void => {
-  process.stderr.write(`[react-doctor] ${message}\n`);
-};
-
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -57,12 +51,12 @@ const coerceMaybeBooleanString = (fieldName: string, value: unknown): boolean | 
   if (typeof value === "boolean") return value;
   if (value === "true" || value === "false") {
     const coerced = value === "true";
-    warnConfigField(
+    warnConfigIssue(
       `config field "${fieldName}" is the string "${value}"; treating as boolean ${coerced}.`,
     );
     return coerced;
   }
-  warnConfigField(
+  warnConfigIssue(
     `config field "${fieldName}" must be a boolean (got ${typeof value}); ignoring this field.`,
   );
   return undefined;
@@ -70,7 +64,7 @@ const coerceMaybeBooleanString = (fieldName: string, value: unknown): boolean | 
 
 const validateString = (fieldName: string, value: unknown): string | undefined => {
   if (typeof value === "string") return value;
-  warnConfigField(
+  warnConfigIssue(
     `config field "${fieldName}" must be a string (got ${typeof value}); ignoring this field.`,
   );
   return undefined;
@@ -78,14 +72,14 @@ const validateString = (fieldName: string, value: unknown): string | undefined =
 
 const validateStringArrayField = (fieldName: string, value: unknown): string[] | undefined => {
   if (!Array.isArray(value)) {
-    warnConfigField(
+    warnConfigIssue(
       `config field "${fieldName}" must be an array of strings (got ${typeof value}); ignoring this field.`,
     );
     return undefined;
   }
   return value.filter((entry): entry is string => {
     if (typeof entry === "string") return true;
-    warnConfigField(
+    warnConfigIssue(
       `config field "${fieldName}" contains a non-string entry (${typeof entry}); ignoring the entry.`,
     );
     return false;
@@ -97,7 +91,7 @@ const validateSurfaceControls = (
   rawControls: unknown,
 ): SurfaceControls | undefined => {
   if (!isPlainObject(rawControls)) {
-    warnConfigField(
+    warnConfigIssue(
       `config field "surfaces.${surface}" must be an object (got ${typeof rawControls}); ignoring this surface.`,
     );
     return undefined;
@@ -118,7 +112,7 @@ const validateSurfacesField = (
   rawSurfaces: unknown,
 ): Partial<Record<DiagnosticSurface, SurfaceControls>> | undefined => {
   if (!isPlainObject(rawSurfaces)) {
-    warnConfigField(
+    warnConfigIssue(
       `config field "surfaces" must be an object (got ${typeof rawSurfaces}); ignoring this field.`,
     );
     return undefined;
@@ -126,7 +120,7 @@ const validateSurfacesField = (
   const validated: Partial<Record<DiagnosticSurface, SurfaceControls>> = {};
   for (const [key, value] of Object.entries(rawSurfaces)) {
     if (!isDiagnosticSurface(key)) {
-      warnConfigField(
+      warnConfigIssue(
         `config field "surfaces.${key}" is not a known surface (expected one of: ${DIAGNOSTIC_SURFACES.join(", ")}); ignoring.`,
       );
       continue;
@@ -145,7 +139,7 @@ const validateSeverityMap = (
   rawMap: unknown,
 ): Record<string, RuleSeverityOverride> | undefined => {
   if (!isPlainObject(rawMap)) {
-    warnConfigField(
+    warnConfigIssue(
       `config field "${fieldName}" must be an object (got ${typeof rawMap}); ignoring this field.`,
     );
     return undefined;
@@ -153,11 +147,11 @@ const validateSeverityMap = (
   const validated: Record<string, RuleSeverityOverride> = {};
   for (const [key, value] of Object.entries(rawMap)) {
     if (key.length === 0) {
-      warnConfigField(`config field "${fieldName}" has an empty key; ignoring the entry.`);
+      warnConfigIssue(`config field "${fieldName}" has an empty key; ignoring the entry.`);
       continue;
     }
     if (!isRuleSeverity(value)) {
-      warnConfigField(
+      warnConfigIssue(
         `config field "${fieldName}.${key}" must be one of: ${VALID_RULE_SEVERITIES.join(", ")} (got ${formatType(value)}); ignoring the entry.`,
       );
       continue;

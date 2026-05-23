@@ -4,6 +4,7 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 import {
   buildJsonReport,
+  consoleLogger,
   filterDiagnosticsForSurface,
   filterSourceFiles,
   getDiffInfo,
@@ -80,7 +81,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
     }
 
     if (!isQuiet) {
-      printBrandedHeader();
+      printBrandedHeader(consoleLogger);
     }
 
     const scanOptions = resolveCliInspectOptions(flags, userConfig);

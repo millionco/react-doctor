@@ -1,12 +1,13 @@
 import {
+  highlighter,
   PERFECT_SCORE,
   SCORE_BAR_WIDTH_CHARS,
   SCORE_GOOD_THRESHOLD,
   SCORE_OK_THRESHOLD,
+  type LoggerWriter,
 } from "@react-doctor/core";
 import type { ScoreResult } from "@react-doctor/types";
 import { colorizeByScore } from "./colorize-by-score.js";
-import { highlighter, logger } from "@react-doctor/core";
 
 interface ScoreBarSegments {
   filledSegment: string;
@@ -42,7 +43,7 @@ const buildFaceRenderedLines = (score: number): string[] => {
   return ["┌─────┐", `│ ${eyes} │`, `│ ${mouth} │`, "└─────┘"].map(colorize);
 };
 
-export const printScoreHeader = (scoreResult: ScoreResult): void => {
+export const printScoreHeader = (scoreResult: ScoreResult, logger: LoggerWriter): void => {
   const renderedFaceLines = buildFaceRenderedLines(scoreResult.score);
 
   const scoreNumber = colorizeByScore(`${scoreResult.score}`, scoreResult.score);
@@ -61,12 +62,12 @@ export const printScoreHeader = (scoreResult: ScoreResult): void => {
   logger.break();
 };
 
-export const printBrandingOnlyHeader = (): void => {
+export const printBrandingOnlyHeader = (logger: LoggerWriter): void => {
   logger.log(`  ${BRANDING_LINE}`);
   logger.break();
 };
 
-export const printNoScoreHeader = (noScoreMessage: string): void => {
+export const printNoScoreHeader = (noScoreMessage: string, logger: LoggerWriter): void => {
   logger.log(`  ${BRANDING_LINE}`);
   logger.log(`  ${highlighter.gray(noScoreMessage)}`);
   logger.break();

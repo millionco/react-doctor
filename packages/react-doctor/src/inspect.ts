@@ -9,12 +9,11 @@ import {
   Files,
   filterDiagnosticsForSurface,
   highlighter,
-  isLoggerSilent,
   isReactDoctorError,
   Linter,
   LintPartialFailures,
   loadConfigWithSource,
-  logger,
+  Logger,
   OXLINT_NODE_REQUIREMENT,
   Project,
   ReactDoctorError,
@@ -22,8 +21,8 @@ import {
   resolveConfigRootDir,
   runInspect as runInspectEffect,
   Score,
-  setLoggerSilent,
   type InspectOutput,
+  type LoggerWriter,
   type ReactDoctorErrorReason,
 } from "@react-doctor/core";
 import {
@@ -138,12 +137,13 @@ export const inspect = async (
 
   const options = mergeInspectOptions(inputOptions, userConfig);
 
-  const wasLoggerSilent = isLoggerSilent();
+  // HACK: spinner.ts still has module-level silent state (used by
+  // printProjectDetection's internal spinner() calls). Mirror the
+  // silent flag here until that file moves to a Progress service in
+  // a follow-up PR. Logger-side silent is handled cleanly via
+  // Logger.layerSilent provided to the Effect program.
   const wasSpinnerSilent = isSpinnerSilent();
-  if (options.silent) {
-    setLoggerSilent(true);
-    setSpinnerSilent(true);
-  }
+  if (options.silent) setSpinnerSilent(true);
 
   try {
     return await runInspectWithRuntime(
@@ -154,10 +154,7 @@ export const inspect = async (
       startTime,
     );
   } finally {
-    if (options.silent) {
-      setLoggerSilent(wasLoggerSilent);
-      setSpinnerSilent(wasSpinnerSilent);
-    }
+    if (options.silent) setSpinnerSilent(wasSpinnerSilent);
   }
 };
 
@@ -191,14 +188,15 @@ const runInspectWithRuntime = async (
   const linterLayer = !options.lint || lintBindingMissing ? Linter.layerOf([]) : Linter.layerOxlint;
   const deadCodeLayer = options.deadCode ? DeadCode.layerNode : DeadCode.layerOf([]);
   // HACK: always provide layerOf(null) for Score — the orchestrator's
-  // Score.compute would otherwise see the FULL diagnostic list. The
-  // legacy contract is to filter for the "score" surface (strips
-  // design tags by default) before calculating the score. We do that
-  // here after runInspect returns instead of inside the orchestrator.
+  // Score.compute sees the per-element-filtered list, NOT the
+  // surface-filtered list this function needs. We compute the real
+  // score below with `filterDiagnosticsForSurface("score", ...)`
+  // applied first.
   const scoreLayer = Score.layerOf(null);
   const configLayer = hasConfigOverride
     ? Config.layerOf({ config: userConfig, resolvedDirectory: directory })
     : Config.layerNode;
+  const loggerLayer = options.silent ? Logger.layerSilent : Logger.layerConsole;
 
   const layers = Layer.mergeAll(
     Project.layerNode,
@@ -209,9 +207,11 @@ const runInspectWithRuntime = async (
     deadCodeLayer,
     Reporter.layerNoop,
     scoreLayer,
+    loggerLayer,
   );
 
   const program = Effect.gen(function* () {
+    const logger = yield* Logger;
     const spinnerRef = yield* Ref.make<SpinnerHandle | null>(null);
 
     const output = yield* runInspectEffect(
@@ -237,9 +237,10 @@ const runInspectWithRuntime = async (
                 isDiffMode,
                 options.includePaths,
                 lintSourceFileCount,
+                logger,
               );
             }
-            if (options.lint && resolvedNodeBinaryPath && !options.scoreOnly) {
+            if (options.lint && resolvedNodeBinaryPath && !options.scoreOnly && !options.silent) {
               const handle = spinner("Running lint checks...").start();
               yield* Ref.set(spinnerRef, {
                 succeed: (text) => handle.succeed(text),
@@ -256,15 +257,17 @@ const runInspectWithRuntime = async (
     );
 
     const finalHandle = yield* Ref.get(spinnerRef);
-    return { output, finalHandle };
+    return { output, finalHandle, logger };
   });
 
   let output: InspectOutput;
   let finalSpinnerHandle: SpinnerHandle | null;
+  let logger: LoggerWriter;
   try {
     const programResult = await Effect.runPromise(program.pipe(Effect.provide(layers)));
     output = programResult.output;
     finalSpinnerHandle = programResult.finalHandle;
+    logger = programResult.logger;
   } catch (cause) {
     if (isReactDoctorError(cause)) restoreLegacyThrow(cause);
     throw cause;
@@ -349,6 +352,7 @@ const runInspectWithRuntime = async (
     didDeadCodeFail: output.didDeadCodeFail,
     deadCodeFailureReason: output.deadCodeFailureReason,
     directory: output.resolvedDirectory,
+    logger,
   });
 };
 
@@ -365,6 +369,7 @@ interface FinalizeInput {
   didDeadCodeFail: boolean;
   deadCodeFailureReason: string | null;
   directory: string;
+  logger: LoggerWriter;
 }
 
 const finalizeAndRender = (input: FinalizeInput): InspectResult => {
@@ -381,6 +386,7 @@ const finalizeAndRender = (input: FinalizeInput): InspectResult => {
     didDeadCodeFail,
     deadCodeFailureReason,
     directory,
+    logger,
   } = input;
 
   const skippedChecks: string[] = [];
@@ -444,18 +450,18 @@ const finalizeAndRender = (input: FinalizeInput): InspectResult => {
     }
     logger.break();
     if (hasSkippedChecks) {
-      printBrandingOnlyHeader();
+      printBrandingOnlyHeader(logger);
       logger.log(highlighter.gray("  Score not shown — some checks could not complete."));
     } else if (score) {
-      printScoreHeader(score);
+      printScoreHeader(score, logger);
     } else {
-      printNoScoreHeader(noScoreMessage);
+      printNoScoreHeader(noScoreMessage, logger);
     }
     return buildResult();
   }
 
   logger.break();
-  printDiagnostics(surfaceDiagnostics, options.verbose, directory);
+  printDiagnostics(surfaceDiagnostics, options.verbose, directory, logger);
 
   if (demotedDiagnosticCount > 0) {
     logger.log(
@@ -475,6 +481,7 @@ const finalizeAndRender = (input: FinalizeInput): InspectResult => {
     lintSourceFileCount,
     noScoreMessage,
     !shouldShowShareLink,
+    logger,
   );
 
   if (hasSkippedChecks) {

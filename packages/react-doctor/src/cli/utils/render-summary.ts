@@ -77,11 +77,17 @@ export const printSummary = (input: PrintSummaryInput): Effect.Effect<void> =>
       input.elapsedMilliseconds,
     );
 
-    try {
-      const diagnosticsDirectory = writeDiagnosticsDirectory(input.diagnostics);
+    // v4 forbids try/catch inside Effect.gen — wrap the sync write
+    // in `Effect.try` (always-tagged form: `{ try, catch }`) and
+    // recover via `Effect.orElseSucceed`. Failing to write the dump
+    // shouldn't block the summary, so we fall through to `null` and
+    // skip the line.
+    const diagnosticsDirectory = yield* Effect.try({
+      try: () => writeDiagnosticsDirectory(input.diagnostics),
+      catch: (cause) => cause,
+    }).pipe(Effect.orElseSucceed(() => null as string | null));
+    if (diagnosticsDirectory !== null) {
       yield* Console.log(highlighter.gray(`  Full diagnostics written to ${diagnosticsDirectory}`));
-    } catch {
-      /* swallow — failing to write the dump shouldn't block the summary */
     }
 
     if (!input.isOffline) {

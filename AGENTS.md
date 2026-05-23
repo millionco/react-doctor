@@ -71,6 +71,43 @@ for this codebase) for canonical examples.
 - `formatReactDoctorError(error)` / `isReactDoctorError(error)` / `isSplittableReactDoctorError(error)`
   live in `core/src/errors.ts`. Use them; don't add new error-shape helpers.
 
+### Error dispatch / recovery — v4 idioms
+
+- **`Effect.catchReasons(errorTag, cases, orElse?)`** — the v4-canonical way to
+  dispatch on a `Schema.TaggedErrorClass` reason union. Each entry catches one
+  reason `_tag`; the optional `orElse` handles unmatched reasons. NEVER write
+  manual `if (cause.reason instanceof X)` ladders inside a `catch` block — the
+  Effect pipeline gives you exhaustive, type-safe narrowing for free. See
+  `inspect.ts → restoreLegacyThrow` and `api/diagnose.ts` for the canonical
+  shape.
+- **`Effect.catchTag(tag, handler)`** — for a single tagged error (e.g.
+  `Effect.catchTag("PlatformError", ...)` in `services/git.ts` to fold the
+  `ChildProcess` platform error into a `ReactDoctorError`).
+- **`Effect.catch`** (renamed from v3 `Effect.catchAll`) — for catch-all.
+- **`Effect.die(error)`** — promote a recovered value into a defect that
+  `runPromise` re-throws unchanged. Used in `catchReasons` handlers when the
+  programmatic contract still wants the legacy `Error` class on the throw.
+- **NEVER** `try/catch` inside `Effect.gen` (v4 hard rule). Wrap the sync
+  throw in `Effect.try({ try, catch })` and recover via
+  `Effect.orElseSucceed` / `Effect.catch` instead. See
+  `render-summary.ts → printSummary` for the canonical shape.
+
+### Generator hygiene
+
+- **`return yield* Effect.fail(...)`** — terminal effects (Effect.fail,
+  Effect.interrupt, Effect.die) must be `return yield*` so TypeScript sees
+  the unreachable-code property. Bare `yield*` of a terminal lets unreachable
+  code accumulate after it. See `services/git.ts` `diffSelection` for examples.
+- **`Effect.gen({ self: this }, function* () { ... })`** — v4 changed the
+  `self`-bound form. The plain `Effect.gen(function* () { ... })` form is
+  unchanged; only class-method generators bound to `this` need the options
+  object.
+- **`Effect.fnUntraced(function* () { ... })`** — prefer over a function
+  whose body is `Effect.gen` when the function is called many times per
+  operation (hot path). Cuts tracing overhead. Not currently used in this
+  codebase — Git invocations and inspect-pipeline calls run once per scan,
+  not in a hot loop.
+
 ### Services
 
 - `Context.Service<Self, Interface>()("react-doctor/Name", { make: ... })` — short

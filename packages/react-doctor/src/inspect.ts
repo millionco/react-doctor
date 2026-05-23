@@ -10,7 +10,6 @@ import {
   Files,
   filterDiagnosticsForSurface,
   highlighter,
-  isReactDoctorError,
   Linter,
   LintPartialFailures,
   loadConfigWithSource,
@@ -21,7 +20,6 @@ import {
   resolveConfigRootDir,
   runInspect as runInspectEffect,
   Score,
-  type InspectOutput,
   type ReactDoctorErrorReason,
 } from "@react-doctor/core";
 import {
@@ -111,23 +109,36 @@ const mergeInspectOptions = (
 });
 
 /**
- * Translates a tagged `ReactDoctorError` raised by the orchestrator
- * back into the legacy thrown class the public `inspect()` contract
- * advertises. Adding a new public thrown class is one new `case`.
+ * Tagged-reason → legacy-class dispatch for the public `inspect()`
+ * contract. Each case converts a `ReactDoctorError` reason into the
+ * historical thrown class (`NoReactDependencyError`, …) via
+ * `Effect.die`, which `Effect.runPromise` re-throws unchanged.
+ * Unmatched reasons (GitInvocationFailed, OxlintSpawnFailed, …)
+ * flow through as the original tagged `ReactDoctorError` instance.
+ *
+ * Adding a new public thrown class is one new entry on this object
+ * — no `instanceof` checks, no `switch` ladder. The function form
+ * (vs. the standalone constant) is required so `Effect.catchReasons`
+ * gets the surrounding Effect's error channel for type inference.
  */
-const restoreLegacyThrow = (error: ReactDoctorError): never => {
-  const reason = error.reason;
-  switch (reason._tag) {
-    case "NoReactDependency":
-      throw new NoReactDependencyError(reason.directory);
-    case "ProjectNotFound":
-      throw new ProjectNotFoundError(reason.directory);
-    case "AmbiguousProject":
-      throw new AmbiguousProjectError(reason.directory, reason.candidates);
-    default:
-      throw new Error(error.message);
-  }
-};
+const restoreLegacyThrow = <Value, Requirements>(
+  effect: Effect.Effect<Value, ReactDoctorError, Requirements>,
+): Effect.Effect<Value, never, Requirements> =>
+  effect.pipe(
+    Effect.catchReasons(
+      "ReactDoctorError",
+      {
+        NoReactDependency: (reason) => Effect.die(new NoReactDependencyError(reason.directory)),
+        ProjectNotFound: (reason) => Effect.die(new ProjectNotFoundError(reason.directory)),
+        AmbiguousProject: (reason) =>
+          Effect.die(new AmbiguousProjectError(reason.directory, [...reason.candidates])),
+      },
+      // Legacy contract: any other tagged reason surfaces as a
+      // plain `Error` carrying the tagged-class message string, so
+      // callers that grep `error.message` continue to work.
+      (_reason, error) => Effect.die(new Error(error.message)),
+    ),
+  );
 
 export const inspect = async (
   directory: string,
@@ -272,30 +283,19 @@ const runInspectWithRuntime = async (
     return { output, finalHandle };
   });
 
-  let output: InspectOutput;
-  let finalSpinnerHandle: SpinnerHandle | null;
-  try {
-    const programResult = await Effect.runPromise(
-      // HACK: silent mode swaps the global Console for one whose
-      // log / error / warn / info / debug methods are no-ops, so
-      // every `yield* Console.log(...)` inside the renderers below
-      // becomes a tree-shakeable noop without each call having to
-      // check a flag itself. Driven by Effect's built-in Console
-      // reference, which is `Context.Reference<Console>` with the
-      // default value `globalThis.console`.
-      options.silent
-        ? program.pipe(
-            Effect.provide(layers),
-            Effect.provideService(Console.Console, silentConsole),
-          )
-        : program.pipe(Effect.provide(layers)),
-    );
-    output = programResult.output;
-    finalSpinnerHandle = programResult.finalHandle;
-  } catch (cause) {
-    if (isReactDoctorError(cause)) restoreLegacyThrow(cause);
-    throw cause;
-  }
+  // HACK: silent mode swaps the global Console for one whose
+  // log / error / warn / info / debug methods are no-ops, so
+  // every `yield* Console.log(...)` inside the renderers below
+  // becomes a tree-shakeable noop without each call having to
+  // check a flag itself. Driven by Effect's built-in Console
+  // reference, which is `Context.Reference<Console>` with the
+  // default value `globalThis.console`.
+  const programWithLayers = options.silent
+    ? program.pipe(Effect.provide(layers), Effect.provideService(Console.Console, silentConsole))
+    : program.pipe(Effect.provide(layers));
+  const { output, finalHandle: finalSpinnerHandle } = await Effect.runPromise(
+    restoreLegacyThrow(programWithLayers),
+  );
 
   const didLintFail = lintBindingMissing || output.didLintFail;
   const lintFailureReason = lintBindingMissing

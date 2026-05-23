@@ -9,7 +9,6 @@ import {
   LintPartialFailures,
   loadConfigWithSource,
   Project,
-  ReactDoctorError,
   Reporter,
   resolveConfigRootDir,
   resolveDiagnoseTarget,
@@ -23,27 +22,6 @@ import {
   ProjectNotFoundError,
 } from "@react-doctor/project-info";
 import type { DiagnoseOptions, DiagnoseResult } from "@react-doctor/types";
-
-/**
- * Translates a tagged `ReactDoctorError` raised by the orchestrator
- * back into the legacy thrown class the public `diagnose()` contract
- * advertises. Adding a new public thrown class is one new `case`
- * here; everything inside the runtime keeps speaking in tagged
- * reasons.
- */
-const restoreLegacyThrow = (error: ReactDoctorError): never => {
-  const reason = error.reason;
-  switch (reason._tag) {
-    case "NoReactDependency":
-      throw new NoReactDependencyError(reason.directory);
-    case "ProjectNotFound":
-      throw new ProjectNotFoundError(reason.directory);
-    case "AmbiguousProject":
-      throw new AmbiguousProjectError(reason.directory, reason.candidates);
-    default:
-      throw new Error(error.message);
-  }
-};
 
 const buildLayerStack = () =>
   Layer.mergeAll(
@@ -105,13 +83,29 @@ export const diagnose = async (
     isCi: false,
   });
 
-  let output: InspectOutput;
-  try {
-    output = await Effect.runPromise(program.pipe(Effect.provide(buildLayerStack())));
-  } catch (cause) {
-    if (cause instanceof ReactDoctorError) restoreLegacyThrow(cause);
-    throw cause;
-  }
+  // v4 idiom: `Effect.catchReasons` dispatches on the tagged-reason
+  // sub-channel without manual `instanceof` checks. Each handler
+  // converts a tagged reason into the legacy thrown class the public
+  // `diagnose()` contract advertises (via `Effect.die`, which the
+  // surrounding `Effect.runPromise` re-throws unchanged). The
+  // `orElse` branch preserves the legacy "anything else throws as a
+  // plain `Error` with the tagged-class message string" contract for
+  // grep-stderr callers.
+  const output: InspectOutput = await Effect.runPromise(
+    program.pipe(
+      Effect.provide(buildLayerStack()),
+      Effect.catchReasons(
+        "ReactDoctorError",
+        {
+          NoReactDependency: (reason) => Effect.die(new NoReactDependencyError(reason.directory)),
+          ProjectNotFound: (reason) => Effect.die(new ProjectNotFoundError(reason.directory)),
+          AmbiguousProject: (reason) =>
+            Effect.die(new AmbiguousProjectError(reason.directory, [...reason.candidates])),
+        },
+        (_reason, error) => Effect.die(new Error(error.message)),
+      ),
+    ),
+  );
 
   // HACK: preserve the legacy behavior of writing lint failures to
   // stderr. The orchestrator already folds them into didLintFail /

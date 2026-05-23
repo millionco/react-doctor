@@ -1,4 +1,3 @@
-import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import fs from "node:fs";
@@ -59,31 +58,23 @@ describe("StagedFiles.layerNode regression — per-file git failures", () => {
    * skip-and-continue behavior — never sink the whole snapshot.
    */
   it("skips files when git.showStagedContent raises and keeps materializing the rest", async () => {
-    const failingShowStagedGit = Layer.succeed(
-      Git,
-      Git.of({
-        currentBranch: () => Effect.succeed(null),
-        defaultBranch: () => Effect.succeed(null),
-        branchExists: () => Effect.succeed(false),
-        diffSelection: () => Effect.succeed(null),
-        stagedFilePaths: () => Effect.succeed(["src/a.ts", "src/b.ts"]),
-        showStagedContent: (_directory, relativePath) => {
-          if (relativePath === "src/a.ts") {
-            return Effect.fail(
-              new ReactDoctorError({
-                reason: new GitInvocationFailed({
-                  args: ["show", `:${relativePath}`],
-                  directory: "/repo",
-                  cause: new Error("simulated git missing"),
-                }),
+    const failingShowStagedGit = Layer.mock(Git, {
+      stagedFilePaths: () => Effect.succeed(["src/a.ts", "src/b.ts"]),
+      showStagedContent: (_directory, relativePath) => {
+        if (relativePath === "src/a.ts") {
+          return Effect.fail(
+            new ReactDoctorError({
+              reason: new GitInvocationFailed({
+                args: ["show", `:${relativePath}`],
+                directory: "/repo",
+                cause: new Error("simulated git missing"),
               }),
-            );
-          }
-          return Effect.succeed("export const b = 1;\n");
-        },
-        grep: () => Effect.succeed(null),
-      } satisfies Context.Tag.Service<typeof Git>),
-    );
+            }),
+          );
+        }
+        return Effect.succeed("export const b = 1;\n");
+      },
+    });
 
     const layer = StagedFiles.layerNode.pipe(Layer.provide(failingShowStagedGit));
 
@@ -123,23 +114,15 @@ describe("StagedFiles.layerNode — Zip-Slip defense (path traversal)", () => {
    * `writeFileSync` runs (the standard Zip-Slip defense shape).
    */
   it("skips a staged path that resolves outside the temp directory", async () => {
-    const escapingGit = Layer.succeed(
-      Git,
-      Git.of({
-        currentBranch: () => Effect.succeed(null),
-        defaultBranch: () => Effect.succeed(null),
-        branchExists: () => Effect.succeed(false),
-        diffSelection: () => Effect.succeed(null),
-        stagedFilePaths: () => Effect.succeed(["../escaped.ts", "src/inside.ts"]),
-        showStagedContent: (_directory, relativePath) =>
-          Effect.succeed(
-            relativePath === "../escaped.ts"
-              ? "// would land outside the temp dir\n"
-              : "// inside the temp dir\n",
-          ),
-        grep: () => Effect.succeed(null),
-      } satisfies Context.Tag.Service<typeof Git>),
-    );
+    const escapingGit = Layer.mock(Git, {
+      stagedFilePaths: () => Effect.succeed(["../escaped.ts", "src/inside.ts"]),
+      showStagedContent: (_directory, relativePath) =>
+        Effect.succeed(
+          relativePath === "../escaped.ts"
+            ? "// would land outside the temp dir\n"
+            : "// inside the temp dir\n",
+        ),
+    });
 
     const layer = StagedFiles.layerNode.pipe(Layer.provide(escapingGit));
 

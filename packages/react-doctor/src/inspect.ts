@@ -1,27 +1,19 @@
 import { performance } from "node:perf_hooks";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import {
   calculateScore,
-  Config,
-  DeadCode,
-  Files,
   filterDiagnosticsForSurface,
   highlighter,
-  Linter,
-  LintPartialFailures,
   loadConfigWithSource,
   OXLINT_NODE_REQUIREMENT,
-  Project,
   ReactDoctorError,
-  Reporter,
   resolveConfigRootDir,
   runInspect as runInspectEffect,
-  Score,
   type ReactDoctorErrorReason,
 } from "@react-doctor/core";
+import { buildRuntimeLayers } from "./cli/utils/build-runtime-layers.js";
 import {
   AmbiguousProjectError,
   NoReactDependencyError,
@@ -223,37 +215,14 @@ const runInspectWithRuntime = async (
   );
   const lintBindingMissing = options.lint && !resolvedNodeBinaryPath;
 
-  const linterLayer = !options.lint || lintBindingMissing ? Linter.layerOf([]) : Linter.layerOxlint;
-  const deadCodeLayer = options.deadCode ? DeadCode.layerNode : DeadCode.layerOf([]);
-  // HACK: always provide layerOf(null) for Score — the orchestrator's
-  // Score.compute sees the per-element-filtered list, NOT the
-  // surface-filtered list this function needs. We compute the real
-  // score below with `filterDiagnosticsForSurface("score", ...)`
-  // applied first.
-  const scoreLayer = Score.layerOf(null);
-  const configLayer = hasConfigOverride
-    ? Config.layerOf({
-        config: userConfig,
-        resolvedDirectory: directory,
-        // `configSourceDirectory` is non-null when `inspect()` loaded
-        // the config from disk itself (the CLI path) and `null` only
-        // when the caller passed `configOverride` programmatically
-        // without a corresponding file. The runner falls back to the
-        // scan root in the null case.
-        configSourceDirectory,
-      })
-    : Config.layerNode;
-
-  const layers = Layer.mergeAll(
-    Project.layerNode,
-    configLayer,
-    Files.layerNode,
-    linterLayer,
-    LintPartialFailures.layerLive,
-    deadCodeLayer,
-    Reporter.layerNoop,
-    scoreLayer,
-  );
+  const layers = buildRuntimeLayers({
+    directory,
+    hasConfigOverride,
+    userConfig,
+    configSourceDirectory,
+    shouldSkipLint: !options.lint || lintBindingMissing,
+    shouldRunDeadCode: options.deadCode,
+  });
 
   const program = Effect.gen(function* () {
     const spinnerRef = yield* Ref.make<SpinnerHandle | null>(null);

@@ -141,9 +141,8 @@ describe("runInspect — missing React dependency", () => {
     // happens in the legacy inspect.ts before calling). For PR 5 the api
     // package adds the boundary check. This test verifies the orchestrator
     // *would* propagate a tagged error if one came from Project.
-    const failingProject = Project.layerOf(projectWithoutReact);
     const explicitFailLayers = Layer.mergeAll(
-      Layer.succeed(Project, {
+      Layer.mock(Project, {
         discover: () =>
           Effect.fail(
             new ReactDoctorError({ reason: new NoReactDependency({ directory: "/repo" }) }),
@@ -158,7 +157,6 @@ describe("runInspect — missing React dependency", () => {
       Reporter.layerNoop,
     );
     void layers;
-    void failingProject;
     const exit = await Effect.runPromiseExit(
       runInspect(baseInput).pipe(Effect.provide(explicitFailLayers)),
     );
@@ -178,7 +176,7 @@ describe("runInspect — missing React dependency", () => {
 
 describe("runInspect — mid-stream lint failure", () => {
   it("folds a Stream.fail into didLintFail without sinking the scan", async () => {
-    const failingLinter = Layer.succeed(Linter, {
+    const failingLinter = Layer.mock(Linter, {
       run: () =>
         Stream.fail(
           new ReactDoctorError({
@@ -209,7 +207,7 @@ describe("runInspect — mid-stream lint failure", () => {
 
 describe("runInspect — dead-code failure", () => {
   it("folds DeadCode failure without sinking the scan", async () => {
-    const failingDeadCode = Layer.succeed(DeadCode, {
+    const failingDeadCode = Layer.mock(DeadCode, {
       run: () =>
         Stream.fail(
           new ReactDoctorError({

@@ -169,6 +169,45 @@ describe("user plugins (config.plugins)", () => {
     expect(userHits.length).toBeGreaterThan(0);
   });
 
+  it("keeps user plugins when the extends-retry fallback fires (bugbot regression)", async () => {
+    // Bugbot regression (#438): when oxlint crashes on the user's
+    // adopted `.oxlintrc.json`, react-doctor retries once without
+    // `extends`. The retry must NOT silently drop user plugins —
+    // every config field threaded into the first attempt has to
+    // make the trip into the fallback too. Simulated here by
+    // pointing `adoptExistingLintConfig: true` at a project with a
+    // deliberately broken `.oxlintrc.json` (one that oxlint can't
+    // parse), then asserting the user-plugin diagnostic still
+    // surfaces from the retry.
+    const projectDir = setupReactProject(tempRoot, "extends-retry-keeps-plugins", {
+      files: {
+        "src/App.tsx": `export const App = () => <div>FORBIDDEN content here</div>;\n`,
+        "lint/team-conventions.cjs": FORBIDDEN_WORD_PLUGIN,
+        // Broken extends target: declares a plugin that doesn't
+        // resolve, so oxlint's first attempt fails and the retry
+        // fires.
+        ".oxlintrc.json": JSON.stringify({
+          jsPlugins: [
+            { name: "definitely-not-installed", specifier: "definitely-not-installed-plugin" },
+          ],
+        }),
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir }),
+      adoptExistingLintConfig: true,
+      userConfig: {
+        plugins: ["./lint/team-conventions.cjs"],
+        rules: { "team-conventions/no-forbidden-word": "error" },
+      },
+    });
+
+    const userHits = diagnostics.filter((d) => d.rule === "no-forbidden-word");
+    expect(userHits.length).toBeGreaterThan(0);
+  });
+
   it("skips a plugin that omits `meta.name` (required, no slug fallback)", async () => {
     const projectDir = setupReactProject(tempRoot, "meta-name-required", {
       files: {

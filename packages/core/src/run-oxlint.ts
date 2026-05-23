@@ -649,6 +649,10 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       // as react-doctor itself crashing; the curated-rules scan is the
       // graceful path.
       if (extendsPaths.length === 0) throw error;
+      // Drop `extendsPaths` only — keep `userPlugins` (and every
+      // other option) so the retry still runs the user's custom
+      // rules. Forgetting one option here silently disappears those
+      // diagnostics from the successful retry without warning.
       const fallbackConfig = createOxlintConfig({
         pluginPath,
         project,
@@ -657,6 +661,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         ignoredTags,
         serverAuthFunctionNames,
         severityControls,
+        userPlugins,
       });
       writeOxlintConfig(fallbackConfig);
       return await spawnLintBatches();

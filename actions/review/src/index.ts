@@ -104,9 +104,11 @@ const resolveToken = (): string => {
   return token;
 };
 
+const resolveInputDirectory = (): string => process.env.INPUT_DIRECTORY || ".";
+
 const resolveHeadDirectory = (): string => {
   const workspace = process.env.GITHUB_WORKSPACE;
-  const inputDirectory = process.env.INPUT_DIRECTORY || ".";
+  const inputDirectory = resolveInputDirectory();
   if (workspace) return path.resolve(workspace, inputDirectory);
   return path.resolve(process.cwd(), inputDirectory);
 };
@@ -115,6 +117,18 @@ const resolveBaseWorktreeDirectory = (): string => {
   const tempRoot = process.env.RUNNER_TEMP || process.env.TMPDIR || "/tmp";
   return path.join(tempRoot, BASE_WORKTREE_DIR_NAME);
 };
+
+/**
+ * Mirrors `resolveHeadDirectory`'s `INPUT_DIRECTORY` resolution
+ * but rooted at the base worktree. Without this, a non-`.`
+ * `directory` input scans the project subdirectory on HEAD but
+ * the full worktree root on BASE — diagnostic counts and paths
+ * disagree across the two snapshots, breaking regressions /
+ * sticky summary / inline comment matching for monorepos that
+ * scope the action to one package.
+ */
+const resolveBaseScanDirectory = (worktreeDirectory: string): string =>
+  path.resolve(worktreeDirectory, resolveInputDirectory());
 
 const runGit = (args: string[], cwd: string): void => {
   execFileSync("git", args, { cwd, stdio: "inherit" });
@@ -225,7 +239,7 @@ const main = async (): Promise<void> => {
     try {
       [headSnapshot, baseSnapshot] = await Promise.all([
         runDiagnoseAcrossWorkspace(headDirectory),
-        runDiagnoseAcrossWorkspace(worktreeDirectory),
+        runDiagnoseAcrossWorkspace(resolveBaseScanDirectory(worktreeDirectory)),
       ]);
     } catch (error) {
       // Only project-discovery failures collapse to the friendly

@@ -106,12 +106,10 @@ const resolveToken = (): string => {
 
 const resolveInputDirectory = (): string => process.env.INPUT_DIRECTORY || ".";
 
-const resolveHeadDirectory = (): string => {
-  const workspace = process.env.GITHUB_WORKSPACE;
-  const inputDirectory = resolveInputDirectory();
-  if (workspace) return path.resolve(workspace, inputDirectory);
-  return path.resolve(process.cwd(), inputDirectory);
-};
+const resolveWorkspaceRoot = (): string => process.env.GITHUB_WORKSPACE ?? process.cwd();
+
+const resolveHeadDirectory = (): string =>
+  path.resolve(resolveWorkspaceRoot(), resolveInputDirectory());
 
 const resolveBaseWorktreeDirectory = (): string => {
   const tempRoot = process.env.RUNNER_TEMP || process.env.TMPDIR || "/tmp";
@@ -237,9 +235,14 @@ const main = async (): Promise<void> => {
     let headSnapshot: DiagnoseSnapshot;
     let baseSnapshot: DiagnoseSnapshot;
     try {
+      // Pass the workspace root as `pathBaseDirectory` so diagnostic
+      // `relativePath`s line up with the repo-root-relative PR
+      // changed-file keys, even when `INPUT_DIRECTORY` scopes the
+      // scan to a subtree. Same applies to the base worktree —
+      // anchor paths to the worktree root, not the scan subtree.
       [headSnapshot, baseSnapshot] = await Promise.all([
-        runDiagnoseAcrossWorkspace(headDirectory),
-        runDiagnoseAcrossWorkspace(resolveBaseScanDirectory(worktreeDirectory)),
+        runDiagnoseAcrossWorkspace(headDirectory, resolveWorkspaceRoot()),
+        runDiagnoseAcrossWorkspace(resolveBaseScanDirectory(worktreeDirectory), worktreeDirectory),
       ]);
     } catch (error) {
       // Only project-discovery failures collapse to the friendly

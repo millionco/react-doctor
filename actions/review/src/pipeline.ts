@@ -176,6 +176,21 @@ const summarizeProject = (
 
 export const runDiagnoseAcrossWorkspace = async (
   rootDirectory: string,
+  /**
+   * Optional override for the directory that diagnostic
+   * `relativePath`s are computed against. Defaults to
+   * `rootDirectory` for the standalone-CLI case. The GitHub
+   * action passes the repository root here even when `rootDirectory`
+   * is a project sub-tree (per the action's `directory` input), so
+   * the resulting paths line up with the PR-changed-file keys
+   * returned by `pulls.listFiles` (which are always repository-root
+   * relative). Without this, diagnostics from a non-root scan would
+   * have paths like `src/App.tsx` while the PR keys say
+   * `packages/my-app/src/App.tsx`, so the `changedFilesByPath.get`
+   * lookup in `buildInlineCommentCandidates` always misses and no
+   * inline comments are posted.
+   */
+  pathBaseDirectory: string = rootDirectory,
 ): Promise<DiagnoseSnapshot> => {
   const subprojects = discoverReactSubprojects(rootDirectory);
   const targets =
@@ -191,15 +206,20 @@ export const runDiagnoseAcrossWorkspace = async (
     try {
       const result = await diagnose(target.directory);
       anyProjectHasReact = true;
-      const relativeProjectDirectory = path.relative(rootDirectory, target.directory);
+      const relativeProjectDirectory = path.relative(pathBaseDirectory, target.directory);
       const projectDiagnostics = result.diagnostics.map((diagnostic) =>
-        toReviewDiagnostic(diagnostic, target.directory, rootDirectory, relativeProjectDirectory),
+        toReviewDiagnostic(
+          diagnostic,
+          target.directory,
+          pathBaseDirectory,
+          relativeProjectDirectory,
+        ),
       );
       allDiagnostics.push(...projectDiagnostics);
 
       const projectScore = result.score?.score ?? null;
       projectSummaries.push(
-        summarizeProject(projectDiagnostics, result.project, rootDirectory, projectScore),
+        summarizeProject(projectDiagnostics, result.project, pathBaseDirectory, projectScore),
       );
 
       if (projectScore !== null && result.project.sourceFileCount > 0) {

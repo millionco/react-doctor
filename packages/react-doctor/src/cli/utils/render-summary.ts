@@ -1,4 +1,4 @@
-import { highlighter, logger, SHARE_BASE_URL } from "@react-doctor/core";
+import { highlighter, SHARE_BASE_URL, type LoggerWriter } from "@react-doctor/core";
 import type { Diagnostic, ScoreResult } from "@react-doctor/types";
 import { collectAffectedFiles, formatElapsedTime } from "./render-diagnostics.js";
 import { printNoScoreHeader, printScoreHeader } from "./render-score-header.js";
@@ -27,6 +27,7 @@ const printCountsSummaryLine = (
   diagnostics: Diagnostic[],
   totalSourceFileCount: number,
   elapsedMilliseconds: number,
+  logger: LoggerWriter,
 ): void => {
   const errorCount = diagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
   const warningCount = diagnostics.filter((diagnostic) => diagnostic.severity === "warning").length;
@@ -56,14 +57,15 @@ export const printSummary = (
   totalSourceFileCount: number,
   noScoreMessage: string,
   isOffline: boolean,
+  logger: LoggerWriter,
 ): void => {
   if (scoreResult) {
-    printScoreHeader(scoreResult);
+    printScoreHeader(scoreResult, logger);
   } else {
-    printNoScoreHeader(noScoreMessage);
+    printNoScoreHeader(noScoreMessage, logger);
   }
 
-  printCountsSummaryLine(diagnostics, totalSourceFileCount, elapsedMilliseconds);
+  printCountsSummaryLine(diagnostics, totalSourceFileCount, elapsedMilliseconds, logger);
 
   try {
     const diagnosticsDirectory = writeDiagnosticsDirectory(diagnostics);

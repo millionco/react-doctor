@@ -342,6 +342,16 @@ const messageDigest = (message: string): string => {
  * — without the message component, two net-new errors with the
  * same rule on one line but different messages would collapse to
  * one thread, hiding the second violation.
+ *
+ * KNOWN LIMITATION: including `line` means a violation that
+ * survives a push but lands on a different line (because the user
+ * added/removed lines above it) gets a new thread key, so the
+ * previous thread is resolved as "addressed" and a fresh inline
+ * comment is posted at the new line. Removing `line` would
+ * conflate distinct violations of the same rule + message on
+ * different lines. A proper fix requires tracking original-line
+ * anchors per thread (server-side state), which is out of scope
+ * for this in-repo action and tracked in TODOS.md.
  */
 export const buildThreadKey = (
   relativePath: string,
@@ -376,26 +386,34 @@ export const buildInlineCommentCandidates = (
   newDiagnostics: ReviewDiagnostic[],
   changedFilesByPath: Map<string, ChangedFile>,
 ): InlineCommentCandidate[] => {
-  const candidates: InlineCommentCandidate[] = [];
+  const candidatesByThreadKey = new Map<string, InlineCommentCandidate>();
   for (const diagnostic of newDiagnostics) {
     if (diagnostic.severity !== "error") continue;
     const changedFile = changedFilesByPath.get(diagnostic.relativePath);
     if (!changedFile) continue;
     if (!changedFile.addedLineContents.has(diagnostic.line)) continue;
 
-    candidates.push({
+    const threadKey = buildThreadKey(
+      diagnostic.relativePath,
+      diagnostic.line,
+      diagnostic.rule,
+      diagnostic.message,
+    );
+    // Dedupe by threadKey: duplicate diagnostics on the same
+    // `(path, line, rule, message)` (e.g. two passes in the same
+    // scan, or a rule firing twice on identical source) would
+    // otherwise yield two inline candidates with the same key,
+    // causing `createReview` to either duplicate-post or reject
+    // the whole batch.
+    if (candidatesByThreadKey.has(threadKey)) continue;
+    candidatesByThreadKey.set(threadKey, {
       relativePath: diagnostic.relativePath,
       line: diagnostic.line,
       body: formatInlineCommentBody(diagnostic),
-      threadKey: buildThreadKey(
-        diagnostic.relativePath,
-        diagnostic.line,
-        diagnostic.rule,
-        diagnostic.message,
-      ),
+      threadKey,
     });
   }
-  return candidates;
+  return [...candidatesByThreadKey.values()];
 };
 
 const scoreLabel = (score: number): string => {

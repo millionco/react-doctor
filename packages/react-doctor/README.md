@@ -549,6 +549,20 @@ const counts = summarizeDiagnostics(result.diagnostics);
 
 `react-doctor/api` re-exports `JsonReport`, `JsonReportSummary`, `JsonReportProjectEntry`, `JsonReportMode`, plus the lower-level `buildJsonReport` and `buildJsonReportError` builders. See [`packages/react-doctor/src/api.ts`](https://github.com/millionco/react-doctor/blob/main/packages/react-doctor/src/api.ts) for the full types.
 
+## OpenTelemetry tracing (opt-in)
+
+Every internal service method (`Project.discover`, `Linter.run`, `Config.resolve`, `Score.compute`, etc.) is instrumented as a named span; the top-level `runInspect` orchestrator is the parent span. By default the spans run in-process and don't ship anywhere.
+
+To export spans to an OTLP-compatible backend (Axiom, Honeycomb, Datadog, Tempo, etc.), set both env vars before running:
+
+```bash
+REACT_DOCTOR_OTLP_ENDPOINT="https://api.axiom.co" \
+REACT_DOCTOR_OTLP_AUTH_HEADER="Bearer $AXIOM_TOKEN" \
+react-doctor
+```
+
+If either var is missing, no exporter is attached and there's no network traffic. Both the CLI (`inspect()`) and the programmatic `diagnose()` API honor these.
+
 ## Leaderboard
 
 Top React codebases scanned by React Doctor, ranked by score. Updated automatically from [millionco/react-doctor-benchmarks](https://github.com/millionco/react-doctor-benchmarks).

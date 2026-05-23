@@ -1,5 +1,7 @@
 import { performance } from "node:perf_hooks";
-import { Effect, Layer, Ref } from "effect";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Ref from "effect/Ref";
 import {
   calculateScore,
   Config,
@@ -264,7 +266,6 @@ const runInspectWithRuntime = async (
     output = programResult.output;
     finalSpinnerHandle = programResult.finalHandle;
   } catch (cause) {
-    if (cause instanceof ReactDoctorError) restoreLegacyThrow(cause);
     if (isReactDoctorError(cause)) restoreLegacyThrow(cause);
     throw cause;
   }
@@ -319,10 +320,13 @@ const runInspectWithRuntime = async (
 
   // Pre-filter diagnostics through the `score` surface so weak-signal
   // rule families (e.g. `design`) stay out of scoring by default and
-  // don't dilute the headline number. Surface-included diagnostics
-  // still flow through `result.diagnostics` for CLI/JSON consumers.
+  // don't dilute the headline number. The orchestrator's Score
+  // service ran with `layerOf(null)` for exactly this reason — it
+  // only sees the per-element-filtered list, not the surface-filtered
+  // list this function needs. We compute the real score here.
+  const inspectDiagnostics: ReadonlyArray<Diagnostic> = output.diagnostics;
   const scoreDiagnostics = filterDiagnosticsForSurface(
-    [...output.diagnostics] as Diagnostic[],
+    [...inspectDiagnostics],
     "score",
     output.userConfig,
   );
@@ -335,13 +339,13 @@ const runInspectWithRuntime = async (
   return finalizeAndRender({
     options,
     elapsedMilliseconds,
-    diagnostics: [...output.diagnostics],
+    diagnostics: inspectDiagnostics,
     score,
     project: output.project,
     userConfig: output.userConfig,
     didLintFail,
     lintFailureReason,
-    lintPartialFailures: [...output.lintPartialFailures],
+    lintPartialFailures: output.lintPartialFailures,
     didDeadCodeFail: output.didDeadCodeFail,
     deadCodeFailureReason: output.deadCodeFailureReason,
     directory: output.resolvedDirectory,
@@ -351,7 +355,7 @@ const runInspectWithRuntime = async (
 interface FinalizeInput {
   options: ResolvedInspectOptions;
   elapsedMilliseconds: number;
-  diagnostics: ReadonlyArray<InspectResult["diagnostics"][number]>;
+  diagnostics: ReadonlyArray<Diagnostic>;
   score: ScoreResult | null;
   project: InspectResult["project"];
   userConfig: ReactDoctorConfig | null;
@@ -399,7 +403,7 @@ const finalizeAndRender = (input: FinalizeInput): InspectResult => {
   }
 
   const buildResult = (): InspectResult => ({
-    diagnostics: [...diagnostics] as Diagnostic[],
+    diagnostics: [...diagnostics],
     score,
     skippedChecks,
     ...(Object.keys(skippedCheckReasons).length > 0 ? { skippedCheckReasons } : {}),
@@ -417,7 +421,7 @@ const finalizeAndRender = (input: FinalizeInput): InspectResult => {
   }
 
   const surfaceDiagnostics = filterDiagnosticsForSurface(
-    [...diagnostics] as Diagnostic[],
+    [...diagnostics],
     options.outputSurface,
     userConfig,
   );

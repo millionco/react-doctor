@@ -20,7 +20,6 @@ import {
 import {
   AmbiguousProjectError,
   NoReactDependencyError,
-  PackageJsonNotFoundError,
   ProjectNotFoundError,
 } from "@react-doctor/project-info";
 import type { DiagnoseOptions, DiagnoseResult } from "@react-doctor/types";
@@ -82,14 +81,12 @@ export const diagnose = async (
   );
   const directoryAfterRedirect = redirectedDirectory ?? requestedDirectory;
 
-  let resolvedDirectory: string | null;
-  try {
-    resolvedDirectory = resolveDiagnoseTarget(directoryAfterRedirect);
-  } catch (cause) {
-    if (cause instanceof AmbiguousProjectError) throw cause;
-    if (cause instanceof PackageJsonNotFoundError) throw cause;
-    throw cause;
-  }
+  // resolveDiagnoseTarget throws AmbiguousProjectError when the
+  // requested directory has multiple React subprojects; let it
+  // propagate so the legacy public-API contract holds. A `null`
+  // return means "no React project here" — translate that to the
+  // ProjectNotFoundError the legacy diagnose() used.
+  const resolvedDirectory = resolveDiagnoseTarget(directoryAfterRedirect);
   if (!resolvedDirectory) {
     throw new ProjectNotFoundError(directoryAfterRedirect);
   }

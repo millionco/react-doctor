@@ -169,6 +169,8 @@ export const runInspect = <HooksR = never>(
       ? []
       : checkReducedMotion(scanDirectory);
 
+    const emptyDiagnosticStream: Stream.Stream<Diagnostic, never> = Stream.empty;
+
     const rawLintStream = linterService
       .run({
         rootDirectory: scanDirectory,
@@ -190,7 +192,7 @@ export const runInspect = <HooksR = never>(
                 reason: error.message,
                 reasonTag: error.reason._tag,
               });
-              return Stream.empty as Stream.Stream<Diagnostic, never>;
+              return emptyDiagnosticStream;
             }),
           ),
         ),
@@ -208,12 +210,12 @@ export const runInspect = <HooksR = never>(
                     didFail: true,
                     reason: error.message,
                   });
-                  return Stream.empty as Stream.Stream<Diagnostic, never>;
+                  return emptyDiagnosticStream;
                 }),
               ),
             ),
           )
-      : Stream.empty;
+      : emptyDiagnosticStream;
 
     const transformedStream = Stream.fromIterable(environmentDiagnostics).pipe(
       Stream.concat(rawLintStream),

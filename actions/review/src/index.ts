@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { BASE_WORKTREE_DIR_NAME, CHECK_RUN_NAME, MAX_INLINE_COMMENTS_COUNT } from "./constants.ts";
 import {
   buildInlineCommentCandidates,
+  buildThreadKey,
   computeDiagnosticsDelta,
   formatAnalysisFailureComment,
   formatNoIssuesComment,
@@ -272,10 +273,30 @@ const main = async (): Promise<void> => {
 
     const inlineCandidates = buildInlineCommentCandidates(newDiagnostics, changedFilesByPath);
 
+    // Keep ANY thread that maps back to a still-present regression
+    // alive, not just the subset that can be posted inline. Reasons
+    // a real regression could fail the added-line filter:
+    //   - `pulls.listFiles` returned a null `patch` (binary / large
+    //     / rename-only file) so no added lines are visible
+    //   - the violation line is on context (not `+`) within a hunk
+    //   - the file was modified outside the diff window
+    // Without this, the existing thread would get the "Addressed"
+    // footer and resolve, even though the sticky summary still
+    // lists the regression.
+    const activeThreadKeysFromRegressions = new Set(
+      newDiagnostics
+        .filter((diagnostic) => diagnostic.severity === "error")
+        .map((diagnostic) =>
+          buildThreadKey(diagnostic.relativePath, diagnostic.line, diagnostic.rule),
+        ),
+    );
+    for (const candidate of inlineCandidates) {
+      activeThreadKeysFromRegressions.add(candidate.threadKey);
+    }
     const { activeThreadKeys, resolvedCount } = await reconcileInlineThreads(
       client,
       context,
-      new Set(inlineCandidates.map((candidate) => candidate.threadKey)),
+      activeThreadKeysFromRegressions,
     );
     if (resolvedCount > 0) logInfo(`Resolved ${resolvedCount} addressed thread(s).`);
 

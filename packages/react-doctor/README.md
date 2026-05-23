@@ -15,6 +15,8 @@ Works with Next.js, Vite, and React Native.
 
 ### [See it in action →](https://react.doctor)
 
+> **React Doctor vs React Review.** React Doctor is the local-first **CLI and lint plugins** in this repo: offline-friendly, scriptable, runs anywhere. React Review is the hosted product on [react.doctor](https://react.doctor) (GitHub App, dashboard, PR comments, baseline / delta tracking). They share the same rule set; pick the CLI when you want a one-shot scan or self-hosted CI, and add React Review when you also want a hosted dashboard and review team workflow. Already using the CLI? React Review augments it without replacing it.
+
 ## Install
 
 Run this at your project root:
@@ -95,6 +97,23 @@ Prefer not to add a marketplace action? The bare `npx` form works too:
 ```yaml
 - run: npx react-doctor@latest --fail-on warning
 ```
+
+## Release versioning
+
+React Doctor ships a few related artifacts. Each one has its own version, and the table below is the mapping you should refer to when pinning.
+
+| Artifact                                                    | Where to find the version                                   | Example pin                              |
+| ----------------------------------------------------------- | ----------------------------------------------------------- | ---------------------------------------- |
+| `react-doctor` npm package (the CLI and Node API)           | [npm](https://npmjs.com/package/react-doctor)               | `npx react-doctor@0.2.3`                 |
+| `oxlint-plugin-react-doctor` / `eslint-plugin-react-doctor` | [npm](https://npmjs.com/package/oxlint-plugin-react-doctor) | `"oxlint-plugin-react-doctor": "^0.2.3"` |
+| `millionco/react-doctor` GitHub composite action            | git refs on this repo (`@main` or version tag)              | `uses: millionco/react-doctor@main`      |
+| `react.doctor` hosted Review                                | the hosted dashboard auto-updates; no pin is required       | n/a                                      |
+
+The composite action is referenced as `@main` by default, which tracks the latest commit on the canonical branch. If you want a pinned action ref instead, every published `react-doctor@X.Y.Z` release also pushes a matching `vX.Y.Z` tag and moves the floating `vX` / `vX.Y` tags to that commit, so `@v0`, `@v0.2`, and `@v0.2.3` all resolve. Pin tighter when you need reproducible scores across releases (see [Scoring](#scoring)).
+
+> **Pinning the action ref doesn't pin the CLI version.** The composite action invokes `npx react-doctor@latest` internally, so the action ref pins the **workflow shape** (inputs, comment plumbing, score collection), not the **CLI version** running underneath. For genuinely deterministic scores in CI, also pin the CLI side: either run `npx react-doctor@0.2.3 ...` in a bare `- run:` step, or add `"react-doctor": "0.2.3"` to your project's dev deps and invoke it through `pnpm exec` / `npm exec`.
+
+Each release ships with the changeset-generated changelog. Material rule additions, severity changes, or score-formula tweaks are called out there so you can read the expected score impact before bumping a pin.
 
 ## PR blocking and exit codes
 
@@ -364,6 +383,24 @@ When a suppression isn't working, `--explain <file:line>` (or its alias `--why <
 
 `offline` skips the score API entirely — no score is shown and no share URL is generated. CI runs (GitHub Actions, GitLab CI, CircleCI) are not offline by default; only the share URL is suppressed. Set `offline: true` (or `--offline`) explicitly when you want zero network.
 
+### React Native support matrix
+
+`rn-*` rules cover the React Native ecosystem in addition to React DOM. Detection keys off `package.json` dependencies (or their hoisted equivalents) plus file-extension hints:
+
+| Stack / runtime                                                                              | Detection signal (in `package.json` or workspace)                                                                                   | `rn-*` rules |
+| -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | :----------: |
+| React Native CLI                                                                             | `react-native` dependency                                                                                                           |      ON      |
+| React Native tvOS                                                                            | `react-native-tvos`                                                                                                                 |      ON      |
+| Expo (managed and bare)                                                                      | `expo`, `expo-router`, any `@expo/*`                                                                                                |      ON      |
+| React Native for Windows / macOS                                                             | `react-native-windows`, `react-native-macos`                                                                                        |      ON      |
+| Out-of-tree React Native targets                                                             | Any `@react-native/*` or `@react-native-*` package (e.g. `@react-native-firebase/app`, `@react-native-async-storage/async-storage`) |      ON      |
+| Metro-based projects without an `expo` / `react-native` dep                                  | Top-level `"react-native"` resolution field in `package.json`                                                                       |      ON      |
+| Web-only React (Next.js, Vite, CRA, Gatsby, Remix, Docusaurus, Storybook, plain `react-dom`) | `next`, `vite`, `react-scripts`, `gatsby`, `@remix-run/*`, `@docusaurus/*`, `@storybook/*`, `react-dom` (without an RN sibling)     |     OFF      |
+| `*.web.tsx` / `*.web.jsx` files in an RN package                                             | File extension                                                                                                                      |  OFF (file)  |
+| `*.ios.tsx` / `*.android.tsx` / `*.native.tsx` files                                         | File extension                                                                                                                      |  ON (file)   |
+
+Mixed monorepos work both ways: a web-rooted workspace with even one RN package gets the `rn-*` rules loaded, then file-level boundaries keep them silent on the web workspaces. The configuration knob `rawTextWrapperComponents` lets you teach `rn-no-raw-text` about library components that safely route string children through an internal `<Text>` (e.g. `heroui-native`'s `Button`); `textComponents` is the broader escape hatch for components that behave like `<Text>` themselves.
+
 ### React Native rules in mixed monorepos
 
 `rn-*` rules respect per-package boundaries automatically. In a mixed React Native + web monorepo (`apps/mobile` alongside `apps/web` / `apps/vite-app` / `packages/storybook` / `apps/docs`), every `rn-*` rule walks up to the file's nearest `package.json` before running:
@@ -398,7 +435,14 @@ Scoring runs on react.doctor's API and is **network-dependent**: without a succe
 
 Score labels: 75+ is **Great**, 50 to 74 is **Needs work**, under 50 is **Critical**.
 
-Scores may decrease across releases as new rules are added. Each new rule that fires in your codebase introduces an additional penalty. This is expected — it means the tool is catching more issues, not that your code got worse. Pin to a specific react-doctor version in CI if you need stable scores across upgrades.
+Scores may decrease across releases as new rules are added. Each new rule that fires in your codebase introduces an additional penalty. This is expected: it means the tool is catching more issues, not that your code got worse. Don't chase 100/100 blindly; the score is a signal to investigate, not a target.
+
+When a release moves your score noticeably:
+
+- Check the per-release changelog for added rules, severity changes, or formula tweaks. Each release ships with the changeset-generated notes.
+- Compare the `unique rules triggered` list against the previous run. A single new rule firing once can subtract 1.5 points.
+- Pin to a specific `react-doctor` version in CI (see [Release versioning](#release-versioning)) if you need stable scores across upgrades. Pinning the action ref alone is not enough; pin the CLI side too.
+- If a newly fired rule looks noisy in your codebase, `--explain <file:line>` (or `--why`) prints exactly which rule it is and the suppression snippet to silence it. See [Inline suppressions](#inline-suppressions) and [Configuration](#configuration).
 
 ## Diff and staged modes
 
@@ -471,6 +515,22 @@ React Doctor detects 50+ coding agents (Claude Code, Cursor, Codex, OpenCode, Wi
 
 In CI environments, prompts are automatically skipped. Pass `--offline` explicitly when you need zero network.
 
+### Non-GitHub CI (GitLab, Bitbucket, CircleCI, Jenkins, …)
+
+The composite action is GitHub-specific, but everything it does is built on top of the CLI; there's nothing GitHub-only about React Doctor itself. For other providers, run the CLI directly and consume the JSON report from your existing tooling:
+
+```bash
+npx react-doctor@latest --diff "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" --fail-on warning --json > react-doctor.json
+```
+
+The JSON document is the same one the action consumes (`{ ok, score, diagnostics[], summary, project }`). Any CI dashboard that accepts a parsed report can read it. Three common patterns:
+
+- **GitLab CI**: invoke the CLI in a `merge_request` job and surface `react-doctor.json` as a [Code Quality report artifact](https://docs.gitlab.com/ci/testing/code_quality.html) by translating diagnostics into the GitLab Code Quality JSON shape. Until a first-class GitLab integration ships, this is the recommended path.
+- **CircleCI / Jenkins / Buildkite**: fail the step on a non-zero exit (`--fail-on warning`) and upload `react-doctor.json` as an artifact. Read `summary.errorCount` / `summary.warningCount` in a follow-up step for thresholding.
+- **Pre-merge gates without a dashboard**: `--diff <base> --fail-on warning` is enough; the build log carries the diagnostics.
+
+SARIF and a hosted GitLab integration are tracked separately; see `TODOS.md` if you'd like to follow along. In the meantime, the JSON output is intentionally stable: `JsonReport`, `JsonReportSummary`, and friends are exported from [`react-doctor/api`](packages/react-doctor/src/api.ts) for type-safe consumption.
+
 ## Node.js API
 
 ```js
@@ -491,6 +551,28 @@ const counts = summarizeDiagnostics(result.diagnostics);
 ```
 
 `react-doctor/api` re-exports `JsonReport`, `JsonReportSummary`, `JsonReportProjectEntry`, `JsonReportMode`, plus the lower-level `buildJsonReport` and `buildJsonReportError` builders. See [`packages/react-doctor/src/api.ts`](https://github.com/millionco/react-doctor/blob/main/packages/react-doctor/src/api.ts) for the full types.
+
+## Privacy and data
+
+React Doctor runs entirely on your machine. The only network traffic is the optional score lookup and an opt-out share URL, and both can be disabled.
+
+| Network call        | URL                                          | Sent                                                                                                                                                          | Disabled by                                  |
+| ------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| Score API           | `https://www.react.doctor/api/score`         | Gzipped JSON of the diagnostic list with **file paths stripped** (rule id, severity, message, position only). No source code, no file paths, no project name. | `--offline` / `"offline": true`              |
+| Share URL (printed) | `https://www.react.doctor/share?p=...&s=...` | Query parameters only: detected project name, score, error count, warning count, affected file count. Nothing is uploaded; the link is rendered locally.      | `--offline`, `"share": false`, or any CI run |
+
+What `--offline` disables, exactly:
+
+- The score API call. No score is computed and the `score` action output / `--score` value is empty.
+- The share URL line in the local CLI summary.
+
+What `--offline` does **not** affect:
+
+- Local rule execution, diagnostics, exit codes, JSON / annotation output, and the GitHub Actions sticky PR comment (the comment is constructed locally from the printed report).
+
+Source code never leaves your machine. There is no telemetry pipeline, no file upload, and no usage analytics in the CLI.
+
+For the hosted React Review product on [react.doctor](https://react.doctor), the GitHub App reads repository contents through GitHub's standard installation-scoped access in order to compute the same diagnostics server-side; review the App permissions screen before installing.
 
 ## Leaderboard
 

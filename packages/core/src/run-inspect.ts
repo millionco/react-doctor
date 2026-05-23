@@ -189,6 +189,7 @@ export const runInspect = <HooksR = never>(
         adoptExistingLintConfig: input.adoptExistingLintConfig,
         ignoredTags: input.ignoredTags,
         userConfig: resolvedConfig.config ?? undefined,
+        configSourceDirectory: resolvedConfig.configSourceDirectory ?? undefined,
       })
       .pipe(
         Stream.catchTag("ReactDoctorError", (error: ReactDoctorError) =>

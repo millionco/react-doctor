@@ -75,7 +75,7 @@ const layersOf = (config: {
 }) =>
   Layer.mergeAll(
     Project.layerOf(sampleProject),
-    Config.layerOf({ config: null, resolvedDirectory: "/repo" }),
+    Config.layerOf({ config: null, resolvedDirectory: "/repo", configSourceDirectory: null }),
     Files.layerInMemory(new Map()),
     Linter.layerOf(config.diagnostics ?? []),
     LintPartialFailures.layerLive,
@@ -128,7 +128,7 @@ describe("runInspect — missing React dependency", () => {
     const projectWithoutReact: ProjectInfo = { ...sampleProject, reactVersion: null };
     const layers = Layer.mergeAll(
       Project.layerOf(projectWithoutReact),
-      Config.layerOf({ config: null, resolvedDirectory: "/repo" }),
+      Config.layerOf({ config: null, resolvedDirectory: "/repo", configSourceDirectory: null }),
       Files.layerInMemory(new Map()),
       Linter.layerOf([]),
       LintPartialFailures.layerLive,
@@ -149,7 +149,7 @@ describe("runInspect — missing React dependency", () => {
             new ReactDoctorError({ reason: new NoReactDependency({ directory: "/repo" }) }),
           ),
       }),
-      Config.layerOf({ config: null, resolvedDirectory: "/repo" }),
+      Config.layerOf({ config: null, resolvedDirectory: "/repo", configSourceDirectory: null }),
       Files.layerInMemory(new Map()),
       Linter.layerOf([]),
       LintPartialFailures.layerLive,
@@ -188,7 +188,7 @@ describe("runInspect — mid-stream lint failure", () => {
     });
     const layers = Layer.mergeAll(
       Project.layerOf(sampleProject),
-      Config.layerOf({ config: null, resolvedDirectory: "/repo" }),
+      Config.layerOf({ config: null, resolvedDirectory: "/repo", configSourceDirectory: null }),
       Files.layerInMemory(new Map()),
       failingLinter,
       LintPartialFailures.layerLive,
@@ -219,7 +219,7 @@ describe("runInspect — dead-code failure", () => {
     });
     const layers = Layer.mergeAll(
       Project.layerOf(sampleProject),
-      Config.layerOf({ config: null, resolvedDirectory: "/repo" }),
+      Config.layerOf({ config: null, resolvedDirectory: "/repo", configSourceDirectory: null }),
       Files.layerInMemory(new Map()),
       Linter.layerOf([lintDiagnostic]),
       LintPartialFailures.layerLive,
@@ -293,6 +293,7 @@ describe("runInspect — Reporter sees post-filter diagnostics", () => {
       Config.layerOf({
         config: { ignore: { files: ["src/ignored.*"] } } as never,
         resolvedDirectory: "/repo",
+        configSourceDirectory: null,
       }),
       Files.layerInMemory(new Map()),
       Linter.layerOf([ignoredDiagnostic, lintDiagnostic]),

@@ -221,7 +221,13 @@ const runInspectWithRuntime = async (
   // applied first.
   const scoreLayer = Score.layerOf(null);
   const configLayer = hasConfigOverride
-    ? Config.layerOf({ config: userConfig, resolvedDirectory: directory })
+    ? Config.layerOf({
+        config: userConfig,
+        resolvedDirectory: directory,
+        // No canonical config file when the caller passes `configOverride`
+        // — plugin resolution falls back to the scan root.
+        configSourceDirectory: null,
+      })
     : Config.layerNode;
 
   const layers = Layer.mergeAll(

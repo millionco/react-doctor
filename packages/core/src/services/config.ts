@@ -9,6 +9,14 @@ import { resolveConfigRootDir } from "../resolve-config-root-dir.js";
 export interface ResolvedConfig {
   readonly config: ReactDoctorConfig | null;
   readonly resolvedDirectory: string;
+  /**
+   * Directory of the `react-doctor.config.json` / `package.json`
+   * that supplied `config`. `null` when no config was found.
+   * Diverges from `resolvedDirectory` whenever `config.rootDir`
+   * redirects the scan — used as the resolution base for relative
+   * paths inside the config (e.g. `config.plugins: [...]`).
+   */
+  readonly configSourceDirectory: string | null;
 }
 
 const CONFIG_CACHE_CAPACITY = 16;
@@ -36,6 +44,7 @@ export class Config extends Context.Service<
             return {
               config: loaded?.config ?? null,
               resolvedDirectory: redirected ?? directory,
+              configSourceDirectory: loaded?.sourceDirectory ?? null,
             };
           }),
       });

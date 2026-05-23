@@ -379,6 +379,19 @@ interface RunOxlintOptions {
    */
   userConfig?: ReactDoctorConfig | null;
   /**
+   * Directory of the `react-doctor.config.json` (or `package.json`)
+   * that supplied `userConfig`. Used as the resolution base for
+   * `userConfig.plugins` entries — relative paths resolve against
+   * this directory and npm package names resolve through its
+   * `node_modules`, matching how `rootDir` resolves. Diverges from
+   * `rootDirectory` whenever `userConfig.rootDir` redirects the
+   * scan to a subtree.
+   *
+   * Defaults to `rootDirectory` for direct callers that don't load
+   * a config file (e.g. tests that pass `userConfig` synthetically).
+   */
+  configSourceDirectory?: string;
+  /**
    * Called once per soft-fail event (e.g. a batch hit
    * `OXLINT_SPAWN_TIMEOUT_MS` and was skipped). The lint scan keeps
    * going on remaining batches; the caller is expected to surface the
@@ -438,6 +451,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     adoptExistingLintConfig = true,
     ignoredTags = new Set<string>(),
     userConfig,
+    configSourceDirectory = rootDirectory,
     onPartialFailure,
   } = options;
 
@@ -477,13 +491,16 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
   // Drop them up front so the scan starts in the same state the fallback
   // would land in, with no stderr noise.
   const extendsPaths = detectedConfigPaths.filter(canOxlintExtendConfig);
-  // Resolve user-declared plugins (`config.plugins: [...]`) relative
-  // to the project root (the scan root, which is `react-doctor.config.json`'s
-  // own directory in the common case). Each resolved plugin
-  // contributes its rules + its specifier to the generated
-  // oxlintrc.json; failures are warned and skipped so a typo in
-  // one entry doesn't block the rest of the scan.
-  const userPlugins = resolveUserPlugins(userConfig?.plugins, rootDirectory);
+  // Resolve user-declared plugins (`config.plugins: [...]`) against
+  // the config file's source directory — NOT the scan root, since
+  // those diverge whenever `userConfig.rootDir` redirects the scan
+  // to a subtree (the canonical monorepo case: the config sits at
+  // the workspace root with `rootDir: "apps/web"`, the scan root is
+  // `apps/web/`, but `./lint/team.cjs` still resolves from the
+  // workspace root). Defaults to `rootDirectory` for direct callers
+  // that don't load a config file (e.g. tests passing `userConfig`
+  // synthetically without a corresponding `configSourceDirectory`).
+  const userPlugins = resolveUserPlugins(userConfig?.plugins, configSourceDirectory);
   const config = createOxlintConfig({
     pluginPath,
     project,

@@ -7,6 +7,7 @@ describe("Config.layerOf", () => {
     const resolved = {
       config: { lint: false } as never,
       resolvedDirectory: "/repo/apps/web",
+      configSourceDirectory: "/repo",
     };
     const result = await Effect.runPromise(
       Effect.gen(function* () {

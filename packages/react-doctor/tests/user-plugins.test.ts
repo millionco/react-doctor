@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
@@ -130,6 +130,43 @@ describe("user plugins (config.plugins)", () => {
 
     // Scan still completes; just no rule from the missing plugin fires.
     expect(diagnostics.filter((d) => d.plugin === "does-not-exist")).toEqual([]);
+  });
+
+  it("resolves a plugin spec from the config's source directory, not the scan root (rootDir redirect)", async () => {
+    // Bugbot regression (#438): `react-doctor.config.json` lives at
+    // a workspace root and redirects the scan via `rootDir: "apps/web"`,
+    // but the plugin file sits next to the CONFIG, not next to the
+    // scan target. The resolver MUST use the config source directory.
+    //
+    // Layout:
+    //   <workspace>/
+    //     lint/team-conventions.cjs      ← plugin (next to config)
+    //     apps/web/                      ← scan root after rootDir
+    //       package.json
+    //       src/App.tsx
+    const workspaceDir = path.join(tempRoot, "rootdir-redirect-workspace");
+    const scanDir = setupReactProject(workspaceDir, "apps/web", {
+      files: {
+        "src/App.tsx": `export const App = () => <div>FORBIDDEN content</div>;\n`,
+      },
+    });
+    mkdirSync(path.join(workspaceDir, "lint"), { recursive: true });
+    writeFileSync(path.join(workspaceDir, "lint/team-conventions.cjs"), FORBIDDEN_WORD_PLUGIN, {
+      encoding: "utf-8",
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: scanDir, // scan root (post-rootDir-redirect)
+      project: buildTestProject({ rootDirectory: scanDir }),
+      userConfig: {
+        plugins: ["./lint/team-conventions.cjs"], // relative to config dir, not scan dir
+        rules: { "team-conventions/no-forbidden-word": "error" },
+      },
+      configSourceDirectory: workspaceDir, // ← the fix: config dir
+    });
+
+    const userHits = diagnostics.filter((d) => d.rule === "no-forbidden-word");
+    expect(userHits.length).toBeGreaterThan(0);
   });
 
   it("skips a plugin that omits `meta.name` (required, no slug fallback)", async () => {

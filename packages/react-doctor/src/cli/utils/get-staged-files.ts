@@ -1,30 +1,37 @@
-import { spawnSync } from "node:child_process";
+import * as Effect from "effect/Effect";
 import fs from "node:fs";
 import path from "node:path";
-import { GIT_SHOW_MAX_BUFFER_BYTES, SOURCE_FILE_PATTERN } from "@react-doctor/core";
+import { GIT_SHOW_MAX_BUFFER_BYTES, Git, SOURCE_FILE_PATTERN } from "@react-doctor/core";
 
 // HACK: --diff-filter=ACMR excludes Deleted (D) — staged-only scans cannot
 // lint files that no longer exist in the staging area.
 const getStagedFilePaths = (directory: string): string[] => {
-  const result = spawnSync(
-    "git",
-    ["diff", "--cached", "-z", "--name-only", "--diff-filter=ACMR", "--relative"],
-    { cwd: directory, stdio: "pipe", maxBuffer: GIT_SHOW_MAX_BUFFER_BYTES },
-  );
-  if (result.error || result.status !== 0) return [];
-  const output = result.stdout.toString();
-  if (!output) return [];
-  return output.split("\0").filter((filePath) => filePath.length > 0);
+  try {
+    const result = Effect.runSync(
+      Effect.gen(function* () {
+        const git = yield* Git;
+        return yield* git.stagedFilePaths(directory);
+      }).pipe(Effect.provide(Git.layerNode)),
+    );
+    return [...result];
+  } catch {
+    return [];
+  }
 };
 
 const readStagedContent = (directory: string, relativePath: string): string | null => {
-  const result = spawnSync("git", ["show", `:${relativePath}`], {
-    cwd: directory,
-    stdio: "pipe",
-    maxBuffer: GIT_SHOW_MAX_BUFFER_BYTES,
-  });
-  if (result.error || result.status !== 0) return null;
-  return result.stdout.toString();
+  try {
+    return Effect.runSync(
+      Effect.gen(function* () {
+        const git = yield* Git;
+        return yield* git.showStagedContent(directory, relativePath, {
+          maxBufferBytes: GIT_SHOW_MAX_BUFFER_BYTES,
+        });
+      }).pipe(Effect.provide(Git.layerNode)),
+    );
+  } catch {
+    return null;
+  }
 };
 
 interface StagedSnapshot {

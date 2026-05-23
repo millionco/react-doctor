@@ -1,12 +1,9 @@
-import { spawnSync } from "node:child_process";
+import * as Effect from "effect/Effect";
 import fs from "node:fs";
 import path from "node:path";
 import { readDirectoryEntries } from "@react-doctor/project-info";
-import {
-  GIT_LS_FILES_MAX_BUFFER_BYTES,
-  IGNORED_DIRECTORIES,
-  SOURCE_FILE_PATTERN,
-} from "./constants.js";
+import { IGNORED_DIRECTORIES, SOURCE_FILE_PATTERN } from "./constants.js";
+import { Git } from "./services/git.js";
 
 const DISABLE_DIRECTIVE_PATTERN = /(eslint|oxlint)-disable/;
 
@@ -14,27 +11,27 @@ const findFilesWithDisableDirectivesViaGit = (
   rootDirectory: string,
   includePaths?: string[],
 ): string[] | null => {
-  const grepArgs = ["grep", "-l", "--untracked", "-E", "(eslint|oxlint)-disable"];
-  if (includePaths && includePaths.length > 0) {
-    grepArgs.push("--", ...includePaths);
-  }
-
-  const result = spawnSync("git", grepArgs, {
-    cwd: rootDirectory,
-    encoding: "utf-8",
-    maxBuffer: GIT_LS_FILES_MAX_BUFFER_BYTES,
+  const program = Effect.gen(function* () {
+    const git = yield* Git;
+    return yield* git.grep({
+      directory: rootDirectory,
+      pattern: "(eslint|oxlint)-disable",
+      extendedRegexp: true,
+      listMatchingFiles: true,
+      includeUntracked: true,
+      includePaths: includePaths && includePaths.length > 0 ? includePaths : undefined,
+    });
   });
 
-  // null status means git wasn't found at all; non-null+nonzero with no
-  // output means "ran but no matches" only when there's no error code.
-  // Distinguish "git unavailable / not a repo" (return null → caller
-  // falls back) from "git ran successfully" (return [] or matches).
-  if (result.error || result.status === null) return null;
-  // Status 1 with empty stdout = git grep ran inside a repo and found
-  // nothing. Status 128 = "not a git repo". Treat 128 as fallback.
-  if (result.status === 128) return null;
+  let grepResult: { readonly status: number; readonly stdout: string } | null;
+  try {
+    grepResult = Effect.runSync(program.pipe(Effect.provide(Git.layerNode)));
+  } catch {
+    return null;
+  }
+  if (grepResult === null) return null;
 
-  return result.stdout
+  return grepResult.stdout
     .split("\n")
     .filter((filePath) => filePath.length > 0 && SOURCE_FILE_PATTERN.test(filePath));
 };

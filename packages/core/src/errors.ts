@@ -116,6 +116,41 @@ export class DeadCodeAnalysisFailed extends Schema.TaggedErrorClass<DeadCodeAnal
   }
 }
 
+export class GitInvocationFailed extends Schema.TaggedErrorClass<GitInvocationFailed>()(
+  "GitInvocationFailed",
+  {
+    args: Schema.Array(Schema.String),
+    directory: Schema.String,
+    cause: Schema.Unknown,
+  },
+) {
+  get message() {
+    return `git ${this.args.join(" ")} (cwd=${this.directory}) failed: ${Cause.pretty(Cause.fail(this.cause))}`;
+  }
+}
+
+export class GitBaseBranchMissing extends Schema.TaggedErrorClass<GitBaseBranchMissing>()(
+  "GitBaseBranchMissing",
+  {
+    branch: Schema.String,
+  },
+) {
+  get message() {
+    return `Diff base branch "${this.branch}" does not exist (run \`git fetch\` to update remote refs).`;
+  }
+}
+
+export class GitBaseBranchInvalid extends Schema.TaggedErrorClass<GitBaseBranchInvalid>()(
+  "GitBaseBranchInvalid",
+  {
+    detail: Schema.String,
+  },
+) {
+  get message() {
+    return this.detail;
+  }
+}
+
 export const ReactDoctorErrorReason = Schema.Union([
   OxlintUnavailable,
   OxlintBatchExceeded,
@@ -126,6 +161,9 @@ export const ReactDoctorErrorReason = Schema.Union([
   NoReactDependency,
   AmbiguousProject,
   DeadCodeAnalysisFailed,
+  GitInvocationFailed,
+  GitBaseBranchMissing,
+  GitBaseBranchInvalid,
 ]);
 
 export type ReactDoctorErrorReason = Schema.Schema.Type<typeof ReactDoctorErrorReason>;

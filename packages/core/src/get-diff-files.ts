@@ -1,116 +1,52 @@
-import { spawnSync } from "node:child_process";
-import { DEFAULT_BRANCH_CANDIDATES, SOURCE_FILE_PATTERN } from "./constants.js";
+import * as Effect from "effect/Effect";
+import { SOURCE_FILE_PATTERN } from "./constants.js";
+import { GitBaseBranchInvalid, GitBaseBranchMissing, ReactDoctorError } from "./errors.js";
+import { Git, type GitDiffSelection } from "./services/git.js";
 import type { DiffInfo } from "@react-doctor/types";
 
-const runGit = (cwd: string, args: string[]): string | null => {
-  const result = spawnSync("git", args, {
-    cwd,
-    stdio: ["ignore", "pipe", "pipe"],
-    encoding: "utf-8",
-  });
-  if (result.error || result.status !== 0) return null;
-  return result.stdout.toString().trim();
-};
-
-const getCurrentBranch = (directory: string): string | null => {
-  const branch = runGit(directory, ["rev-parse", "--abbrev-ref", "HEAD"]);
-  if (!branch) return null;
-  return branch === "HEAD" ? null : branch;
-};
-
-const detectDefaultBranch = (directory: string): string | null => {
-  const reference = runGit(directory, ["symbolic-ref", "refs/remotes/origin/HEAD"]);
-  if (reference) return reference.replace("refs/remotes/origin/", "");
-
-  const candidateRefs = DEFAULT_BRANCH_CANDIDATES.map((candidate) => `refs/heads/${candidate}`);
-  const output = runGit(directory, ["for-each-ref", "--format=%(refname:short)", ...candidateRefs]);
-  if (output) {
-    const firstLine = output.split("\n")[0]?.trim();
-    if (firstLine) return firstLine;
-  }
-  return null;
-};
-
-const branchExists = (directory: string, branch: string): boolean => {
-  const result = spawnSync("git", ["rev-parse", "--verify", branch], {
-    cwd: directory,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  return !result.error && result.status === 0;
-};
-
-const runGitNullSeparated = (cwd: string, args: string[]): string[] | null => {
-  const result = spawnSync("git", args, {
-    cwd,
-    stdio: ["ignore", "pipe", "pipe"],
-    encoding: "utf-8",
-  });
-  if (result.error || result.status !== 0) return null;
-  return result.stdout
-    .toString()
-    .split("\0")
-    .filter((filePath) => filePath.length > 0);
-};
-
-const getChangedFilesSinceBranch = (directory: string, baseBranch: string): string[] | null => {
-  const mergeBase = runGit(directory, ["merge-base", baseBranch, "HEAD"]);
-  if (mergeBase === null) return null;
-
-  return runGitNullSeparated(directory, [
-    "diff",
-    "-z",
-    "--name-only",
-    "--diff-filter=ACMR",
-    "--relative",
-    mergeBase,
-  ]);
-};
-
-const getUncommittedChangedFiles = (directory: string): string[] => {
-  const output = runGitNullSeparated(directory, [
-    "diff",
-    "-z",
-    "--name-only",
-    "--diff-filter=ACMR",
-    "--relative",
-    "HEAD",
-  ]);
-  return output ?? [];
-};
-
+/**
+ * Legacy synchronous façade. New callers should pull the `Git`
+ * service directly via `yield* Git` inside their own Effect rather
+ * than going through this wrapper — it exists so the existing CLI
+ * code paths that aren't yet Effect-typed don't need to change.
+ *
+ * Errors are unwrapped back into the historical `Error` shape:
+ *  - empty base branch → `Error("Diff base branch cannot be empty.")`
+ *  - non-existent base → `Error('Diff base branch "X" does not exist (run \`git fetch\` to update remote refs).')`
+ *  - any other git failure → propagated cause
+ */
 export const getDiffInfo = (directory: string, explicitBaseBranch?: string): DiffInfo | null => {
-  if (explicitBaseBranch !== undefined && explicitBaseBranch.trim().length === 0) {
-    throw new Error("Diff base branch cannot be empty.");
+  const program = Effect.gen(function* () {
+    const git = yield* Git;
+    return yield* git.diffSelection({ directory, explicitBaseBranch });
+  });
+
+  let selection: GitDiffSelection | null;
+  try {
+    selection = runProgram(program);
+  } catch (cause) {
+    if (cause instanceof ReactDoctorError) {
+      if (cause.reason instanceof GitBaseBranchInvalid) {
+        throw new Error(cause.reason.detail);
+      }
+      if (cause.reason instanceof GitBaseBranchMissing) {
+        throw new Error(cause.reason.message);
+      }
+    }
+    throw cause;
   }
 
-  const currentBranch = getCurrentBranch(directory);
-  // Detached HEAD (e.g. GitHub Actions `pull_request` checks out
-  // `refs/pull/N/merge`) is fine as long as the caller supplied an
-  // explicit base — `git merge-base <base> HEAD` resolves without a
-  // branch name. Without an explicit base we still bail out, since
-  // `detectDefaultBranch` can't infer "what did this PR change" from
-  // a bare commit hash.
-  if (!currentBranch && !explicitBaseBranch) return null;
-
-  const baseBranch = explicitBaseBranch ?? detectDefaultBranch(directory);
-  if (!baseBranch) return null;
-
-  if (explicitBaseBranch && !branchExists(directory, explicitBaseBranch)) {
-    throw new Error(
-      `Diff base branch "${explicitBaseBranch}" does not exist (run \`git fetch\` to update remote refs).`,
-    );
-  }
-
-  if (currentBranch !== null && currentBranch === baseBranch) {
-    const uncommittedFiles = getUncommittedChangedFiles(directory);
-    if (uncommittedFiles.length === 0) return null;
-    return { currentBranch, baseBranch, changedFiles: uncommittedFiles, isCurrentChanges: true };
-  }
-
-  const changedFiles = getChangedFilesSinceBranch(directory, baseBranch);
-  if (changedFiles === null) return null;
-  return { currentBranch, baseBranch, changedFiles };
+  if (selection === null) return null;
+  return {
+    currentBranch: selection.currentBranch,
+    baseBranch: selection.baseBranch,
+    changedFiles: [...selection.changedFiles],
+    ...(selection.isCurrentChanges ? { isCurrentChanges: true } : {}),
+  };
 };
+
+const runProgram = <Value>(program: Effect.Effect<Value, ReactDoctorError, Git>): Value =>
+  Effect.runSync(program.pipe(Effect.provide(Git.layerNode)));
 
 export const filterSourceFiles = (filePaths: string[]): string[] =>
   filePaths.filter((filePath) => SOURCE_FILE_PATTERN.test(filePath));

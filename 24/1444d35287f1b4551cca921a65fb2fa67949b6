@@ -1,0 +1,20 @@
+packages/core/src/run-inspect.ts
+  s_3d5d8bdec6b45f::t_4ac5d8ed2ac016 162-163,166-167
+  s_3d5d8bdec6b45f::t_6ae7f0b24ee3c1 123-131
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.0",
+  "base_commit_sha": "241444d35287f1b4551cca921a65fb2fa67949b6",
+  "prompts": {},
+  "sessions": {
+    "s_3d5d8bdec6b45f": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "b6003606-1792-4c58-861b-b455d467c762",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

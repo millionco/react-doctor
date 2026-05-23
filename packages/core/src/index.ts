@@ -8,6 +8,7 @@ export * from "./services/config.js";
 export * from "./services/dead-code.js";
 export * from "./services/files.js";
 export * from "./services/linter.js";
+export * from "./services/logger.js";
 export * from "./services/progress.js";
 export * from "./services/project.js";
 export * from "./services/reporter.js";

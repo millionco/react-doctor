@@ -68,9 +68,17 @@ export class StagedFiles extends Context.Service<
           Effect.gen(function* () {
             const materializedFiles: string[] = [];
             for (const relativePath of stagedFiles) {
-              const content = yield* git.showStagedContent(directory, relativePath, {
-                maxBufferBytes: GIT_SHOW_MAX_BUFFER_BYTES,
-              });
+              // Per-file git failures (missing binary, buffer overflow,
+              // spawn errors) must NOT sink the whole snapshot — the
+              // legacy helper caught these and skipped the path so the
+              // staged scan kept going with whatever files did read
+              // cleanly. Fold ReactDoctorError to `null` so the same
+              // skip-and-continue behavior holds.
+              const content = yield* git
+                .showStagedContent(directory, relativePath, {
+                  maxBufferBytes: GIT_SHOW_MAX_BUFFER_BYTES,
+                })
+                .pipe(Effect.orElseSucceed(() => null as string | null));
               if (content === null) continue;
               const targetPath = path.join(tempDirectory, relativePath);
               yield* Effect.sync(() => {

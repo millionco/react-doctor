@@ -1,6 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isCreateElementCall } from "../../utils/is-create-element-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -60,13 +61,9 @@ const isProvenValidExpression = (
   if (isNodeOfType(expression, "Literal") && typeof expression.value === "string") {
     return isValidTypeValue(expression.value, settings);
   }
-  if (
-    isNodeOfType(expression, "TemplateLiteral") &&
-    expression.expressions.length === 0 &&
-    expression.quasis.length === 1
-  ) {
-    const cookedValue = expression.quasis[0].value.cooked;
-    if (typeof cookedValue === "string") return isValidTypeValue(cookedValue, settings);
+  if (isNodeOfType(expression, "TemplateLiteral")) {
+    const staticValue = getStaticTemplateLiteralValue(expression);
+    if (staticValue !== null) return isValidTypeValue(staticValue, settings);
   }
   if (isNodeOfType(expression, "ConditionalExpression")) {
     return (

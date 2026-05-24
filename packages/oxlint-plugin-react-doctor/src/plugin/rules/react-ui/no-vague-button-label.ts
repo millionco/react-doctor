@@ -1,6 +1,7 @@
 import { VAGUE_BUTTON_LABELS } from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getOpeningElementTagName } from "./utils/get-opening-element-tag-name.js";
@@ -30,10 +31,10 @@ const collectJsxLabelText = (jsxElementNode: EsTreeNode): string | null => {
         collectedFragments.push(expression.value);
         continue;
       }
-      if (isNodeOfType(expression, "TemplateLiteral") && expression.quasis?.length === 1) {
-        const rawTemplate = expression.quasis[0].value?.raw;
-        if (typeof rawTemplate === "string" && expression.expressions.length === 0) {
-          collectedFragments.push(rawTemplate);
+      if (isNodeOfType(expression, "TemplateLiteral")) {
+        const staticValue = getStaticTemplateLiteralValue(expression);
+        if (staticValue !== null) {
+          collectedFragments.push(staticValue);
           continue;
         }
       }

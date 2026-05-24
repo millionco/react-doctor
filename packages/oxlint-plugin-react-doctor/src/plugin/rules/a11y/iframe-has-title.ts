@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
+import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
@@ -34,11 +35,8 @@ const evaluateTitleValue = (value: EsTreeNode | null | undefined): StaticVerdict
     if (isNodeOfType(expression, "TemplateLiteral")) {
       // Template with interpolation → dynamic OK; pure-string check
       // cooked content for emptiness.
-      if (expression.expressions.length === 0 && expression.quasis.length === 1) {
-        const cooked = expression.quasis[0]!.value.cooked;
-        return cooked && cooked.length > 0 ? "ok" : "empty";
-      }
-      return "dynamic-ok";
+      const staticValue = getStaticTemplateLiteralValue(expression);
+      return staticValue === null ? "dynamic-ok" : staticValue.length > 0 ? "ok" : "empty";
     }
     return "dynamic-ok";
   }

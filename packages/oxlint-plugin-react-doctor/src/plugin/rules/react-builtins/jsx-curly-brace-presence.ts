@@ -1,6 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
@@ -104,9 +105,7 @@ const isAllowedStringLikeInContainer = (
 // expression is a single-quasi template literal; else null.
 const singleQuasiTemplateValue = (expression: EsTreeNode): string | null => {
   if (!isNodeOfType(expression, "TemplateLiteral")) return null;
-  if (expression.expressions.length !== 0) return null;
-  if (expression.quasis.length !== 1) return null;
-  return expression.quasis[0]!.value.cooked ?? null;
+  return getStaticTemplateLiteralValue(expression);
 };
 
 const checkExpressionContainer = (
@@ -156,10 +155,9 @@ const checkExpressionContainer = (
     return;
   }
   if (isNodeOfType(expression, "TemplateLiteral") && allowed === "never") {
-    if (expression.expressions.length !== 0 || expression.quasis.length !== 1) return;
-    const quasi = expression.quasis[0]!;
-    const rawSource = quasi.value.raw ?? "";
-    const cooked = quasi.value.cooked ?? "";
+    const cooked = getStaticTemplateLiteralValue(expression);
+    if (cooked === null) return;
+    const rawSource = expression.quasis?.[0]?.value.raw ?? "";
     if (!parentIsAttribute && containsAnyQuote(cooked)) return;
     if (isAllowedStringLikeInContainer(rawSource, container, parentIsAttribute)) return;
     context.report({ node: container, message: UNNECESSARY_BRACES_MESSAGE });

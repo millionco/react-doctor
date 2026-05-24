@@ -1,4 +1,5 @@
 import type { EsTreeNode } from "./es-tree-node.js";
+import { getStaticTemplateLiteralValue } from "./get-static-template-literal-value.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 
 // Strips TypeScript and optional-chain wrappers that can appear around
@@ -58,9 +59,7 @@ const isPlatformSelectCallee = (callee: EsTreeNode | undefined | null): boolean 
 const isStringLiteralEqualTo = (node: EsTreeNode | undefined | null, expected: string): boolean => {
   if (!node) return false;
   if (isNodeOfType(node, "Literal") && node.value === expected) return true;
-  if (isNodeOfType(node, "TemplateLiteral") && node.quasis.length === 1) {
-    return node.quasis[0]?.value?.cooked === expected;
-  }
+  if (isNodeOfType(node, "TemplateLiteral")) return getStaticTemplateLiteralValue(node) === expected;
   return false;
 };
 

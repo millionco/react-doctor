@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
+import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
@@ -58,9 +59,8 @@ const checkValueIsEmptyOrInvalid = (
       if (typeof expression.value === "string") return isInvalidHref(expression.value, validHrefs);
     }
     if (isNodeOfType(expression, "TemplateLiteral")) {
-      if (expression.expressions.length > 0) return false;
-      const cooked = expression.quasis[0]?.value.cooked ?? "";
-      return isInvalidHref(cooked, validHrefs);
+      const staticValue = getStaticTemplateLiteralValue(expression);
+      return staticValue === null ? false : isInvalidHref(staticValue, validHrefs);
     }
   }
   if (isNodeOfType(value, "JSXFragment")) return true;

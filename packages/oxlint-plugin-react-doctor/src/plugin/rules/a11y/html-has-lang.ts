@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
+import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
@@ -54,11 +55,8 @@ const evaluateLang = (attributeValue: EsTreeNode | null | undefined): LangVerdic
       return "ok"; // dynamic identifier, assume valid
     }
     if (isNodeOfType(expression, "TemplateLiteral")) {
-      if (expression.expressions.length === 0 && expression.quasis.length === 1) {
-        const cooked = expression.quasis[0]!.value.cooked;
-        return cooked && cooked.length > 0 ? "ok" : "empty";
-      }
-      return "ok"; // template with interpolation, dynamic
+      const staticValue = getStaticTemplateLiteralValue(expression);
+      return staticValue === null ? "ok" : staticValue.length > 0 ? "ok" : "empty";
     }
     return "ok";
   }

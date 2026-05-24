@@ -1,6 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
@@ -214,15 +215,9 @@ const getKeyAttributeValueString = (
         }
         return null;
       }
-      if (
-        isNodeOfType(expression, "TemplateLiteral") &&
-        expression.expressions.length === 0 &&
-        expression.quasis.length === 1
-      ) {
-        const cookedValue = expression.quasis[0].value.cooked;
-        if (typeof cookedValue === "string") {
-          return { keyValue: cookedValue, node: attribute };
-        }
+      if (isNodeOfType(expression, "TemplateLiteral")) {
+        const staticValue = getStaticTemplateLiteralValue(expression);
+        if (staticValue !== null) return { keyValue: staticValue, node: attribute };
       }
     }
   }

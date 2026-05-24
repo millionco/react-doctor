@@ -1,4 +1,5 @@
 import type { EsTreeNode } from "./es-tree-node.js";
+import { getStaticTemplateLiteralValue } from "./get-static-template-literal-value.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 
 // Best-effort parse a JSX attribute value to a number. Mirrors
@@ -30,13 +31,10 @@ export const parseJsxValue = (value: EsTreeNode | null | undefined): number | nu
     ) {
       return -expression.argument.value;
     }
-    if (
-      isNodeOfType(expression, "TemplateLiteral") &&
-      expression.expressions.length === 0 &&
-      expression.quasis.length === 1
-    ) {
-      const cooked = expression.quasis[0]!.value.cooked ?? "";
-      const parsed = Number(cooked);
+    if (isNodeOfType(expression, "TemplateLiteral")) {
+      const staticValue = getStaticTemplateLiteralValue(expression);
+      if (staticValue === null) return null;
+      const parsed = Number(staticValue);
       return Number.isFinite(parsed) ? parsed : null;
     }
     if (isNodeOfType(expression, "ConditionalExpression")) {

@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
+import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import type { Rule } from "../../utils/rule.js";
@@ -81,11 +82,7 @@ const isFalseAttributeValue = (value: EsTreeNode): boolean => {
       return false;
     }
     if (isNodeOfType(expression, "TemplateLiteral")) {
-      return (
-        expression.expressions.length === 0 &&
-        expression.quasis.length === 1 &&
-        expression.quasis[0]!.value.cooked === "false"
-      );
+      return getStaticTemplateLiteralValue(expression) === "false";
     }
   }
   return false;

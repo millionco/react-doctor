@@ -1,6 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
@@ -153,11 +154,8 @@ const expressionToBoolean = (expression: EsTreeNode): boolean | null => {
     return null;
   }
   if (isNodeOfType(expression, "TemplateLiteral")) {
-    if (expression.expressions.length === 0 && expression.quasis.length === 1) {
-      const cooked = expression.quasis[0]?.value.cooked ?? "";
-      return cooked.length > 0;
-    }
-    return null;
+    const staticValue = getStaticTemplateLiteralValue(expression);
+    return staticValue === null ? null : staticValue.length > 0;
   }
   if (isNodeOfType(expression, "UnaryExpression") && expression.operator === "!") {
     const inner = expressionToBoolean(expression.argument as EsTreeNode);
@@ -204,10 +202,7 @@ const parseAriaValueAsString = (value: EsTreeNode, booleanAsString: boolean): st
       return null;
     }
     if (isNodeOfType(expression, "TemplateLiteral")) {
-      if (expression.expressions.length === 0 && expression.quasis.length === 1) {
-        return (expression.quasis[0]?.value.cooked ?? "").toLowerCase();
-      }
-      return null;
+      return getStaticTemplateLiteralValue(expression)?.toLowerCase() ?? null;
     }
     if (
       booleanAsString &&
@@ -228,7 +223,7 @@ const isMultiQuasiTemplate = (value: EsTreeNode): boolean => {
   if (!isNodeOfType(value, "JSXExpressionContainer")) return false;
   const expression = value.expression;
   if (!isNodeOfType(expression, "TemplateLiteral")) return false;
-  return expression.expressions.length > 0;
+  return (expression.expressions ?? []).length > 0;
 };
 
 const isValidValueForType = (propType: AriaPropType, value: EsTreeNode): boolean => {

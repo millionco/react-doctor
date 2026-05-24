@@ -8,6 +8,7 @@ import { isDescendantScope } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isReactComponentOrHookName } from "../../utils/is-react-component-or-hook-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -243,7 +244,10 @@ const symbolHasStableHookOrigin = (symbol: SymbolDescriptor): boolean => {
     ) {
       return true;
     }
-    if (isNodeOfType(initializer, "TemplateLiteral") && initializer.expressions.length === 0) {
+    if (
+      isNodeOfType(initializer, "TemplateLiteral") &&
+      getStaticTemplateLiteralValue(initializer) !== null
+    ) {
       return true;
     }
   }
@@ -584,7 +588,7 @@ const isOutsideAllFunctions = (symbol: SymbolDescriptor): boolean => {
 
 const isLiteralOrEmptyTemplate = (node: EsTreeNode): boolean =>
   isNodeOfType(node, "Literal") ||
-  (isNodeOfType(node, "TemplateLiteral") && node.expressions.length === 0);
+  (isNodeOfType(node, "TemplateLiteral") && getStaticTemplateLiteralValue(node) !== null);
 
 const isNonStringLiteral = (node: EsTreeNode): boolean =>
   isNodeOfType(node, "Literal") && typeof node.value !== "string";

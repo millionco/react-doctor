@@ -48,6 +48,17 @@ export const DIVERGENCES: Record<string, OxcDivergence> = {
     failSkips: [3],
     reason: "Intentional: default allowLeadingUnderscore=true for Radix-style wrappers.",
   },
+  "jsx-key": {
+    // OXC can be configured to report shorthand fragments (`<>...</>`)
+    // in arrays / iterators via `checkFragmentShorthand`. React Doctor
+    // intentionally never reports shorthand fragments here: a shorthand
+    // fragment cannot carry a key, and the actionable fix would be
+    // rewriting syntax rather than adding the missing prop the rule is
+    // meant to guide. fail[14-15] are the explicit fragment-option
+    // fixtures.
+    failSkips: [14, 15],
+    reason: "Intentional: never report shorthand fragments from jsx-key.",
+  },
   "no-unstable-nested-components": {
     // OXC defaults `allowAsProps: false`, which flags render-prop
     // components passed as JSX props. We default to `true` because

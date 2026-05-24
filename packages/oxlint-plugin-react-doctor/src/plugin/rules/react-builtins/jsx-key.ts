@@ -15,7 +15,6 @@ const DUPLICATE_KEY = (keyValue: string): string =>
 interface JsxKeySettings {
   checkKeyMustBeforeSpread?: boolean;
   warnOnDuplicates?: boolean;
-  checkFragmentShorthand?: boolean;
 }
 
 const resolveSettings = (
@@ -29,7 +28,6 @@ const resolveSettings = (
   return {
     checkKeyMustBeforeSpread: ruleSettings.checkKeyMustBeforeSpread ?? true,
     warnOnDuplicates: ruleSettings.warnOnDuplicates ?? false,
-    checkFragmentShorthand: ruleSettings.checkFragmentShorthand ?? true,
   };
 };
 
@@ -229,12 +227,11 @@ const getKeyAttributeValueString = (
   return null;
 };
 
-// Port of `oxc_linter::rules::react::jsx_key`. Reports JSX elements (and
-// optionally `<>` fragments) inside array literals or `.map` / `.flatMap`
-// / `Array.from` callbacks that lack a `key` prop. Honors three settings:
+// Port of `oxc_linter::rules::react::jsx_key`. Reports JSX elements inside
+// array literals or `.map` / `.flatMap` / `Array.from` callbacks that lack a
+// `key` prop. Honors two settings:
 //   - checkKeyMustBeforeSpread (default true): reports `<X {...p} key=…>`
-//   - warnOnDuplicates (default true): duplicate `key` values among siblings
-//   - checkFragmentShorthand (default true): also flags `<>` in iterators
+//   - warnOnDuplicates (default false): duplicate `key` values among siblings
 // Skips elements wrapped by `Children.toArray(...)` since React's runtime
 // assigns synthetic keys for those.
 export const jsxKey = defineRule<Rule>({
@@ -270,16 +267,6 @@ export const jsxKey = defineRule<Rule>({
         if (hasKeyAttribute(openingElement)) return;
         context.report({
           node: openingElement,
-          message: enclosingContext.kind === "array" ? MISSING_KEY_ARRAY : MISSING_KEY_ITERATOR,
-        });
-      },
-      JSXFragment(node: EsTreeNodeOfType<"JSXFragment">) {
-        if (!settings.checkFragmentShorthand) return;
-        const enclosingContext = findEnclosingIteratorContext(node);
-        if (!enclosingContext) return;
-        if (isWithinChildrenToArray(node)) return;
-        context.report({
-          node,
           message: enclosingContext.kind === "array" ? MISSING_KEY_ARRAY : MISSING_KEY_ITERATOR,
         });
       },

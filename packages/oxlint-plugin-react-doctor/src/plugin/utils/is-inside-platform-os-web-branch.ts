@@ -59,7 +59,9 @@ const isPlatformSelectCallee = (callee: EsTreeNode | undefined | null): boolean 
 const isStringLiteralEqualTo = (node: EsTreeNode | undefined | null, expected: string): boolean => {
   if (!node) return false;
   if (isNodeOfType(node, "Literal") && node.value === expected) return true;
-  if (isNodeOfType(node, "TemplateLiteral")) return getStaticTemplateLiteralValue(node) === expected;
+  if (isNodeOfType(node, "TemplateLiteral")) {
+    return getStaticTemplateLiteralValue(node) === expected;
+  }
   return false;
 };
 

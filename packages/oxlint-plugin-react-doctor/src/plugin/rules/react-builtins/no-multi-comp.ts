@@ -4,8 +4,6 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isEs5Component } from "../../utils/is-es5-component.js";
 import { isEs6Component } from "../../utils/is-es6-component.js";
-import { flattenCalleeName } from "../../utils/flatten-callee-name.js";
-import { getReactDoctorRuleSettings } from "../../utils/get-react-doctor-setting.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
@@ -23,7 +21,11 @@ interface NoMultiCompSettings {
 const resolveSettings = (
   settings: Readonly<Record<string, unknown>> | undefined,
 ): Required<NoMultiCompSettings> => {
-  const ruleSettings = getReactDoctorRuleSettings<NoMultiCompSettings>(settings, "noMultiComp");
+  const reactDoctor = settings?.["react-doctor"];
+  const ruleSettings =
+    typeof reactDoctor === "object" && reactDoctor !== null
+      ? ((reactDoctor as { noMultiComp?: NoMultiCompSettings }).noMultiComp ?? {})
+      : {};
   return { ignoreStateless: ruleSettings.ignoreStateless ?? false };
 };
 
@@ -33,6 +35,18 @@ const HOC_NAMES: ReadonlySet<string> = new Set([
   "React.memo",
   "React.forwardRef",
 ]);
+
+const flattenCalleeName = (callee: EsTreeNode): string | null => {
+  if (isNodeOfType(callee, "Identifier")) return callee.name;
+  if (isNodeOfType(callee, "MemberExpression")) {
+    const obj = flattenCalleeName(callee.object);
+    if (!obj) return null;
+    if (isNodeOfType(callee.property, "Identifier") && !callee.computed) {
+      return `${obj}.${callee.property.name}`;
+    }
+  }
+  return null;
+};
 
 // Returns true when the callee name resolves (directly or through a
 // scope-tracked alias) to one of memo / forwardRef / React.memo /

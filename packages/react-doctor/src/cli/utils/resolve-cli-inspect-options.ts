@@ -1,18 +1,21 @@
-import type { InspectOptions, ReactDoctorConfig } from "@react-doctor/core";
+import { resolveScanOptions } from "@react-doctor/core";
+import type { InspectOptions, ReactDoctorConfig, ResolvedScanOptions } from "@react-doctor/core";
 import type { InspectFlags } from "./inspect-flags.js";
 import { isCiEnvironment } from "./is-ci-environment.js";
+
+export const buildCliInspectOptionOverrides = (flags: InspectFlags): InspectOptions => ({
+  lint: flags.lint,
+  deadCode: flags.deadCode,
+  verbose: flags.verbose,
+  scoreOnly: flags.score === true,
+  noScore: flags.score === false ? true : undefined,
+  isCi: isCiEnvironment(),
+  silent: Boolean(flags.json),
+  respectInlineDisables: flags.respectInlineDisables,
+  outputSurface: flags.prComment ? "prComment" : "cli",
+});
 
 export const resolveCliInspectOptions = (
   flags: InspectFlags,
   userConfig: ReactDoctorConfig | null,
-): InspectOptions => ({
-  lint: flags.lint ?? userConfig?.lint ?? true,
-  deadCode: flags.deadCode ?? userConfig?.deadCode ?? true,
-  verbose: flags.verbose ?? userConfig?.verbose ?? false,
-  scoreOnly: flags.score === true,
-  noScore: flags.score === false || (userConfig?.noScore ?? false),
-  isCi: isCiEnvironment(),
-  silent: Boolean(flags.json),
-  respectInlineDisables: flags.respectInlineDisables ?? userConfig?.respectInlineDisables ?? true,
-  outputSurface: flags.prComment ? "prComment" : "cli",
-});
+): ResolvedScanOptions => resolveScanOptions(buildCliInspectOptionOverrides(flags), userConfig);

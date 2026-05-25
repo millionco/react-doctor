@@ -8,8 +8,7 @@ import {
   filterDiagnosticsForSurface,
   getDiffInfo,
   highlighter,
-  loadConfigWithSource,
-  resolveConfigRootDir,
+  resolveScanPlan,
   toRelativePath,
 } from "@react-doctor/core";
 import { inspect } from "../../inspect.js";
@@ -29,7 +28,7 @@ import {
 import { printAnnotations } from "../utils/print-annotations.js";
 import { printBrandedHeader } from "../utils/print-branded-header.js";
 import { promptInstallSetup } from "../utils/prompt-install-setup.js";
-import { resolveCliInspectOptions } from "../utils/resolve-cli-inspect-options.js";
+import { buildCliInspectOptionOverrides } from "../utils/resolve-cli-inspect-options.js";
 import { resolveDiffMode } from "../utils/resolve-diff-mode.js";
 import { resolveEffectiveDiff } from "../utils/resolve-effective-diff.js";
 import { resolveFailOnLevel } from "../utils/resolve-fail-on-level.js";
@@ -55,15 +54,15 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
   try {
     validateModeFlags(flags);
 
-    const loadedConfig = loadConfigWithSource(requestedDirectory);
-    const userConfig = loadedConfig?.config ?? null;
-    const redirectedDirectory = resolveConfigRootDir(
-      loadedConfig?.config ?? null,
-      loadedConfig?.sourceDirectory ?? null,
-    );
-    const resolvedDirectory = redirectedDirectory ?? requestedDirectory;
+    const scanPlan = resolveScanPlan({
+      directory: requestedDirectory,
+      options: buildCliInspectOptionOverrides(flags),
+    });
+    const userConfig = scanPlan.userConfig;
+    const resolvedDirectory = scanPlan.resolvedDirectory ?? scanPlan.directoryAfterRootDir;
+    const scanOptions = scanPlan.options;
     setJsonReportDirectory(resolvedDirectory);
-    if (redirectedDirectory && !isQuiet) {
+    if (scanPlan.directoryAfterRootDir !== requestedDirectory && !isQuiet) {
       logger.dim(
         `Redirected to ${highlighter.info(toRelativePath(resolvedDirectory, requestedDirectory))} via react-doctor config "rootDir".`,
       );
@@ -75,7 +74,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       await runExplain(explainArgument, {
         resolvedDirectory,
         userConfig,
-        scanOptions: resolveCliInspectOptions(flags, userConfig),
+        scanOptions,
         projectFlag: flags.project,
       });
       return;
@@ -85,7 +84,6 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       Effect.runSync(printBrandedHeader);
     }
 
-    const scanOptions = resolveCliInspectOptions(flags, userConfig);
     const skipPrompts = shouldSkipPrompts({ yes: flags.yes, full: flags.full, json: flags.json });
 
     if (flags.staged) {

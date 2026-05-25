@@ -9,14 +9,22 @@ import {
 } from "@react-doctor/core";
 import type { ScoreResult } from "@react-doctor/core";
 import { colorizeByScore } from "./colorize-by-score.js";
+import { isSpinnerInteractive } from "./is-spinner-interactive.js";
+
+const SCORE_BAR_ANIMATION_FRAME_COUNT = 12;
+const SCORE_BAR_ANIMATION_FRAME_DELAY_MS = 20;
 
 interface ScoreBarSegments {
   filledSegment: string;
   emptySegment: string;
 }
 
-const buildScoreBarSegments = (score: number): ScoreBarSegments => {
-  const filledCount = Math.round((score / PERFECT_SCORE) * SCORE_BAR_WIDTH_CHARS);
+const easeOutCubic = (progress: number): number => 1 - (1 - progress) ** 3;
+
+const sleep = (milliseconds: number): Effect.Effect<void> =>
+  Effect.promise(() => new Promise<void>((resolve) => setTimeout(resolve, milliseconds)));
+
+const buildScoreBarSegments = (filledCount: number): ScoreBarSegments => {
   const emptyCount = SCORE_BAR_WIDTH_CHARS - filledCount;
 
   return {
@@ -25,9 +33,12 @@ const buildScoreBarSegments = (score: number): ScoreBarSegments => {
   };
 };
 
-const buildScoreBar = (score: number): string => {
-  const { filledSegment, emptySegment } = buildScoreBarSegments(score);
-  return colorizeByScore(filledSegment, score) + highlighter.dim(emptySegment);
+const getFilledCount = (score: number): number =>
+  Math.round((score / PERFECT_SCORE) * SCORE_BAR_WIDTH_CHARS);
+
+const buildScoreBar = (displayScore: number, colorScore = displayScore): string => {
+  const { filledSegment, emptySegment } = buildScoreBarSegments(getFilledCount(displayScore));
+  return colorizeByScore(filledSegment, colorScore) + highlighter.dim(emptySegment);
 };
 
 const getDoctorFace = (score: number): string[] => {
@@ -44,6 +55,33 @@ const buildFaceRenderedLines = (score: number): string[] => {
   return ["┌─────┐", `│ ${eyes} │`, `│ ${mouth} │`, "└─────┘"].map(colorize);
 };
 
+const buildScoreHeaderLine = (
+  faceLine: string,
+  rightColumnContent: string,
+): string => {
+  const separator = rightColumnContent.length > 0 ? "  " : "";
+  return `  ${faceLine}${separator}${rightColumnContent}`;
+};
+
+const writeScoreHeaderLine = (line: string): Effect.Effect<void> =>
+  Effect.sync(() => {
+    process.stdout.write(line);
+  });
+
+const printAnimatedScoreBarLine = (faceLine: string, score: number): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    for (let frame = 0; frame <= SCORE_BAR_ANIMATION_FRAME_COUNT; frame += 1) {
+      const progress = easeOutCubic(frame / SCORE_BAR_ANIMATION_FRAME_COUNT);
+      const animatedScore = Math.round(score * progress);
+      const scoreBarLine = buildScoreBar(animatedScore, score);
+      yield* writeScoreHeaderLine(`\r${buildScoreHeaderLine(faceLine, scoreBarLine)}`);
+      if (frame < SCORE_BAR_ANIMATION_FRAME_COUNT) {
+        yield* sleep(SCORE_BAR_ANIMATION_FRAME_DELAY_MS);
+      }
+    }
+    yield* writeScoreHeaderLine("\n");
+  });
+
 export const printScoreHeader = (scoreResult: ScoreResult): Effect.Effect<void> =>
   Effect.gen(function* () {
     const renderedFaceLines = buildFaceRenderedLines(scoreResult.score);
@@ -57,8 +95,11 @@ export const printScoreHeader = (scoreResult: ScoreResult): Effect.Effect<void> 
 
     for (let lineIndex = 0; lineIndex < renderedFaceLines.length; lineIndex += 1) {
       const rightColumnContent = rightColumnLines[lineIndex] ?? "";
-      const separator = rightColumnContent.length > 0 ? "  " : "";
-      yield* Console.log(`  ${renderedFaceLines[lineIndex]}${separator}${rightColumnContent}`);
+      if (lineIndex === 1 && isSpinnerInteractive(process.stdout)) {
+        yield* printAnimatedScoreBarLine(renderedFaceLines[lineIndex], scoreResult.score);
+        continue;
+      }
+      yield* Console.log(buildScoreHeaderLine(renderedFaceLines[lineIndex], rightColumnContent));
     }
 
     yield* Console.log("");

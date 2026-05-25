@@ -1,0 +1,28 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-prefer-expo-image.test.ts
+  s_43a614cddfd846::t_2ad9cd802f80ab 1-68
+packages/oxlint-plugin-react-doctor/src/plugin/utils/is-react-native-file.ts
+  s_43a614cddfd846::t_87445653c29104 28,52
+packages/oxlint-plugin-react-doctor/src/plugin/utils/is-expo-managed-file.ts
+  s_43a614cddfd846::t_24fa80d995cc37 1-15
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-prefer-expo-image.ts
+  s_43a614cddfd846::t_f2bc87b0d2875d 4,10,25
+  s_43a614cddfd846::t_f12d262339aa48 8,24,26-41
+packages/oxlint-plugin-react-doctor/src/plugin/utils/classify-package-platform.ts
+  s_43a614cddfd846::t_df87a2c5f03030 5-12,131-137,145,149-151,153-157,185-187
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "6ea88409e3d527ac94c5eed742570682c6ce9fcd",
+  "prompts": {},
+  "sessions": {
+    "s_43a614cddfd846": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "452e8e76-415e-4f87-8fe9-57a32399be19",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

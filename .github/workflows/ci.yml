@@ -33,12 +33,16 @@ jobs:
       - run: pnpm test
 
       - run: pnpm typecheck
+        if: ${{ matrix.node-version == '22.18.0' }}
 
       - run: pnpm lint
+        if: ${{ matrix.node-version == '22.18.0' }}
 
       - run: pnpm format:check
+        if: ${{ matrix.node-version == '22.18.0' }}
 
       - name: Smoke test built CLI
+        if: ${{ matrix.node-version == '22.18.0' }}
         run: |
           cd packages/react-doctor
           pnpm build
@@ -50,4 +54,5 @@ jobs:
           fi
 
       - name: Smoke test JSON report shape
+        if: ${{ matrix.node-version == '22.18.0' }}
         run: pnpm smoke:json-report

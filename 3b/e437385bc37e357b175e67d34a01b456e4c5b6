@@ -1,0 +1,24 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/tanstack-start/tanstack-start-missing-head-content.ts
+  s_d5a0bc90836bd3::t_5a69981bd03342 13,19
+  s_d5a0bc90836bd3::t_52c4ada63466d3 9-12,14-18,20-23,33-35,38-59,65-83,92
+packages/oxlint-plugin-react-doctor/src/plugin/rules/tanstack-start/tanstack-start-missing-head-content.test.ts
+  s_d5a0bc90836bd3::t_239dcfd07e5bc9 1,11-14,79-168,170-179,181-186
+  s_d5a0bc90836bd3::t_5a69981bd03342 78
+  s_d5a0bc90836bd3::t_6cbe6bb7348bb9 2-10,15-77,169,180
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "3be437385bc37e357b175e67d34a01b456e4c5b6",
+  "prompts": {},
+  "sessions": {
+    "s_d5a0bc90836bd3": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d36b9564-ff39-4bdf-9392-033e721e5333",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

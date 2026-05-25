@@ -11,6 +11,7 @@ import { isSubscribeLikeCallExpression } from "./is-subscribe-like-call-expressi
 const isReleaseLikeCall = (
   callNode: EsTreeNode,
   knownBoundReleaseNames: ReadonlySet<string>,
+  knownBoundSubscriptionNames: ReadonlySet<string>,
 ): boolean => {
   if (!isNodeOfType(callNode, "CallExpression")) return false;
   const callee = callNode.callee;
@@ -21,6 +22,13 @@ const isReleaseLikeCall = (
     return false;
   }
   if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
+    if (
+      callee.property.name === "remove" &&
+      isNodeOfType(callee.object, "Identifier") &&
+      knownBoundSubscriptionNames.has(callee.object.name)
+    ) {
+      return true;
+    }
     return UNSUBSCRIPTION_METHOD_NAMES.has(callee.property.name);
   }
   return false;
@@ -29,11 +37,12 @@ const isReleaseLikeCall = (
 const containsReleaseLikeCall = (
   node: EsTreeNode,
   knownBoundReleaseNames: ReadonlySet<string>,
+  knownBoundSubscriptionNames: ReadonlySet<string>,
 ): boolean => {
   let didFindRelease = false;
   walkAst(node, (child: EsTreeNode) => {
     if (didFindRelease) return false;
-    if (isReleaseLikeCall(child, knownBoundReleaseNames)) {
+    if (isReleaseLikeCall(child, knownBoundReleaseNames, knownBoundSubscriptionNames)) {
       didFindRelease = true;
       return false;
     }
@@ -44,6 +53,7 @@ const containsReleaseLikeCall = (
 export const isCleanupReturn = (
   returnedValue: EsTreeNode | null | undefined,
   knownBoundReleaseNames: ReadonlySet<string>,
+  knownBoundSubscriptionNames: ReadonlySet<string> = new Set(),
 ): boolean => {
   if (!returnedValue) return false;
   if (isNodeOfType(returnedValue, "Identifier")) {
@@ -54,7 +64,11 @@ export const isCleanupReturn = (
     isNodeOfType(returnedValue, "ArrowFunctionExpression") ||
     isNodeOfType(returnedValue, "FunctionExpression")
   ) {
-    return containsReleaseLikeCall(returnedValue, knownBoundReleaseNames);
+    return containsReleaseLikeCall(
+      returnedValue,
+      knownBoundReleaseNames,
+      knownBoundSubscriptionNames,
+    );
   }
   return false;
 };

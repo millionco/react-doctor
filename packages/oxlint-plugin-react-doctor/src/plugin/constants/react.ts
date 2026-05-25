@@ -91,12 +91,8 @@ export const SUBSCRIPTION_METHOD_NAMES = new Set([
 // via `{ signal }`: a single `controller.abort()` removes every
 // listener bound to that signal in one shot, so it IS the matching
 // "remove" call even when no literal `removeEventListener(...)` is present.
-// `remove` covers React Native's EventSubscription objects returned by
-// APIs like AppState.addEventListener, Keyboard.addListener, Appearance,
-// and Dimensions.
 export const UNSUBSCRIPTION_METHOD_NAMES = new Set([
   "unsubscribe",
-  "remove",
   "removeEventListener",
   "removeListener",
   "off",

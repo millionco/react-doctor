@@ -116,7 +116,7 @@ export const Resize = () => {
 
   it("does NOT flag React Native subscription objects cleaned up with `.remove()`", async () => {
     const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-rn-sub-remove", {
-      packageJson: {
+      packageJsonExtras: {
         dependencies: {
           react: "19.0.0",
           "react-native": "0.82.0",
@@ -145,6 +145,30 @@ export const AppFocus = () => {
 
     const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
     expect(hits).toHaveLength(0);
+  });
+
+  it("still flags when cleanup only calls an unrelated `.remove()` method", async () => {
+    const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-unrelated-remove", {
+      files: {
+        "src/Resize.tsx": `import { useEffect } from "react";
+
+declare const node: { remove: () => void };
+
+export const Resize = () => {
+  useEffect(() => {
+    window.addEventListener("resize", () => {});
+    return () => {
+      node.remove();
+    };
+  }, []);
+  return null;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
+    expect(hits).toHaveLength(1);
   });
 
   it("does NOT flag a useEffect that returns a cleanup arrow calling clearInterval", async () => {

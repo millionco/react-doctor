@@ -143,7 +143,7 @@ const cleanupReleasesSubscription = (
   if (!isNodeOfType(lastStatement, "ReturnStatement")) return false;
   const knownBoundReleaseNames = new Set<string>();
   if (boundUnsubscribeName) knownBoundReleaseNames.add(boundUnsubscribeName);
-  return isCleanupReturn(lastStatement.argument, knownBoundReleaseNames);
+  return isCleanupReturn(lastStatement.argument, knownBoundReleaseNames, knownBoundReleaseNames);
 };
 
 export const preferUseSyncExternalStore = defineRule<Rule>({

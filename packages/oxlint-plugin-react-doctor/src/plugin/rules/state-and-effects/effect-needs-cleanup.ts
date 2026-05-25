@@ -90,21 +90,29 @@ const findSubscribeLikeUsages = (callback: EsTreeNode): SubscribeLikeUsage[] => 
   return usages;
 };
 
+interface ReleasableBindings {
+  releaseNames: Set<string>;
+  subscriptionNames: Set<string>;
+}
+
 // HACK: variables bound to a subscribe-like or timer-like call inside
 // an effect body are CLEANUP TARGETS — `return X` or `() => X()` /
 // `() => clearTimeout(X)` releases the resource. Collecting them here
 // lets the shared release predicate accept user-named bindings
 // (`const unsub = ...; return unsub`) without falling back to the
 // previous "any Identifier is fine" behavior.
-const collectReleasableBindingNames = (effectCallback: EsTreeNode): Set<string> => {
-  const releasableNames = new Set<string>();
+const collectReleasableBindings = (effectCallback: EsTreeNode): ReleasableBindings => {
+  const bindings: ReleasableBindings = {
+    releaseNames: new Set<string>(),
+    subscriptionNames: new Set<string>(),
+  };
   if (
     !isNodeOfType(effectCallback, "ArrowFunctionExpression") &&
     !isNodeOfType(effectCallback, "FunctionExpression")
   ) {
-    return releasableNames;
+    return bindings;
   }
-  if (!isNodeOfType(effectCallback.body, "BlockStatement")) return releasableNames;
+  if (!isNodeOfType(effectCallback.body, "BlockStatement")) return bindings;
   for (const statement of effectCallback.body.body ?? []) {
     if (!isNodeOfType(statement, "VariableDeclaration")) continue;
     for (const declarator of statement.declarations ?? []) {
@@ -112,18 +120,19 @@ const collectReleasableBindingNames = (effectCallback: EsTreeNode): Set<string> 
       const init = declarator.init;
       if (!init || !isNodeOfType(init, "CallExpression")) continue;
       if (isSubscribeLikeCallExpression(init)) {
-        releasableNames.add(declarator.id.name);
+        bindings.releaseNames.add(declarator.id.name);
+        bindings.subscriptionNames.add(declarator.id.name);
         continue;
       }
       if (
         isNodeOfType(init.callee, "Identifier") &&
         TIMER_CALLEE_NAMES_REQUIRING_CLEANUP.has(init.callee.name)
       ) {
-        releasableNames.add(declarator.id.name);
+        bindings.releaseNames.add(declarator.id.name);
       }
     }
   }
-  return releasableNames;
+  return bindings;
 };
 
 const effectHasCleanupRelease = (callback: EsTreeNode): boolean => {
@@ -146,7 +155,7 @@ const effectHasCleanupRelease = (callback: EsTreeNode): boolean => {
   if (!isNodeOfType(callback.body, "BlockStatement")) {
     return isSubscribeLikeCallExpression(callback.body);
   }
-  const knownBoundReleaseNames = collectReleasableBindingNames(callback);
+  const knownBoundReleaseNames = collectReleasableBindings(callback);
   // HACK: scan ALL `return` statements at the effect's own function
   // scope (skipping nested functions via `walkInsideStatementBlocks`),
   // not just the top-level last statement. The last-statement check
@@ -168,7 +177,13 @@ const effectHasCleanupRelease = (callback: EsTreeNode): boolean => {
   walkInsideStatementBlocks(callback.body, (child: EsTreeNode) => {
     if (didFindCleanupReturn) return;
     if (!isNodeOfType(child, "ReturnStatement")) return;
-    if (isCleanupReturn(child.argument, knownBoundReleaseNames)) {
+    if (
+      isCleanupReturn(
+        child.argument,
+        knownBoundReleaseNames.releaseNames,
+        knownBoundReleaseNames.subscriptionNames,
+      )
+    ) {
       didFindCleanupReturn = true;
     }
   });

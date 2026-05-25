@@ -2,6 +2,25 @@ import type { EsTreeNode } from "../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../utils/es-tree-node-of-type.js";
 import { isAstNode } from "../utils/is-ast-node.js";
 import { isNodeOfType } from "../utils/is-node-of-type.js";
+import type {
+  ReferenceDescriptor,
+  ReferenceFlag,
+  ScopeAnalysis,
+  ScopeDescriptor,
+  ScopeKind,
+  SymbolDescriptor,
+  SymbolKind,
+} from "./scope-analysis-types.js";
+
+export type {
+  ReferenceDescriptor,
+  ReferenceFlag,
+  ScopeAnalysis,
+  ScopeDescriptor,
+  ScopeKind,
+  SymbolDescriptor,
+  SymbolKind,
+} from "./scope-analysis-types.js";
 
 // Scope analyzer — per-file walker building a scope tree, symbol
 // table, and identifier reference resolution. Mirrors the subset of
@@ -13,91 +32,6 @@ import { isNodeOfType } from "../utils/is-node-of-type.js";
 //      enclosing scope at the time of visit).
 //   2. Resolve each reference: walk up from the ref's location scope
 //      until the name is found.
-
-export type SymbolKind =
-  | "var"
-  | "let"
-  | "const"
-  | "using"
-  | "function"
-  | "class"
-  | "parameter"
-  | "import"
-  | "ts-import-equals"
-  | "ts-enum"
-  | "ts-type-alias"
-  | "ts-interface"
-  | "ts-module"
-  | "catch-clause-parameter";
-
-export type ScopeKind =
-  | "module"
-  | "function"
-  | "arrow-function"
-  | "method"
-  | "block"
-  | "class"
-  | "catch"
-  | "for"
-  | "switch"
-  | "with"
-  | "ts-module"
-  | "ts-enum";
-
-export interface SymbolDescriptor {
-  readonly id: number;
-  readonly name: string;
-  readonly kind: SymbolKind;
-  // The Identifier (or other binding-position node) that introduces
-  // the binding.
-  readonly bindingIdentifier: EsTreeNode;
-  // The full declaration node (VariableDeclarator / FunctionDeclaration
-  // / ImportSpecifier / ...) that introduces this binding.
-  readonly declarationNode: EsTreeNode;
-  readonly scope: ScopeDescriptor;
-  // VariableDeclarator init, function/class node itself, import
-  // specifier, etc. — null when there's no expression-shape value.
-  readonly initializer: EsTreeNode | null;
-  // Mutable list filled in during reference resolution.
-  readonly references: ReferenceDescriptor[];
-}
-
-export type ReferenceFlag = "read" | "write" | "read-write";
-
-export interface ReferenceDescriptor {
-  readonly id: number;
-  readonly identifier: EsTreeNode;
-  // Set during resolution. null means unresolved → global / external.
-  resolvedSymbol: SymbolDescriptor | null;
-  readonly flag: ReferenceFlag;
-  readonly scope: ScopeDescriptor;
-}
-
-export interface ScopeDescriptor {
-  readonly id: number;
-  readonly kind: ScopeKind;
-  readonly node: EsTreeNode;
-  readonly parent: ScopeDescriptor | null;
-  readonly children: ScopeDescriptor[];
-  readonly symbols: SymbolDescriptor[];
-  readonly references: ReferenceDescriptor[];
-  // Direct lookup index for the `name → symbol` resolution step.
-  readonly symbolsByName: Map<string, SymbolDescriptor>;
-}
-
-export interface ScopeAnalysis {
-  readonly rootScope: ScopeDescriptor;
-  readonly scopeFor: (node: EsTreeNode) => ScopeDescriptor;
-  // For function-like / class / block / etc. nodes that OPEN a scope,
-  // returns the scope they open. Returns null for nodes that don't
-  // open a scope. Note `scopeFor` returns the ENCLOSING scope (where
-  // the node lives), which for a FunctionDeclaration is the parent
-  // scope, NOT the function's body scope.
-  readonly ownScopeFor: (node: EsTreeNode) => ScopeDescriptor | null;
-  readonly symbolFor: (identifier: EsTreeNode) => SymbolDescriptor | null;
-  readonly referenceFor: (identifier: EsTreeNode) => ReferenceDescriptor | null;
-  readonly isGlobalReference: (identifier: EsTreeNode) => boolean;
-}
 
 const FUNCTION_LIKE_TYPES: ReadonlySet<string> = new Set([
   "FunctionDeclaration",

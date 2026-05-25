@@ -47,7 +47,7 @@ export const filterIgnoredDiagnostics = (
   diagnostics: Diagnostic[],
   config: ReactDoctorConfig,
   rootDirectory: string,
-  readFileLinesSync: (filePath: string) => string[] | null,
+  _readFileLinesSync: (filePath: string) => string[] | null,
 ): Diagnostic[] => {
   const ignoredRules = new Set(
     Array.isArray(config.ignore?.rules)

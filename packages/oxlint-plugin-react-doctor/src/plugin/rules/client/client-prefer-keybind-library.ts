@@ -38,10 +38,7 @@ const isInsideUseEffectCallback = (node: EsTreeNode): boolean => {
   return false;
 };
 
-const buildRecommendationMessage = (
-  eventName: string,
-  receiverName: string | null,
-): string => {
+const buildRecommendationMessage = (eventName: string, receiverName: string | null): string => {
   const receiverPrefix = receiverName ? `${receiverName}.` : "";
   return `${receiverPrefix}addEventListener("${eventName}", …) registers a manual keyboard shortcut — use a keybind library like react-hotkeys-hook instead for consistent, declarative, and accessible keyboard shortcut management`;
 };
@@ -83,8 +80,7 @@ export const clientPreferKeybindLibrary = defineRule<Rule>({
 
         if (!isGlobalReceiver && !isEffectBound) return;
 
-        const receiverName =
-          isNodeOfType(callee.object, "Identifier") ? callee.object.name : null;
+        const receiverName = isNodeOfType(callee.object, "Identifier") ? callee.object.name : null;
 
         context.report({
           node,

@@ -1,0 +1,31 @@
+packages/react-doctor/src/cli/utils/is-ci-environment.ts
+  s_9a32e6f0baad21::t_9823930a4ecaee 9-21,24-25,27,31-33,36-39,23
+  s_9a32e6f0baad21::t_1f30cdd9e1787c 4,6-8,22,26,34-35
+packages/react-doctor/tests/should-skip-prompts.test.ts
+  s_9a32e6f0baad21::t_e10ef2d6c2a913 2-6,31-33
+packages/react-doctor/src/cli/utils/is-non-interactive-environment.ts
+  s_9a32e6f0baad21::t_4f5ccdc4490181 2,30
+  s_9a32e6f0baad21::t_881aad4a643a1b 13,27
+  s_9a32e6f0baad21::t_8d70e598be64c5 1
+packages/react-doctor/tests/is-ci-environment.test.ts
+  s_9a32e6f0baad21::t_1fb1bbf04365e8 6,9,22,45,52,59,66,73,80,87,94,101,108,115,122,132
+  s_9a32e6f0baad21::t_804c74268ea66c 3-5,13-15
+packages/react-doctor/tests/is-spinner-interactive.test.ts
+  s_9a32e6f0baad21::t_027e4e69daaee4 2-6,50-52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "db80a628dd14be617e8cd5421c96949e00cc0bc7",
+  "prompts": {},
+  "sessions": {
+    "s_9a32e6f0baad21": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f589f075-70a7-4234-99a5-4e32ab3c62cc",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

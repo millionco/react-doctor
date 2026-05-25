@@ -28,6 +28,8 @@ export const SHARE_BASE_URL = "https://www.react.doctor/share";
 
 export const FETCH_TIMEOUT_MS = 10_000;
 
+export const GITHUB_VIEWER_PERMISSION_TIMEOUT_MS = 2_000;
+
 // HACK: Windows CreateProcessW limits total command-line length to 32,767 chars.
 // Use a conservative threshold to leave room for the executable path and quoting overhead.
 export const SPAWN_ARGS_MAX_LENGTH_CHARS = 24_000;

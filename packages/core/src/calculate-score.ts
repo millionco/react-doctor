@@ -36,6 +36,10 @@ export interface ScoreRequestMetadata {
   reactVersion?: string;
   sourceFileCount?: number;
   defaultBranch?: string;
+  doctorVersion?: string;
+  githubEventName?: string;
+  githubActorAssociation?: string;
+  githubViewerPermission?: string;
 }
 
 export const calculateScore = async (
@@ -57,6 +61,16 @@ export const calculateScore = async (
         ? { sourceFileCount: options.metadata.sourceFileCount }
         : {}),
       ...(options.metadata?.defaultBranch ? { defaultBranch: options.metadata.defaultBranch } : {}),
+      ...(options.metadata?.doctorVersion ? { doctorVersion: options.metadata.doctorVersion } : {}),
+      ...(options.metadata?.githubEventName
+        ? { githubEventName: options.metadata.githubEventName }
+        : {}),
+      ...(options.metadata?.githubActorAssociation
+        ? { githubActorAssociation: options.metadata.githubActorAssociation }
+        : {}),
+      ...(options.metadata?.githubViewerPermission
+        ? { githubViewerPermission: options.metadata.githubViewerPermission }
+        : {}),
     });
     const compressedBody = gzipSync(requestBody);
 

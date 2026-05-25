@@ -4,10 +4,11 @@ import * as NodePath from "@effect/platform-node-shared/NodePath";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import * as ChildProcess from "effect/unstable/process/ChildProcess";
 import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner";
-import { DEFAULT_BRANCH_CANDIDATES } from "../constants.js";
+import { DEFAULT_BRANCH_CANDIDATES, GITHUB_VIEWER_PERMISSION_TIMEOUT_MS } from "../constants.js";
 import {
   GitBaseBranchInvalid,
   GitBaseBranchMissing,
@@ -19,6 +20,13 @@ interface GitInvocationResult {
   readonly status: number;
   readonly stdout: string;
   readonly stderr: string;
+}
+
+interface CommandInvocationInput {
+  readonly command: string;
+  readonly args: ReadonlyArray<string>;
+  readonly directory: string;
+  readonly env?: Record<string, string | undefined>;
 }
 
 const trimOrNull = (value: string): string | null => {
@@ -59,6 +67,19 @@ const parseGithubRepoFromRemoteUrl = (remoteUrl: string): string | null => {
       withoutGitSuffix,
     );
   return urlMatch ? `${urlMatch[1]}/${urlMatch[2]}` : null;
+};
+
+const parseGithubRepo = (repo: string): { owner: string; name: string } | null => {
+  const [owner, name, ...extraParts] = repo.split("/");
+  if (owner === undefined || name === undefined || extraParts.length > 0) return null;
+  if (owner.length === 0 || name.length === 0) return null;
+  return { owner, name };
+};
+
+const parseGithubViewerPermission = (stdout: string): string | null => {
+  const value = trimOrNull(stdout);
+  if (value === null || value === "null") return null;
+  return /^[A-Z_]+$/.test(value) ? value.toLowerCase() : null;
 };
 
 const splitNullSeparated = (value: string): ReadonlyArray<string> =>
@@ -129,6 +150,10 @@ export class Git extends Context.Service<
     readonly headSha: (directory: string) => Effect.Effect<string | null, ReactDoctorError>;
     /** GitHub owner/repo parsed from remote.origin.url, or null for non-GitHub remotes. */
     readonly githubRepo: (directory: string) => Effect.Effect<string | null, ReactDoctorError>;
+    readonly githubViewerPermission: (input: {
+      readonly directory: string;
+      readonly repo: string;
+    }) => Effect.Effect<string | null, ReactDoctorError>;
     readonly branchExists: (
       directory: string,
       branch: string,
@@ -174,20 +199,23 @@ export class Git extends Context.Service<
        * reason: GitInvocationFailed })` so the rest of the codebase
        * sees a single failure channel.
        */
-      const runGit = (
-        directory: string,
-        args: ReadonlyArray<string>,
+      const runCommand = (
+        input: CommandInvocationInput,
       ): Effect.Effect<GitInvocationResult, ReactDoctorError> =>
         Effect.scoped(
           Effect.gen(function* () {
             const handle = yield* spawner.spawn(
-              // HACK: `extendEnv: true` is required for the spawned
-              // git to inherit `process.env.PATH` — without it Effect's
+              // HACK: `extendEnv: true` is required for spawned commands
+              // to inherit `process.env.PATH` — without it Effect's
               // `ChildProcess` defaults to an empty env and `spawn`
-              // immediately fails with `ENOENT: git` even when git is
+              // immediately fails with `ENOENT` even when the binary is
               // on the user's PATH. (`spawnSync` inherited PATH by
               // default; ChildProcess's option flips the polarity.)
-              ChildProcess.make("git", [...args], { cwd: directory, extendEnv: true }),
+              ChildProcess.make(input.command, [...input.args], {
+                cwd: input.directory,
+                env: input.env,
+                extendEnv: true,
+              }),
             );
             const [stdout, stderr, status] = yield* Effect.all(
               [
@@ -202,12 +230,30 @@ export class Git extends Context.Service<
         ).pipe(
           Effect.catchTag(
             "PlatformError",
-            (cause) =>
-              new ReactDoctorError({
-                reason: new GitInvocationFailed({ args: [...args], directory, cause }),
-              }),
+            (cause) => {
+              if (input.command !== "git") {
+                return Effect.succeed({
+                  status: 127,
+                  stdout: "",
+                  stderr: String(cause),
+                } satisfies GitInvocationResult);
+              }
+              return new ReactDoctorError({
+                reason: new GitInvocationFailed({
+                  args: [...input.args],
+                  directory: input.directory,
+                  cause,
+                }),
+              });
+            },
           ),
         );
+
+      const runGit = (
+        directory: string,
+        args: ReadonlyArray<string>,
+      ): Effect.Effect<GitInvocationResult, ReactDoctorError> =>
+        runCommand({ command: "git", args, directory });
 
       const currentBranch = (directory: string): Effect.Effect<string | null, ReactDoctorError> =>
         runGit(directory, ["rev-parse", "--abbrev-ref", "HEAD"]).pipe(
@@ -257,11 +303,53 @@ export class Git extends Context.Service<
           ),
         );
 
+      const githubViewerPermission = (input: {
+        readonly directory: string;
+        readonly repo: string;
+      }): Effect.Effect<string | null, ReactDoctorError> =>
+        Effect.gen(function* () {
+          const parsedRepo = parseGithubRepo(input.repo);
+          if (parsedRepo === null) return null;
+
+          const query = `
+            query($owner: String!, $name: String!) {
+              repository(owner: $owner, name: $name) {
+                viewerPermission
+              }
+            }
+          `;
+          const resultOption = yield* runCommand({
+            command: "gh",
+            args: [
+              "api",
+              "graphql",
+              "-F",
+              `owner=${parsedRepo.owner}`,
+              "-F",
+              `name=${parsedRepo.name}`,
+              "-f",
+              `query=${query}`,
+              "--jq",
+              ".data.repository.viewerPermission",
+            ],
+            directory: input.directory,
+            env: {
+              GH_PROMPT_DISABLED: "1",
+            },
+          }).pipe(Effect.timeoutOption(GITHUB_VIEWER_PERMISSION_TIMEOUT_MS));
+          if (Option.isNone(resultOption)) return null;
+
+          const result = resultOption.value;
+          if (result.status !== 0) return null;
+          return parseGithubViewerPermission(result.stdout);
+        }).pipe(Effect.catch(() => Effect.succeed(null)));
+
       return Git.of({
         currentBranch,
         defaultBranch,
         headSha,
         githubRepo,
+        githubViewerPermission,
         branchExists,
         diffSelection: ({ directory, explicitBaseBranch }) =>
           Effect.gen(function* () {
@@ -400,6 +488,7 @@ export class Git extends Context.Service<
     readonly defaultBranch?: string | null;
     readonly headSha?: string | null;
     readonly githubRepo?: string | null;
+    readonly githubViewerPermission?: string | null;
     readonly branchExists?: ReadonlyMap<string, boolean>;
     readonly stagedFiles?: ReadonlyArray<string>;
     readonly stagedContent?: ReadonlyMap<string, string>;
@@ -413,6 +502,7 @@ export class Git extends Context.Service<
         defaultBranch: () => Effect.succeed(snapshot.defaultBranch ?? null),
         headSha: () => Effect.succeed(snapshot.headSha ?? null),
         githubRepo: () => Effect.succeed(snapshot.githubRepo ?? null),
+        githubViewerPermission: () => Effect.succeed(snapshot.githubViewerPermission ?? null),
         branchExists: (_directory, branch) =>
           Effect.succeed(snapshot.branchExists?.get(branch) ?? false),
         diffSelection: () => Effect.succeed(snapshot.diffSelection ?? null),

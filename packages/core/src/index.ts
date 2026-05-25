@@ -72,6 +72,7 @@ export * from "./validate-config-types.js";
 export * from "./utils/dedupe-diagnostics.js";
 export * from "./utils/group-by.js";
 export * from "./utils/match-glob-pattern.js";
+export * from "./utils/resolve-github-actions-score-metadata.js";
 export * from "./utils/to-relative-path.js";
 export * from "./utils/warn-config-issue.js";
 export * from "./runners/oxlint/capabilities.js";

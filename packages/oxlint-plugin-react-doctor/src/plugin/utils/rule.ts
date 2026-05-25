@@ -19,7 +19,7 @@ export interface Rule {
   // (`react-doctor/<id>`) and what shows up in diagnostic output. Owned by
   // the rule itself (not its filename or export-variable name) because
   // some rule-ids carry historical prefixes the file path doesn't —
-  // e.g. `react-ui/no-bold-heading.ts` registers as `design-no-bold-heading`.
+  // e.g. `react-ui/no-em-dash-in-jsx-text.ts` registers as `design-no-em-dash-in-jsx-text`.
   id: string;
   severity: RuleSeverity;
   // Category override — when present, takes precedence over the bucket

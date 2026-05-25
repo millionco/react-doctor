@@ -69,6 +69,7 @@ export const diagnose = async (
     ignoredTags: new Set(initialLoadedConfig?.config?.ignore?.tags ?? []),
     runDeadCode: options.deadCode ?? initialLoadedConfig?.config?.deadCode ?? true,
     isCi: false,
+    resolveLocalGithubViewerPermission: true,
   });
 
   // v4 idiom: `Effect.catchReasons` dispatches on the tagged-reason

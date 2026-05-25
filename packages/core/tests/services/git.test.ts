@@ -61,10 +61,35 @@ describe("Git.layerOf", () => {
         return {
           headSha: yield* git.headSha("/repo"),
           githubRepo: yield* git.githubRepo("/repo"),
+          githubViewerPermission: yield* git.githubViewerPermission({
+            directory: "/repo",
+            repo: "millionco/react-doctor",
+          }),
         };
       }),
     );
-    expect(result).toEqual({ headSha: "abc123", githubRepo: "millionco/react-doctor" });
+    expect(result).toEqual({
+      headSha: "abc123",
+      githubRepo: "millionco/react-doctor",
+      githubViewerPermission: null,
+    });
+  });
+
+  it("returns GitHub viewer permission from the snapshot", () => {
+    const layer = Git.layerOf({
+      githubViewerPermission: "write",
+    });
+    const result = runWith(
+      layer,
+      Effect.gen(function* () {
+        const git = yield* Git;
+        return yield* git.githubViewerPermission({
+          directory: "/repo",
+          repo: "millionco/react-doctor",
+        });
+      }),
+    );
+    expect(result).toBe("write");
   });
 
   it("reports branch existence from the explicit map", () => {

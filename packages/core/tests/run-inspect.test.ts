@@ -7,6 +7,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { Diagnostic, ProjectInfo } from "@react-doctor/core";
 import {
   DeadCodeAnalysisFailed,
+  GitInvocationFailed,
   NoReactDependency,
   OxlintSpawnFailed,
   ReactDoctorError,
@@ -73,6 +74,7 @@ const baseInput: InspectInput = {
 const layersOf = (config: {
   diagnostics?: ReadonlyArray<Diagnostic>;
   deadCode?: ReadonlyArray<Diagnostic>;
+  githubViewerPermission?: string | null;
 }) =>
   Layer.mergeAll(
     Project.layerOf(sampleProject),
@@ -85,6 +87,7 @@ const layersOf = (config: {
       headSha: "abc123",
       githubRepo: "millionco/sample-app",
       defaultBranch: "main",
+      githubViewerPermission: config.githubViewerPermission,
     }),
     Score.layerOf({ score: 85, label: "Good" }),
     Reporter.layerCapture,
@@ -134,6 +137,75 @@ describe("runInspect — happy path", () => {
     expect(output.diagnostics).toEqual([]);
     expect(output.didLintFail).toBe(false);
     expect(output.didDeadCodeFail).toBe(false);
+  });
+
+  it("adds local authenticated GitHub viewer permission to score metadata", async () => {
+    const output = await Effect.runPromise(
+      runInspect({ ...baseInput, resolveLocalGithubViewerPermission: true }).pipe(
+        Effect.provide(layersOf({ githubViewerPermission: "maintain" })),
+      ),
+    );
+
+    expect(output.scoreMetadata).toMatchObject({
+      repo: "millionco/sample-app",
+      githubViewerPermission: "maintain",
+    });
+  });
+
+  it("does not query local GitHub viewer permission in CI", async () => {
+    const output = await Effect.runPromise(
+      runInspect({
+        ...baseInput,
+        isCi: true,
+        resolveLocalGithubViewerPermission: true,
+      }).pipe(
+        Effect.provide(layersOf({ githubViewerPermission: "maintain" })),
+      ),
+    );
+
+    expect(output.scoreMetadata).not.toHaveProperty("githubViewerPermission");
+  });
+
+  it("falls back when local GitHub viewer permission cannot resolve", async () => {
+    const failingGit = Layer.mock(Git, {
+      githubRepo: () => Effect.succeed("millionco/sample-app"),
+      headSha: () => Effect.succeed("abc123"),
+      defaultBranch: () => Effect.succeed("main"),
+      githubViewerPermission: () =>
+        Effect.fail(
+          new ReactDoctorError({
+            reason: new GitInvocationFailed({
+              args: ["api", "graphql"],
+              directory: "/repo",
+              cause: new Error("gh unavailable"),
+            }),
+          }),
+        ),
+    });
+    const layers = Layer.mergeAll(
+      Project.layerOf(sampleProject),
+      Config.layerOf({ config: null, resolvedDirectory: "/repo", configSourceDirectory: null }),
+      Files.layerInMemory(new Map()),
+      Linter.layerOf([]),
+      LintPartialFailures.layerLive,
+      DeadCode.layerOf([]),
+      failingGit,
+      Score.layerOf({ score: 85, label: "Good" }),
+      Reporter.layerCapture,
+    );
+
+    const output = await Effect.runPromise(
+      runInspect({ ...baseInput, resolveLocalGithubViewerPermission: true }).pipe(
+        Effect.provide(layers),
+      ),
+    );
+
+    expect(output.scoreMetadata).toMatchObject({
+      repo: "millionco/sample-app",
+      sha: "abc123",
+      defaultBranch: "main",
+    });
+    expect(output.scoreMetadata).not.toHaveProperty("githubViewerPermission");
   });
 });
 

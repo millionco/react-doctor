@@ -85,11 +85,15 @@ export const tanstackStartMissingHeadContent = defineRule<Rule>({
 
       const specifiers = node.specifiers ?? [];
       for (const specifier of specifiers) {
+        // Namespace imports are only trusted from TanStack Router because
+        // `<Namespace.HeadContent />` otherwise has no portable meaning.
         if (isTanstackRouterImport && isNodeOfType(specifier, "ImportNamespaceSpecifier")) {
           tanstackRouterNamespaceNames.add(specifier.local.name);
           continue;
         }
 
+        // Named `HeadContent` imports are trusted from any source to avoid
+        // false positives for project barrels that re-export TanStack's component.
         if (!isNodeOfType(specifier, "ImportSpecifier")) continue;
         if (
           !isNodeOfType(specifier.imported, "Identifier") ||
@@ -108,6 +112,8 @@ export const tanstackStartMissingHeadContent = defineRule<Rule>({
       if (!initializer) return;
 
       if (isNodeOfType(initializer, "Identifier")) {
+        // Propagate simple aliases like `const AppHead = HeadContent` and
+        // namespace aliases like `const Router = TanStackRouter`.
         if (headContentComponentNames.has(initializer.name)) {
           headContentComponentNames.add(node.id.name);
         }
@@ -126,6 +132,7 @@ export const tanstackStartMissingHeadContent = defineRule<Rule>({
         tanstackRouterNamespaceNames.has(rootName) &&
         propertyName === HEAD_CONTENT_COMPONENT_NAME
       ) {
+        // Captures `const AppHead = TanStackRouter.HeadContent`.
         headContentComponentNames.add(node.id.name);
       }
     };
@@ -137,9 +144,13 @@ export const tanstackStartMissingHeadContent = defineRule<Rule>({
         if (!isRootRouteFile) return;
 
         const statements = node.body ?? [];
+        // Pre-scan top-level imports before JSX visits so late import
+        // declarations do not make alias detection source-order dependent.
         for (const statement of statements) {
           collectImportBindings(statement);
         }
+        // Then collect top-level aliases once the import namespace/name sets
+        // are populated.
         for (const statement of statements) {
           if (!isNodeOfType(statement, "VariableDeclaration")) continue;
           for (const declaration of statement.declarations ?? []) {
@@ -171,6 +182,8 @@ export const tanstackStartMissingHeadContent = defineRule<Rule>({
           if (headContentComponentNames.has(node.name.name)) {
             hasHeadContentElement = true;
           }
+          // Any custom component under `<head>` may wrap HeadContent from
+          // another module. Treat it as a safe signal rather than guessing.
           if (isInsideDocumentHeadElement(node) && isCustomJsxElementName(node.name)) {
             hasCustomHeadChildElement = true;
           }
@@ -188,6 +201,7 @@ export const tanstackStartMissingHeadContent = defineRule<Rule>({
         ) {
           hasHeadContentElement = true;
         }
+        // Same conservative treatment for `<Namespace.DocumentHead />`.
         if (isInsideDocumentHeadElement(node) && isCustomJsxElementName(node.name)) {
           hasCustomHeadChildElement = true;
         }

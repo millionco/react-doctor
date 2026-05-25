@@ -1,0 +1,19 @@
+packages/react-doctor/tests/should-skip-prompts.test.ts
+  s_9a32e6f0baad21::t_97d956a41af15e 42-43,45-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "24f5cc1c2b6f6c10b7333c46caab6eac6696c4fb",
+  "prompts": {},
+  "sessions": {
+    "s_9a32e6f0baad21": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f589f075-70a7-4234-99a5-4e32ab3c62cc",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

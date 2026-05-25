@@ -269,9 +269,13 @@ export const Cart = () => {
     const normalizedStdout = stripAnsi(automatedRun.stdout);
 
     expect(normalizedStdout).toContain("Agent guidance");
-    expect(normalizedStdout).toContain("  - Treat React Doctor diagnostics as starting hypotheses.");
+    expect(normalizedStdout).toContain(
+      "  - Treat React Doctor diagnostics as starting hypotheses.",
+    );
     expect(normalizedStdout).toContain("Confidence requires code context.");
-    expect(normalizedStdout).toContain("Fix the underlying code instead of changing react-doctor config");
+    expect(normalizedStdout).toContain(
+      "Fix the underlying code instead of changing react-doctor config",
+    );
     expect(normalizedStdout).toContain("race conditions, security-sensitive flows");
     expect(normalizedStdout).toContain("theoretical issues without real impact");
     expect(normalizedStdout).toContain("npx react-doctor@latest --verbose --diff");

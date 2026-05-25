@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
+import { getReactDoctorRuleSettings } from "../../utils/get-react-doctor-setting.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -16,11 +17,7 @@ interface HtmlHasLangSettings {
 const resolveSettings = (
   settings: Readonly<Record<string, unknown>> | undefined,
 ): Required<HtmlHasLangSettings> => {
-  const reactDoctor = settings?.["react-doctor"];
-  const ruleSettings =
-    typeof reactDoctor === "object" && reactDoctor !== null
-      ? ((reactDoctor as { htmlHasLang?: HtmlHasLangSettings }).htmlHasLang ?? {})
-      : {};
+  const ruleSettings = getReactDoctorRuleSettings<HtmlHasLangSettings>(settings, "htmlHasLang");
   return { htmlTags: ruleSettings.htmlTags ?? ["html"] };
 };
 

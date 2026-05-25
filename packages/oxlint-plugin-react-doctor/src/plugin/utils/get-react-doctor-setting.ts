@@ -26,6 +26,19 @@ const readReactDoctorSettingsBag = (settings: RuleContext["settings"]): object |
 const readOwnPropertyValue = (bag: object, settingName: string): unknown =>
   Object.getOwnPropertyDescriptor(bag, settingName)?.value;
 
+export const getReactDoctorRuleSettings = <Settings extends object>(
+  settings: RuleContext["settings"],
+  settingName: string,
+): Partial<Settings> => {
+  const bag = readReactDoctorSettingsBag(settings);
+  if (!bag) return {};
+  const settingValue = readOwnPropertyValue(bag, settingName);
+  if (typeof settingValue !== "object" || settingValue === null || Array.isArray(settingValue)) {
+    return {};
+  }
+  return settingValue as Partial<Settings>;
+};
+
 export const getReactDoctorStringSetting = (
   settings: RuleContext["settings"],
   settingName: string,

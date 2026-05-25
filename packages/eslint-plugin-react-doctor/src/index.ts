@@ -11,6 +11,8 @@ import type { EsTreeNode, OxlintRuleSeverity, RuleVisitors } from "oxlint-plugin
 interface EslintRuleContext {
   report: (descriptor: { node: EsTreeNode; message: string }) => void;
   getFilename?: () => string;
+  readonly options?: ReadonlyArray<unknown>;
+  readonly settings?: Readonly<Record<string, unknown>>;
 }
 
 interface WrappedRule {
@@ -56,6 +58,33 @@ const RULE_DOCS_BASE_URL = "https://react.doctor/rules";
 
 const recommendedRuleKeys = new Set(Object.keys(RECOMMENDED_RULES));
 
+const toRuleSettingsKey = (ruleName: string): string =>
+  ruleName.replace(/-([a-z])/g, (_match, innerChar: string) => innerChar.toUpperCase());
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const buildEslintSettings = (
+  context: EslintRuleContext,
+  ruleName: string,
+): Readonly<Record<string, unknown>> | undefined => {
+  const optionSettings = context.options?.[0];
+  if (!isRecord(optionSettings)) return context.settings;
+
+  const existingReactDoctorSettings = context.settings?.["react-doctor"];
+  const reactDoctorSettings = isRecord(existingReactDoctorSettings)
+    ? existingReactDoctorSettings
+    : {};
+
+  return {
+    ...context.settings,
+    "react-doctor": {
+      ...reactDoctorSettings,
+      [toRuleSettingsKey(ruleName)]: optionSettings,
+    },
+  };
+};
+
 const wrapAsEslintRule = (ruleName: string, ruleImpl: WrappedRule): EslintRule => ({
   meta: {
     type: "problem",
@@ -66,9 +95,10 @@ const wrapAsEslintRule = (ruleName: string, ruleImpl: WrappedRule): EslintRule =
       url: `${RULE_DOCS_BASE_URL}/${ruleName}`,
       recommended: recommendedRuleKeys.has(`${PLUGIN_NAMESPACE}/${ruleName}`),
     },
-    schema: [],
+    schema: [{ type: "object", additionalProperties: true }],
   },
-  create: (context: EslintRuleContext) => ruleImpl.create(context),
+  create: (context: EslintRuleContext) =>
+    ruleImpl.create({ ...context, settings: buildEslintSettings(context, ruleName) }),
 });
 
 const eslintShapedRules: Record<string, EslintRule> = Object.fromEntries(

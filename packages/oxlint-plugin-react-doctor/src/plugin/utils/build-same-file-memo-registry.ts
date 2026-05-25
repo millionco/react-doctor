@@ -1,4 +1,5 @@
 import type { EsTreeNode } from "./es-tree-node.js";
+import { flattenCalleeName } from "./flatten-callee-name.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 
 // Components that are KNOWN to NOT be memoised in the current file.
@@ -20,19 +21,6 @@ const HOC_NAMES_FOR_MEMOISATION: ReadonlySet<string> = new Set([
   "React.lazy",
   "withTracking",
 ]);
-
-const flattenCalleeName = (callee: EsTreeNode): string | null => {
-  if (isNodeOfType(callee, "Identifier")) return callee.name;
-  if (
-    isNodeOfType(callee, "MemberExpression") &&
-    isNodeOfType(callee.object, "Identifier") &&
-    isNodeOfType(callee.property, "Identifier") &&
-    !callee.computed
-  ) {
-    return `${callee.object.name}.${callee.property.name}`;
-  }
-  return null;
-};
 
 const isMemoisingCall = (call: EsTreeNode): boolean => {
   if (!isNodeOfType(call, "CallExpression")) return false;

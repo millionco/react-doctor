@@ -1,6 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
+import { getReactDoctorRuleSettings } from "../../utils/get-react-doctor-setting.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import type { Rule } from "../../utils/rule.js";
@@ -19,11 +20,10 @@ const buildMessage = (tag: string, role: string): string =>
 const resolveSettings = (
   settings: Readonly<Record<string, unknown>> | undefined,
 ): Required<NoRedundantRolesSettings> => {
-  const reactDoctor = settings?.["react-doctor"];
-  const ruleSettings =
-    typeof reactDoctor === "object" && reactDoctor !== null
-      ? ((reactDoctor as { noRedundantRoles?: NoRedundantRolesSettings }).noRedundantRoles ?? {})
-      : {};
+  const ruleSettings = getReactDoctorRuleSettings<NoRedundantRolesSettings>(
+    settings,
+    "noRedundantRoles",
+  );
   return { exceptions: ruleSettings.exceptions ?? {} };
 };
 

@@ -21,39 +21,6 @@ import type { ControlFlowAnalysis } from "../semantic/control-flow-graph.js";
 // component file (≤500 lines), the combined cost is well under 1ms.
 // Files we don't visit (no rule ever reads `scopes`/`cfg`) pay nothing
 // because the lazy getters never fire.
-// HACK: the fallback scope/CFG stubs are unreachable in practice — the
-// wrapper walks every visited node's parent chain on first invocation
-// (see `captureRootIfNeeded` below) and the analyses are only read from
-// inside visitor bodies that fire AFTER that capture. The stubs satisfy
-// the type system. `isUnconditionalFromEntry` / `dominatesExit` default
-// to `false` (the conservative answer) so that if the capture ever
-// fails, `rules-of-hooks` errs toward flagging a possible violation
-// rather than silently allowing one.
-const buildFallbackScopes = (): ScopeAnalysis => ({
-  rootScope: {
-    id: 0,
-    kind: "module",
-    node: {} as EsTreeNode,
-    parent: null,
-    children: [],
-    symbols: [],
-    references: [],
-    symbolsByName: new Map(),
-  } as ScopeAnalysis["rootScope"],
-  scopeFor: () => ({ id: 0 }) as ScopeAnalysis["rootScope"],
-  ownScopeFor: () => null,
-  symbolFor: () => null,
-  referenceFor: () => null,
-  isGlobalReference: () => false,
-});
-
-const FALLBACK_CFG: ControlFlowAnalysis = {
-  cfgFor: () => null,
-  enclosingFunction: () => null,
-  isUnconditionalFromEntry: () => false,
-  dominatesExit: () => false,
-};
-
 const findProgramRoot = (node: EsTreeNode): EsTreeNode | null => {
   let current: EsTreeNode | null | undefined = node;
   while (current) {
@@ -70,17 +37,20 @@ export const wrapWithSemanticContext = (rule: Rule): HostRule => ({
     let cachedScopes: ScopeAnalysis | null = null;
     let cachedCfg: ControlFlowAnalysis | null = null;
 
+    const requireProgramRoot = (): EsTreeNode => {
+      if (programRoot) return programRoot;
+      throw new Error("semantic context requested before Program root was captured");
+    };
+
     const getScopes = (): ScopeAnalysis => {
       if (cachedScopes) return cachedScopes;
-      if (!programRoot) return buildFallbackScopes();
-      cachedScopes = analyzeScopes(programRoot);
+      cachedScopes = analyzeScopes(requireProgramRoot());
       return cachedScopes;
     };
 
     const getCfg = (): ControlFlowAnalysis => {
       if (cachedCfg) return cachedCfg;
-      if (!programRoot) return FALLBACK_CFG;
-      cachedCfg = analyzeControlFlow(programRoot);
+      cachedCfg = analyzeControlFlow(requireProgramRoot());
       return cachedCfg;
     };
 

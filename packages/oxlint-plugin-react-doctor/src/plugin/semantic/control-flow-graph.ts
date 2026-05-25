@@ -1,6 +1,7 @@
 import type { EsTreeNode } from "../utils/es-tree-node.js";
 import { isAstNode } from "../utils/is-ast-node.js";
 import { isNodeOfType } from "../utils/is-node-of-type.js";
+import { walkAst } from "../utils/walk-ast.js";
 
 // Per-function CFG. Mirrors the subset of `oxc_cfg` we need to answer:
 //
@@ -105,18 +106,10 @@ const appendNode = (builder: CfgBuilder, block: BasicBlock, node: EsTreeNode): v
 // Recursively map every descendant of `node` to `block`, EXCEPT when
 // crossing a function boundary (inner functions get their own CFG).
 const mapDescendantsToBlock = (builder: CfgBuilder, node: EsTreeNode, block: BasicBlock): void => {
-  builder.nodeBlock.set(node, block);
-  if (isFunctionLike(node)) return;
-  const record = node as unknown as Record<string, unknown>;
-  for (const key of Object.keys(record)) {
-    if (key === "parent") continue;
-    const child = record[key];
-    if (Array.isArray(child)) {
-      for (const item of child) if (isAstNode(item)) mapDescendantsToBlock(builder, item, block);
-    } else if (isAstNode(child)) {
-      mapDescendantsToBlock(builder, child, block);
-    }
-  }
+  walkAst(node, (child) => {
+    builder.nodeBlock.set(child, block);
+    if (child !== node && isFunctionLike(child)) return false;
+  });
 };
 
 // Returns true if the node introduces internal control flow we want to

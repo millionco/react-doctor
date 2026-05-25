@@ -1,7 +1,7 @@
 import type { EsTreeNode } from "../utils/es-tree-node.js";
 import type { ReferenceDescriptor, ScopeAnalysis } from "./scope-analysis.js";
 import { isDescendantScope } from "./scope-analysis.js";
-import { isAstNode } from "../utils/is-ast-node.js";
+import { walkAst } from "../utils/walk-ast.js";
 
 const FUNCTION_LIKE_TYPES: ReadonlySet<string> = new Set([
   "FunctionDeclaration",
@@ -53,47 +53,39 @@ export const closureCaptures = (
   // Walk the AST descendants of functionNode, NOT the scope tree —
   // because scopeFor returns the parent scope for a function node and
   // we want references located AT OR BELOW the function.
-  const visit = (node: EsTreeNode): void => {
-    if (node !== functionNode && isFunctionLike(node)) {
-      // Recurse into inner functions — their captures bubble up too if
-      // their resolution is outside `functionNode`'s scope.
-      const innerCaptures = closureCaptures(node, scopes);
-      for (const reference of innerCaptures) {
-        if (
-          reference.resolvedSymbol &&
-          !isDescendantScope(reference.resolvedSymbol.scope, functionScope)
-        ) {
+  walkAst(
+    functionNode,
+    (node) => {
+      if (node !== functionNode && isFunctionLike(node)) {
+        // Recurse into inner functions — their captures bubble up too if
+        // their resolution is outside `functionNode`'s scope.
+        const innerCaptures = closureCaptures(node, scopes);
+        for (const reference of innerCaptures) {
+          if (
+            reference.resolvedSymbol &&
+            !isDescendantScope(reference.resolvedSymbol.scope, functionScope)
+          ) {
+            if (!seen.has(reference.id)) {
+              out.push(reference);
+              seen.add(reference.id);
+            }
+          }
+        }
+        return false;
+      }
+      const reference = scopes.referenceFor(node);
+      if (reference && reference.resolvedSymbol) {
+        // Resolution is outside our function scope → captured.
+        if (!isDescendantScope(reference.resolvedSymbol.scope, functionScope)) {
           if (!seen.has(reference.id)) {
             out.push(reference);
             seen.add(reference.id);
           }
         }
       }
-      return;
-    }
-    const reference = scopes.referenceFor(node);
-    if (reference && reference.resolvedSymbol) {
-      // Resolution is outside our function scope → captured.
-      if (!isDescendantScope(reference.resolvedSymbol.scope, functionScope)) {
-        if (!seen.has(reference.id)) {
-          out.push(reference);
-          seen.add(reference.id);
-        }
-      }
-    }
-    const record = node as unknown as Record<string, unknown>;
-    for (const key of Object.keys(record)) {
-      if (key === "parent") continue;
-      if (TYPE_ONLY_CHILD_KEYS.has(key)) continue;
-      const child = record[key];
-      if (Array.isArray(child)) {
-        for (const item of child) if (isAstNode(item)) visit(item);
-      } else if (isAstNode(child)) {
-        visit(child);
-      }
-    }
-  };
-  visit(functionNode);
+    },
+    { skipKeys: TYPE_ONLY_CHILD_KEYS },
+  );
 
   // Filter out references whose identifier is OUTSIDE functionNode in
   // the AST (defensive — shouldn't happen given our walk).

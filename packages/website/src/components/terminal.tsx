@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import { Copy, Check, ChevronRight, RotateCcw } from "lucide-react";
 import { PERFECT_SCORE, RUN_COMMAND } from "@/constants";
@@ -170,6 +170,7 @@ const DiagnosticItem = ({ diagnostic }: { diagnostic: RuleDiagnostic }) => {
   return (
     <div className="mb-1">
       <button
+        type="button"
         onClick={() => setIsOpen((previous) => !previous)}
         className="inline-flex items-start gap-1 text-left"
       >
@@ -219,7 +220,7 @@ const CopyCommand = () => {
   return (
     <div className="group flex items-center gap-4 border border-white/20 px-3 py-1.5 transition-colors hover:bg-white/5">
       <span className="select-all whitespace-nowrap text-white">{RUN_COMMAND}</span>
-      <button onClick={handleCopy}>
+      <button type="button" onClick={handleCopy}>
         <IconComponent size={16} className={iconClass} />
       </button>
     </div>
@@ -271,11 +272,12 @@ const markAnimationCompleted = () => {
 };
 
 const Terminal = () => {
-  const [state, setState] = useState<AnimationState>(INITIAL_STATE);
+  const [state, setState] = useState<AnimationState>(() =>
+    didAnimationComplete() ? COMPLETED_STATE : INITIAL_STATE,
+  );
 
   useEffect(() => {
     if (didAnimationComplete()) {
-      setState(COMPLETED_STATE);
       return;
     }
 
@@ -407,6 +409,7 @@ const Terminal = () => {
       {state.showCta && (
         <div className="mt-8">
           <button
+            type="button"
             onClick={() => {
               try {
                 localStorage.removeItem(ANIMATION_COMPLETED_KEY);

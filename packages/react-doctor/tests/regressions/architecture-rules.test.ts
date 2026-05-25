@@ -50,6 +50,29 @@ export const NativeRouteButton = () => {
     expect(hits[0].message).not.toContain("useNavigation");
   });
 
+  it("does not flag React Navigation core methods", async () => {
+    const projectDir = setupReactProject(tempRoot, "react-navigation-core-methods", {
+      files: {
+        "src/Screen.tsx": `import { useNavigation } from "@react-navigation/core";
+
+declare module "@react-navigation/core" {
+  export function useNavigation(): {
+    dispatch: (action: { type: string }) => void;
+  };
+}
+
+export const NativeRouteButton = () => {
+  const navigation = useNavigation();
+  return <button onClick={() => navigation.dispatch({ type: "GO_BACK" })}>Back</button>;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "react-compiler-destructure-method");
+    expect(hits).toHaveLength(0);
+  });
+
   it("still flags non-React-Navigation useNavigation hooks", async () => {
     const projectDir = setupReactProject(tempRoot, "custom-use-navigation-methods", {
       files: {

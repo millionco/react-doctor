@@ -18,11 +18,22 @@ const HOOK_OBJECTS_WITH_METHODS = new Map<string, Set<string>>([
   ["useSearchParams", new Set(["get", "getAll", "has", "set"])],
 ]);
 
-const REACT_NAVIGATION_MODULES = ["@react-navigation/native", "@react-navigation/core"];
+// Some libraries expose method-bearing hook objects where destructuring is not
+// part of the supported API shape, even though the hook name and method access
+// look like a normal React Compiler candidate. Keep those carve-outs keyed by
+// hook name and import source so similarly named userland hooks still report.
+const HOOK_IMPORT_SOURCES_WITH_UNSAFE_METHOD_DESTRUCTURING = new Map<string, Set<string>>([
+  ["useNavigation", new Set(["@react-navigation/native", "@react-navigation/core"])],
+]);
 
-const isReactNavigationHook = (node: EsTreeNode, hookSource: string): boolean =>
-  hookSource === "useNavigation" &&
-  REACT_NAVIGATION_MODULES.some((moduleName) => isImportedFromModule(node, hookSource, moduleName));
+const isUnsafeMethodDestructureHookImport = (node: EsTreeNode, hookSource: string): boolean => {
+  const moduleSources = HOOK_IMPORT_SOURCES_WITH_UNSAFE_METHOD_DESTRUCTURING.get(hookSource);
+  if (!moduleSources) return false;
+  for (const moduleSource of moduleSources) {
+    if (isImportedFromModule(node, hookSource, moduleSource)) return true;
+  }
+  return false;
+};
 
 // HACK: O(1) lookup. Indexes top-level `const x = useFooBar(...)`
 // declarations once per component on enter, so subsequent
@@ -117,7 +128,7 @@ export const reactCompilerDestructureMethod = defineRule<Rule>({
 
         const allowedMethods = HOOK_OBJECTS_WITH_METHODS.get(hookSource);
         if (!allowedMethods || !allowedMethods.has(methodName)) return;
-        if (isReactNavigationHook(node, hookSource)) return;
+        if (isUnsafeMethodDestructureHookImport(node, hookSource)) return;
 
         if (!isNodeOfType(node.parent, "CallExpression") || node.parent.callee !== node) return;
 

@@ -9,9 +9,7 @@ interface KeyedSeverity {
   readonly severity: OxlintRuleSeverity;
 }
 
-const toRuleMap = (
-  entries: ReadonlyArray<KeyedSeverity>,
-): Record<string, OxlintRuleSeverity> =>
+const toRuleMap = (entries: ReadonlyArray<KeyedSeverity>): Record<string, OxlintRuleSeverity> =>
   Object.fromEntries(entries.map((entry) => [entry.key, entry.severity]));
 
 const toKeyedSeverity = (entries: ReadonlyArray<RegistryEntry>): ReadonlyArray<KeyedSeverity> =>

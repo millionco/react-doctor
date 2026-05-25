@@ -21,7 +21,6 @@ import {
 const MESSAGE =
   "JSX prop receives a new Array on every render — extract it or memoize to avoid re-renders.";
 
-
 const isDataArrayPropName = (propName: string): boolean => {
   if (DATA_ARRAY_PROP_NAMES.has(propName)) return true;
   for (const suffix of DATA_ARRAY_PROP_SUFFIXES) {

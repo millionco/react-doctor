@@ -22,7 +22,6 @@ import {
 const MESSAGE =
   "JSX prop receives a new Object on every render — extract it or memoize to avoid re-renders.";
 
-
 const isConfigObjectPropName = (propName: string): boolean => {
   if (CONFIG_OBJECT_PROP_NAMES.has(propName)) return true;
   for (const suffix of CONFIG_OBJECT_PROP_SUFFIXES) {

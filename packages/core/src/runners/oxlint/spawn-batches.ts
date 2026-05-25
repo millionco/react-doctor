@@ -77,9 +77,7 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
   }
 
   if (droppedFiles.length > 0 && onPartialFailure) {
-    const previewFiles = droppedFiles
-      .slice(0, OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT)
-      .join(", ");
+    const previewFiles = droppedFiles.slice(0, OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT).join(", ");
     const remainderHint =
       droppedFiles.length > OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT
         ? `, +${droppedFiles.length - OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT} more`

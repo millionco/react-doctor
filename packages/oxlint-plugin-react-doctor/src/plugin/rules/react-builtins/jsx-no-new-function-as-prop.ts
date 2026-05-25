@@ -23,7 +23,6 @@ import {
 const MESSAGE =
   "JSX prop receives a new Function on every render — extract it or memoize (`useCallback`) to avoid re-renders.";
 
-
 const isAccessorPredicateName = (propName: string): boolean => {
   for (const prefix of ACCESSOR_PREDICATE_PREFIXES) {
     if (propName.length <= prefix.length) continue;
@@ -267,7 +266,6 @@ const isStableArgumentValue = (node: EsTreeNode): boolean => {
   }
   return false;
 };
-
 
 const calleeReceiverName = (callee: EsTreeNode): string | null => {
   let cursor: EsTreeNode = callee;

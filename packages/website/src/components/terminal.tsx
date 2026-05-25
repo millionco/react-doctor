@@ -277,10 +277,8 @@ const markAnimationCompleted = () => {
 };
 
 const Terminal = () => {
-  const [state, dispatchState] = useReducer(
-    animationReducer,
-    undefined,
-    () => (didAnimationComplete() ? COMPLETED_STATE : INITIAL_STATE),
+  const [state, dispatchState] = useReducer(animationReducer, undefined, () =>
+    didAnimationComplete() ? COMPLETED_STATE : INITIAL_STATE,
   );
 
   useEffect(() => {

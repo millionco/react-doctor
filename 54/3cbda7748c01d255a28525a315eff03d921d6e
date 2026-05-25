@@ -1,0 +1,23 @@
+packages/oxlint-plugin-react-doctor/src/plugin/utils/classify-package-platform.ts
+  s_43a614cddfd846::t_82911e688a29d6 3-6,128
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-prefer-expo-image.test.ts
+  s_43a614cddfd846::t_4a7eef0d59cde5 31-33,36,46
+packages/oxlint-plugin-react-doctor/src/react-native-dependency-names.ts
+  s_43a614cddfd846::t_044129ecd463f6 11-12,18-24,39-40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "543cbda7748c01d255a28525a315eff03d921d6e",
+  "prompts": {},
+  "sessions": {
+    "s_43a614cddfd846": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "452e8e76-415e-4f87-8fe9-57a32399be19",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

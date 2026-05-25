@@ -43,6 +43,8 @@ export const SPAWN_ARGS_MAX_LENGTH_CHARS = 24_000;
 // vs the hard-cap perf cliffs they prevent.
 export const OXLINT_MAX_FILES_PER_BATCH = 100;
 
+export const OXLINT_MAX_CONCURRENT_BATCHES_COUNT = 3;
+
 export const DEFAULT_BRANCH_CANDIDATES = ["main", "master"];
 
 // JSON-format oxlint / eslint configs react-doctor can fold into the

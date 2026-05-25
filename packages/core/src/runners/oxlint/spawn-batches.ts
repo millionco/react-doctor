@@ -1,4 +1,5 @@
 import type { Diagnostic, ProjectInfo } from "../../types/index.js";
+import { OXLINT_MAX_CONCURRENT_BATCHES_COUNT } from "../../constants.js";
 import { isSplittableReactDoctorError } from "../../errors.js";
 import { dedupeDiagnostics } from "../../utils/dedupe-diagnostics.js";
 import { parseOxlintOutput } from "./parse-output.js";
@@ -11,9 +12,29 @@ export interface SpawnLintBatchesInput {
   readonly nodeBinaryPath: string;
   readonly project: ProjectInfo;
   readonly onPartialFailure?: (reason: string) => void;
+  readonly spawnOxlintProcess?: typeof spawnOxlint;
 }
 
 const PREVIEW_COUNT = 3;
+
+interface BatchResult {
+  readonly diagnostics: ReadonlyArray<Diagnostic>;
+  readonly droppedFiles: ReadonlyArray<string>;
+  readonly firstDropReason: string | null;
+}
+
+const EMPTY_BATCH_RESULT: BatchResult = {
+  diagnostics: [],
+  droppedFiles: [],
+  firstDropReason: null,
+};
+
+const mergeBatchResults = (results: ReadonlyArray<BatchResult>): BatchResult => ({
+  diagnostics: results.flatMap((result) => result.diagnostics),
+  droppedFiles: results.flatMap((result) => result.droppedFiles),
+  firstDropReason:
+    results.find((result) => result.firstDropReason !== null)?.firstDropReason ?? null,
+});
 
 /**
  * Runs every prebuilt file batch through oxlint, with binary-split
@@ -29,62 +50,72 @@ const PREVIEW_COUNT = 3;
  * with a slimmer config in that case.
  */
 export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Diagnostic[]> => {
-  const { baseArgs, fileBatches, rootDirectory, nodeBinaryPath, project, onPartialFailure } = input;
+  const {
+    baseArgs,
+    fileBatches,
+    rootDirectory,
+    nodeBinaryPath,
+    project,
+    onPartialFailure,
+    spawnOxlintProcess = spawnOxlint,
+  } = input;
 
-  const allDiagnostics: Diagnostic[] = [];
-  // HACK: tracks files whose smallest splittable batch (down to a
-  // single file) still failed with a splittable error — surfaced via
-  // `onPartialFailure` so JSON consumers see WHICH files were dropped
-  // instead of silently losing them. Composes with the binary-split:
-  // large batches that time out / OOM split in half and retry; the
-  // only files that reach this set are the genuinely-pathological
-  // ones (e.g. one file × one quadratic JS-plugin rule, originally
-  // hit on supabase/studio's `apps/studio/pages/...` bucket).
-  const droppedFiles: string[] = [];
-  // HACK: keep the first splittable error message we saw so
-  // `onPartialFailure` can report WHY each batch failed instead of
-  // misleadingly always blaming the per-batch budget. Same root cause
-  // across a project tends to repeat (e.g. native binding crash on
-  // every invocation in a sandbox runtime), so surfacing one example
-  // is enough to diagnose.
-  let firstDropReason: string | null = null;
-
-  const spawnLintBatch = async (batch: string[]): Promise<Diagnostic[]> => {
+  const spawnLintBatch = async (batch: string[]): Promise<BatchResult> => {
     const batchArgs = [...baseArgs, ...batch];
     try {
-      const stdout = await spawnOxlint(batchArgs, rootDirectory, nodeBinaryPath);
-      return parseOxlintOutput(stdout, project, rootDirectory);
+      const stdout = await spawnOxlintProcess(batchArgs, rootDirectory, nodeBinaryPath);
+      return {
+        diagnostics: parseOxlintOutput(stdout, project, rootDirectory),
+        droppedFiles: [],
+        firstDropReason: null,
+      };
     } catch (error) {
       if (!isSplittableReactDoctorError(error)) throw error;
       if (batch.length <= 1) {
         // Single-file batch still fails with a splittable error —
         // drop the file, record it, and let the scan continue.
-        droppedFiles.push(...batch);
-        if (firstDropReason === null) {
-          firstDropReason = error.message;
-        }
-        return [];
+        return {
+          diagnostics: [],
+          droppedFiles: batch,
+          firstDropReason: error.message,
+        };
       }
       const splitIndex = Math.ceil(batch.length / 2);
-      return [
-        ...(await spawnLintBatch(batch.slice(0, splitIndex))),
-        ...(await spawnLintBatch(batch.slice(splitIndex))),
-      ];
+      return mergeBatchResults([
+        await spawnLintBatch(batch.slice(0, splitIndex)),
+        await spawnLintBatch(batch.slice(splitIndex)),
+      ]);
     }
   };
 
-  for (const batch of fileBatches) {
-    allDiagnostics.push(...(await spawnLintBatch(batch)));
-  }
+  const batchResults: BatchResult[] = Array.from({ length: fileBatches.length }, () => ({
+    ...EMPTY_BATCH_RESULT,
+  }));
+  let nextBatchIndex = 0;
+  const workerCount = Math.min(OXLINT_MAX_CONCURRENT_BATCHES_COUNT, fileBatches.length);
+  const runWorker = async (): Promise<void> => {
+    while (nextBatchIndex < fileBatches.length) {
+      const batchIndex = nextBatchIndex;
+      nextBatchIndex += 1;
+      batchResults[batchIndex] = await spawnLintBatch(fileBatches[batchIndex]);
+    }
+  };
 
-  if (droppedFiles.length > 0 && onPartialFailure) {
-    const previewFiles = droppedFiles.slice(0, PREVIEW_COUNT).join(", ");
+  await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
+  const mergedResult = mergeBatchResults(batchResults);
+
+  if (mergedResult.droppedFiles.length > 0 && onPartialFailure) {
+    const previewFiles = mergedResult.droppedFiles.slice(0, PREVIEW_COUNT).join(", ");
     const remainderHint =
-      droppedFiles.length > PREVIEW_COUNT ? `, +${droppedFiles.length - PREVIEW_COUNT} more` : "";
-    const reasonHint = firstDropReason ? ` — first failure: ${firstDropReason}` : "";
+      mergedResult.droppedFiles.length > PREVIEW_COUNT
+        ? `, +${mergedResult.droppedFiles.length - PREVIEW_COUNT} more`
+        : "";
+    const reasonHint = mergedResult.firstDropReason
+      ? ` — first failure: ${mergedResult.firstDropReason}`
+      : "";
     onPartialFailure(
-      `${droppedFiles.length} file(s) failed to lint and were skipped (${previewFiles}${remainderHint})${reasonHint}`,
+      `${mergedResult.droppedFiles.length} file(s) failed to lint and were skipped (${previewFiles}${remainderHint})${reasonHint}`,
     );
   }
-  return dedupeDiagnostics(allDiagnostics);
+  return dedupeDiagnostics([...mergedResult.diagnostics]);
 };

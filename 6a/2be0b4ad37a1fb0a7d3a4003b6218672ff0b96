@@ -1,0 +1,19 @@
+scripts/smoke-json-report.ts
+  s_69a66bf98d134b::t_56495225a31c8c 11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "6a2be0b4ad37a1fb0a7d3a4003b6218672ff0b96",
+  "prompts": {},
+  "sessions": {
+    "s_69a66bf98d134b": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "37494b40-5e93-4885-8003-def3a81c3471",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

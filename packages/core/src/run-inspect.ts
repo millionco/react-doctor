@@ -14,7 +14,7 @@ import { Config, type ResolvedConfig } from "./services/config.js";
 import { DeadCode } from "./services/dead-code.js";
 import { Files } from "./services/files.js";
 import { Git } from "./services/git.js";
-import { LintPartialFailures, Linter } from "./services/linter.js";
+import { Linter, type LintOutcome } from "./services/linter.js";
 import { Project } from "./services/project.js";
 import { Reporter } from "./services/reporter.js";
 import { Score } from "./services/score.js";
@@ -44,7 +44,7 @@ export interface InspectOutput {
   readonly didLintFail: boolean;
   readonly lintFailureReason: string | null;
   /**
-   * The `_tag` of `error.reason` when the lint stream raised a
+   * The `_tag` of `error.reason` when the lint backend raised a
    * `ReactDoctorError`, or `null` otherwise. Lets renderers dispatch
    * on the typed reason without `error.message.includes(...)` style
    * sniffs (e.g. show the "upgrade Node" hint only on
@@ -95,23 +95,23 @@ const fileReader =
 /**
  * The full inspect orchestration as a single composable Effect.
  *
- * Wires the 8 services into a streaming pipeline:
+ * Wires the services into a scan pipeline:
  *
  *   Config.resolve(directory)
  *     -> Project.discover(resolvedDirectory)
  *     -> Git metadata for score attribution
- *     -> Stream.fromIterable(checkReducedMotion env diagnostics)
- *     -> Stream.concat(Linter.run(...))    [folds ReactDoctorError into Ref]
+ *     -> Linter.run(...)                   [folds ReactDoctorError into Ref]
+ *     -> Stream.fromIterable(environment + lint diagnostics)
  *     -> Stream.concat(DeadCode.run(...))  [folds Error into Ref]
  *     -> Stream.filterMap(perElementPipeline.apply)  [auto-suppress / severity / ignore / inline]
  *     -> Stream.tap(Reporter.emit)         [side-channel: future LSP / NDJSON]
  *     -> Stream.runCollect
  *     -> Score.compute(filtered)
  *
- * Lint and dead-code failures are folded via `Stream.catchTag` into
- * Ref state on the orchestrator side — they don't sink the whole
- * scan, and the renderer (cli or programmatic api) surfaces them
- * via `skippedCheckReasons`.
+ * Lint and dead-code failures are folded into Ref state on the
+ * orchestrator side — they don't sink the whole scan, and the
+ * renderer (cli or programmatic api) surfaces them via
+ * `skippedCheckReasons`.
  */
 export const runInspect = <HooksR = never>(
   input: InspectInput,
@@ -119,16 +119,7 @@ export const runInspect = <HooksR = never>(
 ): Effect.Effect<
   InspectOutput,
   ReactDoctorError,
-  | Project
-  | Config
-  | DeadCode
-  | Files
-  | Git
-  | Linter
-  | LintPartialFailures
-  | Reporter
-  | Score
-  | HooksR
+  Project | Config | DeadCode | Files | Git | Linter | Reporter | Score | HooksR
 > =>
   // `Effect.withSpan("runInspect", { attributes })` turns the entire
   // orchestrator into a single named OTel span; child service spans
@@ -146,8 +137,6 @@ export const runInspect = <HooksR = never>(
     const scoreService = yield* Score;
     const deadCodeService = yield* DeadCode;
     const gitService = yield* Git;
-    const partialFailuresRef = yield* LintPartialFailures;
-
     const resolvedConfig: ResolvedConfig = yield* configService.resolve(input.directory);
     const scanDirectory = resolvedConfig.resolvedDirectory;
 
@@ -212,7 +201,8 @@ export const runInspect = <HooksR = never>(
 
     const emptyDiagnosticStream: Stream.Stream<Diagnostic, never> = Stream.empty;
 
-    const rawLintStream = linterService
+    const emptyLintOutcome: LintOutcome = { diagnostics: [], partialFailures: [] };
+    const lintOutcome = yield* linterService
       .run({
         rootDirectory: scanDirectory,
         project,
@@ -226,17 +216,12 @@ export const runInspect = <HooksR = never>(
         configSourceDirectory: resolvedConfig.configSourceDirectory ?? undefined,
       })
       .pipe(
-        Stream.catchTag("ReactDoctorError", (error: ReactDoctorError) =>
-          Stream.unwrap(
-            Effect.gen(function* () {
-              yield* Ref.set(lintFailure, {
-                didFail: true,
-                reason: error.message,
-                reasonTag: error.reason._tag,
-              });
-              return emptyDiagnosticStream;
-            }),
-          ),
+        Effect.catchTag("ReactDoctorError", (error: ReactDoctorError) =>
+          Ref.set(lintFailure, {
+            didFail: true,
+            reason: error.message,
+            reasonTag: error.reason._tag,
+          }).pipe(Effect.as(emptyLintOutcome)),
         ),
       );
 
@@ -260,7 +245,7 @@ export const runInspect = <HooksR = never>(
       : emptyDiagnosticStream;
 
     const transformedStream = Stream.fromIterable(environmentDiagnostics).pipe(
-      Stream.concat(rawLintStream),
+      Stream.concat(Stream.fromIterable(lintOutcome.diagnostics)),
       Stream.concat(deadCodeStream),
       Stream.filterMap(filterMapNullable<Diagnostic, Diagnostic>(transform.apply)),
       Stream.tap((diagnostic) => reporterService.emit(diagnostic)),
@@ -281,8 +266,6 @@ export const runInspect = <HooksR = never>(
           isCi: input.isCi,
           metadata: scoreMetadata,
         });
-    const lintPartialFailures = yield* Ref.get(partialFailuresRef);
-
     return {
       project,
       userConfig: resolvedConfig.config,
@@ -293,7 +276,7 @@ export const runInspect = <HooksR = never>(
       didLintFail: lintFailureState.didFail,
       lintFailureReason: lintFailureState.reason,
       lintFailureReasonTag: lintFailureState.reasonTag,
-      lintPartialFailures,
+      lintPartialFailures: lintOutcome.partialFailures,
       didDeadCodeFail: deadCodeFailureState.didFail,
       deadCodeFailureReason: deadCodeFailureState.reason,
     };
@@ -328,7 +311,6 @@ export const layerInspectLive = Layer.mergeAll(
   Files.layerNode,
   Git.layerNode,
   Linter.layerOxlint,
-  LintPartialFailures.layerLive,
   Reporter.layerNoop,
   Score.layerHttp,
 );

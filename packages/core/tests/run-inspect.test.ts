@@ -16,7 +16,7 @@ import { Config } from "../src/services/config.js";
 import { DeadCode } from "../src/services/dead-code.js";
 import { Files } from "../src/services/files.js";
 import { Git } from "../src/services/git.js";
-import { LintPartialFailures, Linter } from "../src/services/linter.js";
+import { Linter } from "../src/services/linter.js";
 import { Project } from "../src/services/project.js";
 import { Reporter, ReporterCapture } from "../src/services/reporter.js";
 import { Score } from "../src/services/score.js";
@@ -79,7 +79,6 @@ const layersOf = (config: {
     Config.layerOf({ config: null, resolvedDirectory: "/repo", configSourceDirectory: null }),
     Files.layerInMemory(new Map()),
     Linter.layerOf(config.diagnostics ?? []),
-    LintPartialFailures.layerLive,
     DeadCode.layerOf(config.deadCode ?? []),
     Git.layerOf({
       headSha: "abc123",
@@ -145,7 +144,6 @@ describe("runInspect — missing React dependency", () => {
       Config.layerOf({ config: null, resolvedDirectory: "/repo", configSourceDirectory: null }),
       Files.layerInMemory(new Map()),
       Linter.layerOf([]),
-      LintPartialFailures.layerLive,
       DeadCode.layerOf([]),
       Git.layerOf({}),
       Score.layerOf(null),
@@ -166,7 +164,6 @@ describe("runInspect — missing React dependency", () => {
       Config.layerOf({ config: null, resolvedDirectory: "/repo", configSourceDirectory: null }),
       Files.layerInMemory(new Map()),
       Linter.layerOf([]),
-      LintPartialFailures.layerLive,
       DeadCode.layerOf([]),
       Git.layerOf({}),
       Score.layerOf(null),
@@ -191,10 +188,10 @@ describe("runInspect — missing React dependency", () => {
 });
 
 describe("runInspect — mid-stream lint failure", () => {
-  it("folds a Stream.fail into didLintFail without sinking the scan", async () => {
+  it("folds a Linter failure into didLintFail without sinking the scan", async () => {
     const failingLinter = Layer.mock(Linter, {
       run: () =>
-        Stream.fail(
+        Effect.fail(
           new ReactDoctorError({
             reason: new OxlintSpawnFailed({ cause: "synthetic failure" }),
           }),
@@ -205,7 +202,6 @@ describe("runInspect — mid-stream lint failure", () => {
       Config.layerOf({ config: null, resolvedDirectory: "/repo", configSourceDirectory: null }),
       Files.layerInMemory(new Map()),
       failingLinter,
-      LintPartialFailures.layerLive,
       DeadCode.layerOf([deadCodeDiagnostic]),
       Git.layerOf({}),
       Score.layerOf({ score: 50, label: "Needs Improvement" }),
@@ -237,7 +233,6 @@ describe("runInspect — dead-code failure", () => {
       Config.layerOf({ config: null, resolvedDirectory: "/repo", configSourceDirectory: null }),
       Files.layerInMemory(new Map()),
       Linter.layerOf([lintDiagnostic]),
-      LintPartialFailures.layerLive,
       failingDeadCode,
       Git.layerOf({}),
       Score.layerOf(null),
@@ -313,7 +308,6 @@ describe("runInspect — Reporter sees post-filter diagnostics", () => {
       }),
       Files.layerInMemory(new Map()),
       Linter.layerOf([ignoredDiagnostic, lintDiagnostic]),
-      LintPartialFailures.layerLive,
       DeadCode.layerOf([]),
       Git.layerOf({}),
       Score.layerOf(null),

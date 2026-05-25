@@ -17,9 +17,6 @@ interface DeadCodeInput {
  * orchestrator skips this pass in `--diff` / `--staged` mode by
  * providing `layerOf([])`. Failures are folded by the orchestrator
  * into `skippedChecks: ["dead-code"]` without sinking the scan.
- *
- * Stream-shape (matching `Linter.run`) so the orchestrator can
- * `Stream.concat(linter.run, deadCode.run)` symmetrically.
  */
 export class DeadCode extends Context.Service<
   DeadCode,

@@ -1,15 +1,5 @@
 import * as Layer from "effect/Layer";
-import {
-  Config,
-  DeadCode,
-  Files,
-  Git,
-  Linter,
-  LintPartialFailures,
-  Project,
-  Reporter,
-  Score,
-} from "@react-doctor/core";
+import { Config, DeadCode, Files, Git, Linter, Project, Reporter, Score } from "@react-doctor/core";
 import type { ReactDoctorConfig } from "@react-doctor/core";
 
 export interface BuildRuntimeLayersInput {
@@ -70,7 +60,6 @@ export const buildRuntimeLayers = (input: BuildRuntimeLayersInput) => {
     Files.layerNode,
     Git.layerNode,
     linterLayer,
-    LintPartialFailures.layerLive,
     deadCodeLayer,
     Reporter.layerNoop,
     scoreLayer,

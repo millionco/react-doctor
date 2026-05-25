@@ -120,7 +120,10 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         const scanResult = await inspect(snapshot.tempDirectory, {
           ...scanOptions,
           includePaths: snapshot.stagedFiles,
-          configOverride: userConfig,
+          configOverride: {
+            config: userConfig,
+            sourceDirectory: loadedConfig?.sourceDirectory ?? null,
+          },
         });
 
         const remappedDiagnostics = scanResult.diagnostics.map((diagnostic) => ({
@@ -229,7 +232,10 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       const scanResult = await inspect(projectDirectory, {
         ...scanOptions,
         includePaths,
-        configOverride: userConfig,
+        configOverride: {
+          config: userConfig,
+          sourceDirectory: loadedConfig?.sourceDirectory ?? null,
+        },
       });
       allDiagnostics.push(...scanResult.diagnostics);
       completedScans.push({ directory: projectDirectory, result: scanResult });

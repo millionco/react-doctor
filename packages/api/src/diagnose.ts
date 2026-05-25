@@ -2,6 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import path from "node:path";
 import {
+  buildSkippedChecks,
   Config,
   DeadCode,
   Files,
@@ -25,18 +26,20 @@ import {
 } from "@react-doctor/core";
 import type { DiagnoseOptions, DiagnoseResult } from "@react-doctor/core";
 
-const buildLayerStack = () =>
-  Layer.mergeAll(
+const buildLayerStack = (input: { readonly shouldSkipLint: boolean }) => {
+  const linterLayer = input.shouldSkipLint ? Linter.layerOf([]) : Linter.layerOxlint;
+  return Layer.mergeAll(
     Project.layerNode,
     Config.layerNode,
     Files.layerNode,
     Git.layerNode,
-    Linter.layerOxlint,
+    linterLayer,
     LintPartialFailures.layerLive,
     DeadCode.layerNode,
     Score.layerHttp,
     Reporter.layerNoop,
   );
+};
 
 export const diagnose = async (
   directory: string,
@@ -96,7 +99,7 @@ export const diagnose = async (
   // grep-stderr callers.
   const output: InspectOutput = await Effect.runPromise(
     program.pipe(
-      Effect.provide(buildLayerStack()),
+      Effect.provide(buildLayerStack({ shouldSkipLint: options.lint === false })),
       // Opt-in OTLP exporter. No-op unless REACT_DOCTOR_OTLP_ENDPOINT
       // + REACT_DOCTOR_OTLP_AUTH_HEADER are set in the environment;
       // see `core/observability.ts` for the env-driven config.
@@ -122,18 +125,19 @@ export const diagnose = async (
     console.error("Lint failed:", output.lintFailureReason);
   }
 
-  const skippedChecks: string[] = [];
-  const skippedCheckReasons: Record<string, string> = {};
-  if (output.didDeadCodeFail && output.deadCodeFailureReason !== null) {
-    skippedChecks.push("dead-code");
-    skippedCheckReasons["dead-code"] = output.deadCodeFailureReason;
-  }
+  const { skippedChecks, skippedCheckReasons } = buildSkippedChecks({
+    didLintFail: output.didLintFail,
+    lintFailureReason: output.lintFailureReason,
+    lintPartialFailures: output.lintPartialFailures,
+    didDeadCodeFail: output.didDeadCodeFail,
+    deadCodeFailureReason: output.deadCodeFailureReason,
+  });
 
   return {
     diagnostics: [...output.diagnostics],
     score: output.score,
     skippedChecks,
-    ...(Object.keys(skippedCheckReasons).length > 0 ? { skippedCheckReasons } : {}),
+    ...(skippedCheckReasons ? { skippedCheckReasons } : {}),
     project: output.project,
     elapsedMilliseconds: globalThis.performance.now() - startTime,
   };

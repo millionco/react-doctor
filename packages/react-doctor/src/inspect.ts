@@ -3,6 +3,7 @@ import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import * as Ref from "effect/Ref";
 import {
+  buildSkippedChecks,
   calculateScore,
   filterDiagnosticsForSurface,
   highlighter,
@@ -23,6 +24,7 @@ import {
 import type {
   Diagnostic,
   DiagnosticSurface,
+  InspectConfigOverride,
   InspectOptions,
   InspectResult,
   ReactDoctorConfig,
@@ -54,6 +56,14 @@ const silentConsole = new Proxy({} as Console.Console, {
 const runConsole = (effect: Effect.Effect<void>): void => {
   Effect.runSync(effect);
 };
+
+const isInspectConfigOverride = (
+  value: InspectOptions["configOverride"],
+): value is InspectConfigOverride =>
+  typeof value === "object" &&
+  value !== null &&
+  Object.hasOwn(value, "config") &&
+  Object.hasOwn(value, "sourceDirectory");
 
 interface ResolvedInspectOptions {
   lint: boolean;
@@ -151,7 +161,12 @@ export const inspect = async (
   // falls back to the scan root for plugin resolution.
   let configSourceDirectory: string | null = null;
   if (hasConfigOverride) {
-    userConfig = inputOptions.configOverride ?? null;
+    if (isInspectConfigOverride(inputOptions.configOverride)) {
+      userConfig = inputOptions.configOverride.config;
+      configSourceDirectory = inputOptions.configOverride.sourceDirectory;
+    } else {
+      userConfig = inputOptions.configOverride ?? null;
+    }
   } else {
     const loadedConfig = loadConfigWithSource(directory);
     const redirectedDirectory = resolveConfigRootDir(
@@ -422,30 +437,24 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       directory,
     } = input;
 
-    const skippedChecks: string[] = [];
-    if (didLintFail) skippedChecks.push("lint");
-    if (didDeadCodeFail) skippedChecks.push("dead-code");
+    const { skippedChecks, skippedCheckReasons } = buildSkippedChecks({
+      didLintFail,
+      lintFailureReason,
+      lintPartialFailures,
+      didDeadCodeFail,
+      deadCodeFailureReason,
+    });
     const hasSkippedChecks = skippedChecks.length > 0;
 
     const noScoreMessage = options.noScore
       ? "Score disabled by --no-score."
       : "Score unavailable (could not reach the score API).";
 
-    const skippedCheckReasons: Record<string, string> = {};
-    if (didLintFail && lintFailureReason !== null) {
-      skippedCheckReasons.lint = lintFailureReason;
-    } else if (lintPartialFailures.length > 0) {
-      skippedCheckReasons["lint:partial"] = lintPartialFailures.join("; ");
-    }
-    if (didDeadCodeFail && deadCodeFailureReason !== null) {
-      skippedCheckReasons["dead-code"] = deadCodeFailureReason;
-    }
-
     const buildResult = (): InspectResult => ({
       diagnostics: [...diagnostics],
       score,
       skippedChecks,
-      ...(Object.keys(skippedCheckReasons).length > 0 ? { skippedCheckReasons } : {}),
+      ...(skippedCheckReasons ? { skippedCheckReasons } : {}),
       project,
       elapsedMilliseconds,
     });

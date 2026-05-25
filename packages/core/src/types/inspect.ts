@@ -20,6 +20,11 @@ export interface InspectResult {
   elapsedMilliseconds: number;
 }
 
+export interface InspectConfigOverride {
+  config: ReactDoctorConfig | null;
+  sourceDirectory: string | null;
+}
+
 export interface InspectOptions {
   lint?: boolean;
   /** See `ReactDoctorConfig.deadCode`. Ignored in diff / staged mode. */
@@ -34,7 +39,7 @@ export interface InspectOptions {
   isCi?: boolean;
   silent?: boolean;
   includePaths?: string[];
-  configOverride?: ReactDoctorConfig | null;
+  configOverride?: ReactDoctorConfig | InspectConfigOverride | null;
   respectInlineDisables?: boolean;
   /**
    * Surface that consumes the printed diagnostic output (terminal

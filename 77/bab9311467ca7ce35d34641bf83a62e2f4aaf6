@@ -1,0 +1,22 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/react-compiler-destructure-method.ts
+  s_f9f58e2f607e55::t_524b3cae52cc6a 8,22,26
+packages/react-doctor/tests/regressions/architecture-rules.test.ts
+  s_f9f58e2f607e55::t_8a64a9d2ed0c64 1-17,21-23,29-50,75-76
+  s_f9f58e2f607e55::t_57ca3070695cb4 18-20,24-28,51-74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "77bab9311467ca7ce35d34641bf83a62e2f4aaf6",
+  "prompts": {},
+  "sessions": {
+    "s_f9f58e2f607e55": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "3032af03-6d8d-4174-8010-0113615a091c",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

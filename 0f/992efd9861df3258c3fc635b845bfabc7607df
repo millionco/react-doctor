@@ -1,0 +1,25 @@
+packages/react-doctor/tests/regressions/architecture-rules.test.ts
+  s_f9f58e2f607e55::t_8a64a9d2ed0c64 1-17,21-23,29-50,98-99,74
+  s_f9f58e2f607e55::t_57ca3070695cb4 18-20,24-28,51-52,76-97,55,57,63,65,67-72,75
+  s_f9f58e2f607e55::t_1fc2ad71587b16 53-54,56,58-62,64,66,73
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/react-compiler-destructure-method.ts
+  s_f9f58e2f607e55::t_524b3cae52cc6a 8,28,37
+  s_f9f58e2f607e55::t_63613bcc499c27 21-24
+  s_f9f58e2f607e55::t_593043691b2d18 25-27,29-36,131
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "0f992efd9861df3258c3fc635b845bfabc7607df",
+  "prompts": {},
+  "sessions": {
+    "s_f9f58e2f607e55": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "3032af03-6d8d-4174-8010-0113615a091c",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

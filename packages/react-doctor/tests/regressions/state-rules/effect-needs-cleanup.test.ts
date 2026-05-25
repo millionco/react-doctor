@@ -148,13 +148,7 @@ export const AppFocus = () => {
   });
 
   it("recognizes release methods on objects returned by subscribe-like calls", async () => {
-    for (const releaseName of [
-      "remove",
-      "cleanup",
-      "dispose",
-      "destroy",
-      "teardown",
-    ]) {
+    for (const releaseName of ["remove", "cleanup", "dispose", "destroy", "teardown"]) {
       const projectDir = setupReactProject(
         tempRoot,
         `effect-needs-cleanup-bound-resource-${releaseName}`,

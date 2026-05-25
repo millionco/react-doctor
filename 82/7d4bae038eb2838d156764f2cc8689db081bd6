@@ -1,0 +1,125 @@
+action.yml
+  s_b9a4a3143452aa::t_4d5e66faea51a1 78,116
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/anchor-is-valid.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 5,62-63
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/aria-proptypes.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 4,157-158,205,226
+packages/react-doctor/package.json
+  s_b9a4a3143452aa::t_4d5e66faea51a1 58,85
+packages/react-doctor/src/cli/utils/resolve-project-diff-include-paths.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 1-26
+.github/workflows/code-quality.yml
+  s_b9a4a3143452aa::t_4d5e66faea51a1 1-61
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/no-autofocus.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 5,85
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-curly-brace-presence.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 4,108,158-160
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-key.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 4,216-218,225-227,229
+packages/oxlint-plugin-react-doctor/src/plugin/utils/get-static-template-literal-value.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 1-23
+packages/core/src/observability.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 5,44
+packages/core/src/services/git.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 1-3,383-389
+packages/react-doctor/tests/install-git-hook.test.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 13,66-70,104,130,244,278,336-337,365-367,402,429,455,515,546,589,621-623,679,723,726,751-758,764,769-780,823
+packages/react-doctor/tests/node-support-metadata.test.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 1-87
+packages/core/src/project-info/extract-dependency-info.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 3
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/html-has-lang.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 5,58-59
+packages/react-doctor/tests/public-react-repos.test.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 1-172
+.github/workflows/ci.yml
+  s_b9a4a3143452aa::t_4d5e66faea51a1 18,36,39,41-70,73,85
+packages/oxlint-plugin-react-doctor/package.json
+  s_b9a4a3143452aa::t_4d5e66faea51a1 64
+packages/react-doctor/vite.config.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 60,86,110,123
+packages/react-doctor/src/cli/utils/install-skill.ts
+  s_b9a4a3143452aa::t_fae3dc2a68a364 79-89,99,111-114,140-141,146-160,172-180,190-198
+packages/react-doctor/tests/resolve-project-diff-include-paths.test.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 1-70
+packages/core/package.json
+  s_b9a4a3143452aa::t_4d5e66faea51a1 25,48
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-ui/no-vague-button-label.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 4,34-37
+packages/oxlint-plugin-react-doctor/vite.config.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 17
+packages/react-doctor/tests/github-action.test.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 44-46,50,53-55,58
+packages/react-doctor/tests/install-skill.test.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 71,79-84,89,98-103,306,374
+packages/react-doctor/src/cli/commands/inspect.ts
+  s_b9a4a3143452aa::t_fae3dc2a68a364 36,211-218,220,222,273-277
+packages/react-doctor/src/cli/utils/git-hook-shared.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 15-24
+packages/core/tests/observability.test.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 51-60
+.gitignore
+  s_b9a4a3143452aa::t_4d5e66faea51a1 13-19
+packages/react-doctor/tests/prompt-install-setup.test.ts
+  s_b9a4a3143452aa::t_fae3dc2a68a364 200-354,451
+packages/eslint-plugin-react-doctor/vite.config.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 18
+packages/core/vite.config.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 9,20
+packages/react-doctor/tests/public-react-repos/constants.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 1-66
+packages/react-doctor/src/cli/utils/prompt-install-setup.ts
+  s_b9a4a3143452aa::t_fae3dc2a68a364 4,10,33-36,56,71-73,128-144,167-168,170-176,179-183,185-222
+packages/api/package.json
+  s_b9a4a3143452aa::t_4d5e66faea51a1 28
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/__fixtures__/oxc-divergences.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 51-61
+packages/api/vite.config.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 19
+.github/workflows/react-doctor.yml
+  s_b9a4a3143452aa::t_4d5e66faea51a1 1-25
+packages/eslint-plugin-react-doctor/package.json
+  s_b9a4a3143452aa::t_4d5e66faea51a1 56
+.vite-hooks/pre-commit
+  s_b9a4a3143452aa::t_4d5e66faea51a1 1-35
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/exhaustive-deps.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 11,247-250,591
+packages/react-doctor/src/cli/utils/install-doctor-script.ts
+  s_b9a4a3143452aa::t_fae3dc2a68a364 1
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/button-has-type.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 4,64-66
+packages/react-doctor/src/cli/utils/prompts.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 20-23,67,71
+packages/oxlint-plugin-react-doctor/src/plugin/utils/parse-jsx-value.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 2,34-37
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-key.regressions.test.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 11-16,21-36
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/iframe-has-title.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 5,38-39
+package.json
+  s_b9a4a3143452aa::t_4d5e66faea51a1 17,39
+packages/react-doctor/src/cli/utils/install-git-hook-file.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 35-36,53,58,65-70
+packages/oxlint-plugin-react-doctor/src/plugin/utils/is-inside-platform-os-web-branch.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 2,62-63
+.agents/skills/react-doctor/SKILL.md
+  s_b9a4a3143452aa::t_4d5e66faea51a1 1-32
+packages/oxlint-plugin-react-doctor/src/plugin/utils/get-static-template-literal-value.test.ts
+  s_b9a4a3143452aa::t_4d5e66faea51a1 1-40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "827d4bae038eb2838d156764f2cc8689db081bd6",
+  "prompts": {},
+  "sessions": {
+    "s_b9a4a3143452aa": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7d059fc8-7db0-4028-ba4c-f0b6468c86b0",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

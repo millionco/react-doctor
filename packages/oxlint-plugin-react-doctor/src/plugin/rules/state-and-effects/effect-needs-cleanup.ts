@@ -65,7 +65,7 @@ const findSubscribeLikeUsages = (callback: EsTreeNode): SubscribeLikeUsage[] => 
   }
 
   walkAst(callback, (child: EsTreeNode) => {
-    if (child === cleanupArgument) return false;
+    if (child === cleanupArgument && !isSubscribeLikeCallExpression(child)) return false;
     if (!isNodeOfType(child, "CallExpression")) return;
 
     if (

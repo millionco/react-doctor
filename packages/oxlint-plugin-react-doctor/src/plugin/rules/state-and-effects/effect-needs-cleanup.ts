@@ -8,7 +8,10 @@ import { walkInsideStatementBlocks } from "../../utils/walk-inside-statement-blo
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { isSubscribeLikeCallExpression } from "./utils/is-subscribe-like-call-expression.js";
+import {
+  isCleanupReturningSubscribeLikeCallExpression,
+  isSubscribeLikeCallExpression,
+} from "./utils/is-subscribe-like-call-expression.js";
 import { isCleanupReturn } from "./utils/is-cleanup-return.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -117,18 +120,19 @@ const collectReleasableBindings = (effectCallback: EsTreeNode): ReleasableBindin
     if (!isNodeOfType(child, "VariableDeclaration")) return;
     for (const declarator of child.declarations ?? []) {
       if (!isNodeOfType(declarator.id, "Identifier")) continue;
+      const bindingName = declarator.id.name;
       const init = declarator.init;
       if (!init || !isNodeOfType(init, "CallExpression")) continue;
       if (isSubscribeLikeCallExpression(init)) {
-        bindings.releaseNames.add(declarator.id.name);
-        bindings.subscriptionNames.add(declarator.id.name);
+        bindings.releaseNames.add(bindingName);
+        bindings.subscriptionNames.add(bindingName);
         continue;
       }
       if (
         isNodeOfType(init.callee, "Identifier") &&
         TIMER_CALLEE_NAMES_REQUIRING_CLEANUP.has(init.callee.name)
       ) {
-        bindings.releaseNames.add(declarator.id.name);
+        bindings.releaseNames.add(bindingName);
       }
     }
   });
@@ -143,17 +147,17 @@ const effectHasCleanupRelease = (callback: EsTreeNode): boolean => {
     return false;
   }
   // HACK: expression-body arrows are the dominant shape for trivial
-  // subscribe-only effects:
+  // cleanup-returning subscribe-only effects:
   //
   //   useEffect(() => store.subscribe(handler), []);
   //
   // The arrow's expression body IS the body, and its evaluation
-  // result is implicitly returned as the effect's cleanup function.
-  // For subscribe-shaped calls we know the return value is the
-  // unsubscribe — accept this case before the BlockStatement-only
-  // checks below.
+  // result is implicitly returned as the effect's cleanup function. Only
+  // accept subscribe-shaped methods whose return value is known to be a
+  // cleanup function; `addEventListener` / `addListener` may return void
+  // or a subscription object that still needs explicit teardown.
   if (!isNodeOfType(callback.body, "BlockStatement")) {
-    return isSubscribeLikeCallExpression(callback.body);
+    return isCleanupReturningSubscribeLikeCallExpression(callback.body);
   }
   const releasableBindings = collectReleasableBindings(callback);
   // HACK: scan ALL `return` statements at the effect's own function

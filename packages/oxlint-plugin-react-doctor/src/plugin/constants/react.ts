@@ -81,6 +81,13 @@ export const SUBSCRIPTION_METHOD_NAMES = new Set([
   "sub",
 ]);
 
+// Subscribe-like methods whose return value is itself the cleanup function.
+// Do not include EventTarget/EventEmitter-style registrations here:
+// `addEventListener`, `addListener`, and `on` often return void or a
+// subscription object, so accepting their return value as cleanup would hide
+// missing teardown.
+export const CLEANUP_RETURNING_SUBSCRIPTION_METHOD_NAMES = new Set(["subscribe", "sub"]);
+
 // Cleanup method names that are meaningful without knowing where the receiver
 // came from. A call like `target.removeEventListener(...)`, `emitter.off(...)`,
 // or `controller.abort()` describes the teardown in the method name itself, so

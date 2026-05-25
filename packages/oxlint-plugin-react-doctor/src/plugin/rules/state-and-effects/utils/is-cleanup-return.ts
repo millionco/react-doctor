@@ -7,7 +7,7 @@ import {
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { walkAst } from "../../../utils/walk-ast.js";
-import { isSubscribeLikeCallExpression } from "./is-subscribe-like-call-expression.js";
+import { isCleanupReturningSubscribeLikeCallExpression } from "./is-subscribe-like-call-expression.js";
 
 const isReleaseLikeCall = (
   callNode: EsTreeNode,
@@ -63,7 +63,7 @@ export const isCleanupReturn = (
   if (isNodeOfType(returnedValue, "Identifier")) {
     return knownBoundReleaseNames.has(returnedValue.name);
   }
-  if (isSubscribeLikeCallExpression(returnedValue)) return true;
+  if (isCleanupReturningSubscribeLikeCallExpression(returnedValue)) return true;
   if (
     isNodeOfType(returnedValue, "ArrowFunctionExpression") ||
     isNodeOfType(returnedValue, "FunctionExpression")

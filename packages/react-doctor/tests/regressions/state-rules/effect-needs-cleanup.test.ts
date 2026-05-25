@@ -287,6 +287,25 @@ export const Subscribe = () => {
     expect(hits).toHaveLength(0);
   });
 
+  it("flags expression-body `addEventListener` because it does not return cleanup", async () => {
+    const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-expression-add-listener", {
+      files: {
+        "src/Resize.tsx": `import { useEffect } from "react";
+
+declare const handler: () => void;
+
+export const Resize = () => {
+  useEffect(() => window.addEventListener("resize", handler), []);
+  return <span />;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
+    expect(hits).toHaveLength(1);
+  });
+
   it("does NOT flag a `setTimeout` that lives inside the cleanup return (Bugbot #157 round 3)", async () => {
     // Regression: the subscribe/timer scanner walked the entire
     // callback including the cleanup return body. A \`setTimeout\` in
@@ -398,6 +417,27 @@ export const Subscribe = () => {
 
     const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
     expect(hits).toHaveLength(0);
+  });
+
+  it("flags a BlockStatement that returns `addEventListener` directly", async () => {
+    const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-return-add-listener", {
+      files: {
+        "src/Resize.tsx": `import { useEffect } from "react";
+
+declare const handler: () => void;
+
+export const Resize = () => {
+  useEffect(() => {
+    return window.addEventListener("resize", handler);
+  }, []);
+  return <span />;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
+    expect(hits).toHaveLength(1);
   });
 
   // HACK: regression for the ~36% FP rate measured against

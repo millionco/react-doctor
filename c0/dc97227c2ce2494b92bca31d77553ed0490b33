@@ -1,0 +1,19 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-prefer-expo-image.test.ts
+  s_43a614cddfd846::t_59cd6b3386cb36 24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "c0dc97227c2ce2494b92bca31d77553ed0490b33",
+  "prompts": {},
+  "sessions": {
+    "s_43a614cddfd846": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "452e8e76-415e-4f87-8fe9-57a32399be19",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

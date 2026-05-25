@@ -1,0 +1,20 @@
+scripts/smoke-json-report.ts
+  s_88bf939e55c2e3::t_26a5cb791ba45e 24
+  s_88bf939e55c2e3::t_9e349d56b59397 11-12,14-16,25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "87d5ba27ea0665b5c0b9762ff590416b454bc5c0",
+  "prompts": {},
+  "sessions": {
+    "s_88bf939e55c2e3": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "2cfe8e85-2a77-48f4-affc-ed5e53270025",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

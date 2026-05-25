@@ -48,4 +48,14 @@ describe("layerOtlp", () => {
       expect(result).toBe(42);
     });
   });
+
+  it("builds with the fetch HTTP client when OTLP env is configured", async () => {
+    await withoutOtlpEnv(async () => {
+      process.env["REACT_DOCTOR_OTLP_ENDPOINT"] = "https://example.invalid";
+      process.env["REACT_DOCTOR_OTLP_AUTH_HEADER"] = "Bearer test";
+      const program = Effect.succeed("ran");
+      const result = await Effect.runPromise(program.pipe(Effect.provide(layerOtlp)));
+      expect(result).toBe("ran");
+    });
+  });
 });

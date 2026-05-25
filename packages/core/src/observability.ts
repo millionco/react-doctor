@@ -1,8 +1,8 @@
-import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
+import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 import * as Otlp from "effect/unstable/observability/Otlp";
 
 const TRACER_PROJECT_NAME = "react-doctor";
@@ -41,6 +41,6 @@ export const layerOtlp: Layer.Layer<never> = Layer.unwrap(
       baseUrl: endpoint.value,
       resource: { serviceName: TRACER_PROJECT_NAME },
       headers,
-    }).pipe(Layer.provide(NodeHttpClient.layerUndici));
+    }).pipe(Layer.provide(FetchHttpClient.layer));
   }).pipe(Effect.orDie),
 );

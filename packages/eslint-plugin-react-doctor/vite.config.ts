@@ -15,7 +15,7 @@ export default defineConfig({
       entry: { index: "./src/index.ts" },
       deps: { neverBundle: ["oxlint-plugin-react-doctor"] },
       dts: true,
-      target: "node22",
+      target: "node20",
       platform: "node",
       fixedExtension: false,
       env: {

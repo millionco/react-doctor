@@ -6,7 +6,7 @@ export default defineConfig({
       entry: { index: "./src/index.ts", schemas: "./src/schemas.ts" },
       deps: {
         neverBundle: [
-          "@effect/platform-node",
+          "@effect/platform-node-shared",
           "deslop-js",
           "effect",
           "oxc-parser",
@@ -17,7 +17,7 @@ export default defineConfig({
         ],
       },
       dts: true,
-      target: "node22",
+      target: "node20",
       platform: "node",
       fixedExtension: false,
     },

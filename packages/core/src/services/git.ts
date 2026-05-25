@@ -1,4 +1,6 @@
-import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeChildProcessSpawner from "@effect/platform-node-shared/NodeChildProcessSpawner";
+import * as NodeFileSystem from "@effect/platform-node-shared/NodeFileSystem";
+import * as NodePath from "@effect/platform-node-shared/NodePath";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -378,7 +380,13 @@ export class Git extends Context.Service<
           }),
       });
     }),
-  ).pipe(Layer.provide(NodeServices.layer));
+  ).pipe(
+    Layer.provide(
+      NodeChildProcessSpawner.layer.pipe(
+        Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)),
+      ),
+    ),
+  );
 
   /**
    * Test layer driven by a deterministic snapshot. Each key is a

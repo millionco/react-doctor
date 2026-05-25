@@ -16,7 +16,7 @@ export default defineConfig({
         ],
       },
       dts: true,
-      target: "node22",
+      target: "node20",
       platform: "node",
       fixedExtension: false,
     },

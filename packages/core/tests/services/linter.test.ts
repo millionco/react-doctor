@@ -1,5 +1,4 @@
 import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
 import { describe, expect, it } from "vite-plus/test";
 import type { Diagnostic, ProjectInfo } from "@react-doctor/core";
 import { Linter, type LintInput } from "../../src/services/linter.js";

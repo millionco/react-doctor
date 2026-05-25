@@ -2,12 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
-import {
-  discoverProject,
-  discoverReactSubprojects,
-  formatFrameworkName,
-  listWorkspacePackages,
-} from "@react-doctor/core";
+import { discoverProject, listWorkspacePackages } from "@react-doctor/core";
 
 const FIXTURES_DIRECTORY = path.resolve(import.meta.dirname, "fixtures");
 const VALID_FRAMEWORKS = ["nextjs", "vite", "cra", "remix", "gatsby", "unknown"];

@@ -1,6 +1,5 @@
 import { closureCaptures } from "../../semantic/closure-captures.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
-import { isDescendantScope } from "../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";

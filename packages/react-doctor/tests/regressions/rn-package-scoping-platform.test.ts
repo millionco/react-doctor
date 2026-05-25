@@ -14,19 +14,8 @@ afterAll(() => {
   fs.rmSync(tempRoot, { recursive: true, force: true });
 });
 
-const FIXTURES_DIRECTORY = path.resolve(import.meta.dirname, "..", "fixtures");
-const MIXED_MONOREPO_FIXTURE = path.join(FIXTURES_DIRECTORY, "mixed-rn-web-monorepo");
-
-const findRnDiagnostics = (diagnostics: Diagnostic[]): Diagnostic[] =>
-  diagnostics.filter((diagnostic) => diagnostic.rule.startsWith("rn-"));
-
 const findDiagnosticsByRule = (diagnostics: Diagnostic[], rule: string): Diagnostic[] =>
   diagnostics.filter((diagnostic) => diagnostic.rule === rule);
-
-const findDiagnosticsByFile = (diagnostics: Diagnostic[], relativePath: string): Diagnostic[] =>
-  diagnostics.filter((diagnostic) =>
-    diagnostic.filePath.replaceAll("\\", "/").endsWith(relativePath),
-  );
 
 describe("classify-package-platform: dependency-section coverage", () => {
   it("classifies a package with `react-native` only in `peerDependencies` as react-native", async () => {

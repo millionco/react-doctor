@@ -1414,6 +1414,7 @@ export const reactDoctorRules = [
       ...nextjsAsyncClientComponent,
       framework: "nextjs",
       category: "Next.js",
+      requires: [...new Set(["nextjs", ...(nextjsAsyncClientComponent.requires ?? [])])],
     },
   },
   {
@@ -1428,6 +1429,7 @@ export const reactDoctorRules = [
       ...nextjsImageMissingSizes,
       framework: "nextjs",
       category: "Next.js",
+      requires: [...new Set(["nextjs", ...(nextjsImageMissingSizes.requires ?? [])])],
     },
   },
   {
@@ -1442,6 +1444,7 @@ export const reactDoctorRules = [
       ...nextjsInlineScriptMissingId,
       framework: "nextjs",
       category: "Next.js",
+      requires: [...new Set(["nextjs", ...(nextjsInlineScriptMissingId.requires ?? [])])],
     },
   },
   {
@@ -1456,6 +1459,7 @@ export const reactDoctorRules = [
       ...nextjsMissingMetadata,
       framework: "nextjs",
       category: "Next.js",
+      requires: [...new Set(["nextjs", ...(nextjsMissingMetadata.requires ?? [])])],
     },
   },
   {
@@ -1470,6 +1474,7 @@ export const reactDoctorRules = [
       ...nextjsNoAElement,
       framework: "nextjs",
       category: "Next.js",
+      requires: [...new Set(["nextjs", ...(nextjsNoAElement.requires ?? [])])],
     },
   },
   {
@@ -1484,6 +1489,7 @@ export const reactDoctorRules = [
       ...nextjsNoClientFetchForServerData,
       framework: "nextjs",
       category: "Next.js",
+      requires: [...new Set(["nextjs", ...(nextjsNoClientFetchForServerData.requires ?? [])])],
     },
   },
   {
@@ -1498,6 +1504,7 @@ export const reactDoctorRules = [
       ...nextjsNoClientSideRedirect,
       framework: "nextjs",
       category: "Next.js",
+      requires: [...new Set(["nextjs", ...(nextjsNoClientSideRedirect.requires ?? [])])],
     },
   },
   {
@@ -1512,6 +1519,7 @@ export const reactDoctorRules = [
       ...nextjsNoCssLink,
       framework: "nextjs",
       category: "Next.js",
+      requires: [...new Set(["nextjs", ...(nextjsNoCssLink.requires ?? [])])],
     },
   },
   {
@@ -1526,6 +1534,7 @@ export const reactDoctorRules = [
       ...nextjsNoFontLink,
       framework: "nextjs",
       category: "Next.js",
+      requires: [...new Set(["nextjs", ...(nextjsNoFontLink.requires ?? [])])],
     },
   },
   {
@@ -1540,6 +1549,7 @@ export const reactDoctorRules = [
       ...nextjsNoHeadImport,
       framework: "nextjs",
       category: "Next.js",
+      requires: [...new Set(["nextjs", ...(nextjsNoHeadImport.requires ?? [])])],
     },
   },
   {
@@ -1554,6 +1564,7 @@ export const reactDoctorRules = [
       ...nextjsNoImgElement,
       framework: "nextjs",
       category: "Next.js",
+      requires: [...new Set(["nextjs", ...(nextjsNoImgElement.requires ?? [])])],
     },
   },
   {
@@ -1568,6 +1579,7 @@ export const reactDoctorRules = [
       ...nextjsNoNativeScript,
       framework: "nextjs",
       category: "Next.js",
+      requires: [...new Set(["nextjs", ...(nextjsNoNativeScript.requires ?? [])])],
     },
   },
   {
@@ -1582,6 +1594,7 @@ export const reactDoctorRules = [
       ...nextjsNoPolyfillScript,
       framework: "nextjs",
       category: "Next.js",
+      requires: [...new Set(["nextjs", ...(nextjsNoPolyfillScript.requires ?? [])])],
     },
   },
   {
@@ -1596,6 +1609,7 @@ export const reactDoctorRules = [
       ...nextjsNoRedirectInTryCatch,
       framework: "nextjs",
       category: "Next.js",
+      requires: [...new Set(["nextjs", ...(nextjsNoRedirectInTryCatch.requires ?? [])])],
     },
   },
   {
@@ -1610,6 +1624,7 @@ export const reactDoctorRules = [
       ...nextjsNoSideEffectInGetHandler,
       framework: "nextjs",
       category: "Security",
+      requires: [...new Set(["nextjs", ...(nextjsNoSideEffectInGetHandler.requires ?? [])])],
     },
   },
   {
@@ -1624,6 +1639,9 @@ export const reactDoctorRules = [
       ...nextjsNoUseSearchParamsWithoutSuspense,
       framework: "nextjs",
       category: "Next.js",
+      requires: [
+        ...new Set(["nextjs", ...(nextjsNoUseSearchParamsWithoutSuspense.requires ?? [])]),
+      ],
     },
   },
   {
@@ -3164,6 +3182,9 @@ export const reactDoctorRules = [
       ...queryMutationMissingInvalidation,
       framework: "tanstack-query",
       category: "TanStack Query",
+      requires: [
+        ...new Set(["tanstack-query", ...(queryMutationMissingInvalidation.requires ?? [])]),
+      ],
     },
   },
   {
@@ -3178,6 +3199,7 @@ export const reactDoctorRules = [
       ...queryNoQueryInEffect,
       framework: "tanstack-query",
       category: "TanStack Query",
+      requires: [...new Set(["tanstack-query", ...(queryNoQueryInEffect.requires ?? [])])],
     },
   },
   {
@@ -3192,6 +3214,7 @@ export const reactDoctorRules = [
       ...queryNoRestDestructuring,
       framework: "tanstack-query",
       category: "TanStack Query",
+      requires: [...new Set(["tanstack-query", ...(queryNoRestDestructuring.requires ?? [])])],
     },
   },
   {
@@ -3206,6 +3229,7 @@ export const reactDoctorRules = [
       ...queryNoUseQueryForMutation,
       framework: "tanstack-query",
       category: "TanStack Query",
+      requires: [...new Set(["tanstack-query", ...(queryNoUseQueryForMutation.requires ?? [])])],
     },
   },
   {
@@ -3220,6 +3244,7 @@ export const reactDoctorRules = [
       ...queryNoVoidQueryFn,
       framework: "tanstack-query",
       category: "TanStack Query",
+      requires: [...new Set(["tanstack-query", ...(queryNoVoidQueryFn.requires ?? [])])],
     },
   },
   {
@@ -3234,6 +3259,7 @@ export const reactDoctorRules = [
       ...queryStableQueryClient,
       framework: "tanstack-query",
       category: "TanStack Query",
+      requires: [...new Set(["tanstack-query", ...(queryStableQueryClient.requires ?? [])])],
     },
   },
   {
@@ -3528,6 +3554,7 @@ export const reactDoctorRules = [
       ...rnAnimateLayoutProperty,
       framework: "react-native",
       category: "React Native",
+      requires: [...new Set(["react-native", ...(rnAnimateLayoutProperty.requires ?? [])])],
       tags: [...new Set(["react-native", ...(rnAnimateLayoutProperty.tags ?? [])])],
     },
   },
@@ -3543,6 +3570,7 @@ export const reactDoctorRules = [
       ...rnAnimationReactionAsDerived,
       framework: "react-native",
       category: "React Native",
+      requires: [...new Set(["react-native", ...(rnAnimationReactionAsDerived.requires ?? [])])],
       tags: [...new Set(["react-native", ...(rnAnimationReactionAsDerived.tags ?? [])])],
     },
   },
@@ -3558,6 +3586,7 @@ export const reactDoctorRules = [
       ...rnBottomSheetPreferNative,
       framework: "react-native",
       category: "React Native",
+      requires: [...new Set(["react-native", ...(rnBottomSheetPreferNative.requires ?? [])])],
       tags: [...new Set(["react-native", ...(rnBottomSheetPreferNative.tags ?? [])])],
     },
   },
@@ -3573,6 +3602,7 @@ export const reactDoctorRules = [
       ...rnListCallbackPerRow,
       framework: "react-native",
       category: "React Native",
+      requires: [...new Set(["react-native", ...(rnListCallbackPerRow.requires ?? [])])],
       tags: [...new Set(["react-native", ...(rnListCallbackPerRow.tags ?? [])])],
     },
   },
@@ -3588,6 +3618,7 @@ export const reactDoctorRules = [
       ...rnListDataMapped,
       framework: "react-native",
       category: "React Native",
+      requires: [...new Set(["react-native", ...(rnListDataMapped.requires ?? [])])],
       tags: [...new Set(["react-native", ...(rnListDataMapped.tags ?? [])])],
     },
   },
@@ -3603,6 +3634,7 @@ export const reactDoctorRules = [
       ...rnListRecyclableWithoutTypes,
       framework: "react-native",
       category: "React Native",
+      requires: [...new Set(["react-native", ...(rnListRecyclableWithoutTypes.requires ?? [])])],
       tags: [...new Set(["react-native", ...(rnListRecyclableWithoutTypes.tags ?? [])])],
     },
   },
@@ -3618,6 +3650,7 @@ export const reactDoctorRules = [
       ...rnNoDeprecatedModules,
       framework: "react-native",
       category: "React Native",
+      requires: [...new Set(["react-native", ...(rnNoDeprecatedModules.requires ?? [])])],
       tags: [...new Set(["react-native", ...(rnNoDeprecatedModules.tags ?? [])])],
     },
   },
@@ -3633,6 +3666,7 @@ export const reactDoctorRules = [
       ...rnNoDimensionsGet,
       framework: "react-native",
       category: "React Native",
+      requires: [...new Set(["react-native", ...(rnNoDimensionsGet.requires ?? [])])],
       tags: [...new Set(["react-native", ...(rnNoDimensionsGet.tags ?? [])])],
     },
   },
@@ -3648,6 +3682,7 @@ export const reactDoctorRules = [
       ...rnNoInlineFlatlistRenderitem,
       framework: "react-native",
       category: "React Native",
+      requires: [...new Set(["react-native", ...(rnNoInlineFlatlistRenderitem.requires ?? [])])],
       tags: [...new Set(["react-native", ...(rnNoInlineFlatlistRenderitem.tags ?? [])])],
     },
   },
@@ -3663,6 +3698,7 @@ export const reactDoctorRules = [
       ...rnNoInlineObjectInListItem,
       framework: "react-native",
       category: "React Native",
+      requires: [...new Set(["react-native", ...(rnNoInlineObjectInListItem.requires ?? [])])],
       tags: [...new Set(["react-native", ...(rnNoInlineObjectInListItem.tags ?? [])])],
     },
   },
@@ -3678,6 +3714,7 @@ export const reactDoctorRules = [
       ...rnNoLegacyExpoPackages,
       framework: "react-native",
       category: "React Native",
+      requires: [...new Set(["react-native", ...(rnNoLegacyExpoPackages.requires ?? [])])],
       tags: [...new Set(["react-native", ...(rnNoLegacyExpoPackages.tags ?? [])])],
     },
   },
@@ -3693,6 +3730,7 @@ export const reactDoctorRules = [
       ...rnNoLegacyShadowStyles,
       framework: "react-native",
       category: "React Native",
+      requires: [...new Set(["react-native", ...(rnNoLegacyShadowStyles.requires ?? [])])],
       tags: [...new Set(["react-native", ...(rnNoLegacyShadowStyles.tags ?? [])])],
     },
   },
@@ -3708,6 +3746,7 @@ export const reactDoctorRules = [
       ...rnNoNonNativeNavigator,
       framework: "react-native",
       category: "React Native",
+      requires: [...new Set(["react-native", ...(rnNoNonNativeNavigator.requires ?? [])])],
       tags: [...new Set(["react-native", ...(rnNoNonNativeNavigator.tags ?? [])])],
     },
   },
@@ -3723,6 +3762,7 @@ export const reactDoctorRules = [
       ...rnNoRawText,
       framework: "react-native",
       category: "React Native",
+      requires: [...new Set(["react-native", ...(rnNoRawText.requires ?? [])])],
       tags: [...new Set(["react-native", ...(rnNoRawText.tags ?? [])])],
     },
   },
@@ -3738,6 +3778,7 @@ export const reactDoctorRules = [
       ...rnNoScrollState,
       framework: "react-native",
       category: "React Native",
+      requires: [...new Set(["react-native", ...(rnNoScrollState.requires ?? [])])],
       tags: [...new Set(["react-native", ...(rnNoScrollState.tags ?? [])])],
     },
   },
@@ -3753,6 +3794,7 @@ export const reactDoctorRules = [
       ...rnNoScrollviewMappedList,
       framework: "react-native",
       category: "React Native",
+      requires: [...new Set(["react-native", ...(rnNoScrollviewMappedList.requires ?? [])])],
       tags: [...new Set(["react-native", ...(rnNoScrollviewMappedList.tags ?? [])])],
     },
   },
@@ -3768,6 +3810,7 @@ export const reactDoctorRules = [
       ...rnNoSingleElementStyleArray,
       framework: "react-native",
       category: "React Native",
+      requires: [...new Set(["react-native", ...(rnNoSingleElementStyleArray.requires ?? [])])],
       tags: [...new Set(["react-native", ...(rnNoSingleElementStyleArray.tags ?? [])])],
     },
   },
@@ -3783,6 +3826,7 @@ export const reactDoctorRules = [
       ...rnPreferContentInsetAdjustment,
       framework: "react-native",
       category: "React Native",
+      requires: [...new Set(["react-native", ...(rnPreferContentInsetAdjustment.requires ?? [])])],
       tags: [...new Set(["react-native", ...(rnPreferContentInsetAdjustment.tags ?? [])])],
     },
   },
@@ -3798,6 +3842,7 @@ export const reactDoctorRules = [
       ...rnPreferExpoImage,
       framework: "react-native",
       category: "React Native",
+      requires: [...new Set(["react-native", ...(rnPreferExpoImage.requires ?? [])])],
       tags: [...new Set(["react-native", ...(rnPreferExpoImage.tags ?? [])])],
     },
   },
@@ -3813,6 +3858,7 @@ export const reactDoctorRules = [
       ...rnPreferPressable,
       framework: "react-native",
       category: "React Native",
+      requires: [...new Set(["react-native", ...(rnPreferPressable.requires ?? [])])],
       tags: [...new Set(["react-native", ...(rnPreferPressable.tags ?? [])])],
     },
   },
@@ -3828,6 +3874,7 @@ export const reactDoctorRules = [
       ...rnPreferReanimated,
       framework: "react-native",
       category: "React Native",
+      requires: [...new Set(["react-native", ...(rnPreferReanimated.requires ?? [])])],
       tags: [...new Set(["react-native", ...(rnPreferReanimated.tags ?? [])])],
     },
   },
@@ -3843,6 +3890,7 @@ export const reactDoctorRules = [
       ...rnPressableSharedValueMutation,
       framework: "react-native",
       category: "React Native",
+      requires: [...new Set(["react-native", ...(rnPressableSharedValueMutation.requires ?? [])])],
       tags: [...new Set(["react-native", ...(rnPressableSharedValueMutation.tags ?? [])])],
     },
   },
@@ -3858,6 +3906,7 @@ export const reactDoctorRules = [
       ...rnScrollviewDynamicPadding,
       framework: "react-native",
       category: "React Native",
+      requires: [...new Set(["react-native", ...(rnScrollviewDynamicPadding.requires ?? [])])],
       tags: [...new Set(["react-native", ...(rnScrollviewDynamicPadding.tags ?? [])])],
     },
   },
@@ -3873,6 +3922,7 @@ export const reactDoctorRules = [
       ...rnStylePreferBoxShadow,
       framework: "react-native",
       category: "React Native",
+      requires: [...new Set(["react-native", ...(rnStylePreferBoxShadow.requires ?? [])])],
       tags: [...new Set(["react-native", ...(rnStylePreferBoxShadow.tags ?? [])])],
     },
   },
@@ -4120,6 +4170,7 @@ export const reactDoctorRules = [
       ...tanstackStartGetMutation,
       framework: "tanstack-start",
       category: "Security",
+      requires: [...new Set(["tanstack-start", ...(tanstackStartGetMutation.requires ?? [])])],
     },
   },
   {
@@ -4134,6 +4185,9 @@ export const reactDoctorRules = [
       ...tanstackStartLoaderParallelFetch,
       framework: "tanstack-start",
       category: "Performance",
+      requires: [
+        ...new Set(["tanstack-start", ...(tanstackStartLoaderParallelFetch.requires ?? [])]),
+      ],
     },
   },
   {
@@ -4148,6 +4202,9 @@ export const reactDoctorRules = [
       ...tanstackStartMissingHeadContent,
       framework: "tanstack-start",
       category: "TanStack Start",
+      requires: [
+        ...new Set(["tanstack-start", ...(tanstackStartMissingHeadContent.requires ?? [])]),
+      ],
     },
   },
   {
@@ -4162,6 +4219,7 @@ export const reactDoctorRules = [
       ...tanstackStartNoAnchorElement,
       framework: "tanstack-start",
       category: "TanStack Start",
+      requires: [...new Set(["tanstack-start", ...(tanstackStartNoAnchorElement.requires ?? [])])],
     },
   },
   {
@@ -4176,6 +4234,9 @@ export const reactDoctorRules = [
       ...tanstackStartNoDirectFetchInLoader,
       framework: "tanstack-start",
       category: "TanStack Start",
+      requires: [
+        ...new Set(["tanstack-start", ...(tanstackStartNoDirectFetchInLoader.requires ?? [])]),
+      ],
     },
   },
   {
@@ -4190,6 +4251,9 @@ export const reactDoctorRules = [
       ...tanstackStartNoDynamicServerFnImport,
       framework: "tanstack-start",
       category: "TanStack Start",
+      requires: [
+        ...new Set(["tanstack-start", ...(tanstackStartNoDynamicServerFnImport.requires ?? [])]),
+      ],
     },
   },
   {
@@ -4204,6 +4268,9 @@ export const reactDoctorRules = [
       ...tanstackStartNoNavigateInRender,
       framework: "tanstack-start",
       category: "TanStack Start",
+      requires: [
+        ...new Set(["tanstack-start", ...(tanstackStartNoNavigateInRender.requires ?? [])]),
+      ],
     },
   },
   {
@@ -4218,6 +4285,9 @@ export const reactDoctorRules = [
       ...tanstackStartNoSecretsInLoader,
       framework: "tanstack-start",
       category: "Security",
+      requires: [
+        ...new Set(["tanstack-start", ...(tanstackStartNoSecretsInLoader.requires ?? [])]),
+      ],
     },
   },
   {
@@ -4232,6 +4302,9 @@ export const reactDoctorRules = [
       ...tanstackStartNoUseServerInHandler,
       framework: "tanstack-start",
       category: "TanStack Start",
+      requires: [
+        ...new Set(["tanstack-start", ...(tanstackStartNoUseServerInHandler.requires ?? [])]),
+      ],
     },
   },
   {
@@ -4246,6 +4319,7 @@ export const reactDoctorRules = [
       ...tanstackStartNoUseEffectFetch,
       framework: "tanstack-start",
       category: "TanStack Start",
+      requires: [...new Set(["tanstack-start", ...(tanstackStartNoUseEffectFetch.requires ?? [])])],
     },
   },
   {
@@ -4260,6 +4334,9 @@ export const reactDoctorRules = [
       ...tanstackStartRedirectInTryCatch,
       framework: "tanstack-start",
       category: "TanStack Start",
+      requires: [
+        ...new Set(["tanstack-start", ...(tanstackStartRedirectInTryCatch.requires ?? [])]),
+      ],
     },
   },
   {
@@ -4274,6 +4351,9 @@ export const reactDoctorRules = [
       ...tanstackStartRoutePropertyOrder,
       framework: "tanstack-start",
       category: "TanStack Start",
+      requires: [
+        ...new Set(["tanstack-start", ...(tanstackStartRoutePropertyOrder.requires ?? [])]),
+      ],
     },
   },
   {
@@ -4288,6 +4368,9 @@ export const reactDoctorRules = [
       ...tanstackStartServerFnMethodOrder,
       framework: "tanstack-start",
       category: "TanStack Start",
+      requires: [
+        ...new Set(["tanstack-start", ...(tanstackStartServerFnMethodOrder.requires ?? [])]),
+      ],
     },
   },
   {
@@ -4302,6 +4385,9 @@ export const reactDoctorRules = [
       ...tanstackStartServerFnValidateInput,
       framework: "tanstack-start",
       category: "TanStack Start",
+      requires: [
+        ...new Set(["tanstack-start", ...(tanstackStartServerFnValidateInput.requires ?? [])]),
+      ],
     },
   },
   {

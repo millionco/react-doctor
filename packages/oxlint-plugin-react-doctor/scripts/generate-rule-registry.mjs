@@ -131,6 +131,7 @@ for (const bucket of fs.readdirSync(PLUGIN_RULES_ROOT, { withFileTypes: true }))
         .replaceAll(path.sep, "/")
         .replace(/\.ts$/, ".js");
     const autoTags = BUCKET_TO_AUTO_TAGS[bucket.name] ?? [];
+    const autoRequires = framework === "global" ? [] : [framework];
     const originallyExternal =
       BUCKETS_PORTED_FROM_EXTERNAL.has(bucket.name) ||
       EFFECT_RULES_PORTED_FROM_EXTERNAL.has(ruleId);
@@ -142,6 +143,7 @@ for (const bucket of fs.readdirSync(PLUGIN_RULES_ROOT, { withFileTypes: true }))
       category,
       severity,
       autoTags,
+      autoRequires,
       originallyExternal,
     });
   }
@@ -178,6 +180,18 @@ const formatAutoTagsLine = (entry) => {
   return `      tags: [...new Set([${autoTagLiteral}, ...(${entry.identifier}.tags ?? [])])],\n`;
 };
 
+const formatAutoRequiresLine = (entry) => {
+  if (entry.autoRequires.length === 0) return "";
+  const autoRequireLiteral = entry.autoRequires.map((requirement) => `"${requirement}"`).join(", ");
+  const oneLine = `      requires: [...new Set([${autoRequireLiteral}, ...(${entry.identifier}.requires ?? [])])],\n`;
+  if (oneLine.length <= 101) return oneLine;
+  return (
+    `      requires: [\n` +
+    `        ...new Set([${autoRequireLiteral}, ...(${entry.identifier}.requires ?? [])]),\n` +
+    `      ],\n`
+  );
+};
+
 const ruleLines = ruleEntries
   .map(
     (entry) =>
@@ -193,6 +207,7 @@ const ruleLines = ruleEntries
       `      ...${entry.identifier},\n` +
       `      framework: "${entry.framework}",\n` +
       `      category: "${entry.category}",\n` +
+      formatAutoRequiresLine(entry) +
       formatAutoTagsLine(entry) +
       `    },\n` +
       `  },`,

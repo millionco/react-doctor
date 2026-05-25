@@ -189,6 +189,7 @@ import { noSecretsInClientCode } from "./rules/security/no-secrets-in-client-cod
 import { noSetState } from "./rules/react-builtins/no-set-state.js";
 import { noSetStateInRender } from "./rules/state-and-effects/no-set-state-in-render.js";
 import { noSideTabBorder } from "./rules/design/no-side-tab-border.js";
+import { noStaleClosure } from "./rules/state-and-effects/no-stale-closure.js";
 import { noStaticElementInteractions } from "./rules/a11y/no-static-element-interactions.js";
 import { noStringRefs } from "./rules/react-builtins/no-string-refs.js";
 import { noThisInSfc } from "./rules/react-builtins/no-this-in-sfc.js";
@@ -2828,6 +2829,20 @@ export const reactDoctorRules = [
       ...noSideTabBorder,
       framework: "global",
       category: "Architecture",
+    },
+  },
+  {
+    key: "react-doctor/no-stale-closure",
+    id: "no-stale-closure",
+    source: "react-doctor",
+    originallyExternal: false,
+    framework: "global",
+    category: "State & Effects",
+    severity: "warn",
+    rule: {
+      ...noStaleClosure,
+      framework: "global",
+      category: "State & Effects",
     },
   },
   {

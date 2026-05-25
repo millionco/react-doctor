@@ -22,7 +22,7 @@ const REACTIVE_HOOK_RETURN_NAMES = new Set(["useContext"]);
 
 const collectReactiveAndStableBindings = (
   componentBody: EsTreeNode,
-  propNames: Set<string>
+  propNames: Set<string>,
 ): { reactiveNames: Set<string>; stableNames: Set<string> } => {
   const reactiveNames = new Set(propNames);
   const stableNames = new Set<string>();
@@ -103,10 +103,7 @@ const collectLocalBindings = (callbackNode: EsTreeNode): Set<string> => {
       if (child !== callbackNode) return false;
     }
 
-    if (
-      isNodeOfType(child, "VariableDeclarator") &&
-      isNodeOfType(child.id, "Identifier")
-    ) {
+    if (isNodeOfType(child, "VariableDeclarator") && isNodeOfType(child.id, "Identifier")) {
       localNames.add(child.id.name);
     }
     if (isNodeOfType(child, "VariableDeclarator")) {
@@ -137,10 +134,7 @@ const isPropertyAccessPosition = (identifier: EsTreeNode): boolean => {
   return false;
 };
 
-const isInsideNestedFunction = (
-  identifier: EsTreeNode,
-  callbackNode: EsTreeNode
-): boolean => {
+const isInsideNestedFunction = (identifier: EsTreeNode, callbackNode: EsTreeNode): boolean => {
   let cursor: EsTreeNode | null = identifier.parent ?? null;
   while (cursor && cursor !== callbackNode) {
     if (
@@ -162,7 +156,7 @@ interface StaleCaptureResult {
 const findStaleCapturesInCallback = (
   callbackNode: EsTreeNode,
   reactiveNames: Set<string>,
-  stableNames: Set<string>
+  stableNames: Set<string>,
 ): StaleCaptureResult => {
   const capturedReactiveNames = new Set<string>();
   const localBindings = collectLocalBindings(callbackNode);
@@ -190,12 +184,11 @@ const isEmptyDepsArray = (node: EsTreeNode): boolean =>
 
 const isFunctionExpression = (node: EsTreeNode | null | undefined): boolean =>
   Boolean(node) &&
-  (isNodeOfType(node, "ArrowFunctionExpression") ||
-    isNodeOfType(node, "FunctionExpression"));
+  (isNodeOfType(node, "ArrowFunctionExpression") || isNodeOfType(node, "FunctionExpression"));
 
 const doesComponentBodyReassignRefCurrent = (
   componentBody: EsTreeNode,
-  refBindingName: string
+  refBindingName: string,
 ): boolean => {
   let hasReassignment = false;
   walkAst(componentBody, (child: EsTreeNode) => {
@@ -220,12 +213,9 @@ const doesComponentBodyReassignRefCurrent = (
 const formatCapturedNames = (names: Set<string>): string => {
   const sortedNames = [...names].sort();
   if (sortedNames.length === 1) return `\`${sortedNames[0]}\``;
-  if (sortedNames.length === 2)
-    return `\`${sortedNames[0]}\` and \`${sortedNames[1]}\``;
+  if (sortedNames.length === 2) return `\`${sortedNames[0]}\` and \`${sortedNames[1]}\``;
   const lastElement = sortedNames.pop();
-  return `${sortedNames
-    .map((name) => `\`${name}\``)
-    .join(", ")}, and \`${lastElement}\``;
+  return `${sortedNames.map((name) => `\`${name}\``).join(", ")}, and \`${lastElement}\``;
 };
 
 export const noStaleClosure = defineRule<Rule>({
@@ -236,13 +226,12 @@ export const noStaleClosure = defineRule<Rule>({
     "Wrap the callback with `useEffectEvent(callback)` (React 19+) so it always reads the latest values without being a reactive dependency, or use a `useNonReactiveCallback` helper that stores the latest callback in a ref via useInsertionEffect. See https://react.dev/learn/separating-events-from-effects",
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | undefined): void => {
-      if (!componentBody || !isNodeOfType(componentBody, "BlockStatement"))
-        return;
+      if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
 
       const currentPropNames = propStackTracker.getCurrentPropNames();
       const { reactiveNames, stableNames } = collectReactiveAndStableBindings(
         componentBody,
-        currentPropNames
+        currentPropNames,
       );
 
       for (const statement of componentBody.body ?? []) {
@@ -255,12 +244,7 @@ export const noStaleClosure = defineRule<Rule>({
           if (!calleeName) continue;
 
           if (calleeName === "useCallback") {
-            checkUseCallbackWithEmptyDeps(
-              declarator,
-              reactiveNames,
-              stableNames,
-              context
-            );
+            checkUseCallbackWithEmptyDeps(declarator, reactiveNames, stableNames, context);
             continue;
           }
 
@@ -270,7 +254,7 @@ export const noStaleClosure = defineRule<Rule>({
               componentBody,
               reactiveNames,
               stableNames,
-              context
+              context,
             );
             continue;
           }
@@ -290,7 +274,7 @@ const checkUseCallbackWithEmptyDeps = (
   declarator: EsTreeNodeOfType<"VariableDeclarator">,
   reactiveNames: Set<string>,
   stableNames: Set<string>,
-  context: RuleContext
+  context: RuleContext,
 ): void => {
   const callExpression = declarator.init;
   if (!isNodeOfType(callExpression, "CallExpression")) return;
@@ -307,14 +291,12 @@ const checkUseCallbackWithEmptyDeps = (
   const { capturedReactiveNames } = findStaleCapturesInCallback(
     callbackNode,
     reactiveNames,
-    stableNames
+    stableNames,
   );
 
   if (capturedReactiveNames.size === 0) return;
 
-  const bindingName = isNodeOfType(declarator.id, "Identifier")
-    ? declarator.id.name
-    : "callback";
+  const bindingName = isNodeOfType(declarator.id, "Identifier") ? declarator.id.name : "callback";
   const capturedLabel = formatCapturedNames(capturedReactiveNames);
 
   context.report({
@@ -330,7 +312,7 @@ const checkUseRefWithStaleCallback = (
   componentBody: EsTreeNode,
   reactiveNames: Set<string>,
   stableNames: Set<string>,
-  context: RuleContext
+  context: RuleContext,
 ): void => {
   const callExpression = declarator.init;
   if (!isNodeOfType(callExpression, "CallExpression")) return;
@@ -341,18 +323,15 @@ const checkUseRefWithStaleCallback = (
   const initializer = callArguments[0];
   if (!isFunctionExpression(initializer)) return;
 
-  const refBindingName = isNodeOfType(declarator.id, "Identifier")
-    ? declarator.id.name
-    : null;
+  const refBindingName = isNodeOfType(declarator.id, "Identifier") ? declarator.id.name : null;
   if (!refBindingName) return;
 
-  if (doesComponentBodyReassignRefCurrent(componentBody, refBindingName))
-    return;
+  if (doesComponentBodyReassignRefCurrent(componentBody, refBindingName)) return;
 
   const { capturedReactiveNames } = findStaleCapturesInCallback(
     initializer,
     reactiveNames,
-    stableNames
+    stableNames,
   );
 
   if (capturedReactiveNames.size === 0) return;

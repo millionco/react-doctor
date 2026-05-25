@@ -6,6 +6,7 @@ import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import type { Diagnostic, ProjectInfo, ReactDoctorConfig, ScoreResult } from "./types/index.js";
 import { buildDiagnosticPipeline } from "./build-diagnostic-pipeline.js";
+import { checkPnpmSupplyChain } from "./check-pnpm-supply-chain.js";
 import { checkReducedMotion } from "./check-reduced-motion.js";
 import { computeJsxIncludePaths } from "./jsx-include-paths.js";
 import { NoReactDependency, ReactDoctorError, type ReactDoctorErrorReason } from "./errors.js";
@@ -100,7 +101,7 @@ const fileReader =
  *   Config.resolve(directory)
  *     -> Project.discover(resolvedDirectory)
  *     -> Git metadata for score attribution
- *     -> Stream.fromIterable(checkReducedMotion env diagnostics)
+ *     -> Stream.fromIterable(env diagnostics: reduced-motion + pnpm supply chain)
  *     -> Stream.concat(Linter.run(...))    [folds ReactDoctorError into Ref]
  *     -> Stream.concat(DeadCode.run(...))  [folds Error into Ref]
  *     -> Stream.filterMap(perElementPipeline.apply)  [auto-suppress / severity / ignore / inline]
@@ -208,7 +209,7 @@ export const runInspect = <HooksR = never>(
 
     const environmentDiagnostics: ReadonlyArray<Diagnostic> = isDiffMode
       ? []
-      : checkReducedMotion(scanDirectory);
+      : [...checkReducedMotion(scanDirectory), ...checkPnpmSupplyChain(scanDirectory)];
 
     const emptyDiagnosticStream: Stream.Stream<Diagnostic, never> = Stream.empty;
 

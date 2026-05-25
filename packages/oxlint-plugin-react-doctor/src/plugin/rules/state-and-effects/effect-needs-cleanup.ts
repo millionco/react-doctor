@@ -113,9 +113,9 @@ const collectReleasableBindings = (effectCallback: EsTreeNode): ReleasableBindin
     return bindings;
   }
   if (!isNodeOfType(effectCallback.body, "BlockStatement")) return bindings;
-  for (const statement of effectCallback.body.body ?? []) {
-    if (!isNodeOfType(statement, "VariableDeclaration")) continue;
-    for (const declarator of statement.declarations ?? []) {
+  walkInsideStatementBlocks(effectCallback.body, (child: EsTreeNode) => {
+    if (!isNodeOfType(child, "VariableDeclaration")) return;
+    for (const declarator of child.declarations ?? []) {
       if (!isNodeOfType(declarator.id, "Identifier")) continue;
       const init = declarator.init;
       if (!init || !isNodeOfType(init, "CallExpression")) continue;
@@ -131,7 +131,7 @@ const collectReleasableBindings = (effectCallback: EsTreeNode): ReleasableBindin
         bindings.releaseNames.add(declarator.id.name);
       }
     }
-  }
+  });
   return bindings;
 };
 
@@ -155,7 +155,7 @@ const effectHasCleanupRelease = (callback: EsTreeNode): boolean => {
   if (!isNodeOfType(callback.body, "BlockStatement")) {
     return isSubscribeLikeCallExpression(callback.body);
   }
-  const knownBoundReleaseNames = collectReleasableBindings(callback);
+  const releasableBindings = collectReleasableBindings(callback);
   // HACK: scan ALL `return` statements at the effect's own function
   // scope (skipping nested functions via `walkInsideStatementBlocks`),
   // not just the top-level last statement. The last-statement check
@@ -180,8 +180,8 @@ const effectHasCleanupRelease = (callback: EsTreeNode): boolean => {
     if (
       isCleanupReturn(
         child.argument,
-        knownBoundReleaseNames.releaseNames,
-        knownBoundReleaseNames.subscriptionNames,
+        releasableBindings.releaseNames,
+        releasableBindings.subscriptionNames,
       )
     ) {
       didFindCleanupReturn = true;

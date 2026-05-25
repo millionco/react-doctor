@@ -25,6 +25,9 @@ const isReleaseLikeCall = (
   if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
     if (
       BOUND_RESOURCE_RELEASE_METHOD_NAMES.has(callee.property.name) &&
+      // TODO: This deliberately only accepts `sub.remove()`-style identifiers.
+      // Shapes like `subRef.current.remove()` and `sub?.remove()` need
+      // receiver-aware binding analysis before they can be credited safely.
       isNodeOfType(callee.object, "Identifier") &&
       knownBoundSubscriptionNames.has(callee.object.name)
     ) {
@@ -54,7 +57,7 @@ const containsReleaseLikeCall = (
 export const isCleanupReturn = (
   returnedValue: EsTreeNode | null | undefined,
   knownBoundReleaseNames: ReadonlySet<string>,
-  knownBoundSubscriptionNames: ReadonlySet<string> = new Set(),
+  knownBoundSubscriptionNames: ReadonlySet<string>,
 ): boolean => {
   if (!returnedValue) return false;
   if (isNodeOfType(returnedValue, "Identifier")) {

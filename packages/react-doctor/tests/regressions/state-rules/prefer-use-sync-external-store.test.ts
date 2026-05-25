@@ -60,6 +60,35 @@ export const Online = () => {
     expect(hits).toHaveLength(1);
   });
 
+  it("flags a useSyncExternalStore reimplementation cleaned up with a bound `.remove()`", async () => {
+    const projectDir = setupReactProject(tempRoot, "prefer-use-sync-external-store-bound-remove", {
+      files: {
+        "src/BoundRemove.tsx": `import { useEffect, useState } from "react";
+
+declare const store: {
+  subscribe: (listener: () => void) => { remove: () => void };
+  getSnapshot: () => number;
+};
+
+export const BoundRemove = () => {
+  const [snapshot, setSnapshot] = useState(store.getSnapshot());
+  useEffect(() => {
+    const sub = store.subscribe(() => {
+      setSnapshot(store.getSnapshot());
+    });
+    return () => sub.remove();
+  }, []);
+  return <span>{snapshot}</span>;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "prefer-use-sync-external-store");
+    expect(hits).toHaveLength(1);
+    expect(hits[0].message).toContain("useSyncExternalStore");
+  });
+
   it("flags the lazy-initializer variant `useState(() => getSnapshot())`", async () => {
     const projectDir = setupReactProject(tempRoot, "prefer-use-sync-external-store-lazy", {
       files: {

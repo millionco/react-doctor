@@ -150,8 +150,6 @@ export const AppFocus = () => {
   it("recognizes release methods on objects returned by subscribe-like calls", async () => {
     for (const releaseName of [
       "remove",
-      "unsubscribe",
-      "unsub",
       "cleanup",
       "dispose",
       "destroy",
@@ -184,6 +182,32 @@ export const Subscribe = () => {
       const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
       expect(hits).toHaveLength(0);
     }
+  });
+
+  it("does NOT flag bound subscription cleanup inside a conditional branch", async () => {
+    const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-bound-conditional", {
+      files: {
+        "src/ConditionalSubscribe.tsx": `import { useEffect } from "react";
+
+declare const isOn: boolean;
+declare const source: { addListener: (handler: () => void) => { remove: () => void } };
+declare const handler: () => void;
+
+export const ConditionalSubscribe = () => {
+  useEffect(() => {
+    if (isOn) {
+      const sub = source.addListener(handler);
+      return () => sub.remove();
+    }
+  }, [isOn]);
+  return null;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
+    expect(hits).toHaveLength(0);
   });
 
   it("still flags when cleanup only calls an unrelated bound-resource release method", async () => {

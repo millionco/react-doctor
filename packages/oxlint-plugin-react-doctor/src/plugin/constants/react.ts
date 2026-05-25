@@ -113,8 +113,6 @@ export const GLOBAL_RELEASE_METHOD_NAMES = new Set([
 // calls.
 export const BOUND_RESOURCE_RELEASE_METHOD_NAMES = new Set([
   "remove",
-  "unsubscribe",
-  "unsub",
   "cleanup",
   "dispose",
   "destroy",

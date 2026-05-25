@@ -1,0 +1,20 @@
+packages/react-doctor/src/cli/utils/is-non-interactive-environment.ts
+  s_9a32e6f0baad21::t_4f5ccdc4490181 2,30
+  s_9a32e6f0baad21::t_881aad4a643a1b 13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "2ca984c449b1fd995f78fb025ac52662ec690042",
+  "prompts": {},
+  "sessions": {
+    "s_9a32e6f0baad21": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f589f075-70a7-4234-99a5-4e32ab3c62cc",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

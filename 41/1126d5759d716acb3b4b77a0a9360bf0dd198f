@@ -1,0 +1,25 @@
+packages/react-doctor/src/cli/utils/is-non-interactive-environment.ts
+  s_9a32e6f0baad21::t_4f5ccdc4490181 2,30
+  s_9a32e6f0baad21::t_881aad4a643a1b 13
+  s_9a32e6f0baad21::t_8d70e598be64c5 1
+packages/react-doctor/src/cli/utils/is-ci-environment.ts
+  s_9a32e6f0baad21::t_9823930a4ecaee 7-21,23,27-29,32-35
+packages/react-doctor/tests/is-ci-environment.test.ts
+  s_9a32e6f0baad21::t_1fb1bbf04365e8 3,6,31,54,61,68,75,82,89,96,103,110,117,124,131,141
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "411126d5759d716acb3b4b77a0a9360bf0dd198f",
+  "prompts": {},
+  "sessions": {
+    "s_9a32e6f0baad21": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f589f075-70a7-4234-99a5-4e32ab3c62cc",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

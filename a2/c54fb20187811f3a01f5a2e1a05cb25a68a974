@@ -1,0 +1,29 @@
+packages/core/src/reachability/entry-resolvers/index.ts
+  s_b9a4a3143452aa::t_44617f8f646aeb 2,4
+packages/core/src/reachability/collect-entry-patterns.ts
+  s_b9a4a3143452aa::t_a2d97109746984 1-2,4-6,9
+packages/core/src/reachability/entry-resolvers/expo-config-plugins.ts
+  s_b9a4a3143452aa::t_18e4a28beabe27 6,22,172,211
+packages/core/src/reachability/types.ts
+  s_b9a4a3143452aa::t_78ff779c465971 3,8,10-11
+packages/core/tests/reachability/collect-entry-patterns.test.ts
+  s_b9a4a3143452aa::t_3bcc89a864db37 6,8,39,56,70
+packages/core/src/check-dead-code.ts
+  s_b9a4a3143452aa::t_4c5ee12d43a879 5,70-72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "a2c54fb20187811f3a01f5a2e1a05cb25a68a974",
+  "prompts": {},
+  "sessions": {
+    "s_b9a4a3143452aa": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7d059fc8-7db0-4028-ba4c-f0b6468c86b0",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

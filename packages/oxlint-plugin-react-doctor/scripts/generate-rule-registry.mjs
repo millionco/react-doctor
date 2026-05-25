@@ -17,6 +17,7 @@ const SCRIPT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = path.resolve(SCRIPT_DIRECTORY, "..");
 const PLUGIN_RULES_ROOT = path.join(PACKAGE_ROOT, "src/plugin/rules");
 const REGISTRY_OUTPUT = path.join(PACKAGE_ROOT, "src/plugin/rule-registry.ts");
+const REGISTRY_DIRECTORY = path.join(PACKAGE_ROOT, "src/plugin/rule-registry");
 
 // Bucket directory → framework (each rule's `framework` field is derived,
 // never authored). Buckets not listed here default to "global".
@@ -122,14 +123,6 @@ for (const bucket of fs.readdirSync(PLUGIN_RULES_ROOT, { withFileTypes: true }))
     const ruleId = idMatch[1];
     const category = categoryMatch ? categoryMatch[1] : defaultCategory;
     const severity = severityMatch[1];
-    // Force POSIX separators — `path.relative()` returns backslashes on
-    // Windows, which TypeScript module resolution rejects.
-    const relativeImport =
-      "./" +
-      path
-        .relative(path.dirname(REGISTRY_OUTPUT), filePath)
-        .replaceAll(path.sep, "/")
-        .replace(/\.ts$/, ".js");
     const autoTags = BUCKET_TO_AUTO_TAGS[bucket.name] ?? [];
     const autoRequires = framework === "global" ? [] : [framework];
     const originallyExternal =
@@ -137,8 +130,9 @@ for (const bucket of fs.readdirSync(PLUGIN_RULES_ROOT, { withFileTypes: true }))
       EFFECT_RULES_PORTED_FROM_EXTERNAL.has(ruleId);
     ruleEntries.push({
       ruleId,
+      bucket: bucket.name,
       identifier,
-      relativeImport,
+      filePath,
       framework,
       category,
       severity,
@@ -160,9 +154,29 @@ for (const entry of ruleEntries) {
   seenRuleIds.add(entry.ruleId);
 }
 
-const importLines = ruleEntries
-  .map((entry) => `import { ${entry.identifier} } from "${entry.relativeImport}";`)
-  .join("\n");
+const toGeneratedImport = (fromFilePath, targetFilePath) =>
+  "./" +
+  path
+    .relative(path.dirname(fromFilePath), targetFilePath)
+    .replaceAll(path.sep, "/")
+    .replace(/\.ts$/, ".js");
+
+const toPascalCase = (value) =>
+  value
+    .split("-")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join("");
+
+const groupEntriesByBucket = (entries) => {
+  const buckets = new Map();
+  for (const entry of entries) {
+    const bucketEntries = buckets.get(entry.bucket) ?? [];
+    bucketEntries.push(entry);
+    buckets.set(entry.bucket, bucketEntries);
+  }
+  return [...buckets.entries()].sort(([bucketA], [bucketB]) => bucketA.localeCompare(bucketB));
+};
+
 // Pre-format each entry across multiple lines so prettier's `format:check`
 // has nothing to rewrite. Single-line entries would be reformatted when
 // they exceed the 100-char default width, and the registry-overwrite-on-
@@ -192,27 +206,61 @@ const formatAutoRequiresLine = (entry) => {
   );
 };
 
-const ruleLines = ruleEntries
-  .map(
-    (entry) =>
-      `  {\n` +
-      `    key: "react-doctor/${entry.ruleId}",\n` +
-      `    id: "${entry.ruleId}",\n` +
-      `    source: "react-doctor",\n` +
-      `    originallyExternal: ${entry.originallyExternal},\n` +
-      `    framework: "${entry.framework}",\n` +
-      `    category: "${entry.category}",\n` +
-      `    severity: "${entry.severity}",\n` +
-      `    rule: {\n` +
-      `      ...${entry.identifier},\n` +
-      `      framework: "${entry.framework}",\n` +
-      `      category: "${entry.category}",\n` +
-      formatAutoRequiresLine(entry) +
-      formatAutoTagsLine(entry) +
-      `    },\n` +
-      `  },`,
-  )
+const formatRuleLines = (entries) =>
+  entries
+    .map(
+      (entry) =>
+        `  {\n` +
+        `    key: "react-doctor/${entry.ruleId}",\n` +
+        `    id: "${entry.ruleId}",\n` +
+        `    source: "react-doctor",\n` +
+        `    originallyExternal: ${entry.originallyExternal},\n` +
+        `    framework: "${entry.framework}",\n` +
+        `    category: "${entry.category}",\n` +
+        `    severity: "${entry.severity}",\n` +
+        `    rule: {\n` +
+        `      ...${entry.identifier},\n` +
+        `      framework: "${entry.framework}",\n` +
+        `      category: "${entry.category}",\n` +
+        formatAutoRequiresLine(entry) +
+        formatAutoTagsLine(entry) +
+        `    },\n` +
+        `  },`,
+    )
+    .join("\n");
+
+const bucketGroups = groupEntriesByBucket(ruleEntries);
+
+fs.rmSync(REGISTRY_DIRECTORY, { recursive: true, force: true });
+fs.mkdirSync(REGISTRY_DIRECTORY, { recursive: true });
+
+const bucketExports = [];
+for (const [bucket, entries] of bucketGroups) {
+  const bucketOutput = path.join(REGISTRY_DIRECTORY, `${bucket}.ts`);
+  const importLines = entries
+    .map(
+      (entry) =>
+        `import { ${entry.identifier} } from "${toGeneratedImport(bucketOutput, entry.filePath)}";`,
+    )
+    .join("\n");
+  const exportName = `${toPascalCase(bucket)}RuleEntries`;
+  bucketExports.push({ bucket, exportName });
+  const bucketSource = `// GENERATED FILE — do not edit by hand. Run \`pnpm gen\` to regenerate.
+
+${importLines}
+
+export const ${exportName} = [
+${formatRuleLines(entries)}
+] as const;
+`;
+  fs.writeFileSync(bucketOutput, bucketSource);
+}
+
+const registryImportLines = bucketExports
+  .map((entry) => `import { ${entry.exportName} } from "./rule-registry/${entry.bucket}.js";`)
   .join("\n");
+
+const registrySpreadLines = bucketExports.map((entry) => `  ...${entry.exportName},`).join("\n");
 
 const generatedSource = `// GENERATED FILE — do not edit by hand. Run \`pnpm gen\` to regenerate.
 // Source of truth: every \`export const <name> = defineRule({ id: "...", ... })\`
@@ -224,10 +272,10 @@ const generatedSource = `// GENERATED FILE — do not edit by hand. Run \`pnpm g
 
 import type { Rule } from "./utils/rule.js";
 
-${importLines}
+${registryImportLines}
 
 export const reactDoctorRules = [
-${ruleLines}
+${registrySpreadLines}
 ] as const;
 
 export const ruleRegistry: Record<string, Rule> = Object.fromEntries(

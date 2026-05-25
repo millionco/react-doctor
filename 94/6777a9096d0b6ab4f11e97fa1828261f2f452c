@@ -1,0 +1,31 @@
+packages/react-doctor/tests/regressions/state-rules/effect-needs-cleanup.test.ts
+  s_5651a1be871f3a::t_b91e96d1afbc87 117-118,120-146
+  s_fd54e8c457782f::t_92cdd56608b3f6 195-196
+packages/oxlint-plugin-react-doctor/src/plugin/constants/react.ts
+  s_fd54e8c457782f::t_ac6c4ecab156c7 83
+  s_5651a1be871f3a::t_0510ca4dab546d 107-108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "946777a9096d0b6ab4f11e97fa1828261f2f452c",
+  "prompts": {},
+  "sessions": {
+    "s_5651a1be871f3a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "0f1dc61e-1f74-4b46-b2fe-1ea5e950f1b8",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    },
+    "s_fd54e8c457782f": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "9fe6cc40-5f54-4aa4-8863-1770c86dc5fb",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

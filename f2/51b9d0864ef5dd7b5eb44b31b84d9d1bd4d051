@@ -1,0 +1,48 @@
+packages/react-doctor/tests/regressions/state-rules/prefer-use-sync-external-store.test.ts
+  s_5651a1be871f3a::t_07f15cfcb7d571 233
+  s_fd54e8c457782f::t_ec28935ff54187 63-91
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/utils/is-cleanup-return.ts
+  s_5651a1be871f3a::t_85473852f38696 15,26,31-35,44,49,71-75
+  s_5651a1be871f3a::t_7e47370ab8910b 3,5,27,36
+  s_fd54e8c457782f::t_3a245b6cb1d18f 28-30,60
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/effect-needs-cleanup.ts
+  s_5651a1be871f3a::t_09223eb4f7eb6e 93-97,104-108,113,115,135,180-182,185-186
+  s_5651a1be871f3a::t_335722d227315a 32
+  s_fd54e8c457782f::t_f532d5d70a978f 116-118,134,158,183-184
+packages/react-doctor/tests/regressions/state-rules/effect-needs-cleanup.test.ts
+  s_5651a1be871f3a::t_b91e96d1afbc87 117-118,120-146
+  s_fd54e8c457782f::t_92cdd56608b3f6 288-289,181,223-225,230,232-233,237,241-242,164,166-167,169,174,176-177,185-186,221,191,194-195,197,204-206,208-209,211-212
+  s_5651a1be871f3a::t_bdd688ec631b01 119,226-227,229,231,171,173,175,203
+  s_5651a1be871f3a::t_7ea599f7f52ef7 150-157,160,163,165,168,170,172,183
+  s_5651a1be871f3a::t_399aa2282917b9 158-159,161-162,178,180,182,184,213-220,222,228,234,236,238-240,201
+  s_fd54e8c457782f::t_fa25cbbf637df7 179,235
+  s_fd54e8c457782f::t_4842c48fc84682 187-190,192-193,196,198-200,202,207,210
+packages/oxlint-plugin-react-doctor/src/plugin/constants/react.ts
+  s_fd54e8c457782f::t_ac6c4ecab156c7 83
+  s_5651a1be871f3a::t_0510ca4dab546d 102-103,115-121
+  s_5651a1be871f3a::t_26a7583261e60e 84-87,89-93,104-114,125,129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "f251b9d0864ef5dd7b5eb44b31b84d9d1bd4d051",
+  "prompts": {},
+  "sessions": {
+    "s_5651a1be871f3a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "0f1dc61e-1f74-4b46-b2fe-1ea5e950f1b8",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    },
+    "s_fd54e8c457782f": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "9fe6cc40-5f54-4aa4-8863-1770c86dc5fb",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

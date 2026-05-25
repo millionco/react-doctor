@@ -1,10 +1,4 @@
-import {
-  buildInspectLayers,
-  Config,
-  DeadCode,
-  Linter,
-  Score,
-} from "@react-doctor/core";
+import { buildInspectLayers, Config, DeadCode, Linter, Score } from "@react-doctor/core";
 import type { ReactDoctorConfig } from "@react-doctor/core";
 
 export interface BuildRuntimeLayersInput {

@@ -1,22 +1,14 @@
 import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
 import path from "node:path";
 import {
   buildSkippedChecks,
-  Config,
-  DeadCode,
-  Files,
-  Git,
+  buildInspectLayers,
   layerOtlp,
   Linter,
-  LintPartialFailures,
   loadConfigWithSource,
-  Project,
-  Reporter,
   resolveConfigRootDir,
   resolveDiagnoseTarget,
   runInspect,
-  Score,
   type InspectOutput,
 } from "@react-doctor/core";
 import {
@@ -26,20 +18,10 @@ import {
 } from "@react-doctor/core";
 import type { DiagnoseOptions, DiagnoseResult } from "@react-doctor/core";
 
-const buildLayerStack = (input: { readonly shouldSkipLint: boolean }) => {
-  const linterLayer = input.shouldSkipLint ? Linter.layerOf([]) : Linter.layerOxlint;
-  return Layer.mergeAll(
-    Project.layerNode,
-    Config.layerNode,
-    Files.layerNode,
-    Git.layerNode,
-    linterLayer,
-    LintPartialFailures.layerLive,
-    DeadCode.layerNode,
-    Score.layerHttp,
-    Reporter.layerNoop,
-  );
-};
+const buildLayerStack = (input: { readonly shouldSkipLint: boolean }) =>
+  buildInspectLayers({
+    linter: input.shouldSkipLint ? Linter.layerOf([]) : Linter.layerOxlint,
+  });
 
 export const diagnose = async (
   directory: string,

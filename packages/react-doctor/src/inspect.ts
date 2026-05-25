@@ -4,7 +4,6 @@ import * as Effect from "effect/Effect";
 import * as Ref from "effect/Ref";
 import {
   buildSkippedChecks,
-  calculateScore,
   filterDiagnosticsForSurface,
   highlighter,
   layerOtlp,
@@ -237,6 +236,7 @@ const runInspectWithRuntime = async (
     hasConfigOverride,
     userConfig,
     configSourceDirectory,
+    shouldRunScore: !options.noScore && !lintBindingMissing,
     shouldSkipLint: !options.lint || lintBindingMissing,
     shouldRunDeadCode: options.deadCode,
   });
@@ -363,25 +363,8 @@ const runInspectWithRuntime = async (
     }
   }
 
-  // Pre-filter diagnostics through the `score` surface so weak-signal
-  // rule families (e.g. `design`) stay out of scoring by default and
-  // don't dilute the headline number. The orchestrator's Score
-  // service ran with `layerOf(null)` for exactly this reason — it
-  // only sees the per-element-filtered list, not the surface-filtered
-  // list this function needs. We compute the real score here.
   const inspectDiagnostics: ReadonlyArray<Diagnostic> = output.diagnostics;
-  const scoreDiagnostics = filterDiagnosticsForSurface(
-    [...inspectDiagnostics],
-    "score",
-    output.userConfig,
-  );
-  const score =
-    didLintFail || options.noScore
-      ? null
-      : await calculateScore([...scoreDiagnostics], {
-          isCi: options.isCi,
-          metadata: output.scoreMetadata,
-        });
+  const score = didLintFail ? null : output.score;
 
   const elapsedMilliseconds = performance.now() - startTime;
   const finalizeInput: FinalizeInput = {

@@ -1,15 +1,16 @@
 import * as Effect from "effect/Effect";
 import * as Filter from "effect/Filter";
-import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import type { Diagnostic, ProjectInfo, ReactDoctorConfig, ScoreResult } from "./types/index.js";
 import { buildDiagnosticPipeline } from "./build-diagnostic-pipeline.js";
+import { buildInspectLayers } from "./build-inspect-layers.js";
 import { checkPnpmHardening } from "./check-pnpm-hardening.js";
 import { checkReducedMotion } from "./check-reduced-motion.js";
 import { computeJsxIncludePaths } from "./jsx-include-paths.js";
 import { NoReactDependency, ReactDoctorError, type ReactDoctorErrorReason } from "./errors.js";
+import { filterDiagnosticsForSurface } from "./filter-for-surface.js";
 import { resolveLintIncludePaths } from "./resolve-lint-include-paths.js";
 import { Config, type ResolvedConfig } from "./services/config.js";
 import { DeadCode } from "./services/dead-code.js";
@@ -275,10 +276,15 @@ export const runInspect = <HooksR = never>(
     yield* afterLint(lintFailureState.didFail);
 
     const finalDiagnostics: ReadonlyArray<Diagnostic> = [...survivingDiagnostics];
+    const scoreDiagnostics = filterDiagnosticsForSurface(
+      [...finalDiagnostics],
+      "score",
+      resolvedConfig.config,
+    );
     const score = lintFailureState.didFail
       ? null
       : yield* scoreService.compute({
-          diagnostics: finalDiagnostics,
+          diagnostics: scoreDiagnostics,
           isCi: input.isCi,
           metadata: scoreMetadata,
         });
@@ -322,14 +328,4 @@ export const runInspect = <HooksR = never>(
  * with a pre-loaded config swaps `Config.layerNode` for
  * `Config.layerOf(resolved)`.
  */
-export const layerInspectLive = Layer.mergeAll(
-  Project.layerNode,
-  Config.layerNode,
-  DeadCode.layerNode,
-  Files.layerNode,
-  Git.layerNode,
-  Linter.layerOxlint,
-  LintPartialFailures.layerLive,
-  Reporter.layerNoop,
-  Score.layerHttp,
-);
+export const layerInspectLive = buildInspectLayers();

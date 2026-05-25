@@ -1,13 +1,8 @@
-import * as Layer from "effect/Layer";
 import {
+  buildInspectLayers,
   Config,
   DeadCode,
-  Files,
-  Git,
   Linter,
-  LintPartialFailures,
-  Project,
-  Reporter,
   Score,
 } from "@react-doctor/core";
 import type { ReactDoctorConfig } from "@react-doctor/core";
@@ -17,6 +12,7 @@ export interface BuildRuntimeLayersInput {
   readonly hasConfigOverride: boolean;
   readonly userConfig: ReactDoctorConfig | null;
   readonly configSourceDirectory: string | null;
+  readonly shouldRunScore: boolean;
   /**
    * Whether lint is disabled (either by user flag or because the
    * oxlint native binding can't load on this Node version). Switches
@@ -43,20 +39,14 @@ export interface BuildRuntimeLayersInput {
  *   of re-loading from disk; `configSourceDirectory` is threaded
  *   through so `userConfig.plugins` resolution still anchors at
  *   the original config file location.
- * - **Score**: always `layerOf(null)` because the CLI computes the
- *   real score AFTER `runInspect` returns, with surface filtering
- *   applied (the orchestrator's `Score.compute` only sees the
- *   per-element-filtered list, not the surface-filtered one).
+ * - **Score**: disabled only when the user opted out or lint coverage is
+ *   incomplete. The orchestrator applies the `score` surface before
+ *   `Score.compute`, so hosts do not need a second score path.
  */
 export const buildRuntimeLayers = (input: BuildRuntimeLayersInput) => {
   const linterLayer = input.shouldSkipLint ? Linter.layerOf([]) : Linter.layerOxlint;
   const deadCodeLayer = input.shouldRunDeadCode ? DeadCode.layerNode : DeadCode.layerOf([]);
-  // HACK: always provide layerOf(null) for Score — the orchestrator's
-  // Score.compute sees the per-element-filtered list, NOT the
-  // surface-filtered list this function needs. The CLI computes the
-  // real score below with `filterDiagnosticsForSurface("score", ...)`
-  // applied first.
-  const scoreLayer = Score.layerOf(null);
+  const scoreLayer = input.shouldRunScore ? Score.layerHttp : Score.layerOf(null);
   const configLayer = input.hasConfigOverride
     ? Config.layerOf({
         config: input.userConfig,
@@ -70,15 +60,10 @@ export const buildRuntimeLayers = (input: BuildRuntimeLayersInput) => {
       })
     : Config.layerNode;
 
-  return Layer.mergeAll(
-    Project.layerNode,
-    configLayer,
-    Files.layerNode,
-    Git.layerNode,
-    linterLayer,
-    LintPartialFailures.layerLive,
-    deadCodeLayer,
-    Reporter.layerNoop,
-    scoreLayer,
-  );
+  return buildInspectLayers({
+    config: configLayer,
+    linter: linterLayer,
+    deadCode: deadCodeLayer,
+    score: scoreLayer,
+  });
 };

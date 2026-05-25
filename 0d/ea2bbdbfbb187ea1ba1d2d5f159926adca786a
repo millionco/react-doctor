@@ -1,0 +1,19 @@
+packages/react-doctor/src/cli/commands/inspect.ts
+  s_7e832e5aa4ecdc::t_2143590e244fce 32,277-285
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "0dea2bbdbfbb187ea1ba1d2d5f159926adca786a",
+  "prompts": {},
+  "sessions": {
+    "s_7e832e5aa4ecdc": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ed1fb744-c8b4-4080-92b0-def9a368da2c",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

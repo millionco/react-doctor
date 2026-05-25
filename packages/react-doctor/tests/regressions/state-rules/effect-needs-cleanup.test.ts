@@ -114,6 +114,39 @@ export const Resize = () => {
     expect(hits).toHaveLength(0);
   });
 
+  it("does NOT flag React Native subscription objects cleaned up with `.remove()`", async () => {
+    const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-rn-sub-remove", {
+      packageJson: {
+        dependencies: {
+          react: "19.0.0",
+          "react-native": "0.82.0",
+        },
+      },
+      files: {
+        "src/AppFocus.tsx": `import { useEffect } from "react";
+import { AppState } from "react-native";
+
+declare const focusManager: { setFocused: (focused: boolean) => void };
+
+export const AppFocus = () => {
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", status => {
+      focusManager.setFocused(status === "active");
+    });
+    return () => {
+      sub.remove();
+    };
+  }, []);
+  return null;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
+    expect(hits).toHaveLength(0);
+  });
+
   it("does NOT flag a useEffect that returns a cleanup arrow calling clearInterval", async () => {
     const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-clear-interval", {
       files: {

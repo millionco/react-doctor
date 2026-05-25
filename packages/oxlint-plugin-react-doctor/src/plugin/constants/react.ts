@@ -81,17 +81,16 @@ export const SUBSCRIPTION_METHOD_NAMES = new Set([
   "sub",
 ]);
 
-// Methods that pair with the subscription methods above as their cleanup
-// counterparts. Used to recognize a valid `return () => removeEventListener(...)`
-// cleanup form even when the subscribe call is `addEventListener` rather
-// than a `subscribe()` whose return value gets re-bound.
+// Cleanup method names that are meaningful without knowing where the receiver
+// came from. A call like `target.removeEventListener(...)`, `emitter.off(...)`,
+// or `controller.abort()` describes the teardown in the method name itself, so
+// it is safe to accept on any receiver inside an effect cleanup.
 //
-// `abort` covers the AbortController pattern, which is the recommended
-// modern shape for tearing down `addEventListener` registrations bound
-// via `{ signal }`: a single `controller.abort()` removes every
-// listener bound to that signal in one shot, so it IS the matching
-// "remove" call even when no literal `removeEventListener(...)` is present.
-export const UNSUBSCRIPTION_METHOD_NAMES = new Set([
+// Keep generic resource verbs such as `remove`, `dispose`, `destroy`, and
+// `teardown` OUT of this set. On an arbitrary receiver, `node.remove()` or
+// `cache.dispose()` does not prove it releases the listener/subscription that
+// was created earlier in the effect.
+export const GLOBAL_RELEASE_METHOD_NAMES = new Set([
   "unsubscribe",
   "removeEventListener",
   "removeListener",
@@ -102,11 +101,17 @@ export const UNSUBSCRIPTION_METHOD_NAMES = new Set([
   "abort",
 ]);
 
-// Methods accepted only when called on a variable bound to a subscribe-like
-// return value (`const sub = source.addListener(...); return () => sub.remove()`).
-// These names are too generic to trust on arbitrary receivers, but they are
-// common release verbs for subscription/resource objects.
-export const BOUND_SUBSCRIPTION_RELEASE_METHOD_NAMES = new Set([
+// Cleanup method names that are only meaningful when the receiver is the value
+// returned by a subscribe-like call in the same effect. For example:
+//
+//   const sub = AppState.addEventListener(...);
+//   return () => sub.remove();
+//
+// In that shape, the receiver (`sub`) ties the generic verb (`remove`) back to
+// the resource created by the effect. Without that binding relationship, these
+// verbs are too broad and would create false negatives for unrelated cleanup
+// calls.
+export const BOUND_RESOURCE_RELEASE_METHOD_NAMES = new Set([
   "remove",
   "unsubscribe",
   "unsub",
@@ -119,11 +124,11 @@ export const BOUND_SUBSCRIPTION_RELEASE_METHOD_NAMES = new Set([
 // Identifier names recognized as "this is a release/teardown call"
 // when they appear as a direct call inside an effect's cleanup
 // return — covers both library unsubscribe shorthands
-// (UNSUBSCRIPTION_METHOD_NAMES) and the generic teardown vocabulary
+// (GLOBAL_RELEASE_METHOD_NAMES) and the generic teardown vocabulary
 // (`cleanup`, `dispose`, `destroy`, `teardown`). Matched
 // case-insensitively at the call site.
 export const CLEANUP_LIKE_RELEASE_CALLEE_NAMES = new Set([
-  ...UNSUBSCRIPTION_METHOD_NAMES,
+  ...GLOBAL_RELEASE_METHOD_NAMES,
   "cleanup",
   "dispose",
   "destroy",

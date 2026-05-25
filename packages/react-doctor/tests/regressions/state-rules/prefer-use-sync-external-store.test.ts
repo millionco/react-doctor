@@ -201,7 +201,7 @@ export const Leaky = () => {
 
   it("DOES flag a useSyncExternalStore reimplementation whose cleanup uses a generic teardown verb (`cleanup()`)", async () => {
     // Regression: `cleanupReleasesSubscription` previously only accepted
-    // `UNSUBSCRIPTION_METHOD_NAMES` plus the literal bound-unsubscribe
+    // `GLOBAL_RELEASE_METHOD_NAMES` plus the literal bound-unsubscribe
     // name. Generic teardown verbs from `CLEANUP_LIKE_RELEASE_CALLEE_NAMES`
     // (`cleanup`, `dispose`, `destroy`, `teardown`) were silently ignored,
     // so a complete useSyncExternalStore reimplementation with a

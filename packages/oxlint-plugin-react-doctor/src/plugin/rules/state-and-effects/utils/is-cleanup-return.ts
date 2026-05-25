@@ -1,8 +1,8 @@
 import { TIMER_CLEANUP_CALLEE_NAMES } from "../../../constants/dom.js";
 import {
-  BOUND_SUBSCRIPTION_RELEASE_METHOD_NAMES,
+  BOUND_RESOURCE_RELEASE_METHOD_NAMES,
   CLEANUP_LIKE_RELEASE_CALLEE_NAMES,
-  UNSUBSCRIPTION_METHOD_NAMES,
+  GLOBAL_RELEASE_METHOD_NAMES,
 } from "../../../constants/react.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
@@ -24,13 +24,13 @@ const isReleaseLikeCall = (
   }
   if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
     if (
-      BOUND_SUBSCRIPTION_RELEASE_METHOD_NAMES.has(callee.property.name) &&
+      BOUND_RESOURCE_RELEASE_METHOD_NAMES.has(callee.property.name) &&
       isNodeOfType(callee.object, "Identifier") &&
       knownBoundSubscriptionNames.has(callee.object.name)
     ) {
       return true;
     }
-    return UNSUBSCRIPTION_METHOD_NAMES.has(callee.property.name);
+    return GLOBAL_RELEASE_METHOD_NAMES.has(callee.property.name);
   }
   return false;
 };

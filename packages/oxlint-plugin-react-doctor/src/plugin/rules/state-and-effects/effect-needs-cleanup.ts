@@ -29,7 +29,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 //   - setInterval / setTimeout (without explicit clear)
 //
 // The subscribe / unsubscribe method allowlists live in `constants.ts`
-// (`SUBSCRIPTION_METHOD_NAMES`, `UNSUBSCRIPTION_METHOD_NAMES`) so the
+// (`SUBSCRIPTION_METHOD_NAMES`, `GLOBAL_RELEASE_METHOD_NAMES`) so the
 // cleanup-needed detector and the prefer-use-sync-external-store
 // detector share a single source of truth. Inline duplicates would
 // silently drift out of sync as new library shapes get added.

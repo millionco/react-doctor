@@ -8,7 +8,7 @@
 // pre-commit, and anything else that lives in `.git/hooks/`. That's the
 // canonical "I'm inside a git hook" signal and dodges the issue #293
 // spinner hang for every hook manager at once.
-const NON_INTERACTIVE_ENVIRONMENT_VARIABLES = [
+export const NON_INTERACTIVE_ENVIRONMENT_VARIABLES = [
   "CI",
   "GITHUB_ACTIONS",
   "GITLAB_CI",

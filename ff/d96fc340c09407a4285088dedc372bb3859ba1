@@ -1,0 +1,19 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/tanstack-start/tanstack-start-missing-head-content.ts
+  s_d5a0bc90836bd3::t_b42d91bb05c46f 88-89,95-96,115-116,135,147-148,152-153,185-186,204
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "ffd96fc340c09407a4285088dedc372bb3859ba1",
+  "prompts": {},
+  "sessions": {
+    "s_d5a0bc90836bd3": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d36b9564-ff39-4bdf-9392-033e721e5333",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

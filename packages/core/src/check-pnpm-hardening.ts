@@ -25,8 +25,24 @@ interface PnpmWorkspaceHardeningSettings {
 const HARDENING_SETTING_KEYS = new Set(["minimumReleaseAge", "blockExoticSubdeps", "trustPolicy"]);
 
 const stripInlineComment = (rawValue: string): string => {
-  const commentIndex = rawValue.indexOf("#");
-  return commentIndex === -1 ? rawValue : rawValue.slice(0, commentIndex);
+  let activeQuote: '"' | "'" | null = null;
+  for (let charIndex = 0; charIndex < rawValue.length; charIndex += 1) {
+    const currentChar = rawValue[charIndex];
+    if (activeQuote !== null) {
+      if (currentChar === activeQuote) activeQuote = null;
+      continue;
+    }
+    if (currentChar === '"' || currentChar === "'") {
+      activeQuote = currentChar;
+      continue;
+    }
+    if (currentChar !== "#") continue;
+    const previousChar = rawValue[charIndex - 1];
+    if (charIndex === 0 || (previousChar !== undefined && /\s/.test(previousChar))) {
+      return rawValue.slice(0, charIndex);
+    }
+  }
+  return rawValue;
 };
 
 const unquote = (rawValue: string): string => rawValue.replace(/^["']|["']$/g, "");
@@ -125,7 +141,10 @@ export const checkPnpmHardening = (rootDirectory: string): Diagnostic[] => {
     );
   }
 
-  if (settings.blockExoticSubdeps !== null && settings.blockExoticSubdeps.value === "false") {
+  if (
+    settings.blockExoticSubdeps !== null &&
+    settings.blockExoticSubdeps.value.toLowerCase() === "false"
+  ) {
     diagnostics.push(
       buildHardeningDiagnostic({
         line: settings.blockExoticSubdeps.line,

@@ -319,4 +319,62 @@ describe("checkPnpmHardening (parser edge cases)", () => {
 
     expect(diagnostics).toHaveLength(0);
   });
+
+  it("flags `blockExoticSubdeps: False` (capitalised YAML 1.2 boolean) as a violation", () => {
+    const projectDirectory = writeWorkspaceFixture(
+      "exotic-capital-false",
+      "minimumReleaseAge: 10080\nblockExoticSubdeps: False\ntrustPolicy: no-downgrade\n",
+    );
+
+    const diagnostics = checkPnpmHardening(projectDirectory);
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0].message).toContain("blockExoticSubdeps");
+  });
+
+  it("flags `blockExoticSubdeps: FALSE` (all-caps YAML 1.2 boolean) as a violation", () => {
+    const projectDirectory = writeWorkspaceFixture(
+      "exotic-allcaps-false",
+      "minimumReleaseAge: 10080\nblockExoticSubdeps: FALSE\ntrustPolicy: no-downgrade\n",
+    );
+
+    const diagnostics = checkPnpmHardening(projectDirectory);
+
+    expect(diagnostics).toHaveLength(1);
+  });
+
+  it("does NOT treat `no-downgrade#typo` as `no-downgrade` (no whitespace before #)", () => {
+    const projectDirectory = writeWorkspaceFixture(
+      "trust-policy-hash-typo",
+      "minimumReleaseAge: 10080\nblockExoticSubdeps: true\ntrustPolicy: no-downgrade#typo\n",
+    );
+
+    const diagnostics = checkPnpmHardening(projectDirectory);
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0].message).toContain("no-downgrade#typo");
+  });
+
+  it("does not treat `#` inside a single-quoted string as a comment start", () => {
+    const projectDirectory = writeWorkspaceFixture(
+      "trust-policy-hash-in-quotes",
+      "minimumReleaseAge: 10080\nblockExoticSubdeps: true\ntrustPolicy: 'no-downgrade # not a comment'\n",
+    );
+
+    const diagnostics = checkPnpmHardening(projectDirectory);
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0].message).toContain("no-downgrade # not a comment");
+  });
+
+  it("strips a real inline comment after whitespace from an unquoted scalar", () => {
+    const projectDirectory = writeWorkspaceFixture(
+      "trust-policy-hash-comment",
+      "minimumReleaseAge: 10080\nblockExoticSubdeps: true\ntrustPolicy: no-downgrade #fixed policy\n",
+    );
+
+    const diagnostics = checkPnpmHardening(projectDirectory);
+
+    expect(diagnostics).toHaveLength(0);
+  });
 });

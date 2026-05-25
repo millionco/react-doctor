@@ -1,0 +1,21 @@
+packages/core/tests/reachability/collect-entry-patterns.test.ts
+  s_b9a4a3143452aa::t_0635c47ceb18e1 46,53,62-66,85
+packages/core/src/reachability/entry-resolvers/expo-config-plugins.ts
+  s_b9a4a3143452aa::t_ba03e1107732b5 32-35,42-49,52,56,61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "9e4f4eeb9d713ae82c2e6bbae487f1f69c4c8c37",
+  "prompts": {},
+  "sessions": {
+    "s_b9a4a3143452aa": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7d059fc8-7db0-4028-ba4c-f0b6468c86b0",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

@@ -65,3 +65,17 @@ export const EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS = new Set([
 ]);
 
 export const STORAGE_OBJECTS = new Set(["localStorage", "sessionStorage"]);
+
+export const KEYBOARD_EVENT_NAMES = new Set(["keydown", "keyup", "keypress"]);
+
+export const KEYBIND_LIBRARY_PACKAGES: ReadonlyArray<string> = [
+  "react-hotkeys-hook",
+  "react-hotkeys",
+  "@mantine/hooks",
+  "tinykeys",
+  "hotkeys-js",
+  "mousetrap",
+  "@react-hook/hotkey",
+  "use-hotkeys",
+  "@invoke-ai/ui-library",
+];

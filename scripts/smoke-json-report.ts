@@ -8,10 +8,7 @@ import { JsonReport } from "@react-doctor/core/schemas";
 const SCRIPT_DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = resolve(SCRIPT_DIRECTORY, "..");
 const CLI_BINARY_PATH = resolve(REPOSITORY_ROOT, "packages/react-doctor/dist/cli.js");
-const FIXTURE_DIRECTORY = resolve(
-  REPOSITORY_ROOT,
-  "packages/core/tests/fixtures/basic-react",
-);
+const FIXTURE_DIRECTORY = resolve(REPOSITORY_ROOT, "packages/core/tests/fixtures/basic-react");
 
 if (!existsSync(CLI_BINARY_PATH)) {
   console.error(`Built CLI missing at ${CLI_BINARY_PATH}. Run \`pnpm build\` first.`);

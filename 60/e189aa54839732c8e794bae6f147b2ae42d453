@@ -1,0 +1,23 @@
+packages/react-doctor/src/cli/utils/install-doctor-script.ts
+  s_7e832e5aa4ecdc::t_61ee39e19a1055 7,11,19-22,25-33,41-46,56-59,64-77,79-98,101-107
+packages/react-doctor/tests/install-skill.test.ts
+  s_7e832e5aa4ecdc::t_478dad8136f687 144,164-166,188-214
+packages/react-doctor/src/cli/utils/install-skill.ts
+  s_7e832e5aa4ecdc::t_859323cfa185d3 55-63,65-76,182,222,227
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "60e189aa54839732c8e794bae6f147b2ae42d453",
+  "prompts": {},
+  "sessions": {
+    "s_7e832e5aa4ecdc": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ed1fb744-c8b4-4080-92b0-def9a368da2c",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

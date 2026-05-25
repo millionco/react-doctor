@@ -8,340 +8,59 @@ import { isDescendantScope } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
-import { isReactComponentOrHookName } from "../../utils/is-react-component-or-hook-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
+import {
+  EFFECT_HOOKS_ALLOWING_EXTRA_REACTIVE_DEPS,
+  HOOKS_REQUIRING_DEPS_ARRAY,
+  HOOKS_REQUIRING_DEPS_MATCH,
+  buildAdditionalHooksRegex,
+  buildAssignmentMessage,
+  buildAsyncEffectMessage,
+  buildComplexDepMessage,
+  buildDuplicateDepMessage,
+  buildEffectEventDepMessage,
+  buildLiteralDepMessage,
+  buildMissingCallbackMessage,
+  buildMissingDepArrayMessage,
+  buildMissingDepMessage,
+  buildNonArrayDepsMessage,
+  buildRefCleanupMessage,
+  buildRefCurrentDepMessage,
+  buildSetStateWithoutDepsMessage,
+  buildSpreadDepMessage,
+  buildUnknownCallbackMessage,
+  buildUnnecessaryDepMessage,
+  buildUnstableDepMessage,
+  findEnclosingComponentOrHookFunction,
+  getCallbackArgumentIndex,
+  getDepsArgumentIndex,
+  getHookName,
+  resolveSettings,
+} from "./exhaustive-deps-helpers.js";
+import {
+  getMemberRootIdentifier,
+  hasComputedMemberExpression,
+  hasBroaderDeclaredDependency,
+  isLiteralOrEmptyTemplate,
+  isMatchingDepOrPrefix,
+  isNonStringLiteral,
+  isTransparentWrapperType,
+  stringifyMemberChain,
+  unwrapExpression,
+} from "./exhaustive-deps-expression.js";
+import {
+  getFunctionValueNode,
+  isOutsideAllFunctions,
+  isRecursiveInitializerCapture,
+  symbolHasStableHookOrigin,
+  symbolHasStableValue,
+  symbolHasUseEffectEventOrigin,
+} from "./exhaustive-deps-symbols.js";
 
 // Port of `oxc_linter::rules::react::exhaustive_deps`. Diffs the
-// closure-captured set of an effect / memo callback against its
-// declared dependency array. Built on top of Phase A's scope analyzer
-// and Phase C's closure-capture helper.
-
-const buildMissingDepMessage = (hookName: string, depName: string): string =>
-  `React Hook \`${hookName}\` is missing dependency \`${depName}\` — list it in the dependency array, or call the hook unconditionally.`;
-const buildUnnecessaryDepMessage = (hookName: string, depName: string): string =>
-  `React Hook \`${hookName}\` has an unnecessary dependency \`${depName}\` — it isn't referenced inside the callback.`;
-const buildDuplicateDepMessage = (hookName: string, depName: string): string =>
-  `React Hook \`${hookName}\` has duplicate dependency \`${depName}\`.`;
-const buildLiteralDepMessage = (hookName: string): string =>
-  `React Hook \`${hookName}\` was passed a literal as a dependency. Literals never change so they cannot trigger an update — remove them from the dependency array.`;
-const buildRefCurrentDepMessage = (hookName: string, depName: string): string =>
-  `React Hook \`${hookName}\` shouldn't include \`${depName}\` in the dependency array — mutable values like \`.current\` aren't valid deps; depend on \`${depName.replace(/\.current$/, "")}\` itself instead.`;
-const buildNonArrayDepsMessage = (hookName: string): string =>
-  `React Hook \`${hookName}\` has a second argument which is not an array literal. This means oxlint cannot statically verify whether the dependencies are exhaustive — replace the variable with an inline array.`;
-const buildMissingDepArrayMessage = (hookName: string): string =>
-  `React Hook \`${hookName}\` does nothing when called with only one argument — pass a dependency array as the second argument.`;
-const buildMissingCallbackMessage = (hookName: string): string =>
-  `React Hook \`${hookName}\` requires an effect callback — pass a function as the first argument.`;
-const buildEffectEventDepMessage = (depName: string): string =>
-  `Functions returned from \`useEffectEvent\` must not be included in the dependency array. Remove \`${depName}\` from the list.`;
-const buildSpreadDepMessage = (hookName: string): string =>
-  `React Hook \`${hookName}\` has a spread element in its dependency array. This means oxlint cannot statically verify whether the dependencies are exhaustive.`;
-const buildComplexDepMessage = (hookName: string): string =>
-  `React Hook \`${hookName}\` has a complex expression in the dependency array. Extract it to a separate variable so it can be statically checked.`;
-const buildAsyncEffectMessage = (hookName: string): string =>
-  `React Hook \`${hookName}\` received an async callback. Put the async function inside the effect instead.`;
-const buildUnknownCallbackMessage = (hookName: string): string =>
-  `React Hook \`${hookName}\` received a function whose dependencies are unknown. Pass an inline function instead.`;
-const buildUnstableDepMessage = (hookName: string, depName: string): string =>
-  `The \`${depName}\` value makes the dependencies of \`${hookName}\` change on every render. Move it inside the hook callback or wrap it in its own memoization hook.`;
-const buildSetStateWithoutDepsMessage = (hookName: string, setterName: string): string =>
-  `React Hook \`${hookName}\` contains a call to \`${setterName}\`. Without a dependency array, this can lead to an infinite chain of updates.`;
-const buildRefCleanupMessage = (depName: string): string =>
-  `The ref value \`${depName}\` will likely have changed by the time this effect cleanup function runs. Copy it to a variable inside the hook callback and use that variable in cleanup.`;
-const buildAssignmentMessage = (name: string): string =>
-  `Assignments to the \`${name}\` variable from inside a React Hook will be lost after each render. Store it in a ref to preserve the value over time.`;
-
-interface ExhaustiveDepsSettings {
-  additionalHooks?: string;
-  additionalEffectHooks?: string;
-  enableDangerousAutofixThisMayCauseInfiniteLoops?: boolean;
-  experimental_autoDependenciesHooks?: ReadonlyArray<string>;
-  requireExplicitEffectDeps?: boolean;
-}
-
-const resolveSettings = (
-  settings: Readonly<Record<string, unknown>> | undefined,
-): Required<ExhaustiveDepsSettings> => {
-  const reactDoctor = settings?.["react-doctor"];
-  const reactHooks = settings?.["react-hooks"];
-  const ruleSettings =
-    typeof reactDoctor === "object" && reactDoctor !== null
-      ? ((reactDoctor as { exhaustiveDeps?: ExhaustiveDepsSettings }).exhaustiveDeps ?? {})
-      : {};
-  const upstreamSettings =
-    typeof reactHooks === "object" && reactHooks !== null
-      ? (reactHooks as ExhaustiveDepsSettings)
-      : {};
-  return {
-    additionalHooks:
-      ruleSettings.additionalHooks ??
-      ruleSettings.additionalEffectHooks ??
-      upstreamSettings.additionalHooks ??
-      upstreamSettings.additionalEffectHooks ??
-      "",
-    additionalEffectHooks:
-      ruleSettings.additionalEffectHooks ?? upstreamSettings.additionalEffectHooks ?? "",
-    enableDangerousAutofixThisMayCauseInfiniteLoops:
-      ruleSettings.enableDangerousAutofixThisMayCauseInfiniteLoops ?? false,
-    experimental_autoDependenciesHooks:
-      ruleSettings.experimental_autoDependenciesHooks ??
-      upstreamSettings.experimental_autoDependenciesHooks ??
-      [],
-    requireExplicitEffectDeps:
-      ruleSettings.requireExplicitEffectDeps ?? upstreamSettings.requireExplicitEffectDeps ?? false,
-  };
-};
-
-// Hooks whose callback captures must match a deps array.
-const HOOKS_REQUIRING_DEPS_MATCH: ReadonlySet<string> = new Set([
-  "useEffect",
-  "useLayoutEffect",
-  "useCallback",
-  "useMemo",
-  "useImperativeHandle",
-  "useInsertionEffect",
-]);
-
-// Hooks where the deps array is REQUIRED (silently doing nothing
-// without one is a common bug). useEffect / useLayoutEffect /
-// useInsertionEffect tolerate omitting deps (intentional
-// run-on-every-render); useMemo / useCallback / useImperativeHandle
-// do not.
-const HOOKS_REQUIRING_DEPS_ARRAY: ReadonlySet<string> = new Set(["useMemo", "useCallback"]);
-
-const EFFECT_HOOKS_ALLOWING_EXTRA_REACTIVE_DEPS: ReadonlySet<string> = new Set([
-  "useEffect",
-  "useLayoutEffect",
-  "useInsertionEffect",
-]);
-
-const buildAdditionalHooksRegex = (additional: string): RegExp | null => {
-  if (!additional) return null;
-  try {
-    return new RegExp(additional);
-  } catch {
-    return null;
-  }
-};
-
-const getHookName = (callee: EsTreeNode): string | null => {
-  if (isNodeOfType(callee, "Identifier")) return callee.name;
-  if (
-    isNodeOfType(callee, "MemberExpression") &&
-    !callee.computed &&
-    isNodeOfType(callee.property, "Identifier")
-  ) {
-    return callee.property.name;
-  }
-  return null;
-};
-
-const getCallExpressionCalleeName = (
-  callExpression: EsTreeNodeOfType<"CallExpression">,
-): string | null => {
-  const callee = callExpression.callee;
-  if (isNodeOfType(callee, "Identifier")) return callee.name;
-  if (
-    isNodeOfType(callee, "MemberExpression") &&
-    isNodeOfType(callee.object, "Identifier") &&
-    isNodeOfType(callee.property, "Identifier") &&
-    !callee.computed
-  ) {
-    return `${callee.object.name}.${callee.property.name}`;
-  }
-  return null;
-};
-
-const REACT_HOC_NAMES: ReadonlySet<string> = new Set([
-  "forwardRef",
-  "memo",
-  "React.forwardRef",
-  "React.memo",
-]);
-
-const inferFunctionName = (functionNode: EsTreeNode): string | null => {
-  if (
-    (isNodeOfType(functionNode, "FunctionDeclaration") ||
-      isNodeOfType(functionNode, "FunctionExpression")) &&
-    functionNode.id
-  ) {
-    return functionNode.id.name;
-  }
-  let parent = functionNode.parent;
-  while (parent && isNodeOfType(parent, "CallExpression")) {
-    const calleeName = getCallExpressionCalleeName(parent);
-    if (calleeName && REACT_HOC_NAMES.has(calleeName)) parent = parent.parent ?? null;
-    else break;
-  }
-  if (
-    parent &&
-    isNodeOfType(parent, "VariableDeclarator") &&
-    isNodeOfType(parent.id, "Identifier")
-  ) {
-    return parent.id.name;
-  }
-  return null;
-};
-
-const findEnclosingComponentOrHookFunction = (node: EsTreeNode): EsTreeNode | null => {
-  let current = node.parent;
-  while (current) {
-    if (
-      isNodeOfType(current, "FunctionDeclaration") ||
-      isNodeOfType(current, "FunctionExpression") ||
-      isNodeOfType(current, "ArrowFunctionExpression")
-    ) {
-      const functionName = inferFunctionName(current);
-      if (functionName && isReactComponentOrHookName(functionName)) return current;
-    }
-    current = current.parent ?? null;
-  }
-  return null;
-};
-
-const getCallbackArgumentIndex = (hookName: string): number =>
-  hookName === "useImperativeHandle" ? 1 : 0;
-
-const getDepsArgumentIndex = (hookName: string): number =>
-  hookName === "useImperativeHandle" ? 2 : 1;
-
-// True for symbols whose returned value (or destructured pieces) are
-// stable across re-renders and don't need to live in deps arrays:
-//   useState's setter (`setX`)
-//   useReducer's dispatch
-//   useRef's ref object
-//   useEffectEvent's return value
-//   primitive-literal local consts (the value never changes between
-//     renders unless the literal does)
-const symbolHasStableHookOrigin = (symbol: SymbolDescriptor): boolean => {
-  if (symbol.references.some((reference) => reference.flag !== "read")) return false;
-  // We need the binding's parent context. The symbol's
-  // declarationNode is the VariableDeclarator (when destructured) or
-  // the binding identifier itself.
-  let declarator: EsTreeNode | null | undefined = symbol.declarationNode;
-  while (declarator && declarator.type !== "VariableDeclarator") {
-    declarator = declarator.parent ?? null;
-  }
-  if (!declarator || !isNodeOfType(declarator, "VariableDeclarator")) return false;
-  const initializerRaw = declarator.init;
-  if (!initializerRaw) return false;
-  const initializer = unwrapExpression(initializerRaw);
-
-  // Primitive literal initializer of a `const` binding — the value
-  // cannot change between renders, so the captured reference is
-  // structurally stable for dep-array purposes. `let` / `var` could
-  // be reassigned and don't qualify.
-  if (symbol.kind === "const") {
-    if (
-      isNodeOfType(initializer, "Literal") &&
-      (initializer.value === null ||
-        typeof initializer.value === "number" ||
-        typeof initializer.value === "string" ||
-        typeof initializer.value === "boolean")
-    ) {
-      return true;
-    }
-    if (
-      isNodeOfType(initializer, "TemplateLiteral") &&
-      getStaticTemplateLiteralValue(initializer) !== null
-    ) {
-      return true;
-    }
-  }
-
-  if (!isNodeOfType(initializer, "CallExpression")) return false;
-  const initializerHookName = getHookName(initializer.callee);
-  if (!initializerHookName) return false;
-  // useRef returns a stable ref; the binding itself is the ref.
-  if (initializerHookName === "useRef") return true;
-  // useEffectEvent returns a stable callback (React's RFC).
-  if (initializerHookName === "useEffectEvent") return true;
-  // useState / useReducer: the SECOND destructure element (setter /
-  // dispatch) is stable; the first is mutable.
-  if (
-    initializerHookName === "useState" ||
-    initializerHookName === "useReducer" ||
-    initializerHookName === "useActionState" ||
-    initializerHookName === "useTransition"
-  ) {
-    if (!isNodeOfType(declarator.id, "ArrayPattern")) return false;
-    const STABLE_RETURN_INDEX = 1;
-    const elements = declarator.id.elements;
-    const stableElement = elements[STABLE_RETURN_INDEX];
-    if (!stableElement) return false;
-    const innerBinding = isNodeOfType(stableElement as EsTreeNode, "AssignmentPattern")
-      ? (stableElement as EsTreeNodeOfType<"AssignmentPattern">).left
-      : (stableElement as EsTreeNode);
-    return isNodeOfType(innerBinding, "Identifier") && symbol.bindingIdentifier === innerBinding;
-  }
-  return false;
-};
-
-const symbolHasUseEffectEventOrigin = (symbol: SymbolDescriptor): boolean => {
-  const initializer = symbol.initializer ? unwrapExpression(symbol.initializer) : null;
-  if (!initializer || !isNodeOfType(initializer, "CallExpression")) return false;
-  return getHookName(initializer.callee) === "useEffectEvent";
-};
-
-const getFunctionValueNode = (symbol: SymbolDescriptor): EsTreeNode | null => {
-  if (symbol.kind === "function" && isNodeOfType(symbol.declarationNode, "FunctionDeclaration")) {
-    return symbol.declarationNode;
-  }
-  const initializer = symbol.initializer ? unwrapExpression(symbol.initializer) : null;
-  if (
-    initializer &&
-    (isNodeOfType(initializer, "FunctionExpression") ||
-      isNodeOfType(initializer, "ArrowFunctionExpression"))
-  ) {
-    return initializer;
-  }
-  return null;
-};
-
-const isAstDescendant = (inner: EsTreeNode, outer: EsTreeNode): boolean => {
-  let current: EsTreeNode | null | undefined = inner;
-  while (current) {
-    if (current === outer) return true;
-    current = current.parent ?? null;
-  }
-  return false;
-};
-
-const isRecursiveInitializerCapture = (symbol: SymbolDescriptor, callback: EsTreeNode): boolean => {
-  const initializer = symbol.initializer;
-  return Boolean(initializer && isAstDescendant(callback, initializer));
-};
-
-const symbolHasStableFunctionOrigin = (
-  symbol: SymbolDescriptor,
-  scopes: ScopeAnalysis,
-  visitedSymbolIds: Set<number>,
-): boolean => {
-  if (visitedSymbolIds.has(symbol.id)) return true;
-  const functionNode = getFunctionValueNode(symbol);
-  if (!functionNode) return false;
-  visitedSymbolIds.add(symbol.id);
-  for (const reference of closureCaptures(functionNode, scopes)) {
-    const capturedSymbol = reference.resolvedSymbol;
-    if (!capturedSymbol) continue;
-    if (capturedSymbol.id === symbol.id) continue;
-    if (isOutsideAllFunctions(capturedSymbol)) continue;
-    if (symbolHasStableValue(capturedSymbol, scopes, visitedSymbolIds)) continue;
-    return false;
-  }
-  return true;
-};
-
-const symbolHasStableValue = (
-  symbol: SymbolDescriptor,
-  scopes: ScopeAnalysis,
-  visitedSymbolIds: Set<number> = new Set(),
-): boolean =>
-  symbolHasStableHookOrigin(symbol) ||
-  symbolHasStableFunctionOrigin(symbol, scopes, visitedSymbolIds);
+// closure-captured set of a hook callback against its declared deps.
 
 const getDestructuredPropertyPath = (pattern: EsTreeNode): string | null => {
   if (!isNodeOfType(pattern, "ObjectPattern")) return null;
@@ -406,7 +125,7 @@ const computeDepKey = (reference: ReferenceDescriptor): string => {
   while (true) {
     const grandparent: EsTreeNode | null | undefined = outermost.parent;
     if (!grandparent) break;
-    const isTransparentWrapper = TRANSPARENT_WRAPPER_TYPES.has(grandparent.type);
+    const isTransparentWrapper = isTransparentWrapperType(grandparent.type);
     const candidate: EsTreeNode | null | undefined = isTransparentWrapper
       ? (grandparent as { parent?: EsTreeNode | null }).parent
       : grandparent;
@@ -445,27 +164,6 @@ const computeDepKey = (reference: ReferenceDescriptor): string => {
   return fullName;
 };
 
-// Strip TypeScript expression wrappers transparently — `(x as T)`,
-// `x satisfies T`, `x!`, `(x)` — so they don't change the dep key.
-const TRANSPARENT_WRAPPER_TYPES: ReadonlySet<string> = new Set([
-  "TSAsExpression",
-  "TSSatisfiesExpression",
-  "TSNonNullExpression",
-  "TSTypeAssertion",
-  "ParenthesizedExpression",
-  "ChainExpression",
-]);
-
-const unwrapExpression = (node: EsTreeNode): EsTreeNode => {
-  let current = node;
-  while (TRANSPARENT_WRAPPER_TYPES.has(current.type)) {
-    const inner = (current as { expression?: EsTreeNode | null }).expression;
-    if (!inner) return current;
-    current = inner;
-  }
-  return current;
-};
-
 const computeDeclaredDepKey = (entry: EsTreeNode): string | null => {
   const stripped = unwrapExpression(entry);
   if (isNodeOfType(stripped, "Identifier")) return stripped.name;
@@ -487,20 +185,6 @@ const depsArrayContainsIdentifier = (
     const strippedElement = unwrapExpression(element as EsTreeNode);
     return isNodeOfType(strippedElement, "Identifier") && strippedElement.name === identifierName;
   });
-};
-
-const stringifyMemberChain = (node: EsTreeNode): string | null => {
-  const stripped = unwrapExpression(node);
-  if (isNodeOfType(stripped, "Identifier")) return stripped.name;
-  if (isNodeOfType(stripped, "ThisExpression")) return "this";
-  if (isNodeOfType(stripped, "MemberExpression")) {
-    const objectName = stringifyMemberChain(stripped.object);
-    if (objectName && stripped.computed) return objectName;
-    if (objectName && !stripped.computed && isNodeOfType(stripped.property, "Identifier")) {
-      return `${objectName}.${stripped.property.name}`;
-    }
-  }
-  return null;
 };
 
 interface CaptureCollection {
@@ -572,54 +256,6 @@ const collectCaptureDepKeys = (callback: EsTreeNode, scopes: ScopeAnalysis): Cap
     visitDefaultValue(param.right as EsTreeNode);
   }
   return { keys, stableCapturedNames };
-};
-
-const FUNCTION_SCOPE_KINDS: ReadonlySet<string> = new Set(["function", "arrow-function", "method"]);
-
-const isOutsideAllFunctions = (symbol: SymbolDescriptor): boolean => {
-  let scope: SymbolDescriptor["scope"] | null = symbol.scope;
-  while (scope) {
-    if (FUNCTION_SCOPE_KINDS.has(scope.kind)) return false;
-    if (scope.kind === "module") return true;
-    scope = scope.parent ?? null;
-  }
-  return true;
-};
-
-const isLiteralOrEmptyTemplate = (node: EsTreeNode): boolean =>
-  isNodeOfType(node, "Literal") ||
-  (isNodeOfType(node, "TemplateLiteral") && getStaticTemplateLiteralValue(node) !== null);
-
-const isNonStringLiteral = (node: EsTreeNode): boolean =>
-  isNodeOfType(node, "Literal") && typeof node.value !== "string";
-
-const isMatchingDepOrPrefix = (declaredKey: string, captureKey: string): boolean =>
-  captureKey === declaredKey || captureKey.startsWith(`${declaredKey}.`);
-
-const hasBroaderDeclaredDependency = (
-  declaredKey: string,
-  declaredKeys: ReadonlySet<string>,
-): boolean => {
-  for (const otherDeclaredKey of declaredKeys) {
-    if (otherDeclaredKey !== declaredKey && declaredKey.startsWith(`${otherDeclaredKey}.`)) {
-      return true;
-    }
-  }
-  return false;
-};
-
-const getMemberRootIdentifier = (node: EsTreeNode): EsTreeNodeOfType<"Identifier"> | null => {
-  const stripped = unwrapExpression(node);
-  if (isNodeOfType(stripped, "Identifier")) return stripped;
-  if (isNodeOfType(stripped, "MemberExpression")) return getMemberRootIdentifier(stripped.object);
-  return null;
-};
-
-const hasComputedMemberExpression = (node: EsTreeNode): boolean => {
-  const stripped = unwrapExpression(node);
-  if (!isNodeOfType(stripped, "MemberExpression")) return false;
-  if (stripped.computed) return true;
-  return hasComputedMemberExpression(stripped.object);
 };
 
 const isExtraEffectDepAllowed = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {

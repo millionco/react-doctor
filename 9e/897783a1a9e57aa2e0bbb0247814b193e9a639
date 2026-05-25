@@ -1,0 +1,29 @@
+packages/react-doctor/tests/is-ci-or-coding-agent-environment.test.ts
+  s_9a32e6f0baad21::t_10d0067d4778c5 1-15,28-74,82-90,130-131
+  s_9a32e6f0baad21::t_8d7cb74c3424e3 16-17,19-27,91-106,113-114,121-129
+  s_9a32e6f0baad21::t_91ad9b4f4a0ff1 18,75-81,107-112,115-120
+packages/react-doctor/src/cli/utils/is-ci-or-coding-agent-environment.ts
+  s_9a32e6f0baad21::t_7dfeb3dab67a5e 8-9,11-14,17-20,22-25
+  s_9a32e6f0baad21::t_4624d0445f7345 10
+  s_9a32e6f0baad21::t_2cc564ac66eac2 1-7,15-16,21,26-28
+packages/react-doctor/tests/is-spinner-interactive.test.ts
+  s_9a32e6f0baad21::t_7fd42b4f5e21aa 61-62,64-68
+packages/react-doctor/src/cli/utils/is-non-interactive-environment.ts
+  s_9a32e6f0baad21::t_4f5ccdc4490181 1-2,30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "9e897783a1a9e57aa2e0bbb0247814b193e9a639",
+  "prompts": {},
+  "sessions": {
+    "s_9a32e6f0baad21": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f589f075-70a7-4234-99a5-4e32ab3c62cc",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

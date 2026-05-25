@@ -159,6 +159,8 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       ignoredTags,
       serverAuthFunctionNames,
       severityControls,
+      textComponents: userConfig?.textComponents,
+      rawTextWrapperComponents: userConfig?.rawTextWrapperComponents,
       userPlugins,
     });
 

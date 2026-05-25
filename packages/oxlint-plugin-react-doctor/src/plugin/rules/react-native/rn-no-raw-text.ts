@@ -4,6 +4,7 @@ import {
   REACT_NATIVE_TEXT_COMPONENT_KEYWORDS,
 } from "../../constants/react-native.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { getReactDoctorRuleSettings } from "../../utils/get-react-doctor-setting.js";
 import { hasDirective } from "../../utils/has-directive.js";
 import { isInsidePlatformOsWebBranch } from "../../utils/is-inside-platform-os-web-branch.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -12,6 +13,29 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+
+interface RnNoRawTextSettings {
+  readonly textComponents?: ReadonlyArray<string>;
+  readonly rawTextWrapperComponents?: ReadonlyArray<string>;
+}
+
+interface ResolvedRnNoRawTextSettings {
+  readonly textComponentNames: ReadonlySet<string>;
+  readonly rawTextWrapperComponentNames: ReadonlySet<string>;
+}
+
+const toStringSet = (values: ReadonlyArray<string> | undefined): ReadonlySet<string> =>
+  new Set(values?.filter((value) => typeof value === "string" && value.length > 0) ?? []);
+
+const resolveSettings = (
+  settings: RuleContext["settings"],
+): ResolvedRnNoRawTextSettings => {
+  const ruleSettings = getReactDoctorRuleSettings<RnNoRawTextSettings>(settings, "rnNoRawText");
+  return {
+    textComponentNames: toStringSet(ruleSettings.textComponents),
+    rawTextWrapperComponentNames: toStringSet(ruleSettings.rawTextWrapperComponents),
+  };
+};
 
 const truncateText = (text: string): string =>
   text.length > RAW_TEXT_PREVIEW_MAX_CHARS
@@ -54,6 +78,30 @@ const isTextHandlingComponent = (elementName: string): boolean => {
   return [...REACT_NATIVE_TEXT_COMPONENT_KEYWORDS].some((keyword) => elementName.includes(keyword));
 };
 
+const resolveJsxFullElementName = (elementName: EsTreeNode): string | null => {
+  if (isNodeOfType(elementName, "JSXIdentifier")) return elementName.name;
+  if (!isNodeOfType(elementName, "JSXMemberExpression")) return null;
+  const objectName = resolveJsxFullElementName(elementName.object);
+  const propertyName = isNodeOfType(elementName.property, "JSXIdentifier")
+    ? elementName.property.name
+    : null;
+  if (!objectName || !propertyName) return propertyName;
+  return `${objectName}.${propertyName}`;
+};
+
+const matchesConfiguredComponent = (
+  leafName: string | null,
+  fullName: string | null,
+  configuredNames: ReadonlySet<string>,
+): boolean =>
+  (leafName !== null && configuredNames.has(leafName)) ||
+  (fullName !== null && configuredNames.has(fullName));
+
+const hasJsxChildElement = (node: EsTreeNodeOfType<"JSXElement">): boolean =>
+  (node.children ?? []).some(
+    (child) => isNodeOfType(child, "JSXElement") || isNodeOfType(child, "JSXFragment"),
+  );
+
 export const rnNoRawText = defineRule<Rule>({
   id: "rn-no-raw-text",
   requires: ["react-native"],
@@ -69,6 +117,7 @@ export const rnNoRawText = defineRule<Rule>({
     // Expo Router's directive that opts a single file into being rendered
     // in a WebView as DOM rather than on React Native primitives.
     let isDomComponentFile = false;
+    const settings = resolveSettings(context.settings);
 
     return {
       Program(programNode: EsTreeNodeOfType<"Program">) {
@@ -79,6 +128,16 @@ export const rnNoRawText = defineRule<Rule>({
 
         const elementName = resolveJsxElementName(node.openingElement);
         if (elementName && isTextHandlingComponent(elementName)) return;
+        const fullElementName = resolveJsxFullElementName(node.openingElement.name);
+        if (
+          matchesConfiguredComponent(
+            elementName,
+            fullElementName,
+            settings.textComponentNames,
+          )
+        ) {
+          return;
+        }
 
         // `Platform.OS === "web"` branches deliberately render web markup
         // (raw text, div/span trees, etc.) when the app is bundled by
@@ -86,6 +145,17 @@ export const rnNoRawText = defineRule<Rule>({
         // package-level boundary handled by the wrapper — same rationale,
         // narrower scope.
         if (isInsidePlatformOsWebBranch(node)) return;
+
+        if (
+          !hasJsxChildElement(node) &&
+          matchesConfiguredComponent(
+            elementName,
+            fullElementName,
+            settings.rawTextWrapperComponentNames,
+          )
+        ) {
+          return;
+        }
 
         for (const child of node.children ?? []) {
           if (!isRawTextContent(child)) continue;

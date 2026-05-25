@@ -6,7 +6,6 @@ import {
 import { evaluateSuppression } from "./evaluate-suppression.js";
 import { compileIgnoredFilePatterns, isFileIgnoredByPatterns } from "./is-ignored-file.js";
 import { isSameRuleKey } from "./rule-key-aliases.js";
-import { createRnRawTextSuppressor } from "./suppress-rn-raw-text.js";
 
 export const resolveCandidateReadPath = (rootDirectory: string, filePath: string): string => {
   const normalizedFile = filePath.replace(/\\/g, "/");
@@ -57,11 +56,6 @@ export const filterIgnoredDiagnostics = (
   );
   const ignoredFilePatterns = compileIgnoredFilePatterns(config);
   const compiledOverrides = compileIgnoreOverrides(config);
-  const getFileLines = createFileLinesCache(rootDirectory, readFileLinesSync);
-  const shouldSuppressRnRawText = createRnRawTextSuppressor({
-    config,
-    getFileLines,
-  });
 
   return diagnostics.filter((diagnostic) => {
     const ruleIdentifier = `${diagnostic.plugin}/${diagnostic.rule}`;
@@ -70,8 +64,6 @@ export const filterIgnoredDiagnostics = (
       return false;
     }
     if (isDiagnosticIgnoredByOverrides(diagnostic, rootDirectory, compiledOverrides)) return false;
-
-    if (shouldSuppressRnRawText(diagnostic)) return false;
 
     return true;
   });

@@ -4,7 +4,7 @@ import reactDoctorPlugin, {
   REACT_DOCTOR_RULES,
 } from "oxlint-plugin-react-doctor";
 import type { OxlintRuleSeverity } from "oxlint-plugin-react-doctor";
-import type { ProjectInfo, RuleSeverityControls } from "../../types/index.js";
+import type { ProjectInfo, ReactDoctorConfig, RuleSeverityControls } from "../../types/index.js";
 import { resolveRuleSeverityOverride } from "../../resolve-rule-severity-override.js";
 import { buildCapabilities, shouldEnableRule } from "./capabilities.js";
 import { filterRulesToAvailable, resolveReactHooksJsPlugin } from "./plugin-resolution.js";
@@ -18,6 +18,8 @@ export interface OxlintConfigOptions {
   ignoredTags?: ReadonlySet<string>;
   serverAuthFunctionNames?: ReadonlyArray<string>;
   severityControls?: RuleSeverityControls;
+  textComponents?: ReactDoctorConfig["textComponents"];
+  rawTextWrapperComponents?: ReactDoctorConfig["rawTextWrapperComponents"];
   /**
    * User-declared plugins from `react-doctor.config.json`'s
    * `plugins: [...]`, already resolved + introspected via
@@ -68,6 +70,9 @@ const buildUserPluginRules = (
   return enabled;
 };
 
+const toStringArray = (values: ReadonlyArray<string> | undefined): string[] =>
+  values?.filter((value) => typeof value === "string" && value.length > 0) ?? [];
+
 export const createOxlintConfig = ({
   pluginPath,
   project,
@@ -76,6 +81,8 @@ export const createOxlintConfig = ({
   ignoredTags = new Set<string>(),
   serverAuthFunctionNames,
   severityControls,
+  textComponents,
+  rawTextWrapperComponents,
   userPlugins = [],
 }: OxlintConfigOptions) => {
   const reactHooksJsPlugin = resolveReactHooksJsPlugin(project.hasReactCompiler, customRulesOnly);
@@ -132,6 +139,14 @@ export const createOxlintConfig = ({
     jsPlugins.push(userPlugin.entry);
   }
 
+  const rnNoRawTextSettings = {
+    textComponents: toStringArray(textComponents),
+    rawTextWrapperComponents: toStringArray(rawTextWrapperComponents),
+  };
+  const hasRnNoRawTextSettings =
+    rnNoRawTextSettings.textComponents.length > 0 ||
+    rnNoRawTextSettings.rawTextWrapperComponents.length > 0;
+
   return {
     ...(extendsPaths.length > 0 ? { extends: extendsPaths } : {}),
     categories: {
@@ -158,6 +173,7 @@ export const createOxlintConfig = ({
         ...(serverAuthFunctionNames && serverAuthFunctionNames.length > 0
           ? { serverAuthFunctionNames: [...serverAuthFunctionNames] }
           : {}),
+        ...(hasRnNoRawTextSettings ? { rnNoRawText: rnNoRawTextSettings } : {}),
       },
     },
     rules: {

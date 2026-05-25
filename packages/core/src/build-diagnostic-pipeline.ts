@@ -13,7 +13,6 @@ import { compileIgnoredFilePatterns, isFileIgnoredByPatterns } from "./is-ignore
 import { isTestFilePath } from "./is-test-file.js";
 import { resolveRuleSeverityOverride } from "./resolve-rule-severity-override.js";
 import { isSameRuleKey } from "./rule-key-aliases.js";
-import { createRnRawTextSuppressor } from "./suppress-rn-raw-text.js";
 
 interface BuildDiagnosticPipelineInput {
   readonly rootDirectory: string;
@@ -90,10 +89,6 @@ export const buildDiagnosticPipeline = (
     }
     return false;
   };
-  const shouldSuppressRnRawText = createRnRawTextSuppressor({
-    config: userConfig,
-    getFileLines,
-  });
 
   return {
     apply: (diagnostic) => {
@@ -115,8 +110,6 @@ export const buildDiagnosticPipeline = (
         }
         if (isDiagnosticIgnoredByOverrides(current, rootDirectory, compiledOverrides)) return null;
       }
-
-      if (shouldSuppressRnRawText(current)) return null;
 
       if (respectInlineDisables && current.line > 0) {
         const lines = getFileLines(current.filePath);

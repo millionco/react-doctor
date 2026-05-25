@@ -5,6 +5,7 @@ import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isImportedFromModule } from "../../utils/find-import-source-for-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -16,6 +17,12 @@ const HOOK_OBJECTS_WITH_METHODS = new Map<string, Set<string>>([
   ],
   ["useSearchParams", new Set(["get", "getAll", "has", "set"])],
 ]);
+
+const REACT_NAVIGATION_MODULES = ["@react-navigation/native", "@react-navigation/core"];
+
+const isReactNavigationHook = (node: EsTreeNode, hookSource: string): boolean =>
+  hookSource === "useNavigation" &&
+  REACT_NAVIGATION_MODULES.some((moduleName) => isImportedFromModule(node, hookSource, moduleName));
 
 // HACK: O(1) lookup. Indexes top-level `const x = useFooBar(...)`
 // declarations once per component on enter, so subsequent
@@ -110,6 +117,7 @@ export const reactCompilerDestructureMethod = defineRule<Rule>({
 
         const allowedMethods = HOOK_OBJECTS_WITH_METHODS.get(hookSource);
         if (!allowedMethods || !allowedMethods.has(methodName)) return;
+        if (isReactNavigationHook(node, hookSource)) return;
 
         if (!isNodeOfType(node.parent, "CallExpression") || node.parent.callee !== node) return;
 

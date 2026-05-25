@@ -228,25 +228,22 @@ export class Git extends Context.Service<
             return { status, stdout, stderr } satisfies GitInvocationResult;
           }),
         ).pipe(
-          Effect.catchTag(
-            "PlatformError",
-            (cause) => {
-              if (input.command !== "git") {
-                return Effect.succeed({
-                  status: 127,
-                  stdout: "",
-                  stderr: String(cause),
-                } satisfies GitInvocationResult);
-              }
-              return new ReactDoctorError({
-                reason: new GitInvocationFailed({
-                  args: [...input.args],
-                  directory: input.directory,
-                  cause,
-                }),
-              });
-            },
-          ),
+          Effect.catchTag("PlatformError", (cause) => {
+            if (input.command !== "git") {
+              return Effect.succeed({
+                status: 127,
+                stdout: "",
+                stderr: String(cause),
+              } satisfies GitInvocationResult);
+            }
+            return new ReactDoctorError({
+              reason: new GitInvocationFailed({
+                args: [...input.args],
+                directory: input.directory,
+                cause,
+              }),
+            });
+          }),
         );
 
       const runGit = (

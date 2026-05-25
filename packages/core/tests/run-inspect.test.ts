@@ -158,9 +158,7 @@ describe("runInspect — happy path", () => {
         ...baseInput,
         isCi: true,
         resolveLocalGithubViewerPermission: true,
-      }).pipe(
-        Effect.provide(layersOf({ githubViewerPermission: "maintain" })),
-      ),
+      }).pipe(Effect.provide(layersOf({ githubViewerPermission: "maintain" }))),
     );
 
     expect(output.scoreMetadata).not.toHaveProperty("githubViewerPermission");

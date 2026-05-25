@@ -34,9 +34,9 @@ describe("resolveGithubActionsScoreMetadata", () => {
   });
 
   it("returns empty metadata outside GitHub Actions", () => {
-    expect(resolveGithubActionsScoreMetadata(buildEnvironment({ GITHUB_ACTIONS: "false" }))).toEqual(
-      {},
-    );
+    expect(
+      resolveGithubActionsScoreMetadata(buildEnvironment({ GITHUB_ACTIONS: "false" })),
+    ).toEqual({});
   });
 
   it("extracts pull request relationship metadata", () => {

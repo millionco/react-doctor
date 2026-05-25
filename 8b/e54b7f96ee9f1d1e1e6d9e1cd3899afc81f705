@@ -1,0 +1,31 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/effect-needs-cleanup.ts
+  s_5651a1be871f3a::t_09223eb4f7eb6e 96-100,107-111,116,118,139,184-186,189-190
+  s_5651a1be871f3a::t_335722d227315a 35
+  s_fd54e8c457782f::t_f532d5d70a978f 119-121,138,162,187-188
+  s_fd54e8c457782f::t_5f415aee8f4e61 11-14,123,127-128,135,150,155-158,160
+  s_fd54e8c457782f::t_d0f047da606eb1 68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "8be54b7f96ee9f1d1e1e6d9e1cd3899afc81f705",
+  "prompts": {},
+  "sessions": {
+    "s_5651a1be871f3a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "0f1dc61e-1f74-4b46-b2fe-1ea5e950f1b8",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    },
+    "s_fd54e8c457782f": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "9fe6cc40-5f54-4aa4-8863-1770c86dc5fb",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

@@ -12,6 +12,7 @@ export type { CleanedDiagnostic, Diagnostic, OxlintOutput } from "./diagnostic.j
 export type { HandleErrorOptions } from "./handle-error.js";
 export type {
   DiffInfo,
+  InspectConfigOverride,
   InspectOptions,
   InspectResult,
   JsonReport,

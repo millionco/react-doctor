@@ -160,12 +160,13 @@ export const inspect = async (
   // `configOverride` programmatically, in which case the runner
   // falls back to the scan root for plugin resolution.
   let configSourceDirectory: string | null = null;
+  const configOverride = inputOptions.configOverride;
   if (hasConfigOverride) {
-    if (isInspectConfigOverride(inputOptions.configOverride)) {
-      userConfig = inputOptions.configOverride.config;
-      configSourceDirectory = inputOptions.configOverride.sourceDirectory;
+    if (isInspectConfigOverride(configOverride)) {
+      userConfig = configOverride.config;
+      configSourceDirectory = configOverride.sourceDirectory;
     } else {
-      userConfig = inputOptions.configOverride ?? null;
+      userConfig = configOverride ?? null;
     }
   } else {
     const loadedConfig = loadConfigWithSource(directory);

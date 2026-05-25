@@ -149,10 +149,7 @@ export const createRnRawTextSuppressor = (
     const lines = getFileLines(diagnostic.filePath);
     if (!lines) return false;
 
-    if (
-      hasTextComponents &&
-      isInsideTextComponent(lines, diagnostic.line, textComponentNames)
-    ) {
+    if (hasTextComponents && isInsideTextComponent(lines, diagnostic.line, textComponentNames)) {
       return true;
     }
     return (

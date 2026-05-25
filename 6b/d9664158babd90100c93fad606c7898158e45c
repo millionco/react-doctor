@@ -1,0 +1,25 @@
+packages/react-doctor/tests/regressions/state-rules/effect-needs-cleanup.test.ts
+  s_fd54e8c457782f::t_4842c48fc84682 187-210
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/effect-needs-cleanup.ts
+  s_fd54e8c457782f::t_f532d5d70a978f 116-118,134,158,183-184
+packages/react-doctor/tests/regressions/state-rules/prefer-use-sync-external-store.test.ts
+  s_fd54e8c457782f::t_ec28935ff54187 63-91
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/utils/is-cleanup-return.ts
+  s_fd54e8c457782f::t_3a245b6cb1d18f 28-30,60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "6bd9664158babd90100c93fad606c7898158e45c",
+  "prompts": {},
+  "sessions": {
+    "s_fd54e8c457782f": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "9fe6cc40-5f54-4aa4-8863-1770c86dc5fb",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

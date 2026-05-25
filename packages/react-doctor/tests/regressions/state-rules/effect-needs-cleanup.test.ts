@@ -288,9 +288,12 @@ export const Subscribe = () => {
   });
 
   it("flags expression-body `addEventListener` because it does not return cleanup", async () => {
-    const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-expression-add-listener", {
-      files: {
-        "src/Resize.tsx": `import { useEffect } from "react";
+    const projectDir = setupReactProject(
+      tempRoot,
+      "effect-needs-cleanup-expression-add-listener",
+      {
+        files: {
+          "src/Resize.tsx": `import { useEffect } from "react";
 
 declare const handler: () => void;
 
@@ -299,8 +302,9 @@ export const Resize = () => {
   return <span />;
 };
 `,
+        },
       },
-    });
+    );
 
     const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
     expect(hits).toHaveLength(1);
@@ -420,9 +424,12 @@ export const Subscribe = () => {
   });
 
   it("flags a BlockStatement that returns `addEventListener` directly", async () => {
-    const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-return-add-listener", {
-      files: {
-        "src/Resize.tsx": `import { useEffect } from "react";
+    const projectDir = setupReactProject(
+      tempRoot,
+      "effect-needs-cleanup-return-add-listener",
+      {
+        files: {
+          "src/Resize.tsx": `import { useEffect } from "react";
 
 declare const handler: () => void;
 
@@ -433,8 +440,9 @@ export const Resize = () => {
   return <span />;
 };
 `,
+        },
       },
-    });
+    );
 
     const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
     expect(hits).toHaveLength(1);

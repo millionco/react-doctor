@@ -1,0 +1,21 @@
+packages/oxlint-plugin-react-doctor/src/plugin/constants/react.ts
+  s_5651a1be871f3a::t_70ef9bc0c877be 84-86,89
+packages/react-doctor/tests/regressions/state-rules/effect-needs-cleanup.test.ts
+  s_5651a1be871f3a::t_b91e96d1afbc87 117-146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "e3d29b566c4dcfbbaf5479531db766af5f98d313",
+  "prompts": {},
+  "sessions": {
+    "s_5651a1be871f3a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "0f1dc61e-1f74-4b46-b2fe-1ea5e950f1b8",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

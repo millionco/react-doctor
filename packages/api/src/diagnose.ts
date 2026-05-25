@@ -9,11 +9,9 @@ import {
   layerOtlp,
   Linter,
   LintPartialFailures,
-  loadConfigWithSource,
   Project,
   Reporter,
-  resolveConfigRootDir,
-  resolveDiagnoseTarget,
+  resolveScanPlan,
   runInspect,
   Score,
   type InspectOutput,
@@ -23,12 +21,16 @@ import {
   NoReactDependencyError,
   ProjectNotFoundError,
 } from "@react-doctor/core";
-import type { DiagnoseOptions, DiagnoseResult } from "@react-doctor/core";
+import type { DiagnoseOptions, DiagnoseResult, ResolvedScanPlan } from "@react-doctor/core";
 
-const buildLayerStack = () =>
+const buildLayerStack = (scanPlan: ResolvedScanPlan) =>
   Layer.mergeAll(
     Project.layerNode,
-    Config.layerNode,
+    Config.layerOf({
+      config: scanPlan.userConfig,
+      resolvedDirectory: scanPlan.resolvedDirectory ?? scanPlan.directoryAfterRootDir,
+      configSourceDirectory: scanPlan.configSourceDirectory,
+    }),
     Files.layerNode,
     Git.layerNode,
     Linter.layerOxlint,
@@ -44,45 +46,25 @@ export const diagnose = async (
 ): Promise<DiagnoseResult> => {
   const startTime = globalThis.performance.now();
   const requestedDirectory = path.resolve(directory);
+  const scanPlan = resolveScanPlan({
+    directory: requestedDirectory,
+    options,
+    shouldResolveDiagnoseTarget: true,
+  });
+  const resolvedDirectory = scanPlan.resolvedDirectory;
 
-  /**
-   * Pre-resolve the rootDir redirect + auto-fallback to nested React
-   * subprojects BEFORE handing off to runInspect. These two
-   * directory-shape concerns predate the project-discovery boundary:
-   * the rootDir redirect happens against the config (which lives at
-   * the requested directory), and resolveDiagnoseTarget walks down to
-   * find a nested React project when the requested directory itself
-   * lacks a package.json. runInspect itself only knows "go discover
-   * the project at this directory".
-   */
-  const initialLoadedConfig = loadConfigWithSource(requestedDirectory);
-  const redirectedDirectory = resolveConfigRootDir(
-    initialLoadedConfig?.config ?? null,
-    initialLoadedConfig?.sourceDirectory ?? null,
-  );
-  const directoryAfterRedirect = redirectedDirectory ?? requestedDirectory;
-
-  // resolveDiagnoseTarget throws AmbiguousProjectError when the
-  // requested directory has multiple React subprojects; let it
-  // propagate so the legacy public-API contract holds. A `null`
-  // return means "no React project here" — translate that to the
-  // ProjectNotFoundError the legacy diagnose() used.
-  const resolvedDirectory = resolveDiagnoseTarget(directoryAfterRedirect);
   if (!resolvedDirectory) {
-    throw new ProjectNotFoundError(directoryAfterRedirect);
+    throw new ProjectNotFoundError(scanPlan.directoryAfterRootDir);
   }
-
-  const includePaths = options.includePaths ?? [];
 
   const program = runInspect({
     directory: resolvedDirectory,
-    includePaths,
-    customRulesOnly: initialLoadedConfig?.config?.customRulesOnly ?? false,
-    respectInlineDisables:
-      options.respectInlineDisables ?? initialLoadedConfig?.config?.respectInlineDisables ?? true,
-    adoptExistingLintConfig: initialLoadedConfig?.config?.adoptExistingLintConfig ?? true,
-    ignoredTags: new Set(initialLoadedConfig?.config?.ignore?.tags ?? []),
-    runDeadCode: options.deadCode ?? initialLoadedConfig?.config?.deadCode ?? true,
+    includePaths: scanPlan.options.includePaths,
+    customRulesOnly: scanPlan.options.customRulesOnly,
+    respectInlineDisables: scanPlan.options.respectInlineDisables,
+    adoptExistingLintConfig: scanPlan.options.adoptExistingLintConfig,
+    ignoredTags: scanPlan.options.ignoredTags,
+    runDeadCode: scanPlan.options.deadCode,
     isCi: false,
   });
 
@@ -96,7 +78,7 @@ export const diagnose = async (
   // grep-stderr callers.
   const output: InspectOutput = await Effect.runPromise(
     program.pipe(
-      Effect.provide(buildLayerStack()),
+      Effect.provide(buildLayerStack(scanPlan)),
       // Opt-in OTLP exporter. No-op unless REACT_DOCTOR_OTLP_ENDPOINT
       // + REACT_DOCTOR_OTLP_AUTH_HEADER are set in the environment;
       // see `core/observability.ts` for the env-driven config.

@@ -28,6 +28,29 @@ fs.writeFileSync(
   JSON.stringify({ name: "no-react", dependencies: {} }),
 );
 
+const forbiddenWordPlugin = `
+const noForbiddenWordRule = {
+  create: (context) => ({
+    JSXText(node) {
+      if (typeof node.value !== "string") return;
+      if (node.value.includes("FORBIDDEN")) {
+        context.report({
+          node,
+          message: "team policy: 'FORBIDDEN' is not allowed in JSX text",
+        });
+      }
+    },
+  }),
+};
+
+module.exports = {
+  meta: { name: "team-conventions" },
+  rules: {
+    "no-forbidden-word": noForbiddenWordRule,
+  },
+};
+`;
+
 afterAll(() => {
   fs.rmSync(noReactTempDirectory, { recursive: true, force: true });
 });
@@ -131,6 +154,42 @@ describe("inspect", () => {
       expect(result.project.rootDirectory).toBe(webProjectDirectory);
     } finally {
       consoleSpy.mockRestore();
+      fs.rmSync(tempDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves config plugins from the config source directory after rootDir redirect", async () => {
+    clearConfigCache();
+    const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-rootdir-plugin-"));
+    try {
+      const webProjectDirectory = setupReactProject(tempDirectory, "apps/web", {
+        files: {
+          "src/App.tsx": `export const App = () => <div>FORBIDDEN content</div>;\n`,
+        },
+      });
+      fs.mkdirSync(path.join(tempDirectory, "lint"), { recursive: true });
+      fs.writeFileSync(path.join(tempDirectory, "lint/team-conventions.cjs"), forbiddenWordPlugin);
+      fs.writeFileSync(
+        path.join(tempDirectory, "react-doctor.config.json"),
+        JSON.stringify({
+          rootDir: "apps/web",
+          plugins: ["./lint/team-conventions.cjs"],
+          rules: { "team-conventions/no-forbidden-word": "error" },
+        }),
+      );
+
+      const result = await inspect(tempDirectory, {
+        lint: true,
+        deadCode: false,
+        noScore: true,
+        silent: true,
+      });
+
+      expect(result.project.rootDirectory).toBe(webProjectDirectory);
+      expect(result.diagnostics.some((diagnostic) => diagnostic.rule === "no-forbidden-word")).toBe(
+        true,
+      );
+    } finally {
       fs.rmSync(tempDirectory, { recursive: true, force: true });
     }
   });

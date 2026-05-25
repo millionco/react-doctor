@@ -5,6 +5,7 @@ export * from "./errors.js";
 export * from "./observability.js";
 export * from "./paths.js";
 export * from "./refs.js";
+export * from "./resolve-scan-plan.js";
 export * from "./run-inspect.js";
 // Selective re-exports from `./schemas.js` only — most class names
 // (Diagnostic, JsonReport, JsonReportSummary, …) collide with the

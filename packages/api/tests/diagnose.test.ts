@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 import { diagnose, NoReactDependencyError, ProjectNotFoundError } from "../src/index.js";
+import { clearConfigCache } from "@react-doctor/core";
 
 const FIXTURES_DIRECTORY = path.resolve(
   import.meta.dirname,
@@ -18,6 +19,34 @@ fs.writeFileSync(
   path.join(noReactTempDirectory, "package.json"),
   JSON.stringify({ name: "no-react", dependencies: {} }),
 );
+
+const forbiddenWordPlugin = `
+const noForbiddenWordRule = {
+  create: (context) => ({
+    JSXText(node) {
+      if (typeof node.value !== "string") return;
+      if (node.value.includes("FORBIDDEN")) {
+        context.report({
+          node,
+          message: "team policy: 'FORBIDDEN' is not allowed in JSX text",
+        });
+      }
+    },
+  }),
+};
+
+module.exports = {
+  meta: { name: "team-conventions" },
+  rules: {
+    "no-forbidden-word": noForbiddenWordRule,
+  },
+};
+`;
+
+const writeJson = (filePath: string, value: unknown): void => {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, JSON.stringify(value));
+};
 
 afterAll(() => {
   fs.rmSync(noReactTempDirectory, { recursive: true, force: true });
@@ -59,5 +88,41 @@ describe("diagnose", () => {
       lint: false,
     });
     expect(result.elapsedMilliseconds).toBeGreaterThanOrEqual(0);
+  });
+
+  it("resolves config plugins from the config source directory after rootDir redirect", async () => {
+    clearConfigCache();
+    const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rdc-rootdir-plugin-"));
+    try {
+      const webProjectDirectory = path.join(tempDirectory, "apps", "web");
+      writeJson(path.join(webProjectDirectory, "package.json"), {
+        name: "web",
+        dependencies: { react: "^19.0.0", "react-dom": "^19.0.0" },
+      });
+      writeJson(path.join(webProjectDirectory, "tsconfig.json"), {
+        compilerOptions: { jsx: "preserve", strict: false, target: "es2022", module: "esnext" },
+      });
+      fs.mkdirSync(path.join(webProjectDirectory, "src"), { recursive: true });
+      fs.writeFileSync(
+        path.join(webProjectDirectory, "src/App.tsx"),
+        `export const App = () => <div>FORBIDDEN content</div>;\n`,
+      );
+      fs.mkdirSync(path.join(tempDirectory, "lint"), { recursive: true });
+      fs.writeFileSync(path.join(tempDirectory, "lint/team-conventions.cjs"), forbiddenWordPlugin);
+      writeJson(path.join(tempDirectory, "react-doctor.config.json"), {
+        rootDir: "apps/web",
+        plugins: ["./lint/team-conventions.cjs"],
+        rules: { "team-conventions/no-forbidden-word": "error" },
+      });
+
+      const result = await diagnose(tempDirectory, { deadCode: false });
+
+      expect(result.project.rootDirectory).toBe(webProjectDirectory);
+      expect(result.diagnostics.some((diagnostic) => diagnostic.rule === "no-forbidden-word")).toBe(
+        true,
+      );
+    } finally {
+      fs.rmSync(tempDirectory, { recursive: true, force: true });
+    }
   });
 });

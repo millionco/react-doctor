@@ -14,7 +14,6 @@ import type { ReactDoctorConfig } from "@react-doctor/core";
 
 export interface BuildRuntimeLayersInput {
   readonly directory: string;
-  readonly hasConfigOverride: boolean;
   readonly userConfig: ReactDoctorConfig | null;
   readonly configSourceDirectory: string | null;
   /**
@@ -38,11 +37,10 @@ export interface BuildRuntimeLayersInput {
  * (the default for `@react-doctor/api → diagnose()`) with two
  * differences specific to the CLI path:
  *
- * - **Config**: when the caller passes `configOverride`, the
- *   already-loaded config is provided via `Config.layerOf` instead
- *   of re-loading from disk; `configSourceDirectory` is threaded
- *   through so `userConfig.plugins` resolution still anchors at
- *   the original config file location.
+ * - **Config**: the already-resolved scan plan is provided via
+ *   `Config.layerOf` instead of re-loading from disk. This keeps
+ *   `rootDir`, `configSourceDirectory`, and `config.plugins`
+ *   ownership in the shared scan-plan boundary.
  * - **Score**: always `layerOf(null)` because the CLI computes the
  *   real score AFTER `runInspect` returns, with surface filtering
  *   applied (the orchestrator's `Score.compute` only sees the
@@ -57,18 +55,14 @@ export const buildRuntimeLayers = (input: BuildRuntimeLayersInput) => {
   // real score below with `filterDiagnosticsForSurface("score", ...)`
   // applied first.
   const scoreLayer = Score.layerOf(null);
-  const configLayer = input.hasConfigOverride
-    ? Config.layerOf({
-        config: input.userConfig,
-        resolvedDirectory: input.directory,
-        // `configSourceDirectory` is non-null when `inspect()` loaded
-        // the config from disk itself (the CLI path) and `null` only
-        // when the caller passed `configOverride` programmatically
-        // without a corresponding file. The runner falls back to
-        // the scan root in the null case.
-        configSourceDirectory: input.configSourceDirectory,
-      })
-    : Config.layerNode;
+  const configLayer = Config.layerOf({
+    config: input.userConfig,
+    resolvedDirectory: input.directory,
+    // `configSourceDirectory` is non-null when the config came from
+    // disk and `null` only when the caller supplied a programmatic
+    // config override. The runner falls back to the scan root there.
+    configSourceDirectory: input.configSourceDirectory,
+  });
 
   return Layer.mergeAll(
     Project.layerNode,

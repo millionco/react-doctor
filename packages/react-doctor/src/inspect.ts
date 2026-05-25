@@ -7,10 +7,9 @@ import {
   filterDiagnosticsForSurface,
   highlighter,
   layerOtlp,
-  loadConfigWithSource,
   OXLINT_NODE_REQUIREMENT,
   ReactDoctorError,
-  resolveConfigRootDir,
+  resolveScanPlan,
   runInspect as runInspectEffect,
   type ReactDoctorErrorReason,
 } from "@react-doctor/core";
@@ -22,10 +21,10 @@ import {
 } from "@react-doctor/core";
 import type {
   Diagnostic,
-  DiagnosticSurface,
   InspectOptions,
   InspectResult,
   ReactDoctorConfig,
+  ResolvedScanOptions,
   ScoreResult,
 } from "@react-doctor/core";
 import { printDiagnostics } from "./cli/utils/render-diagnostics.js";
@@ -54,52 +53,6 @@ const silentConsole = new Proxy({} as Console.Console, {
 const runConsole = (effect: Effect.Effect<void>): void => {
   Effect.runSync(effect);
 };
-
-interface ResolvedInspectOptions {
-  lint: boolean;
-  deadCode: boolean;
-  verbose: boolean;
-  scoreOnly: boolean;
-  noScore: boolean;
-  isCi: boolean;
-  silent: boolean;
-  includePaths: string[];
-  customRulesOnly: boolean;
-  share: boolean;
-  respectInlineDisables: boolean;
-  adoptExistingLintConfig: boolean;
-  ignoredTags: ReadonlySet<string>;
-  outputSurface: DiagnosticSurface;
-}
-
-const buildIgnoredTags = (userConfig: ReactDoctorConfig | null): ReadonlySet<string> => {
-  const tags = new Set<string>();
-  if (userConfig?.ignore?.tags) {
-    for (const tag of userConfig.ignore.tags) tags.add(tag);
-  }
-  return tags;
-};
-
-const mergeInspectOptions = (
-  inputOptions: InspectOptions,
-  userConfig: ReactDoctorConfig | null,
-): ResolvedInspectOptions => ({
-  lint: inputOptions.lint ?? userConfig?.lint ?? true,
-  deadCode: inputOptions.deadCode ?? userConfig?.deadCode ?? true,
-  verbose: inputOptions.verbose ?? userConfig?.verbose ?? false,
-  scoreOnly: inputOptions.scoreOnly ?? false,
-  noScore: inputOptions.noScore ?? userConfig?.noScore ?? false,
-  isCi: inputOptions.isCi ?? false,
-  silent: inputOptions.silent ?? false,
-  includePaths: inputOptions.includePaths ?? [],
-  customRulesOnly: userConfig?.customRulesOnly ?? false,
-  share: userConfig?.share ?? true,
-  respectInlineDisables:
-    inputOptions.respectInlineDisables ?? userConfig?.respectInlineDisables ?? true,
-  adoptExistingLintConfig: userConfig?.adoptExistingLintConfig ?? true,
-  ignoredTags: buildIgnoredTags(userConfig),
-  outputSurface: inputOptions.outputSurface ?? "cli",
-});
 
 /**
  * Tagged-reason → legacy-class dispatch for the public `inspect()`
@@ -138,32 +91,8 @@ export const inspect = async (
   inputOptions: InspectOptions = {},
 ): Promise<InspectResult> => {
   const startTime = performance.now();
-
-  const hasConfigOverride = inputOptions.configOverride !== undefined;
-  let scanDirectory = directory;
-  let userConfig: ReactDoctorConfig | null;
-  // Source directory of the config file that supplied `userConfig`,
-  // when one was loaded from disk. Drives the resolution base for
-  // `config.plugins` entries — relative paths and npm packages
-  // resolve from here (the config file's location), NOT from the
-  // post-`rootDir` scan root. `null` when the caller passed
-  // `configOverride` programmatically, in which case the runner
-  // falls back to the scan root for plugin resolution.
-  let configSourceDirectory: string | null = null;
-  if (hasConfigOverride) {
-    userConfig = inputOptions.configOverride ?? null;
-  } else {
-    const loadedConfig = loadConfigWithSource(directory);
-    const redirectedDirectory = resolveConfigRootDir(
-      loadedConfig?.config ?? null,
-      loadedConfig?.sourceDirectory ?? null,
-    );
-    if (redirectedDirectory) scanDirectory = redirectedDirectory;
-    userConfig = loadedConfig?.config ?? null;
-    configSourceDirectory = loadedConfig?.sourceDirectory ?? null;
-  }
-
-  const options = mergeInspectOptions(inputOptions, userConfig);
+  const scanPlan = resolveScanPlan({ directory, options: inputOptions });
+  const options = scanPlan.options;
 
   // HACK: spinner.ts still has module-level silent state (used by
   // printProjectDetection's internal spinner() calls). Mirror the
@@ -176,11 +105,10 @@ export const inspect = async (
 
   try {
     return await runInspectWithRuntime(
-      scanDirectory,
+      scanPlan.resolvedDirectory ?? scanPlan.directoryAfterRootDir,
       options,
-      userConfig,
-      hasConfigOverride,
-      configSourceDirectory,
+      scanPlan.userConfig,
+      scanPlan.configSourceDirectory,
       startTime,
     );
   } finally {
@@ -195,9 +123,8 @@ interface SpinnerHandle {
 
 const runInspectWithRuntime = async (
   directory: string,
-  options: ResolvedInspectOptions,
+  options: ResolvedScanOptions,
   userConfig: ReactDoctorConfig | null,
-  hasConfigOverride: boolean,
   configSourceDirectory: string | null,
   startTime: number,
 ): Promise<InspectResult> => {
@@ -218,7 +145,6 @@ const runInspectWithRuntime = async (
 
   const layers = buildRuntimeLayers({
     directory,
-    hasConfigOverride,
     userConfig,
     configSourceDirectory,
     shouldSkipLint: !options.lint || lintBindingMissing,
@@ -391,7 +317,7 @@ const runInspectWithRuntime = async (
 };
 
 interface FinalizeInput {
-  options: ResolvedInspectOptions;
+  options: ResolvedScanOptions;
   elapsedMilliseconds: number;
   diagnostics: ReadonlyArray<Diagnostic>;
   score: ScoreResult | null;

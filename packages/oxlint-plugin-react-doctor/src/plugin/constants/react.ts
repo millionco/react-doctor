@@ -102,6 +102,20 @@ export const UNSUBSCRIPTION_METHOD_NAMES = new Set([
   "abort",
 ]);
 
+// Methods accepted only when called on a variable bound to a subscribe-like
+// return value (`const sub = source.addListener(...); return () => sub.remove()`).
+// These names are too generic to trust on arbitrary receivers, but they are
+// common release verbs for subscription/resource objects.
+export const BOUND_SUBSCRIPTION_RELEASE_METHOD_NAMES = new Set([
+  "remove",
+  "unsubscribe",
+  "unsub",
+  "cleanup",
+  "dispose",
+  "destroy",
+  "teardown",
+]);
+
 // Identifier names recognized as "this is a release/teardown call"
 // when they appear as a direct call inside an effect's cleanup
 // return — covers both library unsubscribe shorthands

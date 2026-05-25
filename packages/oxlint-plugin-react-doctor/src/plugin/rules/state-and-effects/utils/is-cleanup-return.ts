@@ -1,5 +1,6 @@
 import { TIMER_CLEANUP_CALLEE_NAMES } from "../../../constants/dom.js";
 import {
+  BOUND_SUBSCRIPTION_RELEASE_METHOD_NAMES,
   CLEANUP_LIKE_RELEASE_CALLEE_NAMES,
   UNSUBSCRIPTION_METHOD_NAMES,
 } from "../../../constants/react.js";
@@ -23,7 +24,7 @@ const isReleaseLikeCall = (
   }
   if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
     if (
-      callee.property.name === "remove" &&
+      BOUND_SUBSCRIPTION_RELEASE_METHOD_NAMES.has(callee.property.name) &&
       isNodeOfType(callee.object, "Identifier") &&
       knownBoundSubscriptionNames.has(callee.object.name)
     ) {

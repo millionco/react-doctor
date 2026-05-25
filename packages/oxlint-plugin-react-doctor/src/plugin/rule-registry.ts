@@ -28,7 +28,6 @@ import { clickEventsHaveKeyEvents } from "./rules/a11y/click-events-have-key-eve
 import { clientLocalstorageNoVersion } from "./rules/client/client-localstorage-no-version.js";
 import { clientPassiveEventListeners } from "./rules/client/client-passive-event-listeners.js";
 import { controlHasAssociatedLabel } from "./rules/a11y/control-has-associated-label.js";
-import { noBoldHeading } from "./rules/react-ui/no-bold-heading.js";
 import { noEmDashInJsxText } from "./rules/react-ui/no-em-dash-in-jsx-text.js";
 import { noRedundantPaddingAxes } from "./rules/react-ui/no-redundant-padding-axes.js";
 import { noRedundantSizeAxes } from "./rules/react-ui/no-redundant-size-axes.js";
@@ -574,20 +573,6 @@ export const reactDoctorRules = [
       ...controlHasAssociatedLabel,
       framework: "global",
       category: "Accessibility",
-    },
-  },
-  {
-    key: "react-doctor/design-no-bold-heading",
-    id: "design-no-bold-heading",
-    source: "react-doctor",
-    originallyExternal: false,
-    framework: "global",
-    category: "Architecture",
-    severity: "warn",
-    rule: {
-      ...noBoldHeading,
-      framework: "global",
-      category: "Architecture",
     },
   },
   {

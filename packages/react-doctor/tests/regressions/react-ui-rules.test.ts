@@ -11,43 +11,6 @@ afterAll(() => {
   fs.rmSync(tempRoot, { recursive: true, force: true });
 });
 
-describe("design-no-bold-heading", () => {
-  it("flags font-bold on headings and inline fontWeight ≥ 700", async () => {
-    const projectDir = setupReactProject(tempRoot, "no-bold-heading-pos", {
-      files: {
-        "src/Page.tsx": `export const Page = () => (
-  <div>
-    <h1 className="text-5xl font-bold">Hero</h1>
-    <h2 style={{ fontWeight: 800 }}>Section</h2>
-    <h3 className="font-semibold">Subsection</h3>
-  </div>
-);
-`,
-      },
-    });
-
-    const hits = await collectRuleHits(projectDir, "design-no-bold-heading");
-    expect(hits.length).toBeGreaterThanOrEqual(2);
-    expect(hits.some((hit) => hit.message.includes("h1"))).toBe(true);
-    expect(hits.some((hit) => hit.message.includes("h2"))).toBe(true);
-    expect(hits.every((hit) => !hit.message.includes("h3"))).toBe(true);
-  });
-
-  it("does not flag font-medium / font-semibold on headings", async () => {
-    const projectDir = setupReactProject(tempRoot, "no-bold-heading-neg", {
-      files: {
-        "src/Page.tsx": `export const Page = () => (
-  <h1 className="text-5xl font-semibold tracking-tight">Hero</h1>
-);
-`,
-      },
-    });
-
-    const hits = await collectRuleHits(projectDir, "design-no-bold-heading");
-    expect(hits).toHaveLength(0);
-  });
-});
-
 describe("design-no-redundant-padding-axes", () => {
   it("flags px-N py-N where N is the same value", async () => {
     const projectDir = setupReactProject(tempRoot, "no-padding-axes-pos", {

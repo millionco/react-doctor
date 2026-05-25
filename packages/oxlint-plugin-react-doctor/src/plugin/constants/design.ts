@@ -25,16 +25,6 @@ export const WIDE_TRACKING_THRESHOLD_EM = 0.05;
 
 export const LONG_TRANSITION_DURATION_THRESHOLD_MS = 1000;
 
-export const HEAVY_HEADING_FONT_WEIGHT_MIN = 700;
-
-export const HEADING_TAG_NAMES = new Set(["h1", "h2", "h3", "h4", "h5", "h6"]);
-
-export const HEAVY_HEADING_TAILWIND_WEIGHTS = new Set([
-  "font-bold",
-  "font-extrabold",
-  "font-black",
-]);
-
 export const VAGUE_BUTTON_LABELS = new Set([
   "continue",
   "submit",

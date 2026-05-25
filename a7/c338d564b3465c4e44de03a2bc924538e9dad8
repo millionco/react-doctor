@@ -1,0 +1,19 @@
+packages/react-doctor/tests/regressions/state-rules/effect-needs-cleanup.test.ts
+  s_fd54e8c457782f::t_fbaa6635f72ddd 151
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "a7c338d564b3465c4e44de03a2bc924538e9dad8",
+  "prompts": {},
+  "sessions": {
+    "s_fd54e8c457782f": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "9fe6cc40-5f54-4aa4-8863-1770c86dc5fb",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

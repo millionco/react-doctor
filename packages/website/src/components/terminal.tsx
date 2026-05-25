@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useReducer, useState } from "react";
 import Image from "next/image";
 import { Copy, Check, ChevronRight, RotateCcw } from "lucide-react";
 import { PERFECT_SCORE, RUN_COMMAND } from "@/constants";
@@ -257,6 +257,11 @@ const COMPLETED_STATE: AnimationState = {
   showCta: true,
 };
 
+const animationReducer = (state: AnimationState, patch: Partial<AnimationState>) => ({
+  ...state,
+  ...patch,
+});
+
 const didAnimationComplete = () => {
   try {
     return localStorage.getItem(ANIMATION_COMPLETED_KEY) === "true";
@@ -272,8 +277,10 @@ const markAnimationCompleted = () => {
 };
 
 const Terminal = () => {
-  const [state, setState] = useState<AnimationState>(() =>
-    didAnimationComplete() ? COMPLETED_STATE : INITIAL_STATE,
+  const [state, dispatchState] = useReducer(
+    animationReducer,
+    undefined,
+    () => (didAnimationComplete() ? COMPLETED_STATE : INITIAL_STATE),
   );
 
   useEffect(() => {
@@ -286,7 +293,7 @@ const Terminal = () => {
 
     const update = (patch: Partial<AnimationState>) => {
       if (signal.aborted) return;
-      setState((previous) => ({ ...previous, ...patch }));
+      dispatchState(patch);
     };
 
     const run = async () => {

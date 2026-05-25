@@ -10,7 +10,7 @@ const REPOSITORY_ROOT = resolve(SCRIPT_DIRECTORY, "..");
 const CLI_BINARY_PATH = resolve(REPOSITORY_ROOT, "packages/react-doctor/dist/cli.js");
 const FIXTURE_DIRECTORY = resolve(
   REPOSITORY_ROOT,
-  "packages/react-doctor/tests/fixtures/basic-react",
+  "packages/core/tests/fixtures/basic-react",
 );
 
 if (!existsSync(CLI_BINARY_PATH)) {

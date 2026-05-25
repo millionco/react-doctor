@@ -1,0 +1,23 @@
+packages/react-doctor/src/cli/utils/select-projects.ts
+  s_69a66bf98d134b::t_2623b0f2b6d311 5
+  s_69a66bf98d134b::t_d3f8b3c36a1aa0 3-4,6-8
+  s_69a66bf98d134b::t_0e2718d0a01ac3 19
+packages/react-doctor/tests/select-projects.test.ts
+  s_69a66bf98d134b::t_f2ee3a3cdaf4dd 1-64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "2ae6c93710d3115e744561a9d74f4082dbd2a760",
+  "prompts": {},
+  "sessions": {
+    "s_69a66bf98d134b": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "37494b40-5e93-4885-8003-def3a81c3471",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

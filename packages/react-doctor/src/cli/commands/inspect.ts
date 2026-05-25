@@ -12,7 +12,7 @@ import {
   resolveConfigRootDir,
   toRelativePath,
 } from "@react-doctor/core";
-import { inspect } from "../../inspect.js";
+import { inspectWithLoadedConfig } from "../../inspect.js";
 import type { Diagnostic, InspectResult } from "@react-doctor/core";
 import { cliLogger as logger } from "../utils/cli-logger.js";
 import { STAGED_FILES_TEMP_DIR_PREFIX } from "../utils/constants.js";
@@ -75,6 +75,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       await runExplain(explainArgument, {
         resolvedDirectory,
         userConfig,
+        configSourceDirectory: loadedConfig?.sourceDirectory ?? null,
         scanOptions: resolveCliInspectOptions(flags, userConfig),
         projectFlag: flags.project,
       });
@@ -117,14 +118,17 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       const tempDirectory = mkdtempSync(path.join(tmpdir(), STAGED_FILES_TEMP_DIR_PREFIX));
       const snapshot = await materializeStagedFiles(resolvedDirectory, stagedFiles, tempDirectory);
       try {
-        const scanResult = await inspect(snapshot.tempDirectory, {
-          ...scanOptions,
-          includePaths: snapshot.stagedFiles,
-          configOverride: {
+        const scanResult = await inspectWithLoadedConfig(
+          snapshot.tempDirectory,
+          {
+            ...scanOptions,
+            includePaths: snapshot.stagedFiles,
+          },
+          {
             config: userConfig,
             sourceDirectory: loadedConfig?.sourceDirectory ?? null,
           },
-        });
+        );
 
         const remappedDiagnostics = scanResult.diagnostics.map((diagnostic) => ({
           ...diagnostic,
@@ -229,14 +233,17 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         logger.dim(`Scanning ${projectDirectory}...`);
         logger.break();
       }
-      const scanResult = await inspect(projectDirectory, {
-        ...scanOptions,
-        includePaths,
-        configOverride: {
+      const scanResult = await inspectWithLoadedConfig(
+        projectDirectory,
+        {
+          ...scanOptions,
+          includePaths,
+        },
+        {
           config: userConfig,
           sourceDirectory: loadedConfig?.sourceDirectory ?? null,
         },
-      });
+      );
       allDiagnostics.push(...scanResult.diagnostics);
       completedScans.push({ directory: projectDirectory, result: scanResult });
       if (!isQuiet) {

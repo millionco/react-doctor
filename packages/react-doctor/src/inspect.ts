@@ -23,7 +23,6 @@ import {
 import type {
   Diagnostic,
   DiagnosticSurface,
-  InspectConfigOverride,
   InspectOptions,
   InspectResult,
   ReactDoctorConfig,
@@ -56,13 +55,17 @@ const runConsole = (effect: Effect.Effect<void>): void => {
   Effect.runSync(effect);
 };
 
-const isInspectConfigOverride = (
-  value: InspectOptions["configOverride"],
-): value is InspectConfigOverride =>
-  typeof value === "object" &&
-  value !== null &&
-  Object.hasOwn(value, "config") &&
-  Object.hasOwn(value, "sourceDirectory");
+export interface LoadedInspectConfig {
+  readonly config: ReactDoctorConfig | null;
+  readonly sourceDirectory: string | null;
+}
+
+interface ResolvedInspectConfig {
+  readonly scanDirectory: string;
+  readonly userConfig: ReactDoctorConfig | null;
+  readonly configSourceDirectory: string | null;
+  readonly hasConfigOverride: boolean;
+}
 
 interface ResolvedInspectOptions {
   lint: boolean;
@@ -110,6 +113,42 @@ const mergeInspectOptions = (
   outputSurface: inputOptions.outputSurface ?? "cli",
 });
 
+const resolveInspectConfig = (
+  directory: string,
+  inputOptions: InspectOptions,
+  loadedConfig: LoadedInspectConfig | undefined,
+): ResolvedInspectConfig => {
+  if (loadedConfig !== undefined) {
+    return {
+      scanDirectory: directory,
+      userConfig: loadedConfig.config,
+      configSourceDirectory: loadedConfig.sourceDirectory,
+      hasConfigOverride: true,
+    };
+  }
+
+  if (inputOptions.configOverride !== undefined) {
+    return {
+      scanDirectory: directory,
+      userConfig: inputOptions.configOverride ?? null,
+      configSourceDirectory: null,
+      hasConfigOverride: true,
+    };
+  }
+
+  const diskConfig = loadConfigWithSource(directory);
+  const redirectedDirectory = resolveConfigRootDir(
+    diskConfig?.config ?? null,
+    diskConfig?.sourceDirectory ?? null,
+  );
+  return {
+    scanDirectory: redirectedDirectory ?? directory,
+    userConfig: diskConfig?.config ?? null,
+    configSourceDirectory: diskConfig?.sourceDirectory ?? null,
+    hasConfigOverride: false,
+  };
+};
+
 /**
  * Tagged-reason → legacy-class dispatch for the public `inspect()`
  * contract. Each case converts a `ReactDoctorError` reason into the
@@ -145,40 +184,22 @@ const restoreLegacyThrow = <Value, Requirements>(
 export const inspect = async (
   directory: string,
   inputOptions: InspectOptions = {},
+): Promise<InspectResult> => inspectWithRuntimeConfig(directory, inputOptions, undefined);
+
+export const inspectWithLoadedConfig = async (
+  directory: string,
+  inputOptions: InspectOptions,
+  loadedConfig: LoadedInspectConfig,
+): Promise<InspectResult> => inspectWithRuntimeConfig(directory, inputOptions, loadedConfig);
+
+const inspectWithRuntimeConfig = async (
+  directory: string,
+  inputOptions: InspectOptions,
+  loadedConfig: LoadedInspectConfig | undefined,
 ): Promise<InspectResult> => {
   const startTime = performance.now();
-
-  const hasConfigOverride = inputOptions.configOverride !== undefined;
-  let scanDirectory = directory;
-  let userConfig: ReactDoctorConfig | null;
-  // Source directory of the config file that supplied `userConfig`,
-  // when one was loaded from disk. Drives the resolution base for
-  // `config.plugins` entries — relative paths and npm packages
-  // resolve from here (the config file's location), NOT from the
-  // post-`rootDir` scan root. `null` when the caller passed
-  // `configOverride` programmatically, in which case the runner
-  // falls back to the scan root for plugin resolution.
-  let configSourceDirectory: string | null = null;
-  const configOverride = inputOptions.configOverride;
-  if (hasConfigOverride) {
-    if (isInspectConfigOverride(configOverride)) {
-      userConfig = configOverride.config;
-      configSourceDirectory = configOverride.sourceDirectory;
-    } else {
-      userConfig = configOverride ?? null;
-    }
-  } else {
-    const loadedConfig = loadConfigWithSource(directory);
-    const redirectedDirectory = resolveConfigRootDir(
-      loadedConfig?.config ?? null,
-      loadedConfig?.sourceDirectory ?? null,
-    );
-    if (redirectedDirectory) scanDirectory = redirectedDirectory;
-    userConfig = loadedConfig?.config ?? null;
-    configSourceDirectory = loadedConfig?.sourceDirectory ?? null;
-  }
-
-  const options = mergeInspectOptions(inputOptions, userConfig);
+  const resolvedConfig = resolveInspectConfig(directory, inputOptions, loadedConfig);
+  const options = mergeInspectOptions(inputOptions, resolvedConfig.userConfig);
 
   // HACK: spinner.ts still has module-level silent state (used by
   // printProjectDetection's internal spinner() calls). Mirror the
@@ -191,11 +212,11 @@ export const inspect = async (
 
   try {
     return await runInspectWithRuntime(
-      scanDirectory,
+      resolvedConfig.scanDirectory,
       options,
-      userConfig,
-      hasConfigOverride,
-      configSourceDirectory,
+      resolvedConfig.userConfig,
+      resolvedConfig.hasConfigOverride,
+      resolvedConfig.configSourceDirectory,
       startTime,
     );
   } finally {

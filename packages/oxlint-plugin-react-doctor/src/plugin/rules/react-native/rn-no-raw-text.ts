@@ -27,9 +27,7 @@ interface ResolvedRnNoRawTextSettings {
 const toStringSet = (values: ReadonlyArray<string> | undefined): ReadonlySet<string> =>
   new Set(values?.filter((value) => typeof value === "string" && value.length > 0) ?? []);
 
-const resolveSettings = (
-  settings: RuleContext["settings"],
-): ResolvedRnNoRawTextSettings => {
+const resolveSettings = (settings: RuleContext["settings"]): ResolvedRnNoRawTextSettings => {
   const ruleSettings = getReactDoctorRuleSettings<RnNoRawTextSettings>(settings, "rnNoRawText");
   return {
     textComponentNames: toStringSet(ruleSettings.textComponents),
@@ -129,13 +127,7 @@ export const rnNoRawText = defineRule<Rule>({
         const elementName = resolveJsxElementName(node.openingElement);
         if (elementName && isTextHandlingComponent(elementName)) return;
         const fullElementName = resolveJsxFullElementName(node.openingElement.name);
-        if (
-          matchesConfiguredComponent(
-            elementName,
-            fullElementName,
-            settings.textComponentNames,
-          )
-        ) {
+        if (matchesConfiguredComponent(elementName, fullElementName, settings.textComponentNames)) {
           return;
         }
 

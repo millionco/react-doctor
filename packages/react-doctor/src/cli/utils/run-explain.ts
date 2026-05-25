@@ -1,6 +1,6 @@
 import { highlighter, toRelativePath } from "@react-doctor/core";
 import { cliLogger as logger } from "./cli-logger.js";
-import { inspect } from "../../inspect.js";
+import { inspectWithLoadedConfig } from "../../inspect.js";
 import type { Diagnostic, InspectOptions, ReactDoctorConfig } from "@react-doctor/core";
 import { findOwningProjectDirectory } from "./find-owning-project.js";
 import { parseFileLineArgument } from "./parse-file-line-argument.js";
@@ -9,6 +9,7 @@ import { selectProjects } from "./select-projects.js";
 export interface ExplainContext {
   resolvedDirectory: string;
   userConfig: ReactDoctorConfig | null;
+  configSourceDirectory: string | null;
   scanOptions: InspectOptions;
   projectFlag: string | undefined;
 }
@@ -44,12 +45,18 @@ export const runExplain = async (
   const { filePath, line } = parseFileLineArgument(fileLineArgument);
   const targetDirectory = await resolveExplainTargetDirectory(filePath, context);
 
-  const scanResult = await inspect(targetDirectory, {
-    ...context.scanOptions,
-    silent: true,
-    noScore: true,
-    configOverride: context.userConfig,
-  });
+  const scanResult = await inspectWithLoadedConfig(
+    targetDirectory,
+    {
+      ...context.scanOptions,
+      silent: true,
+      noScore: true,
+    },
+    {
+      config: context.userConfig,
+      sourceDirectory: context.configSourceDirectory,
+    },
+  );
 
   const requestedRelativePath = toRelativePath(filePath, targetDirectory);
   const matchingDiagnostics = scanResult.diagnostics.filter(

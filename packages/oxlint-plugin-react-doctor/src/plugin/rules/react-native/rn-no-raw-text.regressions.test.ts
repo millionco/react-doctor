@@ -2,10 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { rnNoRawText } from "./rn-no-raw-text.js";
 
-const runRnNoRawText = (
-  code: string,
-  rnNoRawTextSettings: Readonly<Record<string, unknown>>,
-) =>
+const runRnNoRawText = (code: string, rnNoRawTextSettings: Readonly<Record<string, unknown>>) =>
   runRule(rnNoRawText, code, {
     settings: { "react-doctor": { rnNoRawText: rnNoRawTextSettings } },
   });
@@ -43,10 +40,9 @@ describe("react-native/rn-no-raw-text — configured text containers", () => {
     const templateResult = runRnNoRawText("const App = () => <Button>{`Save`}</Button>;", {
       rawTextWrapperComponents: ["Button"],
     });
-    const mixedResult = runRnNoRawText(
-      "const App = () => <Button>Save<Icon /></Button>;",
-      { rawTextWrapperComponents: ["Button"] },
-    );
+    const mixedResult = runRnNoRawText("const App = () => <Button>Save<Icon /></Button>;", {
+      rawTextWrapperComponents: ["Button"],
+    });
 
     expect(stringOnlyResult.parseErrors).toEqual([]);
     expect(templateResult.parseErrors).toEqual([]);

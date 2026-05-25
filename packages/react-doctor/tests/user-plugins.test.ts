@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 import { runOxlint } from "@react-doctor/core";
+import { inspectWithLoadedConfig } from "../src/inspect.js";
 import { buildTestProject, setupReactProject } from "./regressions/_helpers.js";
 
 const tempRoot = mkdtempSync(path.join(tmpdir(), "rd-user-plugins-"));
@@ -166,6 +167,41 @@ describe("user plugins (config.plugins)", () => {
     });
 
     const userHits = diagnostics.filter((d) => d.rule === "no-forbidden-word");
+    expect(userHits.length).toBeGreaterThan(0);
+  });
+
+  it("threads loaded config source directory through inspect runtime scans", async () => {
+    const workspaceDir = path.join(tempRoot, "inspect-loaded-config-workspace");
+    const scanDir = setupReactProject(workspaceDir, "apps/web", {
+      files: {
+        "src/App.tsx": `export const App = () => <div>FORBIDDEN content</div>;\n`,
+      },
+    });
+    mkdirSync(path.join(workspaceDir, "lint"), { recursive: true });
+    writeFileSync(path.join(workspaceDir, "lint/team-conventions.cjs"), FORBIDDEN_WORD_PLUGIN, {
+      encoding: "utf-8",
+    });
+
+    const result = await inspectWithLoadedConfig(
+      scanDir,
+      {
+        deadCode: false,
+        lint: true,
+        noScore: true,
+        silent: true,
+      },
+      {
+        config: {
+          plugins: ["./lint/team-conventions.cjs"],
+          rules: { "team-conventions/no-forbidden-word": "error" },
+        },
+        sourceDirectory: workspaceDir,
+      },
+    );
+
+    const userHits = result.diagnostics.filter(
+      (diagnostic) => diagnostic.rule === "no-forbidden-word",
+    );
     expect(userHits.length).toBeGreaterThan(0);
   });
 

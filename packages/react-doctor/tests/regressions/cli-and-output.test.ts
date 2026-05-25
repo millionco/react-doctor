@@ -288,6 +288,36 @@ export const Cart = () => {
       normalizedStdout.indexOf("React Doctor"),
     );
   });
+
+  it("does not print agent guidance in PR comment output", async () => {
+    const projectDir = setupReactProject(tempRoot, "pr-comment-output-agent-guidance", {
+      files: {
+        "src/Cart.tsx": `import { useState } from "react";
+
+export const Cart = () => {
+  const [items, setItems] = useState<string[]>([]);
+  void setItems;
+
+  const onAdd = (nextItem: string) => {
+    items.push(nextItem);
+  };
+
+  return <button onClick={() => onAdd("x")}>{items.length}</button>;
+};
+`,
+      },
+    });
+
+    const automatedRun = await withAutomatedEnvironmentVariables({ GITHUB_ACTIONS: "true" }, () =>
+      captureScanOutput(projectDir, {
+        lint: true,
+        noScore: true,
+        outputSurface: "prComment",
+      }),
+    );
+
+    expect(stripAnsi(automatedRun.stdout)).not.toContain("Agent guidance");
+  });
 });
 
 describe("issue #135: lint failures surface in skippedChecks", () => {

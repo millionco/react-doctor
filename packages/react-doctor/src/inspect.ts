@@ -506,7 +506,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
 
     yield* Console.log("");
     yield* printDiagnostics([...surfaceDiagnostics], options.verbose, directory);
-    if (options.isNonInteractiveEnvironment) {
+    if (options.isNonInteractiveEnvironment && options.outputSurface !== "prComment") {
       yield* printAgentGuidance();
     }
 

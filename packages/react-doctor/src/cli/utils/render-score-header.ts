@@ -55,10 +55,7 @@ const buildFaceRenderedLines = (score: number): string[] => {
   return ["┌─────┐", `│ ${eyes} │`, `│ ${mouth} │`, "└─────┘"].map(colorize);
 };
 
-const buildScoreHeaderLine = (
-  faceLine: string,
-  rightColumnContent: string,
-): string => {
+const buildScoreHeaderLine = (faceLine: string, rightColumnContent: string): string => {
   const separator = rightColumnContent.length > 0 ? "  " : "";
   return `  ${faceLine}${separator}${rightColumnContent}`;
 };

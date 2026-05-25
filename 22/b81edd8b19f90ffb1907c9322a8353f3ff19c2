@@ -1,0 +1,19 @@
+packages/react-doctor/src/cli/utils/is-ci-environment.ts
+  s_9a32e6f0baad21::t_451b12b7b7761e 35-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "22b81edd8b19f90ffb1907c9322a8353f3ff19c2",
+  "prompts": {},
+  "sessions": {
+    "s_9a32e6f0baad21": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f589f075-70a7-4234-99a5-4e32ab3c62cc",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

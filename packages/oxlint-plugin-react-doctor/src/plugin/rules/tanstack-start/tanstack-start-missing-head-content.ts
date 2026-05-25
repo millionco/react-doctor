@@ -21,6 +21,49 @@ const getJsxMemberPropertyName = (node: EsTreeNodeOfType<"JSXMemberExpression">)
   return null;
 };
 
+const getMemberRootName = (node: EsTreeNodeOfType<"MemberExpression">): string | null => {
+  if (isNodeOfType(node.object, "Identifier")) return node.object.name;
+  if (isNodeOfType(node.object, "MemberExpression")) return getMemberRootName(node.object);
+  return null;
+};
+
+const getMemberPropertyName = (node: EsTreeNodeOfType<"MemberExpression">): string | null => {
+  if (isNodeOfType(node.property, "Identifier")) return node.property.name;
+  return null;
+};
+
+const isDocumentHeadElement = (node: EsTreeNode): boolean =>
+  isNodeOfType(node, "JSXElement") &&
+  isNodeOfType(node.openingElement.name, "JSXIdentifier") &&
+  node.openingElement.name.name === DOCUMENT_HEAD_ELEMENT_NAME;
+
+const isInsideDocumentHeadElement = (node: EsTreeNode): boolean => {
+  let currentNode = node.parent;
+  while (currentNode) {
+    if (isDocumentHeadElement(currentNode)) return true;
+    currentNode = currentNode.parent;
+  }
+  return false;
+};
+
+const isCustomJsxElementName = (node: EsTreeNodeOfType<"JSXOpeningElement">["name"]): boolean => {
+  if (isNodeOfType(node, "JSXIdentifier")) {
+    const firstCharacter = node.name.charAt(0);
+    return (
+      firstCharacter.toUpperCase() === firstCharacter &&
+      firstCharacter.toLowerCase() !== firstCharacter
+    );
+  }
+  if (!isNodeOfType(node, "JSXMemberExpression")) return false;
+  const rootName = getJsxMemberRootName(node);
+  if (!rootName) return false;
+  const firstCharacter = rootName.charAt(0);
+  return (
+    firstCharacter.toUpperCase() === firstCharacter &&
+    firstCharacter.toLowerCase() !== firstCharacter
+  );
+};
+
 export const tanstackStartMissingHeadContent = defineRule<Rule>({
   id: "tanstack-start-missing-head-content",
   tags: ["test-noise"],
@@ -31,31 +74,90 @@ export const tanstackStartMissingHeadContent = defineRule<Rule>({
   create: (context: RuleContext) => {
     let hasHeadContentElement = false;
     let hasDocumentHeadElement = false;
+    let hasCustomHeadChildElement = false;
     const headContentComponentNames = new Set([HEAD_CONTENT_COMPONENT_NAME]);
     const tanstackRouterNamespaceNames = new Set<string>();
 
+    const collectImportBindings = (node: EsTreeNode): void => {
+      if (!isNodeOfType(node, "ImportDeclaration")) return;
+
+      const isTanstackRouterImport = node.source.value === TANSTACK_ROUTER_PACKAGE;
+
+      const specifiers = node.specifiers ?? [];
+      for (const specifier of specifiers) {
+        if (isTanstackRouterImport && isNodeOfType(specifier, "ImportNamespaceSpecifier")) {
+          tanstackRouterNamespaceNames.add(specifier.local.name);
+          continue;
+        }
+
+        if (!isNodeOfType(specifier, "ImportSpecifier")) continue;
+        if (
+          !isNodeOfType(specifier.imported, "Identifier") ||
+          specifier.imported.name !== HEAD_CONTENT_COMPONENT_NAME
+        )
+          continue;
+        headContentComponentNames.add(specifier.local.name);
+      }
+    };
+
+    const collectVariableAlias = (node: EsTreeNode): void => {
+      if (!isNodeOfType(node, "VariableDeclarator")) return;
+      if (!isNodeOfType(node.id, "Identifier")) return;
+
+      const initializer = node.init;
+      if (!initializer) return;
+
+      if (isNodeOfType(initializer, "Identifier")) {
+        if (headContentComponentNames.has(initializer.name)) {
+          headContentComponentNames.add(node.id.name);
+        }
+        if (tanstackRouterNamespaceNames.has(initializer.name)) {
+          tanstackRouterNamespaceNames.add(node.id.name);
+        }
+        return;
+      }
+
+      if (!isNodeOfType(initializer, "MemberExpression")) return;
+
+      const rootName = getMemberRootName(initializer);
+      const propertyName = getMemberPropertyName(initializer);
+      if (
+        rootName &&
+        tanstackRouterNamespaceNames.has(rootName) &&
+        propertyName === HEAD_CONTENT_COMPONENT_NAME
+      ) {
+        headContentComponentNames.add(node.id.name);
+      }
+    };
+
     return {
+      Program(node: EsTreeNodeOfType<"Program">) {
+        const filename = context.getFilename?.() ?? "";
+        const isRootRouteFile = TANSTACK_ROOT_ROUTE_FILE_PATTERN.test(filename);
+        if (!isRootRouteFile) return;
+
+        const statements = node.body ?? [];
+        for (const statement of statements) {
+          collectImportBindings(statement);
+        }
+        for (const statement of statements) {
+          if (!isNodeOfType(statement, "VariableDeclaration")) continue;
+          for (const declaration of statement.declarations ?? []) {
+            collectVariableAlias(declaration);
+          }
+        }
+      },
       ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
         const filename = context.getFilename?.() ?? "";
         const isRootRouteFile = TANSTACK_ROOT_ROUTE_FILE_PATTERN.test(filename);
         if (!isRootRouteFile) return;
-        if (node.source.value !== TANSTACK_ROUTER_PACKAGE) return;
-
-        const specifiers = node.specifiers ?? [];
-        for (const specifier of specifiers) {
-          if (isNodeOfType(specifier, "ImportNamespaceSpecifier")) {
-            tanstackRouterNamespaceNames.add(specifier.local.name);
-            continue;
-          }
-
-          if (!isNodeOfType(specifier, "ImportSpecifier")) continue;
-          if (
-            !isNodeOfType(specifier.imported, "Identifier") ||
-            specifier.imported.name !== HEAD_CONTENT_COMPONENT_NAME
-          )
-            continue;
-          headContentComponentNames.add(specifier.local.name);
-        }
+        collectImportBindings(node);
+      },
+      VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
+        const filename = context.getFilename?.() ?? "";
+        const isRootRouteFile = TANSTACK_ROOT_ROUTE_FILE_PATTERN.test(filename);
+        if (!isRootRouteFile) return;
+        collectVariableAlias(node);
       },
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         const filename = context.getFilename?.() ?? "";
@@ -68,6 +170,9 @@ export const tanstackStartMissingHeadContent = defineRule<Rule>({
           }
           if (headContentComponentNames.has(node.name.name)) {
             hasHeadContentElement = true;
+          }
+          if (isInsideDocumentHeadElement(node) && isCustomJsxElementName(node.name)) {
+            hasCustomHeadChildElement = true;
           }
           return;
         }
@@ -83,13 +188,16 @@ export const tanstackStartMissingHeadContent = defineRule<Rule>({
         ) {
           hasHeadContentElement = true;
         }
+        if (isInsideDocumentHeadElement(node) && isCustomJsxElementName(node.name)) {
+          hasCustomHeadChildElement = true;
+        }
       },
       "Program:exit"(programNode: EsTreeNode) {
         const filename = context.getFilename?.() ?? "";
         const isRootRouteFile = TANSTACK_ROOT_ROUTE_FILE_PATTERN.test(filename);
         if (!isRootRouteFile) return;
 
-        if (hasDocumentHeadElement && !hasHeadContentElement) {
+        if (hasDocumentHeadElement && !hasHeadContentElement && !hasCustomHeadChildElement) {
           context.report({
             node: programNode,
             message:

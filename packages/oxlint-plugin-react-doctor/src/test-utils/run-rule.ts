@@ -46,13 +46,15 @@ const dispatchTreeWalk = (root: EsTreeNode, visitors: RuleVisitors): void => {
     }
   };
   visit(root);
+  const programExitHandler = visitors["Program:exit"];
+  if (typeof programExitHandler === "function") programExitHandler(root);
 };
 
 // Pure-TS rule runner mirroring what oxlint does at runtime: parse code,
 // attach `parent` references, build a fake `RuleContext`, dispatch each
-// `node.type` to the matching visitor, and collect every `report({...})`
-// call as a `RuleDiagnostic`. Used by every `<rule>.test.ts` to assert
-// pass/fail semantics ported from OXC's `Tester::new(...).pass / .fail`.
+// `node.type` / `Program:exit` to the matching visitor, and collect every
+// `report({...})` call as a `RuleDiagnostic`. Used by every `<rule>.test.ts`
+// to assert pass/fail semantics ported from OXC's `Tester::new(...).pass / .fail`.
 export const runRule = (rule: Rule, code: string, options: RunRuleOptions = {}): RunRuleResult => {
   const parsed = parseFixture(code, {
     filename: options.filename,

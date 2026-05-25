@@ -1,5 +1,5 @@
 import type { Diagnostic, ReactDoctorConfig } from "./types/index.js";
-import { checkPnpmSupplyChain } from "./check-pnpm-supply-chain.js";
+import { checkPnpmHardening } from "./check-pnpm-hardening.js";
 import { checkReducedMotion } from "./check-reduced-motion.js";
 import { createNodeReadFileLinesSync } from "./read-file-lines-node.js";
 import { mergeAndFilterDiagnostics } from "./merge-and-filter-diagnostics.js";
@@ -30,7 +30,7 @@ export const combineDiagnostics = (input: CombineDiagnosticsInput): Diagnostic[]
   const environmentDiagnostics =
     isDiffMode || !includeEnvironmentChecks
       ? []
-      : [...checkReducedMotion(directory), ...checkPnpmSupplyChain(directory)];
+      : [...checkReducedMotion(directory), ...checkPnpmHardening(directory)];
   const merged = [...lintDiagnostics, ...environmentDiagnostics, ...extraDiagnostics];
   return mergeAndFilterDiagnostics(merged, directory, userConfig, readFileLinesSync, {
     respectInlineDisables,

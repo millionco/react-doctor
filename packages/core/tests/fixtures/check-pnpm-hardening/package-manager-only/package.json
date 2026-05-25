@@ -1,0 +1,8 @@
+{
+  "name": "package-manager-only-fixture",
+  "private": true,
+  "dependencies": {
+    "react": "^19.0.0"
+  },
+  "packageManager": "pnpm@10.29.1"
+}

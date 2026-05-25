@@ -1,0 +1,7 @@
+{
+  "name": "comments-only-fixture",
+  "private": true,
+  "dependencies": {
+    "react": "^19.0.0"
+  }
+}

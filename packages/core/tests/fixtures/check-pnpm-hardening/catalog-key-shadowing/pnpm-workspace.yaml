@@ -1,0 +1,14 @@
+packages:
+  - "packages/*"
+
+minimumReleaseAge: 10080
+blockExoticSubdeps: true
+trustPolicy: no-downgrade
+
+catalog:
+  # These nested keys must be ignored — they're inside `catalog:` and only
+  # there to mislead a naive substring search. The top-level keys above
+  # already satisfy the hardening rule.
+  minimumReleaseAge: 1
+  blockExoticSubdeps: false
+  trustPolicy: any

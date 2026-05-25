@@ -1,0 +1,6 @@
+# All settings are commented out and must be treated as absent.
+# minimumReleaseAge: 10080
+# blockExoticSubdeps: true
+# trustPolicy: no-downgrade
+packages:
+  - "packages/*"

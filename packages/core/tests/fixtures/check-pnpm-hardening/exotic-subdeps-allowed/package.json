@@ -1,0 +1,7 @@
+{
+  "name": "exotic-subdeps-allowed-fixture",
+  "private": true,
+  "dependencies": {
+    "react": "^19.0.0"
+  }
+}

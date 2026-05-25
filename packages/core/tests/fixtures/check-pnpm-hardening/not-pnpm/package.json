@@ -1,0 +1,8 @@
+{
+  "name": "not-pnpm-fixture",
+  "private": true,
+  "dependencies": {
+    "react": "^19.0.0"
+  },
+  "packageManager": "yarn@4.3.1"
+}

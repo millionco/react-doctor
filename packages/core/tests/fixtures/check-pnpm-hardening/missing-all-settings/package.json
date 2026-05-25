@@ -1,0 +1,7 @@
+{
+  "name": "missing-all-settings-fixture",
+  "private": true,
+  "dependencies": {
+    "react": "^19.0.0"
+  }
+}

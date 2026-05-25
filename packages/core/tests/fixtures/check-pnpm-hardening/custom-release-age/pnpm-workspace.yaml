@@ -1,0 +1,8 @@
+packages:
+  - "packages/*"
+
+# Custom 1-day minimumReleaseAge — should be accepted without warning even
+# though it's shorter than the recommended 7 days (10080).
+minimumReleaseAge: 1440
+blockExoticSubdeps: true
+trustPolicy: no-downgrade

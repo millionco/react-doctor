@@ -1,0 +1,6 @@
+packages:
+  - "packages/*"
+
+minimumReleaseAge: "10080" # quoted scalar still parses as 10080
+blockExoticSubdeps: "true" # single-quoted scalar
+"trustPolicy": "no-downgrade"

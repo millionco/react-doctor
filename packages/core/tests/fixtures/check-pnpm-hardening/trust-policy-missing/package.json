@@ -1,0 +1,7 @@
+{
+  "name": "trust-policy-missing-fixture",
+  "private": true,
+  "dependencies": {
+    "react": "^19.0.0"
+  }
+}

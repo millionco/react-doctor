@@ -269,10 +269,14 @@ export const Cart = () => {
     const normalizedStdout = stripAnsi(automatedRun.stdout);
 
     expect(normalizedStdout).toContain("Agent guidance");
-    expect(normalizedStdout).toContain("  - Triage diagnostics before editing:");
+    expect(normalizedStdout).toContain("  - Treat React Doctor diagnostics as starting hypotheses.");
+    expect(normalizedStdout).toContain("Fix the underlying code instead of changing react-doctor config");
+    expect(normalizedStdout).toContain("npx react-doctor@latest --verbose --diff");
     expect(normalizedStdout).toContain(
-      "  - Split unrelated or behavior-changing work into separate PRs/branches.",
+      "  - Split unrelated, broad, or behavior-changing work into separate PRs/branches",
     );
+    expect(normalizedStdout).toContain("  - When available, spawn subagents or isolated worktrees");
+    expect(normalizedStdout).toContain("  - If a fix needs an API, UX, or architecture decision");
     expect(normalizedStdout.indexOf("Agent guidance")).toBeLessThan(
       normalizedStdout.indexOf("React Doctor"),
     );

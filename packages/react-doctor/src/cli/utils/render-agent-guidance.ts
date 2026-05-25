@@ -3,11 +3,14 @@ import * as Effect from "effect/Effect";
 import { highlighter } from "@react-doctor/core";
 
 const AGENT_GUIDANCE_LINES = [
-  "Triage diagnostics before editing: mark true positives, false positives, or needs-human-review.",
-  "Assign high/medium/low confidence and start with high-confidence, low-risk fixes.",
-  "Group related diagnostics by root cause before making changes.",
-  "Split unrelated or behavior-changing work into separate PRs/branches.",
-  "Run relevant tests after each focused batch.",
+  "Treat React Doctor diagnostics as starting hypotheses. Read the relevant code before confirming or suppressing each finding.",
+  "For each group, decide true positive, false positive, or needs-human-review, then assign high/medium/low confidence.",
+  "Understand the root cause before editing. Fix the underlying code instead of changing react-doctor config or suppressing rules unless explicitly asked.",
+  "Start with high-confidence fixes that preserve behavior. Leave low-confidence or product-dependent changes as notes.",
+  "Run `npx react-doctor@latest --verbose --diff` before and after changes, plus relevant tests after each focused batch.",
+  "When available, spawn subagents or isolated worktrees for independent rule families, then review and merge only the best safe fixes.",
+  "Split unrelated, broad, or behavior-changing work into separate PRs/branches instead of one large cleanup.",
+  "If a fix needs an API, UX, or architecture decision, stop and ask before editing.",
 ] as const;
 
 export const printAgentGuidance = (): Effect.Effect<void> =>

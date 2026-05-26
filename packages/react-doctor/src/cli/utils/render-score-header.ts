@@ -12,8 +12,8 @@ import { colorizeByScore } from "./colorize-by-score.js";
 import { isSpinnerInteractive } from "./is-spinner-interactive.js";
 import { isSpinnerSilent } from "./spinner.js";
 
-const SCORE_BAR_ANIMATION_FRAME_COUNT = 12;
-const SCORE_BAR_ANIMATION_FRAME_DELAY_MS = 20;
+const SCORE_BAR_ANIMATION_FRAME_COUNT = 80;
+const SCORE_BAR_ANIMATION_FRAME_DELAY_MS = 50;
 
 interface ScoreBarSegments {
   filledSegment: string;

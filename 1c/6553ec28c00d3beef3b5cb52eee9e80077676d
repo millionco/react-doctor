@@ -1,0 +1,30 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/utils/event-handler-reference.ts
+  s_948f07583a6c91::t_f05b93603173e9 4
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-mutating-reducer-state.test.ts
+  s_948f07583a6c91::t_29dec44d68867b 247-292
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/utils/static-member-property-name.ts
+  s_948f07583a6c91::t_1bd7aa102d35c1 1-4,6-24
+  s_948f07583a6c91::t_28743c83130f5f 5
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/utils/collect-function-like-local-names.ts
+  s_948f07583a6c91::t_083109c4908a63 16
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-mutating-reducer-state.ts
+  s_948f07583a6c91::t_28743c83130f5f 207
+  s_948f07583a6c91::t_0153cc965170d0 77-80
+  s_948f07583a6c91::t_2fa959dfb2e694 11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "1c6553ec28c00d3beef3b5cb52eee9e80077676d",
+  "prompts": {},
+  "sessions": {
+    "s_948f07583a6c91": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "5aa2e65d-91bb-4c50-a697-9625d15dd322",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

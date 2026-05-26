@@ -89,18 +89,23 @@ export const printScoreHeader = (scoreResult: ScoreResult): Effect.Effect<void> 
     const scoreLine = `${scoreNumber} ${highlighter.dim(`/ ${PERFECT_SCORE}`)} ${scoreLabel}`;
     const scoreBarLine = buildScoreBar(scoreResult.score);
 
-    const rightColumnLines = [scoreLine, scoreBarLine, BRANDING_LINE, ""];
+    const shouldAnimate = !isSpinnerSilent() && isSpinnerInteractive(process.stdout);
+    const rightColumnLines = [scoreLine, shouldAnimate ? "" : scoreBarLine, BRANDING_LINE, ""];
 
     for (let lineIndex = 0; lineIndex < renderedFaceLines.length; lineIndex += 1) {
       const rightColumnContent = rightColumnLines[lineIndex] ?? "";
-      if (lineIndex === 1 && !isSpinnerSilent() && isSpinnerInteractive(process.stdout)) {
-        yield* printAnimatedScoreBarLine(renderedFaceLines[lineIndex], scoreResult.score);
-        continue;
-      }
       yield* Console.log(buildScoreHeaderLine(renderedFaceLines[lineIndex], rightColumnContent));
     }
-
     yield* Console.log("");
+
+    if (shouldAnimate) {
+      // HACK: move cursor up to the score bar line (line index 1 of
+      // the 4-line face block + 1 trailing blank = 4 lines up) and
+      // animate the bar in place, then restore the cursor position.
+      yield* writeScoreHeaderLine(`\x1b[4A`);
+      yield* printAnimatedScoreBarLine(renderedFaceLines[1], scoreResult.score);
+      yield* writeScoreHeaderLine(`\x1b[3B`);
+    }
   });
 
 export const printBrandingOnlyHeader: Effect.Effect<void> = Effect.gen(function* () {

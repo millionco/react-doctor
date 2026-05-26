@@ -10,6 +10,26 @@ import { isFunctionLike } from "../../../utils/is-function-like.js";
 import { walkAst } from "../../../utils/walk-ast.js";
 import { isCleanupReturningSubscribeLikeCallExpression } from "./is-subscribe-like-call-expression.js";
 
+const ITERATOR_CALLBACK_METHOD_NAMES = new Set([
+  "each",
+  "every",
+  "filter",
+  "find",
+  "findIndex",
+  "findLast",
+  "findLastIndex",
+  "flatMap",
+  "forEach",
+  "map",
+  "reduce",
+  "reduceRight",
+  "some",
+  "sort",
+  "toSorted",
+]);
+
+const STATIC_ITERATOR_CALLBACK_METHOD_NAMES = new Set(["from", "fromAsync", "groupBy"]);
+
 const unwrapChainExpression = (node: EsTreeNode): EsTreeNode =>
   isNodeOfType(node, "ChainExpression") ? node.expression : node;
 
@@ -58,6 +78,26 @@ const isReleaseLikeCall = (
   return false;
 };
 
+const isStaticIteratorCallbackCallee = (callee: EsTreeNode): boolean =>
+  isNodeOfType(callee, "MemberExpression") &&
+  isNodeOfType(callee.object, "Identifier") &&
+  isNodeOfType(callee.property, "Identifier") &&
+  (callee.object.name === "Array" || callee.object.name === "Object") &&
+  STATIC_ITERATOR_CALLBACK_METHOD_NAMES.has(callee.property.name);
+
+const isIteratorCallbackArgument = (node: EsTreeNode): boolean => {
+  const parentNode = node.parent;
+  if (!isNodeOfType(parentNode, "CallExpression")) return false;
+  if (!parentNode.arguments?.some((argument) => argument === node)) return false;
+  const callee = unwrapChainExpression(parentNode.callee);
+  if (parentNode.arguments[1] === node && isStaticIteratorCallbackCallee(callee)) return true;
+  return (
+    isNodeOfType(callee, "MemberExpression") &&
+    isNodeOfType(callee.property, "Identifier") &&
+    ITERATOR_CALLBACK_METHOD_NAMES.has(callee.property.name)
+  );
+};
+
 const containsReleaseLikeCall = (
   node: EsTreeNode,
   knownCleanupFunctionNames: ReadonlySet<string>,
@@ -66,7 +106,9 @@ const containsReleaseLikeCall = (
   let didFindRelease = false;
   walkAst(node, (child: EsTreeNode) => {
     if (didFindRelease) return false;
-    if (child !== node && isFunctionLike(child)) return false;
+    if (child !== node && isFunctionLike(child) && !isIteratorCallbackArgument(child)) {
+      return false;
+    }
     if (isReleaseLikeCall(child, knownCleanupFunctionNames, knownBoundSubscriptionNames)) {
       didFindRelease = true;
       return false;

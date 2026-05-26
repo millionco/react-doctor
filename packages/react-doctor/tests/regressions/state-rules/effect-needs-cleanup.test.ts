@@ -345,7 +345,7 @@ export const Emitter = () => {
     expect(hits).toHaveLength(0);
   });
 
-  it("still flags cleanup hidden inside an iteration callback", async () => {
+  it("does not flag listeners cleaned up inside an iteration callback", async () => {
     const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-for-each-cleanup", {
       files: {
         "src/Pointer.tsx": `import { useEffect } from "react";
@@ -372,7 +372,60 @@ export const Pointer = () => {
     });
 
     const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
-    expect(hits).toHaveLength(1);
+    expect(hits).toHaveLength(0);
+  });
+
+  it("does not flag timers cleaned up inside a reduce callback", async () => {
+    const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-reduce-cleanup", {
+      files: {
+        "src/Timers.tsx": `import { useEffect } from "react";
+
+declare const tick: () => void;
+
+export const Timers = () => {
+  useEffect(() => {
+    const timerIds = [setTimeout(tick, 1000), setTimeout(tick, 2000)];
+    return () => {
+      timerIds.reduce((count, timerId) => {
+        clearTimeout(timerId);
+        return count + 1;
+      }, 0);
+    };
+  }, []);
+  return <span />;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("does not flag timers cleaned up inside an Array.from callback", async () => {
+    const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-array-from-cleanup", {
+      files: {
+        "src/Timers.tsx": `import { useEffect } from "react";
+
+declare const tick: () => void;
+
+export const Timers = () => {
+  useEffect(() => {
+    const timerIds = [setTimeout(tick, 1000), setTimeout(tick, 2000)];
+    return () => {
+      Array.from(timerIds, (timerId) => {
+        clearTimeout(timerId);
+      });
+    };
+  }, []);
+  return <span />;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
+    expect(hits).toHaveLength(0);
   });
 
   it("does not flag a subscription chain binding cleaned up with `.stop()`", async () => {

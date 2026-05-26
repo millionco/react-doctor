@@ -285,7 +285,9 @@ export const runInspect = <HooksR = never>(
         : Effect.succeed<Iterable<Diagnostic>>([]),
     );
 
-    const lintProgress = yield* progressService.start("Scanning...");
+    const scanProgress = yield* progressService.start("Scanning...");
+    const scanStartTime = Date.now();
+    let lastReportedTotalFileCount = 0;
 
     const rawLintStream = linterService
       .run({
@@ -300,8 +302,9 @@ export const runInspect = <HooksR = never>(
         userConfig: resolvedConfig.config ?? undefined,
         configSourceDirectory: resolvedConfig.configSourceDirectory ?? undefined,
         onFileProgress: (scannedFileCount, totalFileCount) => {
+          lastReportedTotalFileCount = totalFileCount;
           Effect.runSync(
-            lintProgress.update(`Scanning (${scannedFileCount}/${totalFileCount})...`),
+            scanProgress.update(`Scanning (${scannedFileCount}/${totalFileCount})...`),
           );
         },
       })
@@ -327,12 +330,25 @@ export const runInspect = <HooksR = never>(
     const deadCodeCollected = yield* Fiber.join(deadCodeFiber);
     const deadCodeFailureState = yield* Ref.get(deadCodeFailure);
 
+    const scanElapsedSeconds = ((Date.now() - scanStartTime) / 1000).toFixed(1);
+    const allScanDiagnostics = [...lintCollected, ...deadCodeCollected];
+    const filesWithIssueCount = new Set(allScanDiagnostics.map((diagnostic) => diagnostic.filePath))
+      .size;
+    const totalFileCount =
+      lastReportedTotalFileCount || (lintIncludePaths?.length ?? project.sourceFileCount);
+
     if (lintFailureState.didFail) {
-      yield* lintProgress.fail(formatLintFailText(lintFailureState.reasonTag, process.version));
+      yield* scanProgress.fail(formatLintFailText(lintFailureState.reasonTag, process.version));
     } else if (deadCodeFailureState.didFail) {
-      yield* lintProgress.fail(DEAD_CODE_FAIL_TEXT);
+      yield* scanProgress.fail(DEAD_CODE_FAIL_TEXT);
     } else {
-      yield* lintProgress.succeed(SCAN_SUCCESS_TEXT);
+      const issueDetail =
+        filesWithIssueCount > 0
+          ? ` (${filesWithIssueCount} ${filesWithIssueCount === 1 ? "file" : "files"} with issues)`
+          : "";
+      yield* scanProgress.succeed(
+        `Scanned ${totalFileCount} ${totalFileCount === 1 ? "file" : "files"}${issueDetail} in ${scanElapsedSeconds}s`,
+      );
     }
 
     yield* reporterService.finalize;

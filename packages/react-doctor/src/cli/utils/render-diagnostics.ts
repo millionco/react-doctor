@@ -131,7 +131,11 @@ const buildCompactCategoryLine = (categoryGroup: CategoryDiagnosticGroup): strin
   if (errorCount > 0)
     parts.push(highlighter.error(`${errorCount} ${errorCount === 1 ? "error" : "errors"}`));
   if (warningCount > 0)
-    parts.push(highlighter.warn(highlighter.dim(`${warningCount} ${warningCount === 1 ? "warning" : "warnings"}`)));
+    parts.push(
+      highlighter.warn(
+        highlighter.dim(`${warningCount} ${warningCount === 1 ? "warning" : "warnings"}`),
+      ),
+    );
   return `  ${highlighter.bold(categoryGroup.category)} ${highlighter.dim(POINTER)} ${parts.join(highlighter.dim(", "))}`;
 };
 

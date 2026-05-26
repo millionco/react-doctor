@@ -158,18 +158,14 @@ const defaultSelect: SetupPromptSelect = async (message) => {
       name: "setupReactDoctorChoice",
       message,
       choices: [
-        { title: "Yes", value: SETUP_PROMPT_CHOICE_YES },
-        { title: "No", value: SETUP_PROMPT_CHOICE_NO },
-        {
-          title: "No, never ask again for this project",
-          value: SETUP_PROMPT_CHOICE_NEVER,
-        },
+        { title: "Yes (recommended)", value: SETUP_PROMPT_CHOICE_YES },
+        { title: "No, and don't ask again", value: SETUP_PROMPT_CHOICE_NEVER },
       ],
       initial: 0,
     },
     { onCancel: () => true },
   );
-  return setupReactDoctorChoice ?? SETUP_PROMPT_CHOICE_NO;
+  return setupReactDoctorChoice ?? SETUP_PROMPT_CHOICE_NEVER;
 };
 
 const defaultWriteLine: SetupPitchWriter = (line = "") => {
@@ -213,11 +209,15 @@ export const promptInstallSetup = async (options: PromptInstallSetupOptions): Pr
     const setupReactDoctorChoice = await (options.select ?? defaultSelect)(
       "Set up React Doctor for this project?",
     );
-    if (setupReactDoctorChoice === SETUP_PROMPT_CHOICE_NEVER) {
-      disableSetupPrompt(options.projectRoot, options.store);
+    if (setupReactDoctorChoice !== SETUP_PROMPT_CHOICE_YES) {
+      if (setupReactDoctorChoice === SETUP_PROMPT_CHOICE_NEVER) {
+        disableSetupPrompt(options.projectRoot, options.store);
+      }
+      const writeLine = options.writeLine ?? defaultWriteLine;
+      writeLine("");
+      writeLine("You can always run `npx react-doctor@latest install` to set it up later.");
       return;
     }
-    if (setupReactDoctorChoice !== SETUP_PROMPT_CHOICE_YES) return;
 
     const install = options.install ?? (await import("./install-skill.js")).runInstallSkill;
     const previousExitCode = process.exitCode;

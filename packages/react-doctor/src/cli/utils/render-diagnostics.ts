@@ -1,3 +1,4 @@
+import isUnicodeSupported from "is-unicode-supported";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import {
@@ -8,6 +9,8 @@ import {
 } from "@react-doctor/core";
 import type { Diagnostic } from "@react-doctor/core";
 import { indentMultilineText } from "./indent-multiline-text.js";
+
+const POINTER = isUnicodeSupported() ? "›" : ">";
 
 const SEVERITY_ORDER: Record<Diagnostic["severity"], number> = {
   error: 0,
@@ -129,7 +132,7 @@ const buildCompactCategoryLine = (categoryGroup: CategoryDiagnosticGroup): strin
     parts.push(highlighter.error(`${errorCount} ${errorCount === 1 ? "error" : "errors"}`));
   if (warningCount > 0)
     parts.push(highlighter.warn(`${warningCount} ${warningCount === 1 ? "warning" : "warnings"}`));
-  return `  ${highlighter.bold(categoryGroup.category)} ${highlighter.dim("›")} ${parts.join(highlighter.dim(", "))}`;
+  return `  ${highlighter.bold(categoryGroup.category)} ${highlighter.dim(POINTER)} ${parts.join(highlighter.dim(", "))}`;
 };
 
 const buildVerboseRuleGroupLines = (

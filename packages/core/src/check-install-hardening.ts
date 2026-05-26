@@ -25,6 +25,24 @@ const BUN_RELEASE_AGE_KEY = "minimumReleaseAge";
 
 type PackageManager = "pnpm" | "npm" | "yarn" | "bun";
 
+const findFileUpward = (startDirectory: string, fileName: string): string | null => {
+  let currentDirectory = startDirectory;
+  while (true) {
+    const candidatePath = path.join(currentDirectory, fileName);
+    if (isFile(candidatePath)) return candidatePath;
+    if (fs.existsSync(path.join(currentDirectory, ".git"))) break;
+    const parentDirectory = path.dirname(currentDirectory);
+    if (parentDirectory === currentDirectory) break;
+    currentDirectory = parentDirectory;
+  }
+  return null;
+};
+
+const relativeConfigPath = (rootDirectory: string, absoluteConfigPath: string): string => {
+  const relativePath = path.relative(rootDirectory, absoluteConfigPath);
+  return relativePath || path.basename(absoluteConfigPath);
+};
+
 interface HardeningScalar {
   readonly value: string;
   readonly line: number;
@@ -177,9 +195,7 @@ const parseBunfigInstallScalars = (
   return results;
 };
 
-const readPackageManagerField = (rootDirectory: string): string | null => {
-  const packageJsonPath = path.join(rootDirectory, PACKAGE_JSON_FILE);
-  if (!isFile(packageJsonPath)) return null;
+const readPackageManagerFieldFromFile = (packageJsonPath: string): string | null => {
   try {
     const packageJsonRaw = fs.readFileSync(packageJsonPath, "utf-8");
     const packageJson: unknown = JSON.parse(packageJsonRaw);
@@ -197,20 +213,36 @@ const readPackageManagerField = (rootDirectory: string): string | null => {
   return null;
 };
 
+const findPackageManagerFieldUpward = (startDirectory: string): string | null => {
+  let currentDirectory = startDirectory;
+  while (true) {
+    const packageJsonPath = path.join(currentDirectory, PACKAGE_JSON_FILE);
+    if (isFile(packageJsonPath)) {
+      const field = readPackageManagerFieldFromFile(packageJsonPath);
+      if (field !== null) return field;
+    }
+    if (fs.existsSync(path.join(currentDirectory, ".git"))) break;
+    const parentDirectory = path.dirname(currentDirectory);
+    if (parentDirectory === currentDirectory) break;
+    currentDirectory = parentDirectory;
+  }
+  return null;
+};
+
 const detectPackageManager = (rootDirectory: string): PackageManager | null => {
-  const packageManagerField = readPackageManagerField(rootDirectory);
+  const packageManagerField = findPackageManagerFieldUpward(rootDirectory);
   if (packageManagerField !== null) {
     if (packageManagerField.startsWith("pnpm@")) return "pnpm";
     if (packageManagerField.startsWith("yarn@")) return "yarn";
     if (packageManagerField.startsWith("npm@")) return "npm";
     if (packageManagerField.startsWith("bun@")) return "bun";
   }
-  if (isFile(path.join(rootDirectory, PNPM_LOCKFILE))) return "pnpm";
-  if (isFile(path.join(rootDirectory, PNPM_WORKSPACE_FILE))) return "pnpm";
-  if (isFile(path.join(rootDirectory, BUN_LOCKFILE))) return "bun";
-  if (isFile(path.join(rootDirectory, BUN_LOCKFILE_BINARY))) return "bun";
-  if (isFile(path.join(rootDirectory, YARN_LOCKFILE))) return "yarn";
-  if (isFile(path.join(rootDirectory, NPM_LOCKFILE))) return "npm";
+  if (findFileUpward(rootDirectory, PNPM_LOCKFILE) !== null) return "pnpm";
+  if (findFileUpward(rootDirectory, PNPM_WORKSPACE_FILE) !== null) return "pnpm";
+  if (findFileUpward(rootDirectory, BUN_LOCKFILE) !== null) return "bun";
+  if (findFileUpward(rootDirectory, BUN_LOCKFILE_BINARY) !== null) return "bun";
+  if (findFileUpward(rootDirectory, YARN_LOCKFILE) !== null) return "yarn";
+  if (findFileUpward(rootDirectory, NPM_LOCKFILE) !== null) return "npm";
   return null;
 };
 
@@ -221,15 +253,15 @@ const PNPM_NPMRC_KEY_MAP: ReadonlyMap<string, string> = new Map([
 ]);
 
 const resolvePnpmHardening = (rootDirectory: string): HardeningCheckResult => {
-  const workspacePath = path.join(rootDirectory, PNPM_WORKSPACE_FILE);
-  if (isFile(workspacePath)) {
+  const workspacePath = findFileUpward(rootDirectory, PNPM_WORKSPACE_FILE);
+  if (workspacePath !== null) {
     const scalars = parseYamlTopLevelScalars(
       fs.readFileSync(workspacePath, "utf-8"),
       PNPM_WORKSPACE_KEYS,
     );
     return {
       packageManager: "pnpm",
-      configFile: PNPM_WORKSPACE_FILE,
+      configFile: relativeConfigPath(rootDirectory, workspacePath),
       releaseAge: {
         found: scalars.has("minimumReleaseAge"),
         scalar: scalars.get("minimumReleaseAge") ?? null,
@@ -240,12 +272,12 @@ const resolvePnpmHardening = (rootDirectory: string): HardeningCheckResult => {
       },
     };
   }
-  const npmrcPath = path.join(rootDirectory, NPMRC_FILE);
-  if (isFile(npmrcPath)) {
+  const npmrcPath = findFileUpward(rootDirectory, NPMRC_FILE);
+  if (npmrcPath !== null) {
     const scalars = parseIniScalars(fs.readFileSync(npmrcPath, "utf-8"), PNPM_NPMRC_KEY_MAP);
     return {
       packageManager: "pnpm",
-      configFile: NPMRC_FILE,
+      configFile: relativeConfigPath(rootDirectory, npmrcPath),
       releaseAge: {
         found: scalars.has("minimumReleaseAge"),
         scalar: scalars.get("minimumReleaseAge") ?? null,
@@ -269,12 +301,12 @@ const NPM_NPMRC_KEY_MAP: ReadonlyMap<string, string> = new Map([
 ]);
 
 const resolveNpmHardening = (rootDirectory: string): HardeningCheckResult => {
-  const npmrcPath = path.join(rootDirectory, NPMRC_FILE);
-  if (isFile(npmrcPath)) {
+  const npmrcPath = findFileUpward(rootDirectory, NPMRC_FILE);
+  if (npmrcPath !== null) {
     const scalars = parseIniScalars(fs.readFileSync(npmrcPath, "utf-8"), NPM_NPMRC_KEY_MAP);
     return {
       packageManager: "npm",
-      configFile: NPMRC_FILE,
+      configFile: relativeConfigPath(rootDirectory, npmrcPath),
       releaseAge: {
         found: scalars.has("minReleaseAge"),
         scalar: scalars.get("minReleaseAge") ?? null,
@@ -291,15 +323,15 @@ const resolveNpmHardening = (rootDirectory: string): HardeningCheckResult => {
 };
 
 const resolveYarnHardening = (rootDirectory: string): HardeningCheckResult => {
-  const yarnrcPath = path.join(rootDirectory, YARNRC_FILE);
-  if (isFile(yarnrcPath)) {
+  const yarnrcPath = findFileUpward(rootDirectory, YARNRC_FILE);
+  if (yarnrcPath !== null) {
     const scalars = parseYamlTopLevelScalars(
       fs.readFileSync(yarnrcPath, "utf-8"),
       new Set([YARN_RELEASE_AGE_KEY]),
     );
     return {
       packageManager: "yarn",
-      configFile: YARNRC_FILE,
+      configFile: relativeConfigPath(rootDirectory, yarnrcPath),
       releaseAge: {
         found: scalars.has(YARN_RELEASE_AGE_KEY),
         scalar: scalars.get(YARN_RELEASE_AGE_KEY) ?? null,
@@ -316,15 +348,15 @@ const resolveYarnHardening = (rootDirectory: string): HardeningCheckResult => {
 };
 
 const resolveBunHardening = (rootDirectory: string): HardeningCheckResult => {
-  const bunfigPath = path.join(rootDirectory, BUNFIG_FILE);
-  if (isFile(bunfigPath)) {
+  const bunfigPath = findFileUpward(rootDirectory, BUNFIG_FILE);
+  if (bunfigPath !== null) {
     const scalars = parseBunfigInstallScalars(
       fs.readFileSync(bunfigPath, "utf-8"),
       new Set([BUN_RELEASE_AGE_KEY]),
     );
     return {
       packageManager: "bun",
-      configFile: BUNFIG_FILE,
+      configFile: relativeConfigPath(rootDirectory, bunfigPath),
       releaseAge: {
         found: scalars.has(BUN_RELEASE_AGE_KEY),
         scalar: scalars.get(BUN_RELEASE_AGE_KEY) ?? null,
@@ -340,10 +372,13 @@ const resolveBunHardening = (rootDirectory: string): HardeningCheckResult => {
   };
 };
 
+const isPnpmWorkspaceConfig = (configFile: string): boolean =>
+  path.basename(configFile) === PNPM_WORKSPACE_FILE;
+
 const releaseAgeAdviceForResult = (result: HardeningCheckResult): ReleaseAgeAdvice => {
   switch (result.packageManager) {
     case "pnpm": {
-      if (result.configFile === PNPM_WORKSPACE_FILE) {
+      if (isPnpmWorkspaceConfig(result.configFile)) {
         return {
           settingKey: "minimumReleaseAge",
           recommendedSnippet: `minimumReleaseAge: ${RECOMMENDED_MINIMUM_RELEASE_AGE_MINUTES}`,
@@ -393,7 +428,7 @@ const buildDiagnostic = (input: {
 const buildPnpmExtraDiagnostics = (result: HardeningCheckResult): Diagnostic[] => {
   if (result.pnpmExtras === null) return [];
   const diagnostics: Diagnostic[] = [];
-  const isWorkspaceFile = result.configFile === PNPM_WORKSPACE_FILE;
+  const isWorkspaceFile = isPnpmWorkspaceConfig(result.configFile);
   const blockExoticKey = isWorkspaceFile ? "blockExoticSubdeps" : "block-exotic-subdeps";
   const trustPolicyKey = isWorkspaceFile ? "trustPolicy" : "trust-policy";
 

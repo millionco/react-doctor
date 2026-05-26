@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vite-plus/test";
 import { checkInstallHardening } from "@react-doctor/core";
 
 const FIXTURES_DIRECTORY = path.resolve(import.meta.dirname, "fixtures", "check-install-hardening");
@@ -162,6 +162,16 @@ const FIXTURE_EXPECTATIONS: ReadonlyArray<FixtureExpectation> = [
 ];
 
 describe("checkInstallHardening (fixtures)", () => {
+  const gitBoundaryPath = path.join(FIXTURES_DIRECTORY, ".git");
+
+  beforeAll(() => {
+    fs.mkdirSync(gitBoundaryPath, { recursive: true });
+  });
+
+  afterAll(() => {
+    fs.rmSync(gitBoundaryPath, { recursive: true, force: true });
+  });
+
   for (const expectation of FIXTURE_EXPECTATIONS) {
     it(`${expectation.name}: ${expectation.description}`, () => {
       const fixtureDirectory = path.join(FIXTURES_DIRECTORY, expectation.name);
@@ -845,5 +855,162 @@ describe("checkInstallHardening (package manager detection)", () => {
 
     expect(diagnostics).toHaveLength(1);
     expect(diagnostics[0].filePath).toBe(".yarnrc.yml");
+  });
+});
+
+describe("checkInstallHardening (parent directory traversal)", () => {
+  let temporaryRoot: string;
+
+  beforeEach(() => {
+    temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-upward-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(temporaryRoot, { recursive: true, force: true });
+  });
+
+  it("finds pnpm-workspace.yaml in a parent directory", () => {
+    const monorepoRoot = path.join(temporaryRoot, "monorepo");
+    const subPackage = path.join(monorepoRoot, "packages", "my-app");
+    fs.mkdirSync(subPackage, { recursive: true });
+    fs.mkdirSync(path.join(monorepoRoot, ".git"));
+    fs.writeFileSync(
+      path.join(monorepoRoot, "pnpm-workspace.yaml"),
+      "minimumReleaseAge: 10080\nblockExoticSubdeps: true\ntrustPolicy: no-downgrade\npackages:\n  - packages/*\n",
+    );
+    fs.writeFileSync(path.join(monorepoRoot, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
+    fs.writeFileSync(
+      path.join(subPackage, "package.json"),
+      JSON.stringify({ name: "my-app", dependencies: { react: "^19.0.0" } }),
+    );
+
+    const diagnostics = checkInstallHardening(subPackage);
+
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("finds .npmrc in a parent directory for pnpm single-package", () => {
+    const repoRoot = path.join(temporaryRoot, "repo");
+    const subFolder = path.join(repoRoot, "src", "app");
+    fs.mkdirSync(subFolder, { recursive: true });
+    fs.mkdirSync(path.join(repoRoot, ".git"));
+    fs.writeFileSync(path.join(repoRoot, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
+    fs.writeFileSync(
+      path.join(repoRoot, ".npmrc"),
+      "minimum-release-age=10080\nblock-exotic-subdeps=true\ntrust-policy=no-downgrade\n",
+    );
+
+    const diagnostics = checkInstallHardening(subFolder);
+
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("finds .npmrc in a parent directory for npm projects", () => {
+    const repoRoot = path.join(temporaryRoot, "npm-repo");
+    const subFolder = path.join(repoRoot, "packages", "lib");
+    fs.mkdirSync(subFolder, { recursive: true });
+    fs.mkdirSync(path.join(repoRoot, ".git"));
+    fs.writeFileSync(
+      path.join(repoRoot, "package-lock.json"),
+      JSON.stringify({ lockfileVersion: 3 }),
+    );
+    fs.writeFileSync(path.join(repoRoot, ".npmrc"), "min-release-age=7\n");
+
+    const diagnostics = checkInstallHardening(subFolder);
+
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("finds .yarnrc.yml in a parent directory", () => {
+    const repoRoot = path.join(temporaryRoot, "yarn-repo");
+    const subFolder = path.join(repoRoot, "packages", "web");
+    fs.mkdirSync(subFolder, { recursive: true });
+    fs.mkdirSync(path.join(repoRoot, ".git"));
+    fs.writeFileSync(
+      path.join(repoRoot, "package.json"),
+      JSON.stringify({ name: "yarn-mono", packageManager: "yarn@4.10.0" }),
+    );
+    fs.writeFileSync(path.join(repoRoot, "yarn.lock"), "__metadata:\n  version: 8\n");
+    fs.writeFileSync(path.join(repoRoot, ".yarnrc.yml"), "npmMinimalAgeGate: 10080\n");
+
+    const diagnostics = checkInstallHardening(subFolder);
+
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("finds bunfig.toml in a parent directory", () => {
+    const repoRoot = path.join(temporaryRoot, "bun-repo");
+    const subFolder = path.join(repoRoot, "src");
+    fs.mkdirSync(subFolder, { recursive: true });
+    fs.mkdirSync(path.join(repoRoot, ".git"));
+    fs.writeFileSync(path.join(repoRoot, "bun.lock"), JSON.stringify({ lockfileVersion: 0 }));
+    fs.writeFileSync(path.join(repoRoot, "bunfig.toml"), "[install]\nminimumReleaseAge = 604800\n");
+
+    const diagnostics = checkInstallHardening(subFolder);
+
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("uses relative path in diagnostics when config file is in parent", () => {
+    const repoRoot = path.join(temporaryRoot, "rel-path-repo");
+    const subFolder = path.join(repoRoot, "packages", "app");
+    fs.mkdirSync(subFolder, { recursive: true });
+    fs.mkdirSync(path.join(repoRoot, ".git"));
+    fs.writeFileSync(path.join(repoRoot, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
+    fs.writeFileSync(path.join(repoRoot, "pnpm-workspace.yaml"), "packages:\n  - packages/*\n");
+
+    const diagnostics = checkInstallHardening(subFolder);
+
+    expect(diagnostics.length).toBeGreaterThan(0);
+    const workspaceDiagnostic = diagnostics.find((diagnostic) =>
+      diagnostic.filePath.includes("pnpm-workspace.yaml"),
+    );
+    expect(workspaceDiagnostic).toBeDefined();
+    expect(workspaceDiagnostic?.filePath).toContain("..");
+  });
+
+  it("detects package manager from parent directory lockfile", () => {
+    const repoRoot = path.join(temporaryRoot, "pm-parent");
+    const subFolder = path.join(repoRoot, "packages", "lib");
+    fs.mkdirSync(subFolder, { recursive: true });
+    fs.mkdirSync(path.join(repoRoot, ".git"));
+    fs.writeFileSync(path.join(repoRoot, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
+
+    const diagnostics = checkInstallHardening(subFolder);
+
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("detects package manager from parent directory packageManager field", () => {
+    const repoRoot = path.join(temporaryRoot, "pm-field-parent");
+    const subFolder = path.join(repoRoot, "apps", "web");
+    fs.mkdirSync(subFolder, { recursive: true });
+    fs.mkdirSync(path.join(repoRoot, ".git"));
+    fs.writeFileSync(
+      path.join(repoRoot, "package.json"),
+      JSON.stringify({ name: "mono", packageManager: "yarn@4.10.0" }),
+    );
+
+    const diagnostics = checkInstallHardening(subFolder);
+
+    expect(diagnostics.length).toBeGreaterThan(0);
+    expect(diagnostics[0].filePath).toBe(".yarnrc.yml");
+  });
+
+  it("stops traversal at .git boundary", () => {
+    const outerRoot = path.join(temporaryRoot, "outer");
+    const innerRepo = path.join(outerRoot, "inner");
+    const subFolder = path.join(innerRepo, "src");
+    fs.mkdirSync(subFolder, { recursive: true });
+    fs.mkdirSync(path.join(innerRepo, ".git"));
+    fs.writeFileSync(path.join(outerRoot, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
+    fs.writeFileSync(
+      path.join(outerRoot, "pnpm-workspace.yaml"),
+      "minimumReleaseAge: 10080\ntrustPolicy: no-downgrade\n",
+    );
+
+    const diagnostics = checkInstallHardening(subFolder);
+
+    expect(diagnostics).toHaveLength(0);
   });
 });

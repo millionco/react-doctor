@@ -52,7 +52,13 @@ const buildTraceSummary = (input: CopyTraceInput): string => {
   }
 
   lines.push("");
-  lines.push("To fix: npx react-doctor@latest --verbose");
+  lines.push("## How to fix");
+  lines.push("1. Run `npx react-doctor@latest --verbose` to see full details");
+  lines.push("2. Fix errors first, then warnings. Start with high-count rules.");
+  lines.push("3. Read the code before acting — treat findings as hypotheses, not commands.");
+  lines.push("4. Fix root causes, not symptoms. Don't suppress rules without evidence.");
+  lines.push("5. Run `npx react-doctor@latest --verbose --diff` after changes to verify.");
+  lines.push("6. Split unrelated fixes into separate PRs.");
 
   return lines.join("\n");
 };

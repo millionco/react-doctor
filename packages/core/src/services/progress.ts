@@ -9,6 +9,7 @@ import * as Ref from "effect/Ref";
  * implementation (ora instance, log lines, GitHub Action group, etc).
  */
 export interface ProgressHandle {
+  readonly update: (displayText: string) => Effect.Effect<void>;
   readonly succeed: (displayText: string) => Effect.Effect<void>;
   readonly fail: (displayText: string) => Effect.Effect<void>;
 }
@@ -55,6 +56,7 @@ export class Progress extends Context.Service<
     Progress.of({
       start: () =>
         Effect.succeed({
+          update: () => Effect.void,
           succeed: () => Effect.void,
           fail: () => Effect.void,
         }),
@@ -72,6 +74,7 @@ export class Progress extends Context.Service<
               { _tag: "Started" as const, text },
             ]);
             return {
+              update: () => Effect.void,
               succeed: (displayText: string) =>
                 Ref.update(events, (existing) => [
                   ...existing,

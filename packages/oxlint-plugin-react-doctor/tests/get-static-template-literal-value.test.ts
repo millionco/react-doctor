@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { getStaticTemplateLiteralValue } from "./get-static-template-literal-value.js";
+import { getStaticTemplateLiteralValue } from "../src/plugin/utils/get-static-template-literal-value.js";
 
 describe("getStaticTemplateLiteralValue", () => {
   it("returns the cooked value for a no-substitution template literal", () => {

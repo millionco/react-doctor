@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -431,17 +431,21 @@ export const runInstallSkill = async (options: InstallSkillOptions = {}): Promis
 
   const workflowsDirectory = path.join(projectRoot, ".github", "workflows");
   const workflowTargetPath = path.join(workflowsDirectory, "react-doctor.yml");
-  if (existsSync(workflowsDirectory) && !existsSync(workflowTargetPath) && !skipPrompts) {
+  if (!existsSync(workflowTargetPath) && !skipPrompts) {
+    const hasExistingWorkflows = existsSync(workflowsDirectory);
     const { shouldInstallWorkflow } = await prompts<"shouldInstallWorkflow">(
       {
         type: "confirm",
         name: "shouldInstallWorkflow",
         message: "Add a GitHub Actions workflow to scan PRs?",
-        initial: true,
+        initial: hasExistingWorkflows,
       },
       promptOptions,
     );
     if (shouldInstallWorkflow) {
+      if (!hasExistingWorkflows) {
+        mkdirSync(workflowsDirectory, { recursive: true });
+      }
       const workflowSpinner = spinner("Adding GitHub Actions workflow...").start();
       try {
         const workflowContent = [

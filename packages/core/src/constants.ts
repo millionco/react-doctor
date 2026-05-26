@@ -116,10 +116,9 @@ export const MAX_CATEGORY_GROUPS_SHOWN_NON_VERBOSE = 5;
 
 export const MAX_RULE_GROUPS_PER_CATEGORY_NON_VERBOSE = 3;
 
-// `minimumReleaseAge` in `pnpm-workspace.yaml` is denominated in
-// minutes. 7 days × 24 h × 60 min = 10080. Surfaced as the
-// recommended starting point for the supply-chain hardening check.
-export const RECOMMENDED_PNPM_MINIMUM_RELEASE_AGE_MINUTES = 10_080;
+export const RECOMMENDED_MINIMUM_RELEASE_AGE_MINUTES = 10_080;
+export const RECOMMENDED_MINIMUM_RELEASE_AGE_DAYS = 7;
+export const SECONDS_PER_MINUTE = 60;
 
 // Minimum width of the rule-name column in the diagnostics list. Pads
 // shorter rule names so the right-aligned `N sites` count stays in a

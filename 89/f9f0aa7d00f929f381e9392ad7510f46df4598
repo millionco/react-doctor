@@ -1,0 +1,29 @@
+packages/react-doctor/tests/is-ci-or-agent-environment.test.ts
+  s_48b4377e3aeff0::t_e5b37720637df6 1-42
+packages/react-doctor/src/cli/utils/is-ci-or-agent-environment.ts
+  s_48b4377e3aeff0::t_c6799cce458631 1-25
+packages/react-doctor/src/cli/utils/prompt-install-setup.ts
+  s_48b4377e3aeff0::t_bcb67191c1a8ff 6,124
+packages/react-doctor/tests/prompt-install-setup.test.ts
+  s_48b4377e3aeff0::t_5690763a89dbf0 50,53-54,59-63,266-280
+packages/react-doctor/src/inspect.ts
+  s_48b4377e3aeff0::t_8d6afff90ee7e6 25,52,82,181-185
+packages/react-doctor/src/cli/utils/is-non-interactive-environment.ts
+  s_48b4377e3aeff0::t_dd546da4bad0e7 1-5,17,19,22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "89f9f0aa7d00f929f381e9392ad7510f46df4598",
+  "prompts": {},
+  "sessions": {
+    "s_48b4377e3aeff0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "cca2bd6d-b692-4151-974c-2ea46f98edd9",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

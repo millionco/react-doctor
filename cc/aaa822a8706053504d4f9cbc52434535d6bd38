@@ -1,0 +1,24 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-mutating-reducer-state.ts
+  s_948f07583a6c91::t_ab4bc54e549d56 293-294
+  s_948f07583a6c91::t_2abd63041b3775 633-635,638-643
+  s_948f07583a6c91::t_acf5632208cd85 2,9,124,126,174-176,178,180-182,188-196,227,229,239-246,256,258-259,271,279,281,286-287,290-291,298,308,322,324-325,329,331-332,338,340
+  s_948f07583a6c91::t_8d4e5b46c67f29 209-217,219,360,363,365,372-373,375,380,386-387,389,394,399-400,402,407-408,418-419,421,424-425,442-443,449-479
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-mutating-reducer-state.test.ts
+  s_948f07583a6c91::t_293025a82f7441 105-116,148-169,545-577
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "ccaaa822a8706053504d4f9cbc52434535d6bd38",
+  "prompts": {},
+  "sessions": {
+    "s_948f07583a6c91": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "5aa2e65d-91bb-4c50-a697-9625d15dd322",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

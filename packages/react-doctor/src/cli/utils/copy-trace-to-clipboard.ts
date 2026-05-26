@@ -3,6 +3,7 @@ import os from "node:os";
 import type { Diagnostic, ScoreResult } from "@react-doctor/core";
 import { groupBy } from "@react-doctor/core";
 import { prompts } from "./prompts.js";
+import { writeDiagnosticsDirectory } from "./write-diagnostics-directory.js";
 
 const MAX_RULES_SHOWN = 10;
 const MAX_FILES_PER_RULE = 3;
@@ -50,6 +51,12 @@ const buildTraceSummary = (input: CopyTraceInput): string => {
     lines.push("");
     lines.push(`+${hiddenRuleCount} more rules`);
   }
+
+  try {
+    const diagnosticsDirectory = writeDiagnosticsDirectory([...input.diagnostics]);
+    lines.push("");
+    lines.push(`Full trace: ${diagnosticsDirectory}`);
+  } catch {}
 
   lines.push("");
   lines.push("## How to fix");

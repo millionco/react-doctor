@@ -1,0 +1,42 @@
+packages/react-doctor/src/cli/utils/render-doctor-callout.ts
+  s_e58f3921e44516::t_e22dcc325ef12f 1-88
+packages/react-doctor/src/index.ts
+  s_e58f3921e44516::t_c3b7b51d6e2476 98
+packages/react-doctor/src/cli/utils/render-summary.ts
+  s_e58f3921e44516::t_573747fd967f70 9-10,16,64-76,79,81-86,104,108,116-117
+packages/react-doctor/src/inspect.ts
+  s_e58f3921e44516::t_48a59c84ced800 91
+  s_e58f3921e44516::t_890d6a3b823948 359,366,375,405-418,420,439,447,458
+  s_e58f3921e44516::t_5c7aa55bc2feff 60
+packages/core/src/types/inspect.ts
+  s_e58f3921e44516::t_93e3ecff0cb2c8 21-28
+  s_e58f3921e44516::t_2dae76b38731a8 69-76
+packages/react-doctor/src/cli/commands/inspect.ts
+  s_e58f3921e44516::t_8bf5fe95ab7a97 37
+  s_e58f3921e44516::t_9194d992883311 36
+  s_e58f3921e44516::t_68f91f8bfd4b82 256-261,288,302,306-312
+  s_e58f3921e44516::t_257806c569386a 297-300
+  s_e58f3921e44516::t_f2ab0b1f243fee 301
+  s_e58f3921e44516::t_f0670ef9a6cdf2 303-305
+  s_e58f3921e44516::t_e8712dab39d7d5 347-350
+packages/react-doctor/src/cli/utils/render-monorepo-summary.ts
+  s_e58f3921e44516::t_4a0c6de265759c 175,180-182,184-187,189
+  s_e58f3921e44516::t_cbe0623b428a69 1-27,31-103,107,122-125,131-134,137,139,145,147-148,150,152-159,164-165,167-174,179,188,190
+  s_e58f3921e44516::t_14db4aa4b6bdba 28-30,104-106,108-121,126-130,135-136,138,140-144,146,149,151,160-163,166,176-178,183
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "95bc5a20c179b20ea72f6a6aff80807234da04be",
+  "prompts": {},
+  "sessions": {
+    "s_e58f3921e44516": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a3d5ea68-35a1-4dd1-ad62-5c0c85dfc2a3",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

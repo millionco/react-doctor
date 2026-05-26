@@ -210,11 +210,6 @@ export const promptInstallSetup = async (options: PromptInstallSetupOptions): Pr
 
     await (options.wait ?? defaultWait)(SETUP_PROMPT_DELAY_MS);
 
-    const writeLine = options.writeLine ?? defaultWriteLine;
-    for (const line of buildInstallSetupPitchLines(options.issueCount)) {
-      writeLine(line);
-    }
-
     const setupReactDoctorChoice = await (options.select ?? defaultSelect)(
       "Set up React Doctor for this project?",
     );

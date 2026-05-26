@@ -173,7 +173,7 @@ const defaultSelect: SetupPromptSelect = async (message) => {
     },
     { onCancel: () => true },
   );
-  return setupReactDoctorChoice ?? SETUP_PROMPT_CHOICE_NEVER;
+  return setupReactDoctorChoice ?? SETUP_PROMPT_CHOICE_NO;
 };
 
 const defaultWriteLine: SetupPitchWriter = (line = "") => {

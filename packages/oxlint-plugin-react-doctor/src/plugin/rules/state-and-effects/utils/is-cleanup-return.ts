@@ -82,7 +82,9 @@ const isStaticIteratorCallbackCallee = (callee: EsTreeNode): boolean =>
   isNodeOfType(callee, "MemberExpression") &&
   isNodeOfType(callee.object, "Identifier") &&
   isNodeOfType(callee.property, "Identifier") &&
-  (callee.object.name === "Array" || callee.object.name === "Object") &&
+  (callee.object.name === "Array" ||
+    callee.object.name === "Map" ||
+    callee.object.name === "Object") &&
   STATIC_ITERATOR_CALLBACK_METHOD_NAMES.has(callee.property.name);
 
 const isIteratorCallbackArgument = (node: EsTreeNode): boolean => {

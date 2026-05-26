@@ -532,7 +532,6 @@ export const Clock = () => {
   });
 
   it("does NOT flag expression-body arrow whose subscribe return is the implicit cleanup (Bugbot #157)", async () => {
-    // Expression-body effects return the subscribe cleanup directly.
     const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-expression-body", {
       files: {
         "src/Subscribe.tsx": `import { useEffect } from "react";
@@ -572,7 +571,6 @@ export const Resize = () => {
   });
 
   it("does NOT flag a `setTimeout` that lives inside the cleanup return (Bugbot #157 round 3)", async () => {
-    // Timers inside returned cleanup functions are disposal work.
     const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-timer-in-cleanup", {
       files: {
         "src/Beacon.tsx": `import { useEffect } from "react";
@@ -598,7 +596,6 @@ export const Beacon = () => {
   });
 
   it("does NOT flag `return () => unsub()` after `const unsub = subscribe(...)` (Bugbot #157 round 3)", async () => {
-    // The cleanup name comes from the subscribe result, not a naming heuristic.
     const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-short-unsub-call", {
       files: {
         "src/Subscribe.tsx": `import { useEffect } from "react";
@@ -622,7 +619,6 @@ export const Subscribe = () => {
   });
 
   it("recognizes the generic teardown vocabulary (`cleanup`, `dispose`, `destroy`, `teardown`) as a release call", async () => {
-    // Generic teardown names are valid as direct cleanup calls.
     for (const releaseName of ["cleanup", "dispose", "destroy", "teardown"]) {
       const projectDir = setupReactProject(
         tempRoot,
@@ -722,7 +718,6 @@ export const Resize = () => {
     expect(hits).toHaveLength(1);
   });
 
-  // Guarded effects often return cleanup from inside a branch.
   it("does NOT flag cleanup nested inside an `if` block (early-return guard pattern)", async () => {
     const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-conditional-cleanup", {
       files: {
@@ -798,7 +793,6 @@ export const Subscribe = () => {
     expect(hits).toHaveLength(0);
   });
 
-  // AbortController can clean up listeners registered with its signal.
   it("does NOT flag `addEventListener({ signal })` cleaned up via `controller.abort()`", async () => {
     const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-abort-controller", {
       files: {

@@ -441,6 +441,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       totalSourceFileCount: lintSourceFileCount,
       noScoreMessage,
       isOffline: !shouldShowShareLink,
+      verbose: options.verbose,
     });
 
     if (hasSkippedChecks) {

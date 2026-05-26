@@ -47,6 +47,7 @@ export interface PrintSummaryInput {
   readonly totalSourceFileCount: number;
   readonly noScoreMessage: string;
   readonly isOffline: boolean;
+  readonly verbose?: boolean;
 }
 
 export const printSummary = (input: PrintSummaryInput): Effect.Effect<void> =>
@@ -68,7 +69,7 @@ export const printSummary = (input: PrintSummaryInput): Effect.Effect<void> =>
       try: () => writeDiagnosticsDirectory(input.diagnostics),
       catch: (cause) => cause,
     }).pipe(Effect.orElseSucceed(() => null as string | null));
-    if (diagnosticsDirectory !== null) {
+    if (diagnosticsDirectory !== null && input.verbose) {
       yield* Console.log(highlighter.gray(`  Full diagnostics written to ${diagnosticsDirectory}`));
     }
 

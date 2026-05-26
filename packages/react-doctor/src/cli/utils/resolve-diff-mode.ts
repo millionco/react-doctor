@@ -36,18 +36,13 @@ export const resolveDiffMode = async (
   if (shouldSkipPrompts) return false;
   if (isQuiet) return false;
 
-  const currentBranchLabel = diffInfo.currentBranch ?? "(detached HEAD)";
-  const promptContext = diffInfo.isCurrentChanges
-    ? `${changedSourceFiles.length} uncommitted changed files`
-    : `${changedSourceFiles.length} files changed vs ${diffInfo.baseBranch}`;
-
   const { scanScope } = await prompts({
     type: "select",
     name: "scanScope",
-    message: `On branch ${currentBranchLabel} (${promptContext}). What do you want to scan?`,
+    message: "Scan",
     choices: [
       { title: "Full codebase", value: "full" },
-      { title: "This branch", value: "branch" },
+      { title: `Changed files (${changedSourceFiles.length})`, value: "branch" },
     ],
     initial: 0,
   });

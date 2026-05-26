@@ -1,4 +1,7 @@
-import { OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT, PROGRESS_TICK_INTERVAL_MS } from "../../constants.js";
+import {
+  OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT,
+  PROGRESS_TICK_INTERVAL_MS,
+} from "../../constants.js";
 import type { Diagnostic, ProjectInfo } from "../../types/index.js";
 import { isSplittableReactDoctorError } from "../../errors.js";
 import { dedupeDiagnostics } from "../../utils/dedupe-diagnostics.js";

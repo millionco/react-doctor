@@ -74,7 +74,9 @@ const buildScoreLine = (
 ): string => {
   const scoreNumber = colorizeByScore(`${displayScore}`, finalScore);
   const scoreLabel = colorizeByScore(label, finalScore);
-  const projectSuffix = projectName ? ` ${highlighter.dim("·")} ${highlighter.dim(projectName)}` : "";
+  const projectSuffix = projectName
+    ? ` ${highlighter.dim("·")} ${highlighter.dim(projectName)}`
+    : "";
   return `${scoreNumber} ${highlighter.dim(`/ ${PERFECT_SCORE}`)} ${scoreLabel}${projectSuffix}`;
 };
 

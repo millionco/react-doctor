@@ -33,10 +33,7 @@ const getScoreLabel = (score: number): string => {
   return "Needs work";
 };
 
-const buildSummaryLine = (
-  entry: ProjectScanEntry,
-  longestProjectNameLength: number,
-): string => {
+const buildSummaryLine = (entry: ProjectScanEntry, longestProjectNameLength: number): string => {
   const paddedName = entry.projectName.padEnd(longestProjectNameLength);
   const nameRendering =
     entry.score !== null ? colorizeByScore(paddedName, entry.score) : highlighter.dim(paddedName);
@@ -89,20 +86,12 @@ export interface MultiProjectSummaryInput {
   readonly verbose: boolean;
 }
 
-export const printMultiProjectSummary = (
-  input: MultiProjectSummaryInput,
-): Effect.Effect<void> =>
+export const printMultiProjectSummary = (input: MultiProjectSummaryInput): Effect.Effect<void> =>
   Effect.gen(function* () {
     const { completedScans, userConfig, verbose } = input;
 
-    const allDiagnostics: Diagnostic[] = completedScans.flatMap(
-      (scan) => scan.result.diagnostics,
-    );
-    const surfaceDiagnostics = filterDiagnosticsForSurface(
-      allDiagnostics,
-      "cli",
-      userConfig,
-    );
+    const allDiagnostics: Diagnostic[] = completedScans.flatMap((scan) => scan.result.diagnostics);
+    const surfaceDiagnostics = filterDiagnosticsForSurface(allDiagnostics, "cli", userConfig);
 
     if (surfaceDiagnostics.length > 0) {
       yield* Console.log("");
@@ -142,9 +131,7 @@ export const printMultiProjectSummary = (
       };
     });
 
-    const longestProjectNameLength = Math.max(
-      ...entries.map((entry) => entry.projectName.length),
-    );
+    const longestProjectNameLength = Math.max(...entries.map((entry) => entry.projectName.length));
 
     for (const entry of entries) {
       yield* Console.log(buildSummaryLine(entry, longestProjectNameLength));

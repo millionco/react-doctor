@@ -622,7 +622,6 @@ describe("shouldPromptInstallSetup", () => {
     expect(disableSetupPrompt(fixture.projectRoot, { cwd: fixture.configRoot })).toBe(true);
     expect(hasDisabledSetupPrompt(fixture.projectRoot, { cwd: fixture.configRoot })).toBe(true);
   });
-
 });
 
 describe("shouldShowAgentInstallHint", () => {

@@ -10,6 +10,7 @@ import {
 import type { ScoreResult } from "@react-doctor/core";
 import { colorizeByScore } from "./colorize-by-score.js";
 import { isSpinnerInteractive } from "./is-spinner-interactive.js";
+import { isSpinnerSilent } from "./spinner.js";
 
 const SCORE_BAR_ANIMATION_FRAME_COUNT = 12;
 const SCORE_BAR_ANIMATION_FRAME_DELAY_MS = 20;
@@ -92,7 +93,7 @@ export const printScoreHeader = (scoreResult: ScoreResult): Effect.Effect<void> 
 
     for (let lineIndex = 0; lineIndex < renderedFaceLines.length; lineIndex += 1) {
       const rightColumnContent = rightColumnLines[lineIndex] ?? "";
-      if (lineIndex === 1 && isSpinnerInteractive(process.stdout)) {
+      if (lineIndex === 1 && !isSpinnerSilent() && isSpinnerInteractive(process.stdout)) {
         yield* printAnimatedScoreBarLine(renderedFaceLines[lineIndex], scoreResult.score);
         continue;
       }

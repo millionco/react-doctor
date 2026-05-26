@@ -3,7 +3,7 @@ import path from "node:path";
 import Conf from "conf";
 import basePrompts from "prompts";
 import { findNearestPackageDirectory, hasDoctorScript } from "./install-doctor-script.js";
-import { isCiOrCodingAgentEnvironment } from "./is-ci-environment.js";
+import { isCiOrCodingAgentEnvironment, isCodingAgentEnvironment } from "./is-ci-environment.js";
 import { SETUP_PROMPT_DELAY_MS } from "./constants.js";
 
 export interface InstallSkillRunnerOptions {
@@ -208,7 +208,9 @@ export const promptInstallSetup = async (options: PromptInstallSetupOptions): Pr
   try {
     if (!shouldPromptInstallSetup(options)) return;
 
-    await (options.wait ?? defaultWait)(SETUP_PROMPT_DELAY_MS);
+    if (SETUP_PROMPT_DELAY_MS > 0) {
+      await (options.wait ?? defaultWait)(SETUP_PROMPT_DELAY_MS);
+    }
 
     const writeLine = options.writeLine ?? defaultWriteLine;
     for (const line of buildInstallSetupPitchLines(options.issueCount)) {
@@ -242,5 +244,43 @@ export const promptInstallSetup = async (options: PromptInstallSetupOptions): Pr
     }
   } catch (error) {
     await warnSetupPromptFailure(options, error);
+  }
+};
+
+export interface ShouldShowAgentInstallHintOptions {
+  readonly projectRoot: string;
+  readonly hasScoredScan: boolean;
+  readonly isJsonMode: boolean;
+  readonly isScoreOnly: boolean;
+  readonly isStaged: boolean;
+  readonly isCodingAgent?: boolean;
+}
+
+export const shouldShowAgentInstallHint = (options: ShouldShowAgentInstallHintOptions): boolean => {
+  if (!options.hasScoredScan) return false;
+  if (options.isJsonMode) return false;
+  if (options.isScoreOnly) return false;
+  if (options.isStaged) return false;
+  if (!(options.isCodingAgent ?? isCodingAgentEnvironment())) return false;
+  return !hasDoctorScript(options.projectRoot);
+};
+
+const AGENT_INSTALL_HINT_LINES = [
+  "React Doctor is not installed in this project.",
+  "Ask the user if they would like to set it up, then run:",
+  "",
+  "  npx react-doctor install --yes",
+  "",
+  "This adds agent skill files, a `doctor` package script, and react-doctor as a dev dependency.",
+] as const;
+
+export const buildAgentInstallHintLines = (): readonly string[] => AGENT_INSTALL_HINT_LINES;
+
+export const printAgentInstallHint = (
+  writeLine: SetupPitchWriter = defaultWriteLine,
+): void => {
+  writeLine("");
+  for (const line of AGENT_INSTALL_HINT_LINES) {
+    writeLine(line);
   }
 };

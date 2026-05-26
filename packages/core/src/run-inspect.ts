@@ -1,4 +1,5 @@
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Filter from "effect/Filter";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -141,24 +142,19 @@ const formatLintFailText = (
 /**
  * The full inspect orchestration as a single composable Effect.
  *
- * Phases (each one is a separate `Stream.runCollect` so the
- * `Progress` service can render a per-phase status line):
+ * Phases:
  *
  *   1. Config.resolve(directory) → Project.discover → Git metadata
  *   2. beforeLint hook (e.g. CLI renders the project-detection block)
- *   3. environment checks (reduced-motion + pnpm hardening) — emitted
- *      through the per-element pipeline so they participate in
- *      auto-suppress / severity / ignore / inline rules.
- *   4. Linter.run — fold `ReactDoctorError` into Ref state so a
- *      lint failure surfaces via `skippedCheckReasons` rather than
- *      sinking the whole scan. Wrapped in `Progress.start("Running
- *      lint checks...")` for terminal feedback.
+ *   3. environment checks (reduced-motion + pnpm hardening)
+ *   4. Linter.run + DeadCode.run — forked as concurrent fibers so
+ *      their wall-clock times overlap. Progress spinners stay
+ *      sequential (lint first, then dead-code) for clean terminal
+ *      output. GitHub viewer permission also runs as a background
+ *      fiber during this phase.
  *   5. afterLint hook
- *   6. DeadCode.run (gated on `runDeadCode && !isDiffMode`) — same
- *      Ref-fold pattern. Wrapped in `Progress.start("Analyzing dead
- *      code...")`.
- *   7. Reporter.finalize (side-channel: future LSP / NDJSON)
- *   8. Score.compute against the surface-filtered diagnostic set
+ *   6. Reporter.finalize
+ *   7. Score.compute against the surface-filtered diagnostic set
  *
  * The orchestrator owns spinner lifecycle via `Progress`; callers
  * choose `Progress.layerOra(...)` for CLI feedback or
@@ -216,23 +212,13 @@ export const runInspect = <HooksR = never>(
       { concurrency: 3 },
     );
     const githubActionsScoreMetadata = input.isCi ? resolveGithubActionsScoreMetadata() : {};
-    const githubViewerPermission =
+    const githubViewerPermissionFiber = yield* Effect.forkChild(
       input.resolveLocalGithubViewerPermission === true && !input.isCi && repo !== null
-        ? yield* gitService
+        ? gitService
             .githubViewerPermission({ directory: scanDirectory, repo })
             .pipe(Effect.orElseSucceed(() => null as string | null))
-        : null;
-    const scoreMetadata: ScoreRequestMetadata = {
-      ...(repo !== null ? { repo } : {}),
-      ...(sha !== null ? { sha } : {}),
-      framework: project.framework,
-      ...(project.reactVersion !== null ? { reactVersion: project.reactVersion } : {}),
-      sourceFileCount: project.sourceFileCount,
-      ...(defaultBranch !== null ? { defaultBranch } : {}),
-      ...(input.doctorVersion !== undefined ? { doctorVersion: input.doctorVersion } : {}),
-      ...githubActionsScoreMetadata,
-      ...(githubViewerPermission !== null ? { githubViewerPermission } : {}),
-    };
+        : Effect.succeed(null as string | null),
+    );
 
     const jsxIncludePaths = computeJsxIncludePaths([...input.includePaths]);
     const lintIncludePaths =
@@ -265,12 +251,43 @@ export const runInspect = <HooksR = never>(
       applyPerElementPipeline(Stream.fromIterable(environmentDiagnostics)),
     );
 
-    // ── Phase: lint ───────────────────────────────────────────────
+    // ── Phase: lint + dead-code (concurrent fibers) ───────────────
+
     const lintFailure = yield* Ref.make<{
       didFail: boolean;
       reason: string | null;
       reasonTag: ReactDoctorErrorReason["_tag"] | null;
     }>({ didFail: false, reason: null, reasonTag: null });
+    const deadCodeFailure = yield* Ref.make<{ didFail: boolean; reason: string | null }>({
+      didFail: false,
+      reason: null,
+    });
+
+    const shouldRunDeadCode = input.runDeadCode && !isDiffMode;
+
+    const deadCodeFiber = yield* Effect.forkChild(
+      shouldRunDeadCode
+        ? Stream.runCollect(
+            applyPerElementPipeline(
+              deadCodeService
+                .run({ rootDirectory: scanDirectory, userConfig: resolvedConfig.config })
+                .pipe(
+                  Stream.catchTag("ReactDoctorError", (error: ReactDoctorError) =>
+                    Stream.unwrap(
+                      Effect.gen(function* () {
+                        yield* Ref.set(deadCodeFailure, {
+                          didFail: true,
+                          reason: error.message,
+                        });
+                        return Stream.empty as Stream.Stream<Diagnostic, never>;
+                      }),
+                    ),
+                  ),
+                ),
+            ),
+          )
+        : Effect.succeed<Iterable<Diagnostic>>([]),
+    );
 
     const rawLintStream = linterService
       .run({
@@ -310,39 +327,18 @@ export const runInspect = <HooksR = never>(
     }
     yield* afterLint(lintFailureState.didFail);
 
-    // ── Phase: dead-code (gated on runDeadCode && !isDiffMode) ────
-    const shouldRunDeadCode = input.runDeadCode && !isDiffMode;
-    const deadCodeFailure = yield* Ref.make<{ didFail: boolean; reason: string | null }>({
-      didFail: false,
-      reason: null,
-    });
-    let deadCodeCollected: Iterable<Diagnostic> = [];
-    if (shouldRunDeadCode) {
-      const rawDeadCodeStream = deadCodeService
-        .run({ rootDirectory: scanDirectory, userConfig: resolvedConfig.config })
-        .pipe(
-          Stream.catchTag("ReactDoctorError", (error: ReactDoctorError) =>
-            Stream.unwrap(
-              Effect.gen(function* () {
-                yield* Ref.set(deadCodeFailure, {
-                  didFail: true,
-                  reason: error.message,
-                });
-                return Stream.empty as Stream.Stream<Diagnostic, never>;
-              }),
-            ),
-          ),
-        );
-      const deadCodeProgress = yield* progressService.start("Analyzing dead code...");
-      deadCodeCollected = yield* Stream.runCollect(applyPerElementPipeline(rawDeadCodeStream));
-      const deadCodeFailureStateInline = yield* Ref.get(deadCodeFailure);
-      if (deadCodeFailureStateInline.didFail) {
+    const deadCodeProgress = shouldRunDeadCode
+      ? yield* progressService.start("Analyzing dead code...")
+      : null;
+    const deadCodeCollected = yield* Fiber.join(deadCodeFiber);
+    const deadCodeFailureState = yield* Ref.get(deadCodeFailure);
+    if (deadCodeProgress !== null) {
+      if (deadCodeFailureState.didFail) {
         yield* deadCodeProgress.fail(DEAD_CODE_FAIL_TEXT);
       } else {
         yield* deadCodeProgress.succeed(DEAD_CODE_SUCCESS_TEXT);
       }
     }
-    const deadCodeFailureState = yield* Ref.get(deadCodeFailure);
 
     yield* reporterService.finalize;
 
@@ -352,11 +348,19 @@ export const runInspect = <HooksR = never>(
       ...deadCodeCollected,
     ];
 
-    // Score is computed off the surface-filtered diagnostic set so
-    // weak-signal rule families (design cleanup, etc.) can't dilute
-    // the headline number. The full `finalDiagnostics` array is what
-    // the caller sees on `InspectOutput.diagnostics`; only the score
-    // input is narrowed.
+    const githubViewerPermission = yield* Fiber.join(githubViewerPermissionFiber);
+    const scoreMetadata: ScoreRequestMetadata = {
+      ...(repo !== null ? { repo } : {}),
+      ...(sha !== null ? { sha } : {}),
+      framework: project.framework,
+      ...(project.reactVersion !== null ? { reactVersion: project.reactVersion } : {}),
+      sourceFileCount: project.sourceFileCount,
+      ...(defaultBranch !== null ? { defaultBranch } : {}),
+      ...(input.doctorVersion !== undefined ? { doctorVersion: input.doctorVersion } : {}),
+      ...githubActionsScoreMetadata,
+      ...(githubViewerPermission !== null ? { githubViewerPermission } : {}),
+    };
+
     const scoreSurface: DiagnosticSurface = input.scoreSurface ?? "score";
     const scoreDiagnostics = filterDiagnosticsForSurface(
       [...finalDiagnostics],

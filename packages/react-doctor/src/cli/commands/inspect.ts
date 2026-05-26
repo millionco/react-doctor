@@ -34,8 +34,10 @@ import {
 import { printAnnotations } from "../utils/print-annotations.js";
 import { printBrandedHeader } from "../utils/print-branded-header.js";
 import {
+  printAgentInstallHint,
   promptInstallSetup,
   resolveInstallSetupProjectRoot,
+  shouldShowAgentInstallHint,
 } from "../utils/prompt-install-setup.js";
 import { resolveCliInspectOptions } from "../utils/resolve-cli-inspect-options.js";
 import { resolveDiffMode } from "../utils/resolve-diff-mode.js";
@@ -303,9 +305,11 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       completedScanDirectories: completedScans.map((scan) => scan.directory),
     });
     if (setupProjectRoot !== null) {
+      const hasScoredScan = completedScans.some((scan) => scan.result.score !== null);
+
       await promptInstallSetup({
         projectRoot: setupProjectRoot,
-        hasScoredScan: completedScans.some((scan) => scan.result.score !== null),
+        hasScoredScan,
         issueCount: filterDiagnosticsForSurface(
           allDiagnostics,
           scanOptions.outputSurface ?? "cli",
@@ -316,6 +320,18 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         isStaged: Boolean(flags.staged),
         skipPrompts,
       });
+
+      if (
+        shouldShowAgentInstallHint({
+          projectRoot: setupProjectRoot,
+          hasScoredScan,
+          isJsonMode,
+          isScoreOnly,
+          isStaged: Boolean(flags.staged),
+        })
+      ) {
+        printAgentInstallHint();
+      }
     }
   } catch (error) {
     if (isJsonMode) {

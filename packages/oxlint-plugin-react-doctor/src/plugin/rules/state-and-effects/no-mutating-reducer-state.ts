@@ -8,6 +8,7 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { getStaticMemberPropertyName } from "./utils/static-member-property-name.js";
 
 const MESSAGE =
   "Reducer mutates its current state and returns the same reference. Return a copied object or array so React can observe the update.";
@@ -72,6 +73,10 @@ const REFLECT_MUTATION_METHODS = new Set(["deleteProperty", "set"]);
 // mutations plus a small set of built-in mutating APIs. Helper calls like
 // `mutate(state)`, lodash-style `set(state, path, value)`, and type-dependent
 // custom methods are skipped unless we can prove the mutation target.
+//
+// TODO(v2 - destructured aliases): aliases created by destructuring, such as
+// `const { items } = state`, are skipped for now. Add pattern-aware alias
+// tracking before diagnosing mutations through those names.
 //
 // Logical assignments (`??=`, `||=`, `&&=`) are treated as reducer mutations.
 // They may be no-ops at runtime, but reducer mutation is nonstandard enough that
@@ -184,22 +189,6 @@ const resolveSameFileReducerFunction = (node: EsTreeNode | null | undefined): Es
   return isFunctionLikeAstNode(unwrappedInitializer) ? unwrappedInitializer : null;
 };
 
-// Reads member names from static member access (`state.items.push` -> `push`,
-// `state["items"]` -> `items`) while ignoring dynamic computed properties.
-const getStaticMemberPropertyName = (node: EsTreeNode | null | undefined): string | null => {
-  if (!node) return null;
-  const unwrappedNode = stripParenExpression(node);
-  if (!isNodeOfType(unwrappedNode, "MemberExpression")) return null;
-  if (isNodeOfType(unwrappedNode.property, "Identifier")) return unwrappedNode.property.name;
-  if (
-    isNodeOfType(unwrappedNode.property, "Literal") &&
-    typeof unwrappedNode.property.value === "string"
-  ) {
-    return unwrappedNode.property.value;
-  }
-  return null;
-};
-
 // Matches static calls like `Object.assign(...)` or `Reflect.set(...)` without
 // resolving bindings. This is intentionally limited to built-in global names.
 // TODO(v2 - global shadowing): check scope bindings before treating Object or
@@ -215,8 +204,7 @@ const isStaticMethodCallOnNamedObject = (
     isNodeOfType(unwrappedNode.callee, "MemberExpression") &&
     isNodeOfType(unwrappedNode.callee.object, "Identifier") &&
     unwrappedNode.callee.object.name === objectName &&
-    isNodeOfType(unwrappedNode.callee.property, "Identifier") &&
-    methodNames.has(unwrappedNode.callee.property.name),
+    methodNames.has(getStaticMemberPropertyName(unwrappedNode.callee) ?? ""),
   );
 };
 

@@ -2,7 +2,6 @@ import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { isInlineFunctionExpression } from "../../../utils/is-inline-function-expression.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import {
-  getStaticMemberPropertyName,
   getStaticMemberReferenceName,
   getStaticPropertyKeyName,
 } from "./event-handler-reference.js";
@@ -14,6 +13,7 @@ import {
   resolveBindingName,
   type BindingScope,
 } from "./scope-aware-reference-names.js";
+import { getStaticMemberPropertyName } from "./static-member-property-name.js";
 
 const isUseCallbackCall = (node: EsTreeNode): boolean =>
   isNodeOfType(node, "CallExpression") && getCalleeName(node.callee) === "useCallback";

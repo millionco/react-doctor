@@ -244,6 +244,52 @@ describe("no-mutating-reducer-state", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("handles static and dynamic computed mutating method names", () => {
+    const staticResult = runRule(
+      noMutatingReducerState,
+      `
+      import { useReducer } from "react";
+
+      function reducer(state, action) {
+        if (action.type === "array") {
+          state.items["push"](action.item);
+          return state;
+        }
+
+        Object["assign"](state, action.patch);
+        return state;
+      }
+
+      useReducer(reducer, { items: [] });
+    `,
+    );
+
+    const dynamicResult = runRule(
+      noMutatingReducerState,
+      `
+      import { useReducer } from "react";
+
+      function reducer(state, action) {
+        const push = action.method;
+        const assign = action.assignMethod;
+
+        if (action.type === "array") {
+          state.items[push](action.item);
+          return state;
+        }
+
+        Object[assign](state, action.patch);
+        return state;
+      }
+
+      useReducer(reducer, { items: [] });
+    `,
+    );
+
+    expect(staticResult.diagnostics).toHaveLength(2);
+    expect(dynamicResult.diagnostics).toHaveLength(0);
+  });
+
   it("flags switch fallthrough from mutation into same-reference return", () => {
     const result = runRule(
       noMutatingReducerState,

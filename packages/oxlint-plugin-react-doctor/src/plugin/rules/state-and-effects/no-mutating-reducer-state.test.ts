@@ -2,11 +2,11 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { noMutatingReducerState } from "./no-mutating-reducer-state.js";
 
-const run = (code: string) => runRule(noMutatingReducerState, code);
-
 describe("no-mutating-reducer-state", () => {
   it("flags direct property mutation followed by returning the same reducer state", () => {
-    const result = run(`
+    const result = runRule(
+      noMutatingReducerState,
+      `
       import { useReducer } from "react";
 
       function reducer(state, action) {
@@ -15,7 +15,8 @@ describe("no-mutating-reducer-state", () => {
       }
 
       useReducer(reducer, { age: 0 });
-    `);
+    `,
+    );
 
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -23,20 +24,25 @@ describe("no-mutating-reducer-state", () => {
   });
 
   it("flags array mutator calls on inline reducers", () => {
-    const result = run(`
+    const result = runRule(
+      noMutatingReducerState,
+      `
       import * as React from "react";
 
       React.useReducer((state, action) => {
         state.todos.push(action.todo);
         return state;
       }, []);
-    `);
+    `,
+    );
 
     expect(result.diagnostics).toHaveLength(1);
   });
 
   it("flags aliased reducer state mutation and aliased return", () => {
-    const result = run(`
+    const result = runRule(
+      noMutatingReducerState,
+      `
       import { useReducer as useReactReducer } from "react";
 
       const reducer = (state, action) => {
@@ -46,13 +52,16 @@ describe("no-mutating-reducer-state", () => {
       };
 
       useReactReducer(reducer, { name: "" });
-    `);
+    `,
+    );
 
     expect(result.diagnostics).toHaveLength(1);
   });
 
   it("flags compound and update expressions before same-reference returns", () => {
-    const result = run(`
+    const result = runRule(
+      noMutatingReducerState,
+      `
       import { useReducer } from "react";
 
       function reducer(state, action) {
@@ -68,13 +77,16 @@ describe("no-mutating-reducer-state", () => {
       }
 
       useReducer(reducer, { count: 0 });
-    `);
+    `,
+    );
 
     expect(result.diagnostics).toHaveLength(2);
   });
 
   it("flags mutations in branch conditions before same-reference returns", () => {
-    const result = run(`
+    const result = runRule(
+      noMutatingReducerState,
+      `
       import { useReducer } from "react";
 
       function reducer(state, action) {
@@ -85,37 +97,46 @@ describe("no-mutating-reducer-state", () => {
       }
 
       useReducer(reducer, { count: 0 });
-    `);
+    `,
+    );
 
     expect(result.diagnostics).toHaveLength(1);
   });
 
   it("flags returning the result of in-place state array methods", () => {
-    const result = run(`
+    const result = runRule(
+      noMutatingReducerState,
+      `
       import { useReducer } from "react";
 
       useReducer((state, action) => {
         return state.sort((a, b) => a.id - b.id);
       }, []);
-    `);
+    `,
+    );
 
     expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not treat nested array mutator returns as top-level same-reference returns", () => {
-    const result = run(`
+    const result = runRule(
+      noMutatingReducerState,
+      `
       import { useReducer } from "react";
 
       useReducer((state, action) => {
         return state.items.sort((a, b) => a.id - b.id);
       }, { items: [] });
-    `);
+    `,
+    );
 
     expect(result.diagnostics).toHaveLength(0);
   });
 
   it("flags nested aliases into reducer state when the original state is returned", () => {
-    const result = run(`
+    const result = runRule(
+      noMutatingReducerState,
+      `
       import React from "react";
 
       function reducer(state, action) {
@@ -125,13 +146,16 @@ describe("no-mutating-reducer-state", () => {
       }
 
       React.useReducer(reducer, { items: [] });
-    `);
+    `,
+    );
 
     expect(result.diagnostics).toHaveLength(1);
   });
 
   it("flags same-reference returns hidden inside conditional expressions", () => {
-    const result = run(`
+    const result = runRule(
+      noMutatingReducerState,
+      `
       import { useReducer } from "react";
 
       function reducer(state, action) {
@@ -140,13 +164,16 @@ describe("no-mutating-reducer-state", () => {
       }
 
       useReducer(reducer, { count: 0 });
-    `);
+    `,
+    );
 
     expect(result.diagnostics).toHaveLength(1);
   });
 
   it("flags same-reference mutations through parenthesized and TypeScript wrappers", () => {
-    const result = run(`
+    const result = runRule(
+      noMutatingReducerState,
+      `
       import { useReducer } from "react";
 
       type State = { count: number; items: string[] };
@@ -162,13 +189,16 @@ describe("no-mutating-reducer-state", () => {
       }
 
       useReducer(reducer, { count: 0, items: [] });
-    `);
+    `,
+    );
 
     expect(result.diagnostics).toHaveLength(2);
   });
 
   it("flags collection mutators when the same state reference is returned", () => {
-    const result = run(`
+    const result = runRule(
+      noMutatingReducerState,
+      `
       import { useReducer } from "react";
 
       function mapReducer(state, action) {
@@ -183,13 +213,16 @@ describe("no-mutating-reducer-state", () => {
 
       useReducer(mapReducer, new Map());
       useReducer(setReducer, new Set());
-    `);
+    `,
+    );
 
     expect(result.diagnostics).toHaveLength(2);
   });
 
   it("flags standard object mutation APIs before same-reference returns", () => {
-    const result = run(`
+    const result = runRule(
+      noMutatingReducerState,
+      `
       import { useReducer } from "react";
 
       function reducer(state, action) {
@@ -205,13 +238,16 @@ describe("no-mutating-reducer-state", () => {
       }
 
       useReducer(reducer, {});
-    `);
+    `,
+    );
 
     expect(result.diagnostics).toHaveLength(2);
   });
 
   it("flags switch fallthrough from mutation into same-reference return", () => {
-    const result = run(`
+    const result = runRule(
+      noMutatingReducerState,
+      `
       import { useReducer } from "react";
 
       function reducer(state, action) {
@@ -226,13 +262,16 @@ describe("no-mutating-reducer-state", () => {
       }
 
       useReducer(reducer, { count: 0 });
-    `);
+    `,
+    );
 
     expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not carry switch mutations across break boundaries", () => {
-    const result = run(`
+    const result = runRule(
+      noMutatingReducerState,
+      `
       import { useReducer } from "react";
 
       function reducer(state, action) {
@@ -250,13 +289,16 @@ describe("no-mutating-reducer-state", () => {
       }
 
       useReducer(reducer, { count: 0 });
-    `);
+    `,
+    );
 
     expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag ordinary no-op return branches", () => {
-    const result = run(`
+    const result = runRule(
+      noMutatingReducerState,
+      `
       import { useReducer } from "react";
 
       function dropdownReducer(state, action) {
@@ -271,13 +313,16 @@ describe("no-mutating-reducer-state", () => {
       }
 
       useReducer(dropdownReducer, { activeAction: "idle" });
-    `);
+    `,
+    );
 
     expect(result.diagnostics).toHaveLength(0);
   });
 
   it("flags logical assignment before a same-reference no-op guard", () => {
-    const result = run(`
+    const result = runRule(
+      noMutatingReducerState,
+      `
       import { useReducer } from "react";
 
       function reducer(state, action) {
@@ -294,13 +339,16 @@ describe("no-mutating-reducer-state", () => {
       }
 
       useReducer(reducer, { nodes: [] });
-    `);
+    `,
+    );
 
     expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not flag mutation in one branch when that branch returns a fresh object", () => {
-    const result = run(`
+    const result = runRule(
+      noMutatingReducerState,
+      `
       import { useReducer } from "react";
 
       function reducer(state, action) {
@@ -313,13 +361,16 @@ describe("no-mutating-reducer-state", () => {
       }
 
       useReducer(reducer, { items: [] });
-    `);
+    `,
+    );
 
     expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag clone-first object or array mutations", () => {
-    const result = run(`
+    const result = runRule(
+      noMutatingReducerState,
+      `
       import { useReducer } from "react";
 
       function reducer(state, action) {
@@ -347,13 +398,16 @@ describe("no-mutating-reducer-state", () => {
       }
 
       useReducer(reducer, { items: [] });
-    `);
+    `,
+    );
 
     expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag standard object APIs when mutating a fresh target", () => {
-    const result = run(`
+    const result = runRule(
+      noMutatingReducerState,
+      `
       import { useReducer } from "react";
 
       function reducer(state, action) {
@@ -363,13 +417,16 @@ describe("no-mutating-reducer-state", () => {
       }
 
       useReducer(reducer, {});
-    `);
+    `,
+    );
 
     expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag clone-first Map mutations", () => {
-    const result = run(`
+    const result = runRule(
+      noMutatingReducerState,
+      `
       import { useReducer } from "react";
 
       const groupReducer = (state, action) => {
@@ -388,13 +445,16 @@ describe("no-mutating-reducer-state", () => {
       };
 
       useReducer(groupReducer, new Map());
-    `);
+    `,
+    );
 
     expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag nested mutation when returning a new top-level wrapper", () => {
-    const result = run(`
+    const result = runRule(
+      noMutatingReducerState,
+      `
       import { useReducer } from "react";
 
       function reducer(state, action) {
@@ -416,13 +476,16 @@ describe("no-mutating-reducer-state", () => {
         replayerCleanup: new Map(),
         replayers: [],
       });
-    `);
+    `,
+    );
 
     expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag shallow-clone writes through the clone identifier", () => {
-    const result = run(`
+    const result = runRule(
+      noMutatingReducerState,
+      `
       import { useReducer } from "react";
 
       function reducer(state, action) {
@@ -435,13 +498,16 @@ describe("no-mutating-reducer-state", () => {
       }
 
       useReducer(reducer, {});
-    `);
+    `,
+    );
 
     expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag Array.reduce accumulators or locally shadowed useReducer", () => {
-    const result = run(`
+    const result = runRule(
+      noMutatingReducerState,
+      `
       items.reduce((state, item) => {
         state.push(item);
         return state;
@@ -457,13 +523,16 @@ describe("no-mutating-reducer-state", () => {
       }
 
       useReducer(reducer, { count: 0 });
-    `);
+    `,
+    );
 
     expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag non-React or shadowed useReducer calls", () => {
-    const result = run(`
+    const result = runRule(
+      noMutatingReducerState,
+      `
       import { useReducer as useStoreReducer } from "not-react";
       import { useReducer } from "react";
 
@@ -478,13 +547,16 @@ describe("no-mutating-reducer-state", () => {
       }
 
       useStoreReducer(reducer, { count: 0 });
-    `);
+    `,
+    );
 
     expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag Immer-backed reducer wrappers", () => {
-    const result = run(`
+    const result = runRule(
+      noMutatingReducerState,
+      `
       import { useReducer } from "react";
       import { produce } from "immer";
       import { useImmerReducer } from "use-immer";
@@ -497,13 +569,16 @@ describe("no-mutating-reducer-state", () => {
         state.count++;
         return state;
       }, { count: 0 });
-    `);
+    `,
+    );
 
     expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag nested function or block-local state shadowing", () => {
-    const result = run(`
+    const result = runRule(
+      noMutatingReducerState,
+      `
       import { useReducer } from "react";
 
       function reducer(state, action) {
@@ -521,13 +596,16 @@ describe("no-mutating-reducer-state", () => {
       }
 
       useReducer(reducer, { count: 0 });
-    `);
+    `,
+    );
 
     expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag state after it is rebound to a fresh object", () => {
-    const result = run(`
+    const result = runRule(
+      noMutatingReducerState,
+      `
       import { useReducer } from "react";
 
       function reducer(state, action) {
@@ -537,13 +615,16 @@ describe("no-mutating-reducer-state", () => {
       }
 
       useReducer(reducer, { count: 0 });
-    `);
+    `,
+    );
 
     expect(result.diagnostics).toHaveLength(0);
   });
 
   it("preserves state rebinding and var aliases across standalone blocks", () => {
-    const rebound = run(`
+    const rebound = runRule(
+      noMutatingReducerState,
+      `
       import { useReducer } from "react";
 
       function reducer(state, action) {
@@ -556,9 +637,12 @@ describe("no-mutating-reducer-state", () => {
       }
 
       useReducer(reducer, { count: 0 });
-    `);
+    `,
+    );
 
-    const varAlias = run(`
+    const varAlias = runRule(
+      noMutatingReducerState,
+      `
       import { useReducer } from "react";
 
       function reducer(state, action) {
@@ -571,21 +655,25 @@ describe("no-mutating-reducer-state", () => {
       }
 
       useReducer(reducer, { count: 0 });
-    `);
+    `,
+    );
 
     expect(rebound.diagnostics).toHaveLength(0);
     expect(varAlias.diagnostics).toHaveLength(1);
   });
 
   it("skips unresolved imported reducers for v1", () => {
-    const result = run(`
+    const result = runRule(
+      noMutatingReducerState,
+      `
       import { useReducer } from "react";
       import { reducer } from "./reducer";
 
       // Imported reducer bodies require module graph resolution. The v1 rule
       // treats this as a coverage gap instead of guessing across files.
       useReducer(reducer, {});
-    `);
+    `,
+    );
 
     expect(result.diagnostics).toHaveLength(0);
   });

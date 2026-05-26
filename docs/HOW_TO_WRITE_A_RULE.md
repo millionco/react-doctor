@@ -1,0 +1,831 @@
+# How to Write a React Doctor Rule
+
+Reference PR: `[#491 implement no-mutating-reducer-state rule](https://github.com/millionco/react-doctor/pull/491)`
+
+## Table of Contents
+
+1. [Rule Quality Bar](#rule-quality-bar)
+2. [End-to-End Workflow](#end-to-end-workflow)
+3. [Define the Rule](#define-the-rule)
+4. [Research the Problem](#research-the-problem)
+5. [Validate an Idea Against OSS](#eval-workflow-1-validate-an-idea-against-oss)
+6. [Decide Scope and Detector Precision](#decide-scope-and-detector-precision)
+7. [Design the Test Suite](#design-the-test-suite)
+8. [Implement the Detector](#implement-the-detector)
+9. [AST Vocabulary](#ast-vocabulary)
+10. [Naming, Utilities, and Comments](#naming-utilities-and-comments)
+11. [Verify Locally](#verify-locally)
+12. [Test a New Rule Using Evals](#eval-workflow-2-test-a-new-rule-against-oss)
+13. [Write the PR Description](#write-the-pr-description)
+14. [Review Triage](#review-triage)
+15. [Checklists](#checklists)
+16. [Common Failure Modes](#common-failure-modes)
+17. [Standard Output](#standard-output)
+
+## Rule Quality Bar
+
+A good rule is:
+
+- **Specific:** It catches one clearly named problem.
+- **Grounded:** The problem is validated against docs, real code, issues, PRs, or evals.
+- **Precise:** The detector matches the behavior described by the diagnostic.
+- **Low-noise:** False positives are treated as correctness bugs.
+- **Tested adversarially:** Tests cover valid edge cases, not just obvious invalid examples.
+- **Scoped:** v1 does not try to solve adjacent rule ideas.
+- **Readable:** Helper names describe exact semantics.
+
+## End-to-End Workflow
+
+1. Define the bug in one sentence.
+2. Explain the runtime behavior that makes it a bug.
+3. Inspect existing rule files and utilities.
+4. Use RDE and OSS code to validate the idea.
+5. Decide v1 scope and detector precision.
+6. Write adversarial tests.
+7. Implement the detector.
+8. Add or reuse utilities only when needed.
+9. Run targeted tests and typecheck.
+10. Run RDE against many OSS repos.
+11. Filter eval output to the target rule.
+12. Inspect diagnostics manually.
+13. Write a clear PR description with before/after examples.
+14. Triage bot and human review comments.
+15. Fix real findings with regression tests.
+16. Format, commit, push, and resolve addressed review threads.
+
+## Define the Rule
+
+Use this format:
+
+```md
+This rule catches <code pattern> that causes <specific problem>.
+```
+
+Example from PR #491:
+
+```md
+This rule catches React `useReducer` reducers that mutate the current state object and return that same object.
+```
+
+Avoid vague definitions:
+
+```md
+This rule catches bad reducer state updates.
+```
+
+Every rule also needs the runtime reason:
+
+```md
+React compares reducer state by reference. If a reducer mutates the old state object and returns it, React can treat the update as unchanged.
+```
+
+Required questions:
+
+- What framework/library behavior makes this a bug?
+- What code shape triggers the bug?
+- What code shape fixes it?
+- What similar-looking code is valid?
+- What should v1 intentionally skip?
+
+## Research the Problem
+
+Inspect existing React Doctor rule patterns before implementation.
+
+For oxlint plugin rules, inspect:
+
+- `packages/oxlint-plugin-react-doctor/src/plugin/rules/<category>/`
+- `packages/oxlint-plugin-react-doctor/src/plugin/utils/`
+- `packages/oxlint-plugin-react-doctor/src/plugin/rule-registry.ts`
+- Existing co-located `*.test.ts` files.
+
+Use existing helpers before adding new ones:
+
+- `defineRule`
+- `runRule`
+- `walkAst`
+- `isNodeOfType`
+- `findVariableInitializer`
+- `stripParenExpression`
+
+Collect real-world evidence:
+
+- Official docs showing the problem.
+- Real app examples.
+- Accepted debugging answers.
+- Existing rule implementations in similar ecosystems.
+- OSS code that looks suspicious but should not be reported.
+
+PR #491 evidence:
+
+- React docs: direct mutation plus `return state`.
+- React internals discussion: reducer bailout depends on identity.
+- StackOverflow examples: alias mutation such as `const next = state`.
+- RocketChat: nested mutation but new top-level object.
+- Sentry: `Map` mutation inside state but new top-level object.
+- PostHog: clone-first `new Map(state)` mutation.
+- Grafana: valid no-op `return state`.
+- ToolJet: imported reducer passed to `useReducer`.
+
+## Validate an Idea Against OSS
+
+Use RDE before implementation to test whether a rule idea matches real open source code.
+
+Goal:
+
+- Validate a theory against many open source repos.
+- Find real examples of the target bug.
+- Find false-positive traps.
+- Learn common library idioms.
+- Decide whether the rule should exist.
+- Decide how narrow v1 should be.
+
+Inputs:
+
+- Rule idea.
+- One-sentence bug definition.
+- Positive examples.
+- Known valid examples.
+- RDE repo cache or manifest.
+
+Outputs:
+
+- Exact positive candidates.
+- Pattern-adjacent candidates.
+- False-positive examples.
+- Recommended detector shape.
+- Recommended v1 non-goals.
+- Test fixture list.
+
+Use this workflow when:
+
+- The rule is still a proposal.
+- The expected bug shape is unclear.
+- The library or framework idioms are unfamiliar.
+- There is risk of catching valid patterns.
+- You need examples for adversarial tests.
+
+Useful prompt shape:
+
+```md
+Find real-world evidence for a React Doctor rule:
+
+Rule: `<rule-name>`
+
+Goal:
+Find examples where <exact bug definition>.
+
+Return:
+- Strong positive examples
+- Pattern-adjacent examples
+- False-positive traps
+- Detector implications
+- Suggested adversarial tests
+
+Prefer examples tied to real framework/library usage.
+Do not treat similar-looking valid code as a positive.
+```
+
+PR #491 workflow-one result:
+
+- The exact reducer bug is real and documented by React.
+- Exact app-level positives were sparse in the scanned corpus.
+- False-positive traps were common.
+- The detector should require a real React `useReducer` call.
+- The detector should not report no-op `return state` branches.
+- Nested mutation followed by top-level clone should be a separate rule idea.
+
+## Decide Scope and Detector Precision
+
+Classify the rule before implementation.
+
+### Syntax-Only
+
+Use when the bug is local and does not require binding or path analysis.
+
+Example:
+
+```ts
+dangerouslySetInnerHTML={{ __html: value }}
+```
+
+### Scope-Aware
+
+Use when names must resolve to specific imports, variables, or bindings.
+
+Example from PR #491:
+
+```tsx
+import { useReducer } from "react";
+
+useReducer(reducer, initialState);
+```
+
+The identifier `useReducer` must be the React import, not a local function.
+
+### Path-Aware
+
+Use when order and branches matter.
+
+Example from PR #491:
+
+```tsx
+function reducer(state, action) {
+  if (action.type === "add") {
+    state.items.push(action.item);
+    return { ...state };
+  }
+
+  return state;
+}
+```
+
+Do not report this. The mutation path returns a new object. The `return state` path is a no-op.
+
+### V1 Scope
+
+Do not mix adjacent rule ideas into v1.
+
+PR #491 scoped v1 to:
+
+- Real React `useReducer` calls.
+- Same-file reducer functions.
+- Mutations of the original state or aliases.
+- Same-path return of the original top-level state reference.
+
+PR #491 skipped or documented:
+
+- Imported reducer bodies.
+- Helper calls such as `mutate(state)`.
+- Destructured aliases such as `const { items } = state`.
+- Complex loop and try/catch control flow.
+- Nested-reference mutation followed by shallow clone.
+- Immer and Redux Toolkit draft reducers.
+
+Separate rule idea:
+
+```tsx
+state.user.name = "Ada";
+return { ...state };
+```
+
+This mutates nested state, but returns a new top-level object. Do not include this in `no-mutating-reducer-state`. It needs separate wording and separate false-positive handling.
+
+## Design the Test Suite
+
+The test suite should include:
+
+- Direct invalid cases.
+- Alias invalid cases.
+- Import alias cases.
+- Namespace import cases.
+- Same-looking valid cases.
+- Scope-shadowing cases.
+- Imported/unresolved cases.
+- Framework/library escape hatches.
+- Regression tests for review comments.
+
+Tests should be varied. Do not copy the same shape repeatedly.
+
+### Invalid Test Examples
+
+Direct mutation plus same-reference return:
+
+```tsx
+import { useReducer } from "react";
+
+function reducer(state, action) {
+  state.count++;
+  return state;
+}
+
+useReducer(reducer, { count: 0 });
+```
+
+Alias mutation plus alias return:
+
+```tsx
+import { useReducer } from "react";
+
+function reducer(state, action) {
+  const next = state;
+  next.name = action.name;
+  return next;
+}
+
+useReducer(reducer, { name: "" });
+```
+
+In-place array method return:
+
+```tsx
+import { useReducer } from "react";
+
+useReducer((state, action) => {
+  return state.sort((left, right) => left.id - right.id);
+}, []);
+```
+
+Switch fallthrough:
+
+```tsx
+import { useReducer } from "react";
+
+function reducer(state, action) {
+  switch (action.type) {
+    case "mutate":
+      state.count++;
+    case "done":
+      return state;
+    default:
+      return { ...state };
+  }
+}
+
+useReducer(reducer, { count: 0 });
+```
+
+Transparent wrappers:
+
+```tsx
+import { useReducer } from "react";
+
+function reducer(state: State, action) {
+  state.items!.push(action.item);
+  return state as State;
+}
+
+useReducer(reducer, { items: [] });
+```
+
+### Valid Test Examples
+
+No-op return:
+
+```tsx
+import { useReducer } from "react";
+
+function reducer(state, action) {
+  if (action.type === "noop") {
+    return state;
+  }
+
+  return { ...state, count: state.count + 1 };
+}
+
+useReducer(reducer, { count: 0 });
+```
+
+Clone-first update:
+
+```tsx
+import { useReducer } from "react";
+
+function reducer(state, action) {
+  const next = { ...state };
+  next.count++;
+  return next;
+}
+
+useReducer(reducer, { count: 0 });
+```
+
+Mutation path returns a fresh object:
+
+```tsx
+import { useReducer } from "react";
+
+function reducer(state, action) {
+  if (action.type === "add") {
+    state.items.push(action.item);
+    return { ...state, changed: true };
+  }
+
+  return state;
+}
+
+useReducer(reducer, { items: [] });
+```
+
+Non-React `Array.prototype.reduce`:
+
+```tsx
+items.reduce((state, item) => {
+  state.push(item);
+  return state;
+}, []);
+```
+
+Locally shadowed `useReducer`:
+
+```tsx
+function useReducer(reducer, initialState) {
+  return [initialState, reducer];
+}
+
+function reducer(state, action) {
+  state.count++;
+  return state;
+}
+
+useReducer(reducer, { count: 0 });
+```
+
+Imported reducer skipped by v1:
+
+```tsx
+import { useReducer } from "react";
+import { reducer } from "./reducer";
+
+useReducer(reducer, {});
+```
+
+Dynamic computed property should not be treated as static:
+
+```tsx
+import { useReducer } from "react";
+
+function reducer(state, action) {
+  const push = action.method;
+  state.items[push](action.item);
+  return state;
+}
+
+useReducer(reducer, { items: [] });
+```
+
+## Implement the Detector
+
+Use pseudocode before implementation.
+
+Example from PR #491:
+
+```ts
+for each file:
+  collect React useReducer imports
+  collect React namespace/default imports
+
+  for each CallExpression:
+    if callee is not React useReducer:
+      continue
+
+    reducerFunction = resolve first argument
+    if reducerFunction is not same-file:
+      continue
+
+    stateName = first reducer parameter
+    analyze reducer body by path
+
+path analysis:
+  track original state reference names
+  track mutable state source names
+  track mutations seen on current path
+
+  when statement mutates original state source:
+    remember mutation
+
+  when statement returns original state reference:
+    report remembered mutations
+```
+
+Implementation requirements:
+
+- Match the detector to the one-sentence rule definition.
+- Resolve imports before trusting identifier names.
+- Treat shadowed bindings as different names.
+- Avoid walking nested functions as if they execute immediately.
+- Model only the control flow needed for the rule claim.
+- Skip unknown or imported code unless the rule explicitly supports it.
+- Add TODOs for known v2 gaps.
+
+## AST Vocabulary
+
+Common ESTree/Babel vocabulary:
+
+
+| Vocabulary                | Description                                                      | Example                              |
+| ------------------------- | ---------------------------------------------------------------- | ------------------------------------ |
+| `Identifier`              | A named binding or reference.                                    | `state`                              |
+| `MemberExpression`        | Property access on an object.                                    | `state.items`                        |
+| `CallExpression`          | A function or method call.                                       | `state.items.push(item)`             |
+| `AssignmentExpression`    | Assignment to a target.                                          | `state.count = 1`                    |
+| `UpdateExpression`        | Increment or decrement expression.                               | `state.count++`                      |
+| `UnaryExpression`         | Unary operator expression.                                       | `delete state.count`                 |
+| `ReturnStatement`         | Function return statement.                                       | `return state`                       |
+| `IfStatement`             | Conditional branch with consequent and optional alternate paths. | `if (action.type === "add") { ... }` |
+| `SwitchStatement`         | Case-based branch with possible fallthrough.                     | `switch (action.type) { ... }`       |
+| `BlockStatement`          | Scoped statement list.                                           | `{ const next = state; }`            |
+| `FunctionDeclaration`     | Hoisted function declaration.                                    | `function reducer() {}`              |
+| `FunctionExpression`      | Function expression value.                                       | `const reducer = function () {};`    |
+| `ArrowFunctionExpression` | Arrow function expression value.                                 | `const reducer = () => {};`          |
+
+
+Computed member handling:
+
+```tsx
+state.items.push(item); // static property: push
+state.items["push"](item); // static string property: push
+state.items[push](item); // dynamic property: unknown
+```
+
+Only static property names should match known mutating methods.
+
+## Naming, Utilities, and Comments
+
+### Naming
+
+Names should describe exact behavior.
+
+Avoid:
+
+```ts
+const isStateReference = ...
+const getName = ...
+const checkMutation = ...
+```
+
+Prefer:
+
+```ts
+const isOriginalReducerStateReference = ...
+const getStaticMemberPropertyName = ...
+const collectReducerStateMutationsInExpressionOrStatement = ...
+const canExpressionReturnOriginalReducerStateReference = ...
+```
+
+Use matching suffixes for related helpers:
+
+```ts
+isOriginalReducerStateReference
+isMutableReducerStateSource
+isReactUseReducerCall
+```
+
+### Utilities
+
+Create a utility when:
+
+- Two or more call sites need the same behavior.
+- The behavior has subtle AST semantics.
+- A review comment identifies duplicated logic.
+
+Do not create a utility when:
+
+- It hides one simple line.
+- It makes names less clear.
+- It exists only because the implementation feels long.
+
+PR #491 utility example:
+
+```ts
+getStaticMemberPropertyName(node)
+```
+
+Required behavior:
+
+- Return `"push"` for `state.items.push`.
+- Return `"push"` for `state.items["push"]`.
+- Return `null` for `state.items[push]`.
+
+### Comments
+
+Use comments only for non-obvious control-flow or AST tradeoffs.
+
+Good comment:
+
+```ts
+// An if statement cannot use the generic statement path: the consequent and
+// alternate are separate possible paths. Therefore, each branch is evaluated
+// from the state after the condition runs.
+```
+
+Bad comment:
+
+```ts
+// Check if this is an if statement.
+```
+
+Comment requirements:
+
+- Explain why the branch exists.
+- Explain lossy behavior or v1 boundaries.
+- Avoid narrating obvious code.
+
+## Verify Locally
+
+Use repo scripts through `@antfu/ni` commands when possible:
+
+```sh
+nr test
+nr lint
+nr typecheck
+nr format
+nr smoke:json-report
+```
+
+Package-specific commands used in PR #491:
+
+```sh
+pnpm exec vp test run packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-mutating-reducer-state.test.ts
+pnpm --filter oxlint-plugin-react-doctor typecheck
+pnpm lint
+```
+
+If a broad command fails for unrelated repo state, record:
+
+- Command run.
+- Failure location.
+- Why it is unrelated.
+- Focused command that passed.
+
+## Test a New Rule Using Evals
+
+Use RDE after implementation to see how a new React Doctor rule behaves against many open source repos.
+
+Goal:
+
+- Avoid false positives.
+- Inspect real diagnostics.
+- Measure how noisy the rule is.
+- Catch implementation assumptions missed by unit tests.
+- Understand what running the rule feels like in production.
+
+Inputs:
+
+- React Doctor checkout containing the new rule.
+- RDE eval harness checkout.
+- Repo manifest.
+- Repo cache.
+- Target rule name.
+
+Outputs:
+
+- JSONL scan output.
+- Filtered target-rule output.
+- Summary by repo/rootDir.
+- Manually inspected hits.
+- Follow-up fixes or tests.
+
+Use this workflow when:
+
+- The rule implementation exists.
+- Targeted tests pass.
+- The detector may be noisy.
+- The rule uses scope, path, or heuristic logic.
+- The rule affects common React patterns.
+
+Required handling:
+
+- Scan distinct repos, not just manifest entries.
+- Record rootDir scan count separately from repo count.
+- Filter output to the target rule before judging results.
+- Inspect every hit manually when counts are low.
+- Sample hits manually when counts are high.
+- Add regression tests for false positives found by evals.
+
+PR #491 workflow-two facts:
+
+- Target rule: `no-mutating-reducer-state`
+- Scope: 100 distinct repos from `repos.json`
+- Scan rows: 671 rootDir entries
+- Filtered result: 1 diagnostic across 100 unique repos
+- Outcome: low noise; one hit inspected manually
+
+Do not confuse manifest entries with distinct repos.
+
+Record:
+
+- React Doctor checkout path.
+- Eval harness path.
+- Repo manifest path.
+- Number of distinct repos.
+- Number of manifest entries/rootDirs.
+- Target rule name.
+- Filtered output path.
+- Total diagnostics.
+- Manually inspected hits.
+
+## Write the PR Description
+
+Use this structure:
+
+- `Why`
+  - Catches `<specific issue>`.
+  - Explain the runtime reason in 1-3 sentences.
+  - Include a bad before example.
+  - Include a good after example.
+- `What changed`
+  - Added `<rule-name>`.
+  - Detects `<main detection surface>`.
+  - Reports `<exact condition>`.
+  - Allows `<important valid patterns>`.
+  - Adds tests for `<edge cases>`.
+- `Test plan`
+  - Focused test command.
+  - Typecheck command.
+  - Lint command.
+
+Description requirements:
+
+- Start with "Catches X".
+- Include before and after examples.
+- Mention important non-goals only if they clarify behavior.
+- Do not lead with implementation internals.
+
+## Review Triage
+
+Classify each review comment.
+
+Fix now:
+
+- Real false positive.
+- Real false negative for claimed behavior.
+- Incorrect AST semantics.
+- Scope resolution bug.
+- Control-flow bug with a reasonable test case.
+
+Usually fix:
+
+- Duplicated helper.
+- Misleading name.
+- Unnecessary abstraction.
+- Confusing comment.
+
+Document or defer:
+
+- False-negative coverage outside v1 scope.
+- Path explosion in pathological code.
+- Complex loops/try/catch modeling when current behavior is conservative.
+- Imported file analysis.
+
+Reject:
+
+- Comment that broadens the rule beyond its message.
+- Suggestion that increases false positives.
+- Style preference that conflicts with repo conventions.
+
+Add a regression test for every real bug fixed from review.
+
+Resolve PR threads only after the fix or explanation has landed.
+
+## Checklists
+
+### Pre-Implementation Checklist
+
+- Bug is defined in one sentence.
+- Runtime reason is documented.
+- Existing rule patterns were inspected.
+- OSS examples were reviewed.
+- RDE workflow one was used when the idea needed validation.
+- False-positive traps are listed.
+- Detector precision is chosen.
+- v1 non-goals are explicit.
+
+### Pre-PR Checklist
+
+- Tests include invalid and valid adversarial cases.
+- Helper names match exact semantics.
+- Shared utilities are reused.
+- Generated registry is updated if required.
+- Focused tests pass.
+- Typecheck passes for touched package.
+- PR description includes before/after examples.
+
+### Pre-Merge Checklist
+
+- RDE workflow two is run, or skip reason is documented.
+- Eval output is filtered to the target rule.
+- Hits are manually inspected.
+- Bot review comments are triaged.
+- Human review comments are triaged.
+- Real findings have regression tests.
+- PR threads are resolved after fixes land.
+- Formatting is applied.
+- Unrelated files are excluded from commits.
+
+## Common Failure Modes
+
+- Using string/name heuristics when import resolution is required.
+- Reporting `return state` without proving prior same-path mutation.
+- Treating imported functions as local implementations.
+- Walking nested functions as if they execute immediately.
+- Missing alias reassignment.
+- Missing branch-specific paths.
+- Ignoring switch fallthrough.
+- Treating dynamic computed properties as static names.
+- Mixing a related v2 rule into v1.
+- Writing tests that mirror implementation shape instead of real code.
+- Writing PR copy that explains internals but not the user-facing bug.
+
+## Standard Output
+
+A finished rule PR should contain:
+
+- Rule implementation.
+- Co-located tests.
+- Generated registry update.
+- Any shared utility needed by multiple call sites.
+- PR description with before/after examples.
+- Test plan.
+- Evals summary for broad or heuristic rules.
+- Review fixes with regression tests.
+

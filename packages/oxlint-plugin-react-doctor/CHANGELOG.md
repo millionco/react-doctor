@@ -1,5 +1,11 @@
 # oxlint-plugin-react-doctor
 
+## 0.2.8
+
+### Patch Changes
+
+- add react-doctor.config.json schema field
+
 ## 0.2.7
 
 ### Patch Changes

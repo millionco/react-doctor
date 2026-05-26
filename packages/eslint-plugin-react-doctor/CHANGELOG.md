@@ -1,5 +1,14 @@
 # eslint-plugin-react-doctor
 
+## 0.2.8
+
+### Patch Changes
+
+- add react-doctor.config.json schema field
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.2.8
+
 ## 0.2.7
 
 ### Patch Changes

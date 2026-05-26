@@ -21,6 +21,7 @@ const isNullLiteral = (node: EsTreeNode | null | undefined): boolean =>
 const isListenerRemovalViaNullHandler = (callNode: EsTreeNode): boolean => {
   if (!isNodeOfType(callNode, "CallExpression")) return false;
   const callee = unwrapChainExpression(callNode.callee);
+  // d3-style `.on(name, null)` removes a listener.
   return (
     isNodeOfType(callee, "MemberExpression") &&
     isNodeOfType(callee.property, "Identifier") &&
@@ -47,9 +48,8 @@ const isReleaseLikeCall = (
   if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
     if (
       BOUND_RESOURCE_RELEASE_METHOD_NAMES.has(callee.property.name) &&
-      // TODO: This deliberately only accepts identifier-bound subscription
-      // receivers. Shapes like `subRef.current.remove()` need receiver-aware
-      // binding analysis before they can be credited safely.
+      // Generic release verbs need a known subscription receiver.
+      // TODO(v2 - receiver analysis): handle `subRef.current.remove()`.
       isNodeOfType(callee.object, "Identifier") &&
       knownBoundSubscriptionNames.has(callee.object.name)
     ) {
@@ -80,6 +80,8 @@ const containsReleaseLikeCall = (
   let didFindRelease = false;
   walkAst(node, (child: EsTreeNode) => {
     if (didFindRelease) return false;
+    // Cleanup inside arbitrary nested callbacks does not run on unmount.
+    // Synchronous iteration callbacks are part of the cleanup body.
     if (child !== node && isFunctionLike(child) && !isSynchronousIterationCallback(child)) {
       return false;
     }

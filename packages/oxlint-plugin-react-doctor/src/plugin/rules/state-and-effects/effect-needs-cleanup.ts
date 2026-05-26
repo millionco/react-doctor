@@ -16,26 +16,9 @@ import { isCleanupFunctionLike, isCleanupReturn } from "./utils/is-cleanup-retur
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-// HACK: From "Lifecycle of Reactive Effects":
-//
-//   "Each Effect describes a separate synchronization process. When
-//    the component is removed, your Effect needs to stop synchronizing.
-//    The cleanup function should stop or undo whatever the Effect was
-//    doing."
-//
-// An effect that adds a listener / subscribes / sets a timer but
-// returns no cleanup leaks memory and triggers React's "you forgot
-// to clean up an effect" StrictMode hint at runtime. We flag it
-// statically. Three subscribe-shaped families:
-//   - addEventListener (browser DOM, EventTarget-shaped libs)
-//   - subscribe / addListener / on / watch / listen / sub
-//   - setInterval / setTimeout (without explicit clear)
-//
-// The subscribe / unsubscribe method allowlists live in `constants.ts`
-// (`SUBSCRIPTION_METHOD_NAMES`, `GLOBAL_RELEASE_METHOD_NAMES`) so the
-// cleanup-needed detector and the prefer-use-sync-external-store
-// detector share a single source of truth. Inline duplicates would
-// silently drift out of sync as new library shapes get added.
+// Effects that register listeners, subscriptions, or timers should return a
+// cleanup. Shared method allowlists keep this rule aligned with
+// `prefer-use-sync-external-store`.
 interface SubscribeLikeUsage {
   kind: "subscribe" | "timer";
   resourceName: string;
@@ -49,12 +32,7 @@ const findSubscribeLikeUsages = (callback: EsTreeNode): SubscribeLikeUsage[] => 
   ) {
     return usages;
   }
-  // HACK: timer/subscribe calls inside the EFFECT'S CLEANUP RETURN
-  // are not new registrations — they're the disposal step. The old
-  // walker traversed the full callback including any returned
-  // cleanup function, so a `setTimeout` inside `return () => { ... }`
-  // got counted as a usage. Detect and skip the cleanup ReturnStatement's
-  // argument body during the walk.
+  // Returned cleanup bodies are disposal code, not new registrations.
   let cleanupArgument: EsTreeNode | null = null;
   if (isNodeOfType(callback.body, "BlockStatement")) {
     const callbackStatements = callback.body.body ?? [];
@@ -99,9 +77,8 @@ interface CleanupBindings {
   effectScopeVariableNames: Set<string>;
 }
 
-// HACK: cleanup names must come from the effect's own scope, except for
-// assignments to an outer effect variable (`let remove; remove = () => ...`)
-// that happen inside a local setup helper.
+// Trust cleanup names from the effect scope. Also allow local helpers to assign
+// cleanup functions to an effect-scope variable.
 const collectCleanupBindings = (effectCallback: EsTreeNode): CleanupBindings => {
   const bindings: CleanupBindings = {
     cleanupFunctionNames: new Set<string>(),
@@ -134,6 +111,8 @@ const collectCleanupBindings = (effectCallback: EsTreeNode): CleanupBindings => 
   });
 
   walkAst(effectCallback.body, (child: EsTreeNode) => {
+    // Function expressions create inner scopes; their cleanup is not returned
+    // by the effect unless the function itself is returned.
     if (
       child !== effectCallback.body &&
       (isNodeOfType(child, "ArrowFunctionExpression") || isNodeOfType(child, "FunctionExpression"))
@@ -167,6 +146,7 @@ const collectCleanupBindings = (effectCallback: EsTreeNode): CleanupBindings => 
   });
 
   walkAst(effectCallback.body, (child: EsTreeNode) => {
+    // Local helpers may assign cleanup into an effect-scope variable.
     if (
       isNodeOfType(child, "AssignmentExpression") &&
       isNodeOfType(child.left, "Identifier") &&
@@ -187,37 +167,14 @@ const effectHasCleanupRelease = (callback: EsTreeNode): boolean => {
   ) {
     return false;
   }
-  // HACK: expression-body arrows are the dominant shape for trivial
-  // cleanup-returning subscribe-only effects:
-  //
-  //   useEffect(() => store.subscribe(handler), []);
-  //
-  // The arrow's expression body IS the body, and its evaluation
-  // result is implicitly returned as the effect's cleanup function. Only
-  // accept subscribe-shaped methods whose return value is known to be a
-  // cleanup function; `addEventListener` / `addListener` may return void
-  // or a subscription object that still needs explicit teardown.
+  // `useEffect(() => store.subscribe(handler), [])` returns cleanup implicitly.
+  // Only accept subscribe methods known to return cleanup functions.
   if (!isNodeOfType(callback.body, "BlockStatement")) {
     return isCleanupReturningSubscribeLikeCallExpression(callback.body);
   }
   const cleanupBindings = collectCleanupBindings(callback);
-  // HACK: scan ALL `return` statements at the effect's own function
-  // scope (skipping nested functions via `walkInsideStatementBlocks`),
-  // not just the top-level last statement. The last-statement check
-  // false-positives on the very common conditional-cleanup shape:
-  //
-  //   useEffect(() => {
-  //     if (!enabled) return;
-  //     const sub = subscribe(...);
-  //     if (someCondition) {
-  //       return () => sub();
-  //     }
-  //   }, [enabled]);
-  //
-  // Either accept the conditional cleanup as intentional, or risk
-  // ~36% FPs on real codebases (measured: react-grab, excalidraw,
-  // textarea/popover patterns). Accepting nested cleanup mirrors how
-  // exhaustive-deps treats branched returns: trust the author.
+  // Cleanup can live in guarded branches; inspect effect-scope returns, but
+  // skip nested functions.
   let didFindCleanupReturn = false;
   walkInsideStatementBlocks(callback.body, (child: EsTreeNode) => {
     if (didFindCleanupReturn) return;

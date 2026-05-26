@@ -255,7 +255,7 @@ export const Clock = () => {
     expect(hits).toHaveLength(0);
   });
 
-  it("does NOT flag a timer cleaned up by a local function returned by identifier", async () => {
+  it("does not flag a timer cleaned up by a local function returned by identifier", async () => {
     const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-return-local-clear", {
       files: {
         "src/Clock.tsx": `import { useEffect, useRef, useState } from "react";
@@ -286,7 +286,7 @@ export const Clock = () => {
     expect(hits).toHaveLength(0);
   });
 
-  it("does NOT flag a listener cleaned up by an optionally called local cleanup variable", async () => {
+  it("does not flag a listener cleaned up by an optionally called local cleanup variable", async () => {
     const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-optional-cleanup", {
       files: {
         "src/Resolution.tsx": `import { useEffect } from "react";
@@ -319,7 +319,7 @@ export const Resolution = () => {
     expect(hits).toHaveLength(0);
   });
 
-  it("does NOT flag a subscription cleaned up by a returned local function declaration", async () => {
+  it("does not flag a subscription cleaned up by a returned local function declaration", async () => {
     const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-function-declaration", {
       files: {
         "src/Emitter.tsx": `import { useEffect } from "react";
@@ -345,7 +345,7 @@ export const Emitter = () => {
     expect(hits).toHaveLength(0);
   });
 
-  it("does NOT flag listeners cleaned up inside a synchronous iteration callback", async () => {
+  it("does not flag listeners cleaned up inside a synchronous iteration callback", async () => {
     const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-for-each-cleanup", {
       files: {
         "src/Pointer.tsx": `import { useEffect } from "react";
@@ -375,7 +375,7 @@ export const Pointer = () => {
     expect(hits).toHaveLength(0);
   });
 
-  it("does NOT flag a subscription chain binding cleaned up with `.stop()`", async () => {
+  it("does not flag a subscription chain binding cleaned up with `.stop()`", async () => {
     const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-bound-stop-cleanup", {
       files: {
         "src/Simulation.tsx": `import { useEffect } from "react";
@@ -400,7 +400,7 @@ export const Simulation = () => {
     expect(hits).toHaveLength(0);
   });
 
-  it("does NOT flag listener cleanup expressed as `.on(name, null)`", async () => {
+  it("does not flag listener cleanup expressed as `.on(name, null)`", async () => {
     const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-on-null-cleanup", {
       files: {
         "src/Zoom.tsx": `import { useEffect } from "react";
@@ -479,12 +479,7 @@ export const Clock = () => {
   });
 
   it("does NOT flag expression-body arrow whose subscribe return is the implicit cleanup (Bugbot #157)", async () => {
-    // Regression: \`useEffect(() => store.subscribe(handler), [])\` is a
-    // common compact form — the arrow's expression body IS the body,
-    // and the subscribe call's return value (the unsubscribe fn) is
-    // implicitly returned as the effect's cleanup. The earlier
-    // detector rejected non-BlockStatement bodies outright and
-    // false-positived this shape.
+    // Expression-body effects return the subscribe cleanup directly.
     const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-expression-body", {
       files: {
         "src/Subscribe.tsx": `import { useEffect } from "react";
@@ -524,10 +519,7 @@ export const Resize = () => {
   });
 
   it("does NOT flag a `setTimeout` that lives inside the cleanup return (Bugbot #157 round 3)", async () => {
-    // Regression: the subscribe/timer scanner walked the entire
-    // callback including the cleanup return body. A \`setTimeout\` in
-    // the cleanup is a disposal step, not a new registration; it
-    // should not produce a 'missing cleanup' diagnostic.
+    // Timers inside returned cleanup functions are disposal work.
     const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-timer-in-cleanup", {
       files: {
         "src/Beacon.tsx": `import { useEffect } from "react";
@@ -553,11 +545,7 @@ export const Beacon = () => {
   });
 
   it("does NOT flag `return () => unsub()` after `const unsub = subscribe(...)` (Bugbot #157 round 3)", async () => {
-    // Regression: the Identifier-callee cleanup regex only matched
-    // long-form names (unsubscribe / cleanup / dispose / destroy /
-    // teardown). \`unsub\` (and other short forms) were missing,
-    // producing a false positive on the canonical bind-the-result-
-    // and-call-it shape.
+    // The cleanup name comes from the subscribe result, not a naming heuristic.
     const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-short-unsub-call", {
       files: {
         "src/Subscribe.tsx": `import { useEffect } from "react";
@@ -581,10 +569,7 @@ export const Subscribe = () => {
   });
 
   it("recognizes the generic teardown vocabulary (`cleanup`, `dispose`, `destroy`, `teardown`) as a release call", async () => {
-    // The release-callee allowlist now lives in `constants.ts` as
-    // `CLEANUP_LIKE_RELEASE_CALLEE_NAMES`. Each of the generic
-    // teardown verbs satisfies the cleanup check on its own — no
-    // false positive on this shape.
+    // Generic teardown names are valid as direct cleanup calls.
     for (const releaseName of ["cleanup", "dispose", "destroy", "teardown"]) {
       const projectDir = setupReactProject(
         tempRoot,
@@ -684,10 +669,7 @@ export const Resize = () => {
     expect(hits).toHaveLength(1);
   });
 
-  // HACK: regression for the ~36% FP rate measured against
-  // react-grab/excalidraw/etc. The previous detector only inspected the
-  // top-level last statement; cleanup nested inside an `if` block was
-  // invisible. Real-world shape: gated subscription + early-return.
+  // Guarded effects often return cleanup from inside a branch.
   it("does NOT flag cleanup nested inside an `if` block (early-return guard pattern)", async () => {
     const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-conditional-cleanup", {
       files: {
@@ -763,11 +745,7 @@ export const Subscribe = () => {
     expect(hits).toHaveLength(0);
   });
 
-  // Regression for #310: AbortController is the modern, idiomatic way to
-  // tear down many `addEventListener` registrations in one call. A single
-  // `controller.abort()` removes every listener that was bound via
-  // `{ signal: controller.signal }`, so the cleanup return IS valid even
-  // though no literal `removeEventListener(...)` appears.
+  // AbortController can clean up listeners registered with its signal.
   it("does NOT flag `addEventListener({ signal })` cleaned up via `controller.abort()`", async () => {
     const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-abort-controller", {
       files: {
@@ -823,10 +801,7 @@ export const FileDrop = () => {
     expect(hits).toHaveLength(0);
   });
 
-  // HACK: ensure the broader walk does NOT credit cleanup returns from a
-  // *nested* function expression (e.g. an inner callback) as the effect's
-  // own cleanup. The walker stops at function boundaries; this protects
-  // the bug fix from over-correcting.
+  // Cleanup returned from an inner callback is not the effect's cleanup.
   it("DOES still flag when the only `return cleanup` is inside a nested callback (not the effect's body)", async () => {
     const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-nested-fn-return", {
       files: {

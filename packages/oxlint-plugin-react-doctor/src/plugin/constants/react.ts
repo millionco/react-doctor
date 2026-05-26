@@ -81,22 +81,12 @@ export const SUBSCRIPTION_METHOD_NAMES = new Set([
   "sub",
 ]);
 
-// Subscribe-like methods whose return value is itself the cleanup function.
-// Do not include EventTarget/EventEmitter-style registrations here:
-// `addEventListener`, `addListener`, and `on` often return void or a
-// subscription object, so accepting their return value as cleanup would hide
-// missing teardown.
+// Subscribe-like methods that return the cleanup function directly.
+// EventTarget/EventEmitter APIs often return void or subscription objects.
 export const CLEANUP_RETURNING_SUBSCRIPTION_METHOD_NAMES = new Set(["subscribe", "sub"]);
 
-// Cleanup method names that are meaningful without knowing where the receiver
-// came from. A call like `target.removeEventListener(...)`, `emitter.off(...)`,
-// or `controller.abort()` describes the teardown in the method name itself, so
-// it is safe to accept on any receiver inside an effect cleanup.
-//
-// Keep generic resource verbs such as `remove`, `dispose`, `destroy`, and
-// `teardown` OUT of this set. On an arbitrary receiver, `node.remove()` or
-// `cache.dispose()` does not prove it releases the listener/subscription that
-// was created earlier in the effect.
+// Cleanup methods that are specific enough to trust on any receiver.
+// Generic verbs like `remove` need a known subscription receiver.
 export const GLOBAL_RELEASE_METHOD_NAMES = new Set([
   "unsubscribe",
   "removeEventListener",
@@ -108,16 +98,7 @@ export const GLOBAL_RELEASE_METHOD_NAMES = new Set([
   "abort",
 ]);
 
-// Cleanup method names that are only meaningful when the receiver is the value
-// returned by a subscribe-like call in the same effect. For example:
-//
-//   const sub = AppState.addEventListener(...);
-//   return () => sub.remove();
-//
-// In that shape, the receiver (`sub`) ties the generic verb (`remove`) back to
-// the resource created by the effect. Without that binding relationship, these
-// verbs are too broad and would create false negatives for unrelated cleanup
-// calls.
+// Generic cleanup methods accepted only on values returned by subscribe-like calls.
 export const BOUND_RESOURCE_RELEASE_METHOD_NAMES = new Set([
   "remove",
   "cleanup",
@@ -127,12 +108,7 @@ export const BOUND_RESOURCE_RELEASE_METHOD_NAMES = new Set([
   "teardown",
 ]);
 
-// Identifier names recognized as "this is a release/teardown call"
-// when they appear as a direct call inside an effect's cleanup
-// return — covers both library unsubscribe shorthands
-// (GLOBAL_RELEASE_METHOD_NAMES) and the generic teardown vocabulary
-// (`cleanup`, `dispose`, `destroy`, `teardown`). Matched
-// case-insensitively at the call site.
+// Direct cleanup function names accepted inside returned cleanup functions.
 export const CLEANUP_LIKE_RELEASE_CALLEE_NAMES = new Set([
   ...GLOBAL_RELEASE_METHOD_NAMES,
   "cleanup",

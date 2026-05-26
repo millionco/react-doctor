@@ -228,6 +228,36 @@ export const Leaky = () => {
     expect(hits).toHaveLength(0);
   });
 
+  it("does NOT flag when an addEventListener result binding is returned directly", async () => {
+    const projectDir = setupReactProject(
+      tempRoot,
+      "prefer-use-sync-external-store-return-add-listener-binding",
+      {
+        files: {
+          "src/Online.tsx": `import { useEffect, useState } from "react";
+
+declare const source: { addEventListener: (eventName: string, handler: () => void) => void };
+declare const getSnapshot: () => boolean;
+
+export const Online = () => {
+  const [isOnline, setIsOnline] = useState(getSnapshot());
+  useEffect(() => {
+    const subscription = source.addEventListener("online", () => {
+      setIsOnline(getSnapshot());
+    });
+    return subscription;
+  }, []);
+  return <span>{isOnline ? "online" : "offline"}</span>;
+};
+`,
+        },
+      },
+    );
+
+    const hits = await collectRuleHits(projectDir, "prefer-use-sync-external-store");
+    expect(hits).toHaveLength(0);
+  });
+
   it("DOES flag a useSyncExternalStore reimplementation whose cleanup uses a generic teardown verb (`cleanup()`)", async () => {
     // Regression: `cleanupReleasesSubscription` previously only accepted
     // `GLOBAL_RELEASE_METHOD_NAMES` plus the literal bound-unsubscribe

@@ -434,6 +434,33 @@ export const Resize = () => {
     expect(hits).toHaveLength(1);
   });
 
+  it("flags an `addEventListener` result binding returned directly", async () => {
+    const projectDir = setupReactProject(
+      tempRoot,
+      "effect-needs-cleanup-return-add-listener-binding",
+      {
+        files: {
+          "src/Resize.tsx": `import { useEffect } from "react";
+
+declare const target: { addEventListener: (eventName: string, handler: () => void) => void };
+declare const handler: () => void;
+
+export const Resize = () => {
+  useEffect(() => {
+    const subscription = target.addEventListener("resize", handler);
+    return subscription;
+  }, []);
+  return <span />;
+};
+`,
+        },
+      },
+    );
+
+    const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
+    expect(hits).toHaveLength(1);
+  });
+
   // HACK: regression for the ~36% FP rate measured against
   // react-grab/excalidraw/etc. The previous detector only inspected the
   // top-level last statement; cleanup nested inside an `if` block was

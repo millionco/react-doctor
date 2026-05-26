@@ -124,8 +124,10 @@ const collectReleasableBindings = (effectCallback: EsTreeNode): ReleasableBindin
       const init = declarator.init;
       if (!init || !isNodeOfType(init, "CallExpression")) continue;
       if (isSubscribeLikeCallExpression(init)) {
-        bindings.releaseNames.add(bindingName);
         bindings.subscriptionNames.add(bindingName);
+        if (isCleanupReturningSubscribeLikeCallExpression(init)) {
+          bindings.releaseNames.add(bindingName);
+        }
         continue;
       }
       if (

@@ -1,0 +1,19 @@
+packages/react-doctor/package.json
+  s_e6bb183a29105d::t_9032361f8df252 63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "aaa5468ec68264b82c6635b6660cfb80dfcf0231",
+  "prompts": {},
+  "sessions": {
+    "s_e6bb183a29105d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "5321d096-7b87-4cb9-b007-9d4a2c312b6d",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

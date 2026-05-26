@@ -338,7 +338,7 @@ export const runInstallSkill = async (options: InstallSkillOptions = {}): Promis
               {
                 type: "confirm",
                 name: "installGitHook",
-                message: "Run React Doctor on staged files before commits? (non-blocking git hook)",
+                message: "Check for issues before each commit?",
                 initial: true,
               },
               promptOptions,

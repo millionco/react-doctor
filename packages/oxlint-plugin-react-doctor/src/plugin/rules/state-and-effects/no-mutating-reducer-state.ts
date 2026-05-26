@@ -577,7 +577,9 @@ const analyzeReactUseReducerFunctionForStateMutation = (
         }
 
         if (isNodeOfType(statement, "IfStatement")) {
-          // The condition runs before either branch.
+          // An if statement cannot use the generic statement path: the
+          // consequent and alternate are separate possible paths. Therefore,
+          // each branch is evaluated from the state after the condition runs.
           const conditionState = cloneReducerPathState(activeState);
           conditionState.mutations.push(
             ...collectReducerStateMutationsInExpressionOrStatement(statement.test, conditionState),
@@ -603,7 +605,9 @@ const analyzeReactUseReducerFunctionForStateMutation = (
         }
 
         if (isNodeOfType(statement, "SwitchStatement")) {
-          // The switch value runs before any case.
+          // A switch cannot use the generic statement path: each case is a
+          // separate possible path, and cases can fall through into later cases.
+          // Therefore, each possible starting case is evaluated separately.
           const discriminantState = cloneReducerPathState(activeState);
           discriminantState.mutations.push(
             ...collectReducerStateMutationsInExpressionOrStatement(
@@ -652,7 +656,6 @@ const analyzeReactUseReducerFunctionForStateMutation = (
           continue;
         }
 
-        // Ordinary statements may mutate state and may also introduce aliases.
         const nextState = cloneReducerPathState(activeState);
         nextState.mutations.push(
           ...collectReducerStateMutationsInExpressionOrStatement(statement, nextState),

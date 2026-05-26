@@ -12,7 +12,7 @@ export interface SpawnLintBatchesInput {
   readonly nodeBinaryPath: string;
   readonly project: ProjectInfo;
   readonly onPartialFailure?: (reason: string) => void;
-  readonly onBatchComplete?: (scannedFileCount: number, totalFileCount: number) => void;
+  readonly onFileProgress?: (scannedFileCount: number, totalFileCount: number) => void;
 }
 
 /**
@@ -36,7 +36,7 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     nodeBinaryPath,
     project,
     onPartialFailure,
-    onBatchComplete,
+    onFileProgress,
   } = input;
   const totalFileCount = fileBatches.reduce((sum, batch) => sum + batch.length, 0);
 
@@ -84,9 +84,26 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
 
   let scannedFileCount = 0;
   for (const batch of fileBatches) {
-    allDiagnostics.push(...(await spawnLintBatch(batch)));
+    // HACK: tick the progress counter per-file on a timer while the
+    // batch subprocess runs, so the UI feels smooth instead of jumping
+    // by 100 when each batch completes. The interval is cleared as
+    // soon as the batch resolves — any remaining files in the batch
+    // are counted in one final update.
+    let batchFileIndex = 0;
+    const progressInterval =
+      onFileProgress && batch.length > 1
+        ? setInterval(() => {
+            if (batchFileIndex < batch.length) {
+              batchFileIndex += 1;
+              onFileProgress(scannedFileCount + batchFileIndex, totalFileCount);
+            }
+          }, 50)
+        : null;
+    const batchDiagnostics = await spawnLintBatch(batch);
+    if (progressInterval !== null) clearInterval(progressInterval);
+    allDiagnostics.push(...batchDiagnostics);
     scannedFileCount += batch.length;
-    onBatchComplete?.(scannedFileCount, totalFileCount);
+    onFileProgress?.(scannedFileCount, totalFileCount);
   }
 
   if (droppedFiles.length > 0 && onPartialFailure) {

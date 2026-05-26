@@ -37,7 +37,7 @@ export interface LintInput {
   readonly userConfig?: ReactDoctorConfig | null;
   readonly configSourceDirectory?: string;
   readonly nodeBinaryPath?: string;
-  readonly onBatchComplete?: (scannedFileCount: number, totalFileCount: number) => void;
+  readonly onFileProgress?: (scannedFileCount: number, totalFileCount: number) => void;
 }
 
 /**
@@ -115,7 +115,7 @@ export class Linter extends Context.Service<
                   onPartialFailure: (reason) => {
                     collectedFailures.push(reason);
                   },
-                  onBatchComplete: input.onBatchComplete,
+                  onFileProgress: input.onFileProgress,
                 }),
               catch: ensureReactDoctorError,
             });

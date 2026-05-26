@@ -121,13 +121,11 @@ const fileReader =
     return lines === null ? null : [...lines];
   };
 
-const LINT_FAIL_TEXT = "Lint checks failed (non-fatal, skipping).";
-const LINT_SUCCESS_TEXT = "Running lint checks.";
+const SCAN_SUCCESS_TEXT = "Scanning.";
+const LINT_FAIL_TEXT = "Scanning failed (lint, non-fatal).";
 const LINT_NATIVE_BINDING_FAIL_TEXT = (nodeVersion: string): string =>
-  `Lint checks failed — oxlint native binding not found (Node ${nodeVersion}).`;
-
-const DEAD_CODE_FAIL_TEXT = "Dead-code analysis failed (non-fatal, skipping).";
-const DEAD_CODE_SUCCESS_TEXT = "Analyzing dead code.";
+  `Scanning failed — oxlint native binding not found (Node ${nodeVersion}).`;
+const DEAD_CODE_FAIL_TEXT = "Scanning failed (dead-code analysis, non-fatal).";
 
 const formatLintFailText = (
   reasonTag: ReactDoctorErrorReason["_tag"] | null,
@@ -287,7 +285,7 @@ export const runInspect = <HooksR = never>(
         : Effect.succeed<Iterable<Diagnostic>>([]),
     );
 
-    const lintProgress = yield* progressService.start("Running lint checks...");
+    const lintProgress = yield* progressService.start("Scanning...");
 
     const rawLintStream = linterService
       .run({
@@ -301,9 +299,9 @@ export const runInspect = <HooksR = never>(
         ignoredTags: input.ignoredTags,
         userConfig: resolvedConfig.config ?? undefined,
         configSourceDirectory: resolvedConfig.configSourceDirectory ?? undefined,
-        onBatchComplete: (scannedFileCount, totalFileCount) => {
+        onFileProgress: (scannedFileCount, totalFileCount) => {
           Effect.runSync(
-            lintProgress.update(`Scanning files (${scannedFileCount}/${totalFileCount})...`),
+            lintProgress.update(`Scanning (${scannedFileCount}/${totalFileCount})...`),
           );
         },
       })
@@ -324,24 +322,20 @@ export const runInspect = <HooksR = never>(
 
     const lintCollected = yield* Stream.runCollect(applyPerElementPipeline(rawLintStream));
     const lintFailureState = yield* Ref.get(lintFailure);
-    if (lintFailureState.didFail) {
-      yield* lintProgress.fail(formatLintFailText(lintFailureState.reasonTag, process.version));
-    } else {
-      yield* lintProgress.succeed(LINT_SUCCESS_TEXT);
-    }
     yield* afterLint(lintFailureState.didFail);
 
-    const deadCodeProgress = shouldRunDeadCode
-      ? yield* progressService.start("Analyzing dead code...")
-      : null;
+    if (shouldRunDeadCode) {
+      yield* lintProgress.update("Analyzing dead code...");
+    }
     const deadCodeCollected = yield* Fiber.join(deadCodeFiber);
     const deadCodeFailureState = yield* Ref.get(deadCodeFailure);
-    if (deadCodeProgress !== null) {
-      if (deadCodeFailureState.didFail) {
-        yield* deadCodeProgress.fail(DEAD_CODE_FAIL_TEXT);
-      } else {
-        yield* deadCodeProgress.succeed(DEAD_CODE_SUCCESS_TEXT);
-      }
+
+    if (lintFailureState.didFail) {
+      yield* lintProgress.fail(formatLintFailText(lintFailureState.reasonTag, process.version));
+    } else if (deadCodeFailureState.didFail) {
+      yield* lintProgress.fail(DEAD_CODE_FAIL_TEXT);
+    } else {
+      yield* lintProgress.succeed(SCAN_SUCCESS_TEXT);
     }
 
     yield* reporterService.finalize;

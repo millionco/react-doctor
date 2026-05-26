@@ -1,0 +1,20 @@
+skills/react-doctor/SKILL.md
+  s_d62c9aab40ac5c::t_49359320de94f4 31
+  s_d62c9aab40ac5c::t_09e28f23e2a089 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "222f3d1ad22c2f0285778d128a3d4196733a01e8",
+  "prompts": {},
+  "sessions": {
+    "s_d62c9aab40ac5c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "6045d279-05ac-4cf0-8f54-9fca619f4dd7",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

@@ -324,9 +324,6 @@ export const runInspect = <HooksR = never>(
     const lintFailureState = yield* Ref.get(lintFailure);
     yield* afterLint(lintFailureState.didFail);
 
-    if (shouldRunDeadCode) {
-      yield* lintProgress.update("Analyzing dead code...");
-    }
     const deadCodeCollected = yield* Fiber.join(deadCodeFiber);
     const deadCodeFailureState = yield* Ref.get(deadCodeFailure);
 

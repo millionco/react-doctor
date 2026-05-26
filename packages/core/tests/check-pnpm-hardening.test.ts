@@ -13,6 +13,7 @@ interface FixtureExpectation {
   readonly description: string;
   readonly expectedRuleKeys: ReadonlyArray<string>;
   readonly expectedSubstrings: ReadonlyArray<string>;
+  readonly expectedFilePath?: string;
 }
 
 const FIXTURE_EXPECTATIONS: ReadonlyArray<FixtureExpectation> = [
@@ -83,16 +84,26 @@ const FIXTURE_EXPECTATIONS: ReadonlyArray<FixtureExpectation> = [
   {
     name: "package-manager-only",
     description:
-      "pnpm detected via `packageManager` field with no workspace yaml → warns on minimumReleaseAge + trustPolicy",
+      "pnpm detected via `packageManager` field with no workspace yaml → warns on minimum-release-age + trust-policy via .npmrc",
     expectedRuleKeys: [HARDENING_RULE_KEY, HARDENING_RULE_KEY],
-    expectedSubstrings: ["minimumReleaseAge", "trustPolicy"],
+    expectedSubstrings: ["minimum-release-age", "trust-policy"],
+    expectedFilePath: ".npmrc",
   },
   {
     name: "pnpm-lock-only",
     description:
-      "pnpm-lock.yaml alone is enough to detect a pnpm project; warns on minimumReleaseAge + trustPolicy",
+      "pnpm-lock.yaml alone is enough to detect a pnpm project; warns on minimum-release-age + trust-policy via .npmrc",
     expectedRuleKeys: [HARDENING_RULE_KEY, HARDENING_RULE_KEY],
-    expectedSubstrings: ["minimumReleaseAge", "trustPolicy"],
+    expectedSubstrings: ["minimum-release-age", "trust-policy"],
+    expectedFilePath: ".npmrc",
+  },
+  {
+    name: "npmrc-hardened",
+    description:
+      "single-package pnpm project with all hardening settings in .npmrc → no warnings",
+    expectedRuleKeys: [],
+    expectedSubstrings: [],
+    expectedFilePath: ".npmrc",
   },
   {
     name: "not-pnpm",
@@ -120,7 +131,7 @@ describe("checkPnpmHardening (fixtures)", () => {
         expect(diagnostic.plugin).toBe("react-doctor");
         expect(diagnostic.severity).toBe("warning");
         expect(diagnostic.category).toBe("Security");
-        expect(diagnostic.filePath).toBe("pnpm-workspace.yaml");
+        expect(diagnostic.filePath).toBe(expectation.expectedFilePath ?? "pnpm-workspace.yaml");
         expect(diagnostic.help.length).toBeGreaterThan(0);
         expect(diagnostic.message.length).toBeGreaterThan(0);
       }
@@ -376,5 +387,150 @@ describe("checkPnpmHardening (parser edge cases)", () => {
     const diagnostics = checkPnpmHardening(projectDirectory);
 
     expect(diagnostics).toHaveLength(0);
+  });
+});
+
+describe("checkPnpmHardening (.npmrc parser)", () => {
+  let temporaryRoot: string;
+
+  beforeEach(() => {
+    temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-npmrc-hardening-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(temporaryRoot, { recursive: true, force: true });
+  });
+
+  const writeNpmrcFixture = (caseName: string, npmrcContents: string): string => {
+    const projectDirectory = path.join(temporaryRoot, caseName);
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(path.join(projectDirectory, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
+    fs.writeFileSync(path.join(projectDirectory, ".npmrc"), npmrcContents);
+    return projectDirectory;
+  };
+
+  it("reads hardening settings from .npmrc when pnpm-workspace.yaml is absent", () => {
+    const projectDirectory = writeNpmrcFixture(
+      "npmrc-all-set",
+      "minimum-release-age=10080\nblock-exotic-subdeps=true\ntrust-policy=no-downgrade\n",
+    );
+
+    const diagnostics = checkPnpmHardening(projectDirectory);
+
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("warns with .npmrc filePath when settings are missing from .npmrc", () => {
+    const projectDirectory = writeNpmrcFixture("npmrc-empty", "# nothing here\n");
+
+    const diagnostics = checkPnpmHardening(projectDirectory);
+
+    expect(diagnostics).toHaveLength(2);
+    for (const diagnostic of diagnostics) {
+      expect(diagnostic.filePath).toBe(".npmrc");
+    }
+    const concatenatedMessages = diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+    expect(concatenatedMessages).toContain("minimum-release-age");
+    expect(concatenatedMessages).toContain("trust-policy");
+  });
+
+  it("flags block-exotic-subdeps=false in .npmrc", () => {
+    const projectDirectory = writeNpmrcFixture(
+      "npmrc-exotic-false",
+      "minimum-release-age=10080\nblock-exotic-subdeps=false\ntrust-policy=no-downgrade\n",
+    );
+
+    const diagnostics = checkPnpmHardening(projectDirectory);
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0].filePath).toBe(".npmrc");
+    expect(diagnostics[0].message).toContain("block-exotic-subdeps");
+  });
+
+  it("flags a weakened trust-policy in .npmrc", () => {
+    const projectDirectory = writeNpmrcFixture(
+      "npmrc-trust-any",
+      "minimum-release-age=10080\nblock-exotic-subdeps=true\ntrust-policy=any\n",
+    );
+
+    const diagnostics = checkPnpmHardening(projectDirectory);
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0].filePath).toBe(".npmrc");
+    expect(diagnostics[0].message).toContain("trust-policy: any");
+  });
+
+  it("ignores .npmrc comment lines starting with # or ;", () => {
+    const projectDirectory = writeNpmrcFixture(
+      "npmrc-comments",
+      "# minimum-release-age=10080\n; block-exotic-subdeps=true\nminimum-release-age=10080\nblock-exotic-subdeps=true\ntrust-policy=no-downgrade\n",
+    );
+
+    const diagnostics = checkPnpmHardening(projectDirectory);
+
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("strips trailing whitespace from .npmrc values", () => {
+    const projectDirectory = writeNpmrcFixture(
+      "npmrc-trailing-ws",
+      "minimum-release-age=10080   \nblock-exotic-subdeps=true   \ntrust-policy=no-downgrade   \n",
+    );
+
+    const diagnostics = checkPnpmHardening(projectDirectory);
+
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("applies last-wins semantics for duplicate .npmrc keys", () => {
+    const projectDirectory = writeNpmrcFixture(
+      "npmrc-duplicate",
+      "trust-policy=any\nminimum-release-age=10080\nblock-exotic-subdeps=true\ntrust-policy=no-downgrade\n",
+    );
+
+    const diagnostics = checkPnpmHardening(projectDirectory);
+
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("prefers pnpm-workspace.yaml over .npmrc when both exist", () => {
+    const projectDirectory = path.join(temporaryRoot, "both-files");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(path.join(projectDirectory, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
+    fs.writeFileSync(
+      path.join(projectDirectory, "pnpm-workspace.yaml"),
+      "minimumReleaseAge: 10080\nblockExoticSubdeps: true\ntrustPolicy: no-downgrade\n",
+    );
+    fs.writeFileSync(path.join(projectDirectory, ".npmrc"), "# empty npmrc\n");
+
+    const diagnostics = checkPnpmHardening(projectDirectory);
+
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("reports .npmrc filePath when neither .npmrc nor pnpm-workspace.yaml exists", () => {
+    const projectDirectory = path.join(temporaryRoot, "no-config-files");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(path.join(projectDirectory, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
+
+    const diagnostics = checkPnpmHardening(projectDirectory);
+
+    expect(diagnostics).toHaveLength(2);
+    for (const diagnostic of diagnostics) {
+      expect(diagnostic.filePath).toBe(".npmrc");
+    }
+  });
+
+  it("reports correct line numbers for .npmrc settings", () => {
+    const projectDirectory = writeNpmrcFixture(
+      "npmrc-line-numbers",
+      "# pnpm config\nminimum-release-age=10080\nblock-exotic-subdeps=false\ntrust-policy=no-downgrade\n",
+    );
+
+    const diagnostics = checkPnpmHardening(projectDirectory);
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0].line).toBe(3);
+    expect(diagnostics[0].column).toBe(1);
   });
 });

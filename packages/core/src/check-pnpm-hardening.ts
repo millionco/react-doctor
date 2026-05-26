@@ -5,21 +5,22 @@ import { isFile } from "./project-info/index.js";
 import type { Diagnostic } from "./types/index.js";
 
 const PNPM_WORKSPACE_FILE = "pnpm-workspace.yaml";
+const NPMRC_FILE = ".npmrc";
 const PNPM_LOCKFILE = "pnpm-lock.yaml";
 const PACKAGE_JSON_FILE = "package.json";
 const PNPM_HARDENING_RULE_KEY = "require-pnpm-hardening";
 const UTF8_BOM_CHAR = "\uFEFF";
 
-interface PnpmWorkspaceScalar {
+interface HardeningScalar {
   readonly value: string;
   readonly line: number;
   readonly column: number;
 }
 
-interface PnpmWorkspaceHardeningSettings {
-  readonly minimumReleaseAge: PnpmWorkspaceScalar | null;
-  readonly blockExoticSubdeps: PnpmWorkspaceScalar | null;
-  readonly trustPolicy: PnpmWorkspaceScalar | null;
+interface HardeningSettings {
+  readonly minimumReleaseAge: HardeningScalar | null;
+  readonly blockExoticSubdeps: HardeningScalar | null;
+  readonly trustPolicy: HardeningScalar | null;
 }
 
 const HARDENING_SETTING_KEYS = new Set(["minimumReleaseAge", "blockExoticSubdeps", "trustPolicy"]);
@@ -50,10 +51,10 @@ const unquote = (rawValue: string): string => rawValue.replace(/^["']|["']$/g, "
 const stripBom = (rawContent: string): string =>
   rawContent.startsWith(UTF8_BOM_CHAR) ? rawContent.slice(UTF8_BOM_CHAR.length) : rawContent;
 
-const parseHardeningSettings = (content: string): PnpmWorkspaceHardeningSettings => {
-  let minimumReleaseAge: PnpmWorkspaceScalar | null = null;
-  let blockExoticSubdeps: PnpmWorkspaceScalar | null = null;
-  let trustPolicy: PnpmWorkspaceScalar | null = null;
+const parseWorkspaceHardeningSettings = (content: string): HardeningSettings => {
+  let minimumReleaseAge: HardeningScalar | null = null;
+  let blockExoticSubdeps: HardeningScalar | null = null;
+  let trustPolicy: HardeningScalar | null = null;
 
   const lines = stripBom(content).split(/\r?\n/);
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
@@ -68,7 +69,7 @@ const parseHardeningSettings = (content: string): PnpmWorkspaceHardeningSettings
     if (!HARDENING_SETTING_KEYS.has(settingKey)) continue;
     const inlineValue = stripInlineComment(trimmedLine.slice(colonIndex + 1)).trim();
     if (inlineValue.length === 0) continue;
-    const scalar: PnpmWorkspaceScalar = {
+    const scalar: HardeningScalar = {
       value: unquote(inlineValue),
       line: lineIndex + 1,
       column: lineText.search(/\S/) + 1,
@@ -76,6 +77,44 @@ const parseHardeningSettings = (content: string): PnpmWorkspaceHardeningSettings
     if (settingKey === "minimumReleaseAge") minimumReleaseAge = scalar;
     else if (settingKey === "blockExoticSubdeps") blockExoticSubdeps = scalar;
     else if (settingKey === "trustPolicy") trustPolicy = scalar;
+  }
+  return { minimumReleaseAge, blockExoticSubdeps, trustPolicy };
+};
+
+const NPMRC_KEY_TO_SETTING: ReadonlyMap<string, keyof HardeningSettings> = new Map([
+  ["minimum-release-age", "minimumReleaseAge"],
+  ["block-exotic-subdeps", "blockExoticSubdeps"],
+  ["trust-policy", "trustPolicy"],
+]);
+
+const parseNpmrcHardeningSettings = (content: string): HardeningSettings => {
+  let minimumReleaseAge: HardeningScalar | null = null;
+  let blockExoticSubdeps: HardeningScalar | null = null;
+  let trustPolicy: HardeningScalar | null = null;
+
+  const lines = stripBom(content).split(/\r?\n/);
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const lineText = lines[lineIndex];
+    if (lineText === undefined) continue;
+    const trimmedLine = lineText.trim();
+    if (trimmedLine.length === 0 || trimmedLine.startsWith("#") || trimmedLine.startsWith(";")) {
+      continue;
+    }
+    const equalsIndex = trimmedLine.indexOf("=");
+    if (equalsIndex <= 0) continue;
+    const rawKey = trimmedLine.slice(0, equalsIndex).trim();
+    const settingName = NPMRC_KEY_TO_SETTING.get(rawKey);
+    if (settingName === undefined) continue;
+    const rawValue = trimmedLine.slice(equalsIndex + 1).trim();
+    if (rawValue.length === 0) continue;
+    const scalar: HardeningScalar = {
+      value: rawValue,
+      line: lineIndex + 1,
+      column: 1,
+    };
+    if (settingName === "minimumReleaseAge") minimumReleaseAge = scalar;
+    else if (settingName === "blockExoticSubdeps") blockExoticSubdeps = scalar;
+    else if (settingName === "trustPolicy") trustPolicy = scalar;
   }
   return { minimumReleaseAge, blockExoticSubdeps, trustPolicy };
 };
@@ -104,6 +143,7 @@ const isPnpmManagedProject = (rootDirectory: string): boolean => {
 };
 
 interface BuildHardeningDiagnosticInput {
+  readonly filePath: string;
   readonly message: string;
   readonly help: string;
   readonly line?: number;
@@ -111,7 +151,7 @@ interface BuildHardeningDiagnosticInput {
 }
 
 const buildHardeningDiagnostic = (input: BuildHardeningDiagnosticInput): Diagnostic => ({
-  filePath: PNPM_WORKSPACE_FILE,
+  filePath: input.filePath,
   plugin: "react-doctor",
   rule: PNPM_HARDENING_RULE_KEY,
   severity: "warning",
@@ -122,21 +162,63 @@ const buildHardeningDiagnostic = (input: BuildHardeningDiagnosticInput): Diagnos
   category: "Security",
 });
 
+interface HardeningSource {
+  readonly targetFile: string;
+  readonly settings: HardeningSettings;
+}
+
+const resolveHardeningSource = (rootDirectory: string): HardeningSource => {
+  const workspacePath = path.join(rootDirectory, PNPM_WORKSPACE_FILE);
+  if (isFile(workspacePath)) {
+    return {
+      targetFile: PNPM_WORKSPACE_FILE,
+      settings: parseWorkspaceHardeningSettings(fs.readFileSync(workspacePath, "utf-8")),
+    };
+  }
+  const npmrcPath = path.join(rootDirectory, NPMRC_FILE);
+  if (isFile(npmrcPath)) {
+    return {
+      targetFile: NPMRC_FILE,
+      settings: parseNpmrcHardeningSettings(fs.readFileSync(npmrcPath, "utf-8")),
+    };
+  }
+  return {
+    targetFile: NPMRC_FILE,
+    settings: { minimumReleaseAge: null, blockExoticSubdeps: null, trustPolicy: null },
+  };
+};
+
+const minimumReleaseAgeKeyForFile = (targetFile: string): string =>
+  targetFile === PNPM_WORKSPACE_FILE ? "minimumReleaseAge" : "minimum-release-age";
+
+const blockExoticSubdepsKeyForFile = (targetFile: string): string =>
+  targetFile === PNPM_WORKSPACE_FILE ? "blockExoticSubdeps" : "block-exotic-subdeps";
+
+const trustPolicyKeyForFile = (targetFile: string): string =>
+  targetFile === PNPM_WORKSPACE_FILE ? "trustPolicy" : "trust-policy";
+
+const minimumReleaseAgeValueForFile = (targetFile: string): string =>
+  targetFile === PNPM_WORKSPACE_FILE
+    ? `minimumReleaseAge: ${RECOMMENDED_PNPM_MINIMUM_RELEASE_AGE_MINUTES}`
+    : `minimum-release-age=${RECOMMENDED_PNPM_MINIMUM_RELEASE_AGE_MINUTES}`;
+
+const trustPolicyValueForFile = (targetFile: string): string =>
+  targetFile === PNPM_WORKSPACE_FILE ? "trustPolicy: no-downgrade" : "trust-policy=no-downgrade";
+
 export const checkPnpmHardening = (rootDirectory: string): Diagnostic[] => {
   if (!isPnpmManagedProject(rootDirectory)) return [];
 
-  const workspacePath = path.join(rootDirectory, PNPM_WORKSPACE_FILE);
-  const workspaceContent = isFile(workspacePath) ? fs.readFileSync(workspacePath, "utf-8") : "";
-  const settings = parseHardeningSettings(workspaceContent);
+  const { targetFile, settings } = resolveHardeningSource(rootDirectory);
 
   const diagnostics: Diagnostic[] = [];
 
   if (settings.minimumReleaseAge === null) {
+    const settingKey = minimumReleaseAgeKeyForFile(targetFile);
     diagnostics.push(
       buildHardeningDiagnostic({
-        message:
-          "pnpm-workspace.yaml is missing `minimumReleaseAge` — newly published versions can ship malware that gets caught and unpublished within hours",
-        help: `Add \`minimumReleaseAge: ${RECOMMENDED_PNPM_MINIMUM_RELEASE_AGE_MINUTES}\` (7 days) to pnpm-workspace.yaml to delay installs until releases have had time to be vetted`,
+        filePath: targetFile,
+        message: `${targetFile} is missing \`${settingKey}\` — newly published versions can ship malware that gets caught and unpublished within hours`,
+        help: `Add \`${minimumReleaseAgeValueForFile(targetFile)}\` (7 days) to ${targetFile} to delay installs until releases have had time to be vetted`,
       }),
     );
   }
@@ -145,32 +227,36 @@ export const checkPnpmHardening = (rootDirectory: string): Diagnostic[] => {
     settings.blockExoticSubdeps !== null &&
     settings.blockExoticSubdeps.value.toLowerCase() === "false"
   ) {
+    const settingKey = blockExoticSubdepsKeyForFile(targetFile);
     diagnostics.push(
       buildHardeningDiagnostic({
+        filePath: targetFile,
         line: settings.blockExoticSubdeps.line,
         column: settings.blockExoticSubdeps.column,
-        message:
-          "`blockExoticSubdeps: false` allows transitive deps from `git:`, `file:`, or tarball URLs — a known supply-chain bypass of the npm registry",
-        help: "Set `blockExoticSubdeps: true` (the default in recent pnpm v11) so transitive deps must come from the registry",
+        message: `\`${settingKey}: false\` allows transitive deps from \`git:\`, \`file:\`, or tarball URLs — a known supply-chain bypass of the npm registry`,
+        help: `Set \`${settingKey}: true\` (the default in recent pnpm v11) so transitive deps must come from the registry`,
       }),
     );
   }
 
   if (settings.trustPolicy === null) {
+    const settingKey = trustPolicyKeyForFile(targetFile);
     diagnostics.push(
       buildHardeningDiagnostic({
-        message:
-          "pnpm-workspace.yaml is missing `trustPolicy` — without `no-downgrade`, pnpm silently accepts packages whose trust signals (provenance, signatures) weaken between updates",
-        help: "Add `trustPolicy: no-downgrade` to pnpm-workspace.yaml",
+        filePath: targetFile,
+        message: `${targetFile} is missing \`${settingKey}\` — without \`no-downgrade\`, pnpm silently accepts packages whose trust signals (provenance, signatures) weaken between updates`,
+        help: `Add \`${trustPolicyValueForFile(targetFile)}\` to ${targetFile}`,
       }),
     );
   } else if (settings.trustPolicy.value !== "no-downgrade") {
+    const settingKey = trustPolicyKeyForFile(targetFile);
     diagnostics.push(
       buildHardeningDiagnostic({
+        filePath: targetFile,
         line: settings.trustPolicy.line,
         column: settings.trustPolicy.column,
-        message: `\`trustPolicy: ${settings.trustPolicy.value}\` is weaker than \`no-downgrade\` — packages may lose trust signals between updates without you noticing`,
-        help: "Set `trustPolicy: no-downgrade` so pnpm refuses to downgrade trust between resolutions",
+        message: `\`${settingKey}: ${settings.trustPolicy.value}\` is weaker than \`no-downgrade\` — packages may lose trust signals between updates without you noticing`,
+        help: `Set \`${trustPolicyValueForFile(targetFile)}\` so pnpm refuses to downgrade trust between resolutions`,
       }),
     );
   }

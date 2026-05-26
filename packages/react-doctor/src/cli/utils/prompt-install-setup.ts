@@ -160,12 +160,12 @@ const defaultSelect: SetupPromptSelect = async (message) => {
       choices: [
         {
           title: "Yes (recommended)",
-          description: "Installs agent skills, package script, and dev dependency",
+          description: "Use agents to automatically fix issues",
           value: SETUP_PROMPT_CHOICE_YES,
         },
         {
           title: "Skip",
-          description: "Not recommended — issues may go unfixed",
+          description: "Not recommended. Issues may go unfixed.",
           value: SETUP_PROMPT_CHOICE_NEVER,
         },
       ],

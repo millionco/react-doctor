@@ -121,7 +121,6 @@ const fileReader =
     return lines === null ? null : [...lines];
   };
 
-const SCAN_SUCCESS_TEXT = "Scanning.";
 const LINT_FAIL_TEXT = "Scanning failed (lint, non-fatal).";
 const LINT_NATIVE_BINDING_FAIL_TEXT = (nodeVersion: string): string =>
   `Scanning failed — oxlint native binding not found (Node ${nodeVersion}).`;

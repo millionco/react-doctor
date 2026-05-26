@@ -1,6 +1,6 @@
 # How to Write a React Doctor Rule
 
-Reference PR: `[#491 implement no-mutating-reducer-state rule](https://github.com/millionco/react-doctor/pull/491)`
+Reference PR: [#491 implement no-mutating-reducer-state rule](https://github.com/millionco/react-doctor/pull/491)
 
 ## Table of Contents
 
@@ -8,19 +8,20 @@ Reference PR: `[#491 implement no-mutating-reducer-state rule](https://github.co
 2. [End-to-End Workflow](#end-to-end-workflow)
 3. [Define the Rule](#define-the-rule)
 4. [Research the Problem](#research-the-problem)
-5. [Validate an Idea Against OSS](#eval-workflow-1-validate-an-idea-against-oss)
+5. [Validate an Idea Against OSS](#validate-an-idea-against-oss)
 6. [Decide Scope and Detector Precision](#decide-scope-and-detector-precision)
 7. [Design the Test Suite](#design-the-test-suite)
 8. [Implement the Detector](#implement-the-detector)
 9. [AST Vocabulary](#ast-vocabulary)
 10. [Naming, Utilities, and Comments](#naming-utilities-and-comments)
 11. [Verify Locally](#verify-locally)
-12. [Test a New Rule Using Evals](#eval-workflow-2-test-a-new-rule-against-oss)
+12. [Test a New Rule Using Evals](#test-a-new-rule-using-evals)
 13. [Write the PR Description](#write-the-pr-description)
 14. [Review Triage](#review-triage)
 15. [Checklists](#checklists)
 16. [Common Failure Modes](#common-failure-modes)
 17. [Standard Output](#standard-output)
+18. [One-Time Study Resources](#one-time-study-resources)
 
 ## Rule Quality Bar
 
@@ -497,27 +498,46 @@ Implementation requirements:
 - Skip unknown or imported code unless the rule explicitly supports it.
 - Add TODOs for known v2 gaps.
 
+Resource-informed implementation rules:
+
+- From ESTree: inspect node fields instead of guessing from source text.
+- From Babel: distinguish raw nodes from paths; path-like wrappers carry parent, container, scope, and traversal state.
+- From Babel: use bindings for identity questions; do not trust identifier text when imports or shadowing matter.
+- From Babel: avoid unnecessary traversals; use direct child lookup for shallow structures.
+- From Babel: nested structures are common; explicitly prune or model nested functions, classes, and blocks.
+- From OXC/Babex: expect Babel-compatible vocabulary, but verify parser-specific node shapes for TypeScript, JSX, optional chaining, and computed members.
+- From React Compiler: document unsupported JavaScript/control-flow cases instead of pretending every pattern is modeled soundly.
+- From Deslop: think in confidence tiers; strong diagnostics should be high-confidence findings.
+
 ## AST Vocabulary
 
 Common ESTree/Babel vocabulary:
 
-
-| Vocabulary                | Description                                                      | Example                              |
-| ------------------------- | ---------------------------------------------------------------- | ------------------------------------ |
-| `Identifier`              | A named binding or reference.                                    | `state`                              |
-| `MemberExpression`        | Property access on an object.                                    | `state.items`                        |
-| `CallExpression`          | A function or method call.                                       | `state.items.push(item)`             |
-| `AssignmentExpression`    | Assignment to a target.                                          | `state.count = 1`                    |
-| `UpdateExpression`        | Increment or decrement expression.                               | `state.count++`                      |
-| `UnaryExpression`         | Unary operator expression.                                       | `delete state.count`                 |
-| `ReturnStatement`         | Function return statement.                                       | `return state`                       |
-| `IfStatement`             | Conditional branch with consequent and optional alternate paths. | `if (action.type === "add") { ... }` |
-| `SwitchStatement`         | Case-based branch with possible fallthrough.                     | `switch (action.type) { ... }`       |
-| `BlockStatement`          | Scoped statement list.                                           | `{ const next = state; }`            |
-| `FunctionDeclaration`     | Hoisted function declaration.                                    | `function reducer() {}`              |
-| `FunctionExpression`      | Function expression value.                                       | `const reducer = function () {};`    |
-| `ArrowFunctionExpression` | Arrow function expression value.                                 | `const reducer = () => {};`          |
-
+| Vocabulary | Description | Example |
+| --- | --- | --- |
+| `Program` | File-level statement list. | `import React from "react";` |
+| `ImportDeclaration` | ES module import statement. | `import { useReducer } from "react";` |
+| `ImportSpecifier` | Named import binding. | `useReducer` in `import { useReducer } from "react"` |
+| `Identifier` | A named binding or reference. | `state` |
+| `VariableDeclarator` | One variable binding inside a declaration. | `next = state` in `const next = state` |
+| `MemberExpression` | Property access on an object. | `state.items` |
+| `CallExpression` | A function or method call. | `state.items.push(item)` |
+| `AssignmentExpression` | Assignment to a target. | `state.count = 1` |
+| `UpdateExpression` | Increment or decrement expression. | `state.count++` |
+| `UnaryExpression` | Unary operator expression. | `delete state.count` |
+| `ReturnStatement` | Function return statement. | `return state` |
+| `IfStatement` | Conditional branch with consequent and optional alternate paths. | `if (action.type === "add") { ... }` |
+| `ConditionalExpression` | Ternary expression with consequent and alternate values. | `condition ? next : state` |
+| `LogicalExpression` | Short-circuiting boolean/logical expression. | `value || state` |
+| `SwitchStatement` | Case-based branch with possible fallthrough. | `switch (action.type) { ... }` |
+| `SwitchCase` | One switch case and its consequent statements. | `case "add": state.count++;` |
+| `BlockStatement` | Scoped statement list. | `{ const next = state; }` |
+| `FunctionDeclaration` | Hoisted function declaration. | `function reducer() {}` |
+| `FunctionExpression` | Function expression value. | `const reducer = function () {};` |
+| `ArrowFunctionExpression` | Arrow function expression value. | `const reducer = () => {};` |
+| `ParenthesizedExpression` | Transparent expression wrapper. | `(state)` |
+| `TSAsExpression` | TypeScript `as` wrapper. | `state as State` |
+| `ChainExpression` | Optional chaining wrapper in ESTree-style ASTs. | `state.items?.push(item)` |
 
 Computed member handling:
 
@@ -828,4 +848,42 @@ A finished rule PR should contain:
 - Test plan.
 - Evals summary for broad or heuristic rules.
 - Review fixes with regression tests.
+
+## One-Time Study Resources
+
+This is onboarding material for learning AST rule authoring. Do this once when building taste for React Doctor rules, not for every PR.
+
+Spend 1-2 hours asking an agent Q/A about these resources. Use them to build AST vocabulary, understand parser differences, and learn how production analyzers handle scope, confidence, and false positives.
+
+| Resource | Link | What to Extract |
+| --- | --- | --- |
+| ESTree spec | https://github.com/estree/estree | Node vocabulary, standard node shapes, and the philosophy that nodes are contextless and avoid duplicated information. |
+| Babel handbook | https://github.com/jamiebuilds/babel-handbook | ASTs, visitors, paths, scopes, bindings, traversal state, nested structures, and plugin testing patterns. |
+| Babel plugin handbook | https://github.com/jamiebuilds/babel-handbook/blob/master/translations/en/plugin-handbook.md | Practical plugin authoring guidance: visitors, path APIs, scope/binding lookups, traversal performance, and unit testing. |
+| OXC | https://github.com/oxc-project/oxc | Oxlint/parser context, high-performance AST tooling, and rule implementation patterns to compare against React Doctor rules. |
+| Deslop | https://github.com/millionco/deslop-js/ | Confidence tiers, syntactic vs semantic findings, structured analysis errors, and CI-gating strategy for high-signal findings. |
+| React Compiler | https://github.com/facebook/react/tree/main/compiler | React rule semantics, conservative modeling, control-flow needs, React rules validation, and why unsupported JavaScript features should be explicit non-goals. |
+| React Doctor | https://github.com/millionco/react-doctor | Product context: deterministic React scans across state/effects, performance, architecture, security, and accessibility. |
+| Babex | https://github.com/millionco/babex | Babel-compatible APIs backed by OXC; useful for understanding parser/traverse compatibility and the shape of fast AST tooling. |
+
+Ask targeted questions:
+
+- What AST nodes are involved in this rule?
+- Which names must be resolved through bindings?
+- Which syntax creates a new scope?
+- Which syntax should stop traversal?
+- Which nested structures can create false positives?
+- Which parser differences matter for TypeScript, JSX, optional chaining, and computed properties?
+- Which cases should be high-confidence diagnostics versus review prompts?
+
+Resource takeaways:
+
+- ESTree nodes are contextless. Do not assume a node knows its parent unless the local tooling attaches parent pointers.
+- Babel paths add parent, scope, container, and traversal metadata around raw nodes. React Doctor utilities may expose different wrappers, so check local APIs.
+- Scope and binding resolution matter whenever a rule depends on imports, aliases, or shadowed variables.
+- Traversal is expensive. Prefer a single visitor or direct child lookup when that is enough.
+- Nested structures are easy to mishandle. Explicitly skip nested functions unless the rule intends to inspect them.
+- React Compiler is conservative about unsupported or hard-to-model JavaScript. React Doctor rules should also document v1 unsupported cases.
+- Deslop-style confidence tiers are a useful mental model: only high-confidence findings should block or produce strong diagnostics.
+- Babex shows the compatibility target: Babel-style parse/traverse APIs can sit on top of OXC, so rule authors should understand both Babel vocabulary and OXC-powered parsing.
 

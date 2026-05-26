@@ -4,6 +4,9 @@ import type { Diagnostic, ScoreResult } from "@react-doctor/core";
 import { groupBy } from "@react-doctor/core";
 import { prompts } from "./prompts.js";
 
+const MAX_RULES_SHOWN = 10;
+const MAX_FILES_PER_RULE = 3;
+
 interface CopyTraceInput {
   readonly diagnostics: ReadonlyArray<Diagnostic>;
   readonly score: ScoreResult | null;
@@ -14,30 +17,42 @@ interface CopyTraceInput {
 const buildTraceSummary = (input: CopyTraceInput): string => {
   const lines: string[] = [];
 
-  lines.push(`React Doctor — ${input.projectName}`);
-  if (input.score) {
-    lines.push(`Score: ${input.score.score} / 1000 (${input.score.label})`);
-  }
-  lines.push(`Issues: ${input.diagnostics.length}`);
+  lines.push(`# React Doctor: ${input.projectName}`);
+  if (input.score) lines.push(`Score: ${input.score.score}/1000`);
+  lines.push(`${input.diagnostics.length} issues found`);
   lines.push("");
 
-  const categoryGroups = groupBy([...input.diagnostics], (diagnostic) => diagnostic.category);
-  for (const [category, categoryDiagnostics] of categoryGroups) {
-    const errorCount = categoryDiagnostics.filter(
-      (diagnostic) => diagnostic.severity === "error",
-    ).length;
-    const warningCount = categoryDiagnostics.filter(
-      (diagnostic) => diagnostic.severity === "warning",
-    ).length;
-    const parts: string[] = [];
-    if (errorCount > 0) parts.push(`${errorCount} errors`);
-    if (warningCount > 0) parts.push(`${warningCount} warnings`);
-    lines.push(`  ${category}: ${parts.join(", ")}`);
+  const ruleGroups = groupBy([...input.diagnostics], (diagnostic) => diagnostic.rule);
+  const sortedRules = [...ruleGroups.entries()].sort(
+    ([, diagnosticsA], [, diagnosticsB]) => diagnosticsB.length - diagnosticsA.length,
+  );
+
+  const visibleRules = sortedRules.slice(0, MAX_RULES_SHOWN);
+  for (const [rule, ruleDiagnostics] of visibleRules) {
+    const severity = ruleDiagnostics[0].severity;
+    const uniqueFiles = [...new Set(ruleDiagnostics.map((diagnostic) => diagnostic.filePath))];
+    const shownFiles = uniqueFiles.slice(0, MAX_FILES_PER_RULE);
+    const remainingFileCount = uniqueFiles.length - shownFiles.length;
+
+    lines.push(`${severity === "error" ? "ERROR" : "WARN"} ${rule} (×${ruleDiagnostics.length})`);
+    lines.push(`  ${ruleDiagnostics[0].message}`);
+    for (const filePath of shownFiles) {
+      const firstSite = ruleDiagnostics.find(
+        (diagnostic) => diagnostic.filePath === filePath && diagnostic.line > 0,
+      );
+      lines.push(`  - ${filePath}${firstSite ? `:${firstSite.line}` : ""}`);
+    }
+    if (remainingFileCount > 0) lines.push(`  - +${remainingFileCount} more files`);
+  }
+
+  const hiddenRuleCount = sortedRules.length - visibleRules.length;
+  if (hiddenRuleCount > 0) {
+    lines.push("");
+    lines.push(`+${hiddenRuleCount} more rules`);
   }
 
   lines.push("");
-  lines.push("Run with details:");
-  lines.push(`  npx react-doctor@latest ${input.directory} --verbose`);
+  lines.push("To fix: npx react-doctor@latest --verbose");
 
   return lines.join("\n");
 };

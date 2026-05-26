@@ -312,7 +312,7 @@ export const runInstallSkill = async (options: InstallSkillOptions = {}): Promis
           {
             type: "multiselect",
             name: "agents",
-            message: `Install the ${highlighter.info(SKILL_NAME)} skill for:`,
+            message: `Install the ${highlighter.info(`/${SKILL_NAME}`)} skill for:`,
             choices: detectedAgents.map((agent) => ({
               title: getSkillAgentConfig(agent).displayName,
               value: agent,

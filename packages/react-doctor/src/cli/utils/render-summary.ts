@@ -40,9 +40,12 @@ const printCountsSummaryLine = (
     const issueText = issueCountColor(
       `${totalIssueCount} ${totalIssueCount === 1 ? "issue" : "issues"}`,
     );
-    const verboseHint =
-      !isVerbose && totalIssueCount > 0 ? highlighter.dim("  Run --verbose to see details") : "";
-    yield* Console.log(`  ${issueText}${verboseHint}`);
+    yield* Console.log(`  ${issueText}`);
+    if (!isVerbose && totalIssueCount > 0) {
+      yield* Console.log(
+        highlighter.dim(`  Run ${highlighter.info("npx react-doctor@latest --verbose")} to see details`),
+      );
+    }
   });
 
 export interface PrintSummaryInput {

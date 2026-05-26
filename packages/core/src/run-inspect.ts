@@ -326,21 +326,28 @@ export const runInspect = <HooksR = never>(
     const lintFailureState = yield* Ref.get(lintFailure);
     yield* afterLint(lintFailureState.didFail);
 
-    const deadCodeCollected = yield* Fiber.join(deadCodeFiber);
+    if (lintFailureState.didFail) {
+      yield* Fiber.interrupt(deadCodeFiber);
+      yield* scanProgress.fail(formatLintFailText(lintFailureState.reasonTag, process.version));
+    }
+
+    const deadCodeCollected = lintFailureState.didFail
+      ? []
+      : yield* Fiber.join(deadCodeFiber);
     const deadCodeFailureState = yield* Ref.get(deadCodeFailure);
 
     const scanElapsedSeconds = ((Date.now() - scanStartTime) / 1000).toFixed(1);
     const totalFileCount =
       lastReportedTotalFileCount || (lintIncludePaths?.length ?? project.sourceFileCount);
 
-    if (lintFailureState.didFail) {
-      yield* scanProgress.fail(formatLintFailText(lintFailureState.reasonTag, process.version));
-    } else if (deadCodeFailureState.didFail) {
-      yield* scanProgress.fail(DEAD_CODE_FAIL_TEXT);
-    } else {
-      yield* scanProgress.succeed(
-        `Scanned ${totalFileCount} ${totalFileCount === 1 ? "file" : "files"} in ${scanElapsedSeconds}s`,
-      );
+    if (!lintFailureState.didFail) {
+      if (deadCodeFailureState.didFail) {
+        yield* scanProgress.fail(DEAD_CODE_FAIL_TEXT);
+      } else {
+        yield* scanProgress.succeed(
+          `Scanned ${totalFileCount} ${totalFileCount === 1 ? "file" : "files"} in ${scanElapsedSeconds}s`,
+        );
+      }
     }
 
     yield* reporterService.finalize;

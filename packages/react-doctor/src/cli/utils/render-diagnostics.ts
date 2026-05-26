@@ -175,8 +175,6 @@ const buildDefaultDiagnosticsLines = (diagnostics: Diagnostic[]): ReadonlyArray<
     lines.push(buildCompactCategoryLine(categoryGroup));
   }
   lines.push("");
-  lines.push(grayLine("  Run `npx react-doctor@latest . --verbose` to see details"));
-  lines.push("");
   return lines;
 };
 

@@ -25,7 +25,10 @@ const buildShareUrl = (
   return `${SHARE_BASE_URL}?${params.toString()}`;
 };
 
-const printCountsSummaryLine = (diagnostics: Diagnostic[]): Effect.Effect<void> =>
+const printCountsSummaryLine = (
+  diagnostics: Diagnostic[],
+  isVerbose: boolean,
+): Effect.Effect<void> =>
   Effect.gen(function* () {
     const totalIssueCount = diagnostics.length;
     const errorCount = diagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
@@ -34,9 +37,12 @@ const printCountsSummaryLine = (diagnostics: Diagnostic[]): Effect.Effect<void> 
     ).length;
     const issueCountColor =
       errorCount > 0 ? highlighter.error : warningCount > 0 ? highlighter.warn : highlighter.dim;
-    yield* Console.log(
-      `  ${issueCountColor(`${totalIssueCount} ${totalIssueCount === 1 ? "issue" : "issues"}`)}`,
+    const issueText = issueCountColor(
+      `${totalIssueCount} ${totalIssueCount === 1 ? "issue" : "issues"}`,
     );
+    const verboseHint =
+      !isVerbose && totalIssueCount > 0 ? highlighter.dim("  Run --verbose to see details") : "";
+    yield* Console.log(`  ${issueText}${verboseHint}`);
   });
 
 export interface PrintSummaryInput {
@@ -58,7 +64,7 @@ export const printSummary = (input: PrintSummaryInput): Effect.Effect<void> =>
       yield* printNoScoreHeader(input.noScoreMessage);
     }
 
-    yield* printCountsSummaryLine(input.diagnostics);
+    yield* printCountsSummaryLine(input.diagnostics, input.verbose ?? false);
 
     // v4 forbids try/catch inside Effect.gen — wrap the sync write
     // in `Effect.try` (always-tagged form: `{ try, catch }`) and

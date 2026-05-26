@@ -251,8 +251,6 @@ export const runInspect = <HooksR = never>(
       applyPerElementPipeline(Stream.fromIterable(environmentDiagnostics)),
     );
 
-    // ── Phase: lint + dead-code (concurrent fibers) ───────────────
-
     const lintFailure = yield* Ref.make<{
       didFail: boolean;
       reason: string | null;

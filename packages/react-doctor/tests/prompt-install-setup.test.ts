@@ -9,7 +9,7 @@ import {
   CODING_AGENT_ENVIRONMENT_VARIABLES,
 } from "../src/cli/utils/is-ci-environment.js";
 import {
-  buildAgentInstallHintLines,
+  AGENT_INSTALL_HINT_LINES,
   buildInstallSetupPitchLines,
   disableSetupPrompt,
   getSetupPromptConfigPath,
@@ -711,6 +711,23 @@ describe("shouldShowAgentInstallHint", () => {
     expect(shouldShowAgentInstallHint({ ...baseOptions, hasScoredScan: false })).toBe(false);
   });
 
+  it("returns false when setup prompt has been disabled for this project", () => {
+    writePackageJson(fixture.projectRoot, { scripts: {} });
+    disableSetupPrompt(fixture.projectRoot, { cwd: fixture.configRoot });
+
+    expect(
+      shouldShowAgentInstallHint({
+        projectRoot: fixture.projectRoot,
+        hasScoredScan: true,
+        isJsonMode: false,
+        isScoreOnly: false,
+        isStaged: false,
+        isCodingAgent: true,
+        store: { cwd: fixture.configRoot },
+      }),
+    ).toBe(false);
+  });
+
   it("returns false when the fallback react-doctor script exists", () => {
     writePackageJson(fixture.projectRoot, {
       scripts: { doctor: "vitest", "react-doctor": "npx react-doctor@latest" },
@@ -742,9 +759,10 @@ describe("printAgentInstallHint", () => {
     expect(output).toContain("Ask the user");
   });
 
-  it("buildAgentInstallHintLines returns stable lines", () => {
-    const lines = buildAgentInstallHintLines();
-    expect(lines.length).toBeGreaterThan(0);
-    expect(lines.some((line) => line.includes("npx react-doctor install --yes"))).toBe(true);
+  it("AGENT_INSTALL_HINT_LINES contains the install command", () => {
+    expect(AGENT_INSTALL_HINT_LINES.length).toBeGreaterThan(0);
+    expect(
+      AGENT_INSTALL_HINT_LINES.some((line) => line.includes("npx react-doctor install --yes")),
+    ).toBe(true);
   });
 });

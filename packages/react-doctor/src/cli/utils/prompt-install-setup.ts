@@ -208,9 +208,7 @@ export const promptInstallSetup = async (options: PromptInstallSetupOptions): Pr
   try {
     if (!shouldPromptInstallSetup(options)) return;
 
-    if (SETUP_PROMPT_DELAY_MS > 0) {
-      await (options.wait ?? defaultWait)(SETUP_PROMPT_DELAY_MS);
-    }
+    await (options.wait ?? defaultWait)(SETUP_PROMPT_DELAY_MS);
 
     const writeLine = options.writeLine ?? defaultWriteLine;
     for (const line of buildInstallSetupPitchLines(options.issueCount)) {
@@ -254,6 +252,7 @@ export interface ShouldShowAgentInstallHintOptions {
   readonly isScoreOnly: boolean;
   readonly isStaged: boolean;
   readonly isCodingAgent?: boolean;
+  readonly store?: SetupPromptStoreOptions;
 }
 
 export const shouldShowAgentInstallHint = (options: ShouldShowAgentInstallHintOptions): boolean => {
@@ -262,10 +261,11 @@ export const shouldShowAgentInstallHint = (options: ShouldShowAgentInstallHintOp
   if (options.isScoreOnly) return false;
   if (options.isStaged) return false;
   if (!(options.isCodingAgent ?? isCodingAgentEnvironment())) return false;
+  if (hasDisabledSetupPrompt(options.projectRoot, options.store)) return false;
   return !hasDoctorScript(options.projectRoot);
 };
 
-const AGENT_INSTALL_HINT_LINES = [
+export const AGENT_INSTALL_HINT_LINES = [
   "React Doctor is not installed in this project.",
   "Ask the user if they would like to set it up, then run:",
   "",
@@ -273,8 +273,6 @@ const AGENT_INSTALL_HINT_LINES = [
   "",
   "This adds agent skill files, a `doctor` package script, and react-doctor as a dev dependency.",
 ] as const;
-
-export const buildAgentInstallHintLines = (): readonly string[] => AGENT_INSTALL_HINT_LINES;
 
 export const printAgentInstallHint = (writeLine: SetupPitchWriter = defaultWriteLine): void => {
   writeLine("");

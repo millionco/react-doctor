@@ -276,9 +276,7 @@ const AGENT_INSTALL_HINT_LINES = [
 
 export const buildAgentInstallHintLines = (): readonly string[] => AGENT_INSTALL_HINT_LINES;
 
-export const printAgentInstallHint = (
-  writeLine: SetupPitchWriter = defaultWriteLine,
-): void => {
+export const printAgentInstallHint = (writeLine: SetupPitchWriter = defaultWriteLine): void => {
   writeLine("");
   for (const line of AGENT_INSTALL_HINT_LINES) {
     writeLine(line);

@@ -1,0 +1,21 @@
+packages/react-doctor/src/inspect.ts
+  s_48b4377e3aeff0::t_8d6afff90ee7e6 182-185
+packages/react-doctor/tests/prompt-install-setup.test.ts
+  s_48b4377e3aeff0::t_5690763a89dbf0 50,53-54,59-63,266-280
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "5728b26644ac70f23567bbcf1d11acca257b83bf",
+  "prompts": {},
+  "sessions": {
+    "s_48b4377e3aeff0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "cca2bd6d-b692-4151-974c-2ea46f98edd9",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

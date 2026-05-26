@@ -315,24 +315,8 @@ export const runInspect = <HooksR = never>(
         ),
       );
 
-    const totalSourceFileCount = lintIncludePaths?.length ?? project.sourceFileCount;
-    const lintProgress = yield* progressService.start(
-      `Running lint checks (0/${totalSourceFileCount})...`,
-    );
-    const lintSeenFiles = new Set<string>();
-    const lintCollected = yield* Stream.runCollect(
-      applyPerElementPipeline(rawLintStream).pipe(
-        Stream.tap((diagnostic) => {
-          if (!lintSeenFiles.has(diagnostic.filePath)) {
-            lintSeenFiles.add(diagnostic.filePath);
-            return lintProgress.update(
-              `Running lint checks (${lintSeenFiles.size}/${totalSourceFileCount})...`,
-            );
-          }
-          return Effect.void;
-        }),
-      ),
-    );
+    const lintProgress = yield* progressService.start("Running lint checks...");
+    const lintCollected = yield* Stream.runCollect(applyPerElementPipeline(rawLintStream));
     const lintFailureState = yield* Ref.get(lintFailure);
     if (lintFailureState.didFail) {
       yield* lintProgress.fail(formatLintFailText(lintFailureState.reasonTag, process.version));

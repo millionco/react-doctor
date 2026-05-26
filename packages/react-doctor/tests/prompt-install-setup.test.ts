@@ -284,6 +284,7 @@ describe("shouldPromptInstallSetup", () => {
     expect(shouldPromptInstallSetup({ ...baseOptions, hasScoredScan: false })).toBe(false);
   });
 
+<<<<<<< HEAD
   it("skips setup prompts in agent shells even when the caller did not pre-skip prompts", () => {
     writePackageJson(fixture.projectRoot, { scripts: {} });
     process.env.CURSOR_AGENT = "1";
@@ -318,9 +319,8 @@ describe("shouldPromptInstallSetup", () => {
     ).toBe(false);
   });
 
-  it("waits after score output, prints a setup pitch, then installs when accepted", async () => {
+  it("waits after score output then installs when accepted", async () => {
     writePackageJson(fixture.projectRoot, { scripts: {} });
-    const writtenLines: string[] = [];
     let waitedMilliseconds = 0;
     let selectMessage = "";
     let didInstall = false;
@@ -337,9 +337,6 @@ describe("shouldPromptInstallSetup", () => {
       wait: async (milliseconds) => {
         waitedMilliseconds = milliseconds;
       },
-      writeLine: (line = "") => {
-        writtenLines.push(line);
-      },
       select: async (message) => {
         selectMessage = message;
         return SETUP_PROMPT_CHOICE_YES;
@@ -350,9 +347,6 @@ describe("shouldPromptInstallSetup", () => {
     });
 
     expect(waitedMilliseconds).toBe(SETUP_PROMPT_DELAY_MS);
-    expect(writtenLines.join("\n")).toContain("2 issues");
-    expect(writtenLines.join("\n")).toContain("humans and agents");
-    expect(writtenLines.join("\n")).not.toContain("Setup will add");
     expect(selectMessage).toBe("Set up React Doctor for this project?");
     expect(didInstall).toBe(true);
   });

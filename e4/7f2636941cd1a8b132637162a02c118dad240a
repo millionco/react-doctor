@@ -1,0 +1,21 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-mutating-reducer-state.ts
+  s_948f07583a6c91::t_28abe2f2e2bc21 610
+  s_948f07583a6c91::t_4f0da4b093201a 608-609
+  s_948f07583a6c91::t_59d8517c922ffa 580-582
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "e47f2636941cd1a8b132637162a02c118dad240a",
+  "prompts": {},
+  "sessions": {
+    "s_948f07583a6c91": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "5aa2e65d-91bb-4c50-a697-9625d15dd322",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

@@ -33,6 +33,7 @@ import {
 } from "../utils/json-mode.js";
 import { printAnnotations } from "../utils/print-annotations.js";
 import { printBrandedHeader } from "../utils/print-branded-header.js";
+import { promptCopyTrace } from "../utils/copy-trace-to-clipboard.js";
 import {
   printAgentInstallHint,
   promptInstallSetup,
@@ -332,6 +333,16 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       ) {
         printAgentInstallHint();
       }
+    }
+
+    if (!skipPrompts && !isQuiet && allDiagnostics.length > 0) {
+      const lastScan = completedScans[completedScans.length - 1];
+      await promptCopyTrace({
+        diagnostics: allDiagnostics,
+        score: lastScan?.result.score ?? null,
+        directory: resolvedDirectory,
+        projectName: lastScan?.result.project.projectName ?? path.basename(resolvedDirectory),
+      });
     }
   } catch (error) {
     if (isJsonMode) {

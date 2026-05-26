@@ -82,9 +82,7 @@ export const printSummary = (input: PrintSummaryInput): Effect.Effect<void> =>
     if (!input.isOffline) {
       yield* Console.log("");
       const shareUrl = buildShareUrl(input.diagnostics, input.scoreResult, input.projectName);
-      yield* Console.log(
-        `  ${highlighter.bold("→ Share:")} ${highlighter.info(shareUrl)}`,
-      );
+      yield* Console.log(`  ${highlighter.bold("→ Share:")} ${highlighter.info(shareUrl)}`);
       yield* Console.log("");
     }
   });

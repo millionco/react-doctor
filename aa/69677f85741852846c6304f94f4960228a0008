@@ -1,0 +1,27 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/prefer-use-sync-external-store.ts
+  s_9bf2e4505db06d::t_ac7b4acacac7dc 59,161-165
+  s_9bf2e4505db06d::t_9d7f97f56c2da3 15,68,71-78,87,152-153,158-160,243-249
+  s_9bf2e4505db06d::t_e1df5ce94abf21 53-58
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/effect-needs-cleanup.ts
+  s_9bf2e4505db06d::t_f9e80cb71da745 128-130
+packages/react-doctor/tests/regressions/state-rules/prefer-use-sync-external-store.test.ts
+  s_9bf2e4505db06d::t_91a597486090c0 231-260
+packages/react-doctor/tests/regressions/state-rules/effect-needs-cleanup.test.ts
+  s_9bf2e4505db06d::t_62e8ed505549a4 437-463
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "aa69677f85741852846c6304f94f4960228a0008",
+  "prompts": {},
+  "sessions": {
+    "s_9bf2e4505db06d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c888f1ba-1d1b-4f75-a241-e005db2525b9",
+        "model": "gpt-5.5-extra-high-fast"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

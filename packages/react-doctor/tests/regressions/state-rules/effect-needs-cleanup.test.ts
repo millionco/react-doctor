@@ -345,7 +345,7 @@ export const Emitter = () => {
     expect(hits).toHaveLength(0);
   });
 
-  it("does not flag listeners cleaned up inside a synchronous iteration callback", async () => {
+  it("still flags cleanup hidden inside an iteration callback", async () => {
     const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-for-each-cleanup", {
       files: {
         "src/Pointer.tsx": `import { useEffect } from "react";
@@ -372,7 +372,7 @@ export const Pointer = () => {
     });
 
     const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
-    expect(hits).toHaveLength(0);
+    expect(hits).toHaveLength(1);
   });
 
   it("does not flag a subscription chain binding cleaned up with `.stop()`", async () => {

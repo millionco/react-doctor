@@ -10,8 +10,6 @@ import { isFunctionLike } from "../../../utils/is-function-like.js";
 import { walkAst } from "../../../utils/walk-ast.js";
 import { isCleanupReturningSubscribeLikeCallExpression } from "./is-subscribe-like-call-expression.js";
 
-const SYNC_ITERATION_METHOD_NAMES = new Set(["forEach"]);
-
 const unwrapChainExpression = (node: EsTreeNode): EsTreeNode =>
   isNodeOfType(node, "ChainExpression") ? node.expression : node;
 
@@ -60,18 +58,6 @@ const isReleaseLikeCall = (
   return false;
 };
 
-const isSynchronousIterationCallback = (node: EsTreeNode): boolean => {
-  const parentNode = node.parent;
-  if (!isNodeOfType(parentNode, "CallExpression")) return false;
-  if (!parentNode.arguments?.some((argument) => argument === node)) return false;
-  const callee = unwrapChainExpression(parentNode.callee);
-  return (
-    isNodeOfType(callee, "MemberExpression") &&
-    isNodeOfType(callee.property, "Identifier") &&
-    SYNC_ITERATION_METHOD_NAMES.has(callee.property.name)
-  );
-};
-
 const containsReleaseLikeCall = (
   node: EsTreeNode,
   knownCleanupFunctionNames: ReadonlySet<string>,
@@ -80,11 +66,7 @@ const containsReleaseLikeCall = (
   let didFindRelease = false;
   walkAst(node, (child: EsTreeNode) => {
     if (didFindRelease) return false;
-    // Cleanup inside arbitrary nested callbacks does not run on unmount.
-    // Synchronous iteration callbacks are part of the cleanup body.
-    if (child !== node && isFunctionLike(child) && !isSynchronousIterationCallback(child)) {
-      return false;
-    }
+    if (child !== node && isFunctionLike(child)) return false;
     if (isReleaseLikeCall(child, knownCleanupFunctionNames, knownBoundSubscriptionNames)) {
       didFindRelease = true;
       return false;

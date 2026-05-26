@@ -43,7 +43,9 @@ const printCountsSummaryLine = (
     yield* Console.log(`  ${issueText}`);
     if (!isVerbose && totalIssueCount > 0) {
       yield* Console.log(
-        highlighter.dim(`  Run ${highlighter.info("npx react-doctor@latest --verbose")} to see details`),
+        highlighter.dim(
+          `  Run ${highlighter.info("npx react-doctor@latest --verbose")} to see details`,
+        ),
       );
     }
   });

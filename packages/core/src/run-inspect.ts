@@ -331,9 +331,7 @@ export const runInspect = <HooksR = never>(
       yield* scanProgress.fail(formatLintFailText(lintFailureState.reasonTag, process.version));
     }
 
-    const deadCodeCollected = lintFailureState.didFail
-      ? []
-      : yield* Fiber.join(deadCodeFiber);
+    const deadCodeCollected = lintFailureState.didFail ? [] : yield* Fiber.join(deadCodeFiber);
     const deadCodeFailureState = yield* Ref.get(deadCodeFailure);
 
     const scanElapsedSeconds = ((Date.now() - scanStartTime) / 1000).toFixed(1);

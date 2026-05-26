@@ -99,8 +99,7 @@ const FIXTURE_EXPECTATIONS: ReadonlyArray<FixtureExpectation> = [
   },
   {
     name: "npmrc-hardened",
-    description:
-      "single-package pnpm project with all hardening settings in .npmrc → no warnings",
+    description: "single-package pnpm project with all hardening settings in .npmrc → no warnings",
     expectedRuleKeys: [],
     expectedSubstrings: [],
     expectedFilePath: ".npmrc",

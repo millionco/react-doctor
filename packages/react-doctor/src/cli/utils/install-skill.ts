@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -25,7 +25,6 @@ import { prompts } from "./prompts.js";
 import { shouldSkipPrompts } from "./should-skip-prompts.js";
 import { spinner } from "./spinner.js";
 
-const NATIVE_AGENT_HOOK_AGENTS = new Set<SkillAgentType>(["claude-code", "cursor"]);
 const CONFIG_ONLY_GIT_HOOK_KINDS = new Set([
   GitHookKind.Ghooks,
   GitHookKind.GitHooksJs,
@@ -174,9 +173,6 @@ const buildManualGitHookTarget = (hookPath: string, projectRoot: string): GitHoo
   runnerRoot: projectRoot,
   kind: GitHookKind.Git,
 });
-
-const hasNativeAgentHookTarget = (agents: readonly SkillAgentType[]): boolean =>
-  agents.some((agent) => NATIVE_AGENT_HOOK_AGENTS.has(agent));
 
 const formatGitHookInstallMessage = (
   hookResult: ReturnType<typeof installReactDoctorGitHook>,
@@ -430,6 +426,54 @@ export const runInstallSkill = async (options: InstallSkillOptions = {}): Promis
     } catch (error) {
       hookSpinner.fail("Failed to install React Doctor agent hooks.");
       throw error;
+    }
+  }
+
+  const workflowsDirectory = path.join(projectRoot, ".github", "workflows");
+  const workflowTargetPath = path.join(workflowsDirectory, "react-doctor.yml");
+  if (existsSync(workflowsDirectory) && !existsSync(workflowTargetPath) && !skipPrompts) {
+    const { shouldInstallWorkflow } = await prompts<"shouldInstallWorkflow">(
+      {
+        type: "confirm",
+        name: "shouldInstallWorkflow",
+        message: "Add a GitHub Actions workflow to scan PRs?",
+        initial: true,
+      },
+      promptOptions,
+    );
+    if (shouldInstallWorkflow) {
+      const workflowSpinner = spinner("Adding GitHub Actions workflow...").start();
+      try {
+        const workflowContent = [
+          "name: React Doctor",
+          "",
+          "on:",
+          "  pull_request:",
+          "    branches: [main]",
+          "",
+          "permissions:",
+          "  contents: read",
+          "  pull-requests: write",
+          "",
+          "jobs:",
+          "  react-doctor:",
+          "    runs-on: ubuntu-latest",
+          "    steps:",
+          "      - uses: actions/checkout@v4",
+          "      - uses: millionco/react-doctor@main",
+          "        with:",
+          "          github-token: ${{ secrets.GITHUB_TOKEN }}",
+          "          diff: main",
+          "",
+        ].join("\n");
+        writeFileSync(workflowTargetPath, workflowContent);
+        workflowSpinner.succeed(
+          `GitHub Actions workflow added at ${path.relative(projectRoot, workflowTargetPath)}.`,
+        );
+      } catch (error) {
+        workflowSpinner.fail("Failed to add GitHub Actions workflow.");
+        throw error;
+      }
     }
   }
 };

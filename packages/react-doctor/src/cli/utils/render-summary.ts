@@ -2,7 +2,7 @@ import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import { highlighter, SHARE_BASE_URL } from "@react-doctor/core";
 import type { Diagnostic, ScoreResult } from "@react-doctor/core";
-import { collectAffectedFiles, formatElapsedTime } from "./render-diagnostics.js";
+import { collectAffectedFiles } from "./render-diagnostics.js";
 import { printNoScoreHeader, printScoreHeader } from "./render-score-header.js";
 import { writeDiagnosticsDirectory } from "./write-diagnostics-directory.js";
 
@@ -25,31 +25,17 @@ const buildShareUrl = (
   return `${SHARE_BASE_URL}?${params.toString()}`;
 };
 
-const printCountsSummaryLine = (
-  diagnostics: Diagnostic[],
-  totalSourceFileCount: number,
-  elapsedMilliseconds: number,
-): Effect.Effect<void> =>
+const printCountsSummaryLine = (diagnostics: Diagnostic[]): Effect.Effect<void> =>
   Effect.gen(function* () {
+    const totalIssueCount = diagnostics.length;
     const errorCount = diagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
     const warningCount = diagnostics.filter(
       (diagnostic) => diagnostic.severity === "warning",
     ).length;
-    const affectedFileCount = collectAffectedFiles(diagnostics).size;
-    const totalIssueCount = diagnostics.length;
-    const elapsedTimeLabel = formatElapsedTime(elapsedMilliseconds);
-
     const issueCountColor =
       errorCount > 0 ? highlighter.error : warningCount > 0 ? highlighter.warn : highlighter.dim;
-    const issueCountText = `${totalIssueCount} ${totalIssueCount === 1 ? "issue" : "issues"}`;
-    const fileCountText =
-      totalSourceFileCount > 0
-        ? `across ${affectedFileCount}/${totalSourceFileCount} files`
-        : `across ${affectedFileCount} file${affectedFileCount === 1 ? "" : "s"}`;
-    const elapsedTimeText = `in ${elapsedTimeLabel}`;
-
     yield* Console.log(
-      `  ${issueCountColor(issueCountText)} ${highlighter.dim(`${fileCountText}  ${elapsedTimeText}`)}`,
+      `  ${issueCountColor(`${totalIssueCount} ${totalIssueCount === 1 ? "issue" : "issues"}`)}`,
     );
   });
 
@@ -71,11 +57,7 @@ export const printSummary = (input: PrintSummaryInput): Effect.Effect<void> =>
       yield* printNoScoreHeader(input.noScoreMessage);
     }
 
-    yield* printCountsSummaryLine(
-      input.diagnostics,
-      input.totalSourceFileCount,
-      input.elapsedMilliseconds,
-    );
+    yield* printCountsSummaryLine(input.diagnostics);
 
     // v4 forbids try/catch inside Effect.gen — wrap the sync write
     // in `Effect.try` (always-tagged form: `{ try, catch }`) and

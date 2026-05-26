@@ -162,7 +162,6 @@ import { noMirrorPropEffect } from "./rules/state-and-effects/no-mirror-prop-eff
 import { noMoment } from "./rules/bundle-size/no-moment.js";
 import { noMultiComp } from "./rules/react-builtins/no-multi-comp.js";
 import { noMutableInDeps } from "./rules/state-and-effects/no-mutable-in-deps.js";
-import { noMutatingReducerState } from "./rules/state-and-effects/no-mutating-reducer-state.js";
 import { noNamespace } from "./rules/react-builtins/no-namespace.js";
 import { noNestedComponentDefinition } from "./rules/architecture/no-nested-component-definition.js";
 import { noNoninteractiveElementInteractions } from "./rules/a11y/no-noninteractive-element-interactions.js";
@@ -2449,20 +2448,6 @@ export const reactDoctorRules = [
     severity: "error",
     rule: {
       ...noMutableInDeps,
-      framework: "global",
-      category: "State & Effects",
-    },
-  },
-  {
-    key: "react-doctor/no-mutating-reducer-state",
-    id: "no-mutating-reducer-state",
-    source: "react-doctor",
-    originallyExternal: false,
-    framework: "global",
-    category: "State & Effects",
-    severity: "error",
-    rule: {
-      ...noMutatingReducerState,
       framework: "global",
       category: "State & Effects",
     },

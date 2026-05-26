@@ -159,3 +159,8 @@ export const CONFIG_CACHE_TTL_MS = 5 * 60 * 1_000;
  * binary-split-retry loop.
  */
 export const OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT = 3;
+
+// HACK: interval for simulated per-file progress ticks while an oxlint
+// batch subprocess runs. The timer increments a counter so the spinner
+// updates smoothly instead of jumping by the batch size on completion.
+export const PROGRESS_TICK_INTERVAL_MS = 50;

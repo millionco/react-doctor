@@ -340,7 +340,6 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       await promptCopyIssues({
         diagnostics: allDiagnostics,
         score: lastScan?.result.score ?? null,
-        directory: resolvedDirectory,
         projectName: lastScan?.result.project.projectName ?? path.basename(resolvedDirectory),
       });
     }

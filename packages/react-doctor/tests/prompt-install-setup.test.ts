@@ -10,7 +10,6 @@ import {
 } from "../src/cli/utils/is-ci-environment.js";
 import {
   AGENT_INSTALL_HINT_LINES,
-  buildInstallSetupPitchLines,
   disableSetupPrompt,
   getSetupPromptConfigPath,
   getSetupPromptProjectKey,
@@ -625,9 +624,6 @@ describe("shouldPromptInstallSetup", () => {
     expect(hasDisabledSetupPrompt(fixture.projectRoot, { cwd: fixture.configRoot })).toBe(true);
   });
 
-  it("pitches future regression checks when no issues were found", () => {
-    expect(buildInstallSetupPitchLines(0).join("\n")).toContain("catch future regressions early");
-  });
 });
 
 describe("shouldShowAgentInstallHint", () => {

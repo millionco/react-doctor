@@ -180,16 +180,6 @@ const defaultWriteLine: SetupPitchWriter = (line = "") => {
   console.log(line);
 };
 
-export const buildInstallSetupPitchLines = (issueCount: number): readonly string[] => {
-  const issueLabel = `${issueCount} ${issueCount === 1 ? "issue" : "issues"}`;
-  const issueLine =
-    issueCount > 0
-      ? `React Doctor found ${issueLabel}! Do you want to add React Doctor to this project? It will help humans and agents keep working through those fixes after this scan.`
-      : "React Doctor did not find issues this time! Do you want to add React Doctor to this project? It will help humans and agents catch future regressions early.";
-
-  return ["", issueLine, ""];
-};
-
 const formatSetupPromptFailure = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 

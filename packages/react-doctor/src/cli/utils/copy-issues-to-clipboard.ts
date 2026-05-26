@@ -2,6 +2,7 @@ import { execSync } from "node:child_process";
 import os from "node:os";
 import type { Diagnostic, ScoreResult } from "@react-doctor/core";
 import { groupBy } from "@react-doctor/core";
+import { cliLogger as logger } from "./cli-logger.js";
 import { prompts } from "./prompts.js";
 import { writeDiagnosticsDirectory } from "./write-diagnostics-directory.js";
 
@@ -11,7 +12,6 @@ const MAX_FILES_PER_RULE = 3;
 interface CopyIssuesInput {
   readonly diagnostics: ReadonlyArray<Diagnostic>;
   readonly score: ScoreResult | null;
-  readonly directory: string;
   readonly projectName: string;
 }
 
@@ -104,8 +104,8 @@ export const promptCopyIssues = async (input: CopyIssuesInput): Promise<void> =>
 
   const issuesSummary = buildIssuesSummary(input);
   if (copyToClipboard(issuesSummary)) {
-    console.log("  Copied to clipboard.");
+    logger.log("  Copied to clipboard.");
   } else {
-    console.log(trace);
+    logger.log(issuesSummary);
   }
 };

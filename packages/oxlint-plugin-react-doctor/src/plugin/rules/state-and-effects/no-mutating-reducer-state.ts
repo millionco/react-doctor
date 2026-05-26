@@ -34,8 +34,6 @@ const OBJECT_MUTATION_METHODS = new Set(["assign", "defineProperties", "definePr
 
 const REFLECT_MUTATION_METHODS = new Set(["deleteProperty", "set"]);
 
-const OBJECT_ASSIGN_METHOD = new Set(["assign"]);
-
 // React reducer state is compared by identity (`Object.is`). A reducer may
 // legitimately return the previous state object for no-op actions, and it may
 // legitimately mutate freshly-cloned data before returning the clone. The bug
@@ -285,12 +283,16 @@ const canExpressionReturnOriginalReducerStateReference = (
     // return when the first argument is the original reducer state:
     //
     //   return Object.assign(state, patch);
-    if (isStaticMethodCallOnNamedObject(unwrappedNode, "Object", OBJECT_ASSIGN_METHOD)) {
-      return isExpressionOriginalReducerStateReference(unwrappedNode.arguments?.[0], state);
-    }
-
     if (isNodeOfType(unwrappedNode.callee, "MemberExpression")) {
       const methodName = getStaticMemberPropertyName(unwrappedNode.callee);
+      if (
+        methodName === "assign" &&
+        isNodeOfType(unwrappedNode.callee.object, "Identifier") &&
+        unwrappedNode.callee.object.name === "Object"
+      ) {
+        return isExpressionOriginalReducerStateReference(unwrappedNode.arguments?.[0], state);
+      }
+
       // In-place array methods like sort/reverse/fill return the same array
       // receiver. Only count this when the receiver is the top-level reducer
       // state or a top-level alias, not a nested array like `state.items`.

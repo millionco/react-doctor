@@ -102,6 +102,18 @@ describe("no-mutating-reducer-state", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("does not treat nested array mutator returns as top-level same-reference returns", () => {
+    const result = run(`
+      import { useReducer } from "react";
+
+      useReducer((state, action) => {
+        return state.items.sort((a, b) => a.id - b.id);
+      }, { items: [] });
+    `);
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags nested aliases into reducer state when the original state is returned", () => {
     const result = run(`
       import React from "react";
@@ -131,6 +143,28 @@ describe("no-mutating-reducer-state", () => {
     `);
 
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags same-reference mutations through parenthesized and TypeScript wrappers", () => {
+    const result = run(`
+      import { useReducer } from "react";
+
+      type State = { count: number; items: string[] };
+
+      function reducer(state: State, action) {
+        if (action.type === "count") {
+          state.count++;
+          return state as State;
+        }
+
+        state.items!.push(action.item);
+        return (state);
+      }
+
+      useReducer(reducer, { count: 0, items: [] });
+    `);
+
+    expect(result.diagnostics).toHaveLength(2);
   });
 
   it("flags collection mutators when the same state reference is returned", () => {
@@ -506,6 +540,41 @@ describe("no-mutating-reducer-state", () => {
     `);
 
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("preserves state rebinding and var aliases across standalone blocks", () => {
+    const rebound = run(`
+      import { useReducer } from "react";
+
+      function reducer(state, action) {
+        {
+          state = { ...state };
+        }
+
+        state.count++;
+        return state;
+      }
+
+      useReducer(reducer, { count: 0 });
+    `);
+
+    const varAlias = run(`
+      import { useReducer } from "react";
+
+      function reducer(state, action) {
+        {
+          var alias = state;
+        }
+
+        alias.count++;
+        return alias;
+      }
+
+      useReducer(reducer, { count: 0 });
+    `);
+
+    expect(rebound.diagnostics).toHaveLength(0);
+    expect(varAlias.diagnostics).toHaveLength(1);
   });
 
   it("skips unresolved imported reducers for v1", () => {

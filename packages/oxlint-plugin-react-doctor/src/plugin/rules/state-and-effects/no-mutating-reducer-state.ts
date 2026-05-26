@@ -1,10 +1,12 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
 const MESSAGE =
@@ -119,12 +121,9 @@ const isFunctionLikeAstNode = (
   );
 
 const isSpecifierImportedFromReact = (node: EsTreeNode): boolean => {
-  const parent = node.parent;
+  const parent = node.parent ?? null;
   return (
-    parent !== null &&
-    parent !== undefined &&
-    isNodeOfType(parent, "ImportDeclaration") &&
-    parent.source.value === "react"
+    parent !== null && isNodeOfType(parent, "ImportDeclaration") && parent.source.value === "react"
   );
 };
 
@@ -172,21 +171,29 @@ const isCallToImportedReactUseReducer = (node: EsTreeNodeOfType<"CallExpression"
 // preserve plain reducer state.
 const resolveSameFileReducerFunction = (node: EsTreeNode | null | undefined): EsTreeNode | null => {
   if (!node) return null;
-  if (isFunctionLikeAstNode(node)) return node;
-  if (!isNodeOfType(node, "Identifier")) return null;
+  const unwrappedNode = stripParenExpression(node);
+  if (isFunctionLikeAstNode(unwrappedNode)) return unwrappedNode;
+  if (!isNodeOfType(unwrappedNode, "Identifier")) return null;
 
-  const binding = findVariableInitializer(node, node.name);
+  const binding = findVariableInitializer(unwrappedNode, unwrappedNode.name);
   const initializer = binding?.initializer;
-  return isFunctionLikeAstNode(initializer) ? initializer : null;
+  if (!initializer) return null;
+  const unwrappedInitializer = stripParenExpression(initializer);
+  return isFunctionLikeAstNode(unwrappedInitializer) ? unwrappedInitializer : null;
 };
 
 // Reads member names from static member access (`state.items.push` -> `push`,
 // `state["items"]` -> `items`) while ignoring dynamic computed properties.
 const getStaticMemberPropertyName = (node: EsTreeNode | null | undefined): string | null => {
-  if (!node || !isNodeOfType(node, "MemberExpression")) return null;
-  if (isNodeOfType(node.property, "Identifier")) return node.property.name;
-  if (isNodeOfType(node.property, "Literal") && typeof node.property.value === "string") {
-    return node.property.value;
+  if (!node) return null;
+  const unwrappedNode = stripParenExpression(node);
+  if (!isNodeOfType(unwrappedNode, "MemberExpression")) return null;
+  if (isNodeOfType(unwrappedNode.property, "Identifier")) return unwrappedNode.property.name;
+  if (
+    isNodeOfType(unwrappedNode.property, "Literal") &&
+    typeof unwrappedNode.property.value === "string"
+  ) {
+    return unwrappedNode.property.value;
   }
   return null;
 };
@@ -199,15 +206,17 @@ const isStaticMethodCallOnNamedObject = (
   node: EsTreeNode,
   objectName: string,
   methodNames: ReadonlySet<string>,
-): boolean =>
-  Boolean(
-    isNodeOfType(node, "CallExpression") &&
-      isNodeOfType(node.callee, "MemberExpression") &&
-      isNodeOfType(node.callee.object, "Identifier") &&
-      node.callee.object.name === objectName &&
-      isNodeOfType(node.callee.property, "Identifier") &&
-      methodNames.has(node.callee.property.name),
+): boolean => {
+  const unwrappedNode = stripParenExpression(node);
+  return Boolean(
+    isNodeOfType(unwrappedNode, "CallExpression") &&
+      isNodeOfType(unwrappedNode.callee, "MemberExpression") &&
+      isNodeOfType(unwrappedNode.callee.object, "Identifier") &&
+      unwrappedNode.callee.object.name === objectName &&
+      isNodeOfType(unwrappedNode.callee.property, "Identifier") &&
+      methodNames.has(unwrappedNode.callee.property.name),
   );
+};
 
 // Determines whether an expression's root identifier is known to be the
 // original reducer state, an alias to it, or a value reachable from it.
@@ -215,9 +224,9 @@ const isExpressionRootedInMutableReducerStateSource = (
   node: EsTreeNode,
   state: ReducerPathState,
 ): boolean => {
-  let current: EsTreeNode | null | undefined = node;
+  let current: EsTreeNode | null | undefined = stripParenExpression(node);
   while (current && isNodeOfType(current, "MemberExpression")) {
-    current = current.object;
+    current = stripParenExpression(current.object);
   }
   return (
     isNodeOfType(current, "Identifier") && state.mutableStateSourceNames.has(current.name)
@@ -227,7 +236,14 @@ const isExpressionRootedInMutableReducerStateSource = (
 const isExpressionOriginalReducerStateReference = (
   node: EsTreeNode | null | undefined,
   state: ReducerPathState,
-): boolean => isNodeOfType(node, "Identifier") && state.originalStateReferenceNames.has(node.name);
+): boolean => {
+  if (!node) return false;
+  const unwrappedNode = stripParenExpression(node);
+  return (
+    isNodeOfType(unwrappedNode, "Identifier") &&
+    state.originalStateReferenceNames.has(unwrappedNode.name)
+  );
+};
 
 // Captures assignments like `const items = state.items`, where mutating `items`
 // still mutates data reachable from the original reducer state.
@@ -237,9 +253,10 @@ const isExpressionReachableFromOriginalReducerState = (
 ): boolean => {
   if (!node) return false;
   if (isExpressionOriginalReducerStateReference(node, state)) return true;
+  const unwrappedNode = stripParenExpression(node);
   return (
-    isNodeOfType(node, "MemberExpression") &&
-    isExpressionRootedInMutableReducerStateSource(node, state)
+    isNodeOfType(unwrappedNode, "MemberExpression") &&
+    isExpressionRootedInMutableReducerStateSource(unwrappedNode, state)
   );
 };
 
@@ -251,6 +268,7 @@ const canExpressionReturnOriginalReducerStateReference = (
   state: ReducerPathState,
 ): boolean => {
   if (!node) return false;
+  const unwrappedNode = stripParenExpression(node);
 
   // Direct same-reference return:
   //
@@ -258,26 +276,26 @@ const canExpressionReturnOriginalReducerStateReference = (
   //   return alias;
   //
   // where `alias` was established by `const alias = state`.
-  if (isExpressionOriginalReducerStateReference(node, state)) return true;
+  if (isExpressionOriginalReducerStateReference(unwrappedNode, state)) return true;
 
-  if (isNodeOfType(node, "CallExpression")) {
+  if (isNodeOfType(unwrappedNode, "CallExpression")) {
     // Object.assign returns its first argument, so this is still a same-reference
     // return when the first argument is the original reducer state:
     //
     //   return Object.assign(state, patch);
-    if (isStaticMethodCallOnNamedObject(node, "Object", OBJECT_ASSIGN_METHOD)) {
-      return isExpressionOriginalReducerStateReference(node.arguments?.[0], state);
+    if (isStaticMethodCallOnNamedObject(unwrappedNode, "Object", OBJECT_ASSIGN_METHOD)) {
+      return isExpressionOriginalReducerStateReference(unwrappedNode.arguments?.[0], state);
     }
 
-    if (isNodeOfType(node.callee, "MemberExpression")) {
-      const methodName = getStaticMemberPropertyName(node.callee);
+    if (isNodeOfType(unwrappedNode.callee, "MemberExpression")) {
+      const methodName = getStaticMemberPropertyName(unwrappedNode.callee);
       // In-place array methods like sort/reverse/fill return the same array
-      // receiver. If that receiver is the reducer state or a state-derived
-      // array alias, React still receives the old reference.
+      // receiver. Only count this when the receiver is the top-level reducer
+      // state or a top-level alias, not a nested array like `state.items`.
       if (
         methodName &&
         SAME_REFERENCE_ARRAY_RETURN_METHODS.has(methodName) &&
-        isExpressionRootedInMutableReducerStateSource(node.callee.object, state)
+        isExpressionOriginalReducerStateReference(unwrappedNode.callee.object, state)
       ) {
         return true;
       }
@@ -287,7 +305,7 @@ const canExpressionReturnOriginalReducerStateReference = (
       if (
         methodName &&
         SAME_REFERENCE_COLLECTION_RETURN_METHODS.has(methodName) &&
-        isExpressionOriginalReducerStateReference(node.callee.object, state)
+        isExpressionOriginalReducerStateReference(unwrappedNode.callee.object, state)
       ) {
         return true;
       }
@@ -301,25 +319,25 @@ const canExpressionReturnOriginalReducerStateReference = (
   //
   // If any possible branch returns the original reference, a prior mutation on
   // this path is enough to report.
-  if (isNodeOfType(node, "ConditionalExpression")) {
+  if (isNodeOfType(unwrappedNode, "ConditionalExpression")) {
     return (
-      canExpressionReturnOriginalReducerStateReference(node.consequent, state) ||
-      canExpressionReturnOriginalReducerStateReference(node.alternate, state)
+      canExpressionReturnOriginalReducerStateReference(unwrappedNode.consequent, state) ||
+      canExpressionReturnOriginalReducerStateReference(unwrappedNode.alternate, state)
     );
   }
 
-  if (isNodeOfType(node, "LogicalExpression")) {
+  if (isNodeOfType(unwrappedNode, "LogicalExpression")) {
     return (
-      canExpressionReturnOriginalReducerStateReference(node.left, state) ||
-      canExpressionReturnOriginalReducerStateReference(node.right, state)
+      canExpressionReturnOriginalReducerStateReference(unwrappedNode.left, state) ||
+      canExpressionReturnOriginalReducerStateReference(unwrappedNode.right, state)
     );
   }
 
   // Sequence expressions return their last expression, so earlier expressions
   // don't affect whether React receives the original state reference.
-  if (isNodeOfType(node, "SequenceExpression")) {
+  if (isNodeOfType(unwrappedNode, "SequenceExpression")) {
     return canExpressionReturnOriginalReducerStateReference(
-      node.expressions[node.expressions.length - 1],
+      unwrappedNode.expressions[unwrappedNode.expressions.length - 1],
       state,
     );
   }
@@ -339,54 +357,55 @@ const collectReducerStateMutationsInExpressionOrStatement = (
   if (isFunctionLikeAstNode(node)) return [];
   const mutations: ReducerStateMutation[] = [];
   walkAst(node, (child: EsTreeNode) => {
+    const unwrappedChild = stripParenExpression(child);
     // Prune nested function bodies for the same reason: only collect mutations
     // that execute in the currently analyzed reducer path.
-    if (child !== node && isFunctionLikeAstNode(child)) return false;
+    if (child !== node && isFunctionLikeAstNode(unwrappedChild)) return false;
 
-    if (isNodeOfType(child, "AssignmentExpression")) {
+    if (isNodeOfType(unwrappedChild, "AssignmentExpression")) {
       // Direct property writes mutate the previous state when their left-hand
       // side is rooted in the original state or a state-derived alias:
       //
       //   state.count = 1;
       //   alias.items[index] = item;
       if (
-        isNodeOfType(child.left, "MemberExpression") &&
-        isExpressionRootedInMutableReducerStateSource(child.left, state)
+        isNodeOfType(stripParenExpression(unwrappedChild.left), "MemberExpression") &&
+        isExpressionRootedInMutableReducerStateSource(unwrappedChild.left, state)
       ) {
-        mutations.push({ node: child });
+        mutations.push({ node: unwrappedChild });
       }
       return;
     }
 
-    if (isNodeOfType(child, "UpdateExpression")) {
+    if (isNodeOfType(unwrappedChild, "UpdateExpression")) {
       // Updates are writes too:
       //
       //   state.count++;
       //   --alias.count;
       if (
-        isNodeOfType(child.argument, "MemberExpression") &&
-        isExpressionRootedInMutableReducerStateSource(child.argument, state)
+        isNodeOfType(stripParenExpression(unwrappedChild.argument), "MemberExpression") &&
+        isExpressionRootedInMutableReducerStateSource(unwrappedChild.argument, state)
       ) {
-        mutations.push({ node: child });
+        mutations.push({ node: unwrappedChild });
       }
       return;
     }
 
-    if (isNodeOfType(child, "UnaryExpression") && child.operator === "delete") {
+    if (isNodeOfType(unwrappedChild, "UnaryExpression") && unwrappedChild.operator === "delete") {
       // Deleting a property mutates the containing object:
       //
       //   delete state.items[id];
       if (
-        isNodeOfType(child.argument, "MemberExpression") &&
-        isExpressionRootedInMutableReducerStateSource(child.argument, state)
+        isNodeOfType(stripParenExpression(unwrappedChild.argument), "MemberExpression") &&
+        isExpressionRootedInMutableReducerStateSource(unwrappedChild.argument, state)
       ) {
-        mutations.push({ node: child });
+        mutations.push({ node: unwrappedChild });
       }
       return;
     }
 
-    if (!isNodeOfType(child, "CallExpression")) return;
-    const firstArgument = child.arguments?.[0];
+    if (!isNodeOfType(unwrappedChild, "CallExpression")) return;
+    const firstArgument = unwrappedChild.arguments?.[0];
     // Built-in object APIs mutate their first argument:
     //
     //   Object.assign(state, patch);
@@ -396,14 +415,14 @@ const collectReducerStateMutationsInExpressionOrStatement = (
     if (
       firstArgument &&
       isExpressionRootedInMutableReducerStateSource(firstArgument, state) &&
-      (isStaticMethodCallOnNamedObject(child, "Object", OBJECT_MUTATION_METHODS) ||
-        isStaticMethodCallOnNamedObject(child, "Reflect", REFLECT_MUTATION_METHODS))
+      (isStaticMethodCallOnNamedObject(unwrappedChild, "Object", OBJECT_MUTATION_METHODS) ||
+        isStaticMethodCallOnNamedObject(unwrappedChild, "Reflect", REFLECT_MUTATION_METHODS))
     ) {
-      mutations.push({ node: child });
+      mutations.push({ node: unwrappedChild });
       return;
     }
-    if (!isNodeOfType(child.callee, "MemberExpression")) return;
-    const methodName = getStaticMemberPropertyName(child.callee);
+    if (!isNodeOfType(unwrappedChild.callee, "MemberExpression")) return;
+    const methodName = getStaticMemberPropertyName(unwrappedChild.callee);
     // Receiver-mutating methods mutate the object/array/collection they are
     // called on. We only record them when the receiver is state-derived:
     //
@@ -420,11 +439,44 @@ const collectReducerStateMutationsInExpressionOrStatement = (
       (!MUTATING_ARRAY_METHODS.has(methodName) && !MUTATING_COLLECTION_METHODS.has(methodName))
     )
       return;
-    if (isExpressionRootedInMutableReducerStateSource(child.callee.object, state)) {
-      mutations.push({ node: child });
+    if (isExpressionRootedInMutableReducerStateSource(unwrappedChild.callee.object, state)) {
+      mutations.push({ node: unwrappedChild });
     }
   });
   return mutations;
+};
+
+const collectBlockScopedBindingNames = (blockStatement: EsTreeNodeOfType<"BlockStatement">): Set<string> => {
+  const blockScopedBindingNames = new Set<string>();
+  for (const statement of blockStatement.body ?? []) {
+    if (!isNodeOfType(statement, "VariableDeclaration")) continue;
+    if (statement.kind !== "let" && statement.kind !== "const") continue;
+    for (const declarator of statement.declarations ?? []) {
+      collectPatternNames(declarator.id, blockScopedBindingNames);
+    }
+  }
+  return blockScopedBindingNames;
+};
+
+const restoreOuterIdentityForBlockScopedNames = (
+  blockState: ReducerPathState,
+  outerState: ReducerPathState,
+  blockScopedBindingNames: ReadonlySet<string>,
+): ReducerPathState => {
+  const nextState = cloneReducerPathState(blockState);
+  for (const name of blockScopedBindingNames) {
+    if (outerState.originalStateReferenceNames.has(name)) {
+      nextState.originalStateReferenceNames.add(name);
+    } else {
+      nextState.originalStateReferenceNames.delete(name);
+    }
+    if (outerState.mutableStateSourceNames.has(name)) {
+      nextState.mutableStateSourceNames.add(name);
+    } else {
+      nextState.mutableStateSourceNames.delete(name);
+    }
+  }
+  return nextState;
 };
 
 const updateReducerStateIdentityForVariableDeclaration = (
@@ -578,14 +630,18 @@ const analyzeReactUseReducerFunctionForStateMutation = (
         }
 
         if (isNodeOfType(statement, "BlockStatement")) {
-          // Keep mutations from the block, but don't leak block-local aliases.
+          // Keep outer identity changes from the block, but don't leak aliases
+          // created by block-scoped declarations.
+          const blockScopedBindingNames = collectBlockScopedBindingNames(statement);
           const blockStates = analyzeReducerStatementListByPath(statement.body, activeState);
           for (const blockState of blockStates) {
-            const nextState = cloneReducerPathState(activeState);
-            nextState.mutations.push(
-              ...blockState.mutations.filter((mutation) => !activeState.mutations.includes(mutation)),
+            nextStates.push(
+              restoreOuterIdentityForBlockScopedNames(
+                blockState,
+                activeState,
+                blockScopedBindingNames,
+              ),
             );
-            nextStates.push(nextState);
           }
           continue;
         }

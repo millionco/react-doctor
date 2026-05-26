@@ -66,31 +66,51 @@ const writeScoreHeaderLine = (line: string): Effect.Effect<void> =>
     process.stdout.write(line);
   });
 
-const printAnimatedScoreBarLine = (faceLine: string, score: number): Effect.Effect<void> =>
+const buildScoreLine = (displayScore: number, finalScore: number, label: string): string => {
+  const scoreNumber = colorizeByScore(`${displayScore}`, finalScore);
+  const scoreLabel = colorizeByScore(label, finalScore);
+  return `${scoreNumber} ${highlighter.dim(`/ ${PERFECT_SCORE}`)} ${scoreLabel}`;
+};
+
+const printAnimatedScore = (
+  scoreFaceLine: string,
+  barFaceLine: string,
+  score: number,
+  label: string,
+): Effect.Effect<void> =>
   Effect.gen(function* () {
     for (let frame = 0; frame <= SCORE_BAR_ANIMATION_FRAME_COUNT; frame += 1) {
       const progress = easeOutCubic(frame / SCORE_BAR_ANIMATION_FRAME_COUNT);
       const animatedScore = Math.round(score * progress);
-      const scoreBarLine = buildScoreBar(animatedScore, score);
-      yield* writeScoreHeaderLine(`\r${buildScoreHeaderLine(faceLine, scoreBarLine)}`);
+      const animatedScoreLine = buildScoreLine(animatedScore, score, label);
+      const animatedBarLine = buildScoreBar(animatedScore, score);
+      // HACK: \x1b[2A moves cursor up 2 lines to overwrite both the
+      // score number line and the bar line in place each frame.
+      const cursorUp = frame === 0 ? "" : "\x1b[2A";
+      yield* writeScoreHeaderLine(
+        `${cursorUp}\r${buildScoreHeaderLine(scoreFaceLine, animatedScoreLine)}\n\r${buildScoreHeaderLine(barFaceLine, animatedBarLine)}\n`,
+      );
       if (frame < SCORE_BAR_ANIMATION_FRAME_COUNT) {
         yield* sleep(SCORE_BAR_ANIMATION_FRAME_DELAY_MS);
       }
     }
-    yield* writeScoreHeaderLine("\n");
   });
 
 export const printScoreHeader = (scoreResult: ScoreResult): Effect.Effect<void> =>
   Effect.gen(function* () {
     const renderedFaceLines = buildFaceRenderedLines(scoreResult.score);
-
-    const scoreNumber = colorizeByScore(`${scoreResult.score}`, scoreResult.score);
-    const scoreLabel = colorizeByScore(scoreResult.label, scoreResult.score);
-    const scoreLine = `${scoreNumber} ${highlighter.dim(`/ ${PERFECT_SCORE}`)} ${scoreLabel}`;
-    const scoreBarLine = buildScoreBar(scoreResult.score);
-
     const shouldAnimate = !isSpinnerSilent() && isSpinnerInteractive(process.stdout);
-    const rightColumnLines = [scoreLine, shouldAnimate ? "" : scoreBarLine, BRANDING_LINE, ""];
+
+    const scoreLine = buildScoreLine(
+      shouldAnimate ? 0 : scoreResult.score,
+      scoreResult.score,
+      scoreResult.label,
+    );
+    const scoreBarLine = shouldAnimate
+      ? buildScoreBar(0, scoreResult.score)
+      : buildScoreBar(scoreResult.score);
+
+    const rightColumnLines = [scoreLine, scoreBarLine, BRANDING_LINE, ""];
 
     for (let lineIndex = 0; lineIndex < renderedFaceLines.length; lineIndex += 1) {
       const rightColumnContent = rightColumnLines[lineIndex] ?? "";
@@ -99,12 +119,17 @@ export const printScoreHeader = (scoreResult: ScoreResult): Effect.Effect<void> 
     yield* Console.log("");
 
     if (shouldAnimate) {
-      // HACK: move cursor up to the score bar line (line index 1 of
-      // the 4-line face block + 1 trailing blank = 4 lines up) and
-      // animate the bar in place, then restore the cursor position.
-      yield* writeScoreHeaderLine(`\x1b[4A`);
-      yield* printAnimatedScoreBarLine(renderedFaceLines[1], scoreResult.score);
-      yield* writeScoreHeaderLine(`\x1b[3B`);
+      // HACK: move cursor up to the score number line (5 lines up:
+      // 4 face lines + 1 trailing blank) and animate score + bar
+      // together, then move cursor back down past branding + blank.
+      yield* writeScoreHeaderLine("\x1b[5A");
+      yield* printAnimatedScore(
+        renderedFaceLines[0],
+        renderedFaceLines[1],
+        scoreResult.score,
+        scoreResult.label,
+      );
+      yield* writeScoreHeaderLine("\x1b[3B");
     }
   });
 

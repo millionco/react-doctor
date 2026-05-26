@@ -59,6 +59,7 @@ interface ResolvedInspectOptions {
   adoptExistingLintConfig: boolean;
   ignoredTags: ReadonlySet<string>;
   outputSurface: DiagnosticSurface;
+  suppressRendering: boolean;
 }
 
 const buildIgnoredTags = (userConfig: ReactDoctorConfig | null): ReadonlySet<string> => {
@@ -90,6 +91,7 @@ const mergeInspectOptions = (
   adoptExistingLintConfig: userConfig?.adoptExistingLintConfig ?? true,
   ignoredTags: buildIgnoredTags(userConfig),
   outputSurface: inputOptions.outputSurface ?? "cli",
+  suppressRendering: inputOptions.suppressRendering ?? false,
 });
 
 export const inspect = async (
@@ -212,7 +214,7 @@ const runInspectWithRuntime = async (
     {
       beforeLint: (projectInfo, lintIncludePaths) =>
         Effect.gen(function* () {
-          if (options.scoreOnly) return;
+          if (options.scoreOnly || options.suppressRendering) return;
           const lintSourceFileCount = lintIncludePaths?.length ?? projectInfo.sourceFileCount;
           yield* printProjectDetection({
             projectInfo,
@@ -369,6 +371,10 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       project,
       elapsedMilliseconds,
     });
+
+    if (options.suppressRendering) {
+      return buildResult();
+    }
 
     if (options.scoreOnly) {
       if (score) {

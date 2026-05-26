@@ -12,7 +12,7 @@ import { colorizeByScore } from "./colorize-by-score.js";
 import { isSpinnerInteractive } from "./is-spinner-interactive.js";
 import { isSpinnerSilent } from "./spinner.js";
 
-const SCORE_BAR_ANIMATION_FRAME_COUNT = 80;
+const SCORE_BAR_ANIMATION_FRAME_COUNT = 40;
 const SCORE_BAR_ANIMATION_FRAME_DELAY_MS = 50;
 
 interface ScoreBarSegments {
@@ -48,7 +48,7 @@ const getDoctorFace = (score: number): string[] => {
   return ["x x", " ▽ "];
 };
 
-const BRANDING_LINE = `React Doctor ${highlighter.dim("(www.react.doctor)")}`;
+const BRANDING_LINE = `React Doctor ${highlighter.dim("(https://react.doctor)")}`;
 
 const buildFaceRenderedLines = (score: number): string[] => {
   const [eyes, mouth] = getDoctorFace(score);
@@ -66,10 +66,16 @@ const writeScoreHeaderLine = (line: string): Effect.Effect<void> =>
     process.stdout.write(line);
   });
 
-const buildScoreLine = (displayScore: number, finalScore: number, label: string): string => {
+const buildScoreLine = (
+  displayScore: number,
+  finalScore: number,
+  label: string,
+  projectName?: string,
+): string => {
   const scoreNumber = colorizeByScore(`${displayScore}`, finalScore);
   const scoreLabel = colorizeByScore(label, finalScore);
-  return `${scoreNumber} ${highlighter.dim(`/ ${PERFECT_SCORE}`)} ${scoreLabel}`;
+  const projectSuffix = projectName ? ` ${highlighter.dim("·")} ${highlighter.dim(projectName)}` : "";
+  return `${scoreNumber} ${highlighter.dim(`/ ${PERFECT_SCORE}`)} ${scoreLabel}${projectSuffix}`;
 };
 
 const printAnimatedScore = (
@@ -77,12 +83,13 @@ const printAnimatedScore = (
   barFaceLine: string,
   score: number,
   label: string,
+  projectName?: string,
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
     for (let frame = 0; frame <= SCORE_BAR_ANIMATION_FRAME_COUNT; frame += 1) {
       const progress = easeOutCubic(frame / SCORE_BAR_ANIMATION_FRAME_COUNT);
       const animatedScore = Math.round(score * progress);
-      const animatedScoreLine = buildScoreLine(animatedScore, score, label);
+      const animatedScoreLine = buildScoreLine(animatedScore, score, label, projectName);
       const animatedBarLine = buildScoreBar(animatedScore, score);
       // HACK: \x1b[2A moves cursor up 2 lines to overwrite both the
       // score number line and the bar line in place each frame.
@@ -96,7 +103,10 @@ const printAnimatedScore = (
     }
   });
 
-export const printScoreHeader = (scoreResult: ScoreResult): Effect.Effect<void> =>
+export const printScoreHeader = (
+  scoreResult: ScoreResult,
+  projectName?: string,
+): Effect.Effect<void> =>
   Effect.gen(function* () {
     const renderedFaceLines = buildFaceRenderedLines(scoreResult.score);
     const shouldAnimate = !isSpinnerSilent() && isSpinnerInteractive(process.stdout);
@@ -105,6 +115,7 @@ export const printScoreHeader = (scoreResult: ScoreResult): Effect.Effect<void> 
       shouldAnimate ? 0 : scoreResult.score,
       scoreResult.score,
       scoreResult.label,
+      projectName,
     );
     const scoreBarLine = shouldAnimate
       ? buildScoreBar(0, scoreResult.score)
@@ -128,6 +139,7 @@ export const printScoreHeader = (scoreResult: ScoreResult): Effect.Effect<void> 
         renderedFaceLines[1],
         scoreResult.score,
         scoreResult.label,
+        projectName,
       );
       yield* writeScoreHeaderLine("\x1b[3B");
     }

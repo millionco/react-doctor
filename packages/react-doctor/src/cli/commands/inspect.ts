@@ -34,6 +34,7 @@ import {
 import { printAnnotations } from "../utils/print-annotations.js";
 import { printBrandedHeader } from "../utils/print-branded-header.js";
 import { promptCopyIssues } from "../utils/copy-issues-to-clipboard.js";
+import { printMultiProjectSummary } from "../utils/render-multi-project-summary.js";
 import {
   printAgentInstallHint,
   promptInstallSetup,
@@ -254,6 +255,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
 
     const allDiagnostics: Diagnostic[] = [];
     const completedScans: Array<{ directory: string; result: InspectResult }> = [];
+    const isMultiProject = projectDirectories.length > 1;
 
     for (const projectDirectory of projectDirectories) {
       let includePaths: string[] | undefined;
@@ -272,19 +274,30 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         includePaths = changedSourceFiles;
       }
 
-      if (!isQuiet) {
+      if (!isQuiet && !isMultiProject) {
         logger.dim("  ");
       }
       const scanResult = await inspect(projectDirectory, {
         ...scanOptions,
         includePaths,
         configOverride: userConfig,
+        suppressRendering: isMultiProject,
       });
       allDiagnostics.push(...scanResult.diagnostics);
       completedScans.push({ directory: projectDirectory, result: scanResult });
-      if (!isQuiet) {
+      if (!isQuiet && !isMultiProject) {
         logger.break();
       }
+    }
+
+    if (!isQuiet && isMultiProject && completedScans.length > 0) {
+      await Effect.runPromise(
+        printMultiProjectSummary({
+          completedScans,
+          userConfig,
+          verbose: Boolean(flags.verbose),
+        }),
+      );
     }
 
     finalizeScans({

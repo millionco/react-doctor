@@ -69,6 +69,13 @@ export interface InspectOptions {
    * everything.
    */
   outputSurface?: DiagnosticSurface;
+  /**
+   * Suppresses the per-project diagnostic/score rendering while
+   * keeping progress spinners. The CLI sets this when scanning
+   * multiple projects so it can render one aggregate summary
+   * instead of N individual ones.
+   */
+  suppressRendering?: boolean;
 }
 
 export interface DiffInfo {

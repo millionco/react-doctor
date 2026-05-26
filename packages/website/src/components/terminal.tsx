@@ -154,7 +154,7 @@ const ScoreHeader = ({ score }: { score: number }) => {
           </span>
         </div>
         <div>
-          React Doctor <span className="text-neutral-500">(www.react.doctor)</span>
+          React Doctor <span className="text-neutral-500">(https://react.doctor)</span>
         </div>
       </div>
     </div>

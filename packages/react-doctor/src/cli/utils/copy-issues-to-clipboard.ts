@@ -19,7 +19,7 @@ const buildIssuesSummary = (input: CopyIssuesInput): string => {
   const lines: string[] = [];
 
   lines.push(`# React Doctor: ${input.projectName}`);
-  if (input.score) lines.push(`Score: ${input.score.score}/1000`);
+  if (input.score) lines.push(`Score: ${input.score.score}/100`);
   lines.push(`${input.diagnostics.length} issues found`);
   lines.push("");
 

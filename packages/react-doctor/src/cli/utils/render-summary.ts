@@ -59,7 +59,7 @@ export interface PrintSummaryInput {
 export const printSummary = (input: PrintSummaryInput): Effect.Effect<void> =>
   Effect.gen(function* () {
     if (input.scoreResult) {
-      yield* printScoreHeader(input.scoreResult);
+      yield* printScoreHeader(input.scoreResult, input.projectName);
     } else {
       yield* printNoScoreHeader(input.noScoreMessage);
     }

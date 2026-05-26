@@ -183,7 +183,7 @@ export const App = ({ name }: { name: string }) => {
 `,
     );
     const defaultRun = await captureScanOutput(projectDir, { noScore: false });
-    expect(defaultRun.stdout).toContain("Share your results");
+    expect(defaultRun.stdout).toContain("Share:");
 
     const projectDir2 = setupMinimalReactProject("issue-92-disabled");
     writeFile(

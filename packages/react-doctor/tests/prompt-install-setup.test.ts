@@ -283,7 +283,6 @@ describe("shouldPromptInstallSetup", () => {
     expect(shouldPromptInstallSetup({ ...baseOptions, hasScoredScan: false })).toBe(false);
   });
 
-<<<<<<< HEAD
   it("skips setup prompts in agent shells even when the caller did not pre-skip prompts", () => {
     writePackageJson(fixture.projectRoot, { scripts: {} });
     process.env.CURSOR_AGENT = "1";

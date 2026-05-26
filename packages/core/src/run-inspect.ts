@@ -330,9 +330,6 @@ export const runInspect = <HooksR = never>(
     const deadCodeFailureState = yield* Ref.get(deadCodeFailure);
 
     const scanElapsedSeconds = ((Date.now() - scanStartTime) / 1000).toFixed(1);
-    const allScanDiagnostics = [...lintCollected, ...deadCodeCollected];
-    const filesWithIssueCount = new Set(allScanDiagnostics.map((diagnostic) => diagnostic.filePath))
-      .size;
     const totalFileCount =
       lastReportedTotalFileCount || (lintIncludePaths?.length ?? project.sourceFileCount);
 
@@ -341,12 +338,8 @@ export const runInspect = <HooksR = never>(
     } else if (deadCodeFailureState.didFail) {
       yield* scanProgress.fail(DEAD_CODE_FAIL_TEXT);
     } else {
-      const issueDetail =
-        filesWithIssueCount > 0
-          ? ` (${filesWithIssueCount} ${filesWithIssueCount === 1 ? "file" : "files"} with issues)`
-          : "";
       yield* scanProgress.succeed(
-        `Scanned ${totalFileCount} ${totalFileCount === 1 ? "file" : "files"}${issueDetail} in ${scanElapsedSeconds}s`,
+        `Scanned ${totalFileCount} ${totalFileCount === 1 ? "file" : "files"} in ${scanElapsedSeconds}s`,
       );
     }
 

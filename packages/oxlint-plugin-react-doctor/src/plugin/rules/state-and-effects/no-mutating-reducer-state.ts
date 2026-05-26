@@ -115,9 +115,9 @@ const isFunctionLikeAstNode = (
   | EsTreeNodeOfType<"ArrowFunctionExpression"> =>
   Boolean(
     node &&
-      (isNodeOfType(node, "FunctionDeclaration") ||
-        isNodeOfType(node, "FunctionExpression") ||
-        isNodeOfType(node, "ArrowFunctionExpression")),
+    (isNodeOfType(node, "FunctionDeclaration") ||
+      isNodeOfType(node, "FunctionExpression") ||
+      isNodeOfType(node, "ArrowFunctionExpression")),
   );
 
 const isSpecifierImportedFromReact = (node: EsTreeNode): boolean => {
@@ -150,7 +150,9 @@ const isCallToImportedReactUseReducer = (node: EsTreeNodeOfType<"CallExpression"
   const callee = node.callee;
   if (isNodeOfType(callee, "Identifier")) {
     const binding = findVariableInitializer(callee, callee.name);
-    return Boolean(binding?.initializer && isNamedReactUseReducerImportSpecifier(binding.initializer));
+    return Boolean(
+      binding?.initializer && isNamedReactUseReducerImportSpecifier(binding.initializer),
+    );
   }
 
   if (!isNodeOfType(callee, "MemberExpression")) return false;
@@ -159,7 +161,9 @@ const isCallToImportedReactUseReducer = (node: EsTreeNodeOfType<"CallExpression"
   if (callee.property.name !== "useReducer") return false;
 
   const binding = findVariableInitializer(callee.object, callee.object.name);
-  return Boolean(binding?.initializer && isReactNamespaceOrDefaultImportSpecifier(binding.initializer));
+  return Boolean(
+    binding?.initializer && isReactNamespaceOrDefaultImportSpecifier(binding.initializer),
+  );
 };
 
 // Resolves only reducer bodies already present in this file. Imported reducer
@@ -210,11 +214,11 @@ const isStaticMethodCallOnNamedObject = (
   const unwrappedNode = stripParenExpression(node);
   return Boolean(
     isNodeOfType(unwrappedNode, "CallExpression") &&
-      isNodeOfType(unwrappedNode.callee, "MemberExpression") &&
-      isNodeOfType(unwrappedNode.callee.object, "Identifier") &&
-      unwrappedNode.callee.object.name === objectName &&
-      isNodeOfType(unwrappedNode.callee.property, "Identifier") &&
-      methodNames.has(unwrappedNode.callee.property.name),
+    isNodeOfType(unwrappedNode.callee, "MemberExpression") &&
+    isNodeOfType(unwrappedNode.callee.object, "Identifier") &&
+    unwrappedNode.callee.object.name === objectName &&
+    isNodeOfType(unwrappedNode.callee.property, "Identifier") &&
+    methodNames.has(unwrappedNode.callee.property.name),
   );
 };
 
@@ -228,9 +232,7 @@ const isExpressionRootedInMutableReducerStateSource = (
   while (current && isNodeOfType(current, "MemberExpression")) {
     current = stripParenExpression(current.object);
   }
-  return (
-    isNodeOfType(current, "Identifier") && state.mutableStateSourceNames.has(current.name)
-  );
+  return isNodeOfType(current, "Identifier") && state.mutableStateSourceNames.has(current.name);
 };
 
 const isExpressionOriginalReducerStateReference = (
@@ -446,7 +448,9 @@ const collectReducerStateMutationsInExpressionOrStatement = (
   return mutations;
 };
 
-const collectBlockScopedBindingNames = (blockStatement: EsTreeNodeOfType<"BlockStatement">): Set<string> => {
+const collectBlockScopedBindingNames = (
+  blockStatement: EsTreeNodeOfType<"BlockStatement">,
+): Set<string> => {
   const blockScopedBindingNames = new Set<string>();
   for (const statement of blockStatement.body ?? []) {
     if (!isNodeOfType(statement, "VariableDeclaration")) continue;
@@ -624,7 +628,9 @@ const analyzeReactUseReducerFunctionForStateMutation = (
               }
               if (didHitBreak) break;
             }
-            nextStates.push(...analyzeReducerStatementListByPath(fallthroughStatements, discriminantState));
+            nextStates.push(
+              ...analyzeReducerStatementListByPath(fallthroughStatements, discriminantState),
+            );
           }
           continue;
         }

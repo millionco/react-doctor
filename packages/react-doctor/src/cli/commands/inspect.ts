@@ -273,8 +273,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       }
 
       if (!isQuiet) {
-        logger.dim(`Scanning ${projectDirectory}...`);
-        logger.break();
+        logger.dim("  ");
       }
       const scanResult = await inspect(projectDirectory, {
         ...scanOptions,

@@ -24,7 +24,7 @@ export const SCORE_BAR_WIDTH_CHARS = 50;
 
 export const SCORE_API_URL = "https://www.react.doctor/api/score";
 
-export const SHARE_BASE_URL = "https://www.react.doctor/share";
+export const SHARE_BASE_URL = "https://react.doctor/share";
 
 export const FETCH_TIMEOUT_MS = 10_000;
 

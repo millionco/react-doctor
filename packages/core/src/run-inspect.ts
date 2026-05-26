@@ -287,6 +287,8 @@ export const runInspect = <HooksR = never>(
         : Effect.succeed<Iterable<Diagnostic>>([]),
     );
 
+    const lintProgress = yield* progressService.start("Running lint checks...");
+
     const rawLintStream = linterService
       .run({
         rootDirectory: scanDirectory,
@@ -299,6 +301,11 @@ export const runInspect = <HooksR = never>(
         ignoredTags: input.ignoredTags,
         userConfig: resolvedConfig.config ?? undefined,
         configSourceDirectory: resolvedConfig.configSourceDirectory ?? undefined,
+        onBatchComplete: (scannedFileCount, totalFileCount) => {
+          Effect.runSync(
+            lintProgress.update(`Scanning files (${scannedFileCount}/${totalFileCount})...`),
+          );
+        },
       })
       .pipe(
         Stream.catchTag("ReactDoctorError", (error: ReactDoctorError) =>
@@ -315,7 +322,6 @@ export const runInspect = <HooksR = never>(
         ),
       );
 
-    const lintProgress = yield* progressService.start("Running lint checks...");
     const lintCollected = yield* Stream.runCollect(applyPerElementPipeline(rawLintStream));
     const lintFailureState = yield* Ref.get(lintFailure);
     if (lintFailureState.didFail) {

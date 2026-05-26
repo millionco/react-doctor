@@ -12,6 +12,7 @@ export interface SpawnLintBatchesInput {
   readonly nodeBinaryPath: string;
   readonly project: ProjectInfo;
   readonly onPartialFailure?: (reason: string) => void;
+  readonly onBatchComplete?: (scannedFileCount: number, totalFileCount: number) => void;
 }
 
 /**
@@ -28,7 +29,16 @@ export interface SpawnLintBatchesInput {
  * with a slimmer config in that case.
  */
 export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Diagnostic[]> => {
-  const { baseArgs, fileBatches, rootDirectory, nodeBinaryPath, project, onPartialFailure } = input;
+  const {
+    baseArgs,
+    fileBatches,
+    rootDirectory,
+    nodeBinaryPath,
+    project,
+    onPartialFailure,
+    onBatchComplete,
+  } = input;
+  const totalFileCount = fileBatches.reduce((sum, batch) => sum + batch.length, 0);
 
   const allDiagnostics: Diagnostic[] = [];
   // HACK: tracks files whose smallest splittable batch (down to a
@@ -72,8 +82,11 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     }
   };
 
+  let scannedFileCount = 0;
   for (const batch of fileBatches) {
     allDiagnostics.push(...(await spawnLintBatch(batch)));
+    scannedFileCount += batch.length;
+    onBatchComplete?.(scannedFileCount, totalFileCount);
   }
 
   if (droppedFiles.length > 0 && onPartialFailure) {

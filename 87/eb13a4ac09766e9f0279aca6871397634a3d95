@@ -1,0 +1,19 @@
+pnpm-workspace.yaml
+  s_1e5dc0e3a98198::t_1063343e69bf4c 4-7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "87eb13a4ac09766e9f0279aca6871397634a3d95",
+  "prompts": {},
+  "sessions": {
+    "s_1e5dc0e3a98198": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "b56169fd-64a3-4d04-a7ea-d7db72c5894d",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

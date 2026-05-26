@@ -1,0 +1,21 @@
+packages/react-doctor/src/cli/utils/render-score-header.ts
+  s_2304beed380833::t_633057c328abfb 13,96
+packages/react-doctor/tests/render-score-header.test.ts
+  s_2304beed380833::t_d5749c05391b5d 1-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "8ba661b42805b7d0f94ed3fd26aca7801bcbcdf5",
+  "prompts": {},
+  "sessions": {
+    "s_2304beed380833": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "078bc7cd-7836-4864-81d8-367a1569d7a1",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

@@ -1,9 +1,14 @@
-export { diagnose } from "./diagnose.js";
+export { diagnose, diagnoseModules } from "./diagnose.js";
 
 export type {
+  DiagnoseModulesOptions,
+  DiagnoseModulesResult,
   DiagnoseOptions,
   DiagnoseResult,
   Diagnostic,
+  ModuleDefinition,
+  ModuleError,
+  ModuleResult,
   ProjectInfo,
   ReactDoctorConfig,
   ScoreResult,

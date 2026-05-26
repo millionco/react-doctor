@@ -123,6 +123,7 @@ export const BOUND_RESOURCE_RELEASE_METHOD_NAMES = new Set([
   "cleanup",
   "dispose",
   "destroy",
+  "stop",
   "teardown",
 ]);
 

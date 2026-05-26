@@ -255,6 +255,229 @@ export const Clock = () => {
     expect(hits).toHaveLength(0);
   });
 
+  it("does NOT flag a timer cleaned up by a local function returned by identifier", async () => {
+    const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-return-local-clear", {
+      files: {
+        "src/Clock.tsx": `import { useEffect, useRef, useState } from "react";
+
+export const Clock = () => {
+  const [, setTick] = useState(0);
+  const intervalIdRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    const startInterval = () => {
+      if (intervalIdRef.current) return;
+      intervalIdRef.current = setInterval(() => setTick((state) => state + 1), 1000);
+    };
+    const stopInterval = () => {
+      if (!intervalIdRef.current) return;
+      clearInterval(intervalIdRef.current);
+      intervalIdRef.current = null;
+    };
+    startInterval();
+    return stopInterval;
+  }, []);
+  return <span />;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("does NOT flag a listener cleaned up by an optionally called local cleanup variable", async () => {
+    const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-optional-cleanup", {
+      files: {
+        "src/Resolution.tsx": `import { useEffect } from "react";
+
+declare const win: Window;
+declare const updatePixelRatio: () => void;
+
+export const Resolution = () => {
+  useEffect(() => {
+    let remove: (() => void) | null = null;
+    const subscribe = () => {
+      const media = win.matchMedia("(resolution: 1dppx)");
+      media.addEventListener("change", updatePixelRatio);
+      remove = () => {
+        media.removeEventListener("change", updatePixelRatio);
+      };
+    };
+    subscribe();
+    return () => {
+      remove?.();
+    };
+  }, []);
+  return <span />;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("does NOT flag a subscription cleaned up by a returned local function declaration", async () => {
+    const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-function-declaration", {
+      files: {
+        "src/Emitter.tsx": `import { useEffect } from "react";
+
+declare const emitter: { on: (eventName: string, handler: () => void) => void; off: (eventName: string, handler: () => void) => void };
+declare const handler: () => void;
+
+export const Emitter = () => {
+  useEffect(() => {
+    emitter.on("change", handler);
+    function cleanup() {
+      emitter.off("change", handler);
+    }
+    return cleanup;
+  }, []);
+  return <span />;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("does NOT flag listeners cleaned up inside a synchronous iteration callback", async () => {
+    const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-for-each-cleanup", {
+      files: {
+        "src/Pointer.tsx": `import { useEffect } from "react";
+
+declare const handler: () => void;
+declare const target: { addEventListener: (eventName: string, handler: () => void) => void; removeEventListener: (eventName: string, handler: () => void) => void };
+
+export const Pointer = () => {
+  useEffect(() => {
+    const eventNames = ["pointerdown", "mousedown"];
+    eventNames.forEach((eventName) => {
+      target.addEventListener(eventName, handler);
+    });
+    return () => {
+      eventNames.forEach((eventName) => {
+        target.removeEventListener(eventName, handler);
+      });
+    };
+  }, []);
+  return <span />;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("does NOT flag a subscription chain binding cleaned up with `.stop()`", async () => {
+    const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-bound-stop-cleanup", {
+      files: {
+        "src/Simulation.tsx": `import { useEffect } from "react";
+
+declare const forceSimulation: () => { on: (eventName: string, handler: () => void) => { stop: () => void } };
+declare const tick: () => void;
+
+export const Simulation = () => {
+  useEffect(() => {
+    const simulation = forceSimulation().on("tick", tick);
+    return () => {
+      simulation.stop();
+    };
+  }, []);
+  return <span />;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("does NOT flag listener cleanup expressed as `.on(name, null)`", async () => {
+    const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-on-null-cleanup", {
+      files: {
+        "src/Zoom.tsx": `import { useEffect } from "react";
+
+declare const zoom: { on: (eventName: string, handler: (() => void) | null) => void };
+declare const update: () => void;
+
+export const Zoom = () => {
+  useEffect(() => {
+    zoom.on("zoom", update);
+    return () => {
+      zoom.on("zoom", null);
+    };
+  }, []);
+  return <span />;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("still flags a returned local function that does not release the resource", async () => {
+    const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-return-non-cleanup", {
+      files: {
+        "src/Clock.tsx": `import { useEffect } from "react";
+
+declare const track: () => void;
+
+export const Clock = () => {
+  useEffect(() => {
+    setInterval(track, 1000);
+    const stopInterval = () => {
+      track();
+    };
+    return stopInterval;
+  }, []);
+  return <span />;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
+    expect(hits).toHaveLength(1);
+  });
+
+  it("still flags when cleanup only exists in a nested local scope", async () => {
+    const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-nested-cleanup-scope", {
+      files: {
+        "src/Clock.tsx": `import { useEffect } from "react";
+
+declare const tick: () => void;
+
+export const Clock = () => {
+  useEffect(() => {
+    const id = setInterval(tick, 1000);
+    let stopInterval: (() => void) | undefined;
+    const install = () => {
+      const stopInterval = () => clearInterval(id);
+      return stopInterval;
+    };
+    install();
+    return stopInterval;
+  }, []);
+  return <span />;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
+    expect(hits).toHaveLength(1);
+  });
+
   it("does NOT flag expression-body arrow whose subscribe return is the implicit cleanup (Bugbot #157)", async () => {
     // Regression: \`useEffect(() => store.subscribe(handler), [])\` is a
     // common compact form — the arrow's expression body IS the body,

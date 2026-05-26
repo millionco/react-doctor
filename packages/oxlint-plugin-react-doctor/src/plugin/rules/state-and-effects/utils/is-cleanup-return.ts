@@ -6,28 +6,50 @@ import {
 } from "../../../constants/react.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
+import { isFunctionLike } from "../../../utils/is-function-like.js";
 import { walkAst } from "../../../utils/walk-ast.js";
 import { isCleanupReturningSubscribeLikeCallExpression } from "./is-subscribe-like-call-expression.js";
 
+const SYNC_ITERATION_METHOD_NAMES = new Set(["forEach"]);
+
+const unwrapChainExpression = (node: EsTreeNode): EsTreeNode =>
+  isNodeOfType(node, "ChainExpression") ? node.expression : node;
+
+const isNullLiteral = (node: EsTreeNode | null | undefined): boolean =>
+  isNodeOfType(node, "Literal") && node.value === null;
+
+const isListenerRemovalViaNullHandler = (callNode: EsTreeNode): boolean => {
+  if (!isNodeOfType(callNode, "CallExpression")) return false;
+  const callee = unwrapChainExpression(callNode.callee);
+  return (
+    isNodeOfType(callee, "MemberExpression") &&
+    isNodeOfType(callee.property, "Identifier") &&
+    callee.property.name === "on" &&
+    isNullLiteral(callNode.arguments?.[1])
+  );
+};
+
 const isReleaseLikeCall = (
-  callNode: EsTreeNode,
-  knownBoundReleaseNames: ReadonlySet<string>,
+  node: EsTreeNode,
+  knownCleanupFunctionNames: ReadonlySet<string>,
   knownBoundSubscriptionNames: ReadonlySet<string>,
 ): boolean => {
+  const callNode = unwrapChainExpression(node);
   if (!isNodeOfType(callNode, "CallExpression")) return false;
-  const callee = callNode.callee;
+  if (isListenerRemovalViaNullHandler(callNode)) return true;
+  const callee = unwrapChainExpression(callNode.callee);
   if (isNodeOfType(callee, "Identifier")) {
     if (TIMER_CLEANUP_CALLEE_NAMES.has(callee.name)) return true;
     if (CLEANUP_LIKE_RELEASE_CALLEE_NAMES.has(callee.name)) return true;
-    if (knownBoundReleaseNames.has(callee.name)) return true;
+    if (knownCleanupFunctionNames.has(callee.name)) return true;
     return false;
   }
   if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
     if (
       BOUND_RESOURCE_RELEASE_METHOD_NAMES.has(callee.property.name) &&
-      // TODO: This deliberately only accepts `sub.remove()`-style identifiers.
-      // Shapes like `subRef.current.remove()` and `sub?.remove()` need
-      // receiver-aware binding analysis before they can be credited safely.
+      // TODO: This deliberately only accepts identifier-bound subscription
+      // receivers. Shapes like `subRef.current.remove()` need receiver-aware
+      // binding analysis before they can be credited safely.
       isNodeOfType(callee.object, "Identifier") &&
       knownBoundSubscriptionNames.has(callee.object.name)
     ) {
@@ -38,15 +60,30 @@ const isReleaseLikeCall = (
   return false;
 };
 
+const isSynchronousIterationCallback = (node: EsTreeNode): boolean => {
+  const parentNode = node.parent;
+  if (!isNodeOfType(parentNode, "CallExpression")) return false;
+  if (!parentNode.arguments?.some((argument) => argument === node)) return false;
+  const callee = unwrapChainExpression(parentNode.callee);
+  return (
+    isNodeOfType(callee, "MemberExpression") &&
+    isNodeOfType(callee.property, "Identifier") &&
+    SYNC_ITERATION_METHOD_NAMES.has(callee.property.name)
+  );
+};
+
 const containsReleaseLikeCall = (
   node: EsTreeNode,
-  knownBoundReleaseNames: ReadonlySet<string>,
+  knownCleanupFunctionNames: ReadonlySet<string>,
   knownBoundSubscriptionNames: ReadonlySet<string>,
 ): boolean => {
   let didFindRelease = false;
   walkAst(node, (child: EsTreeNode) => {
     if (didFindRelease) return false;
-    if (isReleaseLikeCall(child, knownBoundReleaseNames, knownBoundSubscriptionNames)) {
+    if (child !== node && isFunctionLike(child) && !isSynchronousIterationCallback(child)) {
+      return false;
+    }
+    if (isReleaseLikeCall(child, knownCleanupFunctionNames, knownBoundSubscriptionNames)) {
       didFindRelease = true;
       return false;
     }
@@ -54,25 +91,30 @@ const containsReleaseLikeCall = (
   return didFindRelease;
 };
 
+export const isCleanupFunctionLike = (
+  node: EsTreeNode,
+  knownCleanupFunctionNames: ReadonlySet<string>,
+  knownBoundSubscriptionNames: ReadonlySet<string>,
+): boolean => {
+  if (!isFunctionLike(node)) return false;
+  return containsReleaseLikeCall(node.body, knownCleanupFunctionNames, knownBoundSubscriptionNames);
+};
+
 export const isCleanupReturn = (
   returnedValue: EsTreeNode | null | undefined,
-  knownBoundReleaseNames: ReadonlySet<string>,
+  knownCleanupFunctionNames: ReadonlySet<string>,
   knownBoundSubscriptionNames: ReadonlySet<string>,
 ): boolean => {
   if (!returnedValue) return false;
-  if (isNodeOfType(returnedValue, "Identifier")) {
-    return knownBoundReleaseNames.has(returnedValue.name);
+  const unwrappedValue = unwrapChainExpression(returnedValue);
+  if (isNodeOfType(unwrappedValue, "Identifier")) {
+    return knownCleanupFunctionNames.has(unwrappedValue.name);
   }
-  if (isCleanupReturningSubscribeLikeCallExpression(returnedValue)) return true;
+  if (isCleanupReturningSubscribeLikeCallExpression(unwrappedValue)) return true;
   if (
-    isNodeOfType(returnedValue, "ArrowFunctionExpression") ||
-    isNodeOfType(returnedValue, "FunctionExpression")
+    isCleanupFunctionLike(unwrappedValue, knownCleanupFunctionNames, knownBoundSubscriptionNames)
   ) {
-    return containsReleaseLikeCall(
-      returnedValue,
-      knownBoundReleaseNames,
-      knownBoundSubscriptionNames,
-    );
+    return true;
   }
   return false;
 };

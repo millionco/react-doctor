@@ -176,6 +176,51 @@ describe("no-mutating-reducer-state", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("flags switch fallthrough from mutation into same-reference return", () => {
+    const result = run(`
+      import { useReducer } from "react";
+
+      function reducer(state, action) {
+        switch (action.type) {
+          case "mutate":
+            state.count++;
+          case "done":
+            return state;
+          default:
+            return { ...state };
+        }
+      }
+
+      useReducer(reducer, { count: 0 });
+    `);
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not carry switch mutations across break boundaries", () => {
+    const result = run(`
+      import { useReducer } from "react";
+
+      function reducer(state, action) {
+        switch (action.type) {
+          case "mutate":
+            state.count++;
+            break;
+          case "done":
+            return state;
+          default:
+            return state;
+        }
+
+        return { ...state };
+      }
+
+      useReducer(reducer, { count: 0 });
+    `);
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag ordinary no-op return branches", () => {
     const result = run(`
       import { useReducer } from "react";

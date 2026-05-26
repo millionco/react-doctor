@@ -97,13 +97,6 @@ interface ReducerPathState {
   mutations: ReducerStateMutation[];
 }
 
-type FunctionLikeNode =
-  | EsTreeNodeOfType<"FunctionDeclaration">
-  | EsTreeNodeOfType<"FunctionExpression">
-  | EsTreeNodeOfType<"ArrowFunctionExpression">;
-
-// Forks path state when control flow branches. Each path carries its own alias
-// set and list of mutations seen before the current statement.
 const cloneReducerPathState = (state: ReducerPathState): ReducerPathState => ({
   originalStateReferenceNames: new Set(state.originalStateReferenceNames),
   mutableStateSourceNames: new Set(state.mutableStateSourceNames),
@@ -112,7 +105,12 @@ const cloneReducerPathState = (state: ReducerPathState): ReducerPathState => ({
 
 // Narrows the generic AST node to the function shapes that can be passed to
 // React.useReducer as reducer functions.
-const isFunctionLikeAstNode = (node: EsTreeNode | null | undefined): node is FunctionLikeNode =>
+const isFunctionLikeAstNode = (
+  node: EsTreeNode | null | undefined,
+): node is
+  | EsTreeNodeOfType<"FunctionDeclaration">
+  | EsTreeNodeOfType<"FunctionExpression">
+  | EsTreeNodeOfType<"ArrowFunctionExpression"> =>
   Boolean(
     node &&
       (isNodeOfType(node, "FunctionDeclaration") ||
@@ -120,8 +118,6 @@ const isFunctionLikeAstNode = (node: EsTreeNode | null | undefined): node is Fun
         isNodeOfType(node, "ArrowFunctionExpression")),
   );
 
-// Checks whether an import specifier's enclosing import declaration is from
-// React. Used before trusting any `useReducer`-looking identifier.
 const isSpecifierImportedFromReact = (node: EsTreeNode): boolean => {
   const parent = node.parent;
   return (
@@ -228,8 +224,6 @@ const isExpressionRootedInMutableReducerStateSource = (
   );
 };
 
-// Tracks top-level identity only: identifiers in this set are references React
-// would compare directly against the previous reducer state.
 const isExpressionOriginalReducerStateReference = (
   node: EsTreeNode | null | undefined,
   state: ReducerPathState,
@@ -433,8 +427,6 @@ const collectReducerStateMutationsInExpressionOrStatement = (
   return mutations;
 };
 
-// Updates alias sets for declarations such as `const alias = state` and
-// `const items = state.items`. Fresh clones are intentionally not added.
 const updateReducerStateIdentityForVariableDeclaration = (
   declaration: EsTreeNodeOfType<"VariableDeclaration">,
   state: ReducerPathState,
@@ -505,7 +497,6 @@ const analyzeReactUseReducerFunctionForStateMutation = (
     }
   };
 
-  // Returns the paths that are still alive after these statements run.
   const analyzeReducerStatementListByPath = (
     statements: EsTreeNode[],
     initialState: ReducerPathState,
@@ -564,11 +555,24 @@ const analyzeReactUseReducerFunctionForStateMutation = (
               discriminantState,
             ),
           );
-          nextStates.push(cloneReducerPathState(discriminantState));
-          for (const switchCase of statement.cases ?? []) {
-            nextStates.push(
-              ...analyzeReducerStatementListByPath(switchCase.consequent, discriminantState),
-            );
+          const switchCases = statement.cases ?? [];
+          if (!switchCases.some((switchCase) => switchCase.test === null)) {
+            nextStates.push(cloneReducerPathState(discriminantState));
+          }
+          for (let startIndex = 0; startIndex < switchCases.length; startIndex += 1) {
+            const fallthroughStatements: EsTreeNode[] = [];
+            for (let caseIndex = startIndex; caseIndex < switchCases.length; caseIndex += 1) {
+              let didHitBreak = false;
+              for (const caseStatement of switchCases[caseIndex].consequent ?? []) {
+                if (isNodeOfType(caseStatement, "BreakStatement")) {
+                  didHitBreak = true;
+                  break;
+                }
+                fallthroughStatements.push(caseStatement);
+              }
+              if (didHitBreak) break;
+            }
+            nextStates.push(...analyzeReducerStatementListByPath(fallthroughStatements, discriminantState));
           }
           continue;
         }

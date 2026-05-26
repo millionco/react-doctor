@@ -1984,9 +1984,6 @@ export const reactDoctorRules = [
     id: "no-mutating-reducer-state",
     source: "react-doctor",
     originallyExternal: false,
-    framework: "global",
-    category: "State & Effects",
-    severity: "error",
     rule: {
       ...noMutatingReducerState,
       framework: "global",

@@ -158,8 +158,16 @@ const defaultSelect: SetupPromptSelect = async (message) => {
       name: "setupReactDoctorChoice",
       message,
       choices: [
-        { title: "Yes (recommended)", value: SETUP_PROMPT_CHOICE_YES },
-        { title: "No, and don't ask again", value: SETUP_PROMPT_CHOICE_NEVER },
+        {
+          title: "Yes (recommended)",
+          description: "Installs agent skills, package script, and dev dependency",
+          value: SETUP_PROMPT_CHOICE_YES,
+        },
+        {
+          title: "No, and don't ask again",
+          description: "You can always run npx react-doctor@latest install later",
+          value: SETUP_PROMPT_CHOICE_NEVER,
+        },
       ],
       initial: 0,
     },

@@ -8,14 +8,14 @@ import { writeDiagnosticsDirectory } from "./write-diagnostics-directory.js";
 const MAX_RULES_SHOWN = 10;
 const MAX_FILES_PER_RULE = 3;
 
-interface CopyTraceInput {
+interface CopyIssuesInput {
   readonly diagnostics: ReadonlyArray<Diagnostic>;
   readonly score: ScoreResult | null;
   readonly directory: string;
   readonly projectName: string;
 }
 
-const buildTraceSummary = (input: CopyTraceInput): string => {
+const buildIssuesSummary = (input: CopyIssuesInput): string => {
   const lines: string[] = [];
 
   lines.push(`# React Doctor: ${input.projectName}`);
@@ -88,7 +88,7 @@ const copyToClipboard = (text: string): boolean => {
   }
 };
 
-export const promptCopyTrace = async (input: CopyTraceInput): Promise<void> => {
+export const promptCopyIssues = async (input: CopyIssuesInput): Promise<void> => {
   if (input.diagnostics.length === 0) return;
 
   const { shouldCopy } = await prompts(
@@ -102,8 +102,8 @@ export const promptCopyTrace = async (input: CopyTraceInput): Promise<void> => {
   );
   if (!shouldCopy) return;
 
-  const trace = buildTraceSummary(input);
-  if (copyToClipboard(trace)) {
+  const issuesSummary = buildIssuesSummary(input);
+  if (copyToClipboard(issuesSummary)) {
     console.log("  Copied to clipboard.");
   } else {
     console.log(trace);

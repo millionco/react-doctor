@@ -346,23 +346,7 @@ export const runInstallSkill = async (options: InstallSkillOptions = {}): Promis
           ).installGitHook,
         )));
 
-  const shouldInstallAgentHooks =
-    Boolean(options.agentHooks) ||
-    (!skipPrompts &&
-      hasNativeAgentHookTarget(selectedAgents) &&
-      Boolean(
-        (
-          await prompts<"installAgentHooks">(
-            {
-              type: "confirm",
-              name: "installAgentHooks",
-              message: "Install native agent hooks after file edits? (Claude Code / Cursor)",
-              initial: false,
-            },
-            promptOptions,
-          )
-        ).installAgentHooks,
-      ));
+  const shouldInstallAgentHooks = Boolean(options.agentHooks);
 
   if (options.dryRun) {
     logger.log(`Dry run — would install ${SKILL_NAME} skill for:`);

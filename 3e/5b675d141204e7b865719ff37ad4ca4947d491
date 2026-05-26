@@ -1,0 +1,29 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/utils/is-cleanup-return.ts
+  s_40f09e859a54a1::t_9db246b8cc56e7 52
+  s_40f09e859a54a1::t_2b8333bcf4d525 24,83-84
+  s_40f09e859a54a1::t_1764110e743109 51
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/effect-needs-cleanup.ts
+  s_40f09e859a54a1::t_6567cf80b221d4 19-21,35,80-81,170-171,176-177
+  s_40f09e859a54a1::t_b98e8d72755c08 114-115,149
+packages/oxlint-plugin-react-doctor/src/plugin/constants/react.ts
+  s_40f09e859a54a1::t_b2f87eaff45084 84-85,88-89,101,111
+packages/react-doctor/tests/regressions/state-rules/effect-needs-cleanup.test.ts
+  s_40f09e859a54a1::t_77a2e0c81ad3ea 258,289,322,348,378,403
+  s_40f09e859a54a1::t_6930025878c81a 482,522,548,572,672,748,804
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "3e5b675d141204e7b865719ff37ad4ca4947d491",
+  "prompts": {},
+  "sessions": {
+    "s_40f09e859a54a1": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "374e90ea-25f7-4a16-bca3-580bd3d1c6e2",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

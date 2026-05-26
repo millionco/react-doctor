@@ -95,7 +95,7 @@ export const promptCopyTrace = async (input: CopyTraceInput): Promise<void> => {
     {
       type: "confirm",
       name: "shouldCopy",
-      message: "Copy trace to clipboard?",
+      message: "Copy issues to clipboard?",
       initial: true,
     },
     { onCancel: () => true },

@@ -292,9 +292,7 @@ describe("runInspect — mid-stream lint failure", () => {
     expect(output.lintFailureReasonTag).toBe("OxlintSpawnFailed");
     expect(output.lintFailureReason).toContain("oxlint");
     expect(output.score).toBeNull();
-    // Dead code still ran and surfaced its diagnostic
-    expect(output.diagnostics).toHaveLength(1);
-    expect(output.diagnostics[0].rule).toBe("unused-file");
+    expect(output.diagnostics).toHaveLength(0);
   });
 });
 

@@ -1,5 +1,14 @@
 # react-doctor
 
+## 0.2.9
+
+### Patch Changes
+
+- [`30afe81`](https://github.com/millionco/react-doctor/commit/30afe81c4a4b46dcafedf326f93d899ee805b6ec) Thanks [@aidenybai](https://github.com/aidenybai)! - chore: verify trusted publishing via OIDC
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.2.9
+
 ## 0.2.8
 
 ### Patch Changes

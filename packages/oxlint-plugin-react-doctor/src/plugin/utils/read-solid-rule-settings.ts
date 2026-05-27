@@ -9,8 +9,14 @@ export const readSolidRuleSettings = <Shape extends object>(
   settingsKey: string,
 ): Shape => {
   const reactDoctorBlock = settings?.["react-doctor"];
-  if (typeof reactDoctorBlock !== "object" || reactDoctorBlock === null) return {} as Shape;
-  const ruleBlock = (reactDoctorBlock as Record<string, unknown>)[settingsKey];
+  if (
+    typeof reactDoctorBlock !== "object" ||
+    reactDoctorBlock === null ||
+    Array.isArray(reactDoctorBlock)
+  ) {
+    return {} as Shape;
+  }
+  const ruleBlock = Object.getOwnPropertyDescriptor(reactDoctorBlock, settingsKey)?.value;
   if (typeof ruleBlock !== "object" || ruleBlock === null) return {} as Shape;
   return ruleBlock as Shape;
 };

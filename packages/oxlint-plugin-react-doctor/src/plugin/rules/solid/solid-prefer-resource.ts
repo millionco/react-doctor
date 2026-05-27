@@ -4,6 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isSetterCall } from "../../utils/is-setter-call.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -11,13 +12,6 @@ import type { RuleContext } from "../../utils/rule-context.js";
 const EFFECT_PRIMITIVES: ReadonlyArray<string> = ["createEffect", "createRenderEffect"];
 
 const FETCH_IDENTIFIERS = new Set(["fetch"]);
-const FETCH_MEMBER_METHODS = new Set(["get", "post", "put", "patch", "delete", "request"]);
-
-const isSetterCall = (node: EsTreeNode): boolean => {
-  if (!isNodeOfType(node, "CallExpression")) return false;
-  if (!isNodeOfType(node.callee, "Identifier")) return false;
-  return /^set[A-Z]/.test(node.callee.name);
-};
 
 const containsFetchLikeCall = (node: EsTreeNode): boolean => {
   let found = false;
@@ -26,14 +20,6 @@ const containsFetchLikeCall = (node: EsTreeNode): boolean => {
     if (isFunctionLike(child) && child !== node) return false;
     if (!isNodeOfType(child, "CallExpression")) return;
     if (isNodeOfType(child.callee, "Identifier") && FETCH_IDENTIFIERS.has(child.callee.name)) {
-      found = true;
-      return false;
-    }
-    if (
-      isNodeOfType(child.callee, "MemberExpression") &&
-      isNodeOfType(child.callee.property, "Identifier") &&
-      FETCH_MEMBER_METHODS.has(child.callee.property.name)
-    ) {
       found = true;
       return false;
     }

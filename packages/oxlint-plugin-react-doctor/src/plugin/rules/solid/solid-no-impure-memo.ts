@@ -4,6 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isSetterCall } from "../../utils/is-setter-call.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -19,12 +20,6 @@ const SUBSCRIPTION_MEMBER_METHODS = new Set([
   "subscribe",
   "observe",
 ]);
-
-const isSetterCall = (node: EsTreeNode): boolean => {
-  if (!isNodeOfType(node, "CallExpression")) return false;
-  if (!isNodeOfType(node.callee, "Identifier")) return false;
-  return /^set[A-Z]/.test(node.callee.name);
-};
 
 interface SideEffectInfo {
   description: string;

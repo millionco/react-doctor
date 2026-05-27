@@ -90,4 +90,13 @@ describe("solid-no-effect-derived-state", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does not flag setter with side-effectful argument", () => {
+    const result = runRule(
+      solidNoEffectDerivedState,
+      `import { createEffect } from "solid-js";
+       createEffect(() => setA(fetch("/api")));`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

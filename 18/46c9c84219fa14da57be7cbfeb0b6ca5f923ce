@@ -1,0 +1,19 @@
+docs/HOW_TO_WRITE_A_RULE.md
+  s_df7c9dda45aa12::t_8dd9b88d8d885c 742-745,755,759-768
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "1846c9c84219fa14da57be7cbfeb0b6ca5f923ce",
+  "prompts": {},
+  "sessions": {
+    "s_df7c9dda45aa12": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "dffc8bfb-8df7-448a-bd31-b9f516f10703",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

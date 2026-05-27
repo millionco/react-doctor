@@ -1,0 +1,19 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/no-giant-component.ts
+  s_f0e0d1588083d4::t_328c41583bcceb 19-24,28,30-33,39-40,42,47-48,50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "5ac9c21df18e59ad19ba10370c13ab65d4de44de",
+  "prompts": {},
+  "sessions": {
+    "s_f0e0d1588083d4": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f03f10b0-65c0-44c9-9612-29866625371f",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

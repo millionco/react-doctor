@@ -49,6 +49,7 @@ Goal:
 Find examples where <exact bug definition>.
 
 Return:
+
 - Strong positive examples
 - Pattern-adjacent examples
 - False-positive traps

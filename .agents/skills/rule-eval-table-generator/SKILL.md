@@ -22,14 +22,14 @@ Collect:
 
 Use this format:
 
-| Check | Result |
-| --- | --- |
-| Repos scanned | `<number of distinct repos>` |
-| RootDir scans | `<number of manifest/rootDir entries>` |
-| Target rule | `<rule-name>` |
-| Diagnostics | `<total target-rule diagnostics>` |
-| False positives found | `<count after manual inspection>` |
-| Output artifact | `<filtered JSONL / summary path or link>` |
+| Check                 | Result                                    |
+| --------------------- | ----------------------------------------- |
+| Repos scanned         | `<number of distinct repos>`              |
+| RootDir scans         | `<number of manifest/rootDir entries>`    |
+| Target rule           | `<rule-name>`                             |
+| Diagnostics           | `<total target-rule diagnostics>`         |
+| False positives found | `<count after manual inspection>`         |
+| Output artifact       | `<filtered JSONL / summary path or link>` |
 
 ## Rules
 

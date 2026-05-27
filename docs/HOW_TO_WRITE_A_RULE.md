@@ -176,6 +176,7 @@ Goal:
 Find examples where <exact bug definition>.
 
 Return:
+
 - Strong positive examples
 - Pattern-adjacent examples
 - False-positive traps
@@ -513,31 +514,31 @@ Resource-informed implementation rules:
 
 Common ESTree/Babel vocabulary:
 
-| Vocabulary | Description | Example |
-| --- | --- | --- |
-| `Program` | File-level statement list. | `import React from "react";` |
-| `ImportDeclaration` | ES module import statement. | `import { useReducer } from "react";` |
-| `ImportSpecifier` | Named import binding. | `useReducer` in `import { useReducer } from "react"` |
-| `Identifier` | A named binding or reference. | `state` |
-| `VariableDeclarator` | One variable binding inside a declaration. | `next = state` in `const next = state` |
-| `MemberExpression` | Property access on an object. | `state.items` |
-| `CallExpression` | A function or method call. | `state.items.push(item)` |
-| `AssignmentExpression` | Assignment to a target. | `state.count = 1` |
-| `UpdateExpression` | Increment or decrement expression. | `state.count++` |
-| `UnaryExpression` | Unary operator expression. | `delete state.count` |
-| `ReturnStatement` | Function return statement. | `return state` |
-| `IfStatement` | Conditional branch with consequent and optional alternate paths. | `if (action.type === "add") { ... }` |
-| `ConditionalExpression` | Ternary expression with consequent and alternate values. | `condition ? next : state` |
-| `LogicalExpression` | Short-circuiting boolean/logical expression. | `value || state` |
-| `SwitchStatement` | Case-based branch with possible fallthrough. | `switch (action.type) { ... }` |
-| `SwitchCase` | One switch case and its consequent statements. | `case "add": state.count++;` |
-| `BlockStatement` | Scoped statement list. | `{ const next = state; }` |
-| `FunctionDeclaration` | Hoisted function declaration. | `function reducer() {}` |
-| `FunctionExpression` | Function expression value. | `const reducer = function () {};` |
-| `ArrowFunctionExpression` | Arrow function expression value. | `const reducer = () => {};` |
-| `ParenthesizedExpression` | Transparent expression wrapper. | `(state)` |
-| `TSAsExpression` | TypeScript `as` wrapper. | `state as State` |
-| `ChainExpression` | Optional chaining wrapper in ESTree-style ASTs. | `state.items?.push(item)` |
+| Vocabulary                | Description                                                      | Example                                              |
+| ------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------- |
+| `Program`                 | File-level statement list.                                       | `import React from "react";`                         |
+| `ImportDeclaration`       | ES module import statement.                                      | `import { useReducer } from "react";`                |
+| `ImportSpecifier`         | Named import binding.                                            | `useReducer` in `import { useReducer } from "react"` |
+| `Identifier`              | A named binding or reference.                                    | `state`                                              |
+| `VariableDeclarator`      | One variable binding inside a declaration.                       | `next = state` in `const next = state`               |
+| `MemberExpression`        | Property access on an object.                                    | `state.items`                                        |
+| `CallExpression`          | A function or method call.                                       | `state.items.push(item)`                             |
+| `AssignmentExpression`    | Assignment to a target.                                          | `state.count = 1`                                    |
+| `UpdateExpression`        | Increment or decrement expression.                               | `state.count++`                                      |
+| `UnaryExpression`         | Unary operator expression.                                       | `delete state.count`                                 |
+| `ReturnStatement`         | Function return statement.                                       | `return state`                                       |
+| `IfStatement`             | Conditional branch with consequent and optional alternate paths. | `if (action.type === "add") { ... }`                 |
+| `ConditionalExpression`   | Ternary expression with consequent and alternate values.         | `condition ? next : state`                           |
+| `LogicalExpression`       | Short-circuiting boolean/logical expression.                     | `value \|\| state`                                   |
+| `SwitchStatement`         | Case-based branch with possible fallthrough.                     | `switch (action.type) { ... }`                       |
+| `SwitchCase`              | One switch case and its consequent statements.                   | `case "add": state.count++;`                         |
+| `BlockStatement`          | Scoped statement list.                                           | `{ const next = state; }`                            |
+| `FunctionDeclaration`     | Hoisted function declaration.                                    | `function reducer() {}`                              |
+| `FunctionExpression`      | Function expression value.                                       | `const reducer = function () {};`                    |
+| `ArrowFunctionExpression` | Arrow function expression value.                                 | `const reducer = () => {};`                          |
+| `ParenthesizedExpression` | Transparent expression wrapper.                                  | `(state)`                                            |
+| `TSAsExpression`          | TypeScript `as` wrapper.                                         | `state as State`                                     |
+| `ChainExpression`         | Optional chaining wrapper in ESTree-style ASTs.                  | `state.items?.push(item)`                            |
 
 Computed member handling:
 
@@ -575,9 +576,9 @@ const canExpressionReturnOriginalReducerStateReference = ...
 Use matching suffixes for related helpers:
 
 ```ts
-isOriginalReducerStateReference
-isMutableReducerStateSource
-isReactUseReducerCall
+isOriginalReducerStateReference;
+isMutableReducerStateSource;
+isReactUseReducerCall;
 ```
 
 ### Utilities
@@ -597,7 +598,7 @@ Do not create a utility when:
 PR #491 utility example:
 
 ```ts
-getStaticMemberPropertyName(node)
+getStaticMemberPropertyName(node);
 ```
 
 Required behavior:
@@ -758,14 +759,14 @@ Description requirements:
 
 Eval table template:
 
-| Check | Result |
-| --- | --- |
-| Repos scanned | `<number of distinct repos>` |
-| RootDir scans | `<number of manifest/rootDir entries>` |
-| Target rule | `<rule-name>` |
-| Diagnostics | `<total target-rule diagnostics>` |
-| False positives found | `<count after manual inspection>` |
-| Output artifact | `<filtered JSONL / summary path or link>` |
+| Check                 | Result                                    |
+| --------------------- | ----------------------------------------- |
+| Repos scanned         | `<number of distinct repos>`              |
+| RootDir scans         | `<number of manifest/rootDir entries>`    |
+| Target rule           | `<rule-name>`                             |
+| Diagnostics           | `<total target-rule diagnostics>`         |
+| False positives found | `<count after manual inspection>`         |
+| Output artifact       | `<filtered JSONL / summary path or link>` |
 
 ## Review Triage
 
@@ -871,16 +872,16 @@ This is onboarding material for learning AST rule authoring. Do this once when b
 
 Spend 1-2 hours asking an agent Q/A about these resources. Use them to build AST vocabulary, understand parser differences, and learn how production analyzers handle scope, confidence, and false positives.
 
-| Resource | Link | What to Extract |
-| --- | --- | --- |
-| ESTree spec | https://github.com/estree/estree | Node vocabulary, standard node shapes, and the philosophy that nodes are contextless and avoid duplicated information. |
-| Babel handbook | https://github.com/jamiebuilds/babel-handbook | ASTs, visitors, paths, scopes, bindings, traversal state, nested structures, and plugin testing patterns. |
-| Babel plugin handbook | https://github.com/jamiebuilds/babel-handbook/blob/master/translations/en/plugin-handbook.md | Practical plugin authoring guidance: visitors, path APIs, scope/binding lookups, traversal performance, and unit testing. |
-| OXC | https://github.com/oxc-project/oxc | Oxlint/parser context, high-performance AST tooling, and rule implementation patterns to compare against React Doctor rules. |
-| Deslop | https://github.com/millionco/deslop-js/ | Confidence tiers, syntactic vs semantic findings, structured analysis errors, and CI-gating strategy for high-signal findings. |
-| React Compiler | https://github.com/facebook/react/tree/main/compiler | React rule semantics, conservative modeling, control-flow needs, React rules validation, and why unsupported JavaScript features should be explicit non-goals. |
-| React Doctor | https://github.com/millionco/react-doctor | Product context: deterministic React scans across state/effects, performance, architecture, security, and accessibility. |
-| Babex | https://github.com/millionco/babex | Babel-compatible APIs backed by OXC; useful for understanding parser/traverse compatibility and the shape of fast AST tooling. |
+| Resource              | Link                                                                                         | What to Extract                                                                                                                                                |
+| --------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ESTree spec           | https://github.com/estree/estree                                                             | Node vocabulary, standard node shapes, and the philosophy that nodes are contextless and avoid duplicated information.                                         |
+| Babel handbook        | https://github.com/jamiebuilds/babel-handbook                                                | ASTs, visitors, paths, scopes, bindings, traversal state, nested structures, and plugin testing patterns.                                                      |
+| Babel plugin handbook | https://github.com/jamiebuilds/babel-handbook/blob/master/translations/en/plugin-handbook.md | Practical plugin authoring guidance: visitors, path APIs, scope/binding lookups, traversal performance, and unit testing.                                      |
+| OXC                   | https://github.com/oxc-project/oxc                                                           | Oxlint/parser context, high-performance AST tooling, and rule implementation patterns to compare against React Doctor rules.                                   |
+| Deslop                | https://github.com/millionco/deslop-js/                                                      | Confidence tiers, syntactic vs semantic findings, structured analysis errors, and CI-gating strategy for high-signal findings.                                 |
+| React Compiler        | https://github.com/facebook/react/tree/main/compiler                                         | React rule semantics, conservative modeling, control-flow needs, React rules validation, and why unsupported JavaScript features should be explicit non-goals. |
+| React Doctor          | https://github.com/millionco/react-doctor                                                    | Product context: deterministic React scans across state/effects, performance, architecture, security, and accessibility.                                       |
+| Babex                 | https://github.com/millionco/babex                                                           | Babel-compatible APIs backed by OXC; useful for understanding parser/traverse compatibility and the shape of fast AST tooling.                                 |
 
 Ask targeted questions:
 
@@ -902,4 +903,3 @@ Resource takeaways:
 - React Compiler is conservative about unsupported or hard-to-model JavaScript. React Doctor rules should also document v1 unsupported cases.
 - Deslop-style confidence tiers are a useful mental model: only high-confidence findings should block or produce strong diagnostics.
 - Babex shows the compatibility target: Babel-style parse/traverse APIs can sit on top of OXC, so rule authors should understand both Babel vocabulary and OXC-powered parsing.
-

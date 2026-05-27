@@ -187,6 +187,7 @@ import { noPolymorphicChildren } from "./rules/correctness/no-polymorphic-childr
 import { noPreventDefault } from "./rules/correctness/no-prevent-default.js";
 import { noPropCallbackInEffect } from "./rules/state-and-effects/no-prop-callback-in-effect.js";
 import { noPureBlackBackground } from "./rules/design/no-pure-black-background.js";
+import { noRandomKey } from "./rules/correctness/no-random-key.js";
 import { noReactChildren } from "./rules/react-builtins/no-react-children.js";
 import { noReactDomDeprecatedApis } from "./rules/architecture/no-react-dom-deprecated-apis.js";
 import { noReact19DeprecatedApis } from "./rules/architecture/no-react19-deprecated-apis.js";
@@ -226,6 +227,8 @@ import { preferDynamicImport } from "./rules/bundle-size/prefer-dynamic-import.j
 import { preferEs6Class } from "./rules/react-builtins/prefer-es6-class.js";
 import { preferFunctionComponent } from "./rules/react-builtins/prefer-function-component.js";
 import { preferHtmlDialog } from "./rules/a11y/prefer-html-dialog.js";
+import { preferModuleScopePureFunction } from "./rules/architecture/prefer-module-scope-pure-function.js";
+import { preferModuleScopeStaticValue } from "./rules/architecture/prefer-module-scope-static-value.js";
 import { preferStableEmptyFallback } from "./rules/performance/prefer-stable-empty-fallback.js";
 import { preferTagOverRole } from "./rules/a11y/prefer-tag-over-role.js";
 import { preferUseEffectEvent } from "./rules/state-and-effects/prefer-use-effect-event.js";
@@ -2293,6 +2296,17 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-random-key",
+    id: "no-random-key",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noRandomKey,
+      framework: "global",
+      category: "Correctness",
+    },
+  },
+  {
     key: "react-doctor/no-react-children",
     id: "no-react-children",
     source: "react-doctor",
@@ -2719,6 +2733,28 @@ export const reactDoctorRules = [
       ...preferHtmlDialog,
       framework: "global",
       category: "Accessibility",
+    },
+  },
+  {
+    key: "react-doctor/prefer-module-scope-pure-function",
+    id: "prefer-module-scope-pure-function",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...preferModuleScopePureFunction,
+      framework: "global",
+      category: "Architecture",
+    },
+  },
+  {
+    key: "react-doctor/prefer-module-scope-static-value",
+    id: "prefer-module-scope-static-value",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...preferModuleScopeStaticValue,
+      framework: "global",
+      category: "Architecture",
     },
   },
   {

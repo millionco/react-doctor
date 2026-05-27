@@ -254,6 +254,7 @@ import { rnNoLegacyExpoPackages } from "./rules/react-native/rn-no-legacy-expo-p
 import { rnNoLegacyShadowStyles } from "./rules/react-native/rn-no-legacy-shadow-styles.js";
 import { rnNoNonNativeNavigator } from "./rules/react-native/rn-no-non-native-navigator.js";
 import { rnNoRawText } from "./rules/react-native/rn-no-raw-text.js";
+import { rnNoRenderitemKey } from "./rules/react-native/rn-no-renderitem-key.js";
 import { rnNoScrollState } from "./rules/react-native/rn-no-scroll-state.js";
 import { rnNoScrollviewMappedList } from "./rules/react-native/rn-no-scrollview-mapped-list.js";
 import { rnNoSingleElementStyleArray } from "./rules/react-native/rn-no-single-element-style-array.js";
@@ -3017,6 +3018,18 @@ export const reactDoctorRules = [
       framework: "react-native",
       category: "React Native",
       tags: [...new Set(["react-native", ...(rnNoRawText.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/rn-no-renderitem-key",
+    id: "rn-no-renderitem-key",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...rnNoRenderitemKey,
+      framework: "react-native",
+      category: "React Native",
+      tags: [...new Set(["react-native", ...(rnNoRenderitemKey.tags ?? [])])],
     },
   },
   {

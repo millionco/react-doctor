@@ -22,10 +22,10 @@ const REGISTRY_OUTPUT = path.join(PACKAGE_ROOT, "src/plugin/rule-registry.ts");
 // never authored). Buckets not listed here default to "global".
 const BUCKET_TO_FRAMEWORK = {
   nextjs: "nextjs",
-  "react-native": "react-native",
-  "tanstack-start": "tanstack-start",
-  "tanstack-query": "tanstack-query",
   preact: "preact",
+  "react-native": "react-native",
+  "tanstack-query": "tanstack-query",
+  "tanstack-start": "tanstack-start",
 };
 
 // Bucket directory → behavioral tags merged onto every rule in that
@@ -73,6 +73,7 @@ const BUCKET_TO_DEFAULT_CATEGORY = {
   "js-performance": "Performance",
   nextjs: "Next.js",
   performance: "Performance",
+  preact: "Preact",
   "react-builtins": "Correctness",
   "react-native": "React Native",
   "react-ui": "Accessibility",
@@ -81,7 +82,6 @@ const BUCKET_TO_DEFAULT_CATEGORY = {
   "state-and-effects": "State & Effects",
   "tanstack-query": "TanStack Query",
   "tanstack-start": "TanStack Start",
-  preact: "Preact",
   "view-transitions": "Correctness",
 };
 

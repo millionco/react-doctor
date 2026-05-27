@@ -238,7 +238,9 @@ export interface ReactDoctorConfig {
    * `categories` field, but keyed by React Doctor's display
    * categories (`"Server"`, `"React Native"`, `"Architecture"`,
    * `"Bundle Size"`, `"State & Effects"`, `"Security"`,
-   * `"Accessibility"`, `"Performance"`, `"Correctness"`, …).
+   * `"Accessibility"`, `"Performance"`, `"Correctness"`,
+   * `"Next.js"`, `"Preact"`, `"TanStack Query"`,
+   * `"TanStack Start"`, …).
    *
    * ```json
    * { "categories": { "React Native": "warn", "Server": "off" } }

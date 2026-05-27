@@ -81,4 +81,60 @@ describe("preact-no-render-arguments", () => {
 
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does not flag a `static render(input)` utility on a Component subclass", () => {
+    const result = runRule(
+      preactNoRenderArguments,
+      `
+      import { Component } from "preact";
+
+      class Renderer extends Component {
+        static render(input) {
+          return input;
+        }
+
+        render() {
+          return <span>{this.props.label}</span>;
+        }
+      }
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a `this:` typed-only parameter when the runtime arg list is empty", () => {
+    const result = runRule(
+      preactNoRenderArguments,
+      `
+      import { Component } from "preact";
+
+      class Hello extends Component<{ name: string }> {
+        render(this: Hello) {
+          return <h1>{this.props.name}</h1>;
+        }
+      }
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags the user-declared parameter even when a `this:` type annotation is present", () => {
+    const result = runRule(
+      preactNoRenderArguments,
+      `
+      import { Component } from "preact";
+
+      class Hello extends Component<{ name: string }> {
+        render(this: Hello, props: { name: string }) {
+          return <h1>{props.name}</h1>;
+        }
+      }
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("`render(props, state)`");
+  });
 });

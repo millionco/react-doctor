@@ -1,10 +1,5 @@
 import type { Framework } from "../types/index.js";
 
-// Preact is checked AFTER every React-based framework so a Preact app
-// scaffolded with Vite (or running through `@remix-run/react`'s Preact
-// alias) still classifies as that build framework. Pure Preact projects
-// — no `next` / `vite` / `react-scripts` etc. in `package.json` — fall
-// through to the `preact` branch and get the Preact-specific rule set.
 const FRAMEWORK_PACKAGES: Record<string, Framework> = {
   next: "nextjs",
   "@tanstack/react-start": "tanstack-start",
@@ -14,7 +9,6 @@ const FRAMEWORK_PACKAGES: Record<string, Framework> = {
   gatsby: "gatsby",
   expo: "expo",
   "react-native": "react-native",
-  preact: "preact",
 };
 
 const FRAMEWORK_DISPLAY_NAMES: Record<Framework, string> = {
@@ -33,11 +27,22 @@ const FRAMEWORK_DISPLAY_NAMES: Record<Framework, string> = {
 export const formatFrameworkName = (framework: Framework): string =>
   FRAMEWORK_DISPLAY_NAMES[framework];
 
+// Preact is treated as a framework only when no React-based framework
+// (`next` / `vite` / `react-scripts` / …) AND no `react` itself is
+// present — i.e. a pure-Preact codebase with no bundler manifest react-
+// doctor recognises. Component libraries that list both `react` and
+// `preact` as peer deps stay `unknown`, which is what they were before
+// this branch existed; they still pick up `hasPreact: true` via the
+// separate boolean (see `discover-project.ts`) so Preact-bucket rules
+// activate without overwriting the framework classification.
 export const detectFramework = (dependencies: Record<string, string>): Framework => {
   for (const [packageName, frameworkName] of Object.entries(FRAMEWORK_PACKAGES)) {
     if (dependencies[packageName]) {
       return frameworkName;
     }
+  }
+  if (dependencies.preact && !dependencies.react) {
+    return "preact";
   }
   return "unknown";
 };

@@ -39,7 +39,11 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<string> => 
   if (project.hasReactCompiler) capabilities.add("react-compiler");
   if (project.hasTanStackQuery) capabilities.add("tanstack-query");
   if (project.hasTypeScript) capabilities.add("typescript");
-  if (project.framework === "preact") capabilities.add("preact");
+  // Keyed off `hasPreact`, not `framework === "preact"`, so the
+  // dominant Preact-on-Vite setup (which classifies as `vite` for
+  // build-tool reasons) still gets the `preact` capability and its
+  // matching rule bucket.
+  if (project.hasPreact) capabilities.add("preact");
 
   return capabilities;
 };

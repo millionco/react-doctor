@@ -569,6 +569,27 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
     }
   });
 
+  // The inverse of the rule above: `react-compiler-no-manual-memoization`
+  // is gated with `requires: ["react-compiler"]` so it ONLY fires once
+  // the project ships with React Compiler. Without the compiler, manual
+  // `useMemo` / `useCallback` / `memo()` are still legitimate perf
+  // tools — the gate must keep the rule out of the default config.
+  it("enables react-compiler-no-manual-memoization only when React Compiler is detected", () => {
+    const ruleKey = "react-doctor/react-compiler-no-manual-memoization";
+
+    const withoutCompiler = createOxlintConfig({
+      pluginPath: "/tmp/react-doctor-plugin.js",
+      project: buildTestProject({ rootDirectory: "/tmp/test", hasReactCompiler: false }),
+    });
+    expect(withoutCompiler.rules[ruleKey]).toBeUndefined();
+
+    const withCompiler = createOxlintConfig({
+      pluginPath: "/tmp/react-doctor-plugin.js",
+      project: buildTestProject({ rootDirectory: "/tmp/test", hasReactCompiler: true }),
+    });
+    expect(withCompiler.rules[ruleKey]).toBe("error");
+  });
+
   // The three noisy upstream rules ship `defaultEnabled: false` —
   // they're imported and runnable, but the default config skips them.
   // Users opt in via `severityControls.rules`.

@@ -219,6 +219,7 @@ import { queryNoUseQueryForMutation } from "./rules/tanstack-query/query-no-use-
 import { queryNoVoidQueryFn } from "./rules/tanstack-query/query-no-void-query-fn.js";
 import { queryStableQueryClient } from "./rules/tanstack-query/query-stable-query-client.js";
 import { reactCompilerDestructureMethod } from "./rules/architecture/react-compiler-destructure-method.js";
+import { reactCompilerNoManualMemoization } from "./rules/architecture/react-compiler-no-manual-memoization.js";
 import { reactInJsxScope } from "./rules/react-builtins/react-in-jsx-scope.js";
 import { renderingAnimateSvgWrapper } from "./rules/performance/rendering-animate-svg-wrapper.js";
 import { renderingConditionalRender } from "./rules/correctness/rendering-conditional-render.js";
@@ -2613,6 +2614,17 @@ export const reactDoctorRules = [
     originallyExternal: false,
     rule: {
       ...reactCompilerDestructureMethod,
+      framework: "global",
+      category: "Architecture",
+    },
+  },
+  {
+    key: "react-doctor/react-compiler-no-manual-memoization",
+    id: "react-compiler-no-manual-memoization",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactCompilerNoManualMemoization,
       framework: "global",
       category: "Architecture",
     },

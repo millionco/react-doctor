@@ -1,0 +1,101 @@
+import { defineRule } from "../../utils/define-rule.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import {
+  getImportedNameFromModule,
+  isImportedFromModule,
+} from "../../utils/find-import-source-for-name.js";
+import { isCanonicalReactNamespaceName } from "../../utils/is-canonical-react-namespace-name.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isReactComponentOrHookName } from "../../utils/is-react-component-or-hook-name.js";
+import type { Rule } from "../../utils/rule.js";
+import type { RuleContext } from "../../utils/rule-context.js";
+
+const MESSAGE =
+  "createContext() called inside a component or hook — every render creates a brand new Context object, resetting every consumer and disconnecting Provider/Consumer pairs. Move createContext to module scope (outside the component) so the Context identity is stable across renders.";
+
+const REACT_MODULE = "react";
+
+const isCreateContextCallee = (callee: EsTreeNode): boolean => {
+  if (isNodeOfType(callee, "Identifier")) {
+    // Resolve through any renamed import — `getImportedNameFromModule`
+    // returns the originally-exported symbol name, so we catch both
+    // `import { createContext } from "react"` and
+    // `import { createContext as makeCtx } from "react"`.
+    const canonicalName = getImportedNameFromModule(callee, callee.name, REACT_MODULE);
+    return canonicalName === "createContext";
+  }
+
+  if (isNodeOfType(callee, "MemberExpression") && !callee.computed) {
+    const namespaceIdentifier = callee.object;
+    const propertyIdentifier = callee.property;
+    if (!isNodeOfType(namespaceIdentifier, "Identifier")) return false;
+    if (!isNodeOfType(propertyIdentifier, "Identifier")) return false;
+    if (propertyIdentifier.name !== "createContext") return false;
+    const namespaceName = namespaceIdentifier.name;
+    if (isCanonicalReactNamespaceName(namespaceName)) return true;
+    return isImportedFromModule(namespaceIdentifier, namespaceName, REACT_MODULE);
+  }
+
+  return false;
+};
+
+// Returns the name of the nearest enclosing React component or hook,
+// or null if none is found (i.e. the call is at module scope or inside
+// a regular helper function).
+const enclosingComponentOrHookName = (node: EsTreeNode): string | null => {
+  let cursor: EsTreeNode | null | undefined = node.parent;
+  while (cursor) {
+    if (isNodeOfType(cursor, "FunctionDeclaration")) {
+      const name = cursor.id?.name ?? null;
+      if (name && isReactComponentOrHookName(name)) return name;
+    }
+    if (isNodeOfType(cursor, "VariableDeclarator")) {
+      const initializer = cursor.init;
+      const isFunctionInitializer =
+        initializer &&
+        (isNodeOfType(initializer, "ArrowFunctionExpression") ||
+          isNodeOfType(initializer, "FunctionExpression"));
+      if (isFunctionInitializer && isNodeOfType(cursor.id, "Identifier")) {
+        const identifierName = cursor.id.name;
+        if (isReactComponentOrHookName(identifierName)) return identifierName;
+      }
+    }
+    cursor = cursor.parent ?? null;
+  }
+  return null;
+};
+
+// `createContext()` is identity-keyed: Provider/Consumer pairs match by
+// the exact Context object they were given. Calling it inside a render
+// function or hook produces a fresh Context object on every render,
+// which silently disconnects every consumer from its provider. This is
+// both a correctness bug (consumers always fall back to the default
+// value) and a perf bug (entire subtree re-renders). React's
+// documentation explicitly calls this out: createContext belongs at
+// module scope.
+//
+// Detection (v1):
+//   - `createContext(...)` named-imported (including renamed) from "react"
+//   - `React.createContext(...)` via the canonical namespace import
+//   - Reports only when the call is inside a function whose name looks
+//     like a React component (PascalCase) or hook (`use*`). Calls inside
+//     plain helper functions or at module scope are left alone.
+export const noCreateContextInRender = defineRule<Rule>({
+  id: "no-create-context-in-render",
+  severity: "error",
+  category: "Correctness",
+  recommendation:
+    "Move `createContext(...)` to module scope so its identity is stable across renders.",
+  create: (context: RuleContext) => ({
+    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+      if (!isCreateContextCallee(node.callee)) return;
+      const componentOrHookName = enclosingComponentOrHookName(node);
+      if (!componentOrHookName) return;
+      context.report({
+        node,
+        message: `${MESSAGE} (called inside "${componentOrHookName}")`,
+      });
+    },
+  }),
+});

@@ -491,9 +491,11 @@ const isParameterBindingWrapper = (expression: EsTreeNode): boolean => {
 };
 
 // Port of `oxc_linter::rules::react_perf::jsx_no_new_function_as_prop`.
-// Inline-expression coverage only — see jsx-no-new-array-as-prop's
-// LIMITATION note for the scope-analysis cases (`const x = () => {};
-// return <C onClick={x} />`) we don't catch yet.
+// Covers inline expressions AND render-local identifier bindings:
+// `const x = () => {}; return <C onClick={x} />` IS flagged when `x`
+// is declared in the render function's scope. Hoisted bindings
+// (module scope) are exempt — the allocation only happens once.
+// See `followsRenderLocalFunctionBinding` for the resolution details.
 export const jsxNoNewFunctionAsProp = defineRule<Rule>({
   id: "jsx-no-new-function-as-prop",
   tags: ["react-jsx-only"],

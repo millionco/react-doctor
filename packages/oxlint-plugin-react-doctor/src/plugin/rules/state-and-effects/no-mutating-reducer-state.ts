@@ -2,8 +2,16 @@ import { defineRule } from "../../utils/define-rule.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import {
+  findExportedFunctionBody,
+  findReExportSourceForName,
+  resolveImportedExportName,
+} from "../../utils/find-exported-function-body.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { parseSourceFile } from "../../utils/parse-source-file.js";
+import { resolveBarrelExportFilePath } from "../../utils/resolve-barrel-export-file-path.js";
+import { resolveRelativeImportPath } from "../../utils/resolve-relative-import-path.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -93,28 +101,28 @@ const isLodashMutatingImport = (sourceValue: string): boolean => {
 // same-reference return such as `return state`, `return alias`,
 // `return state.sort(...)`, or `return Object.assign(state, patch)`.
 //
-// Out of scope: reducer bodies must currently be present in the same file.
-// Imported reducer identifiers are intentionally skipped instead of followed
-// through the module graph because cross-file resolution requires
-// infrastructure the single-file lint pipeline doesn't have:
+// Cross-file resolution: when the reducer is imported from a
+// sibling file, the rule resolves the import via
+// `resolveRelativeImportPath` (which handles `.ts` / `.tsx` /
+// extension probing / package `exports` maps), then follows barrel
+// re-exports via `resolveBarrelExportFilePath`. Imported reducer
+// bodies are parsed with the cached `parseSourceFile` and the
+// exported function is located by `findExportedFunctionBody`. The
+// same path analysis then runs on the resolved function.
 //
-//   1. Path resolution — relative imports + TS path aliases + package
-//      exports + Node `imports`/`exports` map.
-//   2. File-system access from the rule context — currently each rule
-//      gets one file's AST and nothing else; adding fs IO would
-//      cross a layering boundary.
-//   3. Cross-file parsing and AST caching to keep lint runs fast on
-//      large monorepos.
-//   4. Barrel-export following (`export * from "./reducers"`).
-//   5. Generated / unparseable files (`.json`, `.svg.ts`) handled
-//      gracefully.
-//   6. Duplicate-report suppression when one reducer is used in many
-//      components — the diagnostic should attach to the reducer's
-//      source location, not every `useReducer` call site.
-//
-// Each of those is a multi-rule infrastructure change (every rule
-// that follows identifiers would benefit). Not viable as a single
-// per-rule enhancement; tracked at the engine layer instead.
+// Out of scope for cross-file:
+//   - Non-relative imports (`from "@/store/reducer"`) until TS path
+//     aliases are honoured. Project-level path-alias resolution
+//     would require reading `tsconfig.json` paths; skipping for now
+//     since most reducer imports in real codebases are relative.
+//   - Reducers defined in `node_modules` packages — those are
+//     packaged code, never the user's bug.
+//   - Generated files larger than 2 MB (skipped to keep lint runs
+//     bounded).
+//   - Duplicate-report suppression when the same reducer is wired to
+//     `useReducer` in many components — the rule de-dupes via the
+//     `analyzedReducers` WeakSet, so each unique reducer function
+//     body is reported only once per lint run.
 //
 // TODO(v2 - nested identity): this intentionally does not diagnose
 // nested-reference preservation like `state.user.name = "Ada"; return { ...state }`.
@@ -225,14 +233,26 @@ const isCallToImportedReactUseReducer = (node: EsTreeNodeOfType<"CallExpression"
   );
 };
 
-// Resolves only reducer bodies already present in this file. Imported reducer
-// identifiers resolve to import specifiers, not function bodies, and are skipped
-// per the v1 module-resolution limitation documented above.
 // TODO(v2 - reducer wrappers): wrapper calls are skipped entirely today. If we
 // later unwrap reducer wrappers, suppress known draft-producing wrappers like
 // Immer `produce` / `useImmerReducer`, and only analyze wrappers whose semantics
 // preserve plain reducer state.
-const resolveSameFileReducerFunction = (node: EsTreeNode | null | undefined): EsTreeNode | null => {
+
+// Resolves a reducer-argument expression to a function/arrow node we
+// can analyse for mutations. Handles three cases:
+//
+//   1. Inline function / arrow / function-expression — returned directly.
+//   2. Same-file Identifier binding — resolved via findVariableInitializer.
+//   3. Cross-file imported reducer — follows the import source (with
+//      barrel + re-export support) and locates the exported function.
+//      The cross-file branch is gated on `currentFilename` because it
+//      drives path resolution; tests that don't supply a filename
+//      (`runRule` with no filename option) get the same behaviour as
+//      v1 (skip cross-file).
+const resolveReducerFunction = (
+  node: EsTreeNode | null | undefined,
+  currentFilename: string | undefined,
+): EsTreeNode | null => {
   if (!node) return null;
   const unwrappedNode = stripParenExpression(node);
   if (isFunctionLikeAstNode(unwrappedNode)) return unwrappedNode;
@@ -241,8 +261,79 @@ const resolveSameFileReducerFunction = (node: EsTreeNode | null | undefined): Es
   const binding = findVariableInitializer(unwrappedNode, unwrappedNode.name);
   const initializer = binding?.initializer;
   if (!initializer) return null;
+
+  // Local binding to a function/arrow in this file.
   const unwrappedInitializer = stripParenExpression(initializer);
-  return isFunctionLikeAstNode(unwrappedInitializer) ? unwrappedInitializer : null;
+  if (isFunctionLikeAstNode(unwrappedInitializer)) return unwrappedInitializer;
+
+  // Imported binding — follow into the other file.
+  if (
+    isNodeOfType(initializer, "ImportSpecifier") ||
+    isNodeOfType(initializer, "ImportDefaultSpecifier")
+  ) {
+    if (!currentFilename) return null;
+    const importDeclaration = initializer.parent;
+    if (!importDeclaration || !isNodeOfType(importDeclaration, "ImportDeclaration")) return null;
+    const sourceValue = importDeclaration.source?.value;
+    if (typeof sourceValue !== "string") return null;
+    // Non-relative imports (`from "react-redux"`, etc.) resolve into
+    // node_modules. We skip those — they're packaged code, not the
+    // user's reducer.
+    if (!sourceValue.startsWith(".") && !sourceValue.startsWith("/")) return null;
+
+    const exportedName = resolveImportedExportName(initializer);
+    if (!exportedName) return null;
+    return resolveCrossFileFunctionExport(currentFilename, sourceValue, exportedName);
+  }
+
+  return null;
+};
+
+// Resolves `import { name } from "source"` to the actual function
+// body, following barrel re-exports up to BARREL_FOLLOW_DEPTH levels.
+const BARREL_FOLLOW_DEPTH = 4;
+
+const resolveCrossFileFunctionExport = (
+  fromFilename: string,
+  source: string,
+  exportedName: string,
+): EsTreeNode | null => {
+  const resolvedFilePath = resolveRelativeImportPath(fromFilename, source);
+  if (!resolvedFilePath) return null;
+  return resolveFunctionExportInFile(resolvedFilePath, exportedName, new Set<string>());
+};
+
+const resolveFunctionExportInFile = (
+  filePath: string,
+  exportedName: string,
+  visitedFilePaths: Set<string>,
+): EsTreeNode | null => {
+  if (visitedFilePaths.size >= BARREL_FOLLOW_DEPTH) return null;
+  if (visitedFilePaths.has(filePath)) return null;
+  visitedFilePaths.add(filePath);
+
+  // Barrel files re-export from other files. Resolve the barrel
+  // first so we land on the file that owns the function.
+  const barrelTargetPath = resolveBarrelExportFilePath(filePath, exportedName);
+  const actualFilePath = barrelTargetPath ?? filePath;
+
+  const programRoot = parseSourceFile(actualFilePath);
+  if (!programRoot) return null;
+
+  const exported = findExportedFunctionBody(programRoot, exportedName);
+  if (exported) return exported;
+
+  // The export might be a re-export not handled by the barrel
+  // resolver. Try one level of explicit re-export following.
+  const reExportSource = findReExportSourceForName(programRoot, exportedName);
+  if (reExportSource) {
+    const nextFilePath = resolveRelativeImportPath(actualFilePath, reExportSource);
+    if (nextFilePath) {
+      return resolveFunctionExportInFile(nextFilePath, exportedName, visitedFilePaths);
+    }
+  }
+
+  return null;
 };
 
 // Returns true if `callExpression` invokes a known lodash mutator
@@ -907,16 +998,18 @@ export const noMutatingReducerState = defineRule<Rule>({
   create: (context: RuleContext) => {
     const analyzedReducers = new WeakSet<EsTreeNode>();
     const reportedNodes = new WeakSet<EsTreeNode>();
+    const currentFilename = context.getFilename?.();
 
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         // Pipeline:
         // 1. accept only calls proven to be React's imported useReducer;
-        // 2. resolve the reducer body when it is local to this file;
+        // 2. resolve the reducer body — local to this file OR imported
+        //    from a sibling file via relative path / barrel re-export;
         // 3. analyze that reducer once, reporting mutations only when a path
         //    returns the original state reference.
         if (!isCallToImportedReactUseReducer(node)) return;
-        const reducerFunction = resolveSameFileReducerFunction(node.arguments?.[0]);
+        const reducerFunction = resolveReducerFunction(node.arguments?.[0], currentFilename);
         if (!reducerFunction || analyzedReducers.has(reducerFunction)) return;
         analyzedReducers.add(reducerFunction);
         analyzeReactUseReducerFunctionForStateMutation(context, reducerFunction, reportedNodes);

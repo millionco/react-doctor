@@ -921,19 +921,35 @@ describe("no-mutating-reducer-state", () => {
     expect(varAlias.diagnostics).toHaveLength(1);
   });
 
-  it("skips unresolved imported reducers for v1", () => {
+  it("skips imported reducers when the importing file isn't on disk (no filename context)", () => {
+    // runRule without a filename can't resolve relative imports.
+    // Cross-file resolution is intentionally a no-op in that case
+    // so unit fixtures don't accidentally read random files on disk.
     const result = runRule(
       noMutatingReducerState,
       `
       import { useReducer } from "react";
       import { reducer } from "./reducer";
 
-      // Imported reducer bodies require module graph resolution. The v1 rule
-      // treats this as a coverage gap instead of guessing across files.
       useReducer(reducer, {});
     `,
     );
 
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("skips reducers imported from a non-relative path (node_modules — not user's code)", () => {
+    const result = runRule(
+      noMutatingReducerState,
+      `
+      import { useReducer } from "react";
+      import { reducer } from "some-package";
+
+      useReducer(reducer, {});
+    `,
+      { filename: "/tmp/fixture.tsx" },
+    );
+
+    expect(result.diagnostics).toEqual([]);
   });
 });

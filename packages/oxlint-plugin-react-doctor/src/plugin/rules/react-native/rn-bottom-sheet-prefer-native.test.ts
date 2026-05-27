@@ -18,6 +18,6 @@ describe("rn-bottom-sheet-prefer-native", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0].message).toContain("react-native-raw-bottom-sheet");
-    expect(result.diagnostics[0].message).toContain("legacy JS-thread");
+    expect(result.diagnostics[0].message).toContain("prefer <Modal");
   });
 });

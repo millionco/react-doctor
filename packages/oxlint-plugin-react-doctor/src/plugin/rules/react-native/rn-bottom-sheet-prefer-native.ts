@@ -14,14 +14,15 @@ export const rnBottomSheetPreferNative = defineRule<Rule>({
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
-  recommendation: "Avoid legacy JS-thread bottom sheet packages in React Native",
+  recommendation:
+    'Use `<Modal presentationStyle="formSheet">` (RN v7+) for native gesture handling and snap points',
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       const source = node.source?.value;
       if (typeof source !== "string" || !JS_BOTTOM_SHEET_PACKAGES.has(source)) return;
       context.report({
         node,
-        message: `${source} is a legacy JS-thread bottom sheet package`,
+        message: `${source} is a JS-implemented bottom sheet — for v7+ RN, prefer <Modal presentationStyle="formSheet"> for native gesture handling and snap points`,
       });
     },
   }),

@@ -848,7 +848,6 @@ export const FileDrop = () => {
     expect(hits).toHaveLength(0);
   });
 
-  // Cleanup returned from an inner callback is not the effect's cleanup.
   it("DOES still flag when the only `return cleanup` is inside a nested callback (not the effect's body)", async () => {
     const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-nested-fn-return", {
       files: {

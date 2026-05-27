@@ -16,9 +16,6 @@ import { isCleanupFunctionLike, isCleanupReturn } from "./utils/is-cleanup-retur
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-// Effects that register listeners, subscriptions, or timers should return a
-// cleanup. Shared method allowlists keep this rule aligned with
-// `prefer-use-sync-external-store`.
 interface SubscribeLikeUsage {
   kind: "subscribe" | "timer";
   resourceName: string;
@@ -32,7 +29,6 @@ const findSubscribeLikeUsages = (callback: EsTreeNode): SubscribeLikeUsage[] => 
   ) {
     return usages;
   }
-  // Returned cleanup bodies are disposal code, not new registrations.
   let cleanupArgument: EsTreeNode | null = null;
   if (isNodeOfType(callback.body, "BlockStatement")) {
     const callbackStatements = callback.body.body ?? [];
@@ -77,8 +73,6 @@ interface CleanupBindings {
   effectScopeVariableNames: Set<string>;
 }
 
-// Trust cleanup names from the effect scope. Also allow local helpers to assign
-// cleanup functions to an effect-scope variable.
 const collectCleanupBindings = (effectCallback: EsTreeNode): CleanupBindings => {
   const bindings: CleanupBindings = {
     cleanupFunctionNames: new Set<string>(),
@@ -111,8 +105,6 @@ const collectCleanupBindings = (effectCallback: EsTreeNode): CleanupBindings => 
   });
 
   walkAst(effectCallback.body, (child: EsTreeNode) => {
-    // Function expressions create inner scopes; their cleanup is not returned
-    // by the effect unless the function itself is returned.
     if (
       child !== effectCallback.body &&
       (isNodeOfType(child, "ArrowFunctionExpression") || isNodeOfType(child, "FunctionExpression"))
@@ -146,7 +138,6 @@ const collectCleanupBindings = (effectCallback: EsTreeNode): CleanupBindings => 
   });
 
   walkAst(effectCallback.body, (child: EsTreeNode) => {
-    // Local helpers may assign cleanup into an effect-scope variable.
     if (
       isNodeOfType(child, "AssignmentExpression") &&
       isNodeOfType(child.left, "Identifier") &&
@@ -167,14 +158,10 @@ const effectHasCleanupRelease = (callback: EsTreeNode): boolean => {
   ) {
     return false;
   }
-  // `useEffect(() => store.subscribe(handler), [])` returns cleanup implicitly.
-  // Only accept subscribe methods known to return cleanup functions.
   if (!isNodeOfType(callback.body, "BlockStatement")) {
     return isCleanupReturningSubscribeLikeCallExpression(callback.body);
   }
   const cleanupBindings = collectCleanupBindings(callback);
-  // Cleanup can live in guarded branches; inspect effect-scope returns, but
-  // skip nested functions.
   let didFindCleanupReturn = false;
   walkInsideStatementBlocks(callback.body, (child: EsTreeNode) => {
     if (didFindCleanupReturn) return;

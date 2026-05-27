@@ -8,34 +8,6 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { closureCaptures } from "../../semantic/closure-captures.js";
 import { isDescendantScope, type ScopeDescriptor } from "../../semantic/scope-analysis.js";
 
-// Skips function expressions that are arguments to known memo-shaped
-// callers — useMemo, useCallback, memo. The user already opted into
-// memoising them where they are. Moving to module scope is sometimes
-// desirable, but the rule isn't a slam-dunk in those cases.
-const KNOWN_MEMOISING_CALLERS = new Set([
-  "useCallback",
-  "useMemo",
-  "memo",
-  "forwardRef",
-  "observer",
-  "lazy",
-]);
-
-const isInsideMemoisingCall = (functionNode: EsTreeNode): boolean => {
-  const parent = functionNode.parent;
-  if (!parent) return false;
-  if (!isNodeOfType(parent, "CallExpression")) return false;
-  if (parent.arguments?.[0] !== functionNode) return false;
-  const callee = parent.callee;
-  if (isNodeOfType(callee, "Identifier")) {
-    return KNOWN_MEMOISING_CALLERS.has(callee.name);
-  }
-  if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
-    return KNOWN_MEMOISING_CALLERS.has(callee.property.name);
-  }
-  return false;
-};
-
 // `prop-types`, `defaultProps`, etc. — `Component.foo = (...) => {}` is
 // a class-static-ish pattern that's usually intentional and isn't a
 // candidate for hoisting (it depends on the component identity).
@@ -115,12 +87,12 @@ export const preferModuleScopePureFunction = defineRule<Rule>({
       });
     };
 
-    const checkNamedFunction = (
-      functionNode: EsTreeNode,
-      bindingName: string,
-      bindingTarget: EsTreeNode,
-    ): void => {
-      if (isInsideMemoisingCall(bindingTarget)) return;
+    // The useCallback/useMemo wrapper case (`const f = useCallback(...)`)
+    // is already filtered out in the VariableDeclarator visitor by
+    // the `init must be ArrowFunctionExpression / FunctionExpression`
+    // guard — when the init is a CallExpression we never reach this
+    // helper. No further memo-call check needed here.
+    const checkNamedFunction = (functionNode: EsTreeNode, bindingName: string): void => {
       if (isAssignedToComponentMember(functionNode)) return;
       const component = enclosingComponentOrHookScope(functionNode, context.scopes.ownScopeFor);
       if (!component) return;
@@ -150,7 +122,7 @@ export const preferModuleScopePureFunction = defineRule<Rule>({
         // already handles those.
         const bindingName = node.id.name;
         if (/^[A-Z]/.test(bindingName)) return;
-        checkNamedFunction(initializer, bindingName, node);
+        checkNamedFunction(initializer, bindingName);
       },
       FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
         if (!node.id?.name) return;
@@ -159,7 +131,7 @@ export const preferModuleScopePureFunction = defineRule<Rule>({
         // Hooks are by definition closures over local state in their
         // call site — but a named hook inside ANOTHER hook with no
         // captures is genuinely hoistable. Allow the regular flow.
-        checkNamedFunction(node, bindingName, node);
+        checkNamedFunction(node, bindingName);
       },
     };
   },

@@ -102,9 +102,8 @@ const oklchToRgb = (lightness: number, chroma: number, hue: number): RgbColor =>
         255,
     ),
     green: clampColorChannel(
-      encodeSrgb(
-        -1.2684380046 * longCone + 2.6097574011 * mediumCone - 0.3413193965 * shortCone,
-      ) * 255,
+      encodeSrgb(-1.2684380046 * longCone + 2.6097574011 * mediumCone - 0.3413193965 * shortCone) *
+        255,
     ),
     blue: clampColorChannel(
       encodeSrgb(-0.0041960863 * longCone - 0.7034186147 * mediumCone + 1.707614701 * shortCone) *

@@ -739,6 +739,10 @@ Use this structure:
   - Reports `<exact condition>`.
   - Allows `<important valid patterns>`.
   - Adds tests for `<edge cases>`.
+- `Eval results`
+  - Include a table when RDE was run.
+  - Show enough numbers to prove the rule works and is not noisy.
+  - Link or name the filtered output artifact when useful.
 - `Test plan`
   - Focused test command.
   - Typecheck command.
@@ -748,8 +752,20 @@ Description requirements:
 
 - Start with "Catches X".
 - Include before and after examples.
+- Include an eval-results table for rules tested against OSS.
 - Mention important non-goals only if they clarify behavior.
 - Do not lead with implementation internals.
+
+Eval table template:
+
+| Check | Result |
+| --- | --- |
+| Repos scanned | `<number of distinct repos>` |
+| RootDir scans | `<number of manifest/rootDir entries>` |
+| Target rule | `<rule-name>` |
+| Diagnostics | `<total target-rule diagnostics>` |
+| False positives found | `<count after manual inspection>` |
+| Output artifact | `<filtered JSONL / summary path or link>` |
 
 ## Review Triage
 

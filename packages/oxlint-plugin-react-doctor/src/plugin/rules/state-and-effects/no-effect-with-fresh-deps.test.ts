@@ -181,4 +181,124 @@ describe("no-effect-with-fresh-deps", () => {
 
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("flags an Identifier dep whose binding is a render-local object literal", () => {
+    const result = runRule(
+      noEffectWithFreshDeps,
+      `
+      import { useEffect } from "react";
+
+      function Component({ a, b }) {
+        const config = { a, b };
+        useEffect(() => {}, [config]);
+      }
+    `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("config");
+    expect(result.diagnostics[0].message).toContain("object");
+  });
+
+  it("flags an Identifier dep whose binding is a render-local array literal", () => {
+    const result = runRule(
+      noEffectWithFreshDeps,
+      `
+      import { useEffect } from "react";
+
+      function Component({ x }) {
+        const xs = [x, x + 1];
+        useEffect(() => {}, [xs]);
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("xs");
+    expect(result.diagnostics[0].message).toContain("array");
+  });
+
+  it("flags an Identifier dep whose binding is a render-local arrow function", () => {
+    const result = runRule(
+      noEffectWithFreshDeps,
+      `
+      import { useEffect } from "react";
+
+      function Component() {
+        const handler = () => doStuff();
+        useEffect(() => {}, [handler]);
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("handler");
+  });
+
+  it("does NOT flag an Identifier dep whose binding is at module scope", () => {
+    const result = runRule(
+      noEffectWithFreshDeps,
+      `
+      import { useEffect } from "react";
+
+      const CONFIG = { a: 1, b: 2 };
+
+      function Component() {
+        useEffect(() => {}, [CONFIG]);
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does NOT flag an Identifier dep whose binding comes from useMemo / useCallback", () => {
+    const result = runRule(
+      noEffectWithFreshDeps,
+      `
+      import { useEffect, useMemo, useCallback } from "react";
+
+      function Component({ a, b }) {
+        const config = useMemo(() => ({ a, b }), [a, b]);
+        const handler = useCallback(() => doStuff(a), [a]);
+        useEffect(() => {}, [config, handler]);
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does NOT flag an Identifier dep whose binding comes from useRef", () => {
+    const result = runRule(
+      noEffectWithFreshDeps,
+      `
+      import { useEffect, useRef } from "react";
+
+      function Component() {
+        const ref = useRef({});
+        useEffect(() => {}, [ref]);
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does NOT flag an Identifier dep that comes from a custom hook (opaque)", () => {
+    const result = runRule(
+      noEffectWithFreshDeps,
+      `
+      import { useEffect } from "react";
+
+      function Component() {
+        const data = useMyCustomHook();
+        useEffect(() => {}, [data]);
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
 });

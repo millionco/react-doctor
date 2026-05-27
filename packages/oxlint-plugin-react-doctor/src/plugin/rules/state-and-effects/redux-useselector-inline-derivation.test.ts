@@ -141,6 +141,25 @@ describe("redux-useselector-inline-derivation", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("flags an inline .filter through a same-file typed-wrapper rebinding", () => {
+    const result = runRule(
+      reduxUseselectorInlineDerivation,
+      `
+      import { useSelector } from "react-redux";
+      import type { TypedUseSelectorHook } from "react-redux";
+
+      export const useAppSelector: TypedUseSelectorHook<RootState> = useSelector;
+
+      const activeUsers = useAppSelector((state) =>
+        state.users.filter((u) => u.active),
+      );
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain(".filter");
+  });
+
   it("does not flag a useSelector imported from a different module", () => {
     const result = runRule(
       reduxUseselectorInlineDerivation,

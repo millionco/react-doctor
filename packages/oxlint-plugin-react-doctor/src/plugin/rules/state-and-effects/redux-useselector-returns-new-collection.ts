@@ -1,7 +1,10 @@
+import {
+  collectReactReduxSelectorAliases,
+  isUseSelectorIdentifier,
+} from "../../utils/collect-react-redux-selector-aliases.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { isImportedFromModule } from "../../utils/find-import-source-for-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { Rule } from "../../utils/rule.js";
@@ -9,8 +12,6 @@ import type { RuleContext } from "../../utils/rule-context.js";
 
 const MESSAGE =
   "useSelector returning a new object/array re-renders on every dispatched action — the default `===` equality check always fails on a fresh reference. Either return a primitive, split into multiple useSelector calls, or pass `shallowEqual` (or a custom equality fn) as the second argument.";
-
-const REACT_REDUX_MODULE = "react-redux";
 
 const isConciseBodyReturningCollection = (functionNode: EsTreeNode): boolean => {
   if (
@@ -42,15 +43,6 @@ const isConciseBodyReturningCollection = (functionNode: EsTreeNode): boolean => 
   );
 };
 
-const isUseSelectorFromReactRedux = (
-  callExpression: EsTreeNodeOfType<"CallExpression">,
-): boolean => {
-  const callee = callExpression.callee;
-  if (!isNodeOfType(callee, "Identifier")) return false;
-  if (callee.name !== "useSelector") return false;
-  return isImportedFromModule(callExpression, callee.name, REACT_REDUX_MODULE);
-};
-
 // useSelector compares the selector's return value to the previous return
 // value with `===` (Object.is) by default. A fresh `{...}` / `[...]`
 // literal always fails that check, so the component re-renders on every
@@ -60,12 +52,13 @@ const isUseSelectorFromReactRedux = (
 //   - split into multiple useSelector calls
 //   - pass `shallowEqual` from `react-redux` as the second arg
 //
-// Scope (v1):
+// Scope:
 //   - matches the bare `useSelector` identifier imported from
-//     `react-redux`. Typed wrappers (`useAppSelector`, `useTypedSelector`)
-//     are intentionally NOT matched because they require cross-file
-//     resolution. Same-file aliases like `const useAppSelector = useSelector`
-//     are also skipped for v1.
+//     `react-redux` AND same-file typed-wrapper rebindings such as
+//     `const useAppSelector: TypedUseSelectorHook<RootState> =
+//     useSelector` (the canonical Redux Toolkit pattern). The cross-
+//     file form (typed wrapper in `hooks.ts`, used elsewhere) requires
+//     module-graph resolution and remains out of scope.
 //   - skipped when a second argument is present (any equality fn).
 //   - inline arrow/function selectors only. Selector hoisted to an
 //     identifier is skipped — those usually live alongside a `createSelector`
@@ -77,17 +70,23 @@ export const reduxUseselectorReturnsNewCollection = defineRule<Rule>({
   disabledBy: ["react-compiler"],
   recommendation:
     "Return a primitive, split into multiple useSelector calls, or pass `shallowEqual` from `react-redux` as the second argument.",
-  create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isUseSelectorFromReactRedux(node)) return;
-      const args = node.arguments ?? [];
-      if (args.length === 0) return;
-      if (args.length >= 2) return;
+  create: (context: RuleContext) => {
+    let aliases: ReadonlySet<string> = new Set<string>();
+    return {
+      Program(node: EsTreeNodeOfType<"Program">) {
+        aliases = collectReactReduxSelectorAliases(node as EsTreeNode);
+      },
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        if (!isUseSelectorIdentifier(node.callee, aliases)) return;
+        const args = node.arguments ?? [];
+        if (args.length === 0) return;
+        if (args.length >= 2) return;
 
-      const selectorArgument = stripParenExpression(args[0]);
-      if (!isConciseBodyReturningCollection(selectorArgument)) return;
+        const selectorArgument = stripParenExpression(args[0]);
+        if (!isConciseBodyReturningCollection(selectorArgument)) return;
 
-      context.report({ node, message: MESSAGE });
-    },
-  }),
+        context.report({ node, message: MESSAGE });
+      },
+    };
+  },
 });

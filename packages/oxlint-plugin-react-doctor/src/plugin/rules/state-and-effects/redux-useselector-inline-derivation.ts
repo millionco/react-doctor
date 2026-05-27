@@ -1,14 +1,15 @@
+import {
+  collectReactReduxSelectorAliases,
+  isUseSelectorIdentifier,
+} from "../../utils/collect-react-redux-selector-aliases.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { isImportedFromModule } from "../../utils/find-import-source-for-name.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-
-const REACT_REDUX_MODULE = "react-redux";
 
 // Array methods that allocate a fresh array on every call. Each one is a
 // classic "inline derivation" footgun inside useSelector because the
@@ -43,15 +44,6 @@ const MESSAGE_DERIVATION = (methodName: string): string =>
 
 const MESSAGE_NAMESPACE = (namespace: string, methodName: string): string =>
   `useSelector callback returns a fresh collection from \`${namespace}.${methodName}(...)\` on every store update — the default \`===\` equality check always fails, re-rendering on every dispatched action. Select the raw slice and derive with \`useMemo\` or \`reselect\`.`;
-
-const isUseSelectorFromReactRedux = (
-  callExpression: EsTreeNodeOfType<"CallExpression">,
-): boolean => {
-  const callee = callExpression.callee;
-  if (!isNodeOfType(callee, "Identifier")) return false;
-  if (callee.name !== "useSelector") return false;
-  return isImportedFromModule(callExpression, callee.name, REACT_REDUX_MODULE);
-};
 
 interface MethodAllocatingCallSite {
   readonly kind: "method";
@@ -140,17 +132,23 @@ const findFirstAllocatingCallInExpression = (
 //   2. Derive with `useMemo`, or
 //   3. Use a `createSelector` / `useSelector(selector, shallowEqual)` pair.
 //
-// Scope (v1):
-//   - Only flags `useSelector` imported as itself from `react-redux`.
-//     Typed wrappers (`useAppSelector`, etc.) need cross-file resolution.
+// Scope:
+//   - Flags `useSelector` from `react-redux` AND same-file typed-
+//     wrapper rebindings such as `const useAppSelector:
+//     TypedUseSelectorHook<RootState> = useSelector` (the canonical
+//     Redux Toolkit pattern). The cross-file form (typed wrapper in
+//     `hooks.ts`, used elsewhere) requires module-graph resolution
+//     and remains out of scope.
 //   - Only fires when no second argument is passed (the second arg
 //     usually carries `shallowEqual` or a custom equality fn).
 //   - Recursion stops at nested functions inside the selector — those
 //     run lazily and don't allocate on each store update.
-//   - Covers `.filter / .map / .flatMap / .slice / .concat / .reduce /
-//     .reduceRight / .toSorted / .toReversed / .toSpliced / .with` and
+//   - Covers `.filter / .map / .flatMap / .slice / .concat /
+//     .toSorted / .toReversed / .toSpliced / .with` and
 //     `Object.{keys,values,entries,fromEntries,assign}` /
-//     `Array.{from,of}` namespace calls.
+//     `Array.{from,of}` namespace calls. `reduce` / `reduceRight`
+//     are excluded because they can return any type (often a
+//     primitive aggregation).
 //   - Companion to `redux-useselector-returns-new-collection`, which
 //     covers selectors returning a bare `{...}` / `[...]` literal.
 export const reduxUseselectorInlineDerivation = defineRule<Rule>({
@@ -160,33 +158,39 @@ export const reduxUseselectorInlineDerivation = defineRule<Rule>({
   disabledBy: ["react-compiler"],
   recommendation:
     "Select the raw slice and derive with `useMemo`, or use `createSelector` from `reselect`.",
-  create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isUseSelectorFromReactRedux(node)) return;
-      const args = node.arguments ?? [];
-      if (args.length === 0) return;
-      if (args.length >= 2) return;
+  create: (context: RuleContext) => {
+    let aliases: ReadonlySet<string> = new Set<string>();
+    return {
+      Program(node: EsTreeNodeOfType<"Program">) {
+        aliases = collectReactReduxSelectorAliases(node as EsTreeNode);
+      },
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        if (!isUseSelectorIdentifier(node.callee, aliases)) return;
+        const args = node.arguments ?? [];
+        if (args.length === 0) return;
+        if (args.length >= 2) return;
 
-      const selectorArgument = stripParenExpression(args[0]);
-      if (
-        !isNodeOfType(selectorArgument, "ArrowFunctionExpression") &&
-        !isNodeOfType(selectorArgument, "FunctionExpression")
-      ) {
-        return;
-      }
+        const selectorArgument = stripParenExpression(args[0]);
+        if (
+          !isNodeOfType(selectorArgument, "ArrowFunctionExpression") &&
+          !isNodeOfType(selectorArgument, "FunctionExpression")
+        ) {
+          return;
+        }
 
-      const body = selectorArgument.body;
-      if (!body) return;
+        const body = selectorArgument.body;
+        if (!body) return;
 
-      const allocatingCall = findFirstAllocatingCallInExpression(body);
-      if (!allocatingCall) return;
+        const allocatingCall = findFirstAllocatingCallInExpression(body);
+        if (!allocatingCall) return;
 
-      const reportMessage =
-        allocatingCall.kind === "method"
-          ? MESSAGE_DERIVATION(allocatingCall.method)
-          : MESSAGE_NAMESPACE(allocatingCall.namespace, allocatingCall.method);
+        const reportMessage =
+          allocatingCall.kind === "method"
+            ? MESSAGE_DERIVATION(allocatingCall.method)
+            : MESSAGE_NAMESPACE(allocatingCall.namespace, allocatingCall.method);
 
-      context.report({ node: allocatingCall.node, message: reportMessage });
-    },
-  }),
+        context.report({ node: allocatingCall.node, message: reportMessage });
+      },
+    };
+  },
 });

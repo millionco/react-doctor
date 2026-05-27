@@ -111,13 +111,58 @@ describe("redux-useselector-returns-new-collection", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("does not flag a typed wrapper that re-binds useSelector locally", () => {
+  it("flags a same-file typed-wrapper rebinding of useSelector", () => {
     const result = runRule(
       reduxUseselectorReturnsNewCollection,
       `
       import { useSelector } from "react-redux";
 
       const useAppSelector = useSelector;
+
+      const value = useAppSelector((state) => ({ a: state.a }));
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a same-file typed-wrapper rebinding with TypedUseSelectorHook annotation", () => {
+    const result = runRule(
+      reduxUseselectorReturnsNewCollection,
+      `
+      import { useSelector } from "react-redux";
+      import type { TypedUseSelectorHook } from "react-redux";
+
+      export const useAppSelector: TypedUseSelectorHook<RootState> = useSelector;
+
+      const value = useAppSelector((state) => ({ a: state.a, b: state.b }));
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a chained alias `useTwoStepSelector = useAppSelector = useSelector`", () => {
+    const result = runRule(
+      reduxUseselectorReturnsNewCollection,
+      `
+      import { useSelector } from "react-redux";
+
+      const useAppSelector = useSelector;
+      const useTwoStepSelector = useAppSelector;
+
+      const value = useTwoStepSelector((state) => ({ a: state.a }));
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a renamed import that is NOT useSelector", () => {
+    const result = runRule(
+      reduxUseselectorReturnsNewCollection,
+      `
+      import { useDispatch as useAppSelector } from "react-redux";
 
       const value = useAppSelector((state) => ({ a: state.a }));
     `,

@@ -107,18 +107,23 @@ When the writing stage is done, report:
 
 ```md
 Implemented:
+
 - <rule, tests, registry, utilities>
 
 Detector behavior:
+
 - <what reports>
 - <what intentionally stays quiet>
 
 Validation run:
+
 - <focused tests/checks>
 
 Known v1 non-goals:
+
 - <unsupported cases preserved from the rule contract>
 
 Next stage:
+
 - Run `rule-validate`.
 ```

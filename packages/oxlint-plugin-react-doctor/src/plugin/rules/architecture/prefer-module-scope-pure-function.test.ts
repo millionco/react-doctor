@@ -145,6 +145,41 @@ describe("prefer-module-scope-pure-function", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("flags helpers that only call globals (console, setTimeout, Math)", () => {
+    const result = runRule(
+      preferModuleScopePureFunction,
+      `
+      function App() {
+        const logIt = (message) => {
+          console.log(message);
+          setTimeout(() => console.warn(message), Math.random() * 1000);
+        };
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("logIt");
+  });
+
+  it("flags helpers that read another module-scope helper", () => {
+    const result = runRule(
+      preferModuleScopePureFunction,
+      `
+      const stripPrefix = (s) => s.replace(/^prefix-/, "");
+
+      function App() {
+        const formatLabel = (label) => stripPrefix(label).toUpperCase();
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("formatLabel");
+  });
+
   it("does not flag helpers that read another local helper which closes over state", () => {
     const result = runRule(
       preferModuleScopePureFunction,

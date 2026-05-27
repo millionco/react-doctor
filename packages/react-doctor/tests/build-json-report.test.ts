@@ -12,6 +12,7 @@ const SAMPLE_PROJECT: ProjectInfo = {
   hasTypeScript: true,
   hasReactCompiler: false,
   hasTanStackQuery: false,
+  hasSolid: false,
   hasReactNativeWorkspace: false,
   sourceFileCount: 42,
 };

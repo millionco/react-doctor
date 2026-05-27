@@ -103,6 +103,7 @@ export interface CollectRuleHitsOptions {
   framework?: "unknown" | "react-native" | "expo";
   hasReactCompiler?: boolean;
   hasTanStackQuery?: boolean;
+  hasSolid?: boolean;
 }
 
 export interface BuildTestProjectOptions {
@@ -110,6 +111,7 @@ export interface BuildTestProjectOptions {
   framework?: ProjectInfo["framework"];
   hasReactCompiler?: boolean;
   hasTanStackQuery?: boolean;
+  hasSolid?: boolean;
   reactMajorVersion?: number | null;
   hasTypeScript?: boolean;
   tailwindVersion?: string | null;
@@ -135,6 +137,7 @@ export const buildTestProject = (options: BuildTestProjectOptions): ProjectInfo 
     hasTypeScript: options.hasTypeScript ?? true,
     hasReactCompiler: options.hasReactCompiler ?? false,
     hasTanStackQuery: options.hasTanStackQuery ?? false,
+    hasSolid: options.hasSolid ?? false,
     hasReactNativeWorkspace: framework === "expo" || framework === "react-native",
     sourceFileCount: 0,
   };

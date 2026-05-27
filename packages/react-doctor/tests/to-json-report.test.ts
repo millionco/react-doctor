@@ -27,6 +27,7 @@ const buildDiagnoseResult = (): DiagnoseResult => ({
     hasTypeScript: true,
     hasReactCompiler: false,
     hasTanStackQuery: false,
+    hasSolid: false,
     hasReactNativeWorkspace: false,
     sourceFileCount: 12,
   },

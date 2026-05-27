@@ -1,0 +1,19 @@
+packages/oxlint-plugin-react-doctor/src/plugin/utils/function-contains-react-render-output.ts
+  s_f0e0d1588083d4::t_1358ac2093aa07 2,27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "48c8628b4a8008bfc415eec33b77e43c7dda932b",
+  "prompts": {},
+  "sessions": {
+    "s_f0e0d1588083d4": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f03f10b0-65c0-44c9-9612-29866625371f",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

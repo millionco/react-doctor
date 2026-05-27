@@ -34,26 +34,6 @@ const classifyFreshDependency = (expression: EsTreeNode): FreshDepKind | null =>
   return null;
 };
 
-// Hooks whose results are guaranteed to be referentially stable across
-// renders, so following an Identifier dep back to one of these is fine.
-// Includes the React `use*` hook return types we can prove are
-// stable: useRef returns `{current}` (same object), useState returns
-// a setter (stable), useMemo / useCallback are explicit memoisation,
-// useReducer returns `[state, dispatch]` (dispatch is stable, state
-// is treated by exhaustive-deps as the dep), useId is a string. For
-// any other hook (`useFoo(...)`) we don't know the return shape —
-// treat as opaque (don't flag).
-const STABLE_HOOK_INITIALIZERS = new Set([
-  "useRef",
-  "useState",
-  "useReducer",
-  "useMemo",
-  "useCallback",
-  "useEffectEvent",
-  "useEvent",
-  "useId",
-]);
-
 // Returns the "fresh allocation" kind for `dep`, or null if the dep
 // is referentially stable enough that flagging would produce a false
 // positive. Distinguishes three cases:
@@ -76,27 +56,6 @@ interface ResolvedFreshness {
   readonly viaBindingName: string | null;
 }
 
-const isInsideStableHookCall = (initializer: EsTreeNode): boolean => {
-  let cursor: EsTreeNode | null | undefined = initializer.parent;
-  while (cursor && cursor.type !== "VariableDeclarator") {
-    if (isNodeOfType(cursor, "CallExpression")) {
-      const callee = cursor.callee;
-      if (isNodeOfType(callee, "Identifier") && STABLE_HOOK_INITIALIZERS.has(callee.name)) {
-        return true;
-      }
-      if (
-        isNodeOfType(callee, "MemberExpression") &&
-        isNodeOfType(callee.property, "Identifier") &&
-        STABLE_HOOK_INITIALIZERS.has(callee.property.name)
-      ) {
-        return true;
-      }
-    }
-    cursor = cursor.parent ?? null;
-  }
-  return false;
-};
-
 const resolveDependencyFreshness = (dep: EsTreeNode): ResolvedFreshness | null => {
   const directKind = classifyFreshDependency(dep);
   if (directKind) return { kind: directKind, viaBindingName: null };
@@ -108,9 +67,13 @@ const resolveDependencyFreshness = (dep: EsTreeNode): ResolvedFreshness | null =
   // Bindings declared at module scope (Program) are allocated once;
   // they're safe to use as deps regardless of shape.
   if (binding.scopeOwner.type === "Program") return null;
-  // Followed bindings whose initializer is the return value of an
-  // explicit memoising hook are stable by construction.
-  if (isInsideStableHookCall(binding.initializer)) return null;
+  // Initializers that are themselves a CallExpression (any function
+  // call — including `useMemo(...)`, `useCallback(...)`, `useRef(...)`,
+  // and ANY user-defined hook) are treated as opaque: their return
+  // value's referential stability depends on the called function's
+  // implementation, which we can't see. `classifyFreshDependency`
+  // returns null for CallExpression nodes, so the call below naturally
+  // bails out without us needing an explicit hook allowlist.
   const indirectKind = classifyFreshDependency(binding.initializer);
   if (!indirectKind) return null;
   return { kind: indirectKind, viaBindingName: stripped.name };

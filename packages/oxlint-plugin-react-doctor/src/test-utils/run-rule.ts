@@ -1,4 +1,5 @@
 import { attachParentReferences } from "./attach-parent-references.js";
+import { attachSourceLocations } from "./attach-source-locations.js";
 import { parseFixture } from "./parse-fixture.js";
 import { isAstNode } from "../plugin/utils/is-ast-node.js";
 import type { EsTreeNode } from "../plugin/utils/es-tree-node.js";
@@ -61,6 +62,7 @@ export const runRule = (rule: Rule, code: string, options: RunRuleOptions = {}):
     forceJsx: options.forceJsx,
   });
   attachParentReferences(parsed.program);
+  attachSourceLocations(parsed.program, code);
 
   const diagnostics: RuleDiagnostic[] = [];
   const scopes = analyzeScopes(parsed.program);

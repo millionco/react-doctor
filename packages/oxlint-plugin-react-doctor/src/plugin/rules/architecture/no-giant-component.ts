@@ -1,5 +1,6 @@
 import { GIANT_COMPONENT_LINE_THRESHOLD } from "../../constants/thresholds.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { functionContainsReactRenderOutput } from "../../utils/function-contains-react-render-output.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
@@ -33,11 +34,13 @@ export const noGiantComponent = defineRule<Rule>({
     return {
       FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
         if (!node.id?.name || !isUppercaseName(node.id.name)) return;
+        if (!functionContainsReactRenderOutput(node, context.scopes)) return;
         reportOversizedComponent(node.id, node.id.name, node);
       },
       VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
         if (!isComponentAssignment(node)) return;
         if (!isNodeOfType(node.id, "Identifier") || !node.init) return;
+        if (!functionContainsReactRenderOutput(node.init, context.scopes)) return;
         reportOversizedComponent(node.id, node.id.name, node.init);
       },
     };

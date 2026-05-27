@@ -13,14 +13,19 @@ const REACT_REDUX_MODULE = "react-redux";
 // Array methods that allocate a fresh array on every call. Each one is a
 // classic "inline derivation" footgun inside useSelector because the
 // resulting reference fails the default `===` check.
+//
+// NOTE: `reduce` and `reduceRight` are deliberately NOT included.
+// They can return any type — most commonly a primitive (`reduce((sum,
+// x) => sum + x.score, 0)`) — so flagging them produces too many
+// false positives. The cases where reduce does build a new array
+// (`reduce((acc, x) => [...acc, x], [])`) are typically intentional
+// derivations the user has decided to colocate with the selector.
 const ALLOCATING_ARRAY_METHODS = new Set([
   "filter",
   "map",
   "flatMap",
   "slice",
   "concat",
-  "reduce",
-  "reduceRight",
   "toSorted",
   "toReversed",
   "toSpliced",

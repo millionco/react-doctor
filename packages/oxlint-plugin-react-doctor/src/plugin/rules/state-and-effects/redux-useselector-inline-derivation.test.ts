@@ -94,6 +94,25 @@ describe("redux-useselector-inline-derivation", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not flag .reduce (returns any type, often a primitive)", () => {
+    const result = runRule(
+      reduxUseselectorInlineDerivation,
+      `
+      import { useSelector } from "react-redux";
+
+      const totalScore = useSelector((state) =>
+        state.users.reduce((sum, user) => sum + user.score, 0),
+      );
+
+      const merged = useSelector((state) =>
+        state.entries.reduceRight((acc, entry) => ({ ...acc, ...entry }), {}),
+      );
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("does not flag selectors returning a plain slice", () => {
     const result = runRule(
       reduxUseselectorInlineDerivation,

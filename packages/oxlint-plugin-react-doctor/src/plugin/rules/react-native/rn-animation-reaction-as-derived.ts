@@ -51,10 +51,21 @@ export const rnAnimationReactionAsDerived = defineRule<Rule>({
         singleAssignment = body;
       }
       if (!singleAssignment) return;
-      if (!isNodeOfType(singleAssignment, "AssignmentExpression")) return;
-      if (!isNodeOfType(singleAssignment.left, "MemberExpression")) return;
-      if (!isNodeOfType(singleAssignment.left.property, "Identifier")) return;
-      if (singleAssignment.left.property.name !== "value") return;
+
+      const isValueAssignment =
+        isNodeOfType(singleAssignment, "AssignmentExpression") &&
+        isNodeOfType(singleAssignment.left, "MemberExpression") &&
+        isNodeOfType(singleAssignment.left.property, "Identifier") &&
+        singleAssignment.left.property.name === "value";
+
+      const isSetCall =
+        isNodeOfType(singleAssignment, "CallExpression") &&
+        isNodeOfType(singleAssignment.callee, "MemberExpression") &&
+        isNodeOfType(singleAssignment.callee.property, "Identifier") &&
+        singleAssignment.callee.property.name === "set" &&
+        (singleAssignment.arguments?.length ?? 0) === 1;
+
+      if (!isValueAssignment && !isSetCall) return;
 
       context.report({
         node,

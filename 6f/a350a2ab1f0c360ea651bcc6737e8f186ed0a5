@@ -1,0 +1,21 @@
+packages/react-doctor/tests/regressions/cli-and-output.test.ts
+  s_21f13d772deb4e::t_c6481f8f524001 54,69
+packages/react-doctor/src/cli/utils/copy-issues-to-clipboard.ts
+  s_21f13d772deb4e::t_dd550f73fd0bca 66-68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "6fa350a2ab1f0c360ea651bcc6737e8f186ed0a5",
+  "prompts": {},
+  "sessions": {
+    "s_21f13d772deb4e": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a5c49233-ce77-4bcf-b755-79d23bc5a4c8",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

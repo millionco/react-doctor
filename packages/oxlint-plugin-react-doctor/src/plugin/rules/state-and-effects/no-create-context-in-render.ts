@@ -1,4 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { enclosingComponentOrHookName } from "../../utils/enclosing-component-or-hook-name.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import {
@@ -7,7 +8,6 @@ import {
 } from "../../utils/find-import-source-for-name.js";
 import { isCanonicalReactNamespaceName } from "../../utils/is-canonical-react-namespace-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { isReactComponentOrHookName } from "../../utils/is-react-component-or-hook-name.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
@@ -49,32 +49,6 @@ const isCreateContextCallee = (callee: EsTreeNode): boolean => {
   }
 
   return false;
-};
-
-// Returns the name of the nearest enclosing React component or hook,
-// or null if none is found (i.e. the call is at module scope or inside
-// a regular helper function).
-const enclosingComponentOrHookName = (node: EsTreeNode): string | null => {
-  let cursor: EsTreeNode | null | undefined = node.parent;
-  while (cursor) {
-    if (isNodeOfType(cursor, "FunctionDeclaration")) {
-      const name = cursor.id?.name ?? null;
-      if (name && isReactComponentOrHookName(name)) return name;
-    }
-    if (isNodeOfType(cursor, "VariableDeclarator")) {
-      const initializer = cursor.init;
-      const isFunctionInitializer =
-        initializer &&
-        (isNodeOfType(initializer, "ArrowFunctionExpression") ||
-          isNodeOfType(initializer, "FunctionExpression"));
-      if (isFunctionInitializer && isNodeOfType(cursor.id, "Identifier")) {
-        const identifierName = cursor.id.name;
-        if (isReactComponentOrHookName(identifierName)) return identifierName;
-      }
-    }
-    cursor = cursor.parent ?? null;
-  }
-  return null;
 };
 
 // `createContext()` is identity-keyed: Provider/Consumer pairs match by

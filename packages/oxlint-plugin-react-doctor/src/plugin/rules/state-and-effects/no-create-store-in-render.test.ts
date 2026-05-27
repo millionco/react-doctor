@@ -175,6 +175,56 @@ describe("no-create-store-in-render", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags `namespace.create(...)` when the namespace is imported from zustand", () => {
+    const result = runRule(
+      noCreateStoreInRender,
+      `
+      import * as zustand from "zustand";
+
+      function App() {
+        const useStore = zustand.create((set) => ({ count: 0 }));
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("zustand.create");
+  });
+
+  it("flags `mobx.makeAutoObservable(...)` via a namespace import", () => {
+    const result = runRule(
+      noCreateStoreInRender,
+      `
+      import * as mobx from "mobx";
+
+      function App() {
+        const state = mobx.makeAutoObservable({ count: 0 });
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("makeAutoObservable");
+  });
+
+  it("does not flag `random.create(...)` from a non-supported namespace import", () => {
+    const result = runRule(
+      noCreateStoreInRender,
+      `
+      import * as random from "some-other-lib";
+
+      function App() {
+        const useStore = random.create((set) => ({ count: 0 }));
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("does not flag store factories from non-supported modules", () => {
     const result = runRule(
       noCreateStoreInRender,

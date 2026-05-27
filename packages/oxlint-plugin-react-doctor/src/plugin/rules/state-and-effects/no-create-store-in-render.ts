@@ -1,7 +1,10 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
+import {
+  getImportedNameFromModule,
+  isImportedFromModule,
+} from "../../utils/find-import-source-for-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentOrHookName } from "../../utils/is-react-component-or-hook-name.js";
 import type { Rule } from "../../utils/rule.js";
@@ -32,6 +35,11 @@ const STORE_FACTORIES: ReadonlyArray<StoreApi> = [
     exportedName: "configureStore",
     humanLabel: "@reduxjs/toolkit.configureStore",
   },
+  // createSlice doesn't allocate a store proper, but it allocates a
+  // fresh reducer + action-creator bundle each call. Calling it in
+  // render means dispatching the returned action creators never lands
+  // a stable type/identity downstream, and the reducer reference
+  // changes per render — bad enough to flag with the same severity.
   { module: "@reduxjs/toolkit", exportedName: "createSlice", humanLabel: "createSlice" },
   { module: "jotai", exportedName: "atom", humanLabel: "jotai.atom" },
   { module: "jotai/vanilla", exportedName: "atom", humanLabel: "jotai.atom" },
@@ -52,15 +60,43 @@ for (const factory of STORE_FACTORIES) {
   STORE_FACTORY_LOOKUP.set(factory.exportedName, [...bucket, factory]);
 }
 
+// Resolves a CallExpression callee to the StoreApi it points at, or
+// null if it doesn't point at one. Handles:
+//
+//   1. Bare Identifier callees    — `create(...)` where `create` was
+//      named-imported (possibly renamed) from a supported library.
+//   2. MemberExpression callees   — `zustand.create(...)` /
+//      `mobx.makeAutoObservable(...)` where the receiver is either a
+//      namespace import (`import * as zustand from "zustand"`) or a
+//      default import that happens to expose the factory on itself.
 const resolveStoreFactoryForCallee = (callee: EsTreeNode): StoreApi | null => {
-  if (!isNodeOfType(callee, "Identifier")) return null;
-  const localName = callee.name;
-  for (const factoryBucket of STORE_FACTORY_LOOKUP.values()) {
-    for (const factory of factoryBucket) {
-      const canonicalName = getImportedNameFromModule(callee, localName, factory.module);
-      if (canonicalName === factory.exportedName) return factory;
+  if (isNodeOfType(callee, "Identifier")) {
+    const localName = callee.name;
+    for (const factoryBucket of STORE_FACTORY_LOOKUP.values()) {
+      for (const factory of factoryBucket) {
+        const canonicalName = getImportedNameFromModule(callee, localName, factory.module);
+        if (canonicalName === factory.exportedName) return factory;
+      }
     }
+    return null;
   }
+
+  if (isNodeOfType(callee, "MemberExpression") && !callee.computed) {
+    const namespaceIdentifier = callee.object;
+    const propertyIdentifier = callee.property;
+    if (!isNodeOfType(namespaceIdentifier, "Identifier")) return null;
+    if (!isNodeOfType(propertyIdentifier, "Identifier")) return null;
+    const propertyName = propertyIdentifier.name;
+    const factoryBucket = STORE_FACTORY_LOOKUP.get(propertyName);
+    if (!factoryBucket) return null;
+    for (const factory of factoryBucket) {
+      if (isImportedFromModule(namespaceIdentifier, namespaceIdentifier.name, factory.module)) {
+        return factory;
+      }
+    }
+    return null;
+  }
+
   return null;
 };
 
@@ -124,7 +160,7 @@ export const noCreateStoreInRender = defineRule<Rule>({
       if (!componentOrHookName) return;
       context.report({
         node,
-        message: `\`${factory.humanLabel}(...)\` called inside "${componentOrHookName}" allocates a fresh store on every render — every subscriber disconnects and state resets. Hoist the call to module scope.`,
+        message: `\`${factory.humanLabel}(...)\` called inside "${componentOrHookName}" allocates a fresh state container on every render — subscribers disconnect, identities (action creators, reducer reference, store instance) churn, and persisted state resets. Hoist the call to module scope.`,
       });
     },
   }),

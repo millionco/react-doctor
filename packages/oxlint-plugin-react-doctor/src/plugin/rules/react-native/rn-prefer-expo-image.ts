@@ -26,14 +26,16 @@ export const rnPreferExpoImage = defineRule<Rule>({
 
     return {
       ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
-        if (node.source?.value !== "react-native") return;
+        const source = node.source?.value;
+
+        if (source !== "react-native") return;
         for (const specifier of node.specifiers ?? []) {
           if (!isNodeOfType(specifier, "ImportSpecifier")) continue;
-          if (getImportedName(specifier) !== "Image") continue;
+          const importedName = getImportedName(specifier);
+          if (importedName !== "Image" && importedName !== "ImageBackground") continue;
           context.report({
             node: specifier,
-            message:
-              "Importing Image from react-native — prefer expo-image for caching, placeholders, and progressive loading (drop-in API)",
+            message: `Importing ${importedName} from react-native — prefer expo-image for caching, placeholders, and progressive loading (drop-in API)`,
           });
         }
       },

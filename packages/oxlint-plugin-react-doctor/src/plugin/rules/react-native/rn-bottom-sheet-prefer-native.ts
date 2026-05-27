@@ -7,6 +7,10 @@ const JS_BOTTOM_SHEET_PACKAGES = new Set([
   "react-native-bottom-sheet",
   "react-native-modal-bottom-sheet",
   "react-native-raw-bottom-sheet",
+  "react-native-modalize",
+  "react-native-actions-sheet",
+  "react-native-bottomsheet-reanimated",
+  "@discord/bottom-sheet",
 ]);
 
 export const rnBottomSheetPreferNative = defineRule<Rule>({

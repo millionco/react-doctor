@@ -13,12 +13,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // is to provide `getItemType={item => item.kind}` (or similar) so
 // FlashList keeps separate recycle pools per type.
 //
-// Heuristic: <FlashList recycleItems> AND `<FlashList renderItem={...}>`
-// where the renderItem return type is varied (multiple JSX element
-// names returned via conditional / branching). We approximate by
-// flagging any FlashList/LegendList with `recycleItems` and no
-// `getItemType` — the user can add `getItemType` if they have one
-// item type, in which case the rule is silent.
+// We fire when `recycleItems` is present (explicit opt-in or FlashList
+// v2 default) AND `getItemType` is absent. Bare `recycleItems` (no
+// value) or `recycleItems={true}` counts as enabled.
 const RECYCLABLE_LIST_NAMES = new Set(["FlashList", "LegendList"]);
 
 export const rnListRecyclableWithoutTypes = defineRule<Rule>({
@@ -40,9 +37,6 @@ export const rnListRecyclableWithoutTypes = defineRule<Rule>({
         if (!isNodeOfType(attr, "JSXAttribute")) continue;
         if (!isNodeOfType(attr.name, "JSXIdentifier")) continue;
         if (attr.name.name === "recycleItems") {
-          // Bare `recycleItems` (no `={...}`) → true. `recycleItems={true}`
-          // → true. `recycleItems={false}` → DISABLES recycling, so the
-          // rule shouldn't fire.
           if (!attr.value) {
             hasRecycleItemsEnabled = true;
           } else if (
@@ -51,7 +45,6 @@ export const rnListRecyclableWithoutTypes = defineRule<Rule>({
           ) {
             hasRecycleItemsEnabled = attr.value.expression.value === true;
           } else {
-            // Dynamic value: assume it can be true.
             hasRecycleItemsEnabled = true;
           }
         }

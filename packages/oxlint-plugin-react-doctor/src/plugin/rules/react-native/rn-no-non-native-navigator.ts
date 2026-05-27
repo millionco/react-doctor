@@ -3,9 +3,16 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-const NON_NATIVE_NAVIGATOR_PACKAGES = new Set([
-  "@react-navigation/stack",
-  "@react-navigation/drawer",
+const NON_NATIVE_NAVIGATOR_PACKAGES = new Map<string, string>([
+  ["@react-navigation/stack", "@react-navigation/native-stack"],
+  [
+    "@react-navigation/drawer",
+    "expo-router Drawer (no native equivalent exists for standalone React Navigation)",
+  ],
+  [
+    "@react-navigation/bottom-tabs",
+    "@react-navigation/native-tabs (v7+) or expo-router NativeTabs",
+  ],
 ]);
 
 // HACK: @react-navigation/stack uses a JS-implemented stack with
@@ -22,8 +29,9 @@ export const rnNoNonNativeNavigator = defineRule<Rule>({
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       const source = node.source?.value;
-      if (typeof source !== "string" || !NON_NATIVE_NAVIGATOR_PACKAGES.has(source)) return;
-      const replacement = source.replace("@react-navigation/", "@react-navigation/native-");
+      if (typeof source !== "string") return;
+      const replacement = NON_NATIVE_NAVIGATOR_PACKAGES.get(source);
+      if (!replacement) return;
       context.report({
         node,
         message: `${source} uses a JS-implemented navigator — use ${replacement} for native iOS/Android transitions and gestures`,

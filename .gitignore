@@ -16,6 +16,28 @@ review-*.md
 /.agents/skills/*
 !/.agents/skills/react-doctor/
 !/.agents/skills/react-doctor/**
+!/.agents/skills/adversarial-test-designer/
+!/.agents/skills/adversarial-test-designer/**
+!/.agents/skills/ast-rule-planner/
+!/.agents/skills/ast-rule-planner/**
+!/.agents/skills/rde-idea-evaluator/
+!/.agents/skills/rde-idea-evaluator/**
+!/.agents/skills/rde-rule-validator/
+!/.agents/skills/rde-rule-validator/**
+!/.agents/skills/review-comment-triager/
+!/.agents/skills/review-comment-triager/**
+!/.agents/skills/rule-idea-validator/
+!/.agents/skills/rule-idea-validator/**
+!/.agents/skills/rule-implementation-reviewer/
+!/.agents/skills/rule-implementation-reviewer/**
+!/.agents/skills/rule-pr-writer/
+!/.agents/skills/rule-pr-writer/**
+!/.agents/skills/rule-researcher/
+!/.agents/skills/rule-researcher/**
+!/.agents/skills/rule-resource-tutor/
+!/.agents/skills/rule-resource-tutor/**
+!/.agents/skills/rule-scope-guard/
+!/.agents/skills/rule-scope-guard/**
 
 # Local-only: rule-catalog generators and per-rule prompts. The generated
 # `rules.json` and the prompts themselves live in the (private) evals repo;

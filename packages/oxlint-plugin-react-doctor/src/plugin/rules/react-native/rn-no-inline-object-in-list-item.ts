@@ -1,15 +1,10 @@
+import { RENDER_ITEM_PROP_NAMES } from "../../constants/react-native.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-
-const RENDER_ITEM_PROP_NAMES = new Set([
-  "renderItem",
-  "renderSectionHeader",
-  "renderSectionFooter",
-]);
 
 // HACK: inside `renderItem`, JSX prop values that are object literals
 // (`style={{...}}`, `user={{...}}`, etc.) allocate a fresh object
@@ -25,32 +20,30 @@ export const rnNoInlineObjectInListItem = defineRule<Rule>({
   recommendation:
     "Hoist style/object props outside renderItem (StyleSheet.create, useMemo at list scope, or pass primitives) so memo() row components stop bailing",
   create: (context: RuleContext) => {
-    let renderItemDepth = 0;
+    const renderPropStack: string[] = [];
 
-    const isRenderItemAttribute = (parent: EsTreeNode | null | undefined): boolean => {
-      if (!isNodeOfType(parent, "JSXAttribute")) return false;
-      const attrName = isNodeOfType(parent.name, "JSXIdentifier") ? parent.name.name : null;
-      return attrName ? RENDER_ITEM_PROP_NAMES.has(attrName) : false;
-    };
-
-    const isRenderItemFunction = (node: EsTreeNode): boolean => {
+    const resolveRenderPropName = (node: EsTreeNode): string | null => {
       if (
         !isNodeOfType(node, "ArrowFunctionExpression") &&
         !isNodeOfType(node, "FunctionExpression")
       ) {
-        return false;
+        return null;
       }
-      // Walk up: parent should be JSXExpressionContainer whose parent is JSXAttribute renderItem.
       const expressionContainer = node.parent;
-      if (!isNodeOfType(expressionContainer, "JSXExpressionContainer")) return false;
-      return isRenderItemAttribute(expressionContainer.parent);
+      if (!isNodeOfType(expressionContainer, "JSXExpressionContainer")) return null;
+      const attr = expressionContainer.parent;
+      if (!isNodeOfType(attr, "JSXAttribute")) return null;
+      const attrName = isNodeOfType(attr.name, "JSXIdentifier") ? attr.name.name : null;
+      return attrName && RENDER_ITEM_PROP_NAMES.has(attrName) ? attrName : null;
     };
 
     const enter = (node: EsTreeNode): void => {
-      if (isRenderItemFunction(node)) renderItemDepth++;
+      const renderPropName = resolveRenderPropName(node);
+      if (renderPropName) renderPropStack.push(renderPropName);
     };
     const exit = (node: EsTreeNode): void => {
-      if (isRenderItemFunction(node)) renderItemDepth = Math.max(0, renderItemDepth - 1);
+      const renderPropName = resolveRenderPropName(node);
+      if (renderPropName) renderPropStack.pop();
     };
 
     return {
@@ -59,13 +52,18 @@ export const rnNoInlineObjectInListItem = defineRule<Rule>({
       FunctionExpression: enter,
       "FunctionExpression:exit": exit,
       JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
-        if (renderItemDepth === 0) return;
+        if (renderPropStack.length === 0) return;
         if (!isNodeOfType(node.value, "JSXExpressionContainer")) return;
-        if (!isNodeOfType(node.value.expression, "ObjectExpression")) return;
+        const expression = node.value.expression;
+        const isInlineObject = isNodeOfType(expression, "ObjectExpression");
+        const isInlineArray = isNodeOfType(expression, "ArrayExpression");
+        if (!isInlineObject && !isInlineArray) return;
         const propName = isNodeOfType(node.name, "JSXIdentifier") ? node.name.name : "<unknown>";
+        const literalKind = isInlineArray ? "array" : "object";
+        const activeRenderProp = renderPropStack[renderPropStack.length - 1];
         context.report({
           node,
-          message: `Inline object literal on "${propName}" inside renderItem — allocates a fresh reference per row and breaks memo() on the row component. Hoist outside renderItem or pass primitives`,
+          message: `Inline ${literalKind} literal on "${propName}" inside ${activeRenderProp} — allocates a fresh reference per render and breaks memo(). Hoist outside ${activeRenderProp} or pass primitives`,
         });
       },
     };

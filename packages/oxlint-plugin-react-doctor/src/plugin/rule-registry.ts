@@ -248,6 +248,7 @@ import { rnListDataMapped } from "./rules/react-native/rn-list-data-mapped.js";
 import { rnListRecyclableWithoutTypes } from "./rules/react-native/rn-list-recyclable-without-types.js";
 import { rnNoDeprecatedModules } from "./rules/react-native/rn-no-deprecated-modules.js";
 import { rnNoDimensionsGet } from "./rules/react-native/rn-no-dimensions-get.js";
+import { rnNoFalsyAndRender } from "./rules/react-native/rn-no-falsy-and-render.js";
 import { rnNoInlineFlatlistRenderitem } from "./rules/react-native/rn-no-inline-flatlist-renderitem.js";
 import { rnNoInlineObjectInListItem } from "./rules/react-native/rn-no-inline-object-in-list-item.js";
 import { rnNoLegacyExpoPackages } from "./rules/react-native/rn-no-legacy-expo-packages.js";
@@ -2944,6 +2945,18 @@ export const reactDoctorRules = [
       framework: "react-native",
       category: "React Native",
       tags: [...new Set(["react-native", ...(rnNoDimensionsGet.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/rn-no-falsy-and-render",
+    id: "rn-no-falsy-and-render",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...rnNoFalsyAndRender,
+      framework: "react-native",
+      category: "React Native",
+      tags: [...new Set(["react-native", ...(rnNoFalsyAndRender.tags ?? [])])],
     },
   },
   {

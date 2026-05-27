@@ -12,6 +12,8 @@ const TOUCHABLE_COMPONENTS = new Set([
   "TouchableNativeFeedback",
 ]);
 
+const TOUCHABLE_SOURCES = new Set(["react-native", "react-native-gesture-handler"]);
+
 // HACK: TouchableOpacity / TouchableHighlight / TouchableWithoutFeedback /
 // TouchableNativeFeedback are legacy and feature-frozen. Pressable is the
 // modern, more configurable, more accessible replacement that works the
@@ -25,7 +27,8 @@ export const rnPreferPressable = defineRule<Rule>({
     "Use `<Pressable>` from react-native (or react-native-gesture-handler) instead of legacy Touchable* components",
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
-      if (node.source?.value !== "react-native") return;
+      const source = node.source?.value;
+      if (typeof source !== "string" || !TOUCHABLE_SOURCES.has(source)) return;
       for (const specifier of node.specifiers ?? []) {
         if (!isNodeOfType(specifier, "ImportSpecifier")) continue;
         const importedName = getImportedName(specifier);

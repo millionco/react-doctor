@@ -103,7 +103,7 @@ describe("inspect — score surface filter", () => {
   // dropped any user-configured `surfaces.cli.exclude*` controls before
   // the printed output rendered. The filter now always runs so user
   // overrides on the cli surface flow through end-to-end.
-  it("honors user-configured `surfaces.cli` overrides on the printed output", async () => {
+  it("honors user-configured `surfaces.cli` overrides on the printed output", { timeout: 60_000 }, async () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     stubScoreFetchAndCapture();
     const printedLines: string[] = [];

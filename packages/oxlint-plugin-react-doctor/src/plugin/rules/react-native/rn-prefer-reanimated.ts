@@ -5,6 +5,8 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { getImportedName } from "../../utils/get-imported-name.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
+const JS_THREAD_ANIMATION_IMPORTS = new Set(["Animated", "LayoutAnimation"]);
+
 export const rnPreferReanimated = defineRule<Rule>({
   id: "rn-prefer-reanimated",
   tags: ["test-noise"],
@@ -18,12 +20,17 @@ export const rnPreferReanimated = defineRule<Rule>({
 
       for (const specifier of node.specifiers ?? []) {
         if (!isNodeOfType(specifier, "ImportSpecifier")) continue;
-        if (getImportedName(specifier) !== "Animated") continue;
+        const importedName = getImportedName(specifier);
+        if (!importedName || !JS_THREAD_ANIMATION_IMPORTS.has(importedName)) continue;
+
+        const suggestion =
+          importedName === "LayoutAnimation"
+            ? "LayoutAnimation runs animations on the JS thread and causes full layout recalculations — use Reanimated's Layout Animations (entering/exiting/layout props) for UI-thread layout transitions"
+            : "Animated from react-native runs animations on the JS thread — use react-native-reanimated for performant UI-thread animations";
 
         context.report({
           node: specifier,
-          message:
-            "Animated from react-native runs animations on the JS thread — use react-native-reanimated for performant UI-thread animations",
+          message: suggestion,
         });
       }
     },

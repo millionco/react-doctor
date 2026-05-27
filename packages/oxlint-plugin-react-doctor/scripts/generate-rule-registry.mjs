@@ -25,6 +25,7 @@ const BUCKET_TO_FRAMEWORK = {
   "react-native": "react-native",
   "tanstack-start": "tanstack-start",
   "tanstack-query": "tanstack-query",
+  solid: "solid",
 };
 
 // Bucket directory → behavioral tags merged onto every rule in that
@@ -37,6 +38,7 @@ const BUCKET_TO_FRAMEWORK = {
 const BUCKET_TO_AUTO_TAGS = {
   "react-native": ["react-native"],
   server: ["server-action"],
+  solid: ["solid"],
 };
 
 // Buckets containing rules ported from external upstream linters
@@ -78,6 +80,7 @@ const BUCKET_TO_DEFAULT_CATEGORY = {
   security: "Security",
   server: "Server",
   "state-and-effects": "State & Effects",
+  solid: "SolidJS",
   "tanstack-query": "TanStack Query",
   "tanstack-start": "TanStack Start",
   "view-transitions": "Correctness",

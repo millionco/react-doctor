@@ -280,6 +280,41 @@ import { serverFetchWithoutRevalidate } from "./rules/server/server-fetch-withou
 import { serverHoistStaticIo } from "./rules/server/server-hoist-static-io.js";
 import { serverNoMutableModuleState } from "./rules/server/server-no-mutable-module-state.js";
 import { serverSequentialIndependentAwait } from "./rules/server/server-sequential-independent-await.js";
+import { solidComponentsReturnOnce } from "./rules/solid/solid-components-return-once.js";
+import { solidEventHandlers } from "./rules/solid/solid-event-handlers.js";
+import { solidImports } from "./rules/solid/solid-imports.js";
+import { solidJsxNoDuplicateProps } from "./rules/solid/solid-jsx-no-duplicate-props.js";
+import { solidJsxNoScriptUrl } from "./rules/solid/solid-jsx-no-script-url.js";
+import { solidJsxNoUndef } from "./rules/solid/solid-jsx-no-undef.js";
+import { solidJsxUsesVars } from "./rules/solid/solid-jsx-uses-vars.js";
+import { solidNoArrayHandlers } from "./rules/solid/solid-no-array-handlers.js";
+import { solidNoAsyncEffect } from "./rules/solid/solid-no-async-effect.js";
+import { solidNoAsyncTrackedScope } from "./rules/solid/solid-no-async-tracked-scope.js";
+import { solidNoCleanupAfterAwait } from "./rules/solid/solid-no-cleanup-after-await.js";
+import { solidNoDestructure } from "./rules/solid/solid-no-destructure.js";
+import { solidNoEffectDerivedState } from "./rules/solid/solid-no-effect-derived-state.js";
+import { solidNoImpureMemo } from "./rules/solid/solid-no-impure-memo.js";
+import { solidNoInnerHtml } from "./rules/solid/solid-no-innerhtml.js";
+import { solidNoOnmountCleanupReturn } from "./rules/solid/solid-no-onmount-cleanup-return.js";
+import { solidNoPropsAssignment } from "./rules/solid/solid-no-props-assignment.js";
+import { solidNoProviderValueRead } from "./rules/solid/solid-no-provider-value-read.js";
+import { solidNoProxyApis } from "./rules/solid/solid-no-proxy-apis.js";
+import { solidNoReactDeps } from "./rules/solid/solid-no-react-deps.js";
+import { solidNoReactSpecificProps } from "./rules/solid/solid-no-react-specific-props.js";
+import { solidNoSignalFromProp } from "./rules/solid/solid-no-signal-from-prop.js";
+import { solidNoSignalMutation } from "./rules/solid/solid-no-signal-mutation.js";
+import { solidNoStoreDirectMutation } from "./rules/solid/solid-no-store-direct-mutation.js";
+import { solidNoUnknownNamespaces } from "./rules/solid/solid-no-unknown-namespaces.js";
+import { solidPreferChildrenHelper } from "./rules/solid/solid-prefer-children-helper.js";
+import { solidPreferClasslist } from "./rules/solid/solid-prefer-classlist.js";
+import { solidPreferFor } from "./rules/solid/solid-prefer-for.js";
+import { solidPreferResource } from "./rules/solid/solid-prefer-resource.js";
+import { solidPreferShow } from "./rules/solid/solid-prefer-show.js";
+import { solidReactivity } from "./rules/solid/solid-reactivity.js";
+import { solidRequireCleanup } from "./rules/solid/solid-require-cleanup.js";
+import { solidSelfClosingComp } from "./rules/solid/solid-self-closing-comp.js";
+import { solidStyleProp } from "./rules/solid/solid-style-prop.js";
+import { solidValidateJsxNesting } from "./rules/solid/solid-validate-jsx-nesting.js";
 import { stateInConstructor } from "./rules/react-builtins/state-in-constructor.js";
 import { stylePropObject } from "./rules/react-builtins/style-prop-object.js";
 import { tabindexNoPositive } from "./rules/a11y/tabindex-no-positive.js";
@@ -3325,6 +3360,426 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Server",
       tags: [...new Set(["server-action", ...(serverSequentialIndependentAwait.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-components-return-once",
+    id: "solid-components-return-once",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidComponentsReturnOnce,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidComponentsReturnOnce.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-event-handlers",
+    id: "solid-event-handlers",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidEventHandlers,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidEventHandlers.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-imports",
+    id: "solid-imports",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidImports,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidImports.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-jsx-no-duplicate-props",
+    id: "solid-jsx-no-duplicate-props",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidJsxNoDuplicateProps,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidJsxNoDuplicateProps.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-jsx-no-script-url",
+    id: "solid-jsx-no-script-url",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidJsxNoScriptUrl,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidJsxNoScriptUrl.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-jsx-no-undef",
+    id: "solid-jsx-no-undef",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidJsxNoUndef,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidJsxNoUndef.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-jsx-uses-vars",
+    id: "solid-jsx-uses-vars",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidJsxUsesVars,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidJsxUsesVars.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-no-array-handlers",
+    id: "solid-no-array-handlers",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidNoArrayHandlers,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidNoArrayHandlers.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-no-async-effect",
+    id: "solid-no-async-effect",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidNoAsyncEffect,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidNoAsyncEffect.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-no-async-tracked-scope",
+    id: "solid-no-async-tracked-scope",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidNoAsyncTrackedScope,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidNoAsyncTrackedScope.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-no-cleanup-after-await",
+    id: "solid-no-cleanup-after-await",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidNoCleanupAfterAwait,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidNoCleanupAfterAwait.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-no-destructure",
+    id: "solid-no-destructure",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidNoDestructure,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidNoDestructure.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-no-effect-derived-state",
+    id: "solid-no-effect-derived-state",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidNoEffectDerivedState,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidNoEffectDerivedState.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-no-impure-memo",
+    id: "solid-no-impure-memo",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidNoImpureMemo,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidNoImpureMemo.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-no-innerhtml",
+    id: "solid-no-innerhtml",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidNoInnerHtml,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidNoInnerHtml.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-no-onmount-cleanup-return",
+    id: "solid-no-onmount-cleanup-return",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidNoOnmountCleanupReturn,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidNoOnmountCleanupReturn.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-no-props-assignment",
+    id: "solid-no-props-assignment",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidNoPropsAssignment,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidNoPropsAssignment.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-no-provider-value-read",
+    id: "solid-no-provider-value-read",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidNoProviderValueRead,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidNoProviderValueRead.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-no-proxy-apis",
+    id: "solid-no-proxy-apis",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidNoProxyApis,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidNoProxyApis.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-no-react-deps",
+    id: "solid-no-react-deps",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidNoReactDeps,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidNoReactDeps.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-no-react-specific-props",
+    id: "solid-no-react-specific-props",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidNoReactSpecificProps,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidNoReactSpecificProps.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-no-signal-from-prop",
+    id: "solid-no-signal-from-prop",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidNoSignalFromProp,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidNoSignalFromProp.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-no-signal-mutation",
+    id: "solid-no-signal-mutation",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidNoSignalMutation,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidNoSignalMutation.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-no-store-direct-mutation",
+    id: "solid-no-store-direct-mutation",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidNoStoreDirectMutation,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidNoStoreDirectMutation.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-no-unknown-namespaces",
+    id: "solid-no-unknown-namespaces",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidNoUnknownNamespaces,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidNoUnknownNamespaces.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-prefer-children-helper",
+    id: "solid-prefer-children-helper",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidPreferChildrenHelper,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidPreferChildrenHelper.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-prefer-classlist",
+    id: "solid-prefer-classlist",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidPreferClasslist,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidPreferClasslist.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-prefer-for",
+    id: "solid-prefer-for",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidPreferFor,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidPreferFor.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-prefer-resource",
+    id: "solid-prefer-resource",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidPreferResource,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidPreferResource.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-prefer-show",
+    id: "solid-prefer-show",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidPreferShow,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidPreferShow.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-reactivity",
+    id: "solid-reactivity",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidReactivity,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidReactivity.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-require-cleanup",
+    id: "solid-require-cleanup",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidRequireCleanup,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidRequireCleanup.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-self-closing-comp",
+    id: "solid-self-closing-comp",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidSelfClosingComp,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidSelfClosingComp.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-style-prop",
+    id: "solid-style-prop",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidStyleProp,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidStyleProp.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-validate-jsx-nesting",
+    id: "solid-validate-jsx-nesting",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidValidateJsxNesting,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidValidateJsxNesting.tags ?? [])])],
     },
   },
   {

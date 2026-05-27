@@ -1,0 +1,659 @@
+import { describe, expect, it } from "vite-plus/test";
+import { runRule } from "../../../test-utils/run-rule.js";
+import { solidReactivity } from "./solid-reactivity.js";
+
+describe("solid-reactivity", () => {
+  describe("signal used without being called (badSignal)", () => {
+    it("flags signal used in a template literal without calling it", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         const message = \`Count: \${count}\`;`,
+      );
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0].message).toContain("called as a function");
+      expect(result.diagnostics[0].message).toContain("template literals");
+    });
+
+    it("flags signal used in arithmetic without calling it", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         const doubled = count * 2;`,
+      );
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0].message).toContain("arithmetic or comparisons");
+    });
+
+    it("flags signal used in comparison without calling it", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         const isPositive = count > 0;`,
+      );
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0].message).toContain("arithmetic or comparisons");
+    });
+
+    it("flags signal used in unary expression without calling it", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         const negated = -count;`,
+      );
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0].message).toContain("unary expressions");
+    });
+
+    it("flags signal used in JSX child without calling it on a DOM element", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         const App = () => <div>{count}</div>;`,
+      );
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0].message).toContain("called as a function");
+      expect(result.diagnostics[0].message).toContain("JSX");
+    });
+
+    it("does not flag signal called as a function inside a tracked scope", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal, createEffect } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         createEffect(() => {
+           const message = \`Count: \${count()}\`;
+         });`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+  });
+
+  describe("createMemo tracking", () => {
+    it("flags memo used in template literal without calling it", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal, createMemo } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         const doubled = createMemo(() => count() * 2);
+         const message = \`Doubled: \${doubled}\`;`,
+      );
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0].message).toContain("called as a function");
+    });
+
+    it("does not flag memo called as a function inside a tracked scope", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal, createMemo, createEffect } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         const doubled = createMemo(() => count() * 2);
+         createEffect(() => {
+           const message = \`Doubled: \${doubled()}\`;
+         });`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+  });
+
+  describe("props access outside tracked scope (untrackedReactive)", () => {
+    it("flags props member access outside tracked scope", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const Component = (props) => {
+           const value = props.name;
+           return <div>{value}</div>;
+         };`,
+      );
+      expect(result.diagnostics.length).toBeGreaterThanOrEqual(1);
+      expect(
+        result.diagnostics.some((diagnostic) =>
+          diagnostic.message.includes("should be used within JSX"),
+        ),
+      ).toBe(true);
+    });
+
+    it("does not flag props used in JSX expression", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const Component = (props) => {
+           return <div>{props.name}</div>;
+         };`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+
+    it("does not flag props.initialValue access", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const Component = (props) => {
+           const [val, setVal] = createSignal(props.initialValue);
+           return <div>{val()}</div>;
+         };`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+
+    it("does not flag props.defaultValue access", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const Component = (props) => {
+           const [val, setVal] = createSignal(props.defaultValue);
+           return <div>{val()}</div>;
+         };`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+  });
+
+  describe("noWrite — no direct reassignment of reactive values", () => {
+    it("flags direct reassignment of a signal accessor", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         count = 5;`,
+      );
+      expect(result.diagnostics.length).toBeGreaterThanOrEqual(1);
+      expect(
+        result.diagnostics.some((diagnostic) =>
+          diagnostic.message.includes("should not be reassigned"),
+        ),
+      ).toBe(true);
+    });
+
+    it("flags direct property assignment on a store", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createStore } from "solid-js/store";
+         const [store, setStore] = createStore({ count: 0 });
+         store.count = 5;`,
+      );
+      expect(result.diagnostics.length).toBeGreaterThanOrEqual(1);
+      expect(
+        result.diagnostics.some((diagnostic) =>
+          diagnostic.message.includes("should not be reassigned"),
+        ),
+      ).toBe(true);
+    });
+  });
+
+  describe("noAsyncTrackedScope", () => {
+    it("flags async function passed to createEffect", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createEffect } from "solid-js";
+         createEffect(async () => {
+           await fetch("/api");
+         });`,
+      );
+      expect(result.diagnostics.length).toBeGreaterThanOrEqual(1);
+      expect(
+        result.diagnostics.some((diagnostic) => diagnostic.message.includes("should not be async")),
+      ).toBe(true);
+    });
+
+    it("flags async function passed to createMemo", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createMemo } from "solid-js";
+         const data = createMemo(async () => {
+           return await fetch("/api");
+         });`,
+      );
+      expect(result.diagnostics.length).toBeGreaterThanOrEqual(1);
+      expect(
+        result.diagnostics.some((diagnostic) => diagnostic.message.includes("should not be async")),
+      ).toBe(true);
+    });
+
+    it("does not flag sync function passed to createEffect", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal, createEffect } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         createEffect(() => {
+           console.log(count());
+         });`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+
+    it("does not flag async function passed to onMount (called-function)", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { onMount } from "solid-js";
+         onMount(async () => {
+           await fetch("/api");
+         });`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+  });
+
+  describe("tracked scopes — signals used in createEffect are valid", () => {
+    it("does not flag signal used inside createEffect", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal, createEffect } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         createEffect(() => {
+           console.log(count());
+         });`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+
+    it("does not flag signal used in JSX expression container", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         const App = () => <div>{count()}</div>;`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+  });
+
+  describe("import tracking", () => {
+    it("does not flag when there is no solid-js import", () => {
+      const result = runRule(
+        solidReactivity,
+        `const [count, setCount] = createSignal(0);
+         const doubled = count * 2;`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+
+    it("handles aliased imports", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal as cs } from "solid-js";
+         const [count, setCount] = cs(0);
+         const message = \`Count: \${count}\`;`,
+      );
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0].message).toContain("called as a function");
+    });
+  });
+
+  describe("store / mergeProps / splitProps tracking", () => {
+    it("flags store access outside tracked scope", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createStore } from "solid-js/store";
+         const [store, setStore] = createStore({ name: "hello" });
+         const name = store.name;`,
+      );
+      expect(result.diagnostics.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("flags mergeProps result used outside tracked scope", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { mergeProps } from "solid-js";
+         const Component = (props) => {
+           const merged = mergeProps({ name: "default" }, props);
+           const val = merged.name;
+           return <div>{val}</div>;
+         };`,
+      );
+      expect(result.diagnostics.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  describe("DOM event handler tracking", () => {
+    it("does not flag signal used inside DOM event handler callback", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         const App = () => <button onClick={() => setCount(count())}>Click</button>;`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+  });
+
+  describe("batch / produce sync callbacks", () => {
+    it("does not flag signal used in batch callback", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal, batch } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         const [doubled, setDoubled] = createSignal(0);
+         createEffect(() => {
+           batch(() => {
+             setCount(1);
+             setDoubled(count() * 2);
+           });
+         });`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+  });
+
+  describe("on() helper", () => {
+    it("does not flag signal passed to on() first arg", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal, createEffect, on } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         createEffect(on(count, (value) => {
+           console.log(value);
+         }));`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+
+    it("does not flag signal array passed to on() first arg", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal, createEffect, on } from "solid-js";
+         const [a, setA] = createSignal(0);
+         const [b, setB] = createSignal(0);
+         createEffect(on([a, b], ([aVal, bVal]) => {
+           console.log(aVal, bVal);
+         }));`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+  });
+
+  describe("Provider value prop exemption", () => {
+    it("does not flag reactive variable in Provider value prop (XxxProvider)", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         const App = () => <CountProvider value={count}><div /></CountProvider>;`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+
+    it("does not flag reactive variable in Xxx.Provider value prop", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         const App = () => <Counter.Provider value={count}><div /></Counter.Provider>;`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+
+    it("still flags signal on a DOM element value prop", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         const App = () => <input value={count} />;`,
+      );
+      expect(result.diagnostics.length).toBeGreaterThanOrEqual(1);
+      expect(
+        result.diagnostics.some((diagnostic) =>
+          diagnostic.message.includes("called as a function"),
+        ),
+      ).toBe(true);
+    });
+  });
+
+  describe("static* prop exemption", () => {
+    it("does not flag reactive variable in staticFoo prop on custom component", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         const App = () => <MyComponent staticValue={count} />;`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+
+    it("still flags reactive variable in staticFoo prop on DOM element", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         const App = () => <div staticValue={count} />;`,
+      );
+      expect(result.diagnostics.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  describe("Observer constructor callback tracking", () => {
+    it("does not flag signal used inside IntersectionObserver callback", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         new IntersectionObserver(() => { console.log(count()); });`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+
+    it("does not flag signal used inside ResizeObserver callback", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         new ResizeObserver(() => { console.log(count()); });`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+
+    it("does not flag signal used inside MutationObserver callback", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         new MutationObserver(() => { console.log(count()); });`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+  });
+
+  describe("ref callback tracking", () => {
+    it("does not flag function passed to ref prop as called-function", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         const App = () => <div ref={(el) => { console.log(count()); }} />;`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+  });
+
+  describe("splitProps tracking", () => {
+    it("flags splitProps result accessed outside tracked scope", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { splitProps } from "solid-js";
+         const Component = (props) => {
+           const [local, others] = splitProps(props, ["name"]);
+           const val = local.name;
+           return <div>{val}</div>;
+         };`,
+      );
+      expect(result.diagnostics.length).toBeGreaterThanOrEqual(1);
+      expect(
+        result.diagnostics.some((diagnostic) =>
+          diagnostic.message.includes("should be used within JSX"),
+        ),
+      ).toBe(true);
+    });
+
+    it("does not flag splitProps result used inside JSX expression", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { splitProps } from "solid-js";
+         const Component = (props) => {
+           const [local, others] = splitProps(props, ["name"]);
+           return <div>{local.name}</div>;
+         };`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+  });
+
+  describe("createResource tracking", () => {
+    it("flags createResource return accessed outside tracked scope", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createResource } from "solid-js";
+         const Component = () => {
+           const [data] = createResource(fetchUser);
+           const name = data.name;
+           return <div>{name}</div>;
+         };`,
+      );
+      expect(result.diagnostics.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("does not flag createResource return used inside JSX", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createResource } from "solid-js";
+         const Component = () => {
+           const [data] = createResource(fetchUser);
+           return <div>{data.name}</div>;
+         };`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+  });
+
+  describe("produce() sync callback tracking", () => {
+    it("does not flag signal used inside produce callback within createEffect", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal, createEffect } from "solid-js";
+         import { produce } from "solid-js/store";
+         const [count, setCount] = createSignal(0);
+         createEffect(() => {
+           setState(produce((draft) => {
+             draft.count = count();
+           }));
+         });`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+  });
+
+  describe("mergeProps in JSX", () => {
+    it("does not flag mergeProps result used inside JSX expression", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { mergeProps } from "solid-js";
+         const Component = (props) => {
+           const merged = mergeProps({ name: "default" }, props);
+           return <div>{merged.name}</div>;
+         };`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+  });
+
+  describe("signal in computed member access", () => {
+    it("flags signal used as computed property key without calling", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const [index, setIndex] = createSignal(0);
+         const items = [1, 2, 3];
+         const current = items[index];`,
+      );
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0].message).toContain("called as a function");
+      expect(result.diagnostics[0].message).toContain("property accesses");
+    });
+  });
+
+  describe("signal in addition binary expression", () => {
+    it("flags signal used with + operator without calling", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         const incremented = count + 1;`,
+      );
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0].message).toContain("arithmetic or comparisons");
+    });
+  });
+
+  describe("For/Index parameter signal tracking", () => {
+    it("flags index parameter used without calling in For children", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal, For } from "solid-js";
+         const [items, setItems] = createSignal([1, 2, 3]);
+         const App = () => (
+           <For each={items()}>
+             {(item, index) => <div>{index}</div>}
+           </For>
+         );`,
+      );
+      expect(result.diagnostics.length).toBeGreaterThanOrEqual(1);
+      expect(
+        result.diagnostics.some((diagnostic) =>
+          diagnostic.message.includes("called as a function"),
+        ),
+      ).toBe(true);
+    });
+
+    it("does not flag index parameter called as function in For children", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal, For } from "solid-js";
+         const [items, setItems] = createSignal([1, 2, 3]);
+         const App = () => (
+           <For each={items()}>
+             {(item, index) => <div>{index()}</div>}
+           </For>
+         );`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+
+    it("flags item parameter used without calling in Index children", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal, Index } from "solid-js";
+         const [items, setItems] = createSignal([1, 2, 3]);
+         const App = () => (
+           <Index each={items()}>
+             {(item) => <div>{item}</div>}
+           </Index>
+         );`,
+      );
+      expect(result.diagnostics.length).toBeGreaterThanOrEqual(1);
+      expect(
+        result.diagnostics.some((diagnostic) =>
+          diagnostic.message.includes("called as a function"),
+        ),
+      ).toBe(true);
+    });
+
+    it("does not flag item parameter called as function in Index children", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal, Index } from "solid-js";
+         const [items, setItems] = createSignal([1, 2, 3]);
+         const App = () => (
+           <Index each={items()}>
+             {(item) => <div>{item()}</div>}
+           </Index>
+         );`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+  });
+});

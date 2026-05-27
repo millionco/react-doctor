@@ -3,6 +3,7 @@ import oxlintPlugin, {
   NEXTJS_RULES,
   REACT_NATIVE_RULES,
   RECOMMENDED_RULES,
+  SOLID_RULES,
   TANSTACK_QUERY_RULES,
   TANSTACK_START_RULES,
 } from "oxlint-plugin-react-doctor";
@@ -47,6 +48,7 @@ interface EslintPlugin {
     "react-native": EslintFlatConfig;
     "tanstack-start": EslintFlatConfig;
     "tanstack-query": EslintFlatConfig;
+    solid: EslintFlatConfig;
     all: EslintFlatConfig;
   };
 }
@@ -99,6 +101,7 @@ const eslintPlugin: EslintPlugin = {
     "react-native": buildFlatConfig("react-native", REACT_NATIVE_RULES),
     "tanstack-start": buildFlatConfig("tanstack-start", TANSTACK_START_RULES),
     "tanstack-query": buildFlatConfig("tanstack-query", TANSTACK_QUERY_RULES),
+    solid: buildFlatConfig("solid", SOLID_RULES),
     all: buildFlatConfig("all", ALL_REACT_DOCTOR_RULES),
   },
 };

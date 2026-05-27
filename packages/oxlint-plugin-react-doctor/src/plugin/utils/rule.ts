@@ -12,7 +12,8 @@ export type RuleFramework =
   | "nextjs"
   | "react-native"
   | "tanstack-start"
-  | "tanstack-query";
+  | "tanstack-query"
+  | "solid";
 
 export interface Rule {
   // Public-facing rule identifier — what users put in their oxlint config

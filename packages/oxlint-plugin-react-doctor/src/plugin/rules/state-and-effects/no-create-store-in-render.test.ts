@@ -1,0 +1,193 @@
+import { describe, expect, it } from "vite-plus/test";
+import { runRule } from "../../../test-utils/run-rule.js";
+import { noCreateStoreInRender } from "./no-create-store-in-render.js";
+
+describe("no-create-store-in-render", () => {
+  it("flags zustand create inside a component", () => {
+    const result = runRule(
+      noCreateStoreInRender,
+      `
+      import { create } from "zustand";
+
+      function App() {
+        const useStore = create((set) => ({ count: 0 }));
+        return null;
+      }
+    `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("zustand.create");
+    expect(result.diagnostics[0].message).toContain("App");
+  });
+
+  it("flags jotai atom inside an arrow component", () => {
+    const result = runRule(
+      noCreateStoreInRender,
+      `
+      import { atom } from "jotai";
+
+      const Page = () => {
+        const countAtom = atom(0);
+        return null;
+      };
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("jotai.atom");
+  });
+
+  it("flags valtio proxy inside a hook", () => {
+    const result = runRule(
+      noCreateStoreInRender,
+      `
+      import { proxy } from "valtio";
+
+      function useTodos() {
+        const state = proxy({ todos: [] });
+        return state;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("valtio.proxy");
+    expect(result.diagnostics[0].message).toContain("useTodos");
+  });
+
+  it("flags @reduxjs/toolkit configureStore inside a component", () => {
+    const result = runRule(
+      noCreateStoreInRender,
+      `
+      import { configureStore } from "@reduxjs/toolkit";
+
+      function App() {
+        const store = configureStore({ reducer: () => ({}) });
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("configureStore");
+  });
+
+  it("flags mobx makeAutoObservable inside a component", () => {
+    const result = runRule(
+      noCreateStoreInRender,
+      `
+      import { makeAutoObservable } from "mobx";
+
+      function App() {
+        const state = makeAutoObservable({ count: 0 });
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("makeAutoObservable");
+  });
+
+  it("flags nanostores atom inside a component", () => {
+    const result = runRule(
+      noCreateStoreInRender,
+      `
+      import { atom } from "nanostores";
+
+      function App() {
+        const $count = atom(0);
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a store factory at module scope", () => {
+    const result = runRule(
+      noCreateStoreInRender,
+      `
+      import { create } from "zustand";
+      import { atom } from "jotai";
+
+      export const useStore = create((set) => ({ count: 0 }));
+      export const countAtom = atom(0);
+
+      function App() {
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag store factories inside plain helper functions", () => {
+    const result = runRule(
+      noCreateStoreInRender,
+      `
+      import { create } from "zustand";
+
+      function makeStore() {
+        return create((set) => ({ count: 0 }));
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag locally-named helpers that shadow the factory", () => {
+    const result = runRule(
+      noCreateStoreInRender,
+      `
+      function create(initializer) {
+        return initializer();
+      }
+
+      function App() {
+        const store = create(() => ({ count: 0 }));
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags renamed imports", () => {
+    const result = runRule(
+      noCreateStoreInRender,
+      `
+      import { create as makeStore } from "zustand";
+
+      function App() {
+        const useStore = makeStore((set) => ({ count: 0 }));
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag store factories from non-supported modules", () => {
+    const result = runRule(
+      noCreateStoreInRender,
+      `
+      import { create } from "some-other-lib";
+
+      function App() {
+        const store = create((set) => ({ count: 0 }));
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+});

@@ -1,0 +1,22 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/control-has-associated-label.regressions.test.ts
+  s_8747a78b0f7517::t_7ba1b93bd9dee9 63-82
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/control-has-associated-label.ts
+  s_8747a78b0f7517::t_d5d5aed1bc4fc9 219,236-237
+  s_8747a78b0f7517::t_cc0ed85fa179c8 220
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "dd92f942bfd062542317730f4f25f8a70a0dc2f6",
+  "prompts": {},
+  "sessions": {
+    "s_8747a78b0f7517": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "18b14669-51e5-4646-b492-61dc174ec729",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

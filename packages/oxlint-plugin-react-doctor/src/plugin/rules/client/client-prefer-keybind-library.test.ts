@@ -179,8 +179,8 @@ describe("client-prefer-keybind-library", () => {
     });
   });
 
-  describe("does not flag when a keybind library is already imported", () => {
-    it("skips when react-hotkeys-hook is imported", () => {
+  describe("still flags even when a keybind library is imported", () => {
+    it("flags even when react-hotkeys-hook is imported", () => {
       const code = `
         import { useHotkeys } from 'react-hotkeys-hook';
         const App = () => {
@@ -192,10 +192,10 @@ describe("client-prefer-keybind-library", () => {
         };
       `;
       const result = runRule(clientPreferKeybindLibrary, code);
-      expect(result.diagnostics).toHaveLength(0);
+      expect(result.diagnostics).toHaveLength(1);
     });
 
-    it("skips when tinykeys is imported", () => {
+    it("flags even when tinykeys is imported", () => {
       const code = `
         import tinykeys from 'tinykeys';
         const App = () => {
@@ -207,82 +207,7 @@ describe("client-prefer-keybind-library", () => {
         };
       `;
       const result = runRule(clientPreferKeybindLibrary, code);
-      expect(result.diagnostics).toHaveLength(0);
-    });
-
-    it("skips when hotkeys-js is imported", () => {
-      const code = `
-        import hotkeys from 'hotkeys-js';
-        const App = () => {
-          useEffect(() => {
-            window.addEventListener('keydown', handler);
-            return () => window.removeEventListener('keydown', handler);
-          }, []);
-          return <div />;
-        };
-      `;
-      const result = runRule(clientPreferKeybindLibrary, code);
-      expect(result.diagnostics).toHaveLength(0);
-    });
-
-    it("skips when mousetrap is imported", () => {
-      const code = `
-        import Mousetrap from 'mousetrap';
-        const App = () => {
-          useEffect(() => {
-            window.addEventListener('keydown', handler);
-            return () => window.removeEventListener('keydown', handler);
-          }, []);
-          return <div />;
-        };
-      `;
-      const result = runRule(clientPreferKeybindLibrary, code);
-      expect(result.diagnostics).toHaveLength(0);
-    });
-
-    it("skips when react-hotkeys is imported", () => {
-      const code = `
-        import { HotKeys } from 'react-hotkeys';
-        const App = () => {
-          useEffect(() => {
-            window.addEventListener('keydown', handler);
-            return () => window.removeEventListener('keydown', handler);
-          }, []);
-          return <div />;
-        };
-      `;
-      const result = runRule(clientPreferKeybindLibrary, code);
-      expect(result.diagnostics).toHaveLength(0);
-    });
-
-    it("skips when @mantine/hooks is imported", () => {
-      const code = `
-        import { useHotkeys } from '@mantine/hooks';
-        const App = () => {
-          useEffect(() => {
-            window.addEventListener('keydown', handler);
-            return () => window.removeEventListener('keydown', handler);
-          }, []);
-          return <div />;
-        };
-      `;
-      const result = runRule(clientPreferKeybindLibrary, code);
-      expect(result.diagnostics).toHaveLength(0);
-    });
-
-    it("skips subpath imports from a keybind library", () => {
-      const code = `
-        import { useHotkeys } from 'react-hotkeys-hook/dist/index';
-        const App = () => {
-          useEffect(() => {
-            window.addEventListener('keydown', handler);
-            return () => window.removeEventListener('keydown', handler);
-          }, []);
-          return <div />;
-        };
-      `;
-      const result = runRule(clientPreferKeybindLibrary, code);
-      expect(result.diagnostics).toHaveLength(0);
+      expect(result.diagnostics).toHaveLength(1);
     });
   });
 

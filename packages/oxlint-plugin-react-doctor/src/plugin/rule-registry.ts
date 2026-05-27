@@ -569,12 +569,12 @@ export const reactDoctorRules = [
     source: "react-doctor",
     originallyExternal: false,
     framework: "global",
-    category: "Performance",
+    category: "Architecture",
     severity: "warn",
     rule: {
       ...clientPreferKeybindLibrary,
       framework: "global",
-      category: "Performance",
+      category: "Architecture",
     },
   },
   {

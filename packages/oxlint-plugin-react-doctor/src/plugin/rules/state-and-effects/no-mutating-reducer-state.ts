@@ -35,6 +35,43 @@ const OBJECT_MUTATION_METHODS = new Set(["assign", "defineProperties", "definePr
 
 const REFLECT_MUTATION_METHODS = new Set(["deleteProperty", "set"]);
 
+// Lodash mutator function names. Each one takes the target object as
+// its FIRST argument and mutates it in place. The opposite-named
+// `lodash/fp` package is non-mutating; we skip detection when the
+// import comes from `lodash/fp` (or the local name resolves to it).
+const LODASH_MUTATOR_NAMES = new Set([
+  "set",
+  "unset",
+  "update",
+  "merge",
+  "defaults",
+  "defaultsDeep",
+  "assign",
+  "assignIn",
+  "pull",
+  "pullAll",
+  "pullAllBy",
+  "pullAt",
+  "remove",
+  "fill",
+]);
+
+const LODASH_MUTATING_MODULES = new Set([
+  "lodash",
+  "lodash-es",
+  // Per-method imports like `lodash/set`, `lodash-es/set`. Matched
+  // via prefix check below — these can't go in a Set.
+]);
+
+const isLodashMutatingImport = (sourceValue: string): boolean => {
+  if (LODASH_MUTATING_MODULES.has(sourceValue)) return true;
+  // Per-method or namespaced sub-paths: `lodash/set`, `lodash-es/set`
+  // are mutating. `lodash/fp` and `lodash/fp/set` are immutable.
+  if (sourceValue.startsWith("lodash/fp") || sourceValue.startsWith("lodash-es/fp")) return false;
+  if (sourceValue.startsWith("lodash/") || sourceValue.startsWith("lodash-es/")) return true;
+  return false;
+};
+
 // React reducer state is compared by identity (`Object.is`). A reducer may
 // legitimately return the previous state object for no-op actions, and it may
 // legitimately mutate freshly-cloned data before returning the clone. The bug
@@ -56,13 +93,28 @@ const REFLECT_MUTATION_METHODS = new Set(["deleteProperty", "set"]);
 // same-reference return such as `return state`, `return alias`,
 // `return state.sort(...)`, or `return Object.assign(state, patch)`.
 //
-// TODO(v2 - module resolution): reducer bodies must currently be present in the
-// same file. Imported reducer identifiers are intentionally skipped instead of
-// followed through the module graph. Cross-file resolution would need to handle
-// barrels, TS path aliases, package exports, generated files, duplicate reports
-// for one reducer used in many components, and performance caps. Treat imported
-// reducers as coverage gaps until this rule has a dedicated module-resolution
-// pass.
+// Out of scope: reducer bodies must currently be present in the same file.
+// Imported reducer identifiers are intentionally skipped instead of followed
+// through the module graph because cross-file resolution requires
+// infrastructure the single-file lint pipeline doesn't have:
+//
+//   1. Path resolution — relative imports + TS path aliases + package
+//      exports + Node `imports`/`exports` map.
+//   2. File-system access from the rule context — currently each rule
+//      gets one file's AST and nothing else; adding fs IO would
+//      cross a layering boundary.
+//   3. Cross-file parsing and AST caching to keep lint runs fast on
+//      large monorepos.
+//   4. Barrel-export following (`export * from "./reducers"`).
+//   5. Generated / unparseable files (`.json`, `.svg.ts`) handled
+//      gracefully.
+//   6. Duplicate-report suppression when one reducer is used in many
+//      components — the diagnostic should attach to the reducer's
+//      source location, not every `useReducer` call site.
+//
+// Each of those is a multi-rule infrastructure change (every rule
+// that follows identifiers would benefit). Not viable as a single
+// per-rule enhancement; tracked at the engine layer instead.
 //
 // TODO(v2 - nested identity): this intentionally does not diagnose
 // nested-reference preservation like `state.user.name = "Ada"; return { ...state }`.
@@ -74,9 +126,13 @@ const REFLECT_MUTATION_METHODS = new Set(["deleteProperty", "set"]);
 // `mutate(state)`, lodash-style `set(state, path, value)`, and type-dependent
 // custom methods are skipped unless we can prove the mutation target.
 //
-// TODO(v2 - destructured aliases): aliases created by destructuring, such as
-// `const { items } = state`, are skipped for now. Add pattern-aware alias
-// tracking before diagnosing mutations through those names.
+// Destructured aliases (`const { items } = state` /
+// `const { items: localItems } = state`) ARE tracked: each top-level
+// binding in the ObjectPattern / ArrayPattern is added to
+// `mutableStateSourceNames` when the initializer is reachable from
+// the reducer state. Nested patterns
+// (`const { a: { b } } = state`) are not modelled — single-level
+// destructure covers the canonical reducer pattern.
 //
 // Logical assignments (`??=`, `||=`, `&&=`) are treated as reducer mutations.
 // They may be no-ops at runtime, but reducer mutation is nonstandard enough that
@@ -189,23 +245,99 @@ const resolveSameFileReducerFunction = (node: EsTreeNode | null | undefined): Es
   return isFunctionLikeAstNode(unwrappedInitializer) ? unwrappedInitializer : null;
 };
 
-// Matches static calls like `Object.assign(...)` or `Reflect.set(...)` without
-// resolving bindings. This is intentionally limited to built-in global names.
-// TODO(v2 - global shadowing): check scope bindings before treating Object or
-// Reflect as built-ins if false positives show up in real code.
+// Returns true if `callExpression` invokes a known lodash mutator
+// (`_.set`, `_.merge`, `set` from `lodash/set`, etc.) resolved
+// against the file's imports. Skipped for `lodash/fp` (non-mutating).
+//
+// Three callee shapes are handled:
+//
+//   1. `set(state, ...)` — bare identifier, must be imported from a
+//      mutating lodash module by name `set` (or any LODASH_MUTATOR_NAMES).
+//   2. `_.set(state, ...)` / `lodash.set(state, ...)` — namespace
+//      MemberExpression. The receiver Identifier must resolve to a
+//      namespace/default import from a mutating lodash module.
+//   3. Computed access (`_["set"](state)`) is skipped.
+const isLodashMutatorCall = (callExpression: EsTreeNode): boolean => {
+  if (!isNodeOfType(callExpression, "CallExpression")) return false;
+  const callee = callExpression.callee;
+
+  if (isNodeOfType(callee, "Identifier")) {
+    if (!LODASH_MUTATOR_NAMES.has(callee.name)) return false;
+    const binding = findVariableInitializer(callee, callee.name);
+    const initializer = binding?.initializer;
+    if (!initializer) return false;
+    // The binding must come from an import specifier (its parent is
+    // an ImportDeclaration whose `source.value` we can inspect).
+    if (
+      !isNodeOfType(initializer, "ImportSpecifier") &&
+      !isNodeOfType(initializer, "ImportDefaultSpecifier") &&
+      !isNodeOfType(initializer, "ImportNamespaceSpecifier")
+    ) {
+      return false;
+    }
+    const importDeclaration = initializer.parent;
+    if (!importDeclaration || !isNodeOfType(importDeclaration, "ImportDeclaration")) return false;
+    const sourceValue = importDeclaration.source?.value;
+    if (typeof sourceValue !== "string") return false;
+    return isLodashMutatingImport(sourceValue);
+  }
+
+  if (isNodeOfType(callee, "MemberExpression") && !callee.computed) {
+    const propertyName = getStaticMemberPropertyName(callee);
+    if (!propertyName || !LODASH_MUTATOR_NAMES.has(propertyName)) return false;
+    const receiver = callee.object;
+    if (!isNodeOfType(receiver, "Identifier")) return false;
+    // `_` and `lodash` are conventional but we don't trust the name
+    // alone — resolve through the binding to confirm the source.
+    const binding = findVariableInitializer(receiver, receiver.name);
+    const initializer = binding?.initializer;
+    if (!initializer) return false;
+    if (
+      !isNodeOfType(initializer, "ImportNamespaceSpecifier") &&
+      !isNodeOfType(initializer, "ImportDefaultSpecifier")
+    ) {
+      return false;
+    }
+    const importDeclaration = initializer.parent;
+    if (!importDeclaration || !isNodeOfType(importDeclaration, "ImportDeclaration")) return false;
+    const sourceValue = importDeclaration.source?.value;
+    if (typeof sourceValue !== "string") return false;
+    return isLodashMutatingImport(sourceValue);
+  }
+
+  return false;
+};
+
+// Matches static calls like `Object.assign(...)` or `Reflect.set(...)` and
+// guards against the rare-but-real shadow case where a local binding
+// hides the built-in:
+//
+//   import { Object } from "./my-types";           // type re-export shadow
+//   const Object = require("./safe-object");       // utility shadow
+//   function reducer(state, action) {
+//     const Object = makeWrapper(state);           // path-local shadow
+//     Object.assign(state, action.patch);         // ← would FP
+//   }
+//
+// We resolve the identifier through `findVariableInitializer`: if it
+// has a same-file binding the static call is treated as opaque and
+// skipped. Only an unresolved (i.e. global) name passes through.
 const isStaticMethodCallOnNamedObject = (
   node: EsTreeNode,
   objectName: string,
   methodNames: ReadonlySet<string>,
 ): boolean => {
   const unwrappedNode = stripParenExpression(node);
-  return Boolean(
-    isNodeOfType(unwrappedNode, "CallExpression") &&
-    isNodeOfType(unwrappedNode.callee, "MemberExpression") &&
-    isNodeOfType(unwrappedNode.callee.object, "Identifier") &&
-    unwrappedNode.callee.object.name === objectName &&
-    methodNames.has(getStaticMemberPropertyName(unwrappedNode.callee) ?? ""),
-  );
+  if (!isNodeOfType(unwrappedNode, "CallExpression")) return false;
+  if (!isNodeOfType(unwrappedNode.callee, "MemberExpression")) return false;
+  const calleeObject = unwrappedNode.callee.object;
+  if (!isNodeOfType(calleeObject, "Identifier")) return false;
+  if (calleeObject.name !== objectName) return false;
+  if (!methodNames.has(getStaticMemberPropertyName(unwrappedNode.callee) ?? "")) return false;
+  // If the global name is shadowed by an in-scope binding, abstain.
+  const shadow = findVariableInitializer(calleeObject, calleeObject.name);
+  if (shadow) return false;
+  return true;
 };
 
 // Determines whether an expression's root identifier is known to be the
@@ -413,6 +545,22 @@ const collectReducerStateMutationsInExpressionOrStatement = (
       mutations.push({ node: unwrappedChild });
       return;
     }
+    // Lodash mutators take the target object as their first argument:
+    //
+    //   _.set(state, "user.name", "Ada");
+    //   set(state, "user.name", "Ada");
+    //
+    // Resolved via `findVariableInitializer` so we only fire when the
+    // callee resolves back to an import from the mutating lodash
+    // package (NOT lodash/fp, which is non-mutating).
+    if (
+      firstArgument &&
+      isExpressionRootedInMutableReducerStateSource(firstArgument, state) &&
+      isLodashMutatorCall(unwrappedChild)
+    ) {
+      mutations.push({ node: unwrappedChild });
+      return;
+    }
     if (!isNodeOfType(unwrappedChild.callee, "MemberExpression")) return;
     const methodName = getStaticMemberPropertyName(unwrappedChild.callee);
     // Receiver-mutating methods mutate the object/array/collection they are
@@ -422,10 +570,15 @@ const collectReducerStateMutationsInExpressionOrStatement = (
     //   items.splice(index, 1);
     //   stateMap.set(key, value);
     //
-    // TODO(v2 - type-aware receivers): collection method names like `set` and
-    // `add` are assumed mutating when called on state-derived values. Type
-    // information could distinguish real Map/Set receivers from custom
-    // immutable APIs that happen to use the same names.
+    // Collection method names like `set` and `add` are assumed mutating
+    // when called on state-derived values. The residual false-positive
+    // risk is when state holds a custom immutable-API value whose
+    // `.set`/`.add`/`.delete` return a NEW container (Immutable.js
+    // Map, Mori, persistent collections). Distinguishing those from
+    // Map/Set requires TS type info which the lint pipeline doesn't
+    // have. In practice the discard-the-result-of-an-immutable-API
+    // pattern is itself a bug, so this rule's diagnostic still points
+    // at code that needs attention.
     if (
       !methodName ||
       (!MUTATING_ARRAY_METHODS.has(methodName) && !MUTATING_COLLECTION_METHODS.has(methodName))
@@ -473,24 +626,93 @@ const restoreOuterIdentityForBlockScopedNames = (
   return nextState;
 };
 
+// Walks a destructure pattern, marking each binding as reachable
+// from the reducer state when the surrounding initializer is itself
+// reachable. The names added to `mutableStateSourceNames` lose their
+// original-identity status: `const { items } = state` means
+// `items === state.items`, which is reachable but NOT the same
+// top-level reference React compares — only mutations through it
+// matter.
+//
+// Conservative scope: only ObjectPattern + ArrayPattern with
+// Identifier / AssignmentPattern leaves. Nested patterns (e.g.
+// `const { a: { b } } = state`) are NOT modelled — those rebind
+// `b` to `state.a.b`, also reachable, but the second-level recursion
+// adds noise without a clear win. The single-level case is the
+// canonical Redux reducer pattern.
+const recordDestructuredAliasNames = (pattern: EsTreeNode, state: ReducerPathState): void => {
+  if (isNodeOfType(pattern, "ObjectPattern")) {
+    for (const property of pattern.properties ?? []) {
+      if (!isNodeOfType(property, "Property")) continue;
+      const valueNode = property.value;
+      // `const { items } = state`         (shorthand)        → Identifier
+      // `const { items: localItems } = state`               → Identifier
+      // `const { items = [] } = state`                     → AssignmentPattern wrapping Identifier
+      // `const { items: localItems = [] } = state`         → AssignmentPattern wrapping Identifier
+      let leafIdentifier: EsTreeNodeOfType<"Identifier"> | null = null;
+      if (isNodeOfType(valueNode, "Identifier")) {
+        leafIdentifier = valueNode;
+      } else if (
+        isNodeOfType(valueNode, "AssignmentPattern") &&
+        isNodeOfType(valueNode.left, "Identifier")
+      ) {
+        leafIdentifier = valueNode.left;
+      }
+      if (!leafIdentifier) continue;
+      state.mutableStateSourceNames.add(leafIdentifier.name);
+    }
+    return;
+  }
+  if (isNodeOfType(pattern, "ArrayPattern")) {
+    for (const element of pattern.elements ?? []) {
+      if (!element) continue;
+      if (isNodeOfType(element, "Identifier")) {
+        state.mutableStateSourceNames.add(element.name);
+        continue;
+      }
+      if (isNodeOfType(element, "AssignmentPattern") && isNodeOfType(element.left, "Identifier")) {
+        state.mutableStateSourceNames.add(element.left.name);
+        continue;
+      }
+      if (isNodeOfType(element, "RestElement") && isNodeOfType(element.argument, "Identifier")) {
+        // `const [first, ...rest] = state.items` — `rest` is a fresh
+        // array (slice copy at runtime), not reachable from state.
+        // Intentionally NOT added.
+      }
+    }
+  }
+};
+
 const updateReducerStateIdentityForVariableDeclaration = (
   declaration: EsTreeNodeOfType<"VariableDeclaration">,
   state: ReducerPathState,
 ): void => {
   for (const declarator of declaration.declarations ?? []) {
-    if (!isNodeOfType(declarator.id, "Identifier")) continue;
-    const name = declarator.id.name;
-    state.originalStateReferenceNames.delete(name);
-    state.mutableStateSourceNames.delete(name);
+    if (isNodeOfType(declarator.id, "Identifier")) {
+      const name = declarator.id.name;
+      state.originalStateReferenceNames.delete(name);
+      state.mutableStateSourceNames.delete(name);
 
-    if (isExpressionOriginalReducerStateReference(declarator.init, state)) {
-      state.originalStateReferenceNames.add(name);
-      state.mutableStateSourceNames.add(name);
+      if (isExpressionOriginalReducerStateReference(declarator.init, state)) {
+        state.originalStateReferenceNames.add(name);
+        state.mutableStateSourceNames.add(name);
+        continue;
+      }
+
+      if (isExpressionReachableFromOriginalReducerState(declarator.init, state)) {
+        state.mutableStateSourceNames.add(name);
+      }
       continue;
     }
 
-    if (isExpressionReachableFromOriginalReducerState(declarator.init, state)) {
-      state.mutableStateSourceNames.add(name);
+    // Destructure off the original state object (or anything reachable from
+    // it). Each top-level binding becomes a new alias reachable from state.
+    if (
+      (isNodeOfType(declarator.id, "ObjectPattern") ||
+        isNodeOfType(declarator.id, "ArrayPattern")) &&
+      isExpressionReachableFromOriginalReducerState(declarator.init, state)
+    ) {
+      recordDestructuredAliasNames(declarator.id, state);
     }
   }
 };

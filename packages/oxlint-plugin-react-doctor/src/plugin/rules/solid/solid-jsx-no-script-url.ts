@@ -5,6 +5,7 @@ import { extractStaticStringValue } from "../../utils/extract-static-string-valu
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { traceConstValue } from "../../utils/trace-const-value.js";
 
 // HACK: Mirrors the WHATWG URL parser's pre-scheme step — strip C0
 // controls first, then match scheme — because embedding the C0 range
@@ -37,9 +38,10 @@ export const solidJsxNoScriptUrl = defineRule<Rule>({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       if (!isNodeOfType(node.name, "JSXIdentifier")) return;
       if (!node.value) return;
-      const expression = isNodeOfType(node.value, "JSXExpressionContainer")
+      const rawExpression = isNodeOfType(node.value, "JSXExpressionContainer")
         ? (node.value.expression as EsTreeNode)
         : (node.value as EsTreeNode);
+      const expression = traceConstValue(rawExpression, context.scopes);
       const stringValue = extractStaticStringValue(expression);
       if (stringValue && startsWithJavascriptScheme(stringValue)) {
         context.report({

@@ -54,4 +54,23 @@ describe("solid-no-array-handlers", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("traces const variable holding an array to flag handler", () => {
+    const result = runRule(
+      solidNoArrayHandlers,
+      `const h = [handler, data];\n<button onClick={h} />`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("type-unsafe");
+  });
+
+  it("does not flag const variable holding a function", () => {
+    const result = runRule(
+      solidNoArrayHandlers,
+      `const h = () => doSomething();\n<button onClick={h} />`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

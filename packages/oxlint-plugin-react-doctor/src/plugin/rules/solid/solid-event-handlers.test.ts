@@ -94,4 +94,24 @@ describe("solid-event-handlers", () => {
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0].message).toContain("static string/number");
   });
+
+  it("traces const variable holding a string to flag static value", () => {
+    const result = runRule(
+      solidEventHandlers,
+      `const handler = "click";\n<button onClick={handler} />`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("static string/number");
+  });
+
+  it("traces chained const variables to flag static value", () => {
+    const result = runRule(
+      solidEventHandlers,
+      `const a = "click";\nconst b = a;\n<button onClick={b} />`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("static string/number");
+  });
 });

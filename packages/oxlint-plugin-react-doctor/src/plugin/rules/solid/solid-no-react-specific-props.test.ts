@@ -33,12 +33,22 @@ describe("solid-no-react-specific-props", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does not flag className on a custom component", () => {
+  it("flags className on a custom component", () => {
     const result = runRule(
       solidNoReactSpecificProps,
       `const Foo = () => <MyWidget className="x" />;`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("class");
+  });
+
+  it("flags htmlFor on a custom component", () => {
+    const result = runRule(
+      solidNoReactSpecificProps,
+      `const Foo = () => <MyWidget htmlFor="email" />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("for");
   });
 
   it("does not flag key on a custom component", () => {

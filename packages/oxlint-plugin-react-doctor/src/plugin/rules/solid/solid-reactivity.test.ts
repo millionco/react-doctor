@@ -353,5 +353,189 @@ describe("solid-reactivity", () => {
       );
       expect(result.diagnostics).toHaveLength(0);
     });
+
+    it("does not flag signal array passed to on() first arg", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal, createEffect, on } from "solid-js";
+         const [a, setA] = createSignal(0);
+         const [b, setB] = createSignal(0);
+         createEffect(on([a, b], ([aVal, bVal]) => {
+           console.log(aVal, bVal);
+         }));`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+  });
+
+  describe("Provider value prop exemption", () => {
+    it("does not flag reactive variable in Provider value prop (XxxProvider)", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         const App = () => <CountProvider value={count}><div /></CountProvider>;`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+
+    it("does not flag reactive variable in Xxx.Provider value prop", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         const App = () => <Counter.Provider value={count}><div /></Counter.Provider>;`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+
+    it("still flags signal on a DOM element value prop", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         const App = () => <input value={count} />;`,
+      );
+      expect(result.diagnostics.length).toBeGreaterThanOrEqual(1);
+      expect(
+        result.diagnostics.some((diagnostic) =>
+          diagnostic.message.includes("called as a function"),
+        ),
+      ).toBe(true);
+    });
+  });
+
+  describe("static* prop exemption", () => {
+    it("does not flag reactive variable in staticFoo prop on custom component", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         const App = () => <MyComponent staticValue={count} />;`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+
+    it("still flags reactive variable in staticFoo prop on DOM element", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         const App = () => <div staticValue={count} />;`,
+      );
+      expect(result.diagnostics.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  describe("Observer constructor callback tracking", () => {
+    it("does not flag signal used inside IntersectionObserver callback", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         new IntersectionObserver(() => { console.log(count()); });`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+
+    it("does not flag signal used inside ResizeObserver callback", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         new ResizeObserver(() => { console.log(count()); });`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+
+    it("does not flag signal used inside MutationObserver callback", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         new MutationObserver(() => { console.log(count()); });`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+  });
+
+  describe("ref callback tracking", () => {
+    it("does not flag function passed to ref prop as called-function", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         const App = () => <div ref={(el) => { console.log(count()); }} />;`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+  });
+
+  describe("For/Index parameter signal tracking", () => {
+    it("flags index parameter used without calling in For children", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal, For } from "solid-js";
+         const [items, setItems] = createSignal([1, 2, 3]);
+         const App = () => (
+           <For each={items()}>
+             {(item, index) => <div>{index}</div>}
+           </For>
+         );`,
+      );
+      expect(result.diagnostics.length).toBeGreaterThanOrEqual(1);
+      expect(
+        result.diagnostics.some((diagnostic) =>
+          diagnostic.message.includes("called as a function"),
+        ),
+      ).toBe(true);
+    });
+
+    it("does not flag index parameter called as function in For children", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal, For } from "solid-js";
+         const [items, setItems] = createSignal([1, 2, 3]);
+         const App = () => (
+           <For each={items()}>
+             {(item, index) => <div>{index()}</div>}
+           </For>
+         );`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+
+    it("flags item parameter used without calling in Index children", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal, Index } from "solid-js";
+         const [items, setItems] = createSignal([1, 2, 3]);
+         const App = () => (
+           <Index each={items()}>
+             {(item) => <div>{item}</div>}
+           </Index>
+         );`,
+      );
+      expect(result.diagnostics.length).toBeGreaterThanOrEqual(1);
+      expect(
+        result.diagnostics.some((diagnostic) =>
+          diagnostic.message.includes("called as a function"),
+        ),
+      ).toBe(true);
+    });
+
+    it("does not flag item parameter called as function in Index children", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal, Index } from "solid-js";
+         const [items, setItems] = createSignal([1, 2, 3]);
+         const App = () => (
+           <Index each={items()}>
+             {(item) => <div>{item()}</div>}
+           </Index>
+         );`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
   });
 });

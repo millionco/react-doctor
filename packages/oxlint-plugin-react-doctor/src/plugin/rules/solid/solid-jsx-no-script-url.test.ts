@@ -35,4 +35,20 @@ describe("solid-jsx-no-script-url", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("traces const variable holding a `javascript:` URL", () => {
+    const result = runRule(
+      solidJsxNoScriptUrl,
+      `const url = "javascript:void(0)";\nconst Foo = () => <a href={url}>click</a>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag const variable holding a safe URL", () => {
+    const result = runRule(
+      solidJsxNoScriptUrl,
+      `const url = "https://example.com";\nconst Foo = () => <a href={url}>click</a>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

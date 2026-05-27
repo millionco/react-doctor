@@ -44,4 +44,13 @@ describe("solid-no-react-deps", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("traces const variable holding a deps array", () => {
+    const result = runRule(
+      solidNoReactDeps,
+      `import { createEffect } from "solid-js";\nconst deps = [count];\ncreateEffect(() => {}, deps);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("createEffect");
+  });
 });

@@ -1,3 +1,4 @@
+import { CSS_PROPERTIES, VENDOR_PREFIXES } from "../../constants/style.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -17,6 +18,9 @@ const camelToKebab = (name: string): string =>
 
 const LENGTH_PERCENTAGE_PATTERN = /\b(?:width|height|margin|padding|border-width|font-size)\b/i;
 
+const isVendorPrefixed = (name: string): boolean =>
+  VENDOR_PREFIXES.some((prefix) => name.startsWith(prefix));
+
 const objectPropertyKeyName = (property: EsTreeNodeOfType<"Property">): string | null => {
   if (isNodeOfType(property.key, "Identifier")) return property.key.name;
   if (isNodeOfType(property.key, "Literal") && typeof property.key.value === "string") {
@@ -25,14 +29,6 @@ const objectPropertyKeyName = (property: EsTreeNodeOfType<"Property">): string |
   return null;
 };
 
-// Port of `solid/style-prop` — Solid (and dom-expressions) expects
-// kebab-cased CSS property names on `style={{...}}`, unlike React's
-// camelCase. Also catches numeric-with-implicit-px values for length
-// properties (`{ width: 12 }` — should be `"12px"`). The kebab-case
-// "is it a valid CSS property" check from the upstream rule needs
-// the `known-css-properties` dataset, which we don't yet vendor; we
-// approximate by flagging any clearly-camelCase key (mixed-case
-// with no `-`) and offer the kebab form as the recommendation.
 export const solidStyleProp = defineRule<Rule>({
   id: "solid-style-prop",
   severity: "warn",
@@ -74,12 +70,19 @@ export const solidStyleProp = defineRule<Rule>({
           const keyName = objectPropertyKeyName(property);
           if (!keyName) continue;
           if (keyName.startsWith("--")) continue;
-          if (/[A-Z]/.test(keyName) && !keyName.includes("-")) {
+          if (!CSS_PROPERTIES.has(keyName) && !isVendorPrefixed(keyName)) {
             const kebabName = camelToKebab(keyName);
-            context.report({
-              node: property.key,
-              message: `Use \`"${kebabName}"\` instead of \`${keyName}\` — Solid expects kebab-case CSS property names.`,
-            });
+            if (CSS_PROPERTIES.has(kebabName)) {
+              context.report({
+                node: property.key,
+                message: `Use \`"${kebabName}"\` instead of \`${keyName}\` — Solid expects kebab-case CSS property names.`,
+              });
+            } else {
+              context.report({
+                node: property.key,
+                message: `\`${keyName}\` is not a valid CSS property.`,
+              });
+            }
             continue;
           }
           if (LENGTH_PERCENTAGE_PATTERN.test(keyName)) {

@@ -26,7 +26,8 @@ export const solidNoReactSpecificProps = defineRule<Rule>({
   recommendation: "Use `class` instead of `className` and `for` instead of `htmlFor` in Solid JSX.",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      if (!isNodeOfType(node.name, "JSXIdentifier") || !isDomElementName(node.name.name)) return;
+      if (!isNodeOfType(node.name, "JSXIdentifier")) return;
+      const isDomElement = isDomElementName(node.name.name);
       for (const attribute of node.attributes) {
         if (!isNodeOfType(attribute, "JSXAttribute")) continue;
         if (!isNodeOfType(attribute.name, "JSXIdentifier")) continue;
@@ -40,7 +41,7 @@ export const solidNoReactSpecificProps = defineRule<Rule>({
             message: `Prefer the \`${matchedMapping.solidName}\` prop over the deprecated \`${matchedMapping.reactName}\` prop.`,
           });
         }
-        if (attributeName === "key") {
+        if (isDomElement && attributeName === "key") {
           context.report({
             node: attribute,
             message: "Elements in a <For> or <Index> list do not need a `key` prop in Solid.",

@@ -1,9 +1,11 @@
 import { defineRule } from "../../utils/define-rule.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isDomElementName } from "../../utils/is-dom-element-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { traceConstValue } from "../../utils/trace-const-value.js";
 
 const isEventHandlerName = (attribute: EsTreeNodeOfType<"JSXAttribute">): boolean => {
   if (isNodeOfType(attribute.name, "JSXNamespacedName")) {
@@ -33,7 +35,8 @@ export const solidNoArrayHandlers = defineRule<Rule>({
       if (!isDomElementName(opening.name.name)) return;
       if (!isEventHandlerName(node)) return;
       if (!node.value || !isNodeOfType(node.value, "JSXExpressionContainer")) return;
-      if (!isNodeOfType(node.value.expression, "ArrayExpression")) return;
+      const tracedExpression = traceConstValue(node.value.expression as EsTreeNode, context.scopes);
+      if (!isNodeOfType(tracedExpression, "ArrayExpression")) return;
       context.report({
         node,
         message: "Passing an array as an event handler is potentially type-unsafe.",

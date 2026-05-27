@@ -6,6 +6,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { readSolidRuleSettings } from "../../utils/read-solid-rule-settings.js";
+import { traceConstValue } from "../../utils/trace-const-value.js";
 
 interface SolidEventHandlersSettings {
   ignoreCase?: boolean;
@@ -121,10 +122,11 @@ export const solidEventHandlers = defineRule<Rule>({
         if (!/^on[a-zA-Z]/.test(attributeName)) return;
         if (node.value && isNodeOfType(node.value, "JSXExpressionContainer")) {
           const expression = node.value.expression as EsTreeNode;
+          const tracedExpression = traceConstValue(expression, context.scopes);
           if (
-            !isNodeOfType(expression, "JSXEmptyExpression") &&
-            !isNodeOfType(expression, "ArrayExpression") &&
-            isStaticStringOrNumberValue(expression)
+            !isNodeOfType(tracedExpression, "JSXEmptyExpression") &&
+            !isNodeOfType(tracedExpression, "ArrayExpression") &&
+            isStaticStringOrNumberValue(tracedExpression)
           ) {
             context.report({
               node,

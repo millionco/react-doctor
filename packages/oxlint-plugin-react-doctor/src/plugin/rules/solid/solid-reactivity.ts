@@ -82,6 +82,14 @@ const BROWSER_TIMER_FUNCTIONS = new Set([
   "requestIdleCallback",
 ]);
 
+const OBSERVER_CONSTRUCTORS = new Set([
+  "IntersectionObserver",
+  "MutationObserver",
+  "PerformanceObserver",
+  "ReportingObserver",
+  "ResizeObserver",
+]);
+
 const SYNC_CALLBACK_ARRAY_METHODS =
   /^(?:forEach|map|flatMap|reduce|reduceRight|find|findIndex|filter|every|some)$/;
 
@@ -144,6 +152,19 @@ const getFunctionName = (node: EsTreeNode): string | null => {
 
 const isJsxElementOrFragment = (node: EsTreeNode | null | undefined): boolean =>
   Boolean(node && (node.type === "JSXElement" || node.type === "JSXFragment"));
+
+const isProviderOpeningElement = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
+  if (isNodeOfType(node.name, "JSXIdentifier")) {
+    return node.name.name.endsWith("Provider");
+  }
+  if (isNodeOfType(node.name, "JSXMemberExpression")) {
+    const property = node.name.property;
+    if (isNodeOfType(property, "JSXIdentifier")) {
+      return property.name === "Provider";
+    }
+  }
+  return false;
+};
 
 const traceIdentifierToValue = (identifier: EsTreeNode, context: RuleContext): EsTreeNode => {
   let current = identifier;
@@ -567,6 +588,31 @@ export const solidReactivity = defineRule<Rule>({
         } else if (
           parentAttribute &&
           isNodeOfType(parentAttribute.name, "JSXIdentifier") &&
+          parentAttribute.name.name === "value" &&
+          parentAttribute.parent?.type === "JSXOpeningElement" &&
+          isProviderOpeningElement(parentAttribute.parent as EsTreeNodeOfType<"JSXOpeningElement">)
+        ) {
+          // HACK: Provider value prop is intentionally an expression, not a tracked scope
+        } else if (
+          parentAttribute &&
+          isNodeOfType(parentAttribute.name, "JSXIdentifier") &&
+          /^static[A-Z]/.test(parentAttribute.name.name) &&
+          parentAttribute.parent?.type === "JSXOpeningElement" &&
+          isNodeOfType(
+            (parentAttribute.parent as EsTreeNodeOfType<"JSXOpeningElement">).name,
+            "JSXIdentifier",
+          ) &&
+          !isDomElementName(
+            (
+              (parentAttribute.parent as EsTreeNodeOfType<"JSXOpeningElement">)
+                .name as EsTreeNodeOfType<"JSXIdentifier">
+            ).name,
+          )
+        ) {
+          // HACK: static* props on custom components are intentionally not tracked
+        } else if (
+          parentAttribute &&
+          isNodeOfType(parentAttribute.name, "JSXIdentifier") &&
           parentAttribute.name.name === "ref" &&
           isFunctionLike(node.expression as EsTreeNode)
         ) {
@@ -581,6 +627,14 @@ export const solidReactivity = defineRule<Rule>({
         }
       } else if (isNodeOfType(node, "JSXSpreadAttribute")) {
         pushTrackedScope(node.argument as EsTreeNode, "expression");
+      } else if (isNodeOfType(node, "NewExpression")) {
+        if (
+          isNodeOfType(node.callee, "Identifier") &&
+          OBSERVER_CONSTRUCTORS.has(node.callee.name) &&
+          node.arguments.length >= 1
+        ) {
+          pushTrackedScope(node.arguments[0] as EsTreeNode, "called-function");
+        }
       } else if (isNodeOfType(node, "CallExpression")) {
         if (isNodeOfType(node.callee, "Identifier")) {
           const calleeName = node.callee.name;
@@ -839,6 +893,9 @@ export const solidReactivity = defineRule<Rule>({
         case "JSXExpressionContainer":
         case "JSXSpreadAttribute":
         case "AssignmentExpression":
+          checkForTrackedScopes(node);
+          break;
+        case "NewExpression":
           checkForTrackedScopes(node);
           break;
         case "CallExpression":

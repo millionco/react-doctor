@@ -6,6 +6,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { traceConstValue } from "../../utils/trace-const-value.js";
 
 const TRACKED_PRIMITIVES: ReadonlyArray<string> = ["createEffect", "createMemo"];
 
@@ -36,7 +37,8 @@ export const solidNoReactDeps = defineRule<Rule>({
         const secondArgument = node.arguments[1];
         if (!isFunctionLike(firstArgument)) return;
         if (firstArgument.params.length !== 0) return;
-        if (!isNodeOfType(secondArgument, "ArrayExpression")) return;
+        const tracedSecondArgument = traceConstValue(secondArgument, context.scopes);
+        if (!isNodeOfType(tracedSecondArgument, "ArrayExpression")) return;
         context.report({
           node: secondArgument,
           message: `In Solid, \`${matchedImport}\` doesn't accept a dependency array because it tracks dependencies automatically. Use \`on\` if you need to override.`,

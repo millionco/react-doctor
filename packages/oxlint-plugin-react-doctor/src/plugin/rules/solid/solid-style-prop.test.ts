@@ -73,4 +73,37 @@ describe("solid-style-prop", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("flags invalid CSS property name", () => {
+    const result = runRule(
+      solidStyleProp,
+      `const Foo = () => <div style={{ "not-a-prop": "value" }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("not a valid CSS property");
+  });
+
+  it("does not flag valid CSS property", () => {
+    const result = runRule(
+      solidStyleProp,
+      `const Foo = () => <div style={{ "background-color": "red" }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag CSS custom property", () => {
+    const result = runRule(
+      solidStyleProp,
+      `const Foo = () => <div style={{ "--my-var": "10px" }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag vendor-prefixed property", () => {
+    const result = runRule(
+      solidStyleProp,
+      `const Foo = () => <div style={{ "-webkit-transform": "rotate(45deg)" }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

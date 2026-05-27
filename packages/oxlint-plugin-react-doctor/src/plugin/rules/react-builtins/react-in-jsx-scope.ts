@@ -1,8 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { findProgramRoot } from "../../utils/find-program-root.js";
-import { hasBindingNamed } from "../../utils/has-binding-named.js";
+import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import type { Rule } from "../../utils/rule.js";
 
 const MESSAGE =
@@ -10,13 +8,14 @@ const MESSAGE =
 
 // Port of `oxc_linter::rules::react::react_in_jsx_scope`. Only relevant
 // for the legacy classic JSX runtime; tsconfig `jsx: "react-jsx"` (or
-// Babel's automatic runtime) makes this unnecessary. Rule fires once
-// per file when JSX is used and `React` isn't a binding anywhere in the
-// module.
+// Babel's automatic runtime) makes this unnecessary. Rule fires per
+// JSX site when `React` isn't visible from that site's scope chain.
 //
-// LIMITATION: we don't have scope analysis, so any `React` binding
-// anywhere in the file (variable, import, parameter, etc.) suppresses
-// the diagnostic — same outcome as OXC for every fixture that ships.
+// Scope-aware: uses `findVariableInitializer` to resolve `React` from
+// the JSX site, so a `React` binding in a sibling function scope no
+// longer silences JSX in an unrelated function. The common shape
+// (module-level `import React from 'react'`) is still detected
+// because module-scope bindings are visible from every nested site.
 export const reactInJsxScope = defineRule<Rule>({
   id: "react-in-jsx-scope",
   severity: "warn",
@@ -28,27 +27,14 @@ export const reactInJsxScope = defineRule<Rule>({
   defaultEnabled: false,
   recommendation:
     "If you're on React 17+ with the new JSX transform, disable this rule. Otherwise import `React` at the top of the file.",
-  create: (context) => {
-    let didCheckBindingForFile = false;
-    let isReactBound = false;
-
-    const ensureBindingChecked = (jsxNode: EsTreeNode): boolean => {
-      if (didCheckBindingForFile) return isReactBound;
-      didCheckBindingForFile = true;
-      const programRoot = findProgramRoot(jsxNode);
-      isReactBound = programRoot ? hasBindingNamed(programRoot, "React") : false;
-      return isReactBound;
-    };
-
-    return {
-      JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        if (ensureBindingChecked(node)) return;
-        context.report({ node: node.name, message: MESSAGE });
-      },
-      JSXFragment(node: EsTreeNodeOfType<"JSXFragment">) {
-        if (ensureBindingChecked(node)) return;
-        context.report({ node: node.openingFragment, message: MESSAGE });
-      },
-    };
-  },
+  create: (context) => ({
+    JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+      if (findVariableInitializer(node, "React")) return;
+      context.report({ node: node.name, message: MESSAGE });
+    },
+    JSXFragment(node: EsTreeNodeOfType<"JSXFragment">) {
+      if (findVariableInitializer(node, "React")) return;
+      context.report({ node: node.openingFragment, message: MESSAGE });
+    },
+  }),
 });

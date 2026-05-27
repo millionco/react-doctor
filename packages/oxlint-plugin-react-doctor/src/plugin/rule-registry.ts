@@ -205,7 +205,9 @@ import { noWideLetterSpacing } from "./rules/design/no-wide-letter-spacing.js";
 import { noWillUpdateSetState } from "./rules/react-builtins/no-will-update-set-state.js";
 import { noZIndex9999 } from "./rules/design/no-z-index9999.js";
 import { onlyExportComponents } from "./rules/react-builtins/only-export-components.js";
+import { preactNoChildrenLength } from "./rules/preact/preact-no-children-length.js";
 import { preactNoRenderArguments } from "./rules/preact/preact-no-render-arguments.js";
+import { preactPreferOninput } from "./rules/preact/preact-prefer-oninput.js";
 import { preferDynamicImport } from "./rules/bundle-size/prefer-dynamic-import.js";
 import { preferEs6Class } from "./rules/react-builtins/prefer-es6-class.js";
 import { preferFunctionComponent } from "./rules/react-builtins/prefer-function-component.js";
@@ -2467,12 +2469,34 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/preact-no-children-length",
+    id: "preact-no-children-length",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...preactNoChildrenLength,
+      framework: "preact",
+      category: "Preact",
+    },
+  },
+  {
     key: "react-doctor/preact-no-render-arguments",
     id: "preact-no-render-arguments",
     source: "react-doctor",
     originallyExternal: false,
     rule: {
       ...preactNoRenderArguments,
+      framework: "preact",
+      category: "Preact",
+    },
+  },
+  {
+    key: "react-doctor/preact-prefer-oninput",
+    id: "preact-prefer-oninput",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...preactPreferOninput,
       framework: "preact",
       category: "Preact",
     },

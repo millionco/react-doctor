@@ -1,0 +1,19 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/exhaustive-deps.ts
+  s_21f13d772deb4e::t_74dbb3801b43c8 686
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "4bcf69a0ebd214c38a8f29fadba3a7b9ee86c373",
+  "prompts": {},
+  "sessions": {
+    "s_21f13d772deb4e": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a5c49233-ce77-4bcf-b755-79d23bc5a4c8",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

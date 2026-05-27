@@ -52,12 +52,13 @@ const oklchToRgb = (lightness, chroma, hue) => {
 const colorizeTrueColor = (text, { red, green, blue }) =>
   `\x1b[38;2;${red};${green};${blue}m${text}\x1b[39m`;
 
-const colorizeRainbowText = (text, frame) =>
+const colorizeRainbowText = (text, frame, offset = 0) =>
   [...text]
     .map((character, index) => {
       if (character === " ") return character;
       const hue =
-        ((index / RAINBOW_GRADIENT_WIDTH) * 360 + frame * RAINBOW_HUE_SHIFT_PER_FRAME) % 360;
+        (((index + offset) / RAINBOW_GRADIENT_WIDTH) * 360 + frame * RAINBOW_HUE_SHIFT_PER_FRAME) %
+        360;
       return colorizeTrueColor(
         character,
         oklchToRgb(RAINBOW_OKLCH_LIGHTNESS, RAINBOW_OKLCH_CHROMA, hue),

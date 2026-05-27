@@ -1,4 +1,5 @@
 import type { EsTreeNode } from "./es-tree-node.js";
+import { getImportedName as getImportSpecifierName } from "./get-imported-name.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { walkAst } from "./walk-ast.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
@@ -23,14 +24,7 @@ const isReactImport = (symbol: SymbolDescriptor): boolean => {
 const getImportedName = (symbol: SymbolDescriptor): string | null => {
   if (symbol.kind !== "import") return null;
   if (!isReactImport(symbol)) return null;
-  const declarationNode = symbol.declarationNode;
-  if (!isNodeOfType(declarationNode, "ImportSpecifier")) return null;
-  const importedName = declarationNode.imported;
-  if (isNodeOfType(importedName, "Identifier")) return importedName.name;
-  if (isNodeOfType(importedName, "Literal") && typeof importedName.value === "string") {
-    return importedName.value;
-  }
-  return null;
+  return getImportSpecifierName(symbol.declarationNode) ?? null;
 };
 
 const isReactNamespaceImport = (symbol: SymbolDescriptor): boolean => {

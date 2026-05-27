@@ -1089,4 +1089,42 @@ describe("formatFrameworkName", () => {
   it("formats unknown framework as React", () => {
     expect(formatFrameworkName("unknown")).toBe("React");
   });
+
+  it("formats Preact", () => {
+    expect(formatFrameworkName("preact")).toBe("Preact");
+  });
+});
+
+describe("discoverProject — Preact", () => {
+  it("classifies a Preact-only project as `preact`", () => {
+    const projectDirectory = path.join(tempDirectory, "preact-only-project");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "preact-only-project",
+        dependencies: { preact: "^10.22.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.framework).toBe("preact");
+    expect(projectInfo.reactVersion).toBe(null);
+  });
+
+  it("prefers Vite over Preact when both are present (Preact-on-Vite stays `vite`)", () => {
+    const projectDirectory = path.join(tempDirectory, "preact-with-vite");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "preact-with-vite",
+        dependencies: { preact: "^10.22.0" },
+        devDependencies: { vite: "^7.0.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.framework).toBe("vite");
+  });
 });

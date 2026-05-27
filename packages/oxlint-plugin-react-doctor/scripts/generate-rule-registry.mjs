@@ -25,6 +25,7 @@ const BUCKET_TO_FRAMEWORK = {
   "react-native": "react-native",
   "tanstack-start": "tanstack-start",
   "tanstack-query": "tanstack-query",
+  preact: "preact",
 };
 
 // Bucket directory → behavioral tags merged onto every rule in that
@@ -80,6 +81,7 @@ const BUCKET_TO_DEFAULT_CATEGORY = {
   "state-and-effects": "State & Effects",
   "tanstack-query": "TanStack Query",
   "tanstack-start": "TanStack Start",
+  preact: "Preact",
   "view-transitions": "Correctness",
 };
 

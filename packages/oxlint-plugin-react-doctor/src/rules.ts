@@ -89,6 +89,9 @@ export const TANSTACK_START_RULES = toRuleMap(
 export const TANSTACK_QUERY_RULES = toRuleMap(
   toKeyedSeverity(collectReactDoctorRulesByFramework("tanstack-query")),
 );
+export const PREACT_RULES = toRuleMap(
+  toKeyedSeverity(collectReactDoctorRulesByFramework("preact")),
+);
 export const ALL_REACT_DOCTOR_RULES = toRuleMap(toKeyedSeverity(REACT_DOCTOR_RULES));
 export const ALL_REACT_DOCTOR_RULE_KEYS: ReadonlySet<string> = new Set(
   REACT_DOCTOR_RULES.map((rule) => rule.key),

@@ -7,6 +7,7 @@ export type Framework =
   | "expo"
   | "react-native"
   | "tanstack-start"
+  | "preact"
   | "unknown";
 
 export interface ProjectInfo {

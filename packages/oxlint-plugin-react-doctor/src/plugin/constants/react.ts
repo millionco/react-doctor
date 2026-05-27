@@ -81,12 +81,8 @@ export const SUBSCRIPTION_METHOD_NAMES = new Set([
   "sub",
 ]);
 
-// Subscribe-like methods that return the cleanup function directly.
-// EventTarget/EventEmitter APIs often return void or subscription objects.
 export const CLEANUP_RETURNING_SUBSCRIPTION_METHOD_NAMES = new Set(["subscribe", "sub"]);
 
-// Cleanup methods that are specific enough to trust on any receiver.
-// Generic verbs like `remove` need a known subscription receiver.
 export const GLOBAL_RELEASE_METHOD_NAMES = new Set([
   "unsubscribe",
   "removeEventListener",
@@ -98,7 +94,6 @@ export const GLOBAL_RELEASE_METHOD_NAMES = new Set([
   "abort",
 ]);
 
-// Generic cleanup methods accepted only on values returned by subscribe-like calls.
 export const BOUND_RESOURCE_RELEASE_METHOD_NAMES = new Set([
   "remove",
   "cleanup",
@@ -108,7 +103,6 @@ export const BOUND_RESOURCE_RELEASE_METHOD_NAMES = new Set([
   "teardown",
 ]);
 
-// Direct cleanup function names accepted inside returned cleanup functions.
 export const CLEANUP_LIKE_RELEASE_CALLEE_NAMES = new Set([
   ...GLOBAL_RELEASE_METHOD_NAMES,
   "cleanup",

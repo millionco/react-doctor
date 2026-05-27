@@ -1,0 +1,71 @@
+.agents/skills/adversarial-test-designer/examples.md
+  s_df7c9dda45aa12::t_f8f88a82ecd4db 1-6,8-10,12-14,16-68
+  s_df7c9dda45aa12::t_61d1929ae3f947 7,11,15
+.agents/skills/rule-idea-validator/SKILL.md
+  s_df7c9dda45aa12::t_f36f01c533093f 40-41
+.agents/skills/rule-resource-tutor/examples.md
+  s_df7c9dda45aa12::t_c2041f685fdf6a 1-58
+.agents/skills/rde-rule-validator/examples.md
+  s_df7c9dda45aa12::t_61d1929ae3f947 14-21
+  s_df7c9dda45aa12::t_c1d9ed25d73e70 1,3,5-10,12,23,25,27-29,31,33-35,37,39,41-51
+.agents/skills/ast-rule-planner/SKILL.md
+  s_df7c9dda45aa12::t_4516a425ec8453 53-54
+.agents/skills/rule-pr-writer/examples.md
+  s_df7c9dda45aa12::t_05cfd69af9ea6f 25,45-46,48
+  s_df7c9dda45aa12::t_a166646d991a4f 5-24
+  s_df7c9dda45aa12::t_21f52394c6d06a 1-4,26-27,36-40,42-44,47,49-55
+  s_df7c9dda45aa12::t_775233f0ea5896 28-35,41
+.agents/skills/rule-implementation-reviewer/review-examples.md
+  s_df7c9dda45aa12::t_5351b1a0eba124 1-99
+.agents/skills/rule-scope-guard/examples.md
+  s_df7c9dda45aa12::t_73069efb5033cf 1-59
+.agents/skills/adversarial-test-designer/SKILL.md
+  s_df7c9dda45aa12::t_dd23db7805f0fb 47-48
+.agents/skills/ast-rule-planner/examples.md
+  s_df7c9dda45aa12::t_9bd6247cca39ee 1-4,10-14,25-81
+  s_df7c9dda45aa12::t_61d1929ae3f947 5-9,15-24
+.agents/skills/rule-researcher/SKILL.md
+  s_df7c9dda45aa12::t_2bc2ca079b2f6b 45-46
+.agents/skills/rule-researcher/examples.md
+  s_df7c9dda45aa12::t_e3bfef61903318 1-28,30-34,36-43
+  s_df7c9dda45aa12::t_61d1929ae3f947 29,35
+.agents/skills/rule-implementation-reviewer/SKILL.md
+  s_df7c9dda45aa12::t_11b80fa3e51e2f 51-52
+.agents/skills/rule-resource-tutor/SKILL.md
+  s_df7c9dda45aa12::t_04167e7fe3651f 1-48
+.agents/skills/rde-idea-evaluator/examples.md
+  s_df7c9dda45aa12::t_049728830d44e6 1-70
+.agents/skills/review-comment-triager/examples.md
+  s_df7c9dda45aa12::t_465afe94ff289b 1-83
+.agents/skills/rule-idea-validator/examples.md
+  s_df7c9dda45aa12::t_61d1929ae3f947 41,48,55
+  s_df7c9dda45aa12::t_f564d0301aafbe 1-40,42-47,49-54,56-63
+.agents/skills/rde-rule-validator/SKILL.md
+  s_df7c9dda45aa12::t_88039a8ef7a8f4 55-56
+.agents/skills/rule-pr-writer/SKILL.md
+  s_df7c9dda45aa12::t_513439c10c5612 1-45
+.agents/skills/rde-idea-evaluator/SKILL.md
+  s_df7c9dda45aa12::t_21b1cd4e6ff81b 66-67
+.agents/skills/review-comment-triager/SKILL.md
+  s_df7c9dda45aa12::t_d18b49928fc67d 1-52
+.gitignore
+  s_df7c9dda45aa12::t_a646fc1493f9ba 27-28,33-34,37-38
+.agents/skills/rule-scope-guard/SKILL.md
+  s_df7c9dda45aa12::t_7af1c0e22fee2e 52-53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "2ab9369e26e4318e2d96c10979e12089c23dbe07",
+  "prompts": {},
+  "sessions": {
+    "s_df7c9dda45aa12": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "dffc8bfb-8df7-448a-bd31-b9f516f10703",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

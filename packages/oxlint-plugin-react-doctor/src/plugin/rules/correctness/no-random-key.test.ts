@@ -110,7 +110,7 @@ describe("no-random-key", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags an UpdateExpression counter key", () => {
+  it("flags a prefix UpdateExpression counter key", () => {
     const result = runRule(
       noRandomKey,
       `
@@ -122,6 +122,22 @@ describe("no-random-key", () => {
     );
 
     expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("++counter");
+  });
+
+  it("flags a postfix UpdateExpression counter key", () => {
+    const result = runRule(
+      noRandomKey,
+      `
+      function List({ items }) {
+        let counter = 0;
+        return items.map((item) => <Row key={counter++} text={item} />);
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("counter++");
   });
 
   it("does not flag stable item-id keys", () => {

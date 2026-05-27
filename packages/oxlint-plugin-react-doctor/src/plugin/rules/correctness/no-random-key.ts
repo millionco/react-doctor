@@ -31,7 +31,6 @@ const ALWAYS_FRESH_MEMBER_RECEIVERS = new Map<string, ReadonlySet<string>>([
   ["Date", new Set(["now"])],
   ["performance", new Set(["now"])],
   ["crypto", new Set(["randomUUID", "getRandomValues", "randomBytes"])],
-  ["window", new Set([])],
 ]);
 
 const isAlwaysFreshExpression = (expression: EsTreeNode): string | null => {
@@ -75,7 +74,7 @@ const isAlwaysFreshExpression = (expression: EsTreeNode): string | null => {
 const looksLikeFreshUpdateExpression = (expression: EsTreeNode): string | null => {
   const stripped = stripParenExpression(expression);
   if (isNodeOfType(stripped, "UpdateExpression")) {
-    return stripped.operator === "++" ? "++counter" : "--counter";
+    return stripped.prefix ? `${stripped.operator}counter` : `counter${stripped.operator}`;
   }
   if (
     isNodeOfType(stripped, "AssignmentExpression") &&

@@ -32,4 +32,17 @@ describe("solid-no-react-specific-props", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does not flag className on a custom component", () => {
+    const result = runRule(
+      solidNoReactSpecificProps,
+      `const Foo = () => <MyWidget className="x" />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag key on a custom component", () => {
+    const result = runRule(solidNoReactSpecificProps, `const Foo = () => <MyList key="id" />;`);
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

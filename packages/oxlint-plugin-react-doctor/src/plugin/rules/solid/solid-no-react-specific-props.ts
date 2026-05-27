@@ -26,23 +26,21 @@ export const solidNoReactSpecificProps = defineRule<Rule>({
   recommendation: "Use `class` instead of `className` and `for` instead of `htmlFor` in Solid JSX.",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      for (const { reactName, solidName } of REACT_SPECIFIC_PROPS) {
-        for (const attribute of node.attributes) {
-          if (!isNodeOfType(attribute, "JSXAttribute")) continue;
-          if (!isNodeOfType(attribute.name, "JSXIdentifier")) continue;
-          if (attribute.name.name === reactName) {
-            context.report({
-              node: attribute,
-              message: `Prefer the \`${solidName}\` prop over the deprecated \`${reactName}\` prop.`,
-            });
-          }
-        }
-      }
       if (!isNodeOfType(node.name, "JSXIdentifier") || !isDomElementName(node.name.name)) return;
       for (const attribute of node.attributes) {
         if (!isNodeOfType(attribute, "JSXAttribute")) continue;
         if (!isNodeOfType(attribute.name, "JSXIdentifier")) continue;
-        if (attribute.name.name === "key") {
+        const attributeName = attribute.name.name;
+        const matchedMapping = REACT_SPECIFIC_PROPS.find(
+          (mapping) => mapping.reactName === attributeName,
+        );
+        if (matchedMapping) {
+          context.report({
+            node: attribute,
+            message: `Prefer the \`${matchedMapping.solidName}\` prop over the deprecated \`${matchedMapping.reactName}\` prop.`,
+          });
+        }
+        if (attributeName === "key") {
           context.report({
             node: attribute,
             message: "Elements in a <For> or <Index> list do not need a `key` prop in Solid.",

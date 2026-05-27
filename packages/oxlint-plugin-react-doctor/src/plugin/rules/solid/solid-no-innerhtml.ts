@@ -23,12 +23,22 @@ const extractStaticStringValue = (node: EsTreeNode | null): string | null => {
   return null;
 };
 
-// Port of `solid/no-innerhtml` — flags `innerHTML={...}` (a Solid
-// special prop) because passing unsanitized input is an XSS risk,
-// plus the React-style `dangerouslySetInnerHTML` which Solid does
-// not support. Static string values are still flagged because Solid
-// reports them as dangerous when the rule is left at its default
-// (we don't depend on `is-html` to keep the port footprint tight).
+// Port of `solid/no-innerhtml`. Three distinct diagnostics:
+//
+//   1. `dangerouslySetInnerHTML={...}` — always flagged. Solid does
+//      not honour the React-style prop, so any use is a silent bug.
+//   2. `innerHTML={dynamic}` — flagged as dangerous XSS source.
+//   3. `innerHTML="..."` on an element with JSX children — flagged
+//      because the static markup overwrites the children.
+//
+// Static `innerHTML="..."` on a childless element is intentionally
+// NOT flagged — this matches upstream's `allowStatic: true` default,
+// which exists so authors can ship known-safe inline snippets without
+// noise. Upstream additionally calls `is-html(value)` to suggest
+// `innerText` when the literal isn't actually markup; we skip that
+// to avoid pulling in the dataset, which only costs us the
+// `notHtml` suggestion path — the security-relevant cases above are
+// fully covered.
 export const solidNoInnerHtml = defineRule<Rule>({
   id: "solid-no-innerhtml",
   severity: "error",

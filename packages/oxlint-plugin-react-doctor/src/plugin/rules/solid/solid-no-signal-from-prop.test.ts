@@ -160,4 +160,44 @@ describe("solid-no-signal-from-prop", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(2);
   });
+
+  it("flags computed property access like props['value']", () => {
+    const result = runRule(
+      solidNoSignalFromProp,
+      `import { createSignal } from "solid-js";
+       function Comp(props) { const [val] = createSignal(props["value"]); return <div>{val()}</div>; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag optional chaining like props?.value (ChainExpression)", () => {
+    const result = runRule(
+      solidNoSignalFromProp,
+      `import { createSignal } from "solid-js";
+       function Comp(props) { const [val] = createSignal(props?.value); return <div>{val()}</div>; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag when root object is a function call like getProps().value", () => {
+    const result = runRule(
+      solidNoSignalFromProp,
+      `import { createSignal } from "solid-js";
+       function Comp(props) { const [val] = createSignal(getProps().value); return <div>{val()}</div>; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag when first param has a default value", () => {
+    const result = runRule(
+      solidNoSignalFromProp,
+      `import { createSignal } from "solid-js";
+       function Comp(props = {}) { const [val] = createSignal(props.value); return <div>{val()}</div>; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

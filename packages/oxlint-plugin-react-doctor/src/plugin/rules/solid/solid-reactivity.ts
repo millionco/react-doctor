@@ -173,16 +173,10 @@ const traceIdentifierToValue = (identifier: EsTreeNode, context: RuleContext): E
     visited.add(current);
     const symbol = context.scopes.symbolFor(current);
     if (!symbol) break;
+    if (symbol.kind !== "const") break;
     if (!isNodeOfType(symbol.declarationNode, "VariableDeclarator")) break;
     const declarator = symbol.declarationNode;
     if (!isNodeOfType(declarator.id, "Identifier") || !declarator.init) break;
-    if (symbol.kind !== "const") {
-      const allReadsOnly = symbol.references.every(
-        (reference) =>
-          reference.flag === "read" || reference.identifier === symbol.bindingIdentifier,
-      );
-      if (!allReadsOnly) break;
-    }
     current = declarator.init as EsTreeNode;
   }
   return current;
@@ -311,6 +305,8 @@ export const solidReactivity = defineRule<Rule>({
       }
     };
 
+    const consumedReferences = new Set<ReferenceDescriptor>();
+
     const getReferencesInCurrentScope = (
       reactiveVariables: ReactiveVariable[],
     ): Array<{
@@ -324,7 +320,9 @@ export const solidReactivity = defineRule<Rule>({
       for (const reactiveVariable of reactiveVariables) {
         for (const reference of reactiveVariable.symbol.references) {
           if (reference.identifier === reactiveVariable.symbol.bindingIdentifier) continue;
+          if (consumedReferences.has(reference)) continue;
           if (isRefInCurrentScope(reference)) {
+            consumedReferences.add(reference);
             result.push({
               reference,
               declarationScope: reactiveVariable.declarationScope,

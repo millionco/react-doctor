@@ -160,4 +160,36 @@ describe("solid-no-async-effect", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does not flag sync callback that returns an async function", () => {
+    const result = runRule(
+      solidNoAsyncEffect,
+      `import { createEffect } from "solid-js";
+       createEffect(() => {
+         return async () => { await doWork(); };
+       });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag identifier reference as callback (cannot statically verify)", () => {
+    const result = runRule(
+      solidNoAsyncEffect,
+      `import { createEffect } from "solid-js";
+       const myAsyncFn = async () => { await x(); };
+       createEffect(myAsyncFn);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags async arrow with no await (async keyword alone breaks tracking)", () => {
+    const result = runRule(
+      solidNoAsyncEffect,
+      `import { createEffect } from "solid-js";
+       createEffect(async () => {
+         console.log("no await but still async");
+       });`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

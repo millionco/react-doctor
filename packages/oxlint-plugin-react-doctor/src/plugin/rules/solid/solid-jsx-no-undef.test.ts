@@ -81,4 +81,36 @@ describe("solid-jsx-no-undef", () => {
     const result = runRule(solidJsxNoUndef, `import Card from "./card"; const element = <Card />;`);
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("flags Show when not imported", () => {
+    const result = runRule(solidJsxNoUndef, `const element = <Show when={true}>hi</Show>;`);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toBe("'Show' is not defined.");
+  });
+
+  it("flags For when not imported", () => {
+    const result = runRule(
+      solidJsxNoUndef,
+      `const element = <For each={items}>{(item) => <div>{item}</div>}</For>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toBe("'For' is not defined.");
+  });
+
+  it("does not flag lowercase intrinsic elements like div, span, input", () => {
+    const result = runRule(
+      solidJsxNoUndef,
+      `const element = <><div /><span /><input /><br /><hr /></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag component defined via destructured import", () => {
+    const result = runRule(
+      solidJsxNoUndef,
+      `import { Show, For } from "solid-js";
+       const element = <><Show when={true}>hi</Show><For each={[]}>{(x) => <div />}</For></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

@@ -471,6 +471,124 @@ describe("solid-reactivity", () => {
     });
   });
 
+  describe("splitProps tracking", () => {
+    it("flags splitProps result accessed outside tracked scope", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { splitProps } from "solid-js";
+         const Component = (props) => {
+           const [local, others] = splitProps(props, ["name"]);
+           const val = local.name;
+           return <div>{val}</div>;
+         };`,
+      );
+      expect(result.diagnostics.length).toBeGreaterThanOrEqual(1);
+      expect(
+        result.diagnostics.some((diagnostic) =>
+          diagnostic.message.includes("should be used within JSX"),
+        ),
+      ).toBe(true);
+    });
+
+    it("does not flag splitProps result used inside JSX expression", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { splitProps } from "solid-js";
+         const Component = (props) => {
+           const [local, others] = splitProps(props, ["name"]);
+           return <div>{local.name}</div>;
+         };`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+  });
+
+  describe("createResource tracking", () => {
+    it("flags createResource return accessed outside tracked scope", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createResource } from "solid-js";
+         const Component = () => {
+           const [data] = createResource(fetchUser);
+           const name = data.name;
+           return <div>{name}</div>;
+         };`,
+      );
+      expect(result.diagnostics.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("does not flag createResource return used inside JSX", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createResource } from "solid-js";
+         const Component = () => {
+           const [data] = createResource(fetchUser);
+           return <div>{data.name}</div>;
+         };`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+  });
+
+  describe("produce() sync callback tracking", () => {
+    it("does not flag signal used inside produce callback within createEffect", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal, createEffect } from "solid-js";
+         import { produce } from "solid-js/store";
+         const [count, setCount] = createSignal(0);
+         createEffect(() => {
+           setState(produce((draft) => {
+             draft.count = count();
+           }));
+         });`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+  });
+
+  describe("mergeProps in JSX", () => {
+    it("does not flag mergeProps result used inside JSX expression", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { mergeProps } from "solid-js";
+         const Component = (props) => {
+           const merged = mergeProps({ name: "default" }, props);
+           return <div>{merged.name}</div>;
+         };`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    });
+  });
+
+  describe("signal in computed member access", () => {
+    it("flags signal used as computed property key without calling", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const [index, setIndex] = createSignal(0);
+         const items = [1, 2, 3];
+         const current = items[index];`,
+      );
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0].message).toContain("called as a function");
+      expect(result.diagnostics[0].message).toContain("property accesses");
+    });
+  });
+
+  describe("signal in addition binary expression", () => {
+    it("flags signal used with + operator without calling", () => {
+      const result = runRule(
+        solidReactivity,
+        `import { createSignal } from "solid-js";
+         const [count, setCount] = createSignal(0);
+         const incremented = count + 1;`,
+      );
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0].message).toContain("arithmetic or comparisons");
+    });
+  });
+
   describe("For/Index parameter signal tracking", () => {
     it("flags index parameter used without calling in For children", () => {
       const result = runRule(

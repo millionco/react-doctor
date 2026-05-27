@@ -63,4 +63,35 @@ describe("solid-components-return-once", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("flags early return but not last return when both paths return JSX", () => {
+    const result = runRule(
+      solidComponentsReturnOnce,
+      `function Comp() {
+         if (error()) return <ErrorView />;
+         if (loading()) return <Spinner />;
+         return <Main />;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+    expect(result.diagnostics.every((d) => d.message.includes("early return"))).toBe(true);
+  });
+
+  it("does not flag HOC-wrapped arrow with conditional return", () => {
+    const result = runRule(
+      solidComponentsReturnOnce,
+      `const Comp = memo(() => loading ? <A /> : <B />);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag ternary nested inside JSX children of the returned element", () => {
+    const result = runRule(
+      solidComponentsReturnOnce,
+      `function Comp() {
+         return <div>{cond ? <A /> : <B />}</div>;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

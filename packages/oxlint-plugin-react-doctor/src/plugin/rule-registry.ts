@@ -283,6 +283,7 @@ import { solidImports } from "./rules/solid/solid-imports.js";
 import { solidJsxNoDuplicateProps } from "./rules/solid/solid-jsx-no-duplicate-props.js";
 import { solidJsxNoScriptUrl } from "./rules/solid/solid-jsx-no-script-url.js";
 import { solidJsxNoUndef } from "./rules/solid/solid-jsx-no-undef.js";
+import { solidJsxUsesVars } from "./rules/solid/solid-jsx-uses-vars.js";
 import { solidNoArrayHandlers } from "./rules/solid/solid-no-array-handlers.js";
 import { solidNoAsyncEffect } from "./rules/solid/solid-no-async-effect.js";
 import { solidNoAsyncTrackedScope } from "./rules/solid/solid-no-async-tracked-scope.js";
@@ -3394,6 +3395,18 @@ export const reactDoctorRules = [
       framework: "solid",
       category: "SolidJS",
       tags: [...new Set(["solid", ...(solidJsxNoUndef.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-jsx-uses-vars",
+    id: "solid-jsx-uses-vars",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidJsxUsesVars,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidJsxUsesVars.tags ?? [])])],
     },
   },
   {

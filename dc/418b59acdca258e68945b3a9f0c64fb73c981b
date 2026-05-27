@@ -1,0 +1,24 @@
+.agents/skills/rde-idea-evaluator/SKILL.md
+  s_df7c9dda45aa12::t_3e4d6b1d14a32a 52
+docs/HOW_TO_WRITE_A_RULE.md
+  s_df7c9dda45aa12::t_5203297a79fdd2 518,532
+  s_df7c9dda45aa12::t_3e4d6b1d14a32a 179,517,519-531,533-541,579-581,601,762-769,875-884
+.agents/skills/rule-eval-table-generator/SKILL.md
+  s_df7c9dda45aa12::t_3e4d6b1d14a32a 25-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "dc418b59acdca258e68945b3a9f0c64fb73c981b",
+  "prompts": {},
+  "sessions": {
+    "s_df7c9dda45aa12": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "dffc8bfb-8df7-448a-bd31-b9f516f10703",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

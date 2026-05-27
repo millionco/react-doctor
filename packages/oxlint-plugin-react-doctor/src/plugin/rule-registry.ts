@@ -310,6 +310,7 @@ import { solidReactivity } from "./rules/solid/solid-reactivity.js";
 import { solidRequireCleanup } from "./rules/solid/solid-require-cleanup.js";
 import { solidSelfClosingComp } from "./rules/solid/solid-self-closing-comp.js";
 import { solidStyleProp } from "./rules/solid/solid-style-prop.js";
+import { solidValidateJsxNesting } from "./rules/solid/solid-validate-jsx-nesting.js";
 import { stateInConstructor } from "./rules/react-builtins/state-in-constructor.js";
 import { stylePropObject } from "./rules/react-builtins/style-prop-object.js";
 import { tabindexNoPositive } from "./rules/a11y/tabindex-no-positive.js";
@@ -3717,6 +3718,18 @@ export const reactDoctorRules = [
       framework: "solid",
       category: "SolidJS",
       tags: [...new Set(["solid", ...(solidStyleProp.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-validate-jsx-nesting",
+    id: "solid-validate-jsx-nesting",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidValidateJsxNesting,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidValidateJsxNesting.tags ?? [])])],
     },
   },
   {

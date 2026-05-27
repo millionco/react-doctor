@@ -19,4 +19,20 @@ describe("solid-jsx-no-script-url", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("flags `javascript:` URLs containing embedded control characters", () => {
+    const result = runRule(
+      solidJsxNoScriptUrl,
+      "const Foo = () => <a href={`java\\u0009script:alert(1)`}>click</a>;",
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags `javascript:` URLs with leading control characters and spaces", () => {
+    const result = runRule(
+      solidJsxNoScriptUrl,
+      "const Foo = () => <a href={`\\u0001  javascript:alert(1)`}>click</a>;",
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

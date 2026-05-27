@@ -5,14 +5,30 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
-// A `javascript:` URL can contain leading C0 control or U+0020 SPACE,
-// and any newline or tab is filtered out as if it's not part of the
-// URL. https://url.spec.whatwg.org/#url-parsing
-// HACK: control-character class is the URL-spec definition; the regex
-// matches exactly what browsers strip before resolving the protocol.
-// eslint-disable-next-line no-control-regex
-const JAVASCRIPT_PROTOCOL_PATTERN =
-  /^[\u0000-\u001F ]*j[\r\n\t]*a[\r\n\t]*v[\r\n\t]*a[\r\n\t]*s[\r\n\t]*c[\r\n\t]*r[\r\n\t]*i[\r\n\t]*p[\r\n\t]*t[\r\n\t]*:/i;
+// Mirrors the WHATWG URL parser's pre-scheme step: leading C0
+// controls and U+0020 SPACE are stripped, then ASCII tab / LF / CR
+// characters inside the URL are also filtered out before the
+// scheme is matched. https://url.spec.whatwg.org/#url-parsing
+//
+// Doing the filter in code (and keeping the regex literal free of
+// control characters) avoids `eslint(no-control-regex)` warnings —
+// inline `[\u0000-\u001F]` and `[\r\n\t]*` between letters would
+// trip the lint at every rule-file load.
+const JAVASCRIPT_SCHEME_PATTERN = /^ *javascript:/i;
+
+const isUrlControlCharacterCode = (characterCode: number): boolean =>
+  characterCode >= 0 && characterCode <= 0x1f;
+
+const stripUrlControlCharacters = (urlValue: string): string => {
+  let stripped = "";
+  for (const character of urlValue) {
+    if (!isUrlControlCharacterCode(character.charCodeAt(0))) stripped += character;
+  }
+  return stripped;
+};
+
+const startsWithJavascriptScheme = (urlValue: string): boolean =>
+  JAVASCRIPT_SCHEME_PATTERN.test(stripUrlControlCharacters(urlValue));
 
 const extractStaticStringValue = (node: EsTreeNode | null | undefined): string | null => {
   if (!node) return null;
@@ -39,7 +55,7 @@ export const solidJsxNoScriptUrl = defineRule<Rule>({
         ? (node.value.expression as EsTreeNode)
         : (node.value as EsTreeNode);
       const stringValue = extractStaticStringValue(expression);
-      if (stringValue && JAVASCRIPT_PROTOCOL_PATTERN.test(stringValue)) {
+      if (stringValue && startsWithJavascriptScheme(stringValue)) {
         context.report({
           node: node.value,
           message: "For security, don't use `javascript:` URLs. Use event handlers instead.",

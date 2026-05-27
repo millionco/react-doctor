@@ -277,7 +277,7 @@ export const runInspect = <HooksR = never>(
         onFileProgress: (scannedFileCount, totalFileCount) => {
           lastReportedTotalFileCount = totalFileCount;
           Effect.runSync(
-            scanProgress.update(`Scanning (${scannedFileCount}/${totalFileCount})...`),
+            scanProgress.update(`Scanning files (${scannedFileCount}/${totalFileCount})...`),
           );
         },
       })

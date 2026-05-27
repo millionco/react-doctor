@@ -1,0 +1,21 @@
+.vite-hooks/pre-commit
+  s_cec9970cb6a1b1::t_838a8de92436af 3-23
+vite.config.ts
+  s_cec9970cb6a1b1::t_1aec3d430d6fa1 6-7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "2d7d630c4b54135a83d98545bbf2dc9a40ebb0ea",
+  "prompts": {},
+  "sessions": {
+    "s_cec9970cb6a1b1": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "9b49ae6f-d261-4cdf-825e-3ac9cab234ff",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

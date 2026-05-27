@@ -103,38 +103,42 @@ describe("inspect — score surface filter", () => {
   // dropped any user-configured `surfaces.cli.exclude*` controls before
   // the printed output rendered. The filter now always runs so user
   // overrides on the cli surface flow through end-to-end.
-  it("honors user-configured `surfaces.cli` overrides on the printed output", { timeout: 60_000 }, async () => {
-    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    stubScoreFetchAndCapture();
-    const printedLines: string[] = [];
-    consoleSpy.mockImplementation((...args: unknown[]) => {
-      printedLines.push(args.map(String).join(" "));
-    });
-
-    try {
-      const baselineResult = await inspect(path.join(FIXTURES_DIRECTORY, "basic-react"), {
-        lint: true,
-        noScore: true,
-      });
-      const baselineDesignCount = baselineResult.diagnostics.filter(
-        (diagnostic) =>
-          diagnostic.plugin === "react-doctor" &&
-          (reactDoctorPlugin.rules[diagnostic.rule]?.tags?.includes("design") ?? false),
-      ).length;
-      expect(baselineDesignCount).toBeGreaterThan(0);
-      printedLines.length = 0;
-
-      await inspect(path.join(FIXTURES_DIRECTORY, "basic-react"), {
-        lint: true,
-        noScore: true,
-        outputSurface: "cli",
-        configOverride: { surfaces: { cli: { excludeTags: ["design"] } } },
+  it(
+    "honors user-configured `surfaces.cli` overrides on the printed output",
+    { timeout: 60_000 },
+    async () => {
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      stubScoreFetchAndCapture();
+      const printedLines: string[] = [];
+      consoleSpy.mockImplementation((...args: unknown[]) => {
+        printedLines.push(args.map(String).join(" "));
       });
 
-      const printedText = printedLines.join("\n");
-      expect(printedText).toContain(`${baselineDesignCount} demoted from the cli surface`);
-    } finally {
-      consoleSpy.mockRestore();
-    }
-  });
+      try {
+        const baselineResult = await inspect(path.join(FIXTURES_DIRECTORY, "basic-react"), {
+          lint: true,
+          noScore: true,
+        });
+        const baselineDesignCount = baselineResult.diagnostics.filter(
+          (diagnostic) =>
+            diagnostic.plugin === "react-doctor" &&
+            (reactDoctorPlugin.rules[diagnostic.rule]?.tags?.includes("design") ?? false),
+        ).length;
+        expect(baselineDesignCount).toBeGreaterThan(0);
+        printedLines.length = 0;
+
+        await inspect(path.join(FIXTURES_DIRECTORY, "basic-react"), {
+          lint: true,
+          noScore: true,
+          outputSurface: "cli",
+          configOverride: { surfaces: { cli: { excludeTags: ["design"] } } },
+        });
+
+        const printedText = printedLines.join("\n");
+        expect(printedText).toContain(`${baselineDesignCount} demoted from the cli surface`);
+      } finally {
+        consoleSpy.mockRestore();
+      }
+    },
+  );
 });

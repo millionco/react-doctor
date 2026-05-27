@@ -1,0 +1,19 @@
+scripts/preview-perfect-score.mjs
+  s_c8e883b1ce2fd6::t_f8fb3807d2a231 55,60-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "9148b67337b96b72353e0893c2c77b69bc2282ce",
+  "prompts": {},
+  "sessions": {
+    "s_c8e883b1ce2fd6": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a83a48be-a775-4db9-9ef6-9699ec2cbfc9",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

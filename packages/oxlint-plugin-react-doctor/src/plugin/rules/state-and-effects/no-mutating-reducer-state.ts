@@ -238,6 +238,14 @@ const isCallToImportedReactUseReducer = (node: EsTreeNodeOfType<"CallExpression"
 // Immer `produce` / `useImmerReducer`, and only analyze wrappers whose semantics
 // preserve plain reducer state.
 
+interface ResolvedReducer {
+  readonly functionNode: EsTreeNode;
+  // When non-null, the reducer body comes from a different file. The
+  // display path (relative when possible, else absolute) is woven
+  // into the diagnostic message.
+  readonly crossFileSourceDisplay: string | null;
+}
+
 // Resolves a reducer-argument expression to a function/arrow node we
 // can analyse for mutations. Handles three cases:
 //
@@ -252,10 +260,12 @@ const isCallToImportedReactUseReducer = (node: EsTreeNodeOfType<"CallExpression"
 const resolveReducerFunction = (
   node: EsTreeNode | null | undefined,
   currentFilename: string | undefined,
-): EsTreeNode | null => {
+): ResolvedReducer | null => {
   if (!node) return null;
   const unwrappedNode = stripParenExpression(node);
-  if (isFunctionLikeAstNode(unwrappedNode)) return unwrappedNode;
+  if (isFunctionLikeAstNode(unwrappedNode)) {
+    return { functionNode: unwrappedNode, crossFileSourceDisplay: null };
+  }
   if (!isNodeOfType(unwrappedNode, "Identifier")) return null;
 
   const binding = findVariableInitializer(unwrappedNode, unwrappedNode.name);
@@ -264,7 +274,9 @@ const resolveReducerFunction = (
 
   // Local binding to a function/arrow in this file.
   const unwrappedInitializer = stripParenExpression(initializer);
-  if (isFunctionLikeAstNode(unwrappedInitializer)) return unwrappedInitializer;
+  if (isFunctionLikeAstNode(unwrappedInitializer)) {
+    return { functionNode: unwrappedInitializer, crossFileSourceDisplay: null };
+  }
 
   // Imported binding — follow into the other file.
   if (
@@ -283,7 +295,20 @@ const resolveReducerFunction = (
 
     const exportedName = resolveImportedExportName(initializer);
     if (!exportedName) return null;
-    return resolveCrossFileFunctionExport(currentFilename, sourceValue, exportedName);
+    const crossFileFunction = resolveCrossFileFunctionExport(
+      currentFilename,
+      sourceValue,
+      exportedName,
+    );
+    if (!crossFileFunction) return null;
+    return {
+      functionNode: crossFileFunction,
+      // Use the import-source string the user wrote — that's what
+      // they'll search for to find the mutation. Resolving to the
+      // absolute on-disk path would be technically more precise but
+      // less actionable in a diagnostic.
+      crossFileSourceDisplay: sourceValue,
+    };
   }
 
   return null;
@@ -830,12 +855,27 @@ const updateReducerStateIdentityForIdentifierAssignment = (
   }
 };
 
+interface AnalyzeOptions {
+  // The consumer file's `useReducer(reducer, ...)` CallExpression.
+  // Used as the diagnostic anchor when the reducer body lives in
+  // ANOTHER file (cross-file resolution) — without this, the
+  // diagnostic's line/column would point at locations inside the
+  // imported reducer file, which IDEs / GitHub annotations would
+  // attach to the consumer file by mistake.
+  readonly crossFileConsumerCallSite: EsTreeNode | null;
+  // Display string for the source file path (relative to the
+  // consumer when possible, absolute otherwise) — woven into the
+  // diagnostic message when cross-file.
+  readonly crossFileSourceDisplay: string | null;
+}
+
 // Walks a reducer body one path at a time. If a path changes old state and then
 // returns that same old state, we report the change.
 const analyzeReactUseReducerFunctionForStateMutation = (
   context: RuleContext,
   functionNode: EsTreeNode,
   reportedNodes: WeakSet<EsTreeNode>,
+  options: AnalyzeOptions,
 ): void => {
   if (!isFunctionLikeAstNode(functionNode) || !isNodeOfType(functionNode.body, "BlockStatement"))
     return;
@@ -852,6 +892,20 @@ const analyzeReactUseReducerFunctionForStateMutation = (
     for (const mutation of mutations) {
       if (reportedNodes.has(mutation.node)) continue;
       reportedNodes.add(mutation.node);
+      if (options.crossFileConsumerCallSite && options.crossFileSourceDisplay) {
+        // Anchor the diagnostic at the consumer's useReducer call so
+        // the editor/CI annotation lands in the file currently being
+        // linted. The message names the imported reducer source so
+        // the developer can navigate to the actual mutation.
+        context.report({
+          node: options.crossFileConsumerCallSite,
+          message: `${MESSAGE} (mutation in imported reducer at \`${options.crossFileSourceDisplay}\`)`,
+        });
+        // Same WeakSet key (the cross-file mutation node) prevents
+        // duplicate reports if the same reducer is used by multiple
+        // `useReducer` calls in this file.
+        continue;
+      }
       context.report({ node: mutation.node, message: MESSAGE });
     }
   };
@@ -1007,12 +1061,23 @@ export const noMutatingReducerState = defineRule<Rule>({
         // 2. resolve the reducer body — local to this file OR imported
         //    from a sibling file via relative path / barrel re-export;
         // 3. analyze that reducer once, reporting mutations only when a path
-        //    returns the original state reference.
+        //    returns the original state reference. Cross-file diagnostics
+        //    are anchored at the consumer's `useReducer` call so editor /
+        //    CI annotations land in the correct file.
         if (!isCallToImportedReactUseReducer(node)) return;
-        const reducerFunction = resolveReducerFunction(node.arguments?.[0], currentFilename);
-        if (!reducerFunction || analyzedReducers.has(reducerFunction)) return;
-        analyzedReducers.add(reducerFunction);
-        analyzeReactUseReducerFunctionForStateMutation(context, reducerFunction, reportedNodes);
+        const resolved = resolveReducerFunction(node.arguments?.[0], currentFilename);
+        if (!resolved) return;
+        if (analyzedReducers.has(resolved.functionNode)) return;
+        analyzedReducers.add(resolved.functionNode);
+        analyzeReactUseReducerFunctionForStateMutation(
+          context,
+          resolved.functionNode,
+          reportedNodes,
+          {
+            crossFileConsumerCallSite: resolved.crossFileSourceDisplay ? node : null,
+            crossFileSourceDisplay: resolved.crossFileSourceDisplay,
+          },
+        );
       },
     };
   },

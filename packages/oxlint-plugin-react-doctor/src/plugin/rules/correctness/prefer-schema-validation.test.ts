@@ -3,9 +3,6 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { preferSchemaValidation } from "./prefer-schema-validation.js";
 
 describe("prefer-schema-validation", () => {
-  // ---------------------------------------------------------------------------
-  // SECTION 1: Core detection — typeof checks
-  // ---------------------------------------------------------------------------
   describe("flags manual typeof validation plumbing", () => {
     it("flags 3 typeof checks in an arrow function body", () => {
       const code = `
@@ -189,9 +186,6 @@ describe("prefer-schema-validation", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // SECTION 2: Core detection — in expressions
-  // ---------------------------------------------------------------------------
   describe("flags in-expression checks", () => {
     it("flags 3+ in-expression checks", () => {
       const code = `
@@ -222,9 +216,6 @@ describe("prefer-schema-validation", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // SECTION 3: Core detection — hasOwnProperty / hasOwn
-  // ---------------------------------------------------------------------------
   describe("flags hasOwnProperty / hasOwn chains", () => {
     it("flags hasOwnProperty chains", () => {
       const code = `
@@ -252,7 +243,7 @@ describe("prefer-schema-validation", () => {
       expect(result.diagnostics).toHaveLength(1);
     });
 
-    it("flags prototype hasOwnProperty.call pattern", () => {
+    it("does not flag Object.prototype.hasOwnProperty.call pattern", () => {
       const code = `
         function isWidget(obj) {
           if (!Object.prototype.hasOwnProperty.call(obj, "id")) return false;
@@ -266,9 +257,6 @@ describe("prefer-schema-validation", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // SECTION 4: Mixed detection patterns
-  // ---------------------------------------------------------------------------
   describe("flags mixed check types", () => {
     it("flags mixed typeof and in checks", () => {
       const code = `
@@ -311,9 +299,6 @@ describe("prefer-schema-validation", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // SECTION 5: Reporting node targets
-  // ---------------------------------------------------------------------------
   describe("reports on correct AST node", () => {
     it("reports on the function name identifier for arrow functions", () => {
       const code = `
@@ -369,9 +354,6 @@ describe("prefer-schema-validation", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // SECTION 6: Under-threshold — should NOT flag
-  // ---------------------------------------------------------------------------
   describe("does not flag under-threshold checks", () => {
     it("allows a single typeof guard", () => {
       const code = `
@@ -437,9 +419,6 @@ describe("prefer-schema-validation", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // SECTION 7: typeof "undefined" / "function" exclusions
-  // ---------------------------------------------------------------------------
   describe("excludes typeof undefined and function checks", () => {
     it("allows typeof undefined checks (null safety)", () => {
       const code = `
@@ -522,9 +501,6 @@ describe("prefer-schema-validation", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // SECTION 8: Schema library import detection
-  // ---------------------------------------------------------------------------
   describe("schema library import detection", () => {
     it("allows files that import zod", () => {
       const code = `
@@ -748,9 +724,6 @@ describe("prefer-schema-validation", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // SECTION 9: Function scoping
-  // ---------------------------------------------------------------------------
   describe("function scoping — nested functions counted independently", () => {
     it("allows typeof checks in separate nested functions", () => {
       const code = `
@@ -849,9 +822,6 @@ describe("prefer-schema-validation", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // SECTION 10: Module-scope checks
-  // ---------------------------------------------------------------------------
   describe("module-scope typeof checks", () => {
     it("does not flag typeof checks at module scope", () => {
       const code = `
@@ -874,9 +844,6 @@ describe("prefer-schema-validation", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // SECTION 11: Real-world open source patterns (should NOT flag)
-  // ---------------------------------------------------------------------------
   describe("real-world patterns — should NOT flag", () => {
     it("allows React feature detection (typeof window/document/navigator)", () => {
       const code = `
@@ -1072,9 +1039,6 @@ describe("prefer-schema-validation", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // SECTION 12: Real-world open source patterns (SHOULD flag)
-  // ---------------------------------------------------------------------------
   describe("real-world patterns — SHOULD flag", () => {
     it("flags hand-rolled API response validation", () => {
       const code = `
@@ -1273,9 +1237,6 @@ describe("prefer-schema-validation", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // SECTION 13: Test file skipping via test-noise tag
-  // ---------------------------------------------------------------------------
   describe("skips test files via test-noise tag", () => {
     it("does not flag when filename looks like a test (.test.ts)", () => {
       const code = `
@@ -1338,9 +1299,6 @@ describe("prefer-schema-validation", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // SECTION 14: Edge cases and boundary conditions
-  // ---------------------------------------------------------------------------
   describe("edge cases", () => {
     it("handles empty function body", () => {
       const code = `
@@ -1523,9 +1481,6 @@ describe("prefer-schema-validation", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // SECTION 15: Combination of schema library + still-flagged scenarios
-  // ---------------------------------------------------------------------------
   describe("schema library import does not cross file boundaries", () => {
     it("flags file without schema import even when pattern looks like migration", () => {
       const code = `

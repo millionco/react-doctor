@@ -100,52 +100,41 @@ export const preferSchemaValidation = defineRule<Rule>({
   create: (context: RuleContext) => {
     let programImportsSchemaLibrary = false;
 
+    const reportManualTypeChecks = (reportNode: EsTreeNode, bodyNode: EsTreeNode): void => {
+      if (programImportsSchemaLibrary) return;
+      const typeCheckCount = countManualTypeChecksInBody(bodyNode);
+      if (typeCheckCount < MANUAL_TYPE_CHECK_THRESHOLD) return;
+      context.report({
+        node: reportNode,
+        message: `${typeCheckCount} manual type checks (typeof / in / hasOwnProperty) — use a schema validation library instead`,
+      });
+    };
+
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
         programImportsSchemaLibrary = fileImportsSchemaLibrary(node);
       },
 
       FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
-        if (programImportsSchemaLibrary) return;
         if (!node.body) return;
-        const typeCheckCount = countManualTypeChecksInBody(node.body);
-        if (typeCheckCount >= MANUAL_TYPE_CHECK_THRESHOLD) {
-          context.report({
-            node: node.id ?? node,
-            message: `${typeCheckCount} manual type checks (typeof / in / hasOwnProperty) — use a schema validation library instead`,
-          });
-        }
+        reportManualTypeChecks(node.id ?? node, node.body);
       },
 
       ArrowFunctionExpression(node: EsTreeNodeOfType<"ArrowFunctionExpression">) {
-        if (programImportsSchemaLibrary) return;
         if (!node.body) return;
-        const typeCheckCount = countManualTypeChecksInBody(node.body);
-        if (typeCheckCount >= MANUAL_TYPE_CHECK_THRESHOLD) {
-          const parentNode = node.parent;
-          const reportNode =
-            parentNode &&
-            isNodeOfType(parentNode, "VariableDeclarator") &&
-            isNodeOfType(parentNode.id, "Identifier")
-              ? parentNode.id
-              : node;
-          context.report({
-            node: reportNode,
-            message: `${typeCheckCount} manual type checks (typeof / in / hasOwnProperty) — use a schema validation library instead`,
-          });
-        }
+        const parentNode = node.parent;
+        const resolvedReportNode =
+          parentNode &&
+          isNodeOfType(parentNode, "VariableDeclarator") &&
+          isNodeOfType(parentNode.id, "Identifier")
+            ? parentNode.id
+            : node;
+        reportManualTypeChecks(resolvedReportNode, node.body);
       },
 
       FunctionExpression(node: EsTreeNodeOfType<"FunctionExpression">) {
-        if (programImportsSchemaLibrary) return;
         if (!node.body) return;
-        const typeCheckCount = countManualTypeChecksInBody(node.body);
-        if (typeCheckCount >= MANUAL_TYPE_CHECK_THRESHOLD) {
-          context.report({
-            node: node.id ?? node,
-            message: `${typeCheckCount} manual type checks (typeof / in / hasOwnProperty) — use a schema validation library instead`,
-          });
-        }
+        reportManualTypeChecks(node.id ?? node, node.body);
       },
     };
   },

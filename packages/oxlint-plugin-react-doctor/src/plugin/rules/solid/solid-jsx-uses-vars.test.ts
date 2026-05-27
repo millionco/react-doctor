@@ -94,4 +94,37 @@ describe("solid-jsx-uses-vars", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("handles use:directive with a value expression", () => {
+    const result = runRule(
+      solidJsxUsesVars,
+      `const myDir = (el, accessor) => {};
+       const Comp = () => <div use:myDir={someValue} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("only used as");
+  });
+
+  it("does not flag aliased import used as directive with other references", () => {
+    const result = runRule(
+      solidJsxUsesVars,
+      `import { clickOutside as myDir } from "./directives";
+       console.log(myDir);
+       const Comp = () => <div use:myDir />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("reports aliased import used only as directive", () => {
+    const result = runRule(
+      solidJsxUsesVars,
+      `import { clickOutside as myDir } from "./directives";
+       const Comp = () => <div use:myDir />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("only used as");
+  });
 });

@@ -279,4 +279,36 @@ describe("solid-validate-jsx-nesting", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does not flag block element inside expression container within p", () => {
+    const result = runRule(
+      solidValidateJsxNesting,
+      `const App = () => <p>{condition && <div>dynamic</div>}</p>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag div inside Switch/Match inside p (control flow transparent)", () => {
+    const result = runRule(
+      solidValidateJsxNesting,
+      `const App = () => <p><Switch><Match when={x}><span>ok</span></Match></Switch></p>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag non-interactive span inside button", () => {
+    const result = runRule(
+      solidValidateJsxNesting,
+      `const App = () => <button><span>icon</span></button>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("allows Dynamic (Solid control flow) inside ul", () => {
+    const result = runRule(
+      solidValidateJsxNesting,
+      `const App = () => <ul><Dynamic component={ListItem} /></ul>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

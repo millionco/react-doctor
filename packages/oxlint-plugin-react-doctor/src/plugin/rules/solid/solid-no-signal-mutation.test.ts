@@ -76,4 +76,35 @@ describe("solid-no-signal-mutation", () => {
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0].message).toContain("memo");
   });
+
+  it("does not flag deeply nested signal().nested.push() (limitation)", () => {
+    const result = runRule(
+      solidNoSignalMutation,
+      `import { createSignal } from "solid-js";
+       const [data, setData] = createSignal({ nested: [] });
+       data().nested.push("x");`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag .reverse() on non-signal array", () => {
+    const result = runRule(
+      solidNoSignalMutation,
+      `import { createSignal } from "solid-js";
+       const plainArray = [3, 1, 2];
+       plainArray.reverse();`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags .splice() on signal getter", () => {
+    const result = runRule(
+      solidNoSignalMutation,
+      `import { createSignal } from "solid-js";
+       const [items, setItems] = createSignal([1, 2, 3]);
+       items().splice(0, 1);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain(".splice()");
+  });
 });

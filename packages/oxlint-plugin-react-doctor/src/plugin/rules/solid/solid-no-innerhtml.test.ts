@@ -43,4 +43,24 @@ describe("solid-no-innerhtml", () => {
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0].message).toContain("static values");
   });
+
+  it("flags innerHTML with template literal containing expressions as dynamic", () => {
+    const result = runRule(
+      solidNoInnerHtml,
+      "const Foo = ({ input }) => <div innerHTML={`<p>${input}</p>`} />;",
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("dynamic");
+  });
+
+  it("flags innerHTML with function call value as dynamic", () => {
+    const result = runRule(solidNoInnerHtml, `const Foo = () => <div innerHTML={getHtml()} />;`);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("dynamic");
+  });
+
+  it("allows static innerHTML on self-closing element with no children", () => {
+    const result = runRule(solidNoInnerHtml, `const Foo = () => <span innerHTML="<b>ok</b>" />;`);
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

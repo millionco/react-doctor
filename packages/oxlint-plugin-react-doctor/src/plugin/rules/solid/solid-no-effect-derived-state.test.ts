@@ -99,4 +99,39 @@ describe("solid-no-effect-derived-state", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("flags createRenderEffect that only calls setters", () => {
+    const result = runRule(
+      solidNoEffectDerivedState,
+      `import { createRenderEffect } from "solid-js";
+       createRenderEffect(() => {
+         setA(x());
+         setB(y());
+       });`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("createRenderEffect");
+    expect(result.diagnostics[0].message).toContain("derived state");
+  });
+
+  it("does not flag createEffect with await expression", () => {
+    const result = runRule(
+      solidNoEffectDerivedState,
+      `import { createEffect } from "solid-js";
+       createEffect(async () => {
+         const data = await fetchData();
+         setResult(data);
+       });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag createEffect with empty body", () => {
+    const result = runRule(
+      solidNoEffectDerivedState,
+      `import { createEffect } from "solid-js";
+       createEffect(() => {});`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

@@ -60,4 +60,42 @@ describe("solid-require-cleanup", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("flags requestAnimationFrame without onCleanup", () => {
+    const result = runRule(
+      solidRequireCleanup,
+      `import { createEffect } from "solid-js";
+       createEffect(() => {
+         const id = requestAnimationFrame(draw);
+       });`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("requestAnimationFrame");
+    expect(result.diagnostics[0].message).toContain("cancelAnimationFrame");
+  });
+
+  it("does not flag when onCleanup is imported with alias", () => {
+    const result = runRule(
+      solidRequireCleanup,
+      `import { createEffect, onCleanup as cleanup } from "solid-js";
+       createEffect(() => {
+         const id = setInterval(tick, 1000);
+         cleanup(() => clearInterval(id));
+       });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag setTimeout inside nested function in effect", () => {
+    const result = runRule(
+      solidRequireCleanup,
+      `import { createEffect } from "solid-js";
+       createEffect(() => {
+         const start = () => {
+           setTimeout(tick, 1000);
+         };
+       });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

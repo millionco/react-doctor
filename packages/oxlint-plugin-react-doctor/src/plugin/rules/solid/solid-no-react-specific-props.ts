@@ -26,8 +26,8 @@ export const solidNoReactSpecificProps = defineRule<Rule>({
   recommendation: "Use `class` instead of `className` and `for` instead of `htmlFor` in Solid JSX.",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      if (!isNodeOfType(node.name, "JSXIdentifier")) return;
-      const isDomElement = isDomElementName(node.name.name);
+      const isDomElement =
+        isNodeOfType(node.name, "JSXIdentifier") && isDomElementName(node.name.name);
       for (const attribute of node.attributes) {
         if (!isNodeOfType(attribute, "JSXAttribute")) continue;
         if (!isNodeOfType(attribute.name, "JSXIdentifier")) continue;

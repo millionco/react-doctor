@@ -72,4 +72,48 @@ describe("solid-prefer-resource", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("flags fetch inside try/catch in effect with setter", () => {
+    const result = runRule(
+      solidPreferResource,
+      `import { createEffect } from "solid-js";
+       createEffect(async () => {
+         try {
+           const res = await fetch("/api/data");
+           setData(await res.json());
+         } catch (err) {
+           setError(err);
+         }
+       });`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("createResource");
+  });
+
+  it("flags createRenderEffect with fetch and setter", () => {
+    const result = runRule(
+      solidPreferResource,
+      `import { createRenderEffect } from "solid-js";
+       createRenderEffect(async () => {
+         const res = await fetch("/api");
+         setResult(await res.json());
+       });`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("createResource");
+  });
+
+  it("does not flag fetch inside nested async function in effect", () => {
+    const result = runRule(
+      solidPreferResource,
+      `import { createEffect } from "solid-js";
+       createEffect(() => {
+         const loadData = async () => {
+           const res = await fetch("/api");
+           setData(await res.json());
+         };
+       });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

@@ -208,4 +208,43 @@ describe("solid-no-cleanup-after-await", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("flags onCleanup in catch block after await in try", () => {
+    const result = runRule(
+      solidNoCleanupAfterAwait,
+      `import { createEffect, onCleanup } from "solid-js";
+       createEffect(async () => {
+         try {
+           await fetch("/api");
+         } catch (e) {
+           onCleanup(() => console.log("cleanup in catch"));
+         }
+       });`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags cleanup between two awaits", () => {
+    const result = runRule(
+      solidNoCleanupAfterAwait,
+      `import { createEffect, onCleanup } from "solid-js";
+       createEffect(async () => {
+         await fetch("/first");
+         onCleanup(() => console.log("between awaits"));
+         await fetch("/second");
+       });`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag non-async callback with onCleanup (for-await requires async)", () => {
+    const result = runRule(
+      solidNoCleanupAfterAwait,
+      `import { createEffect, onCleanup } from "solid-js";
+       createEffect(() => {
+         onCleanup(() => console.log("safe"));
+       });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

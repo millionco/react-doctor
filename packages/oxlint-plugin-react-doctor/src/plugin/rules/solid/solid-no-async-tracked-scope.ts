@@ -15,7 +15,12 @@ const REACTIVE_PRIMITIVES: ReadonlyArray<string> = [
   "createRenderEffect",
 ];
 
-const ASYNC_SCHEDULER_NAMES = new Set(["setTimeout", "setInterval", "requestAnimationFrame"]);
+const ASYNC_SCHEDULER_NAMES = new Set([
+  "setTimeout",
+  "setInterval",
+  "requestAnimationFrame",
+  "queueMicrotask",
+]);
 
 const isZeroArgIdentifierCall = (node: EsTreeNode): boolean =>
   isNodeOfType(node, "CallExpression") &&

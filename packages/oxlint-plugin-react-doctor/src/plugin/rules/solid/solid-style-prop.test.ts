@@ -106,4 +106,28 @@ describe("solid-style-prop", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does not flag style prop on custom component", () => {
+    const result = runRule(
+      solidStyleProp,
+      `const Foo = () => <MyWidget style={{ fontSize: "16px" }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("font-size");
+  });
+
+  it("does not flag string style when allowString is true", () => {
+    const result = runRule(solidStyleProp, `const Foo = () => <div style="color: red" />;`, {
+      settings: { "react-doctor": { solidStyleProp: { allowString: true } } },
+    });
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag spread style objects (only direct JSXAttribute)", () => {
+    const result = runRule(
+      solidStyleProp,
+      `const Foo = () => <div {...{ style: { fontSize: "16px" } }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

@@ -14,7 +14,7 @@ const EFFECT_PRIMITIVES: ReadonlyArray<string> = [
   "createComputed",
 ];
 
-const TIMER_METHODS = new Set(["setInterval", "setTimeout"]);
+const TIMER_METHODS = new Set(["setInterval", "setTimeout", "requestAnimationFrame"]);
 const SUBSCRIPTION_METHODS = new Set(["addEventListener", "subscribe", "observe"]);
 const CLEANUP_PRIMITIVES: ReadonlyArray<string> = ["onCleanup"];
 
@@ -95,9 +95,14 @@ export const solidRequireCleanup = defineRule<Rule>({
         if (usages.length === 0) return;
         if (containsCleanupCall(callback, cleanupLocalNames)) return;
         const firstUsage = usages[0];
+        const timerCancelMap: Record<string, string> = {
+          setInterval: "clearInterval",
+          setTimeout: "clearTimeout",
+          requestAnimationFrame: "cancelAnimationFrame",
+        };
         const releaseHint =
           firstUsage.kind === "timer"
-            ? `clear${firstUsage.name === "setInterval" ? "Interval" : "Timeout"}(...)`
+            ? `${timerCancelMap[firstUsage.name] ?? "clearTimeout"}(...)`
             : `the matching remove/unsubscribe call`;
         context.report({
           node,

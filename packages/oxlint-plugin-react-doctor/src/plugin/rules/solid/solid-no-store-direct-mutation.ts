@@ -50,6 +50,27 @@ export const solidNoStoreDirectMutation = defineRule<Rule>({
           message: `Direct assignment to \`${rootObject.name}\` store property won't trigger reactivity. Use the setter function or \`produce()\` instead.`,
         });
       },
+      UpdateExpression(node: EsTreeNodeOfType<"UpdateExpression">) {
+        if (!isNodeOfType(node.argument, "MemberExpression")) return;
+        const rootObject = getRootObject(node.argument as EsTreeNode);
+        if (!isNodeOfType(rootObject, "Identifier")) return;
+        if (!storeProxyNames.has(rootObject.name)) return;
+        context.report({
+          node,
+          message: `Direct mutation of \`${rootObject.name}\` store property won't trigger reactivity. Use the setter function or \`produce()\` instead.`,
+        });
+      },
+      UnaryExpression(node: EsTreeNodeOfType<"UnaryExpression">) {
+        if (node.operator !== "delete") return;
+        if (!isNodeOfType(node.argument, "MemberExpression")) return;
+        const rootObject = getRootObject(node.argument as EsTreeNode);
+        if (!isNodeOfType(rootObject, "Identifier")) return;
+        if (!storeProxyNames.has(rootObject.name)) return;
+        context.report({
+          node,
+          message: `\`delete\` on \`${rootObject.name}\` store property won't trigger reactivity. Use the setter function with \`undefined\` or \`produce()\` instead.`,
+        });
+      },
     };
   },
 });

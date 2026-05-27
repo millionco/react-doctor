@@ -80,4 +80,23 @@ describe("solid-imports", () => {
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0].message).toContain("solid-js/store");
   });
+
+  it("flags createStore from solid-js while allowing createSignal on same line", () => {
+    const result = runRule(solidImports, `import { createSignal, createStore } from "solid-js";`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("solid-js/store");
+  });
+
+  it("does not flag default import from solid-js", () => {
+    const result = runRule(solidImports, `import solid from "solid-js";`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag namespace import from solid-js", () => {
+    const result = runRule(solidImports, `import * as solid from "solid-js";`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

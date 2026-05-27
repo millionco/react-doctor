@@ -153,4 +153,57 @@ describe("solid-no-store-direct-mutation", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("flags delete on store property", () => {
+    const result = runRule(
+      solidNoStoreDirectMutation,
+      `import { createStore } from "solid-js/store";
+       const [store, setStore] = createStore({ name: "Alice" });
+       delete store.name;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("delete");
+  });
+
+  it("flags increment/decrement on store property", () => {
+    const result = runRule(
+      solidNoStoreDirectMutation,
+      `import { createStore } from "solid-js/store";
+       const [store, setStore] = createStore({ count: 0 });
+       store.count++;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("store");
+  });
+
+  it("flags computed property assignment like store[dynamicKey] = x", () => {
+    const result = runRule(
+      solidNoStoreDirectMutation,
+      `import { createStore } from "solid-js/store";
+       const [store, setStore] = createStore({});
+       const key = "name";
+       store[key] = "Bob";`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag mutation inside produce callback (draft object)", () => {
+    const result = runRule(
+      solidNoStoreDirectMutation,
+      `import { createStore, produce } from "solid-js/store";
+       const [store, setStore] = createStore({ items: [] });
+       setStore(produce((draft) => { draft.items.push("new"); delete draft.items[0]; }));`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags prefix decrement on store property", () => {
+    const result = runRule(
+      solidNoStoreDirectMutation,
+      `import { createStore } from "solid-js/store";
+       const [store, setStore] = createStore({ count: 10 });
+       --store.count;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

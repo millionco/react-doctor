@@ -138,4 +138,37 @@ describe("solid-no-props-assignment", () => {
     );
     expect(result.diagnostics).toHaveLength(2);
   });
+
+  it("does not flag reassignment expression (only variable declarations)", () => {
+    const result = runRule(
+      solidNoPropsAssignment,
+      `function Comp(props) { let x; x = props.value; return <div>{x}</div>; }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags array destructuring from prop member expression", () => {
+    const result = runRule(
+      solidNoPropsAssignment,
+      `function Comp(props) { const [first] = props.items; return <div>{first}</div>; }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("props.items");
+  });
+
+  it("does not flag optional chaining like props?.name (ChainExpression)", () => {
+    const result = runRule(
+      solidNoPropsAssignment,
+      `function Comp(props) { const name = props?.name; return <div>{name}</div>; }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag function call wrapping a prop access", () => {
+    const result = runRule(
+      solidNoPropsAssignment,
+      `function Comp(props) { const name = String(props.name); return <div>{name}</div>; }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

@@ -32,9 +32,10 @@ const CONSOLE_METHODS = new Set(["log", "warn", "error", "info", "debug"]);
 const bodyContainsSideEffects = (callback: EsTreeNode): boolean => {
   if (!isFunctionLike(callback)) return false;
   let foundSideEffect = false;
-  walkAst(callback.body as EsTreeNode, (node) => {
+  const body = callback.body as EsTreeNode;
+  walkAst(body, (node) => {
     if (foundSideEffect) return false;
-    if (isFunctionLike(node) && node !== callback) return false;
+    if (isFunctionLike(node)) return false;
     if (isNodeOfType(node, "CallExpression")) {
       if (isSetterCall(node)) return;
       if (isNodeOfType(node.callee, "MemberExpression")) {

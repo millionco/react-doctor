@@ -55,4 +55,27 @@ describe("solid-no-react-specific-props", () => {
     const result = runRule(solidNoReactSpecificProps, `const Foo = () => <MyList key="id" />;`);
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("flags htmlFor on component with member expression name", () => {
+    const result = runRule(
+      solidNoReactSpecificProps,
+      `const Foo = () => <Ns.Label htmlFor="email" />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("for");
+  });
+
+  it("flags className on component with member expression name", () => {
+    const result = runRule(
+      solidNoReactSpecificProps,
+      `const Foo = () => <UI.Card className="wrapper" />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("class");
+  });
+
+  it("does not flag key on member expression component", () => {
+    const result = runRule(solidNoReactSpecificProps, `const Foo = () => <Ns.Item key="id" />;`);
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

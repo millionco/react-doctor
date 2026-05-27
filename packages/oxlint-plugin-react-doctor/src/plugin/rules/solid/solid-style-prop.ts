@@ -16,7 +16,44 @@ interface SolidStylePropSettings {
 const camelToKebab = (name: string): string =>
   name.replace(/[A-Z]/g, (uppercaseMatch) => `-${uppercaseMatch.toLowerCase()}`);
 
-const LENGTH_PERCENTAGE_PATTERN = /\b(?:width|height|margin|padding|border-width|font-size)\b/i;
+const UNITFUL_PROPERTIES = new Set([
+  "width",
+  "height",
+  "min-width",
+  "max-width",
+  "min-height",
+  "max-height",
+  "margin",
+  "margin-top",
+  "margin-right",
+  "margin-bottom",
+  "margin-left",
+  "padding",
+  "padding-top",
+  "padding-right",
+  "padding-bottom",
+  "padding-left",
+  "border-width",
+  "border-top-width",
+  "border-right-width",
+  "border-bottom-width",
+  "border-left-width",
+  "font-size",
+  "top",
+  "right",
+  "bottom",
+  "left",
+  "gap",
+  "row-gap",
+  "column-gap",
+  "border-radius",
+  "outline-width",
+  "letter-spacing",
+  "word-spacing",
+  "text-indent",
+  "inline-size",
+  "block-size",
+]);
 
 const isVendorPrefixed = (name: string): boolean =>
   VENDOR_PREFIXES.some((prefix) => name.startsWith(prefix));
@@ -85,7 +122,7 @@ export const solidStyleProp = defineRule<Rule>({
             }
             continue;
           }
-          if (LENGTH_PERCENTAGE_PATTERN.test(keyName)) {
+          if (UNITFUL_PROPERTIES.has(keyName)) {
             const value = property.value;
             if (
               isNodeOfType(value, "Literal") &&

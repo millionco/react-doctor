@@ -114,4 +114,23 @@ describe("solid-event-handlers", () => {
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0].message).toContain("static string/number");
   });
+
+  it("does not flag array expression handler (Solid tuple syntax)", () => {
+    const result = runRule(solidEventHandlers, `<button onClick={[handler, data]} />`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags static template literal without expressions on handler prop", () => {
+    const result = runRule(solidEventHandlers, "<button onClick={`doSomething`} />");
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("static string/number");
+  });
+
+  it("does not flag onCustomEvent with uppercase third character on DOM element", () => {
+    const result = runRule(solidEventHandlers, `<div onCustomEvent={() => {}} />`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

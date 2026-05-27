@@ -111,4 +111,31 @@ describe("solid-no-onmount-cleanup-return", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does not flag returning a variable reference (cannot statically verify)", () => {
+    const result = runRule(
+      solidNoOnmountCleanupReturn,
+      `import { onMount } from "solid-js";
+       onMount(() => { const fn = () => {}; return fn; });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags conditional return of a cleanup function", () => {
+    const result = runRule(
+      solidNoOnmountCleanupReturn,
+      `import { onMount } from "solid-js";
+       onMount(() => { if (condition) return () => cleanup(); });`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags expression-body arrow returning a function", () => {
+    const result = runRule(
+      solidNoOnmountCleanupReturn,
+      `import { onMount } from "solid-js";
+       onMount(() => () => cleanup());`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

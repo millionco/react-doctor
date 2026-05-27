@@ -152,4 +152,44 @@ describe("solid-no-async-tracked-scope", () => {
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0].message).toContain("createEffect");
   });
+
+  it("flags signal read inside queueMicrotask within createEffect", () => {
+    const result = runRule(
+      solidNoAsyncTrackedScope,
+      `import { createEffect, createSignal } from "solid-js";
+       const [count] = createSignal(0);
+       createEffect(() => { queueMicrotask(() => { console.log(count()); }); });`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("queueMicrotask");
+  });
+
+  it("does not flag Promise.then inside effect (member expression callee)", () => {
+    const result = runRule(
+      solidNoAsyncTrackedScope,
+      `import { createEffect, createSignal } from "solid-js";
+       const [count] = createSignal(0);
+       createEffect(() => { somePromise.then(() => { console.log(count()); }); });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag window.setTimeout (member expression callee)", () => {
+    const result = runRule(
+      solidNoAsyncTrackedScope,
+      `import { createEffect, createSignal } from "solid-js";
+       const [count] = createSignal(0);
+       createEffect(() => { window.setTimeout(() => { console.log(count()); }, 1000); });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag scheduler callback without signal reads (just regular function calls)", () => {
+    const result = runRule(
+      solidNoAsyncTrackedScope,
+      `import { createEffect } from "solid-js";
+       createEffect(() => { setTimeout(() => { doWork(someArg); }, 100); });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

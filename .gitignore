@@ -24,14 +24,18 @@ review-*.md
 !/.agents/skills/rde-idea-evaluator/**
 !/.agents/skills/rde-rule-validator/
 !/.agents/skills/rde-rule-validator/**
-!/.agents/skills/rule-eval-table-generator/
-!/.agents/skills/rule-eval-table-generator/**
+!/.agents/skills/review-comment-triager/
+!/.agents/skills/review-comment-triager/**
 !/.agents/skills/rule-idea-validator/
 !/.agents/skills/rule-idea-validator/**
 !/.agents/skills/rule-implementation-reviewer/
 !/.agents/skills/rule-implementation-reviewer/**
+!/.agents/skills/rule-pr-writer/
+!/.agents/skills/rule-pr-writer/**
 !/.agents/skills/rule-researcher/
 !/.agents/skills/rule-researcher/**
+!/.agents/skills/rule-resource-tutor/
+!/.agents/skills/rule-resource-tutor/**
 !/.agents/skills/rule-scope-guard/
 !/.agents/skills/rule-scope-guard/**
 

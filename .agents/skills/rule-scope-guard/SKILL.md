@@ -49,3 +49,5 @@ This mutates nested state but returns a new top-level object. It needs separate 
 ## Reference
 
 For v1 scope examples, read `docs/HOW_TO_WRITE_A_RULE.md`.
+
+For examples of v1 vs future-rule boundaries, read `examples.md`.

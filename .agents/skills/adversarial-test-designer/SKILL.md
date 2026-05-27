@@ -44,3 +44,5 @@ Return:
 ## Reference
 
 For examples and test guidance, read `docs/HOW_TO_WRITE_A_RULE.md`.
+
+For concrete invalid/valid fixtures and expected diagnostic count formats, read `examples.md`.

@@ -50,3 +50,5 @@ Return:
 ## Reference
 
 For the canonical rule-writing guide, read `docs/HOW_TO_WRITE_A_RULE.md`.
+
+For concrete detector plans and pseudocode examples, read `examples.md`.

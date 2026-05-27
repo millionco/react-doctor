@@ -37,3 +37,5 @@ Return:
 ## Reference
 
 For full rule-authoring guidance, read `docs/HOW_TO_WRITE_A_RULE.md`.
+
+For concrete good/bad rule definitions and a complete reducer example, read `examples.md`.

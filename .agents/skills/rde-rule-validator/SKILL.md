@@ -52,3 +52,5 @@ Return:
 ## Reference
 
 For eval table format and workflow details, read `docs/HOW_TO_WRITE_A_RULE.md`.
+
+For example PR-ready summaries and inspection notes, read `examples.md`.

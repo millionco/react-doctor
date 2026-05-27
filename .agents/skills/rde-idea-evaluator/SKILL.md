@@ -63,3 +63,5 @@ Do not treat similar-looking valid code as a positive.
 ## Reference
 
 For full RDE workflow details, read `docs/HOW_TO_WRITE_A_RULE.md`.
+
+For evidence classification examples, read `examples.md`.

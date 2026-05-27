@@ -42,3 +42,5 @@ Return:
 ## Reference
 
 For RDE-backed research guidance, read `docs/HOW_TO_WRITE_A_RULE.md`.
+
+For evidence classification examples, read `examples.md`.

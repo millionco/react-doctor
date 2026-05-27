@@ -48,3 +48,5 @@ Return review findings with:
 ## Reference
 
 For review-triage categories, read `docs/HOW_TO_WRITE_A_RULE.md`.
+
+For concrete review findings from rule PRs, read `review-examples.md`.

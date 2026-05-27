@@ -48,12 +48,22 @@ const isUseSelectorFromReactRedux = (
   return isImportedFromModule(callExpression, callee.name, REACT_REDUX_MODULE);
 };
 
-const getAllocatingCallSiteDescription = (
-  expression: EsTreeNode,
-):
-  | { kind: "method"; method: string }
-  | { kind: "namespace"; namespace: string; method: string }
-  | null => {
+interface MethodAllocatingCallSite {
+  readonly kind: "method";
+  readonly method: string;
+}
+
+interface NamespaceAllocatingCallSite {
+  readonly kind: "namespace";
+  readonly namespace: string;
+  readonly method: string;
+}
+
+type AllocatingCallSite = MethodAllocatingCallSite | NamespaceAllocatingCallSite;
+
+type AllocatingCallSiteWithNode = AllocatingCallSite & { readonly node: EsTreeNode };
+
+const getAllocatingCallSiteDescription = (expression: EsTreeNode): AllocatingCallSite | null => {
   const stripped = stripParenExpression(expression);
   if (!isNodeOfType(stripped, "CallExpression")) return null;
   const callee = stripped.callee;
@@ -79,10 +89,8 @@ const getAllocatingCallSiteDescription = (
 
 const findFirstAllocatingCallInExpression = (
   expression: EsTreeNode,
-): (ReturnType<typeof getAllocatingCallSiteDescription> & { node: EsTreeNode }) | null => {
-  let firstHit:
-    | (ReturnType<typeof getAllocatingCallSiteDescription> & { node: EsTreeNode })
-    | null = null;
+): AllocatingCallSiteWithNode | null => {
+  let firstHit: AllocatingCallSiteWithNode | null = null;
 
   const visit = (node: EsTreeNode): void => {
     if (firstHit) return;

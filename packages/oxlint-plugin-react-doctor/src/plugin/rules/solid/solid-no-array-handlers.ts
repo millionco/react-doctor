@@ -1,11 +1,9 @@
 import { defineRule } from "../../utils/define-rule.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isDomElementName } from "../../utils/is-dom-element-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-
-const isDomElementName = (name: string): boolean => /^[a-z]/.test(name);
 
 const isEventHandlerName = (attribute: EsTreeNodeOfType<"JSXAttribute">): boolean => {
   if (isNodeOfType(attribute.name, "JSXNamespacedName")) {
@@ -15,11 +13,6 @@ const isEventHandlerName = (attribute: EsTreeNodeOfType<"JSXAttribute">): boolea
     return /^on[a-zA-Z]/.test(attribute.name.name);
   }
   return false;
-};
-
-const isArrayExpressionValue = (node: EsTreeNode | null | undefined): boolean => {
-  if (!node) return false;
-  return isNodeOfType(node, "ArrayExpression");
 };
 
 // Port of `solid/no-array-handlers` — Solid supports
@@ -40,7 +33,7 @@ export const solidNoArrayHandlers = defineRule<Rule>({
       if (!isDomElementName(opening.name.name)) return;
       if (!isEventHandlerName(node)) return;
       if (!node.value || !isNodeOfType(node.value, "JSXExpressionContainer")) return;
-      if (!isArrayExpressionValue(node.value.expression as EsTreeNode)) return;
+      if (!isNodeOfType(node.value.expression, "ArrayExpression")) return;
       context.report({
         node,
         message: "Passing an array as an event handler is potentially type-unsafe.",

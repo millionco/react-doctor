@@ -82,7 +82,7 @@ const isHocCallParent = (node: FunctionLikeNode): boolean => {
   const parent = node.parent;
   if (!parent) return false;
   if (!isNodeOfType(parent, "CallExpression")) return false;
-  if (!parent.arguments.includes(node as never)) return false;
+  if (!parent.arguments.some((argument) => argument === node)) return false;
   if (isNodeOfType(parent.callee, "Identifier")) {
     return !isComponentName(parent.callee.name);
   }

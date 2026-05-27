@@ -1,17 +1,10 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-
-const jsxPropertyName = (attribute: EsTreeNodeOfType<"JSXAttribute">): string | null => {
-  if (isNodeOfType(attribute.name, "JSXIdentifier")) return attribute.name.name;
-  if (isNodeOfType(attribute.name, "JSXNamespacedName")) {
-    return `${attribute.name.namespace.name}:${attribute.name.name.name}`;
-  }
-  return null;
-};
 
 const extractInnerExpression = (attribute: EsTreeNodeOfType<"JSXAttribute">): EsTreeNode | null => {
   if (!attribute.value) return null;
@@ -44,7 +37,7 @@ export const solidNoInnerHtml = defineRule<Rule>({
     "Avoid `innerHTML` — render children via JSX. If you must inject markup, sanitize input first.",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
-      const propertyName = jsxPropertyName(node);
+      const propertyName = getJsxAttributeName(node.name);
       if (!propertyName) return;
       if (propertyName === "dangerouslySetInnerHTML") {
         context.report({

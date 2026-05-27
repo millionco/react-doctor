@@ -1,24 +1,15 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { readSolidRuleSettings } from "../../utils/read-solid-rule-settings.js";
 
 interface SolidJsxNoDuplicatePropsSettings {
   ignoreCase?: boolean;
 }
-
-const resolveSettings = (
-  settings: Readonly<Record<string, unknown>> | undefined,
-): SolidJsxNoDuplicatePropsSettings => {
-  const reactDoctor = settings?.["react-doctor"];
-  if (typeof reactDoctor !== "object" || reactDoctor === null) return {};
-  const solidSettings = (reactDoctor as { solidJsxNoDuplicateProps?: unknown })
-    .solidJsxNoDuplicateProps;
-  if (typeof solidSettings !== "object" || solidSettings === null) return {};
-  return solidSettings as SolidJsxNoDuplicatePropsSettings;
-};
 
 const normalizeName = (name: string, ignoreCase: boolean): string => {
   if (!(ignoreCase || name.startsWith("on"))) return name;
@@ -40,11 +31,7 @@ const collectProps = (
   const collected: PropEntry[] = [];
   for (const attribute of attributes) {
     if (isNodeOfType(attribute, "JSXAttribute")) {
-      let propertyName: string | null = null;
-      if (isNodeOfType(attribute.name, "JSXIdentifier")) propertyName = attribute.name.name;
-      else if (isNodeOfType(attribute.name, "JSXNamespacedName")) {
-        propertyName = `${attribute.name.namespace.name}:${attribute.name.name.name}`;
-      }
+      const propertyName = getJsxAttributeName(attribute.name);
       if (!propertyName) continue;
       collected.push({
         normalizedName: normalizeName(propertyName, ignoreCase),
@@ -80,7 +67,10 @@ export const solidJsxNoDuplicateProps = defineRule<Rule>({
   requires: ["solid"],
   recommendation: "Remove duplicate props from JSX — only the last value wins in Solid.",
   create: (context: RuleContext) => {
-    const settings = resolveSettings(context.settings);
+    const settings = readSolidRuleSettings<SolidJsxNoDuplicatePropsSettings>(
+      context.settings,
+      "solidJsxNoDuplicateProps",
+    );
     const ignoreCase = Boolean(settings.ignoreCase);
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {

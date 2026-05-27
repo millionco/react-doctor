@@ -1,25 +1,15 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isDomElementName } from "../../utils/is-dom-element-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { readSolidRuleSettings } from "../../utils/read-solid-rule-settings.js";
 
 interface SolidSelfClosingCompSettings {
   component?: "all" | "none";
   html?: "all" | "void" | "none";
 }
-
-const resolveSettings = (
-  settings: Readonly<Record<string, unknown>> | undefined,
-): SolidSelfClosingCompSettings => {
-  const reactDoctor = settings?.["react-doctor"];
-  if (typeof reactDoctor !== "object" || reactDoctor === null) return {};
-  const solidSettings = (reactDoctor as { solidSelfClosingComp?: unknown }).solidSelfClosingComp;
-  if (typeof solidSettings !== "object" || solidSettings === null) return {};
-  return solidSettings as SolidSelfClosingCompSettings;
-};
-
-const isDomElementName = (name: string): boolean => /^[a-z]/.test(name);
 
 const VOID_DOM_ELEMENT_PATTERN =
   /^(?:area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/;
@@ -52,7 +42,10 @@ export const solidSelfClosingComp = defineRule<Rule>({
   defaultEnabled: false,
   recommendation: "Self-close empty Solid components (`<Foo />` instead of `<Foo></Foo>`).",
   create: (context: RuleContext) => {
-    const settings = resolveSettings(context.settings);
+    const settings = readSolidRuleSettings<SolidSelfClosingCompSettings>(
+      context.settings,
+      "solidSelfClosingComp",
+    );
     const componentMode: "all" | "none" = settings.component ?? "all";
     const htmlMode: "all" | "void" | "none" = settings.html ?? "all";
     const shouldSelfCloseWhenPossible = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {

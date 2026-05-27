@@ -1,22 +1,13 @@
 import { createSolidImportTracker } from "../../utils/create-solid-import-tracker.js";
 import { defineRule } from "../../utils/define-rule.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 const TRACKED_PRIMITIVES: ReadonlyArray<string> = ["createEffect", "createMemo"];
-
-const isFunctionLikeNode = (
-  node: EsTreeNodeOfType<"CallExpression">["arguments"][number],
-): boolean => {
-  if (!node) return false;
-  return (
-    isNodeOfType(node, "FunctionExpression") ||
-    isNodeOfType(node, "ArrowFunctionExpression") ||
-    isNodeOfType(node, "FunctionDeclaration")
-  );
-};
 
 // Port of `solid/no-react-deps` — Solid's `createEffect` /
 // `createMemo` track their dependencies automatically. A second
@@ -41,16 +32,9 @@ export const solidNoReactDeps = defineRule<Rule>({
         if (!matchedImport) return;
         if (node.arguments.length !== 2) return;
         if (node.arguments.some((argument) => isNodeOfType(argument, "SpreadElement"))) return;
-        const firstArgument = node.arguments[0];
+        const firstArgument: EsTreeNode = node.arguments[0];
         const secondArgument = node.arguments[1];
-        if (!isFunctionLikeNode(firstArgument)) return;
-        if (
-          !isNodeOfType(firstArgument, "FunctionExpression") &&
-          !isNodeOfType(firstArgument, "ArrowFunctionExpression") &&
-          !isNodeOfType(firstArgument, "FunctionDeclaration")
-        ) {
-          return;
-        }
+        if (!isFunctionLike(firstArgument)) return;
         if (firstArgument.params.length !== 0) return;
         if (!isNodeOfType(secondArgument, "ArrayExpression")) return;
         context.report({

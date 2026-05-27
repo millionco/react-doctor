@@ -1,37 +1,21 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { readSolidRuleSettings } from "../../utils/read-solid-rule-settings.js";
 
 interface SolidStylePropSettings {
   styleProps?: ReadonlyArray<string>;
   allowString?: boolean;
 }
 
-const resolveSettings = (
-  settings: Readonly<Record<string, unknown>> | undefined,
-): SolidStylePropSettings => {
-  const reactDoctor = settings?.["react-doctor"];
-  if (typeof reactDoctor !== "object" || reactDoctor === null) return {};
-  const solidSettings = (reactDoctor as { solidStyleProp?: unknown }).solidStyleProp;
-  if (typeof solidSettings !== "object" || solidSettings === null) return {};
-  return solidSettings as SolidStylePropSettings;
-};
-
 const camelToKebab = (name: string): string =>
-  name.replace(/[A-Z]/g, (match) => `-${match.toLowerCase()}`);
+  name.replace(/[A-Z]/g, (uppercaseMatch) => `-${uppercaseMatch.toLowerCase()}`);
 
 const LENGTH_PERCENTAGE_PATTERN = /\b(?:width|height|margin|padding|border-width|font-size)\b/i;
-
-const jsxPropertyName = (attribute: EsTreeNodeOfType<"JSXAttribute">): string | null => {
-  if (isNodeOfType(attribute.name, "JSXIdentifier")) return attribute.name.name;
-  if (isNodeOfType(attribute.name, "JSXNamespacedName")) {
-    return `${attribute.name.namespace.name}:${attribute.name.name.name}`;
-  }
-  return null;
-};
 
 const objectPropertyKeyName = (property: EsTreeNodeOfType<"Property">): string | null => {
   if (isNodeOfType(property.key, "Identifier")) return property.key.name;
@@ -56,12 +40,15 @@ export const solidStyleProp = defineRule<Rule>({
   recommendation:
     "Use kebab-case CSS property names (`font-size`, not `fontSize`) in Solid's `style` prop, and string values with units (`'12px'`, not `12`) for length properties.",
   create: (context: RuleContext) => {
-    const settings = resolveSettings(context.settings);
+    const settings = readSolidRuleSettings<SolidStylePropSettings>(
+      context.settings,
+      "solidStyleProp",
+    );
     const styleProps = new Set(settings.styleProps ?? ["style"]);
     const allowString = Boolean(settings.allowString);
     return {
       JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
-        const propertyName = jsxPropertyName(node);
+        const propertyName = getJsxAttributeName(node.name);
         if (!propertyName || !styleProps.has(propertyName)) return;
         if (!node.value) return;
         const style = isNodeOfType(node.value, "JSXExpressionContainer")

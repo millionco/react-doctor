@@ -1,19 +1,14 @@
 import { createSolidImportTracker } from "../../utils/create-solid-import-tracker.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 const PROPS_NAME_PATTERN = /[pP]rops/;
-const isPropsLikeName = (name: string): boolean => PROPS_NAME_PATTERN.test(name);
-
-const isFunctionExpressionNode = (
-  node: EsTreeNodeOfType<"CallExpression">["arguments"][number],
-): boolean => {
-  if (!node) return false;
-  return isNodeOfType(node, "FunctionExpression") || isNodeOfType(node, "ArrowFunctionExpression");
-};
+const isPropsLikeName = (identifierName: string): boolean =>
+  PROPS_NAME_PATTERN.test(identifierName);
 
 // Port of `solid/no-proxy-apis` — disables Proxy-dependent APIs for
 // targets that don't support ES6 Proxy (legacy browsers, low-memory
@@ -70,7 +65,7 @@ export const solidNoProxyApis = defineRule<Rule>({
                 });
                 continue;
               }
-              if (isFunctionExpressionNode(argument)) {
+              if (isFunctionLike(argument)) {
                 context.report({
                   node: argument,
                   message:

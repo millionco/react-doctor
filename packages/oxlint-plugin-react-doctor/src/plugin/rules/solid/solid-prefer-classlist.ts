@@ -1,9 +1,11 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { readSolidRuleSettings } from "../../utils/read-solid-rule-settings.js";
 
 const DEFAULT_CLASSNAMES: ReadonlyArray<string> = ["cn", "clsx", "classnames"];
 
@@ -11,25 +13,10 @@ interface SolidPreferClasslistSettings {
   classnames?: ReadonlyArray<string>;
 }
 
-const resolveSettings = (
-  settings: Readonly<Record<string, unknown>> | undefined,
-): SolidPreferClasslistSettings => {
-  const reactDoctor = settings?.["react-doctor"];
-  if (typeof reactDoctor !== "object" || reactDoctor === null) return {};
-  const solidSettings = (reactDoctor as { solidPreferClasslist?: unknown }).solidPreferClasslist;
-  if (typeof solidSettings !== "object" || solidSettings === null) return {};
-  return solidSettings as SolidPreferClasslistSettings;
-};
-
-const jsxPropertyName = (attribute: EsTreeNodeOfType<"JSXAttribute">): string | null => {
-  if (isNodeOfType(attribute.name, "JSXIdentifier")) return attribute.name.name;
-  return null;
-};
-
 const hasClasslistAttribute = (attributes: ReadonlyArray<EsTreeNode>): boolean => {
   for (const attribute of attributes) {
     if (!isNodeOfType(attribute, "JSXAttribute")) continue;
-    if (jsxPropertyName(attribute) === "classlist") return true;
+    if (getJsxAttributeName(attribute.name) === "classlist") return true;
   }
   return false;
 };
@@ -45,11 +32,14 @@ export const solidPreferClasslist = defineRule<Rule>({
   defaultEnabled: false,
   recommendation: "Prefer Solid's `classlist={{...}}` over `class={cn({...})}` for object syntax.",
   create: (context: RuleContext) => {
-    const settings = resolveSettings(context.settings);
+    const settings = readSolidRuleSettings<SolidPreferClasslistSettings>(
+      context.settings,
+      "solidPreferClasslist",
+    );
     const classnames = new Set(settings.classnames ?? DEFAULT_CLASSNAMES);
     return {
       JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
-        const propertyName = jsxPropertyName(node);
+        const propertyName = getJsxAttributeName(node.name);
         if (propertyName !== "class" && propertyName !== "className") return;
         const opening = node.parent;
         if (!opening || !isNodeOfType(opening, "JSXOpeningElement")) return;

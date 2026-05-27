@@ -1,24 +1,16 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isDomElementName } from "../../utils/is-dom-element-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { readSolidRuleSettings } from "../../utils/read-solid-rule-settings.js";
 
 interface SolidEventHandlersSettings {
   ignoreCase?: boolean;
   warnOnSpread?: boolean;
 }
-
-const resolveSettings = (
-  settings: Readonly<Record<string, unknown>> | undefined,
-): SolidEventHandlersSettings => {
-  const reactDoctor = settings?.["react-doctor"];
-  if (typeof reactDoctor !== "object" || reactDoctor === null) return {};
-  const solidSettings = (reactDoctor as { solidEventHandlers?: unknown }).solidEventHandlers;
-  if (typeof solidSettings !== "object" || solidSettings === null) return {};
-  return solidSettings as SolidEventHandlersSettings;
-};
 
 const COMMON_EVENTS: ReadonlyArray<string> = [
   "onAnimationEnd",
@@ -90,8 +82,6 @@ const NONSTANDARD_EVENT_BY_LOWERCASE_NAME: Record<string, string> = {
   ondoubleclick: "onDblClick",
 };
 
-const isDomElementName = (name: string): boolean => /^[a-z]/.test(name);
-
 const isStaticStringOrNumberValue = (node: EsTreeNode | null): boolean => {
   if (!node) return false;
   if (isNodeOfType(node, "Literal")) {
@@ -116,7 +106,10 @@ export const solidEventHandlers = defineRule<Rule>({
   recommendation:
     "Use camelCase event names (`onClick`, not `onclick`). Solid distinguishes the two — only camelCase forms install listeners.",
   create: (context: RuleContext) => {
-    const settings = resolveSettings(context.settings);
+    const settings = readSolidRuleSettings<SolidEventHandlersSettings>(
+      context.settings,
+      "solidEventHandlers",
+    );
     return {
       JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
         const opening = node.parent;

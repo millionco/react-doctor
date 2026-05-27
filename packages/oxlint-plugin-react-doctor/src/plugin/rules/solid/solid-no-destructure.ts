@@ -11,9 +11,6 @@ type FunctionLikeNode =
   | EsTreeNodeOfType<"FunctionExpression">
   | EsTreeNodeOfType<"ArrowFunctionExpression">;
 
-// Render-prop callbacks (e.g. `<Show>{(value) => ...}</Show>`) are
-// not components — the destructure happens inside Solid's reactive
-// child mapping where reactivity still flows.
 const isRenderPropCallback = (node: FunctionLikeNode): boolean => {
   const parent = node.parent;
   if (!parent) return false;

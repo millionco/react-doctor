@@ -1,6 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -14,11 +14,6 @@ const getMemberPropertyName = (node: EsTreeNodeOfType<"MemberExpression">): stri
   }
   if (isNodeOfType(node.property, "Identifier")) return node.property.name;
   return null;
-};
-
-const isFunctionLikeArgument = (node: EsTreeNode | null | undefined): boolean => {
-  if (!node) return false;
-  return isNodeOfType(node, "ArrowFunctionExpression") || isNodeOfType(node, "FunctionExpression");
 };
 
 // Port of `solid/prefer-for` — flag `{items.map((item) => <Foo />)}`
@@ -53,13 +48,7 @@ export const solidPreferFor = defineRule<Rule>({
       if (getMemberPropertyName(node.callee) !== "map") return;
       if (node.arguments.length !== 1) return;
       const firstArgument = node.arguments[0];
-      if (!isFunctionLikeArgument(firstArgument)) return;
-      if (
-        !isNodeOfType(firstArgument, "ArrowFunctionExpression") &&
-        !isNodeOfType(firstArgument, "FunctionExpression")
-      ) {
-        return;
-      }
+      if (!isFunctionLike(firstArgument)) return;
       const usesIndexParameter =
         firstArgument.params.length > 1 ||
         (firstArgument.params.length === 1 && isNodeOfType(firstArgument.params[0], "RestElement"));

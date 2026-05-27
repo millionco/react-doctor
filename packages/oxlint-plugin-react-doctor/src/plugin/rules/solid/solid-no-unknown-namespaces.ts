@@ -1,8 +1,10 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isDomElementName } from "../../utils/is-dom-element-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { readSolidRuleSettings } from "../../utils/read-solid-rule-settings.js";
 
 const KNOWN_NAMESPACES: ReadonlyArray<string> = ["on", "oncapture", "use", "prop", "attr", "bool"];
 const STYLE_NAMESPACES: ReadonlyArray<string> = ["style", "class"];
@@ -11,19 +13,6 @@ const XML_NAMESPACES: ReadonlyArray<string> = ["xmlns", "xlink"];
 interface SolidNoUnknownNamespacesSettings {
   allowedNamespaces?: ReadonlyArray<string>;
 }
-
-const resolveSettings = (
-  settings: Readonly<Record<string, unknown>> | undefined,
-): SolidNoUnknownNamespacesSettings => {
-  const reactDoctor = settings?.["react-doctor"];
-  if (typeof reactDoctor !== "object" || reactDoctor === null) return {};
-  const solidSettings = (reactDoctor as { solidNoUnknownNamespaces?: unknown })
-    .solidNoUnknownNamespaces;
-  if (typeof solidSettings !== "object" || solidSettings === null) return {};
-  return solidSettings as SolidNoUnknownNamespacesSettings;
-};
-
-const isDomElementName = (name: string): boolean => /^[a-z]/.test(name);
 
 // Port of `solid/no-unknown-namespaces` — flag any `ns:name` JSX
 // attribute whose `ns` is not one of Solid's six recognised special
@@ -36,7 +25,10 @@ export const solidNoUnknownNamespaces = defineRule<Rule>({
   recommendation:
     "Use one of Solid's special prefixes (`on:`, `use:`, `prop:`, `attr:`, `bool:`, `oncapture:`).",
   create: (context: RuleContext) => {
-    const settings = resolveSettings(context.settings);
+    const settings = readSolidRuleSettings<SolidNoUnknownNamespacesSettings>(
+      context.settings,
+      "solidNoUnknownNamespaces",
+    );
     const allowedNamespaces = new Set(settings.allowedNamespaces ?? []);
     return {
       JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {

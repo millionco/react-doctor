@@ -26,6 +26,9 @@ const bodyContainsOnlySetters = (callback: EsTreeNode): boolean => {
   return isSetterCall(callback.body as EsTreeNode);
 };
 
+const SIDE_EFFECT_GLOBAL_CALLS = new Set(["fetch", "alert", "confirm", "prompt"]);
+const CONSOLE_METHODS = new Set(["log", "warn", "error", "info", "debug"]);
+
 const bodyContainsSideEffects = (callback: EsTreeNode): boolean => {
   if (!isFunctionLike(callback)) return false;
   let foundSideEffect = false;
@@ -36,20 +39,22 @@ const bodyContainsSideEffects = (callback: EsTreeNode): boolean => {
       if (isSetterCall(node)) return;
       if (isNodeOfType(node.callee, "MemberExpression")) {
         const property = node.callee.property;
-        if (isNodeOfType(property, "Identifier")) {
-          const methodName = property.name;
-          if (["log", "warn", "error", "info", "debug", "fetch"].includes(methodName)) {
-            foundSideEffect = true;
-            return false;
-          }
-        }
-      }
-      if (isNodeOfType(node.callee, "Identifier")) {
-        const calleeName = node.callee.name;
-        if (["fetch", "alert", "confirm", "prompt"].includes(calleeName)) {
+        if (
+          isNodeOfType(property, "Identifier") &&
+          CONSOLE_METHODS.has(property.name) &&
+          isNodeOfType(node.callee.object, "Identifier") &&
+          node.callee.object.name === "console"
+        ) {
           foundSideEffect = true;
           return false;
         }
+      }
+      if (
+        isNodeOfType(node.callee, "Identifier") &&
+        SIDE_EFFECT_GLOBAL_CALLS.has(node.callee.name)
+      ) {
+        foundSideEffect = true;
+        return false;
       }
     }
     if (isNodeOfType(node, "AwaitExpression")) {

@@ -1,6 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { extractStaticStringValue } from "../../utils/extract-static-string-value.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
@@ -17,15 +18,6 @@ const extractInnerExpression = (attribute: EsTreeNodeOfType<"JSXAttribute">): Es
     return attribute.value.expression as EsTreeNode;
   }
   return attribute.value as EsTreeNode;
-};
-
-const extractStaticStringValue = (node: EsTreeNode | null): string | null => {
-  if (!node) return null;
-  if (isNodeOfType(node, "Literal") && typeof node.value === "string") return node.value;
-  if (isNodeOfType(node, "TemplateLiteral") && node.expressions.length === 0) {
-    return node.quasis.map((quasi) => quasi.value.cooked ?? "").join("");
-  }
-  return null;
 };
 
 // Port of `solid/no-innerhtml`. Three distinct diagnostics:

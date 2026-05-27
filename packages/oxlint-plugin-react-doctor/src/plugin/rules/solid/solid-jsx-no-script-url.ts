@@ -1,19 +1,14 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { extractStaticStringValue } from "../../utils/extract-static-string-value.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
-// Mirrors the WHATWG URL parser's pre-scheme step: leading C0
-// controls and U+0020 SPACE are stripped, then ASCII tab / LF / CR
-// characters inside the URL are also filtered out before the
-// scheme is matched. https://url.spec.whatwg.org/#url-parsing
-//
-// Doing the filter in code (and keeping the regex literal free of
-// control characters) avoids `eslint(no-control-regex)` warnings —
-// inline `[\u0000-\u001F]` and `[\r\n\t]*` between letters would
-// trip the lint at every rule-file load.
+// HACK: Mirrors the WHATWG URL parser's pre-scheme step — strip C0
+// controls first, then match scheme — because embedding the C0 range
+// directly in a regex literal trips `no-control-regex`.
 const JAVASCRIPT_SCHEME_PATTERN = /^ *javascript:/i;
 
 const isUrlControlCharacterCode = (characterCode: number): boolean =>
@@ -29,15 +24,6 @@ const stripUrlControlCharacters = (urlValue: string): string => {
 
 const startsWithJavascriptScheme = (urlValue: string): boolean =>
   JAVASCRIPT_SCHEME_PATTERN.test(stripUrlControlCharacters(urlValue));
-
-const extractStaticStringValue = (node: EsTreeNode | null | undefined): string | null => {
-  if (!node) return null;
-  if (isNodeOfType(node, "Literal") && typeof node.value === "string") return node.value;
-  if (isNodeOfType(node, "TemplateLiteral") && node.expressions.length === 0) {
-    return node.quasis.map((quasi) => quasi.value.cooked ?? "").join("");
-  }
-  return null;
-};
 
 // Port of `solid/jsx-no-script-url` — flags `<a href="javascript:...">`
 // and similar `javascript:` URLs in JSX attributes. Adapted from

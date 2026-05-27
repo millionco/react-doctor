@@ -84,3 +84,25 @@ export const isImportedFromModule = (
   if (!info) return false;
   return info.source === moduleSource;
 };
+
+// Returns the originally-exported symbol name for a local binding that
+// came from a specific module, resolving renamed imports like
+// `import { useMemo as memoize } from "react"` so callers can match
+// against the canonical name instead of the local alias.
+//
+// Returns null when:
+//   - the local binding doesn't exist
+//   - the binding's source module doesn't match `moduleSource`
+//   - the binding is a default or namespace import (no "imported" name)
+export const getImportedNameFromModule = (
+  contextNode: EsTreeNode,
+  localIdentifierName: string,
+  moduleSource: string,
+): string | null => {
+  const lookup = getImportLookup(contextNode);
+  if (!lookup) return null;
+  const info = lookup.get(localIdentifierName);
+  if (!info) return null;
+  if (info.source !== moduleSource) return null;
+  return info.imported;
+};

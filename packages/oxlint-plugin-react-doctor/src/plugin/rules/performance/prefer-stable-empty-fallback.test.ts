@@ -134,6 +134,40 @@ describe("prefer-stable-empty-fallback", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not flag the inverted symmetric shape `[] || value` (dead-code typo, not a perf footgun)", () => {
+    const result = runRule(
+      preferStableEmptyFallback,
+      `
+      import { memo } from "react";
+
+      const List = memo(({ items }) => null);
+
+      function App(props) {
+        return <List items={[] || props.fallback} />;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag the inverted symmetric shape `{} ?? value`", () => {
+    const result = runRule(
+      preferStableEmptyFallback,
+      `
+      import { memo } from "react";
+
+      const Config = memo(({ settings }) => null);
+
+      function App(props) {
+        return <Config settings={{} ?? props.fallback} />;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("does not double-flag with jsx-no-new-array-as-prop's case", () => {
     const result = runRule(
       preferStableEmptyFallback,

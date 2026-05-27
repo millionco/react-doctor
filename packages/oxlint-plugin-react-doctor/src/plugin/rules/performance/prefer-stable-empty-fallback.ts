@@ -57,20 +57,17 @@ const matchEmptyFallbackInLogicalExpression = (expression: EsTreeNode): EmptyFal
   const right = stripped.right;
   if (!left || !right) return null;
 
-  // 3perf pattern: `value || []` / `value ?? {}` — empty is on the
-  // RIGHT, non-empty on the left. Also accept `[] || value` purely as
-  // a defensive symmetric case (rare in practice but cheap to check).
+  // 3perf canonical pattern: empty literal on the RIGHT (the fallback
+  // side), stable expression on the left. The symmetric `[] || value`
+  // / `{} ?? value` shape is intentionally NOT handled — `[]` and `{}`
+  // are always truthy/non-null in JS, so the right side becomes dead
+  // code. That's a typo / dead-code bug, not the perf footgun this
+  // rule targets, and the diagnostic message would be inverted.
   if (isEmptyArrayLiteral(right) && isStableNonEmptyExpression(left)) {
     return { emptyKind: "array", emptyNode: right, nonEmptyExpression: left };
   }
   if (isEmptyObjectLiteral(right) && isStableNonEmptyExpression(left)) {
     return { emptyKind: "object", emptyNode: right, nonEmptyExpression: left };
-  }
-  if (isEmptyArrayLiteral(left) && isStableNonEmptyExpression(right)) {
-    return { emptyKind: "array", emptyNode: left, nonEmptyExpression: right };
-  }
-  if (isEmptyObjectLiteral(left) && isStableNonEmptyExpression(right)) {
-    return { emptyKind: "object", emptyNode: left, nonEmptyExpression: right };
   }
 
   return null;

@@ -282,6 +282,7 @@ import { solidEventHandlers } from "./rules/solid/solid-event-handlers.js";
 import { solidImports } from "./rules/solid/solid-imports.js";
 import { solidJsxNoDuplicateProps } from "./rules/solid/solid-jsx-no-duplicate-props.js";
 import { solidJsxNoScriptUrl } from "./rules/solid/solid-jsx-no-script-url.js";
+import { solidJsxNoUndef } from "./rules/solid/solid-jsx-no-undef.js";
 import { solidNoArrayHandlers } from "./rules/solid/solid-no-array-handlers.js";
 import { solidNoAsyncEffect } from "./rules/solid/solid-no-async-effect.js";
 import { solidNoAsyncTrackedScope } from "./rules/solid/solid-no-async-tracked-scope.js";
@@ -305,6 +306,7 @@ import { solidPreferClasslist } from "./rules/solid/solid-prefer-classlist.js";
 import { solidPreferFor } from "./rules/solid/solid-prefer-for.js";
 import { solidPreferResource } from "./rules/solid/solid-prefer-resource.js";
 import { solidPreferShow } from "./rules/solid/solid-prefer-show.js";
+import { solidReactivity } from "./rules/solid/solid-reactivity.js";
 import { solidRequireCleanup } from "./rules/solid/solid-require-cleanup.js";
 import { solidSelfClosingComp } from "./rules/solid/solid-self-closing-comp.js";
 import { solidStyleProp } from "./rules/solid/solid-style-prop.js";
@@ -3382,6 +3384,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/solid-jsx-no-undef",
+    id: "solid-jsx-no-undef",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidJsxNoUndef,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidJsxNoUndef.tags ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/solid-no-array-handlers",
     id: "solid-no-array-handlers",
     source: "react-doctor",
@@ -3655,6 +3669,18 @@ export const reactDoctorRules = [
       framework: "solid",
       category: "SolidJS",
       tags: [...new Set(["solid", ...(solidPreferShow.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-reactivity",
+    id: "solid-reactivity",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidReactivity,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidReactivity.tags ?? [])])],
     },
   },
   {

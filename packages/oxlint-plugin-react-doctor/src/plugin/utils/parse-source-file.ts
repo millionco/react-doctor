@@ -58,9 +58,16 @@ export const parseSourceFile = (absoluteFilePath: string): EsTreeNode | null => 
     return cached.program;
   }
 
-  // `.d.ts` files are declaration-only — they have no runtime
-  // reducer body to analyze. Cache as miss so we don't retry.
-  if (absoluteFilePath.endsWith(".d.ts") || absoluteFilePath.endsWith(".d.mts")) {
+  // TypeScript declaration files are types-only — they have no
+  // runtime function bodies to analyse. Cache as miss so we don't
+  // retry parsing them on every cross-file lookup. All three
+  // declaration-file extensions are handled (`.d.ts`, `.d.mts`,
+  // `.d.cts`) so the ESM/CJS variants don't slip through.
+  if (
+    absoluteFilePath.endsWith(".d.ts") ||
+    absoluteFilePath.endsWith(".d.mts") ||
+    absoluteFilePath.endsWith(".d.cts")
+  ) {
     parseCache.set(absoluteFilePath, {
       mtimeMs: fileStat.mtimeMs,
       size: fileStat.size,

@@ -29,7 +29,38 @@ describe("js-async-reduce-without-awaited-acc", () => {
     `;
     const result = runRule(jsAsyncReduceWithoutAwaitedAcc, code);
     expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0].message).not.toContain("const acc = await acc");
+    // Precise TDZ shape: `const acc = await acc;` followed by `;` or boundary.
+    expect(result.diagnostics[0].message).not.toMatch(/const acc = await acc[;,\s]/);
+  });
+
+  it("regression: restructure suggestion uses a distinct previous-param when accumulator is already named `previous`", () => {
+    // The previous fix hardcoded "previous" as the alt-param. If the
+    // user's accumulator is also named `previous`, the suggestion
+    // collapses back into a `const previous = await previous;` TDZ
+    // ReferenceError. The detector must pick a non-colliding name.
+    const code = `
+      items.reduce(async (previous, item) => {
+        previous[item.id] = await load(item);
+        return previous;
+      }, Promise.resolve({}));
+    `;
+    const result = runRule(jsAsyncReduceWithoutAwaitedAcc, code);
+    expect(result.diagnostics).toHaveLength(1);
+    // The precise TDZ shape is `const previous = await previous;` (followed
+    // by `;` or `,`/` ...`). The suggestion must use a distinct alt-name.
+    expect(result.diagnostics[0].message).not.toMatch(/const previous = await previous[;,\s]/);
+  });
+
+  it("regression: restructure suggestion uses a distinct previous-param when accumulator is named `prev`", () => {
+    const code = `
+      items.reduce(async (prev, item) => {
+        prev[item.id] = await load(item);
+        return prev;
+      }, Promise.resolve({}));
+    `;
+    const result = runRule(jsAsyncReduceWithoutAwaitedAcc, code);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).not.toMatch(/const prev = await prev[;,\s]/);
   });
 
   it("flags async function-expression reducer that never awaits acc", () => {

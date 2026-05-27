@@ -136,9 +136,17 @@ export const jsAsyncReduceWithoutAwaitedAcc = defineRule<Rule>({
 
       if (bodyAwaitsAccumulator(reducer, firstParameter.name)) return;
 
+      // Pick a "previous" param name that won't shadow the user's
+      // accumulator. If they already named it `previous` (or `prev`),
+      // fall through to a distinct alternative so the suggestion
+      // remains syntactically valid.
+      const previousParamCandidates = ["previous", "prev", "priorResult"];
+      const previousParamName =
+        previousParamCandidates.find((candidate) => candidate !== firstParameter.name) ??
+        `${firstParameter.name}Prev`;
       context.report({
         node: reducer,
-        message: `Async \`.${reduceMatch.methodName}\` reducer never awaits its accumulator "${firstParameter.name}" — every iteration sees a Promise and the final result silently drops every iteration's work. Either reassign at the top (\`${firstParameter.name} = await ${firstParameter.name};\`) or restructure as \`async (previous, item) => { const ${firstParameter.name} = await previous; ...; return ${firstParameter.name}; }\`, and seed with \`Promise.resolve(...)\``,
+        message: `Async \`.${reduceMatch.methodName}\` reducer never awaits its accumulator "${firstParameter.name}" — every iteration sees a Promise and the final result silently drops every iteration's work. Either reassign at the top (\`${firstParameter.name} = await ${firstParameter.name};\`) or restructure as \`async (${previousParamName}, item) => { const ${firstParameter.name} = await ${previousParamName}; ...; return ${firstParameter.name}; }\`, and seed with \`Promise.resolve(...)\``,
       });
     },
   }),

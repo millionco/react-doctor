@@ -1,64 +1,12 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { enclosingComponentOrHookScope } from "../../utils/enclosing-component-or-hook-scope.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { isReactComponentOrHookName } from "../../utils/is-react-component-or-hook-name.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { closureCaptures } from "../../semantic/closure-captures.js";
 import { isDescendantScope, type ScopeDescriptor } from "../../semantic/scope-analysis.js";
-
-const COMPONENT_SCOPE_KINDS = new Set<ScopeDescriptor["kind"]>([
-  "function",
-  "arrow-function",
-  "method",
-]);
-
-interface EnclosingComponent {
-  readonly functionNode: EsTreeNode;
-  readonly bodyScope: ScopeDescriptor;
-  readonly displayName: string;
-}
-
-const findEnclosingComponentOrHook = (
-  startNode: EsTreeNode,
-  ownScopeFor: (n: EsTreeNode) => ScopeDescriptor | null,
-): EnclosingComponent | null => {
-  let cursor: EsTreeNode | null | undefined = startNode.parent;
-  while (cursor) {
-    if (isNodeOfType(cursor, "FunctionDeclaration")) {
-      const name = cursor.id?.name ?? null;
-      if (name && isReactComponentOrHookName(name)) {
-        const bodyScope = ownScopeFor(cursor);
-        if (bodyScope) {
-          return { functionNode: cursor, bodyScope, displayName: name };
-        }
-      }
-    }
-    if (isNodeOfType(cursor, "VariableDeclarator")) {
-      const initializer = cursor.init;
-      const isFunctionInitializer =
-        initializer &&
-        (isNodeOfType(initializer, "ArrowFunctionExpression") ||
-          isNodeOfType(initializer, "FunctionExpression"));
-      if (isFunctionInitializer && isNodeOfType(cursor.id, "Identifier")) {
-        const identifierName = cursor.id.name;
-        if (isReactComponentOrHookName(identifierName)) {
-          const bodyScope = ownScopeFor(initializer);
-          if (bodyScope) {
-            return {
-              functionNode: initializer,
-              bodyScope,
-              displayName: identifierName,
-            };
-          }
-        }
-      }
-    }
-    cursor = cursor.parent ?? null;
-  }
-  return null;
-};
 
 // Skips function expressions that are arguments to known memo-shaped
 // callers — useMemo, useCallback, memo. The user already opted into
@@ -174,7 +122,7 @@ export const preferModuleScopePureFunction = defineRule<Rule>({
     ): void => {
       if (isInsideMemoisingCall(bindingTarget)) return;
       if (isAssignedToComponentMember(functionNode)) return;
-      const component = findEnclosingComponentOrHook(functionNode, context.scopes.ownScopeFor);
+      const component = enclosingComponentOrHookScope(functionNode, context.scopes.ownScopeFor);
       if (!component) return;
       const ownScope = context.scopes.ownScopeFor(functionNode);
       if (!ownScope) return;

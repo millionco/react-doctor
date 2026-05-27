@@ -1,9 +1,9 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { enclosingComponentOrHookScope } from "../../utils/enclosing-component-or-hook-scope.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { isReactComponentOrHookName } from "../../utils/is-react-component-or-hook-name.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -12,43 +12,6 @@ import {
   type ScopeAnalysis,
   type ScopeDescriptor,
 } from "../../semantic/scope-analysis.js";
-
-interface EnclosingComponent {
-  readonly bodyScope: ScopeDescriptor;
-  readonly displayName: string;
-}
-
-const findEnclosingComponentOrHook = (
-  startNode: EsTreeNode,
-  ownScopeFor: ScopeAnalysis["ownScopeFor"],
-): EnclosingComponent | null => {
-  let cursor: EsTreeNode | null | undefined = startNode.parent;
-  while (cursor) {
-    if (isNodeOfType(cursor, "FunctionDeclaration")) {
-      const name = cursor.id?.name ?? null;
-      if (name && isReactComponentOrHookName(name)) {
-        const bodyScope = ownScopeFor(cursor);
-        if (bodyScope) return { bodyScope, displayName: name };
-      }
-    }
-    if (isNodeOfType(cursor, "VariableDeclarator")) {
-      const initializer = cursor.init;
-      const isFunctionInitializer =
-        initializer &&
-        (isNodeOfType(initializer, "ArrowFunctionExpression") ||
-          isNodeOfType(initializer, "FunctionExpression"));
-      if (isFunctionInitializer && isNodeOfType(cursor.id, "Identifier")) {
-        const identifierName = cursor.id.name;
-        if (isReactComponentOrHookName(identifierName)) {
-          const bodyScope = ownScopeFor(initializer);
-          if (bodyScope) return { bodyScope, displayName: identifierName };
-        }
-      }
-    }
-    cursor = cursor.parent ?? null;
-  }
-  return null;
-};
 
 // Walks the expression and collects every referenced identifier whose
 // binding lives INSIDE the component scope. Used to decide whether the
@@ -181,7 +144,7 @@ export const preferModuleScopeStaticValue = defineRule<Rule>({
       if (!initializer) return;
       if (!isHoistableValueExpression(initializer)) return;
       if (isInsideMemoisingCall(node)) return;
-      const component = findEnclosingComponentOrHook(node, context.scopes.ownScopeFor);
+      const component = enclosingComponentOrHookScope(node, context.scopes.ownScopeFor);
       if (!component) return;
       if (hasComponentLocalReferences(initializer, component.bodyScope, context.scopes)) {
         return;

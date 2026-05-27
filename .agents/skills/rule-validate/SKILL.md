@@ -96,11 +96,13 @@ Catches <specific issue>.
 <Runtime reason in 1-3 sentences.>
 
 Before:
+
 ```tsx
 <bad example>
 ```
 
 After:
+
 ```tsx
 <good example>
 ```
@@ -115,14 +117,14 @@ After:
 
 ## Eval results
 
-| Check | Result |
-| --- | --- |
-| Repos scanned | `<distinct repo count>` |
-| RootDir scans | `<manifest/rootDir entries>` |
-| Target rule | `<rule-name>` |
-| Diagnostics | `<target-rule diagnostics>` |
-| False positives found | `<count after manual inspection>` |
-| Output artifact | `<filtered JSONL or summary path>` |
+| Check                 | Result                             |
+| --------------------- | ---------------------------------- |
+| Repos scanned         | `<distinct repo count>`            |
+| RootDir scans         | `<manifest/rootDir entries>`       |
+| Target rule           | `<rule-name>`                      |
+| Diagnostics           | `<target-rule diagnostics>`        |
+| False positives found | `<count after manual inspection>`  |
+| Output artifact       | `<filtered JSONL or summary path>` |
 
 ## Test plan
 
@@ -150,6 +152,7 @@ Return:
 
 ```md
 Validation summary:
+
 - <commands and results>
 - <implementation review findings>
 - <RDE summary or skip reason>
@@ -157,8 +160,10 @@ Validation summary:
 - <regression tests added>
 
 PR-ready notes:
+
 - <Why/What/Test plan highlights>
 
 Residual risk:
+
 - <known v1 non-goals or unchecked areas>
 ```

@@ -14,15 +14,14 @@ export const rnBottomSheetPreferNative = defineRule<Rule>({
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
-  recommendation:
-    'Use `<Modal presentationStyle="formSheet">` only for iOS form-sheet flows; it is not a general cross-platform bottom-sheet replacement',
+  recommendation: "Avoid legacy JS-thread bottom sheet packages in React Native",
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       const source = node.source?.value;
       if (typeof source !== "string" || !JS_BOTTOM_SHEET_PACKAGES.has(source)) return;
       context.report({
         node,
-        message: `${source} is a JS-implemented bottom sheet — <Modal presentationStyle="formSheet"> is iOS-only and best for form-sheet flows, not a general cross-platform bottom-sheet replacement`,
+        message: `${source} is a legacy JS-thread bottom sheet package`,
       });
     },
   }),

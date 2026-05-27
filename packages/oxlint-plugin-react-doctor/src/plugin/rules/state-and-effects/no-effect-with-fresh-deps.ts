@@ -11,12 +11,6 @@ import type { RuleContext } from "../../utils/rule-context.js";
 
 type FreshDepKind = "object" | "array" | "function" | "JSX" | "instance";
 
-interface FreshDepFinding {
-  readonly hookName: string;
-  readonly depKind: FreshDepKind;
-  readonly node: EsTreeNode;
-}
-
 const classifyFreshDependency = (expression: EsTreeNode): FreshDepKind | null => {
   const stripped = stripParenExpression(expression);
   if (isNodeOfType(stripped, "ObjectExpression")) return "object";

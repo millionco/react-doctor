@@ -1,5 +1,26 @@
 #!/bin/sh
 
+# vite-plus hook start
+vite_plus_run_staged_files() {
+  if [ -x "./node_modules/.bin/vp" ]; then
+    "./node_modules/.bin/vp" staged
+    return
+  fi
+
+  if command -v vp >/dev/null 2>&1; then
+    vp staged
+    return
+  fi
+
+  printf '%s\n' "vite-plus: command not found; skipping staged checks."
+}
+
+if ! vite_plus_run_staged_files; then
+  printf '%s\n' "Vite+ staged checks failed. Run vp staged to inspect." >&2
+  exit 1
+fi
+# vite-plus hook end
+
 # react-doctor hook start
 react_doctor_scan_staged_files() {
   if [ -x "./node_modules/.bin/react-doctor" ]; then

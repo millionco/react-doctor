@@ -13,6 +13,127 @@ import {
   type ScopeDescriptor,
 } from "../../semantic/scope-analysis.js";
 
+// Receiver-mutating method names. Calling any of these on the binding
+// (`OPTS.push(...)`, `byId.set(...)`) mutates the underlying value;
+// hoisting the binding to module scope would silently break code that
+// relies on per-render reinitialisation OR — for module-level mutation —
+// turn the const into a shared global mutable singleton.
+//
+// Read-only methods (`.includes`, `.indexOf`, `.find`, `.filter`,
+// `.map`, `.some`, `.every`, `.reduce`, `.slice`, `.concat`, `.join`,
+// the ES2023 `.toSorted` / `.toReversed` / `.toSpliced` / `.with`,
+// etc.) are intentionally NOT in this list because they return a new
+// value without mutating the receiver — hoisting is safe for them.
+const MUTATING_RECEIVER_METHOD_NAMES = new Set([
+  // Array
+  "push",
+  "pop",
+  "shift",
+  "unshift",
+  "splice",
+  "sort",
+  "reverse",
+  "fill",
+  "copyWithin",
+  // Set / Map
+  "add",
+  "delete",
+  "clear",
+  "set",
+]);
+
+// True when an identifier `reference` to the const binding sits in a
+// position that mutates the bound value. Covers four shapes:
+//
+//   1. LHS of assignment: `OPTS = ...` / `OPTS.foo = ...` / `OPTS[0] = ...`
+//   2. `delete OPTS.foo` / `delete OPTS[0]`
+//   3. UpdateExpression `OPTS.count++` — only when the OPTS reference
+//      is the receiver of the MemberExpression, not the entire target
+//      (so `++localCounter` on a primitive binding is also caught for
+//      completeness).
+//   4. Mutating method call: `OPTS.push(...)` / `byId.set(...)`.
+const isMutationContext = (referenceIdentifier: EsTreeNode): boolean => {
+  const parent = referenceIdentifier.parent;
+  if (!parent) return false;
+
+  // Direct rebinding: `OPTS = somethingElse`.
+  if (isNodeOfType(parent, "AssignmentExpression") && parent.left === referenceIdentifier) {
+    return true;
+  }
+
+  // `++OPTS` / `OPTS--` — primitive mutation; rare for array/object
+  // bindings but treated as a mutation for completeness.
+  if (isNodeOfType(parent, "UpdateExpression") && parent.argument === referenceIdentifier) {
+    return true;
+  }
+
+  // Member-expression contexts: `OPTS.foo` / `OPTS[0]`.
+  if (isNodeOfType(parent, "MemberExpression") && parent.object === referenceIdentifier) {
+    const grandparent = parent.parent;
+    if (!grandparent) return false;
+
+    // `OPTS.foo = bar` / `OPTS[0] = x` / compound assignments.
+    if (isNodeOfType(grandparent, "AssignmentExpression") && grandparent.left === parent) {
+      return true;
+    }
+
+    // `OPTS.count++` / `++OPTS.foo`.
+    if (isNodeOfType(grandparent, "UpdateExpression") && grandparent.argument === parent) {
+      return true;
+    }
+
+    // `delete OPTS.foo` / `delete OPTS[0]`.
+    if (
+      isNodeOfType(grandparent, "UnaryExpression") &&
+      grandparent.operator === "delete" &&
+      grandparent.argument === parent
+    ) {
+      return true;
+    }
+
+    // `OPTS.push(...)` — mutating method call. The MemberExpression
+    // must itself be the callee of a CallExpression and the property
+    // must be a non-computed Identifier in our mutating-names set.
+    if (
+      isNodeOfType(grandparent, "CallExpression") &&
+      grandparent.callee === parent &&
+      !parent.computed &&
+      isNodeOfType(parent.property, "Identifier") &&
+      MUTATING_RECEIVER_METHOD_NAMES.has(parent.property.name)
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
+// Returns true when ANY reference to the binding (excluding the
+// declarator itself) sits in a mutating position somewhere inside
+// `bodyScope`. Bindings that are read-only after init are safe to
+// hoist; mutated bindings are not.
+const isBindingMutatedAfterInit = (
+  declaratorNode: EsTreeNodeOfType<"VariableDeclarator">,
+  bodyScope: ScopeDescriptor,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (!isNodeOfType(declaratorNode.id, "Identifier")) return false;
+  const symbol = scopes.symbolFor(declaratorNode.id);
+  if (!symbol) return false;
+  for (const reference of symbol.references) {
+    if (reference.identifier === declaratorNode.id) continue;
+    if (reference.identifier === declaratorNode.init) continue;
+    // Only consider references that live INSIDE the component body —
+    // a reference in an unrelated scope can't apply here, and the
+    // binding's scope is itself a descendant of bodyScope.
+    if (!isDescendantScope(reference.scope, bodyScope) && reference.scope !== bodyScope) {
+      continue;
+    }
+    if (isMutationContext(reference.identifier)) return true;
+  }
+  return false;
+};
+
 // Walks the expression and collects every referenced identifier whose
 // binding lives INSIDE the component scope. Used to decide whether the
 // value is hoistable.
@@ -158,6 +279,13 @@ export const preferModuleScopeStaticValue = defineRule<Rule>({
       if (hasComponentLocalReferences(initializer, component.bodyScope, context.scopes)) {
         return;
       }
+      // Hoisting a mutated binding to module scope would either
+      // silently lose the per-render reinitialisation OR turn the
+      // const into a shared mutable singleton. Either way the rule's
+      // recommendation would break code that mutates after init.
+      // Read-only methods (.includes/.find/.map/.filter/etc.) DON'T
+      // count as mutations and are unaffected by this guard.
+      if (isBindingMutatedAfterInit(node, component.bodyScope, context.scopes)) return;
       const bindingName = node.id.name;
       context.report({
         node,

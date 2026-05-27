@@ -135,6 +135,117 @@ describe("prefer-module-scope-static-value", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not flag a const that is mutated via `.push(...)` after init", () => {
+    const result = runRule(
+      preferModuleScopeStaticValue,
+      `
+      function App({ items }) {
+        const OPTS = ["a", "b"];
+        for (const item of items) OPTS.push(item);
+        return null;
+      }
+    `,
+    );
+
+    // Hoisting OPTS would turn it into a shared module-level mutable
+    // array — every render would append to the same array.
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a const that is reassigned later", () => {
+    const result = runRule(
+      preferModuleScopeStaticValue,
+      `
+      function App({ flag }) {
+        let OPTS = ["a", "b"];
+        if (flag) OPTS = ["a", "b", "c"];
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a const whose property is reassigned", () => {
+    const result = runRule(
+      preferModuleScopeStaticValue,
+      `
+      function App() {
+        const CONFIG = { mode: "light" };
+        CONFIG.mode = "dark";
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a const whose element is reassigned via index", () => {
+    const result = runRule(
+      preferModuleScopeStaticValue,
+      `
+      function App() {
+        const OPTS = ["a", "b", "c"];
+        OPTS[0] = "z";
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a const subject to `delete` on a property", () => {
+    const result = runRule(
+      preferModuleScopeStaticValue,
+      `
+      function App() {
+        const CONFIG = { mode: "light", x: 1 };
+        delete CONFIG.x;
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("DOES still flag a const that is only read via `.includes()` / `.find()` / `.map()`", () => {
+    const result = runRule(
+      preferModuleScopeStaticValue,
+      `
+      function App({ name }) {
+        const NAMES = ["alice", "bob", "carol"];
+        const isKnown = NAMES.includes(name);
+        const upper = NAMES.map((entry) => entry.toUpperCase());
+        const first = NAMES.find((entry) => entry.startsWith("a"));
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("NAMES");
+  });
+
+  it("DOES still flag a const that's only accessed via property reads / index", () => {
+    const result = runRule(
+      preferModuleScopeStaticValue,
+      `
+      function App() {
+        const CONFIG = { mode: "light", padding: 8 };
+        const mode = CONFIG.mode;
+        const length = CONFIG.padding + 1;
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag arrays inside useMemo", () => {
     const result = runRule(
       preferModuleScopeStaticValue,

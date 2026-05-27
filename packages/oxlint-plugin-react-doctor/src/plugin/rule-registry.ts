@@ -48,6 +48,7 @@ import { iframeHasTitle } from "./rules/a11y/iframe-has-title.js";
 import { iframeMissingSandbox } from "./rules/react-builtins/iframe-missing-sandbox.js";
 import { imgRedundantAlt } from "./rules/a11y/img-redundant-alt.js";
 import { interactiveSupportsFocus } from "./rules/a11y/interactive-supports-focus.js";
+import { jsAsyncReduceWithoutAwaitedAcc } from "./rules/js-performance/js-async-reduce-without-awaited-acc.js";
 import { jsBatchDomCss } from "./rules/js-performance/js-batch-dom-css.js";
 import { jsCachePropertyAccess } from "./rules/js-performance/js-cache-property-access.js";
 import { jsCacheStorage } from "./rules/js-performance/js-cache-storage.js";
@@ -736,6 +737,17 @@ export const reactDoctorRules = [
       ...interactiveSupportsFocus,
       framework: "global",
       category: "Accessibility",
+    },
+  },
+  {
+    key: "react-doctor/js-async-reduce-without-awaited-acc",
+    id: "js-async-reduce-without-awaited-acc",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...jsAsyncReduceWithoutAwaitedAcc,
+      framework: "global",
+      category: "Performance",
     },
   },
   {

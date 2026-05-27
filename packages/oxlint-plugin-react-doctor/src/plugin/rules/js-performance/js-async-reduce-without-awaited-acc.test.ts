@@ -16,6 +16,22 @@ describe("js-async-reduce-without-awaited-acc", () => {
     expect(result.diagnostics[0].message).toContain("acc");
   });
 
+  it("regression: diagnostic message never suggests `const <param> = await <param>` (SyntaxError shape)", () => {
+    // `const acc = await acc;` redeclares the parameter `acc` in the same
+    // scope, which is a SyntaxError. The message must suggest either
+    // bare reassignment (`acc = await acc;`) or restructuring with a
+    // distinct previous-param name.
+    const code = `
+      items.reduce(async (acc, item) => {
+        acc[item.id] = await load(item);
+        return acc;
+      }, {});
+    `;
+    const result = runRule(jsAsyncReduceWithoutAwaitedAcc, code);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).not.toContain("const acc = await acc");
+  });
+
   it("flags async function-expression reducer that never awaits acc", () => {
     const code = `
       items.reduce(async function (acc, item) {

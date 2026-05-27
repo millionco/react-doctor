@@ -138,7 +138,7 @@ export const jsAsyncReduceWithoutAwaitedAcc = defineRule<Rule>({
 
       context.report({
         node: reducer,
-        message: `Async \`.${reduceMatch.methodName}\` reducer never awaits its accumulator "${firstParameter.name}" — every iteration sees a Promise and the final result silently drops every iteration's work. Add \`const ${firstParameter.name} = await ${firstParameter.name};\` at the top and seed with \`Promise.resolve(...)\``,
+        message: `Async \`.${reduceMatch.methodName}\` reducer never awaits its accumulator "${firstParameter.name}" — every iteration sees a Promise and the final result silently drops every iteration's work. Either reassign at the top (\`${firstParameter.name} = await ${firstParameter.name};\`) or restructure as \`async (previous, item) => { const ${firstParameter.name} = await previous; ...; return ${firstParameter.name}; }\`, and seed with \`Promise.resolve(...)\``,
       });
     },
   }),

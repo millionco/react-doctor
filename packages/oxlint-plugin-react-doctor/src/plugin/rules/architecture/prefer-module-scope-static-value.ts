@@ -11,6 +11,7 @@ import {
   isDescendantScope,
   type ScopeAnalysis,
   type ScopeDescriptor,
+  type SymbolDescriptor,
 } from "../../semantic/scope-analysis.js";
 
 // Receiver-mutating method names. Calling any of these on the binding
@@ -186,14 +187,39 @@ const isHoistableValueExpression = (expression: EsTreeNode): boolean => {
   return isNodeOfType(stripped, "ArrayExpression") || isNodeOfType(stripped, "ObjectExpression");
 };
 
-const KNOWN_MEMOISING_CALLERS = new Set([
-  "useCallback",
-  "useMemo",
-  "memo",
-  "forwardRef",
-  "observer",
-  "lazy",
-]);
+// Checks whether the binding is used as the receiver of a method call
+// (`items.push(x)`) or as the target of a property assignment
+// (`items[0] = x`, `obj.foo = x`). Hoisting a mutable accumulator
+// like `const parts = []; parts.push(...)` would cause it to retain
+// state across renders.
+const isBindingMutatedAfterInit = (symbol: SymbolDescriptor): boolean => {
+  for (const reference of symbol.references) {
+    if (reference.flag !== "read") return true;
+    const parent = reference.identifier.parent;
+    if (!parent) continue;
+    if (isNodeOfType(parent, "MemberExpression") && parent.object === reference.identifier) {
+      const grandparent = parent.parent;
+      if (!grandparent) continue;
+      if (isNodeOfType(grandparent, "CallExpression") && grandparent.callee === parent) {
+        return true;
+      }
+      if (isNodeOfType(grandparent, "AssignmentExpression") && grandparent.left === parent) {
+        return true;
+      }
+      if (isNodeOfType(grandparent, "UnaryExpression") && grandparent.operator === "delete") {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
+// Only value-level hooks that genuinely memoize inner allocations.
+// HOC wrappers (memo, forwardRef, observer, lazy) are deliberately
+// excluded: they wrap the component but don't memoize values
+// declared inside it — `const OPTS = ["a"]` inside
+// `memo(function App() { ... })` is still reallocated every render.
+const KNOWN_MEMOISING_CALLERS = new Set(["useCallback", "useMemo"]);
 
 // Walks the full ancestor chain looking for a CallExpression whose
 // callee is a known memoising helper (useMemo / useCallback / memo /

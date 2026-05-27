@@ -290,4 +290,40 @@ describe("prefer-module-scope-pure-function", () => {
 
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("flags pure functions inside a memo()-wrapped named function component", () => {
+    const result = runRule(
+      preferModuleScopePureFunction,
+      `
+      import { memo } from "react";
+
+      const App = memo(function App() {
+        const formatName = (user) => user.firstName + " " + user.lastName;
+        return null;
+      });
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("formatName");
+    expect(result.diagnostics[0].message).toContain("App");
+  });
+
+  it("flags pure functions inside a forwardRef()-wrapped named function component", () => {
+    const result = runRule(
+      preferModuleScopePureFunction,
+      `
+      import { forwardRef } from "react";
+
+      const Input = forwardRef(function Input(props, ref) {
+        const validate = (value) => value.length > 0;
+        return null;
+      });
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("validate");
+    expect(result.diagnostics[0].message).toContain("Input");
+  });
 });

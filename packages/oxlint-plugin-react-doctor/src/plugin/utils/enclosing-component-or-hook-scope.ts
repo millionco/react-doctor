@@ -33,6 +33,18 @@ export const enclosingComponentOrHookScope = (
         }
       }
     }
+    // Named FunctionExpression passed as an argument to a HOC wrapper:
+    //   const App = memo(function App() { ... })
+    //   const Input = forwardRef(function Input(props, ref) { ... })
+    if (isNodeOfType(cursor, "FunctionExpression")) {
+      const expressionName = cursor.id?.name ?? null;
+      if (expressionName && isReactComponentOrHookName(expressionName)) {
+        const bodyScope = ownScopeFor(cursor);
+        if (bodyScope) {
+          return { functionNode: cursor, bodyScope, displayName: expressionName };
+        }
+      }
+    }
     if (isNodeOfType(cursor, "VariableDeclarator")) {
       const initializer = cursor.init;
       const isFunctionInitializer =

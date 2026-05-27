@@ -240,4 +240,21 @@ describe("no-create-store-in-render", () => {
 
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("flags store factory inside a memo()-wrapped named function component", () => {
+    const result = runRule(
+      noCreateStoreInRender,
+      `
+      import { memo } from "react";
+      import { create } from "zustand";
+
+      const App = memo(function App() {
+        const store = create((set) => ({ count: 0 }));
+        return null;
+      });
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

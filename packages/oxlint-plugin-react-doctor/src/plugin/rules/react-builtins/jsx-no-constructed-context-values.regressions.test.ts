@@ -143,4 +143,22 @@ describe("react-builtins/jsx-no-constructed-context-values — regressions", () 
 
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("does not flag when a prop shadows the context binding name", () => {
+    const result = runRule(
+      jsxNoConstructedContextValues,
+      `
+      import { createContext } from "react";
+
+      const Ctx = createContext(null);
+
+      function App({ Ctx }) {
+        return <Ctx value={{ a: 1 }} />;
+      }
+    `,
+      { filename: "fixture.jsx" },
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
 });

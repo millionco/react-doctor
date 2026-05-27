@@ -187,4 +187,37 @@ describe("redux-useselector-inline-derivation", () => {
 
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("does not flag allocations in block-body selectors that are not returned", () => {
+    const result = runRule(
+      reduxUseselectorInlineDerivation,
+      `
+      import { useSelector } from "react-redux";
+
+      const value = useSelector((state) => {
+        const ids = state.users.map((user) => user.id);
+        console.log(ids);
+        return state.selectedUser;
+      });
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags allocations in the return statement of block-body selectors", () => {
+    const result = runRule(
+      reduxUseselectorInlineDerivation,
+      `
+      import { useSelector } from "react-redux";
+
+      const value = useSelector((state) => {
+        const threshold = 10;
+        return state.users.filter((user) => user.score > threshold);
+      });
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

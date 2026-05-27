@@ -6,13 +6,15 @@ import { isReactComponentOrHookName } from "./is-react-component-or-hook-name.js
 // name matches the React component (PascalCase) or hook (`use*`) naming
 // convention. Returns the name when found, null otherwise.
 //
-// Handles three shapes:
+// Handles four shapes:
 //
 //   1. `function Foo() { ... }`               → FunctionDeclaration.id
 //   2. `const Foo = () => { ... }`            → VariableDeclarator.id with
 //                                                ArrowFunctionExpression init
 //   3. `const useFoo = function() { ... }`    → VariableDeclarator.id with
 //                                                FunctionExpression init
+//   4. `memo(function Foo() { ... })`         → Named FunctionExpression.id
+//      `forwardRef(function Foo() { ... })`     inside a HOC wrapper call
 //
 // Used by rules that fire only on calls inside render scope —
 // `no-create-context-in-render`, `no-create-store-in-render`, and the
@@ -24,6 +26,12 @@ export const enclosingComponentOrHookName = (node: EsTreeNode): string | null =>
       const declarationName = cursor.id?.name ?? null;
       if (declarationName && isReactComponentOrHookName(declarationName)) {
         return declarationName;
+      }
+    }
+    if (isNodeOfType(cursor, "FunctionExpression")) {
+      const expressionName = cursor.id?.name ?? null;
+      if (expressionName && isReactComponentOrHookName(expressionName)) {
+        return expressionName;
       }
     }
     if (isNodeOfType(cursor, "VariableDeclarator")) {

@@ -181,15 +181,52 @@ export const reduxUseselectorInlineDerivation = defineRule<Rule>({
         const body = selectorArgument.body;
         if (!body) return;
 
-        const allocatingCall = findFirstAllocatingCallInExpression(body);
-        if (!allocatingCall) return;
+        // For concise arrows `(s) => s.users.filter(...)`, the body
+        // IS the returned expression. For block bodies, only scan the
+        // arguments of ReturnStatement nodes — intermediate
+        // computations that aren't returned don't break `===`.
+        const returnedExpressions: EsTreeNode[] = [];
+        if (isNodeOfType(body, "BlockStatement")) {
+          const collectReturns = (node: EsTreeNode): void => {
+            if (
+              isNodeOfType(node, "ArrowFunctionExpression") ||
+              isNodeOfType(node, "FunctionExpression") ||
+              isNodeOfType(node, "FunctionDeclaration")
+            ) {
+              return;
+            }
+            if (isNodeOfType(node, "ReturnStatement") && node.argument) {
+              returnedExpressions.push(node.argument);
+              return;
+            }
+            const record = node as unknown as Record<string, unknown>;
+            for (const key of Object.keys(record)) {
+              if (key === "parent") continue;
+              const child = record[key];
+              if (Array.isArray(child)) {
+                for (const item of child) if (isAstNode(item)) collectReturns(item);
+              } else if (isAstNode(child)) {
+                collectReturns(child);
+              }
+            }
+          };
+          collectReturns(body);
+        } else {
+          returnedExpressions.push(body);
+        }
 
-        const reportMessage =
-          allocatingCall.kind === "method"
-            ? MESSAGE_DERIVATION(allocatingCall.method)
-            : MESSAGE_NAMESPACE(allocatingCall.namespace, allocatingCall.method);
+        for (const returnedExpression of returnedExpressions) {
+          const allocatingCall = findFirstAllocatingCallInExpression(returnedExpression);
+          if (!allocatingCall) continue;
 
-        context.report({ node: allocatingCall.node, message: reportMessage });
+          const reportMessage =
+            allocatingCall.kind === "method"
+              ? MESSAGE_DERIVATION(allocatingCall.method)
+              : MESSAGE_NAMESPACE(allocatingCall.namespace, allocatingCall.method);
+
+          context.report({ node: allocatingCall.node, message: reportMessage });
+          return;
+        }
       },
     };
   },

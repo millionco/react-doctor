@@ -322,4 +322,122 @@ describe("prefer-module-scope-static-value", () => {
 
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("flags static values inside nested memo()-wrapped components (HOC does not memoize inner allocations)", () => {
+    const result = runRule(
+      preferModuleScopeStaticValue,
+      `
+      import { memo } from "react";
+
+      function Parent() {
+        const Inner = memo(() => {
+          const OPTS = ["a", "b", "c"];
+          return null;
+        });
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("OPTS");
+  });
+
+  it("flags static values inside a memo()-wrapped named function component", () => {
+    const result = runRule(
+      preferModuleScopeStaticValue,
+      `
+      import { memo } from "react";
+
+      const App = memo(function App() {
+        const OPTS = ["a", "b", "c"];
+        return null;
+      });
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("OPTS");
+    expect(result.diagnostics[0].message).toContain("App");
+  });
+
+  it("flags static values inside a forwardRef()-wrapped named function component", () => {
+    const result = runRule(
+      preferModuleScopeStaticValue,
+      `
+      import { forwardRef } from "react";
+
+      const Input = forwardRef(function Input(props, ref) {
+        const SIZES = { sm: 12, md: 16, lg: 20 };
+        return null;
+      });
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("SIZES");
+    expect(result.diagnostics[0].message).toContain("Input");
+  });
+
+  it("does not flag empty arrays used as mutable accumulators", () => {
+    const result = runRule(
+      preferModuleScopeStaticValue,
+      `
+      function App() {
+        const parts = [];
+        parts.push("hello");
+        parts.push("world");
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag empty objects used as mutable accumulators", () => {
+    const result = runRule(
+      preferModuleScopeStaticValue,
+      `
+      function App() {
+        const result = {};
+        result.name = "foo";
+        result.value = 42;
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag arrays mutated via indexed assignment", () => {
+    const result = runRule(
+      preferModuleScopeStaticValue,
+      `
+      function App() {
+        const items = [];
+        items[0] = "first";
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag objects mutated via method calls (e.g. Map-like .set)", () => {
+    const result = runRule(
+      preferModuleScopeStaticValue,
+      `
+      function useItems() {
+        const lookup = {};
+        lookup.toString = () => "custom";
+        return lookup;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
 });

@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
+import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isCanonicalReactNamespaceName } from "../../utils/is-canonical-react-namespace-name.js";
 import { isInsideFunctionScope } from "../../utils/is-inside-function-scope.js";
@@ -106,13 +107,18 @@ const collectContextBindings = (programRoot: EsTreeNode): Set<string> => {
 };
 
 // True for `<MyContext …>` (React 19 shorthand) when `MyContext` is a
-// known createContext binding in this file.
+// known createContext binding in this file AND the JSX identifier
+// resolves to that top-level binding (not a local shadow like a prop
+// or destructured variable with the same name).
 const isCreateContextBindingJsxName = (
   node: EsTreeNode,
   contextBindings: ReadonlySet<string>,
 ): boolean => {
   if (!isNodeOfType(node, "JSXIdentifier")) return false;
-  return contextBindings.has(node.name);
+  if (!contextBindings.has(node.name)) return false;
+  const binding = findVariableInitializer(node, node.name);
+  if (!binding) return false;
+  return binding.scopeOwner.type === "Program";
 };
 
 // Port of `oxc_linter::rules::react::jsx_no_constructed_context_values`.

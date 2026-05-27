@@ -184,4 +184,38 @@ describe("prefer-stable-empty-fallback", () => {
 
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("does not flag when the consumer is wrapped in forwardRef alone (not memoised)", () => {
+    const result = runRule(
+      preferStableEmptyFallback,
+      `
+      import { forwardRef } from "react";
+
+      const Input = forwardRef(({ items }, ref) => null);
+
+      function App(props) {
+        return <Input items={props.items || []} />;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags when the consumer is wrapped in memo(forwardRef(...))", () => {
+    const result = runRule(
+      preferStableEmptyFallback,
+      `
+      import { memo, forwardRef } from "react";
+
+      const Input = memo(forwardRef(({ items }, ref) => null));
+
+      function App(props) {
+        return <Input items={props.items || []} />;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

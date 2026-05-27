@@ -1,0 +1,21 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-bottom-sheet-prefer-native.ts
+  s_7bceefd7c943e7::t_2f6c745ecfc97e 17-18,25
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-bottom-sheet-prefer-native.test.ts
+  s_7bceefd7c943e7::t_962f0bd43612ca 21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "e84956bbf6b0054fa562b3b1bdd5d3f3ee5e5181",
+  "prompts": {},
+  "sessions": {
+    "s_7bceefd7c943e7": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "2f5b6848-00bb-4578-b7f9-c7c768e17388",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

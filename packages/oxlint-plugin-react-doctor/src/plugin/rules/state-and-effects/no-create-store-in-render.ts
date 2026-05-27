@@ -1,4 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { enclosingComponentOrHookName } from "../../utils/enclosing-component-or-hook-name.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import {
@@ -6,7 +7,6 @@ import {
   isImportedFromModule,
 } from "../../utils/find-import-source-for-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { isReactComponentOrHookName } from "../../utils/is-react-component-or-hook-name.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
@@ -28,8 +28,10 @@ const STORE_FACTORIES: ReadonlyArray<StoreApi> = [
   { module: "zustand", exportedName: "createStore", humanLabel: "zustand.createStore" },
   { module: "zustand/vanilla", exportedName: "createStore", humanLabel: "zustand.createStore" },
   { module: "zustand/vanilla", exportedName: "create", humanLabel: "zustand.create" },
+  // The `redux` package itself only exports `createStore` (now deprecated);
+  // `configureStore` lives exclusively in `@reduxjs/toolkit` and is listed
+  // there separately below.
   { module: "redux", exportedName: "createStore", humanLabel: "redux.createStore" },
-  { module: "redux", exportedName: "configureStore", humanLabel: "redux.configureStore" },
   {
     module: "@reduxjs/toolkit",
     exportedName: "configureStore",
@@ -97,29 +99,6 @@ const resolveStoreFactoryForCallee = (callee: EsTreeNode): StoreApi | null => {
     return null;
   }
 
-  return null;
-};
-
-const enclosingComponentOrHookName = (node: EsTreeNode): string | null => {
-  let cursor: EsTreeNode | null | undefined = node.parent;
-  while (cursor) {
-    if (isNodeOfType(cursor, "FunctionDeclaration")) {
-      const name = cursor.id?.name ?? null;
-      if (name && isReactComponentOrHookName(name)) return name;
-    }
-    if (isNodeOfType(cursor, "VariableDeclarator")) {
-      const initializer = cursor.init;
-      const isFunctionInitializer =
-        initializer &&
-        (isNodeOfType(initializer, "ArrowFunctionExpression") ||
-          isNodeOfType(initializer, "FunctionExpression"));
-      if (isFunctionInitializer && isNodeOfType(cursor.id, "Identifier")) {
-        const identifierName = cursor.id.name;
-        if (isReactComponentOrHookName(identifierName)) return identifierName;
-      }
-    }
-    cursor = cursor.parent ?? null;
-  }
   return null;
 };
 

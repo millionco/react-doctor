@@ -68,6 +68,7 @@ Goal:
 Find examples where <exact bug definition>.
 
 Return:
+
 - Strong positive examples
 - Pattern-adjacent examples
 - False-positive traps
@@ -93,24 +94,31 @@ Detector precision:
 Syntax-only | scope-aware | path-aware
 
 Evidence:
+
 - <docs, OSS, issue, RDE, or similar-tool evidence>
 
 Strong positives:
+
 - <exact reportable examples>
 
 False-positive traps:
+
 - <valid examples that must stay quiet>
 
 In scope for v1:
+
 - <supported cases>
 
 Out of scope for v1:
+
 - <explicit non-goals>
 
 Test seeds:
+
 - <invalid and valid fixture ideas>
 
 Open questions:
+
 - <only questions that affect correctness or scope>
 ```
 

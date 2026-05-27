@@ -1,0 +1,218 @@
+import { defineRule } from "../../utils/define-rule.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isReactComponentOrHookName } from "../../utils/is-react-component-or-hook-name.js";
+import type { Rule } from "../../utils/rule.js";
+import type { RuleContext } from "../../utils/rule-context.js";
+import { closureCaptures } from "../../semantic/closure-captures.js";
+import { isDescendantScope, type ScopeDescriptor } from "../../semantic/scope-analysis.js";
+
+const COMPONENT_SCOPE_KINDS = new Set<ScopeDescriptor["kind"]>([
+  "function",
+  "arrow-function",
+  "method",
+]);
+
+interface EnclosingComponent {
+  readonly functionNode: EsTreeNode;
+  readonly bodyScope: ScopeDescriptor;
+  readonly displayName: string;
+}
+
+const findEnclosingComponentOrHook = (
+  startNode: EsTreeNode,
+  ownScopeFor: (n: EsTreeNode) => ScopeDescriptor | null,
+): EnclosingComponent | null => {
+  let cursor: EsTreeNode | null | undefined = startNode.parent;
+  while (cursor) {
+    if (isNodeOfType(cursor, "FunctionDeclaration")) {
+      const name = cursor.id?.name ?? null;
+      if (name && isReactComponentOrHookName(name)) {
+        const bodyScope = ownScopeFor(cursor);
+        if (bodyScope) {
+          return { functionNode: cursor, bodyScope, displayName: name };
+        }
+      }
+    }
+    if (isNodeOfType(cursor, "VariableDeclarator")) {
+      const initializer = cursor.init;
+      const isFunctionInitializer =
+        initializer &&
+        (isNodeOfType(initializer, "ArrowFunctionExpression") ||
+          isNodeOfType(initializer, "FunctionExpression"));
+      if (isFunctionInitializer && isNodeOfType(cursor.id, "Identifier")) {
+        const identifierName = cursor.id.name;
+        if (isReactComponentOrHookName(identifierName)) {
+          const bodyScope = ownScopeFor(initializer);
+          if (bodyScope) {
+            return {
+              functionNode: initializer,
+              bodyScope,
+              displayName: identifierName,
+            };
+          }
+        }
+      }
+    }
+    cursor = cursor.parent ?? null;
+  }
+  return null;
+};
+
+// Skips function expressions that are arguments to known memo-shaped
+// callers — useMemo, useCallback, memo. The user already opted into
+// memoising them where they are. Moving to module scope is sometimes
+// desirable, but the rule isn't a slam-dunk in those cases.
+const KNOWN_MEMOISING_CALLERS = new Set([
+  "useCallback",
+  "useMemo",
+  "memo",
+  "forwardRef",
+  "observer",
+  "lazy",
+]);
+
+const isInsideMemoisingCall = (functionNode: EsTreeNode): boolean => {
+  const parent = functionNode.parent;
+  if (!parent) return false;
+  if (!isNodeOfType(parent, "CallExpression")) return false;
+  if (parent.arguments?.[0] !== functionNode) return false;
+  const callee = parent.callee;
+  if (isNodeOfType(callee, "Identifier")) {
+    return KNOWN_MEMOISING_CALLERS.has(callee.name);
+  }
+  if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
+    return KNOWN_MEMOISING_CALLERS.has(callee.property.name);
+  }
+  return false;
+};
+
+// `prop-types`, `defaultProps`, etc. — `Component.foo = (...) => {}` is
+// a class-static-ish pattern that's usually intentional and isn't a
+// candidate for hoisting (it depends on the component identity).
+const isAssignedToComponentMember = (functionNode: EsTreeNode): boolean => {
+  const parent = functionNode.parent;
+  if (!parent) return false;
+  return (
+    isNodeOfType(parent, "AssignmentExpression") && isNodeOfType(parent.left, "MemberExpression")
+  );
+};
+
+// Closure captures that resolve to a binding ANYWHERE inside the
+// component's body (props destructure, useState locals, hook return
+// values, plain consts). Bindings outside the component scope (module
+// imports, module-level consts, hoisted React APIs) are ignored — they
+// remain reachable when the function is hoisted to module scope.
+const hasComponentLocalCaptures = (
+  functionNode: EsTreeNode,
+  bodyScope: ScopeDescriptor,
+  scopes: RuleContext["scopes"],
+): boolean => {
+  const captures = closureCaptures(functionNode, scopes);
+  for (const capture of captures) {
+    const symbol = capture.resolvedSymbol;
+    if (!symbol) continue;
+    if (isDescendantScope(symbol.scope, bodyScope)) return true;
+  }
+  return false;
+};
+
+// Detects function expressions / arrow functions defined inside a
+// component or hook whose body closes over NO component-local state
+// — i.e. the function only uses its own parameters plus module-scope
+// bindings. Such functions belong outside the component:
+//
+//   - They allocate a new identity per render (perf cost, breaks
+//     memoised consumer comparisons).
+//   - They look like they're stateful to a profiler / debugger.
+//   - They can't be unit-tested in isolation without rendering the
+//     parent component.
+//
+// Quotes from the source material:
+//
+//   "Declare functions that need not be in the React component outside
+//    the component. This way they're not reallocated on every render."
+//     — coryhouse/reactjsconsulting#77
+//
+//   "Prefer pure functions (which can be extracted from the component)
+//    over useCallback when possible."
+//     — coryhouse/reactjsconsulting#77
+//
+// Scope (v1):
+//   - Only flags `const foo = () => {...}` / `const foo = function() {...}`
+//     / `function foo() {}` named bindings inside the component body.
+//     Anonymous inline functions (JSX `onClick={() => ...}`) are out
+//     of scope — those are covered by `jsx-no-new-function-as-prop`.
+//   - Skips when the function is the first argument to a memoising
+//     caller (useCallback / useMemo / memo / forwardRef / lazy /
+//     observer) because the user has already explicitly opted into
+//     memoisation at the call site.
+//   - Skips assignments to MemberExpressions (`Component.helper = (
+//     ) => ...`) — those are intentional component-attached helpers.
+//   - Uses the existing scope-analysis pipeline (`closureCaptures`)
+//     to detect any binding from inside the component's body scope.
+export const preferModuleScopePureFunction = defineRule<Rule>({
+  id: "prefer-module-scope-pure-function",
+  tags: ["test-noise"],
+  severity: "warn",
+  category: "Architecture",
+  recommendation:
+    "Move the function to module scope (above the component). It doesn't reference any local state, so the per-render allocation is wasted.",
+  create: (context: RuleContext) => {
+    const report = (functionNode: EsTreeNode, name: string, componentName: string): void => {
+      context.report({
+        node: functionNode,
+        message: `\`${name}\` inside \`${componentName}\` doesn't close over any local state. Move it to module scope so it isn't reallocated every render and the component file stays focused on rendering logic.`,
+      });
+    };
+
+    const checkNamedFunction = (
+      functionNode: EsTreeNode,
+      bindingName: string,
+      bindingTarget: EsTreeNode,
+    ): void => {
+      if (isInsideMemoisingCall(bindingTarget)) return;
+      if (isAssignedToComponentMember(functionNode)) return;
+      const component = findEnclosingComponentOrHook(functionNode, context.scopes.ownScopeFor);
+      if (!component) return;
+      const ownScope = context.scopes.ownScopeFor(functionNode);
+      if (!ownScope) return;
+      // The function's body scope must be a STRICT descendant of the
+      // component body — otherwise we found the component itself.
+      if (ownScope === component.bodyScope) return;
+      if (!isDescendantScope(ownScope, component.bodyScope)) return;
+      if (hasComponentLocalCaptures(functionNode, component.bodyScope, context.scopes)) return;
+      report(functionNode, bindingName, component.displayName);
+    };
+
+    return {
+      VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
+        if (!isNodeOfType(node.id, "Identifier")) return;
+        const initializer = node.init;
+        if (!initializer) return;
+        if (
+          !isNodeOfType(initializer, "ArrowFunctionExpression") &&
+          !isNodeOfType(initializer, "FunctionExpression")
+        ) {
+          return;
+        }
+        // PascalCase bindings inside a component look like nested
+        // component definitions. `no-nested-component-definition`
+        // already handles those.
+        const bindingName = node.id.name;
+        if (/^[A-Z]/.test(bindingName)) return;
+        checkNamedFunction(initializer, bindingName, node);
+      },
+      FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
+        if (!node.id?.name) return;
+        const bindingName = node.id.name;
+        if (/^[A-Z]/.test(bindingName)) return;
+        // Hooks are by definition closures over local state in their
+        // call site — but a named hook inside ANOTHER hook with no
+        // captures is genuinely hoistable. Allow the regular flow.
+        checkNamedFunction(node, bindingName, node);
+      },
+    };
+  },
+});

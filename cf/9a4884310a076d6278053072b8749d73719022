@@ -1,0 +1,26 @@
+.agents/skills/rule-writing/SKILL.md
+  s_9316e0f6628e3d::t_5580902e53de6c 2-123
+.gitignore
+  s_9316e0f6628e3d::t_c220bb51f9afa3 13
+  s_9316e0f6628e3d::t_0b704d1548c3e2 19-24
+.agents/skills/rule-research/SKILL.md
+  s_9316e0f6628e3d::t_034e7e522ac463 2-14
+.agents/skills/rule-validate/SKILL.md
+  s_9316e0f6628e3d::t_d56bca6ea9b101 2-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "cf9a4884310a076d6278053072b8749d73719022",
+  "prompts": {},
+  "sessions": {
+    "s_9316e0f6628e3d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a99461c9-76c4-4de8-8a25-c0b4bf486b92",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

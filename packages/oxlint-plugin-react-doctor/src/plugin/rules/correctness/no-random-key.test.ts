@@ -140,6 +140,21 @@ describe("no-random-key", () => {
     expect(result.diagnostics[0].message).toContain("counter++");
   });
 
+  it("uses the actual variable name in the diagnostic, not a hardcoded 'counter'", () => {
+    const result = runRule(
+      noRandomKey,
+      `
+      function List({ items }) {
+        let id = 0;
+        return items.map((item) => <Row key={++id} text={item} />);
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("++id");
+  });
+
   it("does not flag stable item-id keys", () => {
     const result = runRule(
       noRandomKey,

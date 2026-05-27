@@ -71,10 +71,29 @@ const isAlwaysFreshExpression = (expression: EsTreeNode): string | null => {
   return null;
 };
 
+// Best-effort label for the variable being mutated. Falls back to
+// "counter" when the argument shape isn't a plain identifier — e.g.
+// `++state.count` (MemberExpression) — so the diagnostic still reads
+// naturally.
+const variableLabelForUpdateArgument = (argument: EsTreeNode | null | undefined): string => {
+  if (!argument) return "counter";
+  const stripped = stripParenExpression(argument);
+  if (isNodeOfType(stripped, "Identifier")) return stripped.name;
+  if (
+    isNodeOfType(stripped, "MemberExpression") &&
+    !stripped.computed &&
+    isNodeOfType(stripped.property, "Identifier")
+  ) {
+    return stripped.property.name;
+  }
+  return "counter";
+};
+
 const looksLikeFreshUpdateExpression = (expression: EsTreeNode): string | null => {
   const stripped = stripParenExpression(expression);
   if (isNodeOfType(stripped, "UpdateExpression")) {
-    return stripped.prefix ? `${stripped.operator}counter` : `counter${stripped.operator}`;
+    const label = variableLabelForUpdateArgument(stripped.argument);
+    return stripped.prefix ? `${stripped.operator}${label}` : `${label}${stripped.operator}`;
   }
   if (
     isNodeOfType(stripped, "AssignmentExpression") &&

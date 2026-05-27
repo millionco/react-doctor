@@ -28,4 +28,19 @@ describe("solid-no-innerhtml", () => {
       result.diagnostics.some((diagnostic) => diagnostic.message.includes("overwritten")),
     ).toBe(true);
   });
+
+  it("allows static innerHTML on childless element by default", () => {
+    const result = runRule(solidNoInnerHtml, `const Foo = () => <div innerHTML="<b>safe</b>" />;`);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags static innerHTML when allowStatic is false", () => {
+    const result = runRule(
+      solidNoInnerHtml,
+      `const Foo = () => <div innerHTML="<b>hello</b>" />;`,
+      { settings: { "react-doctor": { solidNoInnerHtml: { allowStatic: false } } } },
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("static values");
+  });
 });

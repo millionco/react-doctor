@@ -3,10 +3,11 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { solidJsxNoDuplicateProps } from "./solid-jsx-no-duplicate-props.js";
 
 describe("solid-jsx-no-duplicate-props", () => {
-  it("flags duplicate props", () => {
+  it("flags duplicate props with prop name in message", () => {
     const result = runRule(solidJsxNoDuplicateProps, `const Foo = () => <div id="a" id="b" />;`);
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("`id`");
   });
 
   it("uses class-specific message", () => {

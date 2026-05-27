@@ -80,7 +80,7 @@ export const solidJsxNoDuplicateProps = defineRule<Rule>({
             const message =
               entry.normalizedName === "class"
                 ? "Duplicate `class` props are not allowed; use `classList` instead in Solid."
-                : "Duplicate props are not allowed.";
+                : `Duplicate prop \`${entry.normalizedName}\` — only the last value wins.`;
             context.report({ node: entry.reportNode, message });
           }
           seenNames.add(entry.normalizedName);

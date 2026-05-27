@@ -284,14 +284,21 @@ import { solidJsxNoDuplicateProps } from "./rules/solid/solid-jsx-no-duplicate-p
 import { solidJsxNoScriptUrl } from "./rules/solid/solid-jsx-no-script-url.js";
 import { solidNoArrayHandlers } from "./rules/solid/solid-no-array-handlers.js";
 import { solidNoDestructure } from "./rules/solid/solid-no-destructure.js";
+import { solidNoEffectDerivedState } from "./rules/solid/solid-no-effect-derived-state.js";
+import { solidNoImpureMemo } from "./rules/solid/solid-no-impure-memo.js";
 import { solidNoInnerHtml } from "./rules/solid/solid-no-innerhtml.js";
+import { solidNoProviderValueRead } from "./rules/solid/solid-no-provider-value-read.js";
 import { solidNoProxyApis } from "./rules/solid/solid-no-proxy-apis.js";
 import { solidNoReactDeps } from "./rules/solid/solid-no-react-deps.js";
 import { solidNoReactSpecificProps } from "./rules/solid/solid-no-react-specific-props.js";
+import { solidNoSignalMutation } from "./rules/solid/solid-no-signal-mutation.js";
 import { solidNoUnknownNamespaces } from "./rules/solid/solid-no-unknown-namespaces.js";
+import { solidPreferChildrenHelper } from "./rules/solid/solid-prefer-children-helper.js";
 import { solidPreferClasslist } from "./rules/solid/solid-prefer-classlist.js";
 import { solidPreferFor } from "./rules/solid/solid-prefer-for.js";
+import { solidPreferResource } from "./rules/solid/solid-prefer-resource.js";
 import { solidPreferShow } from "./rules/solid/solid-prefer-show.js";
+import { solidRequireCleanup } from "./rules/solid/solid-require-cleanup.js";
 import { solidSelfClosingComp } from "./rules/solid/solid-self-closing-comp.js";
 import { solidStyleProp } from "./rules/solid/solid-style-prop.js";
 import { stateInConstructor } from "./rules/react-builtins/state-in-constructor.js";
@@ -3392,6 +3399,30 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/solid-no-effect-derived-state",
+    id: "solid-no-effect-derived-state",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidNoEffectDerivedState,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidNoEffectDerivedState.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-no-impure-memo",
+    id: "solid-no-impure-memo",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidNoImpureMemo,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidNoImpureMemo.tags ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/solid-no-innerhtml",
     id: "solid-no-innerhtml",
     source: "react-doctor",
@@ -3401,6 +3432,18 @@ export const reactDoctorRules = [
       framework: "solid",
       category: "SolidJS",
       tags: [...new Set(["solid", ...(solidNoInnerHtml.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-no-provider-value-read",
+    id: "solid-no-provider-value-read",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidNoProviderValueRead,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidNoProviderValueRead.tags ?? [])])],
     },
   },
   {
@@ -3440,6 +3483,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/solid-no-signal-mutation",
+    id: "solid-no-signal-mutation",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidNoSignalMutation,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidNoSignalMutation.tags ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/solid-no-unknown-namespaces",
     id: "solid-no-unknown-namespaces",
     source: "react-doctor",
@@ -3449,6 +3504,18 @@ export const reactDoctorRules = [
       framework: "solid",
       category: "SolidJS",
       tags: [...new Set(["solid", ...(solidNoUnknownNamespaces.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-prefer-children-helper",
+    id: "solid-prefer-children-helper",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidPreferChildrenHelper,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidPreferChildrenHelper.tags ?? [])])],
     },
   },
   {
@@ -3476,6 +3543,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/solid-prefer-resource",
+    id: "solid-prefer-resource",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidPreferResource,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidPreferResource.tags ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/solid-prefer-show",
     id: "solid-prefer-show",
     source: "react-doctor",
@@ -3485,6 +3564,18 @@ export const reactDoctorRules = [
       framework: "solid",
       category: "SolidJS",
       tags: [...new Set(["solid", ...(solidPreferShow.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/solid-require-cleanup",
+    id: "solid-require-cleanup",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...solidRequireCleanup,
+      framework: "solid",
+      category: "SolidJS",
+      tags: [...new Set(["solid", ...(solidRequireCleanup.tags ?? [])])],
     },
   },
   {

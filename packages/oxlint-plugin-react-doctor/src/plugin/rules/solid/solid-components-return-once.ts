@@ -115,6 +115,31 @@ export const solidComponentsReturnOnce = defineRule<Rule>({
       if (displayName && /^[a-z]/.test(displayName)) return;
       if (isHocCallParent(node)) return;
 
+      if (
+        node.body &&
+        !isNodeOfType(node.body, "BlockStatement") &&
+        isNodeOfType(node, "ArrowFunctionExpression")
+      ) {
+        const expressionBody = node.body as EsTreeNode;
+        if (isNodeOfType(expressionBody, "ConditionalExpression")) {
+          context.report({
+            node: expressionBody,
+            message:
+              "Solid components run once, so a conditional return breaks reactivity. Move the condition inside JSX (`<Show>`).",
+          });
+        } else if (
+          isNodeOfType(expressionBody, "LogicalExpression") &&
+          (expressionBody.operator === "&&" || expressionBody.operator === "||")
+        ) {
+          context.report({
+            node: expressionBody,
+            message:
+              "Solid components run once, so a conditional return breaks reactivity. Move the condition inside JSX (`<Show>`).",
+          });
+        }
+        return;
+      }
+
       let lastReturn: EsTreeNodeOfType<"ReturnStatement"> | null = null;
       let bodyStatements: ReadonlyArray<EsTreeNode> = [];
       if (node.body && isNodeOfType(node.body, "BlockStatement")) {

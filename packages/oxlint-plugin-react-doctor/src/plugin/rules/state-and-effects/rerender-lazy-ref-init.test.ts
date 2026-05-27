@@ -88,7 +88,7 @@ describe("rerender-lazy-ref-init", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("does not flag useRef with `new` expression (sometimes intentional)", () => {
+  it("flags useRef with `new AbortController()` (allocation discarded after first render)", () => {
     const result = runRule(
       rerenderLazyRefInit,
       `
@@ -100,7 +100,33 @@ describe("rerender-lazy-ref-init", () => {
     `,
     );
 
-    // Intentionally NOT flagged. NewExpression case is separately covered.
-    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("new AbortController()");
+  });
+
+  it("flags useRef with a `new Map()` / `new Set()` initializer", () => {
+    const mapResult = runRule(
+      rerenderLazyRefInit,
+      `
+      import { useRef } from "react";
+
+      function Component() {
+        const cache = useRef(new Map());
+      }
+    `,
+    );
+    const setResult = runRule(
+      rerenderLazyRefInit,
+      `
+      import { useRef } from "react";
+
+      function Component() {
+        const seen = useRef(new Set());
+      }
+    `,
+    );
+
+    expect(mapResult.diagnostics).toHaveLength(1);
+    expect(setResult.diagnostics).toHaveLength(1);
   });
 });

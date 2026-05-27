@@ -18,17 +18,21 @@ import type { RuleContext } from "../../utils/rule-context.js";
 // or `useMemo(() => expensiveCall(), [])` when the value can be
 // recomputed on remount safely.
 //
-// Detection mirrors `rerender-lazy-state-init`:
-//   - The first argument to `useRef` is a `CallExpression`.
-//   - The callee isn't a trivial wrapper (`Number`, `String`, `Array`,
-//     `Boolean`, `parseInt`, …) — those are essentially free.
+// Covers two initializer shapes:
+//   - `useRef(callee())`         — plain call (the function/method case)
+//   - `useRef(new Callee())`     — `new` expression (the class case)
+//
+// Both allocate fresh per render and lose the allocation immediately
+// after the first render. The `new AbortController()` / `new Map()` /
+// `new Set()` patterns are the most common production occurrences of
+// this bug and are exactly what the rule should catch.
 //
 // LIMITATIONS:
 //   - Doesn't try to follow identifier bindings (`const init = expensiveCall();
 //     useRef(init)`) — that's a separate (rare) pattern.
-//   - Doesn't model `new MyClass()` because `useRef(new Foo())` is sometimes
-//     intentional (the class instance is the ref's stable target). Allocation
-//     detection lives in `jsx-no-new-*-as-prop`-family rules.
+//   - Trivial wrappers (`Number`, `String`, `Array`, `Boolean`,
+//     `parseInt`, `parseFloat`) are exempt because they're essentially
+//     free — same exemption list as `rerender-lazy-state-init`.
 export const rerenderLazyRefInit = defineRule<Rule>({
   id: "rerender-lazy-ref-init",
   tags: ["test-noise"],
@@ -40,7 +44,10 @@ export const rerenderLazyRefInit = defineRule<Rule>({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isHookCall(node, "useRef") || !node.arguments?.length) return;
       const initializer = node.arguments[0];
-      if (!isNodeOfType(initializer, "CallExpression")) return;
+
+      const isPlainCall = isNodeOfType(initializer, "CallExpression");
+      const isNewCall = isNodeOfType(initializer, "NewExpression");
+      if (!isPlainCall && !isNewCall) return;
 
       const callee = initializer.callee;
       const memberPropertyName =
@@ -55,9 +62,14 @@ export const rerenderLazyRefInit = defineRule<Rule>({
 
       if (TRIVIAL_INITIALIZER_NAMES.has(calleeName)) return;
 
+      const callShape = isNewCall ? `new ${calleeName}()` : `${calleeName}()`;
+      const lazyFix = isNewCall
+        ? `ref.current = new ${calleeName}();`
+        : `ref.current = ${calleeName}();`;
+
       context.report({
         node: initializer,
-        message: `useRef(${calleeName}()) calls the initializer on every render — useRef has no lazy-init form. Use \`const ref = useRef(null); if (ref.current === null) ref.current = ${calleeName}();\` or \`useMemo\` instead.`,
+        message: `useRef(${callShape}) allocates a fresh value on every render — useRef has no lazy-init form, so the allocation is discarded after the first render. Use \`const ref = useRef(null); if (ref.current === null) ${lazyFix}\` or \`useMemo\` instead.`,
       });
     },
   }),

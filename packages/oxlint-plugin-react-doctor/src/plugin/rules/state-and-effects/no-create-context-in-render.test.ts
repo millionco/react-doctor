@@ -119,11 +119,43 @@ describe("no-create-context-in-render", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("does not flag a createContext that isn't from react", () => {
+  it("flags createContext from use-context-selector (same identity bug)", () => {
     const result = runRule(
       noCreateContextInRender,
       `
       import { createContext } from "use-context-selector";
+
+      function App() {
+        const Ctx = createContext(null);
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags createContext from react-tracked", () => {
+    const result = runRule(
+      noCreateContextInRender,
+      `
+      import { createContext } from "react-tracked";
+
+      function App() {
+        const Ctx = createContext(null);
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a createContext from an unrecognized module", () => {
+    const result = runRule(
+      noCreateContextInRender,
+      `
+      import { createContext } from "my-custom-context-lib";
 
       function App() {
         const Ctx = createContext(null);

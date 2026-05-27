@@ -14,16 +14,24 @@ import type { RuleContext } from "../../utils/rule-context.js";
 const MESSAGE =
   "createContext() called inside a component or hook — every render creates a brand new Context object, resetting every consumer and disconnecting Provider/Consumer pairs. Move createContext to module scope (outside the component) so the Context identity is stable across renders.";
 
-const REACT_MODULE = "react";
+// Context-providing modules whose `createContext` export has the same
+// identity-stability semantics as React's. Calling any of these inside
+// a render function disconnects every Provider/Consumer pair on the
+// next render. Add new entries here as they appear in the ecosystem.
+const CONTEXT_MODULES: ReadonlyArray<string> = ["react", "use-context-selector", "react-tracked"];
 
 const isCreateContextCallee = (callee: EsTreeNode): boolean => {
   if (isNodeOfType(callee, "Identifier")) {
     // Resolve through any renamed import — `getImportedNameFromModule`
     // returns the originally-exported symbol name, so we catch both
     // `import { createContext } from "react"` and
-    // `import { createContext as makeCtx } from "react"`.
-    const canonicalName = getImportedNameFromModule(callee, callee.name, REACT_MODULE);
-    return canonicalName === "createContext";
+    // `import { createContext as makeCtx } from "react"`. We accept
+    // any module in `CONTEXT_MODULES`.
+    for (const moduleName of CONTEXT_MODULES) {
+      const canonicalName = getImportedNameFromModule(callee, callee.name, moduleName);
+      if (canonicalName === "createContext") return true;
+    }
+    return false;
   }
 
   if (isNodeOfType(callee, "MemberExpression") && !callee.computed) {
@@ -34,7 +42,10 @@ const isCreateContextCallee = (callee: EsTreeNode): boolean => {
     if (propertyIdentifier.name !== "createContext") return false;
     const namespaceName = namespaceIdentifier.name;
     if (isCanonicalReactNamespaceName(namespaceName)) return true;
-    return isImportedFromModule(namespaceIdentifier, namespaceName, REACT_MODULE);
+    for (const moduleName of CONTEXT_MODULES) {
+      if (isImportedFromModule(namespaceIdentifier, namespaceName, moduleName)) return true;
+    }
+    return false;
   }
 
   return false;

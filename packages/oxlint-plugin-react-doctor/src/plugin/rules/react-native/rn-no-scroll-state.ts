@@ -6,6 +6,23 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
+const SET_STATE_PATTERN = /^set[A-Z]/;
+
+const findSetStateInBody = (body: EsTreeNode): EsTreeNode | null => {
+  let setStateCallNode: EsTreeNode | null = null;
+  walkAst(body, (child: EsTreeNode) => {
+    if (setStateCallNode) return;
+    if (
+      isNodeOfType(child, "CallExpression") &&
+      isNodeOfType(child.callee, "Identifier") &&
+      SET_STATE_PATTERN.test(child.callee.name)
+    ) {
+      setStateCallNode = child;
+    }
+  });
+  return setStateCallNode;
+};
+
 // HACK: setting React state inside an onScroll handler triggers a re-render
 // at scroll-event frequency (60-120Hz). Use a Reanimated shared value
 // (useSharedValue + useAnimatedScrollHandler) or a ref + raf throttle so
@@ -17,38 +34,62 @@ export const rnNoScrollState = defineRule<Rule>({
   severity: "error",
   recommendation:
     "Track scroll position with a Reanimated shared value (`useAnimatedScrollHandler`) or a ref — `setState` on every scroll event causes re-render storms",
-  create: (context: RuleContext) => ({
-    JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
-      if (!isNodeOfType(node.name, "JSXIdentifier")) return;
-      if (node.name.name !== "onScroll") return;
-      if (!isNodeOfType(node.value, "JSXExpressionContainer")) return;
-      const expression = node.value.expression;
-      if (
-        !isNodeOfType(expression, "ArrowFunctionExpression") &&
-        !isNodeOfType(expression, "FunctionExpression")
-      ) {
-        return;
-      }
+  create: (context: RuleContext) => {
+    const stateSettersInHandlers = new Map<string, EsTreeNode>();
 
-      let setStateCallNode: EsTreeNode | null = null;
-      walkAst(expression.body, (child: EsTreeNode) => {
-        if (setStateCallNode) return;
+    return {
+      VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
+        if (!isNodeOfType(node.id, "Identifier")) return;
+        const variableName = node.id.name;
+        if (!/scroll/i.test(variableName)) return;
+
+        const init = node.init;
         if (
-          isNodeOfType(child, "CallExpression") &&
-          isNodeOfType(child.callee, "Identifier") &&
-          /^set[A-Z]/.test(child.callee.name)
-        ) {
-          setStateCallNode = child;
-        }
-      });
+          !isNodeOfType(init, "ArrowFunctionExpression") &&
+          !isNodeOfType(init, "FunctionExpression")
+        )
+          return;
 
-      if (setStateCallNode) {
-        context.report({
-          node: setStateCallNode,
-          message:
-            "setState in onScroll triggers re-renders on every scroll event — use a Reanimated shared value (useAnimatedScrollHandler) or a ref to track scroll position",
-        });
-      }
-    },
-  }),
+        const setStateCall = findSetStateInBody(init.body);
+        if (setStateCall) {
+          stateSettersInHandlers.set(variableName, setStateCall);
+        }
+      },
+
+      JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
+        if (!isNodeOfType(node.name, "JSXIdentifier")) return;
+        if (node.name.name !== "onScroll") return;
+        if (!isNodeOfType(node.value, "JSXExpressionContainer")) return;
+        const expression = node.value.expression;
+
+        if (isNodeOfType(expression, "Identifier")) {
+          const tracked = stateSettersInHandlers.get(expression.name);
+          if (tracked) {
+            context.report({
+              node: tracked,
+              message:
+                "setState in onScroll handler triggers re-renders on every scroll event — use a Reanimated shared value (useAnimatedScrollHandler) or a ref to track scroll position",
+            });
+          }
+          return;
+        }
+
+        if (
+          !isNodeOfType(expression, "ArrowFunctionExpression") &&
+          !isNodeOfType(expression, "FunctionExpression")
+        ) {
+          return;
+        }
+
+        const setStateCallNode = findSetStateInBody(expression.body);
+        if (setStateCallNode) {
+          context.report({
+            node: setStateCallNode,
+            message:
+              "setState in onScroll triggers re-renders on every scroll event — use a Reanimated shared value (useAnimatedScrollHandler) or a ref to track scroll position",
+          });
+        }
+      },
+    };
+  },
 });

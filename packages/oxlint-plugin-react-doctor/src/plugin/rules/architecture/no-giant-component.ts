@@ -16,32 +16,38 @@ export const noGiantComponent = defineRule<Rule>({
   recommendation:
     "Extract logical sections into focused components: `<UserHeader />`, `<UserActions />`, etc.",
   create: (context: RuleContext) => {
+    const getOversizedComponentLineCount = (bodyNode: EsTreeNode): number | null => {
+      if (!bodyNode.loc) return null;
+      const lineCount = bodyNode.loc.end.line - bodyNode.loc.start.line + 1;
+      return lineCount > GIANT_COMPONENT_LINE_THRESHOLD ? lineCount : null;
+    };
+
     const reportOversizedComponent = (
       nameNode: EsTreeNode,
       componentName: string,
-      bodyNode: EsTreeNode,
+      lineCount: number,
     ): void => {
-      if (!bodyNode.loc) return;
-      const lineCount = bodyNode.loc.end.line - bodyNode.loc.start.line + 1;
-      if (lineCount > GIANT_COMPONENT_LINE_THRESHOLD) {
-        context.report({
-          node: nameNode,
-          message: `Component "${componentName}" is ${lineCount} lines — consider breaking it into smaller focused components`,
-        });
-      }
+      context.report({
+        node: nameNode,
+        message: `Component "${componentName}" is ${lineCount} lines — consider breaking it into smaller focused components`,
+      });
     };
 
     return {
       FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
         if (!node.id?.name || !isUppercaseName(node.id.name)) return;
+        const lineCount = getOversizedComponentLineCount(node);
+        if (lineCount === null) return;
         if (!functionContainsReactRenderOutput(node, context.scopes)) return;
-        reportOversizedComponent(node.id, node.id.name, node);
+        reportOversizedComponent(node.id, node.id.name, lineCount);
       },
       VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
         if (!isComponentAssignment(node)) return;
         if (!isNodeOfType(node.id, "Identifier") || !node.init) return;
+        const lineCount = getOversizedComponentLineCount(node.init);
+        if (lineCount === null) return;
         if (!functionContainsReactRenderOutput(node.init, context.scopes)) return;
-        reportOversizedComponent(node.id, node.id.name, node.init);
+        reportOversizedComponent(node.id, node.id.name, lineCount);
       },
     };
   },

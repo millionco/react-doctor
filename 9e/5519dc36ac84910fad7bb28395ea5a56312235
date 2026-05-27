@@ -1,0 +1,37 @@
+.agents/skills/ast-rule-planner/SKILL.md
+  s_df7c9dda45aa12::t_fd1156b8ed1bda 1-52
+.agents/skills/adversarial-test-designer/SKILL.md
+  s_df7c9dda45aa12::t_f0495aefb8526f 1-46
+.agents/skills/rule-implementation-reviewer/SKILL.md
+  s_df7c9dda45aa12::t_422a326964b44d 1-50
+.agents/skills/rule-researcher/SKILL.md
+  s_df7c9dda45aa12::t_3a5ea76f4b966e 1-44
+.gitignore
+  s_df7c9dda45aa12::t_db05f7bf297a03 19-36
+.agents/skills/rde-idea-evaluator/SKILL.md
+  s_df7c9dda45aa12::t_abe4587d28e792 1-64
+.agents/skills/rule-scope-guard/SKILL.md
+  s_df7c9dda45aa12::t_99fdfbb81a9707 1-51
+.agents/skills/rule-idea-validator/SKILL.md
+  s_df7c9dda45aa12::t_2c0fe14545a330 1-39
+.agents/skills/rde-rule-validator/SKILL.md
+  s_df7c9dda45aa12::t_d5dacc3ff89d5d 1-54
+.agents/skills/rule-eval-table-generator/SKILL.md
+  s_df7c9dda45aa12::t_ed5e740736cc67 1-44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "9e5519dc36ac84910fad7bb28395ea5a56312235",
+  "prompts": {},
+  "sessions": {
+    "s_df7c9dda45aa12": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "dffc8bfb-8df7-448a-bd31-b9f516f10703",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

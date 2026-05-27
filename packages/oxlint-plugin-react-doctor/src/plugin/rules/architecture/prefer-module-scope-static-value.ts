@@ -74,6 +74,22 @@ const KNOWN_MEMOISING_CALLERS = new Set([
   "lazy",
 ]);
 
+// Walks the full ancestor chain looking for a CallExpression whose
+// callee is a known memoising helper (useMemo / useCallback / memo /
+// forwardRef / observer / lazy). Does NOT stop at function boundaries
+// because the canonical case the rule needs to skip is exactly the
+// shape with a function in between:
+//
+//   const data = useMemo(() => {
+//     const OPTS = ["a", "b"];  // ← this VariableDeclarator
+//     return process(OPTS);
+//   }, []);
+//
+// Walking from `OPTS`'s VariableDeclarator we pass through the
+// useMemo callback's ArrowFunctionExpression before reaching the
+// useMemo CallExpression. Stopping at the function boundary would
+// miss the parent CallExpression and falsely flag `OPTS` as
+// hoistable even though the user has already memoised the scope.
 const isInsideMemoisingCall = (node: EsTreeNode): boolean => {
   let cursor: EsTreeNode | null | undefined = node.parent;
   while (cursor) {
@@ -89,13 +105,6 @@ const isInsideMemoisingCall = (node: EsTreeNode): boolean => {
       ) {
         return true;
       }
-    }
-    if (
-      isNodeOfType(cursor, "FunctionDeclaration") ||
-      isNodeOfType(cursor, "FunctionExpression") ||
-      isNodeOfType(cursor, "ArrowFunctionExpression")
-    ) {
-      return false;
     }
     cursor = cursor.parent ?? null;
   }

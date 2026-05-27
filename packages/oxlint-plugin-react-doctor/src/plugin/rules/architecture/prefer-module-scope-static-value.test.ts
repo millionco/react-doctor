@@ -97,6 +97,44 @@ describe("prefer-module-scope-static-value", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not flag values inside a useMemo callback (the callback IS the memoised scope)", () => {
+    const result = runRule(
+      preferModuleScopeStaticValue,
+      `
+      import { useMemo } from "react";
+
+      function App() {
+        const result = useMemo(() => {
+          const OPTS = ["a", "b"];
+          return process(OPTS);
+        }, []);
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag values inside a useCallback callback", () => {
+    const result = runRule(
+      preferModuleScopeStaticValue,
+      `
+      import { useCallback } from "react";
+
+      function App() {
+        const handler = useCallback(() => {
+          const TARGETS = ["click", "tap"];
+          TARGETS.forEach(register);
+        }, []);
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("does not flag arrays inside useMemo", () => {
     const result = runRule(
       preferModuleScopeStaticValue,

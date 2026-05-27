@@ -84,6 +84,33 @@ describe("no-mutating-reducer-state — cross-file resolution", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags a mutation through `export { reducer as default }` (rename-as-default pattern)", () => {
+    writeFile(
+      "reducer.ts",
+      `
+        function reducer(state, action) {
+          state.flag = true;
+          return state;
+        }
+        export { reducer as default };
+      `,
+    );
+    const consumerPath = writeFile(
+      "App.tsx",
+      `
+        import { useReducer } from "react";
+        import reducer from "./reducer";
+        useReducer(reducer, { flag: false });
+      `,
+    );
+
+    const result = runRule(noMutatingReducerState, fs.readFileSync(consumerPath, "utf8"), {
+      filename: consumerPath,
+    });
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags an arrow-form reducer exported under a renamed binding", () => {
     writeFile(
       "reducer.ts",
@@ -215,6 +242,37 @@ describe("no-mutating-reducer-state — cross-file resolution", () => {
     });
 
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it("anchors the diagnostic at the consumer's useReducer call (not the cross-file mutation node)", () => {
+    writeFile(
+      "reducer.ts",
+      `
+        export function reducer(state, action) {
+          state.count++;
+          return state;
+        }
+      `,
+    );
+    const consumerPath = writeFile(
+      "App.tsx",
+      `
+        import { useReducer } from "react";
+        import { reducer } from "./reducer";
+        useReducer(reducer, { count: 0 });
+      `,
+    );
+
+    const result = runRule(noMutatingReducerState, fs.readFileSync(consumerPath, "utf8"), {
+      filename: consumerPath,
+    });
+
+    expect(result.diagnostics).toHaveLength(1);
+    // The reported node must be the consumer's CallExpression (i.e.
+    // a CallExpression node from THIS file), NOT a mutation node
+    // from the imported reducer's AST.
+    expect(result.diagnostics[0].nodeType).toBe("CallExpression");
+    expect(result.diagnostics[0].message).toContain("./reducer");
   });
 
   it("does not crash on a .d.ts-only declaration", () => {

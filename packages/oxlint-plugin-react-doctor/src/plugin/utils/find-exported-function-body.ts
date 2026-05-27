@@ -131,7 +131,10 @@ export const findExportedFunctionBody = (
       const binding = localBindings.get(identifierName);
       if (binding) return binding;
     }
-    return null;
+    // `export { reducer as default }` — the specifier loop above
+    // recorded `namedExports.set("default", "reducer")`. Fall
+    // through to the general lookup so the rename-as-default shape
+    // resolves correctly.
   }
 
   const localName = namedExports.get(exportedName);

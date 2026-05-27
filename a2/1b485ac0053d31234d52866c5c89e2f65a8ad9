@@ -1,0 +1,28 @@
+packages/react-doctor/src/cli/utils/render-agent-guidance.ts
+  s_21f13d772deb4e::t_df94882dc5335d 10
+packages/react-doctor/src/cli/utils/copy-issues-to-clipboard.ts
+  s_21f13d772deb4e::t_ea31e7d6408e7b 66-71
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/exhaustive-deps.ts
+  s_21f13d772deb4e::t_e79a1c29c742d7 685-686
+packages/react-doctor/tests/regressions/cli-and-output.test.ts
+  s_21f13d772deb4e::t_6a05616d09c934 27-30,58-63,78
+  s_21f13d772deb4e::t_6407b5d4963fb1 284-286
+skills/react-doctor/SKILL.md
+  s_21f13d772deb4e::t_2df2a3779086c4 21-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "a21b485ac0053d31234d52866c5c89e2f65a8ad9",
+  "prompts": {},
+  "sessions": {
+    "s_21f13d772deb4e": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a5c49233-ce77-4bcf-b755-79d23bc5a4c8",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

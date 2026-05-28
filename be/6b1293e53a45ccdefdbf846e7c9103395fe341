@@ -1,0 +1,24 @@
+packages/core/src/runners/oxlint/parse-output.ts
+  s_33e090db31c121::t_069ef791f5f0d2 11
+  s_33e090db31c121::t_333e6e0332bd06 78-81
+packages/core/tests/append-reanimated-shared-value-hint.test.ts
+  s_33e090db31c121::t_8d1f06797bfedf 1-119
+packages/core/src/utils/append-reanimated-shared-value-hint.ts
+  s_33e090db31c121::t_7767d41b0e0f75 1-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "be6b1293e53a45ccdefdbf846e7c9103395fe341",
+  "prompts": {},
+  "sessions": {
+    "s_33e090db31c121": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "29c67cf1-bc50-4404-be76-3c951a87e038",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

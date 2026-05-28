@@ -1,0 +1,23 @@
+packages/react-doctor/tests/dead-code-integration.test.ts
+  s_35c401a56ba7ba::t_b370640a273e96 8-15
+packages/core/src/check-dead-code.ts
+  s_35c401a56ba7ba::t_d3fb05d8d5077b 1
+  s_35c401a56ba7ba::t_6ca09f6f7413a0 81-84,86-109,111-136
+  s_35c401a56ba7ba::t_b62615a28155d3 318-331,333-338,348-364,366,378-383,388
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "6dae8b0b62355208cf18179e31b2d22cb773fe00",
+  "prompts": {},
+  "sessions": {
+    "s_35c401a56ba7ba": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "b7782e54-6c6c-40dc-aa79-d020d94918e6",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

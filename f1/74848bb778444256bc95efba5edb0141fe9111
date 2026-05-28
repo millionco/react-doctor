@@ -1,0 +1,108 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-string-refs.ts
+  s_a980e8f387b22b::t_0f64678e7b89ac 69
+packages/oxlint-plugin-react-doctor/src/plugin/rules/bundle-size/no-barrel-import.ts
+  s_a980e8f387b22b::t_79ba811aae6b4c 81
+packages/oxlint-plugin-react-doctor/src/plugin/utils/define-rule.ts
+  s_a980e8f387b22b::t_963d67fe042a7b 20,25
+  s_a980e8f387b22b::t_b48835787b5af3 43
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-no-jsx-as-prop.ts
+  s_a980e8f387b22b::t_5aeb68fbf66949 320
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-no-new-object-as-prop.ts
+  s_a980e8f387b22b::t_929a60bad00349 136
+packages/oxlint-plugin-react-doctor/src/plugin/utils/rule-context.ts
+  s_a980e8f387b22b::t_5841920d55eb9b 10-12,14-17,22-27
+packages/oxlint-plugin-react-doctor/tests/wrap-with-semantic-context.test.ts
+  s_a980e8f387b22b::t_06644c02fd1b64 37,40
+  s_a980e8f387b22b::t_dba2bafa782b2c 7
+  s_a980e8f387b22b::t_7c420f3747e0db 52,57,62
+  s_a980e8f387b22b::t_51d8ffecaf9f4b 23
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/control-has-associated-label.ts
+  s_a980e8f387b22b::t_601a923f04bc99 296
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-no-constructed-context-values.ts
+  s_a980e8f387b22b::t_99fb546abeef9d 55
+packages/eslint-plugin-react-doctor/src/index.ts
+  s_a980e8f387b22b::t_450f8d3673cb11 14
+packages/oxlint-plugin-react-doctor/src/plugin/utils/wrap-react-native-rule.ts
+  s_a980e8f387b22b::t_cffc8473cdc375 13
+packages/oxlint-plugin-react-doctor/src/plugin/rules/nextjs/nextjs-no-side-effect-in-get-handler.ts
+  s_a980e8f387b22b::t_df9f52de65dfba 209
+packages/oxlint-plugin-react-doctor/src/plugin/rules/tanstack-start/tanstack-start-no-use-effect-fetch.ts
+  s_a980e8f387b22b::t_d8bb806bbf43e9 22
+packages/oxlint-plugin-react-doctor/src/plugin/utils/is-react-native-file.ts
+  s_a980e8f387b22b::t_2ae5b79164e557 41
+  s_a980e8f387b22b::t_7b5ef88fca34f6 45
+packages/oxlint-plugin-react-doctor/src/plugin/rules/server/server-hoist-static-io.ts
+  s_a980e8f387b22b::t_ad357ac7d7c1d5 151
+packages/oxlint-plugin-react-doctor/src/test-utils/run-fixtures.ts
+  s_a980e8f387b22b::t_388035dee6a02f 11
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-no-new-array-as-prop.ts
+  s_a980e8f387b22b::t_ba86a98821df92 146
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/button-has-type.ts
+  s_a980e8f387b22b::t_918ea9e3dd6879 128
+packages/oxlint-plugin-react-doctor/src/plugin/rules/nextjs/nextjs-no-client-side-redirect.ts
+  s_a980e8f387b22b::t_9e87f281ae27cd 58
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/label-has-associated-control.ts
+  s_a980e8f387b22b::t_b47b1b908e54b3 204
+packages/oxlint-plugin-react-doctor/src/plugin/utils/wrap-with-semantic-context.ts
+  s_a980e8f387b22b::t_00cccf294511b9 79-82,85-87
+packages/oxlint-plugin-react-doctor/src/plugin/rules/tanstack-start/tanstack-start-no-anchor-element.ts
+  s_a980e8f387b22b::t_d5dac8f388e9a4 18
+packages/oxlint-plugin-react-doctor/src/plugin/rules/tanstack-start/tanstack-start-no-navigate-in-render.ts
+  s_a980e8f387b22b::t_b6cc795422d97f 45,65,72,77
+packages/oxlint-plugin-react-doctor/src/plugin/utils/is-expo-managed-file.ts
+  s_a980e8f387b22b::t_e25f4e43a45744 7
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/only-export-components.ts
+  s_a980e8f387b22b::t_ed99d205854aea 387
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-no-new-function-as-prop.ts
+  s_a980e8f387b22b::t_18574fce5c5547 507
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/no-autofocus.ts
+  s_a980e8f387b22b::t_3784985f6d24ee 103
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/only-export-components.regressions.test.ts
+  s_a980e8f387b22b::t_22e5b8e52ad726 5-8
+  s_a980e8f387b22b::t_20113edef49869 23
+  s_a980e8f387b22b::t_0b30b838ee37ce 22,27
+packages/oxlint-plugin-react-doctor/src/plugin/rules/correctness/rendering-svg-precision.ts
+  s_a980e8f387b22b::t_28d10c449593ce 51
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/no-static-element-interactions.ts
+  s_a980e8f387b22b::t_393be29738a8f6 74
+packages/oxlint-plugin-react-doctor/src/plugin/rules/nextjs/nextjs-missing-metadata.ts
+  s_a980e8f387b22b::t_570005d82d11b1 18
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-filename-extension.ts
+  s_a980e8f387b22b::t_3b16e2a2492dbe 61
+packages/oxlint-plugin-react-doctor/src/plugin/rules/nextjs/nextjs-no-client-fetch-for-server-data.ts
+  s_a980e8f387b22b::t_7cdaeee52e95b9 33
+packages/oxlint-plugin-react-doctor/src/plugin/rules/nextjs/nextjs-no-head-import.ts
+  s_a980e8f387b22b::t_0172315399fee3 19
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-multi-comp.ts
+  s_a980e8f387b22b::t_28cfe1e463144d 577
+packages/oxlint-plugin-react-doctor/src/test-utils/run-rule.ts
+  s_a980e8f387b22b::t_f90ab17fe7a0fd 77
+packages/oxlint-plugin-react-doctor/src/plugin/rules/js-performance/async-parallel.ts
+  s_a980e8f387b22b::t_0cca165de3f20b 116
+packages/oxlint-plugin-react-doctor/src/plugin/rules/nextjs/nextjs-no-img-element.ts
+  s_a980e8f387b22b::t_d2e58f605ada70 17
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security/no-secrets-in-client-code.ts
+  s_a980e8f387b22b::t_76ae9ab4ee17f5 25
+packages/oxlint-plugin-react-doctor/src/plugin/rules/server/server-fetch-without-revalidate.ts
+  s_a980e8f387b22b::t_b6ebe251ec691c 67
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/click-events-have-key-events.ts
+  s_a980e8f387b22b::t_6d938af5923718 32
+packages/oxlint-plugin-react-doctor/src/plugin/rules/tanstack-start/tanstack-start-missing-head-content.ts
+  s_a980e8f387b22b::t_28d48cd7d5c556 143,163,169,175,211
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "f174848bb778444256bc95efba5edb0141fe9111",
+  "prompts": {},
+  "sessions": {
+    "s_a980e8f387b22b": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "6a9f54f2-acc9-4d35-a5ed-eb306ce56aca",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

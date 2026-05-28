@@ -12,7 +12,7 @@ const buildMessage = (childTag: string, expectedParent: string, actualParent: st
   `Improper table nesting — \`<${childTag}>\` must be a direct child of ${expectedParent}, but its nearest host ancestor is \`<${actualParent}>\`. Browsers auto-rewrite invalid table structure, producing a DOM that doesn't match the JSX (broken hydration, broken \`>\` selectors, broken accessibility tree).`;
 
 const buildNestedTableMessage = (): string =>
-  "Improper table nesting — `<table>` cannot be a direct descendant of another table element. Tables can only nest inside a `<td>` cell of an outer table.";
+  "Improper table nesting — `<table>` cannot be a direct descendant of another table element. Tables can only nest inside a `<td>` or `<th>` cell of an outer table.";
 
 const getHostTagName = (jsxElement: EsTreeNode): string | null => {
   if (!isNodeOfType(jsxElement, "JSXElement")) return null;

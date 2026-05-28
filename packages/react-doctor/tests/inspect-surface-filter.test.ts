@@ -72,6 +72,7 @@ describe("inspect — score surface filter", () => {
     try {
       const result = await inspect(path.join(FIXTURES_DIRECTORY, "basic-react"), {
         lint: true,
+        deadCode: false,
         noScore: false,
       });
 
@@ -117,6 +118,7 @@ describe("inspect — score surface filter", () => {
       try {
         const baselineResult = await inspect(path.join(FIXTURES_DIRECTORY, "basic-react"), {
           lint: true,
+          deadCode: false,
           noScore: true,
         });
         const baselineDesignCount = baselineResult.diagnostics.filter(
@@ -129,6 +131,7 @@ describe("inspect — score surface filter", () => {
 
         await inspect(path.join(FIXTURES_DIRECTORY, "basic-react"), {
           lint: true,
+          deadCode: false,
           noScore: true,
           outputSurface: "cli",
           configOverride: { surfaces: { cli: { excludeTags: ["design"] } } },

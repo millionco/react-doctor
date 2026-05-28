@@ -45,6 +45,7 @@ describe("inspect", () => {
     try {
       await inspect(path.join(FIXTURES_DIRECTORY, "basic-react"), {
         lint: true,
+        deadCode: false,
       });
     } finally {
       consoleSpy.mockRestore();
@@ -67,6 +68,7 @@ describe("inspect", () => {
     try {
       await inspect(path.join(FIXTURES_DIRECTORY, "basic-react"), {
         lint: false,
+        deadCode: false,
       });
     } finally {
       consoleSpy.mockRestore();
@@ -79,6 +81,7 @@ describe("inspect", () => {
       const startTime = performance.now();
       await inspect(path.join(FIXTURES_DIRECTORY, "basic-react"), {
         lint: true,
+        deadCode: false,
       });
       const elapsedMilliseconds = performance.now() - startTime;
 
@@ -106,6 +109,7 @@ describe("inspect", () => {
 
       const result = await inspect(adminProjectDirectory, {
         lint: false,
+        deadCode: false,
         configOverride: null,
       });
 
@@ -133,6 +137,7 @@ describe("inspect", () => {
 
       const result = await inspect(tempDirectory, {
         lint: false,
+        deadCode: false,
       });
 
       expect(result.project.rootDirectory).toBe(webProjectDirectory);

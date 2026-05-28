@@ -96,7 +96,7 @@ const captureScanOutput = async (
   console.error = (...args: unknown[]) => stderr.push(args.join(" "));
   console.warn = (...args: unknown[]) => stderr.push(args.join(" "));
   try {
-    const result = await inspect(projectDir, options);
+    const result = await inspect(projectDir, { deadCode: false, ...options });
     return { result, stdout: stdout.join("\n"), stderr: stderr.join("\n") };
   } finally {
     console.log = originalLog;

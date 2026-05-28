@@ -38,7 +38,7 @@ export const Debounced = ({ onChange }: { onChange: (value: string) => void }) =
       },
     });
 
-    const result = await diagnose(projectDir, { lint: true });
+    const result = await diagnose(projectDir, { lint: true, deadCode: false });
     const preferUseEffectEventHits = result.diagnostics.filter(
       (diagnostic) => diagnostic.rule === "prefer-use-effect-event",
     );
@@ -66,7 +66,7 @@ export const Debounced = ({ onChange }: { onChange: (value: string) => void }) =
       },
     });
 
-    const result = await diagnose(projectDir, { lint: true });
+    const result = await diagnose(projectDir, { lint: true, deadCode: false });
     const preferUseEffectEventHits = result.diagnostics.filter(
       (diagnostic) => diagnostic.rule === "prefer-use-effect-event",
     );
@@ -92,7 +92,7 @@ export const Button = forwardRef<HTMLButtonElement>((_props, ref) => {
       },
     });
 
-    const result = await diagnose(projectDir, { lint: true });
+    const result = await diagnose(projectDir, { lint: true, deadCode: false });
     const react19MigrationHits = result.diagnostics.filter(
       (diagnostic) => diagnostic.rule === "no-react19-deprecated-apis",
     );
@@ -113,7 +113,7 @@ export const Button = forwardRef<HTMLButtonElement>((_props, ref) => (
       },
     });
 
-    const result = await diagnose(projectDir, { lint: true });
+    const result = await diagnose(projectDir, { lint: true, deadCode: false });
     const react19MigrationHits = result.diagnostics.filter(
       (diagnostic) => diagnostic.rule === "no-react19-deprecated-apis",
     );
@@ -138,7 +138,7 @@ export const Button = forwardRef<HTMLButtonElement>((_props, ref) => (
       },
     });
 
-    const result = await diagnose(projectDir, { lint: true });
+    const result = await diagnose(projectDir, { lint: true, deadCode: false });
     const react19MigrationHits = result.diagnostics.filter(
       (diagnostic) => diagnostic.rule === "no-react19-deprecated-apis",
     );
@@ -157,7 +157,7 @@ export const Button = forwardRef<HTMLButtonElement>((_props, ref) => (
     fs.mkdirSync(wrapperDir, { recursive: true });
     setupReactProject(wrapperDir, "web");
 
-    const result = await diagnose(wrapperDir, { lint: false });
+    const result = await diagnose(wrapperDir, { lint: false, deadCode: false });
     expect(result.project.rootDirectory).toBe(path.join(wrapperDir, "web"));
     expect(result.project.reactVersion).toBe("^19.0.0");
   });
@@ -167,7 +167,7 @@ export const Button = forwardRef<HTMLButtonElement>((_props, ref) => (
     fs.mkdirSync(wrapperDir, { recursive: true });
     setupReactProject(wrapperDir, "apps/web");
 
-    const result = await diagnose(wrapperDir, { lint: false });
+    const result = await diagnose(wrapperDir, { lint: false, deadCode: false });
     expect(result.project.rootDirectory).toBe(path.join(wrapperDir, "apps", "web"));
     expect(result.project.reactVersion).toBe("^19.0.0");
   });
@@ -176,7 +176,9 @@ export const Button = forwardRef<HTMLButtonElement>((_props, ref) => (
     const emptyDir = path.join(tempRoot, "diagnose-no-react-anywhere");
     fs.mkdirSync(emptyDir, { recursive: true });
 
-    await expect(diagnose(emptyDir, { lint: false })).rejects.toThrow("No React project found in");
+    await expect(diagnose(emptyDir, { lint: false, deadCode: false })).rejects.toThrow(
+      "No React project found in",
+    );
   });
 
   // Regression: when the requested directory has no root package.json AND
@@ -191,11 +193,13 @@ export const Button = forwardRef<HTMLButtonElement>((_props, ref) => (
     setupReactProject(wrapperDir, "web");
     setupReactProject(wrapperDir, "admin");
 
-    await expect(diagnose(wrapperDir, { lint: false })).rejects.toBeInstanceOf(
+    await expect(diagnose(wrapperDir, { lint: false, deadCode: false })).rejects.toBeInstanceOf(
       AmbiguousProjectError,
     );
 
-    const rejection = await diagnose(wrapperDir, { lint: false }).catch((error: unknown) => error);
+    const rejection = await diagnose(wrapperDir, { lint: false, deadCode: false }).catch(
+      (error: unknown) => error,
+    );
     expect(rejection).toBeInstanceOf(AmbiguousProjectError);
     const ambiguousError = rejection as AmbiguousProjectError;
     expect(ambiguousError.directory).toBe(wrapperDir);
@@ -217,7 +221,7 @@ export const Button = forwardRef<HTMLButtonElement>((_props, ref) => (
         JSON.stringify({ rootDir: "web" }),
       );
 
-      const result = await diagnose(wrapperDir, { lint: false });
+      const result = await diagnose(wrapperDir, { lint: false, deadCode: false });
       expect(result.project.rootDirectory).toBe(path.join(wrapperDir, "web"));
     });
 
@@ -231,7 +235,7 @@ export const Button = forwardRef<HTMLButtonElement>((_props, ref) => (
         JSON.stringify({ rootDir: "admin" }),
       );
 
-      const result = await diagnose(wrapperDir, { lint: false });
+      const result = await diagnose(wrapperDir, { lint: false, deadCode: false });
       expect(result.project.rootDirectory).toBe(path.join(wrapperDir, "admin"));
     });
 
@@ -245,7 +249,7 @@ export const Button = forwardRef<HTMLButtonElement>((_props, ref) => (
         JSON.stringify({ rootDir: "apps/web" }),
       );
 
-      const result = await diagnose(childDir, { lint: false });
+      const result = await diagnose(childDir, { lint: false, deadCode: false });
       expect(result.project.rootDirectory).toBe(path.join(repoRoot, "apps", "web"));
     });
 
@@ -258,7 +262,7 @@ export const Button = forwardRef<HTMLButtonElement>((_props, ref) => (
         JSON.stringify({ rootDir: "does-not-exist" }),
       );
 
-      const result = await diagnose(wrapperDir, { lint: false });
+      const result = await diagnose(wrapperDir, { lint: false, deadCode: false });
       expect(result.project.rootDirectory).toBe(path.join(wrapperDir, "web"));
     });
 
@@ -271,7 +275,7 @@ export const Button = forwardRef<HTMLButtonElement>((_props, ref) => (
         JSON.stringify({ rootDir: targetDir }),
       );
 
-      const result = await diagnose(wrapperDir, { lint: false });
+      const result = await diagnose(wrapperDir, { lint: false, deadCode: false });
       expect(result.project.rootDirectory).toBe(targetDir);
     });
   });

@@ -45,6 +45,16 @@ export const SPAWN_ARGS_MAX_LENGTH_CHARS = 24_000;
 // vs the hard-cap perf cliffs they prevent.
 export const OXLINT_MAX_FILES_PER_BATCH = 100;
 
+// HACK: ceiling on how many oxlint batch subprocesses run concurrently.
+// `spawnLintBatches` fans batches across CPU cores (one subprocess per
+// pool worker), but each subprocess holds up to OXLINT_MAX_FILES_PER_BATCH
+// (= 100) files in oxlint's native binding — the same memory pressure
+// the batching guards against. Capping the default pool keeps a many-core
+// CI box from spawning dozens of processes at once and reintroducing the
+// SIGABRT-under-memory-pressure cliff (#84). Memory-rich runners raise it
+// past the cap via REACT_DOCTOR_LINT_CONCURRENCY.
+export const LINT_BATCH_CONCURRENCY_MAX = 8;
+
 export const DEFAULT_BRANCH_CANDIDATES = ["main", "master"];
 
 // JSON-format oxlint / eslint configs react-doctor can fold into the

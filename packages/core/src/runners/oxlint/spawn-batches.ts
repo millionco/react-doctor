@@ -5,6 +5,8 @@ import {
 import type { Diagnostic, ProjectInfo } from "../../types/index.js";
 import { isSplittableReactDoctorError } from "../../errors.js";
 import { dedupeDiagnostics } from "../../utils/dedupe-diagnostics.js";
+import { mapWithConcurrency } from "../../utils/map-with-concurrency.js";
+import { resolveLintConcurrency } from "../../utils/resolve-lint-concurrency.js";
 import { parseOxlintOutput } from "./parse-output.js";
 import { spawnOxlint } from "./spawn-oxlint.js";
 
@@ -19,17 +21,20 @@ export interface SpawnLintBatchesInput {
 }
 
 /**
- * Runs every prebuilt file batch through oxlint, with binary-split
+ * Runs every prebuilt file batch through oxlint, fanning batches
+ * across a bounded worker pool (`resolveLintConcurrency`) so large
+ * repos saturate the available cores instead of spending the scan
+ * awaiting one subprocess at a time. Each batch keeps the binary-split
  * retry on the splittable error classes (timeout / output-too-large /
- * OOM / killed by signal). When a single-file batch still fails with
- * a splittable error, the file is recorded into a dropped-files list
+ * OOM / killed by signal). When a single-file batch still fails with a
+ * splittable error, the file is recorded into a dropped-files list
  * (surfaced via `onPartialFailure`) so JSON-mode consumers see WHICH
  * files were skipped instead of silently losing them.
  *
  * Errors that aren't splittable (oxlint config crash, JS plugin
- * resolution failure, etc.) propagate to the caller — the
- * `runOxlint` retry-without-extends fallback re-spawns this loop
- * with a slimmer config in that case.
+ * resolution failure, etc.) reject the pool and propagate to the
+ * caller — the `runOxlint` retry-without-extends fallback re-spawns
+ * this loop with a slimmer config in that case.
  */
 export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Diagnostic[]> => {
   const {
@@ -43,7 +48,6 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
   } = input;
   const totalFileCount = fileBatches.reduce((sum, batch) => sum + batch.length, 0);
 
-  const allDiagnostics: Diagnostic[] = [];
   // HACK: tracks files whose smallest splittable batch (down to a
   // single file) still failed with a splittable error — surfaced via
   // `onPartialFailure` so JSON consumers see WHICH files were dropped
@@ -85,40 +89,51 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     }
   };
 
-  let scannedFileCount = 0;
-  for (const batch of fileBatches) {
-    // HACK: tick the progress counter per-file on a timer while the
-    // batch subprocess runs, so the UI feels smooth instead of jumping
-    // by 100 when each batch completes. The interval is cleared as
-    // soon as the batch resolves — any remaining files in the batch
-    // are counted in one final update.
-    let batchFileIndex = 0;
-    const progressInterval =
-      onFileProgress && batch.length > 1
-        ? setInterval(() => {
-            if (batchFileIndex < batch.length) {
-              batchFileIndex += 1;
-              onFileProgress(scannedFileCount + batchFileIndex, totalFileCount);
-            }
-          }, PROGRESS_TICK_INTERVAL_MS)
-        : null;
-    const batchDiagnostics = await spawnLintBatch(batch);
-    if (progressInterval !== null) clearInterval(progressInterval);
-    allDiagnostics.push(...batchDiagnostics);
-    scannedFileCount += batch.length;
-    onFileProgress?.(scannedFileCount, totalFileCount);
-  }
+  // Progress reports off a single shared accumulator so the counter
+  // stays monotonic even though batches now finish out of order across
+  // the pool. A timer simulates per-file ticks up to (never past) the
+  // final file so the spinner stays smooth while subprocesses are in
+  // flight; each completed batch snaps the counter to the real
+  // completed-file total.
+  let completedFileCount = 0;
+  let simulatedFileCount = 0;
+  const progressTicker =
+    onFileProgress && totalFileCount > 1
+      ? setInterval(() => {
+          if (simulatedFileCount < totalFileCount - 1) {
+            simulatedFileCount += 1;
+            onFileProgress(Math.max(completedFileCount, simulatedFileCount), totalFileCount);
+          }
+        }, PROGRESS_TICK_INTERVAL_MS)
+      : null;
+  progressTicker?.unref?.();
 
-  if (droppedFiles.length > 0 && onPartialFailure) {
-    const previewFiles = droppedFiles.slice(0, OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT).join(", ");
-    const remainderHint =
-      droppedFiles.length > OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT
-        ? `, +${droppedFiles.length - OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT} more`
-        : "";
-    const reasonHint = firstDropReason ? ` — first failure: ${firstDropReason}` : "";
-    onPartialFailure(
-      `${droppedFiles.length} file(s) failed to lint and were skipped (${previewFiles}${remainderHint})${reasonHint}`,
+  try {
+    const diagnosticsPerBatch = await mapWithConcurrency(
+      fileBatches,
+      resolveLintConcurrency(),
+      async (batch) => {
+        const batchDiagnostics = await spawnLintBatch(batch);
+        completedFileCount += batch.length;
+        simulatedFileCount = Math.max(simulatedFileCount, completedFileCount);
+        onFileProgress?.(completedFileCount, totalFileCount);
+        return batchDiagnostics;
+      },
     );
+
+    if (droppedFiles.length > 0 && onPartialFailure) {
+      const previewFiles = droppedFiles.slice(0, OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT).join(", ");
+      const remainderHint =
+        droppedFiles.length > OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT
+          ? `, +${droppedFiles.length - OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT} more`
+          : "";
+      const reasonHint = firstDropReason ? ` — first failure: ${firstDropReason}` : "";
+      onPartialFailure(
+        `${droppedFiles.length} file(s) failed to lint and were skipped (${previewFiles}${remainderHint})${reasonHint}`,
+      );
+    }
+    return dedupeDiagnostics(diagnosticsPerBatch.flat());
+  } finally {
+    if (progressTicker !== null) clearInterval(progressTicker);
   }
-  return dedupeDiagnostics(allDiagnostics);
 };

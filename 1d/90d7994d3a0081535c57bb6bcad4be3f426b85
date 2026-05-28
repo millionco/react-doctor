@@ -1,0 +1,29 @@
+packages/react-doctor/tests/inspect.test.ts
+  s_0691507deea199::t_85c3afacc18c73 67-88
+  s_0691507deea199::t_d4bdcf24ea1a56 65-66
+packages/core/src/project-info/index.ts
+  s_0691507deea199::t_022f3c38b266ae 10
+packages/core/src/run-inspect.ts
+  s_0691507deea199::t_ebe576b0ff35c6 195
+  s_0691507deea199::t_d3ce286d07ab63 21
+packages/core/tests/is-analyzable-project.test.ts
+  s_0691507deea199::t_212cc6cdd02bd0 1-32
+packages/core/src/project-info/is-analyzable-project.ts
+  s_0691507deea199::t_bc3d82a45ed378 1-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "1d90d7994d3a0081535c57bb6bcad4be3f426b85",
+  "prompts": {},
+  "sessions": {
+    "s_0691507deea199": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7dab7967-c93b-4073-ba97-c1bfbfde8351",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

@@ -56,6 +56,27 @@ const isParagraphElement = (candidate: EsTreeNode): boolean => {
 // `node.parent` of a JSXOpeningElement is the JSXElement that owns it
 // (i.e. itself), so the ancestor walk has to start from the grandparent
 // to avoid matching `<p>` against its own opening tag.
+//
+// Walks straight through user-component boundaries (unlike
+// `html-no-invalid-table-nesting`, which bails out on opaque
+// ancestors). The constraints have different shapes:
+//
+//   - Table nesting: "DIRECT host parent must be X". A component
+//     intervening between `<tr>` and the inner element routinely
+//     renders the right structural wrapper (e.g. `<TableCell>` →
+//     `<td>`), so the static walk's conclusion is usually wrong.
+//
+//   - Paragraph nesting: "no `<p>` ancestor anywhere up the tree".
+//     Components don't typically inject a `<p>` around their
+//     children, so an intervening `<MyContent>` rarely changes
+//     whether a `<p>` ancestor exists at runtime. The dominant
+//     composition pattern (`<p><Wrapper><div/></Wrapper></p>` where
+//     `Wrapper = ({children}) => children` or wraps in an inline
+//     element) IS a true positive. Bailing on components would
+//     silence almost every real bug.
+//
+// The narrow false-positive case (`<MyContent>` discards children or
+// renders into a portal) is too rare to justify the precision loss.
 const findEnclosingParagraph = (openingElement: EsTreeNode): EsTreeNode | null => {
   const owningElement = openingElement.parent;
   if (!owningElement) return null;

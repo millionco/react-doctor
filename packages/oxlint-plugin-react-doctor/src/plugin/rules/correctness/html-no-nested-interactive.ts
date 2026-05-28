@@ -20,6 +20,16 @@ const isJsxElementWithTagName = (
 // `node.parent` of a JSXOpeningElement is the JSXElement that owns it
 // (i.e. itself), so the ancestor walk has to start from the grandparent
 // to avoid matching the element against its own opening tag.
+//
+// Walks straight through user-component boundaries (same trade-off
+// reasoning as `html-no-invalid-paragraph-child`'s `findEnclosingParagraph`):
+// the constraint here is "no same-type interactive ancestor anywhere
+// up the tree", and components don't typically inject `<a>` or
+// `<button>` around their children. Bailing on components would
+// silence the dominant true-positive shape (`<a><Wrapper><a/></Wrapper></a>`
+// where `Wrapper` passes children through). Compare with
+// `html-no-invalid-table-nesting`, which bails because table elements
+// have direct-parent constraints that components routinely satisfy.
 const findEnclosingSameTag = (openingElement: EsTreeNode, tagName: string): EsTreeNode | null => {
   const owningElement = openingElement.parent;
   if (!owningElement) return null;

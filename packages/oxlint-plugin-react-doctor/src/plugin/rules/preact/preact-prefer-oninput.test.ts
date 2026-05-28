@@ -168,52 +168,14 @@ describe("preact-prefer-oninput", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does not flag `onChange` when importing from `preact/compat`", () => {
-    const result = runRule(
-      preactPreferOninput,
-      `
-      import { useState } from "preact/compat";
-
-      const Search = () => {
-        const [query, setQuery] = useState("");
-        return <input type="text" value={query} onChange={(e) => setQuery(e.currentTarget.value)} />;
-      };
-      `,
-    );
-
-    expect(result.diagnostics).toHaveLength(0);
-  });
-
-  it("does not flag `onChange` when importing from `react` (aliased to compat)", () => {
-    const result = runRule(
-      preactPreferOninput,
-      `
-      import { useState } from "react";
-
-      const Search = () => {
-        const [query, setQuery] = useState("");
-        return <input type="text" value={query} onChange={(e) => setQuery(e.currentTarget.value)} />;
-      };
-      `,
-    );
-
-    expect(result.diagnostics).toHaveLength(0);
-  });
-
-  it("does not flag `onChange` when importing from `react-dom`", () => {
-    const result = runRule(
-      preactPreferOninput,
-      `
-      import { render } from "react-dom";
-
-      const Search = ({ query, setQuery }) => {
-        return <input type="text" value={query} onChange={(e) => setQuery(e.currentTarget.value)} />;
-      };
-      `,
-    );
-
-    expect(result.diagnostics).toHaveLength(0);
-  });
+  // Compat-aware gating moved to the project level via the
+  // `pure-preact` capability — `preact/compat`'s `onChange` remap is a
+  // runtime patch on the Preact renderer (once compat loads anywhere
+  // in the project, every file benefits regardless of its own
+  // imports). The per-file import-detection tests that used to live
+  // here moved to `core/tests/build-capabilities.test.ts` where they
+  // belong: when `react` is in deps, `pure-preact` is not emitted,
+  // and this rule never runs.
 
   it("flags `onChange` on a number input", () => {
     const result = runRule(

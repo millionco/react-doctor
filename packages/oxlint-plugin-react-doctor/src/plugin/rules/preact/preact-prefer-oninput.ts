@@ -1,8 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
-import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
@@ -15,38 +14,12 @@ const PREFER_ONINPUT_MESSAGE =
 // that regex is affected.
 const COMPAT_EXEMPT_INPUT_TYPES = new Set(["checkbox", "radio", "file"]);
 
-// Import sources that signal preact/compat is active in this file.
-// When compat is in the dependency graph, onChange is automatically
-// remapped to onInput for affected elements — no lint needed.
-const COMPAT_IMPORT_SOURCES = new Set([
-  "preact/compat",
-  "react",
-  "react-dom",
-  "react/jsx-runtime",
-  "react/jsx-dev-runtime",
-  "react-dom/client",
-]);
-
-const fileImportsPreactCompat = (program: EsTreeNodeOfType<"Program">): boolean => {
-  for (const statement of program.body) {
-    if (!isNodeOfType(statement as EsTreeNode, "ImportDeclaration")) continue;
-    const source = (statement as EsTreeNodeOfType<"ImportDeclaration">).source;
-    const value =
-      source && typeof (source as { value?: unknown }).value === "string"
-        ? (source as { value: string }).value
-        : null;
-    if (!value) continue;
-    if (COMPAT_IMPORT_SOURCES.has(value)) return true;
-  }
-  return false;
-};
-
 const isTextLikeInput = (openingElement: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
   if (!isNodeOfType(openingElement.name, "JSXIdentifier")) return false;
   const tagName = openingElement.name.name;
   if (tagName === "textarea") return true;
   if (tagName !== "input") return false;
-  const typeAttribute = findJsxAttribute(openingElement.attributes as EsTreeNode[], "type");
+  const typeAttribute = findJsxAttribute(openingElement.attributes, "type");
   if (!typeAttribute) return true;
   const typeValue = getJsxPropStringValue(typeAttribute);
   if (typeValue === null) return true;
@@ -57,32 +30,31 @@ const isTextLikeInput = (openingElement: EsTreeNodeOfType<"JSXOpeningElement">):
 // on text-like `<input>` and `<textarea>` elements fires only when the
 // element loses focus — not on every keystroke. React famously remaps
 // `onChange` to the native `input` event for these elements;
-// `preact/compat` mirrors that remapping. Pure Preact projects that
-// import from `preact` directly must use `onInput` for real-time updates.
+// `preact/compat` mirrors that remapping at the *renderer* level.
 //
-// This rule only fires when the file does NOT import from `preact/compat`,
-// `react`, or `react-dom` — the presence of any compat-layer import
-// means the remapping is active and `onChange` works as expected.
+// Gated on `pure-preact` (Preact in deps AND no `react` package). The
+// previous version did per-file compat detection by scanning each
+// file's imports for `preact/compat` / `react` / `react-dom`, but
+// preact/compat's onChange remap is a runtime patch on the Preact
+// renderer — once compat is loaded anywhere in the project, every
+// component benefits from the remapping regardless of its own import
+// list. Per-file detection therefore false-positived on files that
+// only imported from `preact/hooks`. Project-level scoping via
+// `pure-preact` is both simpler and correct: if `react` (the alias
+// entry point for compat) is present in deps, the rule sits out
+// entirely. Pairs with the sibling `preact-prefer-ondblclick` rule.
 export const preactPreferOninput = defineRule<Rule>({
   id: "preact-prefer-oninput",
-  requires: ["preact"],
+  requires: ["pure-preact"],
   severity: "warn",
   recommendation:
     "Replace `onChange` with `onInput` on text-like inputs, or use `preact/compat` which remaps `onChange` automatically.",
-  create: (context) => {
-    let hasCompat = false;
-
-    return {
-      Program(node: EsTreeNodeOfType<"Program">) {
-        hasCompat = fileImportsPreactCompat(node);
-      },
-      JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        if (hasCompat) return;
-        if (!isTextLikeInput(node)) return;
-        const onChangeAttribute = findJsxAttribute(node.attributes as EsTreeNode[], "onChange");
-        if (!onChangeAttribute) return;
-        context.report({ node: onChangeAttribute, message: PREFER_ONINPUT_MESSAGE });
-      },
-    };
-  },
+  create: (context) => ({
+    JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+      if (!isTextLikeInput(node)) return;
+      const onChangeAttribute = findJsxAttribute(node.attributes, "onChange");
+      if (!onChangeAttribute) return;
+      context.report({ node: onChangeAttribute, message: PREFER_ONINPUT_MESSAGE });
+    },
+  }),
 });

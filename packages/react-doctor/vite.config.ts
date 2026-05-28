@@ -131,7 +131,11 @@ export default defineConfig({
   test: {
     testTimeout: TEST_TIMEOUT_MS,
     ...(process.platform === "win32"
-      ? { fileParallelism: false, maxWorkers: WINDOWS_TEST_MAX_WORKERS, pool: "threads" }
+      ? {
+          fileParallelism: false,
+          maxWorkers: WINDOWS_TEST_MAX_WORKERS,
+          poolOptions: { forks: { singleFork: true } },
+        }
       : {}),
   },
 });

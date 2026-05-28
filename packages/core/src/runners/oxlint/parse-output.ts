@@ -8,6 +8,7 @@ import type {
 import { ERROR_PREVIEW_LENGTH_CHARS, SOURCE_FILE_PATTERN } from "../../constants.js";
 import { OxlintOutputUnparseable, ReactDoctorError } from "../../errors.js";
 import { buildNoSecretsRecommendation } from "../../utils/build-no-secrets-recommendation.js";
+import { appendReanimatedSharedValueHint } from "../../utils/append-reanimated-shared-value-hint.js";
 import { shouldSuppressLocalUseHookDiagnostic } from "./should-suppress-local-use-hook-diagnostic.js";
 
 const FILEPATH_WITH_LOCATION_PATTERN = /\S+\.\w+:\d+:\d+[\s\S]*$/;
@@ -74,7 +75,10 @@ const cleanDiagnosticMessage = (
 ): CleanedDiagnostic => {
   if (plugin === "react-hooks-js") {
     const rawMessage = message.replace(FILEPATH_WITH_LOCATION_PATTERN, "").trim();
-    return { message: REACT_COMPILER_MESSAGE, help: rawMessage || help };
+    return {
+      message: REACT_COMPILER_MESSAGE,
+      help: appendReanimatedSharedValueHint(rawMessage || help, rule, project),
+    };
   }
   const cleaned = message.replace(FILEPATH_WITH_LOCATION_PATTERN, "").trim();
   return {

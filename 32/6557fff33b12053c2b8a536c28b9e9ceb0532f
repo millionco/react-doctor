@@ -1,0 +1,21 @@
+packages/react-doctor/src/cli/utils/triage.ts
+  s_5b8709e895d9a5::t_c614efca5ad83e 209-225,227,229-239
+packages/react-doctor/src/cli/utils/constants.ts
+  s_5b8709e895d9a5::t_2e305276c3ac5d 19-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "326557fff33b12053c2b8a536c28b9e9ceb0532f",
+  "prompts": {},
+  "sessions": {
+    "s_5b8709e895d9a5": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "86a7c788-39b8-4cb0-b544-660d88dbe286",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

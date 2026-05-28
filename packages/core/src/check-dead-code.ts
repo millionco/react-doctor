@@ -12,7 +12,7 @@ interface CheckDeadCodeOptions {
   /** Loaded react-doctor config — `ignore.files` is forwarded to deslop. */
   readonly userConfig?: ReactDoctorConfig | null;
   readonly deslopJsModuleSpecifier?: string;
-  readonly runWorker?: DeadCodeWorkerRunner;
+  readonly createWorker?: DeadCodeWorkerFactory;
   readonly workerTimeoutMs?: number;
 }
 
@@ -21,11 +21,15 @@ interface DeadCodeWorkerInput {
   readonly tsConfigPath?: string;
   readonly ignorePatterns: ReadonlyArray<string>;
   readonly deslopJsModuleSpecifier: string;
-  readonly timeoutMs: number;
 }
 
-interface DeadCodeWorkerRunner {
-  (input: DeadCodeWorkerInput): Promise<unknown>;
+interface DeadCodeWorkerHandle {
+  readonly result: Promise<unknown>;
+  readonly terminate?: () => void | Promise<unknown>;
+}
+
+interface DeadCodeWorkerFactory {
+  (input: DeadCodeWorkerInput): DeadCodeWorkerHandle;
 }
 
 interface DeadCodeWorkerUnusedFile {
@@ -296,54 +300,31 @@ const buildDeadCodeWorkerError = (workerError: DeadCodeWorkerError): Error => {
   return error;
 };
 
-const runDeadCodeWorker: DeadCodeWorkerRunner = (input) =>
-  new Promise<unknown>((resolve, reject) => {
-    const worker = new Worker(DEAD_CODE_WORKER_SCRIPT, {
-      eval: true,
-      workerData: input,
-    });
-    let didSettle = false;
-    let timeoutHandle: ReturnType<typeof setTimeout>;
+const createDeadCodeWorker: DeadCodeWorkerFactory = (input) => {
+  const worker = new Worker(DEAD_CODE_WORKER_SCRIPT, {
+    eval: true,
+    workerData: input,
+  });
+  let didSettle = false;
 
+  const result = new Promise<unknown>((resolve, reject) => {
     const settle = (callback: () => void): void => {
       if (didSettle) return;
       didSettle = true;
-      clearTimeout(timeoutHandle);
       worker.removeAllListeners();
       callback();
     };
-
-    timeoutHandle = setTimeout(() => {
-      settle(() => {
-        void worker.terminate();
-        reject(
-          new Error(
-            `Dead-code worker timed out after ${input.timeoutMs / MILLISECONDS_PER_SECOND}s.`,
-          ),
-        );
-      });
-    }, input.timeoutMs);
-    timeoutHandle.unref?.();
 
     worker.once("message", (message: unknown) => {
       try {
         const parsedMessage = parseDeadCodeWorkerMessage(message);
         if (parsedMessage.ok) {
-          settle(() => {
-            void worker.terminate();
-            resolve(parsedMessage.result);
-          });
+          settle(() => resolve(parsedMessage.result));
           return;
         }
-        settle(() => {
-          void worker.terminate();
-          reject(buildDeadCodeWorkerError(parsedMessage.error));
-        });
+        settle(() => reject(buildDeadCodeWorkerError(parsedMessage.error)));
       } catch (error) {
-        settle(() => {
-          void worker.terminate();
-          reject(error);
-        });
+        settle(() => reject(error));
       }
     });
 
@@ -357,18 +338,65 @@ const runDeadCodeWorker: DeadCodeWorkerRunner = (input) =>
     });
   });
 
+  return {
+    result,
+    terminate: () => {
+      didSettle = true;
+      worker.removeAllListeners();
+      return worker.terminate();
+    },
+  };
+};
+
+const runDeadCodeWorkerWithTimeout = (
+  handle: DeadCodeWorkerHandle,
+  timeoutMs: number,
+): Promise<unknown> =>
+  new Promise<unknown>((resolve, reject) => {
+    let didSettle = false;
+    const timeoutHandle = setTimeout(() => {
+      if (didSettle) return;
+      didSettle = true;
+      void handle.terminate?.();
+      reject(
+        new Error(`Dead-code worker timed out after ${timeoutMs / MILLISECONDS_PER_SECOND}s.`),
+      );
+    }, timeoutMs);
+    timeoutHandle.unref?.();
+
+    handle.result.then(
+      (value) => {
+        if (didSettle) return;
+        didSettle = true;
+        clearTimeout(timeoutHandle);
+        void handle.terminate?.();
+        resolve(value);
+      },
+      (error: unknown) => {
+        if (didSettle) return;
+        didSettle = true;
+        clearTimeout(timeoutHandle);
+        void handle.terminate?.();
+        reject(error);
+      },
+    );
+  });
+
 export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diagnostic[]> => {
   const { rootDirectory, userConfig } = options;
   if (!fs.existsSync(path.join(rootDirectory, "package.json"))) return [];
 
   const ignorePatterns = collectDeadCodeIgnorePatterns(rootDirectory, userConfig);
-  const rawResult = await (options.runWorker ?? runDeadCodeWorker)({
+  const workerHandle = (options.createWorker ?? createDeadCodeWorker)({
     rootDirectory,
     tsConfigPath: resolveTsConfigPath(rootDirectory),
     ignorePatterns,
     deslopJsModuleSpecifier: options.deslopJsModuleSpecifier ?? import.meta.resolve("deslop-js"),
-    timeoutMs: options.workerTimeoutMs ?? DEAD_CODE_WORKER_TIMEOUT_MS,
   });
+  const rawResult = await runDeadCodeWorkerWithTimeout(
+    workerHandle,
+    options.workerTimeoutMs ?? DEAD_CODE_WORKER_TIMEOUT_MS,
+  );
   const result = parseDeadCodeWorkerResult(rawResult);
   const toRelative = (filePath: string): string => toRelativeFilePath(rootDirectory, filePath);
   const diagnostics: Diagnostic[] = [];

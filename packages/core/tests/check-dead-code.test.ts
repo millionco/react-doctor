@@ -83,39 +83,41 @@ describe("checkDeadCode", () => {
 
     const diagnostics = await checkDeadCode({
       rootDirectory: directory,
-      runWorker: async () => ({
-        unusedFiles: [],
-        unusedExports: [
-          {
-            path: path.join(directory, "src", "index.ts"),
-            name: "unused",
-            line: 3,
-            column: 14,
-            isTypeOnly: false,
-          },
-          {
-            path: path.join(directory, "src", "index.ts"),
-            name: "UnusedType",
-            line: 4,
-            column: 12,
-            isTypeOnly: true,
-          },
-        ],
-        unusedDependencies: [
-          {
-            name: "left-pad",
-            isDevDependency: false,
-          },
-          {
-            name: "vitest",
-            isDevDependency: true,
-          },
-        ],
-        circularDependencies: [
-          {
-            files: [path.join(directory, "src", "a.ts"), path.join(directory, "src", "b.ts")],
-          },
-        ],
+      createWorker: () => ({
+        result: Promise.resolve({
+          unusedFiles: [],
+          unusedExports: [
+            {
+              path: path.join(directory, "src", "index.ts"),
+              name: "unused",
+              line: 3,
+              column: 14,
+              isTypeOnly: false,
+            },
+            {
+              path: path.join(directory, "src", "index.ts"),
+              name: "UnusedType",
+              line: 4,
+              column: 12,
+              isTypeOnly: true,
+            },
+          ],
+          unusedDependencies: [
+            {
+              name: "left-pad",
+              isDevDependency: false,
+            },
+            {
+              name: "vitest",
+              isDevDependency: true,
+            },
+          ],
+          circularDependencies: [
+            {
+              files: [path.join(directory, "src", "a.ts"), path.join(directory, "src", "b.ts")],
+            },
+          ],
+        }),
       }),
     });
 
@@ -142,11 +144,13 @@ describe("checkDeadCode", () => {
     await expect(
       checkDeadCode({
         rootDirectory: directory,
-        runWorker: async () => ({
-          unusedFiles: [{ path: 1 }],
-          unusedExports: [],
-          unusedDependencies: [],
-          circularDependencies: [],
+        createWorker: () => ({
+          result: Promise.resolve({
+            unusedFiles: [{ path: 1 }],
+            unusedExports: [],
+            unusedDependencies: [],
+            circularDependencies: [],
+          }),
         }),
       }),
     ).rejects.toThrow("unusedFiles[0].path");
@@ -156,15 +160,20 @@ describe("checkDeadCode", () => {
     const directory = setupProject("stuck-worker", {
       "src/index.ts": "export const used = 1;\n",
     });
-    const stuckDeslopModule =
-      "data:text/javascript,export const defineConfig = (config) => config; export const analyze = () => new Promise(() => {});";
+    let didTerminate = false;
 
     await expect(
       checkDeadCode({
         rootDirectory: directory,
-        deslopJsModuleSpecifier: stuckDeslopModule,
+        createWorker: () => ({
+          result: new Promise(() => {}),
+          terminate: () => {
+            didTerminate = true;
+          },
+        }),
         workerTimeoutMs: 1,
       }),
     ).rejects.toThrow("Dead-code worker timed out");
+    expect(didTerminate).toBe(true);
   });
 });

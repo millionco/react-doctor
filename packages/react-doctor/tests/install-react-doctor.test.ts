@@ -551,7 +551,7 @@ describe("runInstallReactDoctor", () => {
     expect(existsSync(path.join(fixture.projectRoot, ".codex/hooks.json"))).toBe(false);
   });
 
-  it("prompts once for optional setup and installs only selected options", async () => {
+  it("prompts once for setup and installs only selected options", async () => {
     writeValidSkill(fixture.sourceDir);
     writePackageJson(fixture.projectRoot, { scripts: {} });
     const promptQuestions: unknown[] = [];
@@ -562,27 +562,31 @@ describe("runInstallReactDoctor", () => {
       sourceDir: fixture.sourceDir,
       projectRoot: fixture.projectRoot,
       gitHookPath: hookPath,
-      setupOptions: ["workflow"],
+      setupOptions: ["skill:cursor", "workflow"],
       promptQuestions,
     });
 
-    expect(promptQuestions).toHaveLength(2);
-    expect(promptQuestions[1]).toEqual(
+    expect(promptQuestions).toHaveLength(1);
+    expect(promptQuestions[0]).toEqual(
       expect.objectContaining({
         type: "multiselect",
         name: "setupOptions",
-        message: "Select additional React Doctor setup:",
+        message: "Select React Doctor setup:",
       }),
     );
-    expect(promptQuestions[1]).toEqual(
+    expect(promptQuestions[0]).toEqual(
       expect.objectContaining({
         choices: expect.arrayContaining([
           expect.objectContaining({ value: "skip" }),
+          expect.objectContaining({ value: "skill:cursor" }),
           expect.objectContaining({ value: "git-hook" }),
           expect.objectContaining({ value: "agent-hooks" }),
           expect.objectContaining({ value: "workflow" }),
         ]),
       }),
+    );
+    expect(existsSync(path.join(fixture.projectRoot, ".agents/skills/react-doctor/SKILL.md"))).toBe(
+      true,
     );
     expect(existsSync(hookPath)).toBe(false);
     expect(existsSync(path.join(fixture.projectRoot, ".cursor/hooks.json"))).toBe(false);
@@ -603,6 +607,7 @@ describe("runInstallReactDoctor", () => {
     });
 
     expect(existsSync(hookPath)).toBe(false);
+    expect(existsSync(path.join(fixture.projectRoot, ".agents"))).toBe(false);
     expect(existsSync(path.join(fixture.projectRoot, ".cursor/hooks.json"))).toBe(false);
     expect(existsSync(workflowPath)).toBe(false);
   });
@@ -621,6 +626,7 @@ describe("runInstallReactDoctor", () => {
     });
 
     expect(existsSync(hookPath)).toBe(false);
+    expect(existsSync(path.join(fixture.projectRoot, ".agents"))).toBe(false);
     expect(existsSync(path.join(fixture.projectRoot, ".cursor/hooks.json"))).toBe(false);
     expect(readFileSync(workflowPath, "utf8")).toContain("name: React Doctor");
   });

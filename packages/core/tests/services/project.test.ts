@@ -17,6 +17,7 @@ const sampleProject: ProjectInfo = {
   hasReactCompiler: false,
   hasTanStackQuery: false,
   hasReactNativeWorkspace: false,
+  hasReanimated: false,
   sourceFileCount: 1,
 };
 

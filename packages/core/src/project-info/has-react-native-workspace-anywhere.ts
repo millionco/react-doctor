@@ -1,8 +1,5 @@
-import path from "node:path";
 import type { PackageJson } from "../types/index.js";
-import { getWorkspacePatterns } from "./get-workspace-patterns.js";
-import { readPackageJson } from "./read-package-json.js";
-import { resolveWorkspaceDirectories } from "./resolve-workspace-directories.js";
+import { someWorkspacePackageJson } from "./some-workspace-package-json.js";
 import { isPackageJsonReactNativeAware } from "./utils/is-package-json-react-native-aware.js";
 
 // True when the root manifest or any workspace package inside
@@ -23,21 +20,5 @@ import { isPackageJsonReactNativeAware } from "./utils/is-package-json-react-nat
 export const hasReactNativeWorkspaceAnywhere = (
   rootDirectory: string,
   rootPackageJson: PackageJson,
-): boolean => {
-  if (isPackageJsonReactNativeAware(rootPackageJson)) return true;
-
-  const patterns = getWorkspacePatterns(rootDirectory, rootPackageJson);
-  if (patterns.length === 0) return false;
-
-  const visitedDirectories = new Set<string>();
-  for (const pattern of patterns) {
-    const directories = resolveWorkspaceDirectories(rootDirectory, pattern);
-    for (const workspaceDirectory of directories) {
-      if (visitedDirectories.has(workspaceDirectory)) continue;
-      visitedDirectories.add(workspaceDirectory);
-      const workspacePackageJson = readPackageJson(path.join(workspaceDirectory, "package.json"));
-      if (isPackageJsonReactNativeAware(workspacePackageJson)) return true;
-    }
-  }
-  return false;
-};
+): boolean =>
+  someWorkspacePackageJson(rootDirectory, rootPackageJson, isPackageJsonReactNativeAware);

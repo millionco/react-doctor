@@ -1077,6 +1077,86 @@ describe("discoverProject — hasReactNativeWorkspace", () => {
   });
 });
 
+describe("discoverProject — hasReanimated", () => {
+  it("is true when the entry-point Expo app declares `react-native-reanimated`", () => {
+    const projectDirectory = path.join(tempDirectory, "reanimated-self");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "spinning-app",
+        dependencies: {
+          react: "^19.0.0",
+          expo: "^51.0.0",
+          "react-native-reanimated": "~3.16.0",
+        },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.hasReanimated).toBe(true);
+  });
+
+  it("is true when a workspace sibling declares `react-native-reanimated` (web-rooted monorepo)", () => {
+    const rootDirectory = path.join(tempDirectory, "reanimated-monorepo");
+    const mobileDirectory = path.join(rootDirectory, "apps", "mobile");
+    fs.mkdirSync(mobileDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({
+        name: "reanimated-monorepo",
+        dependencies: { next: "^14.0.0", react: "^19.0.0", "react-dom": "^19.0.0" },
+        workspaces: ["apps/*"],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(mobileDirectory, "package.json"),
+      JSON.stringify({
+        name: "mobile",
+        dependencies: {
+          react: "^19.0.0",
+          "react-native": "0.76.0",
+          "react-native-reanimated": "^3.16.0",
+        },
+      }),
+    );
+
+    const projectInfo = discoverProject(rootDirectory);
+    expect(projectInfo.hasReanimated).toBe(true);
+  });
+
+  it("is false for a React Native project that does not depend on reanimated", () => {
+    const projectDirectory = path.join(tempDirectory, "rn-without-reanimated");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "plain-rn-app",
+        dependencies: { react: "^19.0.0", "react-native": "0.76.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.hasReactNativeWorkspace).toBe(true);
+    expect(projectInfo.hasReanimated).toBe(false);
+  });
+
+  it("is false for a web project (the reanimated walk is gated behind React Native)", () => {
+    const projectDirectory = path.join(tempDirectory, "web-no-reanimated");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "web-app",
+        dependencies: { next: "^14.0.0", react: "^19.0.0", "react-dom": "^19.0.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.hasReanimated).toBe(false);
+  });
+});
+
 describe("formatFrameworkName", () => {
   it("formats known frameworks", () => {
     expect(formatFrameworkName("nextjs")).toBe("Next.js");

@@ -13,6 +13,8 @@ import { getDependencyDeclaration } from "./utils/get-dependency-declaration.js"
 import { hasReactNativeWorkspaceAnywhere } from "./has-react-native-workspace-anywhere.js";
 import { hasPreact } from "./has-preact.js";
 import { hasTanStackQuery } from "./has-tanstack-query.js";
+import { someWorkspacePackageJson } from "./some-workspace-package-json.js";
+import { isPackageJsonReanimatedAware } from "./utils/is-package-json-reanimated-aware.js";
 import { readPackageJson } from "./read-package-json.js";
 import { isCatalogReference, resolveCatalogVersion } from "./resolve-catalog-version.js";
 import { resolveEffectiveReactMajor } from "./resolve-effective-react-major.js";
@@ -157,6 +159,13 @@ export const discoverProject = (directory: string): ProjectInfo => {
     framework === "react-native" ||
     hasReactNativeWorkspaceAnywhere(directory, packageJson);
 
+  // Only walk for reanimated once we already know it's an RN project —
+  // reanimated implies React Native, so a web project can never declare
+  // it, and this skips the workspace walk entirely for web monorepos.
+  const hasReanimated =
+    hasReactNativeWorkspace &&
+    someWorkspacePackageJson(directory, packageJson, isPackageJsonReanimatedAware);
+
   const projectInfo: ProjectInfo = {
     rootDirectory: directory,
     projectName,
@@ -169,6 +178,7 @@ export const discoverProject = (directory: string): ProjectInfo => {
     hasTanStackQuery: hasTanStackQuery(packageJson),
     hasPreact: hasPreact(packageJson),
     hasReactNativeWorkspace,
+    hasReanimated,
     sourceFileCount,
   };
   cachedProjectInfos.set(directory, projectInfo);

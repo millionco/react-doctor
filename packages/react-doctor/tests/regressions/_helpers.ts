@@ -110,6 +110,7 @@ export interface BuildTestProjectOptions {
   framework?: ProjectInfo["framework"];
   hasReactCompiler?: boolean;
   hasTanStackQuery?: boolean;
+  hasReanimated?: boolean;
   reactMajorVersion?: number | null;
   hasTypeScript?: boolean;
   tailwindVersion?: string | null;
@@ -136,6 +137,7 @@ export const buildTestProject = (options: BuildTestProjectOptions): ProjectInfo 
     hasReactCompiler: options.hasReactCompiler ?? false,
     hasTanStackQuery: options.hasTanStackQuery ?? false,
     hasReactNativeWorkspace: framework === "expo" || framework === "react-native",
+    hasReanimated: options.hasReanimated ?? false,
     sourceFileCount: 0,
   };
 };

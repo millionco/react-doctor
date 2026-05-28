@@ -44,6 +44,13 @@ export interface ProjectInfo {
    * — no `rn-*` rules load for the project at all.
    */
   hasReactNativeWorkspace: boolean;
+  /**
+   * `true` when the project (or any of its workspace packages) declares
+   * `react-native-reanimated`. Lets diagnostics surface reanimated's
+   * Compiler-compatible `.get()` / `.set()` accessors only where they
+   * apply, instead of on every React Native project.
+   */
+  hasReanimated: boolean;
   sourceFileCount: number;
 }
 

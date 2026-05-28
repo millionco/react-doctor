@@ -22,6 +22,7 @@ const buildProject = (overrides: Partial<ProjectInfo> = {}): ProjectInfo => ({
   hasReactCompiler: true,
   hasTanStackQuery: false,
   hasReactNativeWorkspace: true,
+  hasReanimated: true,
   sourceFileCount: 10,
   ...overrides,
 });
@@ -46,7 +47,7 @@ const buildOxlintStdout = (code: string, message: string): string =>
   });
 
 describe("appendReanimatedSharedValueHint", () => {
-  it("appends the .get()/.set() hint for immutability findings in RN projects", () => {
+  it("appends the .get()/.set() hint for immutability findings when reanimated is installed", () => {
     const help = appendReanimatedSharedValueHint(
       REACT_COMPILER_IMMUTABILITY_HELP,
       "immutability",
@@ -63,11 +64,11 @@ describe("appendReanimatedSharedValueHint", () => {
     expect(help.startsWith("\n")).toBe(false);
   });
 
-  it("leaves help untouched for non-RN projects", () => {
+  it("leaves help untouched when reanimated is not installed", () => {
     const help = appendReanimatedSharedValueHint(
       REACT_COMPILER_IMMUTABILITY_HELP,
       "immutability",
-      buildProject({ hasReactNativeWorkspace: false, framework: "vite" }),
+      buildProject({ hasReanimated: false }),
     );
     expect(help).toBe(REACT_COMPILER_IMMUTABILITY_HELP);
   });
@@ -96,14 +97,14 @@ describe("parseOxlintOutput react-hooks-js immutability messaging", () => {
     expect(diagnostic.help).toContain(REANIMATED_DOCS_ANCHOR);
   });
 
-  it("does not surface the hint for web projects", () => {
+  it("does not surface the hint when reanimated is not installed", () => {
     const stdout = buildOxlintStdout(
       "react-hooks-js(immutability)",
       REACT_COMPILER_IMMUTABILITY_HELP,
     );
     const [diagnostic] = parseOxlintOutput(
       stdout,
-      buildProject({ hasReactNativeWorkspace: false, framework: "vite" }),
+      buildProject({ hasReanimated: false }),
       ROOT_DIRECTORY,
     );
 

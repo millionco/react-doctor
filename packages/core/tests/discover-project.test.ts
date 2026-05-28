@@ -799,6 +799,50 @@ describe("discoverReactSubprojects", () => {
     expect(packages).toContainEqual({ name: "web", directory: subdirectory });
   });
 
+  it("skips OS/editor app-data directories during filesystem recursion", () => {
+    // Repro for #545: a home-directory scan must not surface React packages
+    // vendored inside editor installs (here, a VS Code extension under AppData).
+    const rootDirectory = path.join(tempDirectory, "home-with-appdata");
+    const editorExtension = path.join(
+      rootDirectory,
+      "AppData",
+      "Local",
+      "Programs",
+      "Microsoft VS Code",
+      "resources",
+      "app",
+      "extensions",
+      "copilot",
+    );
+    const realProject = path.join(rootDirectory, "Downloads", "my-app", "frontend");
+    fs.mkdirSync(editorExtension, { recursive: true });
+    fs.mkdirSync(realProject, { recursive: true });
+    fs.writeFileSync(
+      path.join(editorExtension, "package.json"),
+      JSON.stringify({ name: "copilot", dependencies: { react: "^18.0.0" } }),
+    );
+    fs.writeFileSync(
+      path.join(realProject, "package.json"),
+      JSON.stringify({ name: "frontend", dependencies: { react: "^19.0.0" } }),
+    );
+
+    const packages = discoverReactSubprojects(rootDirectory);
+    expect(packages).toEqual([{ name: "frontend", directory: realProject }]);
+  });
+
+  it("does not descend past the maximum scan depth during filesystem recursion", () => {
+    const rootDirectory = path.join(tempDirectory, "deeply-vendored");
+    const tooDeep = path.join(rootDirectory, "a", "b", "c", "d", "e", "f", "g");
+    fs.mkdirSync(tooDeep, { recursive: true });
+    fs.writeFileSync(
+      path.join(tooDeep, "package.json"),
+      JSON.stringify({ name: "too-deep", dependencies: { react: "^19.0.0" } }),
+    );
+
+    const packages = discoverReactSubprojects(rootDirectory);
+    expect(packages).toHaveLength(0);
+  });
+
   it("prefers pnpm workspace packages over filesystem recursion", () => {
     const rootDirectory = path.join(tempDirectory, "pnpm-workspace-preferred");
     const workspaceDirectory = path.join(rootDirectory, "apps", "web");

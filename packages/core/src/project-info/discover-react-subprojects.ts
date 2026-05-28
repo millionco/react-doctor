@@ -41,6 +41,24 @@ const listManifestWorkspacePackages = (rootDirectory: string): WorkspacePackage[
   return toReactWorkspacePackages(directories);
 };
 
+// Directory names that hold OS- or editor-managed installs rather than user
+// projects. When a scan starts from a home directory (no package.json and no
+// workspace manifest in cwd), the recursive crawl would otherwise descend into
+// these and surface vendored React packages that the user never authored — e.g.
+// VS Code ships a `copilot` extension under `AppData` that declares a React
+// dependency, which made `react-doctor` report ambiguous candidates. See #545.
+const NON_PROJECT_DIRECTORIES = new Set([
+  "AppData", // Windows per-user app data + bundled application installs
+  "Application Data", // legacy Windows app-data junction
+  "Library", // macOS per-user app data, caches, and app installs
+]);
+
+// Backstop for pathological trees: real projects discovered via filesystem
+// fallback (only used when the scan root has no package.json / workspace
+// manifest) sit a few levels down at most. Bounding the depth keeps the crawl
+// from descending deep into vendored installs that escape the name list above.
+const MAX_SCAN_DEPTH = 6;
+
 const discoverReactSubprojectsByFilesystem = (rootDirectory: string): WorkspacePackage[] => {
   const packages: WorkspacePackage[] = [];
   // HACK: stack + .pop() rather than queue + .shift() because Array.shift()
@@ -49,12 +67,15 @@ const discoverReactSubprojectsByFilesystem = (rootDirectory: string): WorkspaceP
   // stack pattern. Result is the same set of directories with a different
   // visit order (depth-first instead of breadth-first), which doesn't
   // matter for the final packages list.
-  const pendingDirectories = [rootDirectory];
+  const pendingDirectories: { directory: string; depth: number }[] = [
+    { directory: rootDirectory, depth: 0 },
+  ];
 
   while (pendingDirectories.length > 0) {
-    const currentDirectory = pendingDirectories.pop();
-    if (!currentDirectory) continue;
+    const current = pendingDirectories.pop();
+    if (!current) continue;
 
+    const { directory: currentDirectory, depth } = current;
     const packageJsonPath = path.join(currentDirectory, "package.json");
     if (isFile(packageJsonPath)) {
       const packageJson = readPackageJson(packageJsonPath);
@@ -64,6 +85,8 @@ const discoverReactSubprojectsByFilesystem = (rootDirectory: string): WorkspaceP
       }
     }
 
+    if (depth >= MAX_SCAN_DEPTH) continue;
+
     const entries = readDirectoryEntries(currentDirectory).toSorted((firstEntry, secondEntry) =>
       firstEntry.name.localeCompare(secondEntry.name),
     );
@@ -72,12 +95,16 @@ const discoverReactSubprojectsByFilesystem = (rootDirectory: string): WorkspaceP
       if (
         !entry.isDirectory() ||
         entry.name.startsWith(".") ||
-        IGNORED_DIRECTORIES.has(entry.name)
+        IGNORED_DIRECTORIES.has(entry.name) ||
+        NON_PROJECT_DIRECTORIES.has(entry.name)
       ) {
         continue;
       }
 
-      pendingDirectories.push(path.join(currentDirectory, entry.name));
+      pendingDirectories.push({
+        directory: path.join(currentDirectory, entry.name),
+        depth: depth + 1,
+      });
     }
   }
 

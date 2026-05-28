@@ -1,0 +1,23 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-filename-extension.regressions.test.ts
+  s_a980e8f387b22b::t_6c3aa3e86fa821 1-14
+packages/oxlint-plugin-react-doctor/tests/wrap-with-semantic-context.test.ts
+  s_a980e8f387b22b::t_1775047cac8a72 10,17
+packages/oxlint-plugin-react-doctor/src/test-utils/run-rule.ts
+  s_a980e8f387b22b::t_f27a660bb18c46 77-78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "a1a002426d16bb619b25a2430ef8c32ffc09d7c5",
+  "prompts": {},
+  "sessions": {
+    "s_a980e8f387b22b": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "6a9f54f2-acc9-4d35-a5ed-eb306ce56aca",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

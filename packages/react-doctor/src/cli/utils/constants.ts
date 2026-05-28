@@ -10,6 +10,11 @@ export const AGENT_HOOK_TIMEOUT_SECONDS = 120;
 
 export const SETUP_PROMPT_DELAY_MS = 100;
 
+export const SCORE_HEADER_ANIMATION_FRAME_COUNT = 40;
+export const SCORE_HEADER_ANIMATION_FRAME_DELAY_MS = 50;
+export const PERFECT_SCORE_RAINBOW_FRAME_COUNT = 16;
+export const PERFECT_SCORE_RAINBOW_FRAME_DELAY_MS = 50;
+
 // Last-resort fallback when buildJsonReportError itself throws — keeps
 // stdout valid JSON so downstream parsers don't see a half-written report.
 export const INTERNAL_ERROR_JSON_FALLBACK =

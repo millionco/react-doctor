@@ -62,7 +62,10 @@ describe("selectProjects", () => {
 
     expect(selectedDirectories).toEqual([projectDirectory]);
     expect(prompts).not.toHaveBeenCalled();
-    expect(cliLogger.log).toHaveBeenCalledWith(expect.stringContaining("Select projects to scan"));
+    expect(cliLogger.log).toHaveBeenCalledWith(expect.stringContaining("Select projects"));
+    expect(cliLogger.log).not.toHaveBeenCalledWith(
+      expect.stringContaining("Select projects to scan"),
+    );
   });
 
   it("falls through to subproject discovery for a monorepo with no workspace React packages", async () => {
@@ -78,6 +81,30 @@ describe("selectProjects", () => {
 
     expect(selectedDirectories).toEqual([projectDirectory]);
     expect(prompts).not.toHaveBeenCalled();
-    expect(cliLogger.log).toHaveBeenCalledWith(expect.stringContaining("Select projects to scan"));
+    expect(cliLogger.log).toHaveBeenCalledWith(expect.stringContaining("Select projects"));
+    expect(cliLogger.log).not.toHaveBeenCalledWith(
+      expect.stringContaining("Select projects to scan"),
+    );
+  });
+
+  it("uses a concise label for interactive project selection", async () => {
+    const tempDirectory = createTempDirectory();
+    writeJson(path.join(tempDirectory, "package.json"), {
+      name: "workspace",
+      workspaces: ["apps/*"],
+    });
+    const webDirectory = setupReactProject(path.join(tempDirectory, "apps"), "web");
+    setupReactProject(path.join(tempDirectory, "apps"), "docs");
+    vi.mocked(prompts).mockResolvedValue({ selectedDirectories: [webDirectory] });
+
+    const selectedDirectories = await selectProjects(tempDirectory, undefined, false);
+
+    expect(selectedDirectories).toEqual([webDirectory]);
+    expect(prompts).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "selectedDirectories",
+        message: "Select projects",
+      }),
+    );
   });
 });

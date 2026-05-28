@@ -9,13 +9,15 @@ import {
 } from "@react-doctor/core";
 import type { ScoreResult } from "@react-doctor/core";
 import { colorizeByScore } from "./colorize-by-score.js";
+import {
+  PERFECT_SCORE_RAINBOW_FRAME_COUNT,
+  PERFECT_SCORE_RAINBOW_FRAME_DELAY_MS,
+  SCORE_HEADER_ANIMATION_FRAME_COUNT,
+  SCORE_HEADER_ANIMATION_FRAME_DELAY_MS,
+} from "./constants.js";
 import { isSpinnerInteractive } from "./is-spinner-interactive.js";
 import { isSpinnerSilent } from "./spinner.js";
 
-const SCORE_BAR_ANIMATION_FRAME_COUNT = 40;
-const SCORE_BAR_ANIMATION_FRAME_DELAY_MS = 50;
-const PERFECT_SCORE_RAINBOW_FRAME_COUNT = 16;
-const PERFECT_SCORE_RAINBOW_FRAME_DELAY_MS = 50;
 const RAINBOW_HUE_SHIFT_PER_FRAME = 9;
 const RAINBOW_GRADIENT_WIDTH = 80;
 const RAINBOW_OKLCH_LIGHTNESS = 0.638;
@@ -257,8 +259,8 @@ const printAnimatedScore = (
   Effect.gen(function* () {
     const isPerfectScore = score === PERFECT_SCORE;
 
-    for (let frame = 0; frame <= SCORE_BAR_ANIMATION_FRAME_COUNT; frame += 1) {
-      const progress = easeOutCubic(frame / SCORE_BAR_ANIMATION_FRAME_COUNT);
+    for (let frame = 0; frame <= SCORE_HEADER_ANIMATION_FRAME_COUNT; frame += 1) {
+      const progress = easeOutCubic(frame / SCORE_HEADER_ANIMATION_FRAME_COUNT);
       const animatedScore = Math.round(score * progress);
       if (isPerfectScore) {
         const cursorUp = frame === 0 ? "" : "\x1b[4A";
@@ -271,8 +273,8 @@ const printAnimatedScore = (
             projectName,
           })}`,
         );
-        if (frame < SCORE_BAR_ANIMATION_FRAME_COUNT) {
-          yield* sleep(SCORE_BAR_ANIMATION_FRAME_DELAY_MS);
+        if (frame < SCORE_HEADER_ANIMATION_FRAME_COUNT) {
+          yield* sleep(SCORE_HEADER_ANIMATION_FRAME_DELAY_MS);
         }
         continue;
       }
@@ -285,8 +287,8 @@ const printAnimatedScore = (
       yield* writeScoreHeaderLine(
         `${cursorUp}\r${buildScoreHeaderLine(scoreFaceLine, animatedScoreLine)}\n\r${buildScoreHeaderLine(barFaceLine, animatedBarLine)}\n`,
       );
-      if (frame < SCORE_BAR_ANIMATION_FRAME_COUNT) {
-        yield* sleep(SCORE_BAR_ANIMATION_FRAME_DELAY_MS);
+      if (frame < SCORE_HEADER_ANIMATION_FRAME_COUNT) {
+        yield* sleep(SCORE_HEADER_ANIMATION_FRAME_DELAY_MS);
       }
     }
 

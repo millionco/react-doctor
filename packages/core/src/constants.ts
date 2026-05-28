@@ -101,6 +101,8 @@ export const OXLINT_OUTPUT_MAX_BYTES = 50 * 1024 * 1024;
 // binding is markedly slower than on a developer laptop.
 export const OXLINT_SPAWN_TIMEOUT_MS = 60_000;
 
+export const DEAD_CODE_WORKER_TIMEOUT_MS = 120_000;
+
 // HACK: lookahead cap for JSX opener-span scanning; bounds worst-case
 // work on pathological files. Real openers stay well under this.
 export const JSX_OPENER_SCAN_MAX_LINES = 32;

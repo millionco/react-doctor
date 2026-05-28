@@ -18,7 +18,7 @@ import { DeadCode } from "../src/services/dead-code.js";
 import { Files } from "../src/services/files.js";
 import { Git } from "../src/services/git.js";
 import { LintPartialFailures, Linter } from "../src/services/linter.js";
-import { Progress } from "../src/services/progress.js";
+import { Progress, ProgressCapture } from "../src/services/progress.js";
 import { Project } from "../src/services/project.js";
 import { Reporter, ReporterCapture } from "../src/services/reporter.js";
 import { Score } from "../src/services/score.js";
@@ -344,6 +344,64 @@ describe("runInspect — hooks fire in order", () => {
     );
     expect(output.diagnostics).toHaveLength(1);
     expect(events).toEqual(["beforeLint:sample-app", "afterLint:false"]);
+  });
+});
+
+describe("runInspect — scan progress phases", () => {
+  it("runs dead-code after lint and labels it as a separate progress phase", async () => {
+    const phaseEvents: string[] = [];
+    const trackingLinter = Layer.mock(Linter, {
+      run: () =>
+        Stream.unwrap(
+          Effect.sync(() => {
+            phaseEvents.push("lint");
+            return Stream.fromIterable([lintDiagnostic]);
+          }),
+        ),
+    });
+    const trackingDeadCode = Layer.mock(DeadCode, {
+      run: () =>
+        Stream.unwrap(
+          Effect.sync(() => {
+            phaseEvents.push("dead-code");
+            return Stream.fromIterable([deadCodeDiagnostic]);
+          }),
+        ),
+    });
+    const layers = Layer.mergeAll(
+      Project.layerOf(sampleProject),
+      Config.layerOf({ config: null, resolvedDirectory: "/repo", configSourceDirectory: null }),
+      Files.layerInMemory(new Map()),
+      trackingLinter,
+      LintPartialFailures.layerLive,
+      trackingDeadCode,
+      Git.layerOf({}),
+      Score.layerOf(null),
+      Progress.layerCapture,
+      Reporter.layerNoop,
+    );
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const output = yield* runInspect(baseInput, {
+          afterLint: () =>
+            Effect.sync(() => {
+              phaseEvents.push("afterLint");
+            }),
+        });
+        const progressRef = yield* ProgressCapture;
+        const progressEvents = yield* Ref.get(progressRef);
+        return { output, progressEvents };
+      }).pipe(Effect.provide(layers)),
+    );
+
+    expect(result.output.diagnostics.map((diagnostic) => diagnostic.rule)).toEqual([
+      "no-derived-state",
+      "unused-file",
+    ]);
+    expect(phaseEvents).toEqual(["lint", "afterLint", "dead-code"]);
+    expect(result.progressEvents.map((event) => event.text)).toContain("Scanning...");
+    expect(result.progressEvents.map((event) => event.text)).toContain("Analyzing dead code...");
   });
 });
 

@@ -258,32 +258,6 @@ export const runInspect = <HooksR = never>(
       reason: null,
     });
 
-    const shouldRunDeadCode = input.runDeadCode && !isDiffMode;
-
-    const deadCodeFiber = yield* Effect.forkChild(
-      shouldRunDeadCode
-        ? Stream.runCollect(
-            applyPerElementPipeline(
-              deadCodeService
-                .run({ rootDirectory: scanDirectory, userConfig: resolvedConfig.config })
-                .pipe(
-                  Stream.catchTag("ReactDoctorError", (error: ReactDoctorError) =>
-                    Stream.unwrap(
-                      Effect.gen(function* () {
-                        yield* Ref.set(deadCodeFailure, {
-                          didFail: true,
-                          reason: error.message,
-                        });
-                        return Stream.empty as Stream.Stream<Diagnostic, never>;
-                      }),
-                    ),
-                  ),
-                ),
-            ),
-          )
-        : Effect.succeed<Iterable<Diagnostic>>([]),
-    );
-
     const scanProgress = yield* progressService.start("Scanning...");
     const scanStartTime = Date.now();
     let lastReportedTotalFileCount = 0;
@@ -327,11 +301,36 @@ export const runInspect = <HooksR = never>(
     yield* afterLint(lintFailureState.didFail);
 
     if (lintFailureState.didFail) {
-      yield* Fiber.interrupt(deadCodeFiber);
       yield* scanProgress.fail(formatLintFailText(lintFailureState.reasonTag, process.version));
     }
 
-    const deadCodeCollected = lintFailureState.didFail ? [] : yield* Fiber.join(deadCodeFiber);
+    const shouldRunDeadCode = input.runDeadCode && !isDiffMode;
+    const deadCodeCollected =
+      lintFailureState.didFail || !shouldRunDeadCode
+        ? []
+        : yield* scanProgress.update("Analyzing dead code...").pipe(
+            Effect.andThen(
+              Stream.runCollect(
+                applyPerElementPipeline(
+                  deadCodeService
+                    .run({ rootDirectory: scanDirectory, userConfig: resolvedConfig.config })
+                    .pipe(
+                      Stream.catchTag("ReactDoctorError", (error: ReactDoctorError) =>
+                        Stream.unwrap(
+                          Effect.gen(function* () {
+                            yield* Ref.set(deadCodeFailure, {
+                              didFail: true,
+                              reason: error.message,
+                            });
+                            return Stream.empty as Stream.Stream<Diagnostic, never>;
+                          }),
+                        ),
+                      ),
+                    ),
+                ),
+              ),
+            ),
+          );
     const deadCodeFailureState = yield* Ref.get(deadCodeFailure);
 
     const scanElapsedSeconds = ((Date.now() - scanStartTime) / 1000).toFixed(1);

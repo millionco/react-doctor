@@ -39,7 +39,7 @@ export const resolveDiffMode = async (
   const { scanScope } = await prompts({
     type: "select",
     name: "scanScope",
-    message: "Select",
+    message: "Choose what to scan",
     choices: [
       { title: "Full codebase", value: "full" },
       { title: `Changed files (${changedSourceFiles.length})`, value: "branch" },

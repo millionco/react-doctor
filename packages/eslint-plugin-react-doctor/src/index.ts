@@ -11,7 +11,10 @@ import type { EsTreeNode, OxlintRuleSeverity, RuleVisitors } from "oxlint-plugin
 
 interface EslintRuleContext {
   report: (descriptor: { node: EsTreeNode; message: string }) => void;
-  getFilename?: () => string;
+  // ESLint 9+ exposes the filename as a property; `getFilename()` is the
+  // deprecated `this`-bound accessor that may return undefined.
+  readonly filename?: string;
+  getFilename?: () => string | undefined;
 }
 
 interface WrappedRule {

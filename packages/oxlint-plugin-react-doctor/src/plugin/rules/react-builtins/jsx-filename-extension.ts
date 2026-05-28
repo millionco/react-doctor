@@ -58,7 +58,7 @@ export const jsxFilenameExtension = defineRule<Rule>({
     const settings = resolveSettings(context.settings);
     const allowedExtensions = normalizeExtensions(settings.extensions);
     const allowedList = [...allowedExtensions].map((extension) => `.${extension}`).join(", ");
-    const filename = context.getFilename ? normalizeFilename(context.getFilename()) : "fixture.tsx";
+    const filename = normalizeFilename(context.getFilename?.() ?? "fixture.tsx");
     const extensionOnly = path.extname(filename).slice(1);
     const fileHasAllowedExtension = allowedExtensions.has(extensionOnly);
     let didReportMismatch = false;

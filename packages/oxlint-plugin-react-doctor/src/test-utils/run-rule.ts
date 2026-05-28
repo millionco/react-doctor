@@ -17,6 +17,10 @@ export interface RunRuleOptions {
   // Useful for tests that want a non-JSX-friendly extension on the rule
   // context but still need JSX in the source.
   forceJsx?: boolean;
+  // Override the host's `getFilename()`. Lets regression tests reproduce
+  // hosts (e.g. ESLint 9) whose `getFilename()` returns undefined even
+  // though the method exists.
+  getFilename?: () => string | undefined;
 }
 
 export interface RuleDiagnostic {
@@ -74,7 +78,7 @@ export const runRule = (rule: Rule, code: string, options: RunRuleOptions = {}):
         nodeType: descriptor.node.type,
       });
     },
-    getFilename: () => options.filename ?? "fixture.tsx",
+    getFilename: options.getFilename ?? (() => options.filename ?? "fixture.tsx"),
     settings: options.settings,
     scopes,
     cfg,

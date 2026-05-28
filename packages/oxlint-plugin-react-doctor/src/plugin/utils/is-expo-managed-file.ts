@@ -4,7 +4,8 @@ import { normalizeFilename } from "./normalize-filename.js";
 import type { RuleContext } from "./rule-context.js";
 
 export const isExpoManagedFileActive = (context: RuleContext): boolean => {
-  const filename = context.getFilename?.() ? normalizeFilename(context.getFilename()!) : undefined;
+  const rawFilename = context.getFilename?.();
+  const filename = rawFilename ? normalizeFilename(rawFilename) : undefined;
   if (filename) {
     const packagePlatform = classifyPackagePlatform(filename);
     if (packagePlatform === "expo") return true;

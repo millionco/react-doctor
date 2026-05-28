@@ -7,7 +7,15 @@ import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 // host doesn't need to compute scope or CFG for us.
 export interface BaseRuleContext {
   report: (descriptor: ReportDescriptor) => void;
-  getFilename?: () => string;
+  // Modern hosts (ESLint 9+, oxlint) expose the filename as a property —
+  // prefer it over `getFilename()`, which ESLint deprecated.
+  readonly filename?: string;
+  // Deprecated accessor. ESLint implements it as a `this`-bound class
+  // method (`getFilename() { return this.filename; }`), so it MUST be
+  // called on the host context — a detached reference loses `this` and
+  // returns `undefined`. It can return `undefined` regardless, so every
+  // caller must coalesce before use.
+  getFilename?: () => string | undefined;
   readonly settings?: Readonly<Record<string, unknown>>;
 }
 

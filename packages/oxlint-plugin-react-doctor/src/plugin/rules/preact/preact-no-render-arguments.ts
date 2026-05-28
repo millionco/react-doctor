@@ -6,7 +6,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
 const RENDER_ARGUMENTS_MESSAGE =
-  "Preact's `render(props, state)` argument shape is deprecated — read `this.props` / `this.state` instead so the component still works under `preact/compat`.";
+  "Preact's `render(props, state)` argument shape is harder to type than `this.props` / `this.state`, breaks under `preact/compat` (which mirrors React's parameterless signature), and quietly diverges from every other Preact lifecycle method. Prefer reading from `this.props` / `this.state`.";
 
 const isInstanceMethodNamedRender = (
   node: EsTreeNode,
@@ -41,14 +41,27 @@ const stripThisParameter = (params: ReadonlyArray<EsTreeNode>): ReadonlyArray<Es
   return params;
 };
 
-// Preact historically forwarded `props` and `state` as positional arguments
-// to `render()`, letting class components read them from the parameter list
-// instead of `this.props` / `this.state`. The pattern is Preact-specific and
-// breaks under `preact/compat` (which mirrors React's signature), so the
-// official `eslint-config-preact` set warns against it. We only flag class
-// components that extend `Component` / `PureComponent` (or
-// `React.Component` / `React.PureComponent`) — function components and
-// non-component classes are untouched.
+// Preact forwards `props` and `state` as positional arguments to `render()`,
+// letting class components read them from the parameter list instead of
+// `this.props` / `this.state`. The shape is Preact-specific (not deprecated
+// — the docs ship it as a "Features unique to Preact" item), but it has
+// three real costs:
+//
+//   1. Harder to type cleanly in TypeScript — `Component<Props, State>`
+//      generics drive `this.props` / `this.state` for free, while the
+//      positional `(props, state)` shape needs the parameter signature
+//      duplicated and kept in sync by hand.
+//   2. Breaks under `preact/compat`, which mirrors React's parameterless
+//      `render()` signature — the same component now reads `undefined`
+//      from `props`/`state` if the project ever flips to compat.
+//   3. Quietly diverges from every other Preact lifecycle method
+//      (`componentDidMount`, `getSnapshotBeforeUpdate`, …) which all
+//      use `this.props` / `this.state`. Mixing both styles in one
+//      component is just noise.
+//
+// We only flag class components that extend `Component` / `PureComponent`
+// (or `React.Component` / `React.PureComponent`) — function components
+// and non-component classes are untouched.
 export const preactNoRenderArguments = defineRule<Rule>({
   id: "preact-no-render-arguments",
   requires: ["preact"],

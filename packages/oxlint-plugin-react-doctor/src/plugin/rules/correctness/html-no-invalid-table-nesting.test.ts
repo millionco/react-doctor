@@ -25,6 +25,27 @@ describe("html-no-invalid-table-nesting", () => {
     );
   });
 
+  it("does NOT flag a `<table>` nested inside a `<th>` (legal HTML, same as `<td>`)", () => {
+    const result = runRule(
+      htmlNoInvalidTableNesting,
+      `
+      const Header = () => (
+        <table>
+          <thead>
+            <tr>
+              <th>
+                <table><tbody><tr><td>filter</td></tr></tbody></table>
+              </th>
+            </tr>
+          </thead>
+        </table>
+      );
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does NOT flag a `<table>` nested inside a `<td>` (legal HTML)", () => {
     const result = runRule(
       htmlNoInvalidTableNesting,

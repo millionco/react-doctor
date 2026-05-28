@@ -75,6 +75,14 @@ const findClosestHostAncestor = (
   return { kind: "none" };
 };
 
+// Cells that legally contain a nested `<table>`. Both `<td>` and `<th>`
+// are spec-compliant containers for flow content — preact/debug only
+// checks `<td>` upstream, but `<th>` cells holding a nested table is
+// also valid HTML, and treating only `<td>` as the boundary produces a
+// false positive on `<th><table>...</table></th>` shapes (rare but
+// real, and Bugbot caught one in review).
+const NESTED_TABLE_BOUNDARY_CELLS = new Set(["td", "th"]);
+
 const findEnclosingTable = (
   jsxElement: EsTreeNodeOfType<"JSXElement">,
 ): EsTreeNodeOfType<"JSXElement"> | null => {
@@ -83,7 +91,7 @@ const findEnclosingTable = (
     if (isNodeOfType(ancestor, "JSXElement")) {
       const tag = getHostTagName(ancestor);
       if (tag === "table") return ancestor;
-      if (tag === "td") return null;
+      if (tag !== null && NESTED_TABLE_BOUNDARY_CELLS.has(tag)) return null;
       // Walking past a component — runtime structure is opaque, bail.
       if (tag === null) return null;
     }

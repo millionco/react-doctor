@@ -20,6 +20,11 @@ describe("preact-no-render-arguments", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0].message).toContain("`render(props, state)`");
+    // The shape is *not* deprecated — the Preact docs ship it as a
+    // "Features unique to Preact" item. The rule reframes the smell as
+    // hard-to-type / breaks-under-compat / inconsistent-with-other-
+    // lifecycle-methods. Regression guard against the previous wording.
+    expect(result.diagnostics[0].message).not.toContain("deprecated");
   });
 
   it("flags `render(props, state)` on a class extending React.Component", () => {

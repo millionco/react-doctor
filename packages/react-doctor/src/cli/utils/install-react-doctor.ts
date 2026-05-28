@@ -29,7 +29,6 @@ const SETUP_OPTION_GIT_HOOK = "git-hook";
 const SETUP_OPTION_AGENT_HOOKS = "agent-hooks";
 const SETUP_OPTION_WORKFLOW = "workflow";
 const SETUP_OPTION_SKIP = "skip";
-const SETUP_OPTION_SKILL_PREFIX = "skill:";
 
 const CONFIG_ONLY_GIT_HOOK_KINDS = new Set([
   GitHookKind.Ghooks,
@@ -279,18 +278,6 @@ const getSkillSourceDirectory = (): string => {
 const canInstallNativeAgentHooks = (agents: readonly SkillAgentType[]): boolean =>
   agents.some((agent) => agent === "claude-code" || agent === "cursor");
 
-const getSkillSetupOption = (agent: SkillAgentType): string =>
-  `${SETUP_OPTION_SKILL_PREFIX}${agent}`;
-
-const getSkillSetupOptionAgent = (
-  setupOption: string,
-  detectedAgents: readonly SkillAgentType[],
-): SkillAgentType | null => {
-  if (!setupOption.startsWith(SETUP_OPTION_SKILL_PREFIX)) return null;
-  const requestedAgent = setupOption.slice(SETUP_OPTION_SKILL_PREFIX.length);
-  return detectedAgents.find((detectedAgent) => detectedAgent === requestedAgent) ?? null;
-};
-
 const buildWorkflowContent = (): string =>
   [
     "name: React Doctor",
@@ -351,17 +338,33 @@ export const runInstallReactDoctor = async (
     options.onPromptCancel === undefined ? {} : { onCancel: options.onPromptCancel };
   const prompt = options.prompt ?? prompts;
 
+  const selectedAgents: SkillAgentType[] = skipPrompts
+    ? detectedAgents
+    : ((
+        await prompt(
+          {
+            type: "multiselect",
+            name: "agents",
+            message: `Install the ${highlighter.info(`/${SKILL_NAME}`)} skill for:`,
+            choices: detectedAgents.map((agent) => ({
+              title: getSkillAgentConfig(agent).displayName,
+              value: agent,
+              selected: true,
+            })),
+            instructions: false,
+            min: 1,
+          },
+          promptOptions,
+        )
+      ).agents ?? []);
+
+  if (selectedAgents.length === 0) return;
+
   const workflowsDirectory = path.join(projectRoot, ".github", "workflows");
   const workflowTargetPath = path.join(workflowsDirectory, "react-doctor.yml");
   const hasExistingWorkflows = existsSync(workflowsDirectory);
   const canInstallWorkflow = !existsSync(workflowTargetPath);
   const setupActionChoices = [
-    ...detectedAgents.map((agent) => ({
-      title: `${getSkillAgentConfig(agent).displayName} skill`,
-      description: `Install the ${highlighter.info(`/${SKILL_NAME}`)} skill`,
-      value: getSkillSetupOption(agent),
-      selected: true,
-    })),
     ...(gitHookPath === null || gitHookPath === undefined
       ? []
       : [
@@ -372,7 +375,7 @@ export const runInstallReactDoctor = async (
             selected: true,
           },
         ]),
-    ...(canInstallNativeAgentHooks(detectedAgents)
+    ...(canInstallNativeAgentHooks(selectedAgents)
       ? [
           {
             title: "Agent hooks",
@@ -398,41 +401,33 @@ export const runInstallReactDoctor = async (
       ? []
       : [
           {
-            title: "Skip setup",
-            description: "Do not install skills, hooks, or workflow",
+            title: "Skip optional setup",
+            description: "Install only the agent skill and package setup",
             value: SETUP_OPTION_SKIP,
             selected: false,
           },
           ...setupActionChoices,
         ];
-  let selectedSetupOptions: string[];
-  if (skipPrompts) {
-    selectedSetupOptions = detectedAgents.map(getSkillSetupOption);
-  } else if (setupChoices.length === 0) {
-    selectedSetupOptions = [];
-  } else {
-    const setupAnswers = await prompt<"setupOptions">(
-      {
-        type: "multiselect",
-        name: "setupOptions",
-        message: "Select React Doctor setup:",
-        choices: setupChoices,
-        instructions: false,
-      },
-      promptOptions,
-    );
-    selectedSetupOptions = setupAnswers.setupOptions ?? [];
-  }
+  const selectedSetupOptions: string[] =
+    skipPrompts || setupChoices.length === 0
+      ? []
+      : ((
+          await prompt<"setupOptions">(
+            {
+              type: "multiselect",
+              name: "setupOptions",
+              message: "Select additional React Doctor setup:",
+              choices: setupChoices,
+              instructions: false,
+            },
+            promptOptions,
+          )
+        ).setupOptions ?? []);
   const selectedSetupActions = selectedSetupOptions.filter(
     (setupOption) => setupOption !== SETUP_OPTION_SKIP,
   );
   const didSkipOptionalSetup =
     selectedSetupActions.length === 0 && selectedSetupOptions.includes(SETUP_OPTION_SKIP);
-  const selectedAgents: SkillAgentType[] = [];
-  for (const setupAction of selectedSetupActions) {
-    const selectedAgent = getSkillSetupOptionAgent(setupAction, detectedAgents);
-    if (selectedAgent !== null) selectedAgents.push(selectedAgent);
-  }
 
   const shouldInstallGitHook =
     gitHookPath !== null &&
@@ -448,24 +443,15 @@ export const runInstallReactDoctor = async (
     !didSkipOptionalSetup &&
     canInstallWorkflow &&
     selectedSetupActions.includes(SETUP_OPTION_WORKFLOW);
-  const shouldInstallPackageSetup =
-    selectedAgents.length > 0 || shouldInstallGitHook || shouldInstallAgentHooks;
-  const didSelectSetup = shouldInstallPackageSetup || shouldInstallWorkflow;
-
-  if (!didSelectSetup || didSkipOptionalSetup) return;
 
   if (options.dryRun) {
-    logger.log(`Dry run — would install React Doctor setup:`);
-    if (selectedAgents.length > 0) {
-      logger.dim(
-        `  Skill: ${selectedAgents.map((agent) => getSkillAgentConfig(agent).displayName).join(", ")}`,
-      );
+    logger.log(`Dry run — would install ${SKILL_NAME} skill for:`);
+    for (const agent of selectedAgents) {
+      logger.dim(`  - ${getSkillAgentConfig(agent).displayName}`);
     }
-    if (shouldInstallPackageSetup) {
-      logger.dim(`  Source: ${sourceDir}`);
-      logger.dim("  Package script: doctor (or react-doctor if doctor exists)");
-      logger.dim("  Dev dependency: react-doctor");
-    }
+    logger.dim(`  Source: ${sourceDir}`);
+    logger.dim("  Package script: doctor (or react-doctor if doctor exists)");
+    logger.dim("  Dev dependency: react-doctor");
     if (shouldInstallGitHook) {
       logger.dim(`  Git hook: ${gitHookPath}`);
     }
@@ -478,41 +464,37 @@ export const runInstallReactDoctor = async (
     return;
   }
 
-  if (selectedAgents.length > 0) {
-    const installSpinner = spinner(`Installing ${SKILL_NAME} skill...`).start();
-    try {
-      const installResult = await installSkillsFromSource({
-        source: sourceDir,
-        agents: selectedAgents,
-        cwd: projectRoot,
-        mode: "copy",
-      });
+  const installSpinner = spinner(`Installing ${SKILL_NAME} skill...`).start();
+  try {
+    const installResult = await installSkillsFromSource({
+      source: sourceDir,
+      agents: selectedAgents,
+      cwd: projectRoot,
+      mode: "copy",
+    });
 
-      if (installResult.skills.length === 0) {
-        throw new Error(
-          `Could not parse ${SKILL_MANIFEST_FILE} for ${SKILL_NAME} (missing or invalid frontmatter).`,
-        );
-      }
-      if (installResult.failed.length > 0) {
-        throw new Error(
-          installResult.failed
-            .map((failure) => `${getSkillAgentConfig(failure.agent).displayName}: ${failure.error}`)
-            .join("\n"),
-        );
-      }
-
-      installSpinner.succeed(
-        `${SKILL_NAME} skill installed for ${selectedAgents.map((agent) => getSkillAgentConfig(agent).displayName).join(", ")}.`,
+    if (installResult.skills.length === 0) {
+      throw new Error(
+        `Could not parse ${SKILL_MANIFEST_FILE} for ${SKILL_NAME} (missing or invalid frontmatter).`,
       );
-    } catch (error) {
-      installSpinner.fail(`Failed to install ${SKILL_NAME} skill.`);
-      throw error;
     }
+    if (installResult.failed.length > 0) {
+      throw new Error(
+        installResult.failed
+          .map((failure) => `${getSkillAgentConfig(failure.agent).displayName}: ${failure.error}`)
+          .join("\n"),
+      );
+    }
+
+    installSpinner.succeed(
+      `${SKILL_NAME} skill installed for ${selectedAgents.map((agent) => getSkillAgentConfig(agent).displayName).join(", ")}.`,
+    );
+  } catch (error) {
+    installSpinner.fail(`Failed to install ${SKILL_NAME} skill.`);
+    throw error;
   }
 
-  if (shouldInstallPackageSetup) {
-    await installReactDoctorPackageSetup(projectRoot, options.installDependencyRunner);
-  }
+  await installReactDoctorPackageSetup(projectRoot, options.installDependencyRunner);
 
   if (shouldInstallGitHook && gitHookTarget !== null && gitHookTarget !== undefined) {
     const hookSpinner = spinner("Installing React Doctor pre-commit hook...").start();
@@ -535,7 +517,7 @@ export const runInstallReactDoctor = async (
     try {
       const hookResult = installReactDoctorAgentHooks({
         projectRoot,
-        agents: selectedAgents.length > 0 ? selectedAgents : detectedAgents,
+        agents: selectedAgents,
       });
       if (hookResult.installedAgents.length === 0) {
         hookSpinner.succeed("No supported native agent hook targets selected.");

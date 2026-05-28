@@ -74,6 +74,8 @@ export const runRule = (rule: Rule, code: string, options: RunRuleOptions = {}):
         nodeType: descriptor.node.type,
       });
     },
+    // `in` (not `?? "fixture.tsx"`) so a test can pass `{ filename: undefined }`
+    // to exercise a host with no filename.
     filename: "filename" in options ? options.filename : "fixture.tsx",
     settings: options.settings,
     scopes,

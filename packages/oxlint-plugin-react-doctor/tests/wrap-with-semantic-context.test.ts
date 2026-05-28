@@ -7,14 +7,14 @@ import { wrapWithSemanticContext } from "../src/plugin/utils/wrap-with-semantic-
 // `create()` so we can assert how `filename` is resolved.
 const captureEnrichedContext = (hostContext: BaseRuleContext): RuleContext => {
   let captured: RuleContext | undefined;
-  const probeRule = {
+  const probeRule: Rule = {
     id: "probe",
     severity: "warn",
     create: (context: RuleContext) => {
       captured = context;
       return {};
     },
-  } as unknown as Rule;
+  };
   wrapWithSemanticContext(probeRule).create(hostContext);
   if (!captured) throw new Error("rule create() was never invoked");
   return captured;

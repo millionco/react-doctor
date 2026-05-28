@@ -11,7 +11,6 @@ import {
   isDescendantScope,
   type ScopeAnalysis,
   type ScopeDescriptor,
-  type SymbolDescriptor,
 } from "../../semantic/scope-analysis.js";
 
 // Receiver-mutating method names. Calling any of these on the binding
@@ -185,33 +184,6 @@ const hasComponentLocalReferences = (
 const isHoistableValueExpression = (expression: EsTreeNode): boolean => {
   const stripped = stripParenExpression(expression);
   return isNodeOfType(stripped, "ArrayExpression") || isNodeOfType(stripped, "ObjectExpression");
-};
-
-// Checks whether the binding is used as the receiver of a method call
-// (`items.push(x)`) or as the target of a property assignment
-// (`items[0] = x`, `obj.foo = x`). Hoisting a mutable accumulator
-// like `const parts = []; parts.push(...)` would cause it to retain
-// state across renders.
-const isBindingMutatedAfterInit = (symbol: SymbolDescriptor): boolean => {
-  for (const reference of symbol.references) {
-    if (reference.flag !== "read") return true;
-    const parent = reference.identifier.parent;
-    if (!parent) continue;
-    if (isNodeOfType(parent, "MemberExpression") && parent.object === reference.identifier) {
-      const grandparent = parent.parent;
-      if (!grandparent) continue;
-      if (isNodeOfType(grandparent, "CallExpression") && grandparent.callee === parent) {
-        return true;
-      }
-      if (isNodeOfType(grandparent, "AssignmentExpression") && grandparent.left === parent) {
-        return true;
-      }
-      if (isNodeOfType(grandparent, "UnaryExpression") && grandparent.operator === "delete") {
-        return true;
-      }
-    }
-  }
-  return false;
 };
 
 // Only value-level hooks that genuinely memoize inner allocations.

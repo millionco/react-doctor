@@ -10,7 +10,7 @@ const packageJson = JSON.parse(fs.readFileSync(path.join(packageRoot, "package.j
 };
 
 const TEST_TIMEOUT_MS = 30_000;
-const WINDOWS_TEST_MAX_WORKERS = 2;
+const WINDOWS_TEST_MAX_WORKERS = 1;
 
 // HACK: agent-install's parseSkillManifest silently returns `null` when
 // frontmatter is missing or invalid `name:` / `description:` fields,
@@ -130,6 +130,8 @@ export default defineConfig({
   ],
   test: {
     testTimeout: TEST_TIMEOUT_MS,
-    ...(process.platform === "win32" ? { maxWorkers: WINDOWS_TEST_MAX_WORKERS } : {}),
+    ...(process.platform === "win32"
+      ? { fileParallelism: false, maxWorkers: WINDOWS_TEST_MAX_WORKERS }
+      : {}),
   },
 });

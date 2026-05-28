@@ -158,6 +158,21 @@ describe("html-no-invalid-table-nesting", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag table elements when the host ancestor is a member-expression component (`<Foo.Bar>`)", () => {
+    const result = runRule(
+      htmlNoInvalidTableNesting,
+      `
+      const Page = () => (
+        <Table.Body>
+          <tr><td>x</td></tr>
+        </Table.Body>
+      );
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag a top-level table fragment with no host ancestor", () => {
     const result = runRule(
       htmlNoInvalidTableNesting,

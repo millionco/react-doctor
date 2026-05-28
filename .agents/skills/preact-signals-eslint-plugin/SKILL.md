@@ -21,8 +21,8 @@ Oxlint:
     "@preact/signals/no-value-after-await": "error",
     "@preact/signals/no-signal-truthiness": "warn",
     "@preact/signals/no-signal-in-component-body": "error",
-    "@preact/signals/no-conditional-value-read": "error",
-  },
+    "@preact/signals/no-conditional-value-read": "error"
+  }
 }
 ```
 
@@ -42,29 +42,29 @@ export default [
       parserOptions: {
         ecmaFeatures: { jsx: true },
         project: true,
-        tsconfigRootDir: import.meta.dirname,
-      },
+        tsconfigRootDir: import.meta.dirname
+      }
     },
     rules: {
       "signals/no-signal-write-in-computed": "error",
       "signals/no-value-after-await": "error",
       "signals/no-signal-truthiness": "warn",
       "signals/no-signal-in-component-body": "error",
-      "signals/no-conditional-value-read": "error",
-    },
-  },
+      "signals/no-conditional-value-read": "error"
+    }
+  }
 ];
 ```
 
 ## Rule Intent
 
-| Rule                          | Catches                                                      |
-| ----------------------------- | ------------------------------------------------------------ |
-| `no-signal-write-in-computed` | Side effects inside `computed()` or `useComputed()`          |
-| `no-value-after-await`        | `.value` reads after `await` that are not tracked            |
-| `no-signal-truthiness`        | `if (signal)` and similar always-truthy checks               |
+| Rule | Catches |
+| --- | --- |
+| `no-signal-write-in-computed` | Side effects inside `computed()` or `useComputed()` |
+| `no-value-after-await` | `.value` reads after `await` that are not tracked |
+| `no-signal-truthiness` | `if (signal)` and similar always-truthy checks |
 | `no-signal-in-component-body` | `signal()`, `computed()`, `effect()` created on every render |
-| `no-conditional-value-read`   | `.value` reads hidden behind non-reactive guards             |
+| `no-conditional-value-read` | `.value` reads hidden behind non-reactive guards |
 
 ## Common Limitations
 

@@ -25,16 +25,16 @@ When using no-build workflows, map both the package root and subpaths to the **s
 
 ```html
 <script type="importmap">
-  {
-    "imports": {
-      "preact": "https://esm.sh/preact@10",
-      "preact/": "https://esm.sh/preact@10/",
-      "htm/preact": "https://esm.sh/htm@3/preact"
-    }
+{
+  "imports": {
+    "preact": "https://esm.sh/preact@10",
+    "preact/": "https://esm.sh/preact@10/",
+    "htm/preact": "https://esm.sh/htm@3/preact"
   }
+}
 </script>
 <script type="module">
-  import { html, render } from "htm/preact";
+  import { html, render } from 'htm/preact';
   render(html`<h1>Hello</h1>`, document.body);
 </script>
 ```

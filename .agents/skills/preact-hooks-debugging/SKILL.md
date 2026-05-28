@@ -13,16 +13,15 @@ Most hard hook failures are caused by either invalid hook order or two different
 2. Confirm all entry points resolve to the same `preact` package instance. Check bundler aliases, linked packages, test-runner aliases, and CDN import maps.
 3. For no-build apps, map both `preact` and `preact/` to the same exact version so `preact/hooks` shares core state. See the [preact-no-build-vite-setup](../preact-no-build-vite-setup/SKILL.md) skill.
 4. Hooks must run only during function component render and in the same order on every render (no conditional or looped hook calls).
-5. If the error mentions `__H`, inspect module duplication _before_ changing hook code — the symptom points at installation, not your component.
+5. If the error mentions `__H`, inspect module duplication *before* changing hook code — the symptom points at installation, not your component.
 
 ## Duplicate-Copy Quick Diagnostic
 
 ```js
 // paste once in a DevTools console for a running app
-const mods = performance
-  .getEntriesByType("resource")
-  .map((e) => e.name)
-  .filter((n) => /preact(\.module)?(\?|$|\/hooks)/.test(n));
+const mods = performance.getEntriesByType('resource')
+  .map(e => e.name)
+  .filter(n => /preact(\.module)?(\?|$|\/hooks)/.test(n));
 console.log(mods);
 ```
 

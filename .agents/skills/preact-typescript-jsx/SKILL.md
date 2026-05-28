@@ -61,11 +61,11 @@ Use `skipLibCheck` when third-party React library declarations exceed compat's s
 
 ```ts
 // custom-elements.d.ts
-import "preact";
-declare module "preact" {
+import 'preact';
+declare module 'preact' {
   namespace JSX {
     interface IntrinsicElements {
-      "my-widget": HTMLAttributes<HTMLElement> & { label?: string };
+      'my-widget': HTMLAttributes<HTMLElement> & { label?: string };
     }
   }
 }

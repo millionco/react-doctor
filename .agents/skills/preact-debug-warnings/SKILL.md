@@ -11,8 +11,8 @@ description: "Use when enabling preact/debug, interpreting Preact debug warnings
 
 ```js
 // entry file, before rendering your app
-if (process.env.NODE_ENV !== "production") {
-  await import("preact/debug");
+if (process.env.NODE_ENV !== 'production') {
+  await import('preact/debug');
 }
 ```
 

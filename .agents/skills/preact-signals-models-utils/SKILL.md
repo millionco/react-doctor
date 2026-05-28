@@ -23,7 +23,7 @@ const CountModel = createModel((initialCount: number) => {
     double,
     increment() {
       this.count.value++;
-    },
+    }
   };
 });
 ```
@@ -78,7 +78,7 @@ const ListModel = createModel(() => {
     },
     add(item: Item) {
       items.value = [...items.value, item];
-    },
+    }
   };
 });
 ```
@@ -93,7 +93,7 @@ import { For, Show } from "@preact/signals/utils";
 function ItemList({ model }: { model: Model }) {
   return (
     <Show when={model.hasItems} fallback={<p>No items</p>}>
-      <For each={model.items}>{(item) => <Item item={item} />}</For>
+      <For each={model.items}>{item => <Item item={item} />}</For>
     </Show>
   );
 }

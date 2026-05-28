@@ -27,10 +27,10 @@ Uncontrolled (preferred):
 
 ```jsx
 function Form() {
-  const onSubmit = (e) => {
+  const onSubmit = e => {
     e.preventDefault();
     const data = new FormData(e.currentTarget);
-    console.log(data.get("email"));
+    console.log(data.get('email'));
   };
   return (
     <form onSubmit={onSubmit}>
@@ -44,12 +44,17 @@ function Form() {
 Controlled (only when state must drive the DOM):
 
 ```jsx
-import { useState } from "preact/hooks";
+import { useState } from 'preact/hooks';
 
 function Upper() {
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState('');
   // onInput on every keystroke; uppercase transform forces a rerender.
-  return <input value={value} onInput={(e) => setValue(e.currentTarget.value.toUpperCase())} />;
+  return (
+    <input
+      value={value}
+      onInput={e => setValue(e.currentTarget.value.toUpperCase())}
+    />
+  );
 }
 ```
 

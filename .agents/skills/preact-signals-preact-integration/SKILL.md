@@ -54,7 +54,7 @@ Preact also supports experimental direct signal DOM attributes:
 const inputValue = signal("Ada");
 
 function NameField() {
-  return <input value={inputValue} onInput={(e) => (inputValue.value = e.currentTarget.value)} />;
+  return <input value={inputValue} onInput={e => (inputValue.value = e.currentTarget.value)} />;
 }
 ```
 
@@ -69,16 +69,15 @@ const showDetails = useSignal(false);
 const items = useSignal<Item[]>([]);
 
 function App() {
-  return <For each={items}>{(item) => <Item item={item} showDetails={showDetails} />}</For>;
+  return (
+    <For each={items}>
+      {item => <Item item={item} showDetails={showDetails} />}
+    </For>
+  );
 }
 
 function Item({ item, showDetails }: { item: Item; showDetails: Signal<boolean> }) {
-  return (
-    <li>
-      {item.id}
-      {showDetails.value && ` - ${item.createdAt}`}
-    </li>
-  );
+  return <li>{item.id}{showDetails.value && ` - ${item.createdAt}`}</li>;
 }
 ```
 

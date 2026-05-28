@@ -3,7 +3,7 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { hooksNoNanInDeps } from "./hooks-no-nan-in-deps.js";
 
 describe("hooks-no-nan-in-deps", () => {
-  it("flags `NaN` in a useEffect dep array", () => {
+  it("flags `NaN` in a useEffect dep array with the corrected (Object.is-aware) message", () => {
     const result = runRule(
       hooksNoNanInDeps,
       `
@@ -17,7 +17,13 @@ describe("hooks-no-nan-in-deps", () => {
 
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0].message).toContain("NaN");
+    expect(result.diagnostics[0].message).toContain("`NaN`");
+    // The diagnostic must describe React's *actual* comparator behaviour
+    // — `Object.is(NaN, NaN) === true`, so the hook does NOT re-run on
+    // every render. Regression guard against the previous wording that
+    // wrongly claimed it "always reruns".
+    expect(result.diagnostics[0].message).toContain("Object.is");
+    expect(result.diagnostics[0].message).not.toContain("always rerun");
   });
 
   it("flags `Number.NaN` in a useMemo dep array", () => {
@@ -134,6 +140,36 @@ describe("hooks-no-nan-in-deps", () => {
     );
 
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags `NaN` when the hook is called via a `React.useEffect` member expression", () => {
+    const result = runRule(
+      hooksNoNanInDeps,
+      `
+      import * as React from "react";
+      const Comp = () => {
+        React.useEffect(() => { doStuff(); }, [NaN]);
+        return null;
+      };
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags `NaN` in a `React.useImperativeHandle` (member-expression + index-2 deps) call", () => {
+    const result = runRule(
+      hooksNoNanInDeps,
+      `
+      import * as React from "react";
+      const Comp = ({ ref }) => {
+        React.useImperativeHandle(ref, () => ({ focus: () => {} }), [NaN]);
+        return null;
+      };
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("flags multiple NaN entries in one dep array", () => {

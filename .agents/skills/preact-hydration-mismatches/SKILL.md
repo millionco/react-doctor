@@ -33,7 +33,7 @@ Treat hydration bugs as a **server DOM vs. first client VNode** contract problem
 Share one helper and render the SSR-safe placeholder until after the first commit:
 
 ```jsx
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useState } from 'preact/hooks';
 
 export function useIsHydrated() {
   const [hydrated, setHydrated] = useState(false);

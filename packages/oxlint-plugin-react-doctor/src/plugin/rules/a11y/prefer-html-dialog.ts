@@ -1,5 +1,4 @@
 import { defineRule } from "../../utils/define-rule.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
@@ -9,23 +8,25 @@ import type { Rule } from "../../utils/rule.js";
 const ROLE_DIALOG_VALUES = new Set(["dialog", "alertdialog"]);
 
 const ROLE_DIALOG_MESSAGE =
-  'Use the native `<dialog>` element instead of `role=\\"dialog\\"` on a generic container — `<dialog>` ships built-in focus trap, `Escape` dismissal, the top-layer backdrop, and the right accessibility tree without you having to wire any of it up.';
+  'Use the native `<dialog>` element instead of `role="dialog"` on a generic container — `<dialog>` ships built-in focus trap, `Escape` dismissal, the top-layer backdrop, and the right accessibility tree without you having to wire any of it up.';
 
 const ARIA_MODAL_MESSAGE =
   'Use the native `<dialog>` element with `dialog.showModal()` instead of `aria-modal="true"` on a generic container — the browser then owns focus trapping, scroll locking, and `Escape` dismissal, none of which `aria-modal` actually delivers on its own.';
 
-const isAriaModalTrue = (attribute: EsTreeNodeOfType<"JSXAttribute"> | undefined): boolean => {
-  if (!attribute) return false;
+const isAriaModalTrue = (attribute: EsTreeNodeOfType<"JSXAttribute">): boolean => {
   const stringValue = getJsxPropStringValue(attribute);
   if (stringValue !== null) {
     return stringValue === "true";
   }
   const value = attribute.value;
+  // Boolean shorthand: `<div aria-modal>` is JSX sugar for `aria-modal={true}`.
   if (!value) return true;
   if (isNodeOfType(value, "JSXExpressionContainer")) {
     const expression = value.expression;
     if (isNodeOfType(expression, "Literal") && expression.value === true) return true;
   }
+  // Dynamic / non-literal expressions (`aria-modal={isOpen}`) cannot be
+  // statically resolved; skip rather than risk a false positive.
   return false;
 };
 
@@ -75,6 +76,10 @@ export const preferHtmlDialog = defineRule<Rule>({
       // checks stay on lowercase host elements.
       if (tagName.length === 0 || tagName[0] !== tagName[0].toLowerCase()) return;
 
+      // Per-attribute reporting: when both `role` and `aria-modal` are
+      // on the same element, the role is the more direct signal of a
+      // hand-rolled modal — flag it and stop, so the user sees one
+      // diagnostic per offending element instead of two.
       const roleAttribute = findJsxAttribute(node.attributes, "role");
       if (roleAttribute) {
         const roleValue = getJsxPropStringValue(roleAttribute);
@@ -85,9 +90,8 @@ export const preferHtmlDialog = defineRule<Rule>({
       }
 
       const ariaModalAttribute = findJsxAttribute(node.attributes, "aria-modal");
-      if (isAriaModalTrue(ariaModalAttribute)) {
-        const reportNode: EsTreeNode = ariaModalAttribute ?? node;
-        context.report({ node: reportNode, message: ARIA_MODAL_MESSAGE });
+      if (ariaModalAttribute && isAriaModalTrue(ariaModalAttribute)) {
+        context.report({ node: ariaModalAttribute, message: ARIA_MODAL_MESSAGE });
       }
     },
   }),

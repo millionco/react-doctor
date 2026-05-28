@@ -27,18 +27,31 @@ const getHostTagName = (jsxElement: EsTreeNode): string | null => {
   return tagName;
 };
 
+interface HostAncestorFound {
+  kind: "host";
+  tagName: string;
+  element: EsTreeNodeOfType<"JSXElement">;
+}
+interface HostAncestorOpaque {
+  kind: "opaque";
+}
+interface HostAncestorNone {
+  kind: "none";
+}
+type ClosestHostAncestor = HostAncestorFound | HostAncestorOpaque | HostAncestorNone;
+
 // Walks up JSX ancestors and returns the nearest enclosing host (lowercase)
 // JSXElement's tag name. Mirrors preact/debug's
 // `getClosestDomNodeParentName(parent)`, which walks the VNode tree past
 // component VNodes to find the nearest DOM-element ancestor. For static
 // analysis the analogous step is "skip user-component JSX elements". The
-// walk also bails out (returns null) the moment it crosses a custom
-// component — at that point we genuinely can't tell what host element
-// will surround the current node at runtime, so the safest move is to
-// not flag.
+// walk also bails out (`{ kind: "opaque" }`) the moment it crosses a
+// custom component or a member-expression / namespace JSX name — at that
+// point we genuinely can't tell what host element will surround the
+// current node at runtime, so the safest move is to not flag.
 const findClosestHostAncestor = (
   jsxElement: EsTreeNodeOfType<"JSXElement">,
-): { tagName: string; element: EsTreeNodeOfType<"JSXElement"> } | "unknown" | null => {
+): ClosestHostAncestor => {
   let ancestor: EsTreeNode | null | undefined = jsxElement.parent;
   while (ancestor) {
     if (isNodeOfType(ancestor, "JSXElement")) {
@@ -50,18 +63,16 @@ const findClosestHostAncestor = (
           continue;
         }
         if (ancestorTag[0] === ancestorTag[0].toLowerCase()) {
-          return { tagName: ancestorTag, element: ancestor };
+          return { kind: "host", tagName: ancestorTag, element: ancestor };
         }
-        // Component ancestor — runtime DOM shape is opaque.
-        return "unknown";
+        return { kind: "opaque" };
       }
-      // Member-expression / namespace JSX names (`<Foo.Bar>`,
-      // `<svg:circle>`) are also opaque.
-      return "unknown";
+      // Member-expression (`<Foo.Bar>`) / namespace (`<svg:circle>`) names.
+      return { kind: "opaque" };
     }
     ancestor = ancestor.parent ?? null;
   }
-  return null;
+  return { kind: "none" };
 };
 
 const findEnclosingTable = (
@@ -116,11 +127,12 @@ export const htmlNoInvalidTableNesting = defineRule<Rule>({
       }
 
       const closestHost = findClosestHostAncestor(node);
-      // No host ancestor at all (top-level JSX) — preact/debug skips this
-      // case explicitly to avoid false positives in partial renders, and
-      // the same reasoning applies here: we can't validate a fragment
-      // whose runtime parent is supplied by another component.
-      if (closestHost === null || closestHost === "unknown") return;
+      // No host ancestor (top-level JSX) and opaque ancestors (custom
+      // components, member-expression names) both skip — preact/debug
+      // does the same to avoid false positives in partial renders /
+      // cross-component boundaries. The runtime parent is genuinely
+      // unknowable from inside this scope.
+      if (closestHost.kind !== "host") return;
       const actualParent = closestHost.tagName;
 
       if (ROW_GROUPS.has(tagName)) {

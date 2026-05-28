@@ -22,14 +22,14 @@ Classify the failure before editing code: core reactivity, Preact adapter, React
 
 ## Fast Symptom Map
 
-| Symptom                                              | Likely Boundary                   | Next Skill                                                       |
-| ---------------------------------------------------- | --------------------------------- | ---------------------------------------------------------------- |
-| Effect logs but component does not rerender          | Adapter or duplicate Preact       | `preact-signals-preact-integration` or `preact-signals-no-build` |
-| Object field changed but subscribers stale           | Core signal semantics             | `preact-signals-core`                                            |
-| React component reads `.value` but does not update   | React tracking setup              | `preact-signals-react-integration`                               |
-| Signal works in text but not `checked` or `disabled` | React DOM attribute limitation    | `preact-signals-react-integration`                               |
-| `For` children ignore parent variable changes        | Cached utility children           | `preact-signals-preact-integration`                              |
-| CDN example behaves differently from npm             | Version drift or duplicate Preact | `preact-signals-no-build`                                        |
+| Symptom | Likely Boundary | Next Skill |
+| --- | --- | --- |
+| Effect logs but component does not rerender | Adapter or duplicate Preact | `preact-signals-preact-integration` or `preact-signals-no-build` |
+| Object field changed but subscribers stale | Core signal semantics | `preact-signals-core` |
+| React component reads `.value` but does not update | React tracking setup | `preact-signals-react-integration` |
+| Signal works in text but not `checked` or `disabled` | React DOM attribute limitation | `preact-signals-react-integration` |
+| `For` children ignore parent variable changes | Cached utility children | `preact-signals-preact-integration` |
+| CDN example behaves differently from npm | Version drift or duplicate Preact | `preact-signals-no-build` |
 
 ## Minimal Reproduction Standard
 

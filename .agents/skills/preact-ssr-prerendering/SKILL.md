@@ -21,22 +21,20 @@ All live in `preact-render-to-string` or `preact-iso`.
 
 ```js
 // server.js
-import { renderToString } from "preact-render-to-string";
-import { App } from "./app.js";
+import { renderToString } from 'preact-render-to-string';
+import { App } from './app.js';
 
 export function handler(req, res) {
   const html = renderToString(<App url={req.url} />);
-  res.end(
-    `<!doctype html><div id="app">${html}</div><script type="module" src="/client.js"></script>`,
-  );
+  res.end(`<!doctype html><div id="app">${html}</div><script type="module" src="/client.js"></script>`);
 }
 ```
 
 ```js
 // client.js
-import { hydrate } from "preact";
-import { App } from "./app.js";
-hydrate(<App url={location.pathname} />, document.getElementById("app"));
+import { hydrate } from 'preact';
+import { App } from './app.js';
+hydrate(<App url={location.pathname} />, document.getElementById('app'));
 ```
 
 ## Hydration Contract

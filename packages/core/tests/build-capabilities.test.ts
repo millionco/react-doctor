@@ -35,9 +35,10 @@ describe("buildCapabilities", () => {
     expect(capabilities.has("preact")).toBe(true);
   });
 
-  it("does not emit the `preact` capability for a non-Preact project", () => {
+  it("does not emit the `preact` or `pure-preact` capabilities for a non-Preact project", () => {
     const capabilities = buildCapabilities({ ...baseProject, framework: "vite", hasPreact: false });
     expect(capabilities.has("preact")).toBe(false);
+    expect(capabilities.has("pure-preact")).toBe(false);
   });
 
   it("emits `pure-preact` only when no `react` is present alongside Preact", () => {

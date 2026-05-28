@@ -15,14 +15,14 @@ Use `htm/preact`, not `htm/preact/standalone`, when signals are involved:
 
 ```html
 <script type="importmap">
-  {
-    "imports": {
-      "preact": "https://esm.sh/preact@10.23.1",
-      "preact/hooks": "https://esm.sh/preact@10.23.1/hooks?external=preact",
-      "htm/preact": "https://esm.sh/htm@3.1.1/preact?external=preact",
-      "@preact/signals": "https://esm.sh/@preact/signals@2.0.4?external=preact"
-    }
+{
+  "imports": {
+    "preact": "https://esm.sh/preact@10.23.1",
+    "preact/hooks": "https://esm.sh/preact@10.23.1/hooks?external=preact",
+    "htm/preact": "https://esm.sh/htm@3.1.1/preact?external=preact",
+    "@preact/signals": "https://esm.sh/@preact/signals@2.0.4?external=preact"
   }
+}
 </script>
 <script type="module">
   import { html } from "htm/preact";
@@ -53,11 +53,11 @@ Use `htm/preact`, not `htm/preact/standalone`, when signals are involved:
 
 ## Common Failure Modes
 
-| Symptom                                 | Likely Cause                     | Fix                             |
-| --------------------------------------- | -------------------------------- | ------------------------------- |
-| `effect()` logs updates but UI is stale | Duplicate Preact copy            | Use import map singleton        |
-| Basic REPL or CDN example fails         | Version drift                    | Pin versions                    |
-| Hooks behave oddly                      | `standalone` bundled Preact      | Use `htm/preact`                |
+| Symptom | Likely Cause | Fix |
+| --- | --- | --- |
+| `effect()` logs updates but UI is stale | Duplicate Preact copy | Use import map singleton |
+| Basic REPL or CDN example fails | Version drift | Pin versions |
+| Hooks behave oddly | `standalone` bundled Preact | Use `htm/preact` |
 | Works after adding a version to imports | CDN resolved mismatched packages | Pin all Preact-related packages |
 
 ## What Not To Do

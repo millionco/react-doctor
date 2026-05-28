@@ -86,13 +86,13 @@ batch(() => {
 
 ## Quick Diagnosis
 
-| Symptom                               | Likely Cause                      | Fix                                     |
-| ------------------------------------- | --------------------------------- | --------------------------------------- |
-| Value changes but UI stays stale      | Property mutation inside `.value` | Assign a new object or array            |
-| Effect never reruns                   | `.value` read did not execute     | Move the `.value` read before the guard |
-| Condition always true                 | Checked the signal object         | Check `signal.value`                    |
-| Computed loops or throws              | Write inside `computed`           | Move write to `effect` or action        |
-| Multiple updates propagate separately | Separate writes                   | Wrap in `batch`                         |
+| Symptom | Likely Cause | Fix |
+| --- | --- | --- |
+| Value changes but UI stays stale | Property mutation inside `.value` | Assign a new object or array |
+| Effect never reruns | `.value` read did not execute | Move the `.value` read before the guard |
+| Condition always true | Checked the signal object | Check `signal.value` |
+| Computed loops or throws | Write inside `computed` | Move write to `effect` or action |
+| Multiple updates propagate separately | Separate writes | Wrap in `batch` |
 
 ## References
 

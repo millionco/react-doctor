@@ -74,11 +74,29 @@ describe("GitHub Action contract", () => {
   });
 
   it("guards diff fetch refs against shell-option injection", () => {
-    const fetchStep = extractStep(readActionYaml(), "DIFF_BASE: ${{ inputs.diff }}");
+    const fetchStep = extractStep(readActionYaml(), "HEAD_REF: ${{ github.head_ref }}");
 
     expect(fetchStep).toContain('case "$DIFF_BASE" in -* )');
     expect(fetchStep).toContain('case "$HEAD_REF" in -* )');
     expect(fetchStep).toContain('git fetch origin "$DIFF_BASE"');
+  });
+
+  it("issue #527: defaults the diff base to the PR target branch on pull_request events", () => {
+    const actionYaml = readActionYaml();
+
+    // `inputs.diff || github.base_ref`: an explicit `diff` wins, otherwise
+    // fall back to the PR's target branch (base_ref is set only on
+    // pull_request events; empty on push -> full scan). Keeps PRs on a
+    // diff scan so they never run the unbounded whole-project dead-code
+    // pass that hangs large repos (issue #527).
+    const resolvedDiff = "${{ inputs.diff || github.base_ref }}";
+    const scanStep = extractStep(actionYaml, "INPUT_FAIL_ON: ${{ inputs.fail-on }}");
+    const scoreStep = extractStep(actionYaml, "- id: score");
+    const fetchStep = extractStep(actionYaml, "HEAD_REF: ${{ github.head_ref }}");
+
+    expect(scanStep).toContain(`INPUT_DIFF: ${resolvedDiff}`);
+    expect(scoreStep).toContain(`INPUT_DIFF: ${resolvedDiff}`);
+    expect(fetchStep).toContain(`DIFF_BASE: ${resolvedDiff}`);
   });
 
   it("demotes design rules from the sticky PR comment via --pr-comment", () => {
@@ -111,6 +129,23 @@ describe("GitHub Action contract", () => {
     expect(restoreExitOnErrorIndex).toBeGreaterThan(captureExitCodesIndex);
     expect(stripAnnotationsIndex).toBeGreaterThan(restoreExitOnErrorIndex);
     expect(restoreScanExitCodeIndex).toBeGreaterThan(stripAnnotationsIndex);
+  });
+
+  it("issue #527: score step mirrors the scan's diff/project scope so it can't re-run a full scan", () => {
+    const actionYaml = readActionYaml();
+    const scoreStep = normalizeWhitespace(extractStep(actionYaml, "- id: score"));
+
+    // Without these, a bare `--score` re-runs a FULL project scan even
+    // when the scan step ran in `--diff` mode, re-triggering the
+    // whole-project dead-code pass that diff mode skips and hanging the
+    // job on large repos.
+    expect(scoreStep).toContain("INPUT_PROJECT: ${{ inputs.project }}");
+    expect(scoreStep).toContain(
+      'if [ -n "$INPUT_DIFF" ]; then SCORE_ARGS+=("--diff" "$INPUT_DIFF"); fi',
+    );
+    expect(scoreStep).toContain(
+      'if [ -n "$INPUT_PROJECT" ]; then SCORE_ARGS+=("--project" "$INPUT_PROJECT"); fi',
+    );
   });
 
   it("forwards --annotations to the CLI when the annotations input is true", () => {

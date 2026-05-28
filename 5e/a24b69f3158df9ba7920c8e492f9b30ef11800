@@ -1,0 +1,23 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/alt-text.ts
+  s_fa2e24e3f8f3f2::t_296705d39a3dd6 7,11,186-192
+packages/oxlint-plugin-react-doctor/src/plugin/utils/is-nextjs-metadata-image-route-filename.ts
+  s_fa2e24e3f8f3f2::t_296705d39a3dd6 1-24
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/alt-text.regressions.test.ts
+  s_fa2e24e3f8f3f2::t_296705d39a3dd6 1-68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "5ea24b69f3158df9ba7920c8e492f9b30ef11800",
+  "prompts": {},
+  "sessions": {
+    "s_fa2e24e3f8f3f2": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ae7507ca-3790-4ab0-ab82-10dbb408bdbc",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

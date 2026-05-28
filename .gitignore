@@ -22,6 +22,45 @@ review-*.md
 !/.agents/skills/rule-writing/**
 !/.agents/skills/rule-validate/
 !/.agents/skills/rule-validate/**
+!/.agents/skills/README.md
+# Preact-specific agent skills sourced from
+# https://github.com/JoviDeCroock/skills (integrated for use alongside the
+# Preact rule bucket added in this codebase). Each directory is a
+# stand-alone Anthropic-format skill with a single `SKILL.md` file.
+!/.agents/skills/preact-no-build-vite-setup/
+!/.agents/skills/preact-no-build-vite-setup/**
+!/.agents/skills/preact-typescript-jsx/
+!/.agents/skills/preact-typescript-jsx/**
+!/.agents/skills/preact-compat-aliasing/
+!/.agents/skills/preact-compat-aliasing/**
+!/.agents/skills/preact-hooks-debugging/
+!/.agents/skills/preact-hooks-debugging/**
+!/.agents/skills/preact-debug-warnings/
+!/.agents/skills/preact-debug-warnings/**
+!/.agents/skills/preact-forms-events/
+!/.agents/skills/preact-forms-events/**
+!/.agents/skills/preact-ssr-prerendering/
+!/.agents/skills/preact-ssr-prerendering/**
+!/.agents/skills/preact-hydration-mismatches/
+!/.agents/skills/preact-hydration-mismatches/**
+!/.agents/skills/preact-signals-core/
+!/.agents/skills/preact-signals-core/**
+!/.agents/skills/preact-signals-preact-integration/
+!/.agents/skills/preact-signals-preact-integration/**
+!/.agents/skills/preact-signals-react-integration/
+!/.agents/skills/preact-signals-react-integration/**
+!/.agents/skills/preact-signals-models-utils/
+!/.agents/skills/preact-signals-models-utils/**
+!/.agents/skills/preact-signals-debugging/
+!/.agents/skills/preact-signals-debugging/**
+!/.agents/skills/preact-signals-testing/
+!/.agents/skills/preact-signals-testing/**
+!/.agents/skills/preact-signals-no-build/
+!/.agents/skills/preact-signals-no-build/**
+!/.agents/skills/preact-signals-eslint-plugin/
+!/.agents/skills/preact-signals-eslint-plugin/**
+!/.agents/skills/preact-options-hooks/
+!/.agents/skills/preact-options-hooks/**
 
 # Local-only: rule-catalog generators and per-rule prompts. The generated
 # `rules.json` and the prompts themselves live in the (private) evals repo;

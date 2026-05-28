@@ -1,5 +1,11 @@
 # oxlint-plugin-react-doctor
 
+## 0.2.11
+
+### Patch Changes
+
+- [#546](https://github.com/millionco/react-doctor/pull/546) [`6f8640f`](https://github.com/millionco/react-doctor/commit/6f8640f6d98a75db90d28b56fdaf5abc81a53163) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Stop `js-tosorted-immutable` from firing in React Native / Expo projects. Hermes (the default RN/Expo JS engine) hasn't shipped the ES2023 change-array-by-copy methods, so the rule's recommended `array.toSorted()` rewrite of `[...array].sort()` crashed at runtime with `TypeError: undefined is not a function`. The rule now carries `disabledBy: ["react-native"]`, so it only fires on projects whose engine supports `toSorted()`.
+
 ## 0.2.10
 
 ### Patch Changes

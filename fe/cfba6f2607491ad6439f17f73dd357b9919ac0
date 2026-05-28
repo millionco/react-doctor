@@ -1,0 +1,23 @@
+packages/core/tests/fixtures/basic-react/src/transient-and-async-issues.tsx
+  s_fa2e24e3f8f3f2::t_296705d39a3dd6 40-45,54-58
+packages/react-doctor/tests/regressions/architecture-rules.test.ts
+  s_fa2e24e3f8f3f2::t_296705d39a3dd6 14-21
+packages/oxlint-plugin-react-doctor/scripts/generate-rule-registry.mjs
+  s_fa2e24e3f8f3f2::t_296705d39a3dd6 62-79,142
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "fecfba6f2607491ad6439f17f73dd357b9919ac0",
+  "prompts": {},
+  "sessions": {
+    "s_fa2e24e3f8f3f2": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ae7507ca-3790-4ab0-ab82-10dbb408bdbc",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

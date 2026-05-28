@@ -1,0 +1,24 @@
+packages/core/tests/append-reanimated-shared-value-hint.test.ts
+  s_33e090db31c121::t_419b760a7a353d 25
+  s_33e090db31c121::t_b7ac9b9a34782b 50
+  s_33e090db31c121::t_96ee66c455fb13 67,71
+  s_33e090db31c121::t_90507fc4724cea 100,107
+packages/core/src/utils/append-reanimated-shared-value-hint.ts
+  s_33e090db31c121::t_d9aad1d788a042 9,20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "8a3ebfae738a05b455279b36a1fb1eda3341a888",
+  "prompts": {},
+  "sessions": {
+    "s_33e090db31c121": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "29c67cf1-bc50-4404-be76-3c951a87e038",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

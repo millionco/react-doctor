@@ -1,0 +1,19 @@
+packages/oxlint-plugin-react-doctor/src/plugin/utils/is-nextjs-metadata-image-route-filename.ts
+  s_fa2e24e3f8f3f2::t_b67567b6e31acd 20-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "ce86fc53473bedf4fa5ba1e6a7904c12bf0e9cce",
+  "prompts": {},
+  "sessions": {
+    "s_fa2e24e3f8f3f2": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ae7507ca-3790-4ab0-ab82-10dbb408bdbc",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

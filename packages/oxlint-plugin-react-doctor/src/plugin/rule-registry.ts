@@ -206,6 +206,8 @@ import { noWillUpdateSetState } from "./rules/react-builtins/no-will-update-set-
 import { noZIndex9999 } from "./rules/design/no-z-index9999.js";
 import { onlyExportComponents } from "./rules/react-builtins/only-export-components.js";
 import { preactNoChildrenLength } from "./rules/preact/preact-no-children-length.js";
+import { preactNoOnDoubleClick } from "./rules/preact/preact-no-on-double-click.js";
+import { preactNoReactHooksImport } from "./rules/preact/preact-no-react-hooks-import.js";
 import { preactNoRenderArguments } from "./rules/preact/preact-no-render-arguments.js";
 import { preactPreferOninput } from "./rules/preact/preact-prefer-oninput.js";
 import { preferDynamicImport } from "./rules/bundle-size/prefer-dynamic-import.js";
@@ -2475,6 +2477,28 @@ export const reactDoctorRules = [
     originallyExternal: false,
     rule: {
       ...preactNoChildrenLength,
+      framework: "preact",
+      category: "Preact",
+    },
+  },
+  {
+    key: "react-doctor/preact-no-on-double-click",
+    id: "preact-no-on-double-click",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...preactNoOnDoubleClick,
+      framework: "preact",
+      category: "Preact",
+    },
+  },
+  {
+    key: "react-doctor/preact-no-react-hooks-import",
+    id: "preact-no-react-hooks-import",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...preactNoReactHooksImport,
       framework: "preact",
       category: "Preact",
     },

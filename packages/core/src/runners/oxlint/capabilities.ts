@@ -43,7 +43,18 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<string> => 
   // dominant Preact-on-Vite setup (which classifies as `vite` for
   // build-tool reasons) still gets the `preact` capability and its
   // matching rule bucket.
-  if (project.hasPreact) capabilities.add("preact");
+  if (project.hasPreact) {
+    capabilities.add("preact");
+    // `pure-preact` is the strict-mode signal: Preact is in the
+    // dependency graph AND no `react` package is present, so the
+    // project cannot be running through `preact/compat` aliasing.
+    // Rules that flag patterns which are silently broken in pure
+    // Preact but *correct* under `preact/compat` (e.g. importing
+    // hooks from `react`, since `react` is the alias entry point)
+    // gate on this stricter capability to avoid false positives in
+    // compat-aliased codebases.
+    if (project.reactVersion === null) capabilities.add("pure-preact");
+  }
 
   return capabilities;
 };

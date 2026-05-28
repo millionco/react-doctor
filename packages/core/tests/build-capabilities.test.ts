@@ -39,4 +39,25 @@ describe("buildCapabilities", () => {
     const capabilities = buildCapabilities({ ...baseProject, framework: "vite", hasPreact: false });
     expect(capabilities.has("preact")).toBe(false);
   });
+
+  it("emits `pure-preact` only when no `react` is present alongside Preact", () => {
+    const purePreact = buildCapabilities({
+      ...baseProject,
+      framework: "preact",
+      hasPreact: true,
+      reactVersion: null,
+      reactMajorVersion: null,
+    });
+    expect(purePreact.has("pure-preact")).toBe(true);
+
+    const compatStyle = buildCapabilities({
+      ...baseProject,
+      framework: "vite",
+      hasPreact: true,
+      reactVersion: "18.3.1",
+      reactMajorVersion: 18,
+    });
+    expect(compatStyle.has("preact")).toBe(true);
+    expect(compatStyle.has("pure-preact")).toBe(false);
+  });
 });

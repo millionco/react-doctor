@@ -5,6 +5,33 @@ import { isEs6Component } from "../../utils/is-es6-component.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
+// Preact code conventionally imports the namespace as `Preact` (e.g.
+// `import * as Preact from "preact"; class Foo extends Preact.Component`).
+// The shared `isEs6Component` helper only recognises the React pragma, so
+// for the Preact-bucket rule we add a local check that covers the
+// equivalent Preact-namespace pattern. Not folded into the shared helper
+// to avoid changing behaviour of every other rule that depends on it.
+const PREACT_COMPONENT_NAMESPACES = new Set(["Preact"]);
+const PREACT_COMPONENT_NAMES = new Set(["Component", "PureComponent"]);
+
+const isPreactNamespaceComponentRef = (node: EsTreeNode): boolean => {
+  if (!isNodeOfType(node, "MemberExpression")) return false;
+  if (!isNodeOfType(node.object, "Identifier")) return false;
+  if (!PREACT_COMPONENT_NAMESPACES.has(node.object.name)) return false;
+  if (!isNodeOfType(node.property, "Identifier")) return false;
+  return PREACT_COMPONENT_NAMES.has(node.property.name);
+};
+
+const isPreactOrReactComponentClass = (node: EsTreeNode): boolean => {
+  if (isEs6Component(node)) return true;
+  if (!isNodeOfType(node, "ClassDeclaration") && !isNodeOfType(node, "ClassExpression")) {
+    return false;
+  }
+  const superClass = node.superClass;
+  if (!superClass) return false;
+  return isPreactNamespaceComponentRef(superClass);
+};
+
 const RENDER_ARGUMENTS_MESSAGE =
   "Preact's `render(props, state)` argument shape is harder to type than `this.props` / `this.state`, breaks under `preact/compat` (which mirrors React's parameterless signature), and quietly diverges from every other Preact lifecycle method. Prefer reading from `this.props` / `this.state`.";
 
@@ -25,7 +52,7 @@ const isInsideEs6Component = (methodDefinition: EsTreeNode): boolean => {
   if (!classBody || !isNodeOfType(classBody, "ClassBody")) return false;
   const owningClass = classBody.parent;
   if (!owningClass) return false;
-  return isEs6Component(owningClass);
+  return isPreactOrReactComponentClass(owningClass);
 };
 
 // TypeScript lets users type the `this` binding via a leading `this:` parameter

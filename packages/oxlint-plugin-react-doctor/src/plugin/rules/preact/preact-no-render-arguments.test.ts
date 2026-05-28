@@ -27,6 +27,40 @@ describe("preact-no-render-arguments", () => {
     expect(result.diagnostics[0].message).not.toContain("deprecated");
   });
 
+  it("flags `render(props, state)` on a class extending `Preact.Component` (namespace import)", () => {
+    const result = runRule(
+      preactNoRenderArguments,
+      `
+      import * as Preact from "preact";
+
+      class Header extends Preact.Component {
+        render(props) {
+          return <h1>{props.title}</h1>;
+        }
+      }
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags `render(props)` on a class extending `Preact.PureComponent`", () => {
+    const result = runRule(
+      preactNoRenderArguments,
+      `
+      import * as Preact from "preact";
+
+      class Pure extends Preact.PureComponent {
+        render(props) {
+          return <span>{props.label}</span>;
+        }
+      }
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags `render(props, state)` on a class extending React.Component", () => {
     const result = runRule(
       preactNoRenderArguments,

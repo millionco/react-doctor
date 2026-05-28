@@ -43,7 +43,10 @@ import { forbidElements } from "./rules/react-builtins/forbid-elements.js";
 import { forwardRefUsesRef } from "./rules/react-builtins/forward-ref-uses-ref.js";
 import { headingHasContent } from "./rules/a11y/heading-has-content.js";
 import { hookUseState } from "./rules/react-builtins/hook-use-state.js";
+import { hooksNoNanInDeps } from "./rules/state-and-effects/hooks-no-nan-in-deps.js";
 import { htmlHasLang } from "./rules/a11y/html-has-lang.js";
+import { htmlNoInvalidParagraphChild } from "./rules/correctness/html-no-invalid-paragraph-child.js";
+import { htmlNoNestedInteractive } from "./rules/correctness/html-no-nested-interactive.js";
 import { iframeHasTitle } from "./rules/a11y/iframe-has-title.js";
 import { iframeMissingSandbox } from "./rules/react-builtins/iframe-missing-sandbox.js";
 import { imgRedundantAlt } from "./rules/a11y/img-redundant-alt.js";
@@ -689,6 +692,17 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/hooks-no-nan-in-deps",
+    id: "hooks-no-nan-in-deps",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...hooksNoNanInDeps,
+      framework: "global",
+      category: "State & Effects",
+    },
+  },
+  {
     key: "react-doctor/html-has-lang",
     id: "html-has-lang",
     source: "react-doctor",
@@ -697,6 +711,28 @@ export const reactDoctorRules = [
       ...htmlHasLang,
       framework: "global",
       category: "Accessibility",
+    },
+  },
+  {
+    key: "react-doctor/html-no-invalid-paragraph-child",
+    id: "html-no-invalid-paragraph-child",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...htmlNoInvalidParagraphChild,
+      framework: "global",
+      category: "Correctness",
+    },
+  },
+  {
+    key: "react-doctor/html-no-nested-interactive",
+    id: "html-no-nested-interactive",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...htmlNoNestedInteractive,
+      framework: "global",
+      category: "Correctness",
     },
   },
   {

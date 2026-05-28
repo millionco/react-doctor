@@ -6,13 +6,13 @@ import { findNearestPackageDirectory, hasDoctorScript } from "./install-doctor-s
 import { isCiOrCodingAgentEnvironment, isCodingAgentEnvironment } from "./is-ci-environment.js";
 import { SETUP_PROMPT_DELAY_MS } from "./constants.js";
 
-export interface InstallSkillRunnerOptions {
+export interface InstallReactDoctorRunnerOptions {
   readonly projectRoot?: string;
   readonly onPromptCancel?: () => void;
 }
 
-export interface InstallSkillRunner {
-  (options: InstallSkillRunnerOptions): Promise<void>;
+export interface InstallReactDoctorRunner {
+  (options: InstallReactDoctorRunnerOptions): Promise<void>;
 }
 
 export interface SetupPromptWait {
@@ -52,7 +52,7 @@ export interface ShouldPromptInstallSetupOptions {
 
 export interface PromptInstallSetupOptions extends ShouldPromptInstallSetupOptions {
   readonly issueCount: number;
-  readonly install?: InstallSkillRunner;
+  readonly install?: InstallReactDoctorRunner;
   readonly select?: SetupPromptSelect;
   readonly wait?: SetupPromptWait;
   readonly warn?: SetupPromptWarningWriter;
@@ -220,7 +220,8 @@ export const promptInstallSetup = async (options: PromptInstallSetupOptions): Pr
       return;
     }
 
-    const install = options.install ?? (await import("./install-skill.js")).runInstallSkill;
+    const install =
+      options.install ?? (await import("./install-react-doctor.js")).runInstallReactDoctor;
     const previousExitCode = process.exitCode;
     let setupExitCode: typeof process.exitCode;
     try {

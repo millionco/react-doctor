@@ -2,20 +2,26 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import type { Answers, PromptObject } from "prompts";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { runInstallSkill } from "../src/cli/utils/install-skill.js";
-import type { InstallReactDoctorDependencyRunnerInput } from "../src/cli/utils/install-skill.js";
+import {
+  CODING_AGENT_ENVIRONMENT_VALUE_VARIABLES,
+  CODING_AGENT_ENVIRONMENT_VARIABLES,
+} from "../src/cli/utils/is-ci-environment.js";
+import { NON_INTERACTIVE_ENVIRONMENT_VARIABLES } from "../src/cli/utils/is-non-interactive-environment.js";
+import { runInstallReactDoctor } from "../src/cli/utils/install-react-doctor.js";
+import type { InstallReactDoctorDependencyRunnerInput } from "../src/cli/utils/install-react-doctor.js";
 import { setSpinnerSilent } from "../src/cli/utils/spinner.js";
 import { silenceConsoleForTest } from "./helpers/silence-console.js";
 
-interface InstallSkillFixture {
+interface InstallReactDoctorFixture {
   projectRoot: string;
   sourceDir: string;
   cleanup: () => void;
 }
 
-const setupFixture = (): InstallSkillFixture => {
-  const root = mkdtempSync(path.join(tmpdir(), "react-doctor-install-skill-"));
+const setupFixture = (): InstallReactDoctorFixture => {
+  const root = mkdtempSync(path.join(tmpdir(), "react-doctor-install-"));
   const projectRoot = path.join(root, "project");
   const sourceDir = path.join(root, "source");
   mkdirSync(projectRoot, { recursive: true });
@@ -44,7 +50,7 @@ const readFixturePackageJson = (projectRoot: string): Record<string, unknown> =>
 let dependencyInstallCalls: InstallReactDoctorDependencyRunnerInput[] = [];
 
 const installDependencyForTest: NonNullable<
-  Parameters<typeof runInstallSkill>[0]
+  Parameters<typeof runInstallReactDoctor>[0]
 >["installDependencyRunner"] = (input) => {
   dependencyInstallCalls.push(input);
   const packageJson = readFixturePackageJson(input.cwd);
@@ -61,14 +67,81 @@ const installDependencyForTest: NonNullable<
   });
 };
 
-const runInstallSkillForTest = (options: NonNullable<Parameters<typeof runInstallSkill>[0]>) =>
-  runInstallSkill({
+const runInstallReactDoctorForTest = (
+  options: NonNullable<Parameters<typeof runInstallReactDoctor>[0]>,
+) =>
+  runInstallReactDoctor({
     installDependencyRunner: installDependencyForTest,
     ...options,
   });
 
-describe("runInstallSkill", () => {
-  let fixture: InstallSkillFixture;
+interface RunInteractiveInstallReactDoctorForTestOptions {
+  readonly sourceDir: string;
+  readonly projectRoot: string;
+  readonly gitHookPath: string;
+  readonly setupOptions: readonly string[];
+  readonly promptQuestions?: unknown[];
+}
+
+const runInteractiveInstallReactDoctorForTest = async (
+  options: RunInteractiveInstallReactDoctorForTestOptions,
+): Promise<void> => {
+  const originalIsTty = process.stdin.isTTY;
+  const savedEnvironmentValues = new Map<string, string | undefined>();
+  const interactivePromptEnvironmentVariables = new Set([
+    ...NON_INTERACTIVE_ENVIRONMENT_VARIABLES,
+    ...CODING_AGENT_ENVIRONMENT_VARIABLES,
+    ...CODING_AGENT_ENVIRONMENT_VALUE_VARIABLES,
+  ]);
+  const prompt: NonNullable<Parameters<typeof runInstallReactDoctor>[0]>["prompt"] = async <
+    PromptName extends string = string,
+  >(
+    question: PromptObject<PromptName> | PromptObject<PromptName>[],
+  ) => {
+    options.promptQuestions?.push(question);
+    const promptQuestion = Array.isArray(question) ? question[0] : question;
+    const answers: Answers<PromptName> = Object.create(null);
+    const questionName = promptQuestion?.name;
+    if (typeof questionName !== "string") return answers;
+    answers[questionName] = questionName === "agents" ? ["cursor"] : options.setupOptions;
+    return answers;
+  };
+
+  try {
+    for (const environmentVariable of interactivePromptEnvironmentVariables) {
+      savedEnvironmentValues.set(environmentVariable, process.env[environmentVariable]);
+      delete process.env[environmentVariable];
+    }
+    Object.defineProperty(process.stdin, "isTTY", {
+      configurable: true,
+      value: true,
+    });
+
+    await runInstallReactDoctorForTest({
+      sourceDir: options.sourceDir,
+      projectRoot: options.projectRoot,
+      detectedAgents: ["cursor"],
+      gitHookPath: options.gitHookPath,
+      prompt,
+    });
+  } finally {
+    Object.defineProperty(process.stdin, "isTTY", {
+      configurable: true,
+      value: originalIsTty,
+    });
+    for (const environmentVariable of interactivePromptEnvironmentVariables) {
+      const savedEnvironmentValue = savedEnvironmentValues.get(environmentVariable);
+      if (savedEnvironmentValue === undefined) {
+        delete process.env[environmentVariable];
+      } else {
+        process.env[environmentVariable] = savedEnvironmentValue;
+      }
+    }
+  }
+};
+
+describe("runInstallReactDoctor", () => {
+  let fixture: InstallReactDoctorFixture;
   let originalExitCode: number | string | null | undefined;
   let originalCi: string | undefined;
   let restoreConsole: () => void;
@@ -97,7 +170,7 @@ describe("runInstallSkill", () => {
 
   it("exits with code 1 when the bundled SKILL.md is missing", async () => {
     writePackageJson(fixture.projectRoot, { scripts: {} });
-    await runInstallSkillForTest({
+    await runInstallReactDoctorForTest({
       yes: true,
       sourceDir: fixture.sourceDir,
       projectRoot: fixture.projectRoot,
@@ -112,7 +185,7 @@ describe("runInstallSkill", () => {
   it("exits with code 1 when no agents are detected", async () => {
     writeValidSkill(fixture.sourceDir);
     writePackageJson(fixture.projectRoot, { scripts: {} });
-    await runInstallSkillForTest({
+    await runInstallReactDoctorForTest({
       yes: true,
       sourceDir: fixture.sourceDir,
       projectRoot: fixture.projectRoot,
@@ -135,7 +208,7 @@ describe("runInstallSkill", () => {
       "# Just a heading, no frontmatter\nNothing here.\n",
     );
     await expect(
-      runInstallSkillForTest({
+      runInstallReactDoctorForTest({
         yes: true,
         sourceDir: fixture.sourceDir,
         projectRoot: fixture.projectRoot,
@@ -150,7 +223,7 @@ describe("runInstallSkill", () => {
       "---\nname: react-doctor\n---\n# react-doctor\n",
     );
     await expect(
-      runInstallSkillForTest({
+      runInstallReactDoctorForTest({
         yes: true,
         sourceDir: fixture.sourceDir,
         projectRoot: fixture.projectRoot,
@@ -162,7 +235,7 @@ describe("runInstallSkill", () => {
   it("--dry-run writes nothing, even with valid SKILL.md and detected agents", async () => {
     writeValidSkill(fixture.sourceDir);
     writePackageJson(fixture.projectRoot, { scripts: {} });
-    await runInstallSkillForTest({
+    await runInstallReactDoctorForTest({
       yes: true,
       dryRun: true,
       agentHooks: true,
@@ -185,7 +258,7 @@ describe("runInstallSkill", () => {
       },
     });
 
-    await runInstallSkillForTest({
+    await runInstallReactDoctorForTest({
       yes: true,
       sourceDir: fixture.sourceDir,
       projectRoot: fixture.projectRoot,
@@ -209,7 +282,7 @@ describe("runInstallSkill", () => {
       scripts: {},
     });
 
-    await runInstallSkillForTest({
+    await runInstallReactDoctorForTest({
       yes: true,
       sourceDir: fixture.sourceDir,
       projectRoot: fixture.projectRoot,
@@ -239,7 +312,7 @@ describe("runInstallSkill", () => {
       scripts: {},
     });
 
-    await runInstallSkillForTest({
+    await runInstallReactDoctorForTest({
       yes: true,
       sourceDir: fixture.sourceDir,
       projectRoot: appDirectory,
@@ -261,7 +334,7 @@ describe("runInstallSkill", () => {
     writePackageJson(fixture.projectRoot, { scripts: {} });
 
     await expect(
-      runInstallSkillForTest({
+      runInstallReactDoctorForTest({
         yes: true,
         sourceDir: fixture.sourceDir,
         projectRoot: fixture.projectRoot,
@@ -280,7 +353,7 @@ describe("runInstallSkill", () => {
     const nestedDirectory = path.join(fixture.projectRoot, "src", "components");
     mkdirSync(nestedDirectory, { recursive: true });
 
-    await runInstallSkillForTest({
+    await runInstallReactDoctorForTest({
       yes: true,
       sourceDir: fixture.sourceDir,
       projectRoot: nestedDirectory,
@@ -305,7 +378,7 @@ describe("runInstallSkill", () => {
       },
     });
 
-    await runInstallSkillForTest({
+    await runInstallReactDoctorForTest({
       yes: true,
       sourceDir: fixture.sourceDir,
       projectRoot: fixture.projectRoot,
@@ -329,7 +402,7 @@ describe("runInstallSkill", () => {
       },
     });
 
-    await runInstallSkillForTest({
+    await runInstallReactDoctorForTest({
       yes: true,
       sourceDir: fixture.sourceDir,
       projectRoot: fixture.projectRoot,
@@ -355,7 +428,7 @@ describe("runInstallSkill", () => {
       scripts: {},
     });
 
-    await runInstallSkillForTest({
+    await runInstallReactDoctorForTest({
       yes: true,
       sourceDir: fixture.sourceDir,
       projectRoot: fixture.projectRoot,
@@ -375,7 +448,7 @@ describe("runInstallSkill", () => {
     writeValidSkill(fixture.sourceDir);
     writeFileSync(path.join(fixture.projectRoot, "package.json"), "{ invalid json");
 
-    await runInstallSkillForTest({
+    await runInstallReactDoctorForTest({
       yes: true,
       sourceDir: fixture.sourceDir,
       projectRoot: fixture.projectRoot,
@@ -393,7 +466,7 @@ describe("runInstallSkill", () => {
 
   it("installs the skill into the universal .agents/skills directory for a universal agent", async () => {
     writeValidSkill(fixture.sourceDir);
-    await runInstallSkillForTest({
+    await runInstallReactDoctorForTest({
       yes: true,
       sourceDir: fixture.sourceDir,
       projectRoot: fixture.projectRoot,
@@ -406,7 +479,7 @@ describe("runInstallSkill", () => {
 
   it("installs the skill into a vendor-specific directory for a non-universal agent", async () => {
     writeValidSkill(fixture.sourceDir);
-    await runInstallSkillForTest({
+    await runInstallReactDoctorForTest({
       yes: true,
       sourceDir: fixture.sourceDir,
       projectRoot: fixture.projectRoot,
@@ -419,7 +492,7 @@ describe("runInstallSkill", () => {
 
   it("installs the skill into .factory/skills for the droid agent (upstream agent-install@0.0.3)", async () => {
     writeValidSkill(fixture.sourceDir);
-    await runInstallSkillForTest({
+    await runInstallReactDoctorForTest({
       yes: true,
       sourceDir: fixture.sourceDir,
       projectRoot: fixture.projectRoot,
@@ -434,7 +507,7 @@ describe("runInstallSkill", () => {
     writeValidSkill(fixture.sourceDir);
     const hookPath = path.join(fixture.projectRoot, ".git/hooks/pre-commit");
 
-    await runInstallSkillForTest({
+    await runInstallReactDoctorForTest({
       yes: true,
       sourceDir: fixture.sourceDir,
       projectRoot: fixture.projectRoot,
@@ -454,7 +527,7 @@ describe("runInstallSkill", () => {
   it("--agent-hooks installs native hooks for selected supported agents", async () => {
     writeValidSkill(fixture.sourceDir);
 
-    await runInstallSkillForTest({
+    await runInstallReactDoctorForTest({
       yes: true,
       agentHooks: true,
       sourceDir: fixture.sourceDir,
@@ -478,10 +551,84 @@ describe("runInstallSkill", () => {
     expect(existsSync(path.join(fixture.projectRoot, ".codex/hooks.json"))).toBe(false);
   });
 
+  it("prompts once for optional setup and installs only selected options", async () => {
+    writeValidSkill(fixture.sourceDir);
+    writePackageJson(fixture.projectRoot, { scripts: {} });
+    const promptQuestions: unknown[] = [];
+    const hookPath = path.join(fixture.projectRoot, ".git/hooks/pre-commit");
+    const workflowPath = path.join(fixture.projectRoot, ".github/workflows/react-doctor.yml");
+
+    await runInteractiveInstallReactDoctorForTest({
+      sourceDir: fixture.sourceDir,
+      projectRoot: fixture.projectRoot,
+      gitHookPath: hookPath,
+      setupOptions: ["workflow"],
+      promptQuestions,
+    });
+
+    expect(promptQuestions).toHaveLength(2);
+    expect(promptQuestions[1]).toEqual(
+      expect.objectContaining({
+        type: "multiselect",
+        name: "setupOptions",
+        message: "Select additional React Doctor setup:",
+      }),
+    );
+    expect(promptQuestions[1]).toEqual(
+      expect.objectContaining({
+        choices: expect.arrayContaining([
+          expect.objectContaining({ value: "skip" }),
+          expect.objectContaining({ value: "git-hook" }),
+          expect.objectContaining({ value: "agent-hooks" }),
+          expect.objectContaining({ value: "workflow" }),
+        ]),
+      }),
+    );
+    expect(existsSync(hookPath)).toBe(false);
+    expect(existsSync(path.join(fixture.projectRoot, ".cursor/hooks.json"))).toBe(false);
+    expect(readFileSync(workflowPath, "utf8")).toContain("name: React Doctor");
+  });
+
+  it("skips optional setup when only the skip option is selected", async () => {
+    writeValidSkill(fixture.sourceDir);
+    writePackageJson(fixture.projectRoot, { scripts: {} });
+    const hookPath = path.join(fixture.projectRoot, ".git/hooks/pre-commit");
+    const workflowPath = path.join(fixture.projectRoot, ".github/workflows/react-doctor.yml");
+
+    await runInteractiveInstallReactDoctorForTest({
+      sourceDir: fixture.sourceDir,
+      projectRoot: fixture.projectRoot,
+      gitHookPath: hookPath,
+      setupOptions: ["skip"],
+    });
+
+    expect(existsSync(hookPath)).toBe(false);
+    expect(existsSync(path.join(fixture.projectRoot, ".cursor/hooks.json"))).toBe(false);
+    expect(existsSync(workflowPath)).toBe(false);
+  });
+
+  it("honors selected setup actions when skip is selected with another option", async () => {
+    writeValidSkill(fixture.sourceDir);
+    writePackageJson(fixture.projectRoot, { scripts: {} });
+    const hookPath = path.join(fixture.projectRoot, ".git/hooks/pre-commit");
+    const workflowPath = path.join(fixture.projectRoot, ".github/workflows/react-doctor.yml");
+
+    await runInteractiveInstallReactDoctorForTest({
+      sourceDir: fixture.sourceDir,
+      projectRoot: fixture.projectRoot,
+      gitHookPath: hookPath,
+      setupOptions: ["skip", "workflow"],
+    });
+
+    expect(existsSync(hookPath)).toBe(false);
+    expect(existsSync(path.join(fixture.projectRoot, ".cursor/hooks.json"))).toBe(false);
+    expect(readFileSync(workflowPath, "utf8")).toContain("name: React Doctor");
+  });
+
   it("--yes does not install native agent hooks unless --agent-hooks is set", async () => {
     writeValidSkill(fixture.sourceDir);
 
-    await runInstallSkillForTest({
+    await runInstallReactDoctorForTest({
       yes: true,
       sourceDir: fixture.sourceDir,
       projectRoot: fixture.projectRoot,
@@ -504,7 +651,7 @@ describe("runInstallSkill", () => {
     process.env.CI = "1";
     execFileSync("git", ["init"], { cwd: fixture.projectRoot, stdio: "ignore" });
 
-    await runInstallSkillForTest({
+    await runInstallReactDoctorForTest({
       yes: true,
       agentHooks: true,
       sourceDir: fixture.sourceDir,
@@ -531,7 +678,7 @@ describe("runInstallSkill", () => {
     process.env.CI = "1";
     execFileSync("git", ["init"], { cwd: fixture.projectRoot, stdio: "ignore" });
 
-    await runInstallSkillForTest({
+    await runInstallReactDoctorForTest({
       agentHooks: true,
       sourceDir: fixture.sourceDir,
       projectRoot: fixture.projectRoot,

@@ -25,6 +25,11 @@ import { prompts } from "./prompts.js";
 import { shouldSkipPrompts } from "./should-skip-prompts.js";
 import { spinner } from "./spinner.js";
 
+const SETUP_OPTION_GIT_HOOK = "git-hook";
+const SETUP_OPTION_AGENT_HOOKS = "agent-hooks";
+const SETUP_OPTION_WORKFLOW = "workflow";
+const SETUP_OPTION_SKIP = "skip";
+
 const CONFIG_ONLY_GIT_HOOK_KINDS = new Set([
   GitHookKind.Ghooks,
   GitHookKind.GitHooksJs,
@@ -249,7 +254,7 @@ const installReactDoctorPackageSetup = async (
   }
 };
 
-interface InstallSkillOptions {
+interface InstallReactDoctorOptions {
   yes?: boolean;
   dryRun?: boolean;
   agentHooks?: boolean;
@@ -262,6 +267,7 @@ interface InstallSkillOptions {
   installDependencyRunner?: (
     input: InstallReactDoctorDependencyRunnerInput,
   ) => void | Promise<void>;
+  prompt?: typeof prompts;
 }
 
 const getSkillSourceDirectory = (): string => {
@@ -269,7 +275,36 @@ const getSkillSourceDirectory = (): string => {
   return path.join(distDirectory, "skills", SKILL_NAME);
 };
 
-export const runInstallSkill = async (options: InstallSkillOptions = {}): Promise<void> => {
+const canInstallNativeAgentHooks = (agents: readonly SkillAgentType[]): boolean =>
+  agents.some((agent) => agent === "claude-code" || agent === "cursor");
+
+const buildWorkflowContent = (): string =>
+  [
+    "name: React Doctor",
+    "",
+    "on:",
+    "  pull_request:",
+    "    branches: [main]",
+    "",
+    "permissions:",
+    "  contents: read",
+    "  pull-requests: write",
+    "",
+    "jobs:",
+    "  react-doctor:",
+    "    runs-on: ubuntu-latest",
+    "    steps:",
+    "      - uses: actions/checkout@v4",
+    "      - uses: millionco/react-doctor@main",
+    "        with:",
+    "          github-token: ${{ secrets.GITHUB_TOKEN }}",
+    "          diff: main",
+    "",
+  ].join("\n");
+
+export const runInstallReactDoctor = async (
+  options: InstallReactDoctorOptions = {},
+): Promise<void> => {
   const requestedProjectRoot = options.projectRoot ?? process.cwd();
   const projectRoot = findNearestPackageDirectory(requestedProjectRoot) ?? requestedProjectRoot;
   const sourceDir = options.sourceDir ?? getSkillSourceDirectory();
@@ -301,11 +336,12 @@ export const runInstallSkill = async (options: InstallSkillOptions = {}): Promis
   const gitHookPath = gitHookTarget?.hookPath;
   const promptOptions =
     options.onPromptCancel === undefined ? {} : { onCancel: options.onPromptCancel };
+  const prompt = options.prompt ?? prompts;
 
   const selectedAgents: SkillAgentType[] = skipPrompts
     ? detectedAgents
     : ((
-        await prompts(
+        await prompt(
           {
             type: "multiselect",
             name: "agents",
@@ -324,26 +360,89 @@ export const runInstallSkill = async (options: InstallSkillOptions = {}): Promis
 
   if (selectedAgents.length === 0) return;
 
+  const workflowsDirectory = path.join(projectRoot, ".github", "workflows");
+  const workflowTargetPath = path.join(workflowsDirectory, "react-doctor.yml");
+  const hasExistingWorkflows = existsSync(workflowsDirectory);
+  const canInstallWorkflow = !existsSync(workflowTargetPath);
+  const setupActionChoices = [
+    ...(gitHookPath === null || gitHookPath === undefined
+      ? []
+      : [
+          {
+            title: "Pre-commit hook",
+            description: "Check staged changes before each commit",
+            value: SETUP_OPTION_GIT_HOOK,
+            selected: true,
+          },
+        ]),
+    ...(canInstallNativeAgentHooks(selectedAgents)
+      ? [
+          {
+            title: "Agent hooks",
+            description: "Ask Claude Code or Cursor to scan after code edits",
+            value: SETUP_OPTION_AGENT_HOOKS,
+            selected: Boolean(options.agentHooks),
+          },
+        ]
+      : []),
+    ...(canInstallWorkflow
+      ? [
+          {
+            title: "GitHub Actions workflow",
+            description: "Scan pull requests in CI",
+            value: SETUP_OPTION_WORKFLOW,
+            selected: hasExistingWorkflows,
+          },
+        ]
+      : []),
+  ];
+  const setupChoices =
+    setupActionChoices.length === 0
+      ? []
+      : [
+          {
+            title: "Skip optional setup",
+            description: "Install only the agent skill and package setup",
+            value: SETUP_OPTION_SKIP,
+            selected: false,
+          },
+          ...setupActionChoices,
+        ];
+  const selectedSetupOptions: string[] =
+    skipPrompts || setupChoices.length === 0
+      ? []
+      : ((
+          await prompt<"setupOptions">(
+            {
+              type: "multiselect",
+              name: "setupOptions",
+              message: "Select additional React Doctor setup:",
+              choices: setupChoices,
+              instructions: false,
+            },
+            promptOptions,
+          )
+        ).setupOptions ?? []);
+  const selectedSetupActions = selectedSetupOptions.filter(
+    (setupOption) => setupOption !== SETUP_OPTION_SKIP,
+  );
+  const didSkipOptionalSetup =
+    selectedSetupActions.length === 0 && selectedSetupOptions.includes(SETUP_OPTION_SKIP);
+
   const shouldInstallGitHook =
     gitHookPath !== null &&
     gitHookPath !== undefined &&
     (Boolean(options.yes) ||
-      (!skipPrompts &&
-        Boolean(
-          (
-            await prompts<"installGitHook">(
-              {
-                type: "confirm",
-                name: "installGitHook",
-                message: "Check for issues before each commit?",
-                initial: true,
-              },
-              promptOptions,
-            )
-          ).installGitHook,
-        )));
+      (!didSkipOptionalSetup && selectedSetupActions.includes(SETUP_OPTION_GIT_HOOK)));
 
-  const shouldInstallAgentHooks = Boolean(options.agentHooks);
+  const shouldInstallAgentHooks =
+    Boolean(options.agentHooks) ||
+    (!didSkipOptionalSetup && selectedSetupActions.includes(SETUP_OPTION_AGENT_HOOKS));
+  const shouldInstallWorkflow =
+    !skipPrompts &&
+    !didSkipOptionalSetup &&
+    canInstallWorkflow &&
+    selectedSetupActions.includes(SETUP_OPTION_WORKFLOW);
 
   if (options.dryRun) {
     logger.log(`Dry run — would install ${SKILL_NAME} skill for:`);
@@ -358,6 +457,9 @@ export const runInstallSkill = async (options: InstallSkillOptions = {}): Promis
     }
     if (shouldInstallAgentHooks) {
       logger.dim("  Agent hooks: Claude Code / Cursor when selected");
+    }
+    if (shouldInstallWorkflow) {
+      logger.dim(`  GitHub Actions workflow: ${path.relative(projectRoot, workflowTargetPath)}`);
     }
     return;
   }
@@ -430,55 +532,19 @@ export const runInstallSkill = async (options: InstallSkillOptions = {}): Promis
     }
   }
 
-  const workflowsDirectory = path.join(projectRoot, ".github", "workflows");
-  const workflowTargetPath = path.join(workflowsDirectory, "react-doctor.yml");
-  if (!existsSync(workflowTargetPath) && !skipPrompts) {
-    const hasExistingWorkflows = existsSync(workflowsDirectory);
-    const { shouldInstallWorkflow } = await prompts<"shouldInstallWorkflow">(
-      {
-        type: "confirm",
-        name: "shouldInstallWorkflow",
-        message: "Add a GitHub Actions workflow to scan PRs?",
-        initial: hasExistingWorkflows,
-      },
-      promptOptions,
-    );
-    if (shouldInstallWorkflow) {
-      if (!hasExistingWorkflows) {
-        mkdirSync(workflowsDirectory, { recursive: true });
-      }
-      const workflowSpinner = spinner("Adding GitHub Actions workflow...").start();
-      try {
-        const workflowContent = [
-          "name: React Doctor",
-          "",
-          "on:",
-          "  pull_request:",
-          "    branches: [main]",
-          "",
-          "permissions:",
-          "  contents: read",
-          "  pull-requests: write",
-          "",
-          "jobs:",
-          "  react-doctor:",
-          "    runs-on: ubuntu-latest",
-          "    steps:",
-          "      - uses: actions/checkout@v4",
-          "      - uses: millionco/react-doctor@main",
-          "        with:",
-          "          github-token: ${{ secrets.GITHUB_TOKEN }}",
-          "          diff: main",
-          "",
-        ].join("\n");
-        writeFileSync(workflowTargetPath, workflowContent);
-        workflowSpinner.succeed(
-          `GitHub Actions workflow added at ${path.relative(projectRoot, workflowTargetPath)}.`,
-        );
-      } catch (error) {
-        workflowSpinner.fail("Failed to add GitHub Actions workflow.");
-        throw error;
-      }
+  if (shouldInstallWorkflow) {
+    if (!hasExistingWorkflows) {
+      mkdirSync(workflowsDirectory, { recursive: true });
+    }
+    const workflowSpinner = spinner("Adding GitHub Actions workflow...").start();
+    try {
+      writeFileSync(workflowTargetPath, buildWorkflowContent());
+      workflowSpinner.succeed(
+        `GitHub Actions workflow added at ${path.relative(projectRoot, workflowTargetPath)}.`,
+      );
+    } catch (error) {
+      workflowSpinner.fail("Failed to add GitHub Actions workflow.");
+      throw error;
     }
   }
 };

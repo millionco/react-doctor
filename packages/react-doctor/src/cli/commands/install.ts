@@ -1,6 +1,6 @@
 import * as Effect from "effect/Effect";
 import { handleError } from "../utils/handle-error.js";
-import { runInstallSkill } from "../utils/install-skill.js";
+import { runInstallReactDoctor } from "../utils/install-react-doctor.js";
 import { printBrandedHeader } from "../utils/print-branded-header.js";
 
 interface InstallCommandOptions {
@@ -28,7 +28,7 @@ export const installAction = async (
   Effect.runSync(printBrandedHeader);
   try {
     const parentOptions = command?.parent?.opts?.();
-    await runInstallSkill({
+    await runInstallReactDoctor({
       yes: options.yes ?? parentOptions?.yes,
       dryRun: options.dryRun,
       agentHooks: options.agentHooks,

@@ -11,10 +11,12 @@ export interface BaseRuleContext {
   // expose this as a property and deprecate `getFilename()`:
   // https://eslint.org/blog/2023/09/preparing-custom-rules-eslint-v9/#context-methods-becoming-properties
   readonly filename?: string;
-  // Deprecated host accessor, read only as a fallback by
-  // `wrapWithSemanticContext`. ESLint implements it as a `this`-bound
-  // class method, so it must be called on the host context, never a
-  // detached reference. Rules use `context.filename` instead.
+  /**
+   * @deprecated Rules use `context.filename`. Read only as a fallback by
+   * `wrapWithSemanticContext`; ESLint implements it as a `this`-bound class
+   * method, so it must be called on the host context, never a detached
+   * reference.
+   */
   getFilename?: () => string | undefined;
   readonly settings?: Readonly<Record<string, unknown>>;
 }

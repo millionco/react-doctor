@@ -13,6 +13,7 @@ interface EslintRuleContext {
   report: (descriptor: { node: EsTreeNode; message: string }) => void;
   // https://eslint.org/blog/2023/09/preparing-custom-rules-eslint-v9/#context-methods-becoming-properties
   readonly filename?: string;
+  /** @deprecated Use `filename`. Kept only for host compatibility. */
   getFilename?: () => string | undefined;
 }
 

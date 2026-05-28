@@ -1,7 +1,4 @@
-import {
-  collectReactReduxSelectorAliases,
-  isUseSelectorIdentifier,
-} from "../../utils/collect-react-redux-selector-aliases.js";
+import { collectReactReduxSelectorAliases } from "../../utils/collect-react-redux-selector-aliases.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -9,6 +6,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { inlineUseSelectorFunction } from "./utils/inline-use-selector-function.js";
 
 const MESSAGE =
   "useSelector returning a new object/array re-renders on every dispatched action — the default `===` equality check always fails on a fresh reference. Either return a primitive, split into multiple useSelector calls, or pass `shallowEqual` (or a custom equality fn) as the second argument.";
@@ -77,12 +75,8 @@ export const reduxUseselectorReturnsNewCollection = defineRule<Rule>({
         aliases = collectReactReduxSelectorAliases(node as EsTreeNode);
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        if (!isUseSelectorIdentifier(node.callee, aliases)) return;
-        const args = node.arguments ?? [];
-        if (args.length === 0) return;
-        if (args.length >= 2) return;
-
-        const selectorArgument = stripParenExpression(args[0]);
+        const selectorArgument = inlineUseSelectorFunction(node, aliases);
+        if (!selectorArgument) return;
         if (!isConciseBodyReturningCollection(selectorArgument)) return;
 
         context.report({ node, message: MESSAGE });

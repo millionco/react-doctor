@@ -1,7 +1,4 @@
-import {
-  collectReactReduxSelectorAliases,
-  isUseSelectorIdentifier,
-} from "../../utils/collect-react-redux-selector-aliases.js";
+import { collectReactReduxSelectorAliases } from "../../utils/collect-react-redux-selector-aliases.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -11,6 +8,7 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { inlineUseSelectorFunction } from "./utils/inline-use-selector-function.js";
 
 // Array methods that allocate a fresh array on every call. Each one is a
 // classic "inline derivation" footgun inside useSelector because the
@@ -161,18 +159,8 @@ export const reduxUseselectorInlineDerivation = defineRule<Rule>({
         aliases = collectReactReduxSelectorAliases(node as EsTreeNode);
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        if (!isUseSelectorIdentifier(node.callee, aliases)) return;
-        const args = node.arguments ?? [];
-        if (args.length === 0) return;
-        if (args.length >= 2) return;
-
-        const selectorArgument = stripParenExpression(args[0]);
-        if (
-          !isNodeOfType(selectorArgument, "ArrowFunctionExpression") &&
-          !isNodeOfType(selectorArgument, "FunctionExpression")
-        ) {
-          return;
-        }
+        const selectorArgument = inlineUseSelectorFunction(node, aliases);
+        if (!selectorArgument) return;
 
         const body = selectorArgument.body;
         if (!body) return;

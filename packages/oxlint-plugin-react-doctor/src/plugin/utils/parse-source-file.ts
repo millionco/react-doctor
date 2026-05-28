@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { parseSync } from "oxc-parser";
+import { CROSS_FILE_PARSE_MAX_BYTES } from "../constants/thresholds.js";
 import { attachParentReferences } from "./attach-parent-references.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 
@@ -33,8 +34,6 @@ interface CacheEntry {
 // generated / unparseable file on every rule invocation.
 const parseCache = new Map<string, CacheEntry>();
 
-const MAX_FILE_SIZE_BYTES = 2_000_000;
-
 // Parses a file at `absoluteFilePath` and returns the program AST
 // with parent references attached, or null when the file is missing
 // / too large / .d.ts-only / fails to parse.
@@ -51,7 +50,7 @@ export const parseSourceFile = (absoluteFilePath: string): EsTreeNode | null => 
     return null;
   }
   if (!fileStat.isFile()) return null;
-  if (fileStat.size > MAX_FILE_SIZE_BYTES) return null;
+  if (fileStat.size > CROSS_FILE_PARSE_MAX_BYTES) return null;
 
   const cached = parseCache.get(absoluteFilePath);
   if (cached && cached.mtimeMs === fileStat.mtimeMs && cached.size === fileStat.size) {

@@ -1,0 +1,19 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/only-export-components.ts
+  s_fa2e24e3f8f3f2::t_296705d39a3dd6 375
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "d7da0d4a3b4fca8c3ec474c70acd3a768e7a8816",
+  "prompts": {},
+  "sessions": {
+    "s_fa2e24e3f8f3f2": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ae7507ca-3790-4ab0-ab82-10dbb408bdbc",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

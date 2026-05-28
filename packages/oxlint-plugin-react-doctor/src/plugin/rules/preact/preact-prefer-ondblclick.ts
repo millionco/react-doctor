@@ -21,9 +21,11 @@ const MESSAGE =
 // Gated on `pure-preact` (Preact in deps AND no `react` package). When
 // `react` IS installed alongside Preact the project is almost always
 // running through `preact/compat`, which mirrors React's event names —
-// flagging it there would be a false positive.
-export const preactNoOnDoubleClick = defineRule<Rule>({
-  id: "preact-no-on-double-click",
+// flagging it there would be a false positive. Pairs with the existing
+// `preact-prefer-oninput` rule (same naming convention, same intent for
+// the `onChange` → `onInput` divergence).
+export const preactPreferOndblclick = defineRule<Rule>({
+  id: "preact-prefer-ondblclick",
   requires: ["pure-preact"],
   severity: "warn",
   recommendation:

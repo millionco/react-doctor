@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
-import { preactNoOnDoubleClick } from "./preact-no-on-double-click.js";
+import { preactPreferOndblclick } from "./preact-prefer-ondblclick.js";
 
-describe("preact-no-on-double-click", () => {
+describe("preact-prefer-ondblclick", () => {
   it("flags `onDoubleClick` on a host element", () => {
     const result = runRule(
-      preactNoOnDoubleClick,
+      preactPreferOndblclick,
       `
       const Item = () => <li onDoubleClick={openInline}>Item</li>;
       `,
@@ -18,7 +18,7 @@ describe("preact-no-on-double-click", () => {
 
   it("flags `onDoubleClick` on a `<button>`", () => {
     const result = runRule(
-      preactNoOnDoubleClick,
+      preactPreferOndblclick,
       `
       const Editable = () => <button onDoubleClick={beginEdit}>Edit</button>;
       `,
@@ -29,7 +29,7 @@ describe("preact-no-on-double-click", () => {
 
   it("does not flag `onDblClick`", () => {
     const result = runRule(
-      preactNoOnDoubleClick,
+      preactPreferOndblclick,
       `
       const Item = () => <li onDblClick={openInline}>Item</li>;
       `,
@@ -40,7 +40,7 @@ describe("preact-no-on-double-click", () => {
 
   it("does not flag `onDoubleClick` on a custom (capitalised) component", () => {
     const result = runRule(
-      preactNoOnDoubleClick,
+      preactPreferOndblclick,
       `
       const Page = () => <Item onDoubleClick={openInline}>Item</Item>;
       `,

@@ -71,19 +71,21 @@ describe("hooks-no-nan-in-deps", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags `NaN` in a useSignalEffect dep array (Preact signals integration)", () => {
+  it("does not lint `useSignalEffect` (Preact signals — single-arg API, no deps array)", () => {
     const result = runRule(
       hooksNoNanInDeps,
       `
       import { useSignalEffect } from "@preact/signals";
+      // Even if a user fabricates a second argument, the hook ignores
+      // it — auto-tracking inside the callback is the contract.
       const Comp = () => {
-        useSignalEffect(() => log(), [NaN]);
+        useSignalEffect(() => log());
         return null;
       };
       `,
     );
 
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag a normal dep array", () => {

@@ -2611,7 +2611,7 @@ export const reactDoctorRules = [
     key: "react-doctor/prefer-html-dialog",
     id: "prefer-html-dialog",
     source: "react-doctor",
-    originallyExternal: true,
+    originallyExternal: false,
     rule: {
       ...preferHtmlDialog,
       framework: "global",

@@ -59,6 +59,12 @@ const EFFECT_RULES_PORTED_FROM_EXTERNAL = new Set([
   "no-pass-data-to-parent",
   "no-initialize-state",
 ]);
+// Rules that LIVE in an externally-ported bucket (e.g. `a11y/`) but were
+// authored in-house — they're semantically distinct from the upstream
+// jsx-a11y / react/* rule sets and should NOT be filtered out by
+// `customRulesOnly`. Without this list every new in-house rule we drop
+// into `a11y/` would silently disappear for users who narrow scope.
+const RULES_NOT_PORTED_FROM_EXTERNAL = new Set(["prefer-html-dialog"]);
 
 // Bucket directory → default category. A rule MAY override its category
 // with an explicit `category: "..."` field in its `defineRule({...})` call
@@ -134,8 +140,9 @@ for (const bucket of fs.readdirSync(PLUGIN_RULES_ROOT, { withFileTypes: true }))
         .replace(/\.ts$/, ".js");
     const autoTags = BUCKET_TO_AUTO_TAGS[bucket.name] ?? [];
     const originallyExternal =
-      BUCKETS_PORTED_FROM_EXTERNAL.has(bucket.name) ||
-      EFFECT_RULES_PORTED_FROM_EXTERNAL.has(ruleId);
+      !RULES_NOT_PORTED_FROM_EXTERNAL.has(ruleId) &&
+      (BUCKETS_PORTED_FROM_EXTERNAL.has(bucket.name) ||
+        EFFECT_RULES_PORTED_FROM_EXTERNAL.has(ruleId));
     ruleEntries.push({
       ruleId,
       identifier,

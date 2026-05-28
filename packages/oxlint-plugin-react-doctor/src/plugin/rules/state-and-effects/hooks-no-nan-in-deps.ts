@@ -6,6 +6,12 @@ import { isHookCall } from "../../utils/is-hook-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
+// Hooks whose tail (or trailing) argument is an explicit dependency array.
+// Notably excludes `@preact/signals`'s `useSignalEffect(callback)` — it
+// auto-tracks signal reads inside the callback and accepts no second
+// argument. Including it here would have us linting a non-existent
+// position; users writing `useSignalEffect(fn, [NaN])` are passing an
+// argument the hook silently ignores.
 const HOOKS_WITH_DEP_ARRAY = new Set([
   "useEffect",
   "useLayoutEffect",
@@ -13,7 +19,6 @@ const HOOKS_WITH_DEP_ARRAY = new Set([
   "useCallback",
   "useMemo",
   "useImperativeHandle",
-  "useSignalEffect",
 ]);
 
 const NAN_MESSAGE =
@@ -48,9 +53,11 @@ const isNanLiteral = (node: EsTreeNode): boolean => {
 //
 // Covers every standard hook whose tail argument is a dep array:
 // `useEffect`, `useLayoutEffect`, `useInsertionEffect`, `useCallback`,
-// `useMemo`, `useImperativeHandle` (deps at index 2 — its signature is
-// `useImperativeHandle(ref, factory, deps)`), and Preact's
-// `useSignalEffect`.
+// `useMemo`, and `useImperativeHandle` (deps at index 2 — its signature
+// is `useImperativeHandle(ref, factory, deps)`). Preact's
+// `useSignalEffect` is intentionally excluded: its signature is
+// `useSignalEffect(callback)` with no deps argument; signal reads
+// inside the callback auto-track, so there's no array to inspect.
 export const hooksNoNanInDeps = defineRule<Rule>({
   id: "hooks-no-nan-in-deps",
   severity: "warn",

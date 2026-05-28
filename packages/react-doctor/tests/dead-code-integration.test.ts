@@ -5,15 +5,14 @@ import { afterAll, afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { diagnose } from "../src/index.js";
 import { setupReactProject } from "./regressions/_helpers.js";
 
-// The single react-doctor test that runs the REAL deslop dead-code
-// worker end-to-end through the public `diagnose()` API. It lives in
-// its own file on purpose: vitest gives each test file its own fork, so
-// the lone native `worker_threads` spawn runs in isolation — the same
-// safe pattern core uses in tests/check-dead-code.test.ts. Every other
-// react-doctor pipeline test passes `deadCode: false`, because routing
-// the ~25 native worker spawns those tests would otherwise trigger
-// through the heavy oxlint fork suite crashes Windows test workers
-// ("Worker exited unexpectedly"); see packages/react-doctor/vite.config.ts.
+// Focused end-to-end coverage for the dead-code path: run the REAL
+// deslop dead-code analysis through the public `diagnose()` API and
+// assert the diagnostic actually surfaces. The other react-doctor
+// pipeline tests pass `deadCode: false` because they assert on lint /
+// project resolution, not dead-code, and running the deslop analysis in
+// every one of them is pure overhead (the `api` package tests do the
+// same). The dead-code worker itself runs as a child process now, so it
+// tears down cleanly even on Windows — see core's check-dead-code.ts.
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-dead-code-integration-"));
 
 afterAll(() => {

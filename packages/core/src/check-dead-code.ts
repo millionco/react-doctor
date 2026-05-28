@@ -1,6 +1,6 @@
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { Worker } from "node:worker_threads";
 import type { Diagnostic, ReactDoctorConfig } from "./types/index.js";
 import { collectIgnorePatterns } from "./collect-ignore-patterns.js";
 import { DEAD_CODE_WORKER_TIMEOUT_MS, MILLISECONDS_PER_SECOND } from "./constants.js";
@@ -78,48 +78,62 @@ interface DeadCodeWorkerFailureMessage {
 
 const TSCONFIG_FILENAMES = ["tsconfig.json", "tsconfig.base.json"];
 
+// Runs in a child PROCESS (node -e), not a worker_thread — see
+// `createDeadCodeWorker`. Reads the worker input as JSON on stdin and
+// writes the normalized result (or a serialized error) as JSON on
+// stdout, then exits once stdout has flushed.
 const DEAD_CODE_WORKER_SCRIPT = `
-const { parentPort, workerData } = require("node:worker_threads");
+const inputChunks = [];
+process.stdin.on("data", (chunk) => inputChunks.push(chunk));
+process.stdin.on("end", () => {
+  const workerInput = JSON.parse(Buffer.concat(inputChunks).toString("utf8"));
 
-const normalizeResult = (result) => ({
-  unusedFiles: result.unusedFiles.map((unusedFile) => ({
-    path: unusedFile.path,
-  })),
-  unusedExports: result.unusedExports.map((unusedExport) => ({
-    path: unusedExport.path,
-    name: unusedExport.name,
-    line: unusedExport.line,
-    column: unusedExport.column,
-    isTypeOnly: unusedExport.isTypeOnly,
-  })),
-  unusedDependencies: result.unusedDependencies.map((unusedDependency) => ({
-    name: unusedDependency.name,
-    isDevDependency: unusedDependency.isDevDependency,
-  })),
-  circularDependencies: result.circularDependencies.map((cycle) => ({
-    files: cycle.files,
-  })),
+  const normalizeResult = (result) => ({
+    unusedFiles: result.unusedFiles.map((unusedFile) => ({
+      path: unusedFile.path,
+    })),
+    unusedExports: result.unusedExports.map((unusedExport) => ({
+      path: unusedExport.path,
+      name: unusedExport.name,
+      line: unusedExport.line,
+      column: unusedExport.column,
+      isTypeOnly: unusedExport.isTypeOnly,
+    })),
+    unusedDependencies: result.unusedDependencies.map((unusedDependency) => ({
+      name: unusedDependency.name,
+      isDevDependency: unusedDependency.isDevDependency,
+    })),
+    circularDependencies: result.circularDependencies.map((cycle) => ({
+      files: cycle.files,
+    })),
+  });
+
+  const serializeError = (error) =>
+    error instanceof Error
+      ? { name: error.name, message: error.message, stack: error.stack }
+      : { message: String(error) };
+
+  const emit = (message) => {
+    process.stdout.write(JSON.stringify(message), () => process.exit(0));
+  };
+
+  (async () => {
+    try {
+      const { analyze, defineConfig } = await import(workerInput.deslopJsModuleSpecifier);
+      const config = {
+        rootDir: workerInput.rootDirectory,
+        ...(workerInput.tsConfigPath ? { tsConfigPath: workerInput.tsConfigPath } : {}),
+        ...(workerInput.ignorePatterns.length > 0
+          ? { ignorePatterns: workerInput.ignorePatterns }
+          : {}),
+      };
+      const result = await analyze(defineConfig(config));
+      emit({ ok: true, result: normalizeResult(result) });
+    } catch (error) {
+      emit({ ok: false, error: serializeError(error) });
+    }
+  })();
 });
-
-const serializeError = (error) =>
-  error instanceof Error
-    ? { name: error.name, message: error.message, stack: error.stack }
-    : { message: String(error) };
-
-(async () => {
-  try {
-    const { analyze, defineConfig } = await import(workerData.deslopJsModuleSpecifier);
-    const config = {
-      rootDir: workerData.rootDirectory,
-      ...(workerData.tsConfigPath ? { tsConfigPath: workerData.tsConfigPath } : {}),
-      ...(workerData.ignorePatterns.length > 0 ? { ignorePatterns: workerData.ignorePatterns } : {}),
-    };
-    const result = await analyze(defineConfig(config));
-    parentPort.postMessage({ ok: true, result: normalizeResult(result) });
-  } catch (error) {
-    parentPort.postMessage({ ok: false, error: serializeError(error) });
-  }
-})();
 `;
 
 const resolveTsConfigPath = (rootDirectory: string): string | undefined => {
@@ -301,23 +315,55 @@ const buildDeadCodeWorkerError = (workerError: DeadCodeWorkerError): Error => {
 };
 
 const createDeadCodeWorker: DeadCodeWorkerFactory = (input) => {
-  const worker = new Worker(DEAD_CODE_WORKER_SCRIPT, {
-    eval: true,
-    workerData: input,
+  // HACK: run deslop in a child PROCESS (node -e), not a worker_thread.
+  // deslop loads native (oxc) NAPI addons; force-terminating a
+  // worker_thread that holds native handles intermittently crashes the
+  // *host* process on Windows — when the dead-code scan runs inside a
+  // vitest fork this surfaced as a silent "Worker exited unexpectedly"
+  // and failed CI (see issue: #537 moved deslop inline -> worker_thread).
+  // A child process can be killed cleanly on every platform (the same
+  // reason the oxlint runner uses child_process + SIGKILL), so teardown
+  // on success or timeout never takes the parent down with it. Input
+  // goes in as JSON on stdin; the normalized result comes back as JSON
+  // on stdout.
+  const child = spawn(process.execPath, ["-e", DEAD_CODE_WORKER_SCRIPT], {
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: true,
   });
+
+  const stdoutChunks: Buffer[] = [];
+  const stderrChunks: Buffer[] = [];
+  child.stdout.on("data", (chunk: Buffer) => stdoutChunks.push(chunk));
+  child.stderr.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
+
   let didSettle = false;
 
   const result = new Promise<unknown>((resolve, reject) => {
     const settle = (callback: () => void): void => {
       if (didSettle) return;
       didSettle = true;
-      worker.removeAllListeners();
       callback();
     };
 
-    worker.once("message", (message: unknown) => {
+    child.once("error", (error) => {
+      settle(() => reject(error));
+    });
+
+    child.once("close", (exitCode) => {
+      const stdout = Buffer.concat(stdoutChunks).toString("utf8").trim();
+      if (stdout.length === 0) {
+        const stderr = Buffer.concat(stderrChunks).toString("utf8").trim();
+        settle(() =>
+          reject(
+            new Error(
+              `Dead-code worker exited with code ${exitCode ?? "null"}${stderr ? `: ${stderr}` : ""}.`,
+            ),
+          ),
+        );
+        return;
+      }
       try {
-        const parsedMessage = parseDeadCodeWorkerMessage(message);
+        const parsedMessage = parseDeadCodeWorkerMessage(JSON.parse(stdout));
         if (parsedMessage.ok) {
           settle(() => resolve(parsedMessage.result));
           return;
@@ -327,23 +373,19 @@ const createDeadCodeWorker: DeadCodeWorkerFactory = (input) => {
         settle(() => reject(error));
       }
     });
-
-    worker.once("error", (error) => {
-      settle(() => reject(error));
-    });
-
-    worker.once("exit", (exitCode) => {
-      if (exitCode === 0) return;
-      settle(() => reject(new Error(`Dead-code worker exited with code ${exitCode}.`)));
-    });
   });
+
+  // Swallow EPIPE: if the child is killed (timeout) before we finish
+  // writing input, the real failure surfaces via the close/error
+  // handlers above.
+  child.stdin.on("error", () => {});
+  child.stdin.end(JSON.stringify(input));
 
   return {
     result,
     terminate: () => {
       didSettle = true;
-      worker.removeAllListeners();
-      return worker.terminate();
+      child.kill("SIGKILL");
     },
   };
 };

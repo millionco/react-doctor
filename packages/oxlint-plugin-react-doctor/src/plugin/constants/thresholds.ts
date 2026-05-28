@@ -14,3 +14,4 @@ export const GET_HANDLER_BINDING_RESOLUTION_DEPTH = 3;
 // or-fewer literals twice is trivial cost, the rewrite is pure
 // ceremony at this scale.
 export const SMALL_LITERAL_ARRAY_MAX_ELEMENTS = 8;
+export const MANUAL_TYPE_CHECK_THRESHOLD = 3;

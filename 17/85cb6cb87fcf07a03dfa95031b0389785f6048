@@ -1,0 +1,19 @@
+packages/react-doctor/vite.config.ts
+  s_35c401a56ba7ba::t_559a35e6e3f31e 132-143
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "1785cb6cb87fcf07a03dfa95031b0389785f6048",
+  "prompts": {},
+  "sessions": {
+    "s_35c401a56ba7ba": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "b7782e54-6c6c-40dc-aa79-d020d94918e6",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

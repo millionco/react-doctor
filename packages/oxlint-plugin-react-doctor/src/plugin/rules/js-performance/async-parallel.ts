@@ -6,6 +6,7 @@ import {
 } from "../../constants/js.js";
 import { SEQUENTIAL_AWAIT_THRESHOLD } from "../../constants/thresholds.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { normalizeFilename } from "../../utils/normalize-filename.js";
 import { getCalleeIdentifierTrail } from "../../utils/get-callee-identifier-trail.js";
 import { isTestLibraryImportSource } from "../../utils/is-test-library-import-source.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -112,7 +113,7 @@ export const asyncParallel = defineRule<Rule>({
   recommendation:
     "Use `const [a, b] = await Promise.all([fetchA(), fetchB()])` to run independent operations concurrently",
   create: (context: RuleContext) => {
-    const filename = context.getFilename?.() ?? "";
+    const filename = normalizeFilename(context.getFilename?.() ?? "");
     const isBrowserTestFile = BROWSER_TEST_FILE_PATTERN.test(filename);
     let hasTestLibraryImport = false;
 

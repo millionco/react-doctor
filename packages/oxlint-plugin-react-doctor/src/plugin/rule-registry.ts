@@ -8,6 +8,7 @@
 
 import type { Rule } from "./utils/rule.js";
 
+import { activityWrapsEffectHeavySubtree } from "./rules/state-and-effects/activity-wraps-effect-heavy-subtree.js";
 import { advancedEventHandlerRefs } from "./rules/state-and-effects/advanced-event-handler-refs.js";
 import { altText } from "./rules/a11y/alt-text.js";
 import { anchorAmbiguousText } from "./rules/a11y/anchor-ambiguous-text.js";
@@ -43,11 +44,19 @@ import { forbidElements } from "./rules/react-builtins/forbid-elements.js";
 import { forwardRefUsesRef } from "./rules/react-builtins/forward-ref-uses-ref.js";
 import { headingHasContent } from "./rules/a11y/heading-has-content.js";
 import { hookUseState } from "./rules/react-builtins/hook-use-state.js";
+import { hooksNoNanInDeps } from "./rules/state-and-effects/hooks-no-nan-in-deps.js";
 import { htmlHasLang } from "./rules/a11y/html-has-lang.js";
+import { htmlNoInvalidParagraphChild } from "./rules/correctness/html-no-invalid-paragraph-child.js";
+import { htmlNoInvalidTableNesting } from "./rules/correctness/html-no-invalid-table-nesting.js";
+import { htmlNoNestedInteractive } from "./rules/correctness/html-no-nested-interactive.js";
 import { iframeHasTitle } from "./rules/a11y/iframe-has-title.js";
 import { iframeMissingSandbox } from "./rules/react-builtins/iframe-missing-sandbox.js";
 import { imgRedundantAlt } from "./rules/a11y/img-redundant-alt.js";
 import { interactiveSupportsFocus } from "./rules/a11y/interactive-supports-focus.js";
+import { jotaiDerivedAtomReturnsFreshObject } from "./rules/jotai/jotai-derived-atom-returns-fresh-object.js";
+import { jotaiSelectAtomInRenderBody } from "./rules/jotai/jotai-select-atom-in-render-body.js";
+import { jotaiTqUseRawQueryAtom } from "./rules/jotai/jotai-tq-use-raw-query-atom.js";
+import { jsAsyncReduceWithoutAwaitedAcc } from "./rules/js-performance/js-async-reduce-without-awaited-acc.js";
 import { jsBatchDomCss } from "./rules/js-performance/js-batch-dom-css.js";
 import { jsCachePropertyAccess } from "./rules/js-performance/js-cache-property-access.js";
 import { jsCacheStorage } from "./rules/js-performance/js-cache-storage.js";
@@ -161,6 +170,7 @@ import { noMirrorPropEffect } from "./rules/state-and-effects/no-mirror-prop-eff
 import { noMoment } from "./rules/bundle-size/no-moment.js";
 import { noMultiComp } from "./rules/react-builtins/no-multi-comp.js";
 import { noMutableInDeps } from "./rules/state-and-effects/no-mutable-in-deps.js";
+import { noMutatingReducerState } from "./rules/state-and-effects/no-mutating-reducer-state.js";
 import { noNamespace } from "./rules/react-builtins/no-namespace.js";
 import { noNestedComponentDefinition } from "./rules/architecture/no-nested-component-definition.js";
 import { noNoninteractiveElementInteractions } from "./rules/a11y/no-noninteractive-element-interactions.js";
@@ -204,9 +214,15 @@ import { noWideLetterSpacing } from "./rules/design/no-wide-letter-spacing.js";
 import { noWillUpdateSetState } from "./rules/react-builtins/no-will-update-set-state.js";
 import { noZIndex9999 } from "./rules/design/no-z-index9999.js";
 import { onlyExportComponents } from "./rules/react-builtins/only-export-components.js";
+import { preactNoChildrenLength } from "./rules/preact/preact-no-children-length.js";
+import { preactNoReactHooksImport } from "./rules/preact/preact-no-react-hooks-import.js";
+import { preactNoRenderArguments } from "./rules/preact/preact-no-render-arguments.js";
+import { preactPreferOndblclick } from "./rules/preact/preact-prefer-ondblclick.js";
+import { preactPreferOninput } from "./rules/preact/preact-prefer-oninput.js";
 import { preferDynamicImport } from "./rules/bundle-size/prefer-dynamic-import.js";
 import { preferEs6Class } from "./rules/react-builtins/prefer-es6-class.js";
 import { preferFunctionComponent } from "./rules/react-builtins/prefer-function-component.js";
+import { preferHtmlDialog } from "./rules/a11y/prefer-html-dialog.js";
 import { preferSchemaValidation } from "./rules/correctness/prefer-schema-validation.js";
 import { preferTagOverRole } from "./rules/a11y/prefer-tag-over-role.js";
 import { preferUseEffectEvent } from "./rules/state-and-effects/prefer-use-effect-event.js";
@@ -219,6 +235,7 @@ import { queryNoUseQueryForMutation } from "./rules/tanstack-query/query-no-use-
 import { queryNoVoidQueryFn } from "./rules/tanstack-query/query-no-void-query-fn.js";
 import { queryStableQueryClient } from "./rules/tanstack-query/query-stable-query-client.js";
 import { reactCompilerDestructureMethod } from "./rules/architecture/react-compiler-destructure-method.js";
+import { reactCompilerNoManualMemoization } from "./rules/architecture/react-compiler-no-manual-memoization.js";
 import { reactInJsxScope } from "./rules/react-builtins/react-in-jsx-scope.js";
 import { renderingAnimateSvgWrapper } from "./rules/performance/rendering-animate-svg-wrapper.js";
 import { renderingConditionalRender } from "./rules/correctness/rendering-conditional-render.js";
@@ -243,24 +260,29 @@ import { rnAnimationReactionAsDerived } from "./rules/react-native/rn-animation-
 import { rnBottomSheetPreferNative } from "./rules/react-native/rn-bottom-sheet-prefer-native.js";
 import { rnListCallbackPerRow } from "./rules/react-native/rn-list-callback-per-row.js";
 import { rnListDataMapped } from "./rules/react-native/rn-list-data-mapped.js";
+import { rnListMissingEstimatedItemSize } from "./rules/react-native/rn-list-missing-estimated-item-size.js";
 import { rnListRecyclableWithoutTypes } from "./rules/react-native/rn-list-recyclable-without-types.js";
 import { rnNoDeprecatedModules } from "./rules/react-native/rn-no-deprecated-modules.js";
 import { rnNoDimensionsGet } from "./rules/react-native/rn-no-dimensions-get.js";
+import { rnNoFalsyAndRender } from "./rules/react-native/rn-no-falsy-and-render.js";
 import { rnNoInlineFlatlistRenderitem } from "./rules/react-native/rn-no-inline-flatlist-renderitem.js";
 import { rnNoInlineObjectInListItem } from "./rules/react-native/rn-no-inline-object-in-list-item.js";
 import { rnNoLegacyExpoPackages } from "./rules/react-native/rn-no-legacy-expo-packages.js";
 import { rnNoLegacyShadowStyles } from "./rules/react-native/rn-no-legacy-shadow-styles.js";
 import { rnNoNonNativeNavigator } from "./rules/react-native/rn-no-non-native-navigator.js";
 import { rnNoRawText } from "./rules/react-native/rn-no-raw-text.js";
+import { rnNoRenderitemKey } from "./rules/react-native/rn-no-renderitem-key.js";
 import { rnNoScrollState } from "./rules/react-native/rn-no-scroll-state.js";
 import { rnNoScrollviewMappedList } from "./rules/react-native/rn-no-scrollview-mapped-list.js";
 import { rnNoSingleElementStyleArray } from "./rules/react-native/rn-no-single-element-style-array.js";
 import { rnPreferContentInsetAdjustment } from "./rules/react-native/rn-prefer-content-inset-adjustment.js";
 import { rnPreferExpoImage } from "./rules/react-native/rn-prefer-expo-image.js";
 import { rnPreferPressable } from "./rules/react-native/rn-prefer-pressable.js";
+import { rnPreferPressableOverGestureDetector } from "./rules/react-native/rn-prefer-pressable-over-gesture-detector.js";
 import { rnPreferReanimated } from "./rules/react-native/rn-prefer-reanimated.js";
 import { rnPressableSharedValueMutation } from "./rules/react-native/rn-pressable-shared-value-mutation.js";
 import { rnScrollviewDynamicPadding } from "./rules/react-native/rn-scrollview-dynamic-padding.js";
+import { rnScrollviewFlexInContentContainer } from "./rules/react-native/rn-scrollview-flex-in-content-container.js";
 import { rnStylePreferBoxShadow } from "./rules/react-native/rn-style-prefer-box-shadow.js";
 import { roleHasRequiredAriaProps } from "./rules/a11y/role-has-required-aria-props.js";
 import { roleSupportsAriaProps } from "./rules/a11y/role-supports-aria-props.js";
@@ -296,6 +318,17 @@ import { useLazyMotion } from "./rules/bundle-size/use-lazy-motion.js";
 import { voidDomElementsNoChildren } from "./rules/react-builtins/void-dom-elements-no-children.js";
 
 export const reactDoctorRules = [
+  {
+    key: "react-doctor/activity-wraps-effect-heavy-subtree",
+    id: "activity-wraps-effect-heavy-subtree",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...activityWrapsEffectHeavySubtree,
+      framework: "global",
+      category: "State & Effects",
+    },
+  },
   {
     key: "react-doctor/advanced-event-handler-refs",
     id: "advanced-event-handler-refs",
@@ -682,6 +715,17 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/hooks-no-nan-in-deps",
+    id: "hooks-no-nan-in-deps",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...hooksNoNanInDeps,
+      framework: "global",
+      category: "State & Effects",
+    },
+  },
+  {
     key: "react-doctor/html-has-lang",
     id: "html-has-lang",
     source: "react-doctor",
@@ -690,6 +734,39 @@ export const reactDoctorRules = [
       ...htmlHasLang,
       framework: "global",
       category: "Accessibility",
+    },
+  },
+  {
+    key: "react-doctor/html-no-invalid-paragraph-child",
+    id: "html-no-invalid-paragraph-child",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...htmlNoInvalidParagraphChild,
+      framework: "global",
+      category: "Correctness",
+    },
+  },
+  {
+    key: "react-doctor/html-no-invalid-table-nesting",
+    id: "html-no-invalid-table-nesting",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...htmlNoInvalidTableNesting,
+      framework: "global",
+      category: "Correctness",
+    },
+  },
+  {
+    key: "react-doctor/html-no-nested-interactive",
+    id: "html-no-nested-interactive",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...htmlNoNestedInteractive,
+      framework: "global",
+      category: "Correctness",
     },
   },
   {
@@ -734,6 +811,50 @@ export const reactDoctorRules = [
       ...interactiveSupportsFocus,
       framework: "global",
       category: "Accessibility",
+    },
+  },
+  {
+    key: "react-doctor/jotai-derived-atom-returns-fresh-object",
+    id: "jotai-derived-atom-returns-fresh-object",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...jotaiDerivedAtomReturnsFreshObject,
+      framework: "global",
+      category: "State & Effects",
+    },
+  },
+  {
+    key: "react-doctor/jotai-select-atom-in-render-body",
+    id: "jotai-select-atom-in-render-body",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...jotaiSelectAtomInRenderBody,
+      framework: "global",
+      category: "State & Effects",
+    },
+  },
+  {
+    key: "react-doctor/jotai-tq-use-raw-query-atom",
+    id: "jotai-tq-use-raw-query-atom",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...jotaiTqUseRawQueryAtom,
+      framework: "global",
+      category: "State & Effects",
+    },
+  },
+  {
+    key: "react-doctor/js-async-reduce-without-awaited-acc",
+    id: "js-async-reduce-without-awaited-acc",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...jsAsyncReduceWithoutAwaitedAcc,
+      framework: "global",
+      category: "Performance",
     },
   },
   {
@@ -1980,6 +2101,17 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-mutating-reducer-state",
+    id: "no-mutating-reducer-state",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noMutatingReducerState,
+      framework: "global",
+      category: "State & Effects",
+    },
+  },
+  {
     key: "react-doctor/no-namespace",
     id: "no-namespace",
     source: "react-doctor",
@@ -2453,6 +2585,61 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/preact-no-children-length",
+    id: "preact-no-children-length",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...preactNoChildrenLength,
+      framework: "preact",
+      category: "Preact",
+    },
+  },
+  {
+    key: "react-doctor/preact-no-react-hooks-import",
+    id: "preact-no-react-hooks-import",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...preactNoReactHooksImport,
+      framework: "preact",
+      category: "Preact",
+    },
+  },
+  {
+    key: "react-doctor/preact-no-render-arguments",
+    id: "preact-no-render-arguments",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...preactNoRenderArguments,
+      framework: "preact",
+      category: "Preact",
+    },
+  },
+  {
+    key: "react-doctor/preact-prefer-ondblclick",
+    id: "preact-prefer-ondblclick",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...preactPreferOndblclick,
+      framework: "preact",
+      category: "Preact",
+    },
+  },
+  {
+    key: "react-doctor/preact-prefer-oninput",
+    id: "preact-prefer-oninput",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...preactPreferOninput,
+      framework: "preact",
+      category: "Preact",
+    },
+  },
+  {
     key: "react-doctor/prefer-dynamic-import",
     id: "prefer-dynamic-import",
     source: "react-doctor",
@@ -2483,6 +2670,17 @@ export const reactDoctorRules = [
       ...preferFunctionComponent,
       framework: "global",
       category: "Architecture",
+    },
+  },
+  {
+    key: "react-doctor/prefer-html-dialog",
+    id: "prefer-html-dialog",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...preferHtmlDialog,
+      framework: "global",
+      category: "Accessibility",
     },
   },
   {
@@ -2613,6 +2811,17 @@ export const reactDoctorRules = [
     originallyExternal: false,
     rule: {
       ...reactCompilerDestructureMethod,
+      framework: "global",
+      category: "Architecture",
+    },
+  },
+  {
+    key: "react-doctor/react-compiler-no-manual-memoization",
+    id: "react-compiler-no-manual-memoization",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reactCompilerNoManualMemoization,
       framework: "global",
       category: "Architecture",
     },
@@ -2887,6 +3096,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/rn-list-missing-estimated-item-size",
+    id: "rn-list-missing-estimated-item-size",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...rnListMissingEstimatedItemSize,
+      framework: "react-native",
+      category: "React Native",
+      tags: [...new Set(["react-native", ...(rnListMissingEstimatedItemSize.tags ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/rn-list-recyclable-without-types",
     id: "rn-list-recyclable-without-types",
     source: "react-doctor",
@@ -2920,6 +3141,18 @@ export const reactDoctorRules = [
       framework: "react-native",
       category: "React Native",
       tags: [...new Set(["react-native", ...(rnNoDimensionsGet.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/rn-no-falsy-and-render",
+    id: "rn-no-falsy-and-render",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...rnNoFalsyAndRender,
+      framework: "react-native",
+      category: "React Native",
+      tags: [...new Set(["react-native", ...(rnNoFalsyAndRender.tags ?? [])])],
     },
   },
   {
@@ -2995,6 +3228,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/rn-no-renderitem-key",
+    id: "rn-no-renderitem-key",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...rnNoRenderitemKey,
+      framework: "react-native",
+      category: "React Native",
+      tags: [...new Set(["react-native", ...(rnNoRenderitemKey.tags ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/rn-no-scroll-state",
     id: "rn-no-scroll-state",
     source: "react-doctor",
@@ -3067,6 +3312,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/rn-prefer-pressable-over-gesture-detector",
+    id: "rn-prefer-pressable-over-gesture-detector",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...rnPreferPressableOverGestureDetector,
+      framework: "react-native",
+      category: "React Native",
+      tags: [...new Set(["react-native", ...(rnPreferPressableOverGestureDetector.tags ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/rn-prefer-reanimated",
     id: "rn-prefer-reanimated",
     source: "react-doctor",
@@ -3100,6 +3357,18 @@ export const reactDoctorRules = [
       framework: "react-native",
       category: "React Native",
       tags: [...new Set(["react-native", ...(rnScrollviewDynamicPadding.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/rn-scrollview-flex-in-content-container",
+    id: "rn-scrollview-flex-in-content-container",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...rnScrollviewFlexInContentContainer,
+      framework: "react-native",
+      category: "React Native",
+      tags: [...new Set(["react-native", ...(rnScrollviewFlexInContentContainer.tags ?? [])])],
     },
   },
   {

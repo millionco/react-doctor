@@ -4,17 +4,24 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { SETUP_PROMPT_DELAY_MS } from "../src/cli/utils/constants.js";
 import {
-  buildInstallSetupPitchLines,
+  CI_ENVIRONMENT_VARIABLES,
+  CODING_AGENT_ENVIRONMENT_VALUE_VARIABLES,
+  CODING_AGENT_ENVIRONMENT_VARIABLES,
+} from "../src/cli/utils/is-ci-environment.js";
+import {
+  AGENT_INSTALL_HINT_LINES,
   disableSetupPrompt,
   getSetupPromptConfigPath,
   getSetupPromptProjectKey,
   hasDisabledSetupPrompt,
+  printAgentInstallHint,
   promptInstallSetup,
   resolveInstallSetupProjectRoot,
   SETUP_PROMPT_CHOICE_NEVER,
   SETUP_PROMPT_CHOICE_NO,
   SETUP_PROMPT_CHOICE_YES,
   shouldPromptInstallSetup,
+  shouldShowAgentInstallHint,
 } from "../src/cli/utils/prompt-install-setup.js";
 
 interface PromptInstallSetupFixture {
@@ -45,14 +52,35 @@ const readPackageJson = (projectRoot: string): Record<string, unknown> =>
 const readSetupPromptConfig = (configRoot: string): Record<string, unknown> =>
   JSON.parse(readFileSync(getSetupPromptConfigPath({ cwd: configRoot }), "utf8"));
 
+const ENVIRONMENT_VARIABLES = [
+  "CI",
+  ...CI_ENVIRONMENT_VARIABLES,
+  ...CODING_AGENT_ENVIRONMENT_VARIABLES,
+  ...CODING_AGENT_ENVIRONMENT_VALUE_VARIABLES,
+] as const;
+
 describe("shouldPromptInstallSetup", () => {
   let fixture: PromptInstallSetupFixture;
+  let savedEnv: Record<string, string | undefined>;
 
   beforeEach(() => {
+    savedEnv = {};
+    for (const envVariable of ENVIRONMENT_VARIABLES) {
+      savedEnv[envVariable] = process.env[envVariable];
+      delete process.env[envVariable];
+    }
     fixture = setupFixture();
   });
 
   afterEach(() => {
+    for (const envVariable of ENVIRONMENT_VARIABLES) {
+      const previousValue = savedEnv[envVariable];
+      if (previousValue === undefined) {
+        delete process.env[envVariable];
+      } else {
+        process.env[envVariable] = previousValue;
+      }
+    }
     fixture.cleanup();
   });
 
@@ -67,6 +95,24 @@ describe("shouldPromptInstallSetup", () => {
       shouldPromptInstallSetup({
         projectRoot: fixture.projectRoot,
         hasScoredScan: true,
+        isJsonMode: false,
+        isScoreOnly: false,
+        isStaged: false,
+        skipPrompts: false,
+        store: { cwd: fixture.configRoot },
+      }),
+    ).toBe(true);
+  });
+
+  it("prompts after a completed interactive scan even when scoring is unavailable", () => {
+    writePackageJson(fixture.projectRoot, {
+      scripts: {},
+    });
+
+    expect(
+      shouldPromptInstallSetup({
+        projectRoot: fixture.projectRoot,
+        hasCompletedScan: true,
         isJsonMode: false,
         isScoreOnly: false,
         isStaged: false,
@@ -91,7 +137,7 @@ describe("shouldPromptInstallSetup", () => {
     expect(
       resolveInstallSetupProjectRoot({
         scanRoot: fixture.projectRoot,
-        completedScanDirectories: [appDirectory],
+        scanDirectories: [appDirectory],
       }),
     ).toBe(appDirectory);
   });
@@ -112,12 +158,12 @@ describe("shouldPromptInstallSetup", () => {
     expect(
       resolveInstallSetupProjectRoot({
         scanRoot: fixture.projectRoot,
-        completedScanDirectories: [nestedDirectory],
+        scanDirectories: [nestedDirectory],
       }),
     ).toBe(appDirectory);
   });
 
-  it("skips setup when a scan completed in multiple package roots", () => {
+  it("resolves setup to the scan root when a scan completed in multiple package roots", () => {
     const webDirectory = path.join(fixture.projectRoot, "apps", "web");
     const adminDirectory = path.join(fixture.projectRoot, "apps", "admin");
     mkdirSync(webDirectory, { recursive: true });
@@ -132,7 +178,24 @@ describe("shouldPromptInstallSetup", () => {
     expect(
       resolveInstallSetupProjectRoot({
         scanRoot: fixture.projectRoot,
-        completedScanDirectories: [webDirectory, adminDirectory],
+        scanDirectories: [webDirectory, adminDirectory],
+      }),
+    ).toBe(fixture.projectRoot);
+  });
+
+  it("skips setup for multiple package roots without a package at the scan root", () => {
+    const scanRoot = path.join(fixture.projectRoot, "multi-root");
+    const webDirectory = path.join(scanRoot, "web");
+    const adminDirectory = path.join(scanRoot, "admin");
+    mkdirSync(webDirectory, { recursive: true });
+    mkdirSync(adminDirectory, { recursive: true });
+    writePackageJson(webDirectory, { name: "web" });
+    writePackageJson(adminDirectory, { name: "admin" });
+
+    expect(
+      resolveInstallSetupProjectRoot({
+        scanRoot,
+        scanDirectories: [webDirectory, adminDirectory],
       }),
     ).toBeNull();
   });
@@ -255,9 +318,42 @@ describe("shouldPromptInstallSetup", () => {
     expect(shouldPromptInstallSetup({ ...baseOptions, hasScoredScan: false })).toBe(false);
   });
 
-  it("waits after score output, prints a setup pitch, then installs when accepted", async () => {
+  it("skips setup prompts in agent shells even when the caller did not pre-skip prompts", () => {
     writePackageJson(fixture.projectRoot, { scripts: {} });
-    const writtenLines: string[] = [];
+    process.env.CURSOR_AGENT = "1";
+
+    expect(
+      shouldPromptInstallSetup({
+        projectRoot: fixture.projectRoot,
+        hasScoredScan: true,
+        isJsonMode: false,
+        isScoreOnly: false,
+        isStaged: false,
+        skipPrompts: false,
+        store: { cwd: fixture.configRoot },
+      }),
+    ).toBe(false);
+  });
+
+  it("skips setup prompts in CI even when the caller did not pre-skip prompts", () => {
+    writePackageJson(fixture.projectRoot, { scripts: {} });
+    process.env.CI = "true";
+
+    expect(
+      shouldPromptInstallSetup({
+        projectRoot: fixture.projectRoot,
+        hasScoredScan: true,
+        isJsonMode: false,
+        isScoreOnly: false,
+        isStaged: false,
+        skipPrompts: false,
+        store: { cwd: fixture.configRoot },
+      }),
+    ).toBe(false);
+  });
+
+  it("waits after score output then installs when accepted", async () => {
+    writePackageJson(fixture.projectRoot, { scripts: {} });
     let waitedMilliseconds = 0;
     let selectMessage = "";
     let didInstall = false;
@@ -274,9 +370,6 @@ describe("shouldPromptInstallSetup", () => {
       wait: async (milliseconds) => {
         waitedMilliseconds = milliseconds;
       },
-      writeLine: (line = "") => {
-        writtenLines.push(line);
-      },
       select: async (message) => {
         selectMessage = message;
         return SETUP_PROMPT_CHOICE_YES;
@@ -287,9 +380,6 @@ describe("shouldPromptInstallSetup", () => {
     });
 
     expect(waitedMilliseconds).toBe(SETUP_PROMPT_DELAY_MS);
-    expect(writtenLines.join("\n")).toContain("2 issues");
-    expect(writtenLines.join("\n")).toContain("humans and agents");
-    expect(writtenLines.join("\n")).not.toContain("Setup will add");
     expect(selectMessage).toBe("Set up React Doctor for this project?");
     expect(didInstall).toBe(true);
   });
@@ -567,8 +657,150 @@ describe("shouldPromptInstallSetup", () => {
     expect(disableSetupPrompt(fixture.projectRoot, { cwd: fixture.configRoot })).toBe(true);
     expect(hasDisabledSetupPrompt(fixture.projectRoot, { cwd: fixture.configRoot })).toBe(true);
   });
+});
 
-  it("pitches future regression checks when no issues were found", () => {
-    expect(buildInstallSetupPitchLines(0).join("\n")).toContain("catch future regressions early");
+describe("shouldShowAgentInstallHint", () => {
+  let fixture: PromptInstallSetupFixture;
+
+  beforeEach(() => {
+    fixture = setupFixture();
+  });
+
+  afterEach(() => {
+    fixture.cleanup();
+  });
+
+  it("returns true in a coding agent environment when doctor script is missing", () => {
+    writePackageJson(fixture.projectRoot, { scripts: {} });
+
+    expect(
+      shouldShowAgentInstallHint({
+        projectRoot: fixture.projectRoot,
+        hasScoredScan: true,
+        isJsonMode: false,
+        isScoreOnly: false,
+        isStaged: false,
+        isCodingAgent: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("returns true in a coding agent environment after a completed scan without a score", () => {
+    writePackageJson(fixture.projectRoot, { scripts: {} });
+
+    expect(
+      shouldShowAgentInstallHint({
+        projectRoot: fixture.projectRoot,
+        hasCompletedScan: true,
+        isJsonMode: false,
+        isScoreOnly: false,
+        isStaged: false,
+        isCodingAgent: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("returns false when the doctor script already exists", () => {
+    writePackageJson(fixture.projectRoot, {
+      scripts: { doctor: "react-doctor" },
+    });
+
+    expect(
+      shouldShowAgentInstallHint({
+        projectRoot: fixture.projectRoot,
+        hasScoredScan: true,
+        isJsonMode: false,
+        isScoreOnly: false,
+        isStaged: false,
+        isCodingAgent: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false when not in a coding agent environment", () => {
+    writePackageJson(fixture.projectRoot, { scripts: {} });
+
+    expect(
+      shouldShowAgentInstallHint({
+        projectRoot: fixture.projectRoot,
+        hasScoredScan: true,
+        isJsonMode: false,
+        isScoreOnly: false,
+        isStaged: false,
+        isCodingAgent: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false in JSON mode, score-only, staged, or without a scored scan", () => {
+    writePackageJson(fixture.projectRoot, { scripts: {} });
+    const baseOptions = {
+      projectRoot: fixture.projectRoot,
+      hasScoredScan: true,
+      isJsonMode: false,
+      isScoreOnly: false,
+      isStaged: false,
+      isCodingAgent: true,
+    };
+
+    expect(shouldShowAgentInstallHint({ ...baseOptions, isJsonMode: true })).toBe(false);
+    expect(shouldShowAgentInstallHint({ ...baseOptions, isScoreOnly: true })).toBe(false);
+    expect(shouldShowAgentInstallHint({ ...baseOptions, isStaged: true })).toBe(false);
+    expect(shouldShowAgentInstallHint({ ...baseOptions, hasScoredScan: false })).toBe(false);
+  });
+
+  it("returns false when setup prompt has been disabled for this project", () => {
+    writePackageJson(fixture.projectRoot, { scripts: {} });
+    disableSetupPrompt(fixture.projectRoot, { cwd: fixture.configRoot });
+
+    expect(
+      shouldShowAgentInstallHint({
+        projectRoot: fixture.projectRoot,
+        hasScoredScan: true,
+        isJsonMode: false,
+        isScoreOnly: false,
+        isStaged: false,
+        isCodingAgent: true,
+        store: { cwd: fixture.configRoot },
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false when the fallback react-doctor script exists", () => {
+    writePackageJson(fixture.projectRoot, {
+      scripts: { doctor: "vitest", "react-doctor": "npx react-doctor@latest" },
+    });
+
+    expect(
+      shouldShowAgentInstallHint({
+        projectRoot: fixture.projectRoot,
+        hasScoredScan: true,
+        isJsonMode: false,
+        isScoreOnly: false,
+        isStaged: false,
+        isCodingAgent: true,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("printAgentInstallHint", () => {
+  it("prints the install command and description", () => {
+    const writtenLines: string[] = [];
+    printAgentInstallHint((line = "") => {
+      writtenLines.push(line);
+    });
+    const output = writtenLines.join("\n");
+
+    expect(output).toContain("npx react-doctor install --yes");
+    expect(output).toContain("not installed");
+    expect(output).toContain("Ask the user");
+  });
+
+  it("AGENT_INSTALL_HINT_LINES contains the install command", () => {
+    expect(AGENT_INSTALL_HINT_LINES.length).toBeGreaterThan(0);
+    expect(
+      AGENT_INSTALL_HINT_LINES.some((line) => line.includes("npx react-doctor install --yes")),
+    ).toBe(true);
   });
 });

@@ -1,10 +1,47 @@
 # @react-doctor/core
 
+## 0.2.9
+
+### Patch Changes
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.2.9
+
+## 0.2.8
+
+### Patch Changes
+
+- add react-doctor.config.json schema field
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.2.8
+
+## 0.2.7
+
+### Patch Changes
+
+- Unify the dual diagnostic-filter pipelines into a single `buildDiagnosticPipeline` source of truth, removing a longstanding divergence between CLI and API filtering.
+
+- Wire the `Progress` service into `runInspect`, eliminating the manual spinner `Ref` plumbing that leaked implementation details into renderers.
+
+- Move scattered magic numbers into `constants.ts` with unit-suffixed `SCREAMING_SNAKE_CASE` names per project conventions.
+
+- Consolidate `isProjectBoundary` helpers and rename the event-handler `isFunctionLike` to avoid collision with the oxlint plugin's AST utility of the same name.
+
+- Push score-surface filtering into `runInspect` so downstream consumers no longer need to re-apply surface filters.
+
+- Add `resolveScanTarget` helper and share `restoreLegacyThrow` across CLI and API entry points.
+
+- Emit automated agent guidance (issue-reporting links) in inspect output for AI-assisted workflows.
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.2.7
+
 ## 0.2.6
 
 ### Patch Changes
 
-- fix
+- Inherit the `design-no-bold-heading` rule removal from `oxlint-plugin-react-doctor@0.2.6`.
 
 - Updated dependencies []:
   - oxlint-plugin-react-doctor@0.2.6
@@ -13,7 +50,11 @@
 
 ### Patch Changes
 
-- fix
+- Add `require-pnpm-hardening` environment check that warns when `pnpm` is detected without strict lockfile settings, helping prevent phantom dependency issues.
+
+- Cover child workspace diff include paths so `--diff` mode in monorepos correctly scans files changed inside nested workspace packages, not just the root.
+
+- Fix Node 20 runtime dependency support so the core package resolves correctly without Node 22+ built-ins.
 
 - Updated dependencies []:
   - oxlint-plugin-react-doctor@0.2.5
@@ -22,7 +63,25 @@
 
 ### Patch Changes
 
-- fix
+- **Effect v4 foundation.** Introduce tagged error classes (`Schema.TaggedErrorClass`), `Schema.Class` wire records for diagnostics and reports, `Context.Reference` for ambient config, and branded `Schema.brand` paths (`OxlintBinaryPath`, `NodeBinaryPath`). All fallible operations now fail with `ReactDoctorError` carrying a `reason` union that renderers dispatch on via `Effect.catchReasons`.
+
+- **10 Effect v4 services.** Stand up `Files`, `Git`, `Project`, `Config`, `Linter`, `DeadCode`, `Score`, `Reporter`, `Progress`, and `NodeResolver` as `Context.Service` classes with `layerNode` / `layerOf` / `layerCapture` / `layerNoop` test variants.
+
+- **`runInspect` streaming orchestrator.** Replace the imperative scan loop with a per-element pipeline that streams diagnostics through `buildDiagnosticPipeline`, enabling concurrent lint + dead-code analysis and real-time progress reporting.
+
+- **Collapse `@react-doctor/types` and `@react-doctor/project-info` into `@react-doctor/core`**, reducing the workspace package count and simplifying imports.
+
+- **Opt-in OpenTelemetry export.** Set `REACT_DOCTOR_OTLP_ENDPOINT` and `REACT_DOCTOR_OTLP_AUTH_HEADER` to ship every `Effect.fn("Service.method")` span and top-level `Effect.withSpan` to an OTLP-compatible backend.
+
+- **User-plugin extension.** `config.plugins: [...]` loads additional oxlint plugin packages alongside the built-in rule set so teams can ship custom rules.
+
+- **Security fixes.** Pin CI workflow permissions, add fork guards, fix four pre-existing audit findings.
+
+- **Adopt `Effect.Console` throughout.** Drop the custom `Logger` service; renderers and services use `Console.log` / `Console.warn` / `Console.error` from `effect/Console`, which is swappable for tests via `Console.Console` service override.
+
+- **Git service.** DI-wrap every `spawnSync('git', ...)` call site behind the `Git` service, then replace `spawnSync` with Effect's `ChildProcess` for non-blocking execution.
+
+- **`NodeResolver` + `StagedFiles` services.** Remove the last `Effect.runSync` hack from `Linter.layerOxlint` by lifting Node resolution and staged-file discovery into their own services.
 
 - Updated dependencies []:
   - oxlint-plugin-react-doctor@0.2.4
@@ -31,7 +90,7 @@
 
 ### Patch Changes
 
-- fix
+- Fix vite build configuration for bundling workspace dependencies so `@react-doctor/core` resolves internal imports correctly at publish time.
 
 - Updated dependencies []:
   - oxlint-plugin-react-doctor@0.2.3
@@ -42,7 +101,7 @@
 
 ### Patch Changes
 
-- fix
+- Restore `eslint-plugin-react-hooks` as a hard dependency so React Compiler rules resolve without requiring users to install the peer separately.
 
 - [#273](https://github.com/millionco/react-doctor/pull/273) [`47772b7`](https://github.com/millionco/react-doctor/commit/47772b7da4f6e412b09e3a4f74d888307faf74a1) Thanks [@aidenybai](https://github.com/aidenybai)! - Natively port the 8 rules from `eslint-plugin-react-you-might-not-need-an-effect`
   (NickvanDyke, MIT) into `oxlint-plugin-react-doctor`. They now ship as
@@ -97,8 +156,6 @@
 ## 0.2.0
 
 ### Minor Changes
-
-- fix
 
 - [`5be2ead`](https://github.com/millionco/react-doctor/commit/5be2eadd90b2248b28b228fad306808cec1bf758) Thanks [@aidenybai](https://github.com/aidenybai)! - Add configuration-level controls for React Doctor's rule output. Users can now set top-level `rules` and `categories` severity overrides, tune individual output surfaces (`cli`, `prComment`, `score`, and `ciFailure`) by tag/category/rule id, and rely on registered rule-family tags such as `design`, `react-native`, `server-action`, `test-noise`, and `migration-hint` for broad filtering.
 

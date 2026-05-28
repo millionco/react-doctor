@@ -101,6 +101,8 @@ export const OXLINT_OUTPUT_MAX_BYTES = 50 * 1024 * 1024;
 // binding is markedly slower than on a developer laptop.
 export const OXLINT_SPAWN_TIMEOUT_MS = 60_000;
 
+export const DEAD_CODE_WORKER_TIMEOUT_MS = 120_000;
+
 // HACK: lookahead cap for JSX opener-span scanning; bounds worst-case
 // work on pathological files. Real openers stay well under this.
 export const JSX_OPENER_SCAN_MAX_LINES = 32;
@@ -159,3 +161,8 @@ export const CONFIG_CACHE_TTL_MS = 5 * 60 * 1_000;
  * binary-split-retry loop.
  */
 export const OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT = 3;
+
+// HACK: interval for simulated per-file progress ticks while an oxlint
+// batch subprocess runs. The timer increments a counter so the spinner
+// updates smoothly instead of jumping by the batch size on completion.
+export const PROGRESS_TICK_INTERVAL_MS = 50;

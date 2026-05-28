@@ -1,3 +1,4 @@
+import { RENDER_ITEM_PROP_NAMES } from "../../constants/react-native.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -41,13 +42,27 @@ const detectInlineRowHandlers = (renderItemFn: EsTreeNode): EsTreeNode[] => {
 const isRenderItemJsxAttribute = (parent: EsTreeNode | null | undefined): boolean => {
   if (!isNodeOfType(parent, "JSXAttribute")) return false;
   const attrName = isNodeOfType(parent.name, "JSXIdentifier") ? parent.name.name : null;
-  return attrName === "renderItem";
+  return attrName ? RENDER_ITEM_PROP_NAMES.has(attrName) : false;
 };
 
 const isRenderItemFunction = (node: EsTreeNode): boolean => {
   const parent = node.parent;
   if (!isNodeOfType(parent, "JSXExpressionContainer")) return false;
   return isRenderItemJsxAttribute(parent.parent);
+};
+
+const resolveRenderPropName = (node: EsTreeNode): string => {
+  const container = node.parent;
+  if (!isNodeOfType(container, "JSXExpressionContainer")) return "renderItem";
+  const attr = container.parent;
+  if (
+    isNodeOfType(attr, "JSXAttribute") &&
+    isNodeOfType(attr.name, "JSXIdentifier") &&
+    RENDER_ITEM_PROP_NAMES.has(attr.name.name)
+  ) {
+    return attr.name.name;
+  }
+  return "renderItem";
 };
 
 // HACK: every row of a virtualized list invokes its `renderItem`
@@ -67,6 +82,7 @@ export const rnListCallbackPerRow = defineRule<Rule>({
   create: (context: RuleContext) => {
     const inspect = (node: EsTreeNode): void => {
       if (!isRenderItemFunction(node)) return;
+      const renderPropName = resolveRenderPropName(node);
       const inlineHandlers = detectInlineRowHandlers(node);
       for (const handler of inlineHandlers) {
         const handlerName =
@@ -75,7 +91,7 @@ export const rnListCallbackPerRow = defineRule<Rule>({
             : "<handler>";
         context.report({
           node: handler,
-          message: `Inline ${handlerName} arrow inside renderItem creates a fresh closure per row — hoist with useCallback at list scope and pass the row id as a primitive prop`,
+          message: `Inline ${handlerName} arrow inside ${renderPropName} creates a fresh closure per render — hoist with useCallback at list scope`,
         });
       }
     };

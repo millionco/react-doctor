@@ -46,7 +46,7 @@ const buildPullRequestCheckoutFixture = (
   const baseCommitHash = headCommitHash(repoDir);
 
   spawnSync("git", ["checkout", "-q", "-b", "feature"], { cwd: repoDir });
-  const changedFilePath = path.join("src", "feature.tsx");
+  const changedFilePath = "src/feature.tsx";
   writeFile(path.join(repoDir, changedFilePath), "export const Feature = () => null;\n");
   commitAll(repoDir, "add feature");
 
@@ -98,7 +98,7 @@ describe("issue #298: --diff respects explicit base on detached HEAD", () => {
     commitAll(repoDir, "init");
 
     spawnSync("git", ["checkout", "-q", "-b", "feature"], { cwd: repoDir });
-    const changedFilePath = path.join("src", "feature.tsx");
+    const changedFilePath = "src/feature.tsx";
     writeFile(path.join(repoDir, changedFilePath), "export const Feature = () => null;\n");
     commitAll(repoDir, "add feature");
 

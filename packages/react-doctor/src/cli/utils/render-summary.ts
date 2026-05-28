@@ -2,7 +2,7 @@ import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import { highlighter, SHARE_BASE_URL } from "@react-doctor/core";
 import type { Diagnostic, ScoreResult } from "@react-doctor/core";
-import { collectAffectedFiles, formatElapsedTime } from "./render-diagnostics.js";
+import { collectAffectedFiles } from "./render-diagnostics.js";
 import { printNoScoreHeader, printScoreHeader } from "./render-score-header.js";
 import { writeDiagnosticsDirectory } from "./write-diagnostics-directory.js";
 
@@ -27,30 +27,27 @@ const buildShareUrl = (
 
 const printCountsSummaryLine = (
   diagnostics: Diagnostic[],
-  totalSourceFileCount: number,
-  elapsedMilliseconds: number,
+  isVerbose: boolean,
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
+    const totalIssueCount = diagnostics.length;
     const errorCount = diagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
     const warningCount = diagnostics.filter(
       (diagnostic) => diagnostic.severity === "warning",
     ).length;
-    const affectedFileCount = collectAffectedFiles(diagnostics).size;
-    const totalIssueCount = diagnostics.length;
-    const elapsedTimeLabel = formatElapsedTime(elapsedMilliseconds);
-
     const issueCountColor =
       errorCount > 0 ? highlighter.error : warningCount > 0 ? highlighter.warn : highlighter.dim;
-    const issueCountText = `${totalIssueCount} ${totalIssueCount === 1 ? "issue" : "issues"}`;
-    const fileCountText =
-      totalSourceFileCount > 0
-        ? `across ${affectedFileCount}/${totalSourceFileCount} files`
-        : `across ${affectedFileCount} file${affectedFileCount === 1 ? "" : "s"}`;
-    const elapsedTimeText = `in ${elapsedTimeLabel}`;
-
-    yield* Console.log(
-      `  ${issueCountColor(issueCountText)} ${highlighter.dim(`${fileCountText}  ${elapsedTimeText}`)}`,
+    const issueText = issueCountColor(
+      `${totalIssueCount} ${totalIssueCount === 1 ? "issue" : "issues"}`,
     );
+    yield* Console.log(`  ${issueText}`);
+    if (!isVerbose && totalIssueCount > 0) {
+      yield* Console.log(
+        highlighter.dim(
+          `  Run ${highlighter.info("npx react-doctor@latest --verbose")} to see details`,
+        ),
+      );
+    }
   });
 
 export interface PrintSummaryInput {
@@ -61,21 +58,18 @@ export interface PrintSummaryInput {
   readonly totalSourceFileCount: number;
   readonly noScoreMessage: string;
   readonly isOffline: boolean;
+  readonly verbose?: boolean;
 }
 
 export const printSummary = (input: PrintSummaryInput): Effect.Effect<void> =>
   Effect.gen(function* () {
     if (input.scoreResult) {
-      yield* printScoreHeader(input.scoreResult);
+      yield* printScoreHeader(input.scoreResult, input.projectName);
     } else {
       yield* printNoScoreHeader(input.noScoreMessage);
     }
 
-    yield* printCountsSummaryLine(
-      input.diagnostics,
-      input.totalSourceFileCount,
-      input.elapsedMilliseconds,
-    );
+    yield* printCountsSummaryLine(input.diagnostics, input.verbose ?? false);
 
     // v4 forbids try/catch inside Effect.gen — wrap the sync write
     // in `Effect.try` (always-tagged form: `{ try, catch }`) and
@@ -86,16 +80,14 @@ export const printSummary = (input: PrintSummaryInput): Effect.Effect<void> =>
       try: () => writeDiagnosticsDirectory(input.diagnostics),
       catch: (cause) => cause,
     }).pipe(Effect.orElseSucceed(() => null as string | null));
-    if (diagnosticsDirectory !== null) {
+    if (diagnosticsDirectory !== null && input.verbose) {
       yield* Console.log(highlighter.gray(`  Full diagnostics written to ${diagnosticsDirectory}`));
     }
 
     if (!input.isOffline) {
       yield* Console.log("");
       const shareUrl = buildShareUrl(input.diagnostics, input.scoreResult, input.projectName);
-      yield* Console.log(
-        `  ${highlighter.bold("→ Share your results:")} ${highlighter.info(shareUrl)}`,
-      );
+      yield* Console.log(`  ${highlighter.bold("→ Share:")} ${highlighter.info(shareUrl)}`);
       yield* Console.log("");
     }
   });

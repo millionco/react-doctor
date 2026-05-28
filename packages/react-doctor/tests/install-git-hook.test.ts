@@ -42,7 +42,7 @@ const writePackageJson = (projectRoot: string, content: object): void => {
 
 const readJsonFile = <Value>(filePath: string): Value => JSON.parse(readFileSync(filePath, "utf8"));
 
-describe("installReactDoctorGitHook", () => {
+describe.skipIf(process.platform === "win32")("installReactDoctorGitHook", () => {
   let fixture: GitHookFixture;
 
   beforeEach(() => {

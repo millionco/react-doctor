@@ -1,0 +1,191 @@
+import { describe, expect, it } from "vite-plus/test";
+import { runRule } from "../../../test-utils/run-rule.js";
+import { hooksNoNanInDeps } from "./hooks-no-nan-in-deps.js";
+
+describe("hooks-no-nan-in-deps", () => {
+  it("flags `NaN` in a useEffect dep array with the corrected (Object.is-aware) message", () => {
+    const result = runRule(
+      hooksNoNanInDeps,
+      `
+      import { useEffect } from "react";
+      const Comp = () => {
+        useEffect(() => { doStuff(); }, [NaN]);
+        return null;
+      };
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("`NaN`");
+    // The diagnostic must describe React's *actual* comparator behaviour
+    // — `Object.is(NaN, NaN) === true`, so the hook does NOT re-run on
+    // every render. Regression guard against the previous wording that
+    // wrongly claimed it "always reruns".
+    expect(result.diagnostics[0].message).toContain("Object.is");
+    expect(result.diagnostics[0].message).not.toContain("always rerun");
+  });
+
+  it("flags `Number.NaN` in a useMemo dep array", () => {
+    const result = runRule(
+      hooksNoNanInDeps,
+      `
+      import { useMemo } from "react";
+      const Comp = ({ value }) => {
+        const memoised = useMemo(() => compute(value), [value, Number.NaN]);
+        return memoised;
+      };
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags `NaN` in a useCallback dep array", () => {
+    const result = runRule(
+      hooksNoNanInDeps,
+      `
+      import { useCallback } from "react";
+      const Comp = ({ id }) => {
+        const handler = useCallback(() => onSelect(id), [id, NaN]);
+        return <button onClick={handler}>x</button>;
+      };
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags `NaN` in a useImperativeHandle dep array (3rd argument)", () => {
+    const result = runRule(
+      hooksNoNanInDeps,
+      `
+      import { useImperativeHandle } from "react";
+      const Comp = ({ ref }) => {
+        useImperativeHandle(ref, () => ({ focus: () => {} }), [NaN]);
+        return null;
+      };
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not lint `useSignalEffect` (Preact signals — single-arg API, no deps array)", () => {
+    const result = runRule(
+      hooksNoNanInDeps,
+      `
+      import { useSignalEffect } from "@preact/signals";
+      // Even if a user fabricates a second argument, the hook ignores
+      // it — auto-tracking inside the callback is the contract.
+      const Comp = () => {
+        useSignalEffect(() => log());
+        return null;
+      };
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a normal dep array", () => {
+    const result = runRule(
+      hooksNoNanInDeps,
+      `
+      import { useEffect } from "react";
+      const Comp = ({ id, name }) => {
+        useEffect(() => fetch(id), [id, name]);
+        return null;
+      };
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag empty deps", () => {
+    const result = runRule(
+      hooksNoNanInDeps,
+      `
+      import { useEffect } from "react";
+      const Comp = () => {
+        useEffect(() => mountOnce(), []);
+        return null;
+      };
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag missing deps array", () => {
+    const result = runRule(
+      hooksNoNanInDeps,
+      `
+      import { useEffect } from "react";
+      const Comp = () => {
+        useEffect(() => doStuff());
+        return null;
+      };
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag non-hook calls passing NaN", () => {
+    const result = runRule(
+      hooksNoNanInDeps,
+      `
+      const config = createThing("foo", [NaN]);
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags `NaN` when the hook is called via a `React.useEffect` member expression", () => {
+    const result = runRule(
+      hooksNoNanInDeps,
+      `
+      import * as React from "react";
+      const Comp = () => {
+        React.useEffect(() => { doStuff(); }, [NaN]);
+        return null;
+      };
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags `NaN` in a `React.useImperativeHandle` (member-expression + index-2 deps) call", () => {
+    const result = runRule(
+      hooksNoNanInDeps,
+      `
+      import * as React from "react";
+      const Comp = ({ ref }) => {
+        React.useImperativeHandle(ref, () => ({ focus: () => {} }), [NaN]);
+        return null;
+      };
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags multiple NaN entries in one dep array", () => {
+    const result = runRule(
+      hooksNoNanInDeps,
+      `
+      import { useEffect } from "react";
+      const Comp = () => {
+        useEffect(() => {}, [NaN, Number.NaN, NaN]);
+        return null;
+      };
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(3);
+  });
+});

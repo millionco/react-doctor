@@ -164,7 +164,7 @@ export const parseOxlintOutput = (
         project,
       );
       return {
-        filePath: diagnostic.filename,
+        filePath: diagnostic.filename.replaceAll("\\", "/"),
         plugin,
         rule,
         severity: diagnostic.severity,

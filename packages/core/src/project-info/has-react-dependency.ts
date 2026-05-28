@@ -1,6 +1,6 @@
 import type { PackageJson } from "../types/index.js";
 
-const REACT_DEPENDENCY_NAMES = new Set(["react", "react-native", "next"]);
+const REACT_DEPENDENCY_NAMES = new Set(["react", "react-native", "next", "preact"]);
 
 export const hasReactDependency = (packageJson: PackageJson): boolean => {
   const allDependencies = {

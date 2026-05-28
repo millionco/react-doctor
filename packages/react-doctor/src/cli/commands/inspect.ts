@@ -33,9 +33,13 @@ import {
 } from "../utils/json-mode.js";
 import { printAnnotations } from "../utils/print-annotations.js";
 import { printBrandedHeader } from "../utils/print-branded-header.js";
+import { promptCopyIssues } from "../utils/copy-issues-to-clipboard.js";
+import { printMultiProjectSummary } from "../utils/render-multi-project-summary.js";
 import {
+  printAgentInstallHint,
   promptInstallSetup,
   resolveInstallSetupProjectRoot,
+  shouldShowAgentInstallHint,
 } from "../utils/prompt-install-setup.js";
 import { resolveCliInspectOptions } from "../utils/resolve-cli-inspect-options.js";
 import { resolveDiffMode } from "../utils/resolve-diff-mode.js";
@@ -251,6 +255,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
 
     const allDiagnostics: Diagnostic[] = [];
     const completedScans: Array<{ directory: string; result: InspectResult }> = [];
+    const isMultiProject = projectDirectories.length > 1;
 
     for (const projectDirectory of projectDirectories) {
       let includePaths: string[] | undefined;
@@ -269,20 +274,30 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         includePaths = changedSourceFiles;
       }
 
-      if (!isQuiet) {
-        logger.dim(`Scanning ${projectDirectory}...`);
-        logger.break();
+      if (!isQuiet && !isMultiProject) {
+        logger.dim("  ");
       }
       const scanResult = await inspect(projectDirectory, {
         ...scanOptions,
         includePaths,
         configOverride: userConfig,
+        suppressRendering: isMultiProject,
       });
       allDiagnostics.push(...scanResult.diagnostics);
       completedScans.push({ directory: projectDirectory, result: scanResult });
-      if (!isQuiet) {
+      if (!isQuiet && !isMultiProject) {
         logger.break();
       }
+    }
+
+    if (!isQuiet && isMultiProject && completedScans.length > 0) {
+      await Effect.runPromise(
+        printMultiProjectSummary({
+          completedScans,
+          userConfig,
+          verbose: Boolean(flags.verbose),
+        }),
+      );
     }
 
     finalizeScans({
@@ -300,12 +315,14 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
 
     const setupProjectRoot = resolveInstallSetupProjectRoot({
       scanRoot: resolvedDirectory,
-      completedScanDirectories: completedScans.map((scan) => scan.directory),
+      scanDirectories: projectDirectories,
     });
     if (setupProjectRoot !== null) {
+      const hasCompletedScan = completedScans.length > 0;
+
       await promptInstallSetup({
         projectRoot: setupProjectRoot,
-        hasScoredScan: completedScans.some((scan) => scan.result.score !== null),
+        hasCompletedScan,
         issueCount: filterDiagnosticsForSurface(
           allDiagnostics,
           scanOptions.outputSurface ?? "cli",
@@ -315,6 +332,27 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         isScoreOnly,
         isStaged: Boolean(flags.staged),
         skipPrompts,
+      });
+
+      if (
+        shouldShowAgentInstallHint({
+          projectRoot: setupProjectRoot,
+          hasCompletedScan,
+          isJsonMode,
+          isScoreOnly,
+          isStaged: Boolean(flags.staged),
+        })
+      ) {
+        printAgentInstallHint();
+      }
+    }
+
+    if (!skipPrompts && !isQuiet && allDiagnostics.length > 0) {
+      const lastScan = completedScans[completedScans.length - 1];
+      await promptCopyIssues({
+        diagnostics: allDiagnostics,
+        score: lastScan?.result.score ?? null,
+        projectName: lastScan?.result.project.projectName ?? path.basename(resolvedDirectory),
       });
     }
   } catch (error) {

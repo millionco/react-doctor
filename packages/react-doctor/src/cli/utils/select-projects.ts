@@ -1,7 +1,11 @@
 import path from "node:path";
 import type { WorkspacePackage } from "@react-doctor/core";
-import { discoverReactSubprojects, listWorkspacePackages } from "@react-doctor/core";
-import { highlighter } from "@react-doctor/core";
+import {
+  discoverReactSubprojects,
+  highlighter,
+  isMonorepoRoot,
+  listWorkspacePackages,
+} from "@react-doctor/core";
 import { cliLogger as logger } from "./cli-logger.js";
 import { prompts } from "./prompts.js";
 
@@ -12,13 +16,14 @@ export const selectProjects = async (
 ): Promise<string[]> => {
   let packages = listWorkspacePackages(rootDirectory);
   if (packages.length === 0) {
+    if (!isMonorepoRoot(rootDirectory)) return [rootDirectory];
     packages = discoverReactSubprojects(rootDirectory);
   }
 
   if (packages.length === 0) return [rootDirectory];
   if (packages.length === 1) {
     logger.log(
-      `${highlighter.success("✔")} Select projects to scan ${highlighter.dim("›")} ${packages[0].name}`,
+      `${highlighter.success("✔")} Select projects ${highlighter.dim("›")} ${packages[0].name}`,
     );
     return [packages[0].directory];
   }
@@ -62,7 +67,7 @@ const resolveProjectFlag = (
 
 const printDiscoveredProjects = (packages: WorkspacePackage[]): void => {
   logger.log(
-    `${highlighter.success("✔")} Select projects to scan ${highlighter.dim("›")} ${packages.map((workspacePackage) => workspacePackage.name).join(", ")}`,
+    `${highlighter.success("✔")} Select projects ${highlighter.dim("›")} ${packages.map((workspacePackage) => workspacePackage.name).join(", ")}`,
   );
 };
 
@@ -73,7 +78,7 @@ const promptProjectSelection = async (
   const { selectedDirectories } = await prompts({
     type: "multiselect",
     name: "selectedDirectories",
-    message: "Select projects to scan",
+    message: "Select projects",
     choices: workspacePackages.map((workspacePackage) => ({
       title: workspacePackage.name,
       description: path.relative(rootDirectory, workspacePackage.directory),

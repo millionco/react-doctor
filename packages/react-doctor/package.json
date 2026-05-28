@@ -1,6 +1,6 @@
 {
   "name": "react-doctor",
-  "version": "0.2.6",
+  "version": "0.2.9",
   "description": "Diagnose and fix React codebases for security, performance, correctness, accessibility, bundle-size, and architecture issues",
   "keywords": [
     "accessibility",
@@ -50,7 +50,7 @@
   },
   "scripts": {
     "dev": "vp pack --watch",
-    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && NODE_ENV=production vp pack",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && cross-env NODE_ENV=production vp pack",
     "typecheck": "tsc --noEmit",
     "test": "vp test run"
   },
@@ -58,8 +58,9 @@
     "@effect/platform-node-shared": "4.0.0-beta.70",
     "agent-install": "0.0.5",
     "conf": "^15.1.0",
-    "deslop-js": "^0.0.12",
+    "deslop-js": "^0.0.13",
     "effect": "4.0.0-beta.70",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "oxlint": "^1.66.0",
     "oxlint-plugin-react-doctor": "workspace:*",
     "prompts": "^2.4.2",
@@ -70,16 +71,7 @@
     "@react-doctor/core": "workspace:*",
     "@types/prompts": "^2.4.9",
     "commander": "^14.0.3",
-    "eslint-plugin-react-hooks": "^7.1.1",
     "ora": "^9.4.0"
-  },
-  "peerDependencies": {
-    "eslint-plugin-react-hooks": "^6 || ^7"
-  },
-  "peerDependenciesMeta": {
-    "eslint-plugin-react-hooks": {
-      "optional": true
-    }
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"

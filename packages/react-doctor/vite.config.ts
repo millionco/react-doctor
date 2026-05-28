@@ -9,6 +9,9 @@ const packageJson = JSON.parse(fs.readFileSync(path.join(packageRoot, "package.j
   version: string;
 };
 
+const TEST_TIMEOUT_MS = 30_000;
+const WINDOWS_TEST_MAX_WORKERS = 1;
+
 // HACK: agent-install's parseSkillManifest silently returns `null` when
 // frontmatter is missing or invalid `name:` / `description:` fields,
 // which caused `react-doctor install` to print success while writing
@@ -126,6 +129,13 @@ export default defineConfig({
     },
   ],
   test: {
-    testTimeout: 30_000,
+    testTimeout: TEST_TIMEOUT_MS,
+    ...(process.platform === "win32"
+      ? {
+          fileParallelism: false,
+          maxWorkers: WINDOWS_TEST_MAX_WORKERS,
+          poolOptions: { forks: { singleFork: true } },
+        }
+      : {}),
   },
 });

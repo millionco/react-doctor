@@ -19,7 +19,7 @@ const writeExecutable = (binDir: string, binaryName: string): void => {
 // only thing we cross-check is "agents found via either signal end up
 // in the result, deduped, in stable order".
 
-describe("detectAvailableAgents (PATH detection)", () => {
+describe.skipIf(process.platform === "win32")("detectAvailableAgents (PATH detection)", () => {
   let fakeBinDirectory: string;
   let originalPath: string | undefined;
 

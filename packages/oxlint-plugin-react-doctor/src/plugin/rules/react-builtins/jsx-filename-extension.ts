@@ -1,6 +1,7 @@
 import path from "node:path";
 import { containsJsxElement } from "../../utils/contains-jsx-element.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { normalizeFilename } from "../../utils/normalize-filename.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
@@ -57,7 +58,7 @@ export const jsxFilenameExtension = defineRule<Rule>({
     const settings = resolveSettings(context.settings);
     const allowedExtensions = normalizeExtensions(settings.extensions);
     const allowedList = [...allowedExtensions].map((extension) => `.${extension}`).join(", ");
-    const filename = context.getFilename ? context.getFilename() : "fixture.tsx";
+    const filename = context.getFilename ? normalizeFilename(context.getFilename()) : "fixture.tsx";
     const extensionOnly = path.extname(filename).slice(1);
     const fileHasAllowedExtension = allowedExtensions.has(extensionOnly);
     let didReportMismatch = false;

@@ -11,6 +11,7 @@ export const setSpinnerSilent = (silent: boolean): void => {
 export const isSpinnerSilent = (): boolean => isSilent;
 
 const noopHandle = Object.freeze({
+  update: () => {},
   succeed: () => {},
   fail: () => {},
 });
@@ -34,6 +35,10 @@ export const spinner = (text: string) => ({
 
     let didFinalize = false;
     return {
+      update(displayText: string) {
+        if (didFinalize) return;
+        instance.text = displayText;
+      },
       succeed(displayText: string) {
         if (didFinalize) return;
         didFinalize = true;

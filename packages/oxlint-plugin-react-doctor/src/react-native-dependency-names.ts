@@ -8,15 +8,20 @@
 // layer that pairs with `react-dom` / Next / Vite hosts, not a mobile
 // target.
 
-// Closed set of canonical RN/Expo dependency names.
-export const REACT_NATIVE_DEPENDENCY_NAMES: ReadonlySet<string> = new Set([
-  "react-native",
-  "react-native-tvos",
+// Closed set of canonical Expo-managed dependency names.
+export const EXPO_MANAGED_DEPENDENCY_NAMES: ReadonlySet<string> = new Set([
   "expo",
   "expo-router",
   "@expo/cli",
   "@expo/metro-config",
   "@expo/metro-runtime",
+]);
+
+// Closed set of canonical RN/Expo dependency names.
+export const REACT_NATIVE_DEPENDENCY_NAMES: ReadonlySet<string> = new Set([
+  "react-native",
+  "react-native-tvos",
+  ...EXPO_MANAGED_DEPENDENCY_NAMES,
   "react-native-windows",
   "react-native-macos",
 ]);
@@ -30,6 +35,9 @@ export const REACT_NATIVE_DEPENDENCY_PREFIXES: ReadonlyArray<string> = [
   "@react-native/",
   "@react-native-",
 ];
+
+export const isExpoManagedDependencyName = (dependencyName: string): boolean =>
+  EXPO_MANAGED_DEPENDENCY_NAMES.has(dependencyName);
 
 // True when `dependencyName` is either a known RN/Expo package or sits
 // inside one of the `@react-native/` / `@react-native-` namespaces.

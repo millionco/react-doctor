@@ -1,5 +1,6 @@
 import { OG_ROUTE_PATTERN } from "../../constants/nextjs.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { normalizeFilename } from "../../utils/normalize-filename.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -13,7 +14,7 @@ export const nextjsNoImgElement = defineRule<Rule>({
   recommendation:
     "`import Image from 'next/image'` — provides automatic WebP/AVIF, lazy loading, and responsive srcset",
   create: (context: RuleContext) => {
-    const filename = context.getFilename?.() ?? "";
+    const filename = normalizeFilename(context.getFilename?.() ?? "");
     const isOgRoute = OG_ROUTE_PATTERN.test(filename);
 
     return {

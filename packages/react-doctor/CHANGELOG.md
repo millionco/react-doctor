@@ -1,10 +1,49 @@
 # react-doctor
 
+## 0.2.9
+
+### Patch Changes
+
+- [`30afe81`](https://github.com/millionco/react-doctor/commit/30afe81c4a4b46dcafedf326f93d899ee805b6ec) Thanks [@aidenybai](https://github.com/aidenybai)! - chore: verify trusted publishing via OIDC
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.2.9
+
+## 0.2.8
+
+### Patch Changes
+
+- add react-doctor.config.json schema field
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.2.8
+
+## 0.2.7
+
+### Patch Changes
+
+- **Animated score progress bar.** The CLI health score now renders with a smooth progress-bar animation, automatically skipped in CI and coding-agent environments.
+
+- **CI and agent detection.** New `isCiOrAgent` utility detects CI providers and coding agents (Cursor, Claude Code, Codex, etc.) and suppresses interactive prompts, animations, and the onboarding flow so scans run non-interactively where appropriate.
+
+- **Concurrent lint + dead-code analysis.** The `inspect` command now runs linting and dead-code detection in parallel instead of sequentially, reducing wall-clock scan time.
+
+- **Agent install hint.** When running inside a coding agent, the CLI suggests `react-doctor install` to set up the agent skill for in-editor diagnostics.
+
+- **Skip prefilled project question.** The monorepo project-selection prompt is skipped when there is only one scannable project, removing an unnecessary interactive step.
+
+- **`/doctor` triage skill.** The React Doctor agent skill now includes a `/doctor` command that fetches the canonical playbook for full-project triage.
+
+- Bundle `eslint-plugin-react-hooks` as a direct dependency so React Compiler rules work out of the box.
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.2.7
+
 ## 0.2.6
 
 ### Patch Changes
 
-- fix
+- Remove `design-no-bold-heading` rule — the heuristic produced too many false positives in design systems where headings intentionally vary weight.
 
 - Updated dependencies []:
   - oxlint-plugin-react-doctor@0.2.6
@@ -13,7 +52,17 @@
 
 ### Patch Changes
 
-- fix
+- **First-run onboarding.** New users see a brief walkthrough on their first `react-doctor` invocation explaining what the tool does and how to read the report.
+
+- **Node 20 support.** Fix runtime dependency resolution so the CLI runs correctly on Node 20 without requiring Node 22+ built-ins.
+
+- Cover child workspace diff include paths so `--diff` mode in monorepos correctly scans files changed inside nested workspace packages.
+
+- Stop `jsx-key` from flagging shorthand JSX fragments (`<>...</>`) which cannot accept a `key` prop.
+
+- Normalize static template literal handling so rules treat `` `hello` `` the same as `"hello"`.
+
+- Add `require-pnpm-hardening` environment check that warns when `pnpm` is detected without strict lockfile settings.
 
 - Updated dependencies []:
   - oxlint-plugin-react-doctor@0.2.5
@@ -22,7 +71,23 @@
 
 ### Patch Changes
 
-- fix
+- **Effect v4 runtime migration.** The entire scan pipeline is rebuilt on Effect v4 — tagged errors, dependency-injected services, generator-based control flow, and `Context.Reference` ambient config replace the previous imperative architecture.
+
+- **New `@react-doctor/api` package.** Programmatic `diagnose()` entry point backed by the same `runInspect` orchestrator the CLI uses, with typed `ReactDoctorError` failures and `Effect.catchReasons` dispatch.
+
+- **`inspect()` rewired through `runInspect`.** The CLI `inspect` command now delegates to the core streaming orchestrator instead of managing the scan loop directly, aligning CLI and API behavior.
+
+- **Native agent hook installer.** `react-doctor install` writes post-checkout / post-merge git hooks that auto-run the scan on relevant file changes.
+
+- **Opt-in OpenTelemetry.** `REACT_DOCTOR_OTLP_ENDPOINT` + `REACT_DOCTOR_OTLP_AUTH_HEADER` ship every service span to an OTLP backend.
+
+- **User-plugin extension.** `config.plugins: [...]` loads custom oxlint plugin packages alongside the built-in rules.
+
+- **Security hardening.** Pin CI workflow permissions, add fork guards, fix four pre-existing audit findings.
+
+- Collapse `@react-doctor/types` and `@react-doctor/project-info` into `@react-doctor/core`.
+
+- Adopt `Effect.Console` throughout — drop the custom `Logger` service.
 
 - Updated dependencies []:
   - oxlint-plugin-react-doctor@0.2.4
@@ -31,7 +96,7 @@
 
 ### Patch Changes
 
-- fix
+- Fix vite build configuration for bundling workspace dependencies so `npx react-doctor` resolves internal workspace imports correctly.
 
 - Updated dependencies []:
   - oxlint-plugin-react-doctor@0.2.3
@@ -40,7 +105,7 @@
 
 ### Patch Changes
 
-- fix
+- Restore `eslint-plugin-react-hooks` as a hard dependency so React Compiler rules resolve without requiring users to install the peer separately.
 
 - [#273](https://github.com/millionco/react-doctor/pull/273) [`47772b7`](https://github.com/millionco/react-doctor/commit/47772b7da4f6e412b09e3a4f74d888307faf74a1) Thanks [@aidenybai](https://github.com/aidenybai)! - Natively port the 8 rules from `eslint-plugin-react-you-might-not-need-an-effect`
   (NickvanDyke, MIT) into `oxlint-plugin-react-doctor`. They now ship as

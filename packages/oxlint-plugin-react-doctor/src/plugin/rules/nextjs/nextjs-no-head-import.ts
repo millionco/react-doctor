@@ -1,5 +1,6 @@
 import { APP_DIRECTORY_PATTERN } from "../../constants/nextjs.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { normalizeFilename } from "../../utils/normalize-filename.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -15,7 +16,7 @@ export const nextjsNoHeadImport = defineRule<Rule>({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       if (node.source?.value !== "next/head") return;
 
-      const filename = context.getFilename?.() ?? "";
+      const filename = normalizeFilename(context.getFilename?.() ?? "");
       if (!APP_DIRECTORY_PATTERN.test(filename)) return;
 
       context.report({

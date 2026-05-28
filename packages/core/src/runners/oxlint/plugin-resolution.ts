@@ -3,8 +3,6 @@ import path from "node:path";
 import type { OxlintRuleSeverity } from "oxlint-plugin-react-doctor";
 import { warnConfigIssue } from "../../utils/warn-config-issue.js";
 
-const esmRequire = createRequire(import.meta.url);
-
 export interface JsPluginEntry {
   name: string;
   specifier: string;
@@ -61,6 +59,8 @@ interface ResolvedReactHooksJsPlugin {
   availableRuleNames: ReadonlySet<string>;
 }
 
+const bundledRequire = createRequire(import.meta.url);
+
 export const resolveReactHooksJsPlugin = (
   hasReactCompiler: boolean,
   customRulesOnly: boolean,
@@ -68,18 +68,11 @@ export const resolveReactHooksJsPlugin = (
   if (!hasReactCompiler || customRulesOnly) return null;
   let pluginSpecifier: string;
   try {
-    pluginSpecifier = esmRequire.resolve("eslint-plugin-react-hooks");
+    pluginSpecifier = bundledRequire.resolve("eslint-plugin-react-hooks");
   } catch {
     return null;
   }
-  // HACK: oxlint resolves the plugin itself at scan time; we just
-  // need a fast rule-name listing to filter our config so we don't
-  // reference rules that don't exist in the user's installed version
-  // (e.g. older eslint-plugin-react-hooks releases do not expose
-  // every compiler rule). Failing to read the module is non-fatal —
-  // we fall back to enabling every configured rule and let oxlint
-  // surface any mismatch.
-  const { ruleNames } = readPluginShape(pluginSpecifier, (spec) => esmRequire(spec));
+  const { ruleNames } = readPluginShape(pluginSpecifier, (spec) => bundledRequire(spec));
   return {
     entry: { name: "react-hooks-js", specifier: pluginSpecifier },
     availableRuleNames: ruleNames,

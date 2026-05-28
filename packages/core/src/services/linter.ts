@@ -35,13 +35,9 @@ export interface LintInput {
   readonly adoptExistingLintConfig?: boolean;
   readonly ignoredTags?: ReadonlySet<string>;
   readonly userConfig?: ReactDoctorConfig | null;
-  /**
-   * Directory of the config file that declared `userConfig`.
-   * Used to resolve `userConfig.plugins` entries — diverges from
-   * `rootDirectory` after a `userConfig.rootDir` redirect.
-   */
   readonly configSourceDirectory?: string;
   readonly nodeBinaryPath?: string;
+  readonly onFileProgress?: (scannedFileCount: number, totalFileCount: number) => void;
 }
 
 /**
@@ -119,6 +115,7 @@ export class Linter extends Context.Service<
                   onPartialFailure: (reason) => {
                     collectedFailures.push(reason);
                   },
+                  onFileProgress: input.onFileProgress,
                 }),
               catch: ensureReactDoctorError,
             });

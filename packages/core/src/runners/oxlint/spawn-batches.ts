@@ -1,4 +1,7 @@
-import { OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT } from "../../constants.js";
+import {
+  OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT,
+  PROGRESS_TICK_INTERVAL_MS,
+} from "../../constants.js";
 import type { Diagnostic, ProjectInfo } from "../../types/index.js";
 import { isSplittableReactDoctorError } from "../../errors.js";
 import { dedupeDiagnostics } from "../../utils/dedupe-diagnostics.js";
@@ -12,6 +15,7 @@ export interface SpawnLintBatchesInput {
   readonly nodeBinaryPath: string;
   readonly project: ProjectInfo;
   readonly onPartialFailure?: (reason: string) => void;
+  readonly onFileProgress?: (scannedFileCount: number, totalFileCount: number) => void;
 }
 
 /**
@@ -28,7 +32,16 @@ export interface SpawnLintBatchesInput {
  * with a slimmer config in that case.
  */
 export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Diagnostic[]> => {
-  const { baseArgs, fileBatches, rootDirectory, nodeBinaryPath, project, onPartialFailure } = input;
+  const {
+    baseArgs,
+    fileBatches,
+    rootDirectory,
+    nodeBinaryPath,
+    project,
+    onPartialFailure,
+    onFileProgress,
+  } = input;
+  const totalFileCount = fileBatches.reduce((sum, batch) => sum + batch.length, 0);
 
   const allDiagnostics: Diagnostic[] = [];
   // HACK: tracks files whose smallest splittable batch (down to a
@@ -72,8 +85,28 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     }
   };
 
+  let scannedFileCount = 0;
   for (const batch of fileBatches) {
-    allDiagnostics.push(...(await spawnLintBatch(batch)));
+    // HACK: tick the progress counter per-file on a timer while the
+    // batch subprocess runs, so the UI feels smooth instead of jumping
+    // by 100 when each batch completes. The interval is cleared as
+    // soon as the batch resolves — any remaining files in the batch
+    // are counted in one final update.
+    let batchFileIndex = 0;
+    const progressInterval =
+      onFileProgress && batch.length > 1
+        ? setInterval(() => {
+            if (batchFileIndex < batch.length) {
+              batchFileIndex += 1;
+              onFileProgress(scannedFileCount + batchFileIndex, totalFileCount);
+            }
+          }, PROGRESS_TICK_INTERVAL_MS)
+        : null;
+    const batchDiagnostics = await spawnLintBatch(batch);
+    if (progressInterval !== null) clearInterval(progressInterval);
+    allDiagnostics.push(...batchDiagnostics);
+    scannedFileCount += batch.length;
+    onFileProgress?.(scannedFileCount, totalFileCount);
   }
 
   if (droppedFiles.length > 0 && onPartialFailure) {

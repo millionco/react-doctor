@@ -1,10 +1,37 @@
 # eslint-plugin-react-doctor
 
+## 0.2.9
+
+### Patch Changes
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.2.9
+
+## 0.2.8
+
+### Patch Changes
+
+- add react-doctor.config.json schema field
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.2.8
+
+## 0.2.7
+
+### Patch Changes
+
+- Bundle `eslint-plugin-react-hooks` as a direct dependency so React Compiler rules resolve without requiring users to install the peer separately.
+
+- Inherit the `no-mutating-reducer-state` rule and helper consolidation from `oxlint-plugin-react-doctor@0.2.7`.
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.2.7
+
 ## 0.2.6
 
 ### Patch Changes
 
-- fix
+- Inherit the `design-no-bold-heading` rule removal from `oxlint-plugin-react-doctor@0.2.6`.
 
 - Updated dependencies []:
   - oxlint-plugin-react-doctor@0.2.6
@@ -13,7 +40,7 @@
 
 ### Patch Changes
 
-- fix
+- Inherit the `jsx-key` shorthand fragment fix, static template literal normalization, and Node 20 support from `oxlint-plugin-react-doctor@0.2.5`.
 
 - Updated dependencies []:
   - oxlint-plugin-react-doctor@0.2.5
@@ -22,7 +49,7 @@
 
 ### Patch Changes
 
-- fix
+- Inherit the Effect v4 runtime adoption, deprecated type stub removal, and user-plugin extension support from `oxlint-plugin-react-doctor@0.2.4`.
 
 - Updated dependencies []:
   - oxlint-plugin-react-doctor@0.2.4
@@ -31,7 +58,7 @@
 
 ### Patch Changes
 
-- fix
+- Fix build configuration so the ESLint plugin resolves its dependency on `oxlint-plugin-react-doctor` correctly at publish time.
 
 - Updated dependencies []:
   - oxlint-plugin-react-doctor@0.2.3
@@ -40,7 +67,7 @@
 
 ### Patch Changes
 
-- fix
+- Restore `eslint-plugin-react-hooks` as a hard dependency so React Compiler rules resolve without requiring users to install the peer separately.
 
 - [#273](https://github.com/millionco/react-doctor/pull/273) [`47772b7`](https://github.com/millionco/react-doctor/commit/47772b7da4f6e412b09e3a4f74d888307faf74a1) Thanks [@aidenybai](https://github.com/aidenybai)! - Natively port the 8 rules from `eslint-plugin-react-you-might-not-need-an-effect`
   (NickvanDyke, MIT) into `oxlint-plugin-react-doctor`. They now ship as
@@ -91,8 +118,6 @@
 ## 0.2.0
 
 ### Minor Changes
-
-- fix
 
 - [`5be2ead`](https://github.com/millionco/react-doctor/commit/5be2eadd90b2248b28b228fad306808cec1bf758) Thanks [@aidenybai](https://github.com/aidenybai)! - Add configuration-level controls for React Doctor's rule output. Users can now set top-level `rules` and `categories` severity overrides, tune individual output surfaces (`cli`, `prComment`, `score`, and `ciFailure`) by tag/category/rule id, and rely on registered rule-family tags such as `design`, `react-native`, `server-action`, `test-noise`, and `migration-hint` for broad filtering.
 

@@ -8,31 +8,14 @@ import { walkInsideStatementBlocks } from "../../utils/walk-inside-statement-blo
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { isSubscribeLikeCallExpression } from "./utils/is-subscribe-like-call-expression.js";
-import { isCleanupReturn } from "./utils/is-cleanup-return.js";
+import {
+  isCleanupReturningSubscribeLikeCallExpression,
+  isSubscribeLikeCallExpression,
+} from "./utils/is-subscribe-like-call-expression.js";
+import { isCleanupFunctionLike, isCleanupReturn } from "./utils/is-cleanup-return.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-// HACK: From "Lifecycle of Reactive Effects":
-//
-//   "Each Effect describes a separate synchronization process. When
-//    the component is removed, your Effect needs to stop synchronizing.
-//    The cleanup function should stop or undo whatever the Effect was
-//    doing."
-//
-// An effect that adds a listener / subscribes / sets a timer but
-// returns no cleanup leaks memory and triggers React's "you forgot
-// to clean up an effect" StrictMode hint at runtime. We flag it
-// statically. Three subscribe-shaped families:
-//   - addEventListener (browser DOM, EventTarget-shaped libs)
-//   - subscribe / addListener / on / watch / listen / sub
-//   - setInterval / setTimeout (without explicit clear)
-//
-// The subscribe / unsubscribe method allowlists live in `constants.ts`
-// (`SUBSCRIPTION_METHOD_NAMES`, `UNSUBSCRIPTION_METHOD_NAMES`) so the
-// cleanup-needed detector and the prefer-use-sync-external-store
-// detector share a single source of truth. Inline duplicates would
-// silently drift out of sync as new library shapes get added.
 interface SubscribeLikeUsage {
   kind: "subscribe" | "timer";
   resourceName: string;
@@ -46,12 +29,6 @@ const findSubscribeLikeUsages = (callback: EsTreeNode): SubscribeLikeUsage[] => 
   ) {
     return usages;
   }
-  // HACK: timer/subscribe calls inside the EFFECT'S CLEANUP RETURN
-  // are not new registrations — they're the disposal step. The old
-  // walker traversed the full callback including any returned
-  // cleanup function, so a `setTimeout` inside `return () => { ... }`
-  // got counted as a usage. Detect and skip the cleanup ReturnStatement's
-  // argument body during the walk.
   let cleanupArgument: EsTreeNode | null = null;
   if (isNodeOfType(callback.body, "BlockStatement")) {
     const callbackStatements = callback.body.body ?? [];
@@ -62,7 +39,7 @@ const findSubscribeLikeUsages = (callback: EsTreeNode): SubscribeLikeUsage[] => 
   }
 
   walkAst(callback, (child: EsTreeNode) => {
-    if (child === cleanupArgument) return false;
+    if (child === cleanupArgument && !isSubscribeLikeCallExpression(child)) return false;
     if (!isNodeOfType(child, "CallExpression")) return;
 
     if (
@@ -90,40 +67,88 @@ const findSubscribeLikeUsages = (callback: EsTreeNode): SubscribeLikeUsage[] => 
   return usages;
 };
 
-// HACK: variables bound to a subscribe-like or timer-like call inside
-// an effect body are CLEANUP TARGETS — `return X` or `() => X()` /
-// `() => clearTimeout(X)` releases the resource. Collecting them here
-// lets the shared release predicate accept user-named bindings
-// (`const unsub = ...; return unsub`) without falling back to the
-// previous "any Identifier is fine" behavior.
-const collectReleasableBindingNames = (effectCallback: EsTreeNode): Set<string> => {
-  const releasableNames = new Set<string>();
+interface CleanupBindings {
+  cleanupFunctionNames: Set<string>;
+  subscriptionNames: Set<string>;
+  effectScopeVariableNames: Set<string>;
+}
+
+const collectCleanupBindings = (effectCallback: EsTreeNode): CleanupBindings => {
+  const bindings: CleanupBindings = {
+    cleanupFunctionNames: new Set<string>(),
+    subscriptionNames: new Set<string>(),
+    effectScopeVariableNames: new Set<string>(),
+  };
   if (
     !isNodeOfType(effectCallback, "ArrowFunctionExpression") &&
     !isNodeOfType(effectCallback, "FunctionExpression")
   ) {
-    return releasableNames;
+    return bindings;
   }
-  if (!isNodeOfType(effectCallback.body, "BlockStatement")) return releasableNames;
-  for (const statement of effectCallback.body.body ?? []) {
-    if (!isNodeOfType(statement, "VariableDeclaration")) continue;
-    for (const declarator of statement.declarations ?? []) {
+  if (!isNodeOfType(effectCallback.body, "BlockStatement")) return bindings;
+
+  walkInsideStatementBlocks(effectCallback.body, (child: EsTreeNode) => {
+    if (!isNodeOfType(child, "VariableDeclaration")) return;
+    for (const declarator of child.declarations ?? []) {
       if (!isNodeOfType(declarator.id, "Identifier")) continue;
+      const bindingName = declarator.id.name;
+      bindings.effectScopeVariableNames.add(bindingName);
       const init = declarator.init;
       if (!init || !isNodeOfType(init, "CallExpression")) continue;
       if (isSubscribeLikeCallExpression(init)) {
-        releasableNames.add(declarator.id.name);
-        continue;
-      }
-      if (
-        isNodeOfType(init.callee, "Identifier") &&
-        TIMER_CALLEE_NAMES_REQUIRING_CLEANUP.has(init.callee.name)
-      ) {
-        releasableNames.add(declarator.id.name);
+        bindings.subscriptionNames.add(bindingName);
+        if (isCleanupReturningSubscribeLikeCallExpression(init)) {
+          bindings.cleanupFunctionNames.add(bindingName);
+        }
       }
     }
-  }
-  return releasableNames;
+  });
+
+  walkAst(effectCallback.body, (child: EsTreeNode) => {
+    if (
+      child !== effectCallback.body &&
+      (isNodeOfType(child, "ArrowFunctionExpression") || isNodeOfType(child, "FunctionExpression"))
+    ) {
+      return false;
+    }
+    if (
+      isNodeOfType(child, "FunctionDeclaration") &&
+      child.id &&
+      isCleanupFunctionLike(child, bindings.cleanupFunctionNames, bindings.subscriptionNames)
+    ) {
+      bindings.cleanupFunctionNames.add(child.id.name);
+      return false;
+    }
+  });
+
+  walkInsideStatementBlocks(effectCallback.body, (child: EsTreeNode) => {
+    if (!isNodeOfType(child, "VariableDeclaration")) return;
+    for (const declarator of child.declarations ?? []) {
+      if (!isNodeOfType(declarator.id, "Identifier") || !declarator.init) continue;
+      if (
+        isCleanupFunctionLike(
+          declarator.init,
+          bindings.cleanupFunctionNames,
+          bindings.subscriptionNames,
+        )
+      ) {
+        bindings.cleanupFunctionNames.add(declarator.id.name);
+      }
+    }
+  });
+
+  walkAst(effectCallback.body, (child: EsTreeNode) => {
+    if (
+      isNodeOfType(child, "AssignmentExpression") &&
+      isNodeOfType(child.left, "Identifier") &&
+      bindings.effectScopeVariableNames.has(child.left.name) &&
+      isCleanupFunctionLike(child.right, bindings.cleanupFunctionNames, bindings.subscriptionNames)
+    ) {
+      bindings.cleanupFunctionNames.add(child.left.name);
+    }
+  });
+
+  return bindings;
 };
 
 const effectHasCleanupRelease = (callback: EsTreeNode): boolean => {
@@ -133,42 +158,21 @@ const effectHasCleanupRelease = (callback: EsTreeNode): boolean => {
   ) {
     return false;
   }
-  // HACK: expression-body arrows are the dominant shape for trivial
-  // subscribe-only effects:
-  //
-  //   useEffect(() => store.subscribe(handler), []);
-  //
-  // The arrow's expression body IS the body, and its evaluation
-  // result is implicitly returned as the effect's cleanup function.
-  // For subscribe-shaped calls we know the return value is the
-  // unsubscribe — accept this case before the BlockStatement-only
-  // checks below.
   if (!isNodeOfType(callback.body, "BlockStatement")) {
-    return isSubscribeLikeCallExpression(callback.body);
+    return isCleanupReturningSubscribeLikeCallExpression(callback.body);
   }
-  const knownBoundReleaseNames = collectReleasableBindingNames(callback);
-  // HACK: scan ALL `return` statements at the effect's own function
-  // scope (skipping nested functions via `walkInsideStatementBlocks`),
-  // not just the top-level last statement. The last-statement check
-  // false-positives on the very common conditional-cleanup shape:
-  //
-  //   useEffect(() => {
-  //     if (!enabled) return;
-  //     const sub = subscribe(...);
-  //     if (someCondition) {
-  //       return () => sub();
-  //     }
-  //   }, [enabled]);
-  //
-  // Either accept the conditional cleanup as intentional, or risk
-  // ~36% FPs on real codebases (measured: react-grab, excalidraw,
-  // textarea/popover patterns). Accepting nested cleanup mirrors how
-  // exhaustive-deps treats branched returns: trust the author.
+  const cleanupBindings = collectCleanupBindings(callback);
   let didFindCleanupReturn = false;
   walkInsideStatementBlocks(callback.body, (child: EsTreeNode) => {
     if (didFindCleanupReturn) return;
     if (!isNodeOfType(child, "ReturnStatement")) return;
-    if (isCleanupReturn(child.argument, knownBoundReleaseNames)) {
+    if (
+      isCleanupReturn(
+        child.argument,
+        cleanupBindings.cleanupFunctionNames,
+        cleanupBindings.subscriptionNames,
+      )
+    ) {
       didFindCleanupReturn = true;
     }
   });

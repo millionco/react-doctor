@@ -46,13 +46,28 @@ export const rnStylePreferBoxShadow = defineRule<Rule>({
       if (attrName !== "style" && !attrName.endsWith("Style")) return;
       if (!isNodeOfType(node.value, "JSXExpressionContainer")) return;
       const expression = node.value.expression;
-      if (!isNodeOfType(expression, "ObjectExpression")) return;
-      const match = findLegacyShadowProperty(expression);
-      if (!match) return;
-      context.report({
-        node: match.node,
-        message: `${match.keyName} is iOS/Android-platform-specific — use the cross-platform CSS \`boxShadow\` string (e.g. \`boxShadow: "0 2px 8px rgba(0,0,0,0.1)"\`) on RN v7+`,
-      });
+
+      if (isNodeOfType(expression, "ObjectExpression")) {
+        const match = findLegacyShadowProperty(expression);
+        if (match) {
+          context.report({
+            node: match.node,
+            message: `${match.keyName} is iOS/Android-platform-specific — use the cross-platform CSS \`boxShadow\` string (e.g. \`boxShadow: "0 2px 8px rgba(0,0,0,0.1)"\`) on RN v7+`,
+          });
+        }
+      } else if (isNodeOfType(expression, "ArrayExpression")) {
+        for (const element of expression.elements ?? []) {
+          if (!isNodeOfType(element, "ObjectExpression")) continue;
+          const match = findLegacyShadowProperty(element);
+          if (match) {
+            context.report({
+              node: match.node,
+              message: `${match.keyName} is iOS/Android-platform-specific — use the cross-platform CSS \`boxShadow\` string on RN v7+`,
+            });
+            return;
+          }
+        }
+      }
     },
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isNodeOfType(node.callee, "MemberExpression")) return;

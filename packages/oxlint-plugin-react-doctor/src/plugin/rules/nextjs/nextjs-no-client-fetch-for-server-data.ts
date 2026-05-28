@@ -2,6 +2,7 @@ import { PAGES_DIRECTORY_PATTERN, PAGE_OR_LAYOUT_FILE_PATTERN } from "../../cons
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { containsFetchCall } from "../../utils/contains-fetch-call.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { normalizeFilename } from "../../utils/normalize-filename.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { hasDirective } from "../../utils/has-directive.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
@@ -29,7 +30,7 @@ export const nextjsNoClientFetchForServerData = defineRule<Rule>({
         const callback = getEffectCallback(node);
         if (!callback || !containsFetchCall(callback)) return;
 
-        const filename = context.getFilename?.() ?? "";
+        const filename = normalizeFilename(context.getFilename?.() ?? "");
         const isPageOrLayoutFile =
           PAGE_OR_LAYOUT_FILE_PATTERN.test(filename) || PAGES_DIRECTORY_PATTERN.test(filename);
 

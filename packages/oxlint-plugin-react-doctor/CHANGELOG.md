@@ -1,34 +1,62 @@
 # oxlint-plugin-react-doctor
 
+## 0.2.9
+
+## 0.2.8
+
+### Patch Changes
+
+- add react-doctor.config.json schema field
+
+## 0.2.7
+
+### Patch Changes
+
+- Add `no-mutating-reducer-state` rule that flags direct mutations of `useReducer` state (e.g. `state.items.push(...)` or `state.count++` inside a reducer body) which silently break React's immutability contract.
+
+- Consolidate ~30 duplicated utility functions (`isFunctionLike`, `findProgramRoot`, `flattenCalleeName`, `isAstDescendant`, `hasJsxKeyAttribute`, `containsJsx`, `compileGlob`, `collectPatternNames`, `flattenJsxName`, `isAllLiteralArrayExpression`, `getCallMethodName`, etc.) into canonical shared modules under `src/plugin/utils/`, eliminating hundreds of lines of redundant code across rule files.
+
 ## 0.2.6
 
 ### Patch Changes
 
-- fix
+- Remove `design-no-bold-heading` rule — the heuristic of flagging `font-bold` on headings produced too many false positives in design systems where headings intentionally vary weight.
 
 ## 0.2.5
 
 ### Patch Changes
 
-- fix
+- Stop `jsx-key` from flagging shorthand JSX fragments (`<>...</>`) which cannot accept a `key` prop — only `React.Fragment` with explicit syntax supports keys.
+
+- Normalize static template literal handling so rules that inspect string values treat `` `hello` `` the same as `"hello"` instead of skipping template literals with no expressions.
+
+- Fix Node 20 runtime dependency support so the plugin resolves correctly in environments without Node 22+ built-ins.
 
 ## 0.2.4
 
 ### Patch Changes
 
-- fix
+- Adopt Effect v4 runtime throughout the core engine — tagged error classes, `Context.Service` dependency injection, and `Effect.gen` generator-based control flow replace the previous imperative error-handling approach.
+
+- Collapse `@react-doctor/types` and `@react-doctor/project-info` into `@react-doctor/core`, simplifying the dependency graph from five workspace packages to three.
+
+- Support user-plugin extension via `config.plugins: [...]` for custom lint rules that run alongside the built-in rule set.
+
+- Drop deprecated `@types/eslint-scope` and `@types/eslint-visitor-keys` stubs.
+
+- Security audit: fix four pre-existing findings (dependency pinning, permission tightening, fork guards on CI workflows).
 
 ## 0.2.3
 
 ### Patch Changes
 
-- fix
+- Fix vite build configuration for bundling workspace dependencies so the published package resolves internal imports correctly.
 
 ## 0.2.2
 
 ### Patch Changes
 
-- fix
+- Restore `eslint-plugin-react-hooks` as a hard dependency so React Compiler rules resolve without requiring users to install the peer separately.
 
 - [#273](https://github.com/millionco/react-doctor/pull/273) [`47772b7`](https://github.com/millionco/react-doctor/commit/47772b7da4f6e412b09e3a4f74d888307faf74a1) Thanks [@aidenybai](https://github.com/aidenybai)! - Natively port the 8 rules from `eslint-plugin-react-you-might-not-need-an-effect`
   (NickvanDyke, MIT) into `oxlint-plugin-react-doctor`. They now ship as
@@ -73,8 +101,6 @@
 ## 0.2.0
 
 ### Minor Changes
-
-- fix
 
 - [`5be2ead`](https://github.com/millionco/react-doctor/commit/5be2eadd90b2248b28b228fad306808cec1bf758) Thanks [@aidenybai](https://github.com/aidenybai)! - Add configuration-level controls for React Doctor's rule output. Users can now set top-level `rules` and `categories` severity overrides, tune individual output surfaces (`cli`, `prComment`, `score`, and `ciFailure`) by tag/category/rule id, and rely on registered rule-family tags such as `design`, `react-native`, `server-action`, `test-noise`, and `migration-hint` for broad filtering.
 

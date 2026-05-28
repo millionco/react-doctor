@@ -60,6 +60,35 @@ export const Online = () => {
     expect(hits).toHaveLength(1);
   });
 
+  it("flags a useSyncExternalStore reimplementation cleaned up with a bound `.remove()`", async () => {
+    const projectDir = setupReactProject(tempRoot, "prefer-use-sync-external-store-bound-remove", {
+      files: {
+        "src/BoundRemove.tsx": `import { useEffect, useState } from "react";
+
+declare const store: {
+  subscribe: (listener: () => void) => { remove: () => void };
+  getSnapshot: () => number;
+};
+
+export const BoundRemove = () => {
+  const [snapshot, setSnapshot] = useState(store.getSnapshot());
+  useEffect(() => {
+    const sub = store.subscribe(() => {
+      setSnapshot(store.getSnapshot());
+    });
+    return () => sub.remove();
+  }, []);
+  return <span>{snapshot}</span>;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "prefer-use-sync-external-store");
+    expect(hits).toHaveLength(1);
+    expect(hits[0].message).toContain("useSyncExternalStore");
+  });
+
   it("flags the lazy-initializer variant `useState(() => getSnapshot())`", async () => {
     const projectDir = setupReactProject(tempRoot, "prefer-use-sync-external-store-lazy", {
       files: {
@@ -199,9 +228,39 @@ export const Leaky = () => {
     expect(hits).toHaveLength(0);
   });
 
+  it("does NOT flag when an addEventListener result binding is returned directly", async () => {
+    const projectDir = setupReactProject(
+      tempRoot,
+      "prefer-use-sync-external-store-return-add-listener-binding",
+      {
+        files: {
+          "src/Online.tsx": `import { useEffect, useState } from "react";
+
+declare const source: { addEventListener: (eventName: string, handler: () => void) => void };
+declare const getSnapshot: () => boolean;
+
+export const Online = () => {
+  const [isOnline, setIsOnline] = useState(getSnapshot());
+  useEffect(() => {
+    const subscription = source.addEventListener("online", () => {
+      setIsOnline(getSnapshot());
+    });
+    return subscription;
+  }, []);
+  return <span>{isOnline ? "online" : "offline"}</span>;
+};
+`,
+        },
+      },
+    );
+
+    const hits = await collectRuleHits(projectDir, "prefer-use-sync-external-store");
+    expect(hits).toHaveLength(0);
+  });
+
   it("DOES flag a useSyncExternalStore reimplementation whose cleanup uses a generic teardown verb (`cleanup()`)", async () => {
     // Regression: `cleanupReleasesSubscription` previously only accepted
-    // `UNSUBSCRIPTION_METHOD_NAMES` plus the literal bound-unsubscribe
+    // `GLOBAL_RELEASE_METHOD_NAMES` plus the literal bound-unsubscribe
     // name. Generic teardown verbs from `CLEANUP_LIKE_RELEASE_CALLEE_NAMES`
     // (`cleanup`, `dispose`, `destroy`, `teardown`) were silently ignored,
     // so a complete useSyncExternalStore reimplementation with a

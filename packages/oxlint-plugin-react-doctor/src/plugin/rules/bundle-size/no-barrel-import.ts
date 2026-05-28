@@ -1,5 +1,6 @@
 import { createRelativeImportSource } from "../../utils/create-relative-import-source.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { normalizeFilename } from "../../utils/normalize-filename.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isBarrelIndexModule } from "../../utils/is-barrel-index-module.js";
 import { resolveBarrelExportFilePath } from "../../utils/resolve-barrel-export-file-path.js";
@@ -77,7 +78,7 @@ export const noBarrelImport = defineRule<Rule>({
         const source = node.source?.value;
         if (typeof source !== "string" || !source.startsWith(".")) return;
 
-        const filename = context.getFilename?.() ?? "";
+        const filename = normalizeFilename(context.getFilename?.() ?? "");
         if (!filename) return;
 
         const importRequests = getRuntimeImportRequests(node);

@@ -1,19 +1,16 @@
+import isUnicodeSupported from "is-unicode-supported";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import {
   groupBy,
   highlighter,
-  MAX_CATEGORY_GROUPS_SHOWN_NON_VERBOSE,
-  MAX_RULE_GROUPS_PER_CATEGORY_NON_VERBOSE,
   MILLISECONDS_PER_SECOND,
-  OUTPUT_DETAIL_WRAP_WIDTH_CHARS,
   RULE_NAME_COLUMN_WIDTH_CHARS,
-  toRelativePath,
 } from "@react-doctor/core";
 import type { Diagnostic } from "@react-doctor/core";
-import { buildHiddenDiagnosticsSummary } from "./build-hidden-diagnostics-summary.js";
 import { indentMultilineText } from "./indent-multiline-text.js";
-import { wrapIndentedText } from "./wrap-indented-text.js";
+
+const POINTER = isUnicodeSupported() ? "›" : ">";
 
 const SEVERITY_ORDER: Record<Diagnostic["severity"], number> = {
   error: 0,
@@ -59,17 +56,6 @@ const buildVerboseSiteMap = (diagnostics: Diagnostic[]): Map<string, VerboseSite
 
 const formatSiteCountBadge = (count: number): string => (count > 1 ? `×${count}` : "");
 
-const formatIssueCount = (count: number): string => `${count} ${count === 1 ? "issue" : "issues"}`;
-
-const toRuleTitle = (ruleName: string): string => {
-  const readableRuleName = ruleName
-    .replace(/^(no|prefer|require|use)-/, "")
-    .replace(/^(nextjs|tanstack-start)-/, "")
-    .replaceAll("-", " ");
-  const title = readableRuleName.charAt(0).toUpperCase() + readableRuleName.slice(1);
-  return title.replace(/\b(css|html|url|svg|jsx|api|ua)\b/gi, (match) => match.toUpperCase());
-};
-
 const computeRuleNameColumnWidth = (ruleKeys: string[]): number => {
   const longestRuleNameLength = ruleKeys.reduce(
     (longest, ruleKey) => Math.max(longest, ruleKey.length),
@@ -84,9 +70,6 @@ const padRuleNameToColumn = (ruleName: string, columnWidth: number): string => {
 };
 
 const grayLine = (text: string): string => highlighter.gray(text);
-
-const grayWrappedLine = (text: string, linePrefix: string): string =>
-  grayLine(wrapIndentedText(text, linePrefix, OUTPUT_DETAIL_WRAP_WIDTH_CHARS));
 
 const buildCompactRuleGroupLine = (
   ruleKey: string,
@@ -137,49 +120,23 @@ const buildCategoryDiagnosticGroups = (diagnostics: Diagnostic[]): CategoryDiagn
     });
 };
 
-const buildDefaultRuleGroupLines = (
-  ruleKey: string,
-  ruleDiagnostics: Diagnostic[],
-  rootDirectory: string,
-): ReadonlyArray<string> => {
-  const firstDiagnostic = ruleDiagnostics[0];
-  const ruleTitle = toRuleTitle(firstDiagnostic.rule);
-  const severitySymbol = firstDiagnostic.severity === "error" ? "✗" : "⚠";
-  const icon = colorizeBySeverity(severitySymbol, firstDiagnostic.severity);
-  const siteCountBadge = formatSiteCountBadge(ruleDiagnostics.length);
-  const trailingBadge = siteCountBadge.length > 0 ? ` ${highlighter.gray(siteCountBadge)}` : "";
-
-  const lines: string[] = [];
-  lines.push(`  ${icon} ${ruleTitle}${trailingBadge}`);
-  lines.push(grayWrappedLine(firstDiagnostic.message, "    "));
-  if (firstDiagnostic.help) {
-    lines.push(grayWrappedLine(firstDiagnostic.help, "    "));
-  }
-  if (firstDiagnostic.url) {
-    lines.push(grayLine(`    ${firstDiagnostic.url}`));
-  }
-  const firstLocation = ruleDiagnostics.find((diagnostic) => diagnostic.line > 0);
-  if (firstLocation) {
-    const locationPath = toRelativePath(firstLocation.filePath, rootDirectory);
-    lines.push(grayLine(`    ${locationPath}:${firstLocation.line}`));
-  }
-  return lines;
-};
-
-const buildDefaultCategoryGroupLines = (
-  categoryGroup: CategoryDiagnosticGroup,
-  visibleRuleGroups: [string, Diagnostic[]][],
-  rootDirectory: string,
-): ReadonlyArray<string> => {
-  const issueCount = formatIssueCount(categoryGroup.diagnostics.length);
-  const lines: string[] = [
-    `${highlighter.bold(categoryGroup.category)} ${highlighter.dim(issueCount)}`,
-  ];
-  for (const [ruleKey, ruleDiagnostics] of visibleRuleGroups) {
-    lines.push(...buildDefaultRuleGroupLines(ruleKey, ruleDiagnostics, rootDirectory));
-  }
-  lines.push("");
-  return lines;
+const buildCompactCategoryLine = (categoryGroup: CategoryDiagnosticGroup): string => {
+  const errorCount = categoryGroup.diagnostics.filter(
+    (diagnostic) => diagnostic.severity === "error",
+  ).length;
+  const warningCount = categoryGroup.diagnostics.filter(
+    (diagnostic) => diagnostic.severity === "warning",
+  ).length;
+  const parts: string[] = [];
+  if (errorCount > 0)
+    parts.push(highlighter.error(`${errorCount} ${errorCount === 1 ? "error" : "errors"}`));
+  if (warningCount > 0)
+    parts.push(
+      highlighter.warn(
+        highlighter.dim(`${warningCount} ${warningCount === 1 ? "warning" : "warnings"}`),
+      ),
+    );
+  return `  ${highlighter.bold(categoryGroup.category)} ${highlighter.dim(POINTER)} ${parts.join(highlighter.dim(", "))}`;
 };
 
 const buildVerboseRuleGroupLines = (
@@ -211,50 +168,13 @@ const buildVerboseRuleGroupLines = (
   return lines;
 };
 
-const buildHiddenDiagnosticsLines = (
-  hiddenRuleGroups: [string, Diagnostic[]][],
-): ReadonlyArray<string> => {
-  const hiddenDiagnostics = hiddenRuleGroups.flatMap(([, ruleDiagnostics]) => ruleDiagnostics);
-  const renderedParts = buildHiddenDiagnosticsSummary(hiddenDiagnostics).map((part) => {
-    const [icon, ...labelParts] = part.text.split(" ");
-    return `${colorizeBySeverity(icon, part.severity)} ${highlighter.dim(labelParts.join(" "))}`;
-  });
-
-  return [
-    `  ${renderedParts.join("  ")}`,
-    grayLine("    Run `npx react-doctor@latest . --verbose` to get all details"),
-    "",
-  ];
-};
-
-const buildDefaultDiagnosticsLines = (
-  diagnostics: Diagnostic[],
-  rootDirectory: string,
-): ReadonlyArray<string> => {
+const buildDefaultDiagnosticsLines = (diagnostics: Diagnostic[]): ReadonlyArray<string> => {
   const categoryGroups = buildCategoryDiagnosticGroups(diagnostics);
-  const hiddenRuleGroups: [string, Diagnostic[]][] = [];
-  const visibleCategoryGroups = categoryGroups.slice(0, MAX_CATEGORY_GROUPS_SHOWN_NON_VERBOSE);
-  const hiddenCategoryGroups = categoryGroups.slice(MAX_CATEGORY_GROUPS_SHOWN_NON_VERBOSE);
-
   const lines: string[] = [];
-  for (const categoryGroup of visibleCategoryGroups) {
-    const visibleRuleGroups = categoryGroup.ruleGroups.slice(
-      0,
-      MAX_RULE_GROUPS_PER_CATEGORY_NON_VERBOSE,
-    );
-    const remainingRuleGroups = categoryGroup.ruleGroups.slice(
-      MAX_RULE_GROUPS_PER_CATEGORY_NON_VERBOSE,
-    );
-    lines.push(...buildDefaultCategoryGroupLines(categoryGroup, visibleRuleGroups, rootDirectory));
-    hiddenRuleGroups.push(...remainingRuleGroups);
+  for (const categoryGroup of categoryGroups) {
+    lines.push(buildCompactCategoryLine(categoryGroup));
   }
-  hiddenRuleGroups.push(
-    ...hiddenCategoryGroups.flatMap((categoryGroup) => categoryGroup.ruleGroups),
-  );
-
-  if (hiddenRuleGroups.length > 0) {
-    lines.push(...buildHiddenDiagnosticsLines(hiddenRuleGroups));
-  }
+  lines.push("");
   return lines;
 };
 
@@ -272,7 +192,7 @@ export const printDiagnostics = (
   Effect.gen(function* () {
     let lines: ReadonlyArray<string>;
     if (!isVerbose) {
-      lines = buildDefaultDiagnosticsLines(diagnostics, rootDirectory);
+      lines = buildDefaultDiagnosticsLines(diagnostics);
     } else {
       const ruleGroups = groupBy(
         diagnostics,

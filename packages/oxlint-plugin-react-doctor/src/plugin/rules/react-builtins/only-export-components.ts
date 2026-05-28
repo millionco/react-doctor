@@ -1,4 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { normalizeFilename } from "../../utils/normalize-filename.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
@@ -383,7 +384,7 @@ export const onlyExportComponents = defineRule<Rule>({
     };
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
-        const filename = context.getFilename ? context.getFilename() : undefined;
+        const filename = context.getFilename ? normalizeFilename(context.getFilename()) : undefined;
         if (!isFileNameAllowed(filename, settings.checkJS)) return;
         const allNodes = collectAllNodes(node as EsTreeNode);
 

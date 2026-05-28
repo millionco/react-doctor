@@ -1,4 +1,5 @@
 import { classifyPackagePlatform } from "./classify-package-platform.js";
+import { normalizeFilename } from "./normalize-filename.js";
 import { getReactDoctorStringSetting } from "./get-react-doctor-setting.js";
 import type { RuleContext } from "./rule-context.js";
 
@@ -25,7 +26,7 @@ const NATIVE_FILE_EXTENSION_PATTERN = /\.(?:ios|android|native)\.[cm]?[jt]sx?$/;
 //      `.native.tsx`) → ACTIVE. These files always target RN.
 //   2. Filename ends with a web extension (`.web.tsx`) → INACTIVE.
 //   3. Nearest package.json classifies as "web" → INACTIVE.
-//   4. Nearest package.json classifies as "react-native" → ACTIVE.
+//   4. Nearest package.json classifies as "expo" or "react-native" → ACTIVE.
 //   5. Nearest package.json classifies as "unknown" → fall back to the
 //      project-level framework setting:
 //      • `react-native` or `expo` → ACTIVE
@@ -41,15 +42,16 @@ const NATIVE_FILE_EXTENSION_PATTERN = /\.(?:ios|android|native)\.[cm]?[jt]sx?$/;
 // harnesses; in that case we keep RN rules active so the rule body can
 // proceed.
 export const isReactNativeFileActive = (context: RuleContext): boolean => {
-  const filename = context.getFilename?.();
-  if (!filename) return true;
+  const rawFilename = context.getFilename?.();
+  if (!rawFilename) return true;
+  const filename = normalizeFilename(rawFilename);
 
   if (NATIVE_FILE_EXTENSION_PATTERN.test(filename)) return true;
   if (WEB_FILE_EXTENSION_PATTERN.test(filename)) return false;
 
   const packagePlatform = classifyPackagePlatform(filename);
   if (packagePlatform === "web") return false;
-  if (packagePlatform === "react-native") return true;
+  if (packagePlatform === "expo" || packagePlatform === "react-native") return true;
 
   const framework = getReactDoctorStringSetting(context.settings, "framework");
   if (framework === "react-native" || framework === "expo") return true;

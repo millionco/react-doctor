@@ -1,6 +1,6 @@
 {
   "name": "oxlint-plugin-react-doctor",
-  "version": "0.2.6",
+  "version": "0.2.9",
   "description": "oxlint plugin for React Doctor: diagnose React codebases for security, performance, correctness, accessibility, bundle-size, and architecture issues",
   "keywords": [
     "accessibility",
@@ -42,7 +42,7 @@
   },
   "scripts": {
     "dev": "vp pack --watch",
-    "build": "pnpm gen && node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && NODE_ENV=production vp pack",
+    "build": "pnpm gen && node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && cross-env NODE_ENV=production vp pack",
     "gen": "node ./scripts/generate-rule-registry.mjs",
     "gen:check": "node ./scripts/generate-rule-registry.mjs && git diff --exit-code -- src/plugin/rule-registry.ts",
     "gen:fixtures": "node ./scripts/extract-oxc-fixtures.mjs /tmp/oxc",

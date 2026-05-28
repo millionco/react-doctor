@@ -1,4 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { normalizeFilename } from "../../utils/normalize-filename.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
@@ -147,7 +148,7 @@ export const serverHoistStaticIo = defineRule<Rule>({
       );
     },
     ExportDefaultDeclaration(node: EsTreeNodeOfType<"ExportDefaultDeclaration">) {
-      const filename = context.getFilename?.() ?? "";
+      const filename = normalizeFilename(context.getFilename?.() ?? "");
       if (!PAGES_ROUTER_API_PATH_PATTERN.test(filename)) return;
       const declaration = node.declaration;
       if (

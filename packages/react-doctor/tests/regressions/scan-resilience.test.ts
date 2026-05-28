@@ -382,7 +382,7 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
   });
 
   it("REACT_COMPILER_RULES are gated on react-hooks-js plugin resolution", () => {
-    // When eslint-plugin-react-hooks IS resolvable from react-doctor,
+    // When eslint-plugin-react-hooks IS resolvable from the project,
     // REACT_COMPILER_RULES should
     // appear AND `react-hooks-js` must be in jsPlugins by name.
     const config = createOxlintConfig({
@@ -567,6 +567,27 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
     for (const ruleKey of reactCompilerGatedRules) {
       expect(withCompiler.rules[ruleKey]).toBeUndefined();
     }
+  });
+
+  // The inverse of the rule above: `react-compiler-no-manual-memoization`
+  // is gated with `requires: ["react-compiler"]` so it ONLY fires once
+  // the project ships with React Compiler. Without the compiler, manual
+  // `useMemo` / `useCallback` / `memo()` are still legitimate perf
+  // tools — the gate must keep the rule out of the default config.
+  it("enables react-compiler-no-manual-memoization only when React Compiler is detected", () => {
+    const ruleKey = "react-doctor/react-compiler-no-manual-memoization";
+
+    const withoutCompiler = createOxlintConfig({
+      pluginPath: "/tmp/react-doctor-plugin.js",
+      project: buildTestProject({ rootDirectory: "/tmp/test", hasReactCompiler: false }),
+    });
+    expect(withoutCompiler.rules[ruleKey]).toBeUndefined();
+
+    const withCompiler = createOxlintConfig({
+      pluginPath: "/tmp/react-doctor-plugin.js",
+      project: buildTestProject({ rootDirectory: "/tmp/test", hasReactCompiler: true }),
+    });
+    expect(withCompiler.rules[ruleKey]).toBe("error");
   });
 
   // The three noisy upstream rules ship `defaultEnabled: false` —

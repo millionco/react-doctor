@@ -36,16 +36,15 @@ export const resolveDiffMode = async (
   if (shouldSkipPrompts) return false;
   if (isQuiet) return false;
 
-  const currentBranchLabel = diffInfo.currentBranch ?? "(detached HEAD)";
-  const promptMessage = diffInfo.isCurrentChanges
-    ? `Found ${changedSourceFiles.length} uncommitted changed files. Only scan those?`
-    : `On branch ${currentBranchLabel} (${changedSourceFiles.length} files changed vs ${diffInfo.baseBranch}). Only scan changed files?`;
-
-  const { shouldScanChangedOnly } = await prompts({
-    type: "confirm",
-    name: "shouldScanChangedOnly",
-    message: promptMessage,
-    initial: true,
+  const { scanScope } = await prompts({
+    type: "select",
+    name: "scanScope",
+    message: "Choose what to scan",
+    choices: [
+      { title: "Full codebase", value: "full" },
+      { title: `Changed files (${changedSourceFiles.length})`, value: "branch" },
+    ],
+    initial: 0,
   });
-  return Boolean(shouldScanChangedOnly);
+  return scanScope === "branch";
 };

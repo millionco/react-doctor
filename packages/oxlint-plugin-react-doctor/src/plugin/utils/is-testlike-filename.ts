@@ -196,9 +196,10 @@ const sliceBelowSourceRoot = (filename: string): string => {
   return filename.slice(cutAt);
 };
 
-export const isTestlikeFilename = (filename: string | undefined): boolean => {
-  if (!filename) return false;
-  const lastSlash = Math.max(filename.lastIndexOf("/"), filename.lastIndexOf("\\"));
+export const isTestlikeFilename = (rawFilename: string | undefined): boolean => {
+  if (!rawFilename) return false;
+  const filename = rawFilename.replaceAll("\\", "/");
+  const lastSlash = filename.lastIndexOf("/");
   const basename = lastSlash === -1 ? filename : filename.slice(lastSlash + 1);
   if (NON_PRODUCTION_BASENAMES.has(basename.toLowerCase())) return true;
   // The filename suffix check (`.test.`, `.spec.`, `.stories.` etc.)

@@ -7,7 +7,16 @@ export type {
   RuleSeverityOverride,
   SurfaceControls,
 } from "./config.js";
-export type { DiagnoseOptions, DiagnoseResult } from "./diagnose.js";
+export type {
+  DiagnoseOptions,
+  DiagnoseProjectsInput,
+  DiagnoseProjectsResult,
+  DiagnoseResult,
+  ProjectDefinition,
+  ProjectResult,
+  ProjectResultError,
+  ProjectResultOk,
+} from "./diagnose.js";
 export type { CleanedDiagnostic, Diagnostic, OxlintOutput } from "./diagnostic.js";
 export type { HandleErrorOptions } from "./handle-error.js";
 export type {

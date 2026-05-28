@@ -4,17 +4,19 @@ import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 
 /**
- * Handle returned by `Progress.start`. Terminate exactly once with
- * `succeed` or `fail`. Callers don't manage the underlying
+ * Handle returned by `Progress.start`. Call `update` zero or more
+ * times for intermediate status changes, then terminate exactly once
+ * with `succeed` or `fail`. Callers don't manage the underlying
  * implementation (ora instance, log lines, GitHub Action group, etc).
  */
 export interface ProgressHandle {
+  readonly update: (displayText: string) => Effect.Effect<void>;
   readonly succeed: (displayText: string) => Effect.Effect<void>;
   readonly fail: (displayText: string) => Effect.Effect<void>;
 }
 
 export interface ProgressEvent {
-  readonly _tag: "Started" | "Succeeded" | "Failed";
+  readonly _tag: "Started" | "Updated" | "Succeeded" | "Failed";
   readonly text: string;
 }
 
@@ -55,6 +57,7 @@ export class Progress extends Context.Service<
     Progress.of({
       start: () =>
         Effect.succeed({
+          update: () => Effect.void,
           succeed: () => Effect.void,
           fail: () => Effect.void,
         }),
@@ -72,6 +75,11 @@ export class Progress extends Context.Service<
               { _tag: "Started" as const, text },
             ]);
             return {
+              update: (displayText: string) =>
+                Ref.update(events, (existing) => [
+                  ...existing,
+                  { _tag: "Updated" as const, text: displayText },
+                ]),
               succeed: (displayText: string) =>
                 Ref.update(events, (existing) => [
                   ...existing,

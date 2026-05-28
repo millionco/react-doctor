@@ -56,6 +56,19 @@ export class PackageJsonNotFoundError extends Error {
   }
 }
 
+export class NotADirectoryError extends Error {
+  override readonly name = "NotADirectoryError";
+  readonly resolvedPath: string;
+
+  constructor(resolvedPath: string, options?: ErrorOptions) {
+    super(
+      `Resolved scan target "${resolvedPath}" is not a directory. Ensure the path exists and points to a project directory, not a file.`,
+      options,
+    );
+    this.resolvedPath = resolvedPath;
+  }
+}
+
 export class AmbiguousProjectError extends Error {
   override readonly name = "AmbiguousProjectError";
   readonly directory: string;
@@ -77,8 +90,10 @@ export const isProjectDiscoveryError = (
   | ProjectNotFoundError
   | NoReactDependencyError
   | PackageJsonNotFoundError
+  | NotADirectoryError
   | AmbiguousProjectError =>
   value instanceof ProjectNotFoundError ||
   value instanceof NoReactDependencyError ||
   value instanceof PackageJsonNotFoundError ||
+  value instanceof NotADirectoryError ||
   value instanceof AmbiguousProjectError;

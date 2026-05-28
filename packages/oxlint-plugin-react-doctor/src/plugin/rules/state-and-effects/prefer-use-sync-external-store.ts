@@ -12,6 +12,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isCleanupReturn } from "./utils/is-cleanup-return.js";
+import { isCleanupReturningSubscribeLikeCallExpression } from "./utils/is-subscribe-like-call-expression.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -49,9 +50,13 @@ const findUseEffectsInComponent = (componentBody: EsTreeNode | undefined): EsTre
   return effectCalls;
 };
 
-const findSubscriptionCall = (
-  effectBodyStatements: EsTreeNode[],
-): { call: EsTreeNode; boundUnsubscribeName: string | null } | null => {
+interface SubscriptionCallMatch {
+  call: EsTreeNode;
+  boundReleaseName: string | null;
+  boundSubscriptionName: string | null;
+}
+
+const findSubscriptionCall = (effectBodyStatements: EsTreeNode[]): SubscriptionCallMatch | null => {
   for (const statement of effectBodyStatements) {
     if (isNodeOfType(statement, "VariableDeclaration")) {
       for (const declarator of statement.declarations ?? []) {
@@ -60,10 +65,17 @@ const findSubscriptionCall = (
         if (!isNodeOfType(init.callee, "MemberExpression")) continue;
         if (!isNodeOfType(init.callee.property, "Identifier")) continue;
         if (!SUBSCRIPTION_METHOD_NAMES.has(init.callee.property.name)) continue;
-        const boundUnsubscribeName = isNodeOfType(declarator.id, "Identifier")
+        const boundSubscriptionName = isNodeOfType(declarator.id, "Identifier")
           ? declarator.id.name
           : null;
-        return { call: init, boundUnsubscribeName };
+        return {
+          call: init,
+          boundReleaseName:
+            boundSubscriptionName && isCleanupReturningSubscribeLikeCallExpression(init)
+              ? boundSubscriptionName
+              : null,
+          boundSubscriptionName,
+        };
       }
     }
     if (isNodeOfType(statement, "ExpressionStatement")) {
@@ -72,7 +84,7 @@ const findSubscriptionCall = (
       if (!isNodeOfType(expression.callee, "MemberExpression")) continue;
       if (!isNodeOfType(expression.callee.property, "Identifier")) continue;
       if (!SUBSCRIPTION_METHOD_NAMES.has(expression.callee.property.name)) continue;
-      return { call: expression, boundUnsubscribeName: null };
+      return { call: expression, boundReleaseName: null, boundSubscriptionName: null };
     }
   }
   return null;
@@ -137,13 +149,20 @@ const getSingleSetterCallFromHandler = (
 
 const cleanupReleasesSubscription = (
   effectBodyStatements: EsTreeNode[],
-  boundUnsubscribeName: string | null,
+  boundReleaseName: string | null,
+  boundSubscriptionName: string | null,
 ): boolean => {
   const lastStatement = effectBodyStatements[effectBodyStatements.length - 1];
   if (!isNodeOfType(lastStatement, "ReturnStatement")) return false;
   const knownBoundReleaseNames = new Set<string>();
-  if (boundUnsubscribeName) knownBoundReleaseNames.add(boundUnsubscribeName);
-  return isCleanupReturn(lastStatement.argument, knownBoundReleaseNames);
+  const knownBoundSubscriptionNames = new Set<string>();
+  if (boundReleaseName) knownBoundReleaseNames.add(boundReleaseName);
+  if (boundSubscriptionName) knownBoundSubscriptionNames.add(boundSubscriptionName);
+  return isCleanupReturn(
+    lastStatement.argument,
+    knownBoundReleaseNames,
+    knownBoundSubscriptionNames,
+  );
 };
 
 export const preferUseSyncExternalStore = defineRule<Rule>({
@@ -221,7 +240,13 @@ export const preferUseSyncExternalStore = defineRule<Rule>({
           continue;
         }
 
-        if (!cleanupReleasesSubscription(effectBodyStatements, subscription.boundUnsubscribeName)) {
+        if (
+          !cleanupReleasesSubscription(
+            effectBodyStatements,
+            subscription.boundReleaseName,
+            subscription.boundSubscriptionName,
+          )
+        ) {
           continue;
         }
 

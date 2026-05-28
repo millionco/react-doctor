@@ -1,6 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
-import { isReactNativeDependencyName } from "../../react-native-dependency-names.js";
+import {
+  isExpoManagedDependencyName,
+  isReactNativeDependencyName,
+} from "../../react-native-dependency-names.js";
 
 // Packages that mark the manifest as a web-only React target. If a manifest
 // contains one of these AND has no React Native indicator, every React
@@ -120,6 +123,13 @@ const isReactNativeAware = (packageJson: PackageJsonDependencyView): boolean => 
   return false;
 };
 
+const isExpoManaged = (packageJson: PackageJsonDependencyView): boolean => {
+  for (const dependencyName of iterateDependencyNames(packageJson)) {
+    if (isExpoManagedDependencyName(dependencyName)) return true;
+  }
+  return false;
+};
+
 const isWebFrameworkOnly = (packageJson: PackageJsonDependencyView): boolean => {
   for (const dependencyName of iterateDependencyNames(packageJson)) {
     if (WEB_FRAMEWORK_DEPENDENCY_NAMES.has(dependencyName)) return true;
@@ -127,16 +137,19 @@ const isWebFrameworkOnly = (packageJson: PackageJsonDependencyView): boolean => 
   return false;
 };
 
-export type PackagePlatform = "react-native" | "web" | "unknown";
+export type PackagePlatform = "expo" | "react-native" | "web" | "unknown";
 
 // Classifies the package owning `filename`:
 //
+//   "expo"         — the nearest `package.json` declares an Expo-managed
+//                    app dependency such as `expo` or `expo-router`.
+//
 //   "react-native" — the nearest `package.json` declares a React Native
-//                    or Expo dependency. Mixed RN+web monorepo packages
-//                    (which deliberately ship both `react-native` and
-//                    `react-dom` for `react-native-web`) ALSO land here:
-//                    RN takes precedence so RN rules continue to fire on
-//                    files that target mobile.
+//                    dependency. Mixed RN+web monorepo packages (which
+//                    deliberately ship both `react-native` and `react-dom`
+//                    for `react-native-web`) ALSO land here: RN takes
+//                    precedence so RN rules continue to fire on files that
+//                    target mobile.
 //
 //   "web"          — the nearest `package.json` declares a web-only
 //                    framework (`next`, `vite`, `react-scripts`,
@@ -164,7 +177,9 @@ export const classifyPackagePlatform = (filename: string): PackagePlatform => {
   }
 
   let result: PackagePlatform;
-  if (isReactNativeAware(packageJson)) {
+  if (isExpoManaged(packageJson)) {
+    result = "expo";
+  } else if (isReactNativeAware(packageJson)) {
     result = "react-native";
   } else if (isWebFrameworkOnly(packageJson)) {
     result = "web";

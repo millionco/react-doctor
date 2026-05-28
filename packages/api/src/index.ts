@@ -1,10 +1,16 @@
-export { diagnose } from "./diagnose.js";
+export { diagnose, diagnoseProjects } from "./diagnose.js";
 
 export type {
   DiagnoseOptions,
+  DiagnoseProjectsInput,
+  DiagnoseProjectsResult,
   DiagnoseResult,
   Diagnostic,
+  ProjectDefinition,
   ProjectInfo,
+  ProjectResult,
+  ProjectResultError,
+  ProjectResultOk,
   ReactDoctorConfig,
   ScoreResult,
 } from "@react-doctor/core";
@@ -13,6 +19,7 @@ export {
   ProjectNotFoundError,
   NoReactDependencyError,
   PackageJsonNotFoundError,
+  NotADirectoryError,
   AmbiguousProjectError,
   isReactDoctorError,
 } from "@react-doctor/core";

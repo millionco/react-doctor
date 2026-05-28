@@ -39,7 +39,7 @@ export class Files extends Context.Service<
    */
   static readonly layerInMemory = (tree: ReadonlyMap<string, string>): Layer.Layer<Files> => {
     const resolveAbsolute = (filePath: string, rootDirectory: string): string =>
-      Path.isAbsolute(filePath) ? filePath : Path.join(rootDirectory, filePath);
+      Path.isAbsolute(filePath) ? filePath : `${rootDirectory}/${filePath}`;
 
     return Layer.succeed(
       Files,
@@ -52,20 +52,18 @@ export class Files extends Context.Service<
           }),
         listSourceFiles: (rootDirectory) =>
           Effect.sync(() => {
-            const prefix = rootDirectory.endsWith(Path.sep)
-              ? rootDirectory
-              : `${rootDirectory}${Path.sep}`;
+            const prefix = rootDirectory.endsWith("/") ? rootDirectory : `${rootDirectory}/`;
             const files: string[] = [];
             for (const absolute of tree.keys()) {
               if (!absolute.startsWith(prefix)) continue;
-              files.push(absolute.slice(prefix.length).split(Path.sep).join("/"));
+              files.push(absolute.slice(prefix.length));
             }
             return files;
           }),
         isFile: (filePath) => Effect.sync(() => tree.has(filePath)),
         isDirectory: (filePath) =>
           Effect.sync(() => {
-            const prefix = filePath.endsWith(Path.sep) ? filePath : `${filePath}${Path.sep}`;
+            const prefix = filePath.endsWith("/") ? filePath : `${filePath}/`;
             for (const absolute of tree.keys()) {
               if (absolute.startsWith(prefix)) return true;
             }

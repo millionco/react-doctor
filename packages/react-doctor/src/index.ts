@@ -53,6 +53,7 @@ export {
   ProjectNotFoundError,
   NoReactDependencyError,
   PackageJsonNotFoundError,
+  NotADirectoryError,
   AmbiguousProjectError,
   isReactDoctorError,
   isProjectDiscoveryError,

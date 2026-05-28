@@ -90,7 +90,7 @@ const writeFakePathReactDoctorBinary = (
   chmodSync(binaryPath, fsConstants.S_IRWXU);
 };
 
-describe("installReactDoctorAgentHooks", () => {
+describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", () => {
   let fixture: AgentHooksFixture;
 
   beforeEach(() => {

@@ -5,6 +5,7 @@ import {
   SECRET_VARIABLE_PATTERN,
 } from "../../constants/security.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { normalizeFilename } from "../../utils/normalize-filename.js";
 import { classifySecretFileExposure } from "../../utils/classify-secret-file-exposure.js";
 import { getIdentifierTrailingWord } from "../../utils/get-identifier-trailing-word.js";
 import { getReactDoctorStringSetting } from "../../utils/get-react-doctor-setting.js";
@@ -21,7 +22,7 @@ export const noSecretsInClientCode = defineRule<Rule>({
   recommendation:
     "Move secrets to server-only code. Public client environment variables are bundled into browser code and must not contain secrets",
   create: (context: RuleContext) => {
-    const filename = context.getFilename?.() ?? "";
+    const filename = normalizeFilename(context.getFilename?.() ?? "");
     const framework = getReactDoctorStringSetting(context.settings, "framework");
     const rootDirectory = getReactDoctorStringSetting(context.settings, "rootDirectory");
     let shouldUseVariableNameHeuristic =

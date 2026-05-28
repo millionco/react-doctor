@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isImportedFromModule } from "../../utils/find-import-source-for-name.js";
+import { isCanonicalReactNamespaceName } from "../../utils/is-canonical-react-namespace-name.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
@@ -62,21 +63,8 @@ export const noUsememoSimpleExpression = defineRule<Rule>({
         const namespaceIdentifier = node.callee.object;
         if (isNodeOfType(namespaceIdentifier, "Identifier")) {
           const namespaceName = namespaceIdentifier.name;
-          // Accept `React.useMemo` / `react.useMemo` / transpiled
-          // `_react.useMemo` / `_React.useMemo` by name (the canonical
-          // shapes — esbuild / SWC / tsc all use a `_react`-prefixed
-          // alias), and any identifier that the file's imports resolve
-          // back to the `react` package — e.g. `import * as R from 'react'`
-          // → `R.useMemo`. Anything else (Dispatcher.useMemo,
-          // MyTestRenderer.useMemo, _myCustomLib.useMemo, …) is a
-          // non-React lookalike.
-          const isCanonicalReactNamespace =
-            namespaceName === "React" ||
-            namespaceName === "react" ||
-            namespaceName.startsWith("_react") ||
-            namespaceName.startsWith("_React");
           if (
-            !isCanonicalReactNamespace &&
+            !isCanonicalReactNamespaceName(namespaceName) &&
             !isImportedFromModule(namespaceIdentifier, namespaceName, "react")
           ) {
             return;

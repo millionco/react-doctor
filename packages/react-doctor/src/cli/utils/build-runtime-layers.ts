@@ -52,6 +52,7 @@ export interface BuildRuntimeLayersInput {
 const buildSpinnerProgressHandle = (text: string): ProgressHandle => {
   const oraHandle = spinner(text).start();
   return {
+    update: (displayText: string) => Effect.sync(() => oraHandle.update(displayText)),
     succeed: (displayText: string) => Effect.sync(() => oraHandle.succeed(displayText)),
     fail: (displayText: string) => Effect.sync(() => oraHandle.fail(displayText)),
   };

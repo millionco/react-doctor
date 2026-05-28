@@ -1,6 +1,6 @@
 {
   "name": "@react-doctor/core",
-  "version": "0.2.6",
+  "version": "0.2.9",
   "private": true,
   "description": "Internal: diagnostic engine for React Doctor (lint runner, scoring, config, suppressions). Not published.",
   "license": "MIT",
@@ -17,14 +17,15 @@
     }
   },
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && NODE_ENV=production vp pack",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && cross-env NODE_ENV=production vp pack",
     "test": "vp test run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@effect/platform-node-shared": "4.0.0-beta.70",
-    "deslop-js": "^0.0.12",
+    "deslop-js": "^0.0.14",
     "effect": "4.0.0-beta.70",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "oxlint": "^1.66.0",
     "oxlint-plugin-react-doctor": "workspace:*",
     "picomatch": "^4.0.4",
@@ -33,16 +34,7 @@
   "devDependencies": {
     "@effect/vitest": "4.0.0-beta.70",
     "@types/node": "^25.6.0",
-    "@types/picomatch": "^4.0.3",
-    "eslint-plugin-react-hooks": "^7.1.1"
-  },
-  "peerDependencies": {
-    "eslint-plugin-react-hooks": "^6 || ^7"
-  },
-  "peerDependenciesMeta": {
-    "eslint-plugin-react-hooks": {
-      "optional": true
-    }
+    "@types/picomatch": "^4.0.3"
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"

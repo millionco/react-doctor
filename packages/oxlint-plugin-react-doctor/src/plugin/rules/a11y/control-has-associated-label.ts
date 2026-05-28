@@ -3,6 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
+import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
@@ -12,6 +13,7 @@ import { isInteractiveRole } from "../../utils/is-interactive-role.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { Rule } from "../../utils/rule.js";
 
 const MESSAGE =
@@ -35,6 +37,9 @@ interface ControlHasAssociatedLabelSettings {
 // to enforce regardless can override via `ignoreElements: []`.
 const DEFAULT_IGNORE_ELEMENTS: ReadonlyArray<string> = ["link", "canvas"];
 const DEFAULT_LABELLING_PROPS: ReadonlyArray<string> = ["alt", "aria-label", "aria-labelledby"];
+const ID_ATTRIBUTE = "id";
+const HTML_FOR_ATTRIBUTE = "htmlFor";
+const LABEL_ELEMENT = "label";
 
 // Default depth for the children-walk. Upstream `eslint-plugin-jsx-a11y`
 // defaults to 2, but real-world buttons routinely nest text deeper
@@ -93,6 +98,40 @@ const hasLabellingProp = (
   return false;
 };
 
+const toAttributeMatchKey = (kind: "identifier" | "literal", value: string): string | null => {
+  const trimmedValue = value.trim();
+  return trimmedValue.length > 0 ? `${kind}:${trimmedValue}` : null;
+};
+
+const getLiteralAttributeMatchKey = (value: unknown): string | null => {
+  if (typeof value === "string") return toAttributeMatchKey("literal", value);
+  if (typeof value === "number") return toAttributeMatchKey("literal", String(value));
+  return null;
+};
+
+const getAttributeMatchKey = (
+  attribute: EsTreeNodeOfType<"JSXAttribute"> | undefined,
+): string | null => {
+  if (!attribute?.value) return null;
+  const value = attribute.value;
+  if (isNodeOfType(value, "Literal")) {
+    return getLiteralAttributeMatchKey(value.value);
+  }
+  if (!isNodeOfType(value, "JSXExpressionContainer")) return null;
+  const expression = value.expression as EsTreeNode;
+  if (isNodeOfType(expression, "Identifier")) {
+    return toAttributeMatchKey("identifier", expression.name);
+  }
+  if (isNodeOfType(expression, "Literal")) {
+    return getLiteralAttributeMatchKey(expression.value);
+  }
+  if (isNodeOfType(expression, "TemplateLiteral")) {
+    const staticValue = getStaticTemplateLiteralValue(expression);
+    return staticValue === null ? null : toAttributeMatchKey("literal", staticValue);
+  }
+  return null;
+};
+
 interface CheckChildContext {
   depth: number;
   customAttributes: ReadonlyArray<string>;
@@ -130,6 +169,119 @@ const checkChildForLabel = (
     }
   }
   return false;
+};
+
+const hasAccessibleLabelText = (
+  element: EsTreeNodeOfType<"JSXElement">,
+  context: CheckChildContext,
+): boolean => {
+  if (
+    hasLabellingProp(element.openingElement.attributes as EsTreeNode[], context.customAttributes)
+  ) {
+    return true;
+  }
+  return element.children.some((child) => checkChildForLabel(child as EsTreeNode, 1, context));
+};
+
+const isFunctionBoundary = (node: EsTreeNode): boolean =>
+  isNodeOfType(node, "ArrowFunctionExpression") ||
+  isNodeOfType(node, "FunctionExpression") ||
+  isNodeOfType(node, "FunctionDeclaration");
+
+const hasAncestorLabel = (
+  element: EsTreeNodeOfType<"JSXElement">,
+  context: CheckChildContext,
+): boolean => {
+  let current = element.parent;
+  while (current) {
+    if (isFunctionBoundary(current)) break;
+    if (isNodeOfType(current, "JSXElement")) {
+      const tagName = getElementType(current.openingElement, context.settings);
+      if (tagName === LABEL_ELEMENT && hasAccessibleLabelText(current, context)) {
+        return true;
+      }
+    }
+    current = current.parent ?? null;
+  }
+  return false;
+};
+
+const findEnclosingJsxTreeRoot = (element: EsTreeNodeOfType<"JSXElement">): EsTreeNode => {
+  let root: EsTreeNode = element;
+  let current = element.parent;
+  while (current) {
+    if (isFunctionBoundary(current)) break;
+    if (isNodeOfType(current, "JSXElement") || isNodeOfType(current, "JSXFragment")) {
+      root = current;
+    }
+    current = current.parent ?? null;
+  }
+  return root;
+};
+
+const collectJsxFromExpression = (rawExpression: EsTreeNode): ReadonlyArray<EsTreeNode> => {
+  const expression = stripParenExpression(rawExpression);
+  if (isNodeOfType(expression, "JSXElement") || isNodeOfType(expression, "JSXFragment")) {
+    return [expression];
+  }
+  if (isNodeOfType(expression, "LogicalExpression")) {
+    return [
+      ...collectJsxFromExpression(expression.left as EsTreeNode),
+      ...collectJsxFromExpression(expression.right as EsTreeNode),
+    ];
+  }
+  if (isNodeOfType(expression, "ConditionalExpression")) {
+    return [
+      ...collectJsxFromExpression(expression.consequent as EsTreeNode),
+      ...collectJsxFromExpression(expression.alternate as EsTreeNode),
+    ];
+  }
+  return [];
+};
+
+const searchForHtmlForLabel = (
+  node: EsTreeNode,
+  controlIdKey: string,
+  context: CheckChildContext,
+): boolean => {
+  if (isNodeOfType(node, "JSXExpressionContainer")) {
+    return collectJsxFromExpression(node.expression as EsTreeNode).some((jsxNode) =>
+      searchForHtmlForLabel(jsxNode, controlIdKey, context),
+    );
+  }
+  const children =
+    isNodeOfType(node, "JSXElement") || isNodeOfType(node, "JSXFragment") ? node.children : [];
+  if (isNodeOfType(node, "JSXElement")) {
+    const tagName = getElementType(node.openingElement, context.settings);
+    if (tagName === LABEL_ELEMENT) {
+      const htmlForAttribute = hasJsxPropIgnoreCase(
+        node.openingElement.attributes,
+        HTML_FOR_ATTRIBUTE,
+      );
+      if (
+        getAttributeMatchKey(htmlForAttribute) === controlIdKey &&
+        hasAccessibleLabelText(node, context)
+      ) {
+        return true;
+      }
+    }
+  }
+  for (const child of children) {
+    if (searchForHtmlForLabel(child as EsTreeNode, controlIdKey, context)) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const hasHtmlForLabel = (
+  element: EsTreeNodeOfType<"JSXElement">,
+  context: CheckChildContext,
+): boolean => {
+  const idAttribute = hasJsxPropIgnoreCase(element.openingElement.attributes, ID_ATTRIBUTE);
+  const controlIdKey = getAttributeMatchKey(idAttribute);
+  if (controlIdKey === null) return false;
+  return searchForHtmlForLabel(findEnclosingJsxTreeRoot(element), controlIdKey, context);
 };
 
 // Port of `oxc_linter::rules::jsx_a11y::control_has_associated_label`.
@@ -173,6 +325,8 @@ export const controlHasAssociatedLabel = defineRule<Rule>({
           controlComponents: settings.controlComponents,
           settings: context.settings,
         };
+        if (hasAncestorLabel(node, checkContext)) return;
+        if (hasHtmlForLabel(node, checkContext)) return;
         for (const child of node.children) {
           if (checkChildForLabel(child as EsTreeNode, 1, checkContext)) return;
         }

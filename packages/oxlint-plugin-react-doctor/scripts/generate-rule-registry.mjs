@@ -22,9 +22,10 @@ const REGISTRY_OUTPUT = path.join(PACKAGE_ROOT, "src/plugin/rule-registry.ts");
 // never authored). Buckets not listed here default to "global".
 const BUCKET_TO_FRAMEWORK = {
   nextjs: "nextjs",
+  preact: "preact",
   "react-native": "react-native",
-  "tanstack-start": "tanstack-start",
   "tanstack-query": "tanstack-query",
+  "tanstack-start": "tanstack-start",
 };
 
 // Bucket directory → behavioral tags merged onto every rule in that
@@ -58,6 +59,12 @@ const EFFECT_RULES_PORTED_FROM_EXTERNAL = new Set([
   "no-pass-data-to-parent",
   "no-initialize-state",
 ]);
+// Rules that LIVE in an externally-ported bucket (e.g. `a11y/`) but were
+// authored in-house — they're semantically distinct from the upstream
+// jsx-a11y / react/* rule sets and should NOT be filtered out by
+// `customRulesOnly`. Without this list every new in-house rule we drop
+// into `a11y/` would silently disappear for users who narrow scope.
+const RULES_NOT_PORTED_FROM_EXTERNAL = new Set(["prefer-html-dialog"]);
 
 // Bucket directory → default category. A rule MAY override its category
 // with an explicit `category: "..."` field in its `defineRule({...})` call
@@ -70,8 +77,10 @@ const BUCKET_TO_DEFAULT_CATEGORY = {
   correctness: "Correctness",
   design: "Architecture",
   "js-performance": "Performance",
+  jotai: "State & Effects",
   nextjs: "Next.js",
   performance: "Performance",
+  preact: "Preact",
   "react-builtins": "Correctness",
   "react-native": "React Native",
   "react-ui": "Accessibility",
@@ -132,8 +141,9 @@ for (const bucket of fs.readdirSync(PLUGIN_RULES_ROOT, { withFileTypes: true }))
         .replace(/\.ts$/, ".js");
     const autoTags = BUCKET_TO_AUTO_TAGS[bucket.name] ?? [];
     const originallyExternal =
-      BUCKETS_PORTED_FROM_EXTERNAL.has(bucket.name) ||
-      EFFECT_RULES_PORTED_FROM_EXTERNAL.has(ruleId);
+      !RULES_NOT_PORTED_FROM_EXTERNAL.has(ruleId) &&
+      (BUCKETS_PORTED_FROM_EXTERNAL.has(bucket.name) ||
+        EFFECT_RULES_PORTED_FROM_EXTERNAL.has(ruleId));
     ruleEntries.push({
       ruleId,
       identifier,

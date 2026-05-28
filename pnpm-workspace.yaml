@@ -1,6 +1,12 @@
 packages:
   - "packages/*"
 
+minimumReleaseAge: 7200
+trustPolicy: no-downgrade
+blockExoticSubdeps: true
+minimumReleaseAgeExclude:
+  - deslop-js
+
 overrides:
   vite: npm:@voidzero-dev/vite-plus-core@^0.1.15
   vitest: npm:@voidzero-dev/vite-plus-test@^0.1.15

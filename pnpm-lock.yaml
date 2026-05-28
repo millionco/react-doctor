@@ -24,6 +24,9 @@ importers:
       '@voidzero-dev/vite-plus-core':
         specifier: ^0.1.15
         version: 0.1.20(@types/node@25.6.0)(esbuild@0.27.3)(jiti@2.6.1)(terser@5.46.0)(typescript@6.0.3)(yaml@2.9.0)
+      cross-env:
+        specifier: ^10.1.0
+        version: 10.1.0
       turbo:
         specifier: ^2.9.7
         version: 2.9.7
@@ -53,11 +56,14 @@ importers:
         specifier: 4.0.0-beta.70
         version: 4.0.0-beta.70(effect@4.0.0-beta.70)
       deslop-js:
-        specifier: ^0.0.12
-        version: 0.0.12(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
+        specifier: ^0.0.14
+        version: 0.0.14(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
       effect:
         specifier: 4.0.0-beta.70
         version: 4.0.0-beta.70
+      eslint-plugin-react-hooks:
+        specifier: ^7.1.1
+        version: 7.1.1(eslint@9.39.2(jiti@2.6.1))
       oxlint:
         specifier: ^1.66.0
         version: 1.66.0(oxlint-tsgolint@0.23.0)
@@ -80,9 +86,6 @@ importers:
       '@types/picomatch':
         specifier: ^4.0.3
         version: 4.0.3
-      eslint-plugin-react-hooks:
-        specifier: ^7.1.1
-        version: 7.1.1(eslint@9.39.2(jiti@2.6.1))
 
   packages/eslint-plugin-react-doctor:
     dependencies:
@@ -125,11 +128,14 @@ importers:
         specifier: ^15.1.0
         version: 15.1.0
       deslop-js:
-        specifier: ^0.0.12
-        version: 0.0.12(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
+        specifier: ^0.0.13
+        version: 0.0.13(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
       effect:
         specifier: 4.0.0-beta.70
         version: 4.0.0-beta.70
+      eslint-plugin-react-hooks:
+        specifier: ^7.1.1
+        version: 7.1.1(eslint@9.39.2(jiti@2.6.1))
       oxlint:
         specifier: ^1.66.0
         version: 1.66.0(oxlint-tsgolint@0.23.0)
@@ -155,9 +161,6 @@ importers:
       commander:
         specifier: ^14.0.3
         version: 14.0.3
-      eslint-plugin-react-hooks:
-        specifier: ^7.1.1
-        version: 7.1.1(eslint@9.39.2(jiti@2.6.1))
       ora:
         specifier: ^9.4.0
         version: 9.4.0
@@ -357,6 +360,9 @@ packages:
 
   '@emnapi/wasi-threads@1.2.1':
     resolution: {integrity: sha512-uTII7OYF+/Mes/MrcIOYp5yOtSMLBWSIoLPpcgwipoiKbli6k322tcoFsxoIIxPDqW01SQGAgko4EzZi2BNv2w==}
+
+  '@epic-web/invariant@1.0.0':
+    resolution: {integrity: sha512-lrTPqgvfFQtR/eY/qkIzp98OGdNJu0m5ji3q/nJI8v3SXkRKEnWiOxMmbvcSoAIzv/cGiuvRy57k4suKQSAdwA==}
 
   '@esbuild/aix-ppc64@0.27.3':
     resolution: {integrity: sha512-9fJMTNFTWZMh5qwrBItuziu834eOCUcEqymSH7pY+zoMVEZg3gcPuBNxH1EvfVYe9h0x/Ptw8KBzv7qxb7l8dg==}
@@ -2047,6 +2053,11 @@ packages:
   convert-source-map@2.0.0:
     resolution: {integrity: sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg==}
 
+  cross-env@10.1.0:
+    resolution: {integrity: sha512-GsYosgnACZTADcmEyJctkJIoqAhHjttw7RsFrVoJNXbsWWqaq6Ym+7kZjq6mS45O0jij6vtiReppKQEtqWy6Dw==}
+    engines: {node: '>=20'}
+    hasBin: true
+
   cross-spawn@7.0.6:
     resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
     engines: {node: '>= 8'}
@@ -2073,8 +2084,11 @@ packages:
   deep-is@0.1.4:
     resolution: {integrity: sha512-oIPzksmTg4/MriiaYGO+okXDT7ztn/w3Eptv/+gSIdMdKsJo0u4CfYNFJPy+4SKMuCqGw2wxnA+URMg3t8a/bQ==}
 
-  deslop-js@0.0.12:
-    resolution: {integrity: sha512-DsoVhhrgdqjkHxD9zFFJS7r+wDkbbpbdYVfwTNo6s89xTDbZQ9xW0EOd17a45Cfo1z0KxJQkjtJi/fHZ/LpBPA==}
+  deslop-js@0.0.13:
+    resolution: {integrity: sha512-gIXD+wY2/NHkZHpNrb8MWS6NJs3ee0XunAenBCvwHJlWnedDbIrg70hdNR7bDzYZLe9LGJZMLEI1w2CC72Gk5A==}
+
+  deslop-js@0.0.14:
+    resolution: {integrity: sha512-FY0rNK+mdTozXwNmcJAt5tD9hVOkXEX5ac+Mg77KJvnnsoAh3qIUW64PMnofutjeYz7g1vENMbOcrBmD1v4FlA==}
 
   detect-indent@6.1.0:
     resolution: {integrity: sha512-reYkTUJAZb9gUuZ2RvVCNhVHdg62RHnJ7WJl8ftMi4diZ6NWlciOzQN88pUhSELEwflJht4oQDv0F0BMlwaYtA==}
@@ -3474,6 +3488,8 @@ snapshots:
       tslib: 2.8.1
     optional: true
 
+  '@epic-web/invariant@1.0.0': {}
+
   '@esbuild/aix-ppc64@0.27.3':
     optional: true
 
@@ -4567,6 +4583,11 @@ snapshots:
 
   convert-source-map@2.0.0: {}
 
+  cross-env@10.1.0:
+    dependencies:
+      '@epic-web/invariant': 1.0.0
+      cross-spawn: 7.0.6
+
   cross-spawn@7.0.6:
     dependencies:
       path-key: 3.1.1
@@ -4587,7 +4608,19 @@ snapshots:
 
   deep-is@0.1.4: {}
 
-  deslop-js@0.0.12(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0):
+  deslop-js@0.0.13(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0):
+    dependencies:
+      '@oxc-project/types': 0.132.0
+      fast-glob: 3.3.3
+      minimatch: 10.2.5
+      oxc-parser: 0.132.0
+      oxc-resolver: 11.19.1(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
+      typescript: 6.0.3
+    transitivePeerDependencies:
+      - '@emnapi/core'
+      - '@emnapi/runtime'
+
+  deslop-js@0.0.14(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0):
     dependencies:
       '@oxc-project/types': 0.132.0
       fast-glob: 3.3.3

@@ -58,6 +58,7 @@ interface RunOxlintOptions {
    * mode, or a logger message in human mode).
    */
   onPartialFailure?: (reason: string) => void;
+  onFileProgress?: (scannedFileCount: number, totalFileCount: number) => void;
 }
 
 /**
@@ -215,6 +216,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         nodeBinaryPath,
         project,
         onPartialFailure,
+        onFileProgress: options.onFileProgress,
       });
 
     writeOxlintConfig(configPath, buildConfig(extendsPaths));

@@ -17,7 +17,6 @@
 - MUST: Put all magic numbers in `constants.ts` using `SCREAMING_SNAKE_CASE` with unit suffixes (`_MS`, `_PX`).
 - MUST: Put small, focused utility functions in `utils/` with one utility per file.
 - MUST: Use Boolean over !!.
-- MUST: Never write changesets (`.changeset/*.md`) or edit `CHANGELOG.md`. Changesets and changelog entries are authored by humans at release time, not by agents.
 
 ## Package Layout
 

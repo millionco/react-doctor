@@ -1089,4 +1089,76 @@ describe("formatFrameworkName", () => {
   it("formats unknown framework as React", () => {
     expect(formatFrameworkName("unknown")).toBe("React");
   });
+
+  it("formats Preact", () => {
+    expect(formatFrameworkName("preact")).toBe("Preact");
+  });
+});
+
+describe("discoverProject — Preact", () => {
+  it("classifies a Preact-only project as `preact` and sets `hasPreact`", () => {
+    const projectDirectory = path.join(tempDirectory, "preact-only-project");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "preact-only-project",
+        dependencies: { preact: "^10.22.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.framework).toBe("preact");
+    expect(projectInfo.reactVersion).toBe(null);
+    expect(projectInfo.hasPreact).toBe(true);
+  });
+
+  it("keeps `framework: vite` for Preact-on-Vite but still sets `hasPreact: true`", () => {
+    const projectDirectory = path.join(tempDirectory, "preact-with-vite");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "preact-with-vite",
+        dependencies: { preact: "^10.22.0" },
+        devDependencies: { vite: "^7.0.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.framework).toBe("vite");
+    expect(projectInfo.hasPreact).toBe(true);
+  });
+
+  it("stays `unknown` when both `react` and `preact` peer-deps are declared (component library shape)", () => {
+    const projectDirectory = path.join(tempDirectory, "react-and-preact-peer-deps");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "dual-peer-component-library",
+        peerDependencies: { react: "^18.0.0 || ^19.0.0", preact: "^10.22.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.framework).toBe("unknown");
+    expect(projectInfo.hasPreact).toBe(true);
+    expect(projectInfo.reactVersion).toBe("^18.0.0 || ^19.0.0");
+  });
+
+  it("`hasPreact` is false for projects with no `preact` declaration", () => {
+    const projectDirectory = path.join(tempDirectory, "no-preact-here");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "no-preact-here",
+        dependencies: { react: "^19.0.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.hasPreact).toBe(false);
+  });
 });

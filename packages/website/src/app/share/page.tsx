@@ -108,7 +108,7 @@ const SharePage = async ({ searchParams }: { searchParams: Promise<ShareSearchPa
         {projectName && <div className="mb-4 text-xl text-white">{projectName}</div>}
         <DoctorFace score={score} />
         <div className="mt-2 text-neutral-500">
-          React Doctor <span className="text-neutral-600">(www.react.doctor)</span>
+          React Doctor <span className="text-neutral-600">(https://react.doctor)</span>
         </div>
       </div>
 

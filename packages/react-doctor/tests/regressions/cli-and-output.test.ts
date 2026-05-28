@@ -183,7 +183,7 @@ export const App = ({ name }: { name: string }) => {
 `,
     );
     const defaultRun = await captureScanOutput(projectDir, { noScore: false });
-    expect(defaultRun.stdout).toContain("Share your results");
+    expect(defaultRun.stdout).toContain("Share:");
 
     const projectDir2 = setupMinimalReactProject("issue-92-disabled");
     writeFile(
@@ -231,14 +231,10 @@ export const Cart = () => {
     );
     const normalizedStdout = stripAnsi(localRun.stdout);
 
-    expect(normalizedStdout).toMatch(/State & Effects \d+ issues/);
-    expect(normalizedStdout).toContain("  ⚠ Direct state mutation ×2");
-    expect(normalizedStdout).toContain("    src/Cart.tsx:");
-    expect(normalizedStdout.indexOf("Direct state mutation")).toBeLessThan(
-      normalizedStdout.indexOf("React Doctor"),
-    );
+    expect(normalizedStdout).toContain("State & Effects");
+    expect(normalizedStdout).toMatch(/\d+ warnings?/);
+    expect(normalizedStdout).toContain("--verbose");
     expect(normalizedStdout).not.toContain("Agent guidance");
-    expect(normalizedStdout).not.toContain("  By category");
   });
 
   it("prints agent guidance in automated environments", async () => {

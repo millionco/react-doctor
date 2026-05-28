@@ -1,6 +1,6 @@
 {
   "name": "@react-doctor/api",
-  "version": "0.2.6",
+  "version": "0.2.9",
   "private": true,
   "description": "Internal: programmatic diagnose() API for React Doctor — thin Effect.runPromise shell around @react-doctor/core's runInspect orchestrator. Not published.",
   "license": "MIT",
@@ -13,7 +13,7 @@
     }
   },
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && NODE_ENV=production vp pack",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && cross-env NODE_ENV=production vp pack",
     "test": "vp test run",
     "typecheck": "tsc --noEmit"
   },

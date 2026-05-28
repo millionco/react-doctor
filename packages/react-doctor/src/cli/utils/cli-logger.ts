@@ -5,7 +5,7 @@ import { highlighter } from "@react-doctor/core";
 /**
  * Thin synchronous façade over Effect's `Console` module. Used by
  * the imperative CLI helper files (`select-projects`, `run-explain`,
- * `install-skill`, the legacy paths in `cli/commands/inspect.ts`)
+ * `install-react-doctor`, the legacy paths in `cli/commands/inspect.ts`)
  * that aren't yet Effect-typed. Every call drains into a single
  * `Console.*` Effect via `Effect.runSync`, so the underlying logging
  * pipeline is identical to the canonical `yield* Console.log(...)`
@@ -23,7 +23,7 @@ export const cliLogger = {
   //   dim   → gray
   //   success → green
   // Bugbot regression #432: without these, warning / error / info
-  // messages from `install-skill.ts`, `resolve-diff-mode.ts`, and
+  // messages from `install-react-doctor.ts`, `resolve-diff-mode.ts`, and
   // `resolve-fail-on-level.ts` rendered as plain uncolored text.
   warn: (message: string): void => {
     Effect.runSync(Console.warn(highlighter.warn(message)));

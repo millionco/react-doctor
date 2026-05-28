@@ -81,17 +81,9 @@ export const SUBSCRIPTION_METHOD_NAMES = new Set([
   "sub",
 ]);
 
-// Methods that pair with the subscription methods above as their cleanup
-// counterparts. Used to recognize a valid `return () => removeEventListener(...)`
-// cleanup form even when the subscribe call is `addEventListener` rather
-// than a `subscribe()` whose return value gets re-bound.
-//
-// `abort` covers the AbortController pattern, which is the recommended
-// modern shape for tearing down `addEventListener` registrations bound
-// via `{ signal }`: a single `controller.abort()` removes every
-// listener bound to that signal in one shot, so it IS the matching
-// "remove" call even when no literal `removeEventListener(...)` is present.
-export const UNSUBSCRIPTION_METHOD_NAMES = new Set([
+export const CLEANUP_RETURNING_SUBSCRIPTION_METHOD_NAMES = new Set(["subscribe", "sub"]);
+
+export const GLOBAL_RELEASE_METHOD_NAMES = new Set([
   "unsubscribe",
   "removeEventListener",
   "removeListener",
@@ -102,14 +94,17 @@ export const UNSUBSCRIPTION_METHOD_NAMES = new Set([
   "abort",
 ]);
 
-// Identifier names recognized as "this is a release/teardown call"
-// when they appear as a direct call inside an effect's cleanup
-// return — covers both library unsubscribe shorthands
-// (UNSUBSCRIPTION_METHOD_NAMES) and the generic teardown vocabulary
-// (`cleanup`, `dispose`, `destroy`, `teardown`). Matched
-// case-insensitively at the call site.
+export const BOUND_RESOURCE_RELEASE_METHOD_NAMES = new Set([
+  "remove",
+  "cleanup",
+  "dispose",
+  "destroy",
+  "stop",
+  "teardown",
+]);
+
 export const CLEANUP_LIKE_RELEASE_CALLEE_NAMES = new Set([
-  ...UNSUBSCRIPTION_METHOD_NAMES,
+  ...GLOBAL_RELEASE_METHOD_NAMES,
   "cleanup",
   "dispose",
   "destroy",

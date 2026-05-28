@@ -1,1 +1,7 @@
-export const SCROLLVIEW_NAMES = new Set(["ScrollView"]);
+export const SCROLLVIEW_NAMES = new Set([
+  "ScrollView",
+  "FlatList",
+  "SectionList",
+  "VirtualizedList",
+  "KeyboardAwareScrollView",
+]);

@@ -28,11 +28,11 @@ export const rnPreferContentInsetAdjustment = defineRule<Rule>({
         if (!isNodeOfType(child, "JSXElement")) continue;
         const childName = resolveJsxElementName(child.openingElement);
         if (!childName || !SCROLLVIEW_NAMES.has(childName)) continue;
+        if (childName === "KeyboardAwareScrollView") continue;
 
         context.report({
           node,
-          message:
-            '<SafeAreaView> wrapping <ScrollView> — set `contentInsetAdjustmentBehavior="automatic"` on the ScrollView and drop the SafeAreaView wrapper for native safe-area handling',
+          message: `<SafeAreaView> wrapping <${childName}> — set \`contentInsetAdjustmentBehavior="automatic"\` on the ${childName} and drop the SafeAreaView wrapper for native safe-area handling`,
         });
         return;
       }

@@ -11,11 +11,17 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest]
         node-version: ["20.19.0", "22.18.0", "24", "25", "26"]
+        include:
+          - os: windows-latest
+            node-version: "22.18.0"
+          - os: macos-latest
+            node-version: "22.18.0"
     steps:
       - uses: actions/checkout@v5
         with:
@@ -33,13 +39,13 @@ jobs:
       - run: pnpm test
 
       - run: pnpm typecheck
-        if: ${{ matrix.node-version == '22.18.0' }}
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.node-version == '22.18.0' }}
 
       - run: pnpm lint
-        if: ${{ matrix.node-version == '22.18.0' }}
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.node-version == '22.18.0' }}
 
       - name: Check formatting
-        if: ${{ matrix.node-version == '22.18.0' }}
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.node-version == '22.18.0' }}
         shell: bash
         run: |
           format_output_file="$(mktemp)"
@@ -70,7 +76,7 @@ jobs:
           exit "$format_status"
 
       - name: Smoke test built CLI
-        if: ${{ matrix.node-version == '22.18.0' }}
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.node-version == '22.18.0' }}
         run: |
           cd packages/react-doctor
           pnpm build
@@ -82,5 +88,5 @@ jobs:
           fi
 
       - name: Smoke test JSON report shape
-        if: ${{ matrix.node-version == '22.18.0' }}
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.node-version == '22.18.0' }}
         run: pnpm smoke:json-report

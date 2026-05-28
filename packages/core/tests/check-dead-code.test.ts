@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
-import { checkDeadCode } from "@react-doctor/core";
+import { checkDeadCode } from "../src/check-dead-code.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-check-dead-code-"));
 
@@ -72,5 +72,108 @@ describe("checkDeadCode", () => {
       .map((diagnostic) => diagnostic.filePath);
     expect(flagged.some((entry) => entry.endsWith("gitignored.ts"))).toBe(false);
     expect(flagged.some((entry) => entry.endsWith("configignored.ts"))).toBe(false);
+  });
+
+  it("maps unused exports, dependencies, and cycles from worker results", async () => {
+    const directory = setupProject("worker-result-shapes", {
+      "src/index.ts": "export const used = 1;\n",
+      "src/a.ts": "import './b';\n",
+      "src/b.ts": "import './a';\n",
+    });
+
+    const diagnostics = await checkDeadCode({
+      rootDirectory: directory,
+      createWorker: () => ({
+        result: Promise.resolve({
+          unusedFiles: [],
+          unusedExports: [
+            {
+              path: path.join(directory, "src", "index.ts"),
+              name: "unused",
+              line: 3,
+              column: 14,
+              isTypeOnly: false,
+            },
+            {
+              path: path.join(directory, "src", "index.ts"),
+              name: "UnusedType",
+              line: 4,
+              column: 12,
+              isTypeOnly: true,
+            },
+          ],
+          unusedDependencies: [
+            {
+              name: "left-pad",
+              isDevDependency: false,
+            },
+            {
+              name: "vitest",
+              isDevDependency: true,
+            },
+          ],
+          circularDependencies: [
+            {
+              files: [path.join(directory, "src", "a.ts"), path.join(directory, "src", "b.ts")],
+            },
+          ],
+        }),
+      }),
+    });
+
+    expect(diagnostics.map((diagnostic) => diagnostic.rule)).toEqual([
+      "unused-export",
+      "unused-type",
+      "unused-dependency",
+      "unused-dev-dependency",
+      "circular-dependency",
+    ]);
+    expect(diagnostics.find((diagnostic) => diagnostic.rule === "unused-type")?.message).toContain(
+      "Unused type export: `UnusedType`",
+    );
+    expect(
+      diagnostics.find((diagnostic) => diagnostic.rule === "circular-dependency")?.message,
+    ).toContain("src/a.ts → src/b.ts");
+  });
+
+  it("rejects malformed worker results instead of silently dropping diagnostics", async () => {
+    const directory = setupProject("malformed-worker-result", {
+      "src/index.ts": "export const used = 1;\n",
+    });
+
+    await expect(
+      checkDeadCode({
+        rootDirectory: directory,
+        createWorker: () => ({
+          result: Promise.resolve({
+            unusedFiles: [{ path: 1 }],
+            unusedExports: [],
+            unusedDependencies: [],
+            circularDependencies: [],
+          }),
+        }),
+      }),
+    ).rejects.toThrow("unusedFiles[0].path");
+  });
+
+  it("times out a stuck worker", async () => {
+    const directory = setupProject("stuck-worker", {
+      "src/index.ts": "export const used = 1;\n",
+    });
+    let didTerminate = false;
+
+    await expect(
+      checkDeadCode({
+        rootDirectory: directory,
+        createWorker: () => ({
+          result: new Promise(() => {}),
+          terminate: () => {
+            didTerminate = true;
+          },
+        }),
+        workerTimeoutMs: 1,
+      }),
+    ).rejects.toThrow("Dead-code worker timed out");
+    expect(didTerminate).toBe(true);
   });
 });

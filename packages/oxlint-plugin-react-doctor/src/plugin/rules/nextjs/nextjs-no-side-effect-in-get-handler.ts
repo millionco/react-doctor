@@ -7,6 +7,7 @@ import { GET_HANDLER_BINDING_RESOLUTION_DEPTH } from "../../constants/thresholds
 import { collectLocallyScopedCookieBindings } from "../../utils/collect-locally-scoped-cookie-bindings.js";
 import { collectLocallyScopedSafeBindings } from "../../utils/collect-locally-scoped-safe-bindings.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { normalizeFilename } from "../../utils/normalize-filename.js";
 import { findSideEffect } from "../../utils/find-side-effect.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -15,8 +16,8 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
-const extractMutatingRouteSegment = (filename: string): string | null => {
-  const segments = filename.split("/");
+const extractMutatingRouteSegment = (rawFilename: string): string | null => {
+  const segments = rawFilename.replaceAll("\\", "/").split("/");
   for (const segment of segments) {
     const cleaned = segment.replace(/^\[.*\]$/, "");
     if (MUTATING_ROUTE_SEGMENTS.has(cleaned)) return cleaned;
@@ -205,7 +206,7 @@ export const nextjsNoSideEffectInGetHandler = defineRule<Rule>({
         resolveBinding = buildProgramBindingLookup(node);
       },
       ExportNamedDeclaration(node: EsTreeNodeOfType<"ExportNamedDeclaration">) {
-        const filename = context.getFilename?.() ?? "";
+        const filename = normalizeFilename(context.getFilename?.() ?? "");
         if (!ROUTE_HANDLER_FILE_PATTERN.test(filename)) return;
         if (CRON_ROUTE_PATTERN.test(filename)) return;
         if (!isExportedGetHandler(node)) return;

@@ -31,6 +31,7 @@
     "@changesets/cli": "^2.31.0",
     "@types/node": "^25.6.0",
     "@voidzero-dev/vite-plus-core": "^0.1.15",
+    "cross-env": "^10.1.0",
     "turbo": "^2.9.7",
     "typescript": "^6.0.3",
     "vite-plus": "^0.1.15"

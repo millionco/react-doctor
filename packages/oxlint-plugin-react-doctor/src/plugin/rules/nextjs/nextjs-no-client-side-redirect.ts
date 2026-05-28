@@ -1,6 +1,7 @@
 import { PAGES_DIRECTORY_PATTERN } from "../../constants/nextjs.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { normalizeFilename } from "../../utils/normalize-filename.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -54,7 +55,7 @@ export const nextjsNoClientSideRedirect = defineRule<Rule>({
   recommendation:
     "Avoid redirects inside useEffect. Use an event handler, middleware, or server-side redirect (App Router: redirect() from next/navigation; Pages Router: getServerSideProps redirect)",
   create: (context: RuleContext) => {
-    const filename = context.getFilename?.() ?? "";
+    const filename = normalizeFilename(context.getFilename?.() ?? "");
     const isPagesRouterFile = PAGES_DIRECTORY_PATTERN.test(filename);
 
     return {

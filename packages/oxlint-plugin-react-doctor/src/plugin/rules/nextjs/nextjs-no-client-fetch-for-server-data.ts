@@ -30,7 +30,7 @@ export const nextjsNoClientFetchForServerData = defineRule<Rule>({
         const callback = getEffectCallback(node);
         if (!callback || !containsFetchCall(callback)) return;
 
-        const filename = normalizeFilename(context.getFilename?.() ?? "");
+        const filename = normalizeFilename(context.filename ?? "");
         const isPageOrLayoutFile =
           PAGE_OR_LAYOUT_FILE_PATTERN.test(filename) || PAGES_DIRECTORY_PATTERN.test(filename);
 

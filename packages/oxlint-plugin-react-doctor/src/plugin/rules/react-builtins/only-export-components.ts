@@ -384,7 +384,7 @@ export const onlyExportComponents = defineRule<Rule>({
     };
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
-        const filename = normalizeFilename(context.getFilename?.() ?? "");
+        const filename = normalizeFilename(context.filename ?? "");
         if (!isFileNameAllowed(filename, settings.checkJS)) return;
         const allNodes = collectAllNodes(node as EsTreeNode);
 

@@ -29,7 +29,7 @@ export const clickEventsHaveKeyEvents = defineRule<Rule>({
   recommendation: "Pair `onClick` with `onKeyUp` / `onKeyDown` / `onKeyPress` for keyboard users.",
   category: "Accessibility",
   create: (context) => {
-    const isTestlikeFile = isTestlikeFilename(context.getFilename?.());
+    const isTestlikeFile = isTestlikeFilename(context.filename);
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (isTestlikeFile) return;

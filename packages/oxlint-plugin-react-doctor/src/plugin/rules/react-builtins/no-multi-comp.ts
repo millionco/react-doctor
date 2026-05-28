@@ -574,7 +574,7 @@ export const noMultiComp = defineRule<Rule>({
   category: "Architecture",
   create: (context) => {
     const settings = resolveSettings(context.settings);
-    const isTestlikeFile = isTestlikeFilename(context.getFilename?.());
+    const isTestlikeFile = isTestlikeFilename(context.filename);
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
         // Test / story / Cypress files routinely declare several tiny

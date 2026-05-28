@@ -317,7 +317,7 @@ export const jsxNoJsxAsProp = defineRule<Rule>({
   recommendation: "Hoist the inner JSX outside the render or memoize via `useMemo`.",
   category: "Performance",
   create: (context) => {
-    const isTestlikeFile = isTestlikeFilename(context.getFilename?.());
+    const isTestlikeFile = isTestlikeFilename(context.filename);
     let memoRegistry: Map<string, MemoStatus> | null = null;
     return {
       Program(node: EsTreeNodeOfType<"Program">) {

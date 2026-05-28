@@ -22,7 +22,7 @@ export const noSecretsInClientCode = defineRule<Rule>({
   recommendation:
     "Move secrets to server-only code. Public client environment variables are bundled into browser code and must not contain secrets",
   create: (context: RuleContext) => {
-    const filename = normalizeFilename(context.getFilename?.() ?? "");
+    const filename = normalizeFilename(context.filename ?? "");
     const framework = getReactDoctorStringSetting(context.settings, "framework");
     const rootDirectory = getReactDoctorStringSetting(context.settings, "rootDirectory");
     let shouldUseVariableNameHeuristic =

@@ -19,7 +19,7 @@ export const tanstackStartNoUseEffectFetch = defineRule<Rule>({
     "Fetch data in the route `loader` instead — the router coordinates loading before rendering to avoid waterfalls",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      const filename = normalizeFilename(context.getFilename?.() ?? "");
+      const filename = normalizeFilename(context.filename ?? "");
       const isRouteFile = TANSTACK_ROUTE_FILE_PATTERN.test(filename);
       if (!isRouteFile) return;
 

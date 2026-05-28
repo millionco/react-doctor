@@ -125,7 +125,7 @@ export const buttonHasType = defineRule<Rule>({
     // Storybook stories and tests routinely render bare `<button>` without
     // a `type` attribute — the buttons aren't inside a real form so the
     // implicit `submit` behaviour is irrelevant. Skip these.
-    const isTestlikeFile = isTestlikeFilename(context.getFilename?.());
+    const isTestlikeFile = isTestlikeFilename(context.filename);
 
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {

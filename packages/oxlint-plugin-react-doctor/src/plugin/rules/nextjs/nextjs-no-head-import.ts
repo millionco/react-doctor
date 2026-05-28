@@ -16,7 +16,7 @@ export const nextjsNoHeadImport = defineRule<Rule>({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       if (node.source?.value !== "next/head") return;
 
-      const filename = normalizeFilename(context.getFilename?.() ?? "");
+      const filename = normalizeFilename(context.filename ?? "");
       if (!APP_DIRECTORY_PATTERN.test(filename)) return;
 
       context.report({

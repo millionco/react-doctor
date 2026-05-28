@@ -504,7 +504,7 @@ export const jsxNoNewFunctionAsProp = defineRule<Rule>({
   recommendation: "Memoize the callback (`useCallback`) or hoist it outside the component.",
   category: "Performance",
   create: (context) => {
-    const isTestlikeFile = isTestlikeFilename(context.getFilename?.());
+    const isTestlikeFile = isTestlikeFilename(context.filename);
     let memoRegistry: Map<string, MemoStatus> | null = null;
     return {
       Program(node: EsTreeNodeOfType<"Program">) {

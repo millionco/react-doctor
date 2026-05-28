@@ -293,7 +293,7 @@ export const controlHasAssociatedLabel = defineRule<Rule>({
   category: "Accessibility",
   create: (context) => {
     const settings = resolveSettings(context.settings);
-    const isTestlikeFile = isTestlikeFilename(context.getFilename?.());
+    const isTestlikeFile = isTestlikeFilename(context.filename);
     return {
       JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
         if (isTestlikeFile) return;

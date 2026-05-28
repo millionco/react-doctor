@@ -15,7 +15,7 @@ export const nextjsMissingMetadata = defineRule<Rule>({
     "Add `export const metadata = { title: '...', description: '...' }` or `export async function generateMetadata()`",
   create: (context: RuleContext) => ({
     Program(programNode: EsTreeNodeOfType<"Program">) {
-      const filename = normalizeFilename(context.getFilename?.() ?? "");
+      const filename = normalizeFilename(context.filename ?? "");
       if (!PAGE_FILE_PATTERN.test(filename)) return;
       if (INTERNAL_PAGE_PATH_PATTERN.test(filename)) return;
 

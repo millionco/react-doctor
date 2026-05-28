@@ -148,7 +148,7 @@ export const serverHoistStaticIo = defineRule<Rule>({
       );
     },
     ExportDefaultDeclaration(node: EsTreeNodeOfType<"ExportDefaultDeclaration">) {
-      const filename = normalizeFilename(context.getFilename?.() ?? "");
+      const filename = normalizeFilename(context.filename ?? "");
       if (!PAGES_ROUTER_API_PATH_PATTERN.test(filename)) return;
       const declaration = node.declaration;
       if (

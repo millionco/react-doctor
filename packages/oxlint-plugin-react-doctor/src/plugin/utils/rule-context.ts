@@ -7,24 +7,24 @@ import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 // host doesn't need to compute scope or CFG for us.
 export interface BaseRuleContext {
   report: (descriptor: ReportDescriptor) => void;
-  // Modern hosts (ESLint 9+, oxlint) expose the filename as a property —
-  // prefer it over `getFilename()`, which ESLint deprecated.
+  // Absolute path of the file being linted. Both oxlint and ESLint 9+
+  // expose this as a property and deprecate `getFilename()`:
+  // https://eslint.org/blog/2023/09/preparing-custom-rules-eslint-v9/#context-methods-becoming-properties
   readonly filename?: string;
-  // Deprecated accessor. ESLint implements it as a `this`-bound class
-  // method (`getFilename() { return this.filename; }`), so it MUST be
-  // called on the host context — a detached reference loses `this` and
-  // returns `undefined`. It can return `undefined` regardless, so every
-  // caller must coalesce before use.
+  // Deprecated host accessor, read only as a fallback by
+  // `wrapWithSemanticContext`. ESLint implements it as a `this`-bound
+  // class method, so it must be called on the host context, never a
+  // detached reference. Rules use `context.filename` instead.
   getFilename?: () => string | undefined;
   readonly settings?: Readonly<Record<string, unknown>>;
 }
 
-// The rule-facing context. Rules read `scopes` / `cfg` when they need
-// them; both are guaranteed non-null because every rule is wrapped at
-// plugin load time by `wrapWithSemanticContext`, which enriches the
-// host's BaseRuleContext into a RuleContext with lazy scope + CFG
-// builders. Tests pass a fully-built context directly via run-rule.ts.
-export interface RuleContext extends BaseRuleContext {
+// The rule-facing context. `filename` is resolved by
+// `wrapWithSemanticContext` from the host's `filename` property (or its
+// deprecated `getFilename()` fallback), so rules never touch `getFilename`
+// directly. `scopes` / `cfg` are guaranteed non-null because every rule is
+// wrapped at plugin load time. Tests pass a fully-built context via run-rule.ts.
+export interface RuleContext extends Omit<BaseRuleContext, "getFilename"> {
   readonly scopes: ScopeAnalysis;
   readonly cfg: ControlFlowAnalysis;
 }

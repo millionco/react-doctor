@@ -66,7 +66,7 @@ export const noStringRefs = defineRule<Rule>({
     // where the string identifies a shape in the test, not a React ref).
     // Skip those — string-ref-deprecation warnings only matter for
     // production React code, where the test corpus showed zero hits.
-    const isTestlikeFile = isTestlikeFilename(context.getFilename?.());
+    const isTestlikeFile = isTestlikeFilename(context.filename);
     return {
       JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
         if (isTestlikeFile) return;

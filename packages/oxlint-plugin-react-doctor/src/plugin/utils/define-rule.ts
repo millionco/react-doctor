@@ -17,12 +17,12 @@ interface DefineRule {
 // don't ship to users. We wrap `create()` once here so every such rule
 // auto-skips testlike files without each one re-implementing the check.
 const wrapCreateForTestNoise = <
-  CreateFn extends (context: { getFilename?: () => string | undefined }) => Record<string, unknown>,
+  CreateFn extends (context: { filename?: string }) => Record<string, unknown>,
 >(
   create: CreateFn,
 ): CreateFn =>
   ((context) => {
-    if (isTestlikeFilename(context.getFilename?.())) return {};
+    if (isTestlikeFilename(context.filename)) return {};
     return create(context);
   }) as CreateFn;
 
@@ -40,7 +40,7 @@ const VISITOR_NODE_NAME_PATTERN = /^[A-Z]/;
 type GenericVisitors = Record<string, unknown>;
 
 const wrapCreateForReactJsxOnly = <
-  CreateFn extends (context: { getFilename?: () => string | undefined }) => GenericVisitors,
+  CreateFn extends (context: { filename?: string }) => GenericVisitors,
 >(
   create: CreateFn,
 ): CreateFn =>

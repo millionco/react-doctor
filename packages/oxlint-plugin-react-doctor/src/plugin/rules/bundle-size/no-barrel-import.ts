@@ -78,7 +78,7 @@ export const noBarrelImport = defineRule<Rule>({
         const source = node.source?.value;
         if (typeof source !== "string" || !source.startsWith(".")) return;
 
-        const filename = normalizeFilename(context.getFilename?.() ?? "");
+        const filename = normalizeFilename(context.filename ?? "");
         if (!filename) return;
 
         const importRequests = getRuntimeImportRequests(node);

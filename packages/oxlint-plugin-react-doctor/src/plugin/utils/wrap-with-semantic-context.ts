@@ -76,14 +76,15 @@ export const wrapWithSemanticContext = (rule: Rule): HostRule => ({
       return cachedCfg;
     };
 
-    // Resolve the filename on every call: prefer the host's `filename`
-    // property, then fall back to `getFilename()` invoked ON the host so
-    // ESLint's `this`-bound class method keeps its binding. Forwarding the
-    // bare `baseContext.getFilename` reference here dropped `this` and made
-    // it return `undefined` under ESLint 9, crashing filename-based rules.
+    // Resolve from the host's modern `filename` property, falling back to
+    // its deprecated `getFilename()` invoked ON the host (so a `this`-bound
+    // class method keeps its binding — forwarding a bare reference dropped
+    // `this` and returned `undefined` under ESLint 9, crashing rules).
     const enrichedContext: RuleContext = {
       report: baseContext.report,
-      getFilename: () => baseContext.filename ?? baseContext.getFilename?.(),
+      get filename() {
+        return baseContext.filename ?? baseContext.getFilename?.();
+      },
       settings: baseContext.settings,
       get scopes() {
         return getScopes();

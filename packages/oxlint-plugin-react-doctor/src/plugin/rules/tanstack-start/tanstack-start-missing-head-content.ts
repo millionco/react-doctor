@@ -140,7 +140,7 @@ export const tanstackStartMissingHeadContent = defineRule<Rule>({
 
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
-        const filename = context.getFilename?.() ?? "";
+        const filename = context.filename ?? "";
         const isRootRouteFile = TANSTACK_ROOT_ROUTE_FILE_PATTERN.test(filename);
         if (!isRootRouteFile) return;
 
@@ -160,19 +160,19 @@ export const tanstackStartMissingHeadContent = defineRule<Rule>({
         }
       },
       ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
-        const filename = context.getFilename?.() ?? "";
+        const filename = context.filename ?? "";
         const isRootRouteFile = TANSTACK_ROOT_ROUTE_FILE_PATTERN.test(filename);
         if (!isRootRouteFile) return;
         collectImportBindings(node);
       },
       VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
-        const filename = context.getFilename?.() ?? "";
+        const filename = context.filename ?? "";
         const isRootRouteFile = TANSTACK_ROOT_ROUTE_FILE_PATTERN.test(filename);
         if (!isRootRouteFile) return;
         collectVariableAlias(node);
       },
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        const filename = normalizeFilename(context.getFilename?.() ?? "");
+        const filename = normalizeFilename(context.filename ?? "");
         const isRootRouteFile = TANSTACK_ROOT_ROUTE_FILE_PATTERN.test(filename);
         if (!isRootRouteFile) return;
 
@@ -208,7 +208,7 @@ export const tanstackStartMissingHeadContent = defineRule<Rule>({
         }
       },
       "Program:exit"(programNode: EsTreeNode) {
-        const filename = normalizeFilename(context.getFilename?.() ?? "");
+        const filename = normalizeFilename(context.filename ?? "");
         const isRootRouteFile = TANSTACK_ROOT_ROUTE_FILE_PATTERN.test(filename);
         if (!isRootRouteFile) return;
 

@@ -113,7 +113,7 @@ export const asyncParallel = defineRule<Rule>({
   recommendation:
     "Use `const [a, b] = await Promise.all([fetchA(), fetchB()])` to run independent operations concurrently",
   create: (context: RuleContext) => {
-    const filename = normalizeFilename(context.getFilename?.() ?? "");
+    const filename = normalizeFilename(context.filename ?? "");
     const isBrowserTestFile = BROWSER_TEST_FILE_PATTERN.test(filename);
     let hasTestLibraryImport = false;
 

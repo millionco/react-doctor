@@ -10,7 +10,7 @@ const EMPTY_VISITORS: RuleVisitors = {};
 // Rather than have every `rn-*` rule re-implement the
 // `package.json`-walking + `.web.tsx` checks at the top of its `create`,
 // we apply a single shared gate at registry load time. When the file
-// owning `context.getFilename()` does not match a React Native package,
+// owning `context.filename` does not match a React Native package,
 // we return empty visitors so oxlint never invokes the rule body — no
 // allocations, no AST walks, no diagnostics. The wrapper deliberately
 // preserves the underlying rule's identity for non-RN-aware callers

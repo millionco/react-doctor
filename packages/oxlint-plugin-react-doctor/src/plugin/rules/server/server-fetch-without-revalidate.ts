@@ -64,7 +64,7 @@ export const serverFetchWithoutRevalidate = defineRule<Rule>({
 
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
-        const filename = normalizeFilename(context.getFilename?.() ?? "");
+        const filename = normalizeFilename(context.filename ?? "");
         if (!APP_ROUTER_FILE_PATTERN.test(filename)) {
           isServerSideFile = false;
           return;

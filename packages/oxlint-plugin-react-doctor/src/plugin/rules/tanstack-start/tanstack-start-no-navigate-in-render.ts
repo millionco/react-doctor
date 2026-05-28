@@ -42,7 +42,7 @@ export const tanstackStartNoNavigateInRender = defineRule<Rule>({
 
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        const filename = normalizeFilename(context.getFilename?.() ?? "");
+        const filename = normalizeFilename(context.filename ?? "");
         if (!TANSTACK_ROUTE_FILE_PATTERN.test(filename)) return;
 
         if (isDeferredHookCall(node)) deferredCallbackDepth++;
@@ -62,19 +62,19 @@ export const tanstackStartNoNavigateInRender = defineRule<Rule>({
         }
       },
       "CallExpression:exit"(node: EsTreeNode) {
-        const filename = normalizeFilename(context.getFilename?.() ?? "");
+        const filename = normalizeFilename(context.filename ?? "");
         if (!TANSTACK_ROUTE_FILE_PATTERN.test(filename)) return;
         if (isDeferredHookCall(node)) {
           deferredCallbackDepth = Math.max(0, deferredCallbackDepth - 1);
         }
       },
       JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
-        const filename = normalizeFilename(context.getFilename?.() ?? "");
+        const filename = normalizeFilename(context.filename ?? "");
         if (!TANSTACK_ROUTE_FILE_PATTERN.test(filename)) return;
         if (isEventHandlerAttribute(node)) eventHandlerDepth++;
       },
       "JSXAttribute:exit"(node: EsTreeNode) {
-        const filename = normalizeFilename(context.getFilename?.() ?? "");
+        const filename = normalizeFilename(context.filename ?? "");
         if (!TANSTACK_ROUTE_FILE_PATTERN.test(filename)) return;
         if (isEventHandlerAttribute(node)) {
           eventHandlerDepth = Math.max(0, eventHandlerDepth - 1);

@@ -8,7 +8,7 @@ export interface OxcFixture {
   oxcSettings?: unknown;
   // Some OXC tests pin a specific filename (`PathBuf::from("foo.jsx")`)
   // as their fourth tuple element. The fixture extractor preserves it
-  // here so per-rule tests can pass it through to context.getFilename().
+  // here so per-rule tests can pass it through to context.filename.
   oxcFilename?: string;
 }
 

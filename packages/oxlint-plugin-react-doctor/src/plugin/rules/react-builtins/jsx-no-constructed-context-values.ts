@@ -52,7 +52,7 @@ export const jsxNoConstructedContextValues = defineRule<Rule>({
   recommendation: "Memoize the context value (`useMemo`) or hoist it outside the render.",
   category: "Performance",
   create: (context) => {
-    const isTestlikeFile = isTestlikeFilename(context.getFilename?.());
+    const isTestlikeFile = isTestlikeFilename(context.filename);
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (isTestlikeFile) return;

@@ -206,7 +206,7 @@ export const nextjsNoSideEffectInGetHandler = defineRule<Rule>({
         resolveBinding = buildProgramBindingLookup(node);
       },
       ExportNamedDeclaration(node: EsTreeNodeOfType<"ExportNamedDeclaration">) {
-        const filename = normalizeFilename(context.getFilename?.() ?? "");
+        const filename = normalizeFilename(context.filename ?? "");
         if (!ROUTE_HANDLER_FILE_PATTERN.test(filename)) return;
         if (CRON_ROUTE_PATTERN.test(filename)) return;
         if (!isExportedGetHandler(node)) return;

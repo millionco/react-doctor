@@ -14,7 +14,7 @@ export const nextjsNoImgElement = defineRule<Rule>({
   recommendation:
     "`import Image from 'next/image'` — provides automatic WebP/AVIF, lazy loading, and responsive srcset",
   create: (context: RuleContext) => {
-    const filename = normalizeFilename(context.getFilename?.() ?? "");
+    const filename = normalizeFilename(context.filename ?? "");
     const isOgRoute = OG_ROUTE_PATTERN.test(filename);
 
     return {

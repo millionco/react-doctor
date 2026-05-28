@@ -38,11 +38,11 @@ const NATIVE_FILE_EXTENSION_PATTERN = /\.(?:ios|android|native)\.[cm]?[jt]sx?$/;
 //        capability gate in `runOxlint` already prevents RN rules from
 //        loading at all unless the project is RN-aware).
 //
-// `context.getFilename()` may be unavailable in stripped-down test
+// `context.filename` may be unavailable in stripped-down test
 // harnesses; in that case we keep RN rules active so the rule body can
 // proceed.
 export const isReactNativeFileActive = (context: RuleContext): boolean => {
-  const rawFilename = context.getFilename?.();
+  const rawFilename = context.filename;
   if (!rawFilename) return true;
   const filename = normalizeFilename(rawFilename);
 

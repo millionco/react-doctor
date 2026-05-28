@@ -1,0 +1,30 @@
+{
+  "name": "react-doctor-lite",
+  "version": "0.0.0",
+  "private": true,
+  "description": "PoC: a deliberately small, in-process React Doctor engine. No oxlint subprocesses, no oxlintrc temp files, no ad-hoc project-info booleans. Parses with oxc-parser, queries a composable dependency graph, and runs rules over a worker pool with granular concurrency controls.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && cross-env NODE_ENV=production vp pack",
+    "test": "vp test run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "oxc-parser": "^0.132.0",
+    "oxlint-plugin-react-doctor": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  }
+}

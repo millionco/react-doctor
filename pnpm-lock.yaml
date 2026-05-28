@@ -165,6 +165,19 @@ importers:
         specifier: ^9.4.0
         version: 9.4.0
 
+  packages/react-doctor-lite:
+    dependencies:
+      oxc-parser:
+        specifier: ^0.132.0
+        version: 0.132.0
+      oxlint-plugin-react-doctor:
+        specifier: workspace:*
+        version: link:../oxlint-plugin-react-doctor
+    devDependencies:
+      '@types/node':
+        specifier: ^25.6.0
+        version: 25.6.0
+
   packages/website:
     dependencies:
       '@vercel/analytics':

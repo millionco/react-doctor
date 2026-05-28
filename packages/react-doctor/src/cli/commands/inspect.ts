@@ -315,14 +315,14 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
 
     const setupProjectRoot = resolveInstallSetupProjectRoot({
       scanRoot: resolvedDirectory,
-      completedScanDirectories: completedScans.map((scan) => scan.directory),
+      scanDirectories: projectDirectories,
     });
     if (setupProjectRoot !== null) {
-      const hasScoredScan = completedScans.some((scan) => scan.result.score !== null);
+      const hasCompletedScan = completedScans.length > 0;
 
       await promptInstallSetup({
         projectRoot: setupProjectRoot,
-        hasScoredScan,
+        hasCompletedScan,
         issueCount: filterDiagnosticsForSurface(
           allDiagnostics,
           scanOptions.outputSurface ?? "cli",
@@ -337,7 +337,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       if (
         shouldShowAgentInstallHint({
           projectRoot: setupProjectRoot,
-          hasScoredScan,
+          hasCompletedScan,
           isJsonMode,
           isScoreOnly,
           isStaged: Boolean(flags.staged),

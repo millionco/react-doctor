@@ -104,6 +104,24 @@ describe("shouldPromptInstallSetup", () => {
     ).toBe(true);
   });
 
+  it("prompts after a completed interactive scan even when scoring is unavailable", () => {
+    writePackageJson(fixture.projectRoot, {
+      scripts: {},
+    });
+
+    expect(
+      shouldPromptInstallSetup({
+        projectRoot: fixture.projectRoot,
+        hasCompletedScan: true,
+        isJsonMode: false,
+        isScoreOnly: false,
+        isStaged: false,
+        skipPrompts: false,
+        store: { cwd: fixture.configRoot },
+      }),
+    ).toBe(true);
+  });
+
   it("resolves setup to the completed scan package instead of the monorepo root", () => {
     const appDirectory = path.join(fixture.projectRoot, "apps", "web");
     mkdirSync(appDirectory, { recursive: true });
@@ -119,7 +137,7 @@ describe("shouldPromptInstallSetup", () => {
     expect(
       resolveInstallSetupProjectRoot({
         scanRoot: fixture.projectRoot,
-        completedScanDirectories: [appDirectory],
+        scanDirectories: [appDirectory],
       }),
     ).toBe(appDirectory);
   });
@@ -140,12 +158,12 @@ describe("shouldPromptInstallSetup", () => {
     expect(
       resolveInstallSetupProjectRoot({
         scanRoot: fixture.projectRoot,
-        completedScanDirectories: [nestedDirectory],
+        scanDirectories: [nestedDirectory],
       }),
     ).toBe(appDirectory);
   });
 
-  it("skips setup when a scan completed in multiple package roots", () => {
+  it("resolves setup to the scan root when a scan completed in multiple package roots", () => {
     const webDirectory = path.join(fixture.projectRoot, "apps", "web");
     const adminDirectory = path.join(fixture.projectRoot, "apps", "admin");
     mkdirSync(webDirectory, { recursive: true });
@@ -160,7 +178,24 @@ describe("shouldPromptInstallSetup", () => {
     expect(
       resolveInstallSetupProjectRoot({
         scanRoot: fixture.projectRoot,
-        completedScanDirectories: [webDirectory, adminDirectory],
+        scanDirectories: [webDirectory, adminDirectory],
+      }),
+    ).toBe(fixture.projectRoot);
+  });
+
+  it("skips setup for multiple package roots without a package at the scan root", () => {
+    const scanRoot = path.join(fixture.projectRoot, "multi-root");
+    const webDirectory = path.join(scanRoot, "web");
+    const adminDirectory = path.join(scanRoot, "admin");
+    mkdirSync(webDirectory, { recursive: true });
+    mkdirSync(adminDirectory, { recursive: true });
+    writePackageJson(webDirectory, { name: "web" });
+    writePackageJson(adminDirectory, { name: "admin" });
+
+    expect(
+      resolveInstallSetupProjectRoot({
+        scanRoot,
+        scanDirectories: [webDirectory, adminDirectory],
       }),
     ).toBeNull();
   });
@@ -642,6 +677,21 @@ describe("shouldShowAgentInstallHint", () => {
       shouldShowAgentInstallHint({
         projectRoot: fixture.projectRoot,
         hasScoredScan: true,
+        isJsonMode: false,
+        isScoreOnly: false,
+        isStaged: false,
+        isCodingAgent: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("returns true in a coding agent environment after a completed scan without a score", () => {
+    writePackageJson(fixture.projectRoot, { scripts: {} });
+
+    expect(
+      shouldShowAgentInstallHint({
+        projectRoot: fixture.projectRoot,
+        hasCompletedScan: true,
         isJsonMode: false,
         isScoreOnly: false,
         isStaged: false,

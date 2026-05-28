@@ -1,7 +1,7 @@
 import type { EsTreeNode } from "./es-tree-node.js";
 import { getImportedName as getImportSpecifierName } from "./get-imported-name.js";
+import { isAstNode } from "./is-ast-node.js";
 import { isNodeOfType } from "./is-node-of-type.js";
-import { walkAst } from "./walk-ast.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
 
 const NESTED_RENDER_EVIDENCE_BOUNDARY_TYPES: ReadonlySet<string> = new Set([
@@ -60,27 +60,38 @@ const isReactCreateElementCall = (node: EsTreeNode, scopes: ScopeAnalysis): bool
   );
 };
 
+const containsRenderOutput = (
+  node: EsTreeNode,
+  rootNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (node !== rootNode && NESTED_RENDER_EVIDENCE_BOUNDARY_TYPES.has(node.type)) {
+    return false;
+  }
+  if (node.type === "JSXElement" || node.type === "JSXFragment") {
+    return true;
+  }
+  if (isReactCreateElementCall(node, scopes)) {
+    return true;
+  }
+  const nodeRecord = node as unknown as Record<string, unknown>;
+  for (const key of Object.keys(nodeRecord)) {
+    if (key === "parent") continue;
+    const child = nodeRecord[key];
+    if (Array.isArray(child)) {
+      for (const innerChild of child) {
+        if (isAstNode(innerChild) && containsRenderOutput(innerChild, rootNode, scopes)) {
+          return true;
+        }
+      }
+    } else if (isAstNode(child) && containsRenderOutput(child, rootNode, scopes)) {
+      return true;
+    }
+  }
+  return false;
+};
+
 export const functionContainsReactRenderOutput = (
   functionNode: EsTreeNode,
   scopes: ScopeAnalysis,
-): boolean => {
-  let didFindReactRenderOutput = false;
-
-  walkAst(functionNode, (child) => {
-    if (didFindReactRenderOutput) return false;
-    if (child !== functionNode && NESTED_RENDER_EVIDENCE_BOUNDARY_TYPES.has(child.type)) {
-      return false;
-    }
-    if (child.type === "JSXElement" || child.type === "JSXFragment") {
-      didFindReactRenderOutput = true;
-      return false;
-    }
-    if (isReactCreateElementCall(child, scopes)) {
-      didFindReactRenderOutput = true;
-      return false;
-    }
-    return undefined;
-  });
-
-  return didFindReactRenderOutput;
-};
+): boolean => containsRenderOutput(functionNode, functionNode, scopes);

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { noGiantComponent } from "./no-giant-component.js";
 
-const buildOversizedBody = (): string =>
+const buildBodyExceedingThreshold = (): string =>
   Array.from(
     { length: 301 },
     (_, statementIndex) => `  const value${statementIndex} = ${statementIndex};`,
@@ -22,7 +22,7 @@ describe("architecture/no-giant-component — fail cases", () => {
   it("flags an oversized PascalCase function that returns JSX", () => {
     expectDiagnosticCount(
       `function GiantComponent() {
-${buildOversizedBody()}
+${buildBodyExceedingThreshold()}
   return <main />;
 }`,
       1,
@@ -32,7 +32,7 @@ ${buildOversizedBody()}
   it("flags an oversized PascalCase arrow component that returns JSX", () => {
     expectDiagnosticCount(
       `const GiantComponent = () => {
-${buildOversizedBody()}
+${buildBodyExceedingThreshold()}
   return <main />;
 };`,
       1,
@@ -44,7 +44,7 @@ ${buildOversizedBody()}
       `import React from "react";
 
 function GiantComponent() {
-${buildOversizedBody()}
+${buildBodyExceedingThreshold()}
   return React.createElement("main", null);
 }`,
       1,
@@ -57,7 +57,7 @@ ${buildOversizedBody()}
       `import { createElement as h } from "react";
 
 const GiantComponent = () => {
-${buildOversizedBody()}
+${buildBodyExceedingThreshold()}
   return h("main", null);
 };`,
       1,
@@ -70,7 +70,7 @@ describe("architecture/no-giant-component — pass cases (no diagnostics)", () =
   it("does not flag an oversized PascalCase service function without React output", () => {
     expectDiagnosticCount(
       `function ExampleService() {
-${buildOversizedBody()}
+${buildBodyExceedingThreshold()}
   return fetch("/api/example");
 }`,
       0,
@@ -81,7 +81,7 @@ ${buildOversizedBody()}
   it("does not flag an oversized async PascalCase data helper", () => {
     expectDiagnosticCount(
       `const ExampleService = async () => {
-${buildOversizedBody()}
+${buildBodyExceedingThreshold()}
   return fetch("/api/example");
 };`,
       0,
@@ -107,7 +107,7 @@ ${methods}
     expectDiagnosticCount(
       `function ExampleService() {
   const Inner = () => <main />;
-${buildOversizedBody()}
+${buildBodyExceedingThreshold()}
   return fetch("/api/example");
 }`,
       0,
@@ -119,7 +119,7 @@ ${buildOversizedBody()}
       `import { createElement } from "./dom";
 
 function ExampleService() {
-${buildOversizedBody()}
+${buildBodyExceedingThreshold()}
   return createElement("main");
 }`,
       0,
@@ -134,7 +134,7 @@ ${buildOversizedBody()}
 }
 
 function ExampleService() {
-${buildOversizedBody()}
+${buildBodyExceedingThreshold()}
   return createElement("main");
 }`,
       0,
@@ -148,7 +148,7 @@ ${buildOversizedBody()}
 
 function ExampleService() {
   const createElement = document.createElement.bind(document);
-${buildOversizedBody()}
+${buildBodyExceedingThreshold()}
   return createElement("main");
 }`,
       0,
@@ -161,7 +161,7 @@ ${buildOversizedBody()}
       `import * as React from "react";
 
 function ExampleService(React: Document) {
-${buildOversizedBody()}
+${buildBodyExceedingThreshold()}
   return React.createElement("main");
 }`,
       0,
@@ -172,7 +172,7 @@ ${buildOversizedBody()}
   it("does not flag global React.createElement without an import", () => {
     expectDiagnosticCount(
       `function ExampleService() {
-${buildOversizedBody()}
+${buildBodyExceedingThreshold()}
   return React.createElement("main", null);
 }`,
       0,

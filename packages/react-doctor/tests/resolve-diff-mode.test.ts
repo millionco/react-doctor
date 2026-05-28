@@ -43,6 +43,7 @@ describe("resolveDiffMode (issue #298 messaging)", () => {
   afterEach(() => {
     consoleHandle.restore();
     consoleLogSpy.mockRestore();
+    vi.clearAllMocks();
   });
 
   it("warns with a base-aware message when --diff <base> was passed but the diff could not be computed", async () => {
@@ -70,6 +71,45 @@ describe("resolveDiffMode (issue #298 messaging)", () => {
   it("stays silent in quiet mode regardless of failure shape", async () => {
     await resolveDiffMode(null, "origin/master", true, true);
     expect(consoleHandle.capturedMessages).toHaveLength(0);
+  });
+
+  it("asks whether to scan the full codebase or branch changed files", async () => {
+    vi.mocked(prompts).mockResolvedValue({ scanScope: "branch" });
+
+    const isDiffMode = await resolveDiffMode(
+      buildDiffInfo({
+        currentBranch: "feature/login",
+        baseBranch: "main",
+        changedFiles: ["src/App.tsx", "README.md", "src/hooks.ts"],
+      }),
+      undefined,
+      false,
+      false,
+    );
+
+    expect(isDiffMode).toBe(true);
+    expect(prompts).toHaveBeenCalledWith({
+      type: "select",
+      name: "scanScope",
+      message: "Choose what to scan",
+      choices: [
+        { title: "Full codebase", description: "Scan every source file", value: "full" },
+        {
+          title: "Changed files on feature/login (2)",
+          description: "Compare against main from the branch merge-base",
+          value: "branch",
+        },
+      ],
+      initial: 1,
+    });
+  });
+
+  it("keeps the full scan when the user does not choose branch changed files", async () => {
+    vi.mocked(prompts).mockResolvedValue({ scanScope: "full" });
+
+    const isDiffMode = await resolveDiffMode(buildDiffInfo(), undefined, false, false);
+
+    expect(isDiffMode).toBe(false);
   });
 
   it("uses a specific label for the scope selection prompt", async () => {

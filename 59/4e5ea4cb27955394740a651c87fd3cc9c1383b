@@ -1,0 +1,35 @@
+packages/oxlint-plugin-react-doctor/src/plugin/utils/rule-context.ts
+  s_a980e8f387b22b::t_99e9dc7dd5032f 10-18
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-filename-extension.ts
+  s_a980e8f387b22b::t_99e9dc7dd5032f 61
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/only-export-components.ts
+  s_a980e8f387b22b::t_99e9dc7dd5032f 387
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/only-export-components.regressions.test.ts
+  s_a980e8f387b22b::t_684df0135b0438 1-35
+packages/oxlint-plugin-react-doctor/src/plugin/utils/is-expo-managed-file.ts
+  s_a980e8f387b22b::t_99e9dc7dd5032f 7-8
+packages/oxlint-plugin-react-doctor/src/test-utils/run-rule.ts
+  s_a980e8f387b22b::t_99e9dc7dd5032f 20-23,81
+packages/oxlint-plugin-react-doctor/tests/wrap-with-semantic-context.test.ts
+  s_a980e8f387b22b::t_22e772acf29092 1-64
+packages/oxlint-plugin-react-doctor/src/plugin/utils/wrap-with-semantic-context.ts
+  s_a980e8f387b22b::t_99e9dc7dd5032f 79-83,86
+packages/eslint-plugin-react-doctor/src/index.ts
+  s_a980e8f387b22b::t_99e9dc7dd5032f 14-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "594e5ea4cb27955394740a651c87fd3cc9c1383b",
+  "prompts": {},
+  "sessions": {
+    "s_a980e8f387b22b": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "6a9f54f2-acc9-4d35-a5ed-eb306ce56aca",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

@@ -1,0 +1,30 @@
+packages/react-doctor/tests/diagnose.test.ts
+  s_35c401a56ba7ba::t_50d1f9f08f74bd 41,69,95,116,141
+  s_35c401a56ba7ba::t_d7f957f8699d89 160,170,196,224,238,252,265,278
+  s_35c401a56ba7ba::t_fa3c24c5e4df92 179-181,200-202
+packages/react-doctor/tests/inspect-surface-filter.test.ts
+  s_35c401a56ba7ba::t_149e2e16c417fc 75
+  s_35c401a56ba7ba::t_f7e01cf2e0cd2c 121,134
+packages/react-doctor/tests/inspect.test.ts
+  s_35c401a56ba7ba::t_70eaef0ba80a46 71,140
+  s_35c401a56ba7ba::t_302a27d4fdd9bc 112
+  s_35c401a56ba7ba::t_438250bdee0145 48,84
+packages/react-doctor/tests/regressions/cli-and-output.test.ts
+  s_35c401a56ba7ba::t_289f54b7704076 99
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "ccc557665e4a3f977e7b0df80e560f4083353ca6",
+  "prompts": {},
+  "sessions": {
+    "s_35c401a56ba7ba": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "b7782e54-6c6c-40dc-aa79-d020d94918e6",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

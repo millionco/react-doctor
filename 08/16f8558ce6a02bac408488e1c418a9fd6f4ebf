@@ -1,0 +1,52 @@
+packages/core/src/utils/append-reanimated-shared-value-hint.ts
+  s_33e090db31c121::t_d9aad1d788a042 10,21
+packages/core/src/types/project-info.ts
+  s_33e090db31c121::t_d3c00e0677ee17 47-60
+packages/core/tests/services/project.test.ts
+  s_33e090db31c121::t_a45a79dbeae5dc 20-21
+packages/core/tests/discover-project.test.ts
+  s_33e090db31c121::t_6128626826043b 1080-1239
+packages/core/src/project-info/has-react-native-workspace-anywhere.ts
+  s_33e090db31c121::t_489d6c002388d6 1-2
+  s_33e090db31c121::t_e87e30b50a5230 20-21,23-24
+packages/core/src/project-info/some-workspace-package-json.ts
+  s_33e090db31c121::t_f52f90c752d21a 1-33
+packages/core/src/project-info/utils/is-package-json-reanimated-aware.ts
+  s_33e090db31c121::t_12ba9e5807e1e2 1-18
+packages/react-doctor/tests/build-json-report.test.ts
+  s_33e090db31c121::t_366a0d16d5988d 16-17
+packages/core/src/project-info/discover-project.ts
+  s_33e090db31c121::t_1eb68f9e2504f1 16-19
+  s_33e090db31c121::t_66ac49700353a3 162-168,171-177
+  s_33e090db31c121::t_141152edfd8c26 181
+packages/react-doctor/tests/regressions/_helpers.ts
+  s_33e090db31c121::t_2144f6993ce717 113-114
+  s_33e090db31c121::t_ef4f12ca99afd1 140,142
+packages/core/tests/append-reanimated-shared-value-hint.test.ts
+  s_33e090db31c121::t_419b760a7a353d 26,25
+  s_33e090db31c121::t_b7ac9b9a34782b 51,50
+  s_33e090db31c121::t_96ee66c455fb13 68,72,67
+  s_33e090db31c121::t_90507fc4724cea 101,108,71,100,107
+packages/react-doctor/tests/to-json-report.test.ts
+  s_33e090db31c121::t_5e868f155214f0 31-32
+packages/core/tests/run-inspect.test.ts
+  s_33e090db31c121::t_826a4e21e34329 37-38
+packages/core/tests/services/linter.test.ts
+  s_33e090db31c121::t_aeda19a1b47141 20-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "0816f8558ce6a02bac408488e1c418a9fd6f4ebf",
+  "prompts": {},
+  "sessions": {
+    "s_33e090db31c121": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "29c67cf1-bc50-4404-be76-3c951a87e038",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

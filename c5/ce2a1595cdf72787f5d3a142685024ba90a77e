@@ -1,0 +1,23 @@
+packages/react-doctor/src/cli/utils/resolve-diff-mode.ts
+  s_2be3864d4dddd1::t_f3f60e667c6514 54
+  s_2be3864d4dddd1::t_28b5e996b65b3e 39-45,49,51-52
+packages/react-doctor/tests/resolve-diff-mode.test.ts
+  s_2be3864d4dddd1::t_859308651519e4 4-8,45,74-101,103-111
+  s_2be3864d4dddd1::t_ce1a4d11677103 102
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "c5ce2a1595cdf72787f5d3a142685024ba90a77e",
+  "prompts": {},
+  "sessions": {
+    "s_2be3864d4dddd1": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "cb90830a-c181-49f7-aa02-ea14c09d022b",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

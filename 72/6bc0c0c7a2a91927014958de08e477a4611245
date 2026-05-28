@@ -1,0 +1,21 @@
+packages/eslint-plugin-react-doctor/src/index.ts
+  s_a980e8f387b22b::t_791512dbec08ad 16
+packages/oxlint-plugin-react-doctor/src/plugin/utils/rule-context.ts
+  s_a980e8f387b22b::t_8d95030d443e2a 14-19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "726bc0c0c7a2a91927014958de08e477a4611245",
+  "prompts": {},
+  "sessions": {
+    "s_a980e8f387b22b": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "6a9f54f2-acc9-4d35-a5ed-eb306ce56aca",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

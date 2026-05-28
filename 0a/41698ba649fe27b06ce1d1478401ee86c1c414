@@ -1,0 +1,23 @@
+packages/react-doctor/tests/regressions/js-performance-rules.test.ts
+  s_6380123ee1bdf7::t_ecd2a22038ffb2 1366-1418
+.changeset/tosorted-immutable-hermes.md
+  s_6380123ee1bdf7::t_631f9d3f84edff 1-5
+packages/oxlint-plugin-react-doctor/src/plugin/rules/js-performance/js-tosorted-immutable.ts
+  s_6380123ee1bdf7::t_8db8954a24138e 12-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "0a41698ba649fe27b06ce1d1478401ee86c1c414",
+  "prompts": {},
+  "sessions": {
+    "s_6380123ee1bdf7": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "b8d89e14-bbfd-4a4f-9598-8ddb2232f6f9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

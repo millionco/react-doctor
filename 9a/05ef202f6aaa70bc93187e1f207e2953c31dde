@@ -1,0 +1,19 @@
+packages/core/src/run-inspect.ts
+  s_b659314d42232b::t_9b551d75f8c0b3 306
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "9a05ef202f6aaa70bc93187e1f207e2953c31dde",
+  "prompts": {},
+  "sessions": {
+    "s_b659314d42232b": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c13fb866-ce74-4e39-a741-8038751ba7cd",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

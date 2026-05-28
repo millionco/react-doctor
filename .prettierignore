@@ -9,10 +9,3 @@ node_modules/
 
 # Lockfiles handled by their own tooling
 pnpm-lock.yaml
-
-# Agent skill files synced verbatim from upstream sources (e.g. JoviDeCroock/skills
-# for the Preact bucket). Leaving them untouched preserves the upstream-canonical
-# wording and keeps re-syncing painless. Project-local skills under
-# `.agents/skills/{react-doctor,rule-research,rule-writing,rule-validate}/`
-# stay format-checked by being listed explicitly above the catch-all.
-.agents/skills/preact-*/SKILL.md

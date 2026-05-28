@@ -9,6 +9,12 @@ export const jsTosortedImmutable = defineRule<Rule>({
   id: "js-tosorted-immutable",
   tags: ["test-noise"],
   severity: "warn",
+  // Hermes (the default React Native / Expo JS engine) hasn't shipped
+  // the ES2023 change-array-by-copy methods, so `array.toSorted()`
+  // throws `undefined is not a function` at runtime. Recommending it in
+  // an RN/Expo project would turn working `[...array].sort()` code into
+  // a crash, so the gate drops this rule there. See issue #543.
+  disabledBy: ["react-native"],
   recommendation:
     "Use `array.toSorted()` (ES2023) instead of `[...array].sort()` for immutable sorting without the spread allocation",
   create: (context: RuleContext) => ({

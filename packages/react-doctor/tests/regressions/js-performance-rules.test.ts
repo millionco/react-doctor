@@ -1363,3 +1363,56 @@ describe("async-parallel", () => {
     expect(hits).toHaveLength(0);
   });
 });
+
+describe("issue #543: js-tosorted-immutable is gated off for React Native / Expo (Hermes)", () => {
+  // Hermes — the default RN/Expo JS engine — hasn't shipped the ES2023
+  // change-array-by-copy methods, so `array.toSorted()` throws at
+  // runtime. Recommending it (and `--fix`-ing to it) turns working
+  // `[...array].sort()` code into a crash, so the rule must not fire in
+  // a React Native / Expo project. It stays on for web projects, where
+  // every modern engine supports `toSorted()`.
+  const SPREAD_SORT_SOURCE = `
+    export const sortCards = (
+      cardType: Array<{ id: string }>,
+      preferred: string | null,
+    ) =>
+      preferred
+        ? [...cardType].sort(
+            (first, second) =>
+              (second.id === preferred ? 1 : 0) - (first.id === preferred ? 1 : 0),
+          )
+        : cardType;
+  `;
+
+  it("flags [...array].sort() in a non-React-Native project", async () => {
+    const projectDir = setupReactProject(tempRoot, "tosorted-web-project", {
+      files: { "src/sort-cards.ts": SPREAD_SORT_SOURCE },
+    });
+
+    const hits = await collectRuleHits(projectDir, "js-tosorted-immutable");
+    expect(hits).toHaveLength(1);
+    expect(hits[0].message).toContain("toSorted()");
+  });
+
+  it("does not flag [...array].sort() in an Expo project (Hermes lacks toSorted)", async () => {
+    const projectDir = setupReactProject(tempRoot, "tosorted-expo-project", {
+      files: { "src/sort-cards.ts": SPREAD_SORT_SOURCE },
+    });
+
+    const hits = await collectRuleHits(projectDir, "js-tosorted-immutable", {
+      framework: "expo",
+    });
+    expect(hits).toHaveLength(0);
+  });
+
+  it("does not flag [...array].sort() in a bare React Native project either", async () => {
+    const projectDir = setupReactProject(tempRoot, "tosorted-rn-project", {
+      files: { "src/sort-cards.ts": SPREAD_SORT_SOURCE },
+    });
+
+    const hits = await collectRuleHits(projectDir, "js-tosorted-immutable", {
+      framework: "react-native",
+    });
+    expect(hits).toHaveLength(0);
+  });
+});

@@ -1,51 +1,27 @@
+import {
+  componentOrHookDisplayNameForFunction,
+  nearestEnclosingFunction,
+} from "./component-or-hook-display-name.js";
 import type { EsTreeNode } from "./es-tree-node.js";
-import { isNodeOfType } from "./is-node-of-type.js";
-import { isReactComponentOrHookName } from "./is-react-component-or-hook-name.js";
 
-// Walks `node.parent` chain to find the nearest enclosing function whose
-// name matches the React component (PascalCase) or hook (`use*`) naming
-// convention. Returns the name when found, null otherwise.
+// Returns the name of the React component / hook that DIRECTLY encloses
+// `node` — i.e. the nearest enclosing function is itself the component
+// or hook — or null otherwise.
 //
-// Handles four shapes:
+// Because it stops at the first function boundary, a call nested inside
+// an event handler, effect callback, or memo / useMemo callback is NOT
+// attributed to the outer component: those bodies don't run on every
+// render, so `const onNew = () => { createStore() }` inside `App` is
+// correctly left alone.
 //
-//   1. `function Foo() { ... }`               → FunctionDeclaration.id
-//   2. `const Foo = () => { ... }`            → VariableDeclarator.id with
-//                                                ArrowFunctionExpression init
-//   3. `const useFoo = function() { ... }`    → VariableDeclarator.id with
-//                                                FunctionExpression init
-//   4. `memo(function Foo() { ... })`         → Named FunctionExpression.id
-//      `forwardRef(function Foo() { ... })`     inside a HOC wrapper call
+// Component/hook detection (via `componentOrHookDisplayNameForFunction`)
+// covers `function App() {}`, `const App = () => {}`,
+// `const useFoo = function () {}`, named `memo(function App(){})`, and
+// HOC-wrapped `const App = memo(() => {})` / `forwardRef(...)`.
 //
 // Used by rules that fire only on calls inside render scope —
-// `no-create-context-in-render`, `no-create-store-in-render`, and the
-// `prefer-module-scope-*` family.
+// `no-create-context-in-render` and `no-create-store-in-render`.
 export const enclosingComponentOrHookName = (node: EsTreeNode): string | null => {
-  let cursor: EsTreeNode | null | undefined = node.parent;
-  while (cursor) {
-    if (isNodeOfType(cursor, "FunctionDeclaration")) {
-      const declarationName = cursor.id?.name ?? null;
-      if (declarationName && isReactComponentOrHookName(declarationName)) {
-        return declarationName;
-      }
-    }
-    if (isNodeOfType(cursor, "FunctionExpression")) {
-      const expressionName = cursor.id?.name ?? null;
-      if (expressionName && isReactComponentOrHookName(expressionName)) {
-        return expressionName;
-      }
-    }
-    if (isNodeOfType(cursor, "VariableDeclarator")) {
-      const initializer = cursor.init;
-      const isFunctionInitializer =
-        initializer &&
-        (isNodeOfType(initializer, "ArrowFunctionExpression") ||
-          isNodeOfType(initializer, "FunctionExpression"));
-      if (isFunctionInitializer && isNodeOfType(cursor.id, "Identifier")) {
-        const identifierName = cursor.id.name;
-        if (isReactComponentOrHookName(identifierName)) return identifierName;
-      }
-    }
-    cursor = cursor.parent ?? null;
-  }
-  return null;
+  const functionNode = nearestEnclosingFunction(node);
+  return functionNode ? componentOrHookDisplayNameForFunction(functionNode) : null;
 };

@@ -301,4 +301,37 @@ describe("no-effect-with-fresh-deps", () => {
 
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("does NOT flag a destructured prop with an array default", () => {
+    const result = runRule(
+      noEffectWithFreshDeps,
+      `
+      import { useEffect } from "react";
+
+      function List({ items = [] }) {
+        useEffect(() => {}, [items]);
+      }
+    `,
+    );
+
+    // \`items\` is a prop, not a render-local allocation — the default
+    // only allocates when the caller omits it, and "hoist to module
+    // scope" doesn't apply to a prop.
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does NOT flag a destructured prop with an object default", () => {
+    const result = runRule(
+      noEffectWithFreshDeps,
+      `
+      import { useEffect } from "react";
+
+      function Panel({ config = {} }) {
+        useEffect(() => {}, [config]);
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
 });

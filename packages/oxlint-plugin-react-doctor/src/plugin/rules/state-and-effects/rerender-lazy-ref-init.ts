@@ -3,6 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
@@ -61,6 +62,13 @@ export const rerenderLazyRefInit = defineRule<Rule>({
         : (memberPropertyName ?? "fn");
 
       if (TRIVIAL_INITIALIZER_NAMES.has(calleeName)) return;
+
+      // `useRef(useId())` / `useRef(useContext(Ctx))` captures another
+      // hook's value. The result is already stable per the rules of
+      // hooks, and the lazy-init fix this rule suggests
+      // (`if (ref.current === null) ref.current = useId()`) would call
+      // a hook conditionally — illegal. Skip hook-shaped callees.
+      if (isPlainCall && isReactHookName(calleeName)) return;
 
       const callShape = isNewCall ? `new ${calleeName}()` : `${calleeName}()`;
       const lazyFix = isNewCall

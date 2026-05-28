@@ -952,4 +952,36 @@ describe("no-mutating-reducer-state", () => {
 
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("terminates on a reducer with many sequential branches (path-state cap)", () => {
+    // Each non-returning \`if\` forks the analyzer's path states; without
+    // a cap this 2^N explosion would hang. The cap bails safely.
+    const sequentialIfs = Array.from(
+      { length: 40 },
+      (_unused, index) =>
+        `if (action["k${index}"] !== undefined) next.v${index} = action["k${index}"];`,
+    ).join("\n        ");
+    const result = runRule(
+      noMutatingReducerState,
+      `
+      import { useReducer } from "react";
+
+      function reducer(state, action) {
+        const next = { ...state };
+        ${sequentialIfs}
+        return next;
+      }
+
+      function App() {
+        const [state, dispatch] = useReducer(reducer, {});
+        return null;
+      }
+    `,
+    );
+
+    // \`next\` is a fresh clone, so there's no real mutation-of-original
+    // bug here — the point is the analyzer completes without hanging.
+    expect(result.parseErrors).toEqual([]);
+    expect(Array.isArray(result.diagnostics)).toBe(true);
+  });
 });

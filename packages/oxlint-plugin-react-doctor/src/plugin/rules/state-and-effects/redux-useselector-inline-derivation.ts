@@ -5,9 +5,10 @@ import {
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { isAstNode } from "../../utils/is-ast-node.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
@@ -84,42 +85,37 @@ const getAllocatingCallSiteDescription = (expression: EsTreeNode): AllocatingCal
   return null;
 };
 
-const findFirstAllocatingCallInExpression = (
-  expression: EsTreeNode,
-): AllocatingCallSiteWithNode | null => {
-  let firstHit: AllocatingCallSiteWithNode | null = null;
+// Returns the allocating call ONLY when the expression's RESULT is a
+// fresh allocation — i.e. the call is the returned value, not merely
+// nested somewhere in the returned subtree. This is what breaks the
+// `===` equality: `s => s.users.filter(...)` returns a fresh array,
+// but `s => s.users.filter(...).length` returns a stable number and
+// `s => s.tags.map(...).join(",")` returns a stable string, so neither
+// of those re-renders and neither should be flagged.
+//
+// Descends through the result-preserving expression forms
+// (conditional / logical / sequence / parens) the same way React's
+// `===` would see the eventual value.
+const findReturnedAllocatingCall = (expression: EsTreeNode): AllocatingCallSiteWithNode | null => {
+  const stripped = stripParenExpression(expression);
 
-  const visit = (node: EsTreeNode): void => {
-    if (firstHit) return;
-    // Don't recurse into nested functions — those run lazily.
-    if (
-      isNodeOfType(node, "ArrowFunctionExpression") ||
-      isNodeOfType(node, "FunctionExpression") ||
-      isNodeOfType(node, "FunctionDeclaration")
-    ) {
-      return;
-    }
+  const direct = getAllocatingCallSiteDescription(stripped);
+  if (direct) return { ...direct, node: stripped };
 
-    const description = getAllocatingCallSiteDescription(node);
-    if (description) {
-      firstHit = { ...description, node };
-      return;
-    }
-
-    const nodeRecord = node as unknown as Record<string, unknown>;
-    for (const key of Object.keys(nodeRecord)) {
-      if (key === "parent") continue;
-      const child = nodeRecord[key];
-      if (Array.isArray(child)) {
-        for (const item of child) if (isAstNode(item)) visit(item);
-      } else if (isAstNode(child)) {
-        visit(child);
-      }
-    }
-  };
-
-  visit(expression);
-  return firstHit;
+  if (isNodeOfType(stripped, "ConditionalExpression")) {
+    return (
+      findReturnedAllocatingCall(stripped.consequent) ??
+      findReturnedAllocatingCall(stripped.alternate)
+    );
+  }
+  if (isNodeOfType(stripped, "LogicalExpression")) {
+    return findReturnedAllocatingCall(stripped.left) ?? findReturnedAllocatingCall(stripped.right);
+  }
+  if (isNodeOfType(stripped, "SequenceExpression")) {
+    const lastExpression = stripped.expressions[stripped.expressions.length - 1];
+    return lastExpression ? findReturnedAllocatingCall(lastExpression) : null;
+  }
+  return null;
 };
 
 // useSelector callbacks should pick a slice and return it. When they
@@ -184,39 +180,25 @@ export const reduxUseselectorInlineDerivation = defineRule<Rule>({
         // For concise arrows `(s) => s.users.filter(...)`, the body
         // IS the returned expression. For block bodies, only scan the
         // arguments of ReturnStatement nodes — intermediate
-        // computations that aren't returned don't break `===`.
+        // computations that aren't returned don't break `===`. Nested
+        // functions are pruned: their returns run lazily, not on each
+        // store update.
         const returnedExpressions: EsTreeNode[] = [];
         if (isNodeOfType(body, "BlockStatement")) {
-          const collectReturns = (node: EsTreeNode): void => {
-            if (
-              isNodeOfType(node, "ArrowFunctionExpression") ||
-              isNodeOfType(node, "FunctionExpression") ||
-              isNodeOfType(node, "FunctionDeclaration")
-            ) {
-              return;
+          walkAst(body, (node) => {
+            if (node !== body && isFunctionLike(node)) return false;
+            if (isNodeOfType(node, "ReturnStatement")) {
+              if (node.argument) returnedExpressions.push(node.argument);
+              return false;
             }
-            if (isNodeOfType(node, "ReturnStatement") && node.argument) {
-              returnedExpressions.push(node.argument);
-              return;
-            }
-            const record = node as unknown as Record<string, unknown>;
-            for (const key of Object.keys(record)) {
-              if (key === "parent") continue;
-              const child = record[key];
-              if (Array.isArray(child)) {
-                for (const item of child) if (isAstNode(item)) collectReturns(item);
-              } else if (isAstNode(child)) {
-                collectReturns(child);
-              }
-            }
-          };
-          collectReturns(body);
+            return undefined;
+          });
         } else {
           returnedExpressions.push(body);
         }
 
         for (const returnedExpression of returnedExpressions) {
-          const allocatingCall = findFirstAllocatingCallInExpression(returnedExpression);
+          const allocatingCall = findReturnedAllocatingCall(returnedExpression);
           if (!allocatingCall) continue;
 
           const reportMessage =

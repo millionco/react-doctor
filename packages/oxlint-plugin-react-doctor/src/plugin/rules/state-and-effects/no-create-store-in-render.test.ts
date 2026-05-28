@@ -257,4 +257,60 @@ describe("no-create-store-in-render", () => {
 
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("flags store factory inside a memo()-wrapped arrow component", () => {
+    const result = runRule(
+      noCreateStoreInRender,
+      `
+      import { memo } from "react";
+      import { create } from "zustand";
+
+      const App = memo(() => {
+        const store = create((set) => ({ count: 0 }));
+        return null;
+      });
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("App");
+  });
+
+  it("does not flag a store factory created inside an event handler", () => {
+    const result = runRule(
+      noCreateStoreInRender,
+      `
+      import { create } from "zustand";
+
+      function App() {
+        const onNew = () => {
+          const store = create((set) => ({ count: 0 }));
+          return store;
+        };
+        return null;
+      }
+    `,
+    );
+
+    // The handler runs on click, not on render — the store isn't
+    // reallocated every render.
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a store factory created inside a useMemo callback", () => {
+    const result = runRule(
+      noCreateStoreInRender,
+      `
+      import { useMemo } from "react";
+      import { create } from "zustand";
+
+      function App() {
+        const store = useMemo(() => create((set) => ({ count: 0 })), []);
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
 });

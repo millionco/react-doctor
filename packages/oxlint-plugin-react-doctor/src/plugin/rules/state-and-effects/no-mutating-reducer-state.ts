@@ -1,39 +1,22 @@
-import { defineRule } from "../../utils/define-rule.js";
+import { MUTATING_ARRAY_METHODS, MUTATING_COLLECTION_METHODS } from "../../constants/js.js";
+import { REDUCER_PATH_STATE_LIMIT } from "../../constants/thresholds.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
+import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import {
-  findExportedFunctionBody,
-  findReExportSourceForName,
-  resolveImportedExportName,
-} from "../../utils/find-exported-function-body.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { parseSourceFile } from "../../utils/parse-source-file.js";
-import { resolveBarrelExportFilePath } from "../../utils/resolve-barrel-export-file-path.js";
-import { resolveRelativeImportPath } from "../../utils/resolve-relative-import-path.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { isLodashMutatorCall } from "./utils/lodash-mutator-call.js";
+import { resolveReducerFunction } from "./utils/resolve-reducer-function.js";
 import { getStaticMemberPropertyName } from "./utils/static-member-property-name.js";
 
 const MESSAGE =
   "Reducer mutates its current state and returns the same reference. Return a copied object or array so React can observe the update.";
-
-const MUTATING_ARRAY_METHODS = new Set([
-  "copyWithin",
-  "fill",
-  "pop",
-  "push",
-  "reverse",
-  "shift",
-  "sort",
-  "splice",
-  "unshift",
-]);
-
-const MUTATING_COLLECTION_METHODS = new Set(["add", "clear", "delete", "set"]);
 
 const SAME_REFERENCE_ARRAY_RETURN_METHODS = new Set(["copyWithin", "fill", "reverse", "sort"]);
 
@@ -42,43 +25,6 @@ const SAME_REFERENCE_COLLECTION_RETURN_METHODS = new Set(["add", "set"]);
 const OBJECT_MUTATION_METHODS = new Set(["assign", "defineProperties", "defineProperty"]);
 
 const REFLECT_MUTATION_METHODS = new Set(["deleteProperty", "set"]);
-
-// Lodash mutator function names. Each one takes the target object as
-// its FIRST argument and mutates it in place. The opposite-named
-// `lodash/fp` package is non-mutating; we skip detection when the
-// import comes from `lodash/fp` (or the local name resolves to it).
-const LODASH_MUTATOR_NAMES = new Set([
-  "set",
-  "unset",
-  "update",
-  "merge",
-  "defaults",
-  "defaultsDeep",
-  "assign",
-  "assignIn",
-  "pull",
-  "pullAll",
-  "pullAllBy",
-  "pullAt",
-  "remove",
-  "fill",
-]);
-
-const LODASH_MUTATING_MODULES = new Set([
-  "lodash",
-  "lodash-es",
-  // Per-method imports like `lodash/set`, `lodash-es/set`. Matched
-  // via prefix check below — these can't go in a Set.
-]);
-
-const isLodashMutatingImport = (sourceValue: string): boolean => {
-  if (LODASH_MUTATING_MODULES.has(sourceValue)) return true;
-  // Per-method or namespaced sub-paths: `lodash/set`, `lodash-es/set`
-  // are mutating. `lodash/fp` and `lodash/fp/set` are immutable.
-  if (sourceValue.startsWith("lodash/fp") || sourceValue.startsWith("lodash-es/fp")) return false;
-  if (sourceValue.startsWith("lodash/") || sourceValue.startsWith("lodash-es/")) return true;
-  return false;
-};
 
 // React reducer state is compared by identity (`Object.is`). A reducer may
 // legitimately return the previous state object for no-op actions, and it may
@@ -172,21 +118,6 @@ const cloneReducerPathState = (state: ReducerPathState): ReducerPathState => ({
   mutations: [...state.mutations],
 });
 
-// Narrows the generic AST node to the function shapes that can be passed to
-// React.useReducer as reducer functions.
-const isFunctionLikeAstNode = (
-  node: EsTreeNode | null | undefined,
-): node is
-  | EsTreeNodeOfType<"FunctionDeclaration">
-  | EsTreeNodeOfType<"FunctionExpression">
-  | EsTreeNodeOfType<"ArrowFunctionExpression"> =>
-  Boolean(
-    node &&
-    (isNodeOfType(node, "FunctionDeclaration") ||
-      isNodeOfType(node, "FunctionExpression") ||
-      isNodeOfType(node, "ArrowFunctionExpression")),
-  );
-
 const isSpecifierImportedFromReact = (node: EsTreeNode): boolean => {
   const parent = node.parent ?? null;
   return (
@@ -237,192 +168,6 @@ const isCallToImportedReactUseReducer = (node: EsTreeNodeOfType<"CallExpression"
 // later unwrap reducer wrappers, suppress known draft-producing wrappers like
 // Immer `produce` / `useImmerReducer`, and only analyze wrappers whose semantics
 // preserve plain reducer state.
-
-interface ResolvedReducer {
-  readonly functionNode: EsTreeNode;
-  // When non-null, the reducer body comes from a different file. The
-  // display path (relative when possible, else absolute) is woven
-  // into the diagnostic message.
-  readonly crossFileSourceDisplay: string | null;
-}
-
-// Resolves a reducer-argument expression to a function/arrow node we
-// can analyse for mutations. Handles three cases:
-//
-//   1. Inline function / arrow / function-expression — returned directly.
-//   2. Same-file Identifier binding — resolved via findVariableInitializer.
-//   3. Cross-file imported reducer — follows the import source (with
-//      barrel + re-export support) and locates the exported function.
-//      The cross-file branch is gated on `currentFilename` because it
-//      drives path resolution; tests that don't supply a filename
-//      (`runRule` with no filename option) get the same behaviour as
-//      v1 (skip cross-file).
-const resolveReducerFunction = (
-  node: EsTreeNode | null | undefined,
-  currentFilename: string | undefined,
-): ResolvedReducer | null => {
-  if (!node) return null;
-  const unwrappedNode = stripParenExpression(node);
-  if (isFunctionLikeAstNode(unwrappedNode)) {
-    return { functionNode: unwrappedNode, crossFileSourceDisplay: null };
-  }
-  if (!isNodeOfType(unwrappedNode, "Identifier")) return null;
-
-  const binding = findVariableInitializer(unwrappedNode, unwrappedNode.name);
-  const initializer = binding?.initializer;
-  if (!initializer) return null;
-
-  // Local binding to a function/arrow in this file.
-  const unwrappedInitializer = stripParenExpression(initializer);
-  if (isFunctionLikeAstNode(unwrappedInitializer)) {
-    return { functionNode: unwrappedInitializer, crossFileSourceDisplay: null };
-  }
-
-  // Imported binding — follow into the other file.
-  if (
-    isNodeOfType(initializer, "ImportSpecifier") ||
-    isNodeOfType(initializer, "ImportDefaultSpecifier")
-  ) {
-    if (!currentFilename) return null;
-    const importDeclaration = initializer.parent;
-    if (!importDeclaration || !isNodeOfType(importDeclaration, "ImportDeclaration")) return null;
-    const sourceValue = importDeclaration.source?.value;
-    if (typeof sourceValue !== "string") return null;
-    // Non-relative imports (`from "react-redux"`, etc.) resolve into
-    // node_modules. We skip those — they're packaged code, not the
-    // user's reducer.
-    if (!sourceValue.startsWith(".") && !sourceValue.startsWith("/")) return null;
-
-    const exportedName = resolveImportedExportName(initializer);
-    if (!exportedName) return null;
-    const crossFileFunction = resolveCrossFileFunctionExport(
-      currentFilename,
-      sourceValue,
-      exportedName,
-    );
-    if (!crossFileFunction) return null;
-    return {
-      functionNode: crossFileFunction,
-      // Use the import-source string the user wrote — that's what
-      // they'll search for to find the mutation. Resolving to the
-      // absolute on-disk path would be technically more precise but
-      // less actionable in a diagnostic.
-      crossFileSourceDisplay: sourceValue,
-    };
-  }
-
-  return null;
-};
-
-// Resolves `import { name } from "source"` to the actual function
-// body, following barrel re-exports up to BARREL_FOLLOW_DEPTH levels.
-const BARREL_FOLLOW_DEPTH = 4;
-
-const resolveCrossFileFunctionExport = (
-  fromFilename: string,
-  source: string,
-  exportedName: string,
-): EsTreeNode | null => {
-  const resolvedFilePath = resolveRelativeImportPath(fromFilename, source);
-  if (!resolvedFilePath) return null;
-  return resolveFunctionExportInFile(resolvedFilePath, exportedName, new Set<string>());
-};
-
-const resolveFunctionExportInFile = (
-  filePath: string,
-  exportedName: string,
-  visitedFilePaths: Set<string>,
-): EsTreeNode | null => {
-  if (visitedFilePaths.size >= BARREL_FOLLOW_DEPTH) return null;
-  if (visitedFilePaths.has(filePath)) return null;
-  visitedFilePaths.add(filePath);
-
-  // Barrel files re-export from other files. Resolve the barrel
-  // first so we land on the file that owns the function.
-  const barrelTargetPath = resolveBarrelExportFilePath(filePath, exportedName);
-  const actualFilePath = barrelTargetPath ?? filePath;
-
-  const programRoot = parseSourceFile(actualFilePath);
-  if (!programRoot) return null;
-
-  const exported = findExportedFunctionBody(programRoot, exportedName);
-  if (exported) return exported;
-
-  // The export might be a re-export not handled by the barrel
-  // resolver. Try one level of explicit re-export following.
-  const reExportSource = findReExportSourceForName(programRoot, exportedName);
-  if (reExportSource) {
-    const nextFilePath = resolveRelativeImportPath(actualFilePath, reExportSource);
-    if (nextFilePath) {
-      return resolveFunctionExportInFile(nextFilePath, exportedName, visitedFilePaths);
-    }
-  }
-
-  return null;
-};
-
-// Returns true if `callExpression` invokes a known lodash mutator
-// (`_.set`, `_.merge`, `set` from `lodash/set`, etc.) resolved
-// against the file's imports. Skipped for `lodash/fp` (non-mutating).
-//
-// Three callee shapes are handled:
-//
-//   1. `set(state, ...)` — bare identifier, must be imported from a
-//      mutating lodash module by name `set` (or any LODASH_MUTATOR_NAMES).
-//   2. `_.set(state, ...)` / `lodash.set(state, ...)` — namespace
-//      MemberExpression. The receiver Identifier must resolve to a
-//      namespace/default import from a mutating lodash module.
-//   3. Computed access (`_["set"](state)`) is skipped.
-const isLodashMutatorCall = (callExpression: EsTreeNode): boolean => {
-  if (!isNodeOfType(callExpression, "CallExpression")) return false;
-  const callee = callExpression.callee;
-
-  if (isNodeOfType(callee, "Identifier")) {
-    if (!LODASH_MUTATOR_NAMES.has(callee.name)) return false;
-    const binding = findVariableInitializer(callee, callee.name);
-    const initializer = binding?.initializer;
-    if (!initializer) return false;
-    // The binding must come from an import specifier (its parent is
-    // an ImportDeclaration whose `source.value` we can inspect).
-    if (
-      !isNodeOfType(initializer, "ImportSpecifier") &&
-      !isNodeOfType(initializer, "ImportDefaultSpecifier") &&
-      !isNodeOfType(initializer, "ImportNamespaceSpecifier")
-    ) {
-      return false;
-    }
-    const importDeclaration = initializer.parent;
-    if (!importDeclaration || !isNodeOfType(importDeclaration, "ImportDeclaration")) return false;
-    const sourceValue = importDeclaration.source?.value;
-    if (typeof sourceValue !== "string") return false;
-    return isLodashMutatingImport(sourceValue);
-  }
-
-  if (isNodeOfType(callee, "MemberExpression") && !callee.computed) {
-    const propertyName = getStaticMemberPropertyName(callee);
-    if (!propertyName || !LODASH_MUTATOR_NAMES.has(propertyName)) return false;
-    const receiver = callee.object;
-    if (!isNodeOfType(receiver, "Identifier")) return false;
-    // `_` and `lodash` are conventional but we don't trust the name
-    // alone — resolve through the binding to confirm the source.
-    const binding = findVariableInitializer(receiver, receiver.name);
-    const initializer = binding?.initializer;
-    if (!initializer) return false;
-    if (
-      !isNodeOfType(initializer, "ImportNamespaceSpecifier") &&
-      !isNodeOfType(initializer, "ImportDefaultSpecifier")
-    ) {
-      return false;
-    }
-    const importDeclaration = initializer.parent;
-    if (!importDeclaration || !isNodeOfType(importDeclaration, "ImportDeclaration")) return false;
-    const sourceValue = importDeclaration.source?.value;
-    if (typeof sourceValue !== "string") return false;
-    return isLodashMutatingImport(sourceValue);
-  }
-
-  return false;
-};
 
 // Matches static calls like `Object.assign(...)` or `Reflect.set(...)` and
 // guards against the rare-but-real shadow case where a local binding
@@ -594,13 +339,13 @@ const collectReducerStateMutationsInExpressionOrStatement = (
   // Nested reducer-local helpers are declarations, not code that runs on this
   // path. Their bodies may mutate a parameter named `state`, but that is a
   // different binding and should not be attributed to the outer reducer path.
-  if (isFunctionLikeAstNode(node)) return [];
+  if (isFunctionLike(node)) return [];
   const mutations: ReducerStateMutation[] = [];
   walkAst(node, (child: EsTreeNode) => {
     const unwrappedChild = stripParenExpression(child);
     // Prune nested function bodies for the same reason: only collect mutations
     // that execute in the currently analyzed reducer path.
-    if (child !== node && isFunctionLikeAstNode(unwrappedChild)) return false;
+    if (child !== node && isFunctionLike(unwrappedChild)) return false;
 
     if (isNodeOfType(unwrappedChild, "AssignmentExpression")) {
       // Direct property writes mutate the previous state when their left-hand
@@ -877,8 +622,7 @@ const analyzeReactUseReducerFunctionForStateMutation = (
   reportedNodes: WeakSet<EsTreeNode>,
   options: AnalyzeOptions,
 ): void => {
-  if (!isFunctionLikeAstNode(functionNode) || !isNodeOfType(functionNode.body, "BlockStatement"))
-    return;
+  if (!isFunctionLike(functionNode) || !isNodeOfType(functionNode.body, "BlockStatement")) return;
 
   const firstParam = functionNode.params?.[0];
   const stateName = isNodeOfType(firstParam, "Identifier")
@@ -889,34 +633,49 @@ const analyzeReactUseReducerFunctionForStateMutation = (
   if (!stateName) return;
 
   const reportReducerStateMutations = (mutations: ReducerStateMutation[]): void => {
+    if (mutations.length === 0) return;
+
+    if (options.crossFileConsumerCallSite && options.crossFileSourceDisplay) {
+      // Every cross-file diagnostic anchors at the SAME consumer
+      // `useReducer` call (so the editor / CI annotation lands in the
+      // file being linted). Collapse them to one report keyed on that
+      // call site — multiple mutations or returning paths in the
+      // imported reducer must not stack identical annotations.
+      if (reportedNodes.has(options.crossFileConsumerCallSite)) return;
+      reportedNodes.add(options.crossFileConsumerCallSite);
+      context.report({
+        node: options.crossFileConsumerCallSite,
+        message: `${MESSAGE} (mutation in imported reducer at \`${options.crossFileSourceDisplay}\`)`,
+      });
+      return;
+    }
+
     for (const mutation of mutations) {
       if (reportedNodes.has(mutation.node)) continue;
       reportedNodes.add(mutation.node);
-      if (options.crossFileConsumerCallSite && options.crossFileSourceDisplay) {
-        // Anchor the diagnostic at the consumer's useReducer call so
-        // the editor/CI annotation lands in the file currently being
-        // linted. The message names the imported reducer source so
-        // the developer can navigate to the actual mutation.
-        context.report({
-          node: options.crossFileConsumerCallSite,
-          message: `${MESSAGE} (mutation in imported reducer at \`${options.crossFileSourceDisplay}\`)`,
-        });
-        // Same WeakSet key (the cross-file mutation node) prevents
-        // duplicate reports if the same reducer is used by multiple
-        // `useReducer` calls in this file.
-        continue;
-      }
       context.report({ node: mutation.node, message: MESSAGE });
     }
   };
+
+  // A reducer with N sequential non-returning `if`s forks 2^N path
+  // states. Once the active-path count blows past the limit we stop
+  // forking and bail — missing diagnostics in a pathological reducer
+  // is acceptable; runaway time / memory is not. Shared across the
+  // recursive calls below.
+  let pathBudgetExceeded = false;
 
   const analyzeReducerStatementListByPath = (
     statements: EsTreeNode[],
     initialState: ReducerPathState,
   ): ReducerPathState[] => {
+    if (pathBudgetExceeded) return [cloneReducerPathState(initialState)];
     let activeStates = [cloneReducerPathState(initialState)];
 
     for (const statement of statements) {
+      if (activeStates.length > REDUCER_PATH_STATE_LIMIT) {
+        pathBudgetExceeded = true;
+        break;
+      }
       const nextStates: ReducerPathState[] = [];
 
       for (const activeState of activeStates) {

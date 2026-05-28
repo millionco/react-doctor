@@ -10,10 +10,20 @@ interface BindingInfo {
   // the declarator carries an `init` (or, for destructured patterns,
   // the field of `init` that corresponds to this name). null when the
   // binding is declared without an initializer (`let x;`).
+  //
+  // For a destructured parameter default (`function C({ items = [] })`)
+  // this is the default expression (`[]`). Consumers that treat the
+  // initializer as a "render-local allocation" must check
+  // `isFunctionParameter` first — a defaulted prop is NOT a local
+  // allocation the component owns.
   initializer: EsTreeNode | null;
   // The function/class/program node the binding lives in (its lexical
   // scope owner). Useful for distinguishing render-local vs hoisted.
   scopeOwner: EsTreeNode;
+  // True when the binding is a function parameter (including a
+  // destructured one). Lets callers exclude props/params from
+  // render-local-allocation heuristics.
+  isFunctionParameter: boolean;
 }
 
 const FUNCTION_LIKE_TYPES = new Set<string>([
@@ -74,11 +84,12 @@ const collectFromBindingPattern = (
   pattern: EsTreeNode,
   initializer: EsTreeNode | null,
   scopeOwner: EsTreeNode,
+  isFunctionParameter: boolean,
   out: Map<string, BindingInfo[]>,
 ): void => {
   if (isNodeOfType(pattern, "Identifier")) {
     const list = out.get(pattern.name) ?? [];
-    list.push({ bindingIdentifier: pattern, initializer, scopeOwner });
+    list.push({ bindingIdentifier: pattern, initializer, scopeOwner, isFunctionParameter });
     out.set(pattern.name, list);
     return;
   }
@@ -92,9 +103,15 @@ const collectFromBindingPattern = (
         const propInit = isNodeOfType(valueNode, "AssignmentPattern")
           ? (valueNode.right as EsTreeNode)
           : null;
-        collectFromBindingPattern(valueNode, propInit, scopeOwner, out);
+        collectFromBindingPattern(valueNode, propInit, scopeOwner, isFunctionParameter, out);
       } else if (isNodeOfType(property, "RestElement")) {
-        collectFromBindingPattern(property.argument as EsTreeNode, null, scopeOwner, out);
+        collectFromBindingPattern(
+          property.argument as EsTreeNode,
+          null,
+          scopeOwner,
+          isFunctionParameter,
+          out,
+        );
       }
     }
     return;
@@ -105,7 +122,13 @@ const collectFromBindingPattern = (
       const innerInit = isNodeOfType(element as EsTreeNode, "AssignmentPattern")
         ? ((element as { right?: EsTreeNode }).right ?? null)
         : null;
-      collectFromBindingPattern(element as EsTreeNode, innerInit, scopeOwner, out);
+      collectFromBindingPattern(
+        element as EsTreeNode,
+        innerInit,
+        scopeOwner,
+        isFunctionParameter,
+        out,
+      );
     }
     return;
   }
@@ -114,12 +137,19 @@ const collectFromBindingPattern = (
       pattern.left as EsTreeNode,
       (pattern.right as EsTreeNode) ?? null,
       scopeOwner,
+      isFunctionParameter,
       out,
     );
     return;
   }
   if (isNodeOfType(pattern, "RestElement")) {
-    collectFromBindingPattern(pattern.argument as EsTreeNode, null, scopeOwner, out);
+    collectFromBindingPattern(
+      pattern.argument as EsTreeNode,
+      null,
+      scopeOwner,
+      isFunctionParameter,
+      out,
+    );
   }
 };
 
@@ -140,6 +170,7 @@ const buildBindingIndex = (root: EsTreeNode): Map<string, BindingInfo[]> => {
           node.id as EsTreeNode,
           (node.init as EsTreeNode | null) ?? null,
           scopeOwner,
+          false,
           out,
         );
       }
@@ -157,6 +188,7 @@ const buildBindingIndex = (root: EsTreeNode): Map<string, BindingInfo[]> => {
           bindingIdentifier: node.id as EsTreeNode,
           initializer: node,
           scopeOwner: enclosing,
+          isFunctionParameter: false,
         });
         out.set(node.id.name, list);
       }
@@ -177,6 +209,7 @@ const buildBindingIndex = (root: EsTreeNode): Map<string, BindingInfo[]> => {
           bindingIdentifier: node.id as EsTreeNode,
           initializer: node,
           scopeOwner: enclosing,
+          isFunctionParameter: false,
         });
         out.set(node.id.name, list);
       }
@@ -190,13 +223,14 @@ const buildBindingIndex = (root: EsTreeNode): Map<string, BindingInfo[]> => {
       if (Array.isArray(node.params)) {
         for (const param of node.params) {
           if (!param) continue;
-          collectFromBindingPattern(param as EsTreeNode, null, node, out);
+          collectFromBindingPattern(param as EsTreeNode, null, node, true, out);
           // `({ x = [] }) =>` — capture the per-binding default.
           if (isNodeOfType(param as EsTreeNode, "AssignmentPattern")) {
             collectFromBindingPattern(
               ((param as { left: EsTreeNode }).left ?? null) as EsTreeNode,
               ((param as { right: EsTreeNode }).right ?? null) as EsTreeNode,
               node,
+              true,
               out,
             );
           }
@@ -214,6 +248,7 @@ const buildBindingIndex = (root: EsTreeNode): Map<string, BindingInfo[]> => {
               bindingIdentifier: local,
               initializer: specifier as EsTreeNode,
               scopeOwner,
+              isFunctionParameter: false,
             });
             out.set(local.name, list);
           }
@@ -231,7 +266,12 @@ const buildBindingIndex = (root: EsTreeNode): Map<string, BindingInfo[]> => {
         const scopeOwner = findScopeOwner(node);
         if (scopeOwner && typeof idObject.name === "string") {
           const list = out.get(idObject.name) ?? [];
-          list.push({ bindingIdentifier: idNode, initializer: null, scopeOwner });
+          list.push({
+            bindingIdentifier: idNode,
+            initializer: null,
+            scopeOwner,
+            isFunctionParameter: false,
+          });
           out.set(idObject.name, list);
         }
       }

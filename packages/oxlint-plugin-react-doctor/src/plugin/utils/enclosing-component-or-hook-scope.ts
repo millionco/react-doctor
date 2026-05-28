@@ -1,6 +1,8 @@
+import {
+  componentOrHookDisplayNameForFunction,
+  nearestEnclosingFunction,
+} from "./component-or-hook-display-name.js";
 import type { EsTreeNode } from "./es-tree-node.js";
-import { isNodeOfType } from "./is-node-of-type.js";
-import { isReactComponentOrHookName } from "./is-react-component-or-hook-name.js";
 import type { ScopeAnalysis, ScopeDescriptor } from "../semantic/scope-analysis.js";
 
 export interface EnclosingComponentInfo {
@@ -9,12 +11,16 @@ export interface EnclosingComponentInfo {
   readonly displayName: string;
 }
 
-// Scope-aware variant of `enclosingComponentOrHookName`. Walks
-// `node.parent` to find the nearest enclosing function whose name
-// matches the React component (PascalCase) or hook (`use*`)
-// convention, and returns its body scope so callers can run scope
-// queries (closureCaptures, isDescendantScope, etc.) against the
-// component boundary.
+// Scope-aware sibling of `enclosingComponentOrHookName`. Walks to the
+// nearest enclosing function and, when that function is a React
+// component (PascalCase) or hook (`use*`), returns its body scope so
+// callers can run scope queries (closureCaptures, isDescendantScope,
+// …) against the component boundary.
+//
+// Stops at the first function boundary for the same reason as the name
+// variant: a binding declared inside a nested callback (event handler,
+// useMemo / useCallback body) isn't a per-render allocation of the
+// component, so it shouldn't be attributed to it.
 //
 // Used by `prefer-module-scope-pure-function` and
 // `prefer-module-scope-static-value`.
@@ -22,46 +28,11 @@ export const enclosingComponentOrHookScope = (
   startNode: EsTreeNode,
   ownScopeFor: ScopeAnalysis["ownScopeFor"],
 ): EnclosingComponentInfo | null => {
-  let cursor: EsTreeNode | null | undefined = startNode.parent;
-  while (cursor) {
-    if (isNodeOfType(cursor, "FunctionDeclaration")) {
-      const declarationName = cursor.id?.name ?? null;
-      if (declarationName && isReactComponentOrHookName(declarationName)) {
-        const bodyScope = ownScopeFor(cursor);
-        if (bodyScope) {
-          return { functionNode: cursor, bodyScope, displayName: declarationName };
-        }
-      }
-    }
-    // Named FunctionExpression passed as an argument to a HOC wrapper:
-    //   const App = memo(function App() { ... })
-    //   const Input = forwardRef(function Input(props, ref) { ... })
-    if (isNodeOfType(cursor, "FunctionExpression")) {
-      const expressionName = cursor.id?.name ?? null;
-      if (expressionName && isReactComponentOrHookName(expressionName)) {
-        const bodyScope = ownScopeFor(cursor);
-        if (bodyScope) {
-          return { functionNode: cursor, bodyScope, displayName: expressionName };
-        }
-      }
-    }
-    if (isNodeOfType(cursor, "VariableDeclarator")) {
-      const initializer = cursor.init;
-      const isFunctionInitializer =
-        initializer &&
-        (isNodeOfType(initializer, "ArrowFunctionExpression") ||
-          isNodeOfType(initializer, "FunctionExpression"));
-      if (isFunctionInitializer && isNodeOfType(cursor.id, "Identifier")) {
-        const identifierName = cursor.id.name;
-        if (isReactComponentOrHookName(identifierName)) {
-          const bodyScope = ownScopeFor(initializer);
-          if (bodyScope) {
-            return { functionNode: initializer, bodyScope, displayName: identifierName };
-          }
-        }
-      }
-    }
-    cursor = cursor.parent ?? null;
-  }
-  return null;
+  const functionNode = nearestEnclosingFunction(startNode);
+  if (!functionNode) return null;
+  const displayName = componentOrHookDisplayNameForFunction(functionNode);
+  if (!displayName) return null;
+  const bodyScope = ownScopeFor(functionNode);
+  if (!bodyScope) return null;
+  return { functionNode, bodyScope, displayName };
 };

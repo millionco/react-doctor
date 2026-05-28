@@ -210,4 +210,23 @@ describe("no-random-key", () => {
 
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("does not flag a user-defined createId() that shadows the id-library name", () => {
+    const result = runRule(
+      noRandomKey,
+      `
+      function createId(item) {
+        return item.slug;
+      }
+
+      function List({ items }) {
+        return items.map((item) => <Row key={createId(item)} text={item.text} />);
+      }
+    `,
+    );
+
+    // \`createId\` here is a stable, user-defined helper — not the
+    // fresh-each-call id factory from a library import.
+    expect(result.diagnostics).toEqual([]);
+  });
 });

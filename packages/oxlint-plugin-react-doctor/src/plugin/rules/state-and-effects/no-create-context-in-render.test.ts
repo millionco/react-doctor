@@ -184,4 +184,42 @@ describe("no-create-context-in-render", () => {
 
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("does not flag createContext inside an event handler", () => {
+    const result = runRule(
+      noCreateContextInRender,
+      `
+      import { createContext } from "react";
+
+      function App() {
+        const onClick = () => {
+          const Ctx = createContext(null);
+          return Ctx;
+        };
+        return null;
+      }
+    `,
+    );
+
+    // The handler doesn't run on render, so the Context isn't recreated
+    // every render — no identity-stability bug to report.
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags createContext inside a memo()-wrapped arrow component", () => {
+    const result = runRule(
+      noCreateContextInRender,
+      `
+      import { memo, createContext } from "react";
+
+      const App = memo(() => {
+        const Ctx = createContext(null);
+        return null;
+      });
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("App");
+  });
 });

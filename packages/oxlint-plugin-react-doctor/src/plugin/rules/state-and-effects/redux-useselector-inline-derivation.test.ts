@@ -220,4 +220,48 @@ describe("redux-useselector-inline-derivation", () => {
 
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("does not flag a primitive derived via .length from a transient allocation", () => {
+    const result = runRule(
+      reduxUseselectorInlineDerivation,
+      `
+      import { useSelector } from "react-redux";
+
+      const activeCount = useSelector((state) => state.users.filter((u) => u.active).length);
+      const keyCount = useSelector((state) => Object.keys(state.byId).length);
+    `,
+    );
+
+    // Both return a stable number — \`===\` succeeds, so there is no
+    // extra re-render to warn about.
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a string derived via .join() from a transient allocation", () => {
+    const result = runRule(
+      reduxUseselectorInlineDerivation,
+      `
+      import { useSelector } from "react-redux";
+
+      const csv = useSelector((state) => state.tags.map((t) => t.id).join(","));
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags a fresh array returned through a conditional", () => {
+    const result = runRule(
+      reduxUseselectorInlineDerivation,
+      `
+      import { useSelector } from "react-redux";
+
+      const rows = useSelector((state) =>
+        state.showAll ? state.users.filter((u) => u.active) : state.recent,
+      );
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

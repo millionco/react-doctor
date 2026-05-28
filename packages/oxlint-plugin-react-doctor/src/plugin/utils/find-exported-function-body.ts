@@ -1,6 +1,5 @@
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
-import { isAstNode } from "./is-ast-node.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
@@ -46,6 +45,9 @@ export const findExportedFunctionBody = (
   const localBindings = new Map<string, EsTreeNode>();
   const namedExports = new Map<string, string>();
   let defaultExport: EsTreeNode | null = null;
+  // `export default someIdentifier` — resolved after all local bindings
+  // are gathered (the identifier may be declared later in the file).
+  let defaultExportIdentifierName: string | null = null;
 
   const recordVariableDeclaration = (declaration: EsTreeNodeOfType<"VariableDeclaration">) => {
     for (const declarator of declaration.declarations ?? []) {
@@ -116,8 +118,7 @@ export const findExportedFunctionBody = (
       if (isNodeOfType(declaration, "Identifier")) {
         // Resolved lazily below — we need to wait until all local
         // bindings are gathered.
-        const placeholderKey = `__default_identifier_${declaration.name}__`;
-        namedExports.set("__resolve_default__", placeholderKey);
+        defaultExportIdentifierName = declaration.name;
         continue;
       }
     }
@@ -125,10 +126,8 @@ export const findExportedFunctionBody = (
 
   if (exportedName === "default") {
     if (defaultExport) return defaultExport;
-    const placeholderKey = namedExports.get("__resolve_default__");
-    if (placeholderKey) {
-      const identifierName = placeholderKey.replace("__default_identifier_", "").replace(/__$/, "");
-      const binding = localBindings.get(identifierName);
+    if (defaultExportIdentifierName) {
+      const binding = localBindings.get(defaultExportIdentifierName);
       if (binding) return binding;
     }
     // `export { reducer as default }` — the specifier loop above
@@ -164,16 +163,23 @@ export const resolveImportedExportName = (importSpecifier: EsTreeNode): string |
   return null;
 };
 
-// Some files may have re-exports without follow-through resolution.
-// Returns the relative `source` string of an `export {<name>} from
-// "<source>"` or `export * from "<source>"` that exports
-// `exportedName`, so the caller can recurse into the next file.
-// Null when no re-export matches.
-export const findReExportSourceForName = (
+// Returns the relative `source` strings the caller should probe to
+// resolve `exportedName` through a re-export, in priority order:
+//
+//   - A matching named re-export (`export { name } from "./x"`) is
+//     precise, so the single matching source is returned on its own.
+//   - Otherwise the name may live behind ANY `export * from "./x"`, so
+//     every export-all source is returned for the caller to try in
+//     turn (an earlier `export *` not containing the name shouldn't
+//     stop the search).
+//
+// Empty when no re-export could carry the name.
+export const findReExportSourcesForName = (
   programRoot: EsTreeNode,
   exportedName: string,
-): string | null => {
-  if (!isNodeOfType(programRoot, "Program")) return null;
+): string[] => {
+  if (!isNodeOfType(programRoot, "Program")) return [];
+  const exportAllSources: string[] = [];
   for (const statement of programRoot.body ?? []) {
     if (isNodeOfType(statement, "ExportNamedDeclaration") && statement.source) {
       const sourceValue = statement.source.value;
@@ -186,22 +192,13 @@ export const findReExportSourceForName = (
           : isNodeOfType(exported, "Literal") && typeof exported.value === "string"
             ? exported.value
             : null;
-        if (exportedNameSpec === exportedName) return sourceValue;
+        if (exportedNameSpec === exportedName) return [sourceValue];
       }
     }
     if (isNodeOfType(statement, "ExportAllDeclaration") && statement.source) {
       const sourceValue = statement.source.value;
-      if (typeof sourceValue === "string") {
-        // Caller must probe each `export *` source for the name;
-        // we return the FIRST one and rely on the caller to iterate
-        // if needed.
-        return sourceValue;
-      }
+      if (typeof sourceValue === "string") exportAllSources.push(sourceValue);
     }
   }
-  // Silence unused-helper TS warning by referencing isAstNode at
-  // least once in this module — the function-finder doesn't need
-  // it directly, but the broader cross-file flow does.
-  void isAstNode;
-  return null;
+  return exportAllSources;
 };

@@ -129,4 +129,32 @@ describe("rerender-lazy-ref-init", () => {
     expect(mapResult.diagnostics).toHaveLength(1);
     expect(setResult.diagnostics).toHaveLength(1);
   });
+
+  it("does NOT flag useRef capturing another hook's value", () => {
+    const idResult = runRule(
+      rerenderLazyRefInit,
+      `
+      import { useRef, useId } from "react";
+
+      function Component() {
+        const ref = useRef(useId());
+      }
+    `,
+    );
+    const contextResult = runRule(
+      rerenderLazyRefInit,
+      `
+      import { useRef, useContext } from "react";
+
+      function Component() {
+        const ref = useRef(useContext(ThemeContext));
+      }
+    `,
+    );
+
+    // Hook results are already stable, and the suggested lazy-init fix
+    // would call a hook conditionally — illegal. Don't flag them.
+    expect(idResult.diagnostics).toEqual([]);
+    expect(contextResult.diagnostics).toEqual([]);
+  });
 });

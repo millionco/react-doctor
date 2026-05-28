@@ -54,6 +54,11 @@ export const MUTATING_ARRAY_METHODS = new Set([
   "copyWithin",
 ]);
 
+// In-place `Set` / `Map` mutators. Paired with `MUTATING_ARRAY_METHODS`
+// to describe the full set of receiver-mutating built-in collection
+// methods (`byId.set(...)`, `seen.add(...)`, `cache.delete(...)`).
+export const MUTATING_COLLECTION_METHODS = new Set(["add", "clear", "delete", "set"]);
+
 export const CHAINABLE_ITERATION_METHODS = new Set(["map", "filter", "forEach", "flatMap"]);
 
 // Method names that, when invoked on a non-`Object` receiver, yield a

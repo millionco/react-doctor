@@ -440,4 +440,23 @@ describe("prefer-module-scope-static-value", () => {
 
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("does not flag a static value declared inside an event handler", () => {
+    const result = runRule(
+      preferModuleScopeStaticValue,
+      `
+      function App() {
+        const onClick = () => {
+          const OPTS = ["a", "b", "c"];
+          return OPTS.join(",");
+        };
+        return null;
+      }
+    `,
+    );
+
+    // \`OPTS\` is allocated per click, not per render — the nearest
+    // enclosing function is the handler, not the component.
+    expect(result.diagnostics).toEqual([]);
+  });
 });

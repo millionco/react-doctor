@@ -1,10 +1,11 @@
+import { MUTATING_ARRAY_METHODS, MUTATING_COLLECTION_METHODS } from "../../constants/js.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { enclosingComponentOrHookScope } from "../../utils/enclosing-component-or-hook-scope.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { isAstNode } from "../../utils/is-ast-node.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import {
@@ -25,21 +26,8 @@ import {
 // etc.) are intentionally NOT in this list because they return a new
 // value without mutating the receiver — hoisting is safe for them.
 const MUTATING_RECEIVER_METHOD_NAMES = new Set([
-  // Array
-  "push",
-  "pop",
-  "shift",
-  "unshift",
-  "splice",
-  "sort",
-  "reverse",
-  "fill",
-  "copyWithin",
-  // Set / Map
-  "add",
-  "delete",
-  "clear",
-  "set",
+  ...MUTATING_ARRAY_METHODS,
+  ...MUTATING_COLLECTION_METHODS,
 ]);
 
 // True when an identifier `reference` to the const binding sits in a
@@ -144,8 +132,8 @@ const hasComponentLocalReferences = (
 ): boolean => {
   let foundLocal = false;
 
-  const visit = (node: EsTreeNode): void => {
-    if (foundLocal) return;
+  walkAst(expression, (node) => {
+    if (foundLocal) return false;
     // Don't recurse into inner functions: they don't run during the
     // value's allocation, they only define their own scope. (We're
     // looking at top-level "what does this allocation refer to".)
@@ -155,79 +143,22 @@ const hasComponentLocalReferences = (
     // breaks the "hoistable" property regardless.
     if (isNodeOfType(node, "ArrowFunctionExpression") || isNodeOfType(node, "FunctionExpression")) {
       foundLocal = true;
-      return;
+      return false;
     }
     const reference = scopes.referenceFor(node);
-    if (reference?.resolvedSymbol) {
-      if (isDescendantScope(reference.resolvedSymbol.scope, bodyScope)) {
-        foundLocal = true;
-        return;
-      }
+    if (reference?.resolvedSymbol && isDescendantScope(reference.resolvedSymbol.scope, bodyScope)) {
+      foundLocal = true;
+      return false;
     }
+    return undefined;
+  });
 
-    const record = node as unknown as Record<string, unknown>;
-    for (const key of Object.keys(record)) {
-      if (key === "parent") continue;
-      const child = record[key];
-      if (Array.isArray(child)) {
-        for (const item of child) if (isAstNode(item)) visit(item);
-      } else if (isAstNode(child)) {
-        visit(child);
-      }
-    }
-  };
-
-  visit(expression);
   return foundLocal;
 };
 
 const isHoistableValueExpression = (expression: EsTreeNode): boolean => {
   const stripped = stripParenExpression(expression);
   return isNodeOfType(stripped, "ArrayExpression") || isNodeOfType(stripped, "ObjectExpression");
-};
-
-// Only value-level hooks that genuinely memoize inner allocations.
-// HOC wrappers (memo, forwardRef, observer, lazy) are deliberately
-// excluded: they wrap the component but don't memoize values
-// declared inside it — `const OPTS = ["a"]` inside
-// `memo(function App() { ... })` is still reallocated every render.
-const KNOWN_MEMOISING_CALLERS = new Set(["useCallback", "useMemo"]);
-
-// Walks the full ancestor chain looking for a CallExpression whose
-// callee is a known memoising helper (useMemo / useCallback / memo /
-// forwardRef / observer / lazy). Does NOT stop at function boundaries
-// because the canonical case the rule needs to skip is exactly the
-// shape with a function in between:
-//
-//   const data = useMemo(() => {
-//     const OPTS = ["a", "b"];  // ← this VariableDeclarator
-//     return process(OPTS);
-//   }, []);
-//
-// Walking from `OPTS`'s VariableDeclarator we pass through the
-// useMemo callback's ArrowFunctionExpression before reaching the
-// useMemo CallExpression. Stopping at the function boundary would
-// miss the parent CallExpression and falsely flag `OPTS` as
-// hoistable even though the user has already memoised the scope.
-const isInsideMemoisingCall = (node: EsTreeNode): boolean => {
-  let cursor: EsTreeNode | null | undefined = node.parent;
-  while (cursor) {
-    if (isNodeOfType(cursor, "CallExpression")) {
-      const callee = cursor.callee;
-      if (isNodeOfType(callee, "Identifier") && KNOWN_MEMOISING_CALLERS.has(callee.name)) {
-        return true;
-      }
-      if (
-        isNodeOfType(callee, "MemberExpression") &&
-        isNodeOfType(callee.property, "Identifier") &&
-        KNOWN_MEMOISING_CALLERS.has(callee.property.name)
-      ) {
-        return true;
-      }
-    }
-    cursor = cursor.parent ?? null;
-  }
-  return false;
 };
 
 // Detects array / object literals defined inside a component or hook
@@ -247,11 +178,10 @@ const isInsideMemoisingCall = (node: EsTreeNode): boolean => {
 //     primitives are intentionally NOT flagged — the per-render
 //     "allocation" is free for primitives.
 //   - The binding must live inside the component's body, not inside
-//     a nested function (where the same analysis would apply but is
-//     covered by other rules).
-//   - Skips bindings inside a memoising call (`useMemo`, `useCallback`,
-//     `memo`, `forwardRef`, `observer`, `lazy`) — the user already
-//     opted into memoisation there.
+//     a nested function. `enclosingComponentOrHookScope` stops at the
+//     first function boundary, so a value declared in a `useMemo` /
+//     `useCallback` callback or an event handler is naturally skipped
+//     (the nearest enclosing function isn't the component/hook).
 //   - Uses scope analysis to verify the initializer has no references
 //     to bindings inside the component's body scope. Module-scope
 //     imports and globals are fine to capture from module scope too.
@@ -271,7 +201,6 @@ export const preferModuleScopeStaticValue = defineRule<Rule>({
       const initializer = node.init;
       if (!initializer) return;
       if (!isHoistableValueExpression(initializer)) return;
-      if (isInsideMemoisingCall(node)) return;
       const component = enclosingComponentOrHookScope(node, context.scopes.ownScopeFor);
       if (!component) return;
       if (hasComponentLocalReferences(initializer, component.bodyScope, context.scopes)) {

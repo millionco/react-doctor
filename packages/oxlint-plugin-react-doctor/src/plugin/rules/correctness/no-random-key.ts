@@ -1,6 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { Rule } from "../../utils/rule.js";
@@ -11,6 +12,10 @@ import type { RuleContext } from "../../utils/rule-context.js";
 // `performance.now()`, `crypto.randomUUID()`, `crypto.getRandomValues()`,
 // and `nanoid()` / `uuid()` / `uuidv4()` / `cuid()` / `ulid()` from the
 // well-known id libraries.
+//
+// These are matched ONLY when the local name resolves to an import (see
+// `isAlwaysFreshExpression`): a user-defined helper named `createId` /
+// `v4` that returns a STABLE id would otherwise be a false positive.
 const ALWAYS_FRESH_DIRECT_CALLEES = new Set([
   "nanoid",
   "uuid",
@@ -46,7 +51,17 @@ const isAlwaysFreshExpression = (expression: EsTreeNode): string | null => {
   const callee = stripped.callee;
 
   if (isNodeOfType(callee, "Identifier")) {
-    if (ALWAYS_FRESH_DIRECT_CALLEES.has(callee.name)) {
+    if (!ALWAYS_FRESH_DIRECT_CALLEES.has(callee.name)) return null;
+    // Only flag when the name resolves to an imported id factory.
+    // A same-file user-defined `createId` / `v4` (stable id helper)
+    // resolves to a function/const binding and is left alone.
+    const binding = findVariableInitializer(callee, callee.name);
+    if (
+      binding &&
+      (isNodeOfType(binding.initializer, "ImportSpecifier") ||
+        isNodeOfType(binding.initializer, "ImportDefaultSpecifier") ||
+        isNodeOfType(binding.initializer, "ImportNamespaceSpecifier"))
+    ) {
       return `${callee.name}()`;
     }
     return null;

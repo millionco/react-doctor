@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import Image from "next/image";
 import { Copy, Check, ChevronRight, RotateCcw } from "lucide-react";
 import { PERFECT_SCORE, RUN_COMMAND } from "@/constants";
@@ -170,6 +170,7 @@ const DiagnosticItem = ({ diagnostic }: { diagnostic: RuleDiagnostic }) => {
   return (
     <div className="mb-1">
       <button
+        type="button"
         onClick={() => setIsOpen((previous) => !previous)}
         className="inline-flex items-start gap-1 text-left"
       >
@@ -219,7 +220,7 @@ const CopyCommand = () => {
   return (
     <div className="group flex items-center gap-4 border border-white/20 px-3 py-1.5 transition-colors hover:bg-white/5">
       <span className="select-all whitespace-nowrap text-white">{RUN_COMMAND}</span>
-      <button onClick={handleCopy}>
+      <button type="button" onClick={handleCopy}>
         <IconComponent size={16} className={iconClass} />
       </button>
     </div>
@@ -270,12 +271,24 @@ const markAnimationCompleted = () => {
   } catch {}
 };
 
+const subscribeToAnimationCompletion = (onStoreChange: () => void) => {
+  window.addEventListener("storage", onStoreChange);
+  return () => window.removeEventListener("storage", onStoreChange);
+};
+
+const getServerAnimationCompletionSnapshot = () => false;
+
 const Terminal = () => {
-  const [state, setState] = useState<AnimationState>(INITIAL_STATE);
+  const hasAnimationCompleted = useSyncExternalStore(
+    subscribeToAnimationCompletion,
+    didAnimationComplete,
+    getServerAnimationCompletionSnapshot,
+  );
+  const [animatedState, setAnimatedState] = useState<AnimationState>(INITIAL_STATE);
+  const state = hasAnimationCompleted ? COMPLETED_STATE : animatedState;
 
   useEffect(() => {
-    if (didAnimationComplete()) {
-      setState(COMPLETED_STATE);
+    if (hasAnimationCompleted) {
       return;
     }
 
@@ -284,7 +297,7 @@ const Terminal = () => {
 
     const update = (patch: Partial<AnimationState>) => {
       if (signal.aborted) return;
-      setState((previous) => ({ ...previous, ...patch }));
+      setAnimatedState((previous) => ({ ...previous, ...patch }));
     };
 
     const run = async () => {
@@ -329,7 +342,7 @@ const Terminal = () => {
     });
 
     return () => abortController.abort();
-  }, []);
+  }, [hasAnimationCompleted]);
 
   return (
     <div className="mx-auto min-h-screen w-full max-w-3xl bg-[#0a0a0a] p-6 pb-32 font-mono text-base leading-relaxed text-neutral-300 sm:p-8 sm:pb-40 sm:text-lg">
@@ -407,6 +420,7 @@ const Terminal = () => {
       {state.showCta && (
         <div className="mt-8">
           <button
+            type="button"
             onClick={() => {
               try {
                 localStorage.removeItem(ANIMATION_COMPLETED_KEY);

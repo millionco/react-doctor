@@ -34,6 +34,7 @@ import {
 import { printAnnotations } from "../utils/print-annotations.js";
 import { printBrandedHeader } from "../utils/print-branded-header.js";
 import { promptCopyIssues } from "../utils/copy-issues-to-clipboard.js";
+import { readChangedFilesFrom } from "../utils/read-changed-files-from.js";
 import { printMultiProjectSummary } from "../utils/render-multi-project-summary.js";
 import {
   printAgentInstallHint,
@@ -111,6 +112,13 @@ const finalizeScans = (input: FinalizeScansInput): void => {
     process.exitCode = 1;
   }
 };
+
+const buildChangedFilesDiffInfo = (changedFiles: string[]): DiffInfo => ({
+  currentBranch: process.env.GITHUB_HEAD_REF?.trim() || null,
+  baseBranch: process.env.GITHUB_BASE_REF?.trim() || "pull request target",
+  changedFiles,
+  isCurrentChanges: false,
+});
 
 export const inspectAction = async (directory: string, flags: InspectFlags): Promise<void> => {
   const isScoreOnly = Boolean(flags.score);
@@ -231,6 +239,11 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
 
     const projectDirectories = await selectProjects(resolvedDirectory, flags.project, skipPrompts);
 
+    const changedFilesFrom =
+      flags.changedFilesFrom && !flags.full
+        ? readChangedFilesFrom(path.resolve(flags.changedFilesFrom))
+        : null;
+    const isChangedFilesMode = changedFilesFrom !== null;
     const effectiveDiff = resolveEffectiveDiff(flags, userConfig);
     const explicitBaseBranch = typeof effectiveDiff === "string" ? effectiveDiff : undefined;
     const wantsDiffMode = effectiveDiff !== undefined && effectiveDiff !== false;
@@ -238,11 +251,15 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
     // it, resolveDiffMode short-circuits at !diffInfo and the
     // "Only scan changed files?" prompt never appears for users on a
     // feature branch who didn't explicitly pass --diff.
-    const shouldDetectDiff = wantsDiffMode || (!skipPrompts && !isQuiet);
-    const diffInfo = shouldDetectDiff
-      ? await getDiffInfo(resolvedDirectory, explicitBaseBranch)
-      : null;
-    const isDiffMode = await resolveDiffMode(diffInfo, effectiveDiff, skipPrompts, isQuiet);
+    const shouldDetectDiff = !isChangedFilesMode && (wantsDiffMode || (!skipPrompts && !isQuiet));
+    const diffInfo = isChangedFilesMode
+      ? buildChangedFilesDiffInfo(changedFilesFrom)
+      : shouldDetectDiff
+        ? await getDiffInfo(resolvedDirectory, explicitBaseBranch)
+        : null;
+    const isDiffMode = isChangedFilesMode
+      ? true
+      : await resolveDiffMode(diffInfo, effectiveDiff, skipPrompts, isQuiet);
 
     // HACK: set the report-mode marker BEFORE the scan loop runs — if the
     // user hits Ctrl-C mid-scan, the SIGINT handler reads it for the JSON

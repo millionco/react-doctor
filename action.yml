@@ -8,35 +8,41 @@ inputs:
   directory:
     description: "Project directory to scan"
     default: "."
-  verbose:
-    description: "Show file details per rule"
-    default: "true"
   project:
     description: "Workspace project(s) to scan (comma-separated)"
     required: false
-  diff:
-    description: "Base branch for diff mode (e.g. main). Only files changed vs this branch are scanned. Defaults to the PR's target branch on pull_request events; pass `false` to force a full scan."
-    required: false
-  github-token:
-    description: "GitHub token for posting PR comments. When set on pull_request events, findings are posted as a PR comment."
-    required: false
   fail-on:
-    description: "Exit non-zero when diagnostics fire (error, warning, none). Gates on individual diagnostics in the scanned files, not on the score. Combine with `diff` for regression-only gating, or read the `score` output in a follow-up step to enforce an absolute score floor."
+    description: "Exit non-zero when diagnostics fire (error, warning, none)."
     default: "error"
-  no-score:
-    description: "Skip the score API. Runs print no score and leave the `score` output empty."
-    default: "false"
+  comment:
+    description: "Create or update a sticky pull request summary comment."
+    default: "true"
   annotations:
-    description: "Emit diagnostics as GitHub Actions annotations so findings show inline in the PR's Files changed view. Combine with `github-token` for both annotations and a sticky comment."
-    default: "false"
+    description: "Emit diagnostics as GitHub Actions annotations."
+    default: "true"
   node-version:
     description: "Node.js version to use"
     default: "22"
+  version:
+    description: "react-doctor npm version to run"
+    default: "latest"
 
 outputs:
   score:
-    description: "Health score (0-100). Empty when scoring is disabled or when the score API was unreachable."
-    value: ${{ steps.score.outputs.score }}
+    description: "Health score (0-100). Empty when scoring was unavailable."
+    value: ${{ steps.render.outputs.score }}
+  total-issues:
+    description: "Total diagnostic count in the scan report."
+    value: ${{ steps.render.outputs.total-issues }}
+  error-count:
+    description: "Error diagnostic count in the scan report."
+    value: ${{ steps.render.outputs.error-count }}
+  warning-count:
+    description: "Warning diagnostic count in the scan report."
+    value: ${{ steps.render.outputs.warning-count }}
+  affected-files:
+    description: "Number of files with diagnostics."
+    value: ${{ steps.render.outputs.affected-files }}
 
 runs:
   using: "composite"
@@ -45,128 +51,120 @@ runs:
       with:
         node-version: ${{ inputs.node-version }}
 
-    - if: ${{ github.event_name == 'pull_request' }}
-      shell: bash
-      run: |
-        case "$DIFF_BASE" in -* ) echo "::error::diff input cannot start with -"; exit 1 ;; esac
-        case "$HEAD_REF" in -* ) echo "::error::head_ref cannot start with -"; exit 1 ;; esac
-        git fetch origin "$DIFF_BASE" && git branch -f "$DIFF_BASE" FETCH_HEAD 2>/dev/null || true
-        git checkout "$HEAD_REF" 2>/dev/null || true
+    - id: pr-files
+      if: ${{ github.event_name == 'pull_request' }}
+      uses: actions/github-script@v7
       env:
-        GITHUB_TOKEN: ${{ inputs.github-token }}
-        DIFF_BASE: ${{ inputs.diff || github.base_ref }}
-        HEAD_REF: ${{ github.head_ref }}
+        REACT_DOCTOR_CHANGED_FILES: ${{ runner.temp }}/react-doctor-changed-files.txt
+      with:
+        script: |
+          const fs = require("fs");
+          const outputPath = process.env.REACT_DOCTOR_CHANGED_FILES;
+          const pullRequest = context.payload.pull_request;
+          if (!pullRequest || !outputPath) return;
 
-    - shell: bash
+          const files = await github.paginate(github.rest.pulls.listFiles, {
+            ...context.repo,
+            pull_number: pullRequest.number,
+            per_page: 100,
+          });
+          const includedStatuses = new Set(["added", "modified", "renamed"]);
+          const changedFiles = files
+            .filter((file) => includedStatuses.has(file.status))
+            .map((file) => file.filename);
+
+          fs.writeFileSync(outputPath, changedFiles.join("\n") + (changedFiles.length ? "\n" : ""));
+          core.setOutput("path", outputPath);
+          core.setOutput("count", String(changedFiles.length));
+
+    - id: scan
+      shell: bash
       env:
         NO_COLOR: "1"
         INPUT_DIRECTORY: ${{ inputs.directory }}
-        INPUT_VERBOSE: ${{ inputs.verbose }}
         INPUT_PROJECT: ${{ inputs.project }}
-        INPUT_DIFF: ${{ inputs.diff || github.base_ref }}
-        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
         INPUT_FAIL_ON: ${{ inputs.fail-on }}
-        INPUT_NO_SCORE: ${{ inputs.no-score }}
         INPUT_ANNOTATIONS: ${{ inputs.annotations }}
+        INPUT_VERSION: ${{ inputs.version }}
+        CHANGED_FILES_FROM: ${{ steps.pr-files.outputs.path }}
         RUNNER_TEMP: ${{ runner.temp }}
         GITHUB_RUN_ID: ${{ github.run_id }}
       run: |
-        FLAGS=("--fail-on" "$INPUT_FAIL_ON")
-        if [ "$INPUT_VERBOSE" = "true" ]; then FLAGS+=("--verbose"); fi
-        if [ -n "$INPUT_PROJECT" ]; then FLAGS+=("--project" "$INPUT_PROJECT"); fi
-        if [ -n "$INPUT_DIFF" ]; then FLAGS+=("--diff" "$INPUT_DIFF"); fi
-        if [ "${INPUT_NO_SCORE:-false}" = "true" ]; then FLAGS+=("--no-score"); fi
+        REPORT_FILE="${RUNNER_TEMP:-/tmp}/react-doctor-report-${GITHUB_RUN_ID:-$$}.json"
+        echo "report-file=$REPORT_FILE" >> "$GITHUB_OUTPUT"
+
+        FLAGS=("--json" "--json-compact" "--fail-on" "$INPUT_FAIL_ON" "--pr-comment")
         if [ "$INPUT_ANNOTATIONS" = "true" ]; then FLAGS+=("--annotations"); fi
+        if [ -n "$INPUT_PROJECT" ]; then FLAGS+=("--project" "$INPUT_PROJECT"); fi
+        if [ -n "$CHANGED_FILES_FROM" ]; then FLAGS+=("--changed-files-from" "$CHANGED_FILES_FROM"); fi
 
-        OUTPUT_FILE="${RUNNER_TEMP:-/tmp}/react-doctor-output-${GITHUB_RUN_ID:-$$}.txt"
-        echo "REACT_DOCTOR_OUTPUT_FILE=$OUTPUT_FILE" >> "$GITHUB_ENV"
+        set +e
+        npx --yes "react-doctor@$INPUT_VERSION" "$INPUT_DIRECTORY" "${FLAGS[@]}" > "$REPORT_FILE"
+        SCAN_STATUS=$?
+        set -e
 
-        if [ -n "$INPUT_GITHUB_TOKEN" ]; then
-          # --pr-comment demotes weak-signal rule families (default:
-          # `design` tag) from the printed output and the fail-on gate
-          # so style cleanup doesn't dilute meaningful React findings
-          # in the sticky PR comment. Configure overrides via
-          # config.surfaces.{prComment,ciFailure} in react-doctor.config.json.
-          RAW_FILE="${RUNNER_TEMP:-/tmp}/react-doctor-raw-${GITHUB_RUN_ID:-$$}.txt"
-          set +e
-          npx react-doctor@latest "$INPUT_DIRECTORY" "${FLAGS[@]}" --pr-comment | tee "$RAW_FILE"
-          PIPELINE_EXIT_CODES=("${PIPESTATUS[@]}")
-          set -e
-          # Strip annotation workflow commands from the PR-comment body;
-          # the runner still parses them from the live step log.
-          sed -E '/^::(error|warning) /d' "$RAW_FILE" > "$OUTPUT_FILE"
-          if [ "${PIPELINE_EXIT_CODES[1]}" -ne 0 ]; then exit "${PIPELINE_EXIT_CODES[1]}"; fi
-          exit "${PIPELINE_EXIT_CODES[0]}"
-        else
-          npx react-doctor@latest "$INPUT_DIRECTORY" "${FLAGS[@]}"
+        if ! node "$GITHUB_ACTION_PATH/scripts/ensure-json-report.mjs" "$REPORT_FILE" "$SCAN_STATUS"; then
+          SCAN_STATUS=1
         fi
+        echo "exit-code=$SCAN_STATUS" >> "$GITHUB_OUTPUT"
 
-    - id: score
+    - id: render
       if: always()
       shell: bash
       env:
-        INPUT_DIRECTORY: ${{ inputs.directory }}
-        INPUT_PROJECT: ${{ inputs.project }}
-        INPUT_DIFF: ${{ inputs.diff || github.base_ref }}
-        INPUT_NO_SCORE: ${{ inputs.no-score }}
+        REPORT_FILE: ${{ steps.scan.outputs.report-file }}
+        COMMENT_FILE: ${{ runner.temp }}/react-doctor-comment.md
+        GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       run: |
-        # HACK: --score is an output-collection step, not a gate. Force
-        # --fail-on none so older react-doctor releases (which exit
-        # non-zero when the score lands in the "Needs work" band, even
-        # though the value itself is the only meaningful signal here)
-        # don't fail the composite action under `set -e -o pipefail`.
-        if [ "${INPUT_NO_SCORE:-false}" = "true" ]; then exit 0; fi
-        # Match the scan step's scope (project + diff) so the captured
-        # score reflects the same files as the diagnostics above. A bare
-        # `--score` re-runs a full project scan, yielding a full-project
-        # score that contradicts the diff-scoped PR comment.
-        SCORE_ARGS=("$INPUT_DIRECTORY" "--score" "--fail-on" "none")
-        if [ -n "$INPUT_PROJECT" ]; then SCORE_ARGS+=("--project" "$INPUT_PROJECT"); fi
-        if [ -n "$INPUT_DIFF" ]; then SCORE_ARGS+=("--diff" "$INPUT_DIFF"); fi
-        SCORE=$(npx react-doctor@latest "${SCORE_ARGS[@]}" 2>/dev/null | tail -1 | tr -d '[:space:]') || true
-        if [[ -n "$SCORE" && "$SCORE" =~ ^[0-9]+$ ]]; then
-          echo "score=$SCORE" >> "$GITHUB_OUTPUT"
-        fi
+        node "$GITHUB_ACTION_PATH/scripts/render-github-action-comment.mjs" "$REPORT_FILE" "$COMMENT_FILE"
+        echo "comment-file=$COMMENT_FILE" >> "$GITHUB_OUTPUT"
 
-    - if: ${{ inputs.github-token != '' && github.event_name == 'pull_request' }}
+    - name: Update sticky PR comment
+      if: ${{ always() && github.event_name == 'pull_request' && inputs.comment == 'true' }}
       uses: actions/github-script@v7
       env:
-        REACT_DOCTOR_OUTPUT_FILE: ${{ env.REACT_DOCTOR_OUTPUT_FILE }}
-        REACT_DOCTOR_SCORE: ${{ steps.score.outputs.score }}
+        REACT_DOCTOR_COMMENT_FILE: ${{ steps.render.outputs.comment-file }}
       with:
-        github-token: ${{ inputs.github-token }}
         script: |
           const fs = require("fs");
-          const path = process.env.REACT_DOCTOR_OUTPUT_FILE;
-          if (!path || !fs.existsSync(path)) return;
-          const output = fs.readFileSync(path, "utf8").trim();
-          if (!output) return;
+          const commentPath = process.env.REACT_DOCTOR_COMMENT_FILE;
+          if (!commentPath || !fs.existsSync(commentPath)) return;
 
-          const score = process.env.REACT_DOCTOR_SCORE;
-          const scoreLine =
-            score && /^[0-9]+$/.test(score)
-              ? `**Score:** \`${score}\` / 100\n\n`
-              : "";
+          const body = fs.readFileSync(commentPath, "utf8").trim();
+          if (!body) return;
 
-          const marker = "<!-- react-doctor -->";
-          const fence = "````";
-          const body = `${marker}\n## React Doctor\n\n${scoreLine}${fence}\n${output}\n${fence}`;
-
-          const { data: comments } = await github.rest.issues.listComments({
-            ...context.repo,
-            issue_number: context.issue.number,
-          });
-          const prev = comments.find((c) => c.body?.startsWith(marker));
-          if (prev) {
-            await github.rest.issues.updateComment({
-              ...context.repo,
-              comment_id: prev.id,
-              body,
-            });
-          } else {
-            await github.rest.issues.createComment({
+          const marker = "<!-- react-doctor:summary -->";
+          try {
+            const { data: comments } = await github.rest.issues.listComments({
               ...context.repo,
               issue_number: context.issue.number,
-              body,
+              per_page: 100,
             });
+            const previous = comments.find((comment) => comment.body?.startsWith(marker));
+            if (previous) {
+              await github.rest.issues.updateComment({
+                ...context.repo,
+                comment_id: previous.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+          } catch (error) {
+            core.warning(`React Doctor could not update the sticky PR comment: ${error.message}`);
           }
+
+    - name: Fail if React Doctor found blocking issues
+      if: always()
+      shell: bash
+      env:
+        SCAN_STATUS: ${{ steps.scan.outputs.exit-code }}
+      run: |
+        if [ -z "$SCAN_STATUS" ]; then
+          exit 1
+        fi
+        exit "$SCAN_STATUS"

@@ -586,7 +586,14 @@ describe("runInstallReactDoctor", () => {
     );
     expect(existsSync(hookPath)).toBe(false);
     expect(existsSync(path.join(fixture.projectRoot, ".cursor/hooks.json"))).toBe(false);
-    expect(readFileSync(workflowPath, "utf8")).toContain("name: React Doctor");
+    const workflowContent = readFileSync(workflowPath, "utf8");
+    expect(workflowContent).toContain("name: React Doctor");
+    expect(workflowContent).toContain("pull-requests: write");
+    expect(workflowContent).toContain("issues: write");
+    expect(workflowContent).toContain("actions/checkout@v5");
+    expect(workflowContent).toContain("millionco/react-doctor@v1");
+    expect(workflowContent).not.toContain("github-token");
+    expect(workflowContent).not.toContain("diff: main");
   });
 
   it("skips optional setup when only the skip option is selected", async () => {
@@ -622,7 +629,7 @@ describe("runInstallReactDoctor", () => {
 
     expect(existsSync(hookPath)).toBe(false);
     expect(existsSync(path.join(fixture.projectRoot, ".cursor/hooks.json"))).toBe(false);
-    expect(readFileSync(workflowPath, "utf8")).toContain("name: React Doctor");
+    expect(readFileSync(workflowPath, "utf8")).toContain("millionco/react-doctor@v1");
   });
 
   it("--yes does not install native agent hooks unless --agent-hooks is set", async () => {

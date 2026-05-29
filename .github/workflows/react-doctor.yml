@@ -8,6 +8,8 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
+  issues: write
 
 jobs:
   react-doctor:
@@ -20,6 +22,5 @@ jobs:
 
       - uses: ./
         with:
-          annotations: "true"
           fail-on: none
           node-version: 22.18.0

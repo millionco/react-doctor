@@ -34,6 +34,10 @@ const program = new Command()
     "--diff [base]",
     "scan only files changed vs base branch (pass `false` to disable; overridden by --full)",
   )
+  .option(
+    "--changed-files-from <file>",
+    "internal: scan source files listed in a newline-delimited changed-files file",
+  )
   .option("--no-score", "skip the score API and the share URL")
   .option("--staged", "scan only staged (git index) files for pre-commit hooks")
   .option(

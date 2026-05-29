@@ -43,6 +43,32 @@ Works with Claude Code, Cursor, Codex, OpenCode, and many more.
 
 Add the reusable GitHub Action from Marketplace to scan every pull request, show inline annotations, and leave findings where reviewers already look.
 
+```yaml
+name: React Doctor
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: react-doctor-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  react-doctor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: millionco/react-doctor@v1
+```
+
+React Doctor scans the files changed in the pull request, emits inline annotations, blocks on error-level findings, and updates one sticky PR comment with the score and issue summary. The built-in GitHub token is used automatically; no secret or PAT is required. On forked PRs where GitHub withholds write permissions, the scan and annotations still run, but the sticky comment may be skipped.
+
 [Add GitHub Action →](https://github.com/marketplace/actions/react-doctor)
 
 ## Contributing

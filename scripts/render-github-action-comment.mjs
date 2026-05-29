@@ -1,0 +1,156 @@
+import fs from "node:fs";
+
+const MARKER = "<!-- react-doctor:summary -->";
+const TOP_RULE_LIMIT = 5;
+
+const [reportPath, commentPath] = process.argv.slice(2);
+
+const pluralize = (count, singular, plural = `${singular}s`) =>
+  `${count} ${count === 1 ? singular : plural}`;
+
+const escapeCell = (value) =>
+  String(value ?? "")
+    .replaceAll("|", "\\|")
+    .replaceAll("\n", " ");
+
+const appendOutput = (name, value) => {
+  const outputPath = process.env.GITHUB_OUTPUT;
+  if (!outputPath) return;
+  fs.appendFileSync(outputPath, `${name}=${value ?? ""}\n`);
+};
+
+const readReport = () => {
+  if (!reportPath) throw new Error("Missing report path.");
+  return JSON.parse(fs.readFileSync(reportPath, "utf8"));
+};
+
+const formatScore = (summary) => {
+  if (typeof summary?.score !== "number") return "Unavailable";
+  const label = typeof summary.scoreLabel === "string" ? ` (${summary.scoreLabel})` : "";
+  return `${summary.score} / 100${label}`;
+};
+
+const formatScope = (report) => {
+  if (report.mode !== "diff" || !report.diff) return "Full project";
+  const base = report.diff.baseBranch || "target branch";
+  return `${pluralize(report.diff.changedFileCount, "changed file")} vs ${base}`;
+};
+
+const groupDiagnosticsByRule = (diagnostics) => {
+  const groups = new Map();
+  for (const diagnostic of diagnostics ?? []) {
+    const key = `${diagnostic.plugin}/${diagnostic.rule}`;
+    const group = groups.get(key) ?? {
+      key,
+      severity: diagnostic.severity,
+      category: diagnostic.category,
+      count: 0,
+    };
+    group.count += 1;
+    if (diagnostic.severity === "error") group.severity = "error";
+    groups.set(key, group);
+  }
+  return [...groups.values()].sort((a, b) => {
+    const severityDelta = (a.severity === "error" ? 0 : 1) - (b.severity === "error" ? 0 : 1);
+    if (severityDelta !== 0) return severityDelta;
+    return b.count - a.count;
+  });
+};
+
+const buildTopRulesSection = (diagnostics) => {
+  const groups = groupDiagnosticsByRule(diagnostics).slice(0, TOP_RULE_LIMIT);
+  if (groups.length === 0) return "";
+  const lines = [
+    "### Top Findings",
+    "",
+    "| Rule | Severity | Category | Count |",
+    "| --- | --- | --- | ---: |",
+  ];
+  for (const group of groups) {
+    lines.push(
+      `| \`${escapeCell(group.key)}\` | ${escapeCell(group.severity)} | ${escapeCell(group.category)} | ${group.count} |`,
+    );
+  }
+  return `${lines.join("\n")}\n\n`;
+};
+
+const buildSkippedChecksSection = (report) => {
+  const skippedChecks = [
+    ...new Set((report.projects ?? []).flatMap((project) => project.skippedChecks ?? [])),
+  ];
+  if (skippedChecks.length === 0) return "";
+  const lines = ["### Incomplete Checks", ""];
+  for (const skippedCheck of skippedChecks) {
+    const reason = (report.projects ?? [])
+      .map((project) => project.skippedCheckReasons?.[skippedCheck])
+      .find((value) => typeof value === "string" && value.length > 0);
+    lines.push(`- \`${skippedCheck}\`${reason ? `: ${reason}` : ""}`);
+  }
+  return `${lines.join("\n")}\n\n`;
+};
+
+const buildErrorBody = (report) => {
+  const message = report.error?.message ?? "React Doctor failed before completing the scan.";
+  const runUrl = process.env.GITHUB_RUN_URL;
+  return [
+    MARKER,
+    "## React Doctor",
+    "",
+    "React Doctor could not complete this scan.",
+    "",
+    `> ${message}`,
+    "",
+    runUrl ? `[View workflow run](${runUrl})` : "",
+    "",
+  ]
+    .filter((line, index, lines) => line.length > 0 || lines[index - 1]?.length > 0)
+    .join("\n");
+};
+
+const buildCommentBody = (report) => {
+  if (!report.ok) return buildErrorBody(report);
+
+  const summary = report.summary ?? {};
+  const totalIssues = summary.totalDiagnosticCount ?? 0;
+  const statusLine =
+    totalIssues === 0
+      ? "No React Doctor issues found in this scan."
+      : `React Doctor found ${pluralize(totalIssues, "issue")} in ${pluralize(summary.affectedFileCount ?? 0, "file")}.`;
+  const runUrl = process.env.GITHUB_RUN_URL;
+
+  const lines = [
+    MARKER,
+    "## React Doctor",
+    "",
+    statusLine,
+    "",
+    "| Score | Issues | Errors | Warnings | Affected Files | Scope |",
+    "| --- | ---: | ---: | ---: | ---: | --- |",
+    `| ${escapeCell(formatScore(summary))} | ${totalIssues} | ${summary.errorCount ?? 0} | ${summary.warningCount ?? 0} | ${summary.affectedFileCount ?? 0} | ${escapeCell(formatScope(report))} |`,
+    "",
+    buildTopRulesSection(report.diagnostics),
+    buildSkippedChecksSection(report),
+    runUrl ? `[View workflow run](${runUrl})` : "",
+    "",
+  ];
+
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n");
+};
+
+const report = readReport();
+const body = buildCommentBody(report);
+
+if (commentPath) {
+  fs.writeFileSync(commentPath, body.endsWith("\n") ? body : `${body}\n`);
+} else {
+  process.stdout.write(body.endsWith("\n") ? body : `${body}\n`);
+}
+
+appendOutput(
+  "score",
+  typeof report.summary?.score === "number" ? String(report.summary.score) : "",
+);
+appendOutput("total-issues", String(report.summary?.totalDiagnosticCount ?? 0));
+appendOutput("error-count", String(report.summary?.errorCount ?? 0));
+appendOutput("warning-count", String(report.summary?.warningCount ?? 0));
+appendOutput("affected-files", String(report.summary?.affectedFileCount ?? 0));

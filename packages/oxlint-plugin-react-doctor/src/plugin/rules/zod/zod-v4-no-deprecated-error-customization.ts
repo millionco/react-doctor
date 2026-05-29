@@ -48,6 +48,7 @@ const FACTORIES_WITH_LEGACY_FIRST_ARG_MESSAGE = new Set([
   "number",
   "string",
 ]);
+const ERROR_MAP_PROPERTY = new Set(["errorMap"]);
 const PARSE_METHODS = new Set(["parse", "safeParse", "parseAsync", "safeParseAsync"]);
 
 const firstArgumentIsMessageString = (
@@ -83,7 +84,7 @@ const parseCallUsesErrorMap = (callExpression: EsTreeNodeOfType<"CallExpression"
   if (!isZodFactoryCall(receiver, ZOD_FACTORIES_WITH_ERROR_PARAMS)) return false;
   return isObjectExpressionWithAnyProperty(
     callExpression.arguments[1] as EsTreeNode | undefined,
-    new Set(["errorMap"]),
+    ERROR_MAP_PROPERTY,
   );
 };
 

@@ -89,15 +89,9 @@ export const discoverProject = (directory: string): ProjectInfo => {
     );
   }
 
-  // HACK: gate the cheap monorepo-root catalog read on either dep
-  // missing — it's a single readPackageJson + parsePnpmWorkspaceCatalogs
-  // call, free to run opportunistically for Tailwind in a non-Tailwind
-  // project. The expensive walks below (findReactInWorkspaces,
-  // findDependencyInfoFromMonorepoRoot) intentionally do NOT include
-  // `!tailwindVersion` in their gates — those iterate every workspace
-  // package.json, which a React-only monorepo with hundreds of
-  // workspace packages should not pay the cost of just to confirm
-  // Tailwind isn't there.
+  // HACK: keep the monorepo-root catalog read cheap (one package.json plus
+  // pnpm-workspace catalogs). Workspace walks below include Zod because
+  // `zod:4` gates a whole rule bucket; they still skip Tailwind-only misses.
   if (!reactVersion || !tailwindVersion || !zodVersion) {
     const monorepoRoot = findMonorepoRoot(directory);
     if (monorepoRoot) {

@@ -20,6 +20,8 @@ const DEPRECATED_ZOD_ERROR_MEMBERS = new Set([
   "formErrors",
   "format",
 ]);
+const ZOD_ERROR_API_MESSAGE =
+  "Zod 4 removes or deprecates this ZodError API; use `error.issues` or the new top-level error formatting helpers.";
 
 const isZodErrorReference = (node: EsTreeNode): boolean => {
   const inner = stripParenExpression(node);
@@ -36,9 +38,9 @@ const isDirectZodErrorValue = (node: EsTreeNode): boolean => {
   return methodCall?.methodName === "create" && isZodErrorReference(methodCall.receiver);
 };
 
-const isDeprecatedZodErrorMemberAccess = (
-  memberExpression: EsTreeNodeOfType<"MemberExpression">,
-): boolean => {
+const isDeprecatedZodErrorMemberAccess = (node: EsTreeNode): boolean => {
+  if (!isNodeOfType(node, "MemberExpression")) return false;
+  const memberExpression = node;
   const propertyName = getStaticPropertyName(memberExpression);
   return (
     propertyName !== null &&
@@ -71,16 +73,12 @@ export const zodV4NoDeprecatedErrorApis = defineRule<Rule>({
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (isZodErrorCreateCall(node) && isReceiverOfDeprecatedZodErrorMember(node)) return;
-      if (
-        !isZodErrorCreateCall(node) &&
-        !isDeprecatedZodErrorMemberAccess(node.callee as EsTreeNodeOfType<"MemberExpression">)
-      ) {
+      if (!isZodErrorCreateCall(node) && !isDeprecatedZodErrorMemberAccess(node.callee)) {
         return;
       }
       context.report({
         node,
-        message:
-          "Zod 4 removes or deprecates this ZodError API; use `error.issues` or the new top-level error formatting helpers.",
+        message: ZOD_ERROR_API_MESSAGE,
       });
     },
     MemberExpression(node: EsTreeNodeOfType<"MemberExpression">) {
@@ -95,8 +93,7 @@ export const zodV4NoDeprecatedErrorApis = defineRule<Rule>({
       if (!isDeprecatedZodErrorMemberAccess(node)) return;
       context.report({
         node,
-        message:
-          "Zod 4 removes or deprecates this ZodError API; use `error.issues` or the new top-level error formatting helpers.",
+        message: ZOD_ERROR_API_MESSAGE,
       });
     },
   }),

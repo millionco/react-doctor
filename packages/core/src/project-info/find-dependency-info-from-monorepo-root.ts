@@ -33,8 +33,16 @@ export const findDependencyInfoFromMonorepoRoot = (directory: string): Dependenc
         sections: ["dependencies", "devDependencies", "peerDependencies"],
       })
     : null;
+  const leafZodDeclaration = leafPackageJson
+    ? getDependencyDeclaration({
+        packageJson: leafPackageJson,
+        packageName: "zod",
+        sections: ["dependencies", "devDependencies", "peerDependencies"],
+      })
+    : null;
   const shouldUseReactFallback = !leafReactDeclaration?.hasDeclaration;
   const shouldUseTailwindFallback = leafTailwindDeclaration?.hasDeclaration ?? true;
+  const shouldUseZodFallback = leafZodDeclaration?.hasDeclaration ?? true;
   const reactCatalogVersion = shouldUseReactFallback
     ? resolveCatalogVersion(
         rootPackageJson,
@@ -51,6 +59,14 @@ export const findDependencyInfoFromMonorepoRoot = (directory: string): Dependenc
         leafTailwindDeclaration?.catalogReference,
       )
     : null;
+  const zodCatalogVersion = shouldUseZodFallback
+    ? resolveCatalogVersion(
+        rootPackageJson,
+        "zod",
+        monorepoRoot,
+        leafZodDeclaration?.catalogReference,
+      )
+    : null;
   const workspaceInfo = findReactInWorkspaces(monorepoRoot, rootPackageJson);
 
   return {
@@ -59,6 +75,9 @@ export const findDependencyInfoFromMonorepoRoot = (directory: string): Dependenc
       : (rootInfo.reactVersion ?? workspaceInfo.reactVersion),
     tailwindVersion: shouldUseTailwindFallback
       ? (tailwindCatalogVersion ?? rootInfo.tailwindVersion ?? workspaceInfo.tailwindVersion)
+      : null,
+    zodVersion: shouldUseZodFallback
+      ? (zodCatalogVersion ?? rootInfo.zodVersion ?? workspaceInfo.zodVersion)
       : null,
     framework: rootInfo.framework !== "unknown" ? rootInfo.framework : workspaceInfo.framework,
   };

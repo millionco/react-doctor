@@ -6,6 +6,7 @@ import { isCatalogReference } from "./resolve-catalog-version.js";
 export const EMPTY_DEPENDENCY_INFO: DependencyInfo = {
   reactVersion: null,
   tailwindVersion: null,
+  zodVersion: null,
   framework: "unknown",
 };
 
@@ -39,9 +40,15 @@ export const extractDependencyInfo = (packageJson: PackageJson): DependencyInfo 
     "devDependencies",
     "peerDependencies",
   ]);
+  const zodVersion = pickConcreteVersion(packageJson, "zod", [
+    "dependencies",
+    "devDependencies",
+    "peerDependencies",
+  ]);
   return {
     reactVersion,
     tailwindVersion,
+    zodVersion,
     framework: detectFramework(allDependencies),
   };
 };

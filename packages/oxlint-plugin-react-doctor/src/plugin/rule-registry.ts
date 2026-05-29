@@ -314,6 +314,10 @@ import { tanstackStartServerFnMethodOrder } from "./rules/tanstack-start/tanstac
 import { tanstackStartServerFnValidateInput } from "./rules/tanstack-start/tanstack-start-server-fn-validate-input.js";
 import { useLazyMotion } from "./rules/bundle-size/use-lazy-motion.js";
 import { voidDomElementsNoChildren } from "./rules/react-builtins/void-dom-elements-no-children.js";
+import { zodV4NoDeprecatedErrorApis } from "./rules/zod/zod-v4-no-deprecated-error-apis.js";
+import { zodV4NoDeprecatedErrorCustomization } from "./rules/zod/zod-v4-no-deprecated-error-customization.js";
+import { zodV4NoDeprecatedSchemaApis } from "./rules/zod/zod-v4-no-deprecated-schema-apis.js";
+import { zodV4PreferTopLevelStringFormats } from "./rules/zod/zod-v4-prefer-top-level-string-formats.js";
 
 export const reactDoctorRules = [
   {
@@ -3717,6 +3721,50 @@ export const reactDoctorRules = [
       ...voidDomElementsNoChildren,
       framework: "global",
       category: "Correctness",
+    },
+  },
+  {
+    key: "react-doctor/zod-v4-no-deprecated-error-apis",
+    id: "zod-v4-no-deprecated-error-apis",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...zodV4NoDeprecatedErrorApis,
+      framework: "global",
+      category: "Architecture",
+    },
+  },
+  {
+    key: "react-doctor/zod-v4-no-deprecated-error-customization",
+    id: "zod-v4-no-deprecated-error-customization",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...zodV4NoDeprecatedErrorCustomization,
+      framework: "global",
+      category: "Architecture",
+    },
+  },
+  {
+    key: "react-doctor/zod-v4-no-deprecated-schema-apis",
+    id: "zod-v4-no-deprecated-schema-apis",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...zodV4NoDeprecatedSchemaApis,
+      framework: "global",
+      category: "Architecture",
+    },
+  },
+  {
+    key: "react-doctor/zod-v4-prefer-top-level-string-formats",
+    id: "zod-v4-prefer-top-level-string-formats",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...zodV4PreferTopLevelStringFormats,
+      framework: "global",
+      category: "Architecture",
     },
   },
 ] as const;

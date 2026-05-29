@@ -16,6 +16,9 @@ export interface ProjectInfo {
   reactVersion: string | null;
   reactMajorVersion: number | null;
   tailwindVersion: string | null;
+  zodVersion: string | null;
+  /** Parsed major from `zodVersion`, or `null` when absent/unparseable. Mirrors `reactMajorVersion`. */
+  zodMajorVersion: number | null;
   framework: Framework;
   hasTypeScript: boolean;
   hasReactCompiler: boolean;
@@ -76,6 +79,7 @@ export interface PackageJson {
 export interface DependencyInfo {
   reactVersion: string | null;
   tailwindVersion: string | null;
+  zodVersion: string | null;
   framework: Framework;
 }
 

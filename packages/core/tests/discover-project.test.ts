@@ -1201,6 +1201,49 @@ describe("discoverProject — hasReanimated", () => {
   });
 });
 
+describe("discoverProject — Zod", () => {
+  it("detects Zod version from dependencies", () => {
+    const projectDirectory = path.join(tempDirectory, "zod-from-deps");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "zod-app",
+        dependencies: { react: "^19.0.0", zod: "^4.1.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.zodVersion).toBe("^4.1.0");
+    expect(projectInfo.zodMajorVersion).toBe(4);
+  });
+
+  it("detects Zod version from workspace packages", () => {
+    const rootDirectory = path.join(tempDirectory, "zod-monorepo");
+    const appDirectory = path.join(rootDirectory, "apps", "web");
+    fs.mkdirSync(appDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({
+        name: "zod-monorepo",
+        workspaces: ["apps/*"],
+        dependencies: { react: "^19.0.0" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(appDirectory, "package.json"),
+      JSON.stringify({
+        name: "web",
+        dependencies: { zod: "^4.1.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(rootDirectory);
+    expect(projectInfo.zodVersion).toBe("^4.1.0");
+    expect(projectInfo.zodMajorVersion).toBe(4);
+  });
+});
+
 describe("formatFrameworkName", () => {
   it("formats known frameworks", () => {
     expect(formatFrameworkName("nextjs")).toBe("Next.js");

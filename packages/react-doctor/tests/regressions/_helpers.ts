@@ -132,6 +132,8 @@ export const buildTestProject = (options: BuildTestProjectOptions): ProjectInfo 
     reactVersion: reactMajorVersion !== null ? `^${reactMajorVersion}.0.0` : null,
     reactMajorVersion,
     tailwindVersion: options.tailwindVersion ?? null,
+    zodVersion: null,
+    zodMajorVersion: null,
     framework,
     hasTypeScript: options.hasTypeScript ?? true,
     hasReactCompiler: options.hasReactCompiler ?? false,

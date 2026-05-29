@@ -17,6 +17,7 @@ import { someWorkspacePackageJson } from "./some-workspace-package-json.js";
 import { isPackageJsonReanimatedAware } from "./utils/is-package-json-reanimated-aware.js";
 import { readPackageJson } from "./read-package-json.js";
 import { isCatalogReference, resolveCatalogVersion } from "./resolve-catalog-version.js";
+import { parseReactMajor } from "./parse-react-major.js";
 import { resolveEffectiveReactMajor } from "./resolve-effective-react-major.js";
 
 export { discoverReactSubprojects } from "./discover-react-subprojects.js";
@@ -166,6 +167,8 @@ export const discoverProject = (directory: string): ProjectInfo => {
     hasReactNativeWorkspace &&
     someWorkspacePackageJson(directory, packageJson, isPackageJsonReanimatedAware);
 
+  const preactVersion = getPreactVersion(packageJson);
+
   const projectInfo: ProjectInfo = {
     rootDirectory: directory,
     projectName,
@@ -176,7 +179,8 @@ export const discoverProject = (directory: string): ProjectInfo => {
     hasTypeScript,
     hasReactCompiler: detectReactCompiler(directory, packageJson),
     hasTanStackQuery: hasTanStackQuery(packageJson),
-    preactVersion: getPreactVersion(packageJson),
+    preactVersion,
+    preactMajorVersion: parseReactMajor(preactVersion),
     hasReactNativeWorkspace,
     hasReanimated,
     sourceFileCount,

@@ -30,6 +30,8 @@ export interface ProjectInfo {
    * Preact rules to fire.
    */
   preactVersion: string | null;
+  /** Parsed major from `preactVersion`, or `null` when absent/unparseable. Mirrors `reactMajorVersion`. */
+  preactMajorVersion: number | null;
   /**
    * `true` when the project (or any of its workspace packages) declares
    * React Native or Expo as a dependency. Enables the `react-native`

@@ -30,6 +30,7 @@ const buildDiagnoseResult = (): DiagnoseResult => ({
     hasReactNativeWorkspace: false,
     hasReanimated: false,
     preactVersion: null,
+    preactMajorVersion: null,
     sourceFileCount: 12,
   },
   elapsedMilliseconds: 321,

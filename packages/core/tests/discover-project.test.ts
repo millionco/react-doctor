@@ -1235,6 +1235,7 @@ describe("discoverProject — Preact", () => {
     expect(projectInfo.framework).toBe("preact");
     expect(projectInfo.reactVersion).toBe(null);
     expect(projectInfo.preactVersion).toBe("^10.22.0");
+    expect(projectInfo.preactMajorVersion).toBe(10);
   });
 
   it("keeps `framework: vite` for Preact-on-Vite but still sets `preactVersion`", () => {
@@ -1252,6 +1253,7 @@ describe("discoverProject — Preact", () => {
     const projectInfo = discoverProject(projectDirectory);
     expect(projectInfo.framework).toBe("vite");
     expect(projectInfo.preactVersion).toBe("^10.22.0");
+    expect(projectInfo.preactMajorVersion).toBe(10);
   });
 
   it("stays `unknown` when both `react` and `preact` peer-deps are declared (component library shape)", () => {
@@ -1268,6 +1270,7 @@ describe("discoverProject — Preact", () => {
     const projectInfo = discoverProject(projectDirectory);
     expect(projectInfo.framework).toBe("unknown");
     expect(projectInfo.preactVersion).toBe("^10.22.0");
+    expect(projectInfo.preactMajorVersion).toBe(10);
     expect(projectInfo.reactVersion).toBe("^18.0.0 || ^19.0.0");
   });
 
@@ -1284,5 +1287,6 @@ describe("discoverProject — Preact", () => {
 
     const projectInfo = discoverProject(projectDirectory);
     expect(projectInfo.preactVersion).toBe(null);
+    expect(projectInfo.preactMajorVersion).toBe(null);
   });
 });

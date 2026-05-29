@@ -13,6 +13,7 @@ const baseProject: ProjectInfo = {
   hasReactCompiler: false,
   hasTanStackQuery: false,
   preactVersion: null,
+  preactMajorVersion: null,
   hasReactNativeWorkspace: false,
   sourceFileCount: 0,
 };

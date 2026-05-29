@@ -64,6 +64,15 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<string> => 
   // matching rule bucket.
   if (project.preactVersion !== null) {
     capabilities.add("preact");
+    // Mirror the React major ladder (`react:17..N`): a Preact 11 project
+    // satisfies rules requiring `preact:10` or `preact:11`. Preact X (10)
+    // is the modern baseline react-doctor targets.
+    const preactMajor = project.preactMajorVersion;
+    if (preactMajor !== null) {
+      for (let major = 10; major <= preactMajor; major++) {
+        capabilities.add(`preact:${major}`);
+      }
+    }
     // `pure-preact` is the strict-mode signal: Preact is in the
     // dependency graph AND no `react` package is present, so the
     // project cannot be running through `preact/compat` aliasing.

@@ -14,6 +14,7 @@ const baseProject: ProjectInfo = {
   hasTanStackQuery: false,
   hasReactNativeWorkspace: false,
   preactVersion: null,
+  preactMajorVersion: null,
   sourceFileCount: 1,
 };
 
@@ -23,9 +24,47 @@ describe("buildCapabilities", () => {
       ...baseProject,
       framework: "vite",
       preactVersion: "^10.22.0",
+      preactMajorVersion: 10,
     });
     expect(capabilities.has("preact")).toBe(true);
     expect(capabilities.has("vite")).toBe(true);
+  });
+
+  it("emits a `preact:<major>` ladder from `preactMajorVersion`, mirroring `react:<major>`", () => {
+    const preact11 = buildCapabilities({
+      ...baseProject,
+      framework: "preact",
+      reactVersion: null,
+      reactMajorVersion: null,
+      preactVersion: "^11.0.0",
+      preactMajorVersion: 11,
+    });
+    expect(preact11.has("preact:10")).toBe(true);
+    expect(preact11.has("preact:11")).toBe(true);
+
+    const preact10 = buildCapabilities({
+      ...baseProject,
+      framework: "preact",
+      reactVersion: null,
+      reactMajorVersion: null,
+      preactVersion: "^10.22.0",
+      preactMajorVersion: 10,
+    });
+    expect(preact10.has("preact:10")).toBe(true);
+    expect(preact10.has("preact:11")).toBe(false);
+  });
+
+  it("omits the `preact:<major>` ladder when the version is unparseable", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      framework: "preact",
+      reactVersion: null,
+      reactMajorVersion: null,
+      preactVersion: "workspace:*",
+      preactMajorVersion: null,
+    });
+    expect(capabilities.has("preact")).toBe(true);
+    expect(capabilities.has("preact:10")).toBe(false);
   });
 
   it("emits the `preact` capability for pure-Preact projects (no bundler manifest)", () => {
@@ -33,6 +72,7 @@ describe("buildCapabilities", () => {
       ...baseProject,
       framework: "preact",
       preactVersion: "^10.22.0",
+      preactMajorVersion: 10,
       reactVersion: null,
       reactMajorVersion: null,
     });
@@ -44,6 +84,7 @@ describe("buildCapabilities", () => {
       ...baseProject,
       framework: "vite",
       preactVersion: null,
+      preactMajorVersion: null,
     });
     expect(capabilities.has("preact")).toBe(false);
     expect(capabilities.has("pure-preact")).toBe(false);
@@ -54,6 +95,7 @@ describe("buildCapabilities", () => {
       ...baseProject,
       framework: "preact",
       preactVersion: "^10.22.0",
+      preactMajorVersion: 10,
       reactVersion: null,
       reactMajorVersion: null,
     });
@@ -63,6 +105,7 @@ describe("buildCapabilities", () => {
       ...baseProject,
       framework: "vite",
       preactVersion: "^10.22.0",
+      preactMajorVersion: 10,
       reactVersion: "18.3.1",
       reactMajorVersion: 18,
     });

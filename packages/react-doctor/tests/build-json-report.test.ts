@@ -15,6 +15,7 @@ const SAMPLE_PROJECT: ProjectInfo = {
   hasReactNativeWorkspace: false,
   hasReanimated: false,
   preactVersion: null,
+  preactMajorVersion: null,
   sourceFileCount: 42,
 };
 

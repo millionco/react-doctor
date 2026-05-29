@@ -170,7 +170,7 @@ const isNullishLiteral = (node: EsTreeNode): boolean =>
   (isNodeOfType(node, "Literal") && node.value === null) ||
   (isNodeOfType(node, "Identifier") && node.name === "undefined");
 
-const comparisonHoldsAtZero = (operator: string, left: number, right: number): boolean => {
+const numericComparisonHolds = (operator: string, left: number, right: number): boolean => {
   switch (operator) {
     case "<":
       return left < right;
@@ -235,8 +235,8 @@ const guardExitsWhenStateEmpty = (test: EsTreeNode, stateName: string): boolean 
       const other = numericLiteralValue(leftIsLength ? node.right : node.left);
       if (other === null) return false;
       return leftIsLength
-        ? comparisonHoldsAtZero(node.operator, 0, other)
-        : comparisonHoldsAtZero(node.operator, other, 0);
+        ? numericComparisonHolds(node.operator, 0, other)
+        : numericComparisonHolds(node.operator, other, 0);
     }
     if (node.operator === "==" || node.operator === "===") {
       if (expressionReadsStateValue(node.left, stateName) && isNullishLiteral(node.right))
@@ -265,9 +265,13 @@ const functionReturnExpression = (fn: EsTreeNode): EsTreeNode | null => {
   if (!isNodeOfType(fn, "ArrowFunctionExpression") && !isNodeOfType(fn, "FunctionExpression")) {
     return null;
   }
-  if (!isNodeOfType(fn.body, "BlockStatement")) return fn.body ?? null;
+  if (!isNodeOfType(fn.body, "BlockStatement")) {
+    return fn.body ? stripParenExpression(fn.body) : null;
+  }
   for (const statement of fn.body.body ?? []) {
-    if (isNodeOfType(statement, "ReturnStatement") && statement.argument) return statement.argument;
+    if (isNodeOfType(statement, "ReturnStatement") && statement.argument) {
+      return stripParenExpression(statement.argument);
+    }
   }
   return null;
 };
@@ -312,6 +316,332 @@ const writeProvablyConverges = (
   return earlyReturnGuardTests.some((test) => guardExitsWhenStateEmpty(test, stateName));
 };
 
+// ---------------------------------------------------------------------------
+// Symbolic guard-establishment convergence.
+//
+// The general, sound principle behind every convergent self-updating effect:
+// if, AFTER the effect runs its own writes once, one of its early-return guards
+// would be TRUE, then the next render bails before re-writing — so the effect
+// settles and is not a loop. We prove this by symbolically evaluating the guard
+// against a state where each written value is substituted in. This subsumes the
+// "normalize several states then guard that they are all normalized" idiom
+// (e.g. clearing `{ ...prev, a: undefined }` and resetting `[]` under
+// `if (!s.a && !s.b && list.length === 0) return`).
+//
+// SOUND BY CONSTRUCTION: every resolver returns null / false when uncertain, so
+// `guardProvenAfterWrites` only returns true on an explicit proof — it never
+// silences a write whose settling it cannot establish (recall-safe).
+// ---------------------------------------------------------------------------
+
+const SYMBOLIC_DEPTH_LIMIT = 16;
+
+// Strip both parenthesized-expression wrappers (oxlint preserves parens, e.g.
+// the body of `() => ({ ... })`) and optional-chaining `ChainExpression`
+// wrappers, so the underlying value node is visible.
+const unwrapChain = (node: EsTreeNode): EsTreeNode => {
+  let current = node;
+  for (;;) {
+    const withoutParens = stripParenExpression(current);
+    if (withoutParens !== current) {
+      current = withoutParens;
+      continue;
+    }
+    if (isNodeOfType(current, "ChainExpression")) {
+      current = current.expression;
+      continue;
+    }
+    return current;
+  }
+};
+
+const isUndefinedValue = (node: EsTreeNode): boolean =>
+  (isNodeOfType(node, "Identifier") && node.name === "undefined") ||
+  (isNodeOfType(node, "Literal") && node.value === null);
+
+const literalsEqual = (a: EsTreeNode, b: EsTreeNode): boolean =>
+  isNodeOfType(a, "Literal") && isNodeOfType(b, "Literal") && a.value === b.value;
+
+// Resolve `node` to a concrete value node (Literal / Array / Object / opaque
+// Identifier) given the post-write state in `writes`, or null when unknown.
+// `seen` breaks self-referential writes (`setX(x)` → x → x → …).
+const resolveValueNode = (
+  node: EsTreeNode,
+  writes: ReadonlyMap<string, EsTreeNode>,
+  depth: number,
+  seen: ReadonlySet<string>,
+): EsTreeNode | null => {
+  if (depth > SYMBOLIC_DEPTH_LIMIT) return null;
+  const current = unwrapChain(node);
+  if (isNodeOfType(current, "Identifier")) {
+    if (seen.has(current.name)) return null;
+    const written = writes.get(current.name);
+    if (written)
+      return resolveValueNode(written, writes, depth + 1, new Set(seen).add(current.name));
+    return current;
+  }
+  if (
+    isNodeOfType(current, "Literal") ||
+    isNodeOfType(current, "ArrayExpression") ||
+    isNodeOfType(current, "ObjectExpression")
+  ) {
+    return current;
+  }
+  if (
+    isNodeOfType(current, "MemberExpression") &&
+    !current.computed &&
+    isNodeOfType(current.property, "Identifier")
+  ) {
+    const objectValue = resolveValueNode(current.object, writes, depth + 1, seen);
+    if (objectValue && isNodeOfType(objectValue, "ObjectExpression")) {
+      const propertyKey = current.property.name;
+      const properties = objectValue.properties ?? [];
+      for (let index = properties.length - 1; index >= 0; index--) {
+        const property = properties[index];
+        if (isNodeOfType(property, "SpreadElement")) return null; // key may come from the spread
+        if (
+          isNodeOfType(property, "Property") &&
+          !property.computed &&
+          ((isNodeOfType(property.key, "Identifier") && property.key.name === propertyKey) ||
+            (isNodeOfType(property.key, "Literal") && property.key.value === propertyKey))
+        ) {
+          return resolveValueNode(property.value, writes, depth + 1, seen);
+        }
+      }
+    }
+    return null;
+  }
+  return null;
+};
+
+// Number a node resolves to: a numeric literal, or `<empty/known array>.length`.
+const resolveToNumber = (
+  node: EsTreeNode,
+  writes: ReadonlyMap<string, EsTreeNode>,
+  depth: number,
+  seen: ReadonlySet<string>,
+): number | null => {
+  const value = resolveValueNode(node, writes, depth, seen);
+  if (value && isNodeOfType(value, "Literal") && typeof value.value === "number")
+    return value.value;
+  const current = unwrapChain(node);
+  if (
+    isNodeOfType(current, "MemberExpression") &&
+    !current.computed &&
+    isNodeOfType(current.property, "Identifier") &&
+    current.property.name === "length"
+  ) {
+    const objectValue = resolveValueNode(current.object, writes, depth, seen);
+    if (objectValue && isNodeOfType(objectValue, "ArrayExpression")) {
+      const elements = objectValue.elements ?? [];
+      if (!elements.some((element) => element && isNodeOfType(element, "SpreadElement"))) {
+        return elements.length;
+      }
+    }
+  }
+  return null;
+};
+
+const provablyEqualAfterWrites = (
+  left: EsTreeNode,
+  right: EsTreeNode,
+  writes: ReadonlyMap<string, EsTreeNode>,
+  depth: number,
+  seen: ReadonlySet<string>,
+): boolean => {
+  const leftNumber = resolveToNumber(left, writes, depth, seen);
+  const rightNumber = resolveToNumber(right, writes, depth, seen);
+  if (leftNumber !== null && rightNumber !== null) return leftNumber === rightNumber;
+  const a = resolveValueNode(left, writes, depth, seen);
+  const b = resolveValueNode(right, writes, depth, seen);
+  if (!a || !b) return false;
+  if (literalsEqual(a, b)) return true;
+  if (isUndefinedValue(a) && isUndefinedValue(b)) return true;
+  return isNodeOfType(a, "Identifier") && isNodeOfType(b, "Identifier") && a.name === b.name;
+};
+
+const provablyFalsyAfterWrites = (
+  node: EsTreeNode,
+  writes: ReadonlyMap<string, EsTreeNode>,
+  depth: number,
+  seen: ReadonlySet<string>,
+): boolean => {
+  const value = resolveValueNode(node, writes, depth, seen);
+  if (value) {
+    if (isUndefinedValue(value)) return true;
+    if (isNodeOfType(value, "Literal")) {
+      return (
+        value.value === null || value.value === 0 || value.value === false || value.value === ""
+      );
+    }
+    // Array / object literals are truthy.
+  }
+  const asNumber = resolveToNumber(node, writes, depth, seen);
+  return asNumber === 0;
+};
+
+// Does `test` provably evaluate to TRUE against the post-write state?
+const guardProvenAfterWrites = (
+  test: EsTreeNode,
+  writes: ReadonlyMap<string, EsTreeNode>,
+  depth: number,
+  seen: ReadonlySet<string>,
+): boolean => {
+  if (depth > SYMBOLIC_DEPTH_LIMIT) return false;
+  const node = unwrapChain(test);
+  if (isNodeOfType(node, "LogicalExpression")) {
+    if (node.operator === "&&") {
+      return (
+        guardProvenAfterWrites(node.left, writes, depth + 1, seen) &&
+        guardProvenAfterWrites(node.right, writes, depth + 1, seen)
+      );
+    }
+    if (node.operator === "||") {
+      return (
+        guardProvenAfterWrites(node.left, writes, depth + 1, seen) ||
+        guardProvenAfterWrites(node.right, writes, depth + 1, seen)
+      );
+    }
+    return false;
+  }
+  if (isNodeOfType(node, "UnaryExpression") && node.operator === "!") {
+    return provablyFalsyAfterWrites(node.argument, writes, depth + 1, seen);
+  }
+  if (isNodeOfType(node, "BinaryExpression")) {
+    if (node.operator === "===" || node.operator === "==") {
+      return provablyEqualAfterWrites(node.left, node.right, writes, depth + 1, seen);
+    }
+    const leftNumber = resolveToNumber(node.left, writes, depth + 1, seen);
+    const rightNumber = resolveToNumber(node.right, writes, depth + 1, seen);
+    if (leftNumber !== null && rightNumber !== null) {
+      return numericComparisonHolds(node.operator, leftNumber, rightNumber);
+    }
+    return false;
+  }
+  const value = resolveValueNode(node, writes, depth + 1, seen);
+  if (value) {
+    if (isNodeOfType(value, "ArrayExpression") || isNodeOfType(value, "ObjectExpression"))
+      return true;
+    if (isNodeOfType(value, "Literal")) return Boolean(value.value);
+  }
+  return false;
+};
+
+// New value each top-level unconditional setter writes (functional updater →
+// its returned expression, direct call → the argument). Last write wins.
+const collectTopLevelWrites = (
+  statements: readonly EsTreeNode[],
+  setterNameToStateName: ReadonlyMap<string, string>,
+  setterNames: ReadonlySet<string>,
+): { writes: ReadonlyMap<string, EsTreeNode>; setterCallNodes: ReadonlySet<EsTreeNode> } => {
+  const writes = new Map<string, EsTreeNode>();
+  const setterCallNodes = new Set<EsTreeNode>();
+  for (const statement of statements) {
+    const setterCall = getUnconditionalSetterCall(statement, setterNames);
+    if (!setterCall || !isNodeOfType(setterCall.callee, "Identifier")) continue;
+    setterCallNodes.add(setterCall);
+    const stateName = setterNameToStateName.get(setterCall.callee.name);
+    if (!stateName) continue;
+    const argument = setterCall.arguments?.[0];
+    if (!argument) continue;
+    const newValue =
+      isNodeOfType(argument, "ArrowFunctionExpression") ||
+      isNodeOfType(argument, "FunctionExpression")
+        ? functionReturnExpression(argument)
+        : stripParenExpression(argument);
+    if (newValue) writes.set(stateName, newValue);
+  }
+  return { writes, setterCallNodes };
+};
+
+// Walks the whole callback collecting every setter CallExpression (nested or
+// not) whose callee is `setterName`, and runs `inspect` on each. Returns false
+// as soon as `inspect` rejects one.
+const everySetterCall = (
+  root: EsTreeNode,
+  setterName: string,
+  inspect: (call: EsTreeNodeOfType<"CallExpression">) => boolean,
+): boolean => {
+  let ok = true;
+  const visit = (node: EsTreeNode): void => {
+    if (!ok) return;
+    if (
+      isNodeOfType(node, "CallExpression") &&
+      isNodeOfType(node.callee, "Identifier") &&
+      node.callee.name === setterName &&
+      !inspect(node)
+    ) {
+      ok = false;
+      return;
+    }
+    const record = node as unknown as Record<string, unknown>;
+    for (const key of Object.keys(record)) {
+      if (key === "parent" || key === "type") continue;
+      const child = record[key];
+      if (Array.isArray(child)) {
+        for (const item of child) if (isAstNode(item)) visit(item);
+      } else if (isAstNode(child)) {
+        visit(child);
+      }
+      if (!ok) return;
+    }
+  };
+  visit(root);
+  return ok;
+};
+
+// SOUND gate for the monotonic empty-fixpoint path: every write to the state
+// (including nested/conditional ones) must drive it toward empty. Otherwise a
+// sibling write like `if (x) setItems([x])` re-dirties the state and the
+// "converges at empty" argument breaks. (nhost stays valid — both its writes,
+// `setPath([])` and `setPath(p => p.slice(1))`, drive toward empty.)
+const everyWriteToStateDrivesTowardEmpty = (
+  callbackBody: EsTreeNode,
+  setterName: string,
+): boolean =>
+  everySetterCall(callbackBody, setterName, (call) => {
+    const argument = call.arguments?.[0];
+    if (!argument) return true; // `setX()` writes `undefined` — already empty/falsy
+    const value = stripParenExpression(argument);
+    return isEmptyOrFalsyValue(value) || isLengthReducingUpdater(value);
+  });
+
+// True only when every setter call in the effect is one of the top-level
+// unconditional writes we captured. If a setter hides inside an `if` / callback,
+// the post-write state we modelled may be wrong, so the symbolic proof is unsafe
+// and we decline it (the monotonic-empty path still applies where valid).
+const everySetterCallIsTopLevel = (
+  callbackBody: EsTreeNode,
+  setterNames: ReadonlySet<string>,
+  topLevelSetterCalls: ReadonlySet<EsTreeNode>,
+): boolean => {
+  let safe = true;
+  const visit = (node: EsTreeNode): void => {
+    if (!safe) return;
+    if (
+      isNodeOfType(node, "CallExpression") &&
+      isNodeOfType(node.callee, "Identifier") &&
+      setterNames.has(node.callee.name) &&
+      !topLevelSetterCalls.has(node)
+    ) {
+      safe = false;
+      return;
+    }
+    const record = node as unknown as Record<string, unknown>;
+    for (const key of Object.keys(record)) {
+      if (key === "parent" || key === "type") continue;
+      const child = record[key];
+      if (Array.isArray(child)) {
+        for (const item of child) if (isAstNode(item)) visit(item);
+      } else if (isAstNode(child)) {
+        visit(child);
+      }
+      if (!safe) return;
+    }
+  };
+  visit(callbackBody);
+  return safe;
+};
+
 export const noSelfUpdatingEffect = defineRule<Rule>({
   id: "no-self-updating-effect",
   severity: "warn",
@@ -351,12 +681,33 @@ export const noSelfUpdatingEffect = defineRule<Rule>({
         // is an unconditional feedback loop, so both are left to other
         // rules.
         const callbackStatements = getCallbackStatements(callback);
-        // Tests of the effect's top-level `if (<cond>) return;` guards. A write
-        // that drives its state toward empty under such a guard provably
-        // converges (see `writeProvablyConverges`) and must not be flagged.
+        // Guards that run BEFORE any write — only these can bail out the next
+        // run before the writes re-execute, so only these prove convergence.
+        const firstWriteIndex = callbackStatements.findIndex(
+          (candidate) => getUnconditionalSetterCall(candidate, setterNames) !== null,
+        );
+        const guardCutoff = firstWriteIndex < 0 ? callbackStatements.length : firstWriteIndex;
         const earlyReturnGuardTests = callbackStatements
+          .slice(0, guardCutoff)
           .filter(isEarlyReturnGuard)
           .map((guard) => guard.test);
+
+        // General convergence proof: if the effect's own writes make one of its
+        // pre-write guards TRUE, the next render bails before re-writing, so the
+        // whole effect settles. Only trusted when every setter is a top-level
+        // unconditional write (else the modelled post-write state is unreliable).
+        const { writes: topLevelWrites, setterCallNodes } = collectTopLevelWrites(
+          callbackStatements,
+          setterNameToStateName,
+          setterNames,
+        );
+        const effectConvergesByGuard =
+          everySetterCallIsTopLevel(callback, setterNames, setterCallNodes) &&
+          earlyReturnGuardTests.some((test) =>
+            guardProvenAfterWrites(test, topLevelWrites, 0, new Set<string>()),
+          );
+        if (effectConvergesByGuard) continue;
+
         const reportedStateNames = new Set<string>();
         for (const callbackStatement of callbackStatements) {
           const setterCall = getUnconditionalSetterCall(callbackStatement, setterNames);
@@ -374,7 +725,8 @@ export const noSelfUpdatingEffect = defineRule<Rule>({
               stripParenExpression(firstArgument),
               stateName,
               earlyReturnGuardTests,
-            )
+            ) &&
+            everyWriteToStateDrivesTowardEmpty(callback, setterCall.callee.name)
           ) {
             continue;
           }

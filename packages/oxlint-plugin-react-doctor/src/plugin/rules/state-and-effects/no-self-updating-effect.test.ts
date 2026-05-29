@@ -547,6 +547,74 @@ describe("no-self-updating-effect", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag a multi-state normalize-then-guard effect that establishes its own guard", () => {
+    // lightdash useCartesianChartConfig #1: the effect clears every value its
+    // guard checks (object fields → undefined, list → []), so after one run the
+    // `!a && !b && list.length === 0` guard is true and the next run bails. The
+    // symbolic guard-establishment check proves this generally.
+    const result = runRule(
+      noSelfUpdatingEffect,
+      `
+      import { useEffect, useState } from "react";
+
+      function useColors() {
+        const [dirtyLayout, setDirtyLayout] = useState({});
+        const [conditionalFormattings, setConditionalFormattings] = useState([]);
+        useEffect(() => {
+          if (
+            !dirtyLayout?.colorByCategory &&
+            !dirtyLayout?.categoryColorOverrides &&
+            conditionalFormattings.length === 0
+          ) {
+            return;
+          }
+          setDirtyLayout((prev) => ({
+            ...prev,
+            colorByCategory: undefined,
+            categoryColorOverrides: undefined,
+          }));
+          setConditionalFormattings([]);
+        }, [
+          dirtyLayout?.colorByCategory,
+          dirtyLayout?.categoryColorOverrides,
+          conditionalFormattings,
+        ]);
+        return null;
+      }
+    `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a normalize effect when a nested conditional setter can re-dirty the state", () => {
+    // A guard-establishment proof is unsafe when a setter hides inside an `if`:
+    // the modelled post-write state may be wrong, so we decline the proof.
+    const result = runRule(
+      noSelfUpdatingEffect,
+      `
+      import { useEffect, useState } from "react";
+
+      function List({ extra }) {
+        const [items, setItems] = useState([]);
+        useEffect(() => {
+          if (items.length === 0) {
+            return;
+          }
+          setItems([]);
+          if (extra) {
+            setItems([extra]);
+          }
+        }, [items]);
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags a fixpoint map() write the analysis cannot prove converges (known limitation)", () => {
     // lightdash useCartesianChartConfig: this DOES converge at runtime (after
     // one pass every entry already matches the target, so the next run bails),

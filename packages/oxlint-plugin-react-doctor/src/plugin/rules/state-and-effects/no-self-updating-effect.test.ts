@@ -470,6 +470,133 @@ describe("no-self-updating-effect", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("does not flag a drain-queue effect guarded by an emptiness early-return", () => {
+    // Regression (medusa Analytics): `setEventsQueue([])` empties the queue,
+    // then the next run hits `if (!eventsQueue.length) return` and bails —
+    // the fresh `[]` settles, it does not loop.
+    const result = runRule(
+      noSelfUpdatingEffect,
+      `
+      import { useEffect, useState } from "react";
+
+      function Analytics() {
+        const [eventsQueue, setEventsQueue] = useState([]);
+        useEffect(() => {
+          if (!eventsQueue.length) {
+            return;
+          }
+          const current = [...eventsQueue];
+          setEventsQueue([]);
+          process(current);
+        }, [eventsQueue]);
+        return null;
+      }
+    `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a path-consuming effect guarded by a length early-return", () => {
+    // Regression (nhost useAsyncValue): `slice(1)` shrinks the path until the
+    // `if (path.length !== 1) return` guard stops it — convergent, not a loop.
+    const result = runRule(
+      noSelfUpdatingEffect,
+      `
+      import { useEffect, useState } from "react";
+
+      function useColumnPath() {
+        const [remainingColumnPath, setRemainingColumnPath] = useState([]);
+        useEffect(() => {
+          if (remainingColumnPath.length !== 1) {
+            return;
+          }
+          setRemainingColumnPath((path) => path.slice(1));
+        }, [remainingColumnPath]);
+        return remainingColumnPath;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a fixpoint map() write guarded by a derived early-return", () => {
+    // Regression (lightdash useCartesianChartConfig): once every entry is
+    // mapped to the target, the `length === 0` early-return guard short-circuits
+    // the next run, so the fresh array from `.map(...)` settles.
+    const result = runRule(
+      noSelfUpdatingEffect,
+      `
+      import { useEffect, useState } from "react";
+
+      function useFormattings({ targetFieldId }) {
+        const [conditionalFormattings, setConditionalFormattings] = useState([]);
+        useEffect(() => {
+          if (!targetFieldId || conditionalFormattings.length === 0) {
+            return;
+          }
+          setConditionalFormattings((prev) =>
+            prev.map((config) => ({ ...config, target: { fieldId: targetFieldId } })),
+          );
+        }, [targetFieldId, conditionalFormattings]);
+        return conditionalFormattings;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a fresh-reference loop whose guard reads only unrelated state", () => {
+    // The guard reads \`allFields\`, not the written \`record\`, so it does not
+    // bound the \`record\` feedback loop — must stay flagged (teable
+    // CreateRecordModal true positive).
+    const result = runRule(
+      noSelfUpdatingEffect,
+      `
+      import { useEffect, useState } from "react";
+
+      function CreateRecordModal({ allFields }) {
+        const [record, setRecord] = useState(null);
+        useEffect(() => {
+          if (!allFields.length) {
+            return;
+          }
+          setRecord((current) => mapRecord(current, allFields));
+        }, [allFields, record]);
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("setRecord()");
+  });
+
+  it("still flags when an early-return guard reads only an unrelated dependency", () => {
+    const result = runRule(
+      noSelfUpdatingEffect,
+      `
+      import { useEffect, useState } from "react";
+
+      function Counter({ ready }) {
+        const [count, setCount] = useState(0);
+        useEffect(() => {
+          if (!ready) {
+            return;
+          }
+          setCount((value) => value + 1);
+        }, [count, ready]);
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag lowercase helper functions that are not components or hooks", () => {
     const result = runRule(
       noSelfUpdatingEffect,

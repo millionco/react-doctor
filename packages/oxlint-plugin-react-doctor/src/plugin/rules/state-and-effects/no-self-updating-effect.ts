@@ -123,6 +123,49 @@ const collectDependencyStateNames = (depsNode: EsTreeNode): ReadonlySet<string> 
   return dependencyNames;
 };
 
+// `if (<test>) return;` / `if (<test>) { …; return; }` — a consequent that
+// unconditionally bails out of the effect.
+const isEarlyReturnGuard = (
+  statement: EsTreeNode,
+): statement is EsTreeNodeOfType<"IfStatement"> => {
+  if (!isNodeOfType(statement, "IfStatement")) return false;
+  const consequent = statement.consequent;
+  if (isNodeOfType(consequent, "ReturnStatement")) return true;
+  if (isNodeOfType(consequent, "BlockStatement")) {
+    return (consequent.body ?? []).some((inner) => isNodeOfType(inner, "ReturnStatement"));
+  }
+  return false;
+};
+
+// State names read by a top-level early-return guard in the effect body.
+// Such a guard lets the effect converge: once the written state reaches the
+// shape the guard checks for, the next run bails out before the setter, so
+// the write settles and is NOT a render loop. This is the early-return form
+// of the "guarded update" the rule already exempts (`if (a !== b) setX(b)`),
+// and it covers the common convergent idioms a naive "fresh reference never
+// settles" check otherwise misfires on:
+//   - drain a queue:    `if (!queue.length) return; … setQueue([])`
+//   - consume a path:   `if (path.length !== 1) return; … setPath(p => p.slice(1))`
+//   - reach a fixpoint: `if (!hasOutdated) return; … setX(prev.map(...))`
+// We stay conservative (matching the rule's no-overclaim stance) and treat
+// ANY early-return guard that reads the state as evidence of convergence.
+const collectGuardedStateNames = (
+  statements: readonly EsTreeNode[],
+  candidateStateNames: ReadonlySet<string>,
+): ReadonlySet<string> => {
+  const guardedStateNames = new Set<string>();
+  for (const statement of statements) {
+    if (!isEarlyReturnGuard(statement)) continue;
+    for (const stateName of candidateStateNames) {
+      if (guardedStateNames.has(stateName)) continue;
+      if (expressionReadsStateValue(statement.test, stateName)) {
+        guardedStateNames.add(stateName);
+      }
+    }
+  }
+  return guardedStateNames;
+};
+
 export const noSelfUpdatingEffect = defineRule<Rule>({
   id: "no-self-updating-effect",
   severity: "warn",
@@ -161,14 +204,22 @@ export const noSelfUpdatingEffect = defineRule<Rule>({
         // setters guarded by an `if` can reach a fixed point — neither
         // is an unconditional feedback loop, so both are left to other
         // rules.
+        const callbackStatements = getCallbackStatements(callback);
+        // A top-level `if (<reads state>) return;` guard lets the effect
+        // converge, so writes to that state settle and must not be flagged.
+        const guardedStateNames = collectGuardedStateNames(
+          callbackStatements,
+          dependencyStateNames,
+        );
         const reportedStateNames = new Set<string>();
-        for (const callbackStatement of getCallbackStatements(callback)) {
+        for (const callbackStatement of callbackStatements) {
           const setterCall = getUnconditionalSetterCall(callbackStatement, setterNames);
           if (!setterCall || !isNodeOfType(setterCall.callee, "Identifier")) continue;
 
           const stateName = setterNameToStateName.get(setterCall.callee.name);
           if (!stateName || !dependencyStateNames.has(stateName)) continue;
           if (reportedStateNames.has(stateName)) continue;
+          if (guardedStateNames.has(stateName)) continue;
           if (!isNonSettlingSetterArgument(setterCall, stateName)) continue;
 
           reportedStateNames.add(stateName);

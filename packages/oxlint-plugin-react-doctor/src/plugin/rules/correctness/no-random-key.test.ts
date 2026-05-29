@@ -229,4 +229,32 @@ describe("no-random-key", () => {
     // fresh-each-call id factory from a library import.
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("does not flag a user-defined const v4 arrow that shadows the id-library name", () => {
+    const result = runRule(
+      noRandomKey,
+      `
+      const v4 = (item) => item.slug;
+
+      function List({ items }) {
+        return items.map((item) => <Row key={v4(item)} text={item.text} />);
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags an unresolved bare id factory (likely a missing import / global)", () => {
+    const result = runRule(
+      noRandomKey,
+      `
+      function List({ items }) {
+        return items.map((item) => <Row key={nanoid()} text={item.text} />);
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

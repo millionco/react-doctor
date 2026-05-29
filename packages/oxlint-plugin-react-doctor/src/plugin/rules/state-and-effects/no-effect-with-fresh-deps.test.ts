@@ -334,4 +334,37 @@ describe("no-effect-with-fresh-deps", () => {
 
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("does NOT flag a destructured const default (allocates only when source is undefined)", () => {
+    const result = runRule(
+      noEffectWithFreshDeps,
+      `
+      import { useEffect } from "react";
+
+      function Panel(props) {
+        const { config = {} } = props;
+        useEffect(() => {}, [config]);
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("DOES still flag a direct const object initializer captured by name", () => {
+    const result = runRule(
+      noEffectWithFreshDeps,
+      `
+      import { useEffect } from "react";
+
+      function Panel() {
+        const config = { a: 1 };
+        useEffect(() => {}, [config]);
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("config");
+  });
 });

@@ -13,8 +13,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 // and `nanoid()` / `uuid()` / `uuidv4()` / `cuid()` / `ulid()` from the
 // well-known id libraries.
 //
-// These are matched ONLY when the local name resolves to an import (see
-// `isAlwaysFreshExpression`): a user-defined helper named `createId` /
+// Matched unless the local name resolves to a same-file user-defined
+// binding (see `isAlwaysFreshExpression`): a helper named `createId` /
 // `v4` that returns a STABLE id would otherwise be a false positive.
 const ALWAYS_FRESH_DIRECT_CALLEES = new Set([
   "nanoid",
@@ -52,19 +52,20 @@ const isAlwaysFreshExpression = (expression: EsTreeNode): string | null => {
 
   if (isNodeOfType(callee, "Identifier")) {
     if (!ALWAYS_FRESH_DIRECT_CALLEES.has(callee.name)) return null;
-    // Only flag when the name resolves to an imported id factory.
-    // A same-file user-defined `createId` / `v4` (stable id helper)
-    // resolves to a function/const binding and is left alone.
+    // Abstain only when the name resolves to a same-file user-defined
+    // binding with its own initializer — a `function createId() {}` or
+    // `const v4 = () => stable` helper that returns a STABLE id. Real
+    // imported factories (and unresolved/global names) still flag.
     const binding = findVariableInitializer(callee, callee.name);
     if (
-      binding &&
-      (isNodeOfType(binding.initializer, "ImportSpecifier") ||
-        isNodeOfType(binding.initializer, "ImportDefaultSpecifier") ||
-        isNodeOfType(binding.initializer, "ImportNamespaceSpecifier"))
+      binding?.initializer &&
+      !isNodeOfType(binding.initializer, "ImportSpecifier") &&
+      !isNodeOfType(binding.initializer, "ImportDefaultSpecifier") &&
+      !isNodeOfType(binding.initializer, "ImportNamespaceSpecifier")
     ) {
-      return `${callee.name}()`;
+      return null;
     }
-    return null;
+    return `${callee.name}()`;
   }
 
   if (isNodeOfType(callee, "MemberExpression") && !callee.computed) {

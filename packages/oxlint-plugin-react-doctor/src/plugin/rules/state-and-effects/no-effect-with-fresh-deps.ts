@@ -61,13 +61,22 @@ const resolveDependencyFreshness = (dep: EsTreeNode): ResolvedFreshness | null =
   // Bindings declared at module scope (Program) are allocated once;
   // they're safe to use as deps regardless of shape.
   if (binding.scopeOwner.type === "Program") return null;
-  // Function parameters — including destructured props with array/
-  // object defaults (`function List({ items = [] })`) — are NOT
-  // render-local allocations the component owns. The default only
-  // allocates when the caller omits the prop, and the rule's
-  // "hoist to module scope" guidance doesn't apply to a prop. Skip
-  // them to avoid false positives on `useEffect(fn, [items])`.
-  if (binding.isFunctionParameter) return null;
+  // Only an UNCONDITIONAL direct `const/let/var name = <literal>` is a
+  // render-local allocation the component owns. A parameter or
+  // destructuring DEFAULT (`function List({ items = [] })`,
+  // `const { config = {} } = props`) records its default as the
+  // initializer, but that value only allocates when the source is
+  // undefined — so flagging it (with a "hoist to module scope" fix
+  // that can't apply to a prop) is a false positive. Require the
+  // binding to be a direct VariableDeclarator initializer.
+  const declarator = binding.bindingIdentifier.parent;
+  if (
+    !declarator ||
+    !isNodeOfType(declarator, "VariableDeclarator") ||
+    declarator.init !== binding.initializer
+  ) {
+    return null;
+  }
   // Initializers that are themselves a CallExpression (any function
   // call — including `useMemo(...)`, `useCallback(...)`, `useRef(...)`,
   // and ANY user-defined hook) are treated as opaque: their return

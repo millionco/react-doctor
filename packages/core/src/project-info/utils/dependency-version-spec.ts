@@ -60,7 +60,7 @@ const getUpperBoundComparatorEnd = (version: string, start: number): number | nu
 
   if (version[index] === "-") {
     index += 1;
-    while (!isSeparator(version[index])) index += 1;
+    while (index < version.length && !isSeparator(version[index])) index += 1;
   }
 
   return index;

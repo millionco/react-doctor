@@ -402,6 +402,31 @@ describe("discoverProject", () => {
     expect(projectInfo.tailwindVersion).toBe("^4.0.0");
   });
 
+  it("does not scan workspaces only to discover Zod", () => {
+    const monorepoRoot = path.join(tempDirectory, "skip-workspace-zod-only-scan");
+    fs.mkdirSync(path.join(monorepoRoot, "packages", "schema"), { recursive: true });
+    fs.writeFileSync(path.join(monorepoRoot, "pnpm-workspace.yaml"), "packages:\n  - packages/*\n");
+    fs.writeFileSync(
+      path.join(monorepoRoot, "package.json"),
+      JSON.stringify({
+        name: "root",
+        dependencies: { next: "^15.0.0", react: "^19.0.0" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(monorepoRoot, "packages", "schema", "package.json"),
+      JSON.stringify({
+        name: "schema",
+        dependencies: { zod: "^4.0.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(monorepoRoot);
+    expect(projectInfo.reactVersion).toBe("^19.0.0");
+    expect(projectInfo.framework).toBe("nextjs");
+    expect(projectInfo.zodVersion).toBeNull();
+  });
+
   it("applies the monorepo root React catalog to leaves that do not declare React (hoisted-react workspaces)", () => {
     // Pinned for #310 / #311: in pnpm/yarn/npm workspaces with React
     // hoisted to the root, a leaf package that omits React from its

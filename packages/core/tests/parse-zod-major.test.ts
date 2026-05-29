@@ -11,6 +11,7 @@ describe("parseZodMajor", () => {
 
   it("returns null for upper-only or non-lower-bound ranges", () => {
     expect(parseZodMajor("<5")).toBeNull();
+    expect(parseZodMajor("<5-beta.1")).toBeNull();
     expect(parseZodMajor(">3")).toBeNull();
     expect(parseZodMajor("!=4")).toBeNull();
   });

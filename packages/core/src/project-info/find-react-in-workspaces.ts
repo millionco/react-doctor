@@ -120,7 +120,6 @@ export const findReactInWorkspaces = (
       if (
         result.reactVersion &&
         result.tailwindVersion &&
-        result.zodVersion &&
         result.framework !== "unknown" &&
         resultReactMajor !== null &&
         resultReactMajor <= 17

@@ -90,8 +90,8 @@ export const discoverProject = (directory: string): ProjectInfo => {
   }
 
   // HACK: keep the monorepo-root catalog read cheap (one package.json plus
-  // pnpm-workspace catalogs). Workspace walks below include Zod because
-  // `zod:4` gates a whole rule bucket; they still skip Tailwind-only misses.
+  // pnpm-workspace catalogs). The expensive workspace walks below still key
+  // off React/framework misses; if we walk anyway, they can fill Zod too.
   if (!reactVersion || !tailwindVersion || !zodVersion) {
     const monorepoRoot = findMonorepoRoot(directory);
     if (monorepoRoot) {
@@ -126,7 +126,7 @@ export const discoverProject = (directory: string): ProjectInfo => {
     }
   }
 
-  if (!reactVersion || !zodVersion || framework === "unknown") {
+  if (!reactVersion || framework === "unknown") {
     const workspaceInfo = findReactInWorkspaces(directory, packageJson);
     if (!reactVersion && workspaceInfo.reactVersion) {
       reactVersion = workspaceInfo.reactVersion;
@@ -142,7 +142,7 @@ export const discoverProject = (directory: string): ProjectInfo => {
     }
   }
 
-  if ((!reactVersion || !zodVersion || framework === "unknown") && !isMonorepoRoot(directory)) {
+  if ((!reactVersion || framework === "unknown") && !isMonorepoRoot(directory)) {
     const monorepoInfo = findDependencyInfoFromMonorepoRoot(directory);
     if (!reactVersion) {
       reactVersion = monorepoInfo.reactVersion;

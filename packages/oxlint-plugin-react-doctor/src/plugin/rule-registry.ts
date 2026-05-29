@@ -146,6 +146,7 @@ import { noEventTriggerState } from "./rules/state-and-effects/no-event-trigger-
 import { noFetchInEffect } from "./rules/state-and-effects/no-fetch-in-effect.js";
 import { noFindDomNode } from "./rules/react-builtins/no-find-dom-node.js";
 import { noFlushSync } from "./rules/view-transitions/no-flush-sync.js";
+import { noFocusOnMount } from "./rules/state-and-effects/no-focus-on-mount.js";
 import { noFullLodashImport } from "./rules/bundle-size/no-full-lodash-import.js";
 import { noGenericHandlerNames } from "./rules/architecture/no-generic-handler-names.js";
 import { noGiantComponent } from "./rules/architecture/no-giant-component.js";
@@ -1833,6 +1834,17 @@ export const reactDoctorRules = [
       ...noFlushSync,
       framework: "global",
       category: "Performance",
+    },
+  },
+  {
+    key: "react-doctor/no-focus-on-mount",
+    id: "no-focus-on-mount",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noFocusOnMount,
+      framework: "global",
+      category: "State & Effects",
     },
   },
   {

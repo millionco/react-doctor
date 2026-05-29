@@ -50,22 +50,30 @@ const getRawTextDescription = (child: EsTreeNode): string => {
   return "text content";
 };
 
+// Resolves the tag name used for the text-boundary checks. Namespaced JSX tags
+// (fbtee's <fbt:param>, <fbt:plural>, …) resolve to their namespace (`fbt`) so
+// they inherit the transparency of the <fbt> construct they belong to.
+const resolveTextBoundaryName = (
+  openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+): string | null => {
+  if (isNodeOfType(openingElement.name, "JSXNamespacedName")) {
+    return openingElement.name.namespace.name;
+  }
+  return resolveJsxElementName(openingElement);
+};
+
 const isTextHandlingComponent = (elementName: string): boolean => {
   if (REACT_NATIVE_TEXT_COMPONENTS.has(elementName)) return true;
   return [...REACT_NATIVE_TEXT_COMPONENT_KEYWORDS].some((keyword) => elementName.includes(keyword));
 };
 
-const isTransparentTextWrapper = (
-  openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
-): boolean => {
-  const elementName = resolveJsxElementName(openingElement);
-  if (elementName && REACT_NATIVE_TEXT_TRANSPARENT_COMPONENTS.has(elementName)) return true;
-  if (isNodeOfType(openingElement.name, "JSXNamespacedName")) {
-    return REACT_NATIVE_TEXT_TRANSPARENT_COMPONENTS.has(openingElement.name.namespace.name);
-  }
-  return false;
-};
+const isTransparentTextWrapper = (elementName: string | null): boolean =>
+  elementName !== null && REACT_NATIVE_TEXT_TRANSPARENT_COMPONENTS.has(elementName);
 
+// Walks ancestors to a real text component, stepping through transparent
+// wrappers. Returns false as soon as a non-transparent, non-text element
+// breaks the chain — so the text boundary is only honored when every link
+// up to the <Text> is itself transparent.
 const isInsideTextHandlingComponent = (node: EsTreeNodeOfType<"JSXElement">): boolean => {
   let parentNode = node.parent;
   while (parentNode) {
@@ -73,9 +81,9 @@ const isInsideTextHandlingComponent = (node: EsTreeNodeOfType<"JSXElement">): bo
       parentNode = parentNode.parent;
       continue;
     }
-    const parentElementName = resolveJsxElementName(parentNode.openingElement);
-    if (parentElementName && isTextHandlingComponent(parentElementName)) return true;
-    if (!isTransparentTextWrapper(parentNode.openingElement)) return false;
+    const parentName = resolveTextBoundaryName(parentNode.openingElement);
+    if (parentName && isTextHandlingComponent(parentName)) return true;
+    if (!isTransparentTextWrapper(parentName)) return false;
     parentNode = parentNode.parent;
   }
   return false;
@@ -104,7 +112,7 @@ export const rnNoRawText = defineRule<Rule>({
       JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
         if (isDomComponentFile) return;
 
-        const elementName = resolveJsxElementName(node.openingElement);
+        const elementName = resolveTextBoundaryName(node.openingElement);
         if (elementName && isTextHandlingComponent(elementName)) return;
 
         // `Platform.OS === "web"` branches deliberately render web markup
@@ -114,7 +122,7 @@ export const rnNoRawText = defineRule<Rule>({
         // narrower scope.
         if (isInsidePlatformOsWebBranch(node)) return;
 
-        if (isTransparentTextWrapper(node.openingElement) && isInsideTextHandlingComponent(node)) {
+        if (isTransparentTextWrapper(elementName) && isInsideTextHandlingComponent(node)) {
           return;
         }
 

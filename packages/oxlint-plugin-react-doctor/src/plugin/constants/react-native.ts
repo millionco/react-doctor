@@ -27,8 +27,20 @@ export const REACT_NATIVE_TEXT_COMPONENT_KEYWORDS = new Set([
   "Body",
 ]);
 
-// fbtee's <fbt> / <fbs> compile-time translation tags should be transparent to
-// React Native text boundaries. Ref: https://github.com/millionco/react-doctor/issues/581
+// Compile-time translation wrappers — fbtee's <fbt> / <fbs> and their
+// namespaced children (<fbt:param>, <fbt:plural>, <fbt:name>, …) — are NOT
+// React Native layout components. A Babel/SWC transform erases them at build
+// time, so their text really renders inside the surrounding <Text>. The
+// rn-no-raw-text rule treats them as *transparent*: raw text inside them is
+// safe only when an enclosing element is a real text component (so a bare
+// <fbt> outside <Text> is still reported).
+//
+// To extend the same behavior to another compile-time / i18n wrapper, add its
+// tag name here — namespaced children are matched by their namespace, so a
+// single entry (e.g. "fbt") covers every "<fbt:*>" child.
+//
+// Ref: https://github.com/millionco/react-doctor/issues/581
+//      https://facebook.github.io/fbt/docs/api_intro
 export const REACT_NATIVE_TEXT_TRANSPARENT_COMPONENTS = new Set(["fbt", "fbs"]);
 
 // HACK: Maps (not plain objects) so that an unusual `import { constructor }

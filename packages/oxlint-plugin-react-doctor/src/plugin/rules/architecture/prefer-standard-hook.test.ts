@@ -89,18 +89,22 @@ describe("prefer-standard-hook", () => {
     const result = runRule(
       preferStandardHook,
       `
-      import { useEffect, useState } from "react";
+      import { useEffect } from "react";
 
-      function useStep(maxStep) {
-        const [currentStep, setCurrentStep] = useState(1);
-        useEffect(() => {}, [maxStep]);
-        return [currentStep, { setCurrentStep }];
+      function useScrollLock() {
+        useEffect(() => {
+          const original = document.body.style.overflow;
+          document.body.style.overflow = "hidden";
+          return () => {
+            document.body.style.overflow = original;
+          };
+        }, []);
       }
     `,
     );
 
     expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0].message).toContain("useStep");
+    expect(result.diagnostics[0].message).toContain("useScrollLock");
   });
 
   it("flags a reimplementation built on useReducer", () => {

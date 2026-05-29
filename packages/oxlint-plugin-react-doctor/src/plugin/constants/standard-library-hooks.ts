@@ -147,7 +147,9 @@ export const STANDARD_LIBRARY_HOOK_NAMES = new Set([
 // `useSize`/`useScreen` as viewport-size hooks, `useVideo` as a context
 // accessor, `useSpeech` as speech-to-text, `usePermission` as app
 // authorization, `useCss` as a theme→CSS-string builder, and
-// `useSearchParam`/`usePageLeave` built on the app's own router. Distinctive,
+// `useSearchParam`/`usePageLeave` built on the app's own router, and
+// `useStep` as a wizard step-context accessor (not usehooks-ts's numeric
+// step counter). Distinctive,
 // purpose-specific names (useDebounce, useLocalStorage, useCopyToClipboard,
 // useMediaQuery, usePrevious, useOnClickOutside, …) stay matched because a
 // hand-rolled version of those is reliably the library hook.
@@ -196,6 +198,7 @@ export const STANDARD_LIBRARY_HOOK_EXCLUSIONS = new Set([
   "useSpeech",
   "useStateList",
   "useStateValidator",
+  "useStep",
   "useTitle",
   "useUpdate",
   "useUpsert",

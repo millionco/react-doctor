@@ -6,6 +6,23 @@ import {
   parseTailwindMajorMinor,
 } from "../../project-info/index.js";
 
+// Upper bound for the per-major capability ladder. The major is parsed from
+// an untrusted package.json version spec, so clamp it — a spec like
+// `"^99999999"` would otherwise spin the loop millions of times.
+const MAX_RUNTIME_MAJOR = 100;
+
+const addRuntimeMajorLadder = (
+  capabilities: Set<string>,
+  runtime: string,
+  floorMajor: number,
+  detectedMajor: number,
+): void => {
+  const ceilingMajor = Math.min(detectedMajor, MAX_RUNTIME_MAJOR);
+  for (let major = floorMajor; major <= ceilingMajor; major++) {
+    capabilities.add(`${runtime}:${major}`);
+  }
+};
+
 export const buildCapabilities = (project: ProjectInfo): ReadonlySet<string> => {
   const capabilities = new Set<string>();
 
@@ -26,9 +43,7 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<string> => 
 
   const reactMajor = project.reactMajorVersion;
   if (reactMajor !== null) {
-    for (let major = 17; major <= reactMajor; major++) {
-      capabilities.add(`react:${major}`);
-    }
+    addRuntimeMajorLadder(capabilities, "react", 17, reactMajor);
     // Minor-version-pinned capabilities for APIs introduced after a
     // major release. Mirrors the `tailwind:3.4` pattern below.
     // `react:19.2` is the gate for `<Activity>`, which shipped in
@@ -64,14 +79,11 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<string> => 
   // matching rule bucket.
   if (project.preactVersion !== null) {
     capabilities.add("preact");
-    // Mirror the React major ladder (`react:17..N`): a Preact 11 project
-    // satisfies rules requiring `preact:10` or `preact:11`. Preact X (10)
-    // is the modern baseline react-doctor targets.
-    const preactMajor = project.preactMajorVersion;
-    if (preactMajor !== null) {
-      for (let major = 10; major <= preactMajor; major++) {
-        capabilities.add(`preact:${major}`);
-      }
+    // Mirror the React major ladder: a Preact 11 project satisfies rules
+    // requiring `preact:10` or `preact:11`. Preact X (10) is the modern
+    // baseline react-doctor targets.
+    if (project.preactMajorVersion !== null) {
+      addRuntimeMajorLadder(capabilities, "preact", 10, project.preactMajorVersion);
     }
     // `pure-preact` is the strict-mode signal: Preact is in the
     // dependency graph AND no `react` package is present, so the

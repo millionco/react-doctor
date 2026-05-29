@@ -67,6 +67,21 @@ describe("buildCapabilities", () => {
     expect(capabilities.has("preact:10")).toBe(false);
   });
 
+  it("caps the `preact:<major>` ladder for an absurd (untrusted) version spec", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      framework: "preact",
+      reactVersion: null,
+      reactMajorVersion: null,
+      preactVersion: "^99999.0.0",
+      preactMajorVersion: 99999,
+    });
+    expect(capabilities.has("preact:10")).toBe(true);
+    expect(capabilities.has("preact:100")).toBe(true);
+    expect(capabilities.has("preact:101")).toBe(false);
+    expect(capabilities.has("preact:99999")).toBe(false);
+  });
+
   it("emits the `preact` capability for pure-Preact projects (no bundler manifest)", () => {
     const capabilities = buildCapabilities({
       ...baseProject,

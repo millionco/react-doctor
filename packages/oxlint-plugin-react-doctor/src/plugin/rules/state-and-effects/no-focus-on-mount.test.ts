@@ -332,6 +332,28 @@ describe("no-focus-on-mount", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag autofocus-on-mount in testlike files", () => {
+    const result = runRule(
+      noFocusOnMount,
+      `
+      import { useEffect, useRef } from "react";
+
+      export function SearchBox() {
+        const inputRef = useRef(null);
+
+        useEffect(() => {
+          inputRef.current?.focus();
+        }, []);
+
+        return <input ref={inputRef} />;
+      }
+    `,
+      { filename: "search-box.test.tsx" },
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag focus() inside a non-effect hook with empty deps", () => {
     const result = runRule(
       noFocusOnMount,

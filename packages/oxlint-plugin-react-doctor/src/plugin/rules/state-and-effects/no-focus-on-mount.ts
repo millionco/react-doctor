@@ -81,6 +81,7 @@ const effectFocusesDuringMount = (effectCallback: EsTreeNode): boolean => {
 export const noFocusOnMount = defineRule<Rule>({
   id: "no-focus-on-mount",
   severity: "warn",
+  tags: ["test-noise"],
   recommendation:
     "Move the focus into the user action that opens the UI, or gate it on an explicit ready/open state instead of running it on mount.\n\n```tsx\nuseEffect(() => {\n  if (isOpen) inputRef.current?.focus();\n}, [isOpen]);\n```",
   create: (context: RuleContext) => ({

@@ -1,27 +1,16 @@
 import type { ProjectInfo } from "../../types/index.js";
 import {
+  EARLIEST_GATED_PREACT_MAJOR,
+  EARLIEST_GATED_REACT_MAJOR,
+  LATEST_KNOWN_PREACT_MAJOR,
+  LATEST_KNOWN_REACT_MAJOR,
+} from "../../constants.js";
+import {
   isReactAtLeast,
   isTailwindAtLeast,
   parseReactMajorMinor,
   parseTailwindMajorMinor,
 } from "../../project-info/index.js";
-
-// Upper bound for the per-major capability ladder. The major is parsed from
-// an untrusted package.json version spec, so clamp it — a spec like
-// `"^99999999"` would otherwise spin the loop millions of times.
-const MAX_RUNTIME_MAJOR = 100;
-
-const addRuntimeMajorLadder = (
-  capabilities: Set<string>,
-  runtime: string,
-  floorMajor: number,
-  detectedMajor: number,
-): void => {
-  const ceilingMajor = Math.min(detectedMajor, MAX_RUNTIME_MAJOR);
-  for (let major = floorMajor; major <= ceilingMajor; major++) {
-    capabilities.add(`${runtime}:${major}`);
-  }
-};
 
 export const buildCapabilities = (project: ProjectInfo): ReadonlySet<string> => {
   const capabilities = new Set<string>();
@@ -43,7 +32,14 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<string> => 
 
   const reactMajor = project.reactMajorVersion;
   if (reactMajor !== null) {
-    addRuntimeMajorLadder(capabilities, "react", 17, reactMajor);
+    // Clamp the upper bound: `reactMajor` is parsed from an arbitrary
+    // package.json version string and can be implausibly large (e.g. a
+    // date-like typo `"20240101"`), which would otherwise turn this loop
+    // into a multi-minute hang / OOM.
+    const cappedReactMajor = Math.min(reactMajor, LATEST_KNOWN_REACT_MAJOR);
+    for (let major = EARLIEST_GATED_REACT_MAJOR; major <= cappedReactMajor; major++) {
+      capabilities.add(`react:${major}`);
+    }
     // Minor-version-pinned capabilities for APIs introduced after a
     // major release. Mirrors the `tailwind:3.4` pattern below.
     // `react:19.2` is the gate for `<Activity>`, which shipped in
@@ -80,10 +76,14 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<string> => 
   if (project.preactVersion !== null) {
     capabilities.add("preact");
     // Mirror the React major ladder: a Preact 11 project satisfies rules
-    // requiring `preact:10` or `preact:11`. Preact X (10) is the modern
-    // baseline react-doctor targets.
-    if (project.preactMajorVersion !== null) {
-      addRuntimeMajorLadder(capabilities, "preact", 10, project.preactMajorVersion);
+    // requiring `preact:10` or `preact:11`. Same clamp rationale as React —
+    // `preactMajorVersion` comes from an arbitrary package.json spec.
+    const preactMajor = project.preactMajorVersion;
+    if (preactMajor !== null) {
+      const cappedPreactMajor = Math.min(preactMajor, LATEST_KNOWN_PREACT_MAJOR);
+      for (let major = EARLIEST_GATED_PREACT_MAJOR; major <= cappedPreactMajor; major++) {
+        capabilities.add(`preact:${major}`);
+      }
     }
     // `pure-preact` is the strict-mode signal: Preact is in the
     // dependency graph AND no `react` package is present, so the

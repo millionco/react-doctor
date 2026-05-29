@@ -36,15 +36,22 @@ export const resolveDiffMode = async (
   if (shouldSkipPrompts) return false;
   if (isQuiet) return false;
 
+  const changedFilesTitle = diffInfo.isCurrentChanges
+    ? `Uncommitted changes (${changedSourceFiles.length})`
+    : `Changed files on ${diffInfo.currentBranch ?? "this branch"} (${changedSourceFiles.length})`;
+  const changedFilesDescription = diffInfo.isCurrentChanges
+    ? "Compare working tree changes against HEAD"
+    : `Compare against ${diffInfo.baseBranch} from the branch merge-base`;
+
   const { scanScope } = await prompts({
     type: "select",
     name: "scanScope",
     message: "Choose what to scan",
     choices: [
-      { title: "Full codebase", value: "full" },
-      { title: `Changed files (${changedSourceFiles.length})`, value: "branch" },
+      { title: "Full codebase", description: "Scan every source file", value: "full" },
+      { title: changedFilesTitle, description: changedFilesDescription, value: "branch" },
     ],
-    initial: 0,
+    initial: diffInfo.isCurrentChanges ? 0 : 1,
   });
   return scanScope === "branch";
 };

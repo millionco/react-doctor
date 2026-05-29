@@ -58,6 +58,14 @@ builds one lazily per `Program` with `eslint-scope` in
   emit pre-substituted strings. Most substituted text matches upstream
   byte-for-byte; `no-initialize-state` uses a bounded AST stringifier
   where oxlint does not expose original source text.
+- **`no-adjust-state-on-prop-change` severity + message** — upstream
+  ships this rule as `type: "suggestion"` with softened "Avoid …
+  Instead …" copy. We promote it to `severity: "error"` (the pattern
+  always causes an extra render with a stale UI between the two
+  commits — there is no benign instance) and rewrite the message in
+  the authoritative "what's wrong → why → fix" shape used by the rest
+  of the error-level effect rules in this folder. Detector behavior
+  is unchanged; only the diagnostic copy and severity diverge.
 
 ## Upstream `LICENSE` (MIT, retained for attribution)
 

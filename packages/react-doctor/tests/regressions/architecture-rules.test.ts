@@ -11,7 +11,14 @@ afterAll(() => {
   fs.rmSync(tempRoot, { recursive: true, force: true });
 });
 
-describe("react-compiler-destructure-method", () => {
+// `react-compiler-destructure-method` is currently un-registered in
+// `rule-registry.ts` — the React-Compiler memoization premise didn't
+// hold up for the canonical hooks it targeted (`useRouter`,
+// `useSearchParams`, `useNavigation`), all of which return stable
+// references. The rule implementation and these regression suites are
+// kept intact so re-registering the rule re-enables coverage in one
+// diff; switch this back to `describe(...)` when that happens.
+describe.skip("react-compiler-destructure-method", () => {
   it("does not flag React Navigation methods", async () => {
     const projectDir = setupReactProject(tempRoot, "react-navigation-methods", {
       files: {

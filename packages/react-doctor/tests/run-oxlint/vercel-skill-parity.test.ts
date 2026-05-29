@@ -104,11 +104,6 @@ describe("runOxlint", () => {
         ruleSource: "rules/client.ts",
         category: "Correctness",
       },
-      "react-compiler-destructure-method": {
-        fixture: "transient-and-async-issues.tsx",
-        ruleSource: "rules/architecture.ts",
-        category: "Architecture",
-      },
       "async-await-in-loop": {
         fixture: "async-and-handler-issues.tsx",
         ruleSource: "rules/js-performance.ts",

@@ -15,7 +15,7 @@ inputs:
     description: "Workspace project(s) to scan (comma-separated)"
     required: false
   diff:
-    description: "Base branch for diff mode (e.g. main). Only files changed vs this branch are scanned."
+    description: "Base branch for diff mode (e.g. main). Only files changed vs this branch are scanned. Defaults to the PR's target branch on pull_request events; pass `false` to force a full scan."
     required: false
   github-token:
     description: "GitHub token for posting PR comments. When set on pull_request events, findings are posted as a PR comment."
@@ -45,7 +45,7 @@ runs:
       with:
         node-version: ${{ inputs.node-version }}
 
-    - if: ${{ inputs.diff != '' && github.event_name == 'pull_request' }}
+    - if: ${{ github.event_name == 'pull_request' }}
       shell: bash
       run: |
         case "$DIFF_BASE" in -* ) echo "::error::diff input cannot start with -"; exit 1 ;; esac
@@ -54,7 +54,7 @@ runs:
         git checkout "$HEAD_REF" 2>/dev/null || true
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
-        DIFF_BASE: ${{ inputs.diff }}
+        DIFF_BASE: ${{ inputs.diff || github.base_ref }}
         HEAD_REF: ${{ github.head_ref }}
 
     - shell: bash
@@ -63,7 +63,7 @@ runs:
         INPUT_DIRECTORY: ${{ inputs.directory }}
         INPUT_VERBOSE: ${{ inputs.verbose }}
         INPUT_PROJECT: ${{ inputs.project }}
-        INPUT_DIFF: ${{ inputs.diff }}
+        INPUT_DIFF: ${{ inputs.diff || github.base_ref }}
         INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
         INPUT_FAIL_ON: ${{ inputs.fail-on }}
         INPUT_NO_SCORE: ${{ inputs.no-score }}
@@ -106,6 +106,8 @@ runs:
       shell: bash
       env:
         INPUT_DIRECTORY: ${{ inputs.directory }}
+        INPUT_PROJECT: ${{ inputs.project }}
+        INPUT_DIFF: ${{ inputs.diff || github.base_ref }}
         INPUT_NO_SCORE: ${{ inputs.no-score }}
       run: |
         # HACK: --score is an output-collection step, not a gate. Force
@@ -114,7 +116,13 @@ runs:
         # though the value itself is the only meaningful signal here)
         # don't fail the composite action under `set -e -o pipefail`.
         if [ "${INPUT_NO_SCORE:-false}" = "true" ]; then exit 0; fi
+        # Match the scan step's scope (project + diff) so the captured
+        # score reflects the same files as the diagnostics above. A bare
+        # `--score` re-runs a full project scan, yielding a full-project
+        # score that contradicts the diff-scoped PR comment.
         SCORE_ARGS=("$INPUT_DIRECTORY" "--score" "--fail-on" "none")
+        if [ -n "$INPUT_PROJECT" ]; then SCORE_ARGS+=("--project" "$INPUT_PROJECT"); fi
+        if [ -n "$INPUT_DIFF" ]; then SCORE_ARGS+=("--diff" "$INPUT_DIFF"); fi
         SCORE=$(npx react-doctor@latest "${SCORE_ARGS[@]}" 2>/dev/null | tail -1 | tr -d '[:space:]') || true
         if [[ -n "$SCORE" && "$SCORE" =~ ^[0-9]+$ ]]; then
           echo "score=$SCORE" >> "$GITHUB_OUTPUT"

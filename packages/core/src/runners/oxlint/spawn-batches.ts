@@ -16,6 +16,10 @@ export interface SpawnLintBatchesInput {
   readonly project: ProjectInfo;
   readonly onPartialFailure?: (reason: string) => void;
   readonly onFileProgress?: (scannedFileCount: number, totalFileCount: number) => void;
+  /** Per-batch wall-clock budget (from `OxlintSpawnTimeoutMs`). */
+  readonly spawnTimeoutMs?: number;
+  /** Per-batch stdout+stderr byte cap (from `OxlintOutputMaxBytes`). */
+  readonly outputMaxBytes?: number;
 }
 
 /**
@@ -40,6 +44,8 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     project,
     onPartialFailure,
     onFileProgress,
+    spawnTimeoutMs,
+    outputMaxBytes,
   } = input;
   const totalFileCount = fileBatches.reduce((sum, batch) => sum + batch.length, 0);
 
@@ -64,7 +70,13 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
   const spawnLintBatch = async (batch: string[]): Promise<Diagnostic[]> => {
     const batchArgs = [...baseArgs, ...batch];
     try {
-      const stdout = await spawnOxlint(batchArgs, rootDirectory, nodeBinaryPath);
+      const stdout = await spawnOxlint(
+        batchArgs,
+        rootDirectory,
+        nodeBinaryPath,
+        spawnTimeoutMs,
+        outputMaxBytes,
+      );
       return parseOxlintOutput(stdout, project, rootDirectory);
     } catch (error) {
       if (!isSplittableReactDoctorError(error)) throw error;

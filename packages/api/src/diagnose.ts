@@ -97,10 +97,20 @@ const outputToDiagnoseResult = (
     console.error("Lint failed:", output.lintFailureReason);
   }
 
+  // Mirror the CLI's skipped-check accounting (react-doctor/src/inspect.ts
+  // → finalizeAndRender) so programmatic consumers and toJsonReport() see
+  // a failed lint / dead-code pass instead of a false "all clear".
   const skippedChecks: string[] = [];
+  if (output.didLintFail) skippedChecks.push("lint");
+  if (output.didDeadCodeFail) skippedChecks.push("dead-code");
+
   const skippedCheckReasons: Record<string, string> = {};
+  if (output.didLintFail && output.lintFailureReason !== null) {
+    skippedCheckReasons.lint = output.lintFailureReason;
+  } else if (output.lintPartialFailures.length > 0) {
+    skippedCheckReasons["lint:partial"] = output.lintPartialFailures.join("; ");
+  }
   if (output.didDeadCodeFail && output.deadCodeFailureReason !== null) {
-    skippedChecks.push("dead-code");
     skippedCheckReasons["dead-code"] = output.deadCodeFailureReason;
   }
 

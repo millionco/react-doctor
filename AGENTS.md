@@ -34,7 +34,6 @@ packages/
                                  (also exposed as `@react-doctor/core/schemas` subpath
                                  since the names overlap the TS types above)
       refs.ts                    Context.Reference for ambient env config
-      paths.ts                   Schema.brand for OxlintBinaryPath / NodeBinaryPath
       run-inspect.ts             streaming orchestrator (the heart)
       build-diagnostic-pipeline  per-element filter pipeline (single source of truth)
       services/                  10 Context.Service classes (Files, Git, Project,

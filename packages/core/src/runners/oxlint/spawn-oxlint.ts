@@ -20,20 +20,6 @@ const SANITIZED_ENV: NodeJS.ProcessEnv = (() => {
   return sanitized;
 })();
 
-// HACK: env override (`REACT_DOCTOR_OXLINT_SPAWN_TIMEOUT_MS`) so the
-// evals harness can raise the per-batch budget when running under
-// Vercel Sandbox microVMs, where the oxlint native binding is markedly
-// slower than on a developer laptop and the default starves every
-// batch. The default (and the docstring naming the regression that
-// pinned it) lives in constants.ts.
-const OXLINT_SPAWN_TIMEOUT_MS = (() => {
-  const raw = process.env["REACT_DOCTOR_OXLINT_SPAWN_TIMEOUT_MS"];
-  if (raw === undefined) return DEFAULT_OXLINT_SPAWN_TIMEOUT_MS;
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_OXLINT_SPAWN_TIMEOUT_MS;
-  return parsed;
-})();
-
 /**
  * Spawn one oxlint subprocess with hard ceilings on wall time and
  * output size. Returns stdout on success; raises a tagged
@@ -54,6 +40,12 @@ export const spawnOxlint = (
   args: string[],
   rootDirectory: string,
   nodeBinaryPath: string,
+  // Defaults preserve standalone behavior; the orchestrated path
+  // (Linter → runOxlint → spawnLintBatches) threads these from the
+  // `OxlintSpawnTimeoutMs` / `OxlintOutputMaxBytes` Context.References,
+  // so the eval harness can override them via `Layer.succeed`.
+  spawnTimeoutMs: number = DEFAULT_OXLINT_SPAWN_TIMEOUT_MS,
+  outputMaxBytes: number = OXLINT_OUTPUT_MAX_BYTES,
 ): Promise<string> =>
   new Promise<string>((resolve, reject) => {
     const child = spawn(nodeBinaryPath, args, {
@@ -67,11 +59,11 @@ export const spawnOxlint = (
         new ReactDoctorError({
           reason: new OxlintBatchExceeded({
             kind: "timeout",
-            detail: `${OXLINT_SPAWN_TIMEOUT_MS / 1000}s budget exceeded`,
+            detail: `${spawnTimeoutMs / 1000}s budget exceeded`,
           }),
         }),
       );
-    }, OXLINT_SPAWN_TIMEOUT_MS);
+    }, spawnTimeoutMs);
     timeoutHandle.unref?.();
 
     const stdoutBuffers: Buffer[] = [];
@@ -86,7 +78,7 @@ export const spawnOxlint = (
       } else {
         stderrByteCount += incomingBytes;
       }
-      if (stdoutByteCount + stderrByteCount > OXLINT_OUTPUT_MAX_BYTES && !didKillForSize) {
+      if (stdoutByteCount + stderrByteCount > outputMaxBytes && !didKillForSize) {
         didKillForSize = true;
         child.kill("SIGKILL");
         return true;
@@ -116,7 +108,7 @@ export const spawnOxlint = (
           new ReactDoctorError({
             reason: new OxlintBatchExceeded({
               kind: "output-too-large",
-              detail: `exceeded ${OXLINT_OUTPUT_MAX_BYTES} bytes — scan a smaller subset with --diff or --staged`,
+              detail: `exceeded ${outputMaxBytes} bytes — scan a smaller subset with --diff or --staged`,
             }),
           }),
         );

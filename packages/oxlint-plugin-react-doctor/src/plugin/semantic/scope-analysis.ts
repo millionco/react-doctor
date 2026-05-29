@@ -1,5 +1,6 @@
 import type { EsTreeNode } from "../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../utils/es-tree-node-of-type.js";
+import { TYPE_POSITION_CHILD_KEYS } from "../constants/ts-type-position-keys.js";
 import { isAstNode } from "../utils/is-ast-node.js";
 import { isFunctionLike } from "../utils/is-function-like.js";
 import { isNodeOfType } from "../utils/is-node-of-type.js";
@@ -625,6 +626,50 @@ const setNodeScope = (node: EsTreeNode, state: BuilderState): void => {
   state.nodeScope.set(node, state.currentScope);
 };
 
+// Records references that live in the reference-bearing sub-parts of a
+// function parameter pattern: default-value expressions (`(a = expr) =>`)
+// and computed destructuring keys (`({ [k]: v }) =>`). The function-like
+// handler binds the parameter NAMES but walks only the body, so without
+// this the identifiers in defaults / computed keys would never be
+// recorded as references — leaving closure-capture and exhaustive-deps
+// analysis blind to them (e.g. misclassifying a module constant used as
+// a default). References are parked on the current (function) scope.
+const walkParameterReferences = (pattern: EsTreeNode, state: BuilderState): void => {
+  if (isNodeOfType(pattern, "AssignmentPattern")) {
+    walkParameterReferences(pattern.left as EsTreeNode, state);
+    const defaultValue = (pattern.right as EsTreeNode | null) ?? null;
+    if (defaultValue) walk(defaultValue, state);
+    return;
+  }
+  if (isNodeOfType(pattern, "ObjectPattern")) {
+    for (const property of pattern.properties) {
+      const propertyNode = property as EsTreeNode;
+      if (isNodeOfType(propertyNode, "RestElement")) {
+        walkParameterReferences((propertyNode as { argument: EsTreeNode }).argument, state);
+        continue;
+      }
+      if (!isNodeOfType(propertyNode, "Property")) continue;
+      const propertyDetail = propertyNode as {
+        computed?: boolean;
+        key: EsTreeNode;
+        value: EsTreeNode;
+      };
+      if (propertyDetail.computed) walk(propertyDetail.key, state);
+      walkParameterReferences(propertyDetail.value, state);
+    }
+    return;
+  }
+  if (isNodeOfType(pattern, "ArrayPattern")) {
+    for (const element of pattern.elements) {
+      if (element) walkParameterReferences(element as EsTreeNode, state);
+    }
+    return;
+  }
+  if (isNodeOfType(pattern, "RestElement")) {
+    walkParameterReferences(pattern.argument as EsTreeNode, state);
+  }
+};
+
 // Single-pass walker. For each node we:
 //   1) Open a scope if appropriate.
 //   2) Bind any declarations to the active scope (with hoisting).
@@ -666,11 +711,12 @@ const walk = (node: EsTreeNode, state: BuilderState): void => {
       });
       tagAsBinding(state, node.id as EsTreeNode);
     }
-    handleFunctionParameters(
-      (node as { params: ReadonlyArray<EsTreeNode> }).params ?? [],
-      fnScope,
-      state,
-    );
+    const functionParams = (node as { params: ReadonlyArray<EsTreeNode> }).params ?? [];
+    handleFunctionParameters(functionParams, fnScope, state);
+    // Record references inside parameter default values and computed
+    // destructuring keys (the handler above binds names but doesn't walk
+    // these reference-bearing sub-expressions).
+    for (const param of functionParams) walkParameterReferences(param, state);
     // Walk the body inline; if it's a BlockStatement, we mark it so the
     // BlockStatement handler doesn't push a duplicate scope.
     const body = (node as { body: EsTreeNode }).body;
@@ -739,6 +785,7 @@ const walk = (node: EsTreeNode, state: BuilderState): void => {
     const nodeRecord = node as unknown as Record<string, unknown>;
     for (const key of Object.keys(nodeRecord)) {
       if (key === "parent") continue;
+      if (TYPE_POSITION_CHILD_KEYS.has(key)) continue;
       const child = nodeRecord[key];
       if (Array.isArray(child)) {
         for (const item of child) if (isAstNode(item)) walk(item, state);
@@ -851,6 +898,7 @@ const walk = (node: EsTreeNode, state: BuilderState): void => {
   const nodeRecord = node as unknown as Record<string, unknown>;
   for (const key of Object.keys(nodeRecord)) {
     if (key === "parent") continue;
+    if (TYPE_POSITION_CHILD_KEYS.has(key)) continue;
     const child = nodeRecord[key];
     if (Array.isArray(child)) {
       for (const item of child) if (isAstNode(item)) walk(item, state);

@@ -9,7 +9,6 @@ import {
   resolveScanTarget,
   restoreLegacyThrow,
   runInspect as runInspectEffect,
-  type ReactDoctorErrorReason,
 } from "@react-doctor/core";
 import { buildRuntimeLayers } from "./cli/utils/build-runtime-layers.js";
 import type {
@@ -251,24 +250,19 @@ const runInspectWithRuntime = async (
   const lintFailureReason = lintBindingMissing
     ? `oxlint native binding not found for Node ${process.version}; expected one matching ${OXLINT_NODE_REQUIREMENT}`
     : output.lintFailureReason;
-  // Tagged-reason dispatch beats string sniffing on lintFailureReason
-  // — the runtime carries lintFailureReasonTag exactly so this
-  // renderer doesn't have to know the format strings the runner
-  // produces.
-  const lintFailureReasonTag: ReactDoctorErrorReason["_tag"] | null = output.lintFailureReasonTag;
-  const isNativeBindingFailure =
-    lintFailureReasonTag === "OxlintUnavailable" || lintFailureReasonTag === "OxlintSpawnFailed";
-
   // The orchestrator already finalized the lint spinner via the
   // Progress service. Print only the supplementary CLI-side hint
-  // (upgrade-Node guidance / failure reason) post-orchestrator.
+  // (upgrade-Node guidance / failure reason) post-orchestrator. Dispatch
+  // on the structured failure kind the runtime carries — never the
+  // message text (see AGENTS.md: renderers dispatch on reason, not
+  // `message.includes(...)`).
   if (
     !options.scoreOnly &&
     !lintBindingMissing &&
     output.didLintFail &&
     lintFailureReason !== null
   ) {
-    if (isNativeBindingFailure && /native binding/.test(lintFailureReason)) {
+    if (output.lintFailureReasonKind === "native-binding-missing") {
       runConsole(
         Console.log(
           highlighter.gray(

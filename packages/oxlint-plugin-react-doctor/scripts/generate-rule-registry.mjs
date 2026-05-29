@@ -66,6 +66,24 @@ const EFFECT_RULES_PORTED_FROM_EXTERNAL = new Set([
 // into `a11y/` would silently disappear for users who narrow scope.
 const RULES_NOT_PORTED_FROM_EXTERNAL = new Set(["prefer-html-dialog"]);
 
+// Rule ids whose source files are kept on disk but intentionally NOT
+// registered. Use sparingly — the canonical way to retire a rule is to
+// delete its file (and its tests, fixture references, etc.). This
+// skiplist exists for rules we want to stop shipping right away while
+// preserving their implementation, tests, and regression fixtures so
+// re-enabling is a one-line change. Add a brief justification next to
+// every entry.
+const RULE_IDS_TO_SKIP_REGISTRATION = new Set([
+  // The React-Compiler memoization premise didn't hold: the three
+  // canonical hooks it targeted (`useRouter`, `useSearchParams`,
+  // `useNavigation`) all return stable references, so destructuring
+  // their methods produces no measurable compiler win — and on Pages
+  // Router (`next/router`) destructuring `push` captures a stale
+  // reference. Implementation + regression suite + fixture lines kept
+  // in place; remove this entry to re-enable.
+  "react-compiler-destructure-method",
+]);
+
 // Bucket directory → default category. A rule MAY override its category
 // with an explicit `category: "..."` field in its `defineRule({...})` call
 // (e.g. some `tanstack-start/` and `nextjs/` rules override to "Security").
@@ -129,6 +147,7 @@ for (const bucket of fs.readdirSync(PLUGIN_RULES_ROOT, { withFileTypes: true }))
       process.exit(1);
     }
     const ruleId = idMatch[1];
+    if (RULE_IDS_TO_SKIP_REGISTRATION.has(ruleId)) continue;
     const category = categoryMatch ? categoryMatch[1] : defaultCategory;
     const severity = severityMatch[1];
     // Force POSIX separators — `path.relative()` returns backslashes on

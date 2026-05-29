@@ -1,16 +1,8 @@
+import { TYPE_POSITION_CHILD_KEYS } from "../constants/ts-type-position-keys.js";
 import { collectPatternNames } from "./collect-pattern-names.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { isAstNode } from "./is-ast-node.js";
 import { isNodeOfType } from "./is-node-of-type.js";
-
-const TYPE_POSITION_KEYS = new Set([
-  "typeAnnotation",
-  "typeParameters",
-  "typeArguments",
-  "returnType",
-  "superTypeArguments",
-  "superTypeParameters",
-]);
 
 const collectScopedReferencesInPattern = (
   pattern: EsTreeNode | null | undefined,
@@ -110,7 +102,7 @@ const collectScopedReferenceIdentifierNames = (
   if (typeof node.type === "string" && node.type.startsWith("TS")) return;
   for (const [key, child] of Object.entries(node)) {
     if (key === "parent") continue;
-    if (TYPE_POSITION_KEYS.has(key)) continue;
+    if (TYPE_POSITION_CHILD_KEYS.has(key)) continue;
     if (Array.isArray(child)) {
       for (const item of child) {
         if (isAstNode(item)) collectScopedReferenceIdentifierNames(item, into, shadowed);

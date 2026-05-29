@@ -372,7 +372,7 @@ const isFileNameAllowed = (filename: string | undefined, checkJS: boolean): bool
 // stable constants alongside components don't break Fast Refresh.
 export const onlyExportComponents = defineRule<Rule>({
   id: "only-export-components",
-  severity: "error",
+  severity: "warn",
   recommendation: "Move non-component exports out of files that export components.",
   category: "Architecture",
   create: (context) => {

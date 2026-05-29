@@ -77,8 +77,8 @@ describe("buildCapabilities", () => {
       preactMajorVersion: 99999,
     });
     expect(capabilities.has("preact:10")).toBe(true);
-    expect(capabilities.has("preact:100")).toBe(true);
-    expect(capabilities.has("preact:101")).toBe(false);
+    expect(capabilities.has("preact:20")).toBe(true);
+    expect(capabilities.has("preact:21")).toBe(false);
     expect(capabilities.has("preact:99999")).toBe(false);
   });
 

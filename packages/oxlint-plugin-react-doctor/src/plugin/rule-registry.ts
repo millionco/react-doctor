@@ -233,7 +233,6 @@ import { queryNoRestDestructuring } from "./rules/tanstack-query/query-no-rest-d
 import { queryNoUseQueryForMutation } from "./rules/tanstack-query/query-no-use-query-for-mutation.js";
 import { queryNoVoidQueryFn } from "./rules/tanstack-query/query-no-void-query-fn.js";
 import { queryStableQueryClient } from "./rules/tanstack-query/query-stable-query-client.js";
-import { reactCompilerDestructureMethod } from "./rules/architecture/react-compiler-destructure-method.js";
 import { reactCompilerNoManualMemoization } from "./rules/architecture/react-compiler-no-manual-memoization.js";
 import { reactInJsxScope } from "./rules/react-builtins/react-in-jsx-scope.js";
 import { renderingAnimateSvgWrapper } from "./rules/performance/rendering-animate-svg-wrapper.js";
@@ -2790,17 +2789,6 @@ export const reactDoctorRules = [
       ...queryStableQueryClient,
       framework: "tanstack-query",
       category: "TanStack Query",
-    },
-  },
-  {
-    key: "react-doctor/react-compiler-destructure-method",
-    id: "react-compiler-destructure-method",
-    source: "react-doctor",
-    originallyExternal: false,
-    rule: {
-      ...reactCompilerDestructureMethod,
-      framework: "global",
-      category: "Architecture",
     },
   },
   {

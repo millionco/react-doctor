@@ -494,19 +494,22 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
       project: buildTestProject({ rootDirectory: "/tmp/test" }),
     });
 
-    const portedRuleIds = [
-      "no-derived-state",
-      "no-chain-state-updates",
-      "no-event-handler",
-      "no-adjust-state-on-prop-change",
-      "no-reset-all-state-on-prop-change",
-      "no-pass-live-state-to-parent",
-      "no-pass-data-to-parent",
-      "no-initialize-state",
-    ];
-    for (const ruleId of portedRuleIds) {
+    // `no-adjust-state-on-prop-change` is intentionally promoted to
+    // `error` — the pattern always causes an extra render with a stale
+    // UI between commits, there is no benign instance. See SOURCE.md.
+    const portedRuleSeverity: Record<string, "warn" | "error"> = {
+      "no-derived-state": "warn",
+      "no-chain-state-updates": "warn",
+      "no-event-handler": "warn",
+      "no-adjust-state-on-prop-change": "error",
+      "no-reset-all-state-on-prop-change": "warn",
+      "no-pass-live-state-to-parent": "warn",
+      "no-pass-data-to-parent": "warn",
+      "no-initialize-state": "warn",
+    };
+    for (const [ruleId, expectedSeverity] of Object.entries(portedRuleSeverity)) {
       const fullKey = `react-doctor/${ruleId}`;
-      expect(config.rules[fullKey]).toBe("warn");
+      expect(config.rules[fullKey]).toBe(expectedSeverity);
     }
 
     expect(Object.keys(config.rules).some((ruleKey) => ruleKey.startsWith("effect/"))).toBe(false);

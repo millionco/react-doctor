@@ -5,7 +5,7 @@ interface StdinUnrefHandle {
   restore: () => void;
 }
 
-const stubStdinUnref = (unref: unknown): StdinUnrefHandle => {
+const stubStdinUnref = (unref: (() => void) | undefined): StdinUnrefHandle => {
   const originalDescriptor = Object.getOwnPropertyDescriptor(process.stdin, "unref");
   Object.defineProperty(process.stdin, "unref", { value: unref, configurable: true });
   return {

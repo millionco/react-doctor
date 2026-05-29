@@ -11,9 +11,6 @@ import { VERSION } from "./utils/version.js";
 
 process.on("SIGINT", exitGracefully);
 process.on("SIGTERM", exitGracefully);
-
-// Stop an inherited stdin pipe/socket from keeping the one-shot CLI
-// alive after the scan completes (see `unref-stdin.ts`).
 unrefStdin();
 
 const program = new Command()

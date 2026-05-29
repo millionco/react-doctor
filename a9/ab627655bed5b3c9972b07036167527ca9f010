@@ -1,0 +1,21 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/zod/zod-v4-no-deprecated-schema-apis.ts
+  s_adc6b2fb6553a2::t_dc317190e6753c 71,133
+packages/oxlint-plugin-react-doctor/src/plugin/rules/zod/utils/zod-ast.ts
+  s_adc6b2fb6553a2::t_60dac32e2c084b 15-17,44,47,52,55,108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "a9ab627655bed5b3c9972b07036167527ca9f010",
+  "prompts": {},
+  "sessions": {
+    "s_adc6b2fb6553a2": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "65802b92-8844-4d64-a3c6-9273fe93fe98",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

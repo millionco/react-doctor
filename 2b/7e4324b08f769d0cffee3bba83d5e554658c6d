@@ -1,0 +1,24 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/zod/zod-v4-no-deprecated-error-apis.ts
+  s_adc6b2fb6553a2::t_2270ac321ecf75 41
+  s_adc6b2fb6553a2::t_932a0000c8a828 23-24,42-43,76,81,96
+packages/core/src/project-info/discover-project.ts
+  s_adc6b2fb6553a2::t_2d5203a7261d3f 92-94
+packages/oxlint-plugin-react-doctor/src/plugin/rules/zod/zod-v4-no-deprecated-error-customization.ts
+  s_adc6b2fb6553a2::t_4515090d4fbeaf 51,87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "2b7e4324b08f769d0cffee3bba83d5e554658c6d",
+  "prompts": {},
+  "sessions": {
+    "s_adc6b2fb6553a2": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "65802b92-8844-4d64-a3c6-9273fe93fe98",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

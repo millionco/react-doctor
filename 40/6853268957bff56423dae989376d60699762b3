@@ -1,0 +1,25 @@
+packages/react-doctor/src/cli/utils/resolve-project-diff-include-paths.ts
+  s_633b9c2d4ef70d::t_16e47741a2bf66 4
+packages/react-doctor/tests/read-changed-files-from.test.ts
+  s_633b9c2d4ef70d::t_a2888f338322a8 1-48
+packages/react-doctor/src/cli/utils/path-format.ts
+  s_633b9c2d4ef70d::t_29be3f018ffcdc 1
+packages/react-doctor/src/cli/utils/read-changed-files-from.ts
+  s_633b9c2d4ef70d::t_10dcb896874afa 3,22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "406853268957bff56423dae989376d60699762b3",
+  "prompts": {},
+  "sessions": {
+    "s_633b9c2d4ef70d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c5b5fedf-301b-4e7a-a33d-608875455be5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

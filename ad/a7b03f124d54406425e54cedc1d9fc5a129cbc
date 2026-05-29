@@ -1,0 +1,32 @@
+packages/react-doctor/tests/strip-unknown-cli-flags.test.ts
+  s_633b9c2d4ef70d::t_f70bf7aec9c718 26-36
+  s_633b9c2d4ef70d::t_3a8067db348f35 20-21
+packages/react-doctor/tests/validate-mode-flags.test.ts
+  s_633b9c2d4ef70d::t_7394301a86e0f9 1-20
+packages/react-doctor/tests/github-action.test.ts
+  s_633b9c2d4ef70d::t_a6df05e1561e7d 74-75,81,83
+packages/react-doctor/src/cli/utils/strip-unknown-cli-flags.ts
+  s_633b9c2d4ef70d::t_0a8ed1576e10c3 32-38
+packages/react-doctor/src/cli/utils/validate-mode-flags.ts
+  s_633b9c2d4ef70d::t_9fab7dac797b01 26-27
+.github/workflows/react-doctor.yml
+  s_633b9c2d4ef70d::t_1e85b2ceb3d053 23-33,38
+action.yml
+  s_633b9c2d4ef70d::t_b60038672e31af 27,74,96,101-106,108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "ada7b03f124d54406425e54cedc1d9fc5a129cbc",
+  "prompts": {},
+  "sessions": {
+    "s_633b9c2d4ef70d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c5b5fedf-301b-4e7a-a33d-608875455be5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

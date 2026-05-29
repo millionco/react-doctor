@@ -58,11 +58,11 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<string> => 
   if (project.hasReactCompiler) capabilities.add("react-compiler");
   if (project.hasTanStackQuery) capabilities.add("tanstack-query");
   if (project.hasTypeScript) capabilities.add("typescript");
-  // Keyed off `hasPreact`, not `framework === "preact"`, so the
+  // Keyed off `preactVersion`, not `framework === "preact"`, so the
   // dominant Preact-on-Vite setup (which classifies as `vite` for
   // build-tool reasons) still gets the `preact` capability and its
   // matching rule bucket.
-  if (project.hasPreact) {
+  if (project.preactVersion) {
     capabilities.add("preact");
     // `pure-preact` is the strict-mode signal: Preact is in the
     // dependency graph AND no `react` package is present, so the

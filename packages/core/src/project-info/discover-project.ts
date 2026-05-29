@@ -11,7 +11,7 @@ import { findMonorepoRoot, isMonorepoRoot } from "./find-monorepo-root.js";
 import { findReactInWorkspaces } from "./find-react-in-workspaces.js";
 import { getDependencyDeclaration } from "./utils/get-dependency-declaration.js";
 import { hasReactNativeWorkspaceAnywhere } from "./has-react-native-workspace-anywhere.js";
-import { hasPreact } from "./has-preact.js";
+import { getPreactVersion } from "./get-preact-version.js";
 import { hasTanStackQuery } from "./has-tanstack-query.js";
 import { someWorkspacePackageJson } from "./some-workspace-package-json.js";
 import { isPackageJsonReanimatedAware } from "./utils/is-package-json-reanimated-aware.js";
@@ -176,7 +176,7 @@ export const discoverProject = (directory: string): ProjectInfo => {
     hasTypeScript,
     hasReactCompiler: detectReactCompiler(directory, packageJson),
     hasTanStackQuery: hasTanStackQuery(packageJson),
-    hasPreact: hasPreact(packageJson),
+    preactVersion: getPreactVersion(packageJson),
     hasReactNativeWorkspace,
     hasReanimated,
     sourceFileCount,

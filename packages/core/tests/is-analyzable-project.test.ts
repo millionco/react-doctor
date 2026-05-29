@@ -12,7 +12,7 @@ const baseProject: ProjectInfo = {
   hasTypeScript: false,
   hasReactCompiler: false,
   hasTanStackQuery: false,
-  hasPreact: false,
+  preactVersion: null,
   hasReactNativeWorkspace: false,
   sourceFileCount: 0,
 };
@@ -23,7 +23,7 @@ describe("isAnalyzableProject", () => {
   });
 
   it("is analyzable for a Preact project with no react package", () => {
-    expect(isAnalyzableProject({ ...baseProject, hasPreact: true })).toBe(true);
+    expect(isAnalyzableProject({ ...baseProject, preactVersion: "^10.22.0" })).toBe(true);
   });
 
   it("is not analyzable with neither react nor preact", () => {

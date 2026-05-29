@@ -1,10 +1,10 @@
 import type { PackageJson } from "../types/index.js";
 
-export const hasPreact = (packageJson: PackageJson): boolean => {
+export const getPreactVersion = (packageJson: PackageJson): string | null => {
   const allDependencies = {
     ...packageJson.peerDependencies,
     ...packageJson.dependencies,
     ...packageJson.devDependencies,
   };
-  return "preact" in allDependencies;
+  return allDependencies.preact ?? null;
 };

@@ -79,7 +79,7 @@ describe("inspect", () => {
       );
 
       const result = await inspect(preactDirectory, { lint: true });
-      expect(result.project.hasPreact).toBe(true);
+      expect(result.project.preactVersion).toBe("^10.22.0");
       expect(result.project.reactVersion).toBe(null);
     } finally {
       consoleSpy.mockRestore();

@@ -13,13 +13,17 @@ const baseProject: ProjectInfo = {
   hasReactCompiler: false,
   hasTanStackQuery: false,
   hasReactNativeWorkspace: false,
-  hasPreact: false,
+  preactVersion: null,
   sourceFileCount: 1,
 };
 
 describe("buildCapabilities", () => {
-  it("emits the `preact` capability when `hasPreact` is true on a Preact-on-Vite project", () => {
-    const capabilities = buildCapabilities({ ...baseProject, framework: "vite", hasPreact: true });
+  it("emits the `preact` capability when `preactVersion` is set on a Preact-on-Vite project", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      framework: "vite",
+      preactVersion: "^10.22.0",
+    });
     expect(capabilities.has("preact")).toBe(true);
     expect(capabilities.has("vite")).toBe(true);
   });
@@ -28,7 +32,7 @@ describe("buildCapabilities", () => {
     const capabilities = buildCapabilities({
       ...baseProject,
       framework: "preact",
-      hasPreact: true,
+      preactVersion: "^10.22.0",
       reactVersion: null,
       reactMajorVersion: null,
     });
@@ -36,7 +40,11 @@ describe("buildCapabilities", () => {
   });
 
   it("does not emit the `preact` or `pure-preact` capabilities for a non-Preact project", () => {
-    const capabilities = buildCapabilities({ ...baseProject, framework: "vite", hasPreact: false });
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      framework: "vite",
+      preactVersion: null,
+    });
     expect(capabilities.has("preact")).toBe(false);
     expect(capabilities.has("pure-preact")).toBe(false);
   });
@@ -45,7 +53,7 @@ describe("buildCapabilities", () => {
     const purePreact = buildCapabilities({
       ...baseProject,
       framework: "preact",
-      hasPreact: true,
+      preactVersion: "^10.22.0",
       reactVersion: null,
       reactMajorVersion: null,
     });
@@ -54,7 +62,7 @@ describe("buildCapabilities", () => {
     const compatStyle = buildCapabilities({
       ...baseProject,
       framework: "vite",
-      hasPreact: true,
+      preactVersion: "^10.22.0",
       reactVersion: "18.3.1",
       reactMajorVersion: 18,
     });

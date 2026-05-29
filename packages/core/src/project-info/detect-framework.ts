@@ -32,9 +32,9 @@ export const formatFrameworkName = (framework: Framework): string =>
 // present — i.e. a pure-Preact codebase with no bundler manifest react-
 // doctor recognises. Component libraries that list both `react` and
 // `preact` as peer deps stay `unknown`, which is what they were before
-// this branch existed; they still pick up `hasPreact: true` via the
-// separate boolean (see `discover-project.ts`) so Preact-bucket rules
-// activate without overwriting the framework classification.
+// this branch existed; they still pick up a non-null `preactVersion`
+// (see `discover-project.ts`) so Preact-bucket rules activate without
+// overwriting the framework classification.
 export const detectFramework = (dependencies: Record<string, string>): Framework => {
   for (const [packageName, frameworkName] of Object.entries(FRAMEWORK_PACKAGES)) {
     if (dependencies[packageName]) {

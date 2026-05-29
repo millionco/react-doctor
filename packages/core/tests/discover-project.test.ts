@@ -1220,7 +1220,7 @@ describe("formatFrameworkName", () => {
 });
 
 describe("discoverProject — Preact", () => {
-  it("classifies a Preact-only project as `preact` and sets `hasPreact`", () => {
+  it("classifies a Preact-only project as `preact` and sets `preactVersion`", () => {
     const projectDirectory = path.join(tempDirectory, "preact-only-project");
     fs.mkdirSync(projectDirectory, { recursive: true });
     fs.writeFileSync(
@@ -1234,10 +1234,10 @@ describe("discoverProject — Preact", () => {
     const projectInfo = discoverProject(projectDirectory);
     expect(projectInfo.framework).toBe("preact");
     expect(projectInfo.reactVersion).toBe(null);
-    expect(projectInfo.hasPreact).toBe(true);
+    expect(projectInfo.preactVersion).toBe("^10.22.0");
   });
 
-  it("keeps `framework: vite` for Preact-on-Vite but still sets `hasPreact: true`", () => {
+  it("keeps `framework: vite` for Preact-on-Vite but still sets `preactVersion`", () => {
     const projectDirectory = path.join(tempDirectory, "preact-with-vite");
     fs.mkdirSync(projectDirectory, { recursive: true });
     fs.writeFileSync(
@@ -1251,7 +1251,7 @@ describe("discoverProject — Preact", () => {
 
     const projectInfo = discoverProject(projectDirectory);
     expect(projectInfo.framework).toBe("vite");
-    expect(projectInfo.hasPreact).toBe(true);
+    expect(projectInfo.preactVersion).toBe("^10.22.0");
   });
 
   it("stays `unknown` when both `react` and `preact` peer-deps are declared (component library shape)", () => {
@@ -1267,11 +1267,11 @@ describe("discoverProject — Preact", () => {
 
     const projectInfo = discoverProject(projectDirectory);
     expect(projectInfo.framework).toBe("unknown");
-    expect(projectInfo.hasPreact).toBe(true);
+    expect(projectInfo.preactVersion).toBe("^10.22.0");
     expect(projectInfo.reactVersion).toBe("^18.0.0 || ^19.0.0");
   });
 
-  it("`hasPreact` is false for projects with no `preact` declaration", () => {
+  it("`preactVersion` is null for projects with no `preact` declaration", () => {
     const projectDirectory = path.join(tempDirectory, "no-preact-here");
     fs.mkdirSync(projectDirectory, { recursive: true });
     fs.writeFileSync(
@@ -1283,6 +1283,6 @@ describe("discoverProject — Preact", () => {
     );
 
     const projectInfo = discoverProject(projectDirectory);
-    expect(projectInfo.hasPreact).toBe(false);
+    expect(projectInfo.preactVersion).toBe(null);
   });
 });

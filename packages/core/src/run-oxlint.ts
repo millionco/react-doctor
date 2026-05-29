@@ -128,8 +128,6 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     return [];
   }
 
-  const configDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-oxlintrc-"));
-  const configPath = path.join(configDirectory, "oxlintrc.json");
   const pluginPath = resolvePluginPath();
   // HACK: pass user lint configs to oxlint as absolute paths. oxlint's
   // docs say `extends` is "resolved relative to the configuration
@@ -169,6 +167,13 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
   const restoreDisableDirectives = respectInlineDisables
     ? () => {}
     : await neutralizeDisableDirectives(rootDirectory, includePaths);
+
+  // Created last so any throw in the setup above (plugin resolution,
+  // user-plugin loading) happens before the temp dir exists — nothing
+  // between here and the try can throw, so the finally always owns
+  // cleanup.
+  const configDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-oxlintrc-"));
+  const configPath = path.join(configDirectory, "oxlintrc.json");
 
   try {
     const oxlintBinary = resolveOxlintBinary();

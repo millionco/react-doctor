@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
@@ -182,7 +182,16 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       }
 
       const tempDirectory = mkdtempSync(path.join(tmpdir(), STAGED_FILES_TEMP_DIR_PREFIX));
-      const snapshot = await materializeStagedFiles(resolvedDirectory, stagedFiles, tempDirectory);
+      // If materialization throws before `snapshot.cleanup` is wired up,
+      // remove the temp dir we just created so it can't leak.
+      const snapshot = await materializeStagedFiles(
+        resolvedDirectory,
+        stagedFiles,
+        tempDirectory,
+      ).catch((error: unknown) => {
+        rmSync(tempDirectory, { recursive: true, force: true });
+        throw error;
+      });
       try {
         const scanResult = await inspect(snapshot.tempDirectory, {
           ...scanOptions,
@@ -193,7 +202,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         const remappedDiagnostics = scanResult.diagnostics.map((diagnostic) => ({
           ...diagnostic,
           filePath: path.isAbsolute(diagnostic.filePath)
-            ? diagnostic.filePath.replaceAll(snapshot.tempDirectory, resolvedDirectory)
+            ? diagnostic.filePath.replaceAll(snapshot.tempDirectory, () => resolvedDirectory)
             : diagnostic.filePath,
         }));
         const remappedInspectResult: InspectResult = {

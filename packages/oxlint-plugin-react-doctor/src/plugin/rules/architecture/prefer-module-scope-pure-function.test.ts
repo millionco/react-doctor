@@ -326,4 +326,57 @@ describe("prefer-module-scope-pure-function", () => {
     expect(result.diagnostics[0].message).toContain("validate");
     expect(result.diagnostics[0].message).toContain("Input");
   });
+
+  it("does not flag pure functions inside a PascalCase factory that returns an object literal", () => {
+    // Regression: `DailyVideoApiAdapter` / `AIHandlePlugin` style factories
+    // are PascalCase but return a plain object, never re-render, and live in
+    // plain .ts files — they must not be treated as components.
+    const result = runRule(
+      preferModuleScopePureFunction,
+      `
+      const DailyVideoApiAdapter = () => {
+        const translateEvent = (event) => event.id + ":translated";
+        return {
+          createMeeting: () => translateEvent({ id: 1 }),
+        };
+      };
+    `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag pure functions inside a PascalCase factory with a block body returning an object", () => {
+    const result = runRule(
+      preferModuleScopePureFunction,
+      `
+      function AIHandlePlugin(options) {
+        const handleClick = (event) => event.preventDefault();
+        const domEvents = {};
+        return { view: handleClick, domEvents };
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags pure functions inside a hook that returns an object literal", () => {
+    // Hooks legitimately return objects (`{ data, loading }`) AND re-run
+    // every render, so the object-return factory guard must not exempt them.
+    const result = runRule(
+      preferModuleScopePureFunction,
+      `
+      function useThing() {
+        const format = (value) => value + "!";
+        return { format };
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("format");
+    expect(result.diagnostics[0].message).toContain("useThing");
+  });
 });

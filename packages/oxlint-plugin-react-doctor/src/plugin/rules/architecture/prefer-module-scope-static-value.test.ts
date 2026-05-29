@@ -459,4 +459,37 @@ describe("prefer-module-scope-static-value", () => {
     // enclosing function is the handler, not the component.
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("does not flag static values inside a PascalCase factory that returns an object literal", () => {
+    // Regression: `AIHandlePlugin` (a ProseMirror plugin factory) is
+    // PascalCase but returns a plain object and never re-renders. The
+    // "reallocated every render" premise does not apply.
+    const result = runRule(
+      preferModuleScopeStaticValue,
+      `
+      const AIHandlePlugin = (options) => {
+        const domEvents = { keydown: true };
+        return { view: null, domEvents };
+      };
+    `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags static values inside a hook that returns an object literal", () => {
+    const result = runRule(
+      preferModuleScopeStaticValue,
+      `
+      function useConfig() {
+        const DEFAULTS = { a: 1, b: 2 };
+        return { DEFAULTS };
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("DEFAULTS");
+  });
 });

@@ -29,6 +29,7 @@ const buildDiagnoseResult = (): DiagnoseResult => ({
     hasTanStackQuery: false,
     hasReactNativeWorkspace: false,
     hasReanimated: false,
+    preactVersion: null,
     sourceFileCount: 12,
   },
   elapsedMilliseconds: 321,

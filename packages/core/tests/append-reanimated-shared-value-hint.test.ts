@@ -23,6 +23,7 @@ const buildProject = (overrides: Partial<ProjectInfo> = {}): ProjectInfo => ({
   hasTanStackQuery: false,
   hasReactNativeWorkspace: true,
   hasReanimated: true,
+  preactVersion: null,
   sourceFileCount: 10,
   ...overrides,
 });

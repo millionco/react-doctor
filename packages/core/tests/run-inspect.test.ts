@@ -35,6 +35,7 @@ const sampleProject: ProjectInfo = {
   hasTanStackQuery: false,
   hasReactNativeWorkspace: false,
   hasReanimated: false,
+  preactVersion: null,
   sourceFileCount: 1,
 };
 

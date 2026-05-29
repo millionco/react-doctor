@@ -62,7 +62,7 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<string> => 
   // dominant Preact-on-Vite setup (which classifies as `vite` for
   // build-tool reasons) still gets the `preact` capability and its
   // matching rule bucket.
-  if (project.preactVersion) {
+  if (project.preactVersion !== null) {
     capabilities.add("preact");
     // `pure-preact` is the strict-mode signal: Preact is in the
     // dependency graph AND no `react` package is present, so the

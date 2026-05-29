@@ -138,6 +138,7 @@ export const buildTestProject = (options: BuildTestProjectOptions): ProjectInfo 
     hasTanStackQuery: options.hasTanStackQuery ?? false,
     hasReactNativeWorkspace: framework === "expo" || framework === "react-native",
     hasReanimated: options.hasReanimated ?? false,
+    preactVersion: null,
     sourceFileCount: 0,
   };
 };

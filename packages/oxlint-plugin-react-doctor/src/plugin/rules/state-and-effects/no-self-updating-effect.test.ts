@@ -27,6 +27,41 @@ describe("no-self-updating-effect", () => {
     expect(result.diagnostics[0].message).toContain("count");
   });
 
+  it("flags a concise arrow body that updates its own state", () => {
+    const result = runRule(
+      noSelfUpdatingEffect,
+      `
+      import { useEffect, useState } from "react";
+
+      function Counter() {
+        const [count, setCount] = useState(0);
+        useEffect(() => setCount((value) => value + 1), [count]);
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("setCount()");
+  });
+
+  it("does not flag a concise arrow body when deps are empty", () => {
+    const result = runRule(
+      noSelfUpdatingEffect,
+      `
+      import { useEffect, useState } from "react";
+
+      function Counter() {
+        const [count, setCount] = useState(0);
+        useEffect(() => setCount((value) => value + 1), []);
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags a direct arithmetic write that reads its own state", () => {
     const result = runRule(
       noSelfUpdatingEffect,

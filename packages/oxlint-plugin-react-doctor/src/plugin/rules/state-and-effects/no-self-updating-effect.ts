@@ -36,8 +36,13 @@ const getUnconditionalSetterCall = (
   statement: EsTreeNode,
   setterNames: ReadonlySet<string>,
 ): EsTreeNodeOfType<"CallExpression"> | null => {
-  if (!isNodeOfType(statement, "ExpressionStatement")) return null;
-  const expression = stripParenExpression(statement.expression);
+  // `getCallbackStatements` hands back the bare expression for a concise
+  // arrow body (`() => setCount(...)`) and the `ExpressionStatement` for a
+  // block body (`() => { setCount(...); }`). Both are unconditional
+  // synchronous writes, so unwrap the statement form and treat them alike.
+  const expression = stripParenExpression(
+    isNodeOfType(statement, "ExpressionStatement") ? statement.expression : statement,
+  );
   if (!isNodeOfType(expression, "CallExpression")) return null;
   if (!isNodeOfType(expression.callee, "Identifier")) return null;
   if (!setterNames.has(expression.callee.name)) return null;

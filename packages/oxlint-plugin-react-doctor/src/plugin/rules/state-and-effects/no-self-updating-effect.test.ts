@@ -318,6 +318,63 @@ describe("no-self-updating-effect", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("does not treat a matching member property name as a self-read", () => {
+    const result = runRule(
+      noSelfUpdatingEffect,
+      `
+      import { useEffect, useState } from "react";
+
+      function Counter({ source }) {
+        const [count, setCount] = useState(0);
+        useEffect(() => {
+          setCount(source.count);
+        }, [count]);
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat a matching object key name as a self-read", () => {
+    const result = runRule(
+      noSelfUpdatingEffect,
+      `
+      import { useEffect, useState } from "react";
+
+      function Counter({ payload }) {
+        const [count, setCount] = useState(0);
+        useEffect(() => {
+          setCount(lookup({ count: payload }));
+        }, [count]);
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a regex literal write that loops on its own state", () => {
+    const result = runRule(
+      noSelfUpdatingEffect,
+      `
+      import { useEffect, useState } from "react";
+
+      function Search() {
+        const [pattern, setPattern] = useState(/^/);
+        useEffect(() => {
+          setPattern(/abc/i);
+        }, [pattern]);
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag effects that only write unrelated state", () => {
     const result = runRule(
       noSelfUpdatingEffect,

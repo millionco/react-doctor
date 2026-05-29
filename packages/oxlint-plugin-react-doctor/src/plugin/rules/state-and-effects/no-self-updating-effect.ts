@@ -5,28 +5,53 @@ import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isAstNode } from "../../utils/is-ast-node.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
-import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
 
+// Every literal builds a value-equal result except a regex literal,
+// which evaluates to a fresh `RegExp` object each render and so never
+// passes React's `Object.is` bailout — the same as `[]` / `{}` / `new`.
 const constructsFreshReference = (node: EsTreeNode): boolean =>
   isNodeOfType(node, "ArrayExpression") ||
   isNodeOfType(node, "ObjectExpression") ||
-  isNodeOfType(node, "NewExpression");
+  isNodeOfType(node, "NewExpression") ||
+  (isNodeOfType(node, "Literal") && "regex" in node);
 
-const expressionReadsName = (node: EsTreeNode, name: string): boolean => {
-  let didReadName = false;
-  walkAst(node, (child) => {
-    if (didReadName) return false;
-    if (isNodeOfType(child, "Identifier") && child.name === name) didReadName = true;
-  });
-  return didReadName;
+// True when `name` is read as a VALUE somewhere in the expression. A
+// non-computed member property (`other.count`) and a non-computed object
+// key (`{ count: 1 }`) are static names, not reads of the `count`
+// binding, so they are skipped — walking every Identifier blindly would
+// flag `setCount(other.count)` as self-referential.
+const expressionReadsStateValue = (node: EsTreeNode, name: string): boolean => {
+  if (isNodeOfType(node, "Identifier")) return node.name === name;
+  if (isNodeOfType(node, "MemberExpression")) {
+    if (expressionReadsStateValue(node.object, name)) return true;
+    return node.computed ? expressionReadsStateValue(node.property, name) : false;
+  }
+  if (isNodeOfType(node, "Property")) {
+    if (node.computed && expressionReadsStateValue(node.key, name)) return true;
+    return expressionReadsStateValue(node.value, name);
+  }
+  const nodeRecord = node as unknown as Record<string, unknown>;
+  for (const key of Object.keys(nodeRecord)) {
+    if (key === "parent" || key === "type") continue;
+    const child = nodeRecord[key];
+    if (Array.isArray(child)) {
+      for (const item of child) {
+        if (isAstNode(item) && expressionReadsStateValue(item, name)) return true;
+      }
+    } else if (isAstNode(child) && expressionReadsStateValue(child, name)) {
+      return true;
+    }
+  }
+  return false;
 };
 
 // A self-referential write only loops forever when its new value
@@ -59,7 +84,7 @@ const isNonSettlingSetterArgument = (
     return true;
   }
   if (constructsFreshReference(argument)) return true;
-  return expressionReadsName(argument, stateName);
+  return expressionReadsStateValue(argument, stateName);
 };
 
 const getUnconditionalSetterCall = (

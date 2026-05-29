@@ -72,13 +72,26 @@ class DecompressedBodyTooLargeError extends Error {
   }
 }
 
+class RequestBodyTooLargeError extends Error {
+  constructor() {
+    super("request body exceeds limit");
+    this.name = "RequestBodyTooLargeError";
+  }
+}
+
 const isBufferTooLargeError = (error: unknown): boolean =>
   error instanceof Error && (error as NodeJS.ErrnoException).code === "ERR_BUFFER_TOO_LARGE";
 
 const decodeRequestBody = async (request: Request): Promise<unknown> => {
   const contentEncoding = request.headers.get("content-encoding")?.toLowerCase() ?? "";
+  // Enforce the cap on the bytes actually read — the content-length
+  // header is client-controlled (omittable / spoofable), so it can't be
+  // the only guard, and the non-gzip path previously had no app-level cap.
+  const rawBody = Buffer.from(await request.arrayBuffer());
+  if (rawBody.byteLength > MAX_REQUEST_BODY_BYTES) {
+    throw new RequestBodyTooLargeError();
+  }
   if (contentEncoding === "gzip") {
-    const rawBody = Buffer.from(await request.arrayBuffer());
     let decompressed: Buffer;
     try {
       decompressed = gunzipSync(rawBody, { maxOutputLength: MAX_DECOMPRESSED_BODY_BYTES });
@@ -88,7 +101,7 @@ const decodeRequestBody = async (request: Request): Promise<unknown> => {
     }
     return JSON.parse(decompressed.toString("utf8"));
   }
-  return request.json();
+  return JSON.parse(rawBody.toString("utf8"));
 };
 
 export const POST = async (request: Request): Promise<Response> => {
@@ -101,6 +114,9 @@ export const POST = async (request: Request): Promise<Response> => {
   try {
     body = await decodeRequestBody(request);
   } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return respondError(413, "Request body exceeds 2MB");
+    }
     if (error instanceof DecompressedBodyTooLargeError) {
       return respondError(413, "Decompressed request body exceeds 25MB");
     }

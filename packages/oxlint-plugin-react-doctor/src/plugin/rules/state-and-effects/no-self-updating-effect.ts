@@ -137,72 +137,179 @@ const isEarlyReturnGuard = (
   return false;
 };
 
-// State names read by a top-level early-return guard in the effect body.
-// Such a guard lets the effect converge: once the written state reaches the
-// shape the guard checks for, the next run bails out before the setter, so
-// the write settles and is NOT a render loop. This is the early-return form
-// of the "guarded update" the rule already exempts (`if (a !== b) setX(b)`),
-// and it covers the common convergent idioms a naive "fresh reference never
-// settles" check otherwise misfires on:
-//   - drain a queue:    `if (!queue.length) return; … setQueue([])`
-//   - consume a path:   `if (path.length !== 1) return; … setPath(p => p.slice(1))`
-//   - reach a fixpoint: `if (!hasOutdated) return; … setX(prev.map(...))`
-// The guard may read the state directly OR through a local derived from it
-// (`const cur = items[…]; if (cur.text === text) return`). We stay
-// conservative (matching the rule's no-overclaim stance) and treat ANY such
-// early-return guard as evidence of convergence.
-//
-// Top-level `const`/`let` locals whose initializer reads a state value, as a
-// map of local name → state name. Lets a guard testing the local count as
-// reading the state.
-const collectStateDerivedLocals = (
-  statements: readonly EsTreeNode[],
-  candidateStateNames: ReadonlySet<string>,
-): ReadonlyMap<string, string> => {
-  const derivedLocalToState = new Map<string, string>();
-  for (const statement of statements) {
-    if (!isNodeOfType(statement, "VariableDeclaration")) continue;
-    for (const declarator of statement.declarations ?? []) {
-      if (!isNodeOfType(declarator, "VariableDeclarator")) continue;
-      if (!isNodeOfType(declarator.id, "Identifier")) continue;
-      if (!declarator.init) continue;
-      for (const stateName of candidateStateNames) {
-        if (expressionReadsStateValue(declarator.init, stateName)) {
-          derivedLocalToState.set(declarator.id.name, stateName);
-          break;
-        }
-      }
-    }
+// Numeric value of a literal node (handles a negated literal like `-1`), else
+// null.
+const numericLiteralValue = (node: EsTreeNode): number | null => {
+  if (isNodeOfType(node, "Literal") && typeof node.value === "number") return node.value;
+  if (
+    isNodeOfType(node, "UnaryExpression") &&
+    node.operator === "-" &&
+    isNodeOfType(node.argument, "Literal") &&
+    typeof node.argument.value === "number"
+  ) {
+    return -node.argument.value;
   }
-  return derivedLocalToState;
+  return null;
 };
 
-const collectGuardedStateNames = (
-  statements: readonly EsTreeNode[],
-  candidateStateNames: ReadonlySet<string>,
-): ReadonlySet<string> => {
-  const derivedLocalToState = collectStateDerivedLocals(statements, candidateStateNames);
-  const guardedStateNames = new Set<string>();
-  const markIfGuardReads = (test: EsTreeNode, stateName: string): void => {
-    if (guardedStateNames.has(stateName)) return;
-    if (expressionReadsStateValue(test, stateName)) {
-      guardedStateNames.add(stateName);
-      return;
-    }
-    for (const [localName, derivedState] of derivedLocalToState) {
-      if (derivedState === stateName && expressionReadsStateValue(test, localName)) {
-        guardedStateNames.add(stateName);
-        return;
-      }
-    }
-  };
-  for (const statement of statements) {
-    if (!isEarlyReturnGuard(statement)) continue;
-    for (const stateName of candidateStateNames) {
-      markIfGuardReads(statement.test, stateName);
-    }
+// `<reads the written state>.length` — the `.length` of the state itself,
+// including the optional-chained form `state?.length` (which the parser wraps
+// in a `ChainExpression`).
+const isStateLength = (node: EsTreeNode, stateName: string): boolean => {
+  const member = isNodeOfType(node, "ChainExpression") ? node.expression : node;
+  return (
+    isNodeOfType(member, "MemberExpression") &&
+    !member.computed &&
+    isNodeOfType(member.property, "Identifier") &&
+    member.property.name === "length" &&
+    expressionReadsStateValue(member.object, stateName)
+  );
+};
+
+const isNullishLiteral = (node: EsTreeNode): boolean =>
+  (isNodeOfType(node, "Literal") && node.value === null) ||
+  (isNodeOfType(node, "Identifier") && node.name === "undefined");
+
+const comparisonHoldsAtZero = (operator: string, left: number, right: number): boolean => {
+  switch (operator) {
+    case "<":
+      return left < right;
+    case "<=":
+      return left <= right;
+    case ">":
+      return left > right;
+    case ">=":
+      return left >= right;
+    case "===":
+    case "==":
+      return left === right;
+    case "!==":
+    case "!=":
+      return left !== right;
+    default:
+      return false;
   }
-  return guardedStateNames;
+};
+
+// SOUND convergence test: does the early-return guard `test` evaluate to TRUE
+// once the written state is empty (length 0 / nullish)? If so, a write that
+// drives the state toward empty trips this guard on the next run and stops —
+// the effect converges and is NOT a loop. Only structurally provable shapes
+// return true; anything uncertain returns false so the write stays flagged
+// (recall-safe — we never silence a write we cannot prove settles).
+//
+//   `!S.length`, `S.length === 0`, `S.length < n`, `S.length !== 1`  → exits empty
+//   `S == null`, `S === undefined`                                   → exits nullish
+//   `A || B` → exits-empty if EITHER side does
+//   `A && B` → exits-empty only if BOTH sides do
+//
+// Deliberately NOT matched (stays flagged): `S.length > n` (a length-reducing
+// write drives toward the empty fixpoint, AWAY from a high-watermark guard, so
+// it loops at empty), and equality/identity guards (`text === cur.text`) whose
+// convergence needs value tracking we do not attempt.
+const guardExitsWhenStateEmpty = (test: EsTreeNode, stateName: string): boolean => {
+  const node = isNodeOfType(test, "ChainExpression") ? test.expression : test;
+  if (isNodeOfType(node, "UnaryExpression") && node.operator === "!") {
+    // `!S.length` is true at length 0. (`!S` is not — an empty array is truthy.)
+    return isStateLength(node.argument, stateName);
+  }
+  if (isNodeOfType(node, "LogicalExpression")) {
+    if (node.operator === "||") {
+      return (
+        guardExitsWhenStateEmpty(node.left, stateName) ||
+        guardExitsWhenStateEmpty(node.right, stateName)
+      );
+    }
+    if (node.operator === "&&") {
+      return (
+        guardExitsWhenStateEmpty(node.left, stateName) &&
+        guardExitsWhenStateEmpty(node.right, stateName)
+      );
+    }
+    return false;
+  }
+  if (isNodeOfType(node, "BinaryExpression")) {
+    const leftIsLength = isStateLength(node.left, stateName);
+    const rightIsLength = isStateLength(node.right, stateName);
+    if (leftIsLength || rightIsLength) {
+      const other = numericLiteralValue(leftIsLength ? node.right : node.left);
+      if (other === null) return false;
+      return leftIsLength
+        ? comparisonHoldsAtZero(node.operator, 0, other)
+        : comparisonHoldsAtZero(node.operator, other, 0);
+    }
+    if (node.operator === "==" || node.operator === "===") {
+      if (expressionReadsStateValue(node.left, stateName) && isNullishLiteral(node.right))
+        return true;
+      if (expressionReadsStateValue(node.right, stateName) && isNullishLiteral(node.left))
+        return true;
+    }
+    return false;
+  }
+  return false;
+};
+
+// The empty fixpoint a write can drive the state toward: `[]`, `{}`, `""`, `0`,
+// `false`, `null`, `undefined`.
+const isEmptyOrFalsyValue = (node: EsTreeNode): boolean => {
+  if (isNodeOfType(node, "ArrayExpression")) return (node.elements ?? []).length === 0;
+  if (isNodeOfType(node, "ObjectExpression")) return (node.properties ?? []).length === 0;
+  if (isNodeOfType(node, "Literal")) {
+    return node.value === null || node.value === "" || node.value === 0 || node.value === false;
+  }
+  if (isNodeOfType(node, "Identifier")) return node.name === "undefined";
+  return false;
+};
+
+const functionReturnExpression = (fn: EsTreeNode): EsTreeNode | null => {
+  if (!isNodeOfType(fn, "ArrowFunctionExpression") && !isNodeOfType(fn, "FunctionExpression")) {
+    return null;
+  }
+  if (!isNodeOfType(fn.body, "BlockStatement")) return fn.body ?? null;
+  for (const statement of fn.body.body ?? []) {
+    if (isNodeOfType(statement, "ReturnStatement") && statement.argument) return statement.argument;
+  }
+  return null;
+};
+
+// `(prev) => prev.slice(<positive int>)` — a strictly length-reducing updater
+// whose fixpoint is the empty array. `.filter` can keep every element and loop
+// forever, so it is intentionally NOT treated as reducing.
+const isLengthReducingUpdater = (node: EsTreeNode): boolean => {
+  if (!isNodeOfType(node, "ArrowFunctionExpression") && !isNodeOfType(node, "FunctionExpression")) {
+    return false;
+  }
+  const firstParameter = node.params?.[0];
+  if (!firstParameter || !isNodeOfType(firstParameter, "Identifier")) return false;
+  const returned = functionReturnExpression(node);
+  if (!returned || !isNodeOfType(returned, "CallExpression")) return false;
+  const callee = returned.callee;
+  if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return false;
+  if (!isNodeOfType(callee.object, "Identifier") || callee.object.name !== firstParameter.name) {
+    return false;
+  }
+  if (!isNodeOfType(callee.property, "Identifier") || callee.property.name !== "slice")
+    return false;
+  const sliceStart = numericLiteralValue(returned.arguments?.[0]);
+  return sliceStart !== null && sliceStart >= 1;
+};
+
+// A guarded write is a PROVABLE non-loop only when it drives the state toward
+// the empty fixpoint (an empty/falsy reset or a length-reducing updater) AND
+// some early-return guard provably bails out once the state is empty. This is
+// the early-return form of the inline `if (a !== b) setX(b)` exemption, made
+// sound: it never silences a diverging write (`setX(x + 1)`), an appending
+// write (`setX(p => [...p, x])`), or a guard that exits on a high length
+// (`if (x.length > n) return`) — all of which keep looping.
+const writeProvablyConverges = (
+  setterArgument: EsTreeNode,
+  stateName: string,
+  earlyReturnGuardTests: readonly EsTreeNode[],
+): boolean => {
+  if (!isEmptyOrFalsyValue(setterArgument) && !isLengthReducingUpdater(setterArgument)) {
+    return false;
+  }
+  return earlyReturnGuardTests.some((test) => guardExitsWhenStateEmpty(test, stateName));
 };
 
 export const noSelfUpdatingEffect = defineRule<Rule>({
@@ -244,12 +351,12 @@ export const noSelfUpdatingEffect = defineRule<Rule>({
         // is an unconditional feedback loop, so both are left to other
         // rules.
         const callbackStatements = getCallbackStatements(callback);
-        // A top-level `if (<reads state>) return;` guard lets the effect
-        // converge, so writes to that state settle and must not be flagged.
-        const guardedStateNames = collectGuardedStateNames(
-          callbackStatements,
-          dependencyStateNames,
-        );
+        // Tests of the effect's top-level `if (<cond>) return;` guards. A write
+        // that drives its state toward empty under such a guard provably
+        // converges (see `writeProvablyConverges`) and must not be flagged.
+        const earlyReturnGuardTests = callbackStatements
+          .filter(isEarlyReturnGuard)
+          .map((guard) => guard.test);
         const reportedStateNames = new Set<string>();
         for (const callbackStatement of callbackStatements) {
           const setterCall = getUnconditionalSetterCall(callbackStatement, setterNames);
@@ -258,8 +365,19 @@ export const noSelfUpdatingEffect = defineRule<Rule>({
           const stateName = setterNameToStateName.get(setterCall.callee.name);
           if (!stateName || !dependencyStateNames.has(stateName)) continue;
           if (reportedStateNames.has(stateName)) continue;
-          if (guardedStateNames.has(stateName)) continue;
           if (!isNonSettlingSetterArgument(setterCall, stateName)) continue;
+
+          const firstArgument = setterCall.arguments?.[0];
+          if (
+            firstArgument &&
+            writeProvablyConverges(
+              stripParenExpression(firstArgument),
+              stateName,
+              earlyReturnGuardTests,
+            )
+          ) {
+            continue;
+          }
 
           reportedStateNames.add(stateName);
           context.report({

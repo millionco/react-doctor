@@ -522,10 +522,38 @@ describe("no-self-updating-effect", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does not flag a fixpoint map() write guarded by a derived early-return", () => {
-    // Regression (lightdash useCartesianChartConfig): once every entry is
-    // mapped to the target, the `length === 0` early-return guard short-circuits
-    // the next run, so the fresh array from `.map(...)` settles.
+  it("does not flag a length-reducing write under an optional-chained length guard", () => {
+    // nhost effect #1 uses optional chaining (`path?.length !== 1`); the parser
+    // wraps it in a ChainExpression, which the length check must unwrap.
+    const result = runRule(
+      noSelfUpdatingEffect,
+      `
+      import { useEffect, useState } from "react";
+
+      function useColumnPath() {
+        const [remainingColumnPath, setRemainingColumnPath] = useState([]);
+        useEffect(() => {
+          if (remainingColumnPath?.length !== 1 || loading) {
+            return;
+          }
+          setRemainingColumnPath((path) => path.slice(1));
+        }, [remainingColumnPath, loading]);
+        return remainingColumnPath;
+      }
+    `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a fixpoint map() write the analysis cannot prove converges (known limitation)", () => {
+    // lightdash useCartesianChartConfig: this DOES converge at runtime (after
+    // one pass every entry already matches the target, so the next run bails),
+    // but proving it needs value-tracking through `.map(...)` we do not attempt.
+    // `.map` does not drive the array toward the empty fixpoint, so we stay
+    // sound and flag rather than silently assume convergence. This is an
+    // accepted residual false positive — better an over-warn than a hidden loop.
     const result = runRule(
       noSelfUpdatingEffect,
       `
@@ -546,7 +574,8 @@ describe("no-self-updating-effect", () => {
     `,
     );
 
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("still flags a fresh-reference loop whose guard reads only unrelated state", () => {
@@ -575,12 +604,13 @@ describe("no-self-updating-effect", () => {
     expect(result.diagnostics[0].message).toContain("setRecord()");
   });
 
-  it("does not flag a write bounded by a guard that reads the state through a derived local", () => {
-    // Regression (millionco/expect TextCarousel): the effect reads the state
-    // into a local (\`const current = items[items.length - 1]\`) and bails when
-    // it already matches (\`if (text === current.text) return\`). The write
-    // makes the last item's text equal \`text\`, so the next run early-returns —
-    // it converges. The guard reads \`items\` only through \`current\`.
+  it("flags an equality-guarded write the analysis cannot prove converges (known limitation)", () => {
+    // millionco/expect TextCarousel: this DOES converge at runtime — the write
+    // makes the last item's text equal \`text\`, so next run \`text ===
+    // current.text\` bails. But proving that needs tracking the written object's
+    // field through an equality guard against a derived snapshot, which we do
+    // not attempt. The write (\`[...prev.slice(-1), {…}]\`) grows rather than
+    // shrinking toward empty, so we stay sound and flag. Accepted residual FP.
     const result = runRule(
       noSelfUpdatingEffect,
       `
@@ -599,7 +629,7 @@ describe("no-self-updating-effect", () => {
     );
 
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("still flags a fresh-reference loop when a state-derived local is not used in a guard", () => {
@@ -645,6 +675,132 @@ describe("no-self-updating-effect", () => {
     );
 
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  // ---- recall: a guard reading the state must NOT silence a write that keeps
+  // diverging. These are the cases an over-broad "any guard exempts" heuristic
+  // would wrongly hide. ----
+
+  it("still flags a diverging increment even when a guard reads the same state", () => {
+    // \`x == null\` reads x but the write \`x + 1\` never makes x null, so the
+    // guard never fires from the loop — genuine infinite loop, must flag.
+    const result = runRule(
+      noSelfUpdatingEffect,
+      `
+      import { useEffect, useState } from "react";
+
+      function Counter() {
+        const [x, setX] = useState(0);
+        useEffect(() => {
+          if (x == null) {
+            return;
+          }
+          setX(x + 1);
+        }, [x]);
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a length-reducing write under a high-watermark guard", () => {
+    // \`slice(1)\` drives the array toward empty, AWAY from the \`length > 5\`
+    // guard, and \`[].slice(1)\` stays a fresh empty array forever — loops at the
+    // empty fixpoint, so it must flag.
+    const result = runRule(
+      noSelfUpdatingEffect,
+      `
+      import { useEffect, useState } from "react";
+
+      function List() {
+        const [items, setItems] = useState([]);
+        useEffect(() => {
+          if (items.length > 5) {
+            return;
+          }
+          setItems((prev) => prev.slice(1));
+        }, [items]);
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags an appending write under an emptiness guard", () => {
+    // \`[...prev, x]\` grows the array; the \`!items.length\` guard only fires when
+    // empty, which the append moves away from — diverges, must flag.
+    const result = runRule(
+      noSelfUpdatingEffect,
+      `
+      import { useEffect, useState } from "react";
+
+      function List({ x }) {
+        const [items, setItems] = useState([x]);
+        useEffect(() => {
+          if (!items.length) {
+            return;
+          }
+          setItems((prev) => [...prev, x]);
+        }, [items, x]);
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags an empty reset whose emptiness exit depends on other unproven state", () => {
+    // \`setItems([])\` drives toward empty, but the guard only bails when \`ready\`
+    // is also false — reaching empty alone does not stop it, so we cannot prove
+    // convergence and must flag.
+    const result = runRule(
+      noSelfUpdatingEffect,
+      `
+      import { useEffect, useState } from "react";
+
+      function List({ ready }) {
+        const [items, setItems] = useState([]);
+        useEffect(() => {
+          if (ready && items.length === 0) {
+            return;
+          }
+          setItems([]);
+        }, [items, ready]);
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag an empty reset whose guard exits purely on emptiness (|| form)", () => {
+    // The \`!items.length\` disjunct fires once the reset empties the array, so
+    // the effect provably converges — must stay quiet.
+    const result = runRule(
+      noSelfUpdatingEffect,
+      `
+      import { useEffect, useState } from "react";
+
+      function List({ busy }) {
+        const [items, setItems] = useState([]);
+        useEffect(() => {
+          if (busy || !items.length) {
+            return;
+          }
+          setItems([]);
+        }, [items, busy]);
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag lowercase helper functions that are not components or hooks", () => {

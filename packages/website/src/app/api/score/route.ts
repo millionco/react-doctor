@@ -4,8 +4,15 @@ import { getScoreLabel } from "@/utils/get-score-label";
 
 const ERROR_RULE_PENALTY = 1.5;
 const WARNING_RULE_PENALTY = 0.75;
+// 4 MB — Vercel's serverless request body limit; the platform rejects
+// anything larger before it reaches this handler, so this is the most we
+// can accept inline.
+// TODO: switch to a Vercel Blob upload reference for larger diagnostic
+// payloads instead of inline JSON.
 const MAX_REQUEST_BODY_BYTES = 4_000_000;
-const MAX_DECOMPRESSED_BODY_BYTES = 25_000_000;
+// Hold the decompressed (gzip) payload to the same 4 MB ceiling — a
+// compressed body must not expand beyond what we'd accept uncompressed.
+const MAX_DECOMPRESSED_BODY_BYTES = 4_000_000;
 const MAX_DIAGNOSTICS_PER_REQUEST = 50_000;
 
 interface DiagnosticInput {
@@ -118,7 +125,7 @@ export const POST = async (request: Request): Promise<Response> => {
       return respondError(413, "Request body exceeds 4MB");
     }
     if (error instanceof DecompressedBodyTooLargeError) {
-      return respondError(413, "Decompressed request body exceeds 25MB");
+      return respondError(413, "Decompressed request body exceeds 4MB");
     }
     body = null;
   }

@@ -137,6 +137,7 @@ const buildErrorBody = (report) => {
     "",
     runUrl ? `[View workflow run](${runUrl})` : "",
     `[Report this bug](${bugReportUrl})`,
+    "",
     buildBrandFooter(),
     "",
   ]
@@ -170,6 +171,7 @@ const buildCommentBody = (report) => {
     buildTopRulesSection(report.diagnostics),
     buildSkippedChecksSection(report),
     runUrl ? `[View workflow run](${runUrl})` : "",
+    "",
     buildBrandFooter(),
     "",
   ];

@@ -346,6 +346,157 @@ export { config };
   });
 });
 
+describe("no-prop-types", () => {
+  it("flags Component.propTypes = { ... } on a function component", async () => {
+    const projectDir = setupReactProject(tempRoot, "no-prop-types-assignment", {
+      files: {
+        "src/Rating.tsx": `import PropTypes from "prop-types";
+
+export function Rating({ value }: { value?: number }) {
+  return <span>{value}</span>;
+}
+
+Rating.propTypes = {
+  value: PropTypes.number,
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "no-prop-types");
+    expect(hits.length).toBe(1);
+    expect(hits[0].message).toContain("Rating");
+    expect(hits[0].message).toContain("React 19");
+  });
+
+  it("flags a static propTypes class field on a class component", async () => {
+    const projectDir = setupReactProject(tempRoot, "no-prop-types-class-static", {
+      files: {
+        "src/Rating.tsx": `import React from "react";
+import PropTypes from "prop-types";
+
+export class Rating extends React.Component<{ value?: number }> {
+  static propTypes = {
+    value: PropTypes.number,
+  };
+  render() {
+    return <span>{this.props.value}</span>;
+  }
+}
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "no-prop-types");
+    expect(hits.length).toBe(1);
+    expect(hits[0].message).toContain("Rating");
+  });
+
+  it("flags a static propTypes field on a class assigned to an uppercase const", async () => {
+    const projectDir = setupReactProject(tempRoot, "no-prop-types-class-expr", {
+      files: {
+        "src/Rating.tsx": `import React from "react";
+import PropTypes from "prop-types";
+
+export const Rating = class extends React.Component<{ value?: number }> {
+  static propTypes = {
+    value: PropTypes.number,
+  };
+  render() {
+    return <span>{this.props.value}</span>;
+  }
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "no-prop-types");
+    expect(hits.length).toBe(1);
+    expect(hits[0].message).toContain("Rating");
+  });
+
+  it('flags a computed Component["propTypes"] = { ... } assignment', async () => {
+    const projectDir = setupReactProject(tempRoot, "no-prop-types-computed", {
+      files: {
+        "src/Rating.tsx": `import PropTypes from "prop-types";
+
+export function Rating({ value }: { value?: number }) {
+  return <span>{value}</span>;
+}
+
+Rating["propTypes"] = {
+  value: PropTypes.number,
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "no-prop-types");
+    expect(hits.length).toBe(1);
+    expect(hits[0].message).toContain("Rating");
+  });
+
+  it("does not flag TypeScript prop types with destructuring defaults", async () => {
+    const projectDir = setupReactProject(tempRoot, "no-prop-types-modern", {
+      files: {
+        "src/Rating.tsx": `interface Props {
+  value?: number;
+}
+
+export function Rating({ value = 0 }: Props) {
+  return <span>{value}</span>;
+}
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "no-prop-types");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("does not flag a propTypes property on a lowercase (non-component) object", async () => {
+    const projectDir = setupReactProject(tempRoot, "no-prop-types-lowercase", {
+      files: {
+        "src/util.ts": `const config = {} as { propTypes?: Record<string, unknown> };
+config.propTypes = { value: 1 };
+export { config };
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "no-prop-types");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("does not flag a static propTypes field on a lowercase-named class", async () => {
+    const projectDir = setupReactProject(tempRoot, "no-prop-types-lowercase-class", {
+      files: {
+        "src/validator.ts": `export class validator {
+  static propTypes = { value: 1 };
+}
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "no-prop-types");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("does not flag an instance (non-static) propTypes class field", async () => {
+    const projectDir = setupReactProject(tempRoot, "no-prop-types-instance-field", {
+      files: {
+        "src/Model.ts": `export class Model {
+  propTypes = { value: 1 };
+}
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "no-prop-types");
+    expect(hits).toHaveLength(0);
+  });
+});
+
 describe("version gating", () => {
   it("does NOT flag forwardRef on React 18 projects (migration-hint, suppressed below minMajor)", async () => {
     const projectDir = setupReactProject(tempRoot, "gating-r18-forwardRef", {
@@ -483,6 +634,51 @@ Button.defaultProps = { size: "md" };
 
     const hits = await collectRuleHits(projectDir, "no-default-props", { reactMajorVersion: 19 });
     expect(hits.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("does NOT flag Component.propTypes on React 18 projects (propTypes still runs pre-19)", async () => {
+    const projectDir = setupReactProject(tempRoot, "gating-r18-propTypes", {
+      reactVersion: "^18.3.1",
+      files: {
+        "src/Rating.tsx": `import PropTypes from "prop-types";
+export function Rating({ value }: { value?: number }) { return <span>{value}</span>; }
+Rating.propTypes = { value: PropTypes.number };
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "no-prop-types", { reactMajorVersion: 18 });
+    expect(hits).toHaveLength(0);
+  });
+
+  it("DOES flag Component.propTypes on React 19 projects", async () => {
+    const projectDir = setupReactProject(tempRoot, "gating-r19-propTypes", {
+      reactVersion: "^19.0.0",
+      files: {
+        "src/Rating.tsx": `import PropTypes from "prop-types";
+export function Rating({ value }: { value?: number }) { return <span>{value}</span>; }
+Rating.propTypes = { value: PropTypes.number };
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "no-prop-types", { reactMajorVersion: 19 });
+    expect(hits.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("does NOT flag Component.propTypes when the React version is unknown", async () => {
+    const projectDir = setupReactProject(tempRoot, "gating-null-propTypes", {
+      reactVersion: "*",
+      files: {
+        "src/Rating.tsx": `import PropTypes from "prop-types";
+export function Rating({ value }: { value?: number }) { return <span>{value}</span>; }
+Rating.propTypes = { value: PropTypes.number };
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "no-prop-types", { reactMajorVersion: null });
+    expect(hits).toHaveLength(0);
   });
 
   it("does NOT flag react-dom render on React 17 projects (deprecated since 18, not 17)", async () => {

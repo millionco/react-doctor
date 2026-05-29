@@ -75,7 +75,6 @@ runs:
 
           fs.writeFileSync(outputPath, changedFiles.join("\n") + (changedFiles.length ? "\n" : ""));
           core.setOutput("path", outputPath);
-          core.setOutput("count", String(changedFiles.length));
 
     - id: scan
       shell: bash

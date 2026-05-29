@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import type { JsonReport } from "@react-doctor/core";
+import type { Diagnostic, JsonReportProjectEntry, ProjectInfo } from "@react-doctor/core";
 
 const REPOSITORY_ROOT = path.resolve(import.meta.dirname, "..", "..", "..");
 const RENDER_SCRIPT_PATH = path.join(REPOSITORY_ROOT, "scripts/render-github-action-comment.mjs");
@@ -16,55 +17,91 @@ const setupTempDirectory = (): string => {
   return directory;
 };
 
-const buildReport = (overrides: Partial<JsonReport> = {}): JsonReport => ({
-  schemaVersion: 1,
-  version: "0.0.0-test",
-  ok: true,
-  directory: "/repo",
-  mode: "diff",
-  diff: {
-    baseBranch: "main",
-    currentBranch: "feature",
-    changedFileCount: 2,
-    isCurrentChanges: false,
-  },
-  projects: [],
-  diagnostics: [
-    {
-      plugin: "react-doctor",
-      rule: "no-derived-state",
-      severity: "error",
-      category: "correctness",
-      message: "Avoid derived state",
-      help: "Store source state instead.",
-      filePath: "src/App.tsx",
-      line: 10,
-      column: 3,
-    },
-    {
-      plugin: "react-doctor",
-      rule: "no-derived-state",
-      severity: "error",
-      category: "correctness",
-      message: "Avoid derived state",
-      help: "Store source state instead.",
-      filePath: "src/Profile.tsx",
-      line: 4,
-      column: 8,
-    },
-  ],
-  summary: {
-    errorCount: 2,
-    warningCount: 0,
-    affectedFileCount: 2,
-    totalDiagnosticCount: 2,
-    score: 81,
-    scoreLabel: "Good",
-  },
-  elapsedMilliseconds: 123,
-  error: null,
+const buildProject = (overrides: Partial<ProjectInfo> = {}): ProjectInfo => ({
+  rootDirectory: "/repo",
+  projectName: "web",
+  reactVersion: "^19.0.0",
+  reactMajorVersion: 19,
+  tailwindVersion: null,
+  framework: "unknown",
+  hasTypeScript: true,
+  hasReactCompiler: false,
+  hasTanStackQuery: false,
+  preactVersion: null,
+  preactMajorVersion: null,
+  hasReactNativeWorkspace: false,
+  hasReanimated: false,
+  sourceFileCount: 2,
   ...overrides,
 });
+
+const buildProjectEntry = (
+  diagnostics: Diagnostic[],
+  overrides: Partial<JsonReportProjectEntry> = {},
+): JsonReportProjectEntry => ({
+  directory: "/repo",
+  project: buildProject(),
+  diagnostics,
+  score: { score: 81, label: "Good" },
+  skippedChecks: [],
+  elapsedMilliseconds: 123,
+  ...overrides,
+});
+
+const buildDiagnostics = (): Diagnostic[] => [
+  {
+    plugin: "react-doctor",
+    rule: "no-derived-state",
+    severity: "error",
+    category: "correctness",
+    message: "Avoid derived state",
+    help: "Store source state instead.",
+    filePath: "src/App.tsx",
+    line: 10,
+    column: 3,
+  },
+  {
+    plugin: "react-doctor",
+    rule: "no-derived-state",
+    severity: "error",
+    category: "correctness",
+    message: "Avoid derived state",
+    help: "Store source state instead.",
+    filePath: "src/Profile.tsx",
+    line: 4,
+    column: 8,
+  },
+];
+
+const buildReport = (overrides: Partial<JsonReport> = {}): JsonReport => {
+  const diagnostics = buildDiagnostics();
+  return {
+    schemaVersion: 1,
+    version: "0.0.0-test",
+    ok: true,
+    directory: "/repo",
+    mode: "diff",
+    diff: {
+      baseBranch: "main",
+      currentBranch: "feature",
+      changedFileCount: 2,
+      isCurrentChanges: false,
+    },
+    projects: [buildProjectEntry(diagnostics)],
+    diagnostics,
+    summary: {
+      errorCount: 2,
+      warningCount: 0,
+      affectedFileCount: 2,
+      totalDiagnosticCount: 2,
+      score: 81,
+      scoreLabel: "Good",
+    },
+    elapsedMilliseconds: 123,
+    error: null,
+    ...overrides,
+  };
+};
 
 const runRenderer = (report: JsonReport) => {
   const tempDirectory = setupTempDirectory();
@@ -109,6 +146,101 @@ describe("render-github-action-comment", () => {
     expect(outputs).toContain("total-issues=2");
     expect(outputs).toContain("error-count=2");
     expect(outputs).toContain("affected-files=2");
+  });
+
+  it("renders completed scans with no findings as a clean result", () => {
+    const { comment } = runRenderer(
+      buildReport({
+        diagnostics: [],
+        projects: [buildProjectEntry([], { diagnostics: [] })],
+        summary: {
+          errorCount: 0,
+          warningCount: 0,
+          affectedFileCount: 0,
+          totalDiagnosticCount: 0,
+          score: 100,
+          scoreLabel: "Great",
+        },
+      }),
+    );
+
+    expect(comment).toContain("No React Doctor issues found in this scan.");
+    expect(comment).toContain("| 100 / 100 (Great) | 0 | 0 | 0 | 0 | 2 changed files vs main |");
+  });
+
+  it("renders no-scan diff reports without a metrics table", () => {
+    const { comment, outputs } = runRenderer(
+      buildReport({
+        projects: [],
+        diagnostics: [],
+        summary: {
+          errorCount: 0,
+          warningCount: 0,
+          affectedFileCount: 0,
+          totalDiagnosticCount: 0,
+          score: null,
+          scoreLabel: null,
+        },
+      }),
+    );
+
+    expect(comment).toContain(
+      "React Doctor found 2 changed files in this pull request, but none were React or TypeScript source files it can scan.",
+    );
+    expect(comment).toContain("Scope: 2 changed files vs main.");
+    expect(comment).not.toContain(
+      "| Score | Issues | Errors | Warnings | Affected Files | Scope |",
+    );
+    expect(outputs).toContain("score=");
+  });
+
+  it("renders incomplete checks as an explicit caveat", () => {
+    const { comment } = runRenderer(
+      buildReport({
+        diagnostics: [],
+        projects: [
+          buildProjectEntry([], {
+            diagnostics: [],
+            score: null,
+            skippedChecks: ["lint"],
+            skippedCheckReasons: {
+              lint: "oxlint did not return within 300s.",
+            },
+          }),
+        ],
+        summary: {
+          errorCount: 0,
+          warningCount: 0,
+          affectedFileCount: 0,
+          totalDiagnosticCount: 0,
+          score: null,
+          scoreLabel: null,
+        },
+      }),
+    );
+
+    expect(comment).toContain(
+      "No React Doctor issues were found, but some checks were incomplete.",
+    );
+    expect(comment).toContain("### Incomplete Checks");
+    expect(comment).toContain("`lint`: oxlint did not return within 300s.");
+  });
+
+  it("renders partial-check reasons even without a skipped check entry", () => {
+    const { comment } = runRenderer(
+      buildReport({
+        projects: [
+          buildProjectEntry(buildDiagnostics(), {
+            skippedCheckReasons: {
+              "lint:partial": "1 file exceeded the oxlint budget.",
+            },
+          }),
+        ],
+      }),
+    );
+
+    expect(comment).toContain("### Incomplete Checks");
+    expect(comment).toContain("`lint:partial`: 1 file exceeded the oxlint budget.");
   });
 
   it("renders scan errors instead of pretending the run succeeded", () => {

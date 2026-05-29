@@ -6,9 +6,9 @@ const isSafeRelativePath = (filePath: string): boolean => {
   if (filePath.length === 0) return false;
   if (filePath.includes("\0")) return false;
   if (path.isAbsolute(filePath)) return false;
-  const normalized = path.posix.normalize(toForwardSlashes(filePath));
+  const normalized = path.posix.normalize(filePath);
   if (normalized === "." || normalized.startsWith("../") || normalized === "..") return false;
-  return normalized === toForwardSlashes(filePath);
+  return normalized === filePath;
 };
 
 export const readChangedFilesFrom = (filePath: string): string[] => {

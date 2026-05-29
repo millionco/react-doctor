@@ -47,13 +47,13 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - uses: actions/setup-node@v4
+    - uses: actions/setup-node@v5
       with:
         node-version: ${{ inputs.node-version }}
 
     - id: pr-files
       if: ${{ github.event_name == 'pull_request' }}
-      uses: actions/github-script@v7
+      uses: actions/github-script@v8
       env:
         REACT_DOCTOR_CHANGED_FILES: ${{ runner.temp }}/react-doctor-changed-files.txt
       with:
@@ -126,7 +126,7 @@ runs:
 
     - name: Update sticky PR comment
       if: ${{ always() && github.event_name == 'pull_request' && inputs.comment == 'true' }}
-      uses: actions/github-script@v7
+      uses: actions/github-script@v8
       env:
         REACT_DOCTOR_COMMENT_FILE: ${{ steps.render.outputs.comment-file }}
       with:

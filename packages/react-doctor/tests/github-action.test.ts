@@ -59,6 +59,10 @@ describe("GitHub Action contract", () => {
     const actionYaml = readActionYaml();
     const prFilesStep = normalizeWhitespace(extractStep(actionYaml, "- id: pr-files"));
 
+    expect(actionYaml).toContain("actions/setup-node@v5");
+    expect(actionYaml).toContain("actions/github-script@v8");
+    expect(actionYaml).not.toContain("actions/setup-node@v4");
+    expect(actionYaml).not.toContain("actions/github-script@v7");
     expect(prFilesStep).toContain("github.rest.pulls.listFiles");
     expect(prFilesStep).toContain('new Set(["added", "modified", "renamed"])');
     expect(prFilesStep).toContain(".map((file) => file.filename);");

@@ -12,6 +12,18 @@ export const JSX_FILE_PATTERN = /\.(tsx|jsx)$/;
 
 export const MILLISECONDS_PER_SECOND = 1000;
 
+// Upper bound for the `react:<major>` capability loop in
+// `buildCapabilities`. React majors are small; an unvalidated
+// package.json spec like `"react": "20240101"` would otherwise drive
+// the loop to tens of millions of iterations (hang / OOM). No rule
+// gates on a major above this, so clamping is lossless for real
+// projects — bump when a rule starts requiring a newer React major.
+export const LATEST_KNOWN_REACT_MAJOR = 19;
+
+// Lowest React major react-doctor emits a `react:<major>` capability
+// for (rules gate on `react:17`+ at the floor).
+export const EARLIEST_GATED_REACT_MAJOR = 17;
+
 export const ERROR_PREVIEW_LENGTH_CHARS = 200;
 
 export const PERFECT_SCORE = 100;

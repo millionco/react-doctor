@@ -1,4 +1,5 @@
 import type { ProjectInfo } from "../../types/index.js";
+import { EARLIEST_GATED_REACT_MAJOR, LATEST_KNOWN_REACT_MAJOR } from "../../constants.js";
 import {
   isReactAtLeast,
   isTailwindAtLeast,
@@ -26,7 +27,12 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<string> => 
 
   const reactMajor = project.reactMajorVersion;
   if (reactMajor !== null) {
-    for (let major = 17; major <= reactMajor; major++) {
+    // Clamp the upper bound: `reactMajor` is parsed from an arbitrary
+    // package.json version string and can be implausibly large (e.g. a
+    // date-like typo `"20240101"`), which would otherwise turn this loop
+    // into a multi-minute hang / OOM.
+    const cappedReactMajor = Math.min(reactMajor, LATEST_KNOWN_REACT_MAJOR);
+    for (let major = EARLIEST_GATED_REACT_MAJOR; major <= cappedReactMajor; major++) {
       capabilities.add(`react:${major}`);
     }
     // Minor-version-pinned capabilities for APIs introduced after a

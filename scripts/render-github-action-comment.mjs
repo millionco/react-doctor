@@ -129,8 +129,6 @@ const buildErrorBody = (report) => {
     MARKER,
     buildBrandHeader(),
     "",
-    "## React Doctor",
-    "",
     "React Doctor could not complete this scan.",
     "",
     `> ${message}`,
@@ -159,8 +157,6 @@ const buildCommentBody = (report) => {
   const lines = [
     MARKER,
     buildBrandHeader(),
-    "",
-    "## React Doctor",
     "",
     statusLine,
     "",

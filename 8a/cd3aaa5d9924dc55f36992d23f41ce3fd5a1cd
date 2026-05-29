@@ -1,0 +1,43 @@
+packages/core/src/project-info/detect-framework.ts
+  s_0691507deea199::t_c37f2e9de74d77 35-37
+packages/core/src/project-info/get-preact-version.ts
+  s_0691507deea199::t_d3747fe7e323fa 3,9
+packages/core/tests/is-analyzable-project.test.ts
+  s_0691507deea199::t_212cc6cdd02bd0 1-14,16-25,27-32
+  s_0691507deea199::t_8e430b966a356c 15,26
+packages/core/src/project-info/is-analyzable-project.ts
+  s_0691507deea199::t_bc3d82a45ed378 1-3
+  s_0691507deea199::t_2cf37c851fcfe9 4
+packages/core/tests/discover-project.test.ts
+  s_0691507deea199::t_9cd915c5eb5741 1223,1237,1240,1254,1270,1274,1286
+packages/react-doctor/tests/inspect.test.ts
+  s_0691507deea199::t_d4bdcf24ea1a56 66-67
+  s_0691507deea199::t_85c3afacc18c73 68-81,83-89
+  s_0691507deea199::t_2280f64b5575c1 82
+packages/core/tests/build-capabilities.test.ts
+  s_0691507deea199::t_170054c96f316b 16,21-26,35,43-47,56,65
+packages/core/src/types/project-info.ts
+  s_0691507deea199::t_26423bf32939f8 24-30,32
+packages/core/src/project-info/discover-project.ts
+  s_0691507deea199::t_0e310f28e51bc2 14
+  s_0691507deea199::t_508d8a276977ce 179
+packages/core/src/runners/oxlint/capabilities.ts
+  s_0691507deea199::t_1be431b4d3d0cd 61
+  s_0691507deea199::t_eb3f017f2e6879 65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "8acd3aaa5d9924dc55f36992d23f41ce3fd5a1cd",
+  "prompts": {},
+  "sessions": {
+    "s_0691507deea199": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7dab7967-c93b-4073-ba97-c1bfbfde8351",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

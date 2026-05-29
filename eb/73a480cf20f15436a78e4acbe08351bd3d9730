@@ -1,0 +1,84 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/exhaustive-deps.regressions.test.ts
+  s_0691507deea199::t_42375935e77fe4 1-38
+packages/react-doctor/src/cli/commands/inspect.ts
+  s_0691507deea199::t_42375935e77fe4 1,185-194,205
+packages/react-doctor/tests/regressions/architecture-rules.test.ts
+  s_0691507deea199::t_42375935e77fe4 14-21
+packages/react-doctor/tests/regressions/scan-resilience.test.ts
+  s_0691507deea199::t_42375935e77fe4 497-510,512
+packages/react-doctor/tests/resolve-diff-mode.test.ts
+  s_0691507deea199::t_42375935e77fe4 46,76-112
+packages/core/tests/build-capabilities.test.ts
+  s_0691507deea199::t_8efa3a8bbb0136 80-81
+packages/react-doctor/tests/github-action.test.ts
+  s_0691507deea199::t_42375935e77fe4 77,84-101,134-148
+packages/core/src/services/linter.ts
+  s_0691507deea199::t_42375935e77fe4 8,102-107,126-127
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/only-export-components.ts
+  s_0691507deea199::t_42375935e77fe4 375
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-adjust-state-on-prop-change.ts
+  s_0691507deea199::t_42375935e77fe4 22-23,28,31,61
+packages/react-doctor/src/cli/index.ts
+  s_0691507deea199::t_42375935e77fe4 41
+packages/core/src/run-oxlint.ts
+  s_0691507deea199::t_42375935e77fe4 62-65,120-121,177-183,231-232
+packages/oxlint-plugin-react-doctor/src/plugin/constants/ts-type-position-keys.ts
+  s_0691507deea199::t_42375935e77fe4 1-18
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/exhaustive-deps.ts
+  s_0691507deea199::t_42375935e77fe4 328-334
+packages/oxlint-plugin-react-doctor/src/plugin/semantic/closure-captures.ts
+  s_0691507deea199::t_42375935e77fe4 4,64
+packages/core/src/runners/oxlint/spawn-oxlint.ts
+  s_0691507deea199::t_42375935e77fe4 43-48,62,66,81,111
+action.yml
+  s_0691507deea199::t_42375935e77fe4 18,48,57,66,109-110,119-122,124-125
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/effect/SOURCE.md
+  s_0691507deea199::t_42375935e77fe4 61-68
+packages/oxlint-plugin-react-doctor/src/plugin/utils/collect-reference-identifier-names.ts
+  s_0691507deea199::t_42375935e77fe4 1,105
+packages/core/tests/schemas.test.ts
+  s_0691507deea199::t_42375935e77fe4 3
+packages/oxlint-plugin-react-doctor/scripts/generate-rule-registry.mjs
+  s_0691507deea199::t_42375935e77fe4 69-86,150
+packages/oxlint-plugin-react-doctor/src/plugin/semantic/scope-analysis.ts
+  s_0691507deea199::t_42375935e77fe4 3,629-672,714-719,788,901
+packages/react-doctor/src/cli/utils/resolve-diff-mode.ts
+  s_0691507deea199::t_42375935e77fe4 39-45,51-52,54
+packages/core/src/runners/oxlint/spawn-batches.ts
+  s_0691507deea199::t_42375935e77fe4 19-22,47-48,73-79
+packages/core/src/services/git.ts
+  s_0691507deea199::t_42375935e77fe4 8,31-36,113-115,225-252,255,480-486,497-502
+packages/core/src/run-inspect.ts
+  s_0691507deea199::t_42375935e77fe4 19-24,86-92,268-269,306,411
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/alt-text.ts
+  s_0691507deea199::t_42375935e77fe4 7,11,186-187
+packages/core/src/constants.ts
+  s_0691507deea199::t_86c059946f23df 28-36
+  s_0691507deea199::t_42375935e77fe4 15-27
+packages/react-doctor/src/cli/utils/resolve-fail-on-level.ts
+  s_0691507deea199::t_42375935e77fe4 6-10,21-22,24,26
+packages/react-doctor/src/inspect.ts
+  s_0691507deea199::t_42375935e77fe4 255-258,265
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/alt-text.regressions.test.ts
+  s_0691507deea199::t_42375935e77fe4 1-68
+packages/oxlint-plugin-react-doctor/src/plugin/utils/is-nextjs-metadata-image-route-filename.ts
+  s_0691507deea199::t_42375935e77fe4 1-23
+packages/api/src/diagnose.ts
+  s_0691507deea199::t_42375935e77fe4 100-102,104-106,108-112
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "eb73a480cf20f15436a78e4acbe08351bd3d9730",
+  "prompts": {},
+  "sessions": {
+    "s_0691507deea199": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7dab7967-c93b-4073-ba97-c1bfbfde8351",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

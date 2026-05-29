@@ -14,8 +14,11 @@ export const resolveFailOnLevel = (
 ): FailOnLevel => {
   const sourceValue = flags.failOn ?? userConfig?.failOn ?? DEFAULT_FAIL_ON_LEVEL;
   if (isValidFailOnLevel(sourceValue)) return sourceValue;
+  // Fail closed: an invalid threshold falls back to the documented
+  // default ("error") so a typo (`--fail-on warn`) can't silently
+  // disable the CI gate and let hard errors pass.
   logger.warn(
-    `Invalid failOn level "${sourceValue}". Expected one of: error, warning, none. Falling back to "none".`,
+    `Invalid failOn level "${sourceValue}". Expected one of: error, warning, none. Falling back to "${DEFAULT_FAIL_ON_LEVEL}".`,
   );
-  return "none";
+  return DEFAULT_FAIL_ON_LEVEL;
 };

@@ -195,6 +195,7 @@ import { noRenderReturnValue } from "./rules/react-builtins/no-render-return-val
 import { noResetAllStateOnPropChange } from "./rules/state-and-effects/no-reset-all-state-on-prop-change.js";
 import { noScaleFromZero } from "./rules/performance/no-scale-from-zero.js";
 import { noSecretsInClientCode } from "./rules/security/no-secrets-in-client-code.js";
+import { noSelfUpdatingEffect } from "./rules/state-and-effects/no-self-updating-effect.js";
 import { noSetState } from "./rules/react-builtins/no-set-state.js";
 import { noSetStateInRender } from "./rules/state-and-effects/no-set-state-in-render.js";
 import { noSideTabBorder } from "./rules/design/no-side-tab-border.js";
@@ -2371,6 +2372,17 @@ export const reactDoctorRules = [
       ...noSecretsInClientCode,
       framework: "global",
       category: "Security",
+    },
+  },
+  {
+    key: "react-doctor/no-self-updating-effect",
+    id: "no-self-updating-effect",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noSelfUpdatingEffect,
+      framework: "global",
+      category: "State & Effects",
     },
   },
   {

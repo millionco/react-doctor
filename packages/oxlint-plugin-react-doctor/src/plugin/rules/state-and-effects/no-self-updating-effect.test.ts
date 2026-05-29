@@ -575,6 +575,56 @@ describe("no-self-updating-effect", () => {
     expect(result.diagnostics[0].message).toContain("setRecord()");
   });
 
+  it("does not flag a write bounded by a guard that reads the state through a derived local", () => {
+    // Regression (millionco/expect TextCarousel): the effect reads the state
+    // into a local (\`const current = items[items.length - 1]\`) and bails when
+    // it already matches (\`if (text === current.text) return\`). The write
+    // makes the last item's text equal \`text\`, so the next run early-returns —
+    // it converges. The guard reads \`items\` only through \`current\`.
+    const result = runRule(
+      noSelfUpdatingEffect,
+      `
+      import { useEffect, useState } from "react";
+
+      function TextCarousel({ text }) {
+        const [items, setItems] = useState([{ text, id: 0 }]);
+        useEffect(() => {
+          const current = items[items.length - 1];
+          if (text === current.text) return;
+          setItems((previous) => [...previous.slice(-1), { text, id: 1 }]);
+        }, [text, items]);
+        return null;
+      }
+    `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a fresh-reference loop when a state-derived local is not used in a guard", () => {
+    // A local derived from \`items\` exists, but there is no early-return guard
+    // reading it — nothing bounds the loop, so the fresh-array write stays
+    // flagged. Guards against the derived-local exemption over-suppressing.
+    const result = runRule(
+      noSelfUpdatingEffect,
+      `
+      import { useEffect, useState } from "react";
+
+      function List() {
+        const [items, setItems] = useState([]);
+        useEffect(() => {
+          const count = items.length;
+          setItems([...items, count]);
+        }, [items]);
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags when an early-return guard reads only an unrelated dependency", () => {
     const result = runRule(
       noSelfUpdatingEffect,

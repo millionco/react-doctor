@@ -147,20 +147,59 @@ const isEarlyReturnGuard = (
 //   - drain a queue:    `if (!queue.length) return; … setQueue([])`
 //   - consume a path:   `if (path.length !== 1) return; … setPath(p => p.slice(1))`
 //   - reach a fixpoint: `if (!hasOutdated) return; … setX(prev.map(...))`
-// We stay conservative (matching the rule's no-overclaim stance) and treat
-// ANY early-return guard that reads the state as evidence of convergence.
+// The guard may read the state directly OR through a local derived from it
+// (`const cur = items[…]; if (cur.text === text) return`). We stay
+// conservative (matching the rule's no-overclaim stance) and treat ANY such
+// early-return guard as evidence of convergence.
+//
+// Top-level `const`/`let` locals whose initializer reads a state value, as a
+// map of local name → state name. Lets a guard testing the local count as
+// reading the state.
+const collectStateDerivedLocals = (
+  statements: readonly EsTreeNode[],
+  candidateStateNames: ReadonlySet<string>,
+): ReadonlyMap<string, string> => {
+  const derivedLocalToState = new Map<string, string>();
+  for (const statement of statements) {
+    if (!isNodeOfType(statement, "VariableDeclaration")) continue;
+    for (const declarator of statement.declarations ?? []) {
+      if (!isNodeOfType(declarator, "VariableDeclarator")) continue;
+      if (!isNodeOfType(declarator.id, "Identifier")) continue;
+      if (!declarator.init) continue;
+      for (const stateName of candidateStateNames) {
+        if (expressionReadsStateValue(declarator.init, stateName)) {
+          derivedLocalToState.set(declarator.id.name, stateName);
+          break;
+        }
+      }
+    }
+  }
+  return derivedLocalToState;
+};
+
 const collectGuardedStateNames = (
   statements: readonly EsTreeNode[],
   candidateStateNames: ReadonlySet<string>,
 ): ReadonlySet<string> => {
+  const derivedLocalToState = collectStateDerivedLocals(statements, candidateStateNames);
   const guardedStateNames = new Set<string>();
+  const markIfGuardReads = (test: EsTreeNode, stateName: string): void => {
+    if (guardedStateNames.has(stateName)) return;
+    if (expressionReadsStateValue(test, stateName)) {
+      guardedStateNames.add(stateName);
+      return;
+    }
+    for (const [localName, derivedState] of derivedLocalToState) {
+      if (derivedState === stateName && expressionReadsStateValue(test, localName)) {
+        guardedStateNames.add(stateName);
+        return;
+      }
+    }
+  };
   for (const statement of statements) {
     if (!isEarlyReturnGuard(statement)) continue;
     for (const stateName of candidateStateNames) {
-      if (guardedStateNames.has(stateName)) continue;
-      if (expressionReadsStateValue(statement.test, stateName)) {
-        guardedStateNames.add(stateName);
-      }
+      markIfGuardReads(statement.test, stateName);
     }
   }
   return guardedStateNames;

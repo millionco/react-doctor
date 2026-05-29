@@ -61,7 +61,9 @@ describe("GitHub Action contract", () => {
 
     expect(prFilesStep).toContain("github.rest.pulls.listFiles");
     expect(prFilesStep).toContain('new Set(["added", "modified", "renamed"])');
+    expect(prFilesStep).toContain(".map((file) => file.filename);");
     expect(prFilesStep).toContain('core.setOutput("path", outputPath)');
+    expect(prFilesStep).not.toContain("filename)h");
     expect(actionYaml).not.toContain("git fetch origin");
     expect(actionYaml).not.toContain('git checkout "$HEAD_REF"');
   });

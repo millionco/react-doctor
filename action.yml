@@ -71,7 +71,7 @@ runs:
           const includedStatuses = new Set(["added", "modified", "renamed"]);
           const changedFiles = files
             .filter((file) => includedStatuses.has(file.status))
-            .map((file) => file.filename)h;
+            .map((file) => file.filename);
 
           fs.writeFileSync(outputPath, changedFiles.join("\n") + (changedFiles.length ? "\n" : ""));
           core.setOutput("path", outputPath);

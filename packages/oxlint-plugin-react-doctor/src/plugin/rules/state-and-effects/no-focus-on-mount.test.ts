@@ -91,6 +91,27 @@ describe("no-focus-on-mount", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags focus() through a parenthesized callee", () => {
+    const result = runRule(
+      noFocusOnMount,
+      `
+      import { useEffect, useRef } from "react";
+
+      export function SearchBox() {
+        const inputRef = useRef(null);
+
+        useEffect(() => {
+          (inputRef.current.focus)();
+        }, []);
+
+        return <input ref={inputRef} />;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags focus() inside an immediately invoked function on mount", () => {
     const result = runRule(
       noFocusOnMount,

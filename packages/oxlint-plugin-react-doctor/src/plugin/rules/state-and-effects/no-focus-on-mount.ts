@@ -6,27 +6,21 @@ import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
-const unwrapOptionalChainExpression = (node: EsTreeNode): EsTreeNode =>
-  isNodeOfType(node, "ChainExpression") ? node.expression : node;
-
 const effectHasEmptyDependencyList = (effectCall: EsTreeNodeOfType<"CallExpression">): boolean => {
   const dependencyList = effectCall.arguments[1];
-  return (
-    Boolean(dependencyList) &&
-    isNodeOfType(dependencyList, "ArrayExpression") &&
-    dependencyList.elements.length === 0
-  );
+  return isNodeOfType(dependencyList, "ArrayExpression") && dependencyList.elements.length === 0;
 };
 
 const isElementFocusCall = (node: EsTreeNode): boolean => {
   if (!isNodeOfType(node, "CallExpression")) return false;
-  const callee = unwrapOptionalChainExpression(node.callee);
+  const callee = stripParenExpression(node.callee);
   if (!isNodeOfType(callee, "MemberExpression")) return false;
   if (callee.computed) return false;
   if (!isNodeOfType(callee.property, "Identifier")) return false;

@@ -38,7 +38,7 @@ const program = new Command()
   .option("--staged", "scan only staged (git index) files for pre-commit hooks")
   .option(
     "--fail-on <level>",
-    "exit with error code on diagnostics: error, warning, none (default: error)",
+    "exit with error code on diagnostics: error, warning, none (default: none)",
   )
   .option("--annotations", "output diagnostics as GitHub Actions annotations")
   .option(

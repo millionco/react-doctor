@@ -55,6 +55,32 @@ export const REACT_HANDLER_PROP_PATTERN = /^on[A-Z]/;
 export const EFFECT_HOOK_NAMES = new Set(["useEffect", "useLayoutEffect"]);
 export const HOOKS_WITH_DEPS = new Set(["useEffect", "useLayoutEffect", "useMemo", "useCallback"]);
 
+// Every stateful/effectful primitive hook React itself ships. A function
+// that calls one of these is a genuine React hook implementation — used by
+// `prefer-standard-hook` to distinguish a real hook reimplementation from an
+// unrelated helper that merely happens to share a library hook's name.
+export const REACT_BUILTIN_HOOK_NAMES = new Set([
+  "useState",
+  "useReducer",
+  "useRef",
+  "useEffect",
+  "useLayoutEffect",
+  "useInsertionEffect",
+  "useMemo",
+  "useCallback",
+  "useContext",
+  "useImperativeHandle",
+  "useDebugValue",
+  "useId",
+  "useSyncExternalStore",
+  "useTransition",
+  "useDeferredValue",
+  "useOptimistic",
+  "useActionState",
+  "useFormStatus",
+  "useEffectEvent",
+]);
+
 // React's two component-wrapping HOCs that the rule visitor needs to
 // "see through" — `memo(Comp)` and `forwardRef(Comp)`. Both forms
 // (`memo` from a named import + `React.memo` via the namespace) are

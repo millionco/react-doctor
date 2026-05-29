@@ -223,6 +223,7 @@ import { preferDynamicImport } from "./rules/bundle-size/prefer-dynamic-import.j
 import { preferEs6Class } from "./rules/react-builtins/prefer-es6-class.js";
 import { preferFunctionComponent } from "./rules/react-builtins/prefer-function-component.js";
 import { preferHtmlDialog } from "./rules/a11y/prefer-html-dialog.js";
+import { preferStandardHook } from "./rules/architecture/prefer-standard-hook.js";
 import { preferTagOverRole } from "./rules/a11y/prefer-tag-over-role.js";
 import { preferUseEffectEvent } from "./rules/state-and-effects/prefer-use-effect-event.js";
 import { preferUseSyncExternalStore } from "./rules/state-and-effects/prefer-use-sync-external-store.js";
@@ -2679,6 +2680,17 @@ export const reactDoctorRules = [
       ...preferHtmlDialog,
       framework: "global",
       category: "Accessibility",
+    },
+  },
+  {
+    key: "react-doctor/prefer-standard-hook",
+    id: "prefer-standard-hook",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...preferStandardHook,
+      framework: "global",
+      category: "Architecture",
     },
   },
   {

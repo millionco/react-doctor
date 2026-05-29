@@ -1,0 +1,29 @@
+.github/workflows/publish.yml
+  s_633b9c2d4ef70d::t_ace18fb16230b8 25,27,58,60
+.github/workflows/react-doctor.yml
+  s_633b9c2d4ef70d::t_ed2e7561b14d21 23,25
+packages/react-doctor/tests/github-action.test.ts
+  s_633b9c2d4ef70d::t_4e013c6c0bd518 62-65
+.github/workflows/ci.yml
+  s_633b9c2d4ef70d::t_fd4400ac3f3445 30,32
+action.yml
+  s_633b9c2d4ef70d::t_5e896fcbfd3120 50,56,129
+.github/workflows/code-quality.yml
+  s_633b9c2d4ef70d::t_83a6c44f3e4431 24,27,49,52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "d25f1d304dc22d0c6952f23f109091ae15cc10ba",
+  "prompts": {},
+  "sessions": {
+    "s_633b9c2d4ef70d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c5b5fedf-301b-4e7a-a33d-608875455be5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

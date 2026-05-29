@@ -1,6 +1,6 @@
 ---
 name: rule-validate
-description: Validate implemented React Doctor rules before PR or merge. Use after rule tests pass to review correctness, run RDE against OSS, inspect false positives, write PR descriptions, and triage bot or human review comments.
+description: Validate implemented React Doctor rules before PR or merge. Use after rule tests pass to review correctness, run RDE against OSS, inspect false positives, generate changesets, write PR descriptions, and triage bot or human review comments.
 ---
 
 # Rule Validate
@@ -11,7 +11,7 @@ Pipeline:
 
 1. `rule-research` defines the rule contract.
 2. `rule-writing` turns the contract into tests and implementation.
-3. `rule-validate` verifies noise, correctness, PR copy, and review feedback.
+3. `rule-validate` verifies noise, correctness, changesets, PR copy, and review feedback.
 
 Validation is not just running tests. It checks whether the rule still matches the contract on real code.
 
@@ -135,6 +135,18 @@ After:
 
 Do not include the eval table if RDE was not run; state why it was skipped when useful.
 
+## Changeset
+
+Generate a changeset after validation and before PR copy for user-facing changes to published packages.
+
+Required handling:
+
+- Use `nr changeset` unless the user explicitly asks for a manual file.
+- Select the affected published package or packages.
+- Use `patch` for new rules, bug fixes, false-positive fixes, diagnostic wording changes, and test-backed behavior refinements unless the release impact clearly requires otherwise.
+- Summarize the user-visible behavior, including the rule name and the runtime problem it catches or avoids.
+- Skip the changeset only for private-only, docs-only, test-only, or tooling-only changes, and record why it was skipped.
+
 ## Review Comment Triage
 
 Classify each bot or human review comment:
@@ -158,6 +170,7 @@ Validation summary:
 - <RDE summary or skip reason>
 - <false positives found and fixed>
 - <regression tests added>
+- <changeset path or skip reason>
 
 PR-ready notes:
 

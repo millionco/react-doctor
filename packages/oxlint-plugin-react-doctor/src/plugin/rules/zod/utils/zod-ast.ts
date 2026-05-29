@@ -10,7 +10,11 @@ interface ZodImportInfo {
   imported: string | null;
   isDefault: boolean;
   isNamespace: boolean;
-  source: string;
+}
+
+interface MethodCall {
+  methodName: string;
+  receiver: EsTreeNode;
 }
 
 export const getStaticPropertyName = (
@@ -37,18 +41,18 @@ const getImportInfoForIdentifier = (
   if (source !== ZOD_MODULE) return null;
 
   if (isNodeOfType(specifier, "ImportNamespaceSpecifier")) {
-    return { imported: null, isDefault: false, isNamespace: true, source };
+    return { imported: null, isDefault: false, isNamespace: true };
   }
   if (isNodeOfType(specifier, "ImportDefaultSpecifier")) {
-    return { imported: null, isDefault: true, isNamespace: false, source };
+    return { imported: null, isDefault: true, isNamespace: false };
   }
   if (isNodeOfType(specifier, "ImportSpecifier")) {
     const imported = specifier.imported as EsTreeNode;
     if (isNodeOfType(imported, "Identifier")) {
-      return { imported: imported.name, isDefault: false, isNamespace: false, source };
+      return { imported: imported.name, isDefault: false, isNamespace: false };
     }
     if (isNodeOfType(imported, "Literal") && typeof imported.value === "string") {
-      return { imported: imported.value, isDefault: false, isNamespace: false, source };
+      return { imported: imported.value, isDefault: false, isNamespace: false };
     }
   }
   return null;
@@ -101,7 +105,7 @@ export const getZodFactoryCallName = (
 
 export const getMethodCall = (
   callExpression: EsTreeNodeOfType<"CallExpression">,
-): { methodName: string; receiver: EsTreeNode } | null => {
+): MethodCall | null => {
   const callee = stripParenExpression(callExpression.callee as EsTreeNode);
   if (!isNodeOfType(callee, "MemberExpression")) return null;
   const methodName = getStaticPropertyName(callee);

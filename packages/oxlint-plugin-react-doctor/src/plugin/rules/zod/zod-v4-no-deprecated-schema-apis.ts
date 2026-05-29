@@ -68,6 +68,7 @@ const FACTORIES_WITH_DROPPED_CREATE = new Set([
 ]);
 
 const ENUM_PROPERTY_ALIASES = new Set(["Enum", "Values"]);
+const ENUM_FACTORY = new Set(["enum"]);
 const RECORD_FACTORY = new Set(["record"]);
 const LITERAL_FACTORY = new Set(["literal"]);
 
@@ -129,7 +130,7 @@ const isDroppedEnumAliasAccess = (
   const propertyName = getStaticPropertyName(memberExpression);
   if (propertyName === null || !ENUM_PROPERTY_ALIASES.has(propertyName)) return false;
   const receiver = stripParenExpression(memberExpression.object as EsTreeNode);
-  return isNodeOfType(receiver, "CallExpression") && isZodFactoryCall(receiver, new Set(["enum"]));
+  return isNodeOfType(receiver, "CallExpression") && isZodFactoryCall(receiver, ENUM_FACTORY);
 };
 
 const isRefineSecondArgumentFunction = (

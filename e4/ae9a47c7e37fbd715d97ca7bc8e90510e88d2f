@@ -1,0 +1,31 @@
+packages/core/src/constants.ts
+  s_a0bbc0b4141acc::t_af727df46bc77d 51-55
+packages/react-doctor/src/cli/utils/render-diagnostics.ts
+  s_a0bbc0b4141acc::t_9f7598c24957d5 5
+  s_a0bbc0b4141acc::t_d83426e1ce18f6 155-159
+  s_a0bbc0b4141acc::t_61401ec51b925c 245-248
+packages/core/tests/build-rule-prompt-url.test.ts
+  s_a0bbc0b4141acc::t_1763f958137671 1-16
+.changeset/verbose-rule-prompt-urls.md
+  s_a0bbc0b4141acc::t_82d8a492244f37 1-5
+packages/core/src/utils/build-rule-prompt-url.ts
+  s_a0bbc0b4141acc::t_32e771a497b217 1-10
+packages/core/src/index.ts
+  s_a0bbc0b4141acc::t_7342a398ceb68c 68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "e4ae9a47c7e37fbd715d97ca7bc8e90510e88d2f",
+  "prompts": {},
+  "sessions": {
+    "s_a0bbc0b4141acc": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "5832b17f-3a43-4a2e-b4ea-349576cc6028",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

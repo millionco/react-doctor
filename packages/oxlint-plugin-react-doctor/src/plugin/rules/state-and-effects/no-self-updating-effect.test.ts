@@ -241,6 +241,83 @@ describe("no-self-updating-effect", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag a stable scalar write that settles after one render", () => {
+    const result = runRule(
+      noSelfUpdatingEffect,
+      `
+      import { useEffect, useState } from "react";
+
+      function Tabs({ activeTab }) {
+        const [tab, setTab] = useState("home");
+        useEffect(() => {
+          setTab(activeTab);
+        }, [tab, activeTab]);
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag writing another local value into the depended-on state", () => {
+    const result = runRule(
+      noSelfUpdatingEffect,
+      `
+      import { useEffect, useState } from "react";
+
+      function Pair() {
+        const [left, setLeft] = useState(0);
+        const [right] = useState(0);
+        useEffect(() => {
+          setLeft(right);
+        }, [left]);
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag writing the current value straight back", () => {
+    const result = runRule(
+      noSelfUpdatingEffect,
+      `
+      import { useEffect, useState } from "react";
+
+      function Counter() {
+        const [count, setCount] = useState(0);
+        useEffect(() => {
+          setCount(count);
+        }, [count]);
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a fresh object write that loops on its own state", () => {
+    const result = runRule(
+      noSelfUpdatingEffect,
+      `
+      import { useEffect, useState } from "react";
+
+      function Profile() {
+        const [user, setUser] = useState({});
+        useEffect(() => {
+          setUser({ ...user, seen: true });
+        }, [user]);
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag effects that only write unrelated state", () => {
     const result = runRule(
       noSelfUpdatingEffect,

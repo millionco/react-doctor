@@ -8,28 +8,58 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
 
-// A setter argument that is a primitive literal (`setOpen(true)`,
-// `setCount(0)`, `setName("")`) settles to a fixed point: once the
-// state already holds that value, React's `Object.is` bailout stops
-// the effect from re-running. Those are NOT feedback loops, so the
-// detector skips them. New-reference values (`setItems([])`,
-// `setUser({})`), arithmetic (`setCount(count + 1)`), and functional
-// updaters (`setCount((value) => value + 1)`) never settle on their
-// own and DO loop — those are reported.
-const isProvableFixedPointSetterArgument = (
+const constructsFreshReference = (node: EsTreeNode): boolean =>
+  isNodeOfType(node, "ArrayExpression") ||
+  isNodeOfType(node, "ObjectExpression") ||
+  isNodeOfType(node, "NewExpression");
+
+const expressionReadsName = (node: EsTreeNode, name: string): boolean => {
+  let didReadName = false;
+  walkAst(node, (child) => {
+    if (didReadName) return false;
+    if (isNodeOfType(child, "Identifier") && child.name === name) didReadName = true;
+  });
+  return didReadName;
+};
+
+// A self-referential write only loops forever when its new value
+// provably keeps changing every run. That holds for three shapes:
+//   - a functional updater `(prev) => …` (React re-runs the effect, the
+//     updater re-derives from the latest value),
+//   - a freshly-constructed reference (`setItems([])`, `setUser({})`,
+//     `new Map()`) that never passes React's `Object.is` bailout, and
+//   - a value computed from the same state (`setCount(count + 1)`).
+// Plausibly-stable scalar writes (`setOpen(true)`, `setTab(props.tab)`,
+// `setX(other)`) settle after at most one extra render, and `setX(x)`
+// is a no-op — none are render loops, so the detector stays quiet to
+// avoid overclaiming.
+const isNonSettlingSetterArgument = (
   setterCall: EsTreeNodeOfType<"CallExpression">,
+  stateName: string,
 ): boolean => {
   const firstArgument = setterCall.arguments?.[0];
   // A bare `setX()` writes `undefined`; if the state already holds
-  // `undefined` it settles. Can't prove a loop, so stay quiet.
-  if (!firstArgument) return true;
-  return isNodeOfType(stripParenExpression(firstArgument), "Literal");
+  // `undefined` it settles, so it is not provably a loop.
+  if (!firstArgument) return false;
+  const argument = stripParenExpression(firstArgument);
+  // `setX(x)` writes the current value straight back — an immediate
+  // `Object.is` bailout, not a loop.
+  if (isNodeOfType(argument, "Identifier") && argument.name === stateName) return false;
+  if (
+    isNodeOfType(argument, "ArrowFunctionExpression") ||
+    isNodeOfType(argument, "FunctionExpression")
+  ) {
+    return true;
+  }
+  if (constructsFreshReference(argument)) return true;
+  return expressionReadsName(argument, stateName);
 };
 
 const getUnconditionalSetterCall = (
@@ -104,7 +134,7 @@ export const noSelfUpdatingEffect = defineRule<Rule>({
           const stateName = setterNameToStateName.get(setterCall.callee.name);
           if (!stateName || !dependencyStateNames.has(stateName)) continue;
           if (reportedStateNames.has(stateName)) continue;
-          if (isProvableFixedPointSetterArgument(setterCall)) continue;
+          if (!isNonSettlingSetterArgument(setterCall, stateName)) continue;
 
           reportedStateNames.add(stateName);
           context.report({

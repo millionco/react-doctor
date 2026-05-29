@@ -30,6 +30,14 @@ const constructsFreshReference = (node: EsTreeNode): boolean =>
 // binding, so they are skipped — walking every Identifier blindly would
 // flag `setCount(other.count)` as self-referential.
 const expressionReadsStateValue = (node: EsTreeNode, name: string): boolean => {
+  // A nested closure (`registerCallback(() => count)`) captures the state
+  // rather than reading it while computing the setter's argument — the
+  // body runs later, or never. Synchronous reads that actually shape the
+  // value (e.g. the `items` receiver in `items.filter(...)`) sit outside
+  // the closure and are still seen, so stop at function boundaries.
+  if (isNodeOfType(node, "ArrowFunctionExpression") || isNodeOfType(node, "FunctionExpression")) {
+    return false;
+  }
   if (isNodeOfType(node, "Identifier")) return node.name === name;
   if (isNodeOfType(node, "MemberExpression")) {
     if (expressionReadsStateValue(node.object, name)) return true;

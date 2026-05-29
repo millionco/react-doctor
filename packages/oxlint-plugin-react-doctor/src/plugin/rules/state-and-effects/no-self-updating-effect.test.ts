@@ -356,6 +356,44 @@ describe("no-self-updating-effect", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not treat a state capture inside a nested closure as a self-read", () => {
+    const result = runRule(
+      noSelfUpdatingEffect,
+      `
+      import { useEffect, useState } from "react";
+
+      function Counter() {
+        const [count, setCount] = useState(0);
+        useEffect(() => {
+          setCount(registerCallback(() => count));
+        }, [count]);
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a synchronous self-read through an iterator receiver", () => {
+    const result = runRule(
+      noSelfUpdatingEffect,
+      `
+      import { useEffect, useState } from "react";
+
+      function List() {
+        const [items, setItems] = useState([]);
+        useEffect(() => {
+          setItems(items.filter((entry) => entry.active));
+        }, [items]);
+        return null;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags a regex literal write that loops on its own state", () => {
     const result = runRule(
       noSelfUpdatingEffect,

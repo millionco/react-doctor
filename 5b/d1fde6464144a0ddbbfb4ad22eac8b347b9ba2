@@ -1,0 +1,19 @@
+action.yml
+  s_052092634eee85::t_ea3389a514ab81 120-122
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "5bd1fde6464144a0ddbbfb4ad22eac8b347b9ba2",
+  "prompts": {},
+  "sessions": {
+    "s_052092634eee85": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "dcb02ed0-e590-4f7d-ace4-40b0b203cecd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

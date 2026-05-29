@@ -4,7 +4,7 @@ import { getScoreLabel } from "@/utils/get-score-label";
 
 const ERROR_RULE_PENALTY = 1.5;
 const WARNING_RULE_PENALTY = 0.75;
-const MAX_REQUEST_BODY_BYTES = 2_000_000;
+const MAX_REQUEST_BODY_BYTES = 4_000_000;
 const MAX_DECOMPRESSED_BODY_BYTES = 25_000_000;
 const MAX_DIAGNOSTICS_PER_REQUEST = 50_000;
 
@@ -107,7 +107,7 @@ const decodeRequestBody = async (request: Request): Promise<unknown> => {
 export const POST = async (request: Request): Promise<Response> => {
   const contentLength = Number(request.headers.get("content-length") ?? "0");
   if (contentLength > MAX_REQUEST_BODY_BYTES) {
-    return respondError(413, "Request body exceeds 2MB");
+    return respondError(413, "Request body exceeds 4MB");
   }
 
   let body: unknown;
@@ -115,7 +115,7 @@ export const POST = async (request: Request): Promise<Response> => {
     body = await decodeRequestBody(request);
   } catch (error) {
     if (error instanceof RequestBodyTooLargeError) {
-      return respondError(413, "Request body exceeds 2MB");
+      return respondError(413, "Request body exceeds 4MB");
     }
     if (error instanceof DecompressedBodyTooLargeError) {
       return respondError(413, "Decompressed request body exceeds 25MB");

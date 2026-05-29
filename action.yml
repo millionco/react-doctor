@@ -24,7 +24,7 @@ inputs:
     description: "Node.js version to use"
     default: "22"
   version:
-    description: "react-doctor npm version to run"
+    description: "react-doctor npm version or package spec to run"
     default: "latest"
 
 outputs:
@@ -71,7 +71,7 @@ runs:
           const includedStatuses = new Set(["added", "modified", "renamed"]);
           const changedFiles = files
             .filter((file) => includedStatuses.has(file.status))
-            .map((file) => file.filename);
+            .map((file) => file.filename)h;
 
           fs.writeFileSync(outputPath, changedFiles.join("\n") + (changedFiles.length ? "\n" : ""));
           core.setOutput("path", outputPath);
@@ -93,13 +93,19 @@ runs:
         REPORT_FILE="${RUNNER_TEMP:-/tmp}/react-doctor-report-${GITHUB_RUN_ID:-$$}.json"
         echo "report-file=$REPORT_FILE" >> "$GITHUB_OUTPUT"
 
-        FLAGS=("--json" "--json-compact" "--fail-on" "$INPUT_FAIL_ON" "--pr-comment")
+        FLAGS=("--json" "--json-compact" "--fail-on" "$INPUT_FAIL_ON")
         if [ "$INPUT_ANNOTATIONS" = "true" ]; then FLAGS+=("--annotations"); fi
         if [ -n "$INPUT_PROJECT" ]; then FLAGS+=("--project" "$INPUT_PROJECT"); fi
         if [ -n "$CHANGED_FILES_FROM" ]; then FLAGS+=("--changed-files-from" "$CHANGED_FILES_FROM"); fi
 
+        if [[ "$INPUT_VERSION" = ./* || "$INPUT_VERSION" = ../* || "$INPUT_VERSION" = /* ]]; then
+          PACKAGE_SPEC="$INPUT_VERSION"
+        else
+          PACKAGE_SPEC="react-doctor@$INPUT_VERSION"
+        fi
+
         set +e
-        npx --yes "react-doctor@$INPUT_VERSION" "$INPUT_DIRECTORY" "${FLAGS[@]}" > "$REPORT_FILE"
+        npm exec --yes --package "$PACKAGE_SPEC" -- react-doctor "$INPUT_DIRECTORY" "${FLAGS[@]}" > "$REPORT_FILE"
         SCAN_STATUS=$?
         set -e
 

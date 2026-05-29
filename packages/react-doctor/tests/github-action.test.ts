@@ -71,16 +71,16 @@ describe("GitHub Action contract", () => {
       extractStep(readActionYaml(), "INPUT_FAIL_ON: ${{ inputs.fail-on }}"),
     );
 
-    expect(scanStep).toContain(
-      '"--json" "--json-compact" "--fail-on" "$INPUT_FAIL_ON" "--pr-comment"',
-    );
+    expect(scanStep).toContain('"--json" "--json-compact" "--fail-on" "$INPUT_FAIL_ON"');
+    expect(scanStep).not.toContain("--pr-comment");
     expect(scanStep).toContain(
       'if [ "$INPUT_ANNOTATIONS" = "true" ]; then FLAGS+=("--annotations"); fi',
     );
     expect(scanStep).toContain('FLAGS+=("--changed-files-from" "$CHANGED_FILES_FROM")');
     expect(scanStep).toContain(
-      'npx --yes "react-doctor@$INPUT_VERSION" "$INPUT_DIRECTORY" "${FLAGS[@]}" > "$REPORT_FILE"',
+      'npm exec --yes --package "$PACKAGE_SPEC" -- react-doctor "$INPUT_DIRECTORY" "${FLAGS[@]}" > "$REPORT_FILE"',
     );
+    expect(scanStep).toContain('PACKAGE_SPEC="react-doctor@$INPUT_VERSION"');
     expect(scanStep).toContain("SCAN_STATUS=$?");
     expect(scanStep).toContain("scripts/ensure-json-report.mjs");
     expect(readActionYaml()).not.toContain("--score");

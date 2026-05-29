@@ -23,8 +23,8 @@ export const validateModeFlags = (flags: InspectFlags): void => {
   if (flags.prComment && (flags.json || flags.score)) {
     throw new Error("--pr-comment cannot be combined with --json or --score.");
   }
-  if (flags.annotations && (flags.json || flags.score)) {
-    throw new Error("--annotations cannot be combined with --json or --score.");
+  if (flags.annotations && flags.score) {
+    throw new Error("--annotations cannot be combined with --score.");
   }
   if (flags.explain !== undefined && flags.why !== undefined) {
     throw new Error("Use --explain or --why, not both — they're aliases of the same flag.");

@@ -1,0 +1,19 @@
+.agents/skills/rule-validate/SKILL.md
+  s_9ffc482c9efa39::t_0816dd7184413b 3,14,138-149,173
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "e7f716366e4734b5a54d3128331d41093e50a216",
+  "prompts": {},
+  "sessions": {
+    "s_9ffc482c9efa39": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "b326ff42-3b11-4d9b-8992-06eb3163c9a6",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

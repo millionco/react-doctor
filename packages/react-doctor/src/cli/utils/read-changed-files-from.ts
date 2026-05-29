@@ -1,8 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { filterSourceFiles } from "@react-doctor/core";
-
-const toForwardSlashes = (filePath: string): string => filePath.replaceAll("\\", "/");
+import { toForwardSlashes } from "./path-format.js";
 
 const isSafeRelativePath = (filePath: string): boolean => {
   if (filePath.length === 0) return false;
@@ -21,5 +19,5 @@ export const readChangedFilesFrom = (filePath: string): string[] => {
     if (!isSafeRelativePath(candidate)) continue;
     uniqueFiles.add(candidate);
   }
-  return filterSourceFiles([...uniqueFiles]);
+  return [...uniqueFiles];
 };

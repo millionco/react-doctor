@@ -59,6 +59,10 @@ interface RunOxlintOptions {
    */
   onPartialFailure?: (reason: string) => void;
   onFileProgress?: (scannedFileCount: number, totalFileCount: number) => void;
+  /** Per-batch wall-clock budget, resolved from the `OxlintSpawnTimeoutMs` Reference. */
+  spawnTimeoutMs?: number;
+  /** Per-batch stdout+stderr byte cap, resolved from the `OxlintOutputMaxBytes` Reference. */
+  outputMaxBytes?: number;
 }
 
 /**
@@ -113,6 +117,8 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     userConfig,
     configSourceDirectory = rootDirectory,
     onPartialFailure,
+    spawnTimeoutMs,
+    outputMaxBytes,
   } = options;
 
   const serverAuthFunctionNames = Array.isArray(userConfig?.serverAuthFunctionNames)
@@ -217,6 +223,8 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         project,
         onPartialFailure,
         onFileProgress: options.onFileProgress,
+        spawnTimeoutMs,
+        outputMaxBytes,
       });
 
     writeOxlintConfig(configPath, buildConfig(extendsPaths));

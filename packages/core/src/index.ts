@@ -3,7 +3,6 @@ export * from "./project-info/index.js";
 export * from "./build-diagnostic-pipeline.js";
 export * from "./errors.js";
 export * from "./observability.js";
-export * from "./paths.js";
 export * from "./refs.js";
 export * from "./resolve-scan-target.js";
 export * from "./run-inspect.js";

@@ -811,7 +811,7 @@ export const noMutatingReducerState = defineRule<Rule>({
   create: (context: RuleContext) => {
     const analyzedReducers = new WeakSet<EsTreeNode>();
     const reportedNodes = new WeakSet<EsTreeNode>();
-    const currentFilename = context.getFilename?.();
+    const currentFilename = context.filename;
 
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {

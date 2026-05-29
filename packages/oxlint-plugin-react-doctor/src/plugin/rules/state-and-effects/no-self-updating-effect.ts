@@ -18,18 +18,18 @@ import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
 // Every literal builds a value-equal result except a regex literal,
 // which evaluates to a fresh `RegExp` object each render and so never
 // passes React's `Object.is` bailout — the same as `[]` / `{}` / `new`.
-const constructsFreshReference = (node: EsTreeNode): boolean =>
+const doesConstructFreshReference = (node: EsTreeNode): boolean =>
   isNodeOfType(node, "ArrayExpression") ||
   isNodeOfType(node, "ObjectExpression") ||
   isNodeOfType(node, "NewExpression") ||
   (isNodeOfType(node, "Literal") && "regex" in node);
 
-// True when `name` is read as a VALUE somewhere in the expression. A
+// True when `stateName` is read as a VALUE somewhere in the expression. A
 // non-computed member property (`other.count`) and a non-computed object
 // key (`{ count: 1 }`) are static names, not reads of the `count`
 // binding, so they are skipped — walking every Identifier blindly would
 // flag `setCount(other.count)` as self-referential.
-const expressionReadsStateValue = (node: EsTreeNode, name: string): boolean => {
+const expressionReadsStateValue = (node: EsTreeNode, stateName: string): boolean => {
   // A nested closure (`registerCallback(() => count)`) captures the state
   // rather than reading it while computing the setter's argument — the
   // body runs later, or never. Synchronous reads that actually shape the
@@ -38,24 +38,26 @@ const expressionReadsStateValue = (node: EsTreeNode, name: string): boolean => {
   if (isNodeOfType(node, "ArrowFunctionExpression") || isNodeOfType(node, "FunctionExpression")) {
     return false;
   }
-  if (isNodeOfType(node, "Identifier")) return node.name === name;
+  if (isNodeOfType(node, "Identifier")) return node.name === stateName;
   if (isNodeOfType(node, "MemberExpression")) {
-    if (expressionReadsStateValue(node.object, name)) return true;
-    return node.computed ? expressionReadsStateValue(node.property, name) : false;
+    if (expressionReadsStateValue(node.object, stateName)) return true;
+    return node.computed ? expressionReadsStateValue(node.property, stateName) : false;
   }
   if (isNodeOfType(node, "Property")) {
-    if (node.computed && expressionReadsStateValue(node.key, name)) return true;
-    return expressionReadsStateValue(node.value, name);
+    if (node.computed && expressionReadsStateValue(node.key, stateName)) return true;
+    return expressionReadsStateValue(node.value, stateName);
   }
   const nodeRecord = node as unknown as Record<string, unknown>;
-  for (const key of Object.keys(nodeRecord)) {
-    if (key === "parent" || key === "type") continue;
-    const child = nodeRecord[key];
-    if (Array.isArray(child)) {
-      for (const item of child) {
-        if (isAstNode(item) && expressionReadsStateValue(item, name)) return true;
+  for (const childKey of Object.keys(nodeRecord)) {
+    if (childKey === "parent" || childKey === "type") continue;
+    const childValue = nodeRecord[childKey];
+    if (Array.isArray(childValue)) {
+      for (const childArrayItem of childValue) {
+        if (isAstNode(childArrayItem) && expressionReadsStateValue(childArrayItem, stateName)) {
+          return true;
+        }
       }
-    } else if (isAstNode(child) && expressionReadsStateValue(child, name)) {
+    } else if (isAstNode(childValue) && expressionReadsStateValue(childValue, stateName)) {
       return true;
     }
   }
@@ -91,7 +93,7 @@ const isNonSettlingSetterArgument = (
   ) {
     return true;
   }
-  if (constructsFreshReference(argument)) return true;
+  if (doesConstructFreshReference(argument)) return true;
   return expressionReadsStateValue(argument, stateName);
 };
 
@@ -180,8 +182,10 @@ export const noSelfUpdatingEffect = defineRule<Rule>({
 
     return {
       FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
-        const name = node.id?.name;
-        if (!name || (!isUppercaseName(name) && !isReactHookName(name))) return;
+        const functionName = node.id?.name;
+        if (!functionName || (!isUppercaseName(functionName) && !isReactHookName(functionName))) {
+          return;
+        }
         checkFunctionScope(node.body);
       },
       VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {

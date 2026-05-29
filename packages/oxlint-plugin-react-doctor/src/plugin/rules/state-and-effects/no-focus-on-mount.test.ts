@@ -374,4 +374,95 @@ describe("no-focus-on-mount", () => {
 
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does not flag focus gated on an opt-in autoFocus prop", () => {
+    // dub utm-builder: the consumer explicitly requests focus via a prop, so it
+    // is caller-controlled, not surprise auto-focus.
+    const result = runRule(
+      noFocusOnMount,
+      `
+      import { useEffect, useRef } from "react";
+
+      export function Field({ autoFocus }) {
+        const inputRef = useRef(null);
+        useEffect(() => {
+          if (inputRef.current && autoFocus) {
+            setTimeout(() => inputRef.current?.focus(), 10);
+          }
+        }, []);
+        return <input ref={inputRef} />;
+      }
+    `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag focus gated on a shouldFocus-style flag via && short-circuit", () => {
+    const result = runRule(
+      noFocusOnMount,
+      `
+      import { useEffect, useRef } from "react";
+
+      export function Field({ shouldAutoFocus }) {
+        const inputRef = useRef(null);
+        useEffect(() => {
+          shouldAutoFocus && inputRef.current?.focus();
+        }, []);
+        return <input ref={inputRef} />;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag focus guarded against stealing the active element", () => {
+    // excalidraw Popover: focuses only when nothing inside already holds focus,
+    // i.e. it explicitly avoids stealing focus — not the targeted surprise.
+    const result = runRule(
+      noFocusOnMount,
+      `
+      import { useEffect, useRef } from "react";
+
+      export function Popover() {
+        const ref = useRef(null);
+        useEffect(() => {
+          const container = ref.current;
+          if (!container) return;
+          if (!container.contains(document.activeElement)) {
+            container.focus();
+          }
+        }, []);
+        return <div ref={ref} tabIndex={-1} />;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags an unconditional focus even when an opt-in prop exists elsewhere", () => {
+    // The focus itself is not gated on the flag, so it always runs on mount.
+    const result = runRule(
+      noFocusOnMount,
+      `
+      import { useEffect, useRef } from "react";
+
+      export function Field({ autoFocus }) {
+        const inputRef = useRef(null);
+        useEffect(() => {
+          if (autoFocus) {
+            doSomethingElse();
+          }
+          inputRef.current?.focus();
+        }, []);
+        return <input ref={inputRef} />;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

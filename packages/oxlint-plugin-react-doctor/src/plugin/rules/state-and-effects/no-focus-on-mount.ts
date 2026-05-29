@@ -63,12 +63,82 @@ const nestedFunctionRunsOnMount = (nestedFunction: EsTreeNode): boolean => {
   );
 };
 
+// Opt-in focus flags: a prop/flag the caller sets to REQUEST focus. When the
+// focus is gated on one of these, the component author exposed focus as an
+// explicit, caller-controlled option — it isn't the surprise auto-focus the
+// rule targets, so it must not be flagged.
+const OPT_IN_FOCUS_NAME =
+  /^(auto_?focus|should_?(auto_?)?focus|focus_?on_?mount|initial_?focus|enable_?focus|allow_?focus|with_?focus|do_?focus)$/i;
+
+const memberPropertyName = (node: EsTreeNode): string | null =>
+  isNodeOfType(node, "MemberExpression") &&
+  !node.computed &&
+  isNodeOfType(node.property, "Identifier")
+    ? node.property.name
+    : null;
+
+// A guard `test` shows the focus is deliberate rather than a surprise when it
+// reads either `document.activeElement` (the dev is explicitly avoiding
+// stealing focus from wherever the user already is) or an opt-in focus flag.
+const guardSignalsDeliberateFocus = (test: EsTreeNode): boolean => {
+  let deliberate = false;
+  walkAst(test, (node: EsTreeNode) => {
+    if (deliberate) return false;
+    if (memberPropertyName(node) === "activeElement") {
+      deliberate = true;
+      return false;
+    }
+    if (isNodeOfType(node, "Identifier") && OPT_IN_FOCUS_NAME.test(node.name)) {
+      deliberate = true;
+      return false;
+    }
+    const propertyName = memberPropertyName(node);
+    if (propertyName !== null && OPT_IN_FOCUS_NAME.test(propertyName)) {
+      deliberate = true;
+      return false;
+    }
+  });
+  return deliberate;
+};
+
+// Walks from the focus call up to the effect body, collecting the conditions
+// that gate it (`if (cond) …`, `cond ? focus() : …`, `cond && focus()`). If any
+// gate signals deliberate focus (active-element check / opt-in flag), the focus
+// is intentional and not flagged.
+const focusCallIsDeliberatelyGuarded = (
+  focusCall: EsTreeNode,
+  effectCallback: EsTreeNode,
+): boolean => {
+  let child: EsTreeNode = focusCall;
+  let parent = child.parent;
+  while (parent && child !== effectCallback) {
+    let guardTest: EsTreeNode | null = null;
+    if (isNodeOfType(parent, "IfStatement") && parent.consequent === child) {
+      guardTest = parent.test;
+    } else if (isNodeOfType(parent, "ConditionalExpression") && parent.consequent === child) {
+      guardTest = parent.test;
+    } else if (
+      isNodeOfType(parent, "LogicalExpression") &&
+      parent.operator === "&&" &&
+      parent.right === child
+    ) {
+      guardTest = parent.left;
+    }
+    if (guardTest && guardSignalsDeliberateFocus(guardTest)) return true;
+    child = parent;
+    parent = parent.parent;
+  }
+  return false;
+};
+
 const effectFocusesDuringMount = (effectCallback: EsTreeNode): boolean => {
   let focusesDuringMount = false;
   walkAst(effectCallback, (node: EsTreeNode) => {
     if (focusesDuringMount) return false;
     if (isElementFocusCall(node)) {
-      focusesDuringMount = true;
+      if (!focusCallIsDeliberatelyGuarded(node, effectCallback)) {
+        focusesDuringMount = true;
+      }
       return false;
     }
     if (node !== effectCallback && isFunctionLike(node) && !nestedFunctionRunsOnMount(node)) {

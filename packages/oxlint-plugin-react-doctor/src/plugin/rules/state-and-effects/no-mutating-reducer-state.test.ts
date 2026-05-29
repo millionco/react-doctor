@@ -133,6 +133,84 @@ describe("no-mutating-reducer-state", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags destructured-alias mutations when the same reducer state is returned", () => {
+    const result = runRule(
+      noMutatingReducerState,
+      `
+      import { useReducer } from "react";
+
+      function reducer(state, action) {
+        const { items } = state;
+        items.push(action.item);
+        return state;
+      }
+
+      useReducer(reducer, { items: [] });
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags renamed destructured aliases", () => {
+    const result = runRule(
+      noMutatingReducerState,
+      `
+      import { useReducer } from "react";
+
+      function reducer(state, action) {
+        const { items: rows } = state;
+        rows.sort(compareNodes);
+        return state;
+      }
+
+      useReducer(reducer, { items: [] });
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags array-destructured aliases reachable from state", () => {
+    const result = runRule(
+      noMutatingReducerState,
+      `
+      import { useReducer } from "react";
+
+      function reducer(state, action) {
+        const [firstItem] = state.items;
+        firstItem.flag = true;
+        return state;
+      }
+
+      useReducer(reducer, { items: [] });
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag destructured aliases sourced from a fresh array (slice / spread)", () => {
+    const result = runRule(
+      noMutatingReducerState,
+      `
+      import { useReducer } from "react";
+
+      function reducer(state, action) {
+        const [...rest] = state.items;
+        rest.push(action.item);
+        return { ...state, items: rest };
+      }
+
+      useReducer(reducer, { items: [] });
+    `,
+    );
+
+    // RestElement off a destructure is a fresh array (slice copy at
+    // runtime), so the rule should NOT treat \`rest\` as reachable.
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("flags nested aliases into reducer state when the original state is returned", () => {
     const result = runRule(
       noMutatingReducerState,
@@ -217,6 +295,141 @@ describe("no-mutating-reducer-state", () => {
     );
 
     expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("flags `_.set(state, path, value)` from the mutating lodash package", () => {
+    const result = runRule(
+      noMutatingReducerState,
+      `
+      import { useReducer } from "react";
+      import _ from "lodash";
+
+      function reducer(state, action) {
+        _.set(state, action.path, action.value);
+        return state;
+      }
+
+      useReducer(reducer, { user: {} });
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags `set(state, ...)` from `lodash/set`", () => {
+    const result = runRule(
+      noMutatingReducerState,
+      `
+      import { useReducer } from "react";
+      import set from "lodash/set";
+
+      function reducer(state, action) {
+        set(state, action.path, action.value);
+        return state;
+      }
+
+      useReducer(reducer, {});
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags `_.merge(state, source)` from lodash-es", () => {
+    const result = runRule(
+      noMutatingReducerState,
+      `
+      import { useReducer } from "react";
+      import * as _ from "lodash-es";
+
+      function reducer(state, action) {
+        _.merge(state, action.patch);
+        return state;
+      }
+
+      useReducer(reducer, {});
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does NOT flag `_.set(state, ...)` when imported from `lodash/fp` (non-mutating)", () => {
+    const result = runRule(
+      noMutatingReducerState,
+      `
+      import { useReducer } from "react";
+      import _ from "lodash/fp";
+
+      function reducer(state, action) {
+        // lodash/fp.set returns a new value — discarding the result is wasteful
+        // but not a same-state-mutation bug.
+        _.set(action.path, action.value, state);
+        return state;
+      }
+
+      useReducer(reducer, {});
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does NOT flag a custom non-lodash `set` import", () => {
+    const result = runRule(
+      noMutatingReducerState,
+      `
+      import { useReducer } from "react";
+      import { set } from "./my-custom-set";
+
+      function reducer(state, action) {
+        set(state, action.path, action.value);
+        return state;
+      }
+
+      useReducer(reducer, {});
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag `Object.assign` when Object is shadowed in the file", () => {
+    const result = runRule(
+      noMutatingReducerState,
+      `
+      import { useReducer } from "react";
+      import { Object } from "./my-safe-utils";
+
+      function reducer(state, action) {
+        Object.assign(state, action.patch);
+        return state;
+      }
+
+      useReducer(reducer, {});
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag `Reflect.set` when Reflect is shadowed in the file", () => {
+    const result = runRule(
+      noMutatingReducerState,
+      `
+      import { useReducer } from "react";
+      const Reflect = customReflect;
+
+      function reducer(state, action) {
+        Reflect.set(state, action.key, action.value);
+        return state;
+      }
+
+      useReducer(reducer, {});
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("flags standard object mutation APIs before same-reference returns", () => {
@@ -708,19 +921,67 @@ describe("no-mutating-reducer-state", () => {
     expect(varAlias.diagnostics).toHaveLength(1);
   });
 
-  it("skips unresolved imported reducers for v1", () => {
+  it("skips imported reducers when the importing file isn't on disk (no filename context)", () => {
+    // runRule without a filename can't resolve relative imports.
+    // Cross-file resolution is intentionally a no-op in that case
+    // so unit fixtures don't accidentally read random files on disk.
     const result = runRule(
       noMutatingReducerState,
       `
       import { useReducer } from "react";
       import { reducer } from "./reducer";
 
-      // Imported reducer bodies require module graph resolution. The v1 rule
-      // treats this as a coverage gap instead of guessing across files.
       useReducer(reducer, {});
     `,
     );
 
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("skips reducers imported from a non-relative path (node_modules — not user's code)", () => {
+    const result = runRule(
+      noMutatingReducerState,
+      `
+      import { useReducer } from "react";
+      import { reducer } from "some-package";
+
+      useReducer(reducer, {});
+    `,
+      { filename: "/tmp/fixture.tsx" },
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("terminates on a reducer with many sequential branches (path-state cap)", () => {
+    // Each non-returning \`if\` forks the analyzer's path states; without
+    // a cap this 2^N explosion would hang. The cap bails safely.
+    const sequentialIfs = Array.from(
+      { length: 40 },
+      (_unused, index) =>
+        `if (action["k${index}"] !== undefined) next.v${index} = action["k${index}"];`,
+    ).join("\n        ");
+    const result = runRule(
+      noMutatingReducerState,
+      `
+      import { useReducer } from "react";
+
+      function reducer(state, action) {
+        const next = { ...state };
+        ${sequentialIfs}
+        return next;
+      }
+
+      function App() {
+        const [state, dispatch] = useReducer(reducer, {});
+        return null;
+      }
+    `,
+    );
+
+    // \`next\` is a fresh clone, so there's no real mutation-of-original
+    // bug here — the point is the analyzer completes without hanging.
+    expect(result.parseErrors).toEqual([]);
+    expect(Array.isArray(result.diagnostics)).toBe(true);
   });
 });

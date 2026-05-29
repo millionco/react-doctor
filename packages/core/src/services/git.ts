@@ -5,6 +5,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as ChildProcess from "effect/unstable/process/ChildProcess";
 import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner";
@@ -27,6 +28,12 @@ interface CommandInvocationInput {
   readonly args: ReadonlyArray<string>;
   readonly directory: string;
   readonly env?: Record<string, string | undefined>;
+  /**
+   * Hard cap on stdout bytes. When set, the command fails with a
+   * `GitInvocationFailed` once the streamed output crosses the budget
+   * instead of buffering the whole payload into memory.
+   */
+  readonly maxStdoutBytes?: number;
 }
 
 const trimOrNull = (value: string): string | null => {
@@ -103,11 +110,9 @@ interface GitDiffSelectionInput {
 
 interface GitShowOptions {
   /**
-   * Soft limit on the maximum bytes `git show :<path>` may return.
-   * Currently advisory — `ChildProcess`'s stream-based reader has
-   * no built-in cap. Kept on the interface so callers can document
-   * their expectations and so a future `Stream.takeWhile` byte
-   * counter can enforce it without changing call sites.
+   * Hard limit on the bytes `git show :<path>` may stream before the
+   * read fails (so the caller skips the file rather than buffering it
+   * whole). Enforced by `runCommand` via a streaming byte counter.
    */
   readonly maxBufferBytes?: number;
 }
@@ -217,9 +222,37 @@ export class Git extends Context.Service<
                 extendEnv: true,
               }),
             );
+            // Optional hard cap on stdout bytes (e.g. `git show` of a
+            // huge staged blob): count raw bytes as they stream and fail
+            // fast once the budget is crossed so the caller can skip the
+            // file instead of buffering it whole.
+            const maxStdoutBytes = input.maxStdoutBytes;
+            const stdoutByteCount = yield* Ref.make(0);
+            const stdoutStream =
+              maxStdoutBytes === undefined
+                ? handle.stdout
+                : handle.stdout.pipe(
+                    Stream.tap((chunk) =>
+                      Ref.updateAndGet(stdoutByteCount, (total) => total + chunk.length).pipe(
+                        Effect.flatMap((total) =>
+                          total > maxStdoutBytes
+                            ? Effect.fail(
+                                new ReactDoctorError({
+                                  reason: new GitInvocationFailed({
+                                    args: [...input.args],
+                                    directory: input.directory,
+                                    cause: new Error(`git stdout exceeded ${maxStdoutBytes} bytes`),
+                                  }),
+                                }),
+                              )
+                            : Effect.void,
+                        ),
+                      ),
+                    ),
+                  );
             const [stdout, stderr, status] = yield* Effect.all(
               [
-                Stream.mkString(Stream.decodeText(handle.stdout)),
+                Stream.mkString(Stream.decodeText(stdoutStream)),
                 Stream.mkString(Stream.decodeText(handle.stderr)),
                 handle.exitCode,
               ],
@@ -444,10 +477,13 @@ export class Git extends Context.Service<
               return splitNullSeparated(result.stdout);
             }),
           ),
-        showStagedContent: (directory, relativePath) =>
-          runGit(directory, ["show", `:${relativePath}`]).pipe(
-            Effect.map((result) => (result.status === 0 ? result.stdout : null)),
-          ),
+        showStagedContent: (directory, relativePath, options) =>
+          runCommand({
+            command: "git",
+            args: ["show", `:${relativePath}`],
+            directory,
+            maxStdoutBytes: options?.maxBufferBytes,
+          }).pipe(Effect.map((result) => (result.status === 0 ? result.stdout : null))),
         grep: (input) =>
           Effect.gen(function* () {
             const args: string[] = ["grep"];
@@ -458,7 +494,12 @@ export class Git extends Context.Service<
             if (input.includePaths && input.includePaths.length > 0) {
               args.push("--", ...input.includePaths);
             }
-            const result = yield* runGit(input.directory, args);
+            const result = yield* runCommand({
+              command: "git",
+              args,
+              directory: input.directory,
+              maxStdoutBytes: input.maxBufferBytes,
+            });
             // Status 128 = "not a git repo" → caller should fall back.
             if (result.status === 128) return null;
             return { status: result.status, stdout: result.stdout } satisfies GitGrepResult;

@@ -325,35 +325,13 @@ const collectCaptureDepKeys = (callback: EsTreeNode, scopes: ScopeAnalysis): Cap
     if (!depKey) continue;
     keys.add(depKey);
   }
-  const functionParams = (callback as { params?: ReadonlyArray<EsTreeNode> }).params ?? [];
-  for (const param of functionParams) {
-    if (!isNodeOfType(param, "AssignmentPattern")) continue;
-    const visitDefaultValue = (node: EsTreeNode): void => {
-      if (isNodeOfType(node, "Identifier") || isNodeOfType(node, "MemberExpression")) {
-        const depKey = stringifyMemberChain(node);
-        if (depKey) keys.add(depKey);
-      }
-      const reference = scopes.referenceFor(node);
-      if (reference?.resolvedSymbol) {
-        const symbol = reference.resolvedSymbol;
-        if (!isOutsideAllFunctions(symbol)) {
-          const depKey = computeDepKey(reference);
-          if (depKey) keys.add(depKey);
-        }
-      }
-      const record = node as unknown as Record<string, unknown>;
-      for (const key of Object.keys(record)) {
-        if (key === "parent") continue;
-        const child = record[key];
-        if (Array.isArray(child)) {
-          for (const item of child) if (isAstNode(item)) visitDefaultValue(item);
-        } else if (isAstNode(child)) {
-          visitDefaultValue(child);
-        }
-      }
-    };
-    visitDefaultValue(param.right as EsTreeNode);
-  }
+  // Parameter default values and computed destructuring keys are now
+  // recorded as references by the scope analyzer, so `closureCaptures`
+  // already collects them through the SAME filtered path as the body
+  // above (module-scope / stable values excluded). A separate manual
+  // param walk used to live here and added every default-value name
+  // unconditionally — which mis-reported module constants like
+  // `(opts = SOME_CONST) => …` as missing deps.
   return { keys, stableCapturedNames };
 };
 

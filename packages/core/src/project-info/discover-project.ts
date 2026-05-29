@@ -11,12 +11,13 @@ import { findMonorepoRoot, isMonorepoRoot } from "./find-monorepo-root.js";
 import { findReactInWorkspaces } from "./find-react-in-workspaces.js";
 import { getDependencyDeclaration } from "./utils/get-dependency-declaration.js";
 import { hasReactNativeWorkspaceAnywhere } from "./has-react-native-workspace-anywhere.js";
-import { hasPreact } from "./has-preact.js";
+import { getPreactVersion } from "./get-preact-version.js";
 import { hasTanStackQuery } from "./has-tanstack-query.js";
 import { someWorkspacePackageJson } from "./some-workspace-package-json.js";
 import { isPackageJsonReanimatedAware } from "./utils/is-package-json-reanimated-aware.js";
 import { readPackageJson } from "./read-package-json.js";
 import { isCatalogReference, resolveCatalogVersion } from "./resolve-catalog-version.js";
+import { parseReactMajor } from "./parse-react-major.js";
 import { resolveEffectiveReactMajor } from "./resolve-effective-react-major.js";
 
 export { discoverReactSubprojects } from "./discover-react-subprojects.js";
@@ -166,6 +167,8 @@ export const discoverProject = (directory: string): ProjectInfo => {
     hasReactNativeWorkspace &&
     someWorkspacePackageJson(directory, packageJson, isPackageJsonReanimatedAware);
 
+  const preactVersion = getPreactVersion(packageJson);
+
   const projectInfo: ProjectInfo = {
     rootDirectory: directory,
     projectName,
@@ -176,7 +179,8 @@ export const discoverProject = (directory: string): ProjectInfo => {
     hasTypeScript,
     hasReactCompiler: detectReactCompiler(directory, packageJson),
     hasTanStackQuery: hasTanStackQuery(packageJson),
-    hasPreact: hasPreact(packageJson),
+    preactVersion,
+    preactMajorVersion: parseReactMajor(preactVersion),
     hasReactNativeWorkspace,
     hasReanimated,
     sourceFileCount,

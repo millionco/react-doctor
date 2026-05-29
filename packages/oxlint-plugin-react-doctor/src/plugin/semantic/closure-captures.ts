@@ -1,18 +1,10 @@
 import type { EsTreeNode } from "../utils/es-tree-node.js";
 import type { ReferenceDescriptor, ScopeAnalysis } from "./scope-analysis.js";
 import { isDescendantScope } from "./scope-analysis.js";
+import { TYPE_POSITION_CHILD_KEYS } from "../constants/ts-type-position-keys.js";
 import { isAstDescendant } from "../utils/is-ast-descendant.js";
 import { isAstNode } from "../utils/is-ast-node.js";
 import { isFunctionLike } from "../utils/is-function-like.js";
-
-const TYPE_ONLY_CHILD_KEYS: ReadonlySet<string> = new Set([
-  "implements",
-  "returnType",
-  "superTypeArguments",
-  "typeAnnotation",
-  "typeArguments",
-  "typeParameters",
-]);
 
 // True if `inner` is a descendant of `outer` (or equal) in the AST
 // tree. Used to filter references inside `functionNode`.
@@ -69,7 +61,7 @@ export const closureCaptures = (
     const record = node as unknown as Record<string, unknown>;
     for (const key of Object.keys(record)) {
       if (key === "parent") continue;
-      if (TYPE_ONLY_CHILD_KEYS.has(key)) continue;
+      if (TYPE_POSITION_CHILD_KEYS.has(key)) continue;
       const child = record[key];
       if (Array.isArray(child)) {
         for (const item of child) if (isAstNode(item)) visit(item);

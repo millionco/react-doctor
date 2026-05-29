@@ -16,8 +16,14 @@ import { buildDiagnosticPipeline } from "./build-diagnostic-pipeline.js";
 import { checkPnpmHardening } from "./check-pnpm-hardening.js";
 import { checkReducedMotion } from "./check-reduced-motion.js";
 import { computeJsxIncludePaths } from "./jsx-include-paths.js";
-import { NoReactDependency, ReactDoctorError, type ReactDoctorErrorReason } from "./errors.js";
+import {
+  NoReactDependency,
+  type OxlintUnavailable,
+  ReactDoctorError,
+  type ReactDoctorErrorReason,
+} from "./errors.js";
 import { filterDiagnosticsForSurface } from "./filter-for-surface.js";
+import { isAnalyzableProject } from "./project-info/index.js";
 import { resolveLintIncludePaths } from "./resolve-lint-include-paths.js";
 import { Config, type ResolvedConfig } from "./services/config.js";
 import { DeadCode } from "./services/dead-code.js";
@@ -77,6 +83,13 @@ export interface InspectOutput {
    * `OxlintUnavailable` with `kind: "native-binding-missing"`).
    */
   readonly lintFailureReasonTag: ReactDoctorErrorReason["_tag"] | null;
+  /**
+   * The `kind` of an `OxlintUnavailable` lint failure
+   * (`binary-not-found` / `native-binding-missing`), or `null` for any
+   * other failure. Lets renderers show the "upgrade Node" hint by
+   * dispatching on structured data instead of matching message text.
+   */
+  readonly lintFailureReasonKind: OxlintUnavailable["kind"] | null;
   readonly lintPartialFailures: ReadonlyArray<string>;
   /** `false` when run-dead-code was disabled, diff/staged mode, or analysis crashed. */
   readonly didDeadCodeFail: boolean;
@@ -191,7 +204,7 @@ export const runInspect = <HooksR = never>(
     const scanDirectory = resolvedConfig.resolvedDirectory;
 
     const project = yield* projectService.discover(scanDirectory);
-    if (project.reactVersion === null) {
+    if (!isAnalyzableProject(project)) {
       return yield* new ReactDoctorError({
         reason: new NoReactDependency({ directory: scanDirectory }),
       });
@@ -252,7 +265,8 @@ export const runInspect = <HooksR = never>(
       didFail: boolean;
       reason: string | null;
       reasonTag: ReactDoctorErrorReason["_tag"] | null;
-    }>({ didFail: false, reason: null, reasonTag: null });
+      reasonKind: OxlintUnavailable["kind"] | null;
+    }>({ didFail: false, reason: null, reasonTag: null, reasonKind: null });
     const deadCodeFailure = yield* Ref.make<{ didFail: boolean; reason: string | null }>({
       didFail: false,
       reason: null,
@@ -277,7 +291,7 @@ export const runInspect = <HooksR = never>(
         onFileProgress: (scannedFileCount, totalFileCount) => {
           lastReportedTotalFileCount = totalFileCount;
           Effect.runSync(
-            scanProgress.update(`Scanning (${scannedFileCount}/${totalFileCount})...`),
+            scanProgress.update(`Scanning files (${scannedFileCount}/${totalFileCount})...`),
           );
         },
       })
@@ -289,6 +303,7 @@ export const runInspect = <HooksR = never>(
                 didFail: true,
                 reason: error.message,
                 reasonTag: error.reason._tag,
+                reasonKind: error.reason._tag === "OxlintUnavailable" ? error.reason.kind : null,
               });
               return Stream.empty as Stream.Stream<Diagnostic, never>;
             }),
@@ -393,6 +408,7 @@ export const runInspect = <HooksR = never>(
       didLintFail: lintFailureState.didFail,
       lintFailureReason: lintFailureState.reason,
       lintFailureReasonTag: lintFailureState.reasonTag,
+      lintFailureReasonKind: lintFailureState.reasonKind,
       lintPartialFailures,
       didDeadCodeFail: deadCodeFailureState.didFail,
       deadCodeFailureReason: deadCodeFailureState.reason,

@@ -6,10 +6,12 @@ import { exitGracefully } from "./utils/exit-gracefully.js";
 import { handleError } from "./utils/handle-error.js";
 import { isJsonModeActive, writeJsonErrorReport } from "./utils/json-mode.js";
 import { stripUnknownCliFlags } from "./utils/strip-unknown-cli-flags.js";
+import { unrefStdin } from "./utils/unref-stdin.js";
 import { VERSION } from "./utils/version.js";
 
 process.on("SIGINT", exitGracefully);
 process.on("SIGTERM", exitGracefully);
+unrefStdin();
 
 const program = new Command()
   .name("react-doctor")
@@ -38,7 +40,7 @@ const program = new Command()
   .option("--staged", "scan only staged (git index) files for pre-commit hooks")
   .option(
     "--fail-on <level>",
-    "exit with error code on diagnostics: error, warning, none (default: error)",
+    "exit with error code on diagnostics: error, warning, none (default: none)",
   )
   .option("--annotations", "output diagnostics as GitHub Actions annotations")
   .option(

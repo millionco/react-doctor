@@ -6,17 +6,19 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
-  contents: write
-  pull-requests: write
-  id-token: write
+  contents: read
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
     steps:
       - uses: actions/checkout@v5
 
@@ -27,7 +29,7 @@ jobs:
           node-version: 22.18.0
           cache: pnpm
 
-      - run: npm install -g npm@latest
+      - run: npm install -g npm@11
 
       - run: pnpm install --frozen-lockfile
 
@@ -42,3 +44,51 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
+
+  publish-dev:
+    name: Publish @dev snapshot
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.18.0
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - run: npm install -g npm@11
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Compute dev version
+        id: dev-version
+        run: |
+          base_version="$(node -p "require('./packages/react-doctor/package.json').version")"
+          dev_version="${base_version}-dev.$(git rev-parse --short HEAD)"
+          echo "version=${dev_version}" >> "$GITHUB_OUTPUT"
+          echo "Publishing dev snapshot ${dev_version}"
+
+      - name: Apply dev version to published packages
+        env:
+          DEV_VERSION: ${{ steps.dev-version.outputs.version }}
+        run: |
+          for package_dir in react-doctor oxlint-plugin-react-doctor eslint-plugin-react-doctor; do
+            node -e "const fs = require('node:fs'); const path = 'packages/${package_dir}/package.json'; const manifest = JSON.parse(fs.readFileSync(path, 'utf8')); manifest.version = process.env.DEV_VERSION; fs.writeFileSync(path, JSON.stringify(manifest, null, 2) + '\n');"
+          done
+
+      - name: Build
+        env:
+          VERSION: ${{ steps.dev-version.outputs.version }}
+        run: pnpm build
+
+      - name: Publish to npm under the dev tag
+        env:
+          NPM_CONFIG_PROVENANCE: true
+        run: pnpm publish --recursive --tag dev --no-git-checks --access public

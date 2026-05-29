@@ -13,22 +13,81 @@ const baseProject: ProjectInfo = {
   hasReactCompiler: false,
   hasTanStackQuery: false,
   hasReactNativeWorkspace: false,
-  hasPreact: false,
+  preactVersion: null,
+  preactMajorVersion: null,
   sourceFileCount: 1,
 };
 
 describe("buildCapabilities", () => {
-  it("emits the `preact` capability when `hasPreact` is true on a Preact-on-Vite project", () => {
-    const capabilities = buildCapabilities({ ...baseProject, framework: "vite", hasPreact: true });
+  it("emits the `preact` capability when `preactVersion` is set on a Preact-on-Vite project", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      framework: "vite",
+      preactVersion: "^10.22.0",
+      preactMajorVersion: 10,
+    });
     expect(capabilities.has("preact")).toBe(true);
     expect(capabilities.has("vite")).toBe(true);
+  });
+
+  it("emits a `preact:<major>` ladder from `preactMajorVersion`, mirroring `react:<major>`", () => {
+    const preact11 = buildCapabilities({
+      ...baseProject,
+      framework: "preact",
+      reactVersion: null,
+      reactMajorVersion: null,
+      preactVersion: "^11.0.0",
+      preactMajorVersion: 11,
+    });
+    expect(preact11.has("preact:10")).toBe(true);
+    expect(preact11.has("preact:11")).toBe(true);
+
+    const preact10 = buildCapabilities({
+      ...baseProject,
+      framework: "preact",
+      reactVersion: null,
+      reactMajorVersion: null,
+      preactVersion: "^10.22.0",
+      preactMajorVersion: 10,
+    });
+    expect(preact10.has("preact:10")).toBe(true);
+    expect(preact10.has("preact:11")).toBe(false);
+  });
+
+  it("omits the `preact:<major>` ladder when the version is unparseable", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      framework: "preact",
+      reactVersion: null,
+      reactMajorVersion: null,
+      preactVersion: "workspace:*",
+      preactMajorVersion: null,
+    });
+    expect(capabilities.has("preact")).toBe(true);
+    expect(capabilities.has("preact:10")).toBe(false);
+  });
+
+  it("caps the `preact:<major>` ladder for an absurd (untrusted) version spec", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      framework: "preact",
+      reactVersion: null,
+      reactMajorVersion: null,
+      preactVersion: "^99999.0.0",
+      preactMajorVersion: 99999,
+    });
+    expect(capabilities.has("preact:10")).toBe(true);
+    expect(capabilities.has("preact:20")).toBe(true);
+    expect(capabilities.has("preact:21")).toBe(false);
+    expect(capabilities.has("preact:99999")).toBe(false);
   });
 
   it("emits the `preact` capability for pure-Preact projects (no bundler manifest)", () => {
     const capabilities = buildCapabilities({
       ...baseProject,
       framework: "preact",
-      hasPreact: true,
+      preactVersion: "^10.22.0",
+      preactMajorVersion: 10,
       reactVersion: null,
       reactMajorVersion: null,
     });
@@ -36,7 +95,12 @@ describe("buildCapabilities", () => {
   });
 
   it("does not emit the `preact` or `pure-preact` capabilities for a non-Preact project", () => {
-    const capabilities = buildCapabilities({ ...baseProject, framework: "vite", hasPreact: false });
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      framework: "vite",
+      preactVersion: null,
+      preactMajorVersion: null,
+    });
     expect(capabilities.has("preact")).toBe(false);
     expect(capabilities.has("pure-preact")).toBe(false);
   });
@@ -45,7 +109,8 @@ describe("buildCapabilities", () => {
     const purePreact = buildCapabilities({
       ...baseProject,
       framework: "preact",
-      hasPreact: true,
+      preactVersion: "^10.22.0",
+      preactMajorVersion: 10,
       reactVersion: null,
       reactMajorVersion: null,
     });
@@ -54,7 +119,8 @@ describe("buildCapabilities", () => {
     const compatStyle = buildCapabilities({
       ...baseProject,
       framework: "vite",
-      hasPreact: true,
+      preactVersion: "^10.22.0",
+      preactMajorVersion: 10,
       reactVersion: "18.3.1",
       reactMajorVersion: 18,
     });

@@ -1,12 +1,6 @@
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
-import {
-  buildDiagnosticIdentity,
-  JsonReportV1,
-  NodeBinaryPath,
-  OxlintBinaryPath,
-  Severity,
-} from "@react-doctor/core";
+import { buildDiagnosticIdentity, JsonReportV1, Severity } from "@react-doctor/core";
 // `Diagnostic` and `JsonReport` are imported directly from the
 // `schemas.js` module rather than the package barrel because the
 // barrel intentionally elides them — the same names exist as TS
@@ -216,16 +210,5 @@ describe("JsonReport (v1)", () => {
         error: null,
       }),
     ).toThrow();
-  });
-});
-
-describe("Branded paths", () => {
-  it("OxlintBinaryPath and NodeBinaryPath decode raw strings", () => {
-    expect(Schema.decodeUnknownSync(OxlintBinaryPath)("/usr/local/bin/oxlint")).toBe(
-      "/usr/local/bin/oxlint",
-    );
-    expect(Schema.decodeUnknownSync(NodeBinaryPath)("/usr/local/bin/node")).toBe(
-      "/usr/local/bin/node",
-    );
   });
 });

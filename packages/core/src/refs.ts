@@ -32,16 +32,3 @@ export class OxlintOutputMaxBytes extends Context.Reference<number>(
     defaultValue: () => OXLINT_OUTPUT_MAX_BYTES,
   },
 ) {}
-
-/**
- * Prefix for mkdtemp directories created when materializing
- * staged-file snapshots for pre-commit hook scans. Override in tests
- * that want a deterministic prefix; production uses
- * `react-doctor-staged-` and the OS provides the random suffix.
- */
-export class StagedFilesTempDirPrefix extends Context.Reference<string>(
-  "react-doctor/StagedFilesTempDirPrefix",
-  {
-    defaultValue: () => "react-doctor-staged-",
-  },
-) {}

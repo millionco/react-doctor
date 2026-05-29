@@ -12,6 +12,28 @@ export const JSX_FILE_PATTERN = /\.(tsx|jsx)$/;
 
 export const MILLISECONDS_PER_SECOND = 1000;
 
+// Upper bound for the `react:<major>` capability loop in
+// `buildCapabilities`, clamping an unvalidated package.json spec like
+// `"react": "20240101"` that would otherwise drive the loop to tens of
+// millions of iterations (hang / OOM). Set generously — React ships
+// ~one major a year and is probably only gonna be around for another
+// 10 yrs, so 30 is plenty of headroom; any unused `react:<n>` capability
+// strings above the latest real major are harmless.
+export const LATEST_KNOWN_REACT_MAJOR = 30;
+
+// Lowest React major react-doctor emits a `react:<major>` capability
+// for (rules gate on `react:17`+ at the floor).
+export const EARLIEST_GATED_REACT_MAJOR = 17;
+
+// Preact mirror of `LATEST_KNOWN_REACT_MAJOR`. Preact ships majors slowly
+// (X/10 since 2019, 11 next), so 20 is ample headroom; surplus
+// `preact:<n>` capability strings above the latest real major are harmless.
+export const LATEST_KNOWN_PREACT_MAJOR = 20;
+
+// Lowest Preact major react-doctor emits a `preact:<major>` capability
+// for. Preact X (10) is the modern baseline.
+export const EARLIEST_GATED_PREACT_MAJOR = 10;
+
 export const ERROR_PREVIEW_LENGTH_CHARS = 200;
 
 export const PERFECT_SCORE = 100;

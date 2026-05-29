@@ -46,12 +46,19 @@ const isErrorBoundaryClass = (classNode: EsTreeNode): boolean => {
 
 // Port of `oxc_linter::rules::react::prefer_function_component`. Flags
 // classes that look like React components and could be re-written as
-// functions. By default error boundary classes (those implementing
-// componentDidCatch / getDerivedStateFromError) are exempt.
+// functions. Both `ClassDeclaration` and `ClassExpression` are
+// visited so HoC-wrapped class components
+// (`connect(mapState)(class extends Component {...})`) are still
+// caught.
 //
-// LIMITATION (vs OXC): OXC has additional logic to detect "JSX utility
-// classes" that contain JSX but don't extend Component — we treat any
-// ES6 component as a candidate.
+// Defaults:
+//   - error boundary classes (componentDidCatch /
+//     getDerivedStateFromError) are exempt — there's no hook
+//     equivalent. Override with `allowErrorBoundary: false`.
+//   - "JSX utility classes" (a class that contains JSX but does NOT
+//     extend Component) are NOT flagged by default — matching the
+//     conservative behaviour. Enable OXC-parity flagging with
+//     `allowJsxUtilityClass: true`.
 export const preferFunctionComponent = defineRule<Rule>({
   id: "prefer-function-component",
   severity: "warn",

@@ -1,0 +1,21 @@
+packages/react-doctor/tests/github-action.test.ts
+  s_633b9c2d4ef70d::t_41696473ad1722 64,66
+action.yml
+  s_633b9c2d4ef70d::t_546c05839a113c 74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "702ffe69dad58d54cb819061e4fe586a8583f6cb",
+  "prompts": {},
+  "sessions": {
+    "s_633b9c2d4ef70d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c5b5fedf-301b-4e7a-a33d-608875455be5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

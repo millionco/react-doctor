@@ -114,12 +114,9 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
             }
           }, PROGRESS_TICK_INTERVAL_MS)
         : null;
-    // The interval MUST be cleared even when `spawnLintBatch` rejects
-    // (e.g. an adopted lint config crashes oxlint with a non-splittable
-    // error). It's a ref'd timer, so a leaked one outlives the failed
-    // attempt and keeps the event loop alive after output is printed:
-    // the caller's extends-stripped retry then succeeds, no
-    // `process.exit()` runs, and the CLI hangs forever (issue #599).
+    // Clear in `finally` so a rejected batch (e.g. an adopted lint config
+    // crashing oxlint) can't leak this ref'd timer — a leak keeps the event
+    // loop alive and hangs the CLI after output prints (issue #599).
     try {
       const batchDiagnostics = await spawnLintBatch(batch);
       allDiagnostics.push(...batchDiagnostics);

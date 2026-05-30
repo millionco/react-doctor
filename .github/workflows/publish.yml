@@ -45,6 +45,26 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
 
+      # The published bundle already carries debug IDs (`pnpm release` runs
+      # `sentry-cli sourcemaps inject` during the build); here we ship the
+      # matching source maps to Better Stack so stack traces de-minify.
+      # Maps are matched by debug ID, never bundled into the npm tarball.
+      - name: Upload source maps to Better Stack
+        if: ${{ steps.changesets.outputs.published == 'true' }}
+        continue-on-error: true
+        working-directory: packages/react-doctor
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.BETTER_STACK_SOURCEMAP_TOKEN }}
+          SENTRY_ORG: ${{ vars.BETTER_STACK_SOURCEMAP_ORG }}
+          SENTRY_PROJECT: ${{ vars.BETTER_STACK_SOURCEMAP_PROJECT }}
+          SENTRY_URL: ${{ vars.BETTER_STACK_SOURCEMAP_URL }}
+        run: |
+          if [ -z "$SENTRY_AUTH_TOKEN" ]; then
+            echo "BETTER_STACK_SOURCEMAP_TOKEN not set; skipping source map upload."
+            exit 0
+          fi
+          pnpm exec sentry-cli sourcemaps upload dist
+
   publish-dev:
     name: Publish @dev snapshot
     needs: publish
@@ -89,6 +109,21 @@ jobs:
         env:
           VERSION: ${{ steps.dev-version.outputs.version }}
         run: pnpm build
+
+      - name: Upload source maps to Better Stack
+        continue-on-error: true
+        working-directory: packages/react-doctor
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.BETTER_STACK_SOURCEMAP_TOKEN }}
+          SENTRY_ORG: ${{ vars.BETTER_STACK_SOURCEMAP_ORG }}
+          SENTRY_PROJECT: ${{ vars.BETTER_STACK_SOURCEMAP_PROJECT }}
+          SENTRY_URL: ${{ vars.BETTER_STACK_SOURCEMAP_URL }}
+        run: |
+          if [ -z "$SENTRY_AUTH_TOKEN" ]; then
+            echo "BETTER_STACK_SOURCEMAP_TOKEN not set; skipping source map upload."
+            exit 0
+          fi
+          pnpm exec sentry-cli sourcemaps upload dist
 
       - name: Publish to npm under the dev tag
         env:

@@ -50,12 +50,13 @@
   },
   "scripts": {
     "dev": "vp pack --watch",
-    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && cross-env NODE_ENV=production vp pack",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && cross-env NODE_ENV=production vp pack && sentry-cli sourcemaps inject dist",
     "typecheck": "tsc --noEmit",
     "test": "vp test run"
   },
   "dependencies": {
     "@effect/platform-node-shared": "4.0.0-beta.70",
+    "@sentry/node": "^10.18.0",
     "agent-install": "0.0.5",
     "conf": "^15.1.0",
     "deslop-js": "^0.0.14",
@@ -69,6 +70,7 @@
   "devDependencies": {
     "@react-doctor/api": "workspace:*",
     "@react-doctor/core": "workspace:*",
+    "@sentry/cli": "^3.4.0",
     "@types/prompts": "^2.4.9",
     "commander": "^14.0.3",
     "ora": "^9.4.0"

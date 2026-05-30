@@ -21,6 +21,7 @@ import type {
 } from "@react-doctor/core";
 import { cliLogger as logger } from "../utils/cli-logger.js";
 import { STAGED_FILES_TEMP_DIR_PREFIX } from "../utils/constants.js";
+import { captureCliError } from "../utils/error-tracking.js";
 import { getStagedSourceFiles, materializeStagedFiles } from "../utils/get-staged-files.js";
 import type { InspectFlags } from "../utils/inspect-flags.js";
 import { handleError } from "../utils/handle-error.js";
@@ -380,6 +381,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       });
     }
   } catch (error) {
+    await captureCliError(error, "command");
     if (isJsonMode) {
       writeJsonErrorReport(error);
       process.exitCode = 1;

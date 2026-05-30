@@ -176,6 +176,27 @@ for this codebase) for canonical examples.
   `Effect.withSpan("...")` ships to the configured backend. Eval reference:
   `react-doctor-evals/src/Observability.ts → layerAxiom`.
 
+### Error reporting (CLI crash tracking)
+
+- `react-doctor/src/cli/utils/error-tracking.ts` reports unhandled CLI errors to
+  Better Stack via the Sentry SDK (`@sentry/node`). Same strictly-opt-in posture
+  as `layerOtlp`: nothing is sent unless the user sets
+  `REACT_DOCTOR_ERROR_REPORTING=1` (or `=true`), and `@sentry/node` is lazy-imported
+  only on that opt-in so the common path pays zero cost. The DSN is a public ingest
+  key in `cli/utils/constants.ts` (`BETTER_STACK_ERROR_TRACKING_DSN`), not a secret.
+- `initErrorTracking()` runs once at CLI startup; `captureCliError(error)` is awaited
+  at every fatal chokepoint (`index.ts` top-level `.catch`, plus the `inspect`/`install`
+  command catch blocks) so the event flushes before `process.exit`. Sentry is
+  initialized with `defaultIntegrations: false` + `skipOpenTelemetrySetup: true` so it
+  never installs global process handlers (the CLI owns its own SIGINT/EPIPE/exit) and
+  never spins up a second OpenTelemetry SDK alongside the Effect tracer.
+- **Source maps**: the production `build` script runs `sentry-cli sourcemaps inject dist`
+  so the shipped bundle carries debug IDs; `.github/workflows/publish.yml` uploads the
+  matching maps to Better Stack at publish time (gated on `BETTER_STACK_SOURCEMAP_TOKEN`).
+  Maps are matched by debug ID and never bundled into the npm tarball (the package
+  `files` allowlist ships `dist/**/*.js`, not `*.map`). `@sentry/cli` is in the root
+  `onlyBuiltDependencies` so its binary postinstall is allowed under pnpm.
+
 ### Console / logging
 
 - ALWAYS: `import * as Console from "effect/Console"` and `yield* Console.log(...)` /

@@ -60,6 +60,11 @@ export default defineConfig({
         alwaysBundle: ["commander", "ora"],
         neverBundle: [
           "@effect/platform-node-shared",
+          // @sentry/node drags in the OpenTelemetry instrumentation tree;
+          // bundling it would balloon the tarball and break its dynamic
+          // require()s. Keep it external (it's also lazy-imported only on
+          // opt-in — see cli/utils/error-tracking.ts).
+          "@sentry/node",
           "agent-install",
           // HACK: deslop-js wraps oxc-parser / oxc-resolver, both of
           // which load platform-specific NAPI bindings via require().
@@ -110,6 +115,11 @@ export default defineConfig({
         alwaysBundle: ["commander", "ora"],
         neverBundle: [
           "@effect/platform-node-shared",
+          // @sentry/node drags in the OpenTelemetry instrumentation tree;
+          // bundling it would balloon the tarball and break its dynamic
+          // require()s. Keep it external (it's also lazy-imported only on
+          // opt-in — see cli/utils/error-tracking.ts).
+          "@sentry/node",
           "agent-install",
           "deslop-js",
           "effect",

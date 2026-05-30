@@ -2,6 +2,8 @@ import { Command } from "commander";
 import { CANONICAL_GITHUB_URL, highlighter } from "@react-doctor/core";
 import { inspectAction } from "./commands/inspect.js";
 import { installAction } from "./commands/install.js";
+import { captureCliError, initErrorTracking } from "./utils/error-tracking.js";
+import type { ErrorReportOrigin } from "./utils/error-tracking.js";
 import { exitGracefully } from "./utils/exit-gracefully.js";
 import { handleError } from "./utils/handle-error.js";
 import { isJsonModeActive, writeJsonErrorReport } from "./utils/json-mode.js";
@@ -9,9 +11,42 @@ import { stripUnknownCliFlags } from "./utils/strip-unknown-cli-flags.js";
 import { unrefStdin } from "./utils/unref-stdin.js";
 import { VERSION } from "./utils/version.js";
 
+/**
+ * Single fatal-error sink: report to Better Stack (a no-op unless the
+ * user opted in via REACT_DOCTOR_ERROR_REPORTING) and flush, then render
+ * through the same JSON / pretty paths the command bodies use and exit
+ * non-zero. Wired into the top-level promise rejection AND the
+ * process-level `uncaughtException` / `unhandledRejection` nets so no
+ * crash — handled or not — escapes reporting.
+ */
+const reportFatalError = async (
+  error: unknown,
+  origin: ErrorReportOrigin = "top-level",
+): Promise<void> => {
+  await captureCliError(error, origin);
+  if (isJsonModeActive()) {
+    writeJsonErrorReport(error);
+    process.exit(1);
+  }
+  handleError(error);
+};
+
 process.on("SIGINT", exitGracefully);
 process.on("SIGTERM", exitGracefully);
+// Safety nets for anything that bypasses the command-level try/catch: a
+// sync throw in a callback/timer, a throw during program construction, or
+// a fire-and-forget promise rejection. (SIGINT/SIGTERM and the stdout
+// EPIPE handler below are intentional non-errors and stay out of this.)
+process.on(
+  "uncaughtException",
+  (error: unknown) => void reportFatalError(error, "uncaughtException"),
+);
+process.on(
+  "unhandledRejection",
+  (reason: unknown) => void reportFatalError(reason, "unhandledRejection"),
+);
 unrefStdin();
+await initErrorTracking();
 
 const program = new Command()
   .name("react-doctor")
@@ -95,10 +130,4 @@ process.stdout.on("error", (error: NodeJS.ErrnoException) => {
   if (error.code === "EPIPE") process.exit(0);
 });
 
-program.parseAsync(stripUnknownCliFlags(process.argv)).catch((error: unknown) => {
-  if (isJsonModeActive()) {
-    writeJsonErrorReport(error);
-    process.exit(1);
-  }
-  handleError(error);
-});
+program.parseAsync(stripUnknownCliFlags(process.argv)).catch(reportFatalError);

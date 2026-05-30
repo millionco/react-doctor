@@ -1,4 +1,5 @@
 import * as Effect from "effect/Effect";
+import { captureCliError } from "../utils/error-tracking.js";
 import { handleError } from "../utils/handle-error.js";
 import { runInstallReactDoctor } from "../utils/install-react-doctor.js";
 import { printBrandedHeader } from "../utils/print-branded-header.js";
@@ -35,6 +36,7 @@ export const installAction = async (
       projectRoot: options.cwd ?? process.cwd(),
     });
   } catch (error) {
+    await captureCliError(error, "command");
     handleError(error);
   }
 };

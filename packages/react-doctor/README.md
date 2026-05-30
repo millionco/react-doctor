@@ -84,6 +84,18 @@ Point the `$schema` key at `https://react.doctor/schema/config.json` to get auto
 }
 ```
 
+## Error reporting
+
+React Doctor does **not** phone home by default. If you'd like to help fix crashes
+you hit, opt in to anonymous error reporting (sent to Better Stack) by setting:
+
+```bash
+REACT_DOCTOR_ERROR_REPORTING=1
+```
+
+When unset, no crash data leaves your machine. When set, only unhandled errors
+(stack traces + runtime versions) are reported — never your source code.
+
 ## Contributing
 
 [Issues welcome!](https://github.com/millionco/react-doctor/issues)

@@ -5,13 +5,20 @@ import { isExpoSdkAtLeast } from "./utils/is-expo-sdk-at-least.js";
 
 // expo-router stopped being compatible with a directly-installed
 // `@react-navigation/*` in SDK 56. Ported from expo-doctor's
-// `ExpoRouterReactNavigationCheck` (sdkVersionRange `>=56`). Gated on a
-// resolved SDK major so projects on SDK ≤55 — where the pairing is
-// supported — stay quiet, as do projects whose SDK can't be resolved.
+// `ExpoRouterReactNavigationCheck`, whose `sdkVersionRange` is the *closed*
+// `>=56.0.0 <57.0.0` — the incompatibility is scoped to the SDK 56 line, so
+// the check must stay quiet on SDK 57+ (where expo-doctor no longer runs it)
+// just as it does on SDK ≤55 and on projects whose SDK can't be resolved.
 const EXPO_ROUTER_REACT_NAVIGATION_MIN_SDK_MAJOR = 56;
+const EXPO_ROUTER_REACT_NAVIGATION_MAX_SDK_MAJOR_EXCLUSIVE = 57;
 
 export const checkExpoRouterReactNavigation = (context: ExpoCheckContext): Diagnostic[] => {
-  if (!isExpoSdkAtLeast(context.expoSdkMajor, EXPO_ROUTER_REACT_NAVIGATION_MIN_SDK_MAJOR)) {
+  const { expoSdkMajor } = context;
+  if (!isExpoSdkAtLeast(expoSdkMajor, EXPO_ROUTER_REACT_NAVIGATION_MIN_SDK_MAJOR)) return [];
+  if (
+    expoSdkMajor !== null &&
+    expoSdkMajor >= EXPO_ROUTER_REACT_NAVIGATION_MAX_SDK_MAJOR_EXCLUSIVE
+  ) {
     return [];
   }
   if (!context.directDependencyNames.has("expo-router")) return [];

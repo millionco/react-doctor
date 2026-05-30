@@ -213,6 +213,21 @@ describe("checkExpoProject — expo-router / react-navigation conflict", () => {
       rulesOf(checkExpoProject(projectDirectory, buildExpoProject(projectDirectory, "~55.0.0"))),
     ).not.toContain("expo-router-no-react-navigation");
   });
+
+  it("stays quiet on SDK 57+ where expo-doctor's `<57.0.0` range no longer applies", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "expo-app",
+      dependencies: {
+        expo: "~57.0.0",
+        "expo-router": "~5.0.0",
+        "@react-navigation/native": "^7.0.0",
+      },
+    });
+    expect(
+      rulesOf(checkExpoProject(projectDirectory, buildExpoProject(projectDirectory))),
+    ).not.toContain("expo-router-no-react-navigation");
+  });
 });
 
 describe("checkExpoProject — vector icons conflict", () => {
@@ -298,6 +313,18 @@ describe("checkExpoProject — metro config", () => {
     fs.writeFileSync(
       path.join(projectDirectory, "metro.config.js"),
       "const { getDefaultConfig } = require('expo/metro-config');\nmodule.exports = getDefaultConfig(__dirname);\n",
+    );
+    expect(
+      rulesOf(checkExpoProject(projectDirectory, buildExpoProject(projectDirectory))),
+    ).not.toContain("expo-metro-config");
+  });
+
+  it("stays quiet when metro.config.js extends expo via Sentry's getSentryExpoConfig wrapper", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, { name: "expo-app", dependencies: { expo: "~56.0.0" } });
+    fs.writeFileSync(
+      path.join(projectDirectory, "metro.config.js"),
+      'const { getSentryExpoConfig } = require("@sentry/react-native/metro");\nconst config = getSentryExpoConfig(__dirname);\nmodule.exports = config;\n',
     );
     expect(
       rulesOf(checkExpoProject(projectDirectory, buildExpoProject(projectDirectory))),

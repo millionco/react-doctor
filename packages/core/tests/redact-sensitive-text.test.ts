@@ -6,6 +6,13 @@ describe("redactSensitiveText", () => {
     expect(redactSensitiveText("")).toBe("");
   });
 
+  it("returns empty string for non-string input (malformed oxlint JSON guard)", () => {
+    expect(redactSensitiveText(12345)).toBe("");
+    expect(redactSensitiveText(null)).toBe("");
+    expect(redactSensitiveText(undefined)).toBe("");
+    expect(redactSensitiveText({ help: "x" })).toBe("");
+  });
+
   it("leaves ordinary diagnostic prose untouched", () => {
     const messages = [
       "useState initialized from prop",

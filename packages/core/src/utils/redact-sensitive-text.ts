@@ -149,9 +149,15 @@ const redactHighEntropyTokens = (text: string): string =>
  * entropy-gated sweep for unknown-format secrets. Idempotent: the inert
  * `<redacted>` placeholder matches none of the detectors and is too
  * short for the generic sweep, so re-running leaves the text unchanged.
+ *
+ * Accepts `unknown` on purpose: callers feed it diagnostic `message` /
+ * `help` that originate from oxlint JSON, which is only shape-checked at
+ * the top level (the per-field `string` types are assumed, not validated).
+ * A malformed non-string value returns `""` instead of throwing on
+ * `.replace`, so one bad diagnostic can't abort parsing the whole batch.
  */
-export const redactSensitiveText = (text: string): string => {
-  if (!text) return text;
+export const redactSensitiveText = (text: unknown): string => {
+  if (typeof text !== "string" || text === "") return "";
   let redacted = text;
   for (const rule of KNOWN_SECRET_RULES) {
     redacted = redacted.replace(rule.pattern, rule.replacement);

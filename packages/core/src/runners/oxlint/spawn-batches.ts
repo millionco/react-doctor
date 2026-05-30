@@ -102,7 +102,7 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     // HACK: tick the progress counter per-file on a timer while the
     // batch subprocess runs, so the UI feels smooth instead of jumping
     // by 100 when each batch completes. The interval is cleared as
-    // soon as the batch resolves — any remaining files in the batch
+    // soon as the batch settles — any remaining files in the batch
     // are counted in one final update.
     let batchFileIndex = 0;
     const progressInterval =
@@ -114,11 +114,20 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
             }
           }, PROGRESS_TICK_INTERVAL_MS)
         : null;
-    const batchDiagnostics = await spawnLintBatch(batch);
-    if (progressInterval !== null) clearInterval(progressInterval);
-    allDiagnostics.push(...batchDiagnostics);
-    scannedFileCount += batch.length;
-    onFileProgress?.(scannedFileCount, totalFileCount);
+    // The interval MUST be cleared even when `spawnLintBatch` rejects
+    // (e.g. an adopted lint config crashes oxlint with a non-splittable
+    // error). It's a ref'd timer, so a leaked one outlives the failed
+    // attempt and keeps the event loop alive after output is printed:
+    // the caller's extends-stripped retry then succeeds, no
+    // `process.exit()` runs, and the CLI hangs forever (issue #599).
+    try {
+      const batchDiagnostics = await spawnLintBatch(batch);
+      allDiagnostics.push(...batchDiagnostics);
+      scannedFileCount += batch.length;
+      onFileProgress?.(scannedFileCount, totalFileCount);
+    } finally {
+      if (progressInterval !== null) clearInterval(progressInterval);
+    }
   }
 
   if (droppedFiles.length > 0 && onPartialFailure) {

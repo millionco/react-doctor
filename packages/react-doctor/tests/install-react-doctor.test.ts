@@ -299,6 +299,38 @@ describe("runInstallReactDoctor", () => {
     ]);
   });
 
+  it("does not fail setup when the package manager install command fails", async () => {
+    writeValidSkill(fixture.sourceDir);
+    writePackageJson(fixture.projectRoot, {
+      scripts: {},
+    });
+
+    await runInstallReactDoctorForTest({
+      yes: true,
+      sourceDir: fixture.sourceDir,
+      projectRoot: fixture.projectRoot,
+      detectedAgents: ["cursor"],
+      gitHookPath: null,
+      installDependencyRunner: (input) => {
+        dependencyInstallCalls.push(input);
+        throw new Error("npm install failed");
+      },
+    });
+
+    expect(process.exitCode).toBe(0);
+    expect(dependencyInstallCalls).toEqual([
+      {
+        command: "npm",
+        args: ["install", "--save-dev", "react-doctor@latest"],
+        cwd: fixture.projectRoot,
+      },
+    ]);
+    expect(readFixturePackageJson(fixture.projectRoot).scripts).toEqual({
+      doctor: "npx react-doctor@latest",
+    });
+    expect(readFixturePackageJson(fixture.projectRoot)).not.toHaveProperty("devDependencies");
+  });
+
   it("detects the package manager from an ancestor package.json", async () => {
     writeValidSkill(fixture.sourceDir);
     writePackageJson(fixture.projectRoot, {

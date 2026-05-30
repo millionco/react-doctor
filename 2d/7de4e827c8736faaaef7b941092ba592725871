@@ -1,0 +1,20 @@
+packages/core/tests/spawn-batches.test.ts
+  s_745d4772d8c75e::t_abf57e034b3aa5 26,41-61,64-66,69,72-74,76,80-81,85,90,94-95,98,103-106,109-110,115-119,123-124
+  s_745d4772d8c75e::t_a70e1c19e9b42b 77-78,83-84,87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "2d7de4e827c8736faaaef7b941092ba592725871",
+  "prompts": {},
+  "sessions": {
+    "s_745d4772d8c75e": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "494d94d0-6e4a-42c2-9e09-47627761e450",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

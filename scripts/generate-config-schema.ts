@@ -27,7 +27,13 @@ const generatorConfig: Config = {
 const generator = createGenerator(generatorConfig);
 const schema = generator.createSchema(generatorConfig.type);
 
-const { $schema: emittedSchemaDialect, ...rest } = schema as Record<string, unknown>;
+const {
+  $schema: emittedSchemaDialect,
+  $id: _emittedId,
+  title: _emittedTitle,
+  description: _emittedDescription,
+  ...rest
+} = schema as Record<string, unknown>;
 
 const annotated = {
   $schema: emittedSchemaDialect,

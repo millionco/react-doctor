@@ -69,10 +69,7 @@ export const prompts = <T extends string = string>(
 ): Promise<Answers<T>> => {
   patchMultiselectToggleAll();
   patchMultiselectSubmit();
-  // `prompts` builds a `readline.createInterface({ input: process.stdin })`,
-  // which `resume()`s stdin and re-refs fd 0 — undoing the startup
-  // `unrefStdin()`. `readline.close()` pauses stdin but never unrefs it, so a
-  // referenced idle stdin would hold this one-shot CLI's event loop open and
-  // hang after the last prompt resolves. Re-unref once the prompt settles.
+  // HACK: each prompt re-refs stdin and never unrefs it on close, so re-unref
+  // once it settles or the one-shot CLI hangs. See `unref-stdin.ts` for why.
   return basePrompts(questions, { onCancel: options.onCancel ?? onCancel }).finally(unrefStdin);
 };

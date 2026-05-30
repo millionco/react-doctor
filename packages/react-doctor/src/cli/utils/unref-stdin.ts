@@ -11,10 +11,14 @@
 // always reproducible, but unref-ing up front makes an idle stdin
 // incapable of holding the process open in every case.
 //
-// Interactive prompts are unaffected: `prompts` builds a
+// Interactive prompts DEFEAT this up-front unref: `prompts` builds a
 // `readline.createInterface({ input: process.stdin })`, whose
 // `resume()` (and `setRawMode(true)` on a TTY) re-refs stdin for the
-// lifetime of the prompt and releases it on close.
+// lifetime of the prompt. Crucially `readline.close()` only *pauses*
+// stdin on submit/cancel — it never unrefs it — so after the last
+// prompt resolves the re-reffed fd 0 holds the loop open again and the
+// CLI hangs. The `prompts` wrapper therefore re-invokes `unrefStdin`
+// once each prompt settles.
 //
 // File / `/dev/null` stdin resolves to an `fs.ReadStream` that has no
 // `unref` (and never holds the loop open anyway), hence the optional

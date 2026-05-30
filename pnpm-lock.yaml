@@ -128,8 +128,8 @@ importers:
         specifier: ^15.1.0
         version: 15.1.0
       deslop-js:
-        specifier: ^0.0.13
-        version: 0.0.13(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
+        specifier: ^0.0.14
+        version: 0.0.14(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
       effect:
         specifier: 4.0.0-beta.70
         version: 4.0.0-beta.70
@@ -2083,9 +2083,6 @@ packages:
 
   deep-is@0.1.4:
     resolution: {integrity: sha512-oIPzksmTg4/MriiaYGO+okXDT7ztn/w3Eptv/+gSIdMdKsJo0u4CfYNFJPy+4SKMuCqGw2wxnA+URMg3t8a/bQ==}
-
-  deslop-js@0.0.13:
-    resolution: {integrity: sha512-gIXD+wY2/NHkZHpNrb8MWS6NJs3ee0XunAenBCvwHJlWnedDbIrg70hdNR7bDzYZLe9LGJZMLEI1w2CC72Gk5A==}
 
   deslop-js@0.0.14:
     resolution: {integrity: sha512-FY0rNK+mdTozXwNmcJAt5tD9hVOkXEX5ac+Mg77KJvnnsoAh3qIUW64PMnofutjeYz7g1vENMbOcrBmD1v4FlA==}
@@ -4607,18 +4604,6 @@ snapshots:
       ms: 2.1.3
 
   deep-is@0.1.4: {}
-
-  deslop-js@0.0.13(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0):
-    dependencies:
-      '@oxc-project/types': 0.132.0
-      fast-glob: 3.3.3
-      minimatch: 10.2.5
-      oxc-parser: 0.132.0
-      oxc-resolver: 11.19.1(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
-      typescript: 6.0.3
-    transitivePeerDependencies:
-      - '@emnapi/core'
-      - '@emnapi/runtime'
 
   deslop-js@0.0.14(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0):
     dependencies:

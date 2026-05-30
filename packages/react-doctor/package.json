@@ -58,7 +58,7 @@
     "@effect/platform-node-shared": "4.0.0-beta.70",
     "agent-install": "0.0.5",
     "conf": "^15.1.0",
-    "deslop-js": "^0.0.13",
+    "deslop-js": "^0.0.14",
     "effect": "4.0.0-beta.70",
     "eslint-plugin-react-hooks": "^7.1.1",
     "oxlint": "^1.66.0",

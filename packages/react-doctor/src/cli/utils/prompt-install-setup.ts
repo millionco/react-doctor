@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
 import Conf from "conf";
-import basePrompts from "prompts";
+import { prompts } from "./prompts.js";
 import { findNearestPackageDirectory, hasDoctorScript } from "./install-doctor-script.js";
 import { isCiOrCodingAgentEnvironment, isCodingAgentEnvironment } from "./is-ci-environment.js";
 import { SETUP_PROMPT_DELAY_MS } from "./constants.js";
@@ -155,7 +155,7 @@ const defaultWait: SetupPromptWait = (milliseconds) =>
   });
 
 const defaultSelect: SetupPromptSelect = async (message) => {
-  const { setupReactDoctorChoice } = await basePrompts<"setupReactDoctorChoice">(
+  const { setupReactDoctorChoice } = await prompts<"setupReactDoctorChoice">(
     {
       type: "select",
       name: "setupReactDoctorChoice",

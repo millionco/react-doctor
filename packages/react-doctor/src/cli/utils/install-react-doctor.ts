@@ -237,7 +237,8 @@ const formatDependencyInstallMessage = (result: InstallReactDoctorDependencyResu
     return "Skipped dev dependency install: devDependencies field is not an object.";
   }
   if (result.dependencyReason === "install-command-failed") {
-    const installCommand = result.installCommand ?? `npm install --save-dev ${DOCTOR_PACKAGE_NAME}@latest`;
+    const installCommand =
+      result.installCommand ?? `npm install --save-dev ${DOCTOR_PACKAGE_NAME}@latest`;
     return `Skipped dev dependency install: package manager command failed. Run manually: ${installCommand}`;
   }
   return "Skipped dev dependency install: package.json missing or invalid.";

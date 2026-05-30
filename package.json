@@ -24,7 +24,8 @@
     "changeset": "changeset",
     "version": "changeset version",
     "release": "pnpm build && changeset publish",
-    "smoke:json-report": "node --experimental-strip-types --no-warnings scripts/smoke-json-report.ts"
+    "smoke:json-report": "node --experimental-strip-types --no-warnings scripts/smoke-json-report.ts",
+    "smoke:tty-prompt": "python3 scripts/smoke-tty-prompt.py"
   },
   "devDependencies": {
     "@changesets/changelog-github": "^0.7.0",

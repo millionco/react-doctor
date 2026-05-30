@@ -90,3 +90,11 @@ jobs:
       - name: Smoke test JSON report shape
         if: ${{ matrix.os == 'ubuntu-latest' && matrix.node-version == '22.18.0' }}
         run: pnpm smoke:json-report
+
+      # Allocates a real pseudo-terminal (`pty.openpty()`) so the CLI sees an
+      # interactive TTY and renders the multiselect prompt, then asserts the
+      # process stays alive waiting for input instead of exiting by itself
+      # (regression guard for #576: unref'd stdin killed interactive prompts).
+      - name: Smoke test interactive TTY prompt
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.node-version == '22.18.0' }}
+        run: pnpm smoke:tty-prompt

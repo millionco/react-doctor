@@ -1,28 +1,28 @@
-// HACK: react-doctor is a one-shot CLI, but Node keeps the event loop
-// alive for as long as `process.stdin` (fd 0) is an open pipe or
-// socket — even though the only thing that ever reads stdin is an
-// interactive prompt. When the CLI is spawned by a parent that holds
-// the stdin write-end open (eval runners, CI harnesses, editor
-// integrations), the scan finishes and the `--json` report flushes,
-// yet the process never exits: the inherited `Socket fd=0` refs the
-// loop. Some Node versions / stdin fd types ref the socket merely on
-// access (the bundled `import process from "node:process"` facade
-// materializes the lazy `process.stdin` getter), so the hang is not
-// always reproducible, but unref-ing up front makes an idle stdin
-// incapable of holding the process open in every case.
+// HACK: react-doctor is a one-shot CLI, but when stdin (fd 0) is an
+// inherited pipe or socket Node keeps the event loop alive for as long
+// as that handle is open — even though the only thing that ever reads
+// stdin is an interactive prompt. When the CLI is spawned by a parent
+// that holds the stdin write-end open (eval runners, CI harnesses,
+// editor integrations), the scan finishes and the `--json` report
+// flushes, yet the process never exits: the inherited `Socket fd=0`
+// refs the loop. Unref-ing fd 0 up front makes an idle pipe/socket
+// incapable of holding the process open.
 //
-// Interactive prompts DEFEAT this up-front unref: `prompts` builds a
-// `readline.createInterface({ input: process.stdin })`, whose
-// `resume()` (and `setRawMode(true)` on a TTY) re-refs stdin for the
-// lifetime of the prompt. Crucially `readline.close()` only *pauses*
-// stdin on submit/cancel — it never unrefs it — so after the last
-// prompt resolves the re-reffed fd 0 holds the loop open again and the
-// CLI hangs. The `prompts` wrapper therefore re-invokes `unrefStdin`
-// once each prompt settles.
+// We MUST NOT unref an interactive TTY. A real terminal is the only
+// case that shows prompts, and `prompts` never re-refs an unref'd stdin
+// handle: its base element does `readline.createInterface(...)` +
+// `setRawMode(true)` but never `resume()`, and none of those re-ref the
+// libuv handle (verified on a real PTY). Unref-ing a TTY therefore lets
+// the event loop drain while a prompt is still waiting for input — the
+// CLI renders the prompt and then exits by itself (code 0) before the
+// user can answer. A TTY is never the "parent holds the pipe open"
+// hang scenario, so guarding on `isTTY` keeps the one-shot exit fix
+// without breaking interactive prompts.
 //
 // File / `/dev/null` stdin resolves to an `fs.ReadStream` that has no
 // `unref` (and never holds the loop open anyway), hence the optional
 // call.
 export const unrefStdin = (): void => {
+  if (process.stdin.isTTY) return;
   process.stdin.unref?.();
 };

@@ -1,0 +1,21 @@
+packages/core/src/types/config.ts
+  s_8488a7fdc46d4d::t_4852946b3f7a36 21-23
+action.yml
+  s_8488a7fdc46d4d::t_7a1f4637e77b04 177,179-180
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "761c712c30b3daf13ff7199fd26a1a44e6a36b33",
+  "prompts": {},
+  "sessions": {
+    "s_8488a7fdc46d4d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "17545a40-d4e7-4d56-9e97-6e89fd5dbca5",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

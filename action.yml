@@ -174,13 +174,11 @@ runs:
         SCAN_STATUS: ${{ steps.scan.outputs.exit-code }}
         INPUT_NON_BLOCKING: ${{ inputs.non-blocking }}
       run: |
+        SCAN_STATUS="${SCAN_STATUS:-1}"
         if [ "$INPUT_NON_BLOCKING" = "true" ]; then
-          if [ "${SCAN_STATUS:-1}" != "0" ]; then
-            echo "::notice title=React Doctor::Scan exited ${SCAN_STATUS:-1}; non-blocking is enabled, so the job will not fail."
+          if [ "$SCAN_STATUS" != "0" ]; then
+            echo "::notice title=React Doctor::Scan exited ${SCAN_STATUS}; non-blocking is enabled, so the job will not fail."
           fi
           exit 0
-        fi
-        if [ -z "$SCAN_STATUS" ]; then
-          exit 1
         fi
         exit "$SCAN_STATUS"

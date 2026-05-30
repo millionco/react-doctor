@@ -18,9 +18,9 @@ interface ReactDoctorIgnoreConfig {
  * locally but excluded from PR comments, the score, or the CI gate:
  *
  * - `cli` — local terminal output from `react-doctor` (`printDiagnostics`).
- * - `prComment` — output captured by the GitHub Action for the sticky
- *   PR comment. Enabled when the CLI is run with `--pr-comment` (the
- *   action sets this automatically when `github-token` is provided).
+ * - `prComment` — diagnostics destined for a sticky pull-request
+ *   summary comment. Selected by running the CLI with `--pr-comment`
+ *   (sets `outputSurface: "prComment"`).
  * - `score` — diagnostics shipped to the React Doctor score API
  *   (or counted toward local score calculations).
  * - `ciFailure` — diagnostics that count toward the `--fail-on` exit

@@ -1,5 +1,16 @@
 # react-doctor
 
+## 0.2.13
+
+### Patch Changes
+
+- [#586](https://github.com/millionco/react-doctor/pull/586) [`9d20182`](https://github.com/millionco/react-doctor/commit/9d20182ac14c7d89d52de98d2a8bfa9bad74f99e) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix the CLI hanging after the post-scan prompts. Interactive prompts re-ref stdin via `readline` and never release it on close, undoing the startup `unrefStdin()` and holding the one-shot CLI's event loop open. The shared `prompts` wrapper now re-unrefs stdin once each prompt settles.
+
+- [`d40a933`](https://github.com/millionco/react-doctor/commit/d40a9339cfacd818b199be5b87bb68129d07b336) Thanks [@aidenybai](https://github.com/aidenybai)! - Trigger a release.
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.2.13
+
 ## 0.2.12
 
 ### Patch Changes

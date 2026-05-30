@@ -1,5 +1,12 @@
 # @react-doctor/core
 
+## 0.2.13
+
+### Patch Changes
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.2.13
+
 ## 0.2.12
 
 ### Patch Changes

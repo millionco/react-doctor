@@ -1,7 +1,4 @@
-import {
-  GENERIC_SECRET_MIN_ENTROPY_BITS,
-  GENERIC_SECRET_MIN_LENGTH_CHARS,
-} from "../constants.js";
+import { GENERIC_SECRET_MIN_ENTROPY_BITS, GENERIC_SECRET_MIN_LENGTH_CHARS } from "../constants.js";
 
 export const REDACTED_PLACEHOLDER = "<redacted>";
 

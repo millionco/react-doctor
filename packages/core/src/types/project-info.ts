@@ -76,10 +76,22 @@ export interface ProjectInfo {
 
 export interface PackageJson {
   name?: string;
+  main?: string;
+  scripts?: Record<string, string>;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
+  /**
+   * npm's dependency-pin map. Keys are package names; values are version
+   * strings or nested override objects, hence `unknown`. The Expo checks
+   * only read the top-level keys to flag pins on SDK-critical packages.
+   */
+  overrides?: Record<string, unknown>;
+  /** Yarn / pnpm equivalent of npm `overrides`. */
+  resolutions?: Record<string, string>;
+  /** pnpm's settings block; `pnpm.overrides` mirrors npm `overrides`. */
+  pnpm?: { overrides?: Record<string, string> };
   workspaces?:
     | string[]
     | {

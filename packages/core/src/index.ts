@@ -32,6 +32,7 @@ export * from "./build-json-report.js";
 export * from "./calculate-score.js";
 export * from "./can-oxlint-extend-config.js";
 export * from "./check-dead-code.js";
+export * from "./check-expo-project.js";
 export * from "./check-pnpm-hardening.js";
 export * from "./check-reduced-motion.js";
 export * from "./collect-ignore-patterns.js";

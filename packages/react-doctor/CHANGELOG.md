@@ -1,5 +1,14 @@
 # react-doctor
 
+## 0.2.14
+
+### Patch Changes
+
+- [#593](https://github.com/millionco/react-doctor/pull/593) [`ac14db3`](https://github.com/millionco/react-doctor/commit/ac14db31e2b1cb77143bf74676d599a7b4eeedfe) Thanks [@aidenybai](https://github.com/aidenybai)! - Guard the startup `process.stdin` unref on `process.stdin.isTTY` so interactive prompts no longer exit by themselves. The startup unref (added so one-shot non-interactive runs like `--json` from an eval runner holding the stdin pipe open can exit cleanly) was applied unconditionally, including on a real terminal. On a TTY `prompts` never re-refs the unref'd stdin handle — `readline.createInterface` + `setRawMode(true)` do not re-ref it — so the multiselect ("Select projects") rendered and the CLI then drained the event loop and exited (code 0) before the user could answer. Skipping the unref when stdin is a TTY keeps the one-shot exit fix for non-interactive pipes/sockets while leaving interactive terminals untouched. Adds an in-process behavioral test and a real-PTY CI smoke (`pnpm smoke:tty-prompt`).
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.2.14
+
 ## 0.2.13
 
 ### Patch Changes

@@ -24,6 +24,7 @@ const buildProject = (overrides: Partial<ProjectInfo> = {}): ProjectInfo => ({
   hasReactCompiler: true,
   hasTanStackQuery: false,
   hasReactNativeWorkspace: true,
+  isExpoProject: true,
   hasReanimated: true,
   preactVersion: null,
   preactMajorVersion: null,

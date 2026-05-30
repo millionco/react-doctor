@@ -11,6 +11,7 @@ import { findMonorepoRoot, isMonorepoRoot } from "./find-monorepo-root.js";
 import { findReactInWorkspaces } from "./find-react-in-workspaces.js";
 import { getDependencyDeclaration } from "./utils/get-dependency-declaration.js";
 import { hasReactNativeWorkspaceAnywhere } from "./has-react-native-workspace-anywhere.js";
+import { isExpoProject } from "./is-expo-project.js";
 import { getPreactVersion } from "./get-preact-version.js";
 import { hasTanStackQuery } from "./has-tanstack-query.js";
 import { someWorkspacePackageJson } from "./some-workspace-package-json.js";
@@ -186,6 +187,12 @@ export const discoverProject = (directory: string): ProjectInfo => {
     framework === "react-native" ||
     hasReactNativeWorkspaceAnywhere(directory, packageJson);
 
+  // Expo implies React Native, so a project that isn't RN-aware anywhere
+  // can never be Expo — skip the workspace walk entirely in that case. A
+  // root `framework: "expo"` hint short-circuits the walk too.
+  const isExpo =
+    framework === "expo" || (hasReactNativeWorkspace && isExpoProject(directory, packageJson));
+
   // Only walk for reanimated once we already know it's an RN project —
   // reanimated implies React Native, so a web project can never declare
   // it, and this skips the workspace walk entirely for web monorepos.
@@ -210,6 +217,7 @@ export const discoverProject = (directory: string): ProjectInfo => {
     preactVersion,
     preactMajorVersion: parseReactMajor(preactVersion),
     hasReactNativeWorkspace,
+    isExpoProject: isExpo,
     hasReanimated,
     sourceFileCount,
   };

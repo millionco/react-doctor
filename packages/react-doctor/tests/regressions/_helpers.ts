@@ -139,6 +139,7 @@ export const buildTestProject = (options: BuildTestProjectOptions): ProjectInfo 
     hasReactCompiler: options.hasReactCompiler ?? false,
     hasTanStackQuery: options.hasTanStackQuery ?? false,
     hasReactNativeWorkspace: framework === "expo" || framework === "react-native",
+    isExpoProject: framework === "expo",
     hasReanimated: options.hasReanimated ?? false,
     preactVersion: null,
     preactMajorVersion: null,

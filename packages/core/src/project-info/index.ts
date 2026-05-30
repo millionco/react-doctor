@@ -14,6 +14,7 @@ export { parseReactMajorMinor, isReactAtLeast } from "./parse-react-major-minor.
 export { peerRangeMinMajor } from "./parse-react-peer-range.js";
 export { parseTailwindMajorMinor, isTailwindAtLeast } from "./parse-tailwind-major-minor.js";
 export { findMonorepoRoot, isMonorepoRoot } from "./find-monorepo-root.js";
+export { isExpoProject } from "./is-expo-project.js";
 export {
   ProjectNotFoundError,
   NoReactDependencyError,

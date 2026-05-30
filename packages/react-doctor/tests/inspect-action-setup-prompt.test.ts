@@ -66,6 +66,7 @@ vi.mock("../src/inspect.js", () => ({
         hasReactCompiler: false,
         hasTanStackQuery: false,
         hasReactNativeWorkspace: false,
+        isExpoProject: false,
         hasReanimated: false,
         preactVersion: null,
         preactMajorVersion: null,

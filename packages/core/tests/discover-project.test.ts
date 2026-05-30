@@ -755,6 +755,95 @@ describe("listWorkspacePackages", () => {
     expect(packages, "overlapping workspace patterns should yield one entry").toHaveLength(1);
     expect(uiOccurrences, "packages/ui should appear exactly once").toHaveLength(1);
   });
+
+  it("flags a managed Expo app as an Expo project", () => {
+    const projectDirectory = path.join(tempDirectory, "expo-managed-app");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "expo-managed-app",
+        dependencies: { expo: "~51.0.0", react: "^18.2.0", "react-native": "0.74.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.framework).toBe("expo");
+    expect(projectInfo.isExpoProject).toBe(true);
+  });
+
+  it("flags an Expo project even when a web bundler wins framework detection", () => {
+    const projectDirectory = path.join(tempDirectory, "expo-with-vite");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "expo-with-vite",
+        dependencies: { expo: "~51.0.0", "react-native": "0.74.0", react: "^18.2.0" },
+        devDependencies: { vite: "^5.0.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.framework, "vite is matched before expo").toBe("vite");
+    expect(projectInfo.isExpoProject, "expo dependency still flags the project").toBe(true);
+  });
+
+  it("flags a web-rooted monorepo with an Expo workspace as an Expo project", () => {
+    const rootDirectory = path.join(tempDirectory, "expo-workspace-monorepo");
+    const mobileDirectory = path.join(rootDirectory, "apps", "mobile");
+    fs.mkdirSync(mobileDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({
+        name: "monorepo-root",
+        dependencies: { next: "^14.0.0", react: "^19.0.0", "react-dom": "^19.0.0" },
+        workspaces: ["apps/*"],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(mobileDirectory, "package.json"),
+      JSON.stringify({
+        name: "mobile",
+        dependencies: { expo: "~51.0.0", react: "^18.2.0", "react-native": "0.74.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(rootDirectory);
+    expect(projectInfo.isExpoProject).toBe(true);
+  });
+
+  it("does not flag a bare React Native (non-Expo) project as an Expo project", () => {
+    const projectDirectory = path.join(tempDirectory, "bare-react-native");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "bare-react-native",
+        dependencies: { "react-native": "0.74.0", react: "^18.2.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.framework).toBe("react-native");
+    expect(projectInfo.isExpoProject).toBe(false);
+  });
+
+  it("does not flag a plain web project as an Expo project", () => {
+    const projectDirectory = path.join(tempDirectory, "plain-web-app");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "plain-web-app",
+        dependencies: { react: "^19.0.0", "react-dom": "^19.0.0" },
+        devDependencies: { vite: "^5.0.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.isExpoProject).toBe(false);
+  });
 });
 
 const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-discover-test-"));

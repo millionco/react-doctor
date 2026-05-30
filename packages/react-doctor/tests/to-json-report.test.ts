@@ -30,6 +30,7 @@ const buildDiagnoseResult = (): DiagnoseResult => ({
     hasReactCompiler: false,
     hasTanStackQuery: false,
     hasReactNativeWorkspace: false,
+    isExpoProject: false,
     hasReanimated: false,
     preactVersion: null,
     preactMajorVersion: null,

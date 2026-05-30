@@ -1,9 +1,6 @@
-import path from "node:path";
-import { readPackageJson } from "../../project-info/index.js";
 import type { Diagnostic } from "../../types/index.js";
+import type { ExpoCheckContext } from "./expo-check-context.js";
 import { buildExpoDiagnostic } from "./utils/build-expo-diagnostic.js";
-import { getDirectDependencyNames } from "./utils/get-direct-dependency-names.js";
-import { getExpoSdkMajor } from "./utils/get-expo-sdk-major.js";
 import { isExpoSdkAtLeast } from "./utils/is-expo-sdk-at-least.js";
 
 // expo-router stopped being compatible with a directly-installed
@@ -13,16 +10,13 @@ import { isExpoSdkAtLeast } from "./utils/is-expo-sdk-at-least.js";
 // supported — stay quiet, as do projects whose SDK can't be resolved.
 const EXPO_ROUTER_REACT_NAVIGATION_MIN_SDK_MAJOR = 56;
 
-export const checkExpoRouterReactNavigation = (rootDirectory: string): Diagnostic[] => {
-  const packageJson = readPackageJson(path.join(rootDirectory, "package.json"));
-  if (!isExpoSdkAtLeast(getExpoSdkMajor(packageJson), EXPO_ROUTER_REACT_NAVIGATION_MIN_SDK_MAJOR)) {
+export const checkExpoRouterReactNavigation = (context: ExpoCheckContext): Diagnostic[] => {
+  if (!isExpoSdkAtLeast(context.expoSdkMajor, EXPO_ROUTER_REACT_NAVIGATION_MIN_SDK_MAJOR)) {
     return [];
   }
+  if (!context.directDependencyNames.has("expo-router")) return [];
 
-  const directDependencyNames = getDirectDependencyNames(packageJson);
-  if (!directDependencyNames.has("expo-router")) return [];
-
-  const reactNavigationNames = [...directDependencyNames]
+  const reactNavigationNames = [...context.directDependencyNames]
     .filter((packageName) => packageName.startsWith("@react-navigation/"))
     .sort();
   if (reactNavigationNames.length === 0) return [];

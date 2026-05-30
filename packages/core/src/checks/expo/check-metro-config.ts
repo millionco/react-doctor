@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { isFile } from "../../project-info/index.js";
 import type { Diagnostic } from "../../types/index.js";
+import type { ExpoCheckContext } from "./expo-check-context.js";
 import { buildExpoDiagnostic } from "./utils/build-expo-diagnostic.js";
 
 // Expo projects must extend `expo/metro-config`; a custom metro.config that
@@ -19,9 +20,9 @@ const METRO_CONFIG_FILE_NAMES: ReadonlyArray<string> = [
 
 const EXPO_METRO_CONFIG_REFERENCE = "expo/metro-config";
 
-export const checkExpoMetroConfig = (rootDirectory: string): Diagnostic[] => {
+export const checkExpoMetroConfig = (context: ExpoCheckContext): Diagnostic[] => {
   const metroConfigPath = METRO_CONFIG_FILE_NAMES.map((fileName) =>
-    path.join(rootDirectory, fileName),
+    path.join(context.rootDirectory, fileName),
   ).find((candidatePath) => isFile(candidatePath));
   if (metroConfigPath === undefined) return [];
 

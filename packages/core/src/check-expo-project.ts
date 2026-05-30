@@ -1,4 +1,5 @@
 import type { Diagnostic, ProjectInfo } from "./types/index.js";
+import { buildExpoCheckContext } from "./checks/expo/expo-check-context.js";
 import { checkExpoDependencyOverrides } from "./checks/expo/check-dependency-overrides.js";
 import { checkExpoEnvLocalFiles } from "./checks/expo/check-env-local-files.js";
 import { checkExpoFlaggedDependencies } from "./checks/expo/check-flagged-dependencies.js";
@@ -20,15 +21,16 @@ import { checkExpoVectorIcons } from "./checks/expo/check-vector-icons.js";
 export const checkExpoProject = (rootDirectory: string, project: ProjectInfo): Diagnostic[] => {
   if (!project.isExpoProject) return [];
 
+  const context = buildExpoCheckContext(rootDirectory);
   return [
-    ...checkExpoFlaggedDependencies(rootDirectory),
-    ...checkExpoDependencyOverrides(rootDirectory),
-    ...checkExpoRouterReactNavigation(rootDirectory),
-    ...checkExpoVectorIcons(rootDirectory),
-    ...checkExpoPackageJsonConflicts(rootDirectory),
-    ...checkExpoLockfile(rootDirectory),
-    ...checkExpoGitignore(rootDirectory),
-    ...checkExpoEnvLocalFiles(rootDirectory),
-    ...checkExpoMetroConfig(rootDirectory),
+    ...checkExpoFlaggedDependencies(context),
+    ...checkExpoDependencyOverrides(context),
+    ...checkExpoRouterReactNavigation(context),
+    ...checkExpoVectorIcons(context),
+    ...checkExpoPackageJsonConflicts(context),
+    ...checkExpoLockfile(context),
+    ...checkExpoGitignore(context),
+    ...checkExpoEnvLocalFiles(context),
+    ...checkExpoMetroConfig(context),
   ];
 };

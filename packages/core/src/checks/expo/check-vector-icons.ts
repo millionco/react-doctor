@@ -1,9 +1,6 @@
-import path from "node:path";
-import { readPackageJson } from "../../project-info/index.js";
 import type { Diagnostic } from "../../types/index.js";
+import type { ExpoCheckContext } from "./expo-check-context.js";
 import { buildExpoDiagnostic } from "./utils/build-expo-diagnostic.js";
-import { getDirectDependencyNames } from "./utils/get-direct-dependency-names.js";
-import { getExpoSdkMajor } from "./utils/get-expo-sdk-major.js";
 import { isExpoSdkAtLeast } from "./utils/is-expo-sdk-at-least.js";
 
 // Ported from expo-doctor's `VectorIconsCheck` (sdkVersionRange `>=56`).
@@ -18,14 +15,12 @@ const CONFLICTING_VECTOR_ICONS_PACKAGES: ReadonlyArray<string> = [
   "react-native-vector-icons",
 ];
 
-export const checkExpoVectorIcons = (rootDirectory: string): Diagnostic[] => {
-  const packageJson = readPackageJson(path.join(rootDirectory, "package.json"));
-  if (!isExpoSdkAtLeast(getExpoSdkMajor(packageJson), VECTOR_ICONS_MIN_SDK_MAJOR)) return [];
+export const checkExpoVectorIcons = (context: ExpoCheckContext): Diagnostic[] => {
+  if (!isExpoSdkAtLeast(context.expoSdkMajor, VECTOR_ICONS_MIN_SDK_MAJOR)) return [];
 
-  const directDependencyNames = getDirectDependencyNames(packageJson);
-  const hasScopedPackage = directDependencyNames.has(SCOPED_VECTOR_ICONS_PACKAGE);
+  const hasScopedPackage = context.directDependencyNames.has(SCOPED_VECTOR_ICONS_PACKAGE);
   const hasConflictingPackage = CONFLICTING_VECTOR_ICONS_PACKAGES.some((packageName) =>
-    directDependencyNames.has(packageName),
+    context.directDependencyNames.has(packageName),
   );
   if (!hasScopedPackage || !hasConflictingPackage) return [];
 

@@ -1,8 +1,6 @@
-import path from "node:path";
-import { readPackageJson } from "../../project-info/index.js";
 import type { Diagnostic } from "../../types/index.js";
+import type { ExpoCheckContext } from "./expo-check-context.js";
 import { buildExpoDiagnostic } from "./utils/build-expo-diagnostic.js";
-import { getDirectDependencyNames } from "./utils/get-direct-dependency-names.js";
 
 // Script names that collide with binaries Expo relies on resolving from
 // `node_modules/.bin`. A `scripts.expo` entry in particular shadows the
@@ -11,8 +9,8 @@ import { getDirectDependencyNames } from "./utils/get-direct-dependency-names.js
 // known-problematic binaries directly).
 const CONFLICTING_SCRIPT_NAMES: ReadonlyArray<string> = ["expo", "react-native"];
 
-export const checkExpoPackageJsonConflicts = (rootDirectory: string): Diagnostic[] => {
-  const packageJson = readPackageJson(path.join(rootDirectory, "package.json"));
+export const checkExpoPackageJsonConflicts = (context: ExpoCheckContext): Diagnostic[] => {
+  const { packageJson } = context;
   const diagnostics: Diagnostic[] = [];
 
   const conflictingScriptNames = CONFLICTING_SCRIPT_NAMES.filter((scriptName) =>
@@ -31,7 +29,7 @@ export const checkExpoPackageJsonConflicts = (rootDirectory: string): Diagnostic
   }
 
   const packageName = packageJson.name;
-  if (typeof packageName === "string" && getDirectDependencyNames(packageJson).has(packageName)) {
+  if (typeof packageName === "string" && context.directDependencyNames.has(packageName)) {
     diagnostics.push(
       buildExpoDiagnostic({
         rule: "expo-package-json-conflict",

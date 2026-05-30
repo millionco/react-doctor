@@ -1,9 +1,6 @@
-import path from "node:path";
-import { readPackageJson } from "../../project-info/index.js";
 import type { Diagnostic } from "../../types/index.js";
+import type { ExpoCheckContext } from "./expo-check-context.js";
 import { buildExpoDiagnostic } from "./utils/build-expo-diagnostic.js";
-import { getDirectDependencyNames } from "./utils/get-direct-dependency-names.js";
-import { getExpoSdkMajor } from "./utils/get-expo-sdk-major.js";
 import { isExpoSdkAtLeast } from "./utils/is-expo-sdk-at-least.js";
 
 interface FlaggedDependency {
@@ -161,15 +158,11 @@ const FLAGGED_DEPENDENCIES: ReadonlyArray<FlaggedDependency> = [
   },
 ];
 
-export const checkExpoFlaggedDependencies = (rootDirectory: string): Diagnostic[] => {
-  const packageJson = readPackageJson(path.join(rootDirectory, "package.json"));
-  const directDependencyNames = getDirectDependencyNames(packageJson);
-  const expoSdkMajor = getExpoSdkMajor(packageJson);
-
-  return FLAGGED_DEPENDENCIES.filter((flaggedDependency) => {
-    if (!directDependencyNames.has(flaggedDependency.packageName)) return false;
+export const checkExpoFlaggedDependencies = (context: ExpoCheckContext): Diagnostic[] =>
+  FLAGGED_DEPENDENCIES.filter((flaggedDependency) => {
+    if (!context.directDependencyNames.has(flaggedDependency.packageName)) return false;
     if (flaggedDependency.minSdkMajor === undefined) return true;
-    return isExpoSdkAtLeast(expoSdkMajor, flaggedDependency.minSdkMajor);
+    return isExpoSdkAtLeast(context.expoSdkMajor, flaggedDependency.minSdkMajor);
   }).map((flaggedDependency) =>
     buildExpoDiagnostic({
       rule: flaggedDependency.rule,
@@ -177,4 +170,3 @@ export const checkExpoFlaggedDependencies = (rootDirectory: string): Diagnostic[
       help: flaggedDependency.help,
     }),
   );
-};

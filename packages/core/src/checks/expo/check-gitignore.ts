@@ -1,6 +1,7 @@
 import path from "node:path";
 import { isDirectory } from "../../project-info/index.js";
 import type { Diagnostic } from "../../types/index.js";
+import type { ExpoCheckContext } from "./expo-check-context.js";
 import { buildExpoDiagnostic } from "./utils/build-expo-diagnostic.js";
 import { findLocalModuleNativeFiles } from "./utils/find-local-module-native-files.js";
 import { isPathGitIgnored } from "./utils/is-path-git-ignored.js";
@@ -13,7 +14,8 @@ import { isPathGitIgnored } from "./utils/is-path-git-ignored.js";
 //      `ios` / `android` ignore rules silently drop them.
 // Both sub-checks skip when the ignore status is undetermined (no git
 // checkout) to avoid false positives.
-export const checkExpoGitignore = (rootDirectory: string): Diagnostic[] => {
+export const checkExpoGitignore = (context: ExpoCheckContext): Diagnostic[] => {
+  const { rootDirectory } = context;
   const diagnostics: Diagnostic[] = [];
 
   const expoStateDirectory = path.join(rootDirectory, ".expo");

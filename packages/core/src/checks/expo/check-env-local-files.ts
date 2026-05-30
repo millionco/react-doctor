@@ -1,6 +1,7 @@
 import path from "node:path";
 import { isFile } from "../../project-info/index.js";
 import type { Diagnostic } from "../../types/index.js";
+import type { ExpoCheckContext } from "./expo-check-context.js";
 import { buildExpoDiagnostic } from "./utils/build-expo-diagnostic.js";
 import { isPathGitIgnored } from "./utils/is-path-git-ignored.js";
 
@@ -15,7 +16,8 @@ const LOCAL_ENV_FILE_NAMES: ReadonlyArray<string> = [
   ".env.test.local",
 ];
 
-export const checkExpoEnvLocalFiles = (rootDirectory: string): Diagnostic[] => {
+export const checkExpoEnvLocalFiles = (context: ExpoCheckContext): Diagnostic[] => {
+  const { rootDirectory } = context;
   const committedEnvFiles = LOCAL_ENV_FILE_NAMES.filter((fileName) => {
     const filePath = path.join(rootDirectory, fileName);
     if (!isFile(filePath)) return false;

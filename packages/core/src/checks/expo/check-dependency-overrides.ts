@@ -1,6 +1,5 @@
-import path from "node:path";
-import { readPackageJson } from "../../project-info/index.js";
 import type { Diagnostic, PackageJson } from "../../types/index.js";
+import type { ExpoCheckContext } from "./expo-check-context.js";
 import { buildExpoDiagnostic } from "./utils/build-expo-diagnostic.js";
 
 // SDK-critical packages whose versions are pinned to the Expo release and
@@ -29,9 +28,8 @@ const collectOverrideNames = (packageJson: PackageJson): ReadonlySet<string> =>
     ...Object.keys(packageJson.pnpm?.overrides ?? {}),
   ]);
 
-export const checkExpoDependencyOverrides = (rootDirectory: string): Diagnostic[] => {
-  const packageJson = readPackageJson(path.join(rootDirectory, "package.json"));
-  const overriddenCriticalNames = [...collectOverrideNames(packageJson)]
+export const checkExpoDependencyOverrides = (context: ExpoCheckContext): Diagnostic[] => {
+  const overriddenCriticalNames = [...collectOverrideNames(context.packageJson)]
     .filter(isCriticalOverrideName)
     .sort();
 

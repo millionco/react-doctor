@@ -1,6 +1,7 @@
 import path from "node:path";
 import { findMonorepoRoot, isFile } from "../../project-info/index.js";
 import type { Diagnostic } from "../../types/index.js";
+import type { ExpoCheckContext } from "./expo-check-context.js";
 import { buildExpoDiagnostic } from "./utils/build-expo-diagnostic.js";
 
 // Ported from expo-doctor's `LockfileCheck`. EAS Build infers the package
@@ -15,8 +16,8 @@ const LOCKFILE_NAMES: ReadonlyArray<string> = [
   "bun.lock",
 ];
 
-export const checkExpoLockfile = (rootDirectory: string): Diagnostic[] => {
-  const workspaceRoot = findMonorepoRoot(rootDirectory) ?? rootDirectory;
+export const checkExpoLockfile = (context: ExpoCheckContext): Diagnostic[] => {
+  const workspaceRoot = findMonorepoRoot(context.rootDirectory) ?? context.rootDirectory;
   const presentLockfiles = LOCKFILE_NAMES.filter((lockfileName) =>
     isFile(path.join(workspaceRoot, lockfileName)),
   );

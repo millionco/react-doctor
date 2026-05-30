@@ -4,6 +4,7 @@ import type { Diagnostic } from "../../types/index.js";
 import { buildExpoDiagnostic } from "./utils/build-expo-diagnostic.js";
 import { getDirectDependencyNames } from "./utils/get-direct-dependency-names.js";
 import { getExpoSdkMajor } from "./utils/get-expo-sdk-major.js";
+import { isExpoSdkAtLeast } from "./utils/is-expo-sdk-at-least.js";
 
 // expo-router stopped being compatible with a directly-installed
 // `@react-navigation/*` in SDK 56. Ported from expo-doctor's
@@ -14,8 +15,7 @@ const EXPO_ROUTER_REACT_NAVIGATION_MIN_SDK_MAJOR = 56;
 
 export const checkExpoRouterReactNavigation = (rootDirectory: string): Diagnostic[] => {
   const packageJson = readPackageJson(path.join(rootDirectory, "package.json"));
-  const expoSdkMajor = getExpoSdkMajor(packageJson);
-  if (expoSdkMajor === null || expoSdkMajor < EXPO_ROUTER_REACT_NAVIGATION_MIN_SDK_MAJOR) {
+  if (!isExpoSdkAtLeast(getExpoSdkMajor(packageJson), EXPO_ROUTER_REACT_NAVIGATION_MIN_SDK_MAJOR)) {
     return [];
   }
 

@@ -4,6 +4,7 @@ import type { Diagnostic } from "../../types/index.js";
 import { buildExpoDiagnostic } from "./utils/build-expo-diagnostic.js";
 import { getDirectDependencyNames } from "./utils/get-direct-dependency-names.js";
 import { getExpoSdkMajor } from "./utils/get-expo-sdk-major.js";
+import { isExpoSdkAtLeast } from "./utils/is-expo-sdk-at-least.js";
 
 // Ported from expo-doctor's `VectorIconsCheck` (sdkVersionRange `>=56`).
 // Mixing the new scoped icon packages with `@expo/vector-icons` or the
@@ -19,8 +20,7 @@ const CONFLICTING_VECTOR_ICONS_PACKAGES: ReadonlyArray<string> = [
 
 export const checkExpoVectorIcons = (rootDirectory: string): Diagnostic[] => {
   const packageJson = readPackageJson(path.join(rootDirectory, "package.json"));
-  const expoSdkMajor = getExpoSdkMajor(packageJson);
-  if (expoSdkMajor === null || expoSdkMajor < VECTOR_ICONS_MIN_SDK_MAJOR) return [];
+  if (!isExpoSdkAtLeast(getExpoSdkMajor(packageJson), VECTOR_ICONS_MIN_SDK_MAJOR)) return [];
 
   const directDependencyNames = getDirectDependencyNames(packageJson);
   const hasScopedPackage = directDependencyNames.has(SCOPED_VECTOR_ICONS_PACKAGE);

@@ -71,6 +71,17 @@ React Doctor scans the files changed in the pull request, emits inline annotatio
 
 [Add GitHub Action →](https://github.com/marketplace/actions/react-doctor)
 
+### 4. Configure rules in `react-doctor.config.json`
+
+Point the `$schema` key at `https://react.doctor/schema/config.json` to get autocomplete, hover docs, and typo warnings for every option in any editor that understands JSON Schema.
+
+```jsonc
+{
+  "$schema": "https://react.doctor/schema/config.json",
+  "lint": true,
+}
+```
+
 ## Contributing
 
 [Issues welcome!](https://github.com/millionco/react-doctor/issues)

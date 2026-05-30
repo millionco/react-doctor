@@ -25,7 +25,8 @@
     "version": "changeset version",
     "release": "pnpm build && changeset publish",
     "smoke:json-report": "node --experimental-strip-types --no-warnings scripts/smoke-json-report.ts",
-    "smoke:tty-prompt": "python3 scripts/smoke-tty-prompt.py"
+    "smoke:tty-prompt": "python3 scripts/smoke-tty-prompt.py",
+    "build:schema": "node --experimental-strip-types --no-warnings scripts/generate-config-schema.ts"
   },
   "devDependencies": {
     "@changesets/changelog-github": "^0.7.0",
@@ -33,6 +34,7 @@
     "@types/node": "^25.6.0",
     "@voidzero-dev/vite-plus-core": "^0.1.15",
     "cross-env": "^10.1.0",
+    "ts-json-schema-generator": "^2.9.0",
     "turbo": "^2.9.7",
     "typescript": "^6.0.3",
     "vite-plus": "^0.1.15"

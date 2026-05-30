@@ -23,9 +23,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { ProjectInfo } from "@react-doctor/core";
 import { spawnLintBatches } from "../src/runners/oxlint/spawn-batches.js";
 
-type IntervalHandle = ReturnType<typeof setInterval>;
-
-const buildProject = (overrides: Partial<ProjectInfo> = {}): ProjectInfo => ({
+const project: ProjectInfo = {
   rootDirectory: "/tmp/app",
   projectName: "app",
   reactVersion: "19.2.0",
@@ -40,45 +38,6 @@ const buildProject = (overrides: Partial<ProjectInfo> = {}): ProjectInfo => ({
   preactVersion: null,
   preactMajorVersion: null,
   sourceFileCount: 2,
-  ...overrides,
-});
-
-/**
- * Runs `fn` with `setInterval` / `clearInterval` instrumented so the test
- * can assert no progress timer outlives the call. Globals are always
- * restored and any survivor is force-cleared in `finally`, so a
- * regression here can't hang the test process itself.
- */
-const trackIntervals = async (
-  fn: () => Promise<void>,
-): Promise<{ created: number; leaked: number }> => {
-  const realSetInterval = globalThis.setInterval;
-  const realClearInterval = globalThis.clearInterval;
-  const live = new Set<IntervalHandle>();
-  let created = 0;
-  let leaked = 0;
-
-  globalThis.setInterval = ((...args: Parameters<typeof setInterval>) => {
-    const handle = realSetInterval(...args);
-    live.add(handle);
-    created += 1;
-    return handle;
-  }) as typeof setInterval;
-  globalThis.clearInterval = ((handle?: IntervalHandle) => {
-    if (handle !== undefined) live.delete(handle);
-    realClearInterval(handle);
-  }) as typeof clearInterval;
-
-  try {
-    await fn();
-  } finally {
-    globalThis.setInterval = realSetInterval;
-    globalThis.clearInterval = realClearInterval;
-    leaked = live.size;
-    for (const handle of live) realClearInterval(handle);
-  }
-
-  return { created, leaked };
 };
 
 // A multi-file batch so the progress interval is actually created
@@ -86,48 +45,82 @@ const trackIntervals = async (
 // path always passes it. Both are preconditions for the leak.
 const fileBatches = [["src/a.tsx", "src/b.tsx"]];
 
+// HACK: stand in for the oxlint binary with `node -e <script>`, so each
+// scenario can pick the failure shape (write stderr + exit 0 → empty
+// stdout → a non-splittable `OxlintSpawnFailed`, exactly how an adopted
+// lint config crashing oxlint surfaces) or the success shape (valid JSON
+// on stdout) without a real oxlint install.
+const runBatchesWith = (baseArgs: ReadonlyArray<string>) =>
+  spawnLintBatches({
+    baseArgs,
+    fileBatches,
+    rootDirectory: process.cwd(),
+    nodeBinaryPath: process.execPath,
+    project,
+    onFileProgress: () => {},
+  });
+
+/**
+ * Runs `runScenario` with `setInterval` / `clearInterval` instrumented so
+ * the test can assert no progress timer outlives the call. Globals are
+ * always restored and any survivor is force-cleared in `finally`, so a
+ * regression here can't hang the test process itself.
+ */
+const trackIntervals = async (runScenario: () => Promise<void>) => {
+  const realSetInterval = globalThis.setInterval;
+  const realClearInterval = globalThis.clearInterval;
+  const liveIntervalHandles = new Set<ReturnType<typeof setInterval>>();
+  let createdCount = 0;
+  let leakedCount = 0;
+
+  // HACK: reassigning the timer globals is the only way to observe the
+  // interval handles the runner creates internally.
+  globalThis.setInterval = (...args: Parameters<typeof setInterval>) => {
+    const handle = realSetInterval(...args);
+    liveIntervalHandles.add(handle);
+    createdCount += 1;
+    return handle;
+  };
+  globalThis.clearInterval = (handle?: ReturnType<typeof setInterval>) => {
+    if (handle !== undefined) liveIntervalHandles.delete(handle);
+    realClearInterval(handle);
+  };
+
+  try {
+    await runScenario();
+  } finally {
+    globalThis.setInterval = realSetInterval;
+    globalThis.clearInterval = realClearInterval;
+    leakedCount = liveIntervalHandles.size;
+    for (const handle of liveIntervalHandles) realClearInterval(handle);
+  }
+
+  return { createdCount, leakedCount };
+};
+
 describe("issue #599: spawnLintBatches never leaks its progress interval", () => {
   it("clears the progress timer when a multi-file batch rejects with a non-splittable error", async () => {
-    // `baseArgs` make `spawnOxlint` run `node -e <script> …files`. The
-    // script writes to stderr and exits 0 → empty stdout + non-empty
-    // stderr → a non-splittable `OxlintSpawnFailed`, exactly how an
-    // adopted lint config crashing oxlint surfaces. `spawnLintBatch`
-    // re-throws it, so the whole call rejects before the post-`await`
-    // cleanup the old code relied on.
-    const { created, leaked } = await trackIntervals(async () => {
-      await expect(
-        spawnLintBatches({
-          baseArgs: ["-e", "process.stderr.write('boom')"],
-          fileBatches,
-          rootDirectory: process.cwd(),
-          nodeBinaryPath: process.execPath,
-          project: buildProject(),
-          onFileProgress: () => {},
-          spawnTimeoutMs: 30_000,
-        }),
-      ).rejects.toThrow(/Failed to run oxlint/);
+    const { createdCount, leakedCount } = await trackIntervals(async () => {
+      await expect(runBatchesWith(["-e", "process.stderr.write('boom')"])).rejects.toThrow(
+        /Failed to run oxlint/,
+      );
     });
 
-    expect(created).toBeGreaterThanOrEqual(1);
-    expect(leaked).toBe(0);
+    expect(createdCount).toBeGreaterThanOrEqual(1);
+    expect(leakedCount).toBe(0);
   });
 
   it("clears the progress timer on the success path too", async () => {
     const oxlintJson = JSON.stringify({ diagnostics: [] });
-    const { created, leaked } = await trackIntervals(async () => {
-      const diagnostics = await spawnLintBatches({
-        baseArgs: ["-e", `process.stdout.write(${JSON.stringify(oxlintJson)})`],
-        fileBatches,
-        rootDirectory: process.cwd(),
-        nodeBinaryPath: process.execPath,
-        project: buildProject(),
-        onFileProgress: () => {},
-        spawnTimeoutMs: 30_000,
-      });
+    const { createdCount, leakedCount } = await trackIntervals(async () => {
+      const diagnostics = await runBatchesWith([
+        "-e",
+        `process.stdout.write(${JSON.stringify(oxlintJson)})`,
+      ]);
       expect(diagnostics).toEqual([]);
     });
 
-    expect(created).toBeGreaterThanOrEqual(1);
-    expect(leaked).toBe(0);
+    expect(createdCount).toBeGreaterThanOrEqual(1);
+    expect(leakedCount).toBe(0);
   });
 });

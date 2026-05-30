@@ -1,0 +1,19 @@
+.github/workflows/publish-any-commit.yml
+  s_c5e585d97d460d::t_5c20f9f6f65782 1-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "3fbf00286e3e38192c14abae23bfae7a158f007a",
+  "prompts": {},
+  "sessions": {
+    "s_c5e585d97d460d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "876271ee-0f38-4991-8800-c1a6d8dceee9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

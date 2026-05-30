@@ -1,0 +1,54 @@
+.changeset/betterstack-error-reporting.md
+  s_bbaa5b1d8ead40::t_933629c424d05b 1-5
+packages/react-doctor/README.md
+  s_bbaa5b1d8ead40::t_c8d4bafcf7fcdc 74-85
+packages/react-doctor/package.json
+  s_bbaa5b1d8ead40::t_a859d37b16fad2 73
+  s_bbaa5b1d8ead40::t_2bcfda84b9f587 53
+  s_bbaa5b1d8ead40::t_ed38444bc7309e 59
+packages/react-doctor/src/cli/utils/error-tracking.ts
+  s_bbaa5b1d8ead40::t_6c4e5f1aad8a41 1,9-11,14,24-30,120-156,160,165-166,168-172
+  s_bbaa5b1d8ead40::t_f4c88b5320e540 2-8,12-13,15-23,31-119,157-159,161-164,167
+packages/react-doctor/vite.config.ts
+  s_bbaa5b1d8ead40::t_68956d39d28722 63-67,118-122
+packages/react-doctor/src/cli/index.ts
+  s_bbaa5b1d8ead40::t_cbbce1b3efb84e 22-26,44-47
+  s_bbaa5b1d8ead40::t_84f3fc36194184 133
+  s_bbaa5b1d8ead40::t_c5efe35809e2f5 5,49
+  s_bbaa5b1d8ead40::t_ee13f7abc145d9 14-21,27-33,36-39
+  s_bbaa5b1d8ead40::t_bee27f424a5f03 6
+  s_bbaa5b1d8ead40::t_25e1426dd8eb2b 40-43
+package.json
+  s_bbaa5b1d8ead40::t_9fe3447f1a46db 48
+AGENTS.md
+  s_bbaa5b1d8ead40::t_ddbdc6035b4399 179-199
+packages/react-doctor/tests/error-tracking.test.ts
+  s_bbaa5b1d8ead40::t_58b5cdb8c721ac 1-137
+packages/react-doctor/src/cli/commands/install.ts
+  s_bbaa5b1d8ead40::t_2eb167efb8afdd 39
+  s_bbaa5b1d8ead40::t_a9f26d83927da4 2
+packages/react-doctor/src/cli/utils/constants.ts
+  s_bbaa5b1d8ead40::t_cae2d87cb04c86 22-33
+packages/react-doctor/src/cli/commands/inspect.ts
+  s_bbaa5b1d8ead40::t_6dee8f0ef3a848 384
+  s_bbaa5b1d8ead40::t_cf82fcd82f4675 24
+.github/workflows/publish.yml
+  s_bbaa5b1d8ead40::t_6e7068ac61e86f 48-67
+  s_bbaa5b1d8ead40::t_31b00b472c0229 113-127
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "1c55627d2ddd073d82cbac7cfa9cc9d0cd04db40",
+  "prompts": {},
+  "sessions": {
+    "s_bbaa5b1d8ead40": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "93aa7893-1ac3-4270-b048-f9e67782f1ad",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

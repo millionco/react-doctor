@@ -1,0 +1,26 @@
+packages/core/src/utils/redact-sensitive-text.ts
+  s_7af67a01cef546::t_f89aa80cb2edcb 1-4,15-100,110,112-114,116-134,136,139-142,150-154,159,162
+  s_7af67a01cef546::t_b5ae41f8d44c80 135
+  s_7af67a01cef546::t_5ee5b28b493e3f 101-109,111
+packages/core/src/constants.ts
+  s_7af67a01cef546::t_2eba2bef552ccb 45-54
+packages/core/tests/redact-sensitive-text.test.ts
+  s_7af67a01cef546::t_097b7dbfcb857b 152-201
+  s_7af67a01cef546::t_e2bc4f1f3d58e7 28-32,38-88
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "917678987997fee8ec3e77b84401a4df69650595",
+  "prompts": {},
+  "sessions": {
+    "s_7af67a01cef546": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f8f88952-c70e-467a-995c-93077d19761e",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

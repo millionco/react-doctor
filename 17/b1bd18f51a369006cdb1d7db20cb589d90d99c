@@ -1,0 +1,34 @@
+packages/react-doctor/src/inspect.ts
+  s_65a8879b210e9d::t_3381ca29affbc8 421-426
+packages/core/src/types/score.ts
+  s_65a8879b210e9d::t_78ec3b432bc130 1-9,13-17
+packages/core/src/types/index.ts
+  s_65a8879b210e9d::t_29dca19f500242 50
+packages/core/src/calculate-score.ts
+  s_65a8879b210e9d::t_e72b3f9f316788 5-6,8-23,31-32
+packages/react-doctor/src/cli/utils/render-diagnostics.ts
+  s_65a8879b210e9d::t_f95acd20d744eb 24-62
+  s_65a8879b210e9d::t_0071c9b1d40379 235-239
+  s_65a8879b210e9d::t_0348a28644daaa 258,263,269
+  s_65a8879b210e9d::t_5a190a245e3cb5 143-156,167,171-174
+  s_65a8879b210e9d::t_ace8a35708b413 11
+packages/react-doctor/src/cli/utils/render-multi-project-summary.ts
+  s_65a8879b210e9d::t_924c458f4479bd 12
+  s_65a8879b210e9d::t_044c257b373032 98-103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "17b1bd18f51a369006cdb1d7db20cb589d90d99c",
+  "prompts": {},
+  "sessions": {
+    "s_65a8879b210e9d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ad181459-60f6-4ffd-87a8-0456fc49f653",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

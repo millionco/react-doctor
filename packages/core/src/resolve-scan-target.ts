@@ -1,7 +1,12 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { loadConfigWithSource } from "./load-config.js";
-import { isDirectory, NotADirectoryError, ProjectNotFoundError } from "./project-info/index.js";
+import {
+  AmbiguousProjectError,
+  isDirectory,
+  NotADirectoryError,
+  ProjectNotFoundError,
+} from "./project-info/index.js";
 import { resolveConfigRootDir } from "./resolve-config-root-dir.js";
 import { resolveDiagnoseTarget } from "./resolve-diagnose-target.js";
 import type { ReactDoctorConfig } from "./types/index.js";
@@ -30,6 +35,20 @@ export interface ResolvedScanTarget {
 export interface ResolveScanTargetOptions {
   readonly allowAmbiguous?: boolean;
 }
+
+const resolveTargetDirectory = (
+  directory: string,
+  options: ResolveScanTargetOptions,
+): string | null => {
+  try {
+    return resolveDiagnoseTarget(directory);
+  } catch (error) {
+    if (options.allowAmbiguous === true && error instanceof AmbiguousProjectError) {
+      return null;
+    }
+    throw error;
+  }
+};
 
 /**
  * The canonical entry-point translation shared by every public shell
@@ -65,9 +84,7 @@ export const resolveScanTarget = (
   const configSourceDirectory = loadedConfig?.sourceDirectory ?? null;
   const redirectedDirectory = resolveConfigRootDir(userConfig, configSourceDirectory);
   const directoryAfterRedirect = redirectedDirectory ?? absoluteRequested;
-  const resolved = resolveDiagnoseTarget(directoryAfterRedirect, {
-    allowAmbiguous: options.allowAmbiguous,
-  });
+  const resolved = resolveTargetDirectory(directoryAfterRedirect, options);
   const resolvedDirectory = resolved ?? directoryAfterRedirect;
 
   if (!isDirectory(resolvedDirectory)) {

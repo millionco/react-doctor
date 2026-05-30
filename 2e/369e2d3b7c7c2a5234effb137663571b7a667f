@@ -1,0 +1,19 @@
+action.yml
+  s_cf137a2e8977f0::t_a60ef4275a25f2 53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "2e369e2d3b7c7c2a5234effb137663571b7a667f",
+  "prompts": {},
+  "sessions": {
+    "s_cf137a2e8977f0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "10a694b0-e235-4dd7-87a2-61cc76e675e7",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

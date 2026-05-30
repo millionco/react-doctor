@@ -1,0 +1,34 @@
+.changeset/publish-config-json-schema.md
+  s_61affe7799690e::t_12f870e9611f0a 1,3-11,13-16
+  s_61affe7799690e::t_8b6afc60e149ae 2,12
+package.json
+  s_61affe7799690e::t_1260807101e37c 28
+  s_61affe7799690e::t_12f870e9611f0a 29,37
+.prettierignore
+  s_61affe7799690e::t_493f30905b7a13 10-13
+packages/website/public/schema/config.json
+  s_61affe7799690e::t_16f1c76b1fcff3 55-58,163-165,170-174,226-230
+  s_61affe7799690e::t_12f870e9611f0a 1-54,59-162,166-169,175-225,231-234
+scripts/generate-config-schema.ts
+  s_61affe7799690e::t_12f870e9611f0a 1-43
+packages/react-doctor/README.md
+  s_61affe7799690e::t_12f870e9611f0a 74-75,84
+  s_61affe7799690e::t_87666f55aeef83 76-80,82-83
+  s_61affe7799690e::t_6de48641849ce5 81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "6c093d0b50d21149656dda35f46fc4794e8e6678",
+  "prompts": {},
+  "sessions": {
+    "s_61affe7799690e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f419c7f-0c76-4a60-a5f4-a37b63fa2c22",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

@@ -42,6 +42,16 @@ export const ERROR_PREVIEW_LENGTH_CHARS = 200;
 // floor keeps the catch-all from masking ordinary long identifiers.
 export const GENERIC_SECRET_MIN_LENGTH_CHARS = 32;
 
+// Minimum Shannon entropy (bits/char) a long token must clear before the
+// generic sweep in `redactSensitiveText` masks it. Random base64url/hex
+// credentials sit ~4–6 bits/char; repetitive or word-like identifiers
+// (e.g. `componentDisplayName2`, `aaaa…a1`) fall well below this, so the
+// floor keeps the catch-all from masking ordinary long identifiers while
+// still catching unknown-format secrets. 3.0 mirrors detect-secrets'
+// hex-string threshold — low enough to avoid leaks, high enough to spare
+// degenerate low-entropy strings.
+export const GENERIC_SECRET_MIN_ENTROPY_BITS = 3.0;
+
 export const PERFECT_SCORE = 100;
 
 export const SCORE_GOOD_THRESHOLD = 75;

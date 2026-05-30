@@ -16,20 +16,36 @@ interface DisplayNameSettings {
   ignoreTranspilerName?: boolean;
   checkContextObjects?: boolean;
   reactVersion?: string;
+  // Additional callee names that should be treated as
+  // display-name-affecting HoCs alongside the built-in `memo` /
+  // `forwardRef`. Matches the ESLint `react/display-name` setting
+  // `componentWrapperFunctions`. Defaults to project-common HoCs
+  // (`observer`, `withTracking`, `lazy`) so the rule lights up on
+  // MobX and analytics wrappers out of the box.
+  additionalHoCs?: ReadonlyArray<string>;
 }
+
+const DEFAULT_ADDITIONAL_HOCS: ReadonlyArray<string> = ["observer", "lazy", "withTracking"];
 
 const resolveSettings = (
   settings: Readonly<Record<string, unknown>> | undefined,
-): Required<DisplayNameSettings> => {
+): {
+  ignoreTranspilerName: boolean;
+  checkContextObjects: boolean;
+  reactVersion: string;
+  additionalHoCs: ReadonlySet<string>;
+} => {
   const reactDoctor = settings?.["react-doctor"];
   const ruleSettings =
     typeof reactDoctor === "object" && reactDoctor !== null
       ? ((reactDoctor as { displayName?: DisplayNameSettings }).displayName ?? {})
       : {};
+  const additionalHoCs = new Set<string>(ruleSettings.additionalHoCs ?? DEFAULT_ADDITIONAL_HOCS);
   return {
     ignoreTranspilerName: ruleSettings.ignoreTranspilerName ?? false,
     checkContextObjects: ruleSettings.checkContextObjects ?? false,
     reactVersion: ruleSettings.reactVersion ?? "",
+    additionalHoCs,
   };
 };
 
@@ -137,13 +153,6 @@ const isCreateContextCall = (node: EsTreeNode): boolean => {
   );
 };
 
-const isObserverCall = (node: EsTreeNode): boolean => {
-  if (!isNodeOfType(node, "CallExpression")) return false;
-  const callee = node.callee;
-  if (isNodeOfType(callee, "Identifier")) return callee.name === "observer";
-  return isNodeOfType(callee, "MemberExpression") && getStaticMemberName(callee) === "observer";
-};
-
 const getCallName = (node: EsTreeNode): string | null => {
   if (!isNodeOfType(node, "CallExpression")) return null;
   const callee = node.callee;
@@ -162,10 +171,44 @@ const firstCallArgument = (node: EsTreeNode): EsTreeNode | null => {
   return first ? (first as EsTreeNode) : null;
 };
 
-const isDisplayNameHoC = (node: EsTreeNode): boolean => {
-  const callName = getCallName(node);
-  return callName === "memo" || callName === "forwardRef";
+// Returns the bare HoC name when `node` is a recognised
+// display-name-affecting HoC call. Handles:
+//
+//   memo(Comp)               → "memo"
+//   forwardRef(Comp)         → "forwardRef"
+//   React.memo(Comp)         → "memo"
+//   React.forwardRef(Comp)   → "forwardRef"
+//   observer(Comp)           → "observer"        (when in additionalHoCs)
+//   lazy(() => import(...))  → "lazy"            (when in additionalHoCs)
+//   anyName(Comp)            → "anyName"         (when in additionalHoCs)
+//
+// Returns null when the callee isn't a known HoC, so callers can
+// distinguish "no HoC at all" from "HoC of kind X".
+const resolveHoCCalleeName = (
+  node: EsTreeNode,
+  additionalHoCs: ReadonlySet<string>,
+): string | null => {
+  if (!isNodeOfType(node, "CallExpression")) return null;
+  const callee = node.callee;
+  if (isNodeOfType(callee, "Identifier")) {
+    if (callee.name === "memo" || callee.name === "forwardRef") return callee.name;
+    if (additionalHoCs.has(callee.name)) return callee.name;
+    return null;
+  }
+  if (
+    isNodeOfType(callee, "MemberExpression") &&
+    !callee.computed &&
+    isNodeOfType(callee.property, "Identifier")
+  ) {
+    const propertyName = callee.property.name;
+    if (propertyName === "memo" || propertyName === "forwardRef") return propertyName;
+    if (additionalHoCs.has(propertyName)) return propertyName;
+  }
+  return null;
 };
+
+const isDisplayNameHoC = (node: EsTreeNode, additionalHoCs: ReadonlySet<string>): boolean =>
+  resolveHoCCalleeName(node, additionalHoCs) !== null;
 
 const supportsComposedForwardRefDisplayName = (version: string): boolean => {
   if (!version) return false;
@@ -176,9 +219,12 @@ const supportsComposedForwardRefDisplayName = (version: string): boolean => {
 
 const shouldReportHoCDisplayName = (
   node: EsTreeNode,
-  settings: Required<DisplayNameSettings>,
+  settings: {
+    reactVersion: string;
+    additionalHoCs: ReadonlySet<string>;
+  },
 ): boolean => {
-  if (!isDisplayNameHoC(node)) return false;
+  if (!isDisplayNameHoC(node, settings.additionalHoCs)) return false;
   if (!containsJsx(node)) return false;
 
   const assignedName = getAssignedName(node);
@@ -187,14 +233,14 @@ const shouldReportHoCDisplayName = (
     return false;
   }
 
-  const callName = getCallName(node);
+  const callName = resolveHoCCalleeName(node, settings.additionalHoCs);
   const firstArgument = firstCallArgument(node);
   if (!firstArgument) return false;
 
   if (
     callName === "forwardRef" &&
     isNodeOfType(node.parent, "CallExpression") &&
-    getCallName(node.parent) === "memo" &&
+    resolveHoCCalleeName(node.parent, settings.additionalHoCs) === "memo" &&
     firstCallArgument(node.parent) === node &&
     supportsComposedForwardRefDisplayName(settings.reactVersion)
   ) {
@@ -202,7 +248,7 @@ const shouldReportHoCDisplayName = (
   }
 
   if (callName === "memo" && isNodeOfType(firstArgument, "CallExpression")) {
-    if (getCallName(firstArgument) !== "forwardRef") return false;
+    if (resolveHoCCalleeName(firstArgument, settings.additionalHoCs) !== "forwardRef") return false;
     return !supportsComposedForwardRefDisplayName(settings.reactVersion);
   }
 
@@ -312,11 +358,22 @@ const hasDisplayNameAssignmentForProperty = (
 // returned from HoCs, or class components without a static
 // `displayName` property where the class name itself is anonymous.
 //
-// LIMITATION (vs OXC): the upstream rule has extensive HoC awareness
-// (memo, forwardRef, createReactClass), JSX-utility-class detection,
-// and follows assignments to module.exports, etc. Our port covers the
-// most common shapes — anonymous arrow returning JSX, anonymous class
-// component without a static displayName.
+// HoC awareness covers:
+//
+//   memo(...)              forwardRef(...)
+//   React.memo(...)        React.forwardRef(...)
+//   memo(forwardRef(...))  forwardRef inside memo (React-version aware)
+//
+// Plus user-configurable additional HoCs via the
+// `react-doctor.displayName.additionalHoCs` setting. Default extras:
+// MobX `observer`, React `lazy`, and the project-common
+// `withTracking` analytics wrapper. Add any custom HoC the project
+// uses to extend the default list.
+//
+// Also recognises createReactClass / React.createClass / similar
+// legacy factories that take a config object — those need a
+// `displayName` property in the config when the assigned binding
+// isn't PascalCase.
 export const displayName = defineRule<Rule>({
   id: "display-name",
   severity: "warn",
@@ -433,10 +490,6 @@ export const displayName = defineRule<Rule>({
             const programRoot = findProgramRoot(node as EsTreeNode);
             if (programRoot && hasDisplayNameAssignment(assignedName, programRoot)) return;
           }
-          reportAt(node as EsTreeNode);
-          return;
-        }
-        if (isObserverCall(node as EsTreeNode) && containsJsx(node as EsTreeNode)) {
           reportAt(node as EsTreeNode);
           return;
         }

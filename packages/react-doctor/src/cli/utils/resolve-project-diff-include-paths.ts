@@ -1,8 +1,7 @@
 import path from "node:path";
 import { filterSourceFiles } from "@react-doctor/core";
 import type { DiffInfo } from "@react-doctor/core";
-
-const toForwardSlashes = (filePath: string): string => filePath.replaceAll("\\", "/");
+import { toForwardSlashes } from "./path-format.js";
 
 export const resolveProjectDiffIncludePaths = (
   rootDirectory: string,

@@ -17,6 +17,7 @@ export interface InspectFlags {
   respectInlineDisables?: boolean;
   project?: string;
   diff?: boolean | string;
+  changedFilesFrom?: string;
   explain?: string;
   why?: string;
   failOn?: string;

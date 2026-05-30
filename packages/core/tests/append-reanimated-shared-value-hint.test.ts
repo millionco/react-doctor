@@ -17,6 +17,8 @@ const buildProject = (overrides: Partial<ProjectInfo> = {}): ProjectInfo => ({
   reactVersion: "19.2.0",
   reactMajorVersion: 19,
   tailwindVersion: null,
+  zodVersion: null,
+  zodMajorVersion: null,
   framework: "expo",
   hasTypeScript: true,
   hasReactCompiler: true,

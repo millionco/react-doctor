@@ -55,7 +55,11 @@ interface InstallReactDoctorDependencyOptions {
 
 interface InstallReactDoctorDependencyResult {
   readonly dependencyStatus: "created" | "existing" | "skipped";
-  readonly dependencyReason?: "missing-or-invalid-package-json" | "invalid-dev-dependencies";
+  readonly dependencyReason?:
+    | "missing-or-invalid-package-json"
+    | "invalid-dev-dependencies"
+    | "install-command-failed";
+  readonly installCommand?: string;
 }
 
 const PACKAGE_MANAGER_LOCKFILES = [
@@ -151,6 +155,9 @@ const defaultInstallDependencyRunner = (input: InstallReactDoctorDependencyRunne
   });
 };
 
+const formatInstallCommand = (input: InstallReactDoctorDependencyRunnerInput): string =>
+  [input.command, ...input.args].join(" ");
+
 const installReactDoctorDependency = async (
   options: InstallReactDoctorDependencyOptions,
 ): Promise<InstallReactDoctorDependencyResult> => {
@@ -170,7 +177,15 @@ const installReactDoctorDependency = async (
   }
 
   const runnerInput = buildInstallCommand(options.projectRoot);
-  await (options.runner ?? defaultInstallDependencyRunner)(runnerInput);
+  try {
+    await (options.runner ?? defaultInstallDependencyRunner)(runnerInput);
+  } catch {
+    return {
+      dependencyStatus: "skipped",
+      dependencyReason: "install-command-failed",
+      installCommand: formatInstallCommand(runnerInput),
+    };
+  }
   return { dependencyStatus: "created" };
 };
 
@@ -220,6 +235,11 @@ const formatDependencyInstallMessage = (result: InstallReactDoctorDependencyResu
   }
   if (result.dependencyReason === "invalid-dev-dependencies") {
     return "Skipped dev dependency install: devDependencies field is not an object.";
+  }
+  if (result.dependencyReason === "install-command-failed") {
+    const installCommand =
+      result.installCommand ?? `npm install --save-dev ${DOCTOR_PACKAGE_NAME}@latest`;
+    return `Skipped dev dependency install: package manager command failed. Run manually: ${installCommand}`;
   }
   return "Skipped dev dependency install: package.json missing or invalid.";
 };
@@ -284,21 +304,23 @@ const buildWorkflowContent = (): string =>
     "",
     "on:",
     "  pull_request:",
-    "    branches: [main]",
+    "    types: [opened, synchronize, reopened, ready_for_review]",
     "",
     "permissions:",
     "  contents: read",
     "  pull-requests: write",
+    "  issues: write",
+    "",
+    "concurrency:",
+    "  group: react-doctor-${{ github.event.pull_request.number || github.ref }}",
+    "  cancel-in-progress: true",
     "",
     "jobs:",
     "  react-doctor:",
     "    runs-on: ubuntu-latest",
     "    steps:",
-    "      - uses: actions/checkout@v4",
+    "      - uses: actions/checkout@v5",
     "      - uses: millionco/react-doctor@main",
-    "        with:",
-    "          github-token: ${{ secrets.GITHUB_TOKEN }}",
-    "          diff: main",
     "",
   ].join("\n");
 

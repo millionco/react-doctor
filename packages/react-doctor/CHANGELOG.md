@@ -1,5 +1,40 @@
 # react-doctor
 
+## 0.2.14
+
+### Patch Changes
+
+- [#593](https://github.com/millionco/react-doctor/pull/593) [`ac14db3`](https://github.com/millionco/react-doctor/commit/ac14db31e2b1cb77143bf74676d599a7b4eeedfe) Thanks [@aidenybai](https://github.com/aidenybai)! - Guard the startup `process.stdin` unref on `process.stdin.isTTY` so interactive prompts no longer exit by themselves. The startup unref (added so one-shot non-interactive runs like `--json` from an eval runner holding the stdin pipe open can exit cleanly) was applied unconditionally, including on a real terminal. On a TTY `prompts` never re-refs the unref'd stdin handle — `readline.createInterface` + `setRawMode(true)` do not re-ref it — so the multiselect ("Select projects") rendered and the CLI then drained the event loop and exited (code 0) before the user could answer. Skipping the unref when stdin is a TTY keeps the one-shot exit fix for non-interactive pipes/sockets while leaving interactive terminals untouched. Adds an in-process behavioral test and a real-PTY CI smoke (`pnpm smoke:tty-prompt`).
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.2.14
+
+## 0.2.13
+
+### Patch Changes
+
+- [#586](https://github.com/millionco/react-doctor/pull/586) [`9d20182`](https://github.com/millionco/react-doctor/commit/9d20182ac14c7d89d52de98d2a8bfa9bad74f99e) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix the CLI hanging after the post-scan prompts. Interactive prompts re-ref stdin via `readline` and never release it on close, undoing the startup `unrefStdin()` and holding the one-shot CLI's event loop open. The shared `prompts` wrapper now re-unrefs stdin once each prompt settles.
+
+- [`d40a933`](https://github.com/millionco/react-doctor/commit/d40a9339cfacd818b199be5b87bb68129d07b336) Thanks [@aidenybai](https://github.com/aidenybai)! - Trigger a release.
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.2.13
+
+## 0.2.12
+
+### Patch Changes
+
+- [#570](https://github.com/millionco/react-doctor/pull/570) [`d917f62`](https://github.com/millionco/react-doctor/commit/d917f62ed6215e9a984c9bfa83940bba723ff5de) Thanks [@aidenybai](https://github.com/aidenybai)! - Add the `no-prop-types` architecture rule. React 19 removed runtime `propTypes` validation entirely — React no longer reads `Component.propTypes`, so invalid props that used to log a console warning now pass silently. The rule flags `Component.propTypes = { ... }` assignments and `static propTypes` class fields on component-cased identifiers, and is version-gated to React 19+ (`requires: ["react:19"]`) so projects where `propTypes` still runs stay quiet. It steers users toward TypeScript prop types plus explicit runtime validation. See [#460](https://github.com/millionco/react-doctor/issues/460).
+
+- [#582](https://github.com/millionco/react-doctor/pull/582) [`b2934f9`](https://github.com/millionco/react-doctor/commit/b2934f93e439027ed132e40688d45ef682f05efb) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Fix a `rn-no-raw-text` false positive on fbtee translation tags. fbtee's `<fbt>` / `<fbs>` (and namespaced children like `<fbt:param>`) are compile-time translation tags that disappear at build time, so text inside `<Text><fbt>…</fbt></Text>` is really rendered inside `<Text>` and is safe on React Native. The rule now treats `fbt` / `fbs` as transparent wrappers when every ancestor up to a text-handling component is also transparent, while still reporting raw text when an `<fbt>` is used outside a `<Text>` boundary. See [#581](https://github.com/millionco/react-doctor/issues/581).
+
+- [#557](https://github.com/millionco/react-doctor/pull/557) [`67848ae`](https://github.com/millionco/react-doctor/commit/67848aec9cba76fc44ec7e36ac3a2b0717f5bd28) Thanks [@aidenybai](https://github.com/aidenybai)! - Scope React subproject discovery so running `react-doctor` from a home directory no longer reports unrelated, vendored projects as ambiguous candidates. When the scan root has no `package.json` or workspace manifest, the filesystem crawl now skips OS/editor app-data directories (`AppData`, `Library`, …) and stops descending past a fixed depth. Previously a home-directory scan could surface React packages bundled inside editor installs (e.g. a VS Code extension under `AppData`) alongside real projects, aborting with `Multiple React projects found`. See [#545](https://github.com/millionco/react-doctor/issues/545).
+
+- [#576](https://github.com/millionco/react-doctor/pull/576) [`e7a998a`](https://github.com/millionco/react-doctor/commit/e7a998a9fa00a894177d9afc22e3a78b814392f1) Thanks [@aidenybai](https://github.com/aidenybai)! - Unref `process.stdin` at CLI startup so an inherited stdin pipe/socket can no longer keep the event loop alive after a scan completes. Previously `react-doctor --json` (and other one-shot runs) could finish the scan and flush the full report yet never exit when launched by a parent that holds the stdin write-end open (eval runners, CI harnesses, editor integrations) — Node kept the loop alive on the idle `Socket fd=0`. Interactive prompts are unaffected because `prompts`' `readline` interface re-refs stdin on demand.
+
+- Updated dependencies [[`d917f62`](https://github.com/millionco/react-doctor/commit/d917f62ed6215e9a984c9bfa83940bba723ff5de), [`d0f5206`](https://github.com/millionco/react-doctor/commit/d0f52062e09c7bfe11eda2c06ad6e9ab0ab7da58), [`b2934f9`](https://github.com/millionco/react-doctor/commit/b2934f93e439027ed132e40688d45ef682f05efb)]:
+  - oxlint-plugin-react-doctor@0.2.12
+
 ## 0.2.11
 
 ### Patch Changes

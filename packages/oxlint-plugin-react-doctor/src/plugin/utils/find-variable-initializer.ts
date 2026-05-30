@@ -10,6 +10,13 @@ interface BindingInfo {
   // the declarator carries an `init` (or, for destructured patterns,
   // the field of `init` that corresponds to this name). null when the
   // binding is declared without an initializer (`let x;`).
+  //
+  // NOTE: for a parameter or destructuring DEFAULT
+  // (`function C({ items = [] })`, `const { x = [] } = props`) this is
+  // the default expression. It is only allocated when the source is
+  // undefined, so consumers that treat the initializer as an
+  // unconditional render-local allocation must confirm the binding is a
+  // direct `VariableDeclarator` init (see no-effect-with-fresh-deps).
   initializer: EsTreeNode | null;
   // The function/class/program node the binding lives in (its lexical
   // scope owner). Useful for distinguishing render-local vs hoisted.

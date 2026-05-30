@@ -39,10 +39,21 @@ const getRootIdentifier = (elementName: EsTreeNode): string | null => {
 };
 
 // Port of `oxc_linter::rules::react::jsx_no_undef`. Reports JSX usages
-// of an identifier (or root of a member expression) that has no binding
-// anywhere in the file. LIMITATION: we don't have proper scope analysis,
-// so any binding *anywhere* in the file suppresses the diagnostic — same
-// behavior as our other rules that use `hasBindingNamed`.
+// of an identifier (or root of a member expression) that has no
+// binding visible from the JSX site.
+//
+// Scope-aware via `findVariableInitializer`:
+//
+//   - Block-scoped `let` / `const` declarations are only visible in
+//     their owning block — JSX in a sibling block flags as undefined.
+//   - Function-scoped `var` and function/class declarations bind to
+//     the enclosing function-or-program scope (JS hoisting).
+//   - Imports bind to the module scope and are visible everywhere.
+//   - TS declarations that have runtime representation (`enum`,
+//     `namespace`, `import X = require(...)`) DO suppress the
+//     diagnostic. `interface` and `type` alias declarations do NOT
+//     — those are erased at runtime and JSX usage of them is an
+//     error we want to surface.
 export const jsxNoUndef = defineRule<Rule>({
   id: "jsx-no-undef",
   severity: "error",

@@ -48,6 +48,11 @@ export const SCORE_API_URL = "https://www.react.doctor/api/score";
 
 export const SHARE_BASE_URL = "https://www.react.doctor/share";
 
+// Base URL for the per-rule fix recipes the `/doctor` playbook fetches
+// on demand. The full URL for one rule is
+// `<base>/<plugin>/<rule>.md` (see `buildRulePromptUrl`).
+export const PROMPTS_RULES_BASE_URL = "https://www.react.doctor/prompts/rules";
+
 export const FETCH_TIMEOUT_MS = 10_000;
 
 export const GITHUB_VIEWER_PERMISSION_TIMEOUT_MS = 2_000;

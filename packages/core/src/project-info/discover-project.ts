@@ -18,6 +18,7 @@ import { isPackageJsonReanimatedAware } from "./utils/is-package-json-reanimated
 import { readPackageJson } from "./read-package-json.js";
 import { isCatalogReference, resolveCatalogVersion } from "./resolve-catalog-version.js";
 import { parseReactMajor } from "./parse-react-major.js";
+import { parseZodMajor } from "./parse-zod-major.js";
 import { resolveEffectiveReactMajor } from "./resolve-effective-react-major.js";
 
 export { discoverReactSubprojects } from "./discover-react-subprojects.js";
@@ -43,7 +44,7 @@ export const discoverProject = (directory: string): ProjectInfo => {
   }
 
   const packageJson = readPackageJson(packageJsonPath);
-  let { reactVersion, tailwindVersion, framework } = extractDependencyInfo(packageJson);
+  let { reactVersion, tailwindVersion, zodVersion, framework } = extractDependencyInfo(packageJson);
 
   const reactDeclaration = getDependencyDeclaration({
     packageJson,
@@ -53,6 +54,11 @@ export const discoverProject = (directory: string): ProjectInfo => {
   const tailwindDeclaration = getDependencyDeclaration({
     packageJson,
     packageName: "tailwindcss",
+    sections: ["dependencies", "devDependencies", "peerDependencies"],
+  });
+  const zodDeclaration = getDependencyDeclaration({
+    packageJson,
+    packageName: "zod",
     sections: ["dependencies", "devDependencies", "peerDependencies"],
   });
 
@@ -74,16 +80,19 @@ export const discoverProject = (directory: string): ProjectInfo => {
     );
   }
 
-  // HACK: gate the cheap monorepo-root catalog read on either dep
-  // missing — it's a single readPackageJson + parsePnpmWorkspaceCatalogs
-  // call, free to run opportunistically for Tailwind in a non-Tailwind
-  // project. The expensive walks below (findReactInWorkspaces,
-  // findDependencyInfoFromMonorepoRoot) intentionally do NOT include
-  // `!tailwindVersion` in their gates — those iterate every workspace
-  // package.json, which a React-only monorepo with hundreds of
-  // workspace packages should not pay the cost of just to confirm
-  // Tailwind isn't there.
-  if (!reactVersion || !tailwindVersion) {
+  if (!zodVersion && zodDeclaration.hasDeclaration) {
+    zodVersion = resolveCatalogVersion(
+      packageJson,
+      "zod",
+      directory,
+      zodDeclaration.catalogReference,
+    );
+  }
+
+  // HACK: keep the monorepo-root catalog read cheap (one package.json plus
+  // pnpm-workspace catalogs). The expensive workspace walks below still key
+  // off React/framework misses; if we walk anyway, they can fill Zod too.
+  if (!reactVersion || !tailwindVersion || !zodVersion) {
     const monorepoRoot = findMonorepoRoot(directory);
     if (monorepoRoot) {
       const monorepoPackageJsonPath = path.join(monorepoRoot, "package.json");
@@ -105,6 +114,14 @@ export const discoverProject = (directory: string): ProjectInfo => {
             tailwindDeclaration.catalogReference,
           );
         }
+        if (!zodVersion && zodDeclaration.hasDeclaration) {
+          zodVersion = resolveCatalogVersion(
+            rootPackageJson,
+            "zod",
+            monorepoRoot,
+            zodDeclaration.catalogReference,
+          );
+        }
       }
     }
   }
@@ -116,6 +133,9 @@ export const discoverProject = (directory: string): ProjectInfo => {
     }
     if (!tailwindVersion && workspaceInfo.tailwindVersion) {
       tailwindVersion = workspaceInfo.tailwindVersion;
+    }
+    if (!zodVersion && workspaceInfo.zodVersion) {
+      zodVersion = workspaceInfo.zodVersion;
     }
     if (framework === "unknown" && workspaceInfo.framework !== "unknown") {
       framework = workspaceInfo.framework;
@@ -129,6 +149,9 @@ export const discoverProject = (directory: string): ProjectInfo => {
     }
     if (!tailwindVersion) {
       tailwindVersion = monorepoInfo.tailwindVersion;
+    }
+    if (!zodVersion) {
+      zodVersion = monorepoInfo.zodVersion;
     }
     if (framework === "unknown") {
       framework = monorepoInfo.framework;
@@ -144,6 +167,9 @@ export const discoverProject = (directory: string): ProjectInfo => {
     !isCatalogReference(tailwindDeclaration.version)
   ) {
     tailwindVersion = tailwindDeclaration.version;
+  }
+  if (!zodVersion && zodDeclaration.version && !isCatalogReference(zodDeclaration.version)) {
+    zodVersion = zodDeclaration.version;
   }
 
   const projectName = packageJson.name ?? path.basename(directory);
@@ -175,6 +201,8 @@ export const discoverProject = (directory: string): ProjectInfo => {
     reactVersion,
     reactMajorVersion: resolveEffectiveReactMajor(reactVersion, packageJson),
     tailwindVersion,
+    zodVersion,
+    zodMajorVersion: parseZodMajor(zodVersion),
     framework,
     hasTypeScript,
     hasReactCompiler: detectReactCompiler(directory, packageJson),

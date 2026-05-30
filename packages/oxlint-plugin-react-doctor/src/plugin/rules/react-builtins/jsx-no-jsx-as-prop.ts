@@ -304,9 +304,9 @@ const followsRenderLocalJsxBinding = (
 // Port of `oxc_linter::rules::react_perf::jsx_no_jsx_as_prop`. Same shape
 // as the other react_perf ports; flags `<C jsx={<X />} />` /
 // `<C jsx={a || <X />} />` / `<C jsx={a ? a : <X />} />` inside any
-// function scope. LIMITATION: scope-analysis cases (a JSX element bound
-// to a local variable inside a render function) require scope info we
-// don't track — those tests are not ported.
+// function scope. Also follows render-local identifier bindings
+// (`const tree = <X />; return <C jsx={tree} />`) via
+// `followsRenderLocalJsxBinding` — hoisted JSX (module scope) is exempt.
 export const jsxNoJsxAsProp = defineRule<Rule>({
   id: "jsx-no-jsx-as-prop",
   tags: ["react-jsx-only"],

@@ -8,6 +8,8 @@ const baseProject: ProjectInfo = {
   reactVersion: "19.0.0",
   reactMajorVersion: 19,
   tailwindVersion: null,
+  zodVersion: null,
+  zodMajorVersion: null,
   framework: "vite",
   hasTypeScript: true,
   hasReactCompiler: false,
@@ -15,6 +17,7 @@ const baseProject: ProjectInfo = {
   hasReactNativeWorkspace: false,
   preactVersion: null,
   preactMajorVersion: null,
+  hasReanimated: false,
   sourceFileCount: 1,
 };
 
@@ -126,5 +129,35 @@ describe("buildCapabilities", () => {
     });
     expect(compatStyle.has("preact")).toBe(true);
     expect(compatStyle.has("pure-preact")).toBe(false);
+  });
+
+  it("emits `zod` and `zod:4` capabilities for Zod 4 projects", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      zodVersion: "^4.3.6",
+      zodMajorVersion: 4,
+    });
+    expect(capabilities.has("zod")).toBe(true);
+    expect(capabilities.has("zod:4")).toBe(true);
+  });
+
+  it("emits only `zod` for pre-v4 Zod projects", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      zodVersion: "^3.25.76",
+      zodMajorVersion: 3,
+    });
+    expect(capabilities.has("zod")).toBe(true);
+    expect(capabilities.has("zod:4")).toBe(false);
+  });
+
+  it("omits `zod:4` when the Zod version is unparseable", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      zodVersion: "workspace:*",
+      zodMajorVersion: null,
+    });
+    expect(capabilities.has("zod")).toBe(true);
+    expect(capabilities.has("zod:4")).toBe(false);
   });
 });

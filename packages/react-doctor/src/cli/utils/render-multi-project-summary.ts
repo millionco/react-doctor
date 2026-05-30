@@ -133,6 +133,7 @@ export const printMultiProjectSummary = (input: MultiProjectSummaryInput): Effec
 
     const longestProjectNameLength = Math.max(...entries.map((entry) => entry.projectName.length));
 
+    yield* Console.log("");
     for (const entry of entries) {
       yield* Console.log(buildSummaryLine(entry, longestProjectNameLength));
     }

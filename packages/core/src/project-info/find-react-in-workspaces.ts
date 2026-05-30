@@ -93,12 +93,24 @@ export const findReactInWorkspaces = (
         workspaceDirectory,
         workspacePackageJson,
       });
+      const zodVersion = resolveWorkspaceDependencyVersion({
+        concreteVersion: info.zodVersion,
+        packageName: "zod",
+        rootDirectory,
+        rootPackageJson: packageJson,
+        sections: ["dependencies", "devDependencies", "peerDependencies"],
+        workspaceDirectory,
+        workspacePackageJson,
+      });
 
       if (reactVersion && shouldReplaceReactVersion(result.reactVersion, reactVersion)) {
         result.reactVersion = reactVersion;
       }
       if (tailwindVersion && !result.tailwindVersion) {
         result.tailwindVersion = tailwindVersion;
+      }
+      if (zodVersion && !result.zodVersion) {
+        result.zodVersion = zodVersion;
       }
       if (info.framework !== "unknown" && result.framework === "unknown") {
         result.framework = info.framework;

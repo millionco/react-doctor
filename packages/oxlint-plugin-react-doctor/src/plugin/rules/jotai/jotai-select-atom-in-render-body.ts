@@ -1,3 +1,4 @@
+import { MEMOIZING_HOOK_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import {
   isImportedFromModule,
@@ -18,8 +19,6 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 //   (b) wrap it in `useMemo(() => selectAtom(base, selector), [deps])`.
 
 const JOTAI_SELECT_ATOM_SOURCES = ["jotai/utils", "jotai"];
-
-const MEMOIZING_HOOK_NAMES = new Set(["useMemo", "useCallback"]);
 
 const COMPONENT_NAME_PATTERN = /^[A-Z]/;
 const HOOK_NAME_PATTERN = /^use[A-Z]/;

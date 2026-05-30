@@ -2,6 +2,7 @@ import isUnicodeSupported from "is-unicode-supported";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import {
+  buildRulePromptUrl,
   groupBy,
   highlighter,
   MILLISECONDS_PER_SECOND,
@@ -70,6 +71,14 @@ const padRuleNameToColumn = (ruleName: string, columnWidth: number): string => {
 };
 
 const grayLine = (text: string): string => highlighter.gray(text);
+
+// Directive (not a bare label) so the consuming agent treats the URL as
+// a step to perform — fetch the canonical, reviewer-tested recipe and
+// apply it — rather than as optional reference docs it can skip.
+const FETCH_FIX_RECIPE_LABEL = "Fetch & follow the canonical fix recipe before fixing";
+
+export const formatFixRecipeLine = (diagnostic: Diagnostic): string =>
+  `${FETCH_FIX_RECIPE_LABEL}: ${buildRulePromptUrl(diagnostic.plugin, diagnostic.rule)}`;
 
 const buildCompactRuleGroupLine = (
   ruleKey: string,
@@ -151,6 +160,7 @@ const buildVerboseRuleGroupLines = (
   if (firstDiagnostic.help) {
     lines.push(grayLine(indentMultilineText(`→ ${firstDiagnostic.help}`, "      ")));
   }
+  lines.push(grayLine(`      ${formatFixRecipeLine(firstDiagnostic)}`));
   const fileSites = buildVerboseSiteMap(ruleDiagnostics);
   for (const [filePath, sites] of fileSites) {
     if (sites.length > 0) {
@@ -236,6 +246,7 @@ export const formatRuleSummary = (ruleKey: string, ruleDiagnostics: Diagnostic[]
   if (firstDiagnostic.url) {
     sections.push("", `Docs: ${firstDiagnostic.url}`);
   }
+  sections.push("", formatFixRecipeLine(firstDiagnostic));
 
   sections.push("", "Files:");
   const fileSites = buildVerboseSiteMap(ruleDiagnostics);

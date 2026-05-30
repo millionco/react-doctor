@@ -4,6 +4,7 @@ import type { PromptMultiselectContext } from "@react-doctor/core";
 import { cliLogger as logger } from "./cli-logger.js";
 import { shouldAutoSelectCurrentChoice } from "./should-auto-select-current-choice.js";
 import { shouldSelectAllChoices } from "./should-select-all-choices.js";
+import { unrefStdin } from "./unref-stdin.js";
 
 const require = createRequire(import.meta.url);
 const PROMPTS_MULTISELECT_MODULE_PATH = "prompts/lib/elements/multiselect";
@@ -68,5 +69,7 @@ export const prompts = <T extends string = string>(
 ): Promise<Answers<T>> => {
   patchMultiselectToggleAll();
   patchMultiselectSubmit();
-  return basePrompts(questions, { onCancel: options.onCancel ?? onCancel });
+  // HACK: each prompt re-refs stdin and never unrefs it on close, so re-unref
+  // once it settles or the one-shot CLI hangs. See `unref-stdin.ts` for why.
+  return basePrompts(questions, { onCancel: options.onCancel ?? onCancel }).finally(unrefStdin);
 };

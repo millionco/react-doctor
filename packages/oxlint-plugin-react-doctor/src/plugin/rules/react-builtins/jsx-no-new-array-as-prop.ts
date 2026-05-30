@@ -129,10 +129,11 @@ const followsRenderLocalArrayBinding = (
 // and these wrapped in conditional / logical expressions. Top-level JSX
 // (outside any function) is skipped — those allocations happen once.
 //
-// LIMITATION vs OXC: OXC additionally tracks identifier references and
-// flags `let x = []; return <C list={x} />` (variable initialized inside
-// a render scope). Without scope analysis we don't follow those refs;
-// document and skip those tests.
+// The rule also follows render-local identifier bindings via
+// `followsRenderLocalArrayBinding`: `let x = []; return <C list={x} />`
+// IS flagged when the binding's scope owner is the render function.
+// Hoisted bindings (module-level) are exempt because they aren't
+// allocated per render.
 export const jsxNoNewArrayAsProp = defineRule<Rule>({
   id: "jsx-no-new-array-as-prop",
   tags: ["react-jsx-only"],

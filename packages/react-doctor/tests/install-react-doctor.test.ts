@@ -299,6 +299,38 @@ describe("runInstallReactDoctor", () => {
     ]);
   });
 
+  it("does not fail setup when the package manager install command fails", async () => {
+    writeValidSkill(fixture.sourceDir);
+    writePackageJson(fixture.projectRoot, {
+      scripts: {},
+    });
+
+    await runInstallReactDoctorForTest({
+      yes: true,
+      sourceDir: fixture.sourceDir,
+      projectRoot: fixture.projectRoot,
+      detectedAgents: ["cursor"],
+      gitHookPath: null,
+      installDependencyRunner: (input) => {
+        dependencyInstallCalls.push(input);
+        throw new Error("npm install failed");
+      },
+    });
+
+    expect(process.exitCode).toBe(0);
+    expect(dependencyInstallCalls).toEqual([
+      {
+        command: "npm",
+        args: ["install", "--save-dev", "react-doctor@latest"],
+        cwd: fixture.projectRoot,
+      },
+    ]);
+    expect(readFixturePackageJson(fixture.projectRoot).scripts).toEqual({
+      doctor: "npx react-doctor@latest",
+    });
+    expect(readFixturePackageJson(fixture.projectRoot)).not.toHaveProperty("devDependencies");
+  });
+
   it("detects the package manager from an ancestor package.json", async () => {
     writeValidSkill(fixture.sourceDir);
     writePackageJson(fixture.projectRoot, {
@@ -586,7 +618,14 @@ describe("runInstallReactDoctor", () => {
     );
     expect(existsSync(hookPath)).toBe(false);
     expect(existsSync(path.join(fixture.projectRoot, ".cursor/hooks.json"))).toBe(false);
-    expect(readFileSync(workflowPath, "utf8")).toContain("name: React Doctor");
+    const workflowContent = readFileSync(workflowPath, "utf8");
+    expect(workflowContent).toContain("name: React Doctor");
+    expect(workflowContent).toContain("pull-requests: write");
+    expect(workflowContent).toContain("issues: write");
+    expect(workflowContent).toContain("actions/checkout@v5");
+    expect(workflowContent).toContain("millionco/react-doctor@main");
+    expect(workflowContent).not.toContain("github-token");
+    expect(workflowContent).not.toContain("diff: main");
   });
 
   it("skips optional setup when only the skip option is selected", async () => {
@@ -622,7 +661,7 @@ describe("runInstallReactDoctor", () => {
 
     expect(existsSync(hookPath)).toBe(false);
     expect(existsSync(path.join(fixture.projectRoot, ".cursor/hooks.json"))).toBe(false);
-    expect(readFileSync(workflowPath, "utf8")).toContain("name: React Doctor");
+    expect(readFileSync(workflowPath, "utf8")).toContain("millionco/react-doctor@main");
   });
 
   it("--yes does not install native agent hooks unless --agent-hooks is set", async () => {

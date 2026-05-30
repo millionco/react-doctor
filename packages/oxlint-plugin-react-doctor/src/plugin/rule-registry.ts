@@ -122,6 +122,8 @@ import { noCascadingSetState } from "./rules/state-and-effects/no-cascading-set-
 import { noChainStateUpdates } from "./rules/state-and-effects/no-chain-state-updates.js";
 import { noChildrenProp } from "./rules/react-builtins/no-children-prop.js";
 import { noCloneElement } from "./rules/react-builtins/no-clone-element.js";
+import { noCreateContextInRender } from "./rules/state-and-effects/no-create-context-in-render.js";
+import { noCreateStoreInRender } from "./rules/state-and-effects/no-create-store-in-render.js";
 import { noDanger } from "./rules/react-builtins/no-danger.js";
 import { noDangerWithChildren } from "./rules/react-builtins/no-danger-with-children.js";
 import { noDarkModeGlow } from "./rules/design/no-dark-mode-glow.js";
@@ -140,6 +142,7 @@ import { noDynamicImportPath } from "./rules/bundle-size/no-dynamic-import-path.
 import { noEffectChain } from "./rules/state-and-effects/no-effect-chain.js";
 import { noEffectEventHandler } from "./rules/state-and-effects/no-effect-event-handler.js";
 import { noEffectEventInDeps } from "./rules/state-and-effects/no-effect-event-in-deps.js";
+import { noEffectWithFreshDeps } from "./rules/state-and-effects/no-effect-with-fresh-deps.js";
 import { noEval } from "./rules/security/no-eval.js";
 import { noEventHandler } from "./rules/state-and-effects/no-event-handler.js";
 import { noEventTriggerState } from "./rules/state-and-effects/no-event-trigger-state.js";
@@ -183,7 +186,9 @@ import { noPermanentWillChange } from "./rules/performance/no-permanent-will-cha
 import { noPolymorphicChildren } from "./rules/correctness/no-polymorphic-children.js";
 import { noPreventDefault } from "./rules/correctness/no-prevent-default.js";
 import { noPropCallbackInEffect } from "./rules/state-and-effects/no-prop-callback-in-effect.js";
+import { noPropTypes } from "./rules/architecture/no-prop-types.js";
 import { noPureBlackBackground } from "./rules/design/no-pure-black-background.js";
+import { noRandomKey } from "./rules/correctness/no-random-key.js";
 import { noReactChildren } from "./rules/react-builtins/no-react-children.js";
 import { noReactDomDeprecatedApis } from "./rules/architecture/no-react-dom-deprecated-apis.js";
 import { noReact19DeprecatedApis } from "./rules/architecture/no-react19-deprecated-apis.js";
@@ -195,6 +200,7 @@ import { noRenderReturnValue } from "./rules/react-builtins/no-render-return-val
 import { noResetAllStateOnPropChange } from "./rules/state-and-effects/no-reset-all-state-on-prop-change.js";
 import { noScaleFromZero } from "./rules/performance/no-scale-from-zero.js";
 import { noSecretsInClientCode } from "./rules/security/no-secrets-in-client-code.js";
+import { noSelfUpdatingEffect } from "./rules/state-and-effects/no-self-updating-effect.js";
 import { noSetState } from "./rules/react-builtins/no-set-state.js";
 import { noSetStateInRender } from "./rules/state-and-effects/no-set-state-in-render.js";
 import { noSideTabBorder } from "./rules/design/no-side-tab-border.js";
@@ -223,6 +229,9 @@ import { preferDynamicImport } from "./rules/bundle-size/prefer-dynamic-import.j
 import { preferEs6Class } from "./rules/react-builtins/prefer-es6-class.js";
 import { preferFunctionComponent } from "./rules/react-builtins/prefer-function-component.js";
 import { preferHtmlDialog } from "./rules/a11y/prefer-html-dialog.js";
+import { preferModuleScopePureFunction } from "./rules/architecture/prefer-module-scope-pure-function.js";
+import { preferModuleScopeStaticValue } from "./rules/architecture/prefer-module-scope-static-value.js";
+import { preferStableEmptyFallback } from "./rules/performance/prefer-stable-empty-fallback.js";
 import { preferTagOverRole } from "./rules/a11y/prefer-tag-over-role.js";
 import { preferUseEffectEvent } from "./rules/state-and-effects/prefer-use-effect-event.js";
 import { preferUseSyncExternalStore } from "./rules/state-and-effects/prefer-use-sync-external-store.js";
@@ -235,6 +244,8 @@ import { queryNoVoidQueryFn } from "./rules/tanstack-query/query-no-void-query-f
 import { queryStableQueryClient } from "./rules/tanstack-query/query-stable-query-client.js";
 import { reactCompilerNoManualMemoization } from "./rules/architecture/react-compiler-no-manual-memoization.js";
 import { reactInJsxScope } from "./rules/react-builtins/react-in-jsx-scope.js";
+import { reduxUseselectorInlineDerivation } from "./rules/state-and-effects/redux-useselector-inline-derivation.js";
+import { reduxUseselectorReturnsNewCollection } from "./rules/state-and-effects/redux-useselector-returns-new-collection.js";
 import { renderingAnimateSvgWrapper } from "./rules/performance/rendering-animate-svg-wrapper.js";
 import { renderingConditionalRender } from "./rules/correctness/rendering-conditional-render.js";
 import { renderingHoistJsx } from "./rules/performance/rendering-hoist-jsx.js";
@@ -248,6 +259,7 @@ import { rerenderDeferReadsHook } from "./rules/state-and-effects/rerender-defer
 import { rerenderDependencies } from "./rules/state-and-effects/rerender-dependencies.js";
 import { rerenderDerivedStateFromHook } from "./rules/performance/rerender-derived-state-from-hook.js";
 import { rerenderFunctionalSetstate } from "./rules/state-and-effects/rerender-functional-setstate.js";
+import { rerenderLazyRefInit } from "./rules/state-and-effects/rerender-lazy-ref-init.js";
 import { rerenderLazyStateInit } from "./rules/state-and-effects/rerender-lazy-state-init.js";
 import { rerenderMemoBeforeEarlyReturn } from "./rules/performance/rerender-memo-before-early-return.js";
 import { rerenderMemoWithDefaultValue } from "./rules/performance/rerender-memo-with-default-value.js";
@@ -314,6 +326,10 @@ import { tanstackStartServerFnMethodOrder } from "./rules/tanstack-start/tanstac
 import { tanstackStartServerFnValidateInput } from "./rules/tanstack-start/tanstack-start-server-fn-validate-input.js";
 import { useLazyMotion } from "./rules/bundle-size/use-lazy-motion.js";
 import { voidDomElementsNoChildren } from "./rules/react-builtins/void-dom-elements-no-children.js";
+import { zodV4NoDeprecatedErrorApis } from "./rules/zod/zod-v4-no-deprecated-error-apis.js";
+import { zodV4NoDeprecatedErrorCustomization } from "./rules/zod/zod-v4-no-deprecated-error-customization.js";
+import { zodV4NoDeprecatedSchemaApis } from "./rules/zod/zod-v4-no-deprecated-schema-apis.js";
+import { zodV4PreferTopLevelStringFormats } from "./rules/zod/zod-v4-prefer-top-level-string-formats.js";
 
 export const reactDoctorRules = [
   {
@@ -1571,6 +1587,28 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-create-context-in-render",
+    id: "no-create-context-in-render",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noCreateContextInRender,
+      framework: "global",
+      category: "Correctness",
+    },
+  },
+  {
+    key: "react-doctor/no-create-store-in-render",
+    id: "no-create-store-in-render",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noCreateStoreInRender,
+      framework: "global",
+      category: "Correctness",
+    },
+  },
+  {
     key: "react-doctor/no-danger",
     id: "no-danger",
     source: "react-doctor",
@@ -1764,6 +1802,17 @@ export const reactDoctorRules = [
     originallyExternal: false,
     rule: {
       ...noEffectEventInDeps,
+      framework: "global",
+      category: "State & Effects",
+    },
+  },
+  {
+    key: "react-doctor/no-effect-with-fresh-deps",
+    id: "no-effect-with-fresh-deps",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noEffectWithFreshDeps,
       framework: "global",
       category: "State & Effects",
     },
@@ -2242,6 +2291,17 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-prop-types",
+    id: "no-prop-types",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noPropTypes,
+      framework: "global",
+      category: "Architecture",
+    },
+  },
+  {
     key: "react-doctor/no-pure-black-background",
     id: "no-pure-black-background",
     source: "react-doctor",
@@ -2250,6 +2310,17 @@ export const reactDoctorRules = [
       ...noPureBlackBackground,
       framework: "global",
       category: "Architecture",
+    },
+  },
+  {
+    key: "react-doctor/no-random-key",
+    id: "no-random-key",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noRandomKey,
+      framework: "global",
+      category: "Correctness",
     },
   },
   {
@@ -2371,6 +2442,17 @@ export const reactDoctorRules = [
       ...noSecretsInClientCode,
       framework: "global",
       category: "Security",
+    },
+  },
+  {
+    key: "react-doctor/no-self-updating-effect",
+    id: "no-self-updating-effect",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noSelfUpdatingEffect,
+      framework: "global",
+      category: "State & Effects",
     },
   },
   {
@@ -2682,6 +2764,39 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/prefer-module-scope-pure-function",
+    id: "prefer-module-scope-pure-function",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...preferModuleScopePureFunction,
+      framework: "global",
+      category: "Architecture",
+    },
+  },
+  {
+    key: "react-doctor/prefer-module-scope-static-value",
+    id: "prefer-module-scope-static-value",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...preferModuleScopeStaticValue,
+      framework: "global",
+      category: "Architecture",
+    },
+  },
+  {
+    key: "react-doctor/prefer-stable-empty-fallback",
+    id: "prefer-stable-empty-fallback",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...preferStableEmptyFallback,
+      framework: "global",
+      category: "Performance",
+    },
+  },
+  {
     key: "react-doctor/prefer-tag-over-role",
     id: "prefer-tag-over-role",
     source: "react-doctor",
@@ -2811,6 +2926,28 @@ export const reactDoctorRules = [
       ...reactInJsxScope,
       framework: "global",
       category: "Correctness",
+    },
+  },
+  {
+    key: "react-doctor/redux-useselector-inline-derivation",
+    id: "redux-useselector-inline-derivation",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reduxUseselectorInlineDerivation,
+      framework: "global",
+      category: "Performance",
+    },
+  },
+  {
+    key: "react-doctor/redux-useselector-returns-new-collection",
+    id: "redux-useselector-returns-new-collection",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...reduxUseselectorReturnsNewCollection,
+      framework: "global",
+      category: "Performance",
     },
   },
   {
@@ -2952,6 +3089,17 @@ export const reactDoctorRules = [
     originallyExternal: false,
     rule: {
       ...rerenderFunctionalSetstate,
+      framework: "global",
+      category: "Performance",
+    },
+  },
+  {
+    key: "react-doctor/rerender-lazy-ref-init",
+    id: "rerender-lazy-ref-init",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...rerenderLazyRefInit,
       framework: "global",
       category: "Performance",
     },
@@ -3717,6 +3865,50 @@ export const reactDoctorRules = [
       ...voidDomElementsNoChildren,
       framework: "global",
       category: "Correctness",
+    },
+  },
+  {
+    key: "react-doctor/zod-v4-no-deprecated-error-apis",
+    id: "zod-v4-no-deprecated-error-apis",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...zodV4NoDeprecatedErrorApis,
+      framework: "global",
+      category: "Architecture",
+    },
+  },
+  {
+    key: "react-doctor/zod-v4-no-deprecated-error-customization",
+    id: "zod-v4-no-deprecated-error-customization",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...zodV4NoDeprecatedErrorCustomization,
+      framework: "global",
+      category: "Architecture",
+    },
+  },
+  {
+    key: "react-doctor/zod-v4-no-deprecated-schema-apis",
+    id: "zod-v4-no-deprecated-schema-apis",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...zodV4NoDeprecatedSchemaApis,
+      framework: "global",
+      category: "Architecture",
+    },
+  },
+  {
+    key: "react-doctor/zod-v4-prefer-top-level-string-formats",
+    id: "zod-v4-prefer-top-level-string-formats",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...zodV4PreferTopLevelStringFormats,
+      framework: "global",
+      category: "Architecture",
     },
   },
 ] as const;

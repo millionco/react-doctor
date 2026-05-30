@@ -121,8 +121,10 @@ const followsRenderLocalObjectBinding = (
 // Port of `oxc_linter::rules::react_perf::jsx_no_new_object_as_prop`.
 // See `jsx-no-new-array-as-prop` for the shared shape; this one flags
 // ObjectExpression / new Object() / Object.assign() / Object.create()
-// etc. and the same conditional / logical wrappings. LIMITATION: same
-// scope-analysis gap noted there.
+// etc. and the same conditional / logical wrappings. The render-local
+// identifier-binding case (`const x = {}; <C prop={x} />`) is covered
+// via the same `findVariableInitializer` lookup used by the sister
+// rules.
 export const jsxNoNewObjectAsProp = defineRule<Rule>({
   id: "jsx-no-new-object-as-prop",
   tags: ["react-jsx-only"],

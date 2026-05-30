@@ -17,11 +17,23 @@ describe("stripUnknownCliFlags", () => {
         "--no-score",
         "--project",
         "web",
+        "--changed-files-from",
+        "/tmp/react-doctor-changed-files.txt",
         "--diff",
         "main",
         "--fail-on=warning",
       ]),
-    ).toEqual([".", "--no-score", "--project", "web", "--diff", "main", "--fail-on=warning"]);
+    ).toEqual([
+      ".",
+      "--no-score",
+      "--project",
+      "web",
+      "--changed-files-from",
+      "/tmp/react-doctor-changed-files.txt",
+      "--diff",
+      "main",
+      "--fail-on=warning",
+    ]);
   });
 
   it("drops unknown install flags while keeping install options", () => {

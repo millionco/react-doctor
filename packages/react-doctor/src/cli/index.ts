@@ -6,10 +6,12 @@ import { exitGracefully } from "./utils/exit-gracefully.js";
 import { handleError } from "./utils/handle-error.js";
 import { isJsonModeActive, writeJsonErrorReport } from "./utils/json-mode.js";
 import { stripUnknownCliFlags } from "./utils/strip-unknown-cli-flags.js";
+import { unrefStdin } from "./utils/unref-stdin.js";
 import { VERSION } from "./utils/version.js";
 
 process.on("SIGINT", exitGracefully);
 process.on("SIGTERM", exitGracefully);
+unrefStdin();
 
 const program = new Command()
   .name("react-doctor")
@@ -33,6 +35,10 @@ const program = new Command()
   .option(
     "--diff [base]",
     "scan only files changed vs base branch (pass `false` to disable; overridden by --full)",
+  )
+  .option(
+    "--changed-files-from <file>",
+    "internal: scan source files listed in a newline-delimited changed-files file",
   )
   .option("--no-score", "skip the score API and the share URL")
   .option("--staged", "scan only staged (git index) files for pre-commit hooks")

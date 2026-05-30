@@ -8,6 +8,8 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
+  issues: write
 
 jobs:
   react-doctor:
@@ -18,8 +20,19 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: pnpm/action-setup@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.18.0
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter react-doctor... build
+
       - uses: ./
         with:
-          annotations: "true"
           fail-on: none
           node-version: 22.18.0
+          version: ./packages/react-doctor

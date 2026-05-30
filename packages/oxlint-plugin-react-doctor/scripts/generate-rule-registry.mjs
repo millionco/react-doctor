@@ -108,6 +108,7 @@ const BUCKET_TO_DEFAULT_CATEGORY = {
   "tanstack-query": "TanStack Query",
   "tanstack-start": "TanStack Start",
   "view-transitions": "Correctness",
+  zod: "Architecture",
 };
 
 const ruleEntries = [];

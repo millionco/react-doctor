@@ -65,6 +65,19 @@ export const HOOKS_WITH_DEPS = new Set(["useEffect", "useLayoutEffect", "useMemo
 // this set.
 export const REACT_HOC_NAMES = new Set(["memo", "forwardRef", "React.memo", "React.forwardRef"]);
 
+// Value-memoising hooks whose callback genuinely memoises the
+// allocations declared inside it. Shared by the jotai render-body rule
+// and the module-scope hoisting rules so they can't disagree about
+// which hooks count as "the user already opted into memoisation here".
+export const MEMOIZING_HOOK_NAMES = new Set(["useMemo", "useCallback"]);
+
+// Component HOC wrappers the enclosing-component resolver unwraps so
+// `const App = memo(() => {})` / `forwardRef((props, ref) => {})` are
+// attributed to the `App` binding. Distinct from `REACT_HOC_NAMES`,
+// which also carries the dotted `React.memo` forms the deps/hooks
+// detectors match against.
+export const COMPONENT_HOC_WRAPPER_NAMES = new Set(["memo", "forwardRef", "observer", "lazy"]);
+
 // Subscription-shaped method names recognized by `prefer-use-sync-external-store`.
 // Covers the canonical `store.subscribe`, the browser `addEventListener` /
 // `addListener`, the EventEmitter `on` / `watch` / `listen`, and shorter

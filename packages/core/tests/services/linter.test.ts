@@ -12,6 +12,8 @@ const sampleProject: ProjectInfo = {
   reactVersion: "19.0.0",
   reactMajorVersion: 19,
   tailwindVersion: null,
+  zodVersion: null,
+  zodMajorVersion: null,
   framework: "vite",
   hasTypeScript: true,
   hasReactCompiler: false,

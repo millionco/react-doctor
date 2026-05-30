@@ -8,6 +8,8 @@ const baseProject: ProjectInfo = {
   reactVersion: null,
   reactMajorVersion: null,
   tailwindVersion: null,
+  zodVersion: null,
+  zodMajorVersion: null,
   framework: "unknown",
   hasTypeScript: false,
   hasReactCompiler: false,
@@ -15,6 +17,7 @@ const baseProject: ProjectInfo = {
   preactVersion: null,
   preactMajorVersion: null,
   hasReactNativeWorkspace: false,
+  hasReanimated: false,
   sourceFileCount: 0,
 };
 

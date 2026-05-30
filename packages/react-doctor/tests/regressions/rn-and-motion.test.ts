@@ -6,6 +6,11 @@
  *   #93 + #100 — `textComponents` config must allowlist user-defined RN
  *                text wrappers (custom Typography component, member-
  *                expression names like `NativeTabs.Trigger.Label`)
+ *   #183     — `rawTextWrapperComponents` suppresses string-only wrapper
+ *              children
+ *   #581     — fbtee `<fbt>` / `<fbs>` translation tags stay transparent to
+ *              the `<Text>` boundary (so raw text inside them isn't flagged)
+ *   #76      — `@expo/vector-icons` is not treated as a legacy Expo package
  *   #94      — `MotionConfig reducedMotion="user"` must satisfy the
  *              reduced-motion accessibility check (so the rule doesn't
  *              false-positive when handling is delegated to the provider)
@@ -239,6 +244,72 @@ describe("issue #183: rawTextWrapperComponents suppresses string-only wrapper ch
     );
     expect(filtered).toHaveLength(1);
     expect(filtered[0].line).toBe(3);
+  });
+});
+
+describe("issue #581: fbtee tags stay transparent inside <Text>", () => {
+  const buildFbteeProject = (projectName: string, appSource: string) =>
+    setupReactProject(tempRoot, projectName, {
+      packageJsonExtras: { dependencies: { react: "^19.0.0", "react-native": "^0.79.0" } },
+      files: { "src/App.tsx": appSource },
+    });
+
+  const getRnNoRawTextDiagnostics = async (projectDirectory: string) => {
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDirectory,
+      project: buildTestProject({
+        rootDirectory: projectDirectory,
+        framework: "react-native",
+      }),
+    });
+    return diagnostics.filter((diagnostic) => diagnostic.rule === "rn-no-raw-text");
+  };
+
+  it("does not report raw text inside <Text><fbt>...</fbt></Text>", async () => {
+    const projectDirectory = buildFbteeProject(
+      "issue-581-fbt-inside-text",
+      `import { Text } from "react-native";
+
+export const App = () => (
+  <Text>
+    <fbt desc="Greeting">Welcome</fbt>
+  </Text>
+);
+`,
+    );
+
+    const diagnostics = await getRnNoRawTextDiagnostics(projectDirectory);
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("does not report raw text inside namespaced fbtee tags within <Text>", async () => {
+    const projectDirectory = buildFbteeProject(
+      "issue-581-fbt-param-inside-text",
+      `import { Text } from "react-native";
+
+export const App = () => (
+  <Text>
+    <fbt desc="Greeting">
+      <fbt:param name="word">Welcome</fbt:param>
+    </fbt>
+  </Text>
+);
+`,
+    );
+
+    const diagnostics = await getRnNoRawTextDiagnostics(projectDirectory);
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("still reports raw text when <fbt> is outside <Text>", async () => {
+    const projectDirectory = buildFbteeProject(
+      "issue-581-fbt-outside-text",
+      `export const App = () => <fbt desc="Greeting">Welcome</fbt>;
+`,
+    );
+
+    const diagnostics = await getRnNoRawTextDiagnostics(projectDirectory);
+    expect(diagnostics).toHaveLength(1);
   });
 });
 

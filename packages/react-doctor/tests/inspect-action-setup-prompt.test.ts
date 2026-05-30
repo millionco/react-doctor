@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { resolveScanTarget } from "@react-doctor/core";
 import type { InspectResult } from "@react-doctor/core";
 import { inspectAction } from "../src/cli/commands/inspect.js";
 import { promptInstallSetup } from "../src/cli/utils/prompt-install-setup.js";
@@ -139,6 +140,7 @@ describe("inspectAction setup prompt", () => {
 
     await inspectAction(rootDirectory, { diff: true, lint: false });
 
+    expect(resolveScanTarget).toHaveBeenCalledWith(rootDirectory, { allowAmbiguous: true });
     expect(inspect).toHaveBeenCalledTimes(1);
     expect(inspect).toHaveBeenCalledWith(
       webDirectory,

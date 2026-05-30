@@ -27,6 +27,10 @@ export interface ResolvedScanTarget {
   readonly didRedirectViaRootDir: boolean;
 }
 
+export interface ResolveScanTargetOptions {
+  readonly allowAmbiguous?: boolean;
+}
+
 /**
  * The canonical entry-point translation shared by every public shell
  * (`inspect()`, `diagnose()`, and the CLI's `inspectAction`):
@@ -38,7 +42,8 @@ export interface ResolvedScanTarget {
  *      project root, if configured.
  *   4. Walk into a nested React subproject when the requested
  *      directory has no `package.json` of its own (raises
- *      `AmbiguousProjectError` when multiple candidates exist).
+ *      `AmbiguousProjectError` when multiple candidates exist unless
+ *      the caller opts into keeping the wrapper directory).
  *
  * Throws `ProjectNotFoundError` when neither the requested directory
  * nor any discoverable nested project has a `package.json`.
@@ -50,17 +55,19 @@ export interface ResolvedScanTarget {
  * via its own cache). Routing through `resolveScanTarget` keeps every
  * shell in agreement on what "the scan directory" means.
  */
-export const resolveScanTarget = (requestedDirectory: string): ResolvedScanTarget => {
+export const resolveScanTarget = (
+  requestedDirectory: string,
+  options: ResolveScanTargetOptions = {},
+): ResolvedScanTarget => {
   const absoluteRequested = path.resolve(requestedDirectory);
   const loadedConfig = loadConfigWithSource(absoluteRequested);
   const userConfig = loadedConfig?.config ?? null;
   const configSourceDirectory = loadedConfig?.sourceDirectory ?? null;
   const redirectedDirectory = resolveConfigRootDir(userConfig, configSourceDirectory);
   const directoryAfterRedirect = redirectedDirectory ?? absoluteRequested;
-  // `resolveDiagnoseTarget` throws `AmbiguousProjectError` when the
-  // requested directory has multiple React subprojects; let it
-  // propagate to the caller.
-  const resolved = resolveDiagnoseTarget(directoryAfterRedirect);
+  const resolved = resolveDiagnoseTarget(directoryAfterRedirect, {
+    allowAmbiguous: options.allowAmbiguous,
+  });
   const resolvedDirectory = resolved ?? directoryAfterRedirect;
 
   if (!isDirectory(resolvedDirectory)) {

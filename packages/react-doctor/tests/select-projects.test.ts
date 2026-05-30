@@ -107,4 +107,17 @@ describe("selectProjects", () => {
       }),
     );
   });
+
+  it("discovers nested React projects when a wrapper directory has no package.json", async () => {
+    const tempDirectory = createTempDirectory();
+    const frontendDirectory = setupReactProject(tempDirectory, "frontend");
+    const mobileDirectory = setupReactProject(tempDirectory, "mobile");
+
+    const selectedDirectories = await selectProjects(tempDirectory, undefined, true);
+
+    expect(selectedDirectories.toSorted()).toEqual([frontendDirectory, mobileDirectory].toSorted());
+    expect(prompts).not.toHaveBeenCalled();
+    expect(cliLogger.log).toHaveBeenCalledWith(expect.stringContaining("frontend"));
+    expect(cliLogger.log).toHaveBeenCalledWith(expect.stringContaining("mobile"));
+  });
 });

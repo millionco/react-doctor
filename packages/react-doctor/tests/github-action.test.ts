@@ -135,20 +135,12 @@ describe("GitHub Action contract", () => {
 
   it("non-blocking input swallows a non-zero scan exit so the job never fails", () => {
     const actionYaml = readActionYaml();
-    const inputsBlock = extractBlock(actionYaml, "inputs:", "\noutputs:");
+    const nonBlockingInput = extractBlock(actionYaml, "  non-blocking:", "  no-score:");
     const scanStep = normalizeWhitespace(
       extractStep(actionYaml, "INPUT_FAIL_ON: ${{ inputs.fail-on }}"),
     );
 
-    // The input is opt-in: blocking remains the default so existing
-    // consumers keep failing the build on findings.
-    expect(inputsBlock).toContain("  non-blocking:");
-    const nonBlockingInput = extractBlock(inputsBlock, "  non-blocking:", "  no-score:");
     expect(normalizeWhitespace(nonBlockingInput)).toContain('default: "false"');
-
-    // Both the token (PR-comment) arm and the bare arm funnel through a
-    // single SCAN_EXIT_CODE, so the gate below covers crashes as well as
-    // the fail-on diagnostics gate.
     expect(scanStep).toContain("INPUT_NON_BLOCKING: ${{ inputs.non-blocking }}");
     expect(scanStep).toContain("SCAN_EXIT_CODE=$?");
     expect(scanStep).toContain(

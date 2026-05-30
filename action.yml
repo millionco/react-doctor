@@ -99,13 +99,8 @@ runs:
           # Strip annotation workflow commands from the PR-comment body;
           # the runner still parses them from the live step log.
           sed -E '/^::(error|warning) /d' "$RAW_FILE" > "$OUTPUT_FILE"
-          # A `tee` failure (PIPESTATUS[1]) is an infra fault, not a
-          # finding, so surface it ahead of react-doctor's own exit code.
-          if [ "${PIPELINE_EXIT_CODES[1]}" -ne 0 ]; then
-            SCAN_EXIT_CODE="${PIPELINE_EXIT_CODES[1]}"
-          else
-            SCAN_EXIT_CODE="${PIPELINE_EXIT_CODES[0]}"
-          fi
+          SCAN_EXIT_CODE="${PIPELINE_EXIT_CODES[0]}"
+          if [ "${PIPELINE_EXIT_CODES[1]}" -ne 0 ]; then SCAN_EXIT_CODE="${PIPELINE_EXIT_CODES[1]}"; fi
         else
           set +e
           npx react-doctor@latest "$INPUT_DIRECTORY" "${FLAGS[@]}"
@@ -113,11 +108,6 @@ runs:
           set -e
         fi
 
-        # `non-blocking` keeps react-doctor advisory: the scan above
-        # already printed findings, posted the PR comment, and emitted
-        # annotations, but a non-zero exit (the `fail-on` gate OR an
-        # unexpected scan error) is swallowed here so it can never fail
-        # the workflow.
         if [ "$INPUT_NON_BLOCKING" = "true" ] && [ "$SCAN_EXIT_CODE" -ne 0 ]; then
           echo "::notice title=React Doctor::Scan exited ${SCAN_EXIT_CODE}; non-blocking is enabled, so the job will not fail."
           exit 0

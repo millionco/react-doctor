@@ -47,6 +47,8 @@ jobs:
 
   publish-dev:
     name: Publish @dev snapshot
+    needs: publish
+    if: ${{ !cancelled() && needs.publish.result != 'failure' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -91,4 +93,14 @@ jobs:
       - name: Publish to npm under the dev tag
         env:
           NPM_CONFIG_PROVENANCE: true
-        run: pnpm publish --recursive --tag dev --no-git-checks --access public
+        run: |
+          for attempt in 1 2 3; do
+            if pnpm publish --recursive --tag dev --no-git-checks --access public; then
+              exit 0
+            fi
+            backoff_seconds=$((attempt * 15))
+            echo "Dev publish attempt ${attempt} failed; retrying in ${backoff_seconds}s (already-published versions are skipped by pnpm)"
+            sleep "${backoff_seconds}"
+          done
+          echo "Dev publish failed after 3 attempts"
+          exit 1

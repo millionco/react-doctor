@@ -30,7 +30,7 @@ const buildProject = (overrides: Partial<ProjectInfo> = {}): ProjectInfo => ({
   preactVersion: null,
   preactMajorVersion: null,
   hasReactNativeWorkspace: false,
-  isExpoProject: false,
+  expoVersion: null,
   hasReanimated: false,
   sourceFileCount: 2,
   ...overrides,

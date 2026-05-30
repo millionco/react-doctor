@@ -769,7 +769,7 @@ describe("listWorkspacePackages", () => {
 
     const projectInfo = discoverProject(projectDirectory);
     expect(projectInfo.framework).toBe("expo");
-    expect(projectInfo.isExpoProject).toBe(true);
+    expect(projectInfo.expoVersion).toBe("~51.0.0");
   });
 
   it("flags an Expo project even when a web bundler wins framework detection", () => {
@@ -786,7 +786,7 @@ describe("listWorkspacePackages", () => {
 
     const projectInfo = discoverProject(projectDirectory);
     expect(projectInfo.framework, "vite is matched before expo").toBe("vite");
-    expect(projectInfo.isExpoProject, "expo dependency still flags the project").toBe(true);
+    expect(projectInfo.expoVersion, "expo dependency still flags the project").toBe("~51.0.0");
   });
 
   it("flags a web-rooted monorepo with an Expo workspace as an Expo project", () => {
@@ -810,7 +810,7 @@ describe("listWorkspacePackages", () => {
     );
 
     const projectInfo = discoverProject(rootDirectory);
-    expect(projectInfo.isExpoProject).toBe(true);
+    expect(projectInfo.expoVersion, "expo version is resolved from the workspace").toBe("~51.0.0");
   });
 
   it("does not flag a bare React Native (non-Expo) project as an Expo project", () => {
@@ -826,7 +826,7 @@ describe("listWorkspacePackages", () => {
 
     const projectInfo = discoverProject(projectDirectory);
     expect(projectInfo.framework).toBe("react-native");
-    expect(projectInfo.isExpoProject).toBe(false);
+    expect(projectInfo.expoVersion).toBeNull();
   });
 
   it("does not flag a plain web project as an Expo project", () => {
@@ -842,7 +842,7 @@ describe("listWorkspacePackages", () => {
     );
 
     const projectInfo = discoverProject(projectDirectory);
-    expect(projectInfo.isExpoProject).toBe(false);
+    expect(projectInfo.expoVersion).toBeNull();
   });
 });
 

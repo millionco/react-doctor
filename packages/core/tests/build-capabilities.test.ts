@@ -15,7 +15,7 @@ const baseProject: ProjectInfo = {
   hasReactCompiler: false,
   hasTanStackQuery: false,
   hasReactNativeWorkspace: false,
-  isExpoProject: false,
+  expoVersion: null,
   preactVersion: null,
   preactMajorVersion: null,
   hasReanimated: false,
@@ -132,12 +132,12 @@ describe("buildCapabilities", () => {
     expect(compatStyle.has("pure-preact")).toBe(false);
   });
 
-  it("emits the `expo` capability when `isExpoProject` is set", () => {
+  it("emits the `expo` capability when `expoVersion` is set", () => {
     const capabilities = buildCapabilities({
       ...baseProject,
       framework: "expo",
       hasReactNativeWorkspace: true,
-      isExpoProject: true,
+      expoVersion: "~51.0.0",
     });
     expect(capabilities.has("expo")).toBe(true);
     expect(capabilities.has("react-native")).toBe(true);
@@ -148,9 +148,9 @@ describe("buildCapabilities", () => {
       ...baseProject,
       framework: "vite",
       hasReactNativeWorkspace: true,
-      isExpoProject: true,
+      expoVersion: "~51.0.0",
     });
-    expect(capabilities.has("expo"), "expo capability is keyed off isExpoProject").toBe(true);
+    expect(capabilities.has("expo"), "expo capability is keyed off expoVersion").toBe(true);
     expect(capabilities.has("vite")).toBe(true);
   });
 
@@ -158,7 +158,7 @@ describe("buildCapabilities", () => {
     const capabilities = buildCapabilities({
       ...baseProject,
       framework: "vite",
-      isExpoProject: false,
+      expoVersion: null,
     });
     expect(capabilities.has("expo")).toBe(false);
   });

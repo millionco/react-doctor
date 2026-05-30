@@ -19,7 +19,7 @@ const sampleProject: ProjectInfo = {
   hasReactCompiler: false,
   hasTanStackQuery: false,
   hasReactNativeWorkspace: false,
-  isExpoProject: false,
+  expoVersion: null,
   hasReanimated: false,
   preactVersion: null,
   preactMajorVersion: null,

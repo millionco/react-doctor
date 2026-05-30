@@ -50,20 +50,21 @@ export interface ProjectInfo {
    */
   hasReactNativeWorkspace: boolean;
   /**
-   * `true` when the project (or any of its workspace packages) declares an
-   * Expo-managed dependency (`expo`, `expo-router`, `@expo/cli`, …) — the
-   * react-doctor equivalent of expo-doctor's "is this an Expo project?"
-   * entry gate. Drives the `expo` capability in `buildCapabilities`, which
-   * gates every Expo-specific rule.
+   * The declared `expo` package version spec (e.g. `"~51.0.0"`), looked up
+   * in the project or any of its workspace packages, or `null` when `expo`
+   * isn't a dependency. Doubles as react-doctor's "is this an Expo project?"
+   * signal (`expoVersion !== null`) and its SDK-version source — the `expo`
+   * major tracks the Expo SDK release one-to-one — paralleling how
+   * `reactVersion` models the React runtime.
    *
    * Keyed off the dependency rather than `framework === "expo"` because
    * `detectFramework` returns the first matching package, so a project
    * declaring both `expo` and a web bundler (`vite` / `next`) classifies as
-   * the web framework yet is still an Expo project. Mirrors how
-   * `hasReactNativeWorkspace` decouples the `react-native` capability from
-   * the single-valued `framework` hint.
+   * the web framework yet is still an Expo project. Drives the `expo`
+   * capability in `buildCapabilities` (which gates every Expo-specific
+   * rule) and the ported expo-doctor checks.
    */
-  isExpoProject: boolean;
+  expoVersion: string | null;
   /**
    * `true` when the project (or any of its workspace packages) declares
    * `react-native-reanimated`. Lets diagnostics surface reanimated's

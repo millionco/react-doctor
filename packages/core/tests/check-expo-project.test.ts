@@ -29,7 +29,10 @@ const writePackageJson = (projectDirectory: string, packageJson: PackageJson): v
   clearPackageJsonCache();
 };
 
-const buildExpoProject = (rootDirectory: string, isExpoProject = true): ProjectInfo => ({
+const buildExpoProject = (
+  rootDirectory: string,
+  expoVersion: string | null = "~51.0.0",
+): ProjectInfo => ({
   rootDirectory,
   projectName: "expo-app",
   reactVersion: "18.2.0",
@@ -42,7 +45,7 @@ const buildExpoProject = (rootDirectory: string, isExpoProject = true): ProjectI
   hasReactCompiler: false,
   hasTanStackQuery: false,
   hasReactNativeWorkspace: true,
-  isExpoProject,
+  expoVersion,
   hasReanimated: false,
   preactVersion: null,
   preactMajorVersion: null,
@@ -65,7 +68,7 @@ describe("checkExpoProject — gating", () => {
     });
     const diagnostics = checkExpoProject(
       projectDirectory,
-      buildExpoProject(projectDirectory, false),
+      buildExpoProject(projectDirectory, null),
     );
     expect(diagnostics).toEqual([]);
   });
@@ -127,7 +130,7 @@ describe("checkExpoProject — redundant transitive dependencies", () => {
       dependencies: { expo: "~47.0.0", "@types/react-native": "^0.70.0" },
     });
     expect(
-      rulesOf(checkExpoProject(oldSdk, buildExpoProject(oldSdk))).filter(
+      rulesOf(checkExpoProject(oldSdk, buildExpoProject(oldSdk, "~47.0.0"))).filter(
         (rule) => rule === "expo-no-redundant-dependency",
       ),
     ).toHaveLength(0);
@@ -138,7 +141,7 @@ describe("checkExpoProject — redundant transitive dependencies", () => {
       dependencies: { expo: "~51.0.0", "@types/react-native": "^0.70.0" },
     });
     expect(
-      rulesOf(checkExpoProject(newSdk, buildExpoProject(newSdk))).filter(
+      rulesOf(checkExpoProject(newSdk, buildExpoProject(newSdk, "~51.0.0"))).filter(
         (rule) => rule === "expo-no-redundant-dependency",
       ),
     ).toHaveLength(1);
@@ -189,7 +192,10 @@ describe("checkExpoProject — expo-router / react-navigation conflict", () => {
         "@react-navigation/native": "^7.0.0",
       },
     });
-    const diagnostics = checkExpoProject(projectDirectory, buildExpoProject(projectDirectory));
+    const diagnostics = checkExpoProject(
+      projectDirectory,
+      buildExpoProject(projectDirectory, "~56.0.0"),
+    );
     expect(rulesOf(diagnostics)).toContain("expo-router-no-react-navigation");
   });
 
@@ -204,7 +210,7 @@ describe("checkExpoProject — expo-router / react-navigation conflict", () => {
       },
     });
     expect(
-      rulesOf(checkExpoProject(projectDirectory, buildExpoProject(projectDirectory))),
+      rulesOf(checkExpoProject(projectDirectory, buildExpoProject(projectDirectory, "~55.0.0"))),
     ).not.toContain("expo-router-no-react-navigation");
   });
 });
@@ -221,7 +227,7 @@ describe("checkExpoProject — vector icons conflict", () => {
       },
     });
     expect(
-      rulesOf(checkExpoProject(projectDirectory, buildExpoProject(projectDirectory))),
+      rulesOf(checkExpoProject(projectDirectory, buildExpoProject(projectDirectory, "~56.0.0"))),
     ).toContain("expo-vector-icons-conflict");
   });
 });

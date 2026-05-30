@@ -2,7 +2,7 @@
 "react-doctor": patch
 ---
 
-Port expo-doctor's project-level checks as Expo-gated diagnostics. When `isExpoProject` is detected, react-doctor now runs the statically-determinable subset of expo-doctor's check suite during the environment-checks phase (skipped in diff/staged mode):
+Port expo-doctor's project-level checks as Expo-gated diagnostics. When an Expo project is detected (`expoVersion !== null`), react-doctor now runs the statically-determinable subset of expo-doctor's check suite during the environment-checks phase (skipped in diff/staged mode):
 
 - `expo-no-unimodules-packages` — legacy `@unimodules/*` / `react-native-unimodules` packages (IllegalPackageCheck).
 - `expo-no-cli-dependencies` — `expo-cli` / `eas-cli` listed as project dependencies (GlobalPackageInstalledLocallyCheck).

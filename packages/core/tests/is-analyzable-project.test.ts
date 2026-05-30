@@ -17,7 +17,7 @@ const baseProject: ProjectInfo = {
   preactVersion: null,
   preactMajorVersion: null,
   hasReactNativeWorkspace: false,
-  isExpoProject: false,
+  expoVersion: null,
   hasReanimated: false,
   sourceFileCount: 0,
 };

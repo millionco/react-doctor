@@ -15,13 +15,13 @@ import { checkExpoVectorIcons } from "./checks/expo/check-vector-icons.js";
 // also run the Expo CLI, hit the Expo API, and inspect native iOS/Android
 // projects — none of which fit react-doctor's offline, static model).
 //
-// Gated entirely on `project.isExpoProject` so none of these fire on a
+// Gated entirely on `project.expoVersion` so none of these fire on a
 // non-Expo React project; the run-inspect orchestrator additionally skips
 // the whole phase in diff/staged mode (these are whole-project findings).
 export const checkExpoProject = (rootDirectory: string, project: ProjectInfo): Diagnostic[] => {
-  if (!project.isExpoProject) return [];
+  if (project.expoVersion === null) return [];
 
-  const context = buildExpoCheckContext(rootDirectory);
+  const context = buildExpoCheckContext(rootDirectory, project.expoVersion);
   return [
     ...checkExpoFlaggedDependencies(context),
     ...checkExpoDependencyOverrides(context),

@@ -23,6 +23,9 @@ inputs:
   fail-on:
     description: "Exit non-zero when diagnostics fire (error, warning, none). Gates on individual diagnostics in the scanned files, not on the score. Combine with `diff` for regression-only gating, or read the `score` output in a follow-up step to enforce an absolute score floor."
     default: "error"
+  non-blocking:
+    description: "Advisory mode. The scan still runs, prints findings, posts the PR comment, and emits annotations, but the step always exits 0 so neither the `fail-on` gate nor an unexpected scan error can fail the workflow. Use this to adopt react-doctor without blocking merges, then flip it off once the team is ready to enforce."
+    default: "false"
   no-score:
     description: "Skip the score API. Runs print no score and leave the `score` output empty."
     default: "false"
@@ -66,6 +69,7 @@ runs:
         INPUT_DIFF: ${{ inputs.diff || github.base_ref }}
         INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
         INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_NON_BLOCKING: ${{ inputs.non-blocking }}
         INPUT_NO_SCORE: ${{ inputs.no-score }}
         INPUT_ANNOTATIONS: ${{ inputs.annotations }}
         RUNNER_TEMP: ${{ runner.temp }}
@@ -95,11 +99,30 @@ runs:
           # Strip annotation workflow commands from the PR-comment body;
           # the runner still parses them from the live step log.
           sed -E '/^::(error|warning) /d' "$RAW_FILE" > "$OUTPUT_FILE"
-          if [ "${PIPELINE_EXIT_CODES[1]}" -ne 0 ]; then exit "${PIPELINE_EXIT_CODES[1]}"; fi
-          exit "${PIPELINE_EXIT_CODES[0]}"
+          # A `tee` failure (PIPESTATUS[1]) is an infra fault, not a
+          # finding, so surface it ahead of react-doctor's own exit code.
+          if [ "${PIPELINE_EXIT_CODES[1]}" -ne 0 ]; then
+            SCAN_EXIT_CODE="${PIPELINE_EXIT_CODES[1]}"
+          else
+            SCAN_EXIT_CODE="${PIPELINE_EXIT_CODES[0]}"
+          fi
         else
+          set +e
           npx react-doctor@latest "$INPUT_DIRECTORY" "${FLAGS[@]}"
+          SCAN_EXIT_CODE=$?
+          set -e
         fi
+
+        # `non-blocking` keeps react-doctor advisory: the scan above
+        # already printed findings, posted the PR comment, and emitted
+        # annotations, but a non-zero exit (the `fail-on` gate OR an
+        # unexpected scan error) is swallowed here so it can never fail
+        # the workflow.
+        if [ "$INPUT_NON_BLOCKING" = "true" ] && [ "$SCAN_EXIT_CODE" -ne 0 ]; then
+          echo "::notice title=React Doctor::Scan exited ${SCAN_EXIT_CODE}; non-blocking is enabled, so the job will not fail."
+          exit 0
+        fi
+        exit "$SCAN_EXIT_CODE"
 
     - id: score
       if: always()

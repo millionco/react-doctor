@@ -108,7 +108,7 @@ describe("GitHub Action contract", () => {
     expect(scanStep).toContain('"${FLAGS[@]}" --pr-comment | tee "$RAW_FILE"');
     expect(scanStep).toContain('PIPELINE_EXIT_CODES=("${PIPESTATUS[@]}")');
     expect(scanStep).toContain('sed -E \'/^::(error|warning) /d\' "$RAW_FILE" > "$OUTPUT_FILE"');
-    expect(scanStep).toContain('exit "${PIPELINE_EXIT_CODES[0]}"');
+    expect(scanStep).toContain('SCAN_EXIT_CODE="${PIPELINE_EXIT_CODES[0]}"');
     expect(scanStep).not.toContain('"${FLAGS[@]}" --pr-comment\n        else');
   });
 
@@ -122,13 +122,40 @@ describe("GitHub Action contract", () => {
     const stripAnnotationsIndex = scanStep.indexOf(
       'sed -E \'/^::(error|warning) /d\' "$RAW_FILE" > "$OUTPUT_FILE"',
     );
-    const restoreScanExitCodeIndex = scanStep.indexOf('exit "${PIPELINE_EXIT_CODES[0]}"');
+    const preserveScanExitCodeIndex = scanStep.indexOf(
+      'SCAN_EXIT_CODE="${PIPELINE_EXIT_CODES[0]}"',
+    );
 
     expect(disableExitOnErrorIndex).toBeGreaterThan(-1);
     expect(captureExitCodesIndex).toBeGreaterThan(disableExitOnErrorIndex);
     expect(restoreExitOnErrorIndex).toBeGreaterThan(captureExitCodesIndex);
     expect(stripAnnotationsIndex).toBeGreaterThan(restoreExitOnErrorIndex);
-    expect(restoreScanExitCodeIndex).toBeGreaterThan(stripAnnotationsIndex);
+    expect(preserveScanExitCodeIndex).toBeGreaterThan(stripAnnotationsIndex);
+  });
+
+  it("non-blocking input swallows a non-zero scan exit so the job never fails", () => {
+    const actionYaml = readActionYaml();
+    const inputsBlock = extractBlock(actionYaml, "inputs:", "\noutputs:");
+    const scanStep = normalizeWhitespace(
+      extractStep(actionYaml, "INPUT_FAIL_ON: ${{ inputs.fail-on }}"),
+    );
+
+    // The input is opt-in: blocking remains the default so existing
+    // consumers keep failing the build on findings.
+    expect(inputsBlock).toContain("  non-blocking:");
+    const nonBlockingInput = extractBlock(inputsBlock, "  non-blocking:", "  no-score:");
+    expect(normalizeWhitespace(nonBlockingInput)).toContain('default: "false"');
+
+    // Both the token (PR-comment) arm and the bare arm funnel through a
+    // single SCAN_EXIT_CODE, so the gate below covers crashes as well as
+    // the fail-on diagnostics gate.
+    expect(scanStep).toContain("INPUT_NON_BLOCKING: ${{ inputs.non-blocking }}");
+    expect(scanStep).toContain("SCAN_EXIT_CODE=$?");
+    expect(scanStep).toContain(
+      'if [ "$INPUT_NON_BLOCKING" = "true" ] && [ "$SCAN_EXIT_CODE" -ne 0 ]; then',
+    );
+    expect(scanStep).toContain("exit 0");
+    expect(scanStep).toContain('exit "$SCAN_EXIT_CODE"');
   });
 
   it("issue #527: score step mirrors the scan's diff/project scope so it can't re-run a full scan", () => {

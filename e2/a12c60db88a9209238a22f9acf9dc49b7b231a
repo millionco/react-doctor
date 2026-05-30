@@ -1,0 +1,25 @@
+action.yml
+  s_8488a7fdc46d4d::t_247d877785ab7d 26-28
+  s_8488a7fdc46d4d::t_a69138d63df15a 72
+  s_8488a7fdc46d4d::t_67e3a628881db7 102-108,110,112-123,125
+packages/react-doctor/tests/github-action.test.ts
+  s_8488a7fdc46d4d::t_beae58dd4eea40 111
+  s_8488a7fdc46d4d::t_ab6ec5b66765a5 125-127
+  s_8488a7fdc46d4d::t_0132b9239bb68b 133-158
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "e2a12c60db88a9209238a22f9acf9dc49b7b231a",
+  "prompts": {},
+  "sessions": {
+    "s_8488a7fdc46d4d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "17545a40-d4e7-4d56-9e97-6e89fd5dbca5",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

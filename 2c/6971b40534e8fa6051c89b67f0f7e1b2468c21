@@ -1,0 +1,79 @@
+pnpm-lock.yaml
+  ai_agent 30-32,137-138,2619-2622,2858-2861,2892-2895,2965-2968,3056-3059,3203-3206,3380-3384,5648-5653,5838-5839,5869-5870,5937-5938,6110-6114,6257-6258,6419-6428
+assets/react-doctor-readme-logo-dark.svg
+  s_7d4a0530269c26::t_2974055c98802c 1-3
+packages/core/tests/spawn-batches.test.ts
+  s_7d4a0530269c26::t_2974055c98802c 1-81
+packages/core/src/index.ts
+  s_7d4a0530269c26::t_2974055c98802c 72
+.changeset/publish-config-json-schema.md
+  s_7d4a0530269c26::t_2974055c98802c 1-16
+packages/core/src/types/config.ts
+  s_7d4a0530269c26::t_2974055c98802c 21-23
+packages/core/src/calculate-score.ts
+  s_7d4a0530269c26::t_2974055c98802c 2-3,7-25
+packages/website/public/schema/config.json
+  s_7d4a0530269c26::t_2974055c98802c 1-234
+assets/react-doctor-readme-logo-light.svg
+  s_7d4a0530269c26::t_2974055c98802c 1-3
+packages/core/src/runners/oxlint/parse-output.ts
+  s_7d4a0530269c26::t_2974055c98802c 12,71-99
+packages/react-doctor/tests/build-no-score-message.test.ts
+  s_7d4a0530269c26::t_2974055c98802c 1-17
+packages/react-doctor/package.json
+  s_7d4a0530269c26::t_2974055c98802c 62
+packages/core/src/types/score.ts
+  s_7d4a0530269c26::t_2974055c98802c 1-9,13-17
+.prettierignore
+  s_7d4a0530269c26::t_2974055c98802c 10-13
+packages/react-doctor/src/inspect.ts
+  s_7d4a0530269c26::t_2974055c98802c 23,26,347,420-425
+packages/core/src/runners/oxlint/spawn-batches.ts
+  s_7d4a0530269c26::t_2974055c98802c 105,117-127
+.changeset/redact-secrets-from-diagnostics.md
+  s_7d4a0530269c26::t_2974055c98802c 1-5
+packages/react-doctor/tests/github-action.test.ts
+  s_7d4a0530269c26::t_2974055c98802c 112-127
+packages/react-doctor/src/cli/utils/render-multi-project-summary.ts
+  s_7d4a0530269c26::t_2974055c98802c 12,98-103
+.changeset/bump-deslop-js-0-0-14.md
+  s_7d4a0530269c26::t_2974055c98802c 1-5
+packages/core/tests/redact-sensitive-text.test.ts
+  s_7d4a0530269c26::t_2974055c98802c 1-232
+packages/react-doctor/src/cli/utils/build-no-score-message.ts
+  s_7d4a0530269c26::t_2974055c98802c 1-11
+action.yml
+  s_7d4a0530269c26::t_2974055c98802c 17-19,175,177-182
+.changeset/fix-staged-progress-interval-leak.md
+  s_7d4a0530269c26::t_2974055c98802c 1-5
+packages/core/src/constants.ts
+  s_7d4a0530269c26::t_2974055c98802c 39-54,65
+package.json
+  s_7d4a0530269c26::t_2974055c98802c 28-29,37
+packages/react-doctor/src/cli/utils/render-diagnostics.ts
+  s_7d4a0530269c26::t_2974055c98802c 11,24-62,143-156,167,171-174,235-239,258,263,269
+.github/workflows/publish-any-commit.yml
+  s_7d4a0530269c26::t_2974055c98802c 1-47
+packages/core/src/utils/redact-sensitive-text.ts
+  s_7d4a0530269c26::t_2974055c98802c 1-194
+packages/core/src/types/index.ts
+  s_7d4a0530269c26::t_2974055c98802c 50
+scripts/generate-config-schema.ts
+  s_7d4a0530269c26::t_2974055c98802c 1-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "2c6971b40534e8fa6051c89b67f0f7e1b2468c21",
+  "prompts": {},
+  "sessions": {
+    "s_7d4a0530269c26": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d8b852d7-ebf9-4da1-b9b1-3aafd929ee23",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

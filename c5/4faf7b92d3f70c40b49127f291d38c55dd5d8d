@@ -1,0 +1,19 @@
+packages/core/src/runners/oxlint/parse-output.ts
+  s_7af67a01cef546::t_2d95830bf9ec2c 71-72,77-88
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "c54faf7b92d3f70c40b49127f291d38c55dd5d8d",
+  "prompts": {},
+  "sessions": {
+    "s_7af67a01cef546": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f8f88952-c70e-467a-995c-93077d19761e",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

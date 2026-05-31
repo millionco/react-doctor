@@ -63,6 +63,11 @@ interface RunOxlintOptions {
   spawnTimeoutMs?: number;
   /** Per-batch stdout+stderr byte cap, resolved from the `OxlintOutputMaxBytes` Reference. */
   outputMaxBytes?: number;
+  /**
+   * Number of oxlint subprocesses to run in parallel, resolved from the
+   * `OxlintConcurrency` Reference. Defaults to `1` (serial).
+   */
+  concurrency?: number;
 }
 
 /**
@@ -230,6 +235,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         onFileProgress: options.onFileProgress,
         spawnTimeoutMs,
         outputMaxBytes,
+        concurrency: options.concurrency,
       });
 
     writeOxlintConfig(configPath, buildConfig(extendsPaths));

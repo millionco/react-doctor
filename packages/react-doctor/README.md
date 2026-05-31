@@ -27,6 +27,14 @@ npx react-doctor@latest
 
 https://github.com/user-attachments/assets/07cc88d9-9589-44c3-aa73-5d603cb1c570
 
+On a large repo, add `--parallel` to fan the scan out across your CPU cores:
+
+```bash
+npx react-doctor@latest --parallel
+```
+
+React Doctor's rules run as oxlint JS plugins, which are single-threaded per process, so the scan scales nearly linearly with the number of worker processes — typically 3–4x faster on large codebases. Pass `--parallel <n>` to cap the worker count, or set `REACT_DOCTOR_PARALLEL=<n>` (handy in CI). Diagnostics are identical to a serial run.
+
 ### 2. Install for agents
 
 Once you have an audit, you can install the skill for your coding agent to learn from the issues and fix them in the future.

@@ -59,6 +59,8 @@ interface ResolvedInspectOptions {
   ignoredTags: ReadonlySet<string>;
   outputSurface: DiagnosticSurface;
   suppressRendering: boolean;
+  /** Resolved oxlint worker count, or `undefined` to keep the ambient default. */
+  concurrency: number | undefined;
 }
 
 const buildIgnoredTags = (userConfig: ReactDoctorConfig | null): ReadonlySet<string> => {
@@ -91,6 +93,7 @@ const mergeInspectOptions = (
   ignoredTags: buildIgnoredTags(userConfig),
   outputSurface: inputOptions.outputSurface ?? "cli",
   suppressRendering: inputOptions.suppressRendering ?? false,
+  concurrency: inputOptions.concurrency,
 });
 
 export const inspect = async (
@@ -194,6 +197,7 @@ const runInspectWithRuntime = async (
     shouldRunDeadCode: options.deadCode,
     shouldComputeScore: !options.noScore,
     shouldShowProgressSpinners,
+    oxlintConcurrency: options.concurrency,
   });
 
   const program = runInspectEffect(

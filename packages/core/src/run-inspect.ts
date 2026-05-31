@@ -24,6 +24,7 @@ import {
 } from "./errors.js";
 import { filterDiagnosticsForSurface } from "./filter-for-surface.js";
 import { isAnalyzableProject } from "./project-info/index.js";
+import { OxlintConcurrency } from "./refs.js";
 import { resolveLintIncludePaths } from "./resolve-lint-include-paths.js";
 import { Config, type ResolvedConfig } from "./services/config.js";
 import { DeadCode } from "./services/dead-code.js";
@@ -272,6 +273,14 @@ export const runInspect = <HooksR = never>(
       reason: null,
     });
 
+    // `OxlintConcurrency` is an ambient Reference (default 1; raised by the
+    // CLI's `--parallel` flag or `REACT_DOCTOR_PARALLEL`). Reading it here is
+    // purely for user-facing feedback — the Linter reads the same Reference
+    // to actually fan the lint pass out across workers. Surfaced in the
+    // spinner so a `--parallel` run visibly confirms it took effect.
+    const scanConcurrency = yield* OxlintConcurrency;
+    const workerCountSuffix = scanConcurrency > 1 ? ` · ${scanConcurrency} workers` : "";
+
     const scanProgress = yield* progressService.start("Scanning...");
     const scanStartTime = Date.now();
     let lastReportedTotalFileCount = 0;
@@ -291,7 +300,9 @@ export const runInspect = <HooksR = never>(
         onFileProgress: (scannedFileCount, totalFileCount) => {
           lastReportedTotalFileCount = totalFileCount;
           Effect.runSync(
-            scanProgress.update(`Scanning files (${scannedFileCount}/${totalFileCount})...`),
+            scanProgress.update(
+              `Scanning files (${scannedFileCount}/${totalFileCount})${workerCountSuffix}...`,
+            ),
           );
         },
       })
@@ -357,7 +368,7 @@ export const runInspect = <HooksR = never>(
         yield* scanProgress.fail(DEAD_CODE_FAIL_TEXT);
       } else {
         yield* scanProgress.succeed(
-          `Scanned ${totalFileCount} ${totalFileCount === 1 ? "file" : "files"} in ${scanElapsedSeconds}s`,
+          `Scanned ${totalFileCount} ${totalFileCount === 1 ? "file" : "files"} in ${scanElapsedSeconds}s${workerCountSuffix}`,
         );
       }
     }

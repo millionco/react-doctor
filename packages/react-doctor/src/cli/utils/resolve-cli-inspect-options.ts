@@ -1,6 +1,7 @@
 import type { InspectOptions, ReactDoctorConfig } from "@react-doctor/core";
 import type { InspectFlags } from "./inspect-flags.js";
 import { isCiEnvironment } from "./is-ci-environment.js";
+import { resolveParallelFlag } from "./resolve-parallel-flag.js";
 
 /**
  * Translates CLI flags into the `InspectOptions` contract `inspect()`
@@ -27,4 +28,5 @@ export const resolveCliInspectOptions = (
   isCi: isCiEnvironment(),
   silent: Boolean(flags.json),
   outputSurface: flags.prComment ? "prComment" : "cli",
+  concurrency: resolveParallelFlag(flags.parallel),
 });

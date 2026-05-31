@@ -5,7 +5,7 @@ import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import type { Diagnostic, ProjectInfo, ReactDoctorConfig } from "../types/index.js";
 import { OxlintSpawnFailed, ReactDoctorError } from "../errors.js";
-import { OxlintOutputMaxBytes, OxlintSpawnTimeoutMs } from "../refs.js";
+import { OxlintConcurrency, OxlintOutputMaxBytes, OxlintSpawnTimeoutMs } from "../refs.js";
 import { runOxlint } from "../run-oxlint.js";
 
 /**
@@ -105,6 +105,7 @@ export class Linter extends Context.Service<
             // async runner so the override is actually load-bearing.
             const spawnTimeoutMs = yield* OxlintSpawnTimeoutMs;
             const outputMaxBytes = yield* OxlintOutputMaxBytes;
+            const concurrency = yield* OxlintConcurrency;
             const collectedFailures: string[] = [];
             const diagnostics = yield* Effect.tryPromise({
               try: () =>
@@ -125,6 +126,7 @@ export class Linter extends Context.Service<
                   onFileProgress: input.onFileProgress,
                   spawnTimeoutMs,
                   outputMaxBytes,
+                  concurrency,
                 }),
               catch: ensureReactDoctorError,
             });

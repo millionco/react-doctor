@@ -1,10 +1,12 @@
 import {
+  MIN_SCAN_CONCURRENCY,
   OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT,
   PROGRESS_TICK_INTERVAL_MS,
 } from "../../constants.js";
 import type { Diagnostic, ProjectInfo } from "../../types/index.js";
 import { isSplittableReactDoctorError } from "../../errors.js";
 import { dedupeDiagnostics } from "../../utils/dedupe-diagnostics.js";
+import { mapWithConcurrency } from "../../utils/map-with-concurrency.js";
 import { parseOxlintOutput } from "./parse-output.js";
 import { spawnOxlint } from "./spawn-oxlint.js";
 
@@ -20,6 +22,15 @@ export interface SpawnLintBatchesInput {
   readonly spawnTimeoutMs?: number;
   /** Per-batch stdout+stderr byte cap (from `OxlintOutputMaxBytes`). */
   readonly outputMaxBytes?: number;
+  /**
+   * Number of batches to lint in parallel (from `OxlintConcurrency`).
+   * Defaults to `1` (serial). Each batch is its own oxlint subprocess, so
+   * `N` here means up to `N` concurrent oxlint processes — the lint pass
+   * scales with `N` because oxlint's JS plugins are single-threaded per
+   * process. The generated oxlintrc / ignore files are read-only and
+   * shared across workers, so there's no per-worker setup.
+   */
+  readonly concurrency?: number;
 }
 
 /**
@@ -47,6 +58,7 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     spawnTimeoutMs,
     outputMaxBytes,
   } = input;
+  const concurrency = Math.max(MIN_SCAN_CONCURRENCY, input.concurrency ?? MIN_SCAN_CONCURRENCY);
   const totalFileCount = fileBatches.reduce((sum, batch) => sum + batch.length, 0);
 
   const allDiagnostics: Diagnostic[] = [];
@@ -97,34 +109,46 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     }
   };
 
+  // Progress is driven by one shared ticker rather than a per-batch timer:
+  // with batches linting in parallel, completions arrive out of order, so a
+  // single monotonic counter is the honest model. `startedFileCount` bounds
+  // the optimistic creep to files actually handed to a worker; the ticker
+  // nudges the displayed count toward that bound so the spinner feels live,
+  // and each completed batch snaps the floor up to the real scanned count.
+  // The timer is unref'd and always cleared in `finally` so a rejected batch
+  // (e.g. an adopted lint config crashing oxlint) can't leak a ref'd timer
+  // and hang the CLI after output prints (issue #599).
+  let startedFileCount = 0;
   let scannedFileCount = 0;
-  for (const batch of fileBatches) {
-    // HACK: tick the progress counter per-file on a timer while the
-    // batch subprocess runs, so the UI feels smooth instead of jumping
-    // by 100 when each batch completes. The interval is cleared as
-    // soon as the batch settles — any remaining files in the batch
-    // are counted in one final update.
-    let batchFileIndex = 0;
-    const progressInterval =
-      onFileProgress && batch.length > 1
-        ? setInterval(() => {
-            if (batchFileIndex < batch.length) {
-              batchFileIndex += 1;
-              onFileProgress(scannedFileCount + batchFileIndex, totalFileCount);
-            }
-          }, PROGRESS_TICK_INTERVAL_MS)
-        : null;
-    // Clear in `finally` so a rejected batch (e.g. an adopted lint config
-    // crashing oxlint) can't leak this ref'd timer — a leak keeps the event
-    // loop alive and hangs the CLI after output prints (issue #599).
-    try {
+  let displayedFileCount = 0;
+  const reportScannedProgress = (): void => {
+    if (!onFileProgress) return;
+    displayedFileCount = Math.min(Math.max(displayedFileCount, scannedFileCount), totalFileCount);
+    onFileProgress(displayedFileCount, totalFileCount);
+  };
+  const progressTimer =
+    onFileProgress && totalFileCount > 1
+      ? setInterval(() => {
+          const ceiling = Math.min(startedFileCount, totalFileCount - 1);
+          if (displayedFileCount < ceiling) {
+            displayedFileCount += 1;
+            onFileProgress(displayedFileCount, totalFileCount);
+          }
+        }, PROGRESS_TICK_INTERVAL_MS)
+      : null;
+  progressTimer?.unref?.();
+
+  try {
+    const batchResults = await mapWithConcurrency(fileBatches, concurrency, async (batch) => {
+      startedFileCount += batch.length;
       const batchDiagnostics = await spawnLintBatch(batch);
-      allDiagnostics.push(...batchDiagnostics);
       scannedFileCount += batch.length;
-      onFileProgress?.(scannedFileCount, totalFileCount);
-    } finally {
-      if (progressInterval !== null) clearInterval(progressInterval);
-    }
+      reportScannedProgress();
+      return batchDiagnostics;
+    });
+    for (const batchDiagnostics of batchResults) allDiagnostics.push(...batchDiagnostics);
+  } finally {
+    if (progressTimer !== null) clearInterval(progressTimer);
   }
 
   if (droppedFiles.length > 0 && onPartialFailure) {

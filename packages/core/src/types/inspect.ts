@@ -73,8 +73,8 @@ export interface InspectOptions {
    * pass. Overrides the `OxlintConcurrency` Reference (env-seeded) for
    * this run. `undefined` leaves the ambient default in place (serial
    * unless `REACT_DOCTOR_PARALLEL` is set); the CLI's `--parallel` flag
-   * resolves to a concrete worker count here. Already clamped by the
-   * caller via `resolveScanConcurrency`.
+   * resolves to a concrete worker count here. Out-of-range values are
+   * clamped to the supported worker range at the spawn boundary.
    */
   concurrency?: number;
   /**

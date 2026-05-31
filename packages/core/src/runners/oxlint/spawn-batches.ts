@@ -7,6 +7,7 @@ import type { Diagnostic, ProjectInfo } from "../../types/index.js";
 import { isSplittableReactDoctorError } from "../../errors.js";
 import { dedupeDiagnostics } from "../../utils/dedupe-diagnostics.js";
 import { mapWithConcurrency } from "../../utils/map-with-concurrency.js";
+import { resolveScanConcurrency } from "../../utils/resolve-scan-concurrency.js";
 import { parseOxlintOutput } from "./parse-output.js";
 import { spawnOxlint } from "./spawn-oxlint.js";
 
@@ -58,7 +59,10 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     spawnTimeoutMs,
     outputMaxBytes,
   } = input;
-  const concurrency = input.concurrency ?? MIN_SCAN_CONCURRENCY;
+  // Clamp at the spawn boundary so any caller — including programmatic
+  // `inspect({ concurrency })` that skips the CLI's resolver — is bounded by
+  // the [MIN, MAX] worker ceiling and can't oversubscribe oxlint processes.
+  const concurrency = resolveScanConcurrency(input.concurrency ?? MIN_SCAN_CONCURRENCY);
   const totalFileCount = fileBatches.reduce((sum, batch) => sum + batch.length, 0);
 
   const allDiagnostics: Diagnostic[] = [];

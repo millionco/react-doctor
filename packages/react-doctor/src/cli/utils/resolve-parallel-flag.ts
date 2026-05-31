@@ -1,28 +1,31 @@
-import { resolveScanConcurrency } from "@react-doctor/core";
+import { MIN_SCAN_CONCURRENCY, resolveScanConcurrency } from "@react-doctor/core";
 
 /**
- * Translates the `--parallel [workers]` flag into a concrete, clamped
- * worker count for `InspectOptions.concurrency`.
+ * Translates the `--parallel [workers]` flag into a concrete worker count
+ * for `InspectOptions.concurrency`:
  *
- *   - flag absent (`undefined`) / `--parallel false` → `undefined`
- *     (leave the ambient default: serial unless `REACT_DOCTOR_PARALLEL`)
- *   - `--parallel` with no value / `--parallel auto`  → auto-detect cores
- *   - `--parallel <n>`                                → `n` workers (clamped)
- *   - an unparseable value                            → auto-detect cores
+ *   - flag absent (`undefined`)          → `undefined` (defer to the ambient
+ *     default: serial unless `REACT_DOCTOR_PARALLEL` is set)
+ *   - `--parallel` / `--parallel auto`   → auto-detect CPU cores
+ *   - `--parallel <n>`                   → `n` workers (clamped)
+ *   - `--parallel false` / `off` / `0`   → serial (an explicit opt-out, so it
+ *     overrides an env-enabled default rather than deferring to it)
+ *   - an unparseable value               → auto-detect cores
  *
  * Commander yields `true` for a bare `--parallel`, the raw string for
  * `--parallel <value>`, and `undefined` when the flag is omitted.
  */
 export const resolveParallelFlag = (parallel: string | boolean | undefined): number | undefined => {
-  if (parallel === undefined || parallel === false) return undefined;
+  if (parallel === undefined) return undefined;
   if (parallel === true) return resolveScanConcurrency("auto");
+  if (parallel === false) return MIN_SCAN_CONCURRENCY;
 
   const normalized = parallel.trim().toLowerCase();
   if (normalized === "" || normalized === "auto" || normalized === "true") {
     return resolveScanConcurrency("auto");
   }
   if (normalized === "false" || normalized === "off" || normalized === "0") {
-    return undefined;
+    return MIN_SCAN_CONCURRENCY;
   }
   const parsed = Number.parseInt(normalized, 10);
   if (!Number.isInteger(parsed) || parsed <= 0) return resolveScanConcurrency("auto");

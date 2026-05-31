@@ -1,0 +1,32 @@
+packages/language-server/src/core/overlay.ts
+  s_6345c425a60fc8::t_2befd22643ba30 73
+  s_6345c425a60fc8::t_83cff8e8b58e25 4-7,12-17
+packages/language-server/src/core/scan-runner.ts
+  s_6345c425a60fc8::t_33fe94f6006c4c 196-199,201
+packages/language-server/tests/unit/scan-runner.test.ts
+  s_6345c425a60fc8::t_6e8ba701fda189 34-36
+packages/language-server/tests/unit/positions.test.ts
+  s_6345c425a60fc8::t_33b8d52ef06d42 72-82
+packages/language-server/src/diagnostics/manager.ts
+  s_6345c425a60fc8::t_492038fa5c6590 63-73
+packages/language-server/tests/unit/manager.test.ts
+  s_6345c425a60fc8::t_125ebf163d2fa0 1-88
+packages/language-server/src/text/positions.ts
+  s_6345c425a60fc8::t_f0e30324f07bda 74-79,86-92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "5023bc9e3cc989ca96f0492c6c95606eaa338154",
+  "prompts": {},
+  "sessions": {
+    "s_6345c425a60fc8": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "35c2a616-054e-4d23-ba69-0921d1c144bd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

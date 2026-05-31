@@ -1,0 +1,20 @@
+packages/language-server/tests/unit/scheduler.test.ts
+  s_6345c425a60fc8::t_d8f9af3adf0e94 8-15
+  s_6345c425a60fc8::t_a36d49f6505938 138-140
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "81a7f6d1676fa9d4f3e9e69d3e0d7f7c499b875e",
+  "prompts": {},
+  "sessions": {
+    "s_6345c425a60fc8": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "35c2a616-054e-4d23-ba69-0921d1c144bd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

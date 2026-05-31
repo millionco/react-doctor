@@ -1,0 +1,300 @@
+packages/language-server/src/features/issue-url.ts
+  s_6345c425a60fc8::t_cfc87e7f1ba062 1-42
+packages/language-server/src/features/suppress.ts
+  s_6345c425a60fc8::t_92b0ac3ff57120 1-56
+  s_6345c425a60fc8::t_a2c185918d06d7 57-93
+packages/language-server/src/text/positions.ts
+  s_6345c425a60fc8::t_38ebe774df9e75 1-58,60-73,75-80,83
+  s_6345c425a60fc8::t_e80546b02e59ef 59,86
+  s_6345c425a60fc8::t_936da6f2235220 84-85,87-90
+packages/language-server/src/utils/read-positive-int-env.ts
+  s_6345c425a60fc8::t_aef89f9f14adbf 1-10
+packages/react-doctor/src/cli/index.ts
+  s_6345c425a60fc8::t_61adacbf8c5cfc 91-95,97-100
+  s_6345c425a60fc8::t_49299e28d97234 96,101
+packages/language-server/tests/unit/lsp-polish.test.ts
+  s_6345c425a60fc8::t_ce83e68255f90a 1-75
+packages/react-doctor/src/lsp.ts
+  s_6345c425a60fc8::t_97ccda84b94f60 1-7
+packages/vscode-react-doctor/tsconfig.json
+  s_aef925c810c2ac::t_959214e871c2e4 1-3,6-14
+  s_6345c425a60fc8::t_ed747a50a4291e 4-5
+packages/language-server/package.json
+  s_6345c425a60fc8::t_e80546b02e59ef 10-16
+  s_6345c425a60fc8::t_e039dbe9d9f4aa 21-22
+packages/language-server/tests/unit/scheduler-reserve.test.ts
+  s_6345c425a60fc8::t_f00b0a34c37641 1-2,4-102
+  s_6345c425a60fc8::t_6ebc4d141c9db8 3
+packages/language-server/src/runtime/scheduler.ts
+  s_6345c425a60fc8::t_4cbd530d5b7fb6 1-32,37-40,42-50,63-65,67-69,72-77,80-91,94-96,98-158
+  s_6345c425a60fc8::t_8dab19ad5d9bbc 33-36,41,51-62,66,70-71,78-79,97
+  s_6345c425a60fc8::t_e80546b02e59ef 92-93
+vite.config.ts
+  s_6345c425a60fc8::t_6c76067f89dcf0 14,30
+  s_6345c425a60fc8::t_066271a6692408 16,24-29,31-32
+packages/react-doctor/package.json
+  s_6345c425a60fc8::t_9b1b94dbd101a7 69-70
+  s_6345c425a60fc8::t_d54a1f2566c444 75
+packages/language-server/tests/fixtures/simple-app/package.json
+  s_6345c425a60fc8::t_c36c663e230975 1-9
+packages/language-server/tests/unit/suppress.test.ts
+  s_0be84ea6563668::t_1e448177205818 1-20,24-73
+  s_6345c425a60fc8::t_e80546b02e59ef 21-23
+packages/language-server/tests/unit/lint-cache.test.ts
+  s_6345c425a60fc8::t_ea471ee0c10715 1-34,38,43-45,50-52,56-57,61-63,66-67,70-89
+  s_6345c425a60fc8::t_587feb64d9b612 35
+  s_6345c425a60fc8::t_614474888e39d7 36
+  s_6345c425a60fc8::t_1b5c7c8958babe 37,39-42,47-49,54-55,59-60,65,69
+  s_6345c425a60fc8::t_e33d029d1ba45c 46
+  s_6345c425a60fc8::t_6161717c47201c 53,58
+  s_6345c425a60fc8::t_79791fdd0ea8e6 64,68
+packages/language-server/src/diagnostics/mapper.ts
+  s_6345c425a60fc8::t_0742d1c79f41b8 1
+  s_6345c425a60fc8::t_d2a709709253f4 2-22,34-113,115-123
+  s_6345c425a60fc8::t_1fd28ae10eaec0 23-33
+  s_6345c425a60fc8::t_06350736a271b3 114
+packages/react-doctor/bin/react-doctor.js
+  s_6345c425a60fc8::t_7545aef2d112ad 13-21
+packages/vscode-react-doctor/README.md
+  s_6345c425a60fc8::t_56420990eb074d 1,3-5,7,9-17,19,21-23,25-27,29-30,34-39,41,43-50
+  s_aef925c810c2ac::t_5ff0d5c32de367 2,6,8,18,20,24,28,31-33,40,42
+packages/language-server/src/diagnostics/manager.ts
+  s_6345c425a60fc8::t_2499af2809768f 1-3,5-14,16-74,76-129
+  s_6345c425a60fc8::t_55edb0f944dc73 4
+  s_6345c425a60fc8::t_069b04e209e13f 15
+  s_6345c425a60fc8::t_e80546b02e59ef 75
+packages/language-server/tests/unit/positions.test.ts
+  s_0be84ea6563668::t_734278083d9fd9 1-86
+packages/language-server/src/utils/chunk.ts
+  s_6345c425a60fc8::t_5ccdcbb0958946 1-9
+packages/language-server/tests/fixtures/simple-app/tsconfig.json
+  s_6345c425a60fc8::t_80e7fde9b4237a 1-12
+packages/react-doctor/vite.config.ts
+  s_6345c425a60fc8::t_522824be45c5c5 64-69
+  s_6345c425a60fc8::t_98b600da51cd7a 70-74
+  s_6345c425a60fc8::t_6fe7fdd6c5c75c 140-167
+packages/language-server/tests/unit/scheduler.test.ts
+  s_0be84ea6563668::t_9061ddead18cc4 1-116,129,131-135
+  s_6345c425a60fc8::t_e80546b02e59ef 117-128
+packages/language-server/README.md
+  s_6345c425a60fc8::t_100af6c07498ee 1-35,44-75
+  s_6345c425a60fc8::t_962150e503293a 36-43
+packages/language-server/src/index.ts
+  s_6345c425a60fc8::t_5f8d5aa9f016dd 1-15
+packages/language-server/vite.config.ts
+  s_6345c425a60fc8::t_f074ed0a007ff4 1-6,10-17
+  s_6345c425a60fc8::t_c2cd280456ee7a 7-9
+editors/zed-react-doctor/Cargo.toml
+  s_671756423cae52::t_e8ac263c3227e0 1-15
+packages/language-server/src/utils/compute-config-fingerprint.ts
+  s_6345c425a60fc8::t_1a1121b1c082a2 1-24
+packages/react-doctor/README.md
+  s_6345c425a60fc8::t_446f4b2461d702 40-41,43-47,49-50
+  s_190222a9fbf6ee::t_a08872a42deb00 42,48
+editors/zed-react-doctor/src/lib.rs
+  s_671756423cae52::t_4f12f9cfcc53f3 1-83
+packages/language-server/src/constants.ts
+  s_6345c425a60fc8::t_54c1b1167bfb48 1-3,7-26,57,78-105,108-123
+  s_6345c425a60fc8::t_77621649b0b895 4-6
+  s_6345c425a60fc8::t_2ae253b40b94e0 27-36
+  s_6345c425a60fc8::t_eec51e3f3f2195 37-49,55
+  s_6345c425a60fc8::t_8a296104be1c51 50-54,56
+  s_6345c425a60fc8::t_73536b8af1e8c3 58-70
+  s_6345c425a60fc8::t_62fcfc7abdfc92 71-77
+packages/language-server/tests/unit/mapper.test.ts
+  s_0be84ea6563668::t_f1b53b46fa8cd6 1-55,59-62,64-105
+  s_6345c425a60fc8::t_e80546b02e59ef 56-58,63
+packages/vscode-react-doctor/package.json
+  s_aef925c810c2ac::t_8396ca13057fbe 1-2,6,45-46,67-70,76-79,81,83-84,86-88,94-99,110-111
+  s_6345c425a60fc8::t_e1958e1ba09bfb 3,18,23-26,71-75,80,82,85,100
+  s_6345c425a60fc8::t_0ffe71a6bd7c96 4-5,7-17,19-22,28-34,36-37,39-44,47-66,89-93,101-109
+  s_6345c425a60fc8::t_e80546b02e59ef 27,35,38
+packages/core/src/index.ts
+  s_6345c425a60fc8::t_760e0904548cb4 73
+packages/language-server/src/text/uri.ts
+  s_6345c425a60fc8::t_92564fd9a0e97b 1-20
+.changeset/language-server.md
+  s_6345c425a60fc8::t_62353f3e0838a4 1-4
+  s_6345c425a60fc8::t_72f9f9fca4cc6b 5
+  s_6345c425a60fc8::t_3e8b5cff379580 6-7
+packages/language-server/src/core/project-graph.ts
+  s_6345c425a60fc8::t_08f153274c0f9e 1-55,59-87
+  s_6345c425a60fc8::t_e80546b02e59ef 56-58
+packages/language-server/src/utils/read-diagnostic-data.ts
+  s_6345c425a60fc8::t_27378c3a6cd173 1-18
+packages/language-server/src/types.ts
+  s_6345c425a60fc8::t_3435ebc7a4f73f 1-117,125-160
+  s_6345c425a60fc8::t_42e964925fe683 118-124
+editors/zed-react-doctor/extension.toml
+  s_671756423cae52::t_a7a2f0215dc574 1-11
+docs/editors.md
+  s_190222a9fbf6ee::t_23d342c93a0095 1-33,35-40,44-56,65-73,77-81,87-89,101-103,110-158,160-221,223-332,334-345,347-356,358-359,361-368,370
+  s_6345c425a60fc8::t_0ffe71a6bd7c96 34,41-43,90-99,104-109,222,346,357,360,369
+  s_6345c425a60fc8::t_31538e7f6863c7 57-64
+  s_6345c425a60fc8::t_cf9bde5d48585f 74-76,82-86
+  s_190222a9fbf6ee::t_c0dd5fa62a0e1f 100
+  s_190222a9fbf6ee::t_4f84a086c896ab 159
+  s_6345c425a60fc8::t_7b8afe5934adcb 333
+packages/vscode-react-doctor/.vscodeignore
+  s_aef925c810c2ac::t_40969045af343d 1,3,5-7
+  s_6345c425a60fc8::t_9a6d7b84a7027f 2,4,8
+packages/language-server/tests/lsp-client.ts
+  s_6345c425a60fc8::t_7c8b1debdb4f63 1-69,74-132
+  s_6345c425a60fc8::t_e80546b02e59ef 70-73
+packages/language-server/src/server.ts
+  s_6345c425a60fc8::t_02e2479d786fcf 1,3,5-20,22-38,42-43,46-52,54,58,61-89,91-94,98,100,104-136,161,193-196,198,200,253,260-282,285-298,313,315-322,326,329-335,345-356,369-379,381-387,389-398,405,408-416,420-423,429-438,441-456,468-495,497-503,515-533,535-564,569,571-621,628-656,691-692,694,696-697
+  s_6345c425a60fc8::t_6ae89d13534b7a 2,4
+  s_6345c425a60fc8::t_9ea7065c8a7aa9 21
+  s_6345c425a60fc8::t_df2d329e84c8a6 39-41,45
+  s_6345c425a60fc8::t_d2e959864ac168 44
+  s_6345c425a60fc8::t_f31bb9bafe52ab 53
+  s_6345c425a60fc8::t_3ee346558ee7de 55
+  s_6345c425a60fc8::t_cb756308cbcb8a 56
+  s_6345c425a60fc8::t_d205b3fe23a06e 57
+  s_6345c425a60fc8::t_25c7a716b85978 59
+  s_6345c425a60fc8::t_6f6a86db352e78 60
+  s_6345c425a60fc8::t_1df32b961485c7 90
+  s_6345c425a60fc8::t_dc9a8b206ca3fb 95-96,101-103
+  s_6345c425a60fc8::t_e05ceaf8b83256 97
+  s_6345c425a60fc8::t_9db659366fa262 99
+  s_6345c425a60fc8::t_d9b6773dda7424 137-147,153-160,178-179,183-192,197,199,201-207
+  s_6345c425a60fc8::t_ede1842513bb36 148-152
+  s_6345c425a60fc8::t_3330eb984cbdd4 162-164
+  s_6345c425a60fc8::t_435e349954dc1b 180-182
+  s_6345c425a60fc8::t_3eda4552dea311 208-210
+  s_6345c425a60fc8::t_6a2bd827afd275 211-252,254-259
+  s_6345c425a60fc8::t_272fce539b4c9d 299-301,304
+  s_6345c425a60fc8::t_649fdcbf98cc0c 302-303
+  s_6345c425a60fc8::t_9259e1533f63a8 305,327-328
+  s_6345c425a60fc8::t_a050f5a5f417be 306-312,314
+  s_6345c425a60fc8::t_0e4e1a7c088ab0 323-325,336-340
+  s_6345c425a60fc8::t_3f237e340b919c 341-343
+  s_6345c425a60fc8::t_fd24acaa004a8d 344
+  s_6345c425a60fc8::t_41dc6530cd68c1 357-368
+  s_6345c425a60fc8::t_f587c1a08e7c37 380
+  s_6345c425a60fc8::t_8dcca8f8c7afcb 399,402-404
+  s_6345c425a60fc8::t_76a95d3f59be2e 406
+  s_6345c425a60fc8::t_164987b905ca54 407
+  s_6345c425a60fc8::t_42956d011ffa70 417-419
+  s_6345c425a60fc8::t_d59f01cc1487ac 424-428
+  s_6345c425a60fc8::t_89337eb4d855af 439-440
+  s_6345c425a60fc8::t_17ede27b17a719 496,504-514
+  s_6345c425a60fc8::t_14b77b52dc985b 534
+  s_6345c425a60fc8::t_86dc556e4defb5 624-627
+  s_6345c425a60fc8::t_8a53ee6c5b8f43 657-690,693,695
+packages/language-server/src/core/overlay.ts
+  s_6345c425a60fc8::t_fbd91205b33279 1-3,5-62,64-98
+packages/language-server/src/core/lint-cache.ts
+  s_6345c425a60fc8::t_90e295f6420791 1-5,11-12,15-16,20-36,39,41-47,51-53,59-110,112,114-117,120-129
+  s_6345c425a60fc8::t_b021a6f746b246 6-10
+  s_6345c425a60fc8::t_6ba2cb2ca45029 13-14,17-19
+  s_6345c425a60fc8::t_07fe4f9aa1eb66 37-38,40
+  s_6345c425a60fc8::t_fc25e721d7d85a 48-50
+  s_6345c425a60fc8::t_29b6ee403a23ca 54-58
+  s_6345c425a60fc8::t_5514f93cd46638 111,113,118
+  s_6345c425a60fc8::t_f9bcd50bfbf275 119
+packages/language-server/src/features/code-actions.ts
+  s_6345c425a60fc8::t_0c47e8dc3d6245 1-6,8,15,25-43,52,54-65,67-114,120-122,124-129
+  s_6345c425a60fc8::t_6f6a86db352e78 7
+  s_6345c425a60fc8::t_d4249d63eaa924 9
+  s_6345c425a60fc8::t_a4bd7d6b088aaa 10-14
+  s_6345c425a60fc8::t_467ce3be0af6d9 16-24
+  s_6345c425a60fc8::t_677118a8cf659a 44-49,51,53
+  s_6345c425a60fc8::t_636d53c8077cdc 50,66
+  s_6345c425a60fc8::t_ce77b3cedfc5ff 115-119
+  s_6345c425a60fc8::t_f24ee5ac5d30d4 123
+packages/vscode-react-doctor/src/extension.ts
+  s_6345c425a60fc8::t_a81415043a1f85 1,8,65,69-87,90-95,97-102,109-115,117,123-126,165-166,171,177-183
+  s_aef925c810c2ac::t_32f552aafe3682 2-6,10-11,13-20,57-63,66-68,88-89,96,103-108,116,118-122,143-146,148-150,156,164,184-186
+  s_6345c425a60fc8::t_c7801403594d5a 7,9,12,21-56
+  s_aef925c810c2ac::t_08fdb35cfa31fa 64,127-142
+  s_6345c425a60fc8::t_3b9fe9da4846b0 147,157-163,167-170,172-176
+  s_6345c425a60fc8::t_c2cd280456ee7a 151-155
+packages/language-server/tests/integration/server.test.ts
+  s_6345c425a60fc8::t_d0a0c6fb84b893 1-6,8-35,38-40,42-46,48-49,52,59-112,151-163
+  s_6345c425a60fc8::t_4590dc3ed6a41f 7
+  s_6345c425a60fc8::t_988d4b6fffe6c1 36,41,50-51
+  s_6345c425a60fc8::t_bc6d87627e5a74 37,47,53-58
+  s_6345c425a60fc8::t_682e54ecf6544f 113-118,129-144,148-150
+  s_6345c425a60fc8::t_5fc020955fef31 119-128
+  s_6345c425a60fc8::t_c2cd280456ee7a 145-147
+  s_6345c425a60fc8::t_6c8327de06cde7 164-195
+package.json
+  s_6345c425a60fc8::t_5866dbaa0f315e 16
+  s_6345c425a60fc8::t_e80546b02e59ef 31-34
+packages/language-server/src/features/hover.ts
+  s_6345c425a60fc8::t_33cbed0e4636a2 1-3,5-13,18-46
+  s_6345c425a60fc8::t_77a07dbc9ffaf6 4
+  s_6345c425a60fc8::t_e80546b02e59ef 14-17
+editors/zed-react-doctor/README.md
+  s_671756423cae52::t_e9ff47ed0869fa 1-44
+editors/zed-react-doctor/.gitignore
+  s_671756423cae52::t_f97db2f92f9112 1-2
+packages/core/src/editor-scan.ts
+  s_6345c425a60fc8::t_6d0c023829d581 8
+  s_6345c425a60fc8::t_b14113beba0e24 146-150
+packages/language-server/src/core/scan-runner.ts
+  s_6345c425a60fc8::t_ec0a73d29573ab 1,14,23-26,28-35
+  s_6345c425a60fc8::t_d093d7f9191266 2-13,16-22,27,36-71,83,93,95,107,112-116,160-169,171-177,179-180,182-203,215-235,245-246
+  s_6345c425a60fc8::t_41c4383efcf29c 15
+  s_6345c425a60fc8::t_f10e60abb8b11e 72
+  s_6345c425a60fc8::t_846e80211694dc 73-80,82,84-92,94,96-106,108-111,117-123,127-133,135,137-146,159,170,178,204-207,209-211,213-214,236-244
+  s_6345c425a60fc8::t_d8b6b63ab275db 124-125,136
+  s_6345c425a60fc8::t_1ae9e75499fd9b 126
+  s_6345c425a60fc8::t_3bce3ee35959c4 134
+  s_6345c425a60fc8::t_4003183e8d4004 181
+  s_6345c425a60fc8::t_9daac4f81ffb0b 208
+  s_6345c425a60fc8::t_42d5916d55b9b0 212
+packages/language-server/tests/fixtures/simple-app/src/App.tsx
+  s_6345c425a60fc8::t_b31f69572a55da 1-15
+packages/core/src/rule-metadata.ts
+  s_6345c425a60fc8::t_e80546b02e59ef 1-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "2354bdbf6862144c7f0d66c98576a6b81522f5e8",
+  "prompts": {},
+  "sessions": {
+    "s_0be84ea6563668": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7d7b9300-80fe-427f-bb79-e6e5147bc438",
+        "model": "claude-opus-4-8-thinking-max-fast"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    },
+    "s_190222a9fbf6ee": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "26a354e8-2463-4870-ab6b-0fee1bc6cd82",
+        "model": "claude-opus-4-8-thinking-max-fast"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    },
+    "s_6345c425a60fc8": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "35c2a616-054e-4d23-ba69-0921d1c144bd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    },
+    "s_671756423cae52": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c9f9ce6d-9aff-48b7-bab8-e58b9c49cef6",
+        "model": "claude-opus-4-8-thinking-max-fast"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    },
+    "s_aef925c810c2ac": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f0055451-ceb0-465b-8379-4c141be41c20",
+        "model": "claude-opus-4-8-thinking-max-fast"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

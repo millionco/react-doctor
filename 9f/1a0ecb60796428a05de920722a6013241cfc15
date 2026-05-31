@@ -1,0 +1,21 @@
+packages/core/src/runners/oxlint/spawn-batches.ts
+  s_745d4772d8c75e::t_564314e9c11bd1 117-119
+packages/core/tests/spawn-batches.test.ts
+  s_745d4772d8c75e::t_400865f4070167 2,5-11,36-40,42-53,55-76,79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "9f1a0ecb60796428a05de920722a6013241cfc15",
+  "prompts": {},
+  "sessions": {
+    "s_745d4772d8c75e": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "494d94d0-6e4a-42c2-9e09-47627761e450",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

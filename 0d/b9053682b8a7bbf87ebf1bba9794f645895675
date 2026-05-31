@@ -1,0 +1,23 @@
+packages/core/src/utils/redact-sensitive-text.ts
+  s_7af67a01cef546::t_32f5d11bae5593 37-40
+  s_7af67a01cef546::t_3bfff54e7ba15d 64-66,68
+  s_7af67a01cef546::t_c12165e818ad9a 88,91,93,95,97,99
+packages/core/tests/redact-sensitive-text.test.ts
+  s_7af67a01cef546::t_40dad1ddbe6a3a 36-46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "0db9053682b8a7bbf87ebf1bba9794f645895675",
+  "prompts": {},
+  "sessions": {
+    "s_7af67a01cef546": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f8f88952-c70e-467a-995c-93077d19761e",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

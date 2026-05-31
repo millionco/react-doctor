@@ -1,0 +1,19 @@
+packages/react-doctor/package.json
+  s_48e4836968f8a1::t_985ae7e47236b7 61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "6693229443db69532d4230330a56b6889cc62708",
+  "prompts": {},
+  "sessions": {
+    "s_48e4836968f8a1": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "eed27fb1-b706-4038-8c92-58c013399f18",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

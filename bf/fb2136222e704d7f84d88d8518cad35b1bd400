@@ -1,0 +1,22 @@
+packages/language-server/src/server.ts
+  s_6345c425a60fc8::t_a6d4d7ee482788 430-432
+  s_6345c425a60fc8::t_40b1f946614fb0 89
+  s_6345c425a60fc8::t_db688d5f8319ea 429,433-450
+  s_6345c425a60fc8::t_0de2038d116634 310-311
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "bffb2136222e704d7f84d88d8518cad35b1bd400",
+  "prompts": {},
+  "sessions": {
+    "s_6345c425a60fc8": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "35c2a616-054e-4d23-ba69-0921d1c144bd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

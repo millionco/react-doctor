@@ -1,0 +1,42 @@
+.changeset/fix-dead-code-alias-resolution-and-recipe-urls.md
+  s_cd1d45acfa1ba1::t_c40e47fb005477 1-9
+packages/core/tests/check-dead-code.test.ts
+  s_cd1d45acfa1ba1::t_4ef63b926ec3e4 33-74,78-82,227-242
+  s_cd1d45acfa1ba1::t_be684dd1de9d99 243
+  s_cd1d45acfa1ba1::t_54899c49a126b7 83
+packages/react-doctor/src/cli/utils/diagnostic-grouping.ts
+  s_cd1d45acfa1ba1::t_593e3c8fe0f8cf 61-67
+  s_cd1d45acfa1ba1::t_ee22dc9c6e6fc8 1
+packages/react-doctor/src/cli/utils/build-handoff-payload.ts
+  s_cd1d45acfa1ba1::t_78948415222e23 39-40
+packages/core/src/check-dead-code.ts
+  s_cd1d45acfa1ba1::t_4ef63b926ec3e4 12,444-450
+packages/react-doctor/src/cli/utils/render-diagnostics.ts
+  s_cd1d45acfa1ba1::t_d0d51cb5476207 449-452
+packages/core/tests/has-published-fix-recipe.test.ts
+  s_cd1d45acfa1ba1::t_9f7dfae52733e2 6-8,31-33
+  s_cd1d45acfa1ba1::t_4000c17b3ab311 1-5,9-30,34-35
+packages/core/src/utils/to-canonical-path.ts
+  s_cd1d45acfa1ba1::t_5306eb80028890 1-24
+packages/core/src/index.ts
+  s_cd1d45acfa1ba1::t_6b867027c4a4f8 71
+packages/core/src/utils/has-published-fix-recipe.ts
+  s_cd1d45acfa1ba1::t_dfde6dde2f380d 1-16,18
+  s_cd1d45acfa1ba1::t_9f7dfae52733e2 17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "6c53a555e6c170bbc65772c5d2a2fd10e6cff273",
+  "prompts": {},
+  "sessions": {
+    "s_cd1d45acfa1ba1": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8784e850-f583-4ba6-b015-4d31ea966001",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

@@ -3,7 +3,10 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { describe, expect, it } from "vite-plus/test";
 import type { Diagnostic, ProjectInfo } from "@react-doctor/core";
+import fs from "node:fs";
 import { runInspect, type InspectInput } from "../src/run-inspect.js";
+import { checkExpoProject as checkExpoProjectSrc } from "../src/check-expo-project.js";
+import { readPackageJson as readPackageJsonSrc } from "../src/project-info/read-package-json.js";
 import { Config } from "../src/services/config.js";
 import { DeadCode } from "../src/services/dead-code.js";
 import { Files } from "../src/services/files.js";
@@ -86,6 +89,19 @@ describe("runInspect — expo project checks wiring", () => {
     );
 
     const expoRules = expoRulesOf(output.diagnostics);
+    if (!expoRules.includes("expo-no-cli-dependencies")) {
+      const project = expoProject("~54.0.0");
+      const manifestPath = path.join(EXPO_FIXTURE_DIRECTORY, "package.json");
+      const directCheck = checkExpoProjectSrc(EXPO_FIXTURE_DIRECTORY, project);
+      const srcManifest = readPackageJsonSrc(manifestPath);
+      throw new Error(
+        `DEBUG fixtureDir=${EXPO_FIXTURE_DIRECTORY} exists=${fs.existsSync(manifestPath)} ` +
+          `outputExpoVersion=${output.project.expoVersion} ` +
+          `srcManifestDeps=${JSON.stringify(Object.keys(srcManifest.dependencies ?? {}))} ` +
+          `directCheckRules=${JSON.stringify(directCheck.map((diagnostic) => diagnostic.rule))} ` +
+          `allRules=${JSON.stringify(output.diagnostics.map((diagnostic) => diagnostic.rule))}`,
+      );
+    }
     expect(expoRules).toContain("expo-no-cli-dependencies");
     expect(expoRules).toContain("expo-no-redundant-dependency");
   });

@@ -1,0 +1,21 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security/no-secrets-in-client-code.ts
+  s_98dc427fb6334c::t_9003f236dabf0b 49-50
+packages/oxlint-plugin-react-doctor/src/plugin/constants/security.ts
+  s_98dc427fb6334c::t_ffea50d5e13f72 59-64,66-72,74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "438dc22f63de427a1aead74139320702380c4d73",
+  "prompts": {},
+  "sessions": {
+    "s_98dc427fb6334c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a572e227-007a-4b6d-ae3b-0d882d71f4ef",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

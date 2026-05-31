@@ -442,11 +442,8 @@ const runDeadCodeWorkerWithTimeout = (
 
 export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diagnostic[]> => {
   const { userConfig } = options;
-  // Canonicalize before anything reads the tree: deslop resolves imports
-  // through oxc-resolver (realpath'd) but builds its module graph from
-  // fast-glob (symlink-preserving), so a symlinked root drops every
-  // import edge and mis-flags alias-imported files as unused. See
-  // `toCanonicalPath`.
+  // Canonicalize up front so the deslop graph and its resolver share one
+  // path space (see `toCanonicalPath` for why a symlinked root breaks it).
   const rootDirectory = toCanonicalPath(options.rootDirectory);
   if (!fs.existsSync(path.join(rootDirectory, "package.json"))) return [];
 

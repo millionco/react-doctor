@@ -576,8 +576,10 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
   // is gated with `requires: ["react-compiler"]` so it ONLY fires once
   // the project ships with React Compiler. Without the compiler, manual
   // `useMemo` / `useCallback` / `memo()` are still legitimate perf
-  // tools — the gate must keep the rule out of the default config.
-  it("enables react-compiler-no-manual-memoization only when React Compiler is detected", () => {
+  // tools — the gate must keep the rule out of the default config. With
+  // the compiler it ships as a `warn` (redundant-memo cleanup is hidden in
+  // the default report); the `compiler-cleanup` bucket re-enables errors.
+  it("ships react-compiler-no-manual-memoization as a warning, gated on React Compiler", () => {
     const ruleKey = "react-doctor/react-compiler-no-manual-memoization";
 
     const withoutCompiler = createOxlintConfig({
@@ -590,7 +592,14 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
       pluginPath: "/tmp/react-doctor-plugin.js",
       project: buildTestProject({ rootDirectory: "/tmp/test", hasReactCompiler: true }),
     });
-    expect(withCompiler.rules[ruleKey]).toBe("error");
+    expect(withCompiler.rules[ruleKey]).toBe("warn");
+
+    const withCompilerCleanupBucket = createOxlintConfig({
+      pluginPath: "/tmp/react-doctor-plugin.js",
+      project: buildTestProject({ rootDirectory: "/tmp/test", hasReactCompiler: true }),
+      severityControls: { buckets: { "compiler-cleanup": "error" } },
+    });
+    expect(withCompilerCleanupBucket.rules[ruleKey]).toBe("error");
   });
 
   // The three noisy upstream rules ship `defaultEnabled: false` —

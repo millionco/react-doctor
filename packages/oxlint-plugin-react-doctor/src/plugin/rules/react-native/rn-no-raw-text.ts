@@ -11,6 +11,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
+import { collectTextWrapperComponents } from "./utils/collect-text-wrapper-components.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -106,15 +107,38 @@ export const rnNoRawText = defineRule<Rule>({
     // in a WebView as DOM rather than on React Native primitives.
     let isDomComponentFile = false;
 
+    // Auto-detected in-file text wrappers — components whose returned root is
+    // a real `<Text>` (so they forward children into text). Populated from the
+    // program on first visit so usage anywhere in the file (declared before or
+    // after) is seen. Manual `textComponents` / `rawTextWrapperComponents`
+    // overrides are applied separately in the core diagnostic pipeline
+    // (config-driven), so a project can name cross-file wrappers this
+    // single-file pass can't see.
+    let autoDetectedWrappers: ReadonlySet<string> = new Set();
+
     return {
       Program(programNode: EsTreeNodeOfType<"Program">) {
         isDomComponentFile = hasDirective(programNode, "use dom");
+        autoDetectedWrappers = collectTextWrapperComponents(programNode, isTextHandlingComponent);
       },
       JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
         if (isDomComponentFile) return;
 
         const elementName = resolveTextBoundaryName(node.openingElement);
-        if (elementName && isTextHandlingComponent(elementName)) return;
+
+        // A real text component (name heuristic) or an in-file forwarder we
+        // verified renders into a `<Text>` root renders its children inside
+        // text — so raw text passed to it is safe, INCLUDING mixed children
+        // (`<Banner><Icon/> hi</Banner>`), because the `<Text>` root wraps
+        // whatever children it receives. The string-only contract only applies
+        // to config-named `rawTextWrapperComponents` (handled in core), where
+        // we can't see the implementation.
+        if (
+          elementName &&
+          (isTextHandlingComponent(elementName) || autoDetectedWrappers.has(elementName))
+        ) {
+          return;
+        }
 
         // `Platform.OS === "web"` branches deliberately render web markup
         // (raw text, div/span trees, etc.) when the app is bundled by

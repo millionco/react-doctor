@@ -66,6 +66,7 @@ export * from "./run-oxlint.js";
 export * from "./summarize-diagnostics.js";
 export * from "./validate-config-types.js";
 export * from "./utils/build-rule-prompt-url.js";
+export * from "./utils/classify-package-role.js";
 export * from "./utils/dedupe-diagnostics.js";
 export * from "./utils/group-by.js";
 export * from "./utils/match-glob-pattern.js";

@@ -72,7 +72,12 @@ const resolveRemovalMessageForCallee = (callee: EsTreeNode): string | null => {
 export const reactCompilerNoManualMemoization = defineRule<Rule>({
   id: "react-compiler-no-manual-memoization",
   title: "Redundant manual memoization",
-  severity: "error",
+  // Redundant-memo cleanup is correctness-neutral: the code already works,
+  // the compiler just makes the `useMemo` / `useCallback` / `memo` redundant.
+  // On a compiler-enabled codebase that's hundreds of low-priority hits, so
+  // it ships as a warning (hidden in the default report). Opt back into
+  // errors with the `compiler-cleanup` severity bucket.
+  severity: "warn",
   requires: ["react-compiler"],
   recommendation:
     "Delete the `useMemo` / `useCallback` / `memo` call and use the plain value or component. React Compiler caches it for you.",

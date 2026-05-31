@@ -56,6 +56,23 @@ export type RuleSeverityOverride = "error" | "warn" | "off";
 export interface RuleSeverityControls {
   rules?: Record<string, RuleSeverityOverride>;
   categories?: Record<string, RuleSeverityOverride>;
+  /**
+   * Severity overrides keyed by a named rule *bucket* — a curated family of
+   * rules that share a gating story rather than a category. The only bucket
+   * today is `"compiler-cleanup"` (the redundant-memoization rule that ships
+   * as a warning once React Compiler is detected); setting it to `"error"`
+   * re-enables strictness. A per-rule override still wins over a bucket.
+   */
+  buckets?: SeverityBuckets;
+}
+
+/**
+ * Closed set of severity buckets. Spelled out (rather than
+ * `Record<string, …>`) so an unknown/typo'd bucket key is a type error
+ * instead of a silent no-op.
+ */
+export interface SeverityBuckets {
+  "compiler-cleanup"?: RuleSeverityOverride;
 }
 
 export interface SurfaceControls {
@@ -259,6 +276,20 @@ export interface ReactDoctorConfig {
    * single category, use `ignore.tags` instead.
    */
   categories?: Record<string, RuleSeverityOverride>;
+  /**
+   * Per-bucket severity map. Buckets are curated rule families with a
+   * shared gating story (not categories). Today the only bucket is
+   * `"compiler-cleanup"`: the redundant-memoization rule
+   * (`react-compiler-no-manual-memoization`) that ships as a warning once
+   * React Compiler is detected. Set it to `"error"` to re-enable strictness.
+   *
+   * ```json
+   * { "buckets": { "compiler-cleanup": "error" } }
+   * ```
+   *
+   * A per-rule override in `rules` still wins over a bucket entry.
+   */
+  buckets?: SeverityBuckets;
   /**
    * User-defined oxlint plugins to load alongside the built-in
    * `react-doctor` plugin. Each entry is either:

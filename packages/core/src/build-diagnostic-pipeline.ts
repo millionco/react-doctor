@@ -12,6 +12,8 @@ import { compileIgnoredFilePatterns, isFileIgnoredByPatterns } from "./is-ignore
 import { isTestFilePath } from "./is-test-file.js";
 import { resolveRuleSeverityOverride } from "./resolve-rule-severity-override.js";
 import { isSameRuleKey } from "./rule-key-aliases.js";
+import { APP_ONLY_RULE_KEYS } from "./constants.js";
+import { classifyPackageRole } from "./utils/classify-package-role.js";
 import { resolveCandidateReadPath } from "./utils/resolve-candidate-read-path.js";
 import {
   isInsideStringOnlyWrapper,
@@ -86,6 +88,21 @@ export const buildDiagnosticPipeline = (
   const hasRawTextWrappers = rawTextWrapperComponentNames.size > 0;
   const fileLinesCache = new Map<string, string[] | null>();
   const testFileCache = new Map<string, boolean>();
+  const libraryFileCache = new Map<string, boolean>();
+
+  // App-only rules (`static-components`, `no-render-prop-children`) describe
+  // patterns that are noise in published libraries — silence them on files
+  // confidently classified as `library`. Cached per diagnostic path; the
+  // classifier itself memoizes by package directory.
+  const isLibraryFile = (filePath: string): boolean => {
+    let cached = libraryFileCache.get(filePath);
+    if (cached === undefined) {
+      const absolutePath = resolveCandidateReadPath(rootDirectory, filePath);
+      cached = classifyPackageRole(absolutePath) === "library";
+      libraryFileCache.set(filePath, cached);
+    }
+    return cached;
+  };
 
   const getFileLines = (filePath: string): string[] | null => {
     const cached = fileLinesCache.get(filePath);
@@ -116,6 +133,16 @@ export const buildDiagnosticPipeline = (
   const isRuleIgnored = (ruleIdentifier: string): boolean => {
     for (const ignored of ignoredRules) {
       if (isSameRuleKey(ignored, ruleIdentifier)) return true;
+    }
+    return false;
+  };
+
+  // Alias-aware membership for the app-only set (mirrors `isRuleIgnored`): a
+  // future alias of `static-components` / `no-render-prop-children` is still
+  // caught by the library gate, where a raw `Set.has` would miss it.
+  const isAppOnlyRule = (ruleIdentifier: string): boolean => {
+    for (const appOnlyRuleKey of APP_ONLY_RULE_KEYS) {
+      if (isSameRuleKey(appOnlyRuleKey, ruleIdentifier)) return true;
     }
     return false;
   };
@@ -159,6 +186,14 @@ export const buildDiagnosticPipeline = (
         if (explicitSeverityOverride !== undefined) {
           current = restampSeverity(current, explicitSeverityOverride);
         }
+      }
+
+      // App-only rules stay silent on library files unless the user opted the
+      // rule in explicitly (an explicit severity is a deliberate "I want this
+      // here" that beats the library default).
+      if (explicitSeverityOverride === undefined) {
+        const ruleKey = `${current.plugin}/${current.rule}`;
+        if (isAppOnlyRule(ruleKey) && isLibraryFile(current.filePath)) return null;
       }
 
       // Warnings are hidden by default. An explicit `"warn"` override

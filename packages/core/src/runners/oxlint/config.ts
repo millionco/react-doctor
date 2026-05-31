@@ -6,6 +6,7 @@ import reactDoctorPlugin, {
 import type { OxlintRuleSeverity } from "oxlint-plugin-react-doctor";
 import type { ProjectInfo, RuleSeverityControls } from "../../types/index.js";
 import { resolveRuleSeverityOverride } from "../../resolve-rule-severity-override.js";
+import { COMPILER_CLEANUP_BUCKET, COMPILER_CLEANUP_RULE_KEYS } from "../../constants.js";
 import { buildCapabilities, shouldEnableRule } from "./capabilities.js";
 import { filterRulesToAvailable, resolveReactHooksJsPlugin } from "./plugin-resolution.js";
 import type { JsPluginEntry, ResolvedUserPlugin } from "./plugin-resolution.js";
@@ -33,13 +34,28 @@ const resolveSettingsRootDirectory = (rootDirectory: string): string => {
   return fs.realpathSync(rootDirectory);
 };
 
+// The `compiler-cleanup` bucket override applies to its rule family only when
+// the user hasn't pinned that exact rule individually (a per-rule override
+// always wins). Returns `undefined` when the rule isn't in the family or no
+// bucket override is configured.
+const resolveCompilerCleanupBucketSeverity = (
+  ruleKey: string,
+  severityControls: RuleSeverityControls | undefined,
+): "error" | "warn" | "off" | undefined => {
+  if (!COMPILER_CLEANUP_RULE_KEYS.has(ruleKey)) return undefined;
+  return severityControls?.buckets?.[COMPILER_CLEANUP_BUCKET];
+};
+
 const applyRuleSeverityControls = (
   rules: Record<string, OxlintRuleSeverity>,
   severityControls: RuleSeverityControls | undefined,
 ): Record<string, OxlintRuleSeverity> => {
   const enabledRules: Record<string, OxlintRuleSeverity> = {};
   for (const [ruleKey, defaultSeverity] of Object.entries(rules)) {
-    const severity = resolveRuleSeverityOverride({ ruleKey }, severityControls) ?? defaultSeverity;
+    const severity =
+      resolveRuleSeverityOverride({ ruleKey }, severityControls) ??
+      resolveCompilerCleanupBucketSeverity(ruleKey, severityControls) ??
+      defaultSeverity;
     if (severity === "off") continue;
     enabledRules[ruleKey] = severity;
   }
@@ -115,7 +131,10 @@ export const createOxlintConfig = ({
     // turns it on via `severityControls`. Users can still get the rule
     // by setting its severity to `"warn"` or `"error"` in config.
     if (rule.defaultEnabled === false && explicitSeverity === undefined) continue;
-    const severity = explicitSeverity ?? rule.severity;
+    const severity =
+      explicitSeverity ??
+      resolveCompilerCleanupBucketSeverity(registryEntry.key, severityControls) ??
+      rule.severity;
     if (severity === "off") continue;
     enabledReactDoctorRules[registryEntry.key] = severity;
   }

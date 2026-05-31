@@ -209,6 +209,32 @@ export const DIAGNOSTIC_CATEGORY_BUCKETS = [
   "Maintainability",
 ] as const;
 
+// Rules whose heuristic only makes sense in application code. A published
+// library deliberately exposes flexible primitives (components built in
+// render to capture closures, many `render*` slots for composition), so these
+// fire on `app` / `unknown` files but stay silent on confidently-classified
+// `library` files (see `classify-package-role.ts`). Users can still force one
+// on for a library by setting its severity explicitly in config.
+export const APP_ONLY_RULE_KEYS: ReadonlySet<string> = new Set([
+  "react-hooks-js/static-components",
+  "react-doctor/no-render-prop-children",
+]);
+
+// The `compiler-cleanup` severity bucket: redundant-memoization rules that
+// only fire once React Compiler is detected and ship as warnings by default
+// (hidden in the default report). Setting `buckets: { "compiler-cleanup":
+// "error" }` re-enables full strictness.
+//
+// Only the local `react-compiler-no-manual-memoization` rule belongs here —
+// it flags `useMemo` / `useCallback` / `memo` the compiler makes redundant
+// (correctness-neutral cleanup). The external `react-hooks-js/*` compiler
+// rules deliberately stay `error`: each marks code the compiler could NOT
+// optimize, which is a real perf regression, not cleanup.
+export const COMPILER_CLEANUP_BUCKET = "compiler-cleanup";
+export const COMPILER_CLEANUP_RULE_KEYS: ReadonlySet<string> = new Set([
+  "react-doctor/react-compiler-no-manual-memoization",
+]);
+
 // How many of the highest-priority error rules to surface in the
 // "Top N errors you should fix" header above the category breakdown.
 export const TOP_ERRORS_DISPLAY_COUNT = 3;

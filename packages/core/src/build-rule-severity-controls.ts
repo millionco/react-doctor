@@ -13,9 +13,16 @@ export const buildRuleSeverityControls = (
   config: ReactDoctorConfig | null | undefined,
 ): RuleSeverityControls | undefined => {
   if (!config) return undefined;
-  if (config.rules === undefined && config.categories === undefined) return undefined;
+  if (
+    config.rules === undefined &&
+    config.categories === undefined &&
+    config.buckets === undefined
+  ) {
+    return undefined;
+  }
   return {
     ...(config.rules !== undefined ? { rules: config.rules } : {}),
     ...(config.categories !== undefined ? { categories: config.categories } : {}),
+    ...(config.buckets !== undefined ? { buckets: config.buckets } : {}),
   };
 };

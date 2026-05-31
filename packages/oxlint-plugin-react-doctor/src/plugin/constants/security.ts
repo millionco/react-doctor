@@ -56,37 +56,22 @@ export const SECRET_PATTERNS = [
   /^sk-[a-zA-Z0-9]{32,}$/,
 ];
 
-// Public, client-safe keys that vendors *design* to ship in the browser
-// bundle. Each carries a non-secret, type-identifying prefix that is
-// distinct from the same vendor's secret key — RevenueCat public
-// `appl_`/`goog_`/`amzn_`/`strp_` vs secret `sk_`; Stripe/Clerk
-// publishable `pk_` vs secret `sk_`; Supabase `sb_publishable_` vs
-// `sb_secret_`; Mapbox public `pk.` vs secret `sk.`; PostHog project
-// `phc_` vs personal `phx_`; Stytch `public-token-` vs `secret-`. A
-// literal matching one of these is intentionally publishable, so the
-// rule must not flag it as a leaked secret via either the secret-shape
-// patterns or the variable-name heuristic. Anchored at the start and
-// written with linear-time constructs (no nested quantifiers) so a long
-// literal can't trigger catastrophic backtracking; every prefix is
-// unique to a vendor's *public* key and never collides with that
-// vendor's secret shape.
-//
-// Intentionally excluded — ambiguous formats that can be public OR
-// sensitive depending on configuration, so flagging stays the safe
-// default: Google/Firebase browser keys (`AIza…`, the same shape as
-// unrestricted server keys) and bare Supabase JWTs (`eyJ…`, whose public
-// `anon` and secret `service_role` variants are indistinguishable by
-// shape; the new `sb_publishable_` format above is the safe opt-in).
+// Public, client-safe keys designed to ship in the browser, each with a
+// prefix distinct from the same vendor's secret key (RevenueCat `appl_`
+// vs `sk_`, Supabase `sb_publishable_` vs `sb_secret_`, …); a literal
+// matching one must never be flagged. Ambiguous shapes are omitted so they
+// stay flagged: Google `AIza…` (also unrestricted server keys) and Supabase
+// `anon`/`service_role` JWTs (`eyJ…`, indistinguishable by shape).
 export const PUBLIC_CLIENT_KEY_PATTERNS = [
-  /^appl_/, // RevenueCat public SDK key (Apple)
-  /^goog_/, // RevenueCat public SDK key (Google)
-  /^amzn_/, // RevenueCat public SDK key (Amazon)
-  /^strp_/, // RevenueCat public SDK key (Stripe)
-  /^pk_(?:live|test)_/, // Stripe / Clerk publishable key
-  /^sb_publishable_/, // Supabase publishable key (new format)
-  /^phc_/, // PostHog project (client) API key
+  /^appl_/, // RevenueCat (Apple)
+  /^goog_/, // RevenueCat (Google)
+  /^amzn_/, // RevenueCat (Amazon)
+  /^strp_/, // RevenueCat (Stripe)
+  /^pk_(?:live|test)_/, // Stripe / Clerk publishable
+  /^sb_publishable_/, // Supabase publishable
+  /^phc_/, // PostHog project key
   /^public-token-(?:live|test)-/, // Stytch public token
-  /^pk\.eyJ/, // Mapbox public access token (pk. + JWT)
+  /^pk\.eyJ/, // Mapbox public token
 ];
 
 export const SECRET_VARIABLE_PATTERN = /(?:api_?key|secret|token|password|credential|auth)/i;

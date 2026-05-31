@@ -46,13 +46,8 @@ export const noSecretsInClientCode = defineRule<Rule>({
         const variableName = node.id.name;
         const literalValue = node.init.value;
 
-        // Known public, client-safe keys (RevenueCat `appl_`, Stripe/Clerk
-        // publishable `pk_`, Supabase `sb_publishable_`, Mapbox `pk.`,
-        // PostHog `phc_`, Stytch `public-token-`) are designed to ship in the
-        // browser bundle. Short-circuit before both detectors so an
-        // intentionally-publishable literal is never reported as a leaked
-        // secret — neither the variable-name heuristic nor the secret-shape
-        // patterns should fire on it.
+        // Public, client-safe keys ship in the browser by design; skip
+        // them before either detector can flag them.
         if (PUBLIC_CLIENT_KEY_PATTERNS.some((pattern) => pattern.test(literalValue))) {
           return;
         }

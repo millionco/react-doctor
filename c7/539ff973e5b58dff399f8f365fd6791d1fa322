@@ -1,0 +1,23 @@
+packages/react-doctor/package.json
+  s_7d4a0530269c26::t_2974055c98802c 62
+pnpm-lock.yaml
+  ai_agent 30-32,137-138,2619-2622,2858-2861,2892-2895,2965-2968,3056-3059,3203-3206,3380-3384,5648-5653,5838-5839,5869-5870,5937-5938,6110-6114,6257-6258,6419-6428
+package.json
+  s_7d4a0530269c26::t_2974055c98802c 28-29,37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "c7539ff973e5b58dff399f8f365fd6791d1fa322",
+  "prompts": {},
+  "sessions": {
+    "s_7d4a0530269c26": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d8b852d7-ebf9-4da1-b9b1-3aafd929ee23",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

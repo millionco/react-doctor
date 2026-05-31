@@ -152,4 +152,19 @@ describe("app-only rule gating in the diagnostic pipeline", () => {
     );
     expect(result).toHaveLength(1);
   });
+
+  // Bugbot #614: a broad `categories` bump is NOT a deliberate per-rule opt-in,
+  // so it must not leak app-only rules back into a published library.
+  it("still drops static-components on a library when only a category override is set", () => {
+    const packageDir = path.join(tempRoot, "gate-library-category", "packages", "ui");
+    writeManifest(packageDir, { name: "@scope/ui3", exports: { ".": "./index.js" } });
+    writeSource(path.join(packageDir, "src", "Button.tsx"));
+    const result = mergeAndFilterDiagnostics(
+      [buildDiagnostic({ filePath: "src/Button.tsx", category: "Maintainability" })],
+      packageDir,
+      { categories: { Maintainability: "error" } },
+      createNodeReadFileLinesSync(packageDir),
+    );
+    expect(result).toHaveLength(0);
+  });
 });

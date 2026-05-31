@@ -176,8 +176,14 @@ export const buildDiagnosticPipeline = (
 
       let current = diagnostic;
       let explicitSeverityOverride: RuleSeverityOverride | undefined;
+      // A *per-rule* override (vs. a broad `categories` bump) — the only signal
+      // that should re-enable an app-only rule on a library file.
+      let explicitRuleOverride: RuleSeverityOverride | undefined;
       if (severityControls) {
         const { ruleKey, category } = getDiagnosticRuleIdentity(current);
+        // No `category` → resolves against `rules` (+ aliases) only, ignoring
+        // any matching `categories` entry.
+        explicitRuleOverride = resolveRuleSeverityOverride({ ruleKey }, severityControls);
         explicitSeverityOverride = resolveRuleSeverityOverride(
           { ruleKey, category },
           severityControls,
@@ -189,9 +195,11 @@ export const buildDiagnosticPipeline = (
       }
 
       // App-only rules stay silent on library files unless the user opted the
-      // rule in explicitly (an explicit severity is a deliberate "I want this
-      // here" that beats the library default).
-      if (explicitSeverityOverride === undefined) {
+      // rule in explicitly. Only a per-rule override counts: a broad category
+      // bump (e.g. `categories: { Maintainability: "error" }`) is not a
+      // deliberate "I want static-components in my library" and must not leak
+      // these rules back into published packages.
+      if (explicitRuleOverride === undefined) {
         const ruleKey = `${current.plugin}/${current.rule}`;
         if (isAppOnlyRule(ruleKey) && isLibraryFile(current.filePath)) return null;
       }

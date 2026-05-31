@@ -30,7 +30,6 @@ export interface ResolvedScanTarget {
   readonly didRedirectViaRootDir: boolean;
 }
 
-
 /**
  * The canonical entry-point translation shared by every public shell
  * (`inspect()`, `diagnose()`, and the CLI's `inspectAction`):

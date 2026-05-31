@@ -13,6 +13,13 @@ export const rnNoInlineFlatlistRenderitem = defineRule<Rule>({
   severity: "warn",
   recommendation:
     "Extract renderItem to a named function or wrap in useCallback to avoid re-creating on every render",
+  triage: {
+    why: "Virtualized list props are compared by reference across renders.",
+    impact:
+      "A fresh renderItem function can force list internals and memoized rows to do unnecessary work.",
+    effort: "low",
+    confidence: "medium",
+  },
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "renderItem") return;

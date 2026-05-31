@@ -65,9 +65,16 @@ export const reduxUseselectorReturnsNewCollection = defineRule<Rule>({
   id: "redux-useselector-returns-new-collection",
   severity: "warn",
   category: "Performance",
+  tags: ["state-management"],
   disabledBy: ["react-compiler"],
   recommendation:
     "Return a primitive, split into multiple useSelector calls, or pass `shallowEqual` from `react-redux` as the second argument.",
+  triage: {
+    why: "React Redux compares selector results by reference unless you pass an equality function.",
+    impact: "Fresh objects or arrays make the component re-render on every store update.",
+    effort: "low",
+    confidence: "high",
+  },
   create: (context: RuleContext) => {
     let aliases: ReadonlySet<string> = new Set<string>();
     return {

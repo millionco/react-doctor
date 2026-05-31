@@ -149,9 +149,17 @@ export const reduxUseselectorInlineDerivation = defineRule<Rule>({
   id: "redux-useselector-inline-derivation",
   severity: "warn",
   category: "Performance",
+  tags: ["state-management"],
   disabledBy: ["react-compiler"],
   recommendation:
     "Select the raw slice and derive with `useMemo`, or use `createSelector` from `reselect`.",
+  triage: {
+    why: "React Redux re-runs the selector on store updates and compares the returned value by reference.",
+    impact:
+      "Inline collection derivation returns a fresh reference and can re-render the screen even when the underlying slice did not change.",
+    effort: "medium",
+    confidence: "high",
+  },
   create: (context: RuleContext) => {
     let aliases: ReadonlySet<string> = new Set<string>();
     return {

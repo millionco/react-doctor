@@ -69,6 +69,13 @@ export const rnPressableSharedValueMutation = defineRule<Rule>({
   severity: "warn",
   recommendation:
     "Wrap in <GestureDetector gesture={Gesture.Tap()...}> so the press animation runs on the UI thread instead of bouncing across the JS bridge",
+  triage: {
+    why: "Press feedback should stay on the Reanimated UI thread instead of bouncing through JS.",
+    impact:
+      "JS-thread shared-value writes in press handlers can make touch feedback stutter on real devices.",
+    effort: "medium",
+    confidence: "medium",
+  },
   create: (context: RuleContext) => {
     const sharedValueBindingsByComponent: Array<Set<string>> = [];
 

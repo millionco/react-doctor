@@ -79,6 +79,13 @@ export const rnListCallbackPerRow = defineRule<Rule>({
   severity: "warn",
   recommendation:
     "Hoist the handler with useCallback at list scope and pass the row id as a primitive prop, so the row's memo() shallow-compare actually hits",
+  triage: {
+    why: "Virtualized lists render many rows, and each inline row handler is a fresh function.",
+    impact:
+      "Fresh per-row closures defeat memoized row components and can add visible scroll or tap jank.",
+    effort: "medium",
+    confidence: "medium",
+  },
   create: (context: RuleContext) => {
     const inspect = (node: EsTreeNode): void => {
       if (!isRenderItemFunction(node)) return;

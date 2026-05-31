@@ -53,6 +53,35 @@ describe("rn-no-raw-text", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does NOT flag raw text inside function declaration Text wrappers", () => {
+    const code = `
+      function Copy({ children }) {
+        return <Text>{children}</Text>;
+      }
+      const App = () => <View><Copy>Hello</Copy></View>;
+    `;
+    const result = runRule(rnNoRawText, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does NOT flag raw text inside conditional Text wrappers", () => {
+    const code = `
+      const Copy = ({ children, hidden }) => hidden ? null : <Text>{children}</Text>;
+      const App = () => <View><Copy>Hello</Copy></View>;
+    `;
+    const result = runRule(rnNoRawText, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does NOT flag raw text inside logical Text wrappers", () => {
+    const code = `
+      const Copy = ({ children, visible }) => visible && <Text>{children}</Text>;
+      const App = () => <View><Copy>Hello</Copy></View>;
+    `;
+    const result = runRule(rnNoRawText, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags raw text inside same-file non-Text wrapper components", () => {
     const code = `
       const Card = ({ children }) => <View>{children}</View>;

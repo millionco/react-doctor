@@ -1,0 +1,19 @@
+package.json
+  s_6345c425a60fc8::t_d8057e2d38d956 56-60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "fb951ac24a480188a9b1d4af43568715eb185af1",
+  "prompts": {},
+  "sessions": {
+    "s_6345c425a60fc8": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "35c2a616-054e-4d23-ba69-0921d1c144bd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

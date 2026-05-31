@@ -33,6 +33,17 @@ describe("redactSensitiveText", () => {
     expect(redactSensitiveText(`ghp_${"b".repeat(36)}`)).toBe(`ghp_${REDACTED_PLACEHOLDER}`);
   });
 
+  it("masks the whole token when it is longer than the canonical length (no suffix leak)", () => {
+    // npm tokens are canonically `npm_` + 36 chars; an over-long body must
+    // be masked whole rather than leaving a trailing suffix visible.
+    const longNpm = `npm_${"a1B2c3D4".repeat(6)}`;
+    expect(longNpm.length).toBeGreaterThan("npm_".length + 36);
+    expect(redactSensitiveText(longNpm)).toBe(`npm_${REDACTED_PLACEHOLDER}`);
+
+    const longShopify = `shpat_${"a1b2c3d4".repeat(6)}`;
+    expect(redactSensitiveText(longShopify)).toBe(`shpat_${REDACTED_PLACEHOLDER}`);
+  });
+
   it("redacts an AWS access key id but keeps the AKIA prefix", () => {
     expect(redactSensitiveText("key AKIAIOSFODNN7EXAMPLE found")).toBe(
       `key AKIA${REDACTED_PLACEHOLDER} found`,

@@ -34,7 +34,10 @@ const KEEP_PREFIX = `$1${REDACTED_PLACEHOLDER}`;
 // quantifiers) so a pathological message can't trigger catastrophic
 // backtracking. Structural/unknown-format secrets with no meaningful
 // prefix (PEM, JWT, credentialed URLs, Bearer values, emails, and the
-// generic sweep) are masked whole.
+// generic sweep) are masked whole. Token-body lengths are open-ended
+// (`{N,}`, not `{N}`): a credential echoed longer than its canonical
+// length must be masked whole, never leaving a trailing suffix the
+// generic sweep is too short to catch.
 const KNOWN_SECRET_RULES: readonly RedactionRule[] = [
   // PEM private key block (RSA / EC / OPENSSH / PGP / plain). `[A-Z ]*`
   // is a single linear class; the lazy body is bounded by the END marker.
@@ -58,8 +61,11 @@ const KNOWN_SECRET_RULES: readonly RedactionRule[] = [
     replacement: REDACTED_PLACEHOLDER,
   },
   // AWS access key id (all key-class prefixes, incl. temporary `ASIA`).
+  // Length is open-ended (`{16,}`) rather than the canonical 16 so an
+  // over-long run of key characters is masked whole instead of leaving a
+  // trailing suffix that the generic sweep is too short to catch.
   {
-    pattern: /\b(AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA|A3T[A-Z0-9])[0-9A-Z]{16}/g,
+    pattern: /\b(AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA|A3T[A-Z0-9])[0-9A-Z]{16,}/g,
     replacement: KEEP_PREFIX,
   },
   // GitHub tokens: classic/oauth/user/server/refresh (`gh[pousr]_`) and
@@ -79,18 +85,18 @@ const KNOWN_SECRET_RULES: readonly RedactionRule[] = [
   // OpenAI / Anthropic style keys (`sk-`, `sk-proj-`, `sk-ant-…`).
   { pattern: /\b(sk-(?:proj-|ant-)?)[A-Za-z0-9_-]{20,}/g, replacement: KEEP_PREFIX },
   // Google API key and OAuth access token.
-  { pattern: /\b(AIza)[0-9A-Za-z_-]{35}/g, replacement: KEEP_PREFIX },
+  { pattern: /\b(AIza)[0-9A-Za-z_-]{35,}/g, replacement: KEEP_PREFIX },
   { pattern: /\b(ya29\.)[0-9A-Za-z_-]{20,}/g, replacement: KEEP_PREFIX },
   // npm automation/publish token.
-  { pattern: /\b(npm_)[A-Za-z0-9]{36}/g, replacement: KEEP_PREFIX },
+  { pattern: /\b(npm_)[A-Za-z0-9]{36,}/g, replacement: KEEP_PREFIX },
   // SendGrid API key.
-  { pattern: /\b(SG\.)[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}/g, replacement: KEEP_PREFIX },
+  { pattern: /\b(SG\.)[A-Za-z0-9_-]{22,}\.[A-Za-z0-9_-]{43,}/g, replacement: KEEP_PREFIX },
   // Twilio API key SID.
-  { pattern: /\b(SK)[0-9a-fA-F]{32}/g, replacement: KEEP_PREFIX },
+  { pattern: /\b(SK)[0-9a-fA-F]{32,}/g, replacement: KEEP_PREFIX },
   // DigitalOcean personal access / OAuth token.
-  { pattern: /\b(dop_v1_)[a-f0-9]{64}/g, replacement: KEEP_PREFIX },
+  { pattern: /\b(dop_v1_)[a-f0-9]{64,}/g, replacement: KEEP_PREFIX },
   // Shopify access tokens (admin/custom/private/shared-secret).
-  { pattern: /\b(shp(?:at|ca|pa|ss)_)[a-fA-F0-9]{32}/g, replacement: KEEP_PREFIX },
+  { pattern: /\b(shp(?:at|ca|pa|ss)_)[a-fA-F0-9]{32,}/g, replacement: KEEP_PREFIX },
   // Square access / refresh token.
   { pattern: /\b(sq0[a-z]{3}-)[0-9A-Za-z_-]{22,}/g, replacement: KEEP_PREFIX },
   // Telegram bot token (`<id>:AA<secret>`). The `AA` anchor keeps the

@@ -1,0 +1,30 @@
+packages/language-server/tests/unit/manager.test.ts
+  s_6345c425a60fc8::t_c7f87552bebc6d 90-114
+  s_6345c425a60fc8::t_2b997d1a940c6d 4
+packages/language-server/src/constants.ts
+  s_6345c425a60fc8::t_aefab5f0ea1c5c 128-130
+packages/language-server/src/server.ts
+  s_6345c425a60fc8::t_79643726b587e5 457-460,467
+  s_6345c425a60fc8::t_34e7f1928d8d68 180-184
+  s_6345c425a60fc8::t_df41b495ba8669 177,461-466
+package.json
+  s_6345c425a60fc8::t_df41b495ba8669 12-14,49-53
+packages/language-server/src/diagnostics/manager.ts
+  s_6345c425a60fc8::t_4bc369fb1bfd08 124-143
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "05227c6b58a037a4c3674ca072fc96043deacc4d",
+  "prompts": {},
+  "sessions": {
+    "s_6345c425a60fc8": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "35c2a616-054e-4d23-ba69-0921d1c144bd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

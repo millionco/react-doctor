@@ -25,7 +25,7 @@ const program = new Command()
     "--no-dead-code",
     "skip dead-code analysis (unused files / exports / dependencies, circular imports)",
   )
-  .option("--verbose", "show every rule and per-file details (default shows top 3 rules)")
+  .option("--verbose", "show every rule, explanation, opt-out hint, and per-file details")
   .option("--score", "output only the score")
   .option("--json", "output a single structured JSON report (suppresses other output)")
   .option("--json-compact", "with --json, emit compact JSON (no indentation)")
@@ -70,6 +70,10 @@ const program = new Command()
 ${highlighter.dim("Configuration:")}
   Place a ${highlighter.info("react-doctor.config.json")} (or ${highlighter.info('"reactDoctor"')} key in your package.json) in the project root.
   CLI flags always override config values. See the README for the full schema.
+
+${highlighter.dim("Low-noise workflows:")}
+  Use ${highlighter.info("--staged")} for pre-commit cleanup, ${highlighter.info("--diff")} for branch cleanup, and ${highlighter.info("--fail-on error")} to gate only user-impacting issues.
+  Disable a noisy rule with ${highlighter.info('{ "rules": { "react-doctor/<rule>": "off" } }')} or hide families per surface with ${highlighter.info("surfaces")}.
 
 ${highlighter.dim("Learn more:")}
   ${highlighter.info(CANONICAL_GITHUB_URL)}

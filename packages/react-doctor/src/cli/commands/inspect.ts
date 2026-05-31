@@ -33,7 +33,6 @@ import {
 } from "../utils/json-mode.js";
 import { printAnnotations } from "../utils/print-annotations.js";
 import { printBrandedHeader } from "../utils/print-branded-header.js";
-import { promptCopyIssues } from "../utils/copy-issues-to-clipboard.js";
 import { readChangedFilesFrom } from "../utils/read-changed-files-from.js";
 import { printMultiProjectSummary } from "../utils/render-multi-project-summary.js";
 import {
@@ -369,15 +368,6 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       ) {
         printAgentInstallHint();
       }
-    }
-
-    if (!skipPrompts && !isQuiet && allDiagnostics.length > 0) {
-      const lastScan = completedScans[completedScans.length - 1];
-      await promptCopyIssues({
-        diagnostics: allDiagnostics,
-        score: lastScan?.result.score ?? null,
-        projectName: lastScan?.result.project.projectName ?? path.basename(resolvedDirectory),
-      });
     }
   } catch (error) {
     if (isJsonMode) {

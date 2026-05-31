@@ -15,6 +15,13 @@ export type RuleFramework =
   | "tanstack-query"
   | "preact";
 
+export interface RuleTriage {
+  why?: string;
+  impact?: string;
+  effort?: "low" | "medium" | "high";
+  confidence?: "low" | "medium" | "high";
+}
+
 export interface Rule {
   // Public-facing rule identifier — what users put in their oxlint config
   // (`react-doctor/<id>`) and what shows up in diagnostic output. Owned by
@@ -57,5 +64,6 @@ export interface Rule {
   // `forbid-component-props` flagging `className`, etc.).
   defaultEnabled?: boolean;
   recommendation?: string;
+  triage?: RuleTriage;
   create: (context: RuleContext) => RuleVisitors;
 }

@@ -1,15 +1,22 @@
+import path from "node:path";
 import isUnicodeSupported from "is-unicode-supported";
+import reactDoctorPlugin from "oxlint-plugin-react-doctor";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import {
   buildRulePromptUrl,
   groupBy,
   highlighter,
+  MAX_CATEGORY_GROUPS_SHOWN_NON_VERBOSE,
+  MAX_RULE_GROUPS_PER_CATEGORY_NON_VERBOSE,
   MILLISECONDS_PER_SECOND,
+  OUTPUT_DETAIL_WRAP_WIDTH_CHARS,
   RULE_NAME_COLUMN_WIDTH_CHARS,
 } from "@react-doctor/core";
 import type { Diagnostic, ScoreResult } from "@react-doctor/core";
+import { buildHiddenDiagnosticsSummary } from "./build-hidden-diagnostics-summary.js";
 import { indentMultilineText } from "./indent-multiline-text.js";
+import { wrapIndentedText } from "./wrap-indented-text.js";
 
 const POINTER = isUnicodeSupported() ? "›" : ">";
 
@@ -20,6 +27,11 @@ const SEVERITY_ORDER: Record<Diagnostic["severity"], number> = {
 
 const colorizeBySeverity = (text: string, severity: Diagnostic["severity"]): string =>
   severity === "error" ? highlighter.error(text) : highlighter.warn(text);
+
+const getDiagnosticTriage = (diagnostic: Diagnostic) => {
+  if (diagnostic.plugin !== "react-doctor") return null;
+  return reactDoctorPlugin.rules[diagnostic.rule]?.triage ?? null;
+};
 
 // Build a `<plugin>/<rule>` -> priority lookup from the score API's per-rule
 // payload (merged across scans). Rules the API didn't rank — or every rule when
@@ -117,6 +129,12 @@ const FETCH_FIX_RECIPE_LABEL = "Fetch & follow the canonical fix recipe before f
 export const formatFixRecipeLine = (diagnostic: Diagnostic): string =>
   `${FETCH_FIX_RECIPE_LABEL}: ${buildRulePromptUrl(diagnostic.plugin, diagnostic.rule)}`;
 
+const formatOptOutLine = (diagnostic: Diagnostic): string =>
+  `Config opt-out: { "rules": { "${diagnostic.plugin}/${diagnostic.rule}": "off" } }`;
+
+const formatAbsoluteFilePath = (filePath: string, rootDirectory: string): string =>
+  path.isAbsolute(filePath) ? filePath : path.join(rootDirectory, filePath);
+
 const buildCompactRuleGroupLine = (
   ruleKey: string,
   ruleDiagnostics: Diagnostic[],
@@ -206,26 +224,41 @@ const buildVerboseRuleGroupLines = (
   ruleKey: string,
   ruleDiagnostics: Diagnostic[],
   ruleNameColumnWidth: number,
+  rootDirectory: string,
 ): ReadonlyArray<string> => {
   const lines: string[] = [];
   lines.push(buildCompactRuleGroupLine(ruleKey, ruleDiagnostics, ruleNameColumnWidth));
   const firstDiagnostic = ruleDiagnostics[0];
+  const triage = getDiagnosticTriage(firstDiagnostic);
   lines.push(grayLine(indentMultilineText(firstDiagnostic.message, "      ")));
   if (firstDiagnostic.help) {
     lines.push(grayLine(indentMultilineText(`→ ${firstDiagnostic.help}`, "      ")));
   }
+  if (triage?.why) {
+    lines.push(grayLine(indentMultilineText(`Why: ${triage.why}`, "      ")));
+  }
+  if (triage?.impact) {
+    lines.push(grayLine(indentMultilineText(`Impact: ${triage.impact}`, "      ")));
+  }
+  if (triage?.confidence || triage?.effort) {
+    const confidence = triage.confidence ?? "medium";
+    const effort = triage.effort ?? "medium";
+    lines.push(grayLine(`      Confidence: ${confidence}; effort: ${effort}`));
+  }
   lines.push(grayLine(`      ${formatFixRecipeLine(firstDiagnostic)}`));
+  lines.push(grayLine(`      ${formatOptOutLine(firstDiagnostic)}`));
   const fileSites = buildVerboseSiteMap(ruleDiagnostics);
   for (const [filePath, sites] of fileSites) {
+    const displayFilePath = formatAbsoluteFilePath(filePath, rootDirectory);
     if (sites.length > 0) {
       for (const site of sites) {
-        lines.push(grayLine(`      ${filePath}:${site.line}`));
+        lines.push(grayLine(`      ${displayFilePath}:${site.line}`));
         if (site.suppressionHint) {
           lines.push(grayLine(`        ↳ ${site.suppressionHint}`));
         }
       }
     } else {
-      lines.push(grayLine(`      ${filePath}`));
+      lines.push(grayLine(`      ${displayFilePath}`));
     }
   }
   lines.push("");
@@ -237,10 +270,42 @@ const buildDefaultDiagnosticsLines = (
   rulePriority?: ReadonlyMap<string, number>,
 ): ReadonlyArray<string> => {
   const categoryGroups = buildCategoryDiagnosticGroups(diagnostics, rulePriority);
+  const visibleCategoryGroups = categoryGroups.slice(0, MAX_CATEGORY_GROUPS_SHOWN_NON_VERBOSE);
+  const hiddenDiagnostics = categoryGroups
+    .slice(MAX_CATEGORY_GROUPS_SHOWN_NON_VERBOSE)
+    .flatMap((categoryGroup) => categoryGroup.diagnostics);
   const lines: string[] = [];
-  for (const categoryGroup of categoryGroups) {
+  for (const categoryGroup of visibleCategoryGroups) {
     lines.push(buildCompactCategoryLine(categoryGroup));
+    const visibleRuleGroups = categoryGroup.ruleGroups.slice(
+      0,
+      MAX_RULE_GROUPS_PER_CATEGORY_NON_VERBOSE,
+    );
+    const hiddenRuleGroups = categoryGroup.ruleGroups.slice(
+      MAX_RULE_GROUPS_PER_CATEGORY_NON_VERBOSE,
+    );
+    hiddenDiagnostics.push(...hiddenRuleGroups.flatMap(([, ruleDiagnostics]) => ruleDiagnostics));
+    const ruleNameColumnWidth = computeRuleNameColumnWidth(
+      visibleRuleGroups.map(([ruleKey]) => ruleKey),
+    );
+    for (const [ruleKey, ruleDiagnostics] of visibleRuleGroups) {
+      lines.push(buildCompactRuleGroupLine(ruleKey, ruleDiagnostics, ruleNameColumnWidth));
+    }
   }
+  const hiddenSummary = buildHiddenDiagnosticsSummary(hiddenDiagnostics);
+  if (hiddenSummary.length > 0) {
+    const hiddenParts = hiddenSummary.map((part) => colorizeBySeverity(part.text, part.severity));
+    lines.push(`  ${hiddenParts.join(highlighter.dim(", "))}`);
+  }
+  lines.push(
+    grayLine(
+      wrapIndentedText(
+        "Showing the highest-signal findings first. Run with --verbose for every file, or --staged to focus on the next commit.",
+        "  ",
+        OUTPUT_DETAIL_WRAP_WIDTH_CHARS,
+      ),
+    ),
+  );
   lines.push("");
   return lines;
 };
@@ -271,7 +336,7 @@ export const printDiagnostics = (
         sortedRuleGroups.map(([ruleKey]) => ruleKey),
       );
       lines = sortedRuleGroups.flatMap(([ruleKey, ruleDiagnostics]) =>
-        buildVerboseRuleGroupLines(ruleKey, ruleDiagnostics, ruleNameColumnWidth),
+        buildVerboseRuleGroupLines(ruleKey, ruleDiagnostics, ruleNameColumnWidth, rootDirectory),
       );
     }
     for (const line of lines) {
@@ -288,6 +353,7 @@ export const formatElapsedTime = (elapsedMilliseconds: number): string => {
 
 export const formatRuleSummary = (ruleKey: string, ruleDiagnostics: Diagnostic[]): string => {
   const firstDiagnostic = ruleDiagnostics[0];
+  const triage = getDiagnosticTriage(firstDiagnostic);
 
   const sections = [
     `Rule: ${ruleKey}`,
@@ -301,10 +367,23 @@ export const formatRuleSummary = (ruleKey: string, ruleDiagnostics: Diagnostic[]
   if (firstDiagnostic.help) {
     sections.push("", `Suggestion: ${firstDiagnostic.help}`);
   }
+  if (triage?.why) {
+    sections.push("", `Why: ${triage.why}`);
+  }
+  if (triage?.impact) {
+    sections.push("", `Impact: ${triage.impact}`);
+  }
+  if (triage?.confidence || triage?.effort) {
+    sections.push(
+      "",
+      `Confidence: ${triage.confidence ?? "medium"}`,
+      `Effort: ${triage.effort ?? "medium"}`,
+    );
+  }
   if (firstDiagnostic.url) {
     sections.push("", `Docs: ${firstDiagnostic.url}`);
   }
-  sections.push("", formatFixRecipeLine(firstDiagnostic));
+  sections.push("", formatFixRecipeLine(firstDiagnostic), formatOptOutLine(firstDiagnostic));
 
   sections.push("", "Files:");
   const fileSites = buildVerboseSiteMap(ruleDiagnostics);

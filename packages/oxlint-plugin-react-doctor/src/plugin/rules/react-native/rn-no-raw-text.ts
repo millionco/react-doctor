@@ -160,6 +160,12 @@ export const rnNoRawText = defineRule<Rule>({
   severity: "error",
   recommendation:
     "Wrap text in a `<Text>` component: `<Text>{value}</Text>` — raw strings outside `<Text>` crash on React Native",
+  triage: {
+    why: "React Native only permits strings inside text-rendering components.",
+    impact: "This is a user-visible crash risk, not a style preference.",
+    effort: "low",
+    confidence: "high",
+  },
   create: (context: RuleContext) => {
     // The package-boundary gate (`isReactNativeFileActive`) lives on the
     // rule wrapper applied at registry load — by the time we get here

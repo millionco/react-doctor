@@ -108,7 +108,10 @@ const collectRenderReturnExpressions = (
     | EsTreeNodeOfType<"FunctionExpression">
     | EsTreeNodeOfType<"FunctionDeclaration">,
 ): EsTreeNode[] => {
-  if (isNodeOfType(functionNode, "ArrowFunctionExpression") && !isNodeOfType(functionNode.body, "BlockStatement")) {
+  if (
+    isNodeOfType(functionNode, "ArrowFunctionExpression") &&
+    !isNodeOfType(functionNode.body, "BlockStatement")
+  ) {
     return [functionNode.body];
   }
 
@@ -127,7 +130,8 @@ const collectRenderReturnExpressions = (
 
 const isNullableRenderExpression = (node: EsTreeNode): boolean => {
   const expression = stripParenExpression(node);
-  if (isNodeOfType(expression, "Literal")) return expression.value === null || expression.value === false;
+  if (isNodeOfType(expression, "Literal"))
+    return expression.value === null || expression.value === false;
   return isNodeOfType(expression, "Identifier") && expression.name === "undefined";
 };
 

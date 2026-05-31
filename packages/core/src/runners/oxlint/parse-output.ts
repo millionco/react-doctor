@@ -68,13 +68,24 @@ export const getRuleCategory = (ruleName: string): string | undefined =>
   reactDoctorPlugin.rules[ruleName]?.category;
 
 const cleanDiagnosticMessage = (
-  message: string,
-  help: string,
+  message: unknown,
+  help: unknown,
   plugin: string,
   rule: string,
   project: ProjectInfo,
 ): CleanedDiagnostic => {
-  const cleaned = resolveCleanedDiagnostic(message, help, plugin, rule, project);
+  // `message` / `help` come from oxlint JSON that is only shape-checked at
+  // the top level (`isOxlintOutput`), so coerce a non-string value to ""
+  // before cleaning. This keeps the redaction path total and lets a
+  // non-string `help` fall back to `getRuleRecommendation` instead of
+  // becoming an empty string.
+  const cleaned = resolveCleanedDiagnostic(
+    typeof message === "string" ? message : "",
+    typeof help === "string" ? help : "",
+    plugin,
+    rule,
+    project,
+  );
   // Final guard: a rule may echo a source fragment containing a secret
   // or PII into its message/help. Scrub it here — the single point every
   // diagnostic flows through — so it reaches neither the terminal, the

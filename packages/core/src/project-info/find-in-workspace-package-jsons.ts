@@ -23,7 +23,11 @@ export const findInWorkspacePackageJsons = <Value>(
 
   const visitedDirectories = new Set<string>();
   for (const pattern of patterns) {
-    const directories = resolveWorkspaceDirectories(rootDirectory, pattern);
+    // Sort so the first non-null value is stable across runs — the raw order
+    // comes from `readdir`, which isn't guaranteed consistent, and the
+    // value-returning gates (e.g. `findExpoVersion`) must not return a
+    // different workspace's spec on repeated analysis of the same tree.
+    const directories = [...resolveWorkspaceDirectories(rootDirectory, pattern)].sort();
     for (const workspaceDirectory of directories) {
       if (visitedDirectories.has(workspaceDirectory)) continue;
       visitedDirectories.add(workspaceDirectory);

@@ -9,7 +9,7 @@ import { isExpoSdkAtLeast } from "./utils/is-expo-sdk-at-least.js";
 // conflicts. expo-doctor resolves transitive deps; this static port keys
 // off direct dependencies only.
 const VECTOR_ICONS_MIN_SDK_MAJOR = 56;
-const SCOPED_VECTOR_ICONS_PACKAGE = "@react-native-vector-icons/common";
+const SCOPED_VECTOR_ICONS_NAMESPACE = "@react-native-vector-icons/";
 const CONFLICTING_VECTOR_ICONS_PACKAGES: ReadonlyArray<string> = [
   "@expo/vector-icons",
   "react-native-vector-icons",
@@ -18,7 +18,9 @@ const CONFLICTING_VECTOR_ICONS_PACKAGES: ReadonlyArray<string> = [
 export const checkExpoVectorIcons = (context: ExpoCheckContext): Diagnostic[] => {
   if (!isExpoSdkAtLeast(context.expoSdkMajor, VECTOR_ICONS_MIN_SDK_MAJOR)) return [];
 
-  const hasScopedPackage = context.directDependencyNames.has(SCOPED_VECTOR_ICONS_PACKAGE);
+  const hasScopedPackage = [...context.directDependencyNames].some((packageName) =>
+    packageName.startsWith(SCOPED_VECTOR_ICONS_NAMESPACE),
+  );
   const hasConflictingPackage = CONFLICTING_VECTOR_ICONS_PACKAGES.some((packageName) =>
     context.directDependencyNames.has(packageName),
   );

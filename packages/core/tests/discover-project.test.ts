@@ -813,6 +813,35 @@ describe("listWorkspacePackages", () => {
     expect(projectInfo.expoVersion, "expo version is resolved from the workspace").toBe("~51.0.0");
   });
 
+  it("detects `expo` declared only in peerDependencies", () => {
+    const projectDirectory = path.join(tempDirectory, "expo-peer-dep");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "expo-peer-dep",
+        dependencies: { react: "^18.2.0", "react-native": "0.74.0" },
+        peerDependencies: { expo: "~51.0.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.expoVersion).toBe("~51.0.0");
+  });
+
+  it("does not crash and stays null on a non-string `expo` spec", () => {
+    const projectDirectory = path.join(tempDirectory, "expo-non-string");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      // `expo` as a number is malformed but parseable JSON.
+      '{"name":"bad","dependencies":{"react":"^18.2.0","react-native":"0.74.0","expo":54}}',
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.expoVersion).toBeNull();
+  });
+
   it("resolves an Expo `catalog:` spec from the pnpm workspace catalog", () => {
     const monorepoRoot = path.join(tempDirectory, "expo-pnpm-catalog");
     const mobileDirectory = path.join(monorepoRoot, "apps", "mobile");

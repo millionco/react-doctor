@@ -245,6 +245,21 @@ describe("checkExpoProject — vector icons conflict", () => {
       rulesOf(checkExpoProject(projectDirectory, buildExpoProject(projectDirectory, "~56.0.0"))),
     ).toContain("expo-vector-icons-conflict");
   });
+
+  it("flags any scoped `@react-native-vector-icons/*` package, not just `common`", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "expo-app",
+      dependencies: {
+        expo: "~56.0.0",
+        "@react-native-vector-icons/material-design-icons": "^12.0.0",
+        "@expo/vector-icons": "^14.0.0",
+      },
+    });
+    expect(
+      rulesOf(checkExpoProject(projectDirectory, buildExpoProject(projectDirectory, "~56.0.0"))),
+    ).toContain("expo-vector-icons-conflict");
+  });
 });
 
 describe("checkExpoProject — package.json conflicts", () => {

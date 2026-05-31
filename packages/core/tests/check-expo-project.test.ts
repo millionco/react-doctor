@@ -225,7 +225,7 @@ describe("checkExpoProject — expo-router / react-navigation conflict", () => {
       },
     });
     expect(
-      rulesOf(checkExpoProject(projectDirectory, buildExpoProject(projectDirectory))),
+      rulesOf(checkExpoProject(projectDirectory, buildExpoProject(projectDirectory, "~57.0.0"))),
     ).not.toContain("expo-router-no-react-navigation");
   });
 });

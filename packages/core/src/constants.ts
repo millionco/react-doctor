@@ -46,6 +46,8 @@ export const SCORE_BAR_WIDTH_CHARS = 50;
 
 export const SCORE_API_URL = "https://www.react.doctor/api/score";
 
+export const ENTERPRISE_CONTACT_URL = "https://react.doctor/enterprise";
+
 export const SHARE_BASE_URL = "https://www.react.doctor/share";
 
 // Base URL for the per-rule fix recipes the `/doctor` playbook fetches

@@ -20,6 +20,7 @@ import type {
   ScoreResult,
 } from "@react-doctor/core";
 import { makeNoopConsole } from "./cli/utils/noop-console.js";
+import { buildNoScoreMessage } from "./cli/utils/build-no-score-message.js";
 import { printAgentGuidance } from "./cli/utils/render-agent-guidance.js";
 import { isCiOrCodingAgentEnvironment } from "./cli/utils/is-ci-environment.js";
 import { printDiagnostics } from "./cli/utils/render-diagnostics.js";
@@ -343,9 +344,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
     if (didDeadCodeFail) skippedChecks.push("dead-code");
     const hasSkippedChecks = skippedChecks.length > 0;
 
-    const noScoreMessage = options.noScore
-      ? "Score disabled by --no-score."
-      : "Score unavailable (could not reach the score API).";
+    const noScoreMessage = buildNoScoreMessage(options.noScore);
 
     const skippedCheckReasons: Record<string, string> = {};
     if (didLintFail && lintFailureReason !== null) {

@@ -7,6 +7,15 @@ interface RedactionRule {
   readonly replacement: string;
 }
 
+// Provider tokens carry a non-secret, type-identifying prefix (e.g.
+// `sk_live_`, `ghp_`, `AKIA`). Keeping that prefix visible while masking
+// the secret material makes a diagnostic actionable — you can see *which*
+// credential type leaked and from which environment — without echoing the
+// secret itself. Prefixed rules capture the prefix as group 1 and use
+// this replacement; `$1` re-emits the prefix and the body becomes the
+// inert placeholder, e.g. `sk_live_<redacted>`.
+const KEEP_PREFIX = `$1${REDACTED_PLACEHOLDER}`;
+
 // High-precision detectors for credentials and PII that can ride along
 // inside a diagnostic's `message` / `help` when a rule echoes a source
 // fragment (e.g. `useState("sk-live-…")`). Shapes track the corpora that
@@ -16,12 +25,16 @@ interface RedactionRule {
 //
 // Ordered so structured composites (key blocks, JWTs, credentialed URLs)
 // run before the narrower prefixed tokens, every replacement leaves only
-// inert `<redacted>` text that no later rule can re-match, and the broad
-// entropy sweep (`redactHighEntropyTokens`) runs dead last. Each pattern
-// is intentionally narrow — it targets a real secret shape, never an
-// ordinary identifier — and uses linear-time constructs (no nested or
-// overlapping quantifiers) so a pathological message can't trigger
-// catastrophic backtracking.
+// inert `<redacted>` text that no later rule can re-match (the prefix kept
+// by `KEEP_PREFIX` is always too short and followed by `<`, so neither the
+// prefixed rules nor the entropy sweep re-trigger), and the broad entropy
+// sweep (`redactHighEntropyTokens`) runs dead last. Each pattern is
+// intentionally narrow — it targets a real secret shape, never an ordinary
+// identifier — and uses linear-time constructs (no nested or overlapping
+// quantifiers) so a pathological message can't trigger catastrophic
+// backtracking. Structural/unknown-format secrets with no meaningful
+// prefix (PEM, JWT, credentialed URLs, Bearer values, emails, and the
+// generic sweep) are masked whole.
 const KNOWN_SECRET_RULES: readonly RedactionRule[] = [
   // PEM private key block (RSA / EC / OPENSSH / PGP / plain). `[A-Z ]*`
   // is a single linear class; the lazy body is bounded by the END marker.
@@ -46,43 +59,44 @@ const KNOWN_SECRET_RULES: readonly RedactionRule[] = [
   },
   // AWS access key id (all key-class prefixes, incl. temporary `ASIA`).
   {
-    pattern: /\b(?:AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA|A3T[A-Z0-9])[0-9A-Z]{16}/g,
-    replacement: REDACTED_PLACEHOLDER,
+    pattern: /\b(AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA|A3T[A-Z0-9])[0-9A-Z]{16}/g,
+    replacement: KEEP_PREFIX,
   },
   // GitHub tokens: classic/oauth/user/server/refresh (`gh[pousr]_`) and
   // fine-grained PATs (`github_pat_`).
-  { pattern: /\bgh[pousr]_[A-Za-z0-9]{36,}/g, replacement: REDACTED_PLACEHOLDER },
-  { pattern: /\bgithub_pat_[A-Za-z0-9_]{22,}/g, replacement: REDACTED_PLACEHOLDER },
+  { pattern: /\b(gh[pousr]_)[A-Za-z0-9]{36,}/g, replacement: KEEP_PREFIX },
+  { pattern: /\b(github_pat_)[A-Za-z0-9_]{22,}/g, replacement: KEEP_PREFIX },
   // GitLab personal access token.
-  { pattern: /\bglpat-[A-Za-z0-9_-]{20,}/g, replacement: REDACTED_PLACEHOLDER },
+  { pattern: /\b(glpat-)[A-Za-z0-9_-]{20,}/g, replacement: KEEP_PREFIX },
   // Slack bot/user/app tokens and incoming-webhook URLs.
-  { pattern: /\bxox[baprs]-[A-Za-z0-9-]{10,}/g, replacement: REDACTED_PLACEHOLDER },
+  { pattern: /\b(xox[baprs]-)[A-Za-z0-9-]{10,}/g, replacement: KEEP_PREFIX },
   {
     pattern: /(?<=hooks\.slack\.com\/services\/)[A-Za-z0-9/+_-]{20,}/g,
     replacement: REDACTED_PLACEHOLDER,
   },
   // Stripe secret / restricted keys (publishable `pk_` left readable).
-  { pattern: /\b(?:sk|rk)_(?:live|test)_[0-9A-Za-z]{10,}/g, replacement: REDACTED_PLACEHOLDER },
+  { pattern: /\b((?:sk|rk)_(?:live|test)_)[0-9A-Za-z]{10,}/g, replacement: KEEP_PREFIX },
   // OpenAI / Anthropic style keys (`sk-`, `sk-proj-`, `sk-ant-…`).
-  { pattern: /\bsk-(?:proj-|ant-)?[A-Za-z0-9_-]{20,}/g, replacement: REDACTED_PLACEHOLDER },
+  { pattern: /\b(sk-(?:proj-|ant-)?)[A-Za-z0-9_-]{20,}/g, replacement: KEEP_PREFIX },
   // Google API key and OAuth access token.
-  { pattern: /\bAIza[0-9A-Za-z_-]{35}/g, replacement: REDACTED_PLACEHOLDER },
-  { pattern: /\bya29\.[0-9A-Za-z_-]{20,}/g, replacement: REDACTED_PLACEHOLDER },
+  { pattern: /\b(AIza)[0-9A-Za-z_-]{35}/g, replacement: KEEP_PREFIX },
+  { pattern: /\b(ya29\.)[0-9A-Za-z_-]{20,}/g, replacement: KEEP_PREFIX },
   // npm automation/publish token.
-  { pattern: /\bnpm_[A-Za-z0-9]{36}/g, replacement: REDACTED_PLACEHOLDER },
+  { pattern: /\b(npm_)[A-Za-z0-9]{36}/g, replacement: KEEP_PREFIX },
   // SendGrid API key.
-  { pattern: /\bSG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}/g, replacement: REDACTED_PLACEHOLDER },
+  { pattern: /\b(SG\.)[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}/g, replacement: KEEP_PREFIX },
   // Twilio API key SID.
-  { pattern: /\bSK[0-9a-fA-F]{32}/g, replacement: REDACTED_PLACEHOLDER },
+  { pattern: /\b(SK)[0-9a-fA-F]{32}/g, replacement: KEEP_PREFIX },
   // DigitalOcean personal access / OAuth token.
-  { pattern: /\bdop_v1_[a-f0-9]{64}/g, replacement: REDACTED_PLACEHOLDER },
+  { pattern: /\b(dop_v1_)[a-f0-9]{64}/g, replacement: KEEP_PREFIX },
   // Shopify access tokens (admin/custom/private/shared-secret).
-  { pattern: /\bshp(?:at|ca|pa|ss)_[a-fA-F0-9]{32}/g, replacement: REDACTED_PLACEHOLDER },
+  { pattern: /\b(shp(?:at|ca|pa|ss)_)[a-fA-F0-9]{32}/g, replacement: KEEP_PREFIX },
   // Square access / refresh token.
-  { pattern: /\bsq0[a-z]{3}-[0-9A-Za-z_-]{22,}/g, replacement: REDACTED_PLACEHOLDER },
+  { pattern: /\b(sq0[a-z]{3}-)[0-9A-Za-z_-]{22,}/g, replacement: KEEP_PREFIX },
   // Telegram bot token (`<id>:AA<secret>`). The `AA` anchor keeps the
-  // numeric-id half from masking ordinary `digits:digits` text.
-  { pattern: /\b[0-9]{8,10}:AA[0-9A-Za-z_-]{32,}/g, replacement: REDACTED_PLACEHOLDER },
+  // numeric-id half from masking ordinary `digits:digits` text; the bot
+  // id and `:AA` marker are kept as the prefix.
+  { pattern: /\b([0-9]{8,10}:AA)[0-9A-Za-z_-]{32,}/g, replacement: KEEP_PREFIX },
   // Generic `Authorization: Bearer <token>` header value.
   { pattern: /(?<=\bBearer\s)[A-Za-z0-9._~+/=-]{16,}/g, replacement: REDACTED_PLACEHOLDER },
   // Email address (PII).
@@ -147,6 +161,11 @@ const redactHighEntropyTokens = (text: string): string =>
  * Applied to every diagnostic's `message` / `help` at construction time
  * so secrets never reach the terminal, the JSON report, or the score
  * API — react-doctor must never echo or transmit a user's secrets.
+ *
+ * Provider tokens keep their non-secret, type-identifying prefix (e.g.
+ * `sk_live_<redacted>`, `ghp_<redacted>`, `AKIA<redacted>`) so the leaked
+ * credential's type stays visible; structural or unknown-format secrets
+ * with no meaningful prefix are masked whole.
  *
  * Runs the high-precision known-shape detectors first, then a generic
  * entropy-gated sweep for unknown-format secrets. Idempotent: the inert

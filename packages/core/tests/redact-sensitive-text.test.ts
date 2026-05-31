@@ -26,36 +26,42 @@ describe("redactSensitiveText", () => {
     }
   });
 
-  it("redacts an AWS access key id", () => {
+  it("keeps the provider prefix and redacts only the secret body", () => {
+    expect(redactSensitiveText(`key=sk_live_${"4".repeat(24)}`)).toBe(
+      `key=sk_live_${REDACTED_PLACEHOLDER}`,
+    );
+    expect(redactSensitiveText(`ghp_${"b".repeat(36)}`)).toBe(`ghp_${REDACTED_PLACEHOLDER}`);
+  });
+
+  it("redacts an AWS access key id but keeps the AKIA prefix", () => {
     expect(redactSensitiveText("key AKIAIOSFODNN7EXAMPLE found")).toBe(
-      `key ${REDACTED_PLACEHOLDER} found`,
+      `key AKIA${REDACTED_PLACEHOLDER} found`,
     );
   });
 
   it("redacts an AWS temporary (ASIA) access key id", () => {
     const key = `ASIA${"A1B2C3D4E5F6G7H8".slice(0, 16)}`;
-    expect(redactSensitiveText(`creds ${key}`)).toBe(`creds ${REDACTED_PLACEHOLDER}`);
+    expect(redactSensitiveText(`creds ${key}`)).toBe(`creds ASIA${REDACTED_PLACEHOLDER}`);
   });
 
   it("redacts GitHub personal access tokens", () => {
     const token = `ghp_${"a".repeat(36)}`;
-    expect(redactSensitiveText(`token: ${token}`)).toBe(`token: ${REDACTED_PLACEHOLDER}`);
+    expect(redactSensitiveText(`token: ${token}`)).toBe(`token: ghp_${REDACTED_PLACEHOLDER}`);
   });
 
   it("redacts a GitHub fine-grained PAT", () => {
     const token = `github_pat_${"A1b2c3d4e5".repeat(3)}`;
-    expect(redactSensitiveText(token)).toBe(REDACTED_PLACEHOLDER);
+    expect(redactSensitiveText(token)).toBe(`github_pat_${REDACTED_PLACEHOLDER}`);
   });
 
   it("redacts a GitLab personal access token", () => {
     const token = `glpat-${"aB3dE6gH9j".repeat(2)}`;
-    expect(redactSensitiveText(`token ${token}`)).toBe(`token ${REDACTED_PLACEHOLDER}`);
+    expect(redactSensitiveText(`token ${token}`)).toBe(`token glpat-${REDACTED_PLACEHOLDER}`);
   });
 
-  it("redacts a Slack token", () => {
+  it("redacts a Slack token but keeps the xox prefix", () => {
     const token = `xoxb-${"123456789012".repeat(2)}`;
-    expect(redactSensitiveText(token)).toContain(REDACTED_PLACEHOLDER);
-    expect(redactSensitiveText(token)).not.toContain("xoxb-");
+    expect(redactSensitiveText(token)).toBe(`xoxb-${REDACTED_PLACEHOLDER}`);
   });
 
   it("redacts a Slack incoming-webhook path but keeps the host", () => {
@@ -66,46 +72,43 @@ describe("redactSensitiveText", () => {
     expect(result).not.toContain("B11111111");
   });
 
-  it("redacts an npm token", () => {
+  it("redacts an npm token but keeps the npm_ prefix", () => {
     const token = `npm_${"a1B2c3D4e5f6".repeat(3)}`.slice(0, 40);
-    expect(redactSensitiveText(`//registry.npmjs.org/:_authToken=${token}`)).toContain(
-      REDACTED_PLACEHOLDER,
-    );
-    expect(redactSensitiveText(`//registry.npmjs.org/:_authToken=${token}`)).not.toContain("npm_a");
+    const result = redactSensitiveText(`//registry.npmjs.org/:_authToken=${token}`);
+    expect(result).toBe(`//registry.npmjs.org/:_authToken=npm_${REDACTED_PLACEHOLDER}`);
   });
 
   it("redacts a SendGrid API key", () => {
     const key = `SG.${"a".repeat(22)}.${"b1C2d3E4".repeat(6).slice(0, 43)}`;
-    expect(redactSensitiveText(key)).toBe(REDACTED_PLACEHOLDER);
+    expect(redactSensitiveText(key)).toBe(`SG.${REDACTED_PLACEHOLDER}`);
   });
 
   it("redacts a DigitalOcean token", () => {
     const token = `dop_v1_${"a1b2c3d4".repeat(8)}`;
-    expect(redactSensitiveText(`do ${token}`)).toBe(`do ${REDACTED_PLACEHOLDER}`);
+    expect(redactSensitiveText(`do ${token}`)).toBe(`do dop_v1_${REDACTED_PLACEHOLDER}`);
   });
 
   it("redacts a Shopify access token", () => {
     const token = `shpat_${"a1b2c3d4".repeat(4)}`;
-    expect(redactSensitiveText(token)).toBe(REDACTED_PLACEHOLDER);
+    expect(redactSensitiveText(token)).toBe(`shpat_${REDACTED_PLACEHOLDER}`);
   });
 
   it("redacts a Telegram bot token but spares plain digit:digit text", () => {
     const token = `123456789:AA${"x1Y2z3W4".repeat(4)}`;
-    expect(redactSensitiveText(token)).toContain(REDACTED_PLACEHOLDER);
+    expect(redactSensitiveText(token)).toBe(`123456789:AA${REDACTED_PLACEHOLDER}`);
     expect(redactSensitiveText("retry after 12345:67890 ms")).toBe("retry after 12345:67890 ms");
   });
 
-  it("redacts Stripe live keys", () => {
-    expect(redactSensitiveText(`useState("sk_live_${"4".repeat(20)}")`)).toContain(
-      REDACTED_PLACEHOLDER,
+  it("redacts Stripe live keys but keeps the sk_live_ prefix", () => {
+    expect(redactSensitiveText(`useState("sk_live_${"4".repeat(20)}")`)).toBe(
+      `useState("sk_live_${REDACTED_PLACEHOLDER}")`,
     );
-    expect(redactSensitiveText(`useState("sk_live_${"4".repeat(20)}")`)).not.toContain("sk_live_");
   });
 
-  it("redacts OpenAI-style sk- keys", () => {
+  it("redacts OpenAI-style sk- keys but keeps the sk- prefix", () => {
     const key = `sk-${"A1b2".repeat(10)}`;
     expect(redactSensitiveText(`const apiKey = "${key}"`)).toBe(
-      `const apiKey = "${REDACTED_PLACEHOLDER}"`,
+      `const apiKey = "sk-${REDACTED_PLACEHOLDER}"`,
     );
   });
 
@@ -188,8 +191,10 @@ describe("redactSensitiveText", () => {
   it("redacts every distinct secret in a multi-secret message", () => {
     const message = `aws AKIAIOSFODNN7EXAMPLE gh ${`ghp_${"a".repeat(36)}`} mail dev@acme.io`;
     const result = redactSensitiveText(message);
-    expect(result).not.toContain("AKIA");
-    expect(result).not.toContain("ghp_");
+    expect(result).toContain(`AKIA${REDACTED_PLACEHOLDER}`);
+    expect(result).toContain(`ghp_${REDACTED_PLACEHOLDER}`);
+    expect(result).not.toContain("IOSFODNN7EXAMPLE");
+    expect(result).not.toContain("a".repeat(36));
     expect(result).not.toContain("dev@acme.io");
     expect(result.match(new RegExp(REDACTED_PLACEHOLDER, "g"))).toHaveLength(3);
   });

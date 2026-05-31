@@ -36,9 +36,12 @@ const KNOWN_SECRET_RULES: readonly RedactionRule[] = [
   },
   // Credentials embedded in a URL authority (`scheme://user:pass@host`).
   // The lookbehind / lookahead keep the scheme and host so the location
-  // stays useful while the `user:pass` pair is masked.
+  // stays useful while the `user:pass` pair is masked. The first colon
+  // separates user from password; the password class allows further
+  // colons (e.g. `user:p:a:ss@host`) so passwords with colons are still
+  // fully masked rather than partially leaking.
   {
-    pattern: /(?<=:\/\/)[^\s/:@]+:[^\s/:@]+(?=@)/g,
+    pattern: /(?<=:\/\/)[^\s/:@]+:[^\s/@]+(?=@)/g,
     replacement: REDACTED_PLACEHOLDER,
   },
   // AWS access key id (all key-class prefixes, incl. temporary `ASIA`).

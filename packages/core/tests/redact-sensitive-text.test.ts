@@ -123,6 +123,12 @@ describe("redactSensitiveText", () => {
     );
   });
 
+  it("masks a URL password that itself contains colons", () => {
+    expect(redactSensitiveText("mongodb://admin:p:a:ss@cluster.example.com:27017/db")).toBe(
+      `mongodb://${REDACTED_PLACEHOLDER}@cluster.example.com:27017/db`,
+    );
+  });
+
   it("redacts a bearer token but keeps the scheme word", () => {
     const result = redactSensitiveText("Authorization: Bearer abcDEF123456ghijKLmnop");
     expect(result).toBe(`Authorization: Bearer ${REDACTED_PLACEHOLDER}`);

@@ -1,0 +1,27 @@
+packages/core/src/runners/oxlint/spawn-batches.ts
+  s_3debc5d9b54d4f::t_6d3edd3112f2d0 61
+  s_3debc5d9b54d4f::t_f83422e38fdd38 138-141
+  s_3debc5d9b54d4f::t_3484d69e431f4f 112-116,137,142-143
+packages/core/src/utils/resolve-scan-concurrency.ts
+  s_3debc5d9b54d4f::t_675d33e20893ee 5-8,11
+packages/core/src/constants.ts
+  s_3debc5d9b54d4f::t_4c12195d84249d 76-80
+packages/core/src/run-inspect.ts
+  s_3debc5d9b54d4f::t_4c924e60ee3054 276-277
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "c4978d909097bbacb397ae673114d9c24d45690d",
+  "prompts": {},
+  "sessions": {
+    "s_3debc5d9b54d4f": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a7f44d67-a17d-4cd7-900f-95379ccfbac7",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

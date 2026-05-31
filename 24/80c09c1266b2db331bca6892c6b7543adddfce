@@ -1,0 +1,26 @@
+packages/react-doctor/tests/resolve-parallel-flag.test.ts
+  s_3debc5d9b54d4f::t_21e4d30b624508 1-37
+packages/react-doctor/src/cli/utils/resolve-parallel-flag.ts
+  s_3debc5d9b54d4f::t_42679d8905079a 1,4-5,7-13,19,21,28
+packages/core/src/runners/oxlint/spawn-batches.ts
+  s_3debc5d9b54d4f::t_8100d66c404d85 62-65
+  s_3debc5d9b54d4f::t_80a589690541f1 10
+packages/core/src/types/inspect.ts
+  s_3debc5d9b54d4f::t_79a3a3baa8315c 76-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "2480c09c1266b2db331bca6892c6b7543adddfce",
+  "prompts": {},
+  "sessions": {
+    "s_3debc5d9b54d4f": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a7f44d67-a17d-4cd7-900f-95379ccfbac7",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

@@ -1,0 +1,22 @@
+packages/language-server/tests/lsp-client.ts
+  s_6345c425a60fc8::t_52cd4834a455a3 33-36
+packages/core/src/editor-scan.ts
+  s_6345c425a60fc8::t_f3da2d0c6bfd91 147
+  s_6345c425a60fc8::t_c267c45b52d802 109-112
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "8478d5bacdcee1a8226b4ec7e914b9a552bfb02c",
+  "prompts": {},
+  "sessions": {
+    "s_6345c425a60fc8": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "35c2a616-054e-4d23-ba69-0921d1c144bd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

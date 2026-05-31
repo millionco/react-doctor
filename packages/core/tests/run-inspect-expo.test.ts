@@ -7,6 +7,8 @@ import { afterAll, describe, expect, it } from "vite-plus/test";
 import type { Diagnostic, ProjectInfo } from "@react-doctor/core";
 import { clearPackageJsonCache } from "@react-doctor/core";
 import { runInspect, type InspectInput } from "../src/run-inspect.js";
+import { checkExpoProject as checkExpoProjectSrc } from "../src/check-expo-project.js";
+import { readPackageJson as readPackageJsonSrc } from "../src/project-info/read-package-json.js";
 import { Config } from "../src/services/config.js";
 import { DeadCode } from "../src/services/dead-code.js";
 import { Files } from "../src/services/files.js";
@@ -118,10 +120,14 @@ describe("runInspect — expo project checks wiring", () => {
 
     const expoRules = expoRulesOf(output.diagnostics);
     if (!expoRules.includes("expo-no-cli-dependencies")) {
-      const manifestPath = path.join(projectDirectory, "package.json");
+      const directProject = expoProject(projectDirectory);
+      const directCheck = checkExpoProjectSrc(projectDirectory, directProject);
+      const directManifest = readPackageJsonSrc(path.join(projectDirectory, "package.json"));
       throw new Error(
-        `DEBUG scanDir=${projectDirectory} exists=${fs.existsSync(manifestPath)} ` +
-          `content=${fs.existsSync(manifestPath) ? fs.readFileSync(manifestPath, "utf-8") : "MISSING"} ` +
+        `DEBUG outputExpoVersion=${output.project.expoVersion} ` +
+          `directProjectExpoVersion=${directProject.expoVersion} ` +
+          `srcManifestDeps=${JSON.stringify(Object.keys(directManifest.dependencies ?? {}))} ` +
+          `directCheckRules=${JSON.stringify(directCheck.map((diagnostic) => diagnostic.rule))} ` +
           `allRules=${JSON.stringify(output.diagnostics.map((diagnostic) => diagnostic.rule))}`,
       );
     }

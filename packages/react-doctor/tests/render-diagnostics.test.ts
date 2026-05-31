@@ -65,7 +65,7 @@ describe("printDiagnostics", () => {
 
     const output = stripAnsi(printedLines.join("\n"));
     expect(output).toContain("Why: React Native only permits strings");
-    expect(output).toContain("Impact: This can crash the screen.");
+    expect(output).toContain("Impact: This is a user-visible crash risk");
     expect(output).toContain("Confidence: high; effort: low");
     expect(output).toContain('{ "rules": { "react-doctor/rn-no-raw-text": "off" } }');
     expect(output).toContain("/repo/src/app.tsx:1");

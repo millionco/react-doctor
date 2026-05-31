@@ -1,0 +1,21 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/utils/effect/ast.ts
+  s_846b329a96394f::t_5d228fe36b2d3f 95-100,102-108,114
+.changeset/memoize-downstream-refs.md
+  s_846b329a96394f::t_ad30b3b261d9ed 1-7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "8c943ea05417f2ebad5e92db471a7ed6adf28771",
+  "prompts": {},
+  "sessions": {
+    "s_846b329a96394f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d9109adc-0cf9-4ecf-809d-4530c11cbb83",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

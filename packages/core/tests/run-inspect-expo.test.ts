@@ -117,6 +117,14 @@ describe("runInspect — expo project checks wiring", () => {
     );
 
     const expoRules = expoRulesOf(output.diagnostics);
+    if (!expoRules.includes("expo-no-cli-dependencies")) {
+      const manifestPath = path.join(projectDirectory, "package.json");
+      throw new Error(
+        `DEBUG scanDir=${projectDirectory} exists=${fs.existsSync(manifestPath)} ` +
+          `content=${fs.existsSync(manifestPath) ? fs.readFileSync(manifestPath, "utf-8") : "MISSING"} ` +
+          `allRules=${JSON.stringify(output.diagnostics.map((diagnostic) => diagnostic.rule))}`,
+      );
+    }
     expect(expoRules).toContain("expo-no-cli-dependencies");
     expect(expoRules).toContain("expo-no-redundant-dependency");
   });

@@ -813,6 +813,29 @@ describe("listWorkspacePackages", () => {
     expect(projectInfo.expoVersion, "expo version is resolved from the workspace").toBe("~51.0.0");
   });
 
+  it("resolves an Expo `catalog:` spec from the pnpm workspace catalog", () => {
+    const monorepoRoot = path.join(tempDirectory, "expo-pnpm-catalog");
+    const mobileDirectory = path.join(monorepoRoot, "apps", "mobile");
+    fs.mkdirSync(mobileDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(monorepoRoot, "pnpm-workspace.yaml"),
+      "packages:\n  - apps/*\n\ncatalog:\n  expo: ~54.0.0\n",
+    );
+    fs.writeFileSync(path.join(monorepoRoot, "package.json"), JSON.stringify({ name: "root" }));
+    fs.writeFileSync(
+      path.join(mobileDirectory, "package.json"),
+      JSON.stringify({
+        name: "mobile",
+        dependencies: { expo: "catalog:", react: "^18.2.0", "react-native": "0.74.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(mobileDirectory);
+    expect(projectInfo.expoVersion, "catalog spec resolves so the SDK major can be parsed").toBe(
+      "~54.0.0",
+    );
+  });
+
   it("does not flag a bare React Native (non-Expo) project as an Expo project", () => {
     const projectDirectory = path.join(tempDirectory, "bare-react-native");
     fs.mkdirSync(projectDirectory, { recursive: true });

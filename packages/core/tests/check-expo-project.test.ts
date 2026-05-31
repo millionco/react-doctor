@@ -292,6 +292,22 @@ describe("checkExpoProject — lockfile", () => {
       rulesOf(checkExpoProject(projectDirectory, buildExpoProject(projectDirectory))),
     ).not.toContain("expo-lockfile");
   });
+
+  it("uses the scanned directory's own lock file when it is itself a workspace root", () => {
+    // Outer workspace root, intentionally WITHOUT a lock file. `findMonorepoRoot`
+    // (parents-only) would climb to this and falsely report a missing lock file.
+    const outerRoot = makeProjectDirectory();
+    fs.writeFileSync(path.join(outerRoot, "pnpm-workspace.yaml"), "packages:\n  - inner\n");
+    // The scanned project is a nested workspace root that ships its own lock file.
+    const innerRoot = path.join(outerRoot, "inner");
+    fs.mkdirSync(innerRoot, { recursive: true });
+    writePackageJson(innerRoot, { name: "expo-app", dependencies: { expo: "~51.0.0" } });
+    fs.writeFileSync(path.join(innerRoot, "pnpm-workspace.yaml"), "packages:\n  - .\n");
+    fs.writeFileSync(path.join(innerRoot, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
+    expect(rulesOf(checkExpoProject(innerRoot, buildExpoProject(innerRoot)))).not.toContain(
+      "expo-lockfile",
+    );
+  });
 });
 
 describe("checkExpoProject — metro config", () => {

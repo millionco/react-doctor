@@ -1,5 +1,5 @@
 import path from "node:path";
-import { findMonorepoRoot, isFile } from "../../project-info/index.js";
+import { findMonorepoRoot, isFile, isMonorepoRoot } from "../../project-info/index.js";
 import type { Diagnostic } from "../../types/index.js";
 import type { ExpoCheckContext } from "./expo-check-context.js";
 import { buildExpoDiagnostic } from "./utils/build-expo-diagnostic.js";
@@ -17,7 +17,13 @@ const LOCKFILE_NAMES: ReadonlyArray<string> = [
 ];
 
 export const checkExpoLockfile = (context: ExpoCheckContext): Diagnostic[] => {
-  const workspaceRoot = findMonorepoRoot(context.rootDirectory) ?? context.rootDirectory;
+  // `findMonorepoRoot` only walks *parent* directories, so when the scanned
+  // project is itself the workspace root (its own `pnpm-workspace.yaml` /
+  // `workspaces`), prefer it — otherwise we'd climb past it to an outer repo
+  // and check the wrong (or a missing) lock file.
+  const workspaceRoot = isMonorepoRoot(context.rootDirectory)
+    ? context.rootDirectory
+    : (findMonorepoRoot(context.rootDirectory) ?? context.rootDirectory);
   const presentLockfiles = LOCKFILE_NAMES.filter((lockfileName) =>
     isFile(path.join(workspaceRoot, lockfileName)),
   );

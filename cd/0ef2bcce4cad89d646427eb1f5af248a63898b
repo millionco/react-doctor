@@ -1,0 +1,82 @@
+packages/core/src/runners/oxlint/spawn-batches.ts
+  s_3debc5d9b54d4f::t_5be607f7bd95e4 2,9
+  s_3debc5d9b54d4f::t_d69f2f94598b82 25-33
+  s_3debc5d9b54d4f::t_0ff713c4a6893b 61
+  s_3debc5d9b54d4f::t_4e4a288dd70be0 112-121,123-143,146-151
+packages/core/src/utils/map-with-concurrency.ts
+  s_3debc5d9b54d4f::t_752402617f97ce 1-25,29-30,32-37,41-46,48-49
+  s_3debc5d9b54d4f::t_37cf675fa5842c 26-28,31,38-40,47
+packages/core/src/refs.ts
+  s_3debc5d9b54d4f::t_cc0cc56abd5568 7
+  s_3debc5d9b54d4f::t_eb5e644c130a5b 2-6
+  s_3debc5d9b54d4f::t_e78743268641bc 40-70
+packages/core/src/run-oxlint.ts
+  s_3debc5d9b54d4f::t_34b44720770fe5 238
+  s_3debc5d9b54d4f::t_0f617a55581121 66-70
+packages/react-doctor/src/inspect.ts
+  s_3debc5d9b54d4f::t_052ba142960aeb 96
+  s_3debc5d9b54d4f::t_52a6d8e3d24538 62-63
+  s_3debc5d9b54d4f::t_092b1631aaf00e 200
+packages/react-doctor/src/cli/index.ts
+  s_3debc5d9b54d4f::t_f952a786e3436f 34-37
+packages/react-doctor/README.md
+  s_3debc5d9b54d4f::t_e4b87845a9b967 30-37
+packages/core/src/constants.ts
+  s_3debc5d9b54d4f::t_359587025ac781 75-88
+.changeset/parallel-lint-workers.md
+  s_3debc5d9b54d4f::t_b0443cd812373a 1-7
+packages/react-doctor/src/cli/utils/strip-unknown-cli-flags.ts
+  s_3debc5d9b54d4f::t_56ad4e63e8d4d8 39
+packages/core/src/types/inspect.ts
+  s_3debc5d9b54d4f::t_897b0a20d0c59c 49-57
+packages/core/src/run-inspect.ts
+  s_3debc5d9b54d4f::t_ed96fe32485af2 303-305
+  s_3debc5d9b54d4f::t_b860a65653690d 276-283
+  s_3debc5d9b54d4f::t_f6d92c6ead7975 27
+  s_3debc5d9b54d4f::t_4c987dbb57e70a 371
+packages/core/tests/resolve-scan-concurrency.test.ts
+  s_3debc5d9b54d4f::t_b88aa41ffea1b2 1-35
+packages/core/tests/map-with-concurrency.test.ts
+  s_3debc5d9b54d4f::t_e6cf80915553dc 1-66,70-71,77-98
+  s_3debc5d9b54d4f::t_76581b9a5b35cf 67-69,72-76
+packages/react-doctor/src/cli/utils/inspect-flags.ts
+  s_3debc5d9b54d4f::t_eafffbe60d5a6b 21
+packages/core/src/services/linter.ts
+  s_3debc5d9b54d4f::t_1cc3daf34dbe9b 129
+  s_3debc5d9b54d4f::t_9f224eaf77c90c 8
+  s_3debc5d9b54d4f::t_725a90ba906de6 108
+packages/react-doctor/src/cli/utils/resolve-cli-inspect-options.ts
+  s_3debc5d9b54d4f::t_83fb21fdfb02ce 31
+  s_3debc5d9b54d4f::t_12d8ce8469d074 4
+packages/react-doctor/src/cli/utils/resolve-parallel-flag.ts
+  s_3debc5d9b54d4f::t_fd0a43fdb27697 1-15,17-30
+  s_3debc5d9b54d4f::t_eb5e644c130a5b 16
+packages/core/src/utils/resolve-scan-concurrency.ts
+  s_3debc5d9b54d4f::t_8c03d1d7fa8ae8 1-18
+packages/core/tests/spawn-batches.test.ts
+  s_3debc5d9b54d4f::t_041f6f919f862a 85-116,120-149
+  s_3debc5d9b54d4f::t_eb5e644c130a5b 117-119
+  s_3debc5d9b54d4f::t_536e53b4e90da7 14-16
+packages/core/src/index.ts
+  s_3debc5d9b54d4f::t_0bb1464e15c30a 71,73
+packages/react-doctor/src/cli/utils/build-runtime-layers.ts
+  s_3debc5d9b54d4f::t_89a54f78f7a60f 10
+  s_3debc5d9b54d4f::t_15260b89745747 45-51
+  s_3debc5d9b54d4f::t_5c4481d9547174 114,126-132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "cd0ef2bcce4cad89d646427eb1f5af248a63898b",
+  "prompts": {},
+  "sessions": {
+    "s_3debc5d9b54d4f": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a7f44d67-a17d-4cd7-900f-95379ccfbac7",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

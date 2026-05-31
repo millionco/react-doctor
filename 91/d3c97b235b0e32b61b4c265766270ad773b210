@@ -1,0 +1,19 @@
+packages/core/src/check-dead-code.ts
+  s_cd1d45acfa1ba1::t_a2d582ef9e4ccc 445-446
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "91d3c97b235b0e32b61b4c265766270ad773b210",
+  "prompts": {},
+  "sessions": {
+    "s_cd1d45acfa1ba1": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8784e850-f583-4ba6-b015-4d31ea966001",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

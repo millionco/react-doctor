@@ -273,11 +273,8 @@ export const runInspect = <HooksR = never>(
       reason: null,
     });
 
-    // `OxlintConcurrency` is an ambient Reference (default 1; raised by the
-    // CLI's `--parallel` flag or `REACT_DOCTOR_PARALLEL`). Reading it here is
-    // purely for user-facing feedback — the Linter reads the same Reference
-    // to actually fan the lint pass out across workers. Surfaced in the
-    // spinner so a `--parallel` run visibly confirms it took effect.
+    // Read only for the spinner suffix below (the Linter reads the same
+    // Reference to actually fan out the lint pass); default 1 = serial.
     const scanConcurrency = yield* OxlintConcurrency;
     const workerCountSuffix = scanConcurrency > 1 ? ` · ${scanConcurrency} workers` : "";
 

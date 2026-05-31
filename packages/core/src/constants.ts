@@ -73,15 +73,11 @@ export const SPAWN_ARGS_MAX_LENGTH_CHARS = 24_000;
 export const OXLINT_MAX_FILES_PER_BATCH = 100;
 
 // Bounds for the `--parallel` lint worker count (also set via the
-// `REACT_DOCTOR_PARALLEL` env var or the `OxlintConcurrency` Reference).
-// React Doctor's rules run as oxlint JS plugins which are single-threaded
-// per oxlint process, so the lint pass is under-parallelized when batches
-// run serially: a single oxlint process pins ~1 core regardless of how
-// many files it lints. Running the file batches across N concurrent oxlint
-// subprocesses scales the scan nearly linearly with N (the language server
-// measured ~3.4x going 3 → 10 on a 10-core machine). The resolved worker
-// count is clamped to [MIN, MAX]; MAX bounds peak memory on very large
-// machines (each worker holds the ASTs for its batch).
+// `REACT_DOCTOR_PARALLEL` env var / `OxlintConcurrency` Reference). React
+// Doctor's rules are oxlint JS plugins — single-threaded per process — so
+// running the file batches across N concurrent oxlint subprocesses scales the
+// scan nearly linearly with N. MAX bounds peak memory (each worker holds its
+// batch's ASTs); the resolved count is clamped to [MIN, MAX].
 export const MIN_SCAN_CONCURRENCY = 1;
 
 export const MAX_SCAN_CONCURRENCY = 16;

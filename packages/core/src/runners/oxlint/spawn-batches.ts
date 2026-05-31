@@ -58,7 +58,7 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     spawnTimeoutMs,
     outputMaxBytes,
   } = input;
-  const concurrency = Math.max(MIN_SCAN_CONCURRENCY, input.concurrency ?? MIN_SCAN_CONCURRENCY);
+  const concurrency = input.concurrency ?? MIN_SCAN_CONCURRENCY;
   const totalFileCount = fileBatches.reduce((sum, batch) => sum + batch.length, 0);
 
   const allDiagnostics: Diagnostic[] = [];
@@ -109,23 +109,14 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     }
   };
 
-  // Progress is driven by one shared ticker rather than a per-batch timer:
-  // with batches linting in parallel, completions arrive out of order, so a
-  // single monotonic counter is the honest model. `startedFileCount` bounds
-  // the optimistic creep to files actually handed to a worker; the ticker
-  // nudges the displayed count toward that bound so the spinner feels live,
-  // and each completed batch snaps the floor up to the real scanned count.
-  // The timer is unref'd and always cleared in `finally` so a rejected batch
-  // (e.g. an adopted lint config crashing oxlint) can't leak a ref'd timer
-  // and hang the CLI after output prints (issue #599).
+  // One shared progress ticker (batches finish out of order under parallelism,
+  // so a single monotonic counter is the honest model): it creeps the displayed
+  // count toward the files handed to a worker, and each finished batch snaps it
+  // to the real scanned count. Unref'd and always cleared in `finally` so a
+  // rejected batch can't leak a ref'd timer and hang the CLI (issue #599).
   let startedFileCount = 0;
   let scannedFileCount = 0;
   let displayedFileCount = 0;
-  const reportScannedProgress = (): void => {
-    if (!onFileProgress) return;
-    displayedFileCount = Math.min(Math.max(displayedFileCount, scannedFileCount), totalFileCount);
-    onFileProgress(displayedFileCount, totalFileCount);
-  };
   const progressTimer =
     onFileProgress && totalFileCount > 1
       ? setInterval(() => {
@@ -143,7 +134,13 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
       startedFileCount += batch.length;
       const batchDiagnostics = await spawnLintBatch(batch);
       scannedFileCount += batch.length;
-      reportScannedProgress();
+      if (onFileProgress) {
+        displayedFileCount = Math.min(
+          Math.max(displayedFileCount, scannedFileCount),
+          totalFileCount,
+        );
+        onFileProgress(displayedFileCount, totalFileCount);
+      }
       return batchDiagnostics;
     });
     for (const batchDiagnostics of batchResults) allDiagnostics.push(...batchDiagnostics);

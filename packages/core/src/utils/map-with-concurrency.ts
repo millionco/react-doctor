@@ -23,8 +23,6 @@ export const mapWithConcurrency = async <Input, Output>(
 
   const workerCount = Math.min(Math.max(1, Math.floor(concurrency) || 1), items.length);
   let nextIndex = 0;
-  // A shared array (rather than a captured `let`) so the "have we failed
-  // yet?" check reads cleanly in both the workers and the outer scope.
   const errors: unknown[] = [];
 
   const runWorker = async (): Promise<void> => {
@@ -35,8 +33,6 @@ export const mapWithConcurrency = async <Input, Output>(
       try {
         results[index] = await task(items[index], index);
       } catch (error) {
-        // Later workers observe a non-empty `errors` and stop pulling new
-        // work once their current task settles; `errors[0]` is the first.
         errors.push(error);
         return;
       }

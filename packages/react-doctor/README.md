@@ -69,6 +69,8 @@ jobs:
 
 React Doctor scans the files changed in the pull request, emits inline annotations, blocks on error-level findings, and updates one sticky PR comment with the score and issue summary. The built-in GitHub token is used automatically; no secret or PAT is required. On forked PRs where GitHub withholds write permissions, the scan and annotations still run, but the sticky comment may be skipped.
 
+**Permissions:** set `permissions: { contents: read, pull-requests: write }` so React Doctor can read the pull request's changed files for a changed-files-only scan and post the sticky summary comment. If `pull-requests: read` is unavailable (for example on fork PRs or with a restricted default token), the action degrades gracefully to a full-project scan instead of failing.
+
 [Add GitHub Action →](https://github.com/marketplace/actions/react-doctor)
 
 ### 4. Configure rules in `react-doctor.config.json`

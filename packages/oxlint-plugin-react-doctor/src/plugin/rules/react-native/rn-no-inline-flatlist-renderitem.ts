@@ -8,11 +8,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const rnNoInlineFlatlistRenderitem = defineRule<Rule>({
   id: "rn-no-inline-flatlist-renderitem",
+  title: "Inline renderItem on list",
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    "Extract renderItem to a named function or wrap in useCallback to avoid re-creating on every render",
+    "Move renderItem to a named function or wrap it in useCallback so it is not rebuilt every time the screen redraws.",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "renderItem") return;
@@ -33,7 +34,7 @@ export const rnNoInlineFlatlistRenderitem = defineRule<Rule>({
 
       context.report({
         node: expression,
-        message: `Inline renderItem on <${listComponentName}> creates a new function reference every render — extract to a named function or wrap in useCallback`,
+        message: `Your users see extra row work when renderItem on <${listComponentName}> is rebuilt every time the screen redraws.`,
       });
     },
   }),

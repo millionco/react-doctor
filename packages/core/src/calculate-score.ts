@@ -1,15 +1,28 @@
 import { gzipSync } from "node:zlib";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import { FETCH_TIMEOUT_MS, SCORE_API_URL } from "./constants.js";
 import type { Diagnostic, ProjectInfo, ScoreResult } from "./types/index.js";
 
-const parseScoreResult = (value: unknown): ScoreResult | null => {
-  if (typeof value !== "object" || value === null) return null;
-  if (!("score" in value) || !("label" in value)) return null;
-  const scoreValue = Reflect.get(value, "score");
-  const labelValue = Reflect.get(value, "label");
-  if (typeof scoreValue !== "number" || typeof labelValue !== "string") return null;
-  return { score: scoreValue, label: labelValue };
-};
+// Score API response shape, including the optional per-rule `priority`/`tier`
+// payload. `Schema.Struct` ignores unknown fields, so extra keys (e.g.
+// `stored`) pass through harmlessly.
+const RulePrioritySchema = Schema.Struct({
+  priority: Schema.NullOr(Schema.Number),
+  tier: Schema.Literals(["P0", "P1", "P2", "P3"]),
+});
+
+const ScoreApiResponseSchema = Schema.Struct({
+  score: Schema.Number,
+  label: Schema.String,
+  rules: Schema.optional(Schema.Record(Schema.String, RulePrioritySchema)),
+});
+
+// Decode the score API response; any shape mismatch drops the whole result to
+// null, so a malformed payload simply falls back to "no score" (and severity
+// ordering at render time) rather than throwing.
+const parseScoreResult = (value: unknown): ScoreResult | null =>
+  Option.getOrNull(Schema.decodeUnknownOption(ScoreApiResponseSchema)(value));
 
 const stripFilePaths = (diagnostics: Diagnostic[]): Omit<Diagnostic, "filePath">[] =>
   diagnostics.map(({ filePath: _filePath, ...rest }) => rest);

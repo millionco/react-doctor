@@ -127,10 +127,11 @@ const resolveDependencyFreshness = (dep: EsTreeNode): ResolvedFreshness | null =
 //     custom-hook results.
 export const noEffectWithFreshDeps = defineRule<Rule>({
   id: "no-effect-with-fresh-deps",
+  title: "Effect dependency recreated every render",
   severity: "error",
   category: "State & Effects",
   recommendation:
-    "Move the constructed value into the hook body (so it's recomputed during render) and instead depend on its primitive inputs, or wrap the value in useMemo / useCallback so its reference is stable.",
+    "Move the value inside the hook body and depend on its simple inputs instead, or wrap it in useMemo / useCallback so it stays the same between renders.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isHookCall(node, HOOKS_WITH_DEPS)) return;
@@ -164,8 +165,8 @@ export const noEffectWithFreshDeps = defineRule<Rule>({
         const freshness = resolveDependencyFreshness(element);
         if (!freshness) continue;
         const message = freshness.viaBindingName
-          ? `${hookName} dep array element \`${freshness.viaBindingName}\` is a render-local ${freshness.kind} (declared in the same component scope); \`===\` will always fail because the binding is re-allocated each render. Hoist it to module scope or wrap it in useMemo/useCallback.`
-          : `${hookName} dep array contains a freshly-allocated ${freshness.kind}; \`===\` will always fail on this element so the hook runs every render. Move the value into the hook body or memoize it with useMemo/useCallback so its reference is stable.`;
+          ? `Your ${hookName} runs every render because dep \`${freshness.viaBindingName}\` is a new ${freshness.kind} built fresh each time, so \`===\` always fails.`
+          : `Your ${hookName} runs every render because its deps include a new ${freshness.kind} built fresh each time, so \`===\` always fails.`;
         context.report({ node: element, message });
       }
     },

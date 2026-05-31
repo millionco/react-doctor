@@ -10,11 +10,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const tanstackStartNoDirectFetchInLoader = defineRule<Rule>({
   id: "tanstack-start-no-direct-fetch-in-loader",
+  title: "Direct fetch in route loader",
   tags: ["test-noise"],
   requires: ["tanstack-start"],
   severity: "warn",
   recommendation:
-    "Use `createServerFn()` from @tanstack/react-start — provides type-safe RPC, input validation, and proper server/client code splitting",
+    "Use `createServerFn()` from @tanstack/react-start for type-safe RPC, input validation, and proper server/client code splitting",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const optionsObject = getRouteOptionsObject(node);
@@ -32,7 +33,7 @@ export const tanstackStartNoDirectFetchInLoader = defineRule<Rule>({
             context.report({
               node: child,
               message:
-                "Direct fetch() in route loader — use createServerFn() for type-safe server logic with automatic RPC",
+                "Direct fetch() in a route loader runs on the client too with no type safety.",
             });
           }
         });

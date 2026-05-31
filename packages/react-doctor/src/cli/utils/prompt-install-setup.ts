@@ -1,62 +1,15 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
 import Conf from "conf";
-import { prompts } from "./prompts.js";
 import { findNearestPackageDirectory, hasDoctorScript } from "./install-doctor-script.js";
-import { isCiOrCodingAgentEnvironment, isCodingAgentEnvironment } from "./is-ci-environment.js";
-import { SETUP_PROMPT_DELAY_MS } from "./constants.js";
-
-export interface InstallReactDoctorRunnerOptions {
-  readonly projectRoot?: string;
-  readonly onPromptCancel?: () => void;
-}
-
-export interface InstallReactDoctorRunner {
-  (options: InstallReactDoctorRunnerOptions): Promise<void>;
-}
-
-export interface SetupPromptWait {
-  (milliseconds: number): Promise<void>;
-}
-
-export const SETUP_PROMPT_CHOICE_YES = "yes";
-export const SETUP_PROMPT_CHOICE_NO = "no";
-export const SETUP_PROMPT_CHOICE_NEVER = "never";
-
-export interface SetupPromptSelect {
-  (message: string): Promise<string>;
-}
+import { isCodingAgentEnvironment } from "./is-ci-environment.js";
 
 export interface SetupPitchWriter {
   (line?: string): void;
 }
 
-export interface SetupPromptWarningWriter {
-  (message: string): void | Promise<void>;
-}
-
 export interface SetupPromptStoreOptions {
   readonly cwd?: string;
-}
-
-export interface ShouldPromptInstallSetupOptions {
-  readonly projectRoot: string;
-  readonly hasCompletedScan?: boolean;
-  readonly hasScoredScan?: boolean;
-  readonly isJsonMode: boolean;
-  readonly isScoreOnly: boolean;
-  readonly isStaged: boolean;
-  readonly skipPrompts: boolean;
-  readonly store?: SetupPromptStoreOptions;
-}
-
-export interface PromptInstallSetupOptions extends ShouldPromptInstallSetupOptions {
-  readonly issueCount: number;
-  readonly install?: InstallReactDoctorRunner;
-  readonly select?: SetupPromptSelect;
-  readonly wait?: SetupPromptWait;
-  readonly warn?: SetupPromptWarningWriter;
-  readonly writeLine?: SetupPitchWriter;
 }
 
 interface SetupPromptProjectConfig {
@@ -116,17 +69,6 @@ export const disableSetupPrompt = (
   return true;
 };
 
-export const shouldPromptInstallSetup = (options: ShouldPromptInstallSetupOptions): boolean => {
-  if (!(options.hasCompletedScan ?? options.hasScoredScan ?? false)) return false;
-  if (options.isJsonMode) return false;
-  if (options.isScoreOnly) return false;
-  if (options.isStaged) return false;
-  if (options.skipPrompts) return false;
-  if (isCiOrCodingAgentEnvironment()) return false;
-  if (hasDisabledSetupPrompt(options.projectRoot, options.store)) return false;
-  return !hasDoctorScript(options.projectRoot);
-};
-
 export const resolveInstallSetupProjectRoot = (
   options: ResolveInstallSetupProjectRootOptions,
 ): string | null => {
@@ -149,97 +91,8 @@ export const resolveInstallSetupProjectRoot = (
   return [...packageDirectories][0] ?? null;
 };
 
-const defaultWait: SetupPromptWait = (milliseconds) =>
-  new Promise((resolve) => {
-    setTimeout(resolve, milliseconds);
-  });
-
-const defaultSelect: SetupPromptSelect = async (message) => {
-  const { setupReactDoctorChoice } = await prompts<"setupReactDoctorChoice">(
-    {
-      type: "select",
-      name: "setupReactDoctorChoice",
-      message,
-      choices: [
-        {
-          title: "Yes (recommended)",
-          description: "Use agents to automatically fix issues",
-          value: SETUP_PROMPT_CHOICE_YES,
-        },
-        {
-          title: "Skip",
-          description: "Not recommended. Issues may go unfixed.",
-          value: SETUP_PROMPT_CHOICE_NEVER,
-        },
-      ],
-      initial: 0,
-    },
-    { onCancel: () => true },
-  );
-  return setupReactDoctorChoice ?? SETUP_PROMPT_CHOICE_NO;
-};
-
 const defaultWriteLine: SetupPitchWriter = (line = "") => {
   console.log(line);
-};
-
-const formatSetupPromptFailure = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error);
-
-const warnSetupPromptFailure = async (
-  options: PromptInstallSetupOptions,
-  error: unknown,
-): Promise<void> => {
-  const message = `React Doctor setup prompt skipped: ${formatSetupPromptFailure(error)}`;
-  if (options.warn) {
-    await options.warn(message);
-    return;
-  }
-  try {
-    const { cliLogger } = await import("./cli-logger.js");
-    cliLogger.warn(message);
-  } catch {}
-};
-
-export const promptInstallSetup = async (options: PromptInstallSetupOptions): Promise<void> => {
-  try {
-    if (!shouldPromptInstallSetup(options)) return;
-
-    await (options.wait ?? defaultWait)(SETUP_PROMPT_DELAY_MS);
-
-    const setupReactDoctorChoice = await (options.select ?? defaultSelect)(
-      "Set up React Doctor for this project?",
-    );
-    if (setupReactDoctorChoice !== SETUP_PROMPT_CHOICE_YES) {
-      if (setupReactDoctorChoice === SETUP_PROMPT_CHOICE_NEVER) {
-        disableSetupPrompt(options.projectRoot, options.store);
-      }
-      const writeLine = options.writeLine ?? defaultWriteLine;
-      writeLine("");
-      writeLine("You can always run `npx react-doctor@latest install` to set it up later.");
-      return;
-    }
-
-    const install =
-      options.install ?? (await import("./install-react-doctor.js")).runInstallReactDoctor;
-    const previousExitCode = process.exitCode;
-    let setupExitCode: typeof process.exitCode;
-    try {
-      process.exitCode = undefined;
-      await install({
-        projectRoot: options.projectRoot,
-        onPromptCancel: () => {},
-      });
-      setupExitCode = process.exitCode;
-    } finally {
-      process.exitCode = previousExitCode;
-    }
-    if (setupExitCode === undefined || setupExitCode === 0) {
-      disableSetupPrompt(options.projectRoot, options.store);
-    }
-  } catch (error) {
-    await warnSetupPromptFailure(options, error);
-  }
 };
 
 export interface ShouldShowAgentInstallHintOptions {

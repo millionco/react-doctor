@@ -5,7 +5,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
 const buildMessage = (tagName: string): string =>
-  `Improper nesting of \`<${tagName}>\` inside another \`<${tagName}>\` — the HTML parser auto-closes the outer element, splitting your DOM in ways the renderer never expressed and breaking event delegation, focus, and accessibility.`;
+  `Your users get broken clicks, focus & screen readers because you can't put a \`<${tagName}>\` inside another \`<${tagName}>\`, so the browser closes the outer one early. Move the inner one out.`;
 
 const isJsxElementWithTagName = (
   candidate: EsTreeNode,
@@ -56,9 +56,10 @@ const findEnclosingSameTag = (openingElement: EsTreeNode, tagName: string): EsTr
 // runtime via the live VNode tree.
 export const htmlNoNestedInteractive = defineRule<Rule>({
   id: "html-no-nested-interactive",
+  title: "Nested interactive elements",
   severity: "warn",
   recommendation:
-    "Hoist the inner `<a>` or `<button>` to a sibling, or replace the outer one with a non-interactive wrapper (e.g. a `<div>` or `<span>`).",
+    "Move the inner `<a>` or `<button>` so it's a sibling, or change the outer one to a plain `<div>` or `<span>`.",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (!isNodeOfType(node.name, "JSXIdentifier")) return;

@@ -282,4 +282,27 @@ describe("render-github-action-comment", () => {
     expect(outputs).toContain("score=");
     expect(outputs).toContain("total-issues=0");
   });
+
+  it("skips the comment without throwing when the report path is empty", () => {
+    const tempDirectory = setupTempDirectory();
+    const commentPath = path.join(tempDirectory, "comment.md");
+
+    expect(() =>
+      execFileSync(process.execPath, [RENDER_SCRIPT_PATH, "", commentPath], { stdio: "pipe" }),
+    ).not.toThrow();
+    expect(fs.existsSync(commentPath)).toBe(false);
+  });
+
+  it("skips the comment without throwing when the report file is missing", () => {
+    const tempDirectory = setupTempDirectory();
+    const reportPath = path.join(tempDirectory, "missing-report.json");
+    const commentPath = path.join(tempDirectory, "comment.md");
+
+    expect(() =>
+      execFileSync(process.execPath, [RENDER_SCRIPT_PATH, reportPath, commentPath], {
+        stdio: "pipe",
+      }),
+    ).not.toThrow();
+    expect(fs.existsSync(commentPath)).toBe(false);
+  });
 });

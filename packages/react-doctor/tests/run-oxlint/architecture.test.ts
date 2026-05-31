@@ -23,12 +23,12 @@ describe("runOxlint", () => {
       "no-giant-component": {
         fixture: "giant-component.tsx",
         ruleSource: "rules/architecture.ts",
-        category: "Architecture",
+        category: "Maintainability",
       },
       "no-render-in-render": {
         fixture: "architecture-issues.tsx",
         ruleSource: "rules/architecture.ts",
-        category: "Architecture",
+        category: "Maintainability",
       },
       "no-nested-component-definition": {
         fixture: "architecture-issues.tsx",
@@ -38,17 +38,17 @@ describe("runOxlint", () => {
       "no-many-boolean-props": {
         fixture: "new-rules.tsx",
         ruleSource: "rules/architecture.ts",
-        category: "Architecture",
+        category: "Maintainability",
       },
       "no-react19-deprecated-apis": {
         fixture: "legacy-react.tsx",
         ruleSource: "rules/architecture.ts",
-        category: "Architecture",
+        category: "Maintainability",
       },
       "no-render-prop-children": {
         fixture: "composition-issues.tsx",
         ruleSource: "rules/architecture.ts",
-        category: "Architecture",
+        category: "Maintainability",
       },
     },
     () => basicReactDiagnostics,

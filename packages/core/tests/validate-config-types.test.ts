@@ -121,7 +121,7 @@ describe("validateConfigTypes", () => {
     it("passes through the ESLint-shaped top-level severity fields untouched", () => {
       const input: ReactDoctorConfig = {
         rules: { "react-doctor/no-array-index-as-key": "error" },
-        categories: { "React Native": "warn" },
+        categories: { Performance: "warn" },
       };
       expect(validateConfigTypes(input)).toEqual(input);
       expect(stderrSpy).not.toHaveBeenCalled();
@@ -129,10 +129,31 @@ describe("validateConfigTypes", () => {
 
     it("drops invalid severity values with a stderr warning, keeping valid siblings", () => {
       const result = validateConfigTypes({
-        categories: { "React Native": "loud", Server: "warn" } as unknown as Record<string, "warn">,
+        categories: { Maintainability: "loud", Performance: "warn" } as unknown as Record<
+          string,
+          "warn"
+        >,
       });
-      expect(result.categories).toEqual({ Server: "warn" });
-      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining(`categories.React Native`));
+      expect(result.categories).toEqual({ Performance: "warn" });
+      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining(`categories.Maintainability`));
+    });
+
+    it("drops a stale pre-collapse category key with a stderr warning, keeping valid buckets", () => {
+      const result = validateConfigTypes({
+        categories: { "State & Effects": "off", Bugs: "warn" } as unknown as Record<string, "warn">,
+      });
+      expect(result.categories).toEqual({ Bugs: "warn" });
+      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining(`categories.State & Effects`));
+    });
+
+    it("warns on a stale category key in surfaces include/exclude, keeping valid buckets", () => {
+      const result = validateConfigTypes({
+        surfaces: {
+          score: { excludeCategories: ["Bundle Size", "Performance"] },
+        },
+      });
+      expect(result.surfaces?.score?.excludeCategories).toEqual(["Performance"]);
+      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining(`Bundle Size`));
     });
 
     it("drops the entire rules field when it isn't an object", () => {

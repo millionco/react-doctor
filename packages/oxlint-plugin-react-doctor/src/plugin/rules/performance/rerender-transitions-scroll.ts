@@ -54,10 +54,11 @@ const handlerCallsSetState = (handler: EsTreeNode): EsTreeNode | null => {
 // `useDeferredValue`.
 export const rerenderTransitionsScroll = defineRule<Rule>({
   id: "rerender-transitions-scroll",
+  title: "setState in a scroll handler",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Wrap the setState in startTransition (mark as non-urgent), use useDeferredValue, or stash in a ref + rAF throttle so scroll/pointer events don't trigger a re-render per fire",
+    "Wrap the setState in startTransition, use useDeferredValue, or keep the value in a ref and throttle with requestAnimationFrame, so these events don't redraw the screen every time",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isAddEventListenerCall(node)) return;
@@ -88,7 +89,7 @@ export const rerenderTransitionsScroll = defineRule<Rule>({
 
       context.report({
         node: setStateCall,
-        message: `setState in a "${eventName}" handler triggers re-renders at scroll/pointer frequency — wrap in startTransition (mark as non-urgent), use useDeferredValue, or stash in a ref + rAF throttle`,
+        message: `This causes jank because setState in a "${eventName}" handler redraws the screen many times a second, so wrap it in startTransition, use useDeferredValue, or keep the value in a ref & throttle with requestAnimationFrame`,
       });
     },
   }),

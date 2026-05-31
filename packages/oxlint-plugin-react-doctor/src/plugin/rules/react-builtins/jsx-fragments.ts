@@ -4,8 +4,8 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
 import type { Rule } from "../../utils/rule.js";
 
-const SYNTAX_MESSAGE = "Use `<></>` shorthand instead of `<React.Fragment>`.";
-const ELEMENT_MESSAGE = "Use `<React.Fragment>` instead of `<></>` shorthand.";
+const SYNTAX_MESSAGE = "This fragment is written inconsistently.";
+const ELEMENT_MESSAGE = "This fragment is written inconsistently.";
 
 interface JsxFragmentsSettings {
   mode?: "syntax" | "element";
@@ -28,6 +28,7 @@ const resolveSettings = (
 //   - "element": prefer `<React.Fragment>`. Flags `<></>` shorthand.
 export const jsxFragments = defineRule<Rule>({
   id: "jsx-fragments",
+  title: "Inconsistent fragment syntax",
   severity: "warn",
   // Pure stylistic — `<>` vs `<Fragment>` is a formatter concern,
   // not a bug class. Default off.

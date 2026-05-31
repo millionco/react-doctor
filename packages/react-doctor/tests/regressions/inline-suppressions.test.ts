@@ -43,6 +43,7 @@ const runFilter = (
     projectDir,
     null,
     createNodeReadFileLinesSync(projectDir),
+    { warnings: true },
   );
 };
 

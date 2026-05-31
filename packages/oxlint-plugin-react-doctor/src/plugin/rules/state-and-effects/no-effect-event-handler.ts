@@ -155,6 +155,7 @@ const doesAnyEventLikeCallReferenceAnyRoot = (
 
 export const noEffectEventHandler = defineRule<Rule>({
   id: "no-effect-event-handler",
+  title: "Effect used as an event handler",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
@@ -221,7 +222,7 @@ export const noEffectEventHandler = defineRule<Rule>({
         context.report({
           node,
           message:
-            "useEffect simulating an event handler — move logic to an actual event handler instead",
+            "This useEffect is simulating an event handler, which costs an extra render & runs late.",
         });
       },
     };

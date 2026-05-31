@@ -7,7 +7,7 @@ describe("rn-no-falsy-and-render", () => {
     const code = `const App = ({ count }) => <View>{count && <Text>Has</Text>}</View>;`;
     const result = runRule(rnNoFalsyAndRender, code);
     expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0].message).toContain("numeric");
+    expect(result.diagnostics[0].message).toContain("crash");
   });
 
   it("flags .length member expression", () => {

@@ -4,7 +4,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
-const MESSAGE = "Unnecessary closing tag — make the component self-closing.";
+const MESSAGE = "This tag has no children.";
 
 interface SelfClosingCompSettings {
   component?: boolean;
@@ -37,6 +37,7 @@ const isLowercaseIdentifier = (name: EsTreeNode): boolean => {
 // components independently.
 export const selfClosingComp = defineRule<Rule>({
   id: "self-closing-comp",
+  title: "Element not self-closing",
   severity: "warn",
   // Pure stylistic rule — `<X></X>` vs `<X/>` is a formatter concern,
   // not a bug class. Default off.

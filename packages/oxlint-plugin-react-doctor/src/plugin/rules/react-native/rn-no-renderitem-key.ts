@@ -77,11 +77,12 @@ const collectReturnedJsxElements = (expression: EsTreeNode): EsTreeNodeOfType<"J
 
 export const rnNoRenderitemKey = defineRule<Rule>({
   id: "rn-no-renderitem-key",
+  title: "Useless key on renderItem JSX",
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    "Remove `key` from the JSX returned by renderItem — React Native lists key rows from `keyExtractor` (or `item.key`); the inner `key` is a no-op and hides a missing `keyExtractor`",
+    "A `key` on the JSX from renderItem does nothing, since lists get row keys from `keyExtractor` (or `item.key`). Remove it and set `keyExtractor` on the list instead.",
   create: (context: RuleContext) => ({
     JSXAttribute(attributeNode: EsTreeNodeOfType<"JSXAttribute">) {
       if (
@@ -115,7 +116,7 @@ export const rnNoRenderitemKey = defineRule<Rule>({
           if (!hasJsxKeyAttribute(jsxElement.openingElement)) continue;
           context.report({
             node: jsxElement.openingElement,
-            message: `\`key\` on the JSX returned by ${renderPropName} on <${listComponentName}> is a no-op — React Native lists key rows from \`keyExtractor\` (or \`item.key\`). Remove this \`key\` and set \`keyExtractor\` on the list instead`,
+            message: `Your users get no benefit from \`key\` on the JSX from ${renderPropName}; the list ignores it.`,
           });
         }
       }

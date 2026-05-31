@@ -6,7 +6,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
 const PREFER_ONINPUT_MESSAGE =
-  "In Preact core, `onChange` on text-like inputs only fires on blur — use `onInput` for real-time updates. If using `preact/compat`, this is handled automatically.";
+  "Your users see no live updates because `onChange` on text inputs in Preact core only fires on blur, so use `onInput` instead. `preact/compat` handles this for you.";
 
 // Input types where the native DOM `change` event fires on blur (not on
 // every keystroke). Matches the set exempted by preact/compat's
@@ -45,6 +45,7 @@ const isTextLikeInput = (openingElement: EsTreeNodeOfType<"JSXOpeningElement">):
 // entirely. Pairs with the sibling `preact-prefer-ondblclick` rule.
 export const preactPreferOninput = defineRule<Rule>({
   id: "preact-prefer-oninput",
+  title: "onChange instead of onInput",
   requires: ["pure-preact"],
   severity: "warn",
   recommendation:

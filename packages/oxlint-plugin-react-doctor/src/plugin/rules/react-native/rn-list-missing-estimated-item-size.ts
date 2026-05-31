@@ -36,11 +36,12 @@ const isEmptyArrayLiteral = (node: EsTreeNodeOfType<"JSXAttribute">): boolean =>
 
 export const rnListMissingEstimatedItemSize = defineRule<Rule>({
   id: "rn-list-missing-estimated-item-size",
+  title: "List missing estimatedItemSize",
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    "Add `estimatedItemSize={<avg-row-height-in-px>}` so the initial container pool matches the real rows — without it the engine guesses and flashes blank cells on fast scroll",
+    "Without `estimatedItemSize` the list guesses row height and can flash blank cells on fast scroll. Add `estimatedItemSize={<avg-row-height-in-px>}` so it matches your rows.",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const localElementName = resolveJsxElementName(node);
@@ -90,7 +91,7 @@ export const rnListMissingEstimatedItemSize = defineRule<Rule>({
 
       context.report({
         node,
-        message: `<${localElementName}> (from ${canonicalRecyclerName}) is missing \`estimatedItemSize\` — the engine guesses the initial container pool from a default that often mismatches your rows, causing blank flashes on fast scroll`,
+        message: `Your users see blank cells flash on fast scroll when <${localElementName}> has no \`estimatedItemSize\`.`,
       });
     },
   }),

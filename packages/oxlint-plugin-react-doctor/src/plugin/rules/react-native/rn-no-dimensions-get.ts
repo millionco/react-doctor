@@ -7,11 +7,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const rnNoDimensionsGet = defineRule<Rule>({
   id: "rn-no-dimensions-get",
+  title: "Dimensions.get over useWindowDimensions",
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    "Use `const { width, height } = useWindowDimensions()` — it updates reactively on rotation and resize",
+    "Use `const { width, height } = useWindowDimensions()` so the size updates automatically on rotation and resize.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isNodeOfType(node.callee, "MemberExpression")) return;
@@ -25,7 +26,7 @@ export const rnNoDimensionsGet = defineRule<Rule>({
         context.report({
           node,
           message:
-            "Dimensions.get() does not update on screen rotation or resize — use useWindowDimensions() for reactive layout",
+            "Your users see a stale layout on rotation or resize because Dimensions.get() does not update.",
         });
       }
 
@@ -33,7 +34,7 @@ export const rnNoDimensionsGet = defineRule<Rule>({
         context.report({
           node,
           message:
-            "Dimensions.addEventListener() was removed in React Native 0.72 — use useWindowDimensions() instead",
+            "Your users hit a crash from Dimensions.addEventListener(), which was removed in React Native 0.72.",
         });
       }
     },

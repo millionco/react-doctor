@@ -9,11 +9,12 @@ const JS_THREAD_ANIMATION_IMPORTS = new Set(["Animated", "LayoutAnimation"]);
 
 export const rnPreferReanimated = defineRule<Rule>({
   id: "rn-prefer-reanimated",
+  title: "JS-thread animation instead of Reanimated",
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    "Use `import Animated from 'react-native-reanimated'` — animations run on the UI thread instead of the JS thread",
+    "Use `import Animated from 'react-native-reanimated'` so animations run on the UI thread instead of the JS thread, which keeps them smooth.",
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       if (node.source?.value !== "react-native") return;
@@ -25,8 +26,8 @@ export const rnPreferReanimated = defineRule<Rule>({
 
         const suggestion =
           importedName === "LayoutAnimation"
-            ? "LayoutAnimation runs animations on the JS thread and causes full layout recalculations — use Reanimated's Layout Animations (entering/exiting/layout props) for UI-thread layout transitions"
-            : "Animated from react-native runs animations on the JS thread — use react-native-reanimated for performant UI-thread animations";
+            ? "Your users see stutter when LayoutAnimation runs on the JS thread."
+            : "Your users see stutter when Animated from react-native runs on the JS thread.";
 
         context.report({
           node: specifier,

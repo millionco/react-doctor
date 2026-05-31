@@ -21,7 +21,7 @@ interface ForbidDomPropsSettings {
 }
 
 const buildMessage = (propName: string, customMessage?: string): string =>
-  customMessage ?? `Prop \`${propName}\` is forbidden on DOM nodes.`;
+  customMessage ?? `Your project blocks the \`${propName}\` prop on plain HTML tags.`;
 
 const resolveSettings = (
   settings: Readonly<Record<string, unknown>> | undefined,
@@ -55,8 +55,9 @@ const resolveSettings = (
 // (lowercase tag names), respecting per-prop `disallowedFor` allow-lists.
 export const forbidDomProps = defineRule<Rule>({
   id: "forbid-dom-props",
+  title: "Forbidden DOM prop used",
   severity: "warn",
-  recommendation: "Configure forbidden DOM props via the `forbidDomProps.forbid` setting.",
+  recommendation: "List the HTML props you want to block in the `forbidDomProps.forbid` setting.",
   category: "Architecture",
   create: (context) => {
     const forbidMap = resolveSettings(context.settings);

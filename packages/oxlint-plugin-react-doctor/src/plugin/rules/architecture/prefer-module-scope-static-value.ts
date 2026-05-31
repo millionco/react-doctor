@@ -190,11 +190,12 @@ const isHoistableValueExpression = (expression: EsTreeNode): boolean => {
 //     would change its semantics.
 export const preferModuleScopeStaticValue = defineRule<Rule>({
   id: "prefer-module-scope-static-value",
+  title: "Static value rebuilt every render",
   tags: ["test-noise"],
   severity: "warn",
   category: "Architecture",
   recommendation:
-    "Move the constant to module scope (above the component). It doesn't reference any local state, so the per-render allocation is wasted and any memoised consumer sees a fresh reference each render.",
+    "Move the value above the component, at the top of the file. It doesn't use local state, so rebuilding it each update is wasted and makes it look new every time.",
   create: (context: RuleContext) => ({
     VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
       if (!isNodeOfType(node.id, "Identifier")) return;
@@ -216,7 +217,7 @@ export const preferModuleScopeStaticValue = defineRule<Rule>({
       const bindingName = node.id.name;
       context.report({
         node,
-        message: `\`${bindingName}\` inside \`${component.displayName}\` doesn't depend on any local state. Move it to module scope so the allocation happens once and memoised consumers see a stable reference.`,
+        message: `\`${bindingName}\` inside \`${component.displayName}\` uses no local state but is rebuilt every render, so it looks new each time & breaks memoized children. Move it to the top of the file, outside the component.`,
       });
     },
   }),

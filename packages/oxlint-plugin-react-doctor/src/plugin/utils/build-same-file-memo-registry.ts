@@ -1,4 +1,3 @@
-import { REACT_HOC_NAMES } from "../constants/react.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { flattenCalleeName } from "./flatten-callee-name.js";
 import { isNodeOfType } from "./is-node-of-type.js";

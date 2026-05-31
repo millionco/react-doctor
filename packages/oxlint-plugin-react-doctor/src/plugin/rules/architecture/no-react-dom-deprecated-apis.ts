@@ -24,19 +24,19 @@ import { getImportedName } from "../../utils/get-imported-name.js";
 const REACT_DOM_DEPRECATED_MESSAGES = new Map<string, string>([
   [
     "render",
-    "ReactDOM.render is the legacy root API — switch to `import { createRoot } from 'react-dom/client'` and call `createRoot(container).render(...)` (REMOVED in React 19)",
+    "ReactDOM.render crashes your app in React 19 since it's gone, so import `createRoot` from `react-dom/client` & call `createRoot(container).render(...)`.",
   ],
   [
     "hydrate",
-    "ReactDOM.hydrate is the legacy SSR API — switch to `import { hydrateRoot } from 'react-dom/client'` and call `hydrateRoot(container, <App />)` (REMOVED in React 19)",
+    "ReactDOM.hydrate crashes hydration in React 19 since it's gone, so import `hydrateRoot` from `react-dom/client` & call `hydrateRoot(container, <App />)`.",
   ],
   [
     "unmountComponentAtNode",
-    "ReactDOM.unmountComponentAtNode no longer works on roots created with `createRoot` — keep a reference to the root and call `root.unmount()` instead (REMOVED in React 19)",
+    "ReactDOM.unmountComponentAtNode won't unmount your tree in React 19 since it's gone, so keep the root you created & call `root.unmount()` instead.",
   ],
   [
     "findDOMNode",
-    "ReactDOM.findDOMNode crawls the rendered tree and breaks composition — accept a ref directly and read `ref.current` (REMOVED in React 19)",
+    "ReactDOM.findDOMNode crashes in React 19 since it's gone, & it breaks composition anyway, so pass a ref & read `ref.current` instead.",
   ],
 ]);
 
@@ -54,7 +54,7 @@ const buildTestUtilsMessage = (importedName: string): string => {
   const replacementText = replacement
     ? `Use ${replacement}.`
     : "Switch to `act` from `react` or the equivalent in `@testing-library/react`.";
-  return `react-dom/test-utils is removed in React 19. ${replacementText}`;
+  return `react-dom/test-utils is removed in React 19, so your tests break. ${replacementText}`;
 };
 
 const reportTestUtilsImports = (
@@ -70,13 +70,14 @@ const reportTestUtilsImports = (
     context.report({
       node: specifier,
       message:
-        "react-dom/test-utils is removed in React 19. Use `act` from `react` and `fireEvent` / `render` from `@testing-library/react` instead",
+        "react-dom/test-utils is removed in React 19, so your tests break. Use `act` from `react` & `fireEvent` / `render` from `@testing-library/react` instead",
     });
   }
 };
 
 export const noReactDomDeprecatedApis = defineRule<Rule>({
   id: "no-react-dom-deprecated-apis",
+  title: "Deprecated react-dom APIs",
   requires: ["react:18"],
   // BOTH tags — the `defineRule` wrapper recognises that
   // "migration-hint" wins over "test-noise", so the rule still fires
@@ -85,7 +86,7 @@ export const noReactDomDeprecatedApis = defineRule<Rule>({
   tags: ["test-noise", "migration-hint"],
   severity: "warn",
   recommendation:
-    "Switch the legacy `react-dom` root API (`render` / `hydrate` / `unmountComponentAtNode`) to `createRoot` / `hydrateRoot` / `root.unmount()` from `react-dom/client`. Replace `findDOMNode` with a ref. The whole `react-dom/test-utils` entry point is removed in React 19 — use `act` from `react` and `fireEvent` / `render` from `@testing-library/react`. Only enabled on projects detected as React 18+.",
+    "Switch the old `react-dom` root API (`render` / `hydrate` / `unmountComponentAtNode`) to `createRoot` / `hydrateRoot` / `root.unmount()` from `react-dom/client`. Replace `findDOMNode` with a ref. `react-dom/test-utils` is gone in React 19, so use `act` from `react` and `fireEvent` / `render` from `@testing-library/react`. Only runs on React 18+ projects.",
   ...createDeprecatedReactImportRule({
     source: "react-dom",
     messages: REACT_DOM_DEPRECATED_MESSAGES,

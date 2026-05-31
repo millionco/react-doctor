@@ -5,10 +5,8 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactFunctionCall } from "../../utils/is-react-function-call.js";
 import type { Rule } from "../../utils/rule.js";
 
-const REQUIRE_DESTRUCTURE_MESSAGE =
-  "useState call is not destructured into a value + setter pair (`const [x, setX] = useState(...)`).";
-const NAMING_CONVENTION_MESSAGE =
-  "useState destructuring should follow the `[thing, setThing]` naming convention.";
+const REQUIRE_DESTRUCTURE_MESSAGE = "This `useState` result is hard to follow.";
+const NAMING_CONVENTION_MESSAGE = "The setter here is hard to spot.";
 
 interface HookUseStateSettings {
   allowDestructuredState?: boolean;
@@ -64,6 +62,7 @@ const expectedSetterNames = (prefix: string, suffix: string): ReadonlyArray<stri
 // `split_leading_lowercase` early-return).
 export const hookUseState = defineRule<Rule>({
   id: "hook-use-state",
+  title: "useState not destructured",
   severity: "warn",
   // Stylistic naming rule — flags `const [count, _setCount]` (the
   // unused-marker underscore convention) and `const [instance] =

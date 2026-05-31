@@ -8,7 +8,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
 const RENDER_METHOD_NAME = "render";
-const MESSAGE = "Your `render` method should have a `return` statement.";
+const MESSAGE = "Your users see nothing because this `render` method returns nothing.";
 
 const isStaticRenderKey = (key: EsTreeNode): boolean => {
   if (isNodeOfType(key, "Identifier")) return key.name === RENDER_METHOD_NAME;
@@ -74,6 +74,7 @@ const isInsideEs6Component = (renderHost: EsTreeNode): boolean => {
 // good enough for every OXC test fixture.
 export const requireRenderReturn = defineRule<Rule>({
   id: "require-render-return",
+  title: "Render method does not return",
   severity: "error",
   recommendation: "Return JSX from your component's `render` method.",
   create: (context) => {

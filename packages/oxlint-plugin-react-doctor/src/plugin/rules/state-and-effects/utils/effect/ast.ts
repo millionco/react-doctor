@@ -92,12 +92,26 @@ export const getRef = (analysis: ProgramAnalysis, identifier: EsTreeNode): Refer
   return null;
 };
 
+// Memoize per (analysis, node). `analysis` is the per-Program singleton
+// (get-program-analysis.ts), so this WeakMap is stable for the file and
+// self-cleaning (GC'd with the Program). Without it, ascend() re-descends
+// the same large definition subtrees on every recursion step -> superlinear.
+const downstreamRefsCache = new WeakMap<ProgramAnalysis, WeakMap<EsTreeNode, Reference[]>>();
+
 export const getDownstreamRefs = (analysis: ProgramAnalysis, node: EsTreeNode): Reference[] => {
+  let perNode = downstreamRefsCache.get(analysis);
+  if (!perNode) {
+    perNode = new WeakMap();
+    downstreamRefsCache.set(analysis, perNode);
+  }
+  const cached = perNode.get(node);
+  if (cached) return cached;
   const refs: Reference[] = [];
   for (const identifier of findDownstreamNodes(node, "Identifier")) {
     const ref = getRef(analysis, identifier);
     if (ref) refs.push(ref);
   }
+  perNode.set(node, refs);
   return refs;
 };
 

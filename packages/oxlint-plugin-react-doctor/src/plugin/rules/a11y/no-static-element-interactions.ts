@@ -17,7 +17,7 @@ import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import type { Rule } from "../../utils/rule.js";
 
 const MESSAGE =
-  'Static HTML elements with event handlers require a role — add `role="…"` or use a semantic HTML element instead.';
+  "Screen reader users can't tell this click handler is interactive because it has no `role`, so add a `role` or use a button or link.";
 
 const DEFAULT_HANDLERS: ReadonlyArray<string> = [
   "onClick",
@@ -64,10 +64,10 @@ const isNullValue = (attribute: EsTreeNodeOfType<"JSXAttribute">): boolean => {
 // tag via `defineRule`.
 export const noStaticElementInteractions = defineRule<Rule>({
   id: "no-static-element-interactions",
+  title: "Interaction on static element",
   tags: ["react-jsx-only"],
   severity: "warn",
-  recommendation:
-    "Static HTML elements with event handlers require a role, or use a semantic HTML element instead.",
+  recommendation: "Give clickable static elements a `role`, or use a button or link.",
   category: "Accessibility",
   create: (context) => {
     const settings = resolveSettings(context.settings);

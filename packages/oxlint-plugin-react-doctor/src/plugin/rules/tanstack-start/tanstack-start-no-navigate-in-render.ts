@@ -11,11 +11,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const tanstackStartNoNavigateInRender = defineRule<Rule>({
   id: "tanstack-start-no-navigate-in-render",
+  title: "navigate() called during render",
   tags: ["test-noise"],
   requires: ["tanstack-start"],
   severity: "warn",
   recommendation:
-    "Use `throw redirect({ to: '/path' })` in `beforeLoad` or `loader` instead — navigate() during render causes hydration issues",
+    "Use `throw redirect({ to: '/path' })` in `beforeLoad` or `loader`. navigate() during render causes hydration issues.",
   create: (context: RuleContext) => {
     // HACK: only callbacks that React calls LATER are safe scopes for
     // navigate() — useEffect / useLayoutEffect (post-commit), useCallback
@@ -56,8 +57,7 @@ export const tanstackStartNoNavigateInRender = defineRule<Rule>({
         ) {
           context.report({
             node,
-            message:
-              "navigate() called during render — use redirect() in beforeLoad/loader for route-level redirects",
+            message: "navigate() during render causes hydration errors.",
           });
         }
       },

@@ -13,11 +13,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noRedundantPaddingAxes = defineRule<Rule>({
   id: "design-no-redundant-padding-axes",
+  title: "Redundant padding axes",
   tags: ["design", "test-noise"],
   severity: "warn",
   category: "Architecture",
   recommendation:
-    "Collapse `px-N py-N` to `p-N` when both axes match. Keep them split only when one axis varies at a breakpoint (`py-2 md:py-3`)",
+    "Collapse `px-N py-N` to `p-N` when both sides match. Keep them split only when one side changes at a breakpoint (`py-2 md:py-3`).",
   create: (context: RuleContext) => ({
     JSXAttribute(jsxAttribute: EsTreeNodeOfType<"JSXAttribute">) {
       if (
@@ -45,7 +46,7 @@ export const noRedundantPaddingAxes = defineRule<Rule>({
       for (const matchedPair of matchedPairs) {
         context.report({
           node: jsxAttribute,
-          message: `px-${matchedPair.value} py-${matchedPair.value} → use the shorthand p-${matchedPair.value}`,
+          message: `px-${matchedPair.value} & py-${matchedPair.value} are the same.`,
         });
       }
     },

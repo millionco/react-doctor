@@ -71,9 +71,10 @@ const containingFunctionIsComponentOrHook = (functionNode: EsTreeNode): boolean 
 
 export const jotaiSelectAtomInRenderBody = defineRule<Rule>({
   id: "jotai-select-atom-in-render-body",
+  title: "selectAtom called during render",
   severity: "error",
   recommendation:
-    "Lift `selectAtom(base, fn)` to module scope, or wrap it: `const atom = useMemo(() => selectAtom(base, fn), [deps])`. Calling it in render rebuilds the derived atom every render and infinitely re-subscribes",
+    "Lift `selectAtom(base, fn)` to module scope, or wrap it: `const atom = useMemo(() => selectAtom(base, fn), [deps])`. Calling it during render makes a new atom every time and re-subscribes forever.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isImportedSelectAtom(node)) return;
@@ -102,7 +103,7 @@ export const jotaiSelectAtomInRenderBody = defineRule<Rule>({
           context.report({
             node,
             message:
-              "`selectAtom(...)` called in a component / hook body without `useMemo` — every render builds a new derived atom and `useAtomValue` re-subscribes forever. Lift it to module scope or wrap with `useMemo(() => selectAtom(...), [deps])`",
+              "`selectAtom(...)` runs in a component or hook without `useMemo`, so every render makes a new atom & re-subscribes forever, freezing the page for your users. Lift it to module scope, or wrap it in `useMemo(() => selectAtom(...), [deps])`.",
           });
           return;
         }

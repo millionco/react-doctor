@@ -8,7 +8,9 @@ export const GIT_HOOK_EXECUTABLE_MODE = 0o755;
 
 export const AGENT_HOOK_TIMEOUT_SECONDS = 120;
 
-export const SETUP_PROMPT_DELAY_MS = 100;
+// Cap on files listed per rule in the agent-handoff prompt so it stays a
+// compact, passable CLI argument.
+export const HANDOFF_MAX_FILES_PER_RULE = 3;
 
 export const SCORE_HEADER_ANIMATION_FRAME_COUNT = 40;
 export const SCORE_HEADER_ANIMATION_FRAME_DELAY_MS = 50;

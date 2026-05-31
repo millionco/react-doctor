@@ -11,12 +11,13 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const tanstackStartGetMutation = defineRule<Rule>({
   id: "tanstack-start-get-mutation",
+  title: "Mutation in GET server function",
   tags: ["test-noise"],
   requires: ["tanstack-start"],
   severity: "warn",
   category: "Security",
   recommendation:
-    "Use `createServerFn({ method: 'POST' })` for data modifications — GET requests can be triggered by prefetching and are vulnerable to CSRF",
+    "Use `createServerFn({ method: 'POST' })` for data changes. GET requests can be prefetched and are open to CSRF.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isNodeOfType(node.callee, "MemberExpression")) return;
@@ -58,7 +59,7 @@ export const tanstackStartGetMutation = defineRule<Rule>({
       if (sideEffect) {
         context.report({
           node,
-          message: `GET server function has side effects (${sideEffect}) — use createServerFn({ method: 'POST' }) for mutations`,
+          message: `This GET server function's side effect (${sideEffect}) is vulnerable to CSRF attacks.`,
         });
       }
     },

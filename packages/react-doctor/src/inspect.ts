@@ -2,6 +2,7 @@ import { performance } from "node:perf_hooks";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import {
+  DEFAULT_SHOW_WARNINGS,
   filterDiagnosticsForSurface,
   highlighter,
   layerOtlp,
@@ -20,8 +21,11 @@ import type {
   ScoreResult,
 } from "@react-doctor/core";
 import { makeNoopConsole } from "./cli/utils/noop-console.js";
+import { buildNoScoreMessage } from "./cli/utils/build-no-score-message.js";
 import { printAgentGuidance } from "./cli/utils/render-agent-guidance.js";
 import { isCiOrCodingAgentEnvironment } from "./cli/utils/is-ci-environment.js";
+import { computeProjectedScore } from "./cli/utils/compute-score-projection.js";
+import { buildRulePriorityMap } from "./cli/utils/diagnostic-grouping.js";
 import { printDiagnostics } from "./cli/utils/render-diagnostics.js";
 import { isNonInteractiveEnvironment } from "./cli/utils/is-non-interactive-environment.js";
 import { printProjectDetection } from "./cli/utils/render-project-detection.js";
@@ -30,7 +34,7 @@ import {
   printNoScoreHeader,
   printScoreHeader,
 } from "./cli/utils/render-score-header.js";
-import { printSummary } from "./cli/utils/render-summary.js";
+import { printSummary, printVerboseTip } from "./cli/utils/render-summary.js";
 import { resolveOxlintNode } from "./cli/utils/resolve-oxlint-node.js";
 import { isSpinnerSilent, setSpinnerSilent } from "./cli/utils/spinner.js";
 import { VERSION } from "./cli/utils/version.js";
@@ -55,6 +59,7 @@ interface ResolvedInspectOptions {
   customRulesOnly: boolean;
   share: boolean;
   respectInlineDisables: boolean;
+  warnings: boolean;
   adoptExistingLintConfig: boolean;
   ignoredTags: ReadonlySet<string>;
   outputSurface: DiagnosticSurface;
@@ -89,6 +94,7 @@ const mergeInspectOptions = (
   share: userConfig?.share ?? true,
   respectInlineDisables:
     inputOptions.respectInlineDisables ?? userConfig?.respectInlineDisables ?? true,
+  warnings: inputOptions.warnings ?? userConfig?.warnings ?? DEFAULT_SHOW_WARNINGS,
   adoptExistingLintConfig: userConfig?.adoptExistingLintConfig ?? true,
   ignoredTags: buildIgnoredTags(userConfig),
   outputSurface: inputOptions.outputSurface ?? "cli",
@@ -206,6 +212,7 @@ const runInspectWithRuntime = async (
       includePaths: options.includePaths,
       customRulesOnly: options.customRulesOnly,
       respectInlineDisables: options.respectInlineDisables,
+      warnings: options.warnings,
       adoptExistingLintConfig: options.adoptExistingLintConfig,
       ignoredTags: options.ignoredTags,
       nodeBinaryPath: resolvedNodeBinaryPath ?? undefined,
@@ -213,6 +220,7 @@ const runInspectWithRuntime = async (
       isCi: options.isCi,
       doctorVersion: VERSION,
       resolveLocalGithubViewerPermission: !options.noScore,
+      suppressScanSummary: options.suppressRendering,
     },
     {
       beforeLint: (projectInfo, lintIncludePaths) =>
@@ -301,13 +309,15 @@ const runInspectWithRuntime = async (
     didDeadCodeFail: output.didDeadCodeFail,
     deadCodeFailureReason: output.deadCodeFailureReason,
     directory: output.resolvedDirectory,
+    scannedFileCount: output.scannedFileCount,
+    scannedFilePaths: output.scannedFilePaths,
+    scanElapsedMilliseconds: output.scanElapsedMilliseconds,
   };
-  const result = await Effect.runPromise(
+  return await Effect.runPromise(
     finalizeAndRender(finalizeInput).pipe(
       options.silent ? Effect.provideService(Console.Console, silentConsole) : (program) => program,
     ),
   );
-  return result;
 };
 
 interface FinalizeInput {
@@ -323,6 +333,9 @@ interface FinalizeInput {
   didDeadCodeFail: boolean;
   deadCodeFailureReason: string | null;
   directory: string;
+  scannedFileCount: number;
+  scannedFilePaths: ReadonlyArray<string>;
+  scanElapsedMilliseconds: number;
 }
 
 const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =>
@@ -340,6 +353,9 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       didDeadCodeFail,
       deadCodeFailureReason,
       directory,
+      scannedFileCount,
+      scannedFilePaths,
+      scanElapsedMilliseconds,
     } = input;
 
     const skippedChecks: string[] = [];
@@ -347,9 +363,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
     if (didDeadCodeFail) skippedChecks.push("dead-code");
     const hasSkippedChecks = skippedChecks.length > 0;
 
-    const noScoreMessage = options.noScore
-      ? "Score disabled by --no-score."
-      : "Score unavailable (could not reach the score API).";
+    const noScoreMessage = buildNoScoreMessage(options.noScore);
 
     const skippedCheckReasons: Record<string, string> = {};
     if (didLintFail && lintFailureReason !== null) {
@@ -368,6 +382,9 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       ...(Object.keys(skippedCheckReasons).length > 0 ? { skippedCheckReasons } : {}),
       project,
       elapsedMilliseconds,
+      scannedFileCount,
+      scannedFilePaths,
+      scanElapsedMilliseconds,
     });
 
     if (options.suppressRendering) {
@@ -422,7 +439,12 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
     }
 
     yield* Console.log("");
-    yield* printDiagnostics([...surfaceDiagnostics], options.verbose, directory);
+    yield* printDiagnostics(
+      [...surfaceDiagnostics],
+      options.verbose,
+      directory,
+      buildRulePriorityMap([score]),
+    );
     if (options.isNonInteractiveEnvironment && options.outputSurface !== "prComment") {
       yield* printAgentGuidance();
     }
@@ -436,11 +458,20 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       yield* Console.log("");
     }
 
+    // Re-score with the displayed top errors removed so the score bar can
+    // show the payoff as a ghost gain segment.
+    const potentialScore = score
+      ? yield* Effect.promise(() =>
+          computeProjectedScore([...surfaceDiagnostics], [...surfaceDiagnostics], score),
+        )
+      : null;
+
     const shouldShowShareLink = !options.noScore && options.share && !options.isCi;
     yield* printSummary({
       diagnostics: [...surfaceDiagnostics],
       elapsedMilliseconds,
       scoreResult: score,
+      potentialScore,
       projectName: project.projectName,
       totalSourceFileCount: lintSourceFileCount,
       noScoreMessage,
@@ -455,6 +486,8 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
         highlighter.warn(`  Note: ${skippedLabel} checks failed — score may be incomplete.`),
       );
     }
+
+    yield* printVerboseTip([...surfaceDiagnostics], options.verbose);
 
     return buildResult();
   });

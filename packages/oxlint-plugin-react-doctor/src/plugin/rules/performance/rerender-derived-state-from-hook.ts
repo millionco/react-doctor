@@ -75,10 +75,11 @@ const findThresholdDerivedBindings = (
 
 export const rerenderDerivedStateFromHook = defineRule<Rule>({
   id: "rerender-derived-state-from-hook",
+  title: "Continuous hook value over-renders",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    'Use a threshold/media-query hook (e.g. `useMediaQuery("(max-width: 767px)")`) — the component re-renders only when the threshold flips, not every pixel',
+    'Use a threshold hook like `useMediaQuery("(max-width: 767px)")`, so the screen only redraws when the answer changes, not on every pixel',
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
@@ -86,7 +87,7 @@ export const rerenderDerivedStateFromHook = defineRule<Rule>({
       for (const binding of bindings) {
         context.report({
           node: binding.declarator,
-          message: `${binding.hookName}() returns a continuously-changing value but you only compare it to a threshold — use a media-query / threshold hook (e.g. \`useMediaQuery("(max-width: 767px)")\`) so the component re-renders only when the threshold flips`,
+          message: `This redraws the screen far more than needed because ${binding.hookName}() changes constantly but you only check it against a cutoff, so use a threshold hook like \`useMediaQuery("(max-width: 767px)")\` to redraw only when the answer changes`,
         });
       }
     };

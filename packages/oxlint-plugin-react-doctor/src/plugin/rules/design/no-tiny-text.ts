@@ -10,11 +10,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noTinyText = defineRule<Rule>({
   id: "no-tiny-text",
+  title: "Text is too small",
   severity: "warn",
   tags: ["test-noise"],
   category: "Accessibility",
   recommendation:
-    "Use at least 12px for body content, 16px is ideal. Small text is hard to read, especially on high-DPI mobile screens",
+    "Use at least 12px for body text, and 16px is best. Small text is hard to read, especially on phones.",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);
@@ -40,7 +41,7 @@ export const noTinyText = defineRule<Rule>({
         if (pxValue !== null && pxValue > 0 && pxValue < TINY_TEXT_THRESHOLD_PX) {
           context.report({
             node: property,
-            message: `Font size ${pxValue}px is too small — body text should be at least ${TINY_TEXT_THRESHOLD_PX}px for readability, 16px is ideal`,
+            message: `Your users strain to read ${pxValue}px text, so use at least ${TINY_TEXT_THRESHOLD_PX}px for body text, & 16px is best.`,
           });
         }
       }

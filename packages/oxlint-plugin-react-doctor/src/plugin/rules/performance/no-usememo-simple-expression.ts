@@ -45,10 +45,11 @@ const isTriviallyCheapExpression = (node: EsTreeNode | null): boolean => {
 
 export const noUsememoSimpleExpression = defineRule<Rule>({
   id: "no-usememo-simple-expression",
+  title: "useMemo on a cheap value",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Remove useMemo — property access, math, and ternaries are already cheap without memoization",
+    "Remove the useMemo. Property reads, math, and ternaries are already fast, so wrapping them doesn't help",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isHookCall(node, "useMemo")) return;
@@ -94,7 +95,7 @@ export const noUsememoSimpleExpression = defineRule<Rule>({
         context.report({
           node,
           message:
-            "useMemo wrapping a trivially cheap expression — memo overhead exceeds the computation",
+            "This costs more than it saves because useMemo is wrapping a value that's already cheap, so remove the useMemo",
         });
       }
     },

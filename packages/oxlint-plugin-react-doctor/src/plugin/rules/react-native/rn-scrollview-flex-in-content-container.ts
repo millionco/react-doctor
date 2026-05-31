@@ -138,11 +138,12 @@ const findFlexShorthandProperty = (
 
 export const rnScrollviewFlexInContentContainer = defineRule<Rule>({
   id: "rn-scrollview-flex-in-content-container",
+  title: "flex on contentContainerStyle collapses container",
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    "Use `flexGrow: 1` on `contentContainerStyle` — RN's `flex: 1` shorthand sets `flexBasis: 0` and collapses the container on small devices",
+    "In RN, `flex: 1` on `contentContainerStyle` sets `flexBasis: 0` and can collapse the container on small screens. Use `flexGrow: 1` instead.",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const elementName = resolveJsxElementName(node);
@@ -166,7 +167,7 @@ export const rnScrollviewFlexInContentContainer = defineRule<Rule>({
 
         context.report({
           node: flexProperty,
-          message: `<${elementName}> contentContainerStyle uses \`flex: <number>\` — RN's flex shorthand sets flexBasis: 0 and collapses the container on small devices. Use \`flexGrow: 1\` instead`,
+          message: `\`flex\` on contentContainerStyle can collapse the container on small screens.`,
         });
       }
     },

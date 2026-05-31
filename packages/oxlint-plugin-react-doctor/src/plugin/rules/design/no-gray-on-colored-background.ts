@@ -6,11 +6,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noGrayOnColoredBackground = defineRule<Rule>({
   id: "no-gray-on-colored-background",
+  title: "Gray text on colored background",
   tags: ["test-noise"],
   severity: "warn",
   category: "Accessibility",
   recommendation:
-    "Use a darker shade of the background color for text, or white/near-white for contrast. Gray text on colored backgrounds looks washed out",
+    "Use white or near-white text, or a darker shade of the background color. Gray text on colored backgrounds looks washed out.",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const classStr = getStringFromClassNameAttr(node);
@@ -24,7 +25,7 @@ export const noGrayOnColoredBackground = defineRule<Rule>({
       if (grayTextMatch && coloredBgMatch) {
         context.report({
           node,
-          message: `Gray text (${grayTextMatch[0]}) on colored background (${coloredBgMatch[0]}) looks washed out — use a darker shade of the background color or white`,
+          message: `Your users see washed-out gray text (${grayTextMatch[0]}) on a colored background (${coloredBgMatch[0]}), so use white or a darker shade of the background color.`,
         });
       }
     },

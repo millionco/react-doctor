@@ -56,6 +56,24 @@ export const SECRET_PATTERNS = [
   /^sk-[a-zA-Z0-9]{32,}$/,
 ];
 
+// Public, client-safe keys designed to ship in the browser, each with a
+// prefix distinct from the same vendor's secret key (RevenueCat `appl_`
+// vs `sk_`, Supabase `sb_publishable_` vs `sb_secret_`, …); a literal
+// matching one must never be flagged. Ambiguous shapes are omitted so they
+// stay flagged: Google `AIza…` (also unrestricted server keys) and Supabase
+// `anon`/`service_role` JWTs (`eyJ…`, indistinguishable by shape).
+export const PUBLIC_CLIENT_KEY_PATTERNS = [
+  /^appl_/, // RevenueCat (Apple)
+  /^goog_/, // RevenueCat (Google)
+  /^amzn_/, // RevenueCat (Amazon)
+  /^strp_/, // RevenueCat (Stripe)
+  /^pk_(?:live|test)_/, // Stripe / Clerk publishable
+  /^sb_publishable_/, // Supabase publishable
+  /^phc_/, // PostHog project key
+  /^public-token-(?:live|test)-/, // Stytch public token
+  /^pk\.eyJ/, // Mapbox public token
+];
+
 export const SECRET_VARIABLE_PATTERN = /(?:api_?key|secret|token|password|credential|auth)/i;
 
 export const SECRET_TOOLING_FILE_PATTERN = /(?:^|\/)[^/]+\.config\.[cm]?[jt]s$/;

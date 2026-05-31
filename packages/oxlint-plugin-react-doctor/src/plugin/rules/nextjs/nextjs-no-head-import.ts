@@ -7,11 +7,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const nextjsNoHeadImport = defineRule<Rule>({
   id: "nextjs-no-head-import",
+  title: "next/head in App Router",
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "error",
   recommendation:
-    "Use the Metadata API instead: `export const metadata = { title: '...' }` or `export async function generateMetadata()`",
+    "Use the Metadata API instead. Add `export const metadata = { title: '...' }` or `export async function generateMetadata()`",
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       if (node.source?.value !== "next/head") return;
@@ -21,7 +22,8 @@ export const nextjsNoHeadImport = defineRule<Rule>({
 
       context.report({
         node,
-        message: "next/head is not supported in the App Router — use the Metadata API instead",
+        message:
+          "next/head silently does nothing in the App Router, so your meta tags never render.",
       });
     },
   }),

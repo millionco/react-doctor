@@ -40,7 +40,7 @@ describe("namespace hook detection (React.useEffect, React.useState, etc.)", () 
   it("detects no-derived-state-effect with React.useEffect", () => {
     const issues = findDiagnosticsInFile(diagnostics, "no-derived-state-effect", "namespace-hooks");
     expect(issues.length).toBeGreaterThan(0);
-    expect(issues[0].message).toContain("Derived state in useEffect");
+    expect(issues[0].message).toContain("derive from other values");
   });
 
   it("detects no-fetch-in-effect with React.useEffect", () => {
@@ -52,7 +52,7 @@ describe("namespace hook detection (React.useEffect, React.useState, etc.)", () 
   it("detects no-cascading-set-state with React.useEffect", () => {
     const issues = findDiagnosticsInFile(diagnostics, "no-cascading-set-state", "namespace-hooks");
     expect(issues.length).toBeGreaterThan(0);
-    expect(issues[0].message).toContain("setState calls in a single useEffect");
+    expect(issues[0].message).toContain("setState calls in one useEffect");
   });
 
   it("detects no-effect-event-handler with React.useEffect", () => {
@@ -85,7 +85,7 @@ describe("namespace hook detection (React.useEffect, React.useState, etc.)", () 
       "namespace-hooks",
     );
     expect(issues.length).toBeGreaterThan(0);
-    expect(issues[0].message).toContain("use functional update");
+    expect(issues[0].message).toContain("reads a stale value");
   });
 
   it("detects rerender-dependencies with React.useEffect and React.useCallback", () => {

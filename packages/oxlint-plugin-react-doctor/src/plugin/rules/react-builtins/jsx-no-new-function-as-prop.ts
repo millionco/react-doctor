@@ -21,7 +21,7 @@ import {
 } from "./jsx-no-new-function-as-prop-tables.js";
 
 const MESSAGE =
-  "JSX prop receives a new Function on every render — extract it or memoize (`useCallback`) to avoid re-renders.";
+  "This child redraws every render because the prop gets a brand new function each time.";
 
 const isAccessorPredicateName = (propName: string): boolean => {
   for (const prefix of ACCESSOR_PREDICATE_PREFIXES) {
@@ -498,12 +498,13 @@ const isParameterBindingWrapper = (expression: EsTreeNode): boolean => {
 // See `followsRenderLocalFunctionBinding` for the resolution details.
 export const jsxNoNewFunctionAsProp = defineRule<Rule>({
   id: "jsx-no-new-function-as-prop",
+  title: "New function passed as a prop",
   tags: ["react-jsx-only"],
   severity: "warn",
   // React Compiler auto-memoizes inline callbacks. The perf footgun this
   // rule guards against doesn't exist in compiler-enabled projects.
   disabledBy: ["react-compiler"],
-  recommendation: "Memoize the callback (`useCallback`) or hoist it outside the component.",
+  recommendation: "Wrap the callback in `useCallback`, or move it outside the component.",
   category: "Performance",
   create: (context) => {
     const isTestlikeFile = isTestlikeFilename(context.filename);

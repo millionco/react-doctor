@@ -13,6 +13,6 @@ import { VERSION } from "./version.js";
  * they're still inside an imperative function.
  */
 export const printBrandedHeader: Effect.Effect<void> = Effect.gen(function* () {
-  yield* Console.log(`${highlighter.bold("react-doctor")} ${highlighter.dim(`v${VERSION}`)}`);
+  yield* Console.log(`${highlighter.bold("React Doctor")} ${highlighter.dim(`v${VERSION}`)}`);
   yield* Console.log("");
 });

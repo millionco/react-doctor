@@ -87,10 +87,11 @@ const findPropUsedToResetAllState = (
 
 export const noResetAllStateOnPropChange = defineRule<Rule>({
   id: "no-reset-all-state-on-prop-change",
+  title: "All state reset on prop change",
   severity: "warn",
   tags: ["test-noise"],
   recommendation:
-    "Pass the prop as `key` so React resets the component when the prop changes, instead of manually resetting every state value in a useEffect. See https://react.dev/learn/you-might-not-need-an-effect#resetting-all-state-when-a-prop-changes",
+    "Pass the prop as `key` so React resets the component for you when the prop changes, instead of clearing every state value by hand in a useEffect. See https://react.dev/learn/you-might-not-need-an-effect#resetting-all-state-when-a-prop-changes",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isUseEffect(node)) return;
@@ -106,7 +107,7 @@ export const noResetAllStateOnPropChange = defineRule<Rule>({
       if (!propUsedToReset) return;
       context.report({
         node,
-        message: `Avoid resetting all state when a prop changes. Instead, if "${propUsedToReset.identifier.name}" is a key, pass it as \`key\` so React will reset the component's state.`,
+        message: `Your users briefly see stale state when a prop changes because this useEffect clears all state.`,
       });
     },
   }),

@@ -20,9 +20,9 @@ describe("html-no-invalid-table-nesting", () => {
     );
 
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics.some((d) => d.message.includes("`<table>` cannot be a direct"))).toBe(
-      true,
-    );
+    expect(
+      result.diagnostics.some((d) => d.message.includes("can't sit directly inside another table")),
+    ).toBe(true);
   });
 
   it("does NOT flag a `<table>` nested inside a `<th>` (legal HTML, same as `<td>`)", () => {

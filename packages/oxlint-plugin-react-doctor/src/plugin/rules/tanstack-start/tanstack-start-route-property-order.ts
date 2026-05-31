@@ -8,6 +8,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const tanstackStartRoutePropertyOrder = defineRule<Rule>({
   id: "tanstack-start-route-property-order",
+  title: "Wrong route property order",
   tags: ["test-noise"],
   requires: ["tanstack-start"],
   severity: "error",
@@ -38,7 +39,7 @@ export const tanstackStartRoutePropertyOrder = defineRule<Rule>({
           const expectedBefore = TANSTACK_ROUTE_PROPERTY_ORDER[lastIndex];
           context.report({
             node: optionsObject,
-            message: `Route property "${propertyName}" must come before "${expectedBefore}" — wrong order breaks TypeScript type inference`,
+            message: `Ordering route property "${propertyName}" after "${expectedBefore}" breaks type inference.`,
           });
           return;
         }

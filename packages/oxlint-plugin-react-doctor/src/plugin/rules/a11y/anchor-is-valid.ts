@@ -8,11 +8,11 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
 const MESSAGE_MISSING_HREF =
-  "`<a>` element is missing an `href` — anchors without `href` aren't keyboard-focusable; use `<button>` for actions.";
+  "Keyboard users can't reach this link because it has no `href`, so add a real `href` (or use `<button>` for actions).";
 const MESSAGE_INCORRECT_HREF =
-  "`<a>` element has invalid `href` (`#`, `javascript:`, or empty) — provide a real destination.";
+  "Keyboard users can't reach this link because its `href` goes nowhere (`#`, `javascript:`, or empty), so point it at a real destination.";
 const MESSAGE_CANT_BE_ANCHOR =
-  "`<a>` with an invalid `href` and `onClick` is not an anchor — use `<button>` instead.";
+  "Keyboard users can't trigger this link because it's a click handler with no real `href`, so use `<button>` instead.";
 
 interface AnchorIsValidSettings {
   validHrefs?: ReadonlyArray<string>;
@@ -70,9 +70,10 @@ const checkValueIsEmptyOrInvalid = (
 // Port of `oxc_linter::rules::jsx_a11y::anchor_is_valid`.
 export const anchorIsValid = defineRule<Rule>({
   id: "anchor-is-valid",
+  title: "Anchor used as a button",
   tags: ["react-jsx-only"],
   severity: "warn",
-  recommendation: "Anchors must have a valid destination — use `<button>` for in-page actions.",
+  recommendation: "Give links a real destination. Use `<button>` for in-page actions.",
   category: "Accessibility",
   create: (context) => {
     const settings = resolveSettings(context.settings);

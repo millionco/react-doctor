@@ -7,6 +7,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const tanstackStartRedirectInTryCatch = defineRule<Rule>({
   id: "tanstack-start-redirect-in-try-catch",
+  title: "redirect() inside try-catch",
   tags: ["test-noise"],
   requires: ["tanstack-start"],
   severity: "warn",
@@ -40,7 +41,7 @@ export const tanstackStartRedirectInTryCatch = defineRule<Rule>({
 
         context.report({
           node,
-          message: `throw ${argument.callee.name}() inside try block — the router catches this internally. Move it outside the try block or re-throw in the catch`,
+          message: `throw ${argument.callee.name}() inside a try block gets swallowed, so the redirect silently fails.`,
         });
       },
     };

@@ -5,9 +5,33 @@ import type {
   SurfaceControls,
 } from "./types/index.js";
 import { DIAGNOSTIC_SURFACES, isDiagnosticSurface } from "./diagnostic-surface.js";
+import { DIAGNOSTIC_CATEGORY_BUCKETS } from "./constants.js";
 import { warnConfigIssue } from "./utils/warn-config-issue.js";
 
 const VALID_RULE_SEVERITIES: ReadonlyArray<RuleSeverityOverride> = ["error", "warn", "off"];
+
+// The pre-collapse category names live on in old configs. They no longer
+// match any diagnostic's `category` (everything now rolls up into the five
+// buckets), so a `categories` / `surfaces.*` entry keyed on one is silently
+// inert. We intentionally do NOT auto-remap them — an old `"Correctness"`
+// bucket is a strict subset of today's `"Bugs"`, so remapping would silence
+// far more than the user asked. Instead we warn so the stale key is visible.
+const KNOWN_CATEGORY_LABEL = DIAGNOSTIC_CATEGORY_BUCKETS.join(", ");
+
+const isDiagnosticCategoryBucket = (value: string): boolean =>
+  (DIAGNOSTIC_CATEGORY_BUCKETS as ReadonlyArray<string>).includes(value);
+
+// Drops `surfaces.*.{include,exclude}Categories` entries that aren't one of
+// the five buckets (e.g. a stale pre-collapse `"Bundle Size"`), warning so
+// the dead entry is visible instead of silently matching nothing.
+const filterKnownCategories = (fieldName: string, categories: string[]): string[] =>
+  categories.filter((category) => {
+    if (isDiagnosticCategoryBucket(category)) return true;
+    warnConfigIssue(
+      `config field "${fieldName}" lists "${category}", which is not a known category (expected one of: ${KNOWN_CATEGORY_LABEL}); ignoring the entry.`,
+    );
+    return false;
+  });
 
 // Boolean fields where the user might write `"true"` / `"false"` strings
 // in JSON by mistake. We coerce-and-warn rather than silently accept the
@@ -16,6 +40,7 @@ const BOOLEAN_FIELD_NAMES = [
   "lint",
   "deadCode",
   "verbose",
+  "warnings",
   "customRulesOnly",
   "share",
   "noScore",
@@ -96,16 +121,18 @@ const validateSurfaceControls = (
     );
     return undefined;
   }
-  const validated: SurfaceControls = {};
+  const validatedSurfaceControls: SurfaceControls = {};
   for (const fieldName of SURFACE_CONTROL_FIELD_NAMES) {
     if (rawControls[fieldName] === undefined) continue;
-    const result = validateStringArrayField(
-      `surfaces.${surface}.${fieldName}`,
-      rawControls[fieldName],
-    );
-    if (result !== undefined) validated[fieldName] = result;
+    const qualifiedName = `surfaces.${surface}.${fieldName}`;
+    const result = validateStringArrayField(qualifiedName, rawControls[fieldName]);
+    if (result === undefined) continue;
+    validatedSurfaceControls[fieldName] =
+      fieldName === "includeCategories" || fieldName === "excludeCategories"
+        ? filterKnownCategories(qualifiedName, result)
+        : result;
   }
-  return validated;
+  return validatedSurfaceControls;
 };
 
 const validateSurfacesField = (
@@ -131,12 +158,16 @@ const validateSurfacesField = (
   return validated;
 };
 
-// Validates one of the three top-level severity maps (`rules` /
-// `categories` / `tags`) — ESLint / oxlint-shaped severity surface.
-// Returns the validated map, dropping invalid entries with a warning.
+// Validates one of the top-level severity maps (`rules` / `categories`) —
+// the ESLint / oxlint-shaped severity surface. Returns the validated map,
+// dropping invalid entries with a warning. When `keysAreCategories` is set
+// (the `categories` field) each key must be one of the five buckets; a
+// stale pre-collapse name (e.g. `"Correctness"`) is dropped with a warning
+// rather than silently doing nothing.
 const validateSeverityMap = (
   fieldName: string,
   rawMap: unknown,
+  keysAreCategories = false,
 ): Record<string, RuleSeverityOverride> | undefined => {
   if (!isPlainObject(rawMap)) {
     warnConfigIssue(
@@ -148,6 +179,12 @@ const validateSeverityMap = (
   for (const [key, value] of Object.entries(rawMap)) {
     if (key.length === 0) {
       warnConfigIssue(`config field "${fieldName}" has an empty key; ignoring the entry.`);
+      continue;
+    }
+    if (keysAreCategories && !isDiagnosticCategoryBucket(key)) {
+      warnConfigIssue(
+        `config field "${fieldName}.${key}" is not a known category (expected one of: ${KNOWN_CATEGORY_LABEL}); ignoring the entry.`,
+      );
       continue;
     }
     if (!isRuleSeverity(value)) {
@@ -198,7 +235,7 @@ export const validateConfigTypes = (config: ReactDoctorConfig): ReactDoctorConfi
   applyFieldValidator(config, validated, "surfaces", validateSurfacesField);
   for (const fieldName of SEVERITY_FIELD_NAMES) {
     applyFieldValidator(config, validated, fieldName, (value) =>
-      validateSeverityMap(fieldName, value),
+      validateSeverityMap(fieldName, value, fieldName === "categories"),
     );
   }
   applyFieldValidator(config, validated, "plugins", (value) =>

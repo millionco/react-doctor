@@ -5,8 +5,8 @@ import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-l
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
-const UNNECESSARY_BRACES_MESSAGE = "Curly braces are unnecessary here.";
-const REQUIRED_BRACES_MESSAGE = "Curly braces are required here — wrap the value in `{ }`.";
+const UNNECESSARY_BRACES_MESSAGE = "These curly braces do nothing here.";
+const REQUIRED_BRACES_MESSAGE = "This value needs curly braces `{ }` to read as an expression.";
 
 type AllowedMode = "always" | "never" | "ignore";
 
@@ -173,6 +173,7 @@ const isScriptElement = (openingElement: EsTreeNodeOfType<"JSXOpeningElement">):
 // Port of `oxc_linter::rules::react::jsx_curly_brace_presence`.
 export const jsxCurlyBracePresence = defineRule<Rule>({
   id: "jsx-curly-brace-presence",
+  title: "Unnecessary curly braces in JSX",
   severity: "warn",
   // Pure stylistic rule — `{'string'}` vs `"string"` is a formatter
   // concern, not a bug class. Default off.

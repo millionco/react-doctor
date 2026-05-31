@@ -63,10 +63,11 @@ const isMatchingLengthEqualityGuard = (
 // runs the every-loop only when lengths match.
 export const jsLengthCheckFirst = defineRule<Rule>({
   id: "js-length-check-first",
+  title: "Array compare without length check",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Short-circuit with `a.length === b.length && a.every((x, i) => x === b[i])` — unequal-length arrays exit immediately",
+    "Check `a.length === b.length && a.every((x, i) => x === b[i])` so arrays of different sizes stop right away",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isNodeOfType(node.callee, "MemberExpression")) return;
@@ -95,7 +96,7 @@ export const jsLengthCheckFirst = defineRule<Rule>({
       context.report({
         node,
         message:
-          ".every() over an array compared to another array — short-circuit with `a.length === b.length && a.every(...)` so unequal-length arrays exit immediately",
+          "This is slow because .every() compares two arrays item by item, so check `a.length === b.length` first to bail out immediately when sizes differ",
       });
     },
   }),

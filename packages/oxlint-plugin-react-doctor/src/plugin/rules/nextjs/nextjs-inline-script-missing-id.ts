@@ -7,6 +7,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const nextjsInlineScriptMissingId = defineRule<Rule>({
   id: "nextjs-inline-script-missing-id",
+  title: "Inline script missing id",
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "warn",
@@ -22,8 +23,7 @@ export const nextjsInlineScriptMissingId = defineRule<Rule>({
 
       context.report({
         node,
-        message:
-          "Inline <Script> without id — Next.js requires an id attribute to track inline scripts",
+        message: "Without an id, Next.js can't track this inline <Script> & may execute it twice.",
       });
     },
   }),

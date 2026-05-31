@@ -91,10 +91,11 @@ const createComponentBindingStackTracker = (
 // `onChange` in ComponentB in the same file.
 export const noEffectEventInDeps = defineRule<Rule>({
   id: "no-effect-event-in-deps",
+  title: "Effect Event listed in effect deps",
   tags: ["test-noise"],
   severity: "error",
   recommendation:
-    "Call the useEffectEvent callback inside the effect body without listing it; its identity is intentionally unstable",
+    "Call the useEffectEvent function inside the effect body and don't list it in the deps. It changes on every render on purpose.",
   create: (context: RuleContext) => {
     const componentBindings = createComponentBindingStackTracker({
       onVariableDeclarator: (declaratorNode: EsTreeNode) => {
@@ -120,7 +121,7 @@ export const noEffectEventInDeps = defineRule<Rule>({
           if (componentBindings.isBoundName(element.name)) {
             context.report({
               node: element,
-              message: `"${element.name}" is from useEffectEvent and must not be in the deps array — its identity is intentionally unstable; call it inside the effect without listing it`,
+              message: `Listing "${element.name}" in the deps re-runs your effect every render & defeats useEffectEvent.`,
             });
           }
         }

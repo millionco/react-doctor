@@ -68,6 +68,8 @@ const program = new Command()
     "--no-respect-inline-disables",
     "audit mode: neutralize inline lint suppressions before scanning",
   )
+  .option("--warnings", "show warning-severity diagnostics (errors always show)")
+  .option("--no-warnings", "hide warning-severity diagnostics (default)")
   .addHelpText(
     "after",
     `

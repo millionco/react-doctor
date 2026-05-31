@@ -39,10 +39,11 @@ const isInlineReference = (node: EsTreeNode): string | null => {
 
 export const noInlinePropOnMemoComponent = defineRule<Rule>({
   id: "no-inline-prop-on-memo-component",
+  title: "Inline prop defeats memo()",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Hoist the inline `() => ...` / `[]` / `{}` to a stable reference (useMemo, useCallback, or module scope) so the memoized child doesn't re-render every parent render",
+    "Move the inline `() => ...` / `[]` / `{}` to a stable value with useMemo, useCallback, or module scope, so the memoized child stops redrawing on every parent render",
   create: (context: RuleContext) => {
     const memoizedComponentNames = new Set<string>();
 
@@ -81,7 +82,7 @@ export const noInlinePropOnMemoComponent = defineRule<Rule>({
         if (propType) {
           context.report({
             node: node.value.expression,
-            message: `JSX attribute values should not contain ${propType} created in the same scope — ${elementName} is wrapped in memo(), so new references cause unnecessary re-renders`,
+            message: `This redraws ${elementName} on every render because the prop is ${propType} built right here, so memo() can't skip it. Move it to a stable value with useMemo, useCallback, or module scope`,
           });
         }
       },

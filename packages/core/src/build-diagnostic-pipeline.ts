@@ -1,5 +1,5 @@
 import reactDoctorPlugin from "oxlint-plugin-react-doctor";
-import type { Diagnostic, ReactDoctorConfig } from "./types/index.js";
+import type { Diagnostic, ReactDoctorConfig, RuleSeverityOverride } from "./types/index.js";
 import {
   compileIgnoreOverrides,
   isDiagnosticIgnoredByOverrides,
@@ -23,6 +23,15 @@ interface BuildDiagnosticPipelineInput {
   readonly userConfig: ReactDoctorConfig | null;
   readonly readFileLinesSync: (filePath: string) => string[] | null;
   readonly respectInlineDisables: boolean;
+  /**
+   * Whether `"warning"`-severity diagnostics are allowed through. When
+   * `false` (the default), every warning is dropped UNLESS the user
+   * explicitly opted that specific rule / category into `"warn"` via the
+   * severity-override config (an individual opt-in); when `true`, warnings
+   * show. Resolved by the caller from the `--warnings` flag →
+   * `config.warnings` → `false`.
+   */
+  readonly showWarnings: boolean;
 }
 
 export interface DiagnosticPipeline {
@@ -42,10 +51,13 @@ const collectStringSet = (values: unknown): ReadonlySet<string> => {
  *    wins over `test-noise`)
  * 2. severity overrides (top-level `rules` / `categories`, with
  *    `"off"` dropping)
- * 3. ignore filters (rules / file patterns / per-file overrides)
- * 4. `rn-no-raw-text` suppression via configured `textComponents` and
+ * 3. warning suppression (only when `showWarnings` is false: drops every
+ *    `"warning"`-severity diagnostic unless a severity override opts a
+ *    specific rule / category back in)
+ * 4. ignore filters (rules / file patterns / per-file overrides)
+ * 5. `rn-no-raw-text` suppression via configured `textComponents` and
  *    `rawTextWrapperComponents` (config-driven JSX enclosure checks)
- * 5. inline suppressions (`// react-doctor-disable-next-line ...`)
+ * 6. inline suppressions (`// react-doctor-disable-next-line ...`)
  *
  * Returns `null` when the diagnostic is dropped, the (possibly
  * severity-restamped) diagnostic otherwise.
@@ -57,7 +69,8 @@ const collectStringSet = (values: unknown): ReadonlySet<string> => {
 export const buildDiagnosticPipeline = (
   input: BuildDiagnosticPipelineInput,
 ): DiagnosticPipeline => {
-  const { rootDirectory, userConfig, readFileLinesSync, respectInlineDisables } = input;
+  const { rootDirectory, userConfig, readFileLinesSync, respectInlineDisables, showWarnings } =
+    input;
 
   const severityControls = buildRuleSeverityControls(userConfig);
   const ignoredRules = new Set(
@@ -135,11 +148,24 @@ export const buildDiagnosticPipeline = (
       if (shouldAutoSuppress(diagnostic)) return null;
 
       let current = diagnostic;
+      let explicitSeverityOverride: RuleSeverityOverride | undefined;
       if (severityControls) {
         const { ruleKey, category } = getDiagnosticRuleIdentity(current);
-        const override = resolveRuleSeverityOverride({ ruleKey, category }, severityControls);
-        if (override === "off") return null;
-        if (override !== undefined) current = restampSeverity(current, override);
+        explicitSeverityOverride = resolveRuleSeverityOverride(
+          { ruleKey, category },
+          severityControls,
+        );
+        if (explicitSeverityOverride === "off") return null;
+        if (explicitSeverityOverride !== undefined) {
+          current = restampSeverity(current, explicitSeverityOverride);
+        }
+      }
+
+      // Warnings are hidden by default. An explicit `"warn"` override
+      // (per-rule or per-category) is an individual opt-in that survives
+      // the global hide; everything else needs `showWarnings`.
+      if (!showWarnings && current.severity === "warning" && explicitSeverityOverride !== "warn") {
+        return null;
       }
 
       if (userConfig) {

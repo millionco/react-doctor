@@ -5,7 +5,7 @@ import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import type { Rule } from "../../utils/rule.js";
 
 const buildMessage = (role: string, missingProps: ReadonlyArray<string>): string =>
-  `Role \`${role}\` requires the following ARIA properties: \`${missingProps.join("`, `")}\`.`;
+  `Screen reader users can't tell the state of this \`${role}\` without its required ARIA props, so add \`${missingProps.join("`, `")}\`.`;
 
 // Mirrors OXC's `ROLE_TO_REQUIRED_ARIA_PROPS`.
 const ROLE_REQUIRED_PROPS: ReadonlyMap<string, ReadonlyArray<string>> = new Map([
@@ -25,9 +25,10 @@ const ROLE_REQUIRED_PROPS: ReadonlyMap<string, ReadonlyArray<string>> = new Map(
 // Port of `oxc_linter::rules::jsx_a11y::role_has_required_aria_props`.
 export const roleHasRequiredAriaProps = defineRule<Rule>({
   id: "role-has-required-aria-props",
+  title: "Role missing required ARIA props",
   tags: ["react-jsx-only"],
   severity: "error",
-  recommendation: "Add every required `aria-*` property when assigning an interactive role.",
+  recommendation: "Add every required `aria-*` attribute when you set an interactive role.",
   category: "Accessibility",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {

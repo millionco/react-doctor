@@ -80,9 +80,10 @@ const walkComponentRespectingShadows = (
 
 export const noDirectStateMutation = defineRule<Rule>({
   id: "no-direct-state-mutation",
+  title: "State mutated in place",
   severity: "warn",
   recommendation:
-    "Replace the mutation with a setter call that produces a new reference: `setItems([...items, newItem])`, `setItems(items.filter(x => x !== target))`, `setItems(items.toSorted(...))`. React only re-renders on a new reference, so in-place updates are silently dropped",
+    "Call the setter with a brand new value instead: `setItems([...items, newItem])`, `setItems(items.filter(x => x !== target))`, or `setItems(items.toSorted(...))`. React only redraws when the value is new, so changing it in place does nothing.",
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
@@ -102,10 +103,9 @@ export const noDirectStateMutation = defineRule<Rule>({
             const rootName = getRootIdentifierName(child.left);
             if (!rootName || !stateValueToSetter.has(rootName)) return;
             if (currentlyShadowed.has(rootName)) return;
-            const setterName = stateValueToSetter.get(rootName);
             context.report({
               node: child,
-              message: `Direct property assignment on useState value "${rootName}" — call ${setterName} with a new value; React only re-renders on a new reference`,
+              message: `Your screen won't update because you change "${rootName}" in place.`,
             });
             return;
           }
@@ -119,10 +119,9 @@ export const noDirectStateMutation = defineRule<Rule>({
             const rootName = getRootIdentifierName(callee.object);
             if (!rootName || !stateValueToSetter.has(rootName)) return;
             if (currentlyShadowed.has(rootName)) return;
-            const setterName = stateValueToSetter.get(rootName);
             context.report({
               node: child,
-              message: `In-place mutation of useState value "${rootName}" via .${methodName}() — call ${setterName} with a new array; React only re-renders on a new reference`,
+              message: `Your screen won't update because .${methodName}() changes "${rootName}" in place.`,
             });
           }
         },

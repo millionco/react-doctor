@@ -44,7 +44,7 @@ const BLOCK_LEVEL_ELEMENTS = new Set([
 ]);
 
 const buildMessage = (childTagName: string): string =>
-  `Block-level \`<${childTagName}>\` cannot appear inside a \`<p>\` — the HTML parser auto-closes the paragraph at the start of \`<${childTagName}>\`, splitting your DOM in ways the renderer never expressed and triggering hydration mismatches.`;
+  `Your users get reshuffled HTML because \`<${childTagName}>\` can't go inside a \`<p>\`, so the browser closes the paragraph early. Move it out of the \`<p>\`, or use a \`<div>\` instead.`;
 
 const isParagraphElement = (candidate: EsTreeNode): boolean => {
   if (!isNodeOfType(candidate, "JSXElement")) return false;
@@ -101,9 +101,9 @@ const findEnclosingParagraph = (openingElement: EsTreeNode): EsTreeNode | null =
 // selectors, and accessibility tree corruption all follow.
 export const htmlNoInvalidParagraphChild = defineRule<Rule>({
   id: "html-no-invalid-paragraph-child",
+  title: "Block element inside a paragraph",
   severity: "warn",
-  recommendation:
-    "Replace the surrounding `<p>` with a `<div>`, or hoist the block-level child outside the paragraph.",
+  recommendation: "Swap the `<p>` for a `<div>`, or move the child outside the paragraph.",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (!isNodeOfType(node.name, "JSXIdentifier")) return;

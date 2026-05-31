@@ -8,10 +8,11 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const renderingScriptDeferAsync = defineRule<Rule>({
   id: "rendering-script-defer-async",
+  title: "Script without defer or async",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    'Add `defer` for DOM-dependent scripts or `async` for independent ones (analytics). In Next.js, use `<Script strategy="afterInteractive" />` instead',
+    'Add `defer` for scripts that need the page, or `async` for standalone ones like analytics. In Next.js, use `<Script strategy="afterInteractive" />`',
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "script") return;
@@ -51,7 +52,7 @@ export const renderingScriptDeferAsync = defineRule<Rule>({
         context.report({
           node,
           message:
-            "<script src> without defer or async — blocks HTML parsing and delays First Contentful Paint. Add defer for DOM-dependent scripts or async for independent ones",
+            "This blocks the page from loading until the script downloads because <script src> has no defer or async, so add defer for scripts that need the page, or async for standalone ones",
         });
       }
     },

@@ -8,17 +8,18 @@ import { parseJsxValue } from "../../utils/parse-jsx-value.js";
 import type { Rule } from "../../utils/rule.js";
 
 const MESSAGE =
-  "An element with `aria-activedescendant` must be tabbable — add `tabIndex={0}` so it can receive focus.";
+  "Keyboard users can't focus this element with `aria-activedescendant` because it isn't tabbable, so add `tabIndex={0}`.";
 
 // Port of `oxc_linter::rules::jsx_a11y::aria_activedescendant_has_tabindex`.
 // Reports HTML elements with `aria-activedescendant` that are NOT
 // implicitly tabbable AND lack a non-`<-1` `tabIndex`.
 export const ariaActivedescendantHasTabindex = defineRule<Rule>({
   id: "aria-activedescendant-has-tabindex",
+  title: "aria-activedescendant missing tabindex",
   tags: ["react-jsx-only"],
   severity: "warn",
   recommendation:
-    "Add `tabIndex` to elements with `aria-activedescendant` so they're keyboard-focusable.",
+    "Add `tabIndex` so keyboard users can reach elements that use `aria-activedescendant`.",
   category: "Accessibility",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {

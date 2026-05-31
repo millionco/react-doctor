@@ -31,11 +31,12 @@ const isJsonStringifyCall = (node: EsTreeNode): boolean => {
 
 export const clientLocalstorageNoVersion = defineRule<Rule>({
   id: "client-localstorage-no-version",
+  title: "Unversioned localStorage key",
   tags: ["test-noise"],
   severity: "warn",
   category: "Correctness",
   recommendation:
-    'Bake a version into the storage key (e.g. "myKey:v1"); a future schema change can ignore old data instead of crashing on it',
+    'Put a version in the storage key (e.g. "myKey:v1"). If you change the data shape later, old saved data can be ignored instead of crashing the app.',
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isNodeOfType(node.callee, "MemberExpression")) return;
@@ -56,7 +57,7 @@ export const clientLocalstorageNoVersion = defineRule<Rule>({
 
       context.report({
         node: keyArg,
-        message: `${node.callee.object.name}.setItem("${keyArg.value}", JSON.stringify(...)) — bake a version into the key (e.g. "${keyArg.value}:v1") so a future schema change can ignore old data instead of crashing on it`,
+        message: `${node.callee.object.name}.setItem("${keyArg.value}", JSON.stringify(...)) has no version, so changing the data shape later crashes your users' saved sessions. Add one to the key (e.g. "${keyArg.value}:v1").`,
       });
     },
   }),

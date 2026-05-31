@@ -38,7 +38,7 @@ export const Debounced = ({ onChange }: { onChange: (value: string) => void }) =
       },
     });
 
-    const result = await diagnose(projectDir, { lint: true, deadCode: false });
+    const result = await diagnose(projectDir, { lint: true, deadCode: false, warnings: true });
     const preferUseEffectEventHits = result.diagnostics.filter(
       (diagnostic) => diagnostic.rule === "prefer-use-effect-event",
     );

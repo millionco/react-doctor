@@ -11,8 +11,7 @@ import {
 } from "../../utils/jsx-stateless-leaf.js";
 import type { Rule } from "../../utils/rule.js";
 
-const MESSAGE =
-  "Array index in `key` doesn't uniquely identify the element — re-renders may use stale state.";
+const MESSAGE = "Your users can see & submit the wrong data when this list reorders.";
 
 const SECOND_INDEX_METHODS: ReadonlySet<string> = new Set([
   "every",
@@ -360,8 +359,9 @@ const isFragmentJsxName = (jsxOpeningName: EsTreeNode): boolean => {
 // Port of `oxc_linter::rules::react::no_array_index_key`.
 export const noArrayIndexKey = defineRule<Rule>({
   id: "no-array-index-key",
+  title: "Array index used as a key",
   severity: "warn",
-  recommendation: "Use a stable, data-derived `key` instead of the array index.",
+  recommendation: "Use a stable `key` from your data instead of the array index.",
   category: "Performance",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {

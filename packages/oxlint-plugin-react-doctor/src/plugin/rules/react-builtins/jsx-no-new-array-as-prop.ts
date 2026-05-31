@@ -19,7 +19,7 @@ import {
 } from "./jsx-no-new-array-as-prop-tables.js";
 
 const MESSAGE =
-  "JSX prop receives a new Array on every render — extract it or memoize to avoid re-renders.";
+  "This child redraws every render because the prop gets a brand new array each time.";
 
 const isDataArrayPropName = (propName: string): boolean => {
   if (DATA_ARRAY_PROP_NAMES.has(propName)) return true;
@@ -136,12 +136,13 @@ const followsRenderLocalArrayBinding = (
 // allocated per render.
 export const jsxNoNewArrayAsProp = defineRule<Rule>({
   id: "jsx-no-new-array-as-prop",
+  title: "New array passed as a prop",
   tags: ["react-jsx-only"],
   severity: "warn",
   // React Compiler auto-memoizes prop allocations. The perf footgun this
   // rule guards against doesn't exist in compiler-enabled projects.
   disabledBy: ["react-compiler"],
-  recommendation: "Memoize the array (`useMemo`) or hoist it outside the component.",
+  recommendation: "Wrap the array in `useMemo`, or move it outside the component.",
   category: "Performance",
   create: (context) => {
     const isTestlikeFile = isTestlikeFilename(context.filename);

@@ -9,7 +9,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { inlineUseSelectorFunction } from "./utils/inline-use-selector-function.js";
 
 const MESSAGE =
-  "useSelector returning a new object/array re-renders on every dispatched action — the default `===` equality check always fails on a fresh reference. Either return a primitive, split into multiple useSelector calls, or pass `shallowEqual` (or a custom equality fn) as the second argument.";
+  "Your component re-renders on every dispatched action when useSelector returns a new object or array.";
 
 const isConciseBodyReturningCollection = (functionNode: EsTreeNode): boolean => {
   if (
@@ -63,6 +63,7 @@ const isConciseBodyReturningCollection = (functionNode: EsTreeNode): boolean => 
 //     pipeline that the user knows is memoised.
 export const reduxUseselectorReturnsNewCollection = defineRule<Rule>({
   id: "redux-useselector-returns-new-collection",
+  title: "useSelector returns a new collection",
   severity: "warn",
   category: "Performance",
   disabledBy: ["react-compiler"],

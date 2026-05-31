@@ -11,11 +11,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const tanstackStartServerFnMethodOrder = defineRule<Rule>({
   id: "tanstack-start-server-fn-method-order",
+  title: "Wrong server function method order",
   tags: ["test-noise"],
   requires: ["tanstack-start"],
   severity: "error",
   recommendation:
-    "Chain methods in order: .middleware() → .inputValidator() → .client() → .server() → .handler() — types depend on this sequence",
+    "Chain methods in order: .middleware() → .inputValidator() → .client() → .server() → .handler(). Types depend on this sequence.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isNodeOfType(node.callee, "MemberExpression")) return;
@@ -59,7 +60,7 @@ export const tanstackStartServerFnMethodOrder = defineRule<Rule>({
           const expectedBefore = TANSTACK_MIDDLEWARE_METHOD_ORDER[lastIndex];
           context.report({
             node,
-            message: `Server function method .${methodName}() must come before .${expectedBefore}() — wrong order breaks type inference`,
+            message: `Chaining .${methodName}() after .${expectedBefore}() breaks type inference.`,
           });
           return;
         }

@@ -4,7 +4,7 @@ import { getElementType } from "../../utils/get-element-type.js";
 import type { Rule } from "../../utils/rule.js";
 
 const buildMessage = (tag: string): string =>
-  `\`<${tag}>\` is distracting and should not be used — replace with semantic, accessible markup.`;
+  `Users with attention or motion sensitivity struggle because \`<${tag}>\` animates on its own, so use normal, accessible markup instead.`;
 
 interface NoDistractingElementsSettings {
   // Subset of distracting tags to enforce; defaults to all known.
@@ -30,9 +30,10 @@ const resolveSettings = (
 // `<marquee>` and `<blink>` (or any tag in `elements`).
 export const noDistractingElements = defineRule<Rule>({
   id: "no-distracting-elements",
+  title: "Distracting marquee or blink element",
   tags: ["react-jsx-only"],
   severity: "error",
-  recommendation: "Replace `<marquee>` / `<blink>` with semantic, accessible markup.",
+  recommendation: "Replace `<marquee>` and `<blink>` with normal, accessible markup.",
   category: "Accessibility",
   create: (context) => {
     const { distractingTags } = resolveSettings(context.settings);

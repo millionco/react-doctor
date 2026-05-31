@@ -28,7 +28,7 @@ describe("runOxlint", () => {
       "no-full-lodash-import": {
         fixture: "bundle-issues.tsx",
         ruleSource: "rules/bundle-size.ts",
-        category: "Bundle Size",
+        category: "Performance",
       },
       "no-barrel-import": {
         fixture: "bundle-issues.tsx",
@@ -167,7 +167,7 @@ describe("runOxlint", () => {
 
       expect(hits).toHaveLength(1);
       expect(hits[0]?.message).toBe(
-        "Import from barrel/index file — import directly from the source module for better tree-shaking",
+        "Importing from an index file pulls in extra code. Import directly from the source file instead.",
       );
     });
 

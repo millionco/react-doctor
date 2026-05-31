@@ -3,11 +3,8 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import fs from "node:fs";
 import path from "node:path";
-import {
-  GIT_SHOW_MAX_BUFFER_BYTES,
-  SOURCE_FILE_PATTERN,
-  STAGED_FILES_PROJECT_CONFIG_FILENAMES,
-} from "../constants.js";
+import { GIT_SHOW_MAX_BUFFER_BYTES, STAGED_FILES_PROJECT_CONFIG_FILENAMES } from "../constants.js";
+import { isLintableSourceFile } from "../utils/is-lintable-source-file.js";
 import { ReactDoctorError } from "../errors.js";
 import { Git } from "./git.js";
 
@@ -47,8 +44,8 @@ export class StagedFiles extends Context.Service<
   StagedFiles,
   {
     /**
-     * Discovers source files staged for commit (`SOURCE_FILE_PATTERN`-filtered
-     * staged paths from `git diff --cached`).
+     * Discovers source files staged for commit (lintable staged paths
+     * from `git diff --cached` — JS/TS minus generated bundles).
      */
     readonly discoverSourceFiles: (
       directory: string,
@@ -75,9 +72,7 @@ export class StagedFiles extends Context.Service<
         discoverSourceFiles: (directory) =>
           git
             .stagedFilePaths(directory)
-            .pipe(
-              Effect.map((entries) => entries.filter((entry) => SOURCE_FILE_PATTERN.test(entry))),
-            ),
+            .pipe(Effect.map((entries) => entries.filter(isLintableSourceFile))),
         materialize: ({ directory, stagedFiles, tempDirectory }) =>
           Effect.gen(function* () {
             const materializedFiles: string[] = [];

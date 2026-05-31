@@ -8,6 +8,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const queryNoVoidQueryFn = defineRule<Rule>({
   id: "query-no-void-query-fn",
+  title: "queryFn returns no value",
   tags: ["test-noise"],
   requires: ["tanstack-query"],
   severity: "warn",
@@ -52,8 +53,7 @@ export const queryNoVoidQueryFn = defineRule<Rule>({
         if (statements.length === 0) {
           context.report({
             node: queryFnProperty,
-            message:
-              "Empty queryFn — query functions must return a value. Use the enabled option to conditionally disable the query instead",
+            message: "This empty queryFn caches undefined, so the component never gets data.",
           });
         }
       }

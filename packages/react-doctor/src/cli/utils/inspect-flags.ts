@@ -15,6 +15,7 @@ export interface InspectFlags {
   staged?: boolean;
   prComment?: boolean;
   respectInlineDisables?: boolean;
+  warnings?: boolean;
   project?: string;
   diff?: boolean | string;
   changedFilesFrom?: string;

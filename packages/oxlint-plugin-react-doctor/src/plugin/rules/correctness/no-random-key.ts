@@ -147,10 +147,11 @@ const looksLikeFreshUpdateExpression = (expression: EsTreeNode): string | null =
 //     things like `getKey(item.id)` which is fine.
 export const noRandomKey = defineRule<Rule>({
   id: "no-random-key",
+  title: "Random value used as a key",
   severity: "error",
   category: "Correctness",
   recommendation:
-    "Use a stable identifier from the item itself (`item.id`, a hash of the content, or the item's index when the list order is stable). Never derive the key from a fresh-each-call API.",
+    "Use a stable id from the item itself, like `item.id`, a content hash, or the index when the order never changes. Don't build the key from something that changes every time.",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       if (!isNodeOfType(node.name, "JSXIdentifier")) return;
@@ -167,7 +168,7 @@ export const noRandomKey = defineRule<Rule>({
 
       context.report({
         node: node.value,
-        message: `\`key={${freshDescription}}\` produces a new value on every render. Every list item is treated as a brand-new component — React unmounts and remounts the entire subtree, resetting state/focus/scroll and defeating reconciliation. Use a stable id from the item itself.`,
+        message: `Your users lose typed input, focus & scroll position because \`key={${freshDescription}}\` makes a new key every render, so React rebuilds every item. Use a stable id from the item.`,
       });
     },
   }),

@@ -7,7 +7,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
 const MESSAGE =
-  '`<audio>` / `<video>` must have a `<track kind="captions">` child for users who can\'t hear audio.';
+  'Deaf & hard-of-hearing users miss this media without captions, so add a `<track kind="captions">` inside the `<audio>` or `<video>`.';
 
 const DEFAULT_AUDIO: ReadonlyArray<string> = ["audio"];
 const DEFAULT_VIDEO: ReadonlyArray<string> = ["video"];
@@ -55,6 +55,7 @@ const evaluateMuted = (attribute: EsTreeNodeOfType<"JSXAttribute"> | undefined):
 // Port of `oxc_linter::rules::jsx_a11y::media_has_caption`.
 export const mediaHasCaption = defineRule<Rule>({
   id: "media-has-caption",
+  title: "Media missing captions",
   tags: ["react-jsx-only"],
   severity: "warn",
   recommendation: 'Add `<track kind="captions">` inside every `<audio>` / `<video>`.',

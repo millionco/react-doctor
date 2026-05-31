@@ -6,10 +6,11 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noScaleFromZero = defineRule<Rule>({
   id: "no-scale-from-zero",
+  title: "Animating scale from zero",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Use `initial={{ scale: 0.95, opacity: 0 }}` — elements should deflate like a balloon, not vanish into a point",
+    "Use `initial={{ scale: 0.95, opacity: 0 }}`. Elements should gently shrink and fade, not vanish into a point",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       if (!isNodeOfType(node.name, "JSXIdentifier")) return;
@@ -28,7 +29,7 @@ export const noScaleFromZero = defineRule<Rule>({
           context.report({
             node: property,
             message:
-              "scale: 0 makes elements appear from nowhere — use scale: 0.95 with opacity: 0 for natural entrance",
+              "This looks abrupt to your users because scale: 0 pops the element in from a single point, so use scale: 0.95 with opacity: 0 for a smoother entrance",
           });
         }
       }

@@ -7,11 +7,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const tanstackStartNoDynamicServerFnImport = defineRule<Rule>({
   id: "tanstack-start-no-dynamic-server-fn-import",
+  title: "Dynamic server function import",
   tags: ["test-noise"],
   requires: ["tanstack-start"],
   severity: "error",
   recommendation:
-    "Use `import { myFn } from '~/utils/my.functions'` — the bundler replaces server code with RPC stubs only for static imports",
+    "Use `import { myFn } from '~/utils/my.functions'`. The bundler only swaps server code for RPC stubs on static imports.",
   create: (context: RuleContext) => ({
     ImportExpression(node: EsTreeNodeOfType<"ImportExpression">) {
       const source = node.source;
@@ -28,7 +29,7 @@ export const tanstackStartNoDynamicServerFnImport = defineRule<Rule>({
         context.report({
           node,
           message:
-            "Dynamic import of server functions file — use static imports so the bundler can replace server code with RPC stubs",
+            "Dynamically importing a server-functions file leaks server code into the client bundle.",
         });
       }
     },

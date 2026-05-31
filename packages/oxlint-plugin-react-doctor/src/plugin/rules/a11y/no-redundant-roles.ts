@@ -14,7 +14,7 @@ interface NoRedundantRolesSettings {
 }
 
 const buildMessage = (tag: string, role: string): string =>
-  `\`<${tag}>\` already has implicit role \`${role}\` — remove the redundant \`role\` attribute.`;
+  `Screen reader users gain nothing from this \`role\` because \`<${tag}>\` already acts as a \`${role}\`, so remove it.`;
 
 const resolveSettings = (
   settings: Readonly<Record<string, unknown>> | undefined,
@@ -31,9 +31,10 @@ const resolveSettings = (
 // `role` attribute that matches the element's implicit role.
 export const noRedundantRoles = defineRule<Rule>({
   id: "no-redundant-roles",
+  title: "Redundant ARIA role",
   tags: ["react-jsx-only"],
   severity: "warn",
-  recommendation: "Remove `role` attributes that match the element's implicit role.",
+  recommendation: "Remove `role` attributes that match what the element already does.",
   category: "Accessibility",
   create: (context) => {
     const settings = resolveSettings(context.settings);

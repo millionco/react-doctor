@@ -1,5 +1,5 @@
 import * as Effect from "effect/Effect";
-import { SOURCE_FILE_PATTERN } from "./constants.js";
+import { isLintableSourceFile } from "./utils/is-lintable-source-file.js";
 import { Git } from "./services/git.js";
 import type { DiffInfo } from "./types/index.js";
 
@@ -40,4 +40,4 @@ export const getDiffInfo = (
   );
 
 export const filterSourceFiles = (filePaths: string[]): string[] =>
-  filePaths.filter((filePath) => SOURCE_FILE_PATTERN.test(filePath));
+  filePaths.filter(isLintableSourceFile);

@@ -93,12 +93,13 @@ const reportIfIndependent = (statements: EsTreeNode[], context: RuleContext): vo
 
   context.report({
     node: statements[0],
-    message: `${statements.length} sequential await statements that appear independent — use Promise.all() for parallel execution`,
+    message: `These ${statements.length} sequential await statements run one after another even though they look independent, so the page waits longer than it needs to. Run them together with Promise.all() instead`,
   });
 };
 
 export const asyncParallel = defineRule<Rule>({
   id: "async-parallel",
+  title: "Independent awaits run sequentially",
   // `test-noise` opts every file `isTestFilePath(...)` recognises
   // (`*.test.*`, `*.spec.*`, `__tests__/`, `e2e/`, `playwright/`,
   // `cypress/`, fixtures, mocks, Windows-slashed equivalents, …) out
@@ -111,7 +112,7 @@ export const asyncParallel = defineRule<Rule>({
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Use `const [a, b] = await Promise.all([fetchA(), fetchB()])` to run independent operations concurrently",
+    "Use `const [a, b] = await Promise.all([fetchA(), fetchB()])` so independent calls run at the same time",
   create: (context: RuleContext) => {
     const filename = normalizeFilename(context.filename ?? "");
     const isBrowserTestFile = BROWSER_TEST_FILE_PATTERN.test(filename);

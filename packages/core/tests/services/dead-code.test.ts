@@ -14,7 +14,7 @@ const sampleDiagnostic: Diagnostic = {
   help: "Delete or import it.",
   line: 0,
   column: 0,
-  category: "Dead Code",
+  category: "Maintainability",
 };
 
 const sampleInput = {

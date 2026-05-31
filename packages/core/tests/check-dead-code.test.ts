@@ -30,8 +30,56 @@ const setupProject = (caseId: string, files: Record<string, string>): string => 
     fs.mkdirSync(path.dirname(fullPath), { recursive: true });
     fs.writeFileSync(fullPath, contents);
   }
+  // Canonicalize: `checkDeadCode` realpaths its root (so deslop's
+  // fast-glob graph lines up with oxc-resolver), and `os.tmpdir()` is a
+  // symlink into /private on macOS — tests that build worker paths from
+  // this directory must use the same canonical form.
+  return fs.realpathSync(projectDirectory);
+};
+
+// A Next.js `src/` project whose only edges into `Button` / `format`
+// run through the `@/*` tsconfig path alias — the exact shape that
+// regressed when the scan root wasn't canonicalized.
+const setupAliasProject = (caseId: string): string => {
+  const projectDirectory = path.join(tempRoot, caseId);
+  fs.mkdirSync(projectDirectory, { recursive: true });
+  const files: Record<string, string> = {
+    "package.json": JSON.stringify({
+      name: caseId,
+      type: "module",
+      dependencies: { next: "^16.0.0", react: "^19.0.0", "react-dom": "^19.0.0" },
+    }),
+    "tsconfig.json": JSON.stringify({
+      compilerOptions: {
+        jsx: "preserve",
+        module: "esnext",
+        moduleResolution: "bundler",
+        baseUrl: ".",
+        paths: { "@/*": ["./src/*"] },
+      },
+    }),
+    "src/app/page.tsx":
+      'import { Button } from "@/components/Button";\n' +
+      'import { formatName } from "@/lib/format";\n' +
+      "export default function Home() { return <Button label={formatName('x')} />; }\n",
+    "src/components/Button.tsx":
+      "export const Button = ({ label }: { label: string }) => <button>{label}</button>;\n",
+    "src/lib/format.ts":
+      "export const formatName = (name: string): string => name.toUpperCase();\n",
+  };
+  for (const [relativePath, contents] of Object.entries(files)) {
+    const fullPath = path.join(projectDirectory, relativePath);
+    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+    fs.writeFileSync(fullPath, contents);
+  }
   return projectDirectory;
 };
+
+const flaggedUnusedFiles = async (rootDirectory: string): Promise<string[]> =>
+  (await checkDeadCode({ rootDirectory }))
+    .filter((diagnostic) => diagnostic.rule === "unused-file")
+    .map((diagnostic) => diagnostic.filePath)
+    .sort();
 
 describe("checkDeadCode", () => {
   it("returns no diagnostics when the directory has no package.json", async () => {
@@ -40,7 +88,7 @@ describe("checkDeadCode", () => {
     expect(await checkDeadCode({ rootDirectory: directory })).toEqual([]);
   });
 
-  it("flags an orphan file with POSIX-separated paths under the Dead Code category", async () => {
+  it("flags an orphan file with POSIX-separated paths under the Maintainability category", async () => {
     const directory = setupProject("unused-file", {
       "src/index.ts": "export const used = 1;\n",
       "src/orphan.ts": "export const orphan = 1;\n",
@@ -52,7 +100,7 @@ describe("checkDeadCode", () => {
     );
     expect(orphan).toBeDefined();
     expect(orphan?.plugin).toBe("deslop");
-    expect(orphan?.category).toBe("Dead Code");
+    expect(orphan?.category).toBe("Maintainability");
     expect(orphan?.filePath.includes("\\")).toBe(false);
   });
 
@@ -175,5 +223,27 @@ describe("checkDeadCode", () => {
       }),
     ).rejects.toThrow("Dead-code worker timed out");
     expect(didTerminate).toBe(true);
+  });
+
+  // deslop's import-graph resolution (oxc-resolver targets matched against
+  // fast-glob's collected paths) only lines up on POSIX; on Windows it
+  // mis-flags imported files regardless of the canonical-root fix — a
+  // deslop limitation, not the canonicalization (orphan detection passes
+  // on Windows). The symlinked-root scenario is itself POSIX/macOS.
+  describe.skipIf(process.platform === "win32")("import-graph resolution (POSIX)", () => {
+    it("does not flag files imported only through @/* tsconfig path aliases", async () => {
+      // Canonicalize so this case isolates alias resolution from the
+      // symlinked-root case below (`os.tmpdir()` is itself a symlink into
+      // /private on macOS).
+      const directory = fs.realpathSync(setupAliasProject("alias-imports"));
+      expect(await flaggedUnusedFiles(directory)).toEqual([]);
+    });
+
+    it("does not mis-flag imports when the scan root is reached through a symlink", async () => {
+      const realDirectory = setupAliasProject("symlinked-real");
+      const linkedDirectory = path.join(tempRoot, "symlinked-link");
+      fs.symlinkSync(realDirectory, linkedDirectory);
+      expect(await flaggedUnusedFiles(linkedDirectory)).toEqual([]);
+    });
   });
 });

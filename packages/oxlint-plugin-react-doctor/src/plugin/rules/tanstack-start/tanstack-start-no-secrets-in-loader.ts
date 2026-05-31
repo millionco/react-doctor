@@ -23,6 +23,7 @@ const isLikelySecret = (envVarName: string): boolean => {
 
 export const tanstackStartNoSecretsInLoader = defineRule<Rule>({
   id: "tanstack-start-no-secrets-in-loader",
+  title: "Secret exposed in a loader",
   tags: ["test-noise"],
   requires: ["tanstack-start"],
   severity: "error",
@@ -63,7 +64,7 @@ export const tanstackStartNoSecretsInLoader = defineRule<Rule>({
             const envSource = isImportMetaEnvAccess ? "import.meta.env" : "process.env";
             context.report({
               node: child,
-              message: `${envSource}.${envVarName} in ${keyName} — loaders are isomorphic and may leak secrets to the client. Move to a createServerFn()`,
+              message: `Reading ${envSource}.${envVarName} in ${keyName} leaks this secret to the client, where anyone can read it.`,
             });
           }
         });

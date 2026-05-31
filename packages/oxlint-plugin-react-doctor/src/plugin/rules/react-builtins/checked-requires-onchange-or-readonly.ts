@@ -6,10 +6,9 @@ import { isCreateElementCall } from "../../utils/is-create-element-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
-const MISSING_MESSAGE =
-  "`checked` should be used with either `onChange` or `readOnly` — otherwise the input is silently uncontrolled.";
+const MISSING_MESSAGE = "Your users can't toggle this input because `checked` has no `onChange`.";
 const EXCLUSIVE_MESSAGE =
-  "Use either `checked` or `defaultChecked`, not both — they're mutually exclusive control modes.";
+  "This input behaves unpredictably with both `checked` & `defaultChecked` set.";
 
 interface CheckedRequiresSettings {
   ignoreMissingProperties?: boolean;
@@ -80,9 +79,10 @@ const collectFromObjectProperties = (
 // used together. Settings let either check be silenced.
 export const checkedRequiresOnchangeOrReadonly = defineRule<Rule>({
   id: "checked-requires-onchange-or-readonly",
+  title: "Checked input without onChange",
   severity: "warn",
   recommendation:
-    "Add `onChange={…}` (controlled) or `readOnly` (display-only) — or use `defaultChecked` for an uncontrolled checkbox.",
+    "Add `onChange` (controlled) or `readOnly` (display-only), or use `defaultChecked` for an uncontrolled checkbox.",
   category: "Correctness",
   create: (context) => {
     const settings = resolveSettings(context.settings);

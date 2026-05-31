@@ -70,11 +70,12 @@ const findReturnedObject = (callback: EsTreeNode): EsTreeNodeOfType<"ObjectExpre
 // `opacity` instead.
 export const rnAnimateLayoutProperty = defineRule<Rule>({
   id: "rn-animate-layout-property",
+  title: "Animating a layout property",
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "error",
   recommendation:
-    "Animate `transform: [{ translateX/Y }, { scale }]` and `opacity` instead of layout props — layout runs on the JS thread; transform/opacity run on the GPU compositor",
+    "Animating size or position props runs on the JS thread and can stutter. Animate `transform: [{ translateX/Y }, { scale }]` or `opacity` instead, which run on the GPU.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isNodeOfType(node.callee, "Identifier") || node.callee.name !== "useAnimatedStyle")
@@ -91,7 +92,7 @@ export const rnAnimateLayoutProperty = defineRule<Rule>({
 
         context.report({
           node: property,
-          message: `useAnimatedStyle animating "${property.key.name}" — layout properties run on the layout thread; use transform: [{ translateX/Y }, { scale }] or opacity for GPU-accelerated animation`,
+          message: `Your users see stutter when useAnimatedStyle animates "${property.key.name}" on the layout thread.`,
         });
       }
     },

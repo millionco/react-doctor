@@ -7,11 +7,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const tanstackStartNoUseServerInHandler = defineRule<Rule>({
   id: "tanstack-start-no-use-server-in-handler",
+  title: "Redundant use server in handler",
   tags: ["test-noise"],
   requires: ["tanstack-start"],
   severity: "error",
   recommendation:
-    'TanStack Start handles server boundaries automatically via the Vite plugin — "use server" inside createServerFn causes compilation errors',
+    'TanStack Start handles server boundaries automatically via the Vite plugin. "use server" inside createServerFn causes compile errors.',
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isNodeOfType(node.callee, "MemberExpression")) return;
@@ -43,8 +44,7 @@ export const tanstackStartNoUseServerInHandler = defineRule<Rule>({
       if (hasUseServerDirective) {
         context.report({
           node: handlerFunction,
-          message:
-            '"use server" inside createServerFn handler — TanStack Start handles this automatically, remove the directive',
+          message: '"use server" inside a createServerFn handler causes compile errors.',
         });
       }
     },

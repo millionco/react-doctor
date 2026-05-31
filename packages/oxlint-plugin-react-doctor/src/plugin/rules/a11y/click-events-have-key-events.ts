@@ -13,7 +13,7 @@ import { HTML_TAGS } from "../../constants/html-tags.js";
 const PRESENTATION_ROLES: ReadonlySet<string> = new Set(["presentation", "none"]);
 
 const MESSAGE =
-  "Visible non-interactive elements with click handlers must have a corresponding keyboard listener (`onKeyUp`, `onKeyDown`, or `onKeyPress`).";
+  "Keyboard users can't trigger this click handler because there's no keyboard one, so add `onKeyUp`, `onKeyDown`, or `onKeyPress`.";
 
 const KEY_HANDLERS = ["onKeyUp", "onKeyDown", "onKeyPress"] as const;
 
@@ -24,9 +24,10 @@ const KEY_HANDLERS = ["onKeyUp", "onKeyDown", "onKeyPress"] as const;
 // handled by the `react-jsx-only` tag via `defineRule`.
 export const clickEventsHaveKeyEvents = defineRule<Rule>({
   id: "click-events-have-key-events",
+  title: "Click handler missing keyboard handler",
   tags: ["react-jsx-only"],
   severity: "warn",
-  recommendation: "Pair `onClick` with `onKeyUp` / `onKeyDown` / `onKeyPress` for keyboard users.",
+  recommendation: "Pair `onClick` with a key handler so keyboard users can trigger it.",
   category: "Accessibility",
   create: (context) => {
     const isTestlikeFile = isTestlikeFilename(context.filename);

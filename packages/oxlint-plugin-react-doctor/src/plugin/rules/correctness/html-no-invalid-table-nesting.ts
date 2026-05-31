@@ -9,10 +9,10 @@ const TABLE_ELEMENTS = new Set(["table", "thead", "tbody", "tfoot", "tr", "td", 
 const ROW_GROUPS = new Set(["thead", "tbody", "tfoot"]);
 
 const buildMessage = (childTag: string, expectedParent: string, actualParent: string): string =>
-  `Improper table nesting — \`<${childTag}>\` must be a direct child of ${expectedParent}, but its nearest host ancestor is \`<${actualParent}>\`. Browsers auto-rewrite invalid table structure, producing a DOM that doesn't match the JSX (broken hydration, broken \`>\` selectors, broken accessibility tree).`;
+  `Your users see a rearranged table because \`<${childTag}>\` must sit directly inside ${expectedParent}, not \`<${actualParent}>\`, so the browser fixes the markup for you. Put it in the right parent.`;
 
 const buildNestedTableMessage = (): string =>
-  "Improper table nesting — `<table>` cannot be a direct descendant of another table element. Tables can only nest inside a `<td>` or `<th>` cell of an outer table.";
+  "Your users see a broken table because a `<table>` can't sit directly inside another table element. To nest a table, put it inside a `<td>` or `<th>` cell.";
 
 const getHostTagName = (jsxElement: EsTreeNode): string | null => {
   if (!isNodeOfType(jsxElement, "JSXElement")) return null;
@@ -118,9 +118,10 @@ const findEnclosingTable = (
 // validate boundaries it can't see either.
 export const htmlNoInvalidTableNesting = defineRule<Rule>({
   id: "html-no-invalid-table-nesting",
+  title: "Invalid table element nesting",
   severity: "warn",
   recommendation:
-    "Wrap each table element in its required parent: `<thead>`/`<tbody>`/`<tfoot>` directly inside `<table>`, `<tr>` inside a row group, `<td>`/`<th>` inside `<tr>`. Browsers reflow malformed table structure silently — the only safe fix is to author the markup to spec.",
+    "Put each table element in its required parent: `<thead>`/`<tbody>`/`<tfoot>` directly inside `<table>`, `<tr>` inside a row group, `<td>`/`<th>` inside `<tr>`. Browsers quietly fix broken table markup, so write it to spec.",
   create: (context) => ({
     JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
       const tagName = getHostTagName(node);

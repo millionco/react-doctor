@@ -10,7 +10,7 @@ const ESCAPED_VERSIONS: Record<string, string> = {
 };
 
 const buildMessage = (character: string): string =>
-  `\`${character}\` in JSX text can be confused with markup — escape with ${ESCAPED_VERSIONS[character]}.`;
+  `\`${character}\` in JSX text can read as markup & confuse readers.`;
 
 // Port of `oxc_linter::rules::react::no_unescaped_entities`. Walks JSX
 // text nodes and reports each `'`, `"`, `>`, and `}` character as an
@@ -18,6 +18,7 @@ const buildMessage = (character: string): string =>
 // (OXC's narrower port covered only quotes).
 export const noUnescapedEntities = defineRule<Rule>({
   id: "no-unescaped-entities",
+  title: "Unescaped entities in JSX",
   severity: "warn",
   // Pure stylistic rule — replacing `'` with `&apos;` etc. is a
   // cosmetic preference that doesn't catch bugs (modern JSX

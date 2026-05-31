@@ -1,6 +1,5 @@
-import { accessSync, constants, statSync } from "node:fs";
-import path from "node:path";
 import { detectInstalledSkillAgents, getSkillAgentTypes, type SkillAgentType } from "agent-install";
+import { isCommandAvailable } from "./is-command-available.js";
 
 // HACK: PATH binaries we use as a *supplementary* detection signal on top
 // of agent-install's filesystem detection. This catches users who just
@@ -18,20 +17,6 @@ const PATH_BINARIES: Partial<Record<SkillAgentType, readonly string[]>> = {
   "github-copilot": ["copilot"],
   opencode: ["opencode"],
   pi: ["pi", "omegon"],
-};
-
-const isCommandAvailable = (command: string): boolean => {
-  const pathDirectories = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
-  for (const directory of pathDirectories) {
-    const binaryPath = path.join(directory, command);
-    try {
-      if (statSync(binaryPath).isFile()) {
-        accessSync(binaryPath, constants.X_OK);
-        return true;
-      }
-    } catch {}
-  }
-  return false;
 };
 
 const detectPathAvailableAgents = (): SkillAgentType[] => {

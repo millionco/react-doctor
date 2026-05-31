@@ -4,16 +4,17 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
 const ALLOWED_NAMESPACES = new Set(["React", "ReactDOM", "ReactDom"]);
-const MESSAGE = "Unexpected call to `findDOMNode` — removed in React 19.";
+const MESSAGE = "`findDOMNode` crashes your app in React 19 because it was removed.";
 
 // Port of `oxc_linter::rules::react::no_find_dom_node`. Flags
 // `findDOMNode(...)` and `<NS>.findDOMNode(...)` where `<NS>` is one of
 // `React`, `ReactDOM`, `ReactDom`.
 export const noFindDomNode = defineRule<Rule>({
   id: "no-find-dom-node",
+  title: "Use of findDOMNode",
   severity: "warn",
   recommendation:
-    "Use refs (`useRef`/`createRef`) to access DOM nodes — see React's findDOMNode alternatives.",
+    "Use a ref (`useRef` or `createRef`) to reach DOM nodes instead of `findDOMNode`.",
   create: (context) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const callee = node.callee;

@@ -9,10 +9,11 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noGradientText = defineRule<Rule>({
   id: "no-gradient-text",
+  title: "Gradient text is hard to read",
   tags: ["design", "test-noise"],
   severity: "warn",
   recommendation:
-    "Use solid text colors for readability. If you need emphasis, use font weight, size, or a distinct color instead of gradients",
+    "Use a solid text color so it stays readable. For emphasis, change the weight, size, or color instead of using a gradient.",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);
@@ -38,7 +39,7 @@ export const noGradientText = defineRule<Rule>({
         context.report({
           node,
           message:
-            "Gradient text (background-clip: text) is decorative rather than meaningful — a common AI tell. Use solid colors for text",
+            "Your users struggle to read gradient text (background-clip: text), so use a solid text color instead.",
         });
       }
     },
@@ -50,7 +51,7 @@ export const noGradientText = defineRule<Rule>({
         context.report({
           node,
           message:
-            "Gradient text (bg-clip-text + bg-gradient) is decorative rather than meaningful — a common AI tell. Use solid colors for text",
+            "Your users struggle to read gradient text (bg-clip-text + bg-gradient), so use a solid text color instead.",
         });
       }
     },

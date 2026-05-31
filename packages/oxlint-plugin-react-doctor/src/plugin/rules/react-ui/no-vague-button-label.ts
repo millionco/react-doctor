@@ -58,10 +58,11 @@ const collectJsxLabelText = (jsxElementNode: EsTreeNode): string | null => {
 
 export const noVagueButtonLabel = defineRule<Rule>({
   id: "design-no-vague-button-label",
+  title: "Vague button label",
   tags: ["design", "test-noise"],
   severity: "warn",
   recommendation:
-    'Name the action: "Save changes" instead of "Continue", "Send invite" instead of "Submit", "Delete account" instead of "OK". The label IS the button\'s accessible name',
+    'Name the action: "Save changes" instead of "Continue", "Send invite" instead of "Submit". The label is the button\'s accessible name.',
   create: (context: RuleContext) => ({
     JSXElement(jsxElementNode: EsTreeNodeOfType<"JSXElement">) {
       const tagName = getOpeningElementTagName(jsxElementNode.openingElement);
@@ -75,7 +76,7 @@ export const noVagueButtonLabel = defineRule<Rule>({
       if (!VAGUE_BUTTON_LABELS.has(normalizedLabel)) return;
       context.report({
         node: jsxElementNode.openingElement ?? jsxElementNode,
-        message: `Vague button label "${labelText}" — name the action ("Save changes", "Send invite", "Delete account") so screen readers and hesitant users know what happens`,
+        message: `Screen reader & unsure users can't tell what "${labelText}" does.`,
       });
     },
   }),

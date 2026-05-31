@@ -175,10 +175,10 @@ const collectAwaitWindow = (statements: EsTreeNode[], startIndex: number): Await
 // value is being prepared for use, so we conservatively skip.
 export const asyncDeferAwait = defineRule<Rule>({
   id: "async-defer-await",
+  title: "await before an early-return guard",
   severity: "warn",
   tags: ["test-noise"],
-  recommendation:
-    "Move the `await` after the synchronous early-return guard so the skip path stays fast",
+  recommendation: "Move the `await` below the early-return guard so the skip path stays fast",
   create: (context: RuleContext) => {
     const inspectStatements = (statements: EsTreeNode[]): void => {
       for (let statementIndex = 0; statementIndex < statements.length - 1; statementIndex++) {
@@ -210,7 +210,7 @@ export const asyncDeferAwait = defineRule<Rule>({
         context.report({
           node: window.firstAwaitStatement,
           message:
-            "await blocks the function before an early-return that doesn't use the awaited value — move the await after the synchronous guard so the skip path stays fast",
+            "This await blocks the function before an early-return that doesn't use the awaited value, so the skip path waits for nothing. Move the await below the guard so it only runs when you need the data",
         });
         statementIndex = window.guardCandidateIndex - 1;
       }

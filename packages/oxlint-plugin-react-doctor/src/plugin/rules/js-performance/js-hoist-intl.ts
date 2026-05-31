@@ -38,10 +38,11 @@ const isIntlNewExpression = (node: EsTreeNode): boolean => {
 
 export const jsHoistIntl = defineRule<Rule>({
   id: "js-hoist-intl",
+  title: "Intl formatter rebuilt each call",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Hoist `new Intl.NumberFormat(...)` to module scope or wrap in `useMemo` — Intl constructors allocate dozens of objects per locale lookup",
+    "Move `new Intl.NumberFormat(...)` to the top of the file or wrap it in `useMemo`. Building one is slow, so don't redo it on every call",
   create: (context: RuleContext) => ({
     NewExpression(node: EsTreeNodeOfType<"NewExpression">) {
       if (!isIntlNewExpression(node)) return;
@@ -98,7 +99,7 @@ export const jsHoistIntl = defineRule<Rule>({
           : "Intl";
       context.report({
         node,
-        message: `new Intl.${className}() inside a function — hoist to module scope or wrap in useMemo so it isn't recreated each call`,
+        message: `This is slow because new Intl.${className}() rebuilds on every call inside a function, so move it to the top of the file, or wrap it in useMemo`,
       });
     },
   }),

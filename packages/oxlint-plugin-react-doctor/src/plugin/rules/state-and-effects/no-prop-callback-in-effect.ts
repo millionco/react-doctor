@@ -19,10 +19,11 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // effect-driven sync at all.
 export const noPropCallbackInEffect = defineRule<Rule>({
   id: "no-prop-callback-in-effect",
+  title: "Parent kept in sync with a callback effect",
   severity: "warn",
   tags: ["test-noise"],
   recommendation:
-    "Lift the shared state into a Provider so both sides read the same source — no useEffect-driven sync needed",
+    "Move the shared state into a Provider so both sides read the same value. Then you don't need a useEffect to keep them in sync.",
   create: (context: RuleContext) => {
     const propStackTracker = createComponentPropStackTracker();
 
@@ -65,7 +66,7 @@ export const noPropCallbackInEffect = defineRule<Rule>({
           reportedNodes.add(child);
           context.report({
             node: child,
-            message: `useEffect calls prop callback "${calleeName}" with local state in deps — this is the "lift state via callback" anti-pattern; lift state into a shared Provider so both sides read the same source`,
+            message: `Your parent re-renders on every local state change because this useEffect calls the prop "${calleeName}" just to stay in sync.`,
           });
         });
       },

@@ -5,8 +5,8 @@ import { isEs6Component } from "../../utils/is-es6-component.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
-const ALWAYS_MESSAGE = "State initialization should be in a `constructor` (`this.state = …`).";
-const NEVER_MESSAGE = "State initialization should be a class property (`state = …`).";
+const ALWAYS_MESSAGE = "This component's state is set up inconsistently.";
+const NEVER_MESSAGE = "This component's state is set up inconsistently.";
 
 interface StateInConstructorSettings {
   mode?: "always" | "never";
@@ -68,13 +68,13 @@ const isInConstructor = (node: EsTreeNode): boolean => {
 //     React class component (state should be a class field instead).
 export const stateInConstructor = defineRule<Rule>({
   id: "state-in-constructor",
+  title: "State initialized in constructor",
   severity: "warn",
   // Pure stylistic — class field initializers (`state = {...}`) and
   // explicit constructor assignment are equivalent at runtime. The
   // class-field form is idiomatic modern TypeScript. Default off.
   defaultEnabled: false,
-  recommendation:
-    "Pick a single state-initialization style for class components and stick with it.",
+  recommendation: "Pick one way to set up state in class components and stick with it.",
   category: "Architecture",
   create: (context) => {
     const { mode } = resolveSettings(context.settings);

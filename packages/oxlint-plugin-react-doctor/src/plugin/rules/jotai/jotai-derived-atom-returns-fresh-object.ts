@@ -206,9 +206,10 @@ const functionBodyReferencesGetParameter = (
 
 export const jotaiDerivedAtomReturnsFreshObject = defineRule<Rule>({
   id: "jotai-derived-atom-returns-fresh-object",
+  title: "Derived atom returns fresh object",
   severity: "warn",
   recommendation:
-    "Split the derivation into multiple primitive derived atoms (each `Object.is`-dedupable), or wrap with `selectAtom(source, fn, shallow)` from jotai/utils if a wrapper object is required",
+    "Split it into one derived atom per field (each compares cleanly with Object.is), or wrap with `selectAtom(source, fn, shallow)` from jotai/utils if you really need one object.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isAtomFromJotai(node)) return;
@@ -232,7 +233,7 @@ export const jotaiDerivedAtomReturnsFreshObject = defineRule<Rule>({
       const shape = freshReturn.kind === "object" ? "object" : "array";
       context.report({
         node: freshReturn.reportNode,
-        message: `Derived atom returns a fresh ${shape} — jotai compares with Object.is, so every upstream notify re-renders every consumer. Split into per-field derived atoms or use \`selectAtom(source, fn, shallow)\``,
+        message: `This derived atom returns a new ${shape} each time, so jotai's Object.is check fails & re-renders every consumer on every update. Split into one atom per field, or use \`selectAtom(source, fn, shallow)\`.`,
       });
     },
   }),

@@ -20,11 +20,12 @@ const RECYCLABLE_LIST_NAMES = new Set(["FlashList", "LegendList"]);
 
 export const rnListRecyclableWithoutTypes = defineRule<Rule>({
   id: "rn-list-recyclable-without-types",
+  title: "Recyclable list missing getItemType",
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    "Add `getItemType={item => item.kind}` so FlashList keeps separate recycle pools per item type — heterogeneous rows shouldn't share recycled cells",
+    "When rows have different shapes, reused cells can show the wrong layout. Add `getItemType={item => item.kind}` so FlashList keeps a separate pool per row type.",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const elementName = resolveJsxElementName(node);
@@ -54,7 +55,7 @@ export const rnListRecyclableWithoutTypes = defineRule<Rule>({
       if (hasRecycleItemsEnabled && !hasGetItemType) {
         context.report({
           node,
-          message: `<${elementName} recycleItems> without \`getItemType\` — heterogeneous rows mount into the wrong recycled cells. Add \`getItemType={item => item.kind}\` so FlashList keeps separate recycle pools per type`,
+          message: `Your users see rows of different shapes reuse the wrong cells when <${elementName} recycleItems> has no \`getItemType\`.`,
         });
       }
     },

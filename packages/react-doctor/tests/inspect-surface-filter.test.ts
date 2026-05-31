@@ -74,6 +74,7 @@ describe("inspect — score surface filter", () => {
         lint: true,
         deadCode: false,
         noScore: false,
+        warnings: true,
       });
 
       const scoreCall = captured.find(({ url }) => url.includes("score"));
@@ -120,6 +121,7 @@ describe("inspect — score surface filter", () => {
           lint: true,
           deadCode: false,
           noScore: true,
+          warnings: true,
         });
         const baselineDesignCount = baselineResult.diagnostics.filter(
           (diagnostic) =>
@@ -133,6 +135,7 @@ describe("inspect — score surface filter", () => {
           lint: true,
           deadCode: false,
           noScore: true,
+          warnings: true,
           outputSurface: "cli",
           configOverride: { surfaces: { cli: { excludeTags: ["design"] } } },
         });

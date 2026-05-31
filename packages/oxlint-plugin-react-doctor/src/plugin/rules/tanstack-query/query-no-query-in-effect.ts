@@ -11,11 +11,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const queryNoQueryInEffect = defineRule<Rule>({
   id: "query-no-query-in-effect",
+  title: "Query refetch inside useEffect",
   tags: ["test-noise"],
   requires: ["tanstack-query"],
   severity: "warn",
   recommendation:
-    "React Query manages refetching automatically via queryKey dependencies and the `enabled` option — manual refetch() in useEffect is usually unnecessary",
+    "React Query refetches automatically via queryKey changes and the `enabled` option. A manual refetch() in useEffect is usually unnecessary.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isHookCall(node, EFFECT_HOOK_NAMES)) return;
@@ -32,7 +33,7 @@ export const queryNoQueryInEffect = defineRule<Rule>({
           context.report({
             node: child,
             message:
-              "refetch() inside useEffect — React Query manages refetching automatically. Use queryKey dependencies or the enabled option instead",
+              "refetch() inside useEffect duplicates work React Query already does, causing extra fetches.",
           });
         }
       });

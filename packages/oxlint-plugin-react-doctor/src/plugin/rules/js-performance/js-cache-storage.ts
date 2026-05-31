@@ -9,10 +9,11 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const jsCacheStorage = defineRule<Rule>({
   id: "js-cache-storage",
+  title: "Repeated localStorage reads",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Cache repeated `localStorage`/`sessionStorage` reads in a local variable — each access serializes/deserializes",
+    "Read `localStorage`/`sessionStorage` once and reuse the value. Every read has to parse the data again, which is slow",
   create: (context: RuleContext) => {
     const storageReadCounts = new Map<string, number>();
 
@@ -34,7 +35,7 @@ export const jsCacheStorage = defineRule<Rule>({
           const storageName = node.callee.object.name;
           context.report({
             node,
-            message: `${storageName}.getItem("${storageKey}") called multiple times — cache the result in a variable`,
+            message: `This is slow because ${storageName}.getItem("${storageKey}") runs several times & re-parses the data each call, so read it once & reuse the value`,
           });
         }
       },

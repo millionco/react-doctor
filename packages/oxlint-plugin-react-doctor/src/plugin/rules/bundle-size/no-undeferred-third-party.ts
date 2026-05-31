@@ -8,9 +8,10 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noUndeferredThirdParty = defineRule<Rule>({
   id: "no-undeferred-third-party",
+  title: "Render-blocking third-party script",
   tags: ["test-noise"],
   severity: "warn",
-  recommendation: 'Use `next/script` with `strategy="lazyOnload"` or add the `defer` attribute',
+  recommendation: 'Use `next/script` with `strategy="lazyOnload"`, or add the `defer` attribute.',
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "script") return;
@@ -21,7 +22,7 @@ export const noUndeferredThirdParty = defineRule<Rule>({
         context.report({
           node,
           message:
-            "Synchronous <script> with src — add defer or async to avoid blocking first paint",
+            "This <script> blocks the page from showing to your users until it loads. Add defer or async so it loads in the background.",
         });
       }
     },

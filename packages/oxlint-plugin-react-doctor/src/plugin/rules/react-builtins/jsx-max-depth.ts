@@ -7,7 +7,7 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { Rule } from "../../utils/rule.js";
 
 const buildMessage = (depth: number, max: number): string =>
-  `JSX nesting depth ${depth} exceeds maximum ${max}.`;
+  `This JSX is hard to read at ${depth} levels deep, past the limit of ${max}.`;
 
 // Default depth threshold: 14. OXC's `max: 2` default is far too strict
 // for real-world React UIs — a routine shadcn Card already exceeds it
@@ -99,10 +99,10 @@ const computeChildrenDepth = (
 // broken by name.
 export const jsxMaxDepth = defineRule<Rule>({
   id: "jsx-max-depth",
+  title: "JSX nested too deeply",
   severity: "warn",
   tags: ["test-noise"],
-  recommendation:
-    "Extract deeply nested JSX into smaller components to keep render trees readable.",
+  recommendation: "Pull deeply nested JSX into smaller components so it's easier to read.",
   category: "Architecture",
   create: (context) => {
     const { max } = resolveSettings(context.settings);

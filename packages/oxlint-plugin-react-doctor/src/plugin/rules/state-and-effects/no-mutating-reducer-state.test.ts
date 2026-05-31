@@ -20,7 +20,7 @@ describe("no-mutating-reducer-state", () => {
 
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0].message).toContain("same reference");
+    expect(result.diagnostics[0].message).toContain("changes state in place");
   });
 
   it("flags array mutator calls on inline reducers", () => {

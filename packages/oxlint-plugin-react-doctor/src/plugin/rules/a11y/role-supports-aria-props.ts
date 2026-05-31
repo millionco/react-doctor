@@ -12,10 +12,10 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
 const buildMessageDefault = (role: string, propName: string): string =>
-  `The attribute \`${propName}\` is not supported by the role \`${role}\`.`;
+  `Screen reader users get no help from \`${propName}\` because role \`${role}\` ignores it, so remove it or change the role.`;
 
 const buildMessageImplicit = (role: string, propName: string, elementType: string): string =>
-  `The attribute \`${propName}\` is not supported by the role \`${role}\`. This role is implicit on the element \`${elementType}\`.`;
+  `Screen reader users get no help from \`${propName}\` because \`${elementType}\` has role \`${role}\`, which ignores it, so remove \`${propName}\` or change the element.`;
 
 // Port of `get_implicit_role` from OXC. Returns the implicit ARIA
 // role for an HTML element, or null if there isn't one.
@@ -157,9 +157,10 @@ const getImplicitRole = (
 // effective ARIA role (explicit > implicit).
 export const roleSupportsAriaProps = defineRule<Rule>({
   id: "role-supports-aria-props",
+  title: "Unsupported ARIA prop for role",
   tags: ["react-jsx-only"],
   severity: "warn",
-  recommendation: "Use `aria-*` props supported by the element's role.",
+  recommendation: "Only use `aria-*` attributes that the element's role supports.",
   category: "Accessibility",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {

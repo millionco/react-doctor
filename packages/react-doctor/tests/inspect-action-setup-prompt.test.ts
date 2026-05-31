@@ -4,7 +4,6 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { InspectResult } from "@react-doctor/core";
 import { inspectAction } from "../src/cli/commands/inspect.js";
-import { promptInstallSetup } from "../src/cli/utils/prompt-install-setup.js";
 import { inspect } from "../src/inspect.js";
 
 const mockState = vi.hoisted(() => ({
@@ -91,15 +90,10 @@ vi.mock("../src/cli/utils/render-multi-project-summary.js", async () => {
   };
 });
 
-vi.mock("../src/cli/utils/copy-issues-to-clipboard.js", () => ({
-  promptCopyIssues: vi.fn(async () => {}),
-}));
-
 vi.mock("../src/cli/utils/prompt-install-setup.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/cli/utils/prompt-install-setup.js")>();
   return {
     ...actual,
-    promptInstallSetup: vi.fn(async () => {}),
     shouldShowAgentInstallHint: vi.fn(() => false),
   };
 });
@@ -144,13 +138,6 @@ describe("inspectAction setup prompt", () => {
       webDirectory,
       expect.objectContaining({
         includePaths: ["src/App.tsx"],
-      }),
-    );
-    expect(promptInstallSetup).toHaveBeenCalledWith(
-      expect.objectContaining({
-        projectRoot: rootDirectory,
-        hasCompletedScan: true,
-        skipPrompts: false,
       }),
     );
   });

@@ -37,9 +37,10 @@ const isUnconditionalSetterCallStatement = (
 
 export const noSetStateInRender = defineRule<Rule>({
   id: "no-set-state-in-render",
+  title: "setState called during render",
   severity: "warn",
   recommendation:
-    "Move the setter call into a `useEffect`, an event handler, or replace the state with a value computed during render. Calling a setter at render time triggers another render, which calls the setter again — an infinite loop",
+    "Move the setter into a `useEffect` or an event handler, or compute the value while rendering. Calling a setter during render starts another render that calls it again, looping forever.",
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
@@ -56,7 +57,7 @@ export const noSetStateInRender = defineRule<Rule>({
         const setterIdentifierName = setterCall.callee.name;
         context.report({
           node: setterCall,
-          message: `${setterIdentifierName}() called unconditionally at the top of render — causes an infinite re-render loop. Move into a useEffect or an event handler. (To derive state from props, guard the call: \`if (prev !== prop) ${setterIdentifierName}(prop)\`)`,
+          message: `${setterIdentifierName}() loops forever because it runs during render & triggers another render.`,
         });
       }
     };

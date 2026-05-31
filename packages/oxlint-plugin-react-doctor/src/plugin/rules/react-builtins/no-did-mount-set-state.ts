@@ -5,7 +5,8 @@ import { isSetStateCallInLifecycle } from "../../utils/is-set-state-in-lifecycle
 import type { Rule } from "../../utils/rule.js";
 
 const LIFECYCLE_NAMES = new Set(["componentDidMount"]);
-const MESSAGE = "Do not use `this.setState` in `componentDidMount`.";
+const MESSAGE =
+  "Your users see an extra render right after mount when you call `setState` in `componentDidMount`.";
 
 interface NoDidMountSetStateSettings {
   mode?: "allowed" | "disallow-in-func";
@@ -29,9 +30,10 @@ const resolveSettings = (
 // when `mode: "disallow-in-func"`.
 export const noDidMountSetState = defineRule<Rule>({
   id: "no-did-mount-set-state",
+  title: "setState in componentDidMount",
   severity: "warn",
   recommendation:
-    "Move state-derivation logic into `getDerivedStateFromProps` or initial state — setting state in `componentDidMount` triggers an extra render.",
+    "Setting state in `componentDidMount` triggers an extra render. Use `getDerivedStateFromProps` or initial state instead.",
   create: (context) => {
     const { mode } = resolveSettings(context.settings);
     return {

@@ -3,9 +3,21 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Diagnostic, ReactDoctorConfig } from "./types/index.js";
 import { collectIgnorePatterns } from "./collect-ignore-patterns.js";
-import { DEAD_CODE_WORKER_TIMEOUT_MS, MILLISECONDS_PER_SECOND } from "./constants.js";
+import {
+  DEAD_CODE_WORKER_MAX_OLD_SPACE_MB,
+  DEAD_CODE_WORKER_TIMEOUT_MS,
+  MILLISECONDS_PER_SECOND,
+} from "./constants.js";
 import { readIgnoreFile } from "./read-ignore-file.js";
+import { toCanonicalPath } from "./utils/to-canonical-path.js";
 import { toRelativePath } from "./utils/to-relative-path.js";
+
+// The plugin id and category every dead-code diagnostic carries.
+// Centralized so severity-control checks (e.g. deciding whether to run
+// the analysis at all when warnings are hidden) stay in sync with the
+// diagnostics actually emitted below.
+export const DEAD_CODE_PLUGIN = "deslop";
+export const DEAD_CODE_CATEGORY = "Maintainability";
 
 interface CheckDeadCodeOptions {
   readonly rootDirectory: string;
@@ -326,10 +338,14 @@ const createDeadCodeWorker: DeadCodeWorkerFactory = (input) => {
   // on success or timeout never takes the parent down with it. Input
   // goes in as JSON on stdin; the normalized result comes back as JSON
   // on stdout.
-  const child = spawn(process.execPath, ["-e", DEAD_CODE_WORKER_SCRIPT], {
-    stdio: ["pipe", "pipe", "pipe"],
-    windowsHide: true,
-  });
+  const child = spawn(
+    process.execPath,
+    [`--max-old-space-size=${DEAD_CODE_WORKER_MAX_OLD_SPACE_MB}`, "-e", DEAD_CODE_WORKER_SCRIPT],
+    {
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+    },
+  );
 
   const stdoutChunks: Buffer[] = [];
   const stderrChunks: Buffer[] = [];
@@ -425,7 +441,10 @@ const runDeadCodeWorkerWithTimeout = (
   });
 
 export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diagnostic[]> => {
-  const { rootDirectory, userConfig } = options;
+  const { userConfig } = options;
+  // Canonicalize up front so the deslop graph and its resolver share one
+  // path space (see `toCanonicalPath` for why a symlinked root breaks it).
+  const rootDirectory = toCanonicalPath(options.rootDirectory);
   if (!fs.existsSync(path.join(rootDirectory, "package.json"))) return [];
 
   const ignorePatterns = collectDeadCodeIgnorePatterns(rootDirectory, userConfig);
@@ -446,14 +465,14 @@ export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diag
   for (const unusedFile of result.unusedFiles) {
     diagnostics.push({
       filePath: toRelative(unusedFile.path),
-      plugin: "deslop",
+      plugin: DEAD_CODE_PLUGIN,
       rule: "unused-file",
       severity: "warning",
       message: "Unused file — not reachable from any entry point",
       help: "Delete the file if it is truly unreachable, or import it from an entry point.",
       line: 0,
       column: 0,
-      category: "Dead Code",
+      category: DEAD_CODE_CATEGORY,
     });
   }
 
@@ -461,14 +480,14 @@ export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diag
     const label = unusedExport.isTypeOnly ? "type export" : "export";
     diagnostics.push({
       filePath: toRelative(unusedExport.path),
-      plugin: "deslop",
+      plugin: DEAD_CODE_PLUGIN,
       rule: unusedExport.isTypeOnly ? "unused-type" : "unused-export",
       severity: "warning",
       message: `Unused ${label}: \`${unusedExport.name}\``,
       help: "Drop the `export` keyword (or remove the declaration) if no other module uses this symbol.",
       line: unusedExport.line,
       column: unusedExport.column,
-      category: "Dead Code",
+      category: DEAD_CODE_CATEGORY,
     });
   }
 
@@ -476,14 +495,14 @@ export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diag
     const label = unusedDependency.isDevDependency ? "devDependency" : "dependency";
     diagnostics.push({
       filePath: "package.json",
-      plugin: "deslop",
+      plugin: DEAD_CODE_PLUGIN,
       rule: unusedDependency.isDevDependency ? "unused-dev-dependency" : "unused-dependency",
       severity: "warning",
       message: `Unused ${label}: \`${unusedDependency.name}\``,
       help: "Remove the dependency from package.json if it is genuinely unused.",
       line: 0,
       column: 0,
-      category: "Dead Code",
+      category: DEAD_CODE_CATEGORY,
     });
   }
 
@@ -491,14 +510,14 @@ export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diag
     if (cycle.files.length === 0) continue;
     diagnostics.push({
       filePath: toRelative(cycle.files[0]),
-      plugin: "deslop",
+      plugin: DEAD_CODE_PLUGIN,
       rule: "circular-dependency",
       severity: "warning",
       message: `Circular import cycle: ${cycle.files.map(toRelative).join(" → ")}`,
       help: "Break the cycle by extracting the shared code into a third module that both files import.",
       line: 0,
       column: 0,
-      category: "Dead Code",
+      category: DEAD_CODE_CATEGORY,
     });
   }
 

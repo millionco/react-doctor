@@ -21,11 +21,12 @@ const NON_NATIVE_NAVIGATOR_PACKAGES = new Map<string, string>([
 // iOS/Android transitions, swipe-back, and large titles for free.
 export const rnNoNonNativeNavigator = defineRule<Rule>({
   id: "rn-no-non-native-navigator",
+  title: "Non-native JS navigator",
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    "Use `@react-navigation/native-stack` (or `native-tabs` in v7+) for platform-native transitions and gestures",
+    "Use `@react-navigation/native-stack` (or `native-tabs` in v7+) for real native transitions and gestures.",
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       const source = node.source?.value;
@@ -34,7 +35,7 @@ export const rnNoNonNativeNavigator = defineRule<Rule>({
       if (!replacement) return;
       context.report({
         node,
-        message: `${source} uses a JS-implemented navigator — use ${replacement} for native iOS/Android transitions and gestures`,
+        message: `Your users feel less native transitions when ${source} uses a JS navigator.`,
       });
     },
   }),

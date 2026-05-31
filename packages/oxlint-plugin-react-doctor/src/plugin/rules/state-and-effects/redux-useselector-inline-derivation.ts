@@ -39,10 +39,10 @@ const ALLOCATING_NAMESPACE_CALLS = new Map<string, Set<string>>([
 ]);
 
 const MESSAGE_DERIVATION = (methodName: string): string =>
-  `useSelector callback derives a new array via \`.${methodName}(...)\` on every store update — the default \`===\` equality check always fails on a fresh allocation, re-rendering the component on every dispatched action. Select the raw slice (\`useSelector(s => s.users)\`) and derive with \`useMemo\`, or hoist the derivation into a memoised \`createSelector\` from \`reselect\`.`;
+  `\`.${methodName}(...)\` returns a new array every render, so your component redraws on every action.`;
 
 const MESSAGE_NAMESPACE = (namespace: string, methodName: string): string =>
-  `useSelector callback returns a fresh collection from \`${namespace}.${methodName}(...)\` on every store update — the default \`===\` equality check always fails, re-rendering on every dispatched action. Select the raw slice and derive with \`useMemo\` or \`reselect\`.`;
+  `\`${namespace}.${methodName}(...)\` returns a new collection every render, so your component redraws on every action.`;
 
 interface MethodAllocatingCallSite {
   readonly kind: "method";
@@ -147,6 +147,7 @@ const findReturnedAllocatingCall = (expression: EsTreeNode): AllocatingCallSiteW
 //     covers selectors returning a bare `{...}` / `[...]` literal.
 export const reduxUseselectorInlineDerivation = defineRule<Rule>({
   id: "redux-useselector-inline-derivation",
+  title: "useSelector derives data inline",
   severity: "warn",
   category: "Performance",
   disabledBy: ["react-compiler"],

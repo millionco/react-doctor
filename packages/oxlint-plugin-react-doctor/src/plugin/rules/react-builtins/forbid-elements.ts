@@ -7,7 +7,9 @@ import { isReactFunctionCall } from "../../utils/is-react-function-call.js";
 import type { Rule } from "../../utils/rule.js";
 
 const buildMessage = (element: string, customHelp?: string): string =>
-  customHelp ? `<${element}> is forbidden — ${customHelp}` : `<${element}> is forbidden.`;
+  customHelp
+    ? `Your project blocks \`<${element}>\` here. ${customHelp}`
+    : `Your project blocks \`<${element}>\` here.`;
 
 interface ForbidElementsItem {
   element: string;
@@ -44,8 +46,10 @@ const flattenMemberName = flattenCalleeName;
 // the first argument of `React.createElement(...)`.
 export const forbidElements = defineRule<Rule>({
   id: "forbid-elements",
+  title: "Forbidden element used",
   severity: "warn",
-  recommendation: "Configure forbidden element names via the `forbidElements.forbid` setting.",
+  recommendation:
+    "List the element names you want to block in the `forbidElements.forbid` setting.",
   category: "Architecture",
   create: (context) => {
     const forbidMap = resolveSettings(context.settings);

@@ -7,7 +7,7 @@ import { isReactComponentName } from "../../utils/is-react-component-name.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { Rule } from "../../utils/rule.js";
 
-const MESSAGE = "JSX prop spreading is forbidden — list each prop explicitly.";
+const MESSAGE = "You can't tell what props reach this element when you spread them.";
 
 interface JsxPropsNoSpreadingSettings {
   html?: "enforce" | "ignore";
@@ -40,6 +40,7 @@ const resolveSettings = (
 // spreads of object literals (`<C {...{ foo: 1 }} />`).
 export const jsxPropsNoSpreading = defineRule<Rule>({
   id: "jsx-props-no-spreading",
+  title: "Props spread onto element",
   severity: "warn",
   // Default off because `{...props}` is the canonical composition
   // pattern: forwardRef wrappers, shadcn-ui components, Radix /

@@ -11,9 +11,8 @@ describe("rn-no-renderitem-key", () => {
     `;
     const result = runRule(rnNoRenderitemKey, code);
     expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0].message).toContain("FlatList");
     expect(result.diagnostics[0].message).toContain("renderItem");
-    expect(result.diagnostics[0].message).toContain("keyExtractor");
+    expect(result.diagnostics[0].message).toContain("the list ignores it");
   });
 
   it("flags arrow block body returning a JSX element with key", () => {
@@ -69,7 +68,7 @@ describe("rn-no-renderitem-key", () => {
     `;
     const result = runRule(rnNoRenderitemKey, code);
     expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0].message).toContain("FlashList");
+    expect(result.diagnostics[0].message).toContain("renderItem");
   });
 
   it("flags the JSX branch with key inside a ternary", () => {

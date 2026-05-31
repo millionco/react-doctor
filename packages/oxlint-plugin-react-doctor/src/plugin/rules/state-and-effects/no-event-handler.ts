@@ -134,10 +134,11 @@ const isPureEarlyExitConsequent = (consequent: EsTreeNode): boolean => {
 // one-shot ref-guarded effects (`if (wrapperRef.current && ...)`).
 export const noEventHandler = defineRule<Rule>({
   id: "no-event-handler",
+  title: "Event logic handled in an effect",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Move the side effect into the event handler that triggers it, instead of guarding on its state inside a useEffect. See https://react.dev/learn/you-might-not-need-an-effect#sharing-logic-between-event-handlers",
+    "Run the side effect in the event handler that triggers it, instead of watching its state from a useEffect. See https://react.dev/learn/you-might-not-need-an-effect#sharing-logic-between-event-handlers",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isUseEffect(node)) return;
@@ -182,7 +183,7 @@ export const noEventHandler = defineRule<Rule>({
           context.report({
             node: ref.identifier as unknown as EsTreeNode,
             message:
-              "Avoid using state and effects as an event handler. Instead, call the event handling code directly when the event occurs.",
+              "Faking an event handler with state plus a useEffect costs an extra render & runs late.",
           });
         }
       }
@@ -191,7 +192,7 @@ export const noEventHandler = defineRule<Rule>({
           context.report({
             node: ref.identifier as unknown as EsTreeNode,
             message:
-              "Avoid using props and effects as an event handler. Instead, move the handler to the parent component.",
+              "Faking an event handler with a prop plus a useEffect costs an extra render & runs late.",
           });
         }
       }

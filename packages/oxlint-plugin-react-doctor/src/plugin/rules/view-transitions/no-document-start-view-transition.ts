@@ -12,10 +12,11 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // or Suspense reveals).
 export const noDocumentStartViewTransition = defineRule<Rule>({
   id: "no-document-start-view-transition",
+  title: "Direct document.startViewTransition call",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Render a <ViewTransition> component and update inside startTransition / useDeferredValue — React calls startViewTransition for you",
+    "Render a <ViewTransition> component and update inside startTransition or useDeferredValue, and React calls startViewTransition for you.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const callee = node.callee;
@@ -29,7 +30,7 @@ export const noDocumentStartViewTransition = defineRule<Rule>({
       context.report({
         node,
         message:
-          "document.startViewTransition() bypasses React's <ViewTransition> integration — render a <ViewTransition> component and let React drive the transition (around startTransition / useDeferredValue / Suspense)",
+          "Your users lose React's <ViewTransition> animations when document.startViewTransition() runs directly.",
       });
     },
   }),

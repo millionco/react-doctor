@@ -9,10 +9,11 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const rerenderMemoWithDefaultValue = defineRule<Rule>({
   id: "rerender-memo-with-default-value",
+  title: "Empty default prop breaks memo",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Move to module scope: `const EMPTY_ITEMS: Item[] = []` then use as the default value",
+    "Move it to the top of the file: `const EMPTY_ITEMS: Item[] = []`, then use that as the default value",
   create: (context: RuleContext) => {
     const checkDefaultProps = (params: EsTreeNode[]): void => {
       for (const param of params) {
@@ -31,7 +32,7 @@ export const rerenderMemoWithDefaultValue = defineRule<Rule>({
             context.report({
               node: defaultValue,
               message:
-                "Default prop value {} creates a new object reference every render — extract to a module-level constant",
+                "This keeps redrawing children that compare props because default prop value {} makes a brand new object every render, so move it to a constant at the top of the file",
             });
           }
           if (
@@ -41,7 +42,7 @@ export const rerenderMemoWithDefaultValue = defineRule<Rule>({
             context.report({
               node: defaultValue,
               message:
-                "Default prop value [] creates a new array reference every render — extract to a module-level constant",
+                "This keeps redrawing children that compare props because default prop value [] makes a brand new array every render, so move it to a constant at the top of the file",
             });
           }
         }

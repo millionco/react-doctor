@@ -4,13 +4,14 @@ import { getParentComponent } from "../../utils/get-parent-component.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
-const MESSAGE = "Do not use `this.setState` in components.";
+const MESSAGE = "Your project discourages `this.setState` here.";
 
 // Port of `oxc_linter::rules::react::no_set_state`. Style rule for
 // architectures (Flux-like) that forbid local component state — flags
 // `this.setState(...)` only when inside an es5/es6 React component.
 export const noSetState = defineRule<Rule>({
   id: "no-set-state",
+  title: "Use of this.setState",
   severity: "warn",
   // Effectively a "no class components" rule — `this.setState` is the
   // canonical class-component API and class components remain valid

@@ -28,27 +28,27 @@ describe("runOxlint", () => {
         fixture: "src/routes/route-issues.tsx",
         ruleSource: "rules/tanstack-start.ts",
         severity: "error",
-        category: "TanStack Start",
+        category: "Bugs",
       },
       "tanstack-start-no-direct-fetch-in-loader": {
         fixture: "src/routes/route-issues.tsx",
         ruleSource: "rules/tanstack-start.ts",
-        category: "TanStack Start",
+        category: "Bugs",
       },
       "tanstack-start-no-useeffect-fetch": {
         fixture: "src/routes/route-issues.tsx",
         ruleSource: "rules/tanstack-start.ts",
-        category: "TanStack Start",
+        category: "Bugs",
       },
       "tanstack-start-no-anchor-element": {
         fixture: "src/routes/route-issues.tsx",
         ruleSource: "rules/tanstack-start.ts",
-        category: "TanStack Start",
+        category: "Bugs",
       },
       "tanstack-start-no-navigate-in-render": {
         fixture: "src/routes/route-issues.tsx",
         ruleSource: "rules/tanstack-start.ts",
-        category: "TanStack Start",
+        category: "Bugs",
       },
       "tanstack-start-no-secrets-in-loader": {
         fixture: "src/routes/route-issues.tsx",
@@ -59,7 +59,7 @@ describe("runOxlint", () => {
       "tanstack-start-redirect-in-try-catch": {
         fixture: "src/routes/route-issues.tsx",
         ruleSource: "rules/tanstack-start.ts",
-        category: "TanStack Start",
+        category: "Bugs",
       },
       "tanstack-start-loader-parallel-fetch": {
         fixture: "src/routes/route-issues.tsx",
@@ -69,24 +69,24 @@ describe("runOxlint", () => {
       "tanstack-start-missing-head-content": {
         fixture: "src/routes/__root.tsx",
         ruleSource: "rules/tanstack-start.ts",
-        category: "TanStack Start",
+        category: "Bugs",
       },
       "tanstack-start-server-fn-method-order": {
         fixture: "src/routes/server-fn-issues.tsx",
         ruleSource: "rules/tanstack-start.ts",
         severity: "error",
-        category: "TanStack Start",
+        category: "Bugs",
       },
       "tanstack-start-server-fn-validate-input": {
         fixture: "src/routes/server-fn-issues.tsx",
         ruleSource: "rules/tanstack-start.ts",
-        category: "TanStack Start",
+        category: "Bugs",
       },
       "tanstack-start-no-use-server-in-handler": {
         fixture: "src/routes/server-fn-issues.tsx",
         ruleSource: "rules/tanstack-start.ts",
         severity: "error",
-        category: "TanStack Start",
+        category: "Bugs",
       },
       "tanstack-start-get-mutation": {
         fixture: "src/routes/server-fn-issues.tsx",
@@ -97,7 +97,7 @@ describe("runOxlint", () => {
         fixture: "src/routes/server-fn-issues.tsx",
         ruleSource: "rules/tanstack-start.ts",
         severity: "error",
-        category: "TanStack Start",
+        category: "Bugs",
       },
     },
     () => tanstackStartDiagnostics,

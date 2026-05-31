@@ -20,11 +20,12 @@ const TOUCHABLE_SOURCES = new Set(["react-native", "react-native-gesture-handler
 // same on iOS, Android, and Fabric.
 export const rnPreferPressable = defineRule<Rule>({
   id: "rn-prefer-pressable",
+  title: "Touchable components instead of Pressable",
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    "Use `<Pressable>` from react-native (or react-native-gesture-handler) instead of legacy Touchable* components",
+    "Use `<Pressable>` from react-native (or react-native-gesture-handler) instead of the old Touchable* components.",
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       const source = node.source?.value;
@@ -35,7 +36,7 @@ export const rnPreferPressable = defineRule<Rule>({
         if (!importedName || !TOUCHABLE_COMPONENTS.has(importedName)) continue;
         context.report({
           node: specifier,
-          message: `${importedName} is legacy — use <Pressable> from react-native (or react-native-gesture-handler) for modern press handling`,
+          message: `Your users miss <Pressable>'s flexible press feedback when you use ${importedName}, which is old & frozen.`,
         });
       }
     },

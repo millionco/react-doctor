@@ -30,9 +30,10 @@ const isMutableConstInitializer = (init: EsTreeNode | null | undefined): string 
 // (React.cache, AsyncLocalStorage, etc.).
 export const serverNoMutableModuleState = defineRule<Rule>({
   id: "server-no-mutable-module-state",
+  title: "Mutable module state on the server",
   severity: "error",
   recommendation:
-    "Move per-request data into the action body, headers/cookies, or a request-scope (React.cache, AsyncLocalStorage). Module-scope `let`/`var` is shared across requests.",
+    "Keep per-request data inside the action, or in headers, cookies, or `React.cache`. Module-scope `let`/`var` is shared by every request.",
   create: (context: RuleContext) => {
     let fileHasUseServerDirective = false;
 
@@ -52,7 +53,7 @@ export const serverNoMutableModuleState = defineRule<Rule>({
           if (node.kind === "let" || node.kind === "var") {
             context.report({
               node: declarator,
-              message: `Module-scoped ${node.kind} "${variableName}" in a "use server" file — this is shared across requests; move per-request data into the action body`,
+              message: `Module-scoped ${node.kind} "${variableName}" leaks state between your users, since every request shares it.`,
             });
             continue;
           }
@@ -63,7 +64,7 @@ export const serverNoMutableModuleState = defineRule<Rule>({
           if (containerKind) {
             context.report({
               node: declarator,
-              message: `Module-scoped const "${variableName} = ${containerKind}" in a "use server" file — the container itself is shared across requests; move per-request data into the action body`,
+              message: `Module-scoped const "${variableName} = ${containerKind}" leaks state between your users, since every request shares it.`,
             });
           }
         }

@@ -67,11 +67,12 @@ const isCustomJsxElementName = (node: EsTreeNodeOfType<"JSXOpeningElement">["nam
 
 export const tanstackStartMissingHeadContent = defineRule<Rule>({
   id: "tanstack-start-missing-head-content",
+  title: "Root route missing HeadContent",
   tags: ["test-noise"],
   requires: ["tanstack-start"],
   severity: "warn",
   recommendation:
-    "Add `<HeadContent />` inside `<head>` in your __root route — without it, route `head()` meta tags are silently dropped",
+    "Add `<HeadContent />` inside `<head>` in your __root route. Without it, route `head()` meta tags are dropped.",
   create: (context: RuleContext) => {
     let hasHeadContentElement = false;
     let hasDocumentHeadElement = false;
@@ -216,7 +217,7 @@ export const tanstackStartMissingHeadContent = defineRule<Rule>({
           context.report({
             node: programNode,
             message:
-              "Root route (__root) without <HeadContent /> — route head() meta tags won't render",
+              "Without <HeadContent /> in the __root route, your route head() meta tags never render.",
           });
         }
       },

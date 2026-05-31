@@ -8,7 +8,7 @@ import { NON_INTERACTIVE_ELEMENTS } from "../../constants/html-tags.js";
 import { INTERACTIVE_ROLES } from "../../constants/aria-roles.js";
 
 const buildMessage = (tag: string): string =>
-  `Non-interactive element \`<${tag}>\` should not have interactive event handlers — convert to a semantic interactive element or add an interactive role.`;
+  `Keyboard & screen reader users can't trigger this \`<${tag}>\` because it isn't interactive, so use a button or link or add an interactive role.`;
 
 // Mouse / pointer / keyboard events that imply interaction.
 const INTERACTIVE_HANDLERS: ReadonlyArray<string> = [
@@ -25,9 +25,10 @@ const INTERACTIVE_HANDLERS: ReadonlyArray<string> = [
 // elements without an interactive role.
 export const noNoninteractiveElementInteractions = defineRule<Rule>({
   id: "no-noninteractive-element-interactions",
+  title: "Handler on non-interactive element",
   tags: ["react-jsx-only"],
   severity: "warn",
-  recommendation: "Move interactions to a semantic interactive element / add an interactive role.",
+  recommendation: "Put interactions on a button or link, or add an interactive role.",
   category: "Accessibility",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {

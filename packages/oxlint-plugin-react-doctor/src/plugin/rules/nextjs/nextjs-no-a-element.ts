@@ -7,11 +7,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const nextjsNoAElement = defineRule<Rule>({
   id: "nextjs-no-a-element",
+  title: "Plain anchor for internal link",
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "warn",
   recommendation:
-    "`import Link from 'next/link'` — enables client-side navigation, prefetching, and preserves scroll position",
+    "`import Link from 'next/link'` for client-side navigation, prefetching, and preserved scroll position",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "a") return;
@@ -32,8 +33,7 @@ export const nextjsNoAElement = defineRule<Rule>({
       if (typeof hrefValue === "string" && hrefValue.startsWith("/")) {
         context.report({
           node,
-          message:
-            "Use next/link instead of <a> for internal links — enables client-side navigation and prefetching",
+          message: "Plain <a> reloads the whole page on internal links.",
         });
       }
     },

@@ -105,9 +105,10 @@ const bodyAwaitsAccumulator = (fn: FunctionExpressionLike, accumulatorName: stri
 
 export const jsAsyncReduceWithoutAwaitedAcc = defineRule<Rule>({
   id: "js-async-reduce-without-awaited-acc",
+  title: "Async reduce drops its accumulator",
   severity: "warn",
   recommendation:
-    "Await the accumulator first: `const acc = await previous; ...; return acc;`. Use `Promise.resolve(initial)` as the seed so iteration 1's accumulator is also a Promise",
+    "Await the accumulator first: `const acc = await previous; ...; return acc;`. Seed it with `Promise.resolve(initial)` so the first run also gets a Promise",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const reduceMatch = isReduceCallee(node.callee);
@@ -129,7 +130,7 @@ export const jsAsyncReduceWithoutAwaitedAcc = defineRule<Rule>({
       if (firstParameter.kind === "destructured") {
         context.report({
           node: reducer,
-          message: `Async \`.${reduceMatch.methodName}\` reducer destructures its accumulator — destructuring runs against the previous Promise (iteration 2+), produces undefined slots, and silently drops every iteration's work. Use \`async (previous, item) => { const [...] = await previous; ...; return [...]; }\` and seed with \`Promise.resolve([...])\``,
+          message: `This async \`.${reduceMatch.methodName}\` reducer destructures its accumulator, but every run after the first gets a Promise, so the pieces come out empty & the work is lost. Await it first: \`async (previous, item) => { const [...] = await previous; ...; return [...]; }\`, & seed with \`Promise.resolve([...])\``,
         });
         return;
       }
@@ -146,7 +147,7 @@ export const jsAsyncReduceWithoutAwaitedAcc = defineRule<Rule>({
         `${firstParameter.name}Prev`;
       context.report({
         node: reducer,
-        message: `Async \`.${reduceMatch.methodName}\` reducer never awaits its accumulator "${firstParameter.name}" — every iteration sees a Promise and the final result silently drops every iteration's work. Either reassign at the top (\`${firstParameter.name} = await ${firstParameter.name};\`) or restructure as \`async (${previousParamName}, item) => { const ${firstParameter.name} = await ${previousParamName}; ...; return ${firstParameter.name}; }\`, and seed with \`Promise.resolve(...)\``,
+        message: `This async \`.${reduceMatch.methodName}\` reducer never awaits its accumulator "${firstParameter.name}", so each run gets a Promise instead of the real value & the work is lost. Reassign it at the top (\`${firstParameter.name} = await ${firstParameter.name};\`), or rewrite as \`async (${previousParamName}, item) => { const ${firstParameter.name} = await ${previousParamName}; ...; return ${firstParameter.name}; }\`, & seed with \`Promise.resolve(...)\``,
       });
     },
   }),

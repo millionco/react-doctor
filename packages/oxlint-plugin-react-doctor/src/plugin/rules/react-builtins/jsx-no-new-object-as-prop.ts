@@ -20,7 +20,7 @@ import {
 } from "./jsx-no-new-object-as-prop-tables.js";
 
 const MESSAGE =
-  "JSX prop receives a new Object on every render — extract it or memoize to avoid re-renders.";
+  "This child redraws every render because the prop gets a brand new object each time.";
 
 const isConfigObjectPropName = (propName: string): boolean => {
   if (CONFIG_OBJECT_PROP_NAMES.has(propName)) return true;
@@ -127,12 +127,13 @@ const followsRenderLocalObjectBinding = (
 // rules.
 export const jsxNoNewObjectAsProp = defineRule<Rule>({
   id: "jsx-no-new-object-as-prop",
+  title: "New object passed as a prop",
   tags: ["react-jsx-only"],
   severity: "warn",
   // React Compiler auto-memoizes prop allocations, so the perf footgun
   // this rule guards against doesn't exist in compiler-enabled projects.
   disabledBy: ["react-compiler"],
-  recommendation: "Memoize the object (`useMemo`) or hoist it outside the component.",
+  recommendation: "Wrap the object in `useMemo`, or move it outside the component.",
   category: "Performance",
   create: (context) => {
     const isTestlikeFile = isTestlikeFilename(context.filename);

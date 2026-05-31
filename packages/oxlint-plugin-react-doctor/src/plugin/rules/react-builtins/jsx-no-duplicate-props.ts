@@ -10,8 +10,9 @@ import type { Rule } from "../../utils/rule.js";
 // OXC's port intentionally skips `ignoreCase` (cases differ → distinct).
 export const jsxNoDuplicateProps = defineRule<Rule>({
   id: "jsx-no-duplicate-props",
+  title: "Duplicate props on element",
   severity: "error",
-  recommendation: "Remove or rename one of the duplicate props so each JSX prop is distinct.",
+  recommendation: "Remove or rename one of the duplicate props.",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const seenPropNames = new Set<string>();
@@ -22,7 +23,7 @@ export const jsxNoDuplicateProps = defineRule<Rule>({
         if (seenPropNames.has(propName)) {
           context.report({
             node: attribute,
-            message: `Duplicate JSX prop "${propName}".`,
+            message: `Your users can get the wrong value because React keeps only the last "${propName}" & drops the first.`,
           });
         }
         seenPropNames.add(propName);

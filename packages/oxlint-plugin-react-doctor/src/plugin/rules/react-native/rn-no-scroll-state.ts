@@ -29,11 +29,12 @@ const findSetStateInBody = (body: EsTreeNode): EsTreeNode | null => {
 // the JS thread isn't pegged.
 export const rnNoScrollState = defineRule<Rule>({
   id: "rn-no-scroll-state",
+  title: "setState in onScroll handler",
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "error",
   recommendation:
-    "Track scroll position with a Reanimated shared value (`useAnimatedScrollHandler`) or a ref — `setState` on every scroll event causes re-render storms",
+    "`setState` on every scroll event redraws the screen dozens of times a second. Track the position with a Reanimated shared value (`useAnimatedScrollHandler`) or a ref.",
   create: (context: RuleContext) => {
     const stateSettersInHandlers = new Map<string, EsTreeNode>();
 
@@ -68,7 +69,7 @@ export const rnNoScrollState = defineRule<Rule>({
             context.report({
               node: tracked,
               message:
-                "setState in onScroll handler triggers re-renders on every scroll event — use a Reanimated shared value (useAnimatedScrollHandler) or a ref to track scroll position",
+                "Your users get janky scrolling when setState in this onScroll handler redraws the screen on every scroll event.",
             });
           }
           return;
@@ -86,7 +87,7 @@ export const rnNoScrollState = defineRule<Rule>({
           context.report({
             node: setStateCallNode,
             message:
-              "setState in onScroll triggers re-renders on every scroll event — use a Reanimated shared value (useAnimatedScrollHandler) or a ref to track scroll position",
+              "Your users get janky scrolling when setState in onScroll redraws the screen on every scroll event.",
           });
         }
       },

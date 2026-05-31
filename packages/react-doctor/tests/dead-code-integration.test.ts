@@ -47,7 +47,7 @@ describe("diagnose() dead-code integration", () => {
 
     // lint:false keeps the fork to a single deslop worker spawn (no
     // oxlint). deadCode is on by default; set it explicitly for intent.
-    const result = await diagnose(projectDir, { lint: false, deadCode: true });
+    const result = await diagnose(projectDir, { lint: false, deadCode: true, warnings: true });
 
     const orphan = result.diagnostics.find(
       (diagnostic) =>
@@ -55,7 +55,7 @@ describe("diagnose() dead-code integration", () => {
     );
     expect(orphan).toBeDefined();
     expect(orphan?.plugin).toBe("deslop");
-    expect(orphan?.category).toBe("Dead Code");
+    expect(orphan?.category).toBe("Maintainability");
     // Proves the worker actually ran rather than being skipped or crashing.
     expect(result.skippedChecks).not.toContain("dead-code");
   });

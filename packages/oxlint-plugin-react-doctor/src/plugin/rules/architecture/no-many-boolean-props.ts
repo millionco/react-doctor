@@ -40,10 +40,11 @@ const collectBooleanLikePropsFromBody = (
 // patterns on the parameter binding.
 export const noManyBooleanProps = defineRule<Rule>({
   id: "no-many-boolean-props",
+  title: "Too many boolean props",
   severity: "warn",
   tags: ["test-noise", "react-jsx-only"],
   recommendation:
-    "Split into compound components or named variants: `<Button.Primary />`, `<DialogConfirm />` instead of stacking `isPrimary`, `isConfirm` flags",
+    "Split into smaller components or named variants, like `<Button.Primary />` and `<DialogConfirm />`, instead of stacking `isPrimary` and `isConfirm` flags.",
   create: (context: RuleContext) => {
     const reportIfMany = (
       booleanLikePropNames: string[],
@@ -53,7 +54,7 @@ export const noManyBooleanProps = defineRule<Rule>({
       if (booleanLikePropNames.length >= BOOLEAN_PROP_THRESHOLD) {
         context.report({
           node: reportNode,
-          message: `Component "${componentName}" takes ${booleanLikePropNames.length} boolean-like props (${booleanLikePropNames.slice(0, 3).join(", ")}…) — consider compound components or explicit variants instead of stacking flags`,
+          message: `Component "${componentName}" takes ${booleanLikePropNames.length} on/off props (${booleanLikePropNames.slice(0, 3).join(", ")}…), which is hard to combine & test. Split it into smaller components or named variants.`,
         });
       }
     };

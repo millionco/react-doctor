@@ -56,11 +56,12 @@ const isFreshArrayExpression = (node: EsTreeNode): string | null => {
 // a useMemo or do the projection earlier.
 export const rnListDataMapped = defineRule<Rule>({
   id: "rn-list-data-mapped",
+  title: "List data rebuilt every render",
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    "Wrap the projection in `useMemo(() => items.map(...), [items])` so the list's `data` prop has a stable reference across parent renders",
+    "This builds a new array each time the parent redraws, so every row redraws too. Wrap it in `useMemo(() => items.map(...), [items])` to keep the same array.",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const elementName = resolveJsxElementName(node);
@@ -77,7 +78,7 @@ export const rnListDataMapped = defineRule<Rule>({
 
         context.report({
           node: attr,
-          message: `<${elementName} data={…${freshArrayDescription}}> allocates a fresh array per render — wrap in useMemo so the data reference stays stable across parent renders`,
+          message: `Your users see every row redraw when <${elementName}> gets a new data array each render.`,
         });
         return;
       }

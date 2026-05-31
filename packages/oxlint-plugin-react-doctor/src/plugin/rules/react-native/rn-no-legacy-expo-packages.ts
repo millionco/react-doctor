@@ -6,21 +6,22 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const rnNoLegacyExpoPackages = defineRule<Rule>({
   id: "rn-no-legacy-expo-packages",
+  title: "Unmaintained legacy Expo package",
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    "Migrate to the recommended replacement package — legacy Expo packages are no longer maintained",
+    "These Expo packages are no longer maintained. Switch to the recommended replacement package.",
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       const source = node.source?.value;
       if (typeof source !== "string") return;
 
-      for (const [packageName, replacement] of LEGACY_EXPO_PACKAGE_REPLACEMENTS) {
+      for (const [packageName] of LEGACY_EXPO_PACKAGE_REPLACEMENTS) {
         if (source === packageName || source.startsWith(`${packageName}/`)) {
           context.report({
             node,
-            message: `"${packageName}" is deprecated — use ${replacement}`,
+            message: `Your users are exposed to unfixed bugs when "${packageName}" is no longer maintained.`,
           });
           return;
         }

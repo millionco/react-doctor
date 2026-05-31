@@ -6,7 +6,7 @@ import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import type { Rule } from "../../utils/rule.js";
 
 const MESSAGE =
-  "`<html lang>` value must be a valid IANA / BCP-47 language tag (e.g. `en`, `en-US`).";
+  "Screen readers can't pick the right voice because this `lang` isn't a real language code, so use a valid one like `en` or `en-US`.";
 
 // Common ISO-639 primary tags (very partial — full validation requires
 // the IANA registry). When the value isn't recognized, we still allow
@@ -214,9 +214,10 @@ const isValidLangTag = (value: string): boolean => {
 // attribute on `<html>` and similar elements.
 export const lang = defineRule<Rule>({
   id: "lang",
+  title: "Invalid lang attribute value",
   tags: ["react-jsx-only"],
   severity: "warn",
-  recommendation: "Use a valid BCP-47 language tag (e.g. `en` / `en-US`).",
+  recommendation: "Use a valid language code, like `en` or `en-US`.",
   category: "Accessibility",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {

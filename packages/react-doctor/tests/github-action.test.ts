@@ -72,6 +72,23 @@ describe("GitHub Action contract", () => {
     expect(actionYaml).not.toContain('git checkout "$HEAD_REF"');
   });
 
+  it("falls back to a full-project scan when listing PR files is not permitted", () => {
+    const prFilesStep = normalizeWhitespace(extractStep(readActionYaml(), "- id: pr-files"));
+
+    expect(prFilesStep).toContain("try {");
+    expect(prFilesStep).toContain("} catch (error) {");
+    expect(prFilesStep).toContain("core.warning(");
+    expect(prFilesStep).toContain("pull-requests: read");
+
+    const catchIndex = prFilesStep.indexOf("} catch (error) {");
+    const returnIndex = prFilesStep.indexOf("return;", catchIndex);
+    const setOutputIndex = prFilesStep.indexOf('core.setOutput("path", outputPath)');
+
+    expect(catchIndex).toBeGreaterThan(-1);
+    expect(returnIndex).toBeGreaterThan(catchIndex);
+    expect(returnIndex).toBeLessThan(setOutputIndex);
+  });
+
   it("runs one JSON scan, captures its status, and passes PR files to the CLI", () => {
     const scanStep = normalizeWhitespace(
       extractStep(readActionYaml(), "INPUT_FAIL_ON: ${{ inputs.fail-on }}"),

@@ -9,7 +9,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
 const buildMessage = (text: string): string =>
-  `\`${text}\` is ambiguous link text — describe the destination instead (e.g. "View pricing details").`;
+  `Screen reader users can't tell where \`${text}\` goes, so name the destination, like "View pricing details".`;
 
 interface AnchorAmbiguousTextSettings {
   words?: ReadonlyArray<string>;
@@ -81,9 +81,10 @@ const getAccessibleText = (
 // Port of `oxc_linter::rules::jsx_a11y::anchor_ambiguous_text`.
 export const anchorAmbiguousText = defineRule<Rule>({
   id: "anchor-ambiguous-text",
+  title: "Ambiguous link text",
   tags: ["react-jsx-only"],
   severity: "warn",
-  recommendation: "Describe a link's destination — avoid 'click here' / 'learn more' / 'link'.",
+  recommendation: "Name where a link goes. Avoid 'click here', 'learn more', and 'link'.",
   category: "Accessibility",
   create: (context) => {
     const settings = resolveSettings(context.settings);

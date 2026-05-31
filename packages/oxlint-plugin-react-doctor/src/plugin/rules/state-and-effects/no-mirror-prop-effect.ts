@@ -54,10 +54,11 @@ interface MirrorBinding {
 
 export const noMirrorPropEffect = defineRule<Rule>({
   id: "no-mirror-prop-effect",
+  title: "Prop mirrored into state via effect",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Delete both the `useState` and the `useEffect` and read the prop directly during render. Mirroring a prop into local state forces a stale first render before the effect re-syncs",
+    "Delete both the `useState` and the `useEffect` and read the prop directly while rendering. Copying a prop into state shows the old value on the first render before the effect catches up.",
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
@@ -148,7 +149,7 @@ export const noMirrorPropEffect = defineRule<Rule>({
 
         context.report({
           node: effectCall,
-          message: `useState "${matchedBinding.valueName}" is mirrored from prop "${matchedBinding.propRootName}" via this effect — delete both the useState and the effect, and read the prop directly in render`,
+          message: `Your screen shows the old value first because useState "${matchedBinding.valueName}" copies prop "${matchedBinding.propRootName}" through this effect.`,
         });
       }
     };

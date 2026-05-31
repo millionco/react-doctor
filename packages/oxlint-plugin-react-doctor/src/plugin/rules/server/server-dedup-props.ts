@@ -22,10 +22,11 @@ const getDerivingMethodName = (node: EsTreeNode): string | null => {
 // client derive what it needs from the single source prop instead.
 export const serverDedupProps = defineRule<Rule>({
   id: "server-dedup-props",
+  title: "Duplicate data in server props",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Pass the source array once and derive the projection on the client — passing both doubles RSC serialization bytes",
+    "Pass the source array once and build the other version on the client. Sending both ships the data twice to the browser.",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const identifierAttributes: Map<string, string> = new Map();
@@ -54,7 +55,7 @@ export const serverDedupProps = defineRule<Rule>({
         if (sourcePropName) {
           context.report({
             node: derived.node,
-            message: `"${derived.propName}" is derived from "${sourcePropName}" (same source: ${derived.rootName}) — passing both doubles RSC serialization. Pass the source once and derive on the client`,
+            message: `Passing both "${derived.propName}" & "${sourcePropName}" ships the same data twice to your users (source: ${derived.rootName}).`,
           });
         }
       }

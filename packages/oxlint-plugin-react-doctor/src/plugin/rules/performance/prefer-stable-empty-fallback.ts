@@ -77,7 +77,7 @@ const buildMessage = (emptyKind: "array" | "object"): string => {
   const literal = emptyKind === "array" ? "[]" : "{}";
   const example =
     emptyKind === "array" ? "const EMPTY_ITEMS: Item[] = []" : "const EMPTY_CONFIG: Config = {}";
-  return `Fallback \`${literal}\` allocates a fresh ${emptyKind} on every render where the left-hand value is falsy — the memoised child sees a different reference and re-renders. Hoist a module-level constant (e.g. \`${example}\`) and use it as the fallback.`;
+  return `This redraws the memo child anyway because fallback \`${literal}\` builds a brand new ${emptyKind} each render when the left value is empty, so the child sees a different value. Hoist a constant (e.g. \`${example}\`) & use that as the fallback.`;
 };
 
 // React Compiler auto-memoises this allocation, so the rule is
@@ -95,12 +95,13 @@ const buildMessage = (emptyKind: "array" | "object"): string => {
 //   - Inside function scope only — module-level JSX is allocated once
 export const preferStableEmptyFallback = defineRule<Rule>({
   id: "prefer-stable-empty-fallback",
+  title: "Empty fallback rebuilt each render",
   tags: ["react-jsx-only", "test-noise"],
   severity: "warn",
   category: "Performance",
   disabledBy: ["react-compiler"],
   recommendation:
-    "Hoist a module-level `const EMPTY = []` (or `{}`) and use that as the `||` / `??` fallback so the consumer sees a stable reference.",
+    "Make a `const EMPTY = []` (or `{}`) at module scope and use it as the `||` / `??` fallback, so the value stays the same each render.",
   create: (context: RuleContext) => {
     let memoRegistry: Map<string, MemoStatus> | null = null;
     return {

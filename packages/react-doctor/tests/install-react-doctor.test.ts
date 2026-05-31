@@ -331,6 +331,31 @@ describe("runInstallReactDoctor", () => {
     expect(readFixturePackageJson(fixture.projectRoot)).not.toHaveProperty("devDependencies");
   });
 
+  it("does not fail setup when a supply-chain trust policy blocks the install", async () => {
+    writeValidSkill(fixture.sourceDir);
+    writePackageJson(fixture.projectRoot, { scripts: {} });
+
+    await runInstallReactDoctorForTest({
+      yes: true,
+      sourceDir: fixture.sourceDir,
+      projectRoot: fixture.projectRoot,
+      detectedAgents: ["cursor"],
+      gitHookPath: null,
+      installDependencyRunner: (input) => {
+        dependencyInstallCalls.push(input);
+        throw Object.assign(new Error("pnpm add failed"), {
+          stderr: "ERR_PNPM_TRUST_DOWNGRADE  High-risk trust downgrade for effect@4.0.0-beta.70",
+        });
+      },
+    });
+
+    expect(process.exitCode).toBe(0);
+    expect(readFixturePackageJson(fixture.projectRoot).scripts).toEqual({
+      doctor: "npx react-doctor@latest",
+    });
+    expect(readFixturePackageJson(fixture.projectRoot)).not.toHaveProperty("devDependencies");
+  });
+
   it("detects the package manager from an ancestor package.json", async () => {
     writeValidSkill(fixture.sourceDir);
     writePackageJson(fixture.projectRoot, {

@@ -58,7 +58,8 @@ interface InstallReactDoctorDependencyResult {
   readonly dependencyReason?:
     | "missing-or-invalid-package-json"
     | "invalid-dev-dependencies"
-    | "install-command-failed";
+    | "install-command-failed"
+    | "trust-policy-blocked";
   readonly installCommand?: string;
 }
 
@@ -147,12 +148,31 @@ const buildInstallCommand = (projectRoot: string): InstallReactDoctorDependencyR
 };
 
 const defaultInstallDependencyRunner = (input: InstallReactDoctorDependencyRunnerInput): void => {
+  // Capture (don't inherit) so a failure doesn't dump the package
+  // manager's raw output. pnpm in particular prints an alarming
+  // "ERR_PNPM_TRUST_DOWNGRADE … possible package takeover / supply chain
+  // incident" block when its trust policy rejects a beta dependency
+  // (e.g. `effect`), which looks like a security breach but isn't. On
+  // failure the caller surfaces a calm, tailored message and the exact
+  // manual command instead.
   execFileSync(input.command, [...input.args], {
     cwd: input.cwd,
-    stdio: "inherit",
+    stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, REACT_DOCTOR_INSTALL: "1" },
     shell: process.platform === "win32",
   });
+};
+
+// pnpm's supply-chain trust guard (`ERR_PNPM_TRUST_DOWNGRADE`) rejects a
+// dependency whose newest version has weaker trust evidence than an
+// earlier one. It reads as a compromise but is routinely tripped by
+// pre-release deps; detect it so we can reassure instead of alarm.
+const isSupplyChainTrustError = (error: unknown): boolean => {
+  const candidate = error as { stderr?: unknown; stdout?: unknown; message?: unknown } | null;
+  const haystack = [candidate?.stderr, candidate?.stdout, candidate?.message]
+    .map((part) => String(part ?? ""))
+    .join("\n");
+  return /ERR_PNPM_TRUST_DOWNGRADE|trust downgrade/i.test(haystack);
 };
 
 const formatInstallCommand = (input: InstallReactDoctorDependencyRunnerInput): string =>
@@ -179,10 +199,12 @@ const installReactDoctorDependency = async (
   const runnerInput = buildInstallCommand(options.projectRoot);
   try {
     await (options.runner ?? defaultInstallDependencyRunner)(runnerInput);
-  } catch {
+  } catch (error) {
     return {
       dependencyStatus: "skipped",
-      dependencyReason: "install-command-failed",
+      dependencyReason: isSupplyChainTrustError(error)
+        ? "trust-policy-blocked"
+        : "install-command-failed",
       installCommand: formatInstallCommand(runnerInput),
     };
   }
@@ -235,6 +257,11 @@ const formatDependencyInstallMessage = (result: InstallReactDoctorDependencyResu
   }
   if (result.dependencyReason === "invalid-dev-dependencies") {
     return "Skipped dev dependency install: devDependencies field is not an object.";
+  }
+  if (result.dependencyReason === "trust-policy-blocked") {
+    const installCommand =
+      result.installCommand ?? `npm install --save-dev ${DOCTOR_PACKAGE_NAME}@latest`;
+    return `Skipped local install: your package manager's supply-chain trust policy blocked a dependency (not a compromise — beta packages trip this). React Doctor still works via \`npx react-doctor\`. To add it locally: ${installCommand}`;
   }
   if (result.dependencyReason === "install-command-failed") {
     const installCommand =
@@ -290,7 +317,7 @@ interface InstallReactDoctorOptions {
   prompt?: typeof prompts;
 }
 
-const getSkillSourceDirectory = (): string => {
+export const getSkillSourceDirectory = (): string => {
   const distDirectory = path.dirname(fileURLToPath(import.meta.url));
   return path.join(distDirectory, "skills", SKILL_NAME);
 };
@@ -452,8 +479,7 @@ export const runInstallReactDoctor = async (
     selectedSetupActions.length === 0 && selectedSetupOptions.includes(SETUP_OPTION_SKIP);
 
   const shouldInstallGitHook =
-    gitHookPath !== null &&
-    gitHookPath !== undefined &&
+    gitHookPath != null &&
     (Boolean(options.yes) ||
       (!didSkipOptionalSetup && selectedSetupActions.includes(SETUP_OPTION_GIT_HOOK)));
 

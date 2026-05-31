@@ -9,11 +9,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noLongTransitionDuration = defineRule<Rule>({
   id: "no-long-transition-duration",
+  title: "Transition duration too long",
   tags: ["test-noise"],
   severity: "warn",
   category: "Performance",
   recommendation:
-    "Keep UI transitions under 1s — 100-150ms for instant feedback, 200-300ms for state changes, 300-500ms for layout changes. Use longer durations only for page-load hero animations",
+    "Keep UI transitions under 1s. Use about 100 to 150ms for instant feedback, 200 to 300ms for state changes, and 300 to 500ms for layout. Save longer ones for big page-load animations.",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);
@@ -66,7 +67,7 @@ export const noLongTransitionDuration = defineRule<Rule>({
         if (durationMs !== null && durationMs > LONG_TRANSITION_DURATION_THRESHOLD_MS) {
           context.report({
             node: property,
-            message: `${durationMs}ms transition is too slow for UI feedback — keep transitions under ${LONG_TRANSITION_DURATION_THRESHOLD_MS}ms. Use longer durations only for page-load hero animations`,
+            message: `Your users wait through a sluggish ${durationMs}ms transition, so keep UI transitions under ${LONG_TRANSITION_DURATION_THRESHOLD_MS}ms & save longer ones for big page-load animations.`,
           });
         }
       }

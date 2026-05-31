@@ -9,11 +9,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const tanstackStartServerFnValidateInput = defineRule<Rule>({
   id: "tanstack-start-server-fn-validate-input",
+  title: "Server function without input validation",
   tags: ["test-noise"],
   requires: ["tanstack-start"],
   severity: "warn",
   recommendation:
-    "Add `.inputValidator(schema)` before `.handler()` — data crosses a network boundary and must be validated at runtime",
+    "Add `.inputValidator(schema)` before `.handler()`. This data crosses the network and must be validated at runtime.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isNodeOfType(node.callee, "MemberExpression")) return;
@@ -52,7 +53,7 @@ export const tanstackStartServerFnValidateInput = defineRule<Rule>({
         context.report({
           node,
           message:
-            "Server function handler accesses data without inputValidator() — validate inputs crossing the network boundary",
+            "This server function reads network data with no inputValidator(), so anyone can send unvalidated input.",
         });
       }
     },

@@ -5,7 +5,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
 const MESSAGE =
-  "Avoid passing children using a `children` prop — nest them between the JSX tags or pass them as additional `React.createElement` arguments instead.";
+  "Your component can render the wrong children when you pass them through a `children` prop.";
 
 // Port of `oxc_linter::rules::react::no_children_prop`. Reports two
 // shapes:
@@ -14,9 +14,9 @@ const MESSAGE =
 //      props bag (the second argument) contains a static `children` key.
 export const noChildrenProp = defineRule<Rule>({
   id: "no-children-prop",
+  title: "Children passed as a prop",
   severity: "warn",
-  recommendation:
-    "Use JSX children (or extra `React.createElement` args) instead of a `children` prop.",
+  recommendation: "Nest children between the tags instead of passing a `children` prop.",
   create: (context) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       if (!isNodeOfType(node.name, "JSXIdentifier")) return;

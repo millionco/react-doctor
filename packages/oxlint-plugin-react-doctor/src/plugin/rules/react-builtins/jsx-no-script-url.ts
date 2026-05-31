@@ -3,8 +3,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
-const MESSAGE =
-  "React 19 disallows `javascript:` URLs as a security precaution — use an event handler instead.";
+const MESSAGE = "A `javascript:` URL is an XSS hole that runs injected input as code.";
 
 // Matches `javascript:` allowing whitespace between letters and any
 // casing — exactly the regex `oxc_linter::rules::react::jsx_no_script_url`
@@ -54,9 +53,10 @@ const isLinkPropForElement = (
 // `includeFromSettings` opts in to the `linkComponents` settings hash.
 export const jsxNoScriptUrl = defineRule<Rule>({
   id: "jsx-no-script-url",
+  title: "javascript: URL in JSX",
   severity: "error",
   recommendation:
-    "Replace `javascript:` URLs with `onClick`/`onSubmit` handlers — React 19 hard-blocks them.",
+    "Replace `javascript:` URLs with `onClick` or `onSubmit` handlers. React 19 blocks them anyway.",
   category: "Security",
   create: (context) => {
     const options = resolveSettings(context.settings);

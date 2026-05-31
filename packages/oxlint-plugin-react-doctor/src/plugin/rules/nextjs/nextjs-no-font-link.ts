@@ -8,11 +8,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const nextjsNoFontLink = defineRule<Rule>({
   id: "nextjs-no-font-link",
+  title: "Google Fonts loaded via link",
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "warn",
   recommendation:
-    '`import { Inter } from "next/font/google"` — self-hosted, zero layout shift, no render-blocking requests',
+    '`import { Inter } from "next/font/google"` for self-hosting, zero layout shift, and no render-blocking requests',
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "link") return;
@@ -28,8 +29,7 @@ export const nextjsNoFontLink = defineRule<Rule>({
       if (typeof hrefValue === "string" && GOOGLE_FONTS_PATTERN.test(hrefValue)) {
         context.report({
           node,
-          message:
-            "Loading Google Fonts via <link> — use next/font instead for self-hosting, zero layout shift, and no render-blocking requests",
+          message: "Loading Google Fonts with <link> blocks rendering & shifts layout.",
         });
       }
     },

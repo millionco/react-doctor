@@ -9,6 +9,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noNestedComponentDefinition = defineRule<Rule>({
   id: "no-nested-component-definition",
+  title: "Component defined inside another component",
   tags: ["test-noise", "react-jsx-only"],
   severity: "error",
   category: "Correctness",
@@ -22,7 +23,7 @@ export const noNestedComponentDefinition = defineRule<Rule>({
         if (componentStack.length > 0) {
           context.report({
             node: node.id,
-            message: `Component "${node.id.name}" defined inside "${componentStack[componentStack.length - 1]}" — creates new instance every render, destroying state`,
+            message: `Your users lose all state in "${node.id.name}" on every render because it's defined inside "${componentStack[componentStack.length - 1]}", so move it out to the top of the file.`,
           });
         }
         componentStack.push(node.id.name);
@@ -36,7 +37,7 @@ export const noNestedComponentDefinition = defineRule<Rule>({
         if (componentStack.length > 0) {
           context.report({
             node: node.id,
-            message: `Component "${node.id.name}" defined inside "${componentStack[componentStack.length - 1]}" — creates new instance every render, destroying state`,
+            message: `Your users lose all state in "${node.id.name}" on every render because it's defined inside "${componentStack[componentStack.length - 1]}", so move it out to the top of the file.`,
           });
         }
         componentStack.push(node.id.name);

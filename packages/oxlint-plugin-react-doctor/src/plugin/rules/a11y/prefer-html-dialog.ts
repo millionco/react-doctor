@@ -8,10 +8,10 @@ import type { Rule } from "../../utils/rule.js";
 const ROLE_DIALOG_VALUES = new Set(["dialog", "alertdialog"]);
 
 const ROLE_DIALOG_MESSAGE =
-  'Use the native `<dialog>` element instead of `role="dialog"` on a generic container — `<dialog>` ships built-in focus trap, `Escape` dismissal, the top-layer backdrop, and the right accessibility tree without you having to wire any of it up.';
+  'Keyboard users can tab out of this `role="dialog"` modal because it has no built-in focus trapping, so use the native `<dialog>`, which gives you focus trapping, `Escape` to close, and the backdrop for free.';
 
 const ARIA_MODAL_MESSAGE =
-  'Use the native `<dialog>` element with `dialog.showModal()` instead of `aria-modal="true"` on a generic container — the browser then owns focus trapping, scroll locking, and `Escape` dismissal, none of which `aria-modal` actually delivers on its own.';
+  'Keyboard users can tab out of this modal because `aria-modal="true"` only hints to screen readers without trapping focus or blocking the page, so use the native `<dialog>` with `dialog.showModal()` instead.';
 
 const isAriaModalTrue = (attribute: EsTreeNodeOfType<"JSXAttribute">): boolean => {
   const stringValue = getJsxPropStringValue(attribute);
@@ -61,9 +61,10 @@ const isAriaModalTrue = (attribute: EsTreeNodeOfType<"JSXAttribute">): boolean =
 // rule's diagnostic mentions it so users have a path forward.
 export const preferHtmlDialog = defineRule<Rule>({
   id: "prefer-html-dialog",
+  title: "Custom modal instead of dialog",
   severity: "warn",
   recommendation:
-    'Replace the wrapper with `<dialog>` and open it with `dialog.showModal()`. For the trigger, prefer `<button commandfor="id" command="show-modal">` (Chrome 135+) or fall back to a `useRef`-driven `dialogRef.current?.showModal()`.',
+    'Replace the wrapper with `<dialog>` and open it with `dialog.showModal()`. For the trigger, prefer `<button commandfor="id" command="show-modal">` (Chrome 135+), or a `useRef` with `dialogRef.current?.showModal()`.',
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (!isNodeOfType(node.name, "JSXIdentifier")) return;

@@ -32,7 +32,7 @@ export const Snapshot = () => {
 
     const hits = await collectRuleHits(projectDir, "prefer-use-sync-external-store");
     expect(hits).toHaveLength(1);
-    expect(hits[0].message).toContain("useSyncExternalStore");
+    expect(hits[0].message).toContain("syncs an outside store");
     expect(hits[0].message).toContain("snapshot");
   });
 
@@ -86,7 +86,7 @@ export const BoundRemove = () => {
 
     const hits = await collectRuleHits(projectDir, "prefer-use-sync-external-store");
     expect(hits).toHaveLength(1);
-    expect(hits[0].message).toContain("useSyncExternalStore");
+    expect(hits[0].message).toContain("syncs an outside store");
   });
 
   it("flags the lazy-initializer variant `useState(() => getSnapshot())`", async () => {
@@ -294,6 +294,6 @@ export const Cleaned = () => {
 
     const hits = await collectRuleHits(projectDir, "prefer-use-sync-external-store");
     expect(hits).toHaveLength(1);
-    expect(hits[0].message).toContain("useSyncExternalStore");
+    expect(hits[0].message).toContain("syncs an outside store");
   });
 });

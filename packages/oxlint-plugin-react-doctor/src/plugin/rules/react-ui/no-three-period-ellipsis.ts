@@ -7,11 +7,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noThreePeriodEllipsis = defineRule<Rule>({
   id: "design-no-three-period-ellipsis",
+  title: "Three dots instead of ellipsis",
   tags: ["design", "test-noise"],
   severity: "warn",
   category: "Architecture",
   recommendation:
-    'Use the typographic ellipsis "…" (or `&hellip;`) instead of three periods — pairs with action-with-followup labels ("Rename…", "Loading…")',
+    'Use the real ellipsis "…" (or `&hellip;`) instead of three dots. Good for labels like "Rename…" and "Loading…".',
   create: (context: RuleContext) => ({
     JSXText(jsxTextNode: EsTreeNodeOfType<"JSXText">) {
       const textValue = typeof jsxTextNode.value === "string" ? jsxTextNode.value : "";
@@ -19,8 +20,7 @@ export const noThreePeriodEllipsis = defineRule<Rule>({
       if (isInsideExcludedTypographyAncestor(jsxTextNode)) return;
       context.report({
         node: jsxTextNode,
-        message:
-          'Three-period ellipsis ("...") in JSX text — use the actual ellipsis character "…" (or `&hellip;`)',
+        message: 'Three dots ("...") look unpolished to your users.',
       });
     },
   }),

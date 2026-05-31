@@ -1,3 +1,4 @@
+import path from "node:path";
 import reactDoctorPlugin from "oxlint-plugin-react-doctor";
 import type {
   CleanedDiagnostic,
@@ -5,38 +6,50 @@ import type {
   OxlintOutput,
   ProjectInfo,
 } from "../../types/index.js";
-import { ERROR_PREVIEW_LENGTH_CHARS, SOURCE_FILE_PATTERN } from "../../constants.js";
+import { ERROR_PREVIEW_LENGTH_CHARS } from "../../constants.js";
+import { isLintableSourceFile } from "../../utils/is-lintable-source-file.js";
+import { isMinifiedSource } from "../../utils/is-minified-source.js";
 import { OxlintOutputUnparseable, ReactDoctorError } from "../../errors.js";
 import { buildNoSecretsRecommendation } from "../../utils/build-no-secrets-recommendation.js";
 import { appendReanimatedSharedValueHint } from "../../utils/append-reanimated-shared-value-hint.js";
+import { redactSensitiveText } from "../../utils/redact-sensitive-text.js";
 import { shouldSuppressLocalUseHookDiagnostic } from "./should-suppress-local-use-hook-diagnostic.js";
 
 const FILEPATH_WITH_LOCATION_PATTERN = /\S+\.\w+:\d+:\d+[\s\S]*$/;
 
-const REACT_COMPILER_MESSAGE = "React Compiler can't optimize this code";
+// Adopted `react-hooks-js` (React Compiler) diagnostics have no
+// react-doctor `title`, so they'd otherwise render their bare
+// `react-hooks-js/todo` id. Give them a human headline & an impact-first
+// message; the specific bail-out reason stays in `help`.
+const REACT_COMPILER_TITLE = "React Compiler can't optimize this";
+const REACT_COMPILER_MESSAGE =
+  "This component misses React Compiler's automatic memoization & re-renders more than it should. Rewrite the flagged code so the compiler can optimize it.";
 
+// Adopted third-party plugins (not in the react-doctor registry) → the
+// clear user-facing bucket their diagnostics roll up under. Mirrors the
+// five buckets the codegen collapses react-doctor rules into (see
+// `CATEGORY_BUCKET` in `generate-rule-registry.mjs`): Security, Bugs,
+// Performance, Accessibility, Maintainability.
 const PLUGIN_CATEGORY_MAP: Record<string, string> = {
-  react: "Correctness",
-  "react-hooks": "Correctness",
-  "react-hooks-js": "React Compiler",
-  "react-doctor": "Other",
+  react: "Bugs",
+  "react-hooks": "Bugs",
+  // React Compiler "can't optimize" diagnostics are an optimization miss,
+  // not a correctness bug.
+  "react-hooks-js": "Performance",
+  "react-doctor": "Bugs",
   "jsx-a11y": "Accessibility",
-  effect: "State & Effects",
-  // Plugins users commonly enable in their own oxlint / eslint config
-  // and that react-doctor folds into the scan via `extends`. Sensible
-  // defaults so adopted-rule diagnostics don't all collapse into the
-  // generic "Other" bucket in the output grouping.
-  eslint: "Correctness",
-  oxc: "Correctness",
-  typescript: "Correctness",
-  unicorn: "Correctness",
-  import: "Bundle Size",
-  promise: "Correctness",
-  n: "Correctness",
-  node: "Correctness",
-  vitest: "Correctness",
-  jest: "Correctness",
-  nextjs: "Next.js",
+  effect: "Bugs",
+  eslint: "Bugs",
+  oxc: "Bugs",
+  typescript: "Bugs",
+  unicorn: "Bugs",
+  import: "Performance",
+  promise: "Bugs",
+  n: "Bugs",
+  node: "Bugs",
+  vitest: "Bugs",
+  jest: "Bugs",
+  nextjs: "Bugs",
 };
 
 // HACK: `Object.hasOwn` guards against falling through to
@@ -66,7 +79,47 @@ const getRuleRecommendation = (ruleName: string, project: ProjectInfo): string |
 export const getRuleCategory = (ruleName: string): string | undefined =>
   reactDoctorPlugin.rules[ruleName]?.category;
 
+// Short human headline for a rule (e.g. "Array index used as a key").
+// Only react-doctor rules carry one; adopted third-party rules return
+// undefined and renderers fall back to the `plugin/rule` id.
+const getRuleTitle = (ruleName: string): string | undefined =>
+  reactDoctorPlugin.rules[ruleName]?.title;
+
+// react-doctor rules carry their own `title`; adopted React Compiler
+// diagnostics get a fixed human headline instead of their bare id.
+const resolveDiagnosticTitle = (plugin: string, rule: string): string | undefined =>
+  plugin === "react-hooks-js" ? REACT_COMPILER_TITLE : getRuleTitle(rule);
+
 const cleanDiagnosticMessage = (
+  message: unknown,
+  help: unknown,
+  plugin: string,
+  rule: string,
+  project: ProjectInfo,
+): CleanedDiagnostic => {
+  // `message` / `help` come from oxlint JSON that is only shape-checked at
+  // the top level (`isOxlintOutput`), so coerce a non-string value to ""
+  // before cleaning. This keeps the redaction path total and lets a
+  // non-string `help` fall back to `getRuleRecommendation` instead of
+  // becoming an empty string.
+  const cleaned = resolveCleanedDiagnostic(
+    typeof message === "string" ? message : "",
+    typeof help === "string" ? help : "",
+    plugin,
+    rule,
+    project,
+  );
+  // Final guard: a rule may echo a source fragment containing a secret
+  // or PII into its message/help. Scrub it here — the single point every
+  // diagnostic flows through — so it reaches neither the terminal, the
+  // JSON report, nor the score API.
+  return {
+    message: redactSensitiveText(cleaned.message),
+    help: redactSensitiveText(cleaned.help),
+  };
+};
+
+const resolveCleanedDiagnostic = (
   message: string,
   help: string,
   plugin: string,
@@ -94,7 +147,7 @@ const parseRuleCode = (code: string): { plugin: string; rule: string } => {
 };
 
 const resolveDiagnosticCategory = (plugin: string, rule: string): string =>
-  getRuleCategory(rule) ?? lookupOwnString(PLUGIN_CATEGORY_MAP, plugin) ?? "Other";
+  getRuleCategory(rule) ?? lookupOwnString(PLUGIN_CATEGORY_MAP, plugin) ?? "Bugs";
 
 const isOxlintOutput = (value: unknown): value is OxlintOutput => {
   if (typeof value !== "object" || value === null) return false;
@@ -148,13 +201,34 @@ export const parseOxlintOutput = (
   // the only sources (they're React-specific anyway), but adopted
   // user rules like `eslint/no-debugger` or `unicorn/*` typically
   // fire on plain `.ts` / `.js` files; dropping those silently
-  // erased their score impact. SOURCE_FILE_PATTERN matches the same
-  // extensions we count as source files everywhere else.
+  // erased their score impact. `isLintableSourceFile` matches the same
+  // extensions we count as source files everywhere else, and also drops
+  // generated bundler output (`*.iife.js`, `*.umd.js`, `*.global.js`,
+  // `*.min.js`) so a stray bundle that slipped past file discovery can't
+  // pollute the report.
+  // The content sniff additionally drops minified files that carry an
+  // ordinary extension (e.g. a one-line `public/inject.js`) — these reach
+  // the parser in diff/staged mode (which scans changed files directly,
+  // bypassing whole-tree discovery) or when they're too small for the
+  // discovery-time size gate. Cached so each file is read at most once.
+  const minifiedFileCache = new Map<string, boolean>();
+  const isMinifiedDiagnosticFile = (filename: string): boolean => {
+    const absolutePath = path.isAbsolute(filename)
+      ? filename
+      : path.resolve(rootDirectory || ".", filename);
+    const cached = minifiedFileCache.get(absolutePath);
+    if (cached !== undefined) return cached;
+    const minified = isMinifiedSource(absolutePath);
+    minifiedFileCache.set(absolutePath, minified);
+    return minified;
+  };
+
   return parsed.diagnostics
     .filter(
       (diagnostic) =>
         diagnostic.code &&
-        SOURCE_FILE_PATTERN.test(diagnostic.filename) &&
+        isLintableSourceFile(diagnostic.filename) &&
+        !isMinifiedDiagnosticFile(diagnostic.filename) &&
         !shouldSuppressLocalUseHookDiagnostic(diagnostic, rootDirectory),
     )
     .map((diagnostic) => {
@@ -172,6 +246,7 @@ export const parseOxlintOutput = (
         plugin,
         rule,
         severity: diagnostic.severity,
+        title: resolveDiagnosticTitle(plugin, rule),
         message: cleaned.message,
         help: cleaned.help,
         url: diagnostic.url,

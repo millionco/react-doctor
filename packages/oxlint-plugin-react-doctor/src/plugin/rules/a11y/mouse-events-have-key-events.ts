@@ -8,9 +8,9 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
 const buildMissingFocusMessage = (handler: string): string =>
-  `\`${handler}\` must be accompanied by \`onFocus\` for accessibility.`;
+  `Keyboard users miss this \`${handler}\` because it only fires with a mouse, so add an \`onFocus\` handler too.`;
 const buildMissingBlurMessage = (handler: string): string =>
-  `\`${handler}\` must be accompanied by \`onBlur\` for accessibility.`;
+  `Keyboard users miss this \`${handler}\` because it only fires with a mouse, so add an \`onBlur\` handler too.`;
 
 interface MouseEventsHaveKeyEventsSettings {
   hoverInHandlers?: ReadonlyArray<string>;
@@ -44,9 +44,10 @@ const isExplicitUndefinedExpression = (value: EsTreeNode): boolean => {
 // Port of `oxc_linter::rules::jsx_a11y::mouse_events_have_key_events`.
 export const mouseEventsHaveKeyEvents = defineRule<Rule>({
   id: "mouse-events-have-key-events",
+  title: "Mouse handler missing focus handler",
   tags: ["react-jsx-only"],
   severity: "warn",
-  recommendation: "Pair mouse events with their keyboard equivalents.",
+  recommendation: "Pair mouse events with keyboard ones so keyboard users are not left out.",
   category: "Accessibility",
   create: (context) => {
     const settings = resolveSettings(context.settings);

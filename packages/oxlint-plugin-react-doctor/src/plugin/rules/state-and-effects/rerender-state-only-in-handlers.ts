@@ -16,11 +16,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const rerenderStateOnlyInHandlers = defineRule<Rule>({
   id: "rerender-state-only-in-handlers",
+  title: "State only used in handlers",
   severity: "warn",
   tags: ["test-noise"],
   category: "Performance",
   recommendation:
-    "Replace useState with useRef when the value is only mutated and never read in render — `ref.current = ...` updates without re-rendering the component",
+    "Use useRef instead of useState when the value is only set and never shown on screen. `ref.current = ...` updates it without redrawing the component.",
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
@@ -76,7 +77,7 @@ export const rerenderStateOnlyInHandlers = defineRule<Rule>({
 
         context.report({
           node: binding.declarator,
-          message: `useState "${binding.valueName}" is updated but never read in the component's return — use useRef so updates don't trigger re-renders`,
+          message: `Each update to "${binding.valueName}" redraws your component for nothing because this useState is set but never shown on screen.`,
         });
       }
     };

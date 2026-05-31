@@ -225,6 +225,7 @@ interface EffectInfo {
 
 export const noEffectChain = defineRule<Rule>({
   id: "no-effect-chain",
+  title: "Effects chained together",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
@@ -275,7 +276,7 @@ export const noEffectChain = defineRule<Rule>({
 
           context.report({
             node: readerEffect.node,
-            message: `useEffect reacts to "${chainedStateName}" which is set by another useEffect — chains of effects add an extra render per link and become rigid as code evolves. Compute what you can during render and write all related state inside the event handler that originally fires the chain`,
+            message: `Your screen redraws several times from a single action because one useEffect changes "${chainedStateName}", which sets off this one.`,
           });
         }
       }

@@ -9,10 +9,11 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // `require(variable)` defeats trace targets and forces a fat bundle.
 export const noDynamicImportPath = defineRule<Rule>({
   id: "no-dynamic-import-path",
+  title: "Non-static dynamic import path",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Use a string-literal path: `import('./feature/heavy.js')` so the bundler can split this chunk",
+    "Use a plain string path: `import('./feature/heavy.js')` so the bundler can split this into its own chunk.",
   create: (context: RuleContext) => ({
     ImportExpression(node: EsTreeNodeOfType<"ImportExpression">) {
       const source = node.source;
@@ -20,7 +21,7 @@ export const noDynamicImportPath = defineRule<Rule>({
         context.report({
           node,
           message:
-            "Dynamic import path is not statically analyzable — use a string literal so the bundler can split this chunk",
+            "This ships in the main bundle & slows page load, since the bundler can't code-split a dynamic import path. Use a plain string path instead.",
         });
         return;
       }
@@ -28,7 +29,7 @@ export const noDynamicImportPath = defineRule<Rule>({
         context.report({
           node,
           message:
-            "Template literal with interpolation in dynamic import — use a string literal so the bundler can split this chunk",
+            "This ships in the main bundle & slows page load, since the bundler can't code-split a dynamic import path. Use a plain string path instead of one with `${...}`.",
         });
       }
     },
@@ -40,7 +41,7 @@ export const noDynamicImportPath = defineRule<Rule>({
         context.report({
           node,
           message:
-            "Dynamic require() path is not statically analyzable — use a string literal so the bundler can trace this dependency",
+            "This ships in the main bundle & slows page load, since the bundler can't trace a dynamic require() path. Use a plain string path instead.",
         });
         return;
       }
@@ -48,7 +49,7 @@ export const noDynamicImportPath = defineRule<Rule>({
         context.report({
           node,
           message:
-            "Template literal with interpolation in require() — use a string literal so the bundler can trace this dependency",
+            "This ships in the main bundle & slows page load, since the bundler can't trace a dynamic require() path. Use a plain string path instead of one with `${...}`.",
         });
       }
     },

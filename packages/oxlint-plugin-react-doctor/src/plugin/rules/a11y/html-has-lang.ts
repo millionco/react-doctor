@@ -7,7 +7,8 @@ import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
-const MESSAGE = "`<html>` element must have a non-empty `lang` attribute.";
+const MESSAGE =
+  "Screen readers may mispronounce this page because it doesn't declare a language, so add a `lang` attribute like `en`.";
 
 interface HtmlHasLangSettings {
   htmlTags?: ReadonlyArray<string>;
@@ -69,10 +70,10 @@ const evaluateLang = (attributeValue: EsTreeNode | null | undefined): LangVerdic
 // "missing lang".
 export const htmlHasLang = defineRule<Rule>({
   id: "html-has-lang",
+  title: "html element missing lang",
   tags: ["react-jsx-only"],
   severity: "warn",
-  recommendation:
-    'Set `<html lang="…">` so assistive technology can announce the document language.',
+  recommendation: 'Set `<html lang="…">` so screen readers know the page language.',
   category: "Accessibility",
   create: (context) => {
     const settings = resolveSettings(context.settings);

@@ -10,11 +10,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noRedundantSizeAxes = defineRule<Rule>({
   id: "design-no-redundant-size-axes",
+  title: "Redundant width and height axes",
   requires: ["tailwind:3.4"],
   tags: ["design", "test-noise"],
   severity: "warn",
   category: "Architecture",
-  recommendation: "Collapse `w-N h-N` to `size-N` (Tailwind v3.4+) when both axes match",
+  recommendation: "Collapse `w-N h-N` to `size-N` (Tailwind v3.4+) when both sides match.",
   create: (context: RuleContext) => ({
     JSXAttribute(jsxAttribute: EsTreeNodeOfType<"JSXAttribute">) {
       if (
@@ -42,7 +43,7 @@ export const noRedundantSizeAxes = defineRule<Rule>({
       for (const matchedPair of matchedPairs) {
         context.report({
           node: jsxAttribute,
-          message: `w-${matchedPair.value} h-${matchedPair.value} → use the shorthand size-${matchedPair.value} (Tailwind v3.4+)`,
+          message: `w-${matchedPair.value} & h-${matchedPair.value} are the same.`,
         });
       }
     },

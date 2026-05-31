@@ -39,9 +39,9 @@ describe("rn-list-missing-estimated-item-size", () => {
     `;
     const result = runRule(rnListMissingEstimatedItemSize, code);
     expect(result.diagnostics).toHaveLength(1);
-    // Message names BOTH the local JSX name and the canonical symbol.
+    // Message names the local JSX element name and the missing prop hint.
     expect(result.diagnostics[0].message).toContain("List");
-    expect(result.diagnostics[0].message).toContain("FlashList");
+    expect(result.diagnostics[0].message).toContain("estimatedItemSize");
   });
 
   it("flags genuinely-aliased import `LegendList as VList`", () => {

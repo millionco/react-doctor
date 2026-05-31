@@ -4,8 +4,8 @@ import { useState } from "react";
 import Image from "next/image";
 
 const COPY_FEEDBACK_DURATION_MS = 2000;
-const BADGE_BASE_URL = "https://www.react.doctor/share/badge";
-const SHARE_BASE_URL = "https://www.react.doctor/share";
+const BADGE_BASE_URL = "https://react.doctor/share/badge";
+const SHARE_BASE_URL = "https://react.doctor/share";
 const BADGE_PREVIEW_HEIGHT_PX = 20;
 const BADGE_PREVIEW_INTRINSIC_WIDTH_PX = 160;
 

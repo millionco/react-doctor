@@ -71,10 +71,11 @@ const isBackgroundDark = (bgValue: string): boolean => {
 
 export const noDarkModeGlow = defineRule<Rule>({
   id: "no-dark-mode-glow",
+  title: "Colored glow on dark background",
   tags: ["design", "test-noise"],
   severity: "warn",
   recommendation:
-    "Use a subtle `box-shadow` with neutral colors for depth, or `border` with low opacity. Colored glows on dark backgrounds are the default AI-generated aesthetic",
+    "Use a subtle `box-shadow` in neutral colors for depth, or a faint `border`. Colored glows on dark backgrounds look overdone.",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);
@@ -107,7 +108,7 @@ export const noDarkModeGlow = defineRule<Rule>({
         context.report({
           node: shadowProperty,
           message:
-            "Colored glow on dark background — the default AI-generated 'cool' look. Use subtle, purposeful lighting instead",
+            "Your users see a cheap, overdone colored glow on the dark background, so use a subtle, neutral shadow instead.",
         });
       }
     },

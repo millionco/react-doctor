@@ -4,52 +4,52 @@
 // otherwise behavior-neutral.
 
 export const buildMissingDepMessage = (hookName: string, depName: string): string =>
-  `React Hook \`${hookName}\` is missing dependency \`${depName}\` — list it in the dependency array, or call the hook unconditionally.`;
+  `\`${hookName}\` can run with a stale \`${depName}\` & show your users old data.`;
 
 export const buildUnnecessaryDepMessage = (hookName: string, depName: string): string =>
-  `React Hook \`${hookName}\` has an unnecessary dependency \`${depName}\` — it isn't referenced inside the callback.`;
+  `\`${hookName}\` re-runs whenever \`${depName}\` changes even though it never uses it.`;
 
 export const buildDuplicateDepMessage = (hookName: string, depName: string): string =>
-  `React Hook \`${hookName}\` has duplicate dependency \`${depName}\`.`;
+  `\`${hookName}\` lists \`${depName}\` twice in its dependency array.`;
 
 export const buildLiteralDepMessage = (hookName: string): string =>
-  `React Hook \`${hookName}\` was passed a literal as a dependency. Literals never change so they cannot trigger an update — remove them from the dependency array.`;
+  `A literal in \`${hookName}\`'s dependency array never changes & does nothing.`;
 
 export const buildRefCurrentDepMessage = (hookName: string, depName: string): string =>
-  `React Hook \`${hookName}\` shouldn't include \`${depName}\` in the dependency array — mutable values like \`.current\` aren't valid deps; depend on \`${depName.replace(/\.current$/, "")}\` itself instead.`;
+  `\`${hookName}\` won't re-run when \`${depName}\` changes, since a ref never triggers a redraw.`;
 
 export const buildNonArrayDepsMessage = (hookName: string): string =>
-  `React Hook \`${hookName}\` has a second argument which is not an array literal. This means oxlint cannot statically verify whether the dependencies are exhaustive — replace the variable with an inline array.`;
+  `\`${hookName}\`'s dependencies can't be checked because its second argument isn't an inline array.`;
 
 export const buildMissingDepArrayMessage = (hookName: string): string =>
-  `React Hook \`${hookName}\` does nothing when called with only one argument — pass a dependency array as the second argument.`;
+  `\`${hookName}\` re-runs on every render with no dependency array.`;
 
 export const buildMissingCallbackMessage = (hookName: string): string =>
-  `React Hook \`${hookName}\` requires an effect callback — pass a function as the first argument.`;
+  `\`${hookName}\` crashes without a function as its first argument.`;
 
-export const buildEffectEventDepMessage = (depName: string): string =>
-  `Functions returned from \`useEffectEvent\` must not be included in the dependency array. Remove \`${depName}\` from the list.`;
+export const buildEffectEventDepMessage = (): string =>
+  `A function from \`useEffectEvent\` is stable & shouldn't sit in the dependency array.`;
 
 export const buildSpreadDepMessage = (hookName: string): string =>
-  `React Hook \`${hookName}\` has a spread element in its dependency array. This means oxlint cannot statically verify whether the dependencies are exhaustive.`;
+  `\`${hookName}\`'s dependencies can't be checked because of a spread in the array.`;
 
 export const buildComplexDepMessage = (hookName: string): string =>
-  `React Hook \`${hookName}\` has a complex expression in the dependency array. Extract it to a separate variable so it can be statically checked.`;
+  `\`${hookName}\`'s dependencies can't be checked because of a complex expression in the array.`;
 
 export const buildAsyncEffectMessage = (hookName: string): string =>
-  `React Hook \`${hookName}\` received an async callback. Put the async function inside the effect instead.`;
+  `\`${hookName}\` was given an async function, so its cleanup breaks.`;
 
 export const buildUnknownCallbackMessage = (hookName: string): string =>
-  `React Hook \`${hookName}\` received a function whose dependencies are unknown. Pass an inline function instead.`;
+  `\`${hookName}\`'s dependencies can't be checked because its function is defined elsewhere.`;
 
 export const buildUnstableDepMessage = (hookName: string, depName: string): string =>
-  `The \`${depName}\` value makes the dependencies of \`${hookName}\` change on every render. Move it inside the hook callback or wrap it in its own memoization hook.`;
+  `\`${depName}\` is rebuilt every render, so \`${hookName}\` runs every time.`;
 
 export const buildSetStateWithoutDepsMessage = (hookName: string, setterName: string): string =>
-  `React Hook \`${hookName}\` contains a call to \`${setterName}\`. Without a dependency array, this can lead to an infinite chain of updates.`;
+  `\`${hookName}\` calls \`${setterName}\` with no dependency array, so it can loop forever & freeze the component.`;
 
 export const buildRefCleanupMessage = (depName: string): string =>
-  `The ref value \`${depName}\` will likely have changed by the time this effect cleanup function runs. Copy it to a variable inside the hook callback and use that variable in cleanup.`;
+  `Your cleanup may read the wrong node since the ref \`${depName}\` can change before it runs.`;
 
 export const buildAssignmentMessage = (name: string): string =>
-  `Assignments to the \`${name}\` variable from inside a React Hook will be lost after each render. Store it in a ref to preserve the value over time.`;
+  `Assigning to \`${name}\` inside a hook is thrown away after each render.`;

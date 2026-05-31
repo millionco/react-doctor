@@ -91,10 +91,11 @@ const isInsideTextHandlingComponent = (node: EsTreeNodeOfType<"JSXElement">): bo
 
 export const rnNoRawText = defineRule<Rule>({
   id: "rn-no-raw-text",
+  title: "Raw text outside a Text component",
   requires: ["react-native"],
   severity: "error",
   recommendation:
-    "Wrap text in a `<Text>` component: `<Text>{value}</Text>` — raw strings outside `<Text>` crash on React Native",
+    "Text outside a `<Text>` component crashes on React Native. Wrap it like `<Text>{value}</Text>`.",
   create: (context: RuleContext) => {
     // The package-boundary gate (`isReactNativeFileActive`) lives on the
     // rule wrapper applied at registry load — by the time we get here
@@ -131,7 +132,7 @@ export const rnNoRawText = defineRule<Rule>({
 
           context.report({
             node: child,
-            message: `Raw ${getRawTextDescription(child)} outside a <Text> component — this will crash on React Native`,
+            message: `Your users hit a crash when raw ${getRawTextDescription(child)} renders outside a <Text> component on React Native.`,
           });
         }
       },

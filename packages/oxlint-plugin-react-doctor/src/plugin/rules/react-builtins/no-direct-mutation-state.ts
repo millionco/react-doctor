@@ -8,7 +8,8 @@ import { isStateMemberExpression } from "../../utils/is-state-member-expression.
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
-const MESSAGE = "Never mutate `this.state` directly.";
+const MESSAGE =
+  "Your users see stale data because mutating `this.state` by hand never redraws & gets overwritten.";
 
 // Ancestor walk replicates `oxc_linter::rules::react::no_direct_mutation_state`'s
 // `should_ignore_component`: walk up from the assignment until we either
@@ -58,9 +59,10 @@ const reportIfStateMutation = (
 // a React component (class component or createReactClass factory).
 export const noDirectMutationState = defineRule<Rule>({
   id: "no-direct-mutation-state",
+  title: "Direct mutation of this.state",
   severity: "error",
   recommendation:
-    "Don't mutate `this.state` — `setState()` will overwrite the mutation. Treat state as immutable.",
+    "Don't change `this.state` by hand. `setState()` overwrites it anyway, so always go through `setState()`.",
   create: (context) => ({
     AssignmentExpression(node: EsTreeNodeOfType<"AssignmentExpression">) {
       reportIfStateMutation(context, node, node.left);

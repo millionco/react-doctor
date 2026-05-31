@@ -18,6 +18,7 @@ const filterIgnoredDiagnostics = (
 ): Diagnostic[] =>
   mergeAndFilterDiagnostics(diagnostics, rootDirectory, config, readFileLinesSync, {
     respectInlineDisables: false,
+    warnings: true,
   });
 
 const createDiagnostic = (overrides: Partial<Diagnostic> = {}): Diagnostic => ({

@@ -16,6 +16,7 @@ const applySeverityControls = (
 ): Diagnostic[] =>
   mergeAndFilterDiagnostics(diagnostics, SEVERITY_TEST_ROOT, config, noopReadFileLines, {
     respectInlineDisables: false,
+    warnings: true,
   });
 
 const designDiagnostic: Diagnostic = {

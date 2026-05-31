@@ -74,16 +74,17 @@ const hasComponentLocalCaptures = (
 //     to detect any binding from inside the component's body scope.
 export const preferModuleScopePureFunction = defineRule<Rule>({
   id: "prefer-module-scope-pure-function",
+  title: "Pure function rebuilt every render",
   tags: ["test-noise"],
   severity: "warn",
   category: "Architecture",
   recommendation:
-    "Move the function to module scope (above the component). It doesn't reference any local state, so the per-render allocation is wasted.",
+    "Move the function above the component, at the top of the file. It doesn't use local state, so rebuilding it each update is wasted work.",
   create: (context: RuleContext) => {
     const report = (functionNode: EsTreeNode, name: string, componentName: string): void => {
       context.report({
         node: functionNode,
-        message: `\`${name}\` inside \`${componentName}\` doesn't close over any local state. Move it to module scope so it isn't reallocated every render and the component file stays focused on rendering logic.`,
+        message: `\`${name}\` inside \`${componentName}\` uses no local state but is rebuilt on every render, so it wastes work & breaks memoized children. Move it to the top of the file, outside the component.`,
       });
     };
 

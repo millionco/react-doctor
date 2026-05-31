@@ -23,7 +23,7 @@ const ARRAY_READ_METHOD_NAMES = new Set([
 ]);
 
 const CHILDREN_ARRAY_MESSAGE =
-  "`props.children` is not always an array in Preact — use `toChildArray(children)` from `preact` before calling array methods or reading `.length`.";
+  "Your users hit a crash when `props.children` is not an array in Preact, so use `toChildArray(children)` from `preact` before calling array methods or reading `.length`.";
 
 // Walk up to the nearest enclosing function and check whether its first
 // parameter destructures a `children` property — the `({ children }) => …`
@@ -93,6 +93,7 @@ const isChildrenMemberExpression = (node: EsTreeNodeOfType<"MemberExpression">):
 // `this.props.children`, and destructured `children`.
 export const preactNoChildrenLength = defineRule<Rule>({
   id: "preact-no-children-length",
+  title: "Array methods on props.children",
   requires: ["preact"],
   severity: "warn",
   recommendation:

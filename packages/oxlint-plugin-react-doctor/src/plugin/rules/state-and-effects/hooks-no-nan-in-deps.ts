@@ -22,7 +22,7 @@ const HOOKS_WITH_DEP_ARRAY = new Set([
 ]);
 
 const NAN_MESSAGE =
-  "`NaN` in a hook dependency array is almost always a coercion bug upstream (e.g. `Number(input)` returned `NaN` from an unchecked value). React's `Object.is` comparator treats `NaN` as equal to `NaN`, so once a poisoned value lands in the deps the hook keeps firing as if nothing changed — and any later transition between `NaN` and a real number can wedge tracking. Guard the value before passing it.";
+  "`NaN` in a dependency array silently breaks your hook, since React never sees it change.";
 
 const isNanLiteral = (node: EsTreeNode): boolean => {
   if (isNodeOfType(node, "Identifier") && node.name === "NaN") return true;
@@ -60,6 +60,7 @@ const isNanLiteral = (node: EsTreeNode): boolean => {
 // inside the callback auto-track, so there's no array to inspect.
 export const hooksNoNanInDeps = defineRule<Rule>({
   id: "hooks-no-nan-in-deps",
+  title: "NaN in a hook dependency array",
   severity: "warn",
   recommendation:
     "Remove `NaN` (or `Number.NaN`) from the dependency array. If a value can be NaN at runtime, normalise it (`Number.isNaN(x) ? 0 : x`) before passing it.",

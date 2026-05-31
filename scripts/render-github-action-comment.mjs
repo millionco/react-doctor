@@ -26,8 +26,12 @@ const appendOutput = (name, value) => {
 };
 
 const readReport = () => {
-  if (!reportPath) throw new Error("Missing report path.");
-  return JSON.parse(fs.readFileSync(reportPath, "utf8"));
+  if (!reportPath || !fs.existsSync(reportPath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(reportPath, "utf8"));
+  } catch {
+    return null;
+  }
 };
 
 const renderLines = (lines) =>
@@ -227,6 +231,13 @@ const buildCommentBody = (report) => {
 };
 
 const report = readReport();
+if (!report) {
+  console.warn(
+    "React Doctor: no scan report was found, so the summary comment was skipped. " +
+      "This usually means the scan step did not run.",
+  );
+  process.exit(0);
+}
 const body = buildCommentBody(report);
 
 if (commentPath) {

@@ -55,6 +55,7 @@
     "test": "vp test run"
   },
   "dependencies": {
+    "@babel/code-frame": "^7.29.0",
     "@effect/platform-node-shared": "4.0.0-beta.70",
     "agent-install": "0.0.5",
     "conf": "^15.1.0",
@@ -69,7 +70,9 @@
   "devDependencies": {
     "@react-doctor/api": "workspace:*",
     "@react-doctor/core": "workspace:*",
+    "@types/babel__code-frame": "^7.27.0",
     "@types/prompts": "^2.4.9",
+    "@xterm/headless": "^6.0.0",
     "commander": "^14.0.3",
     "ora": "^9.4.0"
   },

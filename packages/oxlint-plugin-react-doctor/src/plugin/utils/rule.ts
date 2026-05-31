@@ -22,11 +22,20 @@ export interface Rule {
   // some rule-ids carry historical prefixes the file path doesn't —
   // e.g. `react-ui/no-em-dash-in-jsx-text.ts` registers as `design-no-em-dash-in-jsx-text`.
   id: string;
+  // Very short human headline for the rule (a few words, no trailing
+  // period) naming the problem it catches, e.g. "Array index used as a
+  // key". Surfaced in docs and summary UIs alongside the longer
+  // per-diagnostic `message`.
+  title?: string;
   severity: RuleSeverity;
-  // Category override — when present, takes precedence over the bucket
-  // default the codegen emits (most rules let the bucket choose, e.g. a
-  // rule under `tanstack-start/` defaults to "TanStack Start"; a few
-  // override to "Security" or "Performance"). Codegen-only field; rules
+  // Fine-grained category intent. Both this override and the bucket-
+  // directory default are collapsed at codegen (see `CATEGORY_BUCKET` in
+  // `generate-rule-registry.mjs`) into one of the five user-facing
+  // buckets the scan output actually shows — Security, Bugs, Performance,
+  // Accessibility, Maintainability — so e.g. `"Architecture"` ships as
+  // `"Maintainability"` and `"Correctness"` as `"Bugs"`. Set this only to
+  // steer the bucket (e.g. a `state-and-effects/` rule that's really a
+  // perf concern overrides to "Performance"). Codegen-only field; rules
   // never need to set `framework` (always derived from bucket).
   category?: string;
   // Synthesized by codegen from the rule's bucket directory — set on the

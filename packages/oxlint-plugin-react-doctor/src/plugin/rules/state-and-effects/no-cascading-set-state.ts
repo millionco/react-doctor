@@ -139,6 +139,7 @@ const isInitOnlyEffect = (node: EsTreeNodeOfType<"CallExpression">): boolean => 
 
 export const noCascadingSetState = defineRule<Rule>({
   id: "no-cascading-set-state",
+  title: "Multiple setState calls in one effect",
   severity: "warn",
   tags: ["test-noise"],
   recommendation:
@@ -154,7 +155,7 @@ export const noCascadingSetState = defineRule<Rule>({
       if (setStateCallCount >= CASCADING_SET_STATE_THRESHOLD) {
         context.report({
           node,
-          message: `${setStateCallCount} setState calls in a single useEffect — consider using useReducer or deriving state`,
+          message: `${setStateCallCount} setState calls in one useEffect redraw your screen each time they run together.`,
         });
       }
     },

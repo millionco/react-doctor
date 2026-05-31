@@ -339,7 +339,7 @@ export const token = stripeSecret;
 
     const secretIssues = await getSecretIssues(projectDir);
     expect(secretIssues).toHaveLength(1);
-    expect(secretIssues[0].message).toContain("Hardcoded secret detected");
+    expect(secretIssues[0].message).toContain("hardcoded secret is a security vulnerability");
   });
 
   it("still reports camel-case api key variables through the weak variable-name heuristic", async () => {
@@ -556,6 +556,39 @@ export default {};
 
     const secretIssues = await getSecretIssues(projectDir, { framework: "vite" });
     expect(secretIssues).toHaveLength(1);
-    expect(secretIssues[0].message).toContain("Hardcoded secret detected");
+    expect(secretIssues[0].message).toContain("hardcoded secret is a security vulnerability");
+  });
+
+  it("does not flag known public client keys that are designed to ship in the browser", async () => {
+    const projectDir = setupReactProject(tempRoot, "public-client-keys-allowlisted", {
+      files: {
+        "src/payments.tsx": `const revenueCatApiKey = "appl_FIXTUREkey1234567890abcdef";
+const stripeApiKey = "pk_test_FIXTUREkey1234567890abcdef";
+const supabaseApiKey = "sb_publishable_FIXTUREkey1234567890";
+
+export const Payments = () => (
+  <div>{revenueCatApiKey}{stripeApiKey}{supabaseApiKey}</div>
+);
+`,
+      },
+    });
+
+    await expect(getSecretIssues(projectDir)).resolves.toEqual([]);
+  });
+
+  it("still flags a real secret literal even when a public client key sits beside it", async () => {
+    const projectDir = setupReactProject(tempRoot, "public-key-with-real-secret", {
+      files: {
+        "src/payments.tsx": `const revenueCatApiKey = "appl_FIXTUREkey1234567890abcdef";
+const stripeKey = "sk\\u005ftest_FIXTUREsecret1234567890";
+
+export const Payments = () => <div>{revenueCatApiKey}{stripeKey}</div>;
+`,
+      },
+    });
+
+    const secretIssues = await getSecretIssues(projectDir);
+    expect(secretIssues).toHaveLength(1);
+    expect(secretIssues[0].message).toContain("hardcoded secret is a security vulnerability");
   });
 });

@@ -35,11 +35,12 @@ const isArrayIterationExpression = (node: EsTreeNode): boolean => {
 // recycle row components and only mount the visible window.
 export const rnNoScrollviewMappedList = defineRule<Rule>({
   id: "rn-no-scrollview-mapped-list",
+  title: "Non-virtualized mapped list in ScrollView",
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    "Use FlashList, LegendList, or FlatList — `<ScrollView>{items.map(...)}</ScrollView>` mounts every row in memory",
+    "`<ScrollView>{items.map(...)}</ScrollView>` builds every row at once, which slows scrolling. Use FlashList, LegendList, or FlatList instead.",
   create: (context: RuleContext) => ({
     JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
       const elementName = resolveJsxElementName(node.openingElement);
@@ -51,7 +52,7 @@ export const rnNoScrollviewMappedList = defineRule<Rule>({
         if (isArrayIterationExpression(expression)) {
           context.report({
             node: child,
-            message: `<${elementName}> rendering items.map(...) — use FlashList, LegendList, or FlatList so only visible rows mount`,
+            message: `Your users get slow scrolling when <${elementName}> with items.map(...) builds every row at once.`,
           });
           return;
         }

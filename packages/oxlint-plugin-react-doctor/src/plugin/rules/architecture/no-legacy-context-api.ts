@@ -22,9 +22,9 @@ const LEGACY_CONTEXT_NAMES: ReadonlySet<string> = new Set([
 
 const buildLegacyContextMessage = (memberName: string): string => {
   if (memberName === "childContextTypes" || memberName === "getChildContext") {
-    return `${memberName} is part of the legacy context API (REMOVED in React 19). Replace the provider with \`createContext\` + \`<MyContext.Provider value={...}>\` and consume via \`useContext()\` (or \`use()\` on React 19+) — every consumer must migrate together`;
+    return `${memberName} uses the old context API that React 19 removes, so your provider stops passing data. Switch to \`createContext\` with \`<MyContext.Provider value={...}>\` & read it with \`useContext()\`, moving every consumer together.`;
   }
-  return "contextTypes is part of the legacy context API (REMOVED in React 19). Replace with `static contextType = MyContext` (single context) or read the modern context with `useContext()` / `use()` from a function component — coordinate with the provider's migration";
+  return "contextTypes uses the old context API that React 19 removes, so your component stops receiving context. Use `static contextType = MyContext` or `useContext()` in a function component, & update the provider too.";
 };
 
 const isInsideClassBody = (node: EsTreeNode): boolean => {
@@ -41,11 +41,12 @@ const isInsideClassBody = (node: EsTreeNode): boolean => {
 
 export const noLegacyContextApi = defineRule<Rule>({
   id: "no-legacy-context-api",
+  title: "Legacy context API",
   severity: "error",
   category: "Correctness",
   tags: ["migration-hint"],
   recommendation:
-    "Replace `childContextTypes` + `getChildContext` with `const MyContext = createContext(...)` + `<MyContext.Provider value={...}>`; replace `contextTypes` with `static contextType = MyContext` (single context) or `useContext()` / `use()` from a function component. The provider and every consumer must migrate together — partial migrations leave consumers reading the wrong context.",
+    "Swap `childContextTypes` + `getChildContext` for `const MyContext = createContext(...)` and `<MyContext.Provider value={...}>`. Swap `contextTypes` for `static contextType = MyContext` or `useContext()` in a function component. Move the provider and every consumer together, or some consumers read the wrong context.",
   create: (context: RuleContext) => {
     const checkMember = (memberNode: EsTreeNode | undefined): void => {
       if (!memberNode) return;

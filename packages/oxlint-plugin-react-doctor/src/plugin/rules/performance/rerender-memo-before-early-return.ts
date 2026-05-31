@@ -49,10 +49,11 @@ const containsEarlyReturn = (ifStatement: EsTreeNode): boolean => {
 // short-circuits before the child renders.
 export const rerenderMemoBeforeEarlyReturn = defineRule<Rule>({
   id: "rerender-memo-before-early-return",
+  title: "useMemo before an early return",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Extract the JSX into a memoized child component so the parent's early return short-circuits before the child renders",
+    "Move the JSX into a child component wrapped in memo, so the parent's early return skips it",
   create: (context: RuleContext) => {
     const inspectFunctionBody = (statements: EsTreeNode[]): void => {
       let memoNode: EsTreeNode | null = null;
@@ -77,7 +78,7 @@ export const rerenderMemoBeforeEarlyReturn = defineRule<Rule>({
           context.report({
             node: memoNode,
             message:
-              "useMemo returning JSX runs before an early return — extract the JSX into a memoized child component so the parent bails out before the subtree renders",
+              "This runs even when the component bails out because the useMemo builds JSX before an early return, so move the JSX into a child wrapped in memo to skip it on the early return",
           });
           return;
         }

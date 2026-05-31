@@ -8,11 +8,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const queryNoRestDestructuring = defineRule<Rule>({
   id: "query-no-rest-destructuring",
+  title: "Rest destructuring on query result",
   tags: ["test-noise"],
   requires: ["tanstack-query"],
   severity: "warn",
   recommendation:
-    "Destructure only the fields you need: `const { data, isLoading } = useQuery(...)` — rest destructuring subscribes to all fields and causes extra re-renders",
+    "Destructure only the fields you need, like `const { data, isLoading } = useQuery(...)`. Rest destructuring subscribes to every field and adds re-renders.",
   create: (context: RuleContext) => ({
     VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
       if (!isNodeOfType(node.id, "ObjectPattern")) return;
@@ -31,7 +32,7 @@ export const queryNoRestDestructuring = defineRule<Rule>({
       if (hasRestElement) {
         context.report({
           node: node.id,
-          message: `Rest destructuring on ${calleeName}() result — subscribes to all fields and causes unnecessary re-renders. Destructure only the fields you need`,
+          message: `Rest-destructuring ${calleeName}() subscribes to every field, so it re-renders on each change.`,
         });
       }
     },

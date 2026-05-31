@@ -9,10 +9,11 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noInlineExhaustiveStyle = defineRule<Rule>({
   id: "no-inline-exhaustive-style",
+  title: "Too many inline style properties",
   severity: "warn",
   tags: ["test-noise", "react-jsx-only"],
   recommendation:
-    "Move styles to a CSS class, CSS module, Tailwind utilities, or a styled component — inline objects with many properties hurt readability and create new references every render",
+    "Move the styles to a CSS class, CSS module, Tailwind utilities, or a styled component. Big inline objects are hard to read and rebuild on every update.",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);
@@ -25,7 +26,7 @@ export const noInlineExhaustiveStyle = defineRule<Rule>({
       if (propertyCount >= INLINE_STYLE_PROPERTY_THRESHOLD) {
         context.report({
           node: expression,
-          message: `${propertyCount} inline style properties — extract to a CSS class, CSS module, or styled component for maintainability and reuse`,
+          message: `This inline style has ${propertyCount} properties, which is hard to read & rebuilds every render. Move it to a CSS class, CSS module, or styled component.`,
         });
       }
     },

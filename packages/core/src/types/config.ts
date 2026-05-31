@@ -71,9 +71,9 @@ export interface SurfaceControls {
    * `["test-noise"]`) for a single channel without touching others.
    */
   excludeTags?: string[];
-  /** Category names (e.g. `"Architecture"`) to force-include. */
+  /** Category names (e.g. `"Maintainability"`) to force-include. */
   includeCategories?: string[];
-  /** Category names (e.g. `"Architecture"`) to exclude. */
+  /** Category names (e.g. `"Maintainability"`) to exclude. */
   excludeCategories?: string[];
   /**
    * Fully-qualified rule keys (`"<plugin>/<rule>"`, e.g.
@@ -91,12 +91,23 @@ export interface ReactDoctorConfig {
   /**
    * Whether to run dead-code analysis (via `deslop-js`) alongside lint.
    * Reports unused files, unused exports, unused dependencies, and
-   * circular imports under the "Dead Code" category. Default: `true`.
+   * circular imports under the "Maintainability" category. Default: `true`.
    * Always skipped in `--diff` / `--staged` modes because reachability
    * is a whole-project property.
    */
   deadCode?: boolean;
   verbose?: boolean;
+  /**
+   * Whether to surface `"warning"`-severity diagnostics. Default: `false`
+   * — only `"error"`-severity findings reach any surface (CLI, PR comment,
+   * score, `--fail-on`).
+   *
+   * Set to `true` to surface every warning on every surface. This is the
+   * master toggle and runs after per-rule / per-category severity
+   * overrides: a rule the user explicitly restamps to `"warn"` (via
+   * `rules` / `categories`) still shows even when `warnings` is `false`.
+   */
+  warnings?: boolean;
   diff?: boolean | string;
   failOn?: FailOnLevel;
   customRulesOnly?: boolean;
@@ -235,15 +246,12 @@ export interface ReactDoctorConfig {
   rules?: Record<string, RuleSeverityOverride>;
   /**
    * Per-category severity map. Mirrors oxlint's top-level
-   * `categories` field, but keyed by React Doctor's display
-   * categories (`"Server"`, `"React Native"`, `"Architecture"`,
-   * `"Bundle Size"`, `"State & Effects"`, `"Security"`,
-   * `"Accessibility"`, `"Performance"`, `"Correctness"`,
-   * `"Next.js"`, `"Preact"`, `"TanStack Query"`,
-   * `"TanStack Start"`, …).
+   * `categories` field, but keyed by React Doctor's five user-facing
+   * buckets: `"Security"`, `"Bugs"`, `"Performance"`,
+   * `"Accessibility"`, `"Maintainability"`.
    *
    * ```json
-   * { "categories": { "React Native": "warn", "Server": "off" } }
+   * { "categories": { "Maintainability": "off", "Performance": "warn" } }
    * ```
    *
    * To silence a whole tag-defined rule family (e.g. `"design"`,

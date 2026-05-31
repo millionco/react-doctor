@@ -11,11 +11,12 @@ const tokenizeClassName = (classNameValue: string): string[] =>
 
 export const noSpaceOnFlexChildren = defineRule<Rule>({
   id: "design-no-space-on-flex-children",
+  title: "space-* utility on flex children",
   tags: ["design", "test-noise"],
   severity: "warn",
   category: "Architecture",
   recommendation:
-    "Use `gap-*` on the flex/grid parent. `space-x-*` / `space-y-*` produce phantom gaps when a sibling is conditionally rendered, lose vertical spacing on wrapped lines, and don't mirror in RTL",
+    "Use `gap-*` on the flex or grid parent. `space-x-*` and `space-y-*` leave gaps when a child is hidden, miss spacing on wrapped lines, and don't flip in right-to-left layouts.",
   create: (context: RuleContext) => ({
     JSXAttribute(jsxAttribute: EsTreeNodeOfType<"JSXAttribute">) {
       if (
@@ -47,7 +48,7 @@ export const noSpaceOnFlexChildren = defineRule<Rule>({
       const spaceValue = spaceMatch[2];
       context.report({
         node: jsxAttribute,
-        message: `space-${spaceAxis}-${spaceValue} on a flex/grid parent — use gap-${spaceAxis}-${spaceValue} instead. Per-sibling margins phantom-gap on conditional render and don't mirror in RTL`,
+        message: `space-${spaceAxis}-${spaceValue} on a flex or grid parent breaks spacing for your users.`,
       });
     },
   }),

@@ -108,13 +108,14 @@ const isSupportedJsxName = (name: EsTreeNode): boolean =>
   isNodeOfType(name, "JSXIdentifier") || isNodeOfType(name, "JSXMemberExpression");
 
 const buildMessage = (propName: string, message: string | null): string =>
-  message ?? `Prop \`${propName}\` is forbidden on this component.`;
+  message ?? `Your project blocks the \`${propName}\` prop on this component.`;
 
 // Port of `oxc_linter::rules::react::forbid_component_props`. Reports
 // configured props on user-defined (PascalCase / namespaced) JSX
 // components.
 export const forbidComponentProps = defineRule<Rule>({
   id: "forbid-component-props",
+  title: "Forbidden prop on component",
   severity: "warn",
   // Default off because the upstream-default forbidden list `["className",
   // "style"]` flags the canonical Tailwind/shadcn/Radix customization
@@ -123,7 +124,7 @@ export const forbidComponentProps = defineRule<Rule>({
   // strict design-system API on a specific component.
   defaultEnabled: false,
   recommendation:
-    "Configure forbidden props per component via the `forbidComponentProps.forbid` setting.",
+    "List the props you want to block per component in the `forbidComponentProps.forbid` setting.",
   category: "Architecture",
   create: (context) => {
     const settings = resolveSettings(context.settings);

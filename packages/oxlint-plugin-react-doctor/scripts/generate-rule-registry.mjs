@@ -84,6 +84,33 @@ const RULE_IDS_TO_SKIP_REGISTRATION = new Set([
   "react-compiler-destructure-method",
 ]);
 
+// Fine-grained category → the clear, user-facing bucket the scan output
+// groups & labels by. Rules (and the buckets below) declare a detailed
+// category for intent; the reporter only ever shows these five outcome
+// buckets, so "is this a bug, a slowdown, a vulnerability, an a11y gap,
+// or a maintainability smell?" is obvious at a glance. Collapsing happens
+// here at codegen so every consumer (renderer, JSON, severity overrides,
+// explain) reads the same bucket off `rule.category`.
+const CATEGORY_BUCKET = {
+  Security: "Security",
+  Performance: "Performance",
+  "Bundle Size": "Performance",
+  Accessibility: "Accessibility",
+  Correctness: "Bugs",
+  "State & Effects": "Bugs",
+  "React Compiler": "Performance",
+  "Next.js": "Bugs",
+  "React Native": "Bugs",
+  Server: "Bugs",
+  "TanStack Query": "Bugs",
+  "TanStack Start": "Bugs",
+  Preact: "Bugs",
+  Architecture: "Maintainability",
+  Design: "Maintainability",
+  Other: "Bugs",
+};
+const toBucket = (category) => CATEGORY_BUCKET[category] ?? "Bugs";
+
 // Bucket directory → default category. A rule MAY override its category
 // with an explicit `category: "..."` field in its `defineRule({...})` call
 // (e.g. some `tanstack-start/` and `nextjs/` rules override to "Security").
@@ -149,7 +176,7 @@ for (const bucket of fs.readdirSync(PLUGIN_RULES_ROOT, { withFileTypes: true }))
     }
     const ruleId = idMatch[1];
     if (RULE_IDS_TO_SKIP_REGISTRATION.has(ruleId)) continue;
-    const category = categoryMatch ? categoryMatch[1] : defaultCategory;
+    const category = toBucket(categoryMatch ? categoryMatch[1] : defaultCategory);
     const severity = severityMatch[1];
     // Force POSIX separators — `path.relative()` returns backslashes on
     // Windows, which TypeScript module resolution rejects.

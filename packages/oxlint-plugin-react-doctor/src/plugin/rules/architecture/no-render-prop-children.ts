@@ -18,10 +18,11 @@ const RENDER_PROP_PATTERN = /^render[A-Z]/;
 // `children` would be cleaner".
 export const noRenderPropChildren = defineRule<Rule>({
   id: "no-render-prop-children",
+  title: "Too many render props",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Replace `renderXxx` props with compound subcomponents (e.g. `<Modal.Header>`) or `children` so the parent doesn't dictate every customization point",
+    "Swap `renderXxx` props for child components like `<Modal.Header>` or plain `children`, so the parent doesn't control every slot.",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const renderPropAttrs: Array<{ name: string; node: EsTreeNode }> = [];
@@ -40,7 +41,7 @@ export const noRenderPropChildren = defineRule<Rule>({
         .join(", ");
       context.report({
         node: renderPropAttrs[0].node,
-        message: `${renderPropAttrs.length} render-prop slots on the same element (${propList}…) — collapse into compound subcomponents or \`children\` so consumers don't need to know about every customization point`,
+        message: `This element takes ${renderPropAttrs.length} render props (${propList}…), which is hard to follow & extend. Use child components or \`children\` so callers don't wire up every slot.`,
       });
     },
   }),

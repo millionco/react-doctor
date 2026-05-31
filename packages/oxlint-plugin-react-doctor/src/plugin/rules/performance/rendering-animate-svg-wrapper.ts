@@ -8,6 +8,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const renderingAnimateSvgWrapper = defineRule<Rule>({
   id: "rendering-animate-svg-wrapper",
+  title: "Animating an SVG directly",
   tags: ["test-noise"],
   severity: "warn",
   recommendation: "Wrap the SVG: `<motion.div animate={...}><svg>...</svg></motion.div>`",
@@ -26,7 +27,7 @@ export const renderingAnimateSvgWrapper = defineRule<Rule>({
         context.report({
           node,
           message:
-            "Animation props directly on <svg> — wrap in a <div> or <motion.div> for better rendering performance",
+            "This is slow to render because you animate <svg> directly, so wrap it in a <div> or <motion.div> & animate that instead",
         });
       }
     },

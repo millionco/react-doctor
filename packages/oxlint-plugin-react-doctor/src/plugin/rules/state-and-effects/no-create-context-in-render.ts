@@ -12,7 +12,7 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 const MESSAGE =
-  "createContext() called inside a component or hook — every render creates a brand new Context object, resetting every consumer and disconnecting Provider/Consumer pairs. Move createContext to module scope (outside the component) so the Context identity is stable across renders.";
+  "createContext() builds a new context every render, so every consumer gets cut off & resets.";
 
 // Context-providing modules whose `createContext` export has the same
 // identity-stability semantics as React's. Calling any of these inside
@@ -68,10 +68,11 @@ const isCreateContextCallee = (callee: EsTreeNode): boolean => {
 //     plain helper functions or at module scope are left alone.
 export const noCreateContextInRender = defineRule<Rule>({
   id: "no-create-context-in-render",
+  title: "createContext called during render",
   severity: "error",
   category: "Correctness",
   recommendation:
-    "Move `createContext(...)` to module scope so its identity is stable across renders.",
+    "Move `createContext(...)` outside the component, to the top level of the file, so it stays the same on every render.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isCreateContextCallee(node.callee)) return;

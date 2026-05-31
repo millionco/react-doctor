@@ -8,9 +8,9 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import type { Rule } from "../../utils/rule.js";
 
-const MISSING_MESSAGE = "`<button>` elements must have an explicit `type` attribute.";
-const INVALID_MESSAGE = (allowed: string): string =>
-  `\`<button type="…">\` must be one of: ${allowed}.`;
+const MISSING_MESSAGE =
+  "Your users can submit the form by accident because a `<button>` with no `type` defaults to submit.";
+const INVALID_MESSAGE = "This button's `type` is invalid.";
 
 interface ButtonHasTypeSettings {
   button?: boolean;
@@ -31,14 +31,6 @@ const resolveSettings = (
     submit: ruleSettings.submit ?? true,
     reset: ruleSettings.reset ?? true,
   };
-};
-
-const allowedListString = (settings: Required<ButtonHasTypeSettings>): string => {
-  const allowed: string[] = [];
-  if (settings.button) allowed.push("button");
-  if (settings.submit) allowed.push("submit");
-  if (settings.reset) allowed.push("reset");
-  return allowed.join(", ") || "(no values allowed)";
 };
 
 const isValidTypeValue = (rawValue: string, settings: Required<ButtonHasTypeSettings>): boolean => {
@@ -102,12 +94,8 @@ const isConsumerPropForward = (expression: EsTreeNode): boolean => {
   return false;
 };
 
-const reportInvalid = (
-  context: Parameters<Rule["create"]>[0],
-  reportNode: EsTreeNode,
-  settings: Required<ButtonHasTypeSettings>,
-): void => {
-  context.report({ node: reportNode, message: INVALID_MESSAGE(allowedListString(settings)) });
+const reportInvalid = (context: Parameters<Rule["create"]>[0], reportNode: EsTreeNode): void => {
+  context.report({ node: reportNode, message: INVALID_MESSAGE });
 };
 
 // Port of `oxc_linter::rules::react::button_has_type`. Flags
@@ -118,8 +106,9 @@ const reportInvalid = (
 // values are allowed.
 export const buttonHasType = defineRule<Rule>({
   id: "button-has-type",
+  title: "Button missing explicit type",
   severity: "warn",
-  recommendation: 'Set `type="button"` (or `"submit"` / `"reset"`) explicitly on every `<button>`.',
+  recommendation: 'Always set a `type` on a `<button>`: `type="button"`, `"submit"`, or `"reset"`.',
   create: (context) => {
     const settings = resolveSettings(context.settings);
     // Storybook stories and tests routinely render bare `<button>` without
@@ -140,11 +129,11 @@ export const buttonHasType = defineRule<Rule>({
         // Bare `<button type />` is shorthand for `type={true}` — not
         // any of the allowed string values.
         if (!value) {
-          reportInvalid(context, typeAttr, settings);
+          reportInvalid(context, typeAttr);
           return;
         }
         if (isNodeOfType(value, "Literal")) {
-          if (!isProvenValidExpression(value, settings)) reportInvalid(context, typeAttr, settings);
+          if (!isProvenValidExpression(value, settings)) reportInvalid(context, typeAttr);
           return;
         }
         if (isNodeOfType(value, "JSXExpressionContainer")) {
@@ -152,7 +141,7 @@ export const buttonHasType = defineRule<Rule>({
           if (!expression || expression.type === "JSXEmptyExpression") return;
           if (isConsumerPropForward(expression as EsTreeNode)) return;
           if (!isProvenValidExpression(expression as EsTreeNode, settings)) {
-            reportInvalid(context, typeAttr, settings);
+            reportInvalid(context, typeAttr);
           }
         }
       },
@@ -194,7 +183,7 @@ export const buttonHasType = defineRule<Rule>({
         // caller's literal, not at the trampoline.
         if (isConsumerPropForward(typeProp)) return;
         if (!isProvenValidExpression(typeProp, settings)) {
-          reportInvalid(context, typeProp, settings);
+          reportInvalid(context, typeProp);
         }
       },
     };

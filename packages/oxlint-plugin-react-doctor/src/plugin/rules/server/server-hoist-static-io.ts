@@ -108,7 +108,7 @@ const inspectHandlerBody = (
           : "io";
     context.report({
       node: staticCall,
-      message: `${calleeText}() in ${handlerLabel} reads the same static asset every request — hoist to module scope so the read happens once at module load`,
+      message: `${calleeText}() runs on every request in ${handlerLabel}, re-reading the same file each time.`,
     });
   });
 };
@@ -129,10 +129,11 @@ const collectIdentifierParams = (params: EsTreeNode[]): Set<string> => {
 // handler(req, res)` in `pages/api/...`).
 export const serverHoistStaticIo = defineRule<Rule>({
   id: "server-hoist-static-io",
+  title: "Static file read on every request",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Hoist the read to module scope: `const FONT_DATA = await fetch(new URL('./fonts/Inter.ttf', import.meta.url)).then(r => r.arrayBuffer())` runs once at module load",
+    "Move the read to module scope so it runs once at load: `const FONT_DATA = await fetch(new URL('./fonts/Inter.ttf', import.meta.url)).then(r => r.arrayBuffer())`.",
   create: (context: RuleContext) => ({
     ExportNamedDeclaration(node: EsTreeNodeOfType<"ExportNamedDeclaration">) {
       const declaration = node.declaration;

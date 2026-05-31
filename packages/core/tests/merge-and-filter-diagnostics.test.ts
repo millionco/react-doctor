@@ -21,7 +21,7 @@ const buildDiagnostic = (overrides: Partial<Diagnostic> = {}): Diagnostic => ({
   filePath: "src/app.tsx",
   plugin: "react-doctor",
   rule: "test-rule",
-  severity: "warning",
+  severity: "error",
   message: "x",
   help: "",
   line: 1,

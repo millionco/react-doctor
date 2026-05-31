@@ -275,10 +275,11 @@ const isIndexedArrayElementWithStringArgument = (
 
 export const jsSetMapLookups = defineRule<Rule>({
   id: "js-set-map-lookups",
+  title: "Array lookup inside a loop",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Use a `Set` or `Map` for repeated membership tests / keyed lookups — `Array.includes`/`find` is O(n) per call",
+    "Use a `Set` or `Map` when you check for the same items over and over. `Array.includes`/`find` scans the whole list each time",
   create: (context: RuleContext) =>
     createLoopAwareVisitors({
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
@@ -300,7 +301,7 @@ export const jsSetMapLookups = defineRule<Rule>({
         }
         context.report({
           node,
-          message: `array.${methodName}() in a loop is O(n) per call — convert to a Set for O(1) lookups`,
+          message: `This gets slow because array.${methodName}() inside a loop scans the whole list every time, so use a Set for instant lookups`,
         });
       },
     }),

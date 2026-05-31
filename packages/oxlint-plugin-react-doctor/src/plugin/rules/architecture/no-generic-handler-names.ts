@@ -7,10 +7,11 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noGenericHandlerNames = defineRule<Rule>({
   id: "no-generic-handler-names",
+  title: "Vague event handler name",
   severity: "warn",
   tags: ["test-noise"],
   recommendation:
-    "Rename to describe the action: e.g. `handleSubmit` → `saveUserProfile`, `handleClick` → `toggleSidebar`",
+    "Rename it to say what it does. For example `handleSubmit` could be `saveUserProfile`, and `handleClick` could be `toggleSidebar`.",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || !node.name.name.startsWith("on")) return;
@@ -24,7 +25,7 @@ export const noGenericHandlerNames = defineRule<Rule>({
       if (isNodeOfType(expression, "Identifier") && expression.name === mirroredHandlerName) {
         context.report({
           node,
-          message: `Non-descriptive handler name "${expression.name}" — name should describe what it does, not when it runs`,
+          message: `The handler name "${expression.name}" says when it runs, not what it does, so name it after the action instead.`,
         });
       }
     },

@@ -7,16 +7,17 @@ import { parseJsxValue } from "../../utils/parse-jsx-value.js";
 import type { Rule } from "../../utils/rule.js";
 
 const MESSAGE =
-  "`tabIndex` should not be greater than zero — positive values disrupt natural keyboard navigation order.";
+  "Keyboard users get jumped out of the normal order by a positive `tabIndex`, so use `0` or `-1`.";
 
 // Port of `oxc_linter::rules::jsx_a11y::tabindex_no_positive`. Reports
 // `tabIndex={N}` where N > 0.
 export const tabindexNoPositive = defineRule<Rule>({
   id: "tabindex-no-positive",
+  title: "Positive tabindex value",
   tags: ["react-jsx-only"],
   severity: "warn",
   recommendation:
-    "Use `tabIndex={0}` (focusable in source order) or `tabIndex={-1}` (programmatic only).",
+    "Use `tabIndex={0}` (focusable in source order) or `tabIndex={-1}` (focus only in code).",
   category: "Accessibility",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {

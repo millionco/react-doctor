@@ -6,7 +6,7 @@ import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import type { Rule } from "../../utils/rule.js";
 
 const buildMessage = (value: string): string =>
-  `\`autoComplete\` value \`${value}\` is not a known HTML autofill token.`;
+  `Users who rely on autofill can't fill this field because \`${value}\` isn't a known token, so use a valid \`autoComplete\` token.`;
 
 // Subset of HTML autofill tokens (full WHATWG list is much larger).
 // See https://html.spec.whatwg.org/multipage/forms.html#autofill
@@ -88,9 +88,10 @@ const resolveSettings = (
 // `autoComplete` against the known HTML autofill token list.
 export const autocompleteValid = defineRule<Rule>({
   id: "autocomplete-valid",
+  title: "Invalid autocomplete value",
   tags: ["react-jsx-only"],
   severity: "warn",
-  recommendation: "Use a valid HTML autofill token in `autoComplete`.",
+  recommendation: "Use a valid autofill token in `autoComplete`.",
   category: "Accessibility",
   create: (context) => {
     const settings = resolveSettings(context.settings);

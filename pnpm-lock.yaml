@@ -121,6 +121,9 @@ importers:
 
   packages/react-doctor:
     dependencies:
+      '@babel/code-frame':
+        specifier: ^7.29.0
+        version: 7.29.0
       '@effect/platform-node-shared':
         specifier: 4.0.0-beta.70
         version: 4.0.0-beta.70(effect@4.0.0-beta.70)
@@ -158,9 +161,15 @@ importers:
       '@react-doctor/core':
         specifier: workspace:*
         version: link:../core
+      '@types/babel__code-frame':
+        specifier: ^7.27.0
+        version: 7.27.0
       '@types/prompts':
         specifier: ^2.4.9
         version: 2.4.9
+      '@xterm/headless':
+        specifier: ^6.0.0
+        version: 6.0.0
       commander:
         specifier: ^14.0.3
         version: 14.0.3
@@ -1661,6 +1670,9 @@ packages:
   '@tybys/wasm-util@0.10.2':
     resolution: {integrity: sha512-RoBvJ2X0wuKlWFIjrwffGw1IqZHKQqzIchKaadZZfnNpsAYp2mM0h36JtPCjNDAHGgYez/15uMBpfGwchhiMgg==}
 
+  '@types/babel__code-frame@7.27.0':
+    resolution: {integrity: sha512-Dwlo+LrxDx/0SpfmJ/BKveHf7QXWvLBLc+x03l5sbzykj3oB9nHygCpSECF1a+s+QIxbghe+KHqC90vGtxLRAA==}
+
   '@types/chai@5.2.3':
     resolution: {integrity: sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA==}
 
@@ -1903,6 +1915,9 @@ packages:
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [x64]
     os: [win32]
+
+  '@xterm/headless@6.0.0':
+    resolution: {integrity: sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==}
 
   acorn-jsx@5.3.2:
     resolution: {integrity: sha512-rq9s+JNhf0IChjtDXxllJ7g41oZk5SlXtp0LHwyA5cejwn7vKmKp4pPri6YEePv2PU65sAsegbXtIinmDFDXgQ==}
@@ -4306,6 +4321,8 @@ snapshots:
       tslib: 2.8.1
     optional: true
 
+  '@types/babel__code-frame@7.27.0': {}
+
   '@types/chai@5.2.3':
     dependencies:
       '@types/deep-eql': 4.0.2
@@ -4469,6 +4486,8 @@ snapshots:
 
   '@voidzero-dev/vite-plus-win32-x64-msvc@0.1.20':
     optional: true
+
+  '@xterm/headless@6.0.0': {}
 
   acorn-jsx@5.3.2(acorn@8.16.0):
     dependencies:

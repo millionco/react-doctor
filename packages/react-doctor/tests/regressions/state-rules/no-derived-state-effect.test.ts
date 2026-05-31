@@ -27,7 +27,7 @@ export const TodoList = ({ todos, filter }: { todos: string[]; filter: string })
 
     const hits = await collectRuleHits(projectDir, "no-derived-state-effect");
     expect(hits).toHaveLength(1);
-    expect(hits[0].message).toContain("useMemo");
+    expect(hits[0].message).toContain("state derived from other values");
   });
 
   it("keeps the 'compute during render' message for trivial derivations", async () => {
@@ -51,8 +51,8 @@ export const Form = () => {
 
     const hits = await collectRuleHits(projectDir, "no-derived-state-effect");
     expect(hits).toHaveLength(1);
-    expect(hits[0].message).toContain("compute during render");
-    expect(hits[0].message).not.toContain("useMemo");
+    expect(hits[0].message).toContain("you can derive from other values");
+    expect(hits[0].message).not.toContain("state derived from other values");
   });
 
   it("still uses the 'state reset' message when no dep is referenced", async () => {
@@ -73,7 +73,7 @@ export const ProfilePage = ({ userId }: { userId: string }) => {
 
     const hits = await collectRuleHits(projectDir, "no-derived-state-effect");
     expect(hits).toHaveLength(1);
-    expect(hits[0].message).toContain("key prop");
+    expect(hits[0].message).toContain("stale state on every prop change");
   });
 
   it("treats coercion helpers (Number, parseInt) as trivial", async () => {
@@ -94,8 +94,8 @@ export const Counter = ({ raw }: { raw: string }) => {
 
     const hits = await collectRuleHits(projectDir, "no-derived-state-effect");
     expect(hits).toHaveLength(1);
-    expect(hits[0].message).toContain("compute during render");
-    expect(hits[0].message).not.toContain("useMemo");
+    expect(hits[0].message).toContain("you can derive from other values");
+    expect(hits[0].message).not.toContain("state derived from other values");
   });
 
   it("flags `Math.floor(raw)` and treats it as a trivial derivation (Bugbot #153 round 2)", async () => {
@@ -121,8 +121,8 @@ export const Counter = ({ raw }: { raw: number }) => {
 
     const hits = await collectRuleHits(projectDir, "no-derived-state-effect");
     expect(hits).toHaveLength(1);
-    expect(hits[0].message).toContain("compute during render");
-    expect(hits[0].message).not.toContain("useMemo");
+    expect(hits[0].message).toContain("you can derive from other values");
+    expect(hits[0].message).not.toContain("state derived from other values");
   });
 
   it("flags `setX(applyFilters())` as expensive, not as a state reset (Bugbot #153 round 2)", async () => {
@@ -152,7 +152,7 @@ export const TodoList = ({ todos, filter }: { todos: string[]; filter: string })
 
     const hits = await collectRuleHits(projectDir, "no-derived-state-effect");
     expect(hits).toHaveLength(1);
-    expect(hits[0].message).not.toContain("key prop");
-    expect(hits[0].message).toContain("useMemo");
+    expect(hits[0].message).not.toContain("stale state on every prop change");
+    expect(hits[0].message).toContain("state derived from other values");
   });
 });

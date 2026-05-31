@@ -26,7 +26,9 @@ describe("rule tag registration", () => {
   });
 
   it('tags every server bucket rule with "server-action"', () => {
-    const serverRuleIds = collectRuleIdsMatching((rule) => rule.category === "Server");
+    // Server-bucket rules now roll up under the "Bugs" display category,
+    // so identify them by their `server-` id convention instead.
+    const serverRuleIds = collectRuleIdsMatching((rule) => rule.id.startsWith("server-"));
     expect(serverRuleIds.length).toBeGreaterThan(0);
     for (const ruleId of serverRuleIds) {
       expect(getRuleTags(ruleId)).toContain("server-action");

@@ -8,6 +8,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const rerenderLazyStateInit = defineRule<Rule>({
   id: "rerender-lazy-state-init",
+  title: "State initializer runs on every render",
   tags: ["test-noise"],
   severity: "warn",
   category: "Performance",
@@ -34,7 +35,7 @@ export const rerenderLazyStateInit = defineRule<Rule>({
 
       context.report({
         node: initializer,
-        message: `useState(${calleeName}()) calls initializer on every render — use useState(() => ${calleeName}()) for lazy initialization`,
+        message: `useState(${calleeName}()) re-runs ${calleeName}() on every render & throws the result away.`,
       });
     },
   }),

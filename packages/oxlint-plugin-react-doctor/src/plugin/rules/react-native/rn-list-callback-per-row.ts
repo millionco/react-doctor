@@ -51,20 +51,6 @@ const isRenderItemFunction = (node: EsTreeNode): boolean => {
   return isRenderItemJsxAttribute(parent.parent);
 };
 
-const resolveRenderPropName = (node: EsTreeNode): string => {
-  const container = node.parent;
-  if (!isNodeOfType(container, "JSXExpressionContainer")) return "renderItem";
-  const attr = container.parent;
-  if (
-    isNodeOfType(attr, "JSXAttribute") &&
-    isNodeOfType(attr.name, "JSXIdentifier") &&
-    RENDER_ITEM_PROP_NAMES.has(attr.name.name)
-  ) {
-    return attr.name.name;
-  }
-  return "renderItem";
-};
-
 // HACK: every row of a virtualized list invokes its `renderItem`
 // function — and any `() => onPress(item.id)` arrow created inside that
 // function is a fresh closure per row, per render. memo()-wrapped row
@@ -74,15 +60,15 @@ const resolveRenderPropName = (node: EsTreeNode): string => {
 // pass the row's id as a primitive prop.
 export const rnListCallbackPerRow = defineRule<Rule>({
   id: "rn-list-callback-per-row",
+  title: "Inline handler in list renderItem",
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    "Hoist the handler with useCallback at list scope and pass the row id as a primitive prop, so the row's memo() shallow-compare actually hits",
+    "Move the handler out with useCallback at list scope and pass the row id as a prop. Then memo() rows skip redrawing when their data has not changed.",
   create: (context: RuleContext) => {
     const inspect = (node: EsTreeNode): void => {
       if (!isRenderItemFunction(node)) return;
-      const renderPropName = resolveRenderPropName(node);
       const inlineHandlers = detectInlineRowHandlers(node);
       for (const handler of inlineHandlers) {
         const handlerName =
@@ -91,7 +77,7 @@ export const rnListCallbackPerRow = defineRule<Rule>({
             : "<handler>";
         context.report({
           node: handler,
-          message: `Inline ${handlerName} arrow inside ${renderPropName} creates a fresh closure per render — hoist with useCallback at list scope`,
+          message: `This ${handlerName} is rebuilt for every row, so your memo() rows still redraw.`,
         });
       }
     };

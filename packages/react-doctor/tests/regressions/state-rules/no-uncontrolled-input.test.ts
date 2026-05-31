@@ -15,7 +15,7 @@ describe("no-uncontrolled-input", () => {
 
     const hits = await collectRuleHits(projectDir, "no-uncontrolled-input");
     expect(hits).toHaveLength(1);
-    expect(hits[0].message).toContain("silently read-only");
+    expect(hits[0].message).toContain("can't type");
   });
 
   it("flags `value` + `defaultValue` set together", async () => {

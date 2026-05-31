@@ -7,11 +7,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noDisabledZoom = defineRule<Rule>({
   id: "no-disabled-zoom",
+  title: "Zoom disabled on viewport",
   severity: "error",
   tags: ["test-noise"],
   category: "Accessibility",
   recommendation:
-    "Remove `user-scalable=no` and `maximum-scale` from the viewport meta tag. If your layout breaks at 200% zoom, fix the layout — don't punish users with disabilities",
+    "Remove `user-scalable=no` and `maximum-scale` from the viewport meta tag. If the layout breaks at 200% zoom, fix the layout instead.",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "meta") return;
@@ -36,18 +37,18 @@ export const noDisabledZoom = defineRule<Rule>({
       if (hasUserScalableNo && hasRestrictiveMaxScale) {
         context.report({
           node,
-          message: `user-scalable=no and maximum-scale=${maxScaleMatch[1]} disable pinch-to-zoom — this is an accessibility violation (WCAG 1.4.4). Remove both and fix layout if it breaks at 200% zoom`,
+          message: `Your users can't pinch to zoom because user-scalable=no & maximum-scale=${maxScaleMatch[1]} block it, which fails accessibility (WCAG 1.4.4). Remove both & fix the layout if it breaks at 200%.`,
         });
       } else if (hasUserScalableNo) {
         context.report({
           node,
           message:
-            "user-scalable=no disables pinch-to-zoom — this is an accessibility violation (WCAG 1.4.4). Remove it and fix layout if it breaks at 200% zoom",
+            "Your users can't pinch to zoom because user-scalable=no blocks it, which fails accessibility (WCAG 1.4.4). Remove it & fix the layout if it breaks at 200%.",
         });
       } else if (hasRestrictiveMaxScale) {
         context.report({
           node,
-          message: `maximum-scale=${maxScaleMatch[1]} restricts zoom below 200% — this is an accessibility violation (WCAG 1.4.4). Use maximum-scale=5 or remove it`,
+          message: `Your users can't zoom past 200% because maximum-scale=${maxScaleMatch[1]} blocks it, which fails accessibility (WCAG 1.4.4). Use maximum-scale=5 or remove it.`,
         });
       }
     },

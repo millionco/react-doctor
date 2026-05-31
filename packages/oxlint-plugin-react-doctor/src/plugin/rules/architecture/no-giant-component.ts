@@ -11,10 +11,11 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noGiantComponent = defineRule<Rule>({
   id: "no-giant-component",
+  title: "Component is too large",
   severity: "warn",
   tags: ["test-noise", "react-jsx-only"],
   recommendation:
-    "Extract logical sections into focused components: `<UserHeader />`, `<UserActions />`, etc.",
+    "Pull each section into its own component, like `<UserHeader />` and `<UserActions />`.",
   create: (context: RuleContext) => {
     const getOversizedComponentLineCount = (bodyNode: EsTreeNode): number | null => {
       if (!bodyNode.loc) return null;
@@ -29,7 +30,7 @@ export const noGiantComponent = defineRule<Rule>({
     ): void => {
       context.report({
         node: nameNode,
-        message: `Component "${componentName}" is ${lineCount} lines — consider breaking it into smaller focused components`,
+        message: `Component "${componentName}" is ${lineCount} lines long, which is hard to read & change. Split it into a few smaller components.`,
       });
     };
 

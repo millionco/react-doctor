@@ -90,18 +90,18 @@ const parseCallUsesErrorMap = (callExpression: EsTreeNodeOfType<"CallExpression"
 
 export const zodV4NoDeprecatedErrorCustomization = defineRule<Rule>({
   id: "zod-v4-no-deprecated-error-customization",
+  title: "Deprecated Zod error customization",
   requires: ["zod:4"],
   tags: ["migration-hint"],
   severity: "warn",
   recommendation:
-    "Use Zod 4's unified `{ error }` callback/object customization instead of string message parameters, `invalid_type_error`, `required_error`, or `errorMap`.",
+    "In Zod 4, use the single `{ error }` option instead of message strings, `invalid_type_error`, `required_error`, or `errorMap`.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!factoryUsesDeprecatedErrorParameter(node) && !parseCallUsesErrorMap(node)) return;
       context.report({
         node,
-        message:
-          "Zod 4 replaces message parameters, `invalid_type_error`, `required_error`, and `errorMap` with the unified `error` API.",
+        message: "Zod 4 changed how you customize error messages, so this breaks when you upgrade.",
       });
     },
   }),

@@ -34,11 +34,12 @@ const findLegacyShadowProperty = (
 // collapses that into one key.
 export const rnStylePreferBoxShadow = defineRule<Rule>({
   id: "rn-style-prefer-boxshadow",
+  title: "Platform-specific shadow keys over boxShadow",
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    'Use the cross-platform CSS `boxShadow` string (RN v7+): `boxShadow: "0 2px 8px rgba(0,0,0,0.1)"` instead of platform-specific shadow*/elevation keys',
+    'These shadow keys only work on one platform. On RN v7+, use the CSS `boxShadow` string instead, like `boxShadow: "0 2px 8px rgba(0,0,0,0.1)"`, which works on both.',
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       if (!isNodeOfType(node.name, "JSXIdentifier")) return;
@@ -52,7 +53,7 @@ export const rnStylePreferBoxShadow = defineRule<Rule>({
         if (match) {
           context.report({
             node: match.node,
-            message: `${match.keyName} is iOS/Android-platform-specific — use the cross-platform CSS \`boxShadow\` string (e.g. \`boxShadow: "0 2px 8px rgba(0,0,0,0.1)"\`) on RN v7+`,
+            message: `Your users on the other platform see no shadow when you use ${match.keyName}.`,
           });
         }
       } else if (isNodeOfType(expression, "ArrayExpression")) {
@@ -62,7 +63,7 @@ export const rnStylePreferBoxShadow = defineRule<Rule>({
           if (match) {
             context.report({
               node: match.node,
-              message: `${match.keyName} is iOS/Android-platform-specific — use the cross-platform CSS \`boxShadow\` string on RN v7+`,
+              message: `Your users on the other platform see no shadow when you use ${match.keyName}.`,
             });
             return;
           }
@@ -84,7 +85,7 @@ export const rnStylePreferBoxShadow = defineRule<Rule>({
         if (!match) continue;
         context.report({
           node: match.node,
-          message: `${match.keyName} is iOS/Android-platform-specific — use the cross-platform CSS \`boxShadow\` string on RN v7+`,
+          message: `Your users on the other platform see no shadow when you use ${match.keyName}.`,
         });
       }
     },

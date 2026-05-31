@@ -13,11 +13,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // reactions like calling runOnJS, not value derivation).
 export const rnAnimationReactionAsDerived = defineRule<Rule>({
   id: "rn-animation-reaction-as-derived",
+  title: "useAnimatedReaction just copies a value",
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    "Replace useAnimatedReaction with `useDerivedValue(() => ..., [deps])` — shorter, native dependency tracking, no side-effect implication",
+    "This useAnimatedReaction just copies one value to another. Replace it with `useDerivedValue(() => ..., [deps])`, which is shorter and tracks changes for you.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isNodeOfType(node.callee, "Identifier") || node.callee.name !== "useAnimatedReaction")
@@ -70,7 +71,7 @@ export const rnAnimationReactionAsDerived = defineRule<Rule>({
       context.report({
         node,
         message:
-          "useAnimatedReaction body is a single shared-value assignment — useDerivedValue is shorter and tracks dependencies natively",
+          "Your users can see a stale value when this useAnimatedReaction only copies one value to another.",
       });
     },
   }),

@@ -7,12 +7,11 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
 const ITERATOR_METHOD_NAMES = new Set(["map", "flatMap", "from"]);
-const MISSING_KEY_ARRAY = "Missing `key` prop for element in array.";
-const MISSING_KEY_ITERATOR = "Missing `key` prop for element in iterator.";
-const KEY_BEFORE_SPREAD =
-  "`key` prop must be placed before any `{...spread}` for the new JSX transform.";
+const MISSING_KEY_ARRAY = "Your users can see the wrong data when this array reorders.";
+const MISSING_KEY_ITERATOR = "Your users can see the wrong data when this list reorders.";
+const KEY_BEFORE_SPREAD = "The `{...spread}` can overwrite this `key` & break React's tracking.";
 const DUPLICATE_KEY = (keyValue: string): string =>
-  `Duplicate key "${keyValue}" found in JSX elements.`;
+  `Your users can see the wrong data because two elements share the key "${keyValue}".`;
 
 interface JsxKeySettings {
   checkKeyMustBeforeSpread?: boolean;
@@ -223,6 +222,7 @@ const getKeyAttributeValueString = (
 // assigns synthetic keys for those.
 export const jsxKey = defineRule<Rule>({
   id: "jsx-key",
+  title: "Missing key in list",
   severity: "error",
   recommendation: "Add a `key={...}` prop to each element produced inside `.map` / array literal.",
   create: (context) => {

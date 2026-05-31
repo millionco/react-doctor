@@ -31,18 +31,18 @@ const STRING_FORMAT_METHODS = new Set([
 
 export const zodV4PreferTopLevelStringFormats = defineRule<Rule>({
   id: "zod-v4-prefer-top-level-string-formats",
+  title: "Format method on z.string()",
   requires: ["zod:4"],
   tags: ["migration-hint"],
   severity: "warn",
   recommendation:
-    "Replace deprecated `z.string().<format>()` calls with Zod 4 top-level string format APIs like `z.email()`, `z.uuid()`, `z.ipv4()`, or `z.cidrv4()`.",
+    "Use the Zod 4 top-level format checks like `z.email()`, `z.uuid()`, or `z.ipv4()` instead of `z.string().<format>()`.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isDirectMethodCallOnZodFactory(node, ZOD_STRING_FACTORY, STRING_FORMAT_METHODS)) return;
       context.report({
         node,
-        message:
-          "Zod 4 deprecates string format methods on `z.string()`; use the matching top-level Zod format API instead.",
+        message: "Zod 4 deprecated format methods on `z.string()`, so they break when you upgrade.",
       });
     },
   }),

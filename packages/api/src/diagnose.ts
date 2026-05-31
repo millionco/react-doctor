@@ -2,6 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import {
   Config,
+  DEFAULT_SHOW_WARNINGS,
   DeadCode,
   Files,
   Git,
@@ -77,6 +78,7 @@ const buildInspectProgram = (
     customRulesOnly: effectiveConfig?.customRulesOnly ?? false,
     respectInlineDisables:
       options.respectInlineDisables ?? effectiveConfig?.respectInlineDisables ?? true,
+    warnings: options.warnings ?? effectiveConfig?.warnings ?? DEFAULT_SHOW_WARNINGS,
     adoptExistingLintConfig: effectiveConfig?.adoptExistingLintConfig ?? true,
     ignoredTags: new Set(effectiveConfig?.ignore?.tags ?? []),
     runDeadCode: options.deadCode ?? effectiveConfig?.deadCode ?? true,

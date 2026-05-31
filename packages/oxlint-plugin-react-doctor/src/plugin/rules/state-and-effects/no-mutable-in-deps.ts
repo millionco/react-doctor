@@ -70,9 +70,10 @@ const findMutableDepIssue = (
 
 export const noMutableInDeps = defineRule<Rule>({
   id: "no-mutable-in-deps",
+  title: "Mutable value in effect dependencies",
   severity: "error",
   recommendation:
-    "Read mutable values (`location.pathname`, `ref.current`) inside the effect body instead of in the deps array, or subscribe with `useSyncExternalStore`. Mutations to these don't trigger re-renders, so listing them in deps doesn't make the effect react to changes",
+    "Read mutable values like `location.pathname` or `ref.current` inside the effect body, or subscribe with `useSyncExternalStore`. Changing them doesn't redraw the screen, so listing them in deps won't make the effect run again.",
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
@@ -92,12 +93,12 @@ export const noMutableInDeps = defineRule<Rule>({
           if (issue.kind === "ref-current") {
             context.report({
               node: element,
-              message: `"${issue.rootName}.current" in deps — refs are mutable and don't trigger re-renders, so React won't re-run this effect when it changes. Read the ref inside the effect body instead`,
+              message: `Your effect silently never re-runs on "${issue.rootName}.current" because changing a ref doesn't redraw the screen.`,
             });
           } else {
             context.report({
               node: element,
-              message: `Mutable global "${issue.rootName}.*" in deps — values like \`location.pathname\` can change without triggering a re-render, so they can't drive effect re-runs. Subscribe with useSyncExternalStore or read inside the effect`,
+              message: `Your effect silently never re-runs on "${issue.rootName}.*" because values like \`location.pathname\` can change without redrawing the screen.`,
             });
           }
         }

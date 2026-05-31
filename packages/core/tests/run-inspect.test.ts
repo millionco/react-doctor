@@ -63,7 +63,7 @@ const deadCodeDiagnostic: Diagnostic = {
   help: "Delete it.",
   line: 0,
   column: 0,
-  category: "Dead Code",
+  category: "Maintainability",
 };
 
 const baseInput: InspectInput = {
@@ -74,6 +74,7 @@ const baseInput: InspectInput = {
   adoptExistingLintConfig: true,
   ignoredTags: new Set<string>(),
   runDeadCode: true,
+  warnings: true,
   isCi: false,
 };
 

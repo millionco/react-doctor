@@ -8,6 +8,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const nextjsNoPolyfillScript = defineRule<Rule>({
   id: "nextjs-no-polyfill-script",
+  title: "Redundant polyfill script",
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "warn",
@@ -29,7 +30,7 @@ export const nextjsNoPolyfillScript = defineRule<Rule>({
         context.report({
           node,
           message:
-            "Polyfill CDN script — Next.js includes polyfills for fetch, Promise, Object.assign, and 50+ others automatically",
+            "This polyfill CDN script makes your users download polyfills Next.js already includes.",
         });
       }
     },

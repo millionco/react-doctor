@@ -8,6 +8,7 @@ export class Diagnostic extends Schema.Class<Diagnostic>("Diagnostic")({
   plugin: Schema.String,
   rule: Schema.String,
   severity: Severity,
+  title: Schema.optional(Schema.String),
   message: Schema.String,
   help: Schema.String,
   url: Schema.optional(Schema.String),

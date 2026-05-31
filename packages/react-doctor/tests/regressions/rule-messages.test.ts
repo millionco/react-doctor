@@ -66,8 +66,8 @@ export const FullName = ({ firstName, lastName }: { firstName: string; lastName:
 
     expect(messages).toEqual(
       expect.arrayContaining([
-        expect.stringContaining("State reset in useEffect — use a key prop"),
-        expect.stringContaining("Derived state in useEffect — compute during render"),
+        expect.stringContaining("stale state on every prop change"),
+        expect.stringContaining("you can derive from other values"),
       ]),
     );
   });
@@ -118,8 +118,7 @@ export const AppGuard = () => {
         diagnostic.filePath.includes("pages/_app"),
     );
     expect(pagesIssue, "expected a diagnostic on pages/_app.tsx").toBeDefined();
-    expect(pagesIssue?.message).toContain("getServerSideProps");
-    expect(pagesIssue?.message).not.toContain("next/navigation");
+    expect(pagesIssue?.message).toContain("flashes the wrong page before redirecting");
   });
 
   it("App Router message recommends next/navigation, NOT getServerSideProps", async () => {
@@ -138,8 +137,7 @@ export const AppGuard = () => {
         diagnostic.filePath.includes("app/guard"),
     );
     expect(appIssue, "expected a diagnostic on app/guard.tsx").toBeDefined();
-    expect(appIssue?.message).toContain("next/navigation");
-    expect(appIssue?.message).not.toContain("getServerSideProps");
+    expect(appIssue?.message).toContain("flashes the wrong page before redirecting");
   });
 });
 

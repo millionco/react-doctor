@@ -222,10 +222,11 @@ const collectGeneratorNames = (programNode: EsTreeNode): Set<string> => {
 
 export const jsCombineIterations = defineRule<Rule>({
   id: "js-combine-iterations",
+  title: "Chained array iterations",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Combine `.map().filter()` (or similar chains) into a single pass with `.reduce()` or a `for...of` loop to avoid iterating the array twice",
+    "Combine `.map().filter()` style chains into one pass with `.reduce()` or a `for...of` loop, so you only loop over the list once",
   create: (context: RuleContext) => {
     let generatorNamesInFile: ReadonlySet<string> = new Set();
 
@@ -283,7 +284,7 @@ export const jsCombineIterations = defineRule<Rule>({
 
         context.report({
           node,
-          message: `.${innerMethod}().${outerMethod}() iterates the array twice — combine into a single loop with .reduce() or for...of`,
+          message: `This loops over your list twice because .${innerMethod}().${outerMethod}() makes two passes, so do it in one pass with .reduce() or a for...of loop`,
         });
       },
     };

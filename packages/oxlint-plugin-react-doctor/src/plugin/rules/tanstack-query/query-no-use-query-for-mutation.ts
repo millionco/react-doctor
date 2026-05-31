@@ -10,11 +10,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const queryNoUseQueryForMutation = defineRule<Rule>({
   id: "query-no-usequery-for-mutation",
+  title: "useQuery used for mutation",
   tags: ["test-noise"],
   requires: ["tanstack-query"],
   severity: "warn",
   recommendation:
-    "Use `useMutation()` for POST/PUT/DELETE — it provides onSuccess/onError callbacks, doesn't auto-refetch, and correctly models write operations",
+    "Use `useMutation()` for POST/PUT/DELETE. It gives onSuccess/onError callbacks, doesn't auto-refetch, and models writes correctly.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const calleeName = isNodeOfType(node.callee, "Identifier") ? node.callee.name : null;
@@ -59,7 +60,7 @@ export const queryNoUseQueryForMutation = defineRule<Rule>({
       if (hasMutatingFetch) {
         context.report({
           node,
-          message: `${calleeName}() with a mutating fetch (POST/PUT/DELETE) — use useMutation() instead, which provides onSuccess/onError callbacks and doesn't auto-refetch`,
+          message: `${calleeName}() auto-refetches, so this mutating fetch (POST/PUT/DELETE) can fire repeatedly.`,
         });
       }
     },

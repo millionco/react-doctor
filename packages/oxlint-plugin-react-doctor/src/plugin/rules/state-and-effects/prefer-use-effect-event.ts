@@ -228,11 +228,12 @@ const classifyCallableReadsInsideEffect = (
 
 export const preferUseEffectEvent = defineRule<Rule>({
   id: "prefer-use-effect-event",
+  title: "Effect re-subscribes on a changing callback",
   requires: ["react:19"],
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Wrap the callback with `useEffectEvent(callback)` (React 19+) and call the resulting binding from inside the sub-handler. The Effect Event captures the latest props/state without being a reactive dep, so the effect doesn't re-subscribe on every parent render. See https://react.dev/reference/react/useEffectEvent",
+    "Wrap the callback with `useEffectEvent(callback)` (React 19+) and call it inside the sub-handler. An Effect Event always sees the latest props and state but isn't a dependency, so the effect won't re-subscribe every time the parent redraws. See https://react.dev/reference/react/useEffectEvent",
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
@@ -279,7 +280,7 @@ export const preferUseEffectEvent = defineRule<Rule>({
             : "an async sub-handler";
           context.report({
             node: depElement,
-            message: `"${depName}" is read only inside ${subHandlerLabel} — wrap it with useEffectEvent and remove it from the dep array so the effect doesn't re-synchronize on every parent render`,
+            message: `Your effect re-subscribes whenever "${depName}" changes, even though it's only used inside ${subHandlerLabel}.`,
           });
         }
       }

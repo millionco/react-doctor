@@ -29,7 +29,7 @@ export const Chat = () => {
     const hits = await collectRuleHits(projectDir, "rerender-functional-setstate");
     expect(hits.length).toBeGreaterThanOrEqual(1);
     expect(hits[0].message).toContain("[...messages");
-    expect(hits[0].message).toContain("functional update");
+    expect(hits[0].message).toContain("reads a stale value");
   });
 
   it("does NOT flag `setMessages(msgs => [...msgs, item])` (the recommended fix)", async () => {

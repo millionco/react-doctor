@@ -23,7 +23,7 @@ describe("runOxlint", () => {
       "no-array-index-as-key": {
         fixture: "correctness-issues.tsx",
         ruleSource: "rules/correctness.ts",
-        category: "Correctness",
+        category: "Bugs",
       },
       "rendering-conditional-render": {
         fixture: "correctness-issues.tsx",
@@ -37,7 +37,7 @@ describe("runOxlint", () => {
         fixture: "state-issues.tsx",
         ruleSource: "rules/correctness.ts",
         severity: "warning",
-        category: "Correctness",
+        category: "Bugs",
       },
     },
     () => basicReactDiagnostics,

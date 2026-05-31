@@ -8,11 +8,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noJustifiedText = defineRule<Rule>({
   id: "no-justified-text",
+  title: "Justified text without hyphens",
   tags: ["test-noise"],
   severity: "warn",
   category: "Accessibility",
   recommendation:
-    "Use `text-align: left` for body text, or add `hyphens: auto` and `overflow-wrap: break-word` if you must justify",
+    "Use `text-align: left` for body text. If you must justify, add `hyphens: auto` and `overflow-wrap: break-word`.",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);
@@ -34,7 +35,7 @@ export const noJustifiedText = defineRule<Rule>({
         context.report({
           node,
           message:
-            'Justified text without hyphens creates uneven word spacing ("rivers of white"). Use text-align: left, or add hyphens: auto',
+            "Your users read big uneven gaps between words because justified text has no hyphens, so use text-align: left, or add hyphens: auto.",
         });
       }
     },

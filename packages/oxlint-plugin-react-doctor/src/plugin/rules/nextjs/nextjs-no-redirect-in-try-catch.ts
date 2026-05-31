@@ -7,6 +7,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const nextjsNoRedirectInTryCatch = defineRule<Rule>({
   id: "nextjs-no-redirect-in-try-catch",
+  title: "redirect() inside try-catch",
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "warn",
@@ -29,7 +30,7 @@ export const nextjsNoRedirectInTryCatch = defineRule<Rule>({
 
         context.report({
           node,
-          message: `${node.callee.name}() inside try-catch — this throws a special error Next.js handles internally. Move it outside the try block or use unstable_rethrow() in the catch`,
+          message: `${node.callee.name}() inside try-catch gets swallowed, so the redirect silently fails.`,
         });
       },
     };

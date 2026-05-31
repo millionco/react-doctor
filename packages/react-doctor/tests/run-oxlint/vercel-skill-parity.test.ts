@@ -23,7 +23,7 @@ describe("runOxlint", () => {
       "no-dynamic-import-path": {
         fixture: "new-rules.tsx",
         ruleSource: "rules/bundle-size.ts",
-        category: "Bundle Size",
+        category: "Performance",
       },
       "rendering-hoist-jsx": {
         fixture: "new-rules.tsx",
@@ -62,7 +62,7 @@ describe("runOxlint", () => {
       "no-polymorphic-children": {
         fixture: "composition-issues.tsx",
         ruleSource: "rules/correctness.ts",
-        category: "Architecture",
+        category: "Maintainability",
       },
       "rendering-svg-precision": {
         fixture: "composition-issues.tsx",
@@ -72,7 +72,7 @@ describe("runOxlint", () => {
       "no-document-start-view-transition": {
         fixture: "view-transitions-issues.tsx",
         ruleSource: "rules/view-transitions.ts",
-        category: "Correctness",
+        category: "Bugs",
       },
       "no-flush-sync": {
         fixture: "view-transitions-issues.tsx",
@@ -82,7 +82,7 @@ describe("runOxlint", () => {
       "rendering-hydration-mismatch-time": {
         fixture: "hydration-and-scroll-issues.tsx",
         ruleSource: "rules/performance.ts",
-        category: "Correctness",
+        category: "Bugs",
       },
       "rerender-transitions-scroll": {
         fixture: "hydration-and-scroll-issues.tsx",
@@ -102,7 +102,7 @@ describe("runOxlint", () => {
       "client-localstorage-no-version": {
         fixture: "transient-and-async-issues.tsx",
         ruleSource: "rules/client.ts",
-        category: "Correctness",
+        category: "Bugs",
       },
       "async-await-in-loop": {
         fixture: "async-and-handler-issues.tsx",

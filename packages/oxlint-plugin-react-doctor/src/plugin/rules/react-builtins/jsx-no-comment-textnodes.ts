@@ -5,7 +5,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
 const MESSAGE =
-  "Comment-like text in JSX must live inside `{/* … */}` — bare `//` or `/*` becomes literal text.";
+  "Your users see this comment as text on the page because `//` & `/*` aren't hidden in JSX.";
 
 // HTML elements that intentionally render their text content
 // verbatim — `<code>//# chunkId=</code>`, `<pre>// build output</pre>`,
@@ -43,6 +43,7 @@ const isInsideLiteralTextTag = (node: EsTreeNode): boolean => {
 // render literal text including code-comment-like prefixes.
 export const jsxNoCommentTextnodes = defineRule<Rule>({
   id: "jsx-no-comment-textnodes",
+  title: "Comment rendered as JSX text",
   severity: "warn",
   recommendation: "Wrap JSX comments in `{/* … */}` so they're parsed as comments, not children.",
   create: (context) => ({

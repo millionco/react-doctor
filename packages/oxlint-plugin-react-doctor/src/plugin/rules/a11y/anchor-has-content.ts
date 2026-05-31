@@ -7,14 +7,15 @@ import { objectHasAccessibleChild } from "../../utils/object-has-accessible-chil
 import type { Rule } from "../../utils/rule.js";
 
 const MESSAGE =
-  "Anchor must have accessible content — provide visible text, `aria-label`, or `aria-labelledby`.";
+  "Blind users can't follow this link because screen readers announce nothing, so add visible text, `aria-label`, or `aria-labelledby`.";
 
 // Port of `oxc_linter::rules::jsx_a11y::anchor_has_content`.
 export const anchorHasContent = defineRule<Rule>({
   id: "anchor-has-content",
+  title: "Anchor has no content",
   tags: ["react-jsx-only"],
   severity: "warn",
-  recommendation: "Add visible or aria-labelled text inside every `<a>`.",
+  recommendation: "Put readable text inside every `<a>`.",
   category: "Accessibility",
   create: (context) => ({
     JSXElement(node: EsTreeNodeOfType<"JSXElement">) {

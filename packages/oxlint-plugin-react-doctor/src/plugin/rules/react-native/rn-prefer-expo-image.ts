@@ -16,11 +16,12 @@ const EMPTY_VISITORS: RuleVisitors = {};
 // or hero image.
 export const rnPreferExpoImage = defineRule<Rule>({
   id: "rn-prefer-expo-image",
+  title: "react-native Image instead of expo-image",
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    "Use `<Image>` from `expo-image` instead of `react-native` — same prop API, plus disk + memory caching, placeholders, and crossfades",
+    "Use `<Image>` from `expo-image` instead of `react-native`. Same props, plus caching, placeholders, and crossfades for faster image loading.",
   create: (context: RuleContext) => {
     if (!isExpoManagedFileActive(context)) return EMPTY_VISITORS;
 
@@ -35,7 +36,7 @@ export const rnPreferExpoImage = defineRule<Rule>({
           if (importedName !== "Image" && importedName !== "ImageBackground") continue;
           context.report({
             node: specifier,
-            message: `Importing ${importedName} from react-native — prefer expo-image for caching, placeholders, and progressive loading (drop-in API)`,
+            message: `Your users watch images reload often because ${importedName} from react-native has no caching.`,
           });
         }
       },

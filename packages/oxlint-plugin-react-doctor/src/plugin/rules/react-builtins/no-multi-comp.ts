@@ -13,8 +13,7 @@ import { flattenCalleeName } from "../../utils/flatten-callee-name.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { REACT_HOC_NAMES } from "../../constants/react.js";
 
-const buildMessage = (componentName: string): string =>
-  `Declare only one React component per file. Found extra component: ${componentName}.`;
+const MESSAGE = "This file is harder to navigate with more than one component.";
 
 interface NoMultiCompSettings {
   ignoreStateless?: boolean;
@@ -569,6 +568,7 @@ const walkComponentSearch = (node: EsTreeNode, context: VisitContext): void => {
 // component aren't double-counted.
 export const noMultiComp = defineRule<Rule>({
   id: "no-multi-comp",
+  title: "Multiple components in one file",
   severity: "warn",
   recommendation: "Move secondary components into their own files.",
   category: "Architecture",
@@ -668,7 +668,7 @@ export const noMultiComp = defineRule<Rule>({
           (flagged.length - exportedCount) * 4 >= flagged.length;
         if (isSmallFeatureModule || isLargeFeatureModule || isVeryLargeFeatureModule) return;
         for (const component of flagged.slice(1)) {
-          context.report({ node: component.reportNode, message: buildMessage(component.name) });
+          context.report({ node: component.reportNode, message: MESSAGE });
         }
       },
     };

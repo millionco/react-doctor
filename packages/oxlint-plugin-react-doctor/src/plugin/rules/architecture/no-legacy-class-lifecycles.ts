@@ -21,15 +21,15 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 const LEGACY_LIFECYCLE_REPLACEMENTS = new Map<string, string>([
   [
     "componentWillMount",
-    "Move side effects to `componentDidMount`; move initial state to `constructor`",
+    "Put side effects in `componentDidMount` & initial state in the `constructor`",
   ],
   [
     "componentWillReceiveProps",
-    "Move side effects to `componentDidUpdate` (compare prevProps); move pure state derivation to the static `getDerivedStateFromProps`",
+    "Put side effects in `componentDidUpdate` & derived state in the static `getDerivedStateFromProps`",
   ],
   [
     "componentWillUpdate",
-    "Move DOM reads to `getSnapshotBeforeUpdate` (passes the value to `componentDidUpdate`); move other work to `componentDidUpdate`",
+    "Read the DOM in `getSnapshotBeforeUpdate` & do other work in `componentDidUpdate`",
   ],
 ]);
 
@@ -50,18 +50,19 @@ const buildLegacyLifecycleMessage = (originalName: string): string | null => {
   const replacement = LEGACY_LIFECYCLE_REPLACEMENTS.get(baseName);
   if (!replacement) return null;
   const removalNote = hasUnsafePrefix
-    ? `\`${originalName}\` is removed in React 19 (the UNSAFE_ prefix only silences the React 18 warning, it doesn't fix the concurrent-mode hazard).`
-    : `\`${originalName}\` is removed in React 19 and warns in React 18.3.1.`;
+    ? `\`${originalName}\` breaks under concurrent rendering & is gone in React 19, & the UNSAFE_ prefix only hides the warning.`
+    : `\`${originalName}\` breaks under concurrent rendering, warns in React 18 & is gone in React 19.`;
   return `${removalNote} ${replacement}.`;
 };
 
 export const noLegacyClassLifecycles = defineRule<Rule>({
   id: "no-legacy-class-lifecycles",
+  title: "Legacy class lifecycle methods",
   severity: "error",
   category: "Correctness",
   tags: ["migration-hint"],
   recommendation:
-    "Move side effects in `componentWillMount` to `componentDidMount`; replace `componentWillReceiveProps` with `componentDidUpdate` (compare prevProps) or the static `getDerivedStateFromProps` for pure state derivation; replace `componentWillUpdate` with `getSnapshotBeforeUpdate` paired with `componentDidUpdate`. The `UNSAFE_` prefix only silences the warning — React 19 removes both forms.",
+    "Move `componentWillMount` work to `componentDidMount`, `componentWillReceiveProps` to `componentDidUpdate` or the static `getDerivedStateFromProps`, and `componentWillUpdate` to `getSnapshotBeforeUpdate` plus `componentDidUpdate`. The `UNSAFE_` prefix only hides the warning. React 19 removes both.",
   create: (context: RuleContext) => {
     const checkMember = (memberNode: EsTreeNode | undefined): void => {
       if (!memberNode) return;

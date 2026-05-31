@@ -25,10 +25,11 @@ import {
 
 export const noChainStateUpdates = defineRule<Rule>({
   id: "no-chain-state-updates",
+  title: "State updates chained through effects",
   severity: "warn",
   tags: ["test-noise"],
   recommendation:
-    "Update all related state simultaneously inside the event handler that originally fires, instead of reacting to one state update in a useEffect that writes another state. See https://react.dev/learn/you-might-not-need-an-effect#chains-of-computations",
+    "Set all the related state together in the event handler that starts it, instead of having one useEffect react to a state change and set more state. See https://react.dev/learn/you-might-not-need-an-effect#chains-of-computations",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isUseEffect(node)) return;
@@ -58,8 +59,7 @@ export const noChainStateUpdates = defineRule<Rule>({
         if (isSomeArgsState) continue;
         context.report({
           node: callExpr,
-          message:
-            "Avoid chaining state changes. When possible, update all relevant state simultaneously.",
+          message: "Chaining state updates triggers an extra render each step.",
         });
       }
     },

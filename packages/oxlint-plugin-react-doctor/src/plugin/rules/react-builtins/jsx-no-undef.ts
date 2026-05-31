@@ -6,7 +6,8 @@ import { findVariableInitializer } from "../../utils/find-variable-initializer.j
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
-const buildMessage = (name: string): string => `\`${name}\` is not defined in this scope.`;
+const buildMessage = (name: string): string =>
+  `\`${name}\` crashes at runtime because it isn't defined here.`;
 
 const KNOWN_GLOBALS = new Set([
   "globalThis",
@@ -56,6 +57,7 @@ const getRootIdentifier = (elementName: EsTreeNode): string | null => {
 //     error we want to surface.
 export const jsxNoUndef = defineRule<Rule>({
   id: "jsx-no-undef",
+  title: "Undefined JSX component",
   severity: "error",
   recommendation: "Import the component or check for typos.",
   create: (context) => ({

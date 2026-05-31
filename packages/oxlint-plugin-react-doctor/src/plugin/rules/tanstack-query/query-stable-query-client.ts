@@ -10,11 +10,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const queryStableQueryClient = defineRule<Rule>({
   id: "query-stable-query-client",
+  title: "Unstable QueryClient in component",
   tags: ["test-noise"],
   requires: ["tanstack-query"],
   severity: "warn",
   recommendation:
-    "Move `new QueryClient()` to module scope or wrap in `useState(() => new QueryClient())` — recreating it on every render resets the entire cache",
+    "Move `new QueryClient()` to module scope, or wrap it in `useState(() => new QueryClient())`. Recreating it each render wipes the cache.",
   create: (context: RuleContext) => {
     let componentDepth = 0;
     let stableHookDepth = 0;
@@ -76,8 +77,7 @@ export const queryStableQueryClient = defineRule<Rule>({
 
         context.report({
           node,
-          message:
-            "new QueryClient() inside a component — creates a new cache on every render. Move to module scope or wrap in useState(() => new QueryClient())",
+          message: "new QueryClient() inside a component wipes your cache on every render.",
         });
       },
     };

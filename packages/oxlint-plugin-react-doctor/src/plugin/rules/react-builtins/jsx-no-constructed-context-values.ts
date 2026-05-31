@@ -12,7 +12,7 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { Rule } from "../../utils/rule.js";
 
 const MESSAGE =
-  "Context `value` prop is constructed inline — wrap with `useMemo`/`useCallback` or hoist a constant to avoid re-renders.";
+  "Every reader of this context redraws on each render because you build its `value` inline.";
 
 // Modules whose `createContext` export has the same identity
 // semantics as React's. Kept in sync with the list in
@@ -134,9 +134,10 @@ const isCreateContextBindingJsxName = (
 // and `react-tracked`.
 export const jsxNoConstructedContextValues = defineRule<Rule>({
   id: "jsx-no-constructed-context-values",
+  title: "Unstable context provider value",
   tags: ["react-jsx-only"],
   severity: "warn",
-  recommendation: "Memoize the context value (`useMemo`) or hoist it outside the render.",
+  recommendation: "Wrap the context value in `useMemo`, or move it outside the component.",
   category: "Performance",
   create: (context) => {
     const isTestlikeFile = isTestlikeFilename(context.filename);

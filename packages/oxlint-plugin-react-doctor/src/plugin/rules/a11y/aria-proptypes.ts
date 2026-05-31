@@ -122,7 +122,7 @@ const buildExpectedDescription = (propType: AriaPropType): string => {
 };
 
 const buildMessage = (propName: string, propType: AriaPropType): string =>
-  `\`${propName}\` value must be ${buildExpectedDescription(propType)}.`;
+  `Screen reader users get no help from \`${propName}\` because its value isn't readable, so set it to ${buildExpectedDescription(propType)}.`;
 
 // Returns true when the bare attribute (no value) is allowed for this
 // type (e.g. `<div aria-hidden />`).
@@ -296,9 +296,10 @@ const isValidValueForType = (propType: AriaPropType, value: EsTreeNode): boolean
 // Port of `oxc_linter::rules::jsx_a11y::aria_proptypes`.
 export const ariaProptypes = defineRule<Rule>({
   id: "aria-proptypes",
+  title: "Invalid ARIA attribute value",
   tags: ["react-jsx-only"],
   severity: "error",
-  recommendation: "Match each `aria-*` value to its WAI-ARIA-defined type.",
+  recommendation: "Give each `aria-*` attribute the kind of value it expects.",
   category: "Accessibility",
   create: (context) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {

@@ -44,9 +44,10 @@ const QUERY_ATOM_NAMING_CONVENTION =
 
 export const jotaiTqUseRawQueryAtom = defineRule<Rule>({
   id: "jotai-tq-use-raw-query-atom",
+  title: "Subscribing to raw query atom",
   severity: "warn",
   recommendation:
-    "Derive the field you read: `const dataAtom = atom((get) => get(queryAtom).data)`. Subscribing directly to a jotai-tanstack-query atom re-renders on every observer notify (refetches, focus events, no-op cache hits)",
+    "Derive the field you read: `const dataAtom = atom((get) => get(queryAtom).data)`. Subscribing to the whole query atom re-renders on every refetch, focus, or no-op cache hit.",
   create: (context: RuleContext) => {
     const queryAtomFactoryLocalNames = new Set<string>();
     const queryAtomBindingNames = new Set<string>();
@@ -98,7 +99,7 @@ export const jotaiTqUseRawQueryAtom = defineRule<Rule>({
         if (!queryAtomBindingNames.has(firstArgument.name)) return;
         context.report({
           node,
-          message: `\`${node.callee.name}(${firstArgument.name})\` subscribes directly to a jotai-tanstack-query atom — every observer notify (refetch, focus, no-op cache hit) re-renders consumers. Derive the field first: \`const dataAtom = atom((get) => get(${firstArgument.name}).data)\``,
+          message: `\`${node.callee.name}(${firstArgument.name})\` subscribes to the whole query atom, so it re-renders your component on every refetch, focus, or no-op cache hit. Derive the field first: \`const dataAtom = atom((get) => get(${firstArgument.name}).data)\`.`,
         });
       },
     };

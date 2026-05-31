@@ -658,6 +658,7 @@ const addAggregatePropsDependency = (
 
 export const exhaustiveDeps = defineRule<Rule>({
   id: "exhaustive-deps",
+  title: "Missing effect dependencies",
   severity: "warn",
   tags: ["test-noise"],
   recommendation: `Don't blindly add missing dependencies. Read the hook callback first.
@@ -898,7 +899,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
             if (depSymbol && symbolHasUseEffectEventOrigin(depSymbol)) {
               context.report({
                 node: elementNode,
-                message: buildEffectEventDepMessage(stripped.name),
+                message: buildEffectEventDepMessage(),
               });
               continue;
             }

@@ -24,11 +24,12 @@ const ALLOWED_SANDBOX_VALUES = new Set([
   "top-navigation-by-user-activation",
 ]);
 
-const MISSING_MESSAGE = "An `<iframe>` element is missing a `sandbox` attribute.";
+const MISSING_MESSAGE =
+  "An `<iframe>` with no `sandbox` is a security hole: the embedded page gets full access to your site.";
 const INVALID_VALUE_MESSAGE = (value: string): string =>
-  `\`<iframe sandbox="${value}">\` contains an invalid token.`;
+  `\`${value}\` isn't a valid \`sandbox\` token, so the browser ignores it & leaves your iframe exposed.`;
 const INVALID_COMBINATION_MESSAGE =
-  "`<iframe sandbox>` cannot combine `allow-scripts` with `allow-same-origin` — the iframe could remove the sandbox.";
+  "Combining `allow-scripts` & `allow-same-origin` lets the iframe remove its own sandbox, defeating the protection.";
 
 const isAllowedSandboxToken = (token: string): boolean => {
   if (token === "") return true;
@@ -65,6 +66,7 @@ const validateSandboxValue = (
 // (DOM API, sandbox can't be set there).
 export const iframeMissingSandbox = defineRule<Rule>({
   id: "iframe-missing-sandbox",
+  title: "iframe missing sandbox attribute",
   severity: "warn",
   recommendation: 'Add `sandbox=""` (or a curated value) to your iframe.',
   category: "Security",

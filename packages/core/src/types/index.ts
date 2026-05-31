@@ -47,4 +47,4 @@ export type { PromptMultiselectChoiceState, PromptMultiselectContext } from "./p
 // `core/src/project-info/internal-rn-dependency-names.ts`;
 // rule-side consumers import from the plugin package directly.
 // See that file for the duplication rationale.
-export type { ScoreResult } from "./score.js";
+export type { ScoreResult, RulePriority, RuleTier } from "./score.js";

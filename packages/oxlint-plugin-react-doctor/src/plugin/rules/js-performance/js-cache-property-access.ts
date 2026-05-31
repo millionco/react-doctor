@@ -23,10 +23,11 @@ const buildMemberAccessKey = (node: EsTreeNode): string | null => {
 // (two dots) and ≥ 3 occurrences in the same loop block to fire.
 export const jsCachePropertyAccess = defineRule<Rule>({
   id: "js-cache-property-access",
+  title: "Repeated property access in a loop",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Hoist the deep member access into a const at the top of the loop body: `const { x, y } = obj.deeply.nested`",
+    "Read the value once into a variable at the top of the loop: `const { x, y } = obj.deeply.nested`",
   create: (context: RuleContext) => {
     const inspectLoopBody = (loopBody: EsTreeNode): void => {
       const counts = new Map<string, { count: number; firstNode: EsTreeNode }>();
@@ -59,7 +60,7 @@ export const jsCachePropertyAccess = defineRule<Rule>({
         if (count >= PROPERTY_ACCESS_REPEAT_THRESHOLD) {
           context.report({
             node: firstNode,
-            message: `${key} is read ${count} times inside this loop — hoist into a const at the top of the loop body`,
+            message: `This slows the loop because ${key} is read ${count} times inside it, so read it once into a variable at the top`,
           });
         }
       }

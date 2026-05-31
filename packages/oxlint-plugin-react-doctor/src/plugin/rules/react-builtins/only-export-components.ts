@@ -13,17 +13,13 @@ import {
   UTILITY_FILE_BASENAMES,
 } from "./only-export-components-tables.js";
 
-const NAMED_EXPORT_MESSAGE =
-  "Fast refresh only works when a file only exports components. Move non-component exports to a separate file.";
-const ANONYMOUS_MESSAGE =
-  "Fast refresh can't handle anonymous components — name your default export.";
-const EXPORT_ALL_MESSAGE = "`export *` makes it impossible to verify only components are exported.";
-const REACT_CONTEXT_MESSAGE =
-  "Fast refresh only works when a file only exports components. Move React contexts to a separate file.";
-const LOCAL_COMPONENT_MESSAGE =
-  "Fast refresh requires components to be exported. Move local component(s) to a separate file.";
+const NAMED_EXPORT_MESSAGE = "Fast Refresh stops working when a file exports non-components.";
+const ANONYMOUS_MESSAGE = "Fast Refresh can't track an unnamed component & full-reloads instead.";
+const EXPORT_ALL_MESSAGE = "`export *` hides what's exported, so Fast Refresh stops working.";
+const REACT_CONTEXT_MESSAGE = "Fast Refresh stops working when a file exports a context too.";
+const LOCAL_COMPONENT_MESSAGE = "Fast Refresh skips this component because it isn't exported.";
 const NO_EXPORT_MESSAGE =
-  "Fast refresh requires the file to export components. Move local component(s) to a separate file.";
+  "Fast Refresh can't track this component because the file exports nothing.";
 
 interface OnlyExportComponentsSettings {
   allowExportNames?: ReadonlyArray<string>;
@@ -372,6 +368,7 @@ const isFileNameAllowed = (filename: string | undefined, checkJS: boolean): bool
 // stable constants alongside components don't break Fast Refresh.
 export const onlyExportComponents = defineRule<Rule>({
   id: "only-export-components",
+  title: "Non-component export in component file",
   severity: "warn",
   recommendation: "Move non-component exports out of files that export components.",
   category: "Architecture",

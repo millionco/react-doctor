@@ -10,11 +10,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noOutlineNone = defineRule<Rule>({
   id: "no-outline-none",
+  title: "outline:none removes focus ring",
   severity: "warn",
   tags: ["test-noise"],
   category: "Accessibility",
   recommendation:
-    "Use `:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px }` to show focus only for keyboard users while hiding it for mouse clicks",
+    "Style `:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px }` so the focus ring shows for keyboard users but not mouse clicks.",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);
@@ -47,7 +48,7 @@ export const noOutlineNone = defineRule<Rule>({
         context.report({
           node: outlineProperty,
           message:
-            "outline: none removes keyboard focus visibility — use :focus-visible styling instead, or provide a box-shadow focus ring",
+            "Your keyboard users can't tell where they are because outline: none hides the focus ring, so style :focus-visible instead, or add a box-shadow focus ring.",
         });
       }
     },

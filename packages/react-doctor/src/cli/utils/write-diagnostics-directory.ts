@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Diagnostic } from "@react-doctor/core";
 import { groupBy } from "@react-doctor/core";
-import { formatRuleSummary, sortRuleGroupsByImportance } from "./render-diagnostics.js";
+import { sortRuleGroupsByImportance } from "./diagnostic-grouping.js";
+import { formatRuleSummary } from "./render-diagnostics.js";
 
 export const writeDiagnosticsDirectory = (diagnostics: Diagnostic[]): string => {
   const outputDirectory = join(tmpdir(), `react-doctor-${randomUUID()}`);

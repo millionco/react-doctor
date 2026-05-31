@@ -9,10 +9,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { getArgsUpstreamRefs, getCallExpr, isSynchronous } from "./utils/effect/ast.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import {
-  findContainingNode,
   getEffectFn,
   getEffectFnRefs,
-  isCustomHook,
   isPropCall,
   isState,
   isUseEffect,
@@ -20,10 +18,11 @@ import {
 
 export const noPassLiveStateToParent = defineRule<Rule>({
   id: "no-pass-live-state-to-parent",
+  title: "Live state pushed to parent via effect",
   severity: "warn",
   tags: ["test-noise"],
   recommendation:
-    "Lift the state to the parent (or return it from the hook) instead of pushing it back up via a prop callback inside a useEffect. See https://react.dev/learn/you-might-not-need-an-effect#notifying-parent-components-about-state-changes",
+    "Move the state up to the parent (or return it from the hook), instead of handing it back up through a prop callback in a useEffect. See https://react.dev/learn/you-might-not-need-an-effect#notifying-parent-components-about-state-changes",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isUseEffect(node)) return;
@@ -52,13 +51,10 @@ export const noPassLiveStateToParent = defineRule<Rule>({
         );
         if (!isStateInArgs) continue;
 
-        const containing = findContainingNode(analysis, node);
-        const isInCustomHook = containing != null && isCustomHook(containing);
         context.report({
           node: callExpr,
-          message: isInCustomHook
-            ? "Avoid passing live state to parents in an effect. Instead, return the state from the hook."
-            : "Avoid passing live state to parents in an effect. Instead, lift the state to the parent and pass it down to the child as a prop.",
+          message:
+            "Pushing state up to a parent from a useEffect costs your users an extra render.",
         });
       }
     },

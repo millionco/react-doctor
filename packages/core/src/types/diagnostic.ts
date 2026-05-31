@@ -33,6 +33,10 @@ export interface Diagnostic {
   plugin: string;
   rule: string;
   severity: "error" | "warning";
+  // Short human headline for the rule (e.g. "Array index used as a key").
+  // Present for react-doctor rules; absent for adopted third-party rules,
+  // where renderers fall back to the `plugin/rule` id.
+  title?: string;
   message: string;
   help: string;
   url?: string;

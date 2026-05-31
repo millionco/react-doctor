@@ -11,6 +11,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const preferUseReducer = defineRule<Rule>({
   id: "prefer-useReducer",
+  title: "Many related useState calls",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
@@ -28,7 +29,7 @@ export const preferUseReducer = defineRule<Rule>({
       if (useStateCount >= RELATED_USE_STATE_THRESHOLD) {
         context.report({
           node: body,
-          message: `Component "${componentName}" has ${useStateCount} useState calls — consider useReducer for related state`,
+          message: `${useStateCount} useState calls in "${componentName}" can each trigger a separate render.`,
         });
       }
     };

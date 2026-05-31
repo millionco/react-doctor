@@ -63,6 +63,7 @@ const buildSpinnerProgressHandle = (text: string): ProgressHandle => {
     update: (displayText: string) => Effect.sync(() => oraHandle.update(displayText)),
     succeed: (displayText: string) => Effect.sync(() => oraHandle.succeed(displayText)),
     fail: (displayText: string) => Effect.sync(() => oraHandle.fail(displayText)),
+    stop: () => Effect.sync(() => oraHandle.stop()),
   };
 };
 

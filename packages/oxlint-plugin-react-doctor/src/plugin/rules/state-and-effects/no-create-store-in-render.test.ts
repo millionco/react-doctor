@@ -19,7 +19,6 @@ describe("no-create-store-in-render", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0].message).toContain("zustand.create");
-    expect(result.diagnostics[0].message).toContain("App");
   });
 
   it("flags jotai atom inside an arrow component", () => {
@@ -54,7 +53,6 @@ describe("no-create-store-in-render", () => {
 
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0].message).toContain("valtio.proxy");
-    expect(result.diagnostics[0].message).toContain("useTodos");
   });
 
   it("flags @reduxjs/toolkit configureStore inside a component", () => {
@@ -273,7 +271,6 @@ describe("no-create-store-in-render", () => {
     );
 
     expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0].message).toContain("App");
   });
 
   it("does not flag a store factory created inside an event handler", () => {

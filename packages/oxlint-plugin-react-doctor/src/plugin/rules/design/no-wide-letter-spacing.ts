@@ -11,10 +11,11 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noWideLetterSpacing = defineRule<Rule>({
   id: "no-wide-letter-spacing",
+  title: "Wide letter spacing on body text",
   severity: "warn",
   tags: ["test-noise"],
   recommendation:
-    "Reserve wide tracking (letter-spacing > 0.05em) for short uppercase labels, navigation items, and buttons — not body text",
+    "Save wide letter-spacing (over 0.05em) for short uppercase labels, nav items, and buttons, not body text.",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);
@@ -57,7 +58,7 @@ export const noWideLetterSpacing = defineRule<Rule>({
       ) {
         context.report({
           node: letterSpacingProperty,
-          message: `Letter spacing ${letterSpacingEm.toFixed(2)}em on body text disrupts natural character groupings. Reserve wide tracking for short uppercase labels only`,
+          message: `Your users find body text harder to read at ${letterSpacingEm.toFixed(2)}em letter spacing, so save wide spacing for short uppercase labels.`,
         });
       }
     },

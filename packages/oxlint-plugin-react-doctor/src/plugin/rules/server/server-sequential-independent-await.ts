@@ -62,10 +62,11 @@ const declarationReadsAnyName = (declaration: EsTreeNode, names: Set<string>): b
 
 export const serverSequentialIndependentAwait = defineRule<Rule>({
   id: "server-sequential-independent-await",
+  title: "Sequential independent awaits",
   severity: "warn",
   tags: ["test-noise"],
   recommendation:
-    "Wrap independent awaits in `Promise.all([...])` so they race instead of waterfalling — second call doesn't depend on the first",
+    "These two awaits don't depend on each other. Wrap them in `Promise.all([...])` so they run at the same time.",
   create: (context: RuleContext) => {
     const inspectStatements = (statements: EsTreeNode[]): void => {
       for (let statementIndex = 0; statementIndex < statements.length - 1; statementIndex++) {
@@ -83,7 +84,7 @@ export const serverSequentialIndependentAwait = defineRule<Rule>({
         context.report({
           node: nextStatement,
           message:
-            "Sequential `await` without a data dependency on the previous result — wrap the independent calls in `Promise.all([...])` so they race instead of waterfalling",
+            "This await doesn't use the previous result, so your users wait twice as long for nothing.",
         });
         // Skip past the next so we don't double-report a chain.
         statementIndex++;

@@ -14,11 +14,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // titles, and keyboard avoidance for free.
 export const rnPreferContentInsetAdjustment = defineRule<Rule>({
   id: "rn-prefer-content-inset-adjustment",
+  title: "SafeAreaView instead of contentInsetAdjustment",
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    'Drop the SafeAreaView wrapper and set `contentInsetAdjustmentBehavior="automatic"` on the ScrollView for native safe-area handling',
+    'Drop the SafeAreaView wrapper and set `contentInsetAdjustmentBehavior="automatic"` on the ScrollView so the OS handles the safe area.',
   create: (context: RuleContext) => ({
     JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
       const elementName = resolveJsxElementName(node.openingElement);
@@ -32,7 +33,7 @@ export const rnPreferContentInsetAdjustment = defineRule<Rule>({
 
         context.report({
           node,
-          message: `<SafeAreaView> wrapping <${childName}> — set \`contentInsetAdjustmentBehavior="automatic"\` on the ${childName} and drop the SafeAreaView wrapper for native safe-area handling`,
+          message: `Your users render an extra wrapper view from <SafeAreaView> around <${childName}>.`,
         });
         return;
       }

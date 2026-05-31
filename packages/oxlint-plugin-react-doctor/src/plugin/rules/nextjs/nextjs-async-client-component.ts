@@ -10,6 +10,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const nextjsAsyncClientComponent = defineRule<Rule>({
   id: "nextjs-async-client-component",
+  title: "Async client component",
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "error",
@@ -27,7 +28,7 @@ export const nextjsAsyncClientComponent = defineRule<Rule>({
         if (!node.id?.name || !isUppercaseName(node.id.name)) return;
         context.report({
           node,
-          message: `Async client component "${node.id.name}" — client components cannot be async`,
+          message: `Async client component "${node.id.name}" fails to render because client components can't be async.`,
         });
       },
       VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
@@ -38,7 +39,7 @@ export const nextjsAsyncClientComponent = defineRule<Rule>({
         if (!isNodeOfType(node.id, "Identifier")) return;
         context.report({
           node,
-          message: `Async client component "${node.id.name}" — client components cannot be async`,
+          message: `Async client component "${node.id.name}" fails to render because client components can't be async.`,
         });
       },
     };

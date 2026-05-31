@@ -55,10 +55,11 @@ const BORDER_SIDE_WIDTH_KEYS = new Set([
 
 export const noSideTabBorder = defineRule<Rule>({
   id: "no-side-tab-border",
+  title: "Thick one-sided border",
   tags: ["design", "test-noise"],
   severity: "warn",
   recommendation:
-    "Use a subtler accent (box-shadow inset, background gradient, or border-bottom) instead of a thick one-sided border",
+    "Use a softer accent like an inset box-shadow, a background, or a thin border-bottom instead of a thick one-sided border.",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);
@@ -101,7 +102,7 @@ export const noSideTabBorder = defineRule<Rule>({
           if (width >= threshold) {
             context.report({
               node: property,
-              message: `Thick one-sided border (${sideLabel}: ${width}px) — the most recognizable tell of AI-generated UIs. Use a subtler accent or remove it`,
+              message: `Your users see an off, dated thick border on one side (${sideLabel}: ${width}px), so use a softer accent or drop it.`,
             });
           }
         }
@@ -124,7 +125,7 @@ export const noSideTabBorder = defineRule<Rule>({
           if (width >= threshold) {
             context.report({
               node: property,
-              message: `Thick one-sided border (${width}px) — the most recognizable tell of AI-generated UIs. Use a subtler accent or remove it`,
+              message: `Your users see an off, dated thick border on one side (${width}px), so use a softer accent or drop it.`,
             });
           }
         }
@@ -153,7 +154,7 @@ export const noSideTabBorder = defineRule<Rule>({
       if (width >= tailwindThreshold) {
         context.report({
           node,
-          message: `Thick one-sided border (${sideMatch[0]}) — the most recognizable tell of AI-generated UIs. Use a subtler accent or remove it`,
+          message: `Your users see an off, dated thick border on one side (${sideMatch[0]}), so use a softer accent or drop it.`,
         });
       }
     },

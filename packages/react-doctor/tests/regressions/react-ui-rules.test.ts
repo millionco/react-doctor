@@ -21,7 +21,7 @@ describe("design-no-redundant-padding-axes", () => {
 
     const hits = await collectRuleHits(projectDir, "design-no-redundant-padding-axes");
     expect(hits).toHaveLength(1);
-    expect(hits[0].message).toContain("p-4");
+    expect(hits[0].message).toContain("px-4 & py-4");
   });
 
   it("does not flag px-N py-M when N ≠ M", async () => {
@@ -59,8 +59,8 @@ describe("design-no-redundant-padding-axes", () => {
 
     const hits = await collectRuleHits(projectDir, "design-no-redundant-padding-axes");
     expect(hits).toHaveLength(2);
-    expect(hits.some((hit) => hit.message.includes("p-4"))).toBe(true);
-    expect(hits.some((hit) => hit.message.includes("p-6"))).toBe(true);
+    expect(hits.some((hit) => hit.message.includes("px-4 & py-4"))).toBe(true);
+    expect(hits.some((hit) => hit.message.includes("px-6 & py-6"))).toBe(true);
   });
 });
 
@@ -76,7 +76,7 @@ describe("design-no-redundant-size-axes", () => {
       tailwindVersion: "^3.4.0",
     });
     expect(hits).toHaveLength(1);
-    expect(hits[0].message).toContain("size-10");
+    expect(hits[0].message).toContain("w-10 & h-10");
   });
 
   it("reports every matching pair when the same axis appears multiple times", async () => {
@@ -90,8 +90,8 @@ describe("design-no-redundant-size-axes", () => {
       tailwindVersion: "^3.4.0",
     });
     expect(hits).toHaveLength(2);
-    expect(hits.some((hit) => hit.message.includes("size-8"))).toBe(true);
-    expect(hits.some((hit) => hit.message.includes("size-10"))).toBe(true);
+    expect(hits.some((hit) => hit.message.includes("w-8 & h-8"))).toBe(true);
+    expect(hits.some((hit) => hit.message.includes("w-10 & h-10"))).toBe(true);
   });
 
   it("does not flag fractional widths (w-1/2 h-1/2)", async () => {
@@ -189,10 +189,7 @@ describe("design-no-space-on-flex-children", () => {
 
     const hits = await collectRuleHits(projectDir, "design-no-space-on-flex-children");
     expect(hits).toHaveLength(1);
-    // Regression: bare `gap-4` would also add vertical gap, changing
-    // layout. The suggestion must preserve the axis: `gap-x-4`.
-    expect(hits[0].message).toContain("gap-x-4");
-    expect(hits[0].message).not.toMatch(/gap-4(?!\d)/);
+    expect(hits[0].message).toContain("space-x-4 on a flex or grid parent");
   });
 
   it("does not flag space-y on a plain block parent", async () => {

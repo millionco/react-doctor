@@ -14,11 +14,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // constant, useMemo at list scope) or pass primitives into the row.
 export const rnNoInlineObjectInListItem = defineRule<Rule>({
   id: "rn-no-inline-object-in-list-item",
+  title: "Inline object in list renderItem",
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    "Hoist style/object props outside renderItem (StyleSheet.create, useMemo at list scope, or pass primitives) so memo() row components stop bailing",
+    "Move style and object props out of renderItem (StyleSheet.create, useMemo at list scope, or pass primitives) so memo() rows stop redrawing when their data has not changed.",
   create: (context: RuleContext) => {
     const renderPropStack: string[] = [];
 
@@ -58,12 +59,10 @@ export const rnNoInlineObjectInListItem = defineRule<Rule>({
         const isInlineObject = isNodeOfType(expression, "ObjectExpression");
         const isInlineArray = isNodeOfType(expression, "ArrayExpression");
         if (!isInlineObject && !isInlineArray) return;
-        const propName = isNodeOfType(node.name, "JSXIdentifier") ? node.name.name : "<unknown>";
         const literalKind = isInlineArray ? "array" : "object";
-        const activeRenderProp = renderPropStack[renderPropStack.length - 1];
         context.report({
           node,
-          message: `Inline ${literalKind} literal on "${propName}" inside ${activeRenderProp} — allocates a fresh reference per render and breaks memo(). Hoist outside ${activeRenderProp} or pass primitives`,
+          message: `This ${literalKind} is rebuilt for every row, so your memo() rows still redraw.`,
         });
       },
     };

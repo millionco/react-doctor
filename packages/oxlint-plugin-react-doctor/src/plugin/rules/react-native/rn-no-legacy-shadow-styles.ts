@@ -25,17 +25,18 @@ const reportLegacyShadowProperties = (
   const quotedPropertyNames = legacyShadowPropertyNames.map((name) => `"${name}"`).join(", ");
   context.report({
     node: objectExpression,
-    message: `Legacy shadow style${legacyShadowPropertyNames.length > 1 ? "s" : ""} ${quotedPropertyNames} — use boxShadow for cross-platform shadows on the new architecture`,
+    message: `Shadow style${legacyShadowPropertyNames.length > 1 ? "s" : ""} ${quotedPropertyNames} only work on one platform, so your users on the other see no shadow.`,
   });
 };
 
 export const rnNoLegacyShadowStyles = defineRule<Rule>({
   id: "rn-no-legacy-shadow-styles",
+  title: "Legacy platform-specific shadow styles",
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    "Use `boxShadow` for cross-platform shadows on the new architecture instead of platform-specific shadow properties",
+    "Use `boxShadow` for shadows that work on both platforms on the new architecture, instead of platform-specific shadow properties.",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       if (!isNodeOfType(node.name, "JSXIdentifier")) return;

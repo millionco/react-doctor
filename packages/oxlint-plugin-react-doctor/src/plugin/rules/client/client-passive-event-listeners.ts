@@ -9,10 +9,11 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const clientPassiveEventListeners = defineRule<Rule>({
   id: "client-passive-event-listeners",
+  title: "Non-passive scroll listener",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Add `{ passive: true }` as the third argument: `addEventListener('scroll', handler, { passive: true })`. Only do this if the handler does NOT call `event.preventDefault()` — passive listeners silently ignore `preventDefault()`, which breaks features like pull-to-refresh suppression, custom gestures, and nested-scroll containment.",
+    "Add `{ passive: true }` as the third argument: `addEventListener('scroll', handler, { passive: true })`. Only do this if the handler doesn't call `event.preventDefault()`, since passive listeners ignore it (which breaks pull-to-refresh, custom gestures, and nested scrolling).",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isMemberProperty(node.callee, "addEventListener")) return;
@@ -32,7 +33,7 @@ export const clientPassiveEventListeners = defineRule<Rule>({
       if (!optionsArgument) {
         context.report({
           node,
-          message: `"${eventName}" listener without { passive: true } — blocks scrolling performance. Only add { passive: true } if the handler does NOT call event.preventDefault() (passive listeners silently ignore preventDefault())`,
+          message: `"${eventName}" listener without { passive: true } makes scrolling janky for your users. Only add it if the handler doesn't call event.preventDefault(), since passive listeners silently ignore preventDefault().`,
         });
         return;
       }
@@ -51,7 +52,7 @@ export const clientPassiveEventListeners = defineRule<Rule>({
       if (!hasPassiveTrue) {
         context.report({
           node,
-          message: `"${eventName}" listener without { passive: true } — blocks scrolling performance. Only add { passive: true } if the handler does NOT call event.preventDefault() (passive listeners silently ignore preventDefault())`,
+          message: `"${eventName}" listener without { passive: true } makes scrolling janky for your users. Only add it if the handler doesn't call event.preventDefault(), since passive listeners silently ignore preventDefault().`,
         });
       }
     },

@@ -6,7 +6,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
 const MESSAGE =
-  "Components wrapped with `forwardRef` must accept a `ref` parameter — drop `forwardRef` if you don't need a ref.";
+  "The parent can't reach this component's node because the `forwardRef` wrapper ignores `ref`.";
 
 // Port of `oxc_linter::rules::react::forward_ref_uses_ref`. Reports
 // `forwardRef((props) => …)` and `React.forwardRef((props) => …)` —
@@ -14,6 +14,7 @@ const MESSAGE =
 // `forwardRef` is a no-op wrapper.
 export const forwardRefUsesRef = defineRule<Rule>({
   id: "forward-ref-uses-ref",
+  title: "forwardRef without ref parameter",
   severity: "warn",
   recommendation: "Either accept a `ref` parameter, or drop the `forwardRef` wrapper.",
   category: "Architecture",

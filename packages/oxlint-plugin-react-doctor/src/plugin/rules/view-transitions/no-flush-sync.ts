@@ -12,11 +12,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // site, which would clutter output for files with several flushSync()s.
 export const noFlushSync = defineRule<Rule>({
   id: "no-flush-sync",
+  title: "flushSync skips View Transitions",
   tags: ["test-noise"],
   severity: "warn",
   category: "Performance",
   recommendation:
-    "Use startTransition for non-urgent updates — flushSync forces a sync flush that skips View Transitions and concurrent rendering",
+    "flushSync forces an immediate update that skips View Transitions and concurrent rendering. Use startTransition for updates that are not urgent.",
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       if (node.source?.value !== "react-dom") return;
@@ -26,7 +27,7 @@ export const noFlushSync = defineRule<Rule>({
           context.report({
             node: specifier,
             message:
-              "flushSync from react-dom skips View Transition snapshots and concurrent rendering — prefer startTransition for non-urgent updates",
+              "Your users lose View Transitions & concurrent rendering when flushSync from react-dom forces an immediate update.",
           });
         }
       }

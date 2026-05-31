@@ -14,12 +14,10 @@ import {
 } from "./utils/effect/ast.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import {
-  findContainingNode,
   getEffectFn,
   getEffectFnRefs,
   hasCleanup,
   isConstant,
-  isCustomHook,
   isProp,
   isPropCall,
   isRefCall,
@@ -68,10 +66,11 @@ const isUseRefIdentifier = (identifier: EsTreeNode): boolean => {
 
 export const noPassDataToParent = defineRule<Rule>({
   id: "no-pass-data-to-parent",
+  title: "Data passed to parent via effect",
   severity: "warn",
   tags: ["test-noise"],
   recommendation:
-    "Fetch the data in the parent and pass it to the child as a prop (or return it from the hook), instead of pushing it back up via a prop callback inside a useEffect. See https://react.dev/learn/you-might-not-need-an-effect#passing-data-to-the-parent",
+    "Fetch the data in the parent and pass it down as a prop (or return it from the hook), instead of handing it back up through a prop callback in a useEffect. See https://react.dev/learn/you-might-not-need-an-effect#passing-data-to-the-parent",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isUseEffect(node)) return;
@@ -119,13 +118,10 @@ export const noPassDataToParent = defineRule<Rule>({
         });
         if (!isSomeArgsData) continue;
 
-        const containing = findContainingNode(analysis, node);
-        const isInCustomHook = containing != null && isCustomHook(containing);
         context.report({
           node: callExpr,
-          message: isInCustomHook
-            ? "Avoid passing data to parents in an effect. Instead, return the data from the hook."
-            : "Avoid passing data to parents in an effect. Instead, fetch the data in the parent and pass it down to the child as a prop.",
+          message:
+            "Handing data back to a parent from a useEffect costs your users an extra render.",
         });
       }
     },

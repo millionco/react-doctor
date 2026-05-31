@@ -26,10 +26,11 @@ const isMotionElement = (attributeNode: EsTreeNode): boolean => {
 
 export const noLayoutPropertyAnimation = defineRule<Rule>({
   id: "no-layout-property-animation",
+  title: "Animating a layout property",
   tags: ["test-noise"],
   severity: "error",
   recommendation:
-    "Use `transform: translateX()` or `scale()` instead — they run on the compositor and skip layout/paint",
+    "Use `transform: translateX()` or `scale()` instead. They animate smoothly without making the browser redo layout or repaint",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || !MOTION_ANIMATE_PROPS.has(node.name.name))
@@ -55,7 +56,7 @@ export const noLayoutPropertyAnimation = defineRule<Rule>({
         if (propertyName && LAYOUT_PROPERTIES.has(propertyName)) {
           context.report({
             node: property,
-            message: `Animating layout property "${propertyName}" triggers layout recalculation every frame — use transform/scale or the layout prop`,
+            message: `This stutters because animating "${propertyName}" makes the browser redo page layout every frame, so animate transform or scale instead, or use the layout prop`,
           });
         }
       }

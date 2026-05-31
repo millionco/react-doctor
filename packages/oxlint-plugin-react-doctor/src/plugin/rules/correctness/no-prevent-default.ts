@@ -38,16 +38,16 @@ const SERVER_CAPABLE_FRAMEWORKS = new Set<string>(["nextjs", "tanstack-start", "
 const CLIENT_ONLY_FRAMEWORKS = new Set<string>(["vite", "cra", "gatsby", "react-native", "expo"]);
 
 const FORM_MESSAGE_SERVER_CAPABLE =
-  "preventDefault() on <form> onSubmit — form won't work without JavaScript. Use a server action (`<form action={serverAction}>`) for progressive enhancement";
+  "Your users can't submit this <form> without JavaScript because onSubmit calls preventDefault(), so use a server action like `<form action={serverAction}>` to make it work either way.";
 
 // Used for `framework === "unknown"` (project classification failed or
 // not yet wired). Keeps the diagnostic but drops the framework-specific
 // "server action" jargon so the advice stays honest.
 const FORM_MESSAGE_GENERIC =
-  "preventDefault() on <form> onSubmit — form won't work without JavaScript. Consider a form action for progressive enhancement";
+  "Your users can't submit this <form> when JavaScript is off, so the form won't work without JavaScript. Consider a form action so it still works.";
 
 const ANCHOR_MESSAGE =
-  "preventDefault() on <a> onClick — use a <button> or routing component instead";
+  "Your users click this <a> & nothing navigates because onClick calls preventDefault(), so use a <button> or a routing component instead.";
 
 const containsPreventDefaultCall = (node: EsTreeNode): boolean => {
   let didFindPreventDefault = false;
@@ -72,9 +72,10 @@ const selectFormMessage = (framework: string | undefined): string =>
 
 export const noPreventDefault = defineRule<Rule>({
   id: "no-prevent-default",
+  title: "preventDefault on a form or link",
   severity: "warn",
   recommendation:
-    "Use `<form action>` (works without JS) where your framework supports it, or use a `<button>` instead of `<a>` with preventDefault",
+    "Use `<form action>` where your framework supports it (it works without JS), or use a `<button>` instead of an `<a>` with preventDefault.",
   create: (context: RuleContext) => {
     const framework = getReactDoctorStringSetting(context.settings, "framework");
     const isClientOnlyFramework = framework !== undefined && CLIENT_ONLY_FRAMEWORKS.has(framework);

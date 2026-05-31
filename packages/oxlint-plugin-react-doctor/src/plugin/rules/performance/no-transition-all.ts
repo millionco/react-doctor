@@ -6,10 +6,11 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noTransitionAll = defineRule<Rule>({
   id: "no-transition-all",
+  title: "transition: all animates everything",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    'List specific properties: `transition: "opacity 200ms, transform 200ms"` — or in Tailwind use `transition-colors`, `transition-opacity`, or `transition-transform`',
+    'List the specific properties: `transition: "opacity 200ms, transform 200ms"`. In Tailwind, use `transition-colors`, `transition-opacity`, or `transition-transform`',
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "style") return;
@@ -31,7 +32,7 @@ export const noTransitionAll = defineRule<Rule>({
           context.report({
             node: property,
             message:
-              'transition: "all" animates every property including layout — list only the properties you animate',
+              'This can stutter because transition: "all" animates every property, even slow layout ones, so list only the properties you actually change',
           });
         }
       }

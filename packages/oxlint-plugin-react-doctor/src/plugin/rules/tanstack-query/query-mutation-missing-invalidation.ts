@@ -9,6 +9,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const queryMutationMissingInvalidation = defineRule<Rule>({
   id: "query-mutation-missing-invalidation",
+  title: "Mutation without cache invalidation",
   tags: ["test-noise"],
   requires: ["tanstack-query"],
   severity: "warn",
@@ -50,7 +51,7 @@ export const queryMutationMissingInvalidation = defineRule<Rule>({
         context.report({
           node,
           message:
-            "useMutation without a cache update — stale data may remain after the mutation. Call queryClient.invalidateQueries / setQueryData / resetQueries / refetchQueries inside onSuccess (or trigger a router refresh)",
+            "useMutation with no cache update leaves your users looking at stale data after it runs.",
         });
       }
     },

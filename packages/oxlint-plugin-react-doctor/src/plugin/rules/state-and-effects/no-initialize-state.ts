@@ -15,7 +15,6 @@ import {
   isStateSetterCall,
   isUseEffect,
 } from "./utils/effect/react.js";
-import { stringifyExpressionSnippet } from "./utils/effect/stringify-expression-snippet.js";
 
 // 1:1 port of upstream `src/rules/no-initialize-state.js`.
 // Difference vs upstream: upstream uses `context.sourceCode.getText`
@@ -27,6 +26,7 @@ import { stringifyExpressionSnippet } from "./utils/effect/stringify-expression-
 
 export const noInitializeState = defineRule<Rule>({
   id: "no-initialize-state",
+  title: "State initialized from a mount effect",
   severity: "warn",
   tags: ["test-noise"],
   recommendation:
@@ -58,13 +58,9 @@ export const noInitializeState = defineRule<Rule>({
         const stateBinding = elements[0] ?? elements[1];
         const stateName =
           stateBinding && isNodeOfType(stateBinding, "Identifier") ? stateBinding.name : "<state>";
-        const argumentText =
-          callExpr.arguments && callExpr.arguments.length > 0
-            ? stringifyExpressionSnippet(callExpr.arguments[0] as EsTreeNode)
-            : "undefined";
         context.report({
           node: callExpr,
-          message: `Avoid initializing state in an effect. Instead, initialize "${stateName}"'s \`useState()\` with "${argumentText}". For SSR hydration, prefer \`useSyncExternalStore()\`.`,
+          message: `Your users see an extra render with empty "${stateName}" because a useEffect sets its starting value.`,
         });
       }
     },

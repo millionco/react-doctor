@@ -100,11 +100,12 @@ const isTapChainEligibleForPressable = (chain: GestureChainInfo): boolean => {
 
 export const rnPreferPressableOverGestureDetector = defineRule<Rule>({
   id: "rn-prefer-pressable-over-gesture-detector",
+  title: "GestureDetector for a plain tap",
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    "Replace `<GestureDetector gesture={Gesture.Tap()...}>` with `<Pressable>` (or `createCSSAnimatedComponent(Pressable)` from react-native-reanimated/css for animated press feedback) — every GestureDetector registers a native handler on mount",
+    "Every GestureDetector sets up a native handler when it appears, which slows the screen. For a plain tap, use `<Pressable>` (or `createCSSAnimatedComponent(Pressable)` from react-native-reanimated/css for animated press feedback).",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const elementName = resolveJsxElementName(node);
@@ -142,7 +143,7 @@ export const rnPreferPressableOverGestureDetector = defineRule<Rule>({
       context.report({
         node,
         message:
-          "<GestureDetector gesture={Gesture.Tap()...}> registers a native handler per mount — for tap-only feedback use <Pressable> (with createCSSAnimatedComponent(Pressable) from react-native-reanimated/css for animation)",
+          "Your users wait longer for the screen when <GestureDetector> handles a simple tap.",
       });
     },
   }),

@@ -6,11 +6,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const rnNoSingleElementStyleArray = defineRule<Rule>({
   id: "rn-no-single-element-style-array",
+  title: "Single-element style array",
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    "Use `style={value}` instead of `style={[value]}` — single-element arrays add unnecessary allocation",
+    "Use `style={value}` instead of `style={[value]}`. A one-item array just adds extra work for nothing.",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const propName = isNodeOfType(node.name, "JSXIdentifier") ? node.name.name : null;
@@ -24,7 +25,7 @@ export const rnNoSingleElementStyleArray = defineRule<Rule>({
 
       context.report({
         node: expression,
-        message: `Single-element style array on "${propName}" — use ${propName}={value} instead of ${propName}={[value]} to avoid unnecessary array allocation`,
+        message: `Your users pay for an extra array allocation when "${propName}" wraps a single value for nothing.`,
       });
     },
   }),

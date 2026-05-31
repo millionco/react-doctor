@@ -12,11 +12,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const nextjsNoClientFetchForServerData = defineRule<Rule>({
   id: "nextjs-no-client-fetch-for-server-data",
+  title: "Client fetch for server data",
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "warn",
   recommendation:
-    "Remove 'use client' and fetch directly in the Server Component — no API round-trip, secrets stay on server",
+    "Remove 'use client' and fetch directly in the Server Component. No API round-trip, and secrets stay on the server.",
   create: (context: RuleContext) => {
     let fileHasUseClient = false;
 
@@ -38,7 +39,7 @@ export const nextjsNoClientFetchForServerData = defineRule<Rule>({
           context.report({
             node,
             message:
-              "useEffect + fetch in a page/layout — fetch data server-side with a server component instead",
+              "useEffect + fetch in a page/layout makes your users wait through an extra round trip & loading spinner.",
           });
         }
       },

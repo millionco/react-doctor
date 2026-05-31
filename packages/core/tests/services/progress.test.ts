@@ -25,8 +25,10 @@ describe("Progress.layerOra", () => {
     const factory = (text: string): ProgressHandle => {
       calls.push(`start:${text}`);
       return {
+        update: (displayText: string) => Effect.sync(() => calls.push(`update:${displayText}`)),
         succeed: (displayText: string) => Effect.sync(() => calls.push(`succeed:${displayText}`)),
         fail: (displayText: string) => Effect.sync(() => calls.push(`fail:${displayText}`)),
+        stop: () => Effect.sync(() => calls.push("stop")),
       };
     };
     await Effect.runPromise(

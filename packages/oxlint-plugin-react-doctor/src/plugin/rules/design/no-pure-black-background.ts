@@ -10,10 +10,11 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noPureBlackBackground = defineRule<Rule>({
   id: "no-pure-black-background",
+  title: "Pure black background",
   tags: ["design", "test-noise"],
   severity: "warn",
   recommendation:
-    "Tint the background slightly toward your brand hue — e.g. `#0a0a0f` or Tailwind's `bg-gray-950`. Pure black looks harsh on modern displays",
+    "Nudge the background slightly toward your brand color, like `#0a0a0f` or Tailwind's `bg-gray-950`. Pure black looks harsh on modern screens.",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);
@@ -28,7 +29,7 @@ export const noPureBlackBackground = defineRule<Rule>({
           context.report({
             node: property,
             message:
-              "Pure #000 background looks harsh — tint slightly toward your brand hue for a more refined feel (e.g. #0a0a0f)",
+              "Your users see a harsh pure #000 background, so nudge it toward your brand color, like #0a0a0f.",
           });
         }
       }
@@ -41,7 +42,7 @@ export const noPureBlackBackground = defineRule<Rule>({
         context.report({
           node,
           message:
-            "Pure black background (bg-black) looks harsh — use a near-black tinted toward your brand hue (e.g. bg-gray-950)",
+            "Your users see a harsh pure black background (bg-black), so use a near-black with a hint of your brand color, like bg-gray-950.",
         });
       }
     },

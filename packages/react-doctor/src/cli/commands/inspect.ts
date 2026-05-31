@@ -24,6 +24,7 @@ import { STAGED_FILES_TEMP_DIR_PREFIX } from "../utils/constants.js";
 import { getStagedSourceFiles, materializeStagedFiles } from "../utils/get-staged-files.js";
 import type { InspectFlags } from "../utils/inspect-flags.js";
 import { handleError } from "../utils/handle-error.js";
+import { handoffToAgent } from "../utils/handoff-to-agent.js";
 import {
   enableJsonMode,
   setJsonReportDirectory,
@@ -33,12 +34,11 @@ import {
 } from "../utils/json-mode.js";
 import { printAnnotations } from "../utils/print-annotations.js";
 import { printBrandedHeader } from "../utils/print-branded-header.js";
-import { promptCopyIssues } from "../utils/copy-issues-to-clipboard.js";
 import { readChangedFilesFrom } from "../utils/read-changed-files-from.js";
 import { printMultiProjectSummary } from "../utils/render-multi-project-summary.js";
+import { isCiOrCodingAgentEnvironment } from "../utils/is-ci-environment.js";
 import {
   printAgentInstallHint,
-  promptInstallSetup,
   resolveInstallSetupProjectRoot,
   shouldShowAgentInstallHint,
 } from "../utils/prompt-install-setup.js";
@@ -337,27 +337,33 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       startTime,
     });
 
+    const surfaceDiagnostics = filterDiagnosticsForSurface(
+      allDiagnostics,
+      scanOptions.outputSurface ?? "cli",
+      userConfig,
+    );
+
+    // After the results print, offer to hand the issues to a coding agent
+    // — an interactive select (no flag). Skipped for quiet, skip-prompts,
+    // non-TTY, and agent/CI runs (those get the install hint below).
+    const canPromptInteractively =
+      !isQuiet && !skipPrompts && process.stdout.isTTY === true && !isCiOrCodingAgentEnvironment();
+    if (canPromptInteractively && surfaceDiagnostics.length > 0) {
+      await handoffToAgent({
+        diagnostics: surfaceDiagnostics,
+        projectName: path.basename(resolvedDirectory),
+        rootDirectory: resolvedDirectory,
+        interactive: true,
+      });
+      return;
+    }
+
     const setupProjectRoot = resolveInstallSetupProjectRoot({
       scanRoot: resolvedDirectory,
       scanDirectories: projectDirectories,
     });
     if (setupProjectRoot !== null) {
       const hasCompletedScan = completedScans.length > 0;
-
-      await promptInstallSetup({
-        projectRoot: setupProjectRoot,
-        hasCompletedScan,
-        issueCount: filterDiagnosticsForSurface(
-          allDiagnostics,
-          scanOptions.outputSurface ?? "cli",
-          userConfig,
-        ).length,
-        isJsonMode,
-        isScoreOnly,
-        isStaged: Boolean(flags.staged),
-        skipPrompts,
-      });
-
       if (
         shouldShowAgentInstallHint({
           projectRoot: setupProjectRoot,
@@ -369,15 +375,6 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       ) {
         printAgentInstallHint();
       }
-    }
-
-    if (!skipPrompts && !isQuiet && allDiagnostics.length > 0) {
-      const lastScan = completedScans[completedScans.length - 1];
-      await promptCopyIssues({
-        diagnostics: allDiagnostics,
-        score: lastScan?.result.score ?? null,
-        projectName: lastScan?.result.project.projectName ?? path.basename(resolvedDirectory),
-      });
     }
   } catch (error) {
     if (isJsonMode) {

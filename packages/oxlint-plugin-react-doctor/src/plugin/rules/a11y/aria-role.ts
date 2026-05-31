@@ -9,7 +9,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
 const buildBaseMessage = (suffix: string): string =>
-  `Elements with ARIA roles must use a valid, non-abstract role${suffix}.`;
+  `Screen reader users get no help from this \`role\` because it isn't a valid ARIA role, so use a real, non-abstract role.${suffix}`;
 
 interface AriaRoleSettings {
   allowedInvalidRoles?: ReadonlyArray<string>;
@@ -33,9 +33,10 @@ const resolveSettings = (
 // Port of `oxc_linter::rules::jsx_a11y::aria_role`.
 export const ariaRole = defineRule<Rule>({
   id: "aria-role",
+  title: "Invalid ARIA role",
   tags: ["react-jsx-only"],
   severity: "error",
-  recommendation: "Use a documented non-abstract WAI-ARIA role.",
+  recommendation: "Use a real, non-abstract ARIA role.",
   category: "Accessibility",
   create: (context) => {
     const settings = resolveSettings(context.settings);
@@ -65,7 +66,7 @@ export const ariaRole = defineRule<Rule>({
             if (!VALID_ARIA_ROLES.has(token) && !settings.allowedInvalidRoles.includes(token)) {
               context.report({
                 node: roleAttribute,
-                message: buildBaseMessage(`, \`${token}\` is an invalid aria role`),
+                message: buildBaseMessage(` \`${token}\` is not one.`),
               });
               return;
             }

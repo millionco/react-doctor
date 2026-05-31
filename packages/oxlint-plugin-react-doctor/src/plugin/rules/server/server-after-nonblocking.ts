@@ -46,10 +46,11 @@ const isDeferrableSideEffectCall = (objectName: string, methodName: string): boo
 
 export const serverAfterNonblocking = defineRule<Rule>({
   id: "server-after-nonblocking",
+  title: "Blocking side effect before response",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "`import { after } from 'next/server'` then wrap: `after(() => analytics.track(...))` — response isn't blocked",
+    "`import { after } from 'next/server'`, then wrap it: `after(() => analytics.track(...))`. The response sends right away.",
   create: (context: RuleContext) => {
     let fileHasUseServerDirective = false;
     let serverFunctionDepth = 0;
@@ -86,7 +87,7 @@ export const serverAfterNonblocking = defineRule<Rule>({
 
         context.report({
           node,
-          message: `${objectName}.${methodName}() in server action — wrap in \`after(() => ${objectName}.${methodName}(...))\` so it doesn't delay the user-visible response`,
+          message: `${objectName}.${methodName}() runs before the response, so your users wait longer for it.`,
         });
       },
     };

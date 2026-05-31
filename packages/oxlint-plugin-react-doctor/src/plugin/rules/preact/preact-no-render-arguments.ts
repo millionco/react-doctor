@@ -33,7 +33,7 @@ const isPreactOrReactComponentClass = (node: EsTreeNode): boolean => {
 };
 
 const RENDER_ARGUMENTS_MESSAGE =
-  "Preact's `render(props, state)` argument shape is harder to type than `this.props` / `this.state`, breaks under `preact/compat` (which mirrors React's parameterless signature), and quietly diverges from every other Preact lifecycle method. Prefer reading from `this.props` / `this.state`.";
+  "Your users hit `undefined` props under `preact/compat` when you read `render(props, state)` from arguments, since compat uses React's parameterless render, so read from `this.props` & `this.state` instead.";
 
 const isInstanceMethodNamedRender = (
   node: EsTreeNode,
@@ -91,6 +91,7 @@ const stripThisParameter = (params: ReadonlyArray<EsTreeNode>): ReadonlyArray<Es
 // and non-component classes are untouched.
 export const preactNoRenderArguments = defineRule<Rule>({
   id: "preact-no-render-arguments",
+  title: "render() reads props from arguments",
   requires: ["preact"],
   severity: "warn",
   recommendation:

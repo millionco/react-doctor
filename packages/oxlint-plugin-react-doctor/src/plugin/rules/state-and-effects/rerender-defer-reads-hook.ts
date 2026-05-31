@@ -51,11 +51,12 @@ const findHookCallBindings = (
 // expressions that are themselves bound to JSX `on*` attributes.
 export const rerenderDeferReadsHook = defineRule<Rule>({
   id: "rerender-defer-reads-hook",
+  title: "URL hook value only read in handlers",
   tags: ["test-noise"],
   severity: "warn",
   category: "Performance",
   recommendation:
-    "Read the URL state inside the handler (e.g. `new URL(window.location.href).searchParams`) so the component doesn't subscribe and re-render on every URL change",
+    "Read the URL inside the handler (e.g. `new URL(window.location.href).searchParams`) so the component doesn't redraw every time the URL changes.",
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
@@ -85,7 +86,7 @@ export const rerenderDeferReadsHook = defineRule<Rule>({
 
         context.report({
           node: binding.declarator,
-          message: `${binding.hookName}() return is only read inside event handlers — defer the read into the handler (e.g. \`new URL(window.location.href).searchParams\`) so the component doesn't re-render on every URL change`,
+          message: `${binding.hookName}() redraws your component on every URL change even though it's only read inside event handlers.`,
         });
       }
     };

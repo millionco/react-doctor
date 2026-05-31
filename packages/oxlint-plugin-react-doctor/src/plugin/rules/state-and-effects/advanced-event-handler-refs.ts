@@ -29,11 +29,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // browser `addEventListener`, EventEmitter `on`, etc.).
 export const advancedEventHandlerRefs = defineRule<Rule>({
   id: "advanced-event-handler-refs",
+  title: "Listener re-subscribes on every handler change",
   tags: ["test-noise"],
   severity: "warn",
   category: "Performance",
   recommendation:
-    "Store the handler in a ref and have the listener read `handlerRef.current()` — the subscription stays put while the latest handler is always called",
+    "Store the handler in a ref and have the listener read `handlerRef.current()`. The subscription stays put while the latest handler still runs.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isHookCall(node, EFFECT_HOOK_NAMES)) return;
@@ -73,7 +74,7 @@ export const advancedEventHandlerRefs = defineRule<Rule>({
       if (registeredHandlerName) {
         context.report({
           node,
-          message: `useEffect re-subscribes a "${registeredHandlerName}" listener every time the handler identity changes — store the handler in a ref and have the listener read \`handlerRef.current()\`, then drop it from the deps`,
+          message: `useEffect re-adds the "${registeredHandlerName}" listener every time the handler changes.`,
         });
       }
     },

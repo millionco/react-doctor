@@ -10,7 +10,7 @@ import { isNonInteractiveElement } from "../../utils/is-non-interactive-element.
 import type { Rule } from "../../utils/rule.js";
 
 const buildMessage = (tag: string, role: string): string =>
-  `Non-interactive element \`<${tag}>\` cannot have interactive role \`${role}\` — use a semantic interactive element instead.`;
+  `Screen reader users get confused because role \`${role}\` makes \`<${tag}>\` act interactive when it isn't, so use a real interactive element instead.`;
 
 const DEFAULT_ALLOWED_ROLES: Record<string, ReadonlyArray<string>> = {
   ul: ["menu", "menubar", "radiogroup", "tablist", "tree", "treegrid"],
@@ -48,10 +48,11 @@ const resolveSettings = (
 // Port of `oxc_linter::rules::jsx_a11y::no_noninteractive_element_to_interactive_role`.
 export const noNoninteractiveElementToInteractiveRole = defineRule<Rule>({
   id: "no-noninteractive-element-to-interactive-role",
+  title: "Noninteractive element given interactive role",
   tags: ["react-jsx-only"],
   severity: "warn",
   recommendation:
-    "Use a semantic interactive element instead of role-promoting a non-interactive one.",
+    "Use a real interactive element instead of adding an interactive role to a static one.",
   category: "Accessibility",
   create: (context) => {
     const allowedRoles = resolveSettings(context.settings);

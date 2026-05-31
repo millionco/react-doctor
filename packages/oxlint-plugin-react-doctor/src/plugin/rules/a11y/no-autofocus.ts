@@ -9,7 +9,7 @@ import type { Rule } from "../../utils/rule.js";
 import { HTML_TAGS } from "../../constants/html-tags.js";
 
 const MESSAGE =
-  "`autoFocus` should not be used — it disrupts users who expect the page focus to remain at the top of the document on load.";
+  "Screen reader & keyboard users get disoriented because `autoFocus` jumps focus on load, so remove it and let people choose where to focus.";
 
 interface NoAutofocusSettings {
   ignoreNonDOM?: boolean;
@@ -94,9 +94,10 @@ const isFalseAttributeValue = (value: EsTreeNode): boolean => {
 // elements (lowercase tag in HTML_TAGS) are checked.
 export const noAutofocus = defineRule<Rule>({
   id: "no-autofocus",
+  title: "Autofocus on an element",
   tags: ["react-jsx-only"],
   severity: "warn",
-  recommendation: "Don't use `autoFocus` — it disorients users.",
+  recommendation: "Do not use `autoFocus`. It disorients users on load.",
   category: "Accessibility",
   create: (context) => {
     const settings = resolveSettings(context.settings);

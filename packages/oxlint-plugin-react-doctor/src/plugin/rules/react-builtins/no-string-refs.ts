@@ -6,8 +6,10 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import type { Rule } from "../../utils/rule.js";
 
-const STRING_IN_REF_MESSAGE = "Using a string literal in a `ref` attribute is deprecated.";
-const THIS_REFS_MESSAGE = "Using `this.refs` is deprecated.";
+const STRING_IN_REF_MESSAGE =
+  "Your component can't reach this node because string refs don't work in modern React.";
+const THIS_REFS_MESSAGE =
+  "Your component can't reach its nodes because `this.refs` is empty in modern React.";
 
 const isStringLiteralRefAttribute = (
   attribute: EsTreeNodeOfType<"JSXAttribute">,
@@ -55,6 +57,7 @@ const resolveSettings = (
 //   2. `this.refs.foo` — when used inside a React component's body.
 export const noStringRefs = defineRule<Rule>({
   id: "no-string-refs",
+  title: "Use of string refs",
   severity: "warn",
   recommendation:
     "Use a callback ref (`ref={(node) => { this.foo = node }}`) or `useRef` instead of string refs.",

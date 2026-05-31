@@ -11,9 +11,9 @@ import { isReactComponentName } from "../../utils/is-react-component-name.js";
 import type { Rule } from "../../utils/rule.js";
 
 const MESSAGE_NO_LABEL =
-  "A form label must have accessible text — add visible content, `aria-label`, or `aria-labelledby`.";
+  "Blind users can't identify this field because screen readers find no label text, so add visible text, `aria-label`, or `aria-labelledby`.";
 const MESSAGE_NO_CONTROL =
-  "A form label must be associated with a control — use `htmlFor` or nest the input.";
+  "Screen reader users can't tell which input this label names because it's tied to none, so add `htmlFor` or wrap the input inside it.";
 
 interface LabelHasAssociatedControlSettings {
   labelComponents?: ReadonlyArray<string>;
@@ -195,9 +195,10 @@ const hasNestedControl = (
 // Port of `oxc_linter::rules::jsx_a11y::label_has_associated_control`.
 export const labelHasAssociatedControl = defineRule<Rule>({
   id: "label-has-associated-control",
+  title: "Label missing associated control",
   tags: ["react-jsx-only"],
   severity: "warn",
-  recommendation: "Associate every label with a control via `htmlFor` or by nesting the input.",
+  recommendation: "Tie every label to a control with `htmlFor`, or by nesting the input.",
   category: "Accessibility",
   create: (context) => {
     const settings = resolveSettings(context.settings);

@@ -23,9 +23,10 @@ const isNumericName = (name: string): boolean => {
 
 export const renderingConditionalRender = defineRule<Rule>({
   id: "rendering-conditional-render",
+  title: "Number before && renders stray 0",
   severity: "warn",
   recommendation:
-    "Change to `{items.length > 0 && <List />}` or use a ternary: `{items.length ? <List /> : null}`",
+    "Use `{items.length > 0 && <List />}`, or a ternary like `{items.length ? <List /> : null}`.",
   create: (context: RuleContext) => ({
     LogicalExpression(node: EsTreeNodeOfType<"LogicalExpression">) {
       if (node.operator !== "&&") return;
@@ -48,7 +49,7 @@ export const renderingConditionalRender = defineRule<Rule>({
         context.report({
           node,
           message:
-            "Conditional rendering with a numeric value can render '0' — use `value > 0`, `Boolean(value)`, or a ternary",
+            "Your users see a stray '0' on screen when a number before `&&` is zero, so use `value > 0`, `Boolean(value)`, or a ternary instead.",
         });
       }
     },

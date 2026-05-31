@@ -6,10 +6,11 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const preferDynamicImport = defineRule<Rule>({
   id: "prefer-dynamic-import",
+  title: "Heavy library loaded eagerly",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Use `const Component = dynamic(() => import('library'), { ssr: false })` from next/dynamic or React.lazy()",
+    "Load it only when needed: `const Component = dynamic(() => import('library'), { ssr: false })` from next/dynamic, or React.lazy().",
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       const source = node.source?.value;
@@ -32,7 +33,7 @@ export const preferDynamicImport = defineRule<Rule>({
       }
       context.report({
         node,
-        message: `"${source}" is a heavy library — use React.lazy() or next/dynamic for code splitting`,
+        message: `"${source}" ships extra code to your users up front & slows page load. Load it on demand with React.lazy() or next/dynamic.`,
       });
     },
   }),

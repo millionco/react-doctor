@@ -15,11 +15,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // in destructured props — so the guidance is uniform.
 export const noDefaultProps = defineRule<Rule>({
   id: "no-default-props",
+  title: "defaultProps removed in React 19",
   requires: ["react:19"],
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    'React 19 removes `Component.defaultProps` for function components. Move the defaults into the destructured props parameter: `function Foo({ size = "md", variant = "primary" })` instead of `Foo.defaultProps = { size: "md", variant: "primary" }`.',
+    'React 19 drops `Component.defaultProps` for function components. Set the defaults in the destructured props instead: `function Foo({ size = "md", variant = "primary" })` instead of `Foo.defaultProps = { size: "md", variant: "primary" }`.',
   create: (context: RuleContext) => ({
     AssignmentExpression(node: EsTreeNodeOfType<"AssignmentExpression">) {
       if (node.operator !== "=") return;
@@ -32,7 +33,7 @@ export const noDefaultProps = defineRule<Rule>({
       if (!isUppercaseName(left.object.name)) return;
       context.report({
         node: left,
-        message: `${left.object.name}.defaultProps — React 19 removes \`defaultProps\` for function components and discourages it for class components. Move defaults into the destructured props parameter (e.g. \`function ${left.object.name}({ size = "md", ...rest })\`) so the rule applies cleanly to both shapes`,
+        message: `${left.object.name}.defaultProps stops applying in React 19, so your users see missing defaults. Set them in the destructured props parameter instead, like \`function ${left.object.name}({ size = "md" })\`.`,
       });
     },
   }),

@@ -27,10 +27,11 @@ const looksLikeArrayCallbackCall = (node: EsTreeNodeOfType<"CallExpression">): b
 
 export const jsIndexMaps = defineRule<Rule>({
   id: "js-index-maps",
+  title: "array.find() inside a loop",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Build an index `Map` once outside the loop instead of `array.find(...)` inside it",
+    "Build a `Map` once before the loop instead of calling `array.find(...)` inside it",
   create: (context: RuleContext) =>
     createLoopAwareVisitors({
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
@@ -44,7 +45,7 @@ export const jsIndexMaps = defineRule<Rule>({
         if (!looksLikeArrayCallbackCall(node)) return;
         context.report({
           node,
-          message: `array.${methodName}() in a loop is O(n*m) — build a Map for O(1) lookups`,
+          message: `This gets slow as your list grows because array.${methodName}() runs inside a loop, so build a Map once before the loop for instant lookups`,
         });
       },
     }),

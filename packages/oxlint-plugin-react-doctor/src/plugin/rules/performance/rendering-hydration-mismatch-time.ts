@@ -95,10 +95,11 @@ const hasSuppressHydrationWarningAttribute = (openingElement: EsTreeNode | null)
 // element when the mismatch is intentional.
 export const renderingHydrationMismatchTime = defineRule<Rule>({
   id: "rendering-hydration-mismatch-time",
+  title: "Time or random value in JSX",
   severity: "warn",
   category: "Correctness",
   recommendation:
-    "Wrap dynamic time/random values in useEffect+useState (client-only) or add suppressHydrationWarning to the parent if intentional",
+    "Move time or random values into useEffect+useState so they only run in the browser, or add suppressHydrationWarning to the parent if it's intentional",
   create: (context: RuleContext) => ({
     JSXExpressionContainer(node: EsTreeNodeOfType<"JSXExpressionContainer">) {
       if (!node.expression) return;
@@ -111,7 +112,7 @@ export const renderingHydrationMismatchTime = defineRule<Rule>({
         if (hasSuppressHydrationWarningAttribute(openingElement)) return;
         context.report({
           node,
-          message: `${matched.display} in JSX renders differently on server vs client — wrap in useEffect+useState (client-only) or add suppressHydrationWarning to the parent if intentional`,
+          message: `This breaks hydration because ${matched.display} in JSX gives a different value on the server than in the browser, so move it into useEffect+useState to run only in the browser, or add suppressHydrationWarning to the parent if it's on purpose`,
         });
         return;
       }
@@ -124,7 +125,7 @@ export const renderingHydrationMismatchTime = defineRule<Rule>({
             if (hasSuppressHydrationWarningAttribute(openingElement)) return;
             context.report({
               node: child,
-              message: `${pattern.display} reachable from JSX renders differently on server vs client — wrap in useEffect+useState (client-only) or add suppressHydrationWarning to the parent if intentional`,
+              message: `This breaks hydration because ${pattern.display} reached from JSX gives a different value on the server than in the browser, so move it into useEffect+useState to run only in the browser, or add suppressHydrationWarning to the parent if it's on purpose`,
             });
             return;
           }

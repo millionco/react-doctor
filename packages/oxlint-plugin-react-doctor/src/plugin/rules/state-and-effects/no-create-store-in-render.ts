@@ -127,10 +127,11 @@ const resolveStoreFactoryForCallee = (callee: EsTreeNode): StoreApi | null => {
 //     named like a component/hook (`useMakeStore`).
 export const noCreateStoreInRender = defineRule<Rule>({
   id: "no-create-store-in-render",
+  title: "Store created during render",
   severity: "error",
   category: "Correctness",
   recommendation:
-    "Hoist the store/atom/observable construction to module scope — render functions and hooks must not allocate state containers.",
+    "Create the store, atom, or observable at the top level of the file, not inside a component or hook.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const factory = resolveStoreFactoryForCallee(node.callee);
@@ -139,7 +140,7 @@ export const noCreateStoreInRender = defineRule<Rule>({
       if (!componentOrHookName) return;
       context.report({
         node,
-        message: `\`${factory.humanLabel}(...)\` called inside "${componentOrHookName}" allocates a fresh state container on every render — subscribers disconnect, identities (action creators, reducer reference, store instance) churn, and persisted state resets. Hoist the call to module scope.`,
+        message: `\`${factory.humanLabel}(...)\` builds a new store every render, so subscribers get cut off & saved state resets.`,
       });
     },
   }),

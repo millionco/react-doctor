@@ -15,9 +15,9 @@ import { isPresentationRole } from "../../utils/is-presentation-role.js";
 import type { Rule } from "../../utils/rule.js";
 
 const buildTabbableMessage = (role: string): string =>
-  `Element with the '${role}' interactive role must be tabbable — add \`tabIndex={0}\`.`;
+  `Keyboard users can't tab to this '${role}' because it isn't focusable, so add \`tabIndex={0}\`.`;
 const buildFocusableMessage = (role: string): string =>
-  `Element with the '${role}' interactive role must be focusable — add \`tabIndex={0}\` or \`tabIndex={-1}\`.`;
+  `Keyboard users can't focus this '${role}' because it can't receive focus, so add \`tabIndex={0}\` or \`tabIndex={-1}\`.`;
 
 const DEFAULT_TABBABLE_ROLES: ReadonlyArray<string> = [
   "button",
@@ -48,9 +48,10 @@ const resolveSettings = (
 // Port of `oxc_linter::rules::jsx_a11y::interactive_supports_focus`.
 export const interactiveSupportsFocus = defineRule<Rule>({
   id: "interactive-supports-focus",
+  title: "Interactive element not focusable",
   tags: ["react-jsx-only"],
   severity: "warn",
-  recommendation: "Add `tabIndex` to elements that have interactive roles and event handlers.",
+  recommendation: "Add `tabIndex` to elements with interactive roles and handlers.",
   category: "Accessibility",
   create: (context) => {
     const settings = resolveSettings(context.settings);

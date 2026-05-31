@@ -6,17 +6,21 @@ import * as Ref from "effect/Ref";
 /**
  * Handle returned by `Progress.start`. Call `update` zero or more
  * times for intermediate status changes, then terminate exactly once
- * with `succeed` or `fail`. Callers don't manage the underlying
- * implementation (ora instance, log lines, GitHub Action group, etc).
+ * with `succeed`, `fail`, or `stop`. `stop` clears the in-progress
+ * line without leaving a persistent status line — used when the caller
+ * renders an aggregate summary in its place (e.g. multi-project scans).
+ * Callers don't manage the underlying implementation (ora instance,
+ * log lines, GitHub Action group, etc).
  */
 export interface ProgressHandle {
   readonly update: (displayText: string) => Effect.Effect<void>;
   readonly succeed: (displayText: string) => Effect.Effect<void>;
   readonly fail: (displayText: string) => Effect.Effect<void>;
+  readonly stop: () => Effect.Effect<void>;
 }
 
 export interface ProgressEvent {
-  readonly _tag: "Started" | "Updated" | "Succeeded" | "Failed";
+  readonly _tag: "Started" | "Updated" | "Succeeded" | "Failed" | "Stopped";
   readonly text: string;
 }
 
@@ -60,6 +64,7 @@ export class Progress extends Context.Service<
           update: () => Effect.void,
           succeed: () => Effect.void,
           fail: () => Effect.void,
+          stop: () => Effect.void,
         }),
     }),
   );
@@ -90,6 +95,8 @@ export class Progress extends Context.Service<
                   ...existing,
                   { _tag: "Failed" as const, text: displayText },
                 ]),
+              stop: () =>
+                Ref.update(events, (existing) => [...existing, { _tag: "Stopped" as const, text }]),
             };
           }),
       }),

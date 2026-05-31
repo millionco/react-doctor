@@ -8,10 +8,11 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const useLazyMotion = defineRule<Rule>({
   id: "use-lazy-motion",
+  title: "Full Framer Motion import",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    'Use `import { LazyMotion, m } from "framer-motion"` with `domAnimation` features — saves ~30kb',
+    'Use `import { LazyMotion, m } from "framer-motion"` with `domAnimation` features. Saves about 30kb.',
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       const source = node.source?.value;
@@ -31,7 +32,8 @@ export const useLazyMotion = defineRule<Rule>({
       if (hasFullMotionImport) {
         context.report({
           node,
-          message: 'Import "m" with LazyMotion instead of "motion" — saves ~30kb in bundle size',
+          message:
+            'Importing "motion" ships about 30 kb of extra code to your users & slows page load. Use "m" with LazyMotion instead.',
         });
       }
     },

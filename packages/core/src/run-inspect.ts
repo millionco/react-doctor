@@ -1,3 +1,4 @@
+import path from "node:path";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Filter from "effect/Filter";
@@ -15,7 +16,9 @@ import type {
 import { buildDiagnosticPipeline } from "./build-diagnostic-pipeline.js";
 import { checkPnpmHardening } from "./check-pnpm-hardening.js";
 import { checkReducedMotion } from "./check-reduced-motion.js";
+import { DEFAULT_SHOW_WARNINGS } from "./constants.js";
 import { computeJsxIncludePaths } from "./jsx-include-paths.js";
+import { deadCodeMaySurfaceWhenWarningsHidden } from "./utils/dead-code-may-surface.js";
 import {
   NoReactDependency,
   type OxlintUnavailable,
@@ -43,6 +46,13 @@ export interface InspectInput {
   readonly includePaths: ReadonlyArray<string>;
   readonly customRulesOnly: boolean;
   readonly respectInlineDisables: boolean;
+  /**
+   * Per-call override for `ReactDoctorConfig.warnings`. When omitted,
+   * the loaded config's `warnings` value wins (defaulting to `false`),
+   * so warnings stay hidden unless the user opts in via `--warnings` or
+   * `warnings: true`.
+   */
+  readonly warnings?: boolean;
   readonly adoptExistingLintConfig: boolean;
   readonly ignoredTags: ReadonlySet<string>;
   readonly nodeBinaryPath?: string;
@@ -65,6 +75,17 @@ export interface InspectInput {
    * per-element-filtered list — surface filtering only affects scoring.
    */
   readonly scoreSurface?: DiagnosticSurface;
+  /**
+   * Suppresses the orchestrator's own persistent "Scanned N files"
+   * success line. The live scan spinner still runs for feedback but
+   * clears on completion instead of leaving a status line behind. The
+   * CLI sets this when scanning multiple projects so it can render a
+   * single aggregate "Scanned N files" line in their place — the
+   * per-project file count + scan duration are surfaced on
+   * `InspectOutput` for that summary. Lint / dead-code failures still
+   * surface their own spinner state regardless of this flag.
+   */
+  readonly suppressScanSummary?: boolean;
 }
 
 export interface InspectOutput {
@@ -95,6 +116,23 @@ export interface InspectOutput {
   /** `false` when run-dead-code was disabled, diff/staged mode, or analysis crashed. */
   readonly didDeadCodeFail: boolean;
   readonly deadCodeFailureReason: string | null;
+  /**
+   * Number of files the scan reported (lint progress total, falling
+   * back to the project source-file count). Surfaced so a caller that
+   * sets `suppressScanSummary` can render its own aggregate
+   * "Scanned N files" line.
+   */
+  readonly scannedFileCount: number;
+  /**
+   * Absolute paths of every file this scan considered. Used by the
+   * multi-project summary to count UNIQUE files across projects:
+   * nested workspace packages (a parent whose tree contains a child
+   * package) would otherwise double-count the shared files when their
+   * per-project counts are summed.
+   */
+  readonly scannedFilePaths: ReadonlyArray<string>;
+  /** Wall-clock duration of the scan phase, in milliseconds. */
+  readonly scanElapsedMilliseconds: number;
 }
 
 /**
@@ -235,17 +273,31 @@ export const runInspect = <HooksR = never>(
     const lintIncludePaths =
       jsxIncludePaths ?? resolveLintIncludePaths(scanDirectory, resolvedConfig.config);
 
+    // Absolute paths of the exact file set the linter scans, captured ONLY
+    // for the multi-project summary (the sole consumer), which signals via
+    // `suppressScanSummary`. Gating avoids a redundant full-tree walk on
+    // every single-project / `diagnose()` run — for a full scan the linter
+    // already enumerates the same files, so we'd otherwise list twice.
+    const scannedFilePaths = input.suppressScanSummary
+      ? (lintIncludePaths ?? (yield* filesService.listSourceFiles(scanDirectory))).map(
+          (relativePath) => path.resolve(scanDirectory, relativePath),
+        )
+      : [];
+
     const beforeLint = hooks.beforeLint ?? NO_HOOKS.beforeLint;
     const afterLint = hooks.afterLint ?? NO_HOOKS.afterLint;
     yield* beforeLint(project, lintIncludePaths ?? undefined);
 
     const isDiffMode = input.includePaths.length > 0;
 
+    const showWarnings = input.warnings ?? resolvedConfig.config?.warnings ?? DEFAULT_SHOW_WARNINGS;
+
     const transform = buildDiagnosticPipeline({
       rootDirectory: scanDirectory,
       userConfig: resolvedConfig.config,
       readFileLinesSync: fileReader(filesService, scanDirectory),
       respectInlineDisables: input.respectInlineDisables,
+      showWarnings,
     });
 
     const applyPerElementPipeline = <ToEnv>(rawStream: Stream.Stream<Diagnostic, never, ToEnv>) =>
@@ -327,7 +379,18 @@ export const runInspect = <HooksR = never>(
       yield* scanProgress.fail(formatLintFailText(lintFailureState.reasonTag, process.version));
     }
 
-    const shouldRunDeadCode = input.runDeadCode && !isDiffMode;
+    // Dead-code analysis only ever emits `"warning"`-severity diagnostics
+    // (the `deslop` plugin, all `Maintainability`). When warnings are
+    // hidden that output is filtered out before it reaches any surface or
+    // the score, so the expensive pass (separate worker, large heap, long
+    // timeout) would be pure wasted work — skip it. `--warnings` /
+    // `warnings: true` (and `--fail-on warning`, which forces warnings on)
+    // re-enable it, as does a severity override that restamps dead-code
+    // findings to `"warn"`/`"error"` so they survive the global hide.
+    const shouldRunDeadCode =
+      input.runDeadCode &&
+      !isDiffMode &&
+      (showWarnings || deadCodeMaySurfaceWhenWarningsHidden(resolvedConfig.config));
     const deadCodeCollected =
       lintFailureState.didFail || !shouldRunDeadCode
         ? []
@@ -356,13 +419,16 @@ export const runInspect = <HooksR = never>(
           );
     const deadCodeFailureState = yield* Ref.get(deadCodeFailure);
 
-    const scanElapsedSeconds = ((Date.now() - scanStartTime) / 1000).toFixed(1);
+    const scanElapsedMilliseconds = Date.now() - scanStartTime;
+    const scanElapsedSeconds = (scanElapsedMilliseconds / 1000).toFixed(1);
     const totalFileCount =
       lastReportedTotalFileCount || (lintIncludePaths?.length ?? project.sourceFileCount);
 
     if (!lintFailureState.didFail) {
       if (deadCodeFailureState.didFail) {
         yield* scanProgress.fail(DEAD_CODE_FAIL_TEXT);
+      } else if (input.suppressScanSummary) {
+        yield* scanProgress.stop();
       } else {
         yield* scanProgress.succeed(
           `Scanned ${totalFileCount} ${totalFileCount === 1 ? "file" : "files"} in ${scanElapsedSeconds}s${workerCountSuffix}`,
@@ -420,6 +486,9 @@ export const runInspect = <HooksR = never>(
       lintPartialFailures,
       didDeadCodeFail: deadCodeFailureState.didFail,
       deadCodeFailureReason: deadCodeFailureState.reason,
+      scannedFileCount: totalFileCount,
+      scannedFilePaths,
+      scanElapsedMilliseconds,
     };
   }).pipe(
     Effect.withSpan("runInspect", {

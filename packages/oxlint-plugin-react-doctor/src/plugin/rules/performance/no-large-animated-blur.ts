@@ -11,10 +11,11 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noLargeAnimatedBlur = defineRule<Rule>({
   id: "no-large-animated-blur",
+  title: "Large animated blur",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Keep blur radius under 10px, or apply blur to a smaller element. Large blurs multiply GPU memory usage with layer size",
+    "Keep the blur under 10px, or blur a smaller element. Big blurs use a lot more GPU memory as the element grows",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       if (!isNodeOfType(node.name, "JSXIdentifier")) return;
@@ -39,7 +40,7 @@ export const noLargeAnimatedBlur = defineRule<Rule>({
         if (blurRadius > LARGE_BLUR_THRESHOLD_PX) {
           context.report({
             node: property,
-            message: `blur(${blurRadius}px) is expensive — cost escalates with radius and layer size, can exceed GPU memory on mobile`,
+            message: `This can run out of GPU memory on phones because blur(${blurRadius}px) gets heavier as the blur & element grow, so use a smaller blur or a smaller element`,
           });
         }
       }

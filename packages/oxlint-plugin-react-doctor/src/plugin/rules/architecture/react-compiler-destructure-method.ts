@@ -66,13 +66,13 @@ const buildHookBindingMap = (componentBody: EsTreeNode | null | undefined): Map<
 //
 // Heuristic: `router.push(...)` (or any of the canonical hook objects)
 // where `router` is bound to a `useRouter()` call in the same component.
-// We don't fire when the binding is destructured already.
 export const reactCompilerDestructureMethod = defineRule<Rule>({
   id: "react-compiler-destructure-method",
+  title: "Hook method called without destructuring",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Destructure the method up front: `const { push } = useRouter()` then call `push(...)` directly — clearer dependency graph and easier for React Compiler to memoize",
+    "Pull the method out first: `const { push } = useRouter()`, then call `push(...)` directly. It's clearer and easier for React Compiler to optimize.",
   create: (context: RuleContext) => {
     const hookBindingMapStack: Array<Map<string, string>> = [];
 
@@ -134,7 +134,7 @@ export const reactCompilerDestructureMethod = defineRule<Rule>({
 
         context.report({
           node,
-          message: `Destructure for clarity: \`const { ${methodName} } = ${hookSource}()\` then call \`${methodName}(...)\` directly — easier for React Compiler to memoize and clearer about which methods this component depends on`,
+          message: `React Compiler can't optimize \`${hookSource}().${methodName}(...)\` as cleanly, so pull the method out first: \`const { ${methodName} } = ${hookSource}()\`, then call \`${methodName}(...)\` directly.`,
         });
       },
     };

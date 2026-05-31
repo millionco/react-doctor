@@ -5,7 +5,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
 const MESSAGE =
-  "Preact follows DOM event naming — use `onDblClick` (lowercase second word). React's `onDoubleClick` handler never fires in Preact core.";
+  "Your users get no response from `onDoubleClick` in Preact core, where it never fires, so use `onDblClick` instead, which matches the DOM event name.";
 
 // Preact registers DOM events under their browser-spec names. `dblclick` is
 // the DOM event name; React aliases it to `onDoubleClick` via its synthetic
@@ -26,6 +26,7 @@ const MESSAGE =
 // the `onChange` → `onInput` divergence).
 export const preactPreferOndblclick = defineRule<Rule>({
   id: "preact-prefer-ondblclick",
+  title: "onDoubleClick instead of onDblClick",
   requires: ["pure-preact"],
   severity: "warn",
   recommendation:

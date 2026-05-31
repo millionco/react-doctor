@@ -88,6 +88,7 @@ const isInsideDeferredCallback = (node: EsTreeNode): boolean => {
 
 export const rerenderFunctionalSetstate = defineRule<Rule>({
   id: "rerender-functional-setstate",
+  title: "setState reads a stale value",
   severity: "warn",
   tags: ["test-noise"],
   category: "Performance",
@@ -120,7 +121,7 @@ export const rerenderFunctionalSetstate = defineRule<Rule>({
         if (isNodeOfType(stateIdentifier, "Identifier")) {
           context.report({
             node,
-            message: `${calleeName}(${stateIdentifier.name} ${argument.operator} ...) — use functional update to avoid stale closures`,
+            message: `You can lose this update because ${calleeName}(${stateIdentifier.name} ${argument.operator} ...) reads a stale value.`,
           });
           return;
         }
@@ -137,7 +138,7 @@ export const rerenderFunctionalSetstate = defineRule<Rule>({
           : `${argument.argument.name}${argument.operator}`;
         context.report({
           node,
-          message: `${calleeName}(${display}) — use functional update to avoid stale closures (and reading the post-increment value bug)`,
+          message: `You can lose this update because ${calleeName}(${display}) reads a stale value & ++ grabs the wrong one.`,
         });
         return;
       }
@@ -170,7 +171,7 @@ export const rerenderFunctionalSetstate = defineRule<Rule>({
         if (spreadsState) {
           context.report({
             node,
-            message: `${calleeName}([...${expectedStateName}, ...]) — use functional update \`${calleeName}(prev => [...prev, ...])\` to avoid stale closures`,
+            message: `You can lose this update because ${calleeName}([...${expectedStateName}, ...]) reads a stale value.`,
           });
           return;
         }
@@ -186,7 +187,7 @@ export const rerenderFunctionalSetstate = defineRule<Rule>({
         if (spreadsState) {
           context.report({
             node,
-            message: `${calleeName}({ ...${expectedStateName}, ... }) — use functional update \`${calleeName}(prev => ({ ...prev, ... }))\` to avoid stale closures`,
+            message: `You can lose this update because ${calleeName}({ ...${expectedStateName}, ... }) reads a stale value.`,
           });
           return;
         }

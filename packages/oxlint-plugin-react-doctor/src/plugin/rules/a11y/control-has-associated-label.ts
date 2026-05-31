@@ -17,7 +17,7 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { Rule } from "../../utils/rule.js";
 
 const MESSAGE =
-  "A control must be associated with a text label — add visible text, `aria-label`, or `aria-labelledby`.";
+  "Blind users can't tell what this control does because screen readers find no label, so add visible text, `aria-label`, or `aria-labelledby`.";
 
 interface ControlHasAssociatedLabelSettings {
   depth?: number;
@@ -287,9 +287,10 @@ const hasHtmlForLabel = (
 // Port of `oxc_linter::rules::jsx_a11y::control_has_associated_label`.
 export const controlHasAssociatedLabel = defineRule<Rule>({
   id: "control-has-associated-label",
+  title: "Control missing accessible label",
   tags: ["react-jsx-only"],
   severity: "warn",
-  recommendation: "Every interactive control must have an accessible label.",
+  recommendation: "Give every interactive control a label screen readers can read.",
   category: "Accessibility",
   create: (context) => {
     const settings = resolveSettings(context.settings);

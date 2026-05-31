@@ -2,9 +2,9 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { getPackageJsonPath, isRecord, readPackageJson, writeJsonFile } from "./git-hook-shared.js";
 
-export const DOCTOR_SCRIPT_NAME = "doctor";
-export const FALLBACK_DOCTOR_SCRIPT_NAME = "react-doctor";
-export const DOCTOR_SCRIPT_COMMAND = "npx react-doctor@latest";
+const DOCTOR_SCRIPT_NAME = "doctor";
+const FALLBACK_DOCTOR_SCRIPT_NAME = "react-doctor";
+const DOCTOR_SCRIPT_COMMAND = "npx react-doctor@latest";
 export const DOCTOR_PACKAGE_NAME = "react-doctor";
 
 const DEPENDENCY_FIELD_NAMES: readonly string[] = [

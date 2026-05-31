@@ -167,10 +167,11 @@ const cleanupReleasesSubscription = (
 
 export const preferUseSyncExternalStore = defineRule<Rule>({
   id: "prefer-use-sync-external-store",
+  title: "Hand-rolled external store subscription",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Replace the `useState(getSnapshot())` + `useEffect(() => store.subscribe(() => setSnapshot(getSnapshot())))` pair with `useSyncExternalStore(store.subscribe, getSnapshot)`. The hook handles tearing during concurrent renders and SSR snapshots; the manual subscribe pattern doesn't",
+    "Replace the `useState(getSnapshot())` + `useEffect(() => store.subscribe(() => setSnapshot(getSnapshot())))` pair with `useSyncExternalStore(store.subscribe, getSnapshot)`. The hook gets this right during concurrent rendering and on the server; the hand-rolled version doesn't.",
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
@@ -253,7 +254,7 @@ export const preferUseSyncExternalStore = defineRule<Rule>({
         const matchingBinding = useStateBindings.find((binding) => binding.valueName === valueName);
         context.report({
           node: matchingBinding?.declarator ?? effectCall,
-          message: `useState "${valueName}" is synchronized with an external store via useEffect — replace this useState + useEffect pair with useSyncExternalStore(subscribe, getSnapshot) to avoid tearing during concurrent renders`,
+          message: `Your users can see stale or torn values because useState "${valueName}" syncs an outside store through a useEffect.`,
         });
       }
     };

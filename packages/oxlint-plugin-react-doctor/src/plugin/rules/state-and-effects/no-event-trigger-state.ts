@@ -116,10 +116,11 @@ const collectHandlerOnlyWriteStateNames = (
 
 export const noEventTriggerState = defineRule<Rule>({
   id: "no-event-trigger-state",
+  title: "State exists only to trigger an effect",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Delete the trigger state (`useState(null)` plus the `useEffect` that watches it) and call the side-effect (`post(...)` / `navigate(...)` / `track(...)`) directly inside the event handler that previously called the setter. State should not exist purely to schedule effect runs",
+    "Delete the trigger state (`useState(null)` plus the `useEffect` that watches it) and call the side effect like `post(...)`, `navigate(...)`, or `track(...)` directly in the event handler that set it. State shouldn't exist just to kick off an effect.",
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
@@ -182,7 +183,7 @@ export const noEventTriggerState = defineRule<Rule>({
 
         context.report({
           node: effectCall,
-          message: `useState "${depElement.name}" exists only to schedule "${sideEffectCalleeName}(...)" from a useEffect — call "${sideEffectCalleeName}(...)" directly inside the event handler that sets it, and delete the state`,
+          message: `useState "${depElement.name}" forces an extra render just to fire "${sideEffectCalleeName}(...)" from a useEffect.`,
         });
       });
     };

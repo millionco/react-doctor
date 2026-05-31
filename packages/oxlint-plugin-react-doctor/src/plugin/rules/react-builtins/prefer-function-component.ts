@@ -6,7 +6,7 @@ import { isEs6Component } from "../../utils/is-es6-component.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
-const MESSAGE = "Class component should be written as a function component — use hooks instead.";
+const MESSAGE = "This class component is harder to maintain than a function component.";
 
 interface PreferFunctionComponentSettings {
   allowErrorBoundary?: boolean;
@@ -61,6 +61,7 @@ const isErrorBoundaryClass = (classNode: EsTreeNode): boolean => {
 //     `allowJsxUtilityClass: true`.
 export const preferFunctionComponent = defineRule<Rule>({
   id: "prefer-function-component",
+  title: "Class component instead of function",
   severity: "warn",
   // Class components are still valid React — required for error
   // boundaries (no hook equivalent), used widely in legacy code and

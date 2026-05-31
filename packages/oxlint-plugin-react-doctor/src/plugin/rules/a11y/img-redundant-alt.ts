@@ -8,7 +8,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
 const MESSAGE =
-  '`alt` text contains redundant words like "image" / "photo" / "picture" — describe the content instead.';
+  'Screen reader users hear "image" or "photo" twice because they already announce it, so describe what the image shows instead.';
 
 const DEFAULT_COMPONENTS: ReadonlyArray<string> = ["img"];
 const DEFAULT_REDUNDANT_WORDS: ReadonlyArray<string> = ["image", "photo", "picture"];
@@ -83,9 +83,10 @@ const altValueRedundant = (
 // Port of `oxc_linter::rules::jsx_a11y::img_redundant_alt`.
 export const imgRedundantAlt = defineRule<Rule>({
   id: "img-redundant-alt",
+  title: "Redundant words in image alt",
   tags: ["react-jsx-only"],
   severity: "warn",
-  recommendation: "Drop redundant words like 'image' / 'photo' from alt text — describe content.",
+  recommendation: "Do not put 'image' or 'photo' in alt text. Describe what is shown.",
   category: "Accessibility",
   create: (context) => {
     const settings = resolveSettings(context.settings);

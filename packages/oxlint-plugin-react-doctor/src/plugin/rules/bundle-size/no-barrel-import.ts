@@ -49,14 +49,14 @@ const buildReportMessage = (
 
   if (directImportSources.size === 1) {
     const [directImportSource] = directImportSources;
-    return `Import from barrel/index file — import directly from "${directImportSource}" for better tree-shaking`;
+    return `This ships extra code to your users & slows page load. Import directly from "${directImportSource}".`;
   }
 
   if (directImportSources.size > 1) {
-    return `Import from barrel/index file — import directly from source modules: ${[...directImportSources].map((source) => `"${source}"`).join(", ")}`;
+    return `This ships extra code to your users & slows page load. Import directly from: ${[...directImportSources].map((source) => `"${source}"`).join(", ")}.`;
   }
 
-  return "Import from barrel/index file — import directly from the source module for better tree-shaking";
+  return "Importing from an index file pulls in extra code. Import directly from the source file instead.";
 };
 
 // `test-noise` because stories / tests / playground / examples aren't
@@ -64,6 +64,7 @@ const buildReportMessage = (
 // bundle.
 export const noBarrelImport = defineRule<Rule>({
   id: "no-barrel-import",
+  title: "Import from a barrel file",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:

@@ -8,10 +8,11 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const rerenderDependencies = defineRule<Rule>({
   id: "rerender-dependencies",
+  title: "Unstable value recreated every render",
   tags: ["test-noise"],
   severity: "error",
   recommendation:
-    "Extract to a useMemo, useRef, or module-level constant so the reference is stable",
+    "Move it into a useMemo, useRef, or a constant outside the component so it stays the same between renders.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isHookCall(node, HOOKS_WITH_DEPS) || node.arguments.length < 2) return;
@@ -24,14 +25,14 @@ export const rerenderDependencies = defineRule<Rule>({
           context.report({
             node: element,
             message:
-              "Object literal in useEffect deps — creates new reference every render, causing infinite re-runs",
+              "Your effect re-runs every render because a new object in its useEffect deps is rebuilt each time.",
           });
         }
         if (isNodeOfType(element, "ArrayExpression")) {
           context.report({
             node: element,
             message:
-              "Array literal in useEffect deps — creates new reference every render, causing infinite re-runs",
+              "Your effect re-runs every render because a new array in its useEffect deps is rebuilt each time.",
           });
         }
         // HACK: arrow / function expressions create a fresh function
@@ -47,7 +48,7 @@ export const rerenderDependencies = defineRule<Rule>({
           context.report({
             node: element,
             message:
-              "Inline function in useEffect deps — creates a new function reference every render, causing infinite re-runs. Hoist it out of the component or wrap it with useCallback",
+              "Your effect re-runs every render because the Inline function in its useEffect deps is rebuilt each time.",
           });
         }
       }

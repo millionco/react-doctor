@@ -22,7 +22,7 @@ export const NON_BLOCKING_REACT_DOCTOR_COMMAND = [
   `printf "%s\\n" "React Doctor found staged regressions." "Run ${REACT_DOCTOR_COMMAND} to inspect." "Want them fixed? Ask your agent to run that command and resolve the findings." >&2;`,
   "fi",
 ].join(" ");
-export const PACKAGE_JSON_FILE_NAME = "package.json";
+const PACKAGE_JSON_FILE_NAME = "package.json";
 
 export const runGit = (projectRoot: string, args: ReadonlyArray<string>): string | null => {
   try {

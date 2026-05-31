@@ -98,12 +98,13 @@ const countEffectHookCalls = (body: EsTreeNode | null): number => {
 
 export const activityWrapsEffectHeavySubtree = defineRule<Rule>({
   id: "activity-wraps-effect-heavy-subtree",
+  title: "Activity wraps an effect-heavy subtree",
   severity: "warn",
   // `<Activity>` shipped in React 19.2; gate on the minor-version
   // capability so the rule stays inert on 19.0 / 19.1 projects.
   requires: ["react:19.2"],
   recommendation:
-    "Audit the subtree under `<Activity>` — every hide / show cycle tears down and recreates every Effect inside. Move subscriptions and effect-driven setState chains outside the Activity boundary, or pre-resolve the data above it",
+    "Check what's under `<Activity>`. Every hide and show rebuilds every Effect inside from scratch. Move subscriptions and effect-driven setState out of the Activity, or load the data above it.",
   create: (context: RuleContext) => {
     const localActivityNames = new Set<string>();
 
@@ -203,7 +204,7 @@ export const activityWrapsEffectHeavySubtree = defineRule<Rule>({
 
         context.report({
           node: openingElement,
-          message: `<Activity> wraps ${effectfulChildren.join(", ")} which use ${totalEffects} effect hook${totalEffects === 1 ? "" : "s"} — every hide/show cycle recreates them all. Audit the subtree or move subscriptions outside the boundary`,
+          message: `Every hide & show rebuilds ${effectfulChildren.join(", ")} from scratch because <Activity> wraps them & they use ${totalEffects} effect hook${totalEffects === 1 ? "" : "s"}.`,
         });
       },
     };

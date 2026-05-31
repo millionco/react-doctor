@@ -7,6 +7,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 
 export const jsTosortedImmutable = defineRule<Rule>({
   id: "js-tosorted-immutable",
+  title: "Spread copy before sort()",
   tags: ["test-noise"],
   severity: "warn",
   // Hermes (the default React Native / Expo JS engine) hasn't shipped
@@ -16,7 +17,7 @@ export const jsTosortedImmutable = defineRule<Rule>({
   // a crash, so the gate drops this rule there. See issue #543.
   disabledBy: ["react-native"],
   recommendation:
-    "Use `array.toSorted()` (ES2023) instead of `[...array].sort()` for immutable sorting without the spread allocation",
+    "Use `array.toSorted()` (ES2023) instead of `[...array].sort()` so you sort without copying the array first",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isMemberProperty(node.callee, "sort")) return;
@@ -28,7 +29,8 @@ export const jsTosortedImmutable = defineRule<Rule>({
       ) {
         context.report({
           node,
-          message: "[...array].sort() — use array.toSorted() for immutable sorting (ES2023)",
+          message:
+            "This wastes work because [...array].sort() copies the array just to sort it, so use array.toSorted() to sort without the extra copy (ES2023)",
         });
       }
     },

@@ -89,7 +89,7 @@ export const buildErrorIssueUrl = (error: unknown): string => {
  * red-highlighted (matches the historical `consoleLogger.error`
  * contract) so the user sees a clearly distinguished error block.
  */
-export const handleErrorEffect = (error: unknown): Effect.Effect<void> =>
+const handleErrorEffect = (error: unknown): Effect.Effect<void> =>
   Effect.gen(function* () {
     yield* Console.error("");
     yield* Console.error(

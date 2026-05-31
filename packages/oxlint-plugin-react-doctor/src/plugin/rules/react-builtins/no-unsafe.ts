@@ -17,19 +17,8 @@ const UNSAFE_ALIASES = new Set([
   "componentWillUpdate",
 ]);
 
-const SAFER_REPLACEMENT: Record<string, string> = {
-  componentWillMount: "componentDidMount",
-  UNSAFE_componentWillMount: "componentDidMount",
-  componentWillReceiveProps: "getDerivedStateFromProps",
-  UNSAFE_componentWillReceiveProps: "getDerivedStateFromProps",
-  componentWillUpdate: "componentDidUpdate",
-  UNSAFE_componentWillUpdate: "componentDidUpdate",
-};
-
 const buildMessage = (methodName: string): string =>
-  `Unsafe lifecycle method \`${methodName}\` — use \`${
-    SAFER_REPLACEMENT[methodName] ?? "an alternative lifecycle method"
-  }\` instead.`;
+  `\`${methodName}\` causes subtle bugs & React is removing it.`;
 
 interface NoUnsafeSettings {
   checkAliases?: boolean;
@@ -87,6 +76,7 @@ const getStaticKeyName = (key: EsTreeNode): string | null => {
 // are valid).
 export const noUnsafe = defineRule<Rule>({
   id: "no-unsafe",
+  title: "Unsafe legacy lifecycle method",
   severity: "warn",
   recommendation:
     "Replace `UNSAFE_componentWillMount` / `…WillReceiveProps` / `…WillUpdate` with the modern equivalents.",

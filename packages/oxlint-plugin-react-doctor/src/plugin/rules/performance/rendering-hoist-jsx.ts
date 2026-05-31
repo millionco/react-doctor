@@ -31,10 +31,11 @@ const jsxReferencesLocalScope = (jsxNode: EsTreeNode): boolean => {
 
 export const renderingHoistJsx = defineRule<Rule>({
   id: "rendering-hoist-jsx",
+  title: "Constant JSX rebuilt each render",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Move the static JSX to module scope: `const ICON = <svg>...</svg>` outside the component so it isn't recreated each render",
+    "Move the static JSX out to the top of the file: `const ICON = <svg>...</svg>`, so it isn't rebuilt on every render",
   create: (context: RuleContext) => {
     let componentDepth = 0;
 
@@ -75,7 +76,7 @@ export const renderingHoistJsx = defineRule<Rule>({
           const name = isNodeOfType(declarator.id, "Identifier") ? declarator.id.name : "<unnamed>";
           context.report({
             node: declarator,
-            message: `Static JSX "${name}" inside a component — hoist to module scope so it isn't recreated each render`,
+            message: `This rebuilds on every render because static JSX "${name}" is built inside the component, so move it to the top of the file to make it just once`,
           });
         }
       },

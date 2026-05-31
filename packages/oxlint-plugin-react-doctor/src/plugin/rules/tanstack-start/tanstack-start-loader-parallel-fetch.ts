@@ -32,6 +32,7 @@ const hasTopLevelAwait = (statement: EsTreeNode): boolean => {
 
 export const tanstackStartLoaderParallelFetch = defineRule<Rule>({
   id: "tanstack-start-loader-parallel-fetch",
+  title: "Sequential awaits in loader",
   tags: ["test-noise"],
   requires: ["tanstack-start"],
   severity: "warn",
@@ -70,7 +71,7 @@ export const tanstackStartLoaderParallelFetch = defineRule<Rule>({
             context.report({
               node: property,
               message:
-                "Multiple sequential awaits in loader — use Promise.all() to fetch data in parallel and avoid waterfalls",
+                "Sequential awaits in this loader create a request waterfall that slows the route.",
             });
             break;
           }

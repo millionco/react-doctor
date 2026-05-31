@@ -8,11 +8,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noLayoutTransitionInline = defineRule<Rule>({
   id: "no-layout-transition-inline",
+  title: "Animating layout properties",
   tags: ["test-noise"],
   severity: "warn",
   category: "Performance",
   recommendation:
-    "Use `transform` and `opacity` for transitions — they run on the compositor thread. For height animations, use `grid-template-rows: 0fr → 1fr`",
+    "Animate `transform` and `opacity` instead, since they're cheap for the browser. For height, animate `grid-template-rows` from `0fr` to `1fr`.",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);
@@ -34,7 +35,7 @@ export const noLayoutTransitionInline = defineRule<Rule>({
         if (layoutMatch) {
           context.report({
             node: property,
-            message: `Transitioning layout property "${layoutMatch[0]}" causes layout thrash every frame — use transform and opacity instead`,
+            message: `Your users see janky, stuttering animation because "${layoutMatch[0]}" relayouts the page every frame, so animate transform & opacity instead.`,
           });
         }
       }

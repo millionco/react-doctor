@@ -17,22 +17,23 @@ import { createDeprecatedReactImportRule } from "./utils/create-deprecated-react
 const REACT_19_DEPRECATED_MESSAGES = new Map<string, string>([
   [
     "forwardRef",
-    "forwardRef is no longer needed on React 19+ — refs are regular props on function components; remove forwardRef and pass ref directly",
+    "forwardRef is dead weight in React 19, since ref is a normal prop now, so drop it & pass ref straight through.",
   ],
   [
     "useContext",
-    "useContext is superseded by `use()` on React 19+ — `use()` reads context conditionally inside hooks, branches, and loops; switch to `import { use } from 'react'`",
+    "useContext is replaced by `use()` in React 19, which reads context inside ifs & loops too, so switch to `import { use } from 'react'`.",
   ],
 ]);
 
 export const noReact19DeprecatedApis = defineRule<Rule>({
   id: "no-react19-deprecated-apis",
+  title: "Deprecated React 19 APIs",
   requires: ["react:19"],
   // BOTH tags — migration-hint wins, see no-react-dom-deprecated-apis.
   tags: ["test-noise", "migration-hint"],
   severity: "warn",
   recommendation:
-    "Pass `ref` as a regular prop on function components — `forwardRef` is no longer needed in React 19+. Replace `useContext(X)` with `use(X)` for branch-aware context reads. Only enabled on projects detected as React 19+.",
+    "Pass `ref` as a normal prop on function components, since `forwardRef` isn't needed in React 19. Replace `useContext(X)` with `use(X)`. Only runs on React 19+ projects.",
   ...createDeprecatedReactImportRule({
     source: "react",
     messages: REACT_19_DEPRECATED_MESSAGES,

@@ -6,10 +6,11 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noPermanentWillChange = defineRule<Rule>({
   id: "no-permanent-will-change",
+  title: "Permanent will-change wastes GPU",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Add will-change on animation start (`onMouseEnter`) and remove on end (`onAnimationEnd`). Permanent promotion wastes GPU memory and can degrade performance",
+    "Add will-change when the animation starts (`onMouseEnter`) and remove it when it ends (`onAnimationEnd`). Leaving it on all the time wastes GPU memory and can slow things down",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "style") return;
@@ -26,7 +27,7 @@ export const noPermanentWillChange = defineRule<Rule>({
         context.report({
           node: property,
           message:
-            "Permanent will-change wastes GPU memory — apply only during active animation and remove after",
+            "This wastes GPU memory because will-change is left on all the time, so add it right before the animation & remove it when the animation ends",
         });
       }
     },

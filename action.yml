@@ -66,17 +66,25 @@ runs:
           const outputPath = process.env.REACT_DOCTOR_CHANGED_FILES;
           const pullRequest = context.payload.pull_request;
           if (!pullRequest || !outputPath) return;
-
-          const files = await github.paginate(github.rest.pulls.listFiles, {
-            ...context.repo,
-            pull_number: pullRequest.number,
-            per_page: 100,
-          });
+          let files;
+          try {
+            files = await github.paginate(github.rest.pulls.listFiles, {
+              ...context.repo,
+              pull_number: pullRequest.number,
+              per_page: 100,
+            });
+          } catch (error) {
+            core.warning(
+              `React Doctor could not list pull request files (${error.message}). ` +
+                "Scanning the full project instead. Grant the workflow `pull-requests: read` " +
+                "permission to scan only the files changed in the pull request.",
+            );
+            return;
+          }
           const includedStatuses = new Set(["added", "modified", "renamed"]);
           const changedFiles = files
             .filter((file) => includedStatuses.has(file.status))
             .map((file) => file.filename);
-
           fs.writeFileSync(outputPath, changedFiles.join("\n") + (changedFiles.length ? "\n" : ""));
           core.setOutput("path", outputPath);
 

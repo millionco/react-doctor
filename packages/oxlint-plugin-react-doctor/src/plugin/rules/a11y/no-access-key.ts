@@ -6,7 +6,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
 const MESSAGE =
-  "`accessKey` should not be used — accessKeys conflict with screen reader and OS-level shortcuts.";
+  "Screen reader users can lose their shortcuts because `accessKey` clashes with them, so remove it.";
 
 // True iff the expression is the literal `undefined` identifier.
 const isUndefinedIdentifier = (expression: EsTreeNode): boolean =>
@@ -17,9 +17,10 @@ const isUndefinedIdentifier = (expression: EsTreeNode): boolean =>
 // identifier (matching OXC's `is_undefined` carve-out).
 export const noAccessKey = defineRule<Rule>({
   id: "no-access-key",
+  title: "accessKey attribute used",
   tags: ["react-jsx-only"],
   severity: "warn",
-  recommendation: "Don't use `accessKey` — it conflicts with assistive-technology shortcuts.",
+  recommendation: "Do not use `accessKey`. It conflicts with assistive tech shortcuts.",
   category: "Accessibility",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {

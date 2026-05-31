@@ -340,7 +340,7 @@ export const reactDoctorRules = [
     rule: {
       ...activityWrapsEffectHeavySubtree,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -505,7 +505,7 @@ export const reactDoctorRules = [
     rule: {
       ...buttonHasType,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -516,7 +516,7 @@ export const reactDoctorRules = [
     rule: {
       ...checkedRequiresOnchangeOrReadonly,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -538,7 +538,7 @@ export const reactDoctorRules = [
     rule: {
       ...clientLocalstorageNoVersion,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -571,7 +571,7 @@ export const reactDoctorRules = [
     rule: {
       ...noEmDashInJsxText,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -582,7 +582,7 @@ export const reactDoctorRules = [
     rule: {
       ...noRedundantPaddingAxes,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -593,7 +593,7 @@ export const reactDoctorRules = [
     rule: {
       ...noRedundantSizeAxes,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -604,7 +604,7 @@ export const reactDoctorRules = [
     rule: {
       ...noSpaceOnFlexChildren,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -615,7 +615,7 @@ export const reactDoctorRules = [
     rule: {
       ...noThreePeriodEllipsis,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -637,7 +637,7 @@ export const reactDoctorRules = [
     rule: {
       ...displayName,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -648,7 +648,7 @@ export const reactDoctorRules = [
     rule: {
       ...effectNeedsCleanup,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -659,7 +659,7 @@ export const reactDoctorRules = [
     rule: {
       ...exhaustiveDeps,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -670,7 +670,7 @@ export const reactDoctorRules = [
     rule: {
       ...forbidComponentProps,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -681,7 +681,7 @@ export const reactDoctorRules = [
     rule: {
       ...forbidDomProps,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -692,7 +692,7 @@ export const reactDoctorRules = [
     rule: {
       ...forbidElements,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -703,7 +703,7 @@ export const reactDoctorRules = [
     rule: {
       ...forwardRefUsesRef,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -725,7 +725,7 @@ export const reactDoctorRules = [
     rule: {
       ...hookUseState,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -736,7 +736,7 @@ export const reactDoctorRules = [
     rule: {
       ...hooksNoNanInDeps,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -758,7 +758,7 @@ export const reactDoctorRules = [
     rule: {
       ...htmlNoInvalidParagraphChild,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -769,7 +769,7 @@ export const reactDoctorRules = [
     rule: {
       ...htmlNoInvalidTableNesting,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -780,7 +780,7 @@ export const reactDoctorRules = [
     rule: {
       ...htmlNoNestedInteractive,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -835,7 +835,7 @@ export const reactDoctorRules = [
     rule: {
       ...jotaiDerivedAtomReturnsFreshObject,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -846,7 +846,7 @@ export const reactDoctorRules = [
     rule: {
       ...jotaiSelectAtomInRenderBody,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -857,7 +857,7 @@ export const reactDoctorRules = [
     rule: {
       ...jotaiTqUseRawQueryAtom,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -1022,7 +1022,7 @@ export const reactDoctorRules = [
     rule: {
       ...jsxBooleanValue,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -1033,7 +1033,7 @@ export const reactDoctorRules = [
     rule: {
       ...jsxCurlyBracePresence,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -1044,7 +1044,7 @@ export const reactDoctorRules = [
     rule: {
       ...jsxFilenameExtension,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -1055,7 +1055,7 @@ export const reactDoctorRules = [
     rule: {
       ...jsxFragments,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -1066,7 +1066,7 @@ export const reactDoctorRules = [
     rule: {
       ...jsxHandlerNames,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -1077,7 +1077,7 @@ export const reactDoctorRules = [
     rule: {
       ...jsxKey,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -1088,7 +1088,7 @@ export const reactDoctorRules = [
     rule: {
       ...jsxMaxDepth,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -1099,7 +1099,7 @@ export const reactDoctorRules = [
     rule: {
       ...jsxNoCommentTextnodes,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -1121,7 +1121,7 @@ export const reactDoctorRules = [
     rule: {
       ...jsxNoDuplicateProps,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -1198,7 +1198,7 @@ export const reactDoctorRules = [
     rule: {
       ...jsxNoUndef,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -1209,7 +1209,7 @@ export const reactDoctorRules = [
     rule: {
       ...jsxNoUselessFragment,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -1220,7 +1220,7 @@ export const reactDoctorRules = [
     rule: {
       ...jsxPascalCase,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -1231,7 +1231,7 @@ export const reactDoctorRules = [
     rule: {
       ...jsxPropsNoSpreadMulti,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -1242,7 +1242,7 @@ export const reactDoctorRules = [
     rule: {
       ...jsxPropsNoSpreading,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -1297,7 +1297,7 @@ export const reactDoctorRules = [
     rule: {
       ...nextjsAsyncClientComponent,
       framework: "nextjs",
-      category: "Next.js",
+      category: "Bugs",
     },
   },
   {
@@ -1308,7 +1308,7 @@ export const reactDoctorRules = [
     rule: {
       ...nextjsImageMissingSizes,
       framework: "nextjs",
-      category: "Next.js",
+      category: "Bugs",
     },
   },
   {
@@ -1319,7 +1319,7 @@ export const reactDoctorRules = [
     rule: {
       ...nextjsInlineScriptMissingId,
       framework: "nextjs",
-      category: "Next.js",
+      category: "Bugs",
     },
   },
   {
@@ -1330,7 +1330,7 @@ export const reactDoctorRules = [
     rule: {
       ...nextjsMissingMetadata,
       framework: "nextjs",
-      category: "Next.js",
+      category: "Bugs",
     },
   },
   {
@@ -1341,7 +1341,7 @@ export const reactDoctorRules = [
     rule: {
       ...nextjsNoAElement,
       framework: "nextjs",
-      category: "Next.js",
+      category: "Bugs",
     },
   },
   {
@@ -1352,7 +1352,7 @@ export const reactDoctorRules = [
     rule: {
       ...nextjsNoClientFetchForServerData,
       framework: "nextjs",
-      category: "Next.js",
+      category: "Bugs",
     },
   },
   {
@@ -1363,7 +1363,7 @@ export const reactDoctorRules = [
     rule: {
       ...nextjsNoClientSideRedirect,
       framework: "nextjs",
-      category: "Next.js",
+      category: "Bugs",
     },
   },
   {
@@ -1374,7 +1374,7 @@ export const reactDoctorRules = [
     rule: {
       ...nextjsNoCssLink,
       framework: "nextjs",
-      category: "Next.js",
+      category: "Bugs",
     },
   },
   {
@@ -1385,7 +1385,7 @@ export const reactDoctorRules = [
     rule: {
       ...nextjsNoFontLink,
       framework: "nextjs",
-      category: "Next.js",
+      category: "Bugs",
     },
   },
   {
@@ -1396,7 +1396,7 @@ export const reactDoctorRules = [
     rule: {
       ...nextjsNoHeadImport,
       framework: "nextjs",
-      category: "Next.js",
+      category: "Bugs",
     },
   },
   {
@@ -1407,7 +1407,7 @@ export const reactDoctorRules = [
     rule: {
       ...nextjsNoImgElement,
       framework: "nextjs",
-      category: "Next.js",
+      category: "Bugs",
     },
   },
   {
@@ -1418,7 +1418,7 @@ export const reactDoctorRules = [
     rule: {
       ...nextjsNoNativeScript,
       framework: "nextjs",
-      category: "Next.js",
+      category: "Bugs",
     },
   },
   {
@@ -1429,7 +1429,7 @@ export const reactDoctorRules = [
     rule: {
       ...nextjsNoPolyfillScript,
       framework: "nextjs",
-      category: "Next.js",
+      category: "Bugs",
     },
   },
   {
@@ -1440,7 +1440,7 @@ export const reactDoctorRules = [
     rule: {
       ...nextjsNoRedirectInTryCatch,
       framework: "nextjs",
-      category: "Next.js",
+      category: "Bugs",
     },
   },
   {
@@ -1462,7 +1462,7 @@ export const reactDoctorRules = [
     rule: {
       ...nextjsNoUseSearchParamsWithoutSuspense,
       framework: "nextjs",
-      category: "Next.js",
+      category: "Bugs",
     },
   },
   {
@@ -1484,7 +1484,7 @@ export const reactDoctorRules = [
     rule: {
       ...noAdjustStateOnPropChange,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -1506,7 +1506,7 @@ export const reactDoctorRules = [
     rule: {
       ...noArrayIndexAsKey,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -1539,7 +1539,7 @@ export const reactDoctorRules = [
     rule: {
       ...noBarrelImport,
       framework: "global",
-      category: "Bundle Size",
+      category: "Performance",
     },
   },
   {
@@ -1550,7 +1550,7 @@ export const reactDoctorRules = [
     rule: {
       ...noCascadingSetState,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -1561,7 +1561,7 @@ export const reactDoctorRules = [
     rule: {
       ...noChainStateUpdates,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -1572,7 +1572,7 @@ export const reactDoctorRules = [
     rule: {
       ...noChildrenProp,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -1583,7 +1583,7 @@ export const reactDoctorRules = [
     rule: {
       ...noCloneElement,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -1594,7 +1594,7 @@ export const reactDoctorRules = [
     rule: {
       ...noCreateContextInRender,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -1605,7 +1605,7 @@ export const reactDoctorRules = [
     rule: {
       ...noCreateStoreInRender,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -1616,7 +1616,7 @@ export const reactDoctorRules = [
     rule: {
       ...noDanger,
       framework: "global",
-      category: "Correctness",
+      category: "Security",
     },
   },
   {
@@ -1627,7 +1627,7 @@ export const reactDoctorRules = [
     rule: {
       ...noDangerWithChildren,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -1638,7 +1638,7 @@ export const reactDoctorRules = [
     rule: {
       ...noDarkModeGlow,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -1649,7 +1649,7 @@ export const reactDoctorRules = [
     rule: {
       ...noDefaultProps,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -1660,7 +1660,7 @@ export const reactDoctorRules = [
     rule: {
       ...noDerivedState,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -1671,7 +1671,7 @@ export const reactDoctorRules = [
     rule: {
       ...noDerivedStateEffect,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -1682,7 +1682,7 @@ export const reactDoctorRules = [
     rule: {
       ...noDerivedUseState,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -1693,7 +1693,7 @@ export const reactDoctorRules = [
     rule: {
       ...noDidMountSetState,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -1704,7 +1704,7 @@ export const reactDoctorRules = [
     rule: {
       ...noDidUpdateSetState,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -1715,7 +1715,7 @@ export const reactDoctorRules = [
     rule: {
       ...noDirectMutationState,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -1726,7 +1726,7 @@ export const reactDoctorRules = [
     rule: {
       ...noDirectStateMutation,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -1759,7 +1759,7 @@ export const reactDoctorRules = [
     rule: {
       ...noDocumentStartViewTransition,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -1770,7 +1770,7 @@ export const reactDoctorRules = [
     rule: {
       ...noDynamicImportPath,
       framework: "global",
-      category: "Bundle Size",
+      category: "Performance",
     },
   },
   {
@@ -1781,7 +1781,7 @@ export const reactDoctorRules = [
     rule: {
       ...noEffectChain,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -1792,7 +1792,7 @@ export const reactDoctorRules = [
     rule: {
       ...noEffectEventHandler,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -1803,7 +1803,7 @@ export const reactDoctorRules = [
     rule: {
       ...noEffectEventInDeps,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -1814,7 +1814,7 @@ export const reactDoctorRules = [
     rule: {
       ...noEffectWithFreshDeps,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -1836,7 +1836,7 @@ export const reactDoctorRules = [
     rule: {
       ...noEventHandler,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -1847,7 +1847,7 @@ export const reactDoctorRules = [
     rule: {
       ...noEventTriggerState,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -1858,7 +1858,7 @@ export const reactDoctorRules = [
     rule: {
       ...noFetchInEffect,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -1869,7 +1869,7 @@ export const reactDoctorRules = [
     rule: {
       ...noFindDomNode,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -1891,7 +1891,7 @@ export const reactDoctorRules = [
     rule: {
       ...noFullLodashImport,
       framework: "global",
-      category: "Bundle Size",
+      category: "Performance",
     },
   },
   {
@@ -1902,7 +1902,7 @@ export const reactDoctorRules = [
     rule: {
       ...noGenericHandlerNames,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -1913,7 +1913,7 @@ export const reactDoctorRules = [
     rule: {
       ...noGiantComponent,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -1935,7 +1935,7 @@ export const reactDoctorRules = [
     rule: {
       ...noGradientText,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -1957,7 +1957,7 @@ export const reactDoctorRules = [
     rule: {
       ...noInitializeState,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -1979,7 +1979,7 @@ export const reactDoctorRules = [
     rule: {
       ...noInlineExhaustiveStyle,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -2012,7 +2012,7 @@ export const reactDoctorRules = [
     rule: {
       ...noIsMounted,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -2067,7 +2067,7 @@ export const reactDoctorRules = [
     rule: {
       ...noLegacyClassLifecycles,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -2078,7 +2078,7 @@ export const reactDoctorRules = [
     rule: {
       ...noLegacyContextApi,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -2100,7 +2100,7 @@ export const reactDoctorRules = [
     rule: {
       ...noManyBooleanProps,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -2111,7 +2111,7 @@ export const reactDoctorRules = [
     rule: {
       ...noMirrorPropEffect,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -2122,7 +2122,7 @@ export const reactDoctorRules = [
     rule: {
       ...noMoment,
       framework: "global",
-      category: "Bundle Size",
+      category: "Performance",
     },
   },
   {
@@ -2133,7 +2133,7 @@ export const reactDoctorRules = [
     rule: {
       ...noMultiComp,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -2144,7 +2144,7 @@ export const reactDoctorRules = [
     rule: {
       ...noMutableInDeps,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -2155,7 +2155,7 @@ export const reactDoctorRules = [
     rule: {
       ...noMutatingReducerState,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -2166,7 +2166,7 @@ export const reactDoctorRules = [
     rule: {
       ...noNamespace,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -2177,7 +2177,7 @@ export const reactDoctorRules = [
     rule: {
       ...noNestedComponentDefinition,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -2232,7 +2232,7 @@ export const reactDoctorRules = [
     rule: {
       ...noPassDataToParent,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -2243,7 +2243,7 @@ export const reactDoctorRules = [
     rule: {
       ...noPassLiveStateToParent,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -2265,7 +2265,7 @@ export const reactDoctorRules = [
     rule: {
       ...noPolymorphicChildren,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -2276,7 +2276,7 @@ export const reactDoctorRules = [
     rule: {
       ...noPreventDefault,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -2287,7 +2287,7 @@ export const reactDoctorRules = [
     rule: {
       ...noPropCallbackInEffect,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -2298,7 +2298,7 @@ export const reactDoctorRules = [
     rule: {
       ...noPropTypes,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -2309,7 +2309,7 @@ export const reactDoctorRules = [
     rule: {
       ...noPureBlackBackground,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -2320,7 +2320,7 @@ export const reactDoctorRules = [
     rule: {
       ...noRandomKey,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -2331,7 +2331,7 @@ export const reactDoctorRules = [
     rule: {
       ...noReactChildren,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -2342,7 +2342,7 @@ export const reactDoctorRules = [
     rule: {
       ...noReactDomDeprecatedApis,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -2353,7 +2353,7 @@ export const reactDoctorRules = [
     rule: {
       ...noReact19DeprecatedApis,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -2375,7 +2375,7 @@ export const reactDoctorRules = [
     rule: {
       ...noRedundantShouldComponentUpdate,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -2386,7 +2386,7 @@ export const reactDoctorRules = [
     rule: {
       ...noRenderInRender,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -2397,7 +2397,7 @@ export const reactDoctorRules = [
     rule: {
       ...noRenderPropChildren,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -2408,7 +2408,7 @@ export const reactDoctorRules = [
     rule: {
       ...noRenderReturnValue,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -2419,7 +2419,7 @@ export const reactDoctorRules = [
     rule: {
       ...noResetAllStateOnPropChange,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -2452,7 +2452,7 @@ export const reactDoctorRules = [
     rule: {
       ...noSelfUpdatingEffect,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -2463,7 +2463,7 @@ export const reactDoctorRules = [
     rule: {
       ...noSetState,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -2474,7 +2474,7 @@ export const reactDoctorRules = [
     rule: {
       ...noSetStateInRender,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -2485,7 +2485,7 @@ export const reactDoctorRules = [
     rule: {
       ...noSideTabBorder,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -2507,7 +2507,7 @@ export const reactDoctorRules = [
     rule: {
       ...noStringRefs,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -2518,7 +2518,7 @@ export const reactDoctorRules = [
     rule: {
       ...noThisInSfc,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -2551,7 +2551,7 @@ export const reactDoctorRules = [
     rule: {
       ...noUncontrolledInput,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -2562,7 +2562,7 @@ export const reactDoctorRules = [
     rule: {
       ...noUndeferredThirdParty,
       framework: "global",
-      category: "Bundle Size",
+      category: "Performance",
     },
   },
   {
@@ -2573,7 +2573,7 @@ export const reactDoctorRules = [
     rule: {
       ...noUnescapedEntities,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -2584,7 +2584,7 @@ export const reactDoctorRules = [
     rule: {
       ...noUnknownProperty,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -2595,7 +2595,7 @@ export const reactDoctorRules = [
     rule: {
       ...noUnsafe,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -2628,7 +2628,7 @@ export const reactDoctorRules = [
     rule: {
       ...noWideLetterSpacing,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -2639,7 +2639,7 @@ export const reactDoctorRules = [
     rule: {
       ...noWillUpdateSetState,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -2650,7 +2650,7 @@ export const reactDoctorRules = [
     rule: {
       ...noZIndex9999,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -2661,7 +2661,7 @@ export const reactDoctorRules = [
     rule: {
       ...onlyExportComponents,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -2672,7 +2672,7 @@ export const reactDoctorRules = [
     rule: {
       ...preactNoChildrenLength,
       framework: "preact",
-      category: "Preact",
+      category: "Bugs",
     },
   },
   {
@@ -2683,7 +2683,7 @@ export const reactDoctorRules = [
     rule: {
       ...preactNoReactHooksImport,
       framework: "preact",
-      category: "Preact",
+      category: "Bugs",
     },
   },
   {
@@ -2694,7 +2694,7 @@ export const reactDoctorRules = [
     rule: {
       ...preactNoRenderArguments,
       framework: "preact",
-      category: "Preact",
+      category: "Bugs",
     },
   },
   {
@@ -2705,7 +2705,7 @@ export const reactDoctorRules = [
     rule: {
       ...preactPreferOndblclick,
       framework: "preact",
-      category: "Preact",
+      category: "Bugs",
     },
   },
   {
@@ -2716,7 +2716,7 @@ export const reactDoctorRules = [
     rule: {
       ...preactPreferOninput,
       framework: "preact",
-      category: "Preact",
+      category: "Bugs",
     },
   },
   {
@@ -2727,7 +2727,7 @@ export const reactDoctorRules = [
     rule: {
       ...preferDynamicImport,
       framework: "global",
-      category: "Bundle Size",
+      category: "Performance",
     },
   },
   {
@@ -2738,7 +2738,7 @@ export const reactDoctorRules = [
     rule: {
       ...preferEs6Class,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -2749,7 +2749,7 @@ export const reactDoctorRules = [
     rule: {
       ...preferFunctionComponent,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -2771,7 +2771,7 @@ export const reactDoctorRules = [
     rule: {
       ...preferModuleScopePureFunction,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -2782,7 +2782,7 @@ export const reactDoctorRules = [
     rule: {
       ...preferModuleScopeStaticValue,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -2815,7 +2815,7 @@ export const reactDoctorRules = [
     rule: {
       ...preferUseEffectEvent,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -2826,7 +2826,7 @@ export const reactDoctorRules = [
     rule: {
       ...preferUseSyncExternalStore,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -2837,7 +2837,7 @@ export const reactDoctorRules = [
     rule: {
       ...preferUseReducer,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -2848,7 +2848,7 @@ export const reactDoctorRules = [
     rule: {
       ...queryMutationMissingInvalidation,
       framework: "tanstack-query",
-      category: "TanStack Query",
+      category: "Bugs",
     },
   },
   {
@@ -2859,7 +2859,7 @@ export const reactDoctorRules = [
     rule: {
       ...queryNoQueryInEffect,
       framework: "tanstack-query",
-      category: "TanStack Query",
+      category: "Bugs",
     },
   },
   {
@@ -2870,7 +2870,7 @@ export const reactDoctorRules = [
     rule: {
       ...queryNoRestDestructuring,
       framework: "tanstack-query",
-      category: "TanStack Query",
+      category: "Bugs",
     },
   },
   {
@@ -2881,7 +2881,7 @@ export const reactDoctorRules = [
     rule: {
       ...queryNoUseQueryForMutation,
       framework: "tanstack-query",
-      category: "TanStack Query",
+      category: "Bugs",
     },
   },
   {
@@ -2892,7 +2892,7 @@ export const reactDoctorRules = [
     rule: {
       ...queryNoVoidQueryFn,
       framework: "tanstack-query",
-      category: "TanStack Query",
+      category: "Bugs",
     },
   },
   {
@@ -2903,7 +2903,7 @@ export const reactDoctorRules = [
     rule: {
       ...queryStableQueryClient,
       framework: "tanstack-query",
-      category: "TanStack Query",
+      category: "Bugs",
     },
   },
   {
@@ -2914,7 +2914,7 @@ export const reactDoctorRules = [
     rule: {
       ...reactCompilerNoManualMemoization,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -2925,7 +2925,7 @@ export const reactDoctorRules = [
     rule: {
       ...reactInJsxScope,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -2969,7 +2969,7 @@ export const reactDoctorRules = [
     rule: {
       ...renderingConditionalRender,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -2991,7 +2991,7 @@ export const reactDoctorRules = [
     rule: {
       ...renderingHydrationMismatchTime,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -3046,7 +3046,7 @@ export const reactDoctorRules = [
     rule: {
       ...requireRenderReturn,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -3068,7 +3068,7 @@ export const reactDoctorRules = [
     rule: {
       ...rerenderDependencies,
       framework: "global",
-      category: "State & Effects",
+      category: "Bugs",
     },
   },
   {
@@ -3167,7 +3167,7 @@ export const reactDoctorRules = [
     rule: {
       ...rnAnimateLayoutProperty,
       framework: "react-native",
-      category: "React Native",
+      category: "Bugs",
       tags: [...new Set(["react-native", ...(rnAnimateLayoutProperty.tags ?? [])])],
     },
   },
@@ -3179,7 +3179,7 @@ export const reactDoctorRules = [
     rule: {
       ...rnAnimationReactionAsDerived,
       framework: "react-native",
-      category: "React Native",
+      category: "Bugs",
       tags: [...new Set(["react-native", ...(rnAnimationReactionAsDerived.tags ?? [])])],
     },
   },
@@ -3191,7 +3191,7 @@ export const reactDoctorRules = [
     rule: {
       ...rnBottomSheetPreferNative,
       framework: "react-native",
-      category: "React Native",
+      category: "Bugs",
       tags: [...new Set(["react-native", ...(rnBottomSheetPreferNative.tags ?? [])])],
     },
   },
@@ -3203,7 +3203,7 @@ export const reactDoctorRules = [
     rule: {
       ...rnListCallbackPerRow,
       framework: "react-native",
-      category: "React Native",
+      category: "Bugs",
       tags: [...new Set(["react-native", ...(rnListCallbackPerRow.tags ?? [])])],
     },
   },
@@ -3215,7 +3215,7 @@ export const reactDoctorRules = [
     rule: {
       ...rnListDataMapped,
       framework: "react-native",
-      category: "React Native",
+      category: "Bugs",
       tags: [...new Set(["react-native", ...(rnListDataMapped.tags ?? [])])],
     },
   },
@@ -3227,7 +3227,7 @@ export const reactDoctorRules = [
     rule: {
       ...rnListMissingEstimatedItemSize,
       framework: "react-native",
-      category: "React Native",
+      category: "Bugs",
       tags: [...new Set(["react-native", ...(rnListMissingEstimatedItemSize.tags ?? [])])],
     },
   },
@@ -3239,7 +3239,7 @@ export const reactDoctorRules = [
     rule: {
       ...rnListRecyclableWithoutTypes,
       framework: "react-native",
-      category: "React Native",
+      category: "Bugs",
       tags: [...new Set(["react-native", ...(rnListRecyclableWithoutTypes.tags ?? [])])],
     },
   },
@@ -3251,7 +3251,7 @@ export const reactDoctorRules = [
     rule: {
       ...rnNoDeprecatedModules,
       framework: "react-native",
-      category: "React Native",
+      category: "Bugs",
       tags: [...new Set(["react-native", ...(rnNoDeprecatedModules.tags ?? [])])],
     },
   },
@@ -3263,7 +3263,7 @@ export const reactDoctorRules = [
     rule: {
       ...rnNoDimensionsGet,
       framework: "react-native",
-      category: "React Native",
+      category: "Bugs",
       tags: [...new Set(["react-native", ...(rnNoDimensionsGet.tags ?? [])])],
     },
   },
@@ -3275,7 +3275,7 @@ export const reactDoctorRules = [
     rule: {
       ...rnNoFalsyAndRender,
       framework: "react-native",
-      category: "React Native",
+      category: "Bugs",
       tags: [...new Set(["react-native", ...(rnNoFalsyAndRender.tags ?? [])])],
     },
   },
@@ -3287,7 +3287,7 @@ export const reactDoctorRules = [
     rule: {
       ...rnNoInlineFlatlistRenderitem,
       framework: "react-native",
-      category: "React Native",
+      category: "Bugs",
       tags: [...new Set(["react-native", ...(rnNoInlineFlatlistRenderitem.tags ?? [])])],
     },
   },
@@ -3299,7 +3299,7 @@ export const reactDoctorRules = [
     rule: {
       ...rnNoInlineObjectInListItem,
       framework: "react-native",
-      category: "React Native",
+      category: "Bugs",
       tags: [...new Set(["react-native", ...(rnNoInlineObjectInListItem.tags ?? [])])],
     },
   },
@@ -3311,7 +3311,7 @@ export const reactDoctorRules = [
     rule: {
       ...rnNoLegacyExpoPackages,
       framework: "react-native",
-      category: "React Native",
+      category: "Bugs",
       tags: [...new Set(["react-native", ...(rnNoLegacyExpoPackages.tags ?? [])])],
     },
   },
@@ -3323,7 +3323,7 @@ export const reactDoctorRules = [
     rule: {
       ...rnNoLegacyShadowStyles,
       framework: "react-native",
-      category: "React Native",
+      category: "Bugs",
       tags: [...new Set(["react-native", ...(rnNoLegacyShadowStyles.tags ?? [])])],
     },
   },
@@ -3335,7 +3335,7 @@ export const reactDoctorRules = [
     rule: {
       ...rnNoNonNativeNavigator,
       framework: "react-native",
-      category: "React Native",
+      category: "Bugs",
       tags: [...new Set(["react-native", ...(rnNoNonNativeNavigator.tags ?? [])])],
     },
   },
@@ -3347,7 +3347,7 @@ export const reactDoctorRules = [
     rule: {
       ...rnNoRawText,
       framework: "react-native",
-      category: "React Native",
+      category: "Bugs",
       tags: [...new Set(["react-native", ...(rnNoRawText.tags ?? [])])],
     },
   },
@@ -3359,7 +3359,7 @@ export const reactDoctorRules = [
     rule: {
       ...rnNoRenderitemKey,
       framework: "react-native",
-      category: "React Native",
+      category: "Bugs",
       tags: [...new Set(["react-native", ...(rnNoRenderitemKey.tags ?? [])])],
     },
   },
@@ -3371,7 +3371,7 @@ export const reactDoctorRules = [
     rule: {
       ...rnNoScrollState,
       framework: "react-native",
-      category: "React Native",
+      category: "Bugs",
       tags: [...new Set(["react-native", ...(rnNoScrollState.tags ?? [])])],
     },
   },
@@ -3383,7 +3383,7 @@ export const reactDoctorRules = [
     rule: {
       ...rnNoScrollviewMappedList,
       framework: "react-native",
-      category: "React Native",
+      category: "Bugs",
       tags: [...new Set(["react-native", ...(rnNoScrollviewMappedList.tags ?? [])])],
     },
   },
@@ -3395,7 +3395,7 @@ export const reactDoctorRules = [
     rule: {
       ...rnNoSingleElementStyleArray,
       framework: "react-native",
-      category: "React Native",
+      category: "Bugs",
       tags: [...new Set(["react-native", ...(rnNoSingleElementStyleArray.tags ?? [])])],
     },
   },
@@ -3407,7 +3407,7 @@ export const reactDoctorRules = [
     rule: {
       ...rnPreferContentInsetAdjustment,
       framework: "react-native",
-      category: "React Native",
+      category: "Bugs",
       tags: [...new Set(["react-native", ...(rnPreferContentInsetAdjustment.tags ?? [])])],
     },
   },
@@ -3419,7 +3419,7 @@ export const reactDoctorRules = [
     rule: {
       ...rnPreferExpoImage,
       framework: "react-native",
-      category: "React Native",
+      category: "Bugs",
       tags: [...new Set(["react-native", ...(rnPreferExpoImage.tags ?? [])])],
     },
   },
@@ -3431,7 +3431,7 @@ export const reactDoctorRules = [
     rule: {
       ...rnPreferPressable,
       framework: "react-native",
-      category: "React Native",
+      category: "Bugs",
       tags: [...new Set(["react-native", ...(rnPreferPressable.tags ?? [])])],
     },
   },
@@ -3443,7 +3443,7 @@ export const reactDoctorRules = [
     rule: {
       ...rnPreferPressableOverGestureDetector,
       framework: "react-native",
-      category: "React Native",
+      category: "Bugs",
       tags: [...new Set(["react-native", ...(rnPreferPressableOverGestureDetector.tags ?? [])])],
     },
   },
@@ -3455,7 +3455,7 @@ export const reactDoctorRules = [
     rule: {
       ...rnPreferReanimated,
       framework: "react-native",
-      category: "React Native",
+      category: "Bugs",
       tags: [...new Set(["react-native", ...(rnPreferReanimated.tags ?? [])])],
     },
   },
@@ -3467,7 +3467,7 @@ export const reactDoctorRules = [
     rule: {
       ...rnPressableSharedValueMutation,
       framework: "react-native",
-      category: "React Native",
+      category: "Bugs",
       tags: [...new Set(["react-native", ...(rnPressableSharedValueMutation.tags ?? [])])],
     },
   },
@@ -3479,7 +3479,7 @@ export const reactDoctorRules = [
     rule: {
       ...rnScrollviewDynamicPadding,
       framework: "react-native",
-      category: "React Native",
+      category: "Bugs",
       tags: [...new Set(["react-native", ...(rnScrollviewDynamicPadding.tags ?? [])])],
     },
   },
@@ -3491,7 +3491,7 @@ export const reactDoctorRules = [
     rule: {
       ...rnScrollviewFlexInContentContainer,
       framework: "react-native",
-      category: "React Native",
+      category: "Bugs",
       tags: [...new Set(["react-native", ...(rnScrollviewFlexInContentContainer.tags ?? [])])],
     },
   },
@@ -3503,7 +3503,7 @@ export const reactDoctorRules = [
     rule: {
       ...rnStylePreferBoxShadow,
       framework: "react-native",
-      category: "React Native",
+      category: "Bugs",
       tags: [...new Set(["react-native", ...(rnStylePreferBoxShadow.tags ?? [])])],
     },
   },
@@ -3537,7 +3537,7 @@ export const reactDoctorRules = [
     rule: {
       ...rulesOfHooks,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -3559,7 +3559,7 @@ export const reactDoctorRules = [
     rule: {
       ...selfClosingComp,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -3570,7 +3570,7 @@ export const reactDoctorRules = [
     rule: {
       ...serverAfterNonblocking,
       framework: "global",
-      category: "Server",
+      category: "Bugs",
       tags: [...new Set(["server-action", ...(serverAfterNonblocking.tags ?? [])])],
     },
   },
@@ -3582,7 +3582,7 @@ export const reactDoctorRules = [
     rule: {
       ...serverAuthActions,
       framework: "global",
-      category: "Server",
+      category: "Bugs",
       tags: [...new Set(["server-action", ...(serverAuthActions.tags ?? [])])],
     },
   },
@@ -3594,7 +3594,7 @@ export const reactDoctorRules = [
     rule: {
       ...serverCacheWithObjectLiteral,
       framework: "global",
-      category: "Server",
+      category: "Bugs",
       tags: [...new Set(["server-action", ...(serverCacheWithObjectLiteral.tags ?? [])])],
     },
   },
@@ -3606,7 +3606,7 @@ export const reactDoctorRules = [
     rule: {
       ...serverDedupProps,
       framework: "global",
-      category: "Server",
+      category: "Bugs",
       tags: [...new Set(["server-action", ...(serverDedupProps.tags ?? [])])],
     },
   },
@@ -3618,7 +3618,7 @@ export const reactDoctorRules = [
     rule: {
       ...serverFetchWithoutRevalidate,
       framework: "global",
-      category: "Server",
+      category: "Bugs",
       tags: [...new Set(["server-action", ...(serverFetchWithoutRevalidate.tags ?? [])])],
     },
   },
@@ -3630,7 +3630,7 @@ export const reactDoctorRules = [
     rule: {
       ...serverHoistStaticIo,
       framework: "global",
-      category: "Server",
+      category: "Bugs",
       tags: [...new Set(["server-action", ...(serverHoistStaticIo.tags ?? [])])],
     },
   },
@@ -3642,7 +3642,7 @@ export const reactDoctorRules = [
     rule: {
       ...serverNoMutableModuleState,
       framework: "global",
-      category: "Server",
+      category: "Bugs",
       tags: [...new Set(["server-action", ...(serverNoMutableModuleState.tags ?? [])])],
     },
   },
@@ -3654,7 +3654,7 @@ export const reactDoctorRules = [
     rule: {
       ...serverSequentialIndependentAwait,
       framework: "global",
-      category: "Server",
+      category: "Bugs",
       tags: [...new Set(["server-action", ...(serverSequentialIndependentAwait.tags ?? [])])],
     },
   },
@@ -3666,7 +3666,7 @@ export const reactDoctorRules = [
     rule: {
       ...stateInConstructor,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -3677,7 +3677,7 @@ export const reactDoctorRules = [
     rule: {
       ...stylePropObject,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -3721,7 +3721,7 @@ export const reactDoctorRules = [
     rule: {
       ...tanstackStartMissingHeadContent,
       framework: "tanstack-start",
-      category: "TanStack Start",
+      category: "Bugs",
     },
   },
   {
@@ -3732,7 +3732,7 @@ export const reactDoctorRules = [
     rule: {
       ...tanstackStartNoAnchorElement,
       framework: "tanstack-start",
-      category: "TanStack Start",
+      category: "Bugs",
     },
   },
   {
@@ -3743,7 +3743,7 @@ export const reactDoctorRules = [
     rule: {
       ...tanstackStartNoDirectFetchInLoader,
       framework: "tanstack-start",
-      category: "TanStack Start",
+      category: "Bugs",
     },
   },
   {
@@ -3754,7 +3754,7 @@ export const reactDoctorRules = [
     rule: {
       ...tanstackStartNoDynamicServerFnImport,
       framework: "tanstack-start",
-      category: "TanStack Start",
+      category: "Bugs",
     },
   },
   {
@@ -3765,7 +3765,7 @@ export const reactDoctorRules = [
     rule: {
       ...tanstackStartNoNavigateInRender,
       framework: "tanstack-start",
-      category: "TanStack Start",
+      category: "Bugs",
     },
   },
   {
@@ -3787,7 +3787,7 @@ export const reactDoctorRules = [
     rule: {
       ...tanstackStartNoUseServerInHandler,
       framework: "tanstack-start",
-      category: "TanStack Start",
+      category: "Bugs",
     },
   },
   {
@@ -3798,7 +3798,7 @@ export const reactDoctorRules = [
     rule: {
       ...tanstackStartNoUseEffectFetch,
       framework: "tanstack-start",
-      category: "TanStack Start",
+      category: "Bugs",
     },
   },
   {
@@ -3809,7 +3809,7 @@ export const reactDoctorRules = [
     rule: {
       ...tanstackStartRedirectInTryCatch,
       framework: "tanstack-start",
-      category: "TanStack Start",
+      category: "Bugs",
     },
   },
   {
@@ -3820,7 +3820,7 @@ export const reactDoctorRules = [
     rule: {
       ...tanstackStartRoutePropertyOrder,
       framework: "tanstack-start",
-      category: "TanStack Start",
+      category: "Bugs",
     },
   },
   {
@@ -3831,7 +3831,7 @@ export const reactDoctorRules = [
     rule: {
       ...tanstackStartServerFnMethodOrder,
       framework: "tanstack-start",
-      category: "TanStack Start",
+      category: "Bugs",
     },
   },
   {
@@ -3842,7 +3842,7 @@ export const reactDoctorRules = [
     rule: {
       ...tanstackStartServerFnValidateInput,
       framework: "tanstack-start",
-      category: "TanStack Start",
+      category: "Bugs",
     },
   },
   {
@@ -3853,7 +3853,7 @@ export const reactDoctorRules = [
     rule: {
       ...useLazyMotion,
       framework: "global",
-      category: "Bundle Size",
+      category: "Performance",
     },
   },
   {
@@ -3864,7 +3864,7 @@ export const reactDoctorRules = [
     rule: {
       ...voidDomElementsNoChildren,
       framework: "global",
-      category: "Correctness",
+      category: "Bugs",
     },
   },
   {
@@ -3875,7 +3875,7 @@ export const reactDoctorRules = [
     rule: {
       ...zodV4NoDeprecatedErrorApis,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -3886,7 +3886,7 @@ export const reactDoctorRules = [
     rule: {
       ...zodV4NoDeprecatedErrorCustomization,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -3897,7 +3897,7 @@ export const reactDoctorRules = [
     rule: {
       ...zodV4NoDeprecatedSchemaApis,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
   {
@@ -3908,7 +3908,7 @@ export const reactDoctorRules = [
     rule: {
       ...zodV4PreferTopLevelStringFormats,
       framework: "global",
-      category: "Architecture",
+      category: "Maintainability",
     },
   },
 ] as const;

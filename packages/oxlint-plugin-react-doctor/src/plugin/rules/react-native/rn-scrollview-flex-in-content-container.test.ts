@@ -9,7 +9,7 @@ describe("rn-scrollview-flex-in-content-container", () => {
     `;
     const result = runRule(rnScrollviewFlexInContentContainer, code);
     expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0].message).toContain("flexBasis: 0");
+    expect(result.diagnostics[0].message).toContain("collapse the container");
   });
 
   it("flags flex: 2 (any positive number)", () => {
@@ -147,7 +147,7 @@ describe("rn-scrollview-flex-in-content-container", () => {
     `;
     const result = runRule(rnScrollviewFlexInContentContainer, code);
     expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0].message).toContain("flexBasis: 0");
+    expect(result.diagnostics[0].message).toContain("collapse the container");
   });
 
   it("flags flex: 1 via computed StyleSheet.create ref (styles['container'])", () => {

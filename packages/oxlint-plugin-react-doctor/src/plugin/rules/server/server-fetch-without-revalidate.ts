@@ -56,9 +56,10 @@ const NON_PROJECT_PATH_PATTERN = /\/(?:node_modules|dist|build|\.next)\//;
 
 export const serverFetchWithoutRevalidate = defineRule<Rule>({
   id: "server-fetch-without-revalidate",
+  title: "Fetch without revalidate",
   severity: "warn",
   recommendation:
-    'Pass `{ next: { revalidate: <seconds> } }` (or `cache: "no-store"` / `next: { tags: [...] }`) so stale cached data doesn\'t silently persist',
+    'Pass `{ next: { revalidate: <seconds> } }` (or `cache: "no-store"`) so old data doesn\'t stick around.',
   create: (context: RuleContext) => {
     let isServerSideFile = false;
 
@@ -95,7 +96,7 @@ export const serverFetchWithoutRevalidate = defineRule<Rule>({
             : "url";
         context.report({
           node,
-          message: `fetch(${urlText}) in a Server Component / route handler defaults to forever-caching — pass { next: { revalidate: <seconds> } } / { next: { tags: [...] } } / { cache: "no-store" } so stale data doesn't quietly persist`,
+          message: `fetch(${urlText}) is cached forever by default, so your users can see stale data.`,
         });
       },
     };

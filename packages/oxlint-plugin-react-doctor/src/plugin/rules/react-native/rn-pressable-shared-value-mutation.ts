@@ -64,11 +64,12 @@ const handlerMutatesIdentifier = (
 // false-positives on `Map.prototype.set` / `ref.current.value =` etc.
 export const rnPressableSharedValueMutation = defineRule<Rule>({
   id: "rn-pressable-shared-value-mutation",
+  title: "Pressable animates on the JS thread",
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    "Wrap in <GestureDetector gesture={Gesture.Tap()...}> so the press animation runs on the UI thread instead of bouncing across the JS bridge",
+    "This press animation runs on the JS thread, so it can stutter. Wrap it in <GestureDetector gesture={Gesture.Tap()...}> to run it on the UI thread.",
   create: (context: RuleContext) => {
     const sharedValueBindingsByComponent: Array<Set<string>> = [];
 
@@ -122,7 +123,7 @@ export const rnPressableSharedValueMutation = defineRule<Rule>({
 
           context.report({
             node: attr,
-            message: `<${name}> ${attr.name.name} mutates a Reanimated shared value — use a Gesture.Tap() inside <GestureDetector> for press animations that stay on the UI thread`,
+            message: `Your users feel a choppy press when <${name}> ${attr.name.name} animates on the JS thread.`,
           });
         }
       },

@@ -7,10 +7,11 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const jsMinMaxLoop = defineRule<Rule>({
   id: "js-min-max-loop",
+  title: "sort() to find min or max",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Use `Math.min(...array)` / `Math.max(...array)` instead of sorting just to read the first or last element",
+    "Use `Math.min(...array)` or `Math.max(...array)` instead of sorting the whole list just to read the first or last item",
   create: (context: RuleContext) => ({
     MemberExpression(node: EsTreeNodeOfType<"MemberExpression">) {
       if (!node.computed) return;
@@ -30,7 +31,7 @@ export const jsMinMaxLoop = defineRule<Rule>({
         const targetFunction = isFirstElement ? "min" : "max";
         context.report({
           node,
-          message: `array.sort()[${isFirstElement ? "0" : "length-1"}] for min/max — use Math.${targetFunction}(...array) instead (O(n) vs O(n log n))`,
+          message: `This is slow because array.sort()[${isFirstElement ? "0" : "length-1"}] sorts the whole list just to grab the smallest or largest, so use Math.${targetFunction}(...array) instead`,
         });
       }
     },

@@ -192,12 +192,13 @@ const resolveGetHandlerBodies = (
 
 export const nextjsNoSideEffectInGetHandler = defineRule<Rule>({
   id: "nextjs-no-side-effect-in-get-handler",
+  title: "Side effect in GET handler",
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "error",
   category: "Security",
   recommendation:
-    "Move the side effect to a POST handler and use a <form> or fetch with method POST — GET requests can be triggered by prefetching and are vulnerable to CSRF",
+    "GET requests can be prefetched and are open to CSRF. Move the side effect to a POST handler.",
   create: (context: RuleContext) => {
     let resolveBinding: (identifierName: string) => EsTreeNode | null = () => null;
 
@@ -215,7 +216,7 @@ export const nextjsNoSideEffectInGetHandler = defineRule<Rule>({
         if (mutatingSegment) {
           context.report({
             node,
-            message: `GET handler on "/${mutatingSegment}" route — use POST to prevent CSRF and unintended prefetch triggers`,
+            message: `This GET handler on the "/${mutatingSegment}" route is prone to CSRF vulnerabilities, since prefetching or a forged request can trigger it.`,
           });
           return;
         }
@@ -231,7 +232,7 @@ export const nextjsNoSideEffectInGetHandler = defineRule<Rule>({
           if (!sideEffect) continue;
           context.report({
             node,
-            message: `GET handler has side effects (${sideEffect}) — use POST to prevent CSRF and unintended prefetch triggers`,
+            message: `This GET handler's side effect (${sideEffect}) is prone to CSRF vulnerabilities, since prefetching or a forged request can trigger it.`,
           });
           return;
         }

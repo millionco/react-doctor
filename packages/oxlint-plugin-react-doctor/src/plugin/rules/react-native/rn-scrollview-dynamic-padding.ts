@@ -14,11 +14,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // the content.
 export const rnScrollviewDynamicPadding = defineRule<Rule>({
   id: "rn-scrollview-dynamic-padding",
+  title: "Dynamic padding on contentContainerStyle",
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    "Use `contentInset={{ bottom: dynamicValue }}` — the OS applies it as an offset without reflowing the scroll content",
+    "Use `contentInset={{ bottom: dynamicValue }}` so the OS shifts the content instead of relaying it out, which avoids the jump.",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const elementName = resolveJsxElementName(node);
@@ -47,7 +48,7 @@ export const rnScrollviewDynamicPadding = defineRule<Rule>({
 
           context.report({
             node: property,
-            message: `Dynamic ${key} on contentContainerStyle reflows the scroll content — use \`contentInset\` (OS-level offset, no relayout) instead`,
+            message: `Your users see rows jump when a changing ${key} on contentContainerStyle shifts the whole list.`,
           });
           return;
         }

@@ -66,15 +66,16 @@ const getComponentNameFromClassProperty = (
 };
 
 const buildMessage = (componentName: string): string =>
-  `${componentName}.propTypes — React 19 no longer runs \`propTypes\` checks, so invalid props pass silently. Move the prop contract to TypeScript types and add explicit runtime validation only where data can actually be invalid`;
+  `${componentName}.propTypes does nothing in React 19, so bad props reach your users with no warning. Describe props with TypeScript types & check risky data yourself.`;
 
 export const noPropTypes = defineRule<Rule>({
   id: "no-prop-types",
+  title: "propTypes ignored in React 19",
   requires: ["react:19"],
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "React 19 removed runtime `propTypes` validation — React no longer reads `Component.propTypes`, so invalid props pass silently. Describe props with TypeScript types and move any required runtime validation to explicit checks (or schema parsing) in component code. Only enabled on projects detected as React 19+.",
+    "React 19 ignores `Component.propTypes`, so invalid props pass silently. Describe props with TypeScript types and add real runtime checks (or schema parsing) only where data can actually be wrong. Only runs on React 19+ projects.",
   create: (context: RuleContext) => ({
     AssignmentExpression(node: EsTreeNodeOfType<"AssignmentExpression">) {
       if (node.operator !== "=") return;

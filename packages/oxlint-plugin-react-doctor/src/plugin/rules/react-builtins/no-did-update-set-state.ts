@@ -5,7 +5,7 @@ import { isSetStateCallInLifecycle } from "../../utils/is-set-state-in-lifecycle
 import type { Rule } from "../../utils/rule.js";
 
 const LIFECYCLE_NAMES = new Set(["componentDidUpdate"]);
-const MESSAGE = "Do not use `this.setState` in `componentDidUpdate` — it can cause infinite loops.";
+const MESSAGE = "This can loop forever & freeze the component.";
 
 interface SettingsShape {
   mode?: "allowed" | "disallow-in-func";
@@ -27,9 +27,10 @@ const resolveSettings = (
 // `mode: "disallow-in-func"`, also flags nested-function call sites.
 export const noDidUpdateSetState = defineRule<Rule>({
   id: "no-did-update-set-state",
+  title: "setState in componentDidUpdate",
   severity: "warn",
   recommendation:
-    "Avoid `setState` in `componentDidUpdate` — it triggers re-renders and can loop. Use `getDerivedStateFromProps` instead.",
+    "Setting state in `componentDidUpdate` causes another render and can loop. Use `getDerivedStateFromProps` instead.",
   create: (context) => {
     const { mode } = resolveSettings(context.settings);
     return {

@@ -12,10 +12,11 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // the argument object once at module/route scope).
 export const serverCacheWithObjectLiteral = defineRule<Rule>({
   id: "server-cache-with-object-literal",
+  title: "React.cache with object literal",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Pass primitives to React.cache()-wrapped functions — argument identity (not deep equality) is the dedup key, so a fresh `{}` per render bypasses the cache",
+    "Pass plain values like strings or numbers, not an object. React.cache() matches the exact value, so a new `{}` each render misses the cache.",
   create: (context: RuleContext) => {
     const cachedFunctionNames = new Set<string>();
 
@@ -43,7 +44,7 @@ export const serverCacheWithObjectLiteral = defineRule<Rule>({
 
         context.report({
           node,
-          message: `${node.callee.name} is React.cache()-wrapped, but you're passing an object literal — the cache keys on argument identity, so a fresh {} per render bypasses dedup. Pass primitives or hoist the object`,
+          message: `Passing a new object to React.cache() each render misses the cache, so it refetches every request.`,
         });
       },
     };

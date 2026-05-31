@@ -10,7 +10,7 @@ import { isNonInteractiveRole } from "../../utils/is-non-interactive-role.js";
 import type { Rule } from "../../utils/rule.js";
 
 const buildMessage = (tag: string, role: string): string =>
-  `Interactive element \`<${tag}>\` cannot have non-interactive role \`${role}\`.`;
+  `Screen reader users can't operate this interactive \`<${tag}>\` because role \`${role}\` says it isn't, so remove the role or use a different element.`;
 
 const PRESENTATION_ROLES: ReadonlyArray<string> = ["presentation", "none"];
 
@@ -47,9 +47,10 @@ const resolveSettings = (
 // Port of `oxc_linter::rules::jsx_a11y::no_interactive_element_to_noninteractive_role`.
 export const noInteractiveElementToNoninteractiveRole = defineRule<Rule>({
   id: "no-interactive-element-to-noninteractive-role",
+  title: "Interactive element given noninteractive role",
   tags: ["react-jsx-only"],
   severity: "warn",
-  recommendation: "Don't override an interactive element's semantics with a non-interactive role.",
+  recommendation: "Do not give an interactive element a role that says it is not interactive.",
   category: "Accessibility",
   create: (context) => {
     const allowedRoles = resolveSettings(context.settings);

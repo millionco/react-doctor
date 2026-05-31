@@ -12,10 +12,11 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noZIndex9999 = defineRule<Rule>({
   id: "no-z-index-9999",
+  title: "Excessively high z-index",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Define a z-index scale in your design tokens (e.g. dropdown: 10, modal: 20, toast: 30). Create a new stacking context with `isolation: isolate` instead of escalating values",
+    "Pick a small z-index scale, like dropdown 10, modal 20, toast 30. To layer something on top, use `isolation: isolate` instead of bigger numbers.",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);
@@ -29,7 +30,7 @@ export const noZIndex9999 = defineRule<Rule>({
         if (zValue !== null && Math.abs(zValue) >= Z_INDEX_ABSURD_THRESHOLD) {
           context.report({
             node: property,
-            message: `z-index: ${zValue} is arbitrarily high — use a deliberate z-index scale (1–50). Extreme values signal a stacking context problem, not a fix`,
+            message: `z-index ${zValue} is way too high & usually hides a layering bug instead of fixing it, so use a small set scale, like 1 to 50.`,
           });
         }
       }
@@ -60,7 +61,7 @@ export const noZIndex9999 = defineRule<Rule>({
           if (Math.abs(zValue) >= Z_INDEX_ABSURD_THRESHOLD) {
             context.report({
               node: child,
-              message: `z-index: ${zValue} is arbitrarily high — use a deliberate z-index scale (1–50). Extreme values signal a stacking context problem, not a fix`,
+              message: `z-index ${zValue} is way too high & usually hides a layering bug instead of fixing it, so use a small set scale, like 1 to 50.`,
             });
           }
         }

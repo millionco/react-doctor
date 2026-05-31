@@ -4,7 +4,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
-const MESSAGE = "Do not use the return value from `ReactDOM.render`.";
+const MESSAGE = "Your app breaks in React 19 because `ReactDOM.render` returns nothing there.";
 
 const isReactDomRenderCall = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
   if (!isNodeOfType(node.callee, "MemberExpression")) return false;
@@ -41,9 +41,10 @@ const isUsedAsReturnValue = (parent: EsTreeNode | null | undefined): boolean => 
 // or implicitly returned from an expression-bodied arrow.
 export const noRenderReturnValue = defineRule<Rule>({
   id: "no-render-return-value",
+  title: "Using ReactDOM.render return value",
   severity: "warn",
   recommendation:
-    "Don't use `ReactDOM.render`'s return value — it's legacy and was removed in React 19.",
+    "Don't use `ReactDOM.render`'s return value. It's legacy and was removed in React 19.",
   create: (context) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isReactDomRenderCall(node)) return;

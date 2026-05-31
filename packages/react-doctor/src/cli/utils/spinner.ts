@@ -14,6 +14,7 @@ const noopHandle = Object.freeze({
   update: () => {},
   succeed: () => {},
   fail: () => {},
+  stop: () => {},
 });
 
 export const spinner = (text: string) => ({
@@ -30,7 +31,18 @@ export const spinner = (text: string) => ({
     // disagree about which `columns` value matters.
     const stream = process.stderr;
     const isEnabled = isSpinnerInteractive(stream);
-    const instance = ora({ text, indent: SPINNER_INDENT_CHARS, isEnabled, stream });
+    // HACK: ora's `discardStdin` (default true on a TTY) puts stdin into
+    // raw mode while spinning to swallow keystrokes — but raw mode also
+    // stops the terminal from turning Ctrl-C into a SIGINT (it arrives as a
+    // discarded 0x03 byte instead), so the scan becomes uncancellable. Opt
+    // out so Ctrl-C keeps reaching the SIGINT handler in cli/index.ts.
+    const instance = ora({
+      text,
+      indent: SPINNER_INDENT_CHARS,
+      isEnabled,
+      stream,
+      discardStdin: false,
+    });
     if (isEnabled) instance.start();
 
     let didFinalize = false;
@@ -48,6 +60,14 @@ export const spinner = (text: string) => ({
         if (didFinalize) return;
         didFinalize = true;
         instance.fail(displayText);
+      },
+      stop() {
+        if (didFinalize) return;
+        didFinalize = true;
+        // `instance.stop()` clears the in-progress line in interactive
+        // mode and is a no-op in the static (non-interactive) path, so
+        // no persistent status line is left behind either way.
+        instance.stop();
       },
     };
   },

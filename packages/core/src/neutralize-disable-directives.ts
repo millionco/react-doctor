@@ -2,7 +2,8 @@ import * as Effect from "effect/Effect";
 import fs from "node:fs";
 import path from "node:path";
 import { readDirectoryEntries } from "./project-info/index.js";
-import { IGNORED_DIRECTORIES, SOURCE_FILE_PATTERN } from "./constants.js";
+import { IGNORED_DIRECTORIES } from "./constants.js";
+import { isLintableSourceFile } from "./utils/is-lintable-source-file.js";
 import { Git } from "./services/git.js";
 
 const DISABLE_DIRECTIVE_PATTERN = /(eslint|oxlint)-disable/;
@@ -33,7 +34,7 @@ const findFilesWithDisableDirectivesViaGit = async (
 
   return grepResult.stdout
     .split("\n")
-    .filter((filePath) => filePath.length > 0 && SOURCE_FILE_PATTERN.test(filePath));
+    .filter((filePath) => filePath.length > 0 && isLintableSourceFile(filePath));
 };
 
 // HACK: filesystem fallback for non-git projects (and for cases where
@@ -47,7 +48,7 @@ const findFilesWithDisableDirectivesViaFilesystem = (
 ): string[] => {
   const matches: string[] = [];
   const checkFile = (relativePath: string): void => {
-    if (!SOURCE_FILE_PATTERN.test(relativePath)) return;
+    if (!isLintableSourceFile(relativePath)) return;
     const absolutePath = path.join(rootDirectory, relativePath);
     let content: string;
     try {

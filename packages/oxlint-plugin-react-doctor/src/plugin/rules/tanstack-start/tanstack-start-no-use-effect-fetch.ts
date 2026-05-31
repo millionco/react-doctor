@@ -12,11 +12,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const tanstackStartNoUseEffectFetch = defineRule<Rule>({
   id: "tanstack-start-no-useeffect-fetch",
+  title: "fetch inside useEffect in route",
   tags: ["test-noise"],
   requires: ["tanstack-start"],
   severity: "warn",
   recommendation:
-    "Fetch data in the route `loader` instead — the router coordinates loading before rendering to avoid waterfalls",
+    "Fetch data in the route `loader` instead. The router loads it before rendering and avoids waterfalls.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const filename = normalizeFilename(context.filename ?? "");
@@ -44,7 +45,7 @@ export const tanstackStartNoUseEffectFetch = defineRule<Rule>({
         context.report({
           node,
           message:
-            "fetch() inside useEffect in a route file — use the route loader or createServerFn() instead",
+            "fetch() inside useEffect makes your users wait through a loading spinner after render.",
         });
       }
     },

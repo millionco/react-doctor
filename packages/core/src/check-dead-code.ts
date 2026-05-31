@@ -9,6 +9,7 @@ import {
   MILLISECONDS_PER_SECOND,
 } from "./constants.js";
 import { readIgnoreFile } from "./read-ignore-file.js";
+import { toCanonicalPath } from "./utils/to-canonical-path.js";
 import { toRelativePath } from "./utils/to-relative-path.js";
 
 // The plugin id and category every dead-code diagnostic carries.
@@ -440,7 +441,13 @@ const runDeadCodeWorkerWithTimeout = (
   });
 
 export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diagnostic[]> => {
-  const { rootDirectory, userConfig } = options;
+  const { userConfig } = options;
+  // Canonicalize before anything reads the tree: deslop resolves imports
+  // through oxc-resolver (realpath'd) but builds its module graph from
+  // fast-glob (symlink-preserving), so a symlinked root drops every
+  // import edge and mis-flags alias-imported files as unused. See
+  // `toCanonicalPath`.
+  const rootDirectory = toCanonicalPath(options.rootDirectory);
   if (!fs.existsSync(path.join(rootDirectory, "package.json"))) return [];
 
   const ignorePatterns = collectDeadCodeIgnorePatterns(rootDirectory, userConfig);

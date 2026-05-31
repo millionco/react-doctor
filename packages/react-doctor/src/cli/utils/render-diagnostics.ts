@@ -446,7 +446,10 @@ export const formatRuleSummary = (ruleKey: string, ruleDiagnostics: Diagnostic[]
   if (firstDiagnostic.url) {
     sections.push("", `Docs: ${firstDiagnostic.url}`);
   }
-  sections.push("", formatFixRecipeLine(firstDiagnostic));
+  const fixRecipeLine = formatFixRecipeLine(firstDiagnostic);
+  if (fixRecipeLine) {
+    sections.push("", fixRecipeLine);
+  }
 
   sections.push("", "Files:");
   const fileSites = buildVerboseSiteMap(ruleDiagnostics);

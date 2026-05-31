@@ -68,6 +68,7 @@ export * from "./validate-config-types.js";
 export * from "./utils/build-rule-prompt-url.js";
 export * from "./utils/dedupe-diagnostics.js";
 export * from "./utils/group-by.js";
+export * from "./utils/has-published-fix-recipe.js";
 export * from "./utils/match-glob-pattern.js";
 export * from "./utils/redact-sensitive-text.js";
 export * from "./utils/resolve-github-actions-score-metadata.js";

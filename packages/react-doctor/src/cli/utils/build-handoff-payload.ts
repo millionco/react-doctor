@@ -35,8 +35,9 @@ export const buildHandoffPayload = (input: HandoffPayloadInput): string => {
     lines.push(
       `${index + 1}. ${severityLabel} ${representative.category}: ${representative.title ?? ruleKey} (×${ruleDiagnostics.length})`,
       `   ${representative.message}`,
-      `   ${formatFixRecipeLine(representative)}`,
     );
+    const fixRecipeLine = formatFixRecipeLine(representative);
+    if (fixRecipeLine) lines.push(`   ${fixRecipeLine}`);
     const uniqueFiles = [...new Set(ruleDiagnostics.map((diagnostic) => diagnostic.filePath))];
     for (const filePath of uniqueFiles.slice(0, HANDOFF_MAX_FILES_PER_RULE)) {
       const firstSite = ruleDiagnostics.find(

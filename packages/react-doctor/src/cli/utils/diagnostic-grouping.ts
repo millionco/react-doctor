@@ -1,4 +1,4 @@
-import { buildRulePromptUrl } from "@react-doctor/core";
+import { buildRulePromptUrl, hasPublishedFixRecipe } from "@react-doctor/core";
 import type { Diagnostic, ScoreResult } from "@react-doctor/core";
 
 // Ordering / formatting helpers shared by the diagnostics renderer, the
@@ -58,5 +58,10 @@ export const sortRuleGroupsByImportance = (
 // apply it — rather than as optional reference docs it can skip.
 const FETCH_FIX_RECIPE_LABEL = "Fetch & follow the canonical fix recipe before fixing";
 
-export const formatFixRecipeLine = (diagnostic: Diagnostic): string =>
-  `${FETCH_FIX_RECIPE_LABEL}: ${buildRulePromptUrl(diagnostic.plugin, diagnostic.rule)}`;
+// `null` when the rule has no published recipe (dead-code, environment
+// checks, adopted plugins) so callers omit the directive instead of
+// linking to a 404.
+export const formatFixRecipeLine = (diagnostic: Diagnostic): string | null =>
+  hasPublishedFixRecipe(diagnostic)
+    ? `${FETCH_FIX_RECIPE_LABEL}: ${buildRulePromptUrl(diagnostic.plugin, diagnostic.rule)}`
+    : null;

@@ -1,0 +1,227 @@
+packages/react-doctor/src/cli/commands/inspect.ts
+  s_bfb9c1b9472a25::t_d5f41889865acf 202-210
+  s_bfb9c1b9472a25::t_b247a4b25e7156 37-38,41
+  s_bfb9c1b9472a25::t_5775535063e64e 398-399,401-405
+packages/react-doctor/src/cli/utils/render-welcome.ts
+  s_bfb9c1b9472a25::t_7eac82caddfb65 22,32,35,38,47,54-56,60
+  s_bfb9c1b9472a25::t_edaff693b4f910 7
+  s_bfb9c1b9472a25::t_4f450aafcf5bce 12-13
+  s_bfb9c1b9472a25::t_fc490fd74f6d36 23
+  s_bfb9c1b9472a25::t_cbffb809a67cf1 59
+  s_bfb9c1b9472a25::t_27637607e45ada 16-21,24-26,33,36,40-42,45,50-51
+  s_bfb9c1b9472a25::t_eed0db05fa617c 27-28,34,37,43,52,58
+  s_bfb9c1b9472a25::t_4a7287cbd9c237 44
+  s_bfb9c1b9472a25::t_e7ba064b7e0deb 14-15,39,46,48-49,57
+  s_bfb9c1b9472a25::t_1632af489f8ecc 5,8
+  s_bfb9c1b9472a25::t_77a5aa85dd6f82 1-2,4,9-11,29-31,61
+  s_bfb9c1b9472a25::t_32a99872e372c2 3
+  s_bfb9c1b9472a25::t_65536069b00b75 6
+  s_bfb9c1b9472a25::t_1b717b96e5d15c 53
+packages/react-doctor/tests/e2e/terminal-visuals.test.ts
+  s_bfb9c1b9472a25::t_7e77d712ff585c 185-207
+  s_bfb9c1b9472a25::t_8adbf60de6845b 29
+  s_bfb9c1b9472a25::t_545b04888d3882 478
+  s_bfb9c1b9472a25::t_20cee63f9c0545 306-307
+  s_bfb9c1b9472a25::t_0414fb974feb12 498
+packages/react-doctor/src/cli/utils/onboarding-state.ts
+  s_bfb9c1b9472a25::t_0277e6e6a0e944 32
+  s_bfb9c1b9472a25::t_c4c1a671d9599a 3-4,10,15
+  s_bfb9c1b9472a25::t_29e785fcbd2e4f 1-2,5-9,11-14,16-31,33-45
+packages/react-doctor/src/cli/utils/write-stdout.ts
+  s_bfb9c1b9472a25::t_8f614b27d70772 3-4
+  s_bfb9c1b9472a25::t_ce1c6f4efe9ad3 1-2,5-8
+packages/react-doctor/tests/render-onboarding-animation.test.ts
+  s_bfb9c1b9472a25::t_0d984451af718e 8
+  s_bfb9c1b9472a25::t_9bc133fe777bae 19-21,24-27,34-35
+  s_bfb9c1b9472a25::t_ace841800c6761 148
+  s_bfb9c1b9472a25::t_ea7000c4a5716b 1-2,10,15-18,22-23,28-33,36-39,45-47,49-57,59-61,65-66,73-109,182-199,201-202,204-211
+  s_bfb9c1b9472a25::t_acfc60188b9326 160,164,171-174,178-181
+  s_bfb9c1b9472a25::t_4585a218ed2a79 200,203
+  s_bfb9c1b9472a25::t_9a9aa33d8e625a 161,163,175,177
+  s_bfb9c1b9472a25::t_9aadf8cc6f29af 110-138
+  s_bfb9c1b9472a25::t_3de744d45c335a 3
+  s_bfb9c1b9472a25::t_f6a7d90895453c 158-159,162,165-170,176
+  s_bfb9c1b9472a25::t_d3f75aadbbe59f 40-44,48
+  s_bfb9c1b9472a25::t_03bf29feb59bb9 139,141-147,149-157
+  s_bfb9c1b9472a25::t_c09a86a4a617b6 4
+  s_bfb9c1b9472a25::t_ab9d6705261e46 11-14
+  s_bfb9c1b9472a25::t_7331c8ddb5afe7 58,67-69
+  s_bfb9c1b9472a25::t_a5bc61c490ea18 5-7,9
+  s_bfb9c1b9472a25::t_77552e2c29d694 64
+  s_bfb9c1b9472a25::t_bab50341130464 140
+  s_bfb9c1b9472a25::t_d880360c14e849 70-71
+  s_bfb9c1b9472a25::t_09a2c172463e9b 62-63,72
+packages/react-doctor/src/cli/utils/has-react-doctor-workflow.ts
+  s_bfb9c1b9472a25::t_bf8dfe51fd0504 1-3,6-28,32-35,37-42
+  s_bfb9c1b9472a25::t_0c6734e496dde7 4-5
+  s_bfb9c1b9472a25::t_b8d1aedc7e91ca 29-31,36
+packages/react-doctor/src/cli/utils/render-summary.ts
+  s_bfb9c1b9472a25::t_ad6d283d13ad30 16
+  s_bfb9c1b9472a25::t_8fd98faf518432 112-113
+  s_bfb9c1b9472a25::t_016983b08f5632 15,17-25,27-36
+  s_bfb9c1b9472a25::t_3f049b364cb835 79,83-91
+  s_bfb9c1b9472a25::t_97d85c47e15127 133
+  s_bfb9c1b9472a25::t_2c0f2a6315d3b0 26
+packages/react-doctor/src/cli/utils/render-score-header.ts
+  s_bfb9c1b9472a25::t_94142750b95b5a 267,287,302,404
+  s_bfb9c1b9472a25::t_c8917ab9acb53a 18
+  s_bfb9c1b9472a25::t_0ceba54ded86cb 381,387-388,390,392-393
+  s_bfb9c1b9472a25::t_1ab1e3ee89eec7 315-316
+  s_bfb9c1b9472a25::t_22c99667a58fee 382-385
+  s_bfb9c1b9472a25::t_8ad48283b714b0 248
+  s_bfb9c1b9472a25::t_aeb3889c746599 176-181,184-185
+  s_bfb9c1b9472a25::t_efcf408507d567 317,326-331
+  s_bfb9c1b9472a25::t_b4de6f3370bbe8 272
+  s_bfb9c1b9472a25::t_8ce02499cd19ee 258,283,294,305,366,375,402
+  s_bfb9c1b9472a25::t_981011c668c2b8 373
+  s_bfb9c1b9472a25::t_9d36a7e9fbe494 379-380,386,389,391,394-401,403,405
+  s_bfb9c1b9472a25::t_33c0190c70f945 21
+packages/react-doctor/tests/onboarding-pacing.test.ts
+  s_bfb9c1b9472a25::t_f5180872fd037f 18-32
+  s_bfb9c1b9472a25::t_9f14de976850e1 34-36,40-42,46-48
+  s_bfb9c1b9472a25::t_70461721940828 10-11
+  s_bfb9c1b9472a25::t_794bdb952838af 51-57
+  s_bfb9c1b9472a25::t_c354fe1b69c985 99-115
+  s_bfb9c1b9472a25::t_326206eb45e832 126,132
+  s_bfb9c1b9472a25::t_b0f23bd963d1a0 1-9,12-17,33,37-39,43-45,49-50,58-98,116-125,127-131,133-134
+packages/react-doctor/src/inspect.ts
+  s_bfb9c1b9472a25::t_869017a8a5cc91 373-374
+  s_bfb9c1b9472a25::t_83d688a2aafb0f 383
+  s_bfb9c1b9472a25::t_c9a1b4238aa2f4 345-347
+  s_bfb9c1b9472a25::t_c5814d276dfe7e 342,348
+  s_bfb9c1b9472a25::t_831ea307057323 45
+  s_bfb9c1b9472a25::t_d5bc7a70b17267 490
+  s_bfb9c1b9472a25::t_2f0d50fe75e27b 352
+  s_bfb9c1b9472a25::t_ed1df47af8eb00 50
+  s_bfb9c1b9472a25::t_573abf8c78a2e9 610
+  s_bfb9c1b9472a25::t_076d91f7f75dc2 41
+  s_bfb9c1b9472a25::t_884f82e8d8ed29 384
+  s_bfb9c1b9472a25::t_7c6822d6bf7d11 502-503
+  s_bfb9c1b9472a25::t_bf172709ad0072 544-545,547-550,553-573,575-584,587-588,590,592,595-598,601-605
+  s_bfb9c1b9472a25::t_8f9ed4499dbeb1 406
+  s_bfb9c1b9472a25::t_c036db90fafe2d 343-344,351
+  s_bfb9c1b9472a25::t_f24d4eb07c4533 43,47-49
+  s_bfb9c1b9472a25::t_75af78b6d1421c 460-461
+  s_bfb9c1b9472a25::t_9e54cdb2703b4d 504-509
+  s_bfb9c1b9472a25::t_478ea61cff73d5 513,516-522,525-536,539,546,552,574,585-586
+  s_bfb9c1b9472a25::t_b2990137e670f5 514-515
+  s_bfb9c1b9472a25::t_29795586fb7d82 38
+  s_bfb9c1b9472a25::t_28b82b46f1bb3a 542
+  s_bfb9c1b9472a25::t_ce959846529ef5 375
+  s_bfb9c1b9472a25::t_495d82dce820e2 405
+  s_bfb9c1b9472a25::t_0293f9e1a2e324 611
+  s_bfb9c1b9472a25::t_ebe531c8713b10 472
+  s_bfb9c1b9472a25::t_ddd09c73f03b28 511
+  s_bfb9c1b9472a25::t_fde383ea999ec7 606-609
+  s_bfb9c1b9472a25::t_229ff2af00304a 44
+  s_bfb9c1b9472a25::t_d4776fa6d112da 46
+  s_bfb9c1b9472a25::t_e139ace741e6c1 368,376-378
+  s_bfb9c1b9472a25::t_7496bdeddd3f25 540-541
+  s_bfb9c1b9472a25::t_4bc5ef2338213a 459
+  s_bfb9c1b9472a25::t_677be043dcfea0 338-341
+packages/react-doctor/src/cli/utils/run-explain.ts
+  s_bfb9c1b9472a25::t_cc17607f2694eb 69
+packages/react-doctor/tests/has-react-doctor-workflow.test.ts
+  s_bfb9c1b9472a25::t_1d791c379e2288 36-40,45-49
+  s_bfb9c1b9472a25::t_ea0c88dfb5ae7e 1-35,41-44,50-60
+packages/react-doctor/src/cli/utils/render-diagnostics.ts
+  s_bfb9c1b9472a25::t_6e05dd7b112139 625-638,646,690,693-714
+  s_bfb9c1b9472a25::t_b29f1dfecbeb0e 754-755
+  s_bfb9c1b9472a25::t_23cc56395bff90 582
+  s_bfb9c1b9472a25::t_4ad89a00bc1377 742-743
+  s_bfb9c1b9472a25::t_ff7ef9b61eabda 744,756,758-760
+  s_bfb9c1b9472a25::t_20d8114956144e 303-304
+  s_bfb9c1b9472a25::t_f16b7061ca5d90 672-673
+  s_bfb9c1b9472a25::t_392c65cabdb41d 792-793
+  s_bfb9c1b9472a25::t_ab9d6705261e46 523-524,581
+  s_bfb9c1b9472a25::t_979169d27b9ce1 607-608,610,615-620
+  s_bfb9c1b9472a25::t_2cf9ed034c4d2c 641-644
+  s_bfb9c1b9472a25::t_865a806988d460 331-332
+  s_bfb9c1b9472a25::t_47cdac22079b35 510-522,525-526,529-550,554-580,583-585
+  s_bfb9c1b9472a25::t_e9cfc2d54f0f96 504
+  s_bfb9c1b9472a25::t_84dd5bda3f7352 527-528
+  s_bfb9c1b9472a25::t_e1796793265206 691-692
+  s_bfb9c1b9472a25::t_c295506c31bf51 259
+  s_bfb9c1b9472a25::t_051946ced71fc1 51
+  s_bfb9c1b9472a25::t_f4f3681da7c9df 305
+  s_bfb9c1b9472a25::t_da98aaed6f4c15 623-624
+  s_bfb9c1b9472a25::t_d99ee431618edf 651-653
+  s_bfb9c1b9472a25::t_f66242cd8e5ffa 434-439,443,446,455,457,464
+  s_bfb9c1b9472a25::t_ff73ba7e3851b1 686
+  s_bfb9c1b9472a25::t_dbe5a756dedc3b 261
+  s_bfb9c1b9472a25::t_9ab375b95c9bbc 551-553
+  s_bfb9c1b9472a25::t_421077b6d7d539 783,791,794-800,802,804
+  s_bfb9c1b9472a25::t_d7511ab49bcd42 586-591,593,595-598,600,604
+  s_bfb9c1b9472a25::t_8b64a35996094e 639-640,645,647-650,654-671,674,680,684,687-689
+  s_bfb9c1b9472a25::t_b4e6a6e873bc37 128
+  s_bfb9c1b9472a25::t_ae6c4c3d98029e 126-127
+  s_bfb9c1b9472a25::t_3e8c1b6c6f379e 25,28
+  s_bfb9c1b9472a25::t_ef004b7f311888 715
+  s_bfb9c1b9472a25::t_130a170471bbbd 262
+  s_bfb9c1b9472a25::t_491d7f8fe0371b 675-679,681-683,685
+  s_bfb9c1b9472a25::t_2f5c6a2580c191 432-433
+packages/react-doctor/tests/onboarding-state.test.ts
+  s_bfb9c1b9472a25::t_b0140543ba3db4 1-65
+packages/react-doctor/src/cli/utils/render-report.ts
+  s_bfb9c1b9472a25::t_ce2f8a34b67b0b 103-109,116-118
+  s_bfb9c1b9472a25::t_4321fdf5a68ca0 119,121
+  s_bfb9c1b9472a25::t_085e793583ba80 16
+  s_bfb9c1b9472a25::t_3fec5220edbf6e 21-26
+  s_bfb9c1b9472a25::t_75367278f2d890 53-54
+  s_bfb9c1b9472a25::t_44de369d020293 11
+  s_bfb9c1b9472a25::t_2bb577302dd4f0 66,70,81-85
+  s_bfb9c1b9472a25::t_0e1f8b73f6fd0e 1-6,8-9,12-15,17-20,27-44,47,55-56,60-62,65,68-69,71-76,78,86-87,89-90,110-111,122-124,127-130,132-134,146-148,151-158,161-167,170-171,173-174
+  s_bfb9c1b9472a25::t_b18085b637d4c4 145
+  s_bfb9c1b9472a25::t_ffe7f469a1277c 7
+  s_bfb9c1b9472a25::t_ad912c5c8f4591 57-59
+  s_bfb9c1b9472a25::t_694fb14f4dd71c 135-141
+  s_bfb9c1b9472a25::t_6902cc59f0009e 10
+  s_bfb9c1b9472a25::t_cc4698a7bcb33a 79-80
+  s_bfb9c1b9472a25::t_92214bb380939b 114-115,120
+  s_bfb9c1b9472a25::t_f2f699901118a8 91-102,112,125,131,143,149,159
+  s_bfb9c1b9472a25::t_150cd5bb326fe5 51-52
+  s_bfb9c1b9472a25::t_1764f2327d51f9 63-64,67,77,88,113,126,144,150,160,168,172
+  s_bfb9c1b9472a25::t_6dc627e6675a5e 169
+  s_bfb9c1b9472a25::t_4f944232faf12e 142
+  s_bfb9c1b9472a25::t_bf130df1cff20a 45-46,48-50
+packages/react-doctor/src/cli/utils/onboarding-pacing.ts
+  s_bfb9c1b9472a25::t_5042fb7b1c0ed7 1-2,4,8,23,25,27-29,32,34-38
+  s_bfb9c1b9472a25::t_bfac362cd0a548 7
+  s_bfb9c1b9472a25::t_799cd5db22c2cc 39-40
+  s_bfb9c1b9472a25::t_eb2f75f81061af 41-44
+  s_bfb9c1b9472a25::t_86aff0cb51e766 24,26,30-31
+  s_bfb9c1b9472a25::t_7e13bbe9bbffa5 33
+  s_bfb9c1b9472a25::t_39000e0f5efa50 45,48-53
+  s_bfb9c1b9472a25::t_a54cea62da5799 46-47
+  s_bfb9c1b9472a25::t_4ec065035e90b5 14-17,19-22
+  s_bfb9c1b9472a25::t_c65be2058cd1b8 5-6,9,12-13
+  s_bfb9c1b9472a25::t_36808c4d4e5349 3
+  s_bfb9c1b9472a25::t_6bfbd1569d98b4 10-11
+  s_bfb9c1b9472a25::t_cf4b18bf9c4481 18
+packages/react-doctor/src/cli/utils/handoff-to-agent.ts
+  s_bfb9c1b9472a25::t_c322063892edf2 58
+packages/react-doctor/src/cli/utils/ease-out-cubic.ts
+  s_bfb9c1b9472a25::t_d0080d65f44c37 1
+  s_bfb9c1b9472a25::t_a54e202c6f8080 2
+.changeset/onboarding-section-pacing.md
+  s_bfb9c1b9472a25::t_11ae7888de7495 1-4
+  s_bfb9c1b9472a25::t_7f942845d3d136 5-6,8
+  s_bfb9c1b9472a25::t_9a2c679867a156 7
+  s_bfb9c1b9472a25::t_2c69ca766ef403 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "726c2265aa8671b11deca29fcb4716e56d98cede",
+  "prompts": {},
+  "sessions": {
+    "s_bfb9c1b9472a25": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "e9c368fd-00e2-4962-b93e-b1c29cf5445a",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

@@ -1,0 +1,36 @@
+AGENTS.md
+  s_fce009e97725ba::t_65337418ad1d11 30-32
+  s_fce009e97725ba::t_f82a12e7c7d858 16
+  s_fce009e97725ba::t_533f2aa0872f40 22-29,33-43
+.gitignore
+  s_fce009e97725ba::t_9f57b82ad378df 25-26
+  s_fce009e97725ba::t_bc7615f7fdaddb 27-28
+.agents/skills/rule-research/SKILL.md
+  s_fce009e97725ba::t_eda6285b6e31ea 40
+skills-lock.json
+  s_fce009e97725ba::t_a7e2e8468a44ee 1-11
+.agents/skills/rule-writing/SKILL.md
+  s_fce009e97725ba::t_ec35105c52041d 33
+.agents/skills/deslop/SKILL.md
+  s_fce009e97725ba::t_b8c2f920269226 1-83
+package.json
+  s_fce009e97725ba::t_3d9622ff945505 34
+.agents/skills/rule-validate/SKILL.md
+  s_fce009e97725ba::t_661a75c2248edd 57-58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "d82bd96abcccdd45308d13508464718de463ff61",
+  "prompts": {},
+  "sessions": {
+    "s_fce009e97725ba": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "16d48f62-c729-4548-a6ff-ba2636b1b1c8",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

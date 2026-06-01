@@ -1,0 +1,64 @@
+packages/react-doctor/src/cli/index.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 3,22,27-28,103-106,144-145,269
+packages/react-doctor/tests/regressions/cli-and-output.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 185,230,235,264,316
+packages/react-doctor/vite.config.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 76-80,139
+packages/react-doctor/src/cli/utils/rule-config-file.ts
+  s_eee114674178aa::t_a16406e3602780 34,83,114-115,124-125,133,145,147,150-152,155,161
+packages/core/src/types/diagnose.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 17-22
+packages/react-doctor/package.json
+  s_48b1e5431a7b23::t_c31cee0e1611ca 58,60,77,79
+packages/react-doctor/src/inspect.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 5-6,25,28-29,38,63,68-69,98,103,207,216,224,313-315,317,337-339,357-359,362-368,371,380-382,437-442,456-463,469,485
+packages/react-doctor/tests/rules-command.test.ts
+  s_eee114674178aa::t_a2e004c5a3b242 170,172,181,183,213,215-216,218-219,243-244,247-248,251,257-258
+packages/website/public/schema/config.json
+  s_eee114674178aa::t_9ef1b96448d460 145-148,246-255
+packages/react-doctor/src/cli/commands/inspect.ts
+  s_eee114674178aa::t_d1fb5ae335cd2f 137
+packages/react-doctor/tests/load-config.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 334,336-339,341-342,344-346,348-350
+  s_eee114674178aa::t_9ef1b96448d460 335,340,343,347
+packages/core/src/types/config.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 81-97,113,115,133,139-149,288-290,293,301-314
+packages/react-doctor/tests/diagnose.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 41
+packages/core/src/load-config.ts
+  s_eee114674178aa::t_93dbbc53cbc931 173
+packages/react-doctor/README.md
+  s_48b1e5431a7b23::t_c31cee0e1611ca 30-37,80,87,91,98-99
+packages/api/src/diagnose.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 4,6,34-39,42,67,88,109-111,145-152
+packages/core/src/constants.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 6,9-12,18-24,51-66,77-79,110-119,160-161,187-195,221-285,288-291
+packages/react-doctor/tests/inspect-action-setup-prompt.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 5,69,138
+pnpm-lock.yaml
+  ai_agent 21-23,44,94,133-135,139-141,185-187,191-193,205,211,244-249,926-961,1484-1488,1627-1670,1802-1804,2048-2055,2106-2111,2179-2181,2510-2513,2746-2748,2991-2994,3019-3022,3409-3414,3697,3700,4065-4099,4369-4375,4451-4489,4588-4589,4630,4632,4709,4726,4755-4760,4810-4819,4878-4879,5252-5258,5434-5435,5464,5483,5741-5747,5794-5797,6012,6016,6075,6098
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "055442681ef6f3f77bdead359debb714605dda07",
+  "prompts": {},
+  "sessions": {
+    "s_48b1e5431a7b23": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "6436ca37-4111-474b-8784-1082331577f0",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    },
+    "s_eee114674178aa": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c79755a1-1a40-41db-8e9b-9f14ee37a95e",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

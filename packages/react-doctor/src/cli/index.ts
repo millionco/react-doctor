@@ -3,9 +3,13 @@ import { CANONICAL_GITHUB_URL, highlighter } from "@react-doctor/core";
 import { initializeSentry } from "../instrument.js";
 import { inspectAction } from "./commands/inspect.js";
 import { installAction } from "./commands/install.js";
+import { versionAction } from "./commands/version.js";
+import { applyColorPreference } from "./utils/apply-color-preference.js";
+import { NODE_ARGUMENT_COUNT } from "./utils/constants.js";
 import { exitGracefully } from "./utils/exit-gracefully.js";
 import { handleError } from "./utils/handle-error.js";
 import { isJsonModeActive, writeJsonErrorReport } from "./utils/json-mode.js";
+import { normalizeHelpInvocation } from "./utils/normalize-help-command.js";
 import { reportErrorToSentry } from "./utils/report-error.js";
 import { stripUnknownCliFlags } from "./utils/strip-unknown-cli-flags.js";
 import { unrefStdin } from "./utils/unref-stdin.js";
@@ -16,6 +20,58 @@ initializeSentry();
 process.on("SIGINT", exitGracefully);
 process.on("SIGTERM", exitGracefully);
 unrefStdin();
+
+const formatExampleLines = (
+  examples: ReadonlyArray<readonly [command: string, description: string]>,
+): string => {
+  const width = Math.max(...examples.map(([command]) => command.length));
+  return examples
+    .map(
+      ([command, description]) =>
+        `  $ ${command.padEnd(width)}  ${highlighter.dim(`# ${description}`)}`,
+    )
+    .join("\n");
+};
+
+// clig.dev (Help): "Lead with examples." Epilogs are functions, not
+// pre-built strings, so they render after `applyColorPreference` runs and
+// honor `--no-color` in a TTY.
+const renderRootHelpEpilog = (): string => `
+${highlighter.dim("Examples:")}
+${formatExampleLines([
+  ["react-doctor", "scan the current project"],
+  ["react-doctor ./apps/web", "scan a specific directory"],
+  ["react-doctor --diff main", "scan only files changed vs. main"],
+  ["react-doctor --staged", "scan staged files (pre-commit hook)"],
+  ["react-doctor --fail-on warning", "exit non-zero on warnings (CI gate)"],
+  ["react-doctor --json > report.json", "write a machine-readable report"],
+  ["react-doctor --explain src/App.tsx:42", "explain why a rule fired there"],
+  ["react-doctor install", "set up the agent skill and git hook"],
+])}
+
+${highlighter.dim("Configuration:")}
+  Place a ${highlighter.info("react-doctor.config.json")} (or ${highlighter.info('"reactDoctor"')} key in your package.json) in the project root.
+  CLI flags always override config values. See the README for the full schema.
+
+${highlighter.dim("Feedback & bug reports:")}
+  ${highlighter.info(`${CANONICAL_GITHUB_URL}/issues`)}
+
+${highlighter.dim("Learn more:")}
+  ${highlighter.info(CANONICAL_GITHUB_URL)}
+`;
+
+const renderInstallHelpEpilog = (): string => `
+${highlighter.dim("Examples:")}
+${formatExampleLines([
+  ["react-doctor install", "interactive setup"],
+  ["react-doctor install --yes", "non-interactive; all detected agents"],
+  ["react-doctor install --dry-run", "preview without writing files"],
+  ["react-doctor install --agent-hooks", "also install native agent hooks"],
+])}
+
+${highlighter.dim("Learn more:")}
+  ${highlighter.info(CANONICAL_GITHUB_URL)}
+`;
 
 const program = new Command()
   .name("react-doctor")
@@ -74,17 +130,9 @@ const program = new Command()
   )
   .option("--warnings", "show warning-severity diagnostics (errors always show)")
   .option("--no-warnings", "hide warning-severity diagnostics (default)")
-  .addHelpText(
-    "after",
-    `
-${highlighter.dim("Configuration:")}
-  Place a ${highlighter.info("react-doctor.config.json")} (or ${highlighter.info('"reactDoctor"')} key in your package.json) in the project root.
-  CLI flags always override config values. See the README for the full schema.
-
-${highlighter.dim("Learn more:")}
-  ${highlighter.info(CANONICAL_GITHUB_URL)}
-`,
-  );
+  .option("--color", "force colored output")
+  .option("--no-color", "disable colored output (also honors NO_COLOR)")
+  .addHelpText("after", renderRootHelpEpilog);
 
 program.action(inspectAction);
 
@@ -96,7 +144,15 @@ program
   .option("--dry-run", "show what would be installed without writing files")
   .option("--agent-hooks", "install native non-blocking agent hooks for Claude Code and Cursor")
   .option("-c, --cwd <cwd>", "working directory", process.cwd())
+  .option("--color", "force colored output")
+  .option("--no-color", "disable colored output (also honors NO_COLOR)")
+  .addHelpText("after", renderInstallHelpEpilog)
   .action(installAction);
+
+program
+  .command("version")
+  .description("show the version with Node and platform info")
+  .action(versionAction);
 
 // HACK: when stdout is piped into a process that closes early (e.g.
 // `react-doctor . | head`), Node throws an uncaught EPIPE on the next
@@ -105,7 +161,26 @@ process.stdout.on("error", (error: NodeJS.ErrnoException) => {
   if (error.code === "EPIPE") process.exit(0);
 });
 
-program.parseAsync(stripUnknownCliFlags(process.argv)).catch(async (error: unknown) => {
+const knownCommands = program.commands.flatMap((command) => [command.name(), ...command.aliases()]);
+const argv = normalizeHelpInvocation(stripUnknownCliFlags(process.argv), knownCommands);
+
+// HACK: Commander allows only one short flag on `--version` (we use `-v`),
+// so honor `-V` by scanning argv ourselves and printing the terse version
+// before Commander parses. Stop at `--` so it isn't read as a passthrough.
+const userArguments = process.argv.slice(NODE_ARGUMENT_COUNT);
+const endOfOptionsIndex = userArguments.indexOf("--");
+const optionArguments =
+  endOfOptionsIndex === -1 ? userArguments : userArguments.slice(0, endOfOptionsIndex);
+if (optionArguments.includes("-V")) {
+  process.stdout.write(`${VERSION}\n`);
+  process.exit(0);
+}
+
+// Color must be resolved before Commander parses so the choice reaches
+// help output too.
+applyColorPreference(argv);
+
+program.parseAsync(argv).catch(async (error: unknown) => {
   await reportErrorToSentry(error);
   if (isJsonModeActive()) {
     writeJsonErrorReport(error);

@@ -1,3 +1,5 @@
+import { NODE_ARGUMENT_COUNT } from "./constants.js";
+
 interface CliFlagSpec {
   readonly longOptionsWithoutValues: ReadonlySet<string>;
   readonly longOptionsWithRequiredValues: ReadonlySet<string>;
@@ -6,17 +8,17 @@ interface CliFlagSpec {
   readonly shortOptionsWithRequiredValues: ReadonlySet<string>;
 }
 
-const NODE_ARGUMENT_COUNT = 2;
-
 const ROOT_FLAG_SPEC: CliFlagSpec = {
   longOptionsWithoutValues: new Set([
     "--annotations",
+    "--color",
     "--dead-code",
     "--full",
     "--help",
     "--json",
     "--json-compact",
     "--lint",
+    "--no-color",
     "--no-dead-code",
     "--no-lint",
     "--no-respect-inline-disables",
@@ -44,7 +46,14 @@ const ROOT_FLAG_SPEC: CliFlagSpec = {
 };
 
 const INSTALL_FLAG_SPEC: CliFlagSpec = {
-  longOptionsWithoutValues: new Set(["--agent-hooks", "--dry-run", "--help", "--yes"]),
+  longOptionsWithoutValues: new Set([
+    "--agent-hooks",
+    "--color",
+    "--dry-run",
+    "--help",
+    "--no-color",
+    "--yes",
+  ]),
   longOptionsWithRequiredValues: new Set(["--cwd"]),
   longOptionsWithOptionalValues: new Set(),
   shortOptionsWithoutValues: new Set(["-h", "-y"]),

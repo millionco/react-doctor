@@ -146,10 +146,10 @@ export const handleError = (error: unknown, options: CliHandleErrorOptions = {})
 };
 
 /**
- * Renderer for expected, user-actionable failures (see `isUserInputError`):
- * a bad `--diff` value or a base branch that isn't fetched. Prints just the
- * (already human-readable) message — no "Something went wrong", prefilled
- * issue, Discord link, or Sentry reference — because there is no bug to report.
+ * Renderer for expected, user-actionable failures — a bad `--diff` value or
+ * a base branch that isn't fetched. Prints just the (already human-readable)
+ * message — no "Something went wrong", prefilled issue, Discord link, or
+ * Sentry reference — because there is no bug to report.
  */
 export const handleUserError = (error: unknown, options: { shouldExit?: boolean } = {}): void => {
   Effect.runSync(

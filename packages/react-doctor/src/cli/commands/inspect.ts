@@ -9,7 +9,7 @@ import {
   findLegacyConfig,
   getDiffInfo,
   highlighter,
-  isUserInputError,
+  isReactDoctorError,
   resolveScanTarget,
   toRelativePath,
 } from "@react-doctor/core";
@@ -419,8 +419,12 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
   } catch (error) {
     // A bad `--diff` value (or an unfetched base branch) is the user's
     // input, not a react-doctor bug: skip Sentry and the "open a prefilled
-    // issue" block so it doesn't become triage noise.
-    const isUserError = isUserInputError(error);
+    // issue" block so it doesn't become triage noise. Dispatch on the tagged
+    // reason inline (AGENTS.md: don't add new error-shape helpers).
+    const isUserError =
+      isReactDoctorError(error) &&
+      (error.reason._tag === "GitBaseBranchInvalid" ||
+        error.reason._tag === "GitBaseBranchMissing");
     const sentryEventId = isUserError ? undefined : await reportErrorToSentry(error);
     if (isJsonMode) {
       writeJsonErrorReport(error);

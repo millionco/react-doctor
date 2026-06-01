@@ -493,8 +493,13 @@ export class Git extends Context.Service<
             headRef,
           ]);
           if (diff.status !== 0) return null;
+          // `currentBranch` keeps the same contract as the single-base path:
+          // the working tree's branch, or `null` on a detached HEAD. The
+          // range's head endpoint is an explicit commit, not the checked-out
+          // branch, so it must not leak into this field.
+          const resolvedCurrentBranch = yield* currentBranch(input.directory);
           return {
-            currentBranch: headRef,
+            currentBranch: resolvedCurrentBranch,
             baseBranch: baseRef,
             changedFiles: splitNullSeparated(diff.stdout),
             isCurrentChanges: false,

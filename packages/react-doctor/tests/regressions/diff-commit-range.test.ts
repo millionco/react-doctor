@@ -48,7 +48,9 @@ describe("REACT-DOCTOR-9: --diff accepts commit ranges", () => {
 
     const oneCommit = await getDiffInfo(repoDir, `${shaA}..${shaB}`);
     expect(oneCommit?.baseBranch).toBe(shaA);
-    expect(oneCommit?.currentBranch).toBe(shaB);
+    // currentBranch reflects the working-tree branch (here `main`), not the
+    // range's head endpoint — same contract as single-base `--diff`.
+    expect(oneCommit?.currentBranch).toBe("main");
     expect(oneCommit?.isCurrentChanges).toBeUndefined();
     expect(sortedChangedFiles(oneCommit?.changedFiles)).toEqual(["src/feature.tsx"]);
 

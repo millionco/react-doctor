@@ -29,6 +29,15 @@ export const initGitRepo = (directory: string, options: { commit?: boolean } = {
   }
 };
 
+/** Stages everything and commits it, returning the new HEAD commit SHA. */
+export const commitAll = (directory: string, message: string): string => {
+  spawnSync("git", ["add", "."], { cwd: directory });
+  spawnSync("git", ["commit", "-q", "-m", message], { cwd: directory });
+  return spawnSync("git", ["rev-parse", "HEAD"], { cwd: directory, encoding: "utf-8" })
+    .stdout.toString()
+    .trim();
+};
+
 export const buildDiagnostic = (overrides: Partial<Diagnostic> = {}): Diagnostic => ({
   filePath: "src/app.tsx",
   plugin: "react-doctor",

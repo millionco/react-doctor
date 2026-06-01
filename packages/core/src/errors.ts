@@ -194,6 +194,18 @@ export const isReactDoctorError = (error: unknown): error is ReactDoctorError =>
   error instanceof ReactDoctorError;
 
 /**
+ * Diff-base failures stem from the caller's `--diff` argument or local
+ * git state — a malformed ref/range, or a base branch that simply hasn't
+ * been fetched — not from a bug in react-doctor. The CLI renders these
+ * as a plain message and exits non-zero WITHOUT capturing them to Sentry
+ * or pointing the user at a bug report: they're expected, user-actionable
+ * conditions, not crashes to triage.
+ */
+export const isUserInputError = (error: unknown): error is ReactDoctorError =>
+  error instanceof ReactDoctorError &&
+  (error.reason._tag === "GitBaseBranchInvalid" || error.reason._tag === "GitBaseBranchMissing");
+
+/**
  * Tagged-reason → legacy thrown-class boundary shared by every public
  * shell (`inspect()` in `react-doctor`, `diagnose()` in `@react-doctor/api`).
  *

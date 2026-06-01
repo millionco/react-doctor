@@ -144,3 +144,23 @@ export const handleError = (error: unknown, options: CliHandleErrorOptions = {})
   }
   process.exitCode = 1;
 };
+
+/**
+ * Renderer for expected, user-actionable failures (see `isUserInputError`):
+ * a bad `--diff` value or a base branch that isn't fetched. Prints just the
+ * (already human-readable) message — no "Something went wrong", prefilled
+ * issue, Discord link, or Sentry reference — because there is no bug to report.
+ */
+export const handleUserError = (error: unknown, options: { shouldExit?: boolean } = {}): void => {
+  Effect.runSync(
+    Effect.gen(function* () {
+      yield* Console.error("");
+      yield* Console.error(highlighter.error(formatErrorForReport(error)));
+      yield* Console.error("");
+    }),
+  );
+  if (options.shouldExit !== false) {
+    process.exit(1);
+  }
+  process.exitCode = 1;
+};

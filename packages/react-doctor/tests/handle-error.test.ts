@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { buildErrorIssueUrl, handleError } from "../src/cli/utils/handle-error.js";
+import { GitBaseBranchInvalid, ReactDoctorError } from "@react-doctor/core";
+import { buildErrorIssueUrl, handleError, handleUserError } from "../src/cli/utils/handle-error.js";
 
 const OTLP_ENDPOINT_ENVIRONMENT_VARIABLE = "REACT_DOCTOR_OTLP_ENDPOINT";
 const OTLP_AUTH_HEADER_ENVIRONMENT_VARIABLE = "REACT_DOCTOR_OTLP_AUTH_HEADER";
@@ -93,6 +94,44 @@ describe("handleError", () => {
     expect(errorMessages.join("\n")).toContain(
       "You can also ask for help in Discord: https://react.doctor/discord",
     );
+    expect(process.exitCode).toBe(1);
+  });
+});
+
+describe("handleUserError", () => {
+  let savedExitCode: number | string | undefined;
+
+  beforeEach(() => {
+    savedExitCode = process.exitCode;
+  });
+
+  afterEach(() => {
+    process.exitCode = savedExitCode;
+  });
+
+  it("prints just the message — no crash framing, issue link, Discord, or Sentry reference", () => {
+    const errorMessages: string[] = [];
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation((...messages) => {
+      errorMessages.push(messages.join(" "));
+    });
+
+    const userError = new ReactDoctorError({
+      reason: new GitBaseBranchInvalid({
+        detail: 'Diff range "7694215..c4de712" has an invalid endpoint "..".',
+      }),
+    });
+    try {
+      handleUserError(userError, { shouldExit: false });
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+
+    const output = errorMessages.join("\n");
+    expect(output).toContain('Diff range "7694215..c4de712" has an invalid endpoint');
+    expect(output).not.toContain("Something went wrong");
+    expect(output).not.toContain("open this prefilled issue");
+    expect(output).not.toContain("Discord");
+    expect(output).not.toContain("Reference (mention this when reporting)");
     expect(process.exitCode).toBe(1);
   });
 });

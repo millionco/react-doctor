@@ -4,8 +4,12 @@ import {
   ConfigParseFailed,
   DeadCodeAnalysisFailed,
   formatReactDoctorError,
+  GitBaseBranchInvalid,
+  GitBaseBranchMissing,
+  GitInvocationFailed,
   isReactDoctorError,
   isSplittableReactDoctorError,
+  isUserInputError,
   NoReactDependency,
   OxlintBatchExceeded,
   OxlintOutputUnparseable,
@@ -176,5 +180,34 @@ describe("isSplittableReactDoctorError", () => {
     expect(isSplittableReactDoctorError(new Error("plain"))).toBe(false);
     expect(isSplittableReactDoctorError("string")).toBe(false);
     expect(isSplittableReactDoctorError(null)).toBe(false);
+  });
+});
+
+describe("isUserInputError", () => {
+  it("returns true for diff-base reasons the user can fix", () => {
+    const cases = [
+      new GitBaseBranchInvalid({ detail: "bad ref" }),
+      new GitBaseBranchMissing({ branch: "origin/missing" }),
+    ] as const;
+    for (const reason of cases) {
+      expect(isUserInputError(new ReactDoctorError({ reason }))).toBe(true);
+    }
+  });
+
+  it("returns false for genuine bugs (so they still reach Sentry)", () => {
+    const cases = [
+      new GitInvocationFailed({ args: ["diff"], directory: "/repo", cause: new Error("boom") }),
+      new OxlintSpawnFailed({ cause: new Error("boom") }),
+      new ProjectNotFound({ directory: "/repo" }),
+    ] as const;
+    for (const reason of cases) {
+      expect(isUserInputError(new ReactDoctorError({ reason }))).toBe(false);
+    }
+  });
+
+  it("returns false for non-ReactDoctorError values", () => {
+    expect(isUserInputError(new Error("plain"))).toBe(false);
+    expect(isUserInputError("string")).toBe(false);
+    expect(isUserInputError(null)).toBe(false);
   });
 });

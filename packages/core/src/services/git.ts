@@ -56,12 +56,62 @@ const trimOrNull = (value: string): string | null => {
  */
 const SAFE_GIT_REVISION_PATTERN = /^[A-Za-z0-9_./-]+$/;
 
+/** Human-readable summary of the `isSafeGitRevision` contract, reused across error details. */
+const GIT_REF_NAME_RULE = "must match [A-Za-z0-9_./-] without leading '-', '..', or '@{'";
+
+/** git's two range operators: two-dot (direct) and three-dot (merge-base). */
+const DIFF_RANGE_OPERATOR = "..";
+const SYMMETRIC_DIFF_RANGE_OPERATOR = "...";
+
 const isSafeGitRevision = (candidate: string): boolean => {
   if (candidate.length === 0) return false;
   if (candidate.startsWith("-")) return false;
   if (candidate.startsWith(".") || candidate.endsWith(".")) return false;
   if (candidate.includes("..") || candidate.includes("@{")) return false;
   return SAFE_GIT_REVISION_PATTERN.test(candidate);
+};
+
+interface GitDiffRange {
+  /** Left endpoint (before the operator); empty string defaults to `HEAD`. */
+  readonly base: string;
+  /** Right endpoint (after the operator); empty string defaults to `HEAD`. */
+  readonly head: string;
+  /**
+   * `true` for three-dot `A...B` (diff from the merge-base of A and B to
+   * B), `false` for two-dot `A..B` (diff A directly against B). Mirrors
+   * git's own `diff` range semantics.
+   */
+  readonly symmetric: boolean;
+}
+
+/**
+ * Splits a git revision range into its endpoints: three-dot `A...B`
+ * (symmetric, merge-base) or two-dot `A..B` (direct). Returns `null`
+ * when `value` carries no range operator so the caller falls back to
+ * single-base resolution.
+ *
+ * Only the first operator is split on; any leftover `..` stays inside an
+ * endpoint so `isSafeGitRevision` rejects malformed input like
+ * `A..B..C` instead of silently guessing which pair the user meant.
+ */
+const parseGitDiffRange = (value: string): GitDiffRange | null => {
+  const symmetricIndex = value.indexOf(SYMMETRIC_DIFF_RANGE_OPERATOR);
+  if (symmetricIndex !== -1) {
+    return {
+      base: value.slice(0, symmetricIndex),
+      head: value.slice(symmetricIndex + SYMMETRIC_DIFF_RANGE_OPERATOR.length),
+      symmetric: true,
+    };
+  }
+  const rangeIndex = value.indexOf(DIFF_RANGE_OPERATOR);
+  if (rangeIndex !== -1) {
+    return {
+      base: value.slice(0, rangeIndex),
+      head: value.slice(rangeIndex + DIFF_RANGE_OPERATOR.length),
+      symmetric: false,
+    };
+  }
+  return null;
 };
 
 const parseGithubRepoFromRemoteUrl = (remoteUrl: string): string | null => {
@@ -374,6 +424,83 @@ export class Git extends Context.Service<
           return parseGithubViewerPermission(result.stdout);
         }).pipe(Effect.catch(() => Effect.succeed(null)));
 
+      /**
+       * Resolves a `--diff A..B` / `A...B` commit range into a changed-file
+       * selection. Each endpoint is validated with `isSafeGitRevision`
+       * BEFORE it reaches `git` (so the range syntax can't smuggle a
+       * `--upload-pack=…`-style option past the CVE-2018-17456 guard) and
+       * verified to exist, then the diff runs between the two commits with
+       * the same `--diff-filter=ACMR` shape the single-base path uses.
+       */
+      const resolveDiffRange = (input: {
+        readonly directory: string;
+        readonly range: GitDiffRange;
+        readonly raw: string;
+      }): Effect.Effect<GitDiffSelection | null, ReactDoctorError> =>
+        Effect.gen(function* () {
+          if (input.range.base.length === 0 && input.range.head.length === 0) {
+            return yield* Effect.fail(
+              new ReactDoctorError({
+                reason: new GitBaseBranchInvalid({
+                  detail: `Diff range "${input.raw}" must name at least one commit (e.g. "main..feature").`,
+                }),
+              }),
+            );
+          }
+
+          const baseRef = input.range.base.length === 0 ? "HEAD" : input.range.base;
+          const headRef = input.range.head.length === 0 ? "HEAD" : input.range.head;
+
+          for (const endpoint of [baseRef, headRef]) {
+            if (!isSafeGitRevision(endpoint)) {
+              return yield* Effect.fail(
+                new ReactDoctorError({
+                  reason: new GitBaseBranchInvalid({
+                    detail: `Diff range "${input.raw}" has an invalid endpoint "${endpoint}" (${GIT_REF_NAME_RULE}).`,
+                  }),
+                }),
+              );
+            }
+          }
+
+          for (const endpoint of [baseRef, headRef]) {
+            const exists = yield* branchExists(input.directory, endpoint);
+            if (!exists) {
+              return yield* Effect.fail(
+                new ReactDoctorError({
+                  reason: new GitBaseBranchMissing({ branch: endpoint }),
+                }),
+              );
+            }
+          }
+
+          let diffBaseRef = baseRef;
+          if (input.range.symmetric) {
+            const mergeBase = yield* runGit(input.directory, ["merge-base", baseRef, headRef]);
+            if (mergeBase.status !== 0) return null;
+            const mergeBaseRef = trimOrNull(mergeBase.stdout);
+            if (mergeBaseRef === null) return null;
+            diffBaseRef = mergeBaseRef;
+          }
+
+          const diff = yield* runGit(input.directory, [
+            "diff",
+            "-z",
+            "--name-only",
+            "--diff-filter=ACMR",
+            "--relative",
+            diffBaseRef,
+            headRef,
+          ]);
+          if (diff.status !== 0) return null;
+          return {
+            currentBranch: headRef,
+            baseBranch: baseRef,
+            changedFiles: splitNullSeparated(diff.stdout),
+            isCurrentChanges: false,
+          } satisfies GitDiffSelection;
+        });
+
       return Git.of({
         currentBranch,
         defaultBranch,
@@ -392,14 +519,24 @@ export class Git extends Context.Service<
                 }),
               );
             }
-            if (explicitBaseBranch !== undefined && !isSafeGitRevision(explicitBaseBranch)) {
-              return yield* Effect.fail(
-                new ReactDoctorError({
-                  reason: new GitBaseBranchInvalid({
-                    detail: `Diff base branch "${explicitBaseBranch}" is not a valid git ref name (must match [A-Za-z0-9_./-] without leading '-', '..', or '@{').`,
+            if (explicitBaseBranch !== undefined) {
+              // `A..B` / `A...B` is git's own "diff this range" syntax — a
+              // natural thing for a coding agent to pass. Route it to the
+              // range resolver (which validates each endpoint) instead of
+              // rejecting the embedded `..` as a single malformed ref.
+              const range = parseGitDiffRange(explicitBaseBranch);
+              if (range !== null) {
+                return yield* resolveDiffRange({ directory, range, raw: explicitBaseBranch });
+              }
+              if (!isSafeGitRevision(explicitBaseBranch)) {
+                return yield* Effect.fail(
+                  new ReactDoctorError({
+                    reason: new GitBaseBranchInvalid({
+                      detail: `Diff base branch "${explicitBaseBranch}" is not a valid git ref name (${GIT_REF_NAME_RULE}).`,
+                    }),
                   }),
-                }),
-              );
+                );
+              }
             }
 
             const resolvedCurrentBranch = yield* currentBranch(directory);

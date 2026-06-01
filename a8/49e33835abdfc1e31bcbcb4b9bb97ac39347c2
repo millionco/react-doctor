@@ -1,0 +1,38 @@
+packages/react-doctor/src/cli/utils/render-diagnostics.ts
+  s_fd528823e8d35d::t_78d604a9d40e81 86-90
+  s_fd528823e8d35d::t_5efa38ffd8fc72 314-328
+  s_fd528823e8d35d::t_8099bed5762996 463
+  s_fd528823e8d35d::t_205cb95be1ce6b 340-342
+  s_fd528823e8d35d::t_c08bc82e3c2abc 389-392
+  s_fd528823e8d35d::t_83db201c989197 250
+  s_fd528823e8d35d::t_abe9e9f2424b39 67-74
+  s_fd528823e8d35d::t_14a7e390e7c6c5 478
+  s_fd528823e8d35d::t_1d75fea5d4a2a4 557
+  s_fd528823e8d35d::t_bfbc81e106a460 20
+packages/react-doctor/src/cli/utils/diagnostic-grouping.ts
+  s_fd528823e8d35d::t_0d677640f4109b 48,56-68
+  s_fd528823e8d35d::t_5baa9e58f02c05 1
+packages/react-doctor/src/cli/utils/write-diagnostics-directory.ts
+  s_fd528823e8d35d::t_28e1da9ae7b9b3 6,13
+packages/react-doctor/src/cli/utils/build-handoff-payload.ts
+  s_fd528823e8d35d::t_4a9e0e7a3220a8 17
+  s_fd528823e8d35d::t_48f4c931b291be 1,4
+.gitignore
+  s_fd528823e8d35d::t_1f0270ecc0ab80 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "a849e33835abdfc1e31bcbcb4b9bb97ac39347c2",
+  "prompts": {},
+  "sessions": {
+    "s_fd528823e8d35d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "",
+        "model": ""
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

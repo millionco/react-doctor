@@ -1,0 +1,154 @@
+AGENTS.md
+  s_ae877f9b9baf3e::t_aaa286d269dee4 201-213
+  s_ae877f9b9baf3e::t_713dc817258def 214-222
+  s_ae877f9b9baf3e::t_a0fe13d8d47939 223-235
+  s_ae877f9b9baf3e::t_b7e0f9454abb39 236-243
+packages/react-doctor/src/cli/utils/to-span-attributes.ts
+  s_ae877f9b9baf3e::t_37ce0d91608524 1-15
+packages/react-doctor/src/cli/commands/install.ts
+  s_ae877f9b9baf3e::t_09ffc3279835d0 39-40
+packages/react-doctor/src/cli/utils/constants.ts
+  s_ae877f9b9baf3e::t_80f0e0322be145 49-61
+  s_ae877f9b9baf3e::t_24decf135c9d61 27-28,31-48
+scripts/sentry-sourcemaps.mjs
+  s_ae877f9b9baf3e::t_1817464e07879c 1-65
+packages/react-doctor/src/instrument.ts
+  s_ae877f9b9baf3e::t_25bff003bbdfb5 2-8,13-16,28-76,82,84-85,87-99,101-103,105-107,112-113,115-117,120-123
+  s_ae877f9b9baf3e::t_7cc99f56089bfe 9
+  s_ae877f9b9baf3e::t_718cb4e40fff67 78-81,83,86
+  s_ae877f9b9baf3e::t_b3f87abc117d71 118-119,127-132
+  s_ae877f9b9baf3e::t_fb19ba759ddeee 124-126
+packages/react-doctor/src/cli/utils/build-sentry-scope.ts
+  s_ae877f9b9baf3e::t_f8899fcdcdf7f2 1-2,4-9,13-15,22-24,27,30-38
+  s_ae877f9b9baf3e::t_b99516b579afdb 3,10-12,16-21,25-26,28-29,39-50
+packages/react-doctor/tests/report-error.test.ts
+  s_ae877f9b9baf3e::t_f4131568755a3f 1-8
+packages/react-doctor/src/cli/index.ts
+  s_ae877f9b9baf3e::t_49e70efdea4620 3
+  s_ae877f9b9baf3e::t_4011a78c2b3315 108-113,115-118,120
+  s_ae877f9b9baf3e::t_d7bd776f100a8a 114,119
+packages/react-doctor/src/cli/utils/build-run-context.ts
+  s_ae877f9b9baf3e::t_cad71d627c6436 80-84
+  s_ae877f9b9baf3e::t_1dfdbb40bad025 41
+  s_ae877f9b9baf3e::t_9c10b79d9d3f75 19,27-30,35-40,42-47
+  s_ae877f9b9baf3e::t_fe67a99b6a1947 86,94
+  s_ae877f9b9baf3e::t_8de870260691ee 9
+packages/react-doctor/tests/build-run-context.test.ts
+  s_ae877f9b9baf3e::t_b08d4ea2cc7d20 40-52
+  s_ae877f9b9baf3e::t_74f638147fc9a5 1,7,11,20
+  s_ae877f9b9baf3e::t_2fd7bd4dfd0ed4 2-6,8-10,12-19,21-39,53
+packages/react-doctor/src/cli/commands/inspect.ts
+  s_ae877f9b9baf3e::t_265d7138bf1d9e 381,387
+packages/react-doctor/src/cli/utils/report-error.ts
+  s_ae877f9b9baf3e::t_b20e8774504f92 8-13,24-37
+  s_ae877f9b9baf3e::t_480ce6d819c9bc 3-4,39
+  s_ae877f9b9baf3e::t_1d3c3a232bf210 2,7,15-19,21-22,40-43
+packages/react-doctor/src/cli/utils/active-run-trace.ts
+  s_ae877f9b9baf3e::t_6f7230711a1ff5 1-20
+packages/react-doctor/src/inspect.ts
+  s_ae877f9b9baf3e::t_d6b4018b4641a3 16
+  s_ae877f9b9baf3e::t_954ab9077211cb 177
+  s_ae877f9b9baf3e::t_6df121ca9952a9 14,17
+  s_ae877f9b9baf3e::t_d8fda094f5578a 259-267
+  s_ae877f9b9baf3e::t_73809213744e64 235-238
+  s_ae877f9b9baf3e::t_c27116376745af 154-163
+.changeset/sentry-observability.md
+  s_ae877f9b9baf3e::t_d7a0351f047ab8 1-8,13-15
+  s_ae877f9b9baf3e::t_c2abf0d656b0c3 9
+  s_ae877f9b9baf3e::t_2ac8b6ec58a9ba 11
+  s_ae877f9b9baf3e::t_910179ce0bb67f 12
+  s_ae877f9b9baf3e::t_49f82be4b702f7 10
+packages/react-doctor/tests/build-sentry-scope.test.ts
+  s_ae877f9b9baf3e::t_eb3e5d5aa0fe2e 2,4,6-24,45,50-66,74-85,102-103
+  s_ae877f9b9baf3e::t_ce7325cd767839 98-99
+  s_ae877f9b9baf3e::t_5e5345b4e34ea0 1,3,5,25-44,46-49,67-73,86-97,100-101
+packages/react-doctor/tests/build-sentry-project-context.test.ts
+  s_ae877f9b9baf3e::t_d26c850469d97b 1-41,43-51,58-88
+  s_ae877f9b9baf3e::t_c115183f50cacf 42,52-57
+packages/react-doctor/tests/scrub-sensitive-text.test.ts
+  s_ae877f9b9baf3e::t_76829477835601 1-36
+packages/react-doctor/src/cli/utils/sentry-tracer.ts
+  s_ae877f9b9baf3e::t_df6a78b4271a72 133
+  s_ae877f9b9baf3e::t_52bc44e6ce54c1 5-10
+  s_ae877f9b9baf3e::t_04b47eb5b847bd 1-4,11-20,24,26-72,78-132,134-156
+  s_ae877f9b9baf3e::t_41cd1e066a1216 21-23,25
+  s_ae877f9b9baf3e::t_d03ee0d5afcd3d 73-77
+packages/react-doctor/tests/active-run-trace.test.ts
+  s_ae877f9b9baf3e::t_916d33bc95cdd6 1-18
+packages/react-doctor/src/cli/utils/scrub-sentry-event.ts
+  s_ae877f9b9baf3e::t_1073414688eb16 73-76
+  s_ae877f9b9baf3e::t_813e28b426047d 1,3-24,26-72,77-91
+  s_ae877f9b9baf3e::t_5f955321ae8e79 2
+  s_ae877f9b9baf3e::t_1317811a3a8b6a 25
+packages/react-doctor/vite.config.ts
+  s_ae877f9b9baf3e::t_96142590c8c104 95-100
+packages/react-doctor/tests/handle-error.test.ts
+  s_ae877f9b9baf3e::t_a9b1bd5f3d4dab 53-80
+package.json
+  s_ae877f9b9baf3e::t_c4f08c53bde630 26
+  s_ae877f9b9baf3e::t_fe30b92c4c6ada 52
+  s_ae877f9b9baf3e::t_ea8a635b2d82d6 35
+packages/react-doctor/src/cli/utils/build-sentry-project-context.ts
+  s_ae877f9b9baf3e::t_fa24ee8ec147ef 1-12,19-57
+  s_ae877f9b9baf3e::t_39be7669d81773 13-18
+packages/react-doctor/src/cli/utils/handle-error.ts
+  s_ae877f9b9baf3e::t_85172081b8a679 14-17
+  s_ae877f9b9baf3e::t_fca3c4437e1eb0 108-111
+  s_ae877f9b9baf3e::t_5c956521028539 18-19
+  s_ae877f9b9baf3e::t_1b95ddcd285a1e 51-55,74,89,94-97
+  s_ae877f9b9baf3e::t_cbf2eb8fdb23a6 119,125-129
+  s_ae877f9b9baf3e::t_b30452b119f593 140
+  s_ae877f9b9baf3e::t_2f50cde59a6971 141
+packages/react-doctor/src/cli/utils/apply-observability.ts
+  s_ae877f9b9baf3e::t_64551ccebd659a 19-23
+  s_ae877f9b9baf3e::t_4eee2c555ac41f 1-4,6-18,24-45,47-54
+  s_ae877f9b9baf3e::t_5cc02e3e06a537 46
+  s_ae877f9b9baf3e::t_f80a9cab985eef 5
+.github/workflows/publish.yml
+  s_ae877f9b9baf3e::t_752852201c7221 99-109
+  s_ae877f9b9baf3e::t_a6ae57ff050a22 47-52
+packages/react-doctor/src/cli/utils/scrub-sensitive-text.ts
+  s_ae877f9b9baf3e::t_d16319d4d7fbd1 10-13,16
+  s_ae877f9b9baf3e::t_c8ef21103b88ff 1-9,14-15,17-37
+packages/react-doctor/tests/with-sentry-run-span.test.ts
+  s_ae877f9b9baf3e::t_e974f621260a77 1-52
+packages/react-doctor/tests/to-span-attributes.test.ts
+  s_ae877f9b9baf3e::t_61e848f057e1f8 1-24
+packages/react-doctor/tests/sentry-tracer.test.ts
+  s_ae877f9b9baf3e::t_7fce683a41df52 1-174
+packages/react-doctor/src/cli/utils/with-sentry-run-span.ts
+  s_ae877f9b9baf3e::t_ff82d6168b1a21 21-26,34-38,40-46
+  s_ae877f9b9baf3e::t_d8b80577fbd8d5 2
+  s_ae877f9b9baf3e::t_fae4363023bca0 1,3,5,9-20,27,29-33,47-48
+  s_ae877f9b9baf3e::t_b44877093e9d09 6
+  s_ae877f9b9baf3e::t_5d0e9607174ba2 49-64
+  s_ae877f9b9baf3e::t_5cc02e3e06a537 28
+  s_ae877f9b9baf3e::t_88e20595713ef9 7
+  s_ae877f9b9baf3e::t_edf15756a89c92 39
+  s_ae877f9b9baf3e::t_af92a9f9122cdf 4
+  s_ae877f9b9baf3e::t_69b2a999e7f8bd 8
+packages/react-doctor/tests/instrument.test.ts
+  s_ae877f9b9baf3e::t_b0377a2f303445 1-87,89-91
+  s_ae877f9b9baf3e::t_91c9392173f36a 88
+packages/react-doctor/README.md
+  s_ae877f9b9baf3e::t_5a1ba388c8a453 95-96,100-107
+  s_ae877f9b9baf3e::t_22dd0e8186ae9d 97-99
+packages/react-doctor/tests/scrub-sentry-event.test.ts
+  s_ae877f9b9baf3e::t_44a1804207a278 1-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "339f0e3d212876bf2b3f5df26dd5857904ae307b",
+  "prompts": {},
+  "sessions": {
+    "s_ae877f9b9baf3e": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "bd6866f8-3726-4c70-8caf-c792f2dd790c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

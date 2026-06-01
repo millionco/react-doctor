@@ -1,0 +1,43 @@
+packages/react-doctor/src/cli/index.ts
+  s_3debc5d9b54d4f::t_2126ae6639229e 35-36
+packages/react-doctor/src/cli/utils/strip-unknown-cli-flags.ts
+  s_3debc5d9b54d4f::t_cf8f4915ca4c91 41
+packages/react-doctor/src/cli/utils/build-runtime-layers.ts
+  s_3debc5d9b54d4f::t_bef1d343281069 128
+  s_3debc5d9b54d4f::t_114527bb1a34fb 46
+packages/react-doctor/src/cli/utils/resolve-cli-inspect-options.ts
+  s_3debc5d9b54d4f::t_6447573b5c2fba 40
+packages/react-doctor/src/cli/utils/inspect-flags.ts
+  s_3debc5d9b54d4f::t_2e80089b50ce4f 22
+packages/core/src/constants.ts
+  s_3debc5d9b54d4f::t_897ea153ec3298 105
+packages/react-doctor/README.md
+  s_3debc5d9b54d4f::t_2c713bef6357da 30,33,36
+.changeset/parallel-lint-workers.md
+  s_3debc5d9b54d4f::t_a7d0b5c91086a7 5,7
+packages/core/src/types/inspect.ts
+  s_3debc5d9b54d4f::t_4caec313ff5324 75
+packages/react-doctor/src/cli/utils/resolve-parallel-flag.ts
+  s_3debc5d9b54d4f::t_cf5d7952fab389 4-5,7,9-13,15-16
+packages/react-doctor/tests/resolve-parallel-flag.test.ts
+  s_3debc5d9b54d4f::t_fe63fd9669605d 18
+  s_3debc5d9b54d4f::t_c350dc0f8a07fb 10
+packages/core/src/refs.ts
+  s_3debc5d9b54d4f::t_6734a00cebb941 44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "894b6e286c56c5cf8e34dd881964683f3816aeec",
+  "prompts": {},
+  "sessions": {
+    "s_3debc5d9b54d4f": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a7f44d67-a17d-4cd7-900f-95379ccfbac7",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

@@ -3,9 +3,9 @@ import path from "node:path";
 import { parseJSON5 } from "confbox";
 import { isPlainObject } from "@react-doctor/core";
 import type { LegacyConfigLocation } from "@react-doctor/core";
+import { serializeTsObjectLiteral } from "./serialize-ts-object-literal.js";
 
 const MIGRATED_CONFIG_FILENAME = "doctor.config.ts";
-const CONFIG_INDENT_SPACES = 2;
 
 /**
  * Renames a pre-migration `react-doctor.config.json` to a typed
@@ -28,10 +28,9 @@ export const migrateLegacyConfig = (legacy: LegacyConfigLocation): string | null
   delete config.$schema;
 
   const targetPath = path.join(legacy.directory, MIGRATED_CONFIG_FILENAME);
-  const serialized = JSON.stringify(config, null, CONFIG_INDENT_SPACES);
   const contents = `import type { ReactDoctorConfig } from "react-doctor/api";
 
-export default ${serialized} satisfies ReactDoctorConfig;
+export default ${serializeTsObjectLiteral(config)} satisfies ReactDoctorConfig;
 `;
   writeFileSync(targetPath, contents);
   rmSync(legacy.legacyFilePath, { force: true });

@@ -45,6 +45,10 @@ describe("migrateLegacyConfig", () => {
     expect(written).toContain('import type { ReactDoctorConfig } from "react-doctor/api"');
     expect(written).toContain("satisfies ReactDoctorConfig");
     expect(written).not.toContain("$schema");
+    // Idiomatic TS: identifier keys unquoted, rule keys quoted.
+    expect(written).toContain("lint: true");
+    expect(written).toContain("rules: {");
+    expect(written).toContain('"react-doctor/no-danger": "off"');
 
     // The generated TS round-trips through the loader to the same settings.
     clearConfigCache();

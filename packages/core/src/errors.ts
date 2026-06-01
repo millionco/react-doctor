@@ -190,34 +190,6 @@ export const formatReactDoctorError = (error: ReactDoctorError): string => error
 export const isSplittableReactDoctorError = (error: unknown): error is ReactDoctorError =>
   error instanceof ReactDoctorError && error.reason._tag === "OxlintBatchExceeded";
 
-// OS-level `spawn` failures that mean "the system can't accommodate ANOTHER
-// concurrent subprocess right now": fork ran out of process slots (EAGAIN),
-// the per-process (EMFILE) or system-wide (ENFILE) fd table is full from the
-// pipes each child needs, or the kernel couldn't allocate the new process
-// (ENOMEM). They're exclusive to parallel runs — a serial pass spawns one
-// oxlint child at a time and never trips them — so they're the one failure a
-// serial replay of the lint pass can clear.
-const PARALLELISM_EXHAUSTION_ERROR_CODES = new Set(["EAGAIN", "EMFILE", "ENFILE", "ENOMEM"]);
-
-/**
- * True when `error` is an oxlint spawn failure caused by the OS refusing
- * another concurrent subprocess (EAGAIN / EMFILE / ENFILE / ENOMEM). These
- * only surface because the lint pass is fanning batches out in parallel, so
- * the caller can recover by retrying the pass serially. Every other failure
- * (config crash, plugin-resolution error, unparseable output, a per-batch
- * budget timeout) is independent of the worker count and would recur on a
- * serial retry, so callers must let those propagate.
- */
-export const isParallelismRelatedReactDoctorError = (error: unknown): boolean => {
-  if (!(error instanceof ReactDoctorError)) return false;
-  const { reason } = error;
-  if (reason._tag !== "OxlintSpawnFailed") return false;
-  const { cause } = reason;
-  if (typeof cause !== "object" || cause === null || !("code" in cause)) return false;
-  const { code } = cause;
-  return typeof code === "string" && PARALLELISM_EXHAUSTION_ERROR_CODES.has(code);
-};
-
 export const isReactDoctorError = (error: unknown): error is ReactDoctorError =>
   error instanceof ReactDoctorError;
 

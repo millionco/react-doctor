@@ -88,19 +88,31 @@ beforeEach(() => {
 });
 
 describe("spawnLintBatches parallel → serial fallback", () => {
-  it("replays the pass serially when a parallel run exhausts process resources", async () => {
-    spawnState.firstError = { code: "EAGAIN" };
+  // Each resource-exhaustion code is parallelism-exclusive, so a parallel run
+  // that hits one replays the whole pass serially and then succeeds.
+  for (const code of ["EAGAIN", "EMFILE", "ENFILE", "ENOMEM"]) {
+    it(`replays the pass serially when a parallel run hits ${code}`, async () => {
+      spawnState.firstError = { code };
 
-    await expect(runWithConcurrency(4)).resolves.toEqual([]);
-    // The failed parallel pass plus the full serial replay means spawn was
-    // invoked for more than one pass's worth of batches — proof the replay ran.
-    expect(spawnState.callCount).toBeGreaterThan(BATCH_COUNT);
+      await expect(runWithConcurrency(4)).resolves.toEqual([]);
+      // The failed parallel pass plus the full serial replay means spawn was
+      // invoked for more than one pass's worth of batches — proof the replay ran.
+      expect(spawnState.callCount).toBeGreaterThan(BATCH_COUNT);
+    });
+  }
+
+  it("propagates a spawn failure with no system code (e.g. a config crash)", async () => {
+    // No `.code` on the cause → not parallelism-related → recurs serially, so
+    // the pass must fail outright rather than replay.
+    spawnState.firstError = {};
+
+    await expect(runWithConcurrency(4)).rejects.toThrow(/Failed to run oxlint/);
   });
 
-  it("propagates a failure unrelated to parallelism instead of retrying", async () => {
-    // A spawn error with no system code stands in for a config crash: it
-    // would recur on a serial retry, so the pass must fail outright.
-    spawnState.firstError = {};
+  it("propagates a coded failure that isn't resource exhaustion (e.g. ENOENT)", async () => {
+    // A missing binary recurs identically on a serial retry, so it must not
+    // trigger the fallback.
+    spawnState.firstError = { code: "ENOENT" };
 
     await expect(runWithConcurrency(4)).rejects.toThrow(/Failed to run oxlint/);
   });

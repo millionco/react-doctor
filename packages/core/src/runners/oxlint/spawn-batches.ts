@@ -4,15 +4,35 @@ import {
   PROGRESS_TICK_INTERVAL_MS,
 } from "../../constants.js";
 import type { Diagnostic, ProjectInfo } from "../../types/index.js";
-import {
-  isParallelismRelatedReactDoctorError,
-  isSplittableReactDoctorError,
-} from "../../errors.js";
+import { isSplittableReactDoctorError, ReactDoctorError } from "../../errors.js";
 import { dedupeDiagnostics } from "../../utils/dedupe-diagnostics.js";
 import { mapWithConcurrency } from "../../utils/map-with-concurrency.js";
 import { resolveScanConcurrency } from "../../utils/resolve-scan-concurrency.js";
 import { parseOxlintOutput } from "./parse-output.js";
 import { spawnOxlint } from "./spawn-oxlint.js";
+
+// OS-level `spawn` failures that mean "the system can't accommodate ANOTHER
+// concurrent subprocess right now": fork ran out of process slots (EAGAIN),
+// the per-process (EMFILE) or system-wide (ENFILE) fd table is full from the
+// pipes each child needs, or the kernel couldn't allocate the new process
+// (ENOMEM). They're exclusive to parallel runs — a serial pass spawns one
+// oxlint child at a time and never trips them — so they're the one failure the
+// serial replay below can clear.
+const PARALLELISM_EXHAUSTION_ERROR_CODES = new Set(["EAGAIN", "EMFILE", "ENFILE", "ENOMEM"]);
+
+// True only for an oxlint spawn failure from the resource exhaustion above.
+// Every other failure (config crash, plugin-resolution error, unparseable
+// output, a per-batch budget timeout) is independent of the worker count and
+// would recur serially, so it must propagate rather than trigger a replay.
+const isParallelismRelatedSpawnError = (error: unknown): boolean => {
+  if (!(error instanceof ReactDoctorError)) return false;
+  const { reason } = error;
+  if (reason._tag !== "OxlintSpawnFailed") return false;
+  const { cause } = reason;
+  if (typeof cause !== "object" || cause === null || !("code" in cause)) return false;
+  const { code } = cause;
+  return typeof code === "string" && PARALLELISM_EXHAUSTION_ERROR_CODES.has(code);
+};
 
 export interface SpawnLintBatchesInput {
   readonly baseArgs: ReadonlyArray<string>;
@@ -50,9 +70,9 @@ export interface SpawnLintBatchesInput {
  * Parallel runs (concurrency > 1) get one extra safety net: if the pass
  * fails with a resource-exhaustion error that's exclusive to running
  * many oxlint subprocesses at once (EAGAIN / EMFILE / ENFILE / ENOMEM —
- * see `isParallelismRelatedReactDoctorError`), the whole pass replays
- * once with a single worker. That's the only failure a serial replay
- * can clear, so every other error class is left to propagate.
+ * see `isParallelismRelatedSpawnError`), the whole pass replays once
+ * with a single worker. That's the only failure a serial replay can
+ * clear, so every other error class is left to propagate.
  *
  * Errors that aren't splittable and aren't parallelism-related (oxlint
  * config crash, JS plugin resolution failure, etc.) propagate to the
@@ -194,10 +214,7 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
   try {
     diagnostics = await runBatchPass(requestedConcurrency);
   } catch (error) {
-    if (
-      requestedConcurrency <= MIN_SCAN_CONCURRENCY ||
-      !isParallelismRelatedReactDoctorError(error)
-    ) {
+    if (requestedConcurrency <= MIN_SCAN_CONCURRENCY || !isParallelismRelatedSpawnError(error)) {
       throw error;
     }
     diagnostics = await runBatchPass(MIN_SCAN_CONCURRENCY);

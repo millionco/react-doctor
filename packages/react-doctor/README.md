@@ -102,7 +102,7 @@ Prefer JSON? Use `doctor.config.json` and point `$schema` at `https://react.doct
 ```jsonc
 {
   "$schema": "https://react.doctor/schema/config.json",
-  "lint": true
+  "lint": true,
 }
 ```
 

@@ -1,5 +1,5 @@
 ---
-"react-doctor": minor
+"react-doctor": patch
 ---
 
 Deepen the CLI's Sentry integration: uploaded source maps, unified tracing, and richer run context.

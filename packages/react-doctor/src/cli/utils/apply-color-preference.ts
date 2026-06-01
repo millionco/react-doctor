@@ -7,9 +7,12 @@ import { setColorEnabled } from "@react-doctor/core";
  * `NO_COLOR` / `FORCE_COLOR` / `TERM` / TTY detection. Flags win over env
  * vars; with neither set, picocolors' detection stands.
  *
- * Scanning argv directly (not Commander's parsed options) applies the
- * preference once, before Commander parses, so it reaches every later path.
- * The scan stops at `--` so a trailing positional can't flip it.
+ * A resolved preference is mirrored onto the standard `NO_COLOR` /
+ * `FORCE_COLOR` env vars in addition to our picocolors highlighter, so
+ * libraries with their own color stacks (the `ora` spinner, `prompts`)
+ * honor it too rather than only the scan report. Scanning argv directly
+ * (not Commander's parsed options) applies the preference before Commander
+ * parses, so it reaches every later path. The scan stops at `--`.
  */
 export const applyColorPreference = (
   argv: readonly string[],
@@ -29,5 +32,14 @@ export const applyColorPreference = (
     else if (env.REACT_DOCTOR_FORCE_COLOR) enabled = true;
   }
 
-  if (enabled !== undefined) setColorEnabled(enabled);
+  if (enabled === undefined) return;
+
+  if (enabled) {
+    env.FORCE_COLOR = "1";
+    delete env.NO_COLOR;
+  } else {
+    env.NO_COLOR = "1";
+    delete env.FORCE_COLOR;
+  }
+  setColorEnabled(enabled);
 };

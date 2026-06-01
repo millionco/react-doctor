@@ -21,6 +21,11 @@ describe("normalizeHelpInvocation", () => {
     expect(normalize(["help", "bogus"])).toEqual(["--help"]);
   });
 
+  it("finds the subcommand target past intervening flags", () => {
+    expect(normalize(["help", "--no-color", "install"])).toEqual(["install", "--help"]);
+    expect(normalize(["help", "--no-color"])).toEqual(["--help"]);
+  });
+
   it("leaves a non-leading `help` token untouched (e.g. a flag value)", () => {
     expect(normalize(["--project", "help"])).toEqual(["--project", "help"]);
     expect(normalize(["."])).toEqual(["."]);

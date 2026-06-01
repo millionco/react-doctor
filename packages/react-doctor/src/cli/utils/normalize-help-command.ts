@@ -12,8 +12,10 @@ import { NODE_ARGUMENT_COUNT } from "./constants.js";
  *   `react-doctor help install` -> `react-doctor install --help`
  *
  * Only a *leading* `help` token is rewritten, so a flag value such as
- * `--project help` is never mistaken for the help command. An unknown
- * target (`help bogus`) falls back to root help rather than erroring.
+ * `--project help` is never mistaken for the help command. The target is
+ * the first non-flag token after `help`, so intervening flags like
+ * `help --no-color install` still resolve to `install`. An unknown target
+ * (`help bogus`) falls back to root help rather than erroring.
  */
 export const normalizeHelpInvocation = (
   argv: readonly string[],
@@ -23,7 +25,7 @@ export const normalizeHelpInvocation = (
   const userArguments = argv.slice(NODE_ARGUMENT_COUNT);
   if (userArguments[0] !== "help") return [...argv];
 
-  const target = userArguments[1];
+  const target = userArguments.slice(1).find((argument) => !argument.startsWith("-"));
   if (target !== undefined && knownCommands.includes(target)) {
     return [...nodeArguments, target, "--help"];
   }

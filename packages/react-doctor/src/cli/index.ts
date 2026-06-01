@@ -5,7 +5,6 @@ import { inspectAction } from "./commands/inspect.js";
 import { installAction } from "./commands/install.js";
 import { versionAction } from "./commands/version.js";
 import { applyColorPreference } from "./utils/apply-color-preference.js";
-import { NODE_ARGUMENT_COUNT } from "./utils/constants.js";
 import { exitGracefully } from "./utils/exit-gracefully.js";
 import { handleError } from "./utils/handle-error.js";
 import { isJsonModeActive, writeJsonErrorReport } from "./utils/json-mode.js";
@@ -167,13 +166,11 @@ const knownCommands = program.commands.flatMap((command) => [command.name(), ...
 const strippedArgv = stripUnknownCliFlags(process.argv);
 
 // HACK: Commander allows only one short flag on `--version` (we use `-v`),
-// so honor `-V` by scanning argv ourselves and printing the terse version
-// before Commander parses. Stop at `--` so it isn't read as a passthrough.
-const userArguments = process.argv.slice(NODE_ARGUMENT_COUNT);
-const endOfOptionsIndex = userArguments.indexOf("--");
-const optionArguments =
-  endOfOptionsIndex === -1 ? userArguments : userArguments.slice(0, endOfOptionsIndex);
-if (optionArguments.includes("-V")) {
+// so honor `-V` ourselves before Commander parses. `stripUnknownCliFlags`
+// drops a standalone unknown `-V` but keeps one that's an option value, so
+// "present in raw argv yet stripped out" means it was passed as a real flag
+// (not e.g. `--cwd -V`).
+if (process.argv.includes("-V") && !strippedArgv.includes("-V")) {
   process.stdout.write(`${VERSION}\n`);
   process.exit(0);
 }

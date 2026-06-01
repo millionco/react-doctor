@@ -22,33 +22,42 @@ afterEach(() => {
 });
 
 describe("applyColorPreference", () => {
-  it("disables color when --no-color is present", () => {
+  it("disables color and sets NO_COLOR when --no-color is present", () => {
     setColorEnabled(true);
-    applyColorPreference(["node", "react-doctor", ".", "--no-color"]);
+    const env: NodeJS.ProcessEnv = {};
+    applyColorPreference(["node", "react-doctor", ".", "--no-color"], env);
     expect(hasAnsi(highlighter.info("x"))).toBe(false);
+    expect(env.NO_COLOR).toBe("1");
+    expect(env.FORCE_COLOR).toBeUndefined();
   });
 
-  it("forces color on when --color is present", () => {
+  it("forces color and sets FORCE_COLOR when --color is present", () => {
     setColorEnabled(false);
-    applyColorPreference(["node", "react-doctor", ".", "--color"]);
+    const env: NodeJS.ProcessEnv = { NO_COLOR: "1" };
+    applyColorPreference(["node", "react-doctor", ".", "--color"], env);
     expect(hasAnsi(highlighter.info("x"))).toBe(true);
+    expect(env.FORCE_COLOR).toBe("1");
+    expect(env.NO_COLOR).toBeUndefined();
   });
 
-  it("leaves the current color state untouched when neither flag is passed", () => {
+  it("leaves color and env untouched when neither flag nor env var is set", () => {
     setColorEnabled(false);
-    applyColorPreference(["node", "react-doctor", "."]);
+    const env: NodeJS.ProcessEnv = {};
+    applyColorPreference(["node", "react-doctor", "."], env);
     expect(hasAnsi(highlighter.info("x"))).toBe(false);
+    expect(env.NO_COLOR).toBeUndefined();
+    expect(env.FORCE_COLOR).toBeUndefined();
   });
 
   it("lets the last flag win when both are passed", () => {
     setColorEnabled(true);
-    applyColorPreference(["node", "react-doctor", "--color", "--no-color"]);
+    applyColorPreference(["node", "react-doctor", "--color", "--no-color"], {});
     expect(hasAnsi(highlighter.info("x"))).toBe(false);
   });
 
   it("ignores color flags that appear after the -- end-of-options marker", () => {
     setColorEnabled(true);
-    applyColorPreference(["node", "react-doctor", "--", "--no-color"]);
+    applyColorPreference(["node", "react-doctor", "--", "--no-color"], {});
     expect(hasAnsi(highlighter.info("x"))).toBe(true);
   });
 

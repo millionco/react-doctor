@@ -1,0 +1,27 @@
+packages/react-doctor/src/cli/utils/onboarding-pacing.ts
+  s_bfb9c1b9472a25::t_748d22ae943c14 46-68
+packages/react-doctor/src/inspect.ts
+  s_bfb9c1b9472a25::t_5bd0f949890b16 65
+  s_bfb9c1b9472a25::t_30d8f0512b404d 554-560,562-563
+  s_bfb9c1b9472a25::t_3d13c948bc525c 52
+  s_bfb9c1b9472a25::t_a3b9b084aa4d79 380-390
+packages/react-doctor/tests/onboarding-pacing.test.ts
+  s_bfb9c1b9472a25::t_662b65dbece289 114-116,117-147
+  s_bfb9c1b9472a25::t_3e430994844e61 15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "437e53b71e2d96cd130fdd4e2ed82e823823f56f",
+  "prompts": {},
+  "sessions": {
+    "s_bfb9c1b9472a25": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "e9c368fd-00e2-4962-b93e-b1c29cf5445a",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

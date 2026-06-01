@@ -152,6 +152,8 @@ program
 program
   .command("version")
   .description("show the version with Node and platform info")
+  .option("--color", "force colored output")
+  .option("--no-color", "disable colored output (also honors NO_COLOR)")
   .action(versionAction);
 
 // HACK: when stdout is piped into a process that closes early (e.g.
@@ -162,7 +164,7 @@ process.stdout.on("error", (error: NodeJS.ErrnoException) => {
 });
 
 const knownCommands = program.commands.flatMap((command) => [command.name(), ...command.aliases()]);
-const argv = normalizeHelpInvocation(stripUnknownCliFlags(process.argv), knownCommands);
+const strippedArgv = stripUnknownCliFlags(process.argv);
 
 // HACK: Commander allows only one short flag on `--version` (we use `-v`),
 // so honor `-V` by scanning argv ourselves and printing the terse version
@@ -176,9 +178,13 @@ if (optionArguments.includes("-V")) {
   process.exit(0);
 }
 
-// Color must be resolved before Commander parses so the choice reaches
-// help output too.
-applyColorPreference(argv);
+// Resolve color from the stripped argv (before help-normalization drops
+// trailing tokens like `react-doctor help --no-color`) so the choice
+// reaches help output too.
+applyColorPreference(strippedArgv);
+
+// 12-factor (#1): map `help` / `help <command>` to Commander's `--help`.
+const argv = normalizeHelpInvocation(strippedArgv, knownCommands);
 
 program.parseAsync(argv).catch(async (error: unknown) => {
   await reportErrorToSentry(error);

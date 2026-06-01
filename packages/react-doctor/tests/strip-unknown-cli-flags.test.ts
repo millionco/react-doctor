@@ -64,4 +64,10 @@ describe("stripUnknownCliFlags", () => {
       ".",
     ]);
   });
+
+  it("keeps color flags on the version subcommand and drops unknown ones", () => {
+    expect(stripUserArguments(["version", "--no-color"])).toEqual(["version", "--no-color"]);
+    expect(stripUserArguments(["version", "--color"])).toEqual(["version", "--color"]);
+    expect(stripUserArguments(["version", "--offline"])).toEqual(["version"]);
+  });
 });

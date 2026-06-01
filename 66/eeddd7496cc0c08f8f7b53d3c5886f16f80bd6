@@ -1,0 +1,26 @@
+packages/react-doctor/vite.config.ts
+  s_02f78ca4e4018c::t_7143c8d6793cdb 95-104
+.changeset/cli-sourcemaps.md
+  s_02f78ca4e4018c::t_562544b2e57381 1-5
+packages/react-doctor/bin/react-doctor.js
+  s_02f78ca4e4018c::t_db54cbcd54e3a1 15-23
+  s_02f78ca4e4018c::t_6377e565280b8f 13-14,24
+packages/react-doctor/package.json
+  s_02f78ca4e4018c::t_16267a3a8c2fc4 36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "66eeddd7496cc0c08f8f7b53d3c5886f16f80bd6",
+  "prompts": {},
+  "sessions": {
+    "s_02f78ca4e4018c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6ae691c-87ef-4acf-a7e0-7b2fb4406e1d",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

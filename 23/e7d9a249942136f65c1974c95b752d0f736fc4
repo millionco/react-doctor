@@ -1,0 +1,23 @@
+packages/react-doctor/src/cli/commands/rules.ts
+  s_48b1e5431a7b23::t_3c601e0173b1db 2
+  s_48b1e5431a7b23::t_de20caabe399ff 135-136
+  s_48b1e5431a7b23::t_80e430d5208d10 90-93
+packages/react-doctor/tests/rules-command.test.ts
+  s_48b1e5431a7b23::t_b51451a52ceda9 228-244
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "23e7d9a249942136f65c1974c95b752d0f736fc4",
+  "prompts": {},
+  "sessions": {
+    "s_48b1e5431a7b23": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "6436ca37-4111-474b-8784-1082331577f0",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

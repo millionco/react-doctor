@@ -1,0 +1,32 @@
+function Component(
+  <unknown> props$19{reactive},
+) {
+  scope @0 [1:26] dependencies=[props$19.post.feedback.comments?.edges_2:9:2:44] declarations=[t0$37_@0] reassignments=[] {
+    [2] store t0$32{reactive} = OptionalExpression optional=false
+      Sequence
+          [17] read $28_@0[1:26]:TFunction{reactive} = Sequence
+              [3] mutate? $28_@0[1:26]:TFunction{reactive} = OptionalExpression optional=true
+                Sequence
+                    [13] read $25{reactive} = Sequence
+                        [4] mutate? $25{reactive} = OptionalExpression optional=true
+                          Sequence
+                              [8] mutate? $23{reactive} = Sequence
+                                  [5] mutate? $20{reactive} = LoadLocal read props$19{reactive}
+                                  [6] mutate? $21{reactive} = PropertyLoad read $20{reactive}.post
+                                  [7] mutate? $22{reactive} = PropertyLoad read $21{reactive}.feedback
+                                  [8] PropertyLoad read $22{reactive}.comments
+                              [11] Sequence
+                                  [10] mutate? $24{reactive} = PropertyLoad read $23{reactive}.edges
+                                  [11] LoadLocal read $24{reactive}
+                        [13] LoadLocal read $25{reactive}
+                    [15] Sequence
+                        [14] mutate? $27:TFunction{reactive} = PropertyLoad read $25{reactive}.map
+                        [15] LoadLocal read $27:TFunction{reactive}
+              [17] LoadLocal read $28_@0[1:26]:TFunction{reactive}
+          [20] Sequence
+              [18] mutate? $30 = LoadGlobal(global) render
+              [19] store $31_@0[1:26]{reactive} = MethodCall read $25{reactive}.read $28_@0[1:26]:TFunction{reactive}(capture $30)
+              [20] LoadLocal capture $31_@0[1:26]{reactive}
+  }
+  [26] return freeze t0$37:TPhi{reactive}
+}

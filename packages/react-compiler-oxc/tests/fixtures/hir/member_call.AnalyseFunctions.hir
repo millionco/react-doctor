@@ -1,0 +1,19 @@
+Component(<unknown> props$22): <unknown> $21:TPrimitive
+bb0 (block):
+  [1] <unknown> $23 = LoadLocal <unknown> props$22
+  [2] <unknown> $24:TPrimitive = PropertyLoad <unknown> $23.a
+  [3] <unknown> $26:TPrimitive = StoreLocal Const <unknown> x$25:TPrimitive = <unknown> $24:TPrimitive
+  [4] <unknown> $27:TFunction = LoadGlobal(global) foo
+  [5] <unknown> $28:TPrimitive = LoadLocal <unknown> x$25:TPrimitive
+  [6] <unknown> $29:TPrimitive = 1
+  [7] <unknown> $30:TPrimitive = Call <unknown> $27:TFunction(<unknown> $28:TPrimitive, <unknown> $29:TPrimitive)
+  [8] <unknown> $32:TPrimitive = StoreLocal Const <unknown> y$31:TPrimitive = <unknown> $30:TPrimitive
+  [9] <unknown> $33 = LoadGlobal(global) obj
+  [10] <unknown> $34:TFunction = PropertyLoad <unknown> $33.method
+  [11] <unknown> $35:TPrimitive = LoadLocal <unknown> x$25:TPrimitive
+  [12] <unknown> $36 = MethodCall <unknown> $33.<unknown> $34:TFunction(<unknown> $35:TPrimitive)
+  [13] <unknown> $38 = StoreLocal Const <unknown> z$37 = <unknown> $36
+  [14] <unknown> $39:TPrimitive = LoadLocal <unknown> x$25:TPrimitive
+  [15] <unknown> $40:TPrimitive = LoadLocal <unknown> y$31:TPrimitive
+  [16] <unknown> $41:TPrimitive = Binary <unknown> $39:TPrimitive + <unknown> $40:TPrimitive
+  [17] Return Explicit <unknown> $41:TPrimitive

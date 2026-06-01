@@ -1,0 +1,121 @@
+Component(<unknown> #t0$49:TObject<BuiltInProps>): <unknown> $48:TObject<BuiltInJsx>
+bb0 (block):
+  [1] <unknown> $53 = Destructure Let { a: <unknown> a$50, b: <unknown> b$51, c: <unknown> c$52 } = <unknown> #t0$49:TObject<BuiltInProps>
+    Create a$50 = frozen
+    ImmutableCapture a$50 <- #t0$49
+    Create b$51 = frozen
+    ImmutableCapture b$51 <- #t0$49
+    Create c$52 = frozen
+    ImmutableCapture c$52 <- #t0$49
+    ImmutableCapture $53 <- #t0$49
+  [2] <unknown> $54:TFunction<<generated_96>>():  :TObject<BuiltInWeakSet> = LoadGlobal(global) WeakSet
+    Create $54 = global
+  [3] <unknown> $55:TObject<BuiltInWeakSet> = New <unknown> $54:TFunction<<generated_96>>():  :TObject<BuiltInWeakSet>()
+    Create $55 = mutable
+  [4] <unknown> $57:TObject<BuiltInWeakSet> = StoreLocal Const <unknown> set$56:TObject<BuiltInWeakSet> = <unknown> $55:TObject<BuiltInWeakSet>
+    Assign set$56 = $55
+    Assign $57 = $55
+  [5] <unknown> $58:TObject<BuiltInWeakSet> = LoadLocal <unknown> set$56:TObject<BuiltInWeakSet>
+    Assign $58 = set$56
+  [6] <unknown> $59:TFunction<<generated_38>>():  :TObject<BuiltInWeakSet> = PropertyLoad <unknown> $58:TObject<BuiltInWeakSet>.add
+    Create $59 = kindOf($58)
+  [7] <unknown> $60 = LoadLocal <unknown> a$50
+    ImmutableCapture $60 <- a$50
+  [8] <unknown> $61:TObject<BuiltInWeakSet> = MethodCall <unknown> $58:TObject<BuiltInWeakSet>.<unknown> $59:TFunction<<generated_38>>():  :TObject<BuiltInWeakSet>(<unknown> $60)
+    Create $61 = mutable
+    Alias $61 <- $58
+    Mutate $58
+    ImmutableCapture $58 <- $60
+  [9] <unknown> $63:TObject<BuiltInWeakSet> = StoreLocal Const <unknown> setAlias$62:TObject<BuiltInWeakSet> = <unknown> $61:TObject<BuiltInWeakSet>
+    Assign setAlias$62 = $61
+    Assign $63 = $61
+  [10] <unknown> $64:TObject<BuiltInWeakSet> = LoadLocal <unknown> setAlias$62:TObject<BuiltInWeakSet>
+    Assign $64 = setAlias$62
+  [11] <unknown> $65:TFunction<<generated_38>>():  :TObject<BuiltInWeakSet> = PropertyLoad <unknown> $64:TObject<BuiltInWeakSet>.add
+    Create $65 = kindOf($64)
+  [12] <unknown> $66 = LoadLocal <unknown> c$52
+    ImmutableCapture $66 <- c$52
+  [13] <unknown> $67:TObject<BuiltInWeakSet> = MethodCall <unknown> $64:TObject<BuiltInWeakSet>.<unknown> $65:TFunction<<generated_38>>():  :TObject<BuiltInWeakSet>(<unknown> $66)
+    Create $67 = mutable
+    Alias $67 <- $64
+    Mutate $64
+    ImmutableCapture $64 <- $66
+  [14] <unknown> $68:TObject<BuiltInWeakSet> = LoadLocal <unknown> set$56:TObject<BuiltInWeakSet>
+    Assign $68 = set$56
+  [15] <unknown> $69:TFunction<<generated_40>>():  :TPrimitive = PropertyLoad <unknown> $68:TObject<BuiltInWeakSet>.has
+    Create $69 = kindOf($68)
+  [16] <unknown> $70 = LoadLocal <unknown> b$51
+    ImmutableCapture $70 <- b$51
+  [17] <unknown> $71:TPrimitive = MethodCall <unknown> $68:TObject<BuiltInWeakSet>.<unknown> $69:TFunction<<generated_40>>():  :TPrimitive(<unknown> $70)
+    Create $71 = primitive
+    ImmutableCapture $71 <- $68
+    ImmutableCapture $71 <- $70
+  [18] <unknown> $73:TPrimitive = StoreLocal Const <unknown> hasB$72:TPrimitive = <unknown> $71:TPrimitive
+  [19] <unknown> $74 = LoadGlobal import { ValidateMemoization } from 'shared-runtime'
+    Create $74 = global
+  [20] <unknown> $75 = LoadLocal <unknown> a$50
+    ImmutableCapture $75 <- a$50
+  [21] <unknown> $76 = LoadLocal <unknown> c$52
+    ImmutableCapture $76 <- c$52
+  [22] <unknown> $77:TObject<BuiltInArray> = Array [<unknown> $75, <unknown> $76]
+    Create $77 = mutable
+    ImmutableCapture $77 <- $75
+    ImmutableCapture $77 <- $76
+  [23] <unknown> $78:TObject<BuiltInWeakSet> = LoadLocal <unknown> set$56:TObject<BuiltInWeakSet>
+    Assign $78 = set$56
+  [24] <unknown> $79:TPrimitive = true
+    Create $79 = primitive
+  [25] <unknown> $80:TObject<BuiltInJsx> = JSX <<unknown> $74 inputs={<unknown> $77:TObject<BuiltInArray>} output={<unknown> $78:TObject<BuiltInWeakSet>} onlyCheckCompiled={<unknown> $79:TPrimitive} />
+    Create $80 = frozen
+    Freeze $77 jsx-captured
+    ImmutableCapture $80 <- $77
+    Freeze $78 jsx-captured
+    ImmutableCapture $80 <- $78
+    Render $74
+  [26] <unknown> $81 = LoadGlobal import { ValidateMemoization } from 'shared-runtime'
+    Create $81 = global
+  [27] <unknown> $82 = LoadLocal <unknown> a$50
+    ImmutableCapture $82 <- a$50
+  [28] <unknown> $83 = LoadLocal <unknown> c$52
+    ImmutableCapture $83 <- c$52
+  [29] <unknown> $84:TObject<BuiltInArray> = Array [<unknown> $82, <unknown> $83]
+    Create $84 = mutable
+    ImmutableCapture $84 <- $82
+    ImmutableCapture $84 <- $83
+  [30] <unknown> $85:TObject<BuiltInWeakSet> = LoadLocal <unknown> setAlias$62:TObject<BuiltInWeakSet>
+    Assign $85 = setAlias$62
+  [31] <unknown> $86:TPrimitive = true
+    Create $86 = primitive
+  [32] <unknown> $87:TObject<BuiltInJsx> = JSX <<unknown> $81 inputs={<unknown> $84:TObject<BuiltInArray>} output={<unknown> $85:TObject<BuiltInWeakSet>} onlyCheckCompiled={<unknown> $86:TPrimitive} />
+    Create $87 = frozen
+    Freeze $84 jsx-captured
+    ImmutableCapture $87 <- $84
+    Freeze $85 jsx-captured
+    ImmutableCapture $87 <- $85
+    Render $81
+  [33] <unknown> $88 = LoadGlobal import { ValidateMemoization } from 'shared-runtime'
+    Create $88 = global
+  [34] <unknown> $89 = LoadLocal <unknown> b$51
+    ImmutableCapture $89 <- b$51
+  [35] <unknown> $90:TObject<BuiltInArray> = Array [<unknown> $89]
+    Create $90 = mutable
+    ImmutableCapture $90 <- $89
+  [36] <unknown> $91:TPrimitive = LoadLocal <unknown> hasB$72:TPrimitive
+  [37] <unknown> $92:TObject<BuiltInArray> = Array [<unknown> $91:TPrimitive]
+    Create $92 = mutable
+  [38] <unknown> $93:TPrimitive = true
+    Create $93 = primitive
+  [39] <unknown> $94:TObject<BuiltInJsx> = JSX <<unknown> $88 inputs={<unknown> $90:TObject<BuiltInArray>} output={<unknown> $92:TObject<BuiltInArray>} onlyCheckCompiled={<unknown> $93:TPrimitive} />
+    Create $94 = frozen
+    Freeze $90 jsx-captured
+    ImmutableCapture $94 <- $90
+    Freeze $92 jsx-captured
+    ImmutableCapture $94 <- $92
+    Render $88
+  [40] <unknown> $95:TObject<BuiltInJsx> = JsxFragment [<unknown> $80:TObject<BuiltInJsx>, <unknown> $87:TObject<BuiltInJsx>, <unknown> $94:TObject<BuiltInJsx>]
+    Create $95 = frozen
+    ImmutableCapture $95 <- $80
+    ImmutableCapture $95 <- $87
+    ImmutableCapture $95 <- $94
+  [41] Return Explicit <unknown> $95:TObject<BuiltInJsx>
+    Freeze $95 jsx-captured

@@ -1,0 +1,16 @@
+useFoo(<unknown> #t0$18): <unknown> $17:TObject<BuiltInObject>
+bb0 (block):
+  [1] <unknown> $21 = Destructure Let { a: <unknown> a$19, b: <unknown> b$20 } = <unknown> #t0$18
+  [2] <unknown> $22 = LoadLocal <unknown> a$19
+  [3] <unknown> $23:TObject<BuiltInObject> = Object { a: <unknown> $22 }
+  [4] <unknown> $25:TObject<BuiltInObject> = StoreLocal Const <unknown> obj$24:TObject<BuiltInObject> = <unknown> $23:TObject<BuiltInObject>
+  [5] <unknown> $26:TFunction = LoadGlobal import { arrayPush } from 'shared-runtime'
+  [6] <unknown> $27:TObject<Object> = LoadGlobal(global) Object
+  [7] <unknown> $28:TFunction<<generated_62>>():  :TObject<BuiltInArray> = PropertyLoad <unknown> $27:TObject<Object>.keys
+  [8] <unknown> $29:TObject<BuiltInObject> = LoadLocal <unknown> obj$24:TObject<BuiltInObject>
+  [9] <unknown> $30:TObject<BuiltInArray> = MethodCall <unknown> $27:TObject<Object>.<unknown> $28:TFunction<<generated_62>>():  :TObject<BuiltInArray>(<unknown> $29:TObject<BuiltInObject>)
+  [10] <unknown> $31 = LoadLocal <unknown> b$20
+  [11] <unknown> $32 = Call <unknown> $26:TFunction(<unknown> $30:TObject<BuiltInArray>, <unknown> $31)
+  [12] <unknown> $33:TObject<BuiltInObject> = LoadLocal <unknown> obj$24:TObject<BuiltInObject>
+  [13] Return Explicit <unknown> $33:TObject<BuiltInObject>
+

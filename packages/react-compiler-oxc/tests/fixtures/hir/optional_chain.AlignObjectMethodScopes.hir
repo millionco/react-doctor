@@ -1,0 +1,49 @@
+Component(<unknown> props$15{reactive}): <unknown> $14:TPhi
+bb0 (block):
+  [1] Optional (optional=true) test:bb4 fallthrough=bb1
+bb4 (value):
+  predecessor blocks: bb0
+  [2] Optional (optional=true) test:bb7 fallthrough=bb5
+bb7 (value):
+  predecessor blocks: bb4
+  [3] mutate? $16{reactive} = LoadLocal read props$15{reactive}
+    ImmutableCapture $16 <- props$15
+  [4] Branch (read $16{reactive}) then:bb6 else:bb3 fallthrough:bb5
+bb6 (value):
+  predecessor blocks: bb7
+  [5] mutate? $17{reactive} = PropertyLoad read $16{reactive}.x
+    Create $17 = frozen
+    ImmutableCapture $17 <- $16
+  [6] mutate? $19{reactive} = StoreLocal Const mutate? $18{reactive} = read $17{reactive}
+    ImmutableCapture $18 <- $17
+    ImmutableCapture $19 <- $17
+  [7] Goto bb5
+bb5 (value):
+  predecessor blocks: bb6
+  [8] Branch (read $18{reactive}) then:bb2 else:bb3 fallthrough:bb1
+bb2 (value):
+  predecessor blocks: bb5
+  [9] mutate? $20{reactive} = PropertyLoad read $18{reactive}.y
+    Create $20 = frozen
+    ImmutableCapture $20 <- $18
+  [10] mutate? $22{reactive} = StoreLocal Const mutate? $21{reactive} = read $20{reactive}
+    ImmutableCapture $21 <- $20
+    ImmutableCapture $22 <- $20
+  [11] Goto bb1
+bb3 (value):
+  predecessor blocks: bb5 bb7
+  [12] mutate? $23:TPrimitive = <undefined>
+    Create $23 = primitive
+  [13] mutate? $25:TPrimitive = StoreLocal Const mutate? $24:TPrimitive = read $23:TPrimitive
+  [14] Goto bb1
+bb1 (block):
+  predecessor blocks: bb2 bb3
+  store $26:TPhi{reactive}:TPhi: phi(bb2: read $21{reactive}, bb3: read $24:TPrimitive)
+  [15] mutate? $28:TPhi{reactive} = StoreLocal Const mutate? a$27:TPhi{reactive} = read $26:TPhi{reactive}
+    ImmutableCapture a$27 <- $26
+    ImmutableCapture $28 <- $26
+  [16] mutate? $29:TPhi{reactive} = LoadLocal read a$27:TPhi{reactive}
+    ImmutableCapture $29 <- a$27
+  [17] Return Explicit freeze $29:TPhi{reactive}
+    Freeze $29 jsx-captured
+

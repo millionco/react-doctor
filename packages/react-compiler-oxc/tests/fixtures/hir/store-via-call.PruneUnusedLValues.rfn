@@ -1,0 +1,16 @@
+function foo(
+) {
+  scope @0 [1:12] dependencies=[] declarations=[x$15_@0] reassignments=[] {
+    [2] mutate? $14_@0[1:12]:TObject<BuiltInObject> = Object {  }
+    [3] StoreLocal Const store x$15_@0[1:12]:TObject<BuiltInObject> = capture $14_@0[1:12]:TObject<BuiltInObject>
+    [4] mutate? $17_@0[1:12]:TFunction = LoadGlobal(module) foo
+    [5] store $18_@0[1:12]:TObject<BuiltInObject> = LoadLocal capture x$15_@0[1:12]:TObject<BuiltInObject>
+    [6] store $19_@0[1:12] = Call capture $17_@0[1:12]:TFunction(capture $18_@0[1:12]:TObject<BuiltInObject>)
+    [7] StoreLocal Const store y$20_@0[1:12] = capture $19_@0[1:12]
+    [8] store $22_@0[1:12] = LoadLocal capture y$20_@0[1:12]
+    [9] store $23_@0[1:12]:TFunction = PropertyLoad capture $22_@0[1:12].mutate
+    [10] MethodCall store $22_@0[1:12].capture $23_@0[1:12]:TFunction()
+  }
+  [12] store $25:TObject<BuiltInObject> = LoadLocal capture x$15_@0[1:12]:TObject<BuiltInObject>
+  [13] return freeze $25:TObject<BuiltInObject>
+}

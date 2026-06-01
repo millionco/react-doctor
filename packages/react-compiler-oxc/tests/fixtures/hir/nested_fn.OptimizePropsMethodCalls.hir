@@ -1,0 +1,17 @@
+Component(<unknown> props$16): <unknown> $15:TFunction<BuiltInFunction>():  :TPrimitive
+bb0 (block):
+  [1] <unknown> $17:TFunction<BuiltInFunction>():  :TPrimitive = Function  @context[<unknown> props$16] @aliasingEffects=[]
+      <<anonymous>>(): <unknown> $9:TPrimitive
+      bb1 (block):
+        [1] <unknown> $18 = LoadLocal <unknown> props$16
+        [2] <unknown> $19:TFunction = PropertyLoad <unknown> $18.setCount
+        [3] <unknown> $20 = LoadLocal <unknown> props$16
+        [4] <unknown> $21:TPrimitive = PropertyLoad <unknown> $20.count
+        [5] <unknown> $22:TPrimitive = 1
+        [6] <unknown> $23:TPrimitive = Binary <unknown> $21:TPrimitive + <unknown> $22:TPrimitive
+        [7] <unknown> $24 = MethodCall <unknown> $18.<unknown> $19:TFunction(<unknown> $23:TPrimitive)
+        [8] <unknown> $25:TPrimitive = <undefined>
+        [9] Return Void <unknown> $25:TPrimitive
+  [2] <unknown> $27:TFunction<BuiltInFunction>():  :TPrimitive = StoreLocal Const <unknown> cb$26:TFunction<BuiltInFunction>():  :TPrimitive = <unknown> $17:TFunction<BuiltInFunction>():  :TPrimitive
+  [3] <unknown> $28:TFunction<BuiltInFunction>():  :TPrimitive = LoadLocal <unknown> cb$26:TFunction<BuiltInFunction>():  :TPrimitive
+  [4] Return Explicit <unknown> $28:TFunction<BuiltInFunction>():  :TPrimitive

@@ -1,0 +1,47 @@
+Component(<unknown> props$16{reactive}): <unknown> $15
+bb0 (block):
+  [1] mutate? $17 = LoadGlobal(global) foo
+    Create $17 = global
+  [2] mutate? $18{reactive} = LoadLocal read props$16{reactive}
+    ImmutableCapture $18 <- props$16
+  [3] mutate? $19{reactive} = PropertyLoad read $18{reactive}.method
+    Create $19 = frozen
+    ImmutableCapture $19 <- $18
+  [4] mutate? $20_@0[4:11]:TFunction{reactive} = ComputedLoad read $17[read $19{reactive}]
+    Create $20_@0 = global
+  [5] mutate? $21{reactive} = LoadLocal read props$16{reactive}
+    ImmutableCapture $21 <- props$16
+  [6] mutate? $22{reactive} = PropertyLoad read $21{reactive}.a
+    Create $22 = frozen
+    ImmutableCapture $22 <- $21
+  [7] mutate? $23:TPrimitive = null
+    Create $23 = primitive
+  [8] mutate? $24{reactive} = LoadLocal read props$16{reactive}
+    ImmutableCapture $24 <- props$16
+  [9] mutate? $25{reactive} = PropertyLoad read $24{reactive}.b
+    Create $25 = frozen
+    ImmutableCapture $25 <- $24
+  [10] store $26_@0[4:11]{reactive} = MethodCall capture $17.capture $20_@0[4:11]:TFunction{reactive}(...read $22{reactive}, capture $23:TPrimitive, ...read $25{reactive})
+    Create $26_@0 = mutable
+    MaybeAlias $26_@0 <- $17
+    MaybeAlias $26_@0 <- $20_@0
+    ImmutableCapture $26_@0 <- $22
+    ImmutableCapture $17 <- $22
+    ImmutableCapture $20_@0 <- $22
+    ImmutableCapture $22 <- $22
+    ImmutableCapture $23 <- $22
+    ImmutableCapture $25 <- $22
+    MaybeAlias $26_@0 <- $23
+    ImmutableCapture $26_@0 <- $25
+    ImmutableCapture $17 <- $25
+    ImmutableCapture $20_@0 <- $25
+    ImmutableCapture $22 <- $25
+    ImmutableCapture $23 <- $25
+    ImmutableCapture $25 <- $25
+  [11] store $28{reactive} = StoreLocal Const store x$27{reactive} = capture $26_@0[4:11]{reactive}
+    Assign x$27 = $26_@0
+    Assign $28 = $26_@0
+  [12] store $29{reactive} = LoadLocal capture x$27{reactive}
+    Assign $29 = x$27
+  [13] Return Explicit freeze $29{reactive}
+    Freeze $29 jsx-captured

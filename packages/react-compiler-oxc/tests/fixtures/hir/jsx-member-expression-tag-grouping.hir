@@ -1,0 +1,12 @@
+Component(<unknown> props$0): <unknown> $12
+bb0 (block):
+  [1] <unknown> $1 = LoadGlobal(global) MaybeMutable
+  [2] <unknown> $2 = New <unknown> $1()
+  [3] <unknown> $4 = StoreLocal Const <unknown> maybeMutable$3 = <unknown> $2
+  [4] <unknown> $5 = LoadGlobal(global) Foo
+  [5] <unknown> $6 = PropertyLoad <unknown> $5.Bar
+  [6] <unknown> $7 = LoadGlobal(global) maybeMutate
+  [7] <unknown> $8 = LoadLocal <unknown> maybeMutable$3
+  [8] <unknown> $9 = Call <unknown> $7(<unknown> $8)
+  [9] <unknown> $10 = JSX <<unknown> $6>{<unknown> $9}</<unknown> $6>
+  [10] Return Explicit <unknown> $10

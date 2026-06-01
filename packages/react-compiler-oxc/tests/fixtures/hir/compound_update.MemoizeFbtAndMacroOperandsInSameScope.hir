@@ -1,0 +1,18 @@
+Component(<unknown> props$17{reactive}): <unknown> $16:TPrimitive
+bb0 (block):
+  [8] mutate? $27{reactive} = LoadLocal read props$17{reactive}
+    ImmutableCapture $27 <- props$17
+  [9] mutate? $28:TPrimitive{reactive} = PropertyLoad read $27{reactive}.count
+    Create $28 = primitive
+  [10] mutate? $29:TPrimitive = 1
+    Create $29 = primitive
+  [11] mutate? $30:TPrimitive{reactive} = Binary read $28:TPrimitive{reactive} + read $29:TPrimitive
+    Create $30 = primitive
+  [12] mutate? $31_@0{reactive} = PropertyStore read $27{reactive}.count = read $30:TPrimitive{reactive}
+    MutateFrozen $27 reason="This value cannot be modified"
+    Create $31_@0 = primitive
+  [13] mutate? $32:TPrimitive = 5
+    Create $32 = primitive
+  [14] Return Explicit freeze $32:TPrimitive
+    Freeze $32 jsx-captured
+

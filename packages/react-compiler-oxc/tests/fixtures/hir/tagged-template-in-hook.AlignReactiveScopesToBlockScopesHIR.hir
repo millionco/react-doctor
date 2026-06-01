@@ -1,0 +1,30 @@
+Component(<unknown> props$13:TObject<BuiltInProps>{reactive}): <unknown> $12:TObject<BuiltInMixedReadonly>
+bb0 (block):
+  [1] mutate? $14:TFunction<<generated_116>>():  :TObject<BuiltInMixedReadonly> = LoadGlobal import { useFragment } from 'shared-runtime'
+    Create $14 = global
+  [2] mutate? $15:TFunction = LoadGlobal(global) graphql
+    Create $15 = global
+  [3] mutate? $16_@0 = read $15:TFunction`
+      fragment F on User {
+        name
+      }
+    `
+    Create $16_@0 = primitive
+  [4] mutate? $17:TObject<BuiltInProps>{reactive} = LoadLocal read props$13:TObject<BuiltInProps>{reactive}
+    ImmutableCapture $17 <- props$13
+  [5] mutate? $18{reactive} = PropertyLoad read $17:TObject<BuiltInProps>{reactive}.user
+    Create $18 = frozen
+    ImmutableCapture $18 <- $17
+  [6] mutate? $19_@1:TObject<BuiltInMixedReadonly>{reactive} = Call read $14:TFunction<<generated_116>>():  :TObject<BuiltInMixedReadonly>(read $16_@0, read $18{reactive})
+    Create $19_@1 = frozen
+  [7] mutate? $21:TObject<BuiltInMixedReadonly>{reactive} = StoreLocal Const mutate? user$20:TObject<BuiltInMixedReadonly>{reactive} = read $19_@1:TObject<BuiltInMixedReadonly>{reactive}
+    ImmutableCapture user$20 <- $19_@1
+    ImmutableCapture $21 <- $19_@1
+  [8] mutate? $22:TObject<BuiltInMixedReadonly>{reactive} = LoadLocal read user$20:TObject<BuiltInMixedReadonly>{reactive}
+    ImmutableCapture $22 <- user$20
+  [9] mutate? $23:TObject<BuiltInMixedReadonly>{reactive} = PropertyLoad read $22:TObject<BuiltInMixedReadonly>{reactive}.name
+    Create $23 = frozen
+    ImmutableCapture $23 <- $22
+  [10] Return Explicit freeze $23:TObject<BuiltInMixedReadonly>{reactive}
+    Freeze $23 jsx-captured
+

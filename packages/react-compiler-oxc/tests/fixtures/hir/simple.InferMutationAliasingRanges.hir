@@ -1,0 +1,36 @@
+foo(<unknown> x$13, <unknown> y$14:TPrimitive): <unknown> $12:TPhi
+bb0 (block):
+  [1] mutate? $15 = LoadLocal read x$13
+    ImmutableCapture $15 <- x$13
+  [2] If (read $15) then:bb2 else:bb1 fallthrough=bb1
+bb2 (block):
+  predecessor blocks: bb0
+  [3] mutate? $16:TFunction = LoadGlobal(module) foo
+    Create $16 = global
+  [4] mutate? $17:TPrimitive = false
+    Create $17 = primitive
+  [5] mutate? $18:TPrimitive = LoadLocal read y$14:TPrimitive
+    ImmutableCapture $18 <- y$14
+  [6] store $19 = Call capture $16:TFunction(capture $17:TPrimitive, read $18:TPrimitive)
+    Create $19 = mutable
+    MaybeAlias $19 <- $16
+    MaybeAlias $19 <- $16
+    MaybeAlias $19 <- $17
+    ImmutableCapture $19 <- $18
+    ImmutableCapture $16 <- $18
+    ImmutableCapture $16 <- $18
+    ImmutableCapture $17 <- $18
+  [7] Return Explicit freeze $19
+    Freeze $19 jsx-captured
+bb1 (block):
+  predecessor blocks: bb0
+  [8] mutate? $20:TPrimitive = LoadLocal read y$14:TPrimitive
+    ImmutableCapture $20 <- y$14
+  [9] mutate? $21:TPrimitive = 10
+    Create $21 = primitive
+  [10] mutate? $22:TPrimitive = Binary read $20:TPrimitive * read $21:TPrimitive
+    Create $22 = primitive
+  [11] mutate? $23:TObject<BuiltInArray> = Array [read $22:TPrimitive]
+    Create $23 = mutable
+  [12] Return Explicit freeze $23:TObject<BuiltInArray>
+    Freeze $23 jsx-captured

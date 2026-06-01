@@ -1,0 +1,40 @@
+component(): <unknown> $19:TObject<BuiltInJsx>
+bb0 (block):
+  [1] mutate? $20:TFunction<<generated_97>>():  :TObject<BuiltInUseState> = LoadGlobal(global) useState
+    Create $20 = global
+  [2] mutate? $21:TPrimitive = 0
+    Create $21 = primitive
+  [3] mutate? $22:TObject<BuiltInUseState>{reactive} = Call read $20:TFunction<<generated_97>>():  :TObject<BuiltInUseState>(read $21:TPrimitive)
+    Create $22 = frozen
+  [4] mutate? $25{reactive} = Destructure Let [ <hole>, mutate? setX$24:TFunction<BuiltInSetState>():  :TPrimitive ] = read $22:TObject<BuiltInUseState>{reactive}
+    Create x$23 = frozen
+    ImmutableCapture x$23 <- $22
+    Create setX$24 = frozen
+    ImmutableCapture setX$24 <- $22
+    ImmutableCapture $25 <- $22
+  [5] mutate? $26:TFunction<BuiltInFunction>():  :TPrimitive = Function  @context[read setX$24:TFunction<BuiltInSetState>():  :TPrimitive] @aliasingEffects=[Create $11 = primitive]
+      <<anonymous>>(<unknown> v$27): <unknown> $11:TPrimitive
+      bb1 (block):
+        [1] store $28:TFunction<BuiltInSetState>():  :TPrimitive = LoadLocal capture setX$24:TFunction<BuiltInSetState>():  :TPrimitive
+          Assign $28 = setX$24
+        [2] store $29 = LoadLocal capture v$27
+          Assign $29 = v$27
+        [3] mutate? $30:TPrimitive = Call read $28:TFunction<BuiltInSetState>():  :TPrimitive(freeze $29)
+          Create $30 = primitive
+          ImmutableCapture $30 <- $28
+          Freeze $29 other
+        [4] Return Implicit read $30:TPrimitive
+    Function $26 = Function captures=[]
+  [6] mutate? $32:TFunction<BuiltInFunction>():  :TPrimitive = StoreLocal Const mutate? handler$31:TFunction<BuiltInFunction>():  :TPrimitive = read $26:TFunction<BuiltInFunction>():  :TPrimitive
+    ImmutableCapture handler$31 <- $26
+    ImmutableCapture $32 <- $26
+  [7] mutate? $33 = LoadGlobal(global) Foo
+    Create $33 = global
+  [8] mutate? $34:TFunction<BuiltInFunction>():  :TPrimitive = LoadLocal read handler$31:TFunction<BuiltInFunction>():  :TPrimitive
+    ImmutableCapture $34 <- handler$31
+  [9] mutate? $35:TObject<BuiltInJsx> = JSX <read $33 handler={read $34:TFunction<BuiltInFunction>():  :TPrimitive} />
+    Create $35 = frozen
+    ImmutableCapture $35 <- $34
+    Render $33
+  [10] Return Explicit freeze $35:TObject<BuiltInJsx>
+    Freeze $35 jsx-captured

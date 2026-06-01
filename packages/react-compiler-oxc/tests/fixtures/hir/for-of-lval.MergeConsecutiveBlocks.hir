@@ -1,0 +1,24 @@
+Component(<unknown> items$0): <unknown> $11
+bb0 (block):
+  [1] <unknown> $2 = DeclareLocal Let <unknown> x$1
+  [2] <unknown> $6 = LoadLocal <unknown> items$0
+  [3] ForOf init=bb2 test=bb3 loop=bb4 fallthrough=bb1
+bb2 (loop):
+  predecessor blocks: bb0 bb4
+  [4] <unknown> $7 = GetIterator collection=<unknown> $6
+  [5] Goto bb3
+bb3 (loop):
+  predecessor blocks: bb2
+  [6] <unknown> $8 = IteratorNext iterator=<unknown> $7 collection=<unknown> $6
+  [7] <unknown> $9 = StoreLocal Reassign <unknown> x$1 = <unknown> $8
+  [8] Branch (<unknown> $9) then:bb4 else:bb1 fallthrough:bb1
+bb4 (block):
+  predecessor blocks: bb3
+  [9] <unknown> $3 = LoadGlobal(global) foo
+  [10] <unknown> $4 = LoadLocal <unknown> x$1
+  [11] <unknown> $5 = Call <unknown> $3(<unknown> $4)
+  [12] Goto(Continue) bb2
+bb1 (block):
+  predecessor blocks: bb3
+  [13] <unknown> $10 = <undefined>
+  [14] Return Void <unknown> $10

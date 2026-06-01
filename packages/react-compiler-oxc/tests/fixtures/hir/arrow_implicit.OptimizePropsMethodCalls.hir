@@ -1,0 +1,4 @@
+<<anonymous>>(): <unknown> $2:TPrimitive
+bb0 (block):
+  [1] <unknown> $3:TPrimitive = 1
+  [2] Return Implicit <unknown> $3:TPrimitive

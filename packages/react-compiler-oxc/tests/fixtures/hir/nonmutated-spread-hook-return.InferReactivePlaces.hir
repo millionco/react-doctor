@@ -1,0 +1,47 @@
+Component(<unknown> props$20:TObject<BuiltInProps>{reactive}): <unknown> $19:TObject<BuiltInJsx>
+bb0 (block):
+  [1] mutate? $21:TFunction<DefaultNonmutatingHook>():  :TPoly = LoadGlobal import { useIdentity } from 'shared-runtime'
+    Create $21 = global
+  [2] mutate? $22:TObject<BuiltInProps>{reactive} = LoadLocal read props$20:TObject<BuiltInProps>{reactive}
+    ImmutableCapture $22 <- props$20
+  [3] mutate? $23{reactive} = Call read $21:TFunction<DefaultNonmutatingHook>():  :TPoly(read $22:TObject<BuiltInProps>{reactive})
+    Create $23 = frozen
+    ImmutableCapture $23 <- $22
+  [4] mutate? $26{reactive} = Destructure Const { x: mutate? x$24{reactive}, ...mutate? rest$25{reactive} } = read $23{reactive}
+    Create x$24 = frozen
+    ImmutableCapture x$24 <- $23
+    Create rest$25 = frozen
+    ImmutableCapture rest$25 <- $23
+    ImmutableCapture $26 <- $23
+  [5] mutate? $27{reactive} = LoadLocal read rest$25{reactive}
+    ImmutableCapture $27 <- rest$25
+  [6] mutate? $28{reactive} = PropertyLoad read $27{reactive}.z
+    Create $28 = frozen
+    ImmutableCapture $28 <- $27
+  [7] mutate? $30{reactive} = StoreLocal Const mutate? z$29{reactive} = read $28{reactive}
+    ImmutableCapture z$29 <- $28
+    ImmutableCapture $30 <- $28
+  [8] mutate? $31:TFunction = LoadGlobal import { identity } from 'shared-runtime'
+    Create $31 = global
+  [9] mutate? $32{reactive} = LoadLocal read z$29{reactive}
+    ImmutableCapture $32 <- z$29
+  [10] store $33{reactive} = Call capture $31:TFunction(read $32{reactive})
+    Create $33 = mutable
+    MaybeAlias $33 <- $31
+    MaybeAlias $33 <- $31
+    ImmutableCapture $33 <- $32
+    ImmutableCapture $31 <- $32
+    ImmutableCapture $31 <- $32
+  [11] mutate? $34 = LoadGlobal import { Stringify } from 'shared-runtime'
+    Create $34 = global
+  [12] mutate? $35{reactive} = LoadLocal read x$24{reactive}
+    ImmutableCapture $35 <- x$24
+  [13] mutate? $36{reactive} = LoadLocal read z$29{reactive}
+    ImmutableCapture $36 <- z$29
+  [14] mutate? $37:TObject<BuiltInJsx>{reactive} = JSX <read $34 x={read $35{reactive}} z={read $36{reactive}} />
+    Create $37 = frozen
+    ImmutableCapture $37 <- $35
+    ImmutableCapture $37 <- $36
+    Render $34
+  [15] Return Explicit freeze $37:TObject<BuiltInJsx>{reactive}
+    Freeze $37 jsx-captured

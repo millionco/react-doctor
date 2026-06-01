@@ -1,0 +1,35 @@
+function Component(
+) {
+  [1] mutate? $32:TFunction<<generated_97>>():  :TObject<BuiltInUseState> = LoadGlobal import { useState } from 'react'
+  [2] mutate? $33:TPrimitive = 0
+  [4] mutate? $34_@0[3:6]:TObject<BuiltInUseState>{reactive} = Call read $32:TFunction<<generated_97>>():  :TObject<BuiltInUseState>(read $33:TPrimitive)
+  [5] break bb0 (implicit)
+  [6] Destructure Const [ mutate? count$35{reactive} ] = read $34_@0[3:6]:TObject<BuiltInUseState>{reactive}
+  scope @3 [7:33] dependencies=[count$35_13:25:13:30] declarations=[t0$61_@3] reassignments=[] {
+    [8] mutate? $38_@3[7:33]:TFunction = LoadGlobal import { fbt } from 'fbt'
+    [9] mutate? $39_@3[7:33]:TPrimitive = "Expected at least "
+    [10] mutate? $40 = LoadGlobal import { fbt } from 'fbt'
+    [11] mutate? $41_@3[7:33]:TFunction = PropertyLoad read $40.param
+    [12] mutate? $42:TPrimitive = "min"
+    [13] mutate? $43 = LoadGlobal(module) MIN
+    [14] mutate? $44:TPrimitive = true
+    [15] mutate? $45_@3[7:33]:TObject<BuiltInObject> = Object { number: read $44:TPrimitive }
+    [16] store $46_@3[7:33]:TPrimitive = MethodCall capture $40.capture $41_@3[7:33]:TFunction(capture $42:TPrimitive, capture $43, capture $45_@3[7:33]:TObject<BuiltInObject>)
+    [17] mutate? $47_@3[7:33]:TPrimitive = Binary read $39_@3[7:33]:TPrimitive + read $46_@3[7:33]:TPrimitive
+    [18] mutate? $48_@3[7:33]:TPrimitive = " items, but got "
+    [19] mutate? $49_@3[7:33]:TPrimitive = Binary read $47_@3[7:33]:TPrimitive + read $48_@3[7:33]:TPrimitive
+    [20] mutate? $50 = LoadGlobal import { fbt } from 'fbt'
+    [21] mutate? $51_@3[7:33]:TFunction = PropertyLoad read $50.param
+    [22] mutate? $52:TPrimitive = "count"
+    [23] mutate? $53{reactive} = LoadLocal read count$35{reactive}
+    [24] mutate? $54:TPrimitive = true
+    [25] mutate? $55_@3[7:33]:TObject<BuiltInObject> = Object { number: read $54:TPrimitive }
+    [26] store $56_@3[7:33]:TPrimitive{reactive} = MethodCall capture $50.capture $51_@3[7:33]:TFunction{reactive}(capture $52:TPrimitive, read $53{reactive}, capture $55_@3[7:33]:TObject<BuiltInObject>{reactive})
+    [27] mutate? $57_@3[7:33]:TPrimitive{reactive} = Binary read $49_@3[7:33]:TPrimitive + read $56_@3[7:33]:TPrimitive{reactive}
+    [28] mutate? $58_@3[7:33]:TPrimitive = " items."
+    [29] mutate? $59_@3[7:33]:TPrimitive{reactive} = Binary read $57_@3[7:33]:TPrimitive{reactive} + read $58_@3[7:33]:TPrimitive
+    [30] mutate? $60_@3[7:33]:TPrimitive = "Error description"
+    [31] store t0$61_@3[7:33]{reactive} = Call capture $38_@3[7:33]:TFunction(capture $59_@3[7:33]:TPrimitive{reactive}, capture $60_@3[7:33]:TPrimitive)
+  }
+  [33] return freeze t0$61_@3[7:33]{reactive}
+}

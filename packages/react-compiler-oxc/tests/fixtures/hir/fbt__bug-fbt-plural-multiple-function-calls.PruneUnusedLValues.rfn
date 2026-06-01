@@ -1,0 +1,36 @@
+function useFoo(
+  <unknown> #t0$34{reactive},
+) {
+  [1] Destructure Const { apples: mutate? apples$35{reactive}, bananas: mutate? bananas$36{reactive} } = read #t0$34{reactive}
+  scope @4 [2:32] dependencies=[apples$35_17:37:17:43, bananas$36_19:45:19:52] declarations=[$65_@4] reassignments=[] {
+    [3] mutate? $38_@4[2:32]:TFunction = LoadGlobal import fbt from 'fbt'
+    [4] mutate? $39 = LoadGlobal import fbt from 'fbt'
+    [5] mutate? $40_@4[2:32]:TFunction = PropertyLoad read $39.param
+    [6] mutate? $41:TPrimitive = "number of apples"
+    [7] mutate? $42{reactive} = LoadLocal read apples$35{reactive}
+    [8] store $43_@4[2:32]{reactive} = MethodCall capture $39.capture $40_@4[2:32]:TFunction{reactive}(capture $41:TPrimitive, read $42{reactive})
+    [9] mutate? $44_@4[2:32]:TPrimitive{reactive} = `${read $43_@4[2:32]{reactive}} `
+    [10] mutate? $45 = LoadGlobal import fbt from 'fbt'
+    [11] mutate? $46_@4[2:32]:TFunction = PropertyLoad read $45.plural
+    [12] mutate? $47:TPrimitive = "apple"
+    [13] mutate? $48{reactive} = LoadLocal read apples$35{reactive}
+    [14] store $49_@4[2:32]:TPrimitive{reactive} = MethodCall capture $45.capture $46_@4[2:32]:TFunction(capture $47:TPrimitive, read $48{reactive})
+    [15] mutate? $50_@4[2:32]:TPrimitive{reactive} = Binary read $44_@4[2:32]:TPrimitive{reactive} + read $49_@4[2:32]:TPrimitive{reactive}
+    [16] mutate? $51 = LoadGlobal import fbt from 'fbt'
+    [17] mutate? $52_@4[2:32]:TFunction = PropertyLoad read $51.param
+    [18] mutate? $53:TPrimitive = "number of bananas"
+    [19] mutate? $54{reactive} = LoadLocal read bananas$36{reactive}
+    [20] store $55_@4[2:32]{reactive} = MethodCall capture $51.capture $52_@4[2:32]:TFunction{reactive}(capture $53:TPrimitive, read $54{reactive})
+    [21] mutate? $56_@4[2:32]:TPrimitive{reactive} = ` and ${read $55_@4[2:32]{reactive}} `
+    [22] mutate? $57_@4[2:32]:TPrimitive{reactive} = Binary read $50_@4[2:32]:TPrimitive{reactive} + read $56_@4[2:32]:TPrimitive{reactive}
+    [23] mutate? $58 = LoadGlobal import fbt from 'fbt'
+    [24] mutate? $59_@4[2:32]:TFunction = PropertyLoad read $58.plural
+    [25] mutate? $60:TPrimitive = "banana"
+    [26] mutate? $61{reactive} = LoadLocal read bananas$36{reactive}
+    [27] store $62_@4[2:32]:TPrimitive{reactive} = MethodCall capture $58.capture $59_@4[2:32]:TFunction(capture $60:TPrimitive, read $61{reactive})
+    [28] mutate? $63_@4[2:32]:TPrimitive{reactive} = Binary read $57_@4[2:32]:TPrimitive{reactive} + read $62_@4[2:32]:TPrimitive{reactive}
+    [29] mutate? $64_@4[2:32]:TPrimitive = "TestDescription"
+    [30] store $65_@4[2:32]{reactive} = Call capture $38_@4[2:32]:TFunction(capture $63_@4[2:32]:TPrimitive{reactive}, capture $64_@4[2:32]:TPrimitive)
+  }
+  [32] return freeze $65_@4[2:32]{reactive}
+}

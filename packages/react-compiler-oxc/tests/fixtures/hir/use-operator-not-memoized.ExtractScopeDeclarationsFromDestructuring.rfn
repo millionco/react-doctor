@@ -1,0 +1,15 @@
+function Component(
+  <unknown> props$10{reactive},
+) {
+  [1] mutate? $11:TFunction<BuiltInUseOperator>():  :TPoly = LoadGlobal import { use } from 'react'
+  [2] mutate? $12 = LoadGlobal(module) FooContext
+  [4] mutate? $13_@0[3:6]{reactive} = Call read $11:TFunction<BuiltInUseOperator>():  :TPoly(read $12)
+  [5] break bb6 (implicit)
+  [6] StoreLocal Const mutate? input$14{reactive} = read $13_@0[3:6]{reactive}
+  [7] mutate? $16{reactive} = LoadLocal read input$14{reactive}
+  scope @1 [8:11] dependencies=[input$14_7:10:7:15] declarations=[#t7$17_@1] reassignments=[] {
+    [9] mutate? #t7$17_@1[8:11]:TObject<BuiltInArray>{reactive} = Array [read $16{reactive}]
+  }
+  [11] return freeze #t7$17_@1[8:11]:TObject<BuiltInArray>{reactive}
+}
+

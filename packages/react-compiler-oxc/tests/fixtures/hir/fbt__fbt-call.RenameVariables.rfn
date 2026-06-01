@@ -1,0 +1,22 @@
+function Component(
+  <unknown> props$17:TObject<BuiltInProps>{reactive},
+) {
+  scope @1 [1:13] dependencies=[props$17:TObject<BuiltInProps>.count_5:32:5:43] declarations=[t0$27_@1] reassignments=[] {
+    [2] mutate? $18_@1[1:13]:TFunction = LoadGlobal import fbt from 'fbt'
+    [3] mutate? $19 = LoadGlobal import fbt from 'fbt'
+    [4] mutate? $20_@1[1:13]:TFunction = PropertyLoad read $19.param
+    [5] mutate? $21:TPrimitive = "(key) count"
+    [6] mutate? $22:TObject<BuiltInProps>{reactive} = LoadLocal read props$17:TObject<BuiltInProps>{reactive}
+    [7] mutate? $23{reactive} = PropertyLoad read $22:TObject<BuiltInProps>{reactive}.count
+    [8] store $24_@1[1:13]{reactive} = MethodCall capture $19.capture $20_@1[1:13]:TFunction{reactive}(capture $21:TPrimitive, read $23{reactive})
+    [9] mutate? $25_@1[1:13]:TPrimitive{reactive} = `${read $24_@1[1:13]{reactive}} items`
+    [10] mutate? $26_@1[1:13]:TPrimitive = "(description) Number of items"
+    [11] store t0$27_@1[1:13]{reactive} = Call capture $18_@1[1:13]:TFunction(capture $25_@1[1:13]:TPrimitive{reactive}, capture $26_@1[1:13]:TPrimitive)
+  }
+  [13] StoreLocal Const store text$28{reactive} = capture t0$27_@1[1:13]{reactive}
+  [14] store $30{reactive} = LoadLocal capture text$28{reactive}
+  scope @2 [15:18] dependencies=[text$28_8:15:8:19] declarations=[t1$31_@2] reassignments=[] {
+    [16] mutate? t1$31_@2[15:18]:TObject<BuiltInJsx>{reactive} = JSX <div>{freeze $30{reactive}}</div>
+  }
+  [18] return freeze t1$31_@2[15:18]:TObject<BuiltInJsx>{reactive}
+}

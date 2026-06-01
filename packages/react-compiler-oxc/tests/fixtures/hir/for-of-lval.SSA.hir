@@ -1,0 +1,25 @@
+Component(<unknown> items$12): <unknown> $11
+bb0 (block):
+  [1] <unknown> $14 = DeclareLocal Let <unknown> x$13
+  [2] <unknown> $15 = LoadLocal <unknown> items$12
+  [3] ForOf init=bb2 test=bb3 loop=bb4 fallthrough=bb1
+bb2 (loop):
+  predecessor blocks: bb0 bb4
+  <unknown> $16: phi(bb0: <unknown> $15, bb4: <unknown> $16)
+  [4] <unknown> $17 = GetIterator collection=<unknown> $16
+  [5] Goto bb3
+bb3 (loop):
+  predecessor blocks: bb2
+  [6] <unknown> $18 = IteratorNext iterator=<unknown> $17 collection=<unknown> $16
+  [7] <unknown> $20 = StoreLocal Reassign <unknown> x$19 = <unknown> $18
+  [8] Branch (<unknown> $20) then:bb4 else:bb1 fallthrough:bb1
+bb4 (block):
+  predecessor blocks: bb3
+  [9] <unknown> $21 = LoadGlobal(global) foo
+  [10] <unknown> $22 = LoadLocal <unknown> x$19
+  [11] <unknown> $23 = Call <unknown> $21(<unknown> $22)
+  [12] Goto(Continue) bb2
+bb1 (block):
+  predecessor blocks: bb3
+  [13] <unknown> $24 = <undefined>
+  [14] Return Void <unknown> $24

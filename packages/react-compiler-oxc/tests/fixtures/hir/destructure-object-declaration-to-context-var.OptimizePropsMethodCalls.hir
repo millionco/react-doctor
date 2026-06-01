@@ -1,0 +1,21 @@
+Component(<unknown> props$22): <unknown> $21:TObject<BuiltInObject>
+bb0 (block):
+  [1] <unknown> $23 = LoadLocal <unknown> props$22
+  [2] <unknown> $25 = Destructure Let { x: <unknown> #t2$24 } = <unknown> $23
+  [3] <unknown> $26 = StoreContext Let <unknown> x$4 = <unknown> #t2$24
+  [4] <unknown> $27:TFunction<BuiltInFunction>():  :TPrimitive = Function  @context[<unknown> x$4,<unknown> props$22] @aliasingEffects=[]
+      <<anonymous>>(): <unknown> $12:TPrimitive
+      bb1 (block):
+        [1] <unknown> $28:TFunction = LoadGlobal import { identity } from 'shared-runtime'
+        [2] <unknown> $29 = LoadLocal <unknown> props$22
+        [3] <unknown> $30 = PropertyLoad <unknown> $29.x
+        [4] <unknown> $31 = Call <unknown> $28:TFunction(<unknown> $30)
+        [5] <unknown> $32 = StoreContext Reassign <unknown> x$4 = <unknown> $31
+        [6] <unknown> $33:TPrimitive = <undefined>
+        [7] Return Void <unknown> $33:TPrimitive
+  [5] <unknown> $35:TFunction<BuiltInFunction>():  :TPrimitive = StoreLocal Const <unknown> foo$34:TFunction<BuiltInFunction>():  :TPrimitive = <unknown> $27:TFunction<BuiltInFunction>():  :TPrimitive
+  [6] <unknown> $36:TFunction<BuiltInFunction>():  :TPrimitive = LoadLocal <unknown> foo$34:TFunction<BuiltInFunction>():  :TPrimitive
+  [7] <unknown> $37:TPrimitive = Call <unknown> $36:TFunction<BuiltInFunction>():  :TPrimitive()
+  [8] <unknown> $38 = LoadContext <unknown> x$4
+  [9] <unknown> $39:TObject<BuiltInObject> = Object { x: <unknown> $38 }
+  [10] Return Explicit <unknown> $39:TObject<BuiltInObject>

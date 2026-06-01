@@ -1,0 +1,6 @@
+Component(): <unknown> $5:TObject<Object>
+bb0 (block):
+  [1] mutate? $9:TObject<Object> = LoadGlobal(global) Object
+    Create $9 = global
+  [2] Return Explicit freeze $9:TObject<Object>
+    Freeze $9 jsx-captured

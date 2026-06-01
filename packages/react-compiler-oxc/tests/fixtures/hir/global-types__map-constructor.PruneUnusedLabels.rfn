@@ -1,0 +1,31 @@
+function useHook(
+  <unknown> #t0$26{reactive},
+) {
+  [1] mutate? $29{reactive} = Destructure Const { el1: mutate? el1$27{reactive}, el2: mutate? el2$28{reactive} } = read #t0$26{reactive}
+  [2] mutate? $30:TFunction<<generated_93>>():  :TObject<BuiltInMap> = LoadGlobal(global) Map
+  scope @0 [3:25] dependencies=[$30:TFunction<<generated_93>>():  :TObject<BuiltInMap>_4:16:4:19, el1$27_5:23:5:26, el2$28_6:23:6:26] declarations=[s$32_@0] reassignments=[] {
+    [4] mutate? $31_@0[3:25]:TObject<BuiltInMap> = New read $30:TFunction<<generated_93>>():  :TObject<BuiltInMap>()
+    [5] store $33_@0[3:25]:TObject<BuiltInMap>{reactive} = StoreLocal Const store s$32_@0[3:25]:TObject<BuiltInMap>{reactive} = capture $31_@0[3:25]:TObject<BuiltInMap>{reactive}
+    [6] store $34_@0[3:25]:TObject<BuiltInMap>{reactive} = LoadLocal capture s$32_@0[3:25]:TObject<BuiltInMap>{reactive}
+    [7] store $35_@0[3:25]:TFunction<<generated_33>>():  :TObject<BuiltInMap>{reactive} = PropertyLoad capture $34_@0[3:25]:TObject<BuiltInMap>{reactive}.set
+    [8] mutate? $36{reactive} = LoadLocal read el1$27{reactive}
+    [9] mutate? $37:TFunction = LoadGlobal import { makeArray } from 'shared-runtime'
+    [10] mutate? $38{reactive} = LoadLocal read el1$27{reactive}
+    scope @1 [11:14] dependencies=[$37:TFunction_5:13:5:22, el1$27_5:23:5:26] declarations=[$39_@1] reassignments=[] {
+      [12] store $39_@1[11:14]{reactive} = Call capture $37:TFunction(read $38{reactive})
+    }
+    [14] store $40_@0[3:25]:TObject<BuiltInMap>{reactive} = MethodCall store $34_@0[3:25]:TObject<BuiltInMap>{reactive}.read $35_@0[3:25]:TFunction<<generated_33>>():  :TObject<BuiltInMap>{reactive}(read $36{reactive}, capture $39_@1[11:14]{reactive})
+    [15] store $41_@0[3:25]:TObject<BuiltInMap>{reactive} = LoadLocal capture s$32_@0[3:25]:TObject<BuiltInMap>{reactive}
+    [16] store $42_@0[3:25]:TFunction<<generated_33>>():  :TObject<BuiltInMap>{reactive} = PropertyLoad capture $41_@0[3:25]:TObject<BuiltInMap>{reactive}.set
+    [17] mutate? $43{reactive} = LoadLocal read el2$28{reactive}
+    [18] mutate? $44:TFunction = LoadGlobal import { makeArray } from 'shared-runtime'
+    [19] mutate? $45{reactive} = LoadLocal read el2$28{reactive}
+    scope @2 [20:23] dependencies=[$44:TFunction_6:13:6:22, el2$28_6:23:6:26] declarations=[$46_@2] reassignments=[] {
+      [21] store $46_@2[20:23]{reactive} = Call capture $44:TFunction(read $45{reactive})
+    }
+    [23] store $47_@0[3:25]:TObject<BuiltInMap>{reactive} = MethodCall store $41_@0[3:25]:TObject<BuiltInMap>{reactive}.read $42_@0[3:25]:TFunction<<generated_33>>():  :TObject<BuiltInMap>{reactive}(read $43{reactive}, capture $46_@2[20:23]{reactive})
+  }
+  [25] store $48:TObject<BuiltInMap>{reactive} = LoadLocal capture s$32_@0[3:25]:TObject<BuiltInMap>{reactive}
+  [26] mutate? $49:TPrimitive{reactive} = PropertyLoad read $48:TObject<BuiltInMap>{reactive}.size
+  [27] return freeze $49:TPrimitive{reactive}
+}

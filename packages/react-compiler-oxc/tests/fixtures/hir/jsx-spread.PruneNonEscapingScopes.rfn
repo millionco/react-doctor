@@ -1,0 +1,27 @@
+function Component(
+  <unknown> props$16:TObject<BuiltInProps>{reactive},
+) {
+  [1] mutate? $17 = LoadGlobal(module) Component
+  [2] mutate? $18:TObject<BuiltInProps>{reactive} = LoadLocal read props$16:TObject<BuiltInProps>{reactive}
+  [3] mutate? $23{reactive} = Ternary
+    Sequence
+        [4] mutate? $19:TObject<BuiltInProps>{reactive} = LoadLocal read props$16:TObject<BuiltInProps>{reactive}
+        [5] PropertyLoad read $19:TObject<BuiltInProps>{reactive}.cond
+    ?
+      Sequence
+          [7] mutate? $21:TObject<BuiltInProps>{reactive} = LoadLocal read props$16:TObject<BuiltInProps>{reactive}
+          [8] mutate? $22{reactive} = PropertyLoad read $21:TObject<BuiltInProps>{reactive}.foo
+          [9] LoadLocal read $22{reactive}
+    :
+      Sequence
+          [11] mutate? $25:TObject<BuiltInProps>{reactive} = LoadLocal read props$16:TObject<BuiltInProps>{reactive}
+          [12] mutate? $26{reactive} = PropertyLoad read $25:TObject<BuiltInProps>{reactive}.bar
+          [13] LoadLocal read $26{reactive}
+  scope @0 [15:18] dependencies=[$29:TPhi_3:36:3:70] declarations=[$30_@0] reassignments=[] {
+    [16] mutate? $30_@0[15:18]:TObject<BuiltInObject>{reactive} = Object { bar: read $29:TPhi{reactive} }
+  }
+  scope @1 [18:21] dependencies=[$17_3:5:3:14, props$16:TObject<BuiltInProps>_3:19:3:24, $30_@0:TObject<BuiltInObject>_3:30:3:71] declarations=[$33_@1] reassignments=[] {
+    [19] mutate? $33_@1[18:21]:TObject<BuiltInJsx>{reactive} = JSX <read $17 ...read $18:TObject<BuiltInProps>{reactive} ...freeze $30_@0[15:18]:TObject<BuiltInObject>{reactive} />
+  }
+  [21] return freeze $33_@1[18:21]:TObject<BuiltInJsx>{reactive}
+}

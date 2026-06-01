@@ -1,0 +1,4 @@
+function Component(n) {
+  for (const i = 0; 0; 0) {}
+  return n;
+}

@@ -1,0 +1,80 @@
+useHook(<unknown> #t0$31): <unknown> $30:TPrimitive
+bb0 (block):
+  [1] <unknown> $34 = Destructure Let { el1: <unknown> el1$32, el2: <unknown> el2$33 } = <unknown> #t0$31
+    Create el1$32 = frozen
+    ImmutableCapture el1$32 <- #t0$31
+    Create el2$33 = frozen
+    ImmutableCapture el2$33 <- #t0$31
+    ImmutableCapture $34 <- #t0$31
+  [2] <unknown> $35:TFunction<<generated_94>>():  :TObject<BuiltInSet> = LoadGlobal(global) Set
+    Create $35 = global
+  [3] <unknown> $36:TObject<BuiltInSet> = New <unknown> $35:TFunction<<generated_94>>():  :TObject<BuiltInSet>()
+    Create $36 = mutable
+  [4] <unknown> $38:TObject<BuiltInSet> = StoreLocal Const <unknown> s$37:TObject<BuiltInSet> = <unknown> $36:TObject<BuiltInSet>
+    Assign s$37 = $36
+    Assign $38 = $36
+  [5] <unknown> $39:TFunction = LoadGlobal import { makeArray } from 'shared-runtime'
+    Create $39 = global
+  [6] <unknown> $40 = LoadLocal <unknown> el1$32
+    ImmutableCapture $40 <- el1$32
+  [7] <unknown> $41 = Call <unknown> $39:TFunction(<unknown> $40)
+    Create $41 = mutable
+    MaybeAlias $41 <- $39
+    MaybeAlias $41 <- $39
+    ImmutableCapture $41 <- $40
+    ImmutableCapture $39 <- $40
+    ImmutableCapture $39 <- $40
+  [8] <unknown> $43 = StoreLocal Const <unknown> arr$42 = <unknown> $41
+    Assign arr$42 = $41
+    Assign $43 = $41
+  [9] <unknown> $44:TObject<BuiltInSet> = LoadLocal <unknown> s$37:TObject<BuiltInSet>
+    Assign $44 = s$37
+  [10] <unknown> $45:TFunction<<generated_16>>():  :TObject<BuiltInSet> = PropertyLoad <unknown> $44:TObject<BuiltInSet>.add
+    Create $45 = kindOf($44)
+  [11] <unknown> $46 = LoadLocal <unknown> arr$42
+    Assign $46 = arr$42
+  [12] <unknown> $47:TObject<BuiltInSet> = MethodCall <unknown> $44:TObject<BuiltInSet>.<unknown> $45:TFunction<<generated_16>>():  :TObject<BuiltInSet>(<unknown> $46)
+    Assign $47 = $44
+    Mutate $44
+    Capture $44 <- $46
+  [13] <unknown> $48 = LoadLocal <unknown> arr$42
+    Assign $48 = arr$42
+  [14] <unknown> $49:TFunction = PropertyLoad <unknown> $48.push
+    Create $49 = kindOf($48)
+  [15] <unknown> $50 = LoadLocal <unknown> el2$33
+    ImmutableCapture $50 <- el2$33
+  [16] <unknown> $51 = MethodCall <unknown> $48.<unknown> $49:TFunction(<unknown> $50)
+    Create $51 = mutable
+    MutateTransitiveConditionally $48
+    MaybeAlias $51 <- $48
+    Capture $49 <- $48
+    MaybeAlias $51 <- $49
+    Capture $48 <- $49
+    ImmutableCapture $51 <- $50
+    ImmutableCapture $48 <- $50
+    ImmutableCapture $49 <- $50
+  [17] <unknown> $52:TObject<BuiltInSet> = LoadLocal <unknown> s$37:TObject<BuiltInSet>
+    Assign $52 = s$37
+  [18] <unknown> $53:TFunction<<generated_16>>():  :TObject<BuiltInSet> = PropertyLoad <unknown> $52:TObject<BuiltInSet>.add
+    Create $53 = kindOf($52)
+  [19] <unknown> $54:TFunction = LoadGlobal import { makeArray } from 'shared-runtime'
+    Create $54 = global
+  [20] <unknown> $55 = LoadLocal <unknown> el2$33
+    ImmutableCapture $55 <- el2$33
+  [21] <unknown> $56 = Call <unknown> $54:TFunction(<unknown> $55)
+    Create $56 = mutable
+    MaybeAlias $56 <- $54
+    MaybeAlias $56 <- $54
+    ImmutableCapture $56 <- $55
+    ImmutableCapture $54 <- $55
+    ImmutableCapture $54 <- $55
+  [22] <unknown> $57:TObject<BuiltInSet> = MethodCall <unknown> $52:TObject<BuiltInSet>.<unknown> $53:TFunction<<generated_16>>():  :TObject<BuiltInSet>(<unknown> $56)
+    Assign $57 = $52
+    Mutate $52
+    Capture $52 <- $56
+  [23] <unknown> $58:TObject<BuiltInSet> = LoadLocal <unknown> s$37:TObject<BuiltInSet>
+    Assign $58 = s$37
+  [24] <unknown> $59:TPrimitive = PropertyLoad <unknown> $58:TObject<BuiltInSet>.size
+    Create $59 = primitive
+  [25] Return Explicit <unknown> $59:TPrimitive
+    Freeze $59 jsx-captured

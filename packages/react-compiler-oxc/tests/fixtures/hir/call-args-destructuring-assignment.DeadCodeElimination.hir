@@ -1,0 +1,41 @@
+Component(<unknown> props$14): <unknown> $13
+bb0 (block):
+  [1] <unknown> $15:TFunction = LoadGlobal(global) makeObject
+    Create $15 = global
+  [2] <unknown> $16 = Call <unknown> $15:TFunction()
+    Create $16 = mutable
+    MaybeAlias $16 <- $15
+    MaybeAlias $16 <- $15
+  [3] <unknown> $18 = StoreLocal Let <unknown> x$17 = <unknown> $16
+    Assign x$17 = $16
+    Assign $18 = $16
+  [4] <unknown> $19 = LoadLocal <unknown> x$17
+    Assign $19 = x$17
+  [5] <unknown> $20:TFunction = PropertyLoad <unknown> $19.foo
+    Create $20 = kindOf($19)
+  [6] <unknown> $21:TFunction = LoadGlobal(global) makeObject
+    Create $21 = global
+  [7] <unknown> $22 = Call <unknown> $21:TFunction()
+    Create $22 = mutable
+    MaybeAlias $22 <- $21
+    MaybeAlias $22 <- $21
+  [8] <unknown> $24 = Destructure Reassign [ <unknown> x$23 ] = <unknown> $22
+    Create x$23 = kindOf($22)
+    Assign $24 = $22
+  [9] <unknown> $25 = MethodCall <unknown> $19.<unknown> $20:TFunction(<unknown> $24)
+    Create $25 = mutable
+    MutateTransitiveConditionally $19
+    MaybeAlias $25 <- $19
+    Capture $20 <- $19
+    Capture $24 <- $19
+    MaybeAlias $25 <- $20
+    Capture $19 <- $20
+    Capture $24 <- $20
+    MutateTransitiveConditionally $24
+    MaybeAlias $25 <- $24
+    Capture $19 <- $24
+    Capture $20 <- $24
+  [10] <unknown> $26 = LoadLocal <unknown> x$23
+    Assign $26 = x$23
+  [11] Return Explicit <unknown> $26
+    Freeze $26 jsx-captured

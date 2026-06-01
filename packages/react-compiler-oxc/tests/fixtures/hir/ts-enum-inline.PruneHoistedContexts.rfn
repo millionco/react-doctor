@@ -1,0 +1,24 @@
+function Component(
+  <unknown> props$15:TObject<BuiltInProps>{reactive},
+) {
+  <pruned> scope @0 [1:4] dependencies=[] declarations=[] reassignments=[] {
+    [2] UnsupportedNode TSEnumDeclaration
+  }
+  [4] mutate? $17 = LoadGlobal(global) Bool
+  [5] mutate? $18 = PropertyLoad read $17.False
+  [6] StoreLocal Let mutate? bool$19 = read $18
+  [7] mutate? $21:TObject<BuiltInProps>{reactive} = LoadLocal read props$15:TObject<BuiltInProps>{reactive}
+  [8] mutate? $22{reactive} = PropertyLoad read $21:TObject<BuiltInProps>{reactive}.value
+  bb0: [9] if (read $22{reactive}) {
+    [10] mutate? $23 = LoadGlobal(global) Bool
+    [11] mutate? $24 = PropertyLoad read $23.True
+    [12] StoreLocal Reassign mutate? bool$25 = read $24
+    [13] break bb0 (implicit)
+  }
+  [14] mutate? $28:TPhi{reactive} = LoadLocal read bool$27:TPhi{reactive}
+  scope @1 [15:18] dependencies=[bool$27:TPhi_11:15:11:19] declarations=[t0$29_@1] reassignments=[] {
+    [16] mutate? t0$29_@1[15:18]:TObject<BuiltInJsx>{reactive} = JSX <div>{read $28:TPhi{reactive}}</div>
+  }
+  [18] return freeze t0$29_@1[15:18]:TObject<BuiltInJsx>{reactive}
+}
+

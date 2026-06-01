@@ -1,0 +1,14 @@
+Component(<unknown> a$0): <unknown> $4
+bb0 (block):
+  [1] While test=bb1 loop=bb3 fallthrough=bb2
+bb1 (loop):
+  predecessor blocks: bb0
+  [2] <unknown> $1 = LoadLocal <unknown> a$0
+  [3] Branch (<unknown> $1) then:bb3 else:bb2 fallthrough:bb1
+bb3 (block):
+  predecessor blocks: bb1
+  [4] Goto bb2
+bb2 (block):
+  predecessor blocks: bb3 bb1
+  [5] <unknown> $2 = LoadLocal <unknown> a$0
+  [6] Return Explicit <unknown> $2

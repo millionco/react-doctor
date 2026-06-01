@@ -1,0 +1,4 @@
+Component(): <unknown> $2
+bb0 (block):
+  [1] <unknown> $3 = "hi"
+  [2] Return Explicit <unknown> $3

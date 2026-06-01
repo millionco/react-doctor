@@ -1,0 +1,59 @@
+Component(<unknown> #t0$28:TObject<BuiltInProps>): <unknown> $27:TObject<BuiltInJsx>
+bb0 (block):
+  [1] <unknown> $30 = Destructure Let { value: <unknown> value$29 } = <unknown> #t0$28:TObject<BuiltInProps>
+    Create value$29 = frozen
+    ImmutableCapture value$29 <- #t0$28
+    ImmutableCapture $30 <- #t0$28
+  [2] <unknown> $31:TPrimitive = "foo"
+    Create $31 = primitive
+  [3] <unknown> $32:TObject<BuiltInObject> = Object { value: <unknown> $31:TPrimitive }
+    Create $32 = mutable
+  [4] <unknown> $33:TPrimitive = "bar"
+    Create $33 = primitive
+  [5] <unknown> $34:TObject<BuiltInObject> = Object { value: <unknown> $33:TPrimitive }
+    Create $34 = mutable
+  [6] <unknown> $35 = LoadLocal <unknown> value$29
+    ImmutableCapture $35 <- value$29
+  [7] <unknown> $36:TObject<BuiltInObject> = Object { value: <unknown> $35 }
+    Create $36 = mutable
+    ImmutableCapture $36 <- $35
+  [8] <unknown> $37:TObject<BuiltInArray> = Array [<unknown> $32:TObject<BuiltInObject>, <unknown> $34:TObject<BuiltInObject>, <unknown> $36:TObject<BuiltInObject>]
+    Create $37 = mutable
+    Capture $37 <- $32
+    Capture $37 <- $34
+    Capture $37 <- $36
+  [9] <unknown> $39:TObject<BuiltInArray> = StoreLocal Const <unknown> arr$38:TObject<BuiltInArray> = <unknown> $37:TObject<BuiltInArray>
+    Assign arr$38 = $37
+    Assign $39 = $37
+  [10] <unknown> $40:TFunction<DefaultNonmutatingHook>():  :TPoly = LoadGlobal import { useIdentity } from 'shared-runtime'
+    Create $40 = global
+  [11] <unknown> $41 = Call <unknown> $40:TFunction<DefaultNonmutatingHook>():  :TPoly()
+    Create $41 = frozen
+  [12] <unknown> $42:TFunction<<generated_94>>():  :TObject<BuiltInSet> = LoadGlobal(global) Set
+    Create $42 = global
+  [13] <unknown> $43:TObject<BuiltInArray> = LoadLocal <unknown> arr$38:TObject<BuiltInArray>
+    Assign $43 = arr$38
+  [14] <unknown> $44:TObject<BuiltInSet> = New <unknown> $42:TFunction<<generated_94>>():  :TObject<BuiltInSet>(<unknown> $43:TObject<BuiltInArray>)
+    Create $44 = mutable
+    Capture $44 <- $43
+  [15] <unknown> $45:TFunction<<generated_25>>():  :TPrimitive = PropertyLoad <unknown> $44:TObject<BuiltInSet>.forEach
+    Create $45 = kindOf($44)
+  [16] <unknown> $46 = LoadGlobal import { mutateAndReturn } from 'shared-runtime'
+    Create $46 = global
+  [17] <unknown> $47:TPrimitive = MethodCall <unknown> $44:TObject<BuiltInSet>.<unknown> $45:TFunction<<generated_25>>():  :TPrimitive(<unknown> $46)
+    Create $47 = primitive
+    MutateTransitiveConditionally $44
+  [18] <unknown> $49:TPrimitive = StoreLocal Const <unknown> derived$48:TPrimitive = <unknown> $47:TPrimitive
+  [19] <unknown> $50 = LoadGlobal import { Stringify } from 'shared-runtime'
+    Create $50 = global
+  [20] <unknown> $51:TPrimitive = LoadLocal <unknown> derived$48:TPrimitive
+  [21] <unknown> $52:TObject<BuiltInArray> = Array [...<unknown> $51:TPrimitive]
+    Create $52 = mutable
+  [22] <unknown> $53:TObject<BuiltInJsx> = JSX <<unknown> $50>{<unknown> $52:TObject<BuiltInArray>}</<unknown> $50>
+    Create $53 = frozen
+    Freeze $52 jsx-captured
+    ImmutableCapture $53 <- $52
+    Render $50
+    Render $52
+  [23] Return Explicit <unknown> $53:TObject<BuiltInJsx>
+    Freeze $53 jsx-captured

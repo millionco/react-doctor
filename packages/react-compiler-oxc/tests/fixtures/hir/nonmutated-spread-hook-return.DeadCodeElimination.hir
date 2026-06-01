@@ -1,0 +1,47 @@
+Component(<unknown> props$20:TObject<BuiltInProps>): <unknown> $19:TObject<BuiltInJsx>
+bb0 (block):
+  [1] <unknown> $21:TFunction<DefaultNonmutatingHook>():  :TPoly = LoadGlobal import { useIdentity } from 'shared-runtime'
+    Create $21 = global
+  [2] <unknown> $22:TObject<BuiltInProps> = LoadLocal <unknown> props$20:TObject<BuiltInProps>
+    ImmutableCapture $22 <- props$20
+  [3] <unknown> $23 = Call <unknown> $21:TFunction<DefaultNonmutatingHook>():  :TPoly(<unknown> $22:TObject<BuiltInProps>)
+    Create $23 = frozen
+    ImmutableCapture $23 <- $22
+  [4] <unknown> $26 = Destructure Const { x: <unknown> x$24, ...<unknown> rest$25 } = <unknown> $23
+    Create x$24 = frozen
+    ImmutableCapture x$24 <- $23
+    Create rest$25 = frozen
+    ImmutableCapture rest$25 <- $23
+    ImmutableCapture $26 <- $23
+  [5] <unknown> $27 = LoadLocal <unknown> rest$25
+    ImmutableCapture $27 <- rest$25
+  [6] <unknown> $28 = PropertyLoad <unknown> $27.z
+    Create $28 = frozen
+    ImmutableCapture $28 <- $27
+  [7] <unknown> $30 = StoreLocal Const <unknown> z$29 = <unknown> $28
+    ImmutableCapture z$29 <- $28
+    ImmutableCapture $30 <- $28
+  [8] <unknown> $31:TFunction = LoadGlobal import { identity } from 'shared-runtime'
+    Create $31 = global
+  [9] <unknown> $32 = LoadLocal <unknown> z$29
+    ImmutableCapture $32 <- z$29
+  [10] <unknown> $33 = Call <unknown> $31:TFunction(<unknown> $32)
+    Create $33 = mutable
+    MaybeAlias $33 <- $31
+    MaybeAlias $33 <- $31
+    ImmutableCapture $33 <- $32
+    ImmutableCapture $31 <- $32
+    ImmutableCapture $31 <- $32
+  [11] <unknown> $34 = LoadGlobal import { Stringify } from 'shared-runtime'
+    Create $34 = global
+  [12] <unknown> $35 = LoadLocal <unknown> x$24
+    ImmutableCapture $35 <- x$24
+  [13] <unknown> $36 = LoadLocal <unknown> z$29
+    ImmutableCapture $36 <- z$29
+  [14] <unknown> $37:TObject<BuiltInJsx> = JSX <<unknown> $34 x={<unknown> $35} z={<unknown> $36} />
+    Create $37 = frozen
+    ImmutableCapture $37 <- $35
+    ImmutableCapture $37 <- $36
+    Render $34
+  [15] Return Explicit <unknown> $37:TObject<BuiltInJsx>
+    Freeze $37 jsx-captured

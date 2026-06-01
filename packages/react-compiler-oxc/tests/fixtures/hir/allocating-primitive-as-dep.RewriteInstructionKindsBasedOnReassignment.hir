@@ -1,0 +1,33 @@
+AllocatingPrimitiveAsDep(<unknown> props$14{reactive}): <unknown> $13
+bb0 (block):
+  [1] mutate? $15:TFunction = LoadGlobal(global) foo
+    Create $15 = global
+  [2] mutate? $16:TFunction = LoadGlobal(global) bar
+    Create $16 = global
+  [3] mutate? $17{reactive} = LoadLocal read props$14{reactive}
+    ImmutableCapture $17 <- props$14
+  [4] store $18{reactive} = Call capture $16:TFunction(read $17{reactive})
+    Create $18 = mutable
+    MaybeAlias $18 <- $16
+    MaybeAlias $18 <- $16
+    ImmutableCapture $18 <- $17
+    ImmutableCapture $16 <- $17
+    ImmutableCapture $16 <- $17
+  [5] mutate? $19:TPrimitive{reactive} = PropertyLoad read $18{reactive}.b
+    Create $19 = primitive
+  [6] mutate? $20:TPrimitive = 1
+    Create $20 = primitive
+  [7] mutate? $21:TPrimitive{reactive} = Binary read $19:TPrimitive{reactive} + read $20:TPrimitive
+    Create $21 = primitive
+  [8] store $22{reactive} = Call capture $15:TFunction(capture $21:TPrimitive{reactive})
+    Create $22 = mutable
+    MaybeAlias $22 <- $15
+    MaybeAlias $22 <- $15
+    MaybeAlias $22 <- $21
+  [9] store $24{reactive} = StoreLocal Const store y$23{reactive} = capture $22{reactive}
+    Assign y$23 = $22
+    Assign $24 = $22
+  [10] store $25{reactive} = LoadLocal capture y$23{reactive}
+    Assign $25 = y$23
+  [11] Return Explicit freeze $25{reactive}
+    Freeze $25 jsx-captured

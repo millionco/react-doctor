@@ -1,0 +1,19 @@
+function foo(
+) {
+  [1] mutate? $26:TPrimitive = 2
+  [2] mutate? $27:TPrimitive = 1
+  [3] mutate? $28:TPrimitive = 1
+  bb1: [4] switch (read $28:TPrimitive) {
+    case read $27:TPrimitive: {
+        [5] break bb1 (labeled)
+    }
+    case read $26:TPrimitive: {
+        [6] break bb1 (labeled)
+    }
+    default: {
+        [7] break bb1 (implicit)
+    }
+  }
+  [8] mutate? $48:TPrimitive = <undefined>
+  [9] return freeze $48:TPrimitive
+}

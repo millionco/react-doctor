@@ -1,0 +1,46 @@
+foo(): <unknown> $14:TObject<BuiltInObject>
+bb0 (block):
+  [1] Scope scope @0 [1:13] dependencies=[] declarations=[y$20_@0] reassignments=[] block=bb5 fallthrough=bb6
+bb5 (block):
+  predecessor blocks: bb0
+  [2] mutate? $15_@0[1:13]:TObject<BuiltInArray> = Array []
+    Create $15_@0 = mutable
+  [3] store $17_@0[1:13]:TObject<BuiltInArray> = StoreLocal Const store x$16_@0[1:13]:TObject<BuiltInArray> = capture $15_@0[1:13]:TObject<BuiltInArray>
+    Assign x$16_@0 = $15_@0
+    Assign $17_@0 = $15_@0
+  [4] store $18_@0[1:13]:TObject<BuiltInArray> = LoadLocal capture x$16_@0[1:13]:TObject<BuiltInArray>
+    Assign $18_@0 = x$16_@0
+  [5] store $19_@0[1:13]:TObject<BuiltInObject> = Object { x: capture $18_@0[1:13]:TObject<BuiltInArray> }
+    Create $19_@0 = mutable
+    Capture $19_@0 <- $18_@0
+  [6] store $21_@0[1:13]:TObject<BuiltInObject> = StoreLocal Const store y$20_@0[1:13]:TObject<BuiltInObject> = capture $19_@0[1:13]:TObject<BuiltInObject>
+    Assign y$20_@0 = $19_@0
+    Assign $21_@0 = $19_@0
+  [7] store $22_@0[1:13]:TObject<BuiltInObject> = LoadLocal capture y$20_@0[1:13]:TObject<BuiltInObject>
+    Assign $22_@0 = y$20_@0
+  [8] store $23_@0[1:13] = PropertyLoad capture $22_@0[1:13]:TObject<BuiltInObject>.x
+    Create $23_@0 = kindOf($22_@0)
+  [9] store $24_@0[1:13]:TFunction = PropertyLoad capture $23_@0[1:13].push
+    Create $24_@0 = kindOf($23_@0)
+  [10] mutate? $25_@0[1:13]:TObject<BuiltInArray> = Array []
+    Create $25_@0 = mutable
+  [11] store $26_@0[1:13] = MethodCall store $23_@0[1:13].store $24_@0[1:13]:TFunction(capture $25_@0[1:13]:TObject<BuiltInArray>)
+    Create $26_@0 = mutable
+    MutateTransitiveConditionally $23_@0
+    MaybeAlias $26_@0 <- $23_@0
+    Capture $24_@0 <- $23_@0
+    Capture $25_@0 <- $23_@0
+    MaybeAlias $26_@0 <- $24_@0
+    Capture $23_@0 <- $24_@0
+    Capture $25_@0 <- $24_@0
+    MutateTransitiveConditionally $25_@0
+    MaybeAlias $26_@0 <- $25_@0
+    Capture $23_@0 <- $25_@0
+    Capture $24_@0 <- $25_@0
+  [12] Goto bb6
+bb6 (block):
+  predecessor blocks: bb5
+  [13] store $27:TObject<BuiltInObject> = LoadLocal capture y$20_@0[1:13]:TObject<BuiltInObject>
+    Assign $27 = y$20_@0
+  [14] Return Explicit freeze $27:TObject<BuiltInObject>
+    Freeze $27 jsx-captured

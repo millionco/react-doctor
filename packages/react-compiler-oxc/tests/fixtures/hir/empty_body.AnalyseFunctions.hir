@@ -1,0 +1,4 @@
+f(): <unknown> $1:TPrimitive
+bb0 (block):
+  [1] <unknown> $2:TPrimitive = <undefined>
+  [2] Return Void <unknown> $2:TPrimitive

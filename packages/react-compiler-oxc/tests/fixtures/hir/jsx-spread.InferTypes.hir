@@ -1,0 +1,28 @@
+Component(<unknown> props$16:TObject<BuiltInProps>): <unknown> $15:TObject<BuiltInJsx>
+bb0 (block):
+  [1] <unknown> $17 = LoadGlobal(module) Component
+  [2] <unknown> $18:TObject<BuiltInProps> = LoadLocal <unknown> props$16:TObject<BuiltInProps>
+  [3] Ternary test:bb2 fallthrough=bb1
+bb2 (value):
+  predecessor blocks: bb0
+  [4] <unknown> $19:TObject<BuiltInProps> = LoadLocal <unknown> props$16:TObject<BuiltInProps>
+  [5] <unknown> $20 = PropertyLoad <unknown> $19:TObject<BuiltInProps>.cond
+  [6] Branch (<unknown> $20) then:bb3 else:bb4 fallthrough:bb1
+bb3 (value):
+  predecessor blocks: bb2
+  [7] <unknown> $21:TObject<BuiltInProps> = LoadLocal <unknown> props$16:TObject<BuiltInProps>
+  [8] <unknown> $22 = PropertyLoad <unknown> $21:TObject<BuiltInProps>.foo
+  [9] <unknown> $24 = StoreLocal Const <unknown> $23 = <unknown> $22
+  [10] Goto bb1
+bb4 (value):
+  predecessor blocks: bb2
+  [11] <unknown> $25:TObject<BuiltInProps> = LoadLocal <unknown> props$16:TObject<BuiltInProps>
+  [12] <unknown> $26 = PropertyLoad <unknown> $25:TObject<BuiltInProps>.bar
+  [13] <unknown> $28 = StoreLocal Const <unknown> $27 = <unknown> $26
+  [14] Goto bb1
+bb1 (block):
+  predecessor blocks: bb3 bb4
+  <unknown> $29:TPhi:TPhi: phi(bb3: <unknown> $23, bb4: <unknown> $27)
+  [15] <unknown> $30:TObject<BuiltInObject> = Object { bar: <unknown> $29:TPhi }
+  [16] <unknown> $33:TObject<BuiltInJsx> = JSX <<unknown> $17 ...<unknown> $18:TObject<BuiltInProps> ...<unknown> $30:TObject<BuiltInObject> />
+  [17] Return Explicit <unknown> $33:TObject<BuiltInJsx>

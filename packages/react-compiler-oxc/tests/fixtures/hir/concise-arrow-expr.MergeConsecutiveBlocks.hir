@@ -1,0 +1,18 @@
+component(): <unknown> $19
+bb0 (block):
+  [1] <unknown> $0 = LoadGlobal(global) useState
+  [2] <unknown> $1 = 0
+  [3] <unknown> $2 = Call <unknown> $0(<unknown> $1)
+  [4] <unknown> $5 = Destructure Let [ <unknown> x$3, <unknown> setX$4 ] = <unknown> $2
+  [5] <unknown> $12 = Function  @context[<unknown> setX$4] @aliasingEffects=[]
+      <<anonymous>>(<unknown> v$6): <unknown> $11
+      bb1 (block):
+        [1] <unknown> $7 = LoadLocal <unknown> setX$4
+        [2] <unknown> $8 = LoadLocal <unknown> v$6
+        [3] <unknown> $9 = Call <unknown> $7(<unknown> $8)
+        [4] Return Implicit <unknown> $9
+  [6] <unknown> $14 = StoreLocal Const <unknown> handler$13 = <unknown> $12
+  [7] <unknown> $15 = LoadGlobal(global) Foo
+  [8] <unknown> $16 = LoadLocal <unknown> handler$13
+  [9] <unknown> $17 = JSX <<unknown> $15 handler={<unknown> $16} />
+  [10] Return Explicit <unknown> $17

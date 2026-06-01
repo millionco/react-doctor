@@ -1,0 +1,40 @@
+foo(): <unknown> $14:TObject<BuiltInObject>
+bb0 (block):
+  [1] <unknown> $15:TObject<BuiltInArray> = Array []
+    Create $15 = mutable
+  [2] <unknown> $17:TObject<BuiltInArray> = StoreLocal Const <unknown> x$16:TObject<BuiltInArray> = <unknown> $15:TObject<BuiltInArray>
+    Assign x$16 = $15
+    Assign $17 = $15
+  [3] <unknown> $18:TObject<BuiltInArray> = LoadLocal <unknown> x$16:TObject<BuiltInArray>
+    Assign $18 = x$16
+  [4] <unknown> $19:TObject<BuiltInObject> = Object { x: <unknown> $18:TObject<BuiltInArray> }
+    Create $19 = mutable
+    Capture $19 <- $18
+  [5] <unknown> $21:TObject<BuiltInObject> = StoreLocal Const <unknown> y$20:TObject<BuiltInObject> = <unknown> $19:TObject<BuiltInObject>
+    Assign y$20 = $19
+    Assign $21 = $19
+  [6] <unknown> $22:TObject<BuiltInObject> = LoadLocal <unknown> y$20:TObject<BuiltInObject>
+    Assign $22 = y$20
+  [7] <unknown> $23 = PropertyLoad <unknown> $22:TObject<BuiltInObject>.x
+    Create $23 = kindOf($22)
+  [8] <unknown> $24:TFunction = PropertyLoad <unknown> $23.push
+    Create $24 = kindOf($23)
+  [9] <unknown> $25:TObject<BuiltInArray> = Array []
+    Create $25 = mutable
+  [10] <unknown> $26 = MethodCall <unknown> $23.<unknown> $24:TFunction(<unknown> $25:TObject<BuiltInArray>)
+    Create $26 = mutable
+    MutateTransitiveConditionally $23
+    MaybeAlias $26 <- $23
+    Capture $24 <- $23
+    Capture $25 <- $23
+    MaybeAlias $26 <- $24
+    Capture $23 <- $24
+    Capture $25 <- $24
+    MutateTransitiveConditionally $25
+    MaybeAlias $26 <- $25
+    Capture $23 <- $25
+    Capture $24 <- $25
+  [11] <unknown> $27:TObject<BuiltInObject> = LoadLocal <unknown> y$20:TObject<BuiltInObject>
+    Assign $27 = y$20
+  [12] Return Explicit <unknown> $27:TObject<BuiltInObject>
+    Freeze $27 jsx-captured

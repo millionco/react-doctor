@@ -1,0 +1,5 @@
+function Component(
+) {
+  [1] mutate? $9:TPrimitive = 42
+  [2] return freeze $9:TPrimitive
+}

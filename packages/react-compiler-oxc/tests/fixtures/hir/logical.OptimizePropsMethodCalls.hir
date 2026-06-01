@@ -1,0 +1,25 @@
+Component(<unknown> props$14): <unknown> $13:TPhi
+bb0 (block):
+  [1] Logical && test:bb2 fallthrough=bb1
+bb2 (value):
+  predecessor blocks: bb0
+  [2] <unknown> $15 = LoadLocal <unknown> props$14
+  [3] <unknown> $16 = PropertyLoad <unknown> $15.p
+  [4] <unknown> $17 = LoadLocal <unknown> $16
+  [5] Branch (<unknown> $17) then:bb3 else:bb4 fallthrough:bb1
+bb3 (value):
+  predecessor blocks: bb2
+  [6] <unknown> $19 = StoreLocal Const <unknown> $18 = <unknown> $17
+  [7] Goto bb1
+bb4 (value):
+  predecessor blocks: bb2
+  [8] <unknown> $20 = LoadLocal <unknown> props$14
+  [9] <unknown> $21 = PropertyLoad <unknown> $20.q
+  [10] <unknown> $23 = StoreLocal Const <unknown> $22 = <unknown> $21
+  [11] Goto bb1
+bb1 (block):
+  predecessor blocks: bb3 bb4
+  <unknown> $24:TPhi:TPhi: phi(bb3: <unknown> $18, bb4: <unknown> $22)
+  [12] <unknown> $26:TPhi = StoreLocal Const <unknown> b$25:TPhi = <unknown> $24:TPhi
+  [13] <unknown> $27:TPhi = LoadLocal <unknown> b$25:TPhi
+  [14] Return Explicit <unknown> $27:TPhi

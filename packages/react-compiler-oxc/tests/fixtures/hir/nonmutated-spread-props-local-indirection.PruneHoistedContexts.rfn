@@ -1,0 +1,24 @@
+function Component(
+  <unknown> t0$20:TObject<BuiltInProps>{reactive},
+) {
+  scope @0 [1:4] dependencies=[t0$20:TObject<BuiltInProps>_3:19:3:31] declarations=[rest$22_@0, x$21_@0] reassignments=[] {
+    [2] Destructure Reassign { x: mutate? x$21{reactive}, ...mutate? rest$22{reactive} } = read t0$20:TObject<BuiltInProps>{reactive}
+  }
+  [4] mutate? $24{reactive} = LoadLocal read rest$22{reactive}
+  [5] StoreLocal Const mutate? restAlias$25{reactive} = read $24{reactive}
+  [6] mutate? $27{reactive} = LoadLocal read restAlias$25{reactive}
+  [7] mutate? $28{reactive} = PropertyLoad read $27{reactive}.z
+  [8] StoreLocal Const mutate? z$29{reactive} = read $28{reactive}
+  [9] mutate? $31:TFunction = LoadGlobal import { identity } from 'shared-runtime'
+  [10] mutate? $32{reactive} = LoadLocal read z$29{reactive}
+  <pruned> scope @1 [11:14] dependencies=[z$29_6:11:6:12] declarations=[] reassignments=[] {
+    [12] Call capture $31:TFunction(read $32{reactive})
+  }
+  [14] mutate? $34 = LoadGlobal import { Stringify } from 'shared-runtime'
+  [15] mutate? $35{reactive} = LoadLocal read x$21{reactive}
+  [16] mutate? $36{reactive} = LoadLocal read z$29{reactive}
+  scope @2 [17:20] dependencies=[x$21_7:23:7:24, z$29_7:29:7:30] declarations=[t1$37_@2] reassignments=[] {
+    [18] mutate? t1$37_@2[17:20]:TObject<BuiltInJsx>{reactive} = JSX <read $34 x={read $35{reactive}} z={read $36{reactive}} />
+  }
+  [20] return freeze t1$37_@2[17:20]:TObject<BuiltInJsx>{reactive}
+}

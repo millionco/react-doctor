@@ -1,0 +1,33 @@
+AllocatingPrimitiveAsDep(<unknown> props$14): <unknown> $13
+bb0 (block):
+  [1] <unknown> $15:TFunction = LoadGlobal(global) foo
+    Create $15 = global
+  [2] <unknown> $16:TFunction = LoadGlobal(global) bar
+    Create $16 = global
+  [3] <unknown> $17 = LoadLocal <unknown> props$14
+    ImmutableCapture $17 <- props$14
+  [4] <unknown> $18 = Call <unknown> $16:TFunction(<unknown> $17)
+    Create $18 = mutable
+    MaybeAlias $18 <- $16
+    MaybeAlias $18 <- $16
+    ImmutableCapture $18 <- $17
+    ImmutableCapture $16 <- $17
+    ImmutableCapture $16 <- $17
+  [5] <unknown> $19:TPrimitive = PropertyLoad <unknown> $18.b
+    Create $19 = primitive
+  [6] <unknown> $20:TPrimitive = 1
+    Create $20 = primitive
+  [7] <unknown> $21:TPrimitive = Binary <unknown> $19:TPrimitive + <unknown> $20:TPrimitive
+    Create $21 = primitive
+  [8] <unknown> $22 = Call <unknown> $15:TFunction(<unknown> $21:TPrimitive)
+    Create $22 = mutable
+    MaybeAlias $22 <- $15
+    MaybeAlias $22 <- $15
+    MaybeAlias $22 <- $21
+  [9] <unknown> $24 = StoreLocal Let <unknown> y$23 = <unknown> $22
+    Assign y$23 = $22
+    Assign $24 = $22
+  [10] <unknown> $25 = LoadLocal <unknown> y$23
+    Assign $25 = y$23
+  [11] Return Explicit <unknown> $25
+    Freeze $25 jsx-captured

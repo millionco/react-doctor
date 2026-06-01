@@ -1,0 +1,19 @@
+foo(): <unknown> $13
+bb0 (block):
+  [1] <unknown> $14 = 1
+  [2] <unknown> $16 = StoreLocal Let <unknown> x$15 = <unknown> $14
+  [3] <unknown> $17 = 2
+  [4] <unknown> $19 = StoreLocal Let <unknown> y$18 = <unknown> $17
+  [5] <unknown> $20 = LoadLocal <unknown> y$18
+  [6] If (<unknown> $20) then:bb2 else:bb1 fallthrough=bb1
+bb2 (block):
+  predecessor blocks: bb0
+  [7] <unknown> $21 = LoadLocal <unknown> x$15
+  [8] <unknown> $22 = LoadLocal <unknown> y$18
+  [9] <unknown> $23 = Binary <unknown> $21 + <unknown> $22
+  [10] <unknown> $25 = StoreLocal Let <unknown> z$24 = <unknown> $23
+  [11] Goto bb1
+bb1 (block):
+  predecessor blocks: bb2 bb0
+  [12] <unknown> $26 = <undefined>
+  [13] Return Void <unknown> $26

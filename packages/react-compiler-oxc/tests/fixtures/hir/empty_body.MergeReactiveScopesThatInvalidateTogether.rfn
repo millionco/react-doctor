@@ -1,0 +1,5 @@
+function f(
+) {
+  [1] mutate? $2:TPrimitive = <undefined>
+  [2] return freeze $2:TPrimitive
+}

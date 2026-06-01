@@ -1,0 +1,33 @@
+function Component(
+  <unknown> props$21{reactive},
+) {
+  [1] mutate? $22:TFunction = LoadGlobal(global) foo
+  [2] mutate? $32{reactive} = OptionalExpression optional=false
+    Sequence
+        [15] read $29{reactive} = Sequence
+            [3] mutate? $29{reactive} = OptionalExpression optional=false
+              Sequence
+                  [11] read $26{reactive} = Sequence
+                      [4] mutate? $26{reactive} = OptionalExpression optional=true
+                        Sequence
+                            [6] mutate? $24{reactive} = Sequence
+                                [5] mutate? $23{reactive} = LoadLocal read props$21{reactive}
+                                [6] PropertyLoad read $23{reactive}.a
+                            [9] Sequence
+                                [8] mutate? $25{reactive} = PropertyLoad read $24{reactive}.b
+                                [9] LoadLocal read $25{reactive}
+                      [11] LoadLocal read $26{reactive}
+                  [13] Sequence
+                      [12] mutate? $28{reactive} = PropertyLoad read $26{reactive}.c
+                      [13] LoadLocal read $28{reactive}
+            [15] LoadLocal read $29{reactive}
+        [17] Sequence
+            [16] mutate? $31{reactive} = PropertyLoad read $29{reactive}.d
+            [17] LoadLocal read $31{reactive}
+  scope @0 [22:25] dependencies=[$22:TFunction_4:10:4:13, $39:TPhi_4:14:4:28] declarations=[$40_@0] reassignments=[] {
+    [23] store $40_@0[22:25]{reactive} = Call capture $22:TFunction(read $39:TPhi{reactive})
+  }
+  [25] store $42{reactive} = StoreLocal Const store x$41{reactive} = capture $40_@0[22:25]{reactive}
+  [26] store $43{reactive} = LoadLocal capture x$41{reactive}
+  [27] return freeze $43{reactive}
+}

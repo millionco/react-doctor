@@ -1,0 +1,31 @@
+function Component(
+) {
+  [1] mutate? $25:TPrimitive = 1
+  [2] mutate? $26:TPrimitive = 2
+  [3] mutate? $27:TPrimitive = 3
+  scope @0 [4:25] dependencies=[] declarations=[ret$32_@0] reassignments=[] {
+    [5] mutate? $28_@0[4:25]:TObject<BuiltInArray> = Array [read $25:TPrimitive, read $26:TPrimitive, read $27:TPrimitive]
+    [6] StoreLocal Const store x$29_@0[4:25]:TObject<BuiltInArray> = capture $28_@0[4:25]:TObject<BuiltInArray>
+    [7] mutate? $31_@0[4:25]:TObject<BuiltInArray> = Array []
+    [8] StoreLocal Const store ret$32_@0[4:25]:TObject<BuiltInArray> = capture $31_@0[4:25]:TObject<BuiltInArray>
+    bb2: [9] do-while {
+      [10] store $35_@0[4:25]:TObject<BuiltInArray> = LoadLocal capture x$29_@0[4:25]:TObject<BuiltInArray>
+      [11] store $36[4:25]:TFunction<<generated_2>>():  :TPoly = PropertyLoad capture $35_@0[4:25]:TObject<BuiltInArray>.pop
+      [12] store $37:TPrimitive = MethodCall store $35_@0[4:25]:TObject<BuiltInArray>.read $36[4:25]:TFunction<<generated_2>>():  :TPoly()
+      [13] StoreLocal Const store item$38:TPrimitive = capture $37:TPrimitive
+      [14] store $41_@0[4:25]:TObject<BuiltInArray> = LoadLocal capture ret$32_@0[4:25]:TObject<BuiltInArray>
+      [15] store $42[6:23]:TFunction<<generated_5>>():  :TPrimitive = PropertyLoad capture $41_@0[4:25]:TObject<BuiltInArray>.push
+      [16] store $43:TPrimitive = LoadLocal capture item$38:TPrimitive
+      [17] mutate? $44:TPrimitive = 2
+      [18] mutate? $45:TPrimitive = Binary read $43:TPrimitive * read $44:TPrimitive
+      [19] MethodCall store $41_@0[4:25]:TObject<BuiltInArray>.read $42[6:23]:TFunction<<generated_5>>():  :TPrimitive(read $45:TPrimitive)
+      [20] continue bb2 (implicit)
+    } (
+      Sequence
+          [21] store $47:TObject<BuiltInArray> = LoadLocal capture x$29_@0[4:25]:TObject<BuiltInArray>
+          [22] PropertyLoad read $47:TObject<BuiltInArray>.length
+    )
+  }
+  [25] store $49:TObject<BuiltInArray> = LoadLocal capture ret$32_@0[4:25]:TObject<BuiltInArray>
+  [26] return freeze $49:TObject<BuiltInArray>
+}

@@ -1,0 +1,19 @@
+function Component(
+  <unknown> props$13{reactive},
+) {
+  scope @0 [1:7] dependencies=[props$13_3:8:3:13] declarations=[a$1_@0] reassignments=[] {
+    [2] DeclareContext Let mutate? a$1_@0[1:7]
+    [3] mutate? $15{reactive} = LoadLocal read props$13{reactive}
+    [4] Destructure Const [ mutate? #t4$16_@0[1:7]{reactive} ] = read $15{reactive}
+    [5] StoreContext Reassign store a$1_@0[1:7]{reactive} = read #t4$16_@0[1:7]{reactive}
+  }
+  scope @1 [7:10] dependencies=[a$1_@0_4:15:4:16] declarations=[$19_@1] reassignments=[] {
+    [8] store $19_@1[7:10]:TFunction<BuiltInFunction>(){reactive} = Function  @context[capture a$1_@0[1:7]{reactive}] @aliasingEffects=[Create $9 = mutable, Alias $9 <- a$1_@0]
+            <<anonymous>>(): <unknown> $9
+            bb1 (block):
+              [1] store $20 = LoadContext capture a$1_@0[1:7]{reactive}
+                Create $20 = kindOf(a$1_@0)
+              [2] Return Implicit read $20
+  }
+  [10] return freeze $19_@1[7:10]:TFunction<BuiltInFunction>(){reactive}
+}

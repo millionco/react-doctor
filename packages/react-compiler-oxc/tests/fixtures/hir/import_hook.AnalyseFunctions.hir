@@ -1,0 +1,6 @@
+useThing(): <unknown> $5:TFunction<<generated_97>>():  :TObject<BuiltInUseState>
+bb0 (block):
+  [1] <unknown> $6:TFunction<<generated_97>>():  :TObject<BuiltInUseState> = LoadGlobal import { useState } from 'react'
+  [2] <unknown> $8:TFunction<<generated_97>>():  :TObject<BuiltInUseState> = StoreLocal Const <unknown> x$7:TFunction<<generated_97>>():  :TObject<BuiltInUseState> = <unknown> $6:TFunction<<generated_97>>():  :TObject<BuiltInUseState>
+  [3] <unknown> $9:TFunction<<generated_97>>():  :TObject<BuiltInUseState> = LoadGlobal import { useState } from 'react'
+  [4] Return Explicit <unknown> $9:TFunction<<generated_97>>():  :TObject<BuiltInUseState>

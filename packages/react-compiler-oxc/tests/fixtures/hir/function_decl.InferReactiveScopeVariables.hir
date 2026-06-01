@@ -1,0 +1,31 @@
+Component(<unknown> props$16{reactive}): <unknown> $15:TPrimitive
+bb0 (block):
+  [1] mutate? $17_@0:TFunction<BuiltInFunction>():  :TPrimitive{reactive} = Function helper @context[read props$16{reactive}] @aliasingEffects=[Create $7 = primitive]
+      helper(<unknown> x$18:TPrimitive): <unknown> $7:TPrimitive
+      bb1 (block):
+        [1] store $19:TPrimitive = LoadLocal capture x$18:TPrimitive
+          Assign $19 = x$18
+        [2] store $20 = LoadLocal capture props$16{reactive}
+          Assign $20 = props$16
+        [3] mutate? $21:TPrimitive = PropertyLoad read $20.base
+          Create $21 = primitive
+        [4] mutate? $22:TPrimitive = Binary read $19:TPrimitive + read $21:TPrimitive
+          Create $22 = primitive
+        [5] Return Explicit read $22:TPrimitive
+    Function $17_@0 = Function captures=[]
+  [2] mutate? $24:TFunction<BuiltInFunction>():  :TPrimitive{reactive} = StoreLocal Const mutate? helper$23:TFunction<BuiltInFunction>():  :TPrimitive{reactive} = read $17_@0:TFunction<BuiltInFunction>():  :TPrimitive{reactive}
+    ImmutableCapture helper$23 <- $17_@0
+    ImmutableCapture $24 <- $17_@0
+  [3] mutate? $25:TFunction<BuiltInFunction>():  :TPrimitive{reactive} = LoadLocal read helper$23:TFunction<BuiltInFunction>():  :TPrimitive{reactive}
+    ImmutableCapture $25 <- helper$23
+  [4] mutate? $26:TPrimitive = 1
+    Create $26 = primitive
+  [5] store $27:TPrimitive{reactive} = Call read $25:TFunction<BuiltInFunction>():  :TPrimitive{reactive}(capture $26:TPrimitive)
+    Create $27 = mutable
+    ImmutableCapture $27 <- $25
+    ImmutableCapture $26 <- $25
+    ImmutableCapture $27 <- $25
+    ImmutableCapture $26 <- $25
+    MaybeAlias $27 <- $26
+  [6] Return Explicit freeze $27:TPrimitive{reactive}
+    Freeze $27 jsx-captured

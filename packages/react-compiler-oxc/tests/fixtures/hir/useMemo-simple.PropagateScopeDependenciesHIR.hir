@@ -1,0 +1,39 @@
+component(<unknown> a$19{reactive}): <unknown> $16:TObject<BuiltInJsx>
+bb0 (block):
+  [1] mutate? $21{reactive} = StartMemoize deps=a$19
+    Create $21 = primitive
+  [2] mutate? $24{reactive} = LoadLocal read a$19{reactive}
+    ImmutableCapture $24 <- a$19
+  [3] Scope scope @0 [3:6] dependencies=[a$19_2:25:2:26] declarations=[$25_@0] reassignments=[] block=bb8 fallthrough=bb9
+bb8 (block):
+  predecessor blocks: bb0
+  [4] mutate? $25_@0[3:6]:TObject<BuiltInArray>{reactive} = Array [read $24{reactive}]
+    Create $25_@0 = mutable
+    ImmutableCapture $25_@0 <- $24
+  [5] Goto bb9
+bb9 (block):
+  predecessor blocks: bb8
+  [6] store $26:TObject<BuiltInArray>{reactive} = LoadLocal capture $25_@0[3:6]:TObject<BuiltInArray>{reactive}
+    Assign $26 = $25_@0
+  [7] mutate? $27{reactive} = FinishMemoize decl=freeze $26:TObject<BuiltInArray>{reactive}
+    Freeze $26 hook-captured
+    Create $27 = primitive
+  [8] mutate? $29:TObject<BuiltInArray>{reactive} = StoreLocal Const mutate? x$28:TObject<BuiltInArray>{reactive} = read $26:TObject<BuiltInArray>{reactive}
+    ImmutableCapture x$28 <- $26
+    ImmutableCapture $29 <- $26
+  [9] mutate? $30 = LoadGlobal(global) Foo
+    Create $30 = global
+  [10] mutate? $31:TObject<BuiltInArray>{reactive} = LoadLocal read x$28:TObject<BuiltInArray>{reactive}
+    ImmutableCapture $31 <- x$28
+  [11] Scope scope @1 [11:14] dependencies=[$30_3:10:3:13, x$28:TObject<BuiltInArray>_3:17:3:18] declarations=[$32_@1] reassignments=[] block=bb10 fallthrough=bb11
+bb10 (block):
+  predecessor blocks: bb9
+  [12] mutate? $32_@1[11:14]:TObject<BuiltInJsx>{reactive} = JSX <read $30 x={read $31:TObject<BuiltInArray>{reactive}} />
+    Create $32_@1 = frozen
+    ImmutableCapture $32_@1 <- $31
+    Render $30
+  [13] Goto bb11
+bb11 (block):
+  predecessor blocks: bb10
+  [14] Return Explicit freeze $32_@1[11:14]:TObject<BuiltInJsx>{reactive}
+    Freeze $32_@1 jsx-captured

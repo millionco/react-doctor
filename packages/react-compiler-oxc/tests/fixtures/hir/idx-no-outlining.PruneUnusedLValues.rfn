@@ -1,0 +1,25 @@
+function Component(
+  <unknown> props$17:TObject<BuiltInProps>{reactive},
+) {
+  scope @1 [1:7] dependencies=[props$17:TObject<BuiltInProps>_6:24:6:29] declarations=[$25_@1] reassignments=[] {
+    [2] mutate? $18_@1[1:7]:TFunction = LoadGlobal import idx from 'idx'
+    [3] mutate? $19_@1[1:7]:TObject<BuiltInProps>{reactive} = LoadLocal read props$17:TObject<BuiltInProps>{reactive}
+    [4] mutate? $20_@1[1:7]:TFunction<BuiltInFunction>() = Function  @context[] @aliasingEffects=[Create $8 = mutable, Alias $8 <- _$21]
+            <<anonymous>>(<unknown> _$21): <unknown> $8
+            bb1 (block):
+              [1] store $22 = LoadLocal capture _$21
+                Assign $22 = _$21
+              [2] store $23 = PropertyLoad capture $22.group
+                Create $23 = kindOf($22)
+              [3] store $24 = PropertyLoad capture $23.label
+                Create $24 = kindOf($23)
+              [4] Return Implicit read $24
+    [5] store $25_@1[1:7]{reactive} = Call capture $18_@1[1:7]:TFunction(read $19_@1[1:7]:TObject<BuiltInProps>{reactive}, read $20_@1[1:7]:TFunction<BuiltInFunction>())
+  }
+  [7] StoreLocal Const store groupName$26{reactive} = capture $25_@1[1:7]{reactive}
+  [8] store $28{reactive} = LoadLocal capture groupName$26{reactive}
+  scope @2 [9:12] dependencies=[groupName$26_7:15:7:24] declarations=[$29_@2] reassignments=[] {
+    [10] mutate? $29_@2[9:12]:TObject<BuiltInJsx>{reactive} = JSX <div>{freeze $28{reactive}}</div>
+  }
+  [12] return freeze $29_@2[9:12]:TObject<BuiltInJsx>{reactive}
+}

@@ -1,0 +1,42 @@
+Component(<unknown> props$0): <unknown> $33
+bb0 (block):
+  [1] <unknown> $1 = LoadGlobal(global) makeOptionalFunction
+  [2] <unknown> $2 = LoadLocal <unknown> props$0
+  [3] <unknown> $3 = Call <unknown> $1(<unknown> $2)
+  [4] <unknown> $5 = StoreLocal Const <unknown> x$4 = <unknown> $3
+  [5] <unknown> $6 = LoadGlobal(global) makeObject
+  [6] <unknown> $7 = LoadLocal <unknown> props$0
+  [7] <unknown> $8 = Call <unknown> $6(<unknown> $7)
+  [8] <unknown> $10 = StoreLocal Const <unknown> y$9 = <unknown> $8
+  [9] Optional (optional=true) test:bb4 fallthrough=bb1
+bb4 (value):
+  predecessor blocks: bb0
+  [10] <unknown> $14 = LoadLocal <unknown> x$4
+  [11] Branch (<unknown> $14) then:bb2 else:bb3 fallthrough:bb1
+bb2 (value):
+  predecessor blocks: bb4
+  [12] <unknown> $15 = LoadLocal <unknown> y$9
+  [13] <unknown> $16 = PropertyLoad <unknown> $15.a
+  [14] <unknown> $17 = LoadLocal <unknown> props$0
+  [15] <unknown> $18 = PropertyLoad <unknown> $17.a
+  [16] <unknown> $19 = LoadGlobal(global) foo
+  [17] <unknown> $20 = LoadLocal <unknown> y$9
+  [18] <unknown> $21 = PropertyLoad <unknown> $20.b
+  [19] <unknown> $22 = Call <unknown> $19(<unknown> $21)
+  [20] <unknown> $23 = LoadGlobal(global) bar
+  [21] <unknown> $24 = LoadLocal <unknown> props$0
+  [22] <unknown> $25 = PropertyLoad <unknown> $24.b
+  [23] <unknown> $26 = Call <unknown> $23(<unknown> $25)
+  [24] <unknown> $27 = Call <unknown> $14(<unknown> $16, <unknown> $18, <unknown> $22, <unknown> $26)
+  [25] <unknown> $28 = StoreLocal Const <unknown> $11 = <unknown> $27
+  [26] Goto bb1
+bb3 (value):
+  predecessor blocks: bb4
+  [27] <unknown> $12 = <undefined>
+  [28] <unknown> $13 = StoreLocal Const <unknown> $11 = <unknown> $12
+  [29] Goto bb1
+bb1 (block):
+  predecessor blocks: bb2 bb3
+  [30] <unknown> $30 = StoreLocal Const <unknown> z$29 = <unknown> $11
+  [31] <unknown> $31 = LoadLocal <unknown> z$29
+  [32] Return Explicit <unknown> $31

@@ -1,0 +1,51 @@
+Component(<unknown> props$16:TObject<BuiltInProps>): <unknown> $15:TObject<BuiltInJsx>
+bb0 (block):
+  [1] <unknown> $17 = LoadGlobal(module) Component
+    Create $17 = global
+  [2] <unknown> $18:TObject<BuiltInProps> = LoadLocal <unknown> props$16:TObject<BuiltInProps>
+    ImmutableCapture $18 <- props$16
+  [3] Ternary test:bb2 fallthrough=bb1
+bb2 (value):
+  predecessor blocks: bb0
+  [4] <unknown> $19:TObject<BuiltInProps> = LoadLocal <unknown> props$16:TObject<BuiltInProps>
+    ImmutableCapture $19 <- props$16
+  [5] <unknown> $20 = PropertyLoad <unknown> $19:TObject<BuiltInProps>.cond
+    Create $20 = frozen
+    ImmutableCapture $20 <- $19
+  [6] Branch (<unknown> $20) then:bb3 else:bb4 fallthrough:bb1
+bb3 (value):
+  predecessor blocks: bb2
+  [7] <unknown> $21:TObject<BuiltInProps> = LoadLocal <unknown> props$16:TObject<BuiltInProps>
+    ImmutableCapture $21 <- props$16
+  [8] <unknown> $22 = PropertyLoad <unknown> $21:TObject<BuiltInProps>.foo
+    Create $22 = frozen
+    ImmutableCapture $22 <- $21
+  [9] <unknown> $24 = StoreLocal Const <unknown> $23 = <unknown> $22
+    ImmutableCapture $23 <- $22
+    ImmutableCapture $24 <- $22
+  [10] Goto bb1
+bb4 (value):
+  predecessor blocks: bb2
+  [11] <unknown> $25:TObject<BuiltInProps> = LoadLocal <unknown> props$16:TObject<BuiltInProps>
+    ImmutableCapture $25 <- props$16
+  [12] <unknown> $26 = PropertyLoad <unknown> $25:TObject<BuiltInProps>.bar
+    Create $26 = frozen
+    ImmutableCapture $26 <- $25
+  [13] <unknown> $28 = StoreLocal Const <unknown> $27 = <unknown> $26
+    ImmutableCapture $27 <- $26
+    ImmutableCapture $28 <- $26
+  [14] Goto bb1
+bb1 (block):
+  predecessor blocks: bb3 bb4
+  <unknown> $29:TPhi:TPhi: phi(bb3: <unknown> $23, bb4: <unknown> $27)
+  [15] <unknown> $30:TObject<BuiltInObject> = Object { bar: <unknown> $29:TPhi }
+    Create $30 = mutable
+    ImmutableCapture $30 <- $29
+  [16] <unknown> $33:TObject<BuiltInJsx> = JSX <<unknown> $17 ...<unknown> $18:TObject<BuiltInProps> ...<unknown> $30:TObject<BuiltInObject> />
+    Create $33 = frozen
+    ImmutableCapture $33 <- $18
+    Freeze $30 jsx-captured
+    ImmutableCapture $33 <- $30
+    Render $17
+  [17] Return Explicit <unknown> $33:TObject<BuiltInJsx>
+    Freeze $33 jsx-captured

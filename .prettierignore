@@ -11,5 +11,10 @@ node_modules/
 # committed file stays byte-identical to its source (no formatter round-trip).
 packages/website/public/schema/config.json
 
+# Vendored React Compiler source — kept verbatim from facebook/react in
+# upstream (Meta) style so it can be re-synced cleanly. Repo-owned config
+# files (package.json, tsconfig.json, vite.config.ts) are still formatted.
+packages/react-compiler/src/
+
 # Lockfiles handled by their own tooling
 pnpm-lock.yaml

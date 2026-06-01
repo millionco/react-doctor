@@ -1,0 +1,37 @@
+Component(<unknown> props$13{reactive}): <unknown> $12:TFunction<BuiltInFunction>()
+bb0 (block):
+  [1] Scope scope @0 [1:7] dependencies=[] declarations=[] reassignments=[] block=bb7 fallthrough=bb8
+bb7 (block):
+  predecessor blocks: bb0
+  [2] mutate? $14 = DeclareContext Let mutate? a$1_@0[1:7]
+    Create a$1_@0 = mutable
+    Create $14 = primitive
+  [3] mutate? $15{reactive} = LoadLocal read props$13{reactive}
+    ImmutableCapture $15 <- props$13
+  [4] mutate? $17{reactive} = Destructure Const [ mutate? #t4$16_@0[1:7]{reactive} ] = read $15{reactive}
+    Create #t4$16_@0 = frozen
+    ImmutableCapture #t4$16_@0 <- $15
+    ImmutableCapture $17 <- $15
+  [5] mutate? $18{reactive} = StoreContext Reassign store a$1_@0[1:7]{reactive} = read #t4$16_@0[1:7]{reactive}
+    Mutate a$1_@0
+    ImmutableCapture a$1_@0 <- #t4$16_@0
+    ImmutableCapture $18 <- #t4$16_@0
+  [6] Goto bb8
+bb8 (block):
+  predecessor blocks: bb7
+  [7] Scope scope @1 [7:10] dependencies=[] declarations=[] reassignments=[] block=bb9 fallthrough=bb10
+bb9 (block):
+  predecessor blocks: bb8
+  [8] store $19_@1[7:10]:TFunction<BuiltInFunction>(){reactive} = Function  @context[capture a$1_@0[1:7]{reactive}] @aliasingEffects=[Create $9 = mutable, Alias $9 <- a$1_@0]
+      <<anonymous>>(): <unknown> $9
+      bb1 (block):
+        [1] store $20 = LoadContext capture a$1_@0[1:7]{reactive}
+          Create $20 = kindOf(a$1_@0)
+        [2] Return Implicit read $20
+    Function $19_@1 = Function captures=[a$1_@0]
+    Capture $19_@1 <- a$1_@0
+  [9] Goto bb10
+bb10 (block):
+  predecessor blocks: bb9
+  [10] Return Explicit freeze $19_@1[7:10]:TFunction<BuiltInFunction>(){reactive}
+    Freeze $19_@1 jsx-captured

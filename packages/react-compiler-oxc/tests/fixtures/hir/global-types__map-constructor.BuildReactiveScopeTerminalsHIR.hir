@@ -1,0 +1,85 @@
+useHook(<unknown> #t0$26{reactive}): <unknown> $25:TPrimitive
+bb0 (block):
+  [1] mutate? $29{reactive} = Destructure Const { el1: mutate? el1$27{reactive}, el2: mutate? el2$28{reactive} } = read #t0$26{reactive}
+    Create el1$27 = frozen
+    ImmutableCapture el1$27 <- #t0$26
+    Create el2$28 = frozen
+    ImmutableCapture el2$28 <- #t0$26
+    ImmutableCapture $29 <- #t0$26
+  [2] mutate? $30:TFunction<<generated_93>>():  :TObject<BuiltInMap> = LoadGlobal(global) Map
+    Create $30 = global
+  [3] Scope scope @0 [3:25] dependencies=[] declarations=[] reassignments=[] block=bb5 fallthrough=bb6
+bb5 (block):
+  predecessor blocks: bb0
+  [4] mutate? $31_@0[3:25]:TObject<BuiltInMap> = New read $30:TFunction<<generated_93>>():  :TObject<BuiltInMap>()
+    Create $31_@0 = mutable
+  [5] store $33_@0[3:25]:TObject<BuiltInMap>{reactive} = StoreLocal Const store s$32_@0[3:25]:TObject<BuiltInMap>{reactive} = capture $31_@0[3:25]:TObject<BuiltInMap>{reactive}
+    Assign s$32_@0 = $31_@0
+    Assign $33_@0 = $31_@0
+  [6] store $34_@0[3:25]:TObject<BuiltInMap>{reactive} = LoadLocal capture s$32_@0[3:25]:TObject<BuiltInMap>{reactive}
+    Assign $34_@0 = s$32_@0
+  [7] store $35_@0[3:25]:TFunction<<generated_33>>():  :TObject<BuiltInMap>{reactive} = PropertyLoad capture $34_@0[3:25]:TObject<BuiltInMap>{reactive}.set
+    Create $35_@0 = kindOf($34_@0)
+  [8] mutate? $36{reactive} = LoadLocal read el1$27{reactive}
+    ImmutableCapture $36 <- el1$27
+  [9] mutate? $37:TFunction = LoadGlobal import { makeArray } from 'shared-runtime'
+    Create $37 = global
+  [10] mutate? $38{reactive} = LoadLocal read el1$27{reactive}
+    ImmutableCapture $38 <- el1$27
+  [11] Scope scope @1 [11:14] dependencies=[] declarations=[] reassignments=[] block=bb7 fallthrough=bb8
+bb7 (block):
+  predecessor blocks: bb5
+  [12] store $39_@1[11:14]{reactive} = Call capture $37:TFunction(read $38{reactive})
+    Create $39_@1 = mutable
+    MaybeAlias $39_@1 <- $37
+    MaybeAlias $39_@1 <- $37
+    ImmutableCapture $39_@1 <- $38
+    ImmutableCapture $37 <- $38
+    ImmutableCapture $37 <- $38
+  [13] Goto bb8
+bb8 (block):
+  predecessor blocks: bb7
+  [14] store $40_@0[3:25]:TObject<BuiltInMap>{reactive} = MethodCall store $34_@0[3:25]:TObject<BuiltInMap>{reactive}.read $35_@0[3:25]:TFunction<<generated_33>>():  :TObject<BuiltInMap>{reactive}(read $36{reactive}, capture $39_@1[11:14]{reactive})
+    Create $40_@0 = mutable
+    Alias $40_@0 <- $34_@0
+    Mutate $34_@0
+    ImmutableCapture $34_@0 <- $36
+    Capture $34_@0 <- $39_@1
+  [15] store $41_@0[3:25]:TObject<BuiltInMap>{reactive} = LoadLocal capture s$32_@0[3:25]:TObject<BuiltInMap>{reactive}
+    Assign $41_@0 = s$32_@0
+  [16] store $42_@0[3:25]:TFunction<<generated_33>>():  :TObject<BuiltInMap>{reactive} = PropertyLoad capture $41_@0[3:25]:TObject<BuiltInMap>{reactive}.set
+    Create $42_@0 = kindOf($41_@0)
+  [17] mutate? $43{reactive} = LoadLocal read el2$28{reactive}
+    ImmutableCapture $43 <- el2$28
+  [18] mutate? $44:TFunction = LoadGlobal import { makeArray } from 'shared-runtime'
+    Create $44 = global
+  [19] mutate? $45{reactive} = LoadLocal read el2$28{reactive}
+    ImmutableCapture $45 <- el2$28
+  [20] Scope scope @2 [20:23] dependencies=[] declarations=[] reassignments=[] block=bb9 fallthrough=bb10
+bb9 (block):
+  predecessor blocks: bb8
+  [21] store $46_@2[20:23]{reactive} = Call capture $44:TFunction(read $45{reactive})
+    Create $46_@2 = mutable
+    MaybeAlias $46_@2 <- $44
+    MaybeAlias $46_@2 <- $44
+    ImmutableCapture $46_@2 <- $45
+    ImmutableCapture $44 <- $45
+    ImmutableCapture $44 <- $45
+  [22] Goto bb10
+bb10 (block):
+  predecessor blocks: bb9
+  [23] store $47_@0[3:25]:TObject<BuiltInMap>{reactive} = MethodCall store $41_@0[3:25]:TObject<BuiltInMap>{reactive}.read $42_@0[3:25]:TFunction<<generated_33>>():  :TObject<BuiltInMap>{reactive}(read $43{reactive}, capture $46_@2[20:23]{reactive})
+    Create $47_@0 = mutable
+    Alias $47_@0 <- $41_@0
+    Mutate $41_@0
+    ImmutableCapture $41_@0 <- $43
+    Capture $41_@0 <- $46_@2
+  [24] Goto bb6
+bb6 (block):
+  predecessor blocks: bb10
+  [25] store $48:TObject<BuiltInMap>{reactive} = LoadLocal capture s$32_@0[3:25]:TObject<BuiltInMap>{reactive}
+    Assign $48 = s$32_@0
+  [26] mutate? $49:TPrimitive{reactive} = PropertyLoad read $48:TObject<BuiltInMap>{reactive}.size
+    Create $49 = primitive
+  [27] Return Explicit freeze $49:TPrimitive{reactive}
+    Freeze $49 jsx-captured

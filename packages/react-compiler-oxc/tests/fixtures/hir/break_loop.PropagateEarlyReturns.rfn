@@ -1,0 +1,11 @@
+function Component(
+  <unknown> a$5{reactive},
+) {
+  bb2: [1] while (
+    LoadLocal read a$5{reactive}
+  ) {
+    [4] break bb2 (unlabeled)
+  }
+  [5] mutate? $8{reactive} = LoadLocal read a$5{reactive}
+  [6] return freeze $8{reactive}
+}

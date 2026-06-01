@@ -1,0 +1,43 @@
+Component(<unknown> #t0$49): <unknown> $48
+bb0 (block):
+  [1] <unknown> $53 = Destructure Let { a: <unknown> a$50, b: <unknown> b$51, c: <unknown> c$52 } = <unknown> #t0$49
+  [2] <unknown> $54 = LoadGlobal(global) WeakSet
+  [3] <unknown> $55 = New <unknown> $54()
+  [4] <unknown> $57 = StoreLocal Const <unknown> set$56 = <unknown> $55
+  [5] <unknown> $58 = LoadLocal <unknown> set$56
+  [6] <unknown> $59 = PropertyLoad <unknown> $58.add
+  [7] <unknown> $60 = LoadLocal <unknown> a$50
+  [8] <unknown> $61 = MethodCall <unknown> $58.<unknown> $59(<unknown> $60)
+  [9] <unknown> $63 = StoreLocal Const <unknown> setAlias$62 = <unknown> $61
+  [10] <unknown> $64 = LoadLocal <unknown> setAlias$62
+  [11] <unknown> $65 = PropertyLoad <unknown> $64.add
+  [12] <unknown> $66 = LoadLocal <unknown> c$52
+  [13] <unknown> $67 = MethodCall <unknown> $64.<unknown> $65(<unknown> $66)
+  [14] <unknown> $68 = LoadLocal <unknown> set$56
+  [15] <unknown> $69 = PropertyLoad <unknown> $68.has
+  [16] <unknown> $70 = LoadLocal <unknown> b$51
+  [17] <unknown> $71 = MethodCall <unknown> $68.<unknown> $69(<unknown> $70)
+  [18] <unknown> $73 = StoreLocal Const <unknown> hasB$72 = <unknown> $71
+  [19] <unknown> $74 = LoadGlobal import { ValidateMemoization } from 'shared-runtime'
+  [20] <unknown> $75 = LoadLocal <unknown> a$50
+  [21] <unknown> $76 = LoadLocal <unknown> c$52
+  [22] <unknown> $77 = Array [<unknown> $75, <unknown> $76]
+  [23] <unknown> $78 = LoadLocal <unknown> set$56
+  [24] <unknown> $79 = true
+  [25] <unknown> $80 = JSX <<unknown> $74 inputs={<unknown> $77} output={<unknown> $78} onlyCheckCompiled={<unknown> $79} />
+  [26] <unknown> $81 = LoadGlobal import { ValidateMemoization } from 'shared-runtime'
+  [27] <unknown> $82 = LoadLocal <unknown> a$50
+  [28] <unknown> $83 = LoadLocal <unknown> c$52
+  [29] <unknown> $84 = Array [<unknown> $82, <unknown> $83]
+  [30] <unknown> $85 = LoadLocal <unknown> setAlias$62
+  [31] <unknown> $86 = true
+  [32] <unknown> $87 = JSX <<unknown> $81 inputs={<unknown> $84} output={<unknown> $85} onlyCheckCompiled={<unknown> $86} />
+  [33] <unknown> $88 = LoadGlobal import { ValidateMemoization } from 'shared-runtime'
+  [34] <unknown> $89 = LoadLocal <unknown> b$51
+  [35] <unknown> $90 = Array [<unknown> $89]
+  [36] <unknown> $91 = LoadLocal <unknown> hasB$72
+  [37] <unknown> $92 = Array [<unknown> $91]
+  [38] <unknown> $93 = true
+  [39] <unknown> $94 = JSX <<unknown> $88 inputs={<unknown> $90} output={<unknown> $92} onlyCheckCompiled={<unknown> $93} />
+  [40] <unknown> $95 = JsxFragment [<unknown> $80, <unknown> $87, <unknown> $94]
+  [41] Return Explicit <unknown> $95

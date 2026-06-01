@@ -1,0 +1,38 @@
+Component(<unknown> props$22): <unknown> $21:TPrimitive
+bb0 (block):
+  [1] <unknown> $23 = LoadLocal <unknown> props$22
+    ImmutableCapture $23 <- props$22
+  [2] <unknown> $24:TPrimitive = PropertyLoad <unknown> $23.a
+    Create $24 = primitive
+  [3] <unknown> $26:TPrimitive = StoreLocal Const <unknown> x$25:TPrimitive = <unknown> $24:TPrimitive
+  [4] <unknown> $27:TFunction = LoadGlobal(global) foo
+    Create $27 = global
+  [5] <unknown> $28:TPrimitive = LoadLocal <unknown> x$25:TPrimitive
+  [6] <unknown> $29:TPrimitive = 1
+    Create $29 = primitive
+  [7] <unknown> $30:TPrimitive = Call <unknown> $27:TFunction(<unknown> $28:TPrimitive, <unknown> $29:TPrimitive)
+    Create $30 = mutable
+    MaybeAlias $30 <- $27
+    MaybeAlias $30 <- $27
+    MaybeAlias $30 <- $28
+    MaybeAlias $30 <- $29
+  [8] <unknown> $32:TPrimitive = StoreLocal Const <unknown> y$31:TPrimitive = <unknown> $30:TPrimitive
+    Assign y$31 = $30
+    Assign $32 = $30
+  [9] <unknown> $33 = LoadGlobal(global) obj
+    Create $33 = global
+  [10] <unknown> $34:TFunction = PropertyLoad <unknown> $33.method
+    Create $34 = global
+  [11] <unknown> $35:TPrimitive = LoadLocal <unknown> x$25:TPrimitive
+  [12] <unknown> $36 = MethodCall <unknown> $33.<unknown> $34:TFunction(<unknown> $35:TPrimitive)
+    Create $36 = mutable
+    MaybeAlias $36 <- $33
+    MaybeAlias $36 <- $34
+    MaybeAlias $36 <- $35
+  [14] <unknown> $39:TPrimitive = LoadLocal <unknown> x$25:TPrimitive
+  [15] <unknown> $40:TPrimitive = LoadLocal <unknown> y$31:TPrimitive
+    Assign $40 = y$31
+  [16] <unknown> $41:TPrimitive = Binary <unknown> $39:TPrimitive + <unknown> $40:TPrimitive
+    Create $41 = primitive
+  [17] Return Explicit <unknown> $41:TPrimitive
+    Freeze $41 jsx-captured

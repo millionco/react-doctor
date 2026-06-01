@@ -1,0 +1,42 @@
+Component(<unknown> props$14): <unknown> $13
+bb0 (block):
+  [1] <unknown> $15 = LoadGlobal(global) foo
+    Create $15 = global
+  [2] <unknown> $16:TFunction = PropertyLoad <unknown> $15.bar
+    Create $16 = global
+  [3] <unknown> $17 = LoadLocal <unknown> props$14
+    ImmutableCapture $17 <- props$14
+  [4] <unknown> $18 = PropertyLoad <unknown> $17.a
+    Create $18 = frozen
+    ImmutableCapture $18 <- $17
+  [5] <unknown> $19:TPrimitive = null
+    Create $19 = primitive
+  [6] <unknown> $20 = LoadLocal <unknown> props$14
+    ImmutableCapture $20 <- props$14
+  [7] <unknown> $21 = PropertyLoad <unknown> $20.b
+    Create $21 = frozen
+    ImmutableCapture $21 <- $20
+  [8] <unknown> $22 = MethodCall <unknown> $15.<unknown> $16:TFunction(...<unknown> $18, <unknown> $19:TPrimitive, ...<unknown> $21)
+    Create $22 = mutable
+    MaybeAlias $22 <- $15
+    MaybeAlias $22 <- $16
+    ImmutableCapture $22 <- $18
+    ImmutableCapture $15 <- $18
+    ImmutableCapture $16 <- $18
+    ImmutableCapture $18 <- $18
+    ImmutableCapture $19 <- $18
+    ImmutableCapture $21 <- $18
+    MaybeAlias $22 <- $19
+    ImmutableCapture $22 <- $21
+    ImmutableCapture $15 <- $21
+    ImmutableCapture $16 <- $21
+    ImmutableCapture $18 <- $21
+    ImmutableCapture $19 <- $21
+    ImmutableCapture $21 <- $21
+  [9] <unknown> $24 = StoreLocal Const <unknown> x$23 = <unknown> $22
+    Assign x$23 = $22
+    Assign $24 = $22
+  [10] <unknown> $25 = LoadLocal <unknown> x$23
+    Assign $25 = x$23
+  [11] Return Explicit <unknown> $25
+    Freeze $25 jsx-captured

@@ -1,0 +1,33 @@
+function Component(
+  <unknown> props$21{reactive},
+) {
+  scope @0 [1:28] dependencies=[props$21_2:16:2:23] declarations=[t0$41_@0] reassignments=[] {
+    [2] store t0$36{reactive} = OptionalExpression optional=true
+      Sequence
+          [18] read $31_@0[1:28]:TFunction{reactive} = Sequence
+              [3] store $31_@0[1:28]:TFunction{reactive} = OptionalExpression optional=true
+                Sequence
+                    [12] read $26_@0[1:28]:TFunction{reactive} = Sequence
+                        [4] store $26_@0[1:28]:TFunction{reactive} = OptionalExpression optional=true
+                          Sequence
+                              [5] mutate? $22_@0[1:28]:TFunction = LoadGlobal(global) call
+                              [10] Sequence
+                                  [7] mutate? $23{reactive} = LoadLocal read props$21{reactive}
+                                  [8] mutate? $24{reactive} = PropertyLoad read $23{reactive}.a
+                                  [9] store $25_@0[1:28]:TFunction{reactive} = Call capture $22_@0[1:28]:TFunction{reactive}(read $24{reactive})
+                                  [10] LoadLocal capture $25_@0[1:28]:TFunction{reactive}
+                        [12] LoadLocal read $26_@0[1:28]:TFunction{reactive}
+                    [16] Sequence
+                        [13] mutate? $28{reactive} = LoadLocal read props$21{reactive}
+                        [14] mutate? $29{reactive} = PropertyLoad read $28{reactive}.b
+                        [15] store $30_@0[1:28]:TFunction{reactive} = Call capture $26_@0[1:28]:TFunction{reactive}(read $29{reactive})
+                        [16] LoadLocal capture $30_@0[1:28]:TFunction{reactive}
+              [18] LoadLocal read $31_@0[1:28]:TFunction{reactive}
+          [22] Sequence
+              [19] mutate? $33{reactive} = LoadLocal read props$21{reactive}
+              [20] mutate? $34{reactive} = PropertyLoad read $33{reactive}.c
+              [21] store $35_@0[1:28]{reactive} = Call capture $31_@0[1:28]:TFunction{reactive}(read $34{reactive})
+              [22] LoadLocal capture $35_@0[1:28]{reactive}
+  }
+  [28] return freeze t0$41:TPhi{reactive}
+}

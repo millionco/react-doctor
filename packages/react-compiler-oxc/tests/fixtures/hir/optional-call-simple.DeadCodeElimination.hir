@@ -1,0 +1,34 @@
+Component(<unknown> props$10): <unknown> $9:TPhi
+bb0 (block):
+  [1] Optional (optional=true) test:bb4 fallthrough=bb1
+bb4 (value):
+  predecessor blocks: bb0
+  [2] <unknown> $11:TFunction = LoadGlobal(global) foo
+    Create $11 = global
+  [3] Branch (<unknown> $11:TFunction) then:bb2 else:bb3 fallthrough:bb1
+bb2 (value):
+  predecessor blocks: bb4
+  [4] <unknown> $12 = LoadLocal <unknown> props$10
+    ImmutableCapture $12 <- props$10
+  [5] <unknown> $13 = Call <unknown> $11:TFunction(<unknown> $12)
+    Create $13 = mutable
+    MaybeAlias $13 <- $11
+    MaybeAlias $13 <- $11
+    ImmutableCapture $13 <- $12
+    ImmutableCapture $11 <- $12
+    ImmutableCapture $11 <- $12
+  [6] <unknown> $15 = StoreLocal Const <unknown> $14 = <unknown> $13
+    Assign $14 = $13
+    Assign $15 = $13
+  [7] Goto bb1
+bb3 (value):
+  predecessor blocks: bb4
+  [8] <unknown> $16:TPrimitive = <undefined>
+    Create $16 = primitive
+  [9] <unknown> $18:TPrimitive = StoreLocal Const <unknown> $17:TPrimitive = <unknown> $16:TPrimitive
+  [10] Goto bb1
+bb1 (block):
+  predecessor blocks: bb2 bb3
+  <unknown> $19:TPhi:TPhi: phi(bb2: <unknown> $14, bb3: <unknown> $17:TPrimitive)
+  [11] Return Explicit <unknown> $19:TPhi
+    Freeze $19 jsx-captured

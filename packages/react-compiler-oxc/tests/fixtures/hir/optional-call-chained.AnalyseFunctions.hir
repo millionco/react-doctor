@@ -1,0 +1,49 @@
+Component(<unknown> props$21): <unknown> $20:TPhi
+bb0 (block):
+  [1] Optional (optional=true) test:bb4 fallthrough=bb1
+bb4 (value):
+  predecessor blocks: bb0
+  [2] Optional (optional=true) test:bb7 fallthrough=bb5
+bb7 (value):
+  predecessor blocks: bb4
+  [3] Optional (optional=true) test:bb10 fallthrough=bb8
+bb10 (value):
+  predecessor blocks: bb7
+  [4] <unknown> $22:TFunction = LoadGlobal(global) call
+  [5] Branch (<unknown> $22:TFunction) then:bb9 else:bb3 fallthrough:bb8
+bb9 (value):
+  predecessor blocks: bb10
+  [6] <unknown> $23 = LoadLocal <unknown> props$21
+  [7] <unknown> $24 = PropertyLoad <unknown> $23.a
+  [8] <unknown> $25:TFunction = Call <unknown> $22:TFunction(<unknown> $24)
+  [9] <unknown> $27:TFunction = StoreLocal Const <unknown> $26:TFunction = <unknown> $25:TFunction
+  [10] Goto bb8
+bb8 (value):
+  predecessor blocks: bb9
+  [11] Branch (<unknown> $26:TFunction) then:bb6 else:bb3 fallthrough:bb5
+bb6 (value):
+  predecessor blocks: bb8
+  [12] <unknown> $28 = LoadLocal <unknown> props$21
+  [13] <unknown> $29 = PropertyLoad <unknown> $28.b
+  [14] <unknown> $30:TFunction = Call <unknown> $26:TFunction(<unknown> $29)
+  [15] <unknown> $32:TFunction = StoreLocal Const <unknown> $31:TFunction = <unknown> $30:TFunction
+  [16] Goto bb5
+bb5 (value):
+  predecessor blocks: bb6
+  [17] Branch (<unknown> $31:TFunction) then:bb2 else:bb3 fallthrough:bb1
+bb2 (value):
+  predecessor blocks: bb5
+  [18] <unknown> $33 = LoadLocal <unknown> props$21
+  [19] <unknown> $34 = PropertyLoad <unknown> $33.c
+  [20] <unknown> $35 = Call <unknown> $31:TFunction(<unknown> $34)
+  [21] <unknown> $37 = StoreLocal Const <unknown> $36 = <unknown> $35
+  [22] Goto bb1
+bb3 (value):
+  predecessor blocks: bb5 bb8 bb10
+  [23] <unknown> $38:TPrimitive = <undefined>
+  [24] <unknown> $40:TPrimitive = StoreLocal Const <unknown> $39:TPrimitive = <unknown> $38:TPrimitive
+  [25] Goto bb1
+bb1 (block):
+  predecessor blocks: bb2 bb3
+  <unknown> $41:TPhi:TPhi: phi(bb2: <unknown> $36, bb3: <unknown> $39:TPrimitive)
+  [26] Return Explicit <unknown> $41:TPhi

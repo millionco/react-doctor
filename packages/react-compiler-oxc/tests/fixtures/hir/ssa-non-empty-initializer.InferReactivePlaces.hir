@@ -1,0 +1,28 @@
+foo(<unknown> a$14{reactive}, <unknown> b$15{reactive}): <unknown> $13:TPhi
+bb0 (block):
+  [1] mutate? $16:TObject<BuiltInArray> = Array []
+    Create $16 = mutable
+  [2] store $18:TObject<BuiltInArray> = StoreLocal Let store x$17:TObject<BuiltInArray> = capture $16:TObject<BuiltInArray>
+    Assign x$17 = $16
+    Assign $18 = $16
+  [3] mutate? $19{reactive} = LoadLocal read a$14{reactive}
+    ImmutableCapture $19 <- a$14
+  [4] If (read $19{reactive}) then:bb2 else:bb1 fallthrough=bb1
+bb2 (block):
+  predecessor blocks: bb0
+  [5] mutate? $20:TPrimitive = 1
+    Create $20 = primitive
+  [6] mutate? $22:TPrimitive = StoreLocal Reassign mutate? x$21:TPrimitive = read $20:TPrimitive
+  [7] Goto bb1
+bb1 (block):
+  predecessor blocks: bb2 bb0
+  store x$23:TPhi{reactive}:TPhi: phi(bb2: read x$21:TPrimitive, bb0: read x$17:TObject<BuiltInArray>)
+  [8] store $24:TPhi{reactive} = LoadLocal capture x$23:TPhi{reactive}
+    Assign $24 = x$23
+  [9] store $26:TPhi{reactive} = StoreLocal Let store y$25:TPhi{reactive} = capture $24:TPhi{reactive}
+    Assign y$25 = $24
+    Assign $26 = $24
+  [10] store $27:TPhi{reactive} = LoadLocal capture y$25:TPhi{reactive}
+    Assign $27 = y$25
+  [11] Return Explicit freeze $27:TPhi{reactive}
+    Freeze $27 jsx-captured

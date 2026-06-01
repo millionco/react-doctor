@@ -1,0 +1,10 @@
+function Component(
+  <unknown> props$9{reactive},
+) {
+  [1] mutate? $10{reactive} = LoadLocal read props$9{reactive}
+  [2] mutate? $11{reactive} = PropertyLoad read $10{reactive}.name
+  [3] mutate? $12:TPrimitive{reactive} = `hi ${read $11{reactive}} bye`
+  [4] mutate? $14:TPrimitive{reactive} = StoreLocal Const mutate? c$13:TPrimitive{reactive} = read $12:TPrimitive{reactive}
+  [5] mutate? $15:TPrimitive{reactive} = LoadLocal read c$13:TPrimitive{reactive}
+  [6] return freeze $15:TPrimitive{reactive}
+}

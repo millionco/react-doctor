@@ -1,0 +1,14 @@
+foo(): <unknown> $14
+bb0 (block):
+  [1] <unknown> $0 = Array []
+  [2] <unknown> $2 = StoreLocal Const <unknown> x$1 = <unknown> $0
+  [3] <unknown> $3 = LoadLocal <unknown> x$1
+  [4] <unknown> $4 = Object { x: <unknown> $3 }
+  [5] <unknown> $6 = StoreLocal Const <unknown> y$5 = <unknown> $4
+  [6] <unknown> $7 = LoadLocal <unknown> y$5
+  [7] <unknown> $8 = PropertyLoad <unknown> $7.x
+  [8] <unknown> $9 = PropertyLoad <unknown> $8.push
+  [9] <unknown> $10 = Array []
+  [10] <unknown> $11 = MethodCall <unknown> $8.<unknown> $9(<unknown> $10)
+  [11] <unknown> $12 = LoadLocal <unknown> y$5
+  [12] Return Explicit <unknown> $12

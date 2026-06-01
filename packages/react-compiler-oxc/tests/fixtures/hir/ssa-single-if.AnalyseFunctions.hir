@@ -1,0 +1,13 @@
+foo(): <unknown> $13:TPrimitive
+bb0 (block):
+  [1] <unknown> $14:TPrimitive = 1
+  [2] <unknown> $16:TPrimitive = StoreLocal Let <unknown> x$15:TPrimitive = <unknown> $14:TPrimitive
+  [3] <unknown> $17:TPrimitive = 2
+  [4] <unknown> $19:TPrimitive = StoreLocal Let <unknown> y$18:TPrimitive = <unknown> $17:TPrimitive
+  [5] <unknown> $20:TPrimitive = 2
+  [7] <unknown> $21:TPrimitive = 1
+  [8] <unknown> $22:TPrimitive = 2
+  [9] <unknown> $23:TPrimitive = 3
+  [10] <unknown> $25:TPrimitive = StoreLocal Let <unknown> z$24:TPrimitive = <unknown> $23:TPrimitive
+  [12] <unknown> $26:TPrimitive = <undefined>
+  [13] Return Void <unknown> $26:TPrimitive

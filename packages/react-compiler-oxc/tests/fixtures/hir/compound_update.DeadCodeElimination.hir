@@ -1,0 +1,17 @@
+Component(<unknown> props$17): <unknown> $16:TPrimitive
+bb0 (block):
+  [8] <unknown> $27 = LoadLocal <unknown> props$17
+    ImmutableCapture $27 <- props$17
+  [9] <unknown> $28:TPrimitive = PropertyLoad <unknown> $27.count
+    Create $28 = primitive
+  [10] <unknown> $29:TPrimitive = 1
+    Create $29 = primitive
+  [11] <unknown> $30:TPrimitive = Binary <unknown> $28:TPrimitive + <unknown> $29:TPrimitive
+    Create $30 = primitive
+  [12] <unknown> $31 = PropertyStore <unknown> $27.count = <unknown> $30:TPrimitive
+    MutateFrozen $27 reason="This value cannot be modified"
+    Create $31 = primitive
+  [13] <unknown> $32:TPrimitive = 5
+    Create $32 = primitive
+  [14] Return Explicit <unknown> $32:TPrimitive
+    Freeze $32 jsx-captured

@@ -1,0 +1,66 @@
+{
+  "name": "babel-plugin-react-compiler",
+  "version": "0.0.0-experimental-vendored",
+  "private": true,
+  "description": "Vendored copy of babel-plugin-react-compiler (React Compiler) wired into the react-doctor pnpm/turbo workspace.",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "!*.tsbuildinfo"
+  ],
+  "main": "./dist/index.js",
+  "exports": {
+    ".": {
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && cross-env NODE_ENV=production vp pack",
+    "test": "vp test run",
+    "typecheck": "tsc --noEmit",
+    "verify": "tsx src/verify/cli.ts"
+  },
+  "dependencies": {
+    "@babel/code-frame": "^7.27.1",
+    "@babel/generator": "^7.27.1",
+    "@babel/parser": "^7.27.1",
+    "@babel/traverse": "^7.27.1",
+    "@babel/types": "7.26.3"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.27.1",
+    "@babel/preset-react": "^7.27.1",
+    "@testing-library/react": "^16.3.0",
+    "@tsconfig/strictest": "^2.0.5",
+    "@types/babel__code-frame": "^7.0.6",
+    "@types/babel__core": "^7.20.5",
+    "@types/babel__generator": "^7.27.0",
+    "@types/babel__traverse": "^7.20.7",
+    "@types/invariant": "^2.2.35",
+    "@types/node": "^25.6.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "babel-plugin-fbt": "1.0.0",
+    "babel-plugin-fbt-runtime": "1.0.0",
+    "babel-plugin-idx": "3.0.3",
+    "commander": "^14.0.1",
+    "cross-env": "^10.1.0",
+    "hermes-parser": "0.25.1",
+    "invariant": "^2.2.4",
+    "jsdom": "^26.1.0",
+    "prettier": "3.3.3",
+    "pretty-format": "^29.7.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "tsx": "^4.20.6",
+    "typescript": "^6.0.3",
+    "zod": "^4.1.12",
+    "zod-validation-error": "^4.0.2"
+  },
+  "peerDependencies": {
+    "@babel/core": "^7.27.1"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  }
+}

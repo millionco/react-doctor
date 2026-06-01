@@ -1,0 +1,41 @@
+Component(<unknown> props$14): <unknown> $13
+bb0 (block):
+  [1] mutate? $15[1:10]:TFunction = LoadGlobal(global) makeObject
+    Create $15 = global
+  [2] store $16[2:10] = Call capture $15[1:10]:TFunction()
+    Create $16 = mutable
+    MaybeAlias $16 <- $15
+    MaybeAlias $16 <- $15
+  [3] store $18[3:10] = StoreLocal Let store x$17[3:10] = capture $16[2:10]
+    Assign x$17 = $16
+    Assign $18 = $16
+  [4] store $19[4:10] = LoadLocal capture x$17[3:10]
+    Assign $19 = x$17
+  [5] store $20[5:10]:TFunction = PropertyLoad capture $19[4:10].foo
+    Create $20 = kindOf($19)
+  [6] mutate? $21[6:10]:TFunction = LoadGlobal(global) makeObject
+    Create $21 = global
+  [7] store $22[7:10] = Call capture $21[6:10]:TFunction()
+    Create $22 = mutable
+    MaybeAlias $22 <- $21
+    MaybeAlias $22 <- $21
+  [8] store $24[8:10] = StoreLocal Reassign store x$23[8:10] = capture $22[7:10]
+    Assign x$23 = $22
+    Assign $24 = $22
+  [9] store $25 = MethodCall store $19[4:10].store $20[5:10]:TFunction(capture $24[8:10])
+    Create $25 = mutable
+    MutateTransitiveConditionally $19
+    MaybeAlias $25 <- $19
+    Capture $20 <- $19
+    Capture $24 <- $19
+    MaybeAlias $25 <- $20
+    Capture $19 <- $20
+    Capture $24 <- $20
+    MutateTransitiveConditionally $24
+    MaybeAlias $25 <- $24
+    Capture $19 <- $24
+    Capture $20 <- $24
+  [10] store $26 = LoadLocal capture x$23[8:10]
+    Assign $26 = x$23
+  [11] Return Explicit freeze $26
+    Freeze $26 jsx-captured

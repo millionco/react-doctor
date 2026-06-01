@@ -1,0 +1,17 @@
+Component(<unknown> props$20): <unknown> $19
+bb0 (block):
+  [1] <unknown> $21 = LoadGlobal import { useIdentity } from 'shared-runtime'
+  [2] <unknown> $22 = LoadLocal <unknown> props$20
+  [3] <unknown> $23 = Call <unknown> $21(<unknown> $22)
+  [4] <unknown> $26 = Destructure Const { x: <unknown> x$24, ...<unknown> rest$25 } = <unknown> $23
+  [5] <unknown> $27 = LoadLocal <unknown> rest$25
+  [6] <unknown> $28 = PropertyLoad <unknown> $27.z
+  [7] <unknown> $30 = StoreLocal Const <unknown> z$29 = <unknown> $28
+  [8] <unknown> $31 = LoadGlobal import { identity } from 'shared-runtime'
+  [9] <unknown> $32 = LoadLocal <unknown> z$29
+  [10] <unknown> $33 = Call <unknown> $31(<unknown> $32)
+  [11] <unknown> $34 = LoadGlobal import { Stringify } from 'shared-runtime'
+  [12] <unknown> $35 = LoadLocal <unknown> x$24
+  [13] <unknown> $36 = LoadLocal <unknown> z$29
+  [14] <unknown> $37 = JSX <<unknown> $34 x={<unknown> $35} z={<unknown> $36} />
+  [15] Return Explicit <unknown> $37

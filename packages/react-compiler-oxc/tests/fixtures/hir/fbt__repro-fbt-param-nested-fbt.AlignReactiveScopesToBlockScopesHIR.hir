@@ -1,0 +1,119 @@
+Component(<unknown> #t0$38:TObject<BuiltInProps>{reactive}): <unknown> $37:TObject<BuiltInJsx>
+use memo
+bb0 (block):
+  [1] mutate? $41{reactive} = Destructure Const { firstname: mutate? firstname$39{reactive}, lastname: mutate? lastname$40{reactive} } = read #t0$38:TObject<BuiltInProps>{reactive}
+    Create firstname$39 = frozen
+    ImmutableCapture firstname$39 <- #t0$38
+    Create lastname$40 = frozen
+    ImmutableCapture lastname$40 <- #t0$38
+    ImmutableCapture $41 <- #t0$38
+  [2] mutate? $42_@0[2:33]:TFunction = LoadGlobal import fbt from 'fbt'
+    Create $42_@0 = global
+  [3] mutate? $43_@0[2:33]:TPrimitive = "Name: "
+    Create $43_@0 = primitive
+  [4] mutate? $44_@0[2:33] = LoadGlobal import fbt from 'fbt'
+    Create $44_@0 = global
+  [5] mutate? $45_@0[2:33]:TFunction{reactive} = PropertyLoad read $44_@0[2:33]{reactive}.param
+    Create $45_@0 = global
+  [6] mutate? $46_@0[2:33]:TPrimitive = "firstname"
+    Create $46_@0 = primitive
+  [7] mutate? $47_@0[2:33]:TFunction = LoadGlobal import { identity } from 'shared-runtime'
+    Create $47_@0 = global
+  [8] mutate? $48{reactive} = LoadLocal read firstname$39{reactive}
+    ImmutableCapture $48 <- firstname$39
+  [9] store $49_@0[2:33]{reactive} = Call capture $47_@0[2:33]:TFunction{reactive}(read $48{reactive})
+    Create $49_@0 = mutable
+    MaybeAlias $49_@0 <- $47_@0
+    MaybeAlias $49_@0 <- $47_@0
+    ImmutableCapture $49_@0 <- $48
+    ImmutableCapture $47_@0 <- $48
+    ImmutableCapture $47_@0 <- $48
+  [10] store $50_@0[2:33]{reactive} = MethodCall capture $44_@0[2:33]{reactive}.capture $45_@0[2:33]:TFunction{reactive}(capture $46_@0[2:33]:TPrimitive{reactive}, capture $49_@0[2:33]{reactive})
+    Create $50_@0 = mutable
+    MaybeAlias $50_@0 <- $44_@0
+    MaybeAlias $50_@0 <- $45_@0
+    MaybeAlias $50_@0 <- $46_@0
+    MutateTransitiveConditionally $49_@0
+    MaybeAlias $50_@0 <- $49_@0
+  [11] mutate? $51_@0[2:33]:TPrimitive = ", "
+    Create $51_@0 = primitive
+  [12] mutate? $52_@0[2:33] = LoadGlobal import fbt from 'fbt'
+    Create $52_@0 = global
+  [13] mutate? $53_@0[2:33]:TFunction{reactive} = PropertyLoad read $52_@0[2:33]{reactive}.param
+    Create $53_@0 = global
+  [14] mutate? $54_@0[2:33]:TPrimitive = "lastname"
+    Create $54_@0 = primitive
+  [15] mutate? $55_@0[2:33]:TFunction = LoadGlobal import { identity } from 'shared-runtime'
+    Create $55_@0 = global
+  [16] mutate? $56_@0[2:33]:TFunction = LoadGlobal import fbt from 'fbt'
+    Create $56_@0 = global
+  [17] mutate? $57_@0[2:33]:TPrimitive = "(inner)"
+    Create $57_@0 = primitive
+  [18] mutate? $58 = LoadGlobal import fbt from 'fbt'
+    Create $58 = global
+  [19] mutate? $59_@0[2:33]:TFunction = PropertyLoad read $58.param
+    Create $59_@0 = global
+  [20] mutate? $60:TPrimitive = "lastname"
+    Create $60 = primitive
+  [21] mutate? $61_@0[2:33]:TFunction = LoadGlobal import { identity } from 'shared-runtime'
+    Create $61_@0 = global
+  [22] mutate? $62{reactive} = LoadLocal read lastname$40{reactive}
+    ImmutableCapture $62 <- lastname$40
+  [23] store $63_@0[2:33]{reactive} = Call capture $61_@0[2:33]:TFunction{reactive}(read $62{reactive})
+    Create $63_@0 = mutable
+    MaybeAlias $63_@0 <- $61_@0
+    MaybeAlias $63_@0 <- $61_@0
+    ImmutableCapture $63_@0 <- $62
+    ImmutableCapture $61_@0 <- $62
+    ImmutableCapture $61_@0 <- $62
+  [24] store $64_@0[2:33]:TPrimitive{reactive} = MethodCall capture $58.capture $59_@0[2:33]:TFunction{reactive}(capture $60:TPrimitive, capture $63_@0[2:33]{reactive})
+    Create $64_@0 = mutable
+    MaybeAlias $64_@0 <- $58
+    MaybeAlias $64_@0 <- $59_@0
+    MaybeAlias $64_@0 <- $60
+    MutateTransitiveConditionally $63_@0
+    MaybeAlias $64_@0 <- $63_@0
+  [25] mutate? $65_@0[2:33]:TPrimitive{reactive} = Binary read $57_@0[2:33]:TPrimitive + read $64_@0[2:33]:TPrimitive{reactive}
+    Create $65_@0 = primitive
+  [26] mutate? $66_@0[2:33]:TPrimitive = "Inner fbt value"
+    Create $66_@0 = primitive
+  [27] store $67_@0[2:33]{reactive} = Call capture $56_@0[2:33]:TFunction{reactive}(capture $65_@0[2:33]:TPrimitive{reactive}, capture $66_@0[2:33]:TPrimitive{reactive})
+    Create $67_@0 = mutable
+    MaybeAlias $67_@0 <- $56_@0
+    MaybeAlias $67_@0 <- $56_@0
+    MaybeAlias $67_@0 <- $65_@0
+    MaybeAlias $67_@0 <- $66_@0
+  [28] store $68_@0[2:33]{reactive} = Call capture $55_@0[2:33]:TFunction{reactive}(capture $67_@0[2:33]{reactive})
+    Create $68_@0 = mutable
+    MaybeAlias $68_@0 <- $55_@0
+    MaybeAlias $68_@0 <- $55_@0
+    MutateTransitiveConditionally $67_@0
+    MaybeAlias $68_@0 <- $67_@0
+  [29] store $69_@0[2:33]{reactive} = MethodCall capture $52_@0[2:33]{reactive}.capture $53_@0[2:33]:TFunction{reactive}(capture $54_@0[2:33]:TPrimitive{reactive}, capture $68_@0[2:33]{reactive})
+    Create $69_@0 = mutable
+    MaybeAlias $69_@0 <- $52_@0
+    MaybeAlias $69_@0 <- $53_@0
+    MaybeAlias $69_@0 <- $54_@0
+    MutateTransitiveConditionally $68_@0
+    MaybeAlias $69_@0 <- $68_@0
+  [30] store $70_@0[2:33]:TObject<BuiltInArray>{reactive} = Array [read $43_@0[2:33]:TPrimitive, capture $50_@0[2:33]{reactive}, read $51_@0[2:33]:TPrimitive, capture $69_@0[2:33]{reactive}]
+    Create $70_@0 = mutable
+    Capture $70_@0 <- $50_@0
+    Capture $70_@0 <- $69_@0
+  [31] mutate? $71_@0[2:33]:TPrimitive = "Name"
+    Create $71_@0 = primitive
+  [32] store $72_@0[2:33]{reactive} = Call capture $42_@0[2:33]:TFunction(capture $70_@0[2:33]:TObject<BuiltInArray>{reactive}, capture $71_@0[2:33]:TPrimitive)
+    Create $72_@0 = mutable
+    MaybeAlias $72_@0 <- $42_@0
+    MaybeAlias $72_@0 <- $42_@0
+    MutateTransitiveConditionally $70_@0
+    MaybeAlias $72_@0 <- $70_@0
+    MaybeAlias $72_@0 <- $71_@0
+  [33] mutate? $73_@2:TObject<BuiltInJsx>{reactive} = JSX <div>{freeze $72_@0[2:33]{reactive}}</div>
+    Create $73_@2 = frozen
+    Freeze $72_@0 jsx-captured
+    ImmutableCapture $73_@2 <- $72_@0
+    Render $72_@0
+  [34] Return Explicit freeze $73_@2:TObject<BuiltInJsx>{reactive}
+    Freeze $73_@2 jsx-captured
+

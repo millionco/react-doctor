@@ -1,0 +1,85 @@
+Component(): <unknown> $31
+bb0 (block):
+  [1] mutate? $32:TFunction<<generated_97>>():  :TObject<BuiltInUseState> = LoadGlobal import { useState } from 'react'
+    Create $32 = global
+  [2] mutate? $33:TPrimitive = 0
+    Create $33 = primitive
+  [3] mutate? $34_@0:TObject<BuiltInUseState>{reactive} = Call read $32:TFunction<<generated_97>>():  :TObject<BuiltInUseState>(read $33:TPrimitive)
+    Create $34_@0 = frozen
+  [4] mutate? $37{reactive} = Destructure Const [ mutate? count$35{reactive} ] = read $34_@0:TObject<BuiltInUseState>{reactive}
+    Create count$35 = frozen
+    ImmutableCapture count$35 <- $34_@0
+    Create setCount$36 = frozen
+    ImmutableCapture setCount$36 <- $34_@0
+    ImmutableCapture $37 <- $34_@0
+  [5] mutate? $38_@3[5:29]:TFunction = LoadGlobal import { fbt } from 'fbt'
+    Create $38_@3 = global
+  [6] mutate? $39_@3[5:29]:TPrimitive = "Expected at least "
+    Create $39_@3 = primitive
+  [7] mutate? $40 = LoadGlobal import { fbt } from 'fbt'
+    Create $40 = global
+  [8] mutate? $41_@1[8:14]:TFunction = PropertyLoad read $40.param
+    Create $41_@1 = global
+  [9] mutate? $42:TPrimitive = "min"
+    Create $42 = primitive
+  [10] mutate? $43 = LoadGlobal(module) MIN
+    Create $43 = global
+  [11] mutate? $44:TPrimitive = true
+    Create $44 = primitive
+  [12] mutate? $45_@1[8:14]:TObject<BuiltInObject> = Object { number: read $44:TPrimitive }
+    Create $45_@1 = mutable
+  [13] store $46_@3[5:29]:TPrimitive = MethodCall capture $40.capture $41_@1[8:14]:TFunction(capture $42:TPrimitive, capture $43, capture $45_@1[8:14]:TObject<BuiltInObject>)
+    Create $46_@3 = mutable
+    MaybeAlias $46_@3 <- $40
+    MaybeAlias $46_@3 <- $41_@1
+    MaybeAlias $46_@3 <- $42
+    MaybeAlias $46_@3 <- $43
+    MutateTransitiveConditionally $45_@1
+    MaybeAlias $46_@3 <- $45_@1
+  [14] mutate? $47_@3[5:29]:TPrimitive = Binary read $39_@3[5:29]:TPrimitive + read $46_@3[5:29]:TPrimitive
+    Create $47_@3 = primitive
+  [15] mutate? $48_@3[5:29]:TPrimitive = " items, but got "
+    Create $48_@3 = primitive
+  [16] mutate? $49_@3[5:29]:TPrimitive = Binary read $47_@3[5:29]:TPrimitive + read $48_@3[5:29]:TPrimitive
+    Create $49_@3 = primitive
+  [17] mutate? $50 = LoadGlobal import { fbt } from 'fbt'
+    Create $50 = global
+  [18] mutate? $51_@2[18:24]:TFunction = PropertyLoad read $50.param
+    Create $51_@2 = global
+  [19] mutate? $52:TPrimitive = "count"
+    Create $52 = primitive
+  [20] mutate? $53{reactive} = LoadLocal read count$35{reactive}
+    ImmutableCapture $53 <- count$35
+  [21] mutate? $54:TPrimitive = true
+    Create $54 = primitive
+  [22] mutate? $55_@2[18:24]:TObject<BuiltInObject> = Object { number: read $54:TPrimitive }
+    Create $55_@2 = mutable
+  [23] store $56_@3[5:29]:TPrimitive{reactive} = MethodCall capture $50.capture $51_@2[18:24]:TFunction{reactive}(capture $52:TPrimitive, read $53{reactive}, capture $55_@2[18:24]:TObject<BuiltInObject>{reactive})
+    Create $56_@3 = mutable
+    MaybeAlias $56_@3 <- $50
+    MaybeAlias $56_@3 <- $51_@2
+    MaybeAlias $56_@3 <- $52
+    ImmutableCapture $56_@3 <- $53
+    ImmutableCapture $50 <- $53
+    ImmutableCapture $51_@2 <- $53
+    ImmutableCapture $52 <- $53
+    ImmutableCapture $55_@2 <- $53
+    MutateTransitiveConditionally $55_@2
+    MaybeAlias $56_@3 <- $55_@2
+  [24] mutate? $57_@3[5:29]:TPrimitive{reactive} = Binary read $49_@3[5:29]:TPrimitive + read $56_@3[5:29]:TPrimitive{reactive}
+    Create $57_@3 = primitive
+  [25] mutate? $58_@3[5:29]:TPrimitive = " items."
+    Create $58_@3 = primitive
+  [26] mutate? $59_@3[5:29]:TPrimitive{reactive} = Binary read $57_@3[5:29]:TPrimitive{reactive} + read $58_@3[5:29]:TPrimitive
+    Create $59_@3 = primitive
+  [27] mutate? $60_@3[5:29]:TPrimitive = "Error description"
+    Create $60_@3 = primitive
+  [28] store $61_@3[5:29]{reactive} = Call capture $38_@3[5:29]:TFunction(capture $59_@3[5:29]:TPrimitive{reactive}, capture $60_@3[5:29]:TPrimitive)
+    Create $61_@3 = mutable
+    MaybeAlias $61_@3 <- $38_@3
+    MaybeAlias $61_@3 <- $38_@3
+    MaybeAlias $61_@3 <- $59_@3
+    MaybeAlias $61_@3 <- $60_@3
+  [29] Return Explicit freeze $61_@3[5:29]{reactive}
+    Freeze $61_@3 jsx-captured
+

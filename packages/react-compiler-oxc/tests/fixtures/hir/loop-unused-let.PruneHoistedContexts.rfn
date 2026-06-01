@@ -1,0 +1,10 @@
+function useFoo(
+) {
+  bb0: [1] while (
+    1
+  ) {
+    [4] continue bb0 (implicit)
+  }
+  [5] mutate? $8:TPrimitive = <undefined>
+  [6] return freeze $8:TPrimitive
+}

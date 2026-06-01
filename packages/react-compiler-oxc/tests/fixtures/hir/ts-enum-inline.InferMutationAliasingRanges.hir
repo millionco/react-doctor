@@ -1,0 +1,33 @@
+Component(<unknown> props$15:TObject<BuiltInProps>): <unknown> $14:TObject<BuiltInJsx>
+bb0 (block):
+  [1] mutate? $16 = UnsupportedNode TSEnumDeclaration
+    Create $16 = primitive
+  [2] mutate? $17 = LoadGlobal(global) Bool
+    Create $17 = global
+  [3] mutate? $18 = PropertyLoad read $17.False
+    Create $18 = global
+  [4] mutate? $20 = StoreLocal Let mutate? bool$19 = read $18
+  [5] mutate? $21:TObject<BuiltInProps> = LoadLocal read props$15:TObject<BuiltInProps>
+    ImmutableCapture $21 <- props$15
+  [6] mutate? $22 = PropertyLoad read $21:TObject<BuiltInProps>.value
+    Create $22 = frozen
+    ImmutableCapture $22 <- $21
+  [7] If (read $22) then:bb2 else:bb1 fallthrough=bb1
+bb2 (block):
+  predecessor blocks: bb0
+  [8] mutate? $23 = LoadGlobal(global) Bool
+    Create $23 = global
+  [9] mutate? $24 = PropertyLoad read $23.True
+    Create $24 = global
+  [10] mutate? $26 = StoreLocal Reassign mutate? bool$25 = read $24
+  [11] Goto bb1
+bb1 (block):
+  predecessor blocks: bb2 bb0
+  store bool$27:TPhi:TPhi: phi(bb2: read bool$25, bb0: read bool$19)
+  [12] mutate? $28:TPhi = LoadLocal read bool$27:TPhi
+  [13] mutate? $29:TObject<BuiltInJsx> = JSX <div>{read $28:TPhi}</div>
+    Create $29 = frozen
+    Render $28
+  [14] Return Explicit freeze $29:TObject<BuiltInJsx>
+    Freeze $29 jsx-captured
+

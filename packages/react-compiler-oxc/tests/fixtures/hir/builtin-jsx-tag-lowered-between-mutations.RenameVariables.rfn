@@ -1,0 +1,14 @@
+function Component(
+  <unknown> props$11{reactive},
+) {
+  scope @0 [1:12] dependencies=[] declarations=[t0$19_@1] reassignments=[] {
+    [2] mutate? $12_@0[1:12]:TFunction = LoadGlobal(global) MaybeMutable
+    [3] store $13_@0[1:12] = New capture $12_@0[1:12]:TFunction()
+    [4] StoreLocal Const store maybeMutable$14_@0[1:12] = capture $13_@0[1:12]
+    [5] mutate? $16:TFunction = LoadGlobal(global) maybeMutate
+    [6] store $17_@0[1:12] = LoadLocal capture maybeMutable$14_@0[1:12]
+    [7] store $18_@0[1:12] = Call capture $16:TFunction(capture $17_@0[1:12])
+    [10] mutate? t0$19_@1[9:12]:TObject<BuiltInJsx> = JSX <div>{freeze $18_@0[1:12]}</div>
+  }
+  [12] return freeze t0$19_@1[9:12]:TObject<BuiltInJsx>
+}

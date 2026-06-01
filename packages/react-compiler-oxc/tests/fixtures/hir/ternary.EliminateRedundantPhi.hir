@@ -1,0 +1,26 @@
+Component(<unknown> props$15): <unknown> $14
+bb0 (block):
+  [1] Ternary test:bb2 fallthrough=bb1
+bb2 (value):
+  predecessor blocks: bb0
+  [2] <unknown> $16 = LoadLocal <unknown> props$15
+  [3] <unknown> $17 = PropertyLoad <unknown> $16.x
+  [4] Branch (<unknown> $17) then:bb3 else:bb4 fallthrough:bb1
+bb3 (value):
+  predecessor blocks: bb2
+  [5] <unknown> $18 = LoadLocal <unknown> props$15
+  [6] <unknown> $19 = PropertyLoad <unknown> $18.y
+  [7] <unknown> $21 = StoreLocal Const <unknown> $20 = <unknown> $19
+  [8] Goto bb1
+bb4 (value):
+  predecessor blocks: bb2
+  [9] <unknown> $22 = LoadLocal <unknown> props$15
+  [10] <unknown> $23 = PropertyLoad <unknown> $22.z
+  [11] <unknown> $25 = StoreLocal Const <unknown> $24 = <unknown> $23
+  [12] Goto bb1
+bb1 (block):
+  predecessor blocks: bb3 bb4
+  <unknown> $26: phi(bb3: <unknown> $20, bb4: <unknown> $24)
+  [13] <unknown> $28 = StoreLocal Const <unknown> a$27 = <unknown> $26
+  [14] <unknown> $29 = LoadLocal <unknown> a$27
+  [15] Return Explicit <unknown> $29

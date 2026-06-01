@@ -1,0 +1,24 @@
+MyApp(<unknown> props$10{reactive}): <unknown> $9:TPrimitive
+bb0 (block):
+  [2] mutate? $13{reactive} = LoadLocal read props$10{reactive}
+    ImmutableCapture $13 <- props$10
+  [3] mutate? $14{reactive} = PropertyLoad read $13{reactive}.cond
+    Create $14 = frozen
+    ImmutableCapture $14 <- $13
+  [4] If (read $14{reactive}) then:bb2 else:bb4 fallthrough=bb1
+bb2 (block):
+  predecessor blocks: bb0
+  [5] mutate? $15:TPrimitive = <undefined>
+    Create $15 = primitive
+  [6] Return Explicit freeze $15:TPrimitive
+    Freeze $15 jsx-captured
+bb4 (block):
+  predecessor blocks: bb0
+  [9] Goto bb1
+bb1 (block):
+  predecessor blocks: bb4
+  [10] mutate? $19:TPrimitive = <undefined>
+    Create $19 = primitive
+  [11] Return Void freeze $19:TPrimitive
+    Freeze $19 jsx-captured
+

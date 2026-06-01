@@ -1,0 +1,5 @@
+Component(<unknown> e$4): <unknown> $3
+bb0 (block):
+  [1] mutate? $5 = LoadLocal read e$4
+    ImmutableCapture $5 <- e$4
+  [2] Throw read $5

@@ -1,0 +1,10 @@
+Component(<unknown> props$10): <unknown> $9
+bb0 (block):
+  [1] <unknown> $11 = "x"
+  [2] <unknown> $12 = LoadLocal <unknown> props$10
+  [3] <unknown> $13 = PropertyLoad <unknown> $12.handler
+  [4] <unknown> $14 = LoadLocal <unknown> props$10
+  [5] <unknown> $15 = PropertyLoad <unknown> $14.child
+  [6] <unknown> $16 = JSXText "text"
+  [7] <unknown> $17 = JSX <div className={<unknown> $11} onClick={<unknown> $13} >{<unknown> $15}{<unknown> $16}</div>
+  [8] Return Explicit <unknown> $17

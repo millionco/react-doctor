@@ -1,0 +1,43 @@
+Component(<unknown> props$15{reactive}): <unknown> $14:TPhi
+bb0 (block):
+  [1] Ternary test:bb2 fallthrough=bb1
+bb2 (value):
+  predecessor blocks: bb0
+  [2] mutate? $16{reactive} = LoadLocal read props$15{reactive}
+    ImmutableCapture $16 <- props$15
+  [3] mutate? $17{reactive} = PropertyLoad read $16{reactive}.x
+    Create $17 = frozen
+    ImmutableCapture $17 <- $16
+  [4] Branch (read $17{reactive}) then:bb3 else:bb4 fallthrough:bb1
+bb3 (value):
+  predecessor blocks: bb2
+  [5] mutate? $18{reactive} = LoadLocal read props$15{reactive}
+    ImmutableCapture $18 <- props$15
+  [6] mutate? $19{reactive} = PropertyLoad read $18{reactive}.y
+    Create $19 = frozen
+    ImmutableCapture $19 <- $18
+  [7] mutate? $21{reactive} = StoreLocal Const mutate? $20{reactive} = read $19{reactive}
+    ImmutableCapture $20 <- $19
+    ImmutableCapture $21 <- $19
+  [8] Goto bb1
+bb4 (value):
+  predecessor blocks: bb2
+  [9] mutate? $22{reactive} = LoadLocal read props$15{reactive}
+    ImmutableCapture $22 <- props$15
+  [10] mutate? $23{reactive} = PropertyLoad read $22{reactive}.z
+    Create $23 = frozen
+    ImmutableCapture $23 <- $22
+  [11] mutate? $25{reactive} = StoreLocal Const mutate? $24{reactive} = read $23{reactive}
+    ImmutableCapture $24 <- $23
+    ImmutableCapture $25 <- $23
+  [12] Goto bb1
+bb1 (block):
+  predecessor blocks: bb3 bb4
+  store $26:TPhi{reactive}:TPhi: phi(bb3: read $20{reactive}, bb4: read $24)
+  [13] mutate? $28:TPhi{reactive} = StoreLocal Const mutate? a$27:TPhi{reactive} = read $26:TPhi{reactive}
+    ImmutableCapture a$27 <- $26
+    ImmutableCapture $28 <- $26
+  [14] mutate? $29:TPhi{reactive} = LoadLocal read a$27:TPhi{reactive}
+    ImmutableCapture $29 <- a$27
+  [15] Return Explicit freeze $29:TPhi{reactive}
+    Freeze $29 jsx-captured

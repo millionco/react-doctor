@@ -1,0 +1,28 @@
+Component(<unknown> n$10): <unknown> $9
+bb0 (block):
+  [1] For init=bb3 test=bb1 loop=bb5 update=bb4 fallthrough=bb2
+bb3 (loop):
+  predecessor blocks: bb0
+  [2] <unknown> $11:TPrimitive = 0
+    Create $11 = primitive
+  [3] <unknown> $13:TPrimitive = StoreLocal Let <unknown> i$12:TPrimitive = <unknown> $11:TPrimitive
+  [4] Goto bb1
+bb1 (loop):
+  predecessor blocks: bb3 bb4
+  [5] <unknown> $15:TPrimitive = 0
+    Create $15 = primitive
+  [6] Branch (<unknown> $15:TPrimitive) then:bb5 else:bb2 fallthrough:bb2
+bb5 (block):
+  predecessor blocks: bb1
+  [8] Goto(Continue) bb4
+bb4 (loop):
+  predecessor blocks: bb5
+  [9] <unknown> $18:TPrimitive = 0
+    Create $18 = primitive
+  [10] Goto bb1
+bb2 (block):
+  predecessor blocks: bb1
+  [11] <unknown> $19 = LoadLocal <unknown> n$10
+    ImmutableCapture $19 <- n$10
+  [12] Return Explicit <unknown> $19
+    Freeze $19 jsx-captured

@@ -1,0 +1,32 @@
+function foo(
+  <unknown> a$20{reactive},
+  <unknown> b$21{reactive},
+  <unknown> c$22{reactive},
+  <unknown> d$23{reactive},
+) {
+  scope @0 [1:21] dependencies=[a$20_3:13:3:14, b$21_4:8:4:9, c$22_5:13:5:14, d$23_8:11:8:12] declarations=[y$25_@0] reassignments=[] {
+    [2] mutate? $24_@0[1:21]:TObject<BuiltInArray> = Array []
+    [3] StoreLocal Const store y$25_@0[1:21]:TObject<BuiltInArray>{reactive} = capture $24_@0[1:21]:TObject<BuiltInArray>{reactive}
+    bb0: {
+      [5] mutate? $27{reactive} = LoadLocal read a$20{reactive}
+      bb1: [6] if (read $27{reactive}) {
+        [7] mutate? $28{reactive} = LoadLocal read b$21{reactive}
+        bb2: [8] if (read $28{reactive}) {
+          [9] store $29_@0[1:21]:TObject<BuiltInArray>{reactive} = LoadLocal capture y$25_@0[1:21]:TObject<BuiltInArray>{reactive}
+          [10] store $30[1:21]:TFunction<<generated_5>>():  :TPrimitive{reactive} = PropertyLoad capture $29_@0[1:21]:TObject<BuiltInArray>{reactive}.push
+          [11] mutate? $31{reactive} = LoadLocal read c$22{reactive}
+          [12] MethodCall store $29_@0[1:21]:TObject<BuiltInArray>{reactive}.read $30[1:21]:TFunction<<generated_5>>():  :TPrimitive{reactive}(read $31{reactive})
+          [13] break bb0 (labeled)
+        }
+        [14] store $33_@0[1:21]:TObject<BuiltInArray>{reactive} = LoadLocal capture y$25_@0[1:21]:TObject<BuiltInArray>{reactive}
+        [15] store $34[1:21]:TFunction<<generated_5>>():  :TPrimitive{reactive} = PropertyLoad capture $33_@0[1:21]:TObject<BuiltInArray>{reactive}.push
+        [16] mutate? $35{reactive} = LoadLocal read d$23{reactive}
+        [17] MethodCall store $33_@0[1:21]:TObject<BuiltInArray>{reactive}.read $34[1:21]:TFunction<<generated_5>>():  :TPrimitive{reactive}(read $35{reactive})
+        [18] break bb1 (implicit)
+      }
+      [19] break bb0 (implicit)
+    }
+  }
+  [21] store $39:TObject<BuiltInArray>{reactive} = LoadLocal capture y$25_@0[1:21]:TObject<BuiltInArray>{reactive}
+  [22] return freeze $39:TObject<BuiltInArray>{reactive}
+}

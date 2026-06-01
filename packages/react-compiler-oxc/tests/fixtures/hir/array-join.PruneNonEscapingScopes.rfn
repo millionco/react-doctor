@@ -1,0 +1,38 @@
+function Component(
+  <unknown> props$25{reactive},
+) {
+  scope @0 [1:4] dependencies=[] declarations=[$26_@0] reassignments=[] {
+    [2] mutate? $26_@0[1:4]:TObject<BuiltInObject> = Object {  }
+  }
+  scope @1 [4:7] dependencies=[] declarations=[$27_@1] reassignments=[] {
+    [5] mutate? $27_@1[4:7]:TObject<BuiltInArray> = Array []
+  }
+  [7] mutate? $28{reactive} = LoadLocal read props$25{reactive}
+  [8] mutate? $29{reactive} = PropertyLoad read $28{reactive}.value
+  scope @2 [9:12] dependencies=[$26_@0:TObject<BuiltInObject>_2:13:2:15, $27_@1:TObject<BuiltInArray>_2:17:2:19, props$25.value_2:21:2:32] declarations=[$30_@2] reassignments=[] {
+    [10] store $30_@2[9:12]:TObject<BuiltInArray>{reactive} = Array [capture $26_@0[1:4]:TObject<BuiltInObject>, capture $27_@1[4:7]:TObject<BuiltInArray>, read $29{reactive}]
+  }
+  [12] store $32:TObject<BuiltInArray>{reactive} = StoreLocal Const store x$31:TObject<BuiltInArray>{reactive} = capture $30_@2[9:12]:TObject<BuiltInArray>{reactive}
+  [13] store $33:TObject<BuiltInArray>{reactive} = LoadLocal capture x$31:TObject<BuiltInArray>{reactive}
+  [14] store $34:TFunction<<generated_14>>():  :TPrimitive{reactive} = PropertyLoad capture $33:TObject<BuiltInArray>{reactive}.join
+  [16] mutate? $35_@3[15:18]:TFunction<BuiltInFunction>():  :TPrimitive = LoadGlobal(global) _temp
+  [18] mutate? $37:TPrimitive{reactive} = MethodCall read $33:TObject<BuiltInArray>{reactive}.read $34:TFunction<<generated_14>>():  :TPrimitive{reactive}(read $35_@3[15:18]:TFunction<BuiltInFunction>():  :TPrimitive)
+  [19] mutate? $39:TPrimitive{reactive} = StoreLocal Const mutate? y$38:TPrimitive{reactive} = read $37:TPrimitive{reactive}
+  [20] mutate? $40:TFunction = LoadGlobal(global) foo
+  [21] mutate? $41:TPrimitive{reactive} = LoadLocal read y$38:TPrimitive{reactive}
+  scope @5 [22:25] dependencies=[$40:TFunction_4:2:4:5, y$38:TPrimitive_4:6:4:7] declarations=[] reassignments=[] {
+    [23] store $42_@5[22:25]{reactive} = Call capture $40:TFunction(capture $41:TPrimitive{reactive})
+  }
+  [25] store $43:TObject<BuiltInArray>{reactive} = LoadLocal capture x$31:TObject<BuiltInArray>{reactive}
+  [26] mutate? $44:TPrimitive{reactive} = LoadLocal read y$38:TPrimitive{reactive}
+  scope @6 [27:30] dependencies=[x$31:TObject<BuiltInArray>_5:10:5:11, y$38:TPrimitive_5:13:5:14] declarations=[$45_@6] reassignments=[] {
+    [28] store $45_@6[27:30]:TObject<BuiltInArray>{reactive} = Array [capture $43:TObject<BuiltInArray>{reactive}, read $44:TPrimitive{reactive}]
+  }
+  [30] return freeze $45_@6[27:30]:TObject<BuiltInArray>{reactive}
+}
+
+function _temp(): <unknown> $12:TPrimitive
+bb1 (block):
+  [1] mutate? $36:TPrimitive = "this closure gets stringified, not called"
+    Create $36 = primitive
+  [2] Return Implicit read $36:TPrimitive

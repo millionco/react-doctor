@@ -1,0 +1,144 @@
+Component(<unknown> props$37): <unknown> $36:TPhi
+bb0 (block):
+  [1] mutate? $38[1:30]:TFunction = LoadGlobal(global) makeOptionalObject
+    Create $38 = global
+  [2] mutate? $39 = LoadLocal read props$37
+    ImmutableCapture $39 <- props$37
+  [3] store $40[3:30] = Call capture $38[1:30]:TFunction(read $39)
+    Create $40 = mutable
+    MaybeAlias $40 <- $38
+    MaybeAlias $40 <- $38
+    ImmutableCapture $40 <- $39
+    ImmutableCapture $38 <- $39
+    ImmutableCapture $38 <- $39
+  [4] store $42[4:30] = StoreLocal Const store x$41[4:30] = capture $40[3:30]
+    Assign x$41 = $40
+    Assign $42 = $40
+  [5] mutate? $43[5:30]:TFunction = LoadGlobal(global) makeObject
+    Create $43 = global
+  [6] mutate? $44 = LoadLocal read props$37
+    ImmutableCapture $44 <- props$37
+  [7] store $45[7:30] = Call capture $43[5:30]:TFunction(read $44)
+    Create $45 = mutable
+    MaybeAlias $45 <- $43
+    MaybeAlias $45 <- $43
+    ImmutableCapture $45 <- $44
+    ImmutableCapture $43 <- $44
+    ImmutableCapture $43 <- $44
+  [8] store $47[8:30] = StoreLocal Const store y$46[8:30] = capture $45[7:30]
+    Assign y$46 = $45
+    Assign $47 = $45
+  [9] Optional (optional=true) test:bb4 fallthrough=bb1
+bb4 (value):
+  predecessor blocks: bb0
+  [10] Optional (optional=true) test:bb7 fallthrough=bb5
+bb7 (value):
+  predecessor blocks: bb4
+  [11] store $48[11:30] = LoadLocal capture x$41[4:30]
+    Assign $48 = x$41
+  [12] Branch (read $48[11:30]) then:bb6 else:bb3 fallthrough:bb5
+bb6 (value):
+  predecessor blocks: bb7
+  [13] store $49[13:30]:TFunction = PropertyLoad capture $48[11:30].optionalMethod
+    Create $49 = kindOf($48)
+  [14] store $51[14:30]:TFunction = StoreLocal Const store $50[14:30]:TFunction = capture $49[13:30]:TFunction
+    Assign $50 = $49
+    Assign $51 = $49
+  [15] Goto bb5
+bb5 (value):
+  predecessor blocks: bb6
+  [16] Branch (read $50[14:30]:TFunction) then:bb2 else:bb3 fallthrough:bb1
+bb2 (value):
+  predecessor blocks: bb5
+  [17] store $52[17:30] = LoadLocal capture y$46[8:30]
+    Assign $52 = y$46
+  [18] store $53[18:30] = PropertyLoad capture $52[17:30].a
+    Create $53 = kindOf($52)
+  [19] mutate? $54 = LoadLocal read props$37
+    ImmutableCapture $54 <- props$37
+  [20] mutate? $55 = PropertyLoad read $54.a
+    Create $55 = frozen
+    ImmutableCapture $55 <- $54
+  [21] mutate? $56[21:30]:TFunction = LoadGlobal(global) foo
+    Create $56 = global
+  [22] store $57[22:30] = LoadLocal capture y$46[8:30]
+    Assign $57 = y$46
+  [23] store $58[23:30] = PropertyLoad capture $57[22:30].b
+    Create $58 = kindOf($57)
+  [24] store $59[24:30] = Call capture $56[21:30]:TFunction(capture $58[23:30])
+    Create $59 = mutable
+    MaybeAlias $59 <- $56
+    MaybeAlias $59 <- $56
+    MutateTransitiveConditionally $58
+    MaybeAlias $59 <- $58
+  [25] mutate? $60[25:30]:TFunction = LoadGlobal(global) bar
+    Create $60 = global
+  [26] mutate? $61 = LoadLocal read props$37
+    ImmutableCapture $61 <- props$37
+  [27] mutate? $62 = PropertyLoad read $61.b
+    Create $62 = frozen
+    ImmutableCapture $62 <- $61
+  [28] store $63[28:30] = Call capture $60[25:30]:TFunction(read $62)
+    Create $63 = mutable
+    MaybeAlias $63 <- $60
+    MaybeAlias $63 <- $60
+    ImmutableCapture $63 <- $62
+    ImmutableCapture $60 <- $62
+    ImmutableCapture $60 <- $62
+  [29] store $64 = MethodCall store $48[11:30].store $50[14:30]:TFunction(store $53[18:30], read $55, store $59[24:30], capture $63[28:30])
+    Create $64 = mutable
+    MutateTransitiveConditionally $48
+    MaybeAlias $64 <- $48
+    Capture $50 <- $48
+    Capture $53 <- $48
+    Capture $59 <- $48
+    Capture $63 <- $48
+    MaybeAlias $64 <- $50
+    Capture $48 <- $50
+    Capture $53 <- $50
+    Capture $59 <- $50
+    Capture $63 <- $50
+    MutateTransitiveConditionally $53
+    MaybeAlias $64 <- $53
+    Capture $48 <- $53
+    Capture $50 <- $53
+    Capture $59 <- $53
+    Capture $63 <- $53
+    ImmutableCapture $64 <- $55
+    ImmutableCapture $48 <- $55
+    ImmutableCapture $50 <- $55
+    ImmutableCapture $53 <- $55
+    ImmutableCapture $59 <- $55
+    ImmutableCapture $63 <- $55
+    MutateTransitiveConditionally $59
+    MaybeAlias $64 <- $59
+    Capture $48 <- $59
+    Capture $50 <- $59
+    Capture $53 <- $59
+    Capture $63 <- $59
+    MutateTransitiveConditionally $63
+    MaybeAlias $64 <- $63
+    Capture $48 <- $63
+    Capture $50 <- $63
+    Capture $53 <- $63
+    Capture $59 <- $63
+  [30] store $66 = StoreLocal Const store $65 = capture $64
+    Assign $65 = $64
+    Assign $66 = $64
+  [31] Goto bb1
+bb3 (value):
+  predecessor blocks: bb5 bb7
+  [32] mutate? $67:TPrimitive = <undefined>
+    Create $67 = primitive
+  [33] mutate? $69:TPrimitive = StoreLocal Const mutate? $68:TPrimitive = read $67:TPrimitive
+  [34] Goto bb1
+bb1 (block):
+  predecessor blocks: bb2 bb3
+  store $70:TPhi:TPhi: phi(bb2: read $65, bb3: read $68:TPrimitive)
+  [35] store $72:TPhi = StoreLocal Const store z$71:TPhi = capture $70:TPhi
+    Assign z$71 = $70
+    Assign $72 = $70
+  [36] store $73:TPhi = LoadLocal capture z$71:TPhi
+    Assign $73 = z$71
+  [37] Return Explicit freeze $73:TPhi
+    Freeze $73 jsx-captured

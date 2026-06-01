@@ -1,0 +1,13 @@
+Component(<unknown> props$0): <unknown> $13
+bb0 (block):
+  [1] <unknown> $1 = LoadGlobal(global) makeObject
+  [2] <unknown> $2 = Call <unknown> $1()
+  [3] <unknown> $4 = StoreLocal Let <unknown> x$3 = <unknown> $2
+  [4] <unknown> $5 = LoadLocal <unknown> x$3
+  [5] <unknown> $6 = PropertyLoad <unknown> $5.foo
+  [6] <unknown> $7 = LoadGlobal(global) makeObject
+  [7] <unknown> $8 = Call <unknown> $7()
+  [8] <unknown> $9 = Destructure Reassign [ <unknown> x$3 ] = <unknown> $8
+  [9] <unknown> $10 = MethodCall <unknown> $5.<unknown> $6(<unknown> $9)
+  [10] <unknown> $11 = LoadLocal <unknown> x$3
+  [11] Return Explicit <unknown> $11

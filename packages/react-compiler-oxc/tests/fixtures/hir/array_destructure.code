@@ -1,0 +1,4 @@
+function Component(o) {
+  const [a] = o;
+  return a;
+}

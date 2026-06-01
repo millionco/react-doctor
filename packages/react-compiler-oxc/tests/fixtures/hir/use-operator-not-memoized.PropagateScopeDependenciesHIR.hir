@@ -1,0 +1,31 @@
+Component(<unknown> props$10{reactive}): <unknown> $9:TObject<BuiltInArray>
+bb0 (block):
+  [1] mutate? $11:TFunction<BuiltInUseOperator>():  :TPoly = LoadGlobal import { use } from 'react'
+    Create $11 = global
+  [2] mutate? $12 = LoadGlobal(module) FooContext
+    Create $12 = global
+  [3] Label block=bb5 fallthrough=bb6
+bb5 (block):
+  predecessor blocks: bb0
+  [4] mutate? $13_@0[3:6]{reactive} = Call read $11:TFunction<BuiltInUseOperator>():  :TPoly(read $12)
+    Create $13_@0 = frozen
+  [5] Goto bb6
+bb6 (block):
+  predecessor blocks: bb5
+  [6] mutate? $15{reactive} = StoreLocal Const mutate? input$14{reactive} = read $13_@0[3:6]{reactive}
+    ImmutableCapture input$14 <- $13_@0
+    ImmutableCapture $15 <- $13_@0
+  [7] mutate? $16{reactive} = LoadLocal read input$14{reactive}
+    ImmutableCapture $16 <- input$14
+  [8] Scope scope @1 [8:11] dependencies=[input$14_7:10:7:15] declarations=[$17_@1] reassignments=[] block=bb7 fallthrough=bb8
+bb7 (block):
+  predecessor blocks: bb6
+  [9] mutate? $17_@1[8:11]:TObject<BuiltInArray>{reactive} = Array [read $16{reactive}]
+    Create $17_@1 = mutable
+    ImmutableCapture $17_@1 <- $16
+  [10] Goto bb8
+bb8 (block):
+  predecessor blocks: bb7
+  [11] Return Explicit freeze $17_@1[8:11]:TObject<BuiltInArray>{reactive}
+    Freeze $17_@1 jsx-captured
+

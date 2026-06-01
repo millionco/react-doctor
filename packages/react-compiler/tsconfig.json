@@ -1,0 +1,23 @@
+{
+  "extends": "@tsconfig/strictest/tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "rootDir": "src",
+    "noEmit": true,
+    "jsx": "react-jsxdev",
+    "types": ["node"],
+    "isolatedModules": false,
+    "verbatimModuleSyntax": false,
+    "noUncheckedIndexedAccess": false,
+    "noUnusedParameters": false,
+    "noUnusedLocals": false,
+    "stripInternal": true,
+    "useUnknownInCatchVariables": true,
+    "removeComments": true,
+    "declaration": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "src/__tests__"]
+}

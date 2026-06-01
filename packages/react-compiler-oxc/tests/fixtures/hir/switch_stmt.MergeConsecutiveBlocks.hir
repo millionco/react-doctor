@@ -1,0 +1,18 @@
+Component(<unknown> x$0): <unknown> $6
+bb0 (block):
+  [1] <unknown> $3 = 1
+  [2] <unknown> $4 = LoadLocal <unknown> x$0
+  [3] Switch (<unknown> $4)
+    Case <unknown> $3: bb4
+    Default: bb2
+    Fallthrough: bb1
+bb4 (block):
+  predecessor blocks: bb0
+  [4] <unknown> $2 = LoadLocal <unknown> x$0
+  [5] Return Explicit <unknown> $2
+bb2 (block):
+  predecessor blocks: bb0
+  [6] <unknown> $1 = LoadLocal <unknown> x$0
+  [7] Return Explicit <unknown> $1
+bb1 (block):
+  [8] Unreachable

@@ -1,0 +1,48 @@
+Component(<unknown> props$21): <unknown> $20
+bb0 (block):
+  [1] <unknown> $22:TFunction = LoadGlobal(global) foo
+  [2] Optional (optional=false) test:bb4 fallthrough=bb1
+bb4 (value):
+  predecessor blocks: bb0
+  [3] Optional (optional=false) test:bb7 fallthrough=bb5
+bb7 (value):
+  predecessor blocks: bb4
+  [4] Optional (optional=true) test:bb10 fallthrough=bb8
+bb10 (value):
+  predecessor blocks: bb7
+  [5] <unknown> $23 = LoadLocal <unknown> props$21
+  [6] <unknown> $24 = PropertyLoad <unknown> $23.a
+  [7] Branch (<unknown> $24) then:bb9 else:bb3 fallthrough:bb8
+bb9 (value):
+  predecessor blocks: bb10
+  [8] <unknown> $25 = PropertyLoad <unknown> $24.b
+  [9] <unknown> $27 = StoreLocal Const <unknown> $26 = <unknown> $25
+  [10] Goto bb8
+bb8 (value):
+  predecessor blocks: bb9
+  [11] Branch (<unknown> $26) then:bb6 else:bb3 fallthrough:bb5
+bb6 (value):
+  predecessor blocks: bb8
+  [12] <unknown> $28 = PropertyLoad <unknown> $26.c
+  [13] <unknown> $30 = StoreLocal Const <unknown> $29 = <unknown> $28
+  [14] Goto bb5
+bb5 (value):
+  predecessor blocks: bb6
+  [15] Branch (<unknown> $29) then:bb2 else:bb3 fallthrough:bb1
+bb2 (value):
+  predecessor blocks: bb5
+  [16] <unknown> $31 = PropertyLoad <unknown> $29.d
+  [17] <unknown> $33 = StoreLocal Const <unknown> $32 = <unknown> $31
+  [18] Goto bb1
+bb3 (value):
+  predecessor blocks: bb5 bb8 bb10
+  [19] <unknown> $34:TPrimitive = <undefined>
+  [20] <unknown> $36:TPrimitive = StoreLocal Const <unknown> $35:TPrimitive = <unknown> $34:TPrimitive
+  [21] Goto bb1
+bb1 (block):
+  predecessor blocks: bb2 bb3
+  <unknown> $39:TPhi:TPhi: phi(bb2: <unknown> $32, bb3: <unknown> $35:TPrimitive)
+  [22] <unknown> $40 = Call <unknown> $22:TFunction(<unknown> $39:TPhi)
+  [23] <unknown> $42 = StoreLocal Let <unknown> x$41 = <unknown> $40
+  [24] <unknown> $43 = LoadLocal <unknown> x$41
+  [25] Return Explicit <unknown> $43

@@ -1,0 +1,11 @@
+Component(<unknown> props$0): <unknown> $13
+bb0 (block):
+  [1] <unknown> $2 = DeclareLocal Let <unknown> a$1
+  [2] <unknown> $4 = DeclareLocal Let <unknown> rest$3
+  [3] <unknown> $5 = LoadLocal <unknown> props$0
+  [4] <unknown> $8 = Destructure Reassign [ <unknown> #t6$6, ...<unknown> #t7$7 ] = <unknown> $5
+  [5] <unknown> $9 = StoreLocal Reassign <unknown> a$1 = <unknown> #t6$6
+  [6] <unknown> $10 = StoreLocal Reassign <unknown> rest$3 = <unknown> #t7$7
+  [7] <unknown> $11 = LoadLocal <unknown> a$1
+  [8] Return Explicit <unknown> $11
+

@@ -1,0 +1,17 @@
+function foo(
+) {
+  scope @0 [1:13] dependencies=[] declarations=[y$20_@0] reassignments=[] {
+    [2] mutate? $15_@0[1:13]:TObject<BuiltInArray> = Array []
+    [3] StoreLocal Const store x$16_@0[1:13]:TObject<BuiltInArray> = capture $15_@0[1:13]:TObject<BuiltInArray>
+    [4] store $18_@0[1:13]:TObject<BuiltInArray> = LoadLocal capture x$16_@0[1:13]:TObject<BuiltInArray>
+    [5] store $19_@0[1:13]:TObject<BuiltInObject> = Object { x: capture $18_@0[1:13]:TObject<BuiltInArray> }
+    [6] StoreLocal Const store y$20_@0[1:13]:TObject<BuiltInObject> = capture $19_@0[1:13]:TObject<BuiltInObject>
+    [7] store $22_@0[1:13]:TObject<BuiltInObject> = LoadLocal capture y$20_@0[1:13]:TObject<BuiltInObject>
+    [8] store $23_@0[1:13] = PropertyLoad capture $22_@0[1:13]:TObject<BuiltInObject>.x
+    [9] store $24_@0[1:13]:TFunction = PropertyLoad capture $23_@0[1:13].push
+    [10] mutate? $25_@0[1:13]:TObject<BuiltInArray> = Array []
+    [11] MethodCall store $23_@0[1:13].store $24_@0[1:13]:TFunction(capture $25_@0[1:13]:TObject<BuiltInArray>)
+  }
+  [13] store $27:TObject<BuiltInObject> = LoadLocal capture y$20_@0[1:13]:TObject<BuiltInObject>
+  [14] return freeze $27:TObject<BuiltInObject>
+}

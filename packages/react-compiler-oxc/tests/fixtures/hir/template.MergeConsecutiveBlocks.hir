@@ -1,0 +1,8 @@
+Component(<unknown> props$0): <unknown> $8
+bb0 (block):
+  [1] <unknown> $1 = LoadLocal <unknown> props$0
+  [2] <unknown> $2 = PropertyLoad <unknown> $1.name
+  [3] <unknown> $3 = `hi ${<unknown> $2} bye`
+  [4] <unknown> $5 = StoreLocal Const <unknown> c$4 = <unknown> $3
+  [5] <unknown> $6 = LoadLocal <unknown> c$4
+  [6] Return Explicit <unknown> $6

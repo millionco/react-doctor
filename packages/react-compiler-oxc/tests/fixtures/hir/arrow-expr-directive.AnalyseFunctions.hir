@@ -1,0 +1,36 @@
+Component(): <unknown> $25:TObject<BuiltInJsx>
+use strict
+bb0 (block):
+  [1] <unknown> $26:TObject<<generated_109>> = LoadGlobal(global) React
+  [2] <unknown> $27:TFunction<<generated_97>>():  :TObject<BuiltInUseState> = PropertyLoad <unknown> $26:TObject<<generated_109>>.useState
+  [3] <unknown> $28:TPrimitive = 0
+  [4] <unknown> $29:TObject<BuiltInUseState> = MethodCall <unknown> $26:TObject<<generated_109>>.<unknown> $27:TFunction<<generated_97>>():  :TObject<BuiltInUseState>(<unknown> $28:TPrimitive)
+  [5] <unknown> $32 = Destructure Let [ <unknown> count$30, <unknown> setCount$31:TFunction<BuiltInSetState>():  :TPrimitive ] = <unknown> $29:TObject<BuiltInUseState>
+  [6] <unknown> $33:TFunction<BuiltInFunction>():  :TPrimitive = Function  @context[read setCount$31:TFunction<BuiltInSetState>():  :TPrimitive] @aliasingEffects=[Create $17 = primitive]
+      <<anonymous>>(): <unknown> $17:TPrimitive
+      worklet
+      bb1 (block):
+        [1] store $34:TFunction<BuiltInSetState>():  :TPrimitive = LoadLocal capture setCount$31:TFunction<BuiltInSetState>():  :TPrimitive
+          Assign $34 = setCount$31
+        [2] mutate? $35_@0:TFunction<BuiltInFunction>():  :TPrimitive = Function  @context[] @aliasingEffects=[Create $13 = primitive]
+            <<anonymous>>(<unknown> count_0$36:TPrimitive): <unknown> $13:TPrimitive
+            bb2 (block):
+              [1] store $37:TPrimitive = LoadLocal capture count_0$36:TPrimitive
+                Assign $37 = count_0$36
+              [2] mutate? $38:TPrimitive = 1
+                Create $38 = primitive
+              [3] mutate? $39:TPrimitive = Binary read $37:TPrimitive + read $38:TPrimitive
+                Create $39 = primitive
+              [4] Return Implicit read $39:TPrimitive
+          Function $35_@0 = Function captures=[]
+        [3] mutate? $40:TPrimitive = Call read $34:TFunction<BuiltInSetState>():  :TPrimitive(read $35_@0:TFunction<BuiltInFunction>():  :TPrimitive)
+          Create $40 = primitive
+          ImmutableCapture $40 <- $34
+        [4] mutate? $41:TPrimitive = <undefined>
+          Create $41 = primitive
+        [5] Return Void read $41:TPrimitive
+  [7] <unknown> $43:TFunction<BuiltInFunction>():  :TPrimitive = StoreLocal Const <unknown> update$42:TFunction<BuiltInFunction>():  :TPrimitive = <unknown> $33:TFunction<BuiltInFunction>():  :TPrimitive
+  [8] <unknown> $44:TFunction<BuiltInFunction>():  :TPrimitive = LoadLocal <unknown> update$42:TFunction<BuiltInFunction>():  :TPrimitive
+  [9] <unknown> $45 = LoadLocal <unknown> count$30
+  [10] <unknown> $46:TObject<BuiltInJsx> = JSX <button onClick={<unknown> $44:TFunction<BuiltInFunction>():  :TPrimitive} >{<unknown> $45}</button>
+  [11] Return Explicit <unknown> $46:TObject<BuiltInJsx>

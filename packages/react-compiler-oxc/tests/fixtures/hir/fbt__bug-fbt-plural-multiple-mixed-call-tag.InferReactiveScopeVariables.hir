@@ -1,0 +1,100 @@
+useFoo(<unknown> #t0$33{reactive}): <unknown> $32:TObject<BuiltInJsx>
+bb0 (block):
+  [1] mutate? $36{reactive} = Destructure Const { apples: mutate? apples$34{reactive}, bananas: mutate? bananas$35{reactive} } = read #t0$33{reactive}
+    Create apples$34 = frozen
+    ImmutableCapture apples$34 <- #t0$33
+    Create bananas$35 = frozen
+    ImmutableCapture bananas$35 <- #t0$33
+    ImmutableCapture $36 <- #t0$33
+  [2] mutate? $37:TPrimitive = "Test Description"
+    Create $37 = primitive
+  [3] mutate? $38:TPrimitive = JSXText "\n        "
+    Create $38 = primitive
+  [4] mutate? $39 = LoadGlobal import fbt from 'fbt'
+    Create $39 = global
+  [5] mutate? $40_@0[5:9]:TFunction = PropertyLoad read $39.param
+    Create $40_@0 = global
+  [6] mutate? $41:TPrimitive = "number of apples"
+    Create $41 = primitive
+  [7] mutate? $42{reactive} = LoadLocal read apples$34{reactive}
+    ImmutableCapture $42 <- apples$34
+  [8] store $43_@0[5:9]{reactive} = MethodCall capture $39.capture $40_@0[5:9]:TFunction{reactive}(capture $41:TPrimitive, read $42{reactive})
+    Create $43_@0 = mutable
+    MaybeAlias $43_@0 <- $39
+    MaybeAlias $43_@0 <- $40_@0
+    MaybeAlias $43_@0 <- $41
+    ImmutableCapture $43_@0 <- $42
+    ImmutableCapture $39 <- $42
+    ImmutableCapture $40_@0 <- $42
+    ImmutableCapture $41 <- $42
+  [9] mutate? $44:TPrimitive = JSXText "\n        "
+    Create $44 = primitive
+  [10] mutate? $45:TPrimitive = "  "
+    Create $45 = primitive
+  [11] mutate? $46:TPrimitive = JSXText "\n        "
+    Create $46 = primitive
+  [12] mutate? $47 = LoadGlobal import fbt from 'fbt'
+    Create $47 = global
+  [13] mutate? $48_@1[13:17]:TFunction = PropertyLoad read $47.plural
+    Create $48_@1 = global
+  [14] mutate? $49:TPrimitive = "apple"
+    Create $49 = primitive
+  [15] mutate? $50{reactive} = LoadLocal read apples$34{reactive}
+    ImmutableCapture $50 <- apples$34
+  [16] store $51_@1[13:17]{reactive} = MethodCall capture $47.capture $48_@1[13:17]:TFunction{reactive}(capture $49:TPrimitive, read $50{reactive})
+    Create $51_@1 = mutable
+    MaybeAlias $51_@1 <- $47
+    MaybeAlias $51_@1 <- $48_@1
+    MaybeAlias $51_@1 <- $49
+    ImmutableCapture $51_@1 <- $50
+    ImmutableCapture $47 <- $50
+    ImmutableCapture $48_@1 <- $50
+    ImmutableCapture $49 <- $50
+  [17] mutate? $52:TPrimitive = JSXText " and\n        "
+    Create $52 = primitive
+  [18] mutate? $53:TPrimitive = "  "
+    Create $53 = primitive
+  [19] mutate? $54:TPrimitive = JSXText "\n        "
+    Create $54 = primitive
+  [20] mutate? $55:TPrimitive = "fbt:plural"
+    Create $55 = primitive
+  [21] mutate? $56:TPrimitive = "number of bananas"
+    Create $56 = primitive
+  [22] mutate? $57{reactive} = LoadLocal read bananas$35{reactive}
+    ImmutableCapture $57 <- bananas$35
+  [23] mutate? $58:TPrimitive = "yes"
+    Create $58 = primitive
+  [24] mutate? $59:TPrimitive = JSXText "\n          banana\n        "
+    Create $59 = primitive
+  [25] mutate? $60_@2:TObject<BuiltInJsx>{reactive} = JSX <read $55:TPrimitive name={read $56:TPrimitive} count={read $57{reactive}} showCount={read $58:TPrimitive} >{read $59:TPrimitive}</read $55:TPrimitive>
+    Create $60_@2 = frozen
+    ImmutableCapture $60_@2 <- $57
+    Render $55
+    Render $59
+  [26] mutate? $61:TPrimitive = JSXText "\n      "
+    Create $61 = primitive
+  [27] mutate? $62_@3:TObject<BuiltInJsx>{reactive} = JSX <fbt desc={read $37:TPrimitive} >{read $38:TPrimitive}{freeze $43_@0[5:9]{reactive}}{read $44:TPrimitive}{read $45:TPrimitive}{read $46:TPrimitive}{freeze $51_@1[13:17]{reactive}}{read $52:TPrimitive}{read $53:TPrimitive}{read $54:TPrimitive}{read $60_@2:TObject<BuiltInJsx>{reactive}}{read $61:TPrimitive}</fbt>
+    Create $62_@3 = frozen
+    Freeze $43_@0 jsx-captured
+    ImmutableCapture $62_@3 <- $43_@0
+    Freeze $51_@1 jsx-captured
+    ImmutableCapture $62_@3 <- $51_@1
+    ImmutableCapture $62_@3 <- $60_@2
+    Render $38
+    Render $43_@0
+    Render $44
+    Render $45
+    Render $46
+    Render $51_@1
+    Render $52
+    Render $53
+    Render $54
+    Render $60_@2
+    Render $61
+  [28] mutate? $63_@4:TObject<BuiltInJsx>{reactive} = JSX <div>{read $62_@3:TObject<BuiltInJsx>{reactive}}</div>
+    Create $63_@4 = frozen
+    ImmutableCapture $63_@4 <- $62_@3
+    Render $62_@3
+  [29] Return Explicit freeze $63_@4:TObject<BuiltInJsx>{reactive}
+    Freeze $63_@4 jsx-captured
+

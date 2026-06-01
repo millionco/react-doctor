@@ -1,0 +1,26 @@
+function Component(
+  <unknown> props$21{reactive},
+) {
+  [1] mutate? $22:TPrimitive = "key"
+  scope @0 [2:22] dependencies=[props$21.value_6:23:6:34] declarations=[context$34_@0] reassignments=[] {
+    [3] mutate? $23_@0[2:22]:TObject<BuiltInObject> = Object { a: read $22:TPrimitive }
+    [4] StoreLocal Const store key$24_@0[2:22]:TObject<BuiltInObject> = capture $23_@0[2:22]:TObject<BuiltInObject>
+    [5] store $26_@0[2:22]:TObject<BuiltInObject> = LoadLocal capture key$24_@0[2:22]:TObject<BuiltInObject>
+    [6] mutate? #t6$27:TPrimitive = PropertyLoad read $26_@0[2:22]:TObject<BuiltInObject>.a
+    [7] mutate? $28:TFunction = LoadGlobal import { identity } from 'shared-runtime'
+    [8] mutate? $29{reactive} = LoadLocal read props$21{reactive}
+    [9] mutate? $30{reactive} = PropertyLoad read $29{reactive}.value
+    [11] mutate? $31_@1[10:14]:TObject<BuiltInArray>{reactive} = Array [read $30{reactive}]
+    [12] store #t11$32_@1[10:14]{reactive} = Call capture $28:TFunction(capture $31_@1[10:14]:TObject<BuiltInArray>{reactive})
+    scope @2 [14:17] dependencies=[#t11$32_@1_6:13:6:36] declarations=[#t12$33_@2] reassignments=[] {
+      [15] store #t12$33_@2[14:17]:TObject<BuiltInObject>{reactive} = Object { [read #t6$27:TPrimitive]: capture #t11$32_@1[10:14]{reactive} }
+    }
+    [17] StoreLocal Const store context$34:TObject<BuiltInObject>{reactive} = capture #t12$33_@2[14:17]:TObject<BuiltInObject>{reactive}
+    [18] mutate? $36:TFunction = LoadGlobal import { mutate } from 'shared-runtime'
+    [19] store $37_@0[2:22]:TObject<BuiltInObject> = LoadLocal capture key$24_@0[2:22]:TObject<BuiltInObject>
+    [20] Call capture $36:TFunction(capture $37_@0[2:22]:TObject<BuiltInObject>)
+  }
+  [22] store $39:TObject<BuiltInObject>{reactive} = LoadLocal capture context$34:TObject<BuiltInObject>{reactive}
+  [23] return freeze $39:TObject<BuiltInObject>{reactive}
+}
+

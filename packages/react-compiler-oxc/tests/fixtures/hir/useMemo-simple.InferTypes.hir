@@ -1,0 +1,15 @@
+component(<unknown> a$19): <unknown> $16:TObject<BuiltInJsx>
+bb0 (block):
+  [1] <unknown> $20:TFunction<<generated_102>>():  :TPoly = LoadGlobal(global) useMemo
+  [2] <unknown> $21 = StartMemoize deps=a$19
+  [3] <unknown> $22 = LoadLocal <unknown> a$19
+  [4] <unknown> $23:TObject<BuiltInArray> = Array [<unknown> $22]
+  [6] <unknown> $24 = LoadLocal <unknown> a$19
+  [7] <unknown> $25:TObject<BuiltInArray> = Array [<unknown> $24]
+  [8] <unknown> $26:TObject<BuiltInArray> = LoadLocal <unknown> $25:TObject<BuiltInArray>
+  [10] <unknown> $27 = FinishMemoize decl=<unknown> $26:TObject<BuiltInArray>
+  [11] <unknown> $29:TObject<BuiltInArray> = StoreLocal Let <unknown> x$28:TObject<BuiltInArray> = <unknown> $26:TObject<BuiltInArray>
+  [12] <unknown> $30 = LoadGlobal(global) Foo
+  [13] <unknown> $31:TObject<BuiltInArray> = LoadLocal <unknown> x$28:TObject<BuiltInArray>
+  [14] <unknown> $32:TObject<BuiltInJsx> = JSX <<unknown> $30 x={<unknown> $31:TObject<BuiltInArray>} />
+  [15] Return Explicit <unknown> $32:TObject<BuiltInJsx>

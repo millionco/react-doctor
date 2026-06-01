@@ -1,0 +1,64 @@
+Component(<unknown> props$34): <unknown> $33:TObject<BuiltInObject>
+bb0 (block):
+  [1] mutate? $35:TFunction = LoadGlobal import { identity } from 'shared-runtime'
+    Create $35 = global
+  [2] mutate? $36 = LoadLocal read props$34
+    ImmutableCapture $36 <- props$34
+  [3] mutate? $37 = PropertyLoad read $36.b
+    Create $37 = frozen
+    ImmutableCapture $37 <- $36
+  [4] store $38 = Call capture $35:TFunction(read $37)
+    Create $38 = mutable
+    MaybeAlias $38 <- $35
+    MaybeAlias $38 <- $35
+    ImmutableCapture $38 <- $37
+    ImmutableCapture $35 <- $37
+    ImmutableCapture $35 <- $37
+  [5] store $40 = StoreLocal Let store neverAliasedOrMutated$39 = capture $38
+    Assign neverAliasedOrMutated$39 = $38
+    Assign $40 = $38
+  [6] mutate? $41:TObject<Math> = LoadGlobal(global) Math
+    Create $41 = global
+  [7] mutate? $42:TFunction<<generated_69>>():  :TPrimitive = PropertyLoad read $41:TObject<Math>.max
+    Create $42 = global
+  [8] mutate? $43 = LoadLocal read props$34
+    ImmutableCapture $43 <- props$34
+  [9] mutate? $44 = PropertyLoad read $43.a
+    Create $44 = frozen
+    ImmutableCapture $44 <- $43
+  [10] store $45 = LoadLocal capture neverAliasedOrMutated$39
+    Assign $45 = neverAliasedOrMutated$39
+  [11] mutate? $46:TPrimitive = MethodCall read $41:TObject<Math>.read $42:TFunction<<generated_69>>():  :TPrimitive(read $44, read $45)
+    Create $46 = primitive
+    ImmutableCapture $46 <- $44
+    ImmutableCapture $46 <- $45
+  [12] mutate? $48:TPrimitive = StoreLocal Let mutate? primitiveVal1$47:TPrimitive = read $46:TPrimitive
+  [15] mutate? $52:TObject<globalThis> = LoadGlobal(global) globalThis
+    Create $52 = global
+  [16] mutate? $53 = PropertyLoad read $52:TObject<globalThis>.globalThis
+    Create $53 = global
+  [17] mutate? $54 = PropertyLoad read $53.NaN
+    Create $54 = global
+  [18] mutate? $56 = StoreLocal Let mutate? primitiveVal3$55 = read $54
+  [19] mutate? $57:TFunction = LoadGlobal import { sum } from 'shared-runtime'
+    Create $57 = global
+  [20] mutate? $58:TPrimitive = LoadLocal read primitiveVal1$47:TPrimitive
+  [21] mutate? $59:TPrimitive = LoadGlobal(global) Infinity
+    Create $59 = global
+  [22] mutate? $60 = LoadLocal read primitiveVal3$55
+  [23] store $61 = Call capture $57:TFunction(capture $58:TPrimitive, capture $59:TPrimitive, capture $60)
+    Create $61 = mutable
+    MaybeAlias $61 <- $57
+    MaybeAlias $61 <- $57
+    MaybeAlias $61 <- $58
+    MaybeAlias $61 <- $59
+    MaybeAlias $61 <- $60
+  [24] mutate? $62:TPrimitive = LoadLocal read primitiveVal1$47:TPrimitive
+  [25] mutate? $63:TPrimitive = LoadGlobal(global) Infinity
+    Create $63 = global
+  [26] mutate? $64 = LoadLocal read primitiveVal3$55
+  [27] mutate? $65:TObject<BuiltInObject> = Object { primitiveVal1: read $62:TPrimitive, primitiveVal2: read $63:TPrimitive, primitiveVal3: read $64 }
+    Create $65 = mutable
+  [28] Return Explicit freeze $65:TObject<BuiltInObject>
+    Freeze $65 jsx-captured
+

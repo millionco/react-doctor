@@ -1,0 +1,14 @@
+function Component(
+  <unknown> props$10:TObject<BuiltInProps>{reactive},
+) {
+  [1] mutate? $11:TPrimitive = "x"
+  [2] mutate? $12:TObject<BuiltInProps>{reactive} = LoadLocal read props$10:TObject<BuiltInProps>{reactive}
+  [3] mutate? $13{reactive} = PropertyLoad read $12:TObject<BuiltInProps>{reactive}.handler
+  [4] mutate? $14:TObject<BuiltInProps>{reactive} = LoadLocal read props$10:TObject<BuiltInProps>{reactive}
+  [5] mutate? $15{reactive} = PropertyLoad read $14:TObject<BuiltInProps>{reactive}.child
+  [6] mutate? $16:TPrimitive = JSXText "text"
+  scope @0 [7:10] dependencies=[$11:TPrimitive_2:24:2:27, props$10:TObject<BuiltInProps>.handler_2:37:2:50, props$10:TObject<BuiltInProps>.child_2:53:2:64, $16:TPrimitive_2:65:2:69] declarations=[$17_@0] reassignments=[] {
+    [8] mutate? $17_@0[7:10]:TObject<BuiltInJsx>{reactive} = JSX <div className={read $11:TPrimitive} onClick={read $13{reactive}} >{read $15{reactive}}{read $16:TPrimitive}</div>
+  }
+  [10] return freeze $17_@0[7:10]:TObject<BuiltInJsx>{reactive}
+}

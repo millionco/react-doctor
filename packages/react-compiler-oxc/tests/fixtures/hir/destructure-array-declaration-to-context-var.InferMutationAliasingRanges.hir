@@ -1,0 +1,61 @@
+Component(<unknown> props$24:TObject<BuiltInProps>): <unknown> $23:TObject<BuiltInJsx>
+bb0 (block):
+  [1] mutate? $25:TObject<BuiltInProps> = LoadLocal read props$24:TObject<BuiltInProps>
+    ImmutableCapture $25 <- props$24
+  [2] mutate? $26 = PropertyLoad read $25:TObject<BuiltInProps>.value
+    Create $26 = frozen
+    ImmutableCapture $26 <- $25
+  [3] mutate? $28 = Destructure Let [ mutate? #t3$27[3:5] ] = read $26
+    Create #t3$27 = frozen
+    ImmutableCapture #t3$27 <- $26
+    ImmutableCapture $28 <- $26
+  [4] mutate? $29 = StoreContext Let read x$5[4:9] = read #t3$27[3:5]
+    Create x$5 = mutable
+    ImmutableCapture x$5 <- #t3$27
+    ImmutableCapture $29 <- #t3$27
+  [5] store $30[5:9]:TFunction<BuiltInFunction>():  :TPrimitive = Function  @context[capture x$5[4:9],read props$24:TObject<BuiltInProps>] @aliasingEffects=[Mutate x$5, MutateTransitiveConditionally props$24, Create $14 = primitive, Capture x$5 <- props$24, Capture props$24 <- x$5]
+      <<anonymous>>(): <unknown> $14:TPrimitive
+      bb1 (block):
+        [1] mutate? $31:TFunction = LoadGlobal import { identity } from 'shared-runtime'
+          Create $31 = global
+        [2] store $32_@0[2:7]:TObject<BuiltInProps> = LoadLocal capture props$24:TObject<BuiltInProps>
+          Assign $32_@0 = props$24
+        [3] store $33_@0[2:7] = PropertyLoad capture $32_@0[2:7]:TObject<BuiltInProps>.value
+          Create $33_@0 = kindOf($32_@0)
+        [4] store $34_@0[2:7] = PropertyLoad capture $33_@0[2:7].0
+          Create $34_@0 = kindOf($33_@0)
+        [5] store $35_@0[2:7] = Call capture $31:TFunction(capture $34_@0[2:7])
+          Create $35_@0 = mutable
+          MaybeAlias $35_@0 <- $31
+          MaybeAlias $35_@0 <- $31
+          MutateTransitiveConditionally $34_@0
+          MaybeAlias $35_@0 <- $34_@0
+        [6] store $36 = StoreContext Reassign store x$5[4:9] = capture $35_@0[2:7]
+          Mutate x$5
+          MaybeAlias x$5 <- $35_@0
+          Assign $36 = $35_@0
+        [7] mutate? $37:TPrimitive = <undefined>
+          Create $37 = primitive
+        [8] Return Void read $37:TPrimitive
+    Function $30 = Function captures=[x$5, props$24]
+    Capture $30 <- x$5
+    ImmutableCapture $30 <- props$24
+  [6] store $39[6:9]:TFunction<BuiltInFunction>():  :TPrimitive = StoreLocal Const store foo$38[6:9]:TFunction<BuiltInFunction>():  :TPrimitive = capture $30[5:9]:TFunction<BuiltInFunction>():  :TPrimitive
+    Assign foo$38 = $30
+    Assign $39 = $30
+  [7] store $40[7:9]:TFunction<BuiltInFunction>():  :TPrimitive = LoadLocal capture foo$38[6:9]:TFunction<BuiltInFunction>():  :TPrimitive
+    Assign $40 = foo$38
+  [8] mutate? $41:TPrimitive = Call mutate? $40[7:9]:TFunction<BuiltInFunction>():  :TPrimitive()
+    MutateTransitiveConditionally $40
+    Mutate x$5
+    Create $41 = primitive
+    ImmutableCapture x$5 <- props$24
+  [9] store $42 = LoadContext capture x$5[4:9]
+    Create $42 = kindOf(x$5)
+  [10] mutate? $43:TObject<BuiltInJsx> = JSX <div>{freeze $42}</div>
+    Create $43 = frozen
+    Freeze $42 jsx-captured
+    ImmutableCapture $43 <- $42
+    Render $42
+  [11] Return Explicit freeze $43:TObject<BuiltInJsx>
+    Freeze $43 jsx-captured

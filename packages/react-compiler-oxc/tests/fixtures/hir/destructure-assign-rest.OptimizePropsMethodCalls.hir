@@ -1,0 +1,10 @@
+Component(<unknown> props$14): <unknown> $13
+bb0 (block):
+  [1] <unknown> $16 = DeclareLocal Let <unknown> a$15
+  [2] <unknown> $18 = DeclareLocal Let <unknown> rest$17
+  [3] <unknown> $19 = LoadLocal <unknown> props$14
+  [4] <unknown> $22 = Destructure Reassign [ <unknown> #t6$20, ...<unknown> #t7$21:TObject<BuiltInArray> ] = <unknown> $19
+  [5] <unknown> $24 = StoreLocal Reassign <unknown> a$23 = <unknown> #t6$20
+  [6] <unknown> $26:TObject<BuiltInArray> = StoreLocal Reassign <unknown> rest$25:TObject<BuiltInArray> = <unknown> #t7$21:TObject<BuiltInArray>
+  [7] <unknown> $27 = LoadLocal <unknown> a$23
+  [8] Return Explicit <unknown> $27

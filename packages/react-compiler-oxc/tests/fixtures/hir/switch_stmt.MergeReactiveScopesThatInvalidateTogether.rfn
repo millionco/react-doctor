@@ -1,0 +1,16 @@
+function Component(
+  <unknown> x$7{reactive},
+) {
+  [1] mutate? $8:TPrimitive = 1
+  [2] mutate? $9{reactive} = LoadLocal read x$7{reactive}
+  [3] switch (read $9{reactive}) {
+    case read $8:TPrimitive: {
+        [4] mutate? $10{reactive} = LoadLocal read x$7{reactive}
+        [5] return freeze $10{reactive}
+    }
+    default: {
+        [6] mutate? $11{reactive} = LoadLocal read x$7{reactive}
+        [7] return freeze $11{reactive}
+    }
+  }
+}

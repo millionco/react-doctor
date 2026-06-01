@@ -1,0 +1,62 @@
+Component(<unknown> props$17{reactive}): <unknown> $16:TPhi
+bb0 (block):
+  [1] mutate? $18:TFunction = LoadGlobal(global) makeObject
+    Create $18 = global
+  [2] Scope scope @0 [2:5] dependencies=[] declarations=[] reassignments=[] block=bb9 fallthrough=bb10
+bb9 (block):
+  predecessor blocks: bb0
+  [3] store $19_@0[2:5] = Call capture $18:TFunction()
+    Create $19_@0 = mutable
+    MaybeAlias $19_@0 <- $18
+    MaybeAlias $19_@0 <- $18
+  [4] Goto bb10
+bb10 (block):
+  predecessor blocks: bb9
+  [5] store $21 = StoreLocal Const store x$20 = capture $19_@0[2:5]
+    Assign x$20 = $19_@0
+    Assign $21 = $19_@0
+  [6] Scope scope @1 [6:21] dependencies=[] declarations=[] reassignments=[] block=bb11 fallthrough=bb12
+bb11 (block):
+  predecessor blocks: bb10
+  [7] Optional (optional=true) test:bb4 fallthrough=bb1
+bb4 (value):
+  predecessor blocks: bb11
+  [8] store $22 = LoadLocal capture x$20
+    Assign $22 = x$20
+  [9] Branch (read $22) then:bb2 else:bb3 fallthrough:bb1
+bb2 (value):
+  predecessor blocks: bb4
+  [10] mutate? $23:TFunction = LoadGlobal(global) foo
+    Create $23 = global
+  [11] mutate? $24{reactive} = LoadLocal read props$17{reactive}
+    ImmutableCapture $24 <- props$17
+  [12] mutate? $25{reactive} = PropertyLoad read $24{reactive}.value
+    Create $25 = frozen
+    ImmutableCapture $25 <- $24
+  [13] store $26_@1[6:21]{reactive} = Call capture $23:TFunction(read $25{reactive})
+    Create $26_@1 = mutable
+    MaybeAlias $26_@1 <- $23
+    MaybeAlias $26_@1 <- $23
+    ImmutableCapture $26_@1 <- $25
+    ImmutableCapture $23 <- $25
+    ImmutableCapture $23 <- $25
+  [14] store $27{reactive} = ComputedLoad capture $22[read $26_@1[6:21]{reactive}]
+    Create $27 = kindOf($22)
+  [15] store $29{reactive} = StoreLocal Const store $28{reactive} = capture $27{reactive}
+    Assign $28 = $27
+    Assign $29 = $27
+  [16] Goto bb1
+bb3 (value):
+  predecessor blocks: bb4
+  [17] mutate? $30:TPrimitive = <undefined>
+    Create $30 = primitive
+  [18] mutate? $32:TPrimitive = StoreLocal Const mutate? $31:TPrimitive = read $30:TPrimitive
+  [19] Goto bb1
+bb1 (block):
+  predecessor blocks: bb2 bb3
+  store $33:TPhi{reactive}:TPhi: phi(bb2: read $28{reactive}, bb3: read $31:TPrimitive)
+  [20] Goto bb12
+bb12 (block):
+  predecessor blocks: bb1
+  [21] Return Explicit freeze $33:TPhi{reactive}
+    Freeze $33 jsx-captured

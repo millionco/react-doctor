@@ -1,0 +1,59 @@
+Component(): <unknown> $24:TObject<BuiltInArray>
+bb0 (block):
+  [1] <unknown> $25:TPrimitive = 1
+    Create $25 = primitive
+  [2] <unknown> $26:TPrimitive = 2
+    Create $26 = primitive
+  [3] <unknown> $27:TPrimitive = 3
+    Create $27 = primitive
+  [4] <unknown> $28:TObject<BuiltInArray> = Array [<unknown> $25:TPrimitive, <unknown> $26:TPrimitive, <unknown> $27:TPrimitive]
+    Create $28 = mutable
+  [5] <unknown> $30:TObject<BuiltInArray> = StoreLocal Let <unknown> x$29:TObject<BuiltInArray> = <unknown> $28:TObject<BuiltInArray>
+    Assign x$29 = $28
+    Assign $30 = $28
+  [6] <unknown> $31:TObject<BuiltInArray> = Array []
+    Create $31 = mutable
+  [7] <unknown> $33:TObject<BuiltInArray> = StoreLocal Let <unknown> ret$32:TObject<BuiltInArray> = <unknown> $31:TObject<BuiltInArray>
+    Assign ret$32 = $31
+    Assign $33 = $31
+  [8] DoWhile loop=bb3 test=bb1 fallthrough=bb2
+bb3 (block):
+  predecessor blocks: bb0 bb1
+  [9] <unknown> $35:TObject<BuiltInArray> = LoadLocal <unknown> x$29:TObject<BuiltInArray>
+    Assign $35 = x$29
+  [10] <unknown> $36:TFunction<<generated_2>>():  :TPoly = PropertyLoad <unknown> $35:TObject<BuiltInArray>.pop
+    Create $36 = kindOf($35)
+  [11] <unknown> $37:TPrimitive = MethodCall <unknown> $35:TObject<BuiltInArray>.<unknown> $36:TFunction<<generated_2>>():  :TPoly()
+    Create $37 = mutable
+    Alias $37 <- $35
+    Mutate $35
+  [12] <unknown> $39:TPrimitive = StoreLocal Let <unknown> item$38:TPrimitive = <unknown> $37:TPrimitive
+    Assign item$38 = $37
+    Assign $39 = $37
+  [13] <unknown> $41:TObject<BuiltInArray> = LoadLocal <unknown> ret$32:TObject<BuiltInArray>
+    Assign $41 = ret$32
+  [14] <unknown> $42:TFunction<<generated_5>>():  :TPrimitive = PropertyLoad <unknown> $41:TObject<BuiltInArray>.push
+    Create $42 = kindOf($41)
+  [15] <unknown> $43:TPrimitive = LoadLocal <unknown> item$38:TPrimitive
+    Assign $43 = item$38
+  [16] <unknown> $44:TPrimitive = 2
+    Create $44 = primitive
+  [17] <unknown> $45:TPrimitive = Binary <unknown> $43:TPrimitive * <unknown> $44:TPrimitive
+    Create $45 = primitive
+  [18] <unknown> $46:TPrimitive = MethodCall <unknown> $41:TObject<BuiltInArray>.<unknown> $42:TFunction<<generated_5>>():  :TPrimitive(<unknown> $45:TPrimitive)
+    Mutate $41
+    Create $46 = primitive
+  [19] Goto(Continue) bb1
+bb1 (loop):
+  predecessor blocks: bb3
+  [20] <unknown> $47:TObject<BuiltInArray> = LoadLocal <unknown> x$29:TObject<BuiltInArray>
+    Assign $47 = x$29
+  [21] <unknown> $48:TPrimitive = PropertyLoad <unknown> $47:TObject<BuiltInArray>.length
+    Create $48 = primitive
+  [22] Branch (<unknown> $48:TPrimitive) then:bb3 else:bb2 fallthrough:bb1
+bb2 (block):
+  predecessor blocks: bb1
+  [23] <unknown> $49:TObject<BuiltInArray> = LoadLocal <unknown> ret$32:TObject<BuiltInArray>
+    Assign $49 = ret$32
+  [24] Return Explicit <unknown> $49:TObject<BuiltInArray>
+    Freeze $49 jsx-captured

@@ -1,0 +1,18 @@
+function Component(
+  <unknown> props$14{reactive},
+) {
+  [1] mutate? $18{reactive} = Logical
+    Sequence
+        [4] mutate? $17{reactive} = Sequence
+            [2] mutate? $15{reactive} = LoadLocal read props$14{reactive}
+            [3] mutate? $16{reactive} = PropertyLoad read $15{reactive}.p
+            [4] LoadLocal read $16{reactive}
+        [6] LoadLocal read $17{reactive}
+    && Sequence
+        [8] mutate? $20{reactive} = LoadLocal read props$14{reactive}
+        [9] mutate? $21{reactive} = PropertyLoad read $20{reactive}.q
+        [10] LoadLocal read $21{reactive}
+  [12] mutate? $26:TPhi{reactive} = StoreLocal Const mutate? b$25:TPhi{reactive} = read $24:TPhi{reactive}
+  [13] mutate? $27:TPhi{reactive} = LoadLocal read b$25:TPhi{reactive}
+  [14] return freeze $27:TPhi{reactive}
+}

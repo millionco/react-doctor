@@ -1,0 +1,22 @@
+function Component(
+  <unknown> props$17{reactive},
+) {
+  [1] mutate? $18:TFunction = LoadGlobal(global) makeObject
+  scope @0 [2:5] dependencies=[] declarations=[#t2$19_@0] reassignments=[] {
+    [3] store #t2$19_@0[2:5] = Call capture $18:TFunction()
+  }
+  [5] StoreLocal Const store x$20 = capture #t2$19_@0[2:5]
+  scope @1 [6:21] dependencies=[props$17_3:17:3:28] declarations=[#t5$33_@1] reassignments=[] {
+    [7] store #t5$28{reactive} = OptionalExpression optional=true
+      Sequence
+          [8] store $22 = LoadLocal capture x$20
+          [15] Sequence
+              [10] mutate? $23:TFunction = LoadGlobal(global) foo
+              [11] mutate? $24{reactive} = LoadLocal read props$17{reactive}
+              [12] mutate? $25{reactive} = PropertyLoad read $24{reactive}.value
+              [13] store $26_@1[6:21]{reactive} = Call capture $23:TFunction(read $25{reactive})
+              [14] store $27{reactive} = ComputedLoad capture $22[read $26_@1[6:21]{reactive}]
+              [15] LoadLocal capture $27{reactive}
+  }
+  [21] return freeze #t5$33:TPhi{reactive}
+}

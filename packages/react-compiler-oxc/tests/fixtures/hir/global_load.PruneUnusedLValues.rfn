@@ -1,0 +1,5 @@
+function Component(
+) {
+  [1] mutate? $9:TObject<Object> = LoadGlobal(global) Object
+  [2] return freeze $9:TObject<Object>
+}

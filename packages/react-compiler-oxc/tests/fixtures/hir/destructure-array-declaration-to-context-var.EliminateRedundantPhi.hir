@@ -1,0 +1,23 @@
+Component(<unknown> props$24): <unknown> $23
+bb0 (block):
+  [1] <unknown> $25 = LoadLocal <unknown> props$24
+  [2] <unknown> $26 = PropertyLoad <unknown> $25.value
+  [3] <unknown> $28 = Destructure Let [ <unknown> #t3$27 ] = <unknown> $26
+  [4] <unknown> $29 = StoreContext Let <unknown> x$5 = <unknown> #t3$27
+  [5] <unknown> $30 = Function  @context[<unknown> x$5,<unknown> props$24] @aliasingEffects=[]
+      <<anonymous>>(): <unknown> $14
+      bb1 (block):
+        [1] <unknown> $31 = LoadGlobal import { identity } from 'shared-runtime'
+        [2] <unknown> $32 = LoadLocal <unknown> props$24
+        [3] <unknown> $33 = PropertyLoad <unknown> $32.value
+        [4] <unknown> $34 = PropertyLoad <unknown> $33.0
+        [5] <unknown> $35 = Call <unknown> $31(<unknown> $34)
+        [6] <unknown> $36 = StoreContext Reassign <unknown> x$5 = <unknown> $35
+        [7] <unknown> $37 = <undefined>
+        [8] Return Void <unknown> $37
+  [6] <unknown> $39 = StoreLocal Const <unknown> foo$38 = <unknown> $30
+  [7] <unknown> $40 = LoadLocal <unknown> foo$38
+  [8] <unknown> $41 = Call <unknown> $40()
+  [9] <unknown> $42 = LoadContext <unknown> x$5
+  [10] <unknown> $43 = JSX <div>{<unknown> $42}</div>
+  [11] Return Explicit <unknown> $43

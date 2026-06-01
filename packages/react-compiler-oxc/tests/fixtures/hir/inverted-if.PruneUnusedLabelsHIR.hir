@@ -1,0 +1,54 @@
+foo(<unknown> a$20{reactive}, <unknown> b$21{reactive}, <unknown> c$22{reactive}, <unknown> d$23{reactive}): <unknown> $19:TObject<BuiltInArray>
+bb0 (block):
+  [1] mutate? $24_@0[1:17]:TObject<BuiltInArray> = Array []
+    Create $24_@0 = mutable
+  [2] store $26_@0[1:17]:TObject<BuiltInArray>{reactive} = StoreLocal Const store y$25_@0[1:17]:TObject<BuiltInArray>{reactive} = capture $24_@0[1:17]:TObject<BuiltInArray>{reactive}
+    Assign y$25_@0 = $24_@0
+    Assign $26_@0 = $24_@0
+  [3] Label block=bb2 fallthrough=bb1
+bb2 (block):
+  predecessor blocks: bb0
+  [4] mutate? $27{reactive} = LoadLocal read a$20{reactive}
+    ImmutableCapture $27 <- a$20
+  [5] If (read $27{reactive}) then:bb4 else:bb3 fallthrough=bb3
+bb4 (block):
+  predecessor blocks: bb2
+  [6] mutate? $28{reactive} = LoadLocal read b$21{reactive}
+    ImmutableCapture $28 <- b$21
+  [7] If (read $28{reactive}) then:bb6 else:bb5 fallthrough=bb5
+bb6 (block):
+  predecessor blocks: bb4
+  [8] store $29_@0[1:17]:TObject<BuiltInArray>{reactive} = LoadLocal capture y$25_@0[1:17]:TObject<BuiltInArray>{reactive}
+    Assign $29_@0 = y$25_@0
+  [9] store $30[1:17]:TFunction<<generated_5>>():  :TPrimitive{reactive} = PropertyLoad capture $29_@0[1:17]:TObject<BuiltInArray>{reactive}.push
+    Create $30 = kindOf($29_@0)
+  [10] mutate? $31{reactive} = LoadLocal read c$22{reactive}
+    ImmutableCapture $31 <- c$22
+  [11] mutate? $32:TPrimitive{reactive} = MethodCall store $29_@0[1:17]:TObject<BuiltInArray>{reactive}.read $30[1:17]:TFunction<<generated_5>>():  :TPrimitive{reactive}(read $31{reactive})
+    Mutate $29_@0
+    ImmutableCapture $29_@0 <- $31
+    Create $32 = primitive
+  [12] Goto bb1
+bb5 (block):
+  predecessor blocks: bb4
+  [13] store $33_@0[1:17]:TObject<BuiltInArray>{reactive} = LoadLocal capture y$25_@0[1:17]:TObject<BuiltInArray>{reactive}
+    Assign $33_@0 = y$25_@0
+  [14] store $34[1:17]:TFunction<<generated_5>>():  :TPrimitive{reactive} = PropertyLoad capture $33_@0[1:17]:TObject<BuiltInArray>{reactive}.push
+    Create $34 = kindOf($33_@0)
+  [15] mutate? $35{reactive} = LoadLocal read d$23{reactive}
+    ImmutableCapture $35 <- d$23
+  [16] mutate? $36:TPrimitive{reactive} = MethodCall store $33_@0[1:17]:TObject<BuiltInArray>{reactive}.read $34[1:17]:TFunction<<generated_5>>():  :TPrimitive{reactive}(read $35{reactive})
+    Mutate $33_@0
+    ImmutableCapture $33_@0 <- $35
+    Create $36 = primitive
+  [17] Goto bb3
+bb3 (block):
+  predecessor blocks: bb5 bb2
+  [18] Goto bb1
+bb1 (block):
+  predecessor blocks: bb6 bb3
+  [19] store $39:TObject<BuiltInArray>{reactive} = LoadLocal capture y$25_@0[1:17]:TObject<BuiltInArray>{reactive}
+    Assign $39 = y$25_@0
+  [20] Return Explicit freeze $39:TObject<BuiltInArray>{reactive}
+    Freeze $39 jsx-captured
+

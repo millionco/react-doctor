@@ -1,0 +1,121 @@
+Component(<unknown> #t0$49:TObject<BuiltInProps>{reactive}): <unknown> $48:TObject<BuiltInJsx>
+bb0 (block):
+  [1] mutate? $53{reactive} = Destructure Const { a: mutate? a$50{reactive}, b: mutate? b$51{reactive}, c: mutate? c$52{reactive} } = read #t0$49:TObject<BuiltInProps>{reactive}
+    Create a$50 = frozen
+    ImmutableCapture a$50 <- #t0$49
+    Create b$51 = frozen
+    ImmutableCapture b$51 <- #t0$49
+    Create c$52 = frozen
+    ImmutableCapture c$52 <- #t0$49
+    ImmutableCapture $53 <- #t0$49
+  [2] mutate? $54:TFunction<<generated_96>>():  :TObject<BuiltInWeakSet> = LoadGlobal(global) WeakSet
+    Create $54 = global
+  [3] mutate? $55_@0[3:14]:TObject<BuiltInWeakSet> = New read $54:TFunction<<generated_96>>():  :TObject<BuiltInWeakSet>()
+    Create $55_@0 = mutable
+  [4] store $57_@0[3:14]:TObject<BuiltInWeakSet>{reactive} = StoreLocal Const store set$56_@0[3:14]:TObject<BuiltInWeakSet>{reactive} = capture $55_@0[3:14]:TObject<BuiltInWeakSet>{reactive}
+    Assign set$56_@0 = $55_@0
+    Assign $57_@0 = $55_@0
+  [5] store $58_@0[3:14]:TObject<BuiltInWeakSet>{reactive} = LoadLocal capture set$56_@0[3:14]:TObject<BuiltInWeakSet>{reactive}
+    Assign $58_@0 = set$56_@0
+  [6] store $59_@0[3:14]:TFunction<<generated_38>>():  :TObject<BuiltInWeakSet>{reactive} = PropertyLoad capture $58_@0[3:14]:TObject<BuiltInWeakSet>{reactive}.add
+    Create $59_@0 = kindOf($58_@0)
+  [7] mutate? $60{reactive} = LoadLocal read a$50{reactive}
+    ImmutableCapture $60 <- a$50
+  [8] store $61_@0[3:14]:TObject<BuiltInWeakSet>{reactive} = MethodCall store $58_@0[3:14]:TObject<BuiltInWeakSet>{reactive}.read $59_@0[3:14]:TFunction<<generated_38>>():  :TObject<BuiltInWeakSet>{reactive}(read $60{reactive})
+    Create $61_@0 = mutable
+    Alias $61_@0 <- $58_@0
+    Mutate $58_@0
+    ImmutableCapture $58_@0 <- $60
+  [9] store $63_@0[3:14]:TObject<BuiltInWeakSet>{reactive} = StoreLocal Const store setAlias$62_@0[3:14]:TObject<BuiltInWeakSet>{reactive} = capture $61_@0[3:14]:TObject<BuiltInWeakSet>{reactive}
+    Assign setAlias$62_@0 = $61_@0
+    Assign $63_@0 = $61_@0
+  [10] store $64_@0[3:14]:TObject<BuiltInWeakSet>{reactive} = LoadLocal capture setAlias$62_@0[3:14]:TObject<BuiltInWeakSet>{reactive}
+    Assign $64_@0 = setAlias$62_@0
+  [11] store $65_@0[3:14]:TFunction<<generated_38>>():  :TObject<BuiltInWeakSet>{reactive} = PropertyLoad capture $64_@0[3:14]:TObject<BuiltInWeakSet>{reactive}.add
+    Create $65_@0 = kindOf($64_@0)
+  [12] mutate? $66{reactive} = LoadLocal read c$52{reactive}
+    ImmutableCapture $66 <- c$52
+  [13] store $67_@0[3:14]:TObject<BuiltInWeakSet>{reactive} = MethodCall store $64_@0[3:14]:TObject<BuiltInWeakSet>{reactive}.read $65_@0[3:14]:TFunction<<generated_38>>():  :TObject<BuiltInWeakSet>{reactive}(read $66{reactive})
+    Create $67_@0 = mutable
+    Alias $67_@0 <- $64_@0
+    Mutate $64_@0
+    ImmutableCapture $64_@0 <- $66
+  [14] store $68:TObject<BuiltInWeakSet>{reactive} = LoadLocal capture set$56_@0[3:14]:TObject<BuiltInWeakSet>{reactive}
+    Assign $68 = set$56_@0
+  [15] store $69:TFunction<<generated_40>>():  :TPrimitive{reactive} = PropertyLoad capture $68:TObject<BuiltInWeakSet>{reactive}.has
+    Create $69 = kindOf($68)
+  [16] mutate? $70{reactive} = LoadLocal read b$51{reactive}
+    ImmutableCapture $70 <- b$51
+  [17] mutate? $71:TPrimitive{reactive} = MethodCall read $68:TObject<BuiltInWeakSet>{reactive}.read $69:TFunction<<generated_40>>():  :TPrimitive{reactive}(read $70{reactive})
+    Create $71 = primitive
+    ImmutableCapture $71 <- $68
+    ImmutableCapture $71 <- $70
+  [18] mutate? $73:TPrimitive{reactive} = StoreLocal Const mutate? hasB$72:TPrimitive{reactive} = read $71:TPrimitive{reactive}
+  [19] mutate? $74 = LoadGlobal import { ValidateMemoization } from 'shared-runtime'
+    Create $74 = global
+  [20] mutate? $75{reactive} = LoadLocal read a$50{reactive}
+    ImmutableCapture $75 <- a$50
+  [21] mutate? $76{reactive} = LoadLocal read c$52{reactive}
+    ImmutableCapture $76 <- c$52
+  [22] mutate? $77_@2:TObject<BuiltInArray>{reactive} = Array [read $75{reactive}, read $76{reactive}]
+    Create $77_@2 = mutable
+    ImmutableCapture $77_@2 <- $75
+    ImmutableCapture $77_@2 <- $76
+  [23] store $78:TObject<BuiltInWeakSet>{reactive} = LoadLocal capture set$56_@0[3:14]:TObject<BuiltInWeakSet>{reactive}
+    Assign $78 = set$56_@0
+  [24] mutate? $79:TPrimitive = true
+    Create $79 = primitive
+  [25] mutate? $80_@3:TObject<BuiltInJsx>{reactive} = JSX <read $74 inputs={freeze $77_@2:TObject<BuiltInArray>{reactive}} output={freeze $78:TObject<BuiltInWeakSet>{reactive}} onlyCheckCompiled={read $79:TPrimitive} />
+    Create $80_@3 = frozen
+    Freeze $77_@2 jsx-captured
+    ImmutableCapture $80_@3 <- $77_@2
+    Freeze $78 jsx-captured
+    ImmutableCapture $80_@3 <- $78
+    Render $74
+  [26] mutate? $81 = LoadGlobal import { ValidateMemoization } from 'shared-runtime'
+    Create $81 = global
+  [27] mutate? $82{reactive} = LoadLocal read a$50{reactive}
+    ImmutableCapture $82 <- a$50
+  [28] mutate? $83{reactive} = LoadLocal read c$52{reactive}
+    ImmutableCapture $83 <- c$52
+  [29] mutate? $84_@4:TObject<BuiltInArray>{reactive} = Array [read $82{reactive}, read $83{reactive}]
+    Create $84_@4 = mutable
+    ImmutableCapture $84_@4 <- $82
+    ImmutableCapture $84_@4 <- $83
+  [30] store $85:TObject<BuiltInWeakSet>{reactive} = LoadLocal capture setAlias$62_@0[3:14]:TObject<BuiltInWeakSet>{reactive}
+    Assign $85 = setAlias$62_@0
+  [31] mutate? $86:TPrimitive = true
+    Create $86 = primitive
+  [32] mutate? $87_@5:TObject<BuiltInJsx>{reactive} = JSX <read $81 inputs={freeze $84_@4:TObject<BuiltInArray>{reactive}} output={freeze $85:TObject<BuiltInWeakSet>{reactive}} onlyCheckCompiled={read $86:TPrimitive} />
+    Create $87_@5 = frozen
+    Freeze $84_@4 jsx-captured
+    ImmutableCapture $87_@5 <- $84_@4
+    Freeze $85 jsx-captured
+    ImmutableCapture $87_@5 <- $85
+    Render $81
+  [33] mutate? $88 = LoadGlobal import { ValidateMemoization } from 'shared-runtime'
+    Create $88 = global
+  [34] mutate? $89{reactive} = LoadLocal read b$51{reactive}
+    ImmutableCapture $89 <- b$51
+  [35] mutate? $90_@6:TObject<BuiltInArray>{reactive} = Array [read $89{reactive}]
+    Create $90_@6 = mutable
+    ImmutableCapture $90_@6 <- $89
+  [36] mutate? $91:TPrimitive{reactive} = LoadLocal read hasB$72:TPrimitive{reactive}
+  [37] mutate? $92_@7:TObject<BuiltInArray>{reactive} = Array [read $91:TPrimitive{reactive}]
+    Create $92_@7 = mutable
+  [38] mutate? $93:TPrimitive = true
+    Create $93 = primitive
+  [39] mutate? $94_@8:TObject<BuiltInJsx>{reactive} = JSX <read $88 inputs={freeze $90_@6:TObject<BuiltInArray>{reactive}} output={freeze $92_@7:TObject<BuiltInArray>{reactive}} onlyCheckCompiled={read $93:TPrimitive} />
+    Create $94_@8 = frozen
+    Freeze $90_@6 jsx-captured
+    ImmutableCapture $94_@8 <- $90_@6
+    Freeze $92_@7 jsx-captured
+    ImmutableCapture $94_@8 <- $92_@7
+    Render $88
+  [40] mutate? $95_@9:TObject<BuiltInJsx>{reactive} = JsxFragment [read $80_@3:TObject<BuiltInJsx>{reactive}, read $87_@5:TObject<BuiltInJsx>{reactive}, read $94_@8:TObject<BuiltInJsx>{reactive}]
+    Create $95_@9 = frozen
+    ImmutableCapture $95_@9 <- $80_@3
+    ImmutableCapture $95_@9 <- $87_@5
+    ImmutableCapture $95_@9 <- $94_@8
+  [41] Return Explicit freeze $95_@9:TObject<BuiltInJsx>{reactive}
+    Freeze $95_@9 jsx-captured

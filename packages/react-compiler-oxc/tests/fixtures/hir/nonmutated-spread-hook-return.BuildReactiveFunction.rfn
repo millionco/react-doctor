@@ -1,0 +1,28 @@
+function Component(
+  <unknown> props$20:TObject<BuiltInProps>{reactive},
+) {
+  [1] mutate? $21:TFunction<DefaultNonmutatingHook>():  :TPoly = LoadGlobal import { useIdentity } from 'shared-runtime'
+  [2] mutate? $22:TObject<BuiltInProps>{reactive} = LoadLocal read props$20:TObject<BuiltInProps>{reactive}
+  bb6: {
+    [4] mutate? $23_@0[3:6]{reactive} = Call read $21:TFunction<DefaultNonmutatingHook>():  :TPoly(read $22:TObject<BuiltInProps>{reactive})
+    [5] break bb6 (implicit)
+  }
+  scope @1 [6:9] dependencies=[$23_@0_4:23:4:41] declarations=[rest$25_@1, x$24_@1] reassignments=[] {
+    [7] mutate? $26_@1[6:9]{reactive} = Destructure Const { x: mutate? x$24{reactive}, ...mutate? rest$25{reactive} } = read $23_@0[3:6]{reactive}
+  }
+  [9] mutate? $27{reactive} = LoadLocal read rest$25{reactive}
+  [10] mutate? $28{reactive} = PropertyLoad read $27{reactive}.z
+  [11] mutate? $30{reactive} = StoreLocal Const mutate? z$29{reactive} = read $28{reactive}
+  [12] mutate? $31:TFunction = LoadGlobal import { identity } from 'shared-runtime'
+  [13] mutate? $32{reactive} = LoadLocal read z$29{reactive}
+  scope @2 [14:17] dependencies=[$31:TFunction_6:2:6:10, z$29_6:11:6:12] declarations=[] reassignments=[] {
+    [15] store $33_@2[14:17]{reactive} = Call capture $31:TFunction(read $32{reactive})
+  }
+  [17] mutate? $34 = LoadGlobal import { Stringify } from 'shared-runtime'
+  [18] mutate? $35{reactive} = LoadLocal read x$24{reactive}
+  [19] mutate? $36{reactive} = LoadLocal read z$29{reactive}
+  scope @3 [20:23] dependencies=[$34_7:10:7:19, x$24_7:23:7:24, z$29_7:29:7:30] declarations=[$37_@3] reassignments=[] {
+    [21] mutate? $37_@3[20:23]:TObject<BuiltInJsx>{reactive} = JSX <read $34 x={read $35{reactive}} z={read $36{reactive}} />
+  }
+  [23] return freeze $37_@3[20:23]:TObject<BuiltInJsx>{reactive}
+}

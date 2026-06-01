@@ -1,0 +1,52 @@
+Component(<unknown> props$16:TObject<BuiltInProps>{reactive}): <unknown> $15:TObject<BuiltInJsx>
+bb0 (block):
+  [1] mutate? $17 = LoadGlobal(module) Component
+    Create $17 = global
+  [2] mutate? $18:TObject<BuiltInProps>{reactive} = LoadLocal read props$16:TObject<BuiltInProps>{reactive}
+    ImmutableCapture $18 <- props$16
+  [3] Ternary test:bb2 fallthrough=bb1
+bb2 (value):
+  predecessor blocks: bb0
+  [4] mutate? $19:TObject<BuiltInProps>{reactive} = LoadLocal read props$16:TObject<BuiltInProps>{reactive}
+    ImmutableCapture $19 <- props$16
+  [5] mutate? $20{reactive} = PropertyLoad read $19:TObject<BuiltInProps>{reactive}.cond
+    Create $20 = frozen
+    ImmutableCapture $20 <- $19
+  [6] Branch (read $20{reactive}) then:bb3 else:bb4 fallthrough:bb1
+bb3 (value):
+  predecessor blocks: bb2
+  [7] mutate? $21:TObject<BuiltInProps>{reactive} = LoadLocal read props$16:TObject<BuiltInProps>{reactive}
+    ImmutableCapture $21 <- props$16
+  [8] mutate? $22{reactive} = PropertyLoad read $21:TObject<BuiltInProps>{reactive}.foo
+    Create $22 = frozen
+    ImmutableCapture $22 <- $21
+  [9] mutate? $24{reactive} = StoreLocal Const mutate? $23{reactive} = read $22{reactive}
+    ImmutableCapture $23 <- $22
+    ImmutableCapture $24 <- $22
+  [10] Goto bb1
+bb4 (value):
+  predecessor blocks: bb2
+  [11] mutate? $25:TObject<BuiltInProps>{reactive} = LoadLocal read props$16:TObject<BuiltInProps>{reactive}
+    ImmutableCapture $25 <- props$16
+  [12] mutate? $26{reactive} = PropertyLoad read $25:TObject<BuiltInProps>{reactive}.bar
+    Create $26 = frozen
+    ImmutableCapture $26 <- $25
+  [13] mutate? $28{reactive} = StoreLocal Const mutate? $27{reactive} = read $26{reactive}
+    ImmutableCapture $27 <- $26
+    ImmutableCapture $28 <- $26
+  [14] Goto bb1
+bb1 (block):
+  predecessor blocks: bb3 bb4
+  store $29:TPhi{reactive}:TPhi: phi(bb3: read $23{reactive}, bb4: read $27)
+  [15] mutate? $30_@0:TObject<BuiltInObject>{reactive} = Object { bar: read $29:TPhi{reactive} }
+    Create $30_@0 = mutable
+    ImmutableCapture $30_@0 <- $29
+  [16] mutate? $33_@1:TObject<BuiltInJsx>{reactive} = JSX <read $17 ...read $18:TObject<BuiltInProps>{reactive} ...freeze $30_@0:TObject<BuiltInObject>{reactive} />
+    Create $33_@1 = frozen
+    ImmutableCapture $33_@1 <- $18
+    Freeze $30_@0 jsx-captured
+    ImmutableCapture $33_@1 <- $30_@0
+    Render $17
+  [17] Return Explicit freeze $33_@1:TObject<BuiltInJsx>{reactive}
+    Freeze $33_@1 jsx-captured
+

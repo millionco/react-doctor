@@ -1,0 +1,21 @@
+Component(<unknown> props$22): <unknown> $21
+bb0 (block):
+  [1] <unknown> $23 = LoadLocal <unknown> props$22
+  [2] <unknown> $25 = Destructure Let { x: <unknown> #t2$24 } = <unknown> $23
+  [3] <unknown> $26 = StoreContext Let <unknown> x$4 = <unknown> #t2$24
+  [4] <unknown> $27 = Function  @context[<unknown> x$4,<unknown> props$22] @aliasingEffects=[]
+      <<anonymous>>(): <unknown> $12
+      bb1 (block):
+        [1] <unknown> $28 = LoadGlobal import { identity } from 'shared-runtime'
+        [2] <unknown> $29 = LoadLocal <unknown> props$22
+        [3] <unknown> $30 = PropertyLoad <unknown> $29.x
+        [4] <unknown> $31 = Call <unknown> $28(<unknown> $30)
+        [5] <unknown> $32 = StoreContext Reassign <unknown> x$4 = <unknown> $31
+        [6] <unknown> $33 = <undefined>
+        [7] Return Void <unknown> $33
+  [5] <unknown> $35 = StoreLocal Const <unknown> foo$34 = <unknown> $27
+  [6] <unknown> $36 = LoadLocal <unknown> foo$34
+  [7] <unknown> $37 = Call <unknown> $36()
+  [8] <unknown> $38 = LoadContext <unknown> x$4
+  [9] <unknown> $39 = Object { x: <unknown> $38 }
+  [10] Return Explicit <unknown> $39

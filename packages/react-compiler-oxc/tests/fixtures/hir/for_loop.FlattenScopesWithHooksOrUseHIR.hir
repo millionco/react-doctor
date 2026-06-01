@@ -1,0 +1,28 @@
+Component(<unknown> n$10{reactive}): <unknown> $9
+bb0 (block):
+  [1] For init=bb3 test=bb1 loop=bb5 update=bb4 fallthrough=bb2
+bb3 (loop):
+  predecessor blocks: bb0
+  [2] mutate? $11:TPrimitive = 0
+    Create $11 = primitive
+  [3] mutate? $13:TPrimitive = StoreLocal Const mutate? i$12:TPrimitive = read $11:TPrimitive
+  [4] Goto bb1
+bb1 (loop):
+  predecessor blocks: bb3 bb4
+  [5] mutate? $15:TPrimitive = 0
+    Create $15 = primitive
+  [6] Branch (read $15:TPrimitive) then:bb5 else:bb2 fallthrough:bb2
+bb5 (block):
+  predecessor blocks: bb1
+  [7] Goto(Continue) bb4
+bb4 (loop):
+  predecessor blocks: bb5
+  [8] mutate? $18:TPrimitive = 0
+    Create $18 = primitive
+  [9] Goto bb1
+bb2 (block):
+  predecessor blocks: bb1
+  [10] mutate? $19{reactive} = LoadLocal read n$10{reactive}
+    ImmutableCapture $19 <- n$10
+  [11] Return Explicit freeze $19{reactive}
+    Freeze $19 jsx-captured

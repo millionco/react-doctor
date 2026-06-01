@@ -12,6 +12,7 @@ export default defineConfig({
       "build",
       "node_modules",
       "packages/react-doctor/tests/fixtures/**",
+      "packages/react-compiler/src/__tests__/fixtures/**",
     ],
     plugins: ["typescript", "react", "import"],
     rules: {},

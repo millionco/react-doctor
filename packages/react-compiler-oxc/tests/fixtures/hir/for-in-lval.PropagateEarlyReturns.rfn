@@ -1,0 +1,21 @@
+function Component(
+  <unknown> obj$11{reactive},
+) {
+  [1] mutate? $13 = DeclareLocal Let mutate? k$12
+  [2] mutate? $14{reactive} = LoadLocal read obj$11{reactive}
+  bb1: [3] for-in (
+    Sequence
+        [4] mutate? $16:TPrimitive{reactive} = NextPropertyOf read $14{reactive}
+        [5] mutate? $18:TPrimitive{reactive} = StoreLocal Reassign mutate? k$17:TPrimitive{reactive} = read $16:TPrimitive{reactive}
+        [5] <undefined>
+  ) {
+    [7] mutate? $19:TFunction = LoadGlobal(global) foo
+    [8] mutate? $20:TPrimitive{reactive} = LoadLocal read k$17:TPrimitive{reactive}
+    <pruned> scope @0 [9:12] dependencies=[] declarations=[] reassignments=[] {
+      [10] store $21_@0[9:12]{reactive} = Call capture $19:TFunction(capture $20:TPrimitive{reactive})
+    }
+    [12] continue bb1 (implicit)
+  }
+  [13] mutate? $22:TPrimitive = <undefined>
+  [14] return freeze $22:TPrimitive
+}

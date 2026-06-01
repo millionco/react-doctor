@@ -10,6 +10,15 @@ review-*.md
 *.review.md
 *.tgz
 
+# react-compiler-oxc port tooling: temporary oracle-dump scripts that the
+# parity harness writes into packages/react-compiler/ (and elsewhere) at
+# runtime to capture TS-compiler reference output. Never commit these.
+*-oracle.mjs
+
+# Scratch fixtures from the react-compiler-oxc CFG-outline experiments.
+/example.tsx
+/example-cfg.txt
+
 # Track repository-owned agent skills, but keep other local agent state out.
 /.agents/*
 !/.agents/skills/

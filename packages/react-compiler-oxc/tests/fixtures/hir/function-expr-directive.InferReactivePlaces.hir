@@ -1,0 +1,55 @@
+Component(): <unknown> $25:TObject<BuiltInJsx>
+use strict
+bb0 (block):
+  [1] mutate? $26:TObject<<generated_109>> = LoadGlobal(global) React
+    Create $26 = global
+  [2] mutate? $27:TFunction<<generated_97>>():  :TObject<BuiltInUseState> = PropertyLoad read $26:TObject<<generated_109>>.useState
+    Create $27 = global
+  [3] mutate? $28:TPrimitive = 0
+    Create $28 = primitive
+  [4] mutate? $29:TObject<BuiltInUseState>{reactive} = MethodCall read $26:TObject<<generated_109>>.read $27:TFunction<<generated_97>>():  :TObject<BuiltInUseState>{reactive}(read $28:TPrimitive)
+    Create $29 = frozen
+  [5] mutate? $32{reactive} = Destructure Let [ mutate? count$30{reactive}, mutate? setCount$31:TFunction<BuiltInSetState>():  :TPrimitive ] = read $29:TObject<BuiltInUseState>{reactive}
+    Create count$30 = frozen
+    ImmutableCapture count$30 <- $29
+    Create setCount$31 = frozen
+    ImmutableCapture setCount$31 <- $29
+    ImmutableCapture $32 <- $29
+  [6] mutate? $33:TFunction<BuiltInFunction>():  :TPrimitive = Function update @context[read setCount$31:TFunction<BuiltInSetState>():  :TPrimitive] @aliasingEffects=[Create $17 = primitive]
+      update(): <unknown> $17:TPrimitive
+      worklet
+      bb1 (block):
+        [1] store $34:TFunction<BuiltInSetState>():  :TPrimitive = LoadLocal capture setCount$31:TFunction<BuiltInSetState>():  :TPrimitive
+          Assign $34 = setCount$31
+        [2] mutate? $35_@0:TFunction<BuiltInFunction>():  :TPrimitive = Function  @context[] @aliasingEffects=[Create $13 = primitive]
+            <<anonymous>>(<unknown> count_0$36:TPrimitive): <unknown> $13:TPrimitive
+            bb2 (block):
+              [1] store $37:TPrimitive = LoadLocal capture count_0$36:TPrimitive
+                Assign $37 = count_0$36
+              [2] mutate? $38:TPrimitive = 1
+                Create $38 = primitive
+              [3] mutate? $39:TPrimitive = Binary read $37:TPrimitive + read $38:TPrimitive
+                Create $39 = primitive
+              [4] Return Implicit read $39:TPrimitive
+          Function $35_@0 = Function captures=[]
+        [3] mutate? $40:TPrimitive = Call read $34:TFunction<BuiltInSetState>():  :TPrimitive(read $35_@0:TFunction<BuiltInFunction>():  :TPrimitive)
+          Create $40 = primitive
+          ImmutableCapture $40 <- $34
+        [4] mutate? $41:TPrimitive = <undefined>
+          Create $41 = primitive
+        [5] Return Void read $41:TPrimitive
+    Function $33 = Function captures=[]
+  [7] mutate? $43:TFunction<BuiltInFunction>():  :TPrimitive = StoreLocal Function mutate? update$42:TFunction<BuiltInFunction>():  :TPrimitive = read $33:TFunction<BuiltInFunction>():  :TPrimitive
+    ImmutableCapture update$42 <- $33
+    ImmutableCapture $43 <- $33
+  [8] mutate? $44:TFunction<BuiltInFunction>():  :TPrimitive = LoadLocal read update$42:TFunction<BuiltInFunction>():  :TPrimitive
+    ImmutableCapture $44 <- update$42
+  [9] mutate? $45{reactive} = LoadLocal read count$30{reactive}
+    ImmutableCapture $45 <- count$30
+  [10] mutate? $46:TObject<BuiltInJsx>{reactive} = JSX <button onClick={read $44:TFunction<BuiltInFunction>():  :TPrimitive} >{read $45{reactive}}</button>
+    Create $46 = frozen
+    ImmutableCapture $46 <- $44
+    ImmutableCapture $46 <- $45
+    Render $45
+  [11] Return Explicit freeze $46:TObject<BuiltInJsx>{reactive}
+    Freeze $46 jsx-captured

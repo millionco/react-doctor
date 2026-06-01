@@ -1,0 +1,9 @@
+Component(): <unknown> $5:TPrimitive
+bb0 (block):
+  [1] <unknown> $6:TPrimitive = 42
+    Create $6 = primitive
+  [2] <unknown> $8:TPrimitive = StoreLocal Const <unknown> x$7:TPrimitive = <unknown> $6:TPrimitive
+  [3] <unknown> $9:TPrimitive = 42
+    Create $9 = primitive
+  [4] Return Explicit <unknown> $9:TPrimitive
+    Freeze $9 jsx-captured

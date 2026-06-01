@@ -1,0 +1,59 @@
+useHook(<unknown> #t0$24{reactive}): <unknown> $23:TPrimitive
+bb0 (block):
+  [1] mutate? $27{reactive} = Destructure Let { el1: mutate? el1$25{reactive}, el2: mutate? el2$26{reactive} } = read #t0$24{reactive}
+    Create el1$25 = frozen
+    ImmutableCapture el1$25 <- #t0$24
+    Create el2$26 = frozen
+    ImmutableCapture el2$26 <- #t0$24
+    ImmutableCapture $27 <- #t0$24
+  [2] mutate? $28:TFunction<<generated_94>>():  :TObject<BuiltInSet> = LoadGlobal(global) Set
+    Create $28 = global
+  [3] mutate? $29[3:17]:TObject<BuiltInSet> = New read $28:TFunction<<generated_94>>():  :TObject<BuiltInSet>()
+    Create $29 = mutable
+  [4] store $31[4:17]:TObject<BuiltInSet>{reactive} = StoreLocal Const store s$30[4:17]:TObject<BuiltInSet>{reactive} = capture $29[3:17]:TObject<BuiltInSet>{reactive}
+    Assign s$30 = $29
+    Assign $31 = $29
+  [5] store $32[5:17]:TObject<BuiltInSet>{reactive} = LoadLocal capture s$30[4:17]:TObject<BuiltInSet>{reactive}
+    Assign $32 = s$30
+  [6] store $33[6:17]:TFunction<<generated_16>>():  :TObject<BuiltInSet>{reactive} = PropertyLoad capture $32[5:17]:TObject<BuiltInSet>{reactive}.add
+    Create $33 = kindOf($32)
+  [7] mutate? $34:TFunction = LoadGlobal import { makeArray } from 'shared-runtime'
+    Create $34 = global
+  [8] mutate? $35{reactive} = LoadLocal read el1$25{reactive}
+    ImmutableCapture $35 <- el1$25
+  [9] store $36{reactive} = Call capture $34:TFunction(read $35{reactive})
+    Create $36 = mutable
+    MaybeAlias $36 <- $34
+    MaybeAlias $36 <- $34
+    ImmutableCapture $36 <- $35
+    ImmutableCapture $34 <- $35
+    ImmutableCapture $34 <- $35
+  [10] store $37[10:17]:TObject<BuiltInSet>{reactive} = MethodCall store $32[5:17]:TObject<BuiltInSet>{reactive}.read $33[6:17]:TFunction<<generated_16>>():  :TObject<BuiltInSet>{reactive}(capture $36{reactive})
+    Assign $37 = $32
+    Mutate $32
+    Capture $32 <- $36
+  [11] store $38[11:17]:TObject<BuiltInSet>{reactive} = LoadLocal capture s$30[4:17]:TObject<BuiltInSet>{reactive}
+    Assign $38 = s$30
+  [12] store $39[12:17]:TFunction<<generated_16>>():  :TObject<BuiltInSet>{reactive} = PropertyLoad capture $38[11:17]:TObject<BuiltInSet>{reactive}.add
+    Create $39 = kindOf($38)
+  [13] mutate? $40:TFunction = LoadGlobal import { makeArray } from 'shared-runtime'
+    Create $40 = global
+  [14] mutate? $41{reactive} = LoadLocal read el2$26{reactive}
+    ImmutableCapture $41 <- el2$26
+  [15] store $42{reactive} = Call capture $40:TFunction(read $41{reactive})
+    Create $42 = mutable
+    MaybeAlias $42 <- $40
+    MaybeAlias $42 <- $40
+    ImmutableCapture $42 <- $41
+    ImmutableCapture $40 <- $41
+    ImmutableCapture $40 <- $41
+  [16] store $43:TObject<BuiltInSet>{reactive} = MethodCall store $38[11:17]:TObject<BuiltInSet>{reactive}.read $39[12:17]:TFunction<<generated_16>>():  :TObject<BuiltInSet>{reactive}(capture $42{reactive})
+    Assign $43 = $38
+    Mutate $38
+    Capture $38 <- $42
+  [17] store $44:TObject<BuiltInSet>{reactive} = LoadLocal capture s$30[4:17]:TObject<BuiltInSet>{reactive}
+    Assign $44 = s$30
+  [18] mutate? $45:TPrimitive{reactive} = PropertyLoad read $44:TObject<BuiltInSet>{reactive}.size
+    Create $45 = primitive
+  [19] Return Explicit freeze $45:TPrimitive{reactive}
+    Freeze $45 jsx-captured

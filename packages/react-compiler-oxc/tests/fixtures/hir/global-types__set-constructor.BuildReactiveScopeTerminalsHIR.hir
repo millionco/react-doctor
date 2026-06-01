@@ -1,0 +1,77 @@
+useHook(<unknown> #t0$24{reactive}): <unknown> $23:TPrimitive
+bb0 (block):
+  [1] mutate? $27{reactive} = Destructure Const { el1: mutate? el1$25{reactive}, el2: mutate? el2$26{reactive} } = read #t0$24{reactive}
+    Create el1$25 = frozen
+    ImmutableCapture el1$25 <- #t0$24
+    Create el2$26 = frozen
+    ImmutableCapture el2$26 <- #t0$24
+    ImmutableCapture $27 <- #t0$24
+  [2] mutate? $28:TFunction<<generated_94>>():  :TObject<BuiltInSet> = LoadGlobal(global) Set
+    Create $28 = global
+  [3] Scope scope @0 [3:23] dependencies=[] declarations=[] reassignments=[] block=bb5 fallthrough=bb6
+bb5 (block):
+  predecessor blocks: bb0
+  [4] mutate? $29_@0[3:23]:TObject<BuiltInSet> = New read $28:TFunction<<generated_94>>():  :TObject<BuiltInSet>()
+    Create $29_@0 = mutable
+  [5] store $31_@0[3:23]:TObject<BuiltInSet>{reactive} = StoreLocal Const store s$30_@0[3:23]:TObject<BuiltInSet>{reactive} = capture $29_@0[3:23]:TObject<BuiltInSet>{reactive}
+    Assign s$30_@0 = $29_@0
+    Assign $31_@0 = $29_@0
+  [6] store $32_@0[3:23]:TObject<BuiltInSet>{reactive} = LoadLocal capture s$30_@0[3:23]:TObject<BuiltInSet>{reactive}
+    Assign $32_@0 = s$30_@0
+  [7] store $33_@0[3:23]:TFunction<<generated_16>>():  :TObject<BuiltInSet>{reactive} = PropertyLoad capture $32_@0[3:23]:TObject<BuiltInSet>{reactive}.add
+    Create $33_@0 = kindOf($32_@0)
+  [8] mutate? $34:TFunction = LoadGlobal import { makeArray } from 'shared-runtime'
+    Create $34 = global
+  [9] mutate? $35{reactive} = LoadLocal read el1$25{reactive}
+    ImmutableCapture $35 <- el1$25
+  [10] Scope scope @1 [10:13] dependencies=[] declarations=[] reassignments=[] block=bb7 fallthrough=bb8
+bb7 (block):
+  predecessor blocks: bb5
+  [11] store $36_@1[10:13]{reactive} = Call capture $34:TFunction(read $35{reactive})
+    Create $36_@1 = mutable
+    MaybeAlias $36_@1 <- $34
+    MaybeAlias $36_@1 <- $34
+    ImmutableCapture $36_@1 <- $35
+    ImmutableCapture $34 <- $35
+    ImmutableCapture $34 <- $35
+  [12] Goto bb8
+bb8 (block):
+  predecessor blocks: bb7
+  [13] store $37_@0[3:23]:TObject<BuiltInSet>{reactive} = MethodCall store $32_@0[3:23]:TObject<BuiltInSet>{reactive}.read $33_@0[3:23]:TFunction<<generated_16>>():  :TObject<BuiltInSet>{reactive}(capture $36_@1[10:13]{reactive})
+    Assign $37_@0 = $32_@0
+    Mutate $32_@0
+    Capture $32_@0 <- $36_@1
+  [14] store $38_@0[3:23]:TObject<BuiltInSet>{reactive} = LoadLocal capture s$30_@0[3:23]:TObject<BuiltInSet>{reactive}
+    Assign $38_@0 = s$30_@0
+  [15] store $39_@0[3:23]:TFunction<<generated_16>>():  :TObject<BuiltInSet>{reactive} = PropertyLoad capture $38_@0[3:23]:TObject<BuiltInSet>{reactive}.add
+    Create $39_@0 = kindOf($38_@0)
+  [16] mutate? $40:TFunction = LoadGlobal import { makeArray } from 'shared-runtime'
+    Create $40 = global
+  [17] mutate? $41{reactive} = LoadLocal read el2$26{reactive}
+    ImmutableCapture $41 <- el2$26
+  [18] Scope scope @2 [18:21] dependencies=[] declarations=[] reassignments=[] block=bb9 fallthrough=bb10
+bb9 (block):
+  predecessor blocks: bb8
+  [19] store $42_@2[18:21]{reactive} = Call capture $40:TFunction(read $41{reactive})
+    Create $42_@2 = mutable
+    MaybeAlias $42_@2 <- $40
+    MaybeAlias $42_@2 <- $40
+    ImmutableCapture $42_@2 <- $41
+    ImmutableCapture $40 <- $41
+    ImmutableCapture $40 <- $41
+  [20] Goto bb10
+bb10 (block):
+  predecessor blocks: bb9
+  [21] store $43_@0[3:23]:TObject<BuiltInSet>{reactive} = MethodCall store $38_@0[3:23]:TObject<BuiltInSet>{reactive}.read $39_@0[3:23]:TFunction<<generated_16>>():  :TObject<BuiltInSet>{reactive}(capture $42_@2[18:21]{reactive})
+    Assign $43_@0 = $38_@0
+    Mutate $38_@0
+    Capture $38_@0 <- $42_@2
+  [22] Goto bb6
+bb6 (block):
+  predecessor blocks: bb10
+  [23] store $44:TObject<BuiltInSet>{reactive} = LoadLocal capture s$30_@0[3:23]:TObject<BuiltInSet>{reactive}
+    Assign $44 = s$30_@0
+  [24] mutate? $45:TPrimitive{reactive} = PropertyLoad read $44:TObject<BuiltInSet>{reactive}.size
+    Create $45 = primitive
+  [25] Return Explicit freeze $45:TPrimitive{reactive}
+    Freeze $45 jsx-captured

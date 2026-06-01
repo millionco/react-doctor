@@ -1,0 +1,36 @@
+useFoo(<unknown> #t0$0): <unknown> $38
+bb0 (block):
+  [1] <unknown> $3 = Destructure Let { arr1: <unknown> arr1$1, arr2: <unknown> arr2$2 } = <unknown> #t0$0
+  [2] <unknown> $4 = LoadLocal <unknown> arr1$1
+  [3] <unknown> $5 = PropertyLoad <unknown> $4.map
+  [4] <unknown> $15 = Function  @context[<unknown> arr1$1] @aliasingEffects=[]
+      <<anonymous>>(<unknown> e$6): <unknown> $14
+      bb1 (block):
+        [1] <unknown> $7 = LoadLocal <unknown> arr1$1
+        [2] <unknown> $8 = PropertyLoad <unknown> $7.0
+        [3] <unknown> $9 = PropertyLoad <unknown> $8.value
+        [4] <unknown> $10 = LoadLocal <unknown> e$6
+        [5] <unknown> $11 = PropertyLoad <unknown> $10.value
+        [6] <unknown> $12 = Binary <unknown> $9 + <unknown> $11
+        [7] Return Implicit <unknown> $12
+  [5] <unknown> $16 = MethodCall <unknown> $4.<unknown> $5(<unknown> $15)
+  [6] <unknown> $18 = StoreLocal Const <unknown> x$17 = <unknown> $16
+  [7] <unknown> $19 = LoadLocal <unknown> arr1$1
+  [8] <unknown> $20 = PropertyLoad <unknown> $19.map
+  [9] <unknown> $30 = Function  @context[<unknown> arr2$2] @aliasingEffects=[]
+      <<anonymous>>(<unknown> e_0$21): <unknown> $29
+      bb3 (block):
+        [1] <unknown> $22 = LoadLocal <unknown> arr2$2
+        [2] <unknown> $23 = PropertyLoad <unknown> $22.0
+        [3] <unknown> $24 = PropertyLoad <unknown> $23.value
+        [4] <unknown> $25 = LoadLocal <unknown> e_0$21
+        [5] <unknown> $26 = PropertyLoad <unknown> $25.value
+        [6] <unknown> $27 = Binary <unknown> $24 + <unknown> $26
+        [7] Return Implicit <unknown> $27
+  [10] <unknown> $31 = MethodCall <unknown> $19.<unknown> $20(<unknown> $30)
+  [11] <unknown> $33 = StoreLocal Const <unknown> y$32 = <unknown> $31
+  [12] <unknown> $34 = LoadLocal <unknown> x$17
+  [13] <unknown> $35 = LoadLocal <unknown> y$32
+  [14] <unknown> $36 = Array [<unknown> $34, <unknown> $35]
+  [15] Return Explicit <unknown> $36
+

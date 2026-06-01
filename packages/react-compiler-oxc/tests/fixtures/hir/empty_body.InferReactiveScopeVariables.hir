@@ -1,0 +1,6 @@
+f(): <unknown> $1:TPrimitive
+bb0 (block):
+  [1] mutate? $2:TPrimitive = <undefined>
+    Create $2 = primitive
+  [2] Return Void freeze $2:TPrimitive
+    Freeze $2 jsx-captured

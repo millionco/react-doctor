@@ -1,0 +1,111 @@
+Component(<unknown> #t0$29:TObject<BuiltInProps>{reactive}): <unknown> $28:TObject<BuiltInJsx>
+bb0 (block):
+  [1] mutate? $31{reactive} = Destructure Const { value: mutate? value$30{reactive} } = read #t0$29:TObject<BuiltInProps>{reactive}
+    Create value$30 = frozen
+    ImmutableCapture value$30 <- #t0$29
+    ImmutableCapture $31 <- #t0$29
+  [2] mutate? $32:TPrimitive = "foo"
+    Create $32 = primitive
+  [3] Scope scope @0 [3:6] dependencies=[$32:TPrimitive_16:23:16:28] declarations=[$33_@0] reassignments=[] block=bb5 fallthrough=bb6
+bb5 (block):
+  predecessor blocks: bb0
+  [4] mutate? $33_@0[3:6]:TObject<BuiltInObject> = Object { value: read $32:TPrimitive }
+    Create $33_@0 = mutable
+  [5] Goto bb6
+bb6 (block):
+  predecessor blocks: bb5
+  [6] mutate? $34:TPrimitive = "bar"
+    Create $34 = primitive
+  [7] Scope scope @1 [7:10] dependencies=[$34:TPrimitive_16:39:16:44] declarations=[$35_@1] reassignments=[] block=bb7 fallthrough=bb8
+bb7 (block):
+  predecessor blocks: bb6
+  [8] mutate? $35_@1[7:10]:TObject<BuiltInObject> = Object { value: read $34:TPrimitive }
+    Create $35_@1 = mutable
+  [9] Goto bb8
+bb8 (block):
+  predecessor blocks: bb7
+  [10] mutate? $36{reactive} = LoadLocal read value$30{reactive}
+    ImmutableCapture $36 <- value$30
+  [11] Scope scope @2 [11:14] dependencies=[value$30_16:48:16:53] declarations=[$37_@2] reassignments=[] block=bb9 fallthrough=bb10
+bb9 (block):
+  predecessor blocks: bb8
+  [12] mutate? $37_@2[11:14]:TObject<BuiltInObject>{reactive} = Object { value: read $36{reactive} }
+    Create $37_@2 = mutable
+    ImmutableCapture $37_@2 <- $36
+  [13] Goto bb10
+bb10 (block):
+  predecessor blocks: bb9
+  [14] Scope scope @3 [14:17] dependencies=[$33_@0:TObject<BuiltInObject>_16:15:16:29, $35_@1:TObject<BuiltInObject>_16:31:16:45, $37_@2:TObject<BuiltInObject>_16:47:16:54] declarations=[$38_@3] reassignments=[] block=bb11 fallthrough=bb12
+bb11 (block):
+  predecessor blocks: bb10
+  [15] store $38_@3[14:17]:TObject<BuiltInArray>{reactive} = Array [capture $33_@0[3:6]:TObject<BuiltInObject>, capture $35_@1[7:10]:TObject<BuiltInObject>, capture $37_@2[11:14]:TObject<BuiltInObject>{reactive}]
+    Create $38_@3 = mutable
+    Capture $38_@3 <- $33_@0
+    Capture $38_@3 <- $35_@1
+    Capture $38_@3 <- $37_@2
+  [16] Goto bb12
+bb12 (block):
+  predecessor blocks: bb11
+  [17] store $40:TObject<BuiltInArray>{reactive} = StoreLocal Const store arr$39:TObject<BuiltInArray>{reactive} = capture $38_@3[14:17]:TObject<BuiltInArray>{reactive}
+    Assign arr$39 = $38_@3
+    Assign $40 = $38_@3
+  [18] mutate? $41:TFunction<DefaultNonmutatingHook>():  :TPoly = LoadGlobal import { useIdentity } from 'shared-runtime'
+    Create $41 = global
+  [19] Label block=bb13 fallthrough=bb14
+bb13 (block):
+  predecessor blocks: bb12
+  [20] mutate? $42_@4[19:22]{reactive} = Call read $41:TFunction<DefaultNonmutatingHook>():  :TPoly()
+    Create $42_@4 = frozen
+  [21] Goto bb14
+bb14 (block):
+  predecessor blocks: bb13
+  [22] mutate? $43:TObject<Array> = LoadGlobal(global) Array
+    Create $43 = global
+  [23] Scope scope @5 [23:28] dependencies=[$43:TObject<Array>_18:18:18:23, arr$39:TObject<BuiltInArray>_18:29:18:32] declarations=[$46_@5] reassignments=[] block=bb15 fallthrough=bb16
+bb15 (block):
+  predecessor blocks: bb14
+  [24] mutate? $44_@5[23:28]:TFunction<<generated_65>>():  :TObject<BuiltInArray> = PropertyLoad read $43:TObject<Array>.from
+    Create $44_@5 = global
+  [25] store $45:TObject<BuiltInArray>{reactive} = LoadLocal capture arr$39:TObject<BuiltInArray>{reactive}
+    Assign $45 = arr$39
+  [26] store $46_@5[23:28]:TObject<BuiltInArray>{reactive} = MethodCall read $43:TObject<Array>.read $44_@5[23:28]:TFunction<<generated_65>>():  :TObject<BuiltInArray>{reactive}(capture $45:TObject<BuiltInArray>{reactive})
+    Create $46_@5 = mutable
+    Capture $46_@5 <- $45
+  [27] Goto bb16
+bb16 (block):
+  predecessor blocks: bb15
+  [28] store $48:TObject<BuiltInArray>{reactive} = StoreLocal Const store derived$47:TObject<BuiltInArray>{reactive} = capture $46_@5[23:28]:TObject<BuiltInArray>{reactive}
+    Assign derived$47 = $46_@5
+    Assign $48 = $46_@5
+  [29] mutate? $49 = LoadGlobal import { Stringify } from 'shared-runtime'
+    Create $49 = global
+  [30] store $50:TObject<BuiltInArray>{reactive} = LoadLocal capture derived$47:TObject<BuiltInArray>{reactive}
+    Assign $50 = derived$47
+  [31] Scope scope @6 [31:36] dependencies=[derived$47:TObject<BuiltInArray>_19:21:19:28] declarations=[$54_@6] reassignments=[] block=bb17 fallthrough=bb18
+bb17 (block):
+  predecessor blocks: bb16
+  [32] store $51_@6[31:36]:TFunction<<generated_3>>():  :TPoly{reactive} = PropertyLoad capture $50:TObject<BuiltInArray>{reactive}.at
+    Create $51_@6 = kindOf($50)
+  [33] mutate? $53:TPrimitive = -1
+    Create $53 = primitive
+  [34] store $54_@6[31:36]{reactive} = MethodCall capture $50:TObject<BuiltInArray>{reactive}.read $51_@6[31:36]:TFunction<<generated_3>>():  :TPoly{reactive}(read $53:TPrimitive)
+    Create $54_@6 = mutable
+    Alias $54_@6 <- $50
+  [35] Goto bb18
+bb18 (block):
+  predecessor blocks: bb17
+  [36] Scope scope @7 [36:39] dependencies=[$49_19:10:19:19, $54_@6_19:21:19:35] declarations=[$55_@7] reassignments=[] block=bb19 fallthrough=bb20
+bb19 (block):
+  predecessor blocks: bb18
+  [37] mutate? $55_@7[36:39]:TObject<BuiltInJsx>{reactive} = JSX <read $49>{freeze $54_@6[31:36]{reactive}}</read $49>
+    Create $55_@7 = frozen
+    Freeze $54_@6 jsx-captured
+    ImmutableCapture $55_@7 <- $54_@6
+    Render $49
+    Render $54_@6
+  [38] Goto bb20
+bb20 (block):
+  predecessor blocks: bb19
+  [39] Return Explicit freeze $55_@7[36:39]:TObject<BuiltInJsx>{reactive}
+    Freeze $55_@7 jsx-captured
+

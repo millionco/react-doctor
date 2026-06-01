@@ -1,0 +1,31 @@
+Component(<unknown> #t0$0): <unknown> $31
+bb0 (block):
+  [1] <unknown> $3 = Destructure Let { a: <unknown> a$1, b: <unknown> b$2 } = <unknown> #t0$0
+  [2] <unknown> $4 = LoadGlobal import { useMemo } from 'react'
+  [3] <unknown> $32 = StartMemoize deps=a$1,b$2
+  [4] <unknown> $9 = Function  @context[<unknown> a$1] @aliasingEffects=[]
+      <<anonymous>>(): <unknown> $8
+      bb1 (block):
+        [1] <unknown> $5 = LoadLocal <unknown> a$1
+        [2] <unknown> $6 = Object { a: <unknown> $5 }
+        [3] Return Implicit <unknown> $6
+  [5] <unknown> $10 = LoadLocal <unknown> a$1
+  [6] <unknown> $11 = LoadLocal <unknown> b$2
+  [7] <unknown> $12 = Array [<unknown> $10, <unknown> $11]
+  [8] <unknown> $13 = Call <unknown> $9()
+  [9] <unknown> $33 = FinishMemoize decl=<unknown> $13
+  [10] <unknown> $15 = StoreLocal Const <unknown> x$14 = <unknown> $13
+  [11] <unknown> $16 = LoadGlobal import { identity } from 'shared-runtime'
+  [12] <unknown> $17 = LoadLocal <unknown> x$14
+  [13] <unknown> $18 = Call <unknown> $16(<unknown> $17)
+  [14] <unknown> $20 = StoreLocal Const <unknown> x2$19 = <unknown> $18
+  [15] <unknown> $21 = LoadLocal <unknown> b$2
+  [16] <unknown> $22 = LoadLocal <unknown> x2$19
+  [17] <unknown> $23 = PropertyStore <unknown> $22.b = <unknown> $21
+  [18] <unknown> $24 = LoadGlobal import { ValidateMemoization } from 'shared-runtime'
+  [19] <unknown> $25 = LoadLocal <unknown> a$1
+  [20] <unknown> $26 = LoadLocal <unknown> b$2
+  [21] <unknown> $27 = Array [<unknown> $25, <unknown> $26]
+  [22] <unknown> $28 = LoadLocal <unknown> x$14
+  [23] <unknown> $29 = JSX <<unknown> $24 inputs={<unknown> $27} output={<unknown> $28} />
+  [24] Return Explicit <unknown> $29

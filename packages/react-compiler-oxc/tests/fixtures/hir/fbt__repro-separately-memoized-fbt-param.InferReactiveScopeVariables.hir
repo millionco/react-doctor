@@ -1,0 +1,85 @@
+Component(): <unknown> $31
+bb0 (block):
+  [1] mutate? $32:TFunction<<generated_97>>():  :TObject<BuiltInUseState> = LoadGlobal import { useState } from 'react'
+    Create $32 = global
+  [2] mutate? $33:TPrimitive = 0
+    Create $33 = primitive
+  [3] mutate? $34_@0:TObject<BuiltInUseState>{reactive} = Call read $32:TFunction<<generated_97>>():  :TObject<BuiltInUseState>(read $33:TPrimitive)
+    Create $34_@0 = frozen
+  [4] mutate? $37{reactive} = Destructure Const [ mutate? count$35{reactive} ] = read $34_@0:TObject<BuiltInUseState>{reactive}
+    Create count$35 = frozen
+    ImmutableCapture count$35 <- $34_@0
+    Create setCount$36 = frozen
+    ImmutableCapture setCount$36 <- $34_@0
+    ImmutableCapture $37 <- $34_@0
+  [5] mutate? $38:TFunction = LoadGlobal import { fbt } from 'fbt'
+    Create $38 = global
+  [6] mutate? $39:TPrimitive = "Expected at least "
+    Create $39 = primitive
+  [7] mutate? $40 = LoadGlobal import { fbt } from 'fbt'
+    Create $40 = global
+  [8] mutate? $41_@1[8:14]:TFunction = PropertyLoad read $40.param
+    Create $41_@1 = global
+  [9] mutate? $42:TPrimitive = "min"
+    Create $42 = primitive
+  [10] mutate? $43 = LoadGlobal(module) MIN
+    Create $43 = global
+  [11] mutate? $44:TPrimitive = true
+    Create $44 = primitive
+  [12] mutate? $45_@1[8:14]:TObject<BuiltInObject> = Object { number: read $44:TPrimitive }
+    Create $45_@1 = mutable
+  [13] store $46:TPrimitive = MethodCall capture $40.capture $41_@1[8:14]:TFunction(capture $42:TPrimitive, capture $43, capture $45_@1[8:14]:TObject<BuiltInObject>)
+    Create $46 = mutable
+    MaybeAlias $46 <- $40
+    MaybeAlias $46 <- $41_@1
+    MaybeAlias $46 <- $42
+    MaybeAlias $46 <- $43
+    MutateTransitiveConditionally $45_@1
+    MaybeAlias $46 <- $45_@1
+  [14] mutate? $47:TPrimitive = Binary read $39:TPrimitive + read $46:TPrimitive
+    Create $47 = primitive
+  [15] mutate? $48:TPrimitive = " items, but got "
+    Create $48 = primitive
+  [16] mutate? $49:TPrimitive = Binary read $47:TPrimitive + read $48:TPrimitive
+    Create $49 = primitive
+  [17] mutate? $50 = LoadGlobal import { fbt } from 'fbt'
+    Create $50 = global
+  [18] mutate? $51_@2[18:24]:TFunction = PropertyLoad read $50.param
+    Create $51_@2 = global
+  [19] mutate? $52:TPrimitive = "count"
+    Create $52 = primitive
+  [20] mutate? $53{reactive} = LoadLocal read count$35{reactive}
+    ImmutableCapture $53 <- count$35
+  [21] mutate? $54:TPrimitive = true
+    Create $54 = primitive
+  [22] mutate? $55_@2[18:24]:TObject<BuiltInObject> = Object { number: read $54:TPrimitive }
+    Create $55_@2 = mutable
+  [23] store $56:TPrimitive{reactive} = MethodCall capture $50.capture $51_@2[18:24]:TFunction{reactive}(capture $52:TPrimitive, read $53{reactive}, capture $55_@2[18:24]:TObject<BuiltInObject>{reactive})
+    Create $56 = mutable
+    MaybeAlias $56 <- $50
+    MaybeAlias $56 <- $51_@2
+    MaybeAlias $56 <- $52
+    ImmutableCapture $56 <- $53
+    ImmutableCapture $50 <- $53
+    ImmutableCapture $51_@2 <- $53
+    ImmutableCapture $52 <- $53
+    ImmutableCapture $55_@2 <- $53
+    MutateTransitiveConditionally $55_@2
+    MaybeAlias $56 <- $55_@2
+  [24] mutate? $57:TPrimitive{reactive} = Binary read $49:TPrimitive + read $56:TPrimitive{reactive}
+    Create $57 = primitive
+  [25] mutate? $58:TPrimitive = " items."
+    Create $58 = primitive
+  [26] mutate? $59:TPrimitive{reactive} = Binary read $57:TPrimitive{reactive} + read $58:TPrimitive
+    Create $59 = primitive
+  [27] mutate? $60:TPrimitive = "Error description"
+    Create $60 = primitive
+  [28] store $61_@3{reactive} = Call capture $38:TFunction(capture $59:TPrimitive{reactive}, capture $60:TPrimitive)
+    Create $61_@3 = mutable
+    MaybeAlias $61_@3 <- $38
+    MaybeAlias $61_@3 <- $38
+    MaybeAlias $61_@3 <- $59
+    MaybeAlias $61_@3 <- $60
+  [29] Return Explicit freeze $61_@3{reactive}
+    Freeze $61_@3 jsx-captured
+

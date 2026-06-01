@@ -1,0 +1,64 @@
+Component(<unknown> #t0$34:TObject<BuiltInProps>{reactive}): <unknown> $31:TObject<BuiltInJsx>
+bb0 (block):
+  [1] mutate? $37{reactive} = Destructure Let { a: mutate? a$35{reactive}, b: mutate? b$36{reactive} } = read #t0$34:TObject<BuiltInProps>{reactive}
+    Create a$35 = frozen
+    ImmutableCapture a$35 <- #t0$34
+    Create b$36 = frozen
+    ImmutableCapture b$36 <- #t0$34
+    ImmutableCapture $37 <- #t0$34
+  [3] mutate? $39{reactive} = StartMemoize deps=a$35,b$36
+    Create $39 = primitive
+  [8] mutate? $43{reactive} = LoadLocal read a$35{reactive}
+    ImmutableCapture $43 <- a$35
+  [9] mutate? $44[9:21]:TObject<BuiltInObject>{reactive} = Object { a: read $43{reactive} }
+    Create $44 = mutable
+    ImmutableCapture $44 <- $43
+  [10] store $45[10:21]:TObject<BuiltInObject>{reactive} = LoadLocal capture $44[9:21]:TObject<BuiltInObject>{reactive}
+    Assign $45 = $44
+  [12] mutate? $46{reactive} = FinishMemoize decl=read $45[10:21]:TObject<BuiltInObject>{reactive}
+    Create $46 = primitive
+  [13] store $48[13:21]:TObject<BuiltInObject>{reactive} = StoreLocal Const store x$47[13:21]:TObject<BuiltInObject>{reactive} = capture $45[10:21]:TObject<BuiltInObject>{reactive}
+    Assign x$47 = $45
+    Assign $48 = $45
+  [14] mutate? $49[14:21]:TFunction = LoadGlobal import { identity } from 'shared-runtime'
+    Create $49 = global
+  [15] store $50[15:21]:TObject<BuiltInObject>{reactive} = LoadLocal capture x$47[13:21]:TObject<BuiltInObject>{reactive}
+    Assign $50 = x$47
+  [16] store $51[16:21]{reactive} = Call capture $49[14:21]:TFunction{reactive}(capture $50[15:21]:TObject<BuiltInObject>{reactive})
+    Create $51 = mutable
+    MaybeAlias $51 <- $49
+    MaybeAlias $51 <- $49
+    MutateTransitiveConditionally $50
+    MaybeAlias $51 <- $50
+  [17] store $53[17:21]{reactive} = StoreLocal Const store x2$52[17:21]{reactive} = capture $51[16:21]{reactive}
+    Assign x2$52 = $51
+    Assign $53 = $51
+  [18] mutate? $54{reactive} = LoadLocal read b$36{reactive}
+    ImmutableCapture $54 <- b$36
+  [19] store $55[19:21]{reactive} = LoadLocal capture x2$52[17:21]{reactive}
+    Assign $55 = x2$52
+  [20] mutate? $56{reactive} = PropertyStore store $55[19:21]{reactive}.b = read $54{reactive}
+    Mutate $55
+    ImmutableCapture $55 <- $54
+    Create $56 = primitive
+  [21] mutate? $57 = LoadGlobal import { ValidateMemoization } from 'shared-runtime'
+    Create $57 = global
+  [22] mutate? $58{reactive} = LoadLocal read a$35{reactive}
+    ImmutableCapture $58 <- a$35
+  [23] mutate? $59{reactive} = LoadLocal read b$36{reactive}
+    ImmutableCapture $59 <- b$36
+  [24] mutate? $60:TObject<BuiltInArray>{reactive} = Array [read $58{reactive}, read $59{reactive}]
+    Create $60 = mutable
+    ImmutableCapture $60 <- $58
+    ImmutableCapture $60 <- $59
+  [25] store $61:TObject<BuiltInObject>{reactive} = LoadLocal capture x$47[13:21]:TObject<BuiltInObject>{reactive}
+    Assign $61 = x$47
+  [26] mutate? $62:TObject<BuiltInJsx>{reactive} = JSX <read $57 inputs={freeze $60:TObject<BuiltInArray>{reactive}} output={freeze $61:TObject<BuiltInObject>{reactive}} />
+    Create $62 = frozen
+    Freeze $60 jsx-captured
+    ImmutableCapture $62 <- $60
+    Freeze $61 jsx-captured
+    ImmutableCapture $62 <- $61
+    Render $57
+  [27] Return Explicit freeze $62:TObject<BuiltInJsx>{reactive}
+    Freeze $62 jsx-captured

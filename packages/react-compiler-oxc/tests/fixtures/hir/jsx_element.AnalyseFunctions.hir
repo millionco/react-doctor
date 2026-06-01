@@ -1,0 +1,10 @@
+Component(<unknown> props$10:TObject<BuiltInProps>): <unknown> $9:TObject<BuiltInJsx>
+bb0 (block):
+  [1] <unknown> $11:TPrimitive = "x"
+  [2] <unknown> $12:TObject<BuiltInProps> = LoadLocal <unknown> props$10:TObject<BuiltInProps>
+  [3] <unknown> $13 = PropertyLoad <unknown> $12:TObject<BuiltInProps>.handler
+  [4] <unknown> $14:TObject<BuiltInProps> = LoadLocal <unknown> props$10:TObject<BuiltInProps>
+  [5] <unknown> $15 = PropertyLoad <unknown> $14:TObject<BuiltInProps>.child
+  [6] <unknown> $16:TPrimitive = JSXText "text"
+  [7] <unknown> $17:TObject<BuiltInJsx> = JSX <div className={<unknown> $11:TPrimitive} onClick={<unknown> $13} >{<unknown> $15}{<unknown> $16:TPrimitive}</div>
+  [8] Return Explicit <unknown> $17:TObject<BuiltInJsx>

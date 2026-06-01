@@ -1,0 +1,163 @@
+useFoo(<unknown> #t0$57{reactive}): <unknown> $56:TObject<BuiltInArray>
+bb0 (block):
+  [1] mutate? $59{reactive} = Destructure Const { propArr: mutate? propArr$58{reactive} } = read #t0$57{reactive}
+    Create propArr$58 = frozen
+    ImmutableCapture propArr$58 <- #t0$57
+    ImmutableCapture $59 <- #t0$57
+  [2] mutate? $60:TFunction<<generated_94>>():  :TObject<BuiltInSet> = LoadGlobal(global) Set
+    Create $60 = global
+  [3] mutate? $61:TPrimitive = 1
+    Create $61 = primitive
+  [4] mutate? $62:TPrimitive = 2
+    Create $62 = primitive
+  [5] mutate? $63:TPrimitive = 3
+    Create $63 = primitive
+  [6] Scope scope @0 [6:9] dependencies=[$61:TPrimitive_4:22:4:23, $62:TPrimitive_4:25:4:26, $63:TPrimitive_4:28:4:29] declarations=[$64_@0] reassignments=[] block=bb5 fallthrough=bb6
+bb5 (block):
+  predecessor blocks: bb0
+  [7] mutate? $64_@0[6:9]:TObject<BuiltInArray> = Array [read $61:TPrimitive, read $62:TPrimitive, read $63:TPrimitive]
+    Create $64_@0 = mutable
+  [8] Goto bb6
+bb6 (block):
+  predecessor blocks: bb5
+  [9] Scope scope @1 [9:18] dependencies=[$60:TFunction<<generated_94>>():  :TObject<BuiltInSet>_4:17:4:20, $64_@0:TObject<BuiltInArray>_4:21:4:30, propArr$58.0_5:9:5:19] declarations=[s1$66_@1] reassignments=[] block=bb7 fallthrough=bb8
+bb7 (block):
+  predecessor blocks: bb6
+  [10] store $65_@1[9:18]:TObject<BuiltInSet> = New read $60:TFunction<<generated_94>>():  :TObject<BuiltInSet>(capture $64_@0[6:9]:TObject<BuiltInArray>)
+    Create $65_@1 = mutable
+    Capture $65_@1 <- $64_@0
+  [11] store $67_@1[9:18]:TObject<BuiltInSet>{reactive} = StoreLocal Const store s1$66_@1[9:18]:TObject<BuiltInSet>{reactive} = capture $65_@1[9:18]:TObject<BuiltInSet>{reactive}
+    Assign s1$66_@1 = $65_@1
+    Assign $67_@1 = $65_@1
+  [12] store $68_@1[9:18]:TObject<BuiltInSet>{reactive} = LoadLocal capture s1$66_@1[9:18]:TObject<BuiltInSet>{reactive}
+    Assign $68_@1 = s1$66_@1
+  [13] store $69_@1[9:18]:TFunction<<generated_16>>():  :TObject<BuiltInSet>{reactive} = PropertyLoad capture $68_@1[9:18]:TObject<BuiltInSet>{reactive}.add
+    Create $69_@1 = kindOf($68_@1)
+  [14] mutate? $70{reactive} = LoadLocal read propArr$58{reactive}
+    ImmutableCapture $70 <- propArr$58
+  [15] mutate? $71{reactive} = PropertyLoad read $70{reactive}.0
+    Create $71 = frozen
+    ImmutableCapture $71 <- $70
+  [16] store $72_@1[9:18]:TObject<BuiltInSet>{reactive} = MethodCall store $68_@1[9:18]:TObject<BuiltInSet>{reactive}.read $69_@1[9:18]:TFunction<<generated_16>>():  :TObject<BuiltInSet>{reactive}(read $71{reactive})
+    Assign $72_@1 = $68_@1
+    Mutate $68_@1
+    ImmutableCapture $68_@1 <- $71
+  [17] Goto bb8
+bb8 (block):
+  predecessor blocks: bb7
+  [18] mutate? $73:TFunction<<generated_94>>():  :TObject<BuiltInSet> = LoadGlobal(global) Set
+    Create $73 = global
+  [19] Scope scope @2 [19:42] dependencies=[$73:TFunction<<generated_94>>():  :TObject<BuiltInSet>_8:17:8:20, propArr$58.1_9:9:9:19, propArr$58.2_12:9:12:19] declarations=[s3$90_@2, s2$78_@2] reassignments=[] block=bb9 fallthrough=bb10
+bb9 (block):
+  predecessor blocks: bb8
+  [20] mutate? $74_@2[19:42] = LoadGlobal(module) MODULE_LOCAL
+    Create $74_@2 = global
+  [21] mutate? $75_@2[19:42]:TFunction{reactive} = PropertyLoad read $74_@2[19:42]{reactive}.values
+    Create $75_@2 = global
+  [22] store $76_@2[19:42]{reactive} = MethodCall capture $74_@2[19:42]{reactive}.capture $75_@2[19:42]:TFunction{reactive}()
+    Create $76_@2 = mutable
+    MaybeAlias $76_@2 <- $74_@2
+    MaybeAlias $76_@2 <- $75_@2
+  [23] store $77_@2[19:42]:TObject<BuiltInSet>{reactive} = New read $73:TFunction<<generated_94>>():  :TObject<BuiltInSet>(capture $76_@2[19:42]{reactive})
+    Create $77_@2 = mutable
+    MutateTransitiveConditionally $76_@2
+    Capture $77_@2 <- $76_@2
+  [24] store $79_@2[19:42]:TObject<BuiltInSet>{reactive} = StoreLocal Const store s2$78_@2[19:42]:TObject<BuiltInSet>{reactive} = capture $77_@2[19:42]:TObject<BuiltInSet>{reactive}
+    Assign s2$78_@2 = $77_@2
+    Assign $79_@2 = $77_@2
+  [25] store $80_@2[19:42]:TObject<BuiltInSet>{reactive} = LoadLocal capture s2$78_@2[19:42]:TObject<BuiltInSet>{reactive}
+    Assign $80_@2 = s2$78_@2
+  [26] store $81_@2[19:42]:TFunction<<generated_16>>():  :TObject<BuiltInSet>{reactive} = PropertyLoad capture $80_@2[19:42]:TObject<BuiltInSet>{reactive}.add
+    Create $81_@2 = kindOf($80_@2)
+  [27] mutate? $82{reactive} = LoadLocal read propArr$58{reactive}
+    ImmutableCapture $82 <- propArr$58
+  [28] mutate? $83{reactive} = PropertyLoad read $82{reactive}.1
+    Create $83 = frozen
+    ImmutableCapture $83 <- $82
+  [29] store $84_@2[19:42]:TObject<BuiltInSet>{reactive} = MethodCall store $80_@2[19:42]:TObject<BuiltInSet>{reactive}.read $81_@2[19:42]:TFunction<<generated_16>>():  :TObject<BuiltInSet>{reactive}(read $83{reactive})
+    Assign $84_@2 = $80_@2
+    Mutate $80_@2
+    ImmutableCapture $80_@2 <- $83
+  [30] mutate? $85:TFunction<<generated_94>>():  :TObject<BuiltInSet> = LoadGlobal(global) Set
+    Create $85 = global
+  [31] store $86_@2[19:42]:TObject<BuiltInSet>{reactive} = LoadLocal capture s2$78_@2[19:42]:TObject<BuiltInSet>{reactive}
+    Assign $86_@2 = s2$78_@2
+  [32] store $87_@2[19:42]:TFunction<<generated_28>>():  :TPoly{reactive} = PropertyLoad capture $86_@2[19:42]:TObject<BuiltInSet>{reactive}.values
+    Create $87_@2 = kindOf($86_@2)
+  [33] store $88_@2[19:42]{reactive} = MethodCall capture $86_@2[19:42]:TObject<BuiltInSet>{reactive}.read $87_@2[19:42]:TFunction<<generated_28>>():  :TPoly{reactive}()
+    Create $88_@2 = mutable
+    Alias $88_@2 <- $86_@2
+  [34] store $89_@2[19:42]:TObject<BuiltInSet>{reactive} = New read $85:TFunction<<generated_94>>():  :TObject<BuiltInSet>(capture $88_@2[19:42]{reactive})
+    Create $89_@2 = mutable
+    MutateTransitiveConditionally $88_@2
+    Capture $89_@2 <- $88_@2
+  [35] store $91_@2[19:42]:TObject<BuiltInSet>{reactive} = StoreLocal Const store s3$90_@2[19:42]:TObject<BuiltInSet>{reactive} = capture $89_@2[19:42]:TObject<BuiltInSet>{reactive}
+    Assign s3$90_@2 = $89_@2
+    Assign $91_@2 = $89_@2
+  [36] store $92_@2[19:42]:TObject<BuiltInSet>{reactive} = LoadLocal capture s3$90_@2[19:42]:TObject<BuiltInSet>{reactive}
+    Assign $92_@2 = s3$90_@2
+  [37] store $93_@2[19:42]:TFunction<<generated_16>>():  :TObject<BuiltInSet>{reactive} = PropertyLoad capture $92_@2[19:42]:TObject<BuiltInSet>{reactive}.add
+    Create $93_@2 = kindOf($92_@2)
+  [38] mutate? $94{reactive} = LoadLocal read propArr$58{reactive}
+    ImmutableCapture $94 <- propArr$58
+  [39] mutate? $95{reactive} = PropertyLoad read $94{reactive}.2
+    Create $95 = frozen
+    ImmutableCapture $95 <- $94
+  [40] store $96_@2[19:42]:TObject<BuiltInSet>{reactive} = MethodCall store $92_@2[19:42]:TObject<BuiltInSet>{reactive}.read $93_@2[19:42]:TFunction<<generated_16>>():  :TObject<BuiltInSet>{reactive}(read $95{reactive})
+    Assign $96_@2 = $92_@2
+    Mutate $92_@2
+    ImmutableCapture $92_@2 <- $95
+  [41] Goto bb10
+bb10 (block):
+  predecessor blocks: bb9
+  [42] mutate? $97:TFunction<<generated_94>>():  :TObject<BuiltInSet> = LoadGlobal(global) Set
+    Create $97 = global
+  [43] store $98:TObject<BuiltInSet>{reactive} = LoadLocal capture s3$90_@2[19:42]:TObject<BuiltInSet>{reactive}
+    Assign $98 = s3$90_@2
+  [44] Scope scope @3 [44:53] dependencies=[$97:TFunction<<generated_94>>():  :TObject<BuiltInSet>_17:17:17:20, s3$90_@2:TObject<BuiltInSet>_17:21:17:23, propArr$58.3_18:9:18:19] declarations=[s4$100_@3] reassignments=[] block=bb11 fallthrough=bb12
+bb11 (block):
+  predecessor blocks: bb10
+  [45] store $99_@3[44:53]:TObject<BuiltInSet>{reactive} = New read $97:TFunction<<generated_94>>():  :TObject<BuiltInSet>(capture $98:TObject<BuiltInSet>{reactive})
+    Create $99_@3 = mutable
+    Capture $99_@3 <- $98
+  [46] store $101_@3[44:53]:TObject<BuiltInSet>{reactive} = StoreLocal Const store s4$100_@3[44:53]:TObject<BuiltInSet>{reactive} = capture $99_@3[44:53]:TObject<BuiltInSet>{reactive}
+    Assign s4$100_@3 = $99_@3
+    Assign $101_@3 = $99_@3
+  [47] store $102_@3[44:53]:TObject<BuiltInSet>{reactive} = LoadLocal capture s4$100_@3[44:53]:TObject<BuiltInSet>{reactive}
+    Assign $102_@3 = s4$100_@3
+  [48] store $103_@3[44:53]:TFunction<<generated_16>>():  :TObject<BuiltInSet>{reactive} = PropertyLoad capture $102_@3[44:53]:TObject<BuiltInSet>{reactive}.add
+    Create $103_@3 = kindOf($102_@3)
+  [49] mutate? $104{reactive} = LoadLocal read propArr$58{reactive}
+    ImmutableCapture $104 <- propArr$58
+  [50] mutate? $105{reactive} = PropertyLoad read $104{reactive}.3
+    Create $105 = frozen
+    ImmutableCapture $105 <- $104
+  [51] store $106_@3[44:53]:TObject<BuiltInSet>{reactive} = MethodCall store $102_@3[44:53]:TObject<BuiltInSet>{reactive}.read $103_@3[44:53]:TFunction<<generated_16>>():  :TObject<BuiltInSet>{reactive}(read $105{reactive})
+    Assign $106_@3 = $102_@3
+    Mutate $102_@3
+    ImmutableCapture $102_@3 <- $105
+  [52] Goto bb12
+bb12 (block):
+  predecessor blocks: bb11
+  [53] store $107:TObject<BuiltInSet>{reactive} = LoadLocal capture s1$66_@1[9:18]:TObject<BuiltInSet>{reactive}
+    Assign $107 = s1$66_@1
+  [54] store $108:TObject<BuiltInSet>{reactive} = LoadLocal capture s2$78_@2[19:42]:TObject<BuiltInSet>{reactive}
+    Assign $108 = s2$78_@2
+  [55] store $109:TObject<BuiltInSet>{reactive} = LoadLocal capture s3$90_@2[19:42]:TObject<BuiltInSet>{reactive}
+    Assign $109 = s3$90_@2
+  [56] store $110:TObject<BuiltInSet>{reactive} = LoadLocal capture s4$100_@3[44:53]:TObject<BuiltInSet>{reactive}
+    Assign $110 = s4$100_@3
+  [57] Scope scope @4 [57:60] dependencies=[s1$66_@1:TObject<BuiltInSet>_19:10:19:12, s2$78_@2:TObject<BuiltInSet>_19:14:19:16, s3$90_@2:TObject<BuiltInSet>_19:18:19:20, s4$100_@3:TObject<BuiltInSet>_19:22:19:24] declarations=[$111_@4] reassignments=[] block=bb13 fallthrough=bb14
+bb13 (block):
+  predecessor blocks: bb12
+  [58] store $111_@4[57:60]:TObject<BuiltInArray>{reactive} = Array [capture $107:TObject<BuiltInSet>{reactive}, capture $108:TObject<BuiltInSet>{reactive}, capture $109:TObject<BuiltInSet>{reactive}, capture $110:TObject<BuiltInSet>{reactive}]
+    Create $111_@4 = mutable
+    Capture $111_@4 <- $107
+    Capture $111_@4 <- $108
+    Capture $111_@4 <- $109
+    Capture $111_@4 <- $110
+  [59] Goto bb14
+bb14 (block):
+  predecessor blocks: bb13
+  [60] Return Explicit freeze $111_@4[57:60]:TObject<BuiltInArray>{reactive}
+    Freeze $111_@4 jsx-captured

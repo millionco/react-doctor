@@ -1,0 +1,13 @@
+import { c as _c } from "react/compiler-runtime";
+function Component(props) {
+  const $ = _c(2);
+  let t0;
+  if ($[0] !== props.x) {
+    t0 = <svg:rect x={props.x} />;
+    $[0] = props.x;
+    $[1] = t0;
+  } else {
+    t0 = $[1];
+  }
+  return t0;
+}

@@ -1,0 +1,38 @@
+function Component(
+  <unknown> props$30{reactive},
+) {
+  [1] mutate? $31:TFunction = LoadGlobal(global) makeObject
+  scope @0 [2:5] dependencies=[] declarations=[#t2$32_@0] reassignments=[] {
+    [3] store #t2$32_@0[2:5] = Call capture $31:TFunction()
+  }
+  [5] StoreLocal Const store x$33 = capture #t2$32_@0[2:5]
+  [6] store $61{reactive} = OptionalExpression optional=true
+    Sequence
+        [8] store $36 = Sequence
+            [7] store $35 = LoadLocal capture x$33
+            [8] PropertyLoad capture $35.y
+        [33] Sequence
+            [10] mutate? $52{reactive} = OptionalExpression optional=true
+              Sequence
+                  [12] mutate? $38{reactive} = Sequence
+                      [11] mutate? $37{reactive} = LoadLocal read props$30{reactive}
+                      [12] PropertyLoad read $37{reactive}.a
+                  [27] Sequence
+                      [14] mutate? $44{reactive} = OptionalExpression optional=true
+                        Sequence
+                            [16] mutate? $40{reactive} = Sequence
+                                [15] mutate? $39{reactive} = LoadLocal read props$30{reactive}
+                                [16] PropertyLoad read $39{reactive}.b
+                            [21] Sequence
+                                [18] mutate? $41{reactive} = LoadLocal read props$30{reactive}
+                                [19] mutate? $42{reactive} = PropertyLoad read $41{reactive}.c
+                                [20] mutate? $43{reactive} = ComputedLoad read $40{reactive}[read $42{reactive}]
+                                [21] LoadLocal read $43{reactive}
+                      [27] Sequence
+                          [26] mutate? $51{reactive} = ComputedLoad read $38{reactive}[read $50:TPhi{reactive}]
+                          [27] LoadLocal read $51{reactive}
+            [33] Sequence
+                [32] store $60{reactive} = ComputedLoad capture $36[read $59:TPhi{reactive}]
+                [33] LoadLocal capture $60{reactive}
+  [38] return freeze $66:TPhi{reactive}
+}

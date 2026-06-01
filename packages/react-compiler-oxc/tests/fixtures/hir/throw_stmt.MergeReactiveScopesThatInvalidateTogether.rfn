@@ -1,0 +1,6 @@
+function Component(
+  <unknown> e$4{reactive},
+) {
+  [1] mutate? $5{reactive} = LoadLocal read e$4{reactive}
+  [2] throw read $5{reactive}
+}

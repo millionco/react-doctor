@@ -1,0 +1,45 @@
+Component(<unknown> items$12{reactive}): <unknown> $11:TPrimitive
+bb0 (block):
+  [1] mutate? $14 = DeclareLocal Let mutate? x$13
+    Create x$13 = primitive
+    Create $14 = primitive
+  [2] mutate? $15{reactive} = LoadLocal read items$12{reactive}
+    ImmutableCapture $15 <- items$12
+  [3] ForOf init=bb2 test=bb3 loop=bb4 fallthrough=bb1
+bb2 (loop):
+  predecessor blocks: bb0 bb4
+  [4] mutate? $17_@0[3:13]{reactive} = GetIterator collection=read $15{reactive}
+    Create $17_@0 = mutable
+    ImmutableCapture $17_@0 <- $15
+  [5] Goto bb3
+bb3 (loop):
+  predecessor blocks: bb2
+  [6] mutate? $18{reactive} = IteratorNext iterator=mutate? $17_@0[3:13]{reactive} collection=read $15{reactive}
+    MutateConditionally $17_@0
+    Create $18 = frozen
+    ImmutableCapture $18 <- $15
+  [7] mutate? $20{reactive} = StoreLocal Reassign mutate? x$19{reactive} = read $18{reactive}
+    ImmutableCapture x$19 <- $18
+    ImmutableCapture $20 <- $18
+  [8] Branch (read $20{reactive}) then:bb4 else:bb1 fallthrough:bb1
+bb4 (block):
+  predecessor blocks: bb3
+  [9] mutate? $21:TFunction = LoadGlobal(global) foo
+    Create $21 = global
+  [10] mutate? $22{reactive} = LoadLocal read x$19{reactive}
+    ImmutableCapture $22 <- x$19
+  [11] store $23_@1{reactive} = Call capture $21:TFunction(read $22{reactive})
+    Create $23_@1 = mutable
+    MaybeAlias $23_@1 <- $21
+    MaybeAlias $23_@1 <- $21
+    ImmutableCapture $23_@1 <- $22
+    ImmutableCapture $21 <- $22
+    ImmutableCapture $21 <- $22
+  [12] Goto(Continue) bb2
+bb1 (block):
+  predecessor blocks: bb3
+  [13] mutate? $24:TPrimitive = <undefined>
+    Create $24 = primitive
+  [14] Return Void freeze $24:TPrimitive
+    Freeze $24 jsx-captured
+

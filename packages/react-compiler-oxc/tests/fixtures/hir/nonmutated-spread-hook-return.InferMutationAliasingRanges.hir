@@ -1,0 +1,47 @@
+Component(<unknown> props$20:TObject<BuiltInProps>): <unknown> $19:TObject<BuiltInJsx>
+bb0 (block):
+  [1] mutate? $21:TFunction<DefaultNonmutatingHook>():  :TPoly = LoadGlobal import { useIdentity } from 'shared-runtime'
+    Create $21 = global
+  [2] mutate? $22:TObject<BuiltInProps> = LoadLocal read props$20:TObject<BuiltInProps>
+    ImmutableCapture $22 <- props$20
+  [3] mutate? $23 = Call read $21:TFunction<DefaultNonmutatingHook>():  :TPoly(read $22:TObject<BuiltInProps>)
+    Create $23 = frozen
+    ImmutableCapture $23 <- $22
+  [4] mutate? $26 = Destructure Const { x: mutate? x$24, ...mutate? rest$25 } = read $23
+    Create x$24 = frozen
+    ImmutableCapture x$24 <- $23
+    Create rest$25 = frozen
+    ImmutableCapture rest$25 <- $23
+    ImmutableCapture $26 <- $23
+  [5] mutate? $27 = LoadLocal read rest$25
+    ImmutableCapture $27 <- rest$25
+  [6] mutate? $28 = PropertyLoad read $27.z
+    Create $28 = frozen
+    ImmutableCapture $28 <- $27
+  [7] mutate? $30 = StoreLocal Const mutate? z$29 = read $28
+    ImmutableCapture z$29 <- $28
+    ImmutableCapture $30 <- $28
+  [8] mutate? $31:TFunction = LoadGlobal import { identity } from 'shared-runtime'
+    Create $31 = global
+  [9] mutate? $32 = LoadLocal read z$29
+    ImmutableCapture $32 <- z$29
+  [10] store $33 = Call capture $31:TFunction(read $32)
+    Create $33 = mutable
+    MaybeAlias $33 <- $31
+    MaybeAlias $33 <- $31
+    ImmutableCapture $33 <- $32
+    ImmutableCapture $31 <- $32
+    ImmutableCapture $31 <- $32
+  [11] mutate? $34 = LoadGlobal import { Stringify } from 'shared-runtime'
+    Create $34 = global
+  [12] mutate? $35 = LoadLocal read x$24
+    ImmutableCapture $35 <- x$24
+  [13] mutate? $36 = LoadLocal read z$29
+    ImmutableCapture $36 <- z$29
+  [14] mutate? $37:TObject<BuiltInJsx> = JSX <read $34 x={read $35} z={read $36} />
+    Create $37 = frozen
+    ImmutableCapture $37 <- $35
+    ImmutableCapture $37 <- $36
+    Render $34
+  [15] Return Explicit freeze $37:TObject<BuiltInJsx>
+    Freeze $37 jsx-captured

@@ -1,0 +1,19 @@
+function foo(
+  <unknown> a$14{reactive},
+  <unknown> b$15{reactive},
+) {
+  scope @0 [1:4] dependencies=[] declarations=[t0$16_@0] reassignments=[] {
+    [2] mutate? t0$16_@0[1:4]:TObject<BuiltInArray> = Array []
+  }
+  [4] StoreLocal Let store x$17:TObject<BuiltInArray> = capture t0$16_@0[1:4]:TObject<BuiltInArray>
+  [5] mutate? $19{reactive} = LoadLocal read a$14{reactive}
+  bb0: [6] if (read $19{reactive}) {
+    [7] mutate? $20:TPrimitive = 1
+    [8] StoreLocal Reassign mutate? x$21:TPrimitive = read $20:TPrimitive
+    [9] break bb0 (implicit)
+  }
+  [10] store $24:TPhi{reactive} = LoadLocal capture x$23:TPhi{reactive}
+  [11] StoreLocal Const store y$25:TPhi{reactive} = capture $24:TPhi{reactive}
+  [12] store $27:TPhi{reactive} = LoadLocal capture y$25:TPhi{reactive}
+  [13] return freeze $27:TPhi{reactive}
+}

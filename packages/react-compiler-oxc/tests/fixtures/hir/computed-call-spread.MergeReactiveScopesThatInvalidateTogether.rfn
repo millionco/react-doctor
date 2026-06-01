@@ -1,0 +1,19 @@
+function Component(
+  <unknown> props$16{reactive},
+) {
+  [1] mutate? $17 = LoadGlobal(global) foo
+  [2] mutate? $18{reactive} = LoadLocal read props$16{reactive}
+  [3] mutate? $19{reactive} = PropertyLoad read $18{reactive}.method
+  scope @0 [4:13] dependencies=[props$16.method_2:16:2:28, props$16.a_2:33:2:40, props$16.b_2:51:2:58] declarations=[$26_@0] reassignments=[] {
+    [5] mutate? $20_@0[4:13]:TFunction{reactive} = ComputedLoad read $17[read $19{reactive}]
+    [6] mutate? $21{reactive} = LoadLocal read props$16{reactive}
+    [7] mutate? $22{reactive} = PropertyLoad read $21{reactive}.a
+    [8] mutate? $23:TPrimitive = null
+    [9] mutate? $24{reactive} = LoadLocal read props$16{reactive}
+    [10] mutate? $25{reactive} = PropertyLoad read $24{reactive}.b
+    [11] store $26_@0[4:13]{reactive} = MethodCall capture $17.capture $20_@0[4:13]:TFunction{reactive}(...read $22{reactive}, capture $23:TPrimitive, ...read $25{reactive})
+  }
+  [13] store $28{reactive} = StoreLocal Const store x$27{reactive} = capture $26_@0[4:13]{reactive}
+  [14] store $29{reactive} = LoadLocal capture x$27{reactive}
+  [15] return freeze $29{reactive}
+}

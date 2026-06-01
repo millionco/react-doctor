@@ -1,0 +1,16 @@
+Component(<unknown> props$18): <unknown> $17
+bb0 (block):
+  [1] <unknown> $19 = 1
+  [2] <unknown> $20 = LoadGlobal(global) k
+  [3] <unknown> $21 = 2
+  [4] <unknown> $22 = LoadGlobal(global) rest
+  [5] <unknown> $23 = Object { a: <unknown> $19, [<unknown> $20]: <unknown> $21, ...<unknown> $22 }
+  [6] <unknown> $25 = StoreLocal Const <unknown> obj$24 = <unknown> $23
+  [7] <unknown> $26 = 1
+  [8] <unknown> $27 = LoadLocal <unknown> props$18
+  [9] <unknown> $28 = PropertyLoad <unknown> $27.x
+  [10] <unknown> $29 = LoadGlobal(global) rest
+  [11] <unknown> $30 = Array [<unknown> $26, <hole>, <unknown> $28, ...<unknown> $29]
+  [12] <unknown> $32 = StoreLocal Const <unknown> arr$31 = <unknown> $30
+  [13] <unknown> $33 = LoadLocal <unknown> obj$24
+  [14] Return Explicit <unknown> $33

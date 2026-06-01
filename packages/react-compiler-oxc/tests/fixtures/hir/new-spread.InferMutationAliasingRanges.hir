@@ -1,0 +1,40 @@
+Component(<unknown> props$14): <unknown> $13
+bb0 (block):
+  [1] mutate? $15:TFunction = LoadGlobal(global) Foo
+    Create $15 = global
+  [2] mutate? $16 = LoadLocal read props$14
+    ImmutableCapture $16 <- props$14
+  [3] mutate? $17 = PropertyLoad read $16.foo
+    Create $17 = frozen
+    ImmutableCapture $17 <- $16
+  [4] mutate? $18:TPrimitive = null
+    Create $18 = primitive
+  [5] mutate? $19 = LoadLocal read props$14
+    ImmutableCapture $19 <- props$14
+  [6] mutate? $20 = PropertyLoad read $19.bar
+    Create $20 = frozen
+    ImmutableCapture $20 <- $19
+  [7] mutate? $21[7:9]:TObject<BuiltInArray> = Array [read $20]
+    Create $21 = mutable
+    ImmutableCapture $21 <- $20
+  [8] store $22 = New capture $15:TFunction(...read $17, capture $18:TPrimitive, ...store $21[7:9]:TObject<BuiltInArray>)
+    Create $22 = mutable
+    MaybeAlias $22 <- $15
+    MaybeAlias $22 <- $15
+    ImmutableCapture $22 <- $17
+    ImmutableCapture $15 <- $17
+    ImmutableCapture $15 <- $17
+    ImmutableCapture $17 <- $17
+    ImmutableCapture $18 <- $17
+    ImmutableCapture $21 <- $17
+    MaybeAlias $22 <- $18
+    MutateTransitiveConditionally $21
+    MaybeAlias $22 <- $21
+    Capture $21 <- $21
+  [9] store $24 = StoreLocal Const store x$23 = capture $22
+    Assign x$23 = $22
+    Assign $24 = $22
+  [10] store $25 = LoadLocal capture x$23
+    Assign $25 = x$23
+  [11] Return Explicit freeze $25
+    Freeze $25 jsx-captured

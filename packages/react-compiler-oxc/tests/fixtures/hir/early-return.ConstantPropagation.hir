@@ -1,0 +1,19 @@
+MyApp(<unknown> props$10): <unknown> $9
+bb0 (block):
+  [1] <unknown> $12 = DeclareLocal Let <unknown> res$11
+  [2] <unknown> $13 = LoadLocal <unknown> props$10
+  [3] <unknown> $14 = PropertyLoad <unknown> $13.cond
+  [4] If (<unknown> $14) then:bb2 else:bb4 fallthrough=bb1
+bb2 (block):
+  predecessor blocks: bb0
+  [5] <unknown> $15 = <undefined>
+  [6] Return Explicit <unknown> $15
+bb4 (block):
+  predecessor blocks: bb0
+  [7] <unknown> $16 = 1
+  [8] <unknown> $18 = StoreLocal Reassign <unknown> res$17 = <unknown> $16
+  [9] Goto bb1
+bb1 (block):
+  predecessor blocks: bb4
+  [10] <unknown> $19 = <undefined>
+  [11] Return Void <unknown> $19

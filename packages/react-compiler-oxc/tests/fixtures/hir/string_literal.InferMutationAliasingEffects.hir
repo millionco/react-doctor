@@ -1,0 +1,6 @@
+Component(): <unknown> $2:TPrimitive
+bb0 (block):
+  [1] <unknown> $3:TPrimitive = "hi"
+    Create $3 = primitive
+  [2] Return Explicit <unknown> $3:TPrimitive
+    Freeze $3 jsx-captured

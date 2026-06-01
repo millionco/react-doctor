@@ -1,0 +1,10 @@
+Component(<unknown> props$11): <unknown> $10
+bb0 (block):
+  [1] <unknown> $12 = LoadGlobal(global) useRef
+  [2] <unknown> $13 = null
+  [3] <unknown> $14 = Call <unknown> $12(<unknown> $13)
+  [4] <unknown> $16 = StoreLocal Const <unknown> ref$15 = <unknown> $14
+  [5] <unknown> $17 = LoadGlobal(global) Foo
+  [6] <unknown> $18 = LoadLocal <unknown> ref$15
+  [7] <unknown> $19 = JSX <<unknown> $17 ref={<unknown> $18} />
+  [8] Return Explicit <unknown> $19

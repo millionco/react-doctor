@@ -1,0 +1,17 @@
+foo(<unknown> a$0, <unknown> b$1): <unknown> $13
+bb0 (block):
+  [1] <unknown> $2 = Array []
+  [2] <unknown> $4 = StoreLocal Let <unknown> x$3 = <unknown> $2
+  [3] <unknown> $7 = LoadLocal <unknown> a$0
+  [4] If (<unknown> $7) then:bb2 else:bb1 fallthrough=bb1
+bb2 (block):
+  predecessor blocks: bb0
+  [5] <unknown> $5 = 1
+  [6] <unknown> $6 = StoreLocal Reassign <unknown> x$3 = <unknown> $5
+  [7] Goto bb1
+bb1 (block):
+  predecessor blocks: bb2 bb0
+  [8] <unknown> $8 = LoadLocal <unknown> x$3
+  [9] <unknown> $10 = StoreLocal Let <unknown> y$9 = <unknown> $8
+  [10] <unknown> $11 = LoadLocal <unknown> y$9
+  [11] Return Explicit <unknown> $11

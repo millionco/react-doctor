@@ -1,0 +1,18 @@
+function Component(
+  <unknown> props$14:TObject<BuiltInProps>{reactive},
+) {
+  scope @1 [1:16] dependencies=[props$14:TObject<BuiltInProps>.name_8:45:8:55] declarations=[t0$25_@2] reassignments=[] {
+    [2] mutate? $15_@1[1:16]:TPrimitive = "Dialog to show to user"
+    [3] mutate? $16_@1[1:16]:TPrimitive = JSXText "\n          Hello "
+    [4] mutate? $17:TPrimitive = "fbs:param"
+    [5] mutate? $18:TPrimitive = "user name"
+    [6] mutate? $19:TObject<BuiltInProps>{reactive} = LoadLocal read props$14:TObject<BuiltInProps>{reactive}
+    [7] mutate? $20{reactive} = PropertyLoad read $19:TObject<BuiltInProps>{reactive}.name
+    [8] mutate? $21_@1[1:16]:TObject<BuiltInJsx>{reactive} = JSX <read $17:TPrimitive name={read $18:TPrimitive} >{read $20{reactive}}</read $17:TPrimitive>
+    [9] mutate? $22_@1[1:16]:TPrimitive = JSXText "\n        "
+    [10] mutate? $23_@1[1:16]:TObject<BuiltInJsx>{reactive} = JSX <fbs desc={read $15_@1[1:16]:TPrimitive} >{read $16_@1[1:16]:TPrimitive}{read $21_@1[1:16]:TObject<BuiltInJsx>{reactive}}{read $22_@1[1:16]:TPrimitive}</fbs>
+    [12] mutate? $24:TPrimitive = JSXText "Hover me"
+    [14] mutate? t0$25_@2[13:16]:TObject<BuiltInJsx>{reactive} = JSX <div title={read $23_@1[1:16]:TObject<BuiltInJsx>{reactive}} >{read $24:TPrimitive}</div>
+  }
+  [16] return freeze t0$25_@2[13:16]:TObject<BuiltInJsx>{reactive}
+}

@@ -1,0 +1,32 @@
+Component(): <unknown> $24
+bb0 (block):
+  [1] <unknown> $0 = 1
+  [2] <unknown> $1 = 2
+  [3] <unknown> $2 = 3
+  [4] <unknown> $3 = Array [<unknown> $0, <unknown> $1, <unknown> $2]
+  [5] <unknown> $5 = StoreLocal Let <unknown> x$4 = <unknown> $3
+  [6] <unknown> $6 = Array []
+  [7] <unknown> $8 = StoreLocal Let <unknown> ret$7 = <unknown> $6
+  [8] DoWhile loop=bb3 test=bb1 fallthrough=bb2
+bb3 (block):
+  predecessor blocks: bb0 bb1
+  [9] <unknown> $9 = LoadLocal <unknown> x$4
+  [10] <unknown> $10 = PropertyLoad <unknown> $9.pop
+  [11] <unknown> $11 = MethodCall <unknown> $9.<unknown> $10()
+  [12] <unknown> $13 = StoreLocal Let <unknown> item$12 = <unknown> $11
+  [13] <unknown> $14 = LoadLocal <unknown> ret$7
+  [14] <unknown> $15 = PropertyLoad <unknown> $14.push
+  [15] <unknown> $16 = LoadLocal <unknown> item$12
+  [16] <unknown> $17 = 2
+  [17] <unknown> $18 = Binary <unknown> $16 * <unknown> $17
+  [18] <unknown> $19 = MethodCall <unknown> $14.<unknown> $15(<unknown> $18)
+  [19] Goto(Continue) bb1
+bb1 (loop):
+  predecessor blocks: bb3
+  [20] <unknown> $20 = LoadLocal <unknown> x$4
+  [21] <unknown> $21 = PropertyLoad <unknown> $20.length
+  [22] Branch (<unknown> $21) then:bb3 else:bb2 fallthrough:bb1
+bb2 (block):
+  predecessor blocks: bb1
+  [23] <unknown> $22 = LoadLocal <unknown> ret$7
+  [24] Return Explicit <unknown> $22

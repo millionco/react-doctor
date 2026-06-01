@@ -1,0 +1,6 @@
+Component(): <unknown> $8:TPrimitive
+bb0 (block):
+  [1] mutate? $15:TPrimitive = true
+    Create $15 = primitive
+  [2] Return Explicit freeze $15:TPrimitive
+    Freeze $15 jsx-captured

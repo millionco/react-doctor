@@ -1,0 +1,52 @@
+useFoo(<unknown> #t0$57): <unknown> $56:TObject<BuiltInArray>
+bb0 (block):
+  [1] <unknown> $59 = Destructure Let { propArr: <unknown> propArr$58 } = <unknown> #t0$57
+  [2] <unknown> $60:TFunction<<generated_94>>():  :TObject<BuiltInSet> = LoadGlobal(global) Set
+  [3] <unknown> $61:TPrimitive = 1
+  [4] <unknown> $62:TPrimitive = 2
+  [5] <unknown> $63:TPrimitive = 3
+  [6] <unknown> $64:TObject<BuiltInArray> = Array [<unknown> $61:TPrimitive, <unknown> $62:TPrimitive, <unknown> $63:TPrimitive]
+  [7] <unknown> $65:TObject<BuiltInSet> = New <unknown> $60:TFunction<<generated_94>>():  :TObject<BuiltInSet>(<unknown> $64:TObject<BuiltInArray>)
+  [8] <unknown> $67:TObject<BuiltInSet> = StoreLocal Const <unknown> s1$66:TObject<BuiltInSet> = <unknown> $65:TObject<BuiltInSet>
+  [9] <unknown> $68:TObject<BuiltInSet> = LoadLocal <unknown> s1$66:TObject<BuiltInSet>
+  [10] <unknown> $69:TFunction<<generated_16>>():  :TObject<BuiltInSet> = PropertyLoad <unknown> $68:TObject<BuiltInSet>.add
+  [11] <unknown> $70 = LoadLocal <unknown> propArr$58
+  [12] <unknown> $71 = PropertyLoad <unknown> $70.0
+  [13] <unknown> $72:TObject<BuiltInSet> = MethodCall <unknown> $68:TObject<BuiltInSet>.<unknown> $69:TFunction<<generated_16>>():  :TObject<BuiltInSet>(<unknown> $71)
+  [14] <unknown> $73:TFunction<<generated_94>>():  :TObject<BuiltInSet> = LoadGlobal(global) Set
+  [15] <unknown> $74 = LoadGlobal(module) MODULE_LOCAL
+  [16] <unknown> $75:TFunction = PropertyLoad <unknown> $74.values
+  [17] <unknown> $76 = MethodCall <unknown> $74.<unknown> $75:TFunction()
+  [18] <unknown> $77:TObject<BuiltInSet> = New <unknown> $73:TFunction<<generated_94>>():  :TObject<BuiltInSet>(<unknown> $76)
+  [19] <unknown> $79:TObject<BuiltInSet> = StoreLocal Const <unknown> s2$78:TObject<BuiltInSet> = <unknown> $77:TObject<BuiltInSet>
+  [20] <unknown> $80:TObject<BuiltInSet> = LoadLocal <unknown> s2$78:TObject<BuiltInSet>
+  [21] <unknown> $81:TFunction<<generated_16>>():  :TObject<BuiltInSet> = PropertyLoad <unknown> $80:TObject<BuiltInSet>.add
+  [22] <unknown> $82 = LoadLocal <unknown> propArr$58
+  [23] <unknown> $83 = PropertyLoad <unknown> $82.1
+  [24] <unknown> $84:TObject<BuiltInSet> = MethodCall <unknown> $80:TObject<BuiltInSet>.<unknown> $81:TFunction<<generated_16>>():  :TObject<BuiltInSet>(<unknown> $83)
+  [25] <unknown> $85:TFunction<<generated_94>>():  :TObject<BuiltInSet> = LoadGlobal(global) Set
+  [26] <unknown> $86:TObject<BuiltInSet> = LoadLocal <unknown> s2$78:TObject<BuiltInSet>
+  [27] <unknown> $87:TFunction<<generated_28>>():  :TPoly = PropertyLoad <unknown> $86:TObject<BuiltInSet>.values
+  [28] <unknown> $88 = MethodCall <unknown> $86:TObject<BuiltInSet>.<unknown> $87:TFunction<<generated_28>>():  :TPoly()
+  [29] <unknown> $89:TObject<BuiltInSet> = New <unknown> $85:TFunction<<generated_94>>():  :TObject<BuiltInSet>(<unknown> $88)
+  [30] <unknown> $91:TObject<BuiltInSet> = StoreLocal Const <unknown> s3$90:TObject<BuiltInSet> = <unknown> $89:TObject<BuiltInSet>
+  [31] <unknown> $92:TObject<BuiltInSet> = LoadLocal <unknown> s3$90:TObject<BuiltInSet>
+  [32] <unknown> $93:TFunction<<generated_16>>():  :TObject<BuiltInSet> = PropertyLoad <unknown> $92:TObject<BuiltInSet>.add
+  [33] <unknown> $94 = LoadLocal <unknown> propArr$58
+  [34] <unknown> $95 = PropertyLoad <unknown> $94.2
+  [35] <unknown> $96:TObject<BuiltInSet> = MethodCall <unknown> $92:TObject<BuiltInSet>.<unknown> $93:TFunction<<generated_16>>():  :TObject<BuiltInSet>(<unknown> $95)
+  [36] <unknown> $97:TFunction<<generated_94>>():  :TObject<BuiltInSet> = LoadGlobal(global) Set
+  [37] <unknown> $98:TObject<BuiltInSet> = LoadLocal <unknown> s3$90:TObject<BuiltInSet>
+  [38] <unknown> $99:TObject<BuiltInSet> = New <unknown> $97:TFunction<<generated_94>>():  :TObject<BuiltInSet>(<unknown> $98:TObject<BuiltInSet>)
+  [39] <unknown> $101:TObject<BuiltInSet> = StoreLocal Const <unknown> s4$100:TObject<BuiltInSet> = <unknown> $99:TObject<BuiltInSet>
+  [40] <unknown> $102:TObject<BuiltInSet> = LoadLocal <unknown> s4$100:TObject<BuiltInSet>
+  [41] <unknown> $103:TFunction<<generated_16>>():  :TObject<BuiltInSet> = PropertyLoad <unknown> $102:TObject<BuiltInSet>.add
+  [42] <unknown> $104 = LoadLocal <unknown> propArr$58
+  [43] <unknown> $105 = PropertyLoad <unknown> $104.3
+  [44] <unknown> $106:TObject<BuiltInSet> = MethodCall <unknown> $102:TObject<BuiltInSet>.<unknown> $103:TFunction<<generated_16>>():  :TObject<BuiltInSet>(<unknown> $105)
+  [45] <unknown> $107:TObject<BuiltInSet> = LoadLocal <unknown> s1$66:TObject<BuiltInSet>
+  [46] <unknown> $108:TObject<BuiltInSet> = LoadLocal <unknown> s2$78:TObject<BuiltInSet>
+  [47] <unknown> $109:TObject<BuiltInSet> = LoadLocal <unknown> s3$90:TObject<BuiltInSet>
+  [48] <unknown> $110:TObject<BuiltInSet> = LoadLocal <unknown> s4$100:TObject<BuiltInSet>
+  [49] <unknown> $111:TObject<BuiltInArray> = Array [<unknown> $107:TObject<BuiltInSet>, <unknown> $108:TObject<BuiltInSet>, <unknown> $109:TObject<BuiltInSet>, <unknown> $110:TObject<BuiltInSet>]
+  [50] Return Explicit <unknown> $111:TObject<BuiltInArray>

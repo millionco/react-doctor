@@ -1,0 +1,24 @@
+Component(<unknown> n$0): <unknown> $9
+bb0 (block):
+  [1] For init=bb3 test=bb1 loop=bb5 update=bb4 fallthrough=bb2
+bb3 (loop):
+  predecessor blocks: bb0
+  [2] <unknown> $1 = 0
+  [3] <unknown> $3 = StoreLocal Let <unknown> i$2 = <unknown> $1
+  [4] Goto bb1
+bb1 (loop):
+  predecessor blocks: bb3 bb4
+  [5] <unknown> $6 = LoadLocal <unknown> i$2
+  [6] Branch (<unknown> $6) then:bb5 else:bb2 fallthrough:bb2
+bb5 (block):
+  predecessor blocks: bb1
+  [7] <unknown> $5 = LoadLocal <unknown> n$0
+  [8] Goto(Continue) bb4
+bb4 (loop):
+  predecessor blocks: bb5
+  [9] <unknown> $4 = LoadLocal <unknown> i$2
+  [10] Goto bb1
+bb2 (block):
+  predecessor blocks: bb1
+  [11] <unknown> $7 = LoadLocal <unknown> n$0
+  [12] Return Explicit <unknown> $7

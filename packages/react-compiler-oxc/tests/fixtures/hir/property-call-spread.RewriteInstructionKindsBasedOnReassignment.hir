@@ -1,0 +1,42 @@
+Component(<unknown> props$14{reactive}): <unknown> $13
+bb0 (block):
+  [1] mutate? $15 = LoadGlobal(global) foo
+    Create $15 = global
+  [2] mutate? $16:TFunction = PropertyLoad read $15.bar
+    Create $16 = global
+  [3] mutate? $17{reactive} = LoadLocal read props$14{reactive}
+    ImmutableCapture $17 <- props$14
+  [4] mutate? $18{reactive} = PropertyLoad read $17{reactive}.a
+    Create $18 = frozen
+    ImmutableCapture $18 <- $17
+  [5] mutate? $19:TPrimitive = null
+    Create $19 = primitive
+  [6] mutate? $20{reactive} = LoadLocal read props$14{reactive}
+    ImmutableCapture $20 <- props$14
+  [7] mutate? $21{reactive} = PropertyLoad read $20{reactive}.b
+    Create $21 = frozen
+    ImmutableCapture $21 <- $20
+  [8] store $22{reactive} = MethodCall capture $15.capture $16:TFunction{reactive}(...read $18{reactive}, capture $19:TPrimitive, ...read $21{reactive})
+    Create $22 = mutable
+    MaybeAlias $22 <- $15
+    MaybeAlias $22 <- $16
+    ImmutableCapture $22 <- $18
+    ImmutableCapture $15 <- $18
+    ImmutableCapture $16 <- $18
+    ImmutableCapture $18 <- $18
+    ImmutableCapture $19 <- $18
+    ImmutableCapture $21 <- $18
+    MaybeAlias $22 <- $19
+    ImmutableCapture $22 <- $21
+    ImmutableCapture $15 <- $21
+    ImmutableCapture $16 <- $21
+    ImmutableCapture $18 <- $21
+    ImmutableCapture $19 <- $21
+    ImmutableCapture $21 <- $21
+  [9] store $24{reactive} = StoreLocal Const store x$23{reactive} = capture $22{reactive}
+    Assign x$23 = $22
+    Assign $24 = $22
+  [10] store $25{reactive} = LoadLocal capture x$23{reactive}
+    Assign $25 = x$23
+  [11] Return Explicit freeze $25{reactive}
+    Freeze $25 jsx-captured

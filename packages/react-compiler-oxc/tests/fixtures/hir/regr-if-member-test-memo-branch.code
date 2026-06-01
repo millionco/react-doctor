@@ -1,0 +1,35 @@
+import { c as _c } from "react/compiler-runtime";
+function Component(props) {
+  const $ = _c(6);
+  let data;
+  if (props.cond) {
+    let t0;
+    if ($[0] !== props.a) {
+      t0 = compute(props.a);
+      $[0] = props.a;
+      $[1] = t0;
+    } else {
+      t0 = $[1];
+    }
+    data = t0;
+  } else {
+    let t0;
+    if ($[2] !== props.b) {
+      t0 = compute(props.b);
+      $[2] = props.b;
+      $[3] = t0;
+    } else {
+      t0 = $[3];
+    }
+    data = t0;
+  }
+  let t0;
+  if ($[4] !== data) {
+    t0 = <span>{data}</span>;
+    $[4] = data;
+    $[5] = t0;
+  } else {
+    t0 = $[5];
+  }
+  return t0;
+}

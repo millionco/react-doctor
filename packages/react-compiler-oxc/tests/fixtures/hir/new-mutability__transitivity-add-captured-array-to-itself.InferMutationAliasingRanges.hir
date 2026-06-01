@@ -1,0 +1,122 @@
+Component(<unknown> #t0$65:TObject<BuiltInProps>): <unknown> $60:TObject<BuiltInJsx>
+bb0 (block):
+  [1] mutate? $68 = Destructure Let { a: mutate? a$66, b: mutate? b$67 } = read #t0$65:TObject<BuiltInProps>
+    Create a$66 = frozen
+    ImmutableCapture a$66 <- #t0$65
+    Create b$67 = frozen
+    ImmutableCapture b$67 <- #t0$65
+    ImmutableCapture $68 <- #t0$65
+  [3] mutate? $70 = StartMemoize deps=a$66
+    Create $70 = primitive
+  [7] mutate? $73 = LoadLocal read a$66
+    ImmutableCapture $73 <- a$66
+  [8] mutate? $74:TObject<BuiltInObject> = Object { a: read $73 }
+    Create $74 = mutable
+    ImmutableCapture $74 <- $73
+  [9] store $75:TObject<BuiltInObject> = LoadLocal capture $74:TObject<BuiltInObject>
+    Assign $75 = $74
+  [11] mutate? $76 = FinishMemoize decl=read $75:TObject<BuiltInObject>
+    Create $76 = primitive
+  [12] store $78:TObject<BuiltInObject> = StoreLocal Const store o$77:TObject<BuiltInObject> = capture $75:TObject<BuiltInObject>
+    Assign o$77 = $75
+    Assign $78 = $75
+  [14] mutate? $80 = StartMemoize deps=o$77,b$67
+    Create $80 = primitive
+  [19] store $84:TObject<BuiltInObject> = LoadLocal capture o$77:TObject<BuiltInObject>
+    Assign $84 = o$77
+  [20] store $85[20:41]:TObject<BuiltInArray> = Array [capture $84:TObject<BuiltInObject>]
+    Create $85 = mutable
+    Capture $85 <- $84
+  [21] store $86[21:41]:TObject<BuiltInArray> = LoadLocal capture $85[20:41]:TObject<BuiltInArray>
+    Assign $86 = $85
+  [23] mutate? $87 = FinishMemoize decl=read $86[21:41]:TObject<BuiltInArray>
+    Create $87 = primitive
+  [24] store $89[24:41]:TObject<BuiltInArray> = StoreLocal Const store x$88[24:41]:TObject<BuiltInArray> = capture $86[21:41]:TObject<BuiltInArray>
+    Assign x$88 = $86
+    Assign $89 = $86
+  [25] mutate? $90:TFunction<<generated_121>>():  :TObject<BuiltInArray> = LoadGlobal import { typedCapture } from 'shared-runtime'
+    Create $90 = global
+  [26] store $91[26:41]:TObject<BuiltInArray> = LoadLocal capture x$88[24:41]:TObject<BuiltInArray>
+    Assign $91 = x$88
+  [27] store $92[27:41]:TObject<BuiltInArray> = Call read $90:TFunction<<generated_121>>():  :TObject<BuiltInArray>(capture $91[26:41]:TObject<BuiltInArray>)
+    Create $92 = mutable
+    Capture $92 <- $91
+  [28] store $94[28:41]:TObject<BuiltInArray> = StoreLocal Const store y$93[28:41]:TObject<BuiltInArray> = capture $92[27:41]:TObject<BuiltInArray>
+    Assign y$93 = $92
+    Assign $94 = $92
+  [29] mutate? $95:TFunction<<generated_121>>():  :TObject<BuiltInArray> = LoadGlobal import { typedCapture } from 'shared-runtime'
+    Create $95 = global
+  [30] store $96[30:41]:TObject<BuiltInArray> = LoadLocal capture y$93[28:41]:TObject<BuiltInArray>
+    Assign $96 = y$93
+  [31] store $97[31:41]:TObject<BuiltInArray> = Call read $95:TFunction<<generated_121>>():  :TObject<BuiltInArray>(capture $96[30:41]:TObject<BuiltInArray>)
+    Create $97 = mutable
+    Capture $97 <- $96
+  [32] store $99[32:41]:TObject<BuiltInArray> = StoreLocal Const store z$98[32:41]:TObject<BuiltInArray> = capture $97[31:41]:TObject<BuiltInArray>
+    Assign z$98 = $97
+    Assign $99 = $97
+  [33] store $100[33:41]:TObject<BuiltInArray> = LoadLocal capture x$88[24:41]:TObject<BuiltInArray>
+    Assign $100 = x$88
+  [34] store $101[34:41]:TFunction<<generated_5>>():  :TPrimitive = PropertyLoad capture $100[33:41]:TObject<BuiltInArray>.push
+    Create $101 = kindOf($100)
+  [35] store $102[35:41]:TObject<BuiltInArray> = LoadLocal capture z$98[32:41]:TObject<BuiltInArray>
+    Assign $102 = z$98
+  [36] mutate? $103:TPrimitive = MethodCall store $100[33:41]:TObject<BuiltInArray>.read $101[34:41]:TFunction<<generated_5>>():  :TPrimitive(capture $102[35:41]:TObject<BuiltInArray>)
+    Mutate $100
+    Capture $100 <- $102
+    Create $103 = primitive
+  [37] store $104[37:41]:TObject<BuiltInArray> = LoadLocal capture x$88[24:41]:TObject<BuiltInArray>
+    Assign $104 = x$88
+  [38] store $105[38:41]:TFunction<<generated_5>>():  :TPrimitive = PropertyLoad capture $104[37:41]:TObject<BuiltInArray>.push
+    Create $105 = kindOf($104)
+  [39] mutate? $106 = LoadLocal read b$67
+    ImmutableCapture $106 <- b$67
+  [40] mutate? $107:TPrimitive = MethodCall store $104[37:41]:TObject<BuiltInArray>.read $105[38:41]:TFunction<<generated_5>>():  :TPrimitive(read $106)
+    Mutate $104
+    ImmutableCapture $104 <- $106
+    Create $107 = primitive
+  [41] mutate? $108 = LoadGlobal import { ValidateMemoization } from 'shared-runtime'
+    Create $108 = global
+  [42] mutate? $109 = LoadLocal read a$66
+    ImmutableCapture $109 <- a$66
+  [43] mutate? $110:TObject<BuiltInArray> = Array [read $109]
+    Create $110 = mutable
+    ImmutableCapture $110 <- $109
+  [44] store $111:TObject<BuiltInObject> = LoadLocal capture o$77:TObject<BuiltInObject>
+    Assign $111 = o$77
+  [45] mutate? $112:TObject<BuiltInJsx> = JSX <read $108 inputs={freeze $110:TObject<BuiltInArray>} output={freeze $111:TObject<BuiltInObject>} />
+    Create $112 = frozen
+    Freeze $110 jsx-captured
+    ImmutableCapture $112 <- $110
+    Freeze $111 jsx-captured
+    ImmutableCapture $112 <- $111
+    Render $108
+  [46] mutate? $113:TPrimitive = JSXText ";"
+    Create $113 = primitive
+  [47] mutate? $114 = LoadGlobal import { ValidateMemoization } from 'shared-runtime'
+    Create $114 = global
+  [48] mutate? $115 = LoadLocal read a$66
+    ImmutableCapture $115 <- a$66
+  [49] mutate? $116 = LoadLocal read b$67
+    ImmutableCapture $116 <- b$67
+  [50] mutate? $117:TObject<BuiltInArray> = Array [read $115, read $116]
+    Create $117 = mutable
+    ImmutableCapture $117 <- $115
+    ImmutableCapture $117 <- $116
+  [51] store $118:TObject<BuiltInArray> = LoadLocal capture x$88[24:41]:TObject<BuiltInArray>
+    Assign $118 = x$88
+  [52] mutate? $119:TObject<BuiltInJsx> = JSX <read $114 inputs={freeze $117:TObject<BuiltInArray>} output={freeze $118:TObject<BuiltInArray>} />
+    Create $119 = frozen
+    Freeze $117 jsx-captured
+    ImmutableCapture $119 <- $117
+    Freeze $118 jsx-captured
+    ImmutableCapture $119 <- $118
+    Render $114
+  [53] mutate? $120:TPrimitive = JSXText ";"
+    Create $120 = primitive
+  [54] mutate? $121:TObject<BuiltInJsx> = JsxFragment [read $112:TObject<BuiltInJsx>, read $113:TPrimitive, read $119:TObject<BuiltInJsx>, read $120:TPrimitive]
+    Create $121 = frozen
+    ImmutableCapture $121 <- $112
+    ImmutableCapture $121 <- $119
+  [55] Return Explicit freeze $121:TObject<BuiltInJsx>
+    Freeze $121 jsx-captured
+

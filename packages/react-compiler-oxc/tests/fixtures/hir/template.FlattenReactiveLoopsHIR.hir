@@ -1,0 +1,13 @@
+Component(<unknown> props$9{reactive}): <unknown> $8:TPrimitive
+bb0 (block):
+  [1] mutate? $10{reactive} = LoadLocal read props$9{reactive}
+    ImmutableCapture $10 <- props$9
+  [2] mutate? $11{reactive} = PropertyLoad read $10{reactive}.name
+    Create $11 = frozen
+    ImmutableCapture $11 <- $10
+  [3] mutate? $12:TPrimitive{reactive} = `hi ${read $11{reactive}} bye`
+    Create $12 = primitive
+  [4] mutate? $14:TPrimitive{reactive} = StoreLocal Const mutate? c$13:TPrimitive{reactive} = read $12:TPrimitive{reactive}
+  [5] mutate? $15:TPrimitive{reactive} = LoadLocal read c$13:TPrimitive{reactive}
+  [6] Return Explicit freeze $15:TPrimitive{reactive}
+    Freeze $15 jsx-captured

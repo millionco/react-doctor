@@ -1,0 +1,14 @@
+Component(<unknown> #t0$0): <unknown> $16
+bb0 (block):
+  [1] <unknown> $3 = Destructure Let { x: <unknown> x$1, ...<unknown> rest$2 } = <unknown> #t0$0
+  [2] <unknown> $4 = LoadLocal <unknown> rest$2
+  [3] <unknown> $5 = PropertyLoad <unknown> $4.z
+  [4] <unknown> $7 = StoreLocal Const <unknown> z$6 = <unknown> $5
+  [5] <unknown> $8 = LoadGlobal import { identity } from 'shared-runtime'
+  [6] <unknown> $9 = LoadLocal <unknown> z$6
+  [7] <unknown> $10 = Call <unknown> $8(<unknown> $9)
+  [8] <unknown> $11 = LoadGlobal import { Stringify } from 'shared-runtime'
+  [9] <unknown> $12 = LoadLocal <unknown> x$1
+  [10] <unknown> $13 = LoadLocal <unknown> z$6
+  [11] <unknown> $14 = JSX <<unknown> $11 x={<unknown> $12} z={<unknown> $13} />
+  [12] Return Explicit <unknown> $14

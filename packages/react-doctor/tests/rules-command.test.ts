@@ -171,6 +171,26 @@ describe("rules config formats", () => {
     expect(existsSync(fixture.configPath)).toBe(false);
   });
 
+  it("edits an inline `export default {…} satisfies` config (the migration output shape)", async () => {
+    fixture = setupFixture();
+    const tsConfigPath = path.join(fixture.projectRoot, "doctor.config.ts");
+    // Byte-identical to what migrateLegacyConfig emits.
+    writeFileSync(
+      tsConfigPath,
+      'import type { ReactDoctorConfig } from "react-doctor/api";\n\nexport default {\n  lint: true\n} satisfies ReactDoctorConfig;\n',
+    );
+
+    await rulesDisableAction("react-doctor/no-danger", { cwd: fixture.projectRoot });
+
+    const written = readFileSync(tsConfigPath, "utf8");
+    // magicast unwraps the inline `satisfies` so the object is edited directly —
+    // the `satisfies` wrapper and the other option survive, no fallback file.
+    expect(written).toContain("satisfies ReactDoctorConfig");
+    expect(written).toContain("lint: true");
+    expect(written).toContain('"react-doctor/no-danger": "off"');
+    expect(existsSync(fixture.configPath)).toBe(false);
+  });
+
   it("updates the package.json reactDoctor block instead of creating a file", async () => {
     fixture = setupFixture({ name: "fixture", reactDoctor: { lint: true } });
     await rulesDisableAction("react-doctor/no-danger", { cwd: fixture.projectRoot });

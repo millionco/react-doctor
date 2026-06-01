@@ -63,7 +63,7 @@ describe("handleError", () => {
     }
 
     expect(errorMessages.join("\n")).toContain(
-      "You can also ask for help in Discord: https://discord.gg/tB3FfF9cwb",
+      "You can also ask for help in Discord: https://react.doctor/discord",
     );
     expect(process.exitCode).toBe(1);
   });

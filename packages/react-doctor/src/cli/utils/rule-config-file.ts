@@ -1,8 +1,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { parseJSON5 } from "confbox";
-import { loadFile, writeFile } from "magicast";
-import { getDefaultExportOptions } from "magicast/helpers";
+import { generateCode, loadFile, writeFile } from "magicast";
+import { getConfigFromVariableDeclaration, getDefaultExportOptions } from "magicast/helpers";
 import { CONFIG_SCHEMA_URL, clearConfigCache, loadConfigWithSource } from "@react-doctor/core";
 import type { ReactDoctorConfig, ReactDoctorConfigFormat } from "@react-doctor/core";
 
@@ -123,25 +123,77 @@ const writePackageJsonConfig = (filePath: string, nextConfig: ReactDoctorConfig)
   writeFileSync(filePath, `${serialized}\n`);
 };
 
-// Edits a TS/JS config via magicast, syncing only the managed sections so
-// the rest of the file (other options, comments, formatting) survives.
-// Returns false when the default export isn't a statically-editable object
-// (e.g. a dynamic function config) — the caller then prints the change for
-// the user to apply by hand.
+type ConfigVariableDeclaration = ReturnType<typeof getConfigFromVariableDeclaration>;
+
+// Syncs only the managed sections onto a magicast-proxied object so the user's
+// other config and formatting survive.
+const syncManagedKeys = (target: Record<string, unknown>, nextConfig: ReactDoctorConfig): void => {
+  for (const key of MANAGED_KEYS) {
+    const value = nextConfig[key];
+    if (value === undefined) {
+      if (target[key] !== undefined) delete target[key];
+    } else {
+      target[key] = value;
+    }
+  }
+};
+
+// magicast re-parses a source string assigned into an AST slot, but its
+// `@babel/types` signatures model that slot as a node — so the generated
+// object source is assigned through a single contained cast.
+const assignNodeSource = <Owner, Key extends keyof Owner>(
+  owner: Owner,
+  key: Key,
+  code: string,
+): void => {
+  owner[key] = code as Owner[Key];
+};
+
+// `const config = {...}; export default config;` — magicast can't edit the
+// identifier default in place, so we edit a parsed copy of the const's
+// initializer and splice it back onto the declaration, mirroring magicast's
+// own variable-declaration helpers. Returns false for initializer shapes we
+// don't recognize so the caller can fall back to manual edits.
+const editVariableDeclarationConfig = (
+  declaration: ConfigVariableDeclaration["declaration"],
+  config: NonNullable<ConfigVariableDeclaration["config"]>,
+  nextConfig: ReactDoctorConfig,
+): boolean => {
+  syncManagedKeys(config, nextConfig);
+  const initializer = declaration.init;
+  if (!initializer) return false;
+  const generatedSource = generateCode(config).code;
+  if (initializer.type === "ObjectExpression") {
+    assignNodeSource(declaration, "init", generatedSource);
+    return true;
+  }
+  if (
+    initializer.type === "TSSatisfiesExpression" &&
+    initializer.expression.type === "ObjectExpression"
+  ) {
+    assignNodeSource(initializer, "expression", generatedSource);
+    return true;
+  }
+  return false;
+};
+
+// Edits a TS/JS config via magicast, syncing only the managed sections so the
+// rest of the file (other options, comments, formatting) survives. Handles the
+// object-literal / `satisfies` / wrapped default export plus the
+// `export default <const>` indirection. Returns false when the default export
+// isn't a statically-editable object (e.g. a dynamic function config) — the
+// caller then prints the change for the user to apply by hand.
 const writeModuleConfig = async (
   filePath: string,
   nextConfig: ReactDoctorConfig,
 ): Promise<boolean> => {
   try {
     const module = await loadFile(filePath);
-    const options = getDefaultExportOptions(module) as Record<string, unknown>;
-    for (const key of MANAGED_KEYS) {
-      const value = nextConfig[key];
-      if (value === undefined) {
-        if (options[key] !== undefined) delete options[key];
-      } else {
-        options[key] = value;
-      }
+    if (module.exports.default?.$type === "identifier") {
+      const { declaration, config } = getConfigFromVariableDeclaration(module);
+      if (!config || !editVariableDeclarationConfig(declaration, config, nextConfig)) return false;
+    } else {
+      syncManagedKeys(getDefaultExportOptions(module), nextConfig);
     }
     await writeFile(module, filePath);
     return true;

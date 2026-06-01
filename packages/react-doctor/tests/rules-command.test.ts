@@ -151,6 +151,26 @@ describe("rules config formats", () => {
     expect(existsSync(fixture.configPath)).toBe(false);
   });
 
+  it("edits a doctor.config.ts that exports a const via `export default <name>`", async () => {
+    fixture = setupFixture();
+    const tsConfigPath = path.join(fixture.projectRoot, "doctor.config.ts");
+    writeFileSync(
+      tsConfigPath,
+      'import type { ReactDoctorConfig } from "react-doctor/api";\n\nconst config: ReactDoctorConfig = {\n  // keep this\n  lint: true,\n};\n\nexport default config;\n',
+    );
+
+    await rulesDisableAction("react-doctor/no-danger", { cwd: fixture.projectRoot });
+
+    const written = readFileSync(tsConfigPath, "utf8");
+    // The const indirection, its type annotation, the comment, and the other
+    // option all survive — only the managed `rules` section was spliced in.
+    expect(written).toContain("const config: ReactDoctorConfig");
+    expect(written).toContain("// keep this");
+    expect(written).toContain("lint: true");
+    expect(written).toContain('"react-doctor/no-danger": "off"');
+    expect(existsSync(fixture.configPath)).toBe(false);
+  });
+
   it("updates the package.json reactDoctor block instead of creating a file", async () => {
     fixture = setupFixture({ name: "fixture", reactDoctor: { lint: true } });
     await rulesDisableAction("react-doctor/no-danger", { cwd: fixture.projectRoot });

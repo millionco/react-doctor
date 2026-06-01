@@ -1,0 +1,25 @@
+packages/react-doctor/tests/with-sentry-run-span.test.ts
+  s_ae877f9b9baf3e::t_6e29f14ebe6679 44-60
+  s_ae877f9b9baf3e::t_6f24b08a2fe6e3 4,7
+packages/react-doctor/src/cli/utils/with-sentry-run-span.ts
+  s_ae877f9b9baf3e::t_148e64681ce85a 13-24
+packages/react-doctor/src/inspect.ts
+  s_ae877f9b9baf3e::t_f69b9b6632ca06 121-125
+  s_ae877f9b9baf3e::t_e5144aa4ea3e1d 16-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "8d3e9ba7cde2d3791dbdab702f194ed53afac398",
+  "prompts": {},
+  "sessions": {
+    "s_ae877f9b9baf3e": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "bd6866f8-3726-4c70-8caf-c792f2dd790c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

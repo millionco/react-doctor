@@ -1,6 +1,7 @@
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import {
+  CANONICAL_DISCORD_URL,
   CANONICAL_GITHUB_URL,
   formatErrorChain,
   formatReactDoctorError,
@@ -99,6 +100,9 @@ const handleErrorEffect = (error: unknown): Effect.Effect<void> =>
       highlighter.error(
         `If the problem persists, please open this prefilled issue: ${buildErrorIssueUrl(error)}`,
       ),
+    );
+    yield* Console.error(
+      highlighter.error(`You can also ask for help in Discord: ${CANONICAL_DISCORD_URL}`),
     );
     yield* Console.error("");
     yield* Console.error(highlighter.error(formatErrorForReport(error)));

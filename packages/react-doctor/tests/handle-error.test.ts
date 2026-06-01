@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { buildErrorIssueUrl } from "../src/cli/utils/handle-error.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { buildErrorIssueUrl, handleError } from "../src/cli/utils/handle-error.js";
 
 const OTLP_ENDPOINT_ENVIRONMENT_VARIABLE = "REACT_DOCTOR_OTLP_ENDPOINT";
 const OTLP_AUTH_HEADER_ENVIRONMENT_VARIABLE = "REACT_DOCTOR_OTLP_AUTH_HEADER";
@@ -10,8 +10,10 @@ interface EnvironmentSnapshot {
 
 describe("handleError", () => {
   let savedEnvironment: EnvironmentSnapshot;
+  let savedExitCode: number | string | undefined;
 
   beforeEach(() => {
+    savedExitCode = process.exitCode;
     savedEnvironment = {
       [OTLP_ENDPOINT_ENVIRONMENT_VARIABLE]: process.env[OTLP_ENDPOINT_ENVIRONMENT_VARIABLE],
       [OTLP_AUTH_HEADER_ENVIRONMENT_VARIABLE]: process.env[OTLP_AUTH_HEADER_ENVIRONMENT_VARIABLE],
@@ -21,6 +23,7 @@ describe("handleError", () => {
   });
 
   afterEach(() => {
+    process.exitCode = savedExitCode;
     for (const [environmentVariableName, value] of Object.entries(savedEnvironment)) {
       if (value === undefined) {
         delete process.env[environmentVariableName];
@@ -45,5 +48,23 @@ describe("handleError", () => {
     expect(body).toContain("OTLP exporter enabled: yes");
     expect(body).toContain("trace/span link, if exported:");
     expect(body).not.toContain("secret-token");
+  });
+
+  it("suggests Discord when printing an error", () => {
+    const errorMessages: string[] = [];
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation((...messages) => {
+      errorMessages.push(messages.join(" "));
+    });
+
+    try {
+      handleError(new Error("boom"), { shouldExit: false });
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+
+    expect(errorMessages.join("\n")).toContain(
+      "You can also ask for help in Discord: https://discord.gg/tB3FfF9cwb",
+    );
+    expect(process.exitCode).toBe(1);
   });
 });

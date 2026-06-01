@@ -1,0 +1,21 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-panresponder.test.ts
+  s_a7a927072167d0::t_94395ffeddd83c 37-49
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-panresponder.ts
+  s_a7a927072167d0::t_f97d112a8fb94a 27-30,33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "7f5a8b636f8b043f7c6bfd18b0cae2a83185674e",
+  "prompts": {},
+  "sessions": {
+    "s_a7a927072167d0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f3824e37-002b-449d-ad10-d234d66b15b7",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

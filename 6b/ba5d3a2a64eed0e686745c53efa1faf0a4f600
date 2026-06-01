@@ -1,0 +1,23 @@
+packages/core/src/runners/oxlint/spawn-batches.ts
+  s_6146988f22d5a7::t_0422115c54091b 73-75
+  s_6146988f22d5a7::t_417ccb7dc82277 7,14-35
+  s_6146988f22d5a7::t_2fe6b316341435 217
+packages/core/tests/spawn-batches-serial-fallback.test.ts
+  s_6146988f22d5a7::t_25f88865cf2e3b 91-95,97-102,104-106,112-115
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "6bba5d3a2a64eed0e686745c53efa1faf0a4f600",
+  "prompts": {},
+  "sessions": {
+    "s_6146988f22d5a7": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a2de063a-4ecc-488f-9e75-bb5a5b37bea3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

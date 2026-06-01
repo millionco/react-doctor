@@ -74,4 +74,16 @@ describe("stripUnknownCliFlags", () => {
     expect(stripUserArguments(["version", "--color"])).toEqual(["version", "--color"]);
     expect(stripUserArguments(["version", "--offline"])).toEqual(["version"]);
   });
+
+  it("keeps rules subcommand options and positionals", () => {
+    expect(
+      stripUserArguments(["rules", "explain", "react-doctor/no-danger", "-c", "/tmp/project"]),
+    ).toEqual(["rules", "explain", "react-doctor/no-danger", "-c", "/tmp/project"]);
+    expect(
+      stripUserArguments(["rules", "list", "--category", "Performance", "--configured", "--json"]),
+    ).toEqual(["rules", "list", "--category", "Performance", "--configured", "--json"]);
+    expect(
+      stripUserArguments(["rules", "enable", "no-danger", "--severity", "error", "--offline"]),
+    ).toEqual(["rules", "enable", "no-danger", "--severity", "error"]);
+  });
 });

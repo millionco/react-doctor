@@ -92,6 +92,17 @@ Point the `$schema` key at `https://react.doctor/schema/config.json` to get auto
 }
 ```
 
+Don't hand-edit if you'd rather not — the `rules` subcommands list, explain, and configure rules for you (they write `react-doctor.config.json`, preserving your other settings):
+
+```bash
+npx react-doctor@latest rules list                 # every rule + its effective severity
+npx react-doctor@latest rules explain <rule>        # why a rule matters and how to tune it
+npx react-doctor@latest rules disable <rule>        # turn a rule off
+npx react-doctor@latest rules set <rule> warn       # off | warn | error
+npx react-doctor@latest rules category "React Native" off
+npx react-doctor@latest rules ignore-tag design     # skip a whole rule family
+```
+
 ## Contributing
 
 [Issues welcome!](https://github.com/millionco/react-doctor/issues)

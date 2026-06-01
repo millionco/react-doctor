@@ -18,25 +18,29 @@
               "type": "array",
               "items": {
                 "type": "string"
-              }
+              },
+              "description": "Fully-qualified rule keys (`\"<plugin>/<rule>\"`) whose diagnostics are dropped AFTER linting. The rule still runs; its findings are filtered out. To stop a rule from running at all, set it to `\"off\"` in the top-level `rules` map instead. Prefer `react-doctor rules disable <rule>` to edit this safely."
             },
             "files": {
               "type": "array",
               "items": {
                 "type": "string"
-              }
+              },
+              "description": "Glob patterns whose files are excluded from scanning entirely (matched against paths relative to the scanned directory)."
             },
             "overrides": {
               "type": "array",
               "items": {
                 "$ref": "#/definitions/ReactDoctorIgnoreOverride"
-              }
+              },
+              "description": "Per-path rule suppressions — narrower than the top-level `rules`/`files`."
             },
             "tags": {
               "type": "array",
               "items": {
                 "type": "string"
-              }
+              },
+              "description": "Behavioral tags whose rules are disabled BEFORE linting, skipping a whole family at once (e.g. `[\"design\", \"test-noise\", \"migration-hint\"]`). Prefer `react-doctor rules ignore-tag <tag>` to edit this safely."
             }
           },
           "additionalProperties": false
@@ -159,13 +163,15 @@
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "description": "Glob patterns the override applies to (e.g. `[\"src/legacy/**\"]`)."
         },
         "rules": {
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "description": "Rule keys to suppress for the matched files. Omit (or leave empty) to suppress every rule for those files."
         }
       },
       "required": [

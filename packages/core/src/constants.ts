@@ -89,6 +89,11 @@ export const DOCS_URL = "https://www.react.doctor/docs";
 // live under `https://www.react.doctor/prompts/rules/<plugin>/<rule>.md`.
 export const DOCS_RULES_BASE_URL = `${DOCS_URL}/rules`;
 
+// Canonical JSON Schema for `react-doctor.config.json`. Stamped as the
+// `$schema` field when the rule-config CLI creates a config file so
+// editors get autocomplete + hover docs (matches the README guidance).
+export const CONFIG_SCHEMA_URL = "https://react.doctor/schema/config.json";
+
 export const FETCH_TIMEOUT_MS = 10_000;
 
 export const GITHUB_VIEWER_PERMISSION_TIMEOUT_MS = 2_000;

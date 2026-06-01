@@ -64,6 +64,7 @@ export * from "./resolve-config-root-dir.js";
 export * from "./resolve-diagnose-target.js";
 export * from "./resolve-rule-severity-override.js";
 export * from "./resolve-lint-include-paths.js";
+export * from "./rule-key-aliases.js";
 export * from "./run-oxlint.js";
 export * from "./summarize-diagnostics.js";
 export * from "./validate-config-types.js";

@@ -72,6 +72,23 @@ Install the skill into your coding agent (50+ agents supported via agent-install
 npx react-doctor@latest install
 ```
 
+## Configure rules
+
+Manage which rules run with the `rules` subcommands. They edit `react-doctor.config.json` (preserving your other settings) so you don't have to hand-write config:
+
+```bash
+npx react-doctor@latest rules list                 # every rule + the severity it runs at
+npx react-doctor@latest rules list --configured     # only rules your config changed
+npx react-doctor@latest rules explain <rule>        # why a rule matters + how to configure it
+npx react-doctor@latest rules disable <rule>        # turn a rule off (rules.<key> = "off")
+npx react-doctor@latest rules enable <rule>         # turn it back on at its recommended severity
+npx react-doctor@latest rules set <rule> warn       # off | warn | error
+npx react-doctor@latest rules category "React Native" off   # set a whole category
+npx react-doctor@latest rules ignore-tag design     # skip a rule family (design, test-noise, …)
+```
+
+Rule references accept the full key (`react-doctor/no-danger`), the bare id (`no-danger`), or a legacy key (`react/no-danger`). Precedence: `rules` > `categories` > `ignore.tags`. Use the `surfaces` config field (not `disable`) to keep a rule locally but hide it from PR comments, the score, or the CI gate.
+
 ## Options
 
 ```

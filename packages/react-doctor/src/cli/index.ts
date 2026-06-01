@@ -3,6 +3,16 @@ import { CANONICAL_GITHUB_URL, highlighter } from "@react-doctor/core";
 import { initializeSentry } from "../instrument.js";
 import { inspectAction } from "./commands/inspect.js";
 import { installAction } from "./commands/install.js";
+import {
+  rulesCategoryAction,
+  rulesDisableAction,
+  rulesEnableAction,
+  rulesExplainAction,
+  rulesIgnoreTagAction,
+  rulesListAction,
+  rulesSetAction,
+  rulesUnignoreTagAction,
+} from "./commands/rules.js";
 import { versionAction } from "./commands/version.js";
 import { applyColorPreference } from "./utils/apply-color-preference.js";
 import { exitGracefully } from "./utils/exit-gracefully.js";
@@ -158,6 +168,65 @@ program
   .option("--color", "force colored output")
   .option("--no-color", "disable colored output (also honors NO_COLOR)")
   .action(versionAction);
+
+const rules = program
+  .command("rules")
+  .description("List, explain, and configure which React Doctor rules run");
+
+rules
+  .command("list")
+  .description("List rules and the severity they run at under your config")
+  .option("--category <name>", "only show rules in a category (e.g. Performance)")
+  .option("--tag <name>", "only show rules with a tag (e.g. design, test-noise)")
+  .option("--framework <name>", "only show rules for a framework (e.g. global, nextjs)")
+  .option("--configured", "only show rules your config has changed from the default")
+  .option("--json", "output a structured JSON array")
+  .option("-c, --cwd <cwd>", "working directory", process.cwd())
+  .action(rulesListAction);
+
+rules
+  .command("explain <rule>")
+  .description("Explain why a rule matters, its current severity, and how to configure it")
+  .option("--json", "output a structured JSON object")
+  .option("-c, --cwd <cwd>", "working directory", process.cwd())
+  .action(rulesExplainAction);
+
+rules
+  .command("set <rule> <severity>")
+  .description("Set a rule's severity: off, warn, or error")
+  .option("-c, --cwd <cwd>", "working directory", process.cwd())
+  .action(rulesSetAction);
+
+rules
+  .command("enable <rule>")
+  .description("Enable a rule at its recommended severity (or pass --severity)")
+  .option("--severity <level>", "severity to enable at: warn or error")
+  .option("-c, --cwd <cwd>", "working directory", process.cwd())
+  .action(rulesEnableAction);
+
+rules
+  .command("disable <rule>")
+  .description("Disable a rule so it never runs")
+  .option("-c, --cwd <cwd>", "working directory", process.cwd())
+  .action(rulesDisableAction);
+
+rules
+  .command("category <category> <severity>")
+  .description("Set the severity for a whole category (off, warn, error)")
+  .option("-c, --cwd <cwd>", "working directory", process.cwd())
+  .action(rulesCategoryAction);
+
+rules
+  .command("ignore-tag <tag>")
+  .description("Skip a whole rule family by tag before linting (e.g. design)")
+  .option("-c, --cwd <cwd>", "working directory", process.cwd())
+  .action(rulesIgnoreTagAction);
+
+rules
+  .command("unignore-tag <tag>")
+  .description("Stop ignoring a tag previously skipped via ignore-tag")
+  .option("-c, --cwd <cwd>", "working directory", process.cwd())
+  .action(rulesUnignoreTagAction);
 
 // HACK: when stdout is piped into a process that closes early (e.g.
 // `react-doctor . | head`), Node throws an uncaught EPIPE on the next

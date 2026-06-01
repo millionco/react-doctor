@@ -36,14 +36,14 @@ describe("resolveScanTarget", () => {
     }
   });
 
-  it("can keep an ambiguous wrapper directory for multi-project CLI scans", () => {
+  it("can keep an ambiguous wrapper directory for multi-project CLI scans", async () => {
     const wrapperDirectory = createTempDirectory();
     writeReactProject(wrapperDirectory, "frontend");
     writeReactProject(wrapperDirectory, "mobile");
 
-    expect(() => resolveScanTarget(wrapperDirectory)).toThrow(AmbiguousProjectError);
+    await expect(resolveScanTarget(wrapperDirectory)).rejects.toThrow(AmbiguousProjectError);
 
-    const scanTarget = resolveScanTarget(wrapperDirectory, { allowAmbiguous: true });
+    const scanTarget = await resolveScanTarget(wrapperDirectory, { allowAmbiguous: true });
     expect(scanTarget.resolvedDirectory).toBe(wrapperDirectory);
   });
 });

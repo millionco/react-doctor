@@ -4,7 +4,7 @@ import { DEFAULT_SHOW_WARNINGS } from "./constants.js";
 
 interface MergeAndFilterOptions {
   respectInlineDisables?: boolean;
-  /** See `ReactDoctorConfig.warnings`. Falls back to `userConfig.warnings ?? false`. */
+  /** See `ReactDoctorConfig.warnings`. Falls back to `userConfig.warnings ?? true`. */
   warnings?: boolean;
 }
 

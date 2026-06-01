@@ -17,4 +17,14 @@ describe("validateModeFlags", () => {
       "--pr-comment cannot be combined with --json or --score.",
     );
   });
+
+  it("rejects --score combined with --no-telemetry (contradictory intent)", () => {
+    expect(() => validateModeFlags({ score: true, telemetry: false })).toThrow(
+      "Cannot combine --score with --no-telemetry",
+    );
+  });
+
+  it("allows --no-telemetry without --score", () => {
+    expect(() => validateModeFlags({ telemetry: false })).not.toThrow();
+  });
 });

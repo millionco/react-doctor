@@ -1,7 +1,7 @@
-import { groupBy, TOP_ERRORS_DISPLAY_COUNT } from "@react-doctor/core";
+import { TOP_ERRORS_DISPLAY_COUNT } from "@react-doctor/core";
 import type { Diagnostic } from "@react-doctor/core";
 import { HANDOFF_MAX_FILES_PER_RULE } from "./constants.js";
-import { formatFixRecipeLine, sortRuleGroupsByImportance } from "./diagnostic-grouping.js";
+import { buildSortedRuleGroups, formatFixRecipeLine } from "./diagnostic-grouping.js";
 import { writeDiagnosticsDirectory } from "./write-diagnostics-directory.js";
 
 export interface HandoffPayloadInput {
@@ -14,10 +14,7 @@ export interface HandoffPayloadInput {
 // per rule) for follow-up. Keeps the first pass small & high-signal rather
 // than dumping every issue inline.
 export const buildHandoffPayload = (input: HandoffPayloadInput): string => {
-  const ruleGroups = sortRuleGroupsByImportance([
-    ...groupBy([...input.diagnostics], (diagnostic) => `${diagnostic.plugin}/${diagnostic.rule}`),
-  ]);
-  const topGroups = ruleGroups.slice(0, TOP_ERRORS_DISPLAY_COUNT);
+  const topGroups = buildSortedRuleGroups(input.diagnostics).slice(0, TOP_ERRORS_DISPLAY_COUNT);
 
   let diagnosticsDirectory: string | null = null;
   try {

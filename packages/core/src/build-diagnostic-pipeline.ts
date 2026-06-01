@@ -27,11 +27,11 @@ interface BuildDiagnosticPipelineInput {
   readonly respectInlineDisables: boolean;
   /**
    * Whether `"warning"`-severity diagnostics are allowed through. When
-   * `false` (the default), every warning is dropped UNLESS the user
-   * explicitly opted that specific rule / category into `"warn"` via the
-   * severity-override config (an individual opt-in); when `true`, warnings
-   * show. Resolved by the caller from the `--warnings` flag →
-   * `config.warnings` → `false`.
+   * `true` (the default), warnings show; when `false`, every warning is
+   * dropped UNLESS the user explicitly opted that specific rule / category
+   * into `"warn"` via the severity-override config (an individual opt-in).
+   * Resolved by the caller from the `--warnings` / `--no-warnings` flag →
+   * `config.warnings` → `true`.
    */
   readonly showWarnings: boolean;
 }
@@ -204,9 +204,10 @@ export const buildDiagnosticPipeline = (
         if (isAppOnlyRule(ruleKey) && isLibraryFile(current.filePath)) return null;
       }
 
-      // Warnings are hidden by default. An explicit `"warn"` override
-      // (per-rule or per-category) is an individual opt-in that survives
-      // the global hide; everything else needs `showWarnings`.
+      // When the user opts out of warnings (`showWarnings` false), an
+      // explicit `"warn"` override (per-rule or per-category) is an
+      // individual opt-in that survives the global hide; everything else
+      // is dropped.
       if (!showWarnings && current.severity === "warning" && explicitSeverityOverride !== "warn") {
         return null;
       }

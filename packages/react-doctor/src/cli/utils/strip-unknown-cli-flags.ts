@@ -1,3 +1,5 @@
+import { NODE_ARGUMENT_COUNT } from "./constants.js";
+
 interface CliFlagSpec {
   readonly longOptionsWithoutValues: ReadonlySet<string>;
   readonly longOptionsWithRequiredValues: ReadonlySet<string>;
@@ -6,21 +8,22 @@ interface CliFlagSpec {
   readonly shortOptionsWithRequiredValues: ReadonlySet<string>;
 }
 
-const NODE_ARGUMENT_COUNT = 2;
-
 const ROOT_FLAG_SPEC: CliFlagSpec = {
   longOptionsWithoutValues: new Set([
     "--annotations",
+    "--color",
     "--dead-code",
     "--full",
     "--help",
     "--json",
     "--json-compact",
     "--lint",
+    "--no-color",
     "--no-dead-code",
     "--no-lint",
     "--no-respect-inline-disables",
     "--no-score",
+    "--no-telemetry",
     "--no-warnings",
     "--pr-comment",
     "--respect-inline-disables",
@@ -44,16 +47,32 @@ const ROOT_FLAG_SPEC: CliFlagSpec = {
 };
 
 const INSTALL_FLAG_SPEC: CliFlagSpec = {
-  longOptionsWithoutValues: new Set(["--agent-hooks", "--dry-run", "--help", "--yes"]),
+  longOptionsWithoutValues: new Set([
+    "--agent-hooks",
+    "--color",
+    "--dry-run",
+    "--help",
+    "--no-color",
+    "--yes",
+  ]),
   longOptionsWithRequiredValues: new Set(["--cwd"]),
   longOptionsWithOptionalValues: new Set(),
   shortOptionsWithoutValues: new Set(["-h", "-y"]),
   shortOptionsWithRequiredValues: new Set(["-c"]),
 };
 
+const VERSION_FLAG_SPEC: CliFlagSpec = {
+  longOptionsWithoutValues: new Set(["--color", "--help", "--no-color"]),
+  longOptionsWithRequiredValues: new Set(),
+  longOptionsWithOptionalValues: new Set(),
+  shortOptionsWithoutValues: new Set(["-h"]),
+  shortOptionsWithRequiredValues: new Set(),
+};
+
 const COMMAND_FLAG_SPECS = new Map<string, CliFlagSpec>([
   ["install", INSTALL_FLAG_SPEC],
   ["setup", INSTALL_FLAG_SPEC],
+  ["version", VERSION_FLAG_SPEC],
 ]);
 
 const isFlagLike = (argument: string): boolean => argument.startsWith("-") && argument !== "-";

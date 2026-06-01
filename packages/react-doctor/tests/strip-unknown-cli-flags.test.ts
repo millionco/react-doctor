@@ -53,4 +53,25 @@ describe("stripUnknownCliFlags", () => {
   it("keeps an optional-value flag followed by another flag", () => {
     expect(stripUserArguments(["--diff", "--json"])).toEqual(["--diff", "--json"]);
   });
+
+  it("keeps the --color / --no-color flags so the color resolver can see them", () => {
+    expect(stripUserArguments([".", "--color"])).toEqual([".", "--color"]);
+    expect(stripUserArguments([".", "--no-color"])).toEqual([".", "--no-color"]);
+    expect(stripUserArguments(["install", "--no-color", "--cwd", "."])).toEqual([
+      "install",
+      "--no-color",
+      "--cwd",
+      ".",
+    ]);
+  });
+
+  it("keeps the --no-telemetry alias for --no-score", () => {
+    expect(stripUserArguments([".", "--no-telemetry"])).toEqual([".", "--no-telemetry"]);
+  });
+
+  it("keeps color flags on the version subcommand and drops unknown ones", () => {
+    expect(stripUserArguments(["version", "--no-color"])).toEqual(["version", "--no-color"]);
+    expect(stripUserArguments(["version", "--color"])).toEqual(["version", "--color"]);
+    expect(stripUserArguments(["version", "--offline"])).toEqual(["version"]);
+  });
 });

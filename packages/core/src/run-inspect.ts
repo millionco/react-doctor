@@ -48,9 +48,9 @@ export interface InspectInput {
   readonly respectInlineDisables: boolean;
   /**
    * Per-call override for `ReactDoctorConfig.warnings`. When omitted,
-   * the loaded config's `warnings` value wins (defaulting to `false`),
-   * so warnings stay hidden unless the user opts in via `--warnings` or
-   * `warnings: true`.
+   * the loaded config's `warnings` value wins (defaulting to `true`),
+   * so warnings surface unless the user opts out via `--no-warnings` or
+   * `warnings: false`.
    */
   readonly warnings?: boolean;
   readonly adoptExistingLintConfig: boolean;
@@ -384,12 +384,12 @@ export const runInspect = <HooksR = never>(
     }
 
     // Dead-code analysis only ever emits `"warning"`-severity diagnostics
-    // (the `deslop` plugin, all `Maintainability`). When warnings are
-    // hidden that output is filtered out before it reaches any surface or
-    // the score, so the expensive pass (separate worker, large heap, long
-    // timeout) would be pure wasted work — skip it. `--warnings` /
-    // `warnings: true` (and `--fail-on warning`, which forces warnings on)
-    // re-enable it, as does a severity override that restamps dead-code
+    // (the `deslop` plugin, all `Maintainability`). Warnings show by
+    // default, so this normally runs; only when the user opts out via
+    // `--no-warnings` / `warnings: false` is that output filtered out
+    // before it reaches any surface or the score, making the expensive
+    // pass (separate worker, large heap, long timeout) pure wasted work —
+    // so skip it then, unless a severity override restamps dead-code
     // findings to `"warn"`/`"error"` so they survive the global hide.
     const shouldRunDeadCode =
       input.runDeadCode &&

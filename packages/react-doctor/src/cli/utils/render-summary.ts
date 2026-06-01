@@ -1,6 +1,11 @@
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
-import { highlighter, SHARE_BASE_URL, TOP_ERRORS_DISPLAY_COUNT } from "@react-doctor/core";
+import {
+  DOCS_URL,
+  highlighter,
+  SHARE_BASE_URL,
+  TOP_ERRORS_DISPLAY_COUNT,
+} from "@react-doctor/core";
 import type { Diagnostic, ScoreResult } from "@react-doctor/core";
 import { colorizeByScore } from "./colorize-by-score.js";
 import { collectAffectedFiles } from "./render-diagnostics.js";
@@ -26,20 +31,35 @@ const buildShareUrl = (
   return `${SHARE_BASE_URL}?${params.toString()}`;
 };
 
-// The "list every issue" hint, printed as the very last line of a run
-// (below the per-project summaries in a monorepo) so it reads as a
-// closing tip rather than crowding the overview. No-op when already
-// verbose or when there's nothing to list.
+// The closing "--verbose explains everything" hint, printed as the very
+// last line of a run (below the per-project summaries in a monorepo) so it
+// reads as a closing tip rather than crowding the overview. No-op when
+// already verbose or when there's nothing to list. When warnings are
+// present the tip leads with them, since non-verbose only rolls warnings up
+// to a `rule ×count` list — `--verbose` is where each one is explained.
 export const printVerboseTip = (
   diagnostics: Diagnostic[],
   isVerbose: boolean,
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
     if (isVerbose || diagnostics.length === 0) return;
+    const command = highlighter.info("npx react-doctor@latest --verbose");
+    const hasWarnings = diagnostics.some((diagnostic) => diagnostic.severity === "warning");
+    const message = hasWarnings
+      ? `Run ${command} to see each warning explained with its fix`
+      : `Run ${command} to see each issue explained with its fix`;
+    yield* Console.log(highlighter.dim(`  Tip: ${message}`));
+  });
+
+// A closing pointer to the docs for the workflows the scan output doesn't
+// teach inline: wiring up CI/CD, writing a config file to suppress rules,
+// and scanning only a diff or PR. Printed once at the very end of a run.
+export const printDocsNote = (): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    yield* Console.log("");
+    yield* Console.log(`  ${highlighter.bold("Docs:")} ${highlighter.info(DOCS_URL)}`);
     yield* Console.log(
-      highlighter.dim(
-        `  Tip: Run ${highlighter.info("npx react-doctor@latest --verbose")} to list every issue`,
-      ),
+      highlighter.dim("  Set up CI/CD, suppress rules with a config file, and scan diffs or PRs."),
     );
   });
 

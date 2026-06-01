@@ -53,7 +53,7 @@
         },
         "warnings": {
           "type": "boolean",
-          "description": "Whether to surface `\"warning\"`-severity diagnostics. Default: `false` — only `\"error\"`-severity findings reach any surface (CLI, PR comment, score, `--fail-on`).\n\nSet to `true` to surface every warning on every surface. This is the master toggle and runs after per-rule / per-category severity overrides: a rule the user explicitly restamps to `\"warn\"` (via `rules` / `categories`) still shows even when `warnings` is `false`."
+          "description": "Whether to surface `\"warning\"`-severity diagnostics. Default: `true` — every warning reaches every surface (CLI, PR comment, score, `--fail-on`).\n\nSet to `false` to surface only `\"error\"`-severity findings. This is the master toggle and runs after per-rule / per-category severity overrides: a rule the user explicitly restamps to `\"warn\"` (via `rules` / `categories`) still shows even when `warnings` is `false`."
         },
         "diff": {
           "type": [
@@ -137,6 +137,10 @@
             "$ref": "#/definitions/RuleSeverityOverride"
           },
           "description": "Per-category severity map. Mirrors oxlint's top-level `categories` field, but keyed by React Doctor's five user-facing buckets: `\"Security\"`, `\"Bugs\"`, `\"Performance\"`, `\"Accessibility\"`, `\"Maintainability\"`.\n\n```json { \"categories\": { \"Maintainability\": \"off\", \"Performance\": \"warn\" } } ```\n\nTo silence a whole tag-defined rule family (e.g. `\"design\"`, `\"test-noise\"`, `\"migration-hint\"`) that doesn't align with a single category, use `ignore.tags` instead."
+        },
+        "buckets": {
+          "$ref": "#/definitions/SeverityBuckets",
+          "description": "Per-bucket severity map. Buckets are curated rule families with a shared gating story (not categories). Today the only bucket is `\"compiler-cleanup\"`: the redundant-memoization rule (`react-compiler-no-manual-memoization`) that ships as a warning once React Compiler is detected. Set it to `\"error\"` to re-enable strictness.\n\n```json { \"buckets\": { \"compiler-cleanup\": \"error\" } } ```\n\nA per-rule override in `rules` still wins over a bucket entry."
         },
         "plugins": {
           "type": "array",
@@ -233,6 +237,16 @@
         "off"
       ],
       "description": "Severity value accepted by the top-level `rules` and `categories` config fields. Exactly the same form ESLint and oxlint accept: `\"off\"` skips registration entirely (the rule never runs and never enters any surface); `\"error\"` / `\"warn\"` change the rule's registered severity.\n\nFor visibility-only adjustments (silence on PR comments but keep on CLI / score), prefer `surfaces` instead — severity applies before lint runs and is the most aggressive control."
+    },
+    "SeverityBuckets": {
+      "type": "object",
+      "properties": {
+        "compiler-cleanup": {
+          "$ref": "#/definitions/RuleSeverityOverride"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Closed set of severity buckets. Spelled out (rather than `Record<string, …>`) so an unknown/typo'd bucket key is a type error instead of a silent no-op."
     }
   }
 }

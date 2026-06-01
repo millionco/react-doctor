@@ -16,8 +16,8 @@ export interface DiagnoseOptions {
   respectInlineDisables?: boolean;
   /**
    * Per-call override for `ReactDoctorConfig.warnings`. See that field's
-   * docs — `"warning"`-severity diagnostics are hidden unless this (or
-   * the config) opts them back in.
+   * docs — `"warning"`-severity diagnostics surface by default unless this
+   * (or the config) opts out via `false`.
    */
   warnings?: boolean;
 }

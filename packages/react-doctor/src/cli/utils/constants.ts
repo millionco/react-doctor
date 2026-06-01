@@ -2,6 +2,11 @@
 // (128 + signal number). Used by exit-gracefully.ts on SIGINT/SIGTERM.
 export const SIGINT_EXIT_CODE = 130;
 
+// Length of the `[node, script]` prefix that precedes user arguments in
+// `process.argv`. Shared by the argv processors (flag stripping, help
+// normalization, the `-V` alias).
+export const NODE_ARGUMENT_COUNT = 2;
+
 export const STAGED_FILES_TEMP_DIR_PREFIX = "react-doctor-staged-";
 
 export const GIT_HOOK_EXECUTABLE_MODE = 0o755;

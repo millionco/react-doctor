@@ -10,8 +10,9 @@ import type { Diagnostic, InspectResult, ReactDoctorConfig, ScoreResult } from "
 import { colorizeByScore } from "./colorize-by-score.js";
 import { computeProjectedScore } from "./compute-score-projection.js";
 import { buildRulePriorityMap } from "./diagnostic-grouping.js";
+import { isCodingAgentEnvironment } from "./is-ci-environment.js";
 import { formatElapsedTime, printDiagnostics } from "./render-diagnostics.js";
-import { printSummary, printVerboseTip } from "./render-summary.js";
+import { printDocsNote, printSummary, printVerboseTip } from "./render-summary.js";
 
 interface ProjectScanEntry {
   readonly projectName: string;
@@ -137,6 +138,7 @@ export const printMultiProjectSummary = (input: MultiProjectSummaryInput): Effec
         verbose,
         resolveDiagnosticSourceRoot,
         buildRulePriorityMap(completedScans.map((scan) => scan.result.score)),
+        isCodingAgentEnvironment(),
       );
     }
 
@@ -197,4 +199,5 @@ export const printMultiProjectSummary = (input: MultiProjectSummaryInput): Effec
 
     yield* Console.log("");
     yield* printVerboseTip(surfaceDiagnostics, verbose);
+    yield* printDocsNote();
   });

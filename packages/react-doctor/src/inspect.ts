@@ -26,7 +26,10 @@ import type {
 import { makeNoopConsole } from "./cli/utils/noop-console.js";
 import { buildNoScoreMessage } from "./cli/utils/build-no-score-message.js";
 import { printAgentGuidance } from "./cli/utils/render-agent-guidance.js";
-import { isCiOrCodingAgentEnvironment } from "./cli/utils/is-ci-environment.js";
+import {
+  isCiOrCodingAgentEnvironment,
+  isCodingAgentEnvironment,
+} from "./cli/utils/is-ci-environment.js";
 import { computeProjectedScore } from "./cli/utils/compute-score-projection.js";
 import { buildRulePriorityMap } from "./cli/utils/diagnostic-grouping.js";
 import { printDiagnostics } from "./cli/utils/render-diagnostics.js";
@@ -37,7 +40,7 @@ import {
   printNoScoreHeader,
   printScoreHeader,
 } from "./cli/utils/render-score-header.js";
-import { printSummary, printVerboseTip } from "./cli/utils/render-summary.js";
+import { printDocsNote, printSummary, printVerboseTip } from "./cli/utils/render-summary.js";
 import { resolveOxlintNode } from "./cli/utils/resolve-oxlint-node.js";
 import { isSpinnerSilent, setSpinnerSilent } from "./cli/utils/spinner.js";
 import { VERSION } from "./cli/utils/version.js";
@@ -447,6 +450,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       options.verbose,
       directory,
       buildRulePriorityMap([score]),
+      isCodingAgentEnvironment(),
     );
     if (options.isNonInteractiveEnvironment && options.outputSurface !== "prComment") {
       yield* printAgentGuidance();
@@ -491,6 +495,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
     }
 
     yield* printVerboseTip([...surfaceDiagnostics], options.verbose);
+    yield* printDocsNote();
 
     return buildResult();
   });

@@ -7,17 +7,20 @@ import {
   CODE_FRAME_LINES_BELOW,
   groupBy,
   highlighter,
+  MAX_WARNING_RULES_SHOWN_NON_VERBOSE,
   MILLISECONDS_PER_SECOND,
   OUTPUT_MEASURE_WIDTH_CHARS,
+  RULE_NAME_COLUMN_WIDTH_CHARS,
   TOP_ERRORS_DISPLAY_COUNT,
 } from "@react-doctor/core";
 import type { Diagnostic } from "@react-doctor/core";
 import { boxText } from "./box-text.js";
 import { buildCodeFrame } from "./build-code-frame.js";
 import {
+  buildSortedRuleGroups,
   compareByRulePriority,
   formatFixRecipeLine,
-  sortRuleGroupsByImportance,
+  formatLearnMoreLine,
 } from "./diagnostic-grouping.js";
 import { indentMultilineText } from "./indent-multiline-text.js";
 import { wrapTextToWidth } from "./wrap-indented-text.js";
@@ -61,6 +64,14 @@ const buildVerboseSiteMap = (diagnostics: Diagnostic[]): Map<string, VerboseSite
 
 const formatSiteCountBadge = (count: number): string => (count > 1 ? `×${count}` : "");
 
+// The dim `×N` badge that trails a rule's header line, or empty for a
+// single site. Shared by the error and warning rule headers so the badge
+// reads identically wherever a rule's occurrence count is shown.
+const formatTrailingSiteBadge = (count: number): string => {
+  const badge = formatSiteCountBadge(count);
+  return badge.length > 0 ? ` ${highlighter.gray(badge)}` : "";
+};
+
 // A category leads with its most valuable rule. `ruleGroups` are already
 // priority-sorted, so the first one is the category's top.
 const categoryTopRuleKey = (categoryGroup: CategoryDiagnosticGroup): string =>
@@ -72,17 +83,11 @@ const buildCategoryDiagnosticGroups = (
 ): CategoryDiagnosticGroup[] => {
   const categoryGroups = groupBy(diagnostics, (diagnostic) => diagnostic.category);
   return [...categoryGroups.entries()]
-    .map(([category, categoryDiagnostics]) => {
-      const ruleGroups = groupBy(
-        categoryDiagnostics,
-        (diagnostic) => `${diagnostic.plugin}/${diagnostic.rule}`,
-      );
-      return {
-        category,
-        diagnostics: categoryDiagnostics,
-        ruleGroups: sortRuleGroupsByImportance([...ruleGroups.entries()], rulePriority),
-      };
-    })
+    .map(([category, categoryDiagnostics]) => ({
+      category,
+      diagnostics: categoryDiagnostics,
+      ruleGroups: buildSortedRuleGroups(categoryDiagnostics, rulePriority),
+    }))
     .toSorted((categoryGroupA, categoryGroupB) => {
       // Categories rank by their top rule's API priority. With no API
       // priority (offline / `--no-score`) every category compares equal,
@@ -120,6 +125,11 @@ const TOP_ERROR_DETAIL_INDENT = "    ";
 
 const pickRepresentativeDiagnostic = (ruleDiagnostics: Diagnostic[]): Diagnostic =>
   ruleDiagnostics.find((diagnostic) => diagnostic.line > 0) ?? ruleDiagnostics[0];
+
+// A rule group renders as an error block (boxed code frames) when its
+// representative is an error; otherwise it's a warning block (compact list).
+const isErrorRuleGroup = (ruleDiagnostics: Diagnostic[]): boolean =>
+  pickRepresentativeDiagnostic(ruleDiagnostics).severity === "error";
 
 // A run of same-file sites of one rule whose individual frames would
 // overlap, rendered as a single spanning frame instead of N near-identical
@@ -185,10 +195,13 @@ const formatClusterLocation = (cluster: DiagnosticCluster): string => {
 // sites, indented under its rule block. The location sits on its own line
 // directly above the frame so it's obvious which file the frame belongs to.
 // A multi-site cluster marks the whole line span; a single site keeps its
-// precise caret column.
+// precise caret column. `renderCodeFrame` is false for warning blocks —
+// they keep their `file:line` locations but drop the boxed source frame so
+// the costlier errors stay the visual focus.
 const buildDiagnosticClusterLines = (
   cluster: DiagnosticCluster,
   resolveSourceRoot: SourceRootResolver,
+  renderCodeFrame: boolean,
 ): ReadonlyArray<string> => {
   const lead = cluster.diagnostics[0]!;
   const isMultiSite = cluster.diagnostics.length > 1;
@@ -196,13 +209,15 @@ const buildDiagnosticClusterLines = (
     "",
     highlighter.gray(`${TOP_ERROR_DETAIL_INDENT}${formatClusterLocation(cluster)}`),
   ];
-  const codeFrame = buildCodeFrame({
-    filePath: lead.filePath,
-    line: cluster.startLine,
-    column: isMultiSite ? 0 : lead.column,
-    endLine: isMultiSite ? cluster.endLine : undefined,
-    rootDirectory: resolveSourceRoot(lead),
-  });
+  const codeFrame = renderCodeFrame
+    ? buildCodeFrame({
+        filePath: lead.filePath,
+        line: cluster.startLine,
+        column: isMultiSite ? 0 : lead.column,
+        endLine: isMultiSite ? cluster.endLine : undefined,
+        rootDirectory: resolveSourceRoot(lead),
+      })
+    : null;
   if (codeFrame) {
     lines.push(
       indentMultilineText(boxText(codeFrame, OUTPUT_MEASURE_WIDTH_CHARS), TOP_ERROR_DETAIL_INDENT),
@@ -232,8 +247,7 @@ const buildRuleDetailBlock = (
 ): ReadonlyArray<string> => {
   const representative = pickRepresentativeDiagnostic(ruleDiagnostics);
   const { severity } = representative;
-  const siteCountBadge = formatSiteCountBadge(ruleDiagnostics.length);
-  const trailingBadge = siteCountBadge.length > 0 ? ` ${highlighter.gray(siteCountBadge)}` : "";
+  const trailingBadge = formatTrailingSiteBadge(ruleDiagnostics.length);
   const headline = colorizeBySeverity(
     `${representative.category}: ${representative.title ?? ruleKey}`,
     severity,
@@ -269,28 +283,133 @@ const buildRuleDetailBlock = (
     }
   }
 
+  // Code frames are reserved for errors: warnings list their sites but
+  // skip the boxed source so the report doesn't drown in frames now that
+  // warnings surface by default.
+  const renderCodeFrame = severity === "error";
   const sites = renderEverySite ? ruleDiagnostics : [representative];
   for (const cluster of clusterNearbyDiagnostics(sites)) {
-    lines.push(...buildDiagnosticClusterLines(cluster, resolveSourceRoot));
+    lines.push(...buildDiagnosticClusterLines(cluster, resolveSourceRoot, renderCodeFrame));
   }
 
   return lines;
 };
 
-// The highest-priority error rule groups behind the "Top N errors you
-// should fix" block, in display order (score-API priority first, then
-// severity + stakes).
+// Indent under a warning's header line — six spaces so the body sits
+// just past the `  ⚠ ` marker.
+const WARNING_DETAIL_INDENT = "      ";
+
+// Column the warning rule names pad to so each `×N` site badge lines up
+// regardless of name length. Grows past the default when a rule key is
+// longer than the column.
+const computeRuleNameColumnWidth = (ruleKeys: ReadonlyArray<string>): number =>
+  ruleKeys.reduce(
+    (widest, ruleKey) => Math.max(widest, ruleKey.length),
+    RULE_NAME_COLUMN_WIDTH_CHARS,
+  );
+
+const padRuleNameToColumn = (ruleName: string, columnWidth: number): string =>
+  ruleName.length >= columnWidth ? ruleName : ruleName + " ".repeat(columnWidth - ruleName.length);
+
+// The `  ⚠ <rule> ×N` header shared by the verbose warning block and the
+// non-verbose roll-up. Only the icon carries the warning color — the rule
+// name stays neutral so a long list doesn't drown in yellow. The name pads
+// to the shared column only when a badge follows, so the `×N` badges align
+// without leaving trailing whitespace on single-site rules.
+const buildWarningHeaderLine = (
+  ruleKey: string,
+  siteCount: number,
+  ruleNameColumnWidth: number,
+): string => {
+  const hasBadge = formatSiteCountBadge(siteCount).length > 0;
+  const ruleName = hasBadge ? padRuleNameToColumn(ruleKey, ruleNameColumnWidth) : ruleKey;
+  return `  ${highlighter.warn("⚠")} ${ruleName}${formatTrailingSiteBadge(siteCount)}`;
+};
+
+// Compact warning block: the `plugin/rule` key + `×N` badge, the impact,
+// the fix, the canonical fix-recipe directive, then a flat, unspaced list
+// of every `file:line` site. Warnings skip the boxed code frames (reserved
+// for errors) so a long tail of low-severity findings stays scannable.
+const buildWarningRuleBlock = (
+  ruleKey: string,
+  ruleDiagnostics: Diagnostic[],
+  ruleNameColumnWidth: number,
+  isAgentEnvironment: boolean,
+): ReadonlyArray<string> => {
+  const representative = pickRepresentativeDiagnostic(ruleDiagnostics);
+  const lines: string[] = [
+    buildWarningHeaderLine(ruleKey, ruleDiagnostics.length, ruleNameColumnWidth),
+  ];
+
+  // Humans get a short, prominent docs link right under the rule name; an
+  // agent instead gets the cache-busting fetch directive lower down so it
+  // pulls and follows the canonical recipe before editing.
+  if (!isAgentEnvironment) {
+    const learnMoreLine = formatLearnMoreLine(representative);
+    if (learnMoreLine) {
+      lines.push(`${WARNING_DETAIL_INDENT}${highlighter.info(learnMoreLine)}`);
+    }
+  }
+
+  lines.push(highlighter.gray(indentMultilineText(representative.message, WARNING_DETAIL_INDENT)));
+  if (representative.help) {
+    lines.push(
+      highlighter.gray(indentMultilineText(`→ ${representative.help}`, WARNING_DETAIL_INDENT)),
+    );
+  }
+  if (isAgentEnvironment) {
+    const fixRecipeLine = formatFixRecipeLine(representative);
+    if (fixRecipeLine) {
+      lines.push(highlighter.gray(`${WARNING_DETAIL_INDENT}${fixRecipeLine}`));
+    }
+  }
+
+  for (const [filePath, sites] of buildVerboseSiteMap(ruleDiagnostics)) {
+    if (sites.length === 0) {
+      lines.push(highlighter.gray(`${WARNING_DETAIL_INDENT}${filePath}`));
+      continue;
+    }
+    for (const site of sites) {
+      lines.push(highlighter.gray(`${WARNING_DETAIL_INDENT}${filePath}:${site.line}`));
+      if (site.suppressionHint) {
+        lines.push(highlighter.gray(`${WARNING_DETAIL_INDENT}  ↳ ${site.suppressionHint}`));
+      }
+    }
+  }
+
+  return lines;
+};
+
+// Every error rule group in display order (score-API priority first, then
+// severity + stakes). The top-N slice headlines the "errors you should fix"
+// block; the remainder feeds the "+N more" overflow line.
+const selectErrorRuleGroups = (
+  diagnostics: Diagnostic[],
+  rulePriority?: ReadonlyMap<string, number>,
+): [string, Diagnostic[]][] =>
+  buildSortedRuleGroups(
+    diagnostics.filter((diagnostic) => diagnostic.severity === "error"),
+    rulePriority,
+  );
+
 const selectTopErrorRuleGroups = (
   diagnostics: Diagnostic[],
   limit: number,
   rulePriority?: ReadonlyMap<string, number>,
-): [string, Diagnostic[]][] => {
-  const errorDiagnostics = diagnostics.filter((diagnostic) => diagnostic.severity === "error");
-  const ruleGroups = groupBy(
-    errorDiagnostics,
-    (diagnostic) => `${diagnostic.plugin}/${diagnostic.rule}`,
-  );
-  return sortRuleGroupsByImportance([...ruleGroups.entries()], rulePriority).slice(0, limit);
+): [string, Diagnostic[]][] => selectErrorRuleGroups(diagnostics, rulePriority).slice(0, limit);
+
+// The "+N more rules — run --verbose to view the rest …" overflow line
+// shared by the capped error and warning lists. The count is rule groups
+// (not individual findings), spelled out as "rules" so it can't be misread
+// as "+N more errors" next to the occurrence tallies above. `accent` colors
+// it to the section's severity (error red / warning yellow).
+const buildMoreRulesLine = (
+  hiddenRuleCount: number,
+  severityNoun: "errors" | "warnings",
+  accent: (text: string) => string,
+): string => {
+  const ruleNoun = hiddenRuleCount === 1 ? "rule" : "rules";
+  return `  ${highlighter.bold(accent(`+${hiddenRuleCount} more ${ruleNoun}`))} ${highlighter.dim("— run")} ${highlighter.bold(highlighter.info("--verbose"))} ${highlighter.dim(`to view the rest of the ${severityNoun} and details about each`)}`;
 };
 
 // The exact rule keys surfaced in the top-errors block — the set the
@@ -309,12 +428,10 @@ const buildTopErrorsLines = (
   resolveSourceRoot: SourceRootResolver,
   rulePriority?: ReadonlyMap<string, number>,
 ): ReadonlyArray<string> => {
-  const topRuleGroups = selectTopErrorRuleGroups(
-    diagnostics,
-    TOP_ERRORS_DISPLAY_COUNT,
-    rulePriority,
-  );
+  const errorRuleGroups = selectErrorRuleGroups(diagnostics, rulePriority);
+  const topRuleGroups = errorRuleGroups.slice(0, TOP_ERRORS_DISPLAY_COUNT);
   if (topRuleGroups.length === 0) return [];
+  const hiddenRuleCount = errorRuleGroups.length - topRuleGroups.length;
 
   const lines: string[] = [
     // Dim rule separating the overview tally from the detailed fixes.
@@ -325,6 +442,43 @@ const buildTopErrorsLines = (
   for (const [ruleKey, ruleDiagnostics] of topRuleGroups) {
     lines.push(...buildRuleDetailBlock(ruleKey, ruleDiagnostics, resolveSourceRoot, false));
     lines.push("");
+  }
+  if (hiddenRuleCount > 0) {
+    lines.push(buildMoreRulesLine(hiddenRuleCount, "errors", highlighter.error));
+  }
+  return lines;
+};
+
+// In non-verbose mode errors get the detailed top-N block; warnings are
+// summarized here as a compact `rule ×count` list so users see what fired
+// and how often without the full per-site detail (which lives behind
+// --verbose). Sorted by score priority like every other rule list.
+const buildWarningsListLines = (
+  diagnostics: Diagnostic[],
+  rulePriority?: ReadonlyMap<string, number>,
+): ReadonlyArray<string> => {
+  const warningDiagnostics = diagnostics.filter((diagnostic) => diagnostic.severity === "warning");
+  if (warningDiagnostics.length === 0) return [];
+
+  const sortedRuleGroups = buildSortedRuleGroups(warningDiagnostics, rulePriority);
+  // A long tail of warning rules would bury the summary, so cap the list and
+  // surface the overflow as a single "+N more" line that points at --verbose.
+  const shownRuleGroups = sortedRuleGroups.slice(0, MAX_WARNING_RULES_SHOWN_NON_VERBOSE);
+  const hiddenRuleCount = sortedRuleGroups.length - shownRuleGroups.length;
+  const ruleNameColumnWidth = computeRuleNameColumnWidth(
+    shownRuleGroups.map(([ruleKey]) => ruleKey),
+  );
+
+  const lines: string[] = [
+    highlighter.dim(`  ${"─".repeat(OUTPUT_MEASURE_WIDTH_CHARS)}`),
+    `  ${highlighter.bold(`${warningDiagnostics.length} ${warningDiagnostics.length === 1 ? "warning" : "warnings"}`)}`,
+    "",
+  ];
+  for (const [ruleKey, ruleDiagnostics] of shownRuleGroups) {
+    lines.push(buildWarningHeaderLine(ruleKey, ruleDiagnostics.length, ruleNameColumnWidth));
+  }
+  if (hiddenRuleCount > 0) {
+    lines.push(buildMoreRulesLine(hiddenRuleCount, "warnings", highlighter.warn));
   }
   return lines;
 };
@@ -384,6 +538,10 @@ export const printDiagnostics = (
   // most-valuable-first; absent (offline / `--no-score`) ordering falls
   // back to severity + stakes.
   rulePriority?: ReadonlyMap<string, number>,
+  // True when a coding agent is driving the CLI. Verbose warning blocks then
+  // emit the cache-busting fetch directive instead of the human "Learn more"
+  // link. Defaults to false (human) so tests render deterministically.
+  isAgentEnvironment = false,
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
     const resolveSourceRoot: SourceRootResolver =
@@ -396,22 +554,34 @@ export const printDiagnostics = (
     if (!isVerbose) {
       detailLines = buildTopErrorsLines(diagnostics, resolveSourceRoot, rulePriority);
     } else {
-      const ruleGroups = groupBy(
-        diagnostics,
-        (diagnostic) => `${diagnostic.plugin}/${diagnostic.rule}`,
+      const sortedRuleGroups = buildSortedRuleGroups(diagnostics, rulePriority);
+      // Warnings share one padded name column so their `×N` badges align;
+      // errors render in the boxed-code-frame format instead.
+      const warningRuleNameColumnWidth = computeRuleNameColumnWidth(
+        sortedRuleGroups
+          .filter(([, ruleDiagnostics]) => !isErrorRuleGroup(ruleDiagnostics))
+          .map(([ruleKey]) => ruleKey),
       );
-      detailLines = sortRuleGroupsByImportance([...ruleGroups.entries()], rulePriority).flatMap(
-        ([ruleKey, ruleDiagnostics]) => [
-          ...buildRuleDetailBlock(ruleKey, ruleDiagnostics, resolveSourceRoot, true),
-          "",
-        ],
-      );
+      detailLines = sortedRuleGroups.flatMap(([ruleKey, ruleDiagnostics]) => {
+        const block = isErrorRuleGroup(ruleDiagnostics)
+          ? buildRuleDetailBlock(ruleKey, ruleDiagnostics, resolveSourceRoot, true)
+          : buildWarningRuleBlock(
+              ruleKey,
+              ruleDiagnostics,
+              warningRuleNameColumnWidth,
+              isAgentEnvironment,
+            );
+        return [...block, ""];
+      });
     }
 
     const lines = joinSections(
       buildCategoryBreakdownLines(diagnostics, rulePriority),
       buildCountsSummaryLines(diagnostics),
       detailLines,
+      // Verbose already renders every warning in full; the compact
+      // warning roll-up is non-verbose only.
+      isVerbose ? [] : buildWarningsListLines(diagnostics, rulePriority),
     );
     for (const line of lines) {
       yield* Console.log(line);

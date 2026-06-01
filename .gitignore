@@ -4,6 +4,7 @@ dist
 *.log
 .DS_Store
 .cursor
+.claude
 tmp/
 review-report.md
 review-*.md

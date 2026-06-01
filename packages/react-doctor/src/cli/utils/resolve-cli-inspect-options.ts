@@ -19,10 +19,11 @@ export const resolveCliInspectOptions = (
   flags: InspectFlags,
   userConfig: ReactDoctorConfig | null,
 ): InspectOptions => {
-  // Warnings hide by default, but `--fail-on warning` is meaningless
+  // Warnings show by default, but `--fail-on warning` is meaningless
   // unless they reach the CI-failure surface — so a warning gate forces
-  // them on. An explicit `--warnings` / `--no-warnings` still wins.
-  // Mirrors `resolveFailOnLevel`'s flag→config precedence without its
+  // them on even when the user hid them via `warnings: false` in config.
+  // An explicit `--warnings` / `--no-warnings` still wins. Mirrors
+  // `resolveFailOnLevel`'s flag→config precedence without its
   // invalid-level logging (that resolver still owns the actual gate).
   const wantsWarningGate = (flags.failOn ?? userConfig?.failOn) === "warning";
 
@@ -33,7 +34,7 @@ export const resolveCliInspectOptions = (
     respectInlineDisables: flags.respectInlineDisables,
     warnings: flags.warnings ?? (wantsWarningGate ? true : undefined),
     scoreOnly: flags.score === true,
-    noScore: flags.score === false || (userConfig?.noScore ?? false),
+    noScore: flags.score === false || flags.telemetry === false || (userConfig?.noScore ?? false),
     isCi: isCiEnvironment(),
     silent: Boolean(flags.json),
     outputSurface: flags.prComment ? "prComment" : "cli",

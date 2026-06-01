@@ -17,10 +17,9 @@ export const JSX_FILE_PATTERN = /\.(tsx|jsx)$/;
 
 // Whether `"warning"`-severity diagnostics surface when neither the
 // caller (`--warnings` / `warnings:`) nor `config.warnings` decide.
-// Warnings are hidden by default so a clean scan reports only
-// `"error"`-severity findings; users opt them in with `--warnings`
-// or `"warnings": true`.
-export const DEFAULT_SHOW_WARNINGS = false;
+// Warnings show by default — only `"error"` is too generous a bar for a
+// health scan; users opt out with `--no-warnings` or `"warnings": false`.
+export const DEFAULT_SHOW_WARNINGS = true;
 
 export const MILLISECONDS_PER_SECOND = 1000;
 
@@ -78,10 +77,17 @@ export const ENTERPRISE_CONTACT_URL = "https://react.doctor/enterprise";
 
 export const SHARE_BASE_URL = "https://react.doctor/share";
 
-// Base URL for the per-rule fix recipes the `/doctor` playbook fetches
-// on demand. The full URL for one rule is
-// `<base>/<plugin>/<rule>.md` (see `buildRulePromptUrl`).
-export const PROMPTS_RULES_BASE_URL = "https://www.react.doctor/prompts/rules";
+// Root of the documentation site. Guides for CI/CD setup, config files (to
+// suppress rules), and diff/PR scanning live under it; the CLI links here
+// from its closing "learn more" note.
+export const DOCS_URL = "https://www.react.doctor/docs";
+
+// Base URL for the per-rule documentation pages. The canonical,
+// human-readable fix recipe for one rule lives at `<base>/<plugin>/<rule>`
+// (see `buildRuleDocsUrl`) — the CLI links here from its fix-recipe
+// directive. The raw `.md` prompts the `/doctor` playbook fetches on demand
+// live under `https://www.react.doctor/prompts/rules/<plugin>/<rule>.md`.
+export const DOCS_RULES_BASE_URL = `${DOCS_URL}/rules`;
 
 export const FETCH_TIMEOUT_MS = 10_000;
 
@@ -195,6 +201,11 @@ export const SUPPRESSION_NEAR_MISS_MAX_LINES = 10;
 export const MAX_CATEGORY_GROUPS_SHOWN_NON_VERBOSE = 5;
 
 export const MAX_RULE_GROUPS_PER_CATEGORY_NON_VERBOSE = 3;
+
+// Cap the non-verbose warnings roll-up so a long tail of low-severity
+// rules doesn't bury the scan summary; the overflow is surfaced as a
+// "+N more — run --verbose …" line below the list.
+export const MAX_WARNING_RULES_SHOWN_NON_VERBOSE = 10;
 
 // `minimumReleaseAge` in `pnpm-workspace.yaml` is denominated in
 // minutes. 7 days × 24 h × 60 min = 10080. Surfaced as the

@@ -30,7 +30,7 @@ const setupFixture = (
   );
   return {
     projectRoot,
-    configPath: path.join(projectRoot, "react-doctor.config.json"),
+    configPath: path.join(projectRoot, "doctor.config.json"),
     packageJsonPath: path.join(projectRoot, "package.json"),
     cleanup: () => rmSync(projectRoot, { recursive: true, force: true }),
   };
@@ -39,7 +39,7 @@ const setupFixture = (
 const readJsonFile = (filePath: string): Record<string, unknown> =>
   JSON.parse(readFileSync(filePath, "utf8"));
 
-const captureLog = <Result>(run: () => Result): { result: Result; output: string } => {
+const captureLog = async (run: () => Promise<void> | void): Promise<string> => {
   const lines: string[] = [];
   const consoleObject = globalThis.console as unknown as Record<string, unknown>;
   const originalLog = consoleObject.log;
@@ -47,7 +47,8 @@ const captureLog = <Result>(run: () => Result): { result: Result; output: string
     lines.push(args.map((value) => String(value)).join(" "));
   };
   try {
-    return { result: run(), output: lines.join("\n") };
+    await run();
+    return lines.join("\n");
   } finally {
     consoleObject.log = originalLog;
   }
@@ -69,9 +70,9 @@ afterEach(() => {
 });
 
 describe("rules disable / set / enable", () => {
-  it("creates a schema-stamped config when none exists", () => {
+  it("creates a schema-stamped doctor.config.json when none exists", async () => {
     fixture = setupFixture();
-    rulesDisableAction("react-doctor/no-danger", { cwd: fixture.projectRoot });
+    await rulesDisableAction("react-doctor/no-danger", { cwd: fixture.projectRoot });
 
     expect(existsSync(fixture.configPath)).toBe(true);
     const config = readJsonFile(fixture.configPath);
@@ -80,10 +81,10 @@ describe("rules disable / set / enable", () => {
     expect(process.exitCode).toBe(0);
   });
 
-  it("accepts the bare rule id and a legacy key", () => {
+  it("accepts the bare rule id and a legacy key", async () => {
     fixture = setupFixture();
-    rulesSetAction("no-danger", "error", { cwd: fixture.projectRoot });
-    rulesSetAction("react/no-array-index-key", "warn", { cwd: fixture.projectRoot });
+    await rulesSetAction("no-danger", "error", { cwd: fixture.projectRoot });
+    await rulesSetAction("react/no-array-index-key", "warn", { cwd: fixture.projectRoot });
 
     const config = readJsonFile(fixture.configPath);
     expect(config.rules).toMatchObject({
@@ -92,13 +93,13 @@ describe("rules disable / set / enable", () => {
     });
   });
 
-  it("preserves unrelated config fields", () => {
+  it("preserves unrelated config fields", async () => {
     fixture = setupFixture();
     writeFileSync(
       fixture.configPath,
       JSON.stringify({ lint: true, rules: { "react-doctor/no-eval": "warn" } }, null, 2),
     );
-    rulesDisableAction("react-doctor/no-danger", { cwd: fixture.projectRoot });
+    await rulesDisableAction("react-doctor/no-danger", { cwd: fixture.projectRoot });
 
     const config = readJsonFile(fixture.configPath);
     expect(config.lint).toBe(true);
@@ -108,36 +109,51 @@ describe("rules disable / set / enable", () => {
     });
   });
 
-  it("enable uses the rule's recommended severity by default", () => {
+  it("enable uses the rule's recommended severity by default", async () => {
     fixture = setupFixture();
-    rulesEnableAction("react-doctor/no-danger", { cwd: fixture.projectRoot });
+    await rulesEnableAction("react-doctor/no-danger", { cwd: fixture.projectRoot });
 
     const config = readJsonFile(fixture.configPath);
     const severity = (config.rules as Record<string, string>)["react-doctor/no-danger"];
     expect(["warn", "error"]).toContain(severity);
   });
 
-  it("rejects an invalid severity without writing a config", () => {
+  it("rejects an invalid severity without writing a config", async () => {
     fixture = setupFixture();
-    rulesSetAction("react-doctor/no-danger", "loud", { cwd: fixture.projectRoot });
+    await rulesSetAction("react-doctor/no-danger", "loud", { cwd: fixture.projectRoot });
 
     expect(existsSync(fixture.configPath)).toBe(false);
     expect(process.exitCode).toBe(1);
   });
 
-  it("rejects an unknown rule without writing a config", () => {
+  it("rejects an unknown rule without writing a config", async () => {
     fixture = setupFixture();
-    rulesDisableAction("react-doctor/not-a-real-rule", { cwd: fixture.projectRoot });
+    await rulesDisableAction("react-doctor/not-a-real-rule", { cwd: fixture.projectRoot });
 
     expect(existsSync(fixture.configPath)).toBe(false);
     expect(process.exitCode).toBe(1);
   });
 });
 
-describe("rules config embedded in package.json", () => {
-  it("updates the package.json reactDoctor block instead of creating a file", () => {
+describe("rules config formats", () => {
+  it("edits a doctor.config.ts in place, preserving the comment and other options", async () => {
+    fixture = setupFixture();
+    const tsConfigPath = path.join(fixture.projectRoot, "doctor.config.ts");
+    writeFileSync(tsConfigPath, "export default {\n  // keep this\n  lint: true,\n};\n");
+
+    await rulesDisableAction("react-doctor/no-danger", { cwd: fixture.projectRoot });
+
+    const written = readFileSync(tsConfigPath, "utf8");
+    expect(written).toContain("// keep this");
+    expect(written).toContain("lint: true");
+    expect(written).toContain('"react-doctor/no-danger": "off"');
+    // No JSON config created — the TS config was edited directly.
+    expect(existsSync(fixture.configPath)).toBe(false);
+  });
+
+  it("updates the package.json reactDoctor block instead of creating a file", async () => {
     fixture = setupFixture({ name: "fixture", reactDoctor: { lint: true } });
-    rulesDisableAction("react-doctor/no-danger", { cwd: fixture.projectRoot });
+    await rulesDisableAction("react-doctor/no-danger", { cwd: fixture.projectRoot });
 
     expect(existsSync(fixture.configPath)).toBe(false);
     const packageJson = readJsonFile(fixture.packageJsonPath);
@@ -146,15 +162,13 @@ describe("rules config embedded in package.json", () => {
       rules: { "react-doctor/no-danger": "off" },
     });
   });
-});
 
-describe("rules config with an unparseable config file", () => {
-  it("writes package.json#reactDoctor and leaves the broken config file untouched", () => {
+  it("writes package.json#reactDoctor and leaves an unparseable config file untouched", async () => {
     fixture = setupFixture({ name: "fixture", reactDoctor: { lint: true } });
     const brokenConfig = "{ not valid json";
     writeFileSync(fixture.configPath, brokenConfig);
 
-    rulesDisableAction("react-doctor/no-danger", { cwd: fixture.projectRoot });
+    await rulesDisableAction("react-doctor/no-danger", { cwd: fixture.projectRoot });
 
     // The broken file is left as-is — the scanner reads package.json#reactDoctor
     // when the config file fails to parse, so the mutation must not shadow it.
@@ -168,17 +182,17 @@ describe("rules config with an unparseable config file", () => {
 });
 
 describe("rules category", () => {
-  it("sets a category severity by case-insensitive match", () => {
+  it("sets a category severity by case-insensitive match", async () => {
     fixture = setupFixture();
-    rulesCategoryAction("accessibility", "off", { cwd: fixture.projectRoot });
+    await rulesCategoryAction("accessibility", "off", { cwd: fixture.projectRoot });
 
     const config = readJsonFile(fixture.configPath);
     expect(config.categories).toEqual({ Accessibility: "off" });
   });
 
-  it("rejects an unknown category", () => {
+  it("rejects an unknown category", async () => {
     fixture = setupFixture();
-    rulesCategoryAction("Nonsense", "off", { cwd: fixture.projectRoot });
+    await rulesCategoryAction("Nonsense", "off", { cwd: fixture.projectRoot });
 
     expect(existsSync(fixture.configPath)).toBe(false);
     expect(process.exitCode).toBe(1);
@@ -186,26 +200,26 @@ describe("rules category", () => {
 });
 
 describe("rules ignore-tag / unignore-tag", () => {
-  it("ignores then unignores a known tag", () => {
+  it("ignores then unignores a known tag", async () => {
     fixture = setupFixture();
-    rulesIgnoreTagAction("design", { cwd: fixture.projectRoot });
+    await rulesIgnoreTagAction("design", { cwd: fixture.projectRoot });
     expect(readJsonFile(fixture.configPath).ignore).toEqual({ tags: ["design"] });
 
-    rulesUnignoreTagAction("design", { cwd: fixture.projectRoot });
+    await rulesUnignoreTagAction("design", { cwd: fixture.projectRoot });
     expect(readJsonFile(fixture.configPath).ignore).toBeUndefined();
   });
 
-  it("unignore-tag on a project that never ignored the tag is a no-op", () => {
+  it("unignore-tag on a project that never ignored the tag is a no-op", async () => {
     fixture = setupFixture();
-    rulesUnignoreTagAction("design", { cwd: fixture.projectRoot });
+    await rulesUnignoreTagAction("design", { cwd: fixture.projectRoot });
 
     expect(existsSync(fixture.configPath)).toBe(false);
     expect(process.exitCode).toBe(0);
   });
 
-  it("rejects an unknown tag", () => {
+  it("rejects an unknown tag", async () => {
     fixture = setupFixture();
-    rulesIgnoreTagAction("not-a-tag", { cwd: fixture.projectRoot });
+    await rulesIgnoreTagAction("not-a-tag", { cwd: fixture.projectRoot });
 
     expect(existsSync(fixture.configPath)).toBe(false);
     expect(process.exitCode).toBe(1);
@@ -213,11 +227,11 @@ describe("rules ignore-tag / unignore-tag", () => {
 });
 
 describe("rules list / explain JSON output", () => {
-  it("reflects the configured severity in `list --json`", () => {
+  it("reflects the configured severity in `list --json`", async () => {
     fixture = setupFixture();
-    rulesDisableAction("react-doctor/no-danger", { cwd: fixture.projectRoot });
+    await rulesDisableAction("react-doctor/no-danger", { cwd: fixture.projectRoot });
 
-    const { output } = captureLog(() =>
+    const output = await captureLog(() =>
       rulesListAction({ json: true, configured: true, cwd: fixture.projectRoot }),
     );
     const payload = JSON.parse(output) as Array<{ key: string; severity: string; source: string }>;
@@ -225,14 +239,14 @@ describe("rules list / explain JSON output", () => {
     expect(entry).toMatchObject({ severity: "off", source: "rule" });
   });
 
-  it("ignores invalid config severities the scanner would drop", () => {
+  it("ignores invalid config severities the scanner would drop", async () => {
     fixture = setupFixture();
     writeFileSync(
       fixture.configPath,
       JSON.stringify({ rules: { "react-doctor/no-danger": "warning" } }, null, 2),
     );
 
-    const { output } = captureLog(() =>
+    const output = await captureLog(() =>
       rulesExplainAction("react-doctor/no-danger", { json: true, cwd: fixture.projectRoot }),
     );
     const payload = JSON.parse(output) as { severity: string; source: string };
@@ -242,9 +256,9 @@ describe("rules list / explain JSON output", () => {
     expect(["warn", "error", "off"]).toContain(payload.severity);
   });
 
-  it("explains a rule as JSON with a learn-more URL", () => {
+  it("explains a rule as JSON with a learn-more URL", async () => {
     fixture = setupFixture();
-    const { output } = captureLog(() =>
+    const output = await captureLog(() =>
       rulesExplainAction("react-doctor/no-danger", { json: true, cwd: fixture.projectRoot }),
     );
     const payload = JSON.parse(output) as { key: string; learnMoreUrl: string };
@@ -252,9 +266,9 @@ describe("rules list / explain JSON output", () => {
     expect(payload.learnMoreUrl).toContain("/prompts/rules/react-doctor/no-danger.md");
   });
 
-  it("reports an unknown rule for explain", () => {
+  it("reports an unknown rule for explain", async () => {
     fixture = setupFixture();
-    rulesExplainAction("react-doctor/nope", { cwd: fixture.projectRoot });
+    await rulesExplainAction("react-doctor/nope", { cwd: fixture.projectRoot });
     expect(process.exitCode).toBe(1);
   });
 });

@@ -135,7 +135,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
   try {
     validateModeFlags(flags);
 
-    const scanTarget = resolveScanTarget(requestedDirectory, { allowAmbiguous: true });
+    const scanTarget = await resolveScanTarget(requestedDirectory, { allowAmbiguous: true });
     const userConfig = scanTarget.userConfig;
     const resolvedDirectory = scanTarget.resolvedDirectory;
     setJsonReportDirectory(resolvedDirectory);

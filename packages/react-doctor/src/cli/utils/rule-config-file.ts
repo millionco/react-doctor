@@ -1,34 +1,43 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { parseJSON5 } from "confbox";
+import { loadFile, writeFile } from "magicast";
+import { getDefaultExportOptions } from "magicast/helpers";
 import { CONFIG_SCHEMA_URL, clearConfigCache, loadConfigWithSource } from "@react-doctor/core";
-import type { ReactDoctorConfig } from "@react-doctor/core";
+import type { ReactDoctorConfig, ReactDoctorConfigFormat } from "@react-doctor/core";
 
-const CONFIG_FILENAME = "react-doctor.config.json";
-const PACKAGE_JSON_FILENAME = "package.json";
+const NEW_CONFIG_FILENAME = "doctor.config.json";
 const PACKAGE_JSON_CONFIG_KEY = "reactDoctor";
 const JSON_INDENT_SPACES = 2;
-
-export type RuleConfigTargetKind = "config-file" | "package-json";
+// The only config sections the `rules` commands manage. When editing a
+// module config (.ts/.js) we sync exactly these keys onto the file so the
+// user's other config and formatting survive.
+const MANAGED_KEYS = ["rules", "categories", "ignore"] as const satisfies ReadonlyArray<
+  keyof ReactDoctorConfig
+>;
 
 export interface RuleConfigTarget {
-  readonly kind: RuleConfigTargetKind;
-  /** Absolute path of the file that holds (or will hold) the config. */
+  readonly format: ReactDoctorConfigFormat;
+  /** Absolute path of the file to edit (or create). */
   readonly filePath: string;
-  /** Directory containing `filePath`. */
   readonly directory: string;
-  /** Whether the config (standalone file or `package.json` key) already exists. */
+  /** Whether the config already exists. */
   readonly exists: boolean;
   /** Current config object — empty when nothing exists yet. */
   readonly config: ReactDoctorConfig;
 }
 
+export interface WriteRuleConfigResult {
+  /** `false` when a dynamic module config couldn't be edited automatically. */
+  readonly written: boolean;
+}
+
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const readJsonObject = (filePath: string): Record<string, unknown> | null => {
-  if (!existsSync(filePath)) return null;
+const readObjectFile = (filePath: string): Record<string, unknown> | null => {
   try {
-    const parsed: unknown = JSON.parse(readFileSync(filePath, "utf8"));
+    const parsed: unknown = parseJSON5(readFileSync(filePath, "utf-8"));
     return isPlainObject(parsed) ? parsed : null;
   } catch {
     return null;
@@ -37,80 +46,126 @@ const readJsonObject = (filePath: string): Record<string, unknown> | null => {
 
 /**
  * Decides where a rule-config mutation should be written. Discovery
- * mirrors the scanner: it reuses `loadConfigWithSource` (which walks up
- * to the project boundary, preferring `react-doctor.config.json` over a
- * `package.json#reactDoctor` block) so edits land in the same file the
- * scan reads. When nothing exists yet, a fresh `react-doctor.config.json`
- * is targeted at `projectRoot`. The raw on-disk object is returned (not
- * the validated config) so unrelated fields round-trip untouched.
+ * reuses `loadConfigWithSource` (the loader the scan uses) so edits land
+ * in the file the scan reads — `doctor.config.{ts,js,…}` is preferred,
+ * then `package.json#reactDoctor`. When nothing exists, a fresh
+ * `doctor.config.json` is targeted at `projectRoot`. Data configs are
+ * re-read raw so unrelated fields round-trip untouched.
  */
-export const resolveRuleConfigTarget = (projectRoot: string): RuleConfigTarget => {
+export const resolveRuleConfigTarget = async (projectRoot: string): Promise<RuleConfigTarget> => {
   // HACK: the loader memoizes by directory, so a second in-process call
   // (tests, multi-command flows) would read a stale config written by an
   // earlier call. A fresh CLI process has an empty cache, so this clear is
   // a no-op in production and only matters for repeated in-process reads.
   clearConfigCache();
-  const loaded = loadConfigWithSource(projectRoot);
+  const loaded = await loadConfigWithSource(projectRoot);
 
   if (loaded) {
-    const directory = loaded.sourceDirectory;
-    // Prefer react-doctor.config.json only when it actually parses. The
-    // loader skips an unparseable file and falls back to package.json, so
-    // targeting the broken file here would let a mutation overwrite it and
-    // silently shadow the package.json#reactDoctor config the scan uses.
-    const configFilePath = path.join(directory, CONFIG_FILENAME);
-    const parsedConfigFile = readJsonObject(configFilePath);
-    if (parsedConfigFile) {
+    if (loaded.format === "package-json") {
+      const packageJson = readObjectFile(loaded.configFilePath) ?? {};
+      const embedded = packageJson[PACKAGE_JSON_CONFIG_KEY];
       return {
-        kind: "config-file",
-        filePath: configFilePath,
-        directory,
+        format: "package-json",
+        filePath: loaded.configFilePath,
+        directory: loaded.sourceDirectory,
         exists: true,
-        config: parsedConfigFile,
+        config: isPlainObject(embedded) ? embedded : {},
       };
     }
-    const packageJsonPath = path.join(directory, PACKAGE_JSON_FILENAME);
-    const packageJson = readJsonObject(packageJsonPath) ?? {};
-    const embeddedConfig = packageJson[PACKAGE_JSON_CONFIG_KEY];
+    if (loaded.format === "json") {
+      return {
+        format: "json",
+        filePath: loaded.configFilePath,
+        directory: loaded.sourceDirectory,
+        exists: true,
+        config: readObjectFile(loaded.configFilePath) ?? {},
+      };
+    }
+    // Module config (.ts/.js/…): magicast edits the file in place, so the
+    // validated loaded config is enough as the mutation base.
     return {
-      kind: "package-json",
-      filePath: packageJsonPath,
-      directory,
+      format: "module",
+      filePath: loaded.configFilePath,
+      directory: loaded.sourceDirectory,
       exists: true,
-      config: isPlainObject(embeddedConfig) ? embeddedConfig : {},
+      config: loaded.config,
     };
   }
 
   return {
-    kind: "config-file",
-    filePath: path.join(projectRoot, CONFIG_FILENAME),
+    format: "json",
+    filePath: path.join(projectRoot, NEW_CONFIG_FILENAME),
     directory: projectRoot,
     exists: false,
     config: {},
   };
 };
 
-export const writeRuleConfig = (target: RuleConfigTarget, nextConfig: ReactDoctorConfig): void => {
-  if (target.kind === "config-file") {
-    // Re-key so `$schema` serializes first, defaulting it to the canonical
-    // schema URL so editors light up autocomplete on freshly-created files.
-    const { $schema, ...rest } = nextConfig;
-    const serialized = JSON.stringify(
-      { $schema: $schema ?? CONFIG_SCHEMA_URL, ...rest },
-      null,
-      JSON_INDENT_SPACES,
-    );
-    writeFileSync(target.filePath, `${serialized}\n`);
+const writeJsonConfig = (filePath: string, nextConfig: ReactDoctorConfig): void => {
+  // Re-key so `$schema` serializes first, defaulting it to the canonical
+  // schema URL so editors light up autocomplete on freshly-created files.
+  const { $schema, ...rest } = nextConfig;
+  const serialized = JSON.stringify(
+    { $schema: $schema ?? CONFIG_SCHEMA_URL, ...rest },
+    null,
+    JSON_INDENT_SPACES,
+  );
+  writeFileSync(filePath, `${serialized}\n`);
+};
+
+const writePackageJsonConfig = (filePath: string, nextConfig: ReactDoctorConfig): void => {
+  const packageJson = readObjectFile(filePath) ?? {};
+  const serialized = JSON.stringify(
+    { ...packageJson, [PACKAGE_JSON_CONFIG_KEY]: nextConfig },
+    null,
+    JSON_INDENT_SPACES,
+  );
+  writeFileSync(filePath, `${serialized}\n`);
+};
+
+// Edits a TS/JS config via magicast, syncing only the managed sections so
+// the rest of the file (other options, comments, formatting) survives.
+// Returns false when the default export isn't a statically-editable object
+// (e.g. a dynamic function config) — the caller then prints the change for
+// the user to apply by hand.
+const writeModuleConfig = async (
+  filePath: string,
+  nextConfig: ReactDoctorConfig,
+): Promise<boolean> => {
+  try {
+    const module = await loadFile(filePath);
+    const options = getDefaultExportOptions(module) as Record<string, unknown>;
+    for (const key of MANAGED_KEYS) {
+      const value = nextConfig[key];
+      if (value === undefined) {
+        if (options[key] !== undefined) delete options[key];
+      } else {
+        options[key] = value;
+      }
+    }
+    await writeFile(module, filePath);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export const writeRuleConfig = async (
+  target: RuleConfigTarget,
+  nextConfig: ReactDoctorConfig,
+): Promise<WriteRuleConfigResult> => {
+  if (target.format === "module") {
+    const written = await writeModuleConfig(target.filePath, nextConfig);
+    if (written) clearConfigCache();
+    return { written };
+  }
+  if (target.format === "package-json") {
+    writePackageJsonConfig(target.filePath, nextConfig);
   } else {
-    const packageJson = readJsonObject(target.filePath) ?? {};
-    const serialized = JSON.stringify(
-      { ...packageJson, [PACKAGE_JSON_CONFIG_KEY]: nextConfig },
-      null,
-      JSON_INDENT_SPACES,
-    );
-    writeFileSync(target.filePath, `${serialized}\n`);
+    writeJsonConfig(target.filePath, nextConfig);
   }
   // Drop the now-stale cached config so a follow-up scan in the same
   // process picks up the new severities.
   clearConfigCache();
+  return { written: true };
 };

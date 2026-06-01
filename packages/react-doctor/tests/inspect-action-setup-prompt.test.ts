@@ -30,7 +30,7 @@ vi.mock("@react-doctor/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@react-doctor/core")>();
   return {
     ...actual,
-    resolveScanTarget: vi.fn(() => ({
+    resolveScanTarget: vi.fn(async () => ({
       resolvedDirectory: mockState.rootDirectory,
       requestedDirectory: mockState.rootDirectory,
       userConfig: null,

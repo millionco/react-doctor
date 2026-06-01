@@ -59,8 +59,8 @@ ${formatExampleLines([
 ])}
 
 ${highlighter.dim("Configuration:")}
-  Place a ${highlighter.info("react-doctor.config.json")} (or ${highlighter.info('"reactDoctor"')} key in your package.json) in the project root.
-  CLI flags always override config values. See the README for the full schema.
+  Add a ${highlighter.info("doctor.config.ts")} (or .js/.mjs/.json — or a ${highlighter.info('"reactDoctor"')} key in your package.json) in the project root.
+  Use ${highlighter.info("react-doctor rules")} to list, explain, and configure rules. CLI flags always override config values.
 
 ${highlighter.dim("Feedback & bug reports:")}
   ${highlighter.info(`${CANONICAL_GITHUB_URL}/issues`)}
@@ -173,6 +173,11 @@ const rules = program
   .command("rules")
   .description("List, explain, and configure which React Doctor rules run");
 
+// HACK: `--json` is also declared on the root program (for the default
+// inspect command), so Commander stashes it on the parent rather than the
+// subcommand. Route every rules action through `optsWithGlobals()` so the
+// merged option set (subcommand + inherited globals) is what the action
+// sees, regardless of where Commander parked a colliding flag.
 rules
   .command("list")
   .description("List rules and the severity they run at under your config")
@@ -182,51 +187,55 @@ rules
   .option("--configured", "only show rules your config has changed from the default")
   .option("--json", "output a structured JSON array")
   .option("-c, --cwd <cwd>", "working directory", process.cwd())
-  .action(rulesListAction);
+  .action((_options, command) => rulesListAction(command.optsWithGlobals()));
 
 rules
   .command("explain <rule>")
   .description("Explain why a rule matters, its current severity, and how to configure it")
   .option("--json", "output a structured JSON object")
   .option("-c, --cwd <cwd>", "working directory", process.cwd())
-  .action(rulesExplainAction);
+  .action((rule, _options, command) => rulesExplainAction(rule, command.optsWithGlobals()));
 
 rules
   .command("set <rule> <severity>")
   .description("Set a rule's severity: off, warn, or error")
   .option("-c, --cwd <cwd>", "working directory", process.cwd())
-  .action(rulesSetAction);
+  .action((rule, severity, _options, command) =>
+    rulesSetAction(rule, severity, command.optsWithGlobals()),
+  );
 
 rules
   .command("enable <rule>")
   .description("Enable a rule at its recommended severity (or pass --severity)")
   .option("--severity <level>", "severity to enable at: warn or error")
   .option("-c, --cwd <cwd>", "working directory", process.cwd())
-  .action(rulesEnableAction);
+  .action((rule, _options, command) => rulesEnableAction(rule, command.optsWithGlobals()));
 
 rules
   .command("disable <rule>")
   .description("Disable a rule so it never runs")
   .option("-c, --cwd <cwd>", "working directory", process.cwd())
-  .action(rulesDisableAction);
+  .action((rule, _options, command) => rulesDisableAction(rule, command.optsWithGlobals()));
 
 rules
   .command("category <category> <severity>")
   .description("Set the severity for a whole category (off, warn, error)")
   .option("-c, --cwd <cwd>", "working directory", process.cwd())
-  .action(rulesCategoryAction);
+  .action((category, severity, _options, command) =>
+    rulesCategoryAction(category, severity, command.optsWithGlobals()),
+  );
 
 rules
   .command("ignore-tag <tag>")
   .description("Skip a whole rule family by tag before linting (e.g. design)")
   .option("-c, --cwd <cwd>", "working directory", process.cwd())
-  .action(rulesIgnoreTagAction);
+  .action((tag, _options, command) => rulesIgnoreTagAction(tag, command.optsWithGlobals()));
 
 rules
   .command("unignore-tag <tag>")
   .description("Stop ignoring a tag previously skipped via ignore-tag")
   .option("-c, --cwd <cwd>", "working directory", process.cwd())
-  .action(rulesUnignoreTagAction);
+  .action((tag, _options, command) => rulesUnignoreTagAction(tag, command.optsWithGlobals()));
 
 // HACK: when stdout is piped into a process that closes early (e.g.
 // `react-doctor . | head`), Node throws an uncaught EPIPE on the next

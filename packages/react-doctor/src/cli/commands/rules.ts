@@ -74,23 +74,43 @@ const describeTargetPath = (target: RuleConfigTarget): string => {
   return target.exists ? displayPath : `${displayPath} ${highlighter.dim("(created)")}`;
 };
 
-const applyConfigChange = (
+interface AppliedConfigChange {
+  readonly target: RuleConfigTarget;
+  readonly nextConfig: ReactDoctorConfig;
+  readonly written: boolean;
+}
+
+const applyConfigChange = async (
   options: RulesCwdOptions,
   change: (config: ReactDoctorConfig) => ReactDoctorConfig,
-): RuleConfigTarget => {
+): Promise<AppliedConfigChange> => {
   const projectRoot = resolveProjectRoot(options);
-  const target = resolveRuleConfigTarget(projectRoot);
-  writeRuleConfig(target, change(target.config));
-  return target;
+  const target = await resolveRuleConfigTarget(projectRoot);
+  const nextConfig = change(target.config);
+  const { written } = await writeRuleConfig(target, nextConfig);
+  return { target, nextConfig, written };
 };
 
-export const rulesListAction = (options: RulesListOptions): void => {
+// A dynamic module config (e.g. `export default () => ({...})`) can't be
+// edited statically; print the change so the user can apply it by hand.
+const reportManualEdit = (target: RuleConfigTarget, nextConfig: ReactDoctorConfig): void => {
+  const managed: Record<string, unknown> = {};
+  for (const key of ["rules", "categories", "ignore"] as const) {
+    if (nextConfig[key] !== undefined) managed[key] = nextConfig[key];
+  }
+  logger.error(`Couldn't automatically edit ${describeTargetPath(target)} (dynamic config).`);
+  logger.dim("  Apply this to your config's default export, then re-run:");
+  for (const line of JSON.stringify(managed, null, 2).split("\n")) logger.dim(`  ${line}`);
+  process.exitCode = 1;
+};
+
+export const rulesListAction = async (options: RulesListOptions): Promise<void> => {
   const catalog = buildRuleCatalog();
-  const projectRoot = resolveProjectRoot(options);
+  const target = await resolveRuleConfigTarget(resolveProjectRoot(options));
   // Validate the on-disk config the same way the loader does so effective
   // severity reflects what a scan applies (invalid `rules`/`categories`
   // values are dropped, not shown as active).
-  const config = validateConfigTypes(resolveRuleConfigTarget(projectRoot).config);
+  const config = validateConfigTypes(target.config);
 
   const categoryFilter = options.category?.toLowerCase();
   const frameworkFilter = options.framework?.toLowerCase();
@@ -124,7 +144,10 @@ export const rulesListAction = (options: RulesListOptions): void => {
   logger.log(renderRuleCatalog(rows));
 };
 
-export const rulesExplainAction = (ruleQuery: string, options: RulesExplainOptions): void => {
+export const rulesExplainAction = async (
+  ruleQuery: string,
+  options: RulesExplainOptions,
+): Promise<void> => {
   const catalog = buildRuleCatalog();
   const entry = findRuleInCatalog(catalog, ruleQuery);
   if (!entry) {
@@ -133,7 +156,8 @@ export const rulesExplainAction = (ruleQuery: string, options: RulesExplainOptio
   }
 
   // Validate like the loader so explain reflects the severity a scan applies.
-  const config = validateConfigTypes(resolveRuleConfigTarget(resolveProjectRoot(options)).config);
+  const target = await resolveRuleConfigTarget(resolveProjectRoot(options));
+  const config = validateConfigTypes(target.config);
   const effective = resolveEffectiveRuleSeverity(config, entry);
 
   if (options.json) {
@@ -162,23 +186,27 @@ export const rulesExplainAction = (ruleQuery: string, options: RulesExplainOptio
   logger.log(renderRuleExplanation({ entry, effective }));
 };
 
-const setRuleSeverityAndReport = (
+const setRuleSeverityAndReport = async (
   entry: RuleCatalogEntry,
   severity: RuleSeverityOverride,
   options: RulesCwdOptions,
-): void => {
-  const target = applyConfigChange(options, (config) =>
+): Promise<void> => {
+  const { target, nextConfig, written } = await applyConfigChange(options, (config) =>
     setRuleSeverity(config, entry.key, severity),
   );
+  if (!written) {
+    reportManualEdit(target, nextConfig);
+    return;
+  }
   logger.success(`Set ${entry.key} → ${severity}`);
   logger.dim(`  Updated ${describeTargetPath(target)}`);
 };
 
-export const rulesSetAction = (
+export const rulesSetAction = async (
   ruleQuery: string,
   severityValue: string,
   options: RulesCwdOptions,
-): void => {
+): Promise<void> => {
   const severity = parseSeverity(severityValue);
   if (!severity) {
     reportInvalidSeverity(severityValue);
@@ -189,17 +217,20 @@ export const rulesSetAction = (
     reportRuleNotFound(ruleQuery);
     return;
   }
-  setRuleSeverityAndReport(entry, severity, options);
+  await setRuleSeverityAndReport(entry, severity, options);
 };
 
-export const rulesEnableAction = (ruleQuery: string, options: RulesEnableOptions): void => {
+export const rulesEnableAction = async (
+  ruleQuery: string,
+  options: RulesEnableOptions,
+): Promise<void> => {
   const entry = findRuleInCatalog(buildRuleCatalog(), ruleQuery);
   if (!entry) {
     reportRuleNotFound(ruleQuery);
     return;
   }
   if (options.severity === undefined) {
-    setRuleSeverityAndReport(entry, entry.defaultSeverity, options);
+    await setRuleSeverityAndReport(entry, entry.defaultSeverity, options);
     return;
   }
   const severity = parseSeverity(options.severity);
@@ -212,23 +243,26 @@ export const rulesEnableAction = (ruleQuery: string, options: RulesEnableOptions
     process.exitCode = 1;
     return;
   }
-  setRuleSeverityAndReport(entry, severity, options);
+  await setRuleSeverityAndReport(entry, severity, options);
 };
 
-export const rulesDisableAction = (ruleQuery: string, options: RulesCwdOptions): void => {
+export const rulesDisableAction = async (
+  ruleQuery: string,
+  options: RulesCwdOptions,
+): Promise<void> => {
   const entry = findRuleInCatalog(buildRuleCatalog(), ruleQuery);
   if (!entry) {
     reportRuleNotFound(ruleQuery);
     return;
   }
-  setRuleSeverityAndReport(entry, "off", options);
+  await setRuleSeverityAndReport(entry, "off", options);
 };
 
-export const rulesCategoryAction = (
+export const rulesCategoryAction = async (
   categoryQuery: string,
   severityValue: string,
   options: RulesCwdOptions,
-): void => {
+): Promise<void> => {
   const severity = parseSeverity(severityValue);
   if (!severity) {
     reportInvalidSeverity(severityValue);
@@ -244,14 +278,21 @@ export const rulesCategoryAction = (
     process.exitCode = 1;
     return;
   }
-  const target = applyConfigChange(options, (config) =>
+  const { target, nextConfig, written } = await applyConfigChange(options, (config) =>
     setCategorySeverity(config, matchedCategory, severity),
   );
+  if (!written) {
+    reportManualEdit(target, nextConfig);
+    return;
+  }
   logger.success(`Set category "${matchedCategory}" → ${severity}`);
   logger.dim(`  Updated ${describeTargetPath(target)}`);
 };
 
-export const rulesIgnoreTagAction = (tag: string, options: RulesCwdOptions): void => {
+export const rulesIgnoreTagAction = async (
+  tag: string,
+  options: RulesCwdOptions,
+): Promise<void> => {
   const knownTags = listRuleTags(buildRuleCatalog());
   if (!knownTags.includes(tag)) {
     logger.error(`Unknown tag "${tag}".`);
@@ -259,20 +300,34 @@ export const rulesIgnoreTagAction = (tag: string, options: RulesCwdOptions): voi
     process.exitCode = 1;
     return;
   }
-  const target = applyConfigChange(options, (config) => addIgnoredTag(config, tag));
+  const { target, nextConfig, written } = await applyConfigChange(options, (config) =>
+    addIgnoredTag(config, tag),
+  );
+  if (!written) {
+    reportManualEdit(target, nextConfig);
+    return;
+  }
   logger.success(`Ignoring tag "${tag}" (rules with this tag are skipped before linting)`);
   logger.dim(`  Updated ${describeTargetPath(target)}`);
 };
 
-export const rulesUnignoreTagAction = (tag: string, options: RulesCwdOptions): void => {
-  const target = resolveRuleConfigTarget(resolveProjectRoot(options));
+export const rulesUnignoreTagAction = async (
+  tag: string,
+  options: RulesCwdOptions,
+): Promise<void> => {
+  const target = await resolveRuleConfigTarget(resolveProjectRoot(options));
   // Don't write (or create) a config for a no-op — reporting success when
   // the tag was never ignored is misleading and leaves a stray config file.
   if (!(target.config.ignore?.tags ?? []).includes(tag)) {
     logger.dim(`Tag "${tag}" was not being ignored; nothing to change.`);
     return;
   }
-  writeRuleConfig(target, removeIgnoredTag(target.config, tag));
+  const nextConfig = removeIgnoredTag(target.config, tag);
+  const { written } = await writeRuleConfig(target, nextConfig);
+  if (!written) {
+    reportManualEdit(target, nextConfig);
+    return;
+  }
   logger.success(`Tag "${tag}" is no longer ignored`);
   logger.dim(`  Updated ${describeTargetPath(target)}`);
 };

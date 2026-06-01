@@ -134,7 +134,7 @@ export const inspect = async (
     userConfig = inputOptions.configOverride ?? null;
     configSourceDirectory = null;
   } else {
-    const scanTarget = resolveScanTarget(directory);
+    const scanTarget = await resolveScanTarget(directory);
     scanDirectory = scanTarget.resolvedDirectory;
     userConfig = scanTarget.userConfig;
     configSourceDirectory = scanTarget.configSourceDirectory;

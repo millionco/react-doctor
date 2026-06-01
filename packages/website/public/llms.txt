@@ -74,7 +74,9 @@ npx react-doctor@latest install
 
 ## Configure rules
 
-Manage which rules run with the `rules` subcommands. They edit `react-doctor.config.json` (preserving your other settings) so you don't have to hand-write config:
+Configure with a `doctor.config.ts` (or `.js`, `.mjs`, `.cjs`, `.json`, `.jsonc`) in your project root, or a `"reactDoctor"` key in `package.json`. JSON configs allow comments and trailing commas; point `$schema` at `https://react.doctor/schema/config.json` for editor autocomplete.
+
+Manage which rules run with the `rules` subcommands. They edit your `doctor.config.*` in place (TS/JS edits preserve formatting) — or `package.json#reactDoctor` — so you don't have to hand-write config:
 
 ```bash
 npx react-doctor@latest rules list                 # every rule + the severity it runs at

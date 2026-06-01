@@ -159,7 +159,7 @@ export interface ReactDoctorConfig {
    * the redirect is stable no matter where the CLI / `diagnose()` is
    * run from. Absolute paths are used as-is.
    *
-   * Typical use: a monorepo root holds the only `react-doctor.config.json`
+   * Typical use: a monorepo root holds the only `doctor.config.*`
    * (so editor tooling and child commands all find it), but the React
    * app lives in `apps/web`. Setting `"rootDir": "apps/web"` makes
    * every invocation that loads this config scan that subproject

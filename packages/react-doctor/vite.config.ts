@@ -79,6 +79,14 @@ export default defineConfig({
           // rationale as `effect` and `deslop-js` below).
           "@sentry/node",
           "agent-install",
+          // Config loading/editing: jiti (TS/JS config eval) + confbox
+          // (JSONC parse) power the loader in @react-doctor/core (bundled
+          // in here), and magicast edits .ts/.js configs for `rules`.
+          // All pure-JS but heavy / runtime-resolving, so keep external
+          // and installed rather than inlined into the CLI bundle.
+          "confbox",
+          "jiti",
+          "magicast",
           // HACK: deslop-js wraps oxc-parser / oxc-resolver, both of
           // which load platform-specific NAPI bindings via require().
           // Rollup happily inlines the JS loader chain but rewrites
@@ -130,6 +138,9 @@ export default defineConfig({
           "@effect/platform-node-shared",
           "@sentry/node",
           "agent-install",
+          "confbox",
+          "jiti",
+          "magicast",
           "deslop-js",
           "effect",
           "oxc-parser",

@@ -33,8 +33,8 @@ export class Config extends Context.Service<
         capacity: CONFIG_CACHE_CAPACITY,
         timeToLive: CONFIG_CACHE_TTL_MS,
         lookup: (directory) =>
-          Effect.sync(() => {
-            const loaded = loadConfigWithSource(directory);
+          Effect.promise(async () => {
+            const loaded = await loadConfigWithSource(directory);
             const redirected = resolveConfigRootDir(
               loaded?.config ?? null,
               loaded?.sourceDirectory ?? null,

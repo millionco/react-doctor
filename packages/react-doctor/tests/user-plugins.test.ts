@@ -47,7 +47,7 @@ describe("user plugins (config.plugins)", () => {
       },
     });
     writeFileSync(
-      path.join(projectDir, "react-doctor.config.json"),
+      path.join(projectDir, "doctor.config.json"),
       JSON.stringify({
         plugins: ["./lint/team-conventions.cjs"],
         rules: { "team-conventions/no-forbidden-word": "error" },
@@ -133,7 +133,7 @@ describe("user plugins (config.plugins)", () => {
   });
 
   it("resolves a plugin spec from the config's source directory, not the scan root (rootDir redirect)", async () => {
-    // Bugbot regression (#438): `react-doctor.config.json` lives at
+    // Bugbot regression (#438): `doctor.config.json` lives at
     // a workspace root and redirects the scan via `rootDir: "apps/web"`,
     // but the plugin file sits next to the CONFIG, not next to the
     // scan target. The resolver MUST use the config source directory.

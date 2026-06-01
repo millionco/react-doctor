@@ -20,7 +20,7 @@ npx react-doctor@latest rules explain react-doctor/no-array-index-as-key
 ```
 
 3. Pick the narrowest control that matches the user's intent (see decision guide).
-4. Apply it with a `rules` subcommand (writes `react-doctor.config.json`, preserving other fields).
+4. Apply it with a `rules` subcommand (edits your `doctor.config.*` or `package.json#reactDoctor` in place, preserving other fields and formatting).
 5. Validate the change did what they wanted:
 
 ```bash
@@ -53,21 +53,21 @@ Match the control to the intent — prefer the narrowest one:
 - **A disabled-by-default rule they want on** → `rules enable <rule>`.
 - **A whole area is unwanted** (e.g. all React Native rules) → `rules category "<Category>" off`.
 - **A behavioral family is noisy** (`design`, `test-noise`, `migration-hint`) → `rules ignore-tag <tag>`.
-- **Keep it locally but hide from PR comment / score / CI gate only** → do NOT disable. Edit `surfaces` in `react-doctor.config.json` (`surfaces.prComment.excludeRules`, `surfaces.score.excludeTags`, `surfaces.ciFailure.excludeCategories`). The rule still shows in local `cli` output.
+- **Keep it locally but hide from PR comment / score / CI gate only** → do NOT disable. Edit `surfaces` in your config (`surfaces.prComment.excludeRules`, `surfaces.score.excludeTags`, `surfaces.ciFailure.excludeCategories`). The rule still shows in local `cli` output.
 
 How the layers combine: `ignore.tags` disables every rule carrying that tag **before** linting, so a tagged rule stays off even if `rules`/`categories` set it to `warn`/`error` (a rule-level override cannot re-enable a tag-ignored rule). For rules that aren't tag-disabled, `rules` overrides `categories` overrides the rule's default. `surfaces` is visibility-only and never changes whether a rule runs.
 
 ## Config shape
 
-All commands write `react-doctor.config.json` (or the `reactDoctor` key in `package.json` if that is where config already lives), stamping `$schema` so editors get autocomplete:
+Config lives in `doctor.config.ts` (or `.js`/`.mjs`/`.cjs`/`.json`/`.jsonc`), or the `reactDoctor` key in `package.json`. The `rules` commands edit whichever exists — TS/JS edits preserve formatting (via magicast) — and create `doctor.config.json` when none does, stamping `$schema`:
 
-```json
-{
-  "$schema": "https://react.doctor/schema/config.json",
-  "rules": { "react-doctor/no-array-index-as-key": "off" },
-  "categories": { "React Native": "warn" },
-  "ignore": { "tags": ["design"] }
-}
+```ts
+// doctor.config.ts
+export default {
+  rules: { "react-doctor/no-array-index-as-key": "off" },
+  categories: { "React Native": "warn" },
+  ignore: { tags: ["design"] },
+};
 ```
 
 ## Educating the user

@@ -163,7 +163,7 @@ export const inspect = async (
   if (options.silent) setSpinnerSilent(true);
 
   try {
-    return await withSentryRunSpan((rootSentrySpan) =>
+    const result = await withSentryRunSpan((rootSentrySpan) =>
       runInspectWithRuntime(
         scanDirectory,
         options,
@@ -174,6 +174,14 @@ export const inspect = async (
         rootSentrySpan,
       ),
     );
+    // Scan finished cleanly — clear run-scoped Sentry state so a later non-scan
+    // error (inspectAction's finalize/handoff/install steps, or the next
+    // project in a workspace loop) isn't mislabeled with this scan's project or
+    // mislinked to its already-sent transaction. On a thrown error this line is
+    // skipped, so the state persists for the command catch to attribute and
+    // link the crash before the process exits.
+    resetSentryRunState();
+    return result;
   } finally {
     if (options.silent) setSpinnerSilent(wasSpinnerSilent);
   }

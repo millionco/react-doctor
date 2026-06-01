@@ -11,11 +11,13 @@ export type SentryRootSpan = ReturnType<typeof Sentry.startInactiveSpan> | undef
 
 /**
  * Clears the module-level run-scoped Sentry state — the current scanned project
- * and the active run trace — at the start of an inspect run. `inspect()` is
- * invoked once per project in a workspace scan, so without this a later run that
- * errors before its `beforeLint` could attach the previous run's project tags,
- * and a stale trace could mislink the crash. Safe to call when Sentry is off
- * (the refs are read only when an event is built).
+ * and the active run trace. `inspect()` calls this at the start of every run and
+ * again after a clean one (it's invoked once per project in a workspace scan),
+ * so a prior or just-finished scan can't attach its project tags / trace to a
+ * later run or to a non-scan error (e.g. inspectAction's post-loop
+ * finalize/handoff steps). A thrown scan error skips the post-run reset, leaving
+ * the state for the command catch to attribute and link the crash. Safe to call
+ * when Sentry is off (the refs are read only when an event is built).
  */
 export const resetSentryRunState = (): void => {
   setSentryProjectInfo(null);
@@ -35,8 +37,10 @@ export const resetSentryRunState = (): void => {
  * While the span runs, its trace context is recorded as the active run trace so
  * `reportErrorToSentry` can attach a crash thrown during the scan back to this
  * transaction's trace (errors surface in the command catch, after the span has
- * ended). The handle is cleared only on success — on error it's left in place
- * for the catch, then the process exits.
+ * ended). `inspect()` owns clearing it (and the scanned project): it resets the
+ * state right after a clean run and at the start of the next one, so the trace
+ * is never attached to a non-scan error; on a thrown error the state is left in
+ * place for the command catch, then the process exits.
  */
 export const withSentryRunSpan = <T>(run: (rootSpan: SentryRootSpan) => Promise<T>): Promise<T> => {
   if (!isSentryTracingEnabled()) return run(undefined);
@@ -44,18 +48,14 @@ export const withSentryRunSpan = <T>(run: (rootSpan: SentryRootSpan) => Promise<
   const command = typeof tags.command === "string" ? tags.command : "inspect";
   return Sentry.startSpan(
     { name: `react-doctor ${command}`, op: "cli.inspect", attributes: toSpanAttributes(tags) },
-    async (rootSpan) => {
+    (rootSpan) => {
       const spanContext = rootSpan.spanContext();
       setActiveRunTrace({
         traceId: spanContext.traceId,
         spanId: spanContext.spanId,
         sampled: (spanContext.traceFlags & TRACE_FLAG_SAMPLED) === TRACE_FLAG_SAMPLED,
       });
-      const result = await run(rootSpan);
-      // Reached only on success; on a thrown error the handle stays set so the
-      // command catch can link the crash to this trace.
-      setActiveRunTrace(null);
-      return result;
+      return run(rootSpan);
     },
   );
 };

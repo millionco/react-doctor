@@ -20,6 +20,11 @@ export const validateModeFlags = (flags: InspectFlags): void => {
   if (flags.score && flags.json) {
     throw new Error("Cannot combine --score and --json; pick one output mode.");
   }
+  if (flags.score && flags.telemetry === false) {
+    throw new Error(
+      "Cannot combine --score with --no-telemetry; --score prints the score that --no-telemetry disables.",
+    );
+  }
   if (flags.prComment && (flags.json || flags.score)) {
     throw new Error("--pr-comment cannot be combined with --json or --score.");
   }

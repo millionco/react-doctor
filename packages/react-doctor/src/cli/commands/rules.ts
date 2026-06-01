@@ -1,5 +1,5 @@
 import path from "node:path";
-import { buildRulePromptUrl, highlighter, validateConfigTypes } from "@react-doctor/core";
+import { buildRuleDocsUrl, highlighter, validateConfigTypes } from "@react-doctor/core";
 import type { ReactDoctorConfig, RuleSeverityOverride } from "@react-doctor/core";
 import { cliLogger as logger } from "../utils/cli-logger.js";
 import { findNearestPackageDirectory } from "../utils/install-doctor-script.js";
@@ -174,7 +174,7 @@ export const rulesExplainAction = async (
           severity: effective.value,
           source: effective.source,
           recommendation: entry.recommendation ?? null,
-          learnMoreUrl: buildRulePromptUrl("react-doctor", entry.id),
+          learnMoreUrl: buildRuleDocsUrl("react-doctor", entry.id),
         },
         null,
         2,

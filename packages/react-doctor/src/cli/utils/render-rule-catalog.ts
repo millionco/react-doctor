@@ -1,4 +1,4 @@
-import { buildRulePromptUrl, highlighter } from "@react-doctor/core";
+import { buildRuleDocsUrl, highlighter } from "@react-doctor/core";
 import type { RuleSeverityOverride } from "@react-doctor/core";
 import type { RuleCatalogEntry } from "./rule-catalog.js";
 import type { EffectiveRuleSeverity } from "./resolve-effective-rule-severity.js";
@@ -87,7 +87,7 @@ export const renderRuleExplanation = (row: RenderedRuleRow): string => {
 
   lines.push("");
   lines.push(highlighter.bold("Learn more"));
-  lines.push(highlighter.dim(`  ${buildRulePromptUrl("react-doctor", entry.id)}`));
+  lines.push(highlighter.dim(`  ${buildRuleDocsUrl("react-doctor", entry.id)}`));
 
   return lines.join("\n");
 };

@@ -283,7 +283,7 @@ describe("rules list / explain JSON output", () => {
     );
     const payload = JSON.parse(output) as { key: string; learnMoreUrl: string };
     expect(payload.key).toBe("react-doctor/no-danger");
-    expect(payload.learnMoreUrl).toContain("/prompts/rules/react-doctor/no-danger.md");
+    expect(payload.learnMoreUrl).toContain("/docs/rules/react-doctor/no-danger");
   });
 
   it("reports an unknown rule for explain", async () => {

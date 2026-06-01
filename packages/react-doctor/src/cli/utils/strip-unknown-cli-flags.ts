@@ -21,6 +21,7 @@ const ROOT_FLAG_SPEC: CliFlagSpec = {
     "--no-color",
     "--no-dead-code",
     "--no-lint",
+    "--no-parallel",
     "--no-respect-inline-disables",
     "--no-score",
     "--no-telemetry",
@@ -41,7 +42,7 @@ const ROOT_FLAG_SPEC: CliFlagSpec = {
     "--project",
     "--why",
   ]),
-  longOptionsWithOptionalValues: new Set(["--diff", "--experimental-parallel"]),
+  longOptionsWithOptionalValues: new Set(["--diff"]),
   shortOptionsWithoutValues: new Set(["-h", "-v", "-y"]),
   shortOptionsWithRequiredValues: new Set(),
 };

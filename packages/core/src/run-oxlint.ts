@@ -65,7 +65,11 @@ interface RunOxlintOptions {
   outputMaxBytes?: number;
   /**
    * Number of oxlint subprocesses to run in parallel, resolved from the
-   * `OxlintConcurrency` Reference. Defaults to `1` (serial).
+   * `OxlintConcurrency` Reference (which itself defaults to parallel —
+   * auto-detected cores). Omitting it here uses the low-level serial
+   * default; the orchestrated path always threads the Reference value
+   * through. A parallel pass auto-falls-back to serial on resource
+   * exhaustion (see `spawnLintBatches`).
    */
   concurrency?: number;
 }

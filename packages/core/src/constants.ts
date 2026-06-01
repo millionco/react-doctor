@@ -113,9 +113,10 @@ export const SPAWN_ARGS_MAX_LENGTH_CHARS = 24_000;
 // vs the hard-cap perf cliffs they prevent.
 export const OXLINT_MAX_FILES_PER_BATCH = 100;
 
-// Bounds for the `--experimental-parallel` lint worker count (also set via the
-// `REACT_DOCTOR_PARALLEL` env var / `OxlintConcurrency` Reference). React
-// Doctor's rules are oxlint JS plugins — single-threaded per process — so
+// Bounds for the lint worker count (the `OxlintConcurrency` Reference, seeded
+// by the `REACT_DOCTOR_PARALLEL` env var; the CLI's `--no-parallel` flag forces
+// the MIN end). React Doctor's rules are oxlint JS plugins — single-threaded
+// per process — so
 // running the file batches across N concurrent oxlint subprocesses scales the
 // scan nearly linearly with N. MAX bounds peak memory (each worker holds its
 // batch's ASTs); the resolved count is clamped to [MIN, MAX].

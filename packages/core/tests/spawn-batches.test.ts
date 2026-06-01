@@ -142,7 +142,7 @@ describe("spawnLintBatches concurrency", () => {
     expect(peak).toBeLessThanOrEqual(3);
   });
 
-  it("runs batches serially when concurrency is 1 (default)", async () => {
+  it("runs batches serially when concurrency is 1", async () => {
     const peak = await runMarkedBatches(4, 1);
     expect(peak).toBe(1);
   });

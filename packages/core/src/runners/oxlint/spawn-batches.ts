@@ -4,7 +4,10 @@ import {
   PROGRESS_TICK_INTERVAL_MS,
 } from "../../constants.js";
 import type { Diagnostic, ProjectInfo } from "../../types/index.js";
-import { isSplittableReactDoctorError } from "../../errors.js";
+import {
+  isParallelismRelatedReactDoctorError,
+  isSplittableReactDoctorError,
+} from "../../errors.js";
 import { dedupeDiagnostics } from "../../utils/dedupe-diagnostics.js";
 import { mapWithConcurrency } from "../../utils/map-with-concurrency.js";
 import { resolveScanConcurrency } from "../../utils/resolve-scan-concurrency.js";
@@ -25,11 +28,13 @@ export interface SpawnLintBatchesInput {
   readonly outputMaxBytes?: number;
   /**
    * Number of batches to lint in parallel (from `OxlintConcurrency`).
-   * Defaults to `1` (serial). Each batch is its own oxlint subprocess, so
-   * `N` here means up to `N` concurrent oxlint processes — the lint pass
-   * scales with `N` because oxlint's JS plugins are single-threaded per
-   * process. The generated oxlintrc / ignore files are read-only and
-   * shared across workers, so there's no per-worker setup.
+   * Defaults to `1` (serial) when omitted. Each batch is its own oxlint
+   * subprocess, so `N` here means up to `N` concurrent oxlint processes —
+   * the lint pass scales with `N` because oxlint's JS plugins are
+   * single-threaded per process. The generated oxlintrc / ignore files are
+   * read-only and shared across workers, so there's no per-worker setup.
+   * A parallel pass (`N > 1`) that fails with a parallelism-exclusive
+   * resource error replays once with a single worker.
    */
   readonly concurrency?: number;
 }
@@ -42,10 +47,17 @@ export interface SpawnLintBatchesInput {
  * (surfaced via `onPartialFailure`) so JSON-mode consumers see WHICH
  * files were skipped instead of silently losing them.
  *
- * Errors that aren't splittable (oxlint config crash, JS plugin
- * resolution failure, etc.) propagate to the caller — the
- * `runOxlint` retry-without-extends fallback re-spawns this loop
- * with a slimmer config in that case.
+ * Parallel runs (concurrency > 1) get one extra safety net: if the pass
+ * fails with a resource-exhaustion error that's exclusive to running
+ * many oxlint subprocesses at once (EAGAIN / EMFILE / ENFILE / ENOMEM —
+ * see `isParallelismRelatedReactDoctorError`), the whole pass replays
+ * once with a single worker. That's the only failure a serial replay
+ * can clear, so every other error class is left to propagate.
+ *
+ * Errors that aren't splittable and aren't parallelism-related (oxlint
+ * config crash, JS plugin resolution failure, etc.) propagate to the
+ * caller — the `runOxlint` retry-without-extends fallback re-spawns this
+ * loop with a slimmer config in that case.
  */
 export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Diagnostic[]> => {
   const {
@@ -62,106 +74,133 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
   // Clamp at the spawn boundary so any caller — including programmatic
   // `inspect({ concurrency })` that skips the CLI's resolver — is bounded by
   // the [MIN, MAX] worker ceiling and can't oversubscribe oxlint processes.
-  const concurrency = resolveScanConcurrency(input.concurrency ?? MIN_SCAN_CONCURRENCY);
+  const requestedConcurrency = resolveScanConcurrency(input.concurrency ?? MIN_SCAN_CONCURRENCY);
   const totalFileCount = fileBatches.reduce((sum, batch) => sum + batch.length, 0);
 
-  const allDiagnostics: Diagnostic[] = [];
-  // HACK: tracks files whose smallest splittable batch (down to a
-  // single file) still failed with a splittable error — surfaced via
-  // `onPartialFailure` so JSON consumers see WHICH files were dropped
-  // instead of silently losing them. Composes with the binary-split:
-  // large batches that time out / OOM split in half and retry; the
-  // only files that reach this set are the genuinely-pathological
-  // ones (e.g. one file × one quadratic JS-plugin rule, originally
-  // hit on supabase/studio's `apps/studio/pages/...` bucket).
-  const droppedFiles: string[] = [];
-  // HACK: keep the first splittable error message we saw so
-  // `onPartialFailure` can report WHY each batch failed instead of
-  // misleadingly always blaming the per-batch budget. Same root cause
-  // across a project tends to repeat (e.g. native binding crash on
-  // every invocation in a sandbox runtime), so surfacing one example
-  // is enough to diagnose.
-  let firstDropReason: string | null = null;
+  // One full pass over every batch at `concurrency` workers. All mutable
+  // state (diagnostics, dropped-file bookkeeping, progress counters, the
+  // progress timer) is scoped here so the serial fallback below can replay
+  // the pass from a clean slate instead of inheriting half-populated state
+  // from a parallel attempt that died mid-flight.
+  const runBatchPass = async (concurrency: number): Promise<Diagnostic[]> => {
+    const allDiagnostics: Diagnostic[] = [];
+    // HACK: tracks files whose smallest splittable batch (down to a
+    // single file) still failed with a splittable error — surfaced via
+    // `onPartialFailure` so JSON consumers see WHICH files were dropped
+    // instead of silently losing them. Composes with the binary-split:
+    // large batches that time out / OOM split in half and retry; the
+    // only files that reach this set are the genuinely-pathological
+    // ones (e.g. one file × one quadratic JS-plugin rule, originally
+    // hit on supabase/studio's `apps/studio/pages/...` bucket).
+    const droppedFiles: string[] = [];
+    // HACK: keep the first splittable error message we saw so
+    // `onPartialFailure` can report WHY each batch failed instead of
+    // misleadingly always blaming the per-batch budget. Same root cause
+    // across a project tends to repeat (e.g. native binding crash on
+    // every invocation in a sandbox runtime), so surfacing one example
+    // is enough to diagnose.
+    let firstDropReason: string | null = null;
 
-  const spawnLintBatch = async (batch: string[]): Promise<Diagnostic[]> => {
-    const batchArgs = [...baseArgs, ...batch];
-    try {
-      const stdout = await spawnOxlint(
-        batchArgs,
-        rootDirectory,
-        nodeBinaryPath,
-        spawnTimeoutMs,
-        outputMaxBytes,
-      );
-      return parseOxlintOutput(stdout, project, rootDirectory);
-    } catch (error) {
-      if (!isSplittableReactDoctorError(error)) throw error;
-      if (batch.length <= 1) {
-        // Single-file batch still fails with a splittable error —
-        // drop the file, record it, and let the scan continue.
-        droppedFiles.push(...batch);
-        if (firstDropReason === null) {
-          firstDropReason = error.message;
+    const spawnLintBatch = async (batch: string[]): Promise<Diagnostic[]> => {
+      const batchArgs = [...baseArgs, ...batch];
+      try {
+        const stdout = await spawnOxlint(
+          batchArgs,
+          rootDirectory,
+          nodeBinaryPath,
+          spawnTimeoutMs,
+          outputMaxBytes,
+        );
+        return parseOxlintOutput(stdout, project, rootDirectory);
+      } catch (error) {
+        if (!isSplittableReactDoctorError(error)) throw error;
+        if (batch.length <= 1) {
+          // Single-file batch still fails with a splittable error —
+          // drop the file, record it, and let the scan continue.
+          droppedFiles.push(...batch);
+          if (firstDropReason === null) {
+            firstDropReason = error.message;
+          }
+          return [];
         }
-        return [];
+        const splitIndex = Math.ceil(batch.length / 2);
+        return [
+          ...(await spawnLintBatch(batch.slice(0, splitIndex))),
+          ...(await spawnLintBatch(batch.slice(splitIndex))),
+        ];
       }
-      const splitIndex = Math.ceil(batch.length / 2);
-      return [
-        ...(await spawnLintBatch(batch.slice(0, splitIndex))),
-        ...(await spawnLintBatch(batch.slice(splitIndex))),
-      ];
+    };
+
+    // One shared progress ticker (batches finish out of order under parallelism,
+    // so a single monotonic counter is the honest model): it creeps the displayed
+    // count toward the files handed to a worker, and each finished batch snaps it
+    // to the real scanned count. Unref'd and always cleared in `finally` so a
+    // rejected batch can't leak a ref'd timer and hang the CLI (issue #599).
+    let startedFileCount = 0;
+    let scannedFileCount = 0;
+    let displayedFileCount = 0;
+    const progressTimer =
+      onFileProgress && totalFileCount > 1
+        ? setInterval(() => {
+            const ceiling = Math.min(startedFileCount, totalFileCount - 1);
+            if (displayedFileCount < ceiling) {
+              displayedFileCount += 1;
+              onFileProgress(displayedFileCount, totalFileCount);
+            }
+          }, PROGRESS_TICK_INTERVAL_MS)
+        : null;
+    progressTimer?.unref?.();
+
+    try {
+      const batchResults = await mapWithConcurrency(fileBatches, concurrency, async (batch) => {
+        startedFileCount += batch.length;
+        const batchDiagnostics = await spawnLintBatch(batch);
+        scannedFileCount += batch.length;
+        if (onFileProgress) {
+          displayedFileCount = Math.min(
+            Math.max(displayedFileCount, scannedFileCount),
+            totalFileCount,
+          );
+          onFileProgress(displayedFileCount, totalFileCount);
+        }
+        return batchDiagnostics;
+      });
+      for (const batchDiagnostics of batchResults) allDiagnostics.push(...batchDiagnostics);
+    } finally {
+      if (progressTimer !== null) clearInterval(progressTimer);
     }
+
+    // Report dropped files once per completed pass. A pass that throws (e.g.
+    // the parallel attempt below hitting EAGAIN) exits before this point, so
+    // only the winning pass surfaces its skips.
+    if (droppedFiles.length > 0 && onPartialFailure) {
+      const previewFiles = droppedFiles.slice(0, OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT).join(", ");
+      const remainderHint =
+        droppedFiles.length > OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT
+          ? `, +${droppedFiles.length - OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT} more`
+          : "";
+      const reasonHint = firstDropReason ? ` — first failure: ${firstDropReason}` : "";
+      onPartialFailure(
+        `${droppedFiles.length} file(s) failed to lint and were skipped (${previewFiles}${remainderHint})${reasonHint}`,
+      );
+    }
+    return allDiagnostics;
   };
 
-  // One shared progress ticker (batches finish out of order under parallelism,
-  // so a single monotonic counter is the honest model): it creeps the displayed
-  // count toward the files handed to a worker, and each finished batch snaps it
-  // to the real scanned count. Unref'd and always cleared in `finally` so a
-  // rejected batch can't leak a ref'd timer and hang the CLI (issue #599).
-  let startedFileCount = 0;
-  let scannedFileCount = 0;
-  let displayedFileCount = 0;
-  const progressTimer =
-    onFileProgress && totalFileCount > 1
-      ? setInterval(() => {
-          const ceiling = Math.min(startedFileCount, totalFileCount - 1);
-          if (displayedFileCount < ceiling) {
-            displayedFileCount += 1;
-            onFileProgress(displayedFileCount, totalFileCount);
-          }
-        }, PROGRESS_TICK_INTERVAL_MS)
-      : null;
-  progressTimer?.unref?.();
-
+  // Parallel runs get one serial retry, but only for the parallelism-exclusive
+  // resource exhaustion a single worker can clear. Any other error — or a run
+  // that was already serial — would recur, so it propagates.
+  let diagnostics: Diagnostic[];
   try {
-    const batchResults = await mapWithConcurrency(fileBatches, concurrency, async (batch) => {
-      startedFileCount += batch.length;
-      const batchDiagnostics = await spawnLintBatch(batch);
-      scannedFileCount += batch.length;
-      if (onFileProgress) {
-        displayedFileCount = Math.min(
-          Math.max(displayedFileCount, scannedFileCount),
-          totalFileCount,
-        );
-        onFileProgress(displayedFileCount, totalFileCount);
-      }
-      return batchDiagnostics;
-    });
-    for (const batchDiagnostics of batchResults) allDiagnostics.push(...batchDiagnostics);
-  } finally {
-    if (progressTimer !== null) clearInterval(progressTimer);
+    diagnostics = await runBatchPass(requestedConcurrency);
+  } catch (error) {
+    if (
+      requestedConcurrency <= MIN_SCAN_CONCURRENCY ||
+      !isParallelismRelatedReactDoctorError(error)
+    ) {
+      throw error;
+    }
+    diagnostics = await runBatchPass(MIN_SCAN_CONCURRENCY);
   }
-
-  if (droppedFiles.length > 0 && onPartialFailure) {
-    const previewFiles = droppedFiles.slice(0, OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT).join(", ");
-    const remainderHint =
-      droppedFiles.length > OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT
-        ? `, +${droppedFiles.length - OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT} more`
-        : "";
-    const reasonHint = firstDropReason ? ` — first failure: ${firstDropReason}` : "";
-    onPartialFailure(
-      `${droppedFiles.length} file(s) failed to lint and were skipped (${previewFiles}${remainderHint})${reasonHint}`,
-    );
-  }
-  return dedupeDiagnostics(allDiagnostics);
+  return dedupeDiagnostics(diagnostics);
 };

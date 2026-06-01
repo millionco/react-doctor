@@ -101,8 +101,8 @@ const program = new Command()
   .option("-y, --yes", "skip prompts, scan all workspace projects")
   .option("--full", "force a full scan (overrides any `diff` value in config or `--diff`)")
   .option(
-    "--experimental-parallel [workers]",
-    "experimental: lint with N parallel workers (default: auto-detect CPU cores) — speeds up large repos",
+    "--no-parallel",
+    "lint serially with one worker (default: parallel across CPU cores; set the worker count with REACT_DOCTOR_PARALLEL)",
   )
   .option("--project <name>", "select workspace project (comma-separated for multiple)")
   .option(

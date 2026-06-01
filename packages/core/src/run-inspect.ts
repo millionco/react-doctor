@@ -332,7 +332,8 @@ export const runInspect = <HooksR = never>(
     });
 
     // Read only for the spinner suffix below (the Linter reads the same
-    // Reference to actually fan out the lint pass); default 1 = serial.
+    // Reference to actually fan out the lint pass); defaults to parallel
+    // (auto-detected cores).
     const scanConcurrency = yield* OxlintConcurrency;
     const workerCountSuffix = scanConcurrency > 1 ? ` · ${scanConcurrency} workers` : "";
 

@@ -4,6 +4,7 @@ import {
   ConfigParseFailed,
   DeadCodeAnalysisFailed,
   formatReactDoctorError,
+  isParallelismRelatedReactDoctorError,
   isReactDoctorError,
   isSplittableReactDoctorError,
   NoReactDependency,
@@ -176,5 +177,62 @@ describe("isSplittableReactDoctorError", () => {
     expect(isSplittableReactDoctorError(new Error("plain"))).toBe(false);
     expect(isSplittableReactDoctorError("string")).toBe(false);
     expect(isSplittableReactDoctorError(null)).toBe(false);
+  });
+});
+
+describe("isParallelismRelatedReactDoctorError", () => {
+  const spawnFailedWithCode = (code: string): ReactDoctorError =>
+    new ReactDoctorError({
+      reason: new OxlintSpawnFailed({ cause: Object.assign(new Error(`spawn ${code}`), { code }) }),
+    });
+
+  it("returns true for spawn failures from resource exhaustion (parallelism-exclusive)", () => {
+    for (const code of ["EAGAIN", "EMFILE", "ENFILE", "ENOMEM"]) {
+      expect(isParallelismRelatedReactDoctorError(spawnFailedWithCode(code))).toBe(true);
+    }
+  });
+
+  it("returns false for spawn failures unrelated to concurrency (e.g. ENOENT)", () => {
+    // A missing binary recurs identically on a serial retry — not worth one.
+    expect(isParallelismRelatedReactDoctorError(spawnFailedWithCode("ENOENT"))).toBe(false);
+    expect(isParallelismRelatedReactDoctorError(spawnFailedWithCode("EACCES"))).toBe(false);
+  });
+
+  it("returns false when the spawn-failure cause carries no system code", () => {
+    // A config crash surfaces as OxlintSpawnFailed with a plain stderr string
+    // cause; it would recur serially, so it must NOT trigger the fallback.
+    expect(
+      isParallelismRelatedReactDoctorError(
+        new ReactDoctorError({
+          reason: new OxlintSpawnFailed({ cause: "oxlint: invalid config" }),
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      isParallelismRelatedReactDoctorError(
+        new ReactDoctorError({ reason: new OxlintSpawnFailed({ cause: new Error("no code") }) }),
+      ),
+    ).toBe(false);
+  });
+
+  it("returns false for other tagged reasons even with a matching code-like detail", () => {
+    const cases = [
+      new OxlintUnavailable({ kind: "binary-not-found", detail: "EAGAIN" }),
+      new OxlintBatchExceeded({ kind: "oom", detail: "ENOMEM" }),
+      new OxlintOutputUnparseable({ preview: "EAGAIN" }),
+      new ProjectNotFound({ directory: "x" }),
+    ] as const;
+    for (const reason of cases) {
+      expect(isParallelismRelatedReactDoctorError(new ReactDoctorError({ reason }))).toBe(false);
+    }
+  });
+
+  it("returns false for non-ReactDoctorError values", () => {
+    expect(
+      isParallelismRelatedReactDoctorError(Object.assign(new Error("raw"), { code: "EAGAIN" })),
+    ).toBe(false);
+    expect(isParallelismRelatedReactDoctorError("EAGAIN")).toBe(false);
+    expect(isParallelismRelatedReactDoctorError(null)).toBe(false);
+    expect(isParallelismRelatedReactDoctorError(undefined)).toBe(false);
   });
 });

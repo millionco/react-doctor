@@ -71,10 +71,12 @@ export interface InspectOptions {
   /**
    * Number of oxlint subprocesses to run in parallel during the lint
    * pass. Overrides the `OxlintConcurrency` Reference (env-seeded) for
-   * this run. `undefined` leaves the ambient default in place (serial
-   * unless `REACT_DOCTOR_PARALLEL` is set); the CLI's `--experimental-parallel` flag
-   * resolves to a concrete worker count here. Out-of-range values are
-   * clamped to the supported worker range at the spawn boundary.
+   * this run. `undefined` leaves the ambient default in place (parallel:
+   * auto-detect cores unless `REACT_DOCTOR_PARALLEL` pins a count); the
+   * CLI's `--no-parallel` flag resolves to `1` (serial) here. A parallel
+   * run automatically falls back to serial if it exhausts system
+   * resources. Out-of-range values are clamped to the supported worker
+   * range at the spawn boundary.
    */
   concurrency?: number;
   /**

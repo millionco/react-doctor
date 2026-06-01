@@ -38,6 +38,6 @@ export const resolveCliInspectOptions = (
     isCi: isCiEnvironment(),
     silent: Boolean(flags.json),
     outputSurface: flags.prComment ? "prComment" : "cli",
-    concurrency: resolveParallelFlag(flags.experimentalParallel),
+    concurrency: resolveParallelFlag(flags.parallel),
   };
 };

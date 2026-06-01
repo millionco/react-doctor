@@ -127,7 +127,7 @@ describe("inspect", () => {
       const adminProjectDirectory = setupReactProject(tempDirectory, "admin");
       setupReactProject(tempDirectory, "web");
       fs.writeFileSync(
-        path.join(tempDirectory, "react-doctor.config.json"),
+        path.join(tempDirectory, "doctor.config.json"),
         JSON.stringify({ rootDir: "web" }),
       );
 
@@ -155,7 +155,7 @@ describe("inspect", () => {
       const webProjectDirectory = setupReactProject(tempDirectory, "web");
       setupReactProject(tempDirectory, "admin");
       fs.writeFileSync(
-        path.join(tempDirectory, "react-doctor.config.json"),
+        path.join(tempDirectory, "doctor.config.json"),
         JSON.stringify({ rootDir: "web" }),
       );
 

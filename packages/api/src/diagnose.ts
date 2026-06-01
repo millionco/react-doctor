@@ -102,7 +102,7 @@ export const diagnose = async (
   options: DiagnoseOptions = {},
 ): Promise<DiagnoseResult> => {
   const startTime = globalThis.performance.now();
-  const scanTarget = resolveScanTarget(directory);
+  const scanTarget = await resolveScanTarget(directory);
   const program = buildInspectProgram(scanTarget, options);
 
   const output: InspectOutput = await Effect.runPromise(
@@ -134,7 +134,7 @@ const diagnoseProject = async (
   const startTime = globalThis.performance.now();
 
   try {
-    const scanTarget = resolveScanTarget(projectDefinition.directory);
+    const scanTarget = await resolveScanTarget(projectDefinition.directory);
     const { directory: _, config: configOverride, ...perProjectOptions } = projectDefinition;
     const mergedOptions: DiagnoseOptions = { ...baseOptions, ...perProjectOptions };
 

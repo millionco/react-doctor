@@ -1,14 +1,36 @@
 export type FailOnLevel = "error" | "warning" | "none";
 
 export interface ReactDoctorIgnoreOverride {
+  /** Glob patterns the override applies to (e.g. `["src/legacy/**"]`). */
   files: string[];
+  /**
+   * Rule keys to suppress for the matched files. Omit (or leave empty) to
+   * suppress every rule for those files.
+   */
   rules?: string[];
 }
 
 interface ReactDoctorIgnoreConfig {
+  /**
+   * Fully-qualified rule keys (`"<plugin>/<rule>"`) whose diagnostics are
+   * dropped AFTER linting. The rule still runs; its findings are filtered
+   * out. To stop a rule from running at all, set it to `"off"` in the
+   * top-level `rules` map instead. Prefer `react-doctor rules disable
+   * <rule>` to edit this safely.
+   */
   rules?: string[];
+  /**
+   * Glob patterns whose files are excluded from scanning entirely (matched
+   * against paths relative to the scanned directory).
+   */
   files?: string[];
+  /** Per-path rule suppressions — narrower than the top-level `rules`/`files`. */
   overrides?: ReactDoctorIgnoreOverride[];
+  /**
+   * Behavioral tags whose rules are disabled BEFORE linting, skipping a
+   * whole family at once (e.g. `["design", "test-noise", "migration-hint"]`).
+   * Prefer `react-doctor rules ignore-tag <tag>` to edit this safely.
+   */
   tags?: string[];
 }
 
@@ -137,7 +159,7 @@ export interface ReactDoctorConfig {
    * the redirect is stable no matter where the CLI / `diagnose()` is
    * run from. Absolute paths are used as-is.
    *
-   * Typical use: a monorepo root holds the only `react-doctor.config.json`
+   * Typical use: a monorepo root holds the only `doctor.config.*`
    * (so editor tooling and child commands all find it), but the React
    * app lives in `apps/web`. Setting `"rootDir": "apps/web"` makes
    * every invocation that loads this config scan that subproject

@@ -69,10 +69,30 @@ const VERSION_FLAG_SPEC: CliFlagSpec = {
   shortOptionsWithRequiredValues: new Set(),
 };
 
+// Union of every flag across the `rules` subcommands (list / explain /
+// set / enable / disable / category / ignore-tag / unignore-tag). The
+// subcommand name and positionals (rule key, severity, tag, category)
+// are non-flag tokens and pass through untouched; only the options here
+// need to survive the pre-parse strip so Commander can route them.
+const RULES_FLAG_SPEC: CliFlagSpec = {
+  longOptionsWithoutValues: new Set(["--color", "--configured", "--help", "--json", "--no-color"]),
+  longOptionsWithRequiredValues: new Set([
+    "--category",
+    "--cwd",
+    "--framework",
+    "--severity",
+    "--tag",
+  ]),
+  longOptionsWithOptionalValues: new Set(),
+  shortOptionsWithoutValues: new Set(["-h"]),
+  shortOptionsWithRequiredValues: new Set(["-c"]),
+};
+
 const COMMAND_FLAG_SPECS = new Map<string, CliFlagSpec>([
   ["install", INSTALL_FLAG_SPEC],
   ["setup", INSTALL_FLAG_SPEC],
   ["version", VERSION_FLAG_SPEC],
+  ["rules", RULES_FLAG_SPEC],
 ]);
 
 const isFlagLike = (argument: string): boolean => argument.startsWith("-") && argument !== "-";

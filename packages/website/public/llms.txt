@@ -72,6 +72,25 @@ Install the skill into your coding agent (50+ agents supported via agent-install
 npx react-doctor@latest install
 ```
 
+## Configure rules
+
+Configure with a `doctor.config.ts` (or `.js`, `.mjs`, `.cjs`, `.json`, `.jsonc`) in your project root, or a `"reactDoctor"` key in `package.json`. JSON configs allow comments and trailing commas; point `$schema` at `https://react.doctor/schema/config.json` for editor autocomplete.
+
+Manage which rules run with the `rules` subcommands. They edit your `doctor.config.*` in place (TS/JS edits preserve formatting) — or `package.json#reactDoctor` — so you don't have to hand-write config:
+
+```bash
+npx react-doctor@latest rules list                 # every rule + the severity it runs at
+npx react-doctor@latest rules list --configured     # only rules your config changed
+npx react-doctor@latest rules explain <rule>        # why a rule matters + how to configure it
+npx react-doctor@latest rules disable <rule>        # turn a rule off (rules.<key> = "off")
+npx react-doctor@latest rules enable <rule>         # turn it back on at its recommended severity
+npx react-doctor@latest rules set <rule> warn       # off | warn | error
+npx react-doctor@latest rules category "React Native" off   # set a whole category
+npx react-doctor@latest rules ignore-tag design     # skip a rule family (design, test-noise, …)
+```
+
+Rule references accept the full key (`react-doctor/no-danger`), the bare id (`no-danger`), or a legacy key (`react/no-danger`). `ignore.tags` disables matching rules before linting — a tagged rule stays off even with a `rules`/`categories` override; otherwise `rules` overrides `categories` overrides the rule's default. Use the `surfaces` config field (not `disable`) to keep a rule locally but hide it from PR comments, the score, or the CI gate.
+
 ## Options
 
 ```

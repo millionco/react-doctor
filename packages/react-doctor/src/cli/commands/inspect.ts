@@ -6,6 +6,7 @@ import * as Effect from "effect/Effect";
 import {
   buildJsonReport,
   filterDiagnosticsForSurface,
+  findLegacyConfig,
   getDiffInfo,
   highlighter,
   resolveScanTarget,
@@ -25,6 +26,7 @@ import { getStagedSourceFiles, materializeStagedFiles } from "../utils/get-stage
 import type { InspectFlags } from "../utils/inspect-flags.js";
 import { handleError } from "../utils/handle-error.js";
 import { handoffToAgent } from "../utils/handoff-to-agent.js";
+import { migrateLegacyConfig } from "../utils/migrate-legacy-config.js";
 import {
   enableJsonMode,
   setJsonReportDirectory,
@@ -121,6 +123,40 @@ const buildChangedFilesDiffInfo = (changedFiles: string[]): DiffInfo => ({
   isCurrentChanges: false,
 });
 
+interface MigrationGuardInput {
+  readonly isQuiet: boolean;
+  readonly isStaged: boolean;
+}
+
+/**
+ * On an interactive human run, rename a pre-migration
+ * `react-doctor.config.json` to `doctor.config.ts` before config is loaded,
+ * so the scan reads the renamed file and the user is told once. CI, coding
+ * agents, JSON/score output, pre-commit (`--staged`) hooks, and non-TTY runs
+ * are left untouched — the loader's warning still nudges them — so a scan
+ * never mutates the repo unattended.
+ */
+const maybeMigrateLegacyConfig = (
+  requestedDirectory: string,
+  { isQuiet, isStaged }: MigrationGuardInput,
+): void => {
+  const isInteractiveHumanRun =
+    !isQuiet && !isStaged && process.stdout.isTTY === true && !isCiOrCodingAgentEnvironment();
+  if (!isInteractiveHumanRun) return;
+
+  const legacyConfig = findLegacyConfig(requestedDirectory);
+  if (!legacyConfig) return;
+
+  const migratedPath = migrateLegacyConfig(legacyConfig);
+  if (!migratedPath) return;
+
+  logger.success("Migrated react-doctor.config.json → doctor.config.ts");
+  logger.dim(
+    `  Your settings were preserved. Review ${toRelativePath(migratedPath, requestedDirectory)} and commit it.`,
+  );
+  logger.break();
+};
+
 export const inspectAction = async (directory: string, flags: InspectFlags): Promise<void> => {
   const isScoreOnly = Boolean(flags.score);
   const isJsonMode = Boolean(flags.json);
@@ -135,7 +171,9 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
   try {
     validateModeFlags(flags);
 
-    const scanTarget = resolveScanTarget(requestedDirectory, { allowAmbiguous: true });
+    maybeMigrateLegacyConfig(requestedDirectory, { isQuiet, isStaged: Boolean(flags.staged) });
+
+    const scanTarget = await resolveScanTarget(requestedDirectory, { allowAmbiguous: true });
     const userConfig = scanTarget.userConfig;
     const resolvedDirectory = scanTarget.resolvedDirectory;
     setJsonReportDirectory(resolvedDirectory);

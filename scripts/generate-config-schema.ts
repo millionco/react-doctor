@@ -12,7 +12,7 @@ const OUTPUT_FILE = resolve(REPOSITORY_ROOT, "packages/website/public/schema/con
 const SCHEMA_ID = "https://react.doctor/schema/config.json";
 const SCHEMA_TITLE = "React Doctor configuration";
 const SCHEMA_DESCRIPTION =
-  "Schema for react-doctor.config.json and the reactDoctor key inside package.json.";
+  "Schema for doctor.config.* and the reactDoctor key inside package.json.";
 
 const generatorConfig: Config = {
   path: SOURCE_TYPE_FILE,

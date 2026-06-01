@@ -35,8 +35,7 @@ export interface ResolvedScanTarget {
  * (`inspect()`, `diagnose()`, and the CLI's `inspectAction`):
  *
  *   1. Resolve the requested directory to absolute.
- *   2. Load `react-doctor.config.(json|js)` / `package.json#reactDoctor`
- *      if present.
+ *   2. Load `doctor.config.*` / `package.json#reactDoctor` if present.
  *   3. Honor `config.rootDir` to redirect the scan to a nested
  *      project root, if configured.
  *   4. Walk into a nested React subproject when the requested
@@ -54,12 +53,12 @@ export interface ResolvedScanTarget {
  * via its own cache). Routing through `resolveScanTarget` keeps every
  * shell in agreement on what "the scan directory" means.
  */
-export const resolveScanTarget = (
+export const resolveScanTarget = async (
   requestedDirectory: string,
   options: ResolveDiagnoseTargetOptions = {},
-): ResolvedScanTarget => {
+): Promise<ResolvedScanTarget> => {
   const absoluteRequested = path.resolve(requestedDirectory);
-  const loadedConfig = loadConfigWithSource(absoluteRequested);
+  const loadedConfig = await loadConfigWithSource(absoluteRequested);
   const userConfig = loadedConfig?.config ?? null;
   const configSourceDirectory = loadedConfig?.sourceDirectory ?? null;
   const redirectedDirectory = resolveConfigRootDir(userConfig, configSourceDirectory);

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://react.doctor/schema/config.json",
   "title": "React Doctor configuration",
-  "description": "Schema for react-doctor.config.json and the reactDoctor key inside package.json.",
+  "description": "Schema for doctor.config.* and the reactDoctor key inside package.json.",
   "$ref": "#/definitions/ReactDoctorConfig",
   "definitions": {
     "ReactDoctorConfig": {
@@ -18,25 +18,29 @@
               "type": "array",
               "items": {
                 "type": "string"
-              }
+              },
+              "description": "Fully-qualified rule keys (`\"<plugin>/<rule>\"`) whose diagnostics are dropped AFTER linting. The rule still runs; its findings are filtered out. To stop a rule from running at all, set it to `\"off\"` in the top-level `rules` map instead. Prefer `react-doctor rules disable <rule>` to edit this safely."
             },
             "files": {
               "type": "array",
               "items": {
                 "type": "string"
-              }
+              },
+              "description": "Glob patterns whose files are excluded from scanning entirely (matched against paths relative to the scanned directory)."
             },
             "overrides": {
               "type": "array",
               "items": {
                 "$ref": "#/definitions/ReactDoctorIgnoreOverride"
-              }
+              },
+              "description": "Per-path rule suppressions — narrower than the top-level `rules`/`files`."
             },
             "tags": {
               "type": "array",
               "items": {
                 "type": "string"
-              }
+              },
+              "description": "Behavioral tags whose rules are disabled BEFORE linting, skipping a whole family at once (e.g. `[\"design\", \"test-noise\", \"migration-hint\"]`). Prefer `react-doctor rules ignore-tag <tag>` to edit this safely."
             }
           },
           "additionalProperties": false
@@ -75,7 +79,7 @@
         },
         "rootDir": {
           "type": "string",
-          "description": "Redirect react-doctor at a different project directory than the one it was invoked against. Resolved relative to the location of the config file that declared this field (NOT relative to the CWD), so the redirect is stable no matter where the CLI / `diagnose()` is run from. Absolute paths are used as-is.\n\nTypical use: a monorepo root holds the only `react-doctor.config.json` (so editor tooling and child commands all find it), but the React app lives in `apps/web`. Setting `\"rootDir\": \"apps/web\"` makes every invocation that loads this config scan that subproject without anyone needing to `cd` first or pass an explicit path.\n\nIgnored if the resolved path does not exist or is not a directory (a warning is emitted and react-doctor falls back to the originally requested directory)."
+          "description": "Redirect react-doctor at a different project directory than the one it was invoked against. Resolved relative to the location of the config file that declared this field (NOT relative to the CWD), so the redirect is stable no matter where the CLI / `diagnose()` is run from. Absolute paths are used as-is.\n\nTypical use: a monorepo root holds the only `doctor.config.*` (so editor tooling and child commands all find it), but the React app lives in `apps/web`. Setting `\"rootDir\": \"apps/web\"` makes every invocation that loads this config scan that subproject without anyone needing to `cd` first or pass an explicit path.\n\nIgnored if the resolved path does not exist or is not a directory (a warning is emitted and react-doctor falls back to the originally requested directory)."
         },
         "textComponents": {
           "type": "array",
@@ -159,13 +163,15 @@
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "description": "Glob patterns the override applies to (e.g. `[\"src/legacy/**\"]`)."
         },
         "rules": {
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "description": "Rule keys to suppress for the matched files. Omit (or leave empty) to suppress every rule for those files."
         }
       },
       "required": [

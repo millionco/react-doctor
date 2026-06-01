@@ -206,7 +206,7 @@ export const Button = forwardRef<HTMLButtonElement>((_props, ref) => (
     expect(ambiguousError.candidates.toSorted()).toEqual(["admin", "web"]);
   });
 
-  describe("react-doctor.config.json rootDir redirect", () => {
+  describe("doctor.config.json rootDir redirect", () => {
     beforeEach(() => {
       clearConfigCache();
     });
@@ -217,7 +217,7 @@ export const Button = forwardRef<HTMLButtonElement>((_props, ref) => (
       setupReactProject(wrapperDir, "web");
       setupReactProject(wrapperDir, "admin");
       fs.writeFileSync(
-        path.join(wrapperDir, "react-doctor.config.json"),
+        path.join(wrapperDir, "doctor.config.json"),
         JSON.stringify({ rootDir: "web" }),
       );
 
@@ -231,7 +231,7 @@ export const Button = forwardRef<HTMLButtonElement>((_props, ref) => (
       setupReactProject(wrapperDir, "web");
       setupReactProject(wrapperDir, "admin");
       fs.writeFileSync(
-        path.join(wrapperDir, "react-doctor.config.json"),
+        path.join(wrapperDir, "doctor.config.json"),
         JSON.stringify({ rootDir: "admin" }),
       );
 
@@ -245,7 +245,7 @@ export const Button = forwardRef<HTMLButtonElement>((_props, ref) => (
       fs.mkdirSync(childDir, { recursive: true });
       setupReactProject(repoRoot, "apps/web");
       fs.writeFileSync(
-        path.join(repoRoot, "react-doctor.config.json"),
+        path.join(repoRoot, "doctor.config.json"),
         JSON.stringify({ rootDir: "apps/web" }),
       );
 
@@ -258,7 +258,7 @@ export const Button = forwardRef<HTMLButtonElement>((_props, ref) => (
       fs.mkdirSync(wrapperDir, { recursive: true });
       setupReactProject(wrapperDir, "web");
       fs.writeFileSync(
-        path.join(wrapperDir, "react-doctor.config.json"),
+        path.join(wrapperDir, "doctor.config.json"),
         JSON.stringify({ rootDir: "does-not-exist" }),
       );
 
@@ -271,7 +271,7 @@ export const Button = forwardRef<HTMLButtonElement>((_props, ref) => (
       fs.mkdirSync(wrapperDir, { recursive: true });
       const targetDir = setupReactProject(wrapperDir, "web");
       fs.writeFileSync(
-        path.join(wrapperDir, "react-doctor.config.json"),
+        path.join(wrapperDir, "doctor.config.json"),
         JSON.stringify({ rootDir: targetDir }),
       );
 

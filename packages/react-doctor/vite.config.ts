@@ -32,16 +32,29 @@ const assertSkillManifestParseable = (manifestPath: string): void => {
   }
 };
 
-const copySkillToDist = () => {
-  const skillSource = path.resolve(packageRoot, "../../skills/react-doctor");
-  const skillTarget = path.resolve(packageRoot, "dist/skills/react-doctor");
-  if (!fs.existsSync(skillSource)) {
-    throw new Error(`Skill source missing at ${skillSource}; expected to ship dist/skills/`);
+// Ship every skill directory under `skills/` (react-doctor + doctor-explain
+// today) so `react-doctor install` can install them all. Each is validated
+// at build time so a broken SKILL.md is caught here, not at install time.
+const copySkillsToDist = () => {
+  const skillsRoot = path.resolve(packageRoot, "../../skills");
+  const distSkillsRoot = path.resolve(packageRoot, "dist/skills");
+  const primarySkillSource = path.join(skillsRoot, "react-doctor");
+  if (!fs.existsSync(primarySkillSource)) {
+    throw new Error(`Skill source missing at ${primarySkillSource}; expected to ship dist/skills/`);
   }
-  assertSkillManifestParseable(path.join(skillSource, "SKILL.md"));
-  fs.rmSync(skillTarget, { recursive: true, force: true });
-  fs.mkdirSync(skillTarget, { recursive: true });
-  fs.cpSync(skillSource, skillTarget, { recursive: true });
+  fs.rmSync(distSkillsRoot, { recursive: true, force: true });
+  const skillNames = fs
+    .readdirSync(skillsRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .filter((name) => fs.existsSync(path.join(skillsRoot, name, "SKILL.md")));
+  for (const skillName of skillNames) {
+    const skillSource = path.join(skillsRoot, skillName);
+    const skillTarget = path.join(distSkillsRoot, skillName);
+    assertSkillManifestParseable(path.join(skillSource, "SKILL.md"));
+    fs.mkdirSync(skillTarget, { recursive: true });
+    fs.cpSync(skillSource, skillTarget, { recursive: true });
+  }
 };
 
 export default defineConfig({
@@ -66,6 +79,14 @@ export default defineConfig({
           // rationale as `effect` and `deslop-js` below).
           "@sentry/node",
           "agent-install",
+          // Config loading/editing: jiti (TS/JS config eval) + confbox
+          // (JSONC parse) power the loader in @react-doctor/core (bundled
+          // in here), and magicast edits .ts/.js configs for `rules`.
+          // All pure-JS but heavy / runtime-resolving, so keep external
+          // and installed rather than inlined into the CLI bundle.
+          "confbox",
+          "jiti",
+          "magicast",
           // HACK: deslop-js wraps oxc-parser / oxc-resolver, both of
           // which load platform-specific NAPI bindings via require().
           // Rollup happily inlines the JS loader chain but rewrites
@@ -111,7 +132,7 @@ export default defineConfig({
       fixedExtension: false,
       hooks: {
         "build:done": () => {
-          copySkillToDist();
+          copySkillsToDist();
         },
       },
     },
@@ -123,6 +144,9 @@ export default defineConfig({
           "@effect/platform-node-shared",
           "@sentry/node",
           "agent-install",
+          "confbox",
+          "jiti",
+          "magicast",
           "deslop-js",
           "effect",
           "oxc-parser",

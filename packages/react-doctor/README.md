@@ -81,15 +81,40 @@ React Doctor scans the files changed in the pull request, emits inline annotatio
 
 [Add GitHub Action →](https://github.com/marketplace/actions/react-doctor)
 
-### 4. Configure rules in `react-doctor.config.json`
+### 4. Configure rules in `doctor.config.ts`
 
-Point the `$schema` key at `https://react.doctor/schema/config.json` to get autocomplete, hover docs, and typo warnings for every option in any editor that understands JSON Schema.
+Configure with a `doctor.config.ts` (or `.js`, `.mjs`, `.cjs`, `.json`, `.jsonc`) in your project root — or a `"reactDoctor"` key in `package.json`.
+
+```ts
+// doctor.config.ts
+import type { ReactDoctorConfig } from "react-doctor/api";
+
+export default {
+  lint: true,
+  rules: {
+    "react-doctor/no-array-index-as-key": "off",
+  },
+} satisfies ReactDoctorConfig;
+```
+
+Prefer JSON? Use `doctor.config.json` and point `$schema` at `https://react.doctor/schema/config.json` for autocomplete, hover docs, and typo warnings in any editor that understands JSON Schema (comments and trailing commas are allowed):
 
 ```jsonc
 {
   "$schema": "https://react.doctor/schema/config.json",
   "lint": true,
 }
+```
+
+Don't hand-edit if you'd rather not — the `rules` subcommands list, explain, and configure rules for you (they edit your `doctor.config.*` in place — including TS/JS, preserving formatting — or `package.json#reactDoctor`):
+
+```bash
+npx react-doctor@latest rules list                 # every rule + its effective severity
+npx react-doctor@latest rules explain <rule>        # why a rule matters and how to tune it
+npx react-doctor@latest rules disable <rule>        # turn a rule off
+npx react-doctor@latest rules set <rule> warn       # off | warn | error
+npx react-doctor@latest rules category "React Native" off
+npx react-doctor@latest rules ignore-tag design     # skip a whole rule family
 ```
 
 ## Telemetry

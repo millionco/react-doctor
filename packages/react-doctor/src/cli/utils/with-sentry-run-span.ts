@@ -10,6 +10,19 @@ import { toSpanAttributes } from "./to-span-attributes.js";
 export type SentryRootSpan = ReturnType<typeof Sentry.startInactiveSpan> | undefined;
 
 /**
+ * Clears the module-level run-scoped Sentry state — the current scanned project
+ * and the active run trace — at the start of an inspect run. `inspect()` is
+ * invoked once per project in a workspace scan, so without this a later run that
+ * errors before its `beforeLint` could attach the previous run's project tags,
+ * and a stale trace could mislink the crash. Safe to call when Sentry is off
+ * (the refs are read only when an event is built).
+ */
+export const resetSentryRunState = (): void => {
+  setSentryProjectInfo(null);
+  setActiveRunTrace(null);
+};
+
+/**
  * Runs an inspect invocation inside a Sentry root span (transaction) so each
  * `react-doctor` run is a first-class trace with timing and the run snapshot as
  * attributes. The span is handed to `run` so the Effect→Sentry tracer bridge

@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import {
   recordSentryProjectContext,
+  resetSentryRunState,
   withSentryRunSpan,
 } from "../src/cli/utils/with-sentry-run-span.js";
+import { getActiveRunTrace, setActiveRunTrace } from "../src/cli/utils/active-run-trace.js";
 import {
   getSentryProjectInfo,
   setSentryProjectInfo,
@@ -36,6 +38,23 @@ describe("recordSentryProjectContext", () => {
     expect(getSentryProjectInfo()).toBeNull();
     recordSentryProjectContext(projectInfo, undefined);
     expect(getSentryProjectInfo()).toBe(projectInfo);
+  });
+});
+
+describe("resetSentryRunState", () => {
+  afterEach(() => {
+    setSentryProjectInfo(null);
+    setActiveRunTrace(null);
+  });
+
+  it("clears a prior run's project and trace so they can't leak across inspect() runs", () => {
+    setSentryProjectInfo(projectInfo);
+    setActiveRunTrace({ traceId: "trace-1", spanId: "span-1", sampled: true });
+
+    resetSentryRunState();
+
+    expect(getSentryProjectInfo()).toBeNull();
+    expect(getActiveRunTrace()).toBeNull();
   });
 });
 

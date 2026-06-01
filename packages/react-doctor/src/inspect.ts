@@ -13,7 +13,11 @@ import {
 } from "@react-doctor/core";
 import { applyObservability } from "./cli/utils/apply-observability.js";
 import { buildRuntimeLayers } from "./cli/utils/build-runtime-layers.js";
-import { recordSentryProjectContext, withSentryRunSpan } from "./cli/utils/with-sentry-run-span.js";
+import {
+  recordSentryProjectContext,
+  resetSentryRunState,
+  withSentryRunSpan,
+} from "./cli/utils/with-sentry-run-span.js";
 import type { SentryRootSpan } from "./cli/utils/with-sentry-run-span.js";
 import type {
   Diagnostic,
@@ -113,6 +117,11 @@ export const inspect = async (
   inputOptions: InspectOptions = {},
 ): Promise<InspectResult> => {
   const startTime = performance.now();
+
+  // Clear any run-scoped Sentry state from a prior inspect() (workspace scans
+  // call this once per project) so a stale project/trace can't leak onto this
+  // run's events — including errors thrown before the project is discovered.
+  resetSentryRunState();
 
   const hasConfigOverride = inputOptions.configOverride !== undefined;
   // When the caller pre-loaded a config (CLI's `inspectAction` does

@@ -1,0 +1,19 @@
+packages/react-doctor/tests/resolve-cli-inspect-options.test.ts
+  s_e39d207b67e471::t_ea54fa1b6d7641 1,4-39,41-53,55-80,82-83,85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "0867c8231be413e177ced9be3d18624e43b4d7be",
+  "prompts": {},
+  "sessions": {
+    "s_e39d207b67e471": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "54add9fe-0105-4c40-b649-e3db67a5f282",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

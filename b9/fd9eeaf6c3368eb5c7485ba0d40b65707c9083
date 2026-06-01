@@ -1,0 +1,32 @@
+packages/react-doctor/src/cli/utils/inspect-flags.ts
+  s_e39d207b67e471::t_a846198f4a8a8f 12
+packages/react-doctor/src/cli/index.ts
+  s_e39d207b67e471::t_e5d3a3ef77f362 107-110
+  s_e39d207b67e471::t_b239bd5e1621f7 106
+packages/react-doctor/src/cli/utils/strip-unknown-cli-flags.ts
+  s_e39d207b67e471::t_debe1b1a668bb3 26
+packages/react-doctor/tests/resolve-cli-inspect-options.test.ts
+  s_e39d207b67e471::t_b5c6e88e22cce0 1,4-5,9-10,13-14,17-18
+packages/react-doctor/src/instrument.ts
+  s_e39d207b67e471::t_a732bb1dfac0b4 8-11
+packages/react-doctor/src/cli/utils/resolve-cli-inspect-options.ts
+  s_e39d207b67e471::t_9f9f8c2f23a844 36
+packages/react-doctor/tests/strip-unknown-cli-flags.test.ts
+  s_e39d207b67e471::t_4b5558f7f77312 68-71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "b9fd9eeaf6c3368eb5c7485ba0d40b65707c9083",
+  "prompts": {},
+  "sessions": {
+    "s_e39d207b67e471": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "54add9fe-0105-4c40-b649-e3db67a5f282",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

@@ -1,0 +1,1114 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-list-missing-estimated-item-size.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 42,44
+packages/oxlint-plugin-react-doctor/src/plugin/rules/tanstack-query/query-no-rest-destructuring.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11,16,35
+packages/react-doctor/tests/build-json-report.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 18
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-children-prop.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 8,17,19
+packages/react-doctor/tests/resolve-parallel-flag.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-37
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-scrollview-flex-in-content-container.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 12,150
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/prefer-function-component.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 9,64
+packages/oxlint-plugin-react-doctor/src/plugin/rules/nextjs/nextjs-no-client-fetch-for-server-data.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 15,20,42
+packages/core/src/run-oxlint.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 66-70,238
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-find-dom-node.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 7,14,17
+packages/core/tests/compiler-cleanup-bucket.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-66
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-list-callback-per-row.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 63,68,80
+packages/react-doctor/tests/regressions/state-rules/prefer-use-sync-external-store.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 35,89,297
+packages/core/src/services/staged-files.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 6-7,47-48,75
+packages/react-doctor/tests/inspect-surface-filter.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 77,124,138
+.agents/skills/deslop/SKILL.md
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-83
+.changeset/warnings-toggle.md
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-7
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-list-recyclable-without-types.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 23,28,58
+packages/react-doctor/src/cli/utils/install-doctor-script.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 5-7
+packages/react-doctor/src/cli/utils/build-run-context.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-71
+packages/core/tests/classify-package-role.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-170
+packages/react-doctor/src/cli/utils/install-react-doctor.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 61-62,151-157,160,166-177,202,205-207,261-265,320,531
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-disabled-zoom.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 10,15,40,46,51
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/click-events-have-key-events.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 16,27,30
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/forward-ref-uses-ref.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 9,17
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/no-render-prop-children.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 21,25,44
+scripts/render-github-action-comment.mjs
+  s_48b1e5431a7b23::t_c31cee0e1611ca 29-34,234-240
+packages/core/src/refs.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 2-7,40-70
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-array-index-key.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 14,362,364
+packages/core/tests/services/progress.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 28,31
+.agents/skills/find-similar-functions/SKILL.md
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-90
+packages/oxlint-plugin-react-doctor/src/plugin/rules/tanstack-query/query-mutation-missing-invalidation.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 12,54
+packages/core/src/check-dead-code.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 6-10,12,15-21,341-348,444-447,468,475,483,490,498,505,513,520
+packages/core/src/constants.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 6,9-12,18-24,51-66,77-79,110-119,160-161,187-195,221-285,288-291
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/html-has-lang.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 10-11,73,76
+.gitignore
+  s_48b1e5431a7b23::t_c31cee0e1611ca 25-28
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-self-updating-effect.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 647,651,738
+packages/core/tests/merge-and-filter-diagnostics.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 24
+packages/oxlint-plugin-react-doctor/src/plugin/rules/tanstack-query/query-no-void-query-fn.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11,56
+packages/oxlint-plugin-react-doctor/src/plugin/rules/tanstack-query/query-no-query-in-effect.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 14,19,36
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/forbid-dom-props.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 24,58,60
+packages/core/tests/check-expo-project.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-414
+packages/oxlint-plugin-react-doctor/src/plugin/rules/nextjs/nextjs-no-head-import.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 10,15,25-26
+packages/react-doctor/src/cli/utils/compute-score-projection.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-40
+packages/core/src/utils/dead-code-may-surface.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-27
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/prefer-use-sync-external-store.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 170,174,257
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-ui/no-vague-button-label.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 61,65,79
+packages/react-doctor/tests/run-oxlint/bundle-size.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 31,170
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security/no-eval.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 9,12,18,31,39-40
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/no-legacy-class-lifecycles.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 24,28,32,53-54,60,65
+packages/oxlint-plugin-react-doctor/src/plugin/rules/js-performance/js-length-check-first.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 66,70,99
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/alt-text.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 13-14,16-20,22,24,26,28,185,188
+packages/oxlint-plugin-react-doctor/src/plugin/rules/nextjs/nextjs-missing-metadata.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11,42-43
+packages/react-doctor/tests/install-react-doctor.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 334-358
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-set-state.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 7,14
+packages/core/tests/is-analyzable-project.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 20
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/no-generic-handler-names.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 10,14,28
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-props-no-spread-multi.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 9,11,39,41
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/rerender-functional-setstate.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 91,124,141,174,190
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-did-mount-set-state.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 8-9,33,36
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/no-redundant-roles.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 17,34,37
+packages/react-doctor/src/instrument.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-40
+packages/core/src/types/project-info.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 53-67,80-81,86-95
+packages/core/src/types/score.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-9,13-17
+packages/react-doctor/src/cli/utils/render-summary.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 3,5,29-33,38-42,50-52,63-71,92
+packages/core/src/project-info/internal-rn-dependency-names.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 17-21,27-32
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/media-has-caption.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 10,58
+packages/react-doctor/README.md
+  s_48b1e5431a7b23::t_c31cee0e1611ca 30-37,80
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-no-jsx-as-prop.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 17,311,317
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/tabindex-no-positive.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 10,16,20
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-mutating-reducer-state.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 18,807,810
+packages/oxlint-plugin-react-doctor/src/plugin/rules/preact/preact-no-render-arguments.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 36,94
+packages/oxlint-plugin-react-doctor/src/plugin/rules/tanstack-start/tanstack-start-loader-parallel-fetch.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 35,74
+.changeset/allowlist-public-client-keys.md
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-5
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/anchor-has-content.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 10,15,18
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-no-undef.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 9-10,60
+packages/core/tests/resolve-scan-target.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-49
+packages/oxlint-plugin-react-doctor/src/plugin/rules/tanstack-query/query-stable-query-client.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 13,18,80
+packages/oxlint-plugin-react-doctor/src/plugin/rules/tanstack-start/tanstack-start-no-secrets-in-loader.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 26,67
+.changeset/redact-secrets-from-diagnostics.md
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-5
+packages/core/src/checks/expo/check-metro-config.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-59
+packages/oxlint-plugin-react-doctor/src/plugin/rules/performance/no-scale-from-zero.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 9,13,32
+packages/oxlint-plugin-react-doctor/src/plugin/rules/correctness/no-uncontrolled-input.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 78,81,121-122,125,133,141
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-ui/no-redundant-padding-axes.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 16,21,49
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-pass-data-to-parent.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 69,73,123-124
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-no-new-array-as-prop.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 22,139,145
+packages/oxlint-plugin-react-doctor/src/plugin/rules/js-performance/js-cache-storage.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 12,16,38
+packages/oxlint-plugin-react-doctor/src/plugin/rules/bundle-size/no-undeferred-third-party.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11,14,25
+packages/oxlint-plugin-react-doctor/src/plugin/utils/rule.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 25-29,31-38
+packages/oxlint-plugin-react-doctor/src/rules.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 69-73
+packages/oxlint-plugin-react-doctor/src/plugin/rules/server/server-hoist-static-io.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 111,132,136
+packages/core/src/checks/expo/utils/is-path-git-ignored.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-23
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-create-store-in-render.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 130,134,143
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/rerender-dependencies.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11,15,28,35,51
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/only-export-components.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 16-20,22,371
+packages/core/src/checks/expo/check-env-local-files.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-39
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/anchor-is-valid.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11,13,15,73,76
+packages/oxlint-plugin-react-doctor/src/plugin/rules/view-transitions/no-flush-sync.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 15,20,30
+packages/core/src/runners/oxlint/parse-output.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1,9-11,15,20-26,28-32,34-39,41-52,82-92,94-122,150,204-225,230-231,249
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/iframe-missing-sandbox.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 27-28,30,32,69
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-outline-none.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 13,18,51
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/utils/effect/ast.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 95-100,102-108,114
+packages/react-doctor/src/cli/utils/constants.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11-13,24-29
+packages/react-doctor/src/cli/utils/box-text.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-56
+packages/react-doctor/tests/helpers/render-in-terminal.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-78
+packages/react-doctor/src/cli/utils/resolve-cli-inspect-options.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 4,21-42
+packages/core/src/checks/expo/utils/build-expo-diagnostic.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-28
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/no-noninteractive-element-interactions.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11,28,31
+packages/oxlint-plugin-react-doctor/src/plugin/rules/server/server-fetch-without-revalidate.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 59,62,99
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/no-noninteractive-element-to-interactive-role.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 13,51,55
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-renderitem-key.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 15,71
+packages/react-doctor/tests/regressions/state-rules/no-uncontrolled-input.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 18
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-ui/no-three-period-ellipsis.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 10,15,23
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-event-handler.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 137,141,186,195
+packages/core/src/utils/is-large-minified-file.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-20
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-effect-event-handler.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 158,225
+packages/react-doctor/tests/regressions/scan-resilience.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 579-582,595-602
+packages/core/tests/spawn-batches.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 14-16,85-147
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-ui/no-redundant-size-axes.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 13,18,46
+packages/react-doctor/src/cli/utils/select-projects.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 6,18,20
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-set-state-in-render.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 40,43,60
+packages/react-doctor/src/cli/utils/launch-agent.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-3,5-15,17,19-52,54-66
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-handler-names.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 9-12,168,246,253
+packages/oxlint-plugin-react-doctor/src/plugin/rules/nextjs/nextjs-inline-script-missing-id.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 10,26
+pnpm-lock.yaml
+  ai_agent 21-23,44,94,133-135,139-141,185-187,191-193,205,211,244-249,926-961,1484-1488,1627-1670,1802-1804,2048-2055,2106-2111,2179-2181,2510-2513,2746-2748,2991-2994,3019-3022,3409-3414,3697,3700,4065-4099,4369-4375,4451-4489,4588-4589,4630,4632,4709,4726,4755-4760,4810-4819,4878-4879,5252-5258,5434-5435,5464,5483,5741-5747,5794-5797,6012,6016,6075,6098
+packages/oxlint-plugin-react-doctor/src/plugin/rules/correctness/html-no-nested-interactive.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 8,59,62
+packages/core/tests/is-lintable-source-file.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-54
+packages/oxlint-plugin-react-doctor/src/plugin/rules/nextjs/nextjs-no-polyfill-script.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11,33
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-dimensions-get.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 10,15,29,37
+packages/core/src/checks/expo/check-router-react-navigation.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-39
+packages/core/src/runners/oxlint/capabilities.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 32-39
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-inline-flatlist-renderitem.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11,16,37
+packages/oxlint-plugin-react-doctor/src/plugin/rules/performance/rerender-derived-state-from-hook.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 78,82,90
+packages/core/src/utils/to-canonical-path.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-24
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/display-name.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 13-14,372,379
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-list-data-mapped.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 59,64,81
+packages/react-doctor/tests/rule-metadata.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-66
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/prefer-use-effect-event.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 231,236,283
+packages/core/src/checks/expo/utils/find-local-module-native-files.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-34
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-string-refs.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 9-12,60
+packages/react-doctor/tests/build-no-score-message.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-17
+packages/oxlint-plugin-react-doctor/src/plugin/rules/nextjs/nextjs-no-css-link.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11,38
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-event-trigger-state.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 119,123,186
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-deprecated-modules.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11,16-19,21-24,26-27,29-35
+packages/react-doctor/tests/load-config.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 334,336-339,341-342,344-346,348-350
+  s_48b1e5431a7b23::t_faa34e416ce2e7 335,340,343,347
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/prefer-html-dialog.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11,14,64,67
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/no-many-boolean-props.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 43,47,57
+packages/react-doctor/tests/github-action-comment.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 33,286-307
+packages/core/src/utils/redact-sensitive-text.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-196
+packages/react-doctor/tests/run-oxlint/state-effects.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 27,38,44,50,61,77,103,109,115,121
+packages/oxlint-plugin-react-doctor/src/plugin/rules/correctness/rendering-svg-precision.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 46,50,68
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-pressable-shared-value-mutation.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 67,72,126
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-long-transition-duration.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 12,17,70
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-list-missing-estimated-item-size.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 39,44,94
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-curly-brace-presence.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 8-9,176
+packages/core/src/neutralize-disable-directives.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 5-6,37,51
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/no-interactive-element-to-noninteractive-role.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 13,50,53
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-raw-text.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-82
+packages/oxlint-plugin-react-doctor/src/plugin/rules/nextjs/nextjs-no-font-link.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11,16,32
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-direct-state-mutation.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 83,86,108,124
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-derived-state.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 56,60,111,116
+packages/core/src/build-rule-severity-controls.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 16-22,26
+packages/core/src/build-diagnostic-pipeline.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 2,15-16,28-36,56-60,62,74-75,91-105,140-149,178-181,184-211
+packages/oxlint-plugin-react-doctor/src/plugin/rules/performance/no-layout-property-animation.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 29,33,59
+packages/react-doctor/src/cli/utils/spinner.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 17,34-45,64-70
+packages/core/tests/services/linter.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 22
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-pure-black-background.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 13,17,32,45
+packages/react-doctor/src/cli/utils/write-diagnostics-directory.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 7-8
+packages/website/src/app/share/badge-snippet.tsx
+  s_48b1e5431a7b23::t_c31cee0e1611ca 5
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-scroll-state.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 32,37,72,90
+packages/react-doctor/tests/run-oxlint/architecture.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 26,31,41,46,51
+packages/oxlint-plugin-react-doctor/src/plugin/rules/bundle-size/no-full-lodash-import.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 8,12,24-25
+packages/core/tests/check-dead-code.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 33-74,78-83,91,103,227-247
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-filename-extension.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 9-10,12,49,55,84,92
+packages/oxlint-plugin-react-doctor/src/plugin/rules/performance/no-large-animated-blur.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 14,18,43
+packages/core/src/checks/expo/check-dependency-overrides.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-46
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-is-mounted.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 14,17,34
+packages/oxlint-plugin-react-doctor/src/plugin/rules/js-performance/js-async-reduce-without-awaited-acc.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 108,111,133,150
+packages/oxlint-plugin-react-doctor/src/plugin/rules/performance/rendering-hoist-jsx.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 34,38,79
+packages/oxlint-plugin-react-doctor/src/plugin/rules/view-transitions/no-document-start-view-transition.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 15,19,33
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/prefer-tag-over-role.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 10,17,20
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/img-redundant-alt.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11,86,89
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-direct-mutation-state.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11-12,62,65
+packages/oxlint-plugin-react-doctor/src/plugin/rules/server/server-no-mutable-module-state.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 33,36,56,67
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-danger.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 9,16,18
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/forbid-elements.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 10-12,49,51-52
+packages/react-doctor/src/cli/utils/resolve-parallel-flag.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-33
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-wide-letter-spacing.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 14,18,61
+packages/core/tests/apply-severity-controls.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 19
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/heading-has-content.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11,37,40
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-did-update-set-state.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 8,30,33
+packages/oxlint-plugin-react-doctor/src/plugin/rules/nextjs/nextjs-no-img-element.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11,16,27
+packages/react-doctor/src/cli/utils/is-ci-environment.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-5,8-40,42-46,53-66,68-107
+packages/oxlint-plugin-react-doctor/src/plugin/constants/security.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 59-76
+packages/oxlint-plugin-react-doctor/src/plugin/rules/performance/rendering-usetransition-loading.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 133,137,171
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-gray-on-colored-background.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 9,14,28
+packages/core/tests/dead-code-may-surface.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-52
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/no-noninteractive-tabindex.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 14,41,44
+packages/oxlint-plugin-react-doctor/src/plugin/rules/tanstack-start/tanstack-start-no-direct-fetch-in-loader.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 13,18,36
+packages/core/src/types/config.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 81-97,113,115,133,139-149,288-290,293,301-314
+packages/oxlint-plugin-react-doctor/src/plugin/rules/performance/no-usememo-simple-expression.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 48,52,98
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-no-duplicate-props.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 13,15,26
+packages/core/tests/append-reanimated-shared-value-hint.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 27,99-101
+packages/api/src/diagnose.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 4,6,34-39,42,67,88,109-111,145-152
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-effect-event-in-deps.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 94,98,124
+packages/react-doctor/src/index.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 8,73
+packages/core/tests/discover-project.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 758-898
+packages/core/src/checks/expo/check-vector-icons.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-37
+packages/core/src/services/progress.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 9-13,19,23,67,98-99
+packages/core/src/merge-and-filter-diagnostics.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 3,7-8,38
+packages/core/src/checks/expo/utils/get-direct-dependency-names.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-11
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-multi-comp.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 16,571,671
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/iframe-has-title.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11,49,52
+packages/core/src/checks/expo/check-lockfile.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-53
+packages/core/tests/is-minified-source.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-74
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/no-prop-types.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 69,73,78
+packages/react-doctor/tests/run-oxlint/nextjs.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 39,101,170,180,185,190,195,200,205
+packages/react-doctor/src/cli/utils/build-code-frame.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-64
+AGENTS.md
+  s_48b1e5431a7b23::t_c31cee0e1611ca 16,22-42
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-raw-text.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 14,95,99,110-118,122,128-141,159
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/aria-unsupported-elements.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 10,17,20
+packages/oxlint-plugin-react-doctor/src/plugin/rules/correctness/no-prevent-default.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 41,47,50,75,78
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-namespace.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 8,15
+packages/core/src/utils/is-lintable-source-file.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-8
+packages/oxlint-plugin-react-doctor/src/plugin/rules/preact/preact-prefer-oninput.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 9,48
+packages/oxlint-plugin-react-doctor/src/plugin/rules/js-performance/js-tosorted-immutable.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 10,20,32-33
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/scope.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 8-9,15,18
+packages/core/src/types/inspect.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 21-42,71-87
+package.json
+  s_48b1e5431a7b23::t_c31cee0e1611ca 34
+packages/oxlint-plugin-react-doctor/src/plugin/rules/nextjs/nextjs-no-client-side-redirect.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 12,21,31,34,43,57
+packages/react-doctor/vite.config.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 76-80,139
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/no-static-element-interactions.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 20,67,70
+.changeset/expo-doctor-checks.md
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-19
+packages/core/src/resolve-diagnose-target.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 4-11,18
+packages/core/src/utils/map-with-concurrency.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-45
+packages/core/tests/filter-diagnostics.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 21
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/utils/collect-text-wrapper-components.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-81
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-mutating-reducer-state.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 23
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/react-compiler-destructure-method.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 71,75,137
+packages/oxlint-plugin-react-doctor/src/plugin/rules/bundle-size/no-dynamic-import-path.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 12,16,24,32,44,52
+packages/react-doctor/src/cli/commands/install.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 5,39
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/mouse-events-have-key-events.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11,13,47,50
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/rerender-lazy-state-init.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11,38
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-side-tab-border.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 58,62,105,128,157
+packages/oxlint-plugin-react-doctor/src/plugin/rules/performance/rendering-animate-svg-wrapper.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11,30
+packages/oxlint-plugin-react-doctor/src/plugin/rules/server/server-sequential-independent-await.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 65,69,87
+packages/react-doctor/src/cli/utils/strip-unknown-cli-flags.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 24,31,41
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-prefer-pressable.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 23,28,39
+packages/core/src/validate-config-types.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 8,13-35,43,124,127-133,135,161-166,170,184-189,238
+packages/react-doctor/src/cli/utils/render-multi-project-summary.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11-14,36,56,59-62,64,71,89-132,135-140,143-144,154-166,171,199
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/redux-useselector-returns-new-collection.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 12,66
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/exhaustive-deps-messages.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 7,10,13,16,19,22,25,28,30-31,34,37,40,43,46,49,52,55
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/no-default-props.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 18,23,36
+packages/core/src/utils/classify-package-role.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-134
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-dark-mode-glow.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 74,78,111
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-prefer-content-inset-adjustment.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 17,22,36
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-z-index9999.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 15,19,33,64
+packages/oxlint-plugin-react-doctor/src/plugin/rules/tanstack-start/tanstack-start-no-navigate-in-render.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 14,19,60
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-this-in-sfc.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 9,127,129
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-derived-state-effect.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 78,82,189,191,193
+.changeset/memoize-downstream-refs.md
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-7
+packages/website/src/constants.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 5-6
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-no-script-url.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 6,56,59
+packages/core/src/check-expo-project.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-11,13-16,18-22,24-35
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security/no-secrets-in-client-code.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 2,22,25,49-55,70,78-79
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/redux-useselector-inline-derivation.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 42,45,150
+packages/oxlint-plugin-react-doctor/src/plugin/rules/preact/preact-no-react-hooks-import.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 25,43
+.changeset/api-only-ranking.md
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-5
+.agents/skills/rule-research/SKILL.md
+  s_48b1e5431a7b23::t_c31cee0e1611ca 40
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-mirror-prop-effect.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 57,61,152
+packages/oxlint-plugin-react-doctor/src/plugin/rules/performance/rerender-memo-before-early-return.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 52,56,81
+packages/oxlint-plugin-react-doctor/src/plugin/rules/nextjs/nextjs-no-side-effect-in-get-handler.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 195,201,219,235
+packages/core/src/project-info/some-workspace-package-json.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 2,5-7,12-15
+packages/oxlint-plugin-react-doctor/src/plugin/rules/js-performance/js-batch-dom-css.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 76,80,102
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-redundant-should-component-update.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 8,45
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/void-dom-elements-no-children.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 27,47,49
+packages/react-doctor/tests/e2e/terminal-visuals.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-476
+packages/oxlint-plugin-react-doctor/src/plugin/rules/tanstack-start/tanstack-start-no-anchor-element.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11,16,49
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/aria-props.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 9,16,19
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/style-prop-object.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 10-11,141
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-derived-use-state.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 13,34,52
+packages/oxlint-plugin-react-doctor/src/plugin/rules/correctness/html-no-invalid-table-nesting.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 12,15,121,124
+.changeset/audit-cleanup-fixes.md
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-7
+packages/oxlint-plugin-react-doctor/src/plugin/rules/performance/no-inline-prop-on-memo-component.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 42,46,85
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-key.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 10-12,14,115-155,266,296-299
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-unstable-nested-components.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 12-14,16,331,333,358
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/activity-wraps-effect-heavy-subtree.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 101,107,207
+packages/react-doctor/src/cli/utils/handle-error.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 4,93,104-105
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-render-return-value.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 7,44,47
+packages/oxlint-plugin-react-doctor/src/plugin/rules/correctness/no-array-index-as-key.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 282,285,330
+packages/react-doctor/src/cli/utils/is-command-available.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-38
+packages/react-doctor/tests/regressions/no-secrets-in-client-code.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 342,559-592
+packages/oxlint-plugin-react-doctor/src/plugin/rules/js-performance/js-hoist-intl.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 41,45,102
+packages/core/tests/has-published-fix-recipe.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 2,4-7,9,12-14,17-25,28-33
+packages/react-doctor/tests/run-oxlint/vercel-skill-parity.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 26,65,75,85,105
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-pascal-case.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 9-10,153
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/interactive-supports-focus.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 18,20,51,54
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-inline-object-in-list-item.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 17,22,65
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-cascading-set-state.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 142,158
+packages/core/src/project-info/find-in-workspace-package-jsons.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-39
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-style-prefer-box-shadow.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 37,42,56,66,88
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-ui/no-em-dash-in-jsx-text.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11,16,24
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-renderitem-key.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 80,85,119
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-unknown-property.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 57-62,83,85,143,172
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/no-legacy-context-api.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 25,27,44,49
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-legacy-expo-packages.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 9,14,20,24
+packages/oxlint-plugin-react-doctor/src/plugin/rules/performance/rerender-transitions-scroll.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 57,61,92
+packages/core/src/types/diagnostic.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 36-39
+packages/core/src/checks/expo/check-flagged-dependencies.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-172
+packages/react-doctor/tests/dead-code-integration.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 50,58
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-clone-element.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 8,17,24
+packages/core/tests/build-capabilities.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 18,135-163
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-create-context-in-render.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 15,71,75
+packages/oxlint-plugin-react-doctor/src/plugin/rules/zod/zod-v4-no-deprecated-error-apis.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 23,67,72
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-animate-layout-property.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 73,78,95
+packages/oxlint-plugin-react-doctor/src/plugin/rules/jotai/jotai-derived-atom-returns-fresh-object.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 209,212,236
+packages/react-doctor/src/cli/index.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 3,19,24-25,48-51,85-86,186-187
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-gradient-text.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 12,16,42,54
+packages/react-doctor/tests/run-oxlint/correctness.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 26,40
+packages/react-doctor/tests/handoff/build-handoff-payload.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-3,5,7-19,21-33,35-50
+.agents/skills/rule-validate/SKILL.md
+  s_48b1e5431a7b23::t_c31cee0e1611ca 57-58
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-fetch-in-effect.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 12,25
+packages/oxlint-plugin-react-doctor/src/plugin/rules/correctness/rendering-conditional-render.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 26,29,52
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-inline-exhaustive-style.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 12,16,29
+packages/oxlint-plugin-react-doctor/src/plugin/rules/js-performance/js-hoist-regexp.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 10,14,21-22
+packages/react-doctor/tests/regressions/cli-and-output.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 185,230,235,264,316
+packages/oxlint-plugin-react-doctor/src/plugin/rules/performance/no-transition-all.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 9,13,35
+packages/oxlint-plugin-react-doctor/src/plugin/rules/tanstack-start/tanstack-start-no-dynamic-server-fn-import.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 10,15,32
+packages/core/src/utils/resolve-scan-concurrency.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-14
+packages/core/src/types/diagnose.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 17-22
+packages/oxlint-plugin-react-doctor/src/plugin/rules/performance/no-global-css-variable-animation.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 13,17,37
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-pass-live-state-to-parent.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 21,25,56-57
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/button-has-type.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11-13,97-98,109,111,132,136,144,186
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/state-in-constructor.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 8-9,71,77
+packages/oxlint-plugin-react-doctor/src/plugin/rules/performance/rerender-memo-with-default-value.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 12,16,35,45
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/advanced-event-handler-refs.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 32,37,77
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-boolean-value.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 6-7,9,42,70,81,96,112
+packages/react-doctor/src/cli/utils/build-handoff-payload.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-4,7,12-20,22-25,27-30,32-34,36-37,39-42,46,48-50,53-57,59-66,69
+packages/react-doctor/src/cli/utils/render-diagnostics.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 5-7,11-12,15-21,23,44-49,64-67,69-72,83,87-95,119-227,230-231,233-258,260-268,271-276,280-341,343-346,348,352-366,376-386,389-395,397,403-407,410-415,428-430,449-452
+packages/react-doctor/src/cli/utils/build-runtime-layers.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 10,45-51,66,77-78,114,126-132
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-no-comment-textnodes.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 8,46
+packages/oxlint-plugin-react-doctor/src/plugin/rules/nextjs/nextjs-no-use-search-params-without-suspense.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 52,71
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/self-closing-comp.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 7,40
+packages/react-doctor/tests/regressions/inline-suppressions.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 46
+packages/react-doctor/tests/regressions/rule-messages.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 69-70,121,140
+packages/react-doctor/src/cli/utils/install-skill-for-agent.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-23
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-no-useless-fragment.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 9-11,102
+packages/oxlint-plugin-react-doctor/src/plugin/rules/bundle-size/no-barrel-import.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 52,56,59,67
+.agents/skills/rule-writing/SKILL.md
+  s_48b1e5431a7b23::t_c31cee0e1611ca 33
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/react-compiler-no-manual-memoization.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 16,20,24,74-80,83
+packages/core/src/project-info/find-expo-version.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-33
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/no-nested-component-definition.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 12,26,40
+packages/oxlint-plugin-react-doctor/src/plugin/rules/js-performance/js-early-exit.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11,15,32
+packages/react-doctor/tests/inspect-action-setup-prompt.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 5,69,138
+packages/website/src/app/share/page.tsx
+  s_48b1e5431a7b23::t_c31cee0e1611ca 2
+packages/core/tests/services/project.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 22
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-react-children.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 9,32,39
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-animation-reaction-as-derived.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 16,21,74
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/no-autofocus.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 12,97,100
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/hooks-no-nan-in-deps.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 25,63
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/rerender-defer-reads-hook.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 54,59,89
+packages/oxlint-plugin-react-doctor/src/plugin/rules/tanstack-start/tanstack-start-route-property-order.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11,42
+.changeset/dead-code-worker-heap.md
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-5
+packages/oxlint-plugin-react-doctor/src/plugin/rules/tanstack-start/tanstack-start-server-fn-validate-input.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 12,17,56
+packages/react-doctor/src/cli/utils/wrap-indented-text.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 3-14,19-20,24-33,41,45-58,63
+packages/react-doctor/tests/regressions/_helpers.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 142
+packages/react-doctor/tests/run-oxlint/tanstack-query.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 43,48,53,58,63,68
+packages/oxlint-plugin-react-doctor/src/plugin/rules/zod/zod-v4-prefer-top-level-string-formats.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 34,39,45
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/label-has-associated-control.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 14,16,198,201
+packages/core/src/schemas.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11
+packages/core/src/project-info/discover-project.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 14,20-24,194-224,249
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-scrollview-flex-in-content-container.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 141,146,170
+.changeset/jsx-key-stable-id-spread.md
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-5
+packages/react-doctor/package.json
+  s_48b1e5431a7b23::t_c31cee0e1611ca 58,60,77,79
+packages/oxlint-plugin-react-doctor/src/plugin/rules/performance/prefer-stable-empty-fallback.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 80,98,104
+packages/oxlint-plugin-react-doctor/src/plugin/rules/server/server-dedup-props.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 25,29,58
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/autocomplete-valid.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 9,91,94
+packages/oxlint-plugin-react-doctor/src/plugin/rules/js-performance/js-set-map-lookups.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 278,282,304
+.changeset/rn-no-raw-text-auto-detect-wrappers.md
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-5
+packages/react-doctor/src/inspect.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 5-6,25,28-29,38,63,68-69,98,103,207,216,224,313-315,317,337-339,357-359,362-368,371,380-382,437-442,456-463,469,485
+packages/react-doctor/src/cli/utils/render-score-header.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 144-159,184,187,190-191,201,208,217,249,273-280,307,313-315,324,327-329,333,365
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-inline-bounce-easing.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 31,36,59,67,80
+packages/core/tests/map-with-concurrency.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-98
+packages/oxlint-plugin-react-doctor/src/plugin/rules/jotai/jotai-tq-use-raw-query-atom.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 47,50,102
+packages/core/src/build-skipped-checks.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-37
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-prop-callback-in-effect.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 22,26,69
+packages/oxlint-plugin-react-doctor/scripts/generate-rule-registry.mjs
+  s_48b1e5431a7b23::t_c31cee0e1611ca 87-113,157-159,161,163-174,193
+packages/oxlint-plugin-react-doctor/src/plugin/rules/bundle-size/use-lazy-motion.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11,15,35-36
+packages/oxlint-plugin-react-doctor/src/plugin/rules/js-performance/async-await-in-loop.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 172,176,186,235-236
+packages/oxlint-plugin-react-doctor/src/plugin/rules/js-performance/js-combine-iterations.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 225,229,287
+packages/oxlint-plugin-react-doctor/src/plugin/rules/client/client-passive-event-listeners.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 12,16,36,55
+packages/oxlint-plugin-react-doctor/src/plugin/rules/correctness/no-random-key.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 150,154,171
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-props-no-spreading.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 10,43
+packages/oxlint-plugin-react-doctor/src/plugin/rules/tanstack-query/query-no-use-query-for-mutation.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 13,18,63
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/react-in-jsx-scope.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 6,20
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/require-render-return.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11,77
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-prefer-pressable-over-gesture-detector.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 103,108,146
+packages/react-doctor/src/cli/utils/detect-agents.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 2
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/rerender-lazy-ref-init.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 39,44,78
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/rerender-state-only-in-handlers.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 19,24,80
+packages/react-doctor/tests/regressions/state-rules/no-derived-state-effect.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 30,54-55,76,97-98,124-125,155-156
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-falsy-and-render.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 10
+packages/oxlint-plugin-react-doctor/src/plugin/rules/nextjs/nextjs-no-a-element.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 10,15,36
+packages/react-doctor/tests/regressions/react-ui-rules.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 24,62-63,79,93-94,192
+packages/react-doctor/src/cli/utils/prompt-install-setup.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 5
+.changeset/fix-dead-code-alias-resolution-and-recipe-urls.md
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-9
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-max-depth.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 10,102,105
+packages/oxlint-plugin-react-doctor/src/plugin/rules/server/server-cache-with-object-literal.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 15,19,47
+packages/oxlint-plugin-react-doctor/src/plugin/rules/tanstack-start/tanstack-start-missing-head-content.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 70,75,220
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/prefer-es6-class.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 8-9,28,31
+packages/core/src/project-info/count-source-files.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 3-5,23-27,57-62
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-prefer-reanimated.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 12,17,29-30
+packages/oxlint-plugin-react-doctor/src/plugin/rules/js-performance/js-flatmap-filter.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11,15,72
+packages/oxlint-plugin-react-doctor/src/plugin/rules/performance/rendering-script-defer-async.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11,15,55
+packages/oxlint-plugin-react-doctor/src/plugin/rules/server/server-after-nonblocking.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 49,53,90
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-falsy-and-render.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 111,115,144
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-mutable-in-deps.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 73,76,96,101
+packages/react-doctor/src/cli/utils/handoff-to-agent.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-120
+packages/core/src/checks/expo/expo-check-context.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-35
+packages/oxlint-plugin-react-doctor/src/plugin/rules/js-performance/js-index-maps.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 30,34,48
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-legacy-shadow-styles.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 28,34,39
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-unsafe.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 21,79
+packages/oxlint-plugin-react-doctor/src/plugin/rules/correctness/html-no-invalid-table-nesting.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 23-25
+packages/oxlint-plugin-react-doctor/src/plugin/rules/nextjs/nextjs-no-redirect-in-try-catch.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 10,33
+packages/oxlint-plugin-react-doctor/src/plugin/rules/nextjs/nextjs-no-native-script.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11,16,29
+packages/core/src/utils/is-minified-source.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-36
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-effect-with-fresh-deps.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 130,134,168-169
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-prefer-expo-image.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 19,24,39
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/prefer-use-reducer.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 14,32
+packages/core/src/run-inspect.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1,16,19,21,30,49-55,78-88,119-135,276-286,293-294,300,312-316,332-336,356-358,386-397,426-427,434-435,438,493-495
+packages/oxlint-plugin-react-doctor/src/plugin/rules/bundle-size/no-moment.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 8,12,18-19
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/rules-of-hooks.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 26,28,30,32,34,36,38,40,42,44,628
+packages/oxlint-plugin-react-doctor/src/plugin/rules/client/client-localstorage-no-version.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 34,39,60
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/prefer-module-scope-static-value.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 193,198,220
+packages/react-doctor/src/cli/utils/inspect-flags.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 18,22
+action.yml
+  s_48b1e5431a7b23::t_c31cee0e1611ca 69-83
+packages/core/src/utils/list-source-files.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 4-15,39,60,74-77
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-no-constructed-context-values.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 15,137,140
+packages/react-doctor/tests/to-json-report.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 33
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-single-element-style-array.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 9,14,28
+packages/oxlint-plugin-react-doctor/src/plugin/rules/correctness/html-no-invalid-paragraph-child.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 47,104,106
+packages/core/src/project-info/constants.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 3-38
+packages/react-doctor/src/cli/utils/diagnostic-grouping.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-67
+packages/react-doctor/tests/handle-error.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-2,13,16,26,52-68
+packages/react-doctor/tests/e2e/__snapshots__/terminal-visuals.test.ts.snap
+  ai_agent 1-70
+packages/oxlint-plugin-react-doctor/src/plugin/rules/tanstack-start/tanstack-start-redirect-in-try-catch.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 10,44
+.changeset/clear-issue-categories.md
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-9
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/exhaustive-deps.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 661,902
+packages/core/tests/resolve-scan-concurrency.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-35
+packages/oxlint-plugin-react-doctor/src/plugin/rules/performance/no-permanent-will-change.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 9,13,30
+.github/workflows/publish-any-commit.yml
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-47
+.changeset/scan-output-improvements.md
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-12
+packages/core/src/runners/oxlint/spawn-batches.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 2,9-10,26-34,62-65,116-121,123-138,141-152
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-reset-all-state-on-prop-change.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 90,94,110
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-no-new-object-as-prop.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 23,130,136
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/role-has-required-aria-props.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 8,28,31
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-scrollview-mapped-list.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 38,43,55
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-effect-chain.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 228,279
+.changeset/expo-project-capability.md
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-5
+packages/oxlint-plugin-react-doctor/src/plugin/rules/performance/rendering-hydration-mismatch-time.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 98,102,115,128
+packages/react-doctor/tests/github-action.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 75-91
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/aria-proptypes.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 125,299,302
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/no-render-in-render.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 10,14,34
+packages/core/src/runners/oxlint/config.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 9,37-48,55-58,134-137
+packages/react-doctor/src/cli/utils/print-branded-header.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 16
+packages/react-doctor/src/cli/utils/report-error.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-31
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-layout-transition-inline.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11,16,38
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-adjust-state-on-prop-change.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 28,61
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/hook-use-state.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 8-9,65
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-danger-with-children.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 10,87
+packages/core/tests/run-inspect.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 39,67,78
+packages/react-doctor/tests/build-code-frame.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-62
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/forbid-component-props.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 111,118,127
+packages/oxlint-plugin-react-doctor/src/plugin/rules/nextjs/nextjs-image-missing-sizes.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 10,25
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/no-distracting-elements.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 7,33,36
+packages/oxlint-plugin-react-doctor/src/plugin/rules/zod/zod-v4-no-deprecated-schema-apis.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 78,167,172
+packages/react-doctor/src/cli/utils/git-hook-shared.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 25
+packages/oxlint-plugin-react-doctor/src/plugin/rules/js-performance/js-cache-property-access.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 26,30,63
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-initialize-state.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 29,63
+packages/react-doctor/tests/rule-tag-registration.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 29-31
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-justified-text.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11,16,38
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-no-new-function-as-prop.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 24,501,507
+packages/react-doctor/tests/prompt-install-setup.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 44,132,134-135,137-138,141-142
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/lang.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 9,217,220
+packages/core/tests/services/dead-code.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 17
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/control-has-associated-label.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 20,290,293
+packages/core/tests/validate-config-types.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 124,132-135,137-156
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-bottom-sheet-prefer-native.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 18,23,30
+packages/core/src/utils/has-published-fix-recipe.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-18
+packages/oxlint-plugin-react-doctor/src/plugin/rules/performance/rendering-hydration-no-flicker.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 13,46
+packages/core/src/get-diff-files.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 2,43
+.changeset/library-aware-gating-compiler-cleanup.md
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-9
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-key.regressions.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 37-63
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-non-native-navigator.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 24,29,38
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-will-update-set-state.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 8,48,51
+packages/react-doctor/tests/run-oxlint/tanstack-start.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 31,36,41,46,51,62,72,78,83,89,100
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/hooks-no-nan-in-deps.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 25
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/aria-role.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 12,36,39,69
+packages/core/src/checks/expo/check-package-json-conflicts.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-43
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-no-target-blank.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 8,10,12,251
+packages/oxlint-plugin-react-doctor/src/plugin/rules/bundle-size/prefer-dynamic-import.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 9,13,36
+packages/oxlint-plugin-react-doctor/src/plugin/rules/tanstack-start/tanstack-start-no-use-effect-fetch.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 15,20,48
+packages/oxlint-plugin-react-doctor/src/plugin/rules/preact/preact-prefer-ondblclick.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 8,29
+packages/core/src/services/linter.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 8,108,129
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/role-supports-aria-props.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 15,18,160,163
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/no-react-dom-deprecated-apis.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 27,31,35,39,57,73,80,89
+packages/react-doctor/tests/select-projects.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 110-122
+packages/react-doctor/src/cli/utils/build-no-score-message.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-11
+packages/oxlint-plugin-react-doctor/src/plugin/rules/tanstack-start/tanstack-start-no-use-server-in-handler.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 10,15,47
+packages/oxlint-plugin-react-doctor/src/plugin/rules/performance/async-defer-await.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 178,181,213
+packages/oxlint-plugin-react-doctor/src/plugin/rules/js-performance/js-min-max-loop.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 10,14,34
+.changeset/parallel-lint-workers.md
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-7
+packages/oxlint-plugin-react-doctor/src/plugin/rules/jotai/jotai-select-atom-in-render-body.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 74,77,106
+packages/oxlint-plugin-react-doctor/src/plugin/rules/correctness/no-polymorphic-children.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 15,19,40
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/effect-needs-cleanup.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 184,188,204
+packages/core/src/calculate-score.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 2-3,7-25
+packages/core/src/types/index.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 50
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/anchor-ambiguous-text.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 12,84,87
+.changeset/sentry-crash-reporting.md
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-7
+packages/oxlint-plugin-react-doctor/src/plugin/rules/zod/zod-v4-no-deprecated-error-customization.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 93,98,104
+packages/oxlint-plugin-react-doctor/src/plugin/rule-registry.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 343,508,519,541,574,585,596,607,618,640,651,662,673,684,695,706,728,739,761,772,783,838,849,860,1025,1036,1047,1058,1069,1080,1091,1102,1124,1201,1212,1223,1234,1245,1300,1311,1322,1333,1344,1355,1366,1377,1388,1399,1410,1421,1432,1443,1465,1487,1509,1542,1553,1564,1575,1586,1597,1608,1619,1630,1641,1652,1663,1674,1685,1696,1707,1718,1729,1762,1773,1784,1795,1806,1817,1839,1850,1861,1872,1894,1905,1916,1938,1960,1982,2015,2070,2081,2103,2114,2125,2136,2147,2158,2169,2180,2235,2246,2268,2279,2290,2301,2312,2323,2334,2345,2356,2378,2389,2400,2411,2422,2455,2466,2477,2488,2510,2521,2554,2565,2576,2587,2598,2631,2642,2653,2664,2675,2686,2697,2708,2719,2730,2741,2752,2774,2785,2818,2829,2840,2851,2862,2873,2884,2895,2906,2917,2928,2972,2994,3049,3071,3170,3182,3194,3206,3218,3230,3242,3254,3266,3278,3290,3302,3314,3326,3338,3350,3362,3374,3386,3398,3410,3422,3434,3446,3458,3470,3482,3494,3506,3540,3562,3573,3585,3597,3609,3621,3633,3645,3657,3669,3680,3724,3735,3746,3757,3768,3790,3801,3812,3823,3834,3845,3856,3867,3878,3889,3900,3911
+packages/oxlint-plugin-react-doctor/src/plugin/rules/preact/preact-no-children-length.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 26,96
+packages/react-doctor/tests/diagnose.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 41
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-unescaped-entities.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 13,21
+packages/core/tests/redact-sensitive-text.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-237
+packages/react-doctor/tests/regressions/state-rules/rerender-functional-setstate.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 32
+packages/core/src/checks/expo/utils/is-expo-sdk-at-least.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-8
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/aria-activedescendant-has-tabindex.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11,18,22
+packages/oxlint-plugin-react-doctor/src/plugin/rules/nextjs/nextjs-async-client-component.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 13,31,42
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/checked-requires-onchange-or-readonly.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 9,11,82,85
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/no-aria-hidden-on-focusable.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 11,18,21
+packages/core/src/index.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 32,36,72,75-76,78,80
+packages/oxlint-plugin-react-doctor/src/plugin/rules/server/server-auth-actions.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 165,207,210
+packages/oxlint-plugin-react-doctor/src/plugin/rules/tanstack-start/tanstack-start-server-fn-method-order.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 14,19,63
+packages/react-doctor/tests/namespace-hooks.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 43,55,88
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-chain-state-updates.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 28,32,62
+packages/oxlint-plugin-react-doctor/src/plugin/rules/js-performance/async-parallel.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 96,102,115
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-tiny-text.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 13,18,44
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/no-access-key.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 9,20,23
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/no-react19-deprecated-apis.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 20,24,30,36
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-ui/no-space-on-flex-children.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 14,19,51
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/prefer-module-scope-pure-function.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 77,82,87
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-fragments.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 7-8,31
+packages/core/src/checks/expo/check-gitignore.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 1-51
+packages/oxlint-plugin-react-doctor/src/plugin/rules/tanstack-start/tanstack-start-get-mutation.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 14,20,62
+packages/react-doctor/tests/resolve-cli-inspect-options.test.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 56-80
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/no-giant-component.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 14,18,33
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-scrollview-dynamic-padding.ts
+  s_48b1e5431a7b23::t_c31cee0e1611ca 17,22,51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "c7c17bc9f62786989a476e9dcff87aa6de33815b",
+  "prompts": {},
+  "sessions": {
+    "s_48b1e5431a7b23": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "6436ca37-4111-474b-8784-1082331577f0",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

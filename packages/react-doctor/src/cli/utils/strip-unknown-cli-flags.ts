@@ -75,7 +75,7 @@ const VERSION_FLAG_SPEC: CliFlagSpec = {
 // are non-flag tokens and pass through untouched; only the options here
 // need to survive the pre-parse strip so Commander can route them.
 const RULES_FLAG_SPEC: CliFlagSpec = {
-  longOptionsWithoutValues: new Set(["--configured", "--help", "--json"]),
+  longOptionsWithoutValues: new Set(["--color", "--configured", "--help", "--json", "--no-color"]),
   longOptionsWithRequiredValues: new Set([
     "--category",
     "--cwd",

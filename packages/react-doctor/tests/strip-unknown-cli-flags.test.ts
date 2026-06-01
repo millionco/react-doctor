@@ -86,4 +86,18 @@ describe("stripUnknownCliFlags", () => {
       stripUserArguments(["rules", "enable", "no-danger", "--severity", "error", "--offline"]),
     ).toEqual(["rules", "enable", "no-danger", "--severity", "error"]);
   });
+
+  it("keeps color flags on rules subcommands so the color resolver can see them", () => {
+    expect(stripUserArguments(["rules", "list", "--no-color"])).toEqual([
+      "rules",
+      "list",
+      "--no-color",
+    ]);
+    expect(stripUserArguments(["rules", "explain", "no-danger", "--color"])).toEqual([
+      "rules",
+      "explain",
+      "no-danger",
+      "--color",
+    ]);
+  });
 });

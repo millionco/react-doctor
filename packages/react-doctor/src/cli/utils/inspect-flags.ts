@@ -9,6 +9,7 @@ export interface InspectFlags {
   score?: boolean;
   json?: boolean;
   jsonCompact?: boolean;
+  telemetry?: boolean;
   yes?: boolean;
   full?: boolean;
   annotations?: boolean;

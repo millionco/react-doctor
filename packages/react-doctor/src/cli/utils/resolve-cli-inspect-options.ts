@@ -33,7 +33,7 @@ export const resolveCliInspectOptions = (
     respectInlineDisables: flags.respectInlineDisables,
     warnings: flags.warnings ?? (wantsWarningGate ? true : undefined),
     scoreOnly: flags.score === true,
-    noScore: flags.score === false || (userConfig?.noScore ?? false),
+    noScore: flags.score === false || flags.telemetry === false || (userConfig?.noScore ?? false),
     isCi: isCiEnvironment(),
     silent: Boolean(flags.json),
     outputSurface: flags.prComment ? "prComment" : "cli",

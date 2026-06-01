@@ -103,7 +103,11 @@ const program = new Command()
     "--changed-files-from <file>",
     "internal: scan source files listed in a newline-delimited changed-files file",
   )
-  .option("--no-score", "skip the score API and the share URL")
+  .option("--no-score", "skip the score API, the share URL, and crash reporting")
+  .option(
+    "--no-telemetry",
+    "alias for --no-score (skip the score API, share URL, and crash reporting)",
+  )
   .option("--staged", "scan only staged (git index) files for pre-commit hooks")
   .option(
     "--fail-on <level>",

@@ -23,6 +23,7 @@ const ROOT_FLAG_SPEC: CliFlagSpec = {
     "--no-lint",
     "--no-respect-inline-disables",
     "--no-score",
+    "--no-telemetry",
     "--no-warnings",
     "--pr-comment",
     "--respect-inline-disables",

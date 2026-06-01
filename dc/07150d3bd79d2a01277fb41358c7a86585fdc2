@@ -1,0 +1,36 @@
+packages/react-doctor/src/cli/utils/render-welcome.ts
+  s_bfb9c1b9472a25::t_5e288d2122013d 24
+  s_bfb9c1b9472a25::t_fff4e2d617eec5 45
+  s_bfb9c1b9472a25::t_2199d67139fd3f 54
+  s_bfb9c1b9472a25::t_cf5df5ed0f1a15 3-8
+packages/react-doctor/src/cli/utils/render-report.ts
+  s_bfb9c1b9472a25::t_5732bfcbea264f 7
+  s_bfb9c1b9472a25::t_f97723ec0447a1 67
+packages/react-doctor/src/cli/utils/render-diagnostics.ts
+  s_bfb9c1b9472a25::t_bb91dd17698de0 20-23
+  s_bfb9c1b9472a25::t_a300da3c89169c 609-610,613-621,623,626
+packages/react-doctor/src/cli/utils/constants.ts
+  s_bfb9c1b9472a25::t_fd10023c154f9b 25-36
+packages/react-doctor/src/cli/utils/render-score-header.ts
+  s_bfb9c1b9472a25::t_60a56ba9243b66 17-18
+  s_bfb9c1b9472a25::t_cfb84bd334d118 186-188
+packages/react-doctor/src/inspect.ts
+  s_bfb9c1b9472a25::t_5bd0f949890b16 64
+  s_bfb9c1b9472a25::t_30d8f0512b404d 545-551,553-554
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "dc07150d3bd79d2a01277fb41358c7a86585fdc2",
+  "prompts": {},
+  "sessions": {
+    "s_bfb9c1b9472a25": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "e9c368fd-00e2-4962-b93e-b1c29cf5445a",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

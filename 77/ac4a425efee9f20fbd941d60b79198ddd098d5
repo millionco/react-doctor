@@ -1,0 +1,24 @@
+packages/react-doctor/tests/strip-unknown-cli-flags.test.ts
+  s_eee114674178aa::t_7c89eddcdc4353 89-102
+skills/doctor-explain/SKILL.md
+  s_eee114674178aa::t_a8ea1dda09d3f5 9
+  s_eee114674178aa::t_6fdfaa2f9bec17 3
+packages/react-doctor/src/cli/utils/strip-unknown-cli-flags.ts
+  s_eee114674178aa::t_f7eaec17f94c6b 78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "77ac4a425efee9f20fbd941d60b79198ddd098d5",
+  "prompts": {},
+  "sessions": {
+    "s_eee114674178aa": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c79755a1-1a40-41db-8e9b-9f14ee37a95e",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

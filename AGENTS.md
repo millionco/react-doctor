@@ -13,10 +13,33 @@
 - MUST: Frequently re-evaluate and refactor variable names to be more accurate and descriptive.
 - MUST: Do not type cast ("as") unless absolutely necessary
 - MUST: Remove unused code and don't repeat yourself.
+- MUST: Use `truffler` to find existing symbols before adding a utility, helper, type, or rule, and again after finishing a task to catch duplicates and dead code (see "Symbol Search & Deduplication").
 - MUST: Always search the codebase, think of many solutions, then implement the most _elegant_ solution.
 - MUST: Put all magic numbers in `constants.ts` using `SCREAMING_SNAKE_CASE` with unit suffixes (`_MS`, `_PX`).
 - MUST: Put small, focused utility functions in `utils/` with one utility per file.
 - MUST: Use Boolean over !!.
+
+## Symbol Search & Deduplication (truffler)
+
+`@rayhanadev/truffler` (dev dependency) is fuzzy JS/TS symbol search powered by `oxc-parser`.
+Use it to avoid duplicating existing code. The `find-similar-functions` skill
+(`.agents/skills/find-similar-functions/`) carries the full workflow; the short version:
+
+- WHEN PLANNING / SCOPING — before adding a utility, helper, type, constant, or rule, search
+  for an existing symbol to reuse or extend. Derive a few queries from the behavior (proposed
+  name + domain noun + verb), search the narrowest root first, then read the top matches before
+  writing anything. It is how you reuse an existing helper instead of duplicating it, per "don't
+  repeat yourself" and the one-utility-per-file `utils/` convention.
+- AFTER FINISHING A TASK — re-run searches for the symbols you added to confirm you did not
+  duplicate an existing helper, and delete any code your change superseded.
+
+```bash
+bunx @rayhanadev/truffler "<query>" packages --kind function,method,interface,type,constant --limit 20
+```
+
+Run it with `bunx @rayhanadev/truffler` (the published `bin` is a TypeScript entry Bun runs
+directly, and the pinned dev dependency is reused rather than re-downloaded). Narrow `<query>`
+and the root (e.g. `packages/core/src`) for precision; broaden only when nothing matches.
 
 ## Package Layout
 

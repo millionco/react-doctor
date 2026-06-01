@@ -22,6 +22,10 @@ review-*.md
 !/.agents/skills/rule-writing/**
 !/.agents/skills/rule-validate/
 !/.agents/skills/rule-validate/**
+!/.agents/skills/find-similar-functions/
+!/.agents/skills/find-similar-functions/**
+!/.agents/skills/deslop/
+!/.agents/skills/deslop/**
 
 # Local-only: rule-catalog generators and per-rule prompts. The generated
 # `rules.json` and the prompts themselves live in the (private) evals repo;

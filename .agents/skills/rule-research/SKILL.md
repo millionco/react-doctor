@@ -37,6 +37,7 @@ When enough is known, present a short rule contract and either ask for confirmat
    - `packages/oxlint-plugin-react-doctor/src/plugin/utils/`
    - `packages/oxlint-plugin-react-doctor/src/plugin/rule-registry.ts`
    - Existing co-located `*.test.ts` files.
+   - Use `truffler` (the `find-similar-functions` skill) to fuzzy-search these paths for an existing rule, detector, or utility by symbol name before assuming a behavior is new: `bunx @rayhanadev/truffler "<symbol or behavior>" packages/oxlint-plugin-react-doctor/src/plugin --kind function,interface,type,constant --limit 20`
 4. Collect evidence:
    - Official docs.
    - Runtime or implementation notes.

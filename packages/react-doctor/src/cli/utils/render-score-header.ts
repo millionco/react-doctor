@@ -18,7 +18,7 @@ import {
   SCORE_PROJECTION_FRAME_DELAY_MS,
 } from "./constants.js";
 import { easeOutCubic } from "./ease-out-cubic.js";
-import { isSpinnerInteractive } from "./is-spinner-interactive.js";
+import { canAnimateOnboarding } from "./onboarding-pacing.js";
 import { isSpinnerSilent } from "./spinner.js";
 import { writeStdout } from "./write-stdout.js";
 
@@ -175,18 +175,10 @@ const buildFaceRenderedLines = (score: number): string[] => {
   return buildRawFaceLines(score).map(colorize);
 };
 
-const buildScoreLine = (
-  displayScore: number,
-  finalScore: number,
-  label: string,
-  scoreLineSuffix = "",
-): string => {
+const buildScoreLine = (displayScore: number, finalScore: number, label: string): string => {
   const scoreNumber = colorizeByScore(`${displayScore}`, finalScore);
   const scoreLabel = colorizeByScore(label, finalScore);
-  // The issue-count suffix matches the score color so it reads as one status.
-  const suffix =
-    scoreLineSuffix.length > 0 ? `   ${colorizeByScore(scoreLineSuffix, finalScore)}` : "";
-  return `${scoreNumber} ${highlighter.dim(`/ ${PERFECT_SCORE}`)} ${scoreLabel}${suffix}`;
+  return `${scoreNumber} ${highlighter.dim(`/ ${PERFECT_SCORE}`)} ${scoreLabel}`;
 };
 
 const buildRawScoreLine = (displayScore: number, label: string): string =>
@@ -249,7 +241,6 @@ const printAnimatedScore = (
   score: number,
   label: string,
   potentialScore?: number,
-  scoreLineSuffix = "",
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
     const isPerfectScore = score === PERFECT_SCORE;
@@ -273,7 +264,7 @@ const printAnimatedScore = (
         continue;
       }
 
-      const animatedScoreLine = buildScoreLine(animatedScore, score, label, scoreLineSuffix);
+      const animatedScoreLine = buildScoreLine(animatedScore, score, label);
       // Reveal the projection ghost only once the count-up settles on the
       // real score — mid-animation it would fight the filling bar.
       const isFinalFrame = frame === SCORE_HEADER_ANIMATION_FRAME_COUNT;
@@ -316,23 +307,15 @@ export const printScoreHeader = (
   // The score reachable by fixing the top errors, drawn as a ghost gain
   // segment on the bar. Omitted when there's nothing to project.
   potentialScore?: number,
-  // Appended after the label, e.g. the issue count so it reads
-  // "7 / 100 Critical   295 issues". Empty to omit.
-  scoreLineSuffix = "",
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
     const isPerfectScore = scoreResult.score === PERFECT_SCORE;
     const renderedFaceLines = buildFaceRenderedLines(scoreResult.score);
     const rawFaceLines = buildRawFaceLines(scoreResult.score);
-    const shouldAnimate = !isSpinnerSilent() && isSpinnerInteractive(process.stdout);
+    const shouldAnimate = !isSpinnerSilent() && canAnimateOnboarding(process.stdout);
 
     const displayScore = shouldAnimate ? 0 : scoreResult.score;
-    const scoreLine = buildScoreLine(
-      displayScore,
-      scoreResult.score,
-      scoreResult.label,
-      scoreLineSuffix,
-    );
+    const scoreLine = buildScoreLine(displayScore, scoreResult.score, scoreResult.label);
     const scoreBarLine = shouldAnimate
       ? buildScoreBar(0, scoreResult.score)
       : potentialScore !== undefined
@@ -374,7 +357,6 @@ export const printScoreHeader = (
         scoreResult.score,
         scoreResult.label,
         potentialScore,
-        scoreLineSuffix,
       );
       yield* writeStdout("\x1b[3B");
     }

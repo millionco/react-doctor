@@ -96,14 +96,17 @@ Prefer JSON? Use `doctor.config.json`:
 
 ## Telemetry
 
-The CLI reports crashes, basic run traces, and anonymous usage counters to [Sentry](https://sentry.io) to help us fix bugs and prioritize what to build. Events and metrics include the version, platform, Node version, how the CLI was invoked (which command, package manager, and whether it ran locally vs. CI vs. a coding agent), the detected project shape (framework, React version, TypeScript, project size — never the contents of your files), which rules fired (rule names only, e.g. `react-doctor/no-array-index-as-key`, with counts — never your code or specific findings), and de-minified stack traces.
+The CLI reports crashes, basic run traces, and anonymous usage counters to [Sentry](https://sentry.io/) to help us fix bugs and prioritize work.
 
-Telemetry is **anonymized** before it leaves your machine: no IP address is collected, your hostname and machine name are stripped, your OS username is removed from every path (your home directory is replaced with `~`), captured local variables are dropped, and known secrets/API keys/emails are masked. No source code or diagnostic findings are sent.
+We collect:
 
-Opt out at any time:
+- Environment: CLI version, platform, Node version
+- Invocation: which command, package manager, and run context (whether it's local vs. CI vs. coding agent)
+- Project shape: framework, React version, TypeScript, project size NO file contents)
+- Rules fired: rule names and counts only (e.g. `react-doctor/no-array-index-as-key`) (NO code or specific findings)
+- De-minified React Doctor CLI stack traces
 
-- `npx react-doctor@latest --no-telemetry` disables Sentry entirely (crash reporting, tracing, and usage counters) for that run, alongside the hosted score API.
-- `SENTRY_TRACES_SAMPLE_RATE=0` keeps crash reporting and usage counters but turns off performance tracing.
+To opt out, run: `npx react-doctor@latest --no-telemetry`
 
 ## Contributing
 

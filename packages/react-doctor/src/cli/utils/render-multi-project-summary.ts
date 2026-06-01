@@ -12,7 +12,7 @@ import { computeProjectedScore } from "./compute-score-projection.js";
 import { buildRulePriorityMap } from "./diagnostic-grouping.js";
 import { isCodingAgentEnvironment } from "./is-ci-environment.js";
 import { formatElapsedTime, printDiagnostics } from "./render-diagnostics.js";
-import { printDocsNote, printSummary, printVerboseTip } from "./render-summary.js";
+import { printFooter, printSummary } from "./render-summary.js";
 
 interface ProjectScanEntry {
   readonly projectName: string;
@@ -78,11 +78,13 @@ export interface MultiProjectSummaryInput {
   readonly completedScans: ReadonlyArray<{ readonly result: InspectResult }>;
   readonly userConfig: ReactDoctorConfig | null;
   readonly verbose: boolean;
+  readonly isOffline: boolean;
+  readonly projectName: string;
 }
 
 export const printMultiProjectSummary = (input: MultiProjectSummaryInput): Effect.Effect<void> =>
   Effect.gen(function* () {
-    const { completedScans, userConfig, verbose } = input;
+    const { completedScans, userConfig, verbose, isOffline, projectName } = input;
 
     const allDiagnostics: Diagnostic[] = completedScans.flatMap((scan) => scan.result.diagnostics);
     const surfaceDiagnostics = filterDiagnosticsForSurface(allDiagnostics, "cli", userConfig);
@@ -171,10 +173,8 @@ export const printMultiProjectSummary = (input: MultiProjectSummaryInput): Effec
       elapsedMilliseconds: totalElapsedMilliseconds,
       scoreResult: aggregateScore,
       potentialScore,
-      projectName: completedScans.map((scan) => scan.result.project.projectName).join(", "),
       totalSourceFileCount,
       noScoreMessage: "Score unavailable.",
-      isOffline: true,
       verbose,
     });
 
@@ -197,7 +197,10 @@ export const printMultiProjectSummary = (input: MultiProjectSummaryInput): Effec
       yield* Console.log(buildSummaryLine(entry, longestProjectNameLength));
     }
 
-    yield* Console.log("");
-    yield* printVerboseTip(surfaceDiagnostics, verbose);
-    yield* printDocsNote();
+    yield* printFooter({
+      diagnostics: surfaceDiagnostics,
+      scoreResult: aggregateScore,
+      projectName,
+      isOffline,
+    });
   });

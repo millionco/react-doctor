@@ -234,7 +234,8 @@ export const Cart = () => {
 
     expect(normalizedStdout).toContain("Bugs");
     expect(normalizedStdout).toMatch(/\d+ warnings?/);
-    expect(normalizedStdout).toContain("--verbose");
+    expect(normalizedStdout).toContain("Docs:");
+    expect(normalizedStdout).toContain("Learn more about fixing issues");
     expect(normalizedStdout).not.toContain("Agent guidance");
   });
 

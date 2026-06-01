@@ -1,5 +1,28 @@
 # react-doctor
 
+## 0.2.16
+
+### Patch Changes
+
+- [#637](https://github.com/millionco/react-doctor/pull/637) [`8162bfb`](https://github.com/millionco/react-doctor/commit/8162bfb7ca0948b137dd75a22776e55cab99b740) Thanks [@aidenybai](https://github.com/aidenybai)! - Redesign the scan output's summary and footer. The default (non-verbose) run no longer lists every warning rule — warnings are rolled into a single overflow line alongside the hidden errors (e.g. `+4 more rules and +50 optional warnings — run npx react-doctor@latest --verbose for details`). `--verbose` now renders warnings in the same boxed, titled, code-framed format as errors (with a "Learn more" docs link), instead of a separate compact list. The closing footer is restructured into a `Share:` / `Docs:` / `GitHub:` block (each with a one-line description) separated by a divider, and the share link now appears for monorepo runs too (gated the same way as single-project: shown unless CI, `--no-score`, or `share: false`). The scan spinner's worker count now reads as a dimmed `[~N workers]`.
+
+- [#633](https://github.com/millionco/react-doctor/pull/633) [`520b0a9`](https://github.com/millionco/react-doctor/commit/520b0a9235d37074821c12fd73455d8462128a75) Thanks [@rayhanadev](https://github.com/rayhanadev)! - `--diff` now accepts git commit ranges, and a bad `--diff` value is no longer treated as a crash.
+
+  - `--diff A..B` (two-dot, diff A directly against B) and `--diff A...B` (three-dot, diff from the merge-base of A and B to B) are now supported, matching git's own range syntax — an empty endpoint defaults to `HEAD` (`main..` ⇒ `main..HEAD`). Previously any value containing `..` was rejected outright, so `react-doctor --diff 7694215..c4de712` failed. Each range endpoint is still individually validated against the anti-injection guard, so a range can't smuggle a `--upload-pack=…`-style option past it.
+  - An invalid `--diff` value (a malformed ref/range or a base branch that hasn't been fetched) is now rendered as a clean, single-line message and exits non-zero — it no longer prints the generic "Something went wrong, open a prefilled issue" block or reports the expected user error to Sentry.
+
+- [#635](https://github.com/millionco/react-doctor/pull/635) [`bd8298d`](https://github.com/millionco/react-doctor/commit/bd8298d6cf3484ef7f2898fe981442706ffea3ce) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Lint in parallel by default. React Doctor now fans the lint pass across your CPU cores out of the box (previously serial) and automatically falls back to a single worker if a parallel run exhausts system resources (`EAGAIN`/`EMFILE`/`ENFILE`/`ENOMEM`); any other failure still surfaces. Pass `--no-parallel` (or set `REACT_DOCTOR_PARALLEL=0`) to force serial linting, or set `REACT_DOCTOR_PARALLEL=<n>` to pin a worker count. The experimental `--experimental-parallel` flag is replaced by `--no-parallel`.
+
+- [#634](https://github.com/millionco/react-doctor/pull/634) [`17e722e`](https://github.com/millionco/react-doctor/commit/17e722ee074d10a5c4082b9f0a6b40ccaf3bed3b) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Add anonymized Sentry Application Metrics (counters + distributions) to the CLI, alongside the existing crash reporting and tracing, so we can track reliability/performance and prioritize work.
+
+  - **Counters & distributions**: each run records `cli.invoked` (per command), `scan.completed`, `scan.duration`/`scan.files`/`scan.score`, `project.detected` (anonymous project shape), `rule.fired` (a per-rule counter keyed by `rule`/`plugin`/`category`/`severity`, so we can see which rules actually catch issues, which are noisy, and which never fire), `lint.failed`/`deadcode.failed`/`scan.check_skipped`/`score.unavailable`, `cli.error`, plus growth/activation signals on `install` (which coding agents, git hook, CI workflow, agent hooks, dependency outcome), the agent-handoff fix loop (`agent.handoff`), and `rules` config changes (`rules.changed`/`rules.queried`).
+  - **Trace-connected & enabled by default**: metrics use `Sentry.metrics.*` (SDK ≥ 10.25), flow independently of `SENTRY_TRACES_SAMPLE_RATE`, and carry the run snapshot + project shape (rebuilt per emit, mirroring the per-event run tags).
+  - **Anonymized by default**: a `beforeSendMetric` hook drops the `server.address` hostname attribute and scrubs home-directory paths + known secrets from attribute values via the same redactor used for events, dropping the metric on failure. Attributes are enums/booleans/counts/rule names only — no source code or specific findings.
+  - **Opt-out unchanged**: `--no-score` (and its `--no-telemetry` alias) disables metrics along with crash reporting and tracing; metrics are skipped under test runs, and the programmatic `@react-doctor/api` library never initializes Sentry.
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.2.16
+
 ## 0.2.15
 
 ### Patch Changes

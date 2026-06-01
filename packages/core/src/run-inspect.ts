@@ -18,6 +18,7 @@ import { checkPnpmHardening } from "./check-pnpm-hardening.js";
 import { checkReactNativeProject } from "./check-react-native-project.js";
 import { checkReducedMotion } from "./check-reduced-motion.js";
 import { DEFAULT_SHOW_WARNINGS } from "./constants.js";
+import { highlighter } from "./highlighter.js";
 import { computeJsxIncludePaths } from "./jsx-include-paths.js";
 import { deadCodeMaySurfaceWhenWarningsHidden } from "./utils/dead-code-may-surface.js";
 import {
@@ -335,7 +336,8 @@ export const runInspect = <HooksR = never>(
     // Reference to actually fan out the lint pass); defaults to parallel
     // (auto-detected cores).
     const scanConcurrency = yield* OxlintConcurrency;
-    const workerCountSuffix = scanConcurrency > 1 ? ` · ${scanConcurrency} workers` : "";
+    const workerCountSuffix =
+      scanConcurrency > 1 ? ` ${highlighter.dim(`[~${scanConcurrency} workers]`)}` : "";
 
     const scanProgress = yield* progressService.start("Scanning...");
     const scanStartTime = Date.now();

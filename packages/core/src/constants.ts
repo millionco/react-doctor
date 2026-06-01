@@ -215,20 +215,10 @@ export const MAX_CATEGORY_GROUPS_SHOWN_NON_VERBOSE = 5;
 
 export const MAX_RULE_GROUPS_PER_CATEGORY_NON_VERBOSE = 3;
 
-// Cap the non-verbose warnings roll-up so a long tail of low-severity
-// rules doesn't bury the scan summary; the overflow is surfaced as a
-// "+N more — run --verbose …" line below the list.
-export const MAX_WARNING_RULES_SHOWN_NON_VERBOSE = 10;
-
 // `minimumReleaseAge` in `pnpm-workspace.yaml` is denominated in
 // minutes. 7 days × 24 h × 60 min = 10080. Surfaced as the
 // recommended starting point for the supply-chain hardening check.
 export const RECOMMENDED_PNPM_MINIMUM_RELEASE_AGE_MINUTES = 10_080;
-
-// Minimum width of the rule-name column in the diagnostics list. Pads
-// shorter rule names so the right-aligned `N sites` count stays in a
-// consistent column even when one rule has a much longer identifier.
-export const RULE_NAME_COLUMN_WIDTH_CHARS = 36;
 
 // The closed set of user-facing diagnostic categories. Every rule
 // (collapsed at codegen via `CATEGORY_BUCKET` in

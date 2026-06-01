@@ -1,17 +1,36 @@
 import * as Effect from "effect/Effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { Diagnostic, ScoreResult } from "@react-doctor/core";
-import { animateScoreProjection } from "../src/cli/utils/render-score-header.js";
 import {
-  buildMergedOverflowLine,
-  printCategoryBreakdown,
-  printWarningRollup,
-} from "../src/cli/utils/render-diagnostics.js";
+  CI_ENVIRONMENT_VARIABLES,
+  CODING_AGENT_ENVIRONMENT_VALUE_VARIABLES,
+  CODING_AGENT_ENVIRONMENT_VARIABLES,
+} from "../src/cli/utils/is-ci-environment.js";
+import { printDiagnostics } from "../src/cli/utils/render-diagnostics.js";
+import { animateScoreProjection } from "../src/cli/utils/render-score-header.js";
+import { printSummary } from "../src/cli/utils/render-summary.js";
 import { playWelcomeScene } from "../src/cli/utils/render-welcome.js";
 import {
   canAnimateOnboarding,
   FORCE_ONBOARDING_ENV_VAR,
 } from "../src/cli/utils/onboarding-pacing.js";
+
+const makeDiagnostic = (
+  category: string,
+  severity: "error" | "warning",
+  rule = `${category.toLowerCase()}-${severity}`,
+): Diagnostic =>
+  ({
+    filePath: "src/App.tsx",
+    plugin: "react-doctor",
+    rule,
+    severity,
+    message: "boom",
+    help: "fix it",
+    line: 1,
+    column: 1,
+    category,
+  }) as Diagnostic;
 
 const ANSI = new RegExp(String.raw`\u001B\[[0-?]*[ -/]*[@-~]`, "g");
 const stripAnsi = (text: string): string => text.replace(ANSI, "");
@@ -37,23 +56,6 @@ const captureStdout = async (run: () => Promise<void>): Promise<string[]> => {
   return writes;
 };
 
-const makeDiagnostic = (
-  category: string,
-  severity: "error" | "warning",
-  rule = `${category.toLowerCase()}-${severity}`,
-): Diagnostic =>
-  ({
-    filePath: "src/App.tsx",
-    plugin: "react-doctor",
-    rule,
-    severity,
-    message: "",
-    help: "",
-    line: 1,
-    column: 1,
-    category,
-  }) as Diagnostic;
-
 describe("playWelcomeScene", () => {
   it("types the greeting in beside the happy face, then erases it", async () => {
     const writes = await captureStdout(() => Effect.runPromise(playWelcomeScene()));
@@ -74,84 +76,59 @@ describe("playWelcomeScene", () => {
   });
 });
 
-describe("printCategoryBreakdown", () => {
+describe("printDiagnostics onboarding count-up", () => {
   const diagnostics = [
     makeDiagnostic("Bugs", "error"),
     makeDiagnostic("Bugs", "error"),
-    makeDiagnostic("Performance", "warning"),
+    makeDiagnostic("Performance", "error", "perf-1"),
   ];
 
-  it("prints final tallies at once when not animating", async () => {
+  it("counts the category tallies up in place when animateCountUp is set", async () => {
     const writes = await captureStdout(() =>
-      Effect.runPromise(printCategoryBreakdown(diagnostics, undefined, false)),
-    );
-    const output = stripAnsi(writes.join(""));
-    expect(output).toContain("2 errors");
-    expect(output).toContain("1 warning");
-    // No cursor-control frames in the static path.
-    expect(writes.join("")).not.toContain("\u001B[2A");
-  });
-
-  it("counts up to the final tallies when animating", async () => {
-    const writes = await captureStdout(() =>
-      Effect.runPromise(printCategoryBreakdown(diagnostics, undefined, true)),
-    );
-    // Redraw frames move the cursor up over the two category lines.
-    expect(writes.join("")).toContain("\u001B[2A");
-    // The settled (last) frame shows the real counts.
-    const lastFrame = stripAnsi(writes[writes.length - 1] ?? "");
-    expect(lastFrame).toContain("Bugs");
-    expect(lastFrame).toContain("2 errors");
-    expect(lastFrame).toContain("Performance");
-    expect(lastFrame).toContain("1 warning");
-  });
-});
-
-describe("printWarningRollup", () => {
-  const diagnostics = [
-    makeDiagnostic("Bugs", "warning", "react-doctor/aaa"),
-    makeDiagnostic("Bugs", "warning", "react-doctor/bbbbbbbbb"),
-  ];
-
-  it("prints the rule list at once when not animating", async () => {
-    const writes = await captureStdout(() =>
-      Effect.runPromise(printWarningRollup(diagnostics, undefined, false)),
-    );
-    const output = stripAnsi(writes.join(""));
-    expect(output).toContain("react-doctor/aaa");
-    expect(output).toContain("react-doctor/bbbbbbbbb");
-    expect(writes.join("")).not.toContain("\u001B[2A");
-  });
-
-  it("types the rule names in parallel when animating", async () => {
-    const writes = await captureStdout(() =>
-      Effect.runPromise(printWarningRollup(diagnostics, undefined, true)),
-    );
-    // Redraw frames move the cursor up over both warning lines.
-    expect(writes.join("")).toContain("\u001B[2A");
-    // The settled (last) frame shows both full rule names.
-    const lastFrame = stripAnsi(writes[writes.length - 1] ?? "");
-    expect(lastFrame).toContain("react-doctor/aaa");
-    expect(lastFrame).toContain("react-doctor/bbbbbbbbb");
-  });
-});
-
-describe("buildMergedOverflowLine", () => {
-  it("leads with 'We also found' and counts the overflow rule groups", () => {
-    const diagnostics = [
-      ...Array.from({ length: 5 }, (_, index) => makeDiagnostic("Bugs", "error", `err-${index}`)),
-      ...Array.from({ length: 12 }, (_, index) =>
-        makeDiagnostic("Bugs", "warning", `warn-${index}`),
+      Effect.runPromise(
+        printDiagnostics(diagnostics, false, ".", undefined, false, { animateCountUp: true }),
       ),
-    ];
-    const line = stripAnsi(buildMergedOverflowLine(diagnostics) ?? "");
-    expect(line).toContain("We also found");
-    expect(line).toContain("+2 more errors");
-    expect(line).toContain("+2 more warnings");
+    );
+    const output = writes.join("");
+    // Redraw frames rewind over the category lines (2 categories → \x1b[2A).
+    expect(output).toContain("\u001B[2A");
+    // Lands on the real final tallies.
+    const finalOutput = stripAnsi(output);
+    expect(finalOutput).toContain("Bugs");
+    expect(finalOutput).toContain("2 errors");
+    expect(finalOutput).toContain("Performance");
   });
 
-  it("is null when nothing overflows the shown rules", () => {
-    expect(buildMergedOverflowLine([makeDiagnostic("Bugs", "error")])).toBeNull();
+  it("prints the tallies flat (no cursor frames) when animateCountUp is off", async () => {
+    const writes = await captureStdout(() =>
+      Effect.runPromise(printDiagnostics(diagnostics, false, ".")),
+    );
+    expect(writes.join("")).not.toContain("\u001B[2A");
+    expect(stripAnsi(writes.join(""))).toContain("2 errors");
+  });
+});
+
+describe("printSummary onboarding projection", () => {
+  it("grows the ghost gain (▓) when animateProjection is set", async () => {
+    const scoreResult = { score: 20, label: "Critical" } as ScoreResult;
+    const writes = await captureStdout(() =>
+      Effect.runPromise(
+        printSummary({
+          diagnostics: [makeDiagnostic("Bugs", "error")],
+          elapsedMilliseconds: 0,
+          scoreResult,
+          potentialScore: 60,
+          totalSourceFileCount: 1,
+          noScoreMessage: "",
+          animateProjection: true,
+        }),
+      ),
+    );
+    const output = writes.join("");
+    expect(stripAnsi(output)).toContain("You could improve");
+    // The eased projection redraws the bar in place and reveals the ghost gain.
+    expect(output).toContain("\u001B[5A");
+    expect(output).toContain("▓");
   });
 });
 
@@ -180,32 +157,59 @@ describe("animateScoreProjection", () => {
 });
 
 describe("canAnimateOnboarding", () => {
-  let savedForce: string | undefined;
-  let savedTerm: string | undefined;
+  const REAL_TTY = { isTTY: true, columns: 80 } as unknown as NodeJS.WriteStream;
+  // Every env var that would mark the run CI/agent, so the suite is deterministic
+  // no matter what shell it runs in.
+  const MANAGED_ENV_VARS = [
+    FORCE_ONBOARDING_ENV_VAR,
+    "TERM",
+    "CI",
+    ...CI_ENVIRONMENT_VARIABLES,
+    ...CODING_AGENT_ENVIRONMENT_VARIABLES,
+    ...CODING_AGENT_ENVIRONMENT_VALUE_VARIABLES,
+  ];
+  let savedEnv: Record<string, string | undefined>;
 
   beforeEach(() => {
-    savedForce = process.env[FORCE_ONBOARDING_ENV_VAR];
-    savedTerm = process.env.TERM;
-    delete process.env[FORCE_ONBOARDING_ENV_VAR];
+    savedEnv = {};
+    for (const name of MANAGED_ENV_VARS) {
+      savedEnv[name] = process.env[name];
+      delete process.env[name];
+    }
     process.env.TERM = "xterm-256color";
   });
 
   afterEach(() => {
-    if (savedForce === undefined) delete process.env[FORCE_ONBOARDING_ENV_VAR];
-    else process.env[FORCE_ONBOARDING_ENV_VAR] = savedForce;
-    if (savedTerm === undefined) delete process.env.TERM;
-    else process.env.TERM = savedTerm;
+    for (const name of MANAGED_ENV_VARS) {
+      if (savedEnv[name] === undefined) delete process.env[name];
+      else process.env[name] = savedEnv[name];
+    }
   });
 
-  it("animates a forced run on a real TTY (regardless of agent/CI detection)", () => {
-    process.env[FORCE_ONBOARDING_ENV_VAR] = "1";
-    const stream = { isTTY: true, columns: 80 } as unknown as NodeJS.WriteStream;
-    expect(canAnimateOnboarding(stream)).toBe(true);
+  it("animates a plain interactive run on a real TTY", () => {
+    expect(canAnimateOnboarding(REAL_TTY)).toBe(true);
   });
 
-  it("does not animate a forced run when the stream is not a TTY", () => {
+  it("animates a coding-agent terminal (e.g. Cursor) on a real TTY", () => {
+    process.env.CURSOR_AGENT = "1";
+    expect(canAnimateOnboarding(REAL_TTY)).toBe(true);
+  });
+
+  it("does not animate in CI", () => {
+    process.env.CI = "true";
+    expect(canAnimateOnboarding(REAL_TTY)).toBe(false);
+  });
+
+  it("animates a forced run even in CI, on a real TTY", () => {
+    process.env.CI = "true";
     process.env[FORCE_ONBOARDING_ENV_VAR] = "1";
-    const stream = { isTTY: false, columns: 0 } as unknown as NodeJS.WriteStream;
-    expect(canAnimateOnboarding(stream)).toBe(false);
+    expect(canAnimateOnboarding(REAL_TTY)).toBe(true);
+  });
+
+  it("never animates a non-TTY stream (an agent capturing piped output)", () => {
+    const pipe = { isTTY: false, columns: 0 } as unknown as NodeJS.WriteStream;
+    expect(canAnimateOnboarding(pipe)).toBe(false);
+    process.env[FORCE_ONBOARDING_ENV_VAR] = "1";
+    expect(canAnimateOnboarding(pipe)).toBe(false);
   });
 });

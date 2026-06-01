@@ -26,8 +26,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { OUTPUT_DETAIL_WRAP_WIDTH_CHARS } from "@react-doctor/core";
 import type { Diagnostic, ScoreResult } from "@react-doctor/core";
 import { printDiagnostics } from "../../src/cli/utils/render-diagnostics.js";
-import { printInspectReport } from "../../src/cli/utils/render-report.js";
-import { printSummary, printVerboseTip } from "../../src/cli/utils/render-summary.js";
+import { printFooter, printSummary } from "../../src/cli/utils/render-summary.js";
 import { setupReactProject } from "../regressions/_helpers.js";
 import { renderInTerminal } from "../helpers/render-in-terminal.js";
 
@@ -182,29 +181,6 @@ describe("in-process render across terminal widths and render modes", () => {
       verbose: boolean;
     }): Promise<string> =>
       captureConsoleBytes(async () => {
-        // The default (non-verbose) run with issues uses the reordered
-        // single-project report; verbose and clean runs keep the classic
-        // diagnostics + summary sequence, mirroring the CLI's own branches.
-        if (!options.verbose && options.diagnostics.length > 0) {
-          await Effect.runPromise(
-            printInspectReport({
-              diagnostics: options.diagnostics,
-              score: options.scoreResult,
-              potentialScore: null,
-              projectName: SHARE_ONLY_PROJECT_NAME,
-              sourceRoot: projectDirectory,
-              outputSurface: "cli",
-              demotedDiagnosticCount: 0,
-              noScoreMessage: "Score unavailable.",
-              isOffline: true,
-              hasSkippedChecks: false,
-              skippedChecks: [],
-              verbose: false,
-              isNonInteractiveEnvironment: false,
-            }),
-          );
-          return;
-        }
         await Effect.runPromise(
           printDiagnostics(options.diagnostics, options.verbose, projectDirectory),
         );
@@ -213,14 +189,19 @@ describe("in-process render across terminal widths and render modes", () => {
             diagnostics: options.diagnostics,
             elapsedMilliseconds: 1234,
             scoreResult: options.scoreResult,
-            projectName: SHARE_ONLY_PROJECT_NAME,
             totalSourceFileCount: 1,
             noScoreMessage: "Score unavailable.",
-            isOffline: true,
             verbose: options.verbose,
           }),
         );
-        await Effect.runPromise(printVerboseTip(options.diagnostics, options.verbose));
+        await Effect.runPromise(
+          printFooter({
+            diagnostics: options.diagnostics,
+            scoreResult: options.scoreResult,
+            projectName: SHARE_ONLY_PROJECT_NAME,
+            isOffline: true,
+          }),
+        );
       });
 
     const scenarioSpecs: {
@@ -303,8 +284,7 @@ describe("in-process render across terminal widths and render modes", () => {
     // emulator consumes those escapes and exposes the plain text the user
     // actually sees.
     const rendered = await renderInTerminal(defaultScenarioBytes, { cols: 120 });
-    // The headline count anchors the report; the top-error blocks follow it.
-    expect(rendered.text).toContain("5 issues");
+    expect(rendered.text).toContain("errors you should fix");
     // The code frame caret line is the load-bearing visual element.
     expect(rendered.text).toContain("setCount(0)");
   });
@@ -364,6 +344,73 @@ describe("in-process render across terminal widths and render modes", () => {
     // and not what this layout snapshot is asserting.
     const platformStableLayout = rendered.logicalLines.join("\n").replaceAll("›", ">");
     expect(platformStableLayout).toMatchSnapshot();
+  });
+});
+
+describe("non-verbose overflow summary line", () => {
+  const overflowProjectDirectory = path.join(tempRoot, "overflow");
+
+  const makeDiagnostic = (rule: string, severity: "error" | "warning", line: number): Diagnostic =>
+    ({
+      filePath: "src/x.tsx",
+      plugin: "react-doctor",
+      rule,
+      severity,
+      title: `${rule} title`,
+      message: "Impact.",
+      help: "Fix.",
+      line,
+      column: 1,
+      category: "Bugs",
+    }) as Diagnostic;
+
+  const renderOverflowText = async (diagnostics: Diagnostic[]): Promise<string> => {
+    const bytes = await captureConsoleBytes(() =>
+      Effect.runPromise(printDiagnostics(diagnostics, false, overflowProjectDirectory)),
+    );
+    return (await renderInTerminal(bytes, { cols: 120 })).text;
+  };
+
+  it("omits the --verbose pointer when every finding is already shown", async () => {
+    const text = await renderOverflowText([
+      makeDiagnostic("rule-a", "error", 1),
+      makeDiagnostic("rule-b", "error", 2),
+    ]);
+    expect(text).not.toContain("--verbose");
+    expect(text).not.toContain("for details");
+  });
+
+  it("points at --verbose when a shown error rule hides extra sites", async () => {
+    const text = await renderOverflowText([
+      makeDiagnostic("rule-a", "error", 1),
+      makeDiagnostic("rule-a", "error", 2),
+    ]);
+    expect(text).toContain("Run npx react-doctor@latest --verbose for details");
+    expect(text).not.toContain("optional");
+    expect(text).not.toContain("more rules");
+  });
+
+  it("counts optional warnings by individual diagnostics, not rule groups", async () => {
+    const text = await renderOverflowText([
+      makeDiagnostic("hoist", "warning", 1),
+      makeDiagnostic("hoist", "warning", 2),
+      makeDiagnostic("hoist", "warning", 3),
+    ]);
+    expect(text).toContain("+3 optional warnings");
+    expect(text).toContain("--verbose");
+  });
+
+  it("merges hidden error rules and optional warnings into one line", async () => {
+    const text = await renderOverflowText([
+      makeDiagnostic("err-1", "error", 1),
+      makeDiagnostic("err-2", "error", 2),
+      makeDiagnostic("err-3", "error", 3),
+      makeDiagnostic("err-4", "error", 4),
+      makeDiagnostic("warn-1", "warning", 5),
+      makeDiagnostic("warn-1", "warning", 6),
+    ]);
+    expect(text).toContain("+1 more rule");
+    expect(text).toContain("+2 optional warnings");
   });
 });
 
@@ -475,7 +522,7 @@ describe.skipIf(!hasBuiltCli)("built CLI subprocess visual smoke", () => {
 
     expect(typeof exitCode === "number").toBe(true);
     expect(stdout).toContain("React Doctor");
-    expect(stdout).toContain("Bugs");
+    expect(stdout).toContain("error you should fix");
     // The top-error headline shows the rule's human title (not the id).
     expect(stdout).toContain("State synced to a prop inside an effect");
     // The inline code frame is rendered from the actual fixture file.
@@ -495,7 +542,7 @@ describe.skipIf(!hasBuiltCli)("built CLI subprocess visual smoke", () => {
     const visualRegion = stdout.split("Agent guidance")[0];
     const rendered = await renderInTerminal(toTerminalStream(visualRegion), { cols: 120 });
 
-    expect(rendered.text).toContain("Bugs");
+    expect(rendered.text).toContain("error you should fix");
     expect(rendered.overflowed).toBe(false);
   }, 60_000);
 });

@@ -370,11 +370,15 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
     }
 
     if (!isQuiet && isMultiProject && completedScans.length > 0) {
+      const shouldShowShareLink =
+        !scanOptions.noScore && (userConfig?.share ?? true) && !scanOptions.isCi;
       await Effect.runPromise(
         printMultiProjectSummary({
           completedScans,
           userConfig,
           verbose: Boolean(flags.verbose),
+          isOffline: !shouldShowShareLink,
+          projectName: path.basename(resolvedDirectory),
         }),
       );
     }
@@ -400,14 +404,9 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
 
     // After the results print, offer to hand the issues to a coding agent
     // — an interactive select (no flag). Skipped for quiet, skip-prompts,
-    // non-TTY, and agent/CI runs (those get the install hint below). Verbose
-    // is a static review and prints its own "ask an agent" tip instead.
+    // non-TTY, and agent/CI runs (those get the install hint below).
     const canPromptInteractively =
-      !isQuiet &&
-      !skipPrompts &&
-      !flags.verbose &&
-      process.stdout.isTTY === true &&
-      !isCiOrCodingAgentEnvironment();
+      !isQuiet && !skipPrompts && process.stdout.isTTY === true && !isCiOrCodingAgentEnvironment();
     if (canPromptInteractively && surfaceDiagnostics.length > 0) {
       await handoffToAgent({
         diagnostics: surfaceDiagnostics,

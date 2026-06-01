@@ -47,10 +47,13 @@ const detectLaunchableAgents = async (): Promise<CliAgentId[]> => {
 
 // Prompts for an agent to hand the scan results to and launches it: a
 // detected CLI agent takes over the current terminal with the top issues
-// as its initial prompt, or the prompt is copied / printed for pasting into
-// any agent. Non-interactive runs do nothing.
+// as its initial prompt, or the prompt is copied to the clipboard for pasting
+// into any agent (and printed only if copy/launch fails). Non-interactive runs
+// do nothing.
 export const handoffToAgent = async (input: HandoffToAgentInput): Promise<void> => {
   if (!input.interactive || input.diagnostics.length === 0) return;
+
+  logger.break();
 
   const launchableAgents = await detectLaunchableAgents();
   const { handoffTarget } = await prompts<"handoffTarget">(

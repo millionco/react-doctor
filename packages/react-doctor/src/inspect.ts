@@ -38,17 +38,13 @@ import {
   isCodingAgentEnvironment,
 } from "./cli/utils/is-ci-environment.js";
 import { computeProjectedScore } from "./cli/utils/compute-score-projection.js";
-import { hasReactDoctorWorkflow } from "./cli/utils/has-react-doctor-workflow.js";
 import { buildRulePriorityMap } from "./cli/utils/diagnostic-grouping.js";
 import { printDiagnostics } from "./cli/utils/render-diagnostics.js";
-import { printInspectReport } from "./cli/utils/render-report.js";
 import { isNonInteractiveEnvironment } from "./cli/utils/is-non-interactive-environment.js";
 import {
   canAnimateOnboarding,
   isOnboardingForced,
-  ONBOARDING_SECTION_DELAY_FAST_MS,
   onboardingSectionPause,
-  shouldPaceOnboardingSections,
   shouldRecordOnboarding,
 } from "./cli/utils/onboarding-pacing.js";
 import { hasCompletedOnboarding, markOnboardingComplete } from "./cli/utils/onboarding-state.js";
@@ -58,11 +54,10 @@ import {
   printNoScoreHeader,
   printScoreHeader,
 } from "./cli/utils/render-score-header.js";
-import { printDocsNote, printSummary, printVerboseTip } from "./cli/utils/render-summary.js";
+import { printFooter, printSummary } from "./cli/utils/render-summary.js";
 import { resolveOxlintNode } from "./cli/utils/resolve-oxlint-node.js";
 import { isSpinnerSilent, setSpinnerSilent } from "./cli/utils/spinner.js";
 import { VERSION } from "./cli/utils/version.js";
-import { writeDiagnosticsDirectory } from "./cli/utils/write-diagnostics-directory.js";
 
 const silentConsole = makeNoopConsole();
 
@@ -342,21 +337,23 @@ const runInspectWithRuntime = async (
   const score = didLintFail ? null : output.score;
 
   const elapsedMilliseconds = performance.now() - startTime;
-  // Stagger sections only on a user's first interactive run: nothing to pace for
-  // silent/score-only/suppressed renders; CI, agents, and non-TTY are gated out;
-  // and the persisted marker (read last) limits it to the very first attempt.
+  // Stagger sections only on a user's first interactive run. Gating on
+  // `canAnimateOnboarding` (the same predicate the welcome scene, animations,
+  // and marker use) keeps the decision single-sourced: we only pace when we can
+  // actually show — and thus record — onboarding, so we never insert silent
+  // dead sleeps. Nothing to pace for silent/score-only/suppressed/verbose
+  // renders; the persisted marker (read last) limits it to the very first run.
   // `REACT_DOCTOR_FORCE_ONBOARDING` replays the first-run experience on demand.
   const forceOnboarding = isOnboardingForced();
   const paceOnboardingSections =
     !options.silent &&
     !options.scoreOnly &&
     !options.suppressRendering &&
-    shouldPaceOnboardingSections({ isCiOrCodingAgent: options.isCiOrCodingAgentEnvironment }) &&
+    !options.verbose &&
+    canAnimateOnboarding(process.stdout) &&
     (forceOnboarding || !hasCompletedOnboarding());
   const finalizeInput: FinalizeInput = {
     options,
-    paceOnboardingSections,
-    forceOnboarding,
     elapsedMilliseconds,
     diagnostics: inspectDiagnostics,
     score,
@@ -377,9 +374,9 @@ const runInspectWithRuntime = async (
       options.silent ? Effect.provideService(Console.Console, silentConsole) : (program) => program,
     ),
   );
-  // Burn the first-run marker only when the onboarding reveal was actually shown
-  // (the interactive layout branch below) — not for verbose, the classic
-  // non-interactive layout, or a forced demo. See `shouldRecordOnboarding`.
+  // Burn the first-run marker only when the onboarding reveal actually ran — not
+  // for verbose, the classic non-interactive layout, or a forced demo (which
+  // replays every time). See `shouldRecordOnboarding`.
   if (
     shouldRecordOnboarding({
       paceOnboardingSections,
@@ -410,8 +407,6 @@ const runInspectWithRuntime = async (
 
 interface FinalizeInput {
   options: ResolvedInspectOptions;
-  paceOnboardingSections: boolean;
-  forceOnboarding: boolean;
   elapsedMilliseconds: number;
   diagnostics: ReadonlyArray<Diagnostic>;
   score: ScoreResult | null;
@@ -432,8 +427,6 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
   Effect.gen(function* () {
     const {
       options,
-      paceOnboardingSections,
-      forceOnboarding,
       elapsedMilliseconds,
       diagnostics,
       score,
@@ -486,8 +479,13 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       return buildResult();
     }
 
-    // Onboarding beat before each section below (no-op off onboarding).
-    const pause = onboardingSectionPause(paceOnboardingSections);
+    // Report animations — the staggered section reveal, the category count-up,
+    // and the eased score-projection "ghost gain" — play on every interactive
+    // render, like the animated score bar, not just the first-run onboarding.
+    // `!silent` keeps the raw cursor writes out of JSON / piped output.
+    const animateRender =
+      !options.silent && !options.verbose && canAnimateOnboarding(process.stdout);
+    const pause = onboardingSectionPause(animateRender);
 
     const surfaceDiagnostics = filterDiagnosticsForSurface(
       [...diagnostics],
@@ -529,126 +527,64 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       return buildResult();
     }
 
-    // Re-score with the top errors removed to show the payoff as the bar's ghost
-    // gain. Verbose has no projection, so it skips this extra score-API call.
-    const potentialScore =
-      score && !options.verbose
-        ? yield* Effect.promise(() =>
-            computeProjectedScore([...surfaceDiagnostics], [...surfaceDiagnostics], score),
-          )
-        : null;
-    const shouldShowShareLink = !options.noScore && options.share && !options.isCi;
-    const showCiCdTip = !hasReactDoctorWorkflow(directory);
+    yield* pause;
+    yield* Console.log("");
+    yield* printDiagnostics(
+      [...surfaceDiagnostics],
+      options.verbose,
+      directory,
+      buildRulePriorityMap([score]),
+      isCodingAgentEnvironment(),
+      { sectionPause: pause, animateCountUp: animateRender },
+    );
+    if (options.isNonInteractiveEnvironment && options.outputSurface !== "prComment") {
+      yield* printAgentGuidance();
+    }
 
-    if (options.verbose) {
-      // Verbose is a focused review: full errors + warnings list, score bar, and
-      // a one-line agent tip — no projection, share, docs, CI/CD tip, or top-3.
-      yield* Console.log("");
-      yield* printDiagnostics(
-        [...surfaceDiagnostics],
-        true,
-        directory,
-        buildRulePriorityMap([score]),
-        isCodingAgentEnvironment(),
-      );
-      // Verbose is the deep-dive mode: point to the full diagnostics dump on disk.
-      const diagnosticsDirectory = yield* Effect.try({
-        try: () => writeDiagnosticsDirectory([...surfaceDiagnostics]),
-        catch: (cause) => cause,
-      }).pipe(Effect.orElseSucceed(() => null as string | null));
-      if (diagnosticsDirectory !== null) {
-        yield* Console.log(
-          highlighter.gray(`  Full diagnostics written to ${diagnosticsDirectory}`),
-        );
-      }
-      yield* Console.log("");
-      if (hasSkippedChecks) {
-        yield* printBrandingOnlyHeader;
-        yield* Console.log(highlighter.gray("  Score not shown — some checks could not complete."));
-      } else if (score) {
-        yield* printScoreHeader(score);
-      } else {
-        yield* printNoScoreHeader(noScoreMessage);
-      }
+    if (demotedDiagnosticCount > 0) {
       yield* Console.log(
-        highlighter.dim("  Tip: Ask an agent like Claude Code or Codex to fix these issues."),
+        highlighter.gray(
+          `  ${demotedDiagnosticCount} demoted from the ${options.outputSurface} surface (e.g. design cleanup) — run \`npx react-doctor@latest .\` locally for the full list.`,
+        ),
       );
-      return buildResult();
-    }
-
-    if (options.isNonInteractiveEnvironment && !forceOnboarding) {
-      // Non-interactive runs (CI, git hooks, agents) keep the classic layout
-      // (diagnostics + agent guidance first), unless onboarding is forced.
-      yield* pause;
       yield* Console.log("");
-      yield* printDiagnostics(
-        [...surfaceDiagnostics],
-        false,
-        directory,
-        buildRulePriorityMap([score]),
-        isCodingAgentEnvironment(),
-        pause,
-      );
-      if (options.outputSurface !== "prComment") {
-        yield* printAgentGuidance();
-      }
-      if (demotedDiagnosticCount > 0) {
-        yield* pause;
-        yield* Console.log(
-          highlighter.gray(
-            `  ${demotedDiagnosticCount} demoted from the ${options.outputSurface} surface (e.g. design cleanup) — run \`npx react-doctor@latest .\` locally for the full list.`,
-          ),
-        );
-        yield* Console.log("");
-      }
-      yield* pause;
-      yield* printSummary({
-        diagnostics: [...surfaceDiagnostics],
-        elapsedMilliseconds,
-        scoreResult: score,
-        potentialScore,
-        projectName: project.projectName,
-        totalSourceFileCount: lintSourceFileCount,
-        noScoreMessage,
-        isOffline: !shouldShowShareLink,
-        verbose: false,
-      });
-      if (hasSkippedChecks) {
-        yield* pause;
-        const skippedLabel = skippedChecks.join(" and ");
-        yield* Console.log("");
-        yield* Console.warn(
-          highlighter.warn(`  Note: ${skippedLabel} checks failed — score may be incomplete.`),
-        );
-      }
-      yield* pause;
-      yield* printVerboseTip([...surfaceDiagnostics], false);
-      yield* printDocsNote(showCiCdTip);
-      return buildResult();
     }
 
-    yield* printInspectReport({
+    // Re-score with the displayed top errors removed so the score bar can
+    // show the payoff as a ghost gain segment.
+    const potentialScore = score
+      ? yield* Effect.promise(() =>
+          computeProjectedScore([...surfaceDiagnostics], [...surfaceDiagnostics], score),
+        )
+      : null;
+
+    const shouldShowShareLink = !options.noScore && options.share && !options.isCi;
+    yield* pause;
+    yield* printSummary({
       diagnostics: [...surfaceDiagnostics],
-      score,
+      elapsedMilliseconds,
+      scoreResult: score,
       potentialScore,
-      projectName: project.projectName,
-      sourceRoot: directory,
-      rulePriority: buildRulePriorityMap([score]),
-      outputSurface: options.outputSurface,
-      demotedDiagnosticCount,
+      totalSourceFileCount: lintSourceFileCount,
       noScoreMessage,
+      verbose: options.verbose,
+      animateProjection: animateRender,
+    });
+
+    if (hasSkippedChecks) {
+      const skippedLabel = skippedChecks.join(" and ");
+      yield* Console.log("");
+      yield* Console.warn(
+        highlighter.warn(`  Note: ${skippedLabel} checks failed — score may be incomplete.`),
+      );
+    }
+
+    yield* pause;
+    yield* printFooter({
+      diagnostics: [...surfaceDiagnostics],
+      scoreResult: score,
+      projectName: project.projectName,
       isOffline: !shouldShowShareLink,
-      hasSkippedChecks,
-      skippedChecks,
-      verbose: false,
-      isNonInteractiveEnvironment: options.isNonInteractiveEnvironment,
-      sectionPause: pause,
-      sectionPauseFast: onboardingSectionPause(
-        paceOnboardingSections,
-        ONBOARDING_SECTION_DELAY_FAST_MS,
-      ),
-      animateCountUp: paceOnboardingSections && canAnimateOnboarding(process.stdout),
-      showCiCdTip,
     });
 
     return buildResult();

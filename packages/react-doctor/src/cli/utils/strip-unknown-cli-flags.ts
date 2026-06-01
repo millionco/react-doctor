@@ -51,9 +51,18 @@ const INSTALL_FLAG_SPEC: CliFlagSpec = {
   shortOptionsWithRequiredValues: new Set(["-c"]),
 };
 
+const DEBUG_FLAG_SPEC: CliFlagSpec = {
+  longOptionsWithoutValues: new Set(["--daemon", "--help", "--json"]),
+  longOptionsWithRequiredValues: new Set(["--host", "--log-path", "--port", "--session-id"]),
+  longOptionsWithOptionalValues: new Set(),
+  shortOptionsWithoutValues: new Set(["-d", "-h"]),
+  shortOptionsWithRequiredValues: new Set(["-H", "-l", "-p", "-s"]),
+};
+
 const COMMAND_FLAG_SPECS = new Map<string, CliFlagSpec>([
   ["install", INSTALL_FLAG_SPEC],
   ["setup", INSTALL_FLAG_SPEC],
+  ["debug", DEBUG_FLAG_SPEC],
 ]);
 
 const isFlagLike = (argument: string): boolean => argument.startsWith("-") && argument !== "-";

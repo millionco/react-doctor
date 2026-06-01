@@ -32,6 +32,25 @@ const assertSkillManifestParseable = (manifestPath: string): void => {
   }
 };
 
+// The canonical skill lives in `skills/react-doctor` (shipped to dist) but a
+// byte-identical copy is committed at `.agents/skills/react-doctor` so this
+// repo's own agents pick it up. Nothing syncs them automatically, so fail the
+// build if they drift — forcing both copies to be updated together.
+const assertSkillCopiesInSync = (canonicalSkillDir: string): void => {
+  const agentsSkillManifest = path.resolve(
+    packageRoot,
+    "../../.agents/skills/react-doctor/SKILL.md",
+  );
+  if (!fs.existsSync(agentsSkillManifest)) return;
+  const canonical = fs.readFileSync(path.join(canonicalSkillDir, "SKILL.md"), "utf8");
+  const agentsCopy = fs.readFileSync(agentsSkillManifest, "utf8");
+  if (canonical !== agentsCopy) {
+    throw new Error(
+      "SKILL.md drift: skills/react-doctor/SKILL.md and .agents/skills/react-doctor/SKILL.md differ. Copy the canonical skills/ version into .agents/ so they stay identical.",
+    );
+  }
+};
+
 const copySkillToDist = () => {
   const skillSource = path.resolve(packageRoot, "../../skills/react-doctor");
   const skillTarget = path.resolve(packageRoot, "dist/skills/react-doctor");
@@ -39,6 +58,7 @@ const copySkillToDist = () => {
     throw new Error(`Skill source missing at ${skillSource}; expected to ship dist/skills/`);
   }
   assertSkillManifestParseable(path.join(skillSource, "SKILL.md"));
+  assertSkillCopiesInSync(skillSource);
   fs.rmSync(skillTarget, { recursive: true, force: true });
   fs.mkdirSync(skillTarget, { recursive: true });
   fs.cpSync(skillSource, skillTarget, { recursive: true });

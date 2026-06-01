@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { CANONICAL_GITHUB_URL, highlighter } from "@react-doctor/core";
 import { initializeSentry } from "../instrument.js";
+import { registerDebugCommand } from "./commands/debug.js";
 import { inspectAction } from "./commands/inspect.js";
 import { installAction } from "./commands/install.js";
 import { exitGracefully } from "./utils/exit-gracefully.js";
@@ -97,6 +98,8 @@ program
   .option("--agent-hooks", "install native non-blocking agent hooks for Claude Code and Cursor")
   .option("-c, --cwd <cwd>", "working directory", process.cwd())
   .action(installAction);
+
+registerDebugCommand(program);
 
 // HACK: when stdout is piped into a process that closes early (e.g.
 // `react-doctor . | head`), Node throws an uncaught EPIPE on the next

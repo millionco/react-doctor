@@ -38,7 +38,7 @@ const ROOT_FLAG_SPEC: CliFlagSpec = {
     "--project",
     "--why",
   ]),
-  longOptionsWithOptionalValues: new Set(["--diff", "--parallel"]),
+  longOptionsWithOptionalValues: new Set(["--diff", "--experimental-parallel"]),
   shortOptionsWithoutValues: new Set(["-h", "-v", "-y"]),
   shortOptionsWithRequiredValues: new Set(),
 };

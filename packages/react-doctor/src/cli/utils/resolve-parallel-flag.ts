@@ -1,19 +1,19 @@
 import { MIN_SCAN_CONCURRENCY, resolveScanConcurrency } from "@react-doctor/core";
 
 /**
- * Translates the `--parallel [workers]` flag into a concrete worker count
- * for `InspectOptions.concurrency`:
+ * Translates the `--experimental-parallel [workers]` flag into a concrete
+ * worker count for `InspectOptions.concurrency`:
  *
- *   - flag absent (`undefined`)          → `undefined` (defer to the ambient
+ *   - flag absent (`undefined`)            → `undefined` (defer to the ambient
  *     default: serial unless `REACT_DOCTOR_PARALLEL` is set)
- *   - `--parallel` / `--parallel auto`   → auto-detect CPU cores
- *   - `--parallel <n>`                   → `n` workers (clamped)
- *   - `--parallel false` / `off` / `0`   → serial (an explicit opt-out, so it
- *     overrides an env-enabled default rather than deferring to it)
- *   - an unparseable value               → auto-detect cores
+ *   - bare flag / `auto`                    → auto-detect CPU cores
+ *   - `--experimental-parallel <n>`         → `n` workers (clamped)
+ *   - `false` / `off` / `0`                 → serial (an explicit opt-out, so
+ *     it overrides an env-enabled default rather than deferring to it)
+ *   - an unparseable value                  → auto-detect cores
  *
- * Commander yields `true` for a bare `--parallel`, the raw string for
- * `--parallel <value>`, and `undefined` when the flag is omitted.
+ * Commander yields `true` for a bare flag, the raw string for an explicit
+ * value, and `undefined` when the flag is omitted.
  */
 export const resolveParallelFlag = (parallel: string | boolean | undefined): number | undefined => {
   if (parallel === undefined) return undefined;

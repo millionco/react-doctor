@@ -43,7 +43,7 @@ export interface BuildRuntimeLayersInput {
    */
   readonly shouldShowProgressSpinners: boolean;
   /**
-   * Resolved oxlint worker count from `--parallel`. When provided, it
+   * Resolved oxlint worker count from `--experimental-parallel`. When provided, it
    * overrides the `OxlintConcurrency` Reference for this run via
    * `Layer.succeed`; `undefined` leaves the env-seeded ambient default
    * (serial unless `REACT_DOCTOR_PARALLEL` is set) in place.
@@ -125,7 +125,7 @@ export const buildRuntimeLayers = (input: BuildRuntimeLayersInput) => {
     scoreLayer,
   );
 
-  // Only override the ambient `OxlintConcurrency` Reference when `--parallel`
+  // Only override the ambient `OxlintConcurrency` Reference when `--experimental-parallel`
   // resolved a worker count; otherwise leave the env-seeded default so
   // `REACT_DOCTOR_PARALLEL` still applies to flag-less runs.
   return input.oxlintConcurrency === undefined

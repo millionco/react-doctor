@@ -41,7 +41,7 @@ export class OxlintOutputMaxBytes extends Context.Reference<number>(
 /**
  * Number of oxlint subprocesses the lint pass runs in parallel. Defaults
  * to `1` (serial — the historical behavior) so resource usage is opt-in.
- * The CLI's `--parallel` flag overrides this via `Layer.succeed`; the
+ * The CLI's `--experimental-parallel` flag overrides this via `Layer.succeed`; the
  * `REACT_DOCTOR_PARALLEL` env var seeds the default for programmatic /
  * CI callers that never touch the flag:
  *

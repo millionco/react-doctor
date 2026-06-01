@@ -7,7 +7,7 @@ describe("resolveParallelFlag", () => {
     expect(resolveParallelFlag(undefined)).toBeUndefined();
   });
 
-  it("auto-detects cores for a bare --parallel, within [MIN, MAX]", () => {
+  it("auto-detects cores for a bare --experimental-parallel, within [MIN, MAX]", () => {
     const resolved = resolveParallelFlag(true);
     expect(resolved).toBeGreaterThanOrEqual(MIN_SCAN_CONCURRENCY);
     expect(resolved).toBeLessThanOrEqual(MAX_SCAN_CONCURRENCY);
@@ -15,7 +15,7 @@ describe("resolveParallelFlag", () => {
 
   it("treats an explicit opt-out as serial so it overrides an env-enabled default", () => {
     // Regression: these used to return undefined (= flag-absent), which let
-    // REACT_DOCTOR_PARALLEL win over an explicit `--parallel false / 0 / off`.
+    // REACT_DOCTOR_PARALLEL win over an explicit `--experimental-parallel false / 0 / off`.
     expect(resolveParallelFlag(false)).toBe(MIN_SCAN_CONCURRENCY);
     expect(resolveParallelFlag("false")).toBe(MIN_SCAN_CONCURRENCY);
     expect(resolveParallelFlag("off")).toBe(MIN_SCAN_CONCURRENCY);

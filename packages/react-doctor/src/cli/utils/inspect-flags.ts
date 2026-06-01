@@ -19,7 +19,7 @@ export interface InspectFlags {
   project?: string;
   diff?: boolean | string;
   changedFilesFrom?: string;
-  parallel?: string | boolean;
+  experimentalParallel?: string | boolean;
   explain?: string;
   why?: string;
   failOn?: string;

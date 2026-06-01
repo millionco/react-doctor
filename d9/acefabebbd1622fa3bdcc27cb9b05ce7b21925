@@ -1,0 +1,22 @@
+packages/react-doctor/src/cli/utils/rule-config-file.ts
+  s_eee114674178aa::t_a16406e3602780 46,102-103,114-115,124-125,188,197,199,202-204,207,213,126-185,192-196
+  s_eee114674178aa::t_98b34010e0b29d 4-5
+packages/react-doctor/tests/rules-command.test.ts
+  s_eee114674178aa::t_a2e004c5a3b242 184-185,230-231,260-261,263-264,267-268,271,277-278
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "d9acefabebbd1622fa3bdcc27cb9b05ce7b21925",
+  "prompts": {},
+  "sessions": {
+    "s_eee114674178aa": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c79755a1-1a40-41db-8e9b-9f14ee37a95e",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

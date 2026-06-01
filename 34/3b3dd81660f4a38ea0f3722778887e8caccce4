@@ -1,0 +1,33 @@
+packages/react-doctor/src/cli/utils/migrate-legacy-config.ts
+  s_eee114674178aa::t_2004ed2af30732 2-3,6-17,20-26,28-32
+  s_eee114674178aa::t_da63903d872214 5
+  s_eee114674178aa::t_e28cdac392c83f 27
+  s_eee114674178aa::t_35b6b5c243e140 1,4
+  s_eee114674178aa::t_095e3f40e4b12e 18-19
+packages/react-doctor/src/cli/utils/rule-config-file.ts
+  s_eee114674178aa::t_a16406e3602780 95-96,107-108,117-118,181,190,192,195-197,200,206,119-178,185-189
+  s_eee114674178aa::t_98b34010e0b29d 3-4
+  s_eee114674178aa::t_3aa4583af99dad 1,5-10,12
+packages/core/src/load-config.ts
+  s_eee114674178aa::t_93dbbc53cbc931 86-87,179-196,198-218,97-98
+  s_eee114674178aa::t_3964bf5ee71ce0 70-73,80,83,88-96
+  s_eee114674178aa::t_200cdfff0d17de 197
+packages/react-doctor/src/cli/utils/read-object-file.ts
+  s_eee114674178aa::t_dff31e9949338f 1-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "343b3dd81660f4a38ea0f3722778887e8caccce4",
+  "prompts": {},
+  "sessions": {
+    "s_eee114674178aa": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c79755a1-1a40-41db-8e9b-9f14ee37a95e",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

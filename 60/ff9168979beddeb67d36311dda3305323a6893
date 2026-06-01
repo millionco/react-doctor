@@ -1,0 +1,21 @@
+packages/react-doctor/tests/load-config.test.ts
+  s_eee114674178aa::t_9ef1b96448d460 335,340,343,347
+packages/website/public/schema/config.json
+  s_eee114674178aa::t_9ef1b96448d460 145-148,246-255
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "60ff9168979beddeb67d36311dda3305323a6893",
+  "prompts": {},
+  "sessions": {
+    "s_eee114674178aa": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c79755a1-1a40-41db-8e9b-9f14ee37a95e",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

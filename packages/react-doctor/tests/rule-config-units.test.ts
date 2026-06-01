@@ -141,4 +141,22 @@ describe("resolveEffectiveRuleSeverity", () => {
     const result = resolveEffectiveRuleSeverity(null, optInEntry);
     expect(result).toEqual({ value: "off", source: "default" });
   });
+
+  it("applies a compiler-cleanup bucket override below rules and categories", () => {
+    const bucketEntry = findRuleInCatalog(
+      catalog,
+      "react-doctor/react-compiler-no-manual-memoization",
+    );
+    if (!bucketEntry) throw new Error("Expected the compiler-cleanup rule in the catalog");
+    expect(
+      resolveEffectiveRuleSeverity({ buckets: { "compiler-cleanup": "off" } }, bucketEntry),
+    ).toEqual({ value: "off", source: "bucket" });
+    // A per-rule override still wins over the bucket.
+    expect(
+      resolveEffectiveRuleSeverity(
+        { buckets: { "compiler-cleanup": "off" }, rules: { [bucketEntry.key]: "error" } },
+        bucketEntry,
+      ),
+    ).toEqual({ value: "error", source: "rule" });
+  });
 });

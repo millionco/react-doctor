@@ -1,8 +1,12 @@
-import { getEquivalentRuleKeys } from "@react-doctor/core";
+import {
+  COMPILER_CLEANUP_BUCKET,
+  COMPILER_CLEANUP_RULE_KEYS,
+  getEquivalentRuleKeys,
+} from "@react-doctor/core";
 import type { ReactDoctorConfig, RuleSeverityOverride } from "@react-doctor/core";
 import type { RuleCatalogEntry } from "./rule-catalog.js";
 
-export type EffectiveSeveritySource = "rule" | "category" | "tag" | "default";
+export type EffectiveSeveritySource = "rule" | "category" | "bucket" | "tag" | "default";
 
 export interface EffectiveRuleSeverity {
   /** Severity the rule effectively runs at, in config vocabulary. */
@@ -15,8 +19,9 @@ export interface EffectiveRuleSeverity {
  * Resolves what a rule will actually do under the current config without
  * running a scan. `ignore.tags` is a pre-lint gate: a rule carrying an
  * ignored tag is dropped (via `shouldEnableRule`) before any severity is
- * read, so it wins over a `rules`/`categories` override. Among rules that
- * survive the gate, `rules` beats `categories` beats the registry default.
+ * read, so it wins over every override. Among rules that survive the gate,
+ * the scanner's order is `rules` > `categories` > `buckets` > the registry
+ * default.
  */
 export const resolveEffectiveRuleSeverity = (
   config: ReactDoctorConfig | null,
@@ -35,6 +40,13 @@ export const resolveEffectiveRuleSeverity = (
 
   const categoryOverride = config?.categories?.[entry.category];
   if (categoryOverride !== undefined) return { value: categoryOverride, source: "category" };
+
+  // A severity bucket (currently only `compiler-cleanup`) applies between
+  // categories and the registry default, mirroring `createOxlintConfig`.
+  if (COMPILER_CLEANUP_RULE_KEYS.has(entry.key)) {
+    const bucketOverride = config?.buckets?.[COMPILER_CLEANUP_BUCKET];
+    if (bucketOverride !== undefined) return { value: bucketOverride, source: "bucket" };
+  }
 
   return {
     value: entry.defaultEnabled ? entry.defaultSeverity : "off",

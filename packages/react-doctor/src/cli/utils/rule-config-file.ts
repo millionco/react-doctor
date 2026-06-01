@@ -1,10 +1,15 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import path from "node:path";
-import { parseJSON5 } from "confbox";
 import { generateCode, loadFile, writeFile } from "magicast";
 import { getConfigFromVariableDeclaration, getDefaultExportOptions } from "magicast/helpers";
-import { CONFIG_SCHEMA_URL, clearConfigCache, loadConfigWithSource } from "@react-doctor/core";
+import {
+  CONFIG_SCHEMA_URL,
+  clearConfigCache,
+  isPlainObject,
+  loadConfigWithSource,
+} from "@react-doctor/core";
 import type { ReactDoctorConfig, ReactDoctorConfigFormat } from "@react-doctor/core";
+import { readObjectFile } from "./read-object-file.js";
 
 const NEW_CONFIG_FILENAME = "doctor.config.json";
 const PACKAGE_JSON_CONFIG_KEY = "reactDoctor";
@@ -31,18 +36,6 @@ export interface WriteRuleConfigResult {
   /** `false` when a dynamic module config couldn't be edited automatically. */
   readonly written: boolean;
 }
-
-const isPlainObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
-const readObjectFile = (filePath: string): Record<string, unknown> | null => {
-  try {
-    const parsed: unknown = parseJSON5(readFileSync(filePath, "utf-8"));
-    return isPlainObject(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-};
 
 /**
  * Decides where a rule-config mutation should be written. Discovery

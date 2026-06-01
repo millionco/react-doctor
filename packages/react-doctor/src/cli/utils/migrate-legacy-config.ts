@@ -1,8 +1,7 @@
-import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { parseJSON5 } from "confbox";
-import { isPlainObject } from "@react-doctor/core";
 import type { LegacyConfigLocation } from "@react-doctor/core";
+import { readObjectFile } from "./read-object-file.js";
 import { serializeTsObjectLiteral } from "./serialize-ts-object-literal.js";
 
 const MIGRATED_CONFIG_FILENAME = "doctor.config.ts";
@@ -16,13 +15,8 @@ const MIGRATED_CONFIG_FILENAME = "doctor.config.ts";
  * can resolve it by hand).
  */
 export const migrateLegacyConfig = (legacy: LegacyConfigLocation): string | null => {
-  let parsed: unknown;
-  try {
-    parsed = parseJSON5(readFileSync(legacy.legacyFilePath, "utf-8"));
-  } catch {
-    return null;
-  }
-  if (!isPlainObject(parsed)) return null;
+  const parsed = readObjectFile(legacy.legacyFilePath);
+  if (!parsed) return null;
 
   const config = { ...parsed };
   delete config.$schema;

@@ -67,27 +67,33 @@ const loadModuleConfig = async (filePath: string): Promise<unknown> => {
 const readDataConfig = (filePath: string): unknown =>
   parseJSON5(fs.readFileSync(filePath, "utf-8"));
 
-const loadPackageJsonConfig = (directory: string): LoadedReactDoctorConfig | null => {
+// Reads the `reactDoctor` config object embedded in a directory's
+// package.json, or null when it's absent or malformed. A malformed
+// package.json is not ours to police, so it reads as "no embedded config".
+const readEmbeddedPackageJsonConfig = (directory: string): Record<string, unknown> | null => {
   const packageJsonPath = path.join(directory, PACKAGE_JSON_FILENAME);
   if (!isFile(packageJsonPath)) return null;
   try {
     const packageJson = parseJSON5(fs.readFileSync(packageJsonPath, "utf-8"));
     if (isPlainObject(packageJson)) {
       const embeddedConfig = packageJson[PACKAGE_JSON_CONFIG_KEY];
-      if (isPlainObject(embeddedConfig)) {
-        return {
-          config: validateConfigTypes(embeddedConfig as ReactDoctorConfig),
-          sourceDirectory: directory,
-          configFilePath: packageJsonPath,
-          format: "package-json",
-        };
-      }
+      if (isPlainObject(embeddedConfig)) return embeddedConfig;
     }
   } catch {
-    // A malformed package.json is not our file to police — treat it as
-    // "no embedded config here" and keep resolving.
+    // Keep resolving.
   }
   return null;
+};
+
+const loadPackageJsonConfig = (directory: string): LoadedReactDoctorConfig | null => {
+  const embeddedConfig = readEmbeddedPackageJsonConfig(directory);
+  if (!embeddedConfig) return null;
+  return {
+    config: validateConfigTypes(embeddedConfig as ReactDoctorConfig),
+    sourceDirectory: directory,
+    configFilePath: path.join(directory, PACKAGE_JSON_FILENAME),
+    format: "package-json",
+  };
 };
 
 const loadConfigFromDirectory = async (directory: string): Promise<DirectoryConfigResult> => {
@@ -188,14 +194,7 @@ const directoryHasCurrentConfig = (directory: string): boolean => {
   for (const extension of CONFIG_EXTENSIONS) {
     if (isFile(path.join(directory, `${CONFIG_BASENAME}.${extension}`))) return true;
   }
-  const packageJsonPath = path.join(directory, PACKAGE_JSON_FILENAME);
-  if (!isFile(packageJsonPath)) return false;
-  try {
-    const packageJson = parseJSON5(fs.readFileSync(packageJsonPath, "utf-8"));
-    return isPlainObject(packageJson) && isPlainObject(packageJson[PACKAGE_JSON_CONFIG_KEY]);
-  } catch {
-    return false;
-  }
+  return readEmbeddedPackageJsonConfig(directory) !== null;
 };
 
 /**

@@ -1,0 +1,19 @@
+.changeset/sentry-observability.md
+  s_ae877f9b9baf3e::t_dec9f9b529b7eb 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "39004724e768a1f1983a050b98b7c9f141a48d07",
+  "prompts": {},
+  "sessions": {
+    "s_ae877f9b9baf3e": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "bd6866f8-3726-4c70-8caf-c792f2dd790c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

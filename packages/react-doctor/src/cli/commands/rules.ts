@@ -1,5 +1,5 @@
 import path from "node:path";
-import { buildRulePromptUrl, highlighter } from "@react-doctor/core";
+import { buildRulePromptUrl, highlighter, validateConfigTypes } from "@react-doctor/core";
 import type { ReactDoctorConfig, RuleSeverityOverride } from "@react-doctor/core";
 import { cliLogger as logger } from "../utils/cli-logger.js";
 import { findNearestPackageDirectory } from "../utils/install-doctor-script.js";
@@ -87,7 +87,10 @@ const applyConfigChange = (
 export const rulesListAction = (options: RulesListOptions): void => {
   const catalog = buildRuleCatalog();
   const projectRoot = resolveProjectRoot(options);
-  const config = resolveRuleConfigTarget(projectRoot).config;
+  // Validate the on-disk config the same way the loader does so effective
+  // severity reflects what a scan applies (invalid `rules`/`categories`
+  // values are dropped, not shown as active).
+  const config = validateConfigTypes(resolveRuleConfigTarget(projectRoot).config);
 
   const categoryFilter = options.category?.toLowerCase();
   const frameworkFilter = options.framework?.toLowerCase();
@@ -129,7 +132,8 @@ export const rulesExplainAction = (ruleQuery: string, options: RulesExplainOptio
     return;
   }
 
-  const config = resolveRuleConfigTarget(resolveProjectRoot(options)).config;
+  // Validate like the loader so explain reflects the severity a scan applies.
+  const config = validateConfigTypes(resolveRuleConfigTarget(resolveProjectRoot(options)).config);
   const effective = resolveEffectiveRuleSeverity(config, entry);
 
   if (options.json) {

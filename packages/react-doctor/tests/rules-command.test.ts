@@ -225,6 +225,23 @@ describe("rules list / explain JSON output", () => {
     expect(entry).toMatchObject({ severity: "off", source: "rule" });
   });
 
+  it("ignores invalid config severities the scanner would drop", () => {
+    fixture = setupFixture();
+    writeFileSync(
+      fixture.configPath,
+      JSON.stringify({ rules: { "react-doctor/no-danger": "warning" } }, null, 2),
+    );
+
+    const { output } = captureLog(() =>
+      rulesExplainAction("react-doctor/no-danger", { json: true, cwd: fixture.projectRoot }),
+    );
+    const payload = JSON.parse(output) as { severity: string; source: string };
+    // `"warning"` is not a valid severity; validateConfigTypes drops it, so the
+    // rule falls back to its registry default rather than reporting "warning".
+    expect(payload.source).toBe("default");
+    expect(["warn", "error", "off"]).toContain(payload.severity);
+  });
+
   it("explains a rule as JSON with a learn-more URL", () => {
     fixture = setupFixture();
     const { output } = captureLog(() =>

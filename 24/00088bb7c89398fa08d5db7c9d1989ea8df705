@@ -1,0 +1,61 @@
+packages/core/src/types/inspect.ts
+  s_6146988f22d5a7::t_655c4385e9cdf3 74-79
+packages/react-doctor/src/cli/utils/resolve-parallel-flag.ts
+  s_6146988f22d5a7::t_655c4385e9cdf3 1,10-11
+  s_6146988f22d5a7::t_59e554d6c3c279 4-8
+packages/react-doctor/src/cli/utils/inspect-flags.ts
+  s_6146988f22d5a7::t_655c4385e9cdf3 23-25
+packages/react-doctor/tests/resolve-parallel-flag.test.ts
+  s_6146988f22d5a7::t_655c4385e9cdf3 2,6-9,13-16
+packages/core/src/refs.ts
+  s_6146988f22d5a7::t_655c4385e9cdf3 43-49,51-54,62,64,68-71
+packages/core/src/run-oxlint.ts
+  s_6146988f22d5a7::t_655c4385e9cdf3 68-72
+packages/react-doctor/src/cli/utils/resolve-cli-inspect-options.ts
+  s_6146988f22d5a7::t_655c4385e9cdf3 41
+packages/react-doctor/src/cli/index.ts
+  s_6146988f22d5a7::t_655c4385e9cdf3 104-105
+packages/core/src/run-inspect.ts
+  s_6146988f22d5a7::t_655c4385e9cdf3 335-336
+packages/react-doctor/src/cli/utils/strip-unknown-cli-flags.ts
+  s_6146988f22d5a7::t_655c4385e9cdf3 24,45
+packages/core/src/runners/oxlint/spawn-batches.ts
+  s_6146988f22d5a7::t_0e2fb768d6fff3 173-187,190-193,195,203,205
+  s_6146988f22d5a7::t_655c4385e9cdf3 7-10,31-37,50-60,77,80-84,86-102,104-124,126-130,132-170,188,196,201-202
+  s_6146988f22d5a7::t_cb2b7f7c382991 85
+  s_6146988f22d5a7::t_dab0980ebf4371 197-200
+packages/core/src/constants.ts
+  s_6146988f22d5a7::t_655c4385e9cdf3 116-119
+packages/core/src/errors.ts
+  s_6146988f22d5a7::t_655c4385e9cdf3 193-220
+packages/core/tests/spawn-batches-serial-fallback.test.ts
+  s_6146988f22d5a7::t_f4fb9fbad4a4a3 51
+  s_6146988f22d5a7::t_decba7aceb2619 1-18,21-22,27-32,38-50,52-115
+  s_6146988f22d5a7::t_48b15cb3ca0a77 19-20,23-26
+  s_6146988f22d5a7::t_9cdb41c8301e9f 33-37
+packages/core/tests/spawn-batches.test.ts
+  s_6146988f22d5a7::t_655c4385e9cdf3 145
+packages/react-doctor/src/cli/utils/build-runtime-layers.ts
+  s_6146988f22d5a7::t_655c4385e9cdf3 46-47,50-51,129-131
+packages/core/tests/errors.test.ts
+  s_6146988f22d5a7::t_4e9e973c17d9be 237-238
+  s_6146988f22d5a7::t_655c4385e9cdf3 7,182-236
+packages/core/tests/oxlint-concurrency-default.test.ts
+  s_6146988f22d5a7::t_1674a8bf8b967c 1-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "2400088bb7c89398fa08d5db7c9d1989ea8df705",
+  "prompts": {},
+  "sessions": {
+    "s_6146988f22d5a7": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a2de063a-4ecc-488f-9e75-bb5a5b37bea3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

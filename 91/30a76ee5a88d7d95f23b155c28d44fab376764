@@ -1,0 +1,33 @@
+packages/website/public/llms.txt
+  s_48b1e5431a7b23::t_c0c78b5d2ce7c7 90
+packages/react-doctor/src/cli/utils/rule-config-file.ts
+  s_48b1e5431a7b23::t_424d2257a4e9de 57-60,62-63,69
+skills/doctor-explain/SKILL.md
+  s_48b1e5431a7b23::t_d301da05c0c928 3
+  s_48b1e5431a7b23::t_fc79a38308086c 58
+packages/react-doctor/src/cli/utils/resolve-effective-rule-severity.ts
+  s_48b1e5431a7b23::t_8766389e0af4b1 15-19,25-29
+packages/react-doctor/tests/rule-config-units.test.ts
+  s_48b1e5431a7b23::t_deeabeeb1368a8 128-137
+packages/react-doctor/tests/rules-command.test.ts
+  s_48b1e5431a7b23::t_6c1a6689aab896 198-205
+  s_48b1e5431a7b23::t_e8cc659c4d19b8 151-169
+packages/react-doctor/src/cli/commands/rules.ts
+  s_48b1e5431a7b23::t_f93a5b90daf942 264-271
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "9130a76ee5a88d7d95f23b155c28d44fab376764",
+  "prompts": {},
+  "sessions": {
+    "s_48b1e5431a7b23": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "6436ca37-4111-474b-8784-1082331577f0",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

@@ -1,0 +1,22 @@
+packages/react-doctor/src/cli/utils/with-sentry-run-span.ts
+  s_ae877f9b9baf3e::t_3e3d2d40f29201 14-20
+  s_ae877f9b9baf3e::t_585b5f10c249de 40-43,51,58
+packages/react-doctor/src/inspect.ts
+  s_ae877f9b9baf3e::t_8f865eb88f9b5e 166,177-184
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "48d1abe22920e6feb0d58bc268dab7ee3bf570b6",
+  "prompts": {},
+  "sessions": {
+    "s_ae877f9b9baf3e": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "bd6866f8-3726-4c70-8caf-c792f2dd790c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

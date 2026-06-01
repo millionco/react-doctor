@@ -1,0 +1,20 @@
+packages/react-doctor/src/cli/utils/render-diagnostics.ts
+  s_6221f195f7afc3::t_190350dc056dbb 277-280,283
+  s_6221f195f7afc3::t_8e68d680e35249 188-190,194,202-210
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "d5a607e42d3c414753a5881a935d96cd6b9efc2f",
+  "prompts": {},
+  "sessions": {
+    "s_6221f195f7afc3": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "4f931f37-ee70-4516-8f84-1524c4a848b5",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

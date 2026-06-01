@@ -1,0 +1,61 @@
+packages/react-doctor/tests/is-expected-user-error.test.ts
+  s_cc7eaa08da29fd::t_a5dd55ab71e3bc 3,7,17-20,22-25,27-28
+  s_cc7eaa08da29fd::t_5d124d86e565ed 13
+  s_cc7eaa08da29fd::t_03cff8e6dc04e4 31-34,38-42
+  s_cc7eaa08da29fd::t_b979bb3baa52c5 35-37
+  s_cc7eaa08da29fd::t_de7b40d8d364ad 1-2,4-6,8-12,14-16,21,26,29-30,43-65
+packages/react-doctor/src/cli/utils/report-error.ts
+  s_cc7eaa08da29fd::t_14c772cdc0dd78 26-29
+  s_cc7eaa08da29fd::t_39cff67041b2b9 30
+  s_cc7eaa08da29fd::t_0e4fb258a232aa 6
+packages/react-doctor/src/cli/utils/prompt-install-setup.ts
+  s_cc7eaa08da29fd::t_52f28d9bac3c1f 49-59,66-83
+packages/core/src/resolve-scan-target.ts
+  s_cc7eaa08da29fd::t_f6694347399d4e 72
+packages/core/tests/resolve-scan-target.test.ts
+  s_cc7eaa08da29fd::t_d5e62118ff9973 57,61-66
+  s_cc7eaa08da29fd::t_795a33e9ea136b 49-56,58-60,67
+  s_cc7eaa08da29fd::t_6cd028a46fd953 5
+packages/core/src/project-info/errors.ts
+  s_cc7eaa08da29fd::t_dd628f34207f11 23-37,41,43-44,46-48,52
+packages/react-doctor/src/cli/utils/parse-file-line-argument.ts
+  s_cc7eaa08da29fd::t_a135bb2266e16a 1-2,11-13,18,22
+packages/react-doctor/src/cli/index.ts
+  s_cc7eaa08da29fd::t_9262e7a1986730 275-279,284-286
+  s_cc7eaa08da29fd::t_a1b8a5ece9f5b1 19-20
+packages/react-doctor/tests/prompt-install-setup.test.ts
+  s_cc7eaa08da29fd::t_ca736e1c603c6f 326-345
+packages/react-doctor/src/cli/commands/inspect.ts
+  s_cc7eaa08da29fd::t_a088d192da1351 29
+  s_cc7eaa08da29fd::t_cea91fe610b6aa 429-430,432-433
+.changeset/no-react-dependency-not-a-crash.md
+  s_cc7eaa08da29fd::t_bc3a4958a1d730 7,9-15
+  s_cc7eaa08da29fd::t_d03c92cc53941b 1-6,8
+packages/react-doctor/src/cli/utils/validate-mode-flags.ts
+  s_cc7eaa08da29fd::t_55509bb0a02ee4 1,16,19,22,25,30,33,36,43
+packages/react-doctor/src/cli/utils/cli-input-error.ts
+  s_cc7eaa08da29fd::t_8c53ff9d64c25b 1-13
+packages/react-doctor/src/cli/utils/select-projects.ts
+  s_cc7eaa08da29fd::t_a88cff788a48b9 11
+  s_cc7eaa08da29fd::t_bc70b3e3b027ee 61
+packages/react-doctor/src/cli/utils/is-expected-user-error.ts
+  s_cc7eaa08da29fd::t_a94558be082083 2,11,15-16,18-21,30
+  s_cc7eaa08da29fd::t_b979bb3baa52c5 33
+  s_cc7eaa08da29fd::t_b1d2df5836aafd 1,3-10,12-14,17,22-29,31-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "2f37afd8bdab4e09c26c5adf564e3c0963db1882",
+  "prompts": {},
+  "sessions": {
+    "s_cc7eaa08da29fd": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "77dc4816-ad7b-4cfd-b3b0-8e3589fffdf8",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

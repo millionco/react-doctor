@@ -1,0 +1,24 @@
+scripts/check-published-deps.ts
+  s_e58b442a0e7df3::t_c2c6eb650ccb32 64-70,82-86,110-113
+  s_e58b442a0e7df3::t_8b5c0b1a951fc1 1-63,71-81,87-109,114-197
+.github/workflows/ci.yml
+  s_e58b442a0e7df3::t_3fdb548ee51e64 94-103
+package.json
+  s_e58b442a0e7df3::t_8824cc46faf46b 26-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "1251308ff810b8041ecd04f6ab4131719f29aa71",
+  "prompts": {},
+  "sessions": {
+    "s_e58b442a0e7df3": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "bbb464d0-5765-446a-a6ac-7e009bc921e7",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

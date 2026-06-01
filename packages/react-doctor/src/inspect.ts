@@ -6,13 +6,15 @@ import {
   DEFAULT_SHOW_WARNINGS,
   filterDiagnosticsForSurface,
   highlighter,
-  layerOtlp,
   OXLINT_NODE_REQUIREMENT,
   resolveScanTarget,
   restoreLegacyThrow,
   runInspect as runInspectEffect,
 } from "@react-doctor/core";
+import { applyObservability } from "./cli/utils/apply-observability.js";
 import { buildRuntimeLayers } from "./cli/utils/build-runtime-layers.js";
+import { recordSentryProjectContext, withSentryRunSpan } from "./cli/utils/with-sentry-run-span.js";
+import type { SentryRootSpan } from "./cli/utils/with-sentry-run-span.js";
 import type {
   Diagnostic,
   DiagnosticSurface,
@@ -149,13 +151,16 @@ export const inspect = async (
   if (options.silent) setSpinnerSilent(true);
 
   try {
-    return await runInspectWithRuntime(
-      scanDirectory,
-      options,
-      userConfig,
-      hasConfigOverride,
-      configSourceDirectory,
-      startTime,
+    return await withSentryRunSpan((rootSentrySpan) =>
+      runInspectWithRuntime(
+        scanDirectory,
+        options,
+        userConfig,
+        hasConfigOverride,
+        configSourceDirectory,
+        startTime,
+        rootSentrySpan,
+      ),
     );
   } finally {
     if (options.silent) setSpinnerSilent(wasSpinnerSilent);
@@ -169,6 +174,7 @@ const runInspectWithRuntime = async (
   hasConfigOverride: boolean,
   configSourceDirectory: string | null,
   startTime: number,
+  rootSentrySpan: SentryRootSpan,
 ): Promise<InspectResult> => {
   const isDiffMode = options.includePaths.length > 0;
 
@@ -226,6 +232,10 @@ const runInspectWithRuntime = async (
     {
       beforeLint: (projectInfo, lintIncludePaths) =>
         Effect.gen(function* () {
+          // Attach the discovered project shape to Sentry as early as possible
+          // (this hook fires right after project discovery) so crashes and the
+          // run transaction carry it. No-op when Sentry/tracing is off.
+          recordSentryProjectContext(projectInfo, rootSentrySpan);
           if (options.scoreOnly || options.suppressRendering) return;
           const lintSourceFileCount = lintIncludePaths?.length ?? projectInfo.sourceFileCount;
           yield* printProjectDetection({
@@ -246,17 +256,15 @@ const runInspectWithRuntime = async (
   // check a flag itself. Driven by Effect's built-in Console
   // reference, which is `Context.Reference<Console>` with the
   // default value `globalThis.console`.
-  // Otlp layer is a no-op unless REACT_DOCTOR_OTLP_ENDPOINT /
-  // REACT_DOCTOR_OTLP_AUTH_HEADER are set, so we always provide it
-  // regardless of `options.silent` — the silent toggle only swaps
-  // the Console reference, not the tracer.
-  const programWithLayers = options.silent
-    ? program.pipe(
-        Effect.provide(layers),
-        Effect.provideService(Console.Console, silentConsole),
-        Effect.provide(layerOtlp),
-      )
-    : program.pipe(Effect.provide(layers), Effect.provide(layerOtlp));
+  // `applyObservability` installs the tracing backend (user OTLP, else the
+  // Sentry tracer bridge when tracing is live, else the no-op native tracer)
+  // — see its docs for precedence. The silent toggle only swaps the Console
+  // reference, not the tracer, so observability is applied identically in both
+  // branches.
+  const baseProgram = options.silent
+    ? program.pipe(Effect.provide(layers), Effect.provideService(Console.Console, silentConsole))
+    : program.pipe(Effect.provide(layers));
+  const programWithLayers = applyObservability(baseProgram, rootSentrySpan);
   const output = await Effect.runPromise(restoreLegacyThrow(programWithLayers));
 
   const didLintFail = lintBindingMissing || output.didLintFail;

@@ -378,12 +378,12 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       }
     }
   } catch (error) {
-    await reportErrorToSentry(error);
+    const sentryEventId = await reportErrorToSentry(error);
     if (isJsonMode) {
       writeJsonErrorReport(error);
       process.exitCode = 1;
       return;
     }
-    handleError(error);
+    handleError(error, { sentryEventId });
   }
 };

@@ -23,7 +23,7 @@
     "check": "vp check",
     "changeset": "changeset",
     "version": "changeset version",
-    "release": "pnpm build && changeset publish",
+    "release": "pnpm build && node scripts/sentry-sourcemaps.mjs && changeset publish",
     "smoke:json-report": "node --experimental-strip-types --no-warnings scripts/smoke-json-report.ts",
     "smoke:tty-prompt": "python3 scripts/smoke-tty-prompt.py",
     "build:schema": "node --experimental-strip-types --no-warnings scripts/generate-config-schema.ts"
@@ -32,6 +32,7 @@
     "@changesets/changelog-github": "^0.7.0",
     "@changesets/cli": "^2.31.0",
     "@rayhanadev/truffler": "^0.4.2",
+    "@sentry/cli": "^3.4.3",
     "@types/node": "^25.6.0",
     "@voidzero-dev/vite-plus-core": "^0.1.15",
     "cross-env": "^10.1.0",
@@ -48,6 +49,7 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "@parcel/watcher",
+      "@sentry/cli",
       "esbuild",
       "unrs-resolver"
     ],

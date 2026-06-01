@@ -11,6 +11,13 @@ import {
 import type { HandleErrorOptions } from "@react-doctor/core";
 import { VERSION } from "./version.js";
 
+// `shouldExit` is optional here (defaults to exiting) and the CLI adds a Sentry
+// event id, surfaced as a reference the user can quote so we can locate the
+// exact crash in Sentry.
+interface CliHandleErrorOptions extends Partial<HandleErrorOptions> {
+  sentryEventId?: string;
+}
+
 const OTLP_ENDPOINT_ENVIRONMENT_VARIABLE = "REACT_DOCTOR_OTLP_ENDPOINT";
 const OTLP_AUTH_HEADER_ENVIRONMENT_VARIABLE = "REACT_DOCTOR_OTLP_AUTH_HEADER";
 
@@ -41,7 +48,11 @@ const getErrorReportContext = (): ErrorReportContext => ({
 
 const formatConfiguredState = (isConfigured: boolean): string => (isConfigured ? "yes" : "no");
 
-const buildErrorIssueBody = (error: unknown, context: ErrorReportContext): string => {
+const buildErrorIssueBody = (
+  error: unknown,
+  context: ErrorReportContext,
+  sentryEventId: string | undefined,
+): string => {
   const formattedError = formatErrorForReport(error) || "(empty error)";
   const isOtlpExporterEnabled =
     context.isOtlpEndpointConfigured && context.isOtlpAuthHeaderConfigured;
@@ -60,6 +71,7 @@ const buildErrorIssueBody = (error: unknown, context: ErrorReportContext): strin
     `- platform: ${context.platform} ${context.architecture}`,
     `- cwd: ${context.cwd}`,
     `- command: ${context.command}`,
+    ...(sentryEventId ? [`- Sentry reference: ${sentryEventId}`] : []),
     "",
     "## OpenTelemetry",
     "",
@@ -74,12 +86,15 @@ const buildErrorIssueBody = (error: unknown, context: ErrorReportContext): strin
   ].join("\n");
 };
 
-export const buildErrorIssueUrl = (error: unknown): string => {
+export const buildErrorIssueUrl = (error: unknown, sentryEventId?: string): string => {
   const formattedError = formatSingleLine(formatErrorForReport(error));
   const issueUrl = new URL(`${CANONICAL_GITHUB_URL}/issues/new`);
   issueUrl.searchParams.set("title", formattedError ? `CLI error: ${formattedError}` : "CLI error");
   issueUrl.searchParams.set("labels", "bug");
-  issueUrl.searchParams.set("body", buildErrorIssueBody(error, getErrorReportContext()));
+  issueUrl.searchParams.set(
+    "body",
+    buildErrorIssueBody(error, getErrorReportContext(), sentryEventId),
+  );
   return issueUrl.toString();
 };
 
@@ -90,7 +105,10 @@ export const buildErrorIssueUrl = (error: unknown): string => {
  * red-highlighted (matches the historical `consoleLogger.error`
  * contract) so the user sees a clearly distinguished error block.
  */
-const handleErrorEffect = (error: unknown): Effect.Effect<void> =>
+const handleErrorEffect = (
+  error: unknown,
+  sentryEventId: string | undefined,
+): Effect.Effect<void> =>
   Effect.gen(function* () {
     yield* Console.error("");
     yield* Console.error(
@@ -98,12 +116,17 @@ const handleErrorEffect = (error: unknown): Effect.Effect<void> =>
     );
     yield* Console.error(
       highlighter.error(
-        `If the problem persists, please open this prefilled issue: ${buildErrorIssueUrl(error)}`,
+        `If the problem persists, please open this prefilled issue: ${buildErrorIssueUrl(error, sentryEventId)}`,
       ),
     );
     yield* Console.error(
       highlighter.error(`You can also ask for help in Discord: ${CANONICAL_DISCORD_URL}`),
     );
+    if (sentryEventId) {
+      yield* Console.error(
+        highlighter.error(`Reference (mention this when reporting): ${sentryEventId}`),
+      );
+    }
     yield* Console.error("");
     yield* Console.error(highlighter.error(formatErrorForReport(error)));
     yield* Console.error("");
@@ -114,11 +137,8 @@ const handleErrorEffect = (error: unknown): Effect.Effect<void> =>
  * aren't yet Effect-typed). Bridges via `Effect.runSync` so the
  * underlying Console writes happen exactly like the Effect path.
  */
-export const handleError = (
-  error: unknown,
-  options: HandleErrorOptions = { shouldExit: true },
-): void => {
-  Effect.runSync(handleErrorEffect(error));
+export const handleError = (error: unknown, options: CliHandleErrorOptions = {}): void => {
+  Effect.runSync(handleErrorEffect(error, options.sentryEventId));
   if (options.shouldExit !== false) {
     process.exit(1);
   }

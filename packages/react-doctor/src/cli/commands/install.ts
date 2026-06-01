@@ -36,7 +36,7 @@ export const installAction = async (
       projectRoot: options.cwd ?? process.cwd(),
     });
   } catch (error) {
-    await reportErrorToSentry(error);
-    handleError(error);
+    const sentryEventId = await reportErrorToSentry(error);
+    handleError(error, { sentryEventId });
   }
 };

@@ -50,6 +50,34 @@ describe("handleError", () => {
     expect(body).not.toContain("secret-token");
   });
 
+  it("adds the Sentry reference to the issue body when an event id is provided", () => {
+    const body =
+      new URL(buildErrorIssueUrl(new Error("boom"), "evt-abc123")).searchParams.get("body") ?? "";
+    expect(body).toContain("Sentry reference: evt-abc123");
+  });
+
+  it("omits the Sentry reference line when no event id is provided", () => {
+    const body = new URL(buildErrorIssueUrl(new Error("boom"))).searchParams.get("body") ?? "";
+    expect(body).not.toContain("Sentry reference:");
+  });
+
+  it("prints the reference id so the user can quote it when reporting", () => {
+    const errorMessages: string[] = [];
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation((...messages) => {
+      errorMessages.push(messages.join(" "));
+    });
+
+    try {
+      handleError(new Error("boom"), { shouldExit: false, sentryEventId: "evt-xyz789" });
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+
+    expect(errorMessages.join("\n")).toContain(
+      "Reference (mention this when reporting): evt-xyz789",
+    );
+  });
+
   it("suggests Discord when printing an error", () => {
     const errorMessages: string[] = [];
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation((...messages) => {

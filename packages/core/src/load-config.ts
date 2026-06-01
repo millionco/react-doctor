@@ -171,3 +171,49 @@ export const loadConfigWithSource = (
   cachedConfigs.set(rootDirectory, loadPromise);
   return loadPromise;
 };
+
+export interface LegacyConfigLocation {
+  /** Absolute path of the pre-migration `react-doctor.config.json`. */
+  readonly legacyFilePath: string;
+  /** Directory that contains it (where the migrated file should land). */
+  readonly directory: string;
+}
+
+// True when the directory already has a current-format config — a
+// `doctor.config.*` file (parseable or not) or a `package.json#reactDoctor`
+// key. Such a config supersedes any sibling legacy file, so there's nothing
+// to migrate. Kept side-effect-free (no `validateConfigTypes`) so the
+// detection walk never emits warnings.
+const directoryHasCurrentConfig = (directory: string): boolean => {
+  for (const extension of CONFIG_EXTENSIONS) {
+    if (isFile(path.join(directory, `${CONFIG_BASENAME}.${extension}`))) return true;
+  }
+  const packageJsonPath = path.join(directory, PACKAGE_JSON_FILENAME);
+  if (!isFile(packageJsonPath)) return false;
+  try {
+    const packageJson = parseJSON5(fs.readFileSync(packageJsonPath, "utf-8"));
+    return isPlainObject(packageJson) && isPlainObject(packageJson[PACKAGE_JSON_CONFIG_KEY]);
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Walks up from `rootDirectory` (same boundary semantics as
+ * `loadConfigWithSource`) looking for a pre-migration
+ * `react-doctor.config.json` that is no longer read. Returns the first one
+ * found, or `null` when a current-format config supersedes it or none exists
+ * before a project boundary. Detection only — the CLI performs the rename.
+ */
+export const findLegacyConfig = (rootDirectory: string): LegacyConfigLocation | null => {
+  let directory = rootDirectory;
+  while (true) {
+    if (directoryHasCurrentConfig(directory)) return null;
+    const legacyFilePath = path.join(directory, LEGACY_CONFIG_FILENAME);
+    if (isFile(legacyFilePath)) return { legacyFilePath, directory };
+    if (isProjectBoundary(directory)) return null;
+    const parentDirectory = path.dirname(directory);
+    if (parentDirectory === directory) return null;
+    directory = parentDirectory;
+  }
+};

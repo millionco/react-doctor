@@ -1,0 +1,23 @@
+packages/core/src/resolve-scan-target.ts
+  s_784f98f73dec94::t_cec410be7debfa 4
+  s_784f98f73dec94::t_23851c2dbb7ec9 6-9
+  s_784f98f73dec94::t_99bb7647f5570c 68-69
+packages/core/src/resolve-diagnose-target.ts
+  s_784f98f73dec94::t_a4a9df7a426a29 4-11,18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "9f5ac641439fcd5b3396e65c6c290a8e437d9f40",
+  "prompts": {},
+  "sessions": {
+    "s_784f98f73dec94": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "69e058b4-13dc-4671-9295-9e5280ebb408",
+        "model": "composer-2.5"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

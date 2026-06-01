@@ -261,7 +261,14 @@ export const rulesIgnoreTagAction = (tag: string, options: RulesCwdOptions): voi
 };
 
 export const rulesUnignoreTagAction = (tag: string, options: RulesCwdOptions): void => {
-  const target = applyConfigChange(options, (config) => removeIgnoredTag(config, tag));
+  const target = resolveRuleConfigTarget(resolveProjectRoot(options));
+  // Don't write (or create) a config for a no-op — reporting success when
+  // the tag was never ignored is misleading and leaves a stray config file.
+  if (!(target.config.ignore?.tags ?? []).includes(tag)) {
+    logger.dim(`Tag "${tag}" was not being ignored; nothing to change.`);
+    return;
+  }
+  writeRuleConfig(target, removeIgnoredTag(target.config, tag));
   logger.success(`Tag "${tag}" is no longer ignored`);
   logger.dim(`  Updated ${describeTargetPath(target)}`);
 };

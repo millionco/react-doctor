@@ -12,14 +12,21 @@ export interface EffectiveRuleSeverity {
 }
 
 /**
- * Mirrors the runtime precedence (`rules` > `categories` > `ignore.tags`
- * > registry default) so `list` / `explain` can show what a rule will
- * actually do under the current config without running a scan.
+ * Resolves what a rule will actually do under the current config without
+ * running a scan. `ignore.tags` is a pre-lint gate: a rule carrying an
+ * ignored tag is dropped (via `shouldEnableRule`) before any severity is
+ * read, so it wins over a `rules`/`categories` override. Among rules that
+ * survive the gate, `rules` beats `categories` beats the registry default.
  */
 export const resolveEffectiveRuleSeverity = (
   config: ReactDoctorConfig | null,
   entry: RuleCatalogEntry,
 ): EffectiveRuleSeverity => {
+  const ignoredTags = config?.ignore?.tags ?? [];
+  if (entry.tags.some((tag) => ignoredTags.includes(tag))) {
+    return { value: "off", source: "tag" };
+  }
+
   const ruleOverrides = config?.rules ?? {};
   for (const equivalentKey of getEquivalentRuleKeys(entry.key)) {
     const override = ruleOverrides[equivalentKey];
@@ -28,11 +35,6 @@ export const resolveEffectiveRuleSeverity = (
 
   const categoryOverride = config?.categories?.[entry.category];
   if (categoryOverride !== undefined) return { value: categoryOverride, source: "category" };
-
-  const ignoredTags = config?.ignore?.tags ?? [];
-  if (entry.tags.some((tag) => ignoredTags.includes(tag))) {
-    return { value: "off", source: "tag" };
-  }
 
   return {
     value: entry.defaultEnabled ? entry.defaultSeverity : "off",

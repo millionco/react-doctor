@@ -54,14 +54,19 @@ export const resolveRuleConfigTarget = (projectRoot: string): RuleConfigTarget =
 
   if (loaded) {
     const directory = loaded.sourceDirectory;
+    // Prefer react-doctor.config.json only when it actually parses. The
+    // loader skips an unparseable file and falls back to package.json, so
+    // targeting the broken file here would let a mutation overwrite it and
+    // silently shadow the package.json#reactDoctor config the scan uses.
     const configFilePath = path.join(directory, CONFIG_FILENAME);
-    if (existsSync(configFilePath)) {
+    const parsedConfigFile = readJsonObject(configFilePath);
+    if (parsedConfigFile) {
       return {
         kind: "config-file",
         filePath: configFilePath,
         directory,
         exists: true,
-        config: readJsonObject(configFilePath) ?? {},
+        config: parsedConfigFile,
       };
     }
     const packageJsonPath = path.join(directory, PACKAGE_JSON_FILENAME);

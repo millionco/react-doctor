@@ -125,6 +125,16 @@ describe("resolveEffectiveRuleSeverity", () => {
     expect(result).toEqual({ value: "off", source: "tag" });
   });
 
+  it("treats an ignored tag as decisive over a rule-level override (pre-lint gate)", () => {
+    const taggedEntry = catalog.find((candidate) => candidate.tags.includes("design"));
+    if (!taggedEntry) throw new Error("Expected at least one design-tagged rule");
+    const result = resolveEffectiveRuleSeverity(
+      { ignore: { tags: ["design"] }, rules: { [taggedEntry.key]: "error" } },
+      taggedEntry,
+    );
+    expect(result).toEqual({ value: "off", source: "tag" });
+  });
+
   it("reports off for an opt-in rule that is disabled by default", () => {
     const optInEntry = catalog.find((candidate) => !candidate.defaultEnabled);
     if (!optInEntry) throw new Error("Expected at least one default-disabled rule");

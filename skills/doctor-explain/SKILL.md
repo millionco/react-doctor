@@ -1,6 +1,6 @@
 ---
 name: doctor-explain
-description: Explain React Doctor rules and configure which ones run via react-doctor.config.json. Use when the user types `/doctor-explain` or `/doctor-config`, asks why a rule fired, disagrees with a rule, wants to disable/enable a rule, silence a category or tag, tune CI/PR noise, or asks "what does this rule mean". Covers the `react-doctor rules` CLI (list, explain, set, enable, disable, category, ignore-tag) and the config precedence (rules > categories > ignore.tags > surfaces).
+description: Explain React Doctor rules and configure which ones run via react-doctor.config.json. Use when the user types `/doctor-explain` or `/doctor-config`, asks why a rule fired, disagrees with a rule, wants to disable/enable a rule, silence a category or tag, tune CI/PR noise, or asks "what does this rule mean". Covers the `react-doctor rules` CLI (list, explain, set, enable, disable, category, ignore-tag) and how config layers combine: ignore.tags disables matching rules before linting, rules over categories sets severity, surfaces controls visibility only.
 version: "1.0.0"
 ---
 
@@ -55,7 +55,7 @@ Match the control to the intent — prefer the narrowest one:
 - **A behavioral family is noisy** (`design`, `test-noise`, `migration-hint`) → `rules ignore-tag <tag>`.
 - **Keep it locally but hide from PR comment / score / CI gate only** → do NOT disable. Edit `surfaces` in `react-doctor.config.json` (`surfaces.prComment.excludeRules`, `surfaces.score.excludeTags`, `surfaces.ciFailure.excludeCategories`). The rule still shows in local `cli` output.
 
-Precedence when several apply: `rules` > `categories` > `ignore.tags`. `surfaces` is visibility-only and never changes whether a rule runs.
+How the layers combine: `ignore.tags` disables every rule carrying that tag **before** linting, so a tagged rule stays off even if `rules`/`categories` set it to `warn`/`error` (a rule-level override cannot re-enable a tag-ignored rule). For rules that aren't tag-disabled, `rules` overrides `categories` overrides the rule's default. `surfaces` is visibility-only and never changes whether a rule runs.
 
 ## Config shape
 

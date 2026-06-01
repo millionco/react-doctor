@@ -87,7 +87,7 @@ npx react-doctor@latest rules category "React Native" off   # set a whole catego
 npx react-doctor@latest rules ignore-tag design     # skip a rule family (design, test-noise, …)
 ```
 
-Rule references accept the full key (`react-doctor/no-danger`), the bare id (`no-danger`), or a legacy key (`react/no-danger`). Precedence: `rules` > `categories` > `ignore.tags`. Use the `surfaces` config field (not `disable`) to keep a rule locally but hide it from PR comments, the score, or the CI gate.
+Rule references accept the full key (`react-doctor/no-danger`), the bare id (`no-danger`), or a legacy key (`react/no-danger`). `ignore.tags` disables matching rules before linting — a tagged rule stays off even with a `rules`/`categories` override; otherwise `rules` overrides `categories` overrides the rule's default. Use the `surfaces` config field (not `disable`) to keep a rule locally but hide it from PR comments, the score, or the CI gate.
 
 ## Options
 

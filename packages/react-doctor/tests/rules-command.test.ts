@@ -148,6 +148,25 @@ describe("rules config embedded in package.json", () => {
   });
 });
 
+describe("rules config with an unparseable config file", () => {
+  it("writes package.json#reactDoctor and leaves the broken config file untouched", () => {
+    fixture = setupFixture({ name: "fixture", reactDoctor: { lint: true } });
+    const brokenConfig = "{ not valid json";
+    writeFileSync(fixture.configPath, brokenConfig);
+
+    rulesDisableAction("react-doctor/no-danger", { cwd: fixture.projectRoot });
+
+    // The broken file is left as-is — the scanner reads package.json#reactDoctor
+    // when the config file fails to parse, so the mutation must not shadow it.
+    expect(readFileSync(fixture.configPath, "utf8")).toBe(brokenConfig);
+    const packageJson = readJsonFile(fixture.packageJsonPath);
+    expect(packageJson.reactDoctor).toMatchObject({
+      lint: true,
+      rules: { "react-doctor/no-danger": "off" },
+    });
+  });
+});
+
 describe("rules category", () => {
   it("sets a category severity by case-insensitive match", () => {
     fixture = setupFixture();
@@ -174,6 +193,14 @@ describe("rules ignore-tag / unignore-tag", () => {
 
     rulesUnignoreTagAction("design", { cwd: fixture.projectRoot });
     expect(readJsonFile(fixture.configPath).ignore).toBeUndefined();
+  });
+
+  it("unignore-tag on a project that never ignored the tag is a no-op", () => {
+    fixture = setupFixture();
+    rulesUnignoreTagAction("design", { cwd: fixture.projectRoot });
+
+    expect(existsSync(fixture.configPath)).toBe(false);
+    expect(process.exitCode).toBe(0);
   });
 
   it("rejects an unknown tag", () => {

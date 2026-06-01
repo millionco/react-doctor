@@ -323,6 +323,26 @@ describe("shouldShowAgentInstallHint", () => {
   });
 });
 
+describe("setup-prompt store resilience", () => {
+  it("degrades instead of crashing when the config directory cannot be created", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "react-doctor-prompt-install-setup-eperm-"));
+    const blockerFile = path.join(root, "blocker");
+    writeFileSync(blockerFile, "not a directory");
+    // A config `cwd` whose parent is a file makes conf's mkdir fail with
+    // ENOTDIR — the same class of failure as EPERM/EROFS on a read-only or
+    // locked-down filesystem (REACT-DOCTOR-E). It must degrade, not crash.
+    const unwritableCwd = path.join(blockerFile, "config");
+
+    try {
+      expect(() => hasDisabledSetupPrompt("/some/project", { cwd: unwritableCwd })).not.toThrow();
+      expect(hasDisabledSetupPrompt("/some/project", { cwd: unwritableCwd })).toBe(false);
+      expect(disableSetupPrompt("/some/project", { cwd: unwritableCwd })).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("printAgentInstallHint", () => {
   it("prints the install command and description", () => {
     const writtenLines: string[] = [];

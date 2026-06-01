@@ -46,27 +46,41 @@ export const hasDisabledSetupPrompt = (
   projectRoot: string,
   storeOptions: SetupPromptStoreOptions = {},
 ): boolean => {
-  const store = getSetupPromptStore(storeOptions);
-  const projects = store.get("projects", {});
-  return projects[getSetupPromptProjectKey(projectRoot)]?.setupPrompt === false;
+  try {
+    const store = getSetupPromptStore(storeOptions);
+    const projects = store.get("projects", {});
+    return projects[getSetupPromptProjectKey(projectRoot)]?.setupPrompt === false;
+  } catch {
+    // A read-only or otherwise inaccessible global-config directory (EPERM /
+    // EROFS in locked-down CI and sandboxes) is an environment limitation, not
+    // a react-doctor bug. Degrade to "not disabled" rather than crashing the
+    // scan and reporting it to Sentry — at worst the install hint shows again.
+    return false;
+  }
 };
 
 export const disableSetupPrompt = (
   projectRoot: string,
   storeOptions: SetupPromptStoreOptions = {},
 ): boolean => {
-  const store = getSetupPromptStore(storeOptions);
-  const projects = store.get("projects", {});
-  const projectKey = getSetupPromptProjectKey(projectRoot);
-  store.set("projects", {
-    ...projects,
-    [projectKey]: {
-      ...(projects[projectKey] ?? {}),
-      rootDirectory: path.resolve(projectRoot),
-      setupPrompt: false,
-    },
-  });
-  return true;
+  try {
+    const store = getSetupPromptStore(storeOptions);
+    const projects = store.get("projects", {});
+    const projectKey = getSetupPromptProjectKey(projectRoot);
+    store.set("projects", {
+      ...projects,
+      [projectKey]: {
+        ...(projects[projectKey] ?? {}),
+        rootDirectory: path.resolve(projectRoot),
+        setupPrompt: false,
+      },
+    });
+    return true;
+  } catch {
+    // Couldn't persist the opt-out (read-only config dir). Signal failure to
+    // the caller instead of crashing — the choice just won't be remembered.
+    return false;
+  }
 };
 
 export const resolveInstallSetupProjectRoot = (

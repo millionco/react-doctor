@@ -69,7 +69,7 @@ export const resolveScanTarget = async (
   if (!isDirectory(resolvedDirectory)) {
     throw existsSync(resolvedDirectory)
       ? new NotADirectoryError(resolvedDirectory)
-      : new ProjectNotFoundError(resolvedDirectory);
+      : new ProjectNotFoundError(resolvedDirectory, { kind: "missing-path" });
   }
 
   return {

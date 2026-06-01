@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
-import { AmbiguousProjectError, resolveScanTarget } from "../src/index.js";
+import { AmbiguousProjectError, ProjectNotFoundError, resolveScanTarget } from "../src/index.js";
 
 const tempDirectories: string[] = [];
 
@@ -45,5 +45,24 @@ describe("resolveScanTarget", () => {
 
     const scanTarget = await resolveScanTarget(wrapperDirectory, { allowAmbiguous: true });
     expect(scanTarget.resolvedDirectory).toBe(wrapperDirectory);
+  });
+
+  it("reports a missing scan target as a non-existent path, not a missing package.json", async () => {
+    // REACT-DOCTOR-4: a scan target that doesn't exist on disk (a typo or a
+    // stale path) is user input, and the "expected a package.json" guidance is
+    // misleading — the path simply isn't there.
+    const missingDirectory = path.join(createTempDirectory(), "does-not-exist");
+
+    const rejection = await resolveScanTarget(missingDirectory).then(
+      () => null,
+      (error: unknown) => error,
+    );
+
+    if (!(rejection instanceof ProjectNotFoundError)) {
+      throw new Error(`Expected ProjectNotFoundError, got ${String(rejection)}`);
+    }
+    expect(rejection.kind).toBe("missing-path");
+    expect(rejection.message).toContain("does not exist");
+    expect(rejection.message).not.toContain("package.json");
   });
 });

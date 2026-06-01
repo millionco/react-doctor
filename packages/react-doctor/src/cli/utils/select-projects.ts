@@ -8,6 +8,7 @@ import {
   listWorkspacePackages,
 } from "@react-doctor/core";
 import { cliLogger as logger } from "./cli-logger.js";
+import { CliInputError } from "./cli-input-error.js";
 import { prompts } from "./prompts.js";
 
 export const selectProjects = async (
@@ -57,7 +58,7 @@ const resolveProjectFlag = (
       const availableNames = workspacePackages
         .map((workspacePackage) => workspacePackage.name)
         .join(", ");
-      throw new Error(`Project "${requestedName}" not found. Available: ${availableNames}`);
+      throw new CliInputError(`Project "${requestedName}" not found. Available: ${availableNames}`);
     }
 
     resolvedDirectories.push(matched.directory);

@@ -16,7 +16,8 @@ import {
 import { versionAction } from "./commands/version.js";
 import { applyColorPreference } from "./utils/apply-color-preference.js";
 import { exitGracefully } from "./utils/exit-gracefully.js";
-import { handleError } from "./utils/handle-error.js";
+import { handleError, handleUserError } from "./utils/handle-error.js";
+import { isExpectedUserError } from "./utils/is-expected-user-error.js";
 import { isJsonModeActive, writeJsonErrorReport } from "./utils/json-mode.js";
 import { normalizeHelpInvocation } from "./utils/normalize-help-command.js";
 import { reportErrorToSentry } from "./utils/report-error.js";
@@ -271,10 +272,18 @@ program
   // success path; error funnels flush via `reportErrorToSentry`.
   .then(() => flushSentry())
   .catch(async (error: unknown) => {
-    const sentryEventId = await reportErrorToSentry(error);
+    // Mirror the per-command policy at the top-level funnel: expected,
+    // user-actionable failures skip Sentry and render as a plain message
+    // (no "open a prefilled issue" block), so they don't become triage noise.
+    const isUserError = isExpectedUserError(error);
+    const sentryEventId = isUserError ? undefined : await reportErrorToSentry(error);
     if (isJsonModeActive()) {
       writeJsonErrorReport(error);
       process.exit(1);
+    }
+    if (isUserError) {
+      handleUserError(error);
+      return;
     }
     handleError(error, { sentryEventId });
   });

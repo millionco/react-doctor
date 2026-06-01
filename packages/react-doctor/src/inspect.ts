@@ -2,6 +2,7 @@ import { performance } from "node:perf_hooks";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import {
+  buildSkippedChecks,
   DEFAULT_SHOW_WARNINGS,
   filterDiagnosticsForSurface,
   highlighter,
@@ -358,22 +359,16 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       scanElapsedMilliseconds,
     } = input;
 
-    const skippedChecks: string[] = [];
-    if (didLintFail) skippedChecks.push("lint");
-    if (didDeadCodeFail) skippedChecks.push("dead-code");
+    const { skippedChecks, skippedCheckReasons } = buildSkippedChecks({
+      didLintFail,
+      lintFailureReason,
+      lintPartialFailures,
+      didDeadCodeFail,
+      deadCodeFailureReason,
+    });
     const hasSkippedChecks = skippedChecks.length > 0;
 
     const noScoreMessage = buildNoScoreMessage(options.noScore);
-
-    const skippedCheckReasons: Record<string, string> = {};
-    if (didLintFail && lintFailureReason !== null) {
-      skippedCheckReasons.lint = lintFailureReason;
-    } else if (lintPartialFailures.length > 0) {
-      skippedCheckReasons["lint:partial"] = lintPartialFailures.join("; ");
-    }
-    if (didDeadCodeFail && deadCodeFailureReason !== null) {
-      skippedCheckReasons["dead-code"] = deadCodeFailureReason;
-    }
 
     const buildResult = (): InspectResult => ({
       diagnostics: [...diagnostics],

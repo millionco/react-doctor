@@ -154,10 +154,24 @@ for (const bucket of fs.readdirSync(PLUGIN_RULES_ROOT, { withFileTypes: true }))
     if (!entry.isFile() || !entry.name.endsWith(".ts")) continue;
     const filePath = path.join(bucketDir, entry.name);
     const source = fs.readFileSync(filePath, "utf8");
+    // `[^(]*` tolerates an optional type argument with arbitrary nesting
+    // (e.g. `defineRule<Foo<Bar>>(`) and the no-generic `defineRule({` form,
+    // where the original `<[^>]+>` matcher silently failed and dropped the rule.
     const exportMatch = source.match(
-      /export\s+const\s+([A-Za-z_$][\w$]*)\s*=\s*defineRule\s*<[^>]+>\s*\(\s*\{/,
+      /export\s+const\s+([A-Za-z_$][\w$]*)\s*=\s*defineRule\b[^(]*\(\s*\{/,
     );
-    if (!exportMatch) continue;
+    if (!exportMatch) {
+      // Fail loudly if a file clearly declares a rule export but the scanner
+      // can't parse it — a silent `continue` would ship a registry missing
+      // the rule with no error.
+      if (/export\s+const\s+[A-Za-z_$][\w$]*\s*=\s*defineRule\b/.test(source)) {
+        console.error(
+          `Rule export present but unparseable by the registry scanner: ${path.relative(PACKAGE_ROOT, filePath)}`,
+        );
+        process.exit(1);
+      }
+      continue;
+    }
     const identifier = exportMatch[1];
     const idMatch = source.match(/^\s*id:\s*"([^"]+)",?\s*$/m);
     if (!idMatch) {

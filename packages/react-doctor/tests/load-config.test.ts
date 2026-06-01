@@ -280,6 +280,23 @@ describe("loadConfig", () => {
       const loaded = loadConfigWithSource(childDir);
       expect(loaded?.sourceDirectory).toBe(ancestorDir);
     });
+
+    it("does not inherit an ancestor config when the child config is unparseable", () => {
+      const ancestorDir = path.join(tempRootDirectory, "broken-child-ancestor");
+      const childDir = path.join(ancestorDir, "packages", "ui");
+      fs.mkdirSync(childDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(ancestorDir, "react-doctor.config.json"),
+        JSON.stringify({ rootDir: "apps/web" }),
+      );
+      fs.writeFileSync(path.join(childDir, "react-doctor.config.json"), "not valid json{{{");
+
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      clearConfigCache();
+      const loaded = loadConfigWithSource(childDir);
+      expect(loaded).toBeNull();
+      warnSpy.mockRestore();
+    });
   });
 
   describe("rootDir validation", () => {

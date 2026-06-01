@@ -1,6 +1,7 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import {
+  buildSkippedChecks,
   Config,
   DEFAULT_SHOW_WARNINGS,
   DeadCode,
@@ -30,30 +31,15 @@ import type {
   ScoreResult,
 } from "@react-doctor/core";
 
-const DEFAULT_LAYER = Layer.mergeAll(
-  Project.layerNode,
-  Config.layerNode,
-  DeadCode.layerNode,
-  Files.layerNode,
-  Git.layerNode,
-  Linter.layerOxlint,
-  LintPartialFailures.layerLive,
-  Progress.layerNoop,
-  Reporter.layerNoop,
-  Score.layerHttp,
-);
-
-const buildLayerWithConfigOverride = (
-  configOverride: ReactDoctorConfig,
-  resolvedDirectory: string,
-) =>
+// The production layer stack for the programmatic API. The only axis that
+// varies across calls is `Config`: with no override we load from disk
+// (`Config.layerNode`); with a per-project override the caller passes the
+// already-resolved `Config.layerOf(...)`. Every other service is identical,
+// so the stack is built once here rather than duplicated per variant.
+const buildDiagnoseLayer = (configLayer: typeof Config.layerNode = Config.layerNode) =>
   Layer.mergeAll(
     Project.layerNode,
-    Config.layerOf({
-      config: configOverride,
-      resolvedDirectory,
-      configSourceDirectory: null,
-    }),
+    configLayer,
     DeadCode.layerNode,
     Files.layerNode,
     Git.layerNode,
@@ -99,22 +85,7 @@ const outputToDiagnoseResult = (
     console.error("Lint failed:", output.lintFailureReason);
   }
 
-  // Mirror the CLI's skipped-check accounting (react-doctor/src/inspect.ts
-  // → finalizeAndRender) so programmatic consumers and toJsonReport() see
-  // a failed lint / dead-code pass instead of a false "all clear".
-  const skippedChecks: string[] = [];
-  if (output.didLintFail) skippedChecks.push("lint");
-  if (output.didDeadCodeFail) skippedChecks.push("dead-code");
-
-  const skippedCheckReasons: Record<string, string> = {};
-  if (output.didLintFail && output.lintFailureReason !== null) {
-    skippedCheckReasons.lint = output.lintFailureReason;
-  } else if (output.lintPartialFailures.length > 0) {
-    skippedCheckReasons["lint:partial"] = output.lintPartialFailures.join("; ");
-  }
-  if (output.didDeadCodeFail && output.deadCodeFailureReason !== null) {
-    skippedCheckReasons["dead-code"] = output.deadCodeFailureReason;
-  }
+  const { skippedChecks, skippedCheckReasons } = buildSkippedChecks(output);
 
   return {
     diagnostics: [...output.diagnostics],
@@ -135,7 +106,9 @@ export const diagnose = async (
   const program = buildInspectProgram(scanTarget, options);
 
   const output: InspectOutput = await Effect.runPromise(
-    restoreLegacyThrow(program.pipe(Effect.provide(DEFAULT_LAYER), Effect.provide(layerOtlp))),
+    restoreLegacyThrow(
+      program.pipe(Effect.provide(buildDiagnoseLayer()), Effect.provide(layerOtlp)),
+    ),
   );
 
   return outputToDiagnoseResult(output, globalThis.performance.now() - startTime);
@@ -169,8 +142,14 @@ const diagnoseProject = async (
 
     const layer =
       configOverride !== undefined
-        ? buildLayerWithConfigOverride(configOverride, scanTarget.resolvedDirectory)
-        : DEFAULT_LAYER;
+        ? buildDiagnoseLayer(
+            Config.layerOf({
+              config: configOverride,
+              resolvedDirectory: scanTarget.resolvedDirectory,
+              configSourceDirectory: null,
+            }),
+          )
+        : buildDiagnoseLayer();
 
     const output: InspectOutput = await Effect.runPromise(
       restoreLegacyThrow(program.pipe(Effect.provide(layer), Effect.provide(layerOtlp))),

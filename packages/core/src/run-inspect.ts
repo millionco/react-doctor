@@ -2,7 +2,6 @@ import path from "node:path";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Filter from "effect/Filter";
-import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
@@ -506,31 +505,3 @@ export const runInspect = <HooksR = never>(
       },
     }),
   );
-
-/**
- * Default layer stack for the production CLI / programmatic API:
- * real Node-side services for Project / Config / Files / Git / Linter /
- * DeadCode; HTTP for Score; noop Progress (the CLI overrides with
- * `Progress.layerOra(...)` for terminal feedback); the silent Reporter
- * (the orchestrator already returns the diagnostic array via
- * `Stream.runCollect`).
- *
- * Callers tweak by replacing individual layers: `--no-score` swaps
- * `Score.layerHttp` for `Score.layerOf(null)`; `--no-lint` swaps
- * `Linter.layerOxlint` for `Linter.layerOf([])`; `--no-dead-code`
- * swaps `DeadCode.layerNode` for `DeadCode.layerOf([])`; a caller
- * with a pre-loaded config swaps `Config.layerNode` for
- * `Config.layerOf(resolved)`.
- */
-export const layerInspectLive = Layer.mergeAll(
-  Project.layerNode,
-  Config.layerNode,
-  DeadCode.layerNode,
-  Files.layerNode,
-  Git.layerNode,
-  Linter.layerOxlint,
-  LintPartialFailures.layerLive,
-  Progress.layerNoop,
-  Reporter.layerNoop,
-  Score.layerHttp,
-);

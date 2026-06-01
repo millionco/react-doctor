@@ -25,17 +25,35 @@ interface LoadedReactDoctorConfig {
   sourceDirectory: string;
 }
 
-const loadConfigFromDirectory = (directory: string): LoadedReactDoctorConfig | null => {
+interface ConfigLookupResult {
+  // "found": a usable config was parsed in this directory.
+  // "absent": no react-doctor config exists in this directory.
+  // "invalid": a `react-doctor.config.json` is present but unparseable or
+  //   not a JSON object — an explicit-but-broken config that must NOT fall
+  //   through to an ancestor's config.
+  status: "found" | "absent" | "invalid";
+  loaded: LoadedReactDoctorConfig | null;
+}
+
+const loadConfigFromDirectory = (directory: string): ConfigLookupResult => {
   const configFilePath = path.join(directory, CONFIG_FILENAME);
 
+  // A present-but-unusable `react-doctor.config.json` still falls back to a
+  // `package.json` config in the SAME directory (same project), but the
+  // broken file is remembered so an ancestor repo's config never silently
+  // governs this project.
+  let sawBrokenConfigFile = false;
   if (isFile(configFilePath)) {
     try {
       const fileContent = fs.readFileSync(configFilePath, "utf-8");
       const parsed: unknown = JSON.parse(fileContent);
       if (isPlainObject(parsed)) {
         return {
-          config: validateConfigTypes(parsed as ReactDoctorConfig),
-          sourceDirectory: directory,
+          status: "found",
+          loaded: {
+            config: validateConfigTypes(parsed as ReactDoctorConfig),
+            sourceDirectory: directory,
+          },
         };
       }
       warn(`${CONFIG_FILENAME} must be a JSON object, ignoring.`);
@@ -44,6 +62,7 @@ const loadConfigFromDirectory = (directory: string): LoadedReactDoctorConfig | n
         `Failed to parse ${CONFIG_FILENAME}: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+    sawBrokenConfigFile = true;
   }
 
   const packageJsonPath = path.join(directory, "package.json");
@@ -55,17 +74,21 @@ const loadConfigFromDirectory = (directory: string): LoadedReactDoctorConfig | n
         const embeddedConfig = packageJson[PACKAGE_JSON_CONFIG_KEY];
         if (isPlainObject(embeddedConfig)) {
           return {
-            config: validateConfigTypes(embeddedConfig as ReactDoctorConfig),
-            sourceDirectory: directory,
+            status: "found",
+            loaded: {
+              config: validateConfigTypes(embeddedConfig as ReactDoctorConfig),
+              sourceDirectory: directory,
+            },
           };
         }
       }
     } catch {
-      return null;
+      // A malformed package.json is not our file to police; treat it as
+      // "no embedded config here" and keep resolving.
     }
   }
 
-  return null;
+  return { status: sawBrokenConfigFile ? "invalid" : "absent", loaded: null };
 };
 
 // HACK: `.git` exists either as a directory (regular repo) or a file
@@ -87,23 +110,26 @@ export const loadConfigWithSource = (rootDirectory: string): LoadedReactDoctorCo
   const cached = cachedConfigs.get(rootDirectory);
   if (cached !== undefined) return cached;
 
-  const localConfig = loadConfigFromDirectory(rootDirectory);
-  if (localConfig) {
-    cachedConfigs.set(rootDirectory, localConfig);
-    return localConfig;
+  const localResult = loadConfigFromDirectory(rootDirectory);
+  if (localResult.status === "found") {
+    cachedConfigs.set(rootDirectory, localResult.loaded);
+    return localResult.loaded;
   }
 
-  if (isProjectBoundary(rootDirectory)) {
+  // A present-but-unparseable config at the requested root is an explicit
+  // (broken) config. Stop here rather than walking up and silently governing
+  // this project with a parent repo's config.
+  if (localResult.status === "invalid" || isProjectBoundary(rootDirectory)) {
     cachedConfigs.set(rootDirectory, null);
     return null;
   }
 
   let ancestorDirectory = path.dirname(rootDirectory);
   while (ancestorDirectory !== path.dirname(ancestorDirectory)) {
-    const ancestorConfig = loadConfigFromDirectory(ancestorDirectory);
-    if (ancestorConfig) {
-      cachedConfigs.set(rootDirectory, ancestorConfig);
-      return ancestorConfig;
+    const ancestorResult = loadConfigFromDirectory(ancestorDirectory);
+    if (ancestorResult.status === "found") {
+      cachedConfigs.set(rootDirectory, ancestorResult.loaded);
+      return ancestorResult.loaded;
     }
     if (isProjectBoundary(ancestorDirectory)) {
       cachedConfigs.set(rootDirectory, null);

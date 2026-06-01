@@ -29,6 +29,7 @@ export * from "./build-rule-severity-controls.js";
 export * from "./batch-include-paths.js";
 export * from "./build-json-report-error.js";
 export * from "./build-json-report.js";
+export * from "./build-skipped-checks.js";
 export * from "./calculate-score.js";
 export * from "./can-oxlint-extend-config.js";
 export * from "./check-dead-code.js";

@@ -74,9 +74,8 @@ const buildSpinnerProgressHandle = (text: string): ProgressHandle => {
  * construction and post-scan rendering — layer wiring is its own
  * concern with its own contract.
  *
- * Same shape as `core/src/run-inspect.ts → layerInspectLive`
- * (the default for `@react-doctor/api → diagnose()`) with the
- * differences specific to the CLI path:
+ * Same service shape as `@react-doctor/api → diagnose()`'s
+ * `buildDiagnoseLayer`, with the differences specific to the CLI path:
  *
  * - **Config**: when the caller passes `configOverride`, the
  *   already-loaded config is provided via `Config.layerOf` instead

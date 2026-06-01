@@ -25,9 +25,15 @@ const CODING_AGENT_ENVIRONMENT_VALUES = {
   AGENT: ["amp", "goose"],
 } satisfies Record<(typeof CODING_AGENT_ENVIRONMENT_VALUE_VARIABLES)[number], readonly string[]>;
 
+// CI providers set `CI` to "true", "1", or "True"; treat any value that
+// isn't an explicit falsy marker as CI so `CI=1` isn't silently ignored.
+const FALSY_CI_FLAG_VALUES = new Set(["", "0", "false"]);
+const isCiFlagSet = (value: string | undefined): boolean =>
+  value !== undefined && !FALSY_CI_FLAG_VALUES.has(value.toLowerCase());
+
 export const isCiEnvironment = (): boolean =>
   CI_ENVIRONMENT_VARIABLES.some((envVariable) => Boolean(process.env[envVariable])) ||
-  process.env.CI === "true";
+  isCiFlagSet(process.env.CI);
 
 export const isCodingAgentEnvironment = (): boolean =>
   CODING_AGENT_ENVIRONMENT_VARIABLES.some((envVariable) => Boolean(process.env[envVariable])) ||

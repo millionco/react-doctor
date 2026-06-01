@@ -1,0 +1,25 @@
+.changeset/parallel-lint-workers.md
+  s_a76f5d83870f36::t_cae9cf139301fc 2
+.changeset/warnings-shown-by-default.md
+  s_a76f5d83870f36::t_8e734842863136 2
+.changeset/sentry-crash-reporting.md
+  s_a76f5d83870f36::t_84aee8387c3c86 2
+.changeset/cli-color-version-help.md
+  s_a76f5d83870f36::t_8c9e30b7e7c161 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "cfeea7f7e9901319b0d667e574e969c7568b5e3b",
+  "prompts": {},
+  "sessions": {
+    "s_a76f5d83870f36": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c8f80f53-43dd-4a6a-a01b-2e5e743a4406",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

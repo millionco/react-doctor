@@ -1,0 +1,93 @@
+packages/react-doctor/tests/apply-color-preference.test.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 1-87
+packages/react-doctor/tests/strip-unknown-cli-flags.test.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 56-76
+packages/core/src/run-inspect.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 51-53,387-392
+.changeset/cli-color-version-help.md
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 1-10
+packages/core/src/types/diagnose.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 19-20
+packages/react-doctor/src/cli/utils/diagnostic-grouping.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 1,48,56-77,84-91
+packages/react-doctor/tests/validate-mode-flags.test.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 20-29
+packages/core/src/utils/has-published-fix-recipe.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 6-7
+packages/core/src/constants.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 20-22,80-90,205-208
+packages/react-doctor/src/cli/utils/render-diagnostics.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 10,13,20,23,67-74,86-90,129-133,198-200,204,212-220,250,286-289,292-377,383-394,399-412,431-432,434,446-482,541-544,557-563,565-575,582-584
+packages/react-doctor/src/inspect.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 29-32,43,453,498
+.changeset/warnings-shown-by-default.md
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 1-5
+packages/core/tests/build-rule-docs-url.test.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 1-16
+.gitignore
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 7
+packages/core/src/build-diagnostic-pipeline.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 30-34,207-210
+packages/react-doctor/src/cli/utils/inspect-flags.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 12
+packages/react-doctor/tests/version-command.test.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 1-16
+packages/react-doctor/src/cli/utils/render-summary.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 3-8,34-39,46-60,62
+packages/core/src/index.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 70
+packages/core/src/merge-and-filter-diagnostics.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 7
+packages/react-doctor/src/cli/utils/constants.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 5-9
+packages/react-doctor/src/cli/utils/strip-unknown-cli-flags.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 1-2,14,21,26,50-57,64-71,75
+packages/core/src/highlighter.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 12-31
+packages/core/src/types/inspect.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 82-85
+packages/react-doctor/src/cli/utils/render-multi-project-summary.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 13,15,141,202
+packages/core/src/types/config.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 118-120,122
+packages/react-doctor/tests/normalize-help-command.test.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 1-38
+packages/react-doctor/src/cli/utils/write-diagnostics-directory.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 6,13
+packages/react-doctor/src/cli/utils/normalize-help-command.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 1-33
+packages/react-doctor/src/cli/commands/version.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 1-15
+packages/website/public/schema/config.json
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 56,141-144,240-249
+packages/core/src/utils/build-rule-docs-url.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 1-11
+packages/react-doctor/src/cli/utils/build-handoff-payload.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 1,4,17
+packages/react-doctor/tests/resolve-cli-inspect-options.test.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 58,81-89
+packages/react-doctor/src/instrument.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 19-22
+packages/react-doctor/src/cli/utils/apply-color-preference.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 1-45
+packages/react-doctor/src/cli/utils/validate-mode-flags.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 23-27
+packages/react-doctor/src/cli/utils/resolve-cli-inspect-options.ts
+  s_ae877f9b9baf3e::t_ee0c0db20b7792 22,24-26,37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "c43aa7765ef3e366becd5715b7e5b2f494d36f0d",
+  "prompts": {},
+  "sessions": {
+    "s_ae877f9b9baf3e": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "bd6866f8-3726-4c70-8caf-c792f2dd790c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

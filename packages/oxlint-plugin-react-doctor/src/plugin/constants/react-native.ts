@@ -80,6 +80,21 @@ export const LEGACY_EXPO_PACKAGE_REPLACEMENTS = new Map<string, string>([
   ["react-native-fast-image", "expo-image (drop-in with caching, placeholders, and crossfades)"],
 ]);
 
+// Expo's Universal UI (`@expo/ui`) entry points. The universal package
+// re-exports the platform-specific builds, so a component may be imported
+// from the root or from either platform subpath.
+// Ref: https://docs.expo.dev/versions/v56.0.0/sdk/ui/universal/
+export const EXPO_UI_MODULE_SOURCES = new Set([
+  "@expo/ui",
+  "@expo/ui/swift-ui",
+  "@expo/ui/jetpack-compose",
+]);
+
+// Universal UI's `ListItem` renders raw string children inside the native
+// headline text area, and its compound slot markers forward strings into
+// native text too — so raw text is safe inside it, unlike a core `<View>`.
+export const EXPO_UI_LIST_ITEM_COMPONENT = "ListItem";
+
 export const REACT_NATIVE_LIST_COMPONENTS = new Set([
   "FlatList",
   "SectionList",

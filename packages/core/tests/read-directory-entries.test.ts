@@ -27,10 +27,7 @@ describe("readDirectoryEntries", () => {
   });
 
   // A best-effort discovery crawl must skip directories it cannot enumerate
-  // rather than crash the scan (and report the environment to Sentry). Each
-  // case triggers a real `readdirSync` failure from the ignorable family;
-  // `EINVAL` (REACT-DOCTOR-N) shares the same Set-membership code path but is
-  // not portably reproducible from userland, so the family is covered here.
+  // rather than crash the scan (and report the environment to Sentry).
   it("returns no entries when the path does not exist (ENOENT)", () => {
     expect(readDirectoryEntries(path.join(temporaryRoot, "missing"))).toEqual([]);
   });
@@ -41,17 +38,26 @@ describe("readDirectoryEntries", () => {
 
     expect(readDirectoryEntries(path.join(filePath, "child"))).toEqual([]);
   });
-
-  it("returns no entries when the name is too long (ENAMETOOLONG)", () => {
-    expect(readDirectoryEntries(path.join(temporaryRoot, "n".repeat(300)))).toEqual([]);
-  });
-
-  it("returns no entries when the path loops through symlinks (ELOOP)", () => {
-    const firstLink = path.join(temporaryRoot, "first-link");
-    const secondLink = path.join(temporaryRoot, "second-link");
-    fs.symlinkSync(secondLink, firstLink);
-    fs.symlinkSync(firstLink, secondLink);
-
-    expect(readDirectoryEntries(path.join(firstLink, "child"))).toEqual([]);
-  });
 });
+
+// POSIX-only: Windows runners can't create symlinks without elevation and map
+// these filesystem limits to different error codes. `EINVAL` (REACT-DOCTOR-N)
+// shares the same Set-membership code path as `ELOOP`/`ENAMETOOLONG` but isn't
+// portably reproducible from userland, so the family is exercised here.
+describe.skipIf(process.platform === "win32")(
+  "readDirectoryEntries (POSIX filesystem limits)",
+  () => {
+    it("returns no entries when the name is too long (ENAMETOOLONG)", () => {
+      expect(readDirectoryEntries(path.join(temporaryRoot, "n".repeat(300)))).toEqual([]);
+    });
+
+    it("returns no entries when the path loops through symlinks (ELOOP)", () => {
+      const firstLink = path.join(temporaryRoot, "first-link");
+      const secondLink = path.join(temporaryRoot, "second-link");
+      fs.symlinkSync(secondLink, firstLink);
+      fs.symlinkSync(firstLink, secondLink);
+
+      expect(readDirectoryEntries(path.join(firstLink, "child"))).toEqual([]);
+    });
+  },
+);

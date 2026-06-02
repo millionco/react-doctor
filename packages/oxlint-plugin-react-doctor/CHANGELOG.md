@@ -1,5 +1,7 @@
 # oxlint-plugin-react-doctor
 
+## 0.2.18
+
 ## 0.2.17
 
 ## 0.2.16

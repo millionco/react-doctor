@@ -1,5 +1,32 @@
 # react-doctor
 
+## 0.2.18
+
+### Patch Changes
+
+- [#640](https://github.com/millionco/react-doctor/pull/640) [`b336f54`](https://github.com/millionco/react-doctor/commit/b336f54d664bf49e0c7b9575b7dcd374eebfd9c6) Thanks [@aidenybai](https://github.com/aidenybai)! - The interactive category breakdown now reveals issues one at a time — a category's errors before its warnings, top to bottom — instead of every count easing up in parallel, holds for a beat once it settles, and finally plays on monorepo (multi-project) scans too.
+
+  Previously the count-up only animated on single-project scans; the multi-project aggregate report rendered the breakdown (and the score projection) statically. Both now share the same interactive reveal, gated on the same real-TTY predicate, so a monorepo's report animates like a single project's. Small and medium breakdowns step one issue per frame; very large ones grow the per-step increment so the reveal still resolves quickly.
+
+- [#643](https://github.com/millionco/react-doctor/pull/643) [`0c8b797`](https://github.com/millionco/react-doctor/commit/0c8b797d18d7d8d0b347fbea0da111b38075eb5d) Thanks [@rayhanadev](https://github.com/rayhanadev)! - react-doctor no longer crashes when `git` isn't installed.
+
+  During a normal scan, diff auto-detection reads the current branch first. When the `git` binary couldn't be spawned (e.g. a bare container with no git on `PATH`), that best-effort read threw instead of degrading, crashing the scan and reporting an environment issue to Sentry (REACT-DOCTOR-F). It now degrades to "unknown branch" — matching how a non-zero `git` exit was already handled — so the scan continues without git context.
+
+- [#642](https://github.com/millionco/react-doctor/pull/642) [`2aa96f3`](https://github.com/millionco/react-doctor/commit/2aa96f39b56555722b7121569a5bbd9caa10dc44) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Expected, user-actionable failures are no longer reported to Sentry or rendered as crashes.
+
+  When react-doctor exits because of the user's project or invocation — not a bug — it now prints a clean, single-line message and exits non-zero, instead of the generic "Something went wrong, open a prefilled issue" block. These cases are also no longer sent to Sentry or counted in the alertable error-rate metric. This was flooding crash reporting with non-bugs from CI, coding agents, and sandboxes.
+
+  Covered cases:
+
+  - **No React / no project / missing path** — every project-discovery failure (`NoReactDependencyError`, `ProjectNotFoundError`, `PackageJsonNotFoundError`, `NotADirectoryError`, `AmbiguousProjectError`) is now treated as a clean user error (REACT-DOCTOR-1, -4, -6, -7). When the scan target simply doesn't exist on disk, the message now says the path doesn't exist instead of the misleading "Expected a package.json…" guidance.
+  - **CLI invocation mistakes** — a malformed `<file>:<line>` argument, mutually exclusive flags (e.g. `--yes` + `--full`), and an unknown `--project` name now render as clean errors (REACT-DOCTOR-B, -D, -G, -H).
+  - **Read-only config directory** — react-doctor no longer crashes when it can't create/read its global setup-prompt store on a locked-down or read-only filesystem; it degrades gracefully (REACT-DOCTOR-E).
+
+  The fix is enforced centrally in `reportErrorToSentry`, so the CLI entry point, `inspect`, and `install` all benefit.
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.2.18
+
 ## 0.2.17
 
 ### Patch Changes

@@ -1,4 +1,5 @@
 import {
+  EXPO_UI_LIST_ITEM_COMPONENT,
   RAW_TEXT_PREVIEW_MAX_CHARS,
   REACT_NATIVE_TEXT_COMPONENTS,
   REACT_NATIVE_TEXT_COMPONENT_KEYWORDS,
@@ -12,7 +13,7 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
 import { collectTextWrapperComponents } from "./utils/collect-text-wrapper-components.js";
-import { isExpoUiListItemElement } from "./utils/is-expo-ui-list-item-element.js";
+import { isExpoUiComponentElement } from "./utils/is-expo-ui-component-element.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -145,7 +146,9 @@ export const rnNoRawText = defineRule<Rule>({
         // markers render raw string children inside native text areas, so
         // string children are safe. Resolved via the import (not the name
         // heuristic) since `ListItem` is a common name in other libraries.
-        if (isExpoUiListItemElement(node.openingElement, node)) return;
+        if (isExpoUiComponentElement(node.openingElement, node, EXPO_UI_LIST_ITEM_COMPONENT)) {
+          return;
+        }
 
         // `Platform.OS === "web"` branches deliberately render web markup
         // (raw text, div/span trees, etc.) when the app is bundled by

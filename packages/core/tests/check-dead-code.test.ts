@@ -6,11 +6,20 @@ import { checkDeadCode } from "../src/check-dead-code.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-check-dead-code-"));
 
+interface SetupProjectOptions {
+  readonly dependencies?: Record<string, string>;
+  readonly devDependencies?: Record<string, string>;
+}
+
 afterAll(() => {
   fs.rmSync(tempRoot, { recursive: true, force: true });
 });
 
-const setupProject = (caseId: string, files: Record<string, string>): string => {
+const setupProject = (
+  caseId: string,
+  files: Record<string, string>,
+  options: SetupProjectOptions = {},
+): string => {
   const projectDirectory = path.join(tempRoot, caseId);
   fs.mkdirSync(projectDirectory, { recursive: true });
   fs.writeFileSync(
@@ -18,7 +27,8 @@ const setupProject = (caseId: string, files: Record<string, string>): string => 
     JSON.stringify({
       name: caseId,
       type: "module",
-      dependencies: { react: "^19.0.0" },
+      dependencies: { react: "^19.0.0", ...options.dependencies },
+      ...(options.devDependencies ? { devDependencies: options.devDependencies } : {}),
     }),
   );
   fs.writeFileSync(
@@ -80,6 +90,13 @@ const flaggedUnusedFiles = async (rootDirectory: string): Promise<string[]> =>
     .filter((diagnostic) => diagnostic.rule === "unused-file")
     .map((diagnostic) => diagnostic.filePath)
     .sort();
+
+const emptyWorkerResult = {
+  unusedFiles: [],
+  unusedExports: [],
+  unusedDependencies: [],
+  circularDependencies: [],
+};
 
 describe("checkDeadCode", () => {
   it("returns no diagnostics when the directory has no package.json", async () => {
@@ -182,6 +199,69 @@ describe("checkDeadCode", () => {
     expect(
       diagnostics.find((diagnostic) => diagnostic.rule === "circular-dependency")?.message,
     ).toContain("src/a.ts → src/b.ts");
+  });
+
+  it("passes Inertia page roots to the dead-code worker when Inertia is installed", async () => {
+    const directory = setupProject(
+      "inertia-worker-entry-patterns",
+      {
+        "src/index.ts": "export const used = 1;\n",
+      },
+      { dependencies: { "@inertiajs/react": "^2.0.0" } },
+    );
+    let capturedEntryPatterns: ReadonlyArray<string> = [];
+
+    await checkDeadCode({
+      rootDirectory: directory,
+      createWorker: (input) => {
+        capturedEntryPatterns = input.entryPatterns;
+        return { result: Promise.resolve(emptyWorkerResult) };
+      },
+    });
+
+    expect(capturedEntryPatterns).toContain("src/index.{ts,tsx,js,jsx}");
+    expect(capturedEntryPatterns).toContain("resources/js/Pages/**/*.{ts,tsx,js,jsx}");
+    expect(capturedEntryPatterns).toContain("resources/js/pages/**/*.{ts,tsx,js,jsx}");
+    expect(capturedEntryPatterns).toContain("src/Pages/**/*.{ts,tsx,js,jsx}");
+  });
+
+  it("does not flag Inertia pages as orphan files", async () => {
+    const directory = setupProject(
+      "inertia-pages",
+      {
+        "resources/js/app.tsx":
+          "import { createInertiaApp } from '@inertiajs/react';\n" +
+          "createInertiaApp({ resolve: (name) => name, setup: () => undefined });\n",
+        "resources/js/Pages/Home.tsx": "export default () => <main>Home</main>;\n",
+        "resources/js/pages/Settings.tsx": "export default () => <main>Settings</main>;\n",
+        "resources/js/components/Unused.tsx": "export const Unused = () => <div />;\n",
+      },
+      { dependencies: { "@inertiajs/react": "^2.0.0" } },
+    );
+
+    const flagged = await flaggedUnusedFiles(directory);
+    expect(flagged).not.toContain("resources/js/Pages/Home.tsx");
+    expect(flagged).not.toContain("resources/js/pages/Settings.tsx");
+    expect(flagged).toContain("resources/js/components/Unused.tsx");
+  });
+
+  it("does not flag RedwoodJS pages or layouts as orphan files", async () => {
+    const directory = setupProject(
+      "redwood-pages",
+      {
+        "web/src/Routes.tsx": "export const Routes = () => null;\n",
+        "web/src/pages/HomePage/HomePage.tsx": "export default () => <main>Home</main>;\n",
+        "web/src/layouts/MainLayout/MainLayout.tsx":
+          "export default ({ children }: { children: React.ReactNode }) => <>{children}</>;\n",
+        "web/src/components/Unused.tsx": "export const Unused = () => <div />;\n",
+      },
+      { dependencies: { "@redwoodjs/web": "^8.0.0" } },
+    );
+
+    const flagged = await flaggedUnusedFiles(directory);
+    expect(flagged).not.toContain("web/src/pages/HomePage/HomePage.tsx");
+    expect(flagged).not.toContain("web/src/layouts/MainLayout/MainLayout.tsx");
+    expect(flagged).toContain("web/src/components/Unused.tsx");
   });
 
   it("rejects malformed worker results instead of silently dropping diagnostics", async () => {

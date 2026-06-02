@@ -31,6 +31,7 @@ interface CheckDeadCodeOptions {
 interface DeadCodeWorkerInput {
   readonly rootDirectory: string;
   readonly tsConfigPath?: string;
+  readonly entryPatterns: ReadonlyArray<string>;
   readonly ignorePatterns: ReadonlyArray<string>;
   readonly deslopJsModuleSpecifier: string;
 }
@@ -42,6 +43,11 @@ interface DeadCodeWorkerHandle {
 
 interface DeadCodeWorkerFactory {
   (input: DeadCodeWorkerInput): DeadCodeWorkerHandle;
+}
+
+interface DeadCodeFrameworkEntryPatternGroup {
+  readonly dependencyNames: ReadonlyArray<string>;
+  readonly entryPatterns: ReadonlyArray<string>;
 }
 
 interface DeadCodeWorkerUnusedFile {
@@ -89,6 +95,46 @@ interface DeadCodeWorkerFailureMessage {
 }
 
 const TSCONFIG_FILENAMES = ["tsconfig.json", "tsconfig.base.json"];
+const DEFAULT_DEAD_CODE_ENTRY_PATTERNS = [
+  "src/index.{ts,tsx,js,jsx}",
+  "src/main.{ts,tsx,js,jsx}",
+  "index.{ts,tsx,js,jsx}",
+  "main.{ts,tsx,js,jsx}",
+];
+const DEAD_CODE_FRAMEWORK_ENTRY_PATTERN_GROUPS: ReadonlyArray<DeadCodeFrameworkEntryPatternGroup> =
+  [
+    {
+      dependencyNames: [
+        "@inertiajs/react",
+        "@inertiajs/inertia-react",
+        "@inertiajs/vue3",
+        "@inertiajs/inertia-vue3",
+        "@inertiajs/svelte",
+        "@inertiajs/inertia-svelte",
+        "@inertiajs/inertia",
+      ],
+      entryPatterns: [
+        "resources/js/app.{ts,tsx,js,jsx}",
+        "resources/js/App.{ts,tsx,js,jsx}",
+        "resources/js/Pages/**/*.{ts,tsx,js,jsx}",
+        "resources/js/pages/**/*.{ts,tsx,js,jsx}",
+        "src/app.{ts,tsx,js,jsx}",
+        "src/App.{ts,tsx,js,jsx}",
+        "src/Pages/**/*.{ts,tsx,js,jsx}",
+        "src/pages/**/*.{ts,tsx,js,jsx}",
+      ],
+    },
+    {
+      dependencyNames: ["@redwoodjs/router", "@redwoodjs/web"],
+      entryPatterns: [
+        "web/src/App.{ts,tsx,js,jsx}",
+        "web/src/Routes.{ts,tsx,js,jsx}",
+        "web/src/index.{ts,tsx,js,jsx}",
+        "web/src/layouts/**/*.{ts,tsx,js,jsx}",
+        "web/src/pages/**/*.{ts,tsx,js,jsx}",
+      ],
+    },
+  ];
 
 // Runs in a child PROCESS (node -e), not a worker_thread — see
 // `createDeadCodeWorker`. Reads the worker input as JSON on stdin and
@@ -135,6 +181,9 @@ process.stdin.on("end", () => {
       const config = {
         rootDir: workerInput.rootDirectory,
         ...(workerInput.tsConfigPath ? { tsConfigPath: workerInput.tsConfigPath } : {}),
+        ...(workerInput.entryPatterns.length > 0
+          ? { entryPatterns: workerInput.entryPatterns }
+          : {}),
         ...(workerInput.ignorePatterns.length > 0
           ? { ignorePatterns: workerInput.ignorePatterns }
           : {}),
@@ -172,6 +221,46 @@ const collectDeadCodeIgnorePatterns = (
     for (const pattern of source) seen.add(pattern);
   }
   return [...seen].filter((pattern) => pattern.length > 0);
+};
+
+const readPackageDependencyNames = (rootDirectory: string): Set<string> => {
+  const packageJsonPath = path.join(rootDirectory, "package.json");
+  const dependencyNames = new Set<string>();
+  if (!fs.existsSync(packageJsonPath)) return dependencyNames;
+
+  const parsedPackageJson: unknown = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+  if (!isRecord(parsedPackageJson)) return dependencyNames;
+
+  for (const fieldName of [
+    "dependencies",
+    "devDependencies",
+    "peerDependencies",
+    "optionalDependencies",
+  ]) {
+    const dependencies = parsedPackageJson[fieldName];
+    if (!isRecord(dependencies)) continue;
+    for (const [dependencyName, version] of Object.entries(dependencies)) {
+      if (typeof version === "string") dependencyNames.add(dependencyName);
+    }
+  }
+
+  return dependencyNames;
+};
+
+const buildDeadCodeEntryPatterns = (rootDirectory: string): string[] => {
+  const dependencyNames = readPackageDependencyNames(rootDirectory);
+  const entryPatterns = new Set<string>();
+
+  for (const group of DEAD_CODE_FRAMEWORK_ENTRY_PATTERN_GROUPS) {
+    const isEnabled = group.dependencyNames.some((dependencyName) =>
+      dependencyNames.has(dependencyName),
+    );
+    if (!isEnabled) continue;
+    for (const pattern of DEFAULT_DEAD_CODE_ENTRY_PATTERNS) entryPatterns.add(pattern);
+    for (const pattern of group.entryPatterns) entryPatterns.add(pattern);
+  }
+
+  return [...entryPatterns];
 };
 
 // HACK: route through `toRelativePath` (which normalizes backslashes to
@@ -451,6 +540,7 @@ export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diag
   const workerHandle = (options.createWorker ?? createDeadCodeWorker)({
     rootDirectory,
     tsConfigPath: resolveTsConfigPath(rootDirectory),
+    entryPatterns: buildDeadCodeEntryPatterns(rootDirectory),
     ignorePatterns,
     deslopJsModuleSpecifier: options.deslopJsModuleSpecifier ?? import.meta.resolve("deslop-js"),
   });

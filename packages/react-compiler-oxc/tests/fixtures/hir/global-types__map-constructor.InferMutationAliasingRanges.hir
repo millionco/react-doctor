@@ -1,0 +1,67 @@
+useHook(<unknown> #t0$26): <unknown> $25:TPrimitive
+bb0 (block):
+  [1] mutate? $29 = Destructure Let { el1: mutate? el1$27, el2: mutate? el2$28 } = read #t0$26
+    Create el1$27 = frozen
+    ImmutableCapture el1$27 <- #t0$26
+    Create el2$28 = frozen
+    ImmutableCapture el2$28 <- #t0$26
+    ImmutableCapture $29 <- #t0$26
+  [2] mutate? $30:TFunction<<generated_93>>():  :TObject<BuiltInMap> = LoadGlobal(global) Map
+    Create $30 = global
+  [3] mutate? $31[3:19]:TObject<BuiltInMap> = New read $30:TFunction<<generated_93>>():  :TObject<BuiltInMap>()
+    Create $31 = mutable
+  [4] store $33[4:19]:TObject<BuiltInMap> = StoreLocal Const store s$32[4:19]:TObject<BuiltInMap> = capture $31[3:19]:TObject<BuiltInMap>
+    Assign s$32 = $31
+    Assign $33 = $31
+  [5] store $34[5:19]:TObject<BuiltInMap> = LoadLocal capture s$32[4:19]:TObject<BuiltInMap>
+    Assign $34 = s$32
+  [6] store $35[6:19]:TFunction<<generated_33>>():  :TObject<BuiltInMap> = PropertyLoad capture $34[5:19]:TObject<BuiltInMap>.set
+    Create $35 = kindOf($34)
+  [7] mutate? $36 = LoadLocal read el1$27
+    ImmutableCapture $36 <- el1$27
+  [8] mutate? $37:TFunction = LoadGlobal import { makeArray } from 'shared-runtime'
+    Create $37 = global
+  [9] mutate? $38 = LoadLocal read el1$27
+    ImmutableCapture $38 <- el1$27
+  [10] store $39 = Call capture $37:TFunction(read $38)
+    Create $39 = mutable
+    MaybeAlias $39 <- $37
+    MaybeAlias $39 <- $37
+    ImmutableCapture $39 <- $38
+    ImmutableCapture $37 <- $38
+    ImmutableCapture $37 <- $38
+  [11] store $40[11:19]:TObject<BuiltInMap> = MethodCall store $34[5:19]:TObject<BuiltInMap>.read $35[6:19]:TFunction<<generated_33>>():  :TObject<BuiltInMap>(read $36, capture $39)
+    Create $40 = mutable
+    Alias $40 <- $34
+    Mutate $34
+    ImmutableCapture $34 <- $36
+    Capture $34 <- $39
+  [12] store $41[12:19]:TObject<BuiltInMap> = LoadLocal capture s$32[4:19]:TObject<BuiltInMap>
+    Assign $41 = s$32
+  [13] store $42[13:19]:TFunction<<generated_33>>():  :TObject<BuiltInMap> = PropertyLoad capture $41[12:19]:TObject<BuiltInMap>.set
+    Create $42 = kindOf($41)
+  [14] mutate? $43 = LoadLocal read el2$28
+    ImmutableCapture $43 <- el2$28
+  [15] mutate? $44:TFunction = LoadGlobal import { makeArray } from 'shared-runtime'
+    Create $44 = global
+  [16] mutate? $45 = LoadLocal read el2$28
+    ImmutableCapture $45 <- el2$28
+  [17] store $46 = Call capture $44:TFunction(read $45)
+    Create $46 = mutable
+    MaybeAlias $46 <- $44
+    MaybeAlias $46 <- $44
+    ImmutableCapture $46 <- $45
+    ImmutableCapture $44 <- $45
+    ImmutableCapture $44 <- $45
+  [18] store $47:TObject<BuiltInMap> = MethodCall store $41[12:19]:TObject<BuiltInMap>.read $42[13:19]:TFunction<<generated_33>>():  :TObject<BuiltInMap>(read $43, capture $46)
+    Create $47 = mutable
+    Alias $47 <- $41
+    Mutate $41
+    ImmutableCapture $41 <- $43
+    Capture $41 <- $46
+  [19] store $48:TObject<BuiltInMap> = LoadLocal capture s$32[4:19]:TObject<BuiltInMap>
+    Assign $48 = s$32
+  [20] mutate? $49:TPrimitive = PropertyLoad read $48:TObject<BuiltInMap>.size
+    Create $49 = primitive
+  [21] Return Explicit freeze $49:TPrimitive
+    Freeze $49 jsx-captured

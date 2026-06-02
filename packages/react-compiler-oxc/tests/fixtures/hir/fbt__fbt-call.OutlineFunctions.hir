@@ -1,0 +1,47 @@
+Component(<unknown> props$17:TObject<BuiltInProps>{reactive}): <unknown> $16:TObject<BuiltInJsx>
+bb0 (block):
+  [1] mutate? $18_@1[1:11]:TFunction = LoadGlobal import fbt from 'fbt'
+    Create $18_@1 = global
+  [2] mutate? $19 = LoadGlobal import fbt from 'fbt'
+    Create $19 = global
+  [3] mutate? $20_@0[3:8]:TFunction = PropertyLoad read $19.param
+    Create $20_@0 = global
+  [4] mutate? $21:TPrimitive = "(key) count"
+    Create $21 = primitive
+  [5] mutate? $22:TObject<BuiltInProps>{reactive} = LoadLocal read props$17:TObject<BuiltInProps>{reactive}
+    ImmutableCapture $22 <- props$17
+  [6] mutate? $23{reactive} = PropertyLoad read $22:TObject<BuiltInProps>{reactive}.count
+    Create $23 = frozen
+    ImmutableCapture $23 <- $22
+  [7] store $24_@1[1:11]{reactive} = MethodCall capture $19.capture $20_@0[3:8]:TFunction{reactive}(capture $21:TPrimitive, read $23{reactive})
+    Create $24_@1 = mutable
+    MaybeAlias $24_@1 <- $19
+    MaybeAlias $24_@1 <- $20_@0
+    MaybeAlias $24_@1 <- $21
+    ImmutableCapture $24_@1 <- $23
+    ImmutableCapture $19 <- $23
+    ImmutableCapture $20_@0 <- $23
+    ImmutableCapture $21 <- $23
+  [8] mutate? $25_@1[1:11]:TPrimitive{reactive} = `${read $24_@1[1:11]{reactive}} items`
+    Create $25_@1 = primitive
+  [9] mutate? $26_@1[1:11]:TPrimitive = "(description) Number of items"
+    Create $26_@1 = primitive
+  [10] store $27_@1[1:11]{reactive} = Call capture $18_@1[1:11]:TFunction(capture $25_@1[1:11]:TPrimitive{reactive}, capture $26_@1[1:11]:TPrimitive)
+    Create $27_@1 = mutable
+    MaybeAlias $27_@1 <- $18_@1
+    MaybeAlias $27_@1 <- $18_@1
+    MaybeAlias $27_@1 <- $25_@1
+    MaybeAlias $27_@1 <- $26_@1
+  [11] store $29{reactive} = StoreLocal Const store text$28{reactive} = capture $27_@1[1:11]{reactive}
+    Assign text$28 = $27_@1
+    Assign $29 = $27_@1
+  [12] store $30{reactive} = LoadLocal capture text$28{reactive}
+    Assign $30 = text$28
+  [13] mutate? $31_@2:TObject<BuiltInJsx>{reactive} = JSX <div>{freeze $30{reactive}}</div>
+    Create $31_@2 = frozen
+    Freeze $30 jsx-captured
+    ImmutableCapture $31_@2 <- $30
+    Render $30
+  [14] Return Explicit freeze $31_@2:TObject<BuiltInJsx>{reactive}
+    Freeze $31_@2 jsx-captured
+

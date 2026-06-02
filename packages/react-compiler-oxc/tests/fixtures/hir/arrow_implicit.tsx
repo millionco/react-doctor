@@ -1,0 +1,1 @@
+const arrow = () => 1;

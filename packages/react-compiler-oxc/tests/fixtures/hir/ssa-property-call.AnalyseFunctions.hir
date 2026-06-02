@@ -1,0 +1,14 @@
+foo(): <unknown> $14:TObject<BuiltInObject>
+bb0 (block):
+  [1] <unknown> $15:TObject<BuiltInArray> = Array []
+  [2] <unknown> $17:TObject<BuiltInArray> = StoreLocal Const <unknown> x$16:TObject<BuiltInArray> = <unknown> $15:TObject<BuiltInArray>
+  [3] <unknown> $18:TObject<BuiltInArray> = LoadLocal <unknown> x$16:TObject<BuiltInArray>
+  [4] <unknown> $19:TObject<BuiltInObject> = Object { x: <unknown> $18:TObject<BuiltInArray> }
+  [5] <unknown> $21:TObject<BuiltInObject> = StoreLocal Const <unknown> y$20:TObject<BuiltInObject> = <unknown> $19:TObject<BuiltInObject>
+  [6] <unknown> $22:TObject<BuiltInObject> = LoadLocal <unknown> y$20:TObject<BuiltInObject>
+  [7] <unknown> $23 = PropertyLoad <unknown> $22:TObject<BuiltInObject>.x
+  [8] <unknown> $24:TFunction = PropertyLoad <unknown> $23.push
+  [9] <unknown> $25:TObject<BuiltInArray> = Array []
+  [10] <unknown> $26 = MethodCall <unknown> $23.<unknown> $24:TFunction(<unknown> $25:TObject<BuiltInArray>)
+  [11] <unknown> $27:TObject<BuiltInObject> = LoadLocal <unknown> y$20:TObject<BuiltInObject>
+  [12] Return Explicit <unknown> $27:TObject<BuiltInObject>

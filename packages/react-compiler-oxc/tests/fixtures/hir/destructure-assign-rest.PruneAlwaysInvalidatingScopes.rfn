@@ -1,0 +1,10 @@
+function Component(
+  <unknown> props$14{reactive},
+) {
+  [1] mutate? $16 = DeclareLocal Let mutate? a$15
+  [2] mutate? $19{reactive} = LoadLocal read props$14{reactive}
+  [3] mutate? $22{reactive} = Destructure Const [ mutate? #t6$20{reactive} ] = read $19{reactive}
+  [4] mutate? $24{reactive} = StoreLocal Reassign mutate? a$23{reactive} = read #t6$20{reactive}
+  [5] mutate? $27{reactive} = LoadLocal read a$23{reactive}
+  [6] return freeze $27{reactive}
+}

@@ -1,0 +1,24 @@
+Component(<unknown> props$10:TObject<BuiltInProps>): <unknown> $9:TObject<BuiltInJsx>
+bb0 (block):
+  [1] <unknown> $11:TPrimitive = "x"
+    Create $11 = primitive
+  [2] <unknown> $12:TObject<BuiltInProps> = LoadLocal <unknown> props$10:TObject<BuiltInProps>
+    ImmutableCapture $12 <- props$10
+  [3] <unknown> $13 = PropertyLoad <unknown> $12:TObject<BuiltInProps>.handler
+    Create $13 = frozen
+    ImmutableCapture $13 <- $12
+  [4] <unknown> $14:TObject<BuiltInProps> = LoadLocal <unknown> props$10:TObject<BuiltInProps>
+    ImmutableCapture $14 <- props$10
+  [5] <unknown> $15 = PropertyLoad <unknown> $14:TObject<BuiltInProps>.child
+    Create $15 = frozen
+    ImmutableCapture $15 <- $14
+  [6] <unknown> $16:TPrimitive = JSXText "text"
+    Create $16 = primitive
+  [7] <unknown> $17:TObject<BuiltInJsx> = JSX <div className={<unknown> $11:TPrimitive} onClick={<unknown> $13} >{<unknown> $15}{<unknown> $16:TPrimitive}</div>
+    Create $17 = frozen
+    ImmutableCapture $17 <- $13
+    ImmutableCapture $17 <- $15
+    Render $15
+    Render $16
+  [8] Return Explicit <unknown> $17:TObject<BuiltInJsx>
+    Freeze $17 jsx-captured

@@ -1,0 +1,82 @@
+Component(<unknown> #t0$34:TObject<BuiltInProps>{reactive}): <unknown> $31:TObject<BuiltInJsx>
+bb0 (block):
+  [1] mutate? $37{reactive} = Destructure Const { a: mutate? a$35{reactive}, b: mutate? b$36{reactive} } = read #t0$34:TObject<BuiltInProps>{reactive}
+    Create a$35 = frozen
+    ImmutableCapture a$35 <- #t0$34
+    Create b$36 = frozen
+    ImmutableCapture b$36 <- #t0$34
+    ImmutableCapture $37 <- #t0$34
+  [2] mutate? $39{reactive} = StartMemoize deps=a$35,b$36
+    Create $39 = primitive
+  [3] mutate? $43{reactive} = LoadLocal read a$35{reactive}
+    ImmutableCapture $43 <- a$35
+  [4] Scope scope @0 [4:17] dependencies=[] declarations=[] reassignments=[] block=bb8 fallthrough=bb9
+bb8 (block):
+  predecessor blocks: bb0
+  [5] mutate? $44_@0[4:17]:TObject<BuiltInObject>{reactive} = Object { a: read $43{reactive} }
+    Create $44_@0 = mutable
+    ImmutableCapture $44_@0 <- $43
+  [6] store $45_@0[4:17]:TObject<BuiltInObject>{reactive} = LoadLocal capture $44_@0[4:17]:TObject<BuiltInObject>{reactive}
+    Assign $45_@0 = $44_@0
+  [7] mutate? $46{reactive} = FinishMemoize decl=read $45_@0[4:17]:TObject<BuiltInObject>{reactive}
+    Create $46 = primitive
+  [8] store $48_@0[4:17]:TObject<BuiltInObject>{reactive} = StoreLocal Const store x$47_@0[4:17]:TObject<BuiltInObject>{reactive} = capture $45_@0[4:17]:TObject<BuiltInObject>{reactive}
+    Assign x$47_@0 = $45_@0
+    Assign $48_@0 = $45_@0
+  [9] mutate? $49_@0[4:17]:TFunction = LoadGlobal import { identity } from 'shared-runtime'
+    Create $49_@0 = global
+  [10] store $50_@0[4:17]:TObject<BuiltInObject>{reactive} = LoadLocal capture x$47_@0[4:17]:TObject<BuiltInObject>{reactive}
+    Assign $50_@0 = x$47_@0
+  [11] store $51_@0[4:17]{reactive} = Call capture $49_@0[4:17]:TFunction{reactive}(capture $50_@0[4:17]:TObject<BuiltInObject>{reactive})
+    Create $51_@0 = mutable
+    MaybeAlias $51_@0 <- $49_@0
+    MaybeAlias $51_@0 <- $49_@0
+    MutateTransitiveConditionally $50_@0
+    MaybeAlias $51_@0 <- $50_@0
+  [12] store $53_@0[4:17]{reactive} = StoreLocal Const store x2$52_@0[4:17]{reactive} = capture $51_@0[4:17]{reactive}
+    Assign x2$52_@0 = $51_@0
+    Assign $53_@0 = $51_@0
+  [13] mutate? $54{reactive} = LoadLocal read b$36{reactive}
+    ImmutableCapture $54 <- b$36
+  [14] store $55_@0[4:17]{reactive} = LoadLocal capture x2$52_@0[4:17]{reactive}
+    Assign $55_@0 = x2$52_@0
+  [15] mutate? $56_@0[4:17]{reactive} = PropertyStore store $55_@0[4:17]{reactive}.b = read $54{reactive}
+    Mutate $55_@0
+    ImmutableCapture $55_@0 <- $54
+    Create $56_@0 = primitive
+  [16] Goto bb9
+bb9 (block):
+  predecessor blocks: bb8
+  [17] mutate? $57 = LoadGlobal import { ValidateMemoization } from 'shared-runtime'
+    Create $57 = global
+  [18] mutate? $58{reactive} = LoadLocal read a$35{reactive}
+    ImmutableCapture $58 <- a$35
+  [19] mutate? $59{reactive} = LoadLocal read b$36{reactive}
+    ImmutableCapture $59 <- b$36
+  [20] Scope scope @1 [20:23] dependencies=[] declarations=[] reassignments=[] block=bb10 fallthrough=bb11
+bb10 (block):
+  predecessor blocks: bb9
+  [21] mutate? $60_@1[20:23]:TObject<BuiltInArray>{reactive} = Array [read $58{reactive}, read $59{reactive}]
+    Create $60_@1 = mutable
+    ImmutableCapture $60_@1 <- $58
+    ImmutableCapture $60_@1 <- $59
+  [22] Goto bb11
+bb11 (block):
+  predecessor blocks: bb10
+  [23] store $61:TObject<BuiltInObject>{reactive} = LoadLocal capture x$47_@0[4:17]:TObject<BuiltInObject>{reactive}
+    Assign $61 = x$47_@0
+  [24] Scope scope @2 [24:27] dependencies=[] declarations=[] reassignments=[] block=bb12 fallthrough=bb13
+bb12 (block):
+  predecessor blocks: bb11
+  [25] mutate? $62_@2[24:27]:TObject<BuiltInJsx>{reactive} = JSX <read $57 inputs={freeze $60_@1[20:23]:TObject<BuiltInArray>{reactive}} output={freeze $61:TObject<BuiltInObject>{reactive}} />
+    Create $62_@2 = frozen
+    Freeze $60_@1 jsx-captured
+    ImmutableCapture $62_@2 <- $60_@1
+    Freeze $61 jsx-captured
+    ImmutableCapture $62_@2 <- $61
+    Render $57
+  [26] Goto bb13
+bb13 (block):
+  predecessor blocks: bb12
+  [27] Return Explicit freeze $62_@2[24:27]:TObject<BuiltInJsx>{reactive}
+    Freeze $62_@2 jsx-captured

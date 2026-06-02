@@ -1,0 +1,13 @@
+Component(<unknown> props$14): <unknown> $13
+bb0 (block):
+  [1] <unknown> $15:TFunction = LoadGlobal(global) Foo
+  [2] <unknown> $16 = LoadLocal <unknown> props$14
+  [3] <unknown> $17 = PropertyLoad <unknown> $16.foo
+  [4] <unknown> $18:TPrimitive = null
+  [5] <unknown> $19 = LoadLocal <unknown> props$14
+  [6] <unknown> $20 = PropertyLoad <unknown> $19.bar
+  [7] <unknown> $21:TObject<BuiltInArray> = Array [<unknown> $20]
+  [8] <unknown> $22 = New <unknown> $15:TFunction(...<unknown> $17, <unknown> $18:TPrimitive, ...<unknown> $21:TObject<BuiltInArray>)
+  [9] <unknown> $24 = StoreLocal Const <unknown> x$23 = <unknown> $22
+  [10] <unknown> $25 = LoadLocal <unknown> x$23
+  [11] Return Explicit <unknown> $25

@@ -1,0 +1,14 @@
+function MyApp(
+  <unknown> props$10{reactive},
+) {
+  [1] mutate? $13{reactive} = LoadLocal read props$10{reactive}
+  [2] mutate? $14{reactive} = PropertyLoad read $13{reactive}.cond
+  bb0: [3] if (read $14{reactive}) {
+    [4] mutate? $15:TPrimitive = <undefined>
+    [5] return freeze $15:TPrimitive
+  } else {
+    [6] break bb0 (implicit)
+  }
+  [7] mutate? $19:TPrimitive = <undefined>
+  [8] return freeze $19:TPrimitive
+}

@@ -1,0 +1,21 @@
+Component(<unknown> props$0): <unknown> $14
+bb0 (block):
+  [1] <unknown> $1 = UnsupportedNode TSEnumDeclaration
+  [2] <unknown> $2 = LoadGlobal(global) Bool
+  [3] <unknown> $3 = PropertyLoad <unknown> $2.False
+  [4] <unknown> $5 = StoreLocal Let <unknown> bool$4 = <unknown> $3
+  [5] <unknown> $9 = LoadLocal <unknown> props$0
+  [6] <unknown> $10 = PropertyLoad <unknown> $9.value
+  [7] If (<unknown> $10) then:bb2 else:bb1 fallthrough=bb1
+bb2 (block):
+  predecessor blocks: bb0
+  [8] <unknown> $6 = LoadGlobal(global) Bool
+  [9] <unknown> $7 = PropertyLoad <unknown> $6.True
+  [10] <unknown> $8 = StoreLocal Reassign <unknown> bool$4 = <unknown> $7
+  [11] Goto bb1
+bb1 (block):
+  predecessor blocks: bb2 bb0
+  [12] <unknown> $11 = LoadLocal <unknown> bool$4
+  [13] <unknown> $12 = JSX <div>{<unknown> $11}</div>
+  [14] Return Explicit <unknown> $12
+

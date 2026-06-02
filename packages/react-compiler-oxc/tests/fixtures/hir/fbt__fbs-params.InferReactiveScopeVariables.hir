@@ -1,0 +1,37 @@
+Component(<unknown> props$14:TObject<BuiltInProps>{reactive}): <unknown> $13:TObject<BuiltInJsx>
+bb0 (block):
+  [1] mutate? $15:TPrimitive = "Dialog to show to user"
+    Create $15 = primitive
+  [2] mutate? $16:TPrimitive = JSXText "\n          Hello "
+    Create $16 = primitive
+  [3] mutate? $17:TPrimitive = "fbs:param"
+    Create $17 = primitive
+  [4] mutate? $18:TPrimitive = "user name"
+    Create $18 = primitive
+  [5] mutate? $19:TObject<BuiltInProps>{reactive} = LoadLocal read props$14:TObject<BuiltInProps>{reactive}
+    ImmutableCapture $19 <- props$14
+  [6] mutate? $20{reactive} = PropertyLoad read $19:TObject<BuiltInProps>{reactive}.name
+    Create $20 = frozen
+    ImmutableCapture $20 <- $19
+  [7] mutate? $21_@0:TObject<BuiltInJsx>{reactive} = JSX <read $17:TPrimitive name={read $18:TPrimitive} >{read $20{reactive}}</read $17:TPrimitive>
+    Create $21_@0 = frozen
+    ImmutableCapture $21_@0 <- $20
+    Render $17
+    Render $20
+  [8] mutate? $22:TPrimitive = JSXText "\n        "
+    Create $22 = primitive
+  [9] mutate? $23_@1:TObject<BuiltInJsx>{reactive} = JSX <fbs desc={read $15:TPrimitive} >{read $16:TPrimitive}{read $21_@0:TObject<BuiltInJsx>{reactive}}{read $22:TPrimitive}</fbs>
+    Create $23_@1 = frozen
+    ImmutableCapture $23_@1 <- $21_@0
+    Render $16
+    Render $21_@0
+    Render $22
+  [10] mutate? $24:TPrimitive = JSXText "Hover me"
+    Create $24 = primitive
+  [11] mutate? $25_@2:TObject<BuiltInJsx>{reactive} = JSX <div title={read $23_@1:TObject<BuiltInJsx>{reactive}} >{read $24:TPrimitive}</div>
+    Create $25_@2 = frozen
+    ImmutableCapture $25_@2 <- $23_@1
+    Render $24
+  [12] Return Explicit freeze $25_@2:TObject<BuiltInJsx>{reactive}
+    Freeze $25_@2 jsx-captured
+

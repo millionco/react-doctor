@@ -1,0 +1,10 @@
+Component(<unknown> props$11): <unknown> $10:TObject<BuiltInJsx>
+bb0 (block):
+  [1] <unknown> $12:TFunction<<generated_100>>():  :TObject<BuiltInUseRefId> = LoadGlobal(global) useRef
+  [2] <unknown> $13:TPrimitive = null
+  [3] <unknown> $14:TObject<BuiltInUseRefId> = Call <unknown> $12:TFunction<<generated_100>>():  :TObject<BuiltInUseRefId>(<unknown> $13:TPrimitive)
+  [4] <unknown> $16:TObject<BuiltInUseRefId> = StoreLocal Const <unknown> ref$15:TObject<BuiltInUseRefId> = <unknown> $14:TObject<BuiltInUseRefId>
+  [5] <unknown> $17 = LoadGlobal(global) Foo
+  [6] <unknown> $18:TObject<BuiltInUseRefId> = LoadLocal <unknown> ref$15:TObject<BuiltInUseRefId>
+  [7] <unknown> $19:TObject<BuiltInJsx> = JSX <<unknown> $17 ref={<unknown> $18:TObject<BuiltInUseRefId>} />
+  [8] Return Explicit <unknown> $19:TObject<BuiltInJsx>

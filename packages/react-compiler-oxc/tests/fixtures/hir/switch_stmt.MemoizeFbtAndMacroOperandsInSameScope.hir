@@ -1,0 +1,25 @@
+Component(<unknown> x$7{reactive}): <unknown> $6
+bb0 (block):
+  [1] mutate? $8:TPrimitive = 1
+    Create $8 = primitive
+  [2] mutate? $9{reactive} = LoadLocal read x$7{reactive}
+    ImmutableCapture $9 <- x$7
+  [3] Switch (read $9{reactive})
+    Case read $8:TPrimitive: bb4
+    Default: bb2
+    Fallthrough: bb1
+bb4 (block):
+  predecessor blocks: bb0
+  [4] mutate? $10{reactive} = LoadLocal read x$7{reactive}
+    ImmutableCapture $10 <- x$7
+  [5] Return Explicit freeze $10{reactive}
+    Freeze $10 jsx-captured
+bb2 (block):
+  predecessor blocks: bb0
+  [6] mutate? $11{reactive} = LoadLocal read x$7{reactive}
+    ImmutableCapture $11 <- x$7
+  [7] Return Explicit freeze $11{reactive}
+    Freeze $11 jsx-captured
+bb1 (block):
+  [8] Unreachable
+

@@ -1,0 +1,43 @@
+Component(): <unknown> $15:TObject<BuiltInJsx>
+bb0 (block):
+  [1] mutate? $16:TFunction<DefaultMutatingHook>():  :TPoly = LoadGlobal(module) useTheme
+    Create $16 = global
+  [2] mutate? $17_@1[2:13]{reactive} = Call read $16:TFunction<DefaultMutatingHook>():  :TPoly()
+    Create $17_@1 = mutable
+  [3] store $19_@1[2:13]{reactive} = StoreLocal Const store theme$18_@1[2:13]{reactive} = capture $17_@1[2:13]{reactive}
+    Assign theme$18_@1 = $17_@1
+    Assign $19_@1 = $17_@1
+  [4] mutate? $20_@1[2:13]:TFunction = LoadGlobal(module) cx
+    Create $20_@1 = global
+  [5] mutate? $21_@1[2:13]:TPrimitive = true
+    Create $21_@1 = primitive
+  [6] store $22_@1[2:13]{reactive} = LoadLocal capture theme$18_@1[2:13]{reactive}
+    Assign $22_@1 = theme$18_@1
+  [7] store $23_@1[2:13]:TFunction{reactive} = PropertyLoad capture $22_@1[2:13]{reactive}.getTheme
+    Create $23_@1 = kindOf($22_@1)
+  [8] store $24_@1[2:13]{reactive} = MethodCall store $22_@1[2:13]{reactive}.capture $23_@1[2:13]:TFunction{reactive}()
+    Create $24_@1 = mutable
+    MutateTransitiveConditionally $22_@1
+    MaybeAlias $24_@1 <- $22_@1
+    Capture $23_@1 <- $22_@1
+    MaybeAlias $24_@1 <- $23_@1
+    Capture $22_@1 <- $23_@1
+  [9] mutate? $25_@1[2:13] = LoadGlobal(module) DARK
+    Create $25_@1 = global
+  [10] mutate? $26_@1[2:13]:TPrimitive{reactive} = Binary read $24_@1[2:13]{reactive} === read $25_@1[2:13]
+    Create $26_@1 = primitive
+  [11] mutate? $27_@1[2:13]:TObject<BuiltInObject>{reactive} = Object { "styles/light": read $21_@1[2:13]:TPrimitive, "styles/dark": read $26_@1[2:13]:TPrimitive{reactive} }
+    Create $27_@1 = mutable
+  [12] store $28_@1[2:13]{reactive} = Call capture $20_@1[2:13]:TFunction(capture $27_@1[2:13]:TObject<BuiltInObject>{reactive})
+    Create $28_@1 = mutable
+    MaybeAlias $28_@1 <- $20_@1
+    MaybeAlias $28_@1 <- $20_@1
+    MutateTransitiveConditionally $27_@1
+    MaybeAlias $28_@1 <- $27_@1
+  [13] mutate? $29_@2:TObject<BuiltInJsx>{reactive} = JSX <div className={freeze $28_@1[2:13]{reactive}} />
+    Create $29_@2 = frozen
+    Freeze $28_@1 jsx-captured
+    ImmutableCapture $29_@2 <- $28_@1
+  [14] Return Explicit freeze $29_@2:TObject<BuiltInJsx>{reactive}
+    Freeze $29_@2 jsx-captured
+

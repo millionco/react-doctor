@@ -1,0 +1,27 @@
+function Component(
+) {
+  scope @1 [1:4] dependencies=[] declarations=[$18_@1] reassignments=[] {
+    [2] mutate? $18_@1[1:4]:TObject<BuiltInObject> = Object {  }
+  }
+  [4] StoreLocal Const store x$19:TObject<BuiltInObject> = capture $18_@1[1:4]:TObject<BuiltInObject>
+  <pruned> scope @2 [5:13] dependencies=[] declarations=[] reassignments=[] {
+    [6] mutate? $21_@2[5:13]:TPrimitive = 56
+    [7] StoreContext Let read x_0$4_@2[5:13] = read $21_@2[5:13]:TPrimitive
+    [8] store $23_@2[5:13]:TFunction<BuiltInFunction>():  :TPrimitive = Function  @context[capture x_0$4_@2[5:13]] @aliasingEffects=[Mutate x_0$4_@2, Create $9 = primitive]
+            <<anonymous>>(): <unknown> $9:TPrimitive
+            bb1 (block):
+              [1] mutate? $24_@0[1:3]:TPrimitive = 42
+                Create $24_@0 = primitive
+              [2] mutate? $25 = StoreContext Reassign store x_0$4_@2[5:13] = read $24_@0[1:3]:TPrimitive
+                Mutate x_0$4_@2
+              [3] mutate? $26:TPrimitive = <undefined>
+                Create $26 = primitive
+              [4] Return Void read $26:TPrimitive
+    [9] StoreLocal Const store fn$27_@2[5:13]:TFunction<BuiltInFunction>():  :TPrimitive = capture $23_@2[5:13]:TFunction<BuiltInFunction>():  :TPrimitive
+    [10] store $29_@2[5:13]:TFunction<BuiltInFunction>():  :TPrimitive = LoadLocal capture fn$27_@2[5:13]:TFunction<BuiltInFunction>():  :TPrimitive
+    [11] Call mutate? $29_@2[5:13]:TFunction<BuiltInFunction>():  :TPrimitive()
+  }
+  [13] store $31:TObject<BuiltInObject> = LoadLocal capture x$19:TObject<BuiltInObject>
+  [14] return freeze $31:TObject<BuiltInObject>
+}
+

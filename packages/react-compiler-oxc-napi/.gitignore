@@ -1,0 +1,8 @@
+# Cargo build output.
+/target
+
+# Prebuilt native addons — produced per-platform in CI, not committed.
+*.node
+
+# rustfmt backups.
+**/*.rs.bk

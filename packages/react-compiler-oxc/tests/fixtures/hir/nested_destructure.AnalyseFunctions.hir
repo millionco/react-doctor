@@ -1,0 +1,7 @@
+Component(<unknown> props$11): <unknown> $10
+bb0 (block):
+  [1] <unknown> $12 = LoadLocal <unknown> props$11
+  [2] <unknown> $16 = Destructure Const { a: <unknown> a$13, b: <unknown> #t3$14, ...<unknown> rest$15 } = <unknown> $12
+  [3] <unknown> $18 = Destructure Const { c: <unknown> c$17 } = <unknown> #t3$14
+  [4] <unknown> $19 = LoadLocal <unknown> a$13
+  [5] Return Explicit <unknown> $19

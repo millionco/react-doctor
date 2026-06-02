@@ -1,0 +1,4 @@
+function Component(a) {
+  while (a) { break; }
+  return a;
+}

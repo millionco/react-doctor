@@ -1,0 +1,25 @@
+Component(<unknown> props$13): <unknown> $12:TFunction<BuiltInFunction>()
+bb0 (block):
+  [1] <unknown> $14 = DeclareContext Let <unknown> a$1
+    Create a$1 = mutable
+    Create $14 = primitive
+  [2] <unknown> $15 = LoadLocal <unknown> props$13
+    ImmutableCapture $15 <- props$13
+  [3] <unknown> $17 = Destructure Reassign [ <unknown> #t4$16 ] = <unknown> $15
+    Create #t4$16 = frozen
+    ImmutableCapture #t4$16 <- $15
+    ImmutableCapture $17 <- $15
+  [4] <unknown> $18 = StoreContext Reassign <unknown> a$1 = <unknown> #t4$16
+    Mutate a$1
+    ImmutableCapture a$1 <- #t4$16
+    ImmutableCapture $18 <- #t4$16
+  [5] <unknown> $19:TFunction<BuiltInFunction>() = Function  @context[capture a$1] @aliasingEffects=[Create $9 = mutable, Alias $9 <- a$1]
+      <<anonymous>>(): <unknown> $9
+      bb1 (block):
+        [1] store $20 = LoadContext capture a$1
+          Create $20 = kindOf(a$1)
+        [2] Return Implicit read $20
+    Function $19 = Function captures=[a$1]
+    Capture $19 <- a$1
+  [6] Return Explicit <unknown> $19:TFunction<BuiltInFunction>()
+    Freeze $19 jsx-captured

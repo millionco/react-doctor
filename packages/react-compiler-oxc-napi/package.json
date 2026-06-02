@@ -1,0 +1,51 @@
+{
+  "name": "@react-doctor/compiler-native",
+  "version": "0.1.0",
+  "description": "Native (Rust + oxc) reimplementation of babel-plugin-react-compiler's lint analyzer, exposed as the react-hooks-js oxlint/ESLint plugin.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/millionco/react-doctor.git",
+    "directory": "packages/react-compiler-oxc-napi"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "plugin.js",
+    "react-compiler-oxc.*.node"
+  ],
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "napi": {
+    "binaryName": "react-compiler-oxc",
+    "packageName": "@react-doctor/compiler-native",
+    "targets": [
+      "x86_64-apple-darwin",
+      "aarch64-apple-darwin",
+      "x86_64-unknown-linux-gnu",
+      "aarch64-unknown-linux-gnu",
+      "x86_64-pc-windows-msvc"
+    ]
+  },
+  "scripts": {
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform",
+    "artifacts": "napi artifacts",
+    "test": "vp test run"
+  },
+  "dependencies": {
+    "@babel/code-frame": "^7.29.0"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^3.0.0",
+    "eslint": "^9.39.2",
+    "eslint-plugin-react-hooks": "^7.1.1"
+  }
+}

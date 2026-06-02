@@ -1,0 +1,32 @@
+function Component(
+  <unknown> #t0$28:TObject<BuiltInProps>{reactive},
+) {
+  [1] Destructure Const { value: mutate? value$29{reactive} } = read #t0$28:TObject<BuiltInProps>{reactive}
+  [2] mutate? $31:TPrimitive = "foo"
+  <pruned> scope @0 [3:22] dependencies=[] declarations=[$47_@0] reassignments=[] {
+    [4] mutate? $32_@0[3:22]:TObject<BuiltInObject> = Object { value: read $31:TPrimitive }
+    [5] mutate? $33:TPrimitive = "bar"
+    [6] mutate? $34_@0[3:22]:TObject<BuiltInObject> = Object { value: read $33:TPrimitive }
+    [7] mutate? $35{reactive} = LoadLocal read value$29{reactive}
+    [8] mutate? $36_@0[3:22]:TObject<BuiltInObject>{reactive} = Object { value: read $35{reactive} }
+    [9] store $37_@0[3:22]:TObject<BuiltInArray>{reactive} = Array [capture $32_@0[3:22]:TObject<BuiltInObject>{reactive}, capture $34_@0[3:22]:TObject<BuiltInObject>{reactive}, capture $36_@0[3:22]:TObject<BuiltInObject>{reactive}]
+    [10] StoreLocal Const store arr$38_@0[3:22]:TObject<BuiltInArray>{reactive} = capture $37_@0[3:22]:TObject<BuiltInArray>{reactive}
+    [11] mutate? $40:TFunction<DefaultNonmutatingHook>():  :TPoly = LoadGlobal import { useIdentity } from 'shared-runtime'
+    [13] Call read $40:TFunction<DefaultNonmutatingHook>():  :TPoly()
+    [14] break bb0 (implicit)
+    [15] mutate? $42:TFunction<<generated_94>>():  :TObject<BuiltInSet> = LoadGlobal(global) Set
+    [16] store $43_@0[3:22]:TObject<BuiltInArray>{reactive} = LoadLocal capture arr$38_@0[3:22]:TObject<BuiltInArray>{reactive}
+    [17] store $44_@0[3:22]:TObject<BuiltInSet>{reactive} = New read $42:TFunction<<generated_94>>():  :TObject<BuiltInSet>(capture $43_@0[3:22]:TObject<BuiltInArray>{reactive})
+    [18] store $45[3:22]:TFunction<<generated_25>>():  :TPrimitive{reactive} = PropertyLoad capture $44_@0[3:22]:TObject<BuiltInSet>{reactive}.forEach
+    [19] mutate? $46 = LoadGlobal import { mutateAndReturn } from 'shared-runtime'
+    [20] mutate? $47:TPrimitive{reactive} = MethodCall mutate? $44_@0[3:22]:TObject<BuiltInSet>{reactive}.read $45[3:22]:TFunction<<generated_25>>():  :TPrimitive{reactive}(read $46)
+  }
+  [22] StoreLocal Const mutate? derived$48:TPrimitive{reactive} = read $47:TPrimitive{reactive}
+  [23] mutate? $50 = LoadGlobal import { Stringify } from 'shared-runtime'
+  [24] mutate? $51:TPrimitive{reactive} = LoadLocal read derived$48:TPrimitive{reactive}
+  scope @2 [25:31] dependencies=[derived$48:TPrimitive_7:25:7:32] declarations=[#t25$53_@3] reassignments=[] {
+    [26] mutate? $52_@2[25:31]:TObject<BuiltInArray>{reactive} = Array [...read $51:TPrimitive{reactive}]
+    [29] mutate? #t25$53_@3[28:31]:TObject<BuiltInJsx>{reactive} = JSX <read $50>{freeze $52_@2[25:31]:TObject<BuiltInArray>{reactive}}</read $50>
+  }
+  [31] return freeze #t25$53_@3[28:31]:TObject<BuiltInJsx>{reactive}
+}

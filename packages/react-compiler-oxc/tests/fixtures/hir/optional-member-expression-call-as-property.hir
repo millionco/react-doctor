@@ -1,0 +1,27 @@
+Component(<unknown> props$0): <unknown> $16
+bb0 (block):
+  [1] <unknown> $1 = LoadGlobal(global) makeObject
+  [2] <unknown> $2 = Call <unknown> $1()
+  [3] <unknown> $4 = StoreLocal Const <unknown> x$3 = <unknown> $2
+  [4] Optional (optional=true) test:bb4 fallthrough=bb1
+bb4 (value):
+  predecessor blocks: bb0
+  [5] <unknown> $8 = LoadLocal <unknown> x$3
+  [6] Branch (<unknown> $8) then:bb2 else:bb3 fallthrough:bb1
+bb2 (value):
+  predecessor blocks: bb4
+  [7] <unknown> $9 = LoadGlobal(global) foo
+  [8] <unknown> $10 = LoadLocal <unknown> props$0
+  [9] <unknown> $11 = PropertyLoad <unknown> $10.value
+  [10] <unknown> $12 = Call <unknown> $9(<unknown> $11)
+  [11] <unknown> $13 = ComputedLoad <unknown> $8[<unknown> $12]
+  [12] <unknown> $14 = StoreLocal Const <unknown> $5 = <unknown> $13
+  [13] Goto bb1
+bb3 (value):
+  predecessor blocks: bb4
+  [14] <unknown> $6 = <undefined>
+  [15] <unknown> $7 = StoreLocal Const <unknown> $5 = <unknown> $6
+  [16] Goto bb1
+bb1 (block):
+  predecessor blocks: bb2 bb3
+  [17] Return Explicit <unknown> $5

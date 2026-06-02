@@ -1,0 +1,16 @@
+Component(<unknown> props$17): <unknown> $16:TPrimitive
+bb0 (block):
+  [1] <unknown> $18:TPrimitive = 0
+  [2] <unknown> $20:TPrimitive = StoreLocal Let <unknown> n$19:TPrimitive = <unknown> $18:TPrimitive
+  [3] <unknown> $21:TPrimitive = 0
+  [4] <unknown> $22:TPrimitive = 5
+  [5] <unknown> $23:TPrimitive = 5
+  [6] <unknown> $25:TPrimitive = StoreLocal Reassign <unknown> n$24:TPrimitive = <unknown> $23:TPrimitive
+  [7] <unknown> $26:TPrimitive = 5
+  [8] <unknown> $27 = LoadLocal <unknown> props$17
+  [9] <unknown> $28:TPrimitive = PropertyLoad <unknown> $27.count
+  [10] <unknown> $29:TPrimitive = 1
+  [11] <unknown> $30:TPrimitive = Binary <unknown> $28:TPrimitive + <unknown> $29:TPrimitive
+  [12] <unknown> $31 = PropertyStore <unknown> $27.count = <unknown> $30:TPrimitive
+  [13] <unknown> $32:TPrimitive = 5
+  [14] Return Explicit <unknown> $32:TPrimitive

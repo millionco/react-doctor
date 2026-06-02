@@ -1,0 +1,12 @@
+Component(<unknown> props$13): <unknown> $12
+bb0 (block):
+  [1] <unknown> $14 = DeclareContext Let <unknown> a$1
+  [2] <unknown> $15 = LoadLocal <unknown> props$13
+  [3] <unknown> $17 = Destructure Reassign [ <unknown> #t4$16 ] = <unknown> $15
+  [4] <unknown> $18 = StoreContext Reassign <unknown> a$1 = <unknown> #t4$16
+  [5] <unknown> $19 = Function  @context[<unknown> a$1] @aliasingEffects=[]
+      <<anonymous>>(): <unknown> $9
+      bb1 (block):
+        [1] <unknown> $20 = LoadContext <unknown> a$1
+        [2] Return Implicit <unknown> $20
+  [6] Return Explicit <unknown> $19

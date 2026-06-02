@@ -1,0 +1,59 @@
+Component(): <unknown> $24:TObject<BuiltInArray>
+bb0 (block):
+  [1] mutate? $25:TPrimitive = 1
+    Create $25 = primitive
+  [2] mutate? $26:TPrimitive = 2
+    Create $26 = primitive
+  [3] mutate? $27:TPrimitive = 3
+    Create $27 = primitive
+  [4] mutate? $28_@0[4:12]:TObject<BuiltInArray> = Array [read $25:TPrimitive, read $26:TPrimitive, read $27:TPrimitive]
+    Create $28_@0 = mutable
+  [5] store $30_@0[4:12]:TObject<BuiltInArray> = StoreLocal Const store x$29_@0[4:12]:TObject<BuiltInArray> = capture $28_@0[4:12]:TObject<BuiltInArray>
+    Assign x$29_@0 = $28_@0
+    Assign $30_@0 = $28_@0
+  [6] mutate? $31_@1[6:19]:TObject<BuiltInArray> = Array []
+    Create $31_@1 = mutable
+  [7] store $33_@1[6:19]:TObject<BuiltInArray> = StoreLocal Const store ret$32_@1[6:19]:TObject<BuiltInArray> = capture $31_@1[6:19]:TObject<BuiltInArray>
+    Assign ret$32_@1 = $31_@1
+    Assign $33_@1 = $31_@1
+  [8] DoWhile loop=bb3 test=bb1 fallthrough=bb2
+bb3 (block):
+  predecessor blocks: bb0 bb1
+  [9] store $35_@0[4:12]:TObject<BuiltInArray> = LoadLocal capture x$29_@0[4:12]:TObject<BuiltInArray>
+    Assign $35_@0 = x$29_@0
+  [10] store $36_@0[4:12]:TFunction<<generated_2>>():  :TPoly = PropertyLoad capture $35_@0[4:12]:TObject<BuiltInArray>.pop
+    Create $36_@0 = kindOf($35_@0)
+  [11] store $37:TPrimitive = MethodCall store $35_@0[4:12]:TObject<BuiltInArray>.read $36_@0[4:12]:TFunction<<generated_2>>():  :TPoly()
+    Create $37 = mutable
+    Alias $37 <- $35_@0
+    Mutate $35_@0
+  [12] store $39:TPrimitive = StoreLocal Const store item$38:TPrimitive = capture $37:TPrimitive
+    Assign item$38 = $37
+    Assign $39 = $37
+  [13] store $41_@1[6:19]:TObject<BuiltInArray> = LoadLocal capture ret$32_@1[6:19]:TObject<BuiltInArray>
+    Assign $41_@1 = ret$32_@1
+  [14] store $42_@1[6:19]:TFunction<<generated_5>>():  :TPrimitive = PropertyLoad capture $41_@1[6:19]:TObject<BuiltInArray>.push
+    Create $42_@1 = kindOf($41_@1)
+  [15] store $43:TPrimitive = LoadLocal capture item$38:TPrimitive
+    Assign $43 = item$38
+  [16] mutate? $44:TPrimitive = 2
+    Create $44 = primitive
+  [17] mutate? $45:TPrimitive = Binary read $43:TPrimitive * read $44:TPrimitive
+    Create $45 = primitive
+  [18] mutate? $46:TPrimitive = MethodCall store $41_@1[6:19]:TObject<BuiltInArray>.read $42_@1[6:19]:TFunction<<generated_5>>():  :TPrimitive(read $45:TPrimitive)
+    Mutate $41_@1
+    Create $46 = primitive
+  [19] Goto(Continue) bb1
+bb1 (loop):
+  predecessor blocks: bb3
+  [20] store $47:TObject<BuiltInArray> = LoadLocal capture x$29_@0[4:12]:TObject<BuiltInArray>
+    Assign $47 = x$29_@0
+  [21] mutate? $48:TPrimitive = PropertyLoad read $47:TObject<BuiltInArray>.length
+    Create $48 = primitive
+  [22] Branch (read $48:TPrimitive) then:bb3 else:bb2 fallthrough:bb1
+bb2 (block):
+  predecessor blocks: bb1
+  [23] store $49:TObject<BuiltInArray> = LoadLocal capture ret$32_@1[6:19]:TObject<BuiltInArray>
+    Assign $49 = ret$32_@1
+  [24] Return Explicit freeze $49:TObject<BuiltInArray>
+    Freeze $49 jsx-captured

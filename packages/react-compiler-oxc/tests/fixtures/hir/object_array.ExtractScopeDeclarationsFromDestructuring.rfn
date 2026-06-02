@@ -1,0 +1,14 @@
+function Component(
+  <unknown> props$18{reactive},
+) {
+  [1] mutate? $19:TPrimitive = 1
+  [2] mutate? $20:TPrimitive = LoadGlobal(global) k
+  [3] mutate? $21:TPrimitive = 2
+  [4] mutate? $22 = LoadGlobal(global) rest
+  scope @0 [5:8] dependencies=[] declarations=[#t5$23_@0] reassignments=[] {
+    [6] mutate? #t5$23_@0[5:8]:TObject<BuiltInObject> = Object { a: read $19:TPrimitive, [read $20:TPrimitive]: read $21:TPrimitive, ...read $22 }
+  }
+  [8] StoreLocal Const store obj$24:TObject<BuiltInObject> = capture #t5$23_@0[5:8]:TObject<BuiltInObject>
+  [9] store $33:TObject<BuiltInObject> = LoadLocal capture obj$24:TObject<BuiltInObject>
+  [10] return freeze $33:TObject<BuiltInObject>
+}

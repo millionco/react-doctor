@@ -1,0 +1,82 @@
+Component(<unknown> props$0): <unknown> $27
+bb0 (block):
+  [1] Logical ?? test:bb2 fallthrough=bb1
+bb2 (value):
+  predecessor blocks: bb0
+  [2] Optional (optional=false) test:bb8 fallthrough=bb5
+bb8 (value):
+  predecessor blocks: bb2
+  [3] Optional (optional=true) test:bb11 fallthrough=bb9
+bb11 (value):
+  predecessor blocks: bb8
+  [4] Optional (optional=true) test:bb14 fallthrough=bb12
+bb14 (value):
+  predecessor blocks: bb11
+  [5] Optional (optional=true) test:bb17 fallthrough=bb15
+bb17 (value):
+  predecessor blocks: bb14
+  [6] Optional (optional=true) test:bb20 fallthrough=bb18
+bb20 (value):
+  predecessor blocks: bb17
+  [7] <unknown> $13 = LoadLocal <unknown> props$0
+  [8] Branch (<unknown> $13) then:bb19 else:bb7 fallthrough:bb18
+bb19 (value):
+  predecessor blocks: bb20
+  [9] <unknown> $14 = PropertyLoad <unknown> $13.items
+  [10] <unknown> $15 = StoreLocal Const <unknown> $12 = <unknown> $14
+  [11] Goto bb18
+bb18 (value):
+  predecessor blocks: bb19
+  [12] Branch (<unknown> $12) then:bb16 else:bb7 fallthrough:bb15
+bb16 (value):
+  predecessor blocks: bb18
+  [13] <unknown> $16 = PropertyLoad <unknown> $12.map
+  [14] <unknown> $17 = StoreLocal Const <unknown> $11 = <unknown> $16
+  [15] Goto bb15
+bb15 (value):
+  predecessor blocks: bb16
+  [16] Branch (<unknown> $11) then:bb13 else:bb7 fallthrough:bb12
+bb13 (value):
+  predecessor blocks: bb15
+  [17] <unknown> $18 = LoadGlobal(global) render
+  [18] <unknown> $19 = MethodCall <unknown> $12.<unknown> $11(<unknown> $18)
+  [19] <unknown> $20 = StoreLocal Const <unknown> $10 = <unknown> $19
+  [20] Goto bb12
+bb12 (value):
+  predecessor blocks: bb13
+  [21] Branch (<unknown> $10) then:bb10 else:bb7 fallthrough:bb9
+bb10 (value):
+  predecessor blocks: bb12
+  [22] <unknown> $21 = PropertyLoad <unknown> $10.filter
+  [23] <unknown> $22 = StoreLocal Const <unknown> $9 = <unknown> $21
+  [24] Goto bb9
+bb9 (value):
+  predecessor blocks: bb10
+  [25] Branch (<unknown> $9) then:bb6 else:bb7 fallthrough:bb5
+bb6 (value):
+  predecessor blocks: bb9
+  [26] <unknown> $23 = LoadGlobal(global) Boolean
+  [27] <unknown> $24 = MethodCall <unknown> $10.<unknown> $9(<unknown> $23)
+  [28] <unknown> $25 = StoreLocal Const <unknown> $6 = <unknown> $24
+  [29] Goto bb5
+bb7 (value):
+  predecessor blocks: bb9 bb12 bb15 bb18 bb20
+  [30] <unknown> $7 = <undefined>
+  [31] <unknown> $8 = StoreLocal Const <unknown> $6 = <unknown> $7
+  [32] Goto bb5
+bb5 (value):
+  predecessor blocks: bb6 bb7
+  [33] <unknown> $2 = LoadLocal <unknown> $6
+  [34] Branch (<unknown> $2) then:bb3 else:bb4 fallthrough:bb1
+bb3 (value):
+  predecessor blocks: bb5
+  [35] <unknown> $3 = StoreLocal Const <unknown> $1 = <unknown> $2
+  [36] Goto bb1
+bb4 (value):
+  predecessor blocks: bb5
+  [37] <unknown> $4 = Array []
+  [38] <unknown> $5 = StoreLocal Const <unknown> $1 = <unknown> $4
+  [39] Goto bb1
+bb1 (block):
+  predecessor blocks: bb3 bb4
+  [40] Return Explicit <unknown> $1

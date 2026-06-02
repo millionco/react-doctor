@@ -1,0 +1,52 @@
+useFoo(<unknown> #t0$0): <unknown> $56
+bb0 (block):
+  [1] <unknown> $2 = Destructure Let { propArr: <unknown> propArr$1 } = <unknown> #t0$0
+  [2] <unknown> $3 = LoadGlobal(global) Set
+  [3] <unknown> $4 = 1
+  [4] <unknown> $5 = 2
+  [5] <unknown> $6 = 3
+  [6] <unknown> $7 = Array [<unknown> $4, <unknown> $5, <unknown> $6]
+  [7] <unknown> $8 = New <unknown> $3(<unknown> $7)
+  [8] <unknown> $10 = StoreLocal Const <unknown> s1$9 = <unknown> $8
+  [9] <unknown> $11 = LoadLocal <unknown> s1$9
+  [10] <unknown> $12 = PropertyLoad <unknown> $11.add
+  [11] <unknown> $13 = LoadLocal <unknown> propArr$1
+  [12] <unknown> $14 = PropertyLoad <unknown> $13.0
+  [13] <unknown> $15 = MethodCall <unknown> $11.<unknown> $12(<unknown> $14)
+  [14] <unknown> $16 = LoadGlobal(global) Set
+  [15] <unknown> $17 = LoadGlobal(module) MODULE_LOCAL
+  [16] <unknown> $18 = PropertyLoad <unknown> $17.values
+  [17] <unknown> $19 = MethodCall <unknown> $17.<unknown> $18()
+  [18] <unknown> $20 = New <unknown> $16(<unknown> $19)
+  [19] <unknown> $22 = StoreLocal Const <unknown> s2$21 = <unknown> $20
+  [20] <unknown> $23 = LoadLocal <unknown> s2$21
+  [21] <unknown> $24 = PropertyLoad <unknown> $23.add
+  [22] <unknown> $25 = LoadLocal <unknown> propArr$1
+  [23] <unknown> $26 = PropertyLoad <unknown> $25.1
+  [24] <unknown> $27 = MethodCall <unknown> $23.<unknown> $24(<unknown> $26)
+  [25] <unknown> $28 = LoadGlobal(global) Set
+  [26] <unknown> $29 = LoadLocal <unknown> s2$21
+  [27] <unknown> $30 = PropertyLoad <unknown> $29.values
+  [28] <unknown> $31 = MethodCall <unknown> $29.<unknown> $30()
+  [29] <unknown> $32 = New <unknown> $28(<unknown> $31)
+  [30] <unknown> $34 = StoreLocal Const <unknown> s3$33 = <unknown> $32
+  [31] <unknown> $35 = LoadLocal <unknown> s3$33
+  [32] <unknown> $36 = PropertyLoad <unknown> $35.add
+  [33] <unknown> $37 = LoadLocal <unknown> propArr$1
+  [34] <unknown> $38 = PropertyLoad <unknown> $37.2
+  [35] <unknown> $39 = MethodCall <unknown> $35.<unknown> $36(<unknown> $38)
+  [36] <unknown> $40 = LoadGlobal(global) Set
+  [37] <unknown> $41 = LoadLocal <unknown> s3$33
+  [38] <unknown> $42 = New <unknown> $40(<unknown> $41)
+  [39] <unknown> $44 = StoreLocal Const <unknown> s4$43 = <unknown> $42
+  [40] <unknown> $45 = LoadLocal <unknown> s4$43
+  [41] <unknown> $46 = PropertyLoad <unknown> $45.add
+  [42] <unknown> $47 = LoadLocal <unknown> propArr$1
+  [43] <unknown> $48 = PropertyLoad <unknown> $47.3
+  [44] <unknown> $49 = MethodCall <unknown> $45.<unknown> $46(<unknown> $48)
+  [45] <unknown> $50 = LoadLocal <unknown> s1$9
+  [46] <unknown> $51 = LoadLocal <unknown> s2$21
+  [47] <unknown> $52 = LoadLocal <unknown> s3$33
+  [48] <unknown> $53 = LoadLocal <unknown> s4$43
+  [49] <unknown> $54 = Array [<unknown> $50, <unknown> $51, <unknown> $52, <unknown> $53]
+  [50] Return Explicit <unknown> $54

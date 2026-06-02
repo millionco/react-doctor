@@ -1,0 +1,18 @@
+function Component(
+  <unknown> n$10{reactive},
+) {
+  bb0: [1] for (
+    Sequence
+        [2] mutate? $11:TPrimitive = 0
+        [3] StoreLocal Const mutate? i$12:TPrimitive = read $11:TPrimitive
+        [3] <undefined>
+    ;
+    0
+    ;
+    0
+  ) {
+    [7] continue bb0 (implicit)
+  }
+  [10] mutate? $19{reactive} = LoadLocal read n$10{reactive}
+  [11] return freeze $19{reactive}
+}

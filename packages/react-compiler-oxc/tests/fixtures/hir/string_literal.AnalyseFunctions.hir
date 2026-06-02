@@ -1,0 +1,4 @@
+Component(): <unknown> $2:TPrimitive
+bb0 (block):
+  [1] <unknown> $3:TPrimitive = "hi"
+  [2] Return Explicit <unknown> $3:TPrimitive

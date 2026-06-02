@@ -1,0 +1,55 @@
+Component(): <unknown> $15:TObject<BuiltInJsx>
+bb0 (block):
+  [1] mutate? $16:TFunction<DefaultMutatingHook>():  :TPoly = LoadGlobal(module) useTheme
+    Create $16 = global
+  [2] Scope scope @1 [2:15] dependencies=[] declarations=[] reassignments=[] block=bb5 fallthrough=bb6
+bb5 (block):
+  predecessor blocks: bb0
+  [3] mutate? $17_@1[2:15]{reactive} = Call read $16:TFunction<DefaultMutatingHook>():  :TPoly()
+    Create $17_@1 = mutable
+  [4] store $19_@1[2:15]{reactive} = StoreLocal Const store theme$18_@1[2:15]{reactive} = capture $17_@1[2:15]{reactive}
+    Assign theme$18_@1 = $17_@1
+    Assign $19_@1 = $17_@1
+  [5] mutate? $20_@1[2:15]:TFunction = LoadGlobal(module) cx
+    Create $20_@1 = global
+  [6] mutate? $21_@1[2:15]:TPrimitive = true
+    Create $21_@1 = primitive
+  [7] store $22_@1[2:15]{reactive} = LoadLocal capture theme$18_@1[2:15]{reactive}
+    Assign $22_@1 = theme$18_@1
+  [8] store $23_@1[2:15]:TFunction{reactive} = PropertyLoad capture $22_@1[2:15]{reactive}.getTheme
+    Create $23_@1 = kindOf($22_@1)
+  [9] store $24_@1[2:15]{reactive} = MethodCall store $22_@1[2:15]{reactive}.capture $23_@1[2:15]:TFunction{reactive}()
+    Create $24_@1 = mutable
+    MutateTransitiveConditionally $22_@1
+    MaybeAlias $24_@1 <- $22_@1
+    Capture $23_@1 <- $22_@1
+    MaybeAlias $24_@1 <- $23_@1
+    Capture $22_@1 <- $23_@1
+  [10] mutate? $25_@1[2:15] = LoadGlobal(module) DARK
+    Create $25_@1 = global
+  [11] mutate? $26_@1[2:15]:TPrimitive{reactive} = Binary read $24_@1[2:15]{reactive} === read $25_@1[2:15]
+    Create $26_@1 = primitive
+  [12] mutate? $27_@1[2:15]:TObject<BuiltInObject>{reactive} = Object { "styles/light": read $21_@1[2:15]:TPrimitive, "styles/dark": read $26_@1[2:15]:TPrimitive{reactive} }
+    Create $27_@1 = mutable
+  [13] store $28_@1[2:15]{reactive} = Call capture $20_@1[2:15]:TFunction(capture $27_@1[2:15]:TObject<BuiltInObject>{reactive})
+    Create $28_@1 = mutable
+    MaybeAlias $28_@1 <- $20_@1
+    MaybeAlias $28_@1 <- $20_@1
+    MutateTransitiveConditionally $27_@1
+    MaybeAlias $28_@1 <- $27_@1
+  [14] Goto bb6
+bb6 (block):
+  predecessor blocks: bb5
+  [15] Scope scope @2 [15:18] dependencies=[] declarations=[] reassignments=[] block=bb7 fallthrough=bb8
+bb7 (block):
+  predecessor blocks: bb6
+  [16] mutate? $29_@2[15:18]:TObject<BuiltInJsx>{reactive} = JSX <div className={freeze $28_@1[2:15]{reactive}} />
+    Create $29_@2 = frozen
+    Freeze $28_@1 jsx-captured
+    ImmutableCapture $29_@2 <- $28_@1
+  [17] Goto bb8
+bb8 (block):
+  predecessor blocks: bb7
+  [18] Return Explicit freeze $29_@2[15:18]:TObject<BuiltInJsx>{reactive}
+    Freeze $29_@2 jsx-captured
+

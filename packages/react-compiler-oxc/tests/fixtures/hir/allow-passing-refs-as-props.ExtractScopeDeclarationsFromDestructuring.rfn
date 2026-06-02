@@ -1,0 +1,15 @@
+function Component(
+  <unknown> props$11{reactive},
+) {
+  [1] mutate? $12:TFunction<<generated_100>>():  :TObject<BuiltInUseRefId> = LoadGlobal(global) useRef
+  [2] mutate? $13:TPrimitive = null
+  [4] mutate? $14_@0[3:6]:TObject<BuiltInUseRefId> = Call read $12:TFunction<<generated_100>>():  :TObject<BuiltInUseRefId>(read $13:TPrimitive)
+  [5] break bb6 (implicit)
+  [6] StoreLocal Const store ref$15:TObject<BuiltInUseRefId> = capture $14_@0[3:6]:TObject<BuiltInUseRefId>
+  [7] mutate? $17 = LoadGlobal(global) Foo
+  [8] store $18:TObject<BuiltInUseRefId> = LoadLocal capture ref$15:TObject<BuiltInUseRefId>
+  scope @1 [9:12] dependencies=[] declarations=[#t8$19_@1] reassignments=[] {
+    [10] mutate? #t8$19_@1[9:12]:TObject<BuiltInJsx> = JSX <read $17 ref={freeze $18:TObject<BuiltInUseRefId>} />
+  }
+  [12] return freeze #t8$19_@1[9:12]:TObject<BuiltInJsx>
+}

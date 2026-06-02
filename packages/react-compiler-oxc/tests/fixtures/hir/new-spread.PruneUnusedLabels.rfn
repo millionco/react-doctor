@@ -1,0 +1,17 @@
+function Component(
+  <unknown> props$14{reactive},
+) {
+  [1] mutate? $15:TFunction = LoadGlobal(global) Foo
+  [2] mutate? $16{reactive} = LoadLocal read props$14{reactive}
+  [3] mutate? $17{reactive} = PropertyLoad read $16{reactive}.foo
+  [4] mutate? $18:TPrimitive = null
+  [5] mutate? $19{reactive} = LoadLocal read props$14{reactive}
+  [6] mutate? $20{reactive} = PropertyLoad read $19{reactive}.bar
+  scope @0 [7:11] dependencies=[props$14.bar_2:44:2:53, props$14.foo_2:23:2:32, $15:TFunction_2:16:2:19, $18:TPrimitive_2:34:2:38] declarations=[$22_@0] reassignments=[] {
+    [8] mutate? $21_@0[7:11]:TObject<BuiltInArray>{reactive} = Array [read $20{reactive}]
+    [9] store $22_@0[7:11]{reactive} = New capture $15:TFunction(...read $17{reactive}, capture $18:TPrimitive, ...store $21_@0[7:11]:TObject<BuiltInArray>{reactive})
+  }
+  [11] store $24{reactive} = StoreLocal Const store x$23{reactive} = capture $22_@0[7:11]{reactive}
+  [12] store $25{reactive} = LoadLocal capture x$23{reactive}
+  [13] return freeze $25{reactive}
+}

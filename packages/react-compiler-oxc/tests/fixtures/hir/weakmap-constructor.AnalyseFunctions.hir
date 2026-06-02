@@ -1,0 +1,45 @@
+Component(<unknown> #t0$51:TObject<BuiltInProps>): <unknown> $50:TObject<BuiltInJsx>
+bb0 (block):
+  [1] <unknown> $55 = Destructure Let { a: <unknown> a$52, b: <unknown> b$53, c: <unknown> c$54 } = <unknown> #t0$51:TObject<BuiltInProps>
+  [2] <unknown> $56:TFunction<<generated_95>>():  :TObject<BuiltInWeakMap> = LoadGlobal(global) WeakMap
+  [3] <unknown> $57:TObject<BuiltInWeakMap> = New <unknown> $56:TFunction<<generated_95>>():  :TObject<BuiltInWeakMap>()
+  [4] <unknown> $59:TObject<BuiltInWeakMap> = StoreLocal Const <unknown> map$58:TObject<BuiltInWeakMap> = <unknown> $57:TObject<BuiltInWeakMap>
+  [5] <unknown> $60:TObject<BuiltInWeakMap> = LoadLocal <unknown> map$58:TObject<BuiltInWeakMap>
+  [6] <unknown> $61:TFunction<<generated_44>>():  :TObject<BuiltInWeakMap> = PropertyLoad <unknown> $60:TObject<BuiltInWeakMap>.set
+  [7] <unknown> $62 = LoadLocal <unknown> a$52
+  [8] <unknown> $63:TPrimitive = 0
+  [9] <unknown> $64:TObject<BuiltInWeakMap> = MethodCall <unknown> $60:TObject<BuiltInWeakMap>.<unknown> $61:TFunction<<generated_44>>():  :TObject<BuiltInWeakMap>(<unknown> $62, <unknown> $63:TPrimitive)
+  [10] <unknown> $66:TObject<BuiltInWeakMap> = StoreLocal Const <unknown> mapAlias$65:TObject<BuiltInWeakMap> = <unknown> $64:TObject<BuiltInWeakMap>
+  [11] <unknown> $67:TObject<BuiltInWeakMap> = LoadLocal <unknown> mapAlias$65:TObject<BuiltInWeakMap>
+  [12] <unknown> $68:TFunction<<generated_44>>():  :TObject<BuiltInWeakMap> = PropertyLoad <unknown> $67:TObject<BuiltInWeakMap>.set
+  [13] <unknown> $69 = LoadLocal <unknown> c$54
+  [14] <unknown> $70:TPrimitive = 0
+  [15] <unknown> $71:TObject<BuiltInWeakMap> = MethodCall <unknown> $67:TObject<BuiltInWeakMap>.<unknown> $68:TFunction<<generated_44>>():  :TObject<BuiltInWeakMap>(<unknown> $69, <unknown> $70:TPrimitive)
+  [16] <unknown> $72:TObject<BuiltInWeakMap> = LoadLocal <unknown> map$58:TObject<BuiltInWeakMap>
+  [17] <unknown> $73:TFunction<<generated_43>>():  :TPrimitive = PropertyLoad <unknown> $72:TObject<BuiltInWeakMap>.has
+  [18] <unknown> $74 = LoadLocal <unknown> b$53
+  [19] <unknown> $75:TPrimitive = MethodCall <unknown> $72:TObject<BuiltInWeakMap>.<unknown> $73:TFunction<<generated_43>>():  :TPrimitive(<unknown> $74)
+  [20] <unknown> $77:TPrimitive = StoreLocal Const <unknown> hasB$76:TPrimitive = <unknown> $75:TPrimitive
+  [21] <unknown> $78 = LoadGlobal import { ValidateMemoization } from 'shared-runtime'
+  [22] <unknown> $79 = LoadLocal <unknown> a$52
+  [23] <unknown> $80 = LoadLocal <unknown> c$54
+  [24] <unknown> $81:TObject<BuiltInArray> = Array [<unknown> $79, <unknown> $80]
+  [25] <unknown> $82:TObject<BuiltInWeakMap> = LoadLocal <unknown> map$58:TObject<BuiltInWeakMap>
+  [26] <unknown> $83:TPrimitive = true
+  [27] <unknown> $84:TObject<BuiltInJsx> = JSX <<unknown> $78 inputs={<unknown> $81:TObject<BuiltInArray>} output={<unknown> $82:TObject<BuiltInWeakMap>} onlyCheckCompiled={<unknown> $83:TPrimitive} />
+  [28] <unknown> $85 = LoadGlobal import { ValidateMemoization } from 'shared-runtime'
+  [29] <unknown> $86 = LoadLocal <unknown> a$52
+  [30] <unknown> $87 = LoadLocal <unknown> c$54
+  [31] <unknown> $88:TObject<BuiltInArray> = Array [<unknown> $86, <unknown> $87]
+  [32] <unknown> $89:TObject<BuiltInWeakMap> = LoadLocal <unknown> mapAlias$65:TObject<BuiltInWeakMap>
+  [33] <unknown> $90:TPrimitive = true
+  [34] <unknown> $91:TObject<BuiltInJsx> = JSX <<unknown> $85 inputs={<unknown> $88:TObject<BuiltInArray>} output={<unknown> $89:TObject<BuiltInWeakMap>} onlyCheckCompiled={<unknown> $90:TPrimitive} />
+  [35] <unknown> $92 = LoadGlobal import { ValidateMemoization } from 'shared-runtime'
+  [36] <unknown> $93 = LoadLocal <unknown> b$53
+  [37] <unknown> $94:TObject<BuiltInArray> = Array [<unknown> $93]
+  [38] <unknown> $95:TPrimitive = LoadLocal <unknown> hasB$76:TPrimitive
+  [39] <unknown> $96:TObject<BuiltInArray> = Array [<unknown> $95:TPrimitive]
+  [40] <unknown> $97:TPrimitive = true
+  [41] <unknown> $98:TObject<BuiltInJsx> = JSX <<unknown> $92 inputs={<unknown> $94:TObject<BuiltInArray>} output={<unknown> $96:TObject<BuiltInArray>} onlyCheckCompiled={<unknown> $97:TPrimitive} />
+  [42] <unknown> $99:TObject<BuiltInJsx> = JsxFragment [<unknown> $84:TObject<BuiltInJsx>, <unknown> $91:TObject<BuiltInJsx>, <unknown> $98:TObject<BuiltInJsx>]
+  [43] Return Explicit <unknown> $99:TObject<BuiltInJsx>

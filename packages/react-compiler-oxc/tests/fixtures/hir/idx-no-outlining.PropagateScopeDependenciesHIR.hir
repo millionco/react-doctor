@@ -1,0 +1,54 @@
+Component(<unknown> props$17:TObject<BuiltInProps>{reactive}): <unknown> $16:TObject<BuiltInJsx>
+bb0 (block):
+  [1] Scope scope @1 [1:7] dependencies=[props$17:TObject<BuiltInProps>_6:24:6:29] declarations=[$25_@1] reassignments=[] block=bb7 fallthrough=bb8
+bb7 (block):
+  predecessor blocks: bb0
+  [2] mutate? $18_@1[1:7]:TFunction = LoadGlobal import idx from 'idx'
+    Create $18_@1 = global
+  [3] mutate? $19_@1[1:7]:TObject<BuiltInProps>{reactive} = LoadLocal read props$17:TObject<BuiltInProps>{reactive}
+    ImmutableCapture $19_@1 <- props$17
+  [4] mutate? $20_@1[1:7]:TFunction<BuiltInFunction>() = Function  @context[] @aliasingEffects=[Create $8 = mutable, Alias $8 <- _$21]
+      <<anonymous>>(<unknown> _$21): <unknown> $8
+      bb1 (block):
+        [1] store $22 = LoadLocal capture _$21
+          Assign $22 = _$21
+        [2] store $23 = PropertyLoad capture $22.group
+          Create $23 = kindOf($22)
+        [3] store $24 = PropertyLoad capture $23.label
+          Create $24 = kindOf($23)
+        [4] Return Implicit read $24
+    Function $20_@1 = Function captures=[]
+  [5] store $25_@1[1:7]{reactive} = Call capture $18_@1[1:7]:TFunction(read $19_@1[1:7]:TObject<BuiltInProps>{reactive}, read $20_@1[1:7]:TFunction<BuiltInFunction>())
+    Create $25_@1 = mutable
+    MaybeAlias $25_@1 <- $18_@1
+    MaybeAlias $25_@1 <- $18_@1
+    ImmutableCapture $25_@1 <- $19_@1
+    ImmutableCapture $18_@1 <- $19_@1
+    ImmutableCapture $18_@1 <- $19_@1
+    ImmutableCapture $20_@1 <- $19_@1
+    ImmutableCapture $25_@1 <- $20_@1
+    ImmutableCapture $18_@1 <- $20_@1
+    ImmutableCapture $18_@1 <- $20_@1
+    ImmutableCapture $19_@1 <- $20_@1
+  [6] Goto bb8
+bb8 (block):
+  predecessor blocks: bb7
+  [7] store $27{reactive} = StoreLocal Const store groupName$26{reactive} = capture $25_@1[1:7]{reactive}
+    Assign groupName$26 = $25_@1
+    Assign $27 = $25_@1
+  [8] store $28{reactive} = LoadLocal capture groupName$26{reactive}
+    Assign $28 = groupName$26
+  [9] Scope scope @2 [9:12] dependencies=[groupName$26_7:15:7:24] declarations=[$29_@2] reassignments=[] block=bb9 fallthrough=bb10
+bb9 (block):
+  predecessor blocks: bb8
+  [10] mutate? $29_@2[9:12]:TObject<BuiltInJsx>{reactive} = JSX <div>{freeze $28{reactive}}</div>
+    Create $29_@2 = frozen
+    Freeze $28 jsx-captured
+    ImmutableCapture $29_@2 <- $28
+    Render $28
+  [11] Goto bb10
+bb10 (block):
+  predecessor blocks: bb9
+  [12] Return Explicit freeze $29_@2[9:12]:TObject<BuiltInJsx>{reactive}
+    Freeze $29_@2 jsx-captured
+

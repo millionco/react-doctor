@@ -1,0 +1,33 @@
+Component(<unknown> props$13): <unknown> $12:TObject<BuiltInJsx>
+bb0 (block):
+  [1] mutate? $14[1:9]:TFunction = LoadGlobal(global) MaybeMutable
+    Create $14 = global
+  [2] store $15[2:9] = New capture $14[1:9]:TFunction()
+    Create $15 = mutable
+    MaybeAlias $15 <- $14
+    MaybeAlias $15 <- $14
+  [3] store $17[3:9] = StoreLocal Const store maybeMutable$16[3:9] = capture $15[2:9]
+    Assign maybeMutable$16 = $15
+    Assign $17 = $15
+  [4] mutate? $18 = LoadGlobal(global) Foo
+    Create $18 = global
+  [5] mutate? $19 = PropertyLoad read $18.Bar
+    Create $19 = global
+  [6] mutate? $20:TFunction = LoadGlobal(global) maybeMutate
+    Create $20 = global
+  [7] store $21[7:9] = LoadLocal capture maybeMutable$16[3:9]
+    Assign $21 = maybeMutable$16
+  [8] store $22 = Call capture $20:TFunction(capture $21[7:9])
+    Create $22 = mutable
+    MaybeAlias $22 <- $20
+    MaybeAlias $22 <- $20
+    MutateTransitiveConditionally $21
+    MaybeAlias $22 <- $21
+  [9] mutate? $23:TObject<BuiltInJsx> = JSX <read $19>{freeze $22}</read $19>
+    Create $23 = frozen
+    Freeze $22 jsx-captured
+    ImmutableCapture $23 <- $22
+    Render $19
+    Render $22
+  [10] Return Explicit freeze $23:TObject<BuiltInJsx>
+    Freeze $23 jsx-captured

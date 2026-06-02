@@ -1,0 +1,18 @@
+foo(<unknown> x$0, <unknown> y$1): <unknown> $12
+bb0 (block):
+  [1] <unknown> $6 = LoadLocal <unknown> x$0
+  [2] If (<unknown> $6) then:bb2 else:bb1 fallthrough=bb1
+bb2 (block):
+  predecessor blocks: bb0
+  [3] <unknown> $2 = LoadGlobal(module) foo
+  [4] <unknown> $3 = false
+  [5] <unknown> $4 = LoadLocal <unknown> y$1
+  [6] <unknown> $5 = Call <unknown> $2(<unknown> $3, <unknown> $4)
+  [7] Return Explicit <unknown> $5
+bb1 (block):
+  predecessor blocks: bb0
+  [8] <unknown> $7 = LoadLocal <unknown> y$1
+  [9] <unknown> $8 = 10
+  [10] <unknown> $9 = Binary <unknown> $7 * <unknown> $8
+  [11] <unknown> $10 = Array [<unknown> $9]
+  [12] Return Explicit <unknown> $10

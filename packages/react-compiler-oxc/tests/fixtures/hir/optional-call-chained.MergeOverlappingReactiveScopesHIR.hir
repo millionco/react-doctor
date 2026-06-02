@@ -1,0 +1,89 @@
+Component(<unknown> props$21{reactive}): <unknown> $20:TPhi
+bb0 (block):
+  [1] Optional (optional=true) test:bb4 fallthrough=bb1
+bb4 (value):
+  predecessor blocks: bb0
+  [2] Optional (optional=true) test:bb7 fallthrough=bb5
+bb7 (value):
+  predecessor blocks: bb4
+  [3] Optional (optional=true) test:bb10 fallthrough=bb8
+bb10 (value):
+  predecessor blocks: bb7
+  [4] mutate? $22_@0[1:26]:TFunction = LoadGlobal(global) call
+    Create $22_@0 = global
+  [5] Branch (read $22_@0[1:26]:TFunction{reactive}) then:bb9 else:bb3 fallthrough:bb8
+bb9 (value):
+  predecessor blocks: bb10
+  [6] mutate? $23{reactive} = LoadLocal read props$21{reactive}
+    ImmutableCapture $23 <- props$21
+  [7] mutate? $24{reactive} = PropertyLoad read $23{reactive}.a
+    Create $24 = frozen
+    ImmutableCapture $24 <- $23
+  [8] store $25_@0[1:26]:TFunction{reactive} = Call capture $22_@0[1:26]:TFunction{reactive}(read $24{reactive})
+    Create $25_@0 = mutable
+    MaybeAlias $25_@0 <- $22_@0
+    MaybeAlias $25_@0 <- $22_@0
+    ImmutableCapture $25_@0 <- $24
+    ImmutableCapture $22_@0 <- $24
+    ImmutableCapture $22_@0 <- $24
+  [9] store $27_@0[1:26]:TFunction{reactive} = StoreLocal Const store $26_@0[1:26]:TFunction{reactive} = capture $25_@0[1:26]:TFunction{reactive}
+    Assign $26_@0 = $25_@0
+    Assign $27_@0 = $25_@0
+  [10] Goto bb8
+bb8 (value):
+  predecessor blocks: bb9
+  [11] Branch (read $26_@0[1:26]:TFunction{reactive}) then:bb6 else:bb3 fallthrough:bb5
+bb6 (value):
+  predecessor blocks: bb8
+  [12] mutate? $28{reactive} = LoadLocal read props$21{reactive}
+    ImmutableCapture $28 <- props$21
+  [13] mutate? $29{reactive} = PropertyLoad read $28{reactive}.b
+    Create $29 = frozen
+    ImmutableCapture $29 <- $28
+  [14] store $30_@0[1:26]:TFunction{reactive} = Call capture $26_@0[1:26]:TFunction{reactive}(read $29{reactive})
+    Create $30_@0 = mutable
+    MutateTransitiveConditionally $26_@0
+    MaybeAlias $30_@0 <- $26_@0
+    MutateTransitiveConditionally $26_@0
+    MaybeAlias $30_@0 <- $26_@0
+    ImmutableCapture $30_@0 <- $29
+    ImmutableCapture $26_@0 <- $29
+    ImmutableCapture $26_@0 <- $29
+  [15] store $32_@0[1:26]:TFunction{reactive} = StoreLocal Const store $31_@0[1:26]:TFunction{reactive} = capture $30_@0[1:26]:TFunction{reactive}
+    Assign $31_@0 = $30_@0
+    Assign $32_@0 = $30_@0
+  [16] Goto bb5
+bb5 (value):
+  predecessor blocks: bb6
+  [17] Branch (read $31_@0[1:26]:TFunction{reactive}) then:bb2 else:bb3 fallthrough:bb1
+bb2 (value):
+  predecessor blocks: bb5
+  [18] mutate? $33{reactive} = LoadLocal read props$21{reactive}
+    ImmutableCapture $33 <- props$21
+  [19] mutate? $34{reactive} = PropertyLoad read $33{reactive}.c
+    Create $34 = frozen
+    ImmutableCapture $34 <- $33
+  [20] store $35_@0[1:26]{reactive} = Call capture $31_@0[1:26]:TFunction{reactive}(read $34{reactive})
+    Create $35_@0 = mutable
+    MutateTransitiveConditionally $31_@0
+    MaybeAlias $35_@0 <- $31_@0
+    MutateTransitiveConditionally $31_@0
+    MaybeAlias $35_@0 <- $31_@0
+    ImmutableCapture $35_@0 <- $34
+    ImmutableCapture $31_@0 <- $34
+    ImmutableCapture $31_@0 <- $34
+  [21] store $37{reactive} = StoreLocal Const store $36{reactive} = capture $35_@0[1:26]{reactive}
+    Assign $36 = $35_@0
+    Assign $37 = $35_@0
+  [22] Goto bb1
+bb3 (value):
+  predecessor blocks: bb5 bb8 bb10
+  [23] mutate? $38:TPrimitive = <undefined>
+    Create $38 = primitive
+  [24] mutate? $40:TPrimitive = StoreLocal Const mutate? $39:TPrimitive = read $38:TPrimitive
+  [25] Goto bb1
+bb1 (block):
+  predecessor blocks: bb2 bb3
+  store $41:TPhi{reactive}:TPhi: phi(bb2: read $36{reactive}, bb3: read $39:TPrimitive)
+  [26] Return Explicit freeze $41:TPhi{reactive}
+    Freeze $41 jsx-captured

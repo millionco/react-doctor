@@ -1,0 +1,19 @@
+Component(<unknown> props$0): <unknown> $21
+bb0 (block):
+  [1] <unknown> $1 = LoadLocal <unknown> props$0
+  [2] <unknown> $2 = PropertyLoad <unknown> $1.a
+  [3] <unknown> $4 = StoreLocal Const <unknown> x$3 = <unknown> $2
+  [4] <unknown> $5 = LoadGlobal(global) foo
+  [5] <unknown> $6 = LoadLocal <unknown> x$3
+  [6] <unknown> $7 = 1
+  [7] <unknown> $8 = Call <unknown> $5(<unknown> $6, <unknown> $7)
+  [8] <unknown> $10 = StoreLocal Const <unknown> y$9 = <unknown> $8
+  [9] <unknown> $11 = LoadGlobal(global) obj
+  [10] <unknown> $12 = PropertyLoad <unknown> $11.method
+  [11] <unknown> $13 = LoadLocal <unknown> x$3
+  [12] <unknown> $14 = MethodCall <unknown> $11.<unknown> $12(<unknown> $13)
+  [13] <unknown> $16 = StoreLocal Const <unknown> z$15 = <unknown> $14
+  [14] <unknown> $17 = LoadLocal <unknown> x$3
+  [15] <unknown> $18 = LoadLocal <unknown> y$9
+  [16] <unknown> $19 = Binary <unknown> $17 + <unknown> $18
+  [17] Return Explicit <unknown> $19

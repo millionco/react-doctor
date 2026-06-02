@@ -1,0 +1,10 @@
+Component(<unknown> props$10): <unknown> $9
+bb0 (block):
+  [1] <unknown> $11 = LoadGlobal import { use } from 'react'
+  [2] <unknown> $12 = LoadGlobal(module) FooContext
+  [3] <unknown> $13 = Call <unknown> $11(<unknown> $12)
+  [4] <unknown> $15 = StoreLocal Const <unknown> input$14 = <unknown> $13
+  [5] <unknown> $16 = LoadLocal <unknown> input$14
+  [6] <unknown> $17 = Array [<unknown> $16]
+  [7] Return Explicit <unknown> $17
+

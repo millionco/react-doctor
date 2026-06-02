@@ -1,0 +1,8 @@
+Component(): <unknown> $8
+bb0 (block):
+  [1] <unknown> $9 = true
+  [2] <unknown> $11 = StoreLocal Const <unknown> a$10 = <unknown> $9
+  [3] <unknown> $12 = null
+  [4] <unknown> $14 = StoreLocal Const <unknown> b$13 = <unknown> $12
+  [5] <unknown> $15 = true
+  [6] Return Explicit <unknown> $15

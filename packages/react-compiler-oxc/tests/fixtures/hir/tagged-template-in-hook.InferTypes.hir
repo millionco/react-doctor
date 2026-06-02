@@ -1,0 +1,17 @@
+Component(<unknown> props$13:TObject<BuiltInProps>): <unknown> $12:TObject<BuiltInMixedReadonly>
+bb0 (block):
+  [1] <unknown> $14:TFunction<<generated_116>>():  :TObject<BuiltInMixedReadonly> = LoadGlobal import { useFragment } from 'shared-runtime'
+  [2] <unknown> $15:TFunction = LoadGlobal(global) graphql
+  [3] <unknown> $16 = <unknown> $15:TFunction`
+      fragment F on User {
+        name
+      }
+    `
+  [4] <unknown> $17:TObject<BuiltInProps> = LoadLocal <unknown> props$13:TObject<BuiltInProps>
+  [5] <unknown> $18 = PropertyLoad <unknown> $17:TObject<BuiltInProps>.user
+  [6] <unknown> $19:TObject<BuiltInMixedReadonly> = Call <unknown> $14:TFunction<<generated_116>>():  :TObject<BuiltInMixedReadonly>(<unknown> $16, <unknown> $18)
+  [7] <unknown> $21:TObject<BuiltInMixedReadonly> = StoreLocal Const <unknown> user$20:TObject<BuiltInMixedReadonly> = <unknown> $19:TObject<BuiltInMixedReadonly>
+  [8] <unknown> $22:TObject<BuiltInMixedReadonly> = LoadLocal <unknown> user$20:TObject<BuiltInMixedReadonly>
+  [9] <unknown> $23:TObject<BuiltInMixedReadonly> = PropertyLoad <unknown> $22:TObject<BuiltInMixedReadonly>.name
+  [10] Return Explicit <unknown> $23:TObject<BuiltInMixedReadonly>
+

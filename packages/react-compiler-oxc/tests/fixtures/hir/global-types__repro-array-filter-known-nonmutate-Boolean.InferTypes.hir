@@ -1,0 +1,31 @@
+Component(<unknown> #t0$34:TObject<BuiltInProps>): <unknown> $33:TObject<BuiltInJsx>
+bb0 (block):
+  [1] <unknown> $36 = Destructure Let { value: <unknown> value$35 } = <unknown> #t0$34:TObject<BuiltInProps>
+  [2] <unknown> $37:TPrimitive = "foo"
+  [3] <unknown> $38:TObject<BuiltInObject> = Object { value: <unknown> $37:TPrimitive }
+  [4] <unknown> $39:TPrimitive = "bar"
+  [5] <unknown> $40:TObject<BuiltInObject> = Object { value: <unknown> $39:TPrimitive }
+  [6] <unknown> $41 = LoadLocal <unknown> value$35
+  [7] <unknown> $42:TObject<BuiltInObject> = Object { value: <unknown> $41 }
+  [8] <unknown> $43:TObject<BuiltInArray> = Array [<unknown> $38:TObject<BuiltInObject>, <unknown> $40:TObject<BuiltInObject>, <unknown> $42:TObject<BuiltInObject>]
+  [9] <unknown> $45:TObject<BuiltInArray> = StoreLocal Const <unknown> arr$44:TObject<BuiltInArray> = <unknown> $43:TObject<BuiltInArray>
+  [10] <unknown> $46:TFunction<DefaultNonmutatingHook>():  :TPoly = LoadGlobal import { useIdentity } from 'shared-runtime'
+  [11] <unknown> $47:TPrimitive = null
+  [12] <unknown> $48 = Call <unknown> $46:TFunction<DefaultNonmutatingHook>():  :TPoly(<unknown> $47:TPrimitive)
+  [13] <unknown> $49:TObject<BuiltInArray> = LoadLocal <unknown> arr$44:TObject<BuiltInArray>
+  [14] <unknown> $50:TFunction<<generated_9>>():  :TObject<BuiltInArray> = PropertyLoad <unknown> $49:TObject<BuiltInArray>.filter
+  [15] <unknown> $51:TFunction<<generated_82>>():  :TPrimitive = LoadGlobal(global) Boolean
+  [16] <unknown> $52:TObject<BuiltInArray> = MethodCall <unknown> $49:TObject<BuiltInArray>.<unknown> $50:TFunction<<generated_9>>():  :TObject<BuiltInArray>(<unknown> $51:TFunction<<generated_82>>():  :TPrimitive)
+  [17] <unknown> $54:TObject<BuiltInArray> = StoreLocal Const <unknown> derived$53:TObject<BuiltInArray> = <unknown> $52:TObject<BuiltInArray>
+  [18] <unknown> $55 = LoadGlobal import { Stringify } from 'shared-runtime'
+  [19] <unknown> $56:TObject<BuiltInArray> = LoadLocal <unknown> derived$53:TObject<BuiltInArray>
+  [20] <unknown> $57:TFunction<<generated_3>>():  :TPoly = PropertyLoad <unknown> $56:TObject<BuiltInArray>.at
+  [21] <unknown> $58:TPrimitive = 0
+  [22] <unknown> $59 = MethodCall <unknown> $56:TObject<BuiltInArray>.<unknown> $57:TFunction<<generated_3>>():  :TPoly(<unknown> $58:TPrimitive)
+  [23] <unknown> $60:TObject<BuiltInArray> = LoadLocal <unknown> derived$53:TObject<BuiltInArray>
+  [24] <unknown> $61:TFunction<<generated_3>>():  :TPoly = PropertyLoad <unknown> $60:TObject<BuiltInArray>.at
+  [25] <unknown> $62:TPrimitive = 1
+  [26] <unknown> $63:TPrimitive = -1
+  [27] <unknown> $64 = MethodCall <unknown> $60:TObject<BuiltInArray>.<unknown> $61:TFunction<<generated_3>>():  :TPoly(<unknown> $63:TPrimitive)
+  [28] <unknown> $65:TObject<BuiltInJsx> = JSX <<unknown> $55>{<unknown> $59}{<unknown> $64}</<unknown> $55>
+  [29] Return Explicit <unknown> $65:TObject<BuiltInJsx>

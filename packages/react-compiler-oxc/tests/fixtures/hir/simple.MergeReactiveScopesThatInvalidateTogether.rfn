@@ -1,0 +1,22 @@
+function foo(
+  <unknown> x$13{reactive},
+  <unknown> y$14:TPrimitive{reactive},
+) {
+  [1] mutate? $15{reactive} = LoadLocal read x$13{reactive}
+  bb1: [2] if (read $15{reactive}) {
+    [3] mutate? $16:TFunction = LoadGlobal(module) foo
+    [4] mutate? $17:TPrimitive = false
+    [5] mutate? $18:TPrimitive{reactive} = LoadLocal read y$14:TPrimitive{reactive}
+    scope @0 [6:9] dependencies=[y$14:TPrimitive_3:22:3:23] declarations=[$19_@0] reassignments=[] {
+      [7] store $19_@0[6:9]{reactive} = Call capture $16:TFunction(capture $17:TPrimitive, read $18:TPrimitive{reactive})
+    }
+    [9] return freeze $19_@0[6:9]{reactive}
+  }
+  [10] mutate? $20:TPrimitive{reactive} = LoadLocal read y$14:TPrimitive{reactive}
+  [11] mutate? $21:TPrimitive = 10
+  [12] mutate? $22:TPrimitive{reactive} = Binary read $20:TPrimitive{reactive} * read $21:TPrimitive
+  scope @1 [13:16] dependencies=[$22:TPrimitive_5:10:5:16] declarations=[$23_@1] reassignments=[] {
+    [14] mutate? $23_@1[13:16]:TObject<BuiltInArray>{reactive} = Array [read $22:TPrimitive{reactive}]
+  }
+  [16] return freeze $23_@1[13:16]:TObject<BuiltInArray>{reactive}
+}

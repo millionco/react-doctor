@@ -1,0 +1,29 @@
+MyApp(<unknown> props$10): <unknown> $9:TPrimitive
+bb0 (block):
+  [1] <unknown> $12 = DeclareLocal Let <unknown> res$11
+    Create res$11 = primitive
+    Create $12 = primitive
+  [2] <unknown> $13 = LoadLocal <unknown> props$10
+    ImmutableCapture $13 <- props$10
+  [3] <unknown> $14 = PropertyLoad <unknown> $13.cond
+    Create $14 = frozen
+    ImmutableCapture $14 <- $13
+  [4] If (<unknown> $14) then:bb2 else:bb4 fallthrough=bb1
+bb2 (block):
+  predecessor blocks: bb0
+  [5] <unknown> $15:TPrimitive = <undefined>
+    Create $15 = primitive
+  [6] Return Explicit <unknown> $15:TPrimitive
+    Freeze $15 jsx-captured
+bb4 (block):
+  predecessor blocks: bb0
+  [7] <unknown> $16:TPrimitive = 1
+    Create $16 = primitive
+  [8] <unknown> $18:TPrimitive = StoreLocal Reassign <unknown> res$17:TPrimitive = <unknown> $16:TPrimitive
+  [9] Goto bb1
+bb1 (block):
+  predecessor blocks: bb4
+  [10] <unknown> $19:TPrimitive = <undefined>
+    Create $19 = primitive
+  [11] Return Void <unknown> $19:TPrimitive
+    Freeze $19 jsx-captured

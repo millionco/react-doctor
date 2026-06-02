@@ -1,0 +1,13 @@
+foo(): <unknown> $13:TObject<BuiltInObject>
+bb0 (block):
+  [1] <unknown> $14:TObject<BuiltInObject> = Object {  }
+  [2] <unknown> $16:TObject<BuiltInObject> = StoreLocal Const <unknown> x$15:TObject<BuiltInObject> = <unknown> $14:TObject<BuiltInObject>
+  [3] <unknown> $17:TFunction = LoadGlobal(module) foo
+  [4] <unknown> $18:TObject<BuiltInObject> = LoadLocal <unknown> x$15:TObject<BuiltInObject>
+  [5] <unknown> $19 = Call <unknown> $17:TFunction(<unknown> $18:TObject<BuiltInObject>)
+  [6] <unknown> $21 = StoreLocal Const <unknown> y$20 = <unknown> $19
+  [7] <unknown> $22 = LoadLocal <unknown> y$20
+  [8] <unknown> $23:TFunction = PropertyLoad <unknown> $22.mutate
+  [9] <unknown> $24 = MethodCall <unknown> $22.<unknown> $23:TFunction()
+  [10] <unknown> $25:TObject<BuiltInObject> = LoadLocal <unknown> x$15:TObject<BuiltInObject>
+  [11] Return Explicit <unknown> $25:TObject<BuiltInObject>

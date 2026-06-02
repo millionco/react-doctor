@@ -1,0 +1,45 @@
+Component(<unknown> props$15:TObject<BuiltInProps>{reactive}): <unknown> $14:TObject<BuiltInJsx>
+bb0 (block):
+  [1] Scope scope @0 [1:4] dependencies=[] declarations=[] reassignments=[] block=bb7 fallthrough=bb8
+bb7 (block):
+  predecessor blocks: bb0
+  [2] mutate? $16_@0[1:4] = UnsupportedNode TSEnumDeclaration
+    Create $16_@0 = primitive
+  [3] Goto bb8
+bb8 (block):
+  predecessor blocks: bb7
+  [4] mutate? $17 = LoadGlobal(global) Bool
+    Create $17 = global
+  [5] mutate? $18 = PropertyLoad read $17.False
+    Create $18 = global
+  [6] mutate? $20 = StoreLocal Let mutate? bool$19 = read $18
+  [7] mutate? $21:TObject<BuiltInProps>{reactive} = LoadLocal read props$15:TObject<BuiltInProps>{reactive}
+    ImmutableCapture $21 <- props$15
+  [8] mutate? $22{reactive} = PropertyLoad read $21:TObject<BuiltInProps>{reactive}.value
+    Create $22 = frozen
+    ImmutableCapture $22 <- $21
+  [9] If (read $22{reactive}) then:bb2 else:bb1 fallthrough=bb1
+bb2 (block):
+  predecessor blocks: bb8
+  [10] mutate? $23 = LoadGlobal(global) Bool
+    Create $23 = global
+  [11] mutate? $24 = PropertyLoad read $23.True
+    Create $24 = global
+  [12] mutate? $26 = StoreLocal Reassign mutate? bool$25 = read $24
+  [13] Goto bb1
+bb1 (block):
+  predecessor blocks: bb2 bb8
+  store bool$27:TPhi{reactive}:TPhi: phi(bb2: read bool$25, bb8: read bool$19)
+  [14] mutate? $28:TPhi{reactive} = LoadLocal read bool$27:TPhi{reactive}
+  [15] Scope scope @1 [15:18] dependencies=[] declarations=[] reassignments=[] block=bb9 fallthrough=bb10
+bb9 (block):
+  predecessor blocks: bb1
+  [16] mutate? $29_@1[15:18]:TObject<BuiltInJsx>{reactive} = JSX <div>{read $28:TPhi{reactive}}</div>
+    Create $29_@1 = frozen
+    Render $28
+  [17] Goto bb10
+bb10 (block):
+  predecessor blocks: bb9
+  [18] Return Explicit freeze $29_@1[15:18]:TObject<BuiltInJsx>{reactive}
+    Freeze $29_@1 jsx-captured
+

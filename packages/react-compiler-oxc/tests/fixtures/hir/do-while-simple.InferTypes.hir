@@ -1,0 +1,32 @@
+Component(): <unknown> $24:TObject<BuiltInArray>
+bb0 (block):
+  [1] <unknown> $25:TPrimitive = 1
+  [2] <unknown> $26:TPrimitive = 2
+  [3] <unknown> $27:TPrimitive = 3
+  [4] <unknown> $28:TObject<BuiltInArray> = Array [<unknown> $25:TPrimitive, <unknown> $26:TPrimitive, <unknown> $27:TPrimitive]
+  [5] <unknown> $30:TObject<BuiltInArray> = StoreLocal Let <unknown> x$29:TObject<BuiltInArray> = <unknown> $28:TObject<BuiltInArray>
+  [6] <unknown> $31:TObject<BuiltInArray> = Array []
+  [7] <unknown> $33:TObject<BuiltInArray> = StoreLocal Let <unknown> ret$32:TObject<BuiltInArray> = <unknown> $31:TObject<BuiltInArray>
+  [8] DoWhile loop=bb3 test=bb1 fallthrough=bb2
+bb3 (block):
+  predecessor blocks: bb0 bb1
+  [9] <unknown> $35:TObject<BuiltInArray> = LoadLocal <unknown> x$29:TObject<BuiltInArray>
+  [10] <unknown> $36:TFunction<<generated_2>>():  :TPoly = PropertyLoad <unknown> $35:TObject<BuiltInArray>.pop
+  [11] <unknown> $37:TPrimitive = MethodCall <unknown> $35:TObject<BuiltInArray>.<unknown> $36:TFunction<<generated_2>>():  :TPoly()
+  [12] <unknown> $39:TPrimitive = StoreLocal Let <unknown> item$38:TPrimitive = <unknown> $37:TPrimitive
+  [13] <unknown> $41:TObject<BuiltInArray> = LoadLocal <unknown> ret$32:TObject<BuiltInArray>
+  [14] <unknown> $42:TFunction<<generated_5>>():  :TPrimitive = PropertyLoad <unknown> $41:TObject<BuiltInArray>.push
+  [15] <unknown> $43:TPrimitive = LoadLocal <unknown> item$38:TPrimitive
+  [16] <unknown> $44:TPrimitive = 2
+  [17] <unknown> $45:TPrimitive = Binary <unknown> $43:TPrimitive * <unknown> $44:TPrimitive
+  [18] <unknown> $46:TPrimitive = MethodCall <unknown> $41:TObject<BuiltInArray>.<unknown> $42:TFunction<<generated_5>>():  :TPrimitive(<unknown> $45:TPrimitive)
+  [19] Goto(Continue) bb1
+bb1 (loop):
+  predecessor blocks: bb3
+  [20] <unknown> $47:TObject<BuiltInArray> = LoadLocal <unknown> x$29:TObject<BuiltInArray>
+  [21] <unknown> $48:TPrimitive = PropertyLoad <unknown> $47:TObject<BuiltInArray>.length
+  [22] Branch (<unknown> $48:TPrimitive) then:bb3 else:bb2 fallthrough:bb1
+bb2 (block):
+  predecessor blocks: bb1
+  [23] <unknown> $49:TObject<BuiltInArray> = LoadLocal <unknown> ret$32:TObject<BuiltInArray>
+  [24] Return Explicit <unknown> $49:TObject<BuiltInArray>

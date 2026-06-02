@@ -1,0 +1,41 @@
+function Component(
+  <unknown> t0$38:TObject<BuiltInProps>{reactive},
+) {
+  [1] Destructure Const { name: mutate? name$39{reactive}, data: mutate? data$40{reactive}, icon: mutate? icon$41{reactive} } = read t0$38:TObject<BuiltInProps>{reactive}
+  [2] mutate? $43 = LoadGlobal(global) Text
+  [3] mutate? $44:TPrimitive = "body4"
+  scope @5 [4:39] dependencies=[name$39_8:27:8:31, icon$41_10:32:10:36, data$40_12:42:12:46] declarations=[t1$73_@6] reassignments=[] {
+    [5] mutate? $45_@5[4:39]:TPrimitive = "Lorem ipsum"
+    [6] mutate? $46_@5[4:39]:TPrimitive = JSXText "\n        "
+    [7] mutate? $47:TPrimitive = "fbt:param"
+    [8] mutate? $48:TPrimitive = "item author"
+    [9] mutate? $49:TPrimitive = JSXText "\n          "
+    [10] mutate? $50 = LoadGlobal(global) Text
+    [11] mutate? $51:TPrimitive = "h4"
+    [12] mutate? $52{reactive} = LoadLocal read name$39{reactive}
+    scope @0 [13:16] dependencies=[name$39_8:27:8:31] declarations=[t2$53_@0] reassignments=[] {
+      [14] mutate? t2$53_@0[13:16]:TObject<BuiltInJsx>{reactive} = JSX <read $50 type={read $51:TPrimitive} >{read $52{reactive}}</read $50>
+    }
+    [16] mutate? $54:TPrimitive = JSXText "\n        "
+    [17] mutate? $55_@5[4:39]:TObject<BuiltInJsx>{reactive} = JSX <read $47:TPrimitive name={read $48:TPrimitive} >{read $49:TPrimitive}{read t2$53_@0[13:16]:TObject<BuiltInJsx>{reactive}}{read $54:TPrimitive}</read $47:TPrimitive>
+    [18] mutate? $56_@5[4:39]:TPrimitive = JSXText "\n        "
+    [19] mutate? $57:TPrimitive = "fbt:param"
+    [20] mutate? $58:TPrimitive = "icon"
+    [21] mutate? $59{reactive} = LoadLocal read icon$41{reactive}
+    [22] mutate? $60_@5[4:39]:TObject<BuiltInJsx>{reactive} = JSX <read $57:TPrimitive name={read $58:TPrimitive} >{read $59{reactive}}</read $57:TPrimitive>
+    [23] mutate? $61_@5[4:39]:TPrimitive = JSXText "\n        "
+    [24] mutate? $62_@5[4:39] = LoadGlobal(global) Text
+    [25] mutate? $63_@5[4:39]:TPrimitive = "h4"
+    [26] mutate? $64_@5[4:39]:TPrimitive = JSXText "\n          "
+    [27] mutate? $65:TPrimitive = "fbt:param"
+    [28] mutate? $66:TPrimitive = "item details"
+    [29] mutate? $67{reactive} = LoadLocal read data$40{reactive}
+    [30] mutate? $68_@5[4:39]:TObject<BuiltInJsx>{reactive} = JSX <read $65:TPrimitive name={read $66:TPrimitive} >{read $67{reactive}}</read $65:TPrimitive>
+    [31] mutate? $69_@5[4:39]:TPrimitive = JSXText "\n        "
+    [32] mutate? $70_@5[4:39]:TObject<BuiltInJsx>{reactive} = JSX <read $62_@5[4:39] type={read $63_@5[4:39]:TPrimitive} >{read $64_@5[4:39]:TPrimitive}{read $68_@5[4:39]:TObject<BuiltInJsx>{reactive}}{read $69_@5[4:39]:TPrimitive}</read $62_@5[4:39]>
+    [33] mutate? $71_@5[4:39]:TPrimitive = JSXText "\n      "
+    [34] mutate? $72_@5[4:39]:TObject<BuiltInJsx>{reactive} = JSX <fbt desc={read $45_@5[4:39]:TPrimitive} >{read $46_@5[4:39]:TPrimitive}{read $55_@5[4:39]:TObject<BuiltInJsx>{reactive}}{read $56_@5[4:39]:TPrimitive}{read $60_@5[4:39]:TObject<BuiltInJsx>{reactive}}{read $61_@5[4:39]:TPrimitive}{read $70_@5[4:39]:TObject<BuiltInJsx>{reactive}}{read $71_@5[4:39]:TPrimitive}</fbt>
+    [37] mutate? t1$73_@6[36:39]:TObject<BuiltInJsx>{reactive} = JSX <read $43 type={read $44:TPrimitive} >{read $72_@5[4:39]:TObject<BuiltInJsx>{reactive}}</read $43>
+  }
+  [39] return freeze t1$73_@6[36:39]:TObject<BuiltInJsx>{reactive}
+}

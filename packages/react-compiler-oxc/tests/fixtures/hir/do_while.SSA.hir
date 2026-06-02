@@ -1,0 +1,16 @@
+Component(<unknown> a$6): <unknown> $5
+bb0 (block):
+  [1] DoWhile loop=bb3 test=bb1 fallthrough=bb2
+bb3 (block):
+  predecessor blocks: bb0 bb1
+  <unknown> a$7: phi(bb0: <unknown> a$6, bb1: <unknown> a$7)
+  [2] <unknown> $8 = LoadLocal <unknown> a$7
+  [3] Goto(Continue) bb1
+bb1 (loop):
+  predecessor blocks: bb3
+  [4] <unknown> $9 = LoadLocal <unknown> a$7
+  [5] Branch (<unknown> $9) then:bb3 else:bb2 fallthrough:bb1
+bb2 (block):
+  predecessor blocks: bb1
+  [6] <unknown> $10 = LoadLocal <unknown> a$7
+  [7] Return Explicit <unknown> $10

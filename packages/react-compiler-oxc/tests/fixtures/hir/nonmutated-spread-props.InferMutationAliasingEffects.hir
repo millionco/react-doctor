@@ -1,0 +1,40 @@
+Component(<unknown> #t0$17:TObject<BuiltInProps>): <unknown> $16:TObject<BuiltInJsx>
+bb0 (block):
+  [1] <unknown> $20 = Destructure Let { x: <unknown> x$18, ...<unknown> rest$19 } = <unknown> #t0$17:TObject<BuiltInProps>
+    Create x$18 = frozen
+    ImmutableCapture x$18 <- #t0$17
+    Create rest$19 = frozen
+    ImmutableCapture rest$19 <- #t0$17
+    ImmutableCapture $20 <- #t0$17
+  [2] <unknown> $21 = LoadLocal <unknown> rest$19
+    ImmutableCapture $21 <- rest$19
+  [3] <unknown> $22 = PropertyLoad <unknown> $21.z
+    Create $22 = frozen
+    ImmutableCapture $22 <- $21
+  [4] <unknown> $24 = StoreLocal Const <unknown> z$23 = <unknown> $22
+    ImmutableCapture z$23 <- $22
+    ImmutableCapture $24 <- $22
+  [5] <unknown> $25:TFunction = LoadGlobal import { identity } from 'shared-runtime'
+    Create $25 = global
+  [6] <unknown> $26 = LoadLocal <unknown> z$23
+    ImmutableCapture $26 <- z$23
+  [7] <unknown> $27 = Call <unknown> $25:TFunction(<unknown> $26)
+    Create $27 = mutable
+    MaybeAlias $27 <- $25
+    MaybeAlias $27 <- $25
+    ImmutableCapture $27 <- $26
+    ImmutableCapture $25 <- $26
+    ImmutableCapture $25 <- $26
+  [8] <unknown> $28 = LoadGlobal import { Stringify } from 'shared-runtime'
+    Create $28 = global
+  [9] <unknown> $29 = LoadLocal <unknown> x$18
+    ImmutableCapture $29 <- x$18
+  [10] <unknown> $30 = LoadLocal <unknown> z$23
+    ImmutableCapture $30 <- z$23
+  [11] <unknown> $31:TObject<BuiltInJsx> = JSX <<unknown> $28 x={<unknown> $29} z={<unknown> $30} />
+    Create $31 = frozen
+    ImmutableCapture $31 <- $29
+    ImmutableCapture $31 <- $30
+    Render $28
+  [12] Return Explicit <unknown> $31:TObject<BuiltInJsx>
+    Freeze $31 jsx-captured

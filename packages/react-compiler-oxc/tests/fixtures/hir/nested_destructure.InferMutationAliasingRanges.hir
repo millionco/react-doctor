@@ -1,0 +1,16 @@
+Component(<unknown> props$11): <unknown> $10
+bb0 (block):
+  [1] mutate? $12 = LoadLocal read props$11
+    ImmutableCapture $12 <- props$11
+  [2] mutate? $16 = Destructure Const { a: mutate? a$13 } = read $12
+    Create a$13 = frozen
+    ImmutableCapture a$13 <- $12
+    Create #t3$14 = frozen
+    ImmutableCapture #t3$14 <- $12
+    Create rest$15 = mutable
+    ImmutableCapture rest$15 <- $12
+    ImmutableCapture $16 <- $12
+  [4] mutate? $19 = LoadLocal read a$13
+    ImmutableCapture $19 <- a$13
+  [5] Return Explicit freeze $19
+    Freeze $19 jsx-captured

@@ -1,0 +1,59 @@
+useHook(<unknown> #t0$24): <unknown> $23:TPrimitive
+bb0 (block):
+  [1] <unknown> $27 = Destructure Let { el1: <unknown> el1$25, el2: <unknown> el2$26 } = <unknown> #t0$24
+    Create el1$25 = frozen
+    ImmutableCapture el1$25 <- #t0$24
+    Create el2$26 = frozen
+    ImmutableCapture el2$26 <- #t0$24
+    ImmutableCapture $27 <- #t0$24
+  [2] <unknown> $28:TFunction<<generated_94>>():  :TObject<BuiltInSet> = LoadGlobal(global) Set
+    Create $28 = global
+  [3] <unknown> $29:TObject<BuiltInSet> = New <unknown> $28:TFunction<<generated_94>>():  :TObject<BuiltInSet>()
+    Create $29 = mutable
+  [4] <unknown> $31:TObject<BuiltInSet> = StoreLocal Const <unknown> s$30:TObject<BuiltInSet> = <unknown> $29:TObject<BuiltInSet>
+    Assign s$30 = $29
+    Assign $31 = $29
+  [5] <unknown> $32:TObject<BuiltInSet> = LoadLocal <unknown> s$30:TObject<BuiltInSet>
+    Assign $32 = s$30
+  [6] <unknown> $33:TFunction<<generated_16>>():  :TObject<BuiltInSet> = PropertyLoad <unknown> $32:TObject<BuiltInSet>.add
+    Create $33 = kindOf($32)
+  [7] <unknown> $34:TFunction = LoadGlobal import { makeArray } from 'shared-runtime'
+    Create $34 = global
+  [8] <unknown> $35 = LoadLocal <unknown> el1$25
+    ImmutableCapture $35 <- el1$25
+  [9] <unknown> $36 = Call <unknown> $34:TFunction(<unknown> $35)
+    Create $36 = mutable
+    MaybeAlias $36 <- $34
+    MaybeAlias $36 <- $34
+    ImmutableCapture $36 <- $35
+    ImmutableCapture $34 <- $35
+    ImmutableCapture $34 <- $35
+  [10] <unknown> $37:TObject<BuiltInSet> = MethodCall <unknown> $32:TObject<BuiltInSet>.<unknown> $33:TFunction<<generated_16>>():  :TObject<BuiltInSet>(<unknown> $36)
+    Assign $37 = $32
+    Mutate $32
+    Capture $32 <- $36
+  [11] <unknown> $38:TObject<BuiltInSet> = LoadLocal <unknown> s$30:TObject<BuiltInSet>
+    Assign $38 = s$30
+  [12] <unknown> $39:TFunction<<generated_16>>():  :TObject<BuiltInSet> = PropertyLoad <unknown> $38:TObject<BuiltInSet>.add
+    Create $39 = kindOf($38)
+  [13] <unknown> $40:TFunction = LoadGlobal import { makeArray } from 'shared-runtime'
+    Create $40 = global
+  [14] <unknown> $41 = LoadLocal <unknown> el2$26
+    ImmutableCapture $41 <- el2$26
+  [15] <unknown> $42 = Call <unknown> $40:TFunction(<unknown> $41)
+    Create $42 = mutable
+    MaybeAlias $42 <- $40
+    MaybeAlias $42 <- $40
+    ImmutableCapture $42 <- $41
+    ImmutableCapture $40 <- $41
+    ImmutableCapture $40 <- $41
+  [16] <unknown> $43:TObject<BuiltInSet> = MethodCall <unknown> $38:TObject<BuiltInSet>.<unknown> $39:TFunction<<generated_16>>():  :TObject<BuiltInSet>(<unknown> $42)
+    Assign $43 = $38
+    Mutate $38
+    Capture $38 <- $42
+  [17] <unknown> $44:TObject<BuiltInSet> = LoadLocal <unknown> s$30:TObject<BuiltInSet>
+    Assign $44 = s$30
+  [18] <unknown> $45:TPrimitive = PropertyLoad <unknown> $44:TObject<BuiltInSet>.size
+    Create $45 = primitive
+  [19] Return Explicit <unknown> $45:TPrimitive
+    Freeze $45 jsx-captured

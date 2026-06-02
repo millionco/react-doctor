@@ -1,0 +1,44 @@
+useFoo(<unknown> #t0$18): <unknown> $17:TObject<BuiltInObject>
+bb0 (block):
+  [1] <unknown> $21 = Destructure Let { a: <unknown> a$19, b: <unknown> b$20 } = <unknown> #t0$18
+    Create a$19 = frozen
+    ImmutableCapture a$19 <- #t0$18
+    Create b$20 = frozen
+    ImmutableCapture b$20 <- #t0$18
+    ImmutableCapture $21 <- #t0$18
+  [2] <unknown> $22 = LoadLocal <unknown> a$19
+    ImmutableCapture $22 <- a$19
+  [3] <unknown> $23:TObject<BuiltInObject> = Object { a: <unknown> $22 }
+    Create $23 = mutable
+    ImmutableCapture $23 <- $22
+  [4] <unknown> $25:TObject<BuiltInObject> = StoreLocal Const <unknown> obj$24:TObject<BuiltInObject> = <unknown> $23:TObject<BuiltInObject>
+    Assign obj$24 = $23
+    Assign $25 = $23
+  [5] <unknown> $26:TFunction = LoadGlobal import { arrayPush } from 'shared-runtime'
+    Create $26 = global
+  [6] <unknown> $27:TObject<Object> = LoadGlobal(global) Object
+    Create $27 = global
+  [7] <unknown> $28:TFunction<<generated_62>>():  :TObject<BuiltInArray> = PropertyLoad <unknown> $27:TObject<Object>.keys
+    Create $28 = global
+  [8] <unknown> $29:TObject<BuiltInObject> = LoadLocal <unknown> obj$24:TObject<BuiltInObject>
+    Assign $29 = obj$24
+  [9] <unknown> $30:TObject<BuiltInArray> = MethodCall <unknown> $27:TObject<Object>.<unknown> $28:TFunction<<generated_62>>():  :TObject<BuiltInArray>(<unknown> $29:TObject<BuiltInObject>)
+    Create $30 = mutable
+    ImmutableCapture $30 <- $29
+  [10] <unknown> $31 = LoadLocal <unknown> b$20
+    ImmutableCapture $31 <- b$20
+  [11] <unknown> $32 = Call <unknown> $26:TFunction(<unknown> $30:TObject<BuiltInArray>, <unknown> $31)
+    Create $32 = mutable
+    MaybeAlias $32 <- $26
+    MaybeAlias $32 <- $26
+    MutateTransitiveConditionally $30
+    MaybeAlias $32 <- $30
+    ImmutableCapture $32 <- $31
+    ImmutableCapture $26 <- $31
+    ImmutableCapture $26 <- $31
+    ImmutableCapture $30 <- $31
+  [12] <unknown> $33:TObject<BuiltInObject> = LoadLocal <unknown> obj$24:TObject<BuiltInObject>
+    Assign $33 = obj$24
+  [13] Return Explicit <unknown> $33:TObject<BuiltInObject>
+    Freeze $33 jsx-captured
+

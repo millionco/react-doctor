@@ -1,0 +1,15 @@
+Component(<unknown> a$0): <unknown> $5
+bb0 (block):
+  [1] DoWhile loop=bb3 test=bb1 fallthrough=bb2
+bb3 (block):
+  predecessor blocks: bb0 bb1
+  [2] <unknown> $1 = LoadLocal <unknown> a$0
+  [3] Goto(Continue) bb1
+bb1 (loop):
+  predecessor blocks: bb3
+  [4] <unknown> $2 = LoadLocal <unknown> a$0
+  [5] Branch (<unknown> $2) then:bb3 else:bb2 fallthrough:bb1
+bb2 (block):
+  predecessor blocks: bb1
+  [6] <unknown> $3 = LoadLocal <unknown> a$0
+  [7] Return Explicit <unknown> $3

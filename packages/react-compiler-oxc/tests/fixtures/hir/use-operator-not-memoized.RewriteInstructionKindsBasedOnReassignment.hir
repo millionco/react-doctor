@@ -1,0 +1,19 @@
+Component(<unknown> props$10{reactive}): <unknown> $9:TObject<BuiltInArray>
+bb0 (block):
+  [1] mutate? $11:TFunction<BuiltInUseOperator>():  :TPoly = LoadGlobal import { use } from 'react'
+    Create $11 = global
+  [2] mutate? $12 = LoadGlobal(module) FooContext
+    Create $12 = global
+  [3] mutate? $13{reactive} = Call read $11:TFunction<BuiltInUseOperator>():  :TPoly(read $12)
+    Create $13 = frozen
+  [4] mutate? $15{reactive} = StoreLocal Const mutate? input$14{reactive} = read $13{reactive}
+    ImmutableCapture input$14 <- $13
+    ImmutableCapture $15 <- $13
+  [5] mutate? $16{reactive} = LoadLocal read input$14{reactive}
+    ImmutableCapture $16 <- input$14
+  [6] mutate? $17:TObject<BuiltInArray>{reactive} = Array [read $16{reactive}]
+    Create $17 = mutable
+    ImmutableCapture $17 <- $16
+  [7] Return Explicit freeze $17:TObject<BuiltInArray>{reactive}
+    Freeze $17 jsx-captured
+

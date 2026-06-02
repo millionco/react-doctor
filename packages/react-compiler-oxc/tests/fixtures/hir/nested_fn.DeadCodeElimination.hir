@@ -1,0 +1,37 @@
+Component(<unknown> props$16): <unknown> $15:TFunction<BuiltInFunction>():  :TPrimitive
+bb0 (block):
+  [1] <unknown> $17:TFunction<BuiltInFunction>():  :TPrimitive = Function  @context[read props$16] @aliasingEffects=[MutateTransitiveConditionally props$16, Create $9 = primitive]
+      <<anonymous>>(): <unknown> $9:TPrimitive
+      bb1 (block):
+        [1] store $18_@0[1:8] = LoadLocal capture props$16
+          Assign $18_@0 = props$16
+        [2] store $19_@0[1:8]:TFunction = PropertyLoad capture $18_@0[1:8].setCount
+          Create $19_@0 = kindOf($18_@0)
+        [3] store $20_@0[1:8] = LoadLocal capture props$16
+          Assign $20_@0 = props$16
+        [4] mutate? $21:TPrimitive = PropertyLoad read $20_@0[1:8].count
+          Create $21 = primitive
+        [5] mutate? $22:TPrimitive = 1
+          Create $22 = primitive
+        [6] mutate? $23:TPrimitive = Binary read $21:TPrimitive + read $22:TPrimitive
+          Create $23 = primitive
+        [7] store $24_@0[1:8] = MethodCall store $18_@0[1:8].capture $19_@0[1:8]:TFunction(capture $23:TPrimitive)
+          Create $24_@0 = mutable
+          MutateTransitiveConditionally $18_@0
+          MaybeAlias $24_@0 <- $18_@0
+          MaybeAlias $19_@0 <- $18_@0
+          MaybeAlias $24_@0 <- $19_@0
+          MaybeAlias $18_@0 <- $19_@0
+          MaybeAlias $24_@0 <- $23
+        [8] mutate? $25:TPrimitive = <undefined>
+          Create $25 = primitive
+        [9] Return Void read $25:TPrimitive
+    Function $17 = Function captures=[props$16]
+    ImmutableCapture $17 <- props$16
+  [2] <unknown> $27:TFunction<BuiltInFunction>():  :TPrimitive = StoreLocal Const <unknown> cb$26:TFunction<BuiltInFunction>():  :TPrimitive = <unknown> $17:TFunction<BuiltInFunction>():  :TPrimitive
+    ImmutableCapture cb$26 <- $17
+    ImmutableCapture $27 <- $17
+  [3] <unknown> $28:TFunction<BuiltInFunction>():  :TPrimitive = LoadLocal <unknown> cb$26:TFunction<BuiltInFunction>():  :TPrimitive
+    ImmutableCapture $28 <- cb$26
+  [4] Return Explicit <unknown> $28:TFunction<BuiltInFunction>():  :TPrimitive
+    Freeze $28 jsx-captured

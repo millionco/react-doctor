@@ -1,0 +1,74 @@
+Component(): <unknown> $25:TObject<BuiltInJsx>
+use strict
+bb0 (block):
+  [1] mutate? $26:TObject<<generated_109>> = LoadGlobal(global) React
+    Create $26 = global
+  [2] <pruned> Scope scope @1 [2:7] dependencies=[] declarations=[] reassignments=[] block=bb9 fallthrough=bb10
+bb9 (block):
+  predecessor blocks: bb0
+  [3] mutate? $27_@1[2:7]:TFunction<<generated_97>>():  :TObject<BuiltInUseState> = PropertyLoad read $26:TObject<<generated_109>>.useState
+    Create $27_@1 = global
+  [4] mutate? $28:TPrimitive = 0
+    Create $28 = primitive
+  [5] mutate? $29_@1[2:7]:TObject<BuiltInUseState>{reactive} = MethodCall read $26:TObject<<generated_109>>.read $27_@1[2:7]:TFunction<<generated_97>>():  :TObject<BuiltInUseState>{reactive}(read $28:TPrimitive)
+    Create $29_@1 = frozen
+  [6] Goto bb10
+bb10 (block):
+  predecessor blocks: bb9
+  [7] mutate? $32{reactive} = Destructure Const [ mutate? count$30{reactive}, mutate? setCount$31:TFunction<BuiltInSetState>():  :TPrimitive ] = read $29_@1[2:7]:TObject<BuiltInUseState>{reactive}
+    Create count$30 = frozen
+    ImmutableCapture count$30 <- $29_@1
+    Create setCount$31 = frozen
+    ImmutableCapture setCount$31 <- $29_@1
+    ImmutableCapture $32 <- $29_@1
+  [8] Scope scope @2 [8:11] dependencies=[] declarations=[] reassignments=[] block=bb11 fallthrough=bb12
+bb11 (block):
+  predecessor blocks: bb10
+  [9] mutate? $33_@2[8:11]:TFunction<BuiltInFunction>():  :TPrimitive = Function update @context[read setCount$31:TFunction<BuiltInSetState>():  :TPrimitive] @aliasingEffects=[Create $17 = primitive]
+      update(): <unknown> $17:TPrimitive
+      worklet
+      bb1 (block):
+        [1] store $34:TFunction<BuiltInSetState>():  :TPrimitive = LoadLocal capture setCount$31:TFunction<BuiltInSetState>():  :TPrimitive
+          Assign $34 = setCount$31
+        [2] mutate? $35_@0:TFunction<BuiltInFunction>():  :TPrimitive = LoadGlobal(global) _temp
+          Function $35_@0 = Function captures=[]
+        [3] mutate? $40:TPrimitive = Call read $34:TFunction<BuiltInSetState>():  :TPrimitive(read $35_@0:TFunction<BuiltInFunction>():  :TPrimitive)
+          Create $40 = primitive
+          ImmutableCapture $40 <- $34
+        [4] mutate? $41:TPrimitive = <undefined>
+          Create $41 = primitive
+        [5] Return Void read $41:TPrimitive
+    Function $33_@2 = Function captures=[]
+  [10] Goto bb12
+bb12 (block):
+  predecessor blocks: bb11
+  [11] mutate? $43:TFunction<BuiltInFunction>():  :TPrimitive = StoreLocal Const mutate? update$42:TFunction<BuiltInFunction>():  :TPrimitive = read $33_@2[8:11]:TFunction<BuiltInFunction>():  :TPrimitive
+    ImmutableCapture update$42 <- $33_@2
+    ImmutableCapture $43 <- $33_@2
+  [12] mutate? $44:TFunction<BuiltInFunction>():  :TPrimitive = LoadLocal read update$42:TFunction<BuiltInFunction>():  :TPrimitive
+    ImmutableCapture $44 <- update$42
+  [13] mutate? $45{reactive} = LoadLocal read count$30{reactive}
+    ImmutableCapture $45 <- count$30
+  [14] Scope scope @3 [14:17] dependencies=[] declarations=[] reassignments=[] block=bb13 fallthrough=bb14
+bb13 (block):
+  predecessor blocks: bb12
+  [15] mutate? $46_@3[14:17]:TObject<BuiltInJsx>{reactive} = JSX <button onClick={read $44:TFunction<BuiltInFunction>():  :TPrimitive} >{read $45{reactive}}</button>
+    Create $46_@3 = frozen
+    ImmutableCapture $46_@3 <- $44
+    ImmutableCapture $46_@3 <- $45
+    Render $45
+  [16] Goto bb14
+bb14 (block):
+  predecessor blocks: bb13
+  [17] Return Explicit freeze $46_@3[14:17]:TObject<BuiltInJsx>{reactive}
+    Freeze $46_@3 jsx-captured
+
+function _temp:
+bb2 (block):
+  [1] store $37:TPrimitive = LoadLocal capture count_0$36:TPrimitive
+    Assign $37 = count_0$36
+  [2] mutate? $38:TPrimitive = 1
+    Create $38 = primitive
+  [3] mutate? $39:TPrimitive = Binary read $37:TPrimitive + read $38:TPrimitive
+    Create $39 = primitive
+  [4] Return Implicit read $39:TPrimitive

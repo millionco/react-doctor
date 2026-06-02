@@ -1,0 +1,6 @@
+Component(): <unknown> $5:TObject<Object>
+bb0 (block):
+  [1] <unknown> $6:TObject<Object> = LoadGlobal(global) Object
+  [2] <unknown> $8:TObject<Object> = StoreLocal Const <unknown> x$7:TObject<Object> = <unknown> $6:TObject<Object>
+  [3] <unknown> $9:TObject<Object> = LoadGlobal(global) Object
+  [4] Return Explicit <unknown> $9:TObject<Object>

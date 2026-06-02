@@ -1,0 +1,27 @@
+useHook(<unknown> #t0$31): <unknown> $30:TPrimitive
+bb0 (block):
+  [1] <unknown> $34 = Destructure Let { el1: <unknown> el1$32, el2: <unknown> el2$33 } = <unknown> #t0$31
+  [2] <unknown> $35:TFunction<<generated_94>>():  :TObject<BuiltInSet> = LoadGlobal(global) Set
+  [3] <unknown> $36:TObject<BuiltInSet> = New <unknown> $35:TFunction<<generated_94>>():  :TObject<BuiltInSet>()
+  [4] <unknown> $38:TObject<BuiltInSet> = StoreLocal Const <unknown> s$37:TObject<BuiltInSet> = <unknown> $36:TObject<BuiltInSet>
+  [5] <unknown> $39:TFunction = LoadGlobal import { makeArray } from 'shared-runtime'
+  [6] <unknown> $40 = LoadLocal <unknown> el1$32
+  [7] <unknown> $41 = Call <unknown> $39:TFunction(<unknown> $40)
+  [8] <unknown> $43 = StoreLocal Const <unknown> arr$42 = <unknown> $41
+  [9] <unknown> $44:TObject<BuiltInSet> = LoadLocal <unknown> s$37:TObject<BuiltInSet>
+  [10] <unknown> $45:TFunction<<generated_16>>():  :TObject<BuiltInSet> = PropertyLoad <unknown> $44:TObject<BuiltInSet>.add
+  [11] <unknown> $46 = LoadLocal <unknown> arr$42
+  [12] <unknown> $47:TObject<BuiltInSet> = MethodCall <unknown> $44:TObject<BuiltInSet>.<unknown> $45:TFunction<<generated_16>>():  :TObject<BuiltInSet>(<unknown> $46)
+  [13] <unknown> $48 = LoadLocal <unknown> arr$42
+  [14] <unknown> $49:TFunction = PropertyLoad <unknown> $48.push
+  [15] <unknown> $50 = LoadLocal <unknown> el2$33
+  [16] <unknown> $51 = MethodCall <unknown> $48.<unknown> $49:TFunction(<unknown> $50)
+  [17] <unknown> $52:TObject<BuiltInSet> = LoadLocal <unknown> s$37:TObject<BuiltInSet>
+  [18] <unknown> $53:TFunction<<generated_16>>():  :TObject<BuiltInSet> = PropertyLoad <unknown> $52:TObject<BuiltInSet>.add
+  [19] <unknown> $54:TFunction = LoadGlobal import { makeArray } from 'shared-runtime'
+  [20] <unknown> $55 = LoadLocal <unknown> el2$33
+  [21] <unknown> $56 = Call <unknown> $54:TFunction(<unknown> $55)
+  [22] <unknown> $57:TObject<BuiltInSet> = MethodCall <unknown> $52:TObject<BuiltInSet>.<unknown> $53:TFunction<<generated_16>>():  :TObject<BuiltInSet>(<unknown> $56)
+  [23] <unknown> $58:TObject<BuiltInSet> = LoadLocal <unknown> s$37:TObject<BuiltInSet>
+  [24] <unknown> $59:TPrimitive = PropertyLoad <unknown> $58:TObject<BuiltInSet>.size
+  [25] Return Explicit <unknown> $59:TPrimitive

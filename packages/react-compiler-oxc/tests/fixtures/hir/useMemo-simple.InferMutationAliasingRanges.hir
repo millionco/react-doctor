@@ -1,0 +1,27 @@
+component(<unknown> a$19): <unknown> $16:TObject<BuiltInJsx>
+bb0 (block):
+  [2] mutate? $21 = StartMemoize deps=a$19
+    Create $21 = primitive
+  [6] mutate? $24 = LoadLocal read a$19
+    ImmutableCapture $24 <- a$19
+  [7] mutate? $25:TObject<BuiltInArray> = Array [read $24]
+    Create $25 = mutable
+    ImmutableCapture $25 <- $24
+  [8] store $26:TObject<BuiltInArray> = LoadLocal capture $25:TObject<BuiltInArray>
+    Assign $26 = $25
+  [10] mutate? $27 = FinishMemoize decl=freeze $26:TObject<BuiltInArray>
+    Freeze $26 hook-captured
+    Create $27 = primitive
+  [11] mutate? $29:TObject<BuiltInArray> = StoreLocal Let mutate? x$28:TObject<BuiltInArray> = read $26:TObject<BuiltInArray>
+    ImmutableCapture x$28 <- $26
+    ImmutableCapture $29 <- $26
+  [12] mutate? $30 = LoadGlobal(global) Foo
+    Create $30 = global
+  [13] mutate? $31:TObject<BuiltInArray> = LoadLocal read x$28:TObject<BuiltInArray>
+    ImmutableCapture $31 <- x$28
+  [14] mutate? $32:TObject<BuiltInJsx> = JSX <read $30 x={read $31:TObject<BuiltInArray>} />
+    Create $32 = frozen
+    ImmutableCapture $32 <- $31
+    Render $30
+  [15] Return Explicit freeze $32:TObject<BuiltInJsx>
+    Freeze $32 jsx-captured

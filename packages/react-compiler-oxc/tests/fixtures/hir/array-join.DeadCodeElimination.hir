@@ -1,0 +1,51 @@
+Component(<unknown> props$25): <unknown> $24:TObject<BuiltInArray>
+bb0 (block):
+  [1] <unknown> $26:TObject<BuiltInObject> = Object {  }
+    Create $26 = mutable
+  [2] <unknown> $27:TObject<BuiltInArray> = Array []
+    Create $27 = mutable
+  [3] <unknown> $28 = LoadLocal <unknown> props$25
+    ImmutableCapture $28 <- props$25
+  [4] <unknown> $29 = PropertyLoad <unknown> $28.value
+    Create $29 = frozen
+    ImmutableCapture $29 <- $28
+  [5] <unknown> $30:TObject<BuiltInArray> = Array [<unknown> $26:TObject<BuiltInObject>, <unknown> $27:TObject<BuiltInArray>, <unknown> $29]
+    Create $30 = mutable
+    Capture $30 <- $26
+    Capture $30 <- $27
+    ImmutableCapture $30 <- $29
+  [6] <unknown> $32:TObject<BuiltInArray> = StoreLocal Const <unknown> x$31:TObject<BuiltInArray> = <unknown> $30:TObject<BuiltInArray>
+    Assign x$31 = $30
+    Assign $32 = $30
+  [7] <unknown> $33:TObject<BuiltInArray> = LoadLocal <unknown> x$31:TObject<BuiltInArray>
+    Assign $33 = x$31
+  [8] <unknown> $34:TFunction<<generated_14>>():  :TPrimitive = PropertyLoad <unknown> $33:TObject<BuiltInArray>.join
+    Create $34 = kindOf($33)
+  [9] <unknown> $35:TFunction<BuiltInFunction>():  :TPrimitive = Function  @context[] @aliasingEffects=[Create $12 = primitive]
+      <<anonymous>>(): <unknown> $12:TPrimitive
+      bb1 (block):
+        [1] mutate? $36:TPrimitive = "this closure gets stringified, not called"
+          Create $36 = primitive
+        [2] Return Implicit read $36:TPrimitive
+    Function $35 = Function captures=[]
+  [10] <unknown> $37:TPrimitive = MethodCall <unknown> $33:TObject<BuiltInArray>.<unknown> $34:TFunction<<generated_14>>():  :TPrimitive(<unknown> $35:TFunction<BuiltInFunction>():  :TPrimitive)
+    Create $37 = primitive
+    ImmutableCapture $37 <- $33
+    ImmutableCapture $37 <- $35
+  [11] <unknown> $39:TPrimitive = StoreLocal Const <unknown> y$38:TPrimitive = <unknown> $37:TPrimitive
+  [12] <unknown> $40:TFunction = LoadGlobal(global) foo
+    Create $40 = global
+  [13] <unknown> $41:TPrimitive = LoadLocal <unknown> y$38:TPrimitive
+  [14] <unknown> $42 = Call <unknown> $40:TFunction(<unknown> $41:TPrimitive)
+    Create $42 = mutable
+    MaybeAlias $42 <- $40
+    MaybeAlias $42 <- $40
+    MaybeAlias $42 <- $41
+  [15] <unknown> $43:TObject<BuiltInArray> = LoadLocal <unknown> x$31:TObject<BuiltInArray>
+    Assign $43 = x$31
+  [16] <unknown> $44:TPrimitive = LoadLocal <unknown> y$38:TPrimitive
+  [17] <unknown> $45:TObject<BuiltInArray> = Array [<unknown> $43:TObject<BuiltInArray>, <unknown> $44:TPrimitive]
+    Create $45 = mutable
+    Capture $45 <- $43
+  [18] Return Explicit <unknown> $45:TObject<BuiltInArray>
+    Freeze $45 jsx-captured

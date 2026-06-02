@@ -1,0 +1,27 @@
+Component(<unknown> props$0): <unknown> $15
+bb0 (block):
+  [1] <unknown> $1 = LoadGlobal(module) Component
+  [2] <unknown> $2 = LoadLocal <unknown> props$0
+  [3] Ternary test:bb2 fallthrough=bb1
+bb2 (value):
+  predecessor blocks: bb0
+  [4] <unknown> $10 = LoadLocal <unknown> props$0
+  [5] <unknown> $11 = PropertyLoad <unknown> $10.cond
+  [6] Branch (<unknown> $11) then:bb3 else:bb4 fallthrough:bb1
+bb3 (value):
+  predecessor blocks: bb2
+  [7] <unknown> $4 = LoadLocal <unknown> props$0
+  [8] <unknown> $5 = PropertyLoad <unknown> $4.foo
+  [9] <unknown> $6 = StoreLocal Const <unknown> $3 = <unknown> $5
+  [10] Goto bb1
+bb4 (value):
+  predecessor blocks: bb2
+  [11] <unknown> $7 = LoadLocal <unknown> props$0
+  [12] <unknown> $8 = PropertyLoad <unknown> $7.bar
+  [13] <unknown> $9 = StoreLocal Const <unknown> $3 = <unknown> $8
+  [14] Goto bb1
+bb1 (block):
+  predecessor blocks: bb3 bb4
+  [15] <unknown> $12 = Object { bar: <unknown> $3 }
+  [16] <unknown> $13 = JSX <<unknown> $1 ...<unknown> $2 ...<unknown> $12 />
+  [17] Return Explicit <unknown> $13

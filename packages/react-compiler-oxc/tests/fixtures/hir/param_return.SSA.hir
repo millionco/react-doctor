@@ -1,0 +1,4 @@
+Component(<unknown> props$4): <unknown> $3
+bb0 (block):
+  [1] <unknown> $5 = LoadLocal <unknown> props$4
+  [2] Return Explicit <unknown> $5

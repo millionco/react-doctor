@@ -1,0 +1,43 @@
+Component(<unknown> #t0$49:TObject<BuiltInProps>): <unknown> $48:TObject<BuiltInJsx>
+bb0 (block):
+  [1] <unknown> $53 = Destructure Let { a: <unknown> a$50, b: <unknown> b$51, c: <unknown> c$52 } = <unknown> #t0$49:TObject<BuiltInProps>
+  [2] <unknown> $54:TFunction<<generated_96>>():  :TObject<BuiltInWeakSet> = LoadGlobal(global) WeakSet
+  [3] <unknown> $55:TObject<BuiltInWeakSet> = New <unknown> $54:TFunction<<generated_96>>():  :TObject<BuiltInWeakSet>()
+  [4] <unknown> $57:TObject<BuiltInWeakSet> = StoreLocal Const <unknown> set$56:TObject<BuiltInWeakSet> = <unknown> $55:TObject<BuiltInWeakSet>
+  [5] <unknown> $58:TObject<BuiltInWeakSet> = LoadLocal <unknown> set$56:TObject<BuiltInWeakSet>
+  [6] <unknown> $59:TFunction<<generated_38>>():  :TObject<BuiltInWeakSet> = PropertyLoad <unknown> $58:TObject<BuiltInWeakSet>.add
+  [7] <unknown> $60 = LoadLocal <unknown> a$50
+  [8] <unknown> $61:TObject<BuiltInWeakSet> = MethodCall <unknown> $58:TObject<BuiltInWeakSet>.<unknown> $59:TFunction<<generated_38>>():  :TObject<BuiltInWeakSet>(<unknown> $60)
+  [9] <unknown> $63:TObject<BuiltInWeakSet> = StoreLocal Const <unknown> setAlias$62:TObject<BuiltInWeakSet> = <unknown> $61:TObject<BuiltInWeakSet>
+  [10] <unknown> $64:TObject<BuiltInWeakSet> = LoadLocal <unknown> setAlias$62:TObject<BuiltInWeakSet>
+  [11] <unknown> $65:TFunction<<generated_38>>():  :TObject<BuiltInWeakSet> = PropertyLoad <unknown> $64:TObject<BuiltInWeakSet>.add
+  [12] <unknown> $66 = LoadLocal <unknown> c$52
+  [13] <unknown> $67:TObject<BuiltInWeakSet> = MethodCall <unknown> $64:TObject<BuiltInWeakSet>.<unknown> $65:TFunction<<generated_38>>():  :TObject<BuiltInWeakSet>(<unknown> $66)
+  [14] <unknown> $68:TObject<BuiltInWeakSet> = LoadLocal <unknown> set$56:TObject<BuiltInWeakSet>
+  [15] <unknown> $69:TFunction<<generated_40>>():  :TPrimitive = PropertyLoad <unknown> $68:TObject<BuiltInWeakSet>.has
+  [16] <unknown> $70 = LoadLocal <unknown> b$51
+  [17] <unknown> $71:TPrimitive = MethodCall <unknown> $68:TObject<BuiltInWeakSet>.<unknown> $69:TFunction<<generated_40>>():  :TPrimitive(<unknown> $70)
+  [18] <unknown> $73:TPrimitive = StoreLocal Const <unknown> hasB$72:TPrimitive = <unknown> $71:TPrimitive
+  [19] <unknown> $74 = LoadGlobal import { ValidateMemoization } from 'shared-runtime'
+  [20] <unknown> $75 = LoadLocal <unknown> a$50
+  [21] <unknown> $76 = LoadLocal <unknown> c$52
+  [22] <unknown> $77:TObject<BuiltInArray> = Array [<unknown> $75, <unknown> $76]
+  [23] <unknown> $78:TObject<BuiltInWeakSet> = LoadLocal <unknown> set$56:TObject<BuiltInWeakSet>
+  [24] <unknown> $79:TPrimitive = true
+  [25] <unknown> $80:TObject<BuiltInJsx> = JSX <<unknown> $74 inputs={<unknown> $77:TObject<BuiltInArray>} output={<unknown> $78:TObject<BuiltInWeakSet>} onlyCheckCompiled={<unknown> $79:TPrimitive} />
+  [26] <unknown> $81 = LoadGlobal import { ValidateMemoization } from 'shared-runtime'
+  [27] <unknown> $82 = LoadLocal <unknown> a$50
+  [28] <unknown> $83 = LoadLocal <unknown> c$52
+  [29] <unknown> $84:TObject<BuiltInArray> = Array [<unknown> $82, <unknown> $83]
+  [30] <unknown> $85:TObject<BuiltInWeakSet> = LoadLocal <unknown> setAlias$62:TObject<BuiltInWeakSet>
+  [31] <unknown> $86:TPrimitive = true
+  [32] <unknown> $87:TObject<BuiltInJsx> = JSX <<unknown> $81 inputs={<unknown> $84:TObject<BuiltInArray>} output={<unknown> $85:TObject<BuiltInWeakSet>} onlyCheckCompiled={<unknown> $86:TPrimitive} />
+  [33] <unknown> $88 = LoadGlobal import { ValidateMemoization } from 'shared-runtime'
+  [34] <unknown> $89 = LoadLocal <unknown> b$51
+  [35] <unknown> $90:TObject<BuiltInArray> = Array [<unknown> $89]
+  [36] <unknown> $91:TPrimitive = LoadLocal <unknown> hasB$72:TPrimitive
+  [37] <unknown> $92:TObject<BuiltInArray> = Array [<unknown> $91:TPrimitive]
+  [38] <unknown> $93:TPrimitive = true
+  [39] <unknown> $94:TObject<BuiltInJsx> = JSX <<unknown> $88 inputs={<unknown> $90:TObject<BuiltInArray>} output={<unknown> $92:TObject<BuiltInArray>} onlyCheckCompiled={<unknown> $93:TPrimitive} />
+  [40] <unknown> $95:TObject<BuiltInJsx> = JsxFragment [<unknown> $80:TObject<BuiltInJsx>, <unknown> $87:TObject<BuiltInJsx>, <unknown> $94:TObject<BuiltInJsx>]
+  [41] Return Explicit <unknown> $95:TObject<BuiltInJsx>

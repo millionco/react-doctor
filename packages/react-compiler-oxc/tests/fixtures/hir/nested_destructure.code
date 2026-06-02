@@ -1,0 +1,6 @@
+function Component(props) {
+  const {
+    a
+  } = props;
+  return a;
+}

@@ -1,0 +1,17 @@
+Component(<unknown> a$5): <unknown> $4
+bb0 (block):
+  [1] While test=bb1 loop=bb3 fallthrough=bb2
+bb1 (loop):
+  predecessor blocks: bb0 bb3
+  [2] mutate? $7 = LoadLocal read a$5
+    ImmutableCapture $7 <- a$5
+  [3] Branch (read $7) then:bb3 else:bb2 fallthrough:bb1
+bb3 (block):
+  predecessor blocks: bb1
+  [4] Goto(Continue) bb1
+bb2 (block):
+  predecessor blocks: bb1
+  [5] mutate? $8 = LoadLocal read a$5
+    ImmutableCapture $8 <- a$5
+  [6] Return Explicit freeze $8
+    Freeze $8 jsx-captured

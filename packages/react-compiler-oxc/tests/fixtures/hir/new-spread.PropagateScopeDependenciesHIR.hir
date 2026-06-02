@@ -1,0 +1,46 @@
+Component(<unknown> props$14{reactive}): <unknown> $13
+bb0 (block):
+  [1] mutate? $15:TFunction = LoadGlobal(global) Foo
+    Create $15 = global
+  [2] mutate? $16{reactive} = LoadLocal read props$14{reactive}
+    ImmutableCapture $16 <- props$14
+  [3] mutate? $17{reactive} = PropertyLoad read $16{reactive}.foo
+    Create $17 = frozen
+    ImmutableCapture $17 <- $16
+  [4] mutate? $18:TPrimitive = null
+    Create $18 = primitive
+  [5] mutate? $19{reactive} = LoadLocal read props$14{reactive}
+    ImmutableCapture $19 <- props$14
+  [6] mutate? $20{reactive} = PropertyLoad read $19{reactive}.bar
+    Create $20 = frozen
+    ImmutableCapture $20 <- $19
+  [7] Scope scope @0 [7:11] dependencies=[props$14.bar_2:44:2:53, props$14.foo_2:23:2:32, $15:TFunction_2:16:2:19, $18:TPrimitive_2:34:2:38] declarations=[$22_@0] reassignments=[] block=bb5 fallthrough=bb6
+bb5 (block):
+  predecessor blocks: bb0
+  [8] mutate? $21_@0[7:11]:TObject<BuiltInArray>{reactive} = Array [read $20{reactive}]
+    Create $21_@0 = mutable
+    ImmutableCapture $21_@0 <- $20
+  [9] store $22_@0[7:11]{reactive} = New capture $15:TFunction(...read $17{reactive}, capture $18:TPrimitive, ...store $21_@0[7:11]:TObject<BuiltInArray>{reactive})
+    Create $22_@0 = mutable
+    MaybeAlias $22_@0 <- $15
+    MaybeAlias $22_@0 <- $15
+    ImmutableCapture $22_@0 <- $17
+    ImmutableCapture $15 <- $17
+    ImmutableCapture $15 <- $17
+    ImmutableCapture $17 <- $17
+    ImmutableCapture $18 <- $17
+    ImmutableCapture $21_@0 <- $17
+    MaybeAlias $22_@0 <- $18
+    MutateTransitiveConditionally $21_@0
+    MaybeAlias $22_@0 <- $21_@0
+    Capture $21_@0 <- $21_@0
+  [10] Goto bb6
+bb6 (block):
+  predecessor blocks: bb5
+  [11] store $24{reactive} = StoreLocal Const store x$23{reactive} = capture $22_@0[7:11]{reactive}
+    Assign x$23 = $22_@0
+    Assign $24 = $22_@0
+  [12] store $25{reactive} = LoadLocal capture x$23{reactive}
+    Assign $25 = x$23
+  [13] Return Explicit freeze $25{reactive}
+    Freeze $25 jsx-captured

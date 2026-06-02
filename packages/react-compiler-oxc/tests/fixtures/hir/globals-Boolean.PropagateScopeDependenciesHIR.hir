@@ -1,0 +1,35 @@
+Component(<unknown> props$14{reactive}): <unknown> $13:TObject<BuiltInArray>
+bb0 (block):
+  [1] Scope scope @0 [1:4] dependencies=[] declarations=[$15_@0] reassignments=[] block=bb5 fallthrough=bb6
+bb5 (block):
+  predecessor blocks: bb0
+  [2] mutate? $15_@0[1:4]:TObject<BuiltInObject> = Object {  }
+    Create $15_@0 = mutable
+  [3] Goto bb6
+bb6 (block):
+  predecessor blocks: bb5
+  [4] store $17:TObject<BuiltInObject> = StoreLocal Const store x$16:TObject<BuiltInObject> = capture $15_@0[1:4]:TObject<BuiltInObject>
+    Assign x$16 = $15_@0
+    Assign $17 = $15_@0
+  [5] mutate? $18:TFunction<<generated_82>>():  :TPrimitive = LoadGlobal(global) Boolean
+    Create $18 = global
+  [6] store $19:TObject<BuiltInObject> = LoadLocal capture x$16:TObject<BuiltInObject>
+    Assign $19 = x$16
+  [7] mutate? $20:TPrimitive = Call read $18:TFunction<<generated_82>>():  :TPrimitive(read $19:TObject<BuiltInObject>)
+    Create $20 = primitive
+    ImmutableCapture $20 <- $19
+  [8] mutate? $22:TPrimitive = StoreLocal Const mutate? y$21:TPrimitive = read $20:TPrimitive
+  [9] store $23:TObject<BuiltInObject> = LoadLocal capture x$16:TObject<BuiltInObject>
+    Assign $23 = x$16
+  [10] mutate? $24:TPrimitive = LoadLocal read y$21:TPrimitive
+  [11] Scope scope @1 [11:14] dependencies=[x$16:TObject<BuiltInObject>_4:10:4:11, y$21:TPrimitive_4:13:4:14] declarations=[$25_@1] reassignments=[] block=bb7 fallthrough=bb8
+bb7 (block):
+  predecessor blocks: bb6
+  [12] store $25_@1[11:14]:TObject<BuiltInArray> = Array [capture $23:TObject<BuiltInObject>, read $24:TPrimitive]
+    Create $25_@1 = mutable
+    Capture $25_@1 <- $23
+  [13] Goto bb8
+bb8 (block):
+  predecessor blocks: bb7
+  [14] Return Explicit freeze $25_@1[11:14]:TObject<BuiltInArray>
+    Freeze $25_@1 jsx-captured

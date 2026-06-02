@@ -1,0 +1,6 @@
+Component(<unknown> o$0): <unknown> $7
+bb0 (block):
+  [1] <unknown> $1 = LoadLocal <unknown> o$0
+  [2] <unknown> $4 = Destructure Const [ <unknown> a$2, <unknown> b$3 ] = <unknown> $1
+  [3] <unknown> $5 = LoadLocal <unknown> a$2
+  [4] Return Explicit <unknown> $5

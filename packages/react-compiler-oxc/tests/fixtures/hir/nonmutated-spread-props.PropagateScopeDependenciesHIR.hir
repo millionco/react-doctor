@@ -1,0 +1,58 @@
+Component(<unknown> #t0$17:TObject<BuiltInProps>{reactive}): <unknown> $16:TObject<BuiltInJsx>
+bb0 (block):
+  [1] Scope scope @0 [1:4] dependencies=[#t0$17:TObject<BuiltInProps>_3:19:3:31] declarations=[rest$19_@0, x$18_@0] reassignments=[] block=bb5 fallthrough=bb6
+bb5 (block):
+  predecessor blocks: bb0
+  [2] mutate? $20_@0[1:4]{reactive} = Destructure Const { x: mutate? x$18{reactive}, ...mutate? rest$19{reactive} } = read #t0$17:TObject<BuiltInProps>{reactive}
+    Create x$18 = frozen
+    ImmutableCapture x$18 <- #t0$17
+    Create rest$19 = frozen
+    ImmutableCapture rest$19 <- #t0$17
+    ImmutableCapture $20_@0 <- #t0$17
+  [3] Goto bb6
+bb6 (block):
+  predecessor blocks: bb5
+  [4] mutate? $21{reactive} = LoadLocal read rest$19{reactive}
+    ImmutableCapture $21 <- rest$19
+  [5] mutate? $22{reactive} = PropertyLoad read $21{reactive}.z
+    Create $22 = frozen
+    ImmutableCapture $22 <- $21
+  [6] mutate? $24{reactive} = StoreLocal Const mutate? z$23{reactive} = read $22{reactive}
+    ImmutableCapture z$23 <- $22
+    ImmutableCapture $24 <- $22
+  [7] mutate? $25:TFunction = LoadGlobal import { identity } from 'shared-runtime'
+    Create $25 = global
+  [8] mutate? $26{reactive} = LoadLocal read z$23{reactive}
+    ImmutableCapture $26 <- z$23
+  [9] Scope scope @1 [9:12] dependencies=[$25:TFunction_5:2:5:10, z$23_5:11:5:12] declarations=[] reassignments=[] block=bb7 fallthrough=bb8
+bb7 (block):
+  predecessor blocks: bb6
+  [10] store $27_@1[9:12]{reactive} = Call capture $25:TFunction(read $26{reactive})
+    Create $27_@1 = mutable
+    MaybeAlias $27_@1 <- $25
+    MaybeAlias $27_@1 <- $25
+    ImmutableCapture $27_@1 <- $26
+    ImmutableCapture $25 <- $26
+    ImmutableCapture $25 <- $26
+  [11] Goto bb8
+bb8 (block):
+  predecessor blocks: bb7
+  [12] mutate? $28 = LoadGlobal import { Stringify } from 'shared-runtime'
+    Create $28 = global
+  [13] mutate? $29{reactive} = LoadLocal read x$18{reactive}
+    ImmutableCapture $29 <- x$18
+  [14] mutate? $30{reactive} = LoadLocal read z$23{reactive}
+    ImmutableCapture $30 <- z$23
+  [15] Scope scope @2 [15:18] dependencies=[$28_6:10:6:19, x$18_6:23:6:24, z$23_6:29:6:30] declarations=[$31_@2] reassignments=[] block=bb9 fallthrough=bb10
+bb9 (block):
+  predecessor blocks: bb8
+  [16] mutate? $31_@2[15:18]:TObject<BuiltInJsx>{reactive} = JSX <read $28 x={read $29{reactive}} z={read $30{reactive}} />
+    Create $31_@2 = frozen
+    ImmutableCapture $31_@2 <- $29
+    ImmutableCapture $31_@2 <- $30
+    Render $28
+  [17] Goto bb10
+bb10 (block):
+  predecessor blocks: bb9
+  [18] Return Explicit freeze $31_@2[15:18]:TObject<BuiltInJsx>{reactive}
+    Freeze $31_@2 jsx-captured

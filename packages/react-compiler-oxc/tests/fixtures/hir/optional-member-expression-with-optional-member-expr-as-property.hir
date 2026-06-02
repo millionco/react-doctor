@@ -1,0 +1,62 @@
+Component(<unknown> props$0): <unknown> $29
+bb0 (block):
+  [1] <unknown> $1 = LoadGlobal(global) makeObject
+  [2] <unknown> $2 = Call <unknown> $1()
+  [3] <unknown> $4 = StoreLocal Const <unknown> x$3 = <unknown> $2
+  [4] Optional (optional=true) test:bb4 fallthrough=bb1
+bb4 (value):
+  predecessor blocks: bb0
+  [5] <unknown> $8 = LoadLocal <unknown> x$3
+  [6] <unknown> $9 = PropertyLoad <unknown> $8.y
+  [7] Branch (<unknown> $9) then:bb2 else:bb3 fallthrough:bb1
+bb2 (value):
+  predecessor blocks: bb4
+  [8] Optional (optional=true) test:bb8 fallthrough=bb5
+bb8 (value):
+  predecessor blocks: bb2
+  [9] <unknown> $13 = LoadLocal <unknown> props$0
+  [10] <unknown> $14 = PropertyLoad <unknown> $13.a
+  [11] Branch (<unknown> $14) then:bb6 else:bb7 fallthrough:bb5
+bb6 (value):
+  predecessor blocks: bb8
+  [12] Optional (optional=true) test:bb12 fallthrough=bb9
+bb12 (value):
+  predecessor blocks: bb6
+  [13] <unknown> $18 = LoadLocal <unknown> props$0
+  [14] <unknown> $19 = PropertyLoad <unknown> $18.b
+  [15] Branch (<unknown> $19) then:bb10 else:bb11 fallthrough:bb9
+bb10 (value):
+  predecessor blocks: bb12
+  [16] <unknown> $20 = LoadLocal <unknown> props$0
+  [17] <unknown> $21 = PropertyLoad <unknown> $20.c
+  [18] <unknown> $22 = ComputedLoad <unknown> $19[<unknown> $21]
+  [19] <unknown> $23 = StoreLocal Const <unknown> $15 = <unknown> $22
+  [20] Goto bb9
+bb11 (value):
+  predecessor blocks: bb12
+  [21] <unknown> $16 = <undefined>
+  [22] <unknown> $17 = StoreLocal Const <unknown> $15 = <unknown> $16
+  [23] Goto bb9
+bb9 (value):
+  predecessor blocks: bb10 bb11
+  [24] <unknown> $24 = ComputedLoad <unknown> $14[<unknown> $15]
+  [25] <unknown> $25 = StoreLocal Const <unknown> $10 = <unknown> $24
+  [26] Goto bb5
+bb7 (value):
+  predecessor blocks: bb8
+  [27] <unknown> $11 = <undefined>
+  [28] <unknown> $12 = StoreLocal Const <unknown> $10 = <unknown> $11
+  [29] Goto bb5
+bb5 (value):
+  predecessor blocks: bb9 bb7
+  [30] <unknown> $26 = ComputedLoad <unknown> $9[<unknown> $10]
+  [31] <unknown> $27 = StoreLocal Const <unknown> $5 = <unknown> $26
+  [32] Goto bb1
+bb3 (value):
+  predecessor blocks: bb4
+  [33] <unknown> $6 = <undefined>
+  [34] <unknown> $7 = StoreLocal Const <unknown> $5 = <unknown> $6
+  [35] Goto bb1
+bb1 (block):
+  predecessor blocks: bb5 bb3
+  [36] Return Explicit <unknown> $5

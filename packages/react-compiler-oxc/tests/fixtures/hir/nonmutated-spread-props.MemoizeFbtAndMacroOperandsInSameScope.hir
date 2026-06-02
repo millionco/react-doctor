@@ -1,0 +1,40 @@
+Component(<unknown> #t0$17:TObject<BuiltInProps>{reactive}): <unknown> $16:TObject<BuiltInJsx>
+bb0 (block):
+  [1] mutate? $20_@0{reactive} = Destructure Const { x: mutate? x$18{reactive}, ...mutate? rest$19{reactive} } = read #t0$17:TObject<BuiltInProps>{reactive}
+    Create x$18 = frozen
+    ImmutableCapture x$18 <- #t0$17
+    Create rest$19 = frozen
+    ImmutableCapture rest$19 <- #t0$17
+    ImmutableCapture $20_@0 <- #t0$17
+  [2] mutate? $21{reactive} = LoadLocal read rest$19{reactive}
+    ImmutableCapture $21 <- rest$19
+  [3] mutate? $22{reactive} = PropertyLoad read $21{reactive}.z
+    Create $22 = frozen
+    ImmutableCapture $22 <- $21
+  [4] mutate? $24{reactive} = StoreLocal Const mutate? z$23{reactive} = read $22{reactive}
+    ImmutableCapture z$23 <- $22
+    ImmutableCapture $24 <- $22
+  [5] mutate? $25:TFunction = LoadGlobal import { identity } from 'shared-runtime'
+    Create $25 = global
+  [6] mutate? $26{reactive} = LoadLocal read z$23{reactive}
+    ImmutableCapture $26 <- z$23
+  [7] store $27_@1{reactive} = Call capture $25:TFunction(read $26{reactive})
+    Create $27_@1 = mutable
+    MaybeAlias $27_@1 <- $25
+    MaybeAlias $27_@1 <- $25
+    ImmutableCapture $27_@1 <- $26
+    ImmutableCapture $25 <- $26
+    ImmutableCapture $25 <- $26
+  [8] mutate? $28 = LoadGlobal import { Stringify } from 'shared-runtime'
+    Create $28 = global
+  [9] mutate? $29{reactive} = LoadLocal read x$18{reactive}
+    ImmutableCapture $29 <- x$18
+  [10] mutate? $30{reactive} = LoadLocal read z$23{reactive}
+    ImmutableCapture $30 <- z$23
+  [11] mutate? $31_@2:TObject<BuiltInJsx>{reactive} = JSX <read $28 x={read $29{reactive}} z={read $30{reactive}} />
+    Create $31_@2 = frozen
+    ImmutableCapture $31_@2 <- $29
+    ImmutableCapture $31_@2 <- $30
+    Render $28
+  [12] Return Explicit freeze $31_@2:TObject<BuiltInJsx>{reactive}
+    Freeze $31_@2 jsx-captured

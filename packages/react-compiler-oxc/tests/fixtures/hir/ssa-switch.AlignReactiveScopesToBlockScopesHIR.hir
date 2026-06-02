@@ -1,0 +1,29 @@
+foo(): <unknown> $22:TPrimitive
+bb0 (block):
+  [3] mutate? $26:TPrimitive = 2
+    Create $26 = primitive
+  [4] mutate? $27:TPrimitive = 1
+    Create $27 = primitive
+  [5] mutate? $28:TPrimitive = 1
+    Create $28 = primitive
+  [6] Switch (read $28:TPrimitive)
+    Case read $27:TPrimitive: bb5
+    Case read $26:TPrimitive: bb3
+    Default: bb2
+    Fallthrough: bb1
+bb5 (block):
+  predecessor blocks: bb0
+  [11] Goto bb1
+bb3 (block):
+  predecessor blocks: bb0
+  [16] Goto bb1
+bb2 (block):
+  predecessor blocks: bb0
+  [21] Goto bb1
+bb1 (block):
+  predecessor blocks: bb5 bb3 bb2
+  [24] mutate? $48:TPrimitive = <undefined>
+    Create $48 = primitive
+  [25] Return Void freeze $48:TPrimitive
+    Freeze $48 jsx-captured
+

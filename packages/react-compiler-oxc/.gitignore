@@ -1,0 +1,10 @@
+# Cargo build output (~GBs of artifacts).
+/target
+
+# rustfmt backups.
+**/*.rs.bk
+
+# NOTE: Cargo.lock IS intentionally committed — this crate ships a binary
+# (and the parity harness), so the lockfile is part of the reproducible build.
+# tests/fixtures/** are committed oracle reference dumps (the parity ground
+# truth) — do not ignore them.

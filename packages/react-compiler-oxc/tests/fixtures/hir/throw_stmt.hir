@@ -1,0 +1,4 @@
+Component(<unknown> e$0): <unknown> $3
+bb0 (block):
+  [1] <unknown> $1 = LoadLocal <unknown> e$0
+  [2] Throw <unknown> $1

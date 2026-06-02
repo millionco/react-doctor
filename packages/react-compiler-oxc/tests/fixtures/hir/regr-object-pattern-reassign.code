@@ -1,0 +1,39 @@
+import { c as _c } from "react/compiler-runtime";
+function Component(props) {
+  const $ = _c(8);
+  let a;
+  let bb;
+  let rest;
+  let t0;
+  let t1;
+  let t2;
+  if ($[0] !== props.obj) {
+    ({
+      a: t0,
+      b: t1,
+      ...t2
+    } = props.obj);
+    $[0] = props.obj;
+    $[1] = t0;
+    $[2] = t1;
+    $[3] = t2;
+  } else {
+    t0 = $[1];
+    t1 = $[2];
+    t2 = $[3];
+  }
+  a = t0;
+  bb = t1;
+  rest = t2;
+  let t3;
+  if ($[4] !== a || $[5] !== bb || $[6] !== rest) {
+    t3 = <div>{a}{bb}{rest}</div>;
+    $[4] = a;
+    $[5] = bb;
+    $[6] = rest;
+    $[7] = t3;
+  } else {
+    t3 = $[7];
+  }
+  return t3;
+}

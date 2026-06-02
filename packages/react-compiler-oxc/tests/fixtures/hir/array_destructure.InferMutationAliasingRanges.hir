@@ -1,0 +1,14 @@
+Component(<unknown> o$8): <unknown> $7
+bb0 (block):
+  [1] mutate? $9 = LoadLocal read o$8
+    ImmutableCapture $9 <- o$8
+  [2] mutate? $12 = Destructure Const [ mutate? a$10 ] = read $9
+    Create a$10 = frozen
+    ImmutableCapture a$10 <- $9
+    Create b$11 = frozen
+    ImmutableCapture b$11 <- $9
+    ImmutableCapture $12 <- $9
+  [3] mutate? $13 = LoadLocal read a$10
+    ImmutableCapture $13 <- a$10
+  [4] Return Explicit freeze $13
+    Freeze $13 jsx-captured

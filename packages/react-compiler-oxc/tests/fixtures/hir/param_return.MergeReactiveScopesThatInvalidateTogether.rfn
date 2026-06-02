@@ -1,0 +1,6 @@
+function Component(
+  <unknown> props$4{reactive},
+) {
+  [1] mutate? $5{reactive} = LoadLocal read props$4{reactive}
+  [2] return freeze $5{reactive}
+}

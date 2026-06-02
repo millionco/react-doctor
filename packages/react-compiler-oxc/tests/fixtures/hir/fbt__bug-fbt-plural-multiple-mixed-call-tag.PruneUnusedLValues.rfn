@@ -1,0 +1,35 @@
+function useFoo(
+  <unknown> #t0$33{reactive},
+) {
+  [1] Destructure Const { apples: mutate? apples$34{reactive}, bananas: mutate? bananas$35{reactive} } = read #t0$33{reactive}
+  scope @3 [2:33] dependencies=[apples$34_19:39:19:45, bananas$35_23:54:23:61] declarations=[$63_@4] reassignments=[] {
+    [3] mutate? $37_@3[2:33]:TPrimitive = "Test Description"
+    [4] mutate? $38_@3[2:33]:TPrimitive = JSXText "\n        "
+    [5] mutate? $39 = LoadGlobal import fbt from 'fbt'
+    [6] mutate? $40_@3[2:33]:TFunction = PropertyLoad read $39.param
+    [7] mutate? $41:TPrimitive = "number of apples"
+    [8] mutate? $42{reactive} = LoadLocal read apples$34{reactive}
+    [9] store $43_@3[2:33]{reactive} = MethodCall capture $39.capture $40_@3[2:33]:TFunction{reactive}(capture $41:TPrimitive, read $42{reactive})
+    [10] mutate? $44_@3[2:33]:TPrimitive = JSXText "\n        "
+    [11] mutate? $45_@3[2:33]:TPrimitive = "  "
+    [12] mutate? $46_@3[2:33]:TPrimitive = JSXText "\n        "
+    [13] mutate? $47 = LoadGlobal import fbt from 'fbt'
+    [14] mutate? $48_@3[2:33]:TFunction = PropertyLoad read $47.plural
+    [15] mutate? $49:TPrimitive = "apple"
+    [16] mutate? $50{reactive} = LoadLocal read apples$34{reactive}
+    [17] store $51_@3[2:33]{reactive} = MethodCall capture $47.capture $48_@3[2:33]:TFunction{reactive}(capture $49:TPrimitive, read $50{reactive})
+    [18] mutate? $52_@3[2:33]:TPrimitive = JSXText " and\n        "
+    [19] mutate? $53_@3[2:33]:TPrimitive = "  "
+    [20] mutate? $54_@3[2:33]:TPrimitive = JSXText "\n        "
+    [21] mutate? $55:TPrimitive = "fbt:plural"
+    [22] mutate? $56:TPrimitive = "number of bananas"
+    [23] mutate? $57{reactive} = LoadLocal read bananas$35{reactive}
+    [24] mutate? $58:TPrimitive = "yes"
+    [25] mutate? $59:TPrimitive = JSXText "\n          banana\n        "
+    [26] mutate? $60_@3[2:33]:TObject<BuiltInJsx>{reactive} = JSX <read $55:TPrimitive name={read $56:TPrimitive} count={read $57{reactive}} showCount={read $58:TPrimitive} >{read $59:TPrimitive}</read $55:TPrimitive>
+    [27] mutate? $61_@3[2:33]:TPrimitive = JSXText "\n      "
+    [28] mutate? $62_@3[2:33]:TObject<BuiltInJsx>{reactive} = JSX <fbt desc={read $37_@3[2:33]:TPrimitive} >{read $38_@3[2:33]:TPrimitive}{freeze $43_@3[2:33]{reactive}}{read $44_@3[2:33]:TPrimitive}{read $45_@3[2:33]:TPrimitive}{read $46_@3[2:33]:TPrimitive}{freeze $51_@3[2:33]{reactive}}{read $52_@3[2:33]:TPrimitive}{read $53_@3[2:33]:TPrimitive}{read $54_@3[2:33]:TPrimitive}{read $60_@3[2:33]:TObject<BuiltInJsx>{reactive}}{read $61_@3[2:33]:TPrimitive}</fbt>
+    [31] mutate? $63_@4[30:33]:TObject<BuiltInJsx>{reactive} = JSX <div>{read $62_@3[2:33]:TObject<BuiltInJsx>{reactive}}</div>
+  }
+  [33] return freeze $63_@4[30:33]:TObject<BuiltInJsx>{reactive}
+}

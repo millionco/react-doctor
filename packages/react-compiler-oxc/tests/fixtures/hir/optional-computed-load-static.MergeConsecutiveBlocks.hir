@@ -1,0 +1,44 @@
+Component(<unknown> props$0): <unknown> $17
+bb0 (block):
+  [1] Optional (optional=false) test:bb4 fallthrough=bb1
+bb4 (value):
+  predecessor blocks: bb0
+  [2] Optional (optional=false) test:bb7 fallthrough=bb5
+bb7 (value):
+  predecessor blocks: bb4
+  [3] Optional (optional=true) test:bb10 fallthrough=bb8
+bb10 (value):
+  predecessor blocks: bb7
+  [4] <unknown> $6 = LoadGlobal(global) a
+  [5] Branch (<unknown> $6) then:bb9 else:bb3 fallthrough:bb8
+bb9 (value):
+  predecessor blocks: bb10
+  [6] <unknown> $7 = PropertyLoad <unknown> $6.b
+  [7] <unknown> $8 = StoreLocal Const <unknown> $5 = <unknown> $7
+  [8] Goto bb8
+bb8 (value):
+  predecessor blocks: bb9
+  [9] Branch (<unknown> $5) then:bb6 else:bb3 fallthrough:bb5
+bb6 (value):
+  predecessor blocks: bb8
+  [10] <unknown> $9 = PropertyLoad <unknown> $5.c
+  [11] <unknown> $10 = StoreLocal Const <unknown> $4 = <unknown> $9
+  [12] Goto bb5
+bb5 (value):
+  predecessor blocks: bb6
+  [13] Branch (<unknown> $4) then:bb2 else:bb3 fallthrough:bb1
+bb2 (value):
+  predecessor blocks: bb5
+  [14] <unknown> $11 = PropertyLoad <unknown> $4.0
+  [15] <unknown> $12 = StoreLocal Const <unknown> $1 = <unknown> $11
+  [16] Goto bb1
+bb3 (value):
+  predecessor blocks: bb5 bb8 bb10
+  [17] <unknown> $2 = <undefined>
+  [18] <unknown> $3 = StoreLocal Const <unknown> $1 = <unknown> $2
+  [19] Goto bb1
+bb1 (block):
+  predecessor blocks: bb2 bb3
+  [20] <unknown> $14 = StoreLocal Let <unknown> x$13 = <unknown> $1
+  [21] <unknown> $15 = LoadLocal <unknown> x$13
+  [22] Return Explicit <unknown> $15

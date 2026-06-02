@@ -1,0 +1,17 @@
+function AllocatingPrimitiveAsDep(
+  <unknown> props$14{reactive},
+) {
+  [1] mutate? $15:TFunction = LoadGlobal(global) foo
+  [2] mutate? $16:TFunction = LoadGlobal(global) bar
+  [3] mutate? $17{reactive} = LoadLocal read props$14{reactive}
+  [5] store $18_@0[4:7]{reactive} = Call capture $16:TFunction(read $17{reactive})
+  [7] mutate? $19:TPrimitive{reactive} = PropertyLoad read $18_@0[4:7]{reactive}.b
+  [8] mutate? $20:TPrimitive = 1
+  [9] mutate? t0$21:TPrimitive{reactive} = Binary read $19:TPrimitive{reactive} + read $20:TPrimitive
+  scope @1 [10:13] dependencies=[t0$21:TPrimitive_7:14:7:30] declarations=[t1$22_@1] reassignments=[] {
+    [11] store t1$22_@1[10:13]{reactive} = Call capture $15:TFunction(capture t0$21:TPrimitive{reactive})
+  }
+  [13] StoreLocal Const store y$23{reactive} = capture t1$22_@1[10:13]{reactive}
+  [14] store $25{reactive} = LoadLocal capture y$23{reactive}
+  [15] return freeze $25{reactive}
+}

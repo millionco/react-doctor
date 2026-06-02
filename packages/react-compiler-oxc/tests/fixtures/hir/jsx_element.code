@@ -1,0 +1,14 @@
+import { c as _c } from "react/compiler-runtime";
+function Component(props) {
+  const $ = _c(3);
+  let t0;
+  if ($[0] !== props.child || $[1] !== props.handler) {
+    t0 = <div className="x" onClick={props.handler}>{props.child}text</div>;
+    $[0] = props.child;
+    $[1] = props.handler;
+    $[2] = t0;
+  } else {
+    t0 = $[2];
+  }
+  return t0;
+}

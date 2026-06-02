@@ -1,0 +1,6 @@
+function Component(props) {
+  let a;
+  const [t0] = props;
+  a = t0;
+  return a;
+}

@@ -1,0 +1,20 @@
+Component(<unknown> obj$0): <unknown> $10
+bb0 (block):
+  [1] <unknown> $2 = DeclareLocal Let <unknown> k$1
+  [2] <unknown> $6 = LoadLocal <unknown> obj$0
+  [3] ForIn init=bb2 loop=bb3 fallthrough=bb1
+bb2 (loop):
+  predecessor blocks: bb0 bb3
+  [4] <unknown> $7 = NextPropertyOf <unknown> $6
+  [5] <unknown> $8 = StoreLocal Reassign <unknown> k$1 = <unknown> $7
+  [6] Branch (<unknown> $8) then:bb3 else:bb1 fallthrough:bb1
+bb3 (block):
+  predecessor blocks: bb2
+  [7] <unknown> $3 = LoadGlobal(global) foo
+  [8] <unknown> $4 = LoadLocal <unknown> k$1
+  [9] <unknown> $5 = Call <unknown> $3(<unknown> $4)
+  [10] Goto(Continue) bb2
+bb1 (block):
+  predecessor blocks: bb2
+  [11] <unknown> $9 = <undefined>
+  [12] Return Void <unknown> $9

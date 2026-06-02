@@ -1,0 +1,81 @@
+Component(<unknown> props$35): <unknown> $32:TObject<BuiltInJsx>
+bb0 (block):
+  [1] mutate? $36:TFunction = LoadGlobal import { makeObject_Primitives } from 'shared-runtime'
+    Create $36 = global
+  [2] store $37 = Call capture $36:TFunction()
+    Create $37 = mutable
+    MaybeAlias $37 <- $36
+    MaybeAlias $37 <- $36
+  [3] store $39 = StoreLocal Const store object$38 = capture $37
+    Assign object$38 = $37
+    Assign $39 = $37
+  [4] mutate? $40:TFunction<DefaultNonmutatingHook>():  :TPoly = LoadGlobal import { useHook } from 'shared-runtime'
+    Create $40 = global
+  [5] mutate? $41 = Call read $40:TFunction<DefaultNonmutatingHook>():  :TPoly()
+    Create $41 = frozen
+  [6] store $42:TFunction<BuiltInFunction>():  :TPrimitive = Function  @context[capture object$38] @aliasingEffects=[MutateTransitiveConditionally object$38, Create $11 = primitive]
+      <<anonymous>>(): <unknown> $11:TPrimitive
+      bb1 (block):
+        [1] mutate? $43:TFunction = LoadGlobal import { logValue } from 'shared-runtime'
+          Create $43 = global
+        [2] store $44_@0[2:4] = LoadLocal capture object$38
+          Assign $44_@0 = object$38
+        [3] store $45_@0[2:4] = Call capture $43:TFunction(capture $44_@0[2:4])
+          Create $45_@0 = mutable
+          MaybeAlias $45_@0 <- $43
+          MaybeAlias $45_@0 <- $43
+          MutateTransitiveConditionally $44_@0
+          MaybeAlias $45_@0 <- $44_@0
+        [4] mutate? $46:TPrimitive = <undefined>
+          Create $46 = primitive
+        [5] Return Void read $46:TPrimitive
+    Function $42 = Function captures=[object$38]
+    Capture $42 <- object$38
+  [7] store $48:TFunction<BuiltInFunction>():  :TPrimitive = StoreLocal Const store log$47:TFunction<BuiltInFunction>():  :TPrimitive = capture $42:TFunction<BuiltInFunction>():  :TPrimitive
+    Assign log$47 = $42
+    Assign $48 = $42
+  [9] mutate? $50 = StartMemoize deps=log$47
+    Freeze log$47 hook-captured
+    Create $50 = primitive
+  [10] mutate? $51:TFunction<BuiltInFunction>():  :TPrimitive = Function  @context[read log$47:TFunction<BuiltInFunction>():  :TPrimitive] @aliasingEffects=[MutateTransitiveConditionally log$47, Create $19 = primitive]
+      <<anonymous>>(): <unknown> $19:TPrimitive
+      bb2 (block):
+        [1] store $52_@1[1:3]:TFunction<BuiltInFunction>():  :TPrimitive = LoadLocal capture log$47:TFunction<BuiltInFunction>():  :TPrimitive
+          Assign $52_@1 = log$47
+        [2] store $53:TPrimitive = Call capture $52_@1[1:3]:TFunction<BuiltInFunction>():  :TPrimitive()
+          Create $53 = mutable
+          MutateTransitiveConditionally $52_@1
+          MaybeAlias $53 <- $52_@1
+          MutateTransitiveConditionally $52_@1
+          MaybeAlias $53 <- $52_@1
+        [3] mutate? $54:TPrimitive = <undefined>
+          Create $54 = primitive
+        [4] Return Void read $54:TPrimitive
+    Function $51 = Function captures=[log$47]
+    ImmutableCapture $51 <- log$47
+  [13] mutate? $57:TFunction<BuiltInFunction>():  :TPrimitive = LoadLocal read $51:TFunction<BuiltInFunction>():  :TPrimitive
+    ImmutableCapture $57 <- $51
+  [14] mutate? $58 = FinishMemoize decl=read $51:TFunction<BuiltInFunction>():  :TPrimitive
+    Create $58 = primitive
+  [15] mutate? $60:TFunction<BuiltInFunction>():  :TPrimitive = StoreLocal Const mutate? onClick$59:TFunction<BuiltInFunction>():  :TPrimitive = read $57:TFunction<BuiltInFunction>():  :TPrimitive
+    ImmutableCapture onClick$59 <- $57
+    ImmutableCapture $60 <- $57
+  [16] mutate? $61:TFunction = LoadGlobal import { identity } from 'shared-runtime'
+    Create $61 = global
+  [17] mutate? $62 = LoadLocal read object$38
+    ImmutableCapture $62 <- object$38
+  [18] store $63 = Call capture $61:TFunction(read $62)
+    Create $63 = mutable
+    MaybeAlias $63 <- $61
+    MaybeAlias $63 <- $61
+    ImmutableCapture $63 <- $62
+    ImmutableCapture $61 <- $62
+    ImmutableCapture $61 <- $62
+  [19] mutate? $64:TFunction<BuiltInFunction>():  :TPrimitive = LoadLocal read onClick$59:TFunction<BuiltInFunction>():  :TPrimitive
+    ImmutableCapture $64 <- onClick$59
+  [20] mutate? $65:TObject<BuiltInJsx> = JSX <div onClick={read $64:TFunction<BuiltInFunction>():  :TPrimitive} />
+    Create $65 = frozen
+    ImmutableCapture $65 <- $64
+  [21] Return Explicit freeze $65:TObject<BuiltInJsx>
+    Freeze $65 jsx-captured
+

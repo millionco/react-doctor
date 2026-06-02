@@ -1,0 +1,27 @@
+Component(<unknown> props$16): <unknown> $15:TPhi
+bb0 (block):
+  [1] <unknown> $17:TFunction = LoadGlobal(global) makeObject
+  [2] <unknown> $18 = LoadLocal <unknown> props$16
+  [3] <unknown> $19 = Call <unknown> $17:TFunction(<unknown> $18)
+  [4] <unknown> $21 = StoreLocal Const <unknown> object$20 = <unknown> $19
+  [5] Optional (optional=true) test:bb4 fallthrough=bb1
+bb4 (value):
+  predecessor blocks: bb0
+  [6] <unknown> $22 = LoadLocal <unknown> object$20
+  [7] Branch (<unknown> $22) then:bb2 else:bb3 fallthrough:bb1
+bb2 (value):
+  predecessor blocks: bb4
+  [8] <unknown> $23 = LoadLocal <unknown> props$16
+  [9] <unknown> $24 = PropertyLoad <unknown> $23.key
+  [10] <unknown> $25 = ComputedLoad <unknown> $22[<unknown> $24]
+  [11] <unknown> $27 = StoreLocal Const <unknown> $26 = <unknown> $25
+  [12] Goto bb1
+bb3 (value):
+  predecessor blocks: bb4
+  [13] <unknown> $28:TPrimitive = <undefined>
+  [14] <unknown> $30:TPrimitive = StoreLocal Const <unknown> $29:TPrimitive = <unknown> $28:TPrimitive
+  [15] Goto bb1
+bb1 (block):
+  predecessor blocks: bb2 bb3
+  <unknown> $31:TPhi:TPhi: phi(bb2: <unknown> $26, bb3: <unknown> $29:TPrimitive)
+  [16] Return Explicit <unknown> $31:TPhi

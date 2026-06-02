@@ -1,0 +1,34 @@
+foo(<unknown> a$20, <unknown> b$21, <unknown> c$22, <unknown> d$23): <unknown> $19:TObject<BuiltInArray>
+bb0 (block):
+  [1] <unknown> $24:TObject<BuiltInArray> = Array []
+  [2] <unknown> $26:TObject<BuiltInArray> = StoreLocal Let <unknown> y$25:TObject<BuiltInArray> = <unknown> $24:TObject<BuiltInArray>
+  [3] Label block=bb2 fallthrough=bb1
+bb2 (block):
+  predecessor blocks: bb0
+  [4] <unknown> $27 = LoadLocal <unknown> a$20
+  [5] If (<unknown> $27) then:bb4 else:bb3 fallthrough=bb3
+bb4 (block):
+  predecessor blocks: bb2
+  [6] <unknown> $28 = LoadLocal <unknown> b$21
+  [7] If (<unknown> $28) then:bb6 else:bb5 fallthrough=bb5
+bb6 (block):
+  predecessor blocks: bb4
+  [8] <unknown> $29:TObject<BuiltInArray> = LoadLocal <unknown> y$25:TObject<BuiltInArray>
+  [9] <unknown> $30:TFunction<<generated_5>>():  :TPrimitive = PropertyLoad <unknown> $29:TObject<BuiltInArray>.push
+  [10] <unknown> $31 = LoadLocal <unknown> c$22
+  [11] <unknown> $32:TPrimitive = MethodCall <unknown> $29:TObject<BuiltInArray>.<unknown> $30:TFunction<<generated_5>>():  :TPrimitive(<unknown> $31)
+  [12] Goto bb1
+bb5 (block):
+  predecessor blocks: bb4
+  [13] <unknown> $33:TObject<BuiltInArray> = LoadLocal <unknown> y$25:TObject<BuiltInArray>
+  [14] <unknown> $34:TFunction<<generated_5>>():  :TPrimitive = PropertyLoad <unknown> $33:TObject<BuiltInArray>.push
+  [15] <unknown> $35 = LoadLocal <unknown> d$23
+  [16] <unknown> $36:TPrimitive = MethodCall <unknown> $33:TObject<BuiltInArray>.<unknown> $34:TFunction<<generated_5>>():  :TPrimitive(<unknown> $35)
+  [17] Goto bb3
+bb3 (block):
+  predecessor blocks: bb5 bb2
+  [18] Goto bb1
+bb1 (block):
+  predecessor blocks: bb6 bb3
+  [19] <unknown> $39:TObject<BuiltInArray> = LoadLocal <unknown> y$25:TObject<BuiltInArray>
+  [20] Return Explicit <unknown> $39:TObject<BuiltInArray>

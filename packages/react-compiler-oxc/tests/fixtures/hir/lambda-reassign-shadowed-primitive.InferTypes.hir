@@ -1,0 +1,19 @@
+Component(): <unknown> $17:TObject<BuiltInObject>
+bb0 (block):
+  [1] <unknown> $18:TObject<BuiltInObject> = Object {  }
+  [2] <unknown> $20:TObject<BuiltInObject> = StoreLocal Const <unknown> x$19:TObject<BuiltInObject> = <unknown> $18:TObject<BuiltInObject>
+  [3] <unknown> $21:TPrimitive = 56
+  [4] <unknown> $22 = StoreContext Let <unknown> x_0$4 = <unknown> $21:TPrimitive
+  [5] <unknown> $23:TFunction<BuiltInFunction>():  :TPrimitive = Function  @context[<unknown> x_0$4] @aliasingEffects=[]
+      <<anonymous>>(): <unknown> $9:TPrimitive
+      bb1 (block):
+        [1] <unknown> $24:TPrimitive = 42
+        [2] <unknown> $25 = StoreContext Reassign <unknown> x_0$4 = <unknown> $24:TPrimitive
+        [3] <unknown> $26:TPrimitive = <undefined>
+        [4] Return Void <unknown> $26:TPrimitive
+  [6] <unknown> $28:TFunction<BuiltInFunction>():  :TPrimitive = StoreLocal Const <unknown> fn$27:TFunction<BuiltInFunction>():  :TPrimitive = <unknown> $23:TFunction<BuiltInFunction>():  :TPrimitive
+  [7] <unknown> $29:TFunction<BuiltInFunction>():  :TPrimitive = LoadLocal <unknown> fn$27:TFunction<BuiltInFunction>():  :TPrimitive
+  [8] <unknown> $30:TPrimitive = Call <unknown> $29:TFunction<BuiltInFunction>():  :TPrimitive()
+  [9] <unknown> $31:TObject<BuiltInObject> = LoadLocal <unknown> x$19:TObject<BuiltInObject>
+  [10] Return Explicit <unknown> $31:TObject<BuiltInObject>
+

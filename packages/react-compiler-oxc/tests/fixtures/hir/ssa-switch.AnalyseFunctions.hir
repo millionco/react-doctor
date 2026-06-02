@@ -1,0 +1,40 @@
+foo(): <unknown> $22:TPrimitive
+bb0 (block):
+  [1] <unknown> $23:TPrimitive = 1
+  [2] <unknown> $25:TPrimitive = StoreLocal Let <unknown> x$24:TPrimitive = <unknown> $23:TPrimitive
+  [3] <unknown> $26:TPrimitive = 2
+  [4] <unknown> $27:TPrimitive = 1
+  [5] <unknown> $28:TPrimitive = 1
+  [6] Switch (<unknown> $28:TPrimitive)
+    Case <unknown> $27:TPrimitive: bb5
+    Case <unknown> $26:TPrimitive: bb3
+    Default: bb2
+    Fallthrough: bb1
+bb5 (block):
+  predecessor blocks: bb0
+  [7] <unknown> $29:TPrimitive = 1
+  [8] <unknown> $30:TPrimitive = 1
+  [9] <unknown> $31:TPrimitive = 2
+  [10] <unknown> $33:TPrimitive = StoreLocal Reassign <unknown> x$32:TPrimitive = <unknown> $31:TPrimitive
+  [11] Goto bb1
+bb3 (block):
+  predecessor blocks: bb0
+  [12] <unknown> $34:TPrimitive = 1
+  [13] <unknown> $35:TPrimitive = 2
+  [14] <unknown> $36:TPrimitive = 3
+  [15] <unknown> $38:TPrimitive = StoreLocal Reassign <unknown> x$37:TPrimitive = <unknown> $36:TPrimitive
+  [16] Goto bb1
+bb2 (block):
+  predecessor blocks: bb0
+  [17] <unknown> $39:TPrimitive = 1
+  [18] <unknown> $40:TPrimitive = 3
+  [19] <unknown> $41:TPrimitive = 4
+  [20] <unknown> $43:TPrimitive = StoreLocal Reassign <unknown> x$42:TPrimitive = <unknown> $41:TPrimitive
+  [21] Goto bb1
+bb1 (block):
+  predecessor blocks: bb5 bb3 bb2
+  <unknown> x$44:TPrimitive:TPrimitive: phi(bb5: <unknown> x$32:TPrimitive, bb3: <unknown> x$37:TPrimitive, bb2: <unknown> x$42:TPrimitive)
+  [22] <unknown> $45:TPrimitive = LoadLocal <unknown> x$44:TPrimitive
+  [23] <unknown> $47:TPrimitive = StoreLocal Let <unknown> y$46:TPrimitive = <unknown> $45:TPrimitive
+  [24] <unknown> $48:TPrimitive = <undefined>
+  [25] Return Void <unknown> $48:TPrimitive

@@ -1,0 +1,45 @@
+Component(<unknown> props$13{reactive}): <unknown> $12:TObject<BuiltInJsx>
+bb0 (block):
+  [1] Scope scope @0 [1:11] dependencies=[] declarations=[$19_@0, $22_@0] reassignments=[] block=bb5 fallthrough=bb6
+bb5 (block):
+  predecessor blocks: bb0
+  [2] mutate? $14_@0[1:11]:TFunction = LoadGlobal(global) MaybeMutable
+    Create $14_@0 = global
+  [3] store $15_@0[1:11] = New capture $14_@0[1:11]:TFunction()
+    Create $15_@0 = mutable
+    MaybeAlias $15_@0 <- $14_@0
+    MaybeAlias $15_@0 <- $14_@0
+  [4] store $17_@0[1:11] = StoreLocal Const store maybeMutable$16_@0[1:11] = capture $15_@0[1:11]
+    Assign maybeMutable$16_@0 = $15_@0
+    Assign $17_@0 = $15_@0
+  [5] mutate? $18 = LoadGlobal(global) Foo
+    Create $18 = global
+  [6] mutate? $19 = PropertyLoad read $18.Bar
+    Create $19 = global
+  [7] mutate? $20:TFunction = LoadGlobal(global) maybeMutate
+    Create $20 = global
+  [8] store $21_@0[1:11] = LoadLocal capture maybeMutable$16_@0[1:11]
+    Assign $21_@0 = maybeMutable$16_@0
+  [9] store $22_@0[1:11] = Call capture $20:TFunction(capture $21_@0[1:11])
+    Create $22_@0 = mutable
+    MaybeAlias $22_@0 <- $20
+    MaybeAlias $22_@0 <- $20
+    MutateTransitiveConditionally $21_@0
+    MaybeAlias $22_@0 <- $21_@0
+  [10] Goto bb6
+bb6 (block):
+  predecessor blocks: bb5
+  [11] Scope scope @1 [11:14] dependencies=[$19_3:10:3:17, $22_@0_3:19:3:44] declarations=[$23_@1] reassignments=[] block=bb7 fallthrough=bb8
+bb7 (block):
+  predecessor blocks: bb6
+  [12] mutate? $23_@1[11:14]:TObject<BuiltInJsx> = JSX <read $19>{freeze $22_@0[1:11]}</read $19>
+    Create $23_@1 = frozen
+    Freeze $22_@0 jsx-captured
+    ImmutableCapture $23_@1 <- $22_@0
+    Render $19
+    Render $22_@0
+  [13] Goto bb8
+bb8 (block):
+  predecessor blocks: bb7
+  [14] Return Explicit freeze $23_@1[11:14]:TObject<BuiltInJsx>
+    Freeze $23_@1 jsx-captured

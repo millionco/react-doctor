@@ -1,0 +1,70 @@
+Component(<unknown> #t0$24, <unknown> #t9$25): <unknown> $23:TObject<BuiltInArray>
+bb0 (block):
+  [1] Ternary test:bb1 fallthrough=bb2
+bb1 (value):
+  predecessor blocks: bb0
+  [2] <unknown> $26:TPrimitive = <undefined>
+    Create $26 = primitive
+  [3] <unknown> $27:TPrimitive = Binary <unknown> #t0$24 === <unknown> $26:TPrimitive
+    Create $27 = primitive
+  [4] Branch (<unknown> $27:TPrimitive) then:bb3 else:bb4 fallthrough:bb2
+bb3 (value):
+  predecessor blocks: bb1
+  [5] <unknown> $28:TPrimitive = "default"
+    Create $28 = primitive
+  [6] <unknown> $30:TPrimitive = StoreLocal Const <unknown> $29:TPrimitive = <unknown> $28:TPrimitive
+  [7] Goto bb2
+bb4 (value):
+  predecessor blocks: bb1
+  [8] <unknown> $32 = StoreLocal Const <unknown> $31 = <unknown> #t0$24
+    ImmutableCapture $31 <- #t0$24
+    ImmutableCapture $32 <- #t0$24
+  [9] Goto bb2
+bb2 (block):
+  predecessor blocks: bb3 bb4
+  <unknown> $33:TPhi:TPhi: phi(bb3: <unknown> $29:TPrimitive, bb4: <unknown> $31)
+  [10] <unknown> $35:TPhi = StoreLocal Let <unknown> x$34:TPhi = <unknown> $33:TPhi
+    ImmutableCapture x$34 <- $33
+    ImmutableCapture $35 <- $33
+  [11] Ternary test:bb5 fallthrough=bb6
+bb5 (value):
+  predecessor blocks: bb2
+  [12] <unknown> $36:TPrimitive = <undefined>
+    Create $36 = primitive
+  [13] <unknown> $38:TPrimitive = Binary <unknown> #t9$25 === <unknown> $36:TPrimitive
+    Create $38 = primitive
+  [14] Branch (<unknown> $38:TPrimitive) then:bb7 else:bb8 fallthrough:bb6
+bb7 (value):
+  predecessor blocks: bb5
+  [15] <unknown> $39:TObject<BuiltInObject> = Object {  }
+    Create $39 = mutable
+  [16] <unknown> $40:TObject<BuiltInArray> = Array [<unknown> $39:TObject<BuiltInObject>]
+    Create $40 = mutable
+    Capture $40 <- $39
+  [17] <unknown> $42:TObject<BuiltInArray> = StoreLocal Const <unknown> $41:TObject<BuiltInArray> = <unknown> $40:TObject<BuiltInArray>
+    Assign $41 = $40
+    Assign $42 = $40
+  [18] Goto bb6
+bb8 (value):
+  predecessor blocks: bb5
+  [19] <unknown> $44 = StoreLocal Const <unknown> $43 = <unknown> #t9$25
+    ImmutableCapture $43 <- #t9$25
+    ImmutableCapture $44 <- #t9$25
+  [20] Goto bb6
+bb6 (block):
+  predecessor blocks: bb7 bb8
+  <unknown> $45:TPhi:TPhi: phi(bb7: <unknown> $41:TObject<BuiltInArray>, bb8: <unknown> $43)
+  [21] <unknown> $47:TPhi = StoreLocal Let <unknown> y$46:TPhi = <unknown> $45:TPhi
+    Assign y$46 = $45
+    Assign $47 = $45
+  [22] <unknown> $49:TPhi = LoadLocal <unknown> x$34:TPhi
+    ImmutableCapture $49 <- x$34
+  [23] <unknown> $50:TPhi = LoadLocal <unknown> y$46:TPhi
+    Assign $50 = y$46
+  [24] <unknown> $51:TObject<BuiltInArray> = Array [<unknown> $49:TPhi, <unknown> $50:TPhi]
+    Create $51 = mutable
+    ImmutableCapture $51 <- $49
+    ImmutableCapture $51 <- $50
+  [25] Return Explicit <unknown> $51:TObject<BuiltInArray>
+    Freeze $51 jsx-captured
+

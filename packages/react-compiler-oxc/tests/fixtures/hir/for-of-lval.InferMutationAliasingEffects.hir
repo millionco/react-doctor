@@ -1,0 +1,44 @@
+Component(<unknown> items$12): <unknown> $11:TPrimitive
+bb0 (block):
+  [1] <unknown> $14 = DeclareLocal Let <unknown> x$13
+    Create x$13 = primitive
+    Create $14 = primitive
+  [2] <unknown> $15 = LoadLocal <unknown> items$12
+    ImmutableCapture $15 <- items$12
+  [3] ForOf init=bb2 test=bb3 loop=bb4 fallthrough=bb1
+bb2 (loop):
+  predecessor blocks: bb0 bb4
+  [4] <unknown> $17 = GetIterator collection=<unknown> $15
+    Create $17 = mutable
+    ImmutableCapture $17 <- $15
+  [5] Goto bb3
+bb3 (loop):
+  predecessor blocks: bb2
+  [6] <unknown> $18 = IteratorNext iterator=<unknown> $17 collection=<unknown> $15
+    MutateConditionally $17
+    Create $18 = frozen
+    ImmutableCapture $18 <- $15
+  [7] <unknown> $20 = StoreLocal Reassign <unknown> x$19 = <unknown> $18
+    ImmutableCapture x$19 <- $18
+    ImmutableCapture $20 <- $18
+  [8] Branch (<unknown> $20) then:bb4 else:bb1 fallthrough:bb1
+bb4 (block):
+  predecessor blocks: bb3
+  [9] <unknown> $21:TFunction = LoadGlobal(global) foo
+    Create $21 = global
+  [10] <unknown> $22 = LoadLocal <unknown> x$19
+    ImmutableCapture $22 <- x$19
+  [11] <unknown> $23 = Call <unknown> $21:TFunction(<unknown> $22)
+    Create $23 = mutable
+    MaybeAlias $23 <- $21
+    MaybeAlias $23 <- $21
+    ImmutableCapture $23 <- $22
+    ImmutableCapture $21 <- $22
+    ImmutableCapture $21 <- $22
+  [12] Goto(Continue) bb2
+bb1 (block):
+  predecessor blocks: bb3
+  [13] <unknown> $24:TPrimitive = <undefined>
+    Create $24 = primitive
+  [14] Return Void <unknown> $24:TPrimitive
+    Freeze $24 jsx-captured

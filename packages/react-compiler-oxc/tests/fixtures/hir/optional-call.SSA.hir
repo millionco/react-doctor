@@ -1,0 +1,43 @@
+Component(<unknown> props$34): <unknown> $33
+bb0 (block):
+  [1] <unknown> $35 = LoadGlobal(global) makeOptionalFunction
+  [2] <unknown> $36 = LoadLocal <unknown> props$34
+  [3] <unknown> $37 = Call <unknown> $35(<unknown> $36)
+  [4] <unknown> $39 = StoreLocal Const <unknown> x$38 = <unknown> $37
+  [5] <unknown> $40 = LoadGlobal(global) makeObject
+  [6] <unknown> $41 = LoadLocal <unknown> props$34
+  [7] <unknown> $42 = Call <unknown> $40(<unknown> $41)
+  [8] <unknown> $44 = StoreLocal Const <unknown> y$43 = <unknown> $42
+  [9] Optional (optional=true) test:bb4 fallthrough=bb1
+bb4 (value):
+  predecessor blocks: bb0
+  [10] <unknown> $45 = LoadLocal <unknown> x$38
+  [11] Branch (<unknown> $45) then:bb2 else:bb3 fallthrough:bb1
+bb2 (value):
+  predecessor blocks: bb4
+  [12] <unknown> $46 = LoadLocal <unknown> y$43
+  [13] <unknown> $47 = PropertyLoad <unknown> $46.a
+  [14] <unknown> $48 = LoadLocal <unknown> props$34
+  [15] <unknown> $49 = PropertyLoad <unknown> $48.a
+  [16] <unknown> $50 = LoadGlobal(global) foo
+  [17] <unknown> $51 = LoadLocal <unknown> y$43
+  [18] <unknown> $52 = PropertyLoad <unknown> $51.b
+  [19] <unknown> $53 = Call <unknown> $50(<unknown> $52)
+  [20] <unknown> $54 = LoadGlobal(global) bar
+  [21] <unknown> $55 = LoadLocal <unknown> props$34
+  [22] <unknown> $56 = PropertyLoad <unknown> $55.b
+  [23] <unknown> $57 = Call <unknown> $54(<unknown> $56)
+  [24] <unknown> $58 = Call <unknown> $45(<unknown> $47, <unknown> $49, <unknown> $53, <unknown> $57)
+  [25] <unknown> $60 = StoreLocal Const <unknown> $59 = <unknown> $58
+  [26] Goto bb1
+bb3 (value):
+  predecessor blocks: bb4
+  [27] <unknown> $61 = <undefined>
+  [28] <unknown> $63 = StoreLocal Const <unknown> $62 = <unknown> $61
+  [29] Goto bb1
+bb1 (block):
+  predecessor blocks: bb2 bb3
+  <unknown> $64: phi(bb2: <unknown> $59, bb3: <unknown> $62)
+  [30] <unknown> $66 = StoreLocal Const <unknown> z$65 = <unknown> $64
+  [31] <unknown> $67 = LoadLocal <unknown> z$65
+  [32] Return Explicit <unknown> $67

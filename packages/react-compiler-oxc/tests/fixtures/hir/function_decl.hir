@@ -1,0 +1,15 @@
+Component(<unknown> props$0): <unknown> $15
+bb0 (block):
+  [1] <unknown> $8 = Function helper @context[<unknown> props$0] @aliasingEffects=[]
+      helper(<unknown> x$1): <unknown> $7
+      bb1 (block):
+        [1] <unknown> $2 = LoadLocal <unknown> x$1
+        [2] <unknown> $3 = LoadLocal <unknown> props$0
+        [3] <unknown> $4 = PropertyLoad <unknown> $3.base
+        [4] <unknown> $5 = Binary <unknown> $2 + <unknown> $4
+        [5] Return Explicit <unknown> $5
+  [2] <unknown> $10 = StoreLocal Function <unknown> helper$9 = <unknown> $8
+  [3] <unknown> $11 = LoadLocal <unknown> helper$9
+  [4] <unknown> $12 = 1
+  [5] <unknown> $13 = Call <unknown> $11(<unknown> $12)
+  [6] Return Explicit <unknown> $13

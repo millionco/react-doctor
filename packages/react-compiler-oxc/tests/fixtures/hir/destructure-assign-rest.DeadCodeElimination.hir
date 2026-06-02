@@ -1,0 +1,20 @@
+Component(<unknown> props$14): <unknown> $13
+bb0 (block):
+  [1] <unknown> $16 = DeclareLocal Let <unknown> a$15
+    Create a$15 = primitive
+    Create $16 = primitive
+  [3] <unknown> $19 = LoadLocal <unknown> props$14
+    ImmutableCapture $19 <- props$14
+  [4] <unknown> $22 = Destructure Reassign [ <unknown> #t6$20 ] = <unknown> $19
+    Create #t6$20 = frozen
+    ImmutableCapture #t6$20 <- $19
+    Create #t7$21 = mutable
+    ImmutableCapture #t7$21 <- $19
+    ImmutableCapture $22 <- $19
+  [5] <unknown> $24 = StoreLocal Reassign <unknown> a$23 = <unknown> #t6$20
+    ImmutableCapture a$23 <- #t6$20
+    ImmutableCapture $24 <- #t6$20
+  [7] <unknown> $27 = LoadLocal <unknown> a$23
+    ImmutableCapture $27 <- a$23
+  [8] Return Explicit <unknown> $27
+    Freeze $27 jsx-captured

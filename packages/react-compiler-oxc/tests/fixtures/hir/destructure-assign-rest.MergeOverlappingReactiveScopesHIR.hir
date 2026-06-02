@@ -1,0 +1,20 @@
+Component(<unknown> props$14{reactive}): <unknown> $13
+bb0 (block):
+  [1] mutate? $16 = DeclareLocal Let mutate? a$15
+    Create a$15 = primitive
+    Create $16 = primitive
+  [3] mutate? $19{reactive} = LoadLocal read props$14{reactive}
+    ImmutableCapture $19 <- props$14
+  [4] mutate? $22{reactive} = Destructure Const [ mutate? #t6$20{reactive} ] = read $19{reactive}
+    Create #t6$20 = frozen
+    ImmutableCapture #t6$20 <- $19
+    Create #t7$21 = mutable
+    ImmutableCapture #t7$21 <- $19
+    ImmutableCapture $22 <- $19
+  [5] mutate? $24{reactive} = StoreLocal Reassign mutate? a$23{reactive} = read #t6$20{reactive}
+    ImmutableCapture a$23 <- #t6$20
+    ImmutableCapture $24 <- #t6$20
+  [7] mutate? $27{reactive} = LoadLocal read a$23{reactive}
+    ImmutableCapture $27 <- a$23
+  [8] Return Explicit freeze $27{reactive}
+    Freeze $27 jsx-captured

@@ -1,0 +1,63 @@
+function Component(
+  <unknown> #t0$49:TObject<BuiltInProps>{reactive},
+) {
+  [1] mutate? $53{reactive} = Destructure Const { a: mutate? a$50{reactive}, b: mutate? b$51{reactive}, c: mutate? c$52{reactive} } = read #t0$49:TObject<BuiltInProps>{reactive}
+  [2] mutate? $54:TFunction<<generated_96>>():  :TObject<BuiltInWeakSet> = LoadGlobal(global) WeakSet
+  scope @0 [3:16] dependencies=[$54:TFunction<<generated_96>>():  :TObject<BuiltInWeakSet>_5:18:5:25, a$50_6:27:6:28, c$52_7:15:7:16] declarations=[set$56_@0, setAlias$62_@0] reassignments=[] {
+    [4] mutate? $55_@0[3:16]:TObject<BuiltInWeakSet> = New read $54:TFunction<<generated_96>>():  :TObject<BuiltInWeakSet>()
+    [5] store $57_@0[3:16]:TObject<BuiltInWeakSet>{reactive} = StoreLocal Const store set$56_@0[3:16]:TObject<BuiltInWeakSet>{reactive} = capture $55_@0[3:16]:TObject<BuiltInWeakSet>{reactive}
+    [6] store $58_@0[3:16]:TObject<BuiltInWeakSet>{reactive} = LoadLocal capture set$56_@0[3:16]:TObject<BuiltInWeakSet>{reactive}
+    [7] store $59_@0[3:16]:TFunction<<generated_38>>():  :TObject<BuiltInWeakSet>{reactive} = PropertyLoad capture $58_@0[3:16]:TObject<BuiltInWeakSet>{reactive}.add
+    [8] mutate? $60{reactive} = LoadLocal read a$50{reactive}
+    [9] store $61_@0[3:16]:TObject<BuiltInWeakSet>{reactive} = MethodCall store $58_@0[3:16]:TObject<BuiltInWeakSet>{reactive}.read $59_@0[3:16]:TFunction<<generated_38>>():  :TObject<BuiltInWeakSet>{reactive}(read $60{reactive})
+    [10] store $63_@0[3:16]:TObject<BuiltInWeakSet>{reactive} = StoreLocal Const store setAlias$62_@0[3:16]:TObject<BuiltInWeakSet>{reactive} = capture $61_@0[3:16]:TObject<BuiltInWeakSet>{reactive}
+    [11] store $64_@0[3:16]:TObject<BuiltInWeakSet>{reactive} = LoadLocal capture setAlias$62_@0[3:16]:TObject<BuiltInWeakSet>{reactive}
+    [12] store $65_@0[3:16]:TFunction<<generated_38>>():  :TObject<BuiltInWeakSet>{reactive} = PropertyLoad capture $64_@0[3:16]:TObject<BuiltInWeakSet>{reactive}.add
+    [13] mutate? $66{reactive} = LoadLocal read c$52{reactive}
+    [14] store $67_@0[3:16]:TObject<BuiltInWeakSet>{reactive} = MethodCall store $64_@0[3:16]:TObject<BuiltInWeakSet>{reactive}.read $65_@0[3:16]:TFunction<<generated_38>>():  :TObject<BuiltInWeakSet>{reactive}(read $66{reactive})
+  }
+  [16] store $68:TObject<BuiltInWeakSet>{reactive} = LoadLocal capture set$56_@0[3:16]:TObject<BuiltInWeakSet>{reactive}
+  [17] store $69:TFunction<<generated_40>>():  :TPrimitive{reactive} = PropertyLoad capture $68:TObject<BuiltInWeakSet>{reactive}.has
+  [18] mutate? $70{reactive} = LoadLocal read b$51{reactive}
+  [19] mutate? $71:TPrimitive{reactive} = MethodCall read $68:TObject<BuiltInWeakSet>{reactive}.read $69:TFunction<<generated_40>>():  :TPrimitive{reactive}(read $70{reactive})
+  [20] mutate? $73:TPrimitive{reactive} = StoreLocal Const mutate? hasB$72:TPrimitive{reactive} = read $71:TPrimitive{reactive}
+  [21] mutate? $74 = LoadGlobal import { ValidateMemoization } from 'shared-runtime'
+  [22] mutate? $75{reactive} = LoadLocal read a$50{reactive}
+  [23] mutate? $76{reactive} = LoadLocal read c$52{reactive}
+  scope @2 [24:27] dependencies=[a$50_14:17:14:18, c$52_14:20:14:21] declarations=[$77_@2] reassignments=[] {
+    [25] mutate? $77_@2[24:27]:TObject<BuiltInArray>{reactive} = Array [read $75{reactive}, read $76{reactive}]
+  }
+  [27] store $78:TObject<BuiltInWeakSet>{reactive} = LoadLocal capture set$56_@0[3:16]:TObject<BuiltInWeakSet>{reactive}
+  [28] mutate? $79:TPrimitive = true
+  scope @3 [29:32] dependencies=[$74_13:7:13:26, $77_@2:TObject<BuiltInArray>_14:16:14:22, set$56_@0:TObject<BuiltInWeakSet>_15:16:15:19, $79:TPrimitive_16:27:16:31] declarations=[$80_@3] reassignments=[] {
+    [30] mutate? $80_@3[29:32]:TObject<BuiltInJsx>{reactive} = JSX <read $74 inputs={freeze $77_@2[24:27]:TObject<BuiltInArray>{reactive}} output={freeze $78:TObject<BuiltInWeakSet>{reactive}} onlyCheckCompiled={read $79:TPrimitive} />
+  }
+  [32] mutate? $81 = LoadGlobal import { ValidateMemoization } from 'shared-runtime'
+  [33] mutate? $82{reactive} = LoadLocal read a$50{reactive}
+  [34] mutate? $83{reactive} = LoadLocal read c$52{reactive}
+  scope @4 [35:38] dependencies=[a$50_19:17:19:18, c$52_19:20:19:21] declarations=[$84_@4] reassignments=[] {
+    [36] mutate? $84_@4[35:38]:TObject<BuiltInArray>{reactive} = Array [read $82{reactive}, read $83{reactive}]
+  }
+  [38] store $85:TObject<BuiltInWeakSet>{reactive} = LoadLocal capture setAlias$62_@0[3:16]:TObject<BuiltInWeakSet>{reactive}
+  [39] mutate? $86:TPrimitive = true
+  scope @5 [40:43] dependencies=[$81_18:7:18:26, $84_@4:TObject<BuiltInArray>_19:16:19:22, setAlias$62_@0:TObject<BuiltInWeakSet>_20:16:20:24, $86:TPrimitive_21:27:21:31] declarations=[$87_@5] reassignments=[] {
+    [41] mutate? $87_@5[40:43]:TObject<BuiltInJsx>{reactive} = JSX <read $81 inputs={freeze $84_@4[35:38]:TObject<BuiltInArray>{reactive}} output={freeze $85:TObject<BuiltInWeakSet>{reactive}} onlyCheckCompiled={read $86:TPrimitive} />
+  }
+  [43] mutate? $88 = LoadGlobal import { ValidateMemoization } from 'shared-runtime'
+  [44] mutate? $89{reactive} = LoadLocal read b$51{reactive}
+  scope @6 [45:48] dependencies=[b$51_24:17:24:18] declarations=[$90_@6] reassignments=[] {
+    [46] mutate? $90_@6[45:48]:TObject<BuiltInArray>{reactive} = Array [read $89{reactive}]
+  }
+  [48] mutate? $91:TPrimitive{reactive} = LoadLocal read hasB$72:TPrimitive{reactive}
+  scope @7 [49:52] dependencies=[hasB$72:TPrimitive_25:17:25:21] declarations=[$92_@7] reassignments=[] {
+    [50] mutate? $92_@7[49:52]:TObject<BuiltInArray>{reactive} = Array [read $91:TPrimitive{reactive}]
+  }
+  [52] mutate? $93:TPrimitive = true
+  scope @8 [53:56] dependencies=[$88_23:7:23:26, $90_@6:TObject<BuiltInArray>_24:16:24:19, $92_@7:TObject<BuiltInArray>_25:16:25:22, $93:TPrimitive_26:27:26:31] declarations=[$94_@8] reassignments=[] {
+    [54] mutate? $94_@8[53:56]:TObject<BuiltInJsx>{reactive} = JSX <read $88 inputs={freeze $90_@6[45:48]:TObject<BuiltInArray>{reactive}} output={freeze $92_@7[49:52]:TObject<BuiltInArray>{reactive}} onlyCheckCompiled={read $93:TPrimitive} />
+  }
+  scope @9 [56:59] dependencies=[$80_@3:TObject<BuiltInJsx>_13:6:17:8, $87_@5:TObject<BuiltInJsx>_18:6:22:8, $94_@8:TObject<BuiltInJsx>_23:6:27:8] declarations=[$95_@9] reassignments=[] {
+    [57] mutate? $95_@9[56:59]:TObject<BuiltInJsx>{reactive} = JsxFragment [read $80_@3[29:32]:TObject<BuiltInJsx>{reactive}, read $87_@5[40:43]:TObject<BuiltInJsx>{reactive}, read $94_@8[53:56]:TObject<BuiltInJsx>{reactive}]
+  }
+  [59] return freeze $95_@9[56:59]:TObject<BuiltInJsx>{reactive}
+}

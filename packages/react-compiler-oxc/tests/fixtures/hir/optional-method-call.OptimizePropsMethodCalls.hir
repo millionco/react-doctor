@@ -1,0 +1,44 @@
+Component(<unknown> props$35): <unknown> $34:TPhi
+bb0 (block):
+  [1] <unknown> $36:TFunction = LoadGlobal(global) makeObject
+  [2] <unknown> $37 = LoadLocal <unknown> props$35
+  [3] <unknown> $38 = Call <unknown> $36:TFunction(<unknown> $37)
+  [4] <unknown> $40 = StoreLocal Const <unknown> x$39 = <unknown> $38
+  [5] <unknown> $41:TFunction = LoadGlobal(global) makeObject
+  [6] <unknown> $42 = LoadLocal <unknown> props$35
+  [7] <unknown> $43 = Call <unknown> $41:TFunction(<unknown> $42)
+  [8] <unknown> $45 = StoreLocal Const <unknown> y$44 = <unknown> $43
+  [9] Optional (optional=true) test:bb4 fallthrough=bb1
+bb4 (value):
+  predecessor blocks: bb0
+  [10] <unknown> $46 = LoadLocal <unknown> x$39
+  [11] <unknown> $47:TFunction = PropertyLoad <unknown> $46.optionalMethod
+  [12] Branch (<unknown> $47:TFunction) then:bb2 else:bb3 fallthrough:bb1
+bb2 (value):
+  predecessor blocks: bb4
+  [13] <unknown> $48 = LoadLocal <unknown> y$44
+  [14] <unknown> $49 = PropertyLoad <unknown> $48.a
+  [15] <unknown> $50 = LoadLocal <unknown> props$35
+  [16] <unknown> $51 = PropertyLoad <unknown> $50.a
+  [17] <unknown> $52:TFunction = LoadGlobal(global) foo
+  [18] <unknown> $53 = LoadLocal <unknown> y$44
+  [19] <unknown> $54 = PropertyLoad <unknown> $53.b
+  [20] <unknown> $55 = Call <unknown> $52:TFunction(<unknown> $54)
+  [21] <unknown> $56:TFunction = LoadGlobal(global) bar
+  [22] <unknown> $57 = LoadLocal <unknown> props$35
+  [23] <unknown> $58 = PropertyLoad <unknown> $57.b
+  [24] <unknown> $59 = Call <unknown> $56:TFunction(<unknown> $58)
+  [25] <unknown> $60 = MethodCall <unknown> $46.<unknown> $47:TFunction(<unknown> $49, <unknown> $51, <unknown> $55, <unknown> $59)
+  [26] <unknown> $62 = StoreLocal Const <unknown> $61 = <unknown> $60
+  [27] Goto bb1
+bb3 (value):
+  predecessor blocks: bb4
+  [28] <unknown> $63:TPrimitive = <undefined>
+  [29] <unknown> $65:TPrimitive = StoreLocal Const <unknown> $64:TPrimitive = <unknown> $63:TPrimitive
+  [30] Goto bb1
+bb1 (block):
+  predecessor blocks: bb2 bb3
+  <unknown> $66:TPhi:TPhi: phi(bb2: <unknown> $61, bb3: <unknown> $64:TPrimitive)
+  [31] <unknown> $68:TPhi = StoreLocal Const <unknown> z$67:TPhi = <unknown> $66:TPhi
+  [32] <unknown> $69:TPhi = LoadLocal <unknown> z$67:TPhi
+  [33] Return Explicit <unknown> $69:TPhi

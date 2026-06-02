@@ -1,0 +1,146 @@
+Component(<unknown> props$46:TObject<BuiltInProps>{reactive}): <unknown> $43:TObject<BuiltInObject>
+bb0 (block):
+  [1] mutate? $48{reactive} = StartMemoize deps=props$46
+    Create $48 = primitive
+  [2] Scope scope @2 [2:5] dependencies=[props$46:TObject<BuiltInProps>_4:6:4:16] declarations=[$51_@2] reassignments=[] block=bb24 fallthrough=bb25
+bb24 (block):
+  predecessor blocks: bb0
+  [3] mutate? $51_@2[2:5]:TFunction<BuiltInFunction>():  :TPrimitive{reactive} = Function  @context[read props$46:TObject<BuiltInProps>{reactive}] @aliasingEffects=[MutateTransitiveConditionally props$46, Create $12 = primitive]
+      <<anonymous>>(): <unknown> $12:TPrimitive
+      bb2 (block):
+        [1] Optional (optional=true) test:bb6 fallthrough=bb3
+      bb6 (value):
+        predecessor blocks: bb2
+        [2] Optional (optional=true) test:bb9 fallthrough=bb7
+      bb9 (value):
+        predecessor blocks: bb6
+        [3] store $52_@0[3:10]:TObject<BuiltInProps> = LoadLocal capture props$46:TObject<BuiltInProps>{reactive}
+          Assign $52_@0 = props$46
+        [4] Branch (read $52_@0[3:10]:TObject<BuiltInProps>) then:bb8 else:bb5 fallthrough:bb7
+      bb8 (value):
+        predecessor blocks: bb9
+        [5] store $53_@0[3:10]:TFunction = PropertyLoad capture $52_@0[3:10]:TObject<BuiltInProps>.onA
+          Create $53_@0 = kindOf($52_@0)
+        [6] store $55_@0[3:10]:TFunction = StoreLocal Const store $54_@0[3:10]:TFunction = capture $53_@0[3:10]:TFunction
+          Assign $54_@0 = $53_@0
+          Assign $55_@0 = $53_@0
+        [7] Goto bb7
+      bb7 (value):
+        predecessor blocks: bb8
+        [8] Branch (read $54_@0[3:10]:TFunction) then:bb4 else:bb5 fallthrough:bb3
+      bb4 (value):
+        predecessor blocks: bb7
+        [9] store $56_@0[3:10] = MethodCall store $52_@0[3:10]:TObject<BuiltInProps>.capture $54_@0[3:10]:TFunction()
+          Create $56_@0 = mutable
+          MutateTransitiveConditionally $52_@0
+          MaybeAlias $56_@0 <- $52_@0
+          MaybeAlias $54_@0 <- $52_@0
+          MaybeAlias $56_@0 <- $54_@0
+          MaybeAlias $52_@0 <- $54_@0
+        [10] store $58 = StoreLocal Const store $57 = capture $56_@0[3:10]
+          Assign $57 = $56_@0
+          Assign $58 = $56_@0
+        [11] Goto bb3
+      bb5 (value):
+        predecessor blocks: bb7 bb9
+        [12] mutate? $59:TPrimitive = <undefined>
+          Create $59 = primitive
+        [13] mutate? $61:TPrimitive = StoreLocal Const mutate? $60:TPrimitive = read $59:TPrimitive
+        [14] Goto bb3
+      bb3 (block):
+        predecessor blocks: bb4 bb5
+        [15] mutate? $62:TPrimitive = <undefined>
+          Create $62 = primitive
+        [16] Return Void read $62:TPrimitive
+    Function $51_@2 = Function captures=[props$46]
+    ImmutableCapture $51_@2 <- props$46
+  [4] Goto bb25
+bb25 (block):
+  predecessor blocks: bb24
+  [5] mutate? $64:TFunction<BuiltInFunction>():  :TPrimitive{reactive} = StoreLocal Const mutate? a$63:TFunction<BuiltInFunction>():  :TPrimitive{reactive} = read $51_@2[2:5]:TFunction<BuiltInFunction>():  :TPrimitive{reactive}
+    ImmutableCapture a$63 <- $51_@2
+    ImmutableCapture $64 <- $51_@2
+  [6] Scope scope @3 [6:9] dependencies=[props$46:TObject<BuiltInProps>_7:6:7:16] declarations=[$65_@3] reassignments=[] block=bb26 fallthrough=bb27
+bb26 (block):
+  predecessor blocks: bb25
+  [7] mutate? $65_@3[6:9]:TFunction<BuiltInFunction>():  :TPrimitive{reactive} = Function  @context[read props$46:TObject<BuiltInProps>{reactive}] @aliasingEffects=[MutateTransitiveConditionally props$46, Create $26 = primitive]
+      <<anonymous>>(): <unknown> $26:TPrimitive
+      bb10 (block):
+        [1] Optional (optional=true) test:bb14 fallthrough=bb11
+      bb14 (value):
+        predecessor blocks: bb10
+        [2] Optional (optional=true) test:bb17 fallthrough=bb15
+      bb17 (value):
+        predecessor blocks: bb14
+        [3] store $66_@1[3:10]:TObject<BuiltInProps> = LoadLocal capture props$46:TObject<BuiltInProps>{reactive}
+          Assign $66_@1 = props$46
+        [4] Branch (read $66_@1[3:10]:TObject<BuiltInProps>) then:bb16 else:bb13 fallthrough:bb15
+      bb16 (value):
+        predecessor blocks: bb17
+        [5] store $67_@1[3:10]:TFunction = PropertyLoad capture $66_@1[3:10]:TObject<BuiltInProps>.onB
+          Create $67_@1 = kindOf($66_@1)
+        [6] store $69_@1[3:10]:TFunction = StoreLocal Const store $68_@1[3:10]:TFunction = capture $67_@1[3:10]:TFunction
+          Assign $68_@1 = $67_@1
+          Assign $69_@1 = $67_@1
+        [7] Goto bb15
+      bb15 (value):
+        predecessor blocks: bb16
+        [8] Branch (read $68_@1[3:10]:TFunction) then:bb12 else:bb13 fallthrough:bb11
+      bb12 (value):
+        predecessor blocks: bb15
+        [9] store $70_@1[3:10] = MethodCall store $66_@1[3:10]:TObject<BuiltInProps>.capture $68_@1[3:10]:TFunction()
+          Create $70_@1 = mutable
+          MutateTransitiveConditionally $66_@1
+          MaybeAlias $70_@1 <- $66_@1
+          MaybeAlias $68_@1 <- $66_@1
+          MaybeAlias $70_@1 <- $68_@1
+          MaybeAlias $66_@1 <- $68_@1
+        [10] store $72 = StoreLocal Const store $71 = capture $70_@1[3:10]
+          Assign $71 = $70_@1
+          Assign $72 = $70_@1
+        [11] Goto bb11
+      bb13 (value):
+        predecessor blocks: bb15 bb17
+        [12] mutate? $73:TPrimitive = <undefined>
+          Create $73 = primitive
+        [13] mutate? $75:TPrimitive = StoreLocal Const mutate? $74:TPrimitive = read $73:TPrimitive
+        [14] Goto bb11
+      bb11 (block):
+        predecessor blocks: bb12 bb13
+        [15] mutate? $76:TPrimitive = <undefined>
+          Create $76 = primitive
+        [16] Return Void read $76:TPrimitive
+    Function $65_@3 = Function captures=[props$46]
+    ImmutableCapture $65_@3 <- props$46
+  [8] Goto bb27
+bb27 (block):
+  predecessor blocks: bb26
+  [9] mutate? $78:TFunction<BuiltInFunction>():  :TPrimitive{reactive} = StoreLocal Const mutate? b$77:TFunction<BuiltInFunction>():  :TPrimitive{reactive} = read $65_@3[6:9]:TFunction<BuiltInFunction>():  :TPrimitive{reactive}
+    ImmutableCapture b$77 <- $65_@3
+    ImmutableCapture $78 <- $65_@3
+  [10] mutate? $79:TFunction<BuiltInFunction>():  :TPrimitive{reactive} = LoadLocal read b$77:TFunction<BuiltInFunction>():  :TPrimitive{reactive}
+    ImmutableCapture $79 <- b$77
+  [11] mutate? $80:TFunction<BuiltInFunction>():  :TPrimitive{reactive} = LoadLocal read a$63:TFunction<BuiltInFunction>():  :TPrimitive{reactive}
+    ImmutableCapture $80 <- a$63
+  [12] Scope scope @4 [12:15] dependencies=[b$77:TFunction<BuiltInFunction>():  :TPrimitive_9:13:9:14, a$63:TFunction<BuiltInFunction>():  :TPrimitive_9:16:9:17] declarations=[$81_@4] reassignments=[] block=bb28 fallthrough=bb29
+bb28 (block):
+  predecessor blocks: bb27
+  [13] mutate? $81_@4[12:15]:TObject<BuiltInObject>{reactive} = Object { b: read $79:TFunction<BuiltInFunction>():  :TPrimitive{reactive}, a: read $80:TFunction<BuiltInFunction>():  :TPrimitive{reactive} }
+    Create $81_@4 = mutable
+    ImmutableCapture $81_@4 <- $79
+    ImmutableCapture $81_@4 <- $80
+  [14] Goto bb29
+bb29 (block):
+  predecessor blocks: bb28
+  [15] store $82:TObject<BuiltInObject>{reactive} = LoadLocal capture $81_@4[12:15]:TObject<BuiltInObject>{reactive}
+    Assign $82 = $81_@4
+  [16] mutate? $83{reactive} = FinishMemoize decl=freeze $82:TObject<BuiltInObject>{reactive}
+    Freeze $82 hook-captured
+    Create $83 = primitive
+  [17] mutate? $85:TObject<BuiltInObject>{reactive} = StoreLocal Const mutate? object$84:TObject<BuiltInObject>{reactive} = read $82:TObject<BuiltInObject>{reactive}
+    ImmutableCapture object$84 <- $82
+    ImmutableCapture $85 <- $82
+  [18] mutate? $86:TObject<BuiltInObject>{reactive} = LoadLocal read object$84:TObject<BuiltInObject>{reactive}
+    ImmutableCapture $86 <- object$84
+  [19] Return Explicit freeze $86:TObject<BuiltInObject>{reactive}
+    Freeze $86 jsx-captured

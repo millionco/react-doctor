@@ -1,0 +1,107 @@
+Component(<unknown> #t0$38:TObject<BuiltInProps>{reactive}): <unknown> $37:TObject<BuiltInJsx>
+bb0 (block):
+  [1] mutate? $42{reactive} = Destructure Const { name: mutate? name$39{reactive}, data: mutate? data$40{reactive}, icon: mutate? icon$41{reactive} } = read #t0$38:TObject<BuiltInProps>{reactive}
+    Create name$39 = frozen
+    ImmutableCapture name$39 <- #t0$38
+    Create data$40 = frozen
+    ImmutableCapture data$40 <- #t0$38
+    Create icon$41 = frozen
+    ImmutableCapture icon$41 <- #t0$38
+    ImmutableCapture $42 <- #t0$38
+  [2] mutate? $43 = LoadGlobal(global) Text
+    Create $43 = global
+  [3] mutate? $44:TPrimitive = "body4"
+    Create $44 = primitive
+  [4] mutate? $45_@5[4:32]:TPrimitive = "Lorem ipsum"
+    Create $45_@5 = primitive
+  [5] mutate? $46_@5[4:32]:TPrimitive = JSXText "\n        "
+    Create $46_@5 = primitive
+  [6] mutate? $47:TPrimitive = "fbt:param"
+    Create $47 = primitive
+  [7] mutate? $48:TPrimitive = "item author"
+    Create $48 = primitive
+  [8] mutate? $49:TPrimitive = JSXText "\n          "
+    Create $49 = primitive
+  [9] mutate? $50 = LoadGlobal(global) Text
+    Create $50 = global
+  [10] mutate? $51:TPrimitive = "h4"
+    Create $51 = primitive
+  [11] mutate? $52{reactive} = LoadLocal read name$39{reactive}
+    ImmutableCapture $52 <- name$39
+  [12] mutate? $53_@0:TObject<BuiltInJsx>{reactive} = JSX <read $50 type={read $51:TPrimitive} >{read $52{reactive}}</read $50>
+    Create $53_@0 = frozen
+    ImmutableCapture $53_@0 <- $52
+    Render $50
+    Render $52
+  [13] mutate? $54:TPrimitive = JSXText "\n        "
+    Create $54 = primitive
+  [14] mutate? $55_@5[4:32]:TObject<BuiltInJsx>{reactive} = JSX <read $47:TPrimitive name={read $48:TPrimitive} >{read $49:TPrimitive}{read $53_@0:TObject<BuiltInJsx>{reactive}}{read $54:TPrimitive}</read $47:TPrimitive>
+    Create $55_@5 = frozen
+    ImmutableCapture $55_@5 <- $53_@0
+    Render $47
+    Render $49
+    Render $53_@0
+    Render $54
+  [15] mutate? $56_@5[4:32]:TPrimitive = JSXText "\n        "
+    Create $56_@5 = primitive
+  [16] mutate? $57:TPrimitive = "fbt:param"
+    Create $57 = primitive
+  [17] mutate? $58:TPrimitive = "icon"
+    Create $58 = primitive
+  [18] mutate? $59{reactive} = LoadLocal read icon$41{reactive}
+    ImmutableCapture $59 <- icon$41
+  [19] mutate? $60_@5[4:32]:TObject<BuiltInJsx>{reactive} = JSX <read $57:TPrimitive name={read $58:TPrimitive} >{read $59{reactive}}</read $57:TPrimitive>
+    Create $60_@5 = frozen
+    ImmutableCapture $60_@5 <- $59
+    Render $57
+    Render $59
+  [20] mutate? $61_@5[4:32]:TPrimitive = JSXText "\n        "
+    Create $61_@5 = primitive
+  [21] mutate? $62_@5[4:32] = LoadGlobal(global) Text
+    Create $62_@5 = global
+  [22] mutate? $63_@5[4:32]:TPrimitive = "h4"
+    Create $63_@5 = primitive
+  [23] mutate? $64_@5[4:32]:TPrimitive = JSXText "\n          "
+    Create $64_@5 = primitive
+  [24] mutate? $65:TPrimitive = "fbt:param"
+    Create $65 = primitive
+  [25] mutate? $66:TPrimitive = "item details"
+    Create $66 = primitive
+  [26] mutate? $67{reactive} = LoadLocal read data$40{reactive}
+    ImmutableCapture $67 <- data$40
+  [27] mutate? $68_@5[4:32]:TObject<BuiltInJsx>{reactive} = JSX <read $65:TPrimitive name={read $66:TPrimitive} >{read $67{reactive}}</read $65:TPrimitive>
+    Create $68_@5 = frozen
+    ImmutableCapture $68_@5 <- $67
+    Render $65
+    Render $67
+  [28] mutate? $69_@5[4:32]:TPrimitive = JSXText "\n        "
+    Create $69_@5 = primitive
+  [29] mutate? $70_@5[4:32]:TObject<BuiltInJsx>{reactive} = JSX <read $62_@5[4:32] type={read $63_@5[4:32]:TPrimitive} >{read $64_@5[4:32]:TPrimitive}{read $68_@5[4:32]:TObject<BuiltInJsx>{reactive}}{read $69_@5[4:32]:TPrimitive}</read $62_@5[4:32]>
+    Create $70_@5 = frozen
+    ImmutableCapture $70_@5 <- $68_@5
+    Render $62_@5
+    Render $64_@5
+    Render $68_@5
+    Render $69_@5
+  [30] mutate? $71_@5[4:32]:TPrimitive = JSXText "\n      "
+    Create $71_@5 = primitive
+  [31] mutate? $72_@5[4:32]:TObject<BuiltInJsx>{reactive} = JSX <fbt desc={read $45_@5[4:32]:TPrimitive} >{read $46_@5[4:32]:TPrimitive}{read $55_@5[4:32]:TObject<BuiltInJsx>{reactive}}{read $56_@5[4:32]:TPrimitive}{read $60_@5[4:32]:TObject<BuiltInJsx>{reactive}}{read $61_@5[4:32]:TPrimitive}{read $70_@5[4:32]:TObject<BuiltInJsx>{reactive}}{read $71_@5[4:32]:TPrimitive}</fbt>
+    Create $72_@5 = frozen
+    ImmutableCapture $72_@5 <- $55_@5
+    ImmutableCapture $72_@5 <- $60_@5
+    ImmutableCapture $72_@5 <- $70_@5
+    Render $46_@5
+    Render $55_@5
+    Render $56_@5
+    Render $60_@5
+    Render $61_@5
+    Render $70_@5
+    Render $71_@5
+  [32] mutate? $73_@6:TObject<BuiltInJsx>{reactive} = JSX <read $43 type={read $44:TPrimitive} >{read $72_@5[4:32]:TObject<BuiltInJsx>{reactive}}</read $43>
+    Create $73_@6 = frozen
+    ImmutableCapture $73_@6 <- $72_@5
+    Render $43
+    Render $72_@5
+  [33] Return Explicit freeze $73_@6:TObject<BuiltInJsx>{reactive}
+    Freeze $73_@6 jsx-captured
+

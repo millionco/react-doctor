@@ -1,0 +1,27 @@
+Component(<unknown> #t0$34:TObject<BuiltInProps>): <unknown> $31:TObject<BuiltInJsx>
+bb0 (block):
+  [1] <unknown> $37 = Destructure Let { a: <unknown> a$35, b: <unknown> b$36 } = <unknown> #t0$34:TObject<BuiltInProps>
+  [2] <unknown> $38:TFunction<<generated_102>>():  :TPoly = LoadGlobal import { useMemo } from 'react'
+  [3] <unknown> $39 = StartMemoize deps=a$35,b$36
+  [4] <unknown> $40 = LoadLocal <unknown> a$35
+  [5] <unknown> $41 = LoadLocal <unknown> b$36
+  [6] <unknown> $42:TObject<BuiltInArray> = Array [<unknown> $40, <unknown> $41]
+  [8] <unknown> $43 = LoadLocal <unknown> a$35
+  [9] <unknown> $44:TObject<BuiltInObject> = Object { a: <unknown> $43 }
+  [10] <unknown> $45:TObject<BuiltInObject> = LoadLocal <unknown> $44:TObject<BuiltInObject>
+  [12] <unknown> $46 = FinishMemoize decl=<unknown> $45:TObject<BuiltInObject>
+  [13] <unknown> $48:TObject<BuiltInObject> = StoreLocal Const <unknown> x$47:TObject<BuiltInObject> = <unknown> $45:TObject<BuiltInObject>
+  [14] <unknown> $49:TFunction = LoadGlobal import { identity } from 'shared-runtime'
+  [15] <unknown> $50:TObject<BuiltInObject> = LoadLocal <unknown> x$47:TObject<BuiltInObject>
+  [16] <unknown> $51 = Call <unknown> $49:TFunction(<unknown> $50:TObject<BuiltInObject>)
+  [17] <unknown> $53 = StoreLocal Const <unknown> x2$52 = <unknown> $51
+  [18] <unknown> $54 = LoadLocal <unknown> b$36
+  [19] <unknown> $55 = LoadLocal <unknown> x2$52
+  [20] <unknown> $56 = PropertyStore <unknown> $55.b = <unknown> $54
+  [21] <unknown> $57 = LoadGlobal import { ValidateMemoization } from 'shared-runtime'
+  [22] <unknown> $58 = LoadLocal <unknown> a$35
+  [23] <unknown> $59 = LoadLocal <unknown> b$36
+  [24] <unknown> $60:TObject<BuiltInArray> = Array [<unknown> $58, <unknown> $59]
+  [25] <unknown> $61:TObject<BuiltInObject> = LoadLocal <unknown> x$47:TObject<BuiltInObject>
+  [26] <unknown> $62:TObject<BuiltInJsx> = JSX <<unknown> $57 inputs={<unknown> $60:TObject<BuiltInArray>} output={<unknown> $61:TObject<BuiltInObject>} />
+  [27] Return Explicit <unknown> $62:TObject<BuiltInJsx>

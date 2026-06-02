@@ -1,0 +1,133 @@
+useFoo(<unknown> #t0$57): <unknown> $56:TObject<BuiltInArray>
+bb0 (block):
+  [1] mutate? $59 = Destructure Let { propArr: mutate? propArr$58 } = read #t0$57
+    Create propArr$58 = frozen
+    ImmutableCapture propArr$58 <- #t0$57
+    ImmutableCapture $59 <- #t0$57
+  [2] mutate? $60:TFunction<<generated_94>>():  :TObject<BuiltInSet> = LoadGlobal(global) Set
+    Create $60 = global
+  [3] mutate? $61:TPrimitive = 1
+    Create $61 = primitive
+  [4] mutate? $62:TPrimitive = 2
+    Create $62 = primitive
+  [5] mutate? $63:TPrimitive = 3
+    Create $63 = primitive
+  [6] mutate? $64:TObject<BuiltInArray> = Array [read $61:TPrimitive, read $62:TPrimitive, read $63:TPrimitive]
+    Create $64 = mutable
+  [7] store $65[7:14]:TObject<BuiltInSet> = New read $60:TFunction<<generated_94>>():  :TObject<BuiltInSet>(capture $64:TObject<BuiltInArray>)
+    Create $65 = mutable
+    Capture $65 <- $64
+  [8] store $67[8:14]:TObject<BuiltInSet> = StoreLocal Const store s1$66[8:14]:TObject<BuiltInSet> = capture $65[7:14]:TObject<BuiltInSet>
+    Assign s1$66 = $65
+    Assign $67 = $65
+  [9] store $68[9:14]:TObject<BuiltInSet> = LoadLocal capture s1$66[8:14]:TObject<BuiltInSet>
+    Assign $68 = s1$66
+  [10] store $69[10:14]:TFunction<<generated_16>>():  :TObject<BuiltInSet> = PropertyLoad capture $68[9:14]:TObject<BuiltInSet>.add
+    Create $69 = kindOf($68)
+  [11] mutate? $70 = LoadLocal read propArr$58
+    ImmutableCapture $70 <- propArr$58
+  [12] mutate? $71 = PropertyLoad read $70.0
+    Create $71 = frozen
+    ImmutableCapture $71 <- $70
+  [13] store $72:TObject<BuiltInSet> = MethodCall store $68[9:14]:TObject<BuiltInSet>.read $69[10:14]:TFunction<<generated_16>>():  :TObject<BuiltInSet>(read $71)
+    Assign $72 = $68
+    Mutate $68
+    ImmutableCapture $68 <- $71
+  [14] mutate? $73:TFunction<<generated_94>>():  :TObject<BuiltInSet> = LoadGlobal(global) Set
+    Create $73 = global
+  [15] mutate? $74[15:30] = LoadGlobal(module) MODULE_LOCAL
+    Create $74 = global
+  [16] mutate? $75[16:30]:TFunction = PropertyLoad read $74[15:30].values
+    Create $75 = global
+  [17] store $76[17:30] = MethodCall capture $74[15:30].capture $75[16:30]:TFunction()
+    Create $76 = mutable
+    MaybeAlias $76 <- $74
+    MaybeAlias $76 <- $75
+  [18] store $77[18:30]:TObject<BuiltInSet> = New read $73:TFunction<<generated_94>>():  :TObject<BuiltInSet>(capture $76[17:30])
+    Create $77 = mutable
+    MutateTransitiveConditionally $76
+    Capture $77 <- $76
+  [19] store $79[19:30]:TObject<BuiltInSet> = StoreLocal Const store s2$78[19:30]:TObject<BuiltInSet> = capture $77[18:30]:TObject<BuiltInSet>
+    Assign s2$78 = $77
+    Assign $79 = $77
+  [20] store $80[20:30]:TObject<BuiltInSet> = LoadLocal capture s2$78[19:30]:TObject<BuiltInSet>
+    Assign $80 = s2$78
+  [21] store $81[21:30]:TFunction<<generated_16>>():  :TObject<BuiltInSet> = PropertyLoad capture $80[20:30]:TObject<BuiltInSet>.add
+    Create $81 = kindOf($80)
+  [22] mutate? $82 = LoadLocal read propArr$58
+    ImmutableCapture $82 <- propArr$58
+  [23] mutate? $83 = PropertyLoad read $82.1
+    Create $83 = frozen
+    ImmutableCapture $83 <- $82
+  [24] store $84[24:30]:TObject<BuiltInSet> = MethodCall store $80[20:30]:TObject<BuiltInSet>.read $81[21:30]:TFunction<<generated_16>>():  :TObject<BuiltInSet>(read $83)
+    Assign $84 = $80
+    Mutate $80
+    ImmutableCapture $80 <- $83
+  [25] mutate? $85:TFunction<<generated_94>>():  :TObject<BuiltInSet> = LoadGlobal(global) Set
+    Create $85 = global
+  [26] store $86[26:30]:TObject<BuiltInSet> = LoadLocal capture s2$78[19:30]:TObject<BuiltInSet>
+    Assign $86 = s2$78
+  [27] store $87[27:30]:TFunction<<generated_28>>():  :TPoly = PropertyLoad capture $86[26:30]:TObject<BuiltInSet>.values
+    Create $87 = kindOf($86)
+  [28] store $88[28:30] = MethodCall capture $86[26:30]:TObject<BuiltInSet>.read $87[27:30]:TFunction<<generated_28>>():  :TPoly()
+    Create $88 = mutable
+    Alias $88 <- $86
+  [29] store $89[29:36]:TObject<BuiltInSet> = New read $85:TFunction<<generated_94>>():  :TObject<BuiltInSet>(capture $88[28:30])
+    Create $89 = mutable
+    MutateTransitiveConditionally $88
+    Capture $89 <- $88
+  [30] store $91[30:36]:TObject<BuiltInSet> = StoreLocal Const store s3$90[30:36]:TObject<BuiltInSet> = capture $89[29:36]:TObject<BuiltInSet>
+    Assign s3$90 = $89
+    Assign $91 = $89
+  [31] store $92[31:36]:TObject<BuiltInSet> = LoadLocal capture s3$90[30:36]:TObject<BuiltInSet>
+    Assign $92 = s3$90
+  [32] store $93[32:36]:TFunction<<generated_16>>():  :TObject<BuiltInSet> = PropertyLoad capture $92[31:36]:TObject<BuiltInSet>.add
+    Create $93 = kindOf($92)
+  [33] mutate? $94 = LoadLocal read propArr$58
+    ImmutableCapture $94 <- propArr$58
+  [34] mutate? $95 = PropertyLoad read $94.2
+    Create $95 = frozen
+    ImmutableCapture $95 <- $94
+  [35] store $96:TObject<BuiltInSet> = MethodCall store $92[31:36]:TObject<BuiltInSet>.read $93[32:36]:TFunction<<generated_16>>():  :TObject<BuiltInSet>(read $95)
+    Assign $96 = $92
+    Mutate $92
+    ImmutableCapture $92 <- $95
+  [36] mutate? $97:TFunction<<generated_94>>():  :TObject<BuiltInSet> = LoadGlobal(global) Set
+    Create $97 = global
+  [37] store $98:TObject<BuiltInSet> = LoadLocal capture s3$90[30:36]:TObject<BuiltInSet>
+    Assign $98 = s3$90
+  [38] store $99[38:45]:TObject<BuiltInSet> = New read $97:TFunction<<generated_94>>():  :TObject<BuiltInSet>(capture $98:TObject<BuiltInSet>)
+    Create $99 = mutable
+    Capture $99 <- $98
+  [39] store $101[39:45]:TObject<BuiltInSet> = StoreLocal Const store s4$100[39:45]:TObject<BuiltInSet> = capture $99[38:45]:TObject<BuiltInSet>
+    Assign s4$100 = $99
+    Assign $101 = $99
+  [40] store $102[40:45]:TObject<BuiltInSet> = LoadLocal capture s4$100[39:45]:TObject<BuiltInSet>
+    Assign $102 = s4$100
+  [41] store $103[41:45]:TFunction<<generated_16>>():  :TObject<BuiltInSet> = PropertyLoad capture $102[40:45]:TObject<BuiltInSet>.add
+    Create $103 = kindOf($102)
+  [42] mutate? $104 = LoadLocal read propArr$58
+    ImmutableCapture $104 <- propArr$58
+  [43] mutate? $105 = PropertyLoad read $104.3
+    Create $105 = frozen
+    ImmutableCapture $105 <- $104
+  [44] store $106:TObject<BuiltInSet> = MethodCall store $102[40:45]:TObject<BuiltInSet>.read $103[41:45]:TFunction<<generated_16>>():  :TObject<BuiltInSet>(read $105)
+    Assign $106 = $102
+    Mutate $102
+    ImmutableCapture $102 <- $105
+  [45] store $107:TObject<BuiltInSet> = LoadLocal capture s1$66[8:14]:TObject<BuiltInSet>
+    Assign $107 = s1$66
+  [46] store $108:TObject<BuiltInSet> = LoadLocal capture s2$78[19:30]:TObject<BuiltInSet>
+    Assign $108 = s2$78
+  [47] store $109:TObject<BuiltInSet> = LoadLocal capture s3$90[30:36]:TObject<BuiltInSet>
+    Assign $109 = s3$90
+  [48] store $110:TObject<BuiltInSet> = LoadLocal capture s4$100[39:45]:TObject<BuiltInSet>
+    Assign $110 = s4$100
+  [49] store $111:TObject<BuiltInArray> = Array [capture $107:TObject<BuiltInSet>, capture $108:TObject<BuiltInSet>, capture $109:TObject<BuiltInSet>, capture $110:TObject<BuiltInSet>]
+    Create $111 = mutable
+    Capture $111 <- $107
+    Capture $111 <- $108
+    Capture $111 <- $109
+    Capture $111 <- $110
+  [50] Return Explicit freeze $111:TObject<BuiltInArray>
+    Freeze $111 jsx-captured

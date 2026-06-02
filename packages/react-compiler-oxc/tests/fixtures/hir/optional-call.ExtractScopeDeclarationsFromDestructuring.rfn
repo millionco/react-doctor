@@ -1,0 +1,35 @@
+function Component(
+  <unknown> props$34{reactive},
+) {
+  scope @0 [1:32] dependencies=[props$34_2:33:2:38] declarations=[#t11$64_@0] reassignments=[] {
+    [2] mutate? $35_@0[1:32]:TFunction = LoadGlobal(global) makeOptionalFunction
+    [3] mutate? $36{reactive} = LoadLocal read props$34{reactive}
+    [4] store $37_@0[1:32]:TFunction{reactive} = Call capture $35_@0[1:32]:TFunction{reactive}(read $36{reactive})
+    [5] StoreLocal Const store x$38_@0[1:32]:TFunction{reactive} = capture $37_@0[1:32]:TFunction{reactive}
+    [6] mutate? $40_@0[1:32]:TFunction = LoadGlobal(global) makeObject
+    [7] mutate? $41{reactive} = LoadLocal read props$34{reactive}
+    [8] store $42_@0[1:32]{reactive} = Call capture $40_@0[1:32]:TFunction{reactive}(read $41{reactive})
+    [9] StoreLocal Const store y$43_@0[1:32]{reactive} = capture $42_@0[1:32]{reactive}
+    [10] store #t11$59{reactive} = OptionalExpression optional=true
+      Sequence
+          [11] store $45_@0[1:32]:TFunction{reactive} = LoadLocal capture x$38_@0[1:32]:TFunction{reactive}
+          [26] Sequence
+              [13] store $46_@0[1:32]{reactive} = LoadLocal capture y$43_@0[1:32]{reactive}
+              [14] store $47_@0[1:32]{reactive} = PropertyLoad capture $46_@0[1:32]{reactive}.a
+              [15] mutate? $48{reactive} = LoadLocal read props$34{reactive}
+              [16] mutate? $49{reactive} = PropertyLoad read $48{reactive}.a
+              [17] mutate? $50_@0[1:32]:TFunction = LoadGlobal(global) foo
+              [18] store $51_@0[1:32]{reactive} = LoadLocal capture y$43_@0[1:32]{reactive}
+              [19] store $52_@0[1:32]{reactive} = PropertyLoad capture $51_@0[1:32]{reactive}.b
+              [20] store $53_@0[1:32]{reactive} = Call capture $50_@0[1:32]:TFunction{reactive}(capture $52_@0[1:32]{reactive})
+              [21] mutate? $54_@0[1:32]:TFunction = LoadGlobal(global) bar
+              [22] mutate? $55{reactive} = LoadLocal read props$34{reactive}
+              [23] mutate? $56{reactive} = PropertyLoad read $55{reactive}.b
+              [24] store $57_@0[1:32]{reactive} = Call capture $54_@0[1:32]:TFunction{reactive}(read $56{reactive})
+              [25] store $58_@0[1:32]{reactive} = Call store $45_@0[1:32]:TFunction{reactive}(store $47_@0[1:32]{reactive}, read $49{reactive}, store $53_@0[1:32]{reactive}, capture $57_@0[1:32]{reactive})
+              [26] LoadLocal capture $58_@0[1:32]{reactive}
+  }
+  [32] StoreLocal Const store z$65:TPhi{reactive} = capture #t11$64:TPhi{reactive}
+  [33] store $67:TPhi{reactive} = LoadLocal capture z$65:TPhi{reactive}
+  [34] return freeze $67:TPhi{reactive}
+}

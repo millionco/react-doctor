@@ -1,0 +1,23 @@
+useHook(<unknown> #t0$26): <unknown> $25
+bb0 (block):
+  [1] <unknown> $29 = Destructure Let { el1: <unknown> el1$27, el2: <unknown> el2$28 } = <unknown> #t0$26
+  [2] <unknown> $30 = LoadGlobal(global) Map
+  [3] <unknown> $31 = New <unknown> $30()
+  [4] <unknown> $33 = StoreLocal Const <unknown> s$32 = <unknown> $31
+  [5] <unknown> $34 = LoadLocal <unknown> s$32
+  [6] <unknown> $35 = PropertyLoad <unknown> $34.set
+  [7] <unknown> $36 = LoadLocal <unknown> el1$27
+  [8] <unknown> $37 = LoadGlobal import { makeArray } from 'shared-runtime'
+  [9] <unknown> $38 = LoadLocal <unknown> el1$27
+  [10] <unknown> $39 = Call <unknown> $37(<unknown> $38)
+  [11] <unknown> $40 = MethodCall <unknown> $34.<unknown> $35(<unknown> $36, <unknown> $39)
+  [12] <unknown> $41 = LoadLocal <unknown> s$32
+  [13] <unknown> $42 = PropertyLoad <unknown> $41.set
+  [14] <unknown> $43 = LoadLocal <unknown> el2$28
+  [15] <unknown> $44 = LoadGlobal import { makeArray } from 'shared-runtime'
+  [16] <unknown> $45 = LoadLocal <unknown> el2$28
+  [17] <unknown> $46 = Call <unknown> $44(<unknown> $45)
+  [18] <unknown> $47 = MethodCall <unknown> $41.<unknown> $42(<unknown> $43, <unknown> $46)
+  [19] <unknown> $48 = LoadLocal <unknown> s$32
+  [20] <unknown> $49 = PropertyLoad <unknown> $48.size
+  [21] Return Explicit <unknown> $49

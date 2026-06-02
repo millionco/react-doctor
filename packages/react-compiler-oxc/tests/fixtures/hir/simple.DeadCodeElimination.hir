@@ -1,0 +1,36 @@
+foo(<unknown> x$13, <unknown> y$14:TPrimitive): <unknown> $12:TPhi
+bb0 (block):
+  [1] <unknown> $15 = LoadLocal <unknown> x$13
+    ImmutableCapture $15 <- x$13
+  [2] If (<unknown> $15) then:bb2 else:bb1 fallthrough=bb1
+bb2 (block):
+  predecessor blocks: bb0
+  [3] <unknown> $16:TFunction = LoadGlobal(module) foo
+    Create $16 = global
+  [4] <unknown> $17:TPrimitive = false
+    Create $17 = primitive
+  [5] <unknown> $18:TPrimitive = LoadLocal <unknown> y$14:TPrimitive
+    ImmutableCapture $18 <- y$14
+  [6] <unknown> $19 = Call <unknown> $16:TFunction(<unknown> $17:TPrimitive, <unknown> $18:TPrimitive)
+    Create $19 = mutable
+    MaybeAlias $19 <- $16
+    MaybeAlias $19 <- $16
+    MaybeAlias $19 <- $17
+    ImmutableCapture $19 <- $18
+    ImmutableCapture $16 <- $18
+    ImmutableCapture $16 <- $18
+    ImmutableCapture $17 <- $18
+  [7] Return Explicit <unknown> $19
+    Freeze $19 jsx-captured
+bb1 (block):
+  predecessor blocks: bb0
+  [8] <unknown> $20:TPrimitive = LoadLocal <unknown> y$14:TPrimitive
+    ImmutableCapture $20 <- y$14
+  [9] <unknown> $21:TPrimitive = 10
+    Create $21 = primitive
+  [10] <unknown> $22:TPrimitive = Binary <unknown> $20:TPrimitive * <unknown> $21:TPrimitive
+    Create $22 = primitive
+  [11] <unknown> $23:TObject<BuiltInArray> = Array [<unknown> $22:TPrimitive]
+    Create $23 = mutable
+  [12] Return Explicit <unknown> $23:TObject<BuiltInArray>
+    Freeze $23 jsx-captured

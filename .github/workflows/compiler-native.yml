@@ -1,0 +1,171 @@
+name: compiler-native
+
+# Builds and tests @react-doctor/compiler-native (the Rust + oxc reimplementation
+# of babel-plugin-react-compiler's lint analyzer) and produces the per-platform
+# prebuilt `.node` addons that let react-doctor drop eslint-plugin-react-hooks.
+
+on:
+  push:
+    branches: [main, react-doctor-oxc]
+    paths:
+      - "packages/react-compiler-oxc/**"
+      - "packages/react-compiler-oxc-napi/**"
+      - ".github/workflows/compiler-native.yml"
+  pull_request:
+    paths:
+      - "packages/react-compiler-oxc/**"
+      - "packages/react-compiler-oxc-napi/**"
+      - ".github/workflows/compiler-native.yml"
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # Rust unit tests + the full codegen corpus parity (1398 fixtures) + the
+  # IR-stage parity harnesses. This is the source of truth for the compiler and
+  # every ported lint validation.
+  rust-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/react-compiler-oxc
+      - name: cargo build (0 warnings)
+        working-directory: packages/react-compiler-oxc
+        run: cargo build
+      - name: cargo test (unit + corpus + IR-stage parity)
+        working-directory: packages/react-compiler-oxc
+        run: cargo test -- --include-ignored
+
+  # Cross-platform prebuilt .node matrix. Each artifact is the napi addon for one
+  # target triple, named `react-compiler-oxc.<platform>.node` (the binaryName from
+  # package.json), ready to assemble into npm platform packages on release.
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - host: macos-latest
+            target: aarch64-apple-darwin
+          - host: macos-latest
+            target: x86_64-apple-darwin
+          - host: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - host: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            cross: true
+          - host: windows-latest
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.host }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22.18.0"
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/react-compiler-oxc-napi
+          key: ${{ matrix.target }}
+      - run: pnpm install --frozen-lockfile
+      - name: Build addon (${{ matrix.target }})
+        working-directory: packages/react-compiler-oxc-napi
+        run: |
+          if [ "${{ matrix.cross }}" = "true" ]; then
+            pnpm exec napi build --platform --release --target ${{ matrix.target }} --use-napi-cross
+          else
+            pnpm exec napi build --platform --release --target ${{ matrix.target }}
+          fi
+      - name: List artifacts
+        working-directory: packages/react-compiler-oxc-napi
+        run: ls -la *.node
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bindings-${{ matrix.target }}
+          path: packages/react-compiler-oxc-napi/*.node
+          if-no-files-found: error
+
+  # Build the addon for the host and run the JS-side tests: the plugin shape +
+  # the 1:1 parity harness against eslint-plugin-react-hooks. Runs on each native
+  # OS so the addon is exercised where it's actually built.
+  js-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        host: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.host }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22.18.0"
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/react-compiler-oxc-napi
+      - run: pnpm install --frozen-lockfile
+      - name: Build addon (host)
+        working-directory: packages/react-compiler-oxc-napi
+        run: pnpm exec napi build --platform --release
+      - name: Plugin + parity tests
+        run: pnpm exec vp test run packages/react-compiler-oxc-napi/tests
+
+  # Publish @react-doctor/compiler-native + its per-platform packages to npm.
+  # Gated behind a manual dispatch / `compiler-native-v*` tag so it never runs on
+  # ordinary pushes (and never collides with the changeset publish flow). Downloads
+  # every prebuilt `.node` from the `build` job, then `napi prepublish` assembles
+  # the platform npm dirs (matching `optionalDependencies`) and publishes them
+  # alongside the main package.
+  publish:
+    needs: [rust-test, build, js-test]
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/compiler-native-v') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22.18.0"
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: npm install -g npm@11
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          path: packages/react-compiler-oxc-napi/artifacts
+      - name: Assemble per-platform npm packages from artifacts
+        working-directory: packages/react-compiler-oxc-napi
+        run: |
+          # Flatten the per-target upload-artifact subdirs into one dir, then let
+          # napi distribute each .node into its npm/<platform> package.
+          find artifacts -name '*.node' -exec mv {} . \;
+          pnpm exec napi artifacts --output-dir . --npm-dir npm
+      - name: Publish to npm
+        working-directory: packages/react-compiler-oxc-napi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true
+        run: pnpm exec napi prepublish -t npm --npm-dir npm

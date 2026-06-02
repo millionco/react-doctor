@@ -1,0 +1,59 @@
+useHook(<unknown> #t0$24): <unknown> $23:TPrimitive
+bb0 (block):
+  [1] mutate? $27 = Destructure Let { el1: mutate? el1$25, el2: mutate? el2$26 } = read #t0$24
+    Create el1$25 = frozen
+    ImmutableCapture el1$25 <- #t0$24
+    Create el2$26 = frozen
+    ImmutableCapture el2$26 <- #t0$24
+    ImmutableCapture $27 <- #t0$24
+  [2] mutate? $28:TFunction<<generated_94>>():  :TObject<BuiltInSet> = LoadGlobal(global) Set
+    Create $28 = global
+  [3] mutate? $29[3:17]:TObject<BuiltInSet> = New read $28:TFunction<<generated_94>>():  :TObject<BuiltInSet>()
+    Create $29 = mutable
+  [4] store $31[4:17]:TObject<BuiltInSet> = StoreLocal Const store s$30[4:17]:TObject<BuiltInSet> = capture $29[3:17]:TObject<BuiltInSet>
+    Assign s$30 = $29
+    Assign $31 = $29
+  [5] store $32[5:17]:TObject<BuiltInSet> = LoadLocal capture s$30[4:17]:TObject<BuiltInSet>
+    Assign $32 = s$30
+  [6] store $33[6:17]:TFunction<<generated_16>>():  :TObject<BuiltInSet> = PropertyLoad capture $32[5:17]:TObject<BuiltInSet>.add
+    Create $33 = kindOf($32)
+  [7] mutate? $34:TFunction = LoadGlobal import { makeArray } from 'shared-runtime'
+    Create $34 = global
+  [8] mutate? $35 = LoadLocal read el1$25
+    ImmutableCapture $35 <- el1$25
+  [9] store $36 = Call capture $34:TFunction(read $35)
+    Create $36 = mutable
+    MaybeAlias $36 <- $34
+    MaybeAlias $36 <- $34
+    ImmutableCapture $36 <- $35
+    ImmutableCapture $34 <- $35
+    ImmutableCapture $34 <- $35
+  [10] store $37[10:17]:TObject<BuiltInSet> = MethodCall store $32[5:17]:TObject<BuiltInSet>.read $33[6:17]:TFunction<<generated_16>>():  :TObject<BuiltInSet>(capture $36)
+    Assign $37 = $32
+    Mutate $32
+    Capture $32 <- $36
+  [11] store $38[11:17]:TObject<BuiltInSet> = LoadLocal capture s$30[4:17]:TObject<BuiltInSet>
+    Assign $38 = s$30
+  [12] store $39[12:17]:TFunction<<generated_16>>():  :TObject<BuiltInSet> = PropertyLoad capture $38[11:17]:TObject<BuiltInSet>.add
+    Create $39 = kindOf($38)
+  [13] mutate? $40:TFunction = LoadGlobal import { makeArray } from 'shared-runtime'
+    Create $40 = global
+  [14] mutate? $41 = LoadLocal read el2$26
+    ImmutableCapture $41 <- el2$26
+  [15] store $42 = Call capture $40:TFunction(read $41)
+    Create $42 = mutable
+    MaybeAlias $42 <- $40
+    MaybeAlias $42 <- $40
+    ImmutableCapture $42 <- $41
+    ImmutableCapture $40 <- $41
+    ImmutableCapture $40 <- $41
+  [16] store $43:TObject<BuiltInSet> = MethodCall store $38[11:17]:TObject<BuiltInSet>.read $39[12:17]:TFunction<<generated_16>>():  :TObject<BuiltInSet>(capture $42)
+    Assign $43 = $38
+    Mutate $38
+    Capture $38 <- $42
+  [17] store $44:TObject<BuiltInSet> = LoadLocal capture s$30[4:17]:TObject<BuiltInSet>
+    Assign $44 = s$30
+  [18] mutate? $45:TPrimitive = PropertyLoad read $44:TObject<BuiltInSet>.size
+    Create $45 = primitive
+  [19] Return Explicit freeze $45:TPrimitive
+    Freeze $45 jsx-captured

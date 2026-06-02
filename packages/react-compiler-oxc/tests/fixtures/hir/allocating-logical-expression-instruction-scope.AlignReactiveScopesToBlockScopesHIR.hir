@@ -1,0 +1,70 @@
+Foo(): <unknown> $20:TObject<BuiltInArray>
+bb0 (block):
+  [1] mutate? $21:TFunction<<generated_116>>():  :TObject<BuiltInMixedReadonly> = LoadGlobal import { useFragment } from 'shared-runtime'
+    Create $21 = global
+  [2] mutate? $22_@0:TObject<BuiltInMixedReadonly>{reactive} = Call read $21:TFunction<<generated_116>>():  :TObject<BuiltInMixedReadonly>()
+    Create $22_@0 = frozen
+  [3] mutate? $24:TObject<BuiltInMixedReadonly>{reactive} = StoreLocal Const mutate? data$23:TObject<BuiltInMixedReadonly>{reactive} = read $22_@0:TObject<BuiltInMixedReadonly>{reactive}
+    ImmutableCapture data$23 <- $22_@0
+    ImmutableCapture $24 <- $22_@0
+  [4] Logical || test:bb2 fallthrough=bb1
+bb2 (value):
+  predecessor blocks: bb0
+  [5] Optional (optional=false) test:bb8 fallthrough=bb5
+bb8 (value):
+  predecessor blocks: bb2
+  [6] Optional (optional=true) test:bb11 fallthrough=bb9
+bb11 (value):
+  predecessor blocks: bb8
+  [7] mutate? $25:TObject<BuiltInMixedReadonly>{reactive} = LoadLocal read data$23:TObject<BuiltInMixedReadonly>{reactive}
+    ImmutableCapture $25 <- data$23
+  [8] Branch (read $25:TObject<BuiltInMixedReadonly>{reactive}) then:bb10 else:bb7 fallthrough:bb9
+bb10 (value):
+  predecessor blocks: bb11
+  [9] mutate? $26:TFunction<<generated_45>>():  :TPrimitive{reactive} = PropertyLoad read $25:TObject<BuiltInMixedReadonly>{reactive}.toString
+    Create $26 = frozen
+    ImmutableCapture $26 <- $25
+  [10] mutate? $28:TFunction<<generated_45>>():  :TPrimitive{reactive} = StoreLocal Const mutate? $27_@1[4:26]:TFunction<<generated_45>>():  :TPrimitive{reactive} = read $26:TFunction<<generated_45>>():  :TPrimitive{reactive}
+    ImmutableCapture $27_@1 <- $26
+    ImmutableCapture $28 <- $26
+  [11] Goto bb9
+bb9 (value):
+  predecessor blocks: bb10
+  [12] Branch (read $27_@1[4:26]:TFunction<<generated_45>>():  :TPrimitive{reactive}) then:bb6 else:bb7 fallthrough:bb5
+bb6 (value):
+  predecessor blocks: bb9
+  [13] mutate? $29:TPrimitive{reactive} = MethodCall read $25:TObject<BuiltInMixedReadonly>{reactive}.read $27_@1[4:26]:TFunction<<generated_45>>():  :TPrimitive{reactive}()
+    Create $29 = primitive
+    ImmutableCapture $29 <- $25
+    ImmutableCapture $29 <- $25
+  [14] mutate? $31:TPrimitive{reactive} = StoreLocal Const mutate? $30:TPrimitive{reactive} = read $29:TPrimitive{reactive}
+  [15] Goto bb5
+bb7 (value):
+  predecessor blocks: bb9 bb11
+  [16] mutate? $32:TPrimitive = <undefined>
+    Create $32 = primitive
+  [17] mutate? $34:TPrimitive = StoreLocal Const mutate? $33:TPrimitive = read $32:TPrimitive
+  [18] Goto bb5
+bb5 (value):
+  predecessor blocks: bb6 bb7
+  store $35:TPrimitive{reactive}:TPrimitive: phi(bb6: read $30:TPrimitive{reactive}, bb7: read $33:TPrimitive)
+  [19] mutate? $36:TPrimitive{reactive} = LoadLocal read $35:TPrimitive{reactive}
+  [20] Branch (read $36:TPrimitive{reactive}) then:bb3 else:bb4 fallthrough:bb1
+bb3 (value):
+  predecessor blocks: bb5
+  [21] mutate? $38:TPrimitive{reactive} = StoreLocal Const mutate? $37:TPrimitive{reactive} = read $36:TPrimitive{reactive}
+  [22] Goto bb1
+bb4 (value):
+  predecessor blocks: bb5
+  [23] mutate? $39:TPrimitive = ""
+    Create $39 = primitive
+  [24] mutate? $41:TPrimitive = StoreLocal Const mutate? $40:TPrimitive = read $39:TPrimitive
+  [25] Goto bb1
+bb1 (block):
+  predecessor blocks: bb3 bb4
+  store $42:TPrimitive{reactive}:TPrimitive: phi(bb3: read $37:TPrimitive{reactive}, bb4: read $40:TPrimitive)
+  [26] mutate? $43_@2:TObject<BuiltInArray>{reactive} = Array [read $42:TPrimitive{reactive}]
+    Create $43_@2 = mutable
+  [27] Return Explicit freeze $43_@2:TObject<BuiltInArray>{reactive}
+    Freeze $43_@2 jsx-captured
+

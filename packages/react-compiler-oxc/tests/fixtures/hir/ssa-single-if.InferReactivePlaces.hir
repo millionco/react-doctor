@@ -1,0 +1,6 @@
+foo(): <unknown> $13:TPrimitive
+bb0 (block):
+  [12] mutate? $26:TPrimitive = <undefined>
+    Create $26 = primitive
+  [13] Return Void freeze $26:TPrimitive
+    Freeze $26 jsx-captured

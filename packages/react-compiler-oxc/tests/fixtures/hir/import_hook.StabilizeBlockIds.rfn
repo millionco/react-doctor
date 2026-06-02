@@ -1,0 +1,5 @@
+function useThing(
+) {
+  [1] mutate? $9:TFunction<<generated_97>>():  :TObject<BuiltInUseState> = LoadGlobal import { useState } from 'react'
+  [2] return freeze $9:TFunction<<generated_97>>():  :TObject<BuiltInUseState>
+}

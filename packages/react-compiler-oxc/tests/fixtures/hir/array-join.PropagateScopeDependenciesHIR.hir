@@ -1,0 +1,88 @@
+Component(<unknown> props$25{reactive}): <unknown> $24:TObject<BuiltInArray>
+bb0 (block):
+  [1] Scope scope @0 [1:4] dependencies=[] declarations=[$26_@0] reassignments=[] block=bb7 fallthrough=bb8
+bb7 (block):
+  predecessor blocks: bb0
+  [2] mutate? $26_@0[1:4]:TObject<BuiltInObject> = Object {  }
+    Create $26_@0 = mutable
+  [3] Goto bb8
+bb8 (block):
+  predecessor blocks: bb7
+  [4] Scope scope @1 [4:7] dependencies=[] declarations=[$27_@1] reassignments=[] block=bb9 fallthrough=bb10
+bb9 (block):
+  predecessor blocks: bb8
+  [5] mutate? $27_@1[4:7]:TObject<BuiltInArray> = Array []
+    Create $27_@1 = mutable
+  [6] Goto bb10
+bb10 (block):
+  predecessor blocks: bb9
+  [7] mutate? $28{reactive} = LoadLocal read props$25{reactive}
+    ImmutableCapture $28 <- props$25
+  [8] mutate? $29{reactive} = PropertyLoad read $28{reactive}.value
+    Create $29 = frozen
+    ImmutableCapture $29 <- $28
+  [9] Scope scope @2 [9:12] dependencies=[$26_@0:TObject<BuiltInObject>_2:13:2:15, $27_@1:TObject<BuiltInArray>_2:17:2:19, props$25.value_2:21:2:32] declarations=[$30_@2] reassignments=[] block=bb11 fallthrough=bb12
+bb11 (block):
+  predecessor blocks: bb10
+  [10] store $30_@2[9:12]:TObject<BuiltInArray>{reactive} = Array [capture $26_@0[1:4]:TObject<BuiltInObject>, capture $27_@1[4:7]:TObject<BuiltInArray>, read $29{reactive}]
+    Create $30_@2 = mutable
+    Capture $30_@2 <- $26_@0
+    Capture $30_@2 <- $27_@1
+    ImmutableCapture $30_@2 <- $29
+  [11] Goto bb12
+bb12 (block):
+  predecessor blocks: bb11
+  [12] store $32:TObject<BuiltInArray>{reactive} = StoreLocal Const store x$31:TObject<BuiltInArray>{reactive} = capture $30_@2[9:12]:TObject<BuiltInArray>{reactive}
+    Assign x$31 = $30_@2
+    Assign $32 = $30_@2
+  [13] store $33:TObject<BuiltInArray>{reactive} = LoadLocal capture x$31:TObject<BuiltInArray>{reactive}
+    Assign $33 = x$31
+  [14] store $34:TFunction<<generated_14>>():  :TPrimitive{reactive} = PropertyLoad capture $33:TObject<BuiltInArray>{reactive}.join
+    Create $34 = kindOf($33)
+  [15] Scope scope @3 [15:18] dependencies=[] declarations=[$35_@3] reassignments=[] block=bb13 fallthrough=bb14
+bb13 (block):
+  predecessor blocks: bb12
+  [16] mutate? $35_@3[15:18]:TFunction<BuiltInFunction>():  :TPrimitive = LoadGlobal(global) _temp
+    Function $35_@3 = Function captures=[]
+  [17] Goto bb14
+bb14 (block):
+  predecessor blocks: bb13
+  [18] mutate? $37:TPrimitive{reactive} = MethodCall read $33:TObject<BuiltInArray>{reactive}.read $34:TFunction<<generated_14>>():  :TPrimitive{reactive}(read $35_@3[15:18]:TFunction<BuiltInFunction>():  :TPrimitive)
+    Create $37 = primitive
+    ImmutableCapture $37 <- $33
+    ImmutableCapture $37 <- $35_@3
+  [19] mutate? $39:TPrimitive{reactive} = StoreLocal Const mutate? y$38:TPrimitive{reactive} = read $37:TPrimitive{reactive}
+  [20] mutate? $40:TFunction = LoadGlobal(global) foo
+    Create $40 = global
+  [21] mutate? $41:TPrimitive{reactive} = LoadLocal read y$38:TPrimitive{reactive}
+  [22] Scope scope @5 [22:25] dependencies=[$40:TFunction_4:2:4:5, y$38:TPrimitive_4:6:4:7] declarations=[] reassignments=[] block=bb15 fallthrough=bb16
+bb15 (block):
+  predecessor blocks: bb14
+  [23] store $42_@5[22:25]{reactive} = Call capture $40:TFunction(capture $41:TPrimitive{reactive})
+    Create $42_@5 = mutable
+    MaybeAlias $42_@5 <- $40
+    MaybeAlias $42_@5 <- $40
+    MaybeAlias $42_@5 <- $41
+  [24] Goto bb16
+bb16 (block):
+  predecessor blocks: bb15
+  [25] store $43:TObject<BuiltInArray>{reactive} = LoadLocal capture x$31:TObject<BuiltInArray>{reactive}
+    Assign $43 = x$31
+  [26] mutate? $44:TPrimitive{reactive} = LoadLocal read y$38:TPrimitive{reactive}
+  [27] Scope scope @6 [27:30] dependencies=[x$31:TObject<BuiltInArray>_5:10:5:11, y$38:TPrimitive_5:13:5:14] declarations=[$45_@6] reassignments=[] block=bb17 fallthrough=bb18
+bb17 (block):
+  predecessor blocks: bb16
+  [28] store $45_@6[27:30]:TObject<BuiltInArray>{reactive} = Array [capture $43:TObject<BuiltInArray>{reactive}, read $44:TPrimitive{reactive}]
+    Create $45_@6 = mutable
+    Capture $45_@6 <- $43
+  [29] Goto bb18
+bb18 (block):
+  predecessor blocks: bb17
+  [30] Return Explicit freeze $45_@6[27:30]:TObject<BuiltInArray>{reactive}
+    Freeze $45_@6 jsx-captured
+
+function _temp:
+bb1 (block):
+  [1] mutate? $36:TPrimitive = "this closure gets stringified, not called"
+    Create $36 = primitive
+  [2] Return Implicit read $36:TPrimitive

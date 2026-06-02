@@ -1,0 +1,24 @@
+Component(<unknown> x$7): <unknown> $6
+bb0 (block):
+  [1] <unknown> $8:TPrimitive = 1
+    Create $8 = primitive
+  [2] <unknown> $9 = LoadLocal <unknown> x$7
+    ImmutableCapture $9 <- x$7
+  [3] Switch (<unknown> $9)
+    Case <unknown> $8:TPrimitive: bb4
+    Default: bb2
+    Fallthrough: bb1
+bb4 (block):
+  predecessor blocks: bb0
+  [4] <unknown> $10 = LoadLocal <unknown> x$7
+    ImmutableCapture $10 <- x$7
+  [5] Return Explicit <unknown> $10
+    Freeze $10 jsx-captured
+bb2 (block):
+  predecessor blocks: bb0
+  [6] <unknown> $11 = LoadLocal <unknown> x$7
+    ImmutableCapture $11 <- x$7
+  [7] Return Explicit <unknown> $11
+    Freeze $11 jsx-captured
+bb1 (block):
+  [8] Unreachable

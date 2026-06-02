@@ -1,0 +1,7 @@
+Component(<unknown> props$4{reactive}): <unknown> $3
+bb0 (block):
+  [1] mutate? $5{reactive} = LoadLocal read props$4{reactive}
+    ImmutableCapture $5 <- props$4
+  [2] Return Explicit freeze $5{reactive}
+    Freeze $5 jsx-captured
+

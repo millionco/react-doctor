@@ -1,0 +1,15 @@
+component(<unknown> a$19): <unknown> $16
+bb0 (block):
+  [1] <unknown> $20 = LoadGlobal(global) useMemo
+  [2] <unknown> $21 = StartMemoize deps=a$19
+  [3] <unknown> $22 = LoadLocal <unknown> a$19
+  [4] <unknown> $23 = Array [<unknown> $22]
+  [6] <unknown> $24 = LoadLocal <unknown> a$19
+  [7] <unknown> $25 = Array [<unknown> $24]
+  [8] <unknown> $26 = LoadLocal <unknown> $25
+  [10] <unknown> $27 = FinishMemoize decl=<unknown> $26
+  [11] <unknown> $29 = StoreLocal Let <unknown> x$28 = <unknown> $26
+  [12] <unknown> $30 = LoadGlobal(global) Foo
+  [13] <unknown> $31 = LoadLocal <unknown> x$28
+  [14] <unknown> $32 = JSX <<unknown> $30 x={<unknown> $31} />
+  [15] Return Explicit <unknown> $32

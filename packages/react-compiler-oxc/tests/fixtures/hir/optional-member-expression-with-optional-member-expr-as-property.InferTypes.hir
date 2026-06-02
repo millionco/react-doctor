@@ -1,0 +1,65 @@
+Component(<unknown> props$30): <unknown> $29:TPhi
+bb0 (block):
+  [1] <unknown> $31:TFunction = LoadGlobal(global) makeObject
+  [2] <unknown> $32 = Call <unknown> $31:TFunction()
+  [3] <unknown> $34 = StoreLocal Const <unknown> x$33 = <unknown> $32
+  [4] Optional (optional=true) test:bb4 fallthrough=bb1
+bb4 (value):
+  predecessor blocks: bb0
+  [5] <unknown> $35 = LoadLocal <unknown> x$33
+  [6] <unknown> $36 = PropertyLoad <unknown> $35.y
+  [7] Branch (<unknown> $36) then:bb2 else:bb3 fallthrough:bb1
+bb2 (value):
+  predecessor blocks: bb4
+  [8] Optional (optional=true) test:bb8 fallthrough=bb5
+bb8 (value):
+  predecessor blocks: bb2
+  [9] <unknown> $37 = LoadLocal <unknown> props$30
+  [10] <unknown> $38 = PropertyLoad <unknown> $37.a
+  [11] Branch (<unknown> $38) then:bb6 else:bb7 fallthrough:bb5
+bb6 (value):
+  predecessor blocks: bb8
+  [12] Optional (optional=true) test:bb12 fallthrough=bb9
+bb12 (value):
+  predecessor blocks: bb6
+  [13] <unknown> $39 = LoadLocal <unknown> props$30
+  [14] <unknown> $40 = PropertyLoad <unknown> $39.b
+  [15] Branch (<unknown> $40) then:bb10 else:bb11 fallthrough:bb9
+bb10 (value):
+  predecessor blocks: bb12
+  [16] <unknown> $41 = LoadLocal <unknown> props$30
+  [17] <unknown> $42 = PropertyLoad <unknown> $41.c
+  [18] <unknown> $43 = ComputedLoad <unknown> $40[<unknown> $42]
+  [19] <unknown> $45 = StoreLocal Const <unknown> $44 = <unknown> $43
+  [20] Goto bb9
+bb11 (value):
+  predecessor blocks: bb12
+  [21] <unknown> $46:TPrimitive = <undefined>
+  [22] <unknown> $48:TPrimitive = StoreLocal Const <unknown> $47:TPrimitive = <unknown> $46:TPrimitive
+  [23] Goto bb9
+bb9 (value):
+  predecessor blocks: bb10 bb11
+  <unknown> $50:TPhi:TPhi: phi(bb10: <unknown> $44, bb11: <unknown> $47:TPrimitive)
+  [24] <unknown> $51 = ComputedLoad <unknown> $38[<unknown> $50:TPhi]
+  [25] <unknown> $53 = StoreLocal Const <unknown> $52 = <unknown> $51
+  [26] Goto bb5
+bb7 (value):
+  predecessor blocks: bb8
+  [27] <unknown> $54:TPrimitive = <undefined>
+  [28] <unknown> $56:TPrimitive = StoreLocal Const <unknown> $55:TPrimitive = <unknown> $54:TPrimitive
+  [29] Goto bb5
+bb5 (value):
+  predecessor blocks: bb9 bb7
+  <unknown> $59:TPhi:TPhi: phi(bb9: <unknown> $52, bb7: <unknown> $55:TPrimitive)
+  [30] <unknown> $60 = ComputedLoad <unknown> $36[<unknown> $59:TPhi]
+  [31] <unknown> $62 = StoreLocal Const <unknown> $61 = <unknown> $60
+  [32] Goto bb1
+bb3 (value):
+  predecessor blocks: bb4
+  [33] <unknown> $63:TPrimitive = <undefined>
+  [34] <unknown> $65:TPrimitive = StoreLocal Const <unknown> $64:TPrimitive = <unknown> $63:TPrimitive
+  [35] Goto bb1
+bb1 (block):
+  predecessor blocks: bb5 bb3
+  <unknown> $66:TPhi:TPhi: phi(bb5: <unknown> $61, bb3: <unknown> $64:TPrimitive)
+  [36] Return Explicit <unknown> $66:TPhi

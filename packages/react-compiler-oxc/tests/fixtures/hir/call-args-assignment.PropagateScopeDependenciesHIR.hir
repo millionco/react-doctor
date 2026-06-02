@@ -1,0 +1,47 @@
+Component(<unknown> props$14{reactive}): <unknown> $13
+bb0 (block):
+  [1] Scope scope @0 [1:12] dependencies=[] declarations=[x$23_@0] reassignments=[] block=bb5 fallthrough=bb6
+bb5 (block):
+  predecessor blocks: bb0
+  [2] mutate? $15_@0[1:12]:TFunction = LoadGlobal(global) makeObject
+    Create $15_@0 = global
+  [3] store $16_@0[1:12] = Call capture $15_@0[1:12]:TFunction()
+    Create $16_@0 = mutable
+    MaybeAlias $16_@0 <- $15_@0
+    MaybeAlias $16_@0 <- $15_@0
+  [4] store $18_@0[1:12] = StoreLocal Let store x$17_@0[1:12] = capture $16_@0[1:12]
+    Assign x$17_@0 = $16_@0
+    Assign $18_@0 = $16_@0
+  [5] store $19_@0[1:12] = LoadLocal capture x$17_@0[1:12]
+    Assign $19_@0 = x$17_@0
+  [6] store $20_@0[1:12]:TFunction = PropertyLoad capture $19_@0[1:12].foo
+    Create $20_@0 = kindOf($19_@0)
+  [7] mutate? $21_@0[1:12]:TFunction = LoadGlobal(global) makeObject
+    Create $21_@0 = global
+  [8] store $22_@0[1:12] = Call capture $21_@0[1:12]:TFunction()
+    Create $22_@0 = mutable
+    MaybeAlias $22_@0 <- $21_@0
+    MaybeAlias $22_@0 <- $21_@0
+  [9] store $24_@0[1:12] = StoreLocal Reassign store x$23_@0[1:12] = capture $22_@0[1:12]
+    Assign x$23_@0 = $22_@0
+    Assign $24_@0 = $22_@0
+  [10] store $25_@0[1:12] = MethodCall store $19_@0[1:12].store $20_@0[1:12]:TFunction(capture $24_@0[1:12])
+    Create $25_@0 = mutable
+    MutateTransitiveConditionally $19_@0
+    MaybeAlias $25_@0 <- $19_@0
+    Capture $20_@0 <- $19_@0
+    Capture $24_@0 <- $19_@0
+    MaybeAlias $25_@0 <- $20_@0
+    Capture $19_@0 <- $20_@0
+    Capture $24_@0 <- $20_@0
+    MutateTransitiveConditionally $24_@0
+    MaybeAlias $25_@0 <- $24_@0
+    Capture $19_@0 <- $24_@0
+    Capture $20_@0 <- $24_@0
+  [11] Goto bb6
+bb6 (block):
+  predecessor blocks: bb5
+  [12] store $26 = LoadLocal capture x$23_@0[1:12]
+    Assign $26 = x$23_@0
+  [13] Return Explicit freeze $26
+    Freeze $26 jsx-captured

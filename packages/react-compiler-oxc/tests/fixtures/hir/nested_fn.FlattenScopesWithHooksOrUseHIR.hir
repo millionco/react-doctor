@@ -1,0 +1,43 @@
+Component(<unknown> props$16{reactive}): <unknown> $15:TFunction<BuiltInFunction>():  :TPrimitive
+bb0 (block):
+  [1] Scope scope @1 [1:4] dependencies=[] declarations=[] reassignments=[] block=bb6 fallthrough=bb7
+bb6 (block):
+  predecessor blocks: bb0
+  [2] mutate? $17_@1[1:4]:TFunction<BuiltInFunction>():  :TPrimitive{reactive} = Function  @context[read props$16{reactive}] @aliasingEffects=[MutateTransitiveConditionally props$16, Create $9 = primitive]
+      <<anonymous>>(): <unknown> $9:TPrimitive
+      bb1 (block):
+        [1] store $18_@0[1:8] = LoadLocal capture props$16{reactive}
+          Assign $18_@0 = props$16
+        [2] store $19_@0[1:8]:TFunction = PropertyLoad capture $18_@0[1:8].setCount
+          Create $19_@0 = kindOf($18_@0)
+        [3] store $20_@0[1:8] = LoadLocal capture props$16{reactive}
+          Assign $20_@0 = props$16
+        [4] mutate? $21:TPrimitive = PropertyLoad read $20_@0[1:8].count
+          Create $21 = primitive
+        [5] mutate? $22:TPrimitive = 1
+          Create $22 = primitive
+        [6] mutate? $23:TPrimitive = Binary read $21:TPrimitive + read $22:TPrimitive
+          Create $23 = primitive
+        [7] store $24_@0[1:8] = MethodCall store $18_@0[1:8].capture $19_@0[1:8]:TFunction(capture $23:TPrimitive)
+          Create $24_@0 = mutable
+          MutateTransitiveConditionally $18_@0
+          MaybeAlias $24_@0 <- $18_@0
+          MaybeAlias $19_@0 <- $18_@0
+          MaybeAlias $24_@0 <- $19_@0
+          MaybeAlias $18_@0 <- $19_@0
+          MaybeAlias $24_@0 <- $23
+        [8] mutate? $25:TPrimitive = <undefined>
+          Create $25 = primitive
+        [9] Return Void read $25:TPrimitive
+    Function $17_@1 = Function captures=[props$16]
+    ImmutableCapture $17_@1 <- props$16
+  [3] Goto bb7
+bb7 (block):
+  predecessor blocks: bb6
+  [4] mutate? $27:TFunction<BuiltInFunction>():  :TPrimitive{reactive} = StoreLocal Const mutate? cb$26:TFunction<BuiltInFunction>():  :TPrimitive{reactive} = read $17_@1[1:4]:TFunction<BuiltInFunction>():  :TPrimitive{reactive}
+    ImmutableCapture cb$26 <- $17_@1
+    ImmutableCapture $27 <- $17_@1
+  [5] mutate? $28:TFunction<BuiltInFunction>():  :TPrimitive{reactive} = LoadLocal read cb$26:TFunction<BuiltInFunction>():  :TPrimitive{reactive}
+    ImmutableCapture $28 <- cb$26
+  [6] Return Explicit freeze $28:TFunction<BuiltInFunction>():  :TPrimitive{reactive}
+    Freeze $28 jsx-captured

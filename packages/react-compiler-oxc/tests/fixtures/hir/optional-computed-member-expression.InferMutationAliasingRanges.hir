@@ -1,0 +1,46 @@
+Component(<unknown> props$16): <unknown> $15:TPhi
+bb0 (block):
+  [1] mutate? $17:TFunction = LoadGlobal(global) makeObject
+    Create $17 = global
+  [2] mutate? $18 = LoadLocal read props$16
+    ImmutableCapture $18 <- props$16
+  [3] store $19 = Call capture $17:TFunction(read $18)
+    Create $19 = mutable
+    MaybeAlias $19 <- $17
+    MaybeAlias $19 <- $17
+    ImmutableCapture $19 <- $18
+    ImmutableCapture $17 <- $18
+    ImmutableCapture $17 <- $18
+  [4] store $21 = StoreLocal Const store object$20 = capture $19
+    Assign object$20 = $19
+    Assign $21 = $19
+  [5] Optional (optional=true) test:bb4 fallthrough=bb1
+bb4 (value):
+  predecessor blocks: bb0
+  [6] store $22 = LoadLocal capture object$20
+    Assign $22 = object$20
+  [7] Branch (read $22) then:bb2 else:bb3 fallthrough:bb1
+bb2 (value):
+  predecessor blocks: bb4
+  [8] mutate? $23 = LoadLocal read props$16
+    ImmutableCapture $23 <- props$16
+  [9] mutate? $24 = PropertyLoad read $23.key
+    Create $24 = frozen
+    ImmutableCapture $24 <- $23
+  [10] store $25 = ComputedLoad capture $22[read $24]
+    Create $25 = kindOf($22)
+  [11] store $27 = StoreLocal Const store $26 = capture $25
+    Assign $26 = $25
+    Assign $27 = $25
+  [12] Goto bb1
+bb3 (value):
+  predecessor blocks: bb4
+  [13] mutate? $28:TPrimitive = <undefined>
+    Create $28 = primitive
+  [14] mutate? $30:TPrimitive = StoreLocal Const mutate? $29:TPrimitive = read $28:TPrimitive
+  [15] Goto bb1
+bb1 (block):
+  predecessor blocks: bb2 bb3
+  store $31:TPhi:TPhi: phi(bb2: read $26, bb3: read $29:TPrimitive)
+  [16] Return Explicit freeze $31:TPhi
+    Freeze $31 jsx-captured

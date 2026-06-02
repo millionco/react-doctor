@@ -1,0 +1,6 @@
+useThing(): <unknown> $5
+bb0 (block):
+  [1] <unknown> $6 = LoadGlobal import { useState } from 'react'
+  [2] <unknown> $8 = StoreLocal Const <unknown> x$7 = <unknown> $6
+  [3] <unknown> $9 = LoadGlobal import { useState } from 'react'
+  [4] Return Explicit <unknown> $9

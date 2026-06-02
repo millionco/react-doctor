@@ -1,0 +1,4 @@
+<<anonymous>>(): <unknown> $2
+bb0 (block):
+  [1] <unknown> $0 = 1
+  [2] Return Implicit <unknown> $0

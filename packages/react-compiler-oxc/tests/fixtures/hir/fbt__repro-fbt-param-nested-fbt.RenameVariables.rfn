@@ -1,0 +1,42 @@
+function Component(
+  <unknown> t0$38:TObject<BuiltInProps>{reactive},
+) {
+  [1] Destructure Const { firstname: mutate? firstname$39{reactive}, lastname: mutate? lastname$40{reactive} } = read t0$38:TObject<BuiltInProps>{reactive}
+  scope @0 [2:35] dependencies=[firstname$39_19:42:19:51, lastname$40_25:59:25:67] declarations=[t1$72_@0] reassignments=[] {
+    [3] mutate? $42_@0[2:35]:TFunction = LoadGlobal import fbt from 'fbt'
+    [4] mutate? $43_@0[2:35]:TPrimitive = "Name: "
+    [5] mutate? $44_@0[2:35] = LoadGlobal import fbt from 'fbt'
+    [6] mutate? $45_@0[2:35]:TFunction{reactive} = PropertyLoad read $44_@0[2:35]{reactive}.param
+    [7] mutate? $46_@0[2:35]:TPrimitive = "firstname"
+    [8] mutate? $47_@0[2:35]:TFunction = LoadGlobal import { identity } from 'shared-runtime'
+    [9] mutate? $48{reactive} = LoadLocal read firstname$39{reactive}
+    [10] store $49_@0[2:35]{reactive} = Call capture $47_@0[2:35]:TFunction{reactive}(read $48{reactive})
+    [11] store $50_@0[2:35]{reactive} = MethodCall capture $44_@0[2:35]{reactive}.capture $45_@0[2:35]:TFunction{reactive}(capture $46_@0[2:35]:TPrimitive{reactive}, capture $49_@0[2:35]{reactive})
+    [12] mutate? $51_@0[2:35]:TPrimitive = ", "
+    [13] mutate? $52_@0[2:35] = LoadGlobal import fbt from 'fbt'
+    [14] mutate? $53_@0[2:35]:TFunction{reactive} = PropertyLoad read $52_@0[2:35]{reactive}.param
+    [15] mutate? $54_@0[2:35]:TPrimitive = "lastname"
+    [16] mutate? $55_@0[2:35]:TFunction = LoadGlobal import { identity } from 'shared-runtime'
+    [17] mutate? $56_@0[2:35]:TFunction = LoadGlobal import fbt from 'fbt'
+    [18] mutate? $57_@0[2:35]:TPrimitive = "(inner)"
+    [19] mutate? $58 = LoadGlobal import fbt from 'fbt'
+    [20] mutate? $59_@0[2:35]:TFunction = PropertyLoad read $58.param
+    [21] mutate? $60:TPrimitive = "lastname"
+    [22] mutate? $61_@0[2:35]:TFunction = LoadGlobal import { identity } from 'shared-runtime'
+    [23] mutate? $62{reactive} = LoadLocal read lastname$40{reactive}
+    [24] store $63_@0[2:35]{reactive} = Call capture $61_@0[2:35]:TFunction{reactive}(read $62{reactive})
+    [25] store $64_@0[2:35]:TPrimitive{reactive} = MethodCall capture $58.capture $59_@0[2:35]:TFunction{reactive}(capture $60:TPrimitive, capture $63_@0[2:35]{reactive})
+    [26] mutate? $65_@0[2:35]:TPrimitive{reactive} = Binary read $57_@0[2:35]:TPrimitive + read $64_@0[2:35]:TPrimitive{reactive}
+    [27] mutate? $66_@0[2:35]:TPrimitive = "Inner fbt value"
+    [28] store $67_@0[2:35]{reactive} = Call capture $56_@0[2:35]:TFunction{reactive}(capture $65_@0[2:35]:TPrimitive{reactive}, capture $66_@0[2:35]:TPrimitive{reactive})
+    [29] store $68_@0[2:35]{reactive} = Call capture $55_@0[2:35]:TFunction{reactive}(capture $67_@0[2:35]{reactive})
+    [30] store $69_@0[2:35]{reactive} = MethodCall capture $52_@0[2:35]{reactive}.capture $53_@0[2:35]:TFunction{reactive}(capture $54_@0[2:35]:TPrimitive{reactive}, capture $68_@0[2:35]{reactive})
+    [31] store $70_@0[2:35]:TObject<BuiltInArray>{reactive} = Array [read $43_@0[2:35]:TPrimitive, capture $50_@0[2:35]{reactive}, read $51_@0[2:35]:TPrimitive, capture $69_@0[2:35]{reactive}]
+    [32] mutate? $71_@0[2:35]:TPrimitive = "Name"
+    [33] store t1$72_@0[2:35]{reactive} = Call capture $42_@0[2:35]:TFunction(capture $70_@0[2:35]:TObject<BuiltInArray>{reactive}, capture $71_@0[2:35]:TPrimitive)
+  }
+  scope @2 [35:38] dependencies=[t1$72_@0_16:7:32:7] declarations=[t2$73_@2] reassignments=[] {
+    [36] mutate? t2$73_@2[35:38]:TObject<BuiltInJsx>{reactive} = JSX <div>{freeze t1$72_@0[2:35]{reactive}}</div>
+  }
+  [38] return freeze t2$73_@2[35:38]:TObject<BuiltInJsx>{reactive}
+}

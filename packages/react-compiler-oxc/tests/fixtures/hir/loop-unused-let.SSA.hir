@@ -1,0 +1,15 @@
+useFoo(): <unknown> $4
+bb0 (block):
+  [1] While test=bb1 loop=bb3 fallthrough=bb2
+bb1 (loop):
+  predecessor blocks: bb0 bb3
+  [2] <unknown> $5 = 1
+  [3] Branch (<unknown> $5) then:bb3 else:bb2 fallthrough:bb1
+bb3 (block):
+  predecessor blocks: bb1
+  [4] <unknown> $7 = DeclareLocal Let <unknown> foo$6
+  [5] Goto(Continue) bb1
+bb2 (block):
+  predecessor blocks: bb1
+  [6] <unknown> $8 = <undefined>
+  [7] Return Void <unknown> $8

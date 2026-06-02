@@ -1,0 +1,8 @@
+function Component(
+  <unknown> o$8{reactive},
+) {
+  [1] mutate? $9{reactive} = LoadLocal read o$8{reactive}
+  [2] mutate? $12{reactive} = Destructure Const { a: mutate? a$10{reactive} } = read $9{reactive}
+  [3] mutate? $13{reactive} = LoadLocal read a$10{reactive}
+  [4] return freeze $13{reactive}
+}

@@ -1,0 +1,25 @@
+Component(<unknown> #t0$0): <unknown> $27
+bb0 (block):
+  [1] <unknown> $2 = Destructure Let { value: <unknown> value$1 } = <unknown> #t0$0
+  [2] <unknown> $3 = "foo"
+  [3] <unknown> $4 = Object { value: <unknown> $3 }
+  [4] <unknown> $5 = "bar"
+  [5] <unknown> $6 = Object { value: <unknown> $5 }
+  [6] <unknown> $7 = LoadLocal <unknown> value$1
+  [7] <unknown> $8 = Object { value: <unknown> $7 }
+  [8] <unknown> $9 = Array [<unknown> $4, <unknown> $6, <unknown> $8]
+  [9] <unknown> $11 = StoreLocal Const <unknown> arr$10 = <unknown> $9
+  [10] <unknown> $12 = LoadGlobal import { useIdentity } from 'shared-runtime'
+  [11] <unknown> $13 = Call <unknown> $12()
+  [12] <unknown> $14 = LoadGlobal(global) Set
+  [13] <unknown> $15 = LoadLocal <unknown> arr$10
+  [14] <unknown> $16 = New <unknown> $14(<unknown> $15)
+  [15] <unknown> $17 = PropertyLoad <unknown> $16.forEach
+  [16] <unknown> $18 = LoadGlobal import { mutateAndReturn } from 'shared-runtime'
+  [17] <unknown> $19 = MethodCall <unknown> $16.<unknown> $17(<unknown> $18)
+  [18] <unknown> $21 = StoreLocal Const <unknown> derived$20 = <unknown> $19
+  [19] <unknown> $22 = LoadGlobal import { Stringify } from 'shared-runtime'
+  [20] <unknown> $23 = LoadLocal <unknown> derived$20
+  [21] <unknown> $24 = Array [...<unknown> $23]
+  [22] <unknown> $25 = JSX <<unknown> $22>{<unknown> $24}</<unknown> $22>
+  [23] Return Explicit <unknown> $25

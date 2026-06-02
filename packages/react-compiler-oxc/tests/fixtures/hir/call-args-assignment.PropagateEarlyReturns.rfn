@@ -1,0 +1,17 @@
+function Component(
+  <unknown> props$14{reactive},
+) {
+  scope @0 [1:12] dependencies=[] declarations=[x$23_@0] reassignments=[] {
+    [2] mutate? $15_@0[1:12]:TFunction = LoadGlobal(global) makeObject
+    [3] store $16_@0[1:12] = Call capture $15_@0[1:12]:TFunction()
+    [4] store $18_@0[1:12] = StoreLocal Let store x$17_@0[1:12] = capture $16_@0[1:12]
+    [5] store $19_@0[1:12] = LoadLocal capture x$17_@0[1:12]
+    [6] store $20_@0[1:12]:TFunction = PropertyLoad capture $19_@0[1:12].foo
+    [7] mutate? $21_@0[1:12]:TFunction = LoadGlobal(global) makeObject
+    [8] store $22_@0[1:12] = Call capture $21_@0[1:12]:TFunction()
+    [9] store $24_@0[1:12] = StoreLocal Reassign store x$23_@0[1:12] = capture $22_@0[1:12]
+    [10] store $25_@0[1:12] = MethodCall store $19_@0[1:12].store $20_@0[1:12]:TFunction(capture $24_@0[1:12])
+  }
+  [12] store $26 = LoadLocal capture x$23_@0[1:12]
+  [13] return freeze $26
+}

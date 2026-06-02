@@ -1,0 +1,11 @@
+[package]
+name = "react-compiler-oxc"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+oxc = { version = "0.133.0", features = ["ast_visit", "semantic", "codegen"] }
+
+[[bin]]
+name = "react-compiler-oxc"
+path = "src/main.rs"

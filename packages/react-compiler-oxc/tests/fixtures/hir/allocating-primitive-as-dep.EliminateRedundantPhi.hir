@@ -1,0 +1,13 @@
+AllocatingPrimitiveAsDep(<unknown> props$14): <unknown> $13
+bb0 (block):
+  [1] <unknown> $15 = LoadGlobal(global) foo
+  [2] <unknown> $16 = LoadGlobal(global) bar
+  [3] <unknown> $17 = LoadLocal <unknown> props$14
+  [4] <unknown> $18 = Call <unknown> $16(<unknown> $17)
+  [5] <unknown> $19 = PropertyLoad <unknown> $18.b
+  [6] <unknown> $20 = 1
+  [7] <unknown> $21 = Binary <unknown> $19 + <unknown> $20
+  [8] <unknown> $22 = Call <unknown> $15(<unknown> $21)
+  [9] <unknown> $24 = StoreLocal Let <unknown> y$23 = <unknown> $22
+  [10] <unknown> $25 = LoadLocal <unknown> y$23
+  [11] Return Explicit <unknown> $25

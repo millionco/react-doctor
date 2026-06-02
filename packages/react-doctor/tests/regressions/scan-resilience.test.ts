@@ -461,17 +461,16 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
   });
 
   it("only enables react-hooks-js rules that the resolved plugin actually exports", async () => {
-    // The workspace pins eslint-plugin-react-hooks@7, so every
-    // configured react-hooks-js/* rule MUST exist in the loaded
-    // module's `rules` map. A future plugin upgrade that drops one of
-    // our rules would otherwise sneak past unit tests and crash
+    // Every configured react-hooks-js/* rule MUST exist in the loaded
+    // native plugin's `rules` map. A future plugin change that drops one
+    // of our rules would otherwise sneak past unit tests and crash
     // real-world scans with "Rule '<name>' not found in plugin
     // 'react-hooks-js'".
     const config = createOxlintConfig({
       pluginPath: "/tmp/react-doctor-plugin.js",
       project: buildTestProject({ rootDirectory: "/tmp/test", hasReactCompiler: true }),
     });
-    const pluginModule = await import("eslint-plugin-react-hooks");
+    const pluginModule = await import("@react-doctor/compiler-native/plugin.js");
     const availableRuleNames = new Set(
       Object.keys((pluginModule.default ?? pluginModule).rules ?? {}),
     );

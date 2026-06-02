@@ -1,0 +1,105 @@
+useFoo(<unknown> #t0$34{reactive}): <unknown> $33
+bb0 (block):
+  [1] mutate? $37{reactive} = Destructure Const { apples: mutate? apples$35{reactive}, bananas: mutate? bananas$36{reactive} } = read #t0$34{reactive}
+    Create apples$35 = frozen
+    ImmutableCapture apples$35 <- #t0$34
+    Create bananas$36 = frozen
+    ImmutableCapture bananas$36 <- #t0$34
+    ImmutableCapture $37 <- #t0$34
+  [2] Scope scope @4 [2:32] dependencies=[] declarations=[] reassignments=[] block=bb5 fallthrough=bb6
+bb5 (block):
+  predecessor blocks: bb0
+  [3] mutate? $38_@4[2:32]:TFunction = LoadGlobal import fbt from 'fbt'
+    Create $38_@4 = global
+  [4] mutate? $39 = LoadGlobal import fbt from 'fbt'
+    Create $39 = global
+  [5] mutate? $40_@4[2:32]:TFunction = PropertyLoad read $39.param
+    Create $40_@4 = global
+  [6] mutate? $41:TPrimitive = "number of apples"
+    Create $41 = primitive
+  [7] mutate? $42{reactive} = LoadLocal read apples$35{reactive}
+    ImmutableCapture $42 <- apples$35
+  [8] store $43_@4[2:32]{reactive} = MethodCall capture $39.capture $40_@4[2:32]:TFunction{reactive}(capture $41:TPrimitive, read $42{reactive})
+    Create $43_@4 = mutable
+    MaybeAlias $43_@4 <- $39
+    MaybeAlias $43_@4 <- $40_@4
+    MaybeAlias $43_@4 <- $41
+    ImmutableCapture $43_@4 <- $42
+    ImmutableCapture $39 <- $42
+    ImmutableCapture $40_@4 <- $42
+    ImmutableCapture $41 <- $42
+  [9] mutate? $44_@4[2:32]:TPrimitive{reactive} = `${read $43_@4[2:32]{reactive}} `
+    Create $44_@4 = primitive
+  [10] mutate? $45 = LoadGlobal import fbt from 'fbt'
+    Create $45 = global
+  [11] mutate? $46_@4[2:32]:TFunction = PropertyLoad read $45.plural
+    Create $46_@4 = global
+  [12] mutate? $47:TPrimitive = "apple"
+    Create $47 = primitive
+  [13] mutate? $48{reactive} = LoadLocal read apples$35{reactive}
+    ImmutableCapture $48 <- apples$35
+  [14] store $49_@4[2:32]:TPrimitive{reactive} = MethodCall capture $45.capture $46_@4[2:32]:TFunction(capture $47:TPrimitive, read $48{reactive})
+    Create $49_@4 = mutable
+    MaybeAlias $49_@4 <- $45
+    MaybeAlias $49_@4 <- $46_@4
+    MaybeAlias $49_@4 <- $47
+    ImmutableCapture $49_@4 <- $48
+    ImmutableCapture $45 <- $48
+    ImmutableCapture $46_@4 <- $48
+    ImmutableCapture $47 <- $48
+  [15] mutate? $50_@4[2:32]:TPrimitive{reactive} = Binary read $44_@4[2:32]:TPrimitive{reactive} + read $49_@4[2:32]:TPrimitive{reactive}
+    Create $50_@4 = primitive
+  [16] mutate? $51 = LoadGlobal import fbt from 'fbt'
+    Create $51 = global
+  [17] mutate? $52_@4[2:32]:TFunction = PropertyLoad read $51.param
+    Create $52_@4 = global
+  [18] mutate? $53:TPrimitive = "number of bananas"
+    Create $53 = primitive
+  [19] mutate? $54{reactive} = LoadLocal read bananas$36{reactive}
+    ImmutableCapture $54 <- bananas$36
+  [20] store $55_@4[2:32]{reactive} = MethodCall capture $51.capture $52_@4[2:32]:TFunction{reactive}(capture $53:TPrimitive, read $54{reactive})
+    Create $55_@4 = mutable
+    MaybeAlias $55_@4 <- $51
+    MaybeAlias $55_@4 <- $52_@4
+    MaybeAlias $55_@4 <- $53
+    ImmutableCapture $55_@4 <- $54
+    ImmutableCapture $51 <- $54
+    ImmutableCapture $52_@4 <- $54
+    ImmutableCapture $53 <- $54
+  [21] mutate? $56_@4[2:32]:TPrimitive{reactive} = ` and ${read $55_@4[2:32]{reactive}} `
+    Create $56_@4 = primitive
+  [22] mutate? $57_@4[2:32]:TPrimitive{reactive} = Binary read $50_@4[2:32]:TPrimitive{reactive} + read $56_@4[2:32]:TPrimitive{reactive}
+    Create $57_@4 = primitive
+  [23] mutate? $58 = LoadGlobal import fbt from 'fbt'
+    Create $58 = global
+  [24] mutate? $59_@4[2:32]:TFunction = PropertyLoad read $58.plural
+    Create $59_@4 = global
+  [25] mutate? $60:TPrimitive = "banana"
+    Create $60 = primitive
+  [26] mutate? $61{reactive} = LoadLocal read bananas$36{reactive}
+    ImmutableCapture $61 <- bananas$36
+  [27] store $62_@4[2:32]:TPrimitive{reactive} = MethodCall capture $58.capture $59_@4[2:32]:TFunction(capture $60:TPrimitive, read $61{reactive})
+    Create $62_@4 = mutable
+    MaybeAlias $62_@4 <- $58
+    MaybeAlias $62_@4 <- $59_@4
+    MaybeAlias $62_@4 <- $60
+    ImmutableCapture $62_@4 <- $61
+    ImmutableCapture $58 <- $61
+    ImmutableCapture $59_@4 <- $61
+    ImmutableCapture $60 <- $61
+  [28] mutate? $63_@4[2:32]:TPrimitive{reactive} = Binary read $57_@4[2:32]:TPrimitive{reactive} + read $62_@4[2:32]:TPrimitive{reactive}
+    Create $63_@4 = primitive
+  [29] mutate? $64_@4[2:32]:TPrimitive = "TestDescription"
+    Create $64_@4 = primitive
+  [30] store $65_@4[2:32]{reactive} = Call capture $38_@4[2:32]:TFunction(capture $63_@4[2:32]:TPrimitive{reactive}, capture $64_@4[2:32]:TPrimitive)
+    Create $65_@4 = mutable
+    MaybeAlias $65_@4 <- $38_@4
+    MaybeAlias $65_@4 <- $38_@4
+    MaybeAlias $65_@4 <- $63_@4
+    MaybeAlias $65_@4 <- $64_@4
+  [31] Goto bb6
+bb6 (block):
+  predecessor blocks: bb5
+  [32] Return Explicit freeze $65_@4[2:32]{reactive}
+    Freeze $65_@4 jsx-captured
+

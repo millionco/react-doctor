@@ -1,0 +1,34 @@
+Component(<unknown> props$11{reactive}): <unknown> $10:TObject<BuiltInJsx>
+bb0 (block):
+  [1] mutate? $12:TFunction<<generated_100>>():  :TObject<BuiltInUseRefId> = LoadGlobal(global) useRef
+    Create $12 = global
+  [2] mutate? $13:TPrimitive = null
+    Create $13 = primitive
+  [3] Label block=bb5 fallthrough=bb6
+bb5 (block):
+  predecessor blocks: bb0
+  [4] mutate? $14_@0[3:6]:TObject<BuiltInUseRefId> = Call read $12:TFunction<<generated_100>>():  :TObject<BuiltInUseRefId>(read $13:TPrimitive)
+    Create $14_@0 = mutable
+  [5] Goto bb6
+bb6 (block):
+  predecessor blocks: bb5
+  [6] store $16:TObject<BuiltInUseRefId> = StoreLocal Const store ref$15:TObject<BuiltInUseRefId> = capture $14_@0[3:6]:TObject<BuiltInUseRefId>
+    Assign ref$15 = $14_@0
+    Assign $16 = $14_@0
+  [7] mutate? $17 = LoadGlobal(global) Foo
+    Create $17 = global
+  [8] store $18:TObject<BuiltInUseRefId> = LoadLocal capture ref$15:TObject<BuiltInUseRefId>
+    Assign $18 = ref$15
+  [9] Scope scope @1 [9:12] dependencies=[$17_3:10:3:13, ref$15:TObject<BuiltInUseRefId>_3:19:3:22] declarations=[$19_@1] reassignments=[] block=bb7 fallthrough=bb8
+bb7 (block):
+  predecessor blocks: bb6
+  [10] mutate? $19_@1[9:12]:TObject<BuiltInJsx> = JSX <read $17 ref={freeze $18:TObject<BuiltInUseRefId>} />
+    Create $19_@1 = frozen
+    Freeze $18 jsx-captured
+    ImmutableCapture $19_@1 <- $18
+    Render $17
+  [11] Goto bb8
+bb8 (block):
+  predecessor blocks: bb7
+  [12] Return Explicit freeze $19_@1[9:12]:TObject<BuiltInJsx>
+    Freeze $19_@1 jsx-captured

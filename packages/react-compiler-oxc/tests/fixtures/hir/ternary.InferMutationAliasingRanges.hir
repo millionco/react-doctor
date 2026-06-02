@@ -1,0 +1,43 @@
+Component(<unknown> props$15): <unknown> $14:TPhi
+bb0 (block):
+  [1] Ternary test:bb2 fallthrough=bb1
+bb2 (value):
+  predecessor blocks: bb0
+  [2] mutate? $16 = LoadLocal read props$15
+    ImmutableCapture $16 <- props$15
+  [3] mutate? $17 = PropertyLoad read $16.x
+    Create $17 = frozen
+    ImmutableCapture $17 <- $16
+  [4] Branch (read $17) then:bb3 else:bb4 fallthrough:bb1
+bb3 (value):
+  predecessor blocks: bb2
+  [5] mutate? $18 = LoadLocal read props$15
+    ImmutableCapture $18 <- props$15
+  [6] mutate? $19 = PropertyLoad read $18.y
+    Create $19 = frozen
+    ImmutableCapture $19 <- $18
+  [7] mutate? $21 = StoreLocal Const mutate? $20 = read $19
+    ImmutableCapture $20 <- $19
+    ImmutableCapture $21 <- $19
+  [8] Goto bb1
+bb4 (value):
+  predecessor blocks: bb2
+  [9] mutate? $22 = LoadLocal read props$15
+    ImmutableCapture $22 <- props$15
+  [10] mutate? $23 = PropertyLoad read $22.z
+    Create $23 = frozen
+    ImmutableCapture $23 <- $22
+  [11] mutate? $25 = StoreLocal Const mutate? $24 = read $23
+    ImmutableCapture $24 <- $23
+    ImmutableCapture $25 <- $23
+  [12] Goto bb1
+bb1 (block):
+  predecessor blocks: bb3 bb4
+  store $26:TPhi:TPhi: phi(bb3: read $20, bb4: read $24)
+  [13] mutate? $28:TPhi = StoreLocal Const mutate? a$27:TPhi = read $26:TPhi
+    ImmutableCapture a$27 <- $26
+    ImmutableCapture $28 <- $26
+  [14] mutate? $29:TPhi = LoadLocal read a$27:TPhi
+    ImmutableCapture $29 <- a$27
+  [15] Return Explicit freeze $29:TPhi
+    Freeze $29 jsx-captured

@@ -1,0 +1,9 @@
+// @panicThreshold:"none"
+function useFoo(props) {
+  if (props.cond) bar();
+  return props.value;
+
+  function bar() {
+    return 5;
+  }
+}

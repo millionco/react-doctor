@@ -1,0 +1,36 @@
+foo(): <unknown> $13:TObject<BuiltInObject>
+bb0 (block):
+  [1] mutate? $14_@0[1:10]:TObject<BuiltInObject> = Object {  }
+    Create $14_@0 = mutable
+  [2] store $16_@0[1:10]:TObject<BuiltInObject> = StoreLocal Const store x$15_@0[1:10]:TObject<BuiltInObject> = capture $14_@0[1:10]:TObject<BuiltInObject>
+    Assign x$15_@0 = $14_@0
+    Assign $16_@0 = $14_@0
+  [3] mutate? $17_@0[1:10]:TFunction = LoadGlobal(module) foo
+    Create $17_@0 = global
+  [4] store $18_@0[1:10]:TObject<BuiltInObject> = LoadLocal capture x$15_@0[1:10]:TObject<BuiltInObject>
+    Assign $18_@0 = x$15_@0
+  [5] store $19_@0[1:10] = Call capture $17_@0[1:10]:TFunction(capture $18_@0[1:10]:TObject<BuiltInObject>)
+    Create $19_@0 = mutable
+    MaybeAlias $19_@0 <- $17_@0
+    MaybeAlias $19_@0 <- $17_@0
+    MutateTransitiveConditionally $18_@0
+    MaybeAlias $19_@0 <- $18_@0
+  [6] store $21_@0[1:10] = StoreLocal Const store y$20_@0[1:10] = capture $19_@0[1:10]
+    Assign y$20_@0 = $19_@0
+    Assign $21_@0 = $19_@0
+  [7] store $22_@0[1:10] = LoadLocal capture y$20_@0[1:10]
+    Assign $22_@0 = y$20_@0
+  [8] store $23_@0[1:10]:TFunction = PropertyLoad capture $22_@0[1:10].mutate
+    Create $23_@0 = kindOf($22_@0)
+  [9] store $24_@0[1:10] = MethodCall store $22_@0[1:10].capture $23_@0[1:10]:TFunction()
+    Create $24_@0 = mutable
+    MutateTransitiveConditionally $22_@0
+    MaybeAlias $24_@0 <- $22_@0
+    Capture $23_@0 <- $22_@0
+    MaybeAlias $24_@0 <- $23_@0
+    Capture $22_@0 <- $23_@0
+  [10] store $25:TObject<BuiltInObject> = LoadLocal capture x$15_@0[1:10]:TObject<BuiltInObject>
+    Assign $25 = x$15_@0
+  [11] Return Explicit freeze $25:TObject<BuiltInObject>
+    Freeze $25 jsx-captured
+

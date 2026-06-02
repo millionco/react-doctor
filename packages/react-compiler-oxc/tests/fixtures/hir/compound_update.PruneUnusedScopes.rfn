@@ -1,0 +1,13 @@
+function Component(
+  <unknown> props$17{reactive},
+) {
+  [1] mutate? $27{reactive} = LoadLocal read props$17{reactive}
+  [2] mutate? $28:TPrimitive{reactive} = PropertyLoad read $27{reactive}.count
+  [3] mutate? $29:TPrimitive = 1
+  [4] mutate? $30:TPrimitive{reactive} = Binary read $28:TPrimitive{reactive} + read $29:TPrimitive
+  <pruned> scope @0 [5:8] dependencies=[props$17_4:2:4:7, $30:TPrimitive_4:2:4:13] declarations=[] reassignments=[] {
+    [6] mutate? $31_@0[5:8]{reactive} = PropertyStore read $27{reactive}.count = read $30:TPrimitive{reactive}
+  }
+  [8] mutate? $32:TPrimitive = 5
+  [9] return freeze $32:TPrimitive
+}

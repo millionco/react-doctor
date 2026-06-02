@@ -1,0 +1,28 @@
+Component(): <unknown> $25
+use strict
+bb0 (block):
+  [1] <unknown> $26 = LoadGlobal(global) React
+  [2] <unknown> $27 = PropertyLoad <unknown> $26.useState
+  [3] <unknown> $28 = 0
+  [4] <unknown> $29 = MethodCall <unknown> $26.<unknown> $27(<unknown> $28)
+  [5] <unknown> $32 = Destructure Let [ <unknown> count$30, <unknown> setCount$31 ] = <unknown> $29
+  [6] <unknown> $33 = Function update @context[<unknown> setCount$31] @aliasingEffects=[]
+      update(): <unknown> $17
+      worklet
+      bb1 (block):
+        [1] <unknown> $34 = LoadLocal <unknown> setCount$31
+        [2] <unknown> $35 = Function  @context[<unknown> setCount$31] @aliasingEffects=[]
+            <<anonymous>>(<unknown> count_0$36): <unknown> $13
+            bb2 (block):
+              [1] <unknown> $37 = LoadLocal <unknown> count_0$36
+              [2] <unknown> $38 = 1
+              [3] <unknown> $39 = Binary <unknown> $37 + <unknown> $38
+              [4] Return Implicit <unknown> $39
+        [3] <unknown> $40 = Call <unknown> $34(<unknown> $35)
+        [4] <unknown> $41 = <undefined>
+        [5] Return Void <unknown> $41
+  [7] <unknown> $43 = StoreLocal Function <unknown> update$42 = <unknown> $33
+  [8] <unknown> $44 = LoadLocal <unknown> update$42
+  [9] <unknown> $45 = LoadLocal <unknown> count$30
+  [10] <unknown> $46 = JSX <button onClick={<unknown> $44} >{<unknown> $45}</button>
+  [11] Return Explicit <unknown> $46

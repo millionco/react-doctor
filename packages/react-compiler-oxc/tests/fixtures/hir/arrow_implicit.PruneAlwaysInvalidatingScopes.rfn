@@ -1,0 +1,5 @@
+function <unknown>(
+) {
+  [1] mutate? $3:TPrimitive = 1
+  [2] return freeze $3:TPrimitive
+}

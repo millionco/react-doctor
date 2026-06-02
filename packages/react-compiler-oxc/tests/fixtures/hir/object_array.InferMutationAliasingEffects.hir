@@ -1,0 +1,34 @@
+Component(<unknown> props$18): <unknown> $17:TObject<BuiltInObject>
+bb0 (block):
+  [1] <unknown> $19:TPrimitive = 1
+    Create $19 = primitive
+  [2] <unknown> $20:TPrimitive = LoadGlobal(global) k
+    Create $20 = global
+  [3] <unknown> $21:TPrimitive = 2
+    Create $21 = primitive
+  [4] <unknown> $22 = LoadGlobal(global) rest
+    Create $22 = global
+  [5] <unknown> $23:TObject<BuiltInObject> = Object { a: <unknown> $19:TPrimitive, [<unknown> $20:TPrimitive]: <unknown> $21:TPrimitive, ...<unknown> $22 }
+    Create $23 = mutable
+  [6] <unknown> $25:TObject<BuiltInObject> = StoreLocal Const <unknown> obj$24:TObject<BuiltInObject> = <unknown> $23:TObject<BuiltInObject>
+    Assign obj$24 = $23
+    Assign $25 = $23
+  [7] <unknown> $26:TPrimitive = 1
+    Create $26 = primitive
+  [8] <unknown> $27 = LoadLocal <unknown> props$18
+    ImmutableCapture $27 <- props$18
+  [9] <unknown> $28 = PropertyLoad <unknown> $27.x
+    Create $28 = frozen
+    ImmutableCapture $28 <- $27
+  [10] <unknown> $29 = LoadGlobal(global) rest
+    Create $29 = global
+  [11] <unknown> $30:TObject<BuiltInArray> = Array [<unknown> $26:TPrimitive, <hole>, <unknown> $28, ...<unknown> $29]
+    Create $30 = mutable
+    ImmutableCapture $30 <- $28
+  [12] <unknown> $32:TObject<BuiltInArray> = StoreLocal Const <unknown> arr$31:TObject<BuiltInArray> = <unknown> $30:TObject<BuiltInArray>
+    Assign arr$31 = $30
+    Assign $32 = $30
+  [13] <unknown> $33:TObject<BuiltInObject> = LoadLocal <unknown> obj$24:TObject<BuiltInObject>
+    Assign $33 = obj$24
+  [14] Return Explicit <unknown> $33:TObject<BuiltInObject>
+    Freeze $33 jsx-captured

@@ -1,0 +1,24 @@
+Component(<unknown> props$0): <unknown> $24
+bb0 (block):
+  [1] <unknown> $1 = Object {  }
+  [2] <unknown> $2 = Array []
+  [3] <unknown> $3 = LoadLocal <unknown> props$0
+  [4] <unknown> $4 = PropertyLoad <unknown> $3.value
+  [5] <unknown> $5 = Array [<unknown> $1, <unknown> $2, <unknown> $4]
+  [6] <unknown> $7 = StoreLocal Const <unknown> x$6 = <unknown> $5
+  [7] <unknown> $8 = LoadLocal <unknown> x$6
+  [8] <unknown> $9 = PropertyLoad <unknown> $8.join
+  [9] <unknown> $13 = Function  @context[] @aliasingEffects=[]
+      <<anonymous>>(): <unknown> $12
+      bb1 (block):
+        [1] <unknown> $10 = "this closure gets stringified, not called"
+        [2] Return Implicit <unknown> $10
+  [10] <unknown> $14 = MethodCall <unknown> $8.<unknown> $9(<unknown> $13)
+  [11] <unknown> $16 = StoreLocal Const <unknown> y$15 = <unknown> $14
+  [12] <unknown> $17 = LoadGlobal(global) foo
+  [13] <unknown> $18 = LoadLocal <unknown> y$15
+  [14] <unknown> $19 = Call <unknown> $17(<unknown> $18)
+  [15] <unknown> $20 = LoadLocal <unknown> x$6
+  [16] <unknown> $21 = LoadLocal <unknown> y$15
+  [17] <unknown> $22 = Array [<unknown> $20, <unknown> $21]
+  [18] Return Explicit <unknown> $22

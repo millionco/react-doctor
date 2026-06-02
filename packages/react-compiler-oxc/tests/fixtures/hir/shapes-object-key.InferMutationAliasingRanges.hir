@@ -1,0 +1,44 @@
+useFoo(<unknown> #t0$18): <unknown> $17:TObject<BuiltInObject>
+bb0 (block):
+  [1] mutate? $21 = Destructure Let { a: mutate? a$19, b: mutate? b$20 } = read #t0$18
+    Create a$19 = frozen
+    ImmutableCapture a$19 <- #t0$18
+    Create b$20 = frozen
+    ImmutableCapture b$20 <- #t0$18
+    ImmutableCapture $21 <- #t0$18
+  [2] mutate? $22 = LoadLocal read a$19
+    ImmutableCapture $22 <- a$19
+  [3] mutate? $23:TObject<BuiltInObject> = Object { a: read $22 }
+    Create $23 = mutable
+    ImmutableCapture $23 <- $22
+  [4] store $25:TObject<BuiltInObject> = StoreLocal Const store obj$24:TObject<BuiltInObject> = capture $23:TObject<BuiltInObject>
+    Assign obj$24 = $23
+    Assign $25 = $23
+  [5] mutate? $26:TFunction = LoadGlobal import { arrayPush } from 'shared-runtime'
+    Create $26 = global
+  [6] mutate? $27:TObject<Object> = LoadGlobal(global) Object
+    Create $27 = global
+  [7] mutate? $28:TFunction<<generated_62>>():  :TObject<BuiltInArray> = PropertyLoad read $27:TObject<Object>.keys
+    Create $28 = global
+  [8] store $29:TObject<BuiltInObject> = LoadLocal capture obj$24:TObject<BuiltInObject>
+    Assign $29 = obj$24
+  [9] mutate? $30[9:12]:TObject<BuiltInArray> = MethodCall read $27:TObject<Object>.read $28:TFunction<<generated_62>>():  :TObject<BuiltInArray>(read $29:TObject<BuiltInObject>)
+    Create $30 = mutable
+    ImmutableCapture $30 <- $29
+  [10] mutate? $31 = LoadLocal read b$20
+    ImmutableCapture $31 <- b$20
+  [11] store $32 = Call capture $26:TFunction(capture $30[9:12]:TObject<BuiltInArray>, read $31)
+    Create $32 = mutable
+    MaybeAlias $32 <- $26
+    MaybeAlias $32 <- $26
+    MutateTransitiveConditionally $30
+    MaybeAlias $32 <- $30
+    ImmutableCapture $32 <- $31
+    ImmutableCapture $26 <- $31
+    ImmutableCapture $26 <- $31
+    ImmutableCapture $30 <- $31
+  [12] store $33:TObject<BuiltInObject> = LoadLocal capture obj$24:TObject<BuiltInObject>
+    Assign $33 = obj$24
+  [13] Return Explicit freeze $33:TObject<BuiltInObject>
+    Freeze $33 jsx-captured
+

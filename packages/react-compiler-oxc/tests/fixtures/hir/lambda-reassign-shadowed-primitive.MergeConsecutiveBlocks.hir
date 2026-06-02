@@ -1,0 +1,19 @@
+Component(): <unknown> $17
+bb0 (block):
+  [1] <unknown> $0 = Object {  }
+  [2] <unknown> $2 = StoreLocal Const <unknown> x$1 = <unknown> $0
+  [3] <unknown> $3 = 56
+  [4] <unknown> $5 = StoreContext Let <unknown> x_0$4 = <unknown> $3
+  [5] <unknown> $10 = Function  @context[<unknown> x_0$4] @aliasingEffects=[]
+      <<anonymous>>(): <unknown> $9
+      bb1 (block):
+        [1] <unknown> $6 = 42
+        [2] <unknown> $7 = StoreContext Reassign <unknown> x_0$4 = <unknown> $6
+        [3] <unknown> $8 = <undefined>
+        [4] Return Void <unknown> $8
+  [6] <unknown> $12 = StoreLocal Const <unknown> fn$11 = <unknown> $10
+  [7] <unknown> $13 = LoadLocal <unknown> fn$11
+  [8] <unknown> $14 = Call <unknown> $13()
+  [9] <unknown> $15 = LoadLocal <unknown> x$1
+  [10] Return Explicit <unknown> $15
+

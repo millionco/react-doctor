@@ -1,0 +1,40 @@
+Component(<unknown> props$14): <unknown> $13
+bb0 (block):
+  [1] <unknown> $15:TFunction = LoadGlobal(global) Foo
+    Create $15 = global
+  [2] <unknown> $16 = LoadLocal <unknown> props$14
+    ImmutableCapture $16 <- props$14
+  [3] <unknown> $17 = PropertyLoad <unknown> $16.foo
+    Create $17 = frozen
+    ImmutableCapture $17 <- $16
+  [4] <unknown> $18:TPrimitive = null
+    Create $18 = primitive
+  [5] <unknown> $19 = LoadLocal <unknown> props$14
+    ImmutableCapture $19 <- props$14
+  [6] <unknown> $20 = PropertyLoad <unknown> $19.bar
+    Create $20 = frozen
+    ImmutableCapture $20 <- $19
+  [7] <unknown> $21:TObject<BuiltInArray> = Array [<unknown> $20]
+    Create $21 = mutable
+    ImmutableCapture $21 <- $20
+  [8] <unknown> $22 = New <unknown> $15:TFunction(...<unknown> $17, <unknown> $18:TPrimitive, ...<unknown> $21:TObject<BuiltInArray>)
+    Create $22 = mutable
+    MaybeAlias $22 <- $15
+    MaybeAlias $22 <- $15
+    ImmutableCapture $22 <- $17
+    ImmutableCapture $15 <- $17
+    ImmutableCapture $15 <- $17
+    ImmutableCapture $17 <- $17
+    ImmutableCapture $18 <- $17
+    ImmutableCapture $21 <- $17
+    MaybeAlias $22 <- $18
+    MutateTransitiveConditionally $21
+    MaybeAlias $22 <- $21
+    Capture $21 <- $21
+  [9] <unknown> $24 = StoreLocal Const <unknown> x$23 = <unknown> $22
+    Assign x$23 = $22
+    Assign $24 = $22
+  [10] <unknown> $25 = LoadLocal <unknown> x$23
+    Assign $25 = x$23
+  [11] Return Explicit <unknown> $25
+    Freeze $25 jsx-captured

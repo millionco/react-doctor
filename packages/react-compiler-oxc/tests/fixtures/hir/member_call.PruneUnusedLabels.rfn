@@ -1,0 +1,22 @@
+function Component(
+  <unknown> props$22{reactive},
+) {
+  [1] mutate? $23{reactive} = LoadLocal read props$22{reactive}
+  [2] mutate? $24:TPrimitive{reactive} = PropertyLoad read $23{reactive}.a
+  [3] mutate? $26:TPrimitive{reactive} = StoreLocal Const mutate? x$25:TPrimitive{reactive} = read $24:TPrimitive{reactive}
+  [4] mutate? $27:TFunction = LoadGlobal(global) foo
+  [5] mutate? $28:TPrimitive{reactive} = LoadLocal read x$25:TPrimitive{reactive}
+  [6] mutate? $29:TPrimitive = 1
+  [7] store $30:TPrimitive{reactive} = Call capture $27:TFunction(capture $28:TPrimitive{reactive}, capture $29:TPrimitive)
+  [8] store $32:TPrimitive{reactive} = StoreLocal Const store y$31:TPrimitive{reactive} = capture $30:TPrimitive{reactive}
+  [9] mutate? $33 = LoadGlobal(global) obj
+  scope @0 [10:15] dependencies=[$33_4:12:4:15, x$25:TPrimitive_4:23:4:24] declarations=[] reassignments=[] {
+    [11] mutate? $34_@0[10:15]:TFunction = PropertyLoad read $33.method
+    [12] mutate? $35:TPrimitive{reactive} = LoadLocal read x$25:TPrimitive{reactive}
+    [13] store $36_@0[10:15]{reactive} = MethodCall capture $33.capture $34_@0[10:15]:TFunction{reactive}(capture $35:TPrimitive{reactive})
+  }
+  [15] mutate? $39:TPrimitive{reactive} = LoadLocal read x$25:TPrimitive{reactive}
+  [16] store $40:TPrimitive{reactive} = LoadLocal capture y$31:TPrimitive{reactive}
+  [17] mutate? $41:TPrimitive{reactive} = Binary read $39:TPrimitive{reactive} + read $40:TPrimitive{reactive}
+  [18] return freeze $41:TPrimitive{reactive}
+}

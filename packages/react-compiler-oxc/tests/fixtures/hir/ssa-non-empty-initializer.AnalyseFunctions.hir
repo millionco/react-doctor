@@ -1,0 +1,18 @@
+foo(<unknown> a$14, <unknown> b$15): <unknown> $13:TPhi
+bb0 (block):
+  [1] <unknown> $16:TObject<BuiltInArray> = Array []
+  [2] <unknown> $18:TObject<BuiltInArray> = StoreLocal Let <unknown> x$17:TObject<BuiltInArray> = <unknown> $16:TObject<BuiltInArray>
+  [3] <unknown> $19 = LoadLocal <unknown> a$14
+  [4] If (<unknown> $19) then:bb2 else:bb1 fallthrough=bb1
+bb2 (block):
+  predecessor blocks: bb0
+  [5] <unknown> $20:TPrimitive = 1
+  [6] <unknown> $22:TPrimitive = StoreLocal Reassign <unknown> x$21:TPrimitive = <unknown> $20:TPrimitive
+  [7] Goto bb1
+bb1 (block):
+  predecessor blocks: bb2 bb0
+  <unknown> x$23:TPhi:TPhi: phi(bb2: <unknown> x$21:TPrimitive, bb0: <unknown> x$17:TObject<BuiltInArray>)
+  [8] <unknown> $24:TPhi = LoadLocal <unknown> x$23:TPhi
+  [9] <unknown> $26:TPhi = StoreLocal Let <unknown> y$25:TPhi = <unknown> $24:TPhi
+  [10] <unknown> $27:TPhi = LoadLocal <unknown> y$25:TPhi
+  [11] Return Explicit <unknown> $27:TPhi

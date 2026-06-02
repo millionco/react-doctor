@@ -1,0 +1,89 @@
+Component(<unknown> props$21): <unknown> $20:TPhi
+bb0 (block):
+  [1] Optional (optional=true) test:bb4 fallthrough=bb1
+bb4 (value):
+  predecessor blocks: bb0
+  [2] Optional (optional=true) test:bb7 fallthrough=bb5
+bb7 (value):
+  predecessor blocks: bb4
+  [3] Optional (optional=true) test:bb10 fallthrough=bb8
+bb10 (value):
+  predecessor blocks: bb7
+  [4] <unknown> $22:TFunction = LoadGlobal(global) call
+    Create $22 = global
+  [5] Branch (<unknown> $22:TFunction) then:bb9 else:bb3 fallthrough:bb8
+bb9 (value):
+  predecessor blocks: bb10
+  [6] <unknown> $23 = LoadLocal <unknown> props$21
+    ImmutableCapture $23 <- props$21
+  [7] <unknown> $24 = PropertyLoad <unknown> $23.a
+    Create $24 = frozen
+    ImmutableCapture $24 <- $23
+  [8] <unknown> $25:TFunction = Call <unknown> $22:TFunction(<unknown> $24)
+    Create $25 = mutable
+    MaybeAlias $25 <- $22
+    MaybeAlias $25 <- $22
+    ImmutableCapture $25 <- $24
+    ImmutableCapture $22 <- $24
+    ImmutableCapture $22 <- $24
+  [9] <unknown> $27:TFunction = StoreLocal Const <unknown> $26:TFunction = <unknown> $25:TFunction
+    Assign $26 = $25
+    Assign $27 = $25
+  [10] Goto bb8
+bb8 (value):
+  predecessor blocks: bb9
+  [11] Branch (<unknown> $26:TFunction) then:bb6 else:bb3 fallthrough:bb5
+bb6 (value):
+  predecessor blocks: bb8
+  [12] <unknown> $28 = LoadLocal <unknown> props$21
+    ImmutableCapture $28 <- props$21
+  [13] <unknown> $29 = PropertyLoad <unknown> $28.b
+    Create $29 = frozen
+    ImmutableCapture $29 <- $28
+  [14] <unknown> $30:TFunction = Call <unknown> $26:TFunction(<unknown> $29)
+    Create $30 = mutable
+    MutateTransitiveConditionally $26
+    MaybeAlias $30 <- $26
+    MutateTransitiveConditionally $26
+    MaybeAlias $30 <- $26
+    ImmutableCapture $30 <- $29
+    ImmutableCapture $26 <- $29
+    ImmutableCapture $26 <- $29
+  [15] <unknown> $32:TFunction = StoreLocal Const <unknown> $31:TFunction = <unknown> $30:TFunction
+    Assign $31 = $30
+    Assign $32 = $30
+  [16] Goto bb5
+bb5 (value):
+  predecessor blocks: bb6
+  [17] Branch (<unknown> $31:TFunction) then:bb2 else:bb3 fallthrough:bb1
+bb2 (value):
+  predecessor blocks: bb5
+  [18] <unknown> $33 = LoadLocal <unknown> props$21
+    ImmutableCapture $33 <- props$21
+  [19] <unknown> $34 = PropertyLoad <unknown> $33.c
+    Create $34 = frozen
+    ImmutableCapture $34 <- $33
+  [20] <unknown> $35 = Call <unknown> $31:TFunction(<unknown> $34)
+    Create $35 = mutable
+    MutateTransitiveConditionally $31
+    MaybeAlias $35 <- $31
+    MutateTransitiveConditionally $31
+    MaybeAlias $35 <- $31
+    ImmutableCapture $35 <- $34
+    ImmutableCapture $31 <- $34
+    ImmutableCapture $31 <- $34
+  [21] <unknown> $37 = StoreLocal Const <unknown> $36 = <unknown> $35
+    Assign $36 = $35
+    Assign $37 = $35
+  [22] Goto bb1
+bb3 (value):
+  predecessor blocks: bb5 bb8 bb10
+  [23] <unknown> $38:TPrimitive = <undefined>
+    Create $38 = primitive
+  [24] <unknown> $40:TPrimitive = StoreLocal Const <unknown> $39:TPrimitive = <unknown> $38:TPrimitive
+  [25] Goto bb1
+bb1 (block):
+  predecessor blocks: bb2 bb3
+  <unknown> $41:TPhi:TPhi: phi(bb2: <unknown> $36, bb3: <unknown> $39:TPrimitive)
+  [26] Return Explicit <unknown> $41:TPhi
+    Freeze $41 jsx-captured

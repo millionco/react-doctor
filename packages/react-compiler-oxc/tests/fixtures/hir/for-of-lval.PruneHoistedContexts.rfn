@@ -1,0 +1,25 @@
+function Component(
+  <unknown> items$12{reactive},
+) {
+  [1] DeclareLocal Let mutate? x$13
+  [2] mutate? $15{reactive} = LoadLocal read items$12{reactive}
+  bb0: [4] for-of (
+    Sequence
+        [5] mutate? $17_@0[3:17]{reactive} = GetIterator collection=read $15{reactive}
+        [5] <undefined>
+    ;
+    Sequence
+        [7] mutate? $18{reactive} = IteratorNext iterator=mutate? $17_@0[3:17]{reactive} collection=read $15{reactive}
+        [8] StoreLocal Reassign mutate? x$19{reactive} = read $18{reactive}
+        [8] <undefined>
+  ) {
+    [10] mutate? $21:TFunction = LoadGlobal(global) foo
+    [11] mutate? $22{reactive} = LoadLocal read x$19{reactive}
+    <pruned> scope @1 [12:15] dependencies=[] declarations=[] reassignments=[] {
+      [13] Call capture $21:TFunction(read $22{reactive})
+    }
+    [15] continue bb0 (implicit)
+  }
+  [17] mutate? $24:TPrimitive = <undefined>
+  [18] return freeze $24:TPrimitive
+}

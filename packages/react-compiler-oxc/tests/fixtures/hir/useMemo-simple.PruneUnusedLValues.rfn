@@ -1,0 +1,18 @@
+function component(
+  <unknown> a$19{reactive},
+) {
+  [1] StartMemoize deps=a$19
+  [2] mutate? $24{reactive} = LoadLocal read a$19{reactive}
+  scope @0 [3:6] dependencies=[a$19_2:25:2:26] declarations=[$25_@0] reassignments=[] {
+    [4] mutate? $25_@0[3:6]:TObject<BuiltInArray>{reactive} = Array [read $24{reactive}]
+  }
+  [6] store $26:TObject<BuiltInArray>{reactive} = LoadLocal capture $25_@0[3:6]:TObject<BuiltInArray>{reactive}
+  [7] FinishMemoize decl=freeze $26:TObject<BuiltInArray>{reactive}
+  [8] StoreLocal Const mutate? x$28:TObject<BuiltInArray>{reactive} = read $26:TObject<BuiltInArray>{reactive}
+  [9] mutate? $30 = LoadGlobal(global) Foo
+  [10] mutate? $31:TObject<BuiltInArray>{reactive} = LoadLocal read x$28:TObject<BuiltInArray>{reactive}
+  scope @1 [11:14] dependencies=[x$28:TObject<BuiltInArray>_3:17:3:18] declarations=[$32_@1] reassignments=[] {
+    [12] mutate? $32_@1[11:14]:TObject<BuiltInJsx>{reactive} = JSX <read $30 x={read $31:TObject<BuiltInArray>{reactive}} />
+  }
+  [14] return freeze $32_@1[11:14]:TObject<BuiltInJsx>{reactive}
+}

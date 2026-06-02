@@ -1,0 +1,70 @@
+Component(<unknown> #t0$24, <unknown> #t9$25): <unknown> $23:TObject<BuiltInArray>
+bb0 (block):
+  [1] Ternary test:bb1 fallthrough=bb2
+bb1 (value):
+  predecessor blocks: bb0
+  [2] mutate? $26:TPrimitive = <undefined>
+    Create $26 = primitive
+  [3] mutate? $27:TPrimitive = Binary read #t0$24 === read $26:TPrimitive
+    Create $27 = primitive
+  [4] Branch (read $27:TPrimitive) then:bb3 else:bb4 fallthrough:bb2
+bb3 (value):
+  predecessor blocks: bb1
+  [5] mutate? $28:TPrimitive = "default"
+    Create $28 = primitive
+  [6] mutate? $30:TPrimitive = StoreLocal Const mutate? $29:TPrimitive = read $28:TPrimitive
+  [7] Goto bb2
+bb4 (value):
+  predecessor blocks: bb1
+  [8] mutate? $32 = StoreLocal Const mutate? $31 = read #t0$24
+    ImmutableCapture $31 <- #t0$24
+    ImmutableCapture $32 <- #t0$24
+  [9] Goto bb2
+bb2 (block):
+  predecessor blocks: bb3 bb4
+  store $33:TPhi:TPhi: phi(bb3: read $29:TPrimitive, bb4: read $31)
+  [10] mutate? $35:TPhi = StoreLocal Let mutate? x$34:TPhi = read $33:TPhi
+    ImmutableCapture x$34 <- $33
+    ImmutableCapture $35 <- $33
+  [11] Ternary test:bb5 fallthrough=bb6
+bb5 (value):
+  predecessor blocks: bb2
+  [12] mutate? $36:TPrimitive = <undefined>
+    Create $36 = primitive
+  [13] mutate? $38:TPrimitive = Binary read #t9$25 === read $36:TPrimitive
+    Create $38 = primitive
+  [14] Branch (read $38:TPrimitive) then:bb7 else:bb8 fallthrough:bb6
+bb7 (value):
+  predecessor blocks: bb5
+  [15] mutate? $39:TObject<BuiltInObject> = Object {  }
+    Create $39 = mutable
+  [16] store $40:TObject<BuiltInArray> = Array [capture $39:TObject<BuiltInObject>]
+    Create $40 = mutable
+    Capture $40 <- $39
+  [17] store $42:TObject<BuiltInArray> = StoreLocal Const store $41:TObject<BuiltInArray> = capture $40:TObject<BuiltInArray>
+    Assign $41 = $40
+    Assign $42 = $40
+  [18] Goto bb6
+bb8 (value):
+  predecessor blocks: bb5
+  [19] mutate? $44 = StoreLocal Const mutate? $43 = read #t9$25
+    ImmutableCapture $43 <- #t9$25
+    ImmutableCapture $44 <- #t9$25
+  [20] Goto bb6
+bb6 (block):
+  predecessor blocks: bb7 bb8
+  store $45:TPhi:TPhi: phi(bb7: read $41:TObject<BuiltInArray>, bb8: read $43)
+  [21] store $47:TPhi = StoreLocal Let store y$46:TPhi = capture $45:TPhi
+    Assign y$46 = $45
+    Assign $47 = $45
+  [22] mutate? $49:TPhi = LoadLocal read x$34:TPhi
+    ImmutableCapture $49 <- x$34
+  [23] store $50:TPhi = LoadLocal capture y$46:TPhi
+    Assign $50 = y$46
+  [24] mutate? $51:TObject<BuiltInArray> = Array [read $49:TPhi, read $50:TPhi]
+    Create $51 = mutable
+    ImmutableCapture $51 <- $49
+    ImmutableCapture $51 <- $50
+  [25] Return Explicit freeze $51:TObject<BuiltInArray>
+    Freeze $51 jsx-captured
+

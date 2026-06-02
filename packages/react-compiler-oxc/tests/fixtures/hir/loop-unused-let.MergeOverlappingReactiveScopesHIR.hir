@@ -1,0 +1,17 @@
+useFoo(): <unknown> $4:TPrimitive
+bb0 (block):
+  [1] While test=bb1 loop=bb3 fallthrough=bb2
+bb1 (loop):
+  predecessor blocks: bb0 bb3
+  [2] mutate? $5:TPrimitive = 1
+    Create $5 = primitive
+  [3] Branch (read $5:TPrimitive) then:bb3 else:bb2 fallthrough:bb1
+bb3 (block):
+  predecessor blocks: bb1
+  [5] Goto(Continue) bb1
+bb2 (block):
+  predecessor blocks: bb1
+  [6] mutate? $8:TPrimitive = <undefined>
+    Create $8 = primitive
+  [7] Return Void freeze $8:TPrimitive
+    Freeze $8 jsx-captured

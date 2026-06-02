@@ -1,0 +1,6 @@
+Component(): <unknown> $5
+bb0 (block):
+  [1] <unknown> $0 = 42
+  [2] <unknown> $2 = StoreLocal Const <unknown> x$1 = <unknown> $0
+  [3] <unknown> $3 = LoadLocal <unknown> x$1
+  [4] Return Explicit <unknown> $3

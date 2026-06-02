@@ -61,6 +61,15 @@ interface ResolvedReactHooksJsPlugin {
 
 const bundledRequire = createRequire(import.meta.url);
 
+/**
+ * Resolves the React-Compiler-backed `react-hooks-js/*` rules plugin: the native
+ * `@react-doctor/compiler-native` plugin, an in-house Rust + oxc reimplementation
+ * of `babel-plugin-react-compiler`'s analyzer (no `eslint-plugin-react-hooks` /
+ * `babel-plugin-react-compiler` runtime dependency). Returns `null` when the
+ * native addon can't be loaded — e.g. a platform without a prebuilt `.node` — in
+ * which case the React Compiler rules are simply not registered (a graceful no-op,
+ * the same path as when the plugin was historically absent), never a crash.
+ */
 export const resolveReactHooksJsPlugin = (
   hasReactCompiler: boolean,
   customRulesOnly: boolean,
@@ -68,11 +77,12 @@ export const resolveReactHooksJsPlugin = (
   if (!hasReactCompiler || customRulesOnly) return null;
   let pluginSpecifier: string;
   try {
-    pluginSpecifier = bundledRequire.resolve("eslint-plugin-react-hooks");
+    pluginSpecifier = bundledRequire.resolve("@react-doctor/compiler-native/plugin.js");
   } catch {
     return null;
   }
   const { ruleNames } = readPluginShape(pluginSpecifier, (spec) => bundledRequire(spec));
+  if (ruleNames.size === 0) return null;
   return {
     entry: { name: "react-hooks-js", specifier: pluginSpecifier },
     availableRuleNames: ruleNames,

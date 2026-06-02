@@ -1,0 +1,39 @@
+foo(): <unknown> $22
+bb0 (block):
+  [1] <unknown> $0 = 1
+  [2] <unknown> $2 = StoreLocal Let <unknown> x$1 = <unknown> $0
+  [3] <unknown> $11 = 2
+  [4] <unknown> $16 = 1
+  [5] <unknown> $17 = LoadLocal <unknown> x$1
+  [6] Switch (<unknown> $17)
+    Case <unknown> $16: bb5
+    Case <unknown> $11: bb3
+    Default: bb2
+    Fallthrough: bb1
+bb5 (block):
+  predecessor blocks: bb0
+  [7] <unknown> $12 = LoadLocal <unknown> x$1
+  [8] <unknown> $13 = 1
+  [9] <unknown> $14 = Binary <unknown> $12 + <unknown> $13
+  [10] <unknown> $15 = StoreLocal Reassign <unknown> x$1 = <unknown> $14
+  [11] Goto bb1
+bb3 (block):
+  predecessor blocks: bb0
+  [12] <unknown> $7 = LoadLocal <unknown> x$1
+  [13] <unknown> $8 = 2
+  [14] <unknown> $9 = Binary <unknown> $7 + <unknown> $8
+  [15] <unknown> $10 = StoreLocal Reassign <unknown> x$1 = <unknown> $9
+  [16] Goto bb1
+bb2 (block):
+  predecessor blocks: bb0
+  [17] <unknown> $3 = LoadLocal <unknown> x$1
+  [18] <unknown> $4 = 3
+  [19] <unknown> $5 = Binary <unknown> $3 + <unknown> $4
+  [20] <unknown> $6 = StoreLocal Reassign <unknown> x$1 = <unknown> $5
+  [21] Goto bb1
+bb1 (block):
+  predecessor blocks: bb5 bb3 bb2
+  [22] <unknown> $18 = LoadLocal <unknown> x$1
+  [23] <unknown> $20 = StoreLocal Let <unknown> y$19 = <unknown> $18
+  [24] <unknown> $21 = <undefined>
+  [25] Return Void <unknown> $21

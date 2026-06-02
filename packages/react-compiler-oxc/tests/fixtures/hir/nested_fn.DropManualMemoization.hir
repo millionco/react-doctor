@@ -1,0 +1,17 @@
+Component(<unknown> props$0): <unknown> $15
+bb0 (block):
+  [1] <unknown> $10 = Function  @context[<unknown> props$0] @aliasingEffects=[]
+      <<anonymous>>(): <unknown> $9
+      bb1 (block):
+        [1] <unknown> $1 = LoadLocal <unknown> props$0
+        [2] <unknown> $2 = PropertyLoad <unknown> $1.setCount
+        [3] <unknown> $3 = LoadLocal <unknown> props$0
+        [4] <unknown> $4 = PropertyLoad <unknown> $3.count
+        [5] <unknown> $5 = 1
+        [6] <unknown> $6 = Binary <unknown> $4 + <unknown> $5
+        [7] <unknown> $7 = MethodCall <unknown> $1.<unknown> $2(<unknown> $6)
+        [8] <unknown> $8 = <undefined>
+        [9] Return Void <unknown> $8
+  [2] <unknown> $12 = StoreLocal Const <unknown> cb$11 = <unknown> $10
+  [3] <unknown> $13 = LoadLocal <unknown> cb$11
+  [4] Return Explicit <unknown> $13

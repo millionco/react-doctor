@@ -1,0 +1,22 @@
+.gitignore
+  s_fc4eede5849111::t_8c78beda06610b 30-31
+.agents/skills/ship/SKILL.md
+  s_fc4eede5849111::t_04d157d7836458 1-25,27-55
+  s_fc4eede5849111::t_e8fa962f220e84 26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "7388a3f0e1c41b8951f61515a585dd99db831d23",
+  "prompts": {},
+  "sessions": {
+    "s_fc4eede5849111": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "82d6d15a-e355-4231-8942-f8a661041099",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

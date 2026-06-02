@@ -1,0 +1,19 @@
+packages/react-doctor/tests/guard-stdin.test.ts
+  s_7f00a3e135c1f2::t_dd34439b26cc31 11-18,27,38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "0e24d83d5faba8a222fcbf8eba515948dfd808a8",
+  "prompts": {},
+  "sessions": {
+    "s_7f00a3e135c1f2": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "74d20b35-cddc-472c-b1fc-abf837139283",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

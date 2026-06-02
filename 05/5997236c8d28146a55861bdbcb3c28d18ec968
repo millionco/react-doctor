@@ -1,0 +1,19 @@
+packages/react-doctor/src/cli/index.ts
+  s_7f00a3e135c1f2::t_9afe2859b75ed8 33-36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "055997236c8d28146a55861bdbcb3c28d18ec968",
+  "prompts": {},
+  "sessions": {
+    "s_7f00a3e135c1f2": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "74d20b35-cddc-472c-b1fc-abf837139283",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

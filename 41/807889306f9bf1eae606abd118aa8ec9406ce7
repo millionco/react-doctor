@@ -1,0 +1,23 @@
+packages/core/src/project-info/utils/read-directory-entries.ts
+  s_18fc75a745fd4f::t_a4ce92a406909a 3-15
+.changeset/readdir-einval-not-a-crash.md
+  s_18fc75a745fd4f::t_ef96fde10889c3 1-7
+packages/core/tests/read-directory-entries.test.ts
+  s_18fc75a745fd4f::t_66db3439cf8edc 1-57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "41807889306f9bf1eae606abd118aa8ec9406ce7",
+  "prompts": {},
+  "sessions": {
+    "s_18fc75a745fd4f": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "b6d6322c-00f1-4d4d-abfd-fa9158ed2e0e",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

@@ -1,0 +1,20 @@
+packages/react-doctor/README.md
+  s_8ae69f5bab55ad::t_74819f2f227b40 70-73
+  s_8ae69f5bab55ad::t_9dac05ffffb32e 67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "5c49fa2b8e3ad2cf77a2daa3c2280eb13bcffbc5",
+  "prompts": {},
+  "sessions": {
+    "s_8ae69f5bab55ad": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "2cebefaf-e7b9-4f77-8add-87778edba4e2",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

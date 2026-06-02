@@ -342,6 +342,12 @@ export class Git extends Context.Service<
             const branch = trimOrNull(result.stdout);
             return branch === "HEAD" ? null : branch;
           }),
+          // Best-effort branch read: a non-zero exit already maps to null, but a
+          // spawn failure (git not installed — e.g. a bare container) surfaces as
+          // a tagged failure. `diffSelection` calls this first during diff
+          // auto-detection, so let it degrade to "unknown branch" instead of
+          // crashing the whole scan and reporting an env issue to Sentry.
+          Effect.orElseSucceed(() => null),
         );
 
       const defaultBranch = (directory: string): Effect.Effect<string | null, ReactDoctorError> =>

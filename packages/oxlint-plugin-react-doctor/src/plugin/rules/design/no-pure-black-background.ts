@@ -13,6 +13,9 @@ export const noPureBlackBackground = defineRule<Rule>({
   title: "Pure black background",
   tags: ["design", "test-noise"],
   severity: "warn",
+  // Default off: subjective design / house-style preference, not a
+  // correctness, performance, or accessibility issue. Opt in to enforce it.
+  defaultEnabled: false,
   recommendation:
     "Nudge the background slightly toward your brand color, like `#0a0a0f` or Tailwind's `bg-gray-950`. Pure black looks harsh on modern screens.",
   create: (context: RuleContext) => ({

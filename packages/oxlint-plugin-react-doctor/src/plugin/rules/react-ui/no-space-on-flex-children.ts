@@ -14,6 +14,9 @@ export const noSpaceOnFlexChildren = defineRule<Rule>({
   title: "space-* utility on flex children",
   tags: ["design", "test-noise"],
   severity: "warn",
+  // Default off: subjective design / house-style preference, not a
+  // correctness, performance, or accessibility issue. Opt in to enforce it.
+  defaultEnabled: false,
   category: "Architecture",
   recommendation:
     "Use `gap-*` on the flex or grid parent. `space-x-*` and `space-y-*` leave gaps when a child is hidden, miss spacing on wrapped lines, and don't flip in right-to-left layouts.",

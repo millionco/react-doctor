@@ -152,6 +152,9 @@ export const jsxPascalCase = defineRule<Rule>({
   id: "jsx-pascal-case",
   title: "Component name not PascalCase",
   severity: "warn",
+  // Default off: component naming-convention preference, not a correctness
+  // issue (TypeScript already enforces component-ness). Opt in to enforce it.
+  defaultEnabled: false,
   tags: ["test-noise"],
   recommendation: "Rename custom JSX components to PascalCase.",
   category: "Architecture",

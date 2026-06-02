@@ -58,6 +58,9 @@ export const noSideTabBorder = defineRule<Rule>({
   title: "Thick one-sided border",
   tags: ["design", "test-noise"],
   severity: "warn",
+  // Default off: subjective design / house-style preference, not a
+  // correctness, performance, or accessibility issue. Opt in to enforce it.
+  defaultEnabled: false,
   recommendation:
     "Use a softer accent like an inset box-shadow, a background, or a thin border-bottom instead of a thick one-sided border.",
   create: (context: RuleContext) => ({

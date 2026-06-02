@@ -11,6 +11,9 @@ export const noJustifiedText = defineRule<Rule>({
   title: "Justified text without hyphens",
   tags: ["test-noise"],
   severity: "warn",
+  // Default off: subjective design / house-style preference, not a
+  // correctness, performance, or accessibility issue. Opt in to enforce it.
+  defaultEnabled: false,
   category: "Accessibility",
   recommendation:
     "Use `text-align: left` for body text. If you must justify, add `hyphens: auto` and `overflow-wrap: break-word`.",

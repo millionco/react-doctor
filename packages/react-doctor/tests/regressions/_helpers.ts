@@ -176,6 +176,10 @@ export const collectRuleHits = async (
   const diagnostics = await runOxlint({
     rootDirectory: projectDir,
     project,
+    // Force-enable the rule under test so default-disabled rules
+    // (`defaultEnabled: false`) still produce hits here. Severity is
+    // irrelevant — callers assert on file path and message, not severity.
+    userConfig: { rules: { [`react-doctor/${ruleId}`]: "warn" } },
   });
   return diagnostics
     .filter((diagnostic) => diagnostic.rule === ruleId)

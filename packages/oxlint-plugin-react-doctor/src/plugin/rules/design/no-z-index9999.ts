@@ -15,6 +15,9 @@ export const noZIndex9999 = defineRule<Rule>({
   title: "Excessively high z-index",
   tags: ["test-noise"],
   severity: "warn",
+  // Default off: subjective design / house-style preference, not a
+  // correctness, performance, or accessibility issue. Opt in to enforce it.
+  defaultEnabled: false,
   recommendation:
     "Pick a small z-index scale, like dropdown 10, modal 20, toast 30. To layer something on top, use `isolation: isolate` instead of bigger numbers.",
   create: (context: RuleContext) => ({

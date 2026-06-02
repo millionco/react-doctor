@@ -19,6 +19,9 @@ export const noDefaultProps = defineRule<Rule>({
   requires: ["react:19"],
   tags: ["test-noise"],
   severity: "warn",
+  // Default off: legacy `defaultProps` pattern superseded by ES default
+  // parameters in function components. Opt in to enforce it.
+  defaultEnabled: false,
   recommendation:
     'React 19 drops `Component.defaultProps` for function components. Set the defaults in the destructured props instead: `function Foo({ size = "md", variant = "primary" })` instead of `Foo.defaultProps = { size: "md", variant: "primary" }`.',
   create: (context: RuleContext) => ({

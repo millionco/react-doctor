@@ -13,6 +13,9 @@ export const noWideLetterSpacing = defineRule<Rule>({
   id: "no-wide-letter-spacing",
   title: "Wide letter spacing on body text",
   severity: "warn",
+  // Default off: subjective design / house-style preference, not a
+  // correctness, performance, or accessibility issue. Opt in to enforce it.
+  defaultEnabled: false,
   tags: ["test-noise"],
   recommendation:
     "Save wide letter-spacing (over 0.05em) for short uppercase labels, nav items, and buttons, not body text.",

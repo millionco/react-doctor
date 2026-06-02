@@ -9,6 +9,9 @@ export const noGenericHandlerNames = defineRule<Rule>({
   id: "no-generic-handler-names",
   title: "Vague event handler name",
   severity: "warn",
+  // Default off: naming-convention preference, not a correctness issue.
+  // Opt in via config to enforce the handler naming style.
+  defaultEnabled: false,
   tags: ["test-noise"],
   recommendation:
     "Rename it to say what it does. For example `handleSubmit` could be `saveUserProfile`, and `handleClick` could be `toggleSidebar`.",

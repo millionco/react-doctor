@@ -90,16 +90,6 @@ export const EXPO_UI_MODULE_SOURCES = new Set([
   "@expo/ui/jetpack-compose",
 ]);
 
-// Universal UI's `ListItem` renders raw string children inside the native
-// headline text area, and its compound slot markers forward strings into
-// native text too — so raw text is safe inside it, unlike a core `<View>`.
-export const EXPO_UI_LIST_ITEM_COMPONENT = "ListItem";
-
-// Universal UI's `ScrollView` is a native scroll container; React Native's
-// virtualized lists (`FlashList`/`FlatList`) can't compose inside its `<Host>`
-// tree, and `@expo/ui` ships its own virtualized `<List>` for long content.
-export const EXPO_UI_SCROLL_VIEW_COMPONENT = "ScrollView";
-
 export const REACT_NATIVE_LIST_COMPONENTS = new Set([
   "FlatList",
   "SectionList",

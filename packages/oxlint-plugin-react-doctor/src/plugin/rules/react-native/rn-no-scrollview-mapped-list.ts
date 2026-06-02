@@ -1,4 +1,3 @@
-import { EXPO_UI_SCROLL_VIEW_COMPONENT } from "../../constants/react-native.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
@@ -52,9 +51,7 @@ export const rnNoScrollviewMappedList = defineRule<Rule>({
       // virtualized lists can't compose inside its `<Host>` tree, so the
       // FlashList/FlatList advice doesn't apply. `@expo/ui` ships its own
       // `<List>` for long content instead.
-      if (isExpoUiComponentElement(node.openingElement, node, EXPO_UI_SCROLL_VIEW_COMPONENT)) {
-        return;
-      }
+      if (isExpoUiComponentElement(node.openingElement, node, "ScrollView")) return;
 
       for (const child of node.children ?? []) {
         if (!isNodeOfType(child, "JSXExpressionContainer")) continue;

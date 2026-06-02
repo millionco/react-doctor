@@ -1,5 +1,4 @@
 import {
-  EXPO_UI_LIST_ITEM_COMPONENT,
   RAW_TEXT_PREVIEW_MAX_CHARS,
   REACT_NATIVE_TEXT_COMPONENTS,
   REACT_NATIVE_TEXT_COMPONENT_KEYWORDS,
@@ -146,9 +145,7 @@ export const rnNoRawText = defineRule<Rule>({
         // markers render raw string children inside native text areas, so
         // string children are safe. Resolved via the import (not the name
         // heuristic) since `ListItem` is a common name in other libraries.
-        if (isExpoUiComponentElement(node.openingElement, node, EXPO_UI_LIST_ITEM_COMPONENT)) {
-          return;
-        }
+        if (isExpoUiComponentElement(node.openingElement, node, "ListItem")) return;
 
         // `Platform.OS === "web"` branches deliberately render web markup
         // (raw text, div/span trees, etc.) when the app is bundled by

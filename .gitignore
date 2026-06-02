@@ -27,6 +27,8 @@ review-*.md
 !/.agents/skills/find-similar-functions/**
 !/.agents/skills/deslop/
 !/.agents/skills/deslop/**
+!/.agents/skills/ship/
+!/.agents/skills/ship/**
 
 # Local-only: rule-catalog generators and per-rule prompts. The generated
 # `rules.json` and the prompts themselves live in the (private) evals repo;

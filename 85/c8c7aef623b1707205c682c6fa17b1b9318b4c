@@ -1,0 +1,28 @@
+.changeset/stdin-hangup-guard.md
+  s_7f00a3e135c1f2::t_656c4f6dc9cab9 1-5
+packages/react-doctor/src/cli/utils/constants.ts
+  s_7f00a3e135c1f2::t_6cd81ee6df75ae 5-10
+packages/react-doctor/src/cli/index.ts
+  s_7f00a3e135c1f2::t_aa76ce2b9db522 19
+  s_7f00a3e135c1f2::t_be5870e6ca8c31 33-36
+packages/react-doctor/src/cli/utils/guard-stdin.ts
+  s_7f00a3e135c1f2::t_196a4b47520403 1-33
+packages/react-doctor/tests/guard-stdin.test.ts
+  s_7f00a3e135c1f2::t_4a17e4e0aa286f 1-53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "85c8c7aef623b1707205c682c6fa17b1b9318b4c",
+  "prompts": {},
+  "sessions": {
+    "s_7f00a3e135c1f2": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "74d20b35-cddc-472c-b1fc-abf837139283",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

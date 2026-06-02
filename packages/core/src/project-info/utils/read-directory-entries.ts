@@ -1,6 +1,18 @@
 import fs from "node:fs";
 
-const IGNORABLE_READDIR_ERROR_CODES = new Set(["EACCES", "EPERM", "ENOENT", "ENOTDIR"]);
+// Discovery crawls an unknown tree best-effort: a directory we can't enumerate
+// is skipped, never a crash. These are the "can't read this path" codes —
+// missing/not-a-dir/permission-blocked, plus symlink loops, over-long paths, and
+// filesystems that reject the scandir outright (`EINVAL`, REACT-DOCTOR-N).
+const IGNORABLE_READDIR_ERROR_CODES = new Set([
+  "EACCES",
+  "EPERM",
+  "ENOENT",
+  "ENOTDIR",
+  "EINVAL",
+  "ELOOP",
+  "ENAMETOOLONG",
+]);
 
 const isIgnorableReaddirError = (error: unknown): boolean => {
   if (typeof error !== "object" || error === null) return false;

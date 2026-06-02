@@ -1,0 +1,25 @@
+packages/react-doctor/tests/read-changed-files-from.test.ts
+  s_18fc75a745fd4f::t_50e673b550962a 49-67
+  s_18fc75a745fd4f::t_b1db3a862f9a54 5
+.changeset/changed-files-from-unreadable-not-a-crash.md
+  s_18fc75a745fd4f::t_342ba87d42c87c 1-7
+packages/react-doctor/src/cli/utils/read-changed-files-from.ts
+  s_18fc75a745fd4f::t_55aeefb4fe579a 3
+  s_18fc75a745fd4f::t_575c0f052d681f 16-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "2fe5614013703f7eb9c1e07d59fb8b18da567528",
+  "prompts": {},
+  "sessions": {
+    "s_18fc75a745fd4f": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "b6d6322c-00f1-4d4d-abfd-fa9158ed2e0e",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

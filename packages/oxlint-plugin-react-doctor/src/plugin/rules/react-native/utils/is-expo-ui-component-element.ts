@@ -3,7 +3,7 @@ import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../../utils/es-tree-node-of-type.js";
 import {
   getImportedNameFromModule,
-  isImportedFromModule,
+  isNamespaceImportFromModule,
 } from "../../../utils/find-import-source-for-name.js";
 import { flattenJsxName } from "../../../utils/flatten-jsx-name.js";
 
@@ -23,11 +23,13 @@ const isNamedImportOf = (
   return false;
 };
 
-// True when `localName` is a namespace import of any `@expo/ui` entry point,
-// covering `import * as ExpoUI from "@expo/ui"` used as `<ExpoUI.ListItem>`.
+// True when `localName` is a namespace import (`import * as ExpoUI`) of any
+// `@expo/ui` entry point, covering `<ExpoUI.ListItem>`. Deliberately excludes
+// named/default imports so a named `@expo/ui` import reused via member access
+// (`<Row.ListItem>`) is not mistaken for the namespace form.
 const isExpoUiNamespaceImport = (contextNode: EsTreeNode, localName: string): boolean => {
   for (const moduleSource of EXPO_UI_MODULE_SOURCES) {
-    if (isImportedFromModule(contextNode, localName, moduleSource)) return true;
+    if (isNamespaceImportFromModule(contextNode, localName, moduleSource)) return true;
   }
   return false;
 };

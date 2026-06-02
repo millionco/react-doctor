@@ -126,6 +126,16 @@ describe("react-native/rn-no-raw-text", () => {
       `);
     });
 
+    // The namespace branch must match only `import * as X` — a *named*
+    // `@expo/ui` import reused via member access (`<Row.ListItem>`) is not the
+    // namespace form and must still report.
+    it("still fires on member access off a named (non-namespace) @expo/ui import", () => {
+      expectFail(`
+        import { Row } from "@expo/ui";
+        const App = () => <Row.ListItem>text</Row.ListItem>;
+      `);
+    });
+
     it("does not fire on a renamed ListItem import", () => {
       expectPass(`
         import { ListItem as Row } from "@expo/ui";

@@ -85,6 +85,22 @@ export const isImportedFromModule = (
   return info.source === moduleSource;
 };
 
+// True if `localIdentifierName` is a *namespace* import (`import * as X from
+// "mod"`) from `moduleSource`. Stricter than `isImportedFromModule`, which also
+// matches named/default imports by source — use this when only `<X.Member>`
+// namespace access should qualify (not a named import reused via member access).
+export const isNamespaceImportFromModule = (
+  contextNode: EsTreeNode,
+  localIdentifierName: string,
+  moduleSource: string,
+): boolean => {
+  const lookup = getImportLookup(contextNode);
+  if (!lookup) return false;
+  const info = lookup.get(localIdentifierName);
+  if (!info) return false;
+  return info.isNamespace && info.source === moduleSource;
+};
+
 // Returns the originally-exported symbol name for a local binding that
 // came from a specific module, resolving renamed imports like
 // `import { useMemo as memoize } from "react"` so callers can match

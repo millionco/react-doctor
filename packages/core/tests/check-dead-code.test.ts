@@ -98,6 +98,20 @@ const emptyWorkerResult = {
   circularDependencies: [],
 };
 
+const captureDeadCodeEntryPatterns = async (
+  rootDirectory: string,
+): Promise<ReadonlyArray<string>> => {
+  let capturedEntryPatterns: ReadonlyArray<string> = [];
+  await checkDeadCode({
+    rootDirectory,
+    createWorker: (input) => {
+      capturedEntryPatterns = input.entryPatterns;
+      return { result: Promise.resolve(emptyWorkerResult) };
+    },
+  });
+  return capturedEntryPatterns;
+};
+
 describe("checkDeadCode", () => {
   it("returns no diagnostics when the directory has no package.json", async () => {
     const directory = path.join(tempRoot, "no-package-json");
@@ -209,19 +223,12 @@ describe("checkDeadCode", () => {
       },
       { dependencies: { "@inertiajs/react": "^2.0.0" } },
     );
-    let capturedEntryPatterns: ReadonlyArray<string> = [];
-
-    await checkDeadCode({
-      rootDirectory: directory,
-      createWorker: (input) => {
-        capturedEntryPatterns = input.entryPatterns;
-        return { result: Promise.resolve(emptyWorkerResult) };
-      },
-    });
+    const capturedEntryPatterns = await captureDeadCodeEntryPatterns(directory);
 
     expect(capturedEntryPatterns).toContain("src/index.{ts,tsx,js,jsx}");
     expect(capturedEntryPatterns).toContain("resources/js/Pages/**/*.{ts,tsx,js,jsx}");
     expect(capturedEntryPatterns).toContain("resources/js/pages/**/*.{ts,tsx,js,jsx}");
+    expect(capturedEntryPatterns).toContain("app/frontend/pages/**/*.{ts,tsx,js,jsx}");
     expect(capturedEntryPatterns).toContain("src/Pages/**/*.{ts,tsx,js,jsx}");
   });
 
@@ -234,6 +241,7 @@ describe("checkDeadCode", () => {
           "createInertiaApp({ resolve: (name) => name, setup: () => undefined });\n",
         "resources/js/Pages/Home.tsx": "export default () => <main>Home</main>;\n",
         "resources/js/pages/Settings.tsx": "export default () => <main>Settings</main>;\n",
+        "app/frontend/pages/Posts/Index.tsx": "export default () => <main>Posts</main>;\n",
         "resources/js/components/Unused.tsx": "export const Unused = () => <div />;\n",
       },
       { dependencies: { "@inertiajs/react": "^2.0.0" } },
@@ -242,6 +250,7 @@ describe("checkDeadCode", () => {
     const flagged = await flaggedUnusedFiles(directory);
     expect(flagged).not.toContain("resources/js/Pages/Home.tsx");
     expect(flagged).not.toContain("resources/js/pages/Settings.tsx");
+    expect(flagged).not.toContain("app/frontend/pages/Posts/Index.tsx");
     expect(flagged).toContain("resources/js/components/Unused.tsx");
   });
 
@@ -262,6 +271,86 @@ describe("checkDeadCode", () => {
     expect(flagged).not.toContain("web/src/pages/HomePage/HomePage.tsx");
     expect(flagged).not.toContain("web/src/layouts/MainLayout/MainLayout.tsx");
     expect(flagged).toContain("web/src/components/Unused.tsx");
+  });
+
+  it("does not flag Waku pages as orphan files", async () => {
+    const directory = setupProject(
+      "waku-pages",
+      {
+        "src/waku.server.ts": "export default {};\n",
+        "src/pages/index.tsx": "export default () => <main>Home</main>;\n",
+        "src/pages/about.tsx": "export default () => <main>About</main>;\n",
+        "src/components/Unused.tsx": "export const Unused = () => <div />;\n",
+      },
+      { dependencies: { waku: "^0.22.0" } },
+    );
+
+    const flagged = await flaggedUnusedFiles(directory);
+    expect(flagged).not.toContain("src/pages/index.tsx");
+    expect(flagged).not.toContain("src/pages/about.tsx");
+    expect(flagged).not.toContain("src/waku.server.ts");
+    expect(flagged).toContain("src/components/Unused.tsx");
+  });
+
+  it("does not flag Vike pages or renderer hooks as orphan files", async () => {
+    const directory = setupProject(
+      "vike-pages",
+      {
+        "pages/index/+Page.tsx": "export default () => <main>Home</main>;\n",
+        "pages/about/+Page.tsx": "export default () => <main>About</main>;\n",
+        "renderer/+onRenderHtml.tsx": "export const onRenderHtml = () => '<main></main>';\n",
+        "src/components/Unused.tsx": "export const Unused = () => <div />;\n",
+      },
+      { dependencies: { vike: "^0.4.0" } },
+    );
+
+    const flagged = await flaggedUnusedFiles(directory);
+    expect(flagged).not.toContain("pages/index/+Page.tsx");
+    expect(flagged).not.toContain("pages/about/+Page.tsx");
+    expect(flagged).not.toContain("renderer/+onRenderHtml.tsx");
+    expect(flagged).toContain("src/components/Unused.tsx");
+  });
+
+  it("does not flag Rakkas routes as orphan files", async () => {
+    const directory = setupProject(
+      "rakkas-routes",
+      {
+        "src/client.tsx": "export default {};\n",
+        "src/routes/index.page.tsx": "export default () => <main>Home</main>;\n",
+        "src/routes/about.page.tsx": "export default () => <main>About</main>;\n",
+        "src/components/Unused.tsx": "export const Unused = () => <div />;\n",
+      },
+      { dependencies: { rakkasjs: "^0.7.0" } },
+    );
+
+    const flagged = await flaggedUnusedFiles(directory);
+    expect(flagged).not.toContain("src/routes/index.page.tsx");
+    expect(flagged).not.toContain("src/routes/about.page.tsx");
+    expect(flagged).not.toContain("src/client.tsx");
+    expect(flagged).toContain("src/components/Unused.tsx");
+  });
+
+  it("passes module federation config roots to the dead-code worker", async () => {
+    const directory = setupProject(
+      "federation-worker-entry-patterns",
+      {
+        "module-federation.config.ts": "export default {};\n",
+      },
+      { devDependencies: { "@module-federation/enhanced": "^0.21.0" } },
+    );
+
+    const capturedEntryPatterns = await captureDeadCodeEntryPatterns(directory);
+    expect(capturedEntryPatterns).toContain("module-federation.config.{ts,js,mjs,cjs,mts,cts}");
+    expect(capturedEntryPatterns).toContain("federation.config.{ts,js,mjs,cjs,mts,cts}");
+  });
+
+  it("keeps generic page directories orphan-checkable without a matching framework", async () => {
+    const directory = setupProject("ungated-pages", {
+      "src/index.ts": "export const used = 1;\n",
+      "src/pages/Standalone.tsx": "export default () => <main>Standalone</main>;\n",
+    });
+
+    expect(await flaggedUnusedFiles(directory)).toContain("src/pages/Standalone.tsx");
   });
 
   it("rejects malformed worker results instead of silently dropping diagnostics", async () => {

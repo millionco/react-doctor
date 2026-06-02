@@ -118,6 +118,15 @@ const DEAD_CODE_FRAMEWORK_ENTRY_PATTERN_GROUPS: ReadonlyArray<DeadCodeFrameworkE
         "resources/js/App.{ts,tsx,js,jsx}",
         "resources/js/Pages/**/*.{ts,tsx,js,jsx}",
         "resources/js/pages/**/*.{ts,tsx,js,jsx}",
+        "app/frontend/Pages/**/*.{ts,tsx,js,jsx}",
+        "app/frontend/pages/**/*.{ts,tsx,js,jsx}",
+        "app/frontend/entrypoints/**/*.{ts,tsx,js,jsx}",
+        "app/javascript/Pages/**/*.{ts,tsx,js,jsx}",
+        "app/javascript/pages/**/*.{ts,tsx,js,jsx}",
+        "frontend/src/Pages/**/*.{ts,tsx,js,jsx}",
+        "frontend/src/pages/**/*.{ts,tsx,js,jsx}",
+        "inertia/Pages/**/*.{ts,tsx,js,jsx}",
+        "inertia/pages/**/*.{ts,tsx,js,jsx}",
         "src/app.{ts,tsx,js,jsx}",
         "src/App.{ts,tsx,js,jsx}",
         "src/Pages/**/*.{ts,tsx,js,jsx}",
@@ -132,6 +141,43 @@ const DEAD_CODE_FRAMEWORK_ENTRY_PATTERN_GROUPS: ReadonlyArray<DeadCodeFrameworkE
         "web/src/index.{ts,tsx,js,jsx}",
         "web/src/layouts/**/*.{ts,tsx,js,jsx}",
         "web/src/pages/**/*.{ts,tsx,js,jsx}",
+      ],
+    },
+    {
+      dependencyNames: ["waku"],
+      entryPatterns: [
+        "src/pages/**/*.{ts,tsx,js,jsx}",
+        "src/waku.client.{ts,tsx,js,jsx}",
+        "src/waku.server.{ts,tsx,js,jsx}",
+      ],
+    },
+    {
+      dependencyNames: ["vike", "vite-plugin-ssr"],
+      entryPatterns: [
+        "pages/**/*.{ts,tsx,js,jsx,md,mdx}",
+        "renderer/**/*.{ts,tsx,js,jsx}",
+        "src/pages/**/*.{ts,tsx,js,jsx,md,mdx}",
+        "src/renderer/**/*.{ts,tsx,js,jsx}",
+      ],
+    },
+    {
+      dependencyNames: ["rakkasjs"],
+      entryPatterns: [
+        "src/client.{ts,tsx,js,jsx}",
+        "src/server.{ts,tsx,js,jsx}",
+        "src/routes/**/*.{ts,tsx,js,jsx}",
+      ],
+    },
+    {
+      dependencyNames: [
+        "@module-federation/enhanced",
+        "@module-federation/node",
+        "@module-federation/vite",
+        "@originjs/vite-plugin-federation",
+      ],
+      entryPatterns: [
+        "federation.config.{ts,js,mjs,cjs,mts,cts}",
+        "module-federation.config.{ts,js,mjs,cjs,mts,cts}",
       ],
     },
   ];

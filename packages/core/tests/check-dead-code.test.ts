@@ -226,10 +226,10 @@ describe("checkDeadCode", () => {
     const capturedEntryPatterns = await captureDeadCodeEntryPatterns(directory);
 
     expect(capturedEntryPatterns).toContain("src/index.{ts,tsx,js,jsx}");
-    expect(capturedEntryPatterns).toContain("resources/js/Pages/**/*.{ts,tsx,js,jsx}");
-    expect(capturedEntryPatterns).toContain("resources/js/pages/**/*.{ts,tsx,js,jsx}");
-    expect(capturedEntryPatterns).toContain("app/frontend/pages/**/*.{ts,tsx,js,jsx}");
-    expect(capturedEntryPatterns).toContain("src/Pages/**/*.{ts,tsx,js,jsx}");
+    expect(capturedEntryPatterns).toContain("resources/js/Pages/**/*.{ts,tsx,js,jsx,vue,svelte}");
+    expect(capturedEntryPatterns).toContain("resources/js/pages/**/*.{ts,tsx,js,jsx,vue,svelte}");
+    expect(capturedEntryPatterns).toContain("app/frontend/pages/**/*.{ts,tsx,js,jsx,vue,svelte}");
+    expect(capturedEntryPatterns).toContain("src/Pages/**/*.{ts,tsx,js,jsx,vue,svelte}");
   });
 
   it("does not flag Inertia pages as orphan files", async () => {
@@ -251,6 +251,25 @@ describe("checkDeadCode", () => {
     expect(flagged).not.toContain("resources/js/Pages/Home.tsx");
     expect(flagged).not.toContain("resources/js/pages/Settings.tsx");
     expect(flagged).not.toContain("app/frontend/pages/Posts/Index.tsx");
+    expect(flagged).toContain("resources/js/components/Unused.tsx");
+  });
+
+  it("does not flag Vue or Svelte Inertia pages as orphan files", async () => {
+    const directory = setupProject(
+      "inertia-adapters",
+      {
+        "resources/js/app.ts": "import { createInertiaApp } from '@inertiajs/vue3';\n",
+        "resources/js/Pages/Dashboard.vue":
+          "<template><main>Dashboard</main></template>\n<script setup></script>\n",
+        "resources/js/pages/Profile.svelte": "<main>Profile</main>\n",
+        "resources/js/components/Unused.tsx": "export const Unused = () => <div />;\n",
+      },
+      { dependencies: { "@inertiajs/vue3": "^2.0.0", "@inertiajs/svelte": "^2.0.0" } },
+    );
+
+    const flagged = await flaggedUnusedFiles(directory);
+    expect(flagged).not.toContain("resources/js/Pages/Dashboard.vue");
+    expect(flagged).not.toContain("resources/js/pages/Profile.svelte");
     expect(flagged).toContain("resources/js/components/Unused.tsx");
   });
 
@@ -342,6 +361,16 @@ describe("checkDeadCode", () => {
     const capturedEntryPatterns = await captureDeadCodeEntryPatterns(directory);
     expect(capturedEntryPatterns).toContain("module-federation.config.{ts,js,mjs,cjs,mts,cts}");
     expect(capturedEntryPatterns).toContain("federation.config.{ts,js,mjs,cjs,mts,cts}");
+  });
+
+  it("keeps dead-code analysis running when package.json is malformed", async () => {
+    const directory = setupProject("malformed-package-json", {
+      "src/index.ts": "export const used = 1;\n",
+    });
+    fs.writeFileSync(path.join(directory, "package.json"), "{");
+
+    const capturedEntryPatterns = await captureDeadCodeEntryPatterns(directory);
+    expect(capturedEntryPatterns).toEqual([]);
   });
 
   it("keeps generic page directories orphan-checkable without a matching framework", async () => {

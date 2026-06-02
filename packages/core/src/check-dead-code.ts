@@ -8,6 +8,8 @@ import {
   DEAD_CODE_WORKER_TIMEOUT_MS,
   MILLISECONDS_PER_SECOND,
 } from "./constants.js";
+import { buildDeadCodeEntryPatterns } from "./dead-code-entry-patterns.js";
+import { readPackageJson } from "./project-info/index.js";
 import { readIgnoreFile } from "./read-ignore-file.js";
 import { toCanonicalPath } from "./utils/to-canonical-path.js";
 import { toRelativePath } from "./utils/to-relative-path.js";
@@ -43,11 +45,6 @@ interface DeadCodeWorkerHandle {
 
 interface DeadCodeWorkerFactory {
   (input: DeadCodeWorkerInput): DeadCodeWorkerHandle;
-}
-
-interface DeadCodeFrameworkEntryPatternGroup {
-  readonly dependencyNames: ReadonlyArray<string>;
-  readonly entryPatterns: ReadonlyArray<string>;
 }
 
 interface DeadCodeWorkerUnusedFile {
@@ -95,92 +92,6 @@ interface DeadCodeWorkerFailureMessage {
 }
 
 const TSCONFIG_FILENAMES = ["tsconfig.json", "tsconfig.base.json"];
-const DEFAULT_DEAD_CODE_ENTRY_PATTERNS = [
-  "src/index.{ts,tsx,js,jsx}",
-  "src/main.{ts,tsx,js,jsx}",
-  "index.{ts,tsx,js,jsx}",
-  "main.{ts,tsx,js,jsx}",
-];
-const DEAD_CODE_FRAMEWORK_ENTRY_PATTERN_GROUPS: ReadonlyArray<DeadCodeFrameworkEntryPatternGroup> =
-  [
-    {
-      dependencyNames: [
-        "@inertiajs/react",
-        "@inertiajs/inertia-react",
-        "@inertiajs/vue3",
-        "@inertiajs/inertia-vue3",
-        "@inertiajs/svelte",
-        "@inertiajs/inertia-svelte",
-        "@inertiajs/inertia",
-      ],
-      entryPatterns: [
-        "resources/js/app.{ts,tsx,js,jsx}",
-        "resources/js/App.{ts,tsx,js,jsx}",
-        "resources/js/Pages/**/*.{ts,tsx,js,jsx}",
-        "resources/js/pages/**/*.{ts,tsx,js,jsx}",
-        "app/frontend/Pages/**/*.{ts,tsx,js,jsx}",
-        "app/frontend/pages/**/*.{ts,tsx,js,jsx}",
-        "app/frontend/entrypoints/**/*.{ts,tsx,js,jsx}",
-        "app/javascript/Pages/**/*.{ts,tsx,js,jsx}",
-        "app/javascript/pages/**/*.{ts,tsx,js,jsx}",
-        "frontend/src/Pages/**/*.{ts,tsx,js,jsx}",
-        "frontend/src/pages/**/*.{ts,tsx,js,jsx}",
-        "inertia/Pages/**/*.{ts,tsx,js,jsx}",
-        "inertia/pages/**/*.{ts,tsx,js,jsx}",
-        "src/app.{ts,tsx,js,jsx}",
-        "src/App.{ts,tsx,js,jsx}",
-        "src/Pages/**/*.{ts,tsx,js,jsx}",
-        "src/pages/**/*.{ts,tsx,js,jsx}",
-      ],
-    },
-    {
-      dependencyNames: ["@redwoodjs/router", "@redwoodjs/web"],
-      entryPatterns: [
-        "web/src/App.{ts,tsx,js,jsx}",
-        "web/src/Routes.{ts,tsx,js,jsx}",
-        "web/src/index.{ts,tsx,js,jsx}",
-        "web/src/layouts/**/*.{ts,tsx,js,jsx}",
-        "web/src/pages/**/*.{ts,tsx,js,jsx}",
-      ],
-    },
-    {
-      dependencyNames: ["waku"],
-      entryPatterns: [
-        "src/pages/**/*.{ts,tsx,js,jsx}",
-        "src/waku.client.{ts,tsx,js,jsx}",
-        "src/waku.server.{ts,tsx,js,jsx}",
-      ],
-    },
-    {
-      dependencyNames: ["vike", "vite-plugin-ssr"],
-      entryPatterns: [
-        "pages/**/*.{ts,tsx,js,jsx,md,mdx}",
-        "renderer/**/*.{ts,tsx,js,jsx}",
-        "src/pages/**/*.{ts,tsx,js,jsx,md,mdx}",
-        "src/renderer/**/*.{ts,tsx,js,jsx}",
-      ],
-    },
-    {
-      dependencyNames: ["rakkasjs"],
-      entryPatterns: [
-        "src/client.{ts,tsx,js,jsx}",
-        "src/server.{ts,tsx,js,jsx}",
-        "src/routes/**/*.{ts,tsx,js,jsx}",
-      ],
-    },
-    {
-      dependencyNames: [
-        "@module-federation/enhanced",
-        "@module-federation/node",
-        "@module-federation/vite",
-        "@originjs/vite-plugin-federation",
-      ],
-      entryPatterns: [
-        "federation.config.{ts,js,mjs,cjs,mts,cts}",
-        "module-federation.config.{ts,js,mjs,cjs,mts,cts}",
-      ],
-    },
-  ];
 
 // Runs in a child PROCESS (node -e), not a worker_thread — see
 // `createDeadCodeWorker`. Reads the worker input as JSON on stdin and
@@ -267,46 +178,6 @@ const collectDeadCodeIgnorePatterns = (
     for (const pattern of source) seen.add(pattern);
   }
   return [...seen].filter((pattern) => pattern.length > 0);
-};
-
-const readPackageDependencyNames = (rootDirectory: string): Set<string> => {
-  const packageJsonPath = path.join(rootDirectory, "package.json");
-  const dependencyNames = new Set<string>();
-  if (!fs.existsSync(packageJsonPath)) return dependencyNames;
-
-  const parsedPackageJson: unknown = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
-  if (!isRecord(parsedPackageJson)) return dependencyNames;
-
-  for (const fieldName of [
-    "dependencies",
-    "devDependencies",
-    "peerDependencies",
-    "optionalDependencies",
-  ]) {
-    const dependencies = parsedPackageJson[fieldName];
-    if (!isRecord(dependencies)) continue;
-    for (const [dependencyName, version] of Object.entries(dependencies)) {
-      if (typeof version === "string") dependencyNames.add(dependencyName);
-    }
-  }
-
-  return dependencyNames;
-};
-
-const buildDeadCodeEntryPatterns = (rootDirectory: string): string[] => {
-  const dependencyNames = readPackageDependencyNames(rootDirectory);
-  const entryPatterns = new Set<string>();
-
-  for (const group of DEAD_CODE_FRAMEWORK_ENTRY_PATTERN_GROUPS) {
-    const isEnabled = group.dependencyNames.some((dependencyName) =>
-      dependencyNames.has(dependencyName),
-    );
-    if (!isEnabled) continue;
-    for (const pattern of DEFAULT_DEAD_CODE_ENTRY_PATTERNS) entryPatterns.add(pattern);
-    for (const pattern of group.entryPatterns) entryPatterns.add(pattern);
-  }
-
-  return [...entryPatterns];
 };
 
 // HACK: route through `toRelativePath` (which normalizes backslashes to
@@ -580,13 +451,15 @@ export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diag
   // Canonicalize up front so the deslop graph and its resolver share one
   // path space (see `toCanonicalPath` for why a symlinked root breaks it).
   const rootDirectory = toCanonicalPath(options.rootDirectory);
-  if (!fs.existsSync(path.join(rootDirectory, "package.json"))) return [];
+  const packageJsonPath = path.join(rootDirectory, "package.json");
+  if (!fs.existsSync(packageJsonPath)) return [];
 
+  const packageJson = readPackageJson(packageJsonPath);
   const ignorePatterns = collectDeadCodeIgnorePatterns(rootDirectory, userConfig);
   const workerHandle = (options.createWorker ?? createDeadCodeWorker)({
     rootDirectory,
     tsConfigPath: resolveTsConfigPath(rootDirectory),
-    entryPatterns: buildDeadCodeEntryPatterns(rootDirectory),
+    entryPatterns: buildDeadCodeEntryPatterns(packageJson),
     ignorePatterns,
     deslopJsModuleSpecifier: options.deslopJsModuleSpecifier ?? import.meta.resolve("deslop-js"),
   });

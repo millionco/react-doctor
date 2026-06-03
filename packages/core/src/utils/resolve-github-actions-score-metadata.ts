@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import * as fs from "node:fs";
 
 export interface GitHubActionsScoreMetadata {
   readonly githubEventName?: string;
@@ -19,7 +19,7 @@ const readGithubEventPayload = (eventPath: string | undefined): unknown => {
   if (eventPath === undefined || eventPath.length === 0) return null;
 
   try {
-    const parsedPayload: unknown = JSON.parse(readFileSync(eventPath, "utf8"));
+    const parsedPayload: unknown = JSON.parse(fs.readFileSync(eventPath, "utf8"));
     return parsedPayload;
   } catch {
     return null;

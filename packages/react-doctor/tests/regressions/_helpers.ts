@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
-import fs from "node:fs";
-import path from "node:path";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { runOxlint } from "@react-doctor/core";
 import type { Diagnostic, ProjectInfo } from "@react-doctor/core";
 

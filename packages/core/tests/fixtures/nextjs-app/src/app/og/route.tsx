@@ -1,4 +1,4 @@
-import fs from "node:fs";
+import * as fs from "node:fs";
 import { NextResponse } from "next/server";
 
 // server-hoist-static-io: fs.readFileSync inside route handler.

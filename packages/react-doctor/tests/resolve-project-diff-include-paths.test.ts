@@ -1,4 +1,4 @@
-import path from "node:path";
+import * as path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import type { DiffInfo } from "../src/index.js";
 import { resolveProjectDiffIncludePaths } from "../src/cli/utils/resolve-project-diff-include-paths.js";

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import path from "node:path";
+import * as path from "node:path";
 import Conf from "conf";
 import { findNearestPackageDirectory, hasDoctorScript } from "./install-doctor-script.js";
 import { isCodingAgentEnvironment } from "./is-ci-environment.js";

@@ -1,5 +1,5 @@
-import { accessSync, constants, statSync } from "node:fs";
-import path from "node:path";
+import * as path from "node:path";
+import * as fs from "node:fs";
 
 const isWindows = process.platform === "win32";
 
@@ -26,10 +26,10 @@ export const isCommandAvailable = (command: string): boolean => {
     for (const fileName of candidateFileNames(command)) {
       const binaryPath = path.join(directory, fileName);
       try {
-        if (!statSync(binaryPath).isFile()) continue;
+        if (!fs.statSync(binaryPath).isFile()) continue;
         // Windows has no execute bit, so X_OK is meaningless there — a file
         // matching a PATHEXT extension is considered runnable.
-        if (!isWindows) accessSync(binaryPath, constants.X_OK);
+        if (!isWindows) fs.accessSync(binaryPath, fs.constants.X_OK);
         return true;
       } catch {}
     }

@@ -1,4 +1,4 @@
-import path from "node:path";
+import * as path from "node:path";
 import { discoverReactSubprojects, listWorkspacePackages } from "@react-doctor/core";
 
 export const findOwningProjectDirectory = (rootDirectory: string, filePath: string): string => {

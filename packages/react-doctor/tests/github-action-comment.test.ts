@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
-import fs from "node:fs";
+import * as fs from "node:fs";
 import os from "node:os";
-import path from "node:path";
+import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import type { JsonReport } from "@react-doctor/core";
 import type { Diagnostic, JsonReportProjectEntry, ProjectInfo } from "@react-doctor/core";

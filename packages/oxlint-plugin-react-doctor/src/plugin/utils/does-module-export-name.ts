@@ -1,4 +1,4 @@
-import fs from "node:fs";
+import * as fs from "node:fs";
 import { parseExportSpecifiers } from "./parse-export-specifiers.js";
 import { stripJsComments } from "./strip-js-comments.js";
 

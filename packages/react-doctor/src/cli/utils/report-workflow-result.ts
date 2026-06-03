@@ -1,4 +1,4 @@
-import path from "node:path";
+import * as path from "node:path";
 import { METRIC } from "./constants.js";
 import type { InstallGitHubWorkflowResult } from "./install-github-workflow.js";
 import { recordCount } from "./record-metric.js";

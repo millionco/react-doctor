@@ -1,8 +1,8 @@
-import { existsSync } from "node:fs";
-import path from "node:path";
+import * as path from "node:path";
 import { loadConfigWithSource } from "./load-config.js";
 import { isDirectory, NotADirectoryError, ProjectNotFoundError } from "./project-info/index.js";
 import { resolveConfigRootDir } from "./resolve-config-root-dir.js";
+import * as fs from "node:fs";
 import {
   resolveDiagnoseTarget,
   type ResolveDiagnoseTargetOptions,
@@ -67,7 +67,7 @@ export const resolveScanTarget = async (
     resolveDiagnoseTarget(directoryAfterRedirect, options) ?? directoryAfterRedirect;
 
   if (!isDirectory(resolvedDirectory)) {
-    throw existsSync(resolvedDirectory)
+    throw fs.existsSync(resolvedDirectory)
       ? new NotADirectoryError(resolvedDirectory)
       : new ProjectNotFoundError(resolvedDirectory, { kind: "missing-path" });
   }

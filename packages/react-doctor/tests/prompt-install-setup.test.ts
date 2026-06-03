@@ -1,7 +1,7 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import path from "node:path";
+import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import * as fs from "node:fs";
 import {
   AGENT_INSTALL_HINT_LINES,
   disableSetupPrompt,
@@ -20,26 +20,26 @@ interface PromptInstallSetupFixture {
 }
 
 const setupFixture = (): PromptInstallSetupFixture => {
-  const root = mkdtempSync(path.join(tmpdir(), "react-doctor-prompt-install-setup-"));
+  const root = fs.mkdtempSync(path.join(tmpdir(), "react-doctor-prompt-install-setup-"));
   const configRoot = path.join(root, "config");
   const projectRoot = path.join(root, "project");
-  mkdirSync(projectRoot, { recursive: true });
+  fs.mkdirSync(projectRoot, { recursive: true });
   return {
     configRoot,
     projectRoot,
-    cleanup: () => rmSync(root, { recursive: true, force: true }),
+    cleanup: () => fs.rmSync(root, { recursive: true, force: true }),
   };
 };
 
 const writePackageJson = (projectRoot: string, value: Record<string, unknown>): void => {
-  writeFileSync(path.join(projectRoot, "package.json"), `${JSON.stringify(value, null, 2)}\n`);
+  fs.writeFileSync(path.join(projectRoot, "package.json"), `${JSON.stringify(value, null, 2)}\n`);
 };
 
 const readPackageJson = (projectRoot: string): Record<string, unknown> =>
-  JSON.parse(readFileSync(path.join(projectRoot, "package.json"), "utf8"));
+  JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf8"));
 
 const readSetupPromptConfig = (configRoot: string): Record<string, unknown> =>
-  JSON.parse(readFileSync(getSetupPromptConfigPath({ cwd: configRoot }), "utf8"));
+  JSON.parse(fs.readFileSync(getSetupPromptConfigPath({ cwd: configRoot }), "utf8"));
 
 describe("resolveInstallSetupProjectRoot", () => {
   let fixture: PromptInstallSetupFixture;
@@ -54,7 +54,7 @@ describe("resolveInstallSetupProjectRoot", () => {
 
   it("resolves setup to the completed scan package instead of the monorepo root", () => {
     const appDirectory = path.join(fixture.projectRoot, "apps", "web");
-    mkdirSync(appDirectory, { recursive: true });
+    fs.mkdirSync(appDirectory, { recursive: true });
     writePackageJson(fixture.projectRoot, {
       name: "monorepo",
       workspaces: ["apps/*"],
@@ -75,7 +75,7 @@ describe("resolveInstallSetupProjectRoot", () => {
   it("resolves setup from a nested scan directory to the nearest package", () => {
     const appDirectory = path.join(fixture.projectRoot, "apps", "web");
     const nestedDirectory = path.join(appDirectory, "src", "components");
-    mkdirSync(nestedDirectory, { recursive: true });
+    fs.mkdirSync(nestedDirectory, { recursive: true });
     writePackageJson(fixture.projectRoot, {
       name: "monorepo",
       workspaces: ["apps/*"],
@@ -96,8 +96,8 @@ describe("resolveInstallSetupProjectRoot", () => {
   it("resolves setup to the scan root when a scan completed in multiple package roots", () => {
     const webDirectory = path.join(fixture.projectRoot, "apps", "web");
     const adminDirectory = path.join(fixture.projectRoot, "apps", "admin");
-    mkdirSync(webDirectory, { recursive: true });
-    mkdirSync(adminDirectory, { recursive: true });
+    fs.mkdirSync(webDirectory, { recursive: true });
+    fs.mkdirSync(adminDirectory, { recursive: true });
     writePackageJson(fixture.projectRoot, {
       name: "monorepo",
       workspaces: ["apps/*"],
@@ -117,8 +117,8 @@ describe("resolveInstallSetupProjectRoot", () => {
     const scanRoot = path.join(fixture.projectRoot, "multi-root");
     const webDirectory = path.join(scanRoot, "web");
     const adminDirectory = path.join(scanRoot, "admin");
-    mkdirSync(webDirectory, { recursive: true });
-    mkdirSync(adminDirectory, { recursive: true });
+    fs.mkdirSync(webDirectory, { recursive: true });
+    fs.mkdirSync(adminDirectory, { recursive: true });
     writePackageJson(webDirectory, { name: "web" });
     writePackageJson(adminDirectory, { name: "admin" });
 
@@ -145,7 +145,7 @@ describe("disableSetupPrompt", () => {
   it("preserves existing global config values when disabling", () => {
     writePackageJson(fixture.projectRoot, { scripts: {} });
     const otherProjectKey = getSetupPromptProjectKey("/other/project");
-    writeFileSync(
+    fs.writeFileSync(
       getSetupPromptConfigPath({ cwd: fixture.configRoot }),
       `${JSON.stringify(
         {
@@ -325,9 +325,9 @@ describe("shouldShowAgentInstallHint", () => {
 
 describe("setup-prompt store resilience", () => {
   it("degrades instead of crashing when the config directory cannot be created", () => {
-    const root = mkdtempSync(path.join(tmpdir(), "react-doctor-prompt-install-setup-eperm-"));
+    const root = fs.mkdtempSync(path.join(tmpdir(), "react-doctor-prompt-install-setup-eperm-"));
     const blockerFile = path.join(root, "blocker");
-    writeFileSync(blockerFile, "not a directory");
+    fs.writeFileSync(blockerFile, "not a directory");
     // A config `cwd` whose parent is a file makes conf's mkdir fail with
     // ENOTDIR — the same class of failure as EPERM/EROFS on a read-only or
     // locked-down filesystem (REACT-DOCTOR-E). It must degrade, not crash.
@@ -338,7 +338,7 @@ describe("setup-prompt store resilience", () => {
       expect(hasDisabledSetupPrompt("/some/project", { cwd: unwritableCwd })).toBe(false);
       expect(disableSetupPrompt("/some/project", { cwd: unwritableCwd })).toBe(false);
     } finally {
-      rmSync(root, { recursive: true, force: true });
+      fs.rmSync(root, { recursive: true, force: true });
     }
   });
 });

@@ -1,6 +1,6 @@
-import fs from "node:fs";
+import * as fs from "node:fs";
 import os from "node:os";
-import path from "node:path";
+import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { clearConfigCache, findLegacyConfig, loadConfigWithSource } from "@react-doctor/core";
 import { migrateLegacyConfig } from "../src/cli/utils/migrate-legacy-config.js";

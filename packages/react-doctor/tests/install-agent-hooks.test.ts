@@ -1,20 +1,9 @@
-import {
-  chmodSync,
-  constants as fsConstants,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
-import path from "node:path";
+import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { installReactDoctorAgentHooks } from "../src/cli/utils/install-agent-hooks.js";
+import * as fs from "node:fs";
 
 interface AgentHooksFixture {
   readonly projectRoot: string;
@@ -39,21 +28,21 @@ interface FakeBinaryOptions {
 }
 
 const setupFixture = (): AgentHooksFixture => {
-  const root = mkdtempSync(path.join(tmpdir(), "react-doctor-agent-hooks-"));
+  const root = fs.mkdtempSync(path.join(tmpdir(), "react-doctor-agent-hooks-"));
   return {
     projectRoot: root,
-    cleanup: () => rmSync(root, { recursive: true, force: true }),
+    cleanup: () => fs.rmSync(root, { recursive: true, force: true }),
   };
 };
 
-const readJson = <Value>(filePath: string): Value => JSON.parse(readFileSync(filePath, "utf8"));
+const readJson = <Value>(filePath: string): Value => JSON.parse(fs.readFileSync(filePath, "utf8"));
 
 const writeFakeReactDoctorBinary = (projectRoot: string, options: FakeBinaryOptions): void => {
   const localBinaryPath = path.join(projectRoot, "node_modules/.bin/react-doctor");
-  mkdirSync(path.dirname(localBinaryPath), { recursive: true });
+  fs.mkdirSync(path.dirname(localBinaryPath), { recursive: true });
   const output = options.output ?? "fake scan output";
   const invocationFileName = options.invocationFileName ?? "agent-hook-args.txt";
-  writeFileSync(
+  fs.writeFileSync(
     localBinaryPath,
     [
       "#!/bin/sh",
@@ -64,7 +53,7 @@ const writeFakeReactDoctorBinary = (projectRoot: string, options: FakeBinaryOpti
       "",
     ].join("\n"),
   );
-  chmodSync(localBinaryPath, fsConstants.S_IRWXU);
+  fs.chmodSync(localBinaryPath, fs.constants.S_IRWXU);
 };
 
 const writeFakePathReactDoctorBinary = (
@@ -72,11 +61,11 @@ const writeFakePathReactDoctorBinary = (
   projectRoot: string,
   options: FakeBinaryOptions,
 ): void => {
-  mkdirSync(binDirectory, { recursive: true });
+  fs.mkdirSync(binDirectory, { recursive: true });
   const output = options.output ?? "fake scan output";
   const invocationFileName = options.invocationFileName ?? "path-agent-hook-args.txt";
   const binaryPath = path.join(binDirectory, "react-doctor");
-  writeFileSync(
+  fs.writeFileSync(
     binaryPath,
     [
       "#!/bin/sh",
@@ -87,7 +76,7 @@ const writeFakePathReactDoctorBinary = (
       "",
     ].join("\n"),
   );
-  chmodSync(binaryPath, fsConstants.S_IRWXU);
+  fs.chmodSync(binaryPath, fs.constants.S_IRWXU);
 };
 
 describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", () => {
@@ -104,8 +93,8 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
   it("installs a Claude Code PostToolBatch hook without duplicating existing hooks", () => {
     const settingsPath = path.join(fixture.projectRoot, ".claude/settings.json");
     const hookPath = path.join(fixture.projectRoot, ".claude/hooks/react-doctor.sh");
-    mkdirSync(path.dirname(settingsPath), { recursive: true });
-    writeFileSync(
+    fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+    fs.writeFileSync(
       settingsPath,
       JSON.stringify({
         permissions: { allow: ["Bash(git status)"] },
@@ -135,7 +124,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
     const hookCommands = settings.hooks.PostToolBatch.flatMap((group) =>
       group.hooks.map((hook) => hook.command),
     );
-    const hookContent = readFileSync(hookPath, "utf8");
+    const hookContent = fs.readFileSync(hookPath, "utf8");
 
     expect(result.installedAgents).toEqual(["claude-code"]);
     expect(result.files).toContain(settingsPath);
@@ -143,14 +132,14 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
     expect(hookCommands.filter((command) => command.includes("react-doctor.sh"))).toHaveLength(1);
     expect(hookContent).toContain("project_root=${CLAUDE_PROJECT_DIR:-}");
     expect(hookContent).toContain("react-doctor --verbose --diff");
-    expect(Boolean(statSync(hookPath).mode & fsConstants.S_IXUSR)).toBe(true);
+    expect(Boolean(fs.statSync(hookPath).mode & fs.constants.S_IXUSR)).toBe(true);
   });
 
   it("installs a Cursor postToolUse hook and preserves existing hook config", () => {
     const configPath = path.join(fixture.projectRoot, ".cursor/hooks.json");
     const hookPath = path.join(fixture.projectRoot, ".cursor/hooks/react-doctor.sh");
-    mkdirSync(path.dirname(configPath), { recursive: true });
-    writeFileSync(
+    fs.mkdirSync(path.dirname(configPath), { recursive: true });
+    fs.writeFileSync(
       configPath,
       JSON.stringify({
         version: 1,
@@ -178,7 +167,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
     }>(configPath);
 
     expect(result.installedAgents).toEqual(["cursor"]);
-    const hookContent = readFileSync(hookPath, "utf8");
+    const hookContent = fs.readFileSync(hookPath, "utf8");
     expect(config.version).toBe(1);
     expect(config.hooks.sessionStart).toEqual([{ command: ".cursor/hooks/bootstrap.sh" }]);
     expect(config.hooks.postToolUse).toHaveLength(1);
@@ -187,17 +176,17 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
       matcher: "Write|Edit|MultiEdit|ApplyPatch",
       timeout: 120,
     });
-    expect(existsSync(hookPath)).toBe(true);
+    expect(fs.existsSync(hookPath)).toBe(true);
     expect(hookContent).toContain('project_root=$(CDPATH= cd "$script_dir/../.." && pwd)');
     expect(hookContent).toContain("additional_context");
-    expect(Boolean(statSync(hookPath).mode & fsConstants.S_IXUSR)).toBe(true);
+    expect(Boolean(fs.statSync(hookPath).mode & fs.constants.S_IXUSR)).toBe(true);
   });
 
   it("runs generated agent hooks from the project root and returns scan context", () => {
     const hookPath = path.join(fixture.projectRoot, ".cursor/hooks/react-doctor.sh");
     const nestedDirectory = path.join(fixture.projectRoot, "packages/app/src");
-    mkdirSync(nestedDirectory, { recursive: true });
-    mkdirSync(path.join(fixture.projectRoot, ".react-doctor"), { recursive: true });
+    fs.mkdirSync(nestedDirectory, { recursive: true });
+    fs.mkdirSync(path.join(fixture.projectRoot, ".react-doctor"), { recursive: true });
     installReactDoctorAgentHooks({
       projectRoot: fixture.projectRoot,
       agents: ["cursor"],
@@ -214,15 +203,15 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
     const parsedOutput: AgentHookJsonOutput = JSON.parse(output);
 
     expect(
-      realpathSync(
-        readFileSync(
+      fs.realpathSync(
+        fs.readFileSync(
           path.join(fixture.projectRoot, ".react-doctor/agent-hook-cwd.txt"),
           "utf8",
         ).trim(),
       ),
-    ).toBe(realpathSync(fixture.projectRoot));
+    ).toBe(fs.realpathSync(fixture.projectRoot));
     expect(
-      readFileSync(path.join(fixture.projectRoot, ".react-doctor/agent-hook-args.txt"), "utf8"),
+      fs.readFileSync(path.join(fixture.projectRoot, ".react-doctor/agent-hook-args.txt"), "utf8"),
     ).toBe("--verbose\n--diff\n--fail-on\nwarning\n--no-score\n");
     expect(parsedOutput.additional_context).toContain("fake scan output");
     expect(parsedOutput.additional_context).toContain("create GitHub issues");
@@ -231,8 +220,8 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
   it("uses CLAUDE_PROJECT_DIR when a generated Claude hook runs outside the repo", () => {
     const hookPath = path.join(fixture.projectRoot, ".claude/hooks/react-doctor.sh");
     const outsideDirectory = path.join(fixture.projectRoot, "..", "outside-cwd");
-    mkdirSync(outsideDirectory, { recursive: true });
-    mkdirSync(path.join(fixture.projectRoot, ".react-doctor"), { recursive: true });
+    fs.mkdirSync(outsideDirectory, { recursive: true });
+    fs.mkdirSync(path.join(fixture.projectRoot, ".react-doctor"), { recursive: true });
     installReactDoctorAgentHooks({
       projectRoot: fixture.projectRoot,
       agents: ["claude-code"],
@@ -254,13 +243,13 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
     const parsedOutput: ClaudeAgentHookJsonOutput = JSON.parse(output);
 
     expect(
-      realpathSync(
-        readFileSync(
+      fs.realpathSync(
+        fs.readFileSync(
           path.join(fixture.projectRoot, ".react-doctor/agent-hook-cwd.txt"),
           "utf8",
         ).trim(),
       ),
-    ).toBe(realpathSync(fixture.projectRoot));
+    ).toBe(fs.realpathSync(fixture.projectRoot));
     expect(parsedOutput.hookSpecificOutput).toEqual({
       hookEventName: "PostToolBatch",
       additionalContext: expect.stringContaining("fake scan output"),
@@ -271,7 +260,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
   it("uses a PATH react-doctor binary when the local binary is missing", () => {
     const hookPath = path.join(fixture.projectRoot, ".cursor/hooks/react-doctor.sh");
     const binDirectory = path.join(fixture.projectRoot, "fake-bin");
-    mkdirSync(path.join(fixture.projectRoot, ".react-doctor"), { recursive: true });
+    fs.mkdirSync(path.join(fixture.projectRoot, ".react-doctor"), { recursive: true });
     installReactDoctorAgentHooks({
       projectRoot: fixture.projectRoot,
       agents: ["cursor"],
@@ -301,7 +290,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
     const parsedOutput: AgentHookJsonOutput = JSON.parse(output);
 
     expect(
-      readFileSync(
+      fs.readFileSync(
         path.join(fixture.projectRoot, ".react-doctor/path-agent-hook-args.txt"),
         "utf8",
       ),
@@ -312,7 +301,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
   it("exits quietly when no react-doctor runner is available", () => {
     const hookPath = path.join(fixture.projectRoot, ".cursor/hooks/react-doctor.sh");
     const invocationPath = path.join(fixture.projectRoot, ".react-doctor/agent-hook-args.txt");
-    mkdirSync(path.join(fixture.projectRoot, ".react-doctor"), { recursive: true });
+    fs.mkdirSync(path.join(fixture.projectRoot, ".react-doctor"), { recursive: true });
     installReactDoctorAgentHooks({
       projectRoot: fixture.projectRoot,
       agents: ["cursor"],
@@ -331,13 +320,13 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
     });
 
     expect(output).toBe("");
-    expect(existsSync(invocationPath)).toBe(false);
+    expect(fs.existsSync(invocationPath)).toBe(false);
   });
 
   it("skips generated agent hooks for non-edit tool batches", () => {
     const hookPath = path.join(fixture.projectRoot, ".claude/hooks/react-doctor.sh");
     const invocationPath = path.join(fixture.projectRoot, ".react-doctor/agent-hook-args.txt");
-    mkdirSync(path.join(fixture.projectRoot, ".react-doctor"), { recursive: true });
+    fs.mkdirSync(path.join(fixture.projectRoot, ".react-doctor"), { recursive: true });
     installReactDoctorAgentHooks({
       projectRoot: fixture.projectRoot,
       agents: ["claude-code"],
@@ -354,12 +343,12 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
     });
 
     expect(output).toBe("");
-    expect(existsSync(invocationPath)).toBe(false);
+    expect(fs.existsSync(invocationPath)).toBe(false);
   });
 
   it("returns no context when a generated agent hook scan succeeds", () => {
     const hookPath = path.join(fixture.projectRoot, ".cursor/hooks/react-doctor.sh");
-    mkdirSync(path.join(fixture.projectRoot, ".react-doctor"), { recursive: true });
+    fs.mkdirSync(path.join(fixture.projectRoot, ".react-doctor"), { recursive: true });
     installReactDoctorAgentHooks({
       projectRoot: fixture.projectRoot,
       agents: ["cursor"],
@@ -376,14 +365,14 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
 
     expect(output).toBe("");
     expect(
-      readFileSync(path.join(fixture.projectRoot, ".react-doctor/agent-hook-args.txt"), "utf8"),
+      fs.readFileSync(path.join(fixture.projectRoot, ".react-doctor/agent-hook-args.txt"), "utf8"),
     ).toBe("--verbose\n--diff\n--fail-on\nwarning\n--no-score\n");
   });
 
   it("skips generated agent hooks for non-edit single tool events", () => {
     const hookPath = path.join(fixture.projectRoot, ".cursor/hooks/react-doctor.sh");
     const invocationPath = path.join(fixture.projectRoot, ".react-doctor/agent-hook-args.txt");
-    mkdirSync(path.join(fixture.projectRoot, ".react-doctor"), { recursive: true });
+    fs.mkdirSync(path.join(fixture.projectRoot, ".react-doctor"), { recursive: true });
     installReactDoctorAgentHooks({
       projectRoot: fixture.projectRoot,
       agents: ["cursor"],
@@ -399,12 +388,12 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
     });
 
     expect(output).toBe("");
-    expect(existsSync(invocationPath)).toBe(false);
+    expect(fs.existsSync(invocationPath)).toBe(false);
   });
 
   it("scans when hook input is malformed instead of failing closed", () => {
     const hookPath = path.join(fixture.projectRoot, ".cursor/hooks/react-doctor.sh");
-    mkdirSync(path.join(fixture.projectRoot, ".react-doctor"), { recursive: true });
+    fs.mkdirSync(path.join(fixture.projectRoot, ".react-doctor"), { recursive: true });
     installReactDoctorAgentHooks({
       projectRoot: fixture.projectRoot,
       agents: ["cursor"],
@@ -429,7 +418,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
 
     expect(result.installedAgents).toEqual([]);
     expect(result.files).toEqual([]);
-    expect(existsSync(path.join(fixture.projectRoot, ".cursor/hooks.json"))).toBe(false);
-    expect(existsSync(path.join(fixture.projectRoot, ".claude/settings.json"))).toBe(false);
+    expect(fs.existsSync(path.join(fixture.projectRoot, ".cursor/hooks.json"))).toBe(false);
+    expect(fs.existsSync(path.join(fixture.projectRoot, ".claude/settings.json"))).toBe(false);
   });
 });

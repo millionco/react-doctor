@@ -1,6 +1,6 @@
-import { readFileSync } from "node:fs";
 import { parseJSON5 } from "confbox";
 import { isPlainObject } from "@react-doctor/core";
+import * as fs from "node:fs";
 
 /**
  * Reads a JSON / JSONC file as a plain object, or `null` when it is missing,
@@ -9,7 +9,7 @@ import { isPlainObject } from "@react-doctor/core";
  */
 export const readObjectFile = (filePath: string): Record<string, unknown> | null => {
   try {
-    const parsed: unknown = parseJSON5(readFileSync(filePath, "utf-8"));
+    const parsed: unknown = parseJSON5(fs.readFileSync(filePath, "utf-8"));
     return isPlainObject(parsed) ? parsed : null;
   } catch {
     return null;

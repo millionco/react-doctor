@@ -1,6 +1,6 @@
-import fs from "node:fs";
+import * as fs from "node:fs";
 import os from "node:os";
-import path from "node:path";
+import * as path from "node:path";
 import { afterAll, afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { diagnose } from "../src/index.js";
 import { setupReactProject } from "./regressions/_helpers.js";

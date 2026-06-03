@@ -17,9 +17,9 @@
  */
 
 import { spawn } from "node:child_process";
-import fs from "node:fs";
+import * as fs from "node:fs";
 import os from "node:os";
-import path from "node:path";
+import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as Effect from "effect/Effect";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
@@ -371,13 +371,19 @@ describe("non-verbose overflow summary line", () => {
     return (await renderInTerminal(bytes, { cols: 120 })).text;
   };
 
+  // The category breakdown above the CTA carries the +N stats now (totals
+  // per category, error/warning split). The CTA itself just answers "how do
+  // I see each one individually?", so these tests focus on (a) when it
+  // appears at all and (b) that it never echoes the redundant +N numbers
+  // back at the reader.
+
   it("omits the --verbose pointer when every finding is already shown", async () => {
     const text = await renderOverflowText([
       makeDiagnostic("rule-a", "error", 1),
       makeDiagnostic("rule-b", "error", 2),
     ]);
     expect(text).not.toContain("--verbose");
-    expect(text).not.toContain("for details");
+    expect(text).not.toContain("to list every error and warning");
   });
 
   it("points at --verbose when a shown error rule hides extra sites", async () => {
@@ -385,22 +391,19 @@ describe("non-verbose overflow summary line", () => {
       makeDiagnostic("rule-a", "error", 1),
       makeDiagnostic("rule-a", "error", 2),
     ]);
-    expect(text).toContain("Run npx react-doctor@latest --verbose for details");
-    expect(text).not.toContain("optional");
-    expect(text).not.toContain("more rules");
+    expect(text).toContain("Run npx react-doctor@latest --verbose to list every error and warning");
   });
 
-  it("counts optional warnings by individual diagnostics, not rule groups", async () => {
+  it("shows the CTA when warnings are hidden from the top-errors detail", async () => {
     const text = await renderOverflowText([
       makeDiagnostic("hoist", "warning", 1),
       makeDiagnostic("hoist", "warning", 2),
       makeDiagnostic("hoist", "warning", 3),
     ]);
-    expect(text).toContain("+3 optional warnings");
-    expect(text).toContain("--verbose");
+    expect(text).toContain("Run npx react-doctor@latest --verbose to list every error and warning");
   });
 
-  it("merges hidden error rules and optional warnings into one line", async () => {
+  it("never echoes the +N stats already shown in the category breakdown", async () => {
     const text = await renderOverflowText([
       makeDiagnostic("err-1", "error", 1),
       makeDiagnostic("err-2", "error", 2),
@@ -409,8 +412,9 @@ describe("non-verbose overflow summary line", () => {
       makeDiagnostic("warn-1", "warning", 5),
       makeDiagnostic("warn-1", "warning", 6),
     ]);
-    expect(text).toContain("+1 more rule");
-    expect(text).toContain("+2 optional warnings");
+    expect(text).toContain("Run npx react-doctor@latest --verbose to list every error and warning");
+    expect(text).not.toContain("more rule");
+    expect(text).not.toContain("optional warning");
   });
 });
 

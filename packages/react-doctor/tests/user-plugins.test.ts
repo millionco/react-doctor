@@ -1,14 +1,14 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import path from "node:path";
+import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 import { runOxlint } from "@react-doctor/core";
 import { buildTestProject, setupReactProject } from "./regressions/_helpers.js";
+import * as fs from "node:fs";
 
-const tempRoot = mkdtempSync(path.join(tmpdir(), "rd-user-plugins-"));
+const tempRoot = fs.mkdtempSync(path.join(tmpdir(), "rd-user-plugins-"));
 
 afterAll(() => {
-  rmSync(tempRoot, { recursive: true, force: true });
+  fs.rmSync(tempRoot, { recursive: true, force: true });
 });
 
 // User plugin source — mirrors the oxlint plugin contract documented
@@ -46,7 +46,7 @@ describe("user plugins (config.plugins)", () => {
         "lint/team-conventions.cjs": FORBIDDEN_WORD_PLUGIN,
       },
     });
-    writeFileSync(
+    fs.writeFileSync(
       path.join(projectDir, "doctor.config.json"),
       JSON.stringify({
         plugins: ["./lint/team-conventions.cjs"],
@@ -150,8 +150,8 @@ describe("user plugins (config.plugins)", () => {
         "src/App.tsx": `export const App = () => <div>FORBIDDEN content</div>;\n`,
       },
     });
-    mkdirSync(path.join(workspaceDir, "lint"), { recursive: true });
-    writeFileSync(path.join(workspaceDir, "lint/team-conventions.cjs"), FORBIDDEN_WORD_PLUGIN, {
+    fs.mkdirSync(path.join(workspaceDir, "lint"), { recursive: true });
+    fs.writeFileSync(path.join(workspaceDir, "lint/team-conventions.cjs"), FORBIDDEN_WORD_PLUGIN, {
       encoding: "utf-8",
     });
 

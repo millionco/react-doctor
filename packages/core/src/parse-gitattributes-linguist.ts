@@ -1,4 +1,4 @@
-import fs from "node:fs";
+import * as fs from "node:fs";
 
 // HACK: `.gitattributes` lines look like `path/spec attr1 attr2=value`.
 // GitHub's linguist library reads `linguist-vendored` and

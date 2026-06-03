@@ -1,4 +1,4 @@
-import path from "node:path";
+import * as path from "node:path";
 import type { WorkspacePackage } from "../types/index.js";
 import { isFile } from "./utils/is-file.js";
 import { getWorkspacePatterns } from "./get-workspace-patterns.js";

@@ -1,4 +1,4 @@
-import path from "node:path";
+import * as path from "node:path";
 import { filterSourceFiles } from "@react-doctor/core";
 import type { DiffInfo } from "@react-doctor/core";
 import { toForwardSlashes } from "./path-format.js";

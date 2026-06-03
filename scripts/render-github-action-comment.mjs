@@ -1,4 +1,4 @@
-import fs from "node:fs";
+import * as fs from "node:fs";
 
 const MARKER = "<!-- react-doctor:summary -->";
 const BRAND_IMAGE_URL =

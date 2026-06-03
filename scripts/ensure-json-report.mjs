@@ -1,4 +1,4 @@
-import fs from "node:fs";
+import * as fs from "node:fs";
 
 const reportPath = process.argv[2];
 const status = Number(process.argv[3] ?? "1");

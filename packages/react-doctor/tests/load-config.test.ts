@@ -1,6 +1,6 @@
-import fs from "node:fs";
+import * as fs from "node:fs";
 import os from "node:os";
-import path from "node:path";
+import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { clearConfigCache, loadConfigWithSource } from "@react-doctor/core";
 import type { ReactDoctorConfig } from "@react-doctor/core";

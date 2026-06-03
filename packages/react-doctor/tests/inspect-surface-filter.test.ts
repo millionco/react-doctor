@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { inspect } from "../src/inspect.js";
-import path from "node:path";
+import * as path from "node:path";
 import { gunzipSync } from "node:zlib";
 import reactDoctorPlugin from "oxlint-plugin-react-doctor";
 

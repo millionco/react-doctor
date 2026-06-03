@@ -1,4 +1,4 @@
-import fs from "node:fs";
+import * as fs from "node:fs";
 
 // Discovery crawls an unknown tree best-effort: a directory we can't enumerate
 // is skipped, never a crash. These are the "can't read this path" codes —

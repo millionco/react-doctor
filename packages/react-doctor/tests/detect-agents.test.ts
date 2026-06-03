@@ -1,13 +1,13 @@
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import path from "node:path";
+import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { detectAvailableAgents } from "../src/cli/utils/detect-agents.js";
+import * as fs from "node:fs";
 
 const writeExecutable = (binDir: string, binaryName: string): void => {
   const binaryPath = path.join(binDir, binaryName);
-  writeFileSync(binaryPath, "#!/bin/sh\nexit 0\n");
-  chmodSync(binaryPath, 0o755);
+  fs.writeFileSync(binaryPath, "#!/bin/sh\nexit 0\n");
+  fs.chmodSync(binaryPath, 0o755);
 };
 
 // HACK: detectAvailableAgents unions our PATH detection with
@@ -24,14 +24,14 @@ describe.skipIf(process.platform === "win32")("detectAvailableAgents (PATH detec
   let originalPath: string | undefined;
 
   beforeEach(() => {
-    fakeBinDirectory = mkdtempSync(path.join(tmpdir(), "react-doctor-detect-"));
+    fakeBinDirectory = fs.mkdtempSync(path.join(tmpdir(), "react-doctor-detect-"));
     originalPath = process.env.PATH;
     process.env.PATH = fakeBinDirectory;
   });
 
   afterEach(() => {
     process.env.PATH = originalPath;
-    rmSync(fakeBinDirectory, { recursive: true, force: true });
+    fs.rmSync(fakeBinDirectory, { recursive: true, force: true });
   });
 
   it("returns at least the PATH-detected agents (claude binary present)", async () => {
@@ -68,8 +68,8 @@ describe.skipIf(process.platform === "win32")("detectAvailableAgents (PATH detec
 
   it("ignores non-executable files with matching names (PATH detection only)", async () => {
     const nonExecutablePath = path.join(fakeBinDirectory, "claude");
-    writeFileSync(nonExecutablePath, "not executable");
-    chmodSync(nonExecutablePath, 0o644);
+    fs.writeFileSync(nonExecutablePath, "not executable");
+    fs.chmodSync(nonExecutablePath, 0o644);
     // HACK: agent-install's FS detection might still return claude-code
     // if the host running the tests has ~/.claude. Just assert that PATH
     // detection alone didn't add it.
@@ -85,7 +85,7 @@ describe.skipIf(process.platform === "win32")("detectAvailableAgents (PATH detec
   });
 
   it("ignores directories with matching binary names (PATH detection only)", async () => {
-    mkdirSync(path.join(fakeBinDirectory, "claude"));
+    fs.mkdirSync(path.join(fakeBinDirectory, "claude"));
     const result = await detectAvailableAgents();
     if (result.includes("claude-code")) return;
     expect(result).not.toContain("claude-code");

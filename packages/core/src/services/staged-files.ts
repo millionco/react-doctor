@@ -1,8 +1,8 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import fs from "node:fs";
-import path from "node:path";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { GIT_SHOW_MAX_BUFFER_BYTES, STAGED_FILES_PROJECT_CONFIG_FILENAMES } from "../constants.js";
 import { isLintableSourceFile } from "../utils/is-lintable-source-file.js";
 import { ReactDoctorError } from "../errors.js";

@@ -9,8 +9,8 @@
 // Output is committed to git so consumers don't need to run codegen.
 // `pnpm gen` re-runs whenever a rule is added / removed / renamed.
 
-import fs from "node:fs";
-import path from "node:path";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SCRIPT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));

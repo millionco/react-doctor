@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import path from "node:path";
+import * as path from "node:path";
+import * as fs from "node:fs";
 
 export interface InstallGitHubWorkflowResult {
   readonly status: "created" | "exists" | "failed";
@@ -38,17 +38,20 @@ const buildWorkflowContent = (): string =>
 export const getReactDoctorWorkflowPath = (projectRoot: string): string =>
   path.join(projectRoot, ".github", "workflows", "react-doctor.yml");
 
+export const isReactDoctorWorkflowInstalled = (projectRoot: string): boolean =>
+  fs.existsSync(getReactDoctorWorkflowPath(projectRoot));
+
 // Writes `.github/workflows/react-doctor.yml`, creating the workflows
 // directory if needed. Returns "exists" without overwriting a workflow that's
 // already there, and "failed" (rather than throwing) so callers can degrade to
 // printing manual setup instructions.
 export const installReactDoctorWorkflow = (projectRoot: string): InstallGitHubWorkflowResult => {
   const workflowPath = getReactDoctorWorkflowPath(projectRoot);
-  if (existsSync(workflowPath)) return { status: "exists", workflowPath };
+  if (fs.existsSync(workflowPath)) return { status: "exists", workflowPath };
 
   try {
-    mkdirSync(path.dirname(workflowPath), { recursive: true });
-    writeFileSync(workflowPath, buildWorkflowContent());
+    fs.mkdirSync(path.dirname(workflowPath), { recursive: true });
+    fs.writeFileSync(workflowPath, buildWorkflowContent());
     return { status: "created", workflowPath };
   } catch {
     return { status: "failed", workflowPath };

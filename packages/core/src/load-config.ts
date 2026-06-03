@@ -1,7 +1,7 @@
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
-import fs from "node:fs";
-import path from "node:path";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { parseJSON5 } from "confbox";
 import { createJiti } from "jiti";
 import type { ReactDoctorConfig } from "./types/index.js";

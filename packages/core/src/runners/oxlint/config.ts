@@ -1,4 +1,4 @@
-import fs from "node:fs";
+import * as fs from "node:fs";
 import reactDoctorPlugin, {
   REACT_COMPILER_RULES,
   REACT_DOCTOR_RULES,

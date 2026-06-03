@@ -1,12 +1,12 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { builtinModules } from "node:module";
-import { dirname, extname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
-const SCRIPT_DIRECTORY = dirname(fileURLToPath(import.meta.url));
-const REPOSITORY_ROOT = resolve(SCRIPT_DIRECTORY, "..");
-const PACKAGES_DIRECTORY = resolve(REPOSITORY_ROOT, "packages");
+const SCRIPT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
+const REPOSITORY_ROOT = path.resolve(SCRIPT_DIRECTORY, "..");
+const PACKAGES_DIRECTORY = path.resolve(REPOSITORY_ROOT, "packages");
 const PUBLISHED_ARTIFACT_DIRECTORIES: readonly string[] = ["dist", "bin"];
 const JAVASCRIPT_EXTENSIONS: ReadonlySet<string> = new Set([".js", ".mjs", ".cjs"]);
 const NODE_BUILTIN_MODULES: ReadonlySet<string> = new Set([
@@ -35,7 +35,7 @@ interface PackageAuditResult {
 }
 
 const readManifest = (packageDirectory: string): PackageManifest =>
-  JSON.parse(readFileSync(join(packageDirectory, "package.json"), "utf8"));
+  JSON.parse(fs.readFileSync(path.join(packageDirectory, "package.json"), "utf8"));
 
 const toPackageName = (moduleSpecifier: string): string => {
   const segments = moduleSpecifier.split("/");
@@ -46,13 +46,13 @@ const isBareSpecifier = (moduleSpecifier: string): boolean =>
   Boolean(moduleSpecifier) && !moduleSpecifier.startsWith(".") && !moduleSpecifier.startsWith("/");
 
 const collectJavaScriptFiles = (directory: string): string[] => {
-  if (!existsSync(directory)) return [];
+  if (!fs.existsSync(directory)) return [];
   const javaScriptFiles: string[] = [];
-  for (const entry of readdirSync(directory, { withFileTypes: true })) {
-    const entryPath = join(directory, entry.name);
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const entryPath = path.join(directory, entry.name);
     if (entry.isDirectory()) {
       javaScriptFiles.push(...collectJavaScriptFiles(entryPath));
-    } else if (entry.isFile() && JAVASCRIPT_EXTENSIONS.has(extname(entry.name))) {
+    } else if (entry.isFile() && JAVASCRIPT_EXTENSIONS.has(path.extname(entry.name))) {
       javaScriptFiles.push(entryPath);
     }
   }
@@ -102,20 +102,20 @@ const auditPublishedPackage = (packageDirectory: string): PackageAuditResult => 
   ]);
 
   const artifactFiles = PUBLISHED_ARTIFACT_DIRECTORIES.flatMap((artifactDirectory) =>
-    collectJavaScriptFiles(join(packageDirectory, artifactDirectory)),
+    collectJavaScriptFiles(path.join(packageDirectory, artifactDirectory)),
   );
 
   const importingFilesByPackage = new Map<string, Set<string>>();
   for (const artifactFile of artifactFiles) {
     for (const moduleSpecifier of collectModuleSpecifiers(
-      readFileSync(artifactFile, "utf8"),
+      fs.readFileSync(artifactFile, "utf8"),
       artifactFile,
     )) {
       if (!isBareSpecifier(moduleSpecifier) || NODE_BUILTIN_MODULES.has(moduleSpecifier)) continue;
       const importedPackage = toPackageName(moduleSpecifier);
       if (NODE_BUILTIN_MODULES.has(importedPackage) || importedPackage === manifest.name) continue;
       const importingFiles = importingFilesByPackage.get(importedPackage) ?? new Set<string>();
-      importingFiles.add(relative(REPOSITORY_ROOT, artifactFile));
+      importingFiles.add(path.relative(REPOSITORY_ROOT, artifactFile));
       importingFilesByPackage.set(importedPackage, importingFiles);
     }
   }
@@ -136,10 +136,10 @@ const auditPublishedPackage = (packageDirectory: string): PackageAuditResult => 
   };
 };
 
-const publishedPackageDirectories = readdirSync(PACKAGES_DIRECTORY, { withFileTypes: true })
+const publishedPackageDirectories = fs.readdirSync(PACKAGES_DIRECTORY, { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
-  .map((entry) => join(PACKAGES_DIRECTORY, entry.name))
-  .filter((packageDirectory) => existsSync(join(packageDirectory, "package.json")))
+  .map((entry) => path.join(PACKAGES_DIRECTORY, entry.name))
+  .filter((packageDirectory) => fs.existsSync(path.join(packageDirectory, "package.json")))
   .filter((packageDirectory) => readManifest(packageDirectory).private !== true)
   .sort();
 

@@ -1,4 +1,4 @@
-import path from "node:path";
+import * as path from "node:path";
 import { isDirectory } from "../../../project-info/utils/is-directory.js";
 import { isFile } from "../../../project-info/utils/is-file.js";
 import { readDirectoryEntries } from "../../../project-info/utils/read-directory-entries.js";

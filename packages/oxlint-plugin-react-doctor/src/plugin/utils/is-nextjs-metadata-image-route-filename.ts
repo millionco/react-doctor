@@ -1,4 +1,4 @@
-import path from "node:path";
+import * as path from "node:path";
 
 // Next.js App Router metadata image route conventions. These files look
 // like React components but their default export returns an

@@ -1,9 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import path from "node:path";
+import * as path from "node:path";
 import type { Answers, PromptObject } from "prompts";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import * as fs from "node:fs";
 import {
   CODING_AGENT_ENVIRONMENT_VALUE_VARIABLES,
   CODING_AGENT_ENVIRONMENT_VARIABLES,
@@ -21,31 +21,31 @@ interface InstallReactDoctorFixture {
 }
 
 const setupFixture = (): InstallReactDoctorFixture => {
-  const root = mkdtempSync(path.join(tmpdir(), "react-doctor-install-"));
+  const root = fs.mkdtempSync(path.join(tmpdir(), "react-doctor-install-"));
   const projectRoot = path.join(root, "project");
   const sourceDir = path.join(root, "source");
-  mkdirSync(projectRoot, { recursive: true });
-  mkdirSync(sourceDir, { recursive: true });
+  fs.mkdirSync(projectRoot, { recursive: true });
+  fs.mkdirSync(sourceDir, { recursive: true });
   return {
     projectRoot,
     sourceDir,
-    cleanup: () => rmSync(root, { recursive: true, force: true }),
+    cleanup: () => fs.rmSync(root, { recursive: true, force: true }),
   };
 };
 
 const writeValidSkill = (sourceDir: string): void => {
-  writeFileSync(
+  fs.writeFileSync(
     path.join(sourceDir, "SKILL.md"),
     "---\nname: react-doctor\ndescription: Test skill for install fixtures\n---\n# react-doctor\n",
   );
 };
 
 const writePackageJson = (projectRoot: string, value: Record<string, unknown>): void => {
-  writeFileSync(path.join(projectRoot, "package.json"), `${JSON.stringify(value, null, 2)}\n`);
+  fs.writeFileSync(path.join(projectRoot, "package.json"), `${JSON.stringify(value, null, 2)}\n`);
 };
 
 const readFixturePackageJson = (projectRoot: string): Record<string, unknown> =>
-  JSON.parse(readFileSync(path.join(projectRoot, "package.json"), "utf8"));
+  JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf8"));
 
 let dependencyInstallCalls: InstallReactDoctorDependencyRunnerInput[] = [];
 
@@ -192,7 +192,7 @@ describe("runInstallReactDoctor", () => {
       detectedAgents: [],
     });
     expect(process.exitCode).toBe(1);
-    expect(existsSync(path.join(fixture.projectRoot, ".agents"))).toBe(false);
+    expect(fs.existsSync(path.join(fixture.projectRoot, ".agents"))).toBe(false);
     expect(readFixturePackageJson(fixture.projectRoot).scripts).toEqual({});
     expect(readFixturePackageJson(fixture.projectRoot)).not.toHaveProperty("devDependencies");
     expect(dependencyInstallCalls).toEqual([]);
@@ -203,7 +203,7 @@ describe("runInstallReactDoctor", () => {
     // SKILL.md without `name:` / `description:` frontmatter. Before the
     // fix, our wrapper only checked `failed.length > 0` and reported
     // success even though zero files were written.
-    writeFileSync(
+    fs.writeFileSync(
       path.join(fixture.sourceDir, "SKILL.md"),
       "# Just a heading, no frontmatter\nNothing here.\n",
     );
@@ -218,7 +218,7 @@ describe("runInstallReactDoctor", () => {
   });
 
   it("throws when frontmatter is missing the required `description` field (H1 regression guard)", async () => {
-    writeFileSync(
+    fs.writeFileSync(
       path.join(fixture.sourceDir, "SKILL.md"),
       "---\nname: react-doctor\n---\n# react-doctor\n",
     );
@@ -243,10 +243,10 @@ describe("runInstallReactDoctor", () => {
       projectRoot: fixture.projectRoot,
       detectedAgents: ["cursor", "claude-code"],
     });
-    expect(existsSync(path.join(fixture.projectRoot, ".agents"))).toBe(false);
-    expect(existsSync(path.join(fixture.projectRoot, ".claude"))).toBe(false);
-    expect(existsSync(path.join(fixture.projectRoot, ".cursor"))).toBe(false);
-    expect(existsSync(path.join(fixture.projectRoot, ".factory"))).toBe(false);
+    expect(fs.existsSync(path.join(fixture.projectRoot, ".agents"))).toBe(false);
+    expect(fs.existsSync(path.join(fixture.projectRoot, ".claude"))).toBe(false);
+    expect(fs.existsSync(path.join(fixture.projectRoot, ".cursor"))).toBe(false);
+    expect(fs.existsSync(path.join(fixture.projectRoot, ".factory"))).toBe(false);
     expect(readFixturePackageJson(fixture.projectRoot).scripts).toEqual({});
   });
 
@@ -362,9 +362,9 @@ describe("runInstallReactDoctor", () => {
       packageManager: "pnpm@10.29.1",
       workspaces: ["apps/*"],
     });
-    writeFileSync(path.join(fixture.projectRoot, "pnpm-workspace.yaml"), "packages:\n  - apps/*\n");
+    fs.writeFileSync(path.join(fixture.projectRoot, "pnpm-workspace.yaml"), "packages:\n  - apps/*\n");
     const appDirectory = path.join(fixture.projectRoot, "apps", "web");
-    mkdirSync(appDirectory, { recursive: true });
+    fs.mkdirSync(appDirectory, { recursive: true });
     writePackageJson(appDirectory, {
       scripts: {},
     });
@@ -387,7 +387,7 @@ describe("runInstallReactDoctor", () => {
   });
 
   it("does not mutate package setup when skill parsing fails", async () => {
-    writeFileSync(path.join(fixture.sourceDir, "SKILL.md"), "# Invalid skill\n");
+    fs.writeFileSync(path.join(fixture.sourceDir, "SKILL.md"), "# Invalid skill\n");
     writePackageJson(fixture.projectRoot, { scripts: {} });
 
     await expect(
@@ -408,7 +408,7 @@ describe("runInstallReactDoctor", () => {
     writeValidSkill(fixture.sourceDir);
     writePackageJson(fixture.projectRoot, { scripts: {} });
     const nestedDirectory = path.join(fixture.projectRoot, "src", "components");
-    mkdirSync(nestedDirectory, { recursive: true });
+    fs.mkdirSync(nestedDirectory, { recursive: true });
 
     await runInstallReactDoctorForTest({
       yes: true,
@@ -421,10 +421,10 @@ describe("runInstallReactDoctor", () => {
     expect(readFixturePackageJson(fixture.projectRoot).scripts).toEqual({
       doctor: "npx react-doctor@latest",
     });
-    expect(existsSync(path.join(fixture.projectRoot, ".agents/skills/react-doctor/SKILL.md"))).toBe(
+    expect(fs.existsSync(path.join(fixture.projectRoot, ".agents/skills/react-doctor/SKILL.md"))).toBe(
       true,
     );
-    expect(existsSync(path.join(nestedDirectory, ".agents"))).toBe(false);
+    expect(fs.existsSync(path.join(nestedDirectory, ".agents"))).toBe(false);
   });
 
   it("does not overwrite an existing doctor package script", async () => {
@@ -503,7 +503,7 @@ describe("runInstallReactDoctor", () => {
 
   it("does not crash setup when package.json is invalid", async () => {
     writeValidSkill(fixture.sourceDir);
-    writeFileSync(path.join(fixture.projectRoot, "package.json"), "{ invalid json");
+    fs.writeFileSync(path.join(fixture.projectRoot, "package.json"), "{ invalid json");
 
     await runInstallReactDoctorForTest({
       yes: true,
@@ -513,10 +513,10 @@ describe("runInstallReactDoctor", () => {
       gitHookPath: null,
     });
 
-    expect(existsSync(path.join(fixture.projectRoot, ".agents/skills/react-doctor/SKILL.md"))).toBe(
+    expect(fs.existsSync(path.join(fixture.projectRoot, ".agents/skills/react-doctor/SKILL.md"))).toBe(
       true,
     );
-    expect(readFileSync(path.join(fixture.projectRoot, "package.json"), "utf8")).toBe(
+    expect(fs.readFileSync(path.join(fixture.projectRoot, "package.json"), "utf8")).toBe(
       "{ invalid json",
     );
   });
@@ -529,7 +529,7 @@ describe("runInstallReactDoctor", () => {
       projectRoot: fixture.projectRoot,
       detectedAgents: ["cursor"],
     });
-    expect(existsSync(path.join(fixture.projectRoot, ".agents/skills/react-doctor/SKILL.md"))).toBe(
+    expect(fs.existsSync(path.join(fixture.projectRoot, ".agents/skills/react-doctor/SKILL.md"))).toBe(
       true,
     );
   });
@@ -542,7 +542,7 @@ describe("runInstallReactDoctor", () => {
       projectRoot: fixture.projectRoot,
       detectedAgents: ["claude-code"],
     });
-    expect(existsSync(path.join(fixture.projectRoot, ".claude/skills/react-doctor/SKILL.md"))).toBe(
+    expect(fs.existsSync(path.join(fixture.projectRoot, ".claude/skills/react-doctor/SKILL.md"))).toBe(
       true,
     );
   });
@@ -556,7 +556,7 @@ describe("runInstallReactDoctor", () => {
       detectedAgents: ["droid"],
     });
     expect(
-      existsSync(path.join(fixture.projectRoot, ".factory/skills/react-doctor/SKILL.md")),
+      fs.existsSync(path.join(fixture.projectRoot, ".factory/skills/react-doctor/SKILL.md")),
     ).toBe(true);
   });
 
@@ -572,11 +572,11 @@ describe("runInstallReactDoctor", () => {
       gitHookPath: hookPath,
     });
 
-    expect(existsSync(path.join(fixture.projectRoot, ".agents/skills/react-doctor/SKILL.md"))).toBe(
+    expect(fs.existsSync(path.join(fixture.projectRoot, ".agents/skills/react-doctor/SKILL.md"))).toBe(
       true,
     );
-    expect(readFileSync(hookPath, "utf8")).toContain("react-doctor --staged --fail-on warning");
-    expect(existsSync(path.join(fixture.projectRoot, ".react-doctor/hooks/pre-commit"))).toBe(
+    expect(fs.readFileSync(hookPath, "utf8")).toContain("react-doctor --staged --fail-on warning");
+    expect(fs.existsSync(path.join(fixture.projectRoot, ".react-doctor/hooks/pre-commit"))).toBe(
       false,
     );
   });
@@ -593,19 +593,19 @@ describe("runInstallReactDoctor", () => {
       gitHookPath: null,
     });
 
-    expect(existsSync(path.join(fixture.projectRoot, ".agents/skills/react-doctor/SKILL.md"))).toBe(
+    expect(fs.existsSync(path.join(fixture.projectRoot, ".agents/skills/react-doctor/SKILL.md"))).toBe(
       true,
     );
-    expect(existsSync(path.join(fixture.projectRoot, ".claude/skills/react-doctor/SKILL.md"))).toBe(
+    expect(fs.existsSync(path.join(fixture.projectRoot, ".claude/skills/react-doctor/SKILL.md"))).toBe(
       true,
     );
-    expect(readFileSync(path.join(fixture.projectRoot, ".claude/settings.json"), "utf8")).toContain(
+    expect(fs.readFileSync(path.join(fixture.projectRoot, ".claude/settings.json"), "utf8")).toContain(
       "PostToolBatch",
     );
-    expect(readFileSync(path.join(fixture.projectRoot, ".cursor/hooks.json"), "utf8")).toContain(
+    expect(fs.readFileSync(path.join(fixture.projectRoot, ".cursor/hooks.json"), "utf8")).toContain(
       "postToolUse",
     );
-    expect(existsSync(path.join(fixture.projectRoot, ".codex/hooks.json"))).toBe(false);
+    expect(fs.existsSync(path.join(fixture.projectRoot, ".codex/hooks.json"))).toBe(false);
   });
 
   it("prompts once for optional setup and installs only selected options", async () => {
@@ -641,9 +641,9 @@ describe("runInstallReactDoctor", () => {
         ]),
       }),
     );
-    expect(existsSync(hookPath)).toBe(false);
-    expect(existsSync(path.join(fixture.projectRoot, ".cursor/hooks.json"))).toBe(false);
-    const workflowContent = readFileSync(workflowPath, "utf8");
+    expect(fs.existsSync(hookPath)).toBe(false);
+    expect(fs.existsSync(path.join(fixture.projectRoot, ".cursor/hooks.json"))).toBe(false);
+    const workflowContent = fs.readFileSync(workflowPath, "utf8");
     expect(workflowContent).toContain("name: React Doctor");
     expect(workflowContent).toContain("pull-requests: write");
     expect(workflowContent).toContain("issues: write");
@@ -666,9 +666,9 @@ describe("runInstallReactDoctor", () => {
       setupOptions: ["skip"],
     });
 
-    expect(existsSync(hookPath)).toBe(false);
-    expect(existsSync(path.join(fixture.projectRoot, ".cursor/hooks.json"))).toBe(false);
-    expect(existsSync(workflowPath)).toBe(false);
+    expect(fs.existsSync(hookPath)).toBe(false);
+    expect(fs.existsSync(path.join(fixture.projectRoot, ".cursor/hooks.json"))).toBe(false);
+    expect(fs.existsSync(workflowPath)).toBe(false);
   });
 
   it("honors selected setup actions when skip is selected with another option", async () => {
@@ -684,9 +684,9 @@ describe("runInstallReactDoctor", () => {
       setupOptions: ["skip", "workflow"],
     });
 
-    expect(existsSync(hookPath)).toBe(false);
-    expect(existsSync(path.join(fixture.projectRoot, ".cursor/hooks.json"))).toBe(false);
-    expect(readFileSync(workflowPath, "utf8")).toContain("millionco/react-doctor@v1");
+    expect(fs.existsSync(hookPath)).toBe(false);
+    expect(fs.existsSync(path.join(fixture.projectRoot, ".cursor/hooks.json"))).toBe(false);
+    expect(fs.readFileSync(workflowPath, "utf8")).toContain("millionco/react-doctor@v1");
   });
 
   it("--yes does not install native agent hooks unless --agent-hooks is set", async () => {
@@ -700,14 +700,14 @@ describe("runInstallReactDoctor", () => {
       gitHookPath: null,
     });
 
-    expect(existsSync(path.join(fixture.projectRoot, ".agents/skills/react-doctor/SKILL.md"))).toBe(
+    expect(fs.existsSync(path.join(fixture.projectRoot, ".agents/skills/react-doctor/SKILL.md"))).toBe(
       true,
     );
-    expect(existsSync(path.join(fixture.projectRoot, ".claude/skills/react-doctor/SKILL.md"))).toBe(
+    expect(fs.existsSync(path.join(fixture.projectRoot, ".claude/skills/react-doctor/SKILL.md"))).toBe(
       true,
     );
-    expect(existsSync(path.join(fixture.projectRoot, ".cursor/hooks.json"))).toBe(false);
-    expect(existsSync(path.join(fixture.projectRoot, ".claude/settings.json"))).toBe(false);
+    expect(fs.existsSync(path.join(fixture.projectRoot, ".cursor/hooks.json"))).toBe(false);
+    expect(fs.existsSync(path.join(fixture.projectRoot, ".claude/settings.json"))).toBe(false);
   });
 
   it("--yes installs Git and agent hooks in CI using real git detection", async () => {
@@ -723,16 +723,16 @@ describe("runInstallReactDoctor", () => {
       detectedAgents: ["cursor", "claude-code"],
     });
 
-    expect(readFileSync(path.join(fixture.projectRoot, ".git/hooks/pre-commit"), "utf8")).toContain(
+    expect(fs.readFileSync(path.join(fixture.projectRoot, ".git/hooks/pre-commit"), "utf8")).toContain(
       "react-doctor --staged --fail-on warning",
     );
-    expect(existsSync(path.join(fixture.projectRoot, ".react-doctor/hooks/pre-commit"))).toBe(
+    expect(fs.existsSync(path.join(fixture.projectRoot, ".react-doctor/hooks/pre-commit"))).toBe(
       false,
     );
-    expect(readFileSync(path.join(fixture.projectRoot, ".cursor/hooks.json"), "utf8")).toContain(
+    expect(fs.readFileSync(path.join(fixture.projectRoot, ".cursor/hooks.json"), "utf8")).toContain(
       "postToolUse",
     );
-    expect(readFileSync(path.join(fixture.projectRoot, ".claude/settings.json"), "utf8")).toContain(
+    expect(fs.readFileSync(path.join(fixture.projectRoot, ".claude/settings.json"), "utf8")).toContain(
       "PostToolBatch",
     );
   });
@@ -749,14 +749,14 @@ describe("runInstallReactDoctor", () => {
       detectedAgents: ["cursor"],
     });
 
-    expect(existsSync(path.join(fixture.projectRoot, ".agents/skills/react-doctor/SKILL.md"))).toBe(
+    expect(fs.existsSync(path.join(fixture.projectRoot, ".agents/skills/react-doctor/SKILL.md"))).toBe(
       true,
     );
-    expect(readFileSync(path.join(fixture.projectRoot, ".cursor/hooks.json"), "utf8")).toContain(
+    expect(fs.readFileSync(path.join(fixture.projectRoot, ".cursor/hooks.json"), "utf8")).toContain(
       "postToolUse",
     );
-    expect(existsSync(path.join(fixture.projectRoot, ".git/hooks/pre-commit"))).toBe(false);
-    expect(existsSync(path.join(fixture.projectRoot, ".react-doctor/hooks/pre-commit"))).toBe(
+    expect(fs.existsSync(path.join(fixture.projectRoot, ".git/hooks/pre-commit"))).toBe(false);
+    expect(fs.existsSync(path.join(fixture.projectRoot, ".react-doctor/hooks/pre-commit"))).toBe(
       false,
     );
   });

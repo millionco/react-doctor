@@ -1,8 +1,8 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
 import os from "node:os";
-import path from "node:path";
+import * as path from "node:path";
 import { OXLINT_RECOMMENDED_NODE_MAJOR } from "./constants.js";
+import * as fs from "node:fs";
 
 interface NodeVersion {
   major: number;
@@ -34,10 +34,10 @@ const isCurrentNodeCompatibleWithOxlint = (): boolean =>
 
 const getNvmDirectory = (): string | null => {
   const envNvmDirectory = process.env.NVM_DIR;
-  if (envNvmDirectory && existsSync(envNvmDirectory)) return envNvmDirectory;
+  if (envNvmDirectory && fs.existsSync(envNvmDirectory)) return envNvmDirectory;
 
   const defaultNvmDirectory = path.join(os.homedir(), ".nvm");
-  if (existsSync(defaultNvmDirectory)) return defaultNvmDirectory;
+  if (fs.existsSync(defaultNvmDirectory)) return defaultNvmDirectory;
 
   return null;
 };
@@ -49,9 +49,9 @@ const findCompatibleNvmBinary = (): string | null => {
   if (!nvmDirectory) return null;
 
   const versionsDirectory = path.join(nvmDirectory, "versions", "node");
-  if (!existsSync(versionsDirectory)) return null;
+  if (!fs.existsSync(versionsDirectory)) return null;
 
-  const compatibleVersions = readdirSync(versionsDirectory)
+  const compatibleVersions = fs.readdirSync(versionsDirectory)
     .filter((directoryName) => directoryName.startsWith("v"))
     .map((directoryName) => ({ directoryName, ...parseNodeVersion(directoryName) }))
     .filter((version) => isNodeVersionCompatibleWithOxlint(version))
@@ -66,7 +66,7 @@ const findCompatibleNvmBinary = (): string | null => {
 
   const bestVersion = compatibleVersions[0];
   const binaryPath = path.join(versionsDirectory, bestVersion.directoryName, "bin", "node");
-  return existsSync(binaryPath) ? binaryPath : null;
+  return fs.existsSync(binaryPath) ? binaryPath : null;
 };
 
 const getNodeVersionFromBinary = (binaryPath: string): string | null => {
@@ -80,7 +80,7 @@ export const installNodeViaNvm = (): boolean => {
   if (!nvmDirectory) return false;
 
   const nvmScript = path.join(nvmDirectory, "nvm.sh");
-  if (!existsSync(nvmScript)) return false;
+  if (!fs.existsSync(nvmScript)) return false;
 
   const result = spawnSync("bash", ["-c", '. "$NVM_SCRIPT" && nvm install "$NODE_MAJOR"'], {
     stdio: "inherit",

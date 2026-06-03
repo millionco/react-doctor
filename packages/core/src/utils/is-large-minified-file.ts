@@ -1,4 +1,4 @@
-import fs from "node:fs";
+import * as fs from "node:fs";
 import { MINIFIED_MIN_SIZE_BYTES } from "../project-info/constants.js";
 import { isMinifiedSource } from "./is-minified-source.js";
 

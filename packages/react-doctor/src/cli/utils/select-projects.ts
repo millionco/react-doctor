@@ -1,4 +1,4 @@
-import path from "node:path";
+import * as path from "node:path";
 import type { WorkspacePackage } from "@react-doctor/core";
 import {
   discoverReactSubprojects,

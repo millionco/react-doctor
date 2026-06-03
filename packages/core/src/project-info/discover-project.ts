@@ -1,5 +1,5 @@
-import fs from "node:fs";
-import path from "node:path";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { PackageJsonNotFoundError } from "./errors.js";
 import type { ProjectInfo } from "../types/index.js";
 import { isFile } from "./utils/is-file.js";

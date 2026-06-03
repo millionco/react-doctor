@@ -13,9 +13,9 @@
  * pick up the outer component's prop names and produce false positives.
  */
 
-import fs from "node:fs";
+import * as fs from "node:fs";
 import os from "node:os";
-import path from "node:path";
+import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 
 import { collectRuleHits, setupReactProject } from "./_helpers.js";

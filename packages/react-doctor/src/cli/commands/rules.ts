@@ -1,4 +1,4 @@
-import path from "node:path";
+import * as path from "node:path";
 import { buildRuleDocsUrl, highlighter, validateConfigTypes } from "@react-doctor/core";
 import type { ReactDoctorConfig, RuleSeverityOverride } from "@react-doctor/core";
 import { cliLogger as logger } from "../utils/cli-logger.js";

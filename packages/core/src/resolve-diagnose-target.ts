@@ -1,4 +1,4 @@
-import path from "node:path";
+import * as path from "node:path";
 import { AmbiguousProjectError, discoverReactSubprojects, isFile } from "./project-info/index.js";
 
 export interface ResolveDiagnoseTargetOptions {

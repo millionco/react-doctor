@@ -1,16 +1,16 @@
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import sentryCliModule from "@sentry/cli";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 // `@sentry/cli` is CommonJS exposing a single named export; pull the class off
 // the interop namespace so this works as an ESM script.
 const { SentryCli } = sentryCliModule;
 
-const SCRIPT_DIRECTORY = dirname(fileURLToPath(import.meta.url));
-const REPOSITORY_ROOT = resolve(SCRIPT_DIRECTORY, "..");
-const PACKAGE_JSON_PATH = resolve(REPOSITORY_ROOT, "packages/react-doctor/package.json");
-const DIST_DIRECTORY = resolve(REPOSITORY_ROOT, "packages/react-doctor/dist");
+const SCRIPT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
+const REPOSITORY_ROOT = path.resolve(SCRIPT_DIRECTORY, "..");
+const PACKAGE_JSON_PATH = path.resolve(REPOSITORY_ROOT, "packages/react-doctor/package.json");
+const DIST_DIRECTORY = path.resolve(REPOSITORY_ROOT, "packages/react-doctor/dist");
 
 // Must match `resolveSentryRelease()` in the CLI's instrument.ts — the release
 // the running SDK reports has to equal the release we upload artifacts under
@@ -30,13 +30,13 @@ const main = async () => {
     return;
   }
 
-  if (!existsSync(DIST_DIRECTORY)) {
+  if (!fs.existsSync(DIST_DIRECTORY)) {
     log(`Built output missing at ${DIST_DIRECTORY}; nothing to upload. Run \`pnpm build\` first.`);
     return;
   }
 
   const version =
-    process.env.VERSION ?? JSON.parse(readFileSync(PACKAGE_JSON_PATH, "utf8")).version;
+    process.env.VERSION ?? JSON.parse(fs.readFileSync(PACKAGE_JSON_PATH, "utf8")).version;
   const release = `${RELEASE_PREFIX}@${version}`;
 
   const cli = new SentryCli(null);

@@ -1,7 +1,7 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import path from "node:path";
+import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import * as fs from "node:fs";
 import {
   findNearestPackageDirectory,
   hasDoctorScript,
@@ -14,19 +14,19 @@ interface InstallDoctorScriptFixture {
 }
 
 const setupFixture = (): InstallDoctorScriptFixture => {
-  const projectRoot = mkdtempSync(path.join(tmpdir(), "react-doctor-script-"));
+  const projectRoot = fs.mkdtempSync(path.join(tmpdir(), "react-doctor-script-"));
   return {
     projectRoot,
-    cleanup: () => rmSync(projectRoot, { recursive: true, force: true }),
+    cleanup: () => fs.rmSync(projectRoot, { recursive: true, force: true }),
   };
 };
 
 const writePackageJson = (projectRoot: string, value: Record<string, unknown>): void => {
-  writeFileSync(path.join(projectRoot, "package.json"), `${JSON.stringify(value, null, 2)}\n`);
+  fs.writeFileSync(path.join(projectRoot, "package.json"), `${JSON.stringify(value, null, 2)}\n`);
 };
 
 const readPackageJson = (projectRoot: string): Record<string, unknown> =>
-  JSON.parse(readFileSync(path.join(projectRoot, "package.json"), "utf8"));
+  JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf8"));
 
 describe("installDoctorScript", () => {
   let fixture: InstallDoctorScriptFixture;
@@ -50,12 +50,12 @@ describe("installDoctorScript", () => {
 
   it("skips malformed package.json and leaves it unchanged", () => {
     const packageJsonPath = path.join(fixture.projectRoot, "package.json");
-    writeFileSync(packageJsonPath, "{ invalid json");
+    fs.writeFileSync(packageJsonPath, "{ invalid json");
 
     const result = installDoctorScript({ projectRoot: fixture.projectRoot });
 
     expect(result.scriptStatus).toBe("skipped");
-    expect(readFileSync(packageJsonPath, "utf8")).toBe("{ invalid json");
+    expect(fs.readFileSync(packageJsonPath, "utf8")).toBe("{ invalid json");
   });
 
   it("creates doctor when scripts are missing", () => {
@@ -76,7 +76,7 @@ describe("installDoctorScript", () => {
   it("writes to the nearest ancestor package.json when called from a nested directory", () => {
     writePackageJson(fixture.projectRoot, { name: "app" });
     const nestedDirectory = path.join(fixture.projectRoot, "src", "components");
-    mkdirSync(nestedDirectory, { recursive: true });
+    fs.mkdirSync(nestedDirectory, { recursive: true });
 
     const result = installDoctorScript({ projectRoot: nestedDirectory });
 
@@ -90,7 +90,7 @@ describe("installDoctorScript", () => {
   it("stops nearest package lookup at the requested boundary when provided", () => {
     writePackageJson(fixture.projectRoot, { name: "parent" });
     const nestedDirectory = path.join(fixture.projectRoot, "nested");
-    mkdirSync(nestedDirectory, { recursive: true });
+    fs.mkdirSync(nestedDirectory, { recursive: true });
 
     expect(findNearestPackageDirectory(nestedDirectory, nestedDirectory)).toBeNull();
   });

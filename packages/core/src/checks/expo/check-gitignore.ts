@@ -1,4 +1,4 @@
-import path from "node:path";
+import * as path from "node:path";
 import { isDirectory } from "../../project-info/index.js";
 import type { Diagnostic } from "../../types/index.js";
 import type { ExpoCheckContext } from "./expo-check-context.js";

@@ -1,7 +1,7 @@
-import { writeFileSync } from "node:fs";
-import path from "node:path";
+import * as path from "node:path";
 import { generateCode, loadFile, writeFile } from "magicast";
 import { getConfigFromVariableDeclaration, getDefaultExportOptions } from "magicast/helpers";
+import * as fs from "node:fs";
 import {
   CONFIG_SCHEMA_URL,
   clearConfigCache,
@@ -103,7 +103,7 @@ const writeJsonConfig = (filePath: string, nextConfig: ReactDoctorConfig): void 
     null,
     JSON_INDENT_SPACES,
   );
-  writeFileSync(filePath, `${serialized}\n`);
+  fs.writeFileSync(filePath, `${serialized}\n`);
 };
 
 const writePackageJsonConfig = (filePath: string, nextConfig: ReactDoctorConfig): void => {
@@ -113,7 +113,7 @@ const writePackageJsonConfig = (filePath: string, nextConfig: ReactDoctorConfig)
     null,
     JSON_INDENT_SPACES,
   );
-  writeFileSync(filePath, `${serialized}\n`);
+  fs.writeFileSync(filePath, `${serialized}\n`);
 };
 
 type ConfigVariableDeclaration = ReturnType<typeof getConfigFromVariableDeclaration>;

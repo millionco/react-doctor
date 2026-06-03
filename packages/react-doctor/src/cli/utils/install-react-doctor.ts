@@ -1,8 +1,8 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { existsSync, readdirSync } from "node:fs";
-import path from "node:path";
+import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import * as fs from "node:fs";
 import {
   getSkillAgentConfig,
   installSkillsFromSource,
@@ -24,6 +24,7 @@ import { installReactDoctorAgentHooks } from "./install-agent-hooks.js";
 import {
   getReactDoctorWorkflowPath,
   installReactDoctorWorkflow,
+  isReactDoctorWorkflowInstalled,
 } from "./install-github-workflow.js";
 import { reportWorkflowResult } from "./report-workflow-result.js";
 import { isRecord, readPackageJson } from "./git-hook-shared.js";
@@ -87,7 +88,7 @@ const findNearestFileDirectory = (
 ): string | null => {
   let currentDirectory = path.resolve(startDirectory);
   while (true) {
-    if (fileNames.some((fileName) => existsSync(path.join(currentDirectory, fileName)))) {
+    if (fileNames.some((fileName) => fs.existsSync(path.join(currentDirectory, fileName)))) {
       return currentDirectory;
     }
     const parentDirectory = path.dirname(currentDirectory);
@@ -122,13 +123,13 @@ const detectPackageManager = (projectRoot: string): PackageManager => {
   );
   const matchedLockfile = PACKAGE_MANAGER_LOCKFILES.find(
     (lockfile) =>
-      lockfileDirectory !== null && existsSync(path.join(lockfileDirectory, lockfile.fileName)),
+      lockfileDirectory !== null && fs.existsSync(path.join(lockfileDirectory, lockfile.fileName)),
   );
   return matchedLockfile?.packageManager ?? "npm";
 };
 
 const packageManagerNeedsWorkspaceFlag = (projectRoot: string): boolean =>
-  existsSync(path.join(projectRoot, "pnpm-workspace.yaml")) ||
+  fs.existsSync(path.join(projectRoot, "pnpm-workspace.yaml")) ||
   findNearestFileDirectory(projectRoot, ["pnpm-workspace.yaml"]) !== null;
 
 const buildInstallCommand = (projectRoot: string): InstallReactDoctorDependencyRunnerInput => {
@@ -263,22 +264,33 @@ const formatDependencyInstallMessage = (result: InstallReactDoctorDependencyResu
     return "Skipped dev dependency install: devDependencies field is not an object.";
   }
   if (result.dependencyReason === "trust-policy-blocked") {
-    const installCommand =
-      result.installCommand ?? `npm install --save-dev ${DOCTOR_PACKAGE_NAME}@latest`;
-    return `Skipped local install: your package manager's supply-chain trust policy blocked a dependency (not a compromise — beta packages trip this). React Doctor still works via \`npx react-doctor\`. To add it locally: ${installCommand}`;
+    return "Local install skipped by your package manager's supply-chain trust policy (safe to ignore for pre-release packages).";
   }
   if (result.dependencyReason === "install-command-failed") {
-    const installCommand =
-      result.installCommand ?? `npm install --save-dev ${DOCTOR_PACKAGE_NAME}@latest`;
-    return `Skipped dev dependency install: package manager command failed. Run manually: ${installCommand}`;
+    return "Local install failed: your package manager rejected the command.";
   }
   return "Skipped dev dependency install: package.json missing or invalid.";
 };
 
-export const installReactDoctorPackageSetup = async (
-  projectRoot: string,
-  dependencyRunner?: (input: InstallReactDoctorDependencyRunnerInput) => void | Promise<void>,
-): Promise<InstallReactDoctorDependencyResult> => {
+const buildDependencyFollowUp = (
+  result: InstallReactDoctorDependencyResult,
+): string | undefined => {
+  if (
+    result.dependencyReason !== "trust-policy-blocked" &&
+    result.dependencyReason !== "install-command-failed"
+  ) {
+    return undefined;
+  }
+  const installCommand =
+    result.installCommand ?? `npm install --save-dev ${DOCTOR_PACKAGE_NAME}@latest`;
+  return `  React Doctor still works via \`npx react-doctor\`. To install locally: ${installCommand}`;
+};
+
+// Adds the `doctor` (or `react-doctor`) script to package.json so users can
+// run `pnpm doctor` / `npm run doctor`. The script invokes `npx react-doctor@latest`,
+// so no local dev-dep is required for it to work — that's why the "Add to CI"
+// path calls this step directly instead of the full package-setup function.
+export const installReactDoctorScriptStep = (projectRoot: string): void => {
   const scriptSpinner = spinner("Installing React Doctor package script...").start();
   try {
     const scriptResult = installDoctorScript({ projectRoot });
@@ -287,6 +299,13 @@ export const installReactDoctorPackageSetup = async (
     scriptSpinner.fail("Failed to install React Doctor package script.");
     throw error;
   }
+};
+
+export const installReactDoctorPackageSetup = async (
+  projectRoot: string,
+  dependencyRunner?: (input: InstallReactDoctorDependencyRunnerInput) => void | Promise<void>,
+): Promise<InstallReactDoctorDependencyResult> => {
+  installReactDoctorScriptStep(projectRoot);
 
   const dependencySpinner = spinner("Installing React Doctor package...").start();
   try {
@@ -302,7 +321,18 @@ export const installReactDoctorPackageSetup = async (
       packageManager: detectPackageManager(projectRoot),
     });
     if (dependencyResult.dependencyStatus === "skipped") {
-      dependencySpinner.fail(formatDependencyInstallMessage(dependencyResult));
+      // trust-policy-blocked is a soft skip: pnpm refused to add a pre-release
+      // dep, but `npx react-doctor` still works. Use spinner.warn (⚠) so it
+      // doesn't read like a crash; the dim follow-up tells the user how to
+      // install manually when they're ready.
+      const message = formatDependencyInstallMessage(dependencyResult);
+      if (dependencyResult.dependencyReason === "trust-policy-blocked") {
+        dependencySpinner.warn(message);
+      } else {
+        dependencySpinner.fail(message);
+      }
+      const followUp = buildDependencyFollowUp(dependencyResult);
+      if (followUp !== undefined) logger.dim(followUp);
       return dependencyResult;
     }
     dependencySpinner.succeed(formatDependencyInstallMessage(dependencyResult));
@@ -346,15 +376,15 @@ interface BundledSiblingSkill {
 // the real bundled layout produces siblings.
 const findBundledSiblingSkills = (primarySkillDir: string): BundledSiblingSkill[] => {
   const skillsParent = path.dirname(primarySkillDir);
-  if (!existsSync(skillsParent)) return [];
+  if (!fs.existsSync(skillsParent)) return [];
   const resolvedPrimary = path.resolve(primarySkillDir);
-  return readdirSync(skillsParent, { withFileTypes: true })
+  return fs.readdirSync(skillsParent, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => ({ name: entry.name, source: path.join(skillsParent, entry.name) }))
     .filter(
       (sibling) =>
         path.resolve(sibling.source) !== resolvedPrimary &&
-        existsSync(path.join(sibling.source, SKILL_MANIFEST_FILE)),
+        fs.existsSync(path.join(sibling.source, SKILL_MANIFEST_FILE)),
     );
 };
 
@@ -393,7 +423,7 @@ export const runInstallReactDoctor = async (
   const projectRoot = findNearestPackageDirectory(requestedProjectRoot) ?? requestedProjectRoot;
   const sourceDir = options.sourceDir ?? getSkillSourceDirectory();
 
-  if (!existsSync(path.join(sourceDir, SKILL_MANIFEST_FILE))) {
+  if (!fs.existsSync(path.join(sourceDir, SKILL_MANIFEST_FILE))) {
     logger.error(`Could not locate the ${SKILL_NAME} skill bundled with this package.`);
     process.exitCode = 1;
     return;
@@ -445,7 +475,7 @@ export const runInstallReactDoctor = async (
   if (selectedAgents.length === 0) return;
 
   const workflowTargetPath = getReactDoctorWorkflowPath(projectRoot);
-  const canInstallWorkflow = !existsSync(workflowTargetPath);
+  const canInstallWorkflow = !isReactDoctorWorkflowInstalled(projectRoot);
   const setupActionChoices = [
     ...(gitHookPath === null || gitHookPath === undefined
       ? []

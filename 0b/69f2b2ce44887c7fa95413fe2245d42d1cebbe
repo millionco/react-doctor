@@ -1,0 +1,47 @@
+packages/react-doctor/src/cli/utils/run-id.ts
+  s_79347d0c79f58d::t_e5ae7c8b5ed882 3-13,18,20-22
+packages/react-doctor/src/cli/utils/build-run-event.ts
+  s_79347d0c79f58d::t_a57d516899af03 41-46
+  s_79347d0c79f58d::t_1dd7b211510ecd 143-146
+packages/react-doctor/tests/build-sentry-scope.test.ts
+  s_79347d0c79f58d::t_423c6014be8714 9
+  s_79347d0c79f58d::t_086b7f7e2e27e5 70,74-75
+packages/react-doctor/src/cli/utils/build-run-context.ts
+  s_79347d0c79f58d::t_4565bbe01b4541 12,18-21
+  s_79347d0c79f58d::t_b12d8eb993f667 89
+packages/core/src/run-inspect.ts
+  s_79347d0c79f58d::t_ed7c77482874ba 68-69,72
+  s_79347d0c79f58d::t_00a088d3cebce0 471
+packages/react-doctor/src/cli/utils/build-sentry-scope.ts
+  s_79347d0c79f58d::t_102a371a46f836 42
+packages/react-doctor/src/inspect.ts
+  s_79347d0c79f58d::t_ad1509a748f973 60
+  s_79347d0c79f58d::t_2479b08806ba30 297
+  s_79347d0c79f58d::t_0a1bd8b1f7def6 214-216,218
+  s_79347d0c79f58d::t_b5ff10992cc629 448
+packages/core/src/calculate-score.ts
+  s_79347d0c79f58d::t_3e6b8d56d3f9a8 81
+  s_79347d0c79f58d::t_c52f0bd30a2ef3 53-55
+packages/react-doctor/tests/build-run-context.test.ts
+  s_79347d0c79f58d::t_27140c5767732b 67-70
+AGENTS.md
+  s_79347d0c79f58d::t_a8b3195167751f 308-309,314-318
+.changeset/ci-telemetry-wide-event.md
+  s_79347d0c79f58d::t_b3b33d337e008e 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "0b69f2b2ce44887c7fa95413fe2245d42d1cebbe",
+  "prompts": {},
+  "sessions": {
+    "s_79347d0c79f58d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "06762f9b-90bc-4ce1-b8e3-111243a234e9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

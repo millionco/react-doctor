@@ -163,6 +163,12 @@ const cleanupReturnRunsAfterUsage = (
   returnStatement: EsTreeNodeOfType<"ReturnStatement">,
   usages: ReadonlyArray<SubscribeLikeUsage>,
 ): boolean => {
+  if (
+    returnStatement.argument &&
+    isCleanupReturningSubscribeLikeCallExpression(returnStatement.argument)
+  ) {
+    return true;
+  }
   const returnStart = getRangeStart(returnStatement);
   if (returnStart === null) return true;
   return usages.some((usage) => {

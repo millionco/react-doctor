@@ -33,10 +33,9 @@ export const GITHUB_ACTION_MARKER_ENVIRONMENT_VARIABLE = "REACT_DOCTOR_GITHUB_AC
 // vars so the wide event can record how the action was configured. Exported so
 // tests can save/restore the full surface.
 export const ACTION_INPUT_ENVIRONMENT_VARIABLES = {
-  failOn: "REACT_DOCTOR_ACTION_FAIL_ON",
-  nonBlocking: "REACT_DOCTOR_ACTION_NON_BLOCKING",
+  blocking: "REACT_DOCTOR_ACTION_BLOCKING",
   comment: "REACT_DOCTOR_ACTION_COMMENT",
-  annotations: "REACT_DOCTOR_ACTION_ANNOTATIONS",
+  reviewComments: "REACT_DOCTOR_ACTION_REVIEW_COMMENTS",
   version: "REACT_DOCTOR_ACTION_VERSION",
 } as const;
 

@@ -83,7 +83,7 @@ export interface InspectOptions {
    * Per-call override for `ReactDoctorConfig.warnings`. When omitted,
    * `config.warnings` wins (defaulting to `true`), so `"warning"`-
    * severity diagnostics surface on every surface — CLI, PR comment,
-   * score, and the `--fail-on` gate — until explicitly hidden via
+   * score, and the `--blocking` gate — until explicitly hidden via
    * `--no-warnings` or `warnings: false`.
    */
   warnings?: boolean;

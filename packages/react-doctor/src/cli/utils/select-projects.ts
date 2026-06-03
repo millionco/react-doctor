@@ -40,11 +40,24 @@ export const selectProjects = async (
   return promptProjectSelection(packages, rootDirectory);
 };
 
+const ALL_PROJECTS_SENTINEL = "*";
+
 const resolveProjectFlag = (
   projectFlag: string,
   workspacePackages: WorkspacePackage[],
 ): string[] => {
-  const requestedNames = projectFlag.split(",").map((name) => name.trim());
+  const requestedNames = projectFlag
+    .split(",")
+    .map((name) => name.trim())
+    .filter((name) => name.length > 0);
+
+  // `*` (the GitHub Action's default) selects every discovered project,
+  // making "scan all workspace projects" explicit instead of relying on
+  // the empty-flag prompt-skip fallback.
+  if (requestedNames.includes(ALL_PROJECTS_SENTINEL)) {
+    return workspacePackages.map((workspacePackage) => workspacePackage.directory);
+  }
+
   const resolvedDirectories: string[] = [];
 
   for (const requestedName of requestedNames) {

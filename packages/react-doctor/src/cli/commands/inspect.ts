@@ -38,7 +38,6 @@ import {
 } from "../utils/json-mode.js";
 import { canAnimateOnboarding, isOnboardingForced } from "../utils/onboarding-pacing.js";
 import { hasCompletedOnboarding } from "../utils/onboarding-state.js";
-import { printAnnotations } from "../utils/print-annotations.js";
 import { printBrandedHeader } from "../utils/print-branded-header.js";
 import { playWelcomeScene } from "../utils/render-welcome.js";
 import { reportErrorToSentry } from "../utils/report-error.js";
@@ -53,12 +52,13 @@ import {
 import { resolveCliInspectOptions } from "../utils/resolve-cli-inspect-options.js";
 import { resolveDiffMode } from "../utils/resolve-diff-mode.js";
 import { resolveEffectiveDiff } from "../utils/resolve-effective-diff.js";
-import { resolveFailOnLevel } from "../utils/resolve-fail-on-level.js";
+import { resolveBlockingLevel } from "../utils/resolve-blocking-level.js";
 import { resolveProjectDiffIncludePaths } from "../utils/resolve-project-diff-include-paths.js";
 import { runExplain } from "../utils/run-explain.js";
 import { selectProjects } from "../utils/select-projects.js";
-import { shouldFailForDiagnostics } from "../utils/should-fail-for-diagnostics.js";
+import { shouldBlockCi } from "../utils/should-block-ci.js";
 import { shouldSkipPrompts } from "../utils/should-skip-prompts.js";
+import { warnDeprecatedFailOn } from "../utils/warn-deprecated-fail-on.js";
 import { validateModeFlags } from "../utils/validate-mode-flags.js";
 import { VERSION } from "../utils/version.js";
 
@@ -82,10 +82,10 @@ interface FinalizeScansInput {
 
 /**
  * Post-scan finalization shared by the staged-arm and project-loop
- * paths of `inspectAction`: emit the JSON report (when in JSON mode),
- * print PR annotations (when `--annotations`), and set
- * `process.exitCode = 1` when the configured fail-on threshold is
- * crossed. Both arms previously inlined the same four-step shape.
+ * paths of `inspectAction`: emit the JSON report (when in JSON mode)
+ * and set `process.exitCode = 1` when a diagnostic at or above the
+ * `--blocking` threshold (default `"error"`) reaches the `ciFailure`
+ * surface. `--blocking none` keeps the scan advisory (always exits 0).
  */
 const finalizeScans = (input: FinalizeScansInput): void => {
   if (input.isJsonMode) {
@@ -101,22 +101,14 @@ const finalizeScans = (input: FinalizeScansInput): void => {
     );
   }
 
-  if (input.flags.annotations) {
-    printAnnotations(input.diagnostics, input.isJsonMode);
-  }
+  if (input.isScoreOnly) return;
 
   const ciFailureDiagnostics = filterDiagnosticsForSurface(
     input.diagnostics,
     "ciFailure",
     input.userConfig,
   );
-  if (
-    !input.isScoreOnly &&
-    shouldFailForDiagnostics(
-      ciFailureDiagnostics,
-      resolveFailOnLevel(input.flags, input.userConfig),
-    )
-  ) {
+  if (shouldBlockCi(ciFailureDiagnostics, resolveBlockingLevel(input.flags, input.userConfig))) {
     process.exitCode = 1;
   }
 };
@@ -185,6 +177,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
     const userConfig = scanTarget.userConfig;
     const resolvedDirectory = scanTarget.resolvedDirectory;
     setJsonReportDirectory(resolvedDirectory);
+    warnDeprecatedFailOn(flags, userConfig);
     if (scanTarget.didRedirectViaRootDir && !isQuiet) {
       logger.dim(
         `Redirected to ${highlighter.info(toRelativePath(resolvedDirectory, requestedDirectory))} via react-doctor config "rootDir".`,

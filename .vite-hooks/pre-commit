@@ -24,22 +24,22 @@ fi
 # react-doctor hook start
 react_doctor_scan_staged_files() {
   if [ -x "./node_modules/.bin/react-doctor" ]; then
-    "./node_modules/.bin/react-doctor" --staged --fail-on warning
+    "./node_modules/.bin/react-doctor" --staged --blocking warning
     return
   fi
 
   if command -v react-doctor >/dev/null 2>&1; then
-    react-doctor --staged --fail-on warning
+    react-doctor --staged --blocking warning
     return
   fi
 
   if command -v pnpm >/dev/null 2>&1; then
-    pnpm dlx react-doctor@latest --staged --fail-on warning
+    pnpm dlx react-doctor@latest --staged --blocking warning
     return
   fi
 
   if command -v npx >/dev/null 2>&1; then
-    npx --yes react-doctor@latest --staged --fail-on warning
+    npx --yes react-doctor@latest --staged --blocking warning
     return
   fi
 
@@ -51,6 +51,6 @@ if react_doctor_scan_staged_files > "$react_doctor_output" 2>&1; then
   rm -f "$react_doctor_output"
 else
   rm -f "$react_doctor_output"
-  printf '%s\n' "React Doctor found staged regressions." "Run react-doctor --staged --fail-on warning to inspect." "Want them fixed? Ask your agent to run that command and resolve the findings." >&2
+  printf '%s\n' "React Doctor found staged regressions." "Run react-doctor --staged --blocking warning to inspect." "Want them fixed? Ask your agent to run that command and resolve the findings." >&2
 fi
 # react-doctor hook end

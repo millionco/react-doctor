@@ -1,4 +1,16 @@
-export type FailOnLevel = "error" | "warning" | "none";
+/**
+ * Severity threshold at which a scan blocks CI (exits non-zero). Controlled
+ * by `blocking` / `--blocking` (default `"error"`):
+ *
+ * - `"error"` — block when an `"error"`-severity diagnostic reaches the
+ *   `ciFailure` surface. The default.
+ * - `"warning"` — block on any diagnostic (warnings included).
+ * - `"none"` — never block; the scan is advisory (still reports + scores).
+ */
+export type BlockingLevel = "error" | "warning" | "none";
+
+/** @deprecated Renamed to `BlockingLevel`. */
+export type FailOnLevel = BlockingLevel;
 
 export interface ReactDoctorIgnoreOverride {
   /** Glob patterns the override applies to (e.g. `["src/legacy/**"]`). */
@@ -45,9 +57,11 @@ interface ReactDoctorIgnoreConfig {
  *   (sets `outputSurface: "prComment"`).
  * - `score` — diagnostics shipped to the React Doctor score API
  *   (or counted toward local score calculations).
- * - `ciFailure` — diagnostics that count toward the `--fail-on` exit
- *   code gate. A diagnostic excluded from this surface never fails the
- *   build, regardless of severity.
+ * - `ciFailure` — diagnostics that count toward the CI exit-code gate.
+ *   react-doctor blocks (exits non-zero) when a diagnostic at or above the
+ *   `blocking` threshold reaches this surface (default: `"error"`). A
+ *   diagnostic excluded from this surface never fails the build,
+ *   regardless of severity.
  *
  * Defaults: design rules (tag `"design"`) are excluded from `prComment`,
  * `score`, and `ciFailure` so style cleanup doesn't dilute meaningful
@@ -138,8 +152,9 @@ export interface ReactDoctorConfig {
   verbose?: boolean;
   /**
    * Whether to surface `"warning"`-severity diagnostics. Default: `true`
-   * — every warning reaches every surface (CLI, PR comment, score,
-   * `--fail-on`).
+   * — every warning reaches every surface (CLI, PR comment, score, the
+   * CI gate). Warnings only flip the exit code when `blocking` is set to
+   * `"warning"`; at the default `"error"` threshold they stay advisory.
    *
    * Set to `false` to surface only `"error"`-severity findings. This is the
    * master toggle and runs after per-rule / per-category severity
@@ -148,7 +163,23 @@ export interface ReactDoctorConfig {
    */
   warnings?: boolean;
   diff?: boolean | string;
-  failOn?: FailOnLevel;
+  /**
+   * Severity threshold at which the scan blocks CI (exits non-zero).
+   * Default: `"error"` — only `"error"`-severity diagnostics on the
+   * `ciFailure` surface fail the build. Set to `"warning"` to also block
+   * on warnings, or `"none"` to keep the scan advisory (it still reports
+   * findings and a score, but always exits `0`).
+   *
+   * The GitHub Action exposes the same control as its `blocking`
+   * input, and the CLI as `--blocking <level>`. Flags win over config.
+   */
+  blocking?: BlockingLevel;
+  /**
+   * @deprecated Renamed to `blocking` (same values + default). Still
+   * honored as an alias when `blocking` is unset, but using it emits a
+   * one-time deprecation warning. Prefer `blocking`.
+   */
+  failOn?: BlockingLevel;
   customRulesOnly?: boolean;
   share?: boolean;
   noScore?: boolean;
@@ -246,7 +277,7 @@ export interface ReactDoctorConfig {
    * Per-surface include/exclude controls. Each `DiagnosticSurface` is
    * resolved independently against rule tags, category, and id so a
    * single rule can be visible locally yet hidden from PR comments,
-   * neutralized from the score, and excluded from `--fail-on` — all
+   * neutralized from the score, and excluded from the CI gate — all
    * without touching the rule's severity or activation.
    *
    * Defaults (applied before user overrides):
@@ -271,7 +302,7 @@ export interface ReactDoctorConfig {
    * `"off"` skips registration in the generated lint config so the
    * rule never runs; `"error"` / `"warn"` re-stamp the registered
    * severity and the post-lint diagnostic, so downstream consumers
-   * (`--fail-on`, the score, the printed list) all see the
+   * (the CI gate, the score, the printed list) all see the
    * user-chosen severity.
    *
    * For visibility-only changes (silence on PR comments but keep on

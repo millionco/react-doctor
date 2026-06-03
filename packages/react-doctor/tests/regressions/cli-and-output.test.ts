@@ -1,13 +1,12 @@
 /**
  * Regression tests for closed issues that touch CLI flag exposure, output
- * formatting (annotations / scoring banner), and the explicit "skipped
- * checks" surface that came from the silent-failure issues.
+ * formatting (scoring banner), and the explicit "skipped checks" surface
+ * that came from the silent-failure issues.
  *
  * Covered closed issues:
  *   #43 — silent global `npm install -g` removed and must not return
  *   #50 — `--lint` exists as a positive flag so it can override a config
  *         that disables it
- *   #66 + #81 — GitHub Actions annotation-property encoding
  *   #92 — `share: false` config option exists in the schema and is read
  *         by the scan banner
  *   #135 — lint failures surface in `skippedChecks`, never silently
@@ -20,10 +19,6 @@ import { afterAll, describe, expect, it } from "vite-plus/test";
 
 import { inspect } from "../../src/inspect.js";
 import type { InspectResult, ReactDoctorConfig } from "@react-doctor/core";
-import {
-  encodeAnnotationProperty,
-  encodeAnnotationMessage,
-} from "../../src/cli/utils/annotation-encoding.js";
 import { NON_INTERACTIVE_ENVIRONMENT_VARIABLES } from "../../src/cli/utils/is-non-interactive-environment.js";
 import { setupReactProject, writeFile, writeJson } from "./_helpers.js";
 
@@ -134,31 +129,6 @@ describe("issue #50: CLI flags can re-enable lint that config disabled", () => {
       silent: true,
     });
     expect(result.diagnostics.filter((d) => d.plugin === "react-doctor")).toHaveLength(0);
-  });
-});
-
-describe("issue #66 + #81: GitHub Actions annotation encoding", () => {
-  it("encodes newlines and percent in message bodies (otherwise the annotation is truncated)", () => {
-    const message = "first line\nsecond, line: with 50% etc.";
-    const encoded = encodeAnnotationMessage(message);
-    expect(encoded).not.toContain("\n");
-    expect(encoded).toContain("%0A");
-    expect(encoded).toContain("%25");
-  });
-
-  it("encodes commas and colons in property values (file=, line=, title=)", () => {
-    const filename = "src/foo,bar:baz%qux\nx.tsx";
-    const encoded = encodeAnnotationProperty(filename);
-    expect(encoded).not.toContain("\n");
-    expect(encoded).not.toContain(",");
-    expect(encoded).not.toContain(":");
-    expect(encoded).toContain("%25");
-  });
-
-  it("round-trips: decoded message equals original", () => {
-    const original = "line one\nline, two: %50";
-    const decoded = decodeURIComponent(encodeAnnotationMessage(original));
-    expect(decoded).toBe(original);
   });
 });
 

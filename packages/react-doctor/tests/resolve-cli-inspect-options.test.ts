@@ -54,22 +54,27 @@ describe("resolveCliInspectOptions: CI behavior (issue #302)", () => {
   });
 });
 
-describe("resolveCliInspectOptions: warnings vs --fail-on", () => {
+describe("resolveCliInspectOptions: warnings vs --blocking", () => {
   it("leaves warnings unset by default (shown via the inspect() default)", () => {
     expect(resolveCliInspectOptions({}, null).warnings).toBeUndefined();
   });
 
-  it("forces warnings on for --fail-on warning (flag or config) so the gate can fire", () => {
+  it("forces warnings on for --blocking warning (flag or config) so the gate can fire", () => {
+    expect(resolveCliInspectOptions({ blocking: "warning" }, null).warnings).toBe(true);
+    expect(resolveCliInspectOptions({}, { blocking: "warning" }).warnings).toBe(true);
+  });
+
+  it("honors the deprecated failOn alias for the warning gate", () => {
     expect(resolveCliInspectOptions({ failOn: "warning" }, null).warnings).toBe(true);
     expect(resolveCliInspectOptions({}, { failOn: "warning" }).warnings).toBe(true);
   });
 
-  it("does not set warnings when failing on errors", () => {
-    expect(resolveCliInspectOptions({ failOn: "error" }, null).warnings).toBeUndefined();
+  it("does not set warnings when blocking on errors", () => {
+    expect(resolveCliInspectOptions({ blocking: "error" }, null).warnings).toBeUndefined();
   });
 
-  it("respects an explicit --no-warnings even with --fail-on warning", () => {
-    expect(resolveCliInspectOptions({ failOn: "warning", warnings: false }, null).warnings).toBe(
+  it("respects an explicit --no-warnings even with --blocking warning", () => {
+    expect(resolveCliInspectOptions({ blocking: "warning", warnings: false }, null).warnings).toBe(
       false,
     );
   });

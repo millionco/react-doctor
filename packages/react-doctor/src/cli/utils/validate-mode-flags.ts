@@ -29,19 +29,11 @@ export const validateModeFlags = (flags: InspectFlags): void => {
   if (flags.prComment && (flags.json || flags.score)) {
     throw new CliInputError("--pr-comment cannot be combined with --json or --score.");
   }
-  if (flags.annotations && flags.score) {
-    throw new CliInputError("--annotations cannot be combined with --score.");
-  }
   if (flags.explain !== undefined && flags.why !== undefined) {
     throw new CliInputError("Use --explain or --why, not both — they're aliases of the same flag.");
   }
   const explainArgument = flags.explain ?? flags.why;
-  if (
-    explainArgument !== undefined &&
-    (flags.json || flags.score || flags.annotations || flags.staged)
-  ) {
-    throw new CliInputError(
-      "--explain cannot be combined with --json, --score, --annotations, or --staged.",
-    );
+  if (explainArgument !== undefined && (flags.json || flags.score || flags.staged)) {
+    throw new CliInputError("--explain cannot be combined with --json, --score, or --staged.");
   }
 };

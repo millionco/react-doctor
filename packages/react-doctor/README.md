@@ -41,7 +41,7 @@ Works with Claude Code, Cursor, Codex, OpenCode, and many more.
 
 [![GitHub Action](https://img.shields.io/badge/GitHub%20Action-React%20Doctor-000000?style=flat&labelColor=000000&logo=githubactions&logoColor=white)](https://github.com/marketplace/actions/react-doctor)
 
-Add the reusable GitHub Action from Marketplace to scan every pull request, show inline annotations, and leave findings where reviewers already look.
+Add the reusable GitHub Action from Marketplace to scan every pull request, post inline review comments on the changed lines that triggered diagnostics, and leave findings where reviewers already look.
 
 ```yaml
 name: React Doctor

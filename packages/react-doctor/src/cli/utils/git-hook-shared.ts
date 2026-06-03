@@ -12,7 +12,7 @@ export const SIMPLE_GIT_HOOKS_CONFIG_FILE = ".simple-git-hooks.cjs";
 export const LEFTHOOK_CONFIG_FILES = ["lefthook.yml", "lefthook.yaml"];
 export const PRE_COMMIT_CONFIG_FILE = ".pre-commit-config.yaml";
 export const OVERCOMMIT_CONFIG_FILE = ".overcommit.yml";
-export const REACT_DOCTOR_COMMAND = "react-doctor --staged --fail-on warning";
+export const REACT_DOCTOR_COMMAND = "react-doctor --staged --blocking warning";
 export const NON_BLOCKING_REACT_DOCTOR_COMMAND = [
   'react_doctor_output=$(mktemp "${TMPDIR:-/tmp}/react-doctor-hook.XXXXXX");',
   `if ${REACT_DOCTOR_COMMAND} > "$react_doctor_output" 2>&1; then`,

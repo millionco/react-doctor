@@ -59,7 +59,7 @@ ${formatExampleLines([
   ["react-doctor ./apps/web", "scan a specific directory"],
   ["react-doctor --diff main", "scan only files changed vs. main"],
   ["react-doctor --staged", "scan staged files (pre-commit hook)"],
-  ["react-doctor --fail-on warning", "exit non-zero on warnings (CI gate)"],
+  ["react-doctor --blocking warning", "fail CI on warnings too (default: error)"],
   ["react-doctor --json > report.json", "write a machine-readable report"],
   ["react-doctor --explain src/App.tsx:42", "explain why a rule fired there"],
   ["react-doctor install", "set up the agent skill and git hook"],
@@ -127,13 +127,13 @@ const program = new Command()
   )
   .option("--staged", "scan only staged (git index) files for pre-commit hooks")
   .option(
-    "--fail-on <level>",
-    "exit with error code on diagnostics: error, warning, none (default: none)",
+    "--blocking <level>",
+    "severity that fails CI: error (default), warning, or none (advisory)",
   )
-  .option("--annotations", "output diagnostics as GitHub Actions annotations")
+  .option("--fail-on <level>", "[deprecated] alias for --blocking <level>")
   .option(
     "--pr-comment",
-    "tune CLI output for sticky PR comments (drops weak-signal rule families like `design` from the printed list and the fail-on gate; configure via config.surfaces)",
+    "tune CLI output for sticky PR comments (drops weak-signal rule families like `design` from the printed list and the CI gate; configure via config.surfaces)",
   )
   .option(
     "--explain <file:line>",

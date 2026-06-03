@@ -112,6 +112,10 @@ describe("buildRunEventAttributes", () => {
   });
 
   it("rolls up diagnostics by severity, rule, and category", () => {
+    // Pin the gate to `none` so the error diagnostic below doesn't flip the
+    // outcome to "blocked" (default `blocking` is `error`); this test is
+    // about the rollups, not the gate.
+    process.env[ACTION_INPUT_ENVIRONMENT_VARIABLES.blocking] = "none";
     const result = buildResult({
       diagnostics: [
         buildDiagnostic({ severity: "error", rule: "no-foo", category: "Performance" }),
@@ -140,18 +144,18 @@ describe("buildRunEventAttributes", () => {
     expect(attributes.scoreAvailable).toBe(true);
   });
 
-  it("flags a blocking run when the action fail-on gate would trip", () => {
-    process.env[ACTION_INPUT_ENVIRONMENT_VARIABLES.failOn] = "error";
+  it("flags a blocking run when the action blocking gate would trip", () => {
+    process.env[ACTION_INPUT_ENVIRONMENT_VARIABLES.blocking] = "error";
     const result = buildResult({ diagnostics: [buildDiagnostic({ severity: "error" })] });
     const attributes = buildRunEventAttributes(baseInput({ result }));
-    expect(attributes.failOn).toBe("error");
+    expect(attributes.blocking).toBe("error");
     expect(attributes.wouldBlock).toBe(true);
     expect(attributes.outcome).toBe("blocked");
     expect(attributes.exitCode).toBe(1);
   });
 
   it("derives wouldBlock from the CI-failure surface, not the full diagnostic list", () => {
-    process.env[ACTION_INPUT_ENVIRONMENT_VARIABLES.failOn] = "error";
+    process.env[ACTION_INPUT_ENVIRONMENT_VARIABLES.blocking] = "error";
     const result = buildResult({
       diagnostics: [buildDiagnostic({ severity: "error", rule: "no-foo" })],
     });
@@ -172,7 +176,7 @@ describe("buildRunEventAttributes", () => {
   });
 
   it("never reports a blocked run in score-only mode (matches the CLI exit guard)", () => {
-    process.env[ACTION_INPUT_ENVIRONMENT_VARIABLES.failOn] = "error";
+    process.env[ACTION_INPUT_ENVIRONMENT_VARIABLES.blocking] = "error";
     const result = buildResult({ diagnostics: [buildDiagnostic({ severity: "error" })] });
     // A normal run with these findings blocks...
     expect(buildRunEventAttributes(baseInput({ result })).wouldBlock).toBe(true);
@@ -197,12 +201,10 @@ describe("buildRunEventAttributes", () => {
   });
 
   it("captures forwarded action knobs and classifies the version pin", () => {
-    process.env[ACTION_INPUT_ENVIRONMENT_VARIABLES.nonBlocking] = "true";
-    process.env[ACTION_INPUT_ENVIRONMENT_VARIABLES.annotations] = "false";
+    process.env[ACTION_INPUT_ENVIRONMENT_VARIABLES.reviewComments] = "false";
     process.env[ACTION_INPUT_ENVIRONMENT_VARIABLES.version] = "latest";
     const attributes = buildRunEventAttributes(baseInput({ result: buildResult() }));
-    expect(attributes.nonBlocking).toBe(true);
-    expect(attributes.annotations).toBe(false);
+    expect(attributes.reviewComments).toBe(false);
     expect(attributes.versionPin).toBe("latest");
     // `comment` env not set -> dropped, never coerced to a value.
     expect(attributes.comment).toBeUndefined();

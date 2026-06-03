@@ -142,7 +142,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
     expect(settings.permissions.allow).toEqual(["Bash(git status)"]);
     expect(hookCommands.filter((command) => command.includes("react-doctor.sh"))).toHaveLength(1);
     expect(hookContent).toContain("project_root=${CLAUDE_PROJECT_DIR:-}");
-    expect(hookContent).toContain("react-doctor --verbose --diff");
+    expect(hookContent).toContain("react-doctor --verbose --diff --blocking warning");
     expect(Boolean(statSync(hookPath).mode & fsConstants.S_IXUSR)).toBe(true);
   });
 
@@ -223,7 +223,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
     ).toBe(realpathSync(fixture.projectRoot));
     expect(
       readFileSync(path.join(fixture.projectRoot, ".react-doctor/agent-hook-args.txt"), "utf8"),
-    ).toBe("--verbose\n--diff\n--fail-on\nwarning\n--no-score\n");
+    ).toBe("--verbose\n--diff\n--blocking\nwarning\n--no-score\n");
     expect(parsedOutput.additional_context).toContain("fake scan output");
     expect(parsedOutput.additional_context).toContain("create GitHub issues");
   });
@@ -305,7 +305,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
         path.join(fixture.projectRoot, ".react-doctor/path-agent-hook-args.txt"),
         "utf8",
       ),
-    ).toBe("--verbose\n--diff\n--fail-on\nwarning\n--no-score\n");
+    ).toBe("--verbose\n--diff\n--blocking\nwarning\n--no-score\n");
     expect(parsedOutput.additional_context).toContain("path scan output");
   });
 
@@ -377,7 +377,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
     expect(output).toBe("");
     expect(
       readFileSync(path.join(fixture.projectRoot, ".react-doctor/agent-hook-args.txt"), "utf8"),
-    ).toBe("--verbose\n--diff\n--fail-on\nwarning\n--no-score\n");
+    ).toBe("--verbose\n--diff\n--blocking\nwarning\n--no-score\n");
   });
 
   it("skips generated agent hooks for non-edit single tool events", () => {

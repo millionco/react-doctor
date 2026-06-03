@@ -36,9 +36,9 @@ describe("GitHub Action contract", () => {
     for (const inputName of [
       "directory",
       "project",
-      "fail-on",
+      "blocking",
       "comment",
-      "annotations",
+      "review-comments",
       "node-version",
       "version",
     ]) {
@@ -49,7 +49,15 @@ describe("GitHub Action contract", () => {
     expect(inputsBlock).not.toContain("  verbose:");
     expect(inputsBlock).not.toContain("  no-score:");
     expect(inputsBlock).not.toContain("  diff:");
+    // `fail-on` was renamed to `blocking`; `non-blocking` folds into its
+    // `none` level; annotations were replaced by inline review comments.
+    expect(inputsBlock).not.toContain("  fail-on:");
+    expect(inputsBlock).not.toContain("  non-blocking:");
+    expect(inputsBlock).not.toContain("  annotations:");
     expect(inputsBlock).toContain('    default: "true"');
+    expect(inputsBlock).toContain('default: "*"');
+    expect(inputsBlock).toContain('default: "24"');
+    expect(inputsBlock).toContain('default: "error"');
     expect(outputsBlock).toContain("${{ steps.render.outputs.score }}");
     expect(outputsBlock).toContain("${{ steps.render.outputs.total-issues }}");
     expect(outputsBlock).toContain("${{ steps.render.outputs.affected-files }}");
@@ -90,14 +98,22 @@ describe("GitHub Action contract", () => {
   });
 
   it("runs one JSON scan, captures its status, and passes PR files to the CLI", () => {
+    const actionYaml = readActionYaml();
     const scanStep = normalizeWhitespace(
-      extractStep(readActionYaml(), "INPUT_FAIL_ON: ${{ inputs.fail-on }}"),
+      extractStep(actionYaml, "INPUT_PROJECT: ${{ inputs.project }}"),
     );
 
-    expect(scanStep).toContain('"--json" "--json-compact" "--fail-on" "$INPUT_FAIL_ON"');
+    expect(scanStep).toContain('FLAGS=("--json" "--json-compact")');
     expect(scanStep).not.toContain("--pr-comment");
+    // The gate threshold is forwarded as `--blocking` (renamed from the
+    // deprecated `--fail-on`); annotations were replaced by review comments.
+    expect(actionYaml).not.toContain("--fail-on");
+    expect(actionYaml).not.toContain("--annotations");
     expect(scanStep).toContain(
-      'if [ "$INPUT_ANNOTATIONS" = "true" ]; then FLAGS+=("--annotations"); fi',
+      'if [ -n "$INPUT_BLOCKING" ]; then FLAGS+=("--blocking" "$INPUT_BLOCKING"); fi',
+    );
+    expect(scanStep).toContain(
+      'if [ -n "$INPUT_PROJECT" ]; then FLAGS+=("--project" "$INPUT_PROJECT"); fi',
     );
     expect(scanStep).toContain('FLAGS+=("--changed-files-from" "$CHANGED_FILES_FROM")');
     expect(scanStep).toContain(
@@ -106,7 +122,22 @@ describe("GitHub Action contract", () => {
     expect(scanStep).toContain('PACKAGE_SPEC="react-doctor@$INPUT_VERSION"');
     expect(scanStep).toContain("SCAN_STATUS=$?");
     expect(scanStep).toContain("scripts/ensure-json-report.mjs");
-    expect(readActionYaml()).not.toContain("--score");
+    expect(actionYaml).not.toContain("--score");
+  });
+
+  it("posts inline review comments anchored to changed diff lines", () => {
+    const actionYaml = readActionYaml();
+    const reviewStep = normalizeWhitespace(
+      extractStep(actionYaml, "- name: Post inline review comments"),
+    );
+
+    expect(reviewStep).toContain("inputs.review-comments == 'true'");
+    expect(reviewStep).toContain("github.rest.pulls.listFiles");
+    expect(reviewStep).toContain("github.rest.pulls.createReview");
+    expect(reviewStep).toContain('event: "COMMENT"');
+    expect(reviewStep).toContain('side: "RIGHT"');
+    expect(reviewStep).toContain("github.rest.pulls.deleteReviewComment");
+    expect(reviewStep).toContain("<!-- react-doctor:review -->");
   });
 
   it("renders and posts the sticky comment before restoring scan failure", () => {
@@ -127,19 +158,18 @@ describe("GitHub Action contract", () => {
     expect(commentStep).toContain("core.warning");
   });
 
-  it("non-blocking input makes the fail gate always exit 0", () => {
+  it("defaults blocking to error and propagates the CLI exit code", () => {
     const actionYaml = readActionYaml();
     const inputsBlock = extractBlock(actionYaml, "inputs:", "\noutputs:");
-    const nonBlockingInput = extractBlock(actionYaml, "  non-blocking:", "  comment:");
+    const blockingInput = extractBlock(actionYaml, "  blocking:", "  comment:");
     const failStep = normalizeWhitespace(
       extractStep(actionYaml, "- name: Fail if React Doctor found blocking issues"),
     );
 
-    expect(inputsBlock).toContain("  non-blocking:");
-    expect(normalizeWhitespace(nonBlockingInput)).toContain('default: "false"');
-    expect(failStep).toContain("INPUT_NON_BLOCKING: ${{ inputs.non-blocking }}");
-    expect(failStep).toContain('if [ "$INPUT_NON_BLOCKING" = "true" ]; then');
-    expect(failStep).toContain("exit 0");
-    expect(failStep).toContain('exit "$SCAN_STATUS"');
+    expect(inputsBlock).toContain("  blocking:");
+    expect(normalizeWhitespace(blockingInput)).toContain('default: "error"');
+    // The gate lives in the CLI exit code now; the action just propagates it.
+    expect(failStep).toContain('exit "${SCAN_STATUS:-1}"');
+    expect(failStep).not.toContain("INPUT_NON_BLOCKING");
   });
 });

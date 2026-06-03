@@ -33,6 +33,6 @@ jobs:
 
       - uses: ./
         with:
-          fail-on: none
+          blocking: none
           node-version: 22.18.0
           version: ./packages/react-doctor

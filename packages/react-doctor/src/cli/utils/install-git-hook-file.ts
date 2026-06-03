@@ -32,8 +32,8 @@ const REACT_DOCTOR_BLOCK_PATTERN = new RegExp(
 const SHEBANG = "#!/bin/sh";
 const SHEBANG_PREFIX = "#!";
 const LOCAL_REACT_DOCTOR_BIN = "./node_modules/.bin/react-doctor";
-const PNPM_REACT_DOCTOR_COMMAND = "pnpm dlx react-doctor@latest --staged --fail-on warning";
-const NPX_REACT_DOCTOR_COMMAND = "npx --yes react-doctor@latest --staged --fail-on warning";
+const PNPM_REACT_DOCTOR_COMMAND = "pnpm dlx react-doctor@latest --staged --blocking warning";
+const NPX_REACT_DOCTOR_COMMAND = "npx --yes react-doctor@latest --staged --blocking warning";
 
 const buildReactDoctorHookBlock = (): string =>
   [

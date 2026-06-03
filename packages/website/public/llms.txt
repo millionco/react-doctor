@@ -48,16 +48,10 @@ Use `--staged` for pre-commit hooks (scans only staged files):
 npx react-doctor@latest --staged
 ```
 
-Use `--annotations` to emit GitHub Actions annotations:
+react-doctor blocks (exits non-zero) when an error-severity diagnostic is found, so CI fails by default. Use `--blocking <level>` to change the threshold — `error` (default), `warning` (fail on any diagnostic), or `none` (advisory; findings and the score are still reported, but the process always exits 0):
 
 ```bash
-npx react-doctor@latest --annotations
-```
-
-Use `--fail-on <level>` to control exit codes (`error`, `warning`, `none`):
-
-```bash
-npx react-doctor@latest --fail-on error
+npx react-doctor@latest --blocking none
 ```
 
 Use `--no-score` to skip the score API and the share URL. Runs with scoring disabled print no score; the rest of the report renders normally:
@@ -109,7 +103,6 @@ Options:
   --diff [base]      scan only files changed vs base branch or uncommitted changes
   --no-score         skip the score API and share URL
   --staged           scan only staged (git index) files for pre-commit hooks
-  --fail-on <level>  exit with error code on diagnostics: error, warning, none
-  --annotations      output diagnostics as GitHub Actions annotations
+  --blocking <level>  severity that fails CI: error (default), warning, none
   -h, --help         display help for command
 ```

@@ -1,4 +1,5 @@
 export type {
+  BlockingLevel,
   DiagnosticSurface,
   FailOnLevel,
   ReactDoctorConfig,

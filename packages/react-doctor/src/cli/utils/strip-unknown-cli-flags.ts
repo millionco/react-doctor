@@ -10,7 +10,6 @@ interface CliFlagSpec {
 
 const ROOT_FLAG_SPEC: CliFlagSpec = {
   longOptionsWithoutValues: new Set([
-    "--annotations",
     "--color",
     "--dead-code",
     "--full",
@@ -37,6 +36,7 @@ const ROOT_FLAG_SPEC: CliFlagSpec = {
   ]),
   longOptionsWithRequiredValues: new Set([
     "--changed-files-from",
+    "--blocking",
     "--explain",
     "--fail-on",
     "--project",

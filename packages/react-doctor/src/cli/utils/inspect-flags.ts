@@ -12,7 +12,6 @@ export interface InspectFlags {
   telemetry?: boolean;
   yes?: boolean;
   full?: boolean;
-  annotations?: boolean;
   staged?: boolean;
   prComment?: boolean;
   respectInlineDisables?: boolean;
@@ -25,5 +24,10 @@ export interface InspectFlags {
   parallel?: boolean;
   explain?: string;
   why?: string;
+  blocking?: string;
+  /**
+   * @deprecated Renamed to `blocking`. Still parsed as an alias when
+   * `blocking` is unset, but triggers a one-time deprecation warning.
+   */
   failOn?: string;
 }

@@ -4,10 +4,11 @@ import {
   resolveGithubActionsScoreMetadata,
   summarizeDiagnostics,
 } from "@react-doctor/core";
-import type { FailOnLevel, InspectResult, ReactDoctorConfig } from "@react-doctor/core";
+import type { BlockingLevel, InspectResult, ReactDoctorConfig } from "@react-doctor/core";
 import { ACTION_INPUT_ENVIRONMENT_VARIABLES, detectRunnerOs } from "./is-ci-environment.js";
 import { summarizeRuleFirings } from "./record-scan-metrics.js";
-import { shouldFailForDiagnostics } from "./should-fail-for-diagnostics.js";
+import { isValidBlockingLevel } from "./resolve-blocking-level.js";
+import { shouldBlockCi } from "./should-block-ci.js";
 import { toSpanAttributes } from "./to-span-attributes.js";
 import type { SentryRootSpan } from "./with-sentry-run-span.js";
 
@@ -16,8 +17,6 @@ import type { SentryRootSpan } from "./with-sentry-run-span.js";
 interface RunEventAttributes {
   [attributeName: string]: string | number | boolean | null;
 }
-
-const FAIL_ON_LEVELS = new Set<FailOnLevel>(["error", "warning", "none"]);
 
 /**
  * Outcome of one scan, attached to its root span (the canonical "wide event").
@@ -64,17 +63,18 @@ const resolveVersionPin = (versionInput: string | undefined): string | null => {
   return "pinned";
 };
 
-// The fail-on threshold for the `wouldBlock` signal. The action forwards its
-// own `fail-on` input (so we see the gate even though it's handled outside the
-// CLI); otherwise fall back to the config value, then advisory `none`. A bare
-// `--fail-on` CLI flag (no action, no config) isn't visible here — an accepted
-// gap, since CI gating runs through the action or config.
-const resolveTelemetryFailOn = (userConfig: ReactDoctorConfig | null): FailOnLevel => {
-  const fromAction = process.env[ACTION_INPUT_ENVIRONMENT_VARIABLES.failOn];
-  if (fromAction !== undefined && FAIL_ON_LEVELS.has(fromAction as FailOnLevel)) {
-    return fromAction as FailOnLevel;
+// The blocking threshold for the `wouldBlock` signal. The action forwards
+// its own `blocking` input (so we see the gate even though it's handled by
+// the CLI exit code); otherwise fall back to the config value (new name, then
+// the deprecated `failOn` alias), then the `"error"` default. A bare
+// `--blocking` CLI flag (no action, no config) isn't visible here — an
+// accepted gap, since CI gating runs through the action or config.
+const resolveTelemetryBlocking = (userConfig: ReactDoctorConfig | null): BlockingLevel => {
+  const fromAction = process.env[ACTION_INPUT_ENVIRONMENT_VARIABLES.blocking];
+  if (fromAction !== undefined && isValidBlockingLevel(fromAction)) {
+    return fromAction;
   }
-  return userConfig?.failOn ?? "none";
+  return userConfig?.blocking ?? userConfig?.failOn ?? "error";
 };
 
 // Lowercase, key-safe form of a rule category for the `diag.category.*`
@@ -97,8 +97,8 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
 
   const result = input.result;
   const summary = summarizeDiagnostics(result.diagnostics);
-  const failOnLevel = resolveTelemetryFailOn(input.userConfig);
-  // Mirror the CLI's real fail-on gate (cli/commands/inspect.ts → finalizeScans):
+  const blockingLevel = resolveTelemetryBlocking(input.userConfig);
+  // Mirror the CLI's real blocking gate (cli/commands/inspect.ts → finalizeScans):
   // it tests the threshold against diagnostics filtered for the `ciFailure`
   // surface (weak-signal `design`-tagged rules are dropped by default), so the
   // wide event's wouldBlock/outcome/exitCode can't disagree with the actual
@@ -111,7 +111,7 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
   // `scoreOnly` runs never raise a non-zero exit (finalizeScans guards the gate
   // on `!isScoreOnly`), so the threshold can't actually block them — keep
   // wouldBlock/outcome/exitCode consistent with the real process exit.
-  const wouldBlock = !input.scoreOnly && shouldFailForDiagnostics(gateDiagnostics, failOnLevel);
+  const wouldBlock = !input.scoreOnly && shouldBlockCi(gateDiagnostics, blockingLevel);
   const hasSkippedChecks = result.skippedChecks.length > 0;
   const isClean = result.diagnostics.length === 0 && !hasSkippedChecks;
   const outcome = wouldBlock ? "blocked" : isClean ? "clean" : "ok";
@@ -139,7 +139,7 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
     outcome,
     exitCode: wouldBlock ? 1 : 0,
     wouldBlock,
-    failOn: failOnLevel,
+    blocking: blockingLevel,
     scanClean: isClean,
     totalDiagnostics: summary.totalDiagnosticCount,
     errorCount: summary.errorCount,
@@ -171,11 +171,11 @@ const buildCiAttributes = (): RunEventAttributes => {
     actorAssociation: githubActorAssociation ?? null,
     runnerOs: detectRunnerOs(),
     // Action knobs: present only when the official action forwarded them, so
-    // they're `null` (dropped) for any non-action run. The action's `fail-on`
-    // is already captured as `failOn` (resolveTelemetryFailOn prefers it).
-    nonBlocking: readEnvBoolean(ACTION_INPUT_ENVIRONMENT_VARIABLES.nonBlocking),
+    // they're `null` (dropped) for any non-action run. The action's
+    // `blocking` is already captured as `blocking`
+    // (resolveTelemetryBlocking prefers it).
     comment: readEnvBoolean(ACTION_INPUT_ENVIRONMENT_VARIABLES.comment),
-    annotations: readEnvBoolean(ACTION_INPUT_ENVIRONMENT_VARIABLES.annotations),
+    reviewComments: readEnvBoolean(ACTION_INPUT_ENVIRONMENT_VARIABLES.reviewComments),
     versionPin: resolveVersionPin(process.env[ACTION_INPUT_ENVIRONMENT_VARIABLES.version]),
   };
 };

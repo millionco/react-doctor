@@ -12,7 +12,7 @@ import {
   isCleanupReturningSubscribeLikeCallExpression,
   isSubscribeLikeCallExpression,
 } from "./utils/is-subscribe-like-call-expression.js";
-import { isCleanupFunctionLike } from "./utils/is-cleanup-return.js";
+import { isCleanupFunctionLike, isCleanupReturn } from "./utils/is-cleanup-return.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -151,27 +151,6 @@ const collectCleanupBindings = (effectCallback: EsTreeNode): CleanupBindings => 
   return bindings;
 };
 
-const isNullishReturnValue = (node: EsTreeNode): boolean =>
-  (isNodeOfType(node, "Literal") && node.value === null) ||
-  (isNodeOfType(node, "Identifier") && node.name === "undefined");
-
-const isPotentialCleanupReturn = (
-  returnedValue: EsTreeNode | null | undefined,
-  cleanupBindings: CleanupBindings,
-): boolean => {
-  if (!returnedValue) return false;
-  if (isNullishReturnValue(returnedValue)) return false;
-  if (isCleanupReturningSubscribeLikeCallExpression(returnedValue)) return true;
-  if (isSubscribeLikeCallExpression(returnedValue)) return false;
-  if (isNodeOfType(returnedValue, "Identifier")) {
-    return (
-      !cleanupBindings.subscriptionNames.has(returnedValue.name) ||
-      cleanupBindings.cleanupFunctionNames.has(returnedValue.name)
-    );
-  }
-  return true;
-};
-
 const effectHasCleanupReturn = (callback: EsTreeNode): boolean => {
   if (
     !isNodeOfType(callback, "ArrowFunctionExpression") &&
@@ -187,7 +166,14 @@ const effectHasCleanupReturn = (callback: EsTreeNode): boolean => {
   walkInsideStatementBlocks(callback.body, (child: EsTreeNode) => {
     if (didFindCleanupReturn) return;
     if (!isNodeOfType(child, "ReturnStatement")) return;
-    if (isPotentialCleanupReturn(child.argument, cleanupBindings)) {
+    if (
+      isCleanupReturn(
+        child.argument,
+        cleanupBindings.cleanupFunctionNames,
+        cleanupBindings.subscriptionNames,
+        { allowOpaqueReturn: true },
+      )
+    ) {
       didFindCleanupReturn = true;
     }
   });

@@ -2,13 +2,15 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import type { Diagnostic, ReactDoctorConfig } from "./types/index.js";
-import { collectIgnorePatterns } from "./collect-ignore-patterns.js";
+import {
+  collectDeadCodeEntryPatterns,
+  collectDeadCodeIgnorePatterns,
+} from "./dead-code/collect-dead-code-patterns.js";
 import {
   DEAD_CODE_WORKER_MAX_OLD_SPACE_MB,
   DEAD_CODE_WORKER_TIMEOUT_MS,
   MILLISECONDS_PER_SECOND,
 } from "./constants.js";
-import { readIgnoreFile } from "./read-ignore-file.js";
 import { toCanonicalPath } from "./utils/to-canonical-path.js";
 import { toRelativePath } from "./utils/to-relative-path.js";
 
@@ -89,19 +91,7 @@ interface DeadCodeWorkerFailureMessage {
   readonly error: DeadCodeWorkerError;
 }
 
-interface KnipWorkspaceConfig {
-  readonly entry?: unknown;
-  readonly ignore?: unknown;
-}
-
-interface KnipConfig {
-  readonly entry?: unknown;
-  readonly ignore?: unknown;
-  readonly workspaces?: unknown;
-}
-
 const TSCONFIG_FILENAMES = ["tsconfig.json", "tsconfig.base.json"];
-const KNIP_JSON_FILENAME = "knip.json";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -174,99 +164,6 @@ const resolveTsConfigPath = (rootDirectory: string): string | undefined => {
   }
   return undefined;
 };
-
-const readJsonFileSafe = (filePath: string): unknown | null => {
-  let rawContents: string;
-  try {
-    rawContents = fs.readFileSync(filePath, "utf-8");
-  } catch {
-    return null;
-  }
-  try {
-    return JSON.parse(rawContents);
-  } catch {
-    return null;
-  }
-};
-
-const readKnipConfig = (rootDirectory: string): KnipConfig | null => {
-  const knipJson = readJsonFileSafe(path.join(rootDirectory, KNIP_JSON_FILENAME));
-  if (isRecord(knipJson)) return knipJson;
-
-  const packageJson = readJsonFileSafe(path.join(rootDirectory, "package.json"));
-  const packageKnipConfig = isRecord(packageJson) ? packageJson.knip : null;
-  return isRecord(packageKnipConfig) ? packageKnipConfig : null;
-};
-
-const normalizePatternList = (value: unknown): string[] => {
-  if (typeof value === "string" && value.length > 0) return [value];
-  if (!Array.isArray(value)) return [];
-  return value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0);
-};
-
-const prefixWorkspacePatterns = (
-  workspacePattern: string,
-  patterns: ReadonlyArray<string>,
-): string[] => {
-  const normalizedWorkspacePattern = workspacePattern.replace(/\/+$/, "");
-  return patterns.map((pattern) =>
-    pattern.startsWith("!")
-      ? `!${normalizedWorkspacePattern}/${pattern.slice(1)}`
-      : `${normalizedWorkspacePattern}/${pattern}`,
-  );
-};
-
-const collectKnipWorkspacePatterns = (
-  workspaces: unknown,
-  settingName: keyof KnipWorkspaceConfig,
-): string[] => {
-  if (!isRecord(workspaces)) return [];
-  const patterns: string[] = [];
-  for (const [workspacePattern, workspaceConfig] of Object.entries(workspaces)) {
-    if (!isRecord(workspaceConfig)) continue;
-    patterns.push(
-      ...prefixWorkspacePatterns(
-        workspacePattern,
-        normalizePatternList(workspaceConfig[settingName]),
-      ),
-    );
-  }
-  return patterns;
-};
-
-const collectKnipPatterns = (
-  rootDirectory: string,
-  settingName: keyof Pick<KnipConfig, "entry" | "ignore">,
-): string[] => {
-  const config = readKnipConfig(rootDirectory);
-  if (!config) return [];
-  return [
-    ...normalizePatternList(config[settingName]),
-    ...collectKnipWorkspacePatterns(config.workspaces, settingName),
-  ];
-};
-
-// HACK: `collectIgnorePatterns` intentionally omits `.gitignore` because
-// oxlint reads it automatically — deslop does not, so we pull it in.
-const collectDeadCodeIgnorePatterns = (
-  rootDirectory: string,
-  userConfig: ReactDoctorConfig | null | undefined,
-): string[] => {
-  const seen = new Set<string>();
-  const sources = [
-    readIgnoreFile(path.join(rootDirectory, ".gitignore")),
-    collectIgnorePatterns(rootDirectory),
-    userConfig?.ignore?.files ?? [],
-    collectKnipPatterns(rootDirectory, "ignore"),
-  ];
-  for (const source of sources) {
-    for (const pattern of source) seen.add(pattern);
-  }
-  return [...seen].filter((pattern) => pattern.length > 0);
-};
-
-const collectDeadCodeEntryPatterns = (rootDirectory: string): string[] =>
-  [...new Set(collectKnipPatterns(rootDirectory, "entry"))].filter((pattern) => pattern.length > 0);
 
 // HACK: route through `toRelativePath` (which normalizes backslashes to
 // forward slashes) so deslop output matches every other diagnostic on

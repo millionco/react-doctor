@@ -1,0 +1,35 @@
+packages/react-doctor/src/cli/utils/install-react-doctor.ts
+  s_0be0fcdbf72c91::t_082c9f8317a478 1-3,24-28,158-163,278,447,476,524-525,640,643-647,657
+packages/react-doctor/src/cli/utils/build-handoff-payload.ts
+  s_0be0fcdbf72c91::t_082c9f8317a478 1,3,25-30
+packages/react-doctor/src/cli/utils/install-github-workflow.ts
+  s_0be0fcdbf72c91::t_082c9f8317a478 1-56
+.changeset/handoff-add-to-ci.md
+  s_0be0fcdbf72c91::t_082c9f8317a478 1-7
+packages/react-doctor/src/cli/utils/report-workflow-result.ts
+  s_0be0fcdbf72c91::t_082c9f8317a478 1-32
+packages/react-doctor/tests/handoff/build-handoff-payload.test.ts
+  s_0be0fcdbf72c91::t_082c9f8317a478 39-41
+packages/react-doctor/tests/install-react-doctor.test.ts
+  s_0be0fcdbf72c91::t_082c9f8317a478 651,689
+packages/react-doctor/src/cli/utils/handoff-to-agent.ts
+  s_0be0fcdbf72c91::t_082c9f8317a478 3,7-10,13,31,42-74,101,103-107,125-126,129,141-144
+packages/core/src/constants.ts
+  s_0be0fcdbf72c91::t_082c9f8317a478 80-84
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "234cea8c4677d413bc2a11b5d7a0aae9951c8fbf",
+  "prompts": {},
+  "sessions": {
+    "s_0be0fcdbf72c91": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "db6a4a15-c3fc-4dd2-acb7-e3fec38e1203",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

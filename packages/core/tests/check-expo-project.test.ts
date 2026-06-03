@@ -46,6 +46,8 @@ const buildExpoProject = (
   hasTanStackQuery: false,
   hasReactNativeWorkspace: true,
   expoVersion,
+  shopifyFlashListVersion: null,
+  shopifyFlashListMajorVersion: null,
   hasReanimated: false,
   preactVersion: null,
   preactMajorVersion: null,

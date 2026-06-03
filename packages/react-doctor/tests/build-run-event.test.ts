@@ -31,6 +31,8 @@ const projectInfo: ProjectInfo = {
   preactMajorVersion: null,
   hasReactNativeWorkspace: false,
   expoVersion: null,
+  shopifyFlashListVersion: null,
+  shopifyFlashListMajorVersion: null,
   hasReanimated: false,
   sourceFileCount: 100,
 };

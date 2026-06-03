@@ -66,6 +66,15 @@ export interface ProjectInfo {
    */
   expoVersion: string | null;
   /**
+   * The declared `@shopify/flash-list` package version spec, or `null` when
+   * absent. FlashList v2 removed the need for `estimatedItemSize`, so this
+   * lets the RN list sizing rule stay scoped to versions where the prop is
+   * still useful.
+   */
+  shopifyFlashListVersion: string | null;
+  /** Parsed major from `shopifyFlashListVersion`, or `null` when absent/unparseable. */
+  shopifyFlashListMajorVersion: number | null;
+  /**
    * `true` when the project (or any of its workspace packages) declares
    * `react-native-reanimated`. Lets diagnostics surface reanimated's
    * Compiler-compatible `.get()` / `.set()` accessors only where they

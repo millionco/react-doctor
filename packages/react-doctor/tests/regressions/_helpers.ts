@@ -123,6 +123,8 @@ export interface BuildTestProjectOptions {
   reactMajorVersion?: number | null;
   hasTypeScript?: boolean;
   tailwindVersion?: string | null;
+  shopifyFlashListVersion?: string | null;
+  shopifyFlashListMajorVersion?: number | null;
 }
 
 export const buildTestProject = (options: BuildTestProjectOptions): ProjectInfo => {
@@ -149,6 +151,8 @@ export const buildTestProject = (options: BuildTestProjectOptions): ProjectInfo 
     hasTanStackQuery: options.hasTanStackQuery ?? false,
     hasReactNativeWorkspace: framework === "expo" || framework === "react-native",
     expoVersion: framework === "expo" ? "~51.0.0" : null,
+    shopifyFlashListVersion: options.shopifyFlashListVersion ?? null,
+    shopifyFlashListMajorVersion: options.shopifyFlashListMajorVersion ?? null,
     hasReanimated: options.hasReanimated ?? false,
     preactVersion: null,
     preactMajorVersion: null,

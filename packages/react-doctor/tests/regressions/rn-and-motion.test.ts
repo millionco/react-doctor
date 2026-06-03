@@ -10,7 +10,7 @@
  *              children
  *   #581     — fbtee `<fbt>` / `<fbs>` translation tags stay transparent to
  *              the `<Text>` boundary (so raw text inside them isn't flagged)
- *   #76      — `@expo/vector-icons` is not treated as a legacy Expo package
+ *   #76      — maintained Expo packages are not treated as legacy packages
  *   #94      — `MotionConfig reducedMotion="user"` must satisfy the
  *              reduced-motion accessibility check (so the rule doesn't
  *              false-positive when handling is delegated to the provider)
@@ -318,11 +318,13 @@ describe("issue #76: @expo/vector-icons is not treated as a legacy Expo package"
     const projectDir = setupReactProject(tempRoot, "issue-76-vector-icons", {
       files: {
         "src/App.tsx": `import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { Audio } from "expo-av";
 
 export const App = () => (
   <>
     <Ionicons name="home" size={24} />
+    <LinearGradient colors={["red", "blue"]} />
     <Audio.Sound />
   </>
 );
@@ -333,6 +335,7 @@ export const App = () => (
           react: "^19.0.0",
           "react-native": "^0.79.0",
           "@expo/vector-icons": "^14.0.0",
+          "expo-linear-gradient": "^15.0.7",
           "expo-av": "^15.0.0",
         },
       },
@@ -352,9 +355,49 @@ export const App = () => (
     expect(
       legacyExpoIssues.some((diagnostic) => diagnostic.message.includes("@expo/vector-icons")),
     ).toBe(false);
+    expect(
+      legacyExpoIssues.some((diagnostic) => diagnostic.message.includes("expo-linear-gradient")),
+    ).toBe(false);
     expect(legacyExpoIssues.some((diagnostic) => diagnostic.message.includes("expo-av"))).toBe(
       true,
     );
+  });
+});
+
+describe("FlashList v2 sizing hints", () => {
+  it("does not emit rn-list-missing-estimated-item-size for @shopify/flash-list v2", async () => {
+    const projectDir = setupReactProject(tempRoot, "flash-list-v2", {
+      files: {
+        "src/App.tsx": `import { FlashList } from "@shopify/flash-list";
+import { Text } from "react-native";
+
+export const App = ({ items }) => (
+  <FlashList data={items} renderItem={({ item }) => <Text>{item.title}</Text>} />
+);
+`,
+      },
+      packageJsonExtras: {
+        dependencies: {
+          react: "^19.0.0",
+          "react-native": "^0.79.0",
+          "@shopify/flash-list": "^2.0.0",
+        },
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({
+        rootDirectory: projectDir,
+        framework: "react-native",
+        shopifyFlashListVersion: "^2.0.0",
+        shopifyFlashListMajorVersion: 2,
+      }),
+    });
+
+    expect(
+      diagnostics.some((diagnostic) => diagnostic.rule === "rn-list-missing-estimated-item-size"),
+    ).toBe(false);
   });
 });
 

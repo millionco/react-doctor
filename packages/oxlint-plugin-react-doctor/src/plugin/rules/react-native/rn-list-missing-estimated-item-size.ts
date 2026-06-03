@@ -1,5 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
+import { getReactDoctorNumberSetting } from "../../utils/get-react-doctor-setting.js";
+import { FLASH_LIST_V2_MAJOR } from "../../constants/react-native.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
@@ -27,6 +29,14 @@ const RECYCLABLE_LIST_PACKAGES: Record<string, ReadonlyArray<string>> = {
 };
 
 const SIZING_HINT_ATTRIBUTE_NAMES = new Set(["estimatedItemSize", "estimatedListSize"]);
+
+const isFlashListV2OrNewer = (context: RuleContext): boolean => {
+  const flashListMajorVersion = getReactDoctorNumberSetting(
+    context.settings,
+    "shopifyFlashListMajorVersion",
+  );
+  return flashListMajorVersion !== undefined && flashListMajorVersion >= FLASH_LIST_V2_MAJOR;
+};
 
 const isEmptyArrayLiteral = (node: EsTreeNodeOfType<"JSXAttribute">): boolean => {
   if (!isNodeOfType(node.value, "JSXExpressionContainer")) return false;
@@ -63,6 +73,7 @@ export const rnListMissingEstimatedItemSize = defineRule<Rule>({
         }
       }
       if (!canonicalRecyclerName) return;
+      if (canonicalRecyclerName === "FlashList" && isFlashListV2OrNewer(context)) return;
 
       let hasSizingHint = false;
       let dataIsEmptyLiteral = false;

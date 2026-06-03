@@ -762,6 +762,30 @@ export const Popover = ({ isOpen }: { isOpen: boolean }) => {
     expect(hits).toHaveLength(0);
   });
 
+  it("still flags when an early guard cleanup runs before a later timer", async () => {
+    const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-early-guard-noop", {
+      files: {
+        "src/Clock.tsx": `import { useEffect } from "react";
+
+declare const disabled: boolean;
+declare const tick: () => void;
+
+export const Clock = () => {
+  useEffect(() => {
+    if (disabled) return () => {};
+    setInterval(tick, 1000);
+  }, [disabled]);
+  return <span />;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
+    expect(hits).toHaveLength(1);
+    expect(hits[0].message).toContain("setInterval");
+  });
+
   it("does NOT flag cleanup that is the last statement *inside* a conditional branch", async () => {
     const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-cleanup-in-if-branch", {
       files: {

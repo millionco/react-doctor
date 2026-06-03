@@ -122,6 +122,57 @@ describe("checkDeadCode", () => {
     expect(flagged.some((entry) => entry.endsWith("configignored.ts"))).toBe(false);
   });
 
+  it("honors unused-file ignore patterns from knip.json", async () => {
+    const directory = setupProject("knip-json-ignore", {
+      "src/index.ts": "export const used = 1;\n",
+      "src/knipignored.ts": "export const ignored = 1;\n",
+      "knip.json": JSON.stringify({ ignore: ["src/knipignored.ts"] }),
+    });
+
+    const flagged = await flaggedUnusedFiles(directory);
+    expect(flagged.some((entry) => entry.endsWith("knipignored.ts"))).toBe(false);
+  });
+
+  it("forwards knip.json entry and ignore patterns to the dead-code worker", async () => {
+    const directory = setupProject("knip-json-worker-input", {
+      "src/index.ts": "export const used = 1;\n",
+      "knip.json": JSON.stringify({
+        entry: ["src/custom-entry.ts"],
+        ignore: ["src/generated.ts"],
+        workspaces: {
+          "packages/*": {
+            entry: ["src/main.ts"],
+            ignore: ["src/fixtures.ts"],
+          },
+        },
+      }),
+    });
+    let capturedInput: {
+      entryPatterns: ReadonlyArray<string>;
+      ignorePatterns: ReadonlyArray<string>;
+    } | null = null;
+
+    await checkDeadCode({
+      rootDirectory: directory,
+      createWorker: (input) => {
+        capturedInput = input;
+        return {
+          result: Promise.resolve({
+            unusedFiles: [],
+            unusedExports: [],
+            unusedDependencies: [],
+            circularDependencies: [],
+          }),
+        };
+      },
+    });
+
+    expect(capturedInput?.entryPatterns).toContain("src/custom-entry.ts");
+    expect(capturedInput?.entryPatterns).toContain("packages/*/src/main.ts");
+    expect(capturedInput?.ignorePatterns).toContain("src/generated.ts");
+    expect(capturedInput?.ignorePatterns).toContain("packages/*/src/fixtures.ts");
+  });
+
   it("maps unused exports, dependencies, and cycles from worker results", async () => {
     const directory = setupProject("worker-result-shapes", {
       "src/index.ts": "export const used = 1;\n",

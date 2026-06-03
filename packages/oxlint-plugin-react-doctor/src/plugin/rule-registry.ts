@@ -266,6 +266,7 @@ import { rerenderMemoBeforeEarlyReturn } from "./rules/performance/rerender-memo
 import { rerenderMemoWithDefaultValue } from "./rules/performance/rerender-memo-with-default-value.js";
 import { rerenderStateOnlyInHandlers } from "./rules/state-and-effects/rerender-state-only-in-handlers.js";
 import { rerenderTransitionsScroll } from "./rules/performance/rerender-transitions-scroll.js";
+import { rnAnimateLayoutProperty } from "./rules/react-native/rn-animate-layout-property.js";
 import { rnAnimationReactionAsDerived } from "./rules/react-native/rn-animation-reaction-as-derived.js";
 import { rnBottomSheetPreferNative } from "./rules/react-native/rn-bottom-sheet-prefer-native.js";
 import { rnDetoxMissingAwait } from "./rules/react-native/rn-detox-missing-await.js";
@@ -3174,6 +3175,18 @@ export const reactDoctorRules = [
       ...rerenderTransitionsScroll,
       framework: "global",
       category: "Performance",
+    },
+  },
+  {
+    key: "react-doctor/rn-animate-layout-property",
+    id: "rn-animate-layout-property",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...rnAnimateLayoutProperty,
+      framework: "react-native",
+      category: "Performance",
+      tags: [...new Set(["react-native", ...(rnAnimateLayoutProperty.tags ?? [])])],
     },
   },
   {

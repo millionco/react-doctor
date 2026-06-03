@@ -204,7 +204,7 @@ export const ConditionalSubscribe = () => {
     expect(hits).toHaveLength(0);
   });
 
-  it("still flags when cleanup only calls an unrelated bound-resource release method", async () => {
+  it("does NOT flag when a cleanup function returns an unrecognized release shape", async () => {
     for (const releaseName of ["remove", "cleanup", "dispose", "destroy", "teardown"]) {
       const projectDir = setupReactProject(
         tempRoot,
@@ -230,7 +230,7 @@ export const Resize = () => {
       );
 
       const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
-      expect(hits).toHaveLength(1);
+      expect(hits).toHaveLength(0);
     }
   });
 

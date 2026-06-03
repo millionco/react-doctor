@@ -199,6 +199,11 @@ runs:
           } catch {
             return;
           }
+          // A failed/aborted scan emits `ok: false` with an empty `diagnostics`
+          // array (CLI error reports + the ensure-json-report fallback). Don't
+          // treat that as a clean scan — leave any existing inline feedback in
+          // place rather than wiping it on a transient failure.
+          if (report.ok === false) return;
           const diagnostics = Array.isArray(report.diagnostics) ? report.diagnostics : [];
 
           const marker = "<!-- react-doctor:review -->";

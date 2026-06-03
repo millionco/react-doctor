@@ -210,7 +210,9 @@ const prefixWorkspacePatterns = (
 ): string[] => {
   const normalizedWorkspacePattern = workspacePattern.replace(/\/+$/, "");
   return patterns.map((pattern) =>
-    pattern.startsWith("!") ? `!${normalizedWorkspacePattern}/${pattern.slice(1)}` : `${normalizedWorkspacePattern}/${pattern}`,
+    pattern.startsWith("!")
+      ? `!${normalizedWorkspacePattern}/${pattern.slice(1)}`
+      : `${normalizedWorkspacePattern}/${pattern}`,
   );
 };
 

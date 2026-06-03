@@ -279,7 +279,14 @@ runs:
             });
           }
 
-          // Clear the previous run's inline comments so re-runs don't stack.
+          // A scan that found issues but mapped none onto changed lines (path
+          // mismatch, missing patch, line outside the diff hunks) must not wipe
+          // existing inline feedback — only reconcile when there's something to
+          // post, or when the scan is genuinely clean (no diagnostics at all).
+          if (comments.length === 0 && diagnostics.length > 0) return;
+
+          // Clear the previous run's inline comments so re-runs don't stack
+          // (also clears now-resolved findings when the scan comes back clean).
           try {
             const existing = await github.paginate(github.rest.pulls.listReviewComments, {
               ...context.repo,

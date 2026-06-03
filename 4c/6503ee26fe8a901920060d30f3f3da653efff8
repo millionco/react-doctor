@@ -1,0 +1,28 @@
+packages/react-doctor/tests/e2e/__snapshots__/terminal-visuals.test.ts.snap
+  ai_agent 70
+packages/react-doctor/src/cli/utils/handoff-to-agent.ts
+  s_0be0fcdbf72c91::t_e3ddb97137c2a2 165
+  s_0be0fcdbf72c91::t_085f0c4cb3b53d 105-111,113,123-126
+  s_0be0fcdbf72c91::t_15da30c4ec97f7 53,56-61,74
+  s_0be0fcdbf72c91::t_468eae52b8ce65 146-149
+.changeset/onboarding-intro-and-summary-polish.md
+  s_0be0fcdbf72c91::t_c488e0565fa71d 11
+packages/react-doctor/src/cli/utils/render-summary.ts
+  s_0be0fcdbf72c91::t_495c724ed958b4 73-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "4c6503ee26fe8a901920060d30f3f3da653efff8",
+  "prompts": {},
+  "sessions": {
+    "s_0be0fcdbf72c91": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "db6a4a15-c3fc-4dd2-acb7-e3fec38e1203",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

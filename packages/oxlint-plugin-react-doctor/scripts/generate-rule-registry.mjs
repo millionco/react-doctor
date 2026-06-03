@@ -83,6 +83,11 @@ const RULE_IDS_TO_SKIP_REGISTRATION = new Set([
   // reference. Implementation + regression suite + fixture lines kept
   // in place; remove this entry to re-enable.
   "react-compiler-destructure-method",
+  // Reanimated supports animating layout-affecting styles through
+  // `useAnimatedStyle`; they can be slower than transform/opacity, but
+  // blanket-reporting them as Bugs produced false positives for valid
+  // UI-thread animations such as keyboard-driven layout changes.
+  "rn-animate-layout-property",
 ]);
 
 // Fine-grained category → the clear, user-facing bucket the scan output

@@ -3,6 +3,6 @@
 "oxlint-plugin-react-doctor": patch
 ---
 
-React Doctor no longer reports `rn-animate-layout-property` for React Native Reanimated `useAnimatedStyle` layout styles.
+React Doctor narrows `rn-animate-layout-property` for React Native Reanimated `useAnimatedStyle` layout styles.
 
-The rule is now a retired compatibility stub: existing configs can still resolve the rule id, but it is default-off and emits no diagnostics. Reanimated supports animating layout-affecting styles on its animated style pipeline; while transform/opacity can still be preferable for purely visual movement, blanket-reporting every `width`, `height`, `padding`, or margin update as a bug produced false positives for valid UI-thread animations such as keyboard-driven layouts.
+The rule now reports only when a layout-affecting style is locally driven by Reanimated animation helpers such as `withTiming` or `withSpring`. It no longer blanket-reports `interpolate(...)`, shared-value reads, or other valid UI-thread layout updates such as keyboard-driven layouts.

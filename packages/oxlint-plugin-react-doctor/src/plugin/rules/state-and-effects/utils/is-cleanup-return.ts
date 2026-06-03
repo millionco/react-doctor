@@ -143,16 +143,15 @@ export const isCleanupReturn = (
 ): boolean => {
   if (!returnedValue) return false;
   const unwrappedValue = unwrapChainExpression(returnedValue);
-  if (
-    isNodeOfType(unwrappedValue, "Literal") &&
-    unwrappedValue.value === null
-  ) {
+  if (isNodeOfType(unwrappedValue, "Literal") && unwrappedValue.value === null) {
     return false;
   }
   if (isNodeOfType(unwrappedValue, "Identifier")) {
     if (unwrappedValue.name === "undefined") return false;
     if (knownCleanupFunctionNames.has(unwrappedValue.name)) return true;
-    return options.allowOpaqueReturn === true && !knownBoundSubscriptionNames.has(unwrappedValue.name);
+    return (
+      options.allowOpaqueReturn === true && !knownBoundSubscriptionNames.has(unwrappedValue.name)
+    );
   }
   if (isCleanupReturningSubscribeLikeCallExpression(unwrappedValue)) return true;
   if (options.allowOpaqueReturn === true && !isSubscribeLikeCallExpression(unwrappedValue)) {

@@ -1,0 +1,21 @@
+packages/react-doctor/src/cli/utils/warn-deprecated-fail-on.ts
+  s_29dfde713ef3ca::t_d01f903f571879 6-9,19
+action.yml
+  s_29dfde713ef3ca::t_0b9bf1af1e1c49 239,242-243
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "35e56760d337f2451a2a3731e8078858b6eccb45",
+  "prompts": {},
+  "sessions": {
+    "s_29dfde713ef3ca": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ea8ec758-611c-411c-81b8-cacb4d8ea4f9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

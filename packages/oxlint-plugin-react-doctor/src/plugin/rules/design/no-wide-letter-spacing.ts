@@ -7,7 +7,63 @@ import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js
 import { getStylePropertyStringValue } from "./utils/get-style-property-string-value.js";
 import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import { getStylePropertyNumberValue } from "./utils/get-style-property-number-value.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+
+// Reads a JSX attribute value as a string literal, unwrapping a
+// `{'...'}` expression container. Returns null for dynamic/non-string
+// values. Covers `textTransform="uppercase"` and `textTransform={'uppercase'}`.
+const getJsxAttributeStringValue = (attributeValue: EsTreeNode | null): string | null => {
+  if (!attributeValue) return null;
+  if (isNodeOfType(attributeValue, "Literal") && typeof attributeValue.value === "string") {
+    return attributeValue.value;
+  }
+  if (isNodeOfType(attributeValue, "JSXExpressionContainer")) {
+    const expression = attributeValue.expression;
+    if (isNodeOfType(expression, "Literal") && typeof expression.value === "string") {
+      return expression.value;
+    }
+  }
+  return null;
+};
+
+// A bare boolean prop (`uppercase`) has a null value; `uppercase={true}`
+// wraps a `true` literal. Both signal the prop is enabled.
+const isTruthyBooleanJsxAttribute = (attributeValue: EsTreeNode | null): boolean => {
+  if (attributeValue === null) return true;
+  if (isNodeOfType(attributeValue, "JSXExpressionContainer")) {
+    const expression = attributeValue.expression;
+    return isNodeOfType(expression, "Literal") && expression.value === true;
+  }
+  return false;
+};
+
+// The rule's whole false-positive exemption is "wide tracking is fine on
+// uppercase labels". When the uppercase transform comes from inline
+// `textTransform`, the loop below sees it. But design-system text
+// components routinely expose the transform as a sibling prop —
+// `<SSText uppercase style={{ letterSpacing: 2 }}>` (satsigner#671) — or
+// a `textTransform="uppercase"` prop. The rule can't see inside the
+// component, so it inspects the element's own attributes: if the same
+// element already declares the uppercase intent, treat the wide tracking
+// as the recommended use and stay quiet.
+const hasUppercaseSiblingProp = (styleAttribute: EsTreeNodeOfType<"JSXAttribute">): boolean => {
+  const openingElement = styleAttribute.parent;
+  if (!openingElement || !isNodeOfType(openingElement, "JSXOpeningElement")) return false;
+  for (const attribute of openingElement.attributes ?? []) {
+    if (!isNodeOfType(attribute, "JSXAttribute")) continue;
+    if (!isNodeOfType(attribute.name, "JSXIdentifier")) continue;
+    const attributeName = attribute.name.name;
+    if (attributeName === "uppercase" && isTruthyBooleanJsxAttribute(attribute.value)) return true;
+    if (
+      attributeName === "textTransform" &&
+      getJsxAttributeStringValue(attribute.value) === "uppercase"
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
 
 export const noWideLetterSpacing = defineRule<Rule>({
   id: "no-wide-letter-spacing",
@@ -20,6 +76,8 @@ export const noWideLetterSpacing = defineRule<Rule>({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);
       if (!expression) return;
+
+      if (hasUppercaseSiblingProp(node)) return;
 
       let isUppercase = false;
       let letterSpacingProperty: EsTreeNode | null = null;

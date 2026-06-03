@@ -1,0 +1,65 @@
+packages/react-doctor/src/cli/utils/scan-id.ts
+  s_79347d0c79f58d::t_345469c325695a 1-17
+packages/react-doctor/src/cli/utils/build-run-context.ts
+  s_79347d0c79f58d::t_23f05dbae546ed 2,7,12,18-20,31-34
+  s_79347d0c79f58d::t_c06f52c7370906 88
+  s_79347d0c79f58d::t_d373d17349ec1b 102-103
+packages/react-doctor/tests/is-ci-environment.test.ts
+  s_79347d0c79f58d::t_ac8972636c8488 3,7-9,13-14,22-25
+  s_79347d0c79f58d::t_4ffca1c7e4dfe0 190-241
+.changeset/ci-telemetry-wide-event.md
+  s_79347d0c79f58d::t_2b0a16a0d69286 1-7
+AGENTS.md
+  s_79347d0c79f58d::t_fe6b6e88dea58c 272-316
+packages/react-doctor/src/cli/utils/build-sentry-scope.ts
+  s_79347d0c79f58d::t_f139f551b9f69a 34-35,42-44
+packages/core/src/calculate-score.ts
+  s_79347d0c79f58d::t_27ccd7362b7021 53-55
+  s_79347d0c79f58d::t_e9bc4e88f1a9b0 81
+packages/react-doctor/src/cli/utils/build-run-event.ts
+  s_79347d0c79f58d::t_70637bab9c2340 1-14,18-90,92-107,112,121-157,160-216
+  s_79347d0c79f58d::t_09eb4bcb031877 15-17
+  s_79347d0c79f58d::t_51eec3058d9716 91,108-111
+  s_79347d0c79f58d::t_465123121cf75a 113-120
+  s_79347d0c79f58d::t_0ef6ec7a35d736 158-159
+packages/react-doctor/tests/build-run-event.test.ts
+  s_79347d0c79f58d::t_0be7fc817dfc05 1-201
+packages/react-doctor/src/cli/utils/is-ci-environment.ts
+  s_79347d0c79f58d::t_b8632fbfa3f66a 25-42
+  s_79347d0c79f58d::t_e8bea70868dbcf 99-119
+packages/react-doctor/tests/build-run-context.test.ts
+  s_79347d0c79f58d::t_daff1c64c05700 66-85
+  s_79347d0c79f58d::t_f15eb14213e461 5-6,10,15-19,29-33
+packages/react-doctor/tests/build-sentry-scope.test.ts
+  s_79347d0c79f58d::t_37ba3524226420 9,20-21
+  s_79347d0c79f58d::t_1dce0dfbaa840b 60-61,70-75
+packages/core/src/run-inspect.ts
+  s_79347d0c79f58d::t_b84edd1e1b28ad 67-72
+  s_79347d0c79f58d::t_9152f459163532 471
+action.yml
+  s_79347d0c79f58d::t_26a7111be1acf3 103-112
+packages/react-doctor/src/inspect.ts
+  s_79347d0c79f58d::t_f7eeef4f9b39d1 446-459
+  s_79347d0c79f58d::t_30d47fbe69699c 200-226
+  s_79347d0c79f58d::t_1325a94313324e 127-128,131-134,136-148
+  s_79347d0c79f58d::t_701f59dc1c2a46 129-130,135
+  s_79347d0c79f58d::t_8066fd039e4881 299
+  s_79347d0c79f58d::t_985547231c632c 25
+  s_79347d0c79f58d::t_305e3de645a423 60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "092643642d3764167d90acf8efd8c1f5f2356578",
+  "prompts": {},
+  "sessions": {
+    "s_79347d0c79f58d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "06762f9b-90bc-4ce1-b8e3-111243a234e9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

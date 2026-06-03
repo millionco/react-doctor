@@ -1,0 +1,30 @@
+packages/react-doctor/src/cli/utils/install-react-doctor.ts
+  s_0be0fcdbf72c91::t_a062fe5aa26db7 288-292,301-307
+  s_0be0fcdbf72c91::t_9ecfe624439b5b 266,269,274-285
+  s_0be0fcdbf72c91::t_bd5336e28e39eb 323-334
+.changeset/onboarding-intro-and-summary-polish.md
+  s_0be0fcdbf72c91::t_f3397f0be4036c 8-9
+packages/react-doctor/src/cli/utils/spinner.ts
+  s_0be0fcdbf72c91::t_9374f3dc50375c 17
+  s_0be0fcdbf72c91::t_fab4d85d2c10e0 65-69
+packages/react-doctor/src/cli/utils/handoff-to-agent.ts
+  s_0be0fcdbf72c91::t_feb804ffd8b05d 42-52,55
+  s_0be0fcdbf72c91::t_0a8a0078453662 8
+  s_0be0fcdbf72c91::t_722f62ee30f4e6 145
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "649b2660b71c08ea6209ea2b94b8270e0041bcad",
+  "prompts": {},
+  "sessions": {
+    "s_0be0fcdbf72c91": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "db6a4a15-c3fc-4dd2-acb7-e3fec38e1203",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

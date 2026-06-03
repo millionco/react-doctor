@@ -1,0 +1,21 @@
+packages/react-doctor/tests/e2e/__snapshots__/terminal-visuals.test.ts.snap
+  ai_agent 68-72
+packages/react-doctor/src/cli/utils/render-summary.ts
+  s_0be0fcdbf72c91::t_832c479415b7d0 72-87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "7253810f83d285bbf9b900081bea9d7b9ec789d6",
+  "prompts": {},
+  "sessions": {
+    "s_0be0fcdbf72c91": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "db6a4a15-c3fc-4dd2-acb7-e3fec38e1203",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

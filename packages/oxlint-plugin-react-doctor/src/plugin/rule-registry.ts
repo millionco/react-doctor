@@ -3185,7 +3185,7 @@ export const reactDoctorRules = [
     rule: {
       ...rnAnimateLayoutProperty,
       framework: "react-native",
-      category: "Performance",
+      category: "Bugs",
       tags: [...new Set(["react-native", ...(rnAnimateLayoutProperty.tags ?? [])])],
     },
   },

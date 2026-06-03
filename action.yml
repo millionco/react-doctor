@@ -236,9 +236,11 @@ runs:
               if (patchLine.startsWith("+")) {
                 addedLines.add(newLine);
                 newLine += 1;
-              } else if (!patchLine.startsWith("-")) {
+              } else if (patchLine.startsWith(" ")) {
                 newLine += 1;
               }
+              // `-` deletions and the `\ No newline at end of file` marker are
+              // not new-file lines, so they don't advance the counter.
             }
             addedLinesByFile.set(file.filename, addedLines);
           }

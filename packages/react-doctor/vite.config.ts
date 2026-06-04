@@ -87,6 +87,17 @@ export default defineConfig({
           "confbox",
           "jiti",
           "magicast",
+          // The vscode-* LSP libs back `react-doctor experimental-lsp` (pulled
+          // in via @react-doctor/language-server). They MUST stay external:
+          // vscode-jsonrpc uses dynamic requires that break when bundled
+          // (the server would start and exit immediately). They're
+          // declared as runtime dependencies so the published tarball
+          // resolves them.
+          "vscode-languageserver",
+          "vscode-languageserver-protocol",
+          "vscode-languageserver-textdocument",
+          "vscode-jsonrpc",
+          "vscode-uri",
           // HACK: deslop-js wraps oxc-parser / oxc-resolver, both of
           // which load platform-specific NAPI bindings via require().
           // Rollup happily inlines the JS loader chain but rewrites
@@ -158,6 +169,38 @@ export default defineConfig({
         ],
       },
       dts: true,
+      target: "node20",
+      platform: "node",
+      fixedExtension: false,
+    },
+    {
+      // Dedicated language-server entry the bin shim fast-paths to for
+      // `react-doctor experimental-lsp`. Inlines @react-doctor/language-server + core;
+      // keeps the engine + LSP transport external (the vscode-* libs use
+      // dynamic requires that break when bundled).
+      entry: { lsp: "./src/lsp.ts" },
+      deps: {
+        neverBundle: [
+          "@effect/platform-node-shared",
+          // Sentry telemetry for `experimental-lsp` — kept external for the
+          // same reason as the CLI pack (it resolves its own OTel/native deps
+          // via require() at runtime).
+          "@sentry/node",
+          "deslop-js",
+          "effect",
+          "oxc-parser",
+          "oxc-resolver",
+          "oxlint",
+          "oxlint-plugin-react-doctor",
+          "typescript",
+          "vscode-languageserver",
+          "vscode-languageserver-protocol",
+          "vscode-languageserver-textdocument",
+          "vscode-jsonrpc",
+          "vscode-uri",
+        ],
+      },
+      dts: false,
       target: "node20",
       platform: "node",
       fixedExtension: false,

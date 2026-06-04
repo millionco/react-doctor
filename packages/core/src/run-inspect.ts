@@ -90,6 +90,16 @@ export interface InspectInput {
    * surface their own spinner state regardless of this flag.
    */
   readonly suppressScanSummary?: boolean;
+  /**
+   * When `true`, `includePaths` is linted verbatim instead of being
+   * narrowed to JSX (`.tsx` / `.jsx`) files. The CLI's diff / staged
+   * paths intentionally restrict to JSX so a changed-files scan stays
+   * React-focused, but an editor scanning the exact buffer the user is
+   * editing wants its diagnostics regardless of extension (custom
+   * hooks, server actions, and module-level rules all fire in plain
+   * `.ts`). Defaults to `false` to preserve the CLI contract.
+   */
+  readonly skipJsxIncludeFilter?: boolean;
 }
 
 export interface InspectOutput {
@@ -273,7 +283,11 @@ export const runInspect = <HooksR = never>(
         : Effect.succeed(null as string | null),
     );
 
-    const jsxIncludePaths = computeJsxIncludePaths([...input.includePaths]);
+    const jsxIncludePaths = input.skipJsxIncludeFilter
+      ? input.includePaths.length > 0
+        ? [...input.includePaths]
+        : undefined
+      : computeJsxIncludePaths([...input.includePaths]);
     const lintIncludePaths =
       jsxIncludePaths ?? resolveLintIncludePaths(scanDirectory, resolvedConfig.config);
 

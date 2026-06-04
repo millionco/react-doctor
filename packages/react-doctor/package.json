@@ -69,11 +69,15 @@
     "oxlint": "^1.66.0",
     "oxlint-plugin-react-doctor": "workspace:*",
     "prompts": "^2.4.2",
-    "typescript": ">=5.0.4 <7"
+    "typescript": ">=5.0.4 <7",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.12",
+    "vscode-uri": "^3.1.0"
   },
   "devDependencies": {
     "@react-doctor/api": "workspace:*",
     "@react-doctor/core": "workspace:*",
+    "@react-doctor/language-server": "workspace:*",
     "@types/babel__code-frame": "^7.27.0",
     "@types/prompts": "^2.4.9",
     "@xterm/headless": "^6.0.0",

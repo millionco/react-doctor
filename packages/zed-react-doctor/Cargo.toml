@@ -1,0 +1,15 @@
+[package]
+name = "zed-react-doctor"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+zed_extension_api = "0.7.0"
+
+# Detach from any parent Cargo workspace: this crate is compiled standalone by
+# Zed when installed as a dev extension.
+[workspace]

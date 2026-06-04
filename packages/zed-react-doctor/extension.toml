@@ -1,0 +1,11 @@
+id = "react-doctor"
+name = "React Doctor"
+version = "0.1.0"
+schema_version = 1
+authors = ["Aiden Bai"]
+description = "React Doctor diagnostics, hovers, and quick fixes via the React Doctor language server."
+repository = "https://github.com/millionco/react-doctor"
+
+[language_servers.react-doctor]
+name = "React Doctor"
+languages = ["TypeScript", "TSX", "JavaScript"]

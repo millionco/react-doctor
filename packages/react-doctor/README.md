@@ -37,7 +37,19 @@ npx react-doctor@latest install
 
 Works with Claude Code, Cursor, Codex, OpenCode, and many more.
 
-### 3. Run in CI (GitHub Actions) for your team
+### 3. Use in your editor (LSP)
+
+React Doctor ships an experimental language server, so diagnostics show up live as you type — underlined inline, with rich hovers and quick fixes — in VS Code, Cursor, Zed, Neovim, Sublime, Emacs, Helix, or any LSP client. The universal launch command is:
+
+```bash
+react-doctor experimental-lsp --stdio
+```
+
+> The editor language server is experimental — its protocol, caching, and diagnostics may change between releases, hence the `experimental-` prefix.
+
+Companion extensions for VS Code/Cursor and Zed live under `packages/`; any other LSP client can run the command above directly over stdio.
+
+### 4. Run in CI (GitHub Actions) for your team
 
 [![GitHub Action](https://img.shields.io/badge/GitHub%20Action-React%20Doctor-000000?style=flat&labelColor=000000&logo=githubactions&logoColor=white)](https://github.com/marketplace/actions/react-doctor)
 

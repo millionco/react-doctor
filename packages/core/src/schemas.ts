@@ -3,6 +3,19 @@ import * as Schema from "effect/Schema";
 export const Severity = Schema.Literals(["error", "warning"]);
 export type Severity = Schema.Schema.Type<typeof Severity>;
 
+export class DiagnosticRelatedLocation extends Schema.Class<DiagnosticRelatedLocation>(
+  "DiagnosticRelatedLocation",
+)({
+  filePath: Schema.String,
+  line: Schema.Number,
+  column: Schema.Number,
+  offset: Schema.optional(Schema.Number),
+  length: Schema.optional(Schema.Number),
+  endLine: Schema.optional(Schema.Number),
+  endColumn: Schema.optional(Schema.Number),
+  message: Schema.String,
+}) {}
+
 export class Diagnostic extends Schema.Class<Diagnostic>("Diagnostic")({
   filePath: Schema.String,
   plugin: Schema.String,
@@ -14,8 +27,13 @@ export class Diagnostic extends Schema.Class<Diagnostic>("Diagnostic")({
   url: Schema.optional(Schema.String),
   line: Schema.Number,
   column: Schema.Number,
+  offset: Schema.optional(Schema.Number),
+  length: Schema.optional(Schema.Number),
+  endLine: Schema.optional(Schema.Number),
+  endColumn: Schema.optional(Schema.Number),
   category: Schema.String,
   suppressionHint: Schema.optional(Schema.String),
+  relatedLocations: Schema.optional(Schema.Array(DiagnosticRelatedLocation)),
 }) {}
 
 /**

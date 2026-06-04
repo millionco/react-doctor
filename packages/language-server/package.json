@@ -1,0 +1,42 @@
+{
+  "name": "@react-doctor/language-server",
+  "version": "0.2.11",
+  "private": true,
+  "description": "Internal: editor language server for React Doctor — daemonized diagnostics, hovers, and code actions over LSP. Not published directly; bundled into the react-doctor CLI as `react-doctor experimental-lsp`.",
+  "license": "MIT",
+  "bin": {
+    "react-doctor-language-server": "./bin/react-doctor-language-server.js"
+  },
+  "files": [
+    "bin/**",
+    "dist/**/*.js",
+    "dist/**/*.d.ts"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "dev": "vp pack --watch",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && cross-env NODE_ENV=production vp pack",
+    "typecheck": "tsc --noEmit",
+    "test": "vp test run"
+  },
+  "dependencies": {
+    "@react-doctor/core": "workspace:*",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.12",
+    "vscode-uri": "^3.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  }
+}

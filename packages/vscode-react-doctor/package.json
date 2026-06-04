@@ -1,0 +1,111 @@
+{
+  "name": "vscode-react-doctor",
+  "displayName": "React Doctor",
+  "version": "0.2.11",
+  "private": true,
+  "description": "React Doctor diagnostics, hovers, and quick fixes in your editor.",
+  "categories": [
+    "Linters",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "diagnostics",
+    "lint",
+    "lsp",
+    "react",
+    "react-doctor"
+  ],
+  "homepage": "https://react.doctor",
+  "bugs": {
+    "url": "https://github.com/millionco/react-doctor/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/millionco/react-doctor.git",
+    "directory": "packages/vscode-react-doctor"
+  },
+  "publisher": "millionco",
+  "main": "./dist/extension.js",
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --outfile=dist/extension.js",
+    "typecheck": "tsc --noEmit",
+    "dev": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --outfile=dist/extension.js --watch",
+    "package": "pnpm run build && npx --yes @vscode/vsce package --no-dependencies -o react-doctor.vsix"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^6.0.3"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "react-doctor.scanWorkspace",
+        "title": "React Doctor: Scan Workspace"
+      },
+      {
+        "command": "react-doctor.scanFile",
+        "title": "React Doctor: Scan Current File"
+      },
+      {
+        "command": "react-doctor.fixAll",
+        "title": "React Doctor: Suppress All Issues in File"
+      },
+      {
+        "command": "react-doctor.restart",
+        "title": "React Doctor: Restart Server"
+      },
+      {
+        "command": "react-doctor.showOutput",
+        "title": "React Doctor: Show Output"
+      }
+    ],
+    "configuration": {
+      "title": "React Doctor",
+      "properties": {
+        "reactDoctor.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable React Doctor diagnostics, hovers, and quick fixes."
+        },
+        "reactDoctor.serverPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "description": "Optional path to the react-doctor executable. When empty, the project's local install is used, falling back to `npx react-doctor@latest`."
+        },
+        "reactDoctor.scanOnType": {
+          "type": "boolean",
+          "default": true,
+          "description": "Re-scan files live as you type (from the unsaved buffer). Disable to scan only on open and save."
+        },
+        "reactDoctor.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "scope": "window",
+          "description": "Trace the communication between the editor and the React Doctor language server."
+        }
+      }
+    }
+  },
+  "activationEvents": [
+    "onLanguage:javascript",
+    "onLanguage:javascriptreact",
+    "onLanguage:typescript",
+    "onLanguage:typescriptreact"
+  ],
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0",
+    "vscode": "^1.85.0"
+  }
+}

@@ -11,7 +11,9 @@ export default defineConfig({
       "dist",
       "build",
       "node_modules",
+      "packages/zed-react-doctor/**",
       "packages/react-doctor/tests/fixtures/**",
+      "packages/language-server/tests/fixtures/**",
     ],
     plugins: ["typescript", "react", "import"],
     rules: {},
@@ -19,6 +21,14 @@ export default defineConfig({
   fmt: {
     semi: true,
     singleQuote: false,
-    ignorePatterns: [".turbo", "node_modules", "dist", "build", "pnpm-lock.yaml"],
+    ignorePatterns: [
+      ".turbo",
+      "node_modules",
+      "dist",
+      "build",
+      "pnpm-lock.yaml",
+      "packages/zed-react-doctor/**",
+      "packages/language-server/tests/fixtures/**",
+    ],
   },
 });

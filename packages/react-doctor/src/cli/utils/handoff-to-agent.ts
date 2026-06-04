@@ -94,7 +94,7 @@ const setUpGitHubActions = (rootDirectory: string): void => {
 type CiHandoffOutcome = "yes" | "no" | "cancel";
 
 const askAddToGitHubActions = async (): Promise<CiHandoffOutcome> => {
-  logger.log("React Doctor can scan every pull request via GitHub Actions.");
+  logger.log("Scan every pull request to prevent new React issues while you fix the backlog.");
   logger.log(highlighter.dim(`Used by teams at ${CI_TRUST_COMPANIES}.`));
   logger.break();
 

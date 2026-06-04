@@ -14,17 +14,7 @@ import { reportWorkflowResult } from "./report-workflow-result.js";
 import { installReactDoctorSkillForAgent } from "./install-skill-for-agent.js";
 import { isCommandAvailable } from "./is-command-available.js";
 import { CI_TRUST_COMPANIES, METRIC } from "./constants.js";
-// Pitch content for the "Add to GitHub Actions" choice's description. Joining
-// with `\n` flips the `prompts` `select` renderer from inline (` - description`
-// on the title line) to wrapped-below (each line indented under the cursor) —
-// see `node_modules/prompts/lib/elements/select.js` lines 158-164. Splitting
-// into three lines keeps each one under the wrap budget at narrow terminals
-// and reads as a structured pitch instead of a wall of text.
-const ADD_TO_GITHUB_ACTIONS_DESCRIPTION = [
-  "Scan every pull request: new PRs stay clean while you fix the backlog",
-  `Used by teams at ${CI_TRUST_COMPANIES}`,
-  CI_URL,
-].join("\n");
+import { openUrl } from "./open-url.js";
 import { recordCount } from "./record-metric.js";
 import {
   CLI_AGENT_BINARIES,
@@ -42,7 +32,9 @@ export interface HandoffToAgentInput {
   readonly interactive: boolean;
 }
 
-const CI_CHOICE = "ci";
+const CI_YES_CHOICE = "ci-yes";
+const CI_LEARN_MORE_CHOICE = "ci-learn-more";
+const CI_NO_CHOICE = "ci-no";
 const CLIPBOARD_CHOICE = "clipboard";
 const SKIP_CHOICE = "skip";
 
@@ -63,12 +55,6 @@ const printPayload = (payload: string): void => {
 // doesn't drop the workflow in the wrong place. The script step throws on a
 // read-only / permission-denied FS, so it's guarded: a failed setup must
 // never crash a scan that already succeeded.
-//
-// The post-pick message is intentionally lean: the scan-report footer's
-// `GitHub Actions:` entry (`printFooter`) already made the case before the
-// user clicked, so repeating the social-proof + backlog talking points here
-// would be redundant noise. Confirm what changed, link the guide for deeper
-// reading, done.
 const setUpGitHubActions = (rootDirectory: string): void => {
   const projectRoot = findNearestPackageDirectory(rootDirectory) ?? rootDirectory;
   try {
@@ -82,14 +68,77 @@ const setUpGitHubActions = (rootDirectory: string): void => {
   logger.break();
   if (workflowResult.status === "failed") {
     logger.log(
-      `Couldn't set up GitHub Actions automatically. Add React Doctor to your pull requests with the guide: ${highlighter.dim(CI_URL)}`,
+      `Couldn't set up GitHub Actions automatically. Follow the guide at ${highlighter.info(CI_URL)}`,
     );
     return;
   }
   if (workflowResult.status === "created") {
     logger.log("React Doctor will now scan every new pull request automatically.");
   }
-  logger.log(`Learn more: ${highlighter.dim(CI_URL)}`);
+  logger.log(`Learn more: ${highlighter.info(CI_URL)}`);
+};
+
+// First handoff question, asked only when the GitHub Actions workflow isn't
+// already on disk. Pulled out of the main handoff prompt so the agent
+// selection below stays a clean "what runs next?" question instead of a
+// multi-axis decision. The pitch lives on a logger line above the question
+// (always visible, not buried inside one focused choice's description), and
+// the URL renders cyan via `highlighter.info` so it reads as a link in the
+// terminal — matching how `GitHub:` is styled in the scan-report footer.
+//
+// "Learn more" opens the docs in the user's default browser via `openUrl` and
+// re-prompts, so the user can decide after reading without restarting the
+// CLI. Non-interactive runs never reach this function (the caller short-circuits
+// on `!input.interactive`); cancel (Esc / Ctrl-C) maps to "no" so a stray
+// keypress doesn't accidentally install workflow files.
+type CiHandoffOutcome = "yes" | "no" | "cancel";
+
+const askAddToGitHubActions = async (): Promise<CiHandoffOutcome> => {
+  logger.log("React Doctor can scan every pull request via GitHub Actions.");
+  logger.log(highlighter.dim(`Used by teams at ${CI_TRUST_COMPANIES}.`));
+  logger.break();
+
+  while (true) {
+    const { ciChoice } = await prompts<"ciChoice">(
+      {
+        type: "select",
+        name: "ciChoice",
+        message: "Add React Doctor to GitHub Actions?",
+        choices: [
+          {
+            title: "Yes (recommended)",
+            description: "Adds the workflow file and a doctor package script",
+            value: CI_YES_CHOICE,
+          },
+          {
+            title: "Learn more",
+            description: highlighter.info(CI_URL),
+            value: CI_LEARN_MORE_CHOICE,
+          },
+          {
+            title: "No, thanks",
+            description: "Continue to the agent handoff",
+            value: CI_NO_CHOICE,
+          },
+        ],
+        initial: 0,
+      },
+      { onCancel: () => true },
+    );
+
+    if (ciChoice === undefined) return "cancel";
+    if (ciChoice === CI_YES_CHOICE) return "yes";
+    if (ciChoice === CI_NO_CHOICE) return "no";
+
+    // CI_LEARN_MORE_CHOICE: open the docs and loop back to the question.
+    const opened = openUrl(CI_URL);
+    logger.log(
+      opened
+        ? `Opened ${highlighter.info(CI_URL)} in your browser.`
+        : `Visit ${highlighter.info(CI_URL)} to learn more.`,
+    );
+    logger.break();
+  }
 };
 
 // CLI agents we can launch: detected as installed by `agent-install`
@@ -103,23 +152,38 @@ const detectLaunchableAgents = async (): Promise<CliAgentId[]> => {
   );
 };
 
-// Prompts for an agent to hand the scan results to and launches it: a
-// detected CLI agent takes over the current terminal with the top issues
-// as its initial prompt, or the prompt is copied to the clipboard for pasting
-// into any agent (and printed only if copy/launch fails). Non-interactive runs
-// do nothing.
+// Two-phase post-scan handoff: first asks whether to wire up GitHub Actions
+// (skipped when the workflow file is already on disk — that option would be a
+// no-op), then asks where to send the diagnostics for triage. The split keeps
+// each question single-axis: "should this codebase run React Doctor on every
+// PR?" is a different decision than "where do you want to triage today's
+// findings?", and combining them was confusing — the agent picker is the same
+// choice the user makes every scan, the CI prompt is a one-time install. Both
+// questions are skipped when non-interactive or there's nothing to hand off.
 export const handoffToAgent = async (input: HandoffToAgentInput): Promise<void> => {
   if (!input.interactive || input.diagnostics.length === 0) return;
 
   logger.break();
 
-  // Drop the "Add to GitHub Actions" choice entirely when the workflow file
-  // is already present: picking it would be a no-op, and listing an option
-  // whose only outcome is "✔ GitHub Actions workflow already configured" is
-  // clutter. Users with CI configured skip straight to the agent / clipboard
-  // / skip choices.
   const projectRootForCi = findNearestPackageDirectory(input.rootDirectory) ?? input.rootDirectory;
   const isGitHubActionsConfigured = isReactDoctorWorkflowInstalled(projectRootForCi);
+
+  // CI question first, only when it has anything to do. A "yes" sets up the
+  // workflow inline and then falls through to the agent question, so a user
+  // can install CI AND launch an agent in one scan — previously the combined
+  // prompt forced an either/or choice.
+  if (!isGitHubActionsConfigured) {
+    const ciOutcome = await askAddToGitHubActions();
+    recordCount(METRIC.agentHandoff, 1, {
+      outcome: `ci-${ciOutcome}`,
+      diagnosticsCount: input.diagnostics.length,
+    });
+    if (ciOutcome === "cancel") return;
+    if (ciOutcome === "yes") {
+      setUpGitHubActions(input.rootDirectory);
+      logger.break();
+    }
+  }
 
   const launchableAgents = await detectLaunchableAgents();
   const { handoffTarget } = await prompts<"handoffTarget">(
@@ -128,15 +192,6 @@ export const handoffToAgent = async (input: HandoffToAgentInput): Promise<void> 
       name: "handoffTarget",
       message: "What would you like to do next?",
       choices: [
-        ...(isGitHubActionsConfigured
-          ? []
-          : [
-              {
-                title: "Add to GitHub Actions (recommended)",
-                description: ADD_TO_GITHUB_ACTIONS_DESCRIPTION,
-                value: CI_CHOICE,
-              },
-            ]),
         ...launchableAgents.map((agentId) => ({
           title: getSkillAgentConfig(agentId).displayName,
           description: `Open ${CLI_AGENT_BINARIES[agentId]} here with the top issues as a prompt`,
@@ -154,13 +209,12 @@ export const handoffToAgent = async (input: HandoffToAgentInput): Promise<void> 
     { onCancel: () => true },
   );
 
-  // Count the fix-loop outcome (the core activation moment): did the user set
-  // up GitHub Actions, launch an agent (any agent id), copy the prompt, or
-  // skip/cancel? The outcome value stays `"ci"` for metric-history continuity
-  // with prior releases — only the user-facing wording changed.
+  // Count the agent-handoff outcome (the second activation moment). The CI
+  // outcome was counted separately above, since it's now its own question.
+  // The `"launch"` / `"clipboard"` / `"skip"` / `"cancel"` values are preserved
+  // for metric-history continuity with prior releases.
   let handoffOutcome = "launch";
   if (handoffTarget === undefined) handoffOutcome = "cancel";
-  else if (handoffTarget === CI_CHOICE) handoffOutcome = "ci";
   else if (handoffTarget === SKIP_CHOICE) handoffOutcome = "skip";
   else if (handoffTarget === CLIPBOARD_CHOICE) handoffOutcome = "clipboard";
   recordCount(METRIC.agentHandoff, 1, {
@@ -169,13 +223,7 @@ export const handoffToAgent = async (input: HandoffToAgentInput): Promise<void> 
     diagnosticsCount: input.diagnostics.length,
   });
 
-  // Cancel (Esc / Ctrl-C) or "Skip" exits without writing the prompt/files.
   if (handoffTarget === undefined || handoffTarget === SKIP_CHOICE) return;
-
-  if (handoffTarget === CI_CHOICE) {
-    setUpGitHubActions(input.rootDirectory);
-    return;
-  }
 
   const payload = buildHandoffPayload({
     diagnostics: input.diagnostics,

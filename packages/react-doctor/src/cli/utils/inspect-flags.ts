@@ -12,7 +12,9 @@ export interface InspectFlags {
   telemetry?: boolean;
   yes?: boolean;
   staged?: boolean;
-  prComment?: boolean;
+  // Commander's `--no-respect-inline-disables` negatable option: defaults to
+  // `true` and flips to `false` only when the user passes the flag. The
+  // resolver maps the `true` default back to `undefined` so config can win.
   respectInlineDisables?: boolean;
   warnings?: boolean;
   project?: string;
@@ -21,8 +23,9 @@ export interface InspectFlags {
   // Commander's `--no-parallel` negatable option: defaults to `true`
   // (parallel) and flips to `false` only when the user passes the flag.
   parallel?: boolean;
+  // Set by the `why <file:line>` command (no longer a CLI flag); routes the
+  // inspect flow into the single-location explain path.
   explain?: string;
-  why?: string;
   blocking?: string;
   /**
    * @deprecated Renamed to `blocking`. Still parsed as an alias when

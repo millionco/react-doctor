@@ -87,6 +87,16 @@ describe("stripUnknownCliFlags", () => {
     ).toEqual(["rules", "enable", "no-danger", "--severity", "error"]);
   });
 
+  it("keeps the why subcommand positional and options, dropping unknown ones", () => {
+    expect(
+      stripUserArguments(["why", "src/App.tsx:42", "--project", "web", "-c", "/tmp/project"]),
+    ).toEqual(["why", "src/App.tsx:42", "--project", "web", "-c", "/tmp/project"]);
+    expect(stripUserArguments(["why", "src/App.tsx:42", "--offline"])).toEqual([
+      "why",
+      "src/App.tsx:42",
+    ]);
+  });
+
   it("keeps color flags on rules subcommands so the color resolver can see them", () => {
     expect(stripUserArguments(["rules", "list", "--no-color"])).toEqual([
       "rules",

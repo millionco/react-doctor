@@ -1,4 +1,4 @@
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import { CANONICAL_GITHUB_URL, highlighter } from "@react-doctor/core";
 import { flushSentry, initializeSentry } from "../instrument.js";
 import { inspectAction } from "./commands/inspect.js";
@@ -14,6 +14,7 @@ import {
   rulesUnignoreTagAction,
 } from "./commands/rules.js";
 import { versionAction } from "./commands/version.js";
+import { whyAction } from "./commands/why.js";
 import { applyColorPreference } from "./utils/apply-color-preference.js";
 import { exitGracefully } from "./utils/exit-gracefully.js";
 import { guardStdin } from "./utils/guard-stdin.js";
@@ -61,7 +62,7 @@ ${formatExampleLines([
   ["react-doctor --staged", "scan staged files (pre-commit hook)"],
   ["react-doctor --blocking warning", "fail CI on warnings too (default: error)"],
   ["react-doctor --json > report.json", "write a machine-readable report"],
-  ["react-doctor --explain src/App.tsx:42", "explain why a rule fired there"],
+  ["react-doctor why src/App.tsx:42", "explain why a rule fired there"],
   ["react-doctor install", "set up the agent skill and git hook"],
 ])}
 
@@ -115,9 +116,13 @@ const program = new Command()
     "--diff [base]",
     "scan only files changed vs base branch (pass `false` to force a full scan, overriding config)",
   )
-  .option(
-    "--changed-files-from <file>",
-    "internal: scan source files listed in a newline-delimited changed-files file",
+  .addOption(
+    // Internal: the GitHub Action passes the PR's changed-file list here.
+    // Hidden from --help; it's plumbing, not user surface.
+    new Option(
+      "--changed-files-from <file>",
+      "scan source files listed in a newline-delimited changed-files file",
+    ).hideHelp(),
   )
   .option("--no-score", "skip the score API, the share URL, and crash reporting")
   .option(
@@ -131,19 +136,6 @@ const program = new Command()
   )
   .option("--fail-on <level>", "[deprecated] alias for --blocking <level>")
   .option(
-    "--pr-comment",
-    "tune CLI output for sticky PR comments (drops weak-signal rule families like `design` from the printed list and the CI gate; configure via config.surfaces)",
-  )
-  .option(
-    "--explain <file:line>",
-    "diagnose why a rule fired or why a suppression didn't apply at a specific location",
-  )
-  .option("--why <file:line>", "alias for --explain")
-  .option(
-    "--respect-inline-disables",
-    "respect inline `// eslint-disable*` / `// oxlint-disable*` comments (default)",
-  )
-  .option(
     "--no-respect-inline-disables",
     "audit mode: neutralize inline lint suppressions before scanning",
   )
@@ -154,6 +146,15 @@ const program = new Command()
   .addHelpText("after", renderRootHelpEpilog);
 
 program.action(inspectAction);
+
+program
+  .command("why <location>")
+  .description("Explain why a rule fired (or why a suppression didn't apply) at a file:line")
+  .option("--project <name>", "select workspace project (comma-separated for multiple)")
+  .option("-c, --cwd <cwd>", "working directory", process.cwd())
+  .option("--color", "force colored output")
+  .option("--no-color", "disable colored output (also honors NO_COLOR)")
+  .action((location, options) => whyAction(location, options));
 
 program
   .command("install")

@@ -6,12 +6,6 @@ describe("validateModeFlags", () => {
     expect(() => validateModeFlags({ json: true, blocking: "none" })).not.toThrow();
   });
 
-  it("keeps PR comment rendering mutually exclusive with JSON output", () => {
-    expect(() => validateModeFlags({ json: true, prComment: true })).toThrow(
-      "--pr-comment cannot be combined with --json or --score.",
-    );
-  });
-
   it("rejects --score combined with --no-telemetry (contradictory intent)", () => {
     expect(() => validateModeFlags({ score: true, telemetry: false })).toThrow(
       "Cannot combine --score with --no-telemetry",

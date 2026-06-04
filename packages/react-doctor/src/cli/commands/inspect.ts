@@ -209,7 +209,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       logger.break();
     }
 
-    const explainArgument = flags.explain ?? flags.why;
+    const explainArgument = flags.explain;
     if (explainArgument !== undefined) {
       await runExplain(explainArgument, {
         resolvedDirectory,

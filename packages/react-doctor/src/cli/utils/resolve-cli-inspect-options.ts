@@ -30,13 +30,15 @@ export const resolveCliInspectOptions = (
     lint: flags.lint,
     deadCode: flags.deadCode,
     verbose: flags.verbose,
-    respectInlineDisables: flags.respectInlineDisables,
+    // `--no-respect-inline-disables` is negatable-only, so commander defaults
+    // this to `true`; map that back to `undefined` so a config value can win,
+    // and only honor an explicit `false` (the user passed the flag).
+    respectInlineDisables: flags.respectInlineDisables === false ? false : undefined,
     warnings: flags.warnings ?? (wantsWarningGate ? true : undefined),
     scoreOnly: flags.score === true,
     noScore: flags.score === false || flags.telemetry === false || (userConfig?.noScore ?? false),
     isCi: isCiEnvironment(),
     silent: Boolean(flags.json),
-    outputSurface: flags.prComment ? "prComment" : "cli",
     concurrency: resolveParallelFlag(flags.parallel),
   };
 };

@@ -1,6 +1,6 @@
-import fs from "node:fs";
+import * as fs from "node:fs";
 import { createRequire } from "node:module";
-import path from "node:path";
+import * as path from "node:path";
 
 const esmRequire = createRequire(import.meta.url);
 

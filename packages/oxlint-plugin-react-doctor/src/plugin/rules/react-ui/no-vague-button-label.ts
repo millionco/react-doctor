@@ -61,6 +61,9 @@ export const noVagueButtonLabel = defineRule<Rule>({
   title: "Vague button label",
   tags: ["design", "test-noise"],
   severity: "warn",
+  // Default off: subjective design / house-style preference, not a
+  // correctness, performance, or accessibility issue. Opt in to enforce it.
+  defaultEnabled: false,
   recommendation:
     'Name the action: "Save changes" instead of "Continue", "Send invite" instead of "Submit". The label is the button\'s accessible name.',
   create: (context: RuleContext) => ({

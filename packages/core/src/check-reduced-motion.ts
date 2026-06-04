@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import path from "node:path";
+import * as path from "node:path";
 import { MOTION_LIBRARY_PACKAGES } from "oxlint-plugin-react-doctor";
 import type { Diagnostic } from "./types/index.js";
 import { isFile, readPackageJson } from "./project-info/index.js";

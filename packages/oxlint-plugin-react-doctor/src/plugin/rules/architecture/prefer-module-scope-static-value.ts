@@ -194,6 +194,13 @@ export const preferModuleScopeStaticValue = defineRule<Rule>({
   tags: ["test-noise"],
   severity: "warn",
   category: "Architecture",
+  // React Compiler hoists/caches these per-render allocations itself, so
+  // both halves of the recommendation (avoid the re-allocation, preserve
+  // referential equality for memoized children) are already handled — the
+  // warning is pure noise on a compiler-enabled codebase. Mirrors the
+  // `jsx-no-new-*-as-prop` rules, which gate on the same capability for
+  // the same referential-equality reason.
+  disabledBy: ["react-compiler"],
   recommendation:
     "Move the value above the component, at the top of the file. It doesn't use local state, so rebuilding it each update is wasted and makes it look new every time.",
   create: (context: RuleContext) => ({

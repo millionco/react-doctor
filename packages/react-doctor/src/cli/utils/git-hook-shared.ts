@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
-import path from "node:path";
+import * as path from "node:path";
+import * as fs from "node:fs";
 
 export const HOOK_FILE_NAME = "pre-commit";
 export const HOOK_RELATIVE_PATH = "hooks/pre-commit";
@@ -47,14 +47,14 @@ export const getPackageJsonPath = (projectRoot: string): string =>
 
 export const readPackageJson = (projectRoot: string): unknown => {
   try {
-    return JSON.parse(readFileSync(getPackageJsonPath(projectRoot), "utf8"));
+    return JSON.parse(fs.readFileSync(getPackageJsonPath(projectRoot), "utf8"));
   } catch {
     return null;
   }
 };
 
 export const writeJsonFile = (filePath: string, value: unknown): void => {
-  writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
+  fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
 };
 
 export const packageHasDependency = (projectRoot: string, dependencyName: string): boolean => {

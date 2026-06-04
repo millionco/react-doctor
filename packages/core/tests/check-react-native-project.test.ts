@@ -1,6 +1,6 @@
-import fs from "node:fs";
+import * as fs from "node:fs";
 import os from "node:os";
-import path from "node:path";
+import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 import { checkReactNativeProject, clearPackageJsonCache } from "@react-doctor/core";
 import type { Diagnostic, PackageJson, ProjectInfo } from "@react-doctor/core";
@@ -47,6 +47,8 @@ const buildRnProject = (
   hasTanStackQuery: false,
   hasReactNativeWorkspace: framework === "react-native" || framework === "expo",
   expoVersion: null,
+  shopifyFlashListVersion: null,
+  shopifyFlashListMajorVersion: null,
   hasReanimated: false,
   preactVersion: null,
   preactMajorVersion: null,

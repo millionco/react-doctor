@@ -1,4 +1,4 @@
-import fs from "node:fs";
+import * as fs from "node:fs";
 
 /**
  * Resolves a path to its canonical, symlink-free form, falling back to

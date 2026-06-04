@@ -1,14 +1,7 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`in-process render across terminal widths and render modes > matches the rendered 100-column layout snapshot 1`] = `
-"  Bugs > 3 errors
-  Maintainability > 1 error
-  Performance > 1 warning
-
-  5 issues
-
-  ────────────────────────────────────────────────────────────
-  Top 3 errors you should fix
+"  Top 3 errors you should fix
 
   ✖ Bugs: react-doctor/no-adjust-state-on-prop-change ×2
     State adjusted in a useEffect when a prop changes — forces
@@ -50,7 +43,15 @@ exports[`in-process render across terminal widths and render modes > matches the
     └──────────────────────────────────────────────────────────────┘
 
 
-  +1 optional warning - run npx react-doctor@latest --verbose for details
+  ────────────────────────────────────────────────────────────
+
+  All 5 issues
+
+  Bugs > 3 errors
+  Performance > 1 warning
+  Maintainability > 1 error
+
+  Run npx react-doctor@latest --verbose to list every error and warning
 
   ┌─────┐  99 / 100 Great
   │ ◠ ◠ │  ██████████████████████████████████████████████████

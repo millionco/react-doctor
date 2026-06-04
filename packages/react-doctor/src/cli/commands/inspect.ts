@@ -1,8 +1,8 @@
-import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import path from "node:path";
+import * as path from "node:path";
 import { performance } from "node:perf_hooks";
 import * as Effect from "effect/Effect";
+import * as fs from "node:fs";
 import {
   buildJsonReport,
   filterDiagnosticsForSurface,
@@ -39,7 +39,7 @@ import {
 import { canAnimateOnboarding, isOnboardingForced } from "../utils/onboarding-pacing.js";
 import { hasCompletedOnboarding } from "../utils/onboarding-state.js";
 import { printBrandedHeader } from "../utils/print-branded-header.js";
-import { playWelcomeScene } from "../utils/render-welcome.js";
+import { playWelcomeScene, RETURNING_USER_SPEED_MULTIPLIER } from "../utils/render-welcome.js";
 import { reportErrorToSentry } from "../utils/report-error.js";
 import { readChangedFilesFrom } from "../utils/read-changed-files-from.js";
 import { printMultiProjectSummary } from "../utils/render-multi-project-summary.js";
@@ -221,12 +221,20 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
     }
 
     if (!isQuiet) {
-      // First-run (or forced) onboarding opens with the animated welcome scene
-      // in place of the static branded header; everything else keeps the header.
-      const showWelcome =
-        (isOnboardingForced() || !hasCompletedOnboarding()) && canAnimateOnboarding(process.stdout);
+      // Interactive regular runs open with the animated welcome scene in place
+      // of the static branded header. `--verbose` is a power-user review mode
+      // (the same user typed `--verbose` on purpose), so the intro is skipped
+      // entirely there and the static header takes over. Returning users in
+      // regular mode get a much snappier replay (`RETURNING_USER_SPEED_MULTIPLIER`)
+      // since they've already seen the full first-run pitch.
+      const showWelcome = !flags.verbose && canAnimateOnboarding(process.stdout);
       if (showWelcome) {
-        await Effect.runPromise(playWelcomeScene());
+        const isReturningUser = !isOnboardingForced() && hasCompletedOnboarding();
+        await Effect.runPromise(
+          playWelcomeScene({
+            speedMultiplier: isReturningUser ? RETURNING_USER_SPEED_MULTIPLIER : 1,
+          }),
+        );
       } else {
         Effect.runSync(printBrandedHeader);
       }
@@ -261,7 +269,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         logger.break();
       }
 
-      const tempDirectory = mkdtempSync(path.join(tmpdir(), STAGED_FILES_TEMP_DIR_PREFIX));
+      const tempDirectory = fs.mkdtempSync(path.join(tmpdir(), STAGED_FILES_TEMP_DIR_PREFIX));
       // If materialization throws before `snapshot.cleanup` is wired up,
       // remove the temp dir we just created so it can't leak.
       const snapshot = await materializeStagedFiles(
@@ -269,7 +277,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         stagedFiles,
         tempDirectory,
       ).catch((error: unknown) => {
-        rmSync(tempDirectory, { recursive: true, force: true });
+        fs.rmSync(tempDirectory, { recursive: true, force: true });
         throw error;
       });
       try {

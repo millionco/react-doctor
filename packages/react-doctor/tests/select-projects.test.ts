@@ -1,6 +1,6 @@
-import fs from "node:fs";
+import * as fs from "node:fs";
 import os from "node:os";
-import path from "node:path";
+import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { selectProjects } from "../src/cli/utils/select-projects.js";
 import { cliLogger } from "../src/cli/utils/cli-logger.js";

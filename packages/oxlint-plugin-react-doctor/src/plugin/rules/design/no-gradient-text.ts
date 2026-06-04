@@ -12,6 +12,9 @@ export const noGradientText = defineRule<Rule>({
   title: "Gradient text is hard to read",
   tags: ["design", "test-noise"],
   severity: "warn",
+  // Default off: subjective design / house-style preference, not a
+  // correctness, performance, or accessibility issue. Opt in to enforce it.
+  defaultEnabled: false,
   recommendation:
     "Use a solid text color so it stays readable. For emphasis, change the weight, size, or color instead of using a gradient.",
   create: (context: RuleContext) => ({

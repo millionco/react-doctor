@@ -1,7 +1,7 @@
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { installSkillsFromSource, SKILL_MANIFEST_FILE, type SkillAgentType } from "agent-install";
 import { getSkillSourceDirectory } from "./install-react-doctor.js";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 // Copies the bundled react-doctor skill into a single agent's skills dir so
 // the agent we're handing off to already knows the `/react-doctor`
@@ -12,7 +12,7 @@ export const installReactDoctorSkillForAgent = async (
   projectRoot: string,
 ): Promise<boolean> => {
   const source = getSkillSourceDirectory();
-  if (!existsSync(join(source, SKILL_MANIFEST_FILE))) return false;
+  if (!fs.existsSync(path.join(source, SKILL_MANIFEST_FILE))) return false;
   const result = await installSkillsFromSource({
     source,
     agents: [agent],

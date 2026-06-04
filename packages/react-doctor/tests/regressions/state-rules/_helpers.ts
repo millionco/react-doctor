@@ -1,6 +1,6 @@
-import fs from "node:fs";
+import * as fs from "node:fs";
 import os from "node:os";
-import path from "node:path";
+import * as path from "node:path";
 import { afterAll } from "vite-plus/test";
 
 export { collectRuleHits, setupReactProject } from "../_helpers.js";

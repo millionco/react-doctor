@@ -1,6 +1,6 @@
-import fs from "node:fs";
+import * as fs from "node:fs";
 import os from "node:os";
-import path from "node:path";
+import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 import {
   discoverProject,
@@ -1497,5 +1497,56 @@ describe("discoverProject — Preact", () => {
     const projectInfo = discoverProject(projectDirectory);
     expect(projectInfo.preactVersion).toBe(null);
     expect(projectInfo.preactMajorVersion).toBe(null);
+  });
+});
+
+describe("discoverProject — FlashList", () => {
+  it("detects @shopify/flash-list v2 in a React Native project", () => {
+    const projectDirectory = path.join(tempDirectory, "flash-list-v2");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "flash-list-v2",
+        dependencies: {
+          react: "^19.0.0",
+          "react-native": "0.76.0",
+          "@shopify/flash-list": "^2.0.0",
+        },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.shopifyFlashListVersion).toBe("^2.0.0");
+    expect(projectInfo.shopifyFlashListMajorVersion).toBe(2);
+  });
+
+  it("resolves @shopify/flash-list from a workspace catalog", () => {
+    const rootDirectory = path.join(tempDirectory, "flash-list-workspace-catalog");
+    const mobileDirectory = path.join(rootDirectory, "apps", "mobile");
+    fs.mkdirSync(mobileDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "pnpm-workspace.yaml"),
+      'packages:\n  - apps/*\n\ncatalog:\n  "@shopify/flash-list": ^2.1.0\n',
+    );
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({ name: "root", workspaces: ["apps/*"] }),
+    );
+    fs.writeFileSync(
+      path.join(mobileDirectory, "package.json"),
+      JSON.stringify({
+        name: "mobile",
+        dependencies: {
+          react: "^19.0.0",
+          "react-native": "0.76.0",
+          "@shopify/flash-list": "catalog:",
+        },
+      }),
+    );
+
+    const projectInfo = discoverProject(rootDirectory);
+    expect(projectInfo.shopifyFlashListVersion).toBe("^2.1.0");
+    expect(projectInfo.shopifyFlashListMajorVersion).toBe(2);
   });
 });

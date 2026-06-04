@@ -36,6 +36,11 @@ describe("isExpectedUserError", () => {
       isExpectedUserError(new CliInputError("Cannot combine --staged and --diff; pick one mode.")),
     ).toBe(true);
     expect(
+      isExpectedUserError(
+        new CliInputError("Cannot combine --score and --json; pick one output mode."),
+      ),
+    ).toBe(true);
+    expect(
       isExpectedUserError(new CliInputError('Expected "<file>:<line>", got "package.json".')),
     ).toBe(true);
   });

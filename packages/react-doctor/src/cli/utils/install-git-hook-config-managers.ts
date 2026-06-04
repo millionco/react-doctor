@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import path from "node:path";
+import * as path from "node:path";
+import * as fs from "node:fs";
 import {
   ensureTrailingNewline,
   getPackageJsonPath,
@@ -64,7 +64,7 @@ const installPackageJsonHook = (
   strategy: PackageJsonHookStrategy,
 ): InstallGitHookResult => {
   const packageJsonPath = getPackageJsonPath(options.projectRoot);
-  const didHookExist = existsSync(packageJsonPath);
+  const didHookExist = fs.existsSync(packageJsonPath);
   const packageJson = readPackageJson(options.projectRoot);
   const nextPackageJson = isRecord(packageJson) ? { ...packageJson } : {};
 
@@ -232,12 +232,12 @@ const appendLefthookCommand = (content: string): string => {
 };
 
 export const installLefthook = (options: InstallGitHookOptions): InstallGitHookResult => {
-  const didHookExist = existsSync(options.hookPath);
-  const existingContent = didHookExist ? readFileSync(options.hookPath, "utf8") : "";
+  const didHookExist = fs.existsSync(options.hookPath);
+  const existingContent = didHookExist ? fs.readFileSync(options.hookPath, "utf8") : "";
   if (!existingContent.includes("react-doctor")) {
     const nextContent = appendLefthookCommand(existingContent);
-    mkdirSync(path.dirname(options.hookPath), { recursive: true });
-    writeFileSync(options.hookPath, nextContent);
+    fs.mkdirSync(path.dirname(options.hookPath), { recursive: true });
+    fs.writeFileSync(options.hookPath, nextContent);
   }
   removeLegacyManagedRunner(options.projectRoot);
 
@@ -249,8 +249,8 @@ export const installLefthook = (options: InstallGitHookOptions): InstallGitHookR
 };
 
 export const installPreCommit = (options: InstallGitHookOptions): InstallGitHookResult => {
-  const didHookExist = existsSync(options.hookPath);
-  const existingContent = didHookExist ? readFileSync(options.hookPath, "utf8") : "";
+  const didHookExist = fs.existsSync(options.hookPath);
+  const existingContent = didHookExist ? fs.readFileSync(options.hookPath, "utf8") : "";
   if (!existingContent.includes("id: react-doctor")) {
     const hasReposKey = /^repos:\s*$/m.test(existingContent);
     const localHookBlock = [
@@ -266,8 +266,8 @@ export const installPreCommit = (options: InstallGitHookOptions): InstallGitHook
     const nextContent = hasReposKey
       ? `${ensureTrailingNewline(existingContent)}${localHookBlock}`
       : `repos:\n${localHookBlock}`;
-    mkdirSync(path.dirname(options.hookPath), { recursive: true });
-    writeFileSync(options.hookPath, nextContent);
+    fs.mkdirSync(path.dirname(options.hookPath), { recursive: true });
+    fs.writeFileSync(options.hookPath, nextContent);
   }
   removeLegacyManagedRunner(options.projectRoot);
 
@@ -279,8 +279,8 @@ export const installPreCommit = (options: InstallGitHookOptions): InstallGitHook
 };
 
 export const installOvercommit = (options: InstallGitHookOptions): InstallGitHookResult => {
-  const didHookExist = existsSync(options.hookPath);
-  const existingContent = didHookExist ? readFileSync(options.hookPath, "utf8") : "";
+  const didHookExist = fs.existsSync(options.hookPath);
+  const existingContent = didHookExist ? fs.readFileSync(options.hookPath, "utf8") : "";
   if (!existingContent.includes("ReactDoctor")) {
     const nextContent = appendIndentedBlockToTopLevelSection(existingContent, "PreCommit", [
       "  ReactDoctor:",
@@ -288,8 +288,8 @@ export const installOvercommit = (options: InstallGitHookOptions): InstallGitHoo
       `    command: ['sh', '-c', '${NON_BLOCKING_REACT_DOCTOR_COMMAND}']`,
       "",
     ]);
-    mkdirSync(path.dirname(options.hookPath), { recursive: true });
-    writeFileSync(options.hookPath, nextContent);
+    fs.mkdirSync(path.dirname(options.hookPath), { recursive: true });
+    fs.writeFileSync(options.hookPath, nextContent);
   }
   removeLegacyManagedRunner(options.projectRoot);
   return {

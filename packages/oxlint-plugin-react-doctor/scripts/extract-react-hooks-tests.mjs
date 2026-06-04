@@ -25,8 +25,8 @@
 //      by `kind:code:JSON.stringify(options)` fingerprint, and writes
 //      JSON.
 
-import fs from "node:fs";
-import path from "node:path";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import vm from "node:vm";
 
 const inputPath = process.argv[2];

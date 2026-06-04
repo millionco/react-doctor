@@ -1,4 +1,4 @@
-import path from "node:path";
+import * as path from "node:path";
 import { beforeAll, describe, expect, it } from "vite-plus/test";
 import type { Diagnostic } from "@react-doctor/core";
 import { runOxlint } from "@react-doctor/core";

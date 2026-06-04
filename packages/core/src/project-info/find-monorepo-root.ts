@@ -1,4 +1,4 @@
-import path from "node:path";
+import * as path from "node:path";
 import { isFile } from "./utils/is-file.js";
 import { readPackageJson } from "./read-package-json.js";
 

@@ -74,6 +74,9 @@ export const noDarkModeGlow = defineRule<Rule>({
   title: "Colored glow on dark background",
   tags: ["design", "test-noise"],
   severity: "warn",
+  // Default off: subjective design / house-style preference, not a
+  // correctness, performance, or accessibility issue. Opt in to enforce it.
+  defaultEnabled: false,
   recommendation:
     "Use a subtle `box-shadow` in neutral colors for depth, or a faint `border`. Colored glows on dark backgrounds look overdone.",
   create: (context: RuleContext) => ({

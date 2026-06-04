@@ -65,6 +65,9 @@ export interface Rule {
   // modern React codebases (`react-in-jsx-scope` post-React-17,
   // `forbid-component-props` flagging `className`, etc.).
   defaultEnabled?: boolean;
+  // Retired rules stay registered only so legacy configs and docs tooling
+  // can resolve the id. They intentionally never report diagnostics.
+  lifecycle?: "retired";
   recommendation?: string;
   create: (context: RuleContext) => RuleVisitors;
 }

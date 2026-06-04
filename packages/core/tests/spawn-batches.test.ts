@@ -11,9 +11,9 @@
  * fix clears the timer in a `finally`.
  */
 
-import fs from "node:fs";
+import * as fs from "node:fs";
 import os from "node:os";
-import path from "node:path";
+import * as path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import type { ProjectInfo } from "@react-doctor/core";
 import { spawnLintBatches } from "../src/runners/oxlint/spawn-batches.js";
@@ -29,6 +29,9 @@ const project: ProjectInfo = {
   hasReactCompiler: false,
   hasTanStackQuery: false,
   hasReactNativeWorkspace: false,
+  expoVersion: null,
+  shopifyFlashListVersion: null,
+  shopifyFlashListMajorVersion: null,
   hasReanimated: false,
   preactVersion: null,
   preactMajorVersion: null,

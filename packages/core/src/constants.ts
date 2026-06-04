@@ -77,6 +77,11 @@ export const ENTERPRISE_CONTACT_URL = "https://react.doctor/enterprise";
 
 export const SHARE_BASE_URL = "https://react.doctor/share";
 
+// Guide for adding React Doctor to CI (GitHub Actions). The post-scan
+// handoff prompt links here when offering the "Add to CI" setup, and the
+// agent-handoff prompt points the agent here too.
+export const CI_URL = "https://react.doctor/ci";
+
 // Root of the documentation site. Guides for CI/CD setup, config files (to
 // suppress rules), and diff/PR scanning live under it; the CLI links here
 // from its closing "learn more" note.

@@ -16,6 +16,8 @@ const SAMPLE_PROJECT: ProjectInfo = {
   hasTanStackQuery: false,
   hasReactNativeWorkspace: false,
   expoVersion: null,
+  shopifyFlashListVersion: null,
+  shopifyFlashListMajorVersion: null,
   hasReanimated: false,
   preactVersion: null,
   preactMajorVersion: null,

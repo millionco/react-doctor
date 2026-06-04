@@ -1,4 +1,4 @@
-import fs from "node:fs";
+import * as fs from "node:fs";
 import reactDoctorPlugin, {
   REACT_COMPILER_RULES,
   REACT_DOCTOR_RULES,
@@ -174,6 +174,9 @@ export const createOxlintConfig = ({
       "react-doctor": {
         framework: project.framework,
         rootDirectory: resolveSettingsRootDirectory(project.rootDirectory),
+        ...(project.shopifyFlashListMajorVersion !== null
+          ? { shopifyFlashListMajorVersion: project.shopifyFlashListMajorVersion }
+          : {}),
         ...(serverAuthFunctionNames && serverAuthFunctionNames.length > 0
           ? { serverAuthFunctionNames: [...serverAuthFunctionNames] }
           : {}),

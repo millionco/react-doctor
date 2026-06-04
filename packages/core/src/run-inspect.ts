@@ -1,4 +1,4 @@
-import path from "node:path";
+import * as path from "node:path";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Filter from "effect/Filter";

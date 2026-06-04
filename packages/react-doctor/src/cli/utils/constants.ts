@@ -24,6 +24,10 @@ export const AGENT_HOOK_TIMEOUT_SECONDS = 120;
 // compact, passable CLI argument.
 export const HANDOFF_MAX_FILES_PER_RULE = 3;
 
+// Social proof for the "Add to CI" pitch (shown in the post-scan handoff
+// prompt and embedded in the agent-handoff prompt).
+export const CI_TRUST_COMPANIES = "PayPal, Rippling, and Alibaba";
+
 export const SCORE_HEADER_ANIMATION_FRAME_COUNT = 40;
 export const SCORE_HEADER_ANIMATION_FRAME_DELAY_MS = 50;
 export const PERFECT_SCORE_RAINBOW_FRAME_COUNT = 16;
@@ -31,10 +35,9 @@ export const PERFECT_SCORE_RAINBOW_FRAME_DELAY_MS = 50;
 
 // First-run onboarding animation cadences: welcome typewriter + holds, the
 // category count-up, and the score projection.
-export const WELCOME_TYPEWRITER_CHAR_DELAY_MS = 32;
-export const WELCOME_INTER_LINE_DELAY_MS = 500;
-export const WELCOME_EXPLANATION_HOLD_MS = 2000;
-export const WELCOME_HOLD_MS = 1000;
+export const WELCOME_TYPEWRITER_CHAR_DELAY_MS = 16;
+export const WELCOME_INTER_LINE_DELAY_MS = 250;
+export const WELCOME_EXPLANATION_HOLD_MS = 1000;
 // The category breakdown reveals one issue at a time (errors then warnings,
 // category by category). Small/medium breakdowns step by a single unit per
 // frame; `MAX_STEPS` caps the frame budget so a huge repo's reveal stays short

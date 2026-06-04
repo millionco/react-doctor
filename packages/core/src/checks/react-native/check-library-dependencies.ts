@@ -1,4 +1,4 @@
-import path from "node:path";
+import * as path from "node:path";
 import { readPackageJson } from "../../project-info/index.js";
 import type { Diagnostic, PackageJson } from "../../types/index.js";
 

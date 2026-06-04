@@ -61,10 +61,9 @@ describe("playWelcomeScene", () => {
     const writes = await captureStdout(() => Effect.runPromise(playWelcomeScene()));
     const output = writes.join("");
     expect(stripAnsi(output)).toContain("Welcome to React Doctor");
-    // The middle sentence explains what React Doctor does, then is replaced in
-    // place by the closing line.
+    // The tagline explains what React Doctor does, holds long enough to be
+    // read, then the whole block is wiped before the scan starts.
     expect(stripAnsi(output)).toContain("I diagnose your React code");
-    expect(stripAnsi(output)).toContain("Let's scan your codebase");
     expect(output).toContain("◠ ◠");
     // Typewriter: many incremental frames, and an early partial reveal.
     expect(writes.length).toBeGreaterThan(20);

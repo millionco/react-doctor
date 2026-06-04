@@ -1,6 +1,6 @@
-import fs from "node:fs";
+import * as fs from "node:fs";
 import os from "node:os";
-import path from "node:path";
+import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 import { findOwningProjectDirectory } from "../src/cli/utils/find-owning-project.js";
 import { setupReactProject, writeJson } from "./regressions/_helpers.js";

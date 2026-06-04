@@ -36,6 +36,18 @@ export const getReactDoctorStringSetting = (
   return typeof settingValue === "string" ? settingValue : undefined;
 };
 
+export const getReactDoctorNumberSetting = (
+  settings: RuleContext["settings"],
+  settingName: string,
+): number | undefined => {
+  const bag = readReactDoctorSettingsBag(settings);
+  if (!bag) return undefined;
+  const settingValue = readOwnPropertyValue(bag, settingName);
+  return typeof settingValue === "number" && Number.isFinite(settingValue)
+    ? settingValue
+    : undefined;
+};
+
 export const getReactDoctorStringArraySetting = (
   settings: RuleContext["settings"],
   settingName: string,

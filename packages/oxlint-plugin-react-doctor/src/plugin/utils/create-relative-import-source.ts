@@ -1,4 +1,4 @@
-import path from "node:path";
+import * as path from "node:path";
 
 export const createRelativeImportSource = (filename: string, targetFilePath: string): string => {
   const targetPathWithoutExtension = targetFilePath.slice(

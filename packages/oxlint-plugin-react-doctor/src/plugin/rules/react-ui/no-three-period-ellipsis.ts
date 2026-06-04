@@ -10,6 +10,9 @@ export const noThreePeriodEllipsis = defineRule<Rule>({
   title: "Three dots instead of ellipsis",
   tags: ["design", "test-noise"],
   severity: "warn",
+  // Default off: subjective design / house-style preference, not a
+  // correctness, performance, or accessibility issue. Opt in to enforce it.
+  defaultEnabled: false,
   category: "Architecture",
   recommendation:
     'Use the real ellipsis "…" (or `&hellip;`) instead of three dots. Good for labels like "Rename…" and "Loading…".',

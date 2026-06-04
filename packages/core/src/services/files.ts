@@ -1,7 +1,7 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Path from "node:path";
+import * as path from "node:path";
 import { isDirectory as isDirectoryNode, isFile as isFileNode } from "../project-info/index.js";
 import { createNodeReadFileLinesSync } from "../read-file-lines-node.js";
 import { listSourceFiles as listSourceFilesNode } from "../utils/list-source-files.js";
@@ -39,7 +39,7 @@ export class Files extends Context.Service<
    */
   static readonly layerInMemory = (tree: ReadonlyMap<string, string>): Layer.Layer<Files> => {
     const resolveAbsolute = (filePath: string, rootDirectory: string): string =>
-      Path.isAbsolute(filePath) ? filePath : `${rootDirectory}/${filePath}`;
+      path.isAbsolute(filePath) ? filePath : `${rootDirectory}/${filePath}`;
 
     return Layer.succeed(
       Files,

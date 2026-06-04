@@ -27,6 +27,9 @@ export const preferEs6Class = defineRule<Rule>({
   id: "prefer-es6-class",
   title: "createClass instead of ES6 class",
   severity: "warn",
+  // Default off: only fires on `createReactClass` / ES5 class components,
+  // which don't occur in a modern function-component codebase. Opt in to enforce it.
+  defaultEnabled: false,
   recommendation:
     "Pick one component style for the whole codebase: `class extends React.Component` (default) or `createReactClass` (legacy).",
   category: "Architecture",

@@ -1,4 +1,4 @@
-import path from "node:path";
+import * as path from "node:path";
 import { readPackageJson } from "../../project-info/index.js";
 import { getLowestDependencyMajor } from "../../project-info/utils/dependency-version-spec.js";
 import type { PackageJson } from "../../types/index.js";

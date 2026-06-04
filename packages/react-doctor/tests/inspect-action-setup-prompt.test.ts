@@ -1,6 +1,6 @@
-import fs from "node:fs";
+import * as fs from "node:fs";
 import os from "node:os";
-import path from "node:path";
+import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { resolveScanTarget } from "@react-doctor/core";
 import type { InspectResult } from "@react-doctor/core";
@@ -67,6 +67,8 @@ vi.mock("../src/inspect.js", () => ({
         hasTanStackQuery: false,
         hasReactNativeWorkspace: false,
         expoVersion: null,
+        shopifyFlashListVersion: null,
+        shopifyFlashListMajorVersion: null,
         hasReanimated: false,
         preactVersion: null,
         preactMajorVersion: null,

@@ -15,4 +15,8 @@ describe("validateModeFlags", () => {
   it("allows --no-telemetry without --score", () => {
     expect(() => validateModeFlags({ telemetry: false })).not.toThrow();
   });
+
+  it("allows --yes and --full together (skip prompts + force a full scan are orthogonal)", () => {
+    expect(() => validateModeFlags({ yes: true, full: true })).not.toThrow();
+  });
 });

@@ -1,4 +1,4 @@
-import path from "node:path";
+import * as path from "node:path";
 import { parseGitattributesLinguistPaths } from "./parse-gitattributes-linguist.js";
 import { readIgnoreFile } from "./read-ignore-file.js";
 

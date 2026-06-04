@@ -1,4 +1,4 @@
-import path from "node:path";
+import * as path from "node:path";
 import { IGNORED_DIRECTORIES } from "./constants.js";
 import type { PackageJson, WorkspacePackage } from "../types/index.js";
 import { isDirectory } from "./utils/is-directory.js";

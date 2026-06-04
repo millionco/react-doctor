@@ -1,8 +1,8 @@
-import { rmSync, writeFileSync } from "node:fs";
-import path from "node:path";
+import * as path from "node:path";
 import type { LegacyConfigLocation } from "@react-doctor/core";
 import { readObjectFile } from "./read-object-file.js";
 import { serializeTsObjectLiteral } from "./serialize-ts-object-literal.js";
+import * as fs from "node:fs";
 
 const MIGRATED_CONFIG_FILENAME = "doctor.config.ts";
 
@@ -26,7 +26,7 @@ export const migrateLegacyConfig = (legacy: LegacyConfigLocation): string | null
 
 export default ${serializeTsObjectLiteral(config)} satisfies ReactDoctorConfig;
 `;
-  writeFileSync(targetPath, contents);
-  rmSync(legacy.legacyFilePath, { force: true });
+  fs.writeFileSync(targetPath, contents);
+  fs.rmSync(legacy.legacyFilePath, { force: true });
   return targetPath;
 };

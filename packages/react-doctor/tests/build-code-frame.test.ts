@@ -1,6 +1,6 @@
-import fs from "node:fs";
+import * as fs from "node:fs";
 import os from "node:os";
-import path from "node:path";
+import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { CODE_FRAME_MAX_LINE_LENGTH_CHARS } from "@react-doctor/core";
 import { buildCodeFrame } from "../src/cli/utils/build-code-frame.js";

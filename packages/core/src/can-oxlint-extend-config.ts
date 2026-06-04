@@ -1,4 +1,4 @@
-import fs from "node:fs";
+import * as fs from "node:fs";
 import { isPlainObject } from "./project-info/index.js";
 
 const EXTENDS_LOCAL_PATH_PREFIXES = ["./", "../", "/"];

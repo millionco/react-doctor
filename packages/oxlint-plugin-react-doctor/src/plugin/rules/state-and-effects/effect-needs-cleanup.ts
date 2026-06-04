@@ -18,6 +18,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 interface SubscribeLikeUsage {
   kind: "subscribe" | "timer";
+  node: EsTreeNode;
   resourceName: string;
 }
 
@@ -48,6 +49,7 @@ const findSubscribeLikeUsages = (callback: EsTreeNode): SubscribeLikeUsage[] => 
     ) {
       usages.push({
         kind: "timer",
+        node: child,
         resourceName: child.callee.name,
       });
       return;
@@ -60,6 +62,7 @@ const findSubscribeLikeUsages = (callback: EsTreeNode): SubscribeLikeUsage[] => 
     ) {
       usages.push({
         kind: "subscribe",
+        node: child,
         resourceName: child.callee.property.name,
       });
     }
@@ -151,7 +154,33 @@ const collectCleanupBindings = (effectCallback: EsTreeNode): CleanupBindings => 
   return bindings;
 };
 
-const effectHasCleanupRelease = (callback: EsTreeNode): boolean => {
+const getRangeStart = (node: EsTreeNode): number | null => {
+  const rangeStart = node.range?.[0];
+  return typeof rangeStart === "number" ? rangeStart : null;
+};
+
+const cleanupReturnRunsAfterUsage = (
+  returnStatement: EsTreeNodeOfType<"ReturnStatement">,
+  usages: ReadonlyArray<SubscribeLikeUsage>,
+): boolean => {
+  if (
+    returnStatement.argument &&
+    isCleanupReturningSubscribeLikeCallExpression(returnStatement.argument)
+  ) {
+    return true;
+  }
+  const returnStart = getRangeStart(returnStatement);
+  if (returnStart === null) return true;
+  return usages.some((usage) => {
+    const usageStart = getRangeStart(usage.node);
+    return usageStart === null || usageStart < returnStart;
+  });
+};
+
+const effectHasCleanupReturn = (
+  callback: EsTreeNode,
+  usages: ReadonlyArray<SubscribeLikeUsage>,
+): boolean => {
   if (
     !isNodeOfType(callback, "ArrowFunctionExpression") &&
     !isNodeOfType(callback, "FunctionExpression")
@@ -166,11 +195,13 @@ const effectHasCleanupRelease = (callback: EsTreeNode): boolean => {
   walkInsideStatementBlocks(callback.body, (child: EsTreeNode) => {
     if (didFindCleanupReturn) return;
     if (!isNodeOfType(child, "ReturnStatement")) return;
+    if (!cleanupReturnRunsAfterUsage(child, usages)) return;
     if (
       isCleanupReturn(
         child.argument,
         cleanupBindings.cleanupFunctionNames,
         cleanupBindings.subscriptionNames,
+        { allowOpaqueReturn: true },
       )
     ) {
       didFindCleanupReturn = true;
@@ -195,7 +226,7 @@ export const effectNeedsCleanup = defineRule<Rule>({
       const usages = findSubscribeLikeUsages(callback);
       if (usages.length === 0) return;
 
-      if (effectHasCleanupRelease(callback)) return;
+      if (effectHasCleanupReturn(callback, usages)) return;
 
       const firstUsage = usages[0];
       const verb = firstUsage.kind === "timer" ? "schedules" : "subscribes via";

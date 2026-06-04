@@ -1,5 +1,5 @@
-import fs from "node:fs";
-import path from "node:path";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { parseSync } from "oxc-parser";
 import { CROSS_FILE_PARSE_MAX_BYTES } from "../constants/thresholds.js";
 import { attachParentReferences } from "./attach-parent-references.js";

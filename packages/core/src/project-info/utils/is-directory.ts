@@ -1,4 +1,4 @@
-import fs from "node:fs";
+import * as fs from "node:fs";
 
 export const isDirectory = (directoryPath: string): boolean => {
   try {

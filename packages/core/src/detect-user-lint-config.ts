@@ -1,4 +1,4 @@
-import path from "node:path";
+import * as path from "node:path";
 import { ADOPTABLE_LINT_CONFIG_FILENAMES } from "./constants.js";
 import { isFile } from "./project-info/index.js";
 import { isProjectBoundary } from "./utils/is-project-boundary.js";

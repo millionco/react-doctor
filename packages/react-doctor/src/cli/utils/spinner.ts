@@ -14,6 +14,7 @@ const noopHandle = Object.freeze({
   update: () => {},
   succeed: () => {},
   fail: () => {},
+  warn: () => {},
   stop: () => {},
 });
 
@@ -60,6 +61,11 @@ export const spinner = (text: string) => ({
         if (didFinalize) return;
         didFinalize = true;
         instance.fail(displayText);
+      },
+      warn(displayText: string) {
+        if (didFinalize) return;
+        didFinalize = true;
+        instance.warn(displayText);
       },
       stop() {
         if (didFinalize) return;

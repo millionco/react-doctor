@@ -1,4 +1,4 @@
-import path from "node:path";
+import * as path from "node:path";
 import { containsJsxElement } from "../../utils/contains-jsx-element.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";

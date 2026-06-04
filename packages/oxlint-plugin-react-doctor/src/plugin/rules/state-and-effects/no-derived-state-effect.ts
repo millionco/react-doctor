@@ -8,6 +8,7 @@ import { isHookCall } from "../../utils/is-hook-call.js";
 import { isInitialOnlyPropName } from "../../utils/is-initial-only-prop-name.js";
 import { isSetterCall } from "../../utils/is-setter-call.js";
 import { isSetterIdentifier } from "../../utils/is-setter-identifier.js";
+import { isUseStateSetterInScope } from "../../utils/is-use-state-setter-in-scope.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
@@ -115,7 +116,11 @@ export const noDerivedStateEffect = defineRule<Rule>({
 
       const containsOnlySetStateCalls = statements.every((statement: EsTreeNode) => {
         if (!isNodeOfType(statement, "ExpressionStatement")) return false;
-        return isSetterCall(statement.expression);
+        const expression = statement.expression;
+        if (!isSetterCall(expression)) return false;
+        if (!isNodeOfType(expression, "CallExpression")) return false;
+        if (!isNodeOfType(expression.callee, "Identifier")) return false;
+        return isUseStateSetterInScope(expression, expression.callee.name);
       });
       if (!containsOnlySetStateCalls) return;
 

@@ -5,6 +5,7 @@ import {
   CODE_FRAME_BATCH_MAX_SPAN_LINES,
   CODE_FRAME_LINES_ABOVE,
   CODE_FRAME_LINES_BELOW,
+  DIAGNOSTIC_CATEGORY_BUCKETS,
   groupBy,
   highlighter,
   MILLISECONDS_PER_SECOND,
@@ -22,7 +23,6 @@ import {
 } from "./constants.js";
 import {
   buildSortedRuleGroups,
-  compareByRulePriority,
   formatFixRecipeLine,
   formatLearnMoreLine,
 } from "./diagnostic-grouping.js";
@@ -77,10 +77,25 @@ const formatTrailingSiteBadge = (count: number): string => {
   return badge.length > 0 ? ` ${highlighter.gray(badge)}` : "";
 };
 
-// A category leads with its most valuable rule. `ruleGroups` are already
-// priority-sorted, so the first one is the category's top.
-const categoryTopRuleKey = (categoryGroup: CategoryDiagnosticGroup): string =>
-  categoryGroup.ruleGroups[0][0];
+// Fixed display order for the category breakdown — Security at the top
+// (most consequential class of issue), then Bugs, then Performance, then
+// the rest. The score API's rule priority still drives the order of rules
+// WITHIN a category, but the category list itself reads the same on every
+// run so the reader can scan to a category by position, not by the day's
+// score-weighting. Unknown categories (defensive — `DIAGNOSTIC_CATEGORY_BUCKETS`
+// is the exhaustive set) sort alphabetically after the known ones.
+const CATEGORY_DISPLAY_RANK: ReadonlyMap<string, number> = new Map(
+  DIAGNOSTIC_CATEGORY_BUCKETS.map((category, index) => [category, index]),
+);
+
+const compareCategoriesByDisplayRank = (categoryA: string, categoryB: string): number => {
+  const rankA = CATEGORY_DISPLAY_RANK.get(categoryA);
+  const rankB = CATEGORY_DISPLAY_RANK.get(categoryB);
+  if (rankA !== undefined && rankB !== undefined) return rankA - rankB;
+  if (rankA !== undefined) return -1;
+  if (rankB !== undefined) return 1;
+  return categoryA.localeCompare(categoryB);
+};
 
 const buildCategoryDiagnosticGroups = (
   diagnostics: Diagnostic[],
@@ -93,18 +108,9 @@ const buildCategoryDiagnosticGroups = (
       diagnostics: categoryDiagnostics,
       ruleGroups: buildSortedRuleGroups(categoryDiagnostics, rulePriority),
     }))
-    .toSorted((categoryGroupA, categoryGroupB) => {
-      // Categories rank by their top rule's API priority. With no API
-      // priority (offline / `--no-score`) every category compares equal,
-      // so fall back to a deterministic alphabetical order.
-      const priorityDelta = compareByRulePriority(
-        categoryTopRuleKey(categoryGroupA),
-        categoryTopRuleKey(categoryGroupB),
-        rulePriority,
-      );
-      if (priorityDelta !== 0) return priorityDelta;
-      return categoryGroupA.category.localeCompare(categoryGroupB.category);
-    });
+    .toSorted((categoryGroupA, categoryGroupB) =>
+      compareCategoriesByDisplayRank(categoryGroupA.category, categoryGroupB.category),
+    );
 };
 
 interface CategoryTally {
@@ -404,9 +410,12 @@ const selectTopErrorRuleGroups = (
 // group and no warnings at all, so anything past that — extra error rule
 // groups, the other sites of a shown rule, or any warning — only appears
 // under `--verbose`. The line surfaces that pointer whenever detail is
-// hidden, with `+N more rules` counting hidden error groups (the unit the
-// top-errors block uses) and `+N optional warnings` counting individual
-// warnings (matching the overview's per-category and total tallies).
+// hidden. The "+N more rules / +N warnings" stats deliberately stay OUT:
+// the `All N issues` header + per-category breakdown directly above already
+// give the totals and the error/warning split, so repeating them here read
+// as a contradiction ("you have all 727 issues — also, 664 warnings are
+// hidden"). The clean CTA answers the only remaining question: how do I
+// see each one individually?
 const buildOverflowSummaryLine = (
   diagnostics: Diagnostic[],
   rulePriority?: ReadonlyMap<string, number>,
@@ -415,25 +424,8 @@ const buildOverflowSummaryLine = (
   const shownErrorRuleCount = Math.min(TOP_ERRORS_DISPLAY_COUNT, errorRuleGroups.length);
   if (diagnostics.length <= shownErrorRuleCount) return undefined;
 
-  const hiddenErrorRuleCount = errorRuleGroups.length - shownErrorRuleCount;
-  const warningCount = diagnostics.filter((diagnostic) => diagnostic.severity === "warning").length;
-
-  const parts: string[] = [];
-  if (hiddenErrorRuleCount > 0) {
-    const ruleNoun = hiddenErrorRuleCount === 1 ? "rule" : "rules";
-    parts.push(highlighter.bold(highlighter.error(`+${hiddenErrorRuleCount} more ${ruleNoun}`)));
-  }
-  if (warningCount > 0) {
-    const warningNoun = warningCount === 1 ? "warning" : "warnings";
-    parts.push(highlighter.bold(highlighter.warn(`+${warningCount} optional ${warningNoun}`)));
-  }
-
   const command = highlighter.bold(highlighter.info("npx react-doctor@latest --verbose"));
-  const lead =
-    parts.length > 0
-      ? `${parts.join(highlighter.dim(" and "))} ${highlighter.dim("- run")}`
-      : highlighter.dim("Run");
-  return `  ${lead} ${command} ${highlighter.dim("for details")}`;
+  return `  ${highlighter.dim("Run")} ${command} ${highlighter.dim("to list every error and warning")}`;
 };
 
 // The exact rule keys surfaced in the top-errors block — the set the
@@ -463,9 +455,11 @@ const buildTopErrorsSection = (
   const topRuleGroups = errorRuleGroups.slice(0, TOP_ERRORS_DISPLAY_COUNT);
   if (topRuleGroups.length === 0) return { lines: [], blockOffsets: [] };
 
+  // The detail block leads the report now (the most actionable content
+  // first), so no leading divider — `printDiagnostics` emits one BELOW
+  // this section as a separator between the detail and the overview
+  // breakdown that follows.
   const lines: string[] = [
-    // Dim rule separating the overview tally from the detailed fixes.
-    buildSectionDivider(),
     `  ${highlighter.bold(`Top ${topRuleGroups.length} ${topRuleGroups.length === 1 ? "error" : "errors"} you should fix`)}`,
     "",
   ];
@@ -499,19 +493,16 @@ const joinSections = (
   return { lines, sectionStarts };
 };
 
-// The total-issue tally (e.g. "600 issues"), shown right under the
-// category breakdown as part of the overview. The `--verbose` hint lives
-// in the combined overflow line at the end of the run instead.
-const buildCountsSummaryLines = (diagnostics: Diagnostic[]): ReadonlyArray<string> => {
+// Bold "All N issues" header that introduces the category-breakdown block,
+// matching the cadence of "Top N errors you should fix". The total moves
+// INTO this header (rather than sitting under the breakdown as an orphan
+// "557 issues" line) so the reader immediately reads the section as
+// "here's the full breakdown of N total issues".
+const buildOverviewHeaderLines = (diagnostics: Diagnostic[]): ReadonlyArray<string> => {
   const totalIssueCount = diagnostics.length;
   if (totalIssueCount === 0) return [];
-  const errorCount = diagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
-  const warningCount = totalIssueCount - errorCount;
-  const issueCountColor =
-    errorCount > 0 ? highlighter.error : warningCount > 0 ? highlighter.warn : highlighter.dim;
-  return [
-    `  ${issueCountColor(`${totalIssueCount} ${totalIssueCount === 1 ? "issue" : "issues"}`)}`,
-  ];
+  const issueNoun = totalIssueCount === 1 ? "issue" : "issues";
+  return [`  ${highlighter.bold(`All ${totalIssueCount} ${issueNoun}`)}`];
 };
 
 // First-run onboarding reveal knobs for `printDiagnostics`. Both default off,
@@ -558,9 +549,12 @@ export const printDiagnostics = (
     const resolveSourceRoot: SourceRootResolver =
       typeof sourceRoot === "function" ? sourceRoot : () => sourceRoot;
 
-    // Overview first (category breakdown + total count), then the detail.
-    // In verbose the detail is EVERY rule and EVERY site (not just the
-    // top N representative) — same readable block layout, just exhaustive.
+    // Detail block leads (the most actionable content — the specific
+    // errors to fix). The category breakdown + total then land BELOW it as
+    // a wrap-up overview that sets the score's context, separated from the
+    // detail by a dim divider. In verbose the detail is EVERY rule and
+    // EVERY site (not just the top N representative) — same readable block
+    // layout, just exhaustive.
     let detailLines: ReadonlyArray<string>;
     // Offsets within `detailLines` where each top-error block begins, to pace
     // the reveal between errors. Empty in verbose (lists every rule, not top-N).
@@ -592,15 +586,22 @@ export const printDiagnostics = (
     );
     const categoryLines = buildCategoryTallyLines(categoryTallies);
 
+    // Only emit the divider when BOTH the detail and overview will print —
+    // otherwise we'd open or end the report with a stray rule line.
+    const overviewDividerLines =
+      detailLines.length > 0 && categoryLines.length > 0 ? [buildSectionDivider()] : [];
+
     const { lines, sectionStarts } = joinSections(
-      categoryLines,
-      buildCountsSummaryLines(diagnostics),
       detailLines,
+      overviewDividerLines,
+      buildOverviewHeaderLines(diagnostics),
+      categoryLines,
       overflowLine ? [overflowLine] : [],
     );
     // joinSections preserves the argument order, so the 1st start is the
-    // category block and the 3rd is the detail block.
-    const [categoryStart, , detailStart] = sectionStarts;
+    // detail block and the 4th is the category block (the header sits
+    // between the divider and the breakdown).
+    const [detailStart, , , categoryStart] = sectionStarts;
     const pauseBeforeLineIndices =
       detailStart == null
         ? new Set<number>()

@@ -1,7 +1,7 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import path from "node:path";
+import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import * as fs from "node:fs";
 import {
   getOnboardingConfigPath,
   hasCompletedOnboarding,
@@ -18,9 +18,9 @@ describe("onboarding state", () => {
   let cleanup: () => void;
 
   beforeEach(() => {
-    const root = mkdtempSync(path.join(tmpdir(), "react-doctor-onboarding-"));
+    const root = fs.mkdtempSync(path.join(tmpdir(), "react-doctor-onboarding-"));
     configRoot = root;
-    cleanup = () => rmSync(root, { recursive: true, force: true });
+    cleanup = () => fs.rmSync(root, { recursive: true, force: true });
   });
 
   afterEach(() => {
@@ -39,12 +39,12 @@ describe("onboarding state", () => {
   it("keeps the first-run timestamp stable across repeated marks", () => {
     markOnboardingComplete({ cwd: configRoot });
     const firstStamp = JSON.parse(
-      readFileSync(getOnboardingConfigPath({ cwd: configRoot }), "utf8"),
+      fs.readFileSync(getOnboardingConfigPath({ cwd: configRoot }), "utf8"),
     ).onboardedAt;
 
     markOnboardingComplete({ cwd: configRoot });
     const secondStamp = JSON.parse(
-      readFileSync(getOnboardingConfigPath({ cwd: configRoot }), "utf8"),
+      fs.readFileSync(getOnboardingConfigPath({ cwd: configRoot }), "utf8"),
     ).onboardedAt;
 
     expect(typeof firstStamp).toBe("string");

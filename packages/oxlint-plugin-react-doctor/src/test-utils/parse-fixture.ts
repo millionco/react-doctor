@@ -1,4 +1,4 @@
-import path from "node:path";
+import * as path from "node:path";
 import { parseSync } from "oxc-parser";
 import type { EsTreeNode } from "../plugin/utils/es-tree-node.js";
 

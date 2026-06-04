@@ -1,6 +1,6 @@
-import { existsSync } from "node:fs";
-import path from "node:path";
+import * as path from "node:path";
 import { getPackageJsonPath, isRecord, readPackageJson, writeJsonFile } from "./git-hook-shared.js";
+import * as fs from "node:fs";
 
 const DOCTOR_SCRIPT_NAME = "doctor";
 const FALLBACK_DOCTOR_SCRIPT_NAME = "react-doctor";
@@ -41,7 +41,7 @@ export const findNearestPackageDirectory = (
     stopDirectory === undefined ? undefined : path.resolve(stopDirectory);
 
   while (true) {
-    if (existsSync(getPackageJsonPath(currentDirectory))) return currentDirectory;
+    if (fs.existsSync(getPackageJsonPath(currentDirectory))) return currentDirectory;
     if (currentDirectory === resolvedStopDirectory) return null;
     const parentDirectory = path.dirname(currentDirectory);
     if (parentDirectory === currentDirectory) return null;

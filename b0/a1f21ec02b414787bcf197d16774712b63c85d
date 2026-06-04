@@ -1,0 +1,23 @@
+packages/core/src/compute-diagnostic-delta.ts
+  s_29dfde713ef3ca::t_2b512070ad6048 39-44
+packages/react-doctor/src/cli/utils/select-projects.ts
+  s_29dfde713ef3ca::t_6c41eb4b6fb02c 54-61
+packages/react-doctor/tests/select-projects.test.ts
+  s_29dfde713ef3ca::t_394ff9ac8434f5 111-124
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "b0a1f21ec02b414787bcf197d16774712b63c85d",
+  "prompts": {},
+  "sessions": {
+    "s_29dfde713ef3ca": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ea8ec758-611c-411c-81b8-cacb4d8ea4f9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

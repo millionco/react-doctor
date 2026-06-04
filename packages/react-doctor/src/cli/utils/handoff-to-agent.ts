@@ -15,6 +15,7 @@ import { installReactDoctorSkillForAgent } from "./install-skill-for-agent.js";
 import { isCommandAvailable } from "./is-command-available.js";
 import { CI_TRUST_COMPANIES, METRIC } from "./constants.js";
 import { openUrl } from "./open-url.js";
+import { openWorkflowPullRequest, stageWorkflowFile } from "./open-workflow-pull-request.js";
 import { recordCount } from "./record-metric.js";
 import {
   CLI_AGENT_BINARIES,
@@ -55,6 +56,15 @@ const printPayload = (payload: string): void => {
 // doesn't drop the workflow in the wrong place. The script step throws on a
 // read-only / permission-denied FS, so it's guarded: a failed setup must
 // never crash a scan that already succeeded.
+//
+// When the workflow is freshly written AND the user has `gh` installed,
+// `openWorkflowPullRequest` commits the YAML on a dedicated branch and
+// opens a PR for review — that matches the "everything else lands as a
+// reviewable PR" mental model teams already have for CI changes, instead
+// of silently dropping a top-level workflow file into their working tree.
+// On any failure (gh missing, not authenticated, push refused, …) we fall
+// back to `git add`ing the file so it at least shows up in the user's
+// next `git status` / commit instead of becoming an orphan untracked path.
 const setUpGitHubActions = (rootDirectory: string): void => {
   const projectRoot = findNearestPackageDirectory(rootDirectory) ?? rootDirectory;
   try {
@@ -73,7 +83,27 @@ const setUpGitHubActions = (rootDirectory: string): void => {
     return;
   }
   if (workflowResult.status === "created") {
-    logger.log("  React Doctor will now scan every new pull request automatically.");
+    const pullRequestSpinner = spinner("Opening a pull request for review...").start();
+    const pullRequestResult = openWorkflowPullRequest({
+      workflowPath: workflowResult.workflowPath,
+    });
+    if (pullRequestResult.status === "pr-opened") {
+      pullRequestSpinner.succeed(
+        `Opened pull request for review: ${highlighter.info(pullRequestResult.url)}`,
+      );
+    } else if (pullRequestResult.status === "branch-pushed") {
+      pullRequestSpinner.warn(
+        `Pushed branch ${highlighter.bold(pullRequestResult.branch)} but couldn't open a PR. Open one with: gh pr create --head ${pullRequestResult.branch}`,
+      );
+    } else {
+      pullRequestSpinner.stop();
+      const didStage = stageWorkflowFile({ workflowPath: workflowResult.workflowPath });
+      if (didStage) {
+        logger.log(`  Staged the workflow file. Commit it to start scanning every pull request.`);
+      } else {
+        logger.log("  React Doctor will now scan every new pull request automatically.");
+      }
+    }
   }
   logger.log(`  Learn more: ${highlighter.info(CI_URL)}`);
 };

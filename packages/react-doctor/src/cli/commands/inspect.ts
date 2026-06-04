@@ -102,12 +102,13 @@ const finalizeScans = (input: FinalizeScansInput): void => {
   const baselineDeltas = input.completedScans.flatMap((scan) =>
     scan.result.baselineDelta ? [scan.result.baselineDelta] : [],
   );
-  // Baseline was attempted but ANY project couldn't produce a delta (base ref
-  // unfetchable, or the head/base lint failed): the run degrades to a plain
-  // diff. One degraded project taints the shared `--blocking` gate — its
-  // unattributable head findings would otherwise block CI on pre-existing
-  // issues — so the whole run falls back: report `diff` not `baseline`, drop the
-  // partial baseline block, and skip the gate. Findings stay visible.
+  // Baseline succeeded only if at least one project ran AND every scanned
+  // project produced a delta. Otherwise — a project's base ref was unfetchable,
+  // its head/base lint failed, or no project had changed source to scan — the
+  // run degrades to a plain diff: report `diff` not `baseline`, drop the baseline
+  // block, and skip the gate so CI never blocks on findings whose
+  // new-vs-pre-existing attribution is unknown. Findings stay visible. (An empty
+  // scan set is degraded too, so it can't slip through as a "clean baseline".)
   //
   // v1 limitation: in a partial-degraded workspace, sibling projects that DID
   // compute a delta still expose only their introduced diagnostics (filtering
@@ -116,13 +117,15 @@ const finalizeScans = (input: FinalizeScansInput): void => {
   // surfacing full findings everywhere would mean deferring per-project
   // filtering out of `inspect()` (an InspectResult contract change) — a v2
   // follow-up. Single-project and all-succeed runs are unaffected.
-  const baselineDegraded =
-    input.baselineIntended && input.completedScans.some((scan) => !scan.result.baselineDelta);
+  const baselineComputed =
+    input.completedScans.length > 0 &&
+    input.completedScans.every((scan) => scan.result.baselineDelta !== undefined);
+  const baselineDegraded = input.baselineIntended && !baselineComputed;
   const mode: JsonReportMode = baselineDegraded ? "diff" : input.mode;
 
   if (input.isJsonMode) {
     const baseline =
-      !baselineDegraded && baselineDeltas.length > 0
+      baselineComputed && baselineDeltas.length > 0
         ? {
             baseRef: baselineDeltas[0].baseRef,
             fixedCount: baselineDeltas.reduce((total, delta) => total + delta.fixedCount, 0),

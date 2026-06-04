@@ -6,7 +6,7 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-const REQUIRED_TAGS = ["html", "body"] as const;
+const REQUIRED_HTML_TAGS = ["html", "body"] as const;
 
 export const nextjsGlobalErrorMissingHtmlBody = defineRule<Rule>({
   id: "nextjs-global-error-missing-html-body",
@@ -22,9 +22,9 @@ export const nextjsGlobalErrorMissingHtmlBody = defineRule<Rule>({
       if (!APP_DIRECTORY_PATTERN.test(filename)) return;
       if (!GLOBAL_ERROR_FILE_PATTERN.test(filename)) return;
 
-      const foundTags = fileContainsJsxElements(programNode, REQUIRED_TAGS);
-      const missingTags = REQUIRED_TAGS.filter((tag) => !foundTags.has(tag)).map(
-        (tag) => `<${tag}>`,
+      const foundTags = fileContainsJsxElements(programNode, REQUIRED_HTML_TAGS);
+      const missingTags = REQUIRED_HTML_TAGS.filter((tagName) => !foundTags.has(tagName)).map(
+        (tagName) => `<${tagName}>`,
       );
 
       if (missingTags.length > 0) {

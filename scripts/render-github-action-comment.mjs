@@ -33,16 +33,6 @@ const COPY = {
   statusNoIssues: "No React Doctor issues found in this scan.",
   status: (issues, files) => `React Doctor found ${issues} in ${files}.`,
 
-  // No-scan body.
-  noScanStaged:
-    "No staged React or TypeScript source files were found, so React Doctor skipped the scan.",
-  noScanDiffEmpty:
-    "No changed files were found in this pull request, so React Doctor skipped the scan.",
-  noScanDiffUnmatched: (changedFiles) =>
-    `React Doctor found ${changedFiles} changed in this pull request, but none matched the files covered by its enabled checks.`,
-  noScanFull: "React Doctor did not find any files covered by its enabled checks.",
-  scope: (scope) => `Scope: ${scope}.`,
-
   // Error body.
   errorIntro: "React Doctor could not complete this scan.",
   errorFallbackMessage: "React Doctor failed before completing the scan.",
@@ -172,18 +162,6 @@ const getIncompleteCheckNames = (report) => [
 
 const hasIncompleteChecks = (report) => getIncompleteCheckNames(report).length > 0;
 
-const hasScannedProjects = (report) => (report.projects ?? []).length > 0;
-
-const buildNoScanMessage = (report) => {
-  if (report.mode === "staged") return COPY.noScanStaged;
-  if (report.mode === "diff") {
-    const changedFileCount = report.diff?.changedFileCount ?? 0;
-    if (changedFileCount === 0) return COPY.noScanDiffEmpty;
-    return COPY.noScanDiffUnmatched(pluralize(changedFileCount, "file"));
-  }
-  return COPY.noScanFull;
-};
-
 const buildStatusLine = (report) => {
   const summary = report.summary ?? {};
   const totalIssues = summary.totalDiagnosticCount ?? 0;
@@ -246,17 +224,6 @@ const buildSkippedChecksSection = (report) => {
   return `${lines.join("\n")}\n\n`;
 };
 
-const buildNoScanBody = (report) =>
-  renderLines([
-    MARKER,
-    "",
-    buildNoScanMessage(report),
-    "",
-    COPY.scope(formatScope(report)),
-    "",
-    buildReviewFooter(),
-  ]);
-
 const buildErrorBody = (report) => {
   const message = report.error?.message ?? COPY.errorFallbackMessage;
   const bugReportUrl = buildBugReportUrl(report);
@@ -316,7 +283,10 @@ const buildBaselineBody = (report) => {
 
 const buildCommentBody = (report) => {
   if (!report.ok) return buildErrorBody(report);
-  if (!hasScannedProjects(report)) return buildNoScanBody(report);
+  // A scan that matched no files (no changed/staged source, or nothing covered
+  // by the enabled checks) is a pass, not a special case — it flows into the
+  // normal clean-result rendering below (baseline "no new issues 🎉" on a PR,
+  // or "No React Doctor issues found" otherwise).
   if (report.schemaVersion === 2 || report.baseline) return buildBaselineBody(report);
 
   const summary = report.summary ?? {};

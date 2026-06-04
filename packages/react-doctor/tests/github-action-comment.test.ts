@@ -228,7 +228,7 @@ describe("render-github-action-comment", () => {
     );
   });
 
-  it("renders no-scan diff reports without a metrics table", () => {
+  it("consolidates a no-scan diff report into the normal clean-result rendering", () => {
     const { comment, outputs } = runRenderer(
       buildReport({
         projects: [],
@@ -244,12 +244,14 @@ describe("render-github-action-comment", () => {
       }),
     );
 
+    // A scan that matched no files is a pass, not a special "no scan" body — it
+    // renders as the clean success result (status line + metrics table).
+    expect(comment).toContain("No React Doctor issues found in this scan.");
+    expect(comment).not.toContain("but none matched the files covered by its enabled checks");
+    expect(comment).not.toContain("Scope:");
+    expect(comment).toContain("| Score | Issues | Errors | Warnings | Affected Files | Scope |");
     expect(comment).toContain(
-      "React Doctor found 2 files changed in this pull request, but none matched the files covered by its enabled checks.",
-    );
-    expect(comment).toContain("Scope: 2 files changed on `feature` vs. `main`.");
-    expect(comment).not.toContain(
-      "| Score | Issues | Errors | Warnings | Affected Files | Scope |",
+      "| Unavailable | 0 | 0 | 0 | 0 | 2 files changed on `feature` vs. `main` |",
     );
     expect(outputs).toContain("score=");
   });

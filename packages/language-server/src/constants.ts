@@ -113,6 +113,19 @@ export const SCANNABLE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx"] as const;
 
 /** Filenames whose change invalidates project/config caches. */
 export const CONFIG_WATCH_FILENAMES = [
+  // Canonical React Doctor config (`doctor.config.*`), mirroring core's
+  // CONFIG_EXTENSIONS resolution order. The pre-migration
+  // `react-doctor.config.json` is no longer read by core but is kept here so
+  // editing it still triggers a re-scan (which re-surfaces core's "rename it"
+  // warning) instead of silently doing nothing.
+  "doctor.config.ts",
+  "doctor.config.mts",
+  "doctor.config.cts",
+  "doctor.config.js",
+  "doctor.config.mjs",
+  "doctor.config.cjs",
+  "doctor.config.json",
+  "doctor.config.jsonc",
   "react-doctor.config.json",
   "package.json",
   "pnpm-workspace.yaml",

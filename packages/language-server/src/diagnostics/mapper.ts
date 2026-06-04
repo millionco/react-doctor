@@ -52,6 +52,16 @@ const resolveRange = (
     ? rangeFromByteSpan(text, offset, length ?? 0)
     : rangeFromLineColumn(text, line, column);
 
+// All related locations resolve against the parent diagnostic's already-
+// canonicalized `fsPath` / `text` rather than each location's own `filePath`.
+// oxlint only emits secondary labels in the SAME file as the primary span, so
+// the two always coincide today. Critically, only the primary diagnostic's
+// path is run through the scan-runner's overlay/path resolution — a related
+// location's raw `filePath` would still point at the overlay temp dir for an
+// unsaved-buffer scan, so deriving the URI from it would break "jump to" links.
+// Cross-file related locations would need that same path resolution plus a
+// TextProvider for the other file's content; revisit if oxlint starts emitting
+// them.
 const toRelatedInformation = (
   related: ReadonlyArray<DiagnosticRelatedLocation>,
   fsPath: string,

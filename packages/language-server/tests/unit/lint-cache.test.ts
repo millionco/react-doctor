@@ -72,7 +72,9 @@ describe("createLintCache", () => {
 
 describe("computeConfigFingerprint", () => {
   it("is stable for unchanged inputs and changes when a config file changes", () => {
-    const configPath = path.join(projectDir, "react-doctor.config.json");
+    // Canonical `doctor.config.*` config — not the legacy
+    // `react-doctor.config.json`, which core no longer reads.
+    const configPath = path.join(projectDir, "doctor.config.json");
     fs.writeFileSync(configPath, JSON.stringify({ rules: {} }));
 
     const a = computeConfigFingerprint(projectDir, "1.0.0");

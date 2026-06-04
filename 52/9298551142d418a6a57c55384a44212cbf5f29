@@ -1,0 +1,22 @@
+packages/react-doctor/src/cli/commands/inspect.ts
+  s_29dfde713ef3ca::t_f0de6ea104efde 430-433
+packages/react-doctor/src/inspect.ts
+  s_29dfde713ef3ca::t_708eecc9700d04 577
+  s_29dfde713ef3ca::t_2976fab8b5727e 552-555,558
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "529298551142d418a6a57c55384a44212cbf5f29",
+  "prompts": {},
+  "sessions": {
+    "s_29dfde713ef3ca": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ea8ec758-611c-411c-81b8-cacb4d8ea4f9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

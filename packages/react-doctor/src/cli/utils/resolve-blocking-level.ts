@@ -12,16 +12,21 @@ const DEFAULT_BLOCKING_LEVEL: BlockingLevel = "error";
 export const isValidBlockingLevel = (level: string): level is BlockingLevel =>
   VALID_BLOCKING_LEVELS.has(level as BlockingLevel);
 
+// The configured blocking level before validation/defaulting (flag wins over
+// config; the new name wins over the deprecated `failOn` alias). `undefined`
+// when nothing is set. Single source of the precedence chain, shared with the
+// warning-gate derivation in `resolve-cli-inspect-options`.
+export const pickBlockingLevel = (
+  flags: InspectFlags,
+  userConfig: ReactDoctorConfig | null,
+): string | undefined =>
+  flags.blocking ?? flags.failOn ?? userConfig?.blocking ?? userConfig?.failOn;
+
 export const resolveBlockingLevel = (
   flags: InspectFlags,
   userConfig: ReactDoctorConfig | null,
 ): BlockingLevel => {
-  const sourceValue =
-    flags.blocking ??
-    flags.failOn ??
-    userConfig?.blocking ??
-    userConfig?.failOn ??
-    DEFAULT_BLOCKING_LEVEL;
+  const sourceValue = pickBlockingLevel(flags, userConfig) ?? DEFAULT_BLOCKING_LEVEL;
   if (isValidBlockingLevel(sourceValue)) return sourceValue;
   // An invalid level resolves to the default rather than guessing a looser or
   // stricter gate the user didn't ask for, and warns.

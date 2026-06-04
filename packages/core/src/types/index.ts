@@ -1,7 +1,6 @@
 export type {
   BlockingLevel,
   DiagnosticSurface,
-  FailOnLevel,
   ReactDoctorConfig,
   ReactDoctorIgnoreOverride,
   RuleSeverityControls,

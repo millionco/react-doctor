@@ -9,9 +9,6 @@
  */
 export type BlockingLevel = "error" | "warning" | "none";
 
-/** @deprecated Renamed to `BlockingLevel`. */
-export type FailOnLevel = BlockingLevel;
-
 export interface ReactDoctorIgnoreOverride {
   /** Glob patterns the override applies to (e.g. `["src/legacy/**"]`). */
   files: string[];

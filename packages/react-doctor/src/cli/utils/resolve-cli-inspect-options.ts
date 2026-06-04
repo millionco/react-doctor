@@ -1,6 +1,7 @@
 import type { InspectOptions, ReactDoctorConfig } from "@react-doctor/core";
 import type { InspectFlags } from "./inspect-flags.js";
 import { isCiEnvironment } from "./is-ci-environment.js";
+import { pickBlockingLevel } from "./resolve-blocking-level.js";
 import { resolveParallelFlag } from "./resolve-parallel-flag.js";
 
 /**
@@ -22,11 +23,8 @@ export const resolveCliInspectOptions = (
   // A `warning`-level CI gate is meaningless unless warnings reach the
   // ciFailure surface — so it forces warnings on even when the user hid them
   // via `warnings: false`. An explicit `--warnings` / `--no-warnings` still
-  // wins. `--blocking` (and the deprecated `--fail-on` alias), flag or
-  // config, all count. The gate level itself is resolved by
-  // `resolveBlockingLevel`.
-  const wantsWarningGate =
-    (flags.blocking ?? flags.failOn ?? userConfig?.blocking ?? userConfig?.failOn) === "warning";
+  // wins. The gate level itself is resolved by `resolveBlockingLevel`.
+  const wantsWarningGate = pickBlockingLevel(flags, userConfig) === "warning";
 
   return {
     lint: flags.lint,

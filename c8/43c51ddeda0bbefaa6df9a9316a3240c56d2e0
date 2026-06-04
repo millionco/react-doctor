@@ -1,0 +1,22 @@
+packages/react-doctor/src/cli/utils/open-workflow-pull-request.ts
+  s_0be0fcdbf72c91::t_8dee080b02006b 1-195
+packages/react-doctor/src/cli/utils/handoff-to-agent.ts
+  s_0be0fcdbf72c91::t_bc88630b96b36b 59-67,86-101,103-106
+  s_0be0fcdbf72c91::t_cce26e03d736b9 18,102
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "c843c51ddeda0bbefaa6df9a9316a3240c56d2e0",
+  "prompts": {},
+  "sessions": {
+    "s_0be0fcdbf72c91": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "db6a4a15-c3fc-4dd2-acb7-e3fec38e1203",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

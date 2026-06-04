@@ -427,7 +427,10 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
     finalizeScans({
       diagnostics: allDiagnostics,
       completedScans,
-      mode: isDiffMode ? "diff" : "full",
+      // Mirror the report-mode marker (set above): a resolved base ref means a
+      // baseline run, so v1 fallbacks (e.g. head lint failed before a delta
+      // exists) report `baseline` too, not `diff`.
+      mode: baselineRef ? "baseline" : isDiffMode ? "diff" : "full",
       diff: isDiffMode ? diffInfo : null,
       isJsonMode,
       isScoreOnly,

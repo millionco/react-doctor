@@ -549,9 +549,13 @@ const runInspectWithRuntime = async (
   ) {
     markOnboardingComplete();
   }
+  // Baseline was requested whenever `options.baseline` is set (even if the head
+  // lint failed and no delta was computed) — report it as its own mode so CI
+  // analytics can distinguish baseline runs from plain diff scans.
+  const scanMode = options.baseline ? "baseline" : isDiffMode ? "diff" : "full";
   recordScanMetrics({
     result,
-    mode: isDiffMode ? "diff" : "full",
+    mode: scanMode,
     parallel: options.concurrency !== undefined,
     workerCount: options.concurrency,
     lint: options.lint,
@@ -570,7 +574,7 @@ const runInspectWithRuntime = async (
   recordRunEvent(rootSentrySpan, {
     ...buildRunEventConfig(options, userConfig, userConfig !== null),
     result,
-    mode: isDiffMode ? "diff" : "full",
+    mode: scanMode,
     didLintFail,
     lintFailureReasonKind: lintBindingMissing
       ? "native-binding-missing"

@@ -55,6 +55,8 @@ export class JsonReportError extends Schema.Class<JsonReportError>("JsonReportEr
   message: Schema.String,
   name: Schema.String,
   chain: Schema.Array(Schema.String),
+  /** Sentry event id for the crash, when one was reported. */
+  sentryEventId: Schema.optional(Schema.NullOr(Schema.String)),
 }) {}
 
 /**

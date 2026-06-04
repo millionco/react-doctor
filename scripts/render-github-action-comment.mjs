@@ -41,6 +41,7 @@ const COPY = {
   errorIntro: "React Doctor could not complete this scan.",
   errorFallbackMessage: "React Doctor failed before completing the scan.",
   reportBugLink: (url) => `[Report this bug](${url})`,
+  sentryReference: (eventId) => `Sentry reference: \`${eventId}\``,
 
   // Bug-report issue prefill (title + body lines).
   bugReportTitle: "React Doctor Action failed",
@@ -50,6 +51,7 @@ const COPY = {
   bugReportVersion: (version) => `- React Doctor version: ${version}`,
   bugReportMode: (mode) => `- Mode: ${mode}`,
   bugReportWorkflowRun: (url) => `- Workflow run: ${url}`,
+  bugReportSentryReference: (eventId) => `- Sentry reference: ${eventId}`,
 
   // Section headings + table headers.
   topFindingsHeading: "### Top Findings",
@@ -115,6 +117,7 @@ const buildBugReportUrl = (report) => {
     "",
     COPY.bugReportVersion(report.version ?? "unknown"),
     COPY.bugReportMode(report.mode ?? "unknown"),
+    report.error?.sentryEventId ? COPY.bugReportSentryReference(report.error.sentryEventId) : null,
     runUrl ? COPY.bugReportWorkflowRun(runUrl) : null,
   ].filter(Boolean);
   const parameters = new URLSearchParams({
@@ -230,6 +233,7 @@ const buildSkippedChecksSection = (report) => {
 
 const buildErrorBody = (report) => {
   const message = report.error?.message ?? COPY.errorFallbackMessage;
+  const sentryEventId = report.error?.sentryEventId;
   const bugReportUrl = buildBugReportUrl(report);
   return renderLines([
     MARKER,
@@ -237,6 +241,8 @@ const buildErrorBody = (report) => {
     COPY.errorIntro,
     "",
     `> ${message}`,
+    "",
+    sentryEventId ? COPY.sentryReference(sentryEventId) : "",
     "",
     COPY.reportBugLink(bugReportUrl),
     "",

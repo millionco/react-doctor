@@ -8,6 +8,8 @@ interface BuildJsonReportErrorInput {
   error: unknown;
   elapsedMilliseconds: number;
   mode?: JsonReportMode;
+  /** Sentry event id for the crash, when the run reported one. */
+  sentryEventId?: string | null;
 }
 
 const safeStringify = (value: unknown): string => {
@@ -28,19 +30,22 @@ const safeGetErrorChain = (error: unknown): string[] => {
 
 export const buildJsonReportError = (input: BuildJsonReportErrorInput): JsonReport => {
   const chain = safeGetErrorChain(input.error);
+  const sentryEventId = input.sentryEventId ?? null;
   const errorPayload = isReactDoctorError(input.error)
     ? {
         message: formatReactDoctorError(input.error),
         name: `ReactDoctorError(${input.error.reason._tag})`,
         chain,
+        sentryEventId,
       }
     : input.error instanceof Error
       ? {
           message: input.error.message || input.error.name || "Error",
           name: input.error.name || "Error",
           chain,
+          sentryEventId,
         }
-      : { message: safeStringify(input.error), name: "Error", chain };
+      : { message: safeStringify(input.error), name: "Error", chain, sentryEventId };
 
   return {
     schemaVersion: 1,

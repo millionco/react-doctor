@@ -208,6 +208,13 @@ export interface JsonReportError {
   message: string;
   name: string;
   chain: string[];
+  /**
+   * Sentry event id for the crash, when the run reported one (CLI crash
+   * path in CI). Lets the GitHub Action surface a quotable reference so a
+   * failed scan can be traced back to its Sentry event. `null` for expected
+   * user errors and synthetic fallbacks that never hit Sentry.
+   */
+  sentryEventId?: string | null;
 }
 
 export interface JsonReportV1 {

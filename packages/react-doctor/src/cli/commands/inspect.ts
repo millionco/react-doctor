@@ -472,7 +472,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
     const isUserError = isExpectedUserError(error);
     const sentryEventId = isUserError ? undefined : await reportErrorToSentry(error);
     if (isJsonMode) {
-      writeJsonErrorReport(error);
+      writeJsonErrorReport(error, sentryEventId);
       process.exitCode = 1;
       return;
     }

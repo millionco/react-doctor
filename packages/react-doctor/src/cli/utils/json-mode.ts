@@ -69,7 +69,7 @@ export const writeJsonReport = (report: JsonReport): void => {
   process.stdout.write(`${serialized}\n`);
 };
 
-export const writeJsonErrorReport = (error: unknown): void => {
+export const writeJsonErrorReport = (error: unknown, sentryEventId?: string | null): void => {
   if (!context) return;
   try {
     writeJsonReport(
@@ -79,6 +79,7 @@ export const writeJsonErrorReport = (error: unknown): void => {
         error,
         elapsedMilliseconds: performance.now() - context.startTime,
         mode: context.mode,
+        sentryEventId,
       }),
     );
   } catch {

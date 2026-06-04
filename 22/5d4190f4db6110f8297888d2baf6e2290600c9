@@ -1,0 +1,30 @@
+packages/website/public/llms.txt
+  s_29dfde713ef3ca::t_ed3a6fe71b9cf2 102
+packages/react-doctor/src/cli/commands/inspect.ts
+  s_29dfde713ef3ca::t_4c8ef875a8bfdc 314-316
+  s_29dfde713ef3ca::t_0624a6d4b5f4b4 236
+.changeset/drop-full-flag.md
+  s_29dfde713ef3ca::t_678b31abec190a 1-5
+packages/react-doctor/src/cli/utils/resolve-effective-diff.ts
+  s_29dfde713ef3ca::t_9ea44e765feccf 8-12
+packages/react-doctor/tests/is-expected-user-error.test.ts
+  s_29dfde713ef3ca::t_4d7026b84bc518 36
+packages/react-doctor/src/cli/index.ts
+  s_29dfde713ef3ca::t_9ea2643004e0e9 116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "225d4190f4db6110f8297888d2baf6e2290600c9",
+  "prompts": {},
+  "sessions": {
+    "s_29dfde713ef3ca": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ea8ec758-611c-411c-81b8-cacb4d8ea4f9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

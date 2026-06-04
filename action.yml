@@ -160,6 +160,9 @@ runs:
         REPORT_FILE: ${{ steps.scan.outputs.report-file }}
         COMMENT_FILE: ${{ runner.temp }}/react-doctor-comment.md
         GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        # The reviewed commit, shown in the sticky comment's footer. On a PR the
+        # head SHA is the merge ref's parent; `github.sha` covers push runs.
+        REACT_DOCTOR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       run: |
         node "$GITHUB_ACTION_PATH/scripts/render-github-action-comment.mjs" "$REPORT_FILE" "$COMMENT_FILE"
         echo "comment-file=$COMMENT_FILE" >> "$GITHUB_OUTPUT"

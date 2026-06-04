@@ -67,6 +67,15 @@ const formatScore = (summary) => {
 const formatShortRef = (ref) =>
   typeof ref === "string" && ref.length > 0 ? ref.slice(0, 7) : "base";
 
+// Small-font attribution footer, mirroring Cursor Bugbot's
+// "Reviewed by … for commit `<sha>`." line. `<sub>` renders it below body size
+// on GitHub. The commit segment is dropped when no head SHA was forwarded.
+const buildReviewFooter = () => {
+  const headSha = process.env.REACT_DOCTOR_HEAD_SHA?.trim();
+  const commitSegment = headSha ? ` for commit \`${formatShortRef(headSha)}\`` : "";
+  return `<sub>Reviewed by [React Doctor](https://react.doctor)${commitSegment}.</sub>`;
+};
+
 const formatScope = (report) => {
   if ((report.mode !== "diff" && report.mode !== "baseline") || !report.diff) return "Full project";
   const baseBranch = report.diff.baseBranch || "target branch";
@@ -163,7 +172,15 @@ const buildSkippedChecksSection = (report) => {
 };
 
 const buildNoScanBody = (report) =>
-  renderLines([MARKER, "", buildNoScanMessage(report), "", `Scope: ${formatScope(report)}.`, ""]);
+  renderLines([
+    MARKER,
+    "",
+    buildNoScanMessage(report),
+    "",
+    `Scope: ${formatScope(report)}.`,
+    "",
+    buildReviewFooter(),
+  ]);
 
 const buildErrorBody = (report) => {
   const message = report.error?.message ?? "React Doctor failed before completing the scan.";
@@ -177,6 +194,7 @@ const buildErrorBody = (report) => {
     "",
     `[Report this bug](${bugReportUrl})`,
     "",
+    buildReviewFooter(),
   ]);
 };
 
@@ -188,27 +206,37 @@ const buildBaselineBody = (report) => {
   const baseline = report.baseline ?? {};
   const newCount = baseline.newCount ?? summary.totalDiagnosticCount ?? 0;
   const fixedCount = baseline.fixedCount ?? 0;
-  const fixedSuffix = fixedCount > 0 ? `, and ${pluralize(fixedCount, "issue")} fixed` : "";
-  const statusLine =
+  const baseTotalCount = baseline.baseTotalCount ?? 0;
+  // Lead sentence mirrors Cursor Bugbot's "… reviewed your changes and found N …".
+  const leadLine =
     newCount === 0
-      ? fixedCount > 0
-        ? `No new issues introduced by this pull request — and ${pluralize(fixedCount, "issue")} fixed. 🎉`
-        : "No new issues introduced by this pull request. 🎉"
-      : `React Doctor found ${pluralize(newCount, "new issue")} introduced by this pull request${fixedSuffix}.`;
+      ? "React Doctor reviewed your changes and found no new issues. 🎉"
+      : `React Doctor reviewed your changes and found ${pluralize(newCount, "new issue")}.`;
+  // Secondary context line (Bugbot's "There are N total …" slot): what the
+  // change fixed and what pre-existing findings were left untouched.
+  const detailParts = [];
+  if (fixedCount > 0) detailParts.push(`${pluralize(fixedCount, "issue")} fixed`);
+  if (baseTotalCount > 0) {
+    detailParts.push(`${pluralize(baseTotalCount, "pre-existing issue")} left untouched`);
+  }
+  const detailLine =
+    detailParts.length > 0
+      ? `Compared against \`${escapeCell(formatShortRef(baseline.baseRef))}\`: ${detailParts.join(", ")}.`
+      : null;
 
   const lines = [
     MARKER,
     "",
-    statusLine,
+    leadLine,
+    ...(detailLine ? ["", detailLine] : []),
     "",
     "| Score | New | Fixed | Errors | Warnings | Affected Files | Scope |",
     "| --- | ---: | ---: | ---: | ---: | ---: | --- |",
     `| ${escapeCell(formatScore(summary))} | ${newCount} | ${fixedCount} | ${summary.errorCount ?? 0} | ${summary.warningCount ?? 0} | ${summary.affectedFileCount ?? 0} | ${escapeCell(formatScope(report))} |`,
     "",
-    `Compared against \`${escapeCell(formatShortRef(baseline.baseRef))}\` — ${pluralize(baseline.baseTotalCount ?? 0, "pre-existing issue")} in the changed files ${newCount === 0 ? "were left untouched" : "are not reported here"}.`,
-    "",
     buildTopRulesSection(report.diagnostics),
     buildSkippedChecksSection(report),
+    buildReviewFooter(),
   ];
   return renderLines(lines);
 };
@@ -232,6 +260,7 @@ const buildCommentBody = (report) => {
     "",
     buildTopRulesSection(report.diagnostics),
     buildSkippedChecksSection(report),
+    buildReviewFooter(),
   ];
 
   return renderLines(lines);

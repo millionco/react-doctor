@@ -81,10 +81,20 @@ const setUpGitHubActions = (rootDirectory: string): void => {
 // First handoff question, asked only when the GitHub Actions workflow isn't
 // already on disk. Pulled out of the main handoff prompt so the agent
 // selection below stays a clean "what runs next?" question instead of a
-// multi-axis decision. The pitch lives on a logger line above the question
-// (always visible, not buried inside one focused choice's description), and
-// the URL renders cyan via `highlighter.info` so it reads as a link in the
-// terminal — matching how `GitHub:` is styled in the scan-report footer.
+// multi-axis decision.
+//
+// The pitch (incremental backlog + social proof) lives as part of the
+// `message` text, indented under the question itself so the value is
+// visually attached to the action it justifies — printing those lines via
+// `logger.log` before the prompt left them floating with a blank line
+// between the value prop and the question, and users skip past floating
+// preamble. `\x1b[22m` (SGR "bold off") cancels the bold the `prompts`
+// `select` renderer wraps every message in (`select.js` line 131:
+// `color.bold(this.msg)`), so the question stays bold while the indented
+// pitch lines render in normal weight (and dim, for the social-proof
+// tagline) — matching the original two-line layout's emphasis. The
+// trailing empty string forces the prompt's `›` delimiter onto its own
+// line below the pitch instead of trailing the last pitch line.
 //
 // "Learn more" opens the docs in the user's default browser via `openUrl` and
 // re-prompts, so the user can decide after reading without restarting the
@@ -93,17 +103,22 @@ const setUpGitHubActions = (rootDirectory: string): void => {
 // keypress doesn't accidentally install workflow files.
 type CiHandoffOutcome = "yes" | "no" | "cancel";
 
-const askAddToGitHubActions = async (): Promise<CiHandoffOutcome> => {
-  logger.log("Scan every pull request to prevent new React issues while you fix the backlog.");
-  logger.log(highlighter.dim(`Used by teams at ${CI_TRUST_COMPANIES}.`));
-  logger.break();
+const SGR_BOLD_OFF = "\x1b[22m";
 
+const ciQuestionMessage = [
+  "Add React Doctor to GitHub Actions?",
+  `${SGR_BOLD_OFF}  Scan every pull request to prevent new React issues while you fix the backlog.`,
+  `${SGR_BOLD_OFF}  ${highlighter.dim(`Used by teams at ${CI_TRUST_COMPANIES}.`)}`,
+  "",
+].join("\n");
+
+const askAddToGitHubActions = async (): Promise<CiHandoffOutcome> => {
   while (true) {
     const { ciChoice } = await prompts<"ciChoice">(
       {
         type: "select",
         name: "ciChoice",
-        message: "Add React Doctor to GitHub Actions?",
+        message: ciQuestionMessage,
         choices: [
           {
             title: "Yes (recommended)",

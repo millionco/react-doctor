@@ -149,6 +149,14 @@ export interface GitDiffSelection {
    */
   readonly currentBranch: string | null;
   readonly baseBranch: string;
+  /**
+   * The commit the changed-file diff was actually computed against — for
+   * two-dot `A..B` it's `A`, for three-dot `A...B` and the single-base path
+   * it's the merge-base. Baseline reads base content from here so the file set
+   * and the base snapshot agree (two-dot must NOT be merge-based with HEAD).
+   * Absent for uncommitted (`isCurrentChanges`) selections.
+   */
+  readonly diffBaseRef?: string;
   readonly changedFiles: ReadonlyArray<string>;
   readonly isCurrentChanges: boolean;
 }
@@ -539,6 +547,7 @@ export class Git extends Context.Service<
           return {
             currentBranch: resolvedCurrentBranch,
             baseBranch: baseRef,
+            diffBaseRef,
             changedFiles: splitNullSeparated(diff.stdout),
             isCurrentChanges: false,
           } satisfies GitDiffSelection;
@@ -640,6 +649,7 @@ export class Git extends Context.Service<
             return {
               currentBranch: resolvedCurrentBranch,
               baseBranch,
+              diffBaseRef: mergeBaseRef,
               changedFiles: splitNullSeparated(diff.stdout),
               isCurrentChanges: false,
             } satisfies GitDiffSelection;

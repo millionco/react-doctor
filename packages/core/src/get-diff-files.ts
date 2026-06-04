@@ -28,6 +28,7 @@ export const getDiffInfo = (
       return {
         currentBranch: selection.currentBranch,
         baseBranch: selection.baseBranch,
+        ...(selection.diffBaseRef !== undefined ? { diffBaseRef: selection.diffBaseRef } : {}),
         changedFiles: [...selection.changedFiles],
         ...(selection.isCurrentChanges ? { isCurrentChanges: true } : {}),
       } satisfies DiffInfo;

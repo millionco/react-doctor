@@ -48,6 +48,9 @@ describe("REACT-DOCTOR-9: --diff accepts commit ranges", () => {
 
     const oneCommit = await getDiffInfo(repoDir, `${shaA}..${shaB}`);
     expect(oneCommit?.baseBranch).toBe(shaA);
+    // Two-dot reads base content from `A` directly (not merge-based with HEAD),
+    // so baseline's file set and base snapshot agree.
+    expect(oneCommit?.diffBaseRef).toBe(shaA);
     // currentBranch reflects the working-tree branch (here `main`), not the
     // range's head endpoint — same contract as single-base `--diff`.
     expect(oneCommit?.currentBranch).toBe("main");
@@ -84,10 +87,15 @@ describe("REACT-DOCTOR-9: --diff accepts commit ranges", () => {
     const twoDot = await getDiffInfo(repoDir, `${shaMain}..${shaFeature}`);
     expect(sortedChangedFiles(twoDot?.changedFiles)).toEqual(["src/feature.tsx", "src/shared.tsx"]);
 
+    // Two-dot reads base content from `shaMain` directly.
+    expect(twoDot?.diffBaseRef).toBe(shaMain);
+
     // Three-dot diffs from the merge-base (the init commit) to feature, so
     // shared.tsx — unchanged on the feature side — is excluded.
     const threeDot = await getDiffInfo(repoDir, `${shaMain}...${shaFeature}`);
     expect(sortedChangedFiles(threeDot?.changedFiles)).toEqual(["src/feature.tsx"]);
+    // Three-dot reads base content from the merge-base (the init commit).
+    expect(threeDot?.diffBaseRef).toBe(shaBase);
   });
 
   it("rejects a range whose endpoint does not exist (clean 'does not exist')", async () => {

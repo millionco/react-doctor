@@ -159,6 +159,13 @@ export interface DiffInfo {
    * shallow PR checkout, whereas the fetched SHA always does.
    */
   baseSha?: string;
+  /**
+   * The commit the changed-file diff was computed against (see
+   * `GitDiffSelection.diffBaseRef`). Baseline mode reads base content from
+   * here so a two-dot `A..B` range reads from `A` directly instead of being
+   * incorrectly merge-based with HEAD.
+   */
+  diffBaseRef?: string;
   changedFiles: string[];
   isCurrentChanges?: boolean;
 }

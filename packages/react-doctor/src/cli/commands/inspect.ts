@@ -331,13 +331,19 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       (await resolveDiffMode(diffInfo, effectiveDiff, skipPrompts, isQuiet));
 
     // Baseline (PR-introduced-issues-only) mode: when diffing against a base
-    // ref (not just uncommitted changes), resolve its merge-base so each scan
-    // can subtract the diagnostics that already existed there and report only
-    // what this change introduced. A null ref (base not fetched, detached, or
-    // git unavailable) degrades to a plain diff scan that shows all findings.
+    // ref (not just uncommitted changes), read base content from the SAME
+    // commit the file diff was taken against so the file set and the base
+    // snapshot agree. The GitHub Action forwards the PR base SHA — three-dot
+    // PR semantics, so merge-base it with HEAD; a local `--diff` already knows
+    // its exact base (`diffBaseRef`: `A` for two-dot `A..B`, the merge-base for
+    // three-dot / single-base). A null ref (base not fetched, detached, or git
+    // unavailable) degrades to a plain diff scan that shows all findings.
     const baselineRef =
       isDiffMode && diffInfo && !diffInfo.isCurrentChanges
-        ? await resolveMergeBaseRef(resolvedDirectory, diffInfo.baseSha ?? diffInfo.baseBranch)
+        ? diffInfo.baseSha
+          ? await resolveMergeBaseRef(resolvedDirectory, diffInfo.baseSha)
+          : (diffInfo.diffBaseRef ??
+            (await resolveMergeBaseRef(resolvedDirectory, diffInfo.baseBranch)))
         : null;
 
     // HACK: set the report-mode marker BEFORE the scan loop runs — if the

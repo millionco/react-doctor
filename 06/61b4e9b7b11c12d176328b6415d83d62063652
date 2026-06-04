@@ -1,0 +1,32 @@
+packages/core/src/get-diff-files.ts
+  s_29dfde713ef3ca::t_1ca99e23e0e709 31
+packages/core/src/types/inspect.ts
+  s_29dfde713ef3ca::t_17d0acedd2c149 162-168
+packages/react-doctor/src/cli/commands/inspect.ts
+  s_29dfde713ef3ca::t_374b7cbb00c474 334-340,343-346
+packages/react-doctor/tests/regressions/diff-commit-range.test.ts
+  s_29dfde713ef3ca::t_6233990928f194 51-53
+  s_29dfde713ef3ca::t_f2a76d38d2a070 90-92,97-98
+packages/react-doctor/src/inspect.ts
+  s_29dfde713ef3ca::t_f959dc9166c2d9 470-471,485-491
+packages/core/src/services/git.ts
+  s_29dfde713ef3ca::t_4d0f5c9ff3955b 152-159
+  s_29dfde713ef3ca::t_77bd5560400648 550
+  s_29dfde713ef3ca::t_71dbf11300257e 652
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "0661b4e9b7b11c12d176328b6415d83d62063652",
+  "prompts": {},
+  "sessions": {
+    "s_29dfde713ef3ca": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ea8ec758-611c-411c-81b8-cacb4d8ea4f9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

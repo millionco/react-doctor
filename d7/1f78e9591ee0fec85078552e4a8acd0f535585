@@ -1,0 +1,26 @@
+.changeset/blocking-warning-gate-and-hide-fail-on.md
+  s_29dfde713ef3ca::t_39a3193e9a5eb1 1-8
+packages/react-doctor/src/cli/utils/resolve-cli-inspect-options.ts
+  s_29dfde713ef3ca::t_596f036af8f05c 24-27
+  s_29dfde713ef3ca::t_64977e95d72ea5 38
+packages/react-doctor/tests/resolve-cli-inspect-options.test.ts
+  s_29dfde713ef3ca::t_007b0c3ec8af00 76-78,80-85
+packages/react-doctor/src/cli/index.ts
+  s_29dfde713ef3ca::t_4efae82f236712 137-142
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "d71f78e9591ee0fec85078552e4a8acd0f535585",
+  "prompts": {},
+  "sessions": {
+    "s_29dfde713ef3ca": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ea8ec758-611c-411c-81b8-cacb4d8ea4f9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

@@ -1,0 +1,20 @@
+packages/react-doctor/tests/build-json-report.test.ts
+  s_29dfde713ef3ca::t_57078c57d0d055 152-157
+  s_29dfde713ef3ca::t_b841ad02eaf011 174
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "62e30c44e8f6f9aaacf4f08262b6646045384f04",
+  "prompts": {},
+  "sessions": {
+    "s_29dfde713ef3ca": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ea8ec758-611c-411c-81b8-cacb4d8ea4f9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

@@ -1,0 +1,30 @@
+action.yml
+  s_29dfde713ef3ca::t_63ccaf61b7bff2 254-259,262,270-271,275,282,284-285,297-298,314,317-320,327-329,331,335-361
+packages/react-doctor/src/inspect.ts
+  s_29dfde713ef3ca::t_b22ffcdac3abe1 470-472,475
+  s_29dfde713ef3ca::t_45ec7232821b46 268-269,275-277
+  s_29dfde713ef3ca::t_6aacf47b5837aa 1
+scripts/render-github-action-comment.mjs
+  s_29dfde713ef3ca::t_985edaa2740718 262-264,272-273
+packages/core/src/services/git.ts
+  s_29dfde713ef3ca::t_b5cbd42dd9da63 672-678,682
+packages/react-doctor/tests/github-action-comment.test.ts
+  s_29dfde713ef3ca::t_8439725a861c09 173
+  s_29dfde713ef3ca::t_54b9821b7b488a 205
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "1eab23b70dbfde06cd5c91416f1f38349c92da62",
+  "prompts": {},
+  "sessions": {
+    "s_29dfde713ef3ca": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ea8ec758-611c-411c-81b8-cacb4d8ea4f9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

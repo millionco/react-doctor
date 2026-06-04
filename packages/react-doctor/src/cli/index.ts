@@ -289,7 +289,7 @@ program
     const isUserError = isExpectedUserError(error);
     const sentryEventId = isUserError ? undefined : await reportErrorToSentry(error);
     if (isJsonModeActive()) {
-      writeJsonErrorReport(error);
+      writeJsonErrorReport(error, sentryEventId);
       process.exit(1);
     }
     if (isUserError) {

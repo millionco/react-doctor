@@ -124,6 +124,8 @@ const convertFile = (filePath) => {
   return false;
 };
 
-const files = collectFiles(ROOT).filter((filePath) => !filePath.includes("convert-node-imports.mjs"));
+const files = collectFiles(ROOT).filter(
+  (filePath) => !filePath.includes("convert-node-imports.mjs"),
+);
 const changed = files.filter(convertFile);
 console.log(`Updated ${changed.length} files`);

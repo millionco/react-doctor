@@ -204,10 +204,9 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
 
     expect(
       fs.realpathSync(
-        fs.readFileSync(
-          path.join(fixture.projectRoot, ".react-doctor/agent-hook-cwd.txt"),
-          "utf8",
-        ).trim(),
+        fs
+          .readFileSync(path.join(fixture.projectRoot, ".react-doctor/agent-hook-cwd.txt"), "utf8")
+          .trim(),
       ),
     ).toBe(fs.realpathSync(fixture.projectRoot));
     expect(
@@ -244,10 +243,9 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
 
     expect(
       fs.realpathSync(
-        fs.readFileSync(
-          path.join(fixture.projectRoot, ".react-doctor/agent-hook-cwd.txt"),
-          "utf8",
-        ).trim(),
+        fs
+          .readFileSync(path.join(fixture.projectRoot, ".react-doctor/agent-hook-cwd.txt"), "utf8")
+          .trim(),
       ),
     ).toBe(fs.realpathSync(fixture.projectRoot));
     expect(parsedOutput.hookSpecificOutput).toEqual({

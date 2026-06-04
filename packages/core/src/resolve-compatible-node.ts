@@ -51,7 +51,8 @@ const findCompatibleNvmBinary = (): string | null => {
   const versionsDirectory = path.join(nvmDirectory, "versions", "node");
   if (!fs.existsSync(versionsDirectory)) return null;
 
-  const compatibleVersions = fs.readdirSync(versionsDirectory)
+  const compatibleVersions = fs
+    .readdirSync(versionsDirectory)
     .filter((directoryName) => directoryName.startsWith("v"))
     .map((directoryName) => ({ directoryName, ...parseNodeVersion(directoryName) }))
     .filter((version) => isNodeVersionCompatibleWithOxlint(version))

@@ -12,7 +12,10 @@ export const writeDiagnosticsDirectory = (diagnostics: Diagnostic[]): string => 
 
   for (const [ruleKey, ruleDiagnostics] of buildSortedRuleGroups(diagnostics)) {
     const fileName = ruleKey.replace(/\//g, "--") + ".txt";
-    fs.writeFileSync(path.join(outputDirectory, fileName), formatRuleSummary(ruleKey, ruleDiagnostics));
+    fs.writeFileSync(
+      path.join(outputDirectory, fileName),
+      formatRuleSummary(ruleKey, ruleDiagnostics),
+    );
   }
 
   fs.writeFileSync(path.join(outputDirectory, "diagnostics.json"), JSON.stringify(diagnostics));

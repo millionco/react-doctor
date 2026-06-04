@@ -378,7 +378,8 @@ const findBundledSiblingSkills = (primarySkillDir: string): BundledSiblingSkill[
   const skillsParent = path.dirname(primarySkillDir);
   if (!fs.existsSync(skillsParent)) return [];
   const resolvedPrimary = path.resolve(primarySkillDir);
-  return fs.readdirSync(skillsParent, { withFileTypes: true })
+  return fs
+    .readdirSync(skillsParent, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => ({ name: entry.name, source: path.join(skillsParent, entry.name) }))
     .filter(

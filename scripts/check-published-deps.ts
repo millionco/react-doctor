@@ -136,7 +136,8 @@ const auditPublishedPackage = (packageDirectory: string): PackageAuditResult => 
   };
 };
 
-const publishedPackageDirectories = fs.readdirSync(PACKAGES_DIRECTORY, { withFileTypes: true })
+const publishedPackageDirectories = fs
+  .readdirSync(PACKAGES_DIRECTORY, { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
   .map((entry) => path.join(PACKAGES_DIRECTORY, entry.name))
   .filter((packageDirectory) => fs.existsSync(path.join(packageDirectory, "package.json")))

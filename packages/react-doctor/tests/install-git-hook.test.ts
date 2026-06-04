@@ -29,7 +29,8 @@ const writePackageJson = (projectRoot: string, content: object): void => {
   fs.writeFileSync(path.join(projectRoot, "package.json"), `${JSON.stringify(content, null, 2)}\n`);
 };
 
-const readJsonFile = <Value>(filePath: string): Value => JSON.parse(fs.readFileSync(filePath, "utf8"));
+const readJsonFile = <Value>(filePath: string): Value =>
+  JSON.parse(fs.readFileSync(filePath, "utf8"));
 
 describe.skipIf(process.platform === "win32")("installReactDoctorGitHook", () => {
   let fixture: GitHookFixture;

@@ -3,10 +3,12 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import type { Diagnostic, ProjectInfo, ReactDoctorConfig } from "./types/index.js";
+import { MIN_SCAN_CONCURRENCY } from "./constants.js";
 import { isReactDoctorError } from "./errors.js";
 import { loadConfigWithSource } from "./load-config.js";
 import { layerOtlp } from "./observability.js";
 import { isProjectDiscoveryError } from "./project-info/index.js";
+import { OxlintConcurrency } from "./refs.js";
 import { runInspect } from "./run-inspect.js";
 import { Config } from "./services/config.js";
 import { DeadCode } from "./services/dead-code.js";
@@ -96,7 +98,7 @@ const isGracefulSkip = (error: unknown): boolean => {
 
 export const runEditorScan = async (input: EditorScanInput): Promise<EditorScanResult> => {
   const hasConfigOverride = input.configOverride !== undefined;
-  const loaded = hasConfigOverride ? null : loadConfigWithSource(input.directory);
+  const loaded = hasConfigOverride ? null : await loadConfigWithSource(input.directory);
   const userConfig = hasConfigOverride ? (input.configOverride ?? null) : (loaded?.config ?? null);
 
   const lint = input.lint ?? userConfig?.lint ?? true;
@@ -133,6 +135,14 @@ export const runEditorScan = async (input: EditorScanInput): Promise<EditorScanR
     Reporter.layerNoop,
     // No hosted score lookup in the editor — keep scans offline and fast.
     Score.layerOf(null),
+    // Pin oxlint to a single subprocess per editor scan. Core lints in
+    // parallel by default (auto-detect cores), but the language server
+    // already parallelizes at the scheduler level — one oxlint process per
+    // file/chunk, many chunks running at once. Letting each individual scan
+    // also fan out across cores would oversubscribe the machine (scheduler
+    // concurrency × per-scan workers). Serial here preserves the "one oxlint
+    // process per runEditorScan" invariant the chunked scheduler is built on.
+    Layer.succeed(OxlintConcurrency, MIN_SCAN_CONCURRENCY),
   );
 
   const program = runInspect({

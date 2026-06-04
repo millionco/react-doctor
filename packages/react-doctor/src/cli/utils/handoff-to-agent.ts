@@ -111,7 +111,7 @@ const SGR_BOLD_OFF = "\x1b[22m";
 
 const ciQuestionMessage = [
   "Add React Doctor to GitHub Actions?",
-  `${SGR_BOLD_OFF}  Scan every pull request to prevent new React issues while you fix the backlog.`,
+  `${SGR_BOLD_OFF}  ${highlighter.dim("Scan every pull request to prevent new React issues while you fix the backlog.")}`,
   `${SGR_BOLD_OFF}  ${highlighter.dim(`Used by teams at ${CI_TRUST_COMPANIES}.`)}`,
 ].join("\n");
 

@@ -6,34 +6,71 @@ export interface InstallGitHubWorkflowResult {
   readonly workflowPath: string;
 }
 
-// The action is pinned to the floating major `@v1` (never `@main`, per the
-// supply-chain guidance in AGENTS.md): `@main` would run whatever HEAD points
-// to with `pull-requests: write` granted.
-const buildWorkflowContent = (): string =>
-  [
-    "name: React Doctor",
-    "",
-    "on:",
-    "  pull_request:",
-    "    types: [opened, synchronize, reopened, ready_for_review]",
-    "",
-    "permissions:",
-    "  contents: read",
-    "  pull-requests: write",
-    "  issues: write",
-    "",
-    "concurrency:",
-    "  group: react-doctor-${{ github.event.pull_request.number || github.ref }}",
-    "  cancel-in-progress: true",
-    "",
-    "jobs:",
-    "  react-doctor:",
-    "    runs-on: ubuntu-latest",
-    "    steps:",
-    "      - uses: actions/checkout@v5",
-    "      - uses: millionco/react-doctor@v1",
-    "",
-  ].join("\n");
+// Self-documenting workflow file. The inline YAML comments walk a new user
+// through the three things they need to change first (non-blocking rollout,
+// scanning `main` on every push for a quality-trend graph, suppressing PR
+// comments) and explain why each permission is granted — without forcing
+// them off to the docs site to learn the basics. The action itself is pinned
+// to the floating major `@v1` (never `@main`, per the supply-chain guidance
+// in AGENTS.md): `@main` would run whatever HEAD points to with
+// `pull-requests: write` granted.
+const buildWorkflowContent =
+  (): string => `# React Doctor — finds security, performance, correctness, accessibility,
+# bundle-size, and architecture issues in React codebases.
+#
+# Docs: https://www.react.doctor/ci
+# Source: https://github.com/millionco/react-doctor
+
+name: React Doctor
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  # Uncomment to also score \`main\` on every push (e.g. for a quality-trend
+  # graph or to track the overall health number commit-by-commit on the
+  # default branch). The job is the same — only PR-specific steps like the
+  # sticky comment are skipped automatically.
+  # push:
+  #   branches: [main]
+
+permissions:
+  # \`actions/checkout\` needs this to read the repo source.
+  contents: read
+  # Two uses: (1) reads the PR's changed-file list so the scan only checks
+  # what the PR touched (faster, scoped to the diff), and (2) posts/updates
+  # the sticky React Doctor summary comment on the PR. Downgrade \`write\` to
+  # \`read\` to keep the changed-file scan but disable comment posting.
+  pull-requests: write
+  # The sticky-comment step uses GitHub's \`issues.createComment\` /
+  # \`issues.updateComment\` endpoints — those are the same APIs that back PR
+  # comments (PRs are issues under the hood). Not exercised on \`push\`
+  # events, so safe to drop if you only run on \`main\`.
+  issues: write
+
+# Cancels any in-flight scan for the same PR (or branch, on push) the moment
+# a new commit arrives, so reviewers only ever see the latest run.
+concurrency:
+  group: react-doctor-\${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  react-doctor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: millionco/react-doctor@v1
+        # Common configuration knobs — uncomment any to override the default.
+        # Full reference: https://www.react.doctor/ci
+        # with:
+        #   non-blocking: true       # Report findings but always exit 0 (won't fail the PR check)
+        #   fail-on: warning         # Gate level: "error" (default) | "warning" | "none"
+        #   comment: false           # Disable the sticky PR summary comment
+        #   annotations: false       # Disable inline GitHub Actions annotations on changed files
+        #   version: "0.2.18"        # Pin to a specific react-doctor version instead of "latest"
+        #   directory: apps/web      # Scan a sub-directory (default: ".")
+        #   project: "web,admin"     # In a monorepo, scan specific workspace project(s)
+`;
 
 export const getReactDoctorWorkflowPath = (projectRoot: string): string =>
   path.join(projectRoot, ".github", "workflows", "react-doctor.yml");

@@ -1,0 +1,19 @@
+.changeset/blocking-gate-baseline-and-cli-cleanup.md
+  s_29dfde713ef3ca::t_a2b6df8e839a68 6,8,10-28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "b752bf1164ddd3ab2e013883791b7660db77ab28",
+  "prompts": {},
+  "sessions": {
+    "s_29dfde713ef3ca": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ea8ec758-611c-411c-81b8-cacb4d8ea4f9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

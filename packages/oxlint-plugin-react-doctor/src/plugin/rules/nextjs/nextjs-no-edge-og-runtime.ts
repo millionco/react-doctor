@@ -27,9 +27,7 @@ export const nextjsNoEdgeOgRuntime = defineRule<Rule>({
         if (!isNodeOfType(declarator.id, "Identifier")) continue;
         if (declarator.id.name !== "runtime") continue;
 
-        const initValue = isNodeOfType(declarator.init, "Literal")
-          ? declarator.init.value
-          : null;
+        const initValue = isNodeOfType(declarator.init, "Literal") ? declarator.init.value : null;
 
         if (initValue === "edge") {
           context.report({

@@ -2,13 +2,11 @@ import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import {
   CANONICAL_GITHUB_URL,
-  CI_URL,
   DOCS_URL,
   highlighter,
   SHARE_BASE_URL,
   TOP_ERRORS_DISPLAY_COUNT,
 } from "@react-doctor/core";
-import { CI_TRUST_COMPANIES } from "./constants.js";
 import type { Diagnostic, ScoreResult } from "@react-doctor/core";
 import { buildSectionDivider } from "./build-section-divider.js";
 import { colorizeByScore } from "./colorize-by-score.js";
@@ -69,25 +67,6 @@ export const printFooter = (input: PrintFooterInput): Effect.Effect<void> =>
       `  ${highlighter.bold("GitHub:")} ${highlighter.info(CANONICAL_GITHUB_URL)}`,
     );
     yield* Console.log(highlighter.dim("  Report issues and star the repository!"));
-    yield* Console.log("");
-    // GitHub Actions closes the footer because it's the highest-leverage
-    // action a user can take after reading the report — set it up once and
-    // React Doctor runs on every PR forever — and sitting last in the footer
-    // makes it the final thing they read before the handoff prompt that
-    // follows (recency wins over primacy here, since the prompt itself
-    // references the same recommendation). The pitch matches the other footer
-    // items' shape (bold label : URL + dim description) while carrying the
-    // "why" in two lines: incremental backlog rollout, then social proof from
-    // teams already running it. The two-line split keeps each description
-    // under `OUTPUT_DETAIL_WRAP_WIDTH_CHARS` (88) so neither soft-wraps at
-    // 100c. The `CI_URL` constant + the `/ci` docs path are unchanged — the
-    // user-facing wording is what shifted from "CI" to "GitHub Actions" so
-    // the label names the concrete thing this CLI actually installs.
-    yield* Console.log(`  ${highlighter.bold("GitHub Actions:")} ${highlighter.info(CI_URL)}`);
-    yield* Console.log(
-      highlighter.dim("  Scan every pull request: new PRs stay clean while you fix the backlog"),
-    );
-    yield* Console.log(highlighter.dim(`  Used by teams at ${CI_TRUST_COMPANIES}`));
   });
 
 export interface PrintSummaryInput {

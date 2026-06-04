@@ -65,11 +65,7 @@ exports[`in-process render across terminal widths and render modes > matches the
   Learn more about fixing issues, setting up CI/CD, and configuring rules with a config file
 
   GitHub: https://github.com/millionco/react-doctor
-  Report issues and star the repository!
-
-  GitHub Actions: https://react.doctor/ci
-  Scan every pull request: new PRs stay clean while you fix the backlog
-  Used by teams at PayPal, Rippling, and Alibaba"
+  Report issues and star the repository!"
 `;
 
 exports[`in-process render across terminal widths and render modes > matches the terminal-width × mode overflow matrix 1`] = `

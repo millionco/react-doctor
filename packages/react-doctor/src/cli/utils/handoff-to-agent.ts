@@ -14,6 +14,17 @@ import { reportWorkflowResult } from "./report-workflow-result.js";
 import { installReactDoctorSkillForAgent } from "./install-skill-for-agent.js";
 import { isCommandAvailable } from "./is-command-available.js";
 import { CI_TRUST_COMPANIES, METRIC } from "./constants.js";
+// Pitch content for the "Add to GitHub Actions" choice's description. Joining
+// with `\n` flips the `prompts` `select` renderer from inline (` - description`
+// on the title line) to wrapped-below (each line indented under the cursor) —
+// see `node_modules/prompts/lib/elements/select.js` lines 158-164. Splitting
+// into three lines keeps each one under the wrap budget at narrow terminals
+// and reads as a structured pitch instead of a wall of text.
+const ADD_TO_GITHUB_ACTIONS_DESCRIPTION = [
+  "Scan every pull request: new PRs stay clean while you fix the backlog",
+  `Used by teams at ${CI_TRUST_COMPANIES}`,
+  CI_URL,
+].join("\n");
 import { recordCount } from "./record-metric.js";
 import {
   CLI_AGENT_BINARIES,
@@ -105,8 +116,8 @@ export const handoffToAgent = async (input: HandoffToAgentInput): Promise<void> 
   // Drop the "Add to GitHub Actions" choice entirely when the workflow file
   // is already present: picking it would be a no-op, and listing an option
   // whose only outcome is "✔ GitHub Actions workflow already configured" is
-  // clutter. The scan-report footer's `GitHub Actions:` entry still appears
-  // for those users as an informational link to the docs + social proof.
+  // clutter. Users with CI configured skip straight to the agent / clipboard
+  // / skip choices.
   const projectRootForCi = findNearestPackageDirectory(input.rootDirectory) ?? input.rootDirectory;
   const isGitHubActionsConfigured = isReactDoctorWorkflowInstalled(projectRootForCi);
 
@@ -122,7 +133,7 @@ export const handoffToAgent = async (input: HandoffToAgentInput): Promise<void> 
           : [
               {
                 title: "Add to GitHub Actions (recommended)",
-                description: "Set up the workflow file + the doctor package script",
+                description: ADD_TO_GITHUB_ACTIONS_DESCRIPTION,
                 value: CI_CHOICE,
               },
             ]),

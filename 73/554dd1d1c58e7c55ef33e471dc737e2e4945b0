@@ -1,0 +1,25 @@
+packages/zed-react-doctor/LICENSE
+  ai_agent 1
+packages/zed-react-doctor/README.md
+  s_55e5225c4a74ee::t_1c6881aacf3c32 38
+vite.config.ts
+  s_55e5225c4a74ee::t_5b13d2bca3dd0d 14,30
+docs/editors.md
+  s_55e5225c4a74ee::t_0e55306ecbc110 122,127
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "73554dd1d1c58e7c55ef33e471dc737e2e4945b0",
+  "prompts": {},
+  "sessions": {
+    "s_55e5225c4a74ee": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "24f14ee2-7b18-4a18-8a3e-4dbf84ffbff3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

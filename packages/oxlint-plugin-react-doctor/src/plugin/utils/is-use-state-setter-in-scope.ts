@@ -20,10 +20,7 @@ export const isUseStateSetterInScope = (node: EsTreeNode, setterName: string): b
           const elements = declarator.id.elements ?? [];
           if (elements.length < 2) continue;
           const setterElement = elements[1];
-          if (
-            !isNodeOfType(setterElement, "Identifier") ||
-            setterElement.name !== setterName
-          ) {
+          if (!isNodeOfType(setterElement, "Identifier") || setterElement.name !== setterName) {
             continue;
           }
           if (!isNodeOfType(declarator.init, "CallExpression")) continue;

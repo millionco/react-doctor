@@ -71,7 +71,7 @@ impl zed::Extension for ReactDoctorExtension {
 }
 
 fn stdio_args() -> Vec<String> {
-    vec!["lsp".into(), "--stdio".into()]
+    vec!["experimental-lsp".into(), "--stdio".into()]
 }
 
 fn npx_args() -> Vec<String> {

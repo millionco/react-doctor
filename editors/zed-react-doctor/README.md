@@ -13,7 +13,7 @@ It activates for the **TypeScript**, **TSX**, and **JavaScript** languages (Zed 
 
 ## Requirements
 
-The extension launches `react-doctor lsp --stdio` and resolves the binary in this order:
+The extension launches `react-doctor experimental-lsp --stdio` and resolves the binary in this order:
 
 1. The project-local CLI at `node_modules/.bin/react-doctor` (when `react-doctor` is installed in the worktree).
 2. A `react-doctor` binary on your `PATH`.

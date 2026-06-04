@@ -6,10 +6,10 @@ VS Code, Cursor, Neovim, Zed, Helix, or any LSP client — instead of only
 on the command line.
 
 This package is internal (not published on its own). It is bundled into
-the published `react-doctor` CLI and started with:
+the published `react-doctor` CLI and started with the experimental command:
 
 ```bash
-react-doctor lsp --stdio
+react-doctor experimental-lsp --stdio
 ```
 
 ## What it does

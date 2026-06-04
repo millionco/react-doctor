@@ -10,15 +10,15 @@ The server is part of the published `react-doctor` CLI. The universal
 launch command is:
 
 ```bash
-react-doctor lsp --stdio
+react-doctor experimental-lsp --stdio
 ```
 
 There are two ways to invoke it in an editor config:
 
-- **No install (zero-config):** `npx react-doctor@latest lsp --stdio`
+- **No install (zero-config):** `npx react-doctor@latest experimental-lsp --stdio`
 - **Project devDependency (faster, version-pinned):** the local bin
-  `react-doctor lsp --stdio` (resolves to `./node_modules/.bin/react-doctor`).
-  `npx react-doctor lsp --stdio` also picks up the local copy.
+  `react-doctor experimental-lsp --stdio` (resolves to `./node_modules/.bin/react-doctor`).
+  `npx react-doctor experimental-lsp --stdio` also picks up the local copy.
 
 The snippets below default to the `npx` form so they work without any
 install; switch the command to `react-doctor` when the package is a
@@ -80,7 +80,7 @@ code --install-extension packages/vscode-react-doctor/react-doctor.vsix
 it in an Extension Development Host.)
 
 The extension auto-starts the React Doctor language server for
-JavaScript/TypeScript files by running `react-doctor lsp --stdio`. It uses
+JavaScript/TypeScript files by running `react-doctor experimental-lsp --stdio`. It uses
 your project's `react-doctor` when present (`node_modules/.bin`) and falls
 back to `npx react-doctor@latest`, so no setup is required. Override the
 executable with `reactDoctor.serverPath` to pin a specific binary.
@@ -126,7 +126,7 @@ extension shipped in `editors/zed-react-doctor`:
 2. Open **Extensions** (`zed: extensions`), click **Install Dev
    Extension**, and select the `editors/zed-react-doctor` directory.
 
-The extension launches `react-doctor lsp --stdio`. It uses the
+The extension launches `react-doctor experimental-lsp --stdio`. It uses the
 `react-doctor` from your project when present and falls back to
 `npx react-doctor@latest` otherwise.
 
@@ -151,9 +151,9 @@ needed. Add this to your config (e.g. `init.lua`):
 
 ```lua
 vim.lsp.config("react_doctor", {
-  cmd = { "npx", "react-doctor@latest", "lsp", "--stdio" },
+  cmd = { "npx", "react-doctor@latest", "experimental-lsp", "--stdio" },
   -- If react-doctor is a project dependency, prefer the local bin:
-  -- cmd = { "react-doctor", "lsp", "--stdio" },
+  -- cmd = { "react-doctor", "experimental-lsp", "--stdio" },
   filetypes = { "typescript", "typescriptreact", "javascript", "javascriptreact" },
   root_markers = { "package.json", ".git" },
   -- Optional: set to false to scan only on open and save (default true).
@@ -180,7 +180,7 @@ local configs = require("lspconfig.configs")
 if not configs.react_doctor then
   configs.react_doctor = {
     default_config = {
-      cmd = { "npx", "react-doctor@latest", "lsp", "--stdio" },
+      cmd = { "npx", "react-doctor@latest", "experimental-lsp", "--stdio" },
       filetypes = { "typescript", "typescriptreact", "javascript", "javascriptreact" },
       root_dir = lspconfig.util.root_pattern("package.json", ".git"),
       single_file_support = true,
@@ -203,7 +203,7 @@ Install the **LSP** package from Package Control, then open
   "clients": {
     "react-doctor": {
       "enabled": true,
-      "command": ["npx", "react-doctor@latest", "lsp", "--stdio"],
+      "command": ["npx", "react-doctor@latest", "experimental-lsp", "--stdio"],
       "selector": "source.ts | source.tsx | source.js | source.jsx",
       "initialization_options": { "scanOnType": true }
     }
@@ -211,7 +211,7 @@ Install the **LSP** package from Package Control, then open
 }
 ```
 
-Swap `command` for `["react-doctor", "lsp", "--stdio"]` when the package
+Swap `command` for `["react-doctor", "experimental-lsp", "--stdio"]` when the package
 is installed in the project.
 
 ## Emacs
@@ -226,7 +226,7 @@ use lsp-mode below.
 (with-eval-after-load 'eglot
   (add-to-list 'eglot-server-programs
                '((typescript-ts-mode tsx-ts-mode js-ts-mode typescript-mode js-mode)
-                 . ("npx" "react-doctor@latest" "lsp" "--stdio"))))
+                 . ("npx" "react-doctor@latest" "experimental-lsp" "--stdio"))))
 ```
 
 To pass initialization options, use the backtick form with
@@ -236,7 +236,7 @@ To pass initialization options, use the backtick form with
 (with-eval-after-load 'eglot
   (add-to-list 'eglot-server-programs
                `((typescript-ts-mode tsx-ts-mode js-ts-mode typescript-mode js-mode)
-                 . ("npx" "react-doctor@latest" "lsp" "--stdio"
+                 . ("npx" "react-doctor@latest" "experimental-lsp" "--stdio"
                     :initializationOptions (:scanOnType t)))))
 ```
 
@@ -249,7 +249,7 @@ parallel with your primary TypeScript server (`ts-ls`):
 (with-eval-after-load 'lsp-mode
   (lsp-register-client
    (make-lsp-client
-    :new-connection (lsp-stdio-connection '("npx" "react-doctor@latest" "lsp" "--stdio"))
+    :new-connection (lsp-stdio-connection '("npx" "react-doctor@latest" "experimental-lsp" "--stdio"))
     :activation-fn (lsp-activate-on "typescript" "typescriptreact"
                                     "javascript" "javascriptreact")
     :add-on? t
@@ -271,7 +271,7 @@ the four languages **alongside** the default `typescript-language-server`
 ```toml
 [language-server.react-doctor]
 command = "npx"
-args = ["react-doctor@latest", "lsp", "--stdio"]
+args = ["react-doctor@latest", "experimental-lsp", "--stdio"]
 # Optional init options (Helix maps `config` to initializationOptions):
 # config = { scanOnType = true }
 
@@ -293,13 +293,13 @@ language-servers = ["typescript-language-server", "react-doctor"]
 ```
 
 For an installed project, use `command = "react-doctor"` with
-`args = ["lsp", "--stdio"]`.
+`args = ["experimental-lsp", "--stdio"]`.
 
 ## Any LSP client
 
 If your editor isn't listed, point any LSP client at the stdio command:
 
-- **Command:** `react-doctor lsp --stdio` (or `npx react-doctor@latest lsp --stdio`)
+- **Command:** `react-doctor experimental-lsp --stdio` (or `npx react-doctor@latest experimental-lsp --stdio`)
 - **Transport:** stdio
 - **Attach for:** language ids `typescript`, `typescriptreact`,
   `javascript`, `javascriptreact` (extensions `.ts`, `.tsx`, `.js`, `.jsx`)
@@ -347,7 +347,7 @@ monorepo workspaces.
   for LSP messages on stdin (not exit or print a report):
 
   ```bash
-  npx react-doctor@latest lsp --stdio
+  npx react-doctor@latest experimental-lsp --stdio
   ```
 
 **Check the editor's LSP log.** The server reports status through the LSP

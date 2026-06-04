@@ -73,8 +73,8 @@ interface ResolvedServer {
 }
 
 /**
- * Resolves how to launch `react-doctor lsp --stdio`, preferring the
- * project's own install so the editor uses the exact version pinned in
+ * Resolves how to launch `react-doctor experimental-lsp --stdio`, preferring
+ * the project's own install so the editor uses the exact version pinned in
  * the repo, then falling back to `npx` so the extension works with zero
  * setup:
  *   1. `reactDoctor.serverPath` setting (explicit override)
@@ -84,20 +84,20 @@ interface ResolvedServer {
 const resolveServer = (configuration: vscode.WorkspaceConfiguration): ResolvedServer => {
   const explicitPath = configuration.get<string>("serverPath", "").trim();
   if (explicitPath.length > 0) {
-    return { command: explicitPath, args: ["lsp", "--stdio"], shell: false };
+    return { command: explicitPath, args: ["experimental-lsp", "--stdio"], shell: false };
   }
 
   const binName = IS_WINDOWS ? "react-doctor.cmd" : "react-doctor";
   for (const folder of vscode.workspace.workspaceFolders ?? []) {
     const localBin = path.join(folder.uri.fsPath, "node_modules", ".bin", binName);
     if (fs.existsSync(localBin)) {
-      return { command: localBin, args: ["lsp", "--stdio"], shell: IS_WINDOWS };
+      return { command: localBin, args: ["experimental-lsp", "--stdio"], shell: IS_WINDOWS };
     }
   }
 
   return {
     command: IS_WINDOWS ? "npx.cmd" : "npx",
-    args: ["-y", "react-doctor@latest", "lsp", "--stdio"],
+    args: ["-y", "react-doctor@latest", "experimental-lsp", "--stdio"],
     shell: IS_WINDOWS,
   };
 };

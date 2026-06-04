@@ -39,11 +39,13 @@ Works with Claude Code, Cursor, Codex, OpenCode, and many more.
 
 ### 3. Use in your editor (LSP)
 
-React Doctor ships a language server, so diagnostics show up live as you type — underlined inline, with rich hovers and quick fixes — in VS Code, Cursor, Zed, Neovim, Sublime, Emacs, Helix, or any LSP client. The universal launch command is:
+React Doctor ships an experimental language server, so diagnostics show up live as you type — underlined inline, with rich hovers and quick fixes — in VS Code, Cursor, Zed, Neovim, Sublime, Emacs, Helix, or any LSP client. The universal launch command is:
 
 ```bash
-react-doctor lsp --stdio
+react-doctor experimental-lsp --stdio
 ```
+
+> The editor language server is experimental — its protocol, caching, and diagnostics may change between releases, hence the `experimental-` prefix.
 
 See [docs/editors.md](docs/editors.md) for VS Code, Cursor, Zed, Neovim, Sublime, Emacs, Helix, and generic setup.
 

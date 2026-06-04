@@ -18,7 +18,7 @@ powered by the React Doctor language server. Works in VS Code and Cursor
 
 ## How it runs the server
 
-The extension launches `react-doctor lsp --stdio`. It does **not** bundle
+The extension launches `react-doctor experimental-lsp --stdio`. It does **not** bundle
 the engine; it uses your project's own version so diagnostics match the
 CLI and CI:
 

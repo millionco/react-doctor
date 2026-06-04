@@ -65,7 +65,7 @@ const printPayload = (payload: string): void => {
 // On any failure (gh missing, not authenticated, push refused, …) we fall
 // back to `git add`ing the file so it at least shows up in the user's
 // next `git status` / commit instead of becoming an orphan untracked path.
-const setUpGitHubActions = (rootDirectory: string): void => {
+const setUpGitHubActions = async (rootDirectory: string): Promise<void> => {
   const projectRoot = findNearestPackageDirectory(rootDirectory) ?? rootDirectory;
   try {
     installReactDoctorScriptStep(projectRoot);
@@ -84,7 +84,7 @@ const setUpGitHubActions = (rootDirectory: string): void => {
   }
   if (workflowResult.status === "created") {
     const pullRequestSpinner = spinner("Opening a pull request for review...").start();
-    const pullRequestResult = openWorkflowPullRequest({
+    const pullRequestResult = await openWorkflowPullRequest({
       workflowPath: workflowResult.workflowPath,
     });
     if (pullRequestResult.status === "pr-opened") {
@@ -97,7 +97,7 @@ const setUpGitHubActions = (rootDirectory: string): void => {
       );
     } else {
       pullRequestSpinner.stop();
-      const didStage = stageWorkflowFile({ workflowPath: workflowResult.workflowPath });
+      const didStage = await stageWorkflowFile({ workflowPath: workflowResult.workflowPath });
       if (didStage) {
         logger.log(`  Staged the workflow file. Commit it to start scanning every pull request.`);
       } else {
@@ -229,7 +229,7 @@ export const handoffToAgent = async (input: HandoffToAgentInput): Promise<void> 
     });
     if (ciOutcome === "cancel") return;
     if (ciOutcome === "yes") {
-      setUpGitHubActions(input.rootDirectory);
+      await setUpGitHubActions(input.rootDirectory);
       logger.break();
     }
   }

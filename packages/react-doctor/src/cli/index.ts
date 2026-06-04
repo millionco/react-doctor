@@ -134,7 +134,12 @@ const program = new Command()
     "--blocking <level>",
     "severity that fails CI: error (default), warning, or none (advisory)",
   )
-  .option("--fail-on <level>", "[deprecated] alias for --blocking <level>")
+  .addOption(
+    // Deprecated alias for --blocking (warns at runtime). Hidden from --help but
+    // kept functional: it takes a value, so hard-removing it would turn
+    // `--fail-on warning` into a stray positional. Remove in a future major.
+    new Option("--fail-on <level>", "[deprecated] alias for --blocking <level>").hideHelp(),
+  )
   .option(
     "--no-respect-inline-disables",
     "audit mode: neutralize inline lint suppressions before scanning",

@@ -21,9 +21,10 @@ export const resolveCliInspectOptions = (
   userConfig: ReactDoctorConfig | null,
 ): InspectOptions => {
   // A `warning`-level CI gate is meaningless unless warnings reach the
-  // ciFailure surface — so it forces warnings on even when the user hid them
-  // via `warnings: false`. An explicit `--warnings` / `--no-warnings` still
-  // wins. The gate level itself is resolved by `resolveBlockingLevel`.
+  // ciFailure surface, so the gate wins: when `--blocking warning` is set it
+  // forces warnings on even over an explicit `--no-warnings` (you can't block
+  // on warnings you've hidden). Otherwise the warnings flag passes through.
+  // The gate level itself is resolved by `resolveBlockingLevel`.
   const wantsWarningGate = pickBlockingLevel(flags, userConfig) === "warning";
 
   return {
@@ -34,7 +35,7 @@ export const resolveCliInspectOptions = (
     // this to `true`; map that back to `undefined` so a config value can win,
     // and only honor an explicit `false` (the user passed the flag).
     respectInlineDisables: flags.respectInlineDisables === false ? false : undefined,
-    warnings: flags.warnings ?? (wantsWarningGate ? true : undefined),
+    warnings: wantsWarningGate ? true : flags.warnings,
     scoreOnly: flags.score === true,
     noScore: flags.score === false || flags.telemetry === false || (userConfig?.noScore ?? false),
     isCi: isCiEnvironment(),

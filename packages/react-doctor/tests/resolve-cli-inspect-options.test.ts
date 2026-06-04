@@ -73,8 +73,16 @@ describe("resolveCliInspectOptions: warnings vs --blocking", () => {
     expect(resolveCliInspectOptions({ blocking: "error" }, null).warnings).toBeUndefined();
   });
 
-  it("respects an explicit --no-warnings even with --blocking warning", () => {
+  it("forces warnings on for --blocking warning even over an explicit --no-warnings", () => {
+    // The gate wins: you can't block on warnings you've hidden. (Previously this
+    // silently no-op'd the gate — REACT-DOCTOR footgun.)
     expect(resolveCliInspectOptions({ blocking: "warning", warnings: false }, null).warnings).toBe(
+      true,
+    );
+  });
+
+  it("respects --no-warnings when the gate is not warning-level", () => {
+    expect(resolveCliInspectOptions({ blocking: "error", warnings: false }, null).warnings).toBe(
       false,
     );
   });

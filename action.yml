@@ -331,6 +331,10 @@ runs:
             core.warning(`React Doctor could not list prior review comments: ${error.message}`);
           }
 
+          // Inline comments are intentionally capped to avoid flooding a PR and
+          // to stay within GitHub's per-review size limits. When more than this
+          // anchor on the diff, the sticky summary comment remains the complete
+          // record of every finding; the inline subset is just the first slice.
           const maxComments = 50;
           if (comments.length > 0) {
             try {

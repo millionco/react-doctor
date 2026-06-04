@@ -107,6 +107,7 @@ import { nextjsNoClientFetchForServerData } from "./rules/nextjs/nextjs-no-clien
 import { nextjsNoClientSideRedirect } from "./rules/nextjs/nextjs-no-client-side-redirect.js";
 import { nextjsNoCssLink } from "./rules/nextjs/nextjs-no-css-link.js";
 import { nextjsNoDefaultExportInRouteHandler } from "./rules/nextjs/nextjs-no-default-export-in-route-handler.js";
+import { nextjsNoEdgeOgRuntime } from "./rules/nextjs/nextjs-no-edge-og-runtime.js";
 import { nextjsNoFontLink } from "./rules/nextjs/nextjs-no-font-link.js";
 import { nextjsNoGoogleAnalyticsScript } from "./rules/nextjs/nextjs-no-google-analytics-script.js";
 import { nextjsNoHeadImport } from "./rules/nextjs/nextjs-no-head-import.js";
@@ -114,8 +115,10 @@ import { nextjsNoImgElement } from "./rules/nextjs/nextjs-no-img-element.js";
 import { nextjsNoNativeScript } from "./rules/nextjs/nextjs-no-native-script.js";
 import { nextjsNoPolyfillScript } from "./rules/nextjs/nextjs-no-polyfill-script.js";
 import { nextjsNoRedirectInTryCatch } from "./rules/nextjs/nextjs-no-redirect-in-try-catch.js";
+import { nextjsNoScriptInHead } from "./rules/nextjs/nextjs-no-script-in-head.js";
 import { nextjsNoSideEffectInGetHandler } from "./rules/nextjs/nextjs-no-side-effect-in-get-handler.js";
 import { nextjsNoUseSearchParamsWithoutSuspense } from "./rules/nextjs/nextjs-no-use-search-params-without-suspense.js";
+import { nextjsNoVercelOgImport } from "./rules/nextjs/nextjs-no-vercel-og-import.js";
 import { noAccessKey } from "./rules/a11y/no-access-key.js";
 import { noAdjustStateOnPropChange } from "./rules/state-and-effects/no-adjust-state-on-prop-change.js";
 import { noAriaHiddenOnFocusable } from "./rules/a11y/no-aria-hidden-on-focusable.js";
@@ -1433,6 +1436,17 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/nextjs-no-edge-og-runtime",
+    id: "nextjs-no-edge-og-runtime",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...nextjsNoEdgeOgRuntime,
+      framework: "nextjs",
+      category: "Bugs",
+    },
+  },
+  {
     key: "react-doctor/nextjs-no-font-link",
     id: "nextjs-no-font-link",
     source: "react-doctor",
@@ -1510,6 +1524,17 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/nextjs-no-script-in-head",
+    id: "nextjs-no-script-in-head",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...nextjsNoScriptInHead,
+      framework: "nextjs",
+      category: "Bugs",
+    },
+  },
+  {
     key: "react-doctor/nextjs-no-side-effect-in-get-handler",
     id: "nextjs-no-side-effect-in-get-handler",
     source: "react-doctor",
@@ -1527,6 +1552,17 @@ export const reactDoctorRules = [
     originallyExternal: false,
     rule: {
       ...nextjsNoUseSearchParamsWithoutSuspense,
+      framework: "nextjs",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/nextjs-no-vercel-og-import",
+    id: "nextjs-no-vercel-og-import",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...nextjsNoVercelOgImport,
       framework: "nextjs",
       category: "Bugs",
     },

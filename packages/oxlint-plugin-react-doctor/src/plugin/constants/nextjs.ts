@@ -55,3 +55,6 @@ export const ROUTE_HANDLER_HTTP_METHODS = new Set([
 
 export const GOOGLE_ANALYTICS_SCRIPT_PATTERN =
   /google-analytics\.com|googletagmanager\.com\/gtag/;
+
+export const OG_IMAGE_FILE_PATTERN =
+  /\/(opengraph-image|twitter-image)\.(tsx?|jsx?)$/;

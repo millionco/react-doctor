@@ -1,6 +1,6 @@
 {
   "name": "@react-doctor/core",
-  "version": "0.2.18",
+  "version": "0.2.19",
   "private": true,
   "description": "Internal: diagnostic engine for React Doctor (lint runner, scoring, config, suppressions). Not published.",
   "license": "MIT",

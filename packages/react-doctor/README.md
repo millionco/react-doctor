@@ -47,7 +47,7 @@ react-doctor experimental-lsp --stdio
 
 > The editor language server is experimental — its protocol, caching, and diagnostics may change between releases, hence the `experimental-` prefix.
 
-See [docs/editors.md](docs/editors.md) for VS Code, Cursor, Zed, Neovim, Sublime, Emacs, Helix, and generic setup.
+Companion extensions for VS Code/Cursor and Zed live under `packages/`; any other LSP client can run the command above directly over stdio.
 
 ### 4. Run in CI (GitHub Actions) for your team
 

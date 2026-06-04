@@ -1,0 +1,21 @@
+packages/react-doctor/src/cli/utils/resolve-cli-inspect-options.ts
+  s_29dfde713ef3ca::t_30f6f0b71001b1 10-15
+packages/core/src/materialize-source-tree.ts
+  s_29dfde713ef3ca::t_e6e4d188fd1274 44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "e41c5b9db80f450c68a5d45af04682683eba2b33",
+  "prompts": {},
+  "sessions": {
+    "s_29dfde713ef3ca": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ea8ec758-611c-411c-81b8-cacb4d8ea4f9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

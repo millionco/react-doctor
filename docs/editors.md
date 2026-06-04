@@ -119,12 +119,12 @@ commands and `reactDoctor.*` settings. The server starts automatically for
 ## Zed
 
 Zed language support is provided through an extension. Install the dev
-extension shipped in `editors/zed-react-doctor`:
+extension shipped in `packages/zed-react-doctor`:
 
 1. Install Rust via [rustup](https://rustup.rs) (required to build Zed dev
    extensions).
 2. Open **Extensions** (`zed: extensions`), click **Install Dev
-   Extension**, and select the `editors/zed-react-doctor` directory.
+   Extension**, and select the `packages/zed-react-doctor` directory.
 
 The extension launches `react-doctor experimental-lsp --stdio`. It uses the
 `react-doctor` from your project when present and falls back to

@@ -35,7 +35,7 @@ This extension is not yet published to the Zed extension registry, so install it
 1. Open Zed.
 2. Open the command palette and run **`zed: extensions`** (or use the menu: **Zed → Extensions**).
 3. Click **Install Dev Extension**.
-4. Select this folder: `editors/zed-react-doctor`.
+4. Select this folder: `packages/zed-react-doctor`.
 
 Zed compiles the Rust extension to WebAssembly on install. Reload the extension from the same Extensions view after pulling changes.
 

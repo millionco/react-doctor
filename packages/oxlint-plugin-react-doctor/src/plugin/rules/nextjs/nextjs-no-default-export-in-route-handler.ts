@@ -70,7 +70,7 @@ export const nextjsNoDefaultExportInRouteHandler = defineRule<Rule>({
         context.report({
           node,
           message:
-            "Default exports in route.ts are silently ignored — Next.js only recognizes named HTTP method exports (GET, POST, etc.).",
+            "Default exports in route.ts are silently ignored. Next.js only recognizes named HTTP method exports (GET, POST, etc.).",
         });
       },
     };

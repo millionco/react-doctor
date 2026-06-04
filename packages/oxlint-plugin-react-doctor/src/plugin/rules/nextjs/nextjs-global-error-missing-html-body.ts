@@ -31,7 +31,7 @@ export const nextjsGlobalErrorMissingHtmlBody = defineRule<Rule>({
   requires: ["nextjs"],
   severity: "error",
   recommendation:
-    "Wrap your error UI in `<html><body>…</body></html>` — the root layout is unmounted when global-error renders",
+    "Wrap your error UI in `<html><body>...</body></html>`. The root layout is unmounted when global-error renders",
   create: (context: RuleContext) => ({
     Program(programNode: EsTreeNodeOfType<"Program">) {
       const filename = normalizeFilename(context.filename ?? "");
@@ -48,7 +48,7 @@ export const nextjsGlobalErrorMissingHtmlBody = defineRule<Rule>({
 
         context.report({
           node: programNode,
-          message: `global-error.tsx is missing ${missingTags} — the root layout unmounts on error, so this page renders broken HTML.`,
+          message: `global-error.tsx is missing ${missingTags}. The root layout unmounts on error, so this page renders broken HTML.`,
         });
       }
     },

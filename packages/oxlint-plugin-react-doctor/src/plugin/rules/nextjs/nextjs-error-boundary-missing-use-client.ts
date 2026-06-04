@@ -13,7 +13,7 @@ export const nextjsErrorBoundaryMissingUseClient = defineRule<Rule>({
   requires: ["nextjs"],
   severity: "error",
   recommendation:
-    "Add `'use client'` at the top of this file — error boundaries must be Client Components to catch and render fallback UI",
+    "Add `'use client'` at the top of this file. Error boundaries must be Client Components to catch and render fallback UI",
   create: (context: RuleContext) => ({
     Program(programNode: EsTreeNodeOfType<"Program">) {
       const filename = normalizeFilename(context.filename ?? "");
@@ -24,7 +24,7 @@ export const nextjsErrorBoundaryMissingUseClient = defineRule<Rule>({
       context.report({
         node: programNode,
         message:
-          "This error boundary silently does nothing without 'use client' — Next.js requires error.tsx to be a Client Component.",
+          "This error boundary silently does nothing without 'use client'. Next.js requires error.tsx to be a Client Component.",
       });
     },
   }),

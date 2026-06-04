@@ -1,0 +1,205 @@
+.changeset/static-value-react-compiler.md
+  s_0be0fcdbf72c91::t_96b892d07faa23 1-7
+packages/core/src/runners/oxlint/config.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 177-179
+packages/react-doctor/tests/inspect-surface-filter.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 30-41,90,138,154-157
+packages/react-doctor/tests/inspect-action-setup-prompt.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 70-71
+packages/core/tests/compiler-cleanup-bucket.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 21-23
+.changeset/bump-deslop-js-0.0.17.md
+  s_0be0fcdbf72c91::t_96b892d07faa23 1-5
+packages/react-doctor/tests/regressions/state-rules/effect-needs-cleanup.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 207,233,481-482,503,506-507,531,721-742,765-786
+packages/core/tests/build-capabilities.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 19-20
+packages/core/tests/services/linter.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 23-24
+packages/react-doctor/tests/with-sentry-run-span.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 30-31
+packages/react-doctor/src/inspect.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 25,60,127-148,200-224,297,444-455
+.changeset/allow-yes-with-full.md
+  s_0be0fcdbf72c91::t_96b892d07faa23 1-7
+packages/oxlint-plugin-react-doctor/src/plugin/rule-registry.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 1-11
+packages/react-doctor/tests/build-json-report.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 19-20
+packages/core/src/run-inspect.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 67-68,467
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/no-default-props.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 22-24
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-ui/no-redundant-size-axes.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 17-19
+.changeset/opt-out-low-value-default-rules.md
+  s_0be0fcdbf72c91::t_96b892d07faa23 1-12
+packages/core/tests/append-reanimated-shared-value-hint.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 28-29
+packages/core/src/dead-code/collect-dead-code-patterns.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 1-112
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/no-generic-handler-names.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 12-14
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-dark-mode-glow.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 77-79
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-ui/no-three-period-ellipsis.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 13-15
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-prefer-content-inset-adjustment.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 1-30
+packages/core/tests/spawn-batches-serial-fallback.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 67-69
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-ui/no-em-dash-in-jsx-text.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 14-16
+packages/oxlint-plugin-react-doctor/src/plugin/utils/get-react-doctor-setting.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 39-50
+packages/react-doctor/src/cli/utils/build-sentry-scope.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 34-35,42-44
+.changeset/react-compiler-context-provider-value.md
+  s_0be0fcdbf72c91::t_96b892d07faa23 1-5
+packages/core/tests/check-expo-project.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 49-50
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-prefer-content-inset-adjustment.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 1,3,5,10
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-animate-layout-property.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 1-23
+packages/core/src/calculate-score.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 53,79
+packages/oxlint-plugin-react-doctor/src/plugin/utils/define-retired-rule.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 1-12
+packages/react-doctor/tests/github-action-comment.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 34-35
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-z-index9999.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 18-20
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/prefer-module-scope-static-value.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 197-203
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-animate-layout-property.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 1,3,8,10
+.changeset/bump-deslop-js.md
+  s_0be0fcdbf72c91::t_96b892d07faa23 1-5
+.changeset/ci-telemetry-wide-event.md
+  s_0be0fcdbf72c91::t_96b892d07faa23 1-7
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-side-tab-border.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 61-63
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/effect-needs-cleanup.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 21,52,65,157-183,198,204,229
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-array-index-key.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 364-368
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-no-constructed-context-values.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 140
+packages/oxlint-plugin-react-doctor/src/plugin/utils/rule.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 68-70
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-ui/no-space-on-flex-children.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 17-19
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-ui/no-vague-button-label.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 64-66
+packages/react-doctor/tests/build-sentry-scope.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 9,20-21,44-45,62-63,72-77
+packages/oxlint-plugin-react-doctor/scripts/generate-rule-registry.mjs
+  s_0be0fcdbf72c91::t_96b892d07faa23 5,161-162,164,170-172
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-pascal-case.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 155-157
+packages/react-doctor/tests/validate-mode-flags.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 30-33
+.changeset/wide-letter-spacing-uppercase-prop.md
+  s_0be0fcdbf72c91::t_96b892d07faa23 1-7
+AGENTS.md
+  s_0be0fcdbf72c91::t_96b892d07faa23 272-313
+action.yml
+  s_0be0fcdbf72c91::t_96b892d07faa23 103-112
+packages/core/src/types/project-info.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 69-76
+packages/core/src/project-info/find-shopify-flash-list-version.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 1-19
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/no-prop-types.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 77-79
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-wide-letter-spacing.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 1-79
+packages/core/tests/check-dead-code.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 125-175
+packages/core/src/project-info/discover-project.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 15-19,25-26,196-212,239-241
+packages/core/tests/services/project.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 23-24
+packages/core/tests/spawn-batches.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 32-34
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-justified-text.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 14-16
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-wide-letter-spacing.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 10,13-67,72-74,83
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-list-missing-estimated-item-size.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 18-30
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-list-missing-estimated-item-size.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 3-4,33-40,76
+packages/react-doctor/src/cli/utils/build-run-event.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 1-232
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-legacy-expo-packages.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 1-42
+packages/react-doctor/src/cli/utils/build-run-context.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 2,7,12,18-20,31-34,88,102-103
+packages/react-doctor/src/cli/utils/run-id.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 1-19
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-gradient-text.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 15-17
+packages/react-doctor/tests/build-run-context.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 5-6,10,15-19,29-33,66-84
+packages/react-doctor/tests/build-sentry-project-context.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 25-26
+packages/core/tests/run-inspect.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 40-41
+packages/react-doctor/tests/is-expected-user-error.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 36-38
+packages/react-doctor/tests/regressions/_helpers.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 126-127,154-155,183-186
+packages/react-doctor/tests/regressions/rn-and-motion.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 13,321,327,338,358-360,367-400
+packages/core/tests/discover-project.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 1502-1552
+packages/react-doctor/src/cli/utils/is-ci-environment.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 25-42,99-118
+packages/react-doctor/tests/build-run-event.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 1-237
+packages/react-doctor/tests/is-ci-environment.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 3,7-9,13-14,22-25,190-239
+packages/react-doctor/tests/regressions/scan-resilience.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 545-547,555
+packages/core/src/project-info/resolve-catalog-backed-dependency-version.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 1-50
+packages/react-doctor/tests/to-json-report.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 34-35
+.changeset/retire-reanimated-layout-rule.md
+  s_0be0fcdbf72c91::t_96b892d07faa23 1-6
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-ui/no-redundant-padding-axes.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 19-21
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/prefer-es6-class.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 30-32
+packages/core/tests/is-analyzable-project.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 21-22
+packages/core/tests/oxlint-config-settings.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 1-49
+packages/core/src/check-dead-code.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 6-8,35,96-98,143-145,438,442
+packages/oxlint-plugin-react-doctor/src/plugin/constants/react-native.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 79
+packages/core/tests/check-react-native-project.test.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 50-51
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-pure-black-background.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 16-18
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/utils/is-cleanup-return.ts
+  s_0be0fcdbf72c91::t_96b892d07faa23 11-18,142,146-148,150-154,157-159
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "619a2d7048ac1d5b8028181eb8eed99f6fb57f05",
+  "prompts": {},
+  "sessions": {
+    "s_0be0fcdbf72c91": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "db6a4a15-c3fc-4dd2-acb7-e3fec38e1203",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

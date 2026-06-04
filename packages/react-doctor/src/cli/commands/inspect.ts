@@ -102,17 +102,19 @@ const finalizeScans = (input: FinalizeScansInput): void => {
   const baselineDeltas = input.completedScans.flatMap((scan) =>
     scan.result.baselineDelta ? [scan.result.baselineDelta] : [],
   );
-  // Baseline was attempted but produced no delta (base ref unfetchable, or the
-  // head/base lint failed): the run degrades to a plain diff — report `diff`,
-  // not `baseline`, and skip the gate rather than blocking on findings whose
-  // new-vs-pre-existing attribution is unknown.
-  const baselineDegraded = input.baselineIntended && baselineDeltas.length === 0;
-  const mode: JsonReportMode =
-    input.mode === "baseline" && baselineDeltas.length === 0 ? "diff" : input.mode;
+  // Baseline was attempted but ANY project couldn't produce a delta (base ref
+  // unfetchable, or the head/base lint failed): the run degrades to a plain
+  // diff. One degraded project taints the shared `--blocking` gate — its
+  // unattributable head findings would otherwise block CI on pre-existing
+  // issues — so the whole run falls back: report `diff` not `baseline`, drop the
+  // partial baseline block, and skip the gate. Findings stay visible.
+  const baselineDegraded =
+    input.baselineIntended && input.completedScans.some((scan) => !scan.result.baselineDelta);
+  const mode: JsonReportMode = baselineDegraded ? "diff" : input.mode;
 
   if (input.isJsonMode) {
     const baseline =
-      baselineDeltas.length > 0
+      !baselineDegraded && baselineDeltas.length > 0
         ? {
             baseRef: baselineDeltas[0].baseRef,
             fixedCount: baselineDeltas.reduce((total, delta) => total + delta.fixedCount, 0),

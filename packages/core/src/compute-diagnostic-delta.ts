@@ -36,6 +36,12 @@ const fingerprintDiagnostic = (diagnostic: Diagnostic, lineText: string | null):
  * line text))` — so inserting lines above an existing issue doesn't make it
  * look new, while a genuinely new occurrence (new line text, or one more of
  * the same) surfaces. Identical repeated findings are matched by count.
+ *
+ * v1 limitation: the fingerprint keys on the head-relative `filePath`, and base
+ * content is read at that same path. A file renamed by the change therefore has
+ * no base match, so its pre-existing findings are reported as new. This
+ * over-reports (never hides a real issue) and is rare; rename-aware base
+ * resolution is a follow-up.
  */
 export const computeDiagnosticDelta = (input: ComputeDiagnosticDeltaInput): DiagnosticDelta => {
   const unmatchedBaseByFingerprint = new Map<string, number>();

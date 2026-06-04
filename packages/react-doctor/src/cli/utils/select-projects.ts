@@ -51,6 +51,14 @@ const resolveProjectFlag = (
     .map((name) => name.trim())
     .filter((name) => name.length > 0);
 
+  // A truthy flag that names nothing (e.g. `--project ","` or all-whitespace)
+  // is invalid input — reject it instead of silently scanning zero projects.
+  if (requestedNames.length === 0) {
+    throw new CliInputError(
+      `--project "${projectFlag}" did not name any project. Pass a project name, a comma-separated list, or "*" for all.`,
+    );
+  }
+
   // `*` (the GitHub Action's default) selects every discovered project,
   // making "scan all workspace projects" explicit instead of relying on
   // the empty-flag prompt-skip fallback.

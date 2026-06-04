@@ -108,6 +108,20 @@ describe("selectProjects", () => {
     );
   });
 
+  it("rejects a --project flag that names no project (e.g. just commas)", async () => {
+    const tempDirectory = createTempDirectory();
+    writeJson(path.join(tempDirectory, "package.json"), {
+      name: "workspace",
+      workspaces: ["apps/*"],
+    });
+    setupReactProject(path.join(tempDirectory, "apps"), "web");
+    setupReactProject(path.join(tempDirectory, "apps"), "docs");
+
+    await expect(selectProjects(tempDirectory, ",", true)).rejects.toThrow(
+      /did not name any project/,
+    );
+  });
+
   it("discovers nested React projects when a wrapper directory has no package.json", async () => {
     const tempDirectory = createTempDirectory();
     const frontendDirectory = setupReactProject(tempDirectory, "frontend");

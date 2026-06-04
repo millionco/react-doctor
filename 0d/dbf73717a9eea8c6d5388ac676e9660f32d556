@@ -1,0 +1,33 @@
+packages/react-doctor/src/cli/utils/install-react-doctor.ts
+  s_0be0fcdbf72c91::t_42d4b5ffff8f2c 381-382
+scripts/convert-node-imports.mjs
+  s_0be0fcdbf72c91::t_42d4b5ffff8f2c 127-129
+packages/react-doctor/tests/install-agent-hooks.test.ts
+  s_0be0fcdbf72c91::t_42d4b5ffff8f2c 207-209,246-248
+packages/react-doctor/tests/install-git-hook.test.ts
+  s_0be0fcdbf72c91::t_42d4b5ffff8f2c 32-33
+packages/react-doctor/src/cli/utils/write-diagnostics-directory.ts
+  s_0be0fcdbf72c91::t_42d4b5ffff8f2c 15-18
+packages/react-doctor/tests/install-react-doctor.test.ts
+  s_0be0fcdbf72c91::t_42d4b5ffff8f2c 365-368,427-429,519-521,535-537,548-550,578-580,599-607,706-711,729-731,738-740,755-757
+packages/core/src/resolve-compatible-node.ts
+  s_0be0fcdbf72c91::t_42d4b5ffff8f2c 54-55
+scripts/check-published-deps.ts
+  s_0be0fcdbf72c91::t_42d4b5ffff8f2c 139-140
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "0ddbf73717a9eea8c6d5388ac676e9660f32d556",
+  "prompts": {},
+  "sessions": {
+    "s_0be0fcdbf72c91": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "db6a4a15-c3fc-4dd2-acb7-e3fec38e1203",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

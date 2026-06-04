@@ -22,6 +22,7 @@ import { handleError, handleUserError } from "./utils/handle-error.js";
 import { isExpectedUserError } from "./utils/is-expected-user-error.js";
 import { isJsonModeActive, writeJsonErrorReport } from "./utils/json-mode.js";
 import { normalizeHelpInvocation } from "./utils/normalize-help-command.js";
+import { assertNoRemovedFlags } from "./utils/removed-cli-flags.js";
 import { reportErrorToSentry } from "./utils/report-error.js";
 import { stripUnknownCliFlags } from "./utils/strip-unknown-cli-flags.js";
 import { unrefStdin } from "./utils/unref-stdin.js";
@@ -277,8 +278,11 @@ applyColorPreference(strippedArgv);
 // 12-factor (#1): map `help` / `help <command>` to Commander's `--help`.
 const argv = normalizeHelpInvocation(strippedArgv, knownCommands);
 
-program
-  .parseAsync(argv)
+Promise.resolve()
+  // Reject removed flags before parsing so they're a clean migration error, not
+  // a silent no-op (they'd otherwise be stripped before Commander sees them).
+  .then(() => assertNoRemovedFlags(process.argv))
+  .then(() => program.parseAsync(argv))
   // Deliver any queued performance transaction before the process exits on the
   // success path; error funnels flush via `reportErrorToSentry`.
   .then(() => flushSentry())

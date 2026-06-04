@@ -4,6 +4,7 @@ import path from "node:path";
 import { listSourceFiles, resolveNodeForOxlint } from "@react-doctor/core";
 import {
   CodeActionKind,
+  CodeActionTriggerKind,
   DidChangeWatchedFilesNotification,
   DocumentDiagnosticReportKind,
   FileChangeType,
@@ -45,7 +46,11 @@ import {
   WORKSPACE_SCAN_CHUNK_SIZE,
 } from "./constants.js";
 import { DiagnosticsManager } from "./diagnostics/manager.js";
-import { buildCodeActions, collectSuppressionTargets } from "./features/code-actions.js";
+import {
+  buildCodeActions,
+  collectSuppressionTargets,
+  SUPPRESS_ALL_CODE_ACTION_KIND,
+} from "./features/code-actions.js";
 import { buildHover } from "./features/hover.js";
 import { buildFalsePositiveIssueUrl, type FalsePositiveReport } from "./features/issue-url.js";
 import { buildSuppressAllTextEdits } from "./features/suppress.js";
@@ -598,12 +603,25 @@ export const createServer = (connection: Connection): void => {
       fileDiagnostics,
     });
 
+    // Guard the destructive file-level "suppress all" source action. Editors
+    // running code actions on save send `triggerKind: Automatic` with
+    // `only: ["source"]`, which prefix-matches `source.suppressAll.reactDoctor`
+    // below and would mass-insert disable comments on every save. Offer it only
+    // on an explicit (Invoked) request — e.g. the Source Action menu — unless
+    // the client deliberately opted in to the exact kind.
+    const only = params.context.only;
+    const isAutomaticTrigger = params.context.triggerKind === CodeActionTriggerKind.Automatic;
+    const optedIntoSuppressAll = (only ?? []).includes(SUPPRESS_ALL_CODE_ACTION_KIND);
+    const offeredActions =
+      isAutomaticTrigger && !optedIntoSuppressAll
+        ? actions.filter((action) => action.kind !== SUPPRESS_ALL_CODE_ACTION_KIND)
+        : actions;
+
     // Honor `context.only`: a lightbulb request asks for `quickfix`, the
     // Source Action menu / on-save asks for `source*`. Returning the
     // wrong kinds clutters menus and risks on-save side effects.
-    const only = params.context.only;
-    if (!only || only.length === 0) return actions;
-    return actions.filter(
+    if (!only || only.length === 0) return offeredActions;
+    return offeredActions.filter(
       (action) =>
         action.kind !== undefined &&
         only.some((kind) => action.kind === kind || action.kind?.startsWith(`${kind}.`)),

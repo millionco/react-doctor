@@ -15,11 +15,13 @@ import {
 } from "./suppress.js";
 
 /**
- * Namespaced source-action kind for the file-level suppress, instead of
- * the bare `source` kind. Bare `source` would be triggered by an
- * `editor.codeActionsOnSave: { "source": true }` config and silently
- * suppress every finding on save; a specific kind keeps it opt-in,
- * matching the `source.fixAll.eslint` convention.
+ * Namespaced source-action kind for the file-level suppress (the
+ * `source.fixAll.eslint` convention) so it lands in the Source Action menu
+ * rather than the bare `source` bucket. Note this kind alone is NOT enough to
+ * keep it out of on-save runs: `editor.codeActionsOnSave: { "source": true }`
+ * requests `only: ["source"]`, which prefix-matches this sub-kind. The server
+ * guards against that by withholding this action on `Automatic`-trigger
+ * requests (on-save) — see the `onCodeAction` handler.
  */
 export const SUPPRESS_ALL_CODE_ACTION_KIND = "source.suppressAll.reactDoctor";
 

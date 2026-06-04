@@ -130,22 +130,38 @@ describe("react-doctor language server (stdio)", () => {
     const target = appDiagnostics.diagnostics.find((diagnostic) =>
       (diagnostic.code ?? "").includes("no-array-index"),
     );
-    const requestActions = (only: string[]) =>
+    // `triggerKind` 2 === CodeActionTriggerKind.Automatic (what editors send
+    // for code-actions-on-save); omitted/1 is a manual (Invoked) request.
+    const requestActions = (only: string[], triggerKind?: number) =>
       client.request("textDocument/codeAction", {
         textDocument: { uri: pathToUri(APP_FILE) },
         range: target?.range,
-        context: { diagnostics: [target], only },
+        context: { diagnostics: [target], only, ...(triggerKind ? { triggerKind } : {}) },
       }) as Promise<Array<{ title: string; kind?: string }>>;
 
     const quickFixOnly = await requestActions(["quickfix"]);
     expect(quickFixOnly.length).toBeGreaterThan(0);
     expect(quickFixOnly.every((action) => !(action.kind ?? "").startsWith("source"))).toBe(true);
 
+    // Manual Source Action menu request (Invoked): suppress-all is offered.
     const sourceOnly = await requestActions(["source"]);
     expect(sourceOnly.some((action) => action.kind === "source.suppressAll.reactDoctor")).toBe(
       true,
     );
     expect(sourceOnly.every((action) => (action.kind ?? "").startsWith("source"))).toBe(true);
+
+    // On-save (Automatic) request for `source`: the destructive suppress-all
+    // must be withheld so editors can't auto-insert disable comments on save.
+    const sourceOnSave = await requestActions(["source"], 2);
+    expect(sourceOnSave.some((action) => action.kind === "source.suppressAll.reactDoctor")).toBe(
+      false,
+    );
+
+    // An explicit opt-in to the exact kind still gets it, even on save.
+    const explicitOnSave = await requestActions(["source.suppressAll.reactDoctor"], 2);
+    expect(explicitOnSave.some((action) => action.kind === "source.suppressAll.reactDoctor")).toBe(
+      true,
+    );
   });
 
   it("returns a markdown hover describing the rule", async () => {

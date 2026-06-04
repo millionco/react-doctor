@@ -254,9 +254,7 @@ interface BaselineComparison {
  * baseline ref (materialized into a temp tree with head's config) and diffs it
  * against the head diagnostics, returning only the findings the change
  * introduced plus the fixed / base counts. No score, dead-code, progress, or
- * telemetry — it's a pure comparison pass. On any failure it degrades to
- * "everything is new" (the head diagnostics unchanged) so a baseline hiccup
- * never hides real findings.
+ * telemetry — it's a pure comparison pass. The temp tree is always cleaned up.
  */
 const runBaselineComparison = async (params: {
   directory: string;

@@ -1,11 +1,10 @@
 import * as Effect from "effect/Effect";
-import { GIT_SHOW_MAX_BUFFER_BYTES, Git, materializeSourceTree } from "@react-doctor/core";
-
-export interface BaselineSnapshot {
-  readonly tempDirectory: string;
-  readonly materializedFiles: string[];
-  readonly cleanup: () => void;
-}
+import {
+  GIT_SHOW_MAX_BUFFER_BYTES,
+  Git,
+  type MaterializedTree,
+  materializeSourceTree,
+} from "@react-doctor/core";
 
 /**
  * Materializes the `ref` version of `files` into `tempDirectory` (via
@@ -15,13 +14,13 @@ export interface BaselineSnapshot {
  * the PR added, absent at base) are skipped, which is exactly what we want:
  * a brand-new file has no base counterpart, so all its findings are "new".
  */
-export const materializeBaselineFiles = async (input: {
+export const materializeBaselineFiles = (input: {
   directory: string;
   ref: string;
   files: ReadonlyArray<string>;
   tempDirectory: string;
-}): Promise<BaselineSnapshot> => {
-  const tree = await Effect.runPromise(
+}): Promise<MaterializedTree> =>
+  Effect.runPromise(
     Effect.gen(function* () {
       const git = yield* Git;
       return yield* materializeSourceTree({
@@ -38,12 +37,6 @@ export const materializeBaselineFiles = async (input: {
       });
     }).pipe(Effect.provide(Git.layerNode)),
   );
-  return {
-    tempDirectory: tree.tempDirectory,
-    materializedFiles: [...tree.materializedFiles],
-    cleanup: tree.cleanup,
-  };
-};
 
 /**
  * Resolves the commit a baseline scan should read base content from — the

@@ -1,0 +1,19 @@
+packages/website/src/components/issue-demo.tsx
+  s_29dfde713ef3ca::t_c7bd3de9441691 1-25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "9a49d4f335fe6bed2ee669248fe4e78df043fb30",
+  "prompts": {},
+  "sessions": {
+    "s_29dfde713ef3ca": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ea8ec758-611c-411c-81b8-cacb4d8ea4f9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

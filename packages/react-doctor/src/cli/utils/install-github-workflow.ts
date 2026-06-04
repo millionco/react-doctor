@@ -26,12 +26,13 @@ name: React Doctor
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-  # Uncomment to also score \`main\` on every push (e.g. for a quality-trend
-  # graph or to track the overall health number commit-by-commit on the
-  # default branch). The job is the same — only PR-specific steps like the
-  # sticky comment are skipped automatically.
-  # push:
-  #   branches: [main]
+  # Scans \`main\` on every push so you get a health-score trend on the
+  # default branch — useful for tracking the overall number commit-by-commit
+  # and catching regressions that slipped past PR review. PR-specific steps
+  # (the sticky summary comment) are skipped automatically on \`push\` events.
+  # Comment this block out if you only want PR-time scans.
+  push:
+    branches: [main]
 
 permissions:
   # \`actions/checkout\` needs this to read the repo source.

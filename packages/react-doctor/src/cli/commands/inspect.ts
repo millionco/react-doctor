@@ -233,7 +233,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
     }
 
     const scanOptions = resolveCliInspectOptions(flags, userConfig);
-    const skipPrompts = shouldSkipPrompts({ yes: flags.yes, full: flags.full, json: flags.json });
+    const skipPrompts = shouldSkipPrompts({ yes: flags.yes, json: flags.json });
 
     if (flags.staged) {
       setJsonReportMode("staged");
@@ -311,10 +311,9 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
 
     const projectDirectories = await selectProjects(resolvedDirectory, flags.project, skipPrompts);
 
-    const changedFilesDiffInfo =
-      flags.changedFilesFrom && !flags.full
-        ? buildChangedFilesDiffInfo(readChangedFilesFrom(path.resolve(flags.changedFilesFrom)))
-        : null;
+    const changedFilesDiffInfo = flags.changedFilesFrom
+      ? buildChangedFilesDiffInfo(readChangedFilesFrom(path.resolve(flags.changedFilesFrom)))
+      : null;
     const effectiveDiff = resolveEffectiveDiff(flags, userConfig);
     const explicitBaseBranch = typeof effectiveDiff === "string" ? effectiveDiff : undefined;
     const wantsDiffMode = effectiveDiff !== undefined && effectiveDiff !== false;

@@ -106,7 +106,6 @@ const program = new Command()
   .option("--json", "output a single structured JSON report (suppresses other output)")
   .option("--json-compact", "with --json, emit compact JSON (no indentation)")
   .option("-y, --yes", "skip prompts, scan all workspace projects")
-  .option("--full", "force a full scan (overrides any `diff` value in config or `--diff`)")
   .option(
     "--no-parallel",
     "lint serially with one worker (default: parallel across CPU cores; set the worker count with REACT_DOCTOR_PARALLEL)",
@@ -114,7 +113,7 @@ const program = new Command()
   .option("--project <name>", "select workspace project (comma-separated for multiple)")
   .option(
     "--diff [base]",
-    "scan only files changed vs base branch (pass `false` to disable; overridden by --full)",
+    "scan only files changed vs base branch (pass `false` to force a full scan, overriding config)",
   )
   .option(
     "--changed-files-from <file>",

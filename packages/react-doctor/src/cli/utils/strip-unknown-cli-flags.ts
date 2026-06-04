@@ -12,7 +12,6 @@ const ROOT_FLAG_SPEC: CliFlagSpec = {
   longOptionsWithoutValues: new Set([
     "--color",
     "--dead-code",
-    "--full",
     "--help",
     "--json",
     "--json-compact",

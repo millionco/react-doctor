@@ -49,10 +49,6 @@ describe("shouldSkipPrompts", () => {
     expect(shouldSkipPrompts({ yes: true })).toBe(true);
   });
 
-  it("returns true when --full is set (inspect path)", () => {
-    expect(shouldSkipPrompts({ full: true })).toBe(true);
-  });
-
   it("returns true when --json is set (inspect path)", () => {
     expect(shouldSkipPrompts({ json: true })).toBe(true);
   });

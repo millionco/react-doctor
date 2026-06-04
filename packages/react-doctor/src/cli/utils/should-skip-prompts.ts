@@ -2,8 +2,6 @@ import { isNonInteractiveEnvironment } from "./is-non-interactive-environment.js
 
 interface ShouldSkipPromptsInput {
   yes?: boolean;
-  // Inspect-only flags. Both force a full, prompt-free run when set.
-  full?: boolean;
   json?: boolean;
 }
 
@@ -12,7 +10,6 @@ interface ShouldSkipPromptsInput {
 // CI / agent-shell signals skip prompts in both commands.
 export const shouldSkipPrompts = (input: ShouldSkipPromptsInput = {}): boolean =>
   Boolean(input.yes) ||
-  Boolean(input.full) ||
   Boolean(input.json) ||
   isNonInteractiveEnvironment() ||
   !process.stdin.isTTY;

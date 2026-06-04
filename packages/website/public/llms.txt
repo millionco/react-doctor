@@ -98,9 +98,8 @@ Options:
   --score            output only the score
   --json             output a single structured JSON report (suppresses other output)
   -y, --yes          skip prompts, scan all workspace projects
-  --full             skip prompts, always run a full scan (decline diff-only)
   --project <name>   select workspace project (comma-separated for multiple)
-  --diff [base]      scan only files changed vs base branch or uncommitted changes
+  --diff [base]      scan only files changed vs base branch (pass `false` to force a full scan)
   --no-score         skip the score API and share URL
   --staged           scan only staged (git index) files for pre-commit hooks
   --blocking <level>  severity that fails CI: error (default), warning, none

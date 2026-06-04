@@ -246,8 +246,7 @@ export const inspect = async (
 
 interface BaselineComparison {
   displayDiagnostics: ReadonlyArray<Diagnostic>;
-  /** Absent when the base lint failed and a reliable delta couldn't be computed. */
-  baselineDelta: InspectResult["baselineDelta"];
+  baselineDelta: NonNullable<InspectResult["baselineDelta"]>;
 }
 
 /**
@@ -264,7 +263,7 @@ const runBaselineComparison = async (params: {
   headDiagnostics: ReadonlyArray<Diagnostic>;
   resolvedNodeBinaryPath: string | null;
   baselineRef: string;
-}): Promise<BaselineComparison> => {
+}): Promise<BaselineComparison | null> => {
   const tempDirectory = mkdtempSync(path.join(tmpdir(), BASELINE_FILES_TEMP_DIR_PREFIX));
   // If materialization throws before the snapshot (and its cleanup) exists,
   // remove the temp dir we just created so it can't leak.
@@ -317,12 +316,12 @@ const runBaselineComparison = async (params: {
       ),
     );
     // A failed base lint leaves base findings unreliable/empty, which would
-    // mislabel pre-existing head issues as newly introduced (and could block
-    // CI on them). Degrade exactly like a failed head lint: surface nothing and
-    // skip the delta. A genuinely empty but *successful* base lint is fine —
-    // it correctly means every head finding is new.
+    // mislabel pre-existing head issues as newly introduced. Signal "no delta"
+    // (null) so the caller degrades to a plain diff — full head findings stay
+    // visible, but the run won't claim they're new or gate on them. A genuinely
+    // empty but *successful* base lint is fine — every head finding is new.
     if (baseOutput.didLintFail) {
-      return { displayDiagnostics: [], baselineDelta: undefined };
+      return null;
     }
     const delta = computeDiagnosticDelta({
       headDiagnostics: params.headDiagnostics,
@@ -478,6 +477,11 @@ const runInspectWithRuntime = async (
   // Baseline mode: subtract the diagnostics that already existed at the base
   // ref so we surface only what this change introduced. The reported score
   // stays head's.
+  // When the delta can't be computed — the head lint failed, or the base lint
+  // failed (runBaselineComparison returns null) — degrade to a plain diff: keep
+  // the full head findings visible and emit no delta. The CLI then reports
+  // `mode: "diff"` and skips the gate rather than hiding real findings or
+  // blaming the PR for pre-existing ones.
   let inspectDiagnostics: ReadonlyArray<Diagnostic> = output.diagnostics;
   let baselineDelta: InspectResult["baselineDelta"];
   if (options.baseline && isDiffMode && !didLintFail) {
@@ -489,16 +493,14 @@ const runInspectWithRuntime = async (
       resolvedNodeBinaryPath,
       baselineRef: options.baseline.ref,
     });
-    inspectDiagnostics = comparison.displayDiagnostics;
-    baselineDelta = comparison.baselineDelta;
-  } else if (options.baseline && isDiffMode) {
-    // Head lint failed, so a reliable delta is impossible (partial/empty head
-    // findings would skew "new"/"fixed"). Surface nothing rather than the full
-    // head set — gating on it would fail CI on pre-existing issues, breaking
-    // baseline's "only newly-introduced" promise. The lint failure itself is
-    // still reported via `didLintFail` / skipped checks.
-    inspectDiagnostics = [];
+    if (comparison) {
+      inspectDiagnostics = comparison.displayDiagnostics;
+      baselineDelta = comparison.baselineDelta;
+    }
   }
+  // Baseline was requested but no delta was produced (head/base lint failed) —
+  // the run degrades to a plain diff and must not gate on the full head set.
+  const baselineDegraded = Boolean(options.baseline) && isDiffMode && baselineDelta === undefined;
   // The orchestrator already surface-filters scoring input through
   // `scoreSurface: "score"` and computes the real score in-band, so
   // we just consume `output.score`. `--no-score` opts out before the
@@ -558,10 +560,10 @@ const runInspectWithRuntime = async (
   ) {
     markOnboardingComplete();
   }
-  // Baseline was requested whenever `options.baseline` is set (even if the head
-  // lint failed and no delta was computed) — report it as its own mode so CI
-  // analytics can distinguish baseline runs from plain diff scans.
-  const scanMode = options.baseline ? "baseline" : isDiffMode ? "diff" : "full";
+  // Report "baseline" only when a delta was actually computed; a degraded
+  // baseline run behaves (and reports) as a plain diff. This keeps CI analytics
+  // honest and the wide event's gate signal consistent with the real exit.
+  const scanMode = baselineDelta ? "baseline" : isDiffMode ? "diff" : "full";
   recordScanMetrics({
     result,
     mode: scanMode,
@@ -584,6 +586,9 @@ const runInspectWithRuntime = async (
     ...buildRunEventConfig(options, userConfig, userConfig !== null),
     result,
     mode: scanMode,
+    // A degraded baseline run skips the gate, so the wide event must not predict
+    // a block from the (now plain-diff) findings.
+    gateExempt: baselineDegraded,
     didLintFail,
     lintFailureReasonKind: lintBindingMissing
       ? "native-binding-missing"

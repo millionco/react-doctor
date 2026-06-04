@@ -73,6 +73,13 @@ interface FinalizeScansInput {
   readonly completedScans: CompletedScan[];
   readonly mode: JsonReportMode;
   readonly diff: DiffInfo | null;
+  /**
+   * True when a baseline comparison was attempted (a committed diff against a
+   * base). If it produced no delta — the base ref was unfetchable, or the head
+   * or base lint failed — the run degrades to a plain diff: findings stay
+   * visible but the gate is skipped (don't block on uncertain attribution).
+   */
+  readonly baselineIntended: boolean;
   readonly isJsonMode: boolean;
   readonly isScoreOnly: boolean;
   readonly flags: InspectFlags;
@@ -89,14 +96,21 @@ interface FinalizeScansInput {
  * surface. `--blocking none` keeps the scan advisory (always exits 0).
  */
 const finalizeScans = (input: FinalizeScansInput): void => {
+  // Aggregate the per-project baseline deltas into one report-level block so the
+  // JSON (and the GitHub Action) sees a single new/fixed total across a
+  // workspace scan. Present only when at least one project produced a delta.
+  const baselineDeltas = input.completedScans.flatMap((scan) =>
+    scan.result.baselineDelta ? [scan.result.baselineDelta] : [],
+  );
+  // Baseline was attempted but produced no delta (base ref unfetchable, or the
+  // head/base lint failed): the run degrades to a plain diff — report `diff`,
+  // not `baseline`, and skip the gate rather than blocking on findings whose
+  // new-vs-pre-existing attribution is unknown.
+  const baselineDegraded = input.baselineIntended && baselineDeltas.length === 0;
+  const mode: JsonReportMode =
+    input.mode === "baseline" && baselineDeltas.length === 0 ? "diff" : input.mode;
+
   if (input.isJsonMode) {
-    // Aggregate the per-project baseline deltas into one report-level block so
-    // the JSON (and the GitHub Action) sees a single new/fixed total across a
-    // workspace scan. Present only when at least one project ran in baseline
-    // mode; otherwise `buildJsonReport` emits a v1 report.
-    const baselineDeltas = input.completedScans.flatMap((scan) =>
-      scan.result.baselineDelta ? [scan.result.baselineDelta] : [],
-    );
     const baseline =
       baselineDeltas.length > 0
         ? {
@@ -112,7 +126,7 @@ const finalizeScans = (input: FinalizeScansInput): void => {
       buildJsonReport({
         version: VERSION,
         directory: input.resolvedDirectory,
-        mode: input.mode,
+        mode,
         diff: input.diff,
         scans: input.completedScans,
         totalElapsedMilliseconds: performance.now() - input.startTime,
@@ -121,7 +135,7 @@ const finalizeScans = (input: FinalizeScansInput): void => {
     );
   }
 
-  if (input.isScoreOnly) return;
+  if (input.isScoreOnly || baselineDegraded) return;
 
   const ciFailureDiagnostics = filterDiagnosticsForSurface(
     input.diagnostics,
@@ -304,6 +318,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
           completedScans: [{ directory: resolvedDirectory, result: remappedInspectResult }],
           mode: "staged",
           diff: null,
+          baselineIntended: false,
           isJsonMode,
           isScoreOnly,
           flags,
@@ -427,11 +442,11 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
     finalizeScans({
       diagnostics: allDiagnostics,
       completedScans,
-      // Mirror the report-mode marker (set above): a resolved base ref means a
-      // baseline run, so v1 fallbacks (e.g. head lint failed before a delta
-      // exists) report `baseline` too, not `diff`.
+      // A resolved base ref means a baseline run; finalizeScans downgrades this
+      // to `diff` if no delta was produced (degraded run).
       mode: baselineRef ? "baseline" : isDiffMode ? "diff" : "full",
       diff: isDiffMode ? diffInfo : null,
+      baselineIntended: isDiffMode && diffInfo !== null && !diffInfo.isCurrentChanges,
       isJsonMode,
       isScoreOnly,
       flags,

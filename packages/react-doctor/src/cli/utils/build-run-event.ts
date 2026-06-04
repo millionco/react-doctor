@@ -44,6 +44,9 @@ export interface RunEventInput {
   readonly lintFailureReasonKind?: string | null;
   readonly lintPartialFailureCount?: number;
   readonly didDeadCodeFail?: boolean;
+  // A degraded baseline run (no delta computed) skips the CI gate, so the
+  // `wouldBlock` prediction must match — never block on its plain-diff findings.
+  readonly gateExempt?: boolean;
   /** Present only when the scan threw. */
   readonly error?: unknown;
 }
@@ -109,9 +112,10 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
     input.userConfig,
   );
   // `scoreOnly` runs never raise a non-zero exit (finalizeScans guards the gate
-  // on `!isScoreOnly`), so the threshold can't actually block them — keep
-  // wouldBlock/outcome/exitCode consistent with the real process exit.
-  const wouldBlock = !input.scoreOnly && shouldBlockCi(gateDiagnostics, blockingLevel);
+  // on `!isScoreOnly`), and a degraded baseline run (`gateExempt`) skips the
+  // gate too — keep wouldBlock/outcome/exitCode consistent with the real exit.
+  const wouldBlock =
+    !input.scoreOnly && !input.gateExempt && shouldBlockCi(gateDiagnostics, blockingLevel);
   const hasSkippedChecks = result.skippedChecks.length > 0;
   const isClean = result.diagnostics.length === 0 && !hasSkippedChecks;
   const outcome = wouldBlock ? "blocked" : isClean ? "clean" : "ok";

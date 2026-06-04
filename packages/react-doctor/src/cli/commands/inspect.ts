@@ -108,6 +108,14 @@ const finalizeScans = (input: FinalizeScansInput): void => {
   // unattributable head findings would otherwise block CI on pre-existing
   // issues — so the whole run falls back: report `diff` not `baseline`, drop the
   // partial baseline block, and skip the gate. Findings stay visible.
+  //
+  // v1 limitation: in a partial-degraded workspace, sibling projects that DID
+  // compute a delta still expose only their introduced diagnostics (filtering
+  // happens per project inside `inspect()`), so a degraded run under-shows their
+  // pre-existing issues. The gate is still correct (it never blocks here);
+  // surfacing full findings everywhere would mean deferring per-project
+  // filtering out of `inspect()` (an InspectResult contract change) — a v2
+  // follow-up. Single-project and all-succeed runs are unaffected.
   const baselineDegraded =
     input.baselineIntended && input.completedScans.some((scan) => !scan.result.baselineDelta);
   const mode: JsonReportMode = baselineDegraded ? "diff" : input.mode;

@@ -1,11 +1,21 @@
 import * as fs from "node:fs";
+import * as path from "node:path";
 
 const MARKER = "<!-- react-doctor:summary -->";
 const BUG_REPORT_URL = "https://github.com/millionco/react-doctor";
 const BRAND_LINK = "https://react.doctor";
-const TOP_RULE_LIMIT = 5;
+const WARNING_LIST_LIMIT = 50;
+
+// Emoji severity markers (match the CLI's ✖ / ⚠ at a glance on GitHub).
+const SEVERITY_ICON = { error: "❌", warning: "⚠️" };
 
 const [reportPath, commentPath] = process.argv.slice(2);
+
+// Used to turn a diagnostic's repo-relative path + line into a blob link. All
+// optional: a local render (no GitHub env) falls back to plain text.
+const REPO_SLUG = process.env.GITHUB_REPOSITORY;
+const SERVER_URL = (process.env.GITHUB_SERVER_URL || "https://github.com").replace(/\/$/, "");
+const HEAD_SHA = process.env.REACT_DOCTOR_HEAD_SHA?.trim() || process.env.GITHUB_SHA?.trim() || "";
 
 const pluralize = (count, singular, plural = `${singular}s`) =>
   `${count} ${count === 1 ? singular : plural}`;
@@ -16,26 +26,32 @@ const pluralize = (count, singular, plural = `${singular}s`) =>
  * here — the `build*` renderers below only assemble layout, never literal text.
  */
 const COPY = {
-  // Attribution footer (Cursor Bugbot-style, small font via <sub>).
-  reviewFooter: (commitSegment) =>
-    `<sub>Reviewed by [React Doctor](${BRAND_LINK})${commitSegment}.</sub>`,
+  // Small-font attribution footer. `fixesHint` points reviewers at the inline
+  // review comments, which carry the per-line fix guidance + docs link.
+  reviewFooter: (commitSegment, fixesHint) =>
+    `<sub>Reviewed by [React Doctor](${BRAND_LINK})${commitSegment}.${fixesHint ? " See inline comments for fixes." : ""}</sub>`,
   reviewFooterCommit: (shortSha) => ` for commit \`${shortSha}\``,
 
-  // Baseline (PR-introduced-issues-only) body.
-  baselineLeadClean: "React Doctor reviewed your changes and found no new issues. 🎉",
-  baselineLead: (newIssues) => `React Doctor reviewed your changes and found ${newIssues}.`,
-  baselineFixedPart: (issues) => `${issues} fixed`,
-  baselineUntouchedPart: (preExistingIssues) => `${preExistingIssues} left untouched`,
-  baselineDetail: (shortRef, parts) => `Compared against \`${shortRef}\`: ${parts}.`,
+  // One-liner summary segments (replace the old metrics tables). buildLeadLine
+  // joins the active segments with " · ".
+  leadCleanNew: "**React Doctor** found no new issues. 🎉",
+  leadClean: "**React Doctor** found no issues. 🎉",
+  leadCleanIncomplete: "**React Doctor** found no issues, but some checks were incomplete.",
+  leadCount: (issues, files) => `**React Doctor** found **${issues}** in ${files}`,
+  leadScore: (score) => `score ${score}`,
+  leadFixed: (count) => `${count} fixed`,
+  leadScopeChanged: (baseBranch) => `vs \`${baseBranch}\``,
+  leadScopeUncommitted: "uncommitted changes",
+  leadScopeFull: "full project",
+
+  // Issue lists.
+  errorsHeading: "**Errors**",
+  warningsMore: (count) => `${count} not shown.`,
+  incompleteChecksHeading: "### Incomplete Checks",
 
   // Clean success — shown when nothing was scanned (no matching source files),
-  // which is a pass, not a finding. Rendered as a single line with no table.
+  // which is a pass, not a finding.
   cleanSuccess: "No React Doctor issues found. 🎉",
-
-  // Full / diff summary status line.
-  statusIncompleteNoIssues: "No React Doctor issues were found, but some checks were incomplete.",
-  statusNoIssues: "No React Doctor issues found in this scan.",
-  status: (issues, files) => `React Doctor found ${issues} in ${files}.`,
 
   // Error body.
   errorIntro: "React Doctor could not complete this scan.",
@@ -53,23 +69,10 @@ const COPY = {
   bugReportWorkflowRun: (url) => `- Workflow run: ${url}`,
   bugReportSentryReference: (eventId) => `- Sentry reference: ${eventId}`,
 
-  // Section headings + table headers.
-  topFindingsHeading: "### Top Findings",
-  topFindingsTableHeader: "| Rule | Severity | Category | Count |",
-  topFindingsTableDivider: "| --- | --- | --- | ---: |",
-  incompleteChecksHeading: "### Incomplete Checks",
-  baselineTableHeader: "| Score | New | Fixed | Errors | Warnings | Affected Files | Scope |",
-  baselineTableDivider: "| --- | ---: | ---: | ---: | ---: | ---: | --- |",
-  summaryTableHeader: "| Score | Issues | Errors | Warnings | Affected Files | Scope |",
-  summaryTableDivider: "| --- | ---: | ---: | ---: | ---: | --- |",
-
-  // Score + scope formatting.
+  // Score formatting.
   scoreUnavailable: "Unavailable",
   score: (score, label) => `${score} / 100${label}`,
   scoreLabel: (label) => ` (${label})`,
-  scopeFullProject: "Full project",
-  scopeChanged: (files, currentBranch, baseBranch) =>
-    `${files} changed on \`${currentBranch}\` vs. \`${baseBranch}\``,
 
   // Stderr warning when no report exists.
   noReportWarning:
@@ -77,10 +80,10 @@ const COPY = {
     "This usually means the scan step did not run.",
 };
 
-const escapeCell = (value) =>
+const inlineText = (value) =>
   String(value ?? "")
-    .replaceAll("|", "\\|")
-    .replaceAll("\n", " ");
+    .replaceAll("\n", " ")
+    .trim();
 
 const appendOutput = (name, value) => {
   const outputPath = process.env.GITHUB_OUTPUT;
@@ -136,26 +139,9 @@ const formatScore = (summary) => {
 const formatShortRef = (ref) =>
   typeof ref === "string" && ref.length > 0 ? ref.slice(0, 7) : "base";
 
-// Small-font attribution footer, mirroring Cursor Bugbot's
-// "Reviewed by … for commit `<sha>`." line. `<sub>` renders it below body size
-// on GitHub. The commit segment is dropped when no head SHA was forwarded.
-const buildReviewFooter = () => {
-  const headSha = process.env.REACT_DOCTOR_HEAD_SHA?.trim();
-  const commitSegment = headSha ? COPY.reviewFooterCommit(formatShortRef(headSha)) : "";
-  return COPY.reviewFooter(commitSegment);
-};
-
-const formatScope = (report) => {
-  if ((report.mode !== "diff" && report.mode !== "baseline") || !report.diff) {
-    return COPY.scopeFullProject;
-  }
-  const baseBranch = report.diff.baseBranch || "target branch";
-  const currentBranch = report.diff.currentBranch || "current branch";
-  return COPY.scopeChanged(
-    pluralize(report.diff.changedFileCount, "file"),
-    currentBranch,
-    baseBranch,
-  );
+const buildReviewFooter = (withFixesHint) => {
+  const commitSegment = HEAD_SHA ? COPY.reviewFooterCommit(formatShortRef(HEAD_SHA)) : "";
+  return COPY.reviewFooter(commitSegment, withFixesHint);
 };
 
 const getIncompleteCheckNames = (report) => [
@@ -169,52 +155,127 @@ const getIncompleteCheckNames = (report) => [
 
 const hasIncompleteChecks = (report) => getIncompleteCheckNames(report).length > 0;
 
-const buildStatusLine = (report) => {
+const isBaselineReport = (report) => report.schemaVersion === 2 || Boolean(report.baseline);
+
+// Concise scope chip for the lead line: the base ref for a diff/baseline run,
+// or the whole project for a full scan.
+const buildScopeSegment = (report) => {
+  if (report.diff && (report.mode === "diff" || report.mode === "baseline")) {
+    if (report.diff.isCurrentChanges) return COPY.leadScopeUncommitted;
+    return COPY.leadScopeChanged(report.diff.baseBranch || "base");
+  }
+  return COPY.leadScopeFull;
+};
+
+const buildSeveritySegment = (summary) => {
+  const parts = [];
+  if ((summary.errorCount ?? 0) > 0) parts.push(pluralize(summary.errorCount, "error"));
+  if ((summary.warningCount ?? 0) > 0) parts.push(pluralize(summary.warningCount, "warning"));
+  return parts.join(" & ");
+};
+
+// Consolidates the old metrics table into a single active-voice line: issue
+// count, affected files, severity split, score, fixed count, and scope.
+const buildLeadLine = (report) => {
   const summary = report.summary ?? {};
-  const totalIssues = summary.totalDiagnosticCount ?? 0;
-  if (totalIssues === 0 && hasIncompleteChecks(report)) return COPY.statusIncompleteNoIssues;
-  if (totalIssues === 0) return COPY.statusNoIssues;
-  return COPY.status(
-    pluralize(totalIssues, "issue"),
-    pluralize(summary.affectedFileCount ?? 0, "file"),
-  );
-};
-
-const groupDiagnosticsByRule = (diagnostics) => {
-  const groups = new Map();
-  for (const diagnostic of diagnostics ?? []) {
-    const key = `${diagnostic.plugin}/${diagnostic.rule}`;
-    const group = groups.get(key) ?? {
-      key,
-      severity: diagnostic.severity,
-      category: diagnostic.category,
-      count: 0,
-    };
-    group.count += 1;
-    if (diagnostic.severity === "error") group.severity = "error";
-    groups.set(key, group);
+  const baseline = report.baseline;
+  const baselineMode = isBaselineReport(report);
+  const total = baselineMode ? (baseline?.newCount ?? 0) : (summary.totalDiagnosticCount ?? 0);
+  if (total === 0) {
+    if (hasIncompleteChecks(report)) return COPY.leadCleanIncomplete;
+    return baselineMode ? COPY.leadCleanNew : COPY.leadClean;
   }
-  return [...groups.values()].sort((a, b) => {
-    const severityDelta = (a.severity === "error" ? 0 : 1) - (b.severity === "error" ? 0 : 1);
-    if (severityDelta !== 0) return severityDelta;
-    return b.count - a.count;
-  });
-};
-
-const buildTopRulesSection = (diagnostics) => {
-  const groups = groupDiagnosticsByRule(diagnostics).slice(0, TOP_RULE_LIMIT);
-  if (groups.length === 0) return "";
-  const lines = [
-    COPY.topFindingsHeading,
-    "",
-    COPY.topFindingsTableHeader,
-    COPY.topFindingsTableDivider,
+  const segments = [
+    COPY.leadCount(
+      pluralize(total, baselineMode ? "new issue" : "issue"),
+      pluralize(summary.affectedFileCount ?? 0, "file"),
+    ),
   ];
-  for (const group of groups) {
-    lines.push(
-      `| \`${escapeCell(group.key)}\` | ${escapeCell(group.severity)} | ${escapeCell(group.category)} | ${group.count} |`,
-    );
+  const severity = buildSeveritySegment(summary);
+  if (severity) segments.push(severity);
+  if (typeof summary.score === "number") segments.push(COPY.leadScore(formatScore(summary)));
+  if (baselineMode) segments.push(COPY.leadFixed(baseline?.fixedCount ?? 0));
+  segments.push(buildScopeSegment(report));
+  return segments.join(" · ");
+};
+
+// `git show <ref>:<path>`-style: diagnostics carry project-relative paths, so
+// re-root each against the repo to build a blob link. Returns null when the
+// project sits outside the report root (can't safely prefix).
+const repoRelativePrefix = (reportDirectory, projectDirectory) => {
+  if (typeof reportDirectory !== "string" || typeof projectDirectory !== "string") return "";
+  const relative = path.relative(reportDirectory, projectDirectory).replaceAll("\\", "/");
+  if (relative === "") return "";
+  if (relative.startsWith("..") || path.isAbsolute(relative)) return null;
+  return relative;
+};
+
+const collectDiagnostics = (report) => {
+  const collected = [];
+  for (const project of report.projects ?? []) {
+    const prefix = repoRelativePrefix(report.directory, project.directory);
+    for (const diagnostic of project.diagnostics ?? []) {
+      const repoPath =
+        prefix === null ? null : prefix ? `${prefix}/${diagnostic.filePath}` : diagnostic.filePath;
+      collected.push({ ...diagnostic, repoPath });
+    }
   }
+  return collected;
+};
+
+const fileLink = (displayText, repoPath, line) => {
+  if (!REPO_SLUG || !HEAD_SHA || !repoPath) return displayText;
+  return `[${displayText}](${SERVER_URL}/${REPO_SLUG}/blob/${HEAD_SHA}/${repoPath}#L${line})`;
+};
+
+const byFileThenLine = (a, b) => {
+  if (a.filePath === b.filePath) return a.line - b.line;
+  return a.filePath < b.filePath ? -1 : 1;
+};
+
+// Errors always render expanded — they're what blocks CI and what a reviewer
+// must act on — each naming its file:line (linked) so they're never buried.
+const buildErrorsBlock = (collected) => {
+  const errors = collected.filter((diagnostic) => diagnostic.severity === "error");
+  if (errors.length === 0) return "";
+  errors.sort(byFileThenLine);
+  const lines = [COPY.errorsHeading, ""];
+  for (const error of errors) {
+    const location = fileLink(`\`${error.filePath}:${error.line}\``, error.repoPath, error.line);
+    const title = inlineText(error.title);
+    const titlePart = title ? ` **${title}**` : "";
+    lines.push(`- ${SEVERITY_ICON.error} ${location}${titlePart} \`${error.rule}\``);
+  }
+  return `${lines.join("\n")}\n\n`;
+};
+
+// Warnings collapse into a per-file list so the comment stays dense; the inline
+// review comments carry the detail.
+const buildWarningsBlock = (collected) => {
+  const warnings = collected.filter((diagnostic) => diagnostic.severity === "warning");
+  if (warnings.length === 0) return "";
+  warnings.sort(byFileThenLine);
+  const shown = warnings.slice(0, WARNING_LIST_LIMIT);
+  const overflowCount = warnings.length - shown.length;
+  const lines = [`<details><summary>${pluralize(warnings.length, "warning")}</summary>`, ""];
+  let currentFile = null;
+  for (const warning of shown) {
+    if (warning.filePath !== currentFile) {
+      if (currentFile !== null) lines.push("");
+      lines.push(`**\`${warning.filePath}\`**`);
+      currentFile = warning.filePath;
+    }
+    const location = fileLink(`L${warning.line}`, warning.repoPath, warning.line);
+    const title = inlineText(warning.title);
+    const titlePart = title ? ` ${title}` : "";
+    lines.push(`- ${SEVERITY_ICON.warning} ${location}${titlePart} \`${warning.rule}\``);
+  }
+  if (overflowCount > 0) {
+    lines.push("");
+    lines.push(COPY.warningsMore(pluralize(overflowCount, "more warning")));
+  }
+  lines.push("");
+  lines.push("</details>");
   return `${lines.join("\n")}\n\n`;
 };
 
@@ -246,84 +307,37 @@ const buildErrorBody = (report) => {
     "",
     COPY.reportBugLink(bugReportUrl),
     "",
-    buildReviewFooter(),
+    buildReviewFooter(false),
   ]);
 };
 
-// Codecov-style delta comment for a baseline (PR-introduced-issues-only) run.
-// `report.diagnostics` / `summary` counts are the introduced findings; the
-// `baseline` block carries the fixed + base totals; `score` stays head's.
-const buildBaselineBody = (report) => {
-  const summary = report.summary ?? {};
-  const baseline = report.baseline ?? {};
-  const newCount = baseline.newCount ?? summary.totalDiagnosticCount ?? 0;
-  const fixedCount = baseline.fixedCount ?? 0;
-  const baseTotalCount = baseline.baseTotalCount ?? 0;
-  // "Left untouched" is the pre-existing findings that still exist at head —
-  // the base total minus the ones this change fixed (not the whole base total).
-  const untouchedCount = Math.max(0, baseTotalCount - fixedCount);
-  // Lead sentence mirrors Cursor Bugbot's "… reviewed your changes and found N …".
-  const leadLine =
-    newCount === 0 ? COPY.baselineLeadClean : COPY.baselineLead(pluralize(newCount, "new issue"));
-  // Secondary context line (Bugbot's "There are N total …" slot): what the
-  // change fixed and what pre-existing findings were left untouched.
-  const detailParts = [];
-  if (fixedCount > 0) detailParts.push(COPY.baselineFixedPart(pluralize(fixedCount, "issue")));
-  if (untouchedCount > 0) {
-    detailParts.push(COPY.baselineUntouchedPart(pluralize(untouchedCount, "pre-existing issue")));
-  }
-  const detailLine =
-    detailParts.length > 0
-      ? COPY.baselineDetail(escapeCell(formatShortRef(baseline.baseRef)), detailParts.join(", "))
-      : null;
+const buildCleanSuccessBody = () =>
+  renderLines([MARKER, "", COPY.cleanSuccess, "", buildReviewFooter(false)]);
 
+// Unified body for every successful scan (baseline, diff, full). The lead line
+// adapts to the mode; the error/warning lists are shared.
+const buildIssuesBody = (report) => {
+  const collected = collectDiagnostics(report);
   const lines = [
     MARKER,
     "",
-    leadLine,
-    ...(detailLine ? ["", detailLine] : []),
+    buildLeadLine(report),
     "",
-    COPY.baselineTableHeader,
-    COPY.baselineTableDivider,
-    `| ${escapeCell(formatScore(summary))} | ${newCount} | ${fixedCount} | ${summary.errorCount ?? 0} | ${summary.warningCount ?? 0} | ${summary.affectedFileCount ?? 0} | ${escapeCell(formatScope(report))} |`,
-    "",
-    buildTopRulesSection(report.diagnostics),
+    buildErrorsBlock(collected),
+    buildWarningsBlock(collected),
     buildSkippedChecksSection(report),
-    buildReviewFooter(),
+    buildReviewFooter(collected.length > 0),
   ];
   return renderLines(lines);
 };
-
-const buildCleanSuccessBody = () =>
-  renderLines([MARKER, "", COPY.cleanSuccess, "", buildReviewFooter()]);
 
 const buildCommentBody = (report) => {
   if (!report.ok) return buildErrorBody(report);
   // A scan that matched no files (no changed/staged source, or nothing covered
   // by the enabled checks) is a pass, not a special case — render a plain
-  // success line rather than a metrics table full of zeros / an "Unavailable"
-  // score for a scan that never ran.
+  // success line rather than a metrics table full of zeros.
   if ((report.projects ?? []).length === 0) return buildCleanSuccessBody();
-  if (report.schemaVersion === 2 || report.baseline) return buildBaselineBody(report);
-
-  const summary = report.summary ?? {};
-  const totalIssues = summary.totalDiagnosticCount ?? 0;
-
-  const lines = [
-    MARKER,
-    "",
-    buildStatusLine(report),
-    "",
-    COPY.summaryTableHeader,
-    COPY.summaryTableDivider,
-    `| ${escapeCell(formatScore(summary))} | ${totalIssues} | ${summary.errorCount ?? 0} | ${summary.warningCount ?? 0} | ${summary.affectedFileCount ?? 0} | ${escapeCell(formatScope(report))} |`,
-    "",
-    buildTopRulesSection(report.diagnostics),
-    buildSkippedChecksSection(report),
-    buildReviewFooter(),
-  ];
-
-  return renderLines(lines);
+  return buildIssuesBody(report);
 };
 
 const report = readReport();

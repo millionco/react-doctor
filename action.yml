@@ -301,11 +301,13 @@ runs:
             if (seen.has(dedupeKey)) continue;
             seen.add(dedupeKey);
             const severity = diagnostic.severity === "error" ? "error" : "warning";
+            const fixLine = diagnostic.help ? `\n\n**Fix** → ${diagnostic.help}` : "";
+            const docsLink = `\n\n[Docs](https://react.doctor/docs/rules/${ruleKey})`;
             comments.push({
               path: repoPath,
               line: diagnostic.line,
               side: "RIGHT",
-              body: `${marker}\n**React Doctor** · \`${ruleKey}\` _(${severity})_\n\n${diagnostic.message}`,
+              body: `${marker}\n**React Doctor** · \`${ruleKey}\` _(${severity})_\n\n${diagnostic.message}${fixLine}${docsLink}`,
             });
           }
 

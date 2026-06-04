@@ -54,4 +54,4 @@ export const ROUTE_HANDLER_HTTP_METHODS = new Set([
 ]);
 
 export const GOOGLE_ANALYTICS_SCRIPT_PATTERN =
-  /google-analytics\.com|googletagmanager\.com\/gtag|www\.googletagmanager\.com/;
+  /google-analytics\.com|googletagmanager\.com\/gtag/;

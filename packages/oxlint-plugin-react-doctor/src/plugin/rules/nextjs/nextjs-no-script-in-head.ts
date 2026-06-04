@@ -19,7 +19,7 @@ export const nextjsNoScriptInHead = defineRule<Rule>({
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (!isNodeOfType(node.name, "JSXIdentifier")) return;
 
-        if (node.name.name === "Head") {
+        if (node.name.name === "Head" && !node.selfClosing) {
           insideHeadDepth++;
         }
 

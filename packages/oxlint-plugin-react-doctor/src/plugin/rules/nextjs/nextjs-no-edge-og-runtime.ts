@@ -14,29 +14,36 @@ export const nextjsNoEdgeOgRuntime = defineRule<Rule>({
   severity: "warn",
   recommendation:
     "Remove `export const runtime = 'edge'` from OG image files. The default Node.js runtime supports more fonts and APIs",
-  create: (context: RuleContext) => ({
-    ExportNamedDeclaration(node: EsTreeNodeOfType<"ExportNamedDeclaration">) {
-      const filename = normalizeFilename(context.filename ?? "");
-      if (!OG_IMAGE_FILE_PATTERN.test(filename)) return;
+  create: (context: RuleContext) => {
+    let isOgImageFile = false;
 
-      const declaration = node.declaration;
-      if (!isNodeOfType(declaration, "VariableDeclaration")) return;
+    return {
+      Program() {
+        const filename = normalizeFilename(context.filename ?? "");
+        isOgImageFile = OG_IMAGE_FILE_PATTERN.test(filename);
+      },
+      ExportNamedDeclaration(node: EsTreeNodeOfType<"ExportNamedDeclaration">) {
+        if (!isOgImageFile) return;
 
-      for (const declarator of declaration.declarations ?? []) {
-        if (!isNodeOfType(declarator, "VariableDeclarator")) continue;
-        if (!isNodeOfType(declarator.id, "Identifier")) continue;
-        if (declarator.id.name !== "runtime") continue;
+        const declaration = node.declaration;
+        if (!isNodeOfType(declaration, "VariableDeclaration")) return;
 
-        const initValue = isNodeOfType(declarator.init, "Literal") ? declarator.init.value : null;
+        for (const declarator of declaration.declarations ?? []) {
+          if (!isNodeOfType(declarator, "VariableDeclarator")) continue;
+          if (!isNodeOfType(declarator.id, "Identifier")) continue;
+          if (declarator.id.name !== "runtime") continue;
 
-        if (initValue === "edge") {
-          context.report({
-            node,
-            message:
-              "Edge runtime limits OG image generation. Node.js runtime supports more fonts, filesystem access, and larger response sizes.",
-          });
+          const initValue = isNodeOfType(declarator.init, "Literal") ? declarator.init.value : null;
+
+          if (initValue === "edge") {
+            context.report({
+              node,
+              message:
+                "Edge runtime limits OG image generation. Node.js runtime supports more fonts, filesystem access, and larger response sizes.",
+            });
+          }
         }
-      }
-    },
-  }),
+      },
+    };
+  },
 });

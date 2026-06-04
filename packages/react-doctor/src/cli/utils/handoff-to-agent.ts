@@ -92,9 +92,13 @@ const setUpGitHubActions = (rootDirectory: string): void => {
 // `select` renderer wraps every message in (`select.js` line 131:
 // `color.bold(this.msg)`), so the question stays bold while the indented
 // pitch lines render in normal weight (and dim, for the social-proof
-// tagline) — matching the original two-line layout's emphasis. The
-// trailing empty string forces the prompt's `›` delimiter onto its own
-// line below the pitch instead of trailing the last pitch line.
+// tagline) — matching the original two-line layout's emphasis.
+//
+// `hint: " "` (single space — `""` would re-trigger the library's
+// `opts.hint || "- Use arrow-keys..."` fallback) suppresses the verbose
+// default hint so the trailing ` ›` rides quietly on the last pitch line
+// instead of becoming a "› - Use arrow-keys. Return to submit." row that
+// reads as broken UI between the pitch and the choices.
 //
 // "Learn more" opens the docs in the user's default browser via `openUrl` and
 // re-prompts, so the user can decide after reading without restarting the
@@ -109,7 +113,6 @@ const ciQuestionMessage = [
   "Add React Doctor to GitHub Actions?",
   `${SGR_BOLD_OFF}  Scan every pull request to prevent new React issues while you fix the backlog.`,
   `${SGR_BOLD_OFF}  ${highlighter.dim(`Used by teams at ${CI_TRUST_COMPANIES}.`)}`,
-  "",
 ].join("\n");
 
 const askAddToGitHubActions = async (): Promise<CiHandoffOutcome> => {
@@ -119,6 +122,7 @@ const askAddToGitHubActions = async (): Promise<CiHandoffOutcome> => {
         type: "select",
         name: "ciChoice",
         message: ciQuestionMessage,
+        hint: " ",
         choices: [
           {
             title: "Yes (recommended)",

@@ -1,0 +1,22 @@
+packages/react-doctor/src/cli/utils/resolve-blocking-level.ts
+  s_29dfde713ef3ca::t_c8e10a1334b26e 15-24,29
+packages/react-doctor/src/cli/utils/resolve-cli-inspect-options.ts
+  s_29dfde713ef3ca::t_c6d54f8450758e 4
+  s_29dfde713ef3ca::t_11101cba44313f 26-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "e55dcc17ea71b3c7124eda5397a3eeece7bed15e",
+  "prompts": {},
+  "sessions": {
+    "s_29dfde713ef3ca": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ea8ec758-611c-411c-81b8-cacb4d8ea4f9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

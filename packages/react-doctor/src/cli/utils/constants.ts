@@ -126,4 +126,10 @@ export const METRIC = {
   installDependency: "install.dependency",
   rulesChanged: "rules.changed",
   rulesQueried: "rules.queried",
+  // Editor language server (`react-doctor experimental-lsp`). Each workspace
+  // scan burst is one wide-event span (op `lsp.scan`) plus these metrics.
+  lspSessionStarted: "lsp.session.started",
+  lspScanCompleted: "lsp.scan.completed",
+  lspScanDuration: "lsp.scan.duration",
+  lspScanDiagnostics: "lsp.scan.diagnostics",
 } as const;

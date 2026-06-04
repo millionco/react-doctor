@@ -57,12 +57,22 @@ import { buildSuppressAllTextEdits } from "./features/suppress.js";
 import { createProjectGraph } from "./core/project-graph.js";
 import { createScanRunner, type ScanRunner } from "./core/scan-runner.js";
 import { createScheduler } from "./runtime/scheduler.js";
+import { createScanTelemetry } from "./runtime/scan-telemetry.js";
 import { chunk } from "./utils/chunk.js";
 import { readDiagnosticData } from "./utils/read-diagnostic-data.js";
 import { readPositiveIntEnv } from "./utils/read-positive-int-env.js";
 import { rangesOverlap } from "./text/positions.js";
 import { canonicalizeUri, fsPathToUri, normalizeFsPath, uriToFsPath } from "./text/uri.js";
-import type { Logger, ProjectGraph, ScanOutcome, ScanPriority, Scheduler } from "./types.js";
+import { NOOP_TELEMETRY } from "./types.js";
+import type {
+  Logger,
+  ProjectGraph,
+  ScanOutcome,
+  ScanPriority,
+  Scheduler,
+  Telemetry,
+  WorkspaceScanTrigger,
+} from "./types.js";
 
 const isScannablePath = (filePath: string): boolean =>
   SCANNABLE_EXTENSIONS.some((extension) => filePath.endsWith(extension));
@@ -76,13 +86,26 @@ const resolveWorkspaceRoots = (params: InitializeParams): string[] => {
   return [];
 };
 
+export interface StartLanguageServerOptions {
+  /**
+   * Analytics sink. Defaults to {@link NOOP_TELEMETRY}; the published CLI
+   * injects a Sentry-backed implementation via the `experimental-lsp` entry.
+   */
+  readonly telemetry?: Telemetry;
+}
+
 /**
  * Builds and wires the React Doctor language server onto a connection.
  * Exposed separately from `startLanguageServer` so tests can drive it
  * over an in-memory transport.
  */
-export const createServer = (connection: Connection): void => {
+export const createServer = (
+  connection: Connection,
+  options: StartLanguageServerOptions = {},
+): void => {
   const documents = new TextDocuments(TextDocument);
+  const telemetry = options.telemetry ?? NOOP_TELEMETRY;
+  const scanTelemetry = createScanTelemetry(telemetry);
 
   const logger: Logger = {
     info: (message) => connection.console.info(message),
@@ -175,7 +198,7 @@ export const createServer = (connection: Connection): void => {
    * drops the remaining chunks. Dead-code is NOT run here (it's a
    * whole-graph pass — see `scanWorkspaceFull`).
    */
-  const scanWorkspaceLint = (): void => {
+  const scanWorkspaceLint = (trigger: WorkspaceScanTrigger): void => {
     if (!projectGraph || !scheduler) return;
     const activeScheduler = scheduler;
     const projectList = projectGraph.listProjects();
@@ -210,6 +233,9 @@ export const createServer = (connection: Connection): void => {
       }
       for (const batch of chunk(files, workspaceChunkSize)) enqueueChunk(project.directory, batch);
     }
+    // Open a telemetry burst only when work was actually enqueued; the
+    // scheduler's next idle transition closes it (see `onIdleChange`).
+    if (chunkCount > 0) scanTelemetry.begin(trigger, projectList.length);
     logger.info(
       `Workspace lint scan: ${projectList.length} project(s), ${chunkCount} chunk(s) of up to ${workspaceChunkSize} files.`,
     );
@@ -222,7 +248,8 @@ export const createServer = (connection: Connection): void => {
    */
   const scanWorkspaceFull = (): void => {
     if (!projectGraph || !scheduler) return;
-    for (const project of projectGraph.listProjects()) {
+    const projectList = projectGraph.listProjects();
+    for (const project of projectList) {
       scheduler.enqueue({
         priority: "background",
         projectDirectory: project.directory,
@@ -232,6 +259,7 @@ export const createServer = (connection: Connection): void => {
         reason: "full workspace audit",
       });
     }
+    if (projectList.length > 0) scanTelemetry.begin("manual", projectList.length);
   };
 
   const cancelAllProjectScans = (): void => {
@@ -247,15 +275,15 @@ export const createServer = (connection: Connection): void => {
    * scratch. Open buffers are re-scanned interactively (the workspace
    * scan skips them), so unsaved edits aren't left with stale diagnostics.
    */
-  const rescanWorkspaceFromScratch = (reason: string): void => {
+  const rescanWorkspaceFromScratch = (trigger: WorkspaceScanTrigger): void => {
     cancelAllProjectScans();
     scanRunner?.invalidateCaches();
     projectGraph?.invalidate();
     projectGraph?.refresh();
     for (const document of documents.all()) {
-      scheduleFileScan(uriToFsPath(document.uri), "interactive", true, reason);
+      scheduleFileScan(uriToFsPath(document.uri), "interactive", true, trigger);
     }
-    scanWorkspaceLint();
+    scanWorkspaceLint(trigger);
   };
 
   /**
@@ -376,6 +404,10 @@ export const createServer = (connection: Connection): void => {
       onResult: (outcome) => {
         manager?.applyOutcome(outcome);
         maybeWarnLintUnavailable(outcome);
+        // Only the background workspace audit feeds the wide event; per-file
+        // interactive / save scans are excluded so it tracks the audit, not
+        // keystrokes.
+        if (outcome.request.priority === "background") scanTelemetry.accumulate(outcome);
       },
       onError: (error, request) =>
         logger.error(
@@ -383,6 +415,9 @@ export const createServer = (connection: Connection): void => {
         ),
       onIdleChange: (idle) => {
         void setBusy(!idle);
+        // The scheduler draining is the reliable "burst settled" signal
+        // (completed + cancelled chunks alike); emit the wide event here.
+        if (idle) scanTelemetry.finish();
       },
       debounceMs: DOCUMENT_CHANGE_DEBOUNCE_MS,
       concurrency,
@@ -498,12 +533,21 @@ export const createServer = (connection: Connection): void => {
             "workspace folders changed",
           );
         }
-        scanWorkspaceLint();
+        scanWorkspaceLint("workspace-folders-change");
       });
     }
 
+    telemetry.recordSessionStart({
+      serverVersion: SERVER_VERSION,
+      nodeMajor: nodeMajorVersion(),
+      projectCount: projectGraph?.listProjects().length ?? 0,
+      workspaceFolderCount: workspaceRoots.length,
+      scanOnType,
+      lintAvailable: nodeBinaryPath !== null,
+    });
+
     publishServerStatus();
-    setTimeout(() => scanWorkspaceLint(), INITIAL_WORKSPACE_SCAN_DELAY_MS);
+    setTimeout(() => scanWorkspaceLint("initial"), INITIAL_WORKSPACE_SCAN_DELAY_MS);
   });
 
   // ── Document sync ────────────────────────────────────────────────
@@ -565,7 +609,7 @@ export const createServer = (connection: Connection): void => {
         configRescanTimer = null;
         // Config changed → in-flight scans + cached results are stale; the
         // cache reloads under a fresh fingerprint on the next scan.
-        rescanWorkspaceFromScratch("config change");
+        rescanWorkspaceFromScratch("config-change");
       }, CONFIG_CHANGE_DEBOUNCE_MS);
       if (typeof configRescanTimer.unref === "function") configRescanTimer.unref();
     }
@@ -751,6 +795,9 @@ export const createServer = (connection: Connection): void => {
     if (configRescanTimer) clearTimeout(configRescanTimer);
     scheduler?.dispose();
     scanRunner?.dispose();
+    // Best-effort: get queued analytics off the machine before the editor
+    // tears the process down. Swallow failures — telemetry never blocks exit.
+    void telemetry.flush?.().catch(() => {});
   });
 
   documents.listen(connection);
@@ -788,6 +835,9 @@ const readBooleanInitOption = (options: unknown, key: string, fallback: boolean)
   return typeof value === "boolean" ? value : fallback;
 };
 
+const nodeMajorVersion = (): number =>
+  Number.parseInt(process.versions.node.split(".", 1)[0] ?? "", 10) || 0;
+
 /**
  * stdout is the LSP message channel — any stray write corrupts the
  * protocol stream and silently breaks the client. Route accidental
@@ -817,9 +867,9 @@ const installProcessGuards = (connection: Connection): void => {
 };
 
 /** Entry point: starts the server over stdio. */
-export const startLanguageServer = (): void => {
+export const startLanguageServer = (options: StartLanguageServerOptions = {}): void => {
   protectStdoutChannel();
   const connection = createConnection(process.stdin, process.stdout);
   installProcessGuards(connection);
-  createServer(connection);
+  createServer(connection, options);
 };

@@ -336,6 +336,21 @@ Editor scans always run **offline** — no hosted score lookup and no git
 metadata — and React projects are discovered automatically across
 monorepo workspaces.
 
+## Telemetry
+
+Like the CLI, the language server reports **anonymized** usage analytics to
+Sentry to guide what gets built next: a wide event per workspace scan (trigger,
+duration, project/file counts, diagnostics by severity and category, whether
+lint was degraded) plus session and scan counters. It shares the CLI's privacy
+contract — no IP address, and home-directory paths and known secrets are
+scrubbed from everything sent. No source code or file paths are included.
+
+Opt out by setting `REACT_DOCTOR_NO_TELEMETRY=1` in the environment the editor
+launches the server in, or by adding `--no-telemetry` (alias `--no-score`) to
+the server command. Honors the standard `SENTRY_*` overrides
+(`SENTRY_TRACES_SAMPLE_RATE=0` disables the wide-event spans while keeping
+counters).
+
 ## Troubleshooting
 
 **The server doesn't start.**

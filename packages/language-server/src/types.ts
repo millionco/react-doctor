@@ -17,6 +17,71 @@ export const SILENT_LOGGER: Logger = {
   error: () => {},
 };
 
+/** What kicked off a workspace-scan burst (the wide-event's `trigger`). */
+export type WorkspaceScanTrigger =
+  | "initial"
+  | "config-change"
+  | "workspace-folders-change"
+  | "manual"
+  | "restart";
+
+/** One-shot session analytics, emitted once after the server initializes. */
+export interface SessionTelemetry {
+  readonly serverVersion: string;
+  readonly nodeMajor: number;
+  readonly projectCount: number;
+  readonly workspaceFolderCount: number;
+  readonly scanOnType: boolean;
+  /** Whether a Node binary able to load the oxlint native binding was found. */
+  readonly lintAvailable: boolean;
+}
+
+/**
+ * Aggregate outcome of one workspace-scan burst — the unit the editor
+ * telemetry treats as a "scan" (analogous to one CLI run). Per-keystroke
+ * interactive scans are deliberately excluded; only the background workspace
+ * audit (initial, config/folder change, manual, restart) is reported.
+ */
+export interface WorkspaceScanTelemetry {
+  readonly trigger: WorkspaceScanTrigger;
+  /** Epoch ms when the burst began (the wide-event span's start time). */
+  readonly startedAtEpochMs: number;
+  readonly durationMs: number;
+  readonly projectCount: number;
+  /** Completed background scan chunks aggregated into this burst. */
+  readonly chunkCount: number;
+  readonly filesWithDiagnostics: number;
+  readonly totalDiagnostics: number;
+  readonly errorCount: number;
+  readonly warningCount: number;
+  /** Diagnostic counts keyed by rule category (e.g. "Performance"). */
+  readonly diagnosticsByCategory: Readonly<Record<string, number>>;
+  /** `true` when any chunk reported lint as degraded/unavailable. */
+  readonly lintDegraded: boolean;
+  /** Chunks that linted only partially (some files failed within the batch). */
+  readonly lintIncompleteChunks: number;
+}
+
+/**
+ * Telemetry seam so the server reports analytics without depending on a
+ * concrete backend (mirrors the {@link Logger} seam). The published CLI
+ * injects a Sentry-backed implementation (wide-event spans + counters);
+ * tests and direct `startLanguageServer()` callers get {@link NOOP_TELEMETRY}.
+ */
+export interface Telemetry {
+  /** Once per session, after the project graph is first available. */
+  readonly recordSessionStart: (session: SessionTelemetry) => void;
+  /** Once per completed workspace-scan burst (the canonical wide event). */
+  readonly recordWorkspaceScan: (scan: WorkspaceScanTelemetry) => void;
+  /** Best-effort flush of queued telemetry before the server exits. */
+  readonly flush?: () => Promise<void>;
+}
+
+export const NOOP_TELEMETRY: Telemetry = {
+  recordSessionStart: () => {},
+  recordWorkspaceScan: () => {},
+};
+
 /**
  * A React project discovered in the workspace. `directory` is an
  * absolute, normalized (forward-slash) path to the project root.

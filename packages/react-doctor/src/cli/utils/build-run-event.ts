@@ -8,6 +8,7 @@ import type { FailOnLevel, InspectResult, ReactDoctorConfig } from "@react-docto
 import { ACTION_INPUT_ENVIRONMENT_VARIABLES, detectRunnerOs } from "./is-ci-environment.js";
 import { summarizeRuleFirings } from "./record-scan-metrics.js";
 import { shouldFailForDiagnostics } from "./should-fail-for-diagnostics.js";
+import { toCategoryKey } from "./to-category-key.js";
 import { toSpanAttributes } from "./to-span-attributes.js";
 import type { SentryRootSpan } from "./with-sentry-run-span.js";
 
@@ -76,11 +77,6 @@ const resolveTelemetryFailOn = (userConfig: ReactDoctorConfig | null): FailOnLev
   }
   return userConfig?.failOn ?? "none";
 };
-
-// Lowercase, key-safe form of a rule category for the `diag.category.*`
-// attribute namespace (categories carry spaces / capitals, e.g. "Performance").
-const toCategoryKey = (category: string): string =>
-  category.toLowerCase().replace(/[^a-z0-9]+/g, "_");
 
 const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
   // Failure path: the scan threw before producing a result.

@@ -12,4 +12,12 @@ export {
   DIAGNOSTIC_SOURCE,
   SERVER_DISPLAY_NAME,
 } from "./constants.js";
-export type { ReactDoctorDiagnosticData } from "./types.js";
+export { NOOP_TELEMETRY } from "./types.js";
+export type {
+  ReactDoctorDiagnosticData,
+  SessionTelemetry,
+  Telemetry,
+  WorkspaceScanTelemetry,
+  WorkspaceScanTrigger,
+} from "./types.js";
+export type { StartLanguageServerOptions } from "./server.js";

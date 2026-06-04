@@ -1,14 +1,17 @@
 import * as Sentry from "@sentry/node";
 import { buildSentryScope } from "./cli/utils/build-sentry-scope.js";
-import {
-  SENTRY_DEFAULT_TRACES_SAMPLE_RATE,
-  SENTRY_DSN,
-  SENTRY_FLUSH_TIMEOUT_MS,
-  SENTRY_RELEASE_PREFIX,
-} from "./cli/utils/constants.js";
+import { SENTRY_DSN, SENTRY_FLUSH_TIMEOUT_MS } from "./cli/utils/constants.js";
 import { scrubSentryEvent } from "./cli/utils/scrub-sentry-event.js";
 import { scrubSentryMetric } from "./cli/utils/scrub-sentry-metric.js";
-import { VERSION } from "./cli/utils/version.js";
+import {
+  resolveSentryEnvironment,
+  resolveSentryRelease,
+  resolveTracesSampleRate,
+} from "./cli/utils/sentry-config.js";
+
+// Re-exported for back-compat: these resolvers moved to `sentry-config.ts` so
+// the editor LSP can reuse them without importing this CLI-only module.
+export { resolveSentryEnvironment, resolveSentryRelease, resolveTracesSampleRate };
 
 let isInitialized = false;
 // Cached at init so `isSentryTracingEnabled()` (read on hot paths in
@@ -29,44 +32,6 @@ const shouldEnableSentry = (): boolean => {
 
 const isEnvFlagEnabled = (value: string | undefined): boolean =>
   value === "1" || value?.toLowerCase() === "true";
-
-/**
- * A version is a "dev" build when it's the unbuilt placeholder (`0.0.0`) or
- * carries a prerelease suffix (e.g. the `-dev.<sha>` snapshots published from
- * CI). Everything else is a real, tagged release.
- */
-const isDevVersion = (version: string): boolean => version === "0.0.0" || version.includes("-");
-
-/**
- * Sentry release identifier. `react-doctor@<version>` keeps it unique within
- * the org and — crucially — matches the value `scripts/sentry-sourcemaps.mjs`
- * uploads source-map artifacts under, so stack frames symbolicate. Honors the
- * standard `SENTRY_RELEASE` override.
- */
-export const resolveSentryRelease = (): string =>
-  process.env.SENTRY_RELEASE || `${SENTRY_RELEASE_PREFIX}@${VERSION}`;
-
-/**
- * Deployment environment shown in Sentry's environment filter. Defaults to
- * `production` for tagged releases and `development` for dev/unbuilt versions,
- * overridable via the standard `SENTRY_ENVIRONMENT` env var.
- */
-export const resolveSentryEnvironment = (): string =>
-  process.env.SENTRY_ENVIRONMENT || (isDevVersion(VERSION) ? "development" : "production");
-
-/**
- * Performance-tracing sample rate in `[0, 1]`. Reads `SENTRY_TRACES_SAMPLE_RATE`
- * (set to `0` to disable tracing) and falls back to
- * {@link SENTRY_DEFAULT_TRACES_SAMPLE_RATE}. Invalid / out-of-range values fall
- * back to the default rather than silently disabling tracing.
- */
-export const resolveTracesSampleRate = (): number => {
-  const raw = process.env.SENTRY_TRACES_SAMPLE_RATE;
-  if (raw === undefined || raw.trim() === "") return SENTRY_DEFAULT_TRACES_SAMPLE_RATE;
-  const parsed = Number(raw);
-  if (Number.isNaN(parsed) || parsed < 0 || parsed > 1) return SENTRY_DEFAULT_TRACES_SAMPLE_RATE;
-  return parsed;
-};
 
 /**
  * Whether performance traces will actually be recorded — Sentry is live and the

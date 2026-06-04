@@ -182,6 +182,10 @@ export default defineConfig({
       deps: {
         neverBundle: [
           "@effect/platform-node-shared",
+          // Sentry telemetry for `experimental-lsp` — kept external for the
+          // same reason as the CLI pack (it resolves its own OTel/native deps
+          // via require() at runtime).
+          "@sentry/node",
           "deslop-js",
           "effect",
           "oxc-parser",

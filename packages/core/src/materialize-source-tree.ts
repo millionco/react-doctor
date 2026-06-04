@@ -41,9 +41,7 @@ export const materializeSourceTree = (input: {
     const materializedFiles: string[] = [];
     const resolvedTempDirectory = path.resolve(input.tempDirectory);
     for (const relativePath of input.files) {
-      const content = yield* input
-        .readContent(relativePath)
-        .pipe(Effect.orElseSucceed(() => null as string | null));
+      const content = yield* input.readContent(relativePath).pipe(Effect.orElseSucceed(() => null));
       if (content === null) continue;
       const candidateTargetPath = path.resolve(resolvedTempDirectory, relativePath);
       if (!isPathInsideDirectory(candidateTargetPath, resolvedTempDirectory)) continue;

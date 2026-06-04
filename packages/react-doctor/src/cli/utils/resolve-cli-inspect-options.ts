@@ -7,13 +7,12 @@ import { resolveParallelFlag } from "./resolve-parallel-flag.js";
 /**
  * Translates CLI flags into the `InspectOptions` contract `inspect()`
  * accepts. Flag-specific computed fields (`scoreOnly`, `noScore`,
- * `silent`, `outputSurface`, `isCi`) live here — there's no
- * `userConfig` knob for them, only flag derivation. The remaining
- * boolean knobs (`lint`, `deadCode`, `verbose`, `respectInlineDisables`)
- * pass through unchanged: `inspect()` owns the userConfig-fallback
- * layer so the merge logic isn't duplicated. The shell still hands
- * `userConfig` in via `configOverride` and `noScore` so this resolver
- * can apply the one flag-and-config rule that flags own
+ * `silent`, `isCi`) live here — there's no `userConfig` knob for them,
+ * only flag derivation. The plain boolean knobs (`lint`, `deadCode`,
+ * `verbose`) pass through unchanged: `inspect()` owns the
+ * userConfig-fallback layer so the merge logic isn't duplicated. The
+ * shell still hands `userConfig` in via `configOverride` and `noScore`
+ * so this resolver can apply the one flag-and-config rule that flags own
  * (`--score false` wins, otherwise inherit `userConfig.noScore`).
  */
 export const resolveCliInspectOptions = (

@@ -25,6 +25,8 @@ const buildProject = (overrides: Partial<ProjectInfo> = {}): ProjectInfo => ({
   hasTanStackQuery: false,
   hasReactNativeWorkspace: true,
   expoVersion: "~51.0.0",
+  shopifyFlashListVersion: null,
+  shopifyFlashListMajorVersion: null,
   hasReanimated: true,
   preactVersion: null,
   preactMajorVersion: null,

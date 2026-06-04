@@ -74,6 +74,9 @@ export const noPropTypes = defineRule<Rule>({
   requires: ["react:19"],
   tags: ["test-noise"],
   severity: "warn",
+  // Default off: `propTypes` are dead in a TypeScript codebase, where types
+  // are the source of truth. Opt in to enforce it.
+  defaultEnabled: false,
   recommendation:
     "React 19 ignores `Component.propTypes`, so invalid props pass silently. Describe props with TypeScript types and add real runtime checks (or schema parsing) only where data can actually be wrong. Only runs on React 19+ projects.",
   create: (context: RuleContext) => ({

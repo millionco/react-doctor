@@ -204,7 +204,7 @@ export const ConditionalSubscribe = () => {
     expect(hits).toHaveLength(0);
   });
 
-  it("still flags when cleanup only calls an unrelated bound-resource release method", async () => {
+  it("does NOT flag when a cleanup function returns an unrecognized release shape", async () => {
     for (const releaseName of ["remove", "cleanup", "dispose", "destroy", "teardown"]) {
       const projectDir = setupReactProject(
         tempRoot,
@@ -230,7 +230,7 @@ export const Resize = () => {
       );
 
       const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
-      expect(hits).toHaveLength(1);
+      expect(hits).toHaveLength(0);
     }
   });
 
@@ -478,8 +478,8 @@ export const Zoom = () => {
     expect(hits).toHaveLength(0);
   });
 
-  it("still flags a returned local function that does not release the resource", async () => {
-    const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-return-non-cleanup", {
+  it("does NOT flag a returned opaque local cleanup function", async () => {
+    const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-return-opaque-cleanup", {
       files: {
         "src/Clock.tsx": `import { useEffect } from "react";
 
@@ -500,11 +500,11 @@ export const Clock = () => {
     });
 
     const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
-    expect(hits).toHaveLength(1);
+    expect(hits).toHaveLength(0);
   });
 
-  it("still flags when cleanup only exists in a nested local scope", async () => {
-    const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-nested-cleanup-scope", {
+  it("does NOT flag when the effect returns an opaque cleanup binding", async () => {
+    const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-opaque-cleanup-binding", {
       files: {
         "src/Clock.tsx": `import { useEffect } from "react";
 
@@ -528,7 +528,7 @@ export const Clock = () => {
     });
 
     const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
-    expect(hits).toHaveLength(1);
+    expect(hits).toHaveLength(0);
   });
 
   it("does NOT flag expression-body arrow whose subscribe return is the implicit cleanup (Bugbot #157)", async () => {
@@ -718,6 +718,28 @@ export const Resize = () => {
     expect(hits).toHaveLength(1);
   });
 
+  it("still flags when a subscribed effect returns null", async () => {
+    const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-return-null", {
+      files: {
+        "src/Resize.tsx": `import { useEffect } from "react";
+
+declare const handler: () => void;
+
+export const Resize = () => {
+  useEffect(() => {
+    window.addEventListener("resize", handler);
+    return null;
+  }, []);
+  return <span />;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
+    expect(hits).toHaveLength(1);
+  });
+
   it("does NOT flag cleanup nested inside an `if` block (early-return guard pattern)", async () => {
     const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-conditional-cleanup", {
       files: {
@@ -738,6 +760,30 @@ export const Popover = ({ isOpen }: { isOpen: boolean }) => {
 
     const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
     expect(hits).toHaveLength(0);
+  });
+
+  it("still flags when an early guard cleanup runs before a later timer", async () => {
+    const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-early-guard-noop", {
+      files: {
+        "src/Clock.tsx": `import { useEffect } from "react";
+
+declare const disabled: boolean;
+declare const tick: () => void;
+
+export const Clock = () => {
+  useEffect(() => {
+    if (disabled) return () => {};
+    setInterval(tick, 1000);
+  }, [disabled]);
+  return <span />;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
+    expect(hits).toHaveLength(1);
+    expect(hits[0].message).toContain("setInterval");
   });
 
   it("does NOT flag cleanup that is the last statement *inside* a conditional branch", async () => {

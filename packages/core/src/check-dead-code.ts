@@ -2,13 +2,15 @@ import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Diagnostic, ReactDoctorConfig } from "./types/index.js";
-import { collectIgnorePatterns } from "./collect-ignore-patterns.js";
+import {
+  collectDeadCodeEntryPatterns,
+  collectDeadCodeIgnorePatterns,
+} from "./dead-code/collect-dead-code-patterns.js";
 import {
   DEAD_CODE_WORKER_MAX_OLD_SPACE_MB,
   DEAD_CODE_WORKER_TIMEOUT_MS,
   MILLISECONDS_PER_SECOND,
 } from "./constants.js";
-import { readIgnoreFile } from "./read-ignore-file.js";
 import { toCanonicalPath } from "./utils/to-canonical-path.js";
 import { toRelativePath } from "./utils/to-relative-path.js";
 
@@ -30,6 +32,7 @@ interface CheckDeadCodeOptions {
 
 interface DeadCodeWorkerInput {
   readonly rootDirectory: string;
+  readonly entryPatterns: ReadonlyArray<string>;
   readonly tsConfigPath?: string;
   readonly ignorePatterns: ReadonlyArray<string>;
   readonly deslopJsModuleSpecifier: string;
@@ -90,6 +93,9 @@ interface DeadCodeWorkerFailureMessage {
 
 const TSCONFIG_FILENAMES = ["tsconfig.json", "tsconfig.base.json"];
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 // Runs in a child PROCESS (node -e), not a worker_thread — see
 // `createDeadCodeWorker`. Reads the worker input as JSON on stdin and
 // writes the normalized result (or a serialized error) as JSON on
@@ -134,6 +140,9 @@ process.stdin.on("end", () => {
       const { analyze, defineConfig } = await import(workerInput.deslopJsModuleSpecifier);
       const config = {
         rootDir: workerInput.rootDirectory,
+        ...(workerInput.entryPatterns.length > 0
+          ? { entryPatterns: workerInput.entryPatterns }
+          : {}),
         ...(workerInput.tsConfigPath ? { tsConfigPath: workerInput.tsConfigPath } : {}),
         ...(workerInput.ignorePatterns.length > 0
           ? { ignorePatterns: workerInput.ignorePatterns }
@@ -156,24 +165,6 @@ const resolveTsConfigPath = (rootDirectory: string): string | undefined => {
   return undefined;
 };
 
-// HACK: `collectIgnorePatterns` intentionally omits `.gitignore` because
-// oxlint reads it automatically — deslop does not, so we pull it in.
-const collectDeadCodeIgnorePatterns = (
-  rootDirectory: string,
-  userConfig: ReactDoctorConfig | null | undefined,
-): string[] => {
-  const seen = new Set<string>();
-  const sources = [
-    readIgnoreFile(path.join(rootDirectory, ".gitignore")),
-    collectIgnorePatterns(rootDirectory),
-    userConfig?.ignore?.files ?? [],
-  ];
-  for (const source of sources) {
-    for (const pattern of source) seen.add(pattern);
-  }
-  return [...seen].filter((pattern) => pattern.length > 0);
-};
-
 // HACK: route through `toRelativePath` (which normalizes backslashes to
 // forward slashes) so deslop output matches every other diagnostic on
 // Windows. Downstream picomatch ignore-pattern matching requires POSIX
@@ -182,9 +173,6 @@ const toRelativeFilePath = (rootDirectory: string, filePath: string): string => 
   const relative = toRelativePath(filePath, rootDirectory);
   return relative.length > 0 ? relative : filePath.replace(/\\/g, "/");
 };
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const parseArray = (value: unknown, label: string): unknown[] => {
   if (!Array.isArray(value)) {
@@ -447,9 +435,11 @@ export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diag
   const rootDirectory = toCanonicalPath(options.rootDirectory);
   if (!fs.existsSync(path.join(rootDirectory, "package.json"))) return [];
 
+  const entryPatterns = collectDeadCodeEntryPatterns(rootDirectory);
   const ignorePatterns = collectDeadCodeIgnorePatterns(rootDirectory, userConfig);
   const workerHandle = (options.createWorker ?? createDeadCodeWorker)({
     rootDirectory,
+    entryPatterns,
     tsConfigPath: resolveTsConfigPath(rootDirectory),
     ignorePatterns,
     deslopJsModuleSpecifier: options.deslopJsModuleSpecifier ?? import.meta.resolve("deslop-js"),

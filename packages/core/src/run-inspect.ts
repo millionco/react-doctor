@@ -64,6 +64,8 @@ export interface InspectInput {
   readonly isCi: boolean;
   /** react-doctor release version sent with score requests. */
   readonly doctorVersion?: string;
+  /** Random per-run id. */
+  readonly runId?: string;
   /** Enables best-effort authenticated local GitHub permission lookup for score metadata. */
   readonly resolveLocalGithubViewerPermission?: boolean;
   /**
@@ -462,6 +464,7 @@ export const runInspect = <HooksR = never>(
       sourceFileCount: project.sourceFileCount,
       ...(defaultBranch !== null ? { defaultBranch } : {}),
       ...(input.doctorVersion !== undefined ? { doctorVersion: input.doctorVersion } : {}),
+      ...(input.runId !== undefined ? { runId: input.runId } : {}),
       ...githubActionsScoreMetadata,
       ...(githubViewerPermission !== null ? { githubViewerPermission } : {}),
     };

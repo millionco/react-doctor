@@ -269,6 +269,48 @@ for this codebase) for canonical examples.
   `scrubSentryEvent`), returning `null` to drop on failure. Add new counters
   through `record-metric.ts` + the `METRIC` map, and confirm any new attribute
   carries no username, path, or secret.
+- **Sentry canonical run wide event (CLI only).** The richest telemetry is one
+  high-dimensionality "wide event" per scan, not a pile of narrow counters: the
+  per-run root span (`withSentryRunSpan`) is enriched with the full outcome by
+  `cli/utils/build-run-event.ts` (`recordRunEvent`, plus the pure, testable
+  `buildRunEventAttributes`). `inspect.ts` calls it on the success path (after
+  `recordScanMetrics`) and, via a `try/catch` around the span body, on the
+  failure path — so the event lands with an `outcome` (`clean`/`ok`/`blocked`/
+  `error`), `exitCode`, and `errorTag` taxonomy even when the scan throws. The
+  run + project base context is already on the span (run tags from
+  `withSentryRunSpan`, project shape from `recordSentryProjectContext`), so the
+  event adds only what those don't: scan config (`mode`, `parallel`,
+  `workerCount`, `rulesConfigured`/`rulesDisabled`, `ignoredTagCount`,
+  `hasCustomConfig`, …), outcome (`totalDiagnostics`, `errorCount`/
+  `warningCount`, `affectedFiles`, `distinctRulesFired`, `topRule`, per-category
+  `diag.category.*`, `score`/`scoreLabel`/`scoreAvailable`, `scanClean`,
+  `skippedCheckCount`, lint/dead-code failure), and the CI/PR specifics
+  (`actorAssociation`, `runnerOs`, the forwarded action knobs `failOn`/
+  `nonBlocking`/`comment`/`annotations`/`versionPin`, and the `wouldBlock` gate).
+  Typing matters for querying: numeric outcomes are numbers (so Sentry can do
+  `p75(score)`), dimensions are strings/bools (so they filter/group); `null` is
+  dropped via `toSpanAttributes` so absent signals never become `"null"`. Query
+  it in Sentry's **Trace Explorer** and build **Dashboard widgets on the Spans
+  dataset** (filter/group by any attribute) instead of pre-aggregating counters.
+  Put new run-level dimensions on `build-run-context.ts` → `build-sentry-scope.ts`
+  (now also the `eventName` + `viaAction` tags) so they ride every event and
+  metric; put per-scan outcome dimensions on the wide event, **not** new
+  counters (we deliberately did not add `ci.*` counters — those dims are wide-
+  event attributes; the `scan.*`/`rule.fired` counters stay as the cheap,
+  trace-sampling-independent floor alongside `cli.invoked`/`cli.error`). Score
+  reachability is derivable (`!scoreAvailable && !didLintFail && !noScore`) and
+  score latency is the `Score.compute` child span's duration, so neither needs a
+  dedicated field. CI detection + the official-action marker and forwarded
+  inputs live in `cli/utils/is-ci-environment.ts`; `action.yml` sets the
+  `REACT_DOCTOR_GITHUB_ACTION` marker + `REACT_DOCTOR_ACTION_*` env on its scan
+  step. All attributes pass through `scrubSentryEvent`; keep them free of
+  username, path, secret, and repo/owner identity.
+- **runId.** `cli/utils/run-id.ts` mints one random `runId` per CLI run
+  (process). It rides the Sentry `run` context (and thus the wide event) but is
+  **never** a tag or metric attribute — a per-run unique value there would
+  explode tag/counter cardinality. A workspace invocation scanning several
+  projects shares one `runId`; the per-project span attributes disambiguate. Do
+  not add a plaintext or hashed repo id to Sentry.
 
 ### Console / logging
 

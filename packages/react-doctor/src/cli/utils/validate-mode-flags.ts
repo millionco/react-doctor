@@ -15,9 +15,6 @@ export const validateModeFlags = (flags: InspectFlags): void => {
   if (exclusiveModes.length > 1) {
     throw new CliInputError(`Cannot combine ${exclusiveModes.join(" and ")}; pick one mode.`);
   }
-  if (flags.yes && flags.full) {
-    throw new CliInputError("Cannot combine --yes and --full; pick one.");
-  }
   if (flags.score && flags.json) {
     throw new CliInputError("Cannot combine --score and --json; pick one output mode.");
   }

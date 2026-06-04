@@ -31,12 +31,17 @@ export const buildSentryScope = (runContext: RunContext = buildRunContext()): Se
     command: runContext.command,
     ci: runContext.ci,
     ciProvider: runContext.ciProvider,
+    eventName: runContext.eventName,
+    viaAction: runContext.viaAction,
     codingAgent: runContext.codingAgent,
     interactive: runContext.interactive,
     jsonMode: runContext.jsonMode,
     invokedVia: runContext.invokedVia,
     nodeMajor: runContext.nodeMajor,
   };
+  // `runId` is intentionally NOT a tag: it's a per-run unique value and would
+  // explode tag cardinality. It still rides `contexts.run` below (the full
+  // run-context spread).
   const contexts: Record<string, Record<string, unknown>> = { run: { ...runContext } };
 
   const projectInfo = getSentryProjectInfo();

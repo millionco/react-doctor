@@ -174,6 +174,9 @@ export const createOxlintConfig = ({
       "react-doctor": {
         framework: project.framework,
         rootDirectory: resolveSettingsRootDirectory(project.rootDirectory),
+        ...(project.shopifyFlashListMajorVersion !== null
+          ? { shopifyFlashListMajorVersion: project.shopifyFlashListMajorVersion }
+          : {}),
         ...(serverAuthFunctionNames && serverAuthFunctionNames.length > 0
           ? { serverAuthFunctionNames: [...serverAuthFunctionNames] }
           : {}),

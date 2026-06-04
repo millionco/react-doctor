@@ -1,17 +1,23 @@
 import {
+  detectCiEventName,
   detectCiProvider,
   detectCodingAgent,
   isCiEnvironment,
   isCodingAgentEnvironment,
+  isOfficialGithubAction,
 } from "./is-ci-environment.js";
 import { isGitHookEnvironment } from "./is-git-hook-environment.js";
 import { isNonInteractiveEnvironment } from "./is-non-interactive-environment.js";
 import { isJsonModeActive } from "./json-mode.js";
+import { getRunId } from "./run-id.js";
 import { scrubSensitivePaths } from "./scrub-sensitive-text.js";
 import { VERSION } from "./version.js";
 
 export interface RunContext {
   version: string;
+  // Random per-run (per-process) id, carried on events/spans (via
+  // `contexts.run`) only — never a tag.
+  runId: string;
   origin: string;
   command: string;
   argv: string;
@@ -22,6 +28,10 @@ export interface RunContext {
   arch: string;
   ci: boolean;
   ciProvider: string | null;
+  // GitHub Actions triggering event (e.g. `pull_request`), null off GitHub.
+  eventName: string | null;
+  // Launched by the official react-doctor GitHub Action.
+  viaAction: boolean;
   codingAgent: string | null;
   interactive: boolean;
   jsonMode: boolean;
@@ -75,6 +85,7 @@ export const buildRunContext = (): RunContext => {
   const userArguments = process.argv.slice(2);
   return {
     version: VERSION,
+    runId: getRunId(),
     origin: detectOrigin(),
     command: detectCommand(userArguments),
     // Scrub home-directory paths so the OS username never rides along in the
@@ -88,6 +99,8 @@ export const buildRunContext = (): RunContext => {
     arch: process.arch,
     ci: isCiEnvironment(),
     ciProvider: detectCiProvider(),
+    eventName: detectCiEventName(),
+    viaAction: isOfficialGithubAction(),
     codingAgent: detectCodingAgent(),
     interactive: !isNonInteractiveEnvironment(),
     jsonMode: isJsonModeActive(),

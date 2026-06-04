@@ -22,6 +22,7 @@ import type { SentryRootSpan } from "./cli/utils/with-sentry-run-span.js";
 import { METRIC } from "./cli/utils/constants.js";
 import { recordCount } from "./cli/utils/record-metric.js";
 import { recordScanMetrics } from "./cli/utils/record-scan-metrics.js";
+import { recordRunEvent } from "./cli/utils/build-run-event.js";
 import type {
   Diagnostic,
   DiagnosticSurface,
@@ -56,6 +57,7 @@ import {
 } from "./cli/utils/render-score-header.js";
 import { printFooter, printSummary } from "./cli/utils/render-summary.js";
 import { resolveOxlintNode } from "./cli/utils/resolve-oxlint-node.js";
+import { getRunId } from "./cli/utils/run-id.js";
 import { isSpinnerSilent, setSpinnerSilent } from "./cli/utils/spinner.js";
 import { VERSION } from "./cli/utils/version.js";
 
@@ -122,6 +124,28 @@ const mergeInspectOptions = (
   concurrency: inputOptions.concurrency,
 });
 
+// The scan-config slice of the wide event, shared by the success and failure
+// emit paths (the failure path has no `result`, so it can only supply config).
+// The return type is inferred and checked at the call sites, which spread it
+// into the full `RunEventInput` — a missing field surfaces there.
+const buildRunEventConfig = (
+  options: ResolvedInspectOptions,
+  userConfig: ReactDoctorConfig | null,
+  hasCustomConfig: boolean,
+) => ({
+  parallel: options.concurrency !== undefined,
+  workerCount: options.concurrency,
+  lint: options.lint,
+  deadCode: options.deadCode,
+  scoreOnly: options.scoreOnly,
+  noScore: options.noScore,
+  respectInlineDisables: options.respectInlineDisables,
+  showWarnings: options.warnings,
+  ignoredTagCount: options.ignoredTags.size,
+  hasCustomConfig,
+  userConfig,
+});
+
 export const inspect = async (
   directory: string,
   inputOptions: InspectOptions = {},
@@ -173,17 +197,31 @@ export const inspect = async (
   if (options.silent) setSpinnerSilent(true);
 
   try {
-    const result = await withSentryRunSpan((rootSentrySpan) =>
-      runInspectWithRuntime(
-        scanDirectory,
-        options,
-        userConfig,
-        hasConfigOverride,
-        configSourceDirectory,
-        startTime,
-        rootSentrySpan,
-      ),
-    );
+    const result = await withSentryRunSpan(async (rootSentrySpan) => {
+      try {
+        return await runInspectWithRuntime(
+          scanDirectory,
+          options,
+          userConfig,
+          hasConfigOverride,
+          configSourceDirectory,
+          startTime,
+          rootSentrySpan,
+        );
+      } catch (error) {
+        // Emit the canonical wide event on the failure path too: the scan threw
+        // before finalizing, so there's no `result` — just the error taxonomy
+        // plus the config it ran with. The lint/dead-code outcome isn't known
+        // here, so it's omitted rather than asserted as a benign default.
+        // Rethrow so error handling is unchanged.
+        recordRunEvent(rootSentrySpan, {
+          ...buildRunEventConfig(options, userConfig, userConfig !== null),
+          mode: options.includePaths.length > 0 ? "diff" : "full",
+          error,
+        });
+        throw error;
+      }
+    });
     // Scan finished cleanly — clear run-scoped Sentry state so a later non-scan
     // error (inspectAction's finalize/handoff/install steps, or the next
     // project in a workspace loop) isn't mislabeled with this scan's project or
@@ -256,6 +294,7 @@ const runInspectWithRuntime = async (
       runDeadCode: options.deadCode,
       isCi: options.isCi,
       doctorVersion: VERSION,
+      runId: getRunId(),
       resolveLocalGithubViewerPermission: !options.noScore,
       suppressScanSummary: options.suppressRendering,
     },
@@ -400,6 +439,20 @@ const runInspectWithRuntime = async (
     lintFailureReasonKind: lintBindingMissing
       ? "native-binding-missing"
       : output.lintFailureReasonKind,
+    didDeadCodeFail: output.didDeadCodeFail,
+  });
+  // Canonical per-scan wide event: the full outcome stamped onto the run's root
+  // span (run + project base context is already on it) so any question is a
+  // single Trace Explorer query rather than a pre-aggregated counter.
+  recordRunEvent(rootSentrySpan, {
+    ...buildRunEventConfig(options, userConfig, userConfig !== null),
+    result,
+    mode: isDiffMode ? "diff" : "full",
+    didLintFail,
+    lintFailureReasonKind: lintBindingMissing
+      ? "native-binding-missing"
+      : output.lintFailureReasonKind,
+    lintPartialFailureCount: output.lintPartialFailures.length,
     didDeadCodeFail: output.didDeadCodeFail,
   });
   return result;

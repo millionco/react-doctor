@@ -8,7 +8,14 @@ import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { isFunctionLike } from "../../../utils/is-function-like.js";
 import { walkAst } from "../../../utils/walk-ast.js";
-import { isCleanupReturningSubscribeLikeCallExpression } from "./is-subscribe-like-call-expression.js";
+import {
+  isCleanupReturningSubscribeLikeCallExpression,
+  isSubscribeLikeCallExpression,
+} from "./is-subscribe-like-call-expression.js";
+
+interface CleanupReturnOptions {
+  readonly allowOpaqueReturn?: boolean;
+}
 
 const ITERATOR_CALLBACK_METHOD_NAMES = new Set([
   "each",
@@ -132,13 +139,24 @@ export const isCleanupReturn = (
   returnedValue: EsTreeNode | null | undefined,
   knownCleanupFunctionNames: ReadonlySet<string>,
   knownBoundSubscriptionNames: ReadonlySet<string>,
+  options: CleanupReturnOptions = {},
 ): boolean => {
   if (!returnedValue) return false;
   const unwrappedValue = unwrapChainExpression(returnedValue);
+  if (isNodeOfType(unwrappedValue, "Literal") && unwrappedValue.value === null) {
+    return false;
+  }
   if (isNodeOfType(unwrappedValue, "Identifier")) {
-    return knownCleanupFunctionNames.has(unwrappedValue.name);
+    if (unwrappedValue.name === "undefined") return false;
+    if (knownCleanupFunctionNames.has(unwrappedValue.name)) return true;
+    return (
+      options.allowOpaqueReturn === true && !knownBoundSubscriptionNames.has(unwrappedValue.name)
+    );
   }
   if (isCleanupReturningSubscribeLikeCallExpression(unwrappedValue)) return true;
+  if (options.allowOpaqueReturn === true && !isSubscribeLikeCallExpression(unwrappedValue)) {
+    return true;
+  }
   if (
     isCleanupFunctionLike(unwrappedValue, knownCleanupFunctionNames, knownBoundSubscriptionNames)
   ) {

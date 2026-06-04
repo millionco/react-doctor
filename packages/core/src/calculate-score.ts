@@ -50,6 +50,7 @@ export interface ScoreRequestMetadata {
   sourceFileCount?: number;
   defaultBranch?: string;
   doctorVersion?: string;
+  runId?: string;
   githubEventName?: string;
   githubActorAssociation?: string;
   githubViewerPermission?: string;
@@ -75,6 +76,7 @@ export const calculateScore = async (
         : {}),
       ...(options.metadata?.defaultBranch ? { defaultBranch: options.metadata.defaultBranch } : {}),
       ...(options.metadata?.doctorVersion ? { doctorVersion: options.metadata.doctorVersion } : {}),
+      ...(options.metadata?.runId ? { runId: options.metadata.runId } : {}),
       ...(options.metadata?.githubEventName
         ? { githubEventName: options.metadata.githubEventName }
         : {}),

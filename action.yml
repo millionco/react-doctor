@@ -100,6 +100,16 @@ runs:
         CHANGED_FILES_FROM: ${{ steps.pr-files.outputs.path }}
         RUNNER_TEMP: ${{ runner.temp }}
         GITHUB_RUN_ID: ${{ github.run_id }}
+        # Telemetry: mark runs as launched by the official action and forward the
+        # inputs the CLI can't otherwise see (comment / non-blocking are handled
+        # in later steps, not as flags). These ride along on the scan's Sentry
+        # wide event. Anonymous: no repo, owner, actor, or ref.
+        REACT_DOCTOR_GITHUB_ACTION: ${{ github.action_ref || '1' }}
+        REACT_DOCTOR_ACTION_FAIL_ON: ${{ inputs.fail-on }}
+        REACT_DOCTOR_ACTION_NON_BLOCKING: ${{ inputs.non-blocking }}
+        REACT_DOCTOR_ACTION_COMMENT: ${{ inputs.comment }}
+        REACT_DOCTOR_ACTION_ANNOTATIONS: ${{ inputs.annotations }}
+        REACT_DOCTOR_ACTION_VERSION: ${{ inputs.version }}
       run: |
         REPORT_FILE="${RUNNER_TEMP:-/tmp}/react-doctor-report-${GITHUB_RUN_ID:-$$}.json"
         echo "report-file=$REPORT_FILE" >> "$GITHUB_OUTPUT"

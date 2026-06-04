@@ -6,6 +6,7 @@ import type { ProjectInfo } from "@react-doctor/core";
 
 const baseRunContext: RunContext = {
   version: "1.2.3",
+  runId: "run-abc123",
   origin: "ci",
   command: "inspect",
   argv: "--json",
@@ -16,6 +17,8 @@ const baseRunContext: RunContext = {
   arch: "arm64",
   ci: true,
   ciProvider: "github-actions",
+  eventName: "pull_request",
+  viaAction: true,
   codingAgent: null,
   interactive: false,
   jsonMode: true,
@@ -38,6 +41,8 @@ const projectInfo: ProjectInfo = {
   preactMajorVersion: null,
   hasReactNativeWorkspace: false,
   expoVersion: null,
+  shopifyFlashListVersion: null,
+  shopifyFlashListMajorVersion: null,
   hasReanimated: false,
   sourceFileCount: 142,
 };
@@ -54,12 +59,22 @@ describe("buildSentryScope", () => {
       command: "inspect",
       ci: true,
       ciProvider: "github-actions",
+      eventName: "pull_request",
+      viaAction: true,
       codingAgent: null,
       interactive: false,
       jsonMode: true,
       invokedVia: "pnpm",
       nodeMajor: 22,
     });
+  });
+
+  it("carries runId in the run context but never as a tag", () => {
+    const { tags, contexts } = buildSentryScope(baseRunContext);
+    // The id rides events/spans without becoming a high-cardinality tag/metric
+    // dimension.
+    expect((contexts.run as RunContext).runId).toBe("run-abc123");
+    expect(tags.runId).toBeUndefined();
   });
 
   it("attaches the full run context as the `run` context block", () => {

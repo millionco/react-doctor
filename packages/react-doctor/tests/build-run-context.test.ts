@@ -2,13 +2,21 @@ import os from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { buildRunContext } from "../src/cli/utils/build-run-context.js";
 
+const CI_ENV_VARS = ["GITHUB_EVENT_NAME", "REACT_DOCTOR_GITHUB_ACTION"] as const;
+
 describe("buildRunContext", () => {
   let savedUserAgent: string | undefined;
   let savedArgv: string[];
+  let savedEnv: Record<string, string | undefined>;
 
   beforeEach(() => {
     savedUserAgent = process.env.npm_config_user_agent;
     savedArgv = process.argv;
+    savedEnv = {};
+    for (const name of CI_ENV_VARS) {
+      savedEnv[name] = process.env[name];
+      delete process.env[name];
+    }
   });
 
   afterEach(() => {
@@ -18,6 +26,11 @@ describe("buildRunContext", () => {
       process.env.npm_config_user_agent = savedUserAgent;
     }
     process.argv = savedArgv;
+    for (const name of CI_ENV_VARS) {
+      const previous = savedEnv[name];
+      if (previous === undefined) delete process.env[name];
+      else process.env[name] = previous;
+    }
   });
 
   it("derives invokedVia from the leading npm_config_user_agent token", () => {
@@ -49,5 +62,25 @@ describe("buildRunContext", () => {
     expect(argv).not.toContain(os.homedir());
     expect(argv).toContain("~/secret-project");
     expect(argv).toContain("--json");
+  });
+
+  it("memoizes a stable runId across calls", () => {
+    const { runId } = buildRunContext();
+    expect(runId).toMatch(/[0-9a-f-]{36}/i);
+    expect(buildRunContext().runId).toBe(runId);
+  });
+
+  it("reports the GitHub event name and official-action marker when present", () => {
+    process.env.GITHUB_EVENT_NAME = "pull_request";
+    process.env.REACT_DOCTOR_GITHUB_ACTION = "v1";
+    const context = buildRunContext();
+    expect(context.eventName).toBe("pull_request");
+    expect(context.viaAction).toBe(true);
+  });
+
+  it("leaves eventName null and viaAction false outside the GitHub Action", () => {
+    const context = buildRunContext();
+    expect(context.eventName).toBeNull();
+    expect(context.viaAction).toBe(false);
   });
 });

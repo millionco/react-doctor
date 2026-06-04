@@ -14,6 +14,9 @@ export const noRedundantSizeAxes = defineRule<Rule>({
   requires: ["tailwind:3.4"],
   tags: ["design", "test-noise"],
   severity: "warn",
+  // Default off: subjective design / house-style preference, not a
+  // correctness, performance, or accessibility issue. Opt in to enforce it.
+  defaultEnabled: false,
   category: "Architecture",
   recommendation: "Collapse `w-N h-N` to `size-N` (Tailwind v3.4+) when both sides match.",
   create: (context: RuleContext) => ({

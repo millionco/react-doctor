@@ -33,7 +33,9 @@ describe("isExpectedUserError", () => {
     // "<file>:<line>" argument, or an unknown --project name are user
     // invocation mistakes, not crashes.
     expect(
-      isExpectedUserError(new CliInputError("Cannot combine --yes and --full; pick one.")),
+      isExpectedUserError(
+        new CliInputError("Cannot combine --score and --json; pick one output mode."),
+      ),
     ).toBe(true);
     expect(
       isExpectedUserError(new CliInputError('Expected "<file>:<line>", got "package.json".')),

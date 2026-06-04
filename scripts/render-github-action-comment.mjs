@@ -28,6 +28,10 @@ const COPY = {
   baselineUntouchedPart: (preExistingIssues) => `${preExistingIssues} left untouched`,
   baselineDetail: (shortRef, parts) => `Compared against \`${shortRef}\`: ${parts}.`,
 
+  // Clean success — shown when nothing was scanned (no matching source files),
+  // which is a pass, not a finding. Rendered as a single line with no table.
+  cleanSuccess: "No React Doctor issues found. 🎉",
+
   // Full / diff summary status line.
   statusIncompleteNoIssues: "No React Doctor issues were found, but some checks were incomplete.",
   statusNoIssues: "No React Doctor issues found in this scan.",
@@ -281,12 +285,16 @@ const buildBaselineBody = (report) => {
   return renderLines(lines);
 };
 
+const buildCleanSuccessBody = () =>
+  renderLines([MARKER, "", COPY.cleanSuccess, "", buildReviewFooter()]);
+
 const buildCommentBody = (report) => {
   if (!report.ok) return buildErrorBody(report);
   // A scan that matched no files (no changed/staged source, or nothing covered
-  // by the enabled checks) is a pass, not a special case — it flows into the
-  // normal clean-result rendering below (baseline "no new issues 🎉" on a PR,
-  // or "No React Doctor issues found" otherwise).
+  // by the enabled checks) is a pass, not a special case — render a plain
+  // success line rather than a metrics table full of zeros / an "Unavailable"
+  // score for a scan that never ran.
+  if ((report.projects ?? []).length === 0) return buildCleanSuccessBody();
   if (report.schemaVersion === 2 || report.baseline) return buildBaselineBody(report);
 
   const summary = report.summary ?? {};

@@ -246,7 +246,8 @@ export const inspect = async (
 
 interface BaselineComparison {
   displayDiagnostics: ReadonlyArray<Diagnostic>;
-  baselineDelta: NonNullable<InspectResult["baselineDelta"]>;
+  /** Absent when the base lint failed and a reliable delta couldn't be computed. */
+  baselineDelta: InspectResult["baselineDelta"];
 }
 
 /**
@@ -315,6 +316,14 @@ const runBaselineComparison = async (params: {
         ),
       ),
     );
+    // A failed base lint leaves base findings unreliable/empty, which would
+    // mislabel pre-existing head issues as newly introduced (and could block
+    // CI on them). Degrade exactly like a failed head lint: surface nothing and
+    // skip the delta. A genuinely empty but *successful* base lint is fine —
+    // it correctly means every head finding is new.
+    if (baseOutput.didLintFail) {
+      return { displayDiagnostics: [], baselineDelta: undefined };
+    }
     const delta = computeDiagnosticDelta({
       headDiagnostics: params.headDiagnostics,
       baseDiagnostics: baseOutput.diagnostics,

@@ -1,0 +1,44 @@
+editors/zed-react-doctor/README.md
+  s_55e5225c4a74ee::t_96de469d656ef6 16
+packages/react-doctor/src/lsp.ts
+  s_55e5225c4a74ee::t_3c8d2b8c1c3a9b 2
+.changeset/language-server.md
+  s_55e5225c4a74ee::t_3d1247938056a5 7
+  s_55e5225c4a74ee::t_c7636ba7c0320e 5
+editors/zed-react-doctor/src/lib.rs
+  s_55e5225c4a74ee::t_f00bd9a83f9905 74
+docs/editors.md
+  s_55e5225c4a74ee::t_448e091092fc8a 18,350
+  s_55e5225c4a74ee::t_eeb749e455959b 13,20-21,83,129,302
+  s_55e5225c4a74ee::t_2519fd6ef075a4 229,239,252
+  s_55e5225c4a74ee::t_bbffdb9a82319a 296
+  s_55e5225c4a74ee::t_6e7995c000c613 154,156,183,206,214,274
+packages/language-server/README.md
+  s_55e5225c4a74ee::t_20737449e857ae 9,12
+packages/vscode-react-doctor/src/extension.ts
+  s_55e5225c4a74ee::t_c46ecf2c1ba6f9 76-77,87,94,100
+packages/language-server/package.json
+  s_55e5225c4a74ee::t_e11264f4550f6a 5
+packages/vscode-react-doctor/README.md
+  s_55e5225c4a74ee::t_2c8ef80dca598c 21
+packages/react-doctor/README.md
+  s_55e5225c4a74ee::t_68ace61164ed98 42,45,48
+packages/react-doctor/bin/react-doctor.js
+  s_55e5225c4a74ee::t_4a3b4ab552e0ec 13-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "679143260956ae1ba4dbd90dda078b2e8de0f0b6",
+  "prompts": {},
+  "sessions": {
+    "s_55e5225c4a74ee": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "24f14ee2-7b18-4a18-8a3e-4dbf84ffbff3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

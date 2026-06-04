@@ -112,6 +112,7 @@ export const METRIC = {
   scanScore: "scan.score",
   scanClean: "scan.clean",
   scanCheckSkipped: "scan.check_skipped",
+  baselineDegraded: "baseline.degraded",
   ruleFired: "rule.fired",
   lintFailed: "lint.failed",
   deadCodeFailed: "deadcode.failed",

@@ -166,6 +166,20 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
   for (const [category, count] of countByCategory) {
     attributes[`diag.category.${toCategoryKey(category)}`] = count;
   }
+  // Baseline (PR-introduced-issues-only) signal. Emitted only for baseline runs
+  // so non-baseline scans stay clean: a computed run carries the delta (`new` is
+  // the introduced count == totalDiagnostics, plus `fixed` and base `baseTotal`)
+  // and `degraded: false`; a degraded run (base ref unfetchable or lint failed,
+  // surfaced via `gateExempt`) carries only `degraded: true`. The pair lets a
+  // query compute the degradation rate over all baseline runs.
+  if (result.baselineDelta) {
+    attributes["baseline.new"] = summary.totalDiagnosticCount;
+    attributes["baseline.fixed"] = result.baselineDelta.fixedCount;
+    attributes["baseline.baseTotal"] = result.baselineDelta.baseTotalCount;
+    attributes["baseline.degraded"] = false;
+  } else if (input.gateExempt) {
+    attributes["baseline.degraded"] = true;
+  }
   return attributes;
 };
 

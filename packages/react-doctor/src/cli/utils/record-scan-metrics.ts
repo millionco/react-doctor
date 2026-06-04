@@ -57,6 +57,8 @@ export interface ScanMetricsInput {
   readonly didLintFail: boolean;
   readonly lintFailureReasonKind: string | null;
   readonly didDeadCodeFail: boolean;
+  /** A baseline run that couldn't compute a delta and fell back to a plain diff. */
+  readonly baselineDegraded: boolean;
 }
 
 /**
@@ -127,6 +129,11 @@ export const recordScanMetrics = (input: ScanMetricsInput): void => {
     recordCount(METRIC.scoreUnavailable, 1, { mode: input.mode });
   }
 
+  if (input.baselineDegraded) {
+    // Baseline fell back to a plain diff (base lint failed / no reliable delta).
+    // A spike here means baseline isn't working as intended in users' CI.
+    recordCount(METRIC.baselineDegraded, 1);
+  }
   if (input.didLintFail) {
     recordCount(METRIC.lintFailed, 1, { reasonKind: input.lintFailureReasonKind });
   }

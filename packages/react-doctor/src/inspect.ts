@@ -567,6 +567,7 @@ const runInspectWithRuntime = async (
   recordScanMetrics({
     result,
     mode: scanMode,
+    baselineDegraded,
     parallel: options.concurrency !== undefined,
     workerCount: options.concurrency,
     lint: options.lint,

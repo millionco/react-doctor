@@ -1,0 +1,19 @@
+packages/react-doctor/src/cli/utils/handoff-to-agent.ts
+  s_0be0fcdbf72c91::t_9a7b75a68c3ac2 95-101,125
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "7737933583eb321933eba99aed7a3a4c5de8686f",
+  "prompts": {},
+  "sessions": {
+    "s_0be0fcdbf72c91": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "db6a4a15-c3fc-4dd2-acb7-e3fec38e1203",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

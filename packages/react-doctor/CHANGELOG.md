@@ -1,5 +1,44 @@
 # react-doctor
 
+## 0.4.0
+
+### Minor Changes
+
+- [#663](https://github.com/millionco/react-doctor/pull/663) [`9a8ad6e`](https://github.com/millionco/react-doctor/commit/9a8ad6e40d9ed1fbe7ddb1f1c57bfd5c791a4b9e) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Rework CI reporting: a renamed `blocking` gate, PR-introduced-issues-only baselines, inline PR review comments, and a simpler CLI flag surface.
+
+  **CI gate**
+
+  - **`fail-on` is renamed to `blocking`** (CLI `--blocking <level>`, config `blocking`, GitHub Action `blocking` input). Same `error | warning | none` values, default `error`: a scan fails CI when an `error`-severity diagnostic reaches the `ciFailure` surface; `warning` blocks on any diagnostic; `none` stays advisory (always exits 0). `--fail-on` / `failOn` still work as a deprecated, warned alias hidden from `--help`.
+  - `--blocking warning` now wins over `--no-warnings` (it previously silently no-op'd the gate — you can't block on warnings you've hidden).
+
+  **Baseline — report only the issues a PR introduces (Codecov-style)**
+
+  - In `--diff <base>` mode, react-doctor runs a second lint pass over the changed files as they existed at the base merge-base and reports only the diagnostics the change introduced; pre-existing findings that merely shifted lines are matched out by a content fingerprint (`file + rule + flagged-line hash`). The head project-health **score is unchanged**; the gate fails on newly-introduced errors only. If the baseline can't be computed (base unreachable, or a lint pass failed), the run degrades to a plain diff — all findings stay visible and CI isn't gated on findings whose new-vs-pre-existing attribution is unknown.
+  - **New core API:** `computeDiagnosticDelta`, `Git.showRefContent` / `Git.mergeBase`, `materializeSourceTree`, and `InspectOptions.baseline` / `InspectResult.baselineDelta`.
+  - **JSON report v2:** baseline runs emit `schemaVersion: 2` with a `baseline` block (`newCount`, `fixedCount`, `baseTotalCount`) and `mode: "baseline"`; `summary.score` stays the head score. v1 reports are unchanged.
+
+  **GitHub Action**
+
+  - Posts **inline PR review comments** on the changed lines that triggered each diagnostic (with fix guidance + a docs link), plus a restyled CLI-style sticky summary with linkable findings and the new / fixed delta. The `annotations` input was removed.
+  - On pull requests it fetches the base commit for baselining — use `fetch-depth: 0` on `actions/checkout`. New `fixed-issues` output. Defaults: `project: "*"`, `node-version: 24`.
+
+  **CLI flags (fewer flags, fewer footguns)**
+
+  - `--explain` / `--why` → the `react-doctor why <file>:<line>` subcommand (`rules explain <rule>` still explains what a rule means).
+  - Removed `--full` (use `--diff false` to force a full scan), `--pr-comment` (the Action renders its comment from `--json`), and the positive `--respect-inline-disables` (already the default; use `--no-respect-inline-disables` for audit mode). The internal `--changed-files-from` is hidden from `--help`.
+  - Removed flags now fail with a migration error instead of being silently dropped, and an empty `--project` filter (e.g. `--project ","`) is rejected.
+
+### Patch Changes
+
+- [#681](https://github.com/millionco/react-doctor/pull/681) [`915745e`](https://github.com/millionco/react-doctor/commit/915745ef7b88730e153d93bf52ce48bce2806495) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Add `react-doctor experimental-lsp`, an experimental language server that surfaces React Doctor diagnostics directly in your editor — VS Code, Cursor, Zed, Neovim, Sublime Text, Emacs, Helix, or any LSP client. It is gated behind the `experimental-` prefix while its protocol, caching, and diagnostics stabilize. It scans the file you are editing live from the unsaved buffer, underlines the exact offending token via precise ranges, shows rich hovers (rule, category, recommendation, docs link), and offers quick fixes (disable-for-this-line with the correct comment style, suppress-all-in-file, explain, open docs, report false positive). It discovers every React project across workspace folders and monorepo packages, runs offline (no score lookup, no git), prioritizes open-buffer scans, supports push and pull diagnostics, and invalidates caches when config / package.json / lockfiles change. The background workspace scan is chunked so diagnostics stream in progressively (seconds to first results on large repos), parallelizes across all CPU cores, reserves a slot so edits stay responsive while it runs, and cancels in-flight work when config changes. Results are cached per file (by content metadata, invalidated on config change) and persisted to disk, so re-opening the editor or re-scanning surfaces diagnostics almost instantly — on an ~8,800-file repo a cold scan is ~27s and a warm scan ~2s.
+
+  Start it with `react-doctor experimental-lsp --stdio` (or `npx react-doctor@latest experimental-lsp --stdio`). A `scanOnType` initialization option toggles live-as-you-type scanning, with first-class companion extensions for VS Code/Cursor and Zed.
+
+  Like the CLI, the language server reports anonymized usage analytics to Sentry — a per-workspace-scan wide event plus session/scan counters — sharing the CLI's IP-stripping and path/secret scrubbing. Opt out with `REACT_DOCTOR_NO_TELEMETRY=1` (or by launching it with `--no-telemetry`).
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.4.0
+
 ## 0.3.0
 
 ### Minor Changes

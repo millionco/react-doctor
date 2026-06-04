@@ -1,7 +1,8 @@
-import fs from "node:fs";
+import * as fs from "node:fs";
 import os from "node:os";
-import path from "node:path";
+import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
+import { CliInputError } from "../src/cli/utils/cli-input-error.js";
 import { readChangedFilesFrom } from "../src/cli/utils/read-changed-files-from.js";
 
 describe("readChangedFilesFrom", () => {
@@ -44,5 +45,24 @@ describe("readChangedFilesFrom", () => {
     fs.writeFileSync(changedFilesPath, "apps\\web\\src\\App.tsx\n");
 
     expect(readChangedFilesFrom(changedFilesPath)).toEqual(["apps/web/src/App.tsx"]);
+  });
+
+  // An unreadable --changed-files-from file is a user invocation mistake, not a
+  // bug: it must surface as a clean CliInputError (kept out of Sentry) rather
+  // than throwing the raw fs error (REACT-DOCTOR-V).
+  it("throws a clean CLI input error when the file does not exist", () => {
+    const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-changed-files-"));
+    tempDirectories.push(tempDirectory);
+    const missingPath = path.join(tempDirectory, "missing.txt");
+
+    expect(() => readChangedFilesFrom(missingPath)).toThrow(CliInputError);
+    expect(() => readChangedFilesFrom(missingPath)).toThrow("--changed-files-from");
+  });
+
+  it("throws a clean CLI input error when the path is a directory", () => {
+    const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-changed-files-"));
+    tempDirectories.push(tempDirectory);
+
+    expect(() => readChangedFilesFrom(tempDirectory)).toThrow(CliInputError);
   });
 });

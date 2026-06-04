@@ -20,16 +20,36 @@
  * `ReactDoctorError` from `../errors.js` instead.
  */
 
+/**
+ * Distinguishes the two situations that both surface as "no project here", so
+ * the rendered message matches reality:
+ *
+ * - `no-project` (default): the path exists but has no React project — no
+ *   `package.json` at the root and no discoverable nested React subproject.
+ * - `missing-path`: the resolved scan target does not exist on disk at all
+ *   (a typo, a stale temp path, a monorepo subdir that isn't present). The
+ *   generic "expected a package.json" guidance is misleading here, so point
+ *   at the missing path instead.
+ */
+export interface ProjectNotFoundOptions extends ErrorOptions {
+  readonly kind?: "no-project" | "missing-path";
+}
+
 export class ProjectNotFoundError extends Error {
   override readonly name = "ProjectNotFoundError";
   readonly directory: string;
+  readonly kind: "no-project" | "missing-path";
 
-  constructor(directory: string, options?: ErrorOptions) {
+  constructor(directory: string, options?: ProjectNotFoundOptions) {
+    const kind = options?.kind ?? "no-project";
     super(
-      `No React project found in ${directory}. Expected a package.json at the directory root or a nested package.json with a React dependency.`,
+      kind === "missing-path"
+        ? `Scan target "${directory}" does not exist. Check the path and try again.`
+        : `No React project found in ${directory}. Expected a package.json at the directory root or a nested package.json with a React dependency.`,
       options,
     );
     this.directory = directory;
+    this.kind = kind;
   }
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "oxlint-plugin-react-doctor",
-  "version": "0.2.14",
+  "version": "0.3.0",
   "description": "oxlint plugin for React Doctor: diagnose React codebases for security, performance, correctness, accessibility, bundle-size, and architecture issues",
   "keywords": [
     "accessibility",
@@ -54,11 +54,11 @@
   "dependencies": {
     "@typescript-eslint/types": "^8.59.3",
     "eslint-scope": "^9.1.2",
-    "eslint-visitor-keys": "^5.0.1"
+    "eslint-visitor-keys": "^5.0.1",
+    "oxc-parser": "^0.132.0"
   },
   "devDependencies": {
-    "@types/node": "^25.6.0",
-    "oxc-parser": "^0.132.0"
+    "@types/node": "^25.6.0"
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"

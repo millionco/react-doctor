@@ -54,6 +54,8 @@ Review the diff like a rule reviewer. Lead with bugs:
 - Diagnostic wording that overclaims.
 - Missing valid or invalid regression tests.
 
+Before approving a new helper or utility in the diff, confirm it does not duplicate an existing symbol with `truffler` (the `find-similar-functions` skill): `bunx @rayhanadev/truffler "<helper name>" packages --kind function,method,interface,type,constant --limit 20`.
+
 Fix every real implementation bug with a targeted regression test.
 
 ## RDE Rule Validation

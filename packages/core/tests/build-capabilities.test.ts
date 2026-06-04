@@ -15,6 +15,9 @@ const baseProject: ProjectInfo = {
   hasReactCompiler: false,
   hasTanStackQuery: false,
   hasReactNativeWorkspace: false,
+  expoVersion: null,
+  shopifyFlashListVersion: null,
+  shopifyFlashListMajorVersion: null,
   preactVersion: null,
   preactMajorVersion: null,
   hasReanimated: false,
@@ -129,6 +132,37 @@ describe("buildCapabilities", () => {
     });
     expect(compatStyle.has("preact")).toBe(true);
     expect(compatStyle.has("pure-preact")).toBe(false);
+  });
+
+  it("emits the `expo` capability when `expoVersion` is set", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      framework: "expo",
+      hasReactNativeWorkspace: true,
+      expoVersion: "~51.0.0",
+    });
+    expect(capabilities.has("expo")).toBe(true);
+    expect(capabilities.has("react-native")).toBe(true);
+  });
+
+  it("emits the `expo` capability for an Expo project even when a web bundler wins framework detection", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      framework: "vite",
+      hasReactNativeWorkspace: true,
+      expoVersion: "~51.0.0",
+    });
+    expect(capabilities.has("expo"), "expo capability is keyed off expoVersion").toBe(true);
+    expect(capabilities.has("vite")).toBe(true);
+  });
+
+  it("omits the `expo` capability for a non-Expo project", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      framework: "vite",
+      expoVersion: null,
+    });
+    expect(capabilities.has("expo")).toBe(false);
   });
 
   it("emits `zod` and `zod:4` capabilities for Zod 4 projects", () => {

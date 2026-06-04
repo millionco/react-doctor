@@ -1,8 +1,7 @@
-import path from "node:path";
+import * as path from "node:path";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Filter from "effect/Filter";
-import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
@@ -14,9 +13,12 @@ import type {
   ScoreResult,
 } from "./types/index.js";
 import { buildDiagnosticPipeline } from "./build-diagnostic-pipeline.js";
+import { checkExpoProject } from "./check-expo-project.js";
 import { checkPnpmHardening } from "./check-pnpm-hardening.js";
+import { checkReactNativeProject } from "./check-react-native-project.js";
 import { checkReducedMotion } from "./check-reduced-motion.js";
 import { DEFAULT_SHOW_WARNINGS } from "./constants.js";
+import { highlighter } from "./highlighter.js";
 import { computeJsxIncludePaths } from "./jsx-include-paths.js";
 import { deadCodeMaySurfaceWhenWarningsHidden } from "./utils/dead-code-may-surface.js";
 import {
@@ -27,6 +29,7 @@ import {
 } from "./errors.js";
 import { filterDiagnosticsForSurface } from "./filter-for-surface.js";
 import { isAnalyzableProject } from "./project-info/index.js";
+import { OxlintConcurrency } from "./refs.js";
 import { resolveLintIncludePaths } from "./resolve-lint-include-paths.js";
 import { Config, type ResolvedConfig } from "./services/config.js";
 import { DeadCode } from "./services/dead-code.js";
@@ -47,9 +50,9 @@ export interface InspectInput {
   readonly respectInlineDisables: boolean;
   /**
    * Per-call override for `ReactDoctorConfig.warnings`. When omitted,
-   * the loaded config's `warnings` value wins (defaulting to `false`),
-   * so warnings stay hidden unless the user opts in via `--warnings` or
-   * `warnings: true`.
+   * the loaded config's `warnings` value wins (defaulting to `true`),
+   * so warnings surface unless the user opts out via `--no-warnings` or
+   * `warnings: false`.
    */
   readonly warnings?: boolean;
   readonly adoptExistingLintConfig: boolean;
@@ -61,6 +64,8 @@ export interface InspectInput {
   readonly isCi: boolean;
   /** react-doctor release version sent with score requests. */
   readonly doctorVersion?: string;
+  /** Random per-run id. */
+  readonly runId?: string;
   /** Enables best-effort authenticated local GitHub permission lookup for score metadata. */
   readonly resolveLocalGithubViewerPermission?: boolean;
   /**
@@ -322,7 +327,12 @@ export const runInspect = <HooksR = never>(
     // ── Phase: environment checks ──────────────────────────────────
     const environmentDiagnostics: ReadonlyArray<Diagnostic> = isDiffMode
       ? []
-      : [...checkReducedMotion(scanDirectory), ...checkPnpmHardening(scanDirectory)];
+      : [
+          ...checkReducedMotion(scanDirectory),
+          ...checkPnpmHardening(scanDirectory),
+          ...checkExpoProject(scanDirectory, project),
+          ...checkReactNativeProject(scanDirectory, project),
+        ];
     const envCollected = yield* Stream.runCollect(
       applyPerElementPipeline(Stream.fromIterable(environmentDiagnostics)),
     );
@@ -337,6 +347,13 @@ export const runInspect = <HooksR = never>(
       didFail: false,
       reason: null,
     });
+
+    // Read only for the spinner suffix below (the Linter reads the same
+    // Reference to actually fan out the lint pass); defaults to parallel
+    // (auto-detected cores).
+    const scanConcurrency = yield* OxlintConcurrency;
+    const workerCountSuffix =
+      scanConcurrency > 1 ? ` ${highlighter.dim(`[~${scanConcurrency} workers]`)}` : "";
 
     const scanProgress = yield* progressService.start("Scanning...");
     const scanStartTime = Date.now();
@@ -357,7 +374,9 @@ export const runInspect = <HooksR = never>(
         onFileProgress: (scannedFileCount, totalFileCount) => {
           lastReportedTotalFileCount = totalFileCount;
           Effect.runSync(
-            scanProgress.update(`Scanning files (${scannedFileCount}/${totalFileCount})...`),
+            scanProgress.update(
+              `Scanning files (${scannedFileCount}/${totalFileCount})${workerCountSuffix}...`,
+            ),
           );
         },
       })
@@ -386,12 +405,12 @@ export const runInspect = <HooksR = never>(
     }
 
     // Dead-code analysis only ever emits `"warning"`-severity diagnostics
-    // (the `deslop` plugin, all `Maintainability`). When warnings are
-    // hidden that output is filtered out before it reaches any surface or
-    // the score, so the expensive pass (separate worker, large heap, long
-    // timeout) would be pure wasted work — skip it. `--warnings` /
-    // `warnings: true` (and `--fail-on warning`, which forces warnings on)
-    // re-enable it, as does a severity override that restamps dead-code
+    // (the `deslop` plugin, all `Maintainability`). Warnings show by
+    // default, so this normally runs; only when the user opts out via
+    // `--no-warnings` / `warnings: false` is that output filtered out
+    // before it reaches any surface or the score, making the expensive
+    // pass (separate worker, large heap, long timeout) pure wasted work —
+    // so skip it then, unless a severity override restamps dead-code
     // findings to `"warn"`/`"error"` so they survive the global hide.
     const shouldRunDeadCode =
       input.runDeadCode &&
@@ -437,7 +456,7 @@ export const runInspect = <HooksR = never>(
         yield* scanProgress.stop();
       } else {
         yield* scanProgress.succeed(
-          `Scanned ${totalFileCount} ${totalFileCount === 1 ? "file" : "files"} in ${scanElapsedSeconds}s`,
+          `Scanned ${totalFileCount} ${totalFileCount === 1 ? "file" : "files"} in ${scanElapsedSeconds}s${workerCountSuffix}`,
         );
       }
     }
@@ -459,6 +478,7 @@ export const runInspect = <HooksR = never>(
       sourceFileCount: project.sourceFileCount,
       ...(defaultBranch !== null ? { defaultBranch } : {}),
       ...(input.doctorVersion !== undefined ? { doctorVersion: input.doctorVersion } : {}),
+      ...(input.runId !== undefined ? { runId: input.runId } : {}),
       ...githubActionsScoreMetadata,
       ...(githubViewerPermission !== null ? { githubViewerPermission } : {}),
     };
@@ -507,31 +527,3 @@ export const runInspect = <HooksR = never>(
       },
     }),
   );
-
-/**
- * Default layer stack for the production CLI / programmatic API:
- * real Node-side services for Project / Config / Files / Git / Linter /
- * DeadCode; HTTP for Score; noop Progress (the CLI overrides with
- * `Progress.layerOra(...)` for terminal feedback); the silent Reporter
- * (the orchestrator already returns the diagnostic array via
- * `Stream.runCollect`).
- *
- * Callers tweak by replacing individual layers: `--no-score` swaps
- * `Score.layerHttp` for `Score.layerOf(null)`; `--no-lint` swaps
- * `Linter.layerOxlint` for `Linter.layerOf([])`; `--no-dead-code`
- * swaps `DeadCode.layerNode` for `DeadCode.layerOf([])`; a caller
- * with a pre-loaded config swaps `Config.layerNode` for
- * `Config.layerOf(resolved)`.
- */
-export const layerInspectLive = Layer.mergeAll(
-  Project.layerNode,
-  Config.layerNode,
-  DeadCode.layerNode,
-  Files.layerNode,
-  Git.layerNode,
-  Linter.layerOxlint,
-  LintPartialFailures.layerLive,
-  Progress.layerNoop,
-  Reporter.layerNoop,
-  Score.layerHttp,
-);

@@ -34,4 +34,31 @@ describe("react-builtins/jsx-key — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  // Stable id-spread: spreading the whole iteration item is the "row carries
+  // its own identity" shape. We stay silent there but keep firing on genuine
+  // keyless lists.
+  it("does not flag a list element that spreads the iteration item", () => {
+    expectPass(`items.map(item => <Item {...item} />);`);
+  });
+
+  it("does not flag a function-expression iterator spreading the item", () => {
+    expectPass(`items.map(function (item) { return <Item {...item} />; });`);
+  });
+
+  it("does not flag Array.from spreading the item", () => {
+    expectPass(`Array.from(items, (item) => <Item {...item} />);`);
+  });
+
+  it("still flags a keyless list element that does not spread the item", () => {
+    expectFail(`items.map(item => <Item name={item.name} />);`);
+  });
+
+  it("still flags when spreading something other than the iteration item", () => {
+    expectFail(`items.map(item => <Item {...other} />);`);
+  });
+
+  it("still flags an array-literal element that spreads an identifier", () => {
+    expectFail(`[<Item {...item} />];`);
+  });
 });

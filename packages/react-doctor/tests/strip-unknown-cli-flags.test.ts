@@ -53,4 +53,51 @@ describe("stripUnknownCliFlags", () => {
   it("keeps an optional-value flag followed by another flag", () => {
     expect(stripUserArguments(["--diff", "--json"])).toEqual(["--diff", "--json"]);
   });
+
+  it("keeps the --color / --no-color flags so the color resolver can see them", () => {
+    expect(stripUserArguments([".", "--color"])).toEqual([".", "--color"]);
+    expect(stripUserArguments([".", "--no-color"])).toEqual([".", "--no-color"]);
+    expect(stripUserArguments(["install", "--no-color", "--cwd", "."])).toEqual([
+      "install",
+      "--no-color",
+      "--cwd",
+      ".",
+    ]);
+  });
+
+  it("keeps the --no-telemetry alias for --no-score", () => {
+    expect(stripUserArguments([".", "--no-telemetry"])).toEqual([".", "--no-telemetry"]);
+  });
+
+  it("keeps color flags on the version subcommand and drops unknown ones", () => {
+    expect(stripUserArguments(["version", "--no-color"])).toEqual(["version", "--no-color"]);
+    expect(stripUserArguments(["version", "--color"])).toEqual(["version", "--color"]);
+    expect(stripUserArguments(["version", "--offline"])).toEqual(["version"]);
+  });
+
+  it("keeps rules subcommand options and positionals", () => {
+    expect(
+      stripUserArguments(["rules", "explain", "react-doctor/no-danger", "-c", "/tmp/project"]),
+    ).toEqual(["rules", "explain", "react-doctor/no-danger", "-c", "/tmp/project"]);
+    expect(
+      stripUserArguments(["rules", "list", "--category", "Performance", "--configured", "--json"]),
+    ).toEqual(["rules", "list", "--category", "Performance", "--configured", "--json"]);
+    expect(
+      stripUserArguments(["rules", "enable", "no-danger", "--severity", "error", "--offline"]),
+    ).toEqual(["rules", "enable", "no-danger", "--severity", "error"]);
+  });
+
+  it("keeps color flags on rules subcommands so the color resolver can see them", () => {
+    expect(stripUserArguments(["rules", "list", "--no-color"])).toEqual([
+      "rules",
+      "list",
+      "--no-color",
+    ]);
+    expect(stripUserArguments(["rules", "explain", "no-danger", "--color"])).toEqual([
+      "rules",
+      "explain",
+      "no-danger",
+      "--color",
+    ]);
+  });
 });

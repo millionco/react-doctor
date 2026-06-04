@@ -1,6 +1,6 @@
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
-import path from "node:path";
+import * as path from "node:path";
 import { isDirectory } from "./project-info/index.js";
 import type { ReactDoctorConfig } from "./types/index.js";
 

@@ -244,40 +244,58 @@ describe("Git.diffSelection — git-flag injection (CVE-2018-17456 shape)", () =
    * `case "$DIFF_BASE" in -*)`, but the library boundary owns the
    * library boundary.
    *
+   * `A..B` / `A...B` ranges ARE supported now, but the guard still
+   * holds per-endpoint: a range can't smuggle an option past the check
+   * via either side (`main..--upload-pack=evil`).
+   *
    * Tests use `Git.layerNode` (production layer) because the
    * validation runs BEFORE any subprocess spawn — the test never
    * reaches `ChildProcess.spawn` so no `git` binary is required.
    */
-  const expectInvalid = async (badRef: string) => {
+  const expectInvalidReason = async (badRef: string) => {
     const program = Effect.gen(function* () {
       const git = yield* Git;
       return yield* git.diffSelection({ directory: "/repo", explicitBaseBranch: badRef });
     });
-    const exit = await Effect.runPromiseExit(program.pipe(Effect.provide(Git.layerNode)));
-    expect(exit._tag).toBe("Failure");
+    // `Effect.flip` swaps channels: a validation failure resolves the
+    // promise with the error so we can assert its tag, while an
+    // unexpected success would reject (failing the test).
+    const error = await Effect.runPromise(program.pipe(Effect.provide(Git.layerNode), Effect.flip));
+    expect(error).toBeInstanceOf(ReactDoctorError);
+    expect(error.reason._tag).toBe("GitBaseBranchInvalid");
   };
 
   it("rejects a leading dash (git option-injection shape)", async () => {
-    await expectInvalid("--upload-pack=evil");
+    await expectInvalidReason("--upload-pack=evil");
   });
 
-  it("rejects refnames with `..` (rev-range injection)", async () => {
-    await expectInvalid("main..origin/main");
+  it("rejects a range endpoint that looks like a git option", async () => {
+    await expectInvalidReason("main..--upload-pack=evil");
+    await expectInvalidReason("--upload-pack=evil..main");
+  });
+
+  it("rejects a range endpoint carrying a reflog suffix", async () => {
+    await expectInvalidReason("main..feature@{upstream}");
+  });
+
+  it("rejects a degenerate range with no commits", async () => {
+    await expectInvalidReason("..");
+    await expectInvalidReason("...");
   });
 
   it("rejects refnames containing `@{` (reflog suffix)", async () => {
-    await expectInvalid("main@{1}");
+    await expectInvalidReason("main@{1}");
   });
 
   it("rejects refnames containing spaces or shell metacharacters", async () => {
-    await expectInvalid("main; rm -rf /");
+    await expectInvalidReason("main; rm -rf /");
   });
 
   it("rejects refnames starting with a dot", async () => {
-    await expectInvalid(".main");
+    await expectInvalidReason(".main");
   });
 
   it("rejects empty refnames (legacy contract)", async () => {
-    await expectInvalid("");
+    await expectInvalidReason("");
   });
 });

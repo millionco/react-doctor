@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
-import fs from "node:fs";
-import path from "node:path";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { runOxlint } from "@react-doctor/core";
 import type { Diagnostic, ProjectInfo } from "@react-doctor/core";
 
@@ -27,6 +27,15 @@ export const initGitRepo = (directory: string, options: { commit?: boolean } = {
     spawnSync("git", ["add", "."], { cwd: directory });
     spawnSync("git", ["commit", "-q", "-m", "init"], { cwd: directory });
   }
+};
+
+/** Stages everything and commits it, returning the new HEAD commit SHA. */
+export const commitAll = (directory: string, message: string): string => {
+  spawnSync("git", ["add", "."], { cwd: directory });
+  spawnSync("git", ["commit", "-q", "-m", message], { cwd: directory });
+  return spawnSync("git", ["rev-parse", "HEAD"], { cwd: directory, encoding: "utf-8" })
+    .stdout.toString()
+    .trim();
 };
 
 export const buildDiagnostic = (overrides: Partial<Diagnostic> = {}): Diagnostic => ({
@@ -114,6 +123,8 @@ export interface BuildTestProjectOptions {
   reactMajorVersion?: number | null;
   hasTypeScript?: boolean;
   tailwindVersion?: string | null;
+  shopifyFlashListVersion?: string | null;
+  shopifyFlashListMajorVersion?: number | null;
 }
 
 export const buildTestProject = (options: BuildTestProjectOptions): ProjectInfo => {
@@ -139,6 +150,9 @@ export const buildTestProject = (options: BuildTestProjectOptions): ProjectInfo 
     hasReactCompiler: options.hasReactCompiler ?? false,
     hasTanStackQuery: options.hasTanStackQuery ?? false,
     hasReactNativeWorkspace: framework === "expo" || framework === "react-native",
+    expoVersion: framework === "expo" ? "~51.0.0" : null,
+    shopifyFlashListVersion: options.shopifyFlashListVersion ?? null,
+    shopifyFlashListMajorVersion: options.shopifyFlashListMajorVersion ?? null,
     hasReanimated: options.hasReanimated ?? false,
     preactVersion: null,
     preactMajorVersion: null,
@@ -166,6 +180,10 @@ export const collectRuleHits = async (
   const diagnostics = await runOxlint({
     rootDirectory: projectDir,
     project,
+    // Force-enable the rule under test so default-disabled rules
+    // (`defaultEnabled: false`) still produce hits here. Severity is
+    // irrelevant — callers assert on file path and message, not severity.
+    userConfig: { rules: { [`react-doctor/${ruleId}`]: "warn" } },
   });
   return diagnostics
     .filter((diagnostic) => diagnostic.rule === ruleId)

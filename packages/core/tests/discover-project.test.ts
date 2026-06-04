@@ -1,6 +1,6 @@
-import fs from "node:fs";
+import * as fs from "node:fs";
 import os from "node:os";
-import path from "node:path";
+import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 import {
   discoverProject,
@@ -755,6 +755,147 @@ describe("listWorkspacePackages", () => {
     expect(packages, "overlapping workspace patterns should yield one entry").toHaveLength(1);
     expect(uiOccurrences, "packages/ui should appear exactly once").toHaveLength(1);
   });
+
+  it("flags a managed Expo app as an Expo project", () => {
+    const projectDirectory = path.join(tempDirectory, "expo-managed-app");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "expo-managed-app",
+        dependencies: { expo: "~51.0.0", react: "^18.2.0", "react-native": "0.74.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.framework).toBe("expo");
+    expect(projectInfo.expoVersion).toBe("~51.0.0");
+  });
+
+  it("flags an Expo project even when a web bundler wins framework detection", () => {
+    const projectDirectory = path.join(tempDirectory, "expo-with-vite");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "expo-with-vite",
+        dependencies: { expo: "~51.0.0", "react-native": "0.74.0", react: "^18.2.0" },
+        devDependencies: { vite: "^5.0.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.framework, "vite is matched before expo").toBe("vite");
+    expect(projectInfo.expoVersion, "expo dependency still flags the project").toBe("~51.0.0");
+  });
+
+  it("flags a web-rooted monorepo with an Expo workspace as an Expo project", () => {
+    const rootDirectory = path.join(tempDirectory, "expo-workspace-monorepo");
+    const mobileDirectory = path.join(rootDirectory, "apps", "mobile");
+    fs.mkdirSync(mobileDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({
+        name: "monorepo-root",
+        dependencies: { next: "^14.0.0", react: "^19.0.0", "react-dom": "^19.0.0" },
+        workspaces: ["apps/*"],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(mobileDirectory, "package.json"),
+      JSON.stringify({
+        name: "mobile",
+        dependencies: { expo: "~51.0.0", react: "^18.2.0", "react-native": "0.74.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(rootDirectory);
+    expect(projectInfo.expoVersion, "expo version is resolved from the workspace").toBe("~51.0.0");
+  });
+
+  it("detects `expo` declared only in peerDependencies", () => {
+    const projectDirectory = path.join(tempDirectory, "expo-peer-dep");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "expo-peer-dep",
+        dependencies: { react: "^18.2.0", "react-native": "0.74.0" },
+        peerDependencies: { expo: "~51.0.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.expoVersion).toBe("~51.0.0");
+  });
+
+  it("does not crash and stays null on a non-string `expo` spec", () => {
+    const projectDirectory = path.join(tempDirectory, "expo-non-string");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      // `expo` as a number is malformed but parseable JSON.
+      '{"name":"bad","dependencies":{"react":"^18.2.0","react-native":"0.74.0","expo":54}}',
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.expoVersion).toBeNull();
+  });
+
+  it("resolves an Expo `catalog:` spec from the pnpm workspace catalog", () => {
+    const monorepoRoot = path.join(tempDirectory, "expo-pnpm-catalog");
+    const mobileDirectory = path.join(monorepoRoot, "apps", "mobile");
+    fs.mkdirSync(mobileDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(monorepoRoot, "pnpm-workspace.yaml"),
+      "packages:\n  - apps/*\n\ncatalog:\n  expo: ~54.0.0\n",
+    );
+    fs.writeFileSync(path.join(monorepoRoot, "package.json"), JSON.stringify({ name: "root" }));
+    fs.writeFileSync(
+      path.join(mobileDirectory, "package.json"),
+      JSON.stringify({
+        name: "mobile",
+        dependencies: { expo: "catalog:", react: "^18.2.0", "react-native": "0.74.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(mobileDirectory);
+    expect(projectInfo.expoVersion, "catalog spec resolves so the SDK major can be parsed").toBe(
+      "~54.0.0",
+    );
+  });
+
+  it("does not flag a bare React Native (non-Expo) project as an Expo project", () => {
+    const projectDirectory = path.join(tempDirectory, "bare-react-native");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "bare-react-native",
+        dependencies: { "react-native": "0.74.0", react: "^18.2.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.framework).toBe("react-native");
+    expect(projectInfo.expoVersion).toBeNull();
+  });
+
+  it("does not flag a plain web project as an Expo project", () => {
+    const projectDirectory = path.join(tempDirectory, "plain-web-app");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "plain-web-app",
+        dependencies: { react: "^19.0.0", "react-dom": "^19.0.0" },
+        devDependencies: { vite: "^5.0.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.expoVersion).toBeNull();
+  });
 });
 
 const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-discover-test-"));
@@ -1356,5 +1497,56 @@ describe("discoverProject — Preact", () => {
     const projectInfo = discoverProject(projectDirectory);
     expect(projectInfo.preactVersion).toBe(null);
     expect(projectInfo.preactMajorVersion).toBe(null);
+  });
+});
+
+describe("discoverProject — FlashList", () => {
+  it("detects @shopify/flash-list v2 in a React Native project", () => {
+    const projectDirectory = path.join(tempDirectory, "flash-list-v2");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "flash-list-v2",
+        dependencies: {
+          react: "^19.0.0",
+          "react-native": "0.76.0",
+          "@shopify/flash-list": "^2.0.0",
+        },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.shopifyFlashListVersion).toBe("^2.0.0");
+    expect(projectInfo.shopifyFlashListMajorVersion).toBe(2);
+  });
+
+  it("resolves @shopify/flash-list from a workspace catalog", () => {
+    const rootDirectory = path.join(tempDirectory, "flash-list-workspace-catalog");
+    const mobileDirectory = path.join(rootDirectory, "apps", "mobile");
+    fs.mkdirSync(mobileDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "pnpm-workspace.yaml"),
+      'packages:\n  - apps/*\n\ncatalog:\n  "@shopify/flash-list": ^2.1.0\n',
+    );
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({ name: "root", workspaces: ["apps/*"] }),
+    );
+    fs.writeFileSync(
+      path.join(mobileDirectory, "package.json"),
+      JSON.stringify({
+        name: "mobile",
+        dependencies: {
+          react: "^19.0.0",
+          "react-native": "0.76.0",
+          "@shopify/flash-list": "catalog:",
+        },
+      }),
+    );
+
+    const projectInfo = discoverProject(rootDirectory);
+    expect(projectInfo.shopifyFlashListVersion).toBe("^2.1.0");
+    expect(projectInfo.shopifyFlashListMajorVersion).toBe(2);
   });
 });

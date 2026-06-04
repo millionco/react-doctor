@@ -66,7 +66,7 @@ export const runExplain = async (
 
   for (const diagnostic of matchingDiagnostics) {
     const ruleIdentifier = `${diagnostic.plugin}/${diagnostic.rule}`;
-    const severitySymbol = diagnostic.severity === "error" ? "✗" : "⚠";
+    const severitySymbol = diagnostic.severity === "error" ? "✖" : "⚠";
     const colorizedRule = colorizeRuleByDiagnostic(ruleIdentifier, diagnostic.severity);
     const severityLabel = colorizeRuleByDiagnostic(diagnostic.severity, diagnostic.severity);
     logger.log(

@@ -53,7 +53,6 @@ export const failCases: ReadonlyArray<OxcFixture> = [
   {
     code: `<a href="j
 
-
 			a
 v	ascript:"></a>`,
   },

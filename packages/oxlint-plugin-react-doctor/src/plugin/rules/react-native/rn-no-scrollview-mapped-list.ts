@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
+import { isExpoUiComponentElement } from "./utils/is-expo-ui-component-element.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -45,6 +46,12 @@ export const rnNoScrollviewMappedList = defineRule<Rule>({
     JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
       const elementName = resolveJsxElementName(node.openingElement);
       if (!elementName || !NON_VIRTUALIZED_SCROLL_CONTAINERS.has(elementName)) return;
+
+      // Universal UI's `<ScrollView>` is a native scroll container — RN's
+      // virtualized lists can't compose inside its `<Host>` tree, so the
+      // FlashList/FlatList advice doesn't apply. `@expo/ui` ships its own
+      // `<List>` for long content instead.
+      if (isExpoUiComponentElement(node.openingElement, node, "ScrollView")) return;
 
       for (const child of node.children ?? []) {
         if (!isNodeOfType(child, "JSXExpressionContainer")) continue;

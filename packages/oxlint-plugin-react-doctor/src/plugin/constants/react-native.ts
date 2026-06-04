@@ -73,11 +73,19 @@ export const LEGACY_EXPO_PACKAGE_REPLACEMENTS = new Map<string, string>([
     "the permissions API in each module (e.g. Camera.requestPermissionsAsync())",
   ],
   ["expo-app-loading", "expo-splash-screen"],
-  [
-    "expo-linear-gradient",
-    "the `backgroundImage` CSS gradient style prop (New Architecture) or expo-linear-gradient's successor",
-  ],
   ["react-native-fast-image", "expo-image (drop-in with caching, placeholders, and crossfades)"],
+]);
+
+export const FLASH_LIST_V2_MAJOR = 2;
+
+// Expo's Universal UI (`@expo/ui`) entry points. The universal package
+// re-exports the platform-specific builds, so a component may be imported
+// from the root or from either platform subpath.
+// Ref: https://docs.expo.dev/versions/v56.0.0/sdk/ui/universal/
+export const EXPO_UI_MODULE_SOURCES = new Set([
+  "@expo/ui",
+  "@expo/ui/swift-ui",
+  "@expo/ui/jetpack-compose",
 ]);
 
 export const REACT_NATIVE_LIST_COMPONENTS = new Set([

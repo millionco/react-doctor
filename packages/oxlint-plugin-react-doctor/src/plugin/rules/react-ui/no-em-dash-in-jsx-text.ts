@@ -11,6 +11,9 @@ export const noEmDashInJsxText = defineRule<Rule>({
   title: "Em dash in JSX text",
   tags: ["design", "test-noise"],
   severity: "warn",
+  // Default off: subjective design / house-style preference, not a
+  // correctness, performance, or accessibility issue. Opt in to enforce it.
+  defaultEnabled: false,
   category: "Architecture",
   recommendation:
     "Replace em dashes in UI text with commas, colons, semicolons, or parentheses so the copy reads less like AI output.",

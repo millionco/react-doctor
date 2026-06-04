@@ -29,6 +29,14 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<string> => 
     // `oxlint-plugin-react-doctor` ever runs.
     capabilities.add("react-native");
   }
+  // `expoVersion` covers the same inverted case as `hasReactNativeWorkspace`
+  // above: a web-rooted monorepo (or a project declaring both `expo` and a web
+  // bundler) classifies as a web `framework` yet still ships Expo. Without
+  // this, Expo-specific rules would be dropped before the file-level package
+  // boundary in `oxlint-plugin-react-doctor` ever runs.
+  if (project.expoVersion !== null) {
+    capabilities.add("expo");
+  }
 
   const reactMajor = project.reactMajorVersion;
   if (reactMajor !== null) {

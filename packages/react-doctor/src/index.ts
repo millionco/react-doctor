@@ -5,6 +5,7 @@ import {
   clearConfigCache,
   clearIgnorePatternsCache,
   clearPackageJsonCache,
+  clearPackageRoleCache,
   clearProjectCache,
 } from "@react-doctor/core";
 import type {
@@ -69,6 +70,7 @@ export const clearCaches = (): void => {
   clearConfigCache();
   clearPackageJsonCache();
   clearIgnorePatternsCache();
+  clearPackageRoleCache();
   clearAutoSuppressionCaches();
 };
 

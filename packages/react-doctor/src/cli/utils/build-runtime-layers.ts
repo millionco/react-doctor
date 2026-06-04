@@ -7,6 +7,7 @@ import {
   Git,
   Linter,
   LintPartialFailures,
+  OxlintConcurrency,
   Progress,
   Project,
   Reporter,
@@ -41,6 +42,15 @@ export interface BuildRuntimeLayersInput {
    * a noop instead of emitting frames into a quiet stream.
    */
   readonly shouldShowProgressSpinners: boolean;
+  /**
+   * Resolved oxlint worker count from the CLI's `--no-parallel` flag
+   * (today the only value it produces is `1` — serial). When provided, it
+   * overrides the `OxlintConcurrency` Reference for this run via
+   * `Layer.succeed`; `undefined` leaves the env-seeded ambient default
+   * (parallel: auto-detect cores unless `REACT_DOCTOR_PARALLEL` pins a
+   * count) in place.
+   */
+  readonly oxlintConcurrency?: number;
 }
 
 /**
@@ -66,9 +76,8 @@ const buildSpinnerProgressHandle = (text: string): ProgressHandle => {
  * construction and post-scan rendering — layer wiring is its own
  * concern with its own contract.
  *
- * Same shape as `core/src/run-inspect.ts → layerInspectLive`
- * (the default for `@react-doctor/api → diagnose()`) with the
- * differences specific to the CLI path:
+ * Same service shape as `@react-doctor/api → diagnose()`'s
+ * `buildDiagnoseLayer`, with the differences specific to the CLI path:
  *
  * - **Config**: when the caller passes `configOverride`, the
  *   already-loaded config is provided via `Config.layerOf` instead
@@ -104,7 +113,7 @@ export const buildRuntimeLayers = (input: BuildRuntimeLayersInput) => {
       })
     : Config.layerNode;
 
-  return Layer.mergeAll(
+  const baseLayers = Layer.mergeAll(
     Project.layerNode,
     configLayer,
     Files.layerNode,
@@ -116,4 +125,12 @@ export const buildRuntimeLayers = (input: BuildRuntimeLayersInput) => {
     Reporter.layerNoop,
     scoreLayer,
   );
+
+  // Only override the ambient `OxlintConcurrency` Reference when the CLI
+  // resolved a concrete worker count (today: `--no-parallel` → serial);
+  // otherwise leave the env-seeded default (parallel) so
+  // `REACT_DOCTOR_PARALLEL` still applies to flag-less runs.
+  return input.oxlintConcurrency === undefined
+    ? baseLayers
+    : Layer.mergeAll(baseLayers, Layer.succeed(OxlintConcurrency, input.oxlintConcurrency));
 };

@@ -44,6 +44,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
+          # When `pnpm release` actually publishes, its `sentry-sourcemaps`
+          # step injects Debug IDs into dist/cli.js and uploads the maps to
+          # Sentry under `react-doctor@<version>` (no-op if these are unset).
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
 
   publish-dev:
     name: Publish @dev snapshot
@@ -89,6 +95,17 @@ jobs:
         env:
           VERSION: ${{ steps.dev-version.outputs.version }}
         run: pnpm build
+
+      # Inject Debug IDs into the built bundle and upload its source maps to
+      # Sentry BEFORE publishing, so the @dev tarball symbolicates. No-op when
+      # the SENTRY_* secrets aren't configured.
+      - name: Upload source maps to Sentry (@dev)
+        env:
+          VERSION: ${{ steps.dev-version.outputs.version }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        run: node scripts/sentry-sourcemaps.mjs
 
       - name: Publish to npm under the dev tag
         env:

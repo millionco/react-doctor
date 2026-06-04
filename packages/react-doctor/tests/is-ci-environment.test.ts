@@ -1,11 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import {
+  ACTION_INPUT_ENVIRONMENT_VARIABLES,
   CI_ENVIRONMENT_VARIABLES,
   CODING_AGENT_ENVIRONMENT_VALUE_VARIABLES,
   CODING_AGENT_ENVIRONMENT_VARIABLES,
+  GITHUB_ACTION_MARKER_ENVIRONMENT_VARIABLE,
+  detectCiEventName,
+  detectRunnerOs,
   isCiEnvironment,
   isCiOrCodingAgentEnvironment,
   isCodingAgentEnvironment,
+  isOfficialGithubAction,
+  isPullRequestCiEvent,
 } from "../src/cli/utils/is-ci-environment.js";
 
 const ENVIRONMENT_VARIABLES = [
@@ -13,6 +19,10 @@ const ENVIRONMENT_VARIABLES = [
   ...CI_ENVIRONMENT_VARIABLES,
   ...CODING_AGENT_ENVIRONMENT_VARIABLES,
   ...CODING_AGENT_ENVIRONMENT_VALUE_VARIABLES,
+  "GITHUB_EVENT_NAME",
+  "RUNNER_OS",
+  GITHUB_ACTION_MARKER_ENVIRONMENT_VARIABLE,
+  ...Object.values(ACTION_INPUT_ENVIRONMENT_VARIABLES),
   "OPENAI_API_KEY",
   "GEMINI_API_KEY",
   "OPENCODE_CONFIG",
@@ -175,5 +185,57 @@ describe("isCiEnvironment", () => {
     expect(isCiEnvironment()).toBe(false);
     expect(isCiOrCodingAgentEnvironment()).toBe(false);
     expect(isCodingAgentEnvironment()).toBe(false);
+  });
+});
+
+describe("GitHub Actions CI detectors", () => {
+  let savedEnv: Record<string, string | undefined>;
+
+  beforeEach(() => {
+    savedEnv = {};
+    for (const envVariable of ENVIRONMENT_VARIABLES) {
+      savedEnv[envVariable] = process.env[envVariable];
+      delete process.env[envVariable];
+    }
+  });
+
+  afterEach(() => {
+    for (const envVariable of ENVIRONMENT_VARIABLES) {
+      const previousValue = savedEnv[envVariable];
+      if (previousValue === undefined) {
+        delete process.env[envVariable];
+      } else {
+        process.env[envVariable] = previousValue;
+      }
+    }
+  });
+
+  it("detects the official react-doctor GitHub Action via its marker", () => {
+    expect(isOfficialGithubAction()).toBe(false);
+    process.env[GITHUB_ACTION_MARKER_ENVIRONMENT_VARIABLE] = "v1";
+    expect(isOfficialGithubAction()).toBe(true);
+  });
+
+  it("reads the GitHub event name and pull-request signal", () => {
+    expect(detectCiEventName()).toBeNull();
+    expect(isPullRequestCiEvent()).toBe(false);
+
+    process.env.GITHUB_EVENT_NAME = "pull_request";
+    expect(detectCiEventName()).toBe("pull_request");
+    expect(isPullRequestCiEvent()).toBe(true);
+
+    process.env.GITHUB_EVENT_NAME = "push";
+    expect(isPullRequestCiEvent()).toBe(false);
+  });
+
+  it("treats pull_request_target as a pull request event", () => {
+    process.env.GITHUB_EVENT_NAME = "pull_request_target";
+    expect(isPullRequestCiEvent()).toBe(true);
+  });
+
+  it("reads the runner OS when present", () => {
+    expect(detectRunnerOs()).toBeNull();
+    process.env.RUNNER_OS = "Linux";
+    expect(detectRunnerOs()).toBe("Linux");
   });
 });

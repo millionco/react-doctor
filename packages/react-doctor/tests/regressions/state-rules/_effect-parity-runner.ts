@@ -1,5 +1,5 @@
-import fs from "node:fs";
-import path from "node:path";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import url from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 import { collectRuleHits, createScopedTempRoot, setupReactProject } from "./_helpers.js";

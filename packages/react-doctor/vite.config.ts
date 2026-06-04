@@ -1,5 +1,5 @@
-import fs from "node:fs";
-import path from "node:path";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite-plus";
 
@@ -32,16 +32,29 @@ const assertSkillManifestParseable = (manifestPath: string): void => {
   }
 };
 
-const copySkillToDist = () => {
-  const skillSource = path.resolve(packageRoot, "../../skills/react-doctor");
-  const skillTarget = path.resolve(packageRoot, "dist/skills/react-doctor");
-  if (!fs.existsSync(skillSource)) {
-    throw new Error(`Skill source missing at ${skillSource}; expected to ship dist/skills/`);
+// Ship every skill directory under `skills/` (react-doctor + doctor-explain
+// today) so `react-doctor install` can install them all. Each is validated
+// at build time so a broken SKILL.md is caught here, not at install time.
+const copySkillsToDist = () => {
+  const skillsRoot = path.resolve(packageRoot, "../../skills");
+  const distSkillsRoot = path.resolve(packageRoot, "dist/skills");
+  const primarySkillSource = path.join(skillsRoot, "react-doctor");
+  if (!fs.existsSync(primarySkillSource)) {
+    throw new Error(`Skill source missing at ${primarySkillSource}; expected to ship dist/skills/`);
   }
-  assertSkillManifestParseable(path.join(skillSource, "SKILL.md"));
-  fs.rmSync(skillTarget, { recursive: true, force: true });
-  fs.mkdirSync(skillTarget, { recursive: true });
-  fs.cpSync(skillSource, skillTarget, { recursive: true });
+  fs.rmSync(distSkillsRoot, { recursive: true, force: true });
+  const skillNames = fs
+    .readdirSync(skillsRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .filter((name) => fs.existsSync(path.join(skillsRoot, name, "SKILL.md")));
+  for (const skillName of skillNames) {
+    const skillSource = path.join(skillsRoot, skillName);
+    const skillTarget = path.join(distSkillsRoot, skillName);
+    assertSkillManifestParseable(path.join(skillSource, "SKILL.md"));
+    fs.mkdirSync(skillTarget, { recursive: true });
+    fs.cpSync(skillSource, skillTarget, { recursive: true });
+  }
 };
 
 export default defineConfig({
@@ -60,9 +73,22 @@ export default defineConfig({
         alwaysBundle: ["commander", "ora"],
         neverBundle: [
           "@effect/platform-node-shared",
+          // Sentry bundles its own OpenTelemetry instrumentation chain
+          // and resolves native/optional deps via require() at runtime;
+          // keep it external so those lookups run untouched (same
+          // rationale as `effect` and `deslop-js` below).
+          "@sentry/node",
           "agent-install",
-          // The vscode-* LSP libs back `react-doctor lsp` (pulled in via
-          // @react-doctor/language-server). They MUST stay external:
+          // Config loading/editing: jiti (TS/JS config eval) + confbox
+          // (JSONC parse) power the loader in @react-doctor/core (bundled
+          // in here), and magicast edits .ts/.js configs for `rules`.
+          // All pure-JS but heavy / runtime-resolving, so keep external
+          // and installed rather than inlined into the CLI bundle.
+          "confbox",
+          "jiti",
+          "magicast",
+          // The vscode-* LSP libs back `react-doctor experimental-lsp` (pulled
+          // in via @react-doctor/language-server). They MUST stay external:
           // vscode-jsonrpc uses dynamic requires that break when bundled
           // (the server would start and exit immediately). They're
           // declared as runtime dependencies so the published tarball
@@ -98,6 +124,12 @@ export default defineConfig({
       dts: true,
       target: "node20",
       platform: "node",
+      // Emit source maps so the release pipeline (scripts/sentry-sourcemaps.mjs)
+      // can inject Sentry Debug IDs and upload them for readable, de-minified
+      // stack traces. The `.map` files are NOT shipped in the npm tarball (see
+      // package.json "files"); symbolication happens server-side in Sentry via
+      // the Debug IDs injected into the published `dist/cli.js`.
+      sourcemap: true,
       env: {
         VERSION: process.env.VERSION ?? packageJson.version,
       },
@@ -111,7 +143,7 @@ export default defineConfig({
       fixedExtension: false,
       hooks: {
         "build:done": () => {
-          copySkillToDist();
+          copySkillsToDist();
         },
       },
     },
@@ -121,7 +153,11 @@ export default defineConfig({
         alwaysBundle: ["commander", "ora"],
         neverBundle: [
           "@effect/platform-node-shared",
+          "@sentry/node",
           "agent-install",
+          "confbox",
+          "jiti",
+          "magicast",
           "deslop-js",
           "effect",
           "oxc-parser",
@@ -139,7 +175,7 @@ export default defineConfig({
     },
     {
       // Dedicated language-server entry the bin shim fast-paths to for
-      // `react-doctor lsp`. Inlines @react-doctor/language-server + core;
+      // `react-doctor experimental-lsp`. Inlines @react-doctor/language-server + core;
       // keeps the engine + LSP transport external (the vscode-* libs use
       // dynamic requires that break when bundled).
       entry: { lsp: "./src/lsp.ts" },

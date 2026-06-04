@@ -1,6 +1,6 @@
 {
   "name": "react-doctor",
-  "version": "0.2.14",
+  "version": "0.3.0",
   "description": "Diagnose and fix React codebases for security, performance, correctness, accessibility, bundle-size, and architecture issues",
   "keywords": [
     "accessibility",
@@ -57,11 +57,15 @@
   "dependencies": {
     "@babel/code-frame": "^7.29.0",
     "@effect/platform-node-shared": "4.0.0-beta.70",
+    "@sentry/node": "^10.54.0",
     "agent-install": "0.0.5",
     "conf": "^15.1.0",
-    "deslop-js": "^0.0.14",
+    "confbox": "^0.2.4",
+    "deslop-js": "^0.0.19",
     "effect": "4.0.0-beta.70",
     "eslint-plugin-react-hooks": "^7.1.1",
+    "jiti": "^2.7.0",
+    "magicast": "^0.5.3",
     "oxlint": "^1.66.0",
     "oxlint-plugin-react-doctor": "workspace:*",
     "prompts": "^2.4.2",

@@ -16,8 +16,8 @@ export interface DiagnoseOptions {
   respectInlineDisables?: boolean;
   /**
    * Per-call override for `ReactDoctorConfig.warnings`. See that field's
-   * docs — `"warning"`-severity diagnostics are hidden unless this (or
-   * the config) opts them back in.
+   * docs — `"warning"`-severity diagnostics surface by default unless this
+   * (or the config) opts out via `false`.
    */
   warnings?: boolean;
 }
@@ -42,13 +42,13 @@ export interface DiagnoseResult {
  * Scan options (`deadCode`, `lint`, etc.) are flat on the entry and
  * layer on top of the global defaults — omitted fields fall through.
  * `config` is a full `ReactDoctorConfig` override that replaces the
- * on-disk `react-doctor.config.json` for this project's scan.
+ * on-disk `doctor.config.*` for this project's scan.
  */
 export interface ProjectDefinition extends DiagnoseOptions {
   directory: string;
   /**
    * Full react-doctor config override for this project. When provided,
-   * replaces the on-disk `react-doctor.config.json` for this project's
+   * replaces the on-disk `doctor.config.*` for this project's
    * scan — the scan target resolver still runs (so `rootDir` and
    * subproject discovery work), but its loaded config is swapped out.
    */

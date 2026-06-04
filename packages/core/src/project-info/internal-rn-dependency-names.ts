@@ -14,14 +14,22 @@
 // compat layer that pairs with `react-dom` / Next / Vite hosts,
 // not a mobile target.
 
-const NAMES: ReadonlySet<string> = new Set([
-  "react-native",
-  "react-native-tvos",
+// Closed set of canonical Expo-managed dependency names — the subset of
+// the RN cohort that marks a manifest as an *Expo* app specifically.
+// Mirrors `EXPO_MANAGED_DEPENDENCY_NAMES` in
+// `oxlint-plugin-react-doctor/src/react-native-dependency-names.ts`.
+const EXPO_MANAGED_NAMES: ReadonlySet<string> = new Set([
   "expo",
   "expo-router",
   "@expo/cli",
   "@expo/metro-config",
   "@expo/metro-runtime",
+]);
+
+const NAMES: ReadonlySet<string> = new Set([
+  "react-native",
+  "react-native-tvos",
+  ...EXPO_MANAGED_NAMES,
   "react-native-windows",
   "react-native-macos",
 ]);

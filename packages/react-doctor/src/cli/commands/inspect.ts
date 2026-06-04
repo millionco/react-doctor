@@ -1,11 +1,12 @@
-import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import path from "node:path";
+import * as path from "node:path";
 import { performance } from "node:perf_hooks";
 import * as Effect from "effect/Effect";
+import * as fs from "node:fs";
 import {
   buildJsonReport,
   filterDiagnosticsForSurface,
+  findLegacyConfig,
   getDiffInfo,
   highlighter,
   resolveScanTarget,
@@ -20,11 +21,14 @@ import type {
   ReactDoctorConfig,
 } from "@react-doctor/core";
 import { cliLogger as logger } from "../utils/cli-logger.js";
-import { STAGED_FILES_TEMP_DIR_PREFIX } from "../utils/constants.js";
+import { METRIC, STAGED_FILES_TEMP_DIR_PREFIX } from "../utils/constants.js";
+import { recordCount } from "../utils/record-metric.js";
 import { getStagedSourceFiles, materializeStagedFiles } from "../utils/get-staged-files.js";
 import type { InspectFlags } from "../utils/inspect-flags.js";
-import { handleError } from "../utils/handle-error.js";
+import { handleError, handleUserError } from "../utils/handle-error.js";
+import { isExpectedUserError } from "../utils/is-expected-user-error.js";
 import { handoffToAgent } from "../utils/handoff-to-agent.js";
+import { migrateLegacyConfig } from "../utils/migrate-legacy-config.js";
 import {
   enableJsonMode,
   setJsonReportDirectory,
@@ -32,8 +36,12 @@ import {
   writeJsonErrorReport,
   writeJsonReport,
 } from "../utils/json-mode.js";
+import { canAnimateOnboarding, isOnboardingForced } from "../utils/onboarding-pacing.js";
+import { hasCompletedOnboarding } from "../utils/onboarding-state.js";
 import { printAnnotations } from "../utils/print-annotations.js";
 import { printBrandedHeader } from "../utils/print-branded-header.js";
+import { playWelcomeScene, RETURNING_USER_SPEED_MULTIPLIER } from "../utils/render-welcome.js";
+import { reportErrorToSentry } from "../utils/report-error.js";
 import { readChangedFilesFrom } from "../utils/read-changed-files-from.js";
 import { printMultiProjectSummary } from "../utils/render-multi-project-summary.js";
 import { isCiOrCodingAgentEnvironment } from "../utils/is-ci-environment.js";
@@ -120,6 +128,40 @@ const buildChangedFilesDiffInfo = (changedFiles: string[]): DiffInfo => ({
   isCurrentChanges: false,
 });
 
+interface MigrationGuardInput {
+  readonly isQuiet: boolean;
+  readonly isStaged: boolean;
+}
+
+/**
+ * On an interactive human run, rename a pre-migration
+ * `react-doctor.config.json` to `doctor.config.ts` before config is loaded,
+ * so the scan reads the renamed file and the user is told once. CI, coding
+ * agents, JSON/score output, pre-commit (`--staged`) hooks, and non-TTY runs
+ * are left untouched — the loader's warning still nudges them — so a scan
+ * never mutates the repo unattended.
+ */
+const maybeMigrateLegacyConfig = (
+  requestedDirectory: string,
+  { isQuiet, isStaged }: MigrationGuardInput,
+): void => {
+  const isInteractiveHumanRun =
+    !isQuiet && !isStaged && process.stdout.isTTY === true && !isCiOrCodingAgentEnvironment();
+  if (!isInteractiveHumanRun) return;
+
+  const legacyConfig = findLegacyConfig(requestedDirectory);
+  if (!legacyConfig) return;
+
+  const migratedPath = migrateLegacyConfig(legacyConfig);
+  if (!migratedPath) return;
+
+  logger.success("Migrated react-doctor.config.json → doctor.config.ts");
+  logger.dim(
+    `  Your settings were preserved. Review ${toRelativePath(migratedPath, requestedDirectory)} and commit it.`,
+  );
+  logger.break();
+};
+
 export const inspectAction = async (directory: string, flags: InspectFlags): Promise<void> => {
   const isScoreOnly = Boolean(flags.score);
   const isJsonMode = Boolean(flags.json);
@@ -130,11 +172,16 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
   if (isJsonMode) {
     enableJsonMode({ compact: Boolean(flags.jsonCompact), directory: requestedDirectory });
   }
+  // Recorded after JSON mode is enabled so the metric's run attributes reflect
+  // the true `jsonMode` (run context is rebuilt per emit in `record-metric.ts`).
+  recordCount(METRIC.cliInvoked, 1, { command: "inspect" });
 
   try {
     validateModeFlags(flags);
 
-    const scanTarget = resolveScanTarget(requestedDirectory);
+    maybeMigrateLegacyConfig(requestedDirectory, { isQuiet, isStaged: Boolean(flags.staged) });
+
+    const scanTarget = await resolveScanTarget(requestedDirectory, { allowAmbiguous: true });
     const userConfig = scanTarget.userConfig;
     const resolvedDirectory = scanTarget.resolvedDirectory;
     setJsonReportDirectory(resolvedDirectory);
@@ -157,7 +204,23 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
     }
 
     if (!isQuiet) {
-      Effect.runSync(printBrandedHeader);
+      // Interactive regular runs open with the animated welcome scene in place
+      // of the static branded header. `--verbose` is a power-user review mode
+      // (the same user typed `--verbose` on purpose), so the intro is skipped
+      // entirely there and the static header takes over. Returning users in
+      // regular mode get a much snappier replay (`RETURNING_USER_SPEED_MULTIPLIER`)
+      // since they've already seen the full first-run pitch.
+      const showWelcome = !flags.verbose && canAnimateOnboarding(process.stdout);
+      if (showWelcome) {
+        const isReturningUser = !isOnboardingForced() && hasCompletedOnboarding();
+        await Effect.runPromise(
+          playWelcomeScene({
+            speedMultiplier: isReturningUser ? RETURNING_USER_SPEED_MULTIPLIER : 1,
+          }),
+        );
+      } else {
+        Effect.runSync(printBrandedHeader);
+      }
     }
 
     const scanOptions = resolveCliInspectOptions(flags, userConfig);
@@ -189,7 +252,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         logger.break();
       }
 
-      const tempDirectory = mkdtempSync(path.join(tmpdir(), STAGED_FILES_TEMP_DIR_PREFIX));
+      const tempDirectory = fs.mkdtempSync(path.join(tmpdir(), STAGED_FILES_TEMP_DIR_PREFIX));
       // If materialization throws before `snapshot.cleanup` is wired up,
       // remove the temp dir we just created so it can't leak.
       const snapshot = await materializeStagedFiles(
@@ -197,7 +260,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         stagedFiles,
         tempDirectory,
       ).catch((error: unknown) => {
-        rmSync(tempDirectory, { recursive: true, force: true });
+        fs.rmSync(tempDirectory, { recursive: true, force: true });
         throw error;
       });
       try {
@@ -315,11 +378,15 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
     }
 
     if (!isQuiet && isMultiProject && completedScans.length > 0) {
+      const shouldShowShareLink =
+        !scanOptions.noScore && (userConfig?.share ?? true) && !scanOptions.isCi;
       await Effect.runPromise(
         printMultiProjectSummary({
           completedScans,
           userConfig,
           verbose: Boolean(flags.verbose),
+          isOffline: !shouldShowShareLink,
+          projectName: path.basename(resolvedDirectory),
         }),
       );
     }
@@ -374,14 +441,25 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         })
       ) {
         printAgentInstallHint();
+        recordCount(METRIC.agentInstallHintShown, 1);
       }
     }
   } catch (error) {
+    // Expected, user-actionable failures — a directory without React, a missing
+    // package.json, or a bad `--diff` base branch — are the user's project or
+    // input, not a react-doctor bug: skip Sentry and the "open a prefilled
+    // issue" block so they don't become triage noise.
+    const isUserError = isExpectedUserError(error);
+    const sentryEventId = isUserError ? undefined : await reportErrorToSentry(error);
     if (isJsonMode) {
       writeJsonErrorReport(error);
       process.exitCode = 1;
       return;
     }
-    handleError(error);
+    if (isUserError) {
+      handleUserError(error);
+      return;
+    }
+    handleError(error, { sentryEventId });
   }
 };

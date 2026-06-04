@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import path from "node:path";
+import * as path from "node:path";
 import { readDirectoryEntries } from "../project-info/index.js";
 import { GIT_LS_FILES_MAX_BUFFER_BYTES, IGNORED_DIRECTORIES } from "../constants.js";
 import { isLintableSourceFile } from "./is-lintable-source-file.js";

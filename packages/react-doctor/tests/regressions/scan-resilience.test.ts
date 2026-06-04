@@ -22,9 +22,9 @@
  */
 
 import { spawnSync } from "node:child_process";
-import fs from "node:fs";
+import * as fs from "node:fs";
 import os from "node:os";
-import path from "node:path";
+import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 
 import {
@@ -542,10 +542,9 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
     }
   });
 
-  // The four `jsx-no-new-*-as-prop` perf rules guard against a footgun
-  // (new array/object/function/JSX as a prop breaks downstream
-  // `React.memo`) that React Compiler auto-fixes at compile time. When
-  // RC is in scope they're unactionable noise, so they ship with
+  // These perf rules guard against fresh allocations that React Compiler
+  // auto-fixes at compile time. When RC is in scope they're unactionable
+  // noise, so they ship with
   // `disabledBy: ["react-compiler"]` and the gate must drop them.
   it("disables react-compiler-redundant perf rules when React Compiler is detected", () => {
     const reactCompilerGatedRules = [
@@ -553,6 +552,7 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
       "react-doctor/jsx-no-new-array-as-prop",
       "react-doctor/jsx-no-new-function-as-prop",
       "react-doctor/jsx-no-jsx-as-prop",
+      "react-doctor/jsx-no-constructed-context-values",
     ];
 
     const withoutCompiler = createOxlintConfig({
@@ -576,8 +576,10 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
   // is gated with `requires: ["react-compiler"]` so it ONLY fires once
   // the project ships with React Compiler. Without the compiler, manual
   // `useMemo` / `useCallback` / `memo()` are still legitimate perf
-  // tools — the gate must keep the rule out of the default config.
-  it("enables react-compiler-no-manual-memoization only when React Compiler is detected", () => {
+  // tools — the gate must keep the rule out of the default config. With
+  // the compiler it ships as a `warn` (redundant-memo cleanup is hidden in
+  // the default report); the `compiler-cleanup` bucket re-enables errors.
+  it("ships react-compiler-no-manual-memoization as a warning, gated on React Compiler", () => {
     const ruleKey = "react-doctor/react-compiler-no-manual-memoization";
 
     const withoutCompiler = createOxlintConfig({
@@ -590,7 +592,14 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
       pluginPath: "/tmp/react-doctor-plugin.js",
       project: buildTestProject({ rootDirectory: "/tmp/test", hasReactCompiler: true }),
     });
-    expect(withCompiler.rules[ruleKey]).toBe("error");
+    expect(withCompiler.rules[ruleKey]).toBe("warn");
+
+    const withCompilerCleanupBucket = createOxlintConfig({
+      pluginPath: "/tmp/react-doctor-plugin.js",
+      project: buildTestProject({ rootDirectory: "/tmp/test", hasReactCompiler: true }),
+      severityControls: { buckets: { "compiler-cleanup": "error" } },
+    });
+    expect(withCompilerCleanupBucket.rules[ruleKey]).toBe("error");
   });
 
   // The three noisy upstream rules ship `defaultEnabled: false` —

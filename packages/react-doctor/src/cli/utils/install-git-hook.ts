@@ -1,5 +1,5 @@
-import { existsSync } from "node:fs";
-import path from "node:path";
+import * as path from "node:path";
+import * as fs from "node:fs";
 import {
   getPackageJsonPath,
   HOOK_FILE_NAME,
@@ -45,7 +45,7 @@ export type {
 } from "./git-hook-types.js";
 
 const isHuskyProject = (projectRoot: string): boolean =>
-  existsSync(path.join(projectRoot, HUSKY_HOOKS_PATH)) ||
+  fs.existsSync(path.join(projectRoot, HUSKY_HOOKS_PATH)) ||
   packageHasDependency(projectRoot, "husky");
 
 const isVitePlusProject = (projectRoot: string): boolean =>
@@ -56,14 +56,14 @@ const isSimpleGitHooksProject = (projectRoot: string): boolean => {
   return (
     (isRecord(packageJson) && isRecord(packageJson[SIMPLE_GIT_HOOKS_PACKAGE_JSON_KEY])) ||
     packageHasDependency(projectRoot, SIMPLE_GIT_HOOKS_PACKAGE_JSON_KEY) ||
-    existsSync(path.join(projectRoot, SIMPLE_GIT_HOOKS_CONFIG_FILE))
+    fs.existsSync(path.join(projectRoot, SIMPLE_GIT_HOOKS_CONFIG_FILE))
   );
 };
 
 const getLefthookConfigPath = (projectRoot: string): string | null => {
   for (const fileName of LEFTHOOK_CONFIG_FILES) {
     const filePath = path.join(projectRoot, fileName);
-    if (existsSync(filePath)) return filePath;
+    if (fs.existsSync(filePath)) return filePath;
   }
   return packageHasDependency(projectRoot, "lefthook")
     ? path.join(projectRoot, LEFTHOOK_CONFIG_FILES[0] ?? "lefthook.yml")
@@ -71,10 +71,10 @@ const getLefthookConfigPath = (projectRoot: string): string | null => {
 };
 
 const isPreCommitProject = (projectRoot: string): boolean =>
-  existsSync(path.join(projectRoot, PRE_COMMIT_CONFIG_FILE));
+  fs.existsSync(path.join(projectRoot, PRE_COMMIT_CONFIG_FILE));
 
 const isOvercommitProject = (projectRoot: string): boolean =>
-  existsSync(path.join(projectRoot, OVERCOMMIT_CONFIG_FILE)) ||
+  fs.existsSync(path.join(projectRoot, OVERCOMMIT_CONFIG_FILE)) ||
   packageHasDependency(projectRoot, "overcommit");
 
 const isYorkieProject = (projectRoot: string): boolean =>

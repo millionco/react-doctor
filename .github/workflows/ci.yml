@@ -91,6 +91,16 @@ jobs:
         if: ${{ matrix.os == 'ubuntu-latest' && matrix.node-version == '22.18.0' }}
         run: pnpm smoke:json-report
 
+      # Regression guard for #629: a published package's built output must not
+      # import a package that isn't in its `dependencies` (such phantom imports
+      # only resolve when a sibling dependency happens to supply them, and crash
+      # consumers on strict installs). Builds every package, then audits dist.
+      - name: Check published packages declare their runtime dependencies
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.node-version == '22.18.0' }}
+        run: |
+          pnpm build
+          pnpm check:published-deps
+
       # Allocates a real pseudo-terminal (`pty.openpty()`) so the CLI sees an
       # interactive TTY and renders the multiselect prompt, then asserts the
       # process stays alive waiting for input instead of exiting by itself

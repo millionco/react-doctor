@@ -1,4 +1,4 @@
-import path from "node:path";
+import * as path from "node:path";
 import type { DependencyInfo, PackageJson } from "../types/index.js";
 import { EMPTY_DEPENDENCY_INFO, extractDependencyInfo } from "./extract-dependency-info.js";
 import { getDependencyDeclaration } from "./utils/get-dependency-declaration.js";

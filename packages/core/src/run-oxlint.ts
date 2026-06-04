@@ -1,6 +1,6 @@
-import fs from "node:fs";
+import * as fs from "node:fs";
 import os from "node:os";
-import path from "node:path";
+import * as path from "node:path";
 import type { Diagnostic, ProjectInfo, ReactDoctorConfig } from "./types/index.js";
 import { batchIncludePaths } from "./batch-include-paths.js";
 import { buildRuleSeverityControls } from "./build-rule-severity-controls.js";
@@ -63,6 +63,15 @@ interface RunOxlintOptions {
   spawnTimeoutMs?: number;
   /** Per-batch stdout+stderr byte cap, resolved from the `OxlintOutputMaxBytes` Reference. */
   outputMaxBytes?: number;
+  /**
+   * Number of oxlint subprocesses to run in parallel, resolved from the
+   * `OxlintConcurrency` Reference (which itself defaults to parallel —
+   * auto-detected cores). Omitting it here uses the low-level serial
+   * default; the orchestrated path always threads the Reference value
+   * through. A parallel pass auto-falls-back to serial on resource
+   * exhaustion (see `spawnLintBatches`).
+   */
+  concurrency?: number;
 }
 
 /**
@@ -230,6 +239,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         onFileProgress: options.onFileProgress,
         spawnTimeoutMs,
         outputMaxBytes,
+        concurrency: options.concurrency,
       });
 
     writeOxlintConfig(configPath, buildConfig(extendsPaths));

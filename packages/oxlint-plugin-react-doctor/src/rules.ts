@@ -66,6 +66,11 @@ export const EXTERNAL_RULES = [
     severity: "error",
   },
   { key: "react-hooks-js/static-components", source: "react-compiler", severity: "error" },
+  // These stay `error`: each react-hooks-js compiler diagnostic marks code the
+  // React Compiler could NOT optimize (an unmemoizable component shape), which
+  // is a real perf regression — not redundant-memo cleanup. Demoting them hid
+  // those regressions (regression #140). The redundant-memo cleanup lives in
+  // the local `react-compiler-no-manual-memoization` rule instead.
   { key: "react-hooks-js/use-memo", source: "react-compiler", severity: "error" },
   { key: "react-hooks-js/void-use-memo", source: "react-compiler", severity: "error" },
   { key: "react-hooks-js/incompatible-library", source: "react-compiler", severity: "error" },

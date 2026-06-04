@@ -1,7 +1,7 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import path from "node:path";
+import * as path from "node:path";
 import type { SkillAgentType } from "agent-install";
 import { AGENT_HOOK_TIMEOUT_SECONDS, GIT_HOOK_EXECUTABLE_MODE } from "./constants.js";
+import * as fs from "node:fs";
 
 interface InstallAgentHooksOptions {
   readonly projectRoot: string;
@@ -55,21 +55,21 @@ const isSupportedAgent = (agent: SkillAgentType): boolean =>
   agent === CLAUDE_AGENT || agent === CURSOR_AGENT;
 
 const readJsonFile = <Value>(filePath: string, fallback: Value): Value => {
-  if (!existsSync(filePath)) return fallback;
-  const content = readFileSync(filePath, "utf8").trim();
+  if (!fs.existsSync(filePath)) return fallback;
+  const content = fs.readFileSync(filePath, "utf8").trim();
   if (content.length === 0) return fallback;
   return JSON.parse(content);
 };
 
 const writeJsonFile = (filePath: string, value: unknown): void => {
-  mkdirSync(path.dirname(filePath), { recursive: true });
-  writeFileSync(filePath, `${JSON.stringify(value, null, JSON_INDENT_SPACES)}\n`);
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, `${JSON.stringify(value, null, JSON_INDENT_SPACES)}\n`);
 };
 
 const writeHookScript = (filePath: string): void => {
-  mkdirSync(path.dirname(filePath), { recursive: true });
-  writeFileSync(filePath, buildAgentHookScript());
-  chmodSync(filePath, GIT_HOOK_EXECUTABLE_MODE);
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, buildAgentHookScript());
+  fs.chmodSync(filePath, GIT_HOOK_EXECUTABLE_MODE);
 };
 
 const hasClaudeHookCommand = (groups: readonly ClaudeHookGroup[]): boolean =>

@@ -1,4 +1,4 @@
-import fs from "node:fs";
+import * as fs from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
 import { TOP_ERRORS_DISPLAY_COUNT } from "@react-doctor/core";
 import type { Diagnostic } from "@react-doctor/core";
@@ -36,6 +36,9 @@ describe("buildHandoffPayload", () => {
 
     expect(payload).toContain(`Fix the top ${TOP_ERRORS_DISPLAY_COUNT}`);
     expect(payload).toContain("demo");
+    // The agent is told to offer CI first, with the trust pitch + guide link.
+    expect(payload).toContain("add React Doctor to CI");
+    expect(payload).toContain("https://react.doctor/ci");
     // Exactly TOP_ERRORS_DISPLAY_COUNT numbered entries.
     expect(payload.match(/^\d+\. /gm)?.length).toBe(TOP_ERRORS_DISPLAY_COUNT);
 

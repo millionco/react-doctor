@@ -50,6 +50,31 @@ export interface ProjectInfo {
    */
   hasReactNativeWorkspace: boolean;
   /**
+   * The declared `expo` package version spec (e.g. `"~51.0.0"`), looked up
+   * in the project or any of its workspace packages, or `null` when `expo`
+   * isn't a dependency. Doubles as react-doctor's "is this an Expo project?"
+   * signal (`expoVersion !== null`) and its SDK-version source — the `expo`
+   * major tracks the Expo SDK release one-to-one — paralleling how
+   * `reactVersion` models the React runtime.
+   *
+   * Keyed off the dependency rather than `framework === "expo"` because
+   * `detectFramework` returns the first matching package, so a project
+   * declaring both `expo` and a web bundler (`vite` / `next`) classifies as
+   * the web framework yet is still an Expo project. Drives the `expo`
+   * capability in `buildCapabilities` (which gates every Expo-specific
+   * rule) and the ported expo-doctor checks.
+   */
+  expoVersion: string | null;
+  /**
+   * The declared `@shopify/flash-list` package version spec, or `null` when
+   * absent. FlashList v2 removed the need for `estimatedItemSize`, so this
+   * lets the RN list sizing rule stay scoped to versions where the prop is
+   * still useful.
+   */
+  shopifyFlashListVersion: string | null;
+  /** Parsed major from `shopifyFlashListVersion`, or `null` when absent/unparseable. */
+  shopifyFlashListMajorVersion: number | null;
+  /**
    * `true` when the project (or any of its workspace packages) declares
    * `react-native-reanimated`. Lets diagnostics surface reanimated's
    * Compiler-compatible `.get()` / `.set()` accessors only where they
@@ -61,10 +86,22 @@ export interface ProjectInfo {
 
 export interface PackageJson {
   name?: string;
+  main?: string;
+  scripts?: Record<string, string>;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
+  /**
+   * npm's dependency-pin map. Keys are package names; values are version
+   * strings or nested override objects, hence `unknown`. The Expo checks
+   * only read the top-level keys to flag pins on SDK-critical packages.
+   */
+  overrides?: Record<string, unknown>;
+  /** Yarn / pnpm equivalent of npm `overrides`. */
+  resolutions?: Record<string, string>;
+  /** pnpm's settings block; `pnpm.overrides` mirrors npm `overrides`. */
+  pnpm?: { overrides?: Record<string, string> };
   workspaces?:
     | string[]
     | {

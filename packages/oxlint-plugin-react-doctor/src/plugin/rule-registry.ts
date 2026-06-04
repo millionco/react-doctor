@@ -38,6 +38,7 @@ import { noVagueButtonLabel } from "./rules/react-ui/no-vague-button-label.js";
 import { displayName } from "./rules/react-builtins/display-name.js";
 import { effectNeedsCleanup } from "./rules/state-and-effects/effect-needs-cleanup.js";
 import { exhaustiveDeps } from "./rules/react-builtins/exhaustive-deps.js";
+import { expoNoNonInlinedEnv } from "./rules/react-native/expo-no-non-inlined-env.js";
 import { forbidComponentProps } from "./rules/react-builtins/forbid-component-props.js";
 import { forbidDomProps } from "./rules/react-builtins/forbid-dom-props.js";
 import { forbidElements } from "./rules/react-builtins/forbid-elements.js";
@@ -268,22 +269,27 @@ import { rerenderTransitionsScroll } from "./rules/performance/rerender-transiti
 import { rnAnimateLayoutProperty } from "./rules/react-native/rn-animate-layout-property.js";
 import { rnAnimationReactionAsDerived } from "./rules/react-native/rn-animation-reaction-as-derived.js";
 import { rnBottomSheetPreferNative } from "./rules/react-native/rn-bottom-sheet-prefer-native.js";
+import { rnDetoxMissingAwait } from "./rules/react-native/rn-detox-missing-await.js";
 import { rnListCallbackPerRow } from "./rules/react-native/rn-list-callback-per-row.js";
 import { rnListDataMapped } from "./rules/react-native/rn-list-data-mapped.js";
 import { rnListMissingEstimatedItemSize } from "./rules/react-native/rn-list-missing-estimated-item-size.js";
 import { rnListRecyclableWithoutTypes } from "./rules/react-native/rn-list-recyclable-without-types.js";
+import { rnNoDeepImports } from "./rules/react-native/rn-no-deep-imports.js";
 import { rnNoDeprecatedModules } from "./rules/react-native/rn-no-deprecated-modules.js";
 import { rnNoDimensionsGet } from "./rules/react-native/rn-no-dimensions-get.js";
 import { rnNoFalsyAndRender } from "./rules/react-native/rn-no-falsy-and-render.js";
+import { rnNoImageChildren } from "./rules/react-native/rn-no-image-children.js";
 import { rnNoInlineFlatlistRenderitem } from "./rules/react-native/rn-no-inline-flatlist-renderitem.js";
 import { rnNoInlineObjectInListItem } from "./rules/react-native/rn-no-inline-object-in-list-item.js";
 import { rnNoLegacyExpoPackages } from "./rules/react-native/rn-no-legacy-expo-packages.js";
 import { rnNoLegacyShadowStyles } from "./rules/react-native/rn-no-legacy-shadow-styles.js";
 import { rnNoNonNativeNavigator } from "./rules/react-native/rn-no-non-native-navigator.js";
+import { rnNoPanresponder } from "./rules/react-native/rn-no-panresponder.js";
 import { rnNoRawText } from "./rules/react-native/rn-no-raw-text.js";
 import { rnNoRenderitemKey } from "./rules/react-native/rn-no-renderitem-key.js";
 import { rnNoScrollState } from "./rules/react-native/rn-no-scroll-state.js";
 import { rnNoScrollviewMappedList } from "./rules/react-native/rn-no-scrollview-mapped-list.js";
+import { rnNoSetNativeProps } from "./rules/react-native/rn-no-set-native-props.js";
 import { rnNoSingleElementStyleArray } from "./rules/react-native/rn-no-single-element-style-array.js";
 import { rnPreferContentInsetAdjustment } from "./rules/react-native/rn-prefer-content-inset-adjustment.js";
 import { rnPreferExpoImage } from "./rules/react-native/rn-prefer-expo-image.js";
@@ -660,6 +666,18 @@ export const reactDoctorRules = [
       ...exhaustiveDeps,
       framework: "global",
       category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/expo-no-non-inlined-env",
+    id: "expo-no-non-inlined-env",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...expoNoNonInlinedEnv,
+      framework: "react-native",
+      category: "Bugs",
+      tags: [...new Set(["react-native", ...(expoNoNonInlinedEnv.tags ?? [])])],
     },
   },
   {
@@ -3196,6 +3214,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/rn-detox-missing-await",
+    id: "rn-detox-missing-await",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...rnDetoxMissingAwait,
+      framework: "react-native",
+      category: "Bugs",
+      tags: [...new Set(["react-native", ...(rnDetoxMissingAwait.tags ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/rn-list-callback-per-row",
     id: "rn-list-callback-per-row",
     source: "react-doctor",
@@ -3244,6 +3274,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/rn-no-deep-imports",
+    id: "rn-no-deep-imports",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...rnNoDeepImports,
+      framework: "react-native",
+      category: "Bugs",
+      tags: [...new Set(["react-native", ...(rnNoDeepImports.tags ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/rn-no-deprecated-modules",
     id: "rn-no-deprecated-modules",
     source: "react-doctor",
@@ -3277,6 +3319,18 @@ export const reactDoctorRules = [
       framework: "react-native",
       category: "Bugs",
       tags: [...new Set(["react-native", ...(rnNoFalsyAndRender.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/rn-no-image-children",
+    id: "rn-no-image-children",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...rnNoImageChildren,
+      framework: "react-native",
+      category: "Bugs",
+      tags: [...new Set(["react-native", ...(rnNoImageChildren.tags ?? [])])],
     },
   },
   {
@@ -3340,6 +3394,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/rn-no-panresponder",
+    id: "rn-no-panresponder",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...rnNoPanresponder,
+      framework: "react-native",
+      category: "Bugs",
+      tags: [...new Set(["react-native", ...(rnNoPanresponder.tags ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/rn-no-raw-text",
     id: "rn-no-raw-text",
     source: "react-doctor",
@@ -3385,6 +3451,18 @@ export const reactDoctorRules = [
       framework: "react-native",
       category: "Bugs",
       tags: [...new Set(["react-native", ...(rnNoScrollviewMappedList.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/rn-no-set-native-props",
+    id: "rn-no-set-native-props",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...rnNoSetNativeProps,
+      framework: "react-native",
+      category: "Bugs",
+      tags: [...new Set(["react-native", ...(rnNoSetNativeProps.tags ?? [])])],
     },
   },
   {

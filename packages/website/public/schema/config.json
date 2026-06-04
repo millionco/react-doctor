@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://react.doctor/schema/config.json",
   "title": "React Doctor configuration",
-  "description": "Schema for react-doctor.config.json and the reactDoctor key inside package.json.",
+  "description": "Schema for doctor.config.* and the reactDoctor key inside package.json.",
   "$ref": "#/definitions/ReactDoctorConfig",
   "definitions": {
     "ReactDoctorConfig": {
@@ -18,25 +18,29 @@
               "type": "array",
               "items": {
                 "type": "string"
-              }
+              },
+              "description": "Fully-qualified rule keys (`\"<plugin>/<rule>\"`) whose diagnostics are dropped AFTER linting. The rule still runs; its findings are filtered out. To stop a rule from running at all, set it to `\"off\"` in the top-level `rules` map instead. Prefer `react-doctor rules disable <rule>` to edit this safely."
             },
             "files": {
               "type": "array",
               "items": {
                 "type": "string"
-              }
+              },
+              "description": "Glob patterns whose files are excluded from scanning entirely (matched against paths relative to the scanned directory)."
             },
             "overrides": {
               "type": "array",
               "items": {
                 "$ref": "#/definitions/ReactDoctorIgnoreOverride"
-              }
+              },
+              "description": "Per-path rule suppressions — narrower than the top-level `rules`/`files`."
             },
             "tags": {
               "type": "array",
               "items": {
                 "type": "string"
-              }
+              },
+              "description": "Behavioral tags whose rules are disabled BEFORE linting, skipping a whole family at once (e.g. `[\"design\", \"test-noise\", \"migration-hint\"]`). Prefer `react-doctor rules ignore-tag <tag>` to edit this safely."
             }
           },
           "additionalProperties": false
@@ -53,7 +57,7 @@
         },
         "warnings": {
           "type": "boolean",
-          "description": "Whether to surface `\"warning\"`-severity diagnostics. Default: `false` — only `\"error\"`-severity findings reach any surface (CLI, PR comment, score, `--fail-on`).\n\nSet to `true` to surface every warning on every surface. This is the master toggle and runs after per-rule / per-category severity overrides: a rule the user explicitly restamps to `\"warn\"` (via `rules` / `categories`) still shows even when `warnings` is `false`."
+          "description": "Whether to surface `\"warning\"`-severity diagnostics. Default: `true` — every warning reaches every surface (CLI, PR comment, score, `--fail-on`).\n\nSet to `false` to surface only `\"error\"`-severity findings. This is the master toggle and runs after per-rule / per-category severity overrides: a rule the user explicitly restamps to `\"warn\"` (via `rules` / `categories`) still shows even when `warnings` is `false`."
         },
         "diff": {
           "type": [
@@ -75,7 +79,7 @@
         },
         "rootDir": {
           "type": "string",
-          "description": "Redirect react-doctor at a different project directory than the one it was invoked against. Resolved relative to the location of the config file that declared this field (NOT relative to the CWD), so the redirect is stable no matter where the CLI / `diagnose()` is run from. Absolute paths are used as-is.\n\nTypical use: a monorepo root holds the only `react-doctor.config.json` (so editor tooling and child commands all find it), but the React app lives in `apps/web`. Setting `\"rootDir\": \"apps/web\"` makes every invocation that loads this config scan that subproject without anyone needing to `cd` first or pass an explicit path.\n\nIgnored if the resolved path does not exist or is not a directory (a warning is emitted and react-doctor falls back to the originally requested directory)."
+          "description": "Redirect react-doctor at a different project directory than the one it was invoked against. Resolved relative to the location of the config file that declared this field (NOT relative to the CWD), so the redirect is stable no matter where the CLI / `diagnose()` is run from. Absolute paths are used as-is.\n\nTypical use: a monorepo root holds the only `doctor.config.*` (so editor tooling and child commands all find it), but the React app lives in `apps/web`. Setting `\"rootDir\": \"apps/web\"` makes every invocation that loads this config scan that subproject without anyone needing to `cd` first or pass an explicit path.\n\nIgnored if the resolved path does not exist or is not a directory (a warning is emitted and react-doctor falls back to the originally requested directory)."
         },
         "textComponents": {
           "type": "array",
@@ -138,6 +142,10 @@
           },
           "description": "Per-category severity map. Mirrors oxlint's top-level `categories` field, but keyed by React Doctor's five user-facing buckets: `\"Security\"`, `\"Bugs\"`, `\"Performance\"`, `\"Accessibility\"`, `\"Maintainability\"`.\n\n```json { \"categories\": { \"Maintainability\": \"off\", \"Performance\": \"warn\" } } ```\n\nTo silence a whole tag-defined rule family (e.g. `\"design\"`, `\"test-noise\"`, `\"migration-hint\"`) that doesn't align with a single category, use `ignore.tags` instead."
         },
+        "buckets": {
+          "$ref": "#/definitions/SeverityBuckets",
+          "description": "Per-bucket severity map. Buckets are curated rule families with a shared gating story (not categories). Today the only bucket is `\"compiler-cleanup\"`: the redundant-memoization rule (`react-compiler-no-manual-memoization`) that ships as a warning once React Compiler is detected. Set it to `\"error\"` to re-enable strictness.\n\n```json { \"buckets\": { \"compiler-cleanup\": \"error\" } } ```\n\nA per-rule override in `rules` still wins over a bucket entry."
+        },
         "plugins": {
           "type": "array",
           "items": {
@@ -155,13 +163,15 @@
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "description": "Glob patterns the override applies to (e.g. `[\"src/legacy/**\"]`)."
         },
         "rules": {
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "description": "Rule keys to suppress for the matched files. Omit (or leave empty) to suppress every rule for those files."
         }
       },
       "required": [
@@ -233,6 +243,16 @@
         "off"
       ],
       "description": "Severity value accepted by the top-level `rules` and `categories` config fields. Exactly the same form ESLint and oxlint accept: `\"off\"` skips registration entirely (the rule never runs and never enters any surface); `\"error\"` / `\"warn\"` change the rule's registered severity.\n\nFor visibility-only adjustments (silence on PR comments but keep on CLI / score), prefer `surfaces` instead — severity applies before lint runs and is the most aggressive control."
+    },
+    "SeverityBuckets": {
+      "type": "object",
+      "properties": {
+        "compiler-cleanup": {
+          "$ref": "#/definitions/RuleSeverityOverride"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Closed set of severity buckets. Spelled out (rather than `Record<string, …>`) so an unknown/typo'd bucket key is a type error instead of a silent no-op."
     }
   }
 }

@@ -1,21 +1,21 @@
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as Schema from "effect/Schema";
 import { JsonReport } from "@react-doctor/core/schemas";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
-const SCRIPT_DIRECTORY = dirname(fileURLToPath(import.meta.url));
-const REPOSITORY_ROOT = resolve(SCRIPT_DIRECTORY, "..");
-const CLI_BINARY_PATH = resolve(REPOSITORY_ROOT, "packages/react-doctor/dist/cli.js");
-const FIXTURE_DIRECTORY = resolve(REPOSITORY_ROOT, "packages/core/tests/fixtures/basic-react");
+const SCRIPT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
+const REPOSITORY_ROOT = path.resolve(SCRIPT_DIRECTORY, "..");
+const CLI_BINARY_PATH = path.resolve(REPOSITORY_ROOT, "packages/react-doctor/dist/cli.js");
+const FIXTURE_DIRECTORY = path.resolve(REPOSITORY_ROOT, "packages/core/tests/fixtures/basic-react");
 
-if (!existsSync(CLI_BINARY_PATH)) {
+if (!fs.existsSync(CLI_BINARY_PATH)) {
   console.error(`Built CLI missing at ${CLI_BINARY_PATH}. Run \`pnpm build\` first.`);
   process.exit(1);
 }
 
-if (!existsSync(FIXTURE_DIRECTORY)) {
+if (!fs.existsSync(FIXTURE_DIRECTORY)) {
   console.error(`Fixture missing at ${FIXTURE_DIRECTORY}.`);
   process.exit(1);
 }

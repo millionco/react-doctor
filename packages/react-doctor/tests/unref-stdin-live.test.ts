@@ -1,9 +1,9 @@
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 // Live smoke test: spawn a real Node process that runs the actual
 // `unrefStdin()` against a real OS stdin pipe handle, then mimics exactly
@@ -23,9 +23,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 const STAY_ALIVE_WINDOW_MS = 750;
 const PROMPT_OPEN_MARKER = "PROMPT_OPEN";
 
-const currentDirectory = dirname(fileURLToPath(import.meta.url));
+const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const unrefStdinSourceUrl = pathToFileURL(
-  join(currentDirectory, "../src/cli/utils/unref-stdin.ts"),
+  path.join(currentDirectory, "../src/cli/utils/unref-stdin.ts"),
 ).href;
 
 // The probe spawns a child Node that imports the real `.ts` source, so it can
@@ -87,13 +87,13 @@ const runPromptProbe = (stdinMode: "tty" | "pipe"): Promise<LiveProbeResult> =>
 
 describe.skipIf(!canRunTypeScriptEntrypoint)("unrefStdin (live)", () => {
   beforeAll(() => {
-    probeDirectory = mkdtempSync(join(tmpdir(), "react-doctor-unref-stdin-"));
-    probeScriptPath = join(probeDirectory, "prompt-keepalive-probe.ts");
-    writeFileSync(probeScriptPath, probeScript);
+    probeDirectory = fs.mkdtempSync(path.join(tmpdir(), "react-doctor-unref-stdin-"));
+    probeScriptPath = path.join(probeDirectory, "prompt-keepalive-probe.ts");
+    fs.writeFileSync(probeScriptPath, probeScript);
   });
 
   afterAll(() => {
-    rmSync(probeDirectory, { recursive: true, force: true });
+    fs.rmSync(probeDirectory, { recursive: true, force: true });
   });
 
   it("keeps the event loop alive while an interactive (TTY) prompt waits for input", async () => {

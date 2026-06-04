@@ -1,5 +1,5 @@
-import fs from "node:fs";
-import path from "node:path";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { PackageJsonNotFoundError } from "./errors.js";
 import type { ProjectInfo } from "../types/index.js";
 import { isFile } from "./utils/is-file.js";
@@ -11,11 +11,18 @@ import { findMonorepoRoot, isMonorepoRoot } from "./find-monorepo-root.js";
 import { findReactInWorkspaces } from "./find-react-in-workspaces.js";
 import { getDependencyDeclaration } from "./utils/get-dependency-declaration.js";
 import { hasReactNativeWorkspaceAnywhere } from "./has-react-native-workspace-anywhere.js";
+import { findExpoVersion } from "./find-expo-version.js";
+import {
+  findShopifyFlashListVersion,
+  SHOPIFY_FLASH_LIST_PACKAGE_NAME,
+} from "./find-shopify-flash-list-version.js";
+import { resolveCatalogBackedDependencyVersion } from "./resolve-catalog-backed-dependency-version.js";
 import { getPreactVersion } from "./get-preact-version.js";
 import { hasTanStackQuery } from "./has-tanstack-query.js";
 import { someWorkspacePackageJson } from "./some-workspace-package-json.js";
 import { isPackageJsonReanimatedAware } from "./utils/is-package-json-reanimated-aware.js";
 import { readPackageJson } from "./read-package-json.js";
+import { getLowestDependencyMajor } from "./utils/dependency-version-spec.js";
 import { isCatalogReference, resolveCatalogVersion } from "./resolve-catalog-version.js";
 import { parseReactMajor } from "./parse-react-major.js";
 import { parseZodMajor } from "./parse-zod-major.js";
@@ -186,6 +193,24 @@ export const discoverProject = (directory: string): ProjectInfo => {
     framework === "react-native" ||
     hasReactNativeWorkspaceAnywhere(directory, packageJson);
 
+  const expoVersion = hasReactNativeWorkspace
+    ? resolveCatalogBackedDependencyVersion({
+        rootDirectory: directory,
+        rootPackageJson: packageJson,
+        packageName: "expo",
+        version: findExpoVersion(directory, packageJson),
+      })
+    : null;
+
+  const shopifyFlashListVersion = hasReactNativeWorkspace
+    ? resolveCatalogBackedDependencyVersion({
+        rootDirectory: directory,
+        rootPackageJson: packageJson,
+        packageName: SHOPIFY_FLASH_LIST_PACKAGE_NAME,
+        version: findShopifyFlashListVersion(directory, packageJson),
+      })
+    : null;
+
   // Only walk for reanimated once we already know it's an RN project —
   // reanimated implies React Native, so a web project can never declare
   // it, and this skips the workspace walk entirely for web monorepos.
@@ -210,6 +235,10 @@ export const discoverProject = (directory: string): ProjectInfo => {
     preactVersion,
     preactMajorVersion: parseReactMajor(preactVersion),
     hasReactNativeWorkspace,
+    expoVersion,
+    shopifyFlashListVersion,
+    shopifyFlashListMajorVersion:
+      shopifyFlashListVersion === null ? null : getLowestDependencyMajor(shopifyFlashListVersion),
     hasReanimated,
     sourceFileCount,
   };

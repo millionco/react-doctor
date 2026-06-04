@@ -1,4 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { isUseStateSetterInScope } from "../../utils/is-use-state-setter-in-scope.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
@@ -15,7 +16,8 @@ const findSetStateInBody = (body: EsTreeNode): EsTreeNode | null => {
     if (
       isNodeOfType(child, "CallExpression") &&
       isNodeOfType(child.callee, "Identifier") &&
-      SET_STATE_PATTERN.test(child.callee.name)
+      SET_STATE_PATTERN.test(child.callee.name) &&
+      isUseStateSetterInScope(child, child.callee.name)
     ) {
       setStateCallNode = child;
     }

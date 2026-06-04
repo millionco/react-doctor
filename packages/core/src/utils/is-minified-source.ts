@@ -1,4 +1,4 @@
-import fs from "node:fs";
+import * as fs from "node:fs";
 import {
   MINIFIED_AVG_LINE_LENGTH_CHARS,
   MINIFIED_MAX_LINE_LENGTH_CHARS,

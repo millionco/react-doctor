@@ -1,14 +1,6 @@
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  rmdirSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import path from "node:path";
+import * as path from "node:path";
 import { GIT_HOOK_EXECUTABLE_MODE } from "./constants.js";
+import * as fs from "node:fs";
 import {
   ensureTrailingNewline,
   LEGACY_HOOK_RUNNER_RELATIVE_PATH,
@@ -93,26 +85,26 @@ const mergeHookContent = (existingContent: string): string => {
 
 export const removeLegacyManagedRunner = (projectRoot: string): void => {
   const runnerPath = path.join(projectRoot, LEGACY_HOOK_RUNNER_RELATIVE_PATH);
-  rmSync(runnerPath, { force: true });
+  fs.rmSync(runnerPath, { force: true });
   for (const directory of [path.dirname(runnerPath), path.join(projectRoot, ".react-doctor")]) {
     try {
-      rmdirSync(directory);
+      fs.rmdirSync(directory);
     } catch {}
   }
 };
 
 export const installDirectGitHook = (options: InstallGitHookOptions): InstallGitHookResult => {
-  const didHookExist = existsSync(options.hookPath);
-  const existingContent = didHookExist ? readFileSync(options.hookPath, "utf8") : "";
+  const didHookExist = fs.existsSync(options.hookPath);
+  const existingContent = didHookExist ? fs.readFileSync(options.hookPath, "utf8") : "";
   const nextContent = mergeHookContent(existingContent);
 
   if (options.hooksPathConfig !== undefined) {
     runGit(options.projectRoot, ["config", "core.hooksPath", options.hooksPathConfig]);
   }
 
-  mkdirSync(path.dirname(options.hookPath), { recursive: true });
-  writeFileSync(options.hookPath, nextContent);
-  chmodSync(options.hookPath, GIT_HOOK_EXECUTABLE_MODE);
+  fs.mkdirSync(path.dirname(options.hookPath), { recursive: true });
+  fs.writeFileSync(options.hookPath, nextContent);
+  fs.chmodSync(options.hookPath, GIT_HOOK_EXECUTABLE_MODE);
   removeLegacyManagedRunner(options.projectRoot);
 
   return {

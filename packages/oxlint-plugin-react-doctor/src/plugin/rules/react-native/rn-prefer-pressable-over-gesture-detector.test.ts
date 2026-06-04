@@ -14,7 +14,7 @@ describe("rn-prefer-pressable-over-gesture-detector", () => {
     `;
     const result = runRule(rnPreferPressableOverGestureDetector, code);
     expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0].message).toContain("Pressable");
+    expect(result.diagnostics[0].message).toContain("GestureDetector");
   });
 
   it("flags variable-extracted Gesture.Tap() chain (binding analysis)", () => {

@@ -1,6 +1,6 @@
 import * as Effect from "effect/Effect";
-import fs from "node:fs";
-import path from "node:path";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { readDirectoryEntries } from "./project-info/index.js";
 import { IGNORED_DIRECTORIES } from "./constants.js";
 import { isLintableSourceFile } from "./utils/is-lintable-source-file.js";

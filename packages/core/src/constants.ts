@@ -17,10 +17,9 @@ export const JSX_FILE_PATTERN = /\.(tsx|jsx)$/;
 
 // Whether `"warning"`-severity diagnostics surface when neither the
 // caller (`--warnings` / `warnings:`) nor `config.warnings` decide.
-// Warnings are hidden by default so a clean scan reports only
-// `"error"`-severity findings; users opt them in with `--warnings`
-// or `"warnings": true`.
-export const DEFAULT_SHOW_WARNINGS = false;
+// Warnings show by default — only `"error"` is too generous a bar for a
+// health scan; users opt out with `--no-warnings` or `"warnings": false`.
+export const DEFAULT_SHOW_WARNINGS = true;
 
 export const MILLISECONDS_PER_SECOND = 1000;
 
@@ -78,10 +77,27 @@ export const ENTERPRISE_CONTACT_URL = "https://react.doctor/enterprise";
 
 export const SHARE_BASE_URL = "https://react.doctor/share";
 
-// Base URL for the per-rule fix recipes the `/doctor` playbook fetches
-// on demand. The full URL for one rule is
-// `<base>/<plugin>/<rule>.md` (see `buildRulePromptUrl`).
-export const PROMPTS_RULES_BASE_URL = "https://www.react.doctor/prompts/rules";
+// Guide for adding React Doctor to CI (GitHub Actions). The post-scan
+// handoff prompt links here when offering the "Add to CI" setup, and the
+// agent-handoff prompt points the agent here too.
+export const CI_URL = "https://react.doctor/ci";
+
+// Root of the documentation site. Guides for CI/CD setup, config files (to
+// suppress rules), and diff/PR scanning live under it; the CLI links here
+// from its closing "learn more" note.
+export const DOCS_URL = "https://react.doctor/docs";
+
+// Base URL for the per-rule documentation pages. The canonical,
+// human-readable fix recipe for one rule lives at `<base>/<plugin>/<rule>`
+// (see `buildRuleDocsUrl`) — the CLI links here from its fix-recipe
+// directive. The raw `.md` prompts the `/doctor` playbook fetches on demand
+// live under `https://www.react.doctor/prompts/rules/<plugin>/<rule>.md`.
+export const DOCS_RULES_BASE_URL = `${DOCS_URL}/rules`;
+
+// Canonical JSON Schema for `doctor.config.json`. Stamped as the
+// `$schema` field when the rule-config CLI creates a config file so
+// editors get autocomplete + hover docs (matches the README guidance).
+export const CONFIG_SCHEMA_URL = "https://react.doctor/schema/config.json";
 
 export const FETCH_TIMEOUT_MS = 10_000;
 
@@ -101,6 +117,17 @@ export const SPAWN_ARGS_MAX_LENGTH_CHARS = 24_000;
 // Smaller batches add ~50ms spawn overhead per extra batch — negligible
 // vs the hard-cap perf cliffs they prevent.
 export const OXLINT_MAX_FILES_PER_BATCH = 100;
+
+// Bounds for the lint worker count (the `OxlintConcurrency` Reference, seeded
+// by the `REACT_DOCTOR_PARALLEL` env var; the CLI's `--no-parallel` flag forces
+// the MIN end). React Doctor's rules are oxlint JS plugins — single-threaded
+// per process — so
+// running the file batches across N concurrent oxlint subprocesses scales the
+// scan nearly linearly with N. MAX bounds peak memory (each worker holds its
+// batch's ASTs); the resolved count is clamped to [MIN, MAX].
+export const MIN_SCAN_CONCURRENCY = 1;
+
+export const MAX_SCAN_CONCURRENCY = 16;
 
 export const DEFAULT_BRANCH_CANDIDATES = ["main", "master"];
 
@@ -128,12 +155,21 @@ export const STAGED_FILES_PROJECT_CONFIG_FILENAMES = [
   "tsconfig.json",
   "tsconfig.base.json",
   "package.json",
-  "react-doctor.config.json",
+  "doctor.config.ts",
+  "doctor.config.mts",
+  "doctor.config.cts",
+  "doctor.config.js",
+  "doctor.config.mjs",
+  "doctor.config.cjs",
+  "doctor.config.json",
+  "doctor.config.jsonc",
   "oxlint.json",
   ".oxlintrc.json",
 ] as const;
 
 export const CANONICAL_GITHUB_URL = "https://github.com/millionco/react-doctor";
+
+export const CANONICAL_DISCORD_URL = "https://react.doctor/discord";
 
 export const SKILL_NAME = "react-doctor";
 
@@ -189,11 +225,6 @@ export const MAX_RULE_GROUPS_PER_CATEGORY_NON_VERBOSE = 3;
 // recommended starting point for the supply-chain hardening check.
 export const RECOMMENDED_PNPM_MINIMUM_RELEASE_AGE_MINUTES = 10_080;
 
-// Minimum width of the rule-name column in the diagnostics list. Pads
-// shorter rule names so the right-aligned `N sites` count stays in a
-// consistent column even when one rule has a much longer identifier.
-export const RULE_NAME_COLUMN_WIDTH_CHARS = 36;
-
 // The closed set of user-facing diagnostic categories. Every rule
 // (collapsed at codegen via `CATEGORY_BUCKET` in
 // `generate-rule-registry.mjs`) and every directly-constructed
@@ -208,6 +239,32 @@ export const DIAGNOSTIC_CATEGORY_BUCKETS = [
   "Accessibility",
   "Maintainability",
 ] as const;
+
+// Rules whose heuristic only makes sense in application code. A published
+// library deliberately exposes flexible primitives (components built in
+// render to capture closures, many `render*` slots for composition), so these
+// fire on `app` / `unknown` files but stay silent on confidently-classified
+// `library` files (see `classify-package-role.ts`). Users can still force one
+// on for a library by setting its severity explicitly in config.
+export const APP_ONLY_RULE_KEYS: ReadonlySet<string> = new Set([
+  "react-hooks-js/static-components",
+  "react-doctor/no-render-prop-children",
+]);
+
+// The `compiler-cleanup` severity bucket: redundant-memoization rules that
+// only fire once React Compiler is detected and ship as warnings by default
+// (hidden in the default report). Setting `buckets: { "compiler-cleanup":
+// "error" }` re-enables full strictness.
+//
+// Only the local `react-compiler-no-manual-memoization` rule belongs here —
+// it flags `useMemo` / `useCallback` / `memo` the compiler makes redundant
+// (correctness-neutral cleanup). The external `react-hooks-js/*` compiler
+// rules deliberately stay `error`: each marks code the compiler could NOT
+// optimize, which is a real perf regression, not cleanup.
+export const COMPILER_CLEANUP_BUCKET = "compiler-cleanup";
+export const COMPILER_CLEANUP_RULE_KEYS: ReadonlySet<string> = new Set([
+  "react-doctor/react-compiler-no-manual-memoization",
+]);
 
 // How many of the highest-priority error rules to surface in the
 // "Top N errors you should fix" header above the category breakdown.

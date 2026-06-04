@@ -1,6 +1,6 @@
-import fs from "node:fs";
+import * as fs from "node:fs";
 import os from "node:os";
-import path from "node:path";
+import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { selectProjects } from "../src/cli/utils/select-projects.js";
 import { cliLogger } from "../src/cli/utils/cli-logger.js";
@@ -106,5 +106,18 @@ describe("selectProjects", () => {
         message: "Select projects",
       }),
     );
+  });
+
+  it("discovers nested React projects when a wrapper directory has no package.json", async () => {
+    const tempDirectory = createTempDirectory();
+    const frontendDirectory = setupReactProject(tempDirectory, "frontend");
+    const mobileDirectory = setupReactProject(tempDirectory, "mobile");
+
+    const selectedDirectories = await selectProjects(tempDirectory, undefined, true);
+
+    expect(selectedDirectories.toSorted()).toEqual([frontendDirectory, mobileDirectory].toSorted());
+    expect(prompts).not.toHaveBeenCalled();
+    expect(cliLogger.log).toHaveBeenCalledWith(expect.stringContaining("frontend"));
+    expect(cliLogger.log).toHaveBeenCalledWith(expect.stringContaining("mobile"));
   });
 });

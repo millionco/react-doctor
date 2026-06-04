@@ -1,5 +1,6 @@
-import fs from "node:fs";
-import path from "node:path";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { CliInputError } from "./cli-input-error.js";
 import { toForwardSlashes } from "./path-format.js";
 
 const isSafeRelativePath = (filePath: string): boolean => {
@@ -12,7 +13,21 @@ const isSafeRelativePath = (filePath: string): boolean => {
 };
 
 export const readChangedFilesFrom = (filePath: string): string[] => {
-  const raw = fs.readFileSync(filePath, "utf8");
+  let raw: string;
+  try {
+    raw = fs.readFileSync(filePath, "utf8");
+  } catch (error) {
+    // The path comes from the user's `--changed-files-from <file>`, so an
+    // unreadable file (missing, a directory, permission-denied, or a stale
+    // pipe/process-substitution fd — EBADF, REACT-DOCTOR-V) is an invocation
+    // mistake, not a bug. Surface it as a clean CLI error instead of crashing
+    // and reporting the read failure to Sentry.
+    const errorCode = (error as NodeJS.ErrnoException)?.code;
+    throw new CliInputError(
+      `Could not read the --changed-files-from file "${filePath}"${errorCode ? ` (${errorCode})` : ""}. ` +
+        "Pass a path to a readable text file that lists changed files, one per line.",
+    );
+  }
   const uniqueFiles = new Set<string>();
   for (const line of raw.split(/\r?\n/)) {
     const candidate = toForwardSlashes(line.trim());

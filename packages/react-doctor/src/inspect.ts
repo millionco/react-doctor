@@ -2,16 +2,27 @@ import { performance } from "node:perf_hooks";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import {
+  buildSkippedChecks,
   DEFAULT_SHOW_WARNINGS,
   filterDiagnosticsForSurface,
   highlighter,
-  layerOtlp,
   OXLINT_NODE_REQUIREMENT,
   resolveScanTarget,
   restoreLegacyThrow,
   runInspect as runInspectEffect,
 } from "@react-doctor/core";
+import { applyObservability } from "./cli/utils/apply-observability.js";
 import { buildRuntimeLayers } from "./cli/utils/build-runtime-layers.js";
+import {
+  recordSentryProjectContext,
+  resetSentryRunState,
+  withSentryRunSpan,
+} from "./cli/utils/with-sentry-run-span.js";
+import type { SentryRootSpan } from "./cli/utils/with-sentry-run-span.js";
+import { METRIC } from "./cli/utils/constants.js";
+import { recordCount } from "./cli/utils/record-metric.js";
+import { recordScanMetrics } from "./cli/utils/record-scan-metrics.js";
+import { recordRunEvent } from "./cli/utils/build-run-event.js";
 import type {
   Diagnostic,
   DiagnosticSurface,
@@ -23,19 +34,30 @@ import type {
 import { makeNoopConsole } from "./cli/utils/noop-console.js";
 import { buildNoScoreMessage } from "./cli/utils/build-no-score-message.js";
 import { printAgentGuidance } from "./cli/utils/render-agent-guidance.js";
-import { isCiOrCodingAgentEnvironment } from "./cli/utils/is-ci-environment.js";
+import {
+  isCiOrCodingAgentEnvironment,
+  isCodingAgentEnvironment,
+} from "./cli/utils/is-ci-environment.js";
 import { computeProjectedScore } from "./cli/utils/compute-score-projection.js";
 import { buildRulePriorityMap } from "./cli/utils/diagnostic-grouping.js";
 import { printDiagnostics } from "./cli/utils/render-diagnostics.js";
 import { isNonInteractiveEnvironment } from "./cli/utils/is-non-interactive-environment.js";
+import {
+  canAnimateOnboarding,
+  isOnboardingForced,
+  onboardingSectionPause,
+  shouldRecordOnboarding,
+} from "./cli/utils/onboarding-pacing.js";
+import { hasCompletedOnboarding, markOnboardingComplete } from "./cli/utils/onboarding-state.js";
 import { printProjectDetection } from "./cli/utils/render-project-detection.js";
 import {
   printBrandingOnlyHeader,
   printNoScoreHeader,
   printScoreHeader,
 } from "./cli/utils/render-score-header.js";
-import { printSummary, printVerboseTip } from "./cli/utils/render-summary.js";
+import { printFooter, printSummary } from "./cli/utils/render-summary.js";
 import { resolveOxlintNode } from "./cli/utils/resolve-oxlint-node.js";
+import { getRunId } from "./cli/utils/run-id.js";
 import { isSpinnerSilent, setSpinnerSilent } from "./cli/utils/spinner.js";
 import { VERSION } from "./cli/utils/version.js";
 
@@ -64,6 +86,8 @@ interface ResolvedInspectOptions {
   ignoredTags: ReadonlySet<string>;
   outputSurface: DiagnosticSurface;
   suppressRendering: boolean;
+  /** Resolved oxlint worker count, or `undefined` to keep the ambient default. */
+  concurrency: number | undefined;
 }
 
 const buildIgnoredTags = (userConfig: ReactDoctorConfig | null): ReadonlySet<string> => {
@@ -97,6 +121,29 @@ const mergeInspectOptions = (
   ignoredTags: buildIgnoredTags(userConfig),
   outputSurface: inputOptions.outputSurface ?? "cli",
   suppressRendering: inputOptions.suppressRendering ?? false,
+  concurrency: inputOptions.concurrency,
+});
+
+// The scan-config slice of the wide event, shared by the success and failure
+// emit paths (the failure path has no `result`, so it can only supply config).
+// The return type is inferred and checked at the call sites, which spread it
+// into the full `RunEventInput` — a missing field surfaces there.
+const buildRunEventConfig = (
+  options: ResolvedInspectOptions,
+  userConfig: ReactDoctorConfig | null,
+  hasCustomConfig: boolean,
+) => ({
+  parallel: options.concurrency !== undefined,
+  workerCount: options.concurrency,
+  lint: options.lint,
+  deadCode: options.deadCode,
+  scoreOnly: options.scoreOnly,
+  noScore: options.noScore,
+  respectInlineDisables: options.respectInlineDisables,
+  showWarnings: options.warnings,
+  ignoredTagCount: options.ignoredTags.size,
+  hasCustomConfig,
+  userConfig,
 });
 
 export const inspect = async (
@@ -104,6 +151,11 @@ export const inspect = async (
   inputOptions: InspectOptions = {},
 ): Promise<InspectResult> => {
   const startTime = performance.now();
+
+  // Clear any run-scoped Sentry state from a prior inspect() (workspace scans
+  // call this once per project) so a stale project/trace can't leak onto this
+  // run's events — including errors thrown before the project is discovered.
+  resetSentryRunState();
 
   const hasConfigOverride = inputOptions.configOverride !== undefined;
   // When the caller pre-loaded a config (CLI's `inspectAction` does
@@ -127,7 +179,7 @@ export const inspect = async (
     userConfig = inputOptions.configOverride ?? null;
     configSourceDirectory = null;
   } else {
-    const scanTarget = resolveScanTarget(directory);
+    const scanTarget = await resolveScanTarget(directory);
     scanDirectory = scanTarget.resolvedDirectory;
     userConfig = scanTarget.userConfig;
     configSourceDirectory = scanTarget.configSourceDirectory;
@@ -145,14 +197,39 @@ export const inspect = async (
   if (options.silent) setSpinnerSilent(true);
 
   try {
-    return await runInspectWithRuntime(
-      scanDirectory,
-      options,
-      userConfig,
-      hasConfigOverride,
-      configSourceDirectory,
-      startTime,
-    );
+    const result = await withSentryRunSpan(async (rootSentrySpan) => {
+      try {
+        return await runInspectWithRuntime(
+          scanDirectory,
+          options,
+          userConfig,
+          hasConfigOverride,
+          configSourceDirectory,
+          startTime,
+          rootSentrySpan,
+        );
+      } catch (error) {
+        // Emit the canonical wide event on the failure path too: the scan threw
+        // before finalizing, so there's no `result` — just the error taxonomy
+        // plus the config it ran with. The lint/dead-code outcome isn't known
+        // here, so it's omitted rather than asserted as a benign default.
+        // Rethrow so error handling is unchanged.
+        recordRunEvent(rootSentrySpan, {
+          ...buildRunEventConfig(options, userConfig, userConfig !== null),
+          mode: options.includePaths.length > 0 ? "diff" : "full",
+          error,
+        });
+        throw error;
+      }
+    });
+    // Scan finished cleanly — clear run-scoped Sentry state so a later non-scan
+    // error (inspectAction's finalize/handoff/install steps, or the next
+    // project in a workspace loop) isn't mislabeled with this scan's project or
+    // mislinked to its already-sent transaction. On a thrown error this line is
+    // skipped, so the state persists for the command catch to attribute and
+    // link the crash before the process exits.
+    resetSentryRunState();
+    return result;
   } finally {
     if (options.silent) setSpinnerSilent(wasSpinnerSilent);
   }
@@ -165,6 +242,7 @@ const runInspectWithRuntime = async (
   hasConfigOverride: boolean,
   configSourceDirectory: string | null,
   startTime: number,
+  rootSentrySpan: SentryRootSpan,
 ): Promise<InspectResult> => {
   const isDiffMode = options.includePaths.length > 0;
 
@@ -200,6 +278,7 @@ const runInspectWithRuntime = async (
     shouldRunDeadCode: options.deadCode,
     shouldComputeScore: !options.noScore,
     shouldShowProgressSpinners,
+    oxlintConcurrency: options.concurrency,
   });
 
   const program = runInspectEffect(
@@ -215,12 +294,19 @@ const runInspectWithRuntime = async (
       runDeadCode: options.deadCode,
       isCi: options.isCi,
       doctorVersion: VERSION,
+      runId: getRunId(),
       resolveLocalGithubViewerPermission: !options.noScore,
       suppressScanSummary: options.suppressRendering,
     },
     {
       beforeLint: (projectInfo, lintIncludePaths) =>
         Effect.gen(function* () {
+          // Attach the discovered project shape to Sentry as early as possible
+          // (this hook fires right after project discovery) so crashes, the run
+          // transaction, and every subsequent metric carry it. No-op when
+          // Sentry/tracing is off.
+          recordSentryProjectContext(projectInfo, rootSentrySpan);
+          recordCount(METRIC.projectDetected, 1);
           if (options.scoreOnly || options.suppressRendering) return;
           const lintSourceFileCount = lintIncludePaths?.length ?? projectInfo.sourceFileCount;
           yield* printProjectDetection({
@@ -241,17 +327,15 @@ const runInspectWithRuntime = async (
   // check a flag itself. Driven by Effect's built-in Console
   // reference, which is `Context.Reference<Console>` with the
   // default value `globalThis.console`.
-  // Otlp layer is a no-op unless REACT_DOCTOR_OTLP_ENDPOINT /
-  // REACT_DOCTOR_OTLP_AUTH_HEADER are set, so we always provide it
-  // regardless of `options.silent` — the silent toggle only swaps
-  // the Console reference, not the tracer.
-  const programWithLayers = options.silent
-    ? program.pipe(
-        Effect.provide(layers),
-        Effect.provideService(Console.Console, silentConsole),
-        Effect.provide(layerOtlp),
-      )
-    : program.pipe(Effect.provide(layers), Effect.provide(layerOtlp));
+  // `applyObservability` installs the tracing backend (user OTLP, else the
+  // Sentry tracer bridge when tracing is live, else the no-op native tracer)
+  // — see its docs for precedence. The silent toggle only swaps the Console
+  // reference, not the tracer, so observability is applied identically in both
+  // branches.
+  const baseProgram = options.silent
+    ? program.pipe(Effect.provide(layers), Effect.provideService(Console.Console, silentConsole))
+    : program.pipe(Effect.provide(layers));
+  const programWithLayers = applyObservability(baseProgram, rootSentrySpan);
   const output = await Effect.runPromise(restoreLegacyThrow(programWithLayers));
 
   const didLintFail = lintBindingMissing || output.didLintFail;
@@ -292,6 +376,21 @@ const runInspectWithRuntime = async (
   const score = didLintFail ? null : output.score;
 
   const elapsedMilliseconds = performance.now() - startTime;
+  // Stagger sections only on a user's first interactive run. Gating on
+  // `canAnimateOnboarding` (the same predicate the welcome scene, animations,
+  // and marker use) keeps the decision single-sourced: we only pace when we can
+  // actually show — and thus record — onboarding, so we never insert silent
+  // dead sleeps. Nothing to pace for silent/score-only/suppressed/verbose
+  // renders; the persisted marker (read last) limits it to the very first run.
+  // `REACT_DOCTOR_FORCE_ONBOARDING` replays the first-run experience on demand.
+  const forceOnboarding = isOnboardingForced();
+  const paceOnboardingSections =
+    !options.silent &&
+    !options.scoreOnly &&
+    !options.suppressRendering &&
+    !options.verbose &&
+    canAnimateOnboarding(process.stdout) &&
+    (forceOnboarding || !hasCompletedOnboarding());
   const finalizeInput: FinalizeInput = {
     options,
     elapsedMilliseconds,
@@ -309,11 +408,54 @@ const runInspectWithRuntime = async (
     scannedFilePaths: output.scannedFilePaths,
     scanElapsedMilliseconds: output.scanElapsedMilliseconds,
   };
-  return await Effect.runPromise(
+  const result = await Effect.runPromise(
     finalizeAndRender(finalizeInput).pipe(
       options.silent ? Effect.provideService(Console.Console, silentConsole) : (program) => program,
     ),
   );
+  // Burn the first-run marker only when the onboarding reveal actually ran — not
+  // for verbose, the classic non-interactive layout, or a forced demo (which
+  // replays every time). See `shouldRecordOnboarding`.
+  if (
+    shouldRecordOnboarding({
+      paceOnboardingSections,
+      forceOnboarding,
+      verbose: options.verbose,
+      isNonInteractiveEnvironment: options.isNonInteractiveEnvironment,
+    })
+  ) {
+    markOnboardingComplete();
+  }
+  recordScanMetrics({
+    result,
+    mode: isDiffMode ? "diff" : "full",
+    parallel: options.concurrency !== undefined,
+    workerCount: options.concurrency,
+    lint: options.lint,
+    deadCode: options.deadCode,
+    scoreOnly: options.scoreOnly,
+    noScore: options.noScore,
+    didLintFail,
+    lintFailureReasonKind: lintBindingMissing
+      ? "native-binding-missing"
+      : output.lintFailureReasonKind,
+    didDeadCodeFail: output.didDeadCodeFail,
+  });
+  // Canonical per-scan wide event: the full outcome stamped onto the run's root
+  // span (run + project base context is already on it) so any question is a
+  // single Trace Explorer query rather than a pre-aggregated counter.
+  recordRunEvent(rootSentrySpan, {
+    ...buildRunEventConfig(options, userConfig, userConfig !== null),
+    result,
+    mode: isDiffMode ? "diff" : "full",
+    didLintFail,
+    lintFailureReasonKind: lintBindingMissing
+      ? "native-binding-missing"
+      : output.lintFailureReasonKind,
+    lintPartialFailureCount: output.lintPartialFailures.length,
+    didDeadCodeFail: output.didDeadCodeFail,
+  });
+  return result;
 };
 
 interface FinalizeInput {
@@ -354,22 +496,16 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       scanElapsedMilliseconds,
     } = input;
 
-    const skippedChecks: string[] = [];
-    if (didLintFail) skippedChecks.push("lint");
-    if (didDeadCodeFail) skippedChecks.push("dead-code");
+    const { skippedChecks, skippedCheckReasons } = buildSkippedChecks({
+      didLintFail,
+      lintFailureReason,
+      lintPartialFailures,
+      didDeadCodeFail,
+      deadCodeFailureReason,
+    });
     const hasSkippedChecks = skippedChecks.length > 0;
 
     const noScoreMessage = buildNoScoreMessage(options.noScore);
-
-    const skippedCheckReasons: Record<string, string> = {};
-    if (didLintFail && lintFailureReason !== null) {
-      skippedCheckReasons.lint = lintFailureReason;
-    } else if (lintPartialFailures.length > 0) {
-      skippedCheckReasons["lint:partial"] = lintPartialFailures.join("; ");
-    }
-    if (didDeadCodeFail && deadCodeFailureReason !== null) {
-      skippedCheckReasons["dead-code"] = deadCodeFailureReason;
-    }
 
     const buildResult = (): InspectResult => ({
       diagnostics: [...diagnostics],
@@ -396,6 +532,14 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       return buildResult();
     }
 
+    // Report animations — the staggered section reveal, the category count-up,
+    // and the eased score-projection "ghost gain" — play on every interactive
+    // render, like the animated score bar, not just the first-run onboarding.
+    // `!silent` keeps the raw cursor writes out of JSON / piped output.
+    const animateRender =
+      !options.silent && !options.verbose && canAnimateOnboarding(process.stdout);
+    const pause = onboardingSectionPause(animateRender);
+
     const surfaceDiagnostics = filterDiagnosticsForSurface(
       [...diagnostics],
       options.outputSurface,
@@ -406,6 +550,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
     const lintSourceFileCount = isDiffMode ? options.includePaths.length : project.sourceFileCount;
 
     if (surfaceDiagnostics.length === 0) {
+      yield* pause;
       if (hasSkippedChecks) {
         const skippedLabel = skippedChecks.join(" and ");
         yield* Console.warn(
@@ -423,6 +568,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
         yield* Console.log(highlighter.success("No issues found!"));
       }
       yield* Console.log("");
+      yield* pause;
       if (hasSkippedChecks) {
         yield* printBrandingOnlyHeader;
         yield* Console.log(highlighter.gray("  Score not shown — some checks could not complete."));
@@ -434,12 +580,15 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       return buildResult();
     }
 
+    yield* pause;
     yield* Console.log("");
     yield* printDiagnostics(
       [...surfaceDiagnostics],
       options.verbose,
       directory,
       buildRulePriorityMap([score]),
+      isCodingAgentEnvironment(),
+      { sectionPause: pause, animateCountUp: animateRender },
     );
     if (options.isNonInteractiveEnvironment && options.outputSurface !== "prComment") {
       yield* printAgentGuidance();
@@ -463,16 +612,16 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       : null;
 
     const shouldShowShareLink = !options.noScore && options.share && !options.isCi;
+    yield* pause;
     yield* printSummary({
       diagnostics: [...surfaceDiagnostics],
       elapsedMilliseconds,
       scoreResult: score,
       potentialScore,
-      projectName: project.projectName,
       totalSourceFileCount: lintSourceFileCount,
       noScoreMessage,
-      isOffline: !shouldShowShareLink,
       verbose: options.verbose,
+      animateProjection: animateRender,
     });
 
     if (hasSkippedChecks) {
@@ -483,7 +632,13 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       );
     }
 
-    yield* printVerboseTip([...surfaceDiagnostics], options.verbose);
+    yield* pause;
+    yield* printFooter({
+      diagnostics: [...surfaceDiagnostics],
+      scoreResult: score,
+      projectName: project.projectName,
+      isOffline: !shouldShowShareLink,
+    });
 
     return buildResult();
   });

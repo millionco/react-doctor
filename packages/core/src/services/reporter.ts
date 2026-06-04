@@ -4,7 +4,7 @@ import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as fs from "node:fs";
-import * as Path from "node:path";
+import * as path from "node:path";
 import { Diagnostic } from "../schemas.js";
 
 /**
@@ -63,7 +63,7 @@ export class Reporter extends Context.Service<
     Layer.effect(
       Reporter,
       Effect.sync(() => {
-        fs.mkdirSync(Path.dirname(filePath), { recursive: true });
+        fs.mkdirSync(path.dirname(filePath), { recursive: true });
         const handle = fs.openSync(filePath, "a");
         const encode = Schema.encodeUnknownSync(Diagnostic);
 

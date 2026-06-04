@@ -1,16 +1,9 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`in-process render across terminal widths and render modes > matches the rendered 100-column layout snapshot 1`] = `
-"  Bugs > 3 errors
-  Maintainability > 1 error
-  Performance > 1 warning
+"  Top 3 errors you should fix
 
-  5 issues
-
-  ────────────────────────────────────────────────────────────
-  Top 3 errors you should fix
-
-  ✗ Bugs: react-doctor/no-adjust-state-on-prop-change ×2
+  ✖ Bugs: react-doctor/no-adjust-state-on-prop-change ×2
     State adjusted in a useEffect when a prop changes — forces
     an extra render with a stale UI between the two commits.
     Adjust the state during render with a \`prev\`-prop
@@ -25,7 +18,7 @@ exports[`in-process render across terminal widths and render modes > matches the
     │   6 |   }, [value]);                                         │
     └──────────────────────────────────────────────────────────────┘
 
-  ✗ Maintainability: react-doctor/no-nested-component-definition
+  ✖ Maintainability: react-doctor/no-nested-component-definition
     Component defined inside another component remounts on
     every render, throwing away its state and DOM.
 
@@ -37,7 +30,7 @@ exports[`in-process render across terminal widths and render modes > matches the
     │   3 |   const [count, setCount] = useState(0);               │
     └──────────────────────────────────────────────────────────────┘
 
-  ✗ Bugs: react-doctor/no-array-index-key
+  ✖ Bugs: react-doctor/no-array-index-key
     Using the array index as a key breaks reconciliation when
     the list reorders.
 
@@ -49,22 +42,40 @@ exports[`in-process render across terminal widths and render modes > matches the
     │   8 | };                                                     │
     └──────────────────────────────────────────────────────────────┘
 
+
+  ────────────────────────────────────────────────────────────
+
+  All 5 issues
+
+  Bugs > 3 errors
+  Performance > 1 warning
+  Maintainability > 1 error
+
+  Run npx react-doctor@latest --verbose to list every error and warning
+
   ┌─────┐  99 / 100 Great
   │ ◠ ◠ │  ██████████████████████████████████████████████████
   │  ▽  │  React Doctor (https://react.doctor)
   └─────┘
 
-  Tip: Run npx react-doctor@latest --verbose to list every issue"
+
+  ────────────────────────────────────────────────────────────
+
+  Docs: https://react.doctor/docs
+  Learn more about fixing issues, setting up CI/CD, and configuring rules with a config file
+
+  GitHub: https://github.com/millionco/react-doctor
+  Report issues and star the repository!"
 `;
 
 exports[`in-process render across terminal widths and render modes > matches the terminal-width × mode overflow matrix 1`] = `
 "mode                            60c    80c   100c   120c   160c
-default-errors-great           wrap     ok     ok     ok     ok
-default-errors-perfect         wrap     ok     ok     ok     ok
-default-errors-ok              wrap     ok     ok     ok     ok
-default-errors-needs-work      wrap     ok     ok     ok     ok
-default-errors-no-score        wrap     ok     ok     ok     ok
-default-warnings-only          wrap     ok     ok     ok     ok
-default-clean-perfect          wrap     ok     ok     ok     ok
-verbose-errors-great           wrap     ok     ok     ok     ok"
+default-errors-great           wrap   wrap     ok     ok     ok
+default-errors-perfect         wrap   wrap     ok     ok     ok
+default-errors-ok              wrap   wrap     ok     ok     ok
+default-errors-needs-work      wrap   wrap     ok     ok     ok
+default-errors-no-score        wrap   wrap     ok     ok     ok
+default-warnings-only          wrap   wrap     ok     ok     ok
+default-clean-perfect          wrap   wrap     ok     ok     ok
+verbose-errors-great           wrap   wrap     ok     ok     ok"
 `;

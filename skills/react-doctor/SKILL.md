@@ -32,6 +32,10 @@ The playbook is the single source of truth — a scan → filter → triage → 
 
 Pair it with the matching per-rule prompts at `https://www.react.doctor/prompts/rules/<plugin>/<rule>.md` (fetched on demand inside the playbook) so each fix uses the canonical, reviewer-tested recipe.
 
+## Configuring or explaining rules
+
+When the user wants to understand a rule, disagrees with one, or wants to disable / tune which rules run (not fix code), use the `doctor-explain` skill (alias `/doctor-config`). Start with `npx react-doctor@latest rules explain <rule>`, then apply the narrowest control via `npx react-doctor@latest rules disable|set|category|ignore-tag …`, which edits your `doctor.config.*` (or `package.json#reactDoctor`).
+
 ## Command
 
 ```bash

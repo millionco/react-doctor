@@ -55,7 +55,7 @@ describe("resolveCliInspectOptions: CI behavior (issue #302)", () => {
 });
 
 describe("resolveCliInspectOptions: warnings vs --fail-on", () => {
-  it("leaves warnings unset by default (hidden via the inspect() default)", () => {
+  it("leaves warnings unset by default (shown via the inspect() default)", () => {
     expect(resolveCliInspectOptions({}, null).warnings).toBeUndefined();
   });
 
@@ -76,5 +76,16 @@ describe("resolveCliInspectOptions: warnings vs --fail-on", () => {
 
   it("respects an explicit --warnings", () => {
     expect(resolveCliInspectOptions({ warnings: true }, null).warnings).toBe(true);
+  });
+});
+
+describe("resolveCliInspectOptions: --no-telemetry alias", () => {
+  it("opts out of scoring via --no-telemetry (flags.telemetry === false), like --no-score", () => {
+    expect(resolveCliInspectOptions({ telemetry: false }, null).noScore).toBe(true);
+    expect(resolveCliInspectOptions({ score: false }, null).noScore).toBe(true);
+  });
+
+  it("keeps scoring on by default", () => {
+    expect(resolveCliInspectOptions({}, null).noScore).toBe(false);
   });
 });

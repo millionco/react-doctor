@@ -13,10 +13,33 @@
 - MUST: Frequently re-evaluate and refactor variable names to be more accurate and descriptive.
 - MUST: Do not type cast ("as") unless absolutely necessary
 - MUST: Remove unused code and don't repeat yourself.
+- MUST: Use `truffler` to find existing symbols before adding a utility, helper, type, or rule, and again after finishing a task to catch duplicates and dead code (see "Symbol Search & Deduplication").
 - MUST: Always search the codebase, think of many solutions, then implement the most _elegant_ solution.
 - MUST: Put all magic numbers in `constants.ts` using `SCREAMING_SNAKE_CASE` with unit suffixes (`_MS`, `_PX`).
 - MUST: Put small, focused utility functions in `utils/` with one utility per file.
 - MUST: Use Boolean over !!.
+
+## Symbol Search & Deduplication (truffler)
+
+`@rayhanadev/truffler` (dev dependency) is fuzzy JS/TS symbol search powered by `oxc-parser`.
+Use it to avoid duplicating existing code. The `find-similar-functions` skill
+(`.agents/skills/find-similar-functions/`) carries the full workflow; the short version:
+
+- WHEN PLANNING / SCOPING — before adding a utility, helper, type, constant, or rule, search
+  for an existing symbol to reuse or extend. Derive a few queries from the behavior (proposed
+  name + domain noun + verb), search the narrowest root first, then read the top matches before
+  writing anything. It is how you reuse an existing helper instead of duplicating it, per "don't
+  repeat yourself" and the one-utility-per-file `utils/` convention.
+- AFTER FINISHING A TASK — re-run searches for the symbols you added to confirm you did not
+  duplicate an existing helper, and delete any code your change superseded.
+
+```bash
+bunx @rayhanadev/truffler "<query>" packages --kind function,method,interface,type,constant --limit 20
+```
+
+Run it with `bunx @rayhanadev/truffler` (the published `bin` is a TypeScript entry Bun runs
+directly, and the pinned dev dependency is reused rather than re-downloaded). Narrow `<query>`
+and the root (e.g. `packages/core/src`) for precision; broaden only when nothing matches.
 
 ## Package Layout
 
@@ -175,6 +198,119 @@ for this codebase) for canonical examples.
   transport, so every `Effect.fn("Service.method")` span and every top-level
   `Effect.withSpan("...")` ships to the configured backend. Eval reference:
   `react-doctor-evals/src/Observability.ts → layerAxiom`.
+- **Sentry tracing (CLI only).** The published CLI bridges the same Effect spans
+  into Sentry. `cli/utils/apply-observability.ts` is the single chooser of the
+  tracer backend (Effect has one `Tracer` reference, so they're mutually
+  exclusive): user OTLP wins (and the Effect trace is parented under the Sentry
+  trace via `Tracer.externalSpan` for a shared `trace_id`); otherwise, when
+  Sentry performance tracing is live, `cli/utils/sentry-tracer.ts`
+  (`makeSentryTracer`) materializes each Effect span as a child Sentry span
+  under the per-run transaction (`cli/utils/with-sentry-run-span.ts`); otherwise
+  the no-op native tracer. All of this is gated by `isSentryTracingEnabled()` so
+  it's a true no-op for the `@react-doctor/api` library, `--no-score`, tests,
+  and `SENTRY_TRACES_SAMPLE_RATE=0`. Source maps are uploaded for symbolication
+  by `scripts/sentry-sourcemaps.mjs` (Debug IDs); the SDK `release`
+  (`react-doctor@<version>`) must match what that script uploads.
+- **Sentry scope shape.** `cli/utils/build-sentry-scope.ts` is the one place that
+  projects the run snapshot (and the scanned project, once known) into Sentry
+  `tags` + `contexts`; both `instrument.ts` (`initialScope`) and
+  `report-error.ts` consume it, so add new metadata there, not at call sites.
+  Project info is captured in the `beforeLint` hook via
+  `recordSentryProjectContext` (`with-sentry-run-span.ts`), which both remembers
+  it for the lazy error path (a module-level ref read by `buildSentryScope`,
+  mirroring how `buildRunContext` reads ambient state at capture time) and sets
+  it as root-span attributes for the live transaction.
+- **Sentry anonymization.** Telemetry must stay anonymized. `Sentry.init` sets
+  `sendDefaultPii: false`, and `beforeSend` + `beforeSendTransaction` both run
+  `scrubSentryEvent` (`cli/utils/scrub-sentry-event.ts`): it strips
+  hostname/`server_name`/device name and the IP-bearing `user`, drops captured
+  stack-frame local variables, and runs every remaining string (messages,
+  frames, contexts, extra, tags, breadcrumbs, and span attributes like
+  `inspect.directory`) through `scrubSensitivePaths` (home dir / username →
+  `~`, in `cli/utils/scrub-sensitive-text.ts`) + core's `redactSensitiveText`
+  (secrets/emails). `buildRunContext` also scrubs `cwd`/`argv` at the source. If
+  you add a new field to any Sentry event, confirm it carries no username,
+  hostname, IP, secret, or absolute path — and prefer adding it through
+  `buildSentryScope` so the central scrub covers it. `scrubSentryEvent` returns
+  `null` on any failure so an un-anonymized event is never sent.
+- **Crash references + trace linkage.** `reportErrorToSentry` returns the Sentry
+  event id; the CLI catch blocks thread it into `handleError` so it's printed as
+  a user-quotable reference and added to the prefilled GitHub issue. Errors
+  thrown during a scan are linked to the run transaction by capturing them with
+  the run's trace as the scope's propagation context — `withSentryRunSpan`
+  records the live trace in `active-run-trace.ts` (cleared only on success, so
+  the command catch — which runs after the span ends — can still read it), and
+  `reportErrorToSentry` re-attaches via `scope.setPropagationContext`.
+- **Sentry metrics (CLI only).** Anonymized Application Metrics (counters +
+  distributions) are emitted through `cli/utils/record-metric.ts`
+  (`recordCount` / `recordDistribution`), each guarded so it's a true no-op
+  unless `Sentry.isInitialized()` — inert for `--no-score`, tests,
+  and the `@react-doctor/api` library — and independent of `tracesSampleRate`
+  (metrics flow even when tracing is off). Metric names live in the `METRIC` map
+  in `cli/utils/constants.ts` (dotted, domain-grouped; high-cardinality
+  dimensions go in attributes, never the name). The run snapshot — and, once a
+  scan discovers it, the project shape — is merged onto **every metric at emit
+  time** by `record-metric.ts`'s `withRunAttributes`, which reprojects
+  `buildSentryScope().tags` per emit. This mirrors how events rebuild
+  `buildSentryScope` lazily, so metrics track runtime state (`--json` mode, a
+  workspace scan's project rolling over, the project clearing on
+  `resetSentryRunState`) rather than a stale init-time snapshot, and the
+  attributes pass through `beforeSendMetric` scrubbing like any other. Emit
+  sites pass only metric-specific attributes; the project shape comes from
+  `recordSentryProjectContext` → `getSentryProjectInfo()`. Per-scan metrics
+  (`scan.*`, `rule.fired`, `lint.failed`, …) are
+  emitted by `cli/utils/record-scan-metrics.ts`; `rule.fired` is one
+  high-cardinality counter keyed by `rule`/`plugin`/`category`/`severity`
+  attributes (never a metric-name-per-rule). Anonymization: `Sentry.init` sets
+  `beforeSendMetric: scrubSentryMetric` (`cli/utils/scrub-sentry-metric.ts`),
+  which drops the `server.address` hostname attribute (the SDK adds it to the
+  metric _before_ the hook, so the strip lands) and scrubs paths/secrets from
+  attribute values via the shared `cli/utils/anonymize-text.ts` (also used by
+  `scrubSentryEvent`), returning `null` to drop on failure. Add new counters
+  through `record-metric.ts` + the `METRIC` map, and confirm any new attribute
+  carries no username, path, or secret.
+- **Sentry canonical run wide event (CLI only).** The richest telemetry is one
+  high-dimensionality "wide event" per scan, not a pile of narrow counters: the
+  per-run root span (`withSentryRunSpan`) is enriched with the full outcome by
+  `cli/utils/build-run-event.ts` (`recordRunEvent`, plus the pure, testable
+  `buildRunEventAttributes`). `inspect.ts` calls it on the success path (after
+  `recordScanMetrics`) and, via a `try/catch` around the span body, on the
+  failure path — so the event lands with an `outcome` (`clean`/`ok`/`blocked`/
+  `error`), `exitCode`, and `errorTag` taxonomy even when the scan throws. The
+  run + project base context is already on the span (run tags from
+  `withSentryRunSpan`, project shape from `recordSentryProjectContext`), so the
+  event adds only what those don't: scan config (`mode`, `parallel`,
+  `workerCount`, `rulesConfigured`/`rulesDisabled`, `ignoredTagCount`,
+  `hasCustomConfig`, …), outcome (`totalDiagnostics`, `errorCount`/
+  `warningCount`, `affectedFiles`, `distinctRulesFired`, `topRule`, per-category
+  `diag.category.*`, `score`/`scoreLabel`/`scoreAvailable`, `scanClean`,
+  `skippedCheckCount`, lint/dead-code failure), and the CI/PR specifics
+  (`actorAssociation`, `runnerOs`, the forwarded action knobs `failOn`/
+  `nonBlocking`/`comment`/`annotations`/`versionPin`, and the `wouldBlock` gate).
+  Typing matters for querying: numeric outcomes are numbers (so Sentry can do
+  `p75(score)`), dimensions are strings/bools (so they filter/group); `null` is
+  dropped via `toSpanAttributes` so absent signals never become `"null"`. Query
+  it in Sentry's **Trace Explorer** and build **Dashboard widgets on the Spans
+  dataset** (filter/group by any attribute) instead of pre-aggregating counters.
+  Put new run-level dimensions on `build-run-context.ts` → `build-sentry-scope.ts`
+  (now also the `eventName` + `viaAction` tags) so they ride every event and
+  metric; put per-scan outcome dimensions on the wide event, **not** new
+  counters (we deliberately did not add `ci.*` counters — those dims are wide-
+  event attributes; the `scan.*`/`rule.fired` counters stay as the cheap,
+  trace-sampling-independent floor alongside `cli.invoked`/`cli.error`). Score
+  reachability is derivable (`!scoreAvailable && !didLintFail && !noScore`) and
+  score latency is the `Score.compute` child span's duration, so neither needs a
+  dedicated field. CI detection + the official-action marker and forwarded
+  inputs live in `cli/utils/is-ci-environment.ts`; `action.yml` sets the
+  `REACT_DOCTOR_GITHUB_ACTION` marker + `REACT_DOCTOR_ACTION_*` env on its scan
+  step. All attributes pass through `scrubSentryEvent`; keep them free of
+  username, path, secret, and repo/owner identity.
+- **runId.** `cli/utils/run-id.ts` mints one random `runId` per CLI run
+  (process). It rides the Sentry `run` context (and thus the wide event) but is
+  **never** a tag or metric attribute — a per-run unique value there would
+  explode tag/counter cardinality. A workspace invocation scanning several
+  projects shares one `runId`; the per-project span attributes disambiguate. Do
+  not add a plaintext or hashed repo id to Sentry.
 
 ### Console / logging
 
@@ -212,6 +348,43 @@ pnpm typecheck
 pnpm format       # use `format:check` to verify only
 pnpm smoke:json-report   # validates the built CLI's JSON output against the schema
 ```
+
+## GitHub Action versioning
+
+The composite GitHub Action is **versioned independently from the npm packages**. "The action"
+is `action.yml` (repo root) plus the scripts it shells out to (`scripts/ensure-json-report.mjs`,
+`scripts/render-github-action-comment.mjs`). Treat a change to any of those files as an action
+release.
+
+- Two tag namespaces coexist — never conflate them:
+  - npm packages — `react-doctor@X.Y.Z`, `eslint-plugin-react-doctor@X.Y.Z`,
+    `oxlint-plugin-react-doctor@X.Y.Z` (created by Changesets in CI; see
+    `.github/workflows/publish.yml`).
+  - GitHub Action — `v`-prefixed semver `vX.Y.Z` plus a floating major `vN` (the GitHub Actions
+    convention; the `v` prefix keeps these distinct from the unprefixed package tags above).
+    Current: latest is `v1.1.1`; `v1` → the same commit. The `v0.x` line is the pre-rebuild
+    action; the `f4035fce` PR-reporting rebuild is `v1.0.0`.
+- MUST: cut a tag on every commit that touches the action files. `feat(action)` → minor bump;
+  everything else (`fix` / `refactor` / `chore` / `revert` / docs-only edits to `action.yml`) →
+  patch bump. A breaking change to inputs/outputs or the runtime contract → major bump.
+- MUST: after tagging a new `vX.Y.Z`, move the floating major `vN` to that same commit so
+  `uses: millionco/react-doctor@vN` keeps resolving to the latest compatible release.
+- Tags are GPG-signed annotated tags (`tag.gpgsign=true`), so a bare `git tag vX` will demand a
+  message and fail in scripts. Always create/move with an explicit message:
+
+```bash
+# new release at the commit that changed the action
+git tag -a v1.1.2 <commit> -m "react-doctor action v1.1.2"
+# move the floating major (force-update only the vN pointer)
+git tag -fa v1 <commit> -m "react-doctor action v1 (floating major -> v1.1.2)"
+git push origin v1.1.2
+git push --force origin v1   # the force applies to the moving major tag only
+```
+
+- MUST: never tell consumers to reference `@main` in docs/examples. `@main` runs whatever HEAD
+  points to with `pull-requests: write` granted — a supply-chain risk (issue #299). Recommend a
+  full commit-SHA pin with a trailing version comment for hardened CI
+  (`uses: millionco/react-doctor@<sha> # v1.1.1`), or `@vN` for convenience.
 
 ## Reference reading
 

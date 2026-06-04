@@ -1,4 +1,4 @@
-import path from "node:path";
+import * as path from "node:path";
 import reactDoctorPlugin from "oxlint-plugin-react-doctor";
 import type {
   CleanedDiagnostic,

@@ -1,5 +1,276 @@
 # react-doctor
 
+## 0.3.0
+
+### Minor Changes
+
+- [#658](https://github.com/millionco/react-doctor/pull/658) [`cbdff62`](https://github.com/millionco/react-doctor/commit/cbdff6203d8ebb95adeea2c875938a6d811259bd) Thanks [@aidenybai](https://github.com/aidenybai)! - Add an "Add to CI" path to the post-scan handoff and make `install` set up CI by default.
+
+  The post-scan prompt now leads with an "Add to CI" choice (the default) that installs the `react-doctor` dev dependency + `doctor` script and writes a `.github/workflows/react-doctor.yml` GitHub Actions workflow so every pull request is scanned. When you instead hand off to an agent, the generated prompt now asks the agent to offer CI setup first. The `install` subcommand pre-selects the workflow and `install --yes` now writes it by default. The workflow's action is pinned to the `@v1` floating major (never `@main`, per the supply-chain guidance in issue [#299](https://github.com/millionco/react-doctor/issues/299)).
+
+### Patch Changes
+
+- [#676](https://github.com/millionco/react-doctor/pull/676) [`08e1d55`](https://github.com/millionco/react-doctor/commit/08e1d55da45d8b4afae1861484b2366743871e31) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - `react-doctor --full --yes` no longer errors with "Cannot combine --yes and --full; pick one."
+
+  `--yes` (skip prompts, scan all workspace projects) and `--full` (force a full scan, overriding any `diff` value) control orthogonal concerns, so combining them is a valid request — "scan every workspace project fully, without prompting." The mutual-exclusion check that rejected the pair has been removed.
+
+- [#674](https://github.com/millionco/react-doctor/pull/674) [`6851a78`](https://github.com/millionco/react-doctor/commit/6851a786e57e875fe4e9afbbd239397e99bf854b) Thanks [@aidenybai](https://github.com/aidenybai)! - Bump bundled `deslop-js` to `^0.0.17`, which stops `deslop/unused-dev-dependency` from false-positiving on dependencies referenced in a `package.json` script as a flag argument rather than the leading command — e.g. `jest --testResultsProcessor jest-sonar-reporter` or `--reporters=jest-junit` ([#653](https://github.com/millionco/react-doctor/issues/653)).
+
+- [#668](https://github.com/millionco/react-doctor/pull/668) [`3c05fc4`](https://github.com/millionco/react-doctor/commit/3c05fc4d63993055469e8c8a18f151ba95a3a36e) Thanks [@aidenybai](https://github.com/aidenybai)! - Update the dead-code analysis engine (`deslop-js`) to `0.0.16`.
+
+- [#655](https://github.com/millionco/react-doctor/pull/655) [`d594f69`](https://github.com/millionco/react-doctor/commit/d594f69f26efaab9b2d0a78140ff97a3ff497ab0) Thanks [@rayhanadev](https://github.com/rayhanadev)! - react-doctor no longer crashes when the `--changed-files-from` file can't be read.
+
+  `--changed-files-from <file>` is user input, so an unreadable file — missing, a directory, permission-denied, or a stale pipe/process-substitution descriptor (`EBADF`, REACT-DOCTOR-V) — is an invocation mistake, not a bug. It now exits non-zero with a clean, single-line message telling you to pass a readable text file, instead of printing the generic "Something went wrong" block and reporting the read failure to Sentry.
+
+- [#660](https://github.com/millionco/react-doctor/pull/660) [`e3b106e`](https://github.com/millionco/react-doctor/commit/e3b106e19156ddc508b92c80776237e3ebce1453) Thanks [@rayhanadev](https://github.com/rayhanadev)! - react-doctor now records a single anonymized per-scan "wide event" on its Sentry run span — the full run/CI/project/outcome context (scan mode, score, diagnostics by severity and category, top rule, lint/dead-code state, and, in CI, the GitHub event, an official-action marker, the forwarded action inputs, and the pull-request gate) — so usage and CI behavior can be analyzed by querying spans instead of pre-aggregated counters.
+
+  It also mints a random per-run `runId` attached to the Sentry run context (never as a tag or metric dimension) to correlate the spans of a single run. Telemetry stays anonymized — no repo, owner, username, branch, or path is sent to Sentry — and `--no-score` / `--no-telemetry` still opts out entirely. The official GitHub Action forwards its inputs (fail-on, non-blocking, comment, annotations, version) so action configuration is visible in telemetry.
+
+- [#658](https://github.com/millionco/react-doctor/pull/658) [`cbdff62`](https://github.com/millionco/react-doctor/commit/cbdff6203d8ebb95adeea2c875938a6d811259bd) Thanks [@aidenybai](https://github.com/aidenybai)! - Polished the first-run onboarding experience — the animated welcome scene now plays on every interactive regular-mode run (not just the first) but at half the cadence for returning users (`hasCompletedOnboarding()`), `--verbose` skips the intro entirely and goes straight to the static branded header, and the closing `"Let's scan your codebase..."` typewriter beat was cut so the intro ends on the tagline.
+
+  Restructured the scan-report layout so the top-errors detail (code frames + fixes) leads the report and the per-category breakdown moves down as a wrap-up overview directly above the score. The breakdown now has its own bold `All N issues` header (mirroring `Top N errors you should fix`) with the total folded into the header text, categories sort in a fixed Security → Bugs → Performance → Accessibility → Maintainability order, and warnings no longer get boxed code frames in `--verbose` (errors still do) so a long warning tail stops drowning the report. The trailing `--verbose` CTA drops the redundant `+N more rules and +N optional warnings` stats (the breakdown above already carries those) and reads as a clean `Run npx react-doctor@latest --verbose to list every error and warning`.
+
+  Quieted the "Add to CI" handoff: it no longer runs the local dev-dep install (the `doctor` package script and the GitHub workflow both invoke `npx react-doctor@latest`, so a local copy adds nothing and on pnpm with a beta channel it noisily trips the supply-chain trust guard for zero user benefit). The trust-policy skip on the `react-doctor install` path now renders as a yellow `⚠` warning with a tightened one-liner and a dim follow-up showing the manual install command, instead of a red `✖` that read like a crash next to its own "React Doctor still works" reassurance.
+
+  Made the case for GitHub Actions before the handoff prompt instead of after it. The scan-report footer now closes with a `GitHub Actions: https://react.doctor/ci` entry (matching the `Share` / `Docs` / `GitHub` bold label + dim description shape) carrying the strongest reasons in two short lines: `Scan every pull request: new PRs stay clean while you fix the backlog` + `Used by teams at PayPal, Rippling, and Alibaba`. Sitting last in the footer makes it the final thing read before the handoff prompt that recommends the same action. The prompt's choice reads as `Add to GitHub Actions (recommended)` (or `(already configured)`) with a description of what gets set up; the state tag lives in the title so the description always describes what the option _does_, not the project's current state. The post-pick message drops the social-proof + backlog framing (now redundant — the footer already showed it) and just confirms what changed plus the docs link.
+
+- [#667](https://github.com/millionco/react-doctor/pull/667) [`4dc48d7`](https://github.com/millionco/react-doctor/commit/4dc48d7bc5dbb5ba46cd63e5bd20082485630f97) Thanks [@aidenybai](https://github.com/aidenybai)! - React Compiler projects no longer report `jsx-no-constructed-context-values` for fresh context provider values that the compiler memoizes automatically.
+
+- [#654](https://github.com/millionco/react-doctor/pull/654) [`eab6dc2`](https://github.com/millionco/react-doctor/commit/eab6dc27477998c31bfa6fc100c50b33af449795) Thanks [@rayhanadev](https://github.com/rayhanadev)! - react-doctor no longer crashes when a directory can't be enumerated during project discovery.
+
+  The recursive subproject crawl reads directories best-effort and already skipped ones it couldn't open for permission or missing-path reasons (`EACCES`/`EPERM`/`ENOENT`/`ENOTDIR`). It now also skips directories the underlying filesystem rejects outright — `EINVAL` on `scandir` (REACT-DOCTOR-N, seen on special/virtual mounts), plus symlink loops (`ELOOP`) and over-long paths (`ENAMETOOLONG`) — instead of throwing and reporting the environment issue to Sentry. The crawl continues past the unreadable directory.
+
+- [#666](https://github.com/millionco/react-doctor/pull/666) [`5d7b36b`](https://github.com/millionco/react-doctor/commit/5d7b36bc315ba4c0a8ba6b60bd781a11efbed94f) Thanks [@aidenybai](https://github.com/aidenybai)! - Retires `rn-animate-layout-property`. Reanimated `useAnimatedStyle` runs entirely on the UI thread, so layout-affecting style animations driven by helpers like `withTiming` or `withSpring` are valid and should not be flagged.
+
+- [#645](https://github.com/millionco/react-doctor/pull/645) [`4aadaab`](https://github.com/millionco/react-doctor/commit/4aadaabfd488055a4323cc8b7f816c75601e40f1) Thanks [@aidenybai](https://github.com/aidenybai)! - Two React Native rules no longer false-positive on Expo Universal UI (`@expo/ui`).
+
+  `@expo/ui` is a native UI layer (it delegates to SwiftUI / Jetpack Compose), not React Native's core primitives, so several RN-core assumptions don't hold for its components:
+
+  - **`rn-no-raw-text`**: Universal UI's `<ListItem>` renders its raw string children inside the native headline text area, and its compound slot markers (`<ListItem.Leading>`, `<ListItem.Supporting>`, `<ListItem.Trailing>`) forward strings into native text too — so raw text inside them is safe, unlike React Native's core `<View>`. The rule now recognizes them as text-handling.
+  - **`rn-no-scrollview-mapped-list`**: Universal UI's `<ScrollView>` is a native scroll container; React Native's virtualized lists (`FlashList`/`FlatList`) can't compose inside its `<Host>` tree, and `@expo/ui` ships its own virtualized `<List>`. The rule no longer flags mapped children inside an `@expo/ui` `ScrollView`.
+
+  Both checks are gated on the `@expo/ui` import (root, `@expo/ui/swift-ui`, or `@expo/ui/jetpack-compose`, including renamed and namespace imports), so same-named components from other libraries — or with no import — still report.
+
+- [#672](https://github.com/millionco/react-doctor/pull/672) [`8e7fb33`](https://github.com/millionco/react-doctor/commit/8e7fb3366fc4b56a60bceb97195309f782c51541) Thanks [@aidenybai](https://github.com/aidenybai)! - `prefer-module-scope-static-value` ("Static value rebuilt every render") is now disabled when React Compiler is enabled.
+
+  React Compiler already hoists and caches per-render array/object allocations, so both halves of the recommendation — avoid the re-allocation and preserve referential equality for memoized children — are handled automatically, making the warning pure noise on a compiler-enabled codebase ([#669](https://github.com/millionco/react-doctor/issues/669)). The rule now carries `disabledBy: ["react-compiler"]`, matching the `jsx-no-new-*-as-prop` rules that gate on the same capability.
+
+- [#650](https://github.com/millionco/react-doctor/pull/650) [`3cc9971`](https://github.com/millionco/react-doctor/commit/3cc997108be438d0fc13b00529159c88984ed36a) Thanks [@rayhanadev](https://github.com/rayhanadev)! - A terminal hangup during an interactive prompt no longer crashes the CLI. When the terminal/PTY backing a prompt goes away mid-read (closing the tab, a dropped SSH/tmux session, sleep/wake), Node raises `read EIO` on the raw-mode stdin handle; the CLI now exits cleanly (code 129) instead of surfacing it as a fatal uncaught exception and reporting it to crash telemetry. Genuine stdin errors still funnel to the error reporter unchanged.
+
+- [#673](https://github.com/millionco/react-doctor/pull/673) [`68a0bef`](https://github.com/millionco/react-doctor/commit/68a0befa1a688d591ddeeefe03b334c515654942) Thanks [@aidenybai](https://github.com/aidenybai)! - `no-wide-letter-spacing` no longer false-positives on uppercase labels styled through a wrapper component prop.
+
+  The rule exempts wide tracking on uppercase text, but it could only see `textTransform: 'uppercase'` written inline in the same style object. Design-system text components routinely apply the transform from a prop instead (`<SSText uppercase style={{ letterSpacing: 2 }}>`), which the rule can't see inside the component ([#671](https://github.com/millionco/react-doctor/issues/671)). It now also treats a sibling `uppercase` boolean prop or a `textTransform="uppercase"` prop on the same element as the uppercase signal, so those short labels stay quiet.
+
+- Updated dependencies [[`eba20ae`](https://github.com/millionco/react-doctor/commit/eba20ae9a708af81c7d95dbdadf16c8e5c6d21f9), [`5d7b36b`](https://github.com/millionco/react-doctor/commit/5d7b36bc315ba4c0a8ba6b60bd781a11efbed94f)]:
+  - oxlint-plugin-react-doctor@0.3.0
+
+## 0.2.18
+
+### Patch Changes
+
+- [#640](https://github.com/millionco/react-doctor/pull/640) [`b336f54`](https://github.com/millionco/react-doctor/commit/b336f54d664bf49e0c7b9575b7dcd374eebfd9c6) Thanks [@aidenybai](https://github.com/aidenybai)! - The interactive category breakdown now reveals issues one at a time — a category's errors before its warnings, top to bottom — instead of every count easing up in parallel, holds for a beat once it settles, and finally plays on monorepo (multi-project) scans too.
+
+  Previously the count-up only animated on single-project scans; the multi-project aggregate report rendered the breakdown (and the score projection) statically. Both now share the same interactive reveal, gated on the same real-TTY predicate, so a monorepo's report animates like a single project's. Small and medium breakdowns step one issue per frame; very large ones grow the per-step increment so the reveal still resolves quickly.
+
+- [#643](https://github.com/millionco/react-doctor/pull/643) [`0c8b797`](https://github.com/millionco/react-doctor/commit/0c8b797d18d7d8d0b347fbea0da111b38075eb5d) Thanks [@rayhanadev](https://github.com/rayhanadev)! - react-doctor no longer crashes when `git` isn't installed.
+
+  During a normal scan, diff auto-detection reads the current branch first. When the `git` binary couldn't be spawned (e.g. a bare container with no git on `PATH`), that best-effort read threw instead of degrading, crashing the scan and reporting an environment issue to Sentry (REACT-DOCTOR-F). It now degrades to "unknown branch" — matching how a non-zero `git` exit was already handled — so the scan continues without git context.
+
+- [#642](https://github.com/millionco/react-doctor/pull/642) [`2aa96f3`](https://github.com/millionco/react-doctor/commit/2aa96f39b56555722b7121569a5bbd9caa10dc44) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Expected, user-actionable failures are no longer reported to Sentry or rendered as crashes.
+
+  When react-doctor exits because of the user's project or invocation — not a bug — it now prints a clean, single-line message and exits non-zero, instead of the generic "Something went wrong, open a prefilled issue" block. These cases are also no longer sent to Sentry or counted in the alertable error-rate metric. This was flooding crash reporting with non-bugs from CI, coding agents, and sandboxes.
+
+  Covered cases:
+
+  - **No React / no project / missing path** — every project-discovery failure (`NoReactDependencyError`, `ProjectNotFoundError`, `PackageJsonNotFoundError`, `NotADirectoryError`, `AmbiguousProjectError`) is now treated as a clean user error (REACT-DOCTOR-1, -4, -6, -7). When the scan target simply doesn't exist on disk, the message now says the path doesn't exist instead of the misleading "Expected a package.json…" guidance.
+  - **CLI invocation mistakes** — a malformed `<file>:<line>` argument, mutually exclusive flags (e.g. `--yes` + `--full`), and an unknown `--project` name now render as clean errors (REACT-DOCTOR-B, -D, -G, -H).
+  - **Read-only config directory** — react-doctor no longer crashes when it can't create/read its global setup-prompt store on a locked-down or read-only filesystem; it degrades gracefully (REACT-DOCTOR-E).
+
+  The fix is enforced centrally in `reportErrorToSentry`, so the CLI entry point, `inspect`, and `install` all benefit.
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.2.18
+
+## 0.2.17
+
+### Patch Changes
+
+- [#638](https://github.com/millionco/react-doctor/pull/638) [`114893e`](https://github.com/millionco/react-doctor/commit/114893e07d83d143aa3cdddc9fb178137b786f47) Thanks [@aidenybai](https://github.com/aidenybai)! - Redesigned the interactive scan report and added a first-run onboarding reveal.
+
+  The default single-project report now reads top-to-bottom the way a human scans it: the category tally, then the score box (with the total issue count inline on the score line, e.g. `7 / 100 Critical   295 issues`), the projection, the top fixes one by one, the warning roll-up, a single merged `+N more errors and +N more warnings` overflow line, and finally Share / Docs / Tip. The per-section `+N more rules` lines, the `N warnings` sub-header, and the `Top N errors you should fix` header were removed for a cleaner read. CI, coding-agent, git-hook, and verbose runs keep the classic information-dense layout (diagnostics first, then agent guidance and score).
+
+  On a user's first interactive run it plays as an onboarding sequence: a happy React Doctor "welcome" scene opens, the scan runs, the category tallies count up from zero in parallel, and then each section — and each of the top errors — reveals on an ~850ms beat (quickening to ~680ms once the score lands) instead of a wall of text. It runs only once (a marker persisted in the global config records that it was shown), and is skipped entirely in CI, under coding agents, and on any non-TTY / score-only / JSON run.
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.2.17
+
+## 0.2.16
+
+### Patch Changes
+
+- [#637](https://github.com/millionco/react-doctor/pull/637) [`8162bfb`](https://github.com/millionco/react-doctor/commit/8162bfb7ca0948b137dd75a22776e55cab99b740) Thanks [@aidenybai](https://github.com/aidenybai)! - Redesign the scan output's summary and footer. The default (non-verbose) run no longer lists every warning rule — warnings are rolled into a single overflow line alongside the hidden errors (e.g. `+4 more rules and +50 optional warnings — run npx react-doctor@latest --verbose for details`). `--verbose` now renders warnings in the same boxed, titled, code-framed format as errors (with a "Learn more" docs link), instead of a separate compact list. The closing footer is restructured into a `Share:` / `Docs:` / `GitHub:` block (each with a one-line description) separated by a divider, and the share link now appears for monorepo runs too (gated the same way as single-project: shown unless CI, `--no-score`, or `share: false`). The scan spinner's worker count now reads as a dimmed `[~N workers]`.
+
+- [#633](https://github.com/millionco/react-doctor/pull/633) [`520b0a9`](https://github.com/millionco/react-doctor/commit/520b0a9235d37074821c12fd73455d8462128a75) Thanks [@rayhanadev](https://github.com/rayhanadev)! - `--diff` now accepts git commit ranges, and a bad `--diff` value is no longer treated as a crash.
+
+  - `--diff A..B` (two-dot, diff A directly against B) and `--diff A...B` (three-dot, diff from the merge-base of A and B to B) are now supported, matching git's own range syntax — an empty endpoint defaults to `HEAD` (`main..` ⇒ `main..HEAD`). Previously any value containing `..` was rejected outright, so `react-doctor --diff 7694215..c4de712` failed. Each range endpoint is still individually validated against the anti-injection guard, so a range can't smuggle a `--upload-pack=…`-style option past it.
+  - An invalid `--diff` value (a malformed ref/range or a base branch that hasn't been fetched) is now rendered as a clean, single-line message and exits non-zero — it no longer prints the generic "Something went wrong, open a prefilled issue" block or reports the expected user error to Sentry.
+
+- [#635](https://github.com/millionco/react-doctor/pull/635) [`bd8298d`](https://github.com/millionco/react-doctor/commit/bd8298d6cf3484ef7f2898fe981442706ffea3ce) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Lint in parallel by default. React Doctor now fans the lint pass across your CPU cores out of the box (previously serial) and automatically falls back to a single worker if a parallel run exhausts system resources (`EAGAIN`/`EMFILE`/`ENFILE`/`ENOMEM`); any other failure still surfaces. Pass `--no-parallel` (or set `REACT_DOCTOR_PARALLEL=0`) to force serial linting, or set `REACT_DOCTOR_PARALLEL=<n>` to pin a worker count. The experimental `--experimental-parallel` flag is replaced by `--no-parallel`.
+
+- [#634](https://github.com/millionco/react-doctor/pull/634) [`17e722e`](https://github.com/millionco/react-doctor/commit/17e722ee074d10a5c4082b9f0a6b40ccaf3bed3b) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Add anonymized Sentry Application Metrics (counters + distributions) to the CLI, alongside the existing crash reporting and tracing, so we can track reliability/performance and prioritize work.
+
+  - **Counters & distributions**: each run records `cli.invoked` (per command), `scan.completed`, `scan.duration`/`scan.files`/`scan.score`, `project.detected` (anonymous project shape), `rule.fired` (a per-rule counter keyed by `rule`/`plugin`/`category`/`severity`, so we can see which rules actually catch issues, which are noisy, and which never fire), `lint.failed`/`deadcode.failed`/`scan.check_skipped`/`score.unavailable`, `cli.error`, plus growth/activation signals on `install` (which coding agents, git hook, CI workflow, agent hooks, dependency outcome), the agent-handoff fix loop (`agent.handoff`), and `rules` config changes (`rules.changed`/`rules.queried`).
+  - **Trace-connected & enabled by default**: metrics use `Sentry.metrics.*` (SDK ≥ 10.25), flow independently of `SENTRY_TRACES_SAMPLE_RATE`, and carry the run snapshot + project shape (rebuilt per emit, mirroring the per-event run tags).
+  - **Anonymized by default**: a `beforeSendMetric` hook drops the `server.address` hostname attribute and scrubs home-directory paths + known secrets from attribute values via the same redactor used for events, dropping the metric on failure. Attributes are enums/booleans/counts/rule names only — no source code or specific findings.
+  - **Opt-out unchanged**: `--no-score` (and its `--no-telemetry` alias) disables metrics along with crash reporting and tracing; metrics are skipped under test runs, and the programmatic `@react-doctor/api` library never initializes Sentry.
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.2.16
+
+## 0.2.15
+
+### Patch Changes
+
+- [#612](https://github.com/millionco/react-doctor/pull/612) [`3ceb748`](https://github.com/millionco/react-doctor/commit/3ceb7480c1f1b61a45a728274940f9e3de74a462) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Stop flagging known public client keys in `no-secrets-in-client-code`. Keys that vendors design to ship in the browser bundle — RevenueCat public SDK keys (`appl_`/`goog_`/`amzn_`/`strp_`), Stripe/Clerk publishable keys (`pk_live_`/`pk_test_`), Supabase publishable keys (`sb_publishable_`), PostHog project keys (`phc_`), Stytch public tokens (`public-token-`), and Mapbox public access tokens (`pk.`) — are now allowlisted, so the variable-name heuristic no longer reports them as hardcoded secrets. Ambiguous shapes that can be either public or sensitive (Google/Firebase `AIza…` browser keys, and bare Supabase `anon`/`service_role` JWTs) are intentionally still flagged.
+
+- [#596](https://github.com/millionco/react-doctor/pull/596) [`6e59f10`](https://github.com/millionco/react-doctor/commit/6e59f10ef8b2173f0c98a653b13702d84f6471e7) Thanks [@aidenybai](https://github.com/aidenybai)! - Diagnostic ranking now depends solely on the score API's per-rule priority. The hand-rolled severity/category-stakes weighting (and the offline priority midpoints) is gone: when the API priority is unavailable (`--no-score`, offline, or API failure) rules and categories keep their scan order, with categories falling back to alphabetical for determinism.
+
+- [#619](https://github.com/millionco/react-doctor/pull/619) [`b3c3aa9`](https://github.com/millionco/react-doctor/commit/b3c3aa94018bfde765431f6a5612435c621eb925) Thanks [@aidenybai](https://github.com/aidenybai)! - Treat `CI=1` and `CI=True` as CI environments, not just `CI=true`. CI-only behavior (suppressing the share URL, marking the run as CI-originated for scoring) now triggers consistently across providers that set `CI` to a truthy value other than the literal string `"true"`; explicit `CI=false` / `CI=0` are still treated as non-CI.
+
+  A present-but-unparseable `react-doctor.config.json` at the scanned root no longer silently falls through to a parent directory's config. The tool stops there instead of letting an ancestor repo's config govern the project; a `package.json` `reactDoctor` config in the same directory is still used as a fallback.
+
+- [#605](https://github.com/millionco/react-doctor/pull/605) [`4861f37`](https://github.com/millionco/react-doctor/commit/4861f37a55eb12909c7faca170ec5c9fd636f9a9) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Update the dead-code analysis engine (`deslop-js`) to `0.0.14` so the published CLI's unused-file / dead-code detection runs on the latest release. The CLI previously pinned `^0.0.13` while the internal core engine was already on `0.0.14`; this aligns both on a single version and drops the duplicate from the lockfile.
+
+- [#596](https://github.com/millionco/react-doctor/pull/596) [`6e59f10`](https://github.com/millionco/react-doctor/commit/6e59f10ef8b2173f0c98a653b13702d84f6471e7) Thanks [@aidenybai](https://github.com/aidenybai)! - Collapse diagnostic categories into five clear, outcome-based buckets: **Security**, **Bugs**, **Performance**, **Accessibility**, and **Maintainability**. The previous fine-grained labels (Correctness, State & Effects, React Compiler, Next.js, React Native, Server, TanStack Query/Start, Preact → Bugs; Bundle Size → Performance; Architecture/Design → Maintainability) now roll up so the scan output reads as plain issue types at a glance.
+
+  This changes the `category` value on every diagnostic (CLI output, the per-error headline prefix like `Security: Use of eval()`, and JSON/programmatic output). If you key `categories` severity overrides off the old names, update them to the new buckets. Dead-code findings (unused files/exports/dependencies, circular imports) now report `Maintainability` instead of `Dead Code`. Bundle-size findings now sort with `Performance` (higher stakes) rather than near the bottom of the top-errors block.
+
+- [#623](https://github.com/millionco/react-doctor/pull/623) [`b9e9bcb`](https://github.com/millionco/react-doctor/commit/b9e9bcbc08985f4bd77df1f354713d2cdbdaf2ec) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Align the CLI with the clig.dev and 12-factor CLI guidelines:
+
+  - `--color` / `--no-color` flags force or disable colored output, with app-specific `REACT_DOCTOR_NO_COLOR` / `REACT_DOCTOR_FORCE_COLOR` env overrides. Flags win over env vars, which win over picocolors' built-in `NO_COLOR` / `FORCE_COLOR` / `TERM` / TTY detection; the preference is resolved before parsing so it reaches every surface (scan report, branded header, score, prompts, errors).
+  - `react-doctor --help` and `react-doctor install --help` now lead with worked examples and link to where to report feedback.
+  - New `react-doctor version` subcommand prints the version with Node and platform info (e.g. `react-doctor/0.2.14 darwin-arm64 node-v24.14.0`); `-v` / `-V` / `--version` stay terse for scripts.
+  - `react-doctor help` and `react-doctor help <command>` now show help instead of failing by trying to scan a directory named "help".
+
+- [#583](https://github.com/millionco/react-doctor/pull/583) [`4bc8a73`](https://github.com/millionco/react-doctor/commit/4bc8a73d247d9b8378616e738780af3794f0b97f) Thanks [@aidenybai](https://github.com/aidenybai)! - Port expo-doctor's project-level checks as Expo-gated diagnostics. When an Expo project is detected (`expoVersion !== null`), react-doctor now runs the statically-determinable subset of expo-doctor's check suite during the environment-checks phase (skipped in diff/staged mode):
+
+  - `expo-no-unimodules-packages` — legacy `@unimodules/*` / `react-native-unimodules` packages (IllegalPackageCheck).
+  - `expo-no-cli-dependencies` — `expo-cli` / `eas-cli` listed as project dependencies (GlobalPackageInstalledLocallyCheck).
+  - `expo-no-redundant-dependency` — packages Expo installs transitively or that were removed/deprecated (`expo-modules-core`, `@expo/metro-config`, `@types/react-native`, `expo-permissions`, the `expo-firebase-*` family, …), each SDK-version gated (DirectPackageInstallCheck).
+  - `expo-no-conflicting-dependency-override` — `overrides`/`resolutions`/`pnpm.overrides` that pin SDK-critical packages like `@expo/cli` or `metro*` (DependencyVersionOverrideCheck).
+  - `expo-router-no-react-navigation` — direct `@react-navigation/*` alongside `expo-router` on the SDK 56 line only (`>=56 <57`, matching expo-doctor's range) (ExpoRouterReactNavigationCheck).
+  - `expo-vector-icons-conflict` — scoped icon packages mixed with `@expo/vector-icons` / `react-native-vector-icons` (VectorIconsCheck).
+  - `expo-package-json-conflict` — `expo`/`react-native` scripts shadowing node_modules bins, and a package name colliding with a dependency (PackageJsonCheck).
+  - `expo-lockfile` — missing or multiple lock files at the workspace root (LockfileCheck).
+  - `expo-gitignore` — a committed `.expo/` directory, or local module native dirs that are gitignored (ProjectSetupCheck).
+  - `expo-env-local-not-gitignored` — committed `.env*.local` files (EnvLocalFilesCheck).
+  - `expo-metro-config` — a metro config that doesn't extend `expo/metro-config`, while tolerating known wrappers that extend it internally such as Sentry's `getSentryExpoConfig` (MetroConfigCheck).
+
+  The remaining expo-doctor checks require running the Expo CLI, querying the Expo API, or inspecting native iOS/Android projects — none of which fit react-doctor's offline, static model — so they're intentionally out of scope.
+
+- [#583](https://github.com/millionco/react-doctor/pull/583) [`4bc8a73`](https://github.com/millionco/react-doctor/commit/4bc8a73d247d9b8378616e738780af3794f0b97f) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect Expo projects independently of the single-valued `framework` hint. Project discovery now surfaces an `expoVersion` signal (the declared `expo` package spec, looked up in the project or any of its workspace packages, or `null`), paralleling `reactVersion`. The `expo` capability is keyed off `expoVersion !== null` rather than `framework === "expo"`, so Expo-specific rules now load on web-rooted monorepos whose `apps/mobile` workspace targets Expo, and on projects that declare both `expo` and a web bundler (where `vite` / `next` previously won framework detection and silently dropped the `expo` capability). The file-level package boundary in `oxlint-plugin-react-doctor` still keeps Expo-only rules quiet on web workspaces.
+
+- [#615](https://github.com/millionco/react-doctor/pull/615) [`8b313ba`](https://github.com/millionco/react-doctor/commit/8b313badda74de19ba56a242d965c54399d39b9c) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Fix two dead-code / fix-recipe papercuts surfaced on alias-heavy Next.js projects.
+
+  **Dead-code no longer mis-flags `@/…` (and other) imports as unused.** The dead-code pass resolves imports through `oxc-resolver`, which returns realpath'd (symlink-free) paths, but built its module graph from the scan root as-is. When the project root sat behind a symlink — e.g. a macOS iCloud-synced `~/Documents` / `~/Desktop`, or a symlinked checkout — the two path spaces diverged, every import edge dropped, and files reachable only through those imports (in an alias-heavy codebase, every `@/…` target) were reported as "unused / unreachable". The scan root is now canonicalized before analysis so the module graph and the resolver agree. This was never specific to `@/*` aliases; relative imports were affected the same way.
+
+  **Per-rule fix-recipe URLs are only shown when a recipe exists.** Findings advertised a "fetch the canonical fix recipe" URL (`/prompts/rules/<plugin>/<rule>.md`) for every diagnostic, but recipes are only published for react-doctor's own engine rules. Dead-code (`deslop/*`), the environment / supply-chain checks (`require-reduced-motion`, `require-pnpm-hardening`), and adopted third-party plugins (`eslint`, `unicorn`, `react-hooks-js`, …) have no recipe, so their links 404. The directive is now gated to engine rules, so agents are no longer sent to dead links.
+
+- [#607](https://github.com/millionco/react-doctor/pull/607) [`5dff3b5`](https://github.com/millionco/react-doctor/commit/5dff3b5a5da033e0ae4cd5dd432a74d36ca7d143) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Fix `react-doctor --staged` (and other scans) hanging after the diagnostics summary is already printed. When an adopted lint config crashed oxlint on the first attempt, the oxlint runner's per-batch progress timer was left running while the scan silently retried with `extends` stripped — so the run finished and printed results, but the orphaned `setInterval` kept the Node event loop alive and the process never returned control to the shell. The batch loop now clears the timer in a `finally`, so it's always cleaned up even when a batch throws. See [#599](https://github.com/millionco/react-doctor/issues/599).
+
+- [#614](https://github.com/millionco/react-doctor/pull/614) [`daef23c`](https://github.com/millionco/react-doctor/commit/daef23ceff93634ffdb34c8e22e41610a07a596b) Thanks [@aidenybai](https://github.com/aidenybai)! - `jsx-key` no longer reports a missing key when a list element spreads the whole iteration item — `items.map((item) => <Item {...item} />)`. Spreading the row object is the canonical "this row carries its own identity" shape and was the dominant source of `jsx-key` noise on real lists, while rarely catching a genuine reorder bug. Genuine keyless lists still report: `items.map((item) => <Item name={item.name} />)`, index keys, array literals (`[<Item {...item} />]`), and spreads of anything other than the iteration variable.
+
+- [#614](https://github.com/millionco/react-doctor/pull/614) [`daef23c`](https://github.com/millionco/react-doctor/commit/daef23ceff93634ffdb34c8e22e41610a07a596b) Thanks [@aidenybai](https://github.com/aidenybai)! - App-only heuristics now stay quiet in published libraries, and React Compiler memoization-cleanup is demoted to a warning.
+
+  - `react-hooks-js/static-components` and `no-render-prop-children` no longer fire on files in a published library — a non-`private` `package.json` that declares the publish contract (`name` + `exports`). They still fire in applications (including private monorepo apps that live under `packages/` or declare a niche internal `exports` map) and in any package without that contract, and an explicit per-rule severity in config always re-enables them.
+  - `react-compiler-no-manual-memoization` now defaults to `warn` instead of `error` when React Compiler is detected — redundant `useMemo` / `useCallback` / `memo` is correctness-neutral cleanup, so it's hidden from the default report. The external `react-hooks-js/*` compiler rules stay `error` because each marks code the compiler could not optimize (a real perf regression).
+  - New `buckets` config field: set `{ "buckets": { "compiler-cleanup": "error" } }` to re-enable strict errors for the redundant-memoization rule. A per-rule override still wins over a bucket.
+
+- [#613](https://github.com/millionco/react-doctor/pull/613) [`6448d5b`](https://github.com/millionco/react-doctor/commit/6448d5bfe1a920003a0d74d4080351d973dcbc0b) Thanks [@NisargIO](https://github.com/NisargIO)! - Speed up scans of effect-heavy codebases by memoizing `getDownstreamRefs` in the State & Effects rule helpers. `ascend()` re-descended the same large definition subtrees on every recursion step, so the seven effect rules (led by `no-pass-data-to-parent`) blew up superlinearly on big components with many `useEffect`s — re-walking and re-scoping identical bodies across recursion, across effects, and across rules. Caching the downstream-reference lookup per Program node (a `WeakMap` keyed on the per-`Program` analysis singleton, GC-bound with the file) collapses that to a single descent.
+
+  On an 866-file Next.js app this cut ~9s (~24%) off a full scan — the worst rule on the largest file (a 1,159-line component with 10 effects) dropped from ~9.5s to ~0.18s, and the hot lint batch from ~13.5s to ~2.5s. Diagnostics are byte-identical (verified by a SHA-256 fingerprint over every diagnostic before/after); the cache only stores arrays callers already read and never mutate.
+
+- [#616](https://github.com/millionco/react-doctor/pull/616) [`bb15252`](https://github.com/millionco/react-doctor/commit/bb15252940bbd598846d7f7018df3fb86f11ea9f) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Add an `--experimental-parallel [workers]` flag that runs the oxlint lint pass across multiple worker processes instead of one batch at a time. React Doctor's rules are oxlint JS plugins (single-threaded per process), so a serial scan only ever pins one core; `--experimental-parallel` fans the file batches out across the requested number of concurrent oxlint subprocesses, which scales the scan nearly linearly with CPU cores (measured ~3.5–4.6x on a 1,500-file project and ~4.6x on Sentry's 8,773 files) while producing byte-identical diagnostics.
+
+  `--experimental-parallel` with no value auto-detects available cores; `--experimental-parallel <n>` caps the worker count; `REACT_DOCTOR_PARALLEL=<n>` seeds the default for flag-less / CI runs. The worker count is clamped to a safe range to bound peak memory, and the default remains serial so resource usage stays opt-in.
+
+- [#601](https://github.com/millionco/react-doctor/pull/601) [`5f7cc7c`](https://github.com/millionco/react-doctor/commit/5f7cc7c36ed62b0c2264916f2aeb694e5713e821) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Publish a JSON Schema for `react-doctor.config.json` at `https://react.doctor/schema/config.json`.
+
+  Pointing `$schema` at the URL enables editor autocomplete, hover docs from the interface JSDoc, and typo warnings in any editor that understands JSON Schema. Closes [#497](https://github.com/millionco/react-doctor/issues/497).
+
+  ```jsonc
+  {
+    "$schema": "https://react.doctor/schema/config.json",
+    "lint": true
+  }
+  ```
+
+  The schema is generated from `packages/core/src/types/config.ts` via `pnpm build:schema` and checked into `packages/website/public/schema/config.json`.
+
+- [#606](https://github.com/millionco/react-doctor/pull/606) [`fe01e57`](https://github.com/millionco/react-doctor/commit/fe01e573a91a36316c858ad1e7c12a5fe18c1039) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Redact secrets and PII from diagnostic output. Every diagnostic's `message`/`help` is now scrubbed for API keys, tokens, private keys, JWTs, credentialed URLs, and email addresses before it reaches the terminal, the JSON report, or the score API — so react-doctor never echoes or transmits a secret embedded in your source. Provider tokens keep their non-secret, type-identifying prefix (e.g. `sk_live_<redacted>`, `ghp_<redacted>`) so you can tell which credential leaked while the secret itself stays masked.
+
+- [#625](https://github.com/millionco/react-doctor/pull/625) [`bdb9e36`](https://github.com/millionco/react-doctor/commit/bdb9e36b0e8f27e04104f676bffd8c6091b65cc5) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Add 10 React Native & Expo diagnostics (researched against first-party docs/RFCs and validated against an OSS corpus). Six are oxlint AST rules; four are project-level checks gated on the React Native / Expo capability and run in the environment-checks phase (skipped in diff/staged mode).
+
+  AST rules:
+
+  - `rn-no-deep-imports` — deep imports of public symbols from `react-native/Libraries/*` (RFC 0894; breaks on upgrade). Curated to symbols re-exported from the root, with a tailored message for the relocated `NewAppScreen`; skips type-only imports and the Codegen/TurboModule authoring surface.
+  - `rn-no-set-native-props` — `ref.current(?.).setNativeProps(...)`, a silent no-op under the New Architecture (Fabric).
+  - `rn-no-image-children` — children inside react-native's `<Image>` (which renders none); use `<ImageBackground>`. Resolves the element to the `react-native` import so `expo-image`/custom `Image` are ignored.
+  - `rn-no-panresponder` — `PanResponder` imported from `react-native` (JS-thread gestures); use `react-native-gesture-handler`.
+  - `rn-detox-missing-await` — un-awaited Detox actions / `waitFor` / `expect(element(...))` in `*.e2e.*` files.
+  - `expo-no-non-inlined-env` — computed `process.env[...]` and `process.env` destructuring, which `babel-preset-expo` can't inline (value is `undefined` at runtime); scoped to Expo client files.
+
+  Project-level checks:
+
+  - `rn-no-metro-babel-preset` — `module:metro-react-native-babel-preset` in a babel config (renamed to `@react-native/babel-preset`; uninstalled on RN 0.73+).
+  - `rn-library-react-in-dependencies` — a `react-native-builder-bob` library listing `react`/`react-native` in `dependencies` instead of `peerDependencies` (duplicate-React / duplicate-native-module crashes).
+  - `expo-reanimated-v4-requires-new-arch` — `react-native-reanimated` v4 with `newArchEnabled: false` in the app config (first-launch crash).
+  - `expo-updates-no-unsafe-production-config` — `updates.disableAntiBrickingMeasures: true` in the app config (can brick installed apps).
+
+- [#614](https://github.com/millionco/react-doctor/pull/614) [`daef23c`](https://github.com/millionco/react-doctor/commit/daef23ceff93634ffdb34c8e22e41610a07a596b) Thanks [@aidenybai](https://github.com/aidenybai)! - `rn-no-raw-text` now auto-detects in-file custom text wrappers, cutting false positives on design-system `<Text>` forwarders. A component whose returned root is a `<Text>` — e.g. `const Banner = ({ children }) => <Text>{children}</Text>` or `export const Caption = (props) => <Text {...props} />` — is treated as a string-only text forwarder, so raw text passed to it (`<Banner>Hello</Banner>`) no longer reports. Mixed children still report (`<Banner><Icon /> hi</Banner>`) because a single-`<Text>` forwarder can't be trusted to route a JSX child into text. Components only referenced (not defined) in the file keep the existing name-heuristic behavior, and the config-driven `textComponents` / `rawTextWrapperComponents` overrides are unchanged.
+
+- [#617](https://github.com/millionco/react-doctor/pull/617) [`9777f1a`](https://github.com/millionco/react-doctor/commit/9777f1ac453d8211e90c66852e0527a0ec386bc6) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Configure React Doctor with `doctor.config.{ts,js,mjs,cjs,mts,cts,json}` (or a `package.json#reactDoctor` key), and add `react-doctor rules` commands to list, explain, and configure rules without hand-editing config.
+
+  - **TS-first config.** Author `doctor.config.ts` (or any JS/JSON variant) — TypeScript and ESM configs load via `jiti`, and JSON configs allow comments and trailing commas (JSONC).
+  - **`rules` commands.** `rules list` shows every rule and the severity it runs at; `rules explain <rule>` describes why a rule matters and how to tune it; and `rules set` / `enable` / `disable` / `category` / `ignore-tag` / `unignore-tag` edit your config for you. TS/JS configs are edited in place via `magicast` (formatting and comments preserved); JSON and `package.json` are edited as data; a `doctor.config.json` is created when no config exists. Rule references accept the full key (`react-doctor/no-danger`), the bare id (`no-danger`), or a legacy key (`react/no-danger`).
+  - **`doctor-explain` skill** (alias `doctor-config`), shipped via `react-doctor install`, teaches coding agents to explain a rule before disabling it and to pick the narrowest control (rule severity vs category vs tag vs `surfaces`).
+
+  **Breaking:** the config file is now `doctor.config.*` instead of `react-doctor.config.json`. The next time you run `react-doctor` interactively, an existing `react-doctor.config.json` is automatically migrated to a typed `doctor.config.ts` (settings preserved, `$schema` dropped) and you're told once — CI, coding-agent, `--staged`, JSON/score, and non-TTY runs are left untouched (a warning still nudges them). The `package.json#reactDoctor` key is unchanged.
+
+- [#596](https://github.com/millionco/react-doctor/pull/596) [`6e59f10`](https://github.com/millionco/react-doctor/commit/6e59f10ef8b2173f0c98a653b13702d84f6471e7) Thanks [@aidenybai](https://github.com/aidenybai)! - Cleaner scan output and smarter file scoping:
+
+  - The post-scan summary now leads with a "Top errors you should fix" block — each error shows a plain-language explanation and an inline code frame, with the rule's human title prefixed by its category (e.g. `Security: Use of eval()`) instead of its id, so it's clear at a glance what kind of problem it is.
+  - Security rules now read as security findings: `dangerouslySetInnerHTML` (XSS) is categorized under Security, and security messages use explicit vulnerability language (code injection, XSS, reverse tabnabbing, CSRF, secret exposure).
+  - Every rule's messages were rewritten to be short, plain, and dash-free, and each rule now carries a short `title`.
+  - Generated bundler output (`*.iife.js`, `*.umd.js`, `*.global.js`, `*.min.js`) is now excluded from scans by default. As a result `project.sourceFileCount` (and the scanned-file totals) no longer count these generated bundles.
+  - Minified files that carry an ordinary extension (e.g. a one-line `public/inject.js` bundle) are now detected by content and skipped, so they no longer flood the report with noise. Any diagnostic that still lands on an overlong single line falls back to a `file:line` reference instead of rendering an unreadable code frame.
+  - Multi-project scans now report the number of UNIQUE files scanned, so nested workspace packages (a parent whose tree contains a child package) are no longer double-counted in the "Scanned N files" total.
+
+- [#621](https://github.com/millionco/react-doctor/pull/621) [`24425b1`](https://github.com/millionco/react-doctor/commit/24425b113adcd965545b8c790af85c13a0d86c86) Thanks [@NisargIO](https://github.com/NisargIO)! - Add Sentry crash reporting to the CLI. Uncaught errors that reach the CLI's error funnels are now captured via `@sentry/node` and flushed before the process exits, each enriched with a `run` context snapshot (version, node/platform/arch, the invocation `command`/`argv`, `cwd`, CI provider, coding agent, interactivity, and JSON mode) to make crashes triage-able. Sentry initializes as the first statement of the CLI entry so its global handlers are armed before any command runs, and it's scoped to the CLI only — the programmatic `@react-doctor/api` library never initializes Sentry.
+
+  Reporting is opt-out: pass `--no-score` to disable crash reporting along with the hosted score API and share URL. The SDK is also skipped under test runs (`VITEST` / `NODE_ENV=test`).
+
+- [#628](https://github.com/millionco/react-doctor/pull/628) [`e9e71bb`](https://github.com/millionco/react-doctor/commit/e9e71bbc2f98e7175136918b1a3de134e9d7cb87) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Deepen the CLI's Sentry integration: uploaded source maps, unified tracing, and richer run context.
+
+  - **Source maps**: the CLI bundle is now built with source maps, and the release pipeline injects Sentry Debug IDs into `dist/cli.js` and uploads the maps (`scripts/sentry-sourcemaps.mjs`, run from `pnpm release` and the `@dev` publish job) so crash stack traces are fully de-minified. Maps are uploaded to Sentry, not shipped in the npm tarball. Wired for both tagged releases and `@dev` snapshots; a no-op unless the `SENTRY_AUTH_TOKEN` / `SENTRY_ORG` / `SENTRY_PROJECT` CI secrets are configured.
+  - **Tracing / OpenTelemetry**: each run is now a Sentry transaction, and the existing Effect instrumentation (`runInspect` plus every `Effect.fn("Service.method")` span) is bridged straight into Sentry as one unified per-run trace. If a user has their own OTLP backend configured (`REACT_DOCTOR_OTLP_*`), that still wins and the Effect trace is additionally parented under the Sentry trace so the two share a `trace_id`. Tracing is tunable via `SENTRY_TRACES_SAMPLE_RATE` (set to `0` to disable; default samples every run).
+  - **Crash references**: when an error is reported, the Sentry event id is surfaced as a reference — printed in the CLI's error output ("Reference (mention this when reporting): …") and added to the prefilled GitHub issue — so a user-reported crash can be located in Sentry by id. Errors thrown during a scan are also linked back to that run's transaction trace (same `trace_id`) so the crash and its spans appear together.
+  - **Environment / run information**: events now carry a Sentry `environment` (`production` / `development`, overridable via `SENTRY_ENVIRONMENT`), a `react-doctor@<version>` `release` that matches the uploaded source-map artifacts, and the full run snapshot as searchable tags on _every_ event (not just exceptions) — including which command ran (`command`, `argv`), where it ran (`origin` = cli/ci/agent/git-hook, plus `ci`/`ciProvider`), the launching package manager (`invokedVia`, e.g. npm vs. pnpm dlx), and Node major version.
+  - **Project information**: the anonymous project shape we already detect during a scan is attached to crashes and the run transaction as soon as it's discovered — searchable `project.*` tags (framework, React major, TypeScript, React Compiler, Expo, React Native) plus a `project` context block (versions of React/Tailwind/Zod/Preact/Expo, TanStack Query, Reanimated, source-file count). The identifying `projectName`/`rootDirectory` are deliberately excluded; no source code or diagnostic findings are sent.
+  - **Anonymized by default**: every event and transaction is scrubbed before it leaves the machine — `sendDefaultPii` is off (no IP), the hostname/`server_name`/device name and captured local variables are stripped, the OS username is removed from all paths (home directory → `~`) across cwd, argv, stack frames, and span attributes (e.g. the `inspect.directory` path), and known secrets/emails are masked via the same redactor used for diagnostics. If scrubbing ever fails, the event is dropped rather than sent.
+  - **Configuration**: `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE`, `SENTRY_TRACES_SAMPLE_RATE`, and `SENTRY_DEBUG` are all honored at runtime.
+
+  Reporting remains opt-out and CLI-only: `--no-score` disables Sentry entirely (crash reporting and tracing), it's skipped under test runs, and the programmatic `@react-doctor/api` library never initializes Sentry.
+
+- [#622](https://github.com/millionco/react-doctor/pull/622) [`0938376`](https://github.com/millionco/react-doctor/commit/0938376e9c60dcc52fdf4691c15db49feb603033) Thanks [@NisargIO](https://github.com/NisargIO)! - Show `"warning"`-severity diagnostics by default again. A scan that reports only errors is too generous a bar for a health check, so warnings surface on every surface (CLI, PR comment, score, `--fail-on`) out of the box. Opt out with `--no-warnings` or `"warnings": false`; per-rule / per-category severity overrides still win as before.
+
+- [#596](https://github.com/millionco/react-doctor/pull/596) [`6e59f10`](https://github.com/millionco/react-doctor/commit/6e59f10ef8b2173f0c98a653b13702d84f6471e7) Thanks [@aidenybai](https://github.com/aidenybai)! - Hide `warning`-severity diagnostics by default — a clean scan now reports only `error`-severity findings (errors always show). Opt warnings back in with the `--warnings` flag or `"warnings": true` config option; `--no-warnings` / `"warnings": false` is the explicit default-off. The toggle is the master switch and runs after per-rule / per-category severity overrides, so a rule explicitly set to `"warn"` via `rules` / `categories` still shows even when warnings are hidden.
+
+  Because dead-code analysis only emits `warning`-severity findings, it's now skipped entirely when warnings are hidden (its results would be filtered out anyway) — avoiding an expensive analysis pass on the default path. `--warnings` / `"warnings": true` (and `--fail-on warning`) re-enable it.
+
+- Updated dependencies [[`6e59f10`](https://github.com/millionco/react-doctor/commit/6e59f10ef8b2173f0c98a653b13702d84f6471e7), [`75c1f99`](https://github.com/millionco/react-doctor/commit/75c1f99e062a8fc3e5e4ba294208dbc56bca5f6f)]:
+  - oxlint-plugin-react-doctor@0.2.15
+
 ## 0.2.14
 
 ### Patch Changes

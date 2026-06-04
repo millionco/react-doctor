@@ -32,10 +32,15 @@ const fallbackReport = {
   },
 };
 
+// Known JsonReport schema versions: 1 (full/diff/staged) and 2 (baseline /
+// PR-introduced-issues-only). Both are valid CLI output; only an unparseable or
+// unrecognized payload is treated as a failed scan.
+const KNOWN_SCHEMA_VERSIONS = new Set([1, 2]);
+
 try {
   const raw = fs.readFileSync(reportPath, "utf8").trim();
   const parsed = JSON.parse(raw);
-  if (parsed && parsed.schemaVersion === 1 && typeof parsed.ok === "boolean") {
+  if (parsed && KNOWN_SCHEMA_VERSIONS.has(parsed.schemaVersion) && typeof parsed.ok === "boolean") {
     process.exit(0);
   }
 } catch {

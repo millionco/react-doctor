@@ -40,6 +40,19 @@ export interface InspectResult {
    * summary to report combined scan time.
    */
   scanElapsedMilliseconds?: number;
+  /**
+   * Present only for a baseline run (`InspectOptions.baseline` set). The
+   * `diagnostics` above are then the *introduced* findings only; this
+   * carries the comparison totals for Codecov-style delta reporting.
+   */
+  baselineDelta?: {
+    /** The commit the base content was read from (resolved merge-base). */
+    baseRef: string;
+    /** Findings present at base but gone at head — resolved by the change. */
+    fixedCount: number;
+    /** Total findings at base (over the same files), for context. */
+    baseTotalCount: number;
+  };
 }
 
 /**
@@ -68,6 +81,17 @@ export interface InspectOptions {
   includePaths?: string[];
   configOverride?: ReactDoctorConfig | null;
   respectInlineDisables?: boolean;
+  /**
+   * Baseline comparison. When set (only meaningful alongside
+   * `includePaths`, i.e. a diff scan), `inspect()` runs a second lint pass
+   * over the same files as they existed at `ref` and reports only the
+   * diagnostics the change *introduced* — pre-existing findings that merely
+   * shifted lines are matched out. The returned `score` is still the head
+   * scan's; `InspectResult.baselineDelta` carries the fixed / base counts.
+   * `ref` should be a resolved commit (e.g. the merge-base) whose content
+   * `git show <ref>:<file>` can read.
+   */
+  baseline?: { ref: string };
   /**
    * Number of oxlint subprocesses to run in parallel during the lint
    * pass. Overrides the `OxlintConcurrency` Reference (env-seeded) for
@@ -128,11 +152,29 @@ export interface DiffInfo {
    */
   currentBranch: string | null;
   baseBranch: string;
+  /**
+   * Resolved base commit SHA, when known (the GitHub Action forwards
+   * `pull_request.base.sha`). Preferred over `baseBranch` for baseline
+   * merge-base resolution because a branch name often doesn't resolve in a
+   * shallow PR checkout, whereas the fetched SHA always does.
+   */
+  baseSha?: string;
   changedFiles: string[];
   isCurrentChanges?: boolean;
 }
 
-export type JsonReportMode = "full" | "diff" | "staged";
+export type JsonReportMode = "full" | "diff" | "staged" | "baseline";
+
+export interface JsonReportBaselineInfo {
+  /** Resolved base commit (merge-base) the head was compared against. */
+  baseRef: string;
+  /** Count of introduced findings (equals `summary.totalDiagnosticCount`). */
+  newCount: number;
+  /** Count of findings the change resolved (present at base, gone at head). */
+  fixedCount: number;
+  /** Total findings at base over the same files, for context. */
+  baseTotalCount: number;
+}
 
 export interface JsonReportDiffInfo {
   baseBranch: string;
@@ -168,7 +210,7 @@ export interface JsonReportError {
   chain: string[];
 }
 
-export interface JsonReport {
+export interface JsonReportV1 {
   schemaVersion: 1;
   version: string;
   ok: boolean;
@@ -185,3 +227,18 @@ export interface JsonReport {
   elapsedMilliseconds: number;
   error: JsonReportError | null;
 }
+
+/**
+ * Baseline (PR-introduced-issues-only) report. Structurally a superset of v1
+ * — every v1 field is present with identical meaning, so consumers that only
+ * read `summary` / `diagnostics` / `ok` work unchanged — plus a `baseline`
+ * block and `mode: "baseline"`. Here `diagnostics` (and `summary`'s counts)
+ * are the *introduced* findings only; `summary.score` is still the head
+ * scan's project-health score. New consumers branch on `schemaVersion === 2`.
+ */
+export interface JsonReportV2 extends Omit<JsonReportV1, "schemaVersion"> {
+  schemaVersion: 2;
+  baseline: JsonReportBaselineInfo;
+}
+
+export type JsonReport = JsonReportV1 | JsonReportV2;

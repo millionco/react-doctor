@@ -1,8 +1,12 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { performance } from "node:perf_hooks";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import {
   buildSkippedChecks,
+  computeDiagnosticDelta,
   DEFAULT_SHOW_WARNINGS,
   filterDiagnosticsForSurface,
   highlighter,
@@ -19,7 +23,7 @@ import {
   withSentryRunSpan,
 } from "./cli/utils/with-sentry-run-span.js";
 import type { SentryRootSpan } from "./cli/utils/with-sentry-run-span.js";
-import { METRIC } from "./cli/utils/constants.js";
+import { BASELINE_FILES_TEMP_DIR_PREFIX, METRIC } from "./cli/utils/constants.js";
 import { recordCount } from "./cli/utils/record-metric.js";
 import { recordScanMetrics } from "./cli/utils/record-scan-metrics.js";
 import { recordRunEvent } from "./cli/utils/build-run-event.js";
@@ -32,6 +36,8 @@ import type {
   ScoreResult,
 } from "@react-doctor/core";
 import { makeNoopConsole } from "./cli/utils/noop-console.js";
+import { materializeBaselineFiles } from "./cli/utils/materialize-baseline-files.js";
+import { createSourceLineReader } from "./cli/utils/read-source-line.js";
 import { buildNoScoreMessage } from "./cli/utils/build-no-score-message.js";
 import { printAgentGuidance } from "./cli/utils/render-agent-guidance.js";
 import {
@@ -88,6 +94,8 @@ interface ResolvedInspectOptions {
   suppressRendering: boolean;
   /** Resolved oxlint worker count, or `undefined` to keep the ambient default. */
   concurrency: number | undefined;
+  /** Baseline ref to subtract (new-only mode), or `null` for a plain scan. */
+  baseline: { ref: string } | null;
 }
 
 const buildIgnoredTags = (userConfig: ReactDoctorConfig | null): ReadonlySet<string> => {
@@ -122,6 +130,7 @@ const mergeInspectOptions = (
   outputSurface: inputOptions.outputSurface ?? "cli",
   suppressRendering: inputOptions.suppressRendering ?? false,
   concurrency: inputOptions.concurrency,
+  baseline: inputOptions.baseline ?? null,
 });
 
 // The scan-config slice of the wide event, shared by the success and failure
@@ -232,6 +241,93 @@ export const inspect = async (
     return result;
   } finally {
     if (options.silent) setSpinnerSilent(wasSpinnerSilent);
+  }
+};
+
+interface BaselineComparison {
+  displayDiagnostics: ReadonlyArray<Diagnostic>;
+  baselineDelta: NonNullable<InspectResult["baselineDelta"]>;
+}
+
+/**
+ * Runs a second, lint-only scan over the changed files as they existed at the
+ * baseline ref (materialized into a temp tree with head's config) and diffs it
+ * against the head diagnostics, returning only the findings the change
+ * introduced plus the fixed / base counts. No score, dead-code, progress, or
+ * telemetry — it's a pure comparison pass. On any failure it degrades to
+ * "everything is new" (the head diagnostics unchanged) so a baseline hiccup
+ * never hides real findings.
+ */
+const runBaselineComparison = async (params: {
+  directory: string;
+  options: ResolvedInspectOptions;
+  userConfig: ReactDoctorConfig | null;
+  headDiagnostics: ReadonlyArray<Diagnostic>;
+  resolvedNodeBinaryPath: string | null;
+  baselineRef: string;
+}): Promise<BaselineComparison> => {
+  const tempDirectory = mkdtempSync(path.join(tmpdir(), BASELINE_FILES_TEMP_DIR_PREFIX));
+  const snapshot = await materializeBaselineFiles({
+    directory: params.directory,
+    ref: params.baselineRef,
+    files: params.options.includePaths,
+    tempDirectory,
+  });
+  try {
+    const baseLayers = buildRuntimeLayers({
+      directory: snapshot.tempDirectory,
+      hasConfigOverride: true,
+      userConfig: params.userConfig,
+      configSourceDirectory: null,
+      shouldSkipLint: !params.options.lint || !params.resolvedNodeBinaryPath,
+      shouldRunDeadCode: false,
+      shouldComputeScore: false,
+      shouldShowProgressSpinners: false,
+      oxlintConcurrency: params.options.concurrency,
+    });
+    const baseProgram = runInspectEffect(
+      {
+        directory: snapshot.tempDirectory,
+        includePaths: params.options.includePaths,
+        customRulesOnly: params.options.customRulesOnly,
+        respectInlineDisables: params.options.respectInlineDisables,
+        warnings: params.options.warnings,
+        adoptExistingLintConfig: params.options.adoptExistingLintConfig,
+        ignoredTags: params.options.ignoredTags,
+        nodeBinaryPath: params.resolvedNodeBinaryPath ?? undefined,
+        runDeadCode: false,
+        isCi: params.options.isCi,
+        doctorVersion: VERSION,
+        runId: getRunId(),
+        resolveLocalGithubViewerPermission: false,
+        suppressScanSummary: true,
+      },
+      {},
+    );
+    const baseOutput = await Effect.runPromise(
+      restoreLegacyThrow(
+        baseProgram.pipe(
+          Effect.provide(baseLayers),
+          Effect.provideService(Console.Console, silentConsole),
+        ),
+      ),
+    );
+    const delta = computeDiagnosticDelta({
+      headDiagnostics: params.headDiagnostics,
+      baseDiagnostics: baseOutput.diagnostics,
+      readHeadLine: createSourceLineReader(params.directory),
+      readBaseLine: createSourceLineReader(snapshot.tempDirectory),
+    });
+    return {
+      displayDiagnostics: delta.newDiagnostics,
+      baselineDelta: {
+        baseRef: params.baselineRef,
+        fixedCount: delta.fixedCount,
+        baseTotalCount: baseOutput.diagnostics.length,
+      },
+    };
+  } finally {
+    snapshot.cleanup();
   }
 };
 
@@ -367,7 +463,23 @@ const runInspectWithRuntime = async (
     }
   }
 
-  const inspectDiagnostics: ReadonlyArray<Diagnostic> = output.diagnostics;
+  // Baseline mode: subtract the diagnostics that already existed at the base
+  // ref so we surface only what this change introduced. Runs after the head
+  // score is computed (below) is kept — the score stays the head project's.
+  let inspectDiagnostics: ReadonlyArray<Diagnostic> = output.diagnostics;
+  let baselineDelta: InspectResult["baselineDelta"];
+  if (options.baseline && isDiffMode && !lintBindingMissing) {
+    const comparison = await runBaselineComparison({
+      directory,
+      options,
+      userConfig,
+      headDiagnostics: output.diagnostics,
+      resolvedNodeBinaryPath,
+      baselineRef: options.baseline.ref,
+    });
+    inspectDiagnostics = comparison.displayDiagnostics;
+    baselineDelta = comparison.baselineDelta;
+  }
   // The orchestrator already surface-filters scoring input through
   // `scoreSurface: "score"` and computes the real score in-band, so
   // we just consume `output.score`. `--no-score` opts out before the
@@ -407,6 +519,7 @@ const runInspectWithRuntime = async (
     scannedFileCount: output.scannedFileCount,
     scannedFilePaths: output.scannedFilePaths,
     scanElapsedMilliseconds: output.scanElapsedMilliseconds,
+    baselineDelta,
   };
   const result = await Effect.runPromise(
     finalizeAndRender(finalizeInput).pipe(
@@ -474,6 +587,7 @@ interface FinalizeInput {
   scannedFileCount: number;
   scannedFilePaths: ReadonlyArray<string>;
   scanElapsedMilliseconds: number;
+  baselineDelta: InspectResult["baselineDelta"];
 }
 
 const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =>
@@ -494,6 +608,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       scannedFileCount,
       scannedFilePaths,
       scanElapsedMilliseconds,
+      baselineDelta,
     } = input;
 
     const { skippedChecks, skippedCheckReasons } = buildSkippedChecks({
@@ -517,6 +632,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       scannedFileCount,
       scannedFilePaths,
       scanElapsedMilliseconds,
+      ...(baselineDelta ? { baselineDelta } : {}),
     });
 
     if (options.suppressRendering) {

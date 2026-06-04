@@ -125,6 +125,24 @@ describe("GitHub Action contract", () => {
     expect(actionYaml).not.toContain("--score");
   });
 
+  it("fetches the PR base commit and forwards it for baseline (new-vs-existing) mode", () => {
+    const actionYaml = readActionYaml();
+    const baseStep = normalizeWhitespace(extractStep(actionYaml, "- id: base"));
+    const scanStep = normalizeWhitespace(
+      extractStep(actionYaml, "INPUT_PROJECT: ${{ inputs.project }}"),
+    );
+
+    // The base commit is fetched so react-doctor can read base content + the
+    // merge-base, and forwarded via REACT_DOCTOR_BASE_SHA (a branch name won't
+    // resolve in a shallow PR checkout).
+    expect(baseStep).toContain("github.event_name == 'pull_request'");
+    expect(baseStep).toContain("BASE_SHA: ${{ github.event.pull_request.base.sha }}");
+    expect(baseStep).toContain(
+      'git -C "$INPUT_DIRECTORY" fetch --no-tags --depth=1 origin "$BASE_SHA"',
+    );
+    expect(scanStep).toContain("REACT_DOCTOR_BASE_SHA: ${{ github.event.pull_request.base.sha }}");
+  });
+
   it("posts inline review comments anchored to changed diff lines", () => {
     const actionYaml = readActionYaml();
     const reviewStep = normalizeWhitespace(

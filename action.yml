@@ -32,8 +32,11 @@ outputs:
     description: "Health score (0-100). Empty when scoring was unavailable."
     value: ${{ steps.render.outputs.score }}
   total-issues:
-    description: "Total diagnostic count in the scan report."
+    description: "Total diagnostic count in the scan report. In baseline mode (pull requests), this is the count of issues introduced by the PR."
     value: ${{ steps.render.outputs.total-issues }}
+  fixed-issues:
+    description: "Baseline mode (pull requests) only: count of issues the PR resolved. 0 otherwise."
+    value: ${{ steps.render.outputs.fixed-issues }}
   error-count:
     description: "Error diagnostic count in the scan report."
     value: ${{ steps.render.outputs.error-count }}
@@ -85,6 +88,23 @@ runs:
           fs.writeFileSync(outputPath, changedFiles.join("\n") + (changedFiles.length ? "\n" : ""));
           core.setOutput("path", outputPath);
 
+    - id: base
+      if: ${{ github.event_name == 'pull_request' }}
+      shell: bash
+      env:
+        INPUT_DIRECTORY: ${{ inputs.directory }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      run: |
+        # Fetch the PR base commit so react-doctor can read base file content
+        # and resolve the merge-base for baseline (PR-introduced-issues-only)
+        # mode. Depth 1 covers the standard merge-ref checkout (base is a parent
+        # of HEAD); for deeper history use `fetch-depth: 0` on actions/checkout.
+        # Best-effort: if it fails, react-doctor degrades to reporting every
+        # finding in the changed files.
+        if [ -n "$BASE_SHA" ] && git -C "$INPUT_DIRECTORY" rev-parse --git-dir >/dev/null 2>&1; then
+          git -C "$INPUT_DIRECTORY" fetch --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null || true
+        fi
+
     - id: scan
       shell: bash
       env:
@@ -94,6 +114,9 @@ runs:
         INPUT_BLOCKING: ${{ inputs.blocking }}
         INPUT_VERSION: ${{ inputs.version }}
         CHANGED_FILES_FROM: ${{ steps.pr-files.outputs.path }}
+        # Forwarded so baseline mode reads base content against a fetched SHA
+        # (branch names rarely resolve in a shallow PR checkout). Empty off PRs.
+        REACT_DOCTOR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         RUNNER_TEMP: ${{ runner.temp }}
         GITHUB_RUN_ID: ${{ github.run_id }}
         # Telemetry: mark runs as launched by the official action and forward the

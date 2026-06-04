@@ -52,6 +52,7 @@ import {
 import { resolveCliInspectOptions } from "../utils/resolve-cli-inspect-options.js";
 import { resolveDiffMode } from "../utils/resolve-diff-mode.js";
 import { resolveEffectiveDiff } from "../utils/resolve-effective-diff.js";
+import { resolveMergeBaseRef } from "../utils/materialize-baseline-files.js";
 import { resolveBlockingLevel } from "../utils/resolve-blocking-level.js";
 import { resolveProjectDiffIncludePaths } from "../utils/resolve-project-diff-include-paths.js";
 import { runExplain } from "../utils/run-explain.js";
@@ -89,6 +90,24 @@ interface FinalizeScansInput {
  */
 const finalizeScans = (input: FinalizeScansInput): void => {
   if (input.isJsonMode) {
+    // Aggregate the per-project baseline deltas into one report-level block so
+    // the JSON (and the GitHub Action) sees a single new/fixed total across a
+    // workspace scan. Present only when at least one project ran in baseline
+    // mode; otherwise `buildJsonReport` emits a v1 report.
+    const baselineDeltas = input.completedScans.flatMap((scan) =>
+      scan.result.baselineDelta ? [scan.result.baselineDelta] : [],
+    );
+    const baseline =
+      baselineDeltas.length > 0
+        ? {
+            baseRef: baselineDeltas[0].baseRef,
+            fixedCount: baselineDeltas.reduce((total, delta) => total + delta.fixedCount, 0),
+            baseTotalCount: baselineDeltas.reduce(
+              (total, delta) => total + delta.baseTotalCount,
+              0,
+            ),
+          }
+        : undefined;
     writeJsonReport(
       buildJsonReport({
         version: VERSION,
@@ -97,6 +116,7 @@ const finalizeScans = (input: FinalizeScansInput): void => {
         diff: input.diff,
         scans: input.completedScans,
         totalElapsedMilliseconds: performance.now() - input.startTime,
+        baseline,
       }),
     );
   }
@@ -116,6 +136,10 @@ const finalizeScans = (input: FinalizeScansInput): void => {
 const buildChangedFilesDiffInfo = (changedFiles: string[]): DiffInfo => ({
   currentBranch: process.env.GITHUB_HEAD_REF?.trim() || null,
   baseBranch: process.env.GITHUB_BASE_REF?.trim() || "pull request target",
+  // The GitHub Action forwards the PR base commit so baseline mode can read
+  // base content against a SHA that's actually fetched (branch names rarely
+  // resolve in a shallow PR checkout). Empty in non-Action runs.
+  baseSha: process.env.REACT_DOCTOR_BASE_SHA?.trim() || undefined,
   changedFiles,
   isCurrentChanges: false,
 });
@@ -307,11 +331,21 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       changedFilesDiffInfo !== null ||
       (await resolveDiffMode(diffInfo, effectiveDiff, skipPrompts, isQuiet));
 
+    // Baseline (PR-introduced-issues-only) mode: when diffing against a base
+    // ref (not just uncommitted changes), resolve its merge-base so each scan
+    // can subtract the diagnostics that already existed there and report only
+    // what this change introduced. A null ref (base not fetched, detached, or
+    // git unavailable) degrades to a plain diff scan that shows all findings.
+    const baselineRef =
+      isDiffMode && diffInfo && !diffInfo.isCurrentChanges
+        ? await resolveMergeBaseRef(resolvedDirectory, diffInfo.baseSha ?? diffInfo.baseBranch)
+        : null;
+
     // HACK: set the report-mode marker BEFORE the scan loop runs — if the
     // user hits Ctrl-C mid-scan, the SIGINT handler reads it for the JSON
     // cancel report. Setting it after the loop completes means a cancelled
     // diff scan would report mode: "full".
-    setJsonReportMode(isDiffMode ? "diff" : "full");
+    setJsonReportMode(baselineRef ? "baseline" : isDiffMode ? "diff" : "full");
 
     if (isDiffMode && diffInfo && !isQuiet) {
       if (diffInfo.isCurrentChanges) {
@@ -354,6 +388,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         includePaths,
         configOverride: userConfig,
         suppressRendering: isMultiProject,
+        baseline: baselineRef ? { ref: baselineRef } : undefined,
       });
       allDiagnostics.push(...scanResult.diagnostics);
       completedScans.push({ directory: projectDirectory, result: scanResult });

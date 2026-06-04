@@ -14,6 +14,7 @@ export const TERMINAL_HANGUP_EXIT_CODE = 129;
 export const NODE_ARGUMENT_COUNT = 2;
 
 export const STAGED_FILES_TEMP_DIR_PREFIX = "react-doctor-staged-";
+export const BASELINE_FILES_TEMP_DIR_PREFIX = "react-doctor-baseline-";
 
 export const GIT_HOOK_EXECUTABLE_MODE = 0o755;
 

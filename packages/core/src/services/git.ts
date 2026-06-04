@@ -214,6 +214,16 @@ export class Git extends Context.Service<
       branch: string,
     ) => Effect.Effect<boolean, ReactDoctorError>;
     /**
+     * `git merge-base <ref> HEAD` — the commit a baseline scan should read
+     * file content from, so "issues introduced" is measured against the
+     * branch point rather than the (possibly advanced) base tip. `null` when
+     * `ref` is unsafe / missing or no merge-base exists.
+     */
+    readonly mergeBase: (input: {
+      readonly directory: string;
+      readonly ref: string;
+    }) => Effect.Effect<string | null, ReactDoctorError>;
+    /**
      * High-level diff selection: resolves current branch + base
      * branch + changed file list with the same semantics as the
      * legacy `getDiffInfo` helper. `null` when no diff is detectable
@@ -232,6 +242,18 @@ export class Git extends Context.Service<
       relativePath: string,
       options?: GitShowOptions,
     ) => Effect.Effect<string | null, ReactDoctorError>;
+    /**
+     * `git show <ref>:<path>` contents — the file as it existed at `ref`.
+     * `null` when the ref is unsafe / missing or the path didn't exist there
+     * (e.g. a file added by the PR). Used to materialize a base-branch tree
+     * for baseline diffing.
+     */
+    readonly showRefContent: (input: {
+      readonly directory: string;
+      readonly ref: string;
+      readonly relativePath: string;
+      readonly options?: GitShowOptions;
+    }) => Effect.Effect<string | null, ReactDoctorError>;
     /**
      * `git grep -l` (default). Returns `null` when git itself isn't
      * available or the directory isn't a repository so callers can
@@ -382,6 +404,16 @@ export class Git extends Context.Service<
           Effect.map((result) => (result.status === 0 ? trimOrNull(result.stdout) : null)),
         );
 
+      const mergeBase = (input: {
+        readonly directory: string;
+        readonly ref: string;
+      }): Effect.Effect<string | null, ReactDoctorError> =>
+        isSafeGitRevision(input.ref)
+          ? runGit(input.directory, ["merge-base", input.ref, "HEAD"]).pipe(
+              Effect.map((result) => (result.status === 0 ? trimOrNull(result.stdout) : null)),
+            )
+          : Effect.succeed(null);
+
       const githubRepo = (directory: string): Effect.Effect<string | null, ReactDoctorError> =>
         runGit(directory, ["config", "--get", "remote.origin.url"]).pipe(
           Effect.map((result) =>
@@ -519,6 +551,7 @@ export class Git extends Context.Service<
         githubRepo,
         githubViewerPermission,
         branchExists,
+        mergeBase,
         diffSelection: ({ directory, explicitBaseBranch }) =>
           Effect.gen(function* () {
             if (explicitBaseBranch !== undefined && explicitBaseBranch.trim().length === 0) {
@@ -632,6 +665,18 @@ export class Git extends Context.Service<
             directory,
             maxStdoutBytes: options?.maxBufferBytes,
           }).pipe(Effect.map((result) => (result.status === 0 ? result.stdout : null))),
+        showRefContent: ({ directory, ref, relativePath, options }) =>
+          // Validate the ref before it reaches git: `git show <ref>:<path>`
+          // takes the next token as a revision, so an unguarded `-`-leading
+          // value could smuggle an option (CVE-2018-17456 shape).
+          isSafeGitRevision(ref)
+            ? runCommand({
+                command: "git",
+                args: ["show", `${ref}:${relativePath}`],
+                directory,
+                maxStdoutBytes: options?.maxBufferBytes,
+              }).pipe(Effect.map((result) => (result.status === 0 ? result.stdout : null)))
+            : Effect.succeed(null),
         grep: (input) =>
           Effect.gen(function* () {
             const args: string[] = ["grep"];
@@ -676,8 +721,12 @@ export class Git extends Context.Service<
     readonly githubRepo?: string | null;
     readonly githubViewerPermission?: string | null;
     readonly branchExists?: ReadonlyMap<string, boolean>;
+    /** Keyed by the `ref` argument; value is the resolved merge-base SHA. */
+    readonly mergeBase?: ReadonlyMap<string, string>;
     readonly stagedFiles?: ReadonlyArray<string>;
     readonly stagedContent?: ReadonlyMap<string, string>;
+    /** Keyed by `<ref>:<relativePath>`. */
+    readonly refContent?: ReadonlyMap<string, string>;
     readonly diffSelection?: GitDiffSelection | null;
     readonly grepMatches?: ReadonlyArray<string> | null;
   }): Layer.Layer<Git> =>
@@ -691,10 +740,13 @@ export class Git extends Context.Service<
         githubViewerPermission: () => Effect.succeed(snapshot.githubViewerPermission ?? null),
         branchExists: (_directory, branch) =>
           Effect.succeed(snapshot.branchExists?.get(branch) ?? false),
+        mergeBase: ({ ref }) => Effect.succeed(snapshot.mergeBase?.get(ref) ?? null),
         diffSelection: () => Effect.succeed(snapshot.diffSelection ?? null),
         stagedFilePaths: () => Effect.succeed(snapshot.stagedFiles ?? []),
         showStagedContent: (_directory, relativePath) =>
           Effect.succeed(snapshot.stagedContent?.get(relativePath) ?? null),
+        showRefContent: ({ ref, relativePath }) =>
+          Effect.succeed(snapshot.refContent?.get(`${ref}:${relativePath}`) ?? null),
         grep: () =>
           Effect.sync(() => {
             const matches = snapshot.grepMatches;

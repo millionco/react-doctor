@@ -15,6 +15,12 @@ interface BuildJsonReportInput {
   diff: DiffInfo | null;
   scans: Array<{ directory: string; result: InspectResult }>;
   totalElapsedMilliseconds: number;
+  /**
+   * Present for a baseline run — `scans[].result.diagnostics` are then the
+   * introduced findings only. Emits a `schemaVersion: 2` report with the
+   * delta totals and `mode: "baseline"`.
+   */
+  baseline?: { baseRef: string; fixedCount: number; baseTotalCount: number };
 }
 
 const toJsonDiff = (diff: DiffInfo | null): JsonReportDiffInfo | null => {
@@ -63,12 +69,10 @@ export const buildJsonReport = (input: BuildJsonReportInput): JsonReport => {
     worstScoredProject?.score?.label ?? null,
   );
 
-  return {
-    schemaVersion: 1,
+  const shared = {
     version: input.version,
-    ok: true,
+    ok: true as const,
     directory: input.directory,
-    mode: input.mode,
     diff: toJsonDiff(input.diff),
     projects,
     diagnostics: flattenedDiagnostics,
@@ -76,4 +80,20 @@ export const buildJsonReport = (input: BuildJsonReportInput): JsonReport => {
     elapsedMilliseconds: input.totalElapsedMilliseconds,
     error: null,
   };
+
+  if (input.baseline) {
+    return {
+      schemaVersion: 2,
+      mode: "baseline",
+      baseline: {
+        baseRef: input.baseline.baseRef,
+        newCount: summary.totalDiagnosticCount,
+        fixedCount: input.baseline.fixedCount,
+        baseTotalCount: input.baseline.baseTotalCount,
+      },
+      ...shared,
+    };
+  }
+
+  return { schemaVersion: 1, mode: input.mode, ...shared };
 };

@@ -32,7 +32,7 @@ export const buildDiagnosticIdentity = (input: {
   readonly rule: string;
 }): string => `${input.filePath}::${input.line}:${input.column}::${input.plugin}/${input.rule}`;
 
-export const JsonReportMode = Schema.Literals(["full", "diff", "staged"]);
+export const JsonReportMode = Schema.Literals(["full", "diff", "staged", "baseline"]);
 export type JsonReportMode = Schema.Schema.Type<typeof JsonReportMode>;
 
 export class JsonReportSummary extends Schema.Class<JsonReportSummary>("JsonReportSummary")({
@@ -96,5 +96,33 @@ export class JsonReportV1 extends Schema.Class<JsonReportV1>("JsonReportV1")({
   error: Schema.NullOr(JsonReportError),
 }) {}
 
-export const JsonReport = Schema.Union([JsonReportV1]);
+export class JsonReportBaseline extends Schema.Class<JsonReportBaseline>("JsonReportBaseline")({
+  baseRef: Schema.String,
+  newCount: Schema.Number,
+  fixedCount: Schema.Number,
+  baseTotalCount: Schema.Number,
+}) {}
+
+/**
+ * Baseline (PR-introduced-issues-only) report — `schemaVersion: 2`. A
+ * superset of v1: same fields, plus a `baseline` block. `diagnostics` /
+ * `summary` counts are the introduced findings only; `summary.score` stays
+ * the head project-health score. Consumers branch on `schemaVersion`.
+ */
+export class JsonReportV2 extends Schema.Class<JsonReportV2>("JsonReportV2")({
+  schemaVersion: Schema.Literal(2),
+  version: Schema.String,
+  ok: Schema.Boolean,
+  directory: Schema.String,
+  mode: JsonReportMode,
+  diff: Schema.NullOr(JsonReportDiffInfo),
+  baseline: JsonReportBaseline,
+  projects: Schema.Array(JsonReportProjectEntry),
+  diagnostics: Schema.Array(Diagnostic),
+  summary: JsonReportSummary,
+  elapsedMilliseconds: Schema.Number,
+  error: Schema.NullOr(JsonReportError),
+}) {}
+
+export const JsonReport = Schema.Union([JsonReportV1, JsonReportV2]);
 export type JsonReport = Schema.Schema.Type<typeof JsonReport>;

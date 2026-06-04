@@ -69,8 +69,11 @@ const formatScore = (summary) => {
   return `${summary.score} / 100${label}`;
 };
 
+const formatShortRef = (ref) =>
+  typeof ref === "string" && ref.length > 0 ? ref.slice(0, 7) : "base";
+
 const formatScope = (report) => {
-  if (report.mode !== "diff" || !report.diff) return "Full project";
+  if ((report.mode !== "diff" && report.mode !== "baseline") || !report.diff) return "Full project";
   const baseBranch = report.diff.baseBranch || "target branch";
   const currentBranch = report.diff.currentBranch || "current branch";
   return `${pluralize(report.diff.changedFileCount, "file")} changed on \`${currentBranch}\` vs. \`${baseBranch}\``;
@@ -201,9 +204,49 @@ const buildErrorBody = (report) => {
   ]);
 };
 
+// Codecov-style delta comment for a baseline (PR-introduced-issues-only) run.
+// `report.diagnostics` / `summary` counts are the introduced findings; the
+// `baseline` block carries the fixed + base totals; `score` stays head's.
+const buildBaselineBody = (report) => {
+  const summary = report.summary ?? {};
+  const baseline = report.baseline ?? {};
+  const newCount = baseline.newCount ?? summary.totalDiagnosticCount ?? 0;
+  const fixedCount = baseline.fixedCount ?? 0;
+  const runUrl = process.env.GITHUB_RUN_URL;
+  const fixedSuffix = fixedCount > 0 ? `, and ${pluralize(fixedCount, "issue")} fixed` : "";
+  const statusLine =
+    newCount === 0
+      ? fixedCount > 0
+        ? `No new issues introduced by this pull request — and ${pluralize(fixedCount, "issue")} fixed. 🎉`
+        : "No new issues introduced by this pull request. 🎉"
+      : `React Doctor found ${pluralize(newCount, "new issue")} introduced by this pull request${fixedSuffix}.`;
+
+  const lines = [
+    MARKER,
+    BRAND_HEADER,
+    "",
+    statusLine,
+    "",
+    "| Score | New | Fixed | Errors | Warnings | Affected Files | Scope |",
+    "| --- | ---: | ---: | ---: | ---: | ---: | --- |",
+    `| ${escapeCell(formatScore(summary))} | ${newCount} | ${fixedCount} | ${summary.errorCount ?? 0} | ${summary.warningCount ?? 0} | ${summary.affectedFileCount ?? 0} | ${escapeCell(formatScope(report))} |`,
+    "",
+    `Compared against \`${escapeCell(formatShortRef(baseline.baseRef))}\` — ${pluralize(baseline.baseTotalCount ?? 0, "pre-existing issue")} in the changed files ${newCount === 0 ? "were left untouched" : "are not reported here"}.`,
+    "",
+    buildTopRulesSection(report.diagnostics),
+    buildSkippedChecksSection(report),
+    runUrl ? `[View workflow run](${runUrl})` : "",
+    "",
+    BRAND_FOOTER,
+    "",
+  ];
+  return renderLines(lines);
+};
+
 const buildCommentBody = (report) => {
   if (!report.ok) return buildErrorBody(report);
   if (!hasScannedProjects(report)) return buildNoScanBody(report);
+  if (report.schemaVersion === 2 || report.baseline) return buildBaselineBody(report);
 
   const summary = report.summary ?? {};
   const totalIssues = summary.totalDiagnosticCount ?? 0;
@@ -254,3 +297,5 @@ appendOutput("total-issues", String(report.summary?.totalDiagnosticCount ?? 0));
 appendOutput("error-count", String(report.summary?.errorCount ?? 0));
 appendOutput("warning-count", String(report.summary?.warningCount ?? 0));
 appendOutput("affected-files", String(report.summary?.affectedFileCount ?? 0));
+// Baseline runs only: how many findings the PR resolved (0 / absent otherwise).
+appendOutput("fixed-issues", String(report.baseline?.fixedCount ?? 0));

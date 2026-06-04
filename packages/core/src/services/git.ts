@@ -669,10 +669,17 @@ export class Git extends Context.Service<
           // Validate the ref before it reaches git: `git show <ref>:<path>`
           // takes the next token as a revision, so an unguarded `-`-leading
           // value could smuggle an option (CVE-2018-17456 shape).
+          //
+          // The `./` prefix is required: in `git show <ref>:<path>`, a bare
+          // path is resolved relative to the REPO ROOT, but `relativePath` is
+          // relative to `directory` (the scanned project, which may be a
+          // monorepo subproject). `./` makes git resolve it relative to the cwd
+          // instead, so a subproject's base content is read correctly rather
+          // than silently missing (which would make every finding look "new").
           isSafeGitRevision(ref)
             ? runCommand({
                 command: "git",
-                args: ["show", `${ref}:${relativePath}`],
+                args: ["show", `${ref}:./${relativePath}`],
                 directory,
                 maxStdoutBytes: options?.maxBufferBytes,
               }).pipe(Effect.map((result) => (result.status === 0 ? result.stdout : null)))

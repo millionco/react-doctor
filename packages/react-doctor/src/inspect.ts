@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
@@ -265,11 +265,16 @@ const runBaselineComparison = async (params: {
   baselineRef: string;
 }): Promise<BaselineComparison> => {
   const tempDirectory = mkdtempSync(path.join(tmpdir(), BASELINE_FILES_TEMP_DIR_PREFIX));
+  // If materialization throws before the snapshot (and its cleanup) exists,
+  // remove the temp dir we just created so it can't leak.
   const snapshot = await materializeBaselineFiles({
     directory: params.directory,
     ref: params.baselineRef,
     files: params.options.includePaths,
     tempDirectory,
+  }).catch((error: unknown) => {
+    rmSync(tempDirectory, { recursive: true, force: true });
+    throw error;
   });
   try {
     const baseLayers = buildRuntimeLayers({
@@ -462,11 +467,12 @@ const runInspectWithRuntime = async (
   }
 
   // Baseline mode: subtract the diagnostics that already existed at the base
-  // ref so we surface only what this change introduced. Runs after the head
-  // score is computed (below) is kept — the score stays the head project's.
+  // ref so we surface only what this change introduced. Skipped when the head
+  // lint failed — partial/empty head diagnostics would make the delta wrong
+  // (everything would look "new" or "fixed"). The reported score stays head's.
   let inspectDiagnostics: ReadonlyArray<Diagnostic> = output.diagnostics;
   let baselineDelta: InspectResult["baselineDelta"];
-  if (options.baseline && isDiffMode && !lintBindingMissing) {
+  if (options.baseline && isDiffMode && !didLintFail) {
     const comparison = await runBaselineComparison({
       directory,
       options,

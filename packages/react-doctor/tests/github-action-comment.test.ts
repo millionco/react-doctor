@@ -170,7 +170,7 @@ describe("render-github-action-comment", () => {
 
     expect(comment).toContain("React Doctor reviewed your changes and found 2 new issues.");
     expect(comment).toContain(
-      "Compared against `abc1234`: 3 issues fixed, 5 pre-existing issues left untouched.",
+      "Compared against `abc1234`: 3 issues fixed, 2 pre-existing issues left untouched.",
     );
     expect(comment).toContain(
       "| Score | New | Fixed | Errors | Warnings | Affected Files | Scope |",
@@ -202,7 +202,7 @@ describe("render-github-action-comment", () => {
 
     expect(comment).toContain("React Doctor reviewed your changes and found no new issues. 🎉");
     expect(comment).toContain(
-      "Compared against `abc1234`: 1 issue fixed, 4 pre-existing issues left untouched.",
+      "Compared against `abc1234`: 1 issue fixed, 3 pre-existing issues left untouched.",
     );
   });
 

@@ -259,6 +259,9 @@ const buildBaselineBody = (report) => {
   const newCount = baseline.newCount ?? summary.totalDiagnosticCount ?? 0;
   const fixedCount = baseline.fixedCount ?? 0;
   const baseTotalCount = baseline.baseTotalCount ?? 0;
+  // "Left untouched" is the pre-existing findings that still exist at head —
+  // the base total minus the ones this change fixed (not the whole base total).
+  const untouchedCount = Math.max(0, baseTotalCount - fixedCount);
   // Lead sentence mirrors Cursor Bugbot's "… reviewed your changes and found N …".
   const leadLine =
     newCount === 0 ? COPY.baselineLeadClean : COPY.baselineLead(pluralize(newCount, "new issue"));
@@ -266,8 +269,8 @@ const buildBaselineBody = (report) => {
   // change fixed and what pre-existing findings were left untouched.
   const detailParts = [];
   if (fixedCount > 0) detailParts.push(COPY.baselineFixedPart(pluralize(fixedCount, "issue")));
-  if (baseTotalCount > 0) {
-    detailParts.push(COPY.baselineUntouchedPart(pluralize(baseTotalCount, "pre-existing issue")));
+  if (untouchedCount > 0) {
+    detailParts.push(COPY.baselineUntouchedPart(pluralize(untouchedCount, "pre-existing issue")));
   }
   const detailLine =
     detailParts.length > 0

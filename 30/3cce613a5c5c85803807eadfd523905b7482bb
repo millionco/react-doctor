@@ -1,0 +1,889 @@
+packages/react-doctor/src/cli/utils/onboarding-pacing.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-59
+packages/core/tests/merge-and-filter-diagnostics.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-raw-text.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 14-15,111-119,123,129-148
+packages/core/src/build-diagnostic-pipeline.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 15-16,30-34,91-105,140-149,179-181,184-186,197-210
+packages/oxlint-plugin-react-doctor/scripts/extract-oxc-fixtures.mjs
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 21-22
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-bottom-sheet-prefer-native.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 21
+packages/core/src/project-info/some-workspace-package-json.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 2,5-7,12-15
+packages/react-doctor/src/cli/utils/install-skill-for-agent.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 3-4,15
+packages/react-doctor/tests/apply-color-preference.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-87
+packages/core/tests/map-with-concurrency.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-98
+packages/core/src/dead-code/collect-dead-code-patterns.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-112
+.github/workflows/ci.yml
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 94-103
+packages/core/src/runners/oxlint/resolve-paths.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3
+packages/core/tests/append-reanimated-shared-value-hint.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 27-29
+packages/core/src/project-info/get-nx-workspace-directories.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-derived-state-effect.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 11,119-123
+packages/react-doctor/src/cli/utils/migrate-legacy-config.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-32
+packages/react-doctor/src/cli/utils/apply-observability.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-54
+packages/react-doctor/src/cli/utils/is-git-hook-environment.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-6
+packages/oxlint-plugin-react-doctor/src/plugin/utils/is-use-state-setter-in-scope.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-11
+packages/react-doctor/src/cli/utils/resolve-project-diff-include-paths.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1
+packages/react-doctor/tests/regressions/proto-pollution-defenses.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 18,20
+packages/react-doctor/tests/version-command.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-16
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-key.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 115-155,296-299
+packages/react-doctor/src/cli/utils/write-stdout.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-8
+packages/core/src/utils/has-published-fix-recipe.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-18
+packages/react-doctor/tests/prompt-install-setup.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 2,4,23,26,30,35,39,42,57,78,99-100,120-121,148,326-342
+packages/react-doctor/tests/find-owning-project.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3
+packages/core/src/resolve-compatible-node.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 3,5,37,40,52,54-55,70,84
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-set-native-props.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-54
+packages/react-doctor/tests/inspect-surface-filter.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 3,30-41,90,138,154-157
+scripts/ensure-json-report.mjs
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-detox-missing-await.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-150
+packages/react-doctor/src/cli/utils/install-git-hook-file.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3,88,91,97-98,105-107
+packages/react-doctor/tests/onboarding-pacing.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-76
+packages/react-doctor/tests/regressions/js-performance-rules.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3
+packages/core/tests/discover-project.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3,758-898,1502-1550
+packages/react-doctor/tests/regressions/state-rules/_helpers.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3
+packages/oxlint-plugin-react-doctor/src/plugin/utils/is-hook-binding-in-scope.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-61
+packages/react-doctor/src/cli/utils/is-expected-user-error.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-33
+packages/react-doctor/src/cli/utils/record-metric.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-72
+packages/core/src/project-info/parse-pnpm-workspace-patterns.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-2
+packages/core/tests/services/linter.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 22-24
+packages/core/src/services/files.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 4,42
+packages/core/tests/services/project.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 22-24
+packages/react-doctor/tests/public-react-repos.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 2,4
+packages/core/src/checks/expo/check-gitignore.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-51
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/utils/collect-text-wrapper-components.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-81
+packages/react-doctor/tests/inspect.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3,130,158
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-array-index-key.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 364-368
+packages/oxlint-plugin-react-doctor/src/rules.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 69-73
+packages/react-doctor/tests/regressions/diff-detached-head.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 12,14,18,34
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-dark-mode-glow.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 77-79
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-scroll-state.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 2,19-20
+packages/react-doctor/src/cli/utils/render-score-header.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 17-18,20-21,23,253,262,278,282,289,297,300,315,353,361-388
+.agents/skills/rule-research/SKILL.md
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 40
+packages/react-doctor/src/cli/utils/resolve-parallel-flag.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-11
+packages/react-doctor/tests/build-json-report.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 18-20
+packages/api/src/diagnose.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 4,34-39,42,88,105,109-111,137,145-152
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/no-default-props.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 22-24
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-prefer-content-inset-adjustment.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3,5,10
+packages/react-doctor/src/cli/utils/build-run-context.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-109
+packages/core/src/project-info/internal-rn-dependency-names.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 17-21,27-32
+packages/react-doctor/src/cli/utils/resolve-effective-rule-severity.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-55
+packages/react-doctor/tests/regressions/rn-package-scoping.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 30,32
+packages/core/tests/build-rule-docs-url.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-16
+packages/react-doctor/tests/regressions/rn-and-motion.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 13,19,21,321,327,338,358-360,367-400
+packages/core/src/project-info/resolve-workspace-directories.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1
+packages/core/tests/run-inspect.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 39-41
+packages/react-doctor/tests/regressions/rule-messages.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 17,19
+packages/react-doctor/tests/dead-code-integration.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3
+scripts/convert-node-imports.mjs
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-131
+packages/core/src/build-rule-severity-controls.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 16-22,26
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-pascal-case.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 155-157
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-scrollview-mapped-list.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-65
+packages/oxlint-plugin-react-doctor/src/plugin/utils/find-import-source-for-name.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 88-103
+packages/react-doctor/src/cli/utils/ease-out-cubic.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-2
+packages/react-doctor/src/cli/utils/install-react-doctor.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-3,5,15-16,24-29,91,126,132,159-164,267,270,275-293,302-308,316-322,324-336,339,367-416,427,478-479,507,555-556,564-566,611-629,641,661-663,671,674-693
+packages/react-doctor/src/cli/utils/read-changed-files-from.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-3,16-30
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-image-children.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-62
+packages/core/src/project-info/discover-react-subprojects.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1
+packages/react-doctor/src/cli/utils/run-id.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-19
+packages/core/src/load-config.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 3-6,16-21,23,25-32,35-37,40-50,53-97,99-104,106,109-115,118-119,121-122,126-127,129-136,141-146,151-173,176-179,181-186,188-195,197-198,200-216
+packages/core/src/project-info/find-expo-version.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-33
+packages/core/src/runners/oxlint/capabilities.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 32-39
+packages/core/tests/services/staged-files.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 3,5
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/effect-needs-cleanup.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 21,52,65,157-183,198,204,229
+packages/react-doctor/src/cli/utils/apply-color-preference.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-45
+packages/oxlint-plugin-react-doctor/src/plugin/utils/get-react-doctor-setting.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 39-50
+packages/core/src/services/staged-files.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 4-5
+packages/core/src/read-ignore-file.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 3
+packages/core/src/runners/oxlint/should-suppress-local-use-hook-diagnostic.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-2
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/react-compiler-no-manual-memoization.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 75-80
+packages/react-doctor/tests/install-doctor-script.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 2,4,17,20,25,29,53,58,79,93
+packages/react-doctor/tests/run-oxlint/bundle-size.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3
+packages/oxlint-plugin-react-doctor/src/plugin/rule-registry.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 41,272,277,281,287,292,671-682,3216-3227,3276-3287,3324-3335,3396-3407,3456-3465
+packages/react-doctor/src/cli/utils/active-run-trace.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-20
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-gradient-text.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 15-17
+packages/react-doctor/src/cli/utils/render-welcome.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-78
+packages/core/tests/has-published-fix-recipe.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-35
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-side-tab-border.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 61-63
+packages/react-doctor/tests/serialize-ts-object-literal.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-41
+packages/react-doctor/tests/install-agent-hooks.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 3,6,31,34,38,42,45,56,64,68,79,96-97,127,135,141-142,170,179,182,188-189,206-209,211,213,222-223,245-248,250,261,291,302,321,327,344,349,366,373,389,394,419-420
+packages/react-doctor/tests/node-support-metadata.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-2
+packages/react-doctor/src/cli/utils/is-ci-environment.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-5,8-58,60-64,71-84,86-146
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-wide-letter-spacing.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-79
+packages/react-doctor/tests/strip-unknown-cli-flags.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 56-102
+packages/oxlint-plugin-react-doctor/scripts/generate-fixture-tests.mjs
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 11-12
+packages/core/tests/services/git.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 247-250,255,260-265,269-278,281-283,287,291,295,299
+.agents/skills/deslop/SKILL.md
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-83
+packages/core/src/runners/oxlint/spawn-batches.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 2,7,9-10,14-36,49-59,70-80,94-97,100-122,124-144,146-150,152,154-163,165-168,172-173,175-188,190,193-220,222
+packages/core/tests/classify-package-role.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-170
+packages/oxlint-plugin-react-doctor/src/plugin/utils/resolve-relative-import-path.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-2
+packages/core/src/project-info/utils/is-file.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1
+packages/react-doctor/tests/handoff/build-handoff-payload.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,39-41
+packages/core/src/utils/is-large-minified-file.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-panresponder.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-43
+packages/react-doctor/src/cli/utils/render-summary.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 3-9,11,13,15-19,41-48,50-59,62,65-69,82-85,91-98,106-112
+packages/react-doctor/tests/onboarding-state.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-65
+packages/react-doctor/tests/regressions/tanstack-start-get-mutation.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 16,18
+packages/react-doctor/tests/run-oxlint/_helpers.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1
+packages/react-doctor/tests/to-json-report.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 33-35
+packages/core/src/project-info/list-workspace-packages.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-justified-text.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 14-16
+packages/react-doctor/src/index.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 8,73
+packages/core/src/can-oxlint-extend-config.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1
+packages/react-doctor/src/cli/commands/inspect.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 2,5,9,24-25,28-29,31,39-40,43-44,131-164,175-177,182-184,207-223,255,263,381-382,388-389,444,448-453,459-463
+packages/react-doctor/tests/is-ci-environment.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 3,7-9,13-14,22-25,190-239
+packages/react-doctor/tests/instrument.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-91
+packages/react-doctor/tests/resolve-cli-inspect-options.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 58,81-89
+packages/react-doctor/tests/load-config.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3,8-11,20,27,37-38,48-88,108-109,125,137-138,151-152,156,159,162,165-178,188,198-199,208,212,215,227,232,237,239,241,245,247,249,253,256,266,272,276,288,294,301,307,311,315,318-319,322,327,331,334-350,354,358,362,370,374,377,383,388,392,396,401,405,409,413,425,429,433
+AGENTS.md
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 16,22-43,201-313,352-387
+packages/core/src/project-info/find-monorepo-root.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1
+packages/react-doctor/src/cli/utils/with-sentry-run-span.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-81
+packages/react-doctor/package.json
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 3,60,63-64,67-68
+packages/oxlint-plugin-react-doctor/src/test-utils/parse-fixture.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1
+packages/core/src/project-info/read-package-json.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-2
+packages/core/tests/check-react-native-project.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-194
+packages/react-doctor/src/cli/utils/prompt-install-setup.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 2,49-59,66-83
+packages/react-doctor/tests/regressions/server-auth-actions-member-call.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 20,22
+packages/oxlint-plugin-react-doctor/src/plugin/utils/parse-source-file.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-2
+packages/core/src/project-info/resolve-catalog-version.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-2
+packages/core/src/project-info/find-in-workspace-package-jsons.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-39
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-no-constructed-context-values.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 140
+packages/api/package.json
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 3
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-animate-layout-property.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-23
+.gitignore
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 7,26-31
+packages/core/src/check-react-native-project.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-27
+packages/react-doctor/src/cli/utils/build-run-event.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-232
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-ui/no-space-on-flex-children.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 17-19
+packages/react-doctor/tests/handle-error.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-3,14,17,27,53-135
+packages/core/src/collect-ignore-patterns.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1
+packages/core/tests/compiler-cleanup-bucket.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-69
+packages/core/src/runners/oxlint/parse-output.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1
+packages/core/src/project-info/utils/read-directory-entries.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3-15
+packages/core/src/get-diff-files.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 11-17,34
+packages/react-doctor/CHANGELOG.md
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 3-273
+packages/react-doctor/tests/regressions/no-prevent-default.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 22,24
+packages/core/src/services/git.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 59-65,74-116,345-350,433-514,533-547,549-550
+packages/core/tests/can-oxlint-extend-config.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3
+packages/core/src/runners/oxlint/config.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,9,37-48,55-58,134-137,177-179
+packages/core/tests/resolve-scan-target.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-68
+packages/react-doctor/src/cli/utils/report-workflow-result.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-32
+packages/oxlint-plugin-react-doctor/src/plugin/rules/performance/rerender-transitions-scroll.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 2,40-41
+packages/core/tests/read-ignore-file.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-legacy-expo-packages.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-42
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/expo-no-non-inlined-env.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-84
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-prefer-pressable-over-gesture-detector.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 17
+packages/react-doctor/tests/regressions/react-ui-rules.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3
+packages/react-doctor/tests/regressions/state-rules/effect-needs-cleanup.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 207,233,481-482,503,506-507,531,721-742,765-786
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-ui/no-redundant-size-axes.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 17-19
+packages/react-doctor/tests/github-action.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-2
+packages/core/src/project-info/find-dependency-info-from-monorepo-root.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1
+packages/react-doctor/src/cli/utils/onboarding-state.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-45
+packages/website/public/schema/config.json
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 5,21-22,28-29,35-36,42-43,60,82,145-148,166-167,173-174,246-255
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-mutating-reducer-state.cross-file.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3
+packages/core/src/checks/expo/utils/get-direct-dependency-names.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-11
+packages/core/src/detect-user-lint-config.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1
+packages/core/src/utils/build-rule-docs-url.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-11
+packages/core/tests/check-pnpm-hardening.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/utils/is-expo-ui-component-element.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-65
+packages/react-doctor/src/cli/utils/record-scan-metrics.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-142
+action.yml
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 103-112
+packages/core/tests/build-capabilities.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 18-20,137-165
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-panresponder.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-50
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-prefer-content-inset-adjustment.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-30
+packages/react-doctor/src/cli/utils/install-github-workflow.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-97
+packages/core/src/build-skipped-checks.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-37
+packages/core/src/services/linter.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 8,108,129
+packages/react-doctor/src/cli/utils/validate-mode-flags.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,16,19-24,27,30,33,40
+packages/react-doctor/tests/guard-stdin.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-56
+packages/react-doctor/tests/is-expected-user-error.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-67
+packages/react-doctor/tests/record-metric.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-20
+packages/core/src/project-info/find-shopify-flash-list-version.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-19
+packages/oxlint-plugin-react-doctor/src/plugin/rules/performance/rendering-hydration-no-flicker.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 6,40-41,43-46
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-scrollview-mapped-list.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 6,50-54
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-prefer-expo-image.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3
+packages/core/src/checks/expo/check-vector-icons.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-37
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-z-index9999.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 18-20
+packages/react-doctor/tests/regressions/state-only-in-handlers.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 19,21
+packages/eslint-plugin-react-doctor/CHANGELOG.md
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 3-37
+packages/core/src/project-info/utils/is-directory.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1
+packages/eslint-plugin-react-doctor/package.json
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 3
+packages/core/src/calculate-score.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 53,79
+packages/react-doctor/tests/active-run-trace.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-18
+packages/core/src/services/config.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 36-37
+packages/core/tests/check-dead-code.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3,33-74,78-83,125-175,278-298
+packages/oxlint-plugin-react-doctor/src/plugin/rule-registry.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-11
+packages/core/src/checks/expo/utils/find-local-module-native-files.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-34
+packages/core/src/utils/classify-package-role.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-134
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-animate-layout-property.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3,8,10
+packages/react-doctor/tests/scrub-sensitive-text.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-36
+packages/core/tests/is-minified-source.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3
+package.json
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 26-27,39-40,57
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-deep-imports.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-171
+packages/eslint-plugin-react-doctor/vite.config.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-2
+packages/react-doctor/src/cli/utils/open-url.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-30
+scripts/generate-config-schema.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 3-4,6-10,15,46-47
+scripts/render-github-action-comment.mjs
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1
+.agents/skills/find-similar-functions/SKILL.md
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-90
+packages/core/src/utils/to-canonical-path.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-24
+packages/react-doctor/src/cli/utils/build-code-frame.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-2
+.agents/skills/react-doctor/SKILL.md
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 35-38
+packages/core/src/checks/expo/check-env-local-files.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-39
+packages/react-doctor/src/cli/utils/render-multi-project-summary.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 13-14,16,82-83,88-93,149-150,186,208-213
+packages/core/src/constants.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 20-22,80-100,121-131,158-165,172-173,243-267
+packages/oxlint-plugin-react-doctor/scripts/extract-react-hooks-tests.mjs
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 28-29
+packages/core/src/types/config.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 4,6-9,14-20,22-25,27,29-33,81-97,140-142,144,162,301-314
+packages/react-doctor/src/cli/utils/resolve-cli-inspect-options.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 4,22,24-26,37,41
+packages/react-doctor/src/cli/utils/run-explain.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 69
+packages/react-doctor/src/cli/utils/strip-unknown-cli-flags.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-2,14,21,24,27,51-58,65-91,95-96
+packages/react-doctor/src/cli/utils/write-diagnostics-directory.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 4,6-7,10-11,13,15-18,21
+packages/core/src/check-dead-code.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 2-3,5-8,14,35,96-98,143-145,432-435,438,442
+packages/core/src/checks/expo/check-dependency-overrides.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-46
+packages/oxlint-plugin-react-doctor/scripts/generate-rule-registry.mjs
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 5,13-14,158-162,164,166-179
+packages/core/tests/read-directory-entries.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-63
+packages/react-doctor/src/inspect.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 5,14,16-25,37-40,45-51,58,60,89-90,124-146,155-159,182,200-232,245,281,297,304-309,330-338,379-393,411,416-458,499-505,535-542,553,571,583,590-591,615,624,635-641
+packages/core/src/project-info/detect-react-compiler.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-2
+packages/core/src/highlighter.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 12-31
+packages/core/tests/check-expo-project.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-544
+packages/react-doctor/src/instrument.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-144
+packages/react-doctor/tests/diagnose.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3,209,220,234,248,261,274
+packages/react-doctor/tests/migrate-legacy-config.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-114
+packages/react-doctor/tests/e2e/terminal-visuals.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 20,22,29,197-204,350-417
+packages/react-doctor/tests/namespace-hooks.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1
+packages/react-doctor/tests/regressions/server-auth-actions.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3
+packages/website/src/constants.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 5-6
+scripts/check-published-deps.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-198
+packages/react-doctor/src/cli/utils/handoff-to-agent.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 3,7-13,16-19,36-38,49-192,204-211,215-236,242,261-274
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-cascading-set-state.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 9,101-106
+packages/react-doctor/tests/resolve-project-diff-include-paths.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1
+packages/core/tests/fixtures/nextjs-app/src/app/og/route.tsx
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1
+packages/oxlint-plugin-react-doctor/src/plugin/constants/react-native.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 79-88
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/no-prop-types.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 77-79
+packages/react-doctor/src/cli/utils/install-agent-hooks.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,4,58-59,65-66,70-72
+packages/react-doctor/src/cli/utils/is-command-available.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-2,29,32
+packages/react-doctor/src/cli/utils/parse-file-line-argument.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-2,11-13,18,22
+packages/react-doctor/src/cli/utils/to-span-attributes.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-15
+packages/core/src/checks/expo/check-reanimated-new-arch.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-45
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-ui/no-three-period-ellipsis.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 13-15
+packages/react-doctor/tests/rule-config-units.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-162
+packages/core/src/resolve-scan-target.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,5-9,38,43-44,56-59,61,66-67,70,72
+packages/react-doctor/tests/scrub-sentry-metric.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-66
+scripts/sentry-sourcemaps.mjs
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-65
+packages/react-doctor/src/cli/utils/build-section-divider.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-4
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/rerender-functional-setstate.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 3,103
+packages/react-doctor/src/cli/utils/build-handoff-payload.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3-4,17,25-30,42-43
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-detox-missing-await.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-86
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-pure-black-background.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 16-18
+packages/react-doctor/src/cli/utils/inspect-flags.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 12,23-25
+packages/react-doctor/tests/run-oxlint/nextjs.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1
+packages/react-doctor/tests/scrub-sentry-event.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-86
+packages/react-doctor/tests/install-react-doctor.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 3,6,24,27-28,32,37,44,48,195,206,221,246-249,365-368,370,393,414,427-430,509,519-522,535-537,548-550,562,578-582,599-608,611,647-649,654,672-674,690-692,706-713,729-732,735,738-740,755-758,761-762
+packages/core/src/checks/expo/utils/is-path-git-ignored.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-23
+packages/core/src/refs.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 2-7,40-73
+packages/core/src/checks/expo/utils/is-expo-sdk-at-least.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-8
+packages/oxlint-plugin-react-doctor/src/plugin/utils/define-retired-rule.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-12
+packages/react-doctor/tests/regressions/rules-of-hooks-local-use.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3
+packages/react-doctor/src/cli/utils/render-rule-catalog.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-93
+packages/react-doctor/tests/read-changed-files-from.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3,5,49-66
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-image-children.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-100
+packages/core/src/project-info/errors.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 23-37,41,43-44,46-48,52
+packages/react-doctor/src/cli/utils/scrub-sensitive-text.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-37
+packages/api/tests/diagnose.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3
+packages/core/tests/oxlint-concurrency-default.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-20
+packages/core/src/merge-and-filter-diagnostics.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 7
+packages/react-doctor/tests/build-sentry-project-context.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-90
+packages/react-doctor/tests/build-run-event.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-237
+packages/core/src/neutralize-disable-directives.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 2-3
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/__upstream-fixtures__/run-upstream-parity.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-2
+packages/oxlint-plugin-react-doctor/vite.config.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-2
+packages/react-doctor/src/cli/commands/rules.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-357
+packages/react-doctor/tests/record-scan-metrics.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-62
+packages/react-doctor/tests/regressions/respect-lint-ignores.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 14,16
+packages/core/src/utils/is-project-boundary.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-2
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-list-missing-estimated-item-size.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 3-4,33-40,76
+packages/core/src/project-info/discover-project.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-2,14-19,25,196-213,238-241
+packages/core/src/checks/expo/check-lockfile.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-53
+packages/react-doctor/src/cli/utils/serialize-ts-object-literal.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-43
+packages/react-doctor/tests/parse-gitattributes-linguist.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3
+packages/react-doctor/tests/regressions/react-19-migration-rules.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3
+packages/react-doctor/tests/resolve-parallel-flag.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-19
+packages/core/src/checks/expo/check-router-react-navigation.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-39
+packages/react-doctor/src/cli/utils/rule-config-file.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-216
+packages/react-doctor/src/cli/utils/scrub-sentry-metric.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-31
+packages/react-doctor/tests/sentry-tracer.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-174
+packages/react-doctor/tests/to-span-attributes.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-24
+packages/react-doctor/src/cli/utils/build-sentry-scope.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-55
+packages/react-doctor/tests/user-plugins.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 2,6,8,11,49-50,136,153-154
+scripts/smoke-json-report.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 5-6,8-11,13,18
+packages/react-doctor/tests/normalize-help-command.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-38
+packages/react-doctor/src/cli/utils/guard-stdin.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-33
+packages/oxlint-plugin-react-doctor/src/plugin/utils/does-module-export-name.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1
+packages/oxlint-plugin-react-doctor/src/plugin/utils/rule.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 68-70
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-ui/no-em-dash-in-jsx-text.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 14-16
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/expo-no-non-inlined-env.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-102
+packages/react-doctor/tests/rules-command.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-314
+packages/core/src/project-info/find-react-in-workspaces.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1
+packages/core/tests/spawn-batches-serial-fallback.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-130
+packages/react-doctor/src/cli/utils/install-doctor-script.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3,44
+packages/react-doctor/src/cli/utils/report-error.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-64
+packages/oxlint-plugin-react-doctor/src/plugin/utils/classify-package-platform.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-2
+packages/core/src/utils/map-with-concurrency.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-45
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-ui/no-redundant-padding-axes.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 19-21
+packages/react-doctor/tests/render-onboarding-animation.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-226
+packages/react-doctor/tests/regressions/nextjs-get-side-effects.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 18,20
+packages/react-doctor/tests/regressions/scan-resilience.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 25,27,545-547,555,579-582,595-602
+packages/core/src/checks/expo/check-package-json-conflicts.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-43
+packages/core/src/checks/expo/utils/read-expo-app-config.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-62
+packages/react-doctor/src/cli/utils/build-sentry-project-context.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-57
+packages/core/src/utils/resolve-scan-concurrency.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-14
+packages/react-doctor/src/cli/utils/install-git-hook-config-managers.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-2,67,235-236,239-240,252-253,269-270,282-283,291-292
+packages/core/src/types/inspect.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 72-81,84-87
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-key.regressions.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 37-63
+packages/react-doctor/src/cli/utils/install-git-hook.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-2,48,59,66,74,77
+packages/react-doctor/src/cli/utils/rule-catalog.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-58
+packages/core/CHANGELOG.md
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 3-43
+packages/core/src/resolve-diagnose-target.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,4-11,18
+packages/core/tests/find-monorepo-root.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1
+packages/api/CHANGELOG.md
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 3-37
+packages/core/tests/is-analyzable-project.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 20-22
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/prefer-es6-class.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 30-32
+packages/react-doctor/src/cli/commands/version.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-18
+packages/react-doctor/src/cli/utils/build-runtime-layers.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 10,45-53,79-80,116,128-135
+packages/react-doctor/src/cli/utils/cli-input-error.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-13
+packages/react-doctor/src/cli/utils/read-object-file.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-17
+packages/core/src/utils/resolve-github-actions-score-metadata.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,22
+packages/react-doctor/README.md
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 77,80,82-84,88-102,104,113-125
+packages/core/package.json
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 3,26-27,30
+.github/workflows/publish.yml
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 47-52,99-108
+packages/react-doctor/tests/build-sentry-scope.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-118
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-set-native-props.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-46
+packages/react-doctor/src/cli/utils/normalize-help-command.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-33
+packages/core/tests/resolve-scan-concurrency.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-35
+packages/react-doctor/src/cli/utils/git-hook-shared.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 2-3,50,57
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/no-generic-handler-names.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 12-14
+packages/core/src/checks/react-native/check-library-dependencies.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-45
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-wide-letter-spacing.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 10,13-67,72-74,83
+packages/react-doctor/tests/detect-agents.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 2,5,9-10,27,34,71-72,88
+packages/react-doctor/tests/regressions/architecture-rules.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3
+packages/react-doctor/tests/report-error.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-8
+packages/core/src/checks/expo/expo-check-context.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-35
+packages/website/public/llms.txt
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 75-93
+packages/react-doctor/src/cli/commands/install.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 2,6-7,31,42-43
+packages/core/src/check-reduced-motion.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 2
+packages/react-doctor/src/cli/utils/render-diagnostics.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 8,18,20-25,27,31,72-98,106-113,116-128,130-132,135,138,141-200,270-273,277,285-293,320,324,329,333-343,371-382,385,391-402,407-428,442-449,453-461,466,468-469,472,475-480,482,484-487,489,493,496-501,504-505,508-516,537-543,546-548,552-557,559-561,563-565,567-577,580-594,596-599,601-621,653-655
+packages/react-doctor/tests/regressions/_helpers.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 2-3,32-40,126-127,153-155,183-186
+packages/core/src/check-pnpm-hardening.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-2
+packages/core/src/checks/expo/check-metro-config.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-59
+packages/core/src/resolve-config-root-dir.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 3
+packages/react-doctor/src/cli/utils/select-projects.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,6,11,19,21,61
+packages/react-doctor/src/cli/utils/sentry-tracer.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-156
+packages/react-doctor/tests/detect-user-lint-config.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3
+packages/core/src/types/diagnose.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 19-20,45,51
+.agents/skills/rule-validate/SKILL.md
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 57-58
+packages/core/src/checks/expo/check-flagged-dependencies.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-172
+packages/react-doctor/tests/unref-stdin-live.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 5-6,26,28,90-92,96
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-filename-extension.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1
+packages/core/src/runners/oxlint/plugin-resolution.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 2
+packages/core/src/utils/is-minified-source.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1
+packages/core/src/run-inspect.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,16,18,21,32,53-55,67-68,330-335,351-357,377-379,408-413,459,481
+packages/core/src/read-file-lines-node.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-2
+packages/core/src/checks/expo/utils/build-expo-diagnostic.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-28
+packages/oxlint-plugin-react-doctor/src/plugin/utils/create-relative-import-source.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1
+packages/react-doctor/tests/regressions/diff-commit-range.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-106
+.agents/skills/rule-writing/SKILL.md
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 33
+packages/react-doctor/tests/build-code-frame.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3
+packages/core/src/check-expo-project.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-40
+packages/core/src/services/reporter.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 7,66
+packages/core/tests/oxlint-config-settings.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-49
+packages/oxlint-plugin-react-doctor/CHANGELOG.md
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 3-35
+packages/react-doctor/tests/build-run-context.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-86
+packages/core/src/utils/list-source-files.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 2
+packages/react-doctor/tests/regressions/prop-stack-barrier.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 16,18
+packages/react-doctor/tests/select-projects.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3,110-121
+packages/react-doctor/tests/install-git-hook.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 3,5,18,22,26,29,32-33,63-64,72-73,99-102,123-124,130-131,136,150-151,169-170,192,210,244,279,353,363,387,399,416,425,442,451,473,683,696-697,701,703,711,713,725,738-739,750,752,770,786-787,799-800,804,806,813-814
+packages/react-doctor/tests/validate-mode-flags.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 20-33
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-deep-imports.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-121
+packages/website/src/app/share/badge-snippet.tsx
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 5
+packages/react-doctor/src/cli/utils/update-rule-config.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-57
+packages/react-doctor/src/cli/utils/spinner.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 17,65-68
+skills/doctor-explain/SKILL.md
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-75
+packages/core/src/types/project-info.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 53-76,89-90,95-104
+packages/react-doctor/src/cli/utils/scrub-sentry-event.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-63
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-list-missing-estimated-item-size.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 18-30
+packages/core/src/parse-gitattributes-linguist.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1
+packages/react-doctor/src/cli/utils/handle-error.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 4,14-20,51-55,74,89,94-97,108-111,119,122-129,140-161
+packages/core/src/project-info/resolve-catalog-backed-dependency-version.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-50
+packages/react-doctor/tests/github-action-comment.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 2,4,33-35
+packages/react-doctor/src/cli/utils/find-owning-project.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1
+.agents/skills/ship/SKILL.md
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-55
+packages/core/tests/services/git-missing-binary.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-34
+packages/oxlint-plugin-react-doctor/src/plugin/utils/is-nextjs-metadata-image-route-filename.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/utils/is-cleanup-return.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 11-18,142,146-148,150-154,157-159
+packages/oxlint-plugin-react-doctor/src/plugin/utils/is-barrel-index-module.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-2
+packages/react-doctor/src/cli/utils/anonymize-text.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-35
+packages/react-doctor/tests/regressions/cli-and-output.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 16,18,112,130,199,237-238
+packages/core/tests/spawn-batches.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 14-16,32-34,88-150
+packages/react-doctor/tests/regressions/no-secrets-in-client-code.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3
+packages/react-doctor/tests/with-sentry-run-span.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-73
+packages/website/src/app/share/page.tsx
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 2
+packages/core/src/checks/react-native/check-metro-babel-preset.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-58
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-raw-text.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-164
+packages/react-doctor/src/cli/utils/open-workflow-pull-request.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-222
+skills/react-doctor/SKILL.md
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 35-38
+packages/react-doctor/tests/inspect-action-setup-prompt.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3,5,33,69-71,140
+packages/react-doctor/tests/regressions/inline-suppressions.test.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 14,16
+packages/react-doctor/src/cli/utils/diagnostic-grouping.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,48,56-85,87-92
+packages/react-doctor/src/cli/utils/constants.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 5-15,26-29,35-55,60-129
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-ui/no-vague-button-label.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 64-66
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/prefer-module-scope-static-value.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 197-203
+packages/oxlint-plugin-react-doctor/package.json
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 3,57-58,61
+packages/core/src/run-oxlint.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1,3,66-74,242
+packages/react-doctor/tests/regressions/state-rules/_effect-parity-runner.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-2
+packages/core/src/project-info/count-source-files.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1
+packages/core/src/checks/expo/check-updates-config.ts
+  s_55e5225c4a74ee::t_e00b2de2d2db8a 1-28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "303cce613a5c5c85803807eadfd523905b7482bb",
+  "prompts": {},
+  "sessions": {
+    "s_55e5225c4a74ee": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "24f14ee2-7b18-4a18-8a3e-4dbf84ffbff3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

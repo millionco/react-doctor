@@ -6,6 +6,7 @@ import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isSetterCall } from "../../utils/is-setter-call.js";
+import { isUseStateSetterInScope } from "../../utils/is-use-state-setter-in-scope.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -97,7 +98,12 @@ const countMaxPathSetStateCalls = (node: EsTreeNode): number => {
   // Direct setter call — plus any setters inside its arguments. A
   // functional updater `setX(prev => { setY(); ... })` runs the
   // callback synchronously during dispatch, so `setY()` compounds.
-  if (isSetterCall(node)) {
+  if (
+    isNodeOfType(node, "CallExpression") &&
+    isSetterCall(node) &&
+    isNodeOfType(node.callee, "Identifier") &&
+    isUseStateSetterInScope(node, node.callee.name)
+  ) {
     let nestedSettersInArgs = 0;
     for (const argument of (node as EsTreeNodeOfType<"CallExpression">).arguments ?? []) {
       nestedSettersInArgs += countMaxPathSetStateCalls(argument as EsTreeNode);

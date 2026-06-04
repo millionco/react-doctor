@@ -1,5 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { isSetterCall } from "../../utils/is-setter-call.js";
+import { isUseStateSetterInScope } from "../../utils/is-use-state-setter-in-scope.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -99,6 +100,7 @@ export const rerenderFunctionalSetstate = defineRule<Rule>({
       if (!isSetterCall(node)) return;
       if (!node.arguments?.length) return;
       if (!isNodeOfType(node.callee, "Identifier")) return;
+      if (!isUseStateSetterInScope(node, node.callee.name)) return;
 
       const calleeName = node.callee.name;
       const argument = node.arguments[0];

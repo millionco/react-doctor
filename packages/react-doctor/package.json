@@ -1,6 +1,6 @@
 {
   "name": "react-doctor",
-  "version": "0.2.18",
+  "version": "0.3.0",
   "description": "Diagnose and fix React codebases for security, performance, correctness, accessibility, bundle-size, and architecture issues",
   "keywords": [
     "accessibility",

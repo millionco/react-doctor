@@ -149,7 +149,12 @@ describe("buildJsonReportError", () => {
     });
 
     expect(report.ok).toBe(false);
-    expect(report.error).toEqual({ message: "boom", name: "TypeError", chain: ["boom"] });
+    expect(report.error).toEqual({
+      message: "boom",
+      name: "TypeError",
+      chain: ["boom"],
+      sentryEventId: null,
+    });
     expect(report.diagnostics).toEqual([]);
     expect(report.projects).toEqual([]);
     expect(report.summary.totalDiagnosticCount).toBe(0);
@@ -166,6 +171,7 @@ describe("buildJsonReportError", () => {
       message: "raw failure",
       name: "Error",
       chain: ["raw failure"],
+      sentryEventId: null,
     });
   });
 

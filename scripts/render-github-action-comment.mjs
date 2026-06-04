@@ -2,12 +2,84 @@ import fs from "node:fs";
 
 const MARKER = "<!-- react-doctor:summary -->";
 const BUG_REPORT_URL = "https://github.com/millionco/react-doctor";
+const BRAND_LINK = "https://react.doctor";
 const TOP_RULE_LIMIT = 5;
 
 const [reportPath, commentPath] = process.argv.slice(2);
 
 const pluralize = (count, singular, plural = `${singular}s`) =>
   `${count} ${count === 1 ? singular : plural}`;
+
+/**
+ * Every user-facing string the PR comment can render, in one place. Static
+ * strings are plain values; lines with interpolation are functions. Edit copy
+ * here — the `build*` renderers below only assemble layout, never literal text.
+ */
+const COPY = {
+  // Attribution footer (Cursor Bugbot-style, small font via <sub>).
+  reviewFooter: (commitSegment) =>
+    `<sub>Reviewed by [React Doctor](${BRAND_LINK})${commitSegment}.</sub>`,
+  reviewFooterCommit: (shortSha) => ` for commit \`${shortSha}\``,
+
+  // Baseline (PR-introduced-issues-only) body.
+  baselineLeadClean: "React Doctor reviewed your changes and found no new issues. 🎉",
+  baselineLead: (newIssues) => `React Doctor reviewed your changes and found ${newIssues}.`,
+  baselineFixedPart: (issues) => `${issues} fixed`,
+  baselineUntouchedPart: (preExistingIssues) => `${preExistingIssues} left untouched`,
+  baselineDetail: (shortRef, parts) => `Compared against \`${shortRef}\`: ${parts}.`,
+
+  // Full / diff summary status line.
+  statusIncompleteNoIssues: "No React Doctor issues were found, but some checks were incomplete.",
+  statusNoIssues: "No React Doctor issues found in this scan.",
+  status: (issues, files) => `React Doctor found ${issues} in ${files}.`,
+
+  // No-scan body.
+  noScanStaged:
+    "No staged React or TypeScript source files were found, so React Doctor skipped the scan.",
+  noScanDiffEmpty:
+    "No changed files were found in this pull request, so React Doctor skipped the scan.",
+  noScanDiffUnmatched: (changedFiles) =>
+    `React Doctor found ${changedFiles} changed in this pull request, but none matched the files covered by its enabled checks.`,
+  noScanFull: "React Doctor did not find any files covered by its enabled checks.",
+  scope: (scope) => `Scope: ${scope}.`,
+
+  // Error body.
+  errorIntro: "React Doctor could not complete this scan.",
+  errorFallbackMessage: "React Doctor failed before completing the scan.",
+  reportBugLink: (url) => `[Report this bug](${url})`,
+
+  // Bug-report issue prefill (title + body lines).
+  bugReportTitle: "React Doctor Action failed",
+  bugReportBodyIntro: "React Doctor Action failed before completing a scan.",
+  bugReportErrorHeading: "### Error",
+  bugReportContextHeading: "### Context",
+  bugReportVersion: (version) => `- React Doctor version: ${version}`,
+  bugReportMode: (mode) => `- Mode: ${mode}`,
+  bugReportWorkflowRun: (url) => `- Workflow run: ${url}`,
+
+  // Section headings + table headers.
+  topFindingsHeading: "### Top Findings",
+  topFindingsTableHeader: "| Rule | Severity | Category | Count |",
+  topFindingsTableDivider: "| --- | --- | --- | ---: |",
+  incompleteChecksHeading: "### Incomplete Checks",
+  baselineTableHeader: "| Score | New | Fixed | Errors | Warnings | Affected Files | Scope |",
+  baselineTableDivider: "| --- | ---: | ---: | ---: | ---: | ---: | --- |",
+  summaryTableHeader: "| Score | Issues | Errors | Warnings | Affected Files | Scope |",
+  summaryTableDivider: "| --- | ---: | ---: | ---: | ---: | --- |",
+
+  // Score + scope formatting.
+  scoreUnavailable: "Unavailable",
+  score: (score, label) => `${score} / 100${label}`,
+  scoreLabel: (label) => ` (${label})`,
+  scopeFullProject: "Full project",
+  scopeChanged: (files, currentBranch, baseBranch) =>
+    `${files} changed on \`${currentBranch}\` vs. \`${baseBranch}\``,
+
+  // Stderr warning when no report exists.
+  noReportWarning:
+    "React Doctor: no scan report was found, so the summary comment was skipped. " +
+    "This usually means the scan step did not run.",
+};
 
 const escapeCell = (value) =>
   String(value ?? "")
@@ -37,31 +109,31 @@ const renderLines = (lines) =>
 
 const buildBugReportUrl = (report) => {
   const runUrl = process.env.GITHUB_RUN_URL;
-  const message = report.error?.message ?? "React Doctor failed before completing the scan.";
+  const message = report.error?.message ?? COPY.errorFallbackMessage;
   const bodyLines = [
-    "React Doctor Action failed before completing a scan.",
+    COPY.bugReportBodyIntro,
     "",
-    "### Error",
+    COPY.bugReportErrorHeading,
     "",
     `\`${message}\``,
     "",
-    "### Context",
+    COPY.bugReportContextHeading,
     "",
-    `- React Doctor version: ${report.version ?? "unknown"}`,
-    `- Mode: ${report.mode ?? "unknown"}`,
-    runUrl ? `- Workflow run: ${runUrl}` : null,
+    COPY.bugReportVersion(report.version ?? "unknown"),
+    COPY.bugReportMode(report.mode ?? "unknown"),
+    runUrl ? COPY.bugReportWorkflowRun(runUrl) : null,
   ].filter(Boolean);
   const parameters = new URLSearchParams({
-    title: "React Doctor Action failed",
+    title: COPY.bugReportTitle,
     body: bodyLines.join("\n"),
   });
   return `${BUG_REPORT_URL}/issues/new?${parameters.toString()}`;
 };
 
 const formatScore = (summary) => {
-  if (typeof summary?.score !== "number") return "Unavailable";
-  const label = typeof summary.scoreLabel === "string" ? ` (${summary.scoreLabel})` : "";
-  return `${summary.score} / 100${label}`;
+  if (typeof summary?.score !== "number") return COPY.scoreUnavailable;
+  const label = typeof summary.scoreLabel === "string" ? COPY.scoreLabel(summary.scoreLabel) : "";
+  return COPY.score(summary.score, label);
 };
 
 const formatShortRef = (ref) =>
@@ -72,15 +144,21 @@ const formatShortRef = (ref) =>
 // on GitHub. The commit segment is dropped when no head SHA was forwarded.
 const buildReviewFooter = () => {
   const headSha = process.env.REACT_DOCTOR_HEAD_SHA?.trim();
-  const commitSegment = headSha ? ` for commit \`${formatShortRef(headSha)}\`` : "";
-  return `<sub>Reviewed by [React Doctor](https://react.doctor)${commitSegment}.</sub>`;
+  const commitSegment = headSha ? COPY.reviewFooterCommit(formatShortRef(headSha)) : "";
+  return COPY.reviewFooter(commitSegment);
 };
 
 const formatScope = (report) => {
-  if ((report.mode !== "diff" && report.mode !== "baseline") || !report.diff) return "Full project";
+  if ((report.mode !== "diff" && report.mode !== "baseline") || !report.diff) {
+    return COPY.scopeFullProject;
+  }
   const baseBranch = report.diff.baseBranch || "target branch";
   const currentBranch = report.diff.currentBranch || "current branch";
-  return `${pluralize(report.diff.changedFileCount, "file")} changed on \`${currentBranch}\` vs. \`${baseBranch}\``;
+  return COPY.scopeChanged(
+    pluralize(report.diff.changedFileCount, "file"),
+    currentBranch,
+    baseBranch,
+  );
 };
 
 const getIncompleteCheckNames = (report) => [
@@ -97,27 +175,24 @@ const hasIncompleteChecks = (report) => getIncompleteCheckNames(report).length >
 const hasScannedProjects = (report) => (report.projects ?? []).length > 0;
 
 const buildNoScanMessage = (report) => {
-  if (report.mode === "staged") {
-    return "No staged React or TypeScript source files were found, so React Doctor skipped the scan.";
-  }
+  if (report.mode === "staged") return COPY.noScanStaged;
   if (report.mode === "diff") {
     const changedFileCount = report.diff?.changedFileCount ?? 0;
-    if (changedFileCount === 0) {
-      return "No changed files were found in this pull request, so React Doctor skipped the scan.";
-    }
-    return `React Doctor found ${pluralize(changedFileCount, "file")} changed in this pull request, but none matched the files covered by its enabled checks.`;
+    if (changedFileCount === 0) return COPY.noScanDiffEmpty;
+    return COPY.noScanDiffUnmatched(pluralize(changedFileCount, "file"));
   }
-  return "React Doctor did not find any files covered by its enabled checks.";
+  return COPY.noScanFull;
 };
 
 const buildStatusLine = (report) => {
   const summary = report.summary ?? {};
   const totalIssues = summary.totalDiagnosticCount ?? 0;
-  if (totalIssues === 0 && hasIncompleteChecks(report)) {
-    return "No React Doctor issues were found, but some checks were incomplete.";
-  }
-  if (totalIssues === 0) return "No React Doctor issues found in this scan.";
-  return `React Doctor found ${pluralize(totalIssues, "issue")} in ${pluralize(summary.affectedFileCount ?? 0, "file")}.`;
+  if (totalIssues === 0 && hasIncompleteChecks(report)) return COPY.statusIncompleteNoIssues;
+  if (totalIssues === 0) return COPY.statusNoIssues;
+  return COPY.status(
+    pluralize(totalIssues, "issue"),
+    pluralize(summary.affectedFileCount ?? 0, "file"),
+  );
 };
 
 const groupDiagnosticsByRule = (diagnostics) => {
@@ -145,10 +220,10 @@ const buildTopRulesSection = (diagnostics) => {
   const groups = groupDiagnosticsByRule(diagnostics).slice(0, TOP_RULE_LIMIT);
   if (groups.length === 0) return "";
   const lines = [
-    "### Top Findings",
+    COPY.topFindingsHeading,
     "",
-    "| Rule | Severity | Category | Count |",
-    "| --- | --- | --- | ---: |",
+    COPY.topFindingsTableHeader,
+    COPY.topFindingsTableDivider,
   ];
   for (const group of groups) {
     lines.push(
@@ -161,7 +236,7 @@ const buildTopRulesSection = (diagnostics) => {
 const buildSkippedChecksSection = (report) => {
   const incompleteChecks = getIncompleteCheckNames(report);
   if (incompleteChecks.length === 0) return "";
-  const lines = ["### Incomplete Checks", ""];
+  const lines = [COPY.incompleteChecksHeading, ""];
   for (const skippedCheck of incompleteChecks) {
     const reason = (report.projects ?? [])
       .map((project) => project.skippedCheckReasons?.[skippedCheck])
@@ -177,22 +252,22 @@ const buildNoScanBody = (report) =>
     "",
     buildNoScanMessage(report),
     "",
-    `Scope: ${formatScope(report)}.`,
+    COPY.scope(formatScope(report)),
     "",
     buildReviewFooter(),
   ]);
 
 const buildErrorBody = (report) => {
-  const message = report.error?.message ?? "React Doctor failed before completing the scan.";
+  const message = report.error?.message ?? COPY.errorFallbackMessage;
   const bugReportUrl = buildBugReportUrl(report);
   return renderLines([
     MARKER,
     "",
-    "React Doctor could not complete this scan.",
+    COPY.errorIntro,
     "",
     `> ${message}`,
     "",
-    `[Report this bug](${bugReportUrl})`,
+    COPY.reportBugLink(bugReportUrl),
     "",
     buildReviewFooter(),
   ]);
@@ -209,19 +284,17 @@ const buildBaselineBody = (report) => {
   const baseTotalCount = baseline.baseTotalCount ?? 0;
   // Lead sentence mirrors Cursor Bugbot's "… reviewed your changes and found N …".
   const leadLine =
-    newCount === 0
-      ? "React Doctor reviewed your changes and found no new issues. 🎉"
-      : `React Doctor reviewed your changes and found ${pluralize(newCount, "new issue")}.`;
+    newCount === 0 ? COPY.baselineLeadClean : COPY.baselineLead(pluralize(newCount, "new issue"));
   // Secondary context line (Bugbot's "There are N total …" slot): what the
   // change fixed and what pre-existing findings were left untouched.
   const detailParts = [];
-  if (fixedCount > 0) detailParts.push(`${pluralize(fixedCount, "issue")} fixed`);
+  if (fixedCount > 0) detailParts.push(COPY.baselineFixedPart(pluralize(fixedCount, "issue")));
   if (baseTotalCount > 0) {
-    detailParts.push(`${pluralize(baseTotalCount, "pre-existing issue")} left untouched`);
+    detailParts.push(COPY.baselineUntouchedPart(pluralize(baseTotalCount, "pre-existing issue")));
   }
   const detailLine =
     detailParts.length > 0
-      ? `Compared against \`${escapeCell(formatShortRef(baseline.baseRef))}\`: ${detailParts.join(", ")}.`
+      ? COPY.baselineDetail(escapeCell(formatShortRef(baseline.baseRef)), detailParts.join(", "))
       : null;
 
   const lines = [
@@ -230,8 +303,8 @@ const buildBaselineBody = (report) => {
     leadLine,
     ...(detailLine ? ["", detailLine] : []),
     "",
-    "| Score | New | Fixed | Errors | Warnings | Affected Files | Scope |",
-    "| --- | ---: | ---: | ---: | ---: | ---: | --- |",
+    COPY.baselineTableHeader,
+    COPY.baselineTableDivider,
     `| ${escapeCell(formatScore(summary))} | ${newCount} | ${fixedCount} | ${summary.errorCount ?? 0} | ${summary.warningCount ?? 0} | ${summary.affectedFileCount ?? 0} | ${escapeCell(formatScope(report))} |`,
     "",
     buildTopRulesSection(report.diagnostics),
@@ -254,8 +327,8 @@ const buildCommentBody = (report) => {
     "",
     buildStatusLine(report),
     "",
-    "| Score | Issues | Errors | Warnings | Affected Files | Scope |",
-    "| --- | ---: | ---: | ---: | ---: | --- |",
+    COPY.summaryTableHeader,
+    COPY.summaryTableDivider,
     `| ${escapeCell(formatScore(summary))} | ${totalIssues} | ${summary.errorCount ?? 0} | ${summary.warningCount ?? 0} | ${summary.affectedFileCount ?? 0} | ${escapeCell(formatScope(report))} |`,
     "",
     buildTopRulesSection(report.diagnostics),
@@ -268,10 +341,7 @@ const buildCommentBody = (report) => {
 
 const report = readReport();
 if (!report) {
-  console.warn(
-    "React Doctor: no scan report was found, so the summary comment was skipped. " +
-      "This usually means the scan step did not run.",
-  );
+  console.warn(COPY.noReportWarning);
   process.exit(0);
 }
 const body = buildCommentBody(report);

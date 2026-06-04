@@ -1,0 +1,65 @@
+packages/react-doctor/tests/lsp-telemetry.test.ts
+  s_55e5225c4a74ee::t_454a0480a3c721 1-58
+packages/language-server/src/index.ts
+  s_55e5225c4a74ee::t_36ee16d142d4c8 15-23
+packages/language-server/tests/unit/scan-telemetry.test.ts
+  s_55e5225c4a74ee::t_d70c4c152bbbf9 52,55
+  s_55e5225c4a74ee::t_d056e12ab2a6d0 1-51,53-54,56-143
+packages/react-doctor/src/instrument.ts
+  s_55e5225c4a74ee::t_b1f78996b52a8e 3,6-14
+packages/react-doctor/src/cli/utils/constants.ts
+  s_55e5225c4a74ee::t_22253ebbd1f55d 129-134
+packages/react-doctor/src/lsp-telemetry.ts
+  s_55e5225c4a74ee::t_4b44e5b4ed3288 15
+  s_55e5225c4a74ee::t_5ed08248d71a46 8
+  s_55e5225c4a74ee::t_37d660b2c1911c 1-7,9-14,16-171
+packages/react-doctor/vite.config.ts
+  s_55e5225c4a74ee::t_a186f9fc6f23aa 185-188
+packages/react-doctor/src/cli/utils/build-run-event.ts
+  s_55e5225c4a74ee::t_f1748f87f305cd 11
+docs/editors.md
+  s_55e5225c4a74ee::t_a33e2cf621bb5e 339-353
+.changeset/language-server.md
+  s_55e5225c4a74ee::t_9ce774b03dbabe 8-9
+packages/react-doctor/src/cli/utils/sentry-config.ts
+  s_55e5225c4a74ee::t_c50262ec493486 1-48
+packages/language-server/src/types.ts
+  s_55e5225c4a74ee::t_7ad538e0bbde20 20-84
+packages/react-doctor/src/lsp.ts
+  s_55e5225c4a74ee::t_558dec6f519896 2-3,6-9,11-18
+packages/language-server/src/runtime/scan-telemetry.ts
+  s_55e5225c4a74ee::t_1365db74804af0 1-101
+packages/language-server/src/server.ts
+  s_55e5225c4a74ee::t_91882d9485b454 407-410
+  s_55e5225c4a74ee::t_5c6395f1c6e89f 201
+  s_55e5225c4a74ee::t_563eb7ada1984b 236-238
+  s_55e5225c4a74ee::t_e4c1ac3c2e8b82 60
+  s_55e5225c4a74ee::t_ae0f849030b502 278,284,286
+  s_55e5225c4a74ee::t_6a3c855ffd30da 536,540-548,550
+  s_55e5225c4a74ee::t_df9be11f072f8b 612
+  s_55e5225c4a74ee::t_a098f53e3ec2b2 251-252,262
+  s_55e5225c4a74ee::t_e363e6c381fcb1 66-75
+  s_55e5225c4a74ee::t_f0bdb0e1180c7d 838-840
+  s_55e5225c4a74ee::t_7df9894626fdff 418-420
+  s_55e5225c4a74ee::t_d4db1546555fb5 89-96,102-105,107-108
+  s_55e5225c4a74ee::t_c262cadf7c27c3 798-800
+  s_55e5225c4a74ee::t_aa6bf00efbf85b 870,874
+packages/react-doctor/src/cli/utils/to-category-key.ts
+  s_55e5225c4a74ee::t_0b4587361f0391 1-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "61e14da4bb4379cf7e895dd7335478bd027dfae6",
+  "prompts": {},
+  "sessions": {
+    "s_55e5225c4a74ee": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "24f14ee2-7b18-4a18-8a3e-4dbf84ffbff3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

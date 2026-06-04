@@ -1,0 +1,29 @@
+packages/react-doctor/src/cli/utils/record-scan-metrics.ts
+  s_29dfde713ef3ca::t_3f47bf178a0500 132-136
+  s_29dfde713ef3ca::t_6d4c8501f930a2 60-61
+packages/react-doctor/src/cli/utils/constants.ts
+  s_29dfde713ef3ca::t_5d6f3ce1c63c70 115
+packages/react-doctor/src/inspect.ts
+  s_29dfde713ef3ca::t_44c0f1a344a88a 570
+packages/react-doctor/src/cli/utils/build-run-event.ts
+  s_29dfde713ef3ca::t_e4ffd2a0c19f56 169-182
+packages/react-doctor/tests/build-run-event.test.ts
+  s_29dfde713ef3ca::t_302c7b8ed56c9c 219-221
+  s_29dfde713ef3ca::t_a10eaa4828d31a 205-218,222-228
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "839d25db63fc13020adcd50a13cbb0a7d96e8ee9",
+  "prompts": {},
+  "sessions": {
+    "s_29dfde713ef3ca": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ea8ec758-611c-411c-81b8-cacb4d8ea4f9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

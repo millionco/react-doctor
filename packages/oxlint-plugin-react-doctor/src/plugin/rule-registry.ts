@@ -97,6 +97,8 @@ import { lang } from "./rules/a11y/lang.js";
 import { mediaHasCaption } from "./rules/a11y/media-has-caption.js";
 import { mouseEventsHaveKeyEvents } from "./rules/a11y/mouse-events-have-key-events.js";
 import { nextjsAsyncClientComponent } from "./rules/nextjs/nextjs-async-client-component.js";
+import { nextjsErrorBoundaryMissingUseClient } from "./rules/nextjs/nextjs-error-boundary-missing-use-client.js";
+import { nextjsGlobalErrorMissingHtmlBody } from "./rules/nextjs/nextjs-global-error-missing-html-body.js";
 import { nextjsImageMissingSizes } from "./rules/nextjs/nextjs-image-missing-sizes.js";
 import { nextjsInlineScriptMissingId } from "./rules/nextjs/nextjs-inline-script-missing-id.js";
 import { nextjsMissingMetadata } from "./rules/nextjs/nextjs-missing-metadata.js";
@@ -104,7 +106,9 @@ import { nextjsNoAElement } from "./rules/nextjs/nextjs-no-a-element.js";
 import { nextjsNoClientFetchForServerData } from "./rules/nextjs/nextjs-no-client-fetch-for-server-data.js";
 import { nextjsNoClientSideRedirect } from "./rules/nextjs/nextjs-no-client-side-redirect.js";
 import { nextjsNoCssLink } from "./rules/nextjs/nextjs-no-css-link.js";
+import { nextjsNoDefaultExportInRouteHandler } from "./rules/nextjs/nextjs-no-default-export-in-route-handler.js";
 import { nextjsNoFontLink } from "./rules/nextjs/nextjs-no-font-link.js";
+import { nextjsNoGoogleAnalyticsScript } from "./rules/nextjs/nextjs-no-google-analytics-script.js";
 import { nextjsNoHeadImport } from "./rules/nextjs/nextjs-no-head-import.js";
 import { nextjsNoImgElement } from "./rules/nextjs/nextjs-no-img-element.js";
 import { nextjsNoNativeScript } from "./rules/nextjs/nextjs-no-native-script.js";
@@ -1319,6 +1323,28 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/nextjs-error-boundary-missing-use-client",
+    id: "nextjs-error-boundary-missing-use-client",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...nextjsErrorBoundaryMissingUseClient,
+      framework: "nextjs",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/nextjs-global-error-missing-html-body",
+    id: "nextjs-global-error-missing-html-body",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...nextjsGlobalErrorMissingHtmlBody,
+      framework: "nextjs",
+      category: "Bugs",
+    },
+  },
+  {
     key: "react-doctor/nextjs-image-missing-sizes",
     id: "nextjs-image-missing-sizes",
     source: "react-doctor",
@@ -1396,12 +1422,34 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/nextjs-no-default-export-in-route-handler",
+    id: "nextjs-no-default-export-in-route-handler",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...nextjsNoDefaultExportInRouteHandler,
+      framework: "nextjs",
+      category: "Bugs",
+    },
+  },
+  {
     key: "react-doctor/nextjs-no-font-link",
     id: "nextjs-no-font-link",
     source: "react-doctor",
     originallyExternal: false,
     rule: {
       ...nextjsNoFontLink,
+      framework: "nextjs",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/nextjs-no-google-analytics-script",
+    id: "nextjs-no-google-analytics-script",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...nextjsNoGoogleAnalyticsScript,
       framework: "nextjs",
       category: "Bugs",
     },

@@ -1,3 +1,4 @@
+import { ROUTE_HANDLER_HTTP_METHODS } from "../../constants/nextjs.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -6,16 +7,6 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-
-const ROUTE_HANDLER_HTTP_METHODS = new Set([
-  "GET",
-  "POST",
-  "PUT",
-  "PATCH",
-  "DELETE",
-  "OPTIONS",
-  "HEAD",
-]);
 
 const STATIC_IO_FUNCTIONS = new Set([
   "readFileSync",

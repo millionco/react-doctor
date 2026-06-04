@@ -1,0 +1,22 @@
+packages/react-doctor/tests/e2e/__snapshots__/terminal-visuals.test.ts.snap
+  ai_agent 68
+packages/react-doctor/src/cli/utils/handoff-to-agent.ts
+  s_0be0fcdbf72c91::t_80b2d1ad695605 17-27
+  s_0be0fcdbf72c91::t_9c970e8c9f86dc 119-120,136
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "d5a3a57e6cd554d91cd52b415c0a312ab4f09204",
+  "prompts": {},
+  "sessions": {
+    "s_0be0fcdbf72c91": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "db6a4a15-c3fc-4dd2-acb7-e3fec38e1203",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

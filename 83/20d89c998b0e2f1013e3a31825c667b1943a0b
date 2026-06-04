@@ -1,0 +1,25 @@
+pnpm-lock.yaml
+  ai_agent 875,881,887,893,899,905,911,917,924,931,938,945,952,959,966,973,1088,1095,1102,1109,1218,1225,1232,1239,1246,1253,1260,1267,1347,1353,1359,1365,1371,1377,1383,1389,1463,1470,1477,1484,1491,1498,1505,1512,1615,1622,1629,1636,1643,1650,1657,1664,1732,1738,1744,1750,1756,1762,1768,1774,1780,1786,1792,1798,1804,1976,1983,1990,1997,2246,2253,2260,2267,2920,2927,2934,2941
+packages/language-server/src/diagnostics/mapper.ts
+  s_55e5225c4a74ee::t_b4cba408a51b6e 55-64
+packages/language-server/src/constants.ts
+  s_55e5225c4a74ee::t_19d436b4818aeb 116-128
+packages/language-server/tests/unit/lint-cache.test.ts
+  s_55e5225c4a74ee::t_a30cf987c68569 75-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "8320d89c998b0e2f1013e3a31825c667b1943a0b",
+  "prompts": {},
+  "sessions": {
+    "s_55e5225c4a74ee": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "24f14ee2-7b18-4a18-8a3e-4dbf84ffbff3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

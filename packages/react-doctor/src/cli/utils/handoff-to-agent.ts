@@ -68,14 +68,14 @@ const setUpGitHubActions = (rootDirectory: string): void => {
   logger.break();
   if (workflowResult.status === "failed") {
     logger.log(
-      `Couldn't set up GitHub Actions automatically. Follow the guide at ${highlighter.info(CI_URL)}`,
+      `  Couldn't set up GitHub Actions automatically. Follow the guide at ${highlighter.info(CI_URL)}`,
     );
     return;
   }
   if (workflowResult.status === "created") {
-    logger.log("React Doctor will now scan every new pull request automatically.");
+    logger.log("  React Doctor will now scan every new pull request automatically.");
   }
-  logger.log(`Learn more: ${highlighter.info(CI_URL)}`);
+  logger.log(`  Learn more: ${highlighter.info(CI_URL)}`);
 };
 
 // First handoff question, asked only when the GitHub Actions workflow isn't

@@ -89,8 +89,7 @@ export const launchCliAgent = async (
   try {
     return await spawnAgent(binary, agentArgs, cwd);
   } catch {
-    if (!isWindows) throw new Error(`Failed to launch ${binary}`);
-    return spawnAgent(binary, agentArgs, cwd, true);
+    throw new Error(`Failed to launch ${binary}`);
   }
 };
 

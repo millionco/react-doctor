@@ -169,6 +169,7 @@ import { noInlineExhaustiveStyle } from "./rules/design/no-inline-exhaustive-sty
 import { noInlinePropOnMemoComponent } from "./rules/performance/no-inline-prop-on-memo-component.js";
 import { noInteractiveElementToNoninteractiveRole } from "./rules/a11y/no-interactive-element-to-noninteractive-role.js";
 import { noIsMounted } from "./rules/react-builtins/no-is-mounted.js";
+import { noJsxElementType } from "./rules/correctness/no-jsx-element-type.js";
 import { noJustifiedText } from "./rules/design/no-justified-text.js";
 import { noLargeAnimatedBlur } from "./rules/performance/no-large-animated-blur.js";
 import { noLayoutPropertyAnimation } from "./rules/performance/no-layout-property-animation.js";
@@ -2113,6 +2114,17 @@ export const reactDoctorRules = [
     originallyExternal: true,
     rule: {
       ...noIsMounted,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/no-jsx-element-type",
+    id: "no-jsx-element-type",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noJsxElementType,
       framework: "global",
       category: "Bugs",
     },

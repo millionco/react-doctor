@@ -208,7 +208,7 @@ describe("no-jsx-element-type", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("does not flag a shadowed local JSX namespace", () => {
+  it("still flags JSX.Element even with a shadowed local JSX namespace", () => {
     const result = runRule(
       noJsxElementType,
       `

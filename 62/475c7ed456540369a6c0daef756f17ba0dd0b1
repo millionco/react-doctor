@@ -1,0 +1,36 @@
+packages/oxlint-plugin-react-doctor/src/plugin/constants/hook-libraries.ts
+  s_067c4b368d871c::t_7e3b20bb0fade2 40-198
+  s_067c4b368d871c::t_a04305569299a6 1-39
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/prefer-existing-hook-library.test.ts
+  s_067c4b368d871c::t_73bf58a4e66ca4 145-197
+  s_067c4b368d871c::t_7f111639a6cb7b 1-20,22-46,48-71,73-90,92-117,119-137,139-144,198-210,212-229,231-252,254-267,269-280,282-291,293-312,314-327,329-347,349-367,369-384,386-389,449-450
+  s_067c4b368d871c::t_7e3b20bb0fade2 21,47,72,91,118,138,211,230,253,268,281,292,313,328,348,368,385
+  s_067c4b368d871c::t_a97cd5bca0ee7e 390-448
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/prefer-existing-hook-library.ts
+  s_067c4b368d871c::t_7a48aa43fe6343 82-88,96,121-124,127-128
+  s_067c4b368d871c::t_573de13751ab09 50
+  s_067c4b368d871c::t_21ecfe90672bfc 9,16-17
+  s_067c4b368d871c::t_7e3b20bb0fade2 1-4,49,51,91,102-105,108-111,116-119,125-126,131-133,143,154,200-206,228
+  s_067c4b368d871c::t_bc77b984cf4ff9 5-8,10-15,18-43,52-55,59,66-81,89-90,92-95,97-101,106-107,112-115,120,129-130,134-142,144-153,155-199,207-227,229-232
+  s_067c4b368d871c::t_addf166276048e 44-48,56-58,60-65
+packages/oxlint-plugin-react-doctor/src/plugin/rule-registry.ts
+  s_067c4b368d871c::t_22acf0a5c5af9f 238,2847-2853
+.changeset/prefer-existing-hook-library.md
+  s_067c4b368d871c::t_cea2ad80106bfc 1-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "62475c7ed456540369a6c0daef756f17ba0dd0b1",
+  "prompts": {},
+  "sessions": {
+    "s_067c4b368d871c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c3411e88-e827-48d3-a5f2-5666d178a206",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

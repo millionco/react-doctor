@@ -1,6 +1,10 @@
 import { spawn } from "node:child_process";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import type { SkillAgentType } from "agent-install";
 import { isCommandAvailable } from "./is-command-available.js";
+
+const isWindows = process.platform === "win32";
 
 // CLI agents we can hand off to by launching their binary with the prompt
 // as the initial argument and inheriting the current terminal — so the
@@ -29,19 +33,66 @@ const CLI_AGENT_AUTO_FLAGS = {
   cursor: ["--force"],
 } as const satisfies Record<CliAgentId, ReadonlyArray<string>>;
 
-// Hands the current terminal to the agent CLI with the prompt as its first
-// positional argument (after the auto-approval flag), resolving with the
-// agent's exit code once it quits. Uses `spawn` (no shell) so the multi-line
-// prompt needs no escaping and can't be interpreted by a shell.
-export const launchCliAgent = (agentId: CliAgentId, prompt: string, cwd: string): Promise<number> =>
+// HACK: On Windows, npm/pnpm/yarn install CLI tools as .cmd batch wrappers
+// that Node's `spawn` cannot execute without `shell: true`. Using a shell
+// would mangle the multi-line prompt (cmd.exe splits at newlines), so we
+// parse the .cmd to find the underlying JS entry script and spawn Node
+// directly — preserving argv integrity and bypassing cmd.exe entirely.
+const resolveWindowsCmdEntryScript = (command: string): string | null => {
+  if (!isWindows) return null;
+  const pathDirectories = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
+  for (const directory of pathDirectories) {
+    const cmdFilePath = path.join(directory, `${command}.cmd`);
+    try {
+      if (!fs.statSync(cmdFilePath).isFile()) continue;
+    } catch {
+      continue;
+    }
+    try {
+      const cmdContent = fs.readFileSync(cmdFilePath, "utf8");
+      const entryScriptMatch = cmdContent.match(/"%(?:~dp0|dp0%)\\([^"]+\.(?:m?js|cjs))"/);
+      if (!entryScriptMatch) continue;
+      const resolvedScriptPath = path.resolve(directory, entryScriptMatch[1]);
+      if (fs.statSync(resolvedScriptPath).isFile()) return resolvedScriptPath;
+    } catch {}
+  }
+  return null;
+};
+
+const spawnAgent = (
+  command: string,
+  args: ReadonlyArray<string>,
+  cwd: string,
+  shell = false,
+): Promise<number> =>
   new Promise<number>((resolve, reject) => {
-    const child = spawn(CLI_AGENT_BINARIES[agentId], [...CLI_AGENT_AUTO_FLAGS[agentId], prompt], {
-      cwd,
-      stdio: "inherit",
-    });
+    const child = spawn(command, [...args], { cwd, stdio: "inherit", shell });
     child.on("error", reject);
     child.on("close", (code) => resolve(code ?? 0));
   });
+
+export const launchCliAgent = async (
+  agentId: CliAgentId,
+  prompt: string,
+  cwd: string,
+): Promise<number> => {
+  const binary = CLI_AGENT_BINARIES[agentId];
+  const agentArgs = [...CLI_AGENT_AUTO_FLAGS[agentId], prompt];
+
+  if (isWindows) {
+    const entryScript = resolveWindowsCmdEntryScript(binary);
+    if (entryScript) {
+      return spawnAgent(process.execPath, [entryScript, ...agentArgs], cwd);
+    }
+  }
+
+  try {
+    return await spawnAgent(binary, agentArgs, cwd);
+  } catch {
+    if (!isWindows) throw new Error(`Failed to launch ${binary}`);
+    return spawnAgent(binary, agentArgs, cwd, true);
+  }
+};
 
 const CLIPBOARD_COMMANDS: ReadonlyArray<{ binary: string; args: string[] }> = [
   { binary: "pbcopy", args: [] },

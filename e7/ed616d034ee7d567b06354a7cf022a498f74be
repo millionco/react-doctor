@@ -1,0 +1,37 @@
+packages/react-doctor/CHANGELOG.md
+  s_29dfde713ef3ca::t_6d2f0d7ae25253 3-66
+packages/core/CHANGELOG.md
+  s_29dfde713ef3ca::t_6d2f0d7ae25253 3-9
+packages/oxlint-plugin-react-doctor/CHANGELOG.md
+  s_29dfde713ef3ca::t_6d2f0d7ae25253 3-19
+packages/react-doctor/package.json
+  s_29dfde713ef3ca::t_6d2f0d7ae25253 3
+packages/core/package.json
+  s_29dfde713ef3ca::t_6d2f0d7ae25253 3
+packages/api/package.json
+  s_29dfde713ef3ca::t_6d2f0d7ae25253 3
+packages/eslint-plugin-react-doctor/CHANGELOG.md
+  s_29dfde713ef3ca::t_6d2f0d7ae25253 3-9
+packages/api/CHANGELOG.md
+  s_29dfde713ef3ca::t_6d2f0d7ae25253 3-9
+packages/eslint-plugin-react-doctor/package.json
+  s_29dfde713ef3ca::t_6d2f0d7ae25253 3
+packages/oxlint-plugin-react-doctor/package.json
+  s_29dfde713ef3ca::t_6d2f0d7ae25253 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "e7ed616d034ee7d567b06354a7cf022a498f74be",
+  "prompts": {},
+  "sessions": {
+    "s_29dfde713ef3ca": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ea8ec758-611c-411c-81b8-cacb4d8ea4f9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

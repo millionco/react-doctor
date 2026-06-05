@@ -1,0 +1,19 @@
+.changeset/language-server.md
+  s_55e5225c4a74ee::t_f680a89a4a762e 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "1855e1aa4e0dcfff03d642dca7040697cded1e4a",
+  "prompts": {},
+  "sessions": {
+    "s_55e5225c4a74ee": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "24f14ee2-7b18-4a18-8a3e-4dbf84ffbff3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

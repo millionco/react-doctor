@@ -1,0 +1,21 @@
+packages/core/src/editor-scan.ts
+  s_55e5225c4a74ee::t_ff72caa0a1576a 101
+  s_55e5225c4a74ee::t_49b9c8fa72b357 6,11
+  s_55e5225c4a74ee::t_956045e9b3849e 138-145
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "7525931853be4007a8d2b7151f0f72178b3b32ef",
+  "prompts": {},
+  "sessions": {
+    "s_55e5225c4a74ee": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "24f14ee2-7b18-4a18-8a3e-4dbf84ffbff3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

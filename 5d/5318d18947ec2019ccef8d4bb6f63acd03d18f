@@ -1,0 +1,25 @@
+packages/react-doctor/src/cli/index.ts
+  s_29dfde713ef3ca::t_836bcf229c1c52 25
+  s_29dfde713ef3ca::t_d58809e0704c0a 281-285
+packages/react-doctor/tests/removed-cli-flags.test.ts
+  s_29dfde713ef3ca::t_d530eb46f4b50e 1-29
+packages/react-doctor/src/cli/utils/removed-cli-flags.ts
+  s_29dfde713ef3ca::t_18c0c7fac9ef17 1-24,26-31
+  s_29dfde713ef3ca::t_54c664561aba87 25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "5d5318d18947ec2019ccef8d4bb6f63acd03d18f",
+  "prompts": {},
+  "sessions": {
+    "s_29dfde713ef3ca": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ea8ec758-611c-411c-81b8-cacb4d8ea4f9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

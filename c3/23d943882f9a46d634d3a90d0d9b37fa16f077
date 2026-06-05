@@ -1,0 +1,21 @@
+packages/react-doctor/README.md
+  s_55e5225c4a74ee::t_9f90e0fa044108 50
+.changeset/language-server.md
+  s_55e5225c4a74ee::t_b0f06996d6e4ad 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "c323d943882f9a46d634d3a90d0d9b37fa16f077",
+  "prompts": {},
+  "sessions": {
+    "s_55e5225c4a74ee": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "24f14ee2-7b18-4a18-8a3e-4dbf84ffbff3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

@@ -1,0 +1,21 @@
+packages/website/src/app/preview/page.tsx
+  s_dd79d6ca5569ae::t_a17768573abfad 1-36
+packages/website/src/components/diagnostics-preview.tsx
+  s_dd79d6ca5569ae::t_87f14f98364452 1-58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "9651bf3858695a191e5dca61fbe1e5e63cf5ccec",
+  "prompts": {},
+  "sessions": {
+    "s_dd79d6ca5569ae": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "1ac4e171-0db7-4fac-81d7-52b6f7a004c0",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

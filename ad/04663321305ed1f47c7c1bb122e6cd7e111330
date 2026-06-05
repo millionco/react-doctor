@@ -1,0 +1,551 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-gradient-text.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 15-17
+packages/core/src/load-config.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 3-4
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-list-missing-estimated-item-size.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 3-4,33-40,76
+packages/react-doctor/tests/regressions/state-only-in-handlers.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 19,21
+packages/react-doctor/tests/run-oxlint/_helpers.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/api/tests/diagnose.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3
+packages/react-doctor/tests/select-projects.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3
+packages/react-doctor/tests/resolve-project-diff-include-paths.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/core/src/project-info/utils/is-directory.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/core/src/utils/classify-package-role.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-2
+packages/react-doctor/tests/build-code-frame.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3
+packages/react-doctor/tests/node-support-metadata.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-2
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-prefer-expo-image.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3
+packages/core/tests/read-ignore-file.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3
+packages/react-doctor/src/cli/utils/migrate-legacy-config.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,5,29-30
+packages/react-doctor/tests/regressions/react-19-migration-rules.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3
+packages/eslint-plugin-react-doctor/vite.config.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-2
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/no-default-props.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 22-24
+packages/react-doctor/tests/migrate-legacy-config.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3
+packages/core/src/runners/oxlint/config.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,177-179
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-justified-text.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 14-16
+packages/core/src/run-oxlint.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3
+packages/react-doctor/tests/to-json-report.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 34-35
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-list-missing-estimated-item-size.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 18-30
+packages/core/src/project-info/list-workspace-packages.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/react-doctor/tests/inspect-surface-filter.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 3,30-41,90,138,154-157
+packages/react-doctor/tests/regressions/_helpers.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 2-3,126-127,154-155,183-186
+packages/react-doctor/tests/validate-mode-flags.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 18-21
+packages/core/src/check-reduced-motion.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 2
+packages/core/src/dead-code/collect-dead-code-patterns.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-112
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-animate-layout-property.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-23
+packages/react-doctor/tests/regressions/tanstack-start-get-mutation.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 16,18
+packages/react-doctor/tests/onboarding-state.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 2,4,21,23,42,47
+packages/core/src/utils/is-large-minified-file.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/core/src/constants.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 80-84
+.changeset/wide-letter-spacing-uppercase-prop.md
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-7
+packages/core/src/project-info/discover-project.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-2,15-19,25-26,196-212,239-241
+packages/core/src/checks/expo/utils/find-local-module-native-files.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/oxlint-plugin-react-doctor/src/plugin/utils/is-hook-binding-in-scope.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-61
+packages/core/src/utils/to-canonical-path.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/react-doctor/tests/load-config.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3
+packages/core/src/project-info/resolve-catalog-version.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-2
+packages/oxlint-plugin-react-doctor/src/plugin/utils/is-barrel-index-module.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-2
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/prefer-module-scope-static-value.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 197-203
+packages/oxlint-plugin-react-doctor/vite.config.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-2
+packages/core/src/project-info/detect-react-compiler.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-2
+packages/react-doctor/tests/namespace-hooks.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/oxlint-plugin-react-doctor/src/plugin/utils/rule.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 68-70
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-array-index-key.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 364-368
+packages/react-doctor/tests/regressions/nextjs-get-side-effects.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 18,20
+packages/core/src/resolve-diagnose-target.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-filename-extension.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/react-doctor/src/cli/utils/install-git-hook-file.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3,88,91,97-98,105-107
+packages/oxlint-plugin-react-doctor/scripts/generate-rule-registry.mjs
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 5,13-14,161-162,164,170-172
+packages/core/src/project-info/find-dependency-info-from-monorepo-root.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/react-doctor/tests/public-react-repos.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 2,4
+packages/core/src/project-info/get-nx-workspace-directories.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/core/tests/discover-project.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3,1502-1550
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/utils/is-cleanup-return.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 11-18,142,146-148,150-154,157-159
+packages/oxlint-plugin-react-doctor/src/plugin/utils/does-module-export-name.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+.changeset/opt-out-low-value-default-rules.md
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-12
+packages/core/src/checks/expo/check-metro-config.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-2
+packages/core/package.json
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 27
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-side-tab-border.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 61-63
+packages/core/src/types/project-info.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 69-76
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-ui/no-redundant-padding-axes.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 19-21
+packages/react-doctor/tests/build-json-report.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 19-20
+packages/react-doctor/src/cli/utils/report-workflow-result.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-32
+packages/react-doctor/tests/build-run-event.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 34-35
+packages/react-doctor/tests/regressions/no-secrets-in-client-code.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3
+packages/core/src/project-info/parse-pnpm-workspace-patterns.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-2
+packages/core/src/utils/is-minified-source.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-ui/no-space-on-flex-children.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 17-19
+packages/core/src/parse-gitattributes-linguist.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/core/src/checks/expo/expo-check-context.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/react-doctor/tests/unref-stdin-live.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 5-6,26,28,90-92,96
+.changeset/allow-yes-with-full.md
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-7
+packages/oxlint-plugin-react-doctor/src/plugin/utils/resolve-relative-import-path.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-2
+packages/react-doctor/src/cli/utils/git-hook-shared.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 2-3,50,57
+packages/oxlint-plugin-react-doctor/src/plugin/utils/is-nextjs-metadata-image-route-filename.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/react-doctor/tests/find-owning-project.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3
+packages/oxlint-plugin-react-doctor/src/plugin/utils/define-retired-rule.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-12
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-cascading-set-state.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 9,101-106
+packages/react-doctor/src/cli/utils/handoff-to-agent.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 3,7-13,16-18,36-38,49-192,204-211,217-236,242,261-264
+packages/core/tests/spawn-batches.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 14,16,32-34
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-wide-letter-spacing.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-79
+packages/react-doctor/src/cli/utils/install-react-doctor.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-3,5,24-29,91,126,132,159-164,267,270,275-293,302-308,324-335,379,381-382,388,427,478-479,507,555-556,671,674-678,688
+packages/react-doctor/src/cli/utils/install-skill-for-agent.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 3-4,15
+packages/core/src/utils/resolve-github-actions-score-metadata.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,22
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-no-constructed-context-values.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 140
+packages/core/src/utils/list-source-files.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 2
+.changeset/bump-deslop-js.md
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-5
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/no-generic-handler-names.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 12-14
+packages/core/src/runners/oxlint/plugin-resolution.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 2
+packages/core/src/runners/oxlint/resolve-paths.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3
+packages/core/tests/oxlint-config-settings.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-49
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-legacy-expo-packages.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-42
+packages/core/src/can-oxlint-extend-config.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/react-doctor/src/cli/utils/prompt-install-setup.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 2
+packages/react-doctor/tests/dead-code-integration.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3
+packages/react-doctor/tests/regressions/rn-and-motion.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 13,19,21,321,327,338,358-360,367-400
+scripts/generate-config-schema.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 3-4,6-10,46-47
+packages/core/tests/append-reanimated-shared-value-hint.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 28-29
+packages/oxlint-plugin-react-doctor/src/plugin/rules/performance/rerender-transitions-scroll.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 2,40-41
+packages/core/tests/build-capabilities.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 19-20
+packages/react-doctor/tests/regressions/react-ui-rules.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3
+packages/core/src/collect-ignore-patterns.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/core/src/checks/expo/utils/read-expo-app-config.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-2
+packages/core/tests/is-analyzable-project.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 21-22
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-dark-mode-glow.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 77-79
+packages/react-doctor/src/cli/utils/is-command-available.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-2,29,32
+packages/react-doctor/tests/regressions/rn-package-scoping.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 30,32
+packages/react-doctor/vite.config.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-2
+packages/react-doctor/src/cli/commands/inspect.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 2,5,42,224-230,232-237,272,280
+packages/react-doctor/tests/regressions/state-rules/effect-needs-cleanup.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 207,233,481-482,503,506-507,531,721-742,765-786
+packages/core/src/runners/oxlint/should-suppress-local-use-hook-diagnostic.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-2
+packages/core/src/neutralize-disable-directives.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 2-3
+scripts/check-published-deps.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 4-5,7-9,38,49,51-52,55,105,111,118,139-140,142-143
+packages/react-doctor/tests/run-oxlint/nextjs.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/react-doctor/src/cli/utils/read-object-file.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 3,12
+packages/react-doctor/tests/regressions/architecture-rules.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3
+packages/core/src/check-pnpm-hardening.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-2
+packages/react-doctor/tests/regressions/scan-resilience.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 25,27,546-548,556
+scripts/convert-node-imports.mjs
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-131
+.changeset/handoff-add-to-ci.md
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-7
+packages/react-doctor/tests/detect-agents.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 2,5,9-10,27,34,71-72,88
+packages/react-doctor/tests/prompt-install-setup.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 2,4,23,26,30,35,39,42,57,78,99-100,120-121,148,328,330,341
+packages/core/src/project-info/find-monorepo-root.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/core/tests/is-minified-source.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3
+packages/react-doctor/tests/regressions/proto-pollution-defenses.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 18,20
+packages/react-doctor/src/cli/utils/read-changed-files-from.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-2
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-no-scroll-state.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 2,19-20
+packages/react-doctor/tests/regressions/state-rules/_helpers.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-prefer-content-inset-adjustment.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3,5,10
+packages/core/tests/check-expo-project.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 2,4,49-50
+packages/react-doctor/src/cli/utils/rule-config-file.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,4,106,116
+packages/react-doctor/tests/with-sentry-run-span.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 30-31
+packages/oxlint-plugin-react-doctor/src/plugin/utils/parse-source-file.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-2
+packages/core/tests/check-dead-code.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3,125-173
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-ui/no-redundant-size-axes.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 17-19
+scripts/smoke-json-report.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 5-6,8-11,13,18
+packages/oxlint-plugin-react-doctor/src/plugin/utils/create-relative-import-source.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/react-doctor/src/cli/commands/rules.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/react-doctor/tests/user-plugins.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 2,6,8,11,49,153-154
+packages/react-doctor/tests/regressions/no-prevent-default.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 22,24
+packages/core/tests/resolve-scan-target.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3
+packages/core/src/read-ignore-file.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 3
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-pascal-case.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 155-157
+packages/oxlint-plugin-react-doctor/src/test-utils/parse-fixture.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/core/src/runners/oxlint/parse-output.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-ui/no-three-period-ellipsis.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 13-15
+packages/react-doctor/tests/handoff/build-handoff-payload.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,39-41
+scripts/ensure-json-report.mjs
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/oxlint-plugin-react-doctor/scripts/extract-react-hooks-tests.mjs
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 28-29
+.changeset/static-value-react-compiler.md
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-7
+packages/core/tests/fixtures/nextjs-app/src/app/og/route.tsx
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/react-doctor/src/cli/utils/write-diagnostics-directory.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 6-7,10-11,15-18,21
+packages/react-doctor/src/cli/utils/constants.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 27-30,38-40
+packages/core/src/utils/is-project-boundary.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-2
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-animate-layout-property.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3,8,10
+packages/react-doctor/tests/regressions/state-rules/_effect-parity-runner.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-2
+packages/react-doctor/tests/detect-user-lint-config.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3
+packages/core/src/services/reporter.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 7,66
+packages/react-doctor/tests/inspect.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3
+.changeset/retire-reanimated-layout-rule.md
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-6
+packages/core/src/services/files.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 4,42
+packages/core/src/project-info/count-source-files.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/react-doctor/tests/regressions/cli-and-output.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 15,17
+packages/react-doctor/tests/regressions/server-auth-actions.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3
+packages/react-doctor/src/cli/utils/find-owning-project.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/react-doctor/tests/build-sentry-scope.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 44-45
+.changeset/bump-deslop-js-0.0.17.md
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-5
+packages/core/tests/can-oxlint-extend-config.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3
+packages/core/src/project-info/utils/read-directory-entries.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/core/tests/spawn-batches-serial-fallback.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 67-69
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-mutating-reducer-state.cross-file.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3
+packages/react-doctor/src/cli/utils/install-git-hook.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-2,48,59,66,74,77
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-derived-state-effect.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 11,119-123
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/effect-needs-cleanup.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 21,52,65,157-183,198,204,229
+packages/oxlint-plugin-react-doctor/src/plugin/utils/is-use-state-setter-in-scope.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-11
+packages/react-doctor/src/cli/utils/install-github-workflow.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-97
+packages/react-doctor/tests/install-doctor-script.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 2,4,17,20,25,29,53,58,79,93
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-pure-black-background.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 16-18
+packages/oxlint-plugin-react-doctor/src/plugin/utils/get-react-doctor-setting.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 39-50
+packages/react-doctor/tests/build-sentry-project-context.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 25-26
+packages/react-doctor/tests/regressions/inline-suppressions.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 14,16
+packages/react-doctor/tests/diagnose.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-ui/no-em-dash-in-jsx-text.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 14-16
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/__upstream-fixtures__/run-upstream-parity.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-2
+packages/core/tests/run-inspect.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 40-41
+packages/react-doctor/src/cli/utils/install-agent-hooks.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,4,58-59,65-66,70-72
+packages/core/tests/check-react-native-project.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3,50-51
+packages/core/tests/services/project.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 23-24
+packages/react-doctor/src/cli/utils/install-doctor-script.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3,44
+packages/core/src/resolve-compatible-node.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 3,5,37,40,52,54-55,70,84
+packages/react-doctor/tests/inspect-action-setup-prompt.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3,70-71
+packages/core/src/resolve-scan-target.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,5,70
+packages/core/src/checks/expo/check-lockfile.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/react-doctor/src/cli/utils/select-projects.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/core/tests/check-pnpm-hardening.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-z-index9999.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 18-20
+packages/react-doctor/tests/regressions/prop-stack-barrier.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 16,18
+packages/core/tests/find-monorepo-root.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/react-doctor/tests/regressions/rules-of-hooks-local-use.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3
+.changeset/onboarding-intro-and-summary-polish.md
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-11
+packages/core/src/project-info/read-package-json.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-2
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-wide-letter-spacing.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 10,13-67,72-74,83
+packages/oxlint-plugin-react-doctor/src/plugin/rules/performance/rendering-hydration-no-flicker.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 6,40-41,43-46
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-ui/no-vague-button-label.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 64-66
+packages/react-doctor/tests/regressions/rule-messages.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 17,19
+packages/core/src/project-info/find-shopify-flash-list-version.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-19
+packages/react-doctor/src/cli/utils/install-git-hook-config-managers.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-2,67,235-236,239-240,252-253,269-270,282-283,291-292
+packages/react-doctor/src/cli/utils/spinner.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 17,65-68
+packages/core/tests/services/staged-files.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 3,5
+packages/react-doctor/src/cli/utils/render-welcome.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 12-23,30,36,42,44-48,57-61,65,71,74-76
+packages/react-doctor/tests/rules-command.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 2,4,26-27,35,40,77,98,125,133,142,146,151,157,164,171,178,185,191,198,209,215,237,256,264,284
+packages/react-doctor/tests/parse-gitattributes-linguist.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3
+packages/core/tests/classify-package-role.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3
+packages/core/src/project-info/utils/is-file.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/core/src/read-file-lines-node.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-2
+packages/react-doctor/src/cli/utils/render-diagnostics.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 8,80-98,111-113,413-418,428,458-461,496-501,504-505,552-557,589-593,596-598,602-604
+packages/react-doctor/tests/render-onboarding-animation.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 64-65
+packages/oxlint-plugin-react-doctor/src/plugin/constants/react-native.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 79
+packages/oxlint-plugin-react-doctor/src/plugin/rule-registry.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-11
+packages/react-doctor/tests/github-action.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-2
+scripts/render-github-action-comment.mjs
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/core/src/project-info/resolve-workspace-directories.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/react-doctor/tests/run-oxlint/bundle-size.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3
+packages/core/src/check-dead-code.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 2-3,5-8,35,96-98,143-145,438,442
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/no-prop-types.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 77-79
+packages/core/src/resolve-config-root-dir.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 3
+packages/react-doctor/tests/regressions/js-performance-rules.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3
+scripts/sentry-sourcemaps.mjs
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 3-4,10-13,33,39
+packages/react-doctor/src/cli/utils/open-url.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-30
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/rerender-functional-setstate.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 3,103
+packages/core/src/checks/expo/check-env-local-files.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/react-doctor/tests/regressions/respect-lint-ignores.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 14,16
+packages/core/src/project-info/resolve-catalog-backed-dependency-version.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-50
+packages/core/tests/merge-and-filter-diagnostics.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3
+packages/react-doctor/tests/read-changed-files-from.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3
+packages/oxlint-plugin-react-doctor/scripts/generate-fixture-tests.mjs
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 11-12
+packages/core/src/detect-user-lint-config.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/core/src/checks/react-native/check-metro-babel-preset.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-2
+packages/react-doctor/tests/regressions/server-auth-actions-member-call.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 20,22
+packages/core/src/checks/expo/check-gitignore.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/react-doctor/tests/regressions/diff-detached-head.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 12,14
+packages/core/tests/compiler-cleanup-bucket.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 21-23
+packages/react-doctor/src/cli/utils/build-code-frame.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-2
+packages/core/src/project-info/discover-react-subprojects.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/oxlint-plugin-react-doctor/src/plugin/utils/classify-package-platform.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-2
+packages/react-doctor/src/cli/utils/build-handoff-payload.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3,25-30
+.changeset/react-compiler-context-provider-value.md
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-5
+packages/react-doctor/tests/regressions/diff-commit-range.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 13,15
+packages/react-doctor/package.json
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 64
+packages/core/tests/read-directory-entries.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1,3
+packages/core/src/project-info/find-in-workspace-package-jsons.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/oxlint-plugin-react-doctor/scripts/extract-oxc-fixtures.mjs
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 21-22
+packages/react-doctor/tests/e2e/terminal-visuals.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 20,22,374-379,386,394,397,403,406,415-417
+packages/core/tests/services/linter.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 23-24
+packages/react-doctor/src/cli/utils/open-workflow-pull-request.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-222
+packages/core/src/project-info/find-react-in-workspaces.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/core/src/run-inspect.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/core/src/checks/react-native/check-library-dependencies.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/react-doctor/src/cli/utils/resolve-project-diff-include-paths.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-native/rn-prefer-content-inset-adjustment.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 1-30
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/prefer-es6-class.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 30-32
+packages/react-doctor/tests/github-action-comment.test.ts
+  s_29dfde713ef3ca::t_b3b5f5f0b13942 2,4,34-35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "ad04663321305ed1f47c7c1bb122e6cd7e111330",
+  "prompts": {},
+  "sessions": {
+    "s_29dfde713ef3ca": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ea8ec758-611c-411c-81b8-cacb4d8ea4f9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

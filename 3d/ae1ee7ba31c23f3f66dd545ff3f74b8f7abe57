@@ -1,0 +1,22 @@
+packages/website/src/app/preview/page.tsx
+  s_dd79d6ca5569ae::t_a17768573abfad 1-36
+packages/website/src/components/diagnostics-preview.tsx
+  s_dd79d6ca5569ae::t_87f14f98364452 1-5,9-58
+  s_dd79d6ca5569ae::t_3ae907011eb55c 6-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "3dae1ee7ba31c23f3f66dd545ff3f74b8f7abe57",
+  "prompts": {},
+  "sessions": {
+    "s_dd79d6ca5569ae": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "1ac4e171-0db7-4fac-81d7-52b6f7a004c0",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": null
+    }
+  }
+}

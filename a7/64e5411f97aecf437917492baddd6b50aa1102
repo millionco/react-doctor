@@ -1,0 +1,179 @@
+packages/react-doctor/vite.config.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 90-100,176-203
+packages/vscode-react-doctor/package.json
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-111
+packages/language-server/src/utils/chunk.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-9
+packages/language-server/src/utils/severity-label.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-19
+packages/language-server/tests/unit/scan-runner.test.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-38
+packages/language-server/src/utils/compute-config-fingerprint.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-36
+packages/language-server/tests/fixtures/simple-app/tsconfig.json
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-12
+packages/zed-react-doctor/extension.toml
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-11
+packages/core/src/editor-scan.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-208
+packages/language-server/src/features/hover.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-44
+packages/language-server/src/features/issue-url.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-42
+packages/language-server/tests/unit/positions.test.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-97
+packages/language-server/tests/unit/scheduler-reserve.test.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-102
+packages/language-server/src/diagnostics/manager.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-188
+packages/language-server/tsconfig.json
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-8
+packages/language-server/src/utils/read-diagnostic-data.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-18
+packages/zed-react-doctor/src/lib.rs
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-83
+packages/language-server/src/runtime/scheduler.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-158
+packages/language-server/src/core/project-graph.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-87
+packages/react-doctor/src/cli/utils/constants.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 131-136
+packages/zed-react-doctor/.gitignore
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-2
+packages/language-server/src/core/overlay.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-108
+packages/language-server/src/features/suppress.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-93
+packages/vscode-react-doctor/.vscodeignore
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-8
+packages/language-server/src/utils/read-positive-int-env.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-10
+packages/zed-react-doctor/Cargo.toml
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-15
+packages/react-doctor/src/cli/index.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 253-265
+packages/language-server/src/text/uri.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-20
+packages/react-doctor/tests/lsp-telemetry.test.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-58
+packages/language-server/src/types.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-231
+packages/language-server/README.md
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-75
+packages/language-server/tests/unit/lint-cache.test.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-91
+packages/language-server/package.json
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-42
+packages/core/tests/schemas.test.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 49-80
+packages/language-server/src/core/scan-runner.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-289
+packages/language-server/src/server.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-875
+packages/language-server/tests/unit/manager.test.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-174
+packages/core/src/types/diagnostic.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 31-50,65-78,81-82
+packages/react-doctor/src/cli/utils/to-category-key.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-8
+packages/language-server/tests/unit/mapper.test.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-105
+packages/language-server/src/features/code-actions.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-132
+packages/core/src/run-inspect.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 93-102,286-290
+packages/language-server/src/runtime/scan-telemetry.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-101
+packages/language-server/tests/unit/suppress.test.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-73
+package.json
+  s_29dfde713ef3ca::t_6288298ca54d5e 16
+packages/react-doctor/bin/react-doctor.js
+  s_29dfde713ef3ca::t_6288298ca54d5e 13-21
+packages/language-server/tests/lsp-client.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-136
+packages/react-doctor/README.md
+  s_29dfde713ef3ca::t_6288298ca54d5e 40-52
+packages/language-server/src/index.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-23
+packages/react-doctor/src/instrument.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 3,6-14
+packages/react-doctor/src/lsp-telemetry.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-171
+packages/core/src/runners/oxlint/parse-output.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 6,153-180,273-279,281,289-291,293
+packages/language-server/src/constants.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-144
+packages/react-doctor/src/lsp.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-18
+packages/core/src/schemas.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 6-18,30-33,36
+packages/zed-react-doctor/Cargo.lock
+  ai_agent 1-817
+packages/core/src/types/index.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 20-25
+packages/language-server/vite.config.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-48
+packages/vscode-react-doctor/src/extension.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-186
+vite.config.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 14,16,24-32
+packages/react-doctor/src/cli/utils/sentry-config.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-48
+packages/language-server/src/diagnostics/mapper.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-133
+packages/vscode-react-doctor/README.md
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-50
+packages/zed-react-doctor/LICENSE
+  ai_agent 1
+packages/language-server/src/core/lint-cache.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-129
+packages/core/src/index.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 45,70,81
+packages/language-server/bin/react-doctor-language-server.js
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-15
+packages/language-server/tests/fixtures/simple-app/package.json
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-9
+packages/language-server/tests/fixtures/simple-app/src/App.tsx
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-15
+packages/language-server/tests/unit/scan-telemetry.test.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-143
+packages/language-server/tests/integration/server.test.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-211
+packages/core/src/rule-metadata.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-49
+packages/language-server/tests/unit/scheduler.test.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-145
+packages/zed-react-doctor/README.md
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-44
+.changeset/language-server.md
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-9
+packages/language-server/tests/unit/lsp-polish.test.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-75
+packages/language-server/tests/unit/severity-label.test.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-16
+packages/vscode-react-doctor/tsconfig.json
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-14
+packages/react-doctor/package.json
+  s_29dfde713ef3ca::t_6288298ca54d5e 72-75,80
+pnpm-lock.yaml
+  ai_agent 115-133,200-208,216-218,235-253,476-481,488-493,500-505,512-517,524-529,536-541,548-553,560-565,572-577,584-589,596-601,608-613,620-625,632-637,644-649,656-661,668-673,680-685,692-697,704-709,716-721,728-733,740-745,752-757,764-769,776-781,875,881,887,893,899,905,911,917,924,931,938,945,952,959,966,973,1088,1095,1102,1109,1218,1225,1232,1239,1246,1253,1260,1267,1347,1353,1359,1365,1371,1377,1383,1389,1463,1470,1477,1484,1491,1498,1505,1512,1615,1622,1629,1636,1643,1650,1657,1664,1732,1738,1744,1750,1756,1762,1768,1774,1780,1786,1792,1798,1804,1976,1983,1990,1997,2101-2103,2246,2253,2260,2267,2405-2407,2565-2569,2920,2927,2934,2941,3014-3017,3627-3650,4031-4033,4037-4039,4043-4045,4049-4051,4055-4057,4061-4063,4067-4069,4073-4075,4079-4081,4085-4087,4091-4093,4097-4099,4103-4105,4109-4111,4115-4117,4121-4123,4127-4129,4133-4135,4139-4141,4145-4147,4151-4153,4157-4159,4163-4165,4169-4171,4175-4177,4181-4183,5053-5054,5275-5278,5434-5462,5896-5899,6577-6598
+packages/language-server/src/text/positions.ts
+  s_29dfde713ef3ca::t_6288298ca54d5e 1-100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "a764e5411f97aecf437917492baddd6b50aa1102",
+  "prompts": {},
+  "sessions": {
+    "s_29dfde713ef3ca": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ea8ec758-611c-411c-81b8-cacb4d8ea4f9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

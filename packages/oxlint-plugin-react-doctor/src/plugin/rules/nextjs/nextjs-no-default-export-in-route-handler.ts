@@ -73,6 +73,24 @@ export const nextjsNoDefaultExportInRouteHandler = defineRule<Rule>({
             "Default exports in route.ts are silently ignored. Next.js only recognizes named HTTP method exports (GET, POST, etc.).",
         });
       },
+      ExportNamedDeclaration(node: EsTreeNodeOfType<"ExportNamedDeclaration">) {
+        if (!isAppRouteHandler || !programNode) return;
+
+        const hasDefaultSpecifier = (node.specifiers ?? []).some(
+          (specifier) =>
+            isNodeOfType(specifier, "ExportSpecifier") &&
+            isNodeOfType(specifier.exported, "Identifier") &&
+            specifier.exported.name === "default",
+        );
+        if (!hasDefaultSpecifier) return;
+        if (programHasNamedHttpMethodExport(programNode)) return;
+
+        context.report({
+          node,
+          message:
+            "Default exports in route.ts are silently ignored. Next.js only recognizes named HTTP method exports (GET, POST, etc.).",
+        });
+      },
     };
   },
 });

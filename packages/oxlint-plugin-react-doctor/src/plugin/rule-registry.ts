@@ -244,6 +244,7 @@ import { preferTagOverRole } from "./rules/a11y/prefer-tag-over-role.js";
 import { preferUseEffectEvent } from "./rules/state-and-effects/prefer-use-effect-event.js";
 import { preferUseSyncExternalStore } from "./rules/state-and-effects/prefer-use-sync-external-store.js";
 import { preferUseReducer } from "./rules/state-and-effects/prefer-use-reducer.js";
+import { queryDestructureResult } from "./rules/tanstack-query/query-destructure-result.js";
 import { queryMutationMissingInvalidation } from "./rules/tanstack-query/query-mutation-missing-invalidation.js";
 import { queryNoQueryInEffect } from "./rules/tanstack-query/query-no-query-in-effect.js";
 import { queryNoRestDestructuring } from "./rules/tanstack-query/query-no-rest-destructuring.js";
@@ -2939,6 +2940,17 @@ export const reactDoctorRules = [
     rule: {
       ...preferUseReducer,
       framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/query-destructure-result",
+    id: "query-destructure-result",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...queryDestructureResult,
+      framework: "tanstack-query",
       category: "Bugs",
     },
   },

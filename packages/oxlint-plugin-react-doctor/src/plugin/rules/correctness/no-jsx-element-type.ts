@@ -6,7 +6,7 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 const MESSAGE =
-  "`JSX.Element` is too narrow — it excludes `null`, strings, numbers, and fragments that components commonly return. Use `React.ReactNode` instead.";
+  "`JSX.Element` is too narrow: it excludes `null`, strings, numbers, and fragments that components commonly return. Use `React.ReactNode` instead.";
 
 const isJsxElementTypeReference = (node: EsTreeNode): boolean => {
   if (!isNodeOfType(node, "TSTypeReference")) return false;
@@ -44,7 +44,7 @@ export const noJsxElementType = defineRule<Rule>({
   title: "No JSX.Element",
   severity: "error",
   recommendation:
-    "Replace `JSX.Element` with `React.ReactNode`. `JSX.Element` is too narrow — it excludes `null`, strings, numbers, and fragments that components commonly return.",
+    "Replace `JSX.Element` with `React.ReactNode`. `JSX.Element` is too narrow: it excludes `null`, strings, numbers, and fragments that components commonly return.",
   create: (context: RuleContext) => ({
     FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
       checkReturnType(context, node.returnType);

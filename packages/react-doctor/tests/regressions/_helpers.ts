@@ -139,6 +139,16 @@ export const buildTestProject = (options: BuildTestProjectOptions): ProjectInfo 
     ? (options.reactMajorVersion ?? null)
     : 19;
   const framework = options.framework ?? "unknown";
+  const nextjsVersion = Object.hasOwn(options, "nextjsVersion")
+    ? (options.nextjsVersion ?? null)
+    : framework === "nextjs"
+      ? "^15.0.0"
+      : null;
+  const nextjsMajorVersion = Object.hasOwn(options, "nextjsMajorVersion")
+    ? (options.nextjsMajorVersion ?? null)
+    : framework === "nextjs"
+      ? 15
+      : null;
   return {
     rootDirectory: options.rootDirectory,
     projectName: path.basename(options.rootDirectory),
@@ -151,8 +161,8 @@ export const buildTestProject = (options: BuildTestProjectOptions): ProjectInfo 
     hasTypeScript: options.hasTypeScript ?? true,
     hasReactCompiler: options.hasReactCompiler ?? false,
     hasTanStackQuery: options.hasTanStackQuery ?? false,
-    nextjsVersion: options.nextjsVersion ?? (framework === "nextjs" ? "^15.0.0" : null),
-    nextjsMajorVersion: options.nextjsMajorVersion ?? (framework === "nextjs" ? 15 : null),
+    nextjsVersion,
+    nextjsMajorVersion,
     hasReactNativeWorkspace: framework === "expo" || framework === "react-native",
     expoVersion: framework === "expo" ? "~51.0.0" : null,
     shopifyFlashListVersion: options.shopifyFlashListVersion ?? null,

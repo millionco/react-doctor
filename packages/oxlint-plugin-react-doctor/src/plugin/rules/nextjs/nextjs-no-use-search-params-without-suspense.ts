@@ -8,7 +8,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { getImportedName } from "../../utils/get-imported-name.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
-import { PAGE_FILE_PATTERN } from "../../constants/nextjs.js";
+import { PAGE_OR_LAYOUT_FILE_PATTERN } from "../../constants/nextjs.js";
 
 // HACK: file-level proxy for "is the developer aware of the Suspense
 // requirement?". Cross-file ancestor analysis would catch every case
@@ -17,7 +17,7 @@ import { PAGE_FILE_PATTERN } from "../../constants/nextjs.js";
 // React) we trust the developer is rendering the useSearchParams()
 // consumer behind it.
 //
-// Additionally, we only fire on Next.js page files (`page.tsx`). Non-page
+// Additionally, we only fire on Next.js page/layout files. Non-page
 // component files are expected to be composed with Suspense by their
 // consumers — flagging them produces false positives when the parent
 // file provides the boundary (see #695).
@@ -62,7 +62,7 @@ export const nextjsNoUseSearchParamsWithoutSuspense = defineRule<Rule>({
     return {
       Program(programNode: EsTreeNodeOfType<"Program">) {
         const filename = normalizeFilename(context.filename ?? "");
-        isPageFile = PAGE_FILE_PATTERN.test(filename);
+        isPageFile = PAGE_OR_LAYOUT_FILE_PATTERN.test(filename);
         hasSuspenseInFile = fileMentionsSuspense(programNode);
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {

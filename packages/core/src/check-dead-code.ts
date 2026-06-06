@@ -170,10 +170,7 @@ const resolveTsConfigPath = (rootDirectory: string): string | undefined => {
 // forward slashes) so deslop output matches every other diagnostic on
 // Windows. Downstream picomatch ignore-pattern matching requires POSIX
 // separators or `src/**` overrides silently miss.
-const toRelativeFilePath = (
-  rootDirectory: string,
-  filePath: string
-): string => {
+const toRelativeFilePath = (rootDirectory: string, filePath: string): string => {
   const relative = toRelativePath(filePath, rootDirectory);
   return relative.length > 0 ? relative : filePath.replace(/\\/g, "/");
 };
@@ -216,9 +213,7 @@ const parseUnusedFiles = (value: unknown): DeadCodeWorkerUnusedFile[] => {
   const unusedFiles: DeadCodeWorkerUnusedFile[] = [];
   for (const [index, entry] of values.entries()) {
     if (!isRecord(entry)) {
-      throw new Error(
-        `Dead-code worker returned invalid unusedFiles[${index}].`
-      );
+      throw new Error(`Dead-code worker returned invalid unusedFiles[${index}].`);
     }
     unusedFiles.push({
       path: parseString(entry.path, `unusedFiles[${index}].path`),
@@ -232,62 +227,46 @@ const parseUnusedExports = (value: unknown): DeadCodeWorkerUnusedExport[] => {
   const unusedExports: DeadCodeWorkerUnusedExport[] = [];
   for (const [index, entry] of values.entries()) {
     if (!isRecord(entry)) {
-      throw new Error(
-        `Dead-code worker returned invalid unusedExports[${index}].`
-      );
+      throw new Error(`Dead-code worker returned invalid unusedExports[${index}].`);
     }
     unusedExports.push({
       path: parseString(entry.path, `unusedExports[${index}].path`),
       name: parseString(entry.name, `unusedExports[${index}].name`),
       line: parseNumber(entry.line, `unusedExports[${index}].line`),
       column: parseNumber(entry.column, `unusedExports[${index}].column`),
-      isTypeOnly: parseBoolean(
-        entry.isTypeOnly,
-        `unusedExports[${index}].isTypeOnly`
-      ),
+      isTypeOnly: parseBoolean(entry.isTypeOnly, `unusedExports[${index}].isTypeOnly`),
     });
   }
   return unusedExports;
 };
 
-const parseUnusedDependencies = (
-  value: unknown
-): DeadCodeWorkerUnusedDependency[] => {
+const parseUnusedDependencies = (value: unknown): DeadCodeWorkerUnusedDependency[] => {
   const values = parseArray(value, "unusedDependencies");
   const unusedDependencies: DeadCodeWorkerUnusedDependency[] = [];
   for (const [index, entry] of values.entries()) {
     if (!isRecord(entry)) {
-      throw new Error(
-        `Dead-code worker returned invalid unusedDependencies[${index}].`
-      );
+      throw new Error(`Dead-code worker returned invalid unusedDependencies[${index}].`);
     }
     unusedDependencies.push({
       name: parseString(entry.name, `unusedDependencies[${index}].name`),
       isDevDependency: parseBoolean(
         entry.isDevDependency,
-        `unusedDependencies[${index}].isDevDependency`
+        `unusedDependencies[${index}].isDevDependency`,
       ),
     });
   }
   return unusedDependencies;
 };
 
-const parseCircularDependencies = (
-  value: unknown
-): DeadCodeWorkerCircularDependency[] => {
+const parseCircularDependencies = (value: unknown): DeadCodeWorkerCircularDependency[] => {
   const values = parseArray(value, "circularDependencies");
   const circularDependencies: DeadCodeWorkerCircularDependency[] = [];
   for (const [index, entry] of values.entries()) {
     if (!isRecord(entry)) {
-      throw new Error(
-        `Dead-code worker returned invalid circularDependencies[${index}].`
-      );
+      throw new Error(`Dead-code worker returned invalid circularDependencies[${index}].`);
     }
     circularDependencies.push({
-      files: parseStringArray(
-        entry.files,
-        `circularDependencies[${index}].files`
-      ),
+      files: parseStringArray(entry.files, `circularDependencies[${index}].files`),
     });
   }
   return circularDependencies;
@@ -317,7 +296,7 @@ const parseDeadCodeWorkerError = (value: unknown): DeadCodeWorkerError => {
 };
 
 const parseDeadCodeWorkerMessage = (
-  value: unknown
+  value: unknown,
 ): DeadCodeWorkerSuccessMessage | DeadCodeWorkerFailureMessage => {
   if (!isRecord(value)) {
     throw new Error("Dead-code worker returned an invalid message.");
@@ -352,15 +331,11 @@ const createDeadCodeWorker: DeadCodeWorkerFactory = (input) => {
   // on stdout.
   const child = spawn(
     process.execPath,
-    [
-      `--max-old-space-size=${DEAD_CODE_WORKER_MAX_OLD_SPACE_MB}`,
-      "-e",
-      DEAD_CODE_WORKER_SCRIPT,
-    ],
+    [`--max-old-space-size=${DEAD_CODE_WORKER_MAX_OLD_SPACE_MB}`, "-e", DEAD_CODE_WORKER_SCRIPT],
     {
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
-    }
+    },
   );
 
   const stdoutChunks: Buffer[] = [];
@@ -390,9 +365,9 @@ const createDeadCodeWorker: DeadCodeWorkerFactory = (input) => {
             new Error(
               `Dead-code worker exited with code ${exitCode ?? "null"}${
                 stderr ? `: ${stderr}` : ""
-              }.`
-            )
-          )
+              }.`,
+            ),
+          ),
         );
         return;
       }
@@ -426,7 +401,7 @@ const createDeadCodeWorker: DeadCodeWorkerFactory = (input) => {
 
 const runDeadCodeWorkerWithTimeout = (
   handle: DeadCodeWorkerHandle,
-  timeoutMs: number
+  timeoutMs: number,
 ): Promise<unknown> =>
   new Promise<unknown>((resolve, reject) => {
     let didSettle = false;
@@ -435,11 +410,7 @@ const runDeadCodeWorkerWithTimeout = (
       didSettle = true;
       void handle.terminate?.();
       reject(
-        new Error(
-          `Dead-code worker timed out after ${
-            timeoutMs / MILLISECONDS_PER_SECOND
-          }s.`
-        )
+        new Error(`Dead-code worker timed out after ${timeoutMs / MILLISECONDS_PER_SECOND}s.`),
       );
     }, timeoutMs);
     timeoutHandle.unref?.();
@@ -458,13 +429,11 @@ const runDeadCodeWorkerWithTimeout = (
         clearTimeout(timeoutHandle);
         void handle.terminate?.();
         reject(error);
-      }
+      },
     );
   });
 
-export const checkDeadCode = async (
-  options: CheckDeadCodeOptions
-): Promise<Diagnostic[]> => {
+export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diagnostic[]> => {
   const { userConfig } = options;
   // Canonicalize up front so the deslop graph and its resolver share one
   // path space (see `toCanonicalPath` for why a symlinked root breaks it).
@@ -472,36 +441,26 @@ export const checkDeadCode = async (
   if (!fs.existsSync(path.join(rootDirectory, "package.json"))) return [];
 
   const entryPatterns = collectDeadCodeEntryPatterns(rootDirectory);
-  const ignorePatterns = collectDeadCodeIgnorePatterns(
-    rootDirectory,
-    userConfig
-  );
+  const ignorePatterns = collectDeadCodeIgnorePatterns(rootDirectory, userConfig);
   const workerHandle = (options.createWorker ?? createDeadCodeWorker)({
     rootDirectory,
     entryPatterns,
     tsConfigPath: resolveTsConfigPath(rootDirectory),
     ignorePatterns,
-    deslopJsModuleSpecifier:
-      options.deslopJsModuleSpecifier ?? import.meta.resolve("deslop-js"),
+    deslopJsModuleSpecifier: options.deslopJsModuleSpecifier ?? import.meta.resolve("deslop-js"),
   });
   const rawResult = await runDeadCodeWorkerWithTimeout(
     workerHandle,
-    options.workerTimeoutMs ?? DEAD_CODE_WORKER_TIMEOUT_MS
+    options.workerTimeoutMs ?? DEAD_CODE_WORKER_TIMEOUT_MS,
   );
   const result = parseDeadCodeWorkerResult(rawResult);
-  const toRelative = (filePath: string): string =>
-    toRelativeFilePath(rootDirectory, filePath);
+  const toRelative = (filePath: string): string => toRelativeFilePath(rootDirectory, filePath);
 
   const allRelativePaths = [
     ...result.unusedFiles.map((unusedFile) => toRelative(unusedFile.path)),
-    ...result.unusedExports.map((unusedExport) =>
-      toRelative(unusedExport.path)
-    ),
+    ...result.unusedExports.map((unusedExport) => toRelative(unusedExport.path)),
   ];
-  const gitIgnoredPaths = collectGitIgnoredPaths(
-    rootDirectory,
-    allRelativePaths
-  );
+  const gitIgnoredPaths = collectGitIgnoredPaths(rootDirectory, allRelativePaths);
 
   const diagnostics: Diagnostic[] = [];
 
@@ -539,15 +498,11 @@ export const checkDeadCode = async (
   }
 
   for (const unusedDependency of result.unusedDependencies) {
-    const label = unusedDependency.isDevDependency
-      ? "devDependency"
-      : "dependency";
+    const label = unusedDependency.isDevDependency ? "devDependency" : "dependency";
     diagnostics.push({
       filePath: "package.json",
       plugin: DEAD_CODE_PLUGIN,
-      rule: unusedDependency.isDevDependency
-        ? "unused-dev-dependency"
-        : "unused-dependency",
+      rule: unusedDependency.isDevDependency ? "unused-dev-dependency" : "unused-dependency",
       severity: "warning",
       message: `Unused ${label}: \`${unusedDependency.name}\``,
       help: "Remove the dependency from package.json if it is genuinely unused.",
@@ -564,9 +519,7 @@ export const checkDeadCode = async (
       plugin: DEAD_CODE_PLUGIN,
       rule: "circular-dependency",
       severity: "warning",
-      message: `Circular import cycle: ${cycle.files
-        .map(toRelative)
-        .join(" → ")}`,
+      message: `Circular import cycle: ${cycle.files.map(toRelative).join(" → ")}`,
       help: "Break the cycle by extracting the shared code into a third module that both files import.",
       line: 0,
       column: 0,

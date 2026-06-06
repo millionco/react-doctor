@@ -11,10 +11,7 @@ afterAll(() => {
   fs.rmSync(tempRoot, { recursive: true, force: true });
 });
 
-const setupProject = (
-  caseId: string,
-  files: Record<string, string>
-): string => {
+const setupProject = (caseId: string, files: Record<string, string>): string => {
   const projectDirectory = path.join(tempRoot, caseId);
   fs.mkdirSync(projectDirectory, { recursive: true });
   fs.writeFileSync(
@@ -23,13 +20,13 @@ const setupProject = (
       name: caseId,
       type: "module",
       dependencies: { react: "^19.0.0" },
-    })
+    }),
   );
   fs.writeFileSync(
     path.join(projectDirectory, "tsconfig.json"),
     JSON.stringify({
       compilerOptions: { jsx: "preserve", target: "es2022", module: "esnext" },
-    })
+    }),
   );
   for (const [relativePath, contents] of Object.entries(files)) {
     const fullPath = path.join(projectDirectory, relativePath);
@@ -106,8 +103,7 @@ describe("checkDeadCode", () => {
     const diagnostics = await checkDeadCode({ rootDirectory: directory });
     const orphan = diagnostics.find(
       (diagnostic) =>
-        diagnostic.rule === "unused-file" &&
-        diagnostic.filePath.endsWith("orphan.ts")
+        diagnostic.rule === "unused-file" && diagnostic.filePath.endsWith("orphan.ts"),
     );
     expect(orphan).toBeDefined();
     expect(orphan?.plugin).toBe("deslop");
@@ -129,12 +125,8 @@ describe("checkDeadCode", () => {
     const flagged = diagnostics
       .filter((diagnostic) => diagnostic.rule === "unused-file")
       .map((diagnostic) => diagnostic.filePath);
-    expect(flagged.some((entry) => entry.endsWith("gitignored.ts"))).toBe(
-      false
-    );
-    expect(flagged.some((entry) => entry.endsWith("configignored.ts"))).toBe(
-      false
-    );
+    expect(flagged.some((entry) => entry.endsWith("gitignored.ts"))).toBe(false);
+    expect(flagged.some((entry) => entry.endsWith("configignored.ts"))).toBe(false);
   });
 
   it("honors unused-file ignore patterns from knip.json", async () => {
@@ -145,9 +137,7 @@ describe("checkDeadCode", () => {
     });
 
     const flagged = await flaggedUnusedFiles(directory);
-    expect(flagged.some((entry) => entry.endsWith("knipignored.ts"))).toBe(
-      false
-    );
+    expect(flagged.some((entry) => entry.endsWith("knipignored.ts"))).toBe(false);
   });
 
   it("forwards knip.json entry and ignore patterns to the dead-code worker", async () => {
@@ -187,9 +177,7 @@ describe("checkDeadCode", () => {
     expect(capturedInput?.entryPatterns).toContain("src/custom-entry.ts");
     expect(capturedInput?.entryPatterns).toContain("packages/*/src/main.ts");
     expect(capturedInput?.ignorePatterns).toContain("src/generated.ts");
-    expect(capturedInput?.ignorePatterns).toContain(
-      "packages/*/src/fixtures.ts"
-    );
+    expect(capturedInput?.ignorePatterns).toContain("packages/*/src/fixtures.ts");
   });
 
   it("maps unused exports, dependencies, and cycles from worker results", async () => {
@@ -232,10 +220,7 @@ describe("checkDeadCode", () => {
           ],
           circularDependencies: [
             {
-              files: [
-                path.join(directory, "src", "a.ts"),
-                path.join(directory, "src", "b.ts"),
-              ],
+              files: [path.join(directory, "src", "a.ts"), path.join(directory, "src", "b.ts")],
             },
           ],
         }),
@@ -249,14 +234,11 @@ describe("checkDeadCode", () => {
       "unused-dev-dependency",
       "circular-dependency",
     ]);
+    expect(diagnostics.find((diagnostic) => diagnostic.rule === "unused-type")?.message).toContain(
+      "Unused type export: `UnusedType`",
+    );
     expect(
-      diagnostics.find((diagnostic) => diagnostic.rule === "unused-type")
-        ?.message
-    ).toContain("Unused type export: `UnusedType`");
-    expect(
-      diagnostics.find(
-        (diagnostic) => diagnostic.rule === "circular-dependency"
-      )?.message
+      diagnostics.find((diagnostic) => diagnostic.rule === "circular-dependency")?.message,
     ).toContain("src/a.ts → src/b.ts");
   });
 
@@ -276,7 +258,7 @@ describe("checkDeadCode", () => {
             circularDependencies: [],
           }),
         }),
-      })
+      }),
     ).rejects.toThrow("unusedFiles[0].path");
   });
 
@@ -296,7 +278,7 @@ describe("checkDeadCode", () => {
           },
         }),
         workerTimeoutMs: 1,
-      })
+      }),
     ).rejects.toThrow("Dead-code worker timed out");
     expect(didTerminate).toBe(true);
   });
@@ -336,19 +318,13 @@ describe("checkDeadCode", () => {
     const unusedFilePaths = diagnostics
       .filter((diagnostic) => diagnostic.rule === "unused-file")
       .map((diagnostic) => diagnostic.filePath);
-    expect(unusedFilePaths.some((entry) => entry.endsWith("orphan.ts"))).toBe(
-      true
-    );
-    expect(
-      unusedFilePaths.some((entry) => entry.endsWith("generated.ts"))
-    ).toBe(false);
+    expect(unusedFilePaths.some((entry) => entry.endsWith("orphan.ts"))).toBe(true);
+    expect(unusedFilePaths.some((entry) => entry.endsWith("generated.ts"))).toBe(false);
 
     const unusedExportPaths = diagnostics
       .filter((diagnostic) => diagnostic.rule === "unused-export")
       .map((diagnostic) => diagnostic.filePath);
-    expect(
-      unusedExportPaths.some((entry) => entry.endsWith("generated.ts"))
-    ).toBe(false);
+    expect(unusedExportPaths.some((entry) => entry.endsWith("generated.ts"))).toBe(false);
   });
 
   // deslop's import-graph resolution (oxc-resolver targets matched against
@@ -356,23 +332,20 @@ describe("checkDeadCode", () => {
   // mis-flags imported files regardless of the canonical-root fix — a
   // deslop limitation, not the canonicalization (orphan detection passes
   // on Windows). The symlinked-root scenario is itself POSIX/macOS.
-  describe.skipIf(process.platform === "win32")(
-    "import-graph resolution (POSIX)",
-    () => {
-      it("does not flag files imported only through @/* tsconfig path aliases", async () => {
-        // Canonicalize so this case isolates alias resolution from the
-        // symlinked-root case below (`os.tmpdir()` is itself a symlink into
-        // /private on macOS).
-        const directory = fs.realpathSync(setupAliasProject("alias-imports"));
-        expect(await flaggedUnusedFiles(directory)).toEqual([]);
-      });
+  describe.skipIf(process.platform === "win32")("import-graph resolution (POSIX)", () => {
+    it("does not flag files imported only through @/* tsconfig path aliases", async () => {
+      // Canonicalize so this case isolates alias resolution from the
+      // symlinked-root case below (`os.tmpdir()` is itself a symlink into
+      // /private on macOS).
+      const directory = fs.realpathSync(setupAliasProject("alias-imports"));
+      expect(await flaggedUnusedFiles(directory)).toEqual([]);
+    });
 
-      it("does not mis-flag imports when the scan root is reached through a symlink", async () => {
-        const realDirectory = setupAliasProject("symlinked-real");
-        const linkedDirectory = path.join(tempRoot, "symlinked-link");
-        fs.symlinkSync(realDirectory, linkedDirectory);
-        expect(await flaggedUnusedFiles(linkedDirectory)).toEqual([]);
-      });
-    }
-  );
+    it("does not mis-flag imports when the scan root is reached through a symlink", async () => {
+      const realDirectory = setupAliasProject("symlinked-real");
+      const linkedDirectory = path.join(tempRoot, "symlinked-link");
+      fs.symlinkSync(realDirectory, linkedDirectory);
+      expect(await flaggedUnusedFiles(linkedDirectory)).toEqual([]);
+    });
+  });
 });

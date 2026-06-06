@@ -136,10 +136,7 @@ export const DEFAULT_BRANCH_CANDIDATES = ["main", "master"];
 // to evaluate and aren't supported by oxlint's `extends`. Listed in
 // detection priority order — oxlint native first, eslint legacy as a
 // compatibility fallback. Also used by tests as the source of truth.
-export const ADOPTABLE_LINT_CONFIG_FILENAMES = [
-  ".oxlintrc.json",
-  ".eslintrc.json",
-];
+export const ADOPTABLE_LINT_CONFIG_FILENAMES = [".oxlintrc.json", ".eslintrc.json"];
 
 export const OXLINT_NODE_REQUIREMENT = "^20.19.0 || >=22.12.0";
 

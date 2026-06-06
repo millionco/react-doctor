@@ -3,7 +3,7 @@ import { GIT_CHECK_IGNORE_MAX_BUFFER_BYTES } from "../constants.js";
 
 export const collectGitIgnoredPaths = (
   rootDirectory: string,
-  relativePaths: ReadonlyArray<string>
+  relativePaths: ReadonlyArray<string>,
 ): Set<string> => {
   if (relativePaths.length === 0) return new Set();
 
@@ -18,9 +18,7 @@ export const collectGitIgnoredPaths = (
     return new Set();
   }
 
-  const ignoredPaths = result.stdout
-    .split("\0")
-    .filter((entry) => entry.length > 0);
+  const ignoredPaths = result.stdout.split("\0").filter((entry) => entry.length > 0);
 
   return new Set(ignoredPaths);
 };

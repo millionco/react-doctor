@@ -13,6 +13,7 @@ import {
 } from "./constants.js";
 import { toCanonicalPath } from "./utils/to-canonical-path.js";
 import { toRelativePath } from "./utils/to-relative-path.js";
+import { collectGitIgnoredPaths } from "./utils/collect-git-ignored-paths.js";
 
 // The plugin id and category every dead-code diagnostic carries.
 // Centralized so severity-control checks (e.g. deciding whether to run
@@ -450,11 +451,20 @@ export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diag
   );
   const result = parseDeadCodeWorkerResult(rawResult);
   const toRelative = (filePath: string): string => toRelativeFilePath(rootDirectory, filePath);
+
+  const allRelativePaths = [
+    ...result.unusedFiles.map((unusedFile) => toRelative(unusedFile.path)),
+    ...result.unusedExports.map((unusedExport) => toRelative(unusedExport.path)),
+  ];
+  const gitIgnoredPaths = collectGitIgnoredPaths(rootDirectory, allRelativePaths);
+
   const diagnostics: Diagnostic[] = [];
 
   for (const unusedFile of result.unusedFiles) {
+    const relativePath = toRelative(unusedFile.path);
+    if (gitIgnoredPaths.has(relativePath)) continue;
     diagnostics.push({
-      filePath: toRelative(unusedFile.path),
+      filePath: relativePath,
       plugin: DEAD_CODE_PLUGIN,
       rule: "unused-file",
       severity: "warning",
@@ -467,9 +477,11 @@ export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diag
   }
 
   for (const unusedExport of result.unusedExports) {
+    const relativePath = toRelative(unusedExport.path);
+    if (gitIgnoredPaths.has(relativePath)) continue;
     const label = unusedExport.isTypeOnly ? "type export" : "export";
     diagnostics.push({
-      filePath: toRelative(unusedExport.path),
+      filePath: relativePath,
       plugin: DEAD_CODE_PLUGIN,
       rule: unusedExport.isTypeOnly ? "unused-type" : "unused-export",
       severity: "warning",

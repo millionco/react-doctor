@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
@@ -274,6 +275,50 @@ describe("checkDeadCode", () => {
       }),
     ).rejects.toThrow("Dead-code worker timed out");
     expect(didTerminate).toBe(true);
+  });
+
+  it("filters out gitignored files from unused-file and unused-export results", async () => {
+    const directory = setupProject("gitignore-post-filter", {
+      "src/index.ts": "export const used = 1;\n",
+      "src/orphan.ts": "export const orphan = 1;\n",
+      "src/generated.ts": "export const generated = 1;\n",
+      ".gitignore": "src/generated.ts\n",
+    });
+    execSync("git init", { cwd: directory, stdio: "ignore" });
+
+    const diagnostics = await checkDeadCode({
+      rootDirectory: directory,
+      createWorker: () => ({
+        result: Promise.resolve({
+          unusedFiles: [
+            { path: path.join(directory, "src", "orphan.ts") },
+            { path: path.join(directory, "src", "generated.ts") },
+          ],
+          unusedExports: [
+            {
+              path: path.join(directory, "src", "generated.ts"),
+              name: "generated",
+              line: 1,
+              column: 14,
+              isTypeOnly: false,
+            },
+          ],
+          unusedDependencies: [],
+          circularDependencies: [],
+        }),
+      }),
+    });
+
+    const unusedFilePaths = diagnostics
+      .filter((diagnostic) => diagnostic.rule === "unused-file")
+      .map((diagnostic) => diagnostic.filePath);
+    expect(unusedFilePaths.some((entry) => entry.endsWith("orphan.ts"))).toBe(true);
+    expect(unusedFilePaths.some((entry) => entry.endsWith("generated.ts"))).toBe(false);
+
+    const unusedExportPaths = diagnostics
+      .filter((diagnostic) => diagnostic.rule === "unused-export")
+      .map((diagnostic) => diagnostic.filePath);
+    expect(unusedExportPaths.some((entry) => entry.endsWith("generated.ts"))).toBe(false);
   });
 
   // deslop's import-graph resolution (oxc-resolver targets matched against

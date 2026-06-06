@@ -7,6 +7,11 @@ export const SEQUENTIAL_AWAIT_THRESHOLD = 3;
 export const PROPERTY_ACCESS_REPEAT_THRESHOLD = 3;
 export const BOOLEAN_PROP_THRESHOLD = 4;
 export const RENDER_PROP_PROLIFERATION_THRESHOLD = 3;
+// Distinct boolean props a single component must use as the test of a
+// two-sided JSX ternary before `prefer-explicit-variants` fires. Two is
+// the "several variants jammed into one component" signal — a lone
+// `isMobile ? <Mobile /> : <Desktop />` switch is legitimate and stays quiet.
+export const BOOLEAN_PROP_VARIANT_BRANCH_THRESHOLD = 2;
 export const GET_HANDLER_BINDING_RESOLUTION_DEPTH = 3;
 // Chains rooted in a literal array `[a, b, c].map(...).filter(...)` at
 // or below this length are skipped by the iteration-combination rules

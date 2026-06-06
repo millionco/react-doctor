@@ -249,6 +249,7 @@ export const DIAGNOSTIC_CATEGORY_BUCKETS = [
 export const APP_ONLY_RULE_KEYS: ReadonlySet<string> = new Set([
   "react-hooks-js/static-components",
   "react-doctor/no-render-prop-children",
+  "react-doctor/prefer-explicit-variants",
 ]);
 
 // The `compiler-cleanup` severity bucket: redundant-memoization rules that

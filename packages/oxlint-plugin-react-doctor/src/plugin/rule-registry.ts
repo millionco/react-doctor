@@ -235,6 +235,7 @@ import { preactPreferOndblclick } from "./rules/preact/preact-prefer-ondblclick.
 import { preactPreferOninput } from "./rules/preact/preact-prefer-oninput.js";
 import { preferDynamicImport } from "./rules/bundle-size/prefer-dynamic-import.js";
 import { preferEs6Class } from "./rules/react-builtins/prefer-es6-class.js";
+import { preferExplicitVariants } from "./rules/architecture/prefer-explicit-variants.js";
 import { preferFunctionComponent } from "./rules/react-builtins/prefer-function-component.js";
 import { preferHtmlDialog } from "./rules/a11y/prefer-html-dialog.js";
 import { preferModuleScopePureFunction } from "./rules/architecture/prefer-module-scope-pure-function.js";
@@ -2839,6 +2840,17 @@ export const reactDoctorRules = [
     originallyExternal: true,
     rule: {
       ...preferEs6Class,
+      framework: "global",
+      category: "Maintainability",
+    },
+  },
+  {
+    key: "react-doctor/prefer-explicit-variants",
+    id: "prefer-explicit-variants",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...preferExplicitVariants,
       framework: "global",
       category: "Maintainability",
     },

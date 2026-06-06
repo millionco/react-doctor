@@ -162,19 +162,21 @@ const askUpgradeActionVersion = async (): Promise<UpgradePromptChoice> => {
 // the change lands as a reviewable PR rather than a silent edit. On a PR-open
 // success the user's working tree is restored to `@v1` (the bump lives only on
 // the PR branch); when `gh` is unavailable we fall back to staging the edit so
-// it shows up in their next commit.
+// it shows up in their next commit. Returns whether the bump was applied: a
+// write failure returns `false` so the caller doesn't record the offer as
+// handled, leaving it to re-prompt on the next scan.
 const upgradeGitHubActionsWorkflow = async (
   workflow: InstalledReactDoctorWorkflow,
-): Promise<void> => {
+): Promise<boolean> => {
   const { content, changed } = upgradeWorkflowActionToV2(workflow.content);
-  if (!changed) return;
+  if (!changed) return false;
 
   const upgradeSpinner = spinner("Opening a pull request to upgrade React Doctor to v2...").start();
   try {
     fs.writeFileSync(workflow.workflowPath, content);
   } catch {
     upgradeSpinner.fail("Couldn't update the workflow file.");
-    return;
+    return false;
   }
 
   const pullRequestResult = await openWorkflowPullRequest({
@@ -201,13 +203,16 @@ const upgradeGitHubActionsWorkflow = async (
         : "  Updated the workflow to @v2. Commit the change to finish the upgrade.",
     );
   }
+
+  return true;
 };
 
 // Offered once per repo: when a React Doctor workflow is already on disk but
 // still pins the action's previous floating major (`@v1`), invite the user to
-// bump it to `@v2` via a PR. Both answers are persisted per-repo so the offer
-// never repeats; a cancel leaves it un-answered for next time. The caller has
-// already gated on an interactive run with findings.
+// bump it to `@v2` via a PR. A decline is persisted per-repo, and an accept
+// only once the bump is actually applied, so the offer never repeats; a cancel
+// (or a failed write) leaves it un-answered so the prompt can return next scan.
+// The caller has already gated on an interactive run with findings.
 const maybeOfferActionUpgrade = async (projectRoot: string): Promise<void> => {
   const workflow = readReactDoctorWorkflow(projectRoot);
   if (!workflow || !workflowUsesV1Action(workflow.content)) return;
@@ -225,8 +230,8 @@ const maybeOfferActionUpgrade = async (projectRoot: string): Promise<void> => {
     return;
   }
 
-  await upgradeGitHubActionsWorkflow(workflow);
-  recordActionUpgradeDecision(projectRoot, "accepted");
+  const didApplyUpgrade = await upgradeGitHubActionsWorkflow(workflow);
+  if (didApplyUpgrade) recordActionUpgradeDecision(projectRoot, "accepted");
 };
 
 // First handoff question, asked only when the GitHub Actions workflow isn't

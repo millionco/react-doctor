@@ -238,8 +238,7 @@ export const discoverProject = (directory: string): ProjectInfo => {
     preactMajorVersion: parseReactMajor(preactVersion),
     hasReactNativeWorkspace,
     nextjsVersion,
-    nextjsMajorVersion:
-      nextjsVersion === null ? null : getLowestDependencyMajor(nextjsVersion),
+    nextjsMajorVersion: nextjsVersion === null ? null : getLowestDependencyMajor(nextjsVersion),
     expoVersion,
     shopifyFlashListVersion,
     shopifyFlashListMajorVersion:

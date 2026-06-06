@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 // for efficiency.
 export const collectGitIgnoredPaths = (
   rootDirectory: string,
-  relativePaths: ReadonlyArray<string>,
+  relativePaths: ReadonlyArray<string>
 ): Set<string> => {
   if (relativePaths.length === 0) return new Set();
 

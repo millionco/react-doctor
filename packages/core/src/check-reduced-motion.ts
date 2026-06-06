@@ -39,7 +39,15 @@ export const checkReducedMotion = (rootDirectory: string): Diagnostic[] => {
 
   const result = spawnSync(
     "git",
-    ["grep", "--untracked", "-ql", "-E", REDUCED_MOTION_GREP_PATTERN, "--", ...REDUCED_MOTION_FILE_GLOBS],
+    [
+      "grep",
+      "--untracked",
+      "-ql",
+      "-E",
+      REDUCED_MOTION_GREP_PATTERN,
+      "--",
+      ...REDUCED_MOTION_FILE_GLOBS,
+    ],
     { cwd: rootDirectory, stdio: ["ignore", "pipe", "pipe"] },
   );
   if (result.error) return [MISSING_REDUCED_MOTION_DIAGNOSTIC];

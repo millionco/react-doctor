@@ -28,4 +28,21 @@ describe("react-builtins/only-export-components — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  // Issue #708: Expo Router `_layout.tsx` files should be treated as
+  // entry points (same as Next.js `layout.tsx`) and skipped entirely.
+  it("skips Expo Router _layout.tsx files (#708)", () => {
+    const expoLayoutFile = `
+      import { lazy } from "react";
+      const DeferredProviders = lazy(() => import("@/components/deferred-providers"));
+      function RootLayout() {
+        return <DeferredProviders />;
+      }
+      export default ObserveRoot.wrap(RootLayout);
+    `;
+    const result = runRule(onlyExportComponents, expoLayoutFile, {
+      filename: "src/app/_layout.tsx",
+    });
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

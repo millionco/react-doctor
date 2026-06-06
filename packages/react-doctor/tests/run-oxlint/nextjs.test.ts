@@ -47,6 +47,15 @@ describe("runOxlint", () => {
       );
       expect(wrappedPageIssues).toHaveLength(0);
     });
+
+    it("does not flag useSearchParams() in a non-page component file (#695)", () => {
+      const componentIssues = nextjsDiagnostics.filter(
+        (diagnostic) =>
+          diagnostic.rule === "nextjs-no-use-search-params-without-suspense" &&
+          diagnostic.filePath.includes("components/search-bar"),
+      );
+      expect(componentIssues).toHaveLength(0);
+    });
   });
 
   describe("server rule scope", () => {

@@ -1,0 +1,21 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/prefer-existing-hook-library.test.ts
+  s_067c4b368d871c::t_c973cac18c70fd 319-342
+packages/oxlint-plugin-react-doctor/src/plugin/constants/hook-libraries.ts
+  s_067c4b368d871c::t_dcfe52d0f231f1 40-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "c571bcdeb9be4337a825bf9a4f8b5a68b795115e",
+  "prompts": {},
+  "sessions": {
+    "s_067c4b368d871c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c3411e88-e827-48d3-a5f2-5666d178a206",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

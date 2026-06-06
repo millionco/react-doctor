@@ -1,5 +1,6 @@
 import { OG_ROUTE_PATTERN } from "../../constants/nextjs.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { isNextjsMetadataImageRouteFilename } from "../../utils/is-nextjs-metadata-image-route-filename.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -17,10 +18,11 @@ export const nextjsNoImgElement = defineRule<Rule>({
   create: (context: RuleContext) => {
     const filename = normalizeFilename(context.filename ?? "");
     const isOgRoute = OG_ROUTE_PATTERN.test(filename);
+    const isMetadataImageRoute = isNextjsMetadataImageRouteFilename(filename);
 
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        if (isOgRoute) return;
+        if (isOgRoute || isMetadataImageRoute) return;
         if (isNodeOfType(node.name, "JSXIdentifier") && node.name.name === "img") {
           context.report({
             node,

@@ -28,10 +28,17 @@
     "effect": "4.0.0-beta.70",
     "eslint-plugin-react-hooks": "^7.1.1",
     "jiti": "^2.7.0",
-    "oxlint": "^1.66.0",
     "oxlint-plugin-react-doctor": "workspace:*",
     "picomatch": "^4.0.4",
     "typescript": "^6.0.3"
+  },
+  "peerDependencies": {
+    "oxlint": ">=1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "oxlint": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@effect/vitest": "4.0.0-beta.70",

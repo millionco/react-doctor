@@ -116,6 +116,54 @@ Prefer JSON? Use `doctor.config.json`:
 }
 ```
 
+## Troubleshooting
+
+### pnpm monorepos with vite-plus/vitest
+
+Installing `react-doctor` as a workspace devDependency in pnpm monorepos using vite-plus (or custom vitest aliases) can cause Vitest to fail with:
+
+```
+Error: Vitest failed to find the current suite.
+```
+
+This happens because `react-doctor` depends on `oxlint`, which can introduce a second physical install of vitest with a different peer-dependency fingerprint. pnpm creates multiple module instances when peer contexts differ, causing Vitest's hook registry to split.
+
+**Workarounds:**
+
+1. **Use `npx`/`pnpm dlx` instead of installing** (recommended):
+
+   ```bash
+   pnpm dlx react-doctor@latest
+   ```
+
+   This avoids polluting the dependency graph entirely.
+
+2. **Install `oxlint` at the workspace root separately**:
+
+   ```bash
+   pnpm add -Dw oxlint
+   ```
+
+   Then add `react-doctor` to a specific package instead of the workspace root.
+
+3. **Use pnpm overrides** to force a single vitest instance:
+
+   ```yaml
+   # pnpm-workspace.yaml or package.json
+   pnpm:
+     overrides:
+       vitest: "catalog:viteplus"
+     peerDependencyRules:
+       allowedVersions:
+         vitest: "*"
+   ```
+
+For programmatic use without the dependency graph, you can import types only:
+
+```ts
+import type { ReactDoctorConfig } from "react-doctor/api";
+```
+
 ## Telemetry
 
 The CLI reports crashes, basic run traces, and anonymous usage counters to [Sentry](https://sentry.io/) to help us fix bugs and prioritize work.

@@ -4,8 +4,27 @@ import * as path from "node:path";
 
 const esmRequire = createRequire(import.meta.url);
 
+export class OxlintNotInstalledError extends Error {
+  constructor() {
+    super(
+      `oxlint is not installed. Install it as a dependency:\n\n` +
+        `  npm install -D oxlint\n` +
+        `  # or: pnpm add -D oxlint\n` +
+        `  # or: yarn add -D oxlint\n\n` +
+        `In pnpm monorepos using vite-plus/vitest, install oxlint at the workspace root ` +
+        `to avoid duplicate module instances. See: https://github.com/millionco/react-doctor/issues`,
+    );
+    this.name = "OxlintNotInstalledError";
+  }
+}
+
 export const resolveOxlintBinary = (): string => {
-  const oxlintMainPath = esmRequire.resolve("oxlint");
+  let oxlintMainPath: string;
+  try {
+    oxlintMainPath = esmRequire.resolve("oxlint");
+  } catch {
+    throw new OxlintNotInstalledError();
+  }
   const oxlintPackageDirectory = path.resolve(path.dirname(oxlintMainPath), "..");
   return path.join(oxlintPackageDirectory, "bin", "oxlint");
 };

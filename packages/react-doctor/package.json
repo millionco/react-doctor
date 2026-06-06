@@ -66,13 +66,20 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "jiti": "^2.7.0",
     "magicast": "^0.5.3",
-    "oxlint": "^1.66.0",
     "oxlint-plugin-react-doctor": "workspace:*",
     "prompts": "^2.4.2",
     "typescript": ">=5.0.4 <7",
     "vscode-languageserver": "^9.0.1",
     "vscode-languageserver-textdocument": "^1.0.12",
     "vscode-uri": "^3.1.0"
+  },
+  "peerDependencies": {
+    "oxlint": ">=1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "oxlint": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@react-doctor/api": "workspace:*",

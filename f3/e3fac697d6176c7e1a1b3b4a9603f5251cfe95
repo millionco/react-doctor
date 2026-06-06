@@ -1,0 +1,31 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/no-prop-drilling.ts
+  s_93998445010f39::t_fa014be24d1984 57-62,67
+  s_93998445010f39::t_270e1b6aca1d2f 152
+  s_93998445010f39::t_86d1962dd15fbc 240-244,246-250,252,257-260,268-270,277
+  s_93998445010f39::t_ae5b4ce2ea53c8 1-56,63-66,68-151,153-239,245,251,253-256,261-267,271-276,278-352
+packages/oxlint-plugin-react-doctor/src/plugin/constants/thresholds.ts
+  s_93998445010f39::t_1ad6b6d10b3826 10-18
+packages/oxlint-plugin-react-doctor/src/plugin/rule-registry.ts
+  s_93998445010f39::t_a4bf4d96ee0a39 197,2396-2404
+.changeset/no-prop-drilling.md
+  s_93998445010f39::t_d8086fae41e7b7 1-5
+packages/oxlint-plugin-react-doctor/src/plugin/rules/architecture/no-prop-drilling.test.ts
+  s_93998445010f39::t_9d13d8d798e844 1-263,297
+  s_93998445010f39::t_3e102228eed80e 264-296
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "f3e3fac697d6176c7e1a1b3b4a9603f5251cfe95",
+  "prompts": {},
+  "sessions": {
+    "s_93998445010f39": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3d64c3ad-faf1-4f3b-ae54-2c9af0c269c1",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

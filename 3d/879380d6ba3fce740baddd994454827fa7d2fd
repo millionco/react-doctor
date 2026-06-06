@@ -1,0 +1,21 @@
+packages/react-doctor/src/cli/utils/handoff-to-agent.ts
+  s_32220aa299f186::t_3086bb59e4f01c 212-215,233-234
+  s_32220aa299f186::t_03f5462143d310 206-207
+  s_32220aa299f186::t_0732483f062c4a 165-167,170,172,179
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "3d879380d6ba3fce740baddd994454827fa7d2fd",
+  "prompts": {},
+  "sessions": {
+    "s_32220aa299f186": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ce7446dd-b839-47eb-8bcd-3495b1414622",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

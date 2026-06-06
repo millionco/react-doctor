@@ -1358,8 +1358,8 @@ describe("inverted monorepo: web-rooted project with an RN workspace still loads
       rootDirectory: projectDir,
       project: {
         ...buildTestProject({ rootDirectory: projectDir, framework: "nextjs" }),
-  nextjsVersion: null,
-  nextjsMajorVersion: null,
+        nextjsVersion: null,
+        nextjsMajorVersion: null,
         hasReactNativeWorkspace: true,
       },
     });
@@ -1444,8 +1444,6 @@ describe("RN signal sync table: project-info and oxlint plugin RN detection MUST
   // (project-info) — the silent drop that prevents the rule from
   // ever running.
   for (const signal of REACT_NATIVE_SIGNALS) {
-  nextjsVersion: null,
-  nextjsMajorVersion: null,
     it(`discoverProject — ${signal.description} → hasReactNativeWorkspace: true`, () => {
       const rootDirectory = fs.mkdtempSync(path.join(tempRoot, "rn-signal-discover-"));
       const mobileDirectory = path.join(rootDirectory, "apps", "mobile");

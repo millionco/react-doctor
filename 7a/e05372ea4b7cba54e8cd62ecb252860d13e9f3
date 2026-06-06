@@ -1,0 +1,65 @@
+packages/react-doctor/tests/github-action.test.ts
+  s_32220aa299f186::t_0f9f4992068b60 217-219
+  s_32220aa299f186::t_4e2a0410b661c3 194-216,220-233
+  s_32220aa299f186::t_63b686923f7446 42
+.changeset/proactive-action-v2-upgrade.md
+  s_32220aa299f186::t_759e4d5599dd19 1-5
+packages/react-doctor/src/cli/utils/handoff-to-agent.ts
+  s_32220aa299f186::t_14b04992864646 126
+  s_32220aa299f186::t_d5aed5881eaddc 132
+  s_32220aa299f186::t_1f66bf061e3aab 1,13-16
+  s_32220aa299f186::t_0f9f4992068b60 18
+  s_32220aa299f186::t_0550de44306559 117-125,127-131,133-231
+  s_32220aa299f186::t_8f7c54e74cf349 356-359
+.github/workflows/react-doctor.yml
+  s_32220aa299f186::t_de452d8638e231 13
+packages/react-doctor/src/cli/utils/install-github-workflow.ts
+  s_32220aa299f186::t_f8262acdc1a73d 88-127
+  s_32220aa299f186::t_41258ecda2437b 72-73,75-77
+  s_32220aa299f186::t_b60a16436d0d77 50-54
+  s_32220aa299f186::t_f35c385190e059 68
+  s_32220aa299f186::t_9e8ee0b8a6cea0 14
+packages/react-doctor/README.md
+  s_32220aa299f186::t_65921e24ee1e07 82,87,90
+  s_32220aa299f186::t_ed12f353b442b2 69
+packages/react-doctor/src/cli/utils/hash-project-root.ts
+  s_32220aa299f186::t_d73730c696e4e9 1-8
+packages/react-doctor/tests/action-upgrade.test.ts
+  s_32220aa299f186::t_7d53d59160c488 129
+  s_32220aa299f186::t_f02954ef47f282 1-128,130-133
+packages/react-doctor/src/cli/utils/open-workflow-pull-request.ts
+  s_32220aa299f186::t_343a56b03d6f7a 113-120,123-125
+  s_32220aa299f186::t_d169f94d2b9e55 198,200
+  s_32220aa299f186::t_b484871bc9b787 182
+  s_32220aa299f186::t_1d5c0db4e92f88 8,10,15
+action.yml
+  s_32220aa299f186::t_b04314470d085d 26-28
+  s_32220aa299f186::t_b194fd8f001ad3 190-197
+  s_32220aa299f186::t_989ace04fe2b69 398-447,453,455-463
+packages/react-doctor/src/cli/utils/prompt-install-setup.ts
+  s_32220aa299f186::t_f983e3db95e2ac 3
+  s_32220aa299f186::t_d29a2c4432a00a 43
+packages/react-doctor/tests/install-react-doctor.test.ts
+  s_32220aa299f186::t_30e8a7cc7dfbe8 693
+  s_32220aa299f186::t_0ca2dd08e978a0 655
+  s_32220aa299f186::t_1ab1c86de05831 653
+packages/react-doctor/src/cli/utils/action-upgrade-prompt.ts
+  s_32220aa299f186::t_9949e0a0b02b22 1-2,4-47,49-69,71-80
+  s_32220aa299f186::t_fd8787ecd377de 3,48,70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "7ae05372ea4b7cba54e8cd62ecb252860d13e9f3",
+  "prompts": {},
+  "sessions": {
+    "s_32220aa299f186": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ce7446dd-b839-47eb-8bcd-3495b1414622",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

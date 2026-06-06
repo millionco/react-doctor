@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  oxlint: ^1.66.0
+  oxlint: '>=1.60.0'
   oxlint-tsgolint: ^0.23.0
 
 importers:
@@ -80,7 +80,7 @@ importers:
         specifier: ^2.7.0
         version: 2.7.0
       oxlint:
-        specifier: ^1.66.0
+        specifier: '>=1.60.0'
         version: 1.66.0(oxlint-tsgolint@0.23.0)
       oxlint-plugin-react-doctor:
         specifier: workspace:*
@@ -186,7 +186,7 @@ importers:
         specifier: ^0.5.3
         version: 0.5.3
       oxlint:
-        specifier: ^1.66.0
+        specifier: '>=1.60.0'
         version: 1.66.0(oxlint-tsgolint@0.23.0)
       oxlint-plugin-react-doctor:
         specifier: workspace:*

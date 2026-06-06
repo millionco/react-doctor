@@ -6,6 +6,7 @@ import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js"
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isNextjsMetadataImageRouteFilename } from "../../utils/is-nextjs-metadata-image-route-filename.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { normalizeFilename } from "../../utils/normalize-filename.js";
 import { objectHasAccessibleChild } from "../../utils/object-has-accessible-child.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
@@ -188,7 +189,7 @@ export const altText = defineRule<Rule>({
   recommendation: "Give every meaningful image an `alt`, `aria-label`, or `aria-labelledby`.",
   category: "Accessibility",
   create: (context): RuleVisitors => {
-    if (isNextjsMetadataImageRouteFilename(context.filename)) return {};
+    if (isNextjsMetadataImageRouteFilename(normalizeFilename(context.filename ?? ""))) return {};
     const settings = resolveSettings(context.settings);
     // Settings.elements selects WHICH element classes to check.
     // Default: all four. Custom aliases are merged into each class.

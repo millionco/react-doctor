@@ -51,6 +51,14 @@ export const spawnOxlint = (
     const child = spawn(nodeBinaryPath, args, {
       cwd: rootDirectory,
       env: SANITIZED_ENV,
+      // HACK: oxlint's cli.js sets process.stdin._handle.setBlocking(true)
+      // when stdout is not a TTY. This initializes and refs the child's stdin
+      // handle, and since the parent never closes the pipe the child's event
+      // loop can't drain after the lint operation — hanging the process
+      // indefinitely (observed on WSL 2, Node v24). Connecting stdin to
+      // /dev/null makes the setBlocking call harmless and lets the child exit
+      // cleanly once the lint pass finishes.
+      stdio: ["ignore", "pipe", "pipe"],
     });
 
     const timeoutHandle = setTimeout(() => {

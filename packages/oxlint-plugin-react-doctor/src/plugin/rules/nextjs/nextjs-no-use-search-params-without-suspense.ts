@@ -57,16 +57,16 @@ export const nextjsNoUseSearchParamsWithoutSuspense = defineRule<Rule>({
     "Wrap the component using useSearchParams: `<Suspense fallback={<Skeleton />}><SearchComponent /></Suspense>`",
   create: (context: RuleContext) => {
     let hasSuspenseInFile = false;
-    let isPageFile = false;
+    let isPageOrLayoutFile = false;
 
     return {
       Program(programNode: EsTreeNodeOfType<"Program">) {
         const filename = normalizeFilename(context.filename ?? "");
-        isPageFile = PAGE_OR_LAYOUT_FILE_PATTERN.test(filename);
+        isPageOrLayoutFile = PAGE_OR_LAYOUT_FILE_PATTERN.test(filename);
         hasSuspenseInFile = fileMentionsSuspense(programNode);
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        if (!isPageFile) return;
+        if (!isPageOrLayoutFile) return;
         if (hasSuspenseInFile) return;
         if (!isHookCall(node, "useSearchParams")) return;
         context.report({

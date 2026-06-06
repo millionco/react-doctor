@@ -195,6 +195,7 @@ import { noPermanentWillChange } from "./rules/performance/no-permanent-will-cha
 import { noPolymorphicChildren } from "./rules/correctness/no-polymorphic-children.js";
 import { noPreventDefault } from "./rules/correctness/no-prevent-default.js";
 import { noPropCallbackInEffect } from "./rules/state-and-effects/no-prop-callback-in-effect.js";
+import { noPropDrilling } from "./rules/architecture/no-prop-drilling.js";
 import { noPropTypes } from "./rules/architecture/no-prop-types.js";
 import { noPureBlackBackground } from "./rules/design/no-pure-black-background.js";
 import { noRandomKey } from "./rules/correctness/no-random-key.js";
@@ -2403,6 +2404,17 @@ export const reactDoctorRules = [
       ...noPropCallbackInEffect,
       framework: "global",
       category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/no-prop-drilling",
+    id: "no-prop-drilling",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noPropDrilling,
+      framework: "global",
+      category: "Maintainability",
     },
   },
   {

@@ -7,6 +7,15 @@ export const SEQUENTIAL_AWAIT_THRESHOLD = 3;
 export const PROPERTY_ACCESS_REPEAT_THRESHOLD = 3;
 export const BOOLEAN_PROP_THRESHOLD = 4;
 export const RENDER_PROP_PROLIFERATION_THRESHOLD = 3;
+// A prop forwarded untouched through this many same-file components —
+// each one a pure pass-through that never reads the prop itself — before
+// it's finally used is the prop-drilling smell `no-prop-drilling` flags;
+// lift the value into a Context/Provider instead. Counts only same-file
+// component chains: handing the prop to an imported component or a DOM
+// element counts as consuming it, so the chain ends there. Deliberately
+// conservative (a 3-deep same-file forward chain is rare and unambiguous)
+// — eval data can lower it later.
+export const PROP_DRILL_CHAIN_THRESHOLD = 3;
 export const GET_HANDLER_BINDING_RESOLUTION_DEPTH = 3;
 // Chains rooted in a literal array `[a, b, c].map(...).filter(...)` at
 // or below this length are skipped by the iteration-combination rules

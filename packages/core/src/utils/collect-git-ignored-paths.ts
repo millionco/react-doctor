@@ -1,10 +1,6 @@
 import { spawnSync } from "node:child_process";
+import { GIT_CHECK_IGNORE_MAX_BUFFER_BYTES } from "../constants.js";
 
-// Returns the subset of `relativePaths` that `git check-ignore` considers
-// ignored. When git is unavailable or the directory is not a checkout,
-// returns an empty set so callers degrade gracefully (no false filtering).
-// Paths are checked in a single `git check-ignore` invocation via --stdin
-// for efficiency.
 export const collectGitIgnoredPaths = (
   rootDirectory: string,
   relativePaths: ReadonlyArray<string>
@@ -15,7 +11,7 @@ export const collectGitIgnoredPaths = (
     cwd: rootDirectory,
     input: relativePaths.join("\0"),
     encoding: "utf-8",
-    maxBuffer: 10 * 1024 * 1024,
+    maxBuffer: GIT_CHECK_IGNORE_MAX_BUFFER_BYTES,
   });
 
   if (result.error || result.status === null || result.status > 1) {

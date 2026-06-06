@@ -236,6 +236,7 @@ import { preactPreferOndblclick } from "./rules/preact/preact-prefer-ondblclick.
 import { preactPreferOninput } from "./rules/preact/preact-prefer-oninput.js";
 import { preferDynamicImport } from "./rules/bundle-size/prefer-dynamic-import.js";
 import { preferEs6Class } from "./rules/react-builtins/prefer-es6-class.js";
+import { preferExistingHookLibrary } from "./rules/architecture/prefer-existing-hook-library.js";
 import { preferFunctionComponent } from "./rules/react-builtins/prefer-function-component.js";
 import { preferHtmlDialog } from "./rules/a11y/prefer-html-dialog.js";
 import { preferModuleScopePureFunction } from "./rules/architecture/prefer-module-scope-pure-function.js";
@@ -2852,6 +2853,17 @@ export const reactDoctorRules = [
     originallyExternal: true,
     rule: {
       ...preferEs6Class,
+      framework: "global",
+      category: "Maintainability",
+    },
+  },
+  {
+    key: "react-doctor/prefer-existing-hook-library",
+    id: "prefer-existing-hook-library",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...preferExistingHookLibrary,
       framework: "global",
       category: "Maintainability",
     },

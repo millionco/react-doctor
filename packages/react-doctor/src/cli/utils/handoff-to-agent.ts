@@ -196,6 +196,17 @@ const upgradeGitHubActionsWorkflow = async (
     );
   } else {
     upgradeSpinner.stop();
+    // A git failure mid-flight (e.g. a rejected push) leaves openWorkflowPull-
+    // Request having restored the original branch — reverting the tracked file
+    // back to `@v1`. Re-write the bump so the working tree definitely lands on
+    // `@v2` before staging, keeping the "updated to @v2" message honest (and the
+    // recorded `accepted` decision truthful).
+    try {
+      fs.writeFileSync(workflow.workflowPath, content);
+    } catch {
+      logger.log("  Couldn't finish the upgrade. Re-run React Doctor to try again.");
+      return false;
+    }
     const didStage = await stageWorkflowFile({ workflowPath: workflow.workflowPath });
     logger.log(
       didStage

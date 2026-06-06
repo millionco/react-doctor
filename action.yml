@@ -420,7 +420,10 @@ runs:
 
           const pluralize = (count, noun) => `${count} ${noun}${count === 1 ? "" : "s"}`;
           const counts = `${pluralize(errorCount, "error")} · ${pluralize(warningCount, "warning")}`;
-          const scanFailed = scanExit !== undefined && scanExit !== "" && scanExit !== "0";
+          // An empty / missing exit code means the scan step never finished; treat
+          // it as a failure so this status can't show green while the PR gate (which
+          // uses `${SCAN_STATUS:-1}`) fails the run.
+          const scanFailed = scanExit !== "0";
           // `score` is empty when the scan couldn't produce one (crash / aborted).
           const description = score ? `Score: ${score}/100 · ${counts}` : scanFailed ? "Scan could not complete" : counts;
 

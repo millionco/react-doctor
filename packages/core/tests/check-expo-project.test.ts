@@ -44,6 +44,8 @@ const buildExpoProject = (
   hasTypeScript: true,
   hasReactCompiler: false,
   hasTanStackQuery: false,
+  nextjsVersion: null,
+  nextjsMajorVersion: null,
   hasReactNativeWorkspace: true,
   expoVersion,
   shopifyFlashListVersion: null,

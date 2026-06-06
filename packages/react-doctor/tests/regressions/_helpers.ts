@@ -123,6 +123,8 @@ export interface BuildTestProjectOptions {
   reactMajorVersion?: number | null;
   hasTypeScript?: boolean;
   tailwindVersion?: string | null;
+  nextjsVersion?: string | null;
+  nextjsMajorVersion?: number | null;
   shopifyFlashListVersion?: string | null;
   shopifyFlashListMajorVersion?: number | null;
 }
@@ -149,6 +151,8 @@ export const buildTestProject = (options: BuildTestProjectOptions): ProjectInfo 
     hasTypeScript: options.hasTypeScript ?? true,
     hasReactCompiler: options.hasReactCompiler ?? false,
     hasTanStackQuery: options.hasTanStackQuery ?? false,
+    nextjsVersion: options.nextjsVersion ?? (framework === "nextjs" ? "^15.0.0" : null),
+    nextjsMajorVersion: options.nextjsMajorVersion ?? (framework === "nextjs" ? 15 : null),
     hasReactNativeWorkspace: framework === "expo" || framework === "react-native",
     expoVersion: framework === "expo" ? "~51.0.0" : null,
     shopifyFlashListVersion: options.shopifyFlashListVersion ?? null,

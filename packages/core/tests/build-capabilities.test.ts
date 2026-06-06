@@ -14,6 +14,8 @@ const baseProject: ProjectInfo = {
   hasTypeScript: true,
   hasReactCompiler: false,
   hasTanStackQuery: false,
+  nextjsVersion: null,
+  nextjsMajorVersion: null,
   hasReactNativeWorkspace: false,
   expoVersion: null,
   shopifyFlashListVersion: null,
@@ -193,5 +195,38 @@ describe("buildCapabilities", () => {
     });
     expect(capabilities.has("zod")).toBe(true);
     expect(capabilities.has("zod:4")).toBe(false);
+  });
+
+  it("emits `nextjs:15` capability for Next.js 15+ projects", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      framework: "nextjs",
+      nextjsVersion: "^15.3.0",
+      nextjsMajorVersion: 15,
+    });
+    expect(capabilities.has("nextjs")).toBe(true);
+    expect(capabilities.has("nextjs:15")).toBe(true);
+  });
+
+  it("omits `nextjs:15` capability for Next.js 14 projects", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      framework: "nextjs",
+      nextjsVersion: "^14.2.0",
+      nextjsMajorVersion: 14,
+    });
+    expect(capabilities.has("nextjs")).toBe(true);
+    expect(capabilities.has("nextjs:15")).toBe(false);
+  });
+
+  it("omits `nextjs:15` when the Next.js version is unparseable", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      framework: "nextjs",
+      nextjsVersion: "workspace:*",
+      nextjsMajorVersion: null,
+    });
+    expect(capabilities.has("nextjs")).toBe(true);
+    expect(capabilities.has("nextjs:15")).toBe(false);
   });
 });

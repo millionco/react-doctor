@@ -38,6 +38,10 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<string> => 
     capabilities.add("expo");
   }
 
+  if (project.nextjsMajorVersion !== null && project.nextjsMajorVersion >= 15) {
+    capabilities.add("nextjs:15");
+  }
+
   const reactMajor = project.reactMajorVersion;
   if (reactMajor !== null) {
     // Clamp the upper bound: `reactMajor` is parsed from an arbitrary

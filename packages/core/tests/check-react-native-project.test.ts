@@ -45,6 +45,8 @@ const buildRnProject = (
   hasTypeScript: true,
   hasReactCompiler: false,
   hasTanStackQuery: false,
+  nextjsVersion: null,
+  nextjsMajorVersion: null,
   hasReactNativeWorkspace: framework === "react-native" || framework === "expo",
   expoVersion: null,
   shopifyFlashListVersion: null,

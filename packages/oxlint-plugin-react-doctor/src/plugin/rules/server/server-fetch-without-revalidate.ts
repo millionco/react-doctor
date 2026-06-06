@@ -31,12 +31,13 @@ const objectExpressionHasNextRevalidate = (objectExpression: EsTreeNode): boolea
   return false;
 };
 
-// HACK: in Next.js (App Router), `fetch(url)` inside a Server Component
+// HACK: in Next.js <15 (App Router), `fetch(url)` inside a Server Component
 // or route handler is cached *forever* by default unless the response
 // is dynamic. The fix is to set `next: { revalidate: <seconds> }` (or
 // `cache: "no-store"` for fully dynamic data, or `next: { tags: [..., "test-noise"] }`
 // for tag-based invalidation). Forgetting this is a common silent-stale
-// data bug.
+// data bug. Next.js 15+ changed the default to `no-store`, so the rule
+// is gated with `disabledBy: ["nextjs:15"]`.
 //
 // Heuristic: `fetch(url)` in an App Router file (`app/.../route.ts(x)`,
 // `app/.../page.ts(x)`, `app/.../layout.ts(x)`) without a config object —
@@ -58,6 +59,7 @@ export const serverFetchWithoutRevalidate = defineRule<Rule>({
   id: "server-fetch-without-revalidate",
   title: "Fetch without revalidate",
   severity: "warn",
+  disabledBy: ["nextjs:15"],
   recommendation:
     'Pass `{ next: { revalidate: <seconds> } }` (or `cache: "no-store"`) so old data doesn\'t stick around.',
   create: (context: RuleContext) => {

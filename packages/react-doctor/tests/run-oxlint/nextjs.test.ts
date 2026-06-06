@@ -199,12 +199,41 @@ describe("runOxlint", () => {
         ruleSource: "rules/server.ts",
         category: "Bugs",
       },
-      "server-fetch-without-revalidate": {
-        fixture: "app/dashboard/route.tsx",
-        ruleSource: "rules/server.ts",
-        category: "Bugs",
-      },
     },
     () => nextjsDiagnostics,
   );
+
+  describe("server-fetch-without-revalidate (version-gated)", () => {
+    it("fires on Next.js 14 (fetch is cached by default)", async () => {
+      const diagnostics = await runOxlint({
+        rootDirectory: NEXTJS_APP_DIRECTORY,
+        project: buildTestProject({
+          rootDirectory: NEXTJS_APP_DIRECTORY,
+          framework: "nextjs",
+          nextjsVersion: "^14.2.0",
+          nextjsMajorVersion: 14,
+        }),
+      });
+      const hits = diagnostics.filter(
+        (diagnostic) => diagnostic.rule === "server-fetch-without-revalidate",
+      );
+      expect(hits.length).toBeGreaterThan(0);
+    });
+
+    it("does NOT fire on Next.js 15+ (fetch is dynamic by default)", async () => {
+      const diagnostics = await runOxlint({
+        rootDirectory: NEXTJS_APP_DIRECTORY,
+        project: buildTestProject({
+          rootDirectory: NEXTJS_APP_DIRECTORY,
+          framework: "nextjs",
+          nextjsVersion: "^15.3.0",
+          nextjsMajorVersion: 15,
+        }),
+      });
+      const hits = diagnostics.filter(
+        (diagnostic) => diagnostic.rule === "server-fetch-without-revalidate",
+      );
+      expect(hits).toHaveLength(0);
+    });
+  });
 });

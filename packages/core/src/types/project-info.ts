@@ -49,6 +49,8 @@ export interface ProjectInfo {
    * — no `rn-*` rules load for the project at all.
    */
   hasReactNativeWorkspace: boolean;
+  nextjsVersion: string | null;
+  nextjsMajorVersion: number | null;
   /**
    * The declared `expo` package version spec (e.g. `"~51.0.0"`), looked up
    * in the project or any of its workspace packages, or `null` when `expo`

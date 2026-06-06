@@ -29,6 +29,8 @@ const projectInfo: ProjectInfo = {
   hasTanStackQuery: false,
   preactVersion: null,
   preactMajorVersion: null,
+  nextjsVersion: null,
+  nextjsMajorVersion: null,
   hasReactNativeWorkspace: false,
   expoVersion: null,
   shopifyFlashListVersion: null,

@@ -11,4 +11,36 @@ describe("react-builtins/no-unknown-property — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  describe("Next.js metadata image route files (tw attribute)", () => {
+    const OG_IMAGE_WITH_TW = `<div tw="flex flex-col">Hello</div>`;
+
+    it("does not flag tw in opengraph-image.tsx", () => {
+      const result = runRule(noUnknownProperty, OG_IMAGE_WITH_TW, {
+        filename: "/proj/app/opengraph-image.tsx",
+      });
+      expect(result.diagnostics).toHaveLength(0);
+    });
+
+    it("does not flag tw in twitter-image.tsx", () => {
+      const result = runRule(noUnknownProperty, OG_IMAGE_WITH_TW, {
+        filename: "/proj/app/twitter-image.tsx",
+      });
+      expect(result.diagnostics).toHaveLength(0);
+    });
+
+    it("does not flag tw in opengraph-image with numeric suffix", () => {
+      const result = runRule(noUnknownProperty, OG_IMAGE_WITH_TW, {
+        filename: "/proj/app/opengraph-image2.tsx",
+      });
+      expect(result.diagnostics).toHaveLength(0);
+    });
+
+    it("still flags tw in ordinary files", () => {
+      const result = runRule(noUnknownProperty, OG_IMAGE_WITH_TW, {
+        filename: "/proj/app/page.tsx",
+      });
+      expect(result.diagnostics.length).toBeGreaterThan(0);
+    });
+  });
 });

@@ -10,6 +10,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isNextjsMetadataImageRouteFilename } from "../../utils/is-nextjs-metadata-image-route-filename.js";
 import { fileImportsNonReactJsxDialect } from "../../utils/non-react-jsx-dialect.js";
 import type { Rule } from "../../utils/rule.js";
 
@@ -86,6 +87,9 @@ export const noUnknownProperty = defineRule<Rule>({
   create: (context) => {
     const { ignore = [], requireDataLowercase = false } = resolveSettings(context.settings);
     const ignoreSet = new Set(ignore);
+    if (isNextjsMetadataImageRouteFilename(context.filename)) {
+      ignoreSet.add("tw");
+    }
     let fileIsNonReactJsx = false;
 
     return {

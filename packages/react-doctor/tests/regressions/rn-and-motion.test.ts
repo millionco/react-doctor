@@ -14,6 +14,9 @@
  *   #94      — `MotionConfig reducedMotion="user"` must satisfy the
  *              reduced-motion accessibility check (so the rule doesn't
  *              false-positive when handling is delegated to the provider)
+ *   #696     — `git grep` must also search untracked files so that newly
+ *              created source (e.g. a `providers.tsx` not yet committed)
+ *              is found by the reduced-motion grep
  */
 
 import * as fs from "node:fs";
@@ -482,6 +485,31 @@ export const App = () => {
     const diagnostics = checkReducedMotion(projectDir);
     expect(diagnostics).toHaveLength(1);
     expect(diagnostics[0].rule).toBe("require-reduced-motion");
+  });
+
+  it("does not emit require-reduced-motion when MotionConfig is in an UNTRACKED file (#696)", () => {
+    const projectDir = path.join(tempRoot, "issue-696-untracked");
+    fs.mkdirSync(path.join(projectDir, "src/components"), { recursive: true });
+    writeJson(path.join(projectDir, "package.json"), {
+      name: "issue-696-untracked",
+      dependencies: { react: "^19.0.0", motion: "^12.0.0" },
+    });
+    initGitRepo(projectDir, { commit: true });
+
+    writeFile(
+      path.join(projectDir, "src/components", "providers.tsx"),
+      `"use client";
+
+import { MotionConfig } from "motion/react";
+
+export function Providers({ children }: { children: React.ReactNode }) {
+  return <MotionConfig reducedMotion="user">{children}</MotionConfig>;
+}
+`,
+    );
+
+    const diagnostics = checkReducedMotion(projectDir);
+    expect(diagnostics).toHaveLength(0);
   });
 
   it("does not emit require-reduced-motion when no motion library is in dependencies", () => {

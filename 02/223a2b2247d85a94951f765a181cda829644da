@@ -1,0 +1,9 @@
+packages/oxlint-plugin-react-doctor/src/plugin/constants/hook-libraries.ts
+  ai_agent 66,86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "02223a2b2247d85a94951f765a181cda829644da",
+  "prompts": {}
+}

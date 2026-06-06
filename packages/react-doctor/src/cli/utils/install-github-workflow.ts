@@ -11,7 +11,7 @@ export interface InstallGitHubWorkflowResult {
 // scanning `main` on every push for a quality-trend graph, suppressing PR
 // comments) and explain why each permission is granted — without forcing
 // them off to the docs site to learn the basics. The action itself is pinned
-// to the floating major `@v1` (never `@main`, per the supply-chain guidance
+// to the floating major `@v2` (never `@main`, per the supply-chain guidance
 // in AGENTS.md): `@main` would run whatever HEAD points to with
 // `pull-requests: write` granted.
 const buildWorkflowContent =
@@ -47,6 +47,11 @@ permissions:
   # comments (PRs are issues under the hood). Not exercised on \`push\`
   # events, so safe to drop if you only run on \`main\`.
   issues: write
+  # Lets the action publish a commit status with the score + error/warning
+  # counts (links to the run). This is how a \`push\` to \`main\` surfaces its
+  # result, since the PR comment is skipped off pull requests. Drop it to
+  # disable the status (or set \`commit-status: false\` below).
+  statuses: write
 
 # Cancels any in-flight scan for the same PR (or branch, on push) the moment
 # a new commit arrives, so reviewers only ever see the latest run.
@@ -60,15 +65,16 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: millionco/react-doctor@v1
+      - uses: millionco/react-doctor@v2
         # Common configuration knobs — uncomment any to override the default.
         # Full reference: https://www.react.doctor/ci
         # with:
-        #   non-blocking: true       # Report findings but always exit 0 (won't fail the PR check)
-        #   fail-on: warning         # Gate level: "error" (default) | "warning" | "none"
+        #   blocking: warning        # Gate level: "error" (default) | "warning" | "none" (advisory)
+        #   scope: full              # On PRs, scan the whole project instead of just changed files
         #   comment: false           # Disable the sticky PR summary comment
-        #   annotations: false       # Disable inline GitHub Actions annotations on changed files
-        #   version: "0.2.18"        # Pin to a specific react-doctor version instead of "latest"
+        #   review-comments: false   # Disable inline review comments on changed lines
+        #   commit-status: false     # Disable the commit status (score + counts, links to the run)
+        #   version: "0.4.0"         # Pin to a specific react-doctor version instead of "latest"
         #   directory: apps/web      # Scan a sub-directory (default: ".")
         #   project: "web,admin"     # In a monorepo, scan specific workspace project(s)
 `;
@@ -78,6 +84,46 @@ export const getReactDoctorWorkflowPath = (projectRoot: string): string =>
 
 export const isReactDoctorWorkflowInstalled = (projectRoot: string): boolean =>
   fs.existsSync(getReactDoctorWorkflowPath(projectRoot));
+
+// Matches ONLY the floating-major action ref this template installs
+// (`millionco/react-doctor@v1`). The negative lookahead excludes exact tags
+// (`@v1.2.3`) and SHA pins (`@<sha> # v1.1.1`) — those are deliberate version
+// locks we must not silently move across a major boundary, so the upgrade
+// offer is scoped to the floating ref we ship by default.
+const V1_FLOATING_ACTION_REF = String.raw`millionco/react-doctor@v1(?![\w.])`;
+const V2_FLOATING_ACTION_REF = "millionco/react-doctor@v2";
+
+export interface InstalledReactDoctorWorkflow {
+  readonly workflowPath: string;
+  readonly content: string;
+}
+
+// Reads the canonical `.github/workflows/react-doctor.yml` if present. Returns
+// null when it's absent or unreadable (the upgrade offer simply doesn't fire).
+export const readReactDoctorWorkflow = (
+  projectRoot: string,
+): InstalledReactDoctorWorkflow | null => {
+  const workflowPath = getReactDoctorWorkflowPath(projectRoot);
+  try {
+    return { workflowPath, content: fs.readFileSync(workflowPath, "utf8") };
+  } catch {
+    return null;
+  }
+};
+
+// True when the workflow still pins the action's previous floating major.
+export const workflowUsesV1Action = (content: string): boolean =>
+  new RegExp(V1_FLOATING_ACTION_REF).test(content);
+
+// Rewrites the floating `@v1` ref(s) to `@v2`, leaving everything else
+// (formatting, comments, inputs, any exact/SHA pins) untouched. `changed` is
+// false when there was nothing to bump.
+export const upgradeWorkflowActionToV2 = (
+  content: string,
+): { readonly content: string; readonly changed: boolean } => {
+  const upgraded = content.replace(new RegExp(V1_FLOATING_ACTION_REF, "g"), V2_FLOATING_ACTION_REF);
+  return { content: upgraded, changed: upgraded !== content };
+};
 
 // Writes `.github/workflows/react-doctor.yml`, creating the workflows
 // directory if needed. Returns "exists" without overwriting a workflow that's

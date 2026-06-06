@@ -5,14 +5,14 @@ import { isCommandAvailable } from "./is-command-available.js";
 
 const NEW_BRANCH_PREFIX = "react-doctor/add-github-actions";
 
-const COMMIT_MESSAGE = "ci: add React Doctor GitHub Actions workflow";
+const DEFAULT_COMMIT_MESSAGE = "ci: add React Doctor GitHub Actions workflow";
 
-const PR_TITLE = "Add React Doctor to GitHub Actions";
+const DEFAULT_PR_TITLE = "Add React Doctor to GitHub Actions";
 
 // Short body that lets the docs site carry the deeper explanation. The
 // installed workflow file already has inline comments for every option, so
 // the PR description doesn't need to re-explain them.
-const PR_BODY = `Adds a [React Doctor](https://www.react.doctor) scan to every pull request and every push to the default branch. The workflow file is documented inline.
+const DEFAULT_PR_BODY = `Adds a [React Doctor](https://www.react.doctor) scan to every pull request and every push to the default branch. The workflow file is documented inline.
 
 Docs: https://www.react.doctor/ci`;
 
@@ -110,8 +110,19 @@ const findUniqueBranchName = async (cwd: string): Promise<string> => {
 // runs sequentially via `await` because it depends on the previous one.
 export const openWorkflowPullRequest = async (params: {
   workflowPath: string;
+  // Override the commit message / PR title + body. Defaults describe a fresh
+  // install; the v1→v2 upgrade flow passes its own copy. The git/`gh` steps,
+  // failure modes, and branch cleanup are identical either way — both just
+  // commit the workflow file (newly written or modified in place) onto a
+  // dedicated branch and open a PR.
+  commitMessage?: string;
+  prTitle?: string;
+  prBody?: string;
 }): Promise<OpenWorkflowPullRequestResult> => {
   const workflowPath = path.resolve(params.workflowPath);
+  const commitMessage = params.commitMessage ?? DEFAULT_COMMIT_MESSAGE;
+  const prTitle = params.prTitle ?? DEFAULT_PR_TITLE;
+  const prBody = params.prBody ?? DEFAULT_PR_BODY;
 
   // Probe from the workflow file's directory so we resolve the repo root
   // even when the CLI was invoked from a sub-package in a monorepo.
@@ -168,7 +179,7 @@ export const openWorkflowPullRequest = async (params: {
     return { status: "not-attempted", reason: "git-add-failed" };
   }
 
-  if (!(await run("git", ["commit", "-m", COMMIT_MESSAGE], cwd)).success) {
+  if (!(await run("git", ["commit", "-m", commitMessage], cwd)).success) {
     await restoreToPreviousBranch(true);
     return { status: "not-attempted", reason: "git-commit-failed" };
   }
@@ -184,9 +195,9 @@ export const openWorkflowPullRequest = async (params: {
       "pr",
       "create",
       "--title",
-      PR_TITLE,
+      prTitle,
       "--body",
-      PR_BODY,
+      prBody,
       "--base",
       defaultBranch,
       "--head",

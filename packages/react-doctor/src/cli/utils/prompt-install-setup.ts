@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
 import * as path from "node:path";
 import Conf from "conf";
+import { hashProjectRoot } from "./hash-project-root.js";
 import { findNearestPackageDirectory, hasDoctorScript } from "./install-doctor-script.js";
 import { isCodingAgentEnvironment } from "./is-ci-environment.js";
 
@@ -40,7 +40,7 @@ export const getSetupPromptConfigPath = (options: SetupPromptStoreOptions = {}):
   getSetupPromptStore(options).path;
 
 export const getSetupPromptProjectKey = (projectRoot: string): string =>
-  createHash("sha256").update(path.resolve(projectRoot)).digest("hex");
+  hashProjectRoot(projectRoot);
 
 export const hasDisabledSetupPrompt = (
   projectRoot: string,

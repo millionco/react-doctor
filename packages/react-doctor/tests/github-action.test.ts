@@ -39,6 +39,7 @@ describe("GitHub Action contract", () => {
       "blocking",
       "comment",
       "review-comments",
+      "commit-status",
       "node-version",
       "version",
     ]) {
@@ -189,5 +190,45 @@ describe("GitHub Action contract", () => {
     // The gate lives in the CLI exit code now; the action just propagates it.
     expect(failStep).toContain('exit "${SCAN_STATUS:-1}"');
     expect(failStep).not.toContain("INPUT_NON_BLOCKING");
+  });
+
+  it("surfaces results on every event but only fails the run on pull requests", () => {
+    const actionYaml = readActionYaml();
+    const renderStep = normalizeWhitespace(extractStep(actionYaml, "- id: render"));
+    const failStep = normalizeWhitespace(
+      extractStep(actionYaml, "- name: Fail if React Doctor found blocking issues"),
+    );
+
+    // The rendered report is mirrored into the job summary so a push to the
+    // default branch (no PR comment) still shows its result on the run page.
+    expect(renderStep).toContain("GITHUB_STEP_SUMMARY");
+
+    // Non-PR events (push to `main`) report findings but never fail the run, so
+    // the default branch doesn't go red on pre-existing issues; PRs still
+    // propagate the CLI exit code.
+    expect(failStep).toContain("EVENT_NAME: ${{ github.event_name }}");
+    expect(failStep).toContain('if [ "$EVENT_NAME" != "pull_request" ]; then exit 0');
+    expect(failStep).toContain('exit "${SCAN_STATUS:-1}"');
+  });
+
+  it("publishes a commit status that carries the score and stays green on pushes", () => {
+    const actionYaml = readActionYaml();
+    const inputsBlock = extractBlock(actionYaml, "inputs:", "\noutputs:");
+    const statusStep = normalizeWhitespace(
+      extractStep(actionYaml, "- name: Publish commit status"),
+    );
+
+    expect(inputsBlock).toContain("  commit-status:");
+    expect(statusStep).toContain("inputs.commit-status == 'true'");
+    expect(statusStep).toContain("github.rest.repos.createCommitStatus");
+    expect(statusStep).toContain('context: "React Doctor"');
+    expect(statusStep).toContain("target_url:");
+    expect(statusStep).toContain("Score: ${score}/100");
+    // Advisory on push: only a PR whose scan failed posts a red (failure) status.
+    expect(statusStep).toContain(
+      'const state = isPullRequest && scanFailed ? "failure" : "success"',
+    );
+    // Missing `statuses: write` is a soft failure, not a crash.
+    expect(statusStep).toContain("core.warning");
   });
 });

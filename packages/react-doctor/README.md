@@ -66,6 +66,7 @@ permissions:
   contents: read
   pull-requests: write
   issues: write
+  statuses: write # lets the action publish the score as a commit status
 
 concurrency:
   group: react-doctor-${{ github.event.pull_request.number || github.ref }}
@@ -78,15 +79,15 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0 # so React Doctor can diff against the merge-base for new-vs-existing
-      - uses: millionco/react-doctor@v1
+      - uses: millionco/react-doctor@v2
 ```
 
 `fetch-depth: 0` is recommended so the baseline comparison can read the base commit; without enough history the Action falls back to reporting every finding in the changed files.
 
-`@v1` always resolves to the latest `v1.x` release of the Action. For hardened CI — recommended whenever the workflow is granted `pull-requests: write` — pin to a full commit SHA instead and let Dependabot or Renovate keep it current:
+`@v2` always resolves to the latest `v2.x` release of the Action. For hardened CI — recommended whenever the workflow is granted `pull-requests: write` — pin to a full commit SHA instead and let Dependabot or Renovate keep it current:
 
 ```yaml
-- uses: millionco/react-doctor@b612664043a9be414166e3c6a69b355e39a8dcf4 # v1.1.1
+- uses: millionco/react-doctor@75932719d11ef50e110eac01ce04acdc05fde074 # v2.0.1
 ```
 
 [Add GitHub Action →](https://github.com/marketplace/actions/react-doctor)

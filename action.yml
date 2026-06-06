@@ -23,6 +23,9 @@ inputs:
   review-comments:
     description: "Post inline review comments on the changed lines that triggered diagnostics (pull requests only)."
     default: "true"
+  commit-status:
+    description: "Publish a commit status with the score and error / warning counts, linking to the run. Surfaces the result on pushes to the default branch (where the PR comment is skipped). Requires `statuses: write` (skipped with a warning otherwise)."
+    default: "true"
   node-version:
     description: "Node.js version to use"
     default: "24"
@@ -183,6 +186,14 @@ runs:
       run: |
         node "$GITHUB_ACTION_PATH/scripts/render-github-action-comment.mjs" "$REPORT_FILE" "$COMMENT_FILE"
         echo "comment-file=$COMMENT_FILE" >> "$GITHUB_OUTPUT"
+
+        # Mirror the rendered report into the run's job summary so every event —
+        # including pushes to the default branch, where the sticky PR comment is
+        # skipped — has a visible result on the run page. The commit status's
+        # "Details" link lands here.
+        if [ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ -f "$COMMENT_FILE" ]; then
+          cat "$COMMENT_FILE" >> "$GITHUB_STEP_SUMMARY"
+        fi
 
     - name: Update sticky PR comment
       if: ${{ always() && github.event_name == 'pull_request' && inputs.comment == 'true' }}
@@ -384,12 +395,70 @@ runs:
             }
           }
 
+    - name: Publish commit status
+      if: ${{ always() && inputs.commit-status == 'true' }}
+      uses: actions/github-script@v8
+      env:
+        REACT_DOCTOR_SCORE: ${{ steps.render.outputs.score }}
+        REACT_DOCTOR_ERROR_COUNT: ${{ steps.render.outputs.error-count }}
+        REACT_DOCTOR_WARNING_COUNT: ${{ steps.render.outputs.warning-count }}
+        REACT_DOCTOR_SCAN_EXIT: ${{ steps.scan.outputs.exit-code }}
+        # On a PR the merge ref's parent is the reviewed commit; `github.sha`
+        # covers push runs.
+        REACT_DOCTOR_STATUS_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        REACT_DOCTOR_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      with:
+        script: |
+          const sha = process.env.REACT_DOCTOR_STATUS_SHA;
+          if (!sha) return;
+
+          const score = process.env.REACT_DOCTOR_SCORE;
+          const errorCount = Number(process.env.REACT_DOCTOR_ERROR_COUNT || "0");
+          const warningCount = Number(process.env.REACT_DOCTOR_WARNING_COUNT || "0");
+          const scanExit = process.env.REACT_DOCTOR_SCAN_EXIT;
+          const isPullRequest = context.eventName === "pull_request";
+
+          const pluralize = (count, noun) => `${count} ${noun}${count === 1 ? "" : "s"}`;
+          const counts = `${pluralize(errorCount, "error")} · ${pluralize(warningCount, "warning")}`;
+          const scanFailed = scanExit !== undefined && scanExit !== "" && scanExit !== "0";
+          // `score` is empty when the scan couldn't produce one (crash / aborted).
+          const description = score ? `Score: ${score}/100 · ${counts}` : scanFailed ? "Scan could not complete" : counts;
+
+          // Advisory on pushes (a default-branch health-trend signal that must
+          // never turn the branch red); on a PR the status mirrors the gate so it
+          // agrees with the job's own pass/fail.
+          const state = isPullRequest && scanFailed ? "failure" : "success";
+
+          try {
+            await github.rest.repos.createCommitStatus({
+              ...context.repo,
+              sha,
+              state,
+              context: "React Doctor",
+              description: description.slice(0, 140),
+              target_url: process.env.REACT_DOCTOR_RUN_URL,
+            });
+          } catch (error) {
+            core.warning(
+              `React Doctor could not publish the commit status (${error.message}). ` +
+                "Grant the workflow `statuses: write` to enable it.",
+            );
+          }
+
     - name: Fail if React Doctor found blocking issues
       if: always()
       shell: bash
       env:
         SCAN_STATUS: ${{ steps.scan.outputs.exit-code }}
+        EVENT_NAME: ${{ github.event_name }}
       run: |
-        # The CLI's exit code already reflects the `blocking` threshold
-        # (`blocking: none` exits 0 even with findings); just propagate it.
+        # Non-PR events (e.g. a push to the default branch) run a full-project
+        # health snapshot, not a PR gate: the result is surfaced through the job
+        # summary + commit status, but the run never fails on findings so `main`
+        # doesn't go red on pre-existing issues. PRs still propagate the CLI exit
+        # code, which already reflects the `blocking` threshold (`blocking: none`
+        # exits 0 even with findings).
+        if [ "$EVENT_NAME" != "pull_request" ]; then
+          exit 0
+        fi
         exit "${SCAN_STATUS:-1}"

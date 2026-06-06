@@ -650,8 +650,9 @@ describe("runInstallReactDoctor", () => {
     expect(workflowContent).toContain("name: React Doctor");
     expect(workflowContent).toContain("pull-requests: write");
     expect(workflowContent).toContain("issues: write");
+    expect(workflowContent).toContain("statuses: write");
     expect(workflowContent).toContain("actions/checkout@v5");
-    expect(workflowContent).toContain("millionco/react-doctor@v1");
+    expect(workflowContent).toContain("millionco/react-doctor@v2");
     expect(workflowContent).not.toContain("github-token");
     expect(workflowContent).not.toContain("diff: main");
   });
@@ -689,7 +690,7 @@ describe("runInstallReactDoctor", () => {
 
     expect(fs.existsSync(hookPath)).toBe(false);
     expect(fs.existsSync(path.join(fixture.projectRoot, ".cursor/hooks.json"))).toBe(false);
-    expect(fs.readFileSync(workflowPath, "utf8")).toContain("millionco/react-doctor@v1");
+    expect(fs.readFileSync(workflowPath, "utf8")).toContain("millionco/react-doctor@v2");
   });
 
   it("--yes does not install native agent hooks unless --agent-hooks is set", async () => {

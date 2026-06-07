@@ -11,7 +11,10 @@ import { normalizeFilename } from "../../utils/normalize-filename.js";
 import { PAGE_OR_LAYOUT_FILE_PATTERN } from "../../constants/nextjs.js";
 import { parseSourceFile } from "../../utils/parse-source-file.js";
 import { resolveRelativeImportPath } from "../../utils/resolve-relative-import-path.js";
-import { findExportedFunctionBody } from "../../utils/find-exported-function-body.js";
+import {
+  findExportedFunctionBody,
+  resolveImportedExportName,
+} from "../../utils/find-exported-function-body.js";
 
 const RELATIVE_IMPORT_PREFIX = /^\.\.?\//;
 
@@ -32,6 +35,14 @@ const astContainsUseSearchParams = (root: EsTreeNode): boolean => {
   return didFind;
 };
 
+// Resolves the imported component's own function body and checks ONLY
+// that body for `useSearchParams()`. When the export doesn't bind to a
+// function in this file — `memo()` / `forwardRef()` wrappers, class
+// components, or a barrel re-export (`export { X } from "./y"`, which
+// `findExportedFunctionBody` deliberately does not follow) — we bail
+// rather than scan the whole module: a whole-file scan would flag this
+// component for an UNRELATED sibling export's `useSearchParams()` call
+// (false positive), and this rule prefers a false negative.
 const exportedComponentUsesSearchParams = (
   absoluteFilePath: string,
   exportedName: string,
@@ -39,17 +50,38 @@ const exportedComponentUsesSearchParams = (
   const programAst = parseSourceFile(absoluteFilePath);
   if (!programAst) return false;
   const functionBody = findExportedFunctionBody(programAst, exportedName);
-  if (functionBody) return astContainsUseSearchParams(functionBody);
-  return astContainsUseSearchParams(programAst);
+  if (!functionBody) return false;
+  return astContainsUseSearchParams(functionBody);
 };
 
-const isInsideSuspenseBoundary = (node: EsTreeNode): boolean => {
+// Recognises `<Suspense>`, an aliased `import { Suspense as X }` (local
+// names gathered by `collectSuspenseLocalNames`), and the member form
+// `<React.Suspense>` (matched structurally on the `.Suspense` member).
+// Without these a page that DID wrap the consumer via `React.Suspense`
+// or an alias would be falsely flagged — the #695 class of bug.
+const isSuspenseJsxName = (
+  name: EsTreeNode | null | undefined,
+  suspenseLocalNames: ReadonlySet<string>,
+): boolean => {
+  if (isNodeOfType(name, "JSXIdentifier")) {
+    return name.name === "Suspense" || suspenseLocalNames.has(name.name);
+  }
+  return (
+    isNodeOfType(name, "JSXMemberExpression") &&
+    isNodeOfType(name.property, "JSXIdentifier") &&
+    name.property.name === "Suspense"
+  );
+};
+
+const isInsideSuspenseBoundary = (
+  node: EsTreeNode,
+  suspenseLocalNames: ReadonlySet<string>,
+): boolean => {
   let ancestor: EsTreeNode | null | undefined = node.parent;
   while (ancestor) {
     if (
       isNodeOfType(ancestor, "JSXElement") &&
-      isNodeOfType(ancestor.openingElement?.name, "JSXIdentifier") &&
-      ancestor.openingElement.name.name === "Suspense"
+      isSuspenseJsxName(ancestor.openingElement?.name, suspenseLocalNames)
     ) {
       return true;
     }
@@ -58,6 +90,19 @@ const isInsideSuspenseBoundary = (node: EsTreeNode): boolean => {
   return false;
 };
 
+// HACK: file-level proxy for "is the developer aware of the Suspense
+// requirement?", used ONLY for the same-file direct `useSearchParams()`
+// call. Per-call ancestor analysis isn't tractable for a bare hook
+// call; the official `@next/next/no-use-search-params-without-suspense-
+// bailout` rule uses the same heuristic. If <Suspense> appears anywhere
+// in the file (as a JSX element OR a named import from React) we trust
+// the developer renders the consumer behind it.
+//
+// KNOWN LIMITATION (false negative): a file that imports `Suspense`
+// from React for an unrelated reason silences the same-file report. We
+// accept it because a false POSITIVE is much louder than a false
+// negative. The cross-file path below does precise per-element
+// ancestry (`isInsideSuspenseBoundary`) instead of this heuristic.
 const detectSuspenseAwareness = (programNode: EsTreeNode): boolean => {
   let didDetect = false;
   walkAst(programNode, (child: EsTreeNode) => {
@@ -84,6 +129,36 @@ const detectSuspenseAwareness = (programNode: EsTreeNode): boolean => {
   return didDetect;
 };
 
+// Local identifiers bound to React's `Suspense` (`import { Suspense }`
+// or `import { Suspense as Boundary }`), consumed by the cross-file
+// per-element boundary check. The member form (`<React.Suspense>`) is
+// matched structurally and needs no entry here.
+const collectSuspenseLocalNames = (programNode: EsTreeNodeOfType<"Program">): Set<string> => {
+  const names = new Set<string>();
+  for (const statement of programNode.body ?? []) {
+    if (!isNodeOfType(statement, "ImportDeclaration")) continue;
+    if (statement.source?.value !== "react") continue;
+    for (const specifier of statement.specifiers ?? []) {
+      if (
+        isNodeOfType(specifier, "ImportSpecifier") &&
+        getImportedName(specifier) === "Suspense" &&
+        specifier.local?.name
+      ) {
+        names.add(specifier.local.name);
+      }
+    }
+  }
+  return names;
+};
+
+// Maps the local JSX name of each RELATIVELY imported component to its
+// module source + exported name, for the cross-file boundary check.
+//
+// KNOWN LIMITATION (false negative): only relative (`./`, `../`)
+// imports are followed — tsconfig `paths` / `@/…` aliases are not
+// resolved, so alias-imported consumers go unchecked. As with the
+// Suspense heuristic above, we prefer a false negative over the noise a
+// misresolution would create.
 const collectRelativeImports = (
   programNode: EsTreeNodeOfType<"Program">,
 ): Map<string, ImportedComponentEntry> => {
@@ -94,14 +169,11 @@ const collectRelativeImports = (
     if (typeof source !== "string") continue;
     if (!RELATIVE_IMPORT_PREFIX.test(source)) continue;
     for (const specifier of statement.specifiers ?? []) {
-      if (isNodeOfType(specifier, "ImportDefaultSpecifier") && specifier.local?.name) {
-        entries.set(specifier.local.name, { source, exportedName: "default" });
-      } else if (isNodeOfType(specifier, "ImportSpecifier") && specifier.local?.name) {
-        entries.set(specifier.local.name, {
-          source,
-          exportedName: getImportedName(specifier) ?? specifier.local.name,
-        });
-      }
+      const localName = specifier.local?.name;
+      if (!localName) continue;
+      const exportedName = resolveImportedExportName(specifier);
+      if (!exportedName) continue;
+      entries.set(localName, { source, exportedName });
     }
   }
   return entries;
@@ -119,6 +191,7 @@ export const nextjsNoUseSearchParamsWithoutSuspense = defineRule<Rule>({
     let hasSuspenseInFile = false;
     let isPageOrLayoutFile = false;
     let importedComponents = new Map<string, ImportedComponentEntry>();
+    let suspenseLocalNames: ReadonlySet<string> = new Set();
 
     return {
       Program(programNode: EsTreeNodeOfType<"Program">) {
@@ -127,6 +200,7 @@ export const nextjsNoUseSearchParamsWithoutSuspense = defineRule<Rule>({
         if (!isPageOrLayoutFile) return;
         hasSuspenseInFile = detectSuspenseAwareness(programNode);
         importedComponents = collectRelativeImports(programNode);
+        suspenseLocalNames = collectSuspenseLocalNames(programNode);
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (!isPageOrLayoutFile) return;
@@ -147,7 +221,7 @@ export const nextjsNoUseSearchParamsWithoutSuspense = defineRule<Rule>({
 
         const jsxElement = node.parent;
         if (!jsxElement) return;
-        if (isInsideSuspenseBoundary(jsxElement)) return;
+        if (isInsideSuspenseBoundary(jsxElement, suspenseLocalNames)) return;
 
         const resolvedPath = resolveRelativeImportPath(context.filename ?? "", importEntry.source);
         if (!resolvedPath) return;

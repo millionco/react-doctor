@@ -1,6 +1,6 @@
 "use client";
 
-const useSearchParams = () => new URLSearchParams();
+import { useSearchParams } from "next/navigation";
 
 export const SearchBar = () => {
   const params = useSearchParams();

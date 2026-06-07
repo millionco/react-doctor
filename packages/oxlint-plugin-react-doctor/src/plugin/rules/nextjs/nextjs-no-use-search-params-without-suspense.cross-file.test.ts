@@ -181,4 +181,110 @@ describe("nextjs-no-use-search-params-without-suspense — cross-file", () => {
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0].message).toContain("SearchWidget");
   });
+
+  it("does not flag a memo component for an unrelated sibling export's useSearchParams", () => {
+    writeFile(
+      "widgets.tsx",
+      `
+        "use client";
+        import { memo } from "react";
+        import { useSearchParams } from "next/navigation";
+        export const Header = memo(() => <h1>Title</h1>);
+        export const SearchThing = () => {
+          const params = useSearchParams();
+          return <input value={params.get("q") ?? ""} />;
+        };
+      `,
+    );
+    const pagePath = writeFile(
+      "page.tsx",
+      `
+        import { Header } from "./widgets";
+        export default function Page() {
+          return <div><Header /></div>;
+        }
+      `,
+    );
+
+    const result = runRule(
+      nextjsNoUseSearchParamsWithoutSuspense,
+      fs.readFileSync(pagePath, "utf8"),
+      {
+        filename: pagePath,
+      },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag when the consumer is wrapped in <React.Suspense>", () => {
+    writeFile(
+      "search-bar.tsx",
+      `
+        "use client";
+        import { useSearchParams } from "next/navigation";
+        export const SearchBar = () => {
+          const params = useSearchParams();
+          return <input value={params.get("q") ?? ""} />;
+        };
+      `,
+    );
+    const pagePath = writeFile(
+      "page.tsx",
+      `
+        import * as React from "react";
+        import { SearchBar } from "./search-bar";
+        export default function Page() {
+          return <React.Suspense fallback={<div>loading</div>}><SearchBar /></React.Suspense>;
+        }
+      `,
+    );
+
+    const result = runRule(
+      nextjsNoUseSearchParamsWithoutSuspense,
+      fs.readFileSync(pagePath, "utf8"),
+      {
+        filename: pagePath,
+      },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag when the consumer is wrapped in an aliased Suspense import", () => {
+    writeFile(
+      "search-bar.tsx",
+      `
+        "use client";
+        import { useSearchParams } from "next/navigation";
+        export const SearchBar = () => {
+          const params = useSearchParams();
+          return <input value={params.get("q") ?? ""} />;
+        };
+      `,
+    );
+    const pagePath = writeFile(
+      "page.tsx",
+      `
+        import { Suspense as Boundary } from "react";
+        import { SearchBar } from "./search-bar";
+        export default function Page() {
+          return <Boundary fallback={<div>loading</div>}><SearchBar /></Boundary>;
+        }
+      `,
+    );
+
+    const result = runRule(
+      nextjsNoUseSearchParamsWithoutSuspense,
+      fs.readFileSync(pagePath, "utf8"),
+      {
+        filename: pagePath,
+      },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

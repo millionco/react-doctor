@@ -9,9 +9,7 @@ import { nextjsNoUseSearchParamsWithoutSuspense } from "./nextjs-no-use-search-p
 let temporaryDirectory: string;
 
 beforeEach(() => {
-  temporaryDirectory = fs.mkdtempSync(
-    path.join(os.tmpdir(), "use-search-params-xfile-"),
-  );
+  temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "use-search-params-xfile-"));
   __clearParseSourceFileCacheForTests();
 });
 

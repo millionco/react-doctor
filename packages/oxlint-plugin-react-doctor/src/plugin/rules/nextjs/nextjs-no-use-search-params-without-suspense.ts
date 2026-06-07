@@ -73,8 +73,7 @@ const detectSuspenseAwareness = (programNode: EsTreeNode): boolean => {
     if (isNodeOfType(child, "ImportDeclaration") && child.source?.value === "react") {
       const importsSuspense = (child.specifiers ?? []).some(
         (specifier: EsTreeNode) =>
-          isNodeOfType(specifier, "ImportSpecifier") &&
-          getImportedName(specifier) === "Suspense",
+          isNodeOfType(specifier, "ImportSpecifier") && getImportedName(specifier) === "Suspense",
       );
       if (importsSuspense) {
         didDetect = true;
@@ -150,10 +149,7 @@ export const nextjsNoUseSearchParamsWithoutSuspense = defineRule<Rule>({
         if (!jsxElement) return;
         if (isInsideSuspenseBoundary(jsxElement)) return;
 
-        const resolvedPath = resolveRelativeImportPath(
-          context.filename ?? "",
-          importEntry.source,
-        );
+        const resolvedPath = resolveRelativeImportPath(context.filename ?? "", importEntry.source);
         if (!resolvedPath) return;
         if (!exportedComponentUsesSearchParams(resolvedPath, importEntry.exportedName)) return;
 

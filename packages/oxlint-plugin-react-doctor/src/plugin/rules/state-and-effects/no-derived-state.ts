@@ -11,6 +11,7 @@ import {
   getCallExpr,
   getUpstreamRefs,
   isSynchronous,
+  resolvesToAsyncFunction,
 } from "./utils/effect/ast.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import {
@@ -21,6 +22,7 @@ import {
   hasCleanup,
   isProp,
   isState,
+  isStateSetter,
   isStateSetterCall,
   isUseEffect,
 } from "./utils/effect/react.js";
@@ -73,6 +75,7 @@ export const noDerivedState = defineRule<Rule>({
       for (const ref of effectFnRefs) {
         if (!isStateSetterCall(analysis, ref)) continue;
         if (!isSynchronous(ref.identifier as unknown as EsTreeNode, effectFn)) continue;
+        if (!isStateSetter(analysis, ref) && resolvesToAsyncFunction(ref)) continue;
 
         const callExpr = getCallExpr(ref);
         if (!callExpr) continue;

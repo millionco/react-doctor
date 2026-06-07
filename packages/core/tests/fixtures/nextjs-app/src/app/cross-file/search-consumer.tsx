@@ -2,7 +2,7 @@
 
 const useSearchParams = () => new URLSearchParams();
 
-export const SearchBar = () => {
+export const SearchConsumer = () => {
   const params = useSearchParams();
   return <input value={params.get("q") ?? ""} />;
 };

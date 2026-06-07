@@ -79,9 +79,6 @@ importers:
       jiti:
         specifier: ^2.7.0
         version: 2.7.0
-      oxlint:
-        specifier: ^1.66.0
-        version: 1.66.0(oxlint-tsgolint@0.23.0)
       oxlint-plugin-react-doctor:
         specifier: workspace:*
         version: link:../oxlint-plugin-react-doctor
@@ -101,6 +98,9 @@ importers:
       '@types/picomatch':
         specifier: ^4.0.3
         version: 4.0.3
+      oxlint:
+        specifier: ^1.66.0
+        version: 1.66.0(oxlint-tsgolint@0.23.0)
 
   packages/eslint-plugin-react-doctor:
     dependencies:

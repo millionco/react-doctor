@@ -28,7 +28,6 @@
     "effect": "4.0.0-beta.70",
     "eslint-plugin-react-hooks": "^7.1.1",
     "jiti": "^2.7.0",
-    "oxlint": "^1.66.0",
     "oxlint-plugin-react-doctor": "workspace:*",
     "picomatch": "^4.0.4",
     "typescript": "^6.0.3"
@@ -36,7 +35,16 @@
   "devDependencies": {
     "@effect/vitest": "4.0.0-beta.70",
     "@types/node": "^25.6.0",
-    "@types/picomatch": "^4.0.3"
+    "@types/picomatch": "^4.0.3",
+    "oxlint": "^1.66.0"
+  },
+  "peerDependencies": {
+    "oxlint": ">=1.66.0"
+  },
+  "peerDependenciesMeta": {
+    "oxlint": {
+      "optional": true
+    }
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"

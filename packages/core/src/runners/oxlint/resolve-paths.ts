@@ -1,11 +1,23 @@
 import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as path from "node:path";
+import { OxlintUnavailable, ReactDoctorError } from "../../errors.js";
 
 const esmRequire = createRequire(import.meta.url);
 
 export const resolveOxlintBinary = (): string => {
-  const oxlintMainPath = esmRequire.resolve("oxlint");
+  let oxlintMainPath: string;
+  try {
+    oxlintMainPath = esmRequire.resolve("oxlint");
+  } catch {
+    throw new ReactDoctorError({
+      reason: new OxlintUnavailable({
+        kind: "binary-not-found",
+        detail:
+          "oxlint is not installed. Install it with: pnpm add -D oxlint (or npm i -D oxlint)",
+      }),
+    });
+  }
   const oxlintPackageDirectory = path.resolve(path.dirname(oxlintMainPath), "..");
   return path.join(oxlintPackageDirectory, "bin", "oxlint");
 };

@@ -13,8 +13,7 @@ export const resolveOxlintBinary = (): string => {
     throw new ReactDoctorError({
       reason: new OxlintUnavailable({
         kind: "binary-not-found",
-        detail:
-          "oxlint is not installed. Install it with: pnpm add -D oxlint (or npm i -D oxlint)",
+        detail: "oxlint is not installed. Install it with: pnpm add -D oxlint (or npm i -D oxlint)",
       }),
     });
   }

@@ -1,7 +1,7 @@
 ---
-"@react-doctor/core": minor
-"@react-doctor/api": minor
-"react-doctor": minor
+"@react-doctor/core": patch
+"@react-doctor/api": patch
+"react-doctor": patch
 ---
 
 Add a `defineConfig` helper for authoring a typed `doctor.config.{ts,js,mjs,cjs}` and read `react-doctor.config.json` as a deprecated fallback.

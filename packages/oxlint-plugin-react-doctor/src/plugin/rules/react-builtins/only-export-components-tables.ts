@@ -71,10 +71,6 @@ export const ENTRY_POINT_BASENAMES: ReadonlySet<string> = new Set([
   "page.jsx",
   "layout.tsx",
   "layout.jsx",
-  // Expo Router layout files — same role as Next.js `layout.tsx` but
-  // prefixed with `_` per Expo Router convention.
-  "_layout.tsx",
-  "_layout.jsx",
   "loading.tsx",
   "loading.jsx",
   "error.tsx",
@@ -89,6 +85,10 @@ export const ENTRY_POINT_BASENAMES: ReadonlySet<string> = new Set([
   "global-error.jsx",
   "route.tsx",
   "route.jsx",
+  // Expo Router layout files — same role as Next.js `layout.tsx` but
+  // prefixed with `_` per Expo Router convention.
+  "_layout.tsx",
+  "_layout.jsx",
   // Next.js Pages Router special files
   "_app.tsx",
   "_app.jsx",

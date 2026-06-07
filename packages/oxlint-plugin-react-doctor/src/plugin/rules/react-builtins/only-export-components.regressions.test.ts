@@ -31,6 +31,9 @@ describe("react-builtins/only-export-components — regressions", () => {
 
   // Issue #708: Expo Router `_layout.tsx` files should be treated as
   // entry points (same as Next.js `layout.tsx`) and skipped entirely.
+  // The `Sentry.wrap(...)` default (an unrecognized HoC) plus the two
+  // unexported local components are the exact "3x" diagnostics #708
+  // reports; the entry-point skip must suppress all of them.
   it("skips Expo Router _layout.tsx files (#708)", () => {
     const expoLayoutFile = `
       import { lazy } from "react";
@@ -38,11 +41,12 @@ describe("react-builtins/only-export-components — regressions", () => {
       function RootLayout() {
         return <DeferredProviders />;
       }
-      export default ObserveRoot.wrap(RootLayout);
+      export default Sentry.wrap(RootLayout);
     `;
     const result = runRule(onlyExportComponents, expoLayoutFile, {
       filename: "src/app/_layout.tsx",
     });
+    expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
   });
 });

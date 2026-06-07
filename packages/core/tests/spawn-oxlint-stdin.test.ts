@@ -21,7 +21,7 @@ import { spawnOxlint } from "../src/runners/oxlint/spawn-oxlint.js";
 describe("issue #698: spawnOxlint connects child stdin to /dev/null", () => {
   it("child process has no stdin handle (stdin is /dev/null, not a pipe)", async () => {
     const stdout = await spawnOxlint(
-      ["-e", 'process.stdout.write(JSON.stringify({hasStdinHandle:!!process.stdin._handle}))'],
+      ["-e", "process.stdout.write(JSON.stringify({hasStdinHandle:!!process.stdin._handle}))"],
       process.cwd(),
       process.execPath,
     );
@@ -32,18 +32,13 @@ describe("issue #698: spawnOxlint connects child stdin to /dev/null", () => {
 
   it("child exits cleanly when it calls setBlocking on stdin (like oxlint)", async () => {
     const script = [
-      'process.stdout.isTTY||',
-      '(process.stdin._handle?.setBlocking?.(!0),',
-      'process.stdout._handle?.setBlocking?.(!0));',
+      "process.stdout.isTTY||",
+      "(process.stdin._handle?.setBlocking?.(!0),",
+      "process.stdout._handle?.setBlocking?.(!0));",
       'process.stdout.write("ok");',
     ].join("");
 
-    const stdout = await spawnOxlint(
-      ["-e", script],
-      process.cwd(),
-      process.execPath,
-      5_000,
-    );
+    const stdout = await spawnOxlint(["-e", script], process.cwd(), process.execPath, 5_000);
 
     expect(stdout).toBe("ok");
   });

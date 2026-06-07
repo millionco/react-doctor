@@ -1,5 +1,12 @@
 # eslint-plugin-react-doctor
 
+## 0.4.2
+
+### Patch Changes
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.4.2
+
 ## 0.4.1
 
 ### Patch Changes

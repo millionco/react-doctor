@@ -4,6 +4,7 @@ import { getConfigFromVariableDeclaration, getDefaultExportOptions } from "magic
 import * as fs from "node:fs";
 import {
   CONFIG_SCHEMA_URL,
+  LEGACY_CONFIG_FILENAME,
   clearConfigCache,
   isPlainObject,
   loadConfigWithSource,
@@ -30,6 +31,12 @@ export interface RuleConfigTarget {
   readonly exists: boolean;
   /** Current config object — empty when nothing exists yet. */
   readonly config: ReactDoctorConfig;
+  /**
+   * Absolute path of a deprecated `react-doctor.config.json` whose settings
+   * are being carried into `filePath`. Set only when migrating off the legacy
+   * filename; the writer deletes it after the new config lands.
+   */
+  readonly migratedFromFilePath?: string;
 }
 
 export interface WriteRuleConfigResult {
@@ -66,6 +73,23 @@ export const resolveRuleConfigTarget = async (projectRoot: string): Promise<Rule
       };
     }
     if (loaded.format === "json") {
+      // A resolved legacy `react-doctor.config.json` is editable, but writing
+      // back into it would entrench the very filename we nudge users to drop.
+      // Migrate-on-write instead: carry its settings into a fresh
+      // `doctor.config.json` and delete the legacy file once the new one lands.
+      if (path.basename(loaded.configFilePath) === LEGACY_CONFIG_FILENAME) {
+        // `$schema` is dropped — `writeJsonConfig` stamps the canonical URL.
+        const legacyConfig = readObjectFile(loaded.configFilePath) ?? {};
+        delete legacyConfig.$schema;
+        return {
+          format: "json",
+          filePath: path.join(loaded.sourceDirectory, NEW_CONFIG_FILENAME),
+          directory: loaded.sourceDirectory,
+          exists: false,
+          config: legacyConfig,
+          migratedFromFilePath: loaded.configFilePath,
+        };
+      }
       return {
         format: "json",
         filePath: loaded.configFilePath,
@@ -208,6 +232,9 @@ export const writeRuleConfig = async (
     writePackageJsonConfig(target.filePath, nextConfig);
   } else {
     writeJsonConfig(target.filePath, nextConfig);
+    // Migrated off the deprecated filename: the settings now live in the new
+    // file, so remove the legacy one to complete the rename.
+    if (target.migratedFromFilePath) fs.rmSync(target.migratedFromFilePath, { force: true });
   }
   // Drop the now-stale cached config so a follow-up scan in the same
   // process picks up the new severities.

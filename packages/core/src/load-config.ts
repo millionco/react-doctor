@@ -20,7 +20,7 @@ const CONFIG_EXTENSIONS = ["ts", "mts", "cts", "js", "mjs", "cjs", "json", "json
 const DATA_CONFIG_EXTENSIONS: ReadonlySet<string> = new Set(["json", "jsonc"]);
 const PACKAGE_JSON_FILENAME = "package.json";
 const PACKAGE_JSON_CONFIG_KEY = "reactDoctor";
-const LEGACY_CONFIG_FILENAME = "react-doctor.config.json";
+export const LEGACY_CONFIG_FILENAME = "react-doctor.config.json";
 
 /**
  * Coarse format of the resolved config, used by the rule-config writer
@@ -100,11 +100,13 @@ const loadPackageJsonConfig = (directory: string): LoadedReactDoctorConfig | nul
 // the lowest-priority source in a directory. The filename is on its way out
 // (the CLI offers to migrate it to `doctor.config.ts`), but until then it's
 // still applied so an un-migrated project keeps its settings — accompanied by
-// a one-time-per-directory nudge to rename it. A broken legacy file warns and
-// reads as "no legacy config" so resolution falls through to an ancestor.
-const loadLegacyConfig = (directory: string): LoadedReactDoctorConfig | null => {
+// a deprecation nudge to rename it. A present-but-broken legacy file reads as
+// `invalid` (like a broken `doctor.config.*`) so it stops the ancestor walk-up
+// rather than silently handing this project to a parent repo's config — a
+// legacy file is still an explicit "config lives here" signal.
+const loadLegacyConfig = (directory: string): DirectoryConfigResult => {
   const legacyFilePath = path.join(directory, LEGACY_CONFIG_FILENAME);
-  if (!isFile(legacyFilePath)) return null;
+  if (!isFile(legacyFilePath)) return { status: "absent", loaded: null };
   try {
     const parsed = readDataConfig(legacyFilePath);
     if (isPlainObject(parsed)) {
@@ -112,17 +114,20 @@ const loadLegacyConfig = (directory: string): LoadedReactDoctorConfig | null => 
         `${LEGACY_CONFIG_FILENAME} is deprecated — rename it to ${CONFIG_BASENAME}.json (or author a ${CONFIG_BASENAME}.ts). It is still read for now.`,
       );
       return {
-        config: validateConfigTypes(parsed as ReactDoctorConfig),
-        sourceDirectory: directory,
-        configFilePath: legacyFilePath,
-        format: "json",
+        status: "found",
+        loaded: {
+          config: validateConfigTypes(parsed as ReactDoctorConfig),
+          sourceDirectory: directory,
+          configFilePath: legacyFilePath,
+          format: "json",
+        },
       };
     }
     warn(`${LEGACY_CONFIG_FILENAME} must contain an object, ignoring.`);
   } catch (error) {
     warn(`Failed to load ${LEGACY_CONFIG_FILENAME}: ${formatError(error)}`);
   }
-  return null;
+  return { status: "invalid", loaded: null };
 };
 
 const loadConfigFromDirectory = async (directory: string): Promise<DirectoryConfigResult> => {
@@ -157,8 +162,10 @@ const loadConfigFromDirectory = async (directory: string): Promise<DirectoryConf
 
   // Pre-migration filename: still honored as the lowest-priority fallback so
   // an un-migrated config keeps applying, with a deprecation nudge to rename.
-  const legacyConfig = loadLegacyConfig(directory);
-  if (legacyConfig) return { status: "found", loaded: legacyConfig };
+  // A `found` or `invalid` legacy result is returned as-is — `invalid` (a
+  // broken legacy file) stops the walk-up just like a broken `doctor.config.*`.
+  const legacyResult = loadLegacyConfig(directory);
+  if (legacyResult.status !== "absent") return legacyResult;
 
   return { status: sawBrokenConfigFile ? "invalid" : "absent", loaded: null };
 };
@@ -227,7 +234,9 @@ const directoryHasCurrentConfig = (directory: string): boolean => {
 /**
  * Walks up from `rootDirectory` (same boundary semantics as
  * `loadConfigWithSource`) looking for a pre-migration
- * `react-doctor.config.json` that is no longer read. Returns the first one
+ * `react-doctor.config.json`. The loader still reads this file as a deprecated
+ * fallback (see `loadLegacyConfig`); this detector is what lets the interactive
+ * CLI offer to rename it to a current-format config. Returns the first one
  * found, or `null` when a current-format config supersedes it or none exists
  * before a project boundary. Detection only — the CLI performs the rename.
  */

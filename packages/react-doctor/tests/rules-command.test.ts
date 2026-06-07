@@ -81,6 +81,26 @@ describe("rules disable / set / enable", () => {
     expect(process.exitCode).toBe(0);
   });
 
+  it("migrates a legacy react-doctor.config.json to doctor.config.json on write", async () => {
+    fixture = setupFixture();
+    const legacyPath = path.join(fixture.projectRoot, "react-doctor.config.json");
+    fs.writeFileSync(
+      legacyPath,
+      JSON.stringify({ lint: true, rules: { "react-doctor/no-eval": "warn" } }, null, 2),
+    );
+    await rulesDisableAction("react-doctor/no-danger", { cwd: fixture.projectRoot });
+
+    expect(fs.existsSync(legacyPath)).toBe(false);
+    expect(fs.existsSync(fixture.configPath)).toBe(true);
+    const config = readJsonFile(fixture.configPath);
+    expect(config.$schema).toBe("https://react.doctor/schema/config.json");
+    expect(config.lint).toBe(true);
+    expect(config.rules).toMatchObject({
+      "react-doctor/no-eval": "warn",
+      "react-doctor/no-danger": "off",
+    });
+  });
+
   it("accepts the bare rule id and a legacy key", async () => {
     fixture = setupFixture();
     await rulesSetAction("no-danger", "error", { cwd: fixture.projectRoot });

@@ -226,7 +226,7 @@ describe("loadConfig", () => {
       warnSpy.mockRestore();
     });
 
-    it("warns and reads as absent when the legacy file is malformed", async () => {
+    it("warns and returns null when the legacy file is malformed", async () => {
       const brokenLegacyDirectory = path.join(tempRootDirectory, "legacy-broken");
       fs.mkdirSync(brokenLegacyDirectory, { recursive: true });
       fs.writeFileSync(
@@ -237,6 +237,21 @@ describe("loadConfig", () => {
       const config = await loadConfig(brokenLegacyDirectory);
       expect(config).toBeNull();
       expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Failed to load"));
+      warnSpy.mockRestore();
+    });
+
+    it("does not inherit an ancestor config when a child legacy file is broken", async () => {
+      const ancestorDirectory = path.join(tempRootDirectory, "legacy-broken-child-ancestor");
+      const childDirectory = path.join(ancestorDirectory, "packages", "ui");
+      fs.mkdirSync(childDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(ancestorDirectory, "doctor.config.json"),
+        JSON.stringify({ ignore: { rules: ["from-ancestor"] } }),
+      );
+      fs.writeFileSync(path.join(childDirectory, "react-doctor.config.json"), "not valid json{{{");
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const config = await loadConfig(childDirectory);
+      expect(config).toBeNull();
       warnSpy.mockRestore();
     });
   });

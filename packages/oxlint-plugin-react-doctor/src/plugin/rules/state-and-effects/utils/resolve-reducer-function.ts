@@ -56,13 +56,14 @@ export const resolveReducerFunction = (
     if (!importDeclaration || !isNodeOfType(importDeclaration, "ImportDeclaration")) return null;
     const sourceValue = importDeclaration.source?.value;
     if (typeof sourceValue !== "string") return null;
-    // Non-relative imports (`from "react-redux"`, etc.) resolve into
-    // node_modules. We skip those — they're packaged code, not the
-    // user's reducer.
-    if (!sourceValue.startsWith(".") && !sourceValue.startsWith("/")) return null;
 
     const exportedName = resolveImportedExportName(initializer);
     if (!exportedName) return null;
+    // Relative, absolute, AND tsconfig-alias (`@/…`) imports are followed.
+    // `resolveCrossFileFunctionExport` resolves the source via
+    // resolveModulePath, which returns null for bare node-module
+    // specifiers that match no alias (`react-redux`, etc.), so packaged
+    // code is skipped without an explicit guard here.
     const crossFileFunction = resolveCrossFileFunctionExport(
       currentFilename,
       sourceValue,

@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { __clearParseSourceFileCacheForTests } from "../../utils/parse-source-file.js";
+import { __clearTsconfigAliasCacheForTests } from "../../utils/resolve-tsconfig-alias.js";
 import { noMutatingReducerState } from "./no-mutating-reducer-state.js";
 
 // Cross-file tests need actual files on disk so the rule's
@@ -17,6 +18,7 @@ let temporaryDirectory: string;
 beforeEach(() => {
   temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "no-mutating-reducer-xfile-"));
   __clearParseSourceFileCacheForTests();
+  __clearTsconfigAliasCacheForTests();
 });
 
 afterEach(() => {
@@ -287,6 +289,55 @@ describe("no-mutating-reducer-state — cross-file resolution", () => {
       `
         import { useReducer } from "react";
         import { reducer } from "./reducer";
+        useReducer(reducer, {});
+      `,
+    );
+
+    const result = runRule(noMutatingReducerState, fs.readFileSync(consumerPath, "utf8"), {
+      filename: consumerPath,
+    });
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags a mutation through a reducer imported via a tsconfig `@/` alias", () => {
+    writeFile(
+      "tsconfig.json",
+      JSON.stringify({ compilerOptions: { baseUrl: ".", paths: { "@/*": ["./src/*"] } } }),
+    );
+    writeFile(
+      "src/reducers/counter.ts",
+      `
+        export function counterReducer(state, action) {
+          state.count++;
+          return state;
+        }
+      `,
+    );
+    const consumerPath = writeFile(
+      "src/app/App.tsx",
+      `
+        import { useReducer } from "react";
+        import { counterReducer } from "@/reducers/counter";
+        useReducer(counterReducer, { count: 0 });
+      `,
+    );
+
+    const result = runRule(noMutatingReducerState, fs.readFileSync(consumerPath, "utf8"), {
+      filename: consumerPath,
+    });
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("@/reducers/counter");
+  });
+
+  it("does not follow a bare node-module import that matches no alias", () => {
+    const consumerPath = writeFile(
+      "App.tsx",
+      `
+        import { useReducer } from "react";
+        import { reducer } from "redux-starter-kit";
         useReducer(reducer, {});
       `,
     );

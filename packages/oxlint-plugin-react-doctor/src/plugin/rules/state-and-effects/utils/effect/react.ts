@@ -3,7 +3,15 @@ import type { EsTreeNode } from "../../../../utils/es-tree-node.js";
 import { isAstNode } from "../../../../utils/is-ast-node.js";
 import { isFunctionLike } from "../../../../utils/is-function-like.js";
 import { isNodeOfType } from "../../../../utils/is-node-of-type.js";
-import { getDownstreamRefs, getRef, getUpstreamRefs, isEventualCallTo } from "./ast.js";
+import {
+  getDownstreamRefs,
+  getRef,
+  getUpstreamRefs,
+  isEventualCallTo,
+  isSynchronous,
+  resolvesToAsyncFunction,
+  resolveToFunction,
+} from "./ast.js";
 import type { ProgramAnalysis } from "./get-program-analysis.js";
 
 const getOuterScopeContaining = (analysis: ProgramAnalysis, node: EsTreeNode): Scope | null => {
@@ -212,17 +220,7 @@ export const getEffectFn = (analysis: ProgramAnalysis, node: EsTreeNode): EsTree
   }
   if (isNodeOfType(fn, "Identifier")) {
     const ref = getRef(analysis, fn);
-    const definitionNode = ref?.resolved?.defs[0]?.node as unknown as EsTreeNode | undefined;
-    if (definitionNode && isFunctionLike(definitionNode)) return definitionNode;
-    if (definitionNode && isNodeOfType(definitionNode, "VariableDeclarator")) {
-      const initializer = definitionNode.init;
-      if (
-        isNodeOfType(initializer, "ArrowFunctionExpression") ||
-        isNodeOfType(initializer, "FunctionExpression")
-      ) {
-        return initializer;
-      }
-    }
+    return ref ? resolveToFunction(ref) : null;
   }
   return null;
 };
@@ -362,6 +360,20 @@ export const isRefCurrent = (ref: Reference): boolean => {
 export const isStateSetterCall = (analysis: ProgramAnalysis, ref: Reference): boolean =>
   isEventualCallTo(analysis, ref, (innerRef) => isStateSetter(analysis, innerRef));
 
+// The shared "is this a synchronous, hoistable state-setter call worth
+// reporting" filter for the mount-effect rules. A direct `setState()` at
+// a synchronous call site qualifies; a setter reached only indirectly
+// through an `async` intermediate function does not (it isn't hoistable
+// to a `useState` initializer).
+export const isSyncStateSetterCall = (
+  analysis: ProgramAnalysis,
+  ref: Reference,
+  effectFn: EsTreeNode,
+): boolean =>
+  isStateSetterCall(analysis, ref) &&
+  isSynchronous(ref.identifier as unknown as EsTreeNode, effectFn) &&
+  !resolvesToAsyncFunction(ref);
+
 export const isPropCall = (analysis: ProgramAnalysis, ref: Reference): boolean =>
   isEventualCallTo(analysis, ref, (innerRef) => isPropAlias(analysis, innerRef));
 
@@ -388,12 +400,7 @@ const isCleanupReturnArgument = (analysis: ProgramAnalysis, node: EsTreeNode): b
   if (isNodeOfType(node, "MemberExpression")) return true;
   if (isNodeOfType(node, "Identifier")) {
     const ref = getRef(analysis, node);
-    const definitionNode = ref?.resolved?.defs[0]?.node as unknown as EsTreeNode | undefined;
-    if (definitionNode && isFunctionLike(definitionNode)) return true;
-    if (definitionNode && isNodeOfType(definitionNode, "VariableDeclarator")) {
-      const initializer = definitionNode.init;
-      return isFunctionLike(initializer as EsTreeNode | null | undefined);
-    }
+    if (ref && resolveToFunction(ref)) return true;
   }
   if (isNodeOfType(node, "ConditionalExpression")) {
     return (

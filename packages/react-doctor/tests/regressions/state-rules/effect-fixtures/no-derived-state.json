@@ -113,6 +113,12 @@
       "name": "Mutate internal state",
       "code": "\n        function DoubleList() {\n          const [list, setList] = useState([]);\n          const [doubleList, setDoubleList] = useState([]);\n\n          useEffect(() => {\n            doubleList.push(...list);\n          }, [list]);\n        }\n      ",
       "todo": false
+    },
+    {
+      "idx": 19,
+      "name": "Setter inside named async function called with props from effect",
+      "code": "\n        function Form({ firstName, lastName }) {\n          const [fullName, setFullName] = useState('');\n\n          useEffect(() => {\n            const update = async (first, last) => {\n              await persist();\n              setFullName(first + ' ' + last);\n            };\n            update(firstName, lastName);\n          }, [firstName, lastName]);\n        }\n      ",
+      "todo": false
     }
   ],
   "invalid": [

@@ -17,6 +17,12 @@
       "name": "Set state to a value derived from props",
       "code": "\n        function Counter({ count }) {\n          const [doubleCount, setDoubleCount] = useState(0);\n\n          useEffect(() => {\n            setDoubleCount(count * 2);\n          }, [count]);\n        }\n      ",
       "todo": false
+    },
+    {
+      "idx": 3,
+      "name": "Setter inside named async function called from effect",
+      "code": "\n        function Profile({ userId }) {\n          const [data, setData] = useState(null);\n\n          useEffect(() => {\n            const sync = async () => {\n              await refresh(userId);\n              setData(true);\n            };\n            sync();\n          }, [userId]);\n        }\n      ",
+      "todo": false
     }
   ],
   "invalid": [

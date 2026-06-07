@@ -1,10 +1,9 @@
 import { defineRule } from "../../utils/define-rule.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { getCallExpr, isSynchronous, resolvesToAsyncFunction } from "./utils/effect/ast.js";
+import { getCallExpr } from "./utils/effect/ast.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import {
   getEffectDepsRefs,
@@ -12,7 +11,7 @@ import {
   getEffectFnRefs,
   getUseStateDecl,
   isStateSetter,
-  isStateSetterCall,
+  isSyncStateSetterCall,
   isUseEffect,
 } from "./utils/effect/react.js";
 
@@ -47,9 +46,7 @@ export const noInitializeState = defineRule<Rule>({
       if (!isEffectRunOnlyOnMount) return;
 
       for (const ref of effectFnRefs) {
-        if (!isStateSetterCall(analysis, ref)) continue;
-        if (!isSynchronous(ref.identifier as unknown as EsTreeNode, effectFn)) continue;
-        if (!isStateSetter(analysis, ref) && resolvesToAsyncFunction(ref)) continue;
+        if (!isSyncStateSetterCall(analysis, ref, effectFn)) continue;
         const callExpr = getCallExpr(ref);
         if (!callExpr || !isNodeOfType(callExpr, "CallExpression")) continue;
         const useStateDecl = getUseStateDecl(analysis, ref);

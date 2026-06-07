@@ -1,5 +1,6 @@
 import type { Reference } from "eslint-scope";
 import type { EsTreeNode } from "../../../../utils/es-tree-node.js";
+import type { EsTreeNodeOfType } from "../../../../utils/es-tree-node-of-type.js";
 import { isAstNode } from "../../../../utils/is-ast-node.js";
 import { isFunctionLike } from "../../../../utils/is-function-like.js";
 import { isNodeOfType } from "../../../../utils/is-node-of-type.js";
@@ -180,16 +181,32 @@ export const isSynchronous = (node: EsTreeNode | null | undefined, within: EsTre
   return isSynchronous(node.parent, within);
 };
 
-export const resolvesToAsyncFunction = (ref: Reference): boolean => {
+// Resolves a reference to the function-like node its first definition
+// denotes, unwrapping a `const fn = () => {}` declarator. Returns null
+// when the reference doesn't resolve to a function. Shared by
+// `getEffectFn`, `isCleanupReturnArgument`, and `resolvesToAsyncFunction`.
+export const resolveToFunction = (
+  ref: Reference,
+):
+  | EsTreeNodeOfType<"ArrowFunctionExpression">
+  | EsTreeNodeOfType<"FunctionExpression">
+  | EsTreeNodeOfType<"FunctionDeclaration">
+  | null => {
   const definitionNode = ref.resolved?.defs[0]?.node as unknown as EsTreeNode | undefined;
-  if (!definitionNode) return false;
-  if (isFunctionLike(definitionNode)) return Boolean(definitionNode.async);
-  if (isNodeOfType(definitionNode, "VariableDeclarator") && definitionNode.init) {
-    const initializer = definitionNode.init as EsTreeNode;
-    if (isFunctionLike(initializer)) return Boolean(initializer.async);
+  if (!definitionNode) return null;
+  if (isFunctionLike(definitionNode)) return definitionNode;
+  if (isNodeOfType(definitionNode, "VariableDeclarator") && isFunctionLike(definitionNode.init)) {
+    return definitionNode.init;
   }
-  return false;
+  return null;
 };
+
+// Coarse by design: any `async` intermediate function suppresses the
+// indirect-setter diagnostic, even for a setter that runs synchronously
+// before the first await. RDE parity showed this trade-off is safe in
+// practice; tightening it would require await-position analysis.
+export const resolvesToAsyncFunction = (ref: Reference): boolean =>
+  Boolean(resolveToFunction(ref)?.async);
 
 export const isEventualCallTo = (
   analysis: ProgramAnalysis,

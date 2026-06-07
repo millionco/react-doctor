@@ -6,13 +6,7 @@ import { isInitialOnlyPropName } from "../../utils/is-initial-only-prop-name.js"
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import {
-  getArgsUpstreamRefs,
-  getCallExpr,
-  getUpstreamRefs,
-  isSynchronous,
-  resolvesToAsyncFunction,
-} from "./utils/effect/ast.js";
+import { getArgsUpstreamRefs, getCallExpr, getUpstreamRefs } from "./utils/effect/ast.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import {
   getEffectDepsRefs,
@@ -22,8 +16,7 @@ import {
   hasCleanup,
   isProp,
   isState,
-  isStateSetter,
-  isStateSetterCall,
+  isSyncStateSetterCall,
   isUseEffect,
 } from "./utils/effect/react.js";
 
@@ -73,9 +66,7 @@ export const noDerivedState = defineRule<Rule>({
       if (!effectFn) return;
 
       for (const ref of effectFnRefs) {
-        if (!isStateSetterCall(analysis, ref)) continue;
-        if (!isSynchronous(ref.identifier as unknown as EsTreeNode, effectFn)) continue;
-        if (!isStateSetter(analysis, ref) && resolvesToAsyncFunction(ref)) continue;
+        if (!isSyncStateSetterCall(analysis, ref, effectFn)) continue;
 
         const callExpr = getCallExpr(ref);
         if (!callExpr) continue;

@@ -29,6 +29,12 @@
       "name": "Set state to internal plus external state",
       "code": "\n        function Game() {\n          const [round, setRound] = useState(1);\n          const [isGameOver, setIsGameOver] = useState(false);\n          const { data: players } = useQuery('/players');\n\n          useEffect(() => {\n            setIsGameOver(round > 10 || players.length === 0);\n          }, [round, players]);\n        }\n      ",
       "todo": false
+    },
+    {
+      "idx": 5,
+      "name": "Setter inside named async function called from effect",
+      "code": "\n        function Game() {\n          const [round, setRound] = useState(1);\n          const [isGameOver, setIsGameOver] = useState(false);\n\n          useEffect(() => {\n            const finish = async () => {\n              await saveRound(round);\n              setIsGameOver(true);\n            };\n            finish();\n          }, [round]);\n        }\n      ",
+      "todo": false
     }
   ],
   "invalid": [

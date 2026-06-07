@@ -229,7 +229,10 @@ export const resolveTsconfigAliasPath = (fromFilename: string, source: string): 
 
   if (bestPattern) {
     for (const target of config.paths.get(bestPattern) ?? []) {
-      const substituted = target.includes("*") ? target.replace("*", bestCapture) : target;
+      // A tsconfig `paths` target contains at most one `*`; replaceAll
+      // keeps the substitution complete (and silences scanners that flag
+      // single-occurrence replace as incomplete encoding).
+      const substituted = target.replaceAll("*", bestCapture);
       const resolved = resolveModuleFileFromAbsolutePath(
         path.resolve(config.baseAbsolutePath, substituted),
       );

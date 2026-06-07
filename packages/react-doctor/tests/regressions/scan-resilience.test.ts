@@ -573,15 +573,14 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
     }
   });
 
-  // `rn-no-inline-flatlist-renderitem` flags the `renderItem` value created in
-  // the component body, which React Compiler memoizes — so it's a false
-  // positive under RC and ships with `disabledBy: ["react-compiler"]` (#723).
-  // Its two siblings flag allocations created *inside* the renderItem body
-  // (per-row closures / object literals) that RC does NOT memoize, so they must
-  // keep firing even when the compiler is on.
-  it("only disables the renderItem-identity RN rule under React Compiler, not the per-row ones", () => {
-    const renderItemIdentityRule = "react-doctor/rn-no-inline-flatlist-renderitem";
-    const perRowRules = [
+  // The renderItem-family RN perf rules guard against inline functions/objects
+  // in list rows, which React Compiler auto-memoizes. RC users were seeing them
+  // as noise (#723), so all three ship with `disabledBy: ["react-compiler"]`
+  // and must drop once the compiler is detected. They `requires: ["react-native"]`,
+  // so the assertion needs an RN-capable test project.
+  it("disables the renderItem-family RN perf rules when React Compiler is detected", () => {
+    const renderItemRules = [
+      "react-doctor/rn-no-inline-flatlist-renderitem",
       "react-doctor/rn-list-callback-per-row",
       "react-doctor/rn-no-inline-object-in-list-item",
     ];
@@ -594,8 +593,7 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
         hasReactCompiler: false,
       }),
     });
-    expect(withoutCompiler.rules[renderItemIdentityRule]).toBe("warn");
-    for (const ruleKey of perRowRules) {
+    for (const ruleKey of renderItemRules) {
       expect(withoutCompiler.rules[ruleKey]).toBe("warn");
     }
 
@@ -607,9 +605,8 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
         hasReactCompiler: true,
       }),
     });
-    expect(withCompiler.rules[renderItemIdentityRule]).toBeUndefined();
-    for (const ruleKey of perRowRules) {
-      expect(withCompiler.rules[ruleKey]).toBe("warn");
+    for (const ruleKey of renderItemRules) {
+      expect(withCompiler.rules[ruleKey]).toBeUndefined();
     }
   });
 

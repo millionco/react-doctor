@@ -76,6 +76,7 @@ export * from "./validate-config-types.js";
 export * from "./utils/build-rule-docs-url.js";
 export * from "./utils/classify-package-role.js";
 export * from "./utils/dedupe-diagnostics.js";
+export * from "./utils/define-config.js";
 export * from "./utils/group-by.js";
 export * from "./utils/has-published-fix-recipe.js";
 export * from "./utils/list-source-files.js";

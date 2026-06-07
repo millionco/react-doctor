@@ -181,8 +181,8 @@ interface MigrationGuardInput {
  * `react-doctor.config.json` to `doctor.config.ts` before config is loaded,
  * so the scan reads the renamed file and the user is told once. CI, coding
  * agents, JSON/score output, pre-commit (`--staged`) hooks, and non-TTY runs
- * are left untouched — the loader's warning still nudges them — so a scan
- * never mutates the repo unattended.
+ * are left untouched — the loader still reads the legacy file as a deprecated
+ * fallback and warns — so a scan never mutates the repo unattended.
  */
 const maybeMigrateLegacyConfig = (
   requestedDirectory: string,

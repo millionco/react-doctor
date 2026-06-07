@@ -39,7 +39,12 @@ export type {
   ReactDoctorConfig,
   ScoreResult,
 };
-export { getDiffInfo, filterSourceFiles, summarizeDiagnostics } from "@react-doctor/core";
+export {
+  getDiffInfo,
+  filterSourceFiles,
+  summarizeDiagnostics,
+  defineConfig,
+} from "@react-doctor/core";
 export { buildJsonReport, buildJsonReportError };
 // `ReactDoctorError` is the tagged Schema class from
 // `@react-doctor/core`, used by the new Effect pipeline.

@@ -49,14 +49,14 @@ Configure with a `doctor.config.ts` (or `.js`, `.mjs`, `.cjs`, `.json`, `.jsonc`
 
 ```ts
 // doctor.config.ts
-import type { ReactDoctorConfig } from "react-doctor/api";
+import { defineConfig } from "react-doctor/api";
 
-export default {
+export default defineConfig({
   lint: true,
   rules: {
     "react-doctor/no-array-index-as-key": "off",
   },
-} satisfies ReactDoctorConfig;
+});
 ```
 
 Prefer JSON? Use `doctor.config.json`:

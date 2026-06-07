@@ -96,6 +96,35 @@ const loadPackageJsonConfig = (directory: string): LoadedReactDoctorConfig | nul
   };
 };
 
+// Reads a pre-migration `react-doctor.config.json` as a deprecated fallback,
+// the lowest-priority source in a directory. The filename is on its way out
+// (the CLI offers to migrate it to `doctor.config.ts`), but until then it's
+// still applied so an un-migrated project keeps its settings — accompanied by
+// a one-time-per-directory nudge to rename it. A broken legacy file warns and
+// reads as "no legacy config" so resolution falls through to an ancestor.
+const loadLegacyConfig = (directory: string): LoadedReactDoctorConfig | null => {
+  const legacyFilePath = path.join(directory, LEGACY_CONFIG_FILENAME);
+  if (!isFile(legacyFilePath)) return null;
+  try {
+    const parsed = readDataConfig(legacyFilePath);
+    if (isPlainObject(parsed)) {
+      warn(
+        `${LEGACY_CONFIG_FILENAME} is deprecated — rename it to ${CONFIG_BASENAME}.json (or author a ${CONFIG_BASENAME}.ts). It is still read for now.`,
+      );
+      return {
+        config: validateConfigTypes(parsed as ReactDoctorConfig),
+        sourceDirectory: directory,
+        configFilePath: legacyFilePath,
+        format: "json",
+      };
+    }
+    warn(`${LEGACY_CONFIG_FILENAME} must contain an object, ignoring.`);
+  } catch (error) {
+    warn(`Failed to load ${LEGACY_CONFIG_FILENAME}: ${formatError(error)}`);
+  }
+  return null;
+};
+
 const loadConfigFromDirectory = async (directory: string): Promise<DirectoryConfigResult> => {
   let sawBrokenConfigFile = false;
   for (const extension of CONFIG_EXTENSIONS) {
@@ -126,13 +155,11 @@ const loadConfigFromDirectory = async (directory: string): Promise<DirectoryConf
   const packageJsonConfig = loadPackageJsonConfig(directory);
   if (packageJsonConfig) return { status: "found", loaded: packageJsonConfig };
 
-  // Nudge users who still have the pre-migration filename — it's no longer
-  // read, so without this warning the config would silently stop applying.
-  if (isFile(path.join(directory, LEGACY_CONFIG_FILENAME))) {
-    warn(
-      `${LEGACY_CONFIG_FILENAME} is no longer read — rename it to ${CONFIG_BASENAME}.json (or author a ${CONFIG_BASENAME}.ts).`,
-    );
-  }
+  // Pre-migration filename: still honored as the lowest-priority fallback so
+  // an un-migrated config keeps applying, with a deprecation nudge to rename.
+  const legacyConfig = loadLegacyConfig(directory);
+  if (legacyConfig) return { status: "found", loaded: legacyConfig };
+
   return { status: sawBrokenConfigFile ? "invalid" : "absent", loaded: null };
 };
 

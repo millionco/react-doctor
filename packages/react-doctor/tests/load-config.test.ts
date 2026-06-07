@@ -162,8 +162,10 @@ describe("loadConfig", () => {
       const config = await loadConfig(directoryConfigRoot);
       expect(config).toBeNull();
     });
+  });
 
-    it("warns when a legacy react-doctor.config.json is found but no longer read", async () => {
+  describe("legacy react-doctor.config.json fallback", () => {
+    it("reads a legacy react-doctor.config.json as a deprecated fallback and warns", async () => {
       const legacyDirectory = path.join(tempRootDirectory, "legacy-config");
       fs.mkdirSync(legacyDirectory, { recursive: true });
       fs.writeFileSync(
@@ -172,8 +174,69 @@ describe("loadConfig", () => {
       );
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
       const config = await loadConfig(legacyDirectory);
-      expect(config).toBeNull();
+      expect(config).toEqual({ lint: true });
       expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("react-doctor.config.json"));
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("deprecated"));
+      warnSpy.mockRestore();
+    });
+
+    it("prefers doctor.config.json over a legacy react-doctor.config.json", async () => {
+      const legacyPrecedenceDirectory = path.join(tempRootDirectory, "legacy-precedence");
+      fs.mkdirSync(legacyPrecedenceDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(legacyPrecedenceDirectory, "doctor.config.json"),
+        JSON.stringify({ ignore: { rules: ["from-current"] } }),
+      );
+      fs.writeFileSync(
+        path.join(legacyPrecedenceDirectory, "react-doctor.config.json"),
+        JSON.stringify({ ignore: { rules: ["from-legacy"] } }),
+      );
+      const config = await loadConfig(legacyPrecedenceDirectory);
+      expect(config?.ignore?.rules).toEqual(["from-current"]);
+    });
+
+    it("prefers package.json reactDoctor over a legacy react-doctor.config.json", async () => {
+      const legacyPkgDirectory = path.join(tempRootDirectory, "legacy-vs-pkg");
+      fs.mkdirSync(legacyPkgDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(legacyPkgDirectory, "package.json"),
+        JSON.stringify({ name: "test", reactDoctor: { ignore: { rules: ["from-pkg"] } } }),
+      );
+      fs.writeFileSync(
+        path.join(legacyPkgDirectory, "react-doctor.config.json"),
+        JSON.stringify({ ignore: { rules: ["from-legacy"] } }),
+      );
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const config = await loadConfig(legacyPkgDirectory);
+      expect(config?.ignore?.rules).toEqual(["from-pkg"]);
+      warnSpy.mockRestore();
+    });
+
+    it("inherits a legacy react-doctor.config.json from an ancestor directory", async () => {
+      const ancestorDirectory = path.join(tempRootDirectory, "legacy-ancestor");
+      const childDirectory = path.join(ancestorDirectory, "packages", "ui");
+      fs.mkdirSync(childDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(ancestorDirectory, "react-doctor.config.json"),
+        JSON.stringify({ ignore: { rules: ["from-legacy-root"] } }),
+      );
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const config = await loadConfig(childDirectory);
+      expect(config?.ignore?.rules).toEqual(["from-legacy-root"]);
+      warnSpy.mockRestore();
+    });
+
+    it("warns and reads as absent when the legacy file is malformed", async () => {
+      const brokenLegacyDirectory = path.join(tempRootDirectory, "legacy-broken");
+      fs.mkdirSync(brokenLegacyDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(brokenLegacyDirectory, "react-doctor.config.json"),
+        "not valid json{{{",
+      );
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const config = await loadConfig(brokenLegacyDirectory);
+      expect(config).toBeNull();
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Failed to load"));
       warnSpy.mockRestore();
     });
   });

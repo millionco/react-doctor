@@ -75,6 +75,34 @@ describe("resolveTsconfigAliasPath", () => {
     expect(resolveTsconfigAliasPath(fromFile, "@/Deep")).toBe(target);
   });
 
+  it("inherits paths from an extended base when the child declares only baseUrl", () => {
+    writeFile(
+      "tsconfig.base.json",
+      JSON.stringify({ compilerOptions: { baseUrl: ".", paths: { "@/*": ["./src/*"] } } }),
+    );
+    writeFile(
+      "tsconfig.json",
+      JSON.stringify({ extends: "./tsconfig.base.json", compilerOptions: { baseUrl: "." } }),
+    );
+    const target = writeFile("src/Only.tsx", "export const Only = () => null;");
+    const fromFile = path.join(temporaryDirectory, "src/app/page.tsx");
+    expect(resolveTsconfigAliasPath(fromFile, "@/Only")).toBe(target);
+  });
+
+  it("treats an explicit empty `paths` as replacing the base (no aliases)", () => {
+    writeFile(
+      "tsconfig.base.json",
+      JSON.stringify({ compilerOptions: { baseUrl: ".", paths: { "@/*": ["./src/*"] } } }),
+    );
+    writeFile(
+      "tsconfig.json",
+      JSON.stringify({ extends: "./tsconfig.base.json", compilerOptions: { paths: {} } }),
+    );
+    writeFile("src/Only.tsx", "export const Only = () => null;");
+    const fromFile = path.join(temporaryDirectory, "src/app/page.tsx");
+    expect(resolveTsconfigAliasPath(fromFile, "@/Only")).toBeNull();
+  });
+
   it("returns null for a bare specifier that matches no alias", () => {
     writeFile(
       "tsconfig.json",

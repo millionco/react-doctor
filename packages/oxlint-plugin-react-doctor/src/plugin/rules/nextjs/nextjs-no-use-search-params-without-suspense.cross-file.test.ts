@@ -441,6 +441,39 @@ describe("nextjs-no-use-search-params-without-suspense — cross-file", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("recognizes an ancestor layout that wraps children in <React.Suspense>", () => {
+    writeFile(
+      "app/ns/layout.tsx",
+      `
+        import * as React from "react";
+        export default function Layout({ children }) {
+          return <React.Suspense fallback={<div>loading</div>}>{children}</React.Suspense>;
+        }
+      `,
+    );
+    const pagePath = writeFile(
+      "app/ns/page.tsx",
+      `
+        import { useSearchParams } from "next/navigation";
+        export default function Page() {
+          const params = useSearchParams();
+          return <div>{params.toString()}</div>;
+        }
+      `,
+    );
+
+    const result = runRule(
+      nextjsNoUseSearchParamsWithoutSuspense,
+      fs.readFileSync(pagePath, "utf8"),
+      {
+        filename: pagePath,
+      },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("still flags a direct call when the ancestor layout has no <Suspense>", () => {
     writeFile(
       "app/plain/layout.tsx",

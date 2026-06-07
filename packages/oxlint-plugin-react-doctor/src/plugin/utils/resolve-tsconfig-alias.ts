@@ -99,10 +99,23 @@ const resolveExtendsPath = (extendsValue: string, fromConfigDirectory: string): 
   return path.join(fromConfigDirectory, "node_modules", withExtension);
 };
 
+const parsePathsField = (pathsField: unknown): Map<string, readonly string[]> => {
+  const paths = new Map<string, readonly string[]>();
+  if (!isObjectRecord(pathsField)) return paths;
+  for (const [pattern, targets] of Object.entries(pathsField)) {
+    if (!Array.isArray(targets)) continue;
+    const stringTargets = targets.filter((target): target is string => typeof target === "string");
+    if (stringTargets.length > 0) paths.set(pattern, stringTargets);
+  }
+  return paths;
+};
+
 // Reads a tsconfig + its `extends` chain into the effective `baseUrl` +
-// `paths`. `baseUrl`/`paths` are taken from the nearest config in the
-// chain that declares them, resolved against that config's own
-// directory (matching how TypeScript anchors them).
+// `paths`. A `paths` field — even empty — REPLACES inherited paths (TS
+// does not deep-merge `compilerOptions.paths` across `extends`); a
+// config with no `paths` field inherits them (and their anchor) from the
+// chain. `paths`/`baseUrl` resolve against the directory of the config
+// that declares them, matching how TypeScript anchors them.
 const readResolvedTsconfig = (
   configFilePath: string,
   extendsDepth: number,
@@ -112,34 +125,22 @@ const readResolvedTsconfig = (
 
   const configDirectory = path.dirname(configFilePath);
   const compilerOptions = isObjectRecord(parsed.compilerOptions) ? parsed.compilerOptions : {};
-  const baseUrl = compilerOptions.baseUrl;
-  const pathsField = compilerOptions.paths;
+  const baseUrlValue = typeof compilerOptions.baseUrl === "string" ? compilerOptions.baseUrl : null;
+  const hasExplicitBaseUrl = baseUrlValue !== null;
+  const baseAbsolutePath =
+    baseUrlValue !== null ? path.resolve(configDirectory, baseUrlValue) : configDirectory;
 
-  if (typeof baseUrl === "string" || isObjectRecord(pathsField)) {
-    const paths = new Map<string, readonly string[]>();
-    if (isObjectRecord(pathsField)) {
-      for (const [pattern, targets] of Object.entries(pathsField)) {
-        if (!Array.isArray(targets)) continue;
-        const stringTargets = targets.filter(
-          (target): target is string => typeof target === "string",
-        );
-        if (stringTargets.length > 0) paths.set(pattern, stringTargets);
-      }
-    }
-    return {
-      baseAbsolutePath:
-        typeof baseUrl === "string" ? path.resolve(configDirectory, baseUrl) : configDirectory,
-      hasExplicitBaseUrl: typeof baseUrl === "string",
-      paths,
-    };
+  if (isObjectRecord(compilerOptions.paths)) {
+    return { baseAbsolutePath, hasExplicitBaseUrl, paths: parsePathsField(compilerOptions.paths) };
   }
 
   if (typeof parsed.extends === "string" && extendsDepth < TSCONFIG_EXTENDS_MAX_DEPTH) {
     const parentPath = resolveExtendsPath(parsed.extends, configDirectory);
-    if (parentPath) return readResolvedTsconfig(parentPath, extendsDepth + 1);
+    const inherited = parentPath ? readResolvedTsconfig(parentPath, extendsDepth + 1) : null;
+    if (inherited) return inherited;
   }
 
-  return null;
+  return hasExplicitBaseUrl ? { baseAbsolutePath, hasExplicitBaseUrl, paths: new Map() } : null;
 };
 
 interface CacheEntry {

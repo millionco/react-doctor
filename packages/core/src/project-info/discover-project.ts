@@ -17,7 +17,7 @@ import {
   SHOPIFY_FLASH_LIST_PACKAGE_NAME,
 } from "./find-shopify-flash-list-version.js";
 import { resolveCatalogBackedDependencyVersion } from "./resolve-catalog-backed-dependency-version.js";
-import { getNextjsVersion } from "./get-nextjs-version.js";
+import { findNextjsVersion } from "./find-nextjs-version.js";
 import { getPreactVersion } from "./get-preact-version.js";
 import { hasTanStackQuery } from "./has-tanstack-query.js";
 import { someWorkspacePackageJson } from "./some-workspace-package-json.js";
@@ -219,7 +219,15 @@ export const discoverProject = (directory: string): ProjectInfo => {
     hasReactNativeWorkspace &&
     someWorkspacePackageJson(directory, packageJson, isPackageJsonReanimatedAware);
 
-  const nextjsVersion = framework === "nextjs" ? getNextjsVersion(packageJson) : null;
+  const nextjsVersion =
+    framework === "nextjs"
+      ? resolveCatalogBackedDependencyVersion({
+          rootDirectory: directory,
+          rootPackageJson: packageJson,
+          packageName: "next",
+          version: findNextjsVersion(directory, packageJson),
+        })
+      : null;
   const preactVersion = getPreactVersion(packageJson);
 
   const projectInfo: ProjectInfo = {

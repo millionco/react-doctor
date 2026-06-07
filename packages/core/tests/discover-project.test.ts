@@ -1550,3 +1550,124 @@ describe("discoverProject — FlashList", () => {
     expect(projectInfo.shopifyFlashListMajorVersion).toBe(2);
   });
 });
+
+describe("discoverProject — Next.js version", () => {
+  it("detects the `next` version and major from a single-package app", () => {
+    const projectDirectory = path.join(tempDirectory, "nextjs-single-app");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "nextjs-single-app",
+        dependencies: { next: "^15.3.0", react: "^19.0.0", "react-dom": "^19.0.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.framework).toBe("nextjs");
+    expect(projectInfo.nextjsVersion).toBe("^15.3.0");
+    expect(projectInfo.nextjsMajorVersion).toBe(15);
+  });
+
+  it("resolves a `next` `catalog:` spec from the pnpm workspace catalog so the major parses", () => {
+    // Repro for the Bugbot "Next catalog refs unresolved" finding: a `catalog:`
+    // spec must resolve to a concrete version, otherwise `nextjsMajorVersion`
+    // stays null and `server-fetch-without-revalidate` keeps firing on Next 15+.
+    const monorepoRoot = path.join(tempDirectory, "nextjs-pnpm-catalog");
+    const webDirectory = path.join(monorepoRoot, "apps", "web");
+    fs.mkdirSync(webDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(monorepoRoot, "pnpm-workspace.yaml"),
+      "packages:\n  - apps/*\n\ncatalog:\n  next: ^15.3.0\n",
+    );
+    fs.writeFileSync(path.join(monorepoRoot, "package.json"), JSON.stringify({ name: "root" }));
+    fs.writeFileSync(
+      path.join(webDirectory, "package.json"),
+      JSON.stringify({
+        name: "web",
+        dependencies: { next: "catalog:", react: "^19.0.0", "react-dom": "^19.0.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(webDirectory);
+    expect(projectInfo.nextjsVersion).toBe("^15.3.0");
+    expect(projectInfo.nextjsMajorVersion).toBe(15);
+  });
+
+  it("resolves `next` declared only in a workspace when scanning a monorepo root", () => {
+    // Repro for the Bugbot "Next version ignores workspaces" finding: the root
+    // manifest has no `next`, but the framework is promoted to nextjs by the
+    // workspace walk — so the version lookup must walk workspaces too.
+    const monorepoRoot = path.join(tempDirectory, "nextjs-workspace-monorepo");
+    const webDirectory = path.join(monorepoRoot, "apps", "web");
+    fs.mkdirSync(webDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(monorepoRoot, "package.json"),
+      JSON.stringify({
+        name: "monorepo-root",
+        private: true,
+        workspaces: ["apps/*"],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(webDirectory, "package.json"),
+      JSON.stringify({
+        name: "web",
+        dependencies: { next: "^15.3.0", react: "^19.0.0", "react-dom": "^19.0.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(monorepoRoot);
+    expect(projectInfo.framework).toBe("nextjs");
+    expect(projectInfo.nextjsVersion).toBe("^15.3.0");
+    expect(projectInfo.nextjsMajorVersion).toBe(15);
+  });
+
+  it("does not crash and stays null on a non-string `next` spec", () => {
+    const projectDirectory = path.join(tempDirectory, "nextjs-non-string");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      // `next` as a number is malformed but parseable JSON.
+      '{"name":"bad","dependencies":{"react":"^19.0.0","next":15}}',
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.framework).toBe("nextjs");
+    expect(projectInfo.nextjsVersion).toBeNull();
+    expect(projectInfo.nextjsMajorVersion).toBeNull();
+  });
+
+  it("leaves `nextjsMajorVersion` null for an unresolvable dist-tag spec (rule stays enabled)", () => {
+    const projectDirectory = path.join(tempDirectory, "nextjs-dist-tag");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "nextjs-dist-tag",
+        dependencies: { next: "latest", react: "^19.0.0", "react-dom": "^19.0.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.nextjsVersion).toBe("latest");
+    expect(projectInfo.nextjsMajorVersion).toBeNull();
+  });
+
+  it("is null for a non-Next project", () => {
+    const projectDirectory = path.join(tempDirectory, "vite-no-next");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "vite-no-next",
+        dependencies: { react: "^19.0.0", "react-dom": "^19.0.0" },
+        devDependencies: { vite: "^5.0.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.nextjsVersion).toBeNull();
+    expect(projectInfo.nextjsMajorVersion).toBeNull();
+  });
+});

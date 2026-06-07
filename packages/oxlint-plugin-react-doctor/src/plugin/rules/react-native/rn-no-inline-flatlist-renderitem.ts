@@ -12,6 +12,12 @@ export const rnNoInlineFlatlistRenderitem = defineRule<Rule>({
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
+  // React Compiler memoizes the `renderItem` value created in the component
+  // body, so it keeps a stable identity across redraws and this rule's footgun
+  // doesn't exist in compiler-enabled projects. (Per-row allocations created
+  // *inside* the renderItem body are a different problem the compiler can't
+  // fix — those stay covered by rn-list-callback-per-row and
+  // rn-no-inline-object-in-list-item, which are NOT disabled by react-compiler.)
   disabledBy: ["react-compiler"],
   recommendation:
     "Move renderItem to a named function or wrap it in useCallback so it is not rebuilt every time the screen redraws.",

@@ -573,6 +573,46 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
     }
   });
 
+  // `rn-no-inline-flatlist-renderitem` flags the `renderItem` value created in
+  // the component body, which React Compiler memoizes — so it's a false
+  // positive under RC and ships with `disabledBy: ["react-compiler"]` (#723).
+  // Its two siblings flag allocations created *inside* the renderItem body
+  // (per-row closures / object literals) that RC does NOT memoize, so they must
+  // keep firing even when the compiler is on.
+  it("only disables the renderItem-identity RN rule under React Compiler, not the per-row ones", () => {
+    const renderItemIdentityRule = "react-doctor/rn-no-inline-flatlist-renderitem";
+    const perRowRules = [
+      "react-doctor/rn-list-callback-per-row",
+      "react-doctor/rn-no-inline-object-in-list-item",
+    ];
+
+    const withoutCompiler = createOxlintConfig({
+      pluginPath: "/tmp/react-doctor-plugin.js",
+      project: buildTestProject({
+        rootDirectory: "/tmp/test",
+        framework: "react-native",
+        hasReactCompiler: false,
+      }),
+    });
+    expect(withoutCompiler.rules[renderItemIdentityRule]).toBe("warn");
+    for (const ruleKey of perRowRules) {
+      expect(withoutCompiler.rules[ruleKey]).toBe("warn");
+    }
+
+    const withCompiler = createOxlintConfig({
+      pluginPath: "/tmp/react-doctor-plugin.js",
+      project: buildTestProject({
+        rootDirectory: "/tmp/test",
+        framework: "react-native",
+        hasReactCompiler: true,
+      }),
+    });
+    expect(withCompiler.rules[renderItemIdentityRule]).toBeUndefined();
+    for (const ruleKey of perRowRules) {
+      expect(withCompiler.rules[ruleKey]).toBe("warn");
+    }
+  });
+
   // The inverse of the rule above: `react-compiler-no-manual-memoization`
   // is gated with `requires: ["react-compiler"]` so it ONLY fires once
   // the project ships with React Compiler. Without the compiler, manual

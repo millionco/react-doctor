@@ -64,7 +64,6 @@ export const rnListCallbackPerRow = defineRule<Rule>({
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
-  disabledBy: ["react-compiler"],
   recommendation:
     "Move the handler out with useCallback at list scope and pass the row id as a prop. Then memo() rows skip redrawing when their data has not changed.",
   create: (context: RuleContext) => {

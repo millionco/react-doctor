@@ -117,8 +117,11 @@ const resolveModuleFilePath = (modulePath: string): string | null => {
   return null;
 };
 
-export const resolveRelativeImportPath = (filename: string, source: string): string | null => {
-  const importPath = path.resolve(path.dirname(filename), source);
+// Resolves an already-absolute module path to a concrete file, trying
+// the path itself + extension candidates, then a package directory
+// entry (package.json exports/main), then an `index.*` fallback. Shared
+// by relative resolution and tsconfig-alias resolution.
+export const resolveModuleFileFromAbsolutePath = (importPath: string): string | null => {
   const directFilePath = resolveModuleFilePath(importPath);
   if (directFilePath) return directFilePath;
 
@@ -127,3 +130,6 @@ export const resolveRelativeImportPath = (filename: string, source: string): str
 
   return resolveModuleFilePath(path.join(importPath, "index"));
 };
+
+export const resolveRelativeImportPath = (filename: string, source: string): string | null =>
+  resolveModuleFileFromAbsolutePath(path.resolve(path.dirname(filename), source));

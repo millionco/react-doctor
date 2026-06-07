@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { __clearParseSourceFileCacheForTests } from "../../utils/parse-source-file.js";
+import { __clearTsconfigAliasCacheForTests } from "../../utils/resolve-tsconfig-alias.js";
 import { nextjsNoUseSearchParamsWithoutSuspense } from "./nextjs-no-use-search-params-without-suspense.js";
 
 let temporaryDirectory: string;
@@ -11,6 +12,7 @@ let temporaryDirectory: string;
 beforeEach(() => {
   temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "use-search-params-xfile-"));
   __clearParseSourceFileCacheForTests();
+  __clearTsconfigAliasCacheForTests();
 });
 
 afterEach(() => {
@@ -286,5 +288,188 @@ describe("nextjs-no-use-search-params-without-suspense — cross-file", () => {
 
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a consumer imported via a tsconfig `@/` path alias", () => {
+    writeFile(
+      "tsconfig.json",
+      JSON.stringify({ compilerOptions: { baseUrl: ".", paths: { "@/*": ["./src/*"] } } }),
+    );
+    writeFile(
+      "src/components/search-bar.tsx",
+      `
+        "use client";
+        import { useSearchParams } from "next/navigation";
+        export const SearchBar = () => {
+          const params = useSearchParams();
+          return <input value={params.get("q") ?? ""} />;
+        };
+      `,
+    );
+    const pagePath = writeFile(
+      "src/app/page.tsx",
+      `
+        import { SearchBar } from "@/components/search-bar";
+        export default function Page() {
+          return <div><SearchBar /></div>;
+        }
+      `,
+    );
+
+    const result = runRule(
+      nextjsNoUseSearchParamsWithoutSuspense,
+      fs.readFileSync(pagePath, "utf8"),
+      {
+        filename: pagePath,
+      },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("SearchBar");
+  });
+
+  it("flags a consumer imported through a barrel index re-export", () => {
+    writeFile(
+      "components/search-bar.tsx",
+      `
+        "use client";
+        import { useSearchParams } from "next/navigation";
+        export const SearchBar = () => {
+          const params = useSearchParams();
+          return <input value={params.get("q") ?? ""} />;
+        };
+      `,
+    );
+    writeFile("components/index.ts", `export { SearchBar } from "./search-bar";`);
+    const pagePath = writeFile(
+      "page.tsx",
+      `
+        import { SearchBar } from "./components";
+        export default function Page() {
+          return <div><SearchBar /></div>;
+        }
+      `,
+    );
+
+    const result = runRule(
+      nextjsNoUseSearchParamsWithoutSuspense,
+      fs.readFileSync(pagePath, "utf8"),
+      {
+        filename: pagePath,
+      },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("SearchBar");
+  });
+
+  it("does not flag a direct call when an ancestor layout wraps children in <Suspense>", () => {
+    writeFile(
+      "app/dashboard/layout.tsx",
+      `
+        import { Suspense } from "react";
+        export default function Layout({ children }) {
+          return <Suspense fallback={<div>loading</div>}>{children}</Suspense>;
+        }
+      `,
+    );
+    const pagePath = writeFile(
+      "app/dashboard/page.tsx",
+      `
+        import { useSearchParams } from "next/navigation";
+        export default function Page() {
+          const params = useSearchParams();
+          return <div>{params.toString()}</div>;
+        }
+      `,
+    );
+
+    const result = runRule(
+      nextjsNoUseSearchParamsWithoutSuspense,
+      fs.readFileSync(pagePath, "utf8"),
+      {
+        filename: pagePath,
+      },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a rendered consumer when an ancestor layout provides <Suspense>", () => {
+    writeFile(
+      "app/feed/layout.tsx",
+      `
+        import { Suspense } from "react";
+        export default function Layout({ children }) {
+          return <Suspense fallback={<div>loading</div>}>{children}</Suspense>;
+        }
+      `,
+    );
+    writeFile(
+      "app/feed/search-bar.tsx",
+      `
+        "use client";
+        import { useSearchParams } from "next/navigation";
+        export const SearchBar = () => {
+          const params = useSearchParams();
+          return <input value={params.get("q") ?? ""} />;
+        };
+      `,
+    );
+    const pagePath = writeFile(
+      "app/feed/page.tsx",
+      `
+        import { SearchBar } from "./search-bar";
+        export default function Page() {
+          return <div><SearchBar /></div>;
+        }
+      `,
+    );
+
+    const result = runRule(
+      nextjsNoUseSearchParamsWithoutSuspense,
+      fs.readFileSync(pagePath, "utf8"),
+      {
+        filename: pagePath,
+      },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a direct call when the ancestor layout has no <Suspense>", () => {
+    writeFile(
+      "app/plain/layout.tsx",
+      `
+        export default function Layout({ children }) {
+          return <main>{children}</main>;
+        }
+      `,
+    );
+    const pagePath = writeFile(
+      "app/plain/page.tsx",
+      `
+        import { useSearchParams } from "next/navigation";
+        export default function Page() {
+          const params = useSearchParams();
+          return <div>{params.toString()}</div>;
+        }
+      `,
+    );
+
+    const result = runRule(
+      nextjsNoUseSearchParamsWithoutSuspense,
+      fs.readFileSync(pagePath, "utf8"),
+      {
+        filename: pagePath,
+      },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 });

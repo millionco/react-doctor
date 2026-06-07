@@ -37,60 +37,11 @@ npx react-doctor@latest install
 
 Works with Claude Code, Cursor, Codex, OpenCode, and many more.
 
-### 3. Use in your editor (LSP)
+### 3. Run in CI
 
-React Doctor ships an experimental language server, so diagnostics show up live as you type — underlined inline, with rich hovers and quick fixes — in VS Code, Cursor, Zed, Neovim, Sublime, Emacs, Helix, or any LSP client. The universal launch command is:
+React Doctor CI (GitHub Actions) reviews every pull request automatically and reports only the issues your change introduced, not your existing backlog.
 
-```bash
-react-doctor experimental-lsp --stdio
-```
-
-> The editor language server is experimental — its protocol, caching, and diagnostics may change between releases, hence the `experimental-` prefix.
-
-Companion extensions for VS Code/Cursor and Zed live under `packages/`; any other LSP client can run the command above directly over stdio.
-
-### 4. Run in CI (GitHub Actions) for your team
-
-[![GitHub Action](https://img.shields.io/badge/GitHub%20Action-React%20Doctor-000000?style=flat&labelColor=000000&logo=githubactions&logoColor=white)](https://github.com/marketplace/actions/react-doctor)
-
-On a pull request the Action reports only the issues your change **introduced** — it scans the PR and the merge-base and reports the difference (like Codecov for coverage), leaving pre-existing findings alone. It posts inline review comments on the changed lines and a sticky summary with the new / fixed delta.
-
-```yaml
-name: React Doctor
-
-on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-
-permissions:
-  contents: read
-  pull-requests: write
-  issues: write
-  statuses: write # lets the action publish the score as a commit status
-
-concurrency:
-  group: react-doctor-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
-jobs:
-  react-doctor:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0 # so React Doctor can diff against the merge-base for new-vs-existing
-      - uses: millionco/react-doctor@v2
-```
-
-`fetch-depth: 0` is recommended so the baseline comparison can read the base commit; without enough history the Action falls back to reporting every finding in the changed files.
-
-`@v2` always resolves to the latest `v2.x` release of the Action. For hardened CI — recommended whenever the workflow is granted `pull-requests: write` — pin to a full commit SHA instead and let Dependabot or Renovate keep it current:
-
-```yaml
-- uses: millionco/react-doctor@75932719d11ef50e110eac01ce04acdc05fde074 # v2.0.1
-```
-
-[Add GitHub Action →](https://github.com/marketplace/actions/react-doctor)
+[Add GitHub Action →](https://react.doctor/ci)
 
 ### 4. Configure rules in `doctor.config.ts`
 

@@ -1,5 +1,16 @@
 # react-doctor
 
+## 0.4.1
+
+### Patch Changes
+
+- [#711](https://github.com/millionco/react-doctor/pull/711) [`36ecd05`](https://github.com/millionco/react-doctor/commit/36ecd053cfe22e16678ac2ff307e015b6f9a2859) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - Fix false positive in `require-reduced-motion`: the check now searches untracked files so newly created source (e.g. a `providers.tsx` with `<MotionConfig reducedMotion="user">` not yet committed) is detected.
+
+- [#706](https://github.com/millionco/react-doctor/pull/706) [`15bd9d8`](https://github.com/millionco/react-doctor/commit/15bd9d861703c6d3b0e2fd8ffad82b7b6a922b00) Thanks [@rayhanadev](https://github.com/rayhanadev)! - CI setup now offers a one-time, per-repo prompt to upgrade an existing React Doctor GitHub Actions workflow from `@v1` to `@v2` — accepting opens a PR with the bump, declining is remembered so it never asks again. The generated / "Add to CI" workflow now pins `millionco/react-doctor@v2` and grants `statuses: write`, so the action can publish the score as a commit status (and surface results on pushes to the default branch).
+
+- Updated dependencies [[`dc35070`](https://github.com/millionco/react-doctor/commit/dc35070a5066f9864a7565b952dec2f81bff1223), [`b1a22ef`](https://github.com/millionco/react-doctor/commit/b1a22efdf7b18f2cc8b7af6c0b12173ed3c76d34), [`73dcb20`](https://github.com/millionco/react-doctor/commit/73dcb2040dc6aa207beea074f846fd675c30bd2b), [`64667da`](https://github.com/millionco/react-doctor/commit/64667dae16b812ad9b4304bd7906d5ddbb50921a), [`ee9ab33`](https://github.com/millionco/react-doctor/commit/ee9ab336d3b2918d319bc048b5b164f58611df83), [`fe5f3de`](https://github.com/millionco/react-doctor/commit/fe5f3de330c5c55f6bcbed68070296eb67c2ec5b), [`831cf3f`](https://github.com/millionco/react-doctor/commit/831cf3fbfd703f5048de5c2c3258e47988a2cce0)]:
+  - oxlint-plugin-react-doctor@0.4.1
+
 ## 0.4.0
 
 ### Minor Changes

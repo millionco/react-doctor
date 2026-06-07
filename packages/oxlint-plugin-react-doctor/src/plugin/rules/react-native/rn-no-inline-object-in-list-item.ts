@@ -18,6 +18,7 @@ export const rnNoInlineObjectInListItem = defineRule<Rule>({
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
+  disabledBy: ["react-compiler"],
   recommendation:
     "Move style and object props out of renderItem (StyleSheet.create, useMemo at list scope, or pass primitives) so memo() rows stop redrawing when their data has not changed.",
   create: (context: RuleContext) => {

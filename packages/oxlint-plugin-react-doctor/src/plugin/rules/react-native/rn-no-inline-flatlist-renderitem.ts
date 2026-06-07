@@ -12,6 +12,7 @@ export const rnNoInlineFlatlistRenderitem = defineRule<Rule>({
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
+  disabledBy: ["react-compiler"],
   recommendation:
     "Move renderItem to a named function or wrap it in useCallback so it is not rebuilt every time the screen redraws.",
   create: (context: RuleContext) => ({

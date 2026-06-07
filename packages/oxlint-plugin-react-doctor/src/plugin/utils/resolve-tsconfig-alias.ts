@@ -149,7 +149,6 @@ interface CacheEntry {
 }
 
 const configByFilePath = new Map<string, CacheEntry>();
-const configByDirectory = new Map<string, ResolvedTsconfig | null>();
 
 const loadTsconfigCached = (configFilePath: string): ResolvedTsconfig | null => {
   let fileStat: fs.Stats;
@@ -166,28 +165,24 @@ const loadTsconfigCached = (configFilePath: string): ResolvedTsconfig | null => 
   return config;
 };
 
+// Walks up from `fromDirectory` for the nearest tsconfig/jsconfig. The
+// walk itself is NOT cached by directory — only parsed configs are
+// (mtime-keyed in `loadTsconfigCached`) — so a long-lived process (the
+// language server) picks up tsconfig edits and newly-added configs
+// instead of serving a stale result. The per-call statSyncs are cheap
+// and bounded by CROSS_FILE_DIRECTORY_WALK_MAX_LEVELS.
 const findNearestTsconfig = (fromDirectory: string): ResolvedTsconfig | null => {
-  const cachedForDirectory = configByDirectory.get(fromDirectory);
-  if (cachedForDirectory !== undefined) return cachedForDirectory;
-
   let currentDirectory = fromDirectory;
-  let config: ResolvedTsconfig | null = null;
   for (let level = 0; level < CROSS_FILE_DIRECTORY_WALK_MAX_LEVELS; level++) {
     for (const fileName of TSCONFIG_FILE_NAMES) {
       const candidate = loadTsconfigCached(path.join(currentDirectory, fileName));
-      if (candidate) {
-        config = candidate;
-        break;
-      }
+      if (candidate) return candidate;
     }
-    if (config) break;
     const parentDirectory = path.dirname(currentDirectory);
     if (parentDirectory === currentDirectory) break;
     currentDirectory = parentDirectory;
   }
-
-  configByDirectory.set(fromDirectory, config);
-  return config;
+  return null;
 };
 
 const matchPathPattern = (source: string, pattern: string): string | null => {
@@ -252,5 +247,4 @@ export const resolveTsconfigAliasPath = (fromFilename: string, source: string): 
 // Exposed for tests; production callers rely on mtime-based invalidation.
 export const __clearTsconfigAliasCacheForTests = (): void => {
   configByFilePath.clear();
-  configByDirectory.clear();
 };

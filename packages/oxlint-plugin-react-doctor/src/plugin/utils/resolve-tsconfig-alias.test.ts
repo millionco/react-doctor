@@ -112,6 +112,27 @@ describe("resolveTsconfigAliasPath", () => {
     expect(resolveTsconfigAliasPath(fromFile, "react")).toBeNull();
   });
 
+  it("picks up tsconfig edits within a long-lived process (no stale directory cache)", () => {
+    const tsconfigPath = writeFile(
+      "tsconfig.json",
+      JSON.stringify({ compilerOptions: { baseUrl: ".", paths: { "@/*": ["./old/*"] } } }),
+    );
+    const oldTarget = writeFile("old/Thing.tsx", "export const Thing = () => null;");
+    const fromFile = path.join(temporaryDirectory, "src/page.tsx");
+    expect(resolveTsconfigAliasPath(fromFile, "@/Thing")).toBe(oldTarget);
+
+    const newTarget = writeFile("fresh/Thing.tsx", "export const Thing = () => null;");
+    fs.writeFileSync(
+      tsconfigPath,
+      JSON.stringify({ compilerOptions: { baseUrl: ".", paths: { "@/*": ["./fresh/*"] } } }),
+    );
+    // Force a distinct mtime so the change is observable on coarse clocks.
+    const future = new Date(Date.now() + 2000);
+    fs.utimesSync(tsconfigPath, future, future);
+
+    expect(resolveTsconfigAliasPath(fromFile, "@/Thing")).toBe(newTarget);
+  });
+
   it("returns null when no tsconfig is found", () => {
     const fromFile = path.join(temporaryDirectory, "src/page.tsx");
     expect(resolveTsconfigAliasPath(fromFile, "@/anything")).toBeNull();

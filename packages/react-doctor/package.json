@@ -68,6 +68,7 @@
     "magicast": "^0.5.3",
     "oxlint-plugin-react-doctor": "workspace:*",
     "prompts": "^2.4.2",
+    "react-doctor-oxlint": "npm:oxlint@^1.66.0",
     "typescript": ">=5.0.4 <7",
     "vscode-languageserver": "^9.0.1",
     "vscode-languageserver-textdocument": "^1.0.12",
@@ -82,14 +83,6 @@
     "@xterm/headless": "^6.0.0",
     "commander": "^14.0.3",
     "ora": "^9.4.0"
-  },
-  "peerDependencies": {
-    "oxlint": ">=1.66.0"
-  },
-  "peerDependenciesMeta": {
-    "oxlint": {
-      "optional": true
-    }
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"

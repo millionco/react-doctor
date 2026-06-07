@@ -36,15 +36,7 @@
     "@effect/vitest": "4.0.0-beta.70",
     "@types/node": "^25.6.0",
     "@types/picomatch": "^4.0.3",
-    "oxlint": "^1.66.0"
-  },
-  "peerDependencies": {
-    "oxlint": ">=1.66.0"
-  },
-  "peerDependenciesMeta": {
-    "oxlint": {
-      "optional": true
-    }
+    "react-doctor-oxlint": "npm:oxlint@^1.66.0"
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"

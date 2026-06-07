@@ -35,6 +35,18 @@
       "name": "Setter with other dependency",
       "code": "\n        function MyComponent() {\n          const [state, setState] = useState();\n          const [other, setOther] = useState();\n\n          useEffect(() => {\n            setState(\"Hello\");\n          }, [other]);\n        }\n      ",
       "todo": false
+    },
+    {
+      "idx": 6,
+      "name": "Setter inside named async function called from effect",
+      "code": "\n        function MyComponent() {\n          const [showDialog, setShowDialog] = useState(false);\n\n          useEffect(() => {\n            const checkAndFetch = async () => {\n              const update = await fetchUpdate();\n              if (!update.isAvailable) return;\n              await applyUpdate();\n              setShowDialog(true);\n            };\n            checkAndFetch();\n          }, []);\n        }\n      ",
+      "todo": false
+    },
+    {
+      "idx": 7,
+      "name": "Setter inside named async function declaration called from effect",
+      "code": "\n        function MyComponent() {\n          const [data, setData] = useState(null);\n\n          useEffect(() => {\n            async function loadData() {\n              const response = await fetch('/api');\n              const result = await response.json();\n              setData(result);\n            }\n            loadData();\n          }, []);\n        }\n      ",
+      "todo": false
     }
   ],
   "invalid": [

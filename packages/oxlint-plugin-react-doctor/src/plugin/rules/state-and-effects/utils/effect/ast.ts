@@ -1,6 +1,7 @@
 import type { Reference } from "eslint-scope";
 import type { EsTreeNode } from "../../../../utils/es-tree-node.js";
 import { isAstNode } from "../../../../utils/is-ast-node.js";
+import { isFunctionLike } from "../../../../utils/is-function-like.js";
 import { isNodeOfType } from "../../../../utils/is-node-of-type.js";
 import { getScopeForNode, type ProgramAnalysis } from "./get-program-analysis.js";
 import { VISITOR_KEYS } from "./constants.js";
@@ -177,6 +178,17 @@ export const isSynchronous = (node: EsTreeNode | null | undefined, within: EsTre
     return false;
   }
   return isSynchronous(node.parent, within);
+};
+
+export const resolvesToAsyncFunction = (ref: Reference): boolean => {
+  const definitionNode = ref.resolved?.defs[0]?.node as unknown as EsTreeNode | undefined;
+  if (!definitionNode) return false;
+  if (isFunctionLike(definitionNode)) return Boolean(definitionNode.async);
+  if (isNodeOfType(definitionNode, "VariableDeclarator") && definitionNode.init) {
+    const initializer = definitionNode.init as EsTreeNode;
+    if (isFunctionLike(initializer)) return Boolean(initializer.async);
+  }
+  return false;
 };
 
 export const isEventualCallTo = (

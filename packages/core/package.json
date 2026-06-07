@@ -24,7 +24,7 @@
   "dependencies": {
     "@effect/platform-node-shared": "4.0.0-beta.70",
     "confbox": "^0.2.4",
-    "deslop-js": "^0.0.19",
+    "deslop-js": "^0.0.20",
     "effect": "4.0.0-beta.70",
     "eslint-plugin-react-hooks": "^7.1.1",
     "jiti": "^2.7.0",

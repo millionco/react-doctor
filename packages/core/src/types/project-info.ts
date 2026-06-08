@@ -88,6 +88,8 @@ export interface ProjectInfo {
 
 export interface PackageJson {
   name?: string;
+  /** The package's own published version (present in installed manifests under `node_modules`). */
+  version?: string;
   main?: string;
   scripts?: Record<string, string>;
   dependencies?: Record<string, string>;

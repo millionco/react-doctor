@@ -1,7 +1,7 @@
 {
   "name": "react-doctor",
   "version": "0.4.2",
-  "description": "Diagnose and fix React codebases for security, performance, correctness, accessibility, bundle-size, and architecture issues",
+  "description": "Your agent writes bad React. This catches it",
   "keywords": [
     "accessibility",
     "diagnostics",
@@ -21,7 +21,7 @@
     "url": "https://github.com/millionco/react-doctor/issues"
   },
   "license": "MIT",
-  "author": "Aiden Bai",
+  "author": "Million Software, Inc",
   "repository": {
     "type": "git",
     "url": "https://github.com/millionco/react-doctor.git",

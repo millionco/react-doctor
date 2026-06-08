@@ -12,6 +12,8 @@ import { colorizeByScore } from "./colorize-by-score.js";
 import {
   PERFECT_SCORE_RAINBOW_FRAME_COUNT,
   PERFECT_SCORE_RAINBOW_FRAME_DELAY_MS,
+  RIGHT_EDGE_SAFETY_COLUMNS,
+  SCORE_BAR_MIN_WIDTH_CHARS,
   SCORE_HEADER_ANIMATION_FRAME_COUNT,
   SCORE_HEADER_ANIMATION_FRAME_DELAY_MS,
   SCORE_PROJECTION_FRAME_COUNT,
@@ -19,6 +21,7 @@ import {
 } from "./constants.js";
 import { easeOutCubic } from "./ease-out-cubic.js";
 import { canAnimateOnboarding } from "./onboarding-pacing.js";
+import { resolveClampedWidth } from "./resolve-measure-width.js";
 import { isSpinnerSilent } from "./spinner.js";
 import { writeStdout } from "./write-stdout.js";
 
@@ -26,6 +29,31 @@ const RAINBOW_HUE_SHIFT_PER_FRAME = 9;
 const RAINBOW_GRADIENT_WIDTH = 80;
 const RAINBOW_OKLCH_LIGHTNESS = 0.638;
 const RAINBOW_OKLCH_CHROMA = 0.129;
+
+const FACE_INDENT = "  ";
+
+// Top border of the doctor face box (`buildRawFaceLines`). Deriving the column
+// offset from the same string the face actually renders keeps them in sync — a
+// wider face automatically widens the inset instead of bleeding past the edge.
+const FACE_BOX_TOP_BORDER = "┌─────┐";
+
+// Visible columns the score bar (and the rest of the right column) is inset by:
+// the leading indent, the doctor face box, and the matching gap before the
+// content (`  ┌─────┐  `). The bar can't be wider than the terminal minus this.
+const SCORE_RIGHT_COLUMN_OFFSET =
+  FACE_INDENT.length + FACE_BOX_TOP_BORDER.length + FACE_INDENT.length;
+
+// The bar width clamped to what fits beside the face on this terminal. Falls
+// back to the full width when the column count is unknown (non-TTY / piped),
+// and floors at `SCORE_BAR_MIN_WIDTH_CHARS` so it stays proportional. All the
+// bar builders read this, so the fill proportion and empty remainder always
+// agree within a single render (the column count is stable per render).
+const getScoreBarWidth = (): number =>
+  resolveClampedWidth({
+    reservedColumns: SCORE_RIGHT_COLUMN_OFFSET + RIGHT_EDGE_SAFETY_COLUMNS,
+    fullWidth: SCORE_BAR_WIDTH_CHARS,
+    minWidth: SCORE_BAR_MIN_WIDTH_CHARS,
+  });
 
 interface ScoreBarSegments {
   filledSegment: string;
@@ -57,7 +85,7 @@ interface InitialScoreHeaderLineInput {
 }
 
 const buildScoreBarSegments = (filledCount: number): ScoreBarSegments => {
-  const emptyCount = SCORE_BAR_WIDTH_CHARS - filledCount;
+  const emptyCount = Math.max(0, getScoreBarWidth() - filledCount);
 
   return {
     filledSegment: "█".repeat(filledCount),
@@ -66,7 +94,7 @@ const buildScoreBarSegments = (filledCount: number): ScoreBarSegments => {
 };
 
 const getFilledCount = (score: number): number =>
-  Math.round((score / PERFECT_SCORE) * SCORE_BAR_WIDTH_CHARS);
+  Math.round((score / PERFECT_SCORE) * getScoreBarWidth());
 
 const joinScoreHeaderFrame = (lines: [string, string, string, string]): string =>
   `${lines[0]}\n\r${lines[1]}\n\r${lines[2]}\n\r${lines[3]}\n`;
@@ -145,10 +173,11 @@ const buildScoreBar = (displayScore: number, colorScore = displayScore): string 
 // by fixing the top errors, then the dim remainder. Same total width as
 // the plain bar, so layout is unchanged.
 const buildProjectedScoreBar = (currentScore: number, potentialScore: number): string => {
+  const barWidth = getScoreBarWidth();
   const currentFill = getFilledCount(currentScore);
-  const potentialFill = Math.min(getFilledCount(potentialScore), SCORE_BAR_WIDTH_CHARS);
+  const potentialFill = Math.min(getFilledCount(potentialScore), barWidth);
   const gainCount = Math.max(0, potentialFill - currentFill);
-  const emptyCount = Math.max(0, SCORE_BAR_WIDTH_CHARS - currentFill - gainCount);
+  const emptyCount = Math.max(0, barWidth - currentFill - gainCount);
   return (
     colorizeByScore("█".repeat(currentFill), currentScore) +
     highlighter.dim(colorizeByScore("▓".repeat(gainCount), currentScore)) +
@@ -167,7 +196,7 @@ const RAW_BRANDING_LINE = "React Doctor (https://react.doctor)";
 
 const buildRawFaceLines = (score: number): string[] => {
   const [eyes, mouth] = getDoctorFace(score);
-  return ["┌─────┐", `│ ${eyes} │`, `│ ${mouth} │`, "└─────┘"];
+  return [FACE_BOX_TOP_BORDER, `│ ${eyes} │`, `│ ${mouth} │`, "└─────┘"];
 };
 
 const buildFaceRenderedLines = (score: number): string[] => {

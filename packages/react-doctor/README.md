@@ -41,32 +41,13 @@ Works with Claude Code, Cursor, Codex, OpenCode, and many more.
 
 React Doctor CI (GitHub Actions) reviews every pull request automatically and reports only the issues your change introduced, not your existing backlog.
 
-[Add GitHub Action →](https://react.doctor/ci)
+[Add GitHub Action →](https://react.doctor/docs/ci-and-prs/github-actions-setup)
 
-### 4. Configure rules in `doctor.config.ts`
+### 4. Configure rules
 
-Configure with a `doctor.config.ts` (or `.js`, `.mjs`, `.cjs`, `.json`, `.jsonc`) in your project root.
+You can configure which rules to run and how to run them in `doctor.config.ts`.
 
-```ts
-// doctor.config.ts
-import { defineConfig } from "react-doctor/api";
-
-export default defineConfig({
-  lint: true,
-  rules: {
-    "react-doctor/no-array-index-as-key": "off",
-  },
-});
-```
-
-Prefer JSON? Use `doctor.config.json`:
-
-```jsonc
-{
-  "$schema": "https://react.doctor/schema/config.json",
-  "lint": true,
-}
-```
+[Learn more →](https://react.doctor/docs/configuration/config-files)
 
 ## Telemetry
 

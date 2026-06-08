@@ -384,6 +384,78 @@ export const token = sessionStorage.getItem(DESKTOP_AUTH_PREFIX);
     await expect(getSecretIssues(projectDir)).resolves.toEqual([]);
   });
 
+  it("does not report masked placeholder strings through the weak variable-name heuristic", async () => {
+    const projectDir = setupReactProject(tempRoot, "client-masked-placeholder-secret", {
+      files: {
+        "src/token-display.tsx": `const apiKey = "************************";
+
+export const TokenDisplay = () => <div>{apiKey}</div>;
+`,
+      },
+    });
+
+    await expect(getSecretIssues(projectDir)).resolves.toEqual([]);
+  });
+
+  it("does not report docs components that render placeholder env variable values", async () => {
+    const projectDir = setupReactProject(tempRoot, "client-env-placeholder-display", {
+      files: {
+        "src/components/env-variables/value-placeholder.tsx": `const STRIPE_SECRET_VALUE_PLACEHOLDER = "sk_live_****************";
+const PUBLIC_API_KEY_EXAMPLE = "example_token_1234567890abcdef";
+
+export const ValuePlaceholder = () => (
+  <code>{STRIPE_SECRET_VALUE_PLACEHOLDER}{PUBLIC_API_KEY_EXAMPLE}</code>
+);
+`,
+      },
+    });
+
+    await expect(getSecretIssues(projectDir)).resolves.toEqual([]);
+  });
+
+  it("does not report bracketed example secret placeholders in display components", async () => {
+    const projectDir = setupReactProject(tempRoot, "client-bracketed-secret-placeholder", {
+      files: {
+        "src/components/env-variables/secret-example.tsx": `const STRIPE_SECRET_EXAMPLE = "sk_test_<your_secret_key>";
+
+export const SecretExample = () => <code>{STRIPE_SECRET_EXAMPLE}</code>;
+`,
+      },
+    });
+
+    await expect(getSecretIssues(projectDir)).resolves.toEqual([]);
+  });
+
+  it("still reports real secret literals in placeholder display components", async () => {
+    const projectDir = setupReactProject(tempRoot, "client-placeholder-real-secret", {
+      files: {
+        "src/components/env-variables/value-placeholder.tsx": `const STRIPE_SECRET_VALUE_PLACEHOLDER = "sk\\u005flive_REALsecret1234567890abcdef";
+
+export const ValuePlaceholder = () => <code>{STRIPE_SECRET_VALUE_PLACEHOLDER}</code>;
+`,
+      },
+    });
+
+    const secretIssues = await getSecretIssues(projectDir);
+    expect(secretIssues).toHaveLength(1);
+    expect(secretIssues[0].message).toContain("hardcoded secret is a security vulnerability");
+  });
+
+  it("still reports example-named api keys with non-placeholder values", async () => {
+    const projectDir = setupReactProject(tempRoot, "client-example-real-token", {
+      files: {
+        "src/token-display.tsx": `const EXAMPLE_API_KEY = "fixture_token_1234567890abcdef";
+
+export const TokenDisplay = () => <div>{EXAMPLE_API_KEY}</div>;
+`,
+      },
+    });
+
+    const secretIssues = await getSecretIssues(projectDir);
+    expect(secretIssues).toHaveLength(1);
+    expect(secretIssues[0].message).toContain("EXAMPLE_API_KEY");
+  });
+
   it("runs the weak variable-name heuristic in use-client App Router files", async () => {
     const projectDir = setupReactProject(tempRoot, "next-use-client-secret", {
       packageJsonExtras: {

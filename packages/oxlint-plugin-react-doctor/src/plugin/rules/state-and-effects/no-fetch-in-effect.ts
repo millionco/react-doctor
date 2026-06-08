@@ -23,7 +23,7 @@ export const noFetchInEffect = defineRule<Rule>({
         context.report({
           node,
           message:
-            "`fetch()` inside `useEffect` can race, double-fire, or leak. Use a data-fetching layer or Server Component instead.",
+            "fetch() inside useEffect can race, double-fire, or leak. Use a data-fetching layer or Server Component instead.",
         });
       }
     },

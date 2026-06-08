@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
@@ -187,6 +188,18 @@ describe("scan result cache", () => {
         process.env.REACT_DOCTOR_NO_CACHE = previousValue;
       }
     }
+  });
+
+  it("does not cache when git hides tracked file changes", () => {
+    const projectDirectory = setupReactProject(tempDirectory, "hidden-state", {
+      files: { "src/App.tsx": "export const App = () => <div />;\n" },
+    });
+    initGitRepo(projectDirectory, { commit: true });
+    spawnSync("git", ["update-index", "--assume-unchanged", "src/App.tsx"], {
+      cwd: projectDirectory,
+    });
+
+    expect(cacheKey(projectDirectory, baseOptions())).toBeNull();
   });
 
   it("reuses diagnostics when rerendering with verbose enabled", async () => {

@@ -137,6 +137,12 @@ const isWorktreeClean = (projectDirectory: string): boolean => {
   return status !== null && status.length === 0;
 };
 
+const hasHiddenTrackedFileState = (projectDirectory: string): boolean => {
+  const output = runGit(projectDirectory, ["ls-files", "-v"]);
+  if (output === null) return true;
+  return output.split("\n").some((line) => line.length > 0 && line[0] !== "H");
+};
+
 const resolveCacheFilePath = (projectDirectory: string): string => {
   const nodeModulesDirectory = path.join(projectDirectory, "node_modules");
   if (fs.existsSync(nodeModulesDirectory)) {
@@ -225,6 +231,7 @@ const resolveToolchainFingerprint = (nodeBinaryPath: string | null): ReadonlyArr
 export const buildScanResultCacheKey = (input: ScanResultCacheKeyInput): string | null => {
   if (isScanResultCacheDisabled()) return null;
   if (!isWorktreeClean(input.projectDirectory)) return null;
+  if (hasHiddenTrackedFileState(input.projectDirectory)) return null;
   const headSha = readHeadSha(input.projectDirectory);
   if (headSha === null) return null;
   const userConfigJson = stringifyStableJson(input.userConfig);

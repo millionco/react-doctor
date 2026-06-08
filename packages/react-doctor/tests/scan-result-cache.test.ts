@@ -1,14 +1,7 @@
 import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { clearConfigCache, type Diagnostic } from "@react-doctor/core";
 import { inspect, type ResolvedInspectOptions } from "../src/inspect.js";
 import {
@@ -17,17 +10,11 @@ import {
   type CachedScanPayload,
 } from "../src/cli/utils/scan-result-cache.js";
 import { VERSION } from "../src/cli/utils/version.js";
-import {
-  commitAll,
-  initGitRepo,
-  setupReactProject,
-} from "./regressions/_helpers.js";
+import { commitAll, initGitRepo, setupReactProject } from "./regressions/_helpers.js";
 
 let tempDirectory: string;
 
-const baseOptions = (
-  overrides: Partial<ResolvedInspectOptions> = {}
-): ResolvedInspectOptions => ({
+const baseOptions = (overrides: Partial<ResolvedInspectOptions> = {}): ResolvedInspectOptions => ({
   lint: false,
   deadCode: false,
   verbose: false,
@@ -54,11 +41,13 @@ const baseOptions = (
 const cacheKey = (
   projectDirectory: string,
   options: ResolvedInspectOptions,
-  version = VERSION
+  version = VERSION,
+  nodeBinaryPath: string | null = null,
 ): string | null =>
   buildScanResultCacheKey({
     projectDirectory,
     version,
+    nodeBinaryPath,
     options,
     userConfig: null,
     hasConfigOverride: false,
@@ -78,9 +67,7 @@ const diagnostic = (projectDirectory: string): Diagnostic => ({
 });
 
 beforeEach(() => {
-  tempDirectory = fs.mkdtempSync(
-    path.join(os.tmpdir(), "react-doctor-scan-cache-")
-  );
+  tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-scan-cache-"));
   clearConfigCache();
 });
 
@@ -143,9 +130,7 @@ describe("scan result cache", () => {
     const cache = createScanResultCache(projectDirectory);
     cache.store(key, payload);
 
-    expect(cache.lookup(key)?.diagnostics).toEqual([
-      diagnostic(projectDirectory),
-    ]);
+    expect(cache.lookup(key)?.diagnostics).toEqual([diagnostic(projectDirectory)]);
   });
 
   it("misses when commit, config, version, or selected files change", () => {
@@ -157,16 +142,19 @@ describe("scan result cache", () => {
     const originalKey = cacheKey(projectDirectory, options);
     expect(originalKey).not.toBeNull();
 
-    expect(cacheKey(projectDirectory, options, "999.0.0")).not.toBe(
-      originalKey
+    expect(cacheKey(projectDirectory, options, "999.0.0")).not.toBe(originalKey);
+    expect(cacheKey(projectDirectory, baseOptions({ includePaths: ["src/App.tsx"] }))).not.toBe(
+      originalKey,
     );
-    expect(
-      cacheKey(projectDirectory, baseOptions({ includePaths: ["src/App.tsx"] }))
-    ).not.toBe(originalKey);
+    const alternateNodeBinaryPath = path.join(tempDirectory, "fake-node");
+    fs.writeFileSync(alternateNodeBinaryPath, "node-a");
+    expect(cacheKey(projectDirectory, options, VERSION, alternateNodeBinaryPath)).not.toBe(
+      originalKey,
+    );
 
     fs.writeFileSync(
       path.join(projectDirectory, "doctor.config.json"),
-      JSON.stringify({ rules: {} })
+      JSON.stringify({ rules: {} }),
     );
     expect(cacheKey(projectDirectory, options)).toBeNull();
 
@@ -177,7 +165,7 @@ describe("scan result cache", () => {
 
     fs.writeFileSync(
       path.join(projectDirectory, "src", "App.tsx"),
-      "export const App = () => <main />;\n"
+      "export const App = () => <main />;\n",
     );
     commitAll(projectDirectory, "source");
     expect(cacheKey(projectDirectory, options)).not.toBe(configCommitKey);
@@ -232,8 +220,7 @@ describe("scan result cache", () => {
       didDeadCodeFail: false,
       deadCodeFailureReason: null,
       directory: projectDirectory,
-      scannedFileCount:
-        firstResult.scannedFileCount ?? firstResult.project.sourceFileCount,
+      scannedFileCount: firstResult.scannedFileCount ?? firstResult.project.sourceFileCount,
       scannedFilePaths: firstResult.scannedFilePaths ?? [],
       scanElapsedMilliseconds: firstResult.scanElapsedMilliseconds ?? 0,
       baselineDelta: undefined,

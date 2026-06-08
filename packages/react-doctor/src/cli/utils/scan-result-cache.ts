@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { computeConfigFingerprint } from "@react-doctor/core";
@@ -59,6 +60,7 @@ interface ScanResultCache {
 interface ScanResultCacheKeyInput {
   readonly projectDirectory: string;
   readonly version: string;
+  readonly nodeBinaryPath: string | null;
   readonly options: ResolvedInspectOptions;
   readonly userConfig: ReactDoctorConfig | null;
   readonly hasConfigOverride: boolean;
@@ -66,6 +68,14 @@ interface ScanResultCacheKeyInput {
 }
 
 const CACHE_DISABLED_VALUES = new Set(["1", "true"]);
+const TOOLCHAIN_PACKAGE_SPECIFIERS = [
+  "oxlint",
+  "oxlint/package.json",
+  "oxlint-plugin-react-doctor",
+  "deslop-js/package.json",
+  "eslint-plugin-react-hooks/package.json",
+] as const;
+const bundledRequire = createRequire(import.meta.url);
 
 const isRecord = (value: unknown): value is StringUnknownRecord =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -74,17 +84,8 @@ const normalizeForStableJson = (value: unknown): unknown => {
   if (value === null) return null;
   if (value === undefined) return undefined;
   const valueType = typeof value;
-  if (
-    valueType === "string" ||
-    valueType === "number" ||
-    valueType === "boolean"
-  )
-    return value;
-  if (
-    valueType === "bigint" ||
-    valueType === "function" ||
-    valueType === "symbol"
-  ) {
+  if (valueType === "string" || valueType === "number" || valueType === "boolean") return value;
+  if (valueType === "bigint" || valueType === "function" || valueType === "symbol") {
     throw new Error("Unsupported cache key value");
   }
   if (Array.isArray(value)) {
@@ -114,13 +115,9 @@ const stringifyStableJson = (value: unknown): string | null => {
   }
 };
 
-const hashString = (value: string): string =>
-  crypto.createHash("sha1").update(value).digest("hex");
+const hashString = (value: string): string => crypto.createHash("sha1").update(value).digest("hex");
 
-const runGit = (
-  directory: string,
-  args: ReadonlyArray<string>
-): string | null => {
+const runGit = (directory: string, args: ReadonlyArray<string>): string | null => {
   try {
     return execFileSync("git", [...args], {
       cwd: directory,
@@ -136,44 +133,23 @@ const readHeadSha = (projectDirectory: string): string | null =>
   runGit(projectDirectory, ["rev-parse", "HEAD"]);
 
 const isWorktreeClean = (projectDirectory: string): boolean => {
-  const status = runGit(projectDirectory, [
-    "status",
-    "--porcelain=v1",
-    "--untracked-files=normal",
-  ]);
+  const status = runGit(projectDirectory, ["status", "--porcelain=v1", "--untracked-files=normal"]);
   return status !== null && status.length === 0;
 };
 
 const resolveCacheFilePath = (projectDirectory: string): string => {
   const nodeModulesDirectory = path.join(projectDirectory, "node_modules");
   if (fs.existsSync(nodeModulesDirectory)) {
-    return path.join(
-      nodeModulesDirectory,
-      ".cache",
-      "react-doctor",
-      "scan-cache.json"
-    );
+    return path.join(nodeModulesDirectory, ".cache", "react-doctor", "scan-cache.json");
   }
-  const projectHash = hashString(projectDirectory).slice(
-    0,
-    CACHE_FILENAME_HASH_LENGTH_CHARS
-  );
-  return path.join(
-    os.tmpdir(),
-    "react-doctor-cache",
-    `scan-${projectHash}.json`
-  );
+  const projectHash = hashString(projectDirectory).slice(0, CACHE_FILENAME_HASH_LENGTH_CHARS);
+  return path.join(os.tmpdir(), "react-doctor-cache", `scan-${projectHash}.json`);
 };
 
-const readPersistedCache = (
-  cacheFilePath: string
-): PersistedScanResultCache => {
+const readPersistedCache = (cacheFilePath: string): PersistedScanResultCache => {
   try {
     const parsed = JSON.parse(fs.readFileSync(cacheFilePath, "utf8"));
-    if (
-      !isRecord(parsed) ||
-      parsed.version !== SCAN_RESULT_CACHE_SCHEMA_VERSION
-    ) {
+    if (!isRecord(parsed) || parsed.version !== SCAN_RESULT_CACHE_SCHEMA_VERSION) {
       return { version: SCAN_RESULT_CACHE_SCHEMA_VERSION, entries: [] };
     }
     if (!Array.isArray(parsed.entries)) {
@@ -188,8 +164,7 @@ const readPersistedCache = (
       ) {
         continue;
       }
-      if (!isRecord(entry.payload) || !Array.isArray(entry.payload.diagnostics))
-        continue;
+      if (!isRecord(entry.payload) || !Array.isArray(entry.payload.diagnostics)) continue;
       entries.push(entry as unknown as PersistedScanResultCacheEntry);
     }
     return { version: SCAN_RESULT_CACHE_SCHEMA_VERSION, entries };
@@ -198,10 +173,7 @@ const readPersistedCache = (
   }
 };
 
-const writePersistedCache = (
-  cacheFilePath: string,
-  cache: PersistedScanResultCache
-): void => {
+const writePersistedCache = (cacheFilePath: string, cache: PersistedScanResultCache): void => {
   try {
     fs.mkdirSync(path.dirname(cacheFilePath), { recursive: true });
     const tempPath = `${cacheFilePath}.${process.pid}.tmp`;
@@ -213,9 +185,7 @@ const writePersistedCache = (
 };
 
 const isScanResultCacheDisabled = (): boolean =>
-  CACHE_DISABLED_VALUES.has(
-    process.env.REACT_DOCTOR_NO_CACHE?.toLowerCase() ?? ""
-  );
+  CACHE_DISABLED_VALUES.has(process.env.REACT_DOCTOR_NO_CACHE?.toLowerCase() ?? "");
 
 const resolveProjectIdentity = (projectDirectory: string): string => {
   try {
@@ -225,9 +195,34 @@ const resolveProjectIdentity = (projectDirectory: string): string => {
   }
 };
 
-export const buildScanResultCacheKey = (
-  input: ScanResultCacheKeyInput
-): string | null => {
+const fileFingerprint = (filePath: string): string | null => {
+  try {
+    const stat = fs.statSync(filePath);
+    return `${filePath}:${stat.mtimeMs}:${stat.size}`;
+  } catch {
+    return null;
+  }
+};
+
+const resolveToolchainFingerprint = (nodeBinaryPath: string | null): ReadonlyArray<string> => {
+  const fingerprints: string[] = [];
+  if (nodeBinaryPath !== null) {
+    const fingerprint = fileFingerprint(nodeBinaryPath);
+    if (fingerprint !== null) fingerprints.push(`node=${fingerprint}`);
+  }
+  for (const specifier of TOOLCHAIN_PACKAGE_SPECIFIERS) {
+    try {
+      const resolvedPath = bundledRequire.resolve(specifier);
+      const fingerprint = fileFingerprint(resolvedPath);
+      if (fingerprint !== null) fingerprints.push(`${specifier}=${fingerprint}`);
+    } catch {
+      continue;
+    }
+  }
+  return fingerprints;
+};
+
+export const buildScanResultCacheKey = (input: ScanResultCacheKeyInput): string | null => {
   if (isScanResultCacheDisabled()) return null;
   if (!isWorktreeClean(input.projectDirectory)) return null;
   const headSha = readHeadSha(input.projectDirectory);
@@ -240,10 +235,8 @@ export const buildScanResultCacheKey = (
     headSha,
     reactDoctorVersion: input.version,
     nodeVersion: process.version,
-    configFingerprint: computeConfigFingerprint(
-      input.projectDirectory,
-      input.version
-    ),
+    toolchainFingerprint: resolveToolchainFingerprint(input.nodeBinaryPath),
+    configFingerprint: computeConfigFingerprint(input.projectDirectory, input.version),
     hasConfigOverride: input.hasConfigOverride,
     configSourceDirectory: input.configSourceDirectory,
     userConfig: input.userConfig,
@@ -266,9 +259,7 @@ export const buildScanResultCacheKey = (
   return cacheKeyJson === null ? null : hashString(cacheKeyJson);
 };
 
-export const createScanResultCache = (
-  projectDirectory: string
-): ScanResultCache => {
+export const createScanResultCache = (projectDirectory: string): ScanResultCache => {
   const cacheFilePath = resolveCacheFilePath(projectDirectory);
   const persistedCache = readPersistedCache(cacheFilePath);
   const entries = new Map<string, PersistedScanResultCacheEntry>();
@@ -276,10 +267,7 @@ export const createScanResultCache = (
 
   const persist = (): void => {
     const prunedEntries = [...entries.values()]
-      .sort(
-        (firstEntry, secondEntry) =>
-          secondEntry.createdAtMs - firstEntry.createdAtMs
-      )
+      .sort((firstEntry, secondEntry) => secondEntry.createdAtMs - firstEntry.createdAtMs)
       .slice(0, SCAN_RESULT_CACHE_MAX_ENTRY_COUNT);
     writePersistedCache(cacheFilePath, {
       version: SCAN_RESULT_CACHE_SCHEMA_VERSION,
@@ -297,6 +285,4 @@ export const createScanResultCache = (
 };
 
 export const shouldStoreScanPayload = (payload: CachedScanPayload): boolean =>
-  !payload.didLintFail &&
-  !payload.didDeadCodeFail &&
-  payload.lintPartialFailures.length === 0;
+  !payload.didLintFail && !payload.didDeadCodeFail && payload.lintPartialFailures.length === 0;

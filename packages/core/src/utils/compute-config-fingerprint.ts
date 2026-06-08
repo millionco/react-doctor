@@ -3,10 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { CONFIG_FINGERPRINT_FILENAMES } from "../constants.js";
 
-export const computeConfigFingerprint = (
-  projectDirectory: string,
-  version: string
-): string => {
+export const computeConfigFingerprint = (projectDirectory: string, version: string): string => {
   const parts: string[] = [`v=${version}`];
   let directory = projectDirectory;
   for (;;) {

@@ -1,0 +1,21 @@
+.changeset/compress-workflow-template-comments.md
+  s_62803c2c4a8999::t_4a21ad053405b9 5
+packages/react-doctor/src/cli/utils/install-github-workflow.ts
+  s_62803c2c4a8999::t_209eca4262aff0 10-13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "9e664637a63502fa1c775589d9ed9cb5b4161fa7",
+  "prompts": {},
+  "sessions": {
+    "s_62803c2c4a8999": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "18fa7bf2-490c-432a-a3f1-3655b24f91e3",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

@@ -161,6 +161,32 @@ const markComponentRenderJsx = (
   );
 };
 
+const isInsideGeneratedImageRendererArgument = (node: EsTreeNode): boolean => {
+  let cursor = node.parent;
+  while (cursor) {
+    if (isGeneratedImageRendererCall(cursor)) return true;
+    cursor = cursor.parent ?? null;
+  }
+  return false;
+};
+
+const hasNormalFunctionCallUsage = (
+  programRoot: EsTreeNodeOfType<"Program">,
+  functionName: string,
+): boolean => {
+  let hasNormalUsage = false;
+  walkAst(programRoot, (descendantNode) => {
+    if (hasNormalUsage) return false;
+    if (!isNodeOfType(descendantNode, "CallExpression")) return;
+    if (!isNodeOfType(descendantNode.callee, "Identifier")) return;
+    if (descendantNode.callee.name !== functionName) return;
+    if (isInsideGeneratedImageRendererArgument(descendantNode)) return;
+    hasNormalUsage = true;
+    return false;
+  });
+  return hasNormalUsage;
+};
+
 const markJsxSubtree = (
   node: EsTreeNode,
   programRoot: EsTreeNodeOfType<"Program">,
@@ -230,6 +256,27 @@ const markGeneratedImageExpression = (
     );
     markGeneratedImageExpression(
       unwrappedExpression.right,
+      programRoot,
+      generatedImageJsxNodes,
+      visitedComponentNames,
+    );
+    return;
+  }
+
+  if (isNodeOfType(unwrappedExpression, "CallExpression")) {
+    const callee = unwrappedExpression.callee;
+    if (isFunctionLike(callee)) {
+      markFunctionReturnJsx(callee, programRoot, generatedImageJsxNodes, visitedComponentNames);
+      return;
+    }
+    if (!isNodeOfType(callee, "Identifier")) return;
+    if (visitedComponentNames.has(callee.name)) return;
+    if (hasNormalFunctionCallUsage(programRoot, callee.name)) return;
+    const binding = findVariableInitializer(callee, callee.name);
+    if (!binding?.initializer || !isFunctionLike(stripParenExpression(binding.initializer))) return;
+    visitedComponentNames.add(callee.name);
+    markFunctionReturnJsx(
+      stripParenExpression(binding.initializer),
       programRoot,
       generatedImageJsxNodes,
       visitedComponentNames,

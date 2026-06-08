@@ -242,6 +242,24 @@ describe("a11y/alt-text regressions", () => {
       expect(result.diagnostics).toEqual([]);
     });
 
+    it("skips JSX returned by helper calls passed to ImageResponse", () => {
+      const result = runRule(
+        altText,
+        `
+          import { ImageResponse } from "next/og";
+
+          const buildHeroImage = () => <div><img src="/hero.png" /></div>;
+
+          export const GET = () => new ImageResponse(buildHeroImage());
+        `,
+        {
+          filename: "/proj/app/social-card.tsx",
+        },
+      );
+
+      expect(result.diagnostics).toEqual([]);
+    });
+
     it("still flags Image aliases in ordinary page components", () => {
       const result = runRule(
         altText,

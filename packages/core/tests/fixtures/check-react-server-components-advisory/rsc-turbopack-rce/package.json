@@ -1,0 +1,8 @@
+{
+  "name": "rsc-turbopack-rce",
+  "dependencies": {
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "react-server-dom-turbopack": "19.0.0"
+  }
+}

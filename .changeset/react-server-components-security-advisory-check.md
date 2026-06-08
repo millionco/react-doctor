@@ -1,5 +1,5 @@
 ---
-"@react-doctor/core": minor
+"@react-doctor/core": patch
 ---
 
 Add a `no-vulnerable-react-server-components` security check that flags projects running React Server Components on a version with a known advisory — primarily the critical unauthenticated RCE (CVE-2025-55182, CVSS 10.0), and the later high-severity DoS (CVE-2026-23870).

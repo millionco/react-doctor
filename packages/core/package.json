@@ -31,12 +31,14 @@
     "oxlint": "^1.66.0",
     "oxlint-plugin-react-doctor": "workspace:*",
     "picomatch": "^4.0.4",
+    "semver": "^7.7.4",
     "typescript": "^6.0.3"
   },
   "devDependencies": {
     "@effect/vitest": "4.0.0-beta.70",
     "@types/node": "^25.6.0",
-    "@types/picomatch": "^4.0.3"
+    "@types/picomatch": "^4.0.3",
+    "@types/semver": "^7.7.1"
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"

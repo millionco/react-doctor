@@ -147,7 +147,7 @@ describe("in-process render across terminal widths and render modes", () => {
         "Bugs",
         "error",
         5,
-        "State adjusted in a useEffect when a prop changes.",
+        "State adjusted in a useEffect when a prop changes, so the UI shows stale state until the second render.",
       ),
       makeDiagnostic(
         "no-nested-component-definition",
@@ -168,7 +168,7 @@ describe("in-process render across terminal widths and render modes", () => {
         "Performance",
         "warning",
         7,
-        "This JSX element is constant and can be hoisted out of the component.",
+        "This JSX element is constant but built inside the component, so it looks new on every render.",
       ),
     ];
     const warningsOnlyDiagnostics = mixedDiagnostics.filter(

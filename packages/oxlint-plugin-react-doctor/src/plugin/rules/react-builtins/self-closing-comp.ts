@@ -4,7 +4,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
-const MESSAGE = "This tag has no children.";
+const MESSAGE = "This tag has no children, so the closing tag adds noise without changing output.";
 
 interface SelfClosingCompSettings {
   component?: boolean;

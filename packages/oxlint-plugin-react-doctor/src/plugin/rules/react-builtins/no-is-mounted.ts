@@ -31,7 +31,8 @@ export const noIsMounted = defineRule<Rule>({
         if (ancestor.type === "MethodDefinition" || ancestor.type === "Property") {
           context.report({
             node,
-            message: "`isMounted` is unreliable in modern React & leads to bugs.",
+            message:
+              "`isMounted` is unreliable in modern React, so async callbacks can update state after unmount.",
           });
           return;
         }

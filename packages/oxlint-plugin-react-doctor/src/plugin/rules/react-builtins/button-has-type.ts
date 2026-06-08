@@ -10,7 +10,8 @@ import type { Rule } from "../../utils/rule.js";
 
 const MISSING_MESSAGE =
   "Your users can submit the form by accident because a `<button>` with no `type` defaults to submit.";
-const INVALID_MESSAGE = "This button's `type` is invalid.";
+const INVALID_MESSAGE =
+  "This button has an invalid `type`, so the browser may treat it like a submit button.";
 
 interface ButtonHasTypeSettings {
   button?: boolean;

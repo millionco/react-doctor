@@ -30,7 +30,7 @@ export const nextjsNoGoogleAnalyticsScript = defineRule<Rule>({
         context.report({
           node,
           message:
-            "Manual Google Analytics script blocks rendering. Use @next/third-parties for optimal loading strategy.",
+            "Manual Google Analytics scripts block rendering without Next.js' optimized loading strategy.",
         });
       }
     },

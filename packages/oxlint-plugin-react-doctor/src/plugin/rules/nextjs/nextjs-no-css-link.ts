@@ -35,7 +35,8 @@ export const nextjsNoCssLink = defineRule<Rule>({
 
       context.report({
         node,
-        message: 'This <link rel="stylesheet"> loads unbundled, unoptimized CSS.',
+        message:
+          'This <link rel="stylesheet"> bypasses Next.js CSS handling, so the CSS loads unbundled and unoptimized.',
       });
     },
   }),

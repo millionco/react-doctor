@@ -51,7 +51,8 @@ export const noAdjustStateOnPropChange = defineRule<Rule>({
         if (isSomeArgsProps) continue;
         context.report({
           node: callExpr,
-          message: "Your users briefly see the wrong value when the prop changes.",
+          message:
+            "This effect adjusts state after a prop changes, so users briefly see the stale value.",
         });
       }
     },

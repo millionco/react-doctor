@@ -8,7 +8,7 @@ import type { Rule } from "../../utils/rule.js";
 
 const MISSING_MESSAGE = "Your users can't toggle this input because `checked` has no `onChange`.";
 const EXCLUSIVE_MESSAGE =
-  "This input behaves unpredictably with both `checked` & `defaultChecked` set.";
+  "This input mixes `checked` with `defaultChecked`, so React can't tell whether it is controlled or uncontrolled.";
 
 interface CheckedRequiresSettings {
   ignoreMissingProperties?: boolean;

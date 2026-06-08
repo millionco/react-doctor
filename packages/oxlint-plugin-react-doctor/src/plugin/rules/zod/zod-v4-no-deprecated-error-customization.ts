@@ -101,7 +101,8 @@ export const zodV4NoDeprecatedErrorCustomization = defineRule<Rule>({
       if (!factoryUsesDeprecatedErrorParameter(node) && !parseCallUsesErrorMap(node)) return;
       context.report({
         node,
-        message: "Zod 4 changed how you customize error messages, so this breaks when you upgrade.",
+        message:
+          "This Zod 3 error-customization API changed in Zod 4, so custom messages can break during the upgrade.",
       });
     },
   }),

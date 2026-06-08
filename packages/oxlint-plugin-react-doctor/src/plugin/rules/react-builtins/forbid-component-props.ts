@@ -108,7 +108,8 @@ const isSupportedJsxName = (name: EsTreeNode): boolean =>
   isNodeOfType(name, "JSXIdentifier") || isNodeOfType(name, "JSXMemberExpression");
 
 const buildMessage = (propName: string, message: string | null): string =>
-  message ?? `Your project blocks the \`${propName}\` prop on this component.`;
+  message ??
+  `Your project blocks the \`${propName}\` prop on this component, so this bypasses the component API contract.`;
 
 // Port of `oxc_linter::rules::react::forbid_component_props`. Reports
 // configured props on user-defined (PascalCase / namespaced) JSX

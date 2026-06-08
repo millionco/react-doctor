@@ -5,8 +5,10 @@ import { isEs6Component } from "../../utils/is-es6-component.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
-const ALWAYS_MESSAGE = "This component's state is set up inconsistently.";
-const NEVER_MESSAGE = "This component's state is set up inconsistently.";
+const ALWAYS_MESSAGE =
+  "This class uses a state field instead of the configured constructor pattern, so state setup is inconsistent across the codebase.";
+const NEVER_MESSAGE =
+  "This class sets state in the constructor instead of the configured class-field pattern, so state setup is inconsistent across the codebase.";
 
 interface StateInConstructorSettings {
   mode?: "always" | "never";

@@ -17,6 +17,7 @@ import {
   restoreLegacyThrow,
   runInspect,
   Score,
+  SupplyChain,
   type InspectOutput,
   type ResolvedScanTarget,
 } from "@react-doctor/core";
@@ -36,7 +37,10 @@ import type {
 // (`Config.layerNode`); with a per-project override the caller passes the
 // already-resolved `Config.layerOf(...)`. Every other service is identical,
 // so the stack is built once here rather than duplicated per variant.
-const buildDiagnoseLayer = (configLayer: typeof Config.layerNode = Config.layerNode) =>
+const buildDiagnoseLayer = (
+  configLayer: typeof Config.layerNode = Config.layerNode,
+  supplyChainEnabled = false,
+) =>
   Layer.mergeAll(
     Project.layerNode,
     configLayer,
@@ -48,6 +52,7 @@ const buildDiagnoseLayer = (configLayer: typeof Config.layerNode = Config.layerN
     Progress.layerNoop,
     Reporter.layerNoop,
     Score.layerHttp,
+    supplyChainEnabled ? SupplyChain.layerNode : SupplyChain.layerOf([]),
   );
 
 const buildInspectProgram = (
@@ -107,7 +112,15 @@ export const diagnose = async (
 
   const output: InspectOutput = await Effect.runPromise(
     restoreLegacyThrow(
-      program.pipe(Effect.provide(buildDiagnoseLayer()), Effect.provide(layerOtlp)),
+      program.pipe(
+        Effect.provide(
+          buildDiagnoseLayer(
+            Config.layerNode,
+            scanTarget.userConfig?.supplyChain?.enabled ?? false,
+          ),
+        ),
+        Effect.provide(layerOtlp),
+      ),
     ),
   );
 
@@ -140,6 +153,8 @@ const diagnoseProject = async (
 
     const program = buildInspectProgram(scanTarget, mergedOptions, configOverride);
 
+    const effectiveConfig = configOverride ?? scanTarget.userConfig;
+    const supplyChainEnabled = effectiveConfig?.supplyChain?.enabled ?? false;
     const layer =
       configOverride !== undefined
         ? buildDiagnoseLayer(
@@ -148,8 +163,9 @@ const diagnoseProject = async (
               resolvedDirectory: scanTarget.resolvedDirectory,
               configSourceDirectory: null,
             }),
+            supplyChainEnabled,
           )
-        : buildDiagnoseLayer();
+        : buildDiagnoseLayer(Config.layerNode, supplyChainEnabled);
 
     const output: InspectOutput = await Effect.runPromise(
       restoreLegacyThrow(program.pipe(Effect.provide(layer), Effect.provide(layerOtlp))),

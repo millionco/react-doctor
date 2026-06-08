@@ -40,6 +40,7 @@ import { Progress } from "./services/progress.js";
 import { Project } from "./services/project.js";
 import { Reporter } from "./services/reporter.js";
 import { Score } from "./services/score.js";
+import { SupplyChain } from "./services/supply-chain.js";
 import type { ScoreRequestMetadata } from "./calculate-score.js";
 import { resolveGithubActionsScoreMetadata } from "./utils/resolve-github-actions-score-metadata.js";
 
@@ -239,6 +240,7 @@ export const runInspect = <HooksR = never>(
   | Progress
   | Reporter
   | Score
+  | SupplyChain
   | HooksR
 > =>
   Effect.gen(function* () {
@@ -249,6 +251,7 @@ export const runInspect = <HooksR = never>(
     const reporterService = yield* Reporter;
     const scoreService = yield* Score;
     const deadCodeService = yield* DeadCode;
+    const supplyChainService = yield* SupplyChain;
     const gitService = yield* Git;
     const progressService = yield* Progress;
     const partialFailuresRef = yield* LintPartialFailures;
@@ -336,6 +339,24 @@ export const runInspect = <HooksR = never>(
     const envCollected = yield* Stream.runCollect(
       applyPerElementPipeline(Stream.fromIterable(environmentDiagnostics)),
     );
+
+    // ── Phase: supply-chain score check (Socket.dev, opt-in) ───────
+    // Whole-project (package.json) property, so skipped in diff/staged
+    // mode like the environment checks above. Enablement is decided by
+    // the provided layer (`SupplyChain.layerOf([])` when disabled). The
+    // stream is fail-open — per-package timeouts / network failures are
+    // recovered to "skip" inside the check — so a Socket API outage never
+    // sinks the scan.
+    const supplyChainCollected = isDiffMode
+      ? []
+      : yield* Stream.runCollect(
+          applyPerElementPipeline(
+            supplyChainService.run({
+              rootDirectory: scanDirectory,
+              userConfig: resolvedConfig.config,
+            }),
+          ),
+        );
 
     const lintFailure = yield* Ref.make<{
       didFail: boolean;
@@ -465,6 +486,7 @@ export const runInspect = <HooksR = never>(
 
     const finalDiagnostics: ReadonlyArray<Diagnostic> = [
       ...envCollected,
+      ...supplyChainCollected,
       ...lintCollected,
       ...deadCodeCollected,
     ];

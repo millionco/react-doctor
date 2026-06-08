@@ -22,6 +22,7 @@ import { Progress, ProgressCapture } from "../src/services/progress.js";
 import { Project } from "../src/services/project.js";
 import { Reporter, ReporterCapture } from "../src/services/reporter.js";
 import { Score } from "../src/services/score.js";
+import { SupplyChain } from "../src/services/supply-chain.js";
 
 const sampleProject: ProjectInfo = {
   rootDirectory: "/repo",
@@ -102,6 +103,7 @@ const layersOf = (config: {
       githubViewerPermission: config.githubViewerPermission,
     }),
     Score.layerOf({ score: 85, label: "Good" }),
+    SupplyChain.layerOf([]),
     Progress.layerNoop,
     Reporter.layerCapture,
   );
@@ -202,6 +204,7 @@ describe("runInspect — happy path", () => {
       DeadCode.layerOf([]),
       failingGit,
       Score.layerOf({ score: 85, label: "Good" }),
+      SupplyChain.layerOf([]),
       Progress.layerNoop,
       Reporter.layerCapture,
     );
@@ -233,6 +236,7 @@ describe("runInspect — missing React dependency", () => {
       DeadCode.layerOf([]),
       Git.layerOf({}),
       Score.layerOf(null),
+      SupplyChain.layerOf([]),
       Progress.layerNoop,
       Reporter.layerNoop,
     );
@@ -255,6 +259,7 @@ describe("runInspect — missing React dependency", () => {
       DeadCode.layerOf([]),
       Git.layerOf({}),
       Score.layerOf(null),
+      SupplyChain.layerOf([]),
       Progress.layerNoop,
       Reporter.layerNoop,
     );
@@ -295,6 +300,7 @@ describe("runInspect — mid-stream lint failure", () => {
       DeadCode.layerOf([deadCodeDiagnostic]),
       Git.layerOf({}),
       Score.layerOf({ score: 50, label: "Needs Improvement" }),
+      SupplyChain.layerOf([]),
       Progress.layerNoop,
       Reporter.layerNoop,
     );
@@ -326,6 +332,7 @@ describe("runInspect — dead-code failure", () => {
       failingDeadCode,
       Git.layerOf({}),
       Score.layerOf(null),
+      SupplyChain.layerOf([]),
       Progress.layerNoop,
       Reporter.layerNoop,
     );
@@ -388,6 +395,7 @@ describe("runInspect — scan progress phases", () => {
       trackingDeadCode,
       Git.layerOf({}),
       Score.layerOf(null),
+      SupplyChain.layerOf([]),
       Progress.layerCapture,
       Reporter.layerNoop,
     );
@@ -461,6 +469,7 @@ describe("runInspect — Reporter sees post-filter diagnostics", () => {
       DeadCode.layerOf([]),
       Git.layerOf({}),
       Score.layerOf(null),
+      SupplyChain.layerOf([]),
       Progress.layerNoop,
       Reporter.layerCapture,
     );

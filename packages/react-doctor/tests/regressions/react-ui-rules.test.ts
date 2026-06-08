@@ -60,12 +60,8 @@ describe("design-no-redundant-padding-axes", () => {
 
     const hits = await collectRuleHits(projectDir, "design-no-redundant-padding-axes");
     expect(hits).toHaveLength(2);
-    expect(hits.some((hit) => hit.message.includes("px-4 and py-4 duplicate p-4"))).toBe(
-      true,
-    );
-    expect(hits.some((hit) => hit.message.includes("px-6 and py-6 duplicate p-6"))).toBe(
-      true,
-    );
+    expect(hits.some((hit) => hit.message.includes("px-4 and py-4 duplicate p-4"))).toBe(true);
+    expect(hits.some((hit) => hit.message.includes("px-6 and py-6 duplicate p-6"))).toBe(true);
   });
 });
 
@@ -96,12 +92,8 @@ describe("design-no-redundant-size-axes", () => {
       tailwindVersion: "^3.4.0",
     });
     expect(hits).toHaveLength(2);
-    expect(hits.some((hit) => hit.message.includes("w-8 and h-8 duplicate size-8"))).toBe(
-      true,
-    );
-    expect(hits.some((hit) => hit.message.includes("w-10 and h-10 duplicate size-10"))).toBe(
-      true,
-    );
+    expect(hits.some((hit) => hit.message.includes("w-8 and h-8 duplicate size-8"))).toBe(true);
+    expect(hits.some((hit) => hit.message.includes("w-10 and h-10 duplicate size-10"))).toBe(true);
   });
 
   it("does not flag fractional widths (w-1/2 h-1/2)", async () => {

@@ -8,7 +8,6 @@ import {
   buildSkippedChecks,
   computeDiagnosticDelta,
   DEFAULT_SHOW_WARNINGS,
-  DIAGNOSTIC_CATEGORY_BUCKETS,
   filterDiagnosticsForSurface,
   highlighter,
   OXLINT_NODE_REQUIREMENT,
@@ -47,6 +46,7 @@ import {
 } from "./cli/utils/is-ci-environment.js";
 import { computeProjectedScore } from "./cli/utils/compute-score-projection.js";
 import { buildRulePriorityMap } from "./cli/utils/diagnostic-grouping.js";
+import { filterDiagnosticsByCategories } from "./cli/utils/filter-diagnostics-by-categories.js";
 import { printDiagnostics } from "./cli/utils/render-diagnostics.js";
 import { isNonInteractiveEnvironment } from "./cli/utils/is-non-interactive-environment.js";
 import {
@@ -64,6 +64,7 @@ import {
 } from "./cli/utils/render-score-header.js";
 import { printFooter, printSummary } from "./cli/utils/render-summary.js";
 import { resolveOxlintNode } from "./cli/utils/resolve-oxlint-node.js";
+import { resolveCliCategories } from "./cli/utils/resolve-cli-categories.js";
 import { getRunId } from "./cli/utils/run-id.js";
 import { isSpinnerSilent, setSpinnerSilent } from "./cli/utils/spinner.js";
 import { VERSION } from "./cli/utils/version.js";
@@ -74,37 +75,12 @@ const runConsole = (effect: Effect.Effect<void>): void => {
   Effect.runSync(effect);
 };
 
-const buildCategoryFilterConfig = (
-  categoryFilters: ReadonlySet<string>,
-  outputSurface: DiagnosticSurface,
-): ReactDoctorConfig => ({
-  surfaces: {
-    [outputSurface]: {
-      excludeCategories: DIAGNOSTIC_CATEGORY_BUCKETS.filter(
-        (category) => !categoryFilters.has(category),
-      ),
-    },
-  },
-});
-
-const filterDiagnosticsForCategorySelection = (
-  diagnostics: ReadonlyArray<Diagnostic>,
-  outputSurface: DiagnosticSurface,
-  userConfig: ReactDoctorConfig | null,
-  categoryFilters: ReadonlySet<string>,
-): Diagnostic[] => {
-  const surfaceDiagnostics = filterDiagnosticsForSurface([...diagnostics], outputSurface, userConfig);
-  if (categoryFilters.size === 0) return surfaceDiagnostics;
-
-  return filterDiagnosticsForSurface(
-    surfaceDiagnostics,
-    outputSurface,
-    buildCategoryFilterConfig(categoryFilters, outputSurface),
-  );
-};
-
 const formatCategorySelection = (categoryFilters: ReadonlySet<string>): string =>
   [...categoryFilters].join(", ");
+
+export interface ReactDoctorInspectOptions extends InspectOptions {
+  categoryFilters?: string[];
+}
 
 interface ResolvedInspectOptions {
   lint: boolean;
@@ -141,7 +117,7 @@ const buildIgnoredTags = (userConfig: ReactDoctorConfig | null): ReadonlySet<str
 };
 
 const mergeInspectOptions = (
-  inputOptions: InspectOptions,
+  inputOptions: ReactDoctorInspectOptions,
   userConfig: ReactDoctorConfig | null,
 ): ResolvedInspectOptions => ({
   lint: inputOptions.lint ?? userConfig?.lint ?? true,
@@ -159,7 +135,7 @@ const mergeInspectOptions = (
   respectInlineDisables:
     inputOptions.respectInlineDisables ?? userConfig?.respectInlineDisables ?? true,
   warnings: inputOptions.warnings ?? userConfig?.warnings ?? DEFAULT_SHOW_WARNINGS,
-  categoryFilters: new Set(inputOptions.categoryFilters ?? []),
+  categoryFilters: new Set(resolveCliCategories(inputOptions.categoryFilters) ?? []),
   adoptExistingLintConfig: userConfig?.adoptExistingLintConfig ?? true,
   ignoredTags: buildIgnoredTags(userConfig),
   outputSurface: inputOptions.outputSurface ?? "cli",
@@ -192,7 +168,7 @@ const buildRunEventConfig = (
 
 export const inspect = async (
   directory: string,
-  inputOptions: InspectOptions = {},
+  inputOptions: ReactDoctorInspectOptions = {},
 ): Promise<InspectResult> => {
   const startTime = performance.now();
 
@@ -685,18 +661,9 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
     const hasSkippedChecks = skippedChecks.length > 0;
 
     const noScoreMessage = buildNoScoreMessage(options.noScore);
-    const categoryFilteredDiagnostics =
-      options.categoryFilters.size > 0
-        ? filterDiagnosticsForCategorySelection(
-            diagnostics,
-            options.outputSurface,
-            userConfig,
-            options.categoryFilters,
-          )
-        : null;
 
     const buildResult = (): InspectResult => ({
-      diagnostics: categoryFilteredDiagnostics ?? [...diagnostics],
+      diagnostics: [...diagnostics],
       score,
       skippedChecks,
       ...(Object.keys(skippedCheckReasons).length > 0 ? { skippedCheckReasons } : {}),
@@ -734,7 +701,10 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       options.outputSurface,
       userConfig,
     );
-    const printedDiagnostics = categoryFilteredDiagnostics ?? surfaceDiagnostics;
+    const printedDiagnostics = filterDiagnosticsByCategories(
+      surfaceDiagnostics,
+      options.categoryFilters,
+    );
     const demotedDiagnosticCount = diagnostics.length - surfaceDiagnostics.length;
     const isDiffMode = options.includePaths.length > 0;
     const lintSourceFileCount = isDiffMode ? options.includePaths.length : project.sourceFileCount;
@@ -748,7 +718,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
             `No issues detected, but ${skippedLabel} checks failed — results are incomplete.`,
           ),
         );
-      } else if (categoryFilteredDiagnostics !== null) {
+      } else if (options.categoryFilters.size > 0) {
         yield* Console.log(
           highlighter.success(
             `No issues found in category ${formatCategorySelection(options.categoryFilters)}!`,
@@ -790,7 +760,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       yield* printAgentGuidance();
     }
 
-    if (categoryFilteredDiagnostics === null && demotedDiagnosticCount > 0) {
+    if (options.categoryFilters.size === 0 && demotedDiagnosticCount > 0) {
       yield* Console.log(
         highlighter.gray(
           `  ${demotedDiagnosticCount} demoted from the ${options.outputSurface} surface (e.g. design cleanup) — run \`npx react-doctor@latest .\` locally for the full list.`,

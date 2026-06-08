@@ -327,7 +327,7 @@ export const Cart = () => {
 });
 
 describe("CLI category filtering", () => {
-  it("lists only one category in default output and returned diagnostics", async () => {
+  it("lists only one category in default output without mutating the scan result", async () => {
     const projectDir = setupCategoryFilterProject("category-filter-security");
     const scanOptions = resolveCliInspectOptions({ category: "security" }, null);
 
@@ -340,7 +340,9 @@ describe("CLI category filtering", () => {
     );
     const normalizedStdout = stripAnsi(securityRun.stdout);
 
-    expect(listDiagnosticCategories(securityRun.result)).toEqual(["Security"]);
+    const resultCategories = listDiagnosticCategories(securityRun.result);
+    expect(resultCategories).toContain("Performance");
+    expect(resultCategories).toContain("Security");
     expect(normalizedStdout).toContain("Security");
     expect(normalizedStdout).not.toContain("Performance");
   });
@@ -362,7 +364,8 @@ describe("CLI category filtering", () => {
     const categories = listDiagnosticCategories(categoryRun.result).toSorted();
     const normalizedStdout = stripAnsi(categoryRun.stdout);
 
-    expect(categories).toEqual(["Performance", "Security"]);
+    expect(categories).toContain("Performance");
+    expect(categories).toContain("Security");
     expect(normalizedStdout).toContain("Security");
     expect(normalizedStdout).toContain("Performance");
     expect(normalizedStdout).not.toContain("Accessibility");
@@ -383,11 +386,13 @@ describe("CLI category filtering", () => {
       }),
     );
 
-    expect(excludedRun.result.diagnostics).toEqual([]);
+    const resultCategories = listDiagnosticCategories(excludedRun.result);
+    expect(resultCategories).toContain("Performance");
+    expect(resultCategories).toContain("Security");
     expect(stripAnsi(excludedRun.stdout)).toContain("No issues found in category Security");
   });
 
-  it("returns category-filtered diagnostics for JSON mode", async () => {
+  it("keeps silent inspect results complete so CLI JSON can filter at report time", async () => {
     const projectDir = setupCategoryFilterProject("category-filter-json");
     const scanOptions = resolveCliInspectOptions({ category: "performance", json: true }, null);
 
@@ -397,7 +402,9 @@ describe("CLI category filtering", () => {
       warnings: true,
     });
 
-    expect(listDiagnosticCategories(jsonRun.result)).toEqual(["Performance"]);
+    const resultCategories = listDiagnosticCategories(jsonRun.result);
+    expect(resultCategories).toContain("Performance");
+    expect(resultCategories).toContain("Security");
     expect(jsonRun.stdout).toBe("");
   });
 });

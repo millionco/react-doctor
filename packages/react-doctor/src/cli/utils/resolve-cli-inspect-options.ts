@@ -5,6 +5,10 @@ import { pickBlockingLevel } from "./resolve-blocking-level.js";
 import { resolveCliCategories } from "./resolve-cli-categories.js";
 import { resolveParallelFlag } from "./resolve-parallel-flag.js";
 
+export interface CliInspectOptions extends InspectOptions {
+  categoryFilters?: string[];
+}
+
 /**
  * Translates CLI flags into the `InspectOptions` contract `inspect()`
  * accepts. Flag-specific computed fields (`scoreOnly`, `noScore`,
@@ -19,7 +23,7 @@ import { resolveParallelFlag } from "./resolve-parallel-flag.js";
 export const resolveCliInspectOptions = (
   flags: InspectFlags,
   userConfig: ReactDoctorConfig | null,
-): InspectOptions => {
+): CliInspectOptions => {
   // A `warning`-level CI gate is meaningless unless warnings reach the
   // ciFailure surface, so the gate wins: when `--blocking warning` is set it
   // forces warnings on even over an explicit `--no-warnings` (you can't block

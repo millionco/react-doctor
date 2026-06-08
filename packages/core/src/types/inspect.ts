@@ -111,13 +111,6 @@ export interface InspectOptions {
    * `--no-warnings` or `warnings: false`.
    */
   warnings?: boolean;
-  /**
-   * Canonical diagnostic categories to list for this run. When set by the CLI's
-   * `--category` flag, rendering and returned diagnostics are first filtered
-   * through `outputSurface`, then narrowed to these categories. Scoring still
-   * uses the full post-pipeline diagnostic set.
-   */
-  categoryFilters?: string[];
 
   // ── Rendering / orchestration knobs ──────────────────────────────
   verbose?: boolean;
@@ -136,9 +129,9 @@ export interface InspectOptions {
    * for a PR comment — weak-signal rule families (default: `design`
    * tag) are dropped from the printed list and replaced with a
    * one-line "N more demoted" hint so they don't bury real React
-   * findings. The returned `InspectResult.diagnostics` always contains the
-   * full, unfiltered list so JSON consumers can see everything, unless
-   * `categoryFilters` is set.
+   * findings. The returned `InspectResult.diagnostics` always
+   * contains the full, unfiltered list so JSON consumers can see
+   * everything.
    */
   outputSurface?: DiagnosticSurface;
   /**

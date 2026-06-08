@@ -6,29 +6,45 @@ import {
   isNamespaceImportFromModule,
 } from "./find-import-source-for-name.js";
 import { findProgramRoot } from "./find-program-root.js";
+import { findVariableInitializer } from "./find-variable-initializer.js";
+import { flattenJsxName } from "./flatten-jsx-name.js";
 import { isMemberProperty } from "./is-member-property.js";
 import { isNextjsMetadataImageRouteFilename } from "./is-nextjs-metadata-image-route-filename.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { normalizeFilename } from "./normalize-filename.js";
 import type { RuleContext } from "./rule-context.js";
+import { stripParenExpression } from "./strip-paren-expression.js";
 import { walkAst } from "./walk-ast.js";
 
 const IMAGE_RESPONSE_MODULES: ReadonlyArray<string> = ["next/og", "@vercel/og"];
 const SATORI_MODULE = "satori";
 
-const generatedImageProgramCache = new WeakMap<EsTreeNodeOfType<"Program">, boolean>();
+const generatedImageJsxCache = new WeakMap<
+  EsTreeNodeOfType<"Program">,
+  WeakSet<EsTreeNode>
+>();
 
-export const isGeneratedImageRenderFilename = (rawFilename: string | undefined): boolean => {
+type GeneratedImageRendererCall =
+  | EsTreeNodeOfType<"CallExpression">
+  | EsTreeNodeOfType<"NewExpression">;
+
+export const isGeneratedImageRenderFilename = (
+  rawFilename: string | undefined,
+): boolean => {
   if (!rawFilename) return false;
   const filename = normalizeFilename(rawFilename);
   return isNextjsMetadataImageRouteFilename(filename);
 };
 
-const isImageResponseCallee = (contextNode: EsTreeNode, callee: EsTreeNode): boolean => {
+const isImageResponseCallee = (
+  contextNode: EsTreeNode,
+  callee: EsTreeNode,
+): boolean => {
   if (isNodeOfType(callee, "Identifier")) {
     return IMAGE_RESPONSE_MODULES.some(
       (moduleSource) =>
-        getImportedNameFromModule(contextNode, callee.name, moduleSource) === "ImageResponse",
+        getImportedNameFromModule(contextNode, callee.name, moduleSource) ===
+        "ImageResponse",
     );
   }
 
@@ -37,44 +53,201 @@ const isImageResponseCallee = (contextNode: EsTreeNode, callee: EsTreeNode): boo
   const namespaceIdentifierName = callee.object.name;
 
   return IMAGE_RESPONSE_MODULES.some((moduleSource) =>
-    isNamespaceImportFromModule(contextNode, namespaceIdentifierName, moduleSource),
+    isNamespaceImportFromModule(
+      contextNode,
+      namespaceIdentifierName,
+      moduleSource,
+    ),
   );
 };
 
-const isSatoriCallee = (contextNode: EsTreeNode, callee: EsTreeNode): boolean => {
+const isSatoriCallee = (
+  contextNode: EsTreeNode,
+  callee: EsTreeNode,
+): boolean => {
   if (!isNodeOfType(callee, "Identifier")) return false;
-  if (getImportedNameFromModule(contextNode, callee.name, SATORI_MODULE) === "satori") return true;
+  if (
+    getImportedNameFromModule(contextNode, callee.name, SATORI_MODULE) ===
+    "satori"
+  )
+    return true;
   return isDefaultImportFromModule(contextNode, callee.name, SATORI_MODULE);
 };
 
-const isGeneratedImageRendererCall = (node: EsTreeNode): boolean => {
-  if (!isNodeOfType(node, "CallExpression") && !isNodeOfType(node, "NewExpression")) {
+const isGeneratedImageRendererCall = (
+  node: EsTreeNode,
+): node is GeneratedImageRendererCall => {
+  if (
+    !isNodeOfType(node, "CallExpression") &&
+    !isNodeOfType(node, "NewExpression")
+  ) {
     return false;
   }
 
-  if (!isNodeOfType(node.callee, "Identifier") && !isNodeOfType(node.callee, "MemberExpression")) {
+  if (
+    !isNodeOfType(node.callee, "Identifier") &&
+    !isNodeOfType(node.callee, "MemberExpression")
+  ) {
     return false;
   }
 
-  return isImageResponseCallee(node, node.callee) || isSatoriCallee(node, node.callee);
+  return (
+    isImageResponseCallee(node, node.callee) ||
+    isSatoriCallee(node, node.callee)
+  );
 };
 
-const programContainsGeneratedImageRendererCall = (
-  programRoot: EsTreeNodeOfType<"Program">,
-): boolean => {
-  const cached = generatedImageProgramCache.get(programRoot);
-  if (cached !== undefined) return cached;
+const isComponentIdentifierName = (name: string): boolean => {
+  const firstCharacter = name[0];
+  return Boolean(
+    firstCharacter && firstCharacter === firstCharacter.toUpperCase(),
+  );
+};
 
-  let containsGeneratedImageRendererCall = false;
+const isFunctionLike = (
+  node: EsTreeNode | null | undefined,
+): node is
+  | EsTreeNodeOfType<"FunctionDeclaration">
+  | EsTreeNodeOfType<"FunctionExpression">
+  | EsTreeNodeOfType<"ArrowFunctionExpression"> =>
+  Boolean(
+    node &&
+      (isNodeOfType(node, "FunctionDeclaration") ||
+        isNodeOfType(node, "FunctionExpression") ||
+        isNodeOfType(node, "ArrowFunctionExpression")),
+  );
+
+const markFunctionReturnJsx = (
+  functionNode: EsTreeNode,
+  generatedImageJsxNodes: WeakSet<EsTreeNode>,
+  visitedComponentNames: Set<string>,
+): void => {
+  if (!isFunctionLike(functionNode)) return;
+
+  if (isNodeOfType(functionNode, "ArrowFunctionExpression")) {
+    const body = stripParenExpression(functionNode.body);
+    if (!isNodeOfType(body, "BlockStatement")) {
+      markGeneratedImageExpression(
+        body,
+        generatedImageJsxNodes,
+        visitedComponentNames,
+      );
+      return;
+    }
+  }
+
+  const body = functionNode.body;
+  if (!isNodeOfType(body, "BlockStatement")) return;
+
+  walkAst(body, (descendantNode) => {
+    if (descendantNode !== body && isFunctionLike(descendantNode)) return false;
+    if (!isNodeOfType(descendantNode, "ReturnStatement")) return;
+    if (!descendantNode.argument) return;
+    markGeneratedImageExpression(
+      stripParenExpression(descendantNode.argument),
+      generatedImageJsxNodes,
+      visitedComponentNames,
+    );
+  });
+};
+
+const markComponentRenderJsx = (
+  openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+  generatedImageJsxNodes: WeakSet<EsTreeNode>,
+  visitedComponentNames: Set<string>,
+): void => {
+  const tagName = flattenJsxName(openingElement.name);
+  if (!tagName || tagName.includes(".") || !isComponentIdentifierName(tagName))
+    return;
+  if (visitedComponentNames.has(tagName)) return;
+
+  const binding = findVariableInitializer(openingElement, tagName);
+  if (!binding?.initializer) return;
+
+  visitedComponentNames.add(tagName);
+  markGeneratedImageExpression(
+    stripParenExpression(binding.initializer),
+    generatedImageJsxNodes,
+    visitedComponentNames,
+  );
+};
+
+const markJsxSubtree = (
+  node: EsTreeNode,
+  generatedImageJsxNodes: WeakSet<EsTreeNode>,
+  visitedComponentNames: Set<string>,
+): void => {
+  walkAst(node, (descendantNode) => {
+    if (!isNodeOfType(descendantNode, "JSXOpeningElement")) return;
+    generatedImageJsxNodes.add(descendantNode);
+    markComponentRenderJsx(
+      descendantNode,
+      generatedImageJsxNodes,
+      visitedComponentNames,
+    );
+  });
+};
+
+const markGeneratedImageExpression = (
+  expression: EsTreeNode,
+  generatedImageJsxNodes: WeakSet<EsTreeNode>,
+  visitedComponentNames: Set<string>,
+): void => {
+  const unwrappedExpression = stripParenExpression(expression);
+
+  if (
+    isNodeOfType(unwrappedExpression, "JSXElement") ||
+    isNodeOfType(unwrappedExpression, "JSXFragment")
+  ) {
+    markJsxSubtree(
+      unwrappedExpression,
+      generatedImageJsxNodes,
+      visitedComponentNames,
+    );
+    return;
+  }
+
+  if (isFunctionLike(unwrappedExpression)) {
+    markFunctionReturnJsx(
+      unwrappedExpression,
+      generatedImageJsxNodes,
+      visitedComponentNames,
+    );
+    return;
+  }
+
+  if (isNodeOfType(unwrappedExpression, "Identifier")) {
+    if (visitedComponentNames.has(unwrappedExpression.name)) return;
+    visitedComponentNames.add(unwrappedExpression.name);
+    const binding = findVariableInitializer(
+      unwrappedExpression,
+      unwrappedExpression.name,
+    );
+    if (!binding?.initializer) return;
+    markGeneratedImageExpression(
+      stripParenExpression(binding.initializer),
+      generatedImageJsxNodes,
+      visitedComponentNames,
+    );
+  }
+};
+
+const collectGeneratedImageJsxNodes = (
+  programRoot: EsTreeNodeOfType<"Program">,
+): WeakSet<EsTreeNode> => {
+  const cached = generatedImageJsxCache.get(programRoot);
+  if (cached) return cached;
+
+  const generatedImageJsxNodes = new WeakSet<EsTreeNode>();
   walkAst(programRoot, (descendantNode) => {
-    if (containsGeneratedImageRendererCall) return false;
     if (!isGeneratedImageRendererCall(descendantNode)) return;
-    containsGeneratedImageRendererCall = true;
-    return false;
+    for (const argument of descendantNode.arguments) {
+      markGeneratedImageExpression(argument, generatedImageJsxNodes, new Set());
+    }
   });
 
-  generatedImageProgramCache.set(programRoot, containsGeneratedImageRendererCall);
-  return containsGeneratedImageRendererCall;
+  generatedImageJsxCache.set(programRoot, generatedImageJsxNodes);
+  return generatedImageJsxNodes;
 };
 
 export const isGeneratedImageRenderContext = (
@@ -87,5 +260,5 @@ export const isGeneratedImageRenderContext = (
   const programRoot = findProgramRoot(node);
   if (!programRoot) return false;
 
-  return programContainsGeneratedImageRendererCall(programRoot);
+  return collectGeneratedImageJsxNodes(programRoot).has(node);
 };

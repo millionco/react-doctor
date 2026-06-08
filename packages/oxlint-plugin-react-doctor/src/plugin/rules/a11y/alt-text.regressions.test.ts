@@ -108,6 +108,21 @@ describe("a11y/alt-text regressions", () => {
       expect(result.diagnostics).toEqual([]);
     });
 
+    it("skips helper JSX in files that render through @vercel/og ImageResponse", () => {
+      const result = runRule(
+        altText,
+        `
+          import { ImageResponse } from "@vercel/og";
+
+          const HeroImage = () => <div><img src="/bg.png" /></div>;
+
+          export const GET = () => new ImageResponse(<HeroImage />);
+        `,
+      );
+
+      expect(result.diagnostics).toEqual([]);
+    });
+
     it("skips Image aliases in files that render through satori", () => {
       const result = runRule(
         altText,
@@ -149,6 +164,26 @@ describe("a11y/alt-text regressions", () => {
       );
 
       expect(result.diagnostics.length).toBeGreaterThan(0);
+    });
+
+    it("still flags ordinary JSX in mixed files that also render generated images", () => {
+      const result = runRule(
+        altText,
+        `
+          import { ImageResponse } from "next/og";
+
+          const HeroImage = () => <div><img src="/og.png" /></div>;
+
+          export const GET = () => new ImageResponse(<HeroImage />);
+
+          export const Page = () => <main><img src="/page.png" /></main>;
+        `,
+        {
+          filename: "/proj/app/social-card.tsx",
+        },
+      );
+
+      expect(result.diagnostics).toHaveLength(1);
     });
 
     it("still flags Image aliases in ordinary page components", () => {

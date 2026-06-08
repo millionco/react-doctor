@@ -207,7 +207,7 @@ describe("inspect", () => {
       );
 
       const result = await inspect(monorepoDirectory, {
-        lint: false,
+        lint: true,
         deadCode: false,
         noScore: true,
         silent: true,
@@ -216,6 +216,7 @@ describe("inspect", () => {
       });
 
       expect(result.project.reactVersion).toBe("^19.0.0");
+      expect(result.skippedChecks).not.toContain("lint");
       expect(result.baselineDelta?.baseTotalCount).toBe(0);
     } finally {
       consoleSpy.mockRestore();

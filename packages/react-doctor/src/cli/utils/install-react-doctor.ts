@@ -22,6 +22,7 @@ import {
 } from "./install-doctor-script.js";
 import { askAddToGitHubActions } from "./ask-add-to-github-actions.js";
 import { askUpgradeActionVersion } from "./ask-upgrade-action-version.js";
+import { recordActionUpgradeDecision } from "./action-upgrade-prompt.js";
 import { installReactDoctorAgentHooks } from "./install-agent-hooks.js";
 import {
   getReactDoctorWorkflowPath,
@@ -518,16 +519,16 @@ const installReactDoctorWorkflowStep = (projectRoot: string): boolean => {
 // the fresh-install write — the PR-opening upgrade variant is the post-scan
 // handoff's job). Counts the same `install.workflow` activation as a fresh
 // write so CI adoption stays comparable across both entry points.
-const upgradeReactDoctorWorkflowStep = (projectRoot: string): void => {
+const upgradeReactDoctorWorkflowStep = (projectRoot: string): boolean => {
   const workflowSpinner = spinner("Upgrading GitHub Actions workflow to v2...").start();
   const upgradeResult = upgradeReactDoctorWorkflowInPlace(projectRoot);
   if (upgradeResult.status === "failed") {
     workflowSpinner.fail("Couldn't update the GitHub Actions workflow.");
-    return;
+    return false;
   }
   if (upgradeResult.status === "not-needed") {
     workflowSpinner.succeed("GitHub Actions workflow already up to date.");
-    return;
+    return false;
   }
   workflowSpinner.succeed(
     `Upgraded the GitHub Actions workflow to v2 at ${path.relative(
@@ -536,6 +537,7 @@ const upgradeReactDoctorWorkflowStep = (projectRoot: string): void => {
     )}.`,
   );
   recordCount(METRIC.installWorkflow, 1, { kind: "upgrade" });
+  return true;
 };
 
 export const runInstallReactDoctor = async (
@@ -576,7 +578,10 @@ export const runInstallReactDoctor = async (
 
   const workflowTargetPath = getReactDoctorWorkflowPath(projectRoot);
   const existingWorkflow = readReactDoctorWorkflow(projectRoot);
-  const canInstallWorkflow = existingWorkflow === null;
+  // A present-but-unreadable workflow also reads back as `null`; gate the "add"
+  // offer on existence so we never pitch installing over a file that's already
+  // there (and can't be upgraded either, since we couldn't read its contents).
+  const canInstallWorkflow = !fs.existsSync(workflowTargetPath);
   const canUpgradeWorkflow =
     existingWorkflow !== null && workflowUsesV1Action(existingWorkflow.content);
 
@@ -598,9 +603,20 @@ export const runInstallReactDoctor = async (
   const shouldInstallWorkflow =
     canInstallWorkflow &&
     (Boolean(options.yes) || (!skipPrompts && (await askAddToGitHubActions(prompt)) === "yes"));
+  const upgradePromptOutcome =
+    canUpgradeWorkflow && !options.yes && !skipPrompts
+      ? await askUpgradeActionVersion(prompt)
+      : null;
   const shouldUpgradeWorkflow =
-    canUpgradeWorkflow &&
-    (Boolean(options.yes) || (!skipPrompts && (await askUpgradeActionVersion(prompt)) === "yes"));
+    canUpgradeWorkflow && (Boolean(options.yes) || upgradePromptOutcome === "yes");
+
+  // The upgrade prompt's "No, thanks" promises "won't ask again for this repo",
+  // so persist a decline immediately — mirroring the post-scan handoff, and so
+  // the offer stays suppressed even if the rest of the install is cancelled
+  // below. Dry runs preview without writing anything.
+  if (upgradePromptOutcome === "no" && !options.dryRun) {
+    recordActionUpgradeDecision(projectRoot, "declined");
+  }
 
   // Step 2 — the agent skill + package setup (the core of `install`).
   const selectedAgents: SkillAgentType[] = skipPrompts
@@ -630,8 +646,10 @@ export const runInstallReactDoctor = async (
   if (!options.dryRun && (shouldInstallWorkflow || shouldUpgradeWorkflow)) {
     if (shouldInstallWorkflow) {
       didInstallWorkflow = installReactDoctorWorkflowStep(projectRoot);
-    } else {
-      upgradeReactDoctorWorkflowStep(projectRoot);
+    } else if (upgradeReactDoctorWorkflowStep(projectRoot)) {
+      // Applied upgrade is terminal too — record it so the post-scan handoff
+      // never re-offers the bump on the next scan.
+      recordActionUpgradeDecision(projectRoot, "accepted");
     }
     // Blank line between the workflow install/upgrade and the skill group.
     logger.break();

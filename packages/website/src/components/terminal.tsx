@@ -45,7 +45,8 @@ const DIAGNOSTICS: RuleDiagnostic[] = [
   {
     ruleKey: "react-doctor/no-derived-state-effect",
     severity: "error",
-    message: "Derived state is computed in useEffect, so users briefly see stale UI before the extra render",
+    message:
+      "Derived state is computed in useEffect, so users briefly see stale UI before the extra render",
     help: "Derive values directly in the render body, or use useMemo for expensive computations.",
     count: 5,
     location: "src/components/Dashboard.tsx:42",

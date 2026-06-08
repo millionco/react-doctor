@@ -6,13 +6,11 @@ export interface InstallGitHubWorkflowResult {
   readonly workflowPath: string;
 }
 
-// Self-documenting workflow file. The inline YAML comments walk a new user
-// through the three things they need to change first (non-blocking rollout,
-// scanning `main` on every push for a quality-trend graph, suppressing PR
-// comments) and explain why each permission is granted — without forcing
-// them off to the docs site to learn the basics. The action itself is pinned
-// to the floating major `@v2` (never `@main`, per the supply-chain guidance
-// in AGENTS.md): `@main` would run whatever HEAD points to with
+// Self-documenting workflow file. The inline YAML comments give a new user
+// one-line explanations of each trigger, without forcing them off to the
+// docs site to learn the basics. The action itself is pinned to the
+// floating major `@v2` (never `@main`, per the supply-chain guidance in
+// AGENTS.md): `@main` would run whatever HEAD points to with
 // `pull-requests: write` granted.
 const buildWorkflowContent =
   (): string => `# React Doctor — finds security, performance, correctness, accessibility,
@@ -24,37 +22,20 @@ const buildWorkflowContent =
 name: React Doctor
 
 on:
+  # Scans the PR's changed files and posts a sticky summary comment listing only the new issues introduced relative to the merge base of the target branch.
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-  # Scans \`main\` on every push so you get a health-score trend on the
-  # default branch — useful for tracking the overall number commit-by-commit
-  # and catching regressions that slipped past PR review. PR-specific steps
-  # (the sticky summary comment) are skipped automatically on \`push\` events.
-  # Comment this block out if you only want PR-time scans.
+  # Scans \`main\` on every push to track the health-score trend and catch regressions that slipped past PR review.
   push:
     branches: [main]
 
 permissions:
-  # \`actions/checkout\` needs this to read the repo source.
   contents: read
-  # Two uses: (1) reads the PR's changed-file list so the scan only checks
-  # what the PR touched (faster, scoped to the diff), and (2) posts/updates
-  # the sticky React Doctor summary comment on the PR. Downgrade \`write\` to
-  # \`read\` to keep the changed-file scan but disable comment posting.
   pull-requests: write
-  # The sticky-comment step uses GitHub's \`issues.createComment\` /
-  # \`issues.updateComment\` endpoints — those are the same APIs that back PR
-  # comments (PRs are issues under the hood). Not exercised on \`push\`
-  # events, so safe to drop if you only run on \`main\`.
   issues: write
-  # Lets the action publish a commit status with the score + error/warning
-  # counts (links to the run). This is how a \`push\` to \`main\` surfaces its
-  # result, since the PR comment is skipped off pull requests. Drop it to
-  # disable the status (or set \`commit-status: false\` below).
   statuses: write
 
-# Cancels any in-flight scan for the same PR (or branch, on push) the moment
-# a new commit arrives, so reviewers only ever see the latest run.
+# Cancels any in-flight scan for the same PR (or branch, on push) the moment a new commit arrives, so reviewers only ever see the latest run.
 concurrency:
   group: react-doctor-\${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true

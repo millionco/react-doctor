@@ -1,0 +1,27 @@
+packages/core/tests/check-dead-code.test.ts
+  s_ba3c804037a5b7::t_14a5857c8778ee 236-246
+packages/react-doctor/tests/e2e/terminal-visuals.test.ts
+  s_ba3c804037a5b7::t_f4c875be540e21 421-489
+.changeset/warning-tail-dependency-names.md
+  s_ba3c804037a5b7::t_22fe14f3ac878e 1-7
+packages/react-doctor/src/cli/utils/render-diagnostics.ts
+  s_ba3c804037a5b7::t_31490aa9529852 203-206,210-218,222-224
+  s_ba3c804037a5b7::t_4a0d4482969674 419-425,428-435
+  s_ba3c804037a5b7::t_8091225160167b 298-301,323-333
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "a9eef5ffafec48c02e6fe48db8aee6531f51e514",
+  "prompts": {},
+  "sessions": {
+    "s_ba3c804037a5b7": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "5d3f21a8-64ba-4cbe-ab06-ea3618589cd2",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

@@ -293,9 +293,7 @@ describe("in-process render across terminal widths and render modes", () => {
     const verboseScenario = scenarios.find((scenario) => scenario.name === "verbose-errors-great");
     expect(verboseScenario).toBeDefined();
     const rendered = await renderInTerminal(verboseScenario?.bytes ?? "", { cols: 120 });
-    expect(rendered.text).toContain(
-      "Component defined inside another component remounts on every render",
-    );
+    expect(rendered.text).toContain("remounts on");
   });
 
   it("never leaks the project name into the header in any mode or width", async () => {

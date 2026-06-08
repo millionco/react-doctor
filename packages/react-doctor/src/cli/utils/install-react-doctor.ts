@@ -22,7 +22,7 @@ import {
 } from "./install-doctor-script.js";
 import { askAddToGitHubActions } from "./ask-add-to-github-actions.js";
 import { askUpgradeActionVersion } from "./ask-upgrade-action-version.js";
-import { recordActionUpgradeDecision } from "./action-upgrade-prompt.js";
+import { hasHandledActionUpgrade, recordActionUpgradeDecision } from "./action-upgrade-prompt.js";
 import { installReactDoctorAgentHooks } from "./install-agent-hooks.js";
 import {
   getReactDoctorWorkflowPath,
@@ -582,8 +582,15 @@ export const runInstallReactDoctor = async (
   // offer on existence so we never pitch installing over a file that's already
   // there (and can't be upgraded either, since we couldn't read its contents).
   const canInstallWorkflow = !fs.existsSync(workflowTargetPath);
+  // Mirror the post-scan handoff's `maybeOfferActionUpgrade`: the `@v1` → `@v2`
+  // bump is a one-time, per-repo offer. Once it's been answered (accepted OR
+  // declined), `hasHandledActionUpgrade` suppresses it here too — so `install`
+  // never re-prompts, and `--yes` never silently re-applies an already-declined
+  // bump.
   const canUpgradeWorkflow =
-    existingWorkflow !== null && workflowUsesV1Action(existingWorkflow.content);
+    existingWorkflow !== null &&
+    workflowUsesV1Action(existingWorkflow.content) &&
+    !hasHandledActionUpgrade(projectRoot);
 
   // Each install step runs right after the user commits to the install (past the
   // agent-selection guard below), so the writes land in one visible group and

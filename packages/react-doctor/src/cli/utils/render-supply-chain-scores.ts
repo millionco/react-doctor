@@ -33,9 +33,7 @@ export const renderSupplyChainScores = (rows: ReadonlyArray<DependencyScore>): s
 
   const lines: string[] = [
     highlighter.bold("  Socket supply-chain scores"),
-    highlighter.dim(
-      `  ${rows.length} ${rows.length === 1 ? "dependency" : "dependencies"} · scored via Socket.dev's free API (no key required)`,
-    ),
+    highlighter.dim(`  ${rows.length} ${rows.length === 1 ? "dependency" : "dependencies"}`),
     "",
   ];
 

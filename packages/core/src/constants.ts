@@ -141,7 +141,10 @@ export const DEFAULT_BRANCH_CANDIDATES = ["main", "master"];
 // to evaluate and aren't supported by oxlint's `extends`. Listed in
 // detection priority order — oxlint native first, eslint legacy as a
 // compatibility fallback. Also used by tests as the source of truth.
-export const ADOPTABLE_LINT_CONFIG_FILENAMES = [".oxlintrc.json", ".eslintrc.json"];
+export const ADOPTABLE_LINT_CONFIG_FILENAMES = [
+  ".oxlintrc.json",
+  ".eslintrc.json",
+];
 
 export const OXLINT_NODE_REQUIREMENT = "^20.19.0 || >=22.12.0";
 
@@ -170,6 +173,30 @@ export const STAGED_FILES_PROJECT_CONFIG_FILENAMES = [
   "doctor.config.jsonc",
   "oxlint.json",
   ".oxlintrc.json",
+] as const;
+
+export const CONFIG_FINGERPRINT_FILENAMES = [
+  "doctor.config.ts",
+  "doctor.config.mts",
+  "doctor.config.cts",
+  "doctor.config.js",
+  "doctor.config.mjs",
+  "doctor.config.cjs",
+  "doctor.config.json",
+  "doctor.config.jsonc",
+  "react-doctor.config.json",
+  "package.json",
+  "pnpm-workspace.yaml",
+  "tsconfig.json",
+  "tsconfig.base.json",
+  ".oxlintrc.json",
+  ".eslintrc.json",
+  "pnpm-lock.yaml",
+  "package-lock.json",
+  "yarn.lock",
+  "bun.lock",
+  "bun.lockb",
+  ".gitignore",
 ] as const;
 
 export const CANONICAL_GITHUB_URL = "https://github.com/millionco/react-doctor";

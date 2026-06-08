@@ -75,6 +75,7 @@ export * from "./summarize-diagnostics.js";
 export * from "./validate-config-types.js";
 export * from "./utils/build-rule-docs-url.js";
 export * from "./utils/classify-package-role.js";
+export * from "./utils/compute-config-fingerprint.js";
 export * from "./utils/dedupe-diagnostics.js";
 export * from "./utils/define-config.js";
 export * from "./utils/group-by.js";

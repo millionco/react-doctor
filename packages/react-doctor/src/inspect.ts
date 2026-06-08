@@ -23,7 +23,10 @@ import {
   withSentryRunSpan,
 } from "./cli/utils/with-sentry-run-span.js";
 import type { SentryRootSpan } from "./cli/utils/with-sentry-run-span.js";
-import { BASELINE_FILES_TEMP_DIR_PREFIX, METRIC } from "./cli/utils/constants.js";
+import {
+  BASELINE_FILES_TEMP_DIR_PREFIX,
+  METRIC,
+} from "./cli/utils/constants.js";
 import { recordCount } from "./cli/utils/record-metric.js";
 import { recordScanMetrics } from "./cli/utils/record-scan-metrics.js";
 import { recordRunEvent } from "./cli/utils/build-run-event.js";
@@ -54,7 +57,10 @@ import {
   onboardingSectionPause,
   shouldRecordOnboarding,
 } from "./cli/utils/onboarding-pacing.js";
-import { hasCompletedOnboarding, markOnboardingComplete } from "./cli/utils/onboarding-state.js";
+import {
+  hasCompletedOnboarding,
+  markOnboardingComplete,
+} from "./cli/utils/onboarding-state.js";
 import { printProjectDetection } from "./cli/utils/render-project-detection.js";
 import {
   printBrandingOnlyHeader,
@@ -64,6 +70,12 @@ import {
 import { printFooter, printSummary } from "./cli/utils/render-summary.js";
 import { resolveOxlintNode } from "./cli/utils/resolve-oxlint-node.js";
 import { getRunId } from "./cli/utils/run-id.js";
+import {
+  buildScanResultCacheKey,
+  createScanResultCache,
+  shouldStoreScanPayload,
+  type CachedScanPayload,
+} from "./cli/utils/scan-result-cache.js";
 import { isSpinnerSilent, setSpinnerSilent } from "./cli/utils/spinner.js";
 import { VERSION } from "./cli/utils/version.js";
 
@@ -73,7 +85,28 @@ const runConsole = (effect: Effect.Effect<void>): void => {
   Effect.runSync(effect);
 };
 
-interface ResolvedInspectOptions {
+const recordOnboardingCompletion = (options: ResolvedInspectOptions): void => {
+  const forceOnboarding = isOnboardingForced();
+  const paceOnboardingSections =
+    !options.silent &&
+    !options.scoreOnly &&
+    !options.suppressRendering &&
+    !options.verbose &&
+    canAnimateOnboarding(process.stdout) &&
+    (forceOnboarding || !hasCompletedOnboarding());
+  if (
+    shouldRecordOnboarding({
+      paceOnboardingSections,
+      forceOnboarding,
+      verbose: options.verbose,
+      isNonInteractiveEnvironment: options.isNonInteractiveEnvironment,
+    })
+  ) {
+    markOnboardingComplete();
+  }
+};
+
+export interface ResolvedInspectOptions {
   lint: boolean;
   deadCode: boolean;
   verbose: boolean;
@@ -98,7 +131,9 @@ interface ResolvedInspectOptions {
   baseline: { ref: string } | null;
 }
 
-const buildIgnoredTags = (userConfig: ReactDoctorConfig | null): ReadonlySet<string> => {
+const buildIgnoredTags = (
+  userConfig: ReactDoctorConfig | null
+): ReadonlySet<string> => {
   const tags = new Set<string>();
   if (userConfig?.ignore?.tags) {
     for (const tag of userConfig.ignore.tags) tags.add(tag);
@@ -108,7 +143,7 @@ const buildIgnoredTags = (userConfig: ReactDoctorConfig | null): ReadonlySet<str
 
 const mergeInspectOptions = (
   inputOptions: InspectOptions,
-  userConfig: ReactDoctorConfig | null,
+  userConfig: ReactDoctorConfig | null
 ): ResolvedInspectOptions => ({
   lint: inputOptions.lint ?? userConfig?.lint ?? true,
   deadCode: inputOptions.deadCode ?? userConfig?.deadCode ?? true,
@@ -123,8 +158,11 @@ const mergeInspectOptions = (
   customRulesOnly: userConfig?.customRulesOnly ?? false,
   share: userConfig?.share ?? true,
   respectInlineDisables:
-    inputOptions.respectInlineDisables ?? userConfig?.respectInlineDisables ?? true,
-  warnings: inputOptions.warnings ?? userConfig?.warnings ?? DEFAULT_SHOW_WARNINGS,
+    inputOptions.respectInlineDisables ??
+    userConfig?.respectInlineDisables ??
+    true,
+  warnings:
+    inputOptions.warnings ?? userConfig?.warnings ?? DEFAULT_SHOW_WARNINGS,
   adoptExistingLintConfig: userConfig?.adoptExistingLintConfig ?? true,
   ignoredTags: buildIgnoredTags(userConfig),
   outputSurface: inputOptions.outputSurface ?? "cli",
@@ -140,7 +178,7 @@ const mergeInspectOptions = (
 const buildRunEventConfig = (
   options: ResolvedInspectOptions,
   userConfig: ReactDoctorConfig | null,
-  hasCustomConfig: boolean,
+  hasCustomConfig: boolean
 ) => ({
   parallel: options.concurrency !== undefined,
   workerCount: options.concurrency,
@@ -157,7 +195,7 @@ const buildRunEventConfig = (
 
 export const inspect = async (
   directory: string,
-  inputOptions: InspectOptions = {},
+  inputOptions: InspectOptions = {}
 ): Promise<InspectResult> => {
   const startTime = performance.now();
 
@@ -215,7 +253,7 @@ export const inspect = async (
           hasConfigOverride,
           configSourceDirectory,
           startTime,
-          rootSentrySpan,
+          rootSentrySpan
         );
       } catch (error) {
         // Emit the canonical wide event on the failure path too: the scan threw
@@ -264,7 +302,9 @@ const runBaselineComparison = async (params: {
   resolvedNodeBinaryPath: string | null;
   baselineRef: string;
 }): Promise<BaselineComparison | null> => {
-  const tempDirectory = mkdtempSync(path.join(tmpdir(), BASELINE_FILES_TEMP_DIR_PREFIX));
+  const tempDirectory = mkdtempSync(
+    path.join(tmpdir(), BASELINE_FILES_TEMP_DIR_PREFIX)
+  );
   // If materialization throws before the snapshot (and its cleanup) exists,
   // remove the temp dir we just created so it can't leak.
   const snapshot = await materializeBaselineFiles({
@@ -305,15 +345,15 @@ const runBaselineComparison = async (params: {
         resolveLocalGithubViewerPermission: false,
         suppressScanSummary: true,
       },
-      {},
+      {}
     );
     const baseOutput = await Effect.runPromise(
       restoreLegacyThrow(
         baseProgram.pipe(
           Effect.provide(baseLayers),
-          Effect.provideService(Console.Console, silentConsole),
-        ),
-      ),
+          Effect.provideService(Console.Console, silentConsole)
+        )
+      )
     );
     // A failed base lint leaves base findings unreliable/empty, which would
     // mislabel pre-existing head issues as newly introduced. Signal "no delta"
@@ -349,9 +389,51 @@ const runInspectWithRuntime = async (
   hasConfigOverride: boolean,
   configSourceDirectory: string | null,
   startTime: number,
-  rootSentrySpan: SentryRootSpan,
+  rootSentrySpan: SentryRootSpan
 ): Promise<InspectResult> => {
   const isDiffMode = options.includePaths.length > 0;
+  const cacheKey = buildScanResultCacheKey({
+    projectDirectory: directory,
+    version: VERSION,
+    options,
+    userConfig,
+    hasConfigOverride,
+    configSourceDirectory,
+  });
+  const scanResultCache =
+    cacheKey === null ? null : createScanResultCache(directory);
+  const cachedPayload =
+    cacheKey === null ? null : scanResultCache?.lookup(cacheKey) ?? null;
+  if (cachedPayload) {
+    recordSentryProjectContext(cachedPayload.project, rootSentrySpan);
+    recordCount(METRIC.projectDetected, 1);
+    await renderCachedProjectDetection({
+      payload: cachedPayload,
+      options,
+      userConfig,
+      isDiffMode,
+    });
+    const baselineDegraded =
+      Boolean(options.baseline) &&
+      isDiffMode &&
+      cachedPayload.baselineDelta === undefined;
+    const result = await renderAndRecordScan({
+      payload: cachedPayload,
+      options,
+      userConfig,
+      hasCustomConfig: userConfig !== null,
+      startTime,
+      rootSentrySpan,
+      scanMode: cachedPayload.baselineDelta
+        ? "baseline"
+        : isDiffMode
+        ? "diff"
+        : "full",
+      baselineDegraded,
+    });
+    recordOnboardingCompletion(options);
+    return result;
+  }
 
   // Pre-check oxlint native binding the same way the legacy entry
   // point did: `resolveOxlintNode` prints its own warnings / upgrade
@@ -362,7 +444,7 @@ const runInspectWithRuntime = async (
   // coverage.
   const resolvedNodeBinaryPath = await resolveOxlintNode(
     options.lint,
-    options.scoreOnly || options.silent,
+    options.scoreOnly || options.silent
   );
   const lintBindingMissing = options.lint && !resolvedNodeBinaryPath;
   // Suppress the orchestrator-owned lint + dead-code spinners when
@@ -415,7 +497,8 @@ const runInspectWithRuntime = async (
           recordSentryProjectContext(projectInfo, rootSentrySpan);
           recordCount(METRIC.projectDetected, 1);
           if (options.scoreOnly || options.suppressRendering) return;
-          const lintSourceFileCount = lintIncludePaths?.length ?? projectInfo.sourceFileCount;
+          const lintSourceFileCount =
+            lintIncludePaths?.length ?? projectInfo.sourceFileCount;
           yield* printProjectDetection({
             projectInfo,
             userConfig,
@@ -424,7 +507,7 @@ const runInspectWithRuntime = async (
             lintSourceFileCount,
           });
         }),
-    },
+    }
   );
 
   // HACK: silent mode swaps the global Console for one whose
@@ -440,7 +523,10 @@ const runInspectWithRuntime = async (
   // reference, not the tracer, so observability is applied identically in both
   // branches.
   const baseProgram = options.silent
-    ? program.pipe(Effect.provide(layers), Effect.provideService(Console.Console, silentConsole))
+    ? program.pipe(
+        Effect.provide(layers),
+        Effect.provideService(Console.Console, silentConsole)
+      )
     : program.pipe(Effect.provide(layers));
   const programWithLayers = applyObservability(baseProgram, rootSentrySpan);
   const output = await Effect.runPromise(restoreLegacyThrow(programWithLayers));
@@ -465,9 +551,9 @@ const runInspectWithRuntime = async (
       runConsole(
         Console.log(
           highlighter.gray(
-            `  Upgrade to Node ${OXLINT_NODE_REQUIREMENT} or run: npx -p oxlint@latest react-doctor@latest`,
-          ),
-        ),
+            `  Upgrade to Node ${OXLINT_NODE_REQUIREMENT} or run: npx -p oxlint@latest react-doctor@latest`
+          )
+        )
       );
     } else {
       runConsole(Console.error(highlighter.error(lintFailureReason)));
@@ -500,7 +586,8 @@ const runInspectWithRuntime = async (
   }
   // Baseline was requested but no delta was produced (head/base lint failed) —
   // the run degrades to a plain diff and must not gate on the full head set.
-  const baselineDegraded = Boolean(options.baseline) && isDiffMode && baselineDelta === undefined;
+  const baselineDegraded =
+    Boolean(options.baseline) && isDiffMode && baselineDelta === undefined;
   // The orchestrator already surface-filters scoring input through
   // `scoreSurface: "score"` and computes the real score in-band, so
   // we just consume `output.score`. `--no-score` opts out before the
@@ -508,25 +595,7 @@ const runInspectWithRuntime = async (
   // in `buildRuntimeLayers`).
   const score = didLintFail ? null : output.score;
 
-  const elapsedMilliseconds = performance.now() - startTime;
-  // Stagger sections only on a user's first interactive run. Gating on
-  // `canAnimateOnboarding` (the same predicate the welcome scene, animations,
-  // and marker use) keeps the decision single-sourced: we only pace when we can
-  // actually show — and thus record — onboarding, so we never insert silent
-  // dead sleeps. Nothing to pace for silent/score-only/suppressed/verbose
-  // renders; the persisted marker (read last) limits it to the very first run.
-  // `REACT_DOCTOR_FORCE_ONBOARDING` replays the first-run experience on demand.
-  const forceOnboarding = isOnboardingForced();
-  const paceOnboardingSections =
-    !options.silent &&
-    !options.scoreOnly &&
-    !options.suppressRendering &&
-    !options.verbose &&
-    canAnimateOnboarding(process.stdout) &&
-    (forceOnboarding || !hasCompletedOnboarding());
-  const finalizeInput: FinalizeInput = {
-    options,
-    elapsedMilliseconds,
+  const payload: CachedScanPayload = {
     diagnostics: inspectDiagnostics,
     score,
     project: output.project,
@@ -541,62 +610,28 @@ const runInspectWithRuntime = async (
     scannedFilePaths: output.scannedFilePaths,
     scanElapsedMilliseconds: output.scanElapsedMilliseconds,
     baselineDelta,
+    lintFailureReasonKind: lintBindingMissing
+      ? "native-binding-missing"
+      : output.lintFailureReasonKind,
   };
-  const result = await Effect.runPromise(
-    finalizeAndRender(finalizeInput).pipe(
-      options.silent ? Effect.provideService(Console.Console, silentConsole) : (program) => program,
-    ),
-  );
-  // Burn the first-run marker only when the onboarding reveal actually ran — not
-  // for verbose, the classic non-interactive layout, or a forced demo (which
-  // replays every time). See `shouldRecordOnboarding`.
   if (
-    shouldRecordOnboarding({
-      paceOnboardingSections,
-      forceOnboarding,
-      verbose: options.verbose,
-      isNonInteractiveEnvironment: options.isNonInteractiveEnvironment,
-    })
+    cacheKey !== null &&
+    scanResultCache !== null &&
+    shouldStoreScanPayload(payload)
   ) {
-    markOnboardingComplete();
+    scanResultCache.store(cacheKey, payload);
   }
-  // Report "baseline" only when a delta was actually computed; a degraded
-  // baseline run behaves (and reports) as a plain diff. This keeps CI analytics
-  // honest and the wide event's gate signal consistent with the real exit.
-  const scanMode = baselineDelta ? "baseline" : isDiffMode ? "diff" : "full";
-  recordScanMetrics({
-    result,
-    mode: scanMode,
+  const result = await renderAndRecordScan({
+    payload,
+    options,
+    userConfig,
+    hasCustomConfig: userConfig !== null,
+    startTime,
+    rootSentrySpan,
+    scanMode: baselineDelta ? "baseline" : isDiffMode ? "diff" : "full",
     baselineDegraded,
-    parallel: options.concurrency !== undefined,
-    workerCount: options.concurrency,
-    lint: options.lint,
-    deadCode: options.deadCode,
-    scoreOnly: options.scoreOnly,
-    noScore: options.noScore,
-    didLintFail,
-    lintFailureReasonKind: lintBindingMissing
-      ? "native-binding-missing"
-      : output.lintFailureReasonKind,
-    didDeadCodeFail: output.didDeadCodeFail,
   });
-  // Canonical per-scan wide event: the full outcome stamped onto the run's root
-  // span (run + project base context is already on it) so any question is a
-  // single Trace Explorer query rather than a pre-aggregated counter.
-  recordRunEvent(rootSentrySpan, {
-    ...buildRunEventConfig(options, userConfig, userConfig !== null),
-    result,
-    mode: scanMode,
-    // A degraded baseline run skips the gate, so the wide event must not predict
-    // a block from the (now plain-diff) findings.
-    gateExempt: baselineDegraded,
-    didLintFail,
-    lintFailureReasonKind: lintBindingMissing
-      ? "native-binding-missing"
-      : output.lintFailureReasonKind,
-    lintPartialFailureCount: output.lintPartialFailures.length,
-    didDeadCodeFail: output.didDeadCodeFail,
-  });
+  recordOnboardingCompletion(options);
   return result;
 };
 
@@ -619,7 +654,111 @@ interface FinalizeInput {
   baselineDelta: InspectResult["baselineDelta"];
 }
 
-const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =>
+interface RenderCachedProjectDetectionInput {
+  readonly payload: CachedScanPayload;
+  readonly options: ResolvedInspectOptions;
+  readonly userConfig: ReactDoctorConfig | null;
+  readonly isDiffMode: boolean;
+}
+
+interface RenderAndRecordScanInput {
+  readonly payload: CachedScanPayload;
+  readonly options: ResolvedInspectOptions;
+  readonly userConfig: ReactDoctorConfig | null;
+  readonly hasCustomConfig: boolean;
+  readonly startTime: number;
+  readonly rootSentrySpan: SentryRootSpan;
+  readonly scanMode: "full" | "diff" | "baseline";
+  readonly baselineDegraded: boolean;
+}
+
+const runMaybeSilent = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  silent: boolean
+): Effect.Effect<A, E, R> =>
+  silent
+    ? effect.pipe(Effect.provideService(Console.Console, silentConsole))
+    : effect;
+
+const renderCachedProjectDetection = async (
+  input: RenderCachedProjectDetectionInput
+): Promise<void> => {
+  if (input.options.scoreOnly || input.options.suppressRendering) return;
+  const lintSourceFileCount = input.isDiffMode
+    ? input.options.includePaths.length
+    : input.payload.project.sourceFileCount;
+  await Effect.runPromise(
+    runMaybeSilent(
+      printProjectDetection({
+        projectInfo: input.payload.project,
+        userConfig: input.userConfig,
+        isDiffMode: input.isDiffMode,
+        includePaths: input.options.includePaths,
+        lintSourceFileCount,
+      }),
+      input.options.silent
+    )
+  );
+};
+
+const renderAndRecordScan = async (
+  input: RenderAndRecordScanInput
+): Promise<InspectResult> => {
+  const finalizeInput: FinalizeInput = {
+    options: input.options,
+    elapsedMilliseconds: performance.now() - input.startTime,
+    diagnostics: input.payload.diagnostics,
+    score: input.payload.score,
+    project: input.payload.project,
+    userConfig: input.payload.userConfig,
+    didLintFail: input.payload.didLintFail,
+    lintFailureReason: input.payload.lintFailureReason,
+    lintPartialFailures: input.payload.lintPartialFailures,
+    didDeadCodeFail: input.payload.didDeadCodeFail,
+    deadCodeFailureReason: input.payload.deadCodeFailureReason,
+    directory: input.payload.directory,
+    scannedFileCount: input.payload.scannedFileCount,
+    scannedFilePaths: input.payload.scannedFilePaths,
+    scanElapsedMilliseconds: input.payload.scanElapsedMilliseconds,
+    baselineDelta: input.payload.baselineDelta,
+  };
+  const result = await Effect.runPromise(
+    runMaybeSilent(finalizeAndRender(finalizeInput), input.options.silent)
+  );
+  recordScanMetrics({
+    result,
+    mode: input.scanMode,
+    baselineDegraded: input.baselineDegraded,
+    parallel: input.options.concurrency !== undefined,
+    workerCount: input.options.concurrency,
+    lint: input.options.lint,
+    deadCode: input.options.deadCode,
+    scoreOnly: input.options.scoreOnly,
+    noScore: input.options.noScore,
+    didLintFail: input.payload.didLintFail,
+    lintFailureReasonKind: input.payload.lintFailureReasonKind,
+    didDeadCodeFail: input.payload.didDeadCodeFail,
+  });
+  recordRunEvent(input.rootSentrySpan, {
+    ...buildRunEventConfig(
+      input.options,
+      input.userConfig,
+      input.hasCustomConfig
+    ),
+    result,
+    mode: input.scanMode,
+    gateExempt: input.baselineDegraded,
+    didLintFail: input.payload.didLintFail,
+    lintFailureReasonKind: input.payload.lintFailureReasonKind,
+    lintPartialFailureCount: input.payload.lintPartialFailures.length,
+    didDeadCodeFail: input.payload.didDeadCodeFail,
+  });
+  return result;
+};
+
+const finalizeAndRender = (
+  input: FinalizeInput
+): Effect.Effect<InspectResult> =>
   Effect.gen(function* () {
     const {
       options,
@@ -655,7 +794,9 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       diagnostics: [...diagnostics],
       score,
       skippedChecks,
-      ...(Object.keys(skippedCheckReasons).length > 0 ? { skippedCheckReasons } : {}),
+      ...(Object.keys(skippedCheckReasons).length > 0
+        ? { skippedCheckReasons }
+        : {}),
       project,
       elapsedMilliseconds,
       scannedFileCount,
@@ -682,17 +823,22 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
     // render, like the animated score bar, not just the first-run onboarding.
     // `!silent` keeps the raw cursor writes out of JSON / piped output.
     const animateRender =
-      !options.silent && !options.verbose && canAnimateOnboarding(process.stdout);
+      !options.silent &&
+      !options.verbose &&
+      canAnimateOnboarding(process.stdout);
     const pause = onboardingSectionPause(animateRender);
 
     const surfaceDiagnostics = filterDiagnosticsForSurface(
       [...diagnostics],
       options.outputSurface,
-      userConfig,
+      userConfig
     );
-    const demotedDiagnosticCount = diagnostics.length - surfaceDiagnostics.length;
+    const demotedDiagnosticCount =
+      diagnostics.length - surfaceDiagnostics.length;
     const isDiffMode = options.includePaths.length > 0;
-    const lintSourceFileCount = isDiffMode ? options.includePaths.length : project.sourceFileCount;
+    const lintSourceFileCount = isDiffMode
+      ? options.includePaths.length
+      : project.sourceFileCount;
 
     if (surfaceDiagnostics.length === 0) {
       yield* pause;
@@ -700,14 +846,14 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
         const skippedLabel = skippedChecks.join(" and ");
         yield* Console.warn(
           highlighter.warn(
-            `No issues detected, but ${skippedLabel} checks failed — results are incomplete.`,
-          ),
+            `No issues detected, but ${skippedLabel} checks failed — results are incomplete.`
+          )
         );
       } else if (demotedDiagnosticCount > 0) {
         yield* Console.log(
           highlighter.success(
-            `No issues found! (${demotedDiagnosticCount} demoted from the ${options.outputSurface} surface — see config.surfaces.)`,
-          ),
+            `No issues found! (${demotedDiagnosticCount} demoted from the ${options.outputSurface} surface — see config.surfaces.)`
+          )
         );
       } else {
         yield* Console.log(highlighter.success("No issues found!"));
@@ -716,7 +862,11 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       yield* pause;
       if (hasSkippedChecks) {
         yield* printBrandingOnlyHeader;
-        yield* Console.log(highlighter.gray("  Score not shown — some checks could not complete."));
+        yield* Console.log(
+          highlighter.gray(
+            "  Score not shown — some checks could not complete."
+          )
+        );
       } else if (score) {
         yield* printScoreHeader(score);
       } else {
@@ -733,17 +883,20 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       directory,
       buildRulePriorityMap([score]),
       isCodingAgentEnvironment(),
-      { sectionPause: pause, animateCountUp: animateRender },
+      { sectionPause: pause, animateCountUp: animateRender }
     );
-    if (options.isNonInteractiveEnvironment && options.outputSurface !== "prComment") {
+    if (
+      options.isNonInteractiveEnvironment &&
+      options.outputSurface !== "prComment"
+    ) {
       yield* printAgentGuidance();
     }
 
     if (demotedDiagnosticCount > 0) {
       yield* Console.log(
         highlighter.gray(
-          `  ${demotedDiagnosticCount} demoted from the ${options.outputSurface} surface (e.g. design cleanup) — run \`npx react-doctor@latest .\` locally for the full list.`,
-        ),
+          `  ${demotedDiagnosticCount} demoted from the ${options.outputSurface} surface (e.g. design cleanup) — run \`npx react-doctor@latest .\` locally for the full list.`
+        )
       );
       yield* Console.log("");
     }
@@ -752,11 +905,16 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
     // show the payoff as a ghost gain segment.
     const potentialScore = score
       ? yield* Effect.promise(() =>
-          computeProjectedScore([...surfaceDiagnostics], [...surfaceDiagnostics], score),
+          computeProjectedScore(
+            [...surfaceDiagnostics],
+            [...surfaceDiagnostics],
+            score
+          )
         )
       : null;
 
-    const shouldShowShareLink = !options.noScore && options.share && !options.isCi;
+    const shouldShowShareLink =
+      !options.noScore && options.share && !options.isCi;
     yield* pause;
     yield* printSummary({
       diagnostics: [...surfaceDiagnostics],
@@ -773,7 +931,9 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       const skippedLabel = skippedChecks.join(" and ");
       yield* Console.log("");
       yield* Console.warn(
-        highlighter.warn(`  Note: ${skippedLabel} checks failed — score may be incomplete.`),
+        highlighter.warn(
+          `  Note: ${skippedLabel} checks failed — score may be incomplete.`
+        )
       );
     }
 

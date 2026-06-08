@@ -15,6 +15,9 @@ export const NODE_ARGUMENT_COUNT = 2;
 
 export const STAGED_FILES_TEMP_DIR_PREFIX = "react-doctor-staged-";
 export const BASELINE_FILES_TEMP_DIR_PREFIX = "react-doctor-baseline-";
+export const SCAN_RESULT_CACHE_SCHEMA_VERSION = 1;
+export const SCAN_RESULT_CACHE_MAX_ENTRY_COUNT = 20;
+export const CACHE_FILENAME_HASH_LENGTH_CHARS = 16;
 
 export const GIT_HOOK_EXECUTABLE_MODE = 0o755;
 

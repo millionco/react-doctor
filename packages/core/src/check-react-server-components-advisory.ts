@@ -5,12 +5,9 @@ import {
   REACT_SERVER_DOM_PACKAGES,
   VERCEL_NEXTJS_SECURITY_RELEASE_URL,
 } from "./constants.js";
-import {
-  findMonorepoRoot,
-  isFile,
-  listWorkspacePackages,
-  readPackageJson,
-} from "./project-info/index.js";
+import { findMonorepoRoot, isFile, readPackageJson } from "./project-info/index.js";
+import { getWorkspacePatterns } from "./project-info/get-workspace-patterns.js";
+import { resolveWorkspaceDirectories } from "./project-info/resolve-workspace-directories.js";
 import type { Diagnostic, PackageJson, ProjectInfo } from "./types/index.js";
 
 const RULE_KEY = "no-vulnerable-react-server-components";
@@ -75,6 +72,24 @@ const buildAdvisoryDiagnostic = (input: BuildAdvisoryDiagnosticInput): Diagnosti
   column: 0,
   category: "Security",
 });
+
+// Every workspace package directory under `workspaceRoot`, unfiltered — unlike
+// `listWorkspacePackages`, which keeps only React-bearing packages. A workspace
+// that declares only a `react-server-dom-*` package (or `next` solely under
+// `optionalDependencies`) must still have its `node_modules` probed.
+const enumerateWorkspaceDirectories = (workspaceRoot: string): string[] => {
+  const patterns = getWorkspacePatterns(
+    workspaceRoot,
+    readPackageJson(path.join(workspaceRoot, "package.json")),
+  );
+  const directories = new Set<string>();
+  for (const pattern of patterns) {
+    for (const directory of resolveWorkspaceDirectories(workspaceRoot, pattern)) {
+      directories.add(directory);
+    }
+  }
+  return [...directories];
+};
 
 const readDeclaredSpec = (packageJson: PackageJson, packageName: string): string | null => {
   for (const section of DEPENDENCY_SECTIONS) {
@@ -220,11 +235,13 @@ export const checkReactServerComponentsAdvisory = (
   // workspace and is itself where a hoisted `next` / `react-server-dom-*`
   // install lands when scanning a nested package.
   const workspaceRoot = findMonorepoRoot(scanDirectory) ?? project.rootDirectory;
-  const workspaceDirectories = listWorkspacePackages(workspaceRoot).map(
-    (workspacePackage) => workspacePackage.directory,
-  );
   const candidateDirectories = [
-    ...new Set([scanDirectory, project.rootDirectory, workspaceRoot, ...workspaceDirectories]),
+    ...new Set([
+      scanDirectory,
+      project.rootDirectory,
+      workspaceRoot,
+      ...enumerateWorkspaceDirectories(workspaceRoot),
+    ]),
   ];
 
   const diagnostics: Diagnostic[] = [];

@@ -377,6 +377,27 @@ describe("checkReactServerComponentsAdvisory (installed-version resolution)", ()
     expect(diagnostics[0].message).toContain("next@15.0.0");
   });
 
+  it("probes a workspace that declares only react-server-dom (no react dependency)", () => {
+    // Regression for "Skips non-React workspace packages": candidate
+    // enumeration must not be limited to React-bearing workspaces.
+    writePackageJson(temporaryRoot, { name: "monorepo-root", workspaces: ["packages/*"] });
+    const libDirectory = path.join(temporaryRoot, "packages", "lib");
+    writePackageJson(libDirectory, {
+      name: "lib",
+      dependencies: { "react-server-dom-webpack": "19.2.0" },
+    });
+    writeInstalledManifest(libDirectory, "react-server-dom-webpack", "19.2.0");
+    clearPackageJsonCache();
+
+    const diagnostics = checkReactServerComponentsAdvisory(
+      temporaryRoot,
+      buildProject(temporaryRoot, "unknown", null),
+    );
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0].severity).toBe("error");
+    expect(diagnostics[0].message).toContain("react-server-dom-webpack");
+  });
+
   it("checks Next.js by its own version even when a standalone react-server-dom is present", () => {
     writePackageJson(temporaryRoot, { name: "app", dependencies: { next: "15.5.18" } });
     writeInstalledManifest(temporaryRoot, "next", "15.5.18");

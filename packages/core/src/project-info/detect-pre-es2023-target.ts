@@ -74,7 +74,7 @@ export const detectPreES2023Target = (directory: string): boolean => {
     if (!isFile(tsConfigPath)) continue;
 
     const tsConfig = readTsConfig(tsConfigPath);
-    if (!tsConfig?.compilerOptions) return false;
+    if (!tsConfig?.compilerOptions) continue;
 
     const { target, lib } = tsConfig.compilerOptions;
 
@@ -85,8 +85,6 @@ export const detectPreES2023Target = (directory: string): boolean => {
     if (target) {
       return targetYearIsPreES2023(target);
     }
-
-    return false;
   }
 
   return false;

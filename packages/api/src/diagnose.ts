@@ -116,7 +116,7 @@ export const diagnose = async (
         Effect.provide(
           buildDiagnoseLayer(
             Config.layerNode,
-            scanTarget.userConfig?.supplyChain?.enabled ?? false,
+            scanTarget.userConfig?.supplyChain?.enabled !== false,
           ),
         ),
         Effect.provide(layerOtlp),
@@ -154,7 +154,7 @@ const diagnoseProject = async (
     const program = buildInspectProgram(scanTarget, mergedOptions, configOverride);
 
     const effectiveConfig = configOverride ?? scanTarget.userConfig;
-    const supplyChainEnabled = effectiveConfig?.supplyChain?.enabled ?? false;
+    const supplyChainEnabled = effectiveConfig?.supplyChain?.enabled !== false;
     const layer =
       configOverride !== undefined
         ? buildDiagnoseLayer(

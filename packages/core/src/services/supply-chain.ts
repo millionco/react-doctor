@@ -16,9 +16,10 @@ interface SupplyChainInput {
  * (`sfw`) performs — and streams a diagnostic for each dependency whose
  * Socket score falls below the configured `supplyChain.minScore`.
  *
- * Opt-in (one network request per dependency), so the orchestrator provides
- * `layerOf([])` unless `supplyChain.enabled` is set, and always skips it in
- * `--diff` / `--staged` mode (dependency health is a whole-project property).
+ * Runs by default (one network request per dependency); the orchestrator
+ * provides `layerOf([])` only when the user opts out via
+ * `supplyChain.enabled: false`, and always skips it in `--diff` / `--staged`
+ * mode (dependency health is a whole-project property).
  * The underlying `checkSupplyChain` Effect is total/fail-open — per-package
  * timeouts and network failures recover to "skip" — so the stream never
  * fails, mirroring `DeadCode`'s stream shape so the two compose the same way.

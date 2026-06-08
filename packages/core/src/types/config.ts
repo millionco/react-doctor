@@ -136,8 +136,8 @@ export interface SurfaceControls {
 
 /**
  * Configuration for the Socket.dev supply-chain score check (the
- * `SupplyChain` service). Off by default — it makes a network request per
- * dependency, so it's opt-in.
+ * `SupplyChain` service). Runs by default; set `enabled: false` to opt out
+ * (it performs one network request per direct dependency).
  *
  * Mirrors how Socket Firewall's free tier (`sfw`) works: each direct
  * dependency's PURL is looked up against Socket's keyless
@@ -149,8 +149,10 @@ export interface SurfaceControls {
  */
 export interface SupplyChainConfig {
   /**
-   * Whether to run the Socket supply-chain score check. Default: `false`
-   * (opt-in — it performs one network request per direct dependency).
+   * Whether to run the Socket supply-chain score check. Default: `true`.
+   * Set to `false` to opt out — the check performs one network request per
+   * direct dependency. It is always skipped in `--diff` / `--staged` mode
+   * and in editor scans regardless of this setting.
    */
   enabled?: boolean;
   /**
@@ -177,10 +179,10 @@ export interface ReactDoctorConfig {
   ignore?: ReactDoctorIgnoreConfig;
   lint?: boolean;
   /**
-   * Socket.dev supply-chain score gate. Off by default. See
-   * {@link SupplyChainConfig}. When enabled, every direct dependency is
-   * scored against Socket's free PURL endpoint and a low score fails the
-   * scan (at the default `severity: "error"`).
+   * Socket.dev supply-chain score gate. Runs by default; set
+   * `supplyChain: { enabled: false }` to opt out. See {@link SupplyChainConfig}.
+   * Every direct dependency is scored against Socket's free PURL endpoint and
+   * a low score fails the scan (at the default `severity: "error"`).
    */
   supplyChain?: SupplyChainConfig;
   /**

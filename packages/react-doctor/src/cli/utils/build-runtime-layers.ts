@@ -98,11 +98,13 @@ export const buildRuntimeLayers = (input: BuildRuntimeLayersInput) => {
   const linterLayer = input.shouldSkipLint ? Linter.layerOf([]) : Linter.layerOxlint;
   const deadCodeLayer = input.shouldRunDeadCode ? DeadCode.layerNode : DeadCode.layerOf([]);
   const scoreLayer = input.shouldComputeScore ? Score.layerHttp : Score.layerOf(null);
-  // Opt-in Socket.dev supply-chain score gate; the keyless HTTP layer only
-  // when the user set `supplyChain.enabled`, otherwise a no-op empty layer.
-  const supplyChainLayer = input.userConfig?.supplyChain?.enabled
-    ? SupplyChain.layerNode
-    : SupplyChain.layerOf([]);
+  // Socket.dev supply-chain score gate runs by default (the keyless HTTP
+  // layer); a no-op empty layer only when the user explicitly opts out via
+  // `supplyChain.enabled: false`.
+  const supplyChainLayer =
+    input.userConfig?.supplyChain?.enabled === false
+      ? SupplyChain.layerOf([])
+      : SupplyChain.layerNode;
   const progressLayer = input.shouldShowProgressSpinners
     ? Progress.layerOra(buildSpinnerProgressHandle)
     : Progress.layerNoop;

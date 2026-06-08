@@ -9,6 +9,7 @@ import {
 import { defineRule } from "../../utils/define-rule.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import { classifySecretFileExposure } from "../../utils/classify-secret-file-exposure.js";
+import { enclosingComponentOrHookName } from "../../utils/enclosing-component-or-hook-name.js";
 import { getIdentifierTrailingWord } from "../../utils/get-identifier-trailing-word.js";
 import { getReactDoctorStringSetting } from "../../utils/get-react-doctor-setting.js";
 import type { Rule } from "../../utils/rule.js";
@@ -17,37 +18,7 @@ import { hasDirective } from "../../utils/has-directive.js";
 import { isInsideServerOnlyScope } from "../../utils/is-inside-server-only-scope.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isPlaceholderSecretValue } from "../../utils/is-placeholder-secret-value.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-
-const hasPlaceholderSecretContext = (node: EsTreeNode, variableName: string): boolean => {
-  if (SECRET_PLACEHOLDER_CONTEXT_PATTERN.test(variableName)) return true;
-
-  let ancestor = node.parent ?? null;
-  while (ancestor) {
-    if (isNodeOfType(ancestor, "FunctionDeclaration") && ancestor.id) {
-      if (SECRET_PLACEHOLDER_CONTEXT_PATTERN.test(ancestor.id.name)) return true;
-    }
-
-    if (isNodeOfType(ancestor, "ClassDeclaration") && ancestor.id) {
-      if (SECRET_PLACEHOLDER_CONTEXT_PATTERN.test(ancestor.id.name)) return true;
-    }
-
-    if (
-      (isNodeOfType(ancestor, "FunctionExpression") ||
-        isNodeOfType(ancestor, "ArrowFunctionExpression")) &&
-      isNodeOfType(ancestor.parent, "VariableDeclarator") &&
-      isNodeOfType(ancestor.parent.id, "Identifier") &&
-      SECRET_PLACEHOLDER_CONTEXT_PATTERN.test(ancestor.parent.id.name)
-    ) {
-      return true;
-    }
-
-    ancestor = ancestor.parent ?? null;
-  }
-
-  return false;
-};
 
 export const noSecretsInClientCode = defineRule<Rule>({
   id: "no-secrets-in-client-code",
@@ -78,17 +49,32 @@ export const noSecretsInClientCode = defineRule<Rule>({
 
         const variableName = node.id.name;
         const literalValue = node.init.value;
-        const isPlaceholderValue = isPlaceholderSecretValue(
-          literalValue,
-          hasPlaceholderSecretContext(node, variableName),
-        );
+        const componentOrHookName = enclosingComponentOrHookName(node);
+        const hasPlaceholderContext =
+          SECRET_PLACEHOLDER_CONTEXT_PATTERN.test(variableName) ||
+          (componentOrHookName !== null &&
+            SECRET_PLACEHOLDER_CONTEXT_PATTERN.test(componentOrHookName));
+        const isUnambiguousPlaceholderValue = isPlaceholderSecretValue(literalValue, {
+          allowContextualExamples: false,
+        });
+        const isPlaceholderValueForVariableHeuristic = isPlaceholderSecretValue(literalValue, {
+          allowContextualExamples: hasPlaceholderContext,
+        });
 
         // Public, client-safe keys ship in the browser by design; skip
         // them before either detector can flag them.
-        if (
-          isPlaceholderValue ||
-          PUBLIC_CLIENT_KEY_PATTERNS.some((pattern) => pattern.test(literalValue))
-        ) {
+        if (PUBLIC_CLIENT_KEY_PATTERNS.some((pattern) => pattern.test(literalValue))) {
+          return;
+        }
+
+        if (SECRET_PATTERNS.some((pattern) => pattern.test(literalValue))) {
+          if (!isUnambiguousPlaceholderValue) {
+            context.report({
+              node,
+              message:
+                "This hardcoded secret is a security vulnerability: it ships to the browser where anyone can read it.",
+            });
+          }
           return;
         }
 
@@ -102,6 +88,7 @@ export const noSecretsInClientCode = defineRule<Rule>({
           !isServerOnlyScope &&
           SECRET_VARIABLE_PATTERN.test(variableName) &&
           !isUiConstant &&
+          !isPlaceholderValueForVariableHeuristic &&
           literalValue.length > SECRET_MIN_LENGTH_CHARS
         ) {
           context.report({
@@ -109,14 +96,6 @@ export const noSecretsInClientCode = defineRule<Rule>({
             message: `Hardcoding "${variableName}" in client code is a security vulnerability: the secret ships to the browser where anyone can read it.`,
           });
           return;
-        }
-
-        if (SECRET_PATTERNS.some((pattern) => pattern.test(literalValue))) {
-          context.report({
-            node,
-            message:
-              "This hardcoded secret is a security vulnerability: it ships to the browser where anyone can read it.",
-          });
         }
       },
     };

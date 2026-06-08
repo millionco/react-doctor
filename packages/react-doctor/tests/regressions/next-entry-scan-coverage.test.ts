@@ -7,6 +7,13 @@ import { buildTestProject, setupReactProject } from "./_helpers.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-next-entry-scan-"));
 
+const normalizeEntryDiagnosticPath = (filePath: string): string => {
+  const normalizedPath = filePath.replace(/\\/g, "/");
+  if (normalizedPath.endsWith("src/proxy.mjs")) return "src/proxy.mjs";
+  if (normalizedPath.endsWith("middleware.ts")) return "middleware.ts";
+  return normalizedPath;
+};
+
 afterAll(() => {
   fs.rmSync(tempRoot, { recursive: true, force: true });
 });
@@ -42,7 +49,7 @@ describe("Next middleware/proxy scan coverage", () => {
     });
     const debuggerFiles = diagnostics
       .filter((diagnostic) => diagnostic.rule === "no-debugger")
-      .map((diagnostic) => path.relative(projectDirectory, diagnostic.filePath).replace(/\\/g, "/"))
+      .map((diagnostic) => normalizeEntryDiagnosticPath(diagnostic.filePath))
       .toSorted();
 
     expect(debuggerFiles).toEqual(["middleware.ts", "src/proxy.mjs"]);

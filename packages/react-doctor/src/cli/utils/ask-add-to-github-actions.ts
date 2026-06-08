@@ -46,7 +46,7 @@ export const askAddToGitHubActions = async (
         hint: " ",
         choices: [
           {
-            title: "Yes (recommended)",
+            title: "Yes",
             description: "Adds the workflow file and a doctor package script",
             value: CI_YES_CHOICE,
           },
@@ -56,7 +56,7 @@ export const askAddToGitHubActions = async (
             value: CI_LEARN_MORE_CHOICE,
           },
           {
-            title: "No, thanks",
+            title: "No",
             description: "Skip for now — you can add it later",
             value: CI_NO_CHOICE,
           },

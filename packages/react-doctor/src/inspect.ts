@@ -32,6 +32,7 @@ import type {
   DiagnosticSurface,
   InspectOptions,
   InspectResult,
+  ProjectInfo,
   ReactDoctorConfig,
   ScoreResult,
 } from "@react-doctor/core";
@@ -249,6 +250,16 @@ interface BaselineComparison {
   baselineDelta: NonNullable<InspectResult["baselineDelta"]>;
 }
 
+interface RunBaselineComparisonInput {
+  directory: string;
+  options: ResolvedInspectOptions;
+  userConfig: ReactDoctorConfig | null;
+  headProjectInfo: ProjectInfo;
+  headDiagnostics: ReadonlyArray<Diagnostic>;
+  resolvedNodeBinaryPath: string | null;
+  baselineRef: string;
+}
+
 /**
  * Runs a second, lint-only scan over the changed files as they existed at the
  * baseline ref (materialized into a temp tree with head's config) and diffs it
@@ -256,14 +267,9 @@ interface BaselineComparison {
  * introduced plus the fixed / base counts. No score, dead-code, progress, or
  * telemetry — it's a pure comparison pass. The temp tree is always cleaned up.
  */
-const runBaselineComparison = async (params: {
-  directory: string;
-  options: ResolvedInspectOptions;
-  userConfig: ReactDoctorConfig | null;
-  headDiagnostics: ReadonlyArray<Diagnostic>;
-  resolvedNodeBinaryPath: string | null;
-  baselineRef: string;
-}): Promise<BaselineComparison | null> => {
+const runBaselineComparison = async (
+  params: RunBaselineComparisonInput,
+): Promise<BaselineComparison | null> => {
   const tempDirectory = mkdtempSync(path.join(tmpdir(), BASELINE_FILES_TEMP_DIR_PREFIX));
   // If materialization throws before the snapshot (and its cleanup) exists,
   // remove the temp dir we just created so it can't leak.
@@ -282,6 +288,7 @@ const runBaselineComparison = async (params: {
       hasConfigOverride: true,
       userConfig: params.userConfig,
       configSourceDirectory: null,
+      projectInfoOverride: params.headProjectInfo,
       shouldSkipLint: !params.options.lint || !params.resolvedNodeBinaryPath,
       shouldRunDeadCode: false,
       shouldComputeScore: false,
@@ -489,6 +496,7 @@ const runInspectWithRuntime = async (
       directory,
       options,
       userConfig,
+      headProjectInfo: output.project,
       headDiagnostics: output.diagnostics,
       resolvedNodeBinaryPath,
       baselineRef: options.baseline.ref,

@@ -13,7 +13,7 @@ import {
   Reporter,
   Score,
 } from "@react-doctor/core";
-import type { ProgressHandle, ReactDoctorConfig } from "@react-doctor/core";
+import type { ProgressHandle, ProjectInfo, ReactDoctorConfig } from "@react-doctor/core";
 import { spinner } from "./spinner.js";
 
 export interface BuildRuntimeLayersInput {
@@ -21,6 +21,12 @@ export interface BuildRuntimeLayersInput {
   readonly hasConfigOverride: boolean;
   readonly userConfig: ReactDoctorConfig | null;
   readonly configSourceDirectory: string | null;
+  /**
+   * Pre-resolved project metadata for scans that run against a synthetic tree.
+   * The baseline diff pass materializes only changed files plus root config, so
+   * it must inherit the head scan's project instead of rediscovering.
+   */
+  readonly projectInfoOverride?: ProjectInfo;
   /**
    * Whether lint is disabled (either by user flag or because the
    * oxlint native binding can't load on this Node version). Switches
@@ -97,6 +103,10 @@ export const buildRuntimeLayers = (input: BuildRuntimeLayersInput) => {
   const linterLayer = input.shouldSkipLint ? Linter.layerOf([]) : Linter.layerOxlint;
   const deadCodeLayer = input.shouldRunDeadCode ? DeadCode.layerNode : DeadCode.layerOf([]);
   const scoreLayer = input.shouldComputeScore ? Score.layerHttp : Score.layerOf(null);
+  const projectLayer =
+    input.projectInfoOverride === undefined
+      ? Project.layerNode
+      : Project.layerOf(input.projectInfoOverride);
   const progressLayer = input.shouldShowProgressSpinners
     ? Progress.layerOra(buildSpinnerProgressHandle)
     : Progress.layerNoop;
@@ -114,7 +124,7 @@ export const buildRuntimeLayers = (input: BuildRuntimeLayersInput) => {
     : Config.layerNode;
 
   const baseLayers = Layer.mergeAll(
-    Project.layerNode,
+    projectLayer,
     configLayer,
     Files.layerNode,
     Git.layerNode,

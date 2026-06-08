@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
+import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
 import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
@@ -89,9 +90,11 @@ export const imgRedundantAlt = defineRule<Rule>({
   recommendation: "Do not put 'image' or 'photo' in alt text. Describe what is shown.",
   category: "Accessibility",
   create: (context) => {
+    if (isGeneratedImageRenderContext(context)) return {};
     const settings = resolveSettings(context.settings);
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+        if (isGeneratedImageRenderContext(context, node)) return;
         const tag = getElementType(node, context.settings);
         if (!settings.components.includes(tag)) return;
         if (isHiddenFromScreenReader(node, context.settings)) return;

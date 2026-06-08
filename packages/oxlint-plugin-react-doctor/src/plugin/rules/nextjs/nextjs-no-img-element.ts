@@ -1,7 +1,5 @@
-import { OG_ROUTE_PATTERN } from "../../constants/nextjs.js";
 import { defineRule } from "../../utils/define-rule.js";
-import { isNextjsMetadataImageRouteFilename } from "../../utils/is-nextjs-metadata-image-route-filename.js";
-import { normalizeFilename } from "../../utils/normalize-filename.js";
+import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -16,13 +14,11 @@ export const nextjsNoImgElement = defineRule<Rule>({
   recommendation:
     "`import Image from 'next/image'` for automatic WebP/AVIF, lazy loading, and responsive srcset",
   create: (context: RuleContext) => {
-    const filename = normalizeFilename(context.filename ?? "");
-    const isOgRoute = OG_ROUTE_PATTERN.test(filename);
-    const isMetadataImageRoute = isNextjsMetadataImageRouteFilename(filename);
+    if (isGeneratedImageRenderContext(context)) return {};
 
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        if (isOgRoute || isMetadataImageRoute) return;
+        if (isGeneratedImageRenderContext(context, node)) return;
         if (isNodeOfType(node.name, "JSXIdentifier") && node.name.name === "img") {
           context.report({
             node,

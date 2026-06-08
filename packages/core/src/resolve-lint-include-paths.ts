@@ -1,6 +1,6 @@
 import type { ProjectInfo, ReactDoctorConfig } from "./types/index.js";
+import { shouldIncludeExplicitLintPath } from "./explicit-lint-include-paths.js";
 import { compileIgnoredFilePatterns, isFileIgnoredByPatterns } from "./is-ignored-file.js";
-import { shouldIncludeExplicitScanPath } from "./jsx-include-paths.js";
 import { listSourceFiles } from "./utils/list-source-files.js";
 
 export const resolveLintIncludePaths = (
@@ -15,7 +15,7 @@ export const resolveLintIncludePaths = (
   const ignoredPatterns = compileIgnoredFilePatterns(userConfig);
 
   const includedPaths = listSourceFiles(rootDirectory).filter((filePath) => {
-    if (!shouldIncludeExplicitScanPath(filePath, project)) {
+    if (!shouldIncludeExplicitLintPath(filePath, project)) {
       return false;
     }
 

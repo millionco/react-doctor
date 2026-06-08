@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
-import { computeJsxIncludePaths } from "@react-doctor/core";
+import { computeExplicitLintIncludePaths } from "@react-doctor/core";
 
-describe("computeJsxIncludePaths", () => {
+describe("computeExplicitLintIncludePaths", () => {
   it("returns undefined for empty include paths", () => {
-    expect(computeJsxIncludePaths([])).toBeUndefined();
+    expect(computeExplicitLintIncludePaths([])).toBeUndefined();
   });
 
-  it("filters to only JSX/TSX files", () => {
+  it("filters to ordinary component-bearing JSX/TSX files", () => {
     const paths = ["src/app.tsx", "src/utils.ts", "src/Button.jsx", "src/config.js"];
-    const result = computeJsxIncludePaths(paths);
+    const result = computeExplicitLintIncludePaths(paths);
     expect(result).toEqual(["src/app.tsx", "src/Button.jsx"]);
   });
 
@@ -23,7 +23,7 @@ describe("computeJsxIncludePaths", () => {
       "nested/middleware.ts",
     ];
 
-    const result = computeJsxIncludePaths(paths, {
+    const result = computeExplicitLintIncludePaths(paths, {
       rootDirectory: "/repo",
       projectName: "next-app",
       reactVersion: "19.0.0",
@@ -58,7 +58,7 @@ describe("computeJsxIncludePaths", () => {
 
   it("does not keep Next entry filenames for non-Next projects", () => {
     const paths = ["middleware.ts", "src/proxy.mjs", "src/App.tsx"];
-    const result = computeJsxIncludePaths(paths, {
+    const result = computeExplicitLintIncludePaths(paths, {
       rootDirectory: "/repo",
       projectName: "vite-app",
       reactVersion: "19.0.0",
@@ -85,9 +85,9 @@ describe("computeJsxIncludePaths", () => {
     expect(result).toEqual(["src/App.tsx"]);
   });
 
-  it("returns empty array when no JSX/TSX files exist", () => {
+  it("returns empty array when no explicitly lintable files exist", () => {
     const paths = ["src/utils.ts", "src/config.js"];
-    const result = computeJsxIncludePaths(paths);
+    const result = computeExplicitLintIncludePaths(paths);
     expect(result).toEqual([]);
   });
 });

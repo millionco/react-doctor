@@ -66,10 +66,6 @@ describe("resolveLintIncludePaths", () => {
       nextProject(tempDirectory),
     );
 
-    expect(includedPaths?.toSorted()).toEqual([
-      "middleware.ts",
-      "src/App.tsx",
-      "src/proxy.mjs",
-    ]);
+    expect(includedPaths?.toSorted()).toEqual(["middleware.ts", "src/App.tsx", "src/proxy.mjs"]);
   });
 });

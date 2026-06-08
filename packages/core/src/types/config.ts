@@ -134,10 +134,55 @@ export interface SurfaceControls {
   excludeRules?: string[];
 }
 
+/**
+ * Configuration for the Socket.dev supply-chain score check (the
+ * `SupplyChain` service). Off by default — it makes a network request per
+ * dependency, so it's opt-in.
+ *
+ * Mirrors how Socket Firewall's free tier (`sfw`) works: each direct
+ * dependency's PURL is looked up against Socket's keyless
+ * `firewall-api.socket.dev/purl/<purl>` endpoint, which returns a
+ * supply-chain score (0–100 once normalized). A dependency scoring below
+ * `minScore` produces a diagnostic; at the default `severity: "error"` it
+ * fails the scan (non-zero CI exit), the same way an error-severity lint
+ * finding does.
+ */
+export interface SupplyChainConfig {
+  /**
+   * Whether to run the Socket supply-chain score check. Default: `false`
+   * (opt-in — it performs one network request per direct dependency).
+   */
+  enabled?: boolean;
+  /**
+   * Minimum acceptable Socket score on a 0–100 scale. A direct dependency
+   * whose Socket `overall` score is below this is flagged. Default: `50`.
+   * Values outside `0..100` are clamped.
+   */
+  minScore?: number;
+  /**
+   * Severity for a below-threshold dependency. `"error"` (default) fails
+   * the scan at the standard `blocking: "error"` gate; `"warning"` keeps
+   * the finding advisory.
+   */
+  severity?: "error" | "warning";
+  /**
+   * Whether to score `devDependencies` in addition to `dependencies`.
+   * Default: `true`.
+   */
+  includeDevDependencies?: boolean;
+}
+
 export interface ReactDoctorConfig {
   $schema?: string;
   ignore?: ReactDoctorIgnoreConfig;
   lint?: boolean;
+  /**
+   * Socket.dev supply-chain score gate. Off by default. See
+   * {@link SupplyChainConfig}. When enabled, every direct dependency is
+   * scored against Socket's free PURL endpoint and a low score fails the
+   * scan (at the default `severity: "error"`).
+   */
+  supplyChain?: SupplyChainConfig;
   /**
    * Whether to run dead-code analysis (via `deslop-js`) alongside lint.
    * Reports unused files, unused exports, unused dependencies, and

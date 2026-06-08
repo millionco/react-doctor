@@ -339,3 +339,44 @@ export const OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT = 3;
 // batch subprocess runs. The timer increments a counter so the spinner
 // updates smoothly instead of jumping by the batch size on completion.
 export const PROGRESS_TICK_INTERVAL_MS = 50;
+
+// Socket.dev package-score check (the `SupplyChain` service). Mirrors how
+// Socket Firewall's free tier (`sfw`) talks to Socket: the keyless,
+// no-API-token endpoint `GET <base>/{encodeURIComponent(purl)}`, where the
+// PURL is `pkg:npm/<name>@<version>` (scope kept inline, e.g.
+// `pkg:npm/@vue/reactivity@3.4.0`). The response is newline-delimited JSON,
+// one Socket artifact per line, each carrying a `score` object with an
+// `overall` plus per-category values in the 0..1 range. Unknown
+// package/version pairs come back as a `synthetic:notFound:*` artifact with
+// no `score`, which the check skips.
+export const SOCKET_FREE_PURL_API_BASE = "https://firewall-api.socket.dev/purl";
+
+// Public socket.dev package page, linked from each diagnostic's `help`/`url`
+// so a developer can see the full alert + score breakdown for the version.
+export const SOCKET_PACKAGE_PAGE_BASE = "https://socket.dev/npm/package";
+
+// Sent as the `User-Agent` on the free score lookups, matching how `sfw`
+// identifies itself to the same endpoint.
+export const SOCKET_FREE_USER_AGENT = "react-doctor-supply-chain";
+
+// Plugin / rule / category identity for the diagnostics the supply-chain
+// check emits. `plugin: "socket"` keeps Socket findings visually distinct
+// from the `react-doctor` lint surface in the printed list and JSON report.
+export const SUPPLY_CHAIN_PLUGIN = "socket";
+export const SUPPLY_CHAIN_RULE = "low-supply-chain-score";
+export const SUPPLY_CHAIN_CATEGORY = "Security";
+
+// Default minimum acceptable Socket score (0..100). A dependency scoring
+// below this fails the check. Tuned to Socket's own "needs review" band —
+// most healthy, widely-used packages sit comfortably above it. Overridable
+// per project via `supplyChain.minScore`.
+export const SUPPLY_CHAIN_DEFAULT_MIN_SCORE = 50;
+
+// Socket scores arrive normalized 0..1; multiply by this to present the
+// familiar 0..100 scale users see on socket.dev.
+export const SOCKET_SCORE_SCALE = 100;
+
+// How many free Socket score lookups to keep in flight at once. Bounded so a
+// large dependency list doesn't open hundreds of sockets or trip Socket's
+// per-route rate limit.
+export const SUPPLY_CHAIN_FETCH_CONCURRENCY = 8;

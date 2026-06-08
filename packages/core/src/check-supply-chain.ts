@@ -1,0 +1,229 @@
+import * as path from "node:path";
+import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
+import {
+  FETCH_TIMEOUT_MS,
+  SOCKET_FREE_PURL_API_BASE,
+  SOCKET_FREE_USER_AGENT,
+  SOCKET_PACKAGE_PAGE_BASE,
+  SOCKET_SCORE_SCALE,
+  SUPPLY_CHAIN_CATEGORY,
+  SUPPLY_CHAIN_DEFAULT_MIN_SCORE,
+  SUPPLY_CHAIN_FETCH_CONCURRENCY,
+  SUPPLY_CHAIN_PLUGIN,
+  SUPPLY_CHAIN_RULE,
+} from "./constants.js";
+import { readPackageJson } from "./project-info/index.js";
+import type { Diagnostic, PackageJson, ReactDoctorConfig } from "./types/index.js";
+
+export interface SupplyChainCheckInput {
+  readonly rootDirectory: string;
+  readonly userConfig: ReactDoctorConfig | null;
+}
+
+interface ResolvedSupplyChainOptions {
+  readonly minScore: number;
+  readonly severity: "error" | "warning";
+  readonly includeDevDependencies: boolean;
+}
+
+interface DependencyToScore {
+  readonly name: string;
+  readonly version: string;
+}
+
+// The subset of a Socket artifact's score the check reads. Socket returns
+// every field together in the 0..1 range; an unknown package/version comes
+// back as a `synthetic:notFound:*` artifact with `score` absent, which the
+// schema's `optional` lets us skip.
+const SocketScoreSchema = Schema.Struct({
+  overall: Schema.Number,
+  license: Schema.Number,
+  maintenance: Schema.Number,
+  quality: Schema.Number,
+  supplyChain: Schema.Number,
+  vulnerability: Schema.Number,
+});
+
+const SocketArtifactSchema = Schema.Struct({
+  name: Schema.String,
+  version: Schema.optional(Schema.String),
+  score: Schema.optional(SocketScoreSchema),
+});
+
+type SocketScore = Schema.Schema.Type<typeof SocketScoreSchema>;
+
+const decodeArtifact = Schema.decodeUnknownOption(SocketArtifactSchema);
+
+// The non-`overall` axes, paired with the label shown in the diagnostic so a
+// developer immediately sees which dimension dragged the score down.
+const SCORE_AXES: ReadonlyArray<{ readonly key: keyof SocketScore; readonly label: string }> = [
+  { key: "supplyChain", label: "supply chain" },
+  { key: "vulnerability", label: "vulnerability" },
+  { key: "maintenance", label: "maintenance" },
+  { key: "quality", label: "quality" },
+  { key: "license", label: "license" },
+];
+
+const clampScore = (value: number): number => {
+  if (!Number.isFinite(value)) return SUPPLY_CHAIN_DEFAULT_MIN_SCORE;
+  return Math.min(Math.max(value, 0), SOCKET_SCORE_SCALE);
+};
+
+const resolveOptions = (config: ReactDoctorConfig | null): ResolvedSupplyChainOptions => {
+  const supplyChain = config?.supplyChain ?? {};
+  return {
+    minScore:
+      typeof supplyChain.minScore === "number"
+        ? clampScore(supplyChain.minScore)
+        : SUPPLY_CHAIN_DEFAULT_MIN_SCORE,
+    // Coerce anything that isn't exactly `"warning"` (e.g. a JSON config
+    // that wrote `"warn"`) to the stricter `"error"` default.
+    severity: supplyChain.severity === "warning" ? "warning" : "error",
+    includeDevDependencies: supplyChain.includeDevDependencies !== false,
+  };
+};
+
+// package.json declares ranges (`^4.17.21`, `~1.2.0`, `>=2 <3`), but the
+// Socket lookup needs a concrete version. Take the first semver-looking
+// token in the spec — the floor of a caret/tilde range, which is a real
+// published version. Specs with no concrete version (`*`, `latest`,
+// `1.x`) or a non-registry protocol (`workspace:`, `file:`, `link:`,
+// `npm:`, `git+…`, a URL) are skipped: there's nothing to score.
+const resolveConcreteVersion = (spec: string): string | null => {
+  const trimmed = spec.trim();
+  if (trimmed.length === 0) return null;
+  if (trimmed.includes(":")) return null;
+  const match = trimmed.match(/\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/);
+  return match ? match[0] : null;
+};
+
+const collectDependenciesToScore = (
+  packageJson: PackageJson,
+  includeDevDependencies: boolean,
+): DependencyToScore[] => {
+  const specsByName = new Map<string, string>();
+  for (const [name, spec] of Object.entries(packageJson.dependencies ?? {})) {
+    specsByName.set(name, spec);
+  }
+  if (includeDevDependencies) {
+    for (const [name, spec] of Object.entries(packageJson.devDependencies ?? {})) {
+      if (!specsByName.has(name)) specsByName.set(name, spec);
+    }
+  }
+
+  const dependencies: DependencyToScore[] = [];
+  for (const [name, spec] of specsByName) {
+    const version = resolveConcreteVersion(spec);
+    if (version !== null) dependencies.push({ name, version });
+  }
+  return dependencies;
+};
+
+const toPurl = (dependency: DependencyToScore): string =>
+  `pkg:npm/${dependency.name}@${dependency.version}`;
+
+// The endpoint streams newline-delimited JSON (one artifact per line); take
+// the first line that decodes to an artifact carrying a score.
+const parseScoreFromBody = (body: string): SocketScore | null => {
+  for (const line of body.split("\n")) {
+    if (line.trim().length === 0) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const artifact = Option.getOrNull(decodeArtifact(parsed));
+    if (artifact?.score) return artifact.score;
+  }
+  return null;
+};
+
+// Fetches the free, keyless Socket score for one dependency — the same
+// `firewall-api.socket.dev/purl/<encoded-purl>` endpoint Socket Firewall's
+// free tier hits. `Effect.tryPromise` hands `fetch` an `AbortSignal` that
+// `Effect.timeout` trips on the deadline (cancelling the request), and
+// `Effect.orElseSucceed` makes the lookup fail-open: an unscored / unknown
+// package, a timeout, or any network/parse failure yields `null` (skip)
+// rather than sinking the scan.
+const fetchSocketScore = (dependency: DependencyToScore): Effect.Effect<SocketScore | null> =>
+  Effect.tryPromise(async (signal) => {
+    const requestUrl = `${SOCKET_FREE_PURL_API_BASE}/${encodeURIComponent(toPurl(dependency))}`;
+    const response = await fetch(requestUrl, {
+      headers: { "User-Agent": SOCKET_FREE_USER_AGENT },
+      signal,
+    });
+    if (!response.ok) return null;
+    return parseScoreFromBody(await response.text());
+  }).pipe(
+    Effect.timeout(FETCH_TIMEOUT_MS),
+    Effect.orElseSucceed(() => null),
+  );
+
+const toHundred = (normalizedScore: number): number =>
+  Math.round(clampScore(normalizedScore * SOCKET_SCORE_SCALE));
+
+const findLowestAxis = (score: SocketScore): { label: string; value: number } => {
+  let lowest = SCORE_AXES[0];
+  for (const axis of SCORE_AXES) {
+    if (score[axis.key] < score[lowest.key]) lowest = axis;
+  }
+  return { label: lowest.label, value: toHundred(score[lowest.key]) };
+};
+
+const buildLowScoreDiagnostic = (
+  dependency: DependencyToScore,
+  score: SocketScore,
+  options: ResolvedSupplyChainOptions,
+): Diagnostic => {
+  const overall = toHundred(score.overall);
+  const lowestAxis = findLowestAxis(score);
+  const packagePageUrl = `${SOCKET_PACKAGE_PAGE_BASE}/${dependency.name}/overview/${dependency.version}`;
+  return {
+    filePath: "package.json",
+    plugin: SUPPLY_CHAIN_PLUGIN,
+    rule: SUPPLY_CHAIN_RULE,
+    severity: options.severity,
+    message: `\`${dependency.name}@${dependency.version}\` has a Socket supply-chain score of ${overall}/${SOCKET_SCORE_SCALE} (below the minimum of ${options.minScore}). Lowest area: ${lowestAxis.label} (${lowestAxis.value}/${SOCKET_SCORE_SCALE}).`,
+    help: `Review ${dependency.name} on Socket: ${packagePageUrl}. Pin a safer version, replace the dependency, or raise \`supplyChain.minScore\` if you have vetted and accepted this package.`,
+    url: packagePageUrl,
+    line: 0,
+    column: 0,
+    category: SUPPLY_CHAIN_CATEGORY,
+  };
+};
+
+/**
+ * Scores every direct dependency in the project's `package.json` against
+ * Socket.dev's free PURL endpoint (the same one Socket Firewall's free tier
+ * uses — no API key) and returns a diagnostic for each dependency whose
+ * Socket `overall` score is below the configured `minScore`.
+ *
+ * Lookups run with bounded concurrency via `Effect.forEach`. The check is
+ * total/fail-open: each per-package lookup already recovers to `null`
+ * (skip) on timeout or network/parse failure, so a flaky Socket API never
+ * sinks the scan. Diagnostics default to `"error"` severity, so a low score
+ * fails the run at the standard `blocking` gate.
+ */
+export const checkSupplyChain = (input: SupplyChainCheckInput): Effect.Effect<Diagnostic[]> =>
+  Effect.gen(function* () {
+    const options = resolveOptions(input.userConfig);
+    const packageJson = readPackageJson(path.join(input.rootDirectory, "package.json"));
+    const dependencies = collectDependenciesToScore(packageJson, options.includeDevDependencies);
+    if (dependencies.length === 0) return [];
+
+    const scores = yield* Effect.forEach(dependencies, fetchSocketScore, {
+      concurrency: SUPPLY_CHAIN_FETCH_CONCURRENCY,
+    });
+
+    const diagnostics: Diagnostic[] = [];
+    for (let index = 0; index < dependencies.length; index += 1) {
+      const score = scores[index];
+      if (!score) continue;
+      if (toHundred(score.overall) >= options.minScore) continue;
+      diagnostics.push(buildLowScoreDiagnostic(dependencies[index], score, options));
+    }
+    return diagnostics;
+  });

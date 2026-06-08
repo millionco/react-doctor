@@ -52,7 +52,7 @@ export const askAddToGitHubActions = async (
           },
           {
             title: "Learn more",
-            description: "Read docs",
+            description: "Opens the docs page in your browser",
             value: CI_LEARN_MORE_CHOICE,
           },
           {

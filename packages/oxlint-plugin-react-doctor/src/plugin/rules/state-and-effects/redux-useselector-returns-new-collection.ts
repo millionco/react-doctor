@@ -68,7 +68,7 @@ export const reduxUseselectorReturnsNewCollection = defineRule<Rule>({
   category: "Performance",
   disabledBy: ["react-compiler"],
   recommendation:
-    "Return a primitive, split into multiple useSelector calls, or pass `shallowEqual` from `react-redux` as the second argument.",
+    "Return a stable selected value, split selectors, or pass `shallowEqual` so every Redux action does not redraw this component.",
   create: (context: RuleContext) => {
     let aliases: ReadonlySet<string> = new Set<string>();
     return {

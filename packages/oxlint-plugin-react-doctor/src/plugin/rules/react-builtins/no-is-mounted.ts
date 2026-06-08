@@ -11,7 +11,7 @@ import type { Rule } from "../../utils/rule.js";
 // module scope is left alone.
 export const noIsMounted = defineRule<Rule>({
   id: "no-is-mounted",
-  title: "Use of isMounted",
+  title: "isMounted lets async callbacks update after unmount",
   severity: "warn",
   recommendation:
     "`isMounted` doesn't work in modern React. Track mount state with a ref, or cancel the async work instead.",

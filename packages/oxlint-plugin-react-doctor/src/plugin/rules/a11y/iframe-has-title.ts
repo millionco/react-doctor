@@ -49,7 +49,8 @@ export const iframeHasTitle = defineRule<Rule>({
   title: "iframe missing title",
   tags: ["react-jsx-only"],
   severity: "warn",
-  recommendation: "Add a descriptive `title` to every `<iframe>`.",
+  recommendation:
+    "Add a descriptive `title` so screen reader users know what the embedded frame contains.",
   category: "Accessibility",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {

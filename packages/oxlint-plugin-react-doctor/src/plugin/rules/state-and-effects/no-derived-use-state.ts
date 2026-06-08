@@ -14,7 +14,7 @@ export const noDerivedUseState = defineRule<Rule>({
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Remove useState and compute the value inline: `const value = transform(propName)`",
+    "Compute the value inline so prop changes do not leave `useState` holding a stale copy.",
   create: (context: RuleContext) => {
     const propStackTracker = createComponentPropStackTracker();
 

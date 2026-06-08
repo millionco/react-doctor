@@ -180,7 +180,8 @@ export const jsxCurlyBracePresence = defineRule<Rule>({
   // Pure stylistic rule — `{'string'}` vs `"string"` is a formatter
   // concern, not a bug class. Default off.
   defaultEnabled: false,
-  recommendation: "Pick a consistent quoting style for JSX literal values.",
+  recommendation:
+    "Use one JSX literal style so equivalent markup scans the same without extra JSX noise.",
   category: "Architecture",
   create: (context) => {
     const settings = resolveSettings(context.settings);

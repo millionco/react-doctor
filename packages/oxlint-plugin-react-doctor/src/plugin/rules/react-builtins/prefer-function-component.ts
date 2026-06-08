@@ -68,7 +68,8 @@ export const preferFunctionComponent = defineRule<Rule>({
   // third-party libraries. Forcing rewrites by default is too
   // opinionated. Off by default.
   defaultEnabled: false,
-  recommendation: "Re-write the class component as a function component using hooks.",
+  recommendation:
+    "Rewrite the class component as a function component so state and effects use modern hook patterns instead of class lifecycles.",
   category: "Architecture",
   create: (context) => {
     const settings = resolveSettings(context.settings);

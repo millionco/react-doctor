@@ -109,7 +109,8 @@ export const buttonHasType = defineRule<Rule>({
   id: "button-has-type",
   title: "Button missing explicit type",
   severity: "warn",
-  recommendation: 'Always set a `type` on a `<button>`: `type="button"`, `"submit"`, or `"reset"`.',
+  recommendation:
+    'Set an explicit button `type` so plain buttons do not submit forms by accident: `type="button"`, `"submit"`, or `"reset"`.',
   create: (context) => {
     const settings = resolveSettings(context.settings);
     // Storybook stories and tests routinely render bare `<button>` without

@@ -31,8 +31,9 @@ const buildSampleDiagnostic = (overrides: Partial<Diagnostic> = {}): Diagnostic 
   plugin: "react",
   rule: "no-danger",
   severity: "warning",
-  message: "Avoid dangerouslySetInnerHTML",
-  help: "Use safer alternatives",
+  message:
+    "dangerouslySetInnerHTML bypasses React escaping, so untrusted HTML can execute script in the user's browser.",
+  help: "Render structured React content instead, or sanitize trusted HTML before passing it to dangerouslySetInnerHTML.",
   line: 10,
   column: 1,
   category: "security",

@@ -204,10 +204,10 @@ const getCandidateFromDefaultDeclaration = (
 
 export const serverAuthActions = defineRule<Rule>({
   id: "server-auth-actions",
-  title: "Server action without auth check",
+  title: "Unauthenticated server action can be called directly",
   severity: "error",
   recommendation:
-    "Add `const session = await auth()` at the top, and throw or redirect if the user isn't allowed before touching any data.",
+    "Check auth before touching data because exported server actions can be called directly by unauthenticated clients.",
   create: (context: RuleContext) => {
     let fileHasUseServerDirective = false;
     const customAuthFunctionNames = getReactDoctorStringArraySetting(

@@ -27,7 +27,7 @@ const REACT_19_DEPRECATED_MESSAGES = new Map<string, string>([
 
 export const noReact19DeprecatedApis = defineRule<Rule>({
   id: "no-react19-deprecated-apis",
-  title: "Deprecated React 19 APIs",
+  title: "React 19 API migration can break callers",
   requires: ["react:19"],
   // BOTH tags — migration-hint wins, see no-react-dom-deprecated-apis.
   tags: ["test-noise", "migration-hint"],

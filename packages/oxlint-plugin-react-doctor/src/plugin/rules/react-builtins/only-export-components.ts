@@ -375,7 +375,8 @@ export const onlyExportComponents = defineRule<Rule>({
   id: "only-export-components",
   title: "Non-component export in component file",
   severity: "warn",
-  recommendation: "Move non-component exports out of files that export components.",
+  recommendation:
+    "Move non-component exports out of component files so Fast Refresh can preserve component state instead of full-reloading.",
   category: "Architecture",
   create: (context) => {
     const settings = resolveSettings(context.settings);

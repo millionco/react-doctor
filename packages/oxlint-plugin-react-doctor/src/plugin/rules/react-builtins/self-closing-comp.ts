@@ -42,7 +42,7 @@ export const selfClosingComp = defineRule<Rule>({
   // Pure stylistic rule — `<X></X>` vs `<X/>` is a formatter concern,
   // not a bug class. Default off.
   defaultEnabled: false,
-  recommendation: "Use the self-closing form `<X />` for elements with no children.",
+  recommendation: "Use `<X />` for childless elements so empty closing tags do not add noise.",
   category: "Architecture",
   create: (context) => {
     const settings = resolveSettings(context.settings);

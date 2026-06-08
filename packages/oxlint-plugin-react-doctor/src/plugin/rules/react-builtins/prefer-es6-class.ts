@@ -33,7 +33,7 @@ export const preferEs6Class = defineRule<Rule>({
   // which don't occur in a modern function-component codebase. Opt in to enforce it.
   defaultEnabled: false,
   recommendation:
-    "Pick one component style for the whole codebase: `class extends React.Component` (default) or `createReactClass` (legacy).",
+    "Pick one component style so readers do not have to switch between legacy `createReactClass` patterns and modern class components.",
   category: "Architecture",
   create: (context) => {
     const { mode = "always" } = resolveSettings(context.settings);

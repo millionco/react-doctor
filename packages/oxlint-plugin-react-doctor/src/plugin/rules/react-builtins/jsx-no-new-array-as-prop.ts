@@ -142,7 +142,8 @@ export const jsxNoNewArrayAsProp = defineRule<Rule>({
   // React Compiler auto-memoizes prop allocations. The perf footgun this
   // rule guards against doesn't exist in compiler-enabled projects.
   disabledBy: ["react-compiler"],
-  recommendation: "Wrap the array in `useMemo`, or move it outside the component.",
+  recommendation:
+    "Wrap the array in `useMemo` or move it outside the component so memoized children do not redraw every render.",
   category: "Performance",
   create: (context) => {
     const isTestlikeFile = isTestlikeFilename(context.filename);

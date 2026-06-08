@@ -46,7 +46,8 @@ export const voidDomElementsNoChildren = defineRule<Rule>({
   id: "void-dom-elements-no-children",
   title: "Children on a void element",
   severity: "warn",
-  recommendation: "Remove the children, or use a tag that can hold children.",
+  recommendation:
+    "Remove the children or use a non-void tag so React does not drop content the element cannot render.",
   create: (context) => ({
     JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
       const openingElement = node.openingElement;

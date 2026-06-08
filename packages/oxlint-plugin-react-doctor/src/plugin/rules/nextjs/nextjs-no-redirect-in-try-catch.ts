@@ -12,7 +12,7 @@ export const nextjsNoRedirectInTryCatch = defineRule<Rule>({
   requires: ["nextjs"],
   severity: "warn",
   recommendation:
-    "Move the redirect/notFound call outside the try block, or add `unstable_rethrow(error)` in the catch",
+    "Move `redirect()` or `notFound()` outside the try block, or rethrow in `catch`, because these APIs throw control-flow errors that catch blocks swallow.",
   create: (context: RuleContext) => {
     let tryCatchDepth = 0;
 

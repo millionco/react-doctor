@@ -72,7 +72,8 @@ export const hookUseState = defineRule<Rule>({
   // where the setter is intentionally never used). Both are
   // idiomatic. Default off.
   defaultEnabled: false,
-  recommendation: "Destructure useState as `const [thing, setThing] = useState(…)`.",
+  recommendation:
+    "Destructure `useState` as `const [thing, setThing] = useState(…)` so state reads and writes stay visible together.",
   category: "Architecture",
   create: (context) => {
     const { allowDestructuredState } = resolveSettings(context.settings);

@@ -95,7 +95,7 @@ export const preactNoRenderArguments = defineRule<Rule>({
   requires: ["preact"],
   severity: "warn",
   recommendation:
-    "Read state/props from `this.props` / `this.state` inside `render()` instead of declaring positional parameters.",
+    "Read from `this.props` and `this.state` because `preact/compat` uses React's parameterless `render()` and positional props/state become undefined.",
   create: (context) => ({
     MethodDefinition(node: EsTreeNodeOfType<"MethodDefinition">) {
       if (!isInstanceMethodNamedRender(node)) return;

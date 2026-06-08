@@ -76,7 +76,8 @@ export const requireRenderReturn = defineRule<Rule>({
   id: "require-render-return",
   title: "Render method does not return",
   severity: "error",
-  recommendation: "Return JSX from your component's `render` method.",
+  recommendation:
+    "Return JSX or `null` from `render` so the component intentionally shows something or nothing.",
   create: (context) => {
     const checkFunction = (functionNode: EsTreeNode): void => {
       const host = resolveRenderHost(functionNode);

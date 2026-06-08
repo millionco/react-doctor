@@ -152,7 +152,7 @@ export const reduxUseselectorInlineDerivation = defineRule<Rule>({
   category: "Performance",
   disabledBy: ["react-compiler"],
   recommendation:
-    "Select the raw slice and derive with `useMemo`, or use `createSelector` from `reselect`.",
+    "Select the raw slice and memoize derivation so Redux actions do not rebuild a collection and redraw this component.",
   create: (context: RuleContext) => {
     let aliases: ReadonlySet<string> = new Set<string>();
     return {

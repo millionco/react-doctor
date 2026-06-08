@@ -82,7 +82,7 @@ export const checkedRequiresOnchangeOrReadonly = defineRule<Rule>({
   title: "Checked input without onChange",
   severity: "warn",
   recommendation:
-    "Add `onChange` (controlled) or `readOnly` (display-only), or use `defaultChecked` for an uncontrolled checkbox.",
+    "Add `onChange`, `readOnly`, or `defaultChecked` so React knows whether the checkbox is editable, display-only, or uncontrolled.",
   category: "Correctness",
   create: (context) => {
     const settings = resolveSettings(context.settings);

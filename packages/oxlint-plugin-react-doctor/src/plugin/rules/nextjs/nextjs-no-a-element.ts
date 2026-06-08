@@ -7,7 +7,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const nextjsNoAElement = defineRule<Rule>({
   id: "nextjs-no-a-element",
-  title: "Plain anchor for internal link",
+  title: "Plain anchor reloads internal Next.js links",
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "warn",

@@ -36,7 +36,8 @@ export const ariaRole = defineRule<Rule>({
   title: "Invalid ARIA role",
   tags: ["react-jsx-only"],
   severity: "error",
-  recommendation: "Use a real, non-abstract ARIA role.",
+  recommendation:
+    "Use a real, non-abstract ARIA role so assistive tech can expose the element correctly.",
   category: "Accessibility",
   create: (context) => {
     const settings = resolveSettings(context.settings);

@@ -18,7 +18,8 @@ export const noRedundantSizeAxes = defineRule<Rule>({
   // correctness, performance, or accessibility issue. Opt in to enforce it.
   defaultEnabled: false,
   category: "Architecture",
-  recommendation: "Collapse `w-N h-N` to `size-N` (Tailwind v3.4+) when both sides match.",
+  recommendation:
+    "Collapse matching width and height to `size-N` so duplicated classes do not make layout harder to scan.",
   create: (context: RuleContext) => ({
     JSXAttribute(jsxAttribute: EsTreeNodeOfType<"JSXAttribute">) {
       if (
@@ -46,7 +47,7 @@ export const noRedundantSizeAxes = defineRule<Rule>({
       for (const matchedPair of matchedPairs) {
         context.report({
           node: jsxAttribute,
-          message: `w-${matchedPair.value} & h-${matchedPair.value} are the same.`,
+          message: `w-${matchedPair.value} and h-${matchedPair.value} duplicate size-${matchedPair.value}, so the class list is noisier without changing layout.`,
         });
       }
     },

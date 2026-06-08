@@ -12,7 +12,7 @@ const MESSAGE =
 // `this.setState(...)` only when inside an es5/es6 React component.
 export const noSetState = defineRule<Rule>({
   id: "no-set-state",
-  title: "Use of this.setState",
+  title: "Local class state forbidden",
   severity: "warn",
   // Effectively a "no class components" rule — `this.setState` is the
   // canonical class-component API and class components remain valid
@@ -20,7 +20,8 @@ export const noSetState = defineRule<Rule>({
   // legacy code, third-party integrations. Default off; opt in when
   // migrating away from class components on purpose.
   defaultEnabled: false,
-  recommendation: "Lift state up or use an external store instead of `this.setState`.",
+  recommendation:
+    "Lift state up or use an external store so class-local state does not hide ownership.",
   category: "Architecture",
   create: (context) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {

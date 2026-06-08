@@ -60,8 +60,9 @@ const buildDiagnostics = (): Diagnostic[] => [
     severity: "error",
     category: "correctness",
     title: "Derived value copied into state",
-    message: "Avoid derived state",
-    help: "Store source state instead.",
+    message:
+      "Derived value is copied into state, so React can render stale UI before the duplicate state catches up.",
+    help: "Compute the value during render from the source state, or memoize it only if the computation is expensive.",
     filePath: "src/App.tsx",
     line: 10,
     column: 3,
@@ -72,8 +73,9 @@ const buildDiagnostics = (): Diagnostic[] => [
     severity: "error",
     category: "correctness",
     title: "Derived value copied into state",
-    message: "Avoid derived state",
-    help: "Store source state instead.",
+    message:
+      "Derived value is copied into state, so React can render stale UI before the duplicate state catches up.",
+    help: "Compute the value during render from the source state, or memoize it only if the computation is expensive.",
     filePath: "src/Profile.tsx",
     line: 4,
     column: 8,

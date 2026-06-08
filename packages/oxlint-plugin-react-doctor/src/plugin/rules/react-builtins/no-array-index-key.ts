@@ -366,7 +366,8 @@ export const noArrayIndexKey = defineRule<Rule>({
   // same `key={index}` JSX, so keeping both double-reports. This oxc port
   // adds `React.cloneElement` coverage — opt in if you need that edge.
   defaultEnabled: false,
-  recommendation: "Use a stable `key` from your data instead of the array index.",
+  recommendation:
+    "Use a stable `key` from your data so reordered items keep the right state and DOM.",
   category: "Performance",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {

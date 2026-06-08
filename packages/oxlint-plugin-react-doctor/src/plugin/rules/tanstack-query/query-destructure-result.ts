@@ -7,7 +7,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const queryDestructureResult = defineRule<Rule>({
   id: "query-destructure-result",
-  title: "Destructure TanStack Query result",
+  title: "Whole query result subscribes to every field",
   tags: ["test-noise"],
   requires: ["tanstack-query"],
   severity: "error",

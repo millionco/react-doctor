@@ -56,9 +56,10 @@ const resolveSettings = (
 // (lowercase tag names), respecting per-prop `disallowedFor` allow-lists.
 export const forbidDomProps = defineRule<Rule>({
   id: "forbid-dom-props",
-  title: "Forbidden DOM prop used",
+  title: "Blocked DOM prop bypasses project contract",
   severity: "warn",
-  recommendation: "List the HTML props you want to block in the `forbidDomProps.forbid` setting.",
+  recommendation:
+    "Configure blocked DOM props so plain HTML tags stay on the agreed DOM API surface.",
   category: "Architecture",
   create: (context) => {
     const forbidMap = resolveSettings(context.settings);

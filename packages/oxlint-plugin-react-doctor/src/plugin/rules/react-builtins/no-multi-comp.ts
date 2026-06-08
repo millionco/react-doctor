@@ -571,7 +571,8 @@ export const noMultiComp = defineRule<Rule>({
   id: "no-multi-comp",
   title: "Multiple components in one file",
   severity: "warn",
-  recommendation: "Move secondary components into their own files.",
+  recommendation:
+    "Move secondary components into their own files so each component stays easier to find, test, and change.",
   category: "Architecture",
   create: (context) => {
     const settings = resolveSettings(context.settings);

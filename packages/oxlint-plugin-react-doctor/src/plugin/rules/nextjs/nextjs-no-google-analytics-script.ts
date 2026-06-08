@@ -8,7 +8,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const nextjsNoGoogleAnalyticsScript = defineRule<Rule>({
   id: "nextjs-no-google-analytics-script",
-  title: "Manual Google Analytics script",
+  title: "Manual Google Analytics script blocks optimized loading",
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "warn",

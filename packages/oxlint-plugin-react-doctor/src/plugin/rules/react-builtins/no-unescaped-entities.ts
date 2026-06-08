@@ -24,7 +24,8 @@ export const noUnescapedEntities = defineRule<Rule>({
   // cosmetic preference that doesn't catch bugs (modern JSX
   // compilers + browsers handle bare entities fine). Default off.
   defaultEnabled: false,
-  recommendation: "Replace bare `'` / `\"` / `>` / `}` characters in JSX text with HTML entities.",
+  recommendation:
+    "Replace bare `'` / `\"` / `>` / `}` characters with HTML entities so literal UI text is encoded consistently.",
   create: (context) => ({
     JSXText(node: EsTreeNodeOfType<"JSXText">) {
       const value = node.value;

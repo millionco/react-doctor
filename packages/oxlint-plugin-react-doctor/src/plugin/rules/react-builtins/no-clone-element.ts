@@ -14,14 +14,15 @@ const MESSAGE = "`React.cloneElement` breaks easily when the cloned element's pr
 // `const cloneElement = ...` aren't flagged.
 export const noCloneElement = defineRule<Rule>({
   id: "no-clone-element",
-  title: "Use of cloneElement",
+  title: "cloneElement makes child props fragile",
   severity: "warn",
   // `React.cloneElement` is a valid React API still used in HOCs,
   // headless-UI libraries (Radix, Headless UI), and child-prop
   // injection patterns. Discouraging it is an opinion, not a bug
   // class. Default off.
   defaultEnabled: false,
-  recommendation: "Pass children, render props, or use `Children.map` instead of cloning elements.",
+  recommendation:
+    "Pass children or render props instead so parent code does not depend on fragile cloned child props.",
   category: "Architecture",
   create: (context) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {

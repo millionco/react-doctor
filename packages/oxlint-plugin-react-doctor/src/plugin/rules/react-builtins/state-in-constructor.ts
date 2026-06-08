@@ -76,7 +76,7 @@ export const stateInConstructor = defineRule<Rule>({
   // explicit constructor assignment are equivalent at runtime. The
   // class-field form is idiomatic modern TypeScript. Default off.
   defaultEnabled: false,
-  recommendation: "Pick one way to set up state in class components and stick with it.",
+  recommendation: "Use one class-state setup pattern so readers know where initial state lives.",
   category: "Architecture",
   create: (context) => {
     const { mode } = resolveSettings(context.settings);

@@ -2,6 +2,7 @@ import type { InspectOptions, ReactDoctorConfig } from "@react-doctor/core";
 import type { InspectFlags } from "./inspect-flags.js";
 import { isCiEnvironment } from "./is-ci-environment.js";
 import { pickBlockingLevel } from "./resolve-blocking-level.js";
+import { resolveCliCategories } from "./resolve-cli-categories.js";
 import { resolveParallelFlag } from "./resolve-parallel-flag.js";
 
 /**
@@ -40,5 +41,6 @@ export const resolveCliInspectOptions = (
     isCi: isCiEnvironment(),
     silent: Boolean(flags.json),
     concurrency: resolveParallelFlag(flags.parallel),
+    categoryFilters: resolveCliCategories(flags.category),
   };
 };

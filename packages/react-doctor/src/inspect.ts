@@ -8,6 +8,7 @@ import {
   buildSkippedChecks,
   computeDiagnosticDelta,
   DEFAULT_SHOW_WARNINGS,
+  DIAGNOSTIC_CATEGORY_BUCKETS,
   filterDiagnosticsForSurface,
   highlighter,
   OXLINT_NODE_REQUIREMENT,
@@ -73,6 +74,38 @@ const runConsole = (effect: Effect.Effect<void>): void => {
   Effect.runSync(effect);
 };
 
+const buildCategoryFilterConfig = (
+  categoryFilters: ReadonlySet<string>,
+  outputSurface: DiagnosticSurface,
+): ReactDoctorConfig => ({
+  surfaces: {
+    [outputSurface]: {
+      excludeCategories: DIAGNOSTIC_CATEGORY_BUCKETS.filter(
+        (category) => !categoryFilters.has(category),
+      ),
+    },
+  },
+});
+
+const filterDiagnosticsForCategorySelection = (
+  diagnostics: ReadonlyArray<Diagnostic>,
+  outputSurface: DiagnosticSurface,
+  userConfig: ReactDoctorConfig | null,
+  categoryFilters: ReadonlySet<string>,
+): Diagnostic[] => {
+  const surfaceDiagnostics = filterDiagnosticsForSurface([...diagnostics], outputSurface, userConfig);
+  if (categoryFilters.size === 0) return surfaceDiagnostics;
+
+  return filterDiagnosticsForSurface(
+    surfaceDiagnostics,
+    outputSurface,
+    buildCategoryFilterConfig(categoryFilters, outputSurface),
+  );
+};
+
+const formatCategorySelection = (categoryFilters: ReadonlySet<string>): string =>
+  [...categoryFilters].join(", ");
+
 interface ResolvedInspectOptions {
   lint: boolean;
   deadCode: boolean;
@@ -88,6 +121,7 @@ interface ResolvedInspectOptions {
   share: boolean;
   respectInlineDisables: boolean;
   warnings: boolean;
+  categoryFilters: ReadonlySet<string>;
   adoptExistingLintConfig: boolean;
   ignoredTags: ReadonlySet<string>;
   outputSurface: DiagnosticSurface;
@@ -125,6 +159,7 @@ const mergeInspectOptions = (
   respectInlineDisables:
     inputOptions.respectInlineDisables ?? userConfig?.respectInlineDisables ?? true,
   warnings: inputOptions.warnings ?? userConfig?.warnings ?? DEFAULT_SHOW_WARNINGS,
+  categoryFilters: new Set(inputOptions.categoryFilters ?? []),
   adoptExistingLintConfig: userConfig?.adoptExistingLintConfig ?? true,
   ignoredTags: buildIgnoredTags(userConfig),
   outputSurface: inputOptions.outputSurface ?? "cli",
@@ -650,9 +685,18 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
     const hasSkippedChecks = skippedChecks.length > 0;
 
     const noScoreMessage = buildNoScoreMessage(options.noScore);
+    const categoryFilteredDiagnostics =
+      options.categoryFilters.size > 0
+        ? filterDiagnosticsForCategorySelection(
+            diagnostics,
+            options.outputSurface,
+            userConfig,
+            options.categoryFilters,
+          )
+        : null;
 
     const buildResult = (): InspectResult => ({
-      diagnostics: [...diagnostics],
+      diagnostics: categoryFilteredDiagnostics ?? [...diagnostics],
       score,
       skippedChecks,
       ...(Object.keys(skippedCheckReasons).length > 0 ? { skippedCheckReasons } : {}),
@@ -690,17 +734,24 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       options.outputSurface,
       userConfig,
     );
+    const printedDiagnostics = categoryFilteredDiagnostics ?? surfaceDiagnostics;
     const demotedDiagnosticCount = diagnostics.length - surfaceDiagnostics.length;
     const isDiffMode = options.includePaths.length > 0;
     const lintSourceFileCount = isDiffMode ? options.includePaths.length : project.sourceFileCount;
 
-    if (surfaceDiagnostics.length === 0) {
+    if (printedDiagnostics.length === 0) {
       yield* pause;
       if (hasSkippedChecks) {
         const skippedLabel = skippedChecks.join(" and ");
         yield* Console.warn(
           highlighter.warn(
             `No issues detected, but ${skippedLabel} checks failed — results are incomplete.`,
+          ),
+        );
+      } else if (categoryFilteredDiagnostics !== null) {
+        yield* Console.log(
+          highlighter.success(
+            `No issues found in category ${formatCategorySelection(options.categoryFilters)}!`,
           ),
         );
       } else if (demotedDiagnosticCount > 0) {
@@ -728,7 +779,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
     yield* pause;
     yield* Console.log("");
     yield* printDiagnostics(
-      [...surfaceDiagnostics],
+      [...printedDiagnostics],
       options.verbose,
       directory,
       buildRulePriorityMap([score]),
@@ -739,7 +790,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       yield* printAgentGuidance();
     }
 
-    if (demotedDiagnosticCount > 0) {
+    if (categoryFilteredDiagnostics === null && demotedDiagnosticCount > 0) {
       yield* Console.log(
         highlighter.gray(
           `  ${demotedDiagnosticCount} demoted from the ${options.outputSurface} surface (e.g. design cleanup) — run \`npx react-doctor@latest .\` locally for the full list.`,
@@ -752,14 +803,14 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
     // show the payoff as a ghost gain segment.
     const potentialScore = score
       ? yield* Effect.promise(() =>
-          computeProjectedScore([...surfaceDiagnostics], [...surfaceDiagnostics], score),
+          computeProjectedScore([...printedDiagnostics], [...printedDiagnostics], score),
         )
       : null;
 
     const shouldShowShareLink = !options.noScore && options.share && !options.isCi;
     yield* pause;
     yield* printSummary({
-      diagnostics: [...surfaceDiagnostics],
+      diagnostics: [...printedDiagnostics],
       elapsedMilliseconds,
       scoreResult: score,
       potentialScore,
@@ -779,7 +830,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
 
     yield* pause;
     yield* printFooter({
-      diagnostics: [...surfaceDiagnostics],
+      diagnostics: [...printedDiagnostics],
       scoreResult: score,
       projectName: project.projectName,
       isOffline: !shouldShowShareLink,

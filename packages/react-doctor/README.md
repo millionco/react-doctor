@@ -25,6 +25,12 @@ Run this at your project root to get an audit.
 npx react-doctor@latest
 ```
 
+To focus the audit on one category, repeat `--category` as needed.
+
+```bash
+npx react-doctor@latest --verbose --category Security
+```
+
 https://github.com/user-attachments/assets/07cc88d9-9589-44c3-aa73-5d603cb1c570
 
 ### 2. Install for agents

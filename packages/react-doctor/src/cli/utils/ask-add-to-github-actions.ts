@@ -57,7 +57,7 @@ export const askAddToGitHubActions = async (
           },
           {
             title: "No",
-            description: "Skip for now — you can add it later",
+            description: "Skip for now",
             value: CI_NO_CHOICE,
           },
         ],

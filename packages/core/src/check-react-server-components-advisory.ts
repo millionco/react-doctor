@@ -79,75 +79,59 @@ const readDeclaredSpec = (packageJson: PackageJson, packageName: string): string
   return null;
 };
 
-// Resolves the concrete version a package will actually run, preferring the
-// installed manifest under `node_modules` (authoritative, always concrete) in
-// any candidate directory — the scan root plus every workspace package, so a
-// monorepo whose dependency is installed under `apps/web/node_modules` still
-// resolves — and falling back to an exact pin declared in any of those
-// manifests. `semver.valid` rejects range specs (`^19.2.0`), so the check
-// never guesses off an ambiguous range whose lockfile may resolve higher.
-const resolveInstalledVersion = (
-  candidateDirectories: ReadonlyArray<string>,
+// Resolves the concrete version a package runs *in a single directory*,
+// preferring the installed manifest under that directory's `node_modules`
+// (authoritative, always concrete) and falling back to an exact pin declared in
+// that directory's own `package.json`. `semver.valid` rejects range specs
+// (`^19.2.0`), so the check never guesses off an ambiguous range whose lockfile
+// may resolve higher. The caller probes every candidate directory (scan root +
+// each workspace package) so heterogeneous monorepo installs are all seen.
+const resolveVersionInDirectory = (
+  directory: string,
   packageName: string,
   declaredSpecOverride: string | null,
 ): string | null => {
-  for (const directory of candidateDirectories) {
-    const manifestPath = path.join(directory, "node_modules", packageName, "package.json");
-    if (!isFile(manifestPath)) continue;
+  const manifestPath = path.join(directory, "node_modules", packageName, "package.json");
+  if (isFile(manifestPath)) {
     const installedVersion = semver.valid(readPackageJson(manifestPath).version ?? null);
     if (installedVersion !== null) return installedVersion;
   }
 
-  const declaredSpecs = [
-    declaredSpecOverride,
-    ...candidateDirectories.map((directory) =>
-      readDeclaredSpec(readPackageJson(path.join(directory, "package.json")), packageName),
-    ),
-  ];
-  for (const spec of declaredSpecs) {
-    const pinnedVersion = spec === null ? null : semver.valid(spec);
-    if (pinnedVersion !== null) return pinnedVersion;
-  }
-
-  return null;
+  const declaredSpec =
+    readDeclaredSpec(readPackageJson(path.join(directory, "package.json")), packageName) ??
+    declaredSpecOverride;
+  return declaredSpec === null ? null : semver.valid(declaredSpec);
 };
 
-const checkReactServerDomPackages = (candidateDirectories: ReadonlyArray<string>): Diagnostic[] => {
-  const diagnostics: Diagnostic[] = [];
+const checkReactServerDomAdvisory = (packageName: string, version: string): Diagnostic[] => {
+  const advisory =
+    REACT_RSC_ADVISORIES_BY_MINOR[`${semver.major(version)}.${semver.minor(version)}`];
+  if (advisory === undefined) return [];
 
-  for (const packageName of REACT_SERVER_DOM_PACKAGES) {
-    const version = resolveInstalledVersion(candidateDirectories, packageName, null);
-    if (version === null) continue;
+  const installedDisplay = `${packageName}@${version}`;
+  const lineDisplay = `${semver.major(version)}.${semver.minor(version)}`;
 
-    const advisory =
-      REACT_RSC_ADVISORIES_BY_MINOR[`${semver.major(version)}.${semver.minor(version)}`];
-    if (advisory === undefined) continue;
-
-    const installedDisplay = `${packageName}@${version}`;
-
-    if (semver.lt(version, advisory.rceFixedVersion)) {
-      diagnostics.push(
-        buildAdvisoryDiagnostic({
-          severity: "error",
-          message: `${installedDisplay} has the critical React Server Components remote code execution vulnerability (CVE-2025-55182, CVSS 10.0) — an unauthenticated attacker can run arbitrary code on your server by sending a crafted payload to any Server Function endpoint`,
-          help: `Upgrade React's Server Components runtime to ${advisory.latestSafeVersion} — a patch-level bump within ${semver.major(version)}.${semver.minor(version)} with no breaking changes. Run \`npm install ${packageName}@${advisory.latestSafeVersion}\` and pin \`react\`/\`react-dom\` to ${advisory.latestSafeVersion} too. See ${REACT_BLOG_RSC_ADVISORY_URL}`,
-        }),
-      );
-      continue;
-    }
-
-    if (semver.lt(version, advisory.latestSafeVersion)) {
-      diagnostics.push(
-        buildAdvisoryDiagnostic({
-          severity: "warning",
-          message: `${installedDisplay} is affected by a high-severity React Server Components denial-of-service vulnerability (CVE-2026-23870) patched in ${advisory.latestSafeVersion}`,
-          help: `Upgrade to ${advisory.latestSafeVersion} — a patch-level bump within ${semver.major(version)}.${semver.minor(version)}. Run \`npm install ${packageName}@${advisory.latestSafeVersion}\` and align \`react\`/\`react-dom\`. See ${VERCEL_NEXTJS_SECURITY_RELEASE_URL}`,
-        }),
-      );
-    }
+  if (semver.lt(version, advisory.rceFixedVersion)) {
+    return [
+      buildAdvisoryDiagnostic({
+        severity: "error",
+        message: `${installedDisplay} has the critical React Server Components remote code execution vulnerability (CVE-2025-55182, CVSS 10.0) — an unauthenticated attacker can run arbitrary code on your server by sending a crafted payload to any Server Function endpoint`,
+        help: `Upgrade React's Server Components runtime to ${advisory.latestSafeVersion} — a patch-level bump within ${lineDisplay} with no breaking changes. Run \`npm install ${packageName}@${advisory.latestSafeVersion}\` and pin \`react\`/\`react-dom\` to ${advisory.latestSafeVersion} too. See ${REACT_BLOG_RSC_ADVISORY_URL}`,
+      }),
+    ];
   }
 
-  return diagnostics;
+  if (semver.lt(version, advisory.latestSafeVersion)) {
+    return [
+      buildAdvisoryDiagnostic({
+        severity: "warning",
+        message: `${installedDisplay} is affected by a high-severity React Server Components denial-of-service vulnerability (CVE-2026-23870) patched in ${advisory.latestSafeVersion}`,
+        help: `Upgrade to ${advisory.latestSafeVersion} — a patch-level bump within ${lineDisplay}. Run \`npm install ${packageName}@${advisory.latestSafeVersion}\` and align \`react\`/\`react-dom\`. See ${VERCEL_NEXTJS_SECURITY_RELEASE_URL}`,
+      }),
+    ];
+  }
+
+  return [];
 };
 
 const checkNextjsAdvisory = (version: string): Diagnostic[] => {
@@ -200,16 +184,18 @@ const checkNextjsAdvisory = (version: string): Diagnostic[] => {
  * security advisory — primarily the critical unauthenticated RCE
  * (CVE-2025-55182), plus the later high-severity DoS (CVE-2026-23870).
  *
- * Next.js vendors its own RSC runtime, so when `next` is installed it is
- * checked by its `next` version (the fix is a Next.js bump) and the standalone
- * `react-server-dom-*` check is skipped — Next governs that runtime. Dispatch
- * keys on whether `next` actually resolves in any candidate directory rather
- * than the root framework classification, so a monorepo whose root is Vite (or
- * unknown) but whose workspace installs Next.js is still covered. Every other
- * framework or bundler — Vite, Parcel, React Router, Waku, RedwoodSDK — is
- * checked by the resolved version of its `react-server-dom-*` package. Pure
- * client-side React apps (no RSC packages, no Next.js) are not affected and
- * stay quiet.
+ * Every candidate directory — the scan root and each workspace package — is
+ * probed independently, so heterogeneous monorepo installs are all seen (a
+ * vulnerable `next` in one workspace isn't masked by an inert one elsewhere).
+ * Next.js vendors its own RSC runtime, so an affected `next` install in a
+ * directory is reported by its `next` version (the fix is a Next.js bump) and
+ * suppresses the standalone `react-server-dom-*` check for that directory only;
+ * every other framework or bundler — Vite, Parcel, React Router, Waku,
+ * RedwoodSDK — is reported by its `react-server-dom-*` version. Dispatch keys
+ * on resolved installs rather than the root framework classification, so a
+ * monorepo whose root is Vite but whose workspace runs Next.js is still
+ * covered. Pure client-side React apps (no RSC packages, no Next.js) are not
+ * affected and stay quiet.
  */
 export const checkReactServerComponentsAdvisory = (
   scanDirectory: string,
@@ -222,8 +208,39 @@ export const checkReactServerComponentsAdvisory = (
     ...new Set([scanDirectory, project.rootDirectory, ...workspaceDirectories]),
   ];
 
-  const nextVersion = resolveInstalledVersion(candidateDirectories, "next", project.nextjsVersion);
-  if (nextVersion !== null) return checkNextjsAdvisory(nextVersion);
+  const diagnostics: Diagnostic[] = [];
+  const seenMessages = new Set<string>();
+  const pushUnique = (candidates: ReadonlyArray<Diagnostic>): void => {
+    for (const candidate of candidates) {
+      if (seenMessages.has(candidate.message)) continue;
+      seenMessages.add(candidate.message);
+      diagnostics.push(candidate);
+    }
+  };
 
-  return checkReactServerDomPackages(candidateDirectories);
+  for (const directory of candidateDirectories) {
+    // `project.nextjsVersion` is the workspace-resolved declared spec; let it
+    // seed the scan root so an exact pin without an install still counts.
+    const nextVersion = resolveVersionInDirectory(
+      directory,
+      "next",
+      directory === scanDirectory ? project.nextjsVersion : null,
+    );
+    if (nextVersion !== null) pushUnique(checkNextjsAdvisory(nextVersion));
+
+    // A Next.js install in this directory vendors its own RSC runtime and is
+    // covered by the Next.js advisory, so don't also flag a standalone
+    // `react-server-dom-*` here — but only when that Next is in the affected
+    // range; a pre-13 Next must not mask a vulnerable standalone runtime.
+    const nextGovernsRsc =
+      nextVersion !== null && semver.major(nextVersion) >= NEXTJS_OLDEST_AFFECTED_MAJOR;
+    if (nextGovernsRsc) continue;
+
+    for (const packageName of REACT_SERVER_DOM_PACKAGES) {
+      const version = resolveVersionInDirectory(directory, packageName, null);
+      if (version !== null) pushUnique(checkReactServerDomAdvisory(packageName, version));
+    }
+  }
+
+  return diagnostics;
 };

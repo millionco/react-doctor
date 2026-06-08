@@ -275,6 +275,49 @@ describe("checkReactServerComponentsAdvisory (installed-version resolution)", ()
     expect(diagnostics[0].message).toContain("CVE-2025-55182");
   });
 
+  it("still flags a standalone vulnerable RSC runtime when only a pre-13 Next is installed", () => {
+    // Regression for "Pre-13 next skips RSC check": a Next below major 13 is not
+    // an affected line and must not suppress the standalone react-server-dom check.
+    writePackageJson(temporaryRoot, { name: "app", dependencies: {} });
+    writeInstalledManifest(temporaryRoot, "next", "12.3.4");
+    writeInstalledManifest(temporaryRoot, "react-server-dom-webpack", "19.2.0");
+    clearPackageJsonCache();
+
+    const diagnostics = checkReactServerComponentsAdvisory(
+      temporaryRoot,
+      buildProject(temporaryRoot, "nextjs", null),
+    );
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0].severity).toBe("error");
+    expect(diagnostics[0].message).toContain("react-server-dom-webpack");
+  });
+
+  it("checks every workspace's Next.js, not just the first resolved one", () => {
+    // Regression for "First next wins over workspace": an inert/safe Next at the
+    // root must not hide a vulnerable Next installed in a workspace.
+    writePackageJson(temporaryRoot, {
+      name: "monorepo-root",
+      workspaces: ["packages/*"],
+      dependencies: { next: "15.5.18", react: "19.2.0" },
+    });
+    writeInstalledManifest(temporaryRoot, "next", "15.5.18");
+    const webDirectory = path.join(temporaryRoot, "packages", "web");
+    writePackageJson(webDirectory, {
+      name: "web",
+      dependencies: { next: "15.0.0", react: "19.0.0", "react-dom": "19.0.0" },
+    });
+    writeInstalledManifest(webDirectory, "next", "15.0.0");
+    clearPackageJsonCache();
+
+    const diagnostics = checkReactServerComponentsAdvisory(
+      temporaryRoot,
+      buildProject(temporaryRoot, "nextjs", null),
+    );
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0].severity).toBe("error");
+    expect(diagnostics[0].message).toContain("next@15.0.0");
+  });
+
   it("checks Next.js by its own version even when a standalone react-server-dom is present", () => {
     writePackageJson(temporaryRoot, { name: "app", dependencies: { next: "15.5.18" } });
     writeInstalledManifest(temporaryRoot, "next", "15.5.18");

@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -13,7 +14,7 @@ export const nextjsNoImgElement = defineRule<Rule>({
   severity: "warn",
   recommendation:
     "`import Image from 'next/image'` for automatic WebP/AVIF, lazy loading, and responsive srcset",
-  create: (context: RuleContext) => {
+  create: (context: RuleContext): RuleVisitors => {
     if (isGeneratedImageRenderContext(context)) return {};
 
     return {

@@ -7,6 +7,7 @@ import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-re
 import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
+import type { RuleVisitors } from "../../utils/rule-visitors.js";
 
 const MESSAGE =
   'Screen reader users hear "image" or "photo" twice because they already announce it, so describe what the image shows instead.';
@@ -89,7 +90,7 @@ export const imgRedundantAlt = defineRule<Rule>({
   severity: "warn",
   recommendation: "Do not put 'image' or 'photo' in alt text. Describe what is shown.",
   category: "Accessibility",
-  create: (context) => {
+  create: (context): RuleVisitors => {
     if (isGeneratedImageRenderContext(context)) return {};
     const settings = resolveSettings(context.settings);
     return {

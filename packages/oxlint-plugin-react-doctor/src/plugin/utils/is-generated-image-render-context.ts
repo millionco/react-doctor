@@ -34,9 +34,10 @@ const isImageResponseCallee = (contextNode: EsTreeNode, callee: EsTreeNode): boo
 
   if (!isMemberProperty(callee, "ImageResponse")) return false;
   if (!isNodeOfType(callee.object, "Identifier")) return false;
+  const namespaceIdentifierName = callee.object.name;
 
   return IMAGE_RESPONSE_MODULES.some((moduleSource) =>
-    isNamespaceImportFromModule(contextNode, callee.object.name, moduleSource),
+    isNamespaceImportFromModule(contextNode, namespaceIdentifierName, moduleSource),
   );
 };
 

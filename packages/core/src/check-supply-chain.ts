@@ -195,6 +195,63 @@ const buildLowScoreDiagnostic = (
   };
 };
 
+export interface DependencyScore {
+  readonly name: string;
+  readonly version: string;
+  /**
+   * Socket `overall` score on a 0–100 scale, or `null` when the
+   * package/version is unknown to Socket or the lookup failed.
+   */
+  readonly overall: number | null;
+  /** Per-axis Socket scores on a 0–100 scale; `null` alongside `overall`. */
+  readonly breakdown: {
+    readonly supplyChain: number;
+    readonly maintenance: number;
+    readonly quality: number;
+    readonly vulnerability: number;
+    readonly license: number;
+  } | null;
+}
+
+/**
+ * Fetches the Socket score of every direct dependency (not just the ones
+ * below a threshold) via the same free, keyless endpoint as
+ * {@link checkSupplyChain}. Backs the CLI's `--sfw` demo listing. Unknown
+ * packages and per-package failures come back with `overall: null` rather
+ * than being dropped, so the caller can show them explicitly.
+ */
+export const collectSupplyChainScores = (
+  input: SupplyChainCheckInput,
+): Effect.Effect<DependencyScore[]> =>
+  Effect.gen(function* () {
+    const options = resolveOptions(input.userConfig);
+    const packageJson = readPackageJson(path.join(input.rootDirectory, "package.json"));
+    const dependencies = collectDependenciesToScore(packageJson, options.includeDevDependencies);
+    if (dependencies.length === 0) return [];
+
+    const scores = yield* Effect.forEach(dependencies, fetchSocketScore, {
+      concurrency: SUPPLY_CHAIN_FETCH_CONCURRENCY,
+    });
+
+    return dependencies.map((dependency, index) => {
+      const score = scores[index];
+      return {
+        name: dependency.name,
+        version: dependency.version,
+        overall: score ? toHundred(score.overall) : null,
+        breakdown: score
+          ? {
+              supplyChain: toHundred(score.supplyChain),
+              maintenance: toHundred(score.maintenance),
+              quality: toHundred(score.quality),
+              vulnerability: toHundred(score.vulnerability),
+              license: toHundred(score.license),
+            }
+          : null,
+      };
+    });
+  });
+
 /**
  * Scores every direct dependency in the project's `package.json` against
  * Socket.dev's free PURL endpoint (the same one Socket Firewall's free tier

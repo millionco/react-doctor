@@ -230,6 +230,26 @@ export const MAX_RULE_GROUPS_PER_CATEGORY_NON_VERBOSE = 3;
 // recommended starting point for the supply-chain hardening check.
 export const RECOMMENDED_PNPM_MINIMUM_RELEASE_AGE_MINUTES = 10_080;
 
+// React's three Server Components transport packages (published in lockstep
+// with `react`/`react-dom`). A framework, bundler, or bundler plugin that
+// supports RSC pulls one of these in; an app that depends on none of them is
+// not exposed to the RSC deserialization advisories. Used by the React Server
+// Components security check to resolve the installed RSC runtime version.
+export const REACT_SERVER_DOM_PACKAGES = [
+  "react-server-dom-webpack",
+  "react-server-dom-parcel",
+  "react-server-dom-turbopack",
+] as const;
+
+// React's disclosure of the critical unauthenticated RSC RCE (CVE-2025-55182).
+export const REACT_BLOG_RSC_ADVISORY_URL =
+  "https://react.dev/blog/2025/12/03/critical-security-vulnerability-in-react-server-components";
+
+// Vercel's coordinated Next.js + React security release with the per-version
+// patched-release table the Next.js advisory check keys off.
+export const VERCEL_NEXTJS_SECURITY_RELEASE_URL =
+  "https://vercel.com/changelog/next-js-may-2026-security-release";
+
 // The closed set of user-facing diagnostic categories. Every rule
 // (collapsed at codegen via `CATEGORY_BUCKET` in
 // `generate-rule-registry.mjs`) and every directly-constructed

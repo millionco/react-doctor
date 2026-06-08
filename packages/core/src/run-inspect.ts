@@ -16,6 +16,7 @@ import { buildDiagnosticPipeline } from "./build-diagnostic-pipeline.js";
 import { checkExpoProject } from "./check-expo-project.js";
 import { checkPnpmHardening } from "./check-pnpm-hardening.js";
 import { checkReactNativeProject } from "./check-react-native-project.js";
+import { checkReactServerComponentsAdvisory } from "./check-react-server-components-advisory.js";
 import { checkReducedMotion } from "./check-reduced-motion.js";
 import { DEFAULT_SHOW_WARNINGS } from "./constants.js";
 import { highlighter } from "./highlighter.js";
@@ -330,6 +331,7 @@ export const runInspect = <HooksR = never>(
       : [
           ...checkReducedMotion(scanDirectory),
           ...checkPnpmHardening(scanDirectory),
+          ...checkReactServerComponentsAdvisory(scanDirectory, project),
           ...checkExpoProject(scanDirectory, project),
           ...checkReactNativeProject(scanDirectory, project),
         ];

@@ -111,7 +111,7 @@ export const noDarkModeGlow = defineRule<Rule>({
         context.report({
           node: shadowProperty,
           message:
-            "Your users see a cheap, overdone colored glow on the dark background, so use a subtle, neutral shadow instead.",
+            "A strong colored glow on a dark background can feel heavy. Use a subtle, neutral shadow instead.",
         });
       }
     },

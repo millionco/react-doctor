@@ -22,7 +22,7 @@ const HOOKS_WITH_DEP_ARRAY = new Set([
 ]);
 
 const NAN_MESSAGE =
-  "`NaN` in a dependency array silently breaks your hook, since React never sees it change.";
+  "`NaN` in a dependency array never compares as changed with `Object.is`, so normalize the value before passing it as a dependency.";
 
 const isNanLiteral = (node: EsTreeNode): boolean => {
   if (isNodeOfType(node, "Identifier") && node.name === "NaN") return true;

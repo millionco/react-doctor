@@ -6,7 +6,8 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { Rule } from "../../utils/rule.js";
 
-const MESSAGE = "`React.Children` breaks easily when the children change shape.";
+const MESSAGE =
+  "`React.Children` traversal depends on the runtime child shape, so wrapping or unwrapping a child can silently change what gets visited.";
 
 const isChildrenIdentifier = (node: EsTreeNode, contextNode: EsTreeNode): boolean => {
   if (!isNodeOfType(node, "Identifier") || node.name !== "Children") return false;

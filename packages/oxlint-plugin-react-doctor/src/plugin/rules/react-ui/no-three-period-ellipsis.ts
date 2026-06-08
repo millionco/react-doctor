@@ -23,7 +23,7 @@ export const noThreePeriodEllipsis = defineRule<Rule>({
       if (isInsideExcludedTypographyAncestor(jsxTextNode)) return;
       context.report({
         node: jsxTextNode,
-        message: 'Three dots ("...") look unpolished to your users.',
+        message: 'Use the real ellipsis character ("…") instead of three periods ("...").',
       });
     },
   }),

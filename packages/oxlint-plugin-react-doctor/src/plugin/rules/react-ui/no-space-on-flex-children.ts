@@ -51,7 +51,7 @@ export const noSpaceOnFlexChildren = defineRule<Rule>({
       const spaceValue = spaceMatch[2];
       context.report({
         node: jsxAttribute,
-        message: `space-${spaceAxis}-${spaceValue} on a flex or grid parent leaves bad gaps when children hide, wrap, or render in RTL layouts.`,
+        message: `space-${spaceAxis}-${spaceValue} on a flex or grid parent can leave uneven gaps when children hide, wrap, or render in RTL layouts.`,
       });
     },
   }),

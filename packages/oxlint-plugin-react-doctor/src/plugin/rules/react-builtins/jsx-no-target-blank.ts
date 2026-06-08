@@ -250,7 +250,8 @@ export const jsxNoTargetBlank = defineRule<Rule>({
   id: "jsx-no-target-blank",
   title: "Unsafe target=_blank link",
   severity: "warn",
-  recommendation: 'Add `rel="noreferrer"` (or `"noopener"`) when using `target="_blank"`.',
+  recommendation:
+    'Add `rel="noreferrer"` or `"noopener"` so a `target="_blank"` page cannot control the opener tab.',
   category: "Security",
   create: (context) => {
     const settings = resolveSettings(context.settings);

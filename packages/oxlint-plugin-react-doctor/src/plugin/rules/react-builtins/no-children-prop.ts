@@ -5,7 +5,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
 const MESSAGE =
-  "Your component can render the wrong children when you pass them through a `children` prop.";
+  "A `children` prop can override or hide nested children, so the component may render different content than the JSX shows.";
 
 // Port of `oxc_linter::rules::react::no_children_prop`. Reports two
 // shapes:
@@ -16,7 +16,8 @@ export const noChildrenProp = defineRule<Rule>({
   id: "no-children-prop",
   title: "Children passed as a prop",
   severity: "warn",
-  recommendation: "Nest children between the tags instead of passing a `children` prop.",
+  recommendation:
+    "Nest children between the tags so the rendered content is visible in JSX and cannot be hidden inside a props object.",
   create: (context) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       if (!isNodeOfType(node.name, "JSXIdentifier")) return;

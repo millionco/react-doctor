@@ -13,7 +13,7 @@ export const nextjsNoGoogleAnalyticsScript = defineRule<Rule>({
   requires: ["nextjs"],
   severity: "warn",
   recommendation:
-    "Use `import { GoogleAnalytics } from '@next/third-parties/google'` for automatic optimization & smaller bundles",
+    "Use `import { GoogleAnalytics } from '@next/third-parties/google'` for automatic optimization and smaller bundles.",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (!isNodeOfType(node.name, "JSXIdentifier")) return;

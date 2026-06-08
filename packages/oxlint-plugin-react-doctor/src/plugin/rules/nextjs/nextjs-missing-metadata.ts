@@ -40,7 +40,7 @@ export const nextjsMissingMetadata = defineRule<Rule>({
         context.report({
           node: programNode,
           message:
-            "This page has no metadata, so search engines & social previews get no title or description.",
+            "This page has no metadata, so search engines and social previews get no title or description.",
         });
       }
     },

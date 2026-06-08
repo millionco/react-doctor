@@ -59,7 +59,7 @@ const resolveProjectFlag = (
     );
   }
 
-  // `*` (the GitHub Action's default) selects every discovered project,
+  // `*` selects every discovered project,
   // making "scan all workspace projects" explicit instead of relying on
   // the empty-flag prompt-skip fallback.
   if (requestedNames.includes(ALL_PROJECTS_SENTINEL)) {

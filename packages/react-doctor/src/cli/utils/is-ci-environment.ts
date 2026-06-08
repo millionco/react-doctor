@@ -92,9 +92,9 @@ export const detectCiProvider = (): string | null => {
   return isCiFlagSet(process.env.CI) ? "unknown" : null;
 };
 
-// True when the run was launched by the official react-doctor GitHub Action
-// (which sets the marker env var on its scan step).
-export const isOfficialGithubAction = (): boolean =>
+// True when an external React Doctor workflow wrapper supplied the marker env
+// var on its scan step.
+export const isReactDoctorWorkflowWrapper = (): boolean =>
   Boolean(process.env[GITHUB_ACTION_MARKER_ENVIRONMENT_VARIABLE]);
 
 // The triggering GitHub Actions event (`pull_request`, `push`, `schedule`,

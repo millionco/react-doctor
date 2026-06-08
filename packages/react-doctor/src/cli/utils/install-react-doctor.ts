@@ -21,15 +21,10 @@ import {
   installReactDoctorScriptStep,
 } from "./install-doctor-script.js";
 import { askAddToGitHubActions } from "./ask-add-to-github-actions.js";
-import { askUpgradeActionVersion } from "./ask-upgrade-action-version.js";
-import { hasHandledActionUpgrade, recordActionUpgradeDecision } from "./action-upgrade-prompt.js";
 import { installReactDoctorAgentHooks } from "./install-agent-hooks.js";
 import {
   getReactDoctorWorkflowPath,
   installReactDoctorWorkflow,
-  readReactDoctorWorkflow,
-  upgradeReactDoctorWorkflowInPlace,
-  workflowUsesV1Action,
 } from "./install-github-workflow.js";
 import { reportWorkflowResult } from "./report-workflow-result.js";
 import { isRecord, readPackageJson } from "./git-hook-shared.js";
@@ -449,31 +444,6 @@ const installReactDoctorWorkflowStep = (projectRoot: string): boolean => {
   );
 };
 
-// Bumps an existing workflow's floating `@v1` ref to `@v2` in place (mirroring
-// the fresh-install write — the PR-opening upgrade variant is the post-scan
-// handoff's job). Counts the same `install.workflow` activation as a fresh
-// write so CI adoption stays comparable across both entry points.
-const upgradeReactDoctorWorkflowStep = (projectRoot: string): boolean => {
-  const workflowSpinner = spinner("Upgrading GitHub Actions workflow to v2...").start();
-  const upgradeResult = upgradeReactDoctorWorkflowInPlace(projectRoot);
-  if (upgradeResult.status === "failed") {
-    workflowSpinner.fail("Couldn't update the GitHub Actions workflow.");
-    return false;
-  }
-  if (upgradeResult.status === "not-needed") {
-    workflowSpinner.succeed("GitHub Actions workflow already up to date.");
-    return false;
-  }
-  workflowSpinner.succeed(
-    `Upgraded the GitHub Actions workflow to v2 at ${path.relative(
-      projectRoot,
-      upgradeResult.workflowPath,
-    )}.`,
-  );
-  recordCount(METRIC.installWorkflow, 1, { kind: "upgrade" });
-  return true;
-};
-
 export const runInstallReactDoctor = async (
   options: InstallReactDoctorOptions = {},
 ): Promise<void> => {
@@ -511,20 +481,7 @@ export const runInstallReactDoctor = async (
   const prompt = options.prompt ?? prompts;
 
   const workflowTargetPath = getReactDoctorWorkflowPath(projectRoot);
-  const existingWorkflow = readReactDoctorWorkflow(projectRoot);
-  // A present-but-unreadable workflow also reads back as `null`; gate the "add"
-  // offer on existence so we never pitch installing over a file that's already
-  // there (and can't be upgraded either, since we couldn't read its contents).
   const canInstallWorkflow = !fs.existsSync(workflowTargetPath);
-  // Mirror the post-scan handoff's `maybeOfferActionUpgrade`: the `@v1` → `@v2`
-  // bump is a one-time, per-repo offer. Once it's been answered (accepted OR
-  // declined), `hasHandledActionUpgrade` suppresses it here too — so `install`
-  // never re-prompts, and `--yes` never silently re-applies an already-declined
-  // bump.
-  const canUpgradeWorkflow =
-    existingWorkflow !== null &&
-    workflowUsesV1Action(existingWorkflow.content) &&
-    !hasHandledActionUpgrade(projectRoot);
 
   // Each install step runs right after the user commits to the install (past the
   // agent-selection guard below), so the writes land in one visible group and
@@ -537,27 +494,10 @@ export const runInstallReactDoctor = async (
   // as the post-scan handoff. The decision is captured here, but the workflow
   // file isn't written until the install is confirmed (after the agent guard),
   // so a cancel can't leave an orphan workflow without the rest of the setup.
-  // A fresh workflow is offered when none exists; an existing one still pinned
-  // to the action's previous floating major (`@v1`) is offered the in-place
-  // `@v2` bump instead. The two are mutually exclusive — only one can apply.
   // `--yes` opts in and a bare non-interactive run opts out.
   const shouldInstallWorkflow =
     canInstallWorkflow &&
     (Boolean(options.yes) || (!skipPrompts && (await askAddToGitHubActions(prompt)) === "yes"));
-  const upgradePromptOutcome =
-    canUpgradeWorkflow && !options.yes && !skipPrompts
-      ? await askUpgradeActionVersion(prompt)
-      : null;
-  const shouldUpgradeWorkflow =
-    canUpgradeWorkflow && (Boolean(options.yes) || upgradePromptOutcome === "yes");
-
-  // The upgrade prompt's "No, thanks" promises "won't ask again for this repo",
-  // so persist a decline immediately — mirroring the post-scan handoff, and so
-  // the offer stays suppressed even if the rest of the install is cancelled
-  // below. Dry runs preview without writing anything.
-  if (upgradePromptOutcome === "no" && !options.dryRun) {
-    recordActionUpgradeDecision(projectRoot, "declined");
-  }
 
   // Step 2 — the agent skill + package setup (the core of `install`).
   const selectedAgents: SkillAgentType[] = skipPrompts
@@ -595,16 +535,10 @@ export const runInstallReactDoctor = async (
   // has run — so a thrown skill/package install never strands an orphan workflow
   // on disk (the workflow write is the last write in the core install group).
   let didInstallWorkflow = false;
-  if (!options.dryRun && (shouldInstallWorkflow || shouldUpgradeWorkflow)) {
-    // Blank line between the skill group and the workflow install/upgrade.
+  if (!options.dryRun && shouldInstallWorkflow) {
+    // Blank line between the skill group and the workflow install.
     logger.break();
-    if (shouldInstallWorkflow) {
-      didInstallWorkflow = installReactDoctorWorkflowStep(projectRoot);
-    } else if (upgradeReactDoctorWorkflowStep(projectRoot)) {
-      // Applied upgrade is terminal too — record it so the post-scan handoff
-      // never re-offers the bump on the next scan.
-      recordActionUpgradeDecision(projectRoot, "accepted");
-    }
+    didInstallWorkflow = installReactDoctorWorkflowStep(projectRoot);
   }
 
   // Step 3 — optional setup (pre-commit hook, agent hooks).
@@ -701,14 +635,6 @@ export const runInstallReactDoctor = async (
     }
     if (shouldInstallWorkflow) {
       logger.dim(`  GitHub Actions workflow: ${path.relative(projectRoot, workflowTargetPath)}`);
-    }
-    if (shouldUpgradeWorkflow) {
-      logger.dim(
-        `  Upgrade GitHub Actions workflow to v2: ${path.relative(
-          projectRoot,
-          workflowTargetPath,
-        )}`,
-      );
     }
     return;
   }

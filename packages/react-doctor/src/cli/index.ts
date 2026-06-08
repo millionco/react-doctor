@@ -124,8 +124,8 @@ const program = new Command()
     "scan only files changed vs base branch (pass `false` to force a full scan, overriding config)",
   )
   .addOption(
-    // Internal: the GitHub Action passes the PR's changed-file list here.
-    // Hidden from --help; it's plumbing, not user surface.
+    // Internal plumbing for workflow wrappers that pass a PR changed-file list.
+    // Hidden from --help; not user surface.
     new Option(
       "--changed-files-from <file>",
       "scan source files listed in a newline-delimited changed-files file",

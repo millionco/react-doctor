@@ -8,7 +8,7 @@ describe("assertNoRemovedFlags", () => {
   it("rejects a removed flag with migration guidance instead of dropping it", () => {
     expect(() => assertNoRemovedFlags(argv("--full"))).toThrow(/`--full` was removed/);
     expect(() => assertNoRemovedFlags(argv(".", "--explain"))).toThrow(/why <file>:<line>/);
-    expect(() => assertNoRemovedFlags(argv("--pr-comment"))).toThrow(/GitHub Action/);
+    expect(() => assertNoRemovedFlags(argv("--pr-comment"))).toThrow(/PR comment posting/);
   });
 
   it("throws a CliInputError so it renders as a clean user error, not a crash", () => {

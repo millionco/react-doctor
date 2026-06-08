@@ -15,7 +15,9 @@ import {
   SUPPLY_CHAIN_PLUGIN,
   SUPPLY_CHAIN_RULE,
 } from "./constants.js";
-import { readPackageJson } from "./project-info/index.js";
+import { findMonorepoRoot, isMonorepoRoot, readPackageJson } from "./project-info/index.js";
+import { getWorkspacePatterns } from "./project-info/get-workspace-patterns.js";
+import { resolveWorkspaceDirectories } from "./project-info/resolve-workspace-directories.js";
 import type { Diagnostic, PackageJson, ReactDoctorConfig } from "./types/index.js";
 
 export interface SupplyChainCheckInput {
@@ -170,6 +172,54 @@ const readPackageJsonText = (packageJsonPath: string): string => {
   }
 };
 
+// Every package.json directory across a monorepo: the workspace root plus
+// each workspace package matched by its globs (pnpm / npm / yarn / nx, via
+// the shared project-info resolvers). Anchors at the true monorepo root even
+// when invoked from a sub-package, so `--sfw` from anywhere lists the whole
+// tree. A non-monorepo project resolves to just its own directory.
+const collectWorkspaceDirectories = (startDirectory: string): string[] => {
+  const monorepoRoot = isMonorepoRoot(startDirectory)
+    ? startDirectory
+    : (findMonorepoRoot(startDirectory) ?? startDirectory);
+  const rootPackageJson = readPackageJson(path.join(monorepoRoot, "package.json"));
+
+  const directories = [monorepoRoot];
+  const visited = new Set<string>([monorepoRoot]);
+  for (const pattern of getWorkspacePatterns(monorepoRoot, rootPackageJson)) {
+    for (const workspaceDirectory of resolveWorkspaceDirectories(monorepoRoot, pattern)) {
+      if (visited.has(workspaceDirectory)) continue;
+      visited.add(workspaceDirectory);
+      directories.push(workspaceDirectory);
+    }
+  }
+  return directories;
+};
+
+// Union of the direct dependencies declared across every package.json in the
+// monorepo, de-duplicated by `name@version` (the same dependency pinned to
+// the same version in several packages is scored once; differing versions are
+// kept and scored separately). Backs the `--sfw` listing.
+const collectMonorepoDependencies = (
+  startDirectory: string,
+  includeDevDependencies: boolean,
+): DependencyToScore[] => {
+  const dependenciesByKey = new Map<string, DependencyToScore>();
+  for (const directory of collectWorkspaceDirectories(startDirectory)) {
+    const packageJsonPath = path.join(directory, "package.json");
+    const packageJson = readPackageJson(packageJsonPath);
+    const packageJsonText = readPackageJsonText(packageJsonPath);
+    for (const dependency of collectDependenciesToScore(
+      packageJson,
+      packageJsonText,
+      includeDevDependencies,
+    )) {
+      const key = `${dependency.name}@${dependency.version}`;
+      if (!dependenciesByKey.has(key)) dependenciesByKey.set(key, dependency);
+    }
+  }
+  return [...dependenciesByKey.values()];
+};
+
 const toPurl = (dependency: DependencyToScore): string =>
   `pkg:npm/${dependency.name}@${dependency.version}`;
 
@@ -265,22 +315,21 @@ export interface DependencyScore {
 }
 
 /**
- * Fetches the Socket score of every direct dependency (not just the ones
- * below a threshold) via the same free, keyless endpoint as
- * {@link checkSupplyChain}. Backs the CLI's `--sfw` demo listing. Unknown
- * packages and per-package failures come back with `overall: null` rather
- * than being dropped, so the caller can show them explicitly.
+ * Fetches the Socket score of every direct dependency declared across the
+ * whole monorepo (the workspace root plus every workspace package.json),
+ * de-duplicated by `name@version` — not just the ones below a threshold —
+ * via the same free, keyless endpoint as {@link checkSupplyChain}. Backs the
+ * CLI's `--sfw` demo listing. Unknown packages and per-package failures come
+ * back with `overall: null` rather than being dropped, so the caller can show
+ * them explicitly.
  */
 export const collectSupplyChainScores = (
   input: SupplyChainCheckInput,
 ): Effect.Effect<DependencyScore[]> =>
   Effect.gen(function* () {
     const options = resolveOptions(input.userConfig);
-    const packageJsonPath = path.join(input.rootDirectory, "package.json");
-    const packageJson = readPackageJson(packageJsonPath);
-    const dependencies = collectDependenciesToScore(
-      packageJson,
-      readPackageJsonText(packageJsonPath),
+    const dependencies = collectMonorepoDependencies(
+      input.rootDirectory,
       options.includeDevDependencies,
     );
     if (dependencies.length === 0) return [];

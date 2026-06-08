@@ -641,20 +641,6 @@ export const runInstallReactDoctor = async (
 
   if (selectedAgents.length === 0) return;
 
-  // The CI decision from Step 1 lands here, now that the install is confirmed.
-  let didInstallWorkflow = false;
-  if (!options.dryRun && (shouldInstallWorkflow || shouldUpgradeWorkflow)) {
-    if (shouldInstallWorkflow) {
-      didInstallWorkflow = installReactDoctorWorkflowStep(projectRoot);
-    } else if (upgradeReactDoctorWorkflowStep(projectRoot)) {
-      // Applied upgrade is terminal too — record it so the post-scan handoff
-      // never re-offers the bump on the next scan.
-      recordActionUpgradeDecision(projectRoot, "accepted");
-    }
-    // Blank line between the workflow install/upgrade and the skill group.
-    logger.break();
-  }
-
   let dependencyResult: InstallReactDoctorDependencyResult | undefined;
   if (!options.dryRun) {
     await installReactDoctorSkillStep(sourceDir, selectedAgents, projectRoot);
@@ -662,6 +648,22 @@ export const runInstallReactDoctor = async (
       projectRoot,
       options.installDependencyRunner,
     );
+  }
+
+  // The CI decision from Step 1 lands here, after the core skill + package setup
+  // has run — so a thrown skill/package install never strands an orphan workflow
+  // on disk (the workflow write is the last write in the core install group).
+  let didInstallWorkflow = false;
+  if (!options.dryRun && (shouldInstallWorkflow || shouldUpgradeWorkflow)) {
+    // Blank line between the skill group and the workflow install/upgrade.
+    logger.break();
+    if (shouldInstallWorkflow) {
+      didInstallWorkflow = installReactDoctorWorkflowStep(projectRoot);
+    } else if (upgradeReactDoctorWorkflowStep(projectRoot)) {
+      // Applied upgrade is terminal too — record it so the post-scan handoff
+      // never re-offers the bump on the next scan.
+      recordActionUpgradeDecision(projectRoot, "accepted");
+    }
   }
 
   // Step 3 — optional setup (pre-commit hook, agent hooks).

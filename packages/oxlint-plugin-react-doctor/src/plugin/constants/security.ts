@@ -74,6 +74,22 @@ export const PUBLIC_CLIENT_KEY_PATTERNS = [
   /^pk\.eyJ/, // Mapbox public token
 ];
 
+export const SECRET_UNAMBIGUOUS_PLACEHOLDER_VALUE_PATTERNS = [
+  /^[\s._\-*\u2022xX]{8,}$/,
+  /(?:\.{3,}|\u2026|[*\u2022]{3,})/,
+  /(?:^|[_\-\s])(?:your|redacted|masked|placeholder|replace[_\-\s]?me|changeme)(?:$|[_\-\s])/i,
+  /<[^>]*(?:auth|credential|key|password|secret|token|your|redacted|placeholder|masked)[^>]*>/i,
+  /\[[^\]]*(?:auth|credential|key|password|secret|token|your|redacted|placeholder|masked)[^\]]*\]/i,
+  /\{[^}]*(?:auth|credential|key|password|secret|token|your|redacted|placeholder|masked)[^}]*\}/i,
+];
+
+export const SECRET_CONTEXTUAL_PLACEHOLDER_VALUE_PATTERNS = [
+  /(?:^|[_\-\s])(?:example|sample|dummy)(?:$|[_\-\s])/i,
+];
+
+export const SECRET_PLACEHOLDER_CONTEXT_PATTERN =
+  /(?:placeholder|example|sample|dummy|masked|redacted|mask)/i;
+
 export const SECRET_VARIABLE_PATTERN = /(?:api_?key|secret|token|password|credential|auth)/i;
 
 export const SECRET_TOOLING_FILE_PATTERN = /(?:^|\/)[^/]+\.config\.[cm]?[jt]s$/;

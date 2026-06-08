@@ -18,13 +18,17 @@ import {
   DOCTOR_PACKAGE_NAME,
   findNearestPackageDirectory,
   hasDoctorDependency,
-  installDoctorScript,
+  installReactDoctorScriptStep,
 } from "./install-doctor-script.js";
+import { askAddToGitHubActions } from "./ask-add-to-github-actions.js";
+import { askUpgradeActionVersion } from "./ask-upgrade-action-version.js";
 import { installReactDoctorAgentHooks } from "./install-agent-hooks.js";
 import {
   getReactDoctorWorkflowPath,
   installReactDoctorWorkflow,
-  isReactDoctorWorkflowInstalled,
+  readReactDoctorWorkflow,
+  upgradeReactDoctorWorkflowInPlace,
+  workflowUsesV1Action,
 } from "./install-github-workflow.js";
 import { reportWorkflowResult } from "./report-workflow-result.js";
 import { isRecord, readPackageJson } from "./git-hook-shared.js";
@@ -36,7 +40,6 @@ import { spinner } from "./spinner.js";
 
 const SETUP_OPTION_GIT_HOOK = "git-hook";
 const SETUP_OPTION_AGENT_HOOKS = "agent-hooks";
-const SETUP_OPTION_WORKFLOW = "workflow";
 const SETUP_OPTION_SKIP = "skip";
 
 const CONFIG_ONLY_GIT_HOOK_KINDS = new Set([
@@ -136,13 +139,25 @@ const buildInstallCommand = (projectRoot: string): InstallReactDoctorDependencyR
   const packageManager = detectPackageManager(projectRoot);
   const packageSpecifier = `${DOCTOR_PACKAGE_NAME}@latest`;
   if (packageManager === "npm") {
-    return { command: "npm", args: ["install", "--save-dev", packageSpecifier], cwd: projectRoot };
+    return {
+      command: "npm",
+      args: ["install", "--save-dev", packageSpecifier],
+      cwd: projectRoot,
+    };
   }
   if (packageManager === "yarn") {
-    return { command: "yarn", args: ["add", "--dev", packageSpecifier], cwd: projectRoot };
+    return {
+      command: "yarn",
+      args: ["add", "--dev", packageSpecifier],
+      cwd: projectRoot,
+    };
   }
   if (packageManager === "bun") {
-    return { command: "bun", args: ["add", "--dev", packageSpecifier], cwd: projectRoot };
+    return {
+      command: "bun",
+      args: ["add", "--dev", packageSpecifier],
+      cwd: projectRoot,
+    };
   }
   return {
     command: "pnpm",
@@ -173,7 +188,11 @@ const defaultInstallDependencyRunner = async (
 // earlier one. It reads as a compromise but is routinely tripped by
 // pre-release deps; detect it so we can reassure instead of alarm.
 const isSupplyChainTrustError = (error: unknown): boolean => {
-  const candidate = error as { stderr?: unknown; stdout?: unknown; message?: unknown } | null;
+  const candidate = error as {
+    stderr?: unknown;
+    stdout?: unknown;
+    message?: unknown;
+  } | null;
   const haystack = [candidate?.stderr, candidate?.stdout, candidate?.message]
     .map((part) => String(part ?? ""))
     .join("\n");
@@ -231,28 +250,6 @@ const formatGitHookInstallMessage = (
   return `React Doctor pre-commit hook ${hookResult.status} at ${hookResult.hookPath}.`;
 };
 
-const formatDoctorScriptInstallMessage = (
-  scriptResult: ReturnType<typeof installDoctorScript>,
-): string => {
-  const messages: string[] = [];
-  const scriptName = scriptResult.scriptName ?? "doctor";
-  if (scriptResult.scriptStatus === "created") {
-    messages.push(`Added package script: ${scriptName}.`);
-  } else if (scriptResult.scriptStatus === "existing") {
-    messages.push(`Package script already exists: ${scriptName}.`);
-  } else if (scriptResult.scriptReason === "script-names-taken") {
-    messages.push("Skipped package script: doctor and react-doctor are already taken.");
-  } else if (scriptResult.scriptReason === "doctor-script-taken") {
-    messages.push("Skipped package script: doctor and react-doctor scripts already exist.");
-  } else if (scriptResult.scriptReason === "invalid-scripts") {
-    messages.push(`Skipped package script: scripts field is not an object.`);
-  } else {
-    messages.push("Skipped package script: package.json missing or invalid.");
-  }
-
-  return messages.join(" ");
-};
-
 const formatDependencyInstallMessage = (result: InstallReactDoctorDependencyResult): string => {
   if (result.dependencyStatus === "created") {
     return "Installed dev dependency: react-doctor.";
@@ -284,21 +281,6 @@ const buildDependencyFollowUp = (
   const installCommand =
     result.installCommand ?? `npm install --save-dev ${DOCTOR_PACKAGE_NAME}@latest`;
   return `  React Doctor still works via \`npx react-doctor\`. To install locally: ${installCommand}`;
-};
-
-// Adds the `doctor` (or `react-doctor`) script to package.json so users can
-// run `pnpm doctor` / `npm run doctor`. The script invokes `npx react-doctor@latest`,
-// so no local dev-dep is required for it to work — that's why the "Add to CI"
-// path calls this step directly instead of the full package-setup function.
-export const installReactDoctorScriptStep = (projectRoot: string): void => {
-  const scriptSpinner = spinner("Installing React Doctor package script...").start();
-  try {
-    const scriptResult = installDoctorScript({ projectRoot });
-    scriptSpinner.succeed(formatDoctorScriptInstallMessage(scriptResult));
-  } catch (error) {
-    scriptSpinner.fail("Failed to install React Doctor package script.");
-    throw error;
-  }
 };
 
 export const installReactDoctorPackageSetup = async (
@@ -381,7 +363,10 @@ const findBundledSiblingSkills = (primarySkillDir: string): BundledSiblingSkill[
   return fs
     .readdirSync(skillsParent, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
-    .map((entry) => ({ name: entry.name, source: path.join(skillsParent, entry.name) }))
+    .map((entry) => ({
+      name: entry.name,
+      source: path.join(skillsParent, entry.name),
+    }))
     .filter(
       (sibling) =>
         path.resolve(sibling.source) !== resolvedPrimary &&
@@ -416,6 +401,142 @@ const installBundledSiblingSkills = async (
 
 const canInstallNativeAgentHooks = (agents: readonly SkillAgentType[]): boolean =>
   agents.some((agent) => agent === "claude-code" || agent === "cursor");
+
+// Installs the primary skill (throws on failure — the install can't continue
+// without it) and then the bundled sibling skills (best-effort).
+const installReactDoctorSkillStep = async (
+  sourceDir: string,
+  selectedAgents: SkillAgentType[],
+  projectRoot: string,
+): Promise<void> => {
+  const installSpinner = spinner(`Installing ${SKILL_NAME} skill...`).start();
+  try {
+    const installResult = await installSkillsFromSource({
+      source: sourceDir,
+      agents: selectedAgents,
+      cwd: projectRoot,
+      mode: "copy",
+    });
+
+    if (installResult.skills.length === 0) {
+      throw new Error(
+        `Could not parse ${SKILL_MANIFEST_FILE} for ${SKILL_NAME} (missing or invalid frontmatter).`,
+      );
+    }
+    if (installResult.failed.length > 0) {
+      throw new Error(
+        installResult.failed
+          .map((failure) => `${getSkillAgentConfig(failure.agent).displayName}: ${failure.error}`)
+          .join("\n"),
+      );
+    }
+
+    installSpinner.succeed(
+      `${SKILL_NAME} skill installed for ${selectedAgents
+        .map((agent) => getSkillAgentConfig(agent).displayName)
+        .join(", ")}.`,
+    );
+  } catch (error) {
+    installSpinner.fail(`Failed to install ${SKILL_NAME} skill.`);
+    throw error;
+  }
+
+  try {
+    const installedSiblingSkills = await installBundledSiblingSkills(
+      sourceDir,
+      selectedAgents,
+      projectRoot,
+    );
+    if (installedSiblingSkills.length > 0) {
+      logger.dim(`  Also installed the ${installedSiblingSkills.join(", ")} skill.`);
+    }
+  } catch {
+    logger.dim("  Skipped bundled sibling skills (install error).");
+  }
+};
+
+const installReactDoctorGitHookStep = (gitHookTarget: GitHookTarget): void => {
+  const hookSpinner = spinner("Installing React Doctor pre-commit hook...").start();
+  try {
+    const hookResult = installReactDoctorGitHook({
+      hookPath: gitHookTarget.hookPath,
+      projectRoot: gitHookTarget.runnerRoot,
+      kind: gitHookTarget.kind,
+      hooksPathConfig: gitHookTarget.hooksPathConfig,
+    });
+    hookSpinner.succeed(formatGitHookInstallMessage(hookResult));
+    recordCount(METRIC.installGitHook, 1, { kind: hookResult.kind });
+  } catch (error) {
+    hookSpinner.fail("Failed to install React Doctor pre-commit hook.");
+    throw error;
+  }
+};
+
+const installReactDoctorAgentHooksStep = (
+  projectRoot: string,
+  selectedAgents: SkillAgentType[],
+): void => {
+  const hookSpinner = spinner("Installing React Doctor agent hooks...").start();
+  try {
+    const hookResult = installReactDoctorAgentHooks({
+      projectRoot,
+      agents: selectedAgents,
+    });
+    if (hookResult.installedAgents.length === 0) {
+      hookSpinner.succeed("No supported native agent hook targets selected.");
+    } else {
+      hookSpinner.succeed(
+        `React Doctor agent hooks installed for ${hookResult.installedAgents
+          .map((agent) => getSkillAgentConfig(agent).displayName)
+          .join(", ")}.`,
+      );
+      recordCount(METRIC.installAgentHooks, 1, {
+        agentsCount: hookResult.installedAgents.length,
+      });
+    }
+  } catch (error) {
+    hookSpinner.fail("Failed to install React Doctor agent hooks.");
+    throw error;
+  }
+};
+
+// Writes the workflow into the working tree alongside the other files `install`
+// lands (skill, package script, git hook) so the user reviews and commits it
+// themselves. The PR-opening flow belongs to the post-scan handoff, not
+// `install` — committing to a throwaway branch can lose the file if the push is
+// rejected, leaving "yes" with nothing on disk.
+const installReactDoctorWorkflowStep = (projectRoot: string): boolean => {
+  const workflowSpinner = spinner("Adding GitHub Actions workflow...").start();
+  return reportWorkflowResult(
+    workflowSpinner,
+    installReactDoctorWorkflow(projectRoot),
+    projectRoot,
+  );
+};
+
+// Bumps an existing workflow's floating `@v1` ref to `@v2` in place (mirroring
+// the fresh-install write — the PR-opening upgrade variant is the post-scan
+// handoff's job). Counts the same `install.workflow` activation as a fresh
+// write so CI adoption stays comparable across both entry points.
+const upgradeReactDoctorWorkflowStep = (projectRoot: string): void => {
+  const workflowSpinner = spinner("Upgrading GitHub Actions workflow to v2...").start();
+  const upgradeResult = upgradeReactDoctorWorkflowInPlace(projectRoot);
+  if (upgradeResult.status === "failed") {
+    workflowSpinner.fail("Couldn't update the GitHub Actions workflow.");
+    return;
+  }
+  if (upgradeResult.status === "not-needed") {
+    workflowSpinner.succeed("GitHub Actions workflow already up to date.");
+    return;
+  }
+  workflowSpinner.succeed(
+    `Upgraded the GitHub Actions workflow to v2 at ${path.relative(
+      projectRoot,
+      upgradeResult.workflowPath,
+    )}.`,
+  );
+  recordCount(METRIC.installWorkflow, 1, { kind: "upgrade" });
+};
 
 export const runInstallReactDoctor = async (
   options: InstallReactDoctorOptions = {},
@@ -453,6 +574,35 @@ export const runInstallReactDoctor = async (
     options.onPromptCancel === undefined ? {} : { onCancel: options.onPromptCancel };
   const prompt = options.prompt ?? prompts;
 
+  const workflowTargetPath = getReactDoctorWorkflowPath(projectRoot);
+  const existingWorkflow = readReactDoctorWorkflow(projectRoot);
+  const canInstallWorkflow = existingWorkflow === null;
+  const canUpgradeWorkflow =
+    existingWorkflow !== null && workflowUsesV1Action(existingWorkflow.content);
+
+  // Each install step runs right after the user commits to the install (past the
+  // agent-selection guard below), so the writes land in one visible group and
+  // cancelling agent selection never strands files on disk. `--yes`/non-interactive
+  // runs have no prompts; `--dryRun` runs the prompts but defers every write to
+  // the plan print below.
+
+  // Step 1 — CI pitch leads the onboarding: scanning every pull request is the
+  // highest-leverage setup step, so it's asked first using the same shared pitch
+  // as the post-scan handoff. The decision is captured here, but the workflow
+  // file isn't written until the install is confirmed (after the agent guard),
+  // so a cancel can't leave an orphan workflow without the rest of the setup.
+  // A fresh workflow is offered when none exists; an existing one still pinned
+  // to the action's previous floating major (`@v1`) is offered the in-place
+  // `@v2` bump instead. The two are mutually exclusive — only one can apply.
+  // `--yes` opts in and a bare non-interactive run opts out.
+  const shouldInstallWorkflow =
+    canInstallWorkflow &&
+    (Boolean(options.yes) || (!skipPrompts && (await askAddToGitHubActions(prompt)) === "yes"));
+  const shouldUpgradeWorkflow =
+    canUpgradeWorkflow &&
+    (Boolean(options.yes) || (!skipPrompts && (await askUpgradeActionVersion(prompt)) === "yes"));
+
+  // Step 2 — the agent skill + package setup (the core of `install`).
   const selectedAgents: SkillAgentType[] = skipPrompts
     ? detectedAgents
     : ((
@@ -475,8 +625,28 @@ export const runInstallReactDoctor = async (
 
   if (selectedAgents.length === 0) return;
 
-  const workflowTargetPath = getReactDoctorWorkflowPath(projectRoot);
-  const canInstallWorkflow = !isReactDoctorWorkflowInstalled(projectRoot);
+  // The CI decision from Step 1 lands here, now that the install is confirmed.
+  let didInstallWorkflow = false;
+  if (!options.dryRun && (shouldInstallWorkflow || shouldUpgradeWorkflow)) {
+    if (shouldInstallWorkflow) {
+      didInstallWorkflow = installReactDoctorWorkflowStep(projectRoot);
+    } else {
+      upgradeReactDoctorWorkflowStep(projectRoot);
+    }
+    // Blank line between the workflow install/upgrade and the skill group.
+    logger.break();
+  }
+
+  let dependencyResult: InstallReactDoctorDependencyResult | undefined;
+  if (!options.dryRun) {
+    await installReactDoctorSkillStep(sourceDir, selectedAgents, projectRoot);
+    dependencyResult = await installReactDoctorPackageSetup(
+      projectRoot,
+      options.installDependencyRunner,
+    );
+  }
+
+  // Step 3 — optional setup (pre-commit hook, agent hooks).
   const setupActionChoices = [
     ...(gitHookPath === null || gitHookPath === undefined
       ? []
@@ -498,16 +668,6 @@ export const runInstallReactDoctor = async (
           },
         ]
       : []),
-    ...(canInstallWorkflow
-      ? [
-          {
-            title: "GitHub Actions workflow",
-            description: "Scan pull requests in CI",
-            value: SETUP_OPTION_WORKFLOW,
-            selected: true,
-          },
-        ]
-      : []),
   ];
   const setupChoices =
     setupActionChoices.length === 0
@@ -521,6 +681,10 @@ export const runInstallReactDoctor = async (
           },
           ...setupActionChoices,
         ];
+
+  // Blank line between the skill group and the optional-setup group.
+  if (setupChoices.length > 0 && !options.dryRun) logger.break();
+
   const selectedSetupOptions: string[] =
     skipPrompts || setupChoices.length === 0
       ? []
@@ -550,10 +714,15 @@ export const runInstallReactDoctor = async (
   const shouldInstallAgentHooks =
     Boolean(options.agentHooks) ||
     (!didSkipOptionalSetup && selectedSetupActions.includes(SETUP_OPTION_AGENT_HOOKS));
-  const shouldInstallWorkflow =
-    canInstallWorkflow &&
-    (Boolean(options.yes) ||
-      (!didSkipOptionalSetup && selectedSetupActions.includes(SETUP_OPTION_WORKFLOW)));
+
+  if (!options.dryRun) {
+    if (shouldInstallGitHook && gitHookTarget !== null && gitHookTarget !== undefined) {
+      installReactDoctorGitHookStep(gitHookTarget);
+    }
+    if (shouldInstallAgentHooks) {
+      installReactDoctorAgentHooksStep(projectRoot, selectedAgents);
+    }
+  }
 
   if (options.dryRun) {
     logger.log(`Dry run — would install ${SKILL_NAME} skill for:`);
@@ -575,107 +744,15 @@ export const runInstallReactDoctor = async (
     if (shouldInstallWorkflow) {
       logger.dim(`  GitHub Actions workflow: ${path.relative(projectRoot, workflowTargetPath)}`);
     }
+    if (shouldUpgradeWorkflow) {
+      logger.dim(
+        `  Upgrade GitHub Actions workflow to v2: ${path.relative(
+          projectRoot,
+          workflowTargetPath,
+        )}`,
+      );
+    }
     return;
-  }
-
-  const installSpinner = spinner(`Installing ${SKILL_NAME} skill...`).start();
-  try {
-    const installResult = await installSkillsFromSource({
-      source: sourceDir,
-      agents: selectedAgents,
-      cwd: projectRoot,
-      mode: "copy",
-    });
-
-    if (installResult.skills.length === 0) {
-      throw new Error(
-        `Could not parse ${SKILL_MANIFEST_FILE} for ${SKILL_NAME} (missing or invalid frontmatter).`,
-      );
-    }
-    if (installResult.failed.length > 0) {
-      throw new Error(
-        installResult.failed
-          .map((failure) => `${getSkillAgentConfig(failure.agent).displayName}: ${failure.error}`)
-          .join("\n"),
-      );
-    }
-
-    installSpinner.succeed(
-      `${SKILL_NAME} skill installed for ${selectedAgents.map((agent) => getSkillAgentConfig(agent).displayName).join(", ")}.`,
-    );
-  } catch (error) {
-    installSpinner.fail(`Failed to install ${SKILL_NAME} skill.`);
-    throw error;
-  }
-
-  // Best-effort: the bundled `doctor-explain` skill installs alongside the
-  // primary one. A failure here shouldn't abort the rest of the setup.
-  try {
-    const installedSiblingSkills = await installBundledSiblingSkills(
-      sourceDir,
-      selectedAgents,
-      projectRoot,
-    );
-    if (installedSiblingSkills.length > 0) {
-      logger.dim(`  Also installed the ${installedSiblingSkills.join(", ")} skill.`);
-    }
-  } catch {
-    logger.dim("  Skipped bundled sibling skills (install error).");
-  }
-
-  const dependencyResult = await installReactDoctorPackageSetup(
-    projectRoot,
-    options.installDependencyRunner,
-  );
-
-  if (shouldInstallGitHook && gitHookTarget !== null && gitHookTarget !== undefined) {
-    const hookSpinner = spinner("Installing React Doctor pre-commit hook...").start();
-    try {
-      const hookResult = installReactDoctorGitHook({
-        hookPath: gitHookTarget.hookPath,
-        projectRoot: gitHookTarget.runnerRoot,
-        kind: gitHookTarget.kind,
-        hooksPathConfig: gitHookTarget.hooksPathConfig,
-      });
-      hookSpinner.succeed(formatGitHookInstallMessage(hookResult));
-      recordCount(METRIC.installGitHook, 1, { kind: hookResult.kind });
-    } catch (error) {
-      hookSpinner.fail("Failed to install React Doctor pre-commit hook.");
-      throw error;
-    }
-  }
-
-  if (shouldInstallAgentHooks) {
-    const hookSpinner = spinner("Installing React Doctor agent hooks...").start();
-    try {
-      const hookResult = installReactDoctorAgentHooks({
-        projectRoot,
-        agents: selectedAgents,
-      });
-      if (hookResult.installedAgents.length === 0) {
-        hookSpinner.succeed("No supported native agent hook targets selected.");
-      } else {
-        hookSpinner.succeed(
-          `React Doctor agent hooks installed for ${hookResult.installedAgents.map((agent) => getSkillAgentConfig(agent).displayName).join(", ")}.`,
-        );
-        recordCount(METRIC.installAgentHooks, 1, {
-          agentsCount: hookResult.installedAgents.length,
-        });
-      }
-    } catch (error) {
-      hookSpinner.fail("Failed to install React Doctor agent hooks.");
-      throw error;
-    }
-  }
-
-  let didInstallWorkflow = false;
-  if (shouldInstallWorkflow) {
-    const workflowSpinner = spinner("Adding GitHub Actions workflow...").start();
-    didInstallWorkflow = reportWorkflowResult(
-      workflowSpinner,
-      installReactDoctorWorkflow(projectRoot),
-      projectRoot,
-    );
   }
 
   // Activation summary for a real (non-dry-run) install: how many agents, which
@@ -686,7 +763,7 @@ export const runInstallReactDoctor = async (
     gitHook: shouldInstallGitHook,
     agentHooks: shouldInstallAgentHooks,
     workflow: didInstallWorkflow,
-    dependencyStatus: dependencyResult.dependencyStatus,
+    dependencyStatus: dependencyResult?.dependencyStatus ?? "skipped",
     packageManager: detectPackageManager(projectRoot),
   });
   for (const agent of selectedAgents) {

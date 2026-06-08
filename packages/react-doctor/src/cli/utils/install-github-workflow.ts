@@ -141,3 +141,38 @@ export const installReactDoctorWorkflow = (projectRoot: string): InstallGitHubWo
     return { status: "failed", workflowPath };
   }
 };
+
+export interface UpgradeGitHubWorkflowResult {
+  // "upgraded": the floating `@v1` ref was rewritten to `@v2` in place.
+  // "not-needed": no workflow on disk, or it doesn't pin the floating `@v1`.
+  // "failed": the rewrite couldn't be persisted (read-only / permission FS).
+  readonly status: "upgraded" | "not-needed" | "failed";
+  readonly workflowPath: string;
+}
+
+// Rewrites an existing `.github/workflows/react-doctor.yml` from the action's
+// previous floating major (`@v1`) to `@v2` in place, leaving everything else
+// untouched. Mirrors `installReactDoctorWorkflow`'s "write to the working tree,
+// user reviews + commits" contract for the `install` flow — the PR-opening
+// upgrade variant lives in the post-scan handoff. Returns "failed" (rather than
+// throwing) so callers can degrade gracefully.
+export const upgradeReactDoctorWorkflowInPlace = (
+  projectRoot: string,
+): UpgradeGitHubWorkflowResult => {
+  const workflow = readReactDoctorWorkflow(projectRoot);
+  if (!workflow)
+    return {
+      status: "not-needed",
+      workflowPath: getReactDoctorWorkflowPath(projectRoot),
+    };
+
+  const { content, changed } = upgradeWorkflowActionToV2(workflow.content);
+  if (!changed) return { status: "not-needed", workflowPath: workflow.workflowPath };
+
+  try {
+    fs.writeFileSync(workflow.workflowPath, content);
+    return { status: "upgraded", workflowPath: workflow.workflowPath };
+  } catch {
+    return { status: "failed", workflowPath: workflow.workflowPath };
+  }
+};

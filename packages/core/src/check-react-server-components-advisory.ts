@@ -5,7 +5,12 @@ import {
   REACT_SERVER_DOM_PACKAGES,
   VERCEL_NEXTJS_SECURITY_RELEASE_URL,
 } from "./constants.js";
-import { isFile, listWorkspacePackages, readPackageJson } from "./project-info/index.js";
+import {
+  findMonorepoRoot,
+  isFile,
+  listWorkspacePackages,
+  readPackageJson,
+} from "./project-info/index.js";
 import type { Diagnostic, PackageJson, ProjectInfo } from "./types/index.js";
 
 const RULE_KEY = "no-vulnerable-react-server-components";
@@ -201,11 +206,16 @@ export const checkReactServerComponentsAdvisory = (
   scanDirectory: string,
   project: ProjectInfo,
 ): Diagnostic[] => {
-  const workspaceDirectories = listWorkspacePackages(project.rootDirectory).map(
+  // `project.rootDirectory` is the scanned directory, not necessarily the
+  // monorepo root, so walk up to the real root: it enumerates every sibling
+  // workspace and is itself where a hoisted `next` / `react-server-dom-*`
+  // install lands when scanning a nested package.
+  const workspaceRoot = findMonorepoRoot(scanDirectory) ?? project.rootDirectory;
+  const workspaceDirectories = listWorkspacePackages(workspaceRoot).map(
     (workspacePackage) => workspacePackage.directory,
   );
   const candidateDirectories = [
-    ...new Set([scanDirectory, project.rootDirectory, ...workspaceDirectories]),
+    ...new Set([scanDirectory, project.rootDirectory, workspaceRoot, ...workspaceDirectories]),
   ];
 
   const diagnostics: Diagnostic[] = [];

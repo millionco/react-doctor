@@ -160,13 +160,30 @@ const FIXTURE_EXPECTATIONS: ReadonlyArray<FixtureExpectation> = [
 ];
 
 describe("checkReactServerComponentsAdvisory (fixtures)", () => {
-  beforeEach(() => {
-    clearPackageJsonCache();
+  // The committed fixtures live inside this monorepo, so running the check
+  // directly against them would walk up to the real repo root. Copy each into
+  // an isolated temp directory (outside any monorepo) so resolution sees only
+  // the fixture's own manifest.
+  const isolatedRoot = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-rsc-fixtures-"));
+
+  afterAll(() => {
+    fs.rmSync(isolatedRoot, { recursive: true, force: true });
   });
+
+  const isolateFixture = (name: string): string => {
+    const isolatedDirectory = path.join(isolatedRoot, name);
+    fs.mkdirSync(isolatedDirectory, { recursive: true });
+    fs.copyFileSync(
+      path.join(FIXTURES_DIRECTORY, name, "package.json"),
+      path.join(isolatedDirectory, "package.json"),
+    );
+    clearPackageJsonCache();
+    return isolatedDirectory;
+  };
 
   for (const expectation of FIXTURE_EXPECTATIONS) {
     it(`${expectation.name}: ${expectation.description}`, () => {
-      const fixtureDirectory = path.join(FIXTURES_DIRECTORY, expectation.name);
+      const fixtureDirectory = isolateFixture(expectation.name);
       const diagnostics = checkReactServerComponentsAdvisory(
         fixtureDirectory,
         buildProject(fixtureDirectory, expectation.framework, null),
@@ -312,6 +329,32 @@ describe("checkReactServerComponentsAdvisory (installed-version resolution)", ()
     const diagnostics = checkReactServerComponentsAdvisory(
       temporaryRoot,
       buildProject(temporaryRoot, "nextjs", null),
+    );
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0].severity).toBe("error");
+    expect(diagnostics[0].message).toContain("next@15.0.0");
+  });
+
+  it("finds a hoisted vulnerable Next when scanning a nested workspace package", () => {
+    // Regression for "Workspace scan misses monorepo root": scanning a nested
+    // package whose `next` is hoisted to the monorepo root must walk up to that
+    // root (and its node_modules) rather than only the scanned package.
+    writePackageJson(temporaryRoot, {
+      name: "monorepo-root",
+      workspaces: ["packages/*"],
+      dependencies: { react: "19.2.0" },
+    });
+    writeInstalledManifest(temporaryRoot, "next", "15.0.0");
+    const webDirectory = path.join(temporaryRoot, "packages", "web");
+    writePackageJson(webDirectory, {
+      name: "web",
+      dependencies: { next: "^15.0.0", react: "19.0.0", "react-dom": "19.0.0" },
+    });
+    clearPackageJsonCache();
+
+    const diagnostics = checkReactServerComponentsAdvisory(
+      webDirectory,
+      buildProject(webDirectory, "nextjs", "^15.0.0"),
     );
     expect(diagnostics).toHaveLength(1);
     expect(diagnostics[0].severity).toBe("error");

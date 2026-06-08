@@ -155,9 +155,6 @@ importers:
       '@babel/code-frame':
         specifier: ^7.29.0
         version: 7.29.0
-      '@effect/platform-node-shared':
-        specifier: 4.0.0-beta.70
-        version: 4.0.0-beta.70(effect@4.0.0-beta.70)
       '@sentry/node':
         specifier: ^10.54.0
         version: 10.54.0
@@ -173,9 +170,6 @@ importers:
       deslop-js:
         specifier: ^0.0.21
         version: 0.0.21(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
-      effect:
-        specifier: 4.0.0-beta.70
-        version: 4.0.0-beta.70
       eslint-plugin-react-hooks:
         specifier: ^7.1.1
         version: 7.1.1(eslint@9.39.2(jiti@2.7.0))

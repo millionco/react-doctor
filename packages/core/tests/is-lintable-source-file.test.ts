@@ -6,33 +6,36 @@ describe("isLintableSourceFile", () => {
     for (const filePath of [
       "src/App.tsx",
       "src/index.ts",
+      "src/edge.mts",
       "components/Button.jsx",
       "lib/util.js",
+      "middleware.mjs",
       "deep/nested/path/Widget.tsx",
     ]) {
       expect(isLintableSourceFile(filePath), filePath).toBe(true);
     }
   });
 
-  it("rejects non-source files (including .cjs/.mjs, which are never linted)", () => {
+  it("rejects non-source files", () => {
     for (const filePath of [
       "styles.css",
       "README.md",
       "data.json",
       "logo.svg",
       "scripts/build.cjs",
-      "scripts/build.mjs",
     ]) {
       expect(isLintableSourceFile(filePath), filePath).toBe(false);
     }
   });
 
-  it("rejects generated IIFE / UMD / global / minified `.js` bundles (the default ignore)", () => {
+  it("rejects generated IIFE / UMD / global / minified `.js` / `.mjs` bundles", () => {
     for (const filePath of [
       "public/budge.iife.js",
       "public/sdk.global.js",
       "public/sdk.umd.js",
       "public/vendor.min.js",
+      "public/chunk.min.mjs",
+      "public/embed.global.mjs",
       "nested/dir/embed.IIFE.js",
     ]) {
       expect(isLintableSourceFile(filePath), filePath).toBe(false);

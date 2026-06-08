@@ -20,6 +20,16 @@ describe("resolveProjectDiffIncludePaths", () => {
     ]);
   });
 
+  it("keeps supported module source extensions from changed-file lists", () => {
+    const rootDirectory = path.join("/repo");
+    const diffInfo = buildDiffInfo(["proxy.mjs", "src/middleware.mts", "README.md"]);
+
+    expect(resolveProjectDiffIncludePaths(rootDirectory, rootDirectory, diffInfo)).toEqual([
+      "proxy.mjs",
+      "src/middleware.mts",
+    ]);
+  });
+
   it("strips the project prefix for changed files inside a child workspace", () => {
     const rootDirectory = path.join("/repo");
     const projectDirectory = path.join(rootDirectory, "apps", "web");

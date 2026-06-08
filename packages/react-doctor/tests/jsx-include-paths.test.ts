@@ -12,6 +12,79 @@ describe("computeJsxIncludePaths", () => {
     expect(result).toEqual(["src/app.tsx", "src/Button.jsx"]);
   });
 
+  it("keeps Next middleware and proxy entry files in Next projects", () => {
+    const paths = [
+      "middleware.ts",
+      "middleware.mjs",
+      "src/proxy.ts",
+      "src/proxy.mts",
+      "src/app.tsx",
+      "src/server.ts",
+      "nested/middleware.ts",
+    ];
+
+    const result = computeJsxIncludePaths(paths, {
+      rootDirectory: "/repo",
+      projectName: "next-app",
+      reactVersion: "19.0.0",
+      reactMajorVersion: 19,
+      tailwindVersion: null,
+      zodVersion: null,
+      zodMajorVersion: null,
+      framework: "nextjs",
+      hasTypeScript: true,
+      hasReactCompiler: false,
+      hasTanStackQuery: false,
+      nextjsVersion: "^16.0.0",
+      nextjsMajorVersion: 16,
+      hasReactNativeWorkspace: false,
+      expoVersion: null,
+      shopifyFlashListVersion: null,
+      shopifyFlashListMajorVersion: null,
+      hasReanimated: false,
+      preactVersion: null,
+      preactMajorVersion: null,
+      sourceFileCount: 0,
+    });
+
+    expect(result).toEqual([
+      "middleware.ts",
+      "middleware.mjs",
+      "src/proxy.ts",
+      "src/proxy.mts",
+      "src/app.tsx",
+    ]);
+  });
+
+  it("does not keep Next entry filenames for non-Next projects", () => {
+    const paths = ["middleware.ts", "src/proxy.mjs", "src/App.tsx"];
+    const result = computeJsxIncludePaths(paths, {
+      rootDirectory: "/repo",
+      projectName: "vite-app",
+      reactVersion: "19.0.0",
+      reactMajorVersion: 19,
+      tailwindVersion: null,
+      zodVersion: null,
+      zodMajorVersion: null,
+      framework: "vite",
+      hasTypeScript: true,
+      hasReactCompiler: false,
+      hasTanStackQuery: false,
+      nextjsVersion: null,
+      nextjsMajorVersion: null,
+      hasReactNativeWorkspace: false,
+      expoVersion: null,
+      shopifyFlashListVersion: null,
+      shopifyFlashListMajorVersion: null,
+      hasReanimated: false,
+      preactVersion: null,
+      preactMajorVersion: null,
+      sourceFileCount: 0,
+    });
+
+    expect(result).toEqual(["src/App.tsx"]);
+  });
+
   it("returns empty array when no JSX/TSX files exist", () => {
     const paths = ["src/utils.ts", "src/config.js"];
     const result = computeJsxIncludePaths(paths);

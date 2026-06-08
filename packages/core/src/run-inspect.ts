@@ -287,9 +287,9 @@ export const runInspect = <HooksR = never>(
       ? input.includePaths.length > 0
         ? [...input.includePaths]
         : undefined
-      : computeJsxIncludePaths([...input.includePaths]);
+      : computeJsxIncludePaths([...input.includePaths], project);
     const lintIncludePaths =
-      jsxIncludePaths ?? resolveLintIncludePaths(scanDirectory, resolvedConfig.config);
+      jsxIncludePaths ?? resolveLintIncludePaths(scanDirectory, resolvedConfig.config, project);
 
     // Absolute paths of the exact file set the linter scans, captured ONLY
     // for the multi-project summary (the sole consumer), which signals via

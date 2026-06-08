@@ -92,8 +92,8 @@ ${highlighter.dim("Learn more:")}
   ${highlighter.info(CANONICAL_GITHUB_URL)}
 `;
 
-const collectCategoryOption = (value: string, previousValues: string[]): string[] => [
-  ...previousValues,
+const collectCategoryOption = (value: string, previousValues: string[] | undefined): string[] => [
+  ...(previousValues ?? []),
   value,
 ];
 
@@ -137,8 +137,7 @@ const program = new Command()
       "--category <category>",
       "only show diagnostics in a category (repeatable; e.g. Security)",
     )
-      .argParser(collectCategoryOption)
-      .default([]),
+      .argParser(collectCategoryOption),
   )
   .option(
     "--no-telemetry",

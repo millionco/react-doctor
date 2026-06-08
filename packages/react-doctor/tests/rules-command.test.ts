@@ -299,6 +299,21 @@ describe("rules list / explain JSON output", () => {
     expect(entry).toMatchObject({ severity: "off", source: "rule" });
   });
 
+  it("ignores an inherited repeatable root category option", async () => {
+    fixture = setupFixture();
+    const output = await captureLog(() =>
+      rulesListAction({
+        json: true,
+        cwd: fixture.projectRoot,
+        category: ["Security"] as unknown as string,
+      }),
+    );
+
+    const payload = JSON.parse(output) as Array<{ key: string }>;
+    expect(payload.length).toBeGreaterThan(0);
+    expect(process.exitCode).toBe(0);
+  });
+
   it("ignores invalid config severities the scanner would drop", async () => {
     fixture = setupFixture();
     fs.writeFileSync(

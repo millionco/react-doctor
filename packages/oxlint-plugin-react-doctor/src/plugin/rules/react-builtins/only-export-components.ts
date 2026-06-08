@@ -13,13 +13,18 @@ import {
   UTILITY_FILE_BASENAMES,
 } from "./only-export-components-tables.js";
 
-const NAMED_EXPORT_MESSAGE = "Fast Refresh stops working when a file exports non-components.";
-const ANONYMOUS_MESSAGE = "Fast Refresh can't track an unnamed component & full-reloads instead.";
-const EXPORT_ALL_MESSAGE = "`export *` hides what's exported, so Fast Refresh stops working.";
-const REACT_CONTEXT_MESSAGE = "Fast Refresh stops working when a file exports a context too.";
-const LOCAL_COMPONENT_MESSAGE = "Fast Refresh skips this component because it isn't exported.";
+const NAMED_EXPORT_MESSAGE =
+  "This file exports non-components, so Fast Refresh can't safely preserve component state.";
+const ANONYMOUS_MESSAGE =
+  "This component is unnamed, so Fast Refresh can't track it and falls back to a full reload.";
+const EXPORT_ALL_MESSAGE =
+  "`export *` hides what's exported, so Fast Refresh can't safely preserve component state.";
+const REACT_CONTEXT_MESSAGE =
+  "This file exports a context with components, so Fast Refresh can't safely preserve component state.";
+const LOCAL_COMPONENT_MESSAGE =
+  "This component is not exported, so Fast Refresh skips it and local edits can full-reload.";
 const NO_EXPORT_MESSAGE =
-  "Fast Refresh can't track this component because the file exports nothing.";
+  "This file exports nothing, so Fast Refresh can't track the component and local edits can full-reload.";
 
 interface OnlyExportComponentsSettings {
   allowExportNames?: ReadonlyArray<string>;
@@ -370,7 +375,8 @@ export const onlyExportComponents = defineRule<Rule>({
   id: "only-export-components",
   title: "Non-component export in component file",
   severity: "warn",
-  recommendation: "Move non-component exports out of files that export components.",
+  recommendation:
+    "Move non-component exports out of component files so Fast Refresh can preserve component state instead of full-reloading.",
   category: "Architecture",
   create: (context) => {
     const settings = resolveSettings(context.settings);

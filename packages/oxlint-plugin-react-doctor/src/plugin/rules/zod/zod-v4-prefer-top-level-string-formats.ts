@@ -42,7 +42,8 @@ export const zodV4PreferTopLevelStringFormats = defineRule<Rule>({
       if (!isDirectMethodCallOnZodFactory(node, ZOD_STRING_FACTORY, STRING_FORMAT_METHODS)) return;
       context.report({
         node,
-        message: "Zod 4 deprecated format methods on `z.string()`, so they break when you upgrade.",
+        message:
+          "This `z.string().<format>()` check is deprecated in Zod 4, so it can break during the upgrade.",
       });
     },
   }),

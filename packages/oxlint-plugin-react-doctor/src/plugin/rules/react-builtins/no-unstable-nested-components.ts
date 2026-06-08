@@ -330,7 +330,8 @@ export const noUnstableNestedComponents = defineRule<Rule>({
   id: "no-unstable-nested-components",
   title: "Component defined inside a component",
   severity: "warn",
-  recommendation: "Move nested components to the top of the file. Never define one inside another.",
+  recommendation:
+    "Move nested components to module scope so React does not remount them and lose state on every render.",
   category: "Performance",
   create: (context) => {
     const settings = resolveSettings(context.settings);

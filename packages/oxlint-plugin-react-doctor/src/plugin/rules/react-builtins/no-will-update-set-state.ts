@@ -5,7 +5,8 @@ import { isSetStateCallInLifecycle } from "../../utils/is-set-state-in-lifecycle
 import type { Rule } from "../../utils/rule.js";
 
 const LIFECYCLE_NAMES = new Set(["componentWillUpdate", "UNSAFE_componentWillUpdate"]);
-const MESSAGE = "This can loop forever & freeze the component.";
+const MESSAGE =
+  "Calling setState in componentWillUpdate can trigger another update immediately, loop forever, and freeze the component.";
 
 interface SettingsShape {
   mode?: "allowed" | "disallow-in-func";
@@ -48,7 +49,7 @@ export const noWillUpdateSetState = defineRule<Rule>({
   title: "setState in componentWillUpdate",
   severity: "warn",
   recommendation:
-    "Don't set state in `componentWillUpdate`. Use `getDerivedStateFromProps` or `componentDidUpdate` instead.",
+    "Avoid setState in componentWillUpdate because it can loop forever; derive state before render or move guarded updates to componentDidUpdate.",
   create: (context) => {
     const { mode } = resolveSettings(context.settings);
     const skipUnsafePrefix = isReactBelow16_3(context.settings);

@@ -91,7 +91,8 @@ export const autocompleteValid = defineRule<Rule>({
   title: "Invalid autocomplete value",
   tags: ["react-jsx-only"],
   severity: "warn",
-  recommendation: "Use a valid autofill token in `autoComplete`.",
+  recommendation:
+    "Use a valid autofill token in `autoComplete` so browsers can fill the right field reliably.",
   category: "Accessibility",
   create: (context) => {
     const settings = resolveSettings(context.settings);

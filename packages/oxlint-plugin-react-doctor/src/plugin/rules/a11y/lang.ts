@@ -217,7 +217,8 @@ export const lang = defineRule<Rule>({
   title: "Invalid lang attribute value",
   tags: ["react-jsx-only"],
   severity: "warn",
-  recommendation: "Use a valid language code, like `en` or `en-US`.",
+  recommendation:
+    "Use a valid language code like `en` or `en-US` so screen readers choose the right pronunciation rules.",
   category: "Accessibility",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {

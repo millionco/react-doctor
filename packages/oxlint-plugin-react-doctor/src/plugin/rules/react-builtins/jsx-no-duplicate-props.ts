@@ -12,7 +12,8 @@ export const jsxNoDuplicateProps = defineRule<Rule>({
   id: "jsx-no-duplicate-props",
   title: "Duplicate props on element",
   severity: "error",
-  recommendation: "Remove or rename one of the duplicate props.",
+  recommendation:
+    "Remove or rename one of the duplicate props so the later value does not silently override the earlier one.",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const seenPropNames = new Set<string>();

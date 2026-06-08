@@ -735,7 +735,7 @@ export const noSelfUpdatingEffect = defineRule<Rule>({
           reportedStateNames.add(stateName);
           context.report({
             node: setterCall,
-            message: `${setterCall.callee.name}() loops forever because it sets \`${stateName}\`, the same state this effect watches.`,
+            message: `${setterCall.callee.name}() updates \`${stateName}\`, which is also in this effect's dependency list. Guard the update or move the derivation out of the effect.`,
           });
         }
       }

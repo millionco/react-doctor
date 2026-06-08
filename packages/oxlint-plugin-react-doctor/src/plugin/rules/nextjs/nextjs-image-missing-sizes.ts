@@ -7,12 +7,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const nextjsImageMissingSizes = defineRule<Rule>({
   id: "nextjs-image-missing-sizes",
-  title: "Image fill missing sizes",
+  title: "next/image fill image is missing sizes",
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "warn",
   recommendation:
-    'Add sizes for responsive behavior: `sizes="(max-width: 768px) 100vw, 50vw"` matching your layout breakpoints',
+    "Add `sizes` matching your layout so `next/image` does not assume the largest candidate and make users download oversized images.",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "Image") return;

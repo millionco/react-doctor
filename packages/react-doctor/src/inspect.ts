@@ -32,6 +32,7 @@ import type {
   DiagnosticSurface,
   InspectOptions,
   InspectResult,
+  ProjectInfo,
   ReactDoctorConfig,
   ScoreResult,
 } from "@react-doctor/core";
@@ -46,6 +47,7 @@ import {
 } from "./cli/utils/is-ci-environment.js";
 import { computeProjectedScore } from "./cli/utils/compute-score-projection.js";
 import { buildRulePriorityMap } from "./cli/utils/diagnostic-grouping.js";
+import { filterDiagnosticsByCategories } from "./cli/utils/filter-diagnostics-by-categories.js";
 import { printDiagnostics } from "./cli/utils/render-diagnostics.js";
 import { isNonInteractiveEnvironment } from "./cli/utils/is-non-interactive-environment.js";
 import {
@@ -63,6 +65,7 @@ import {
 } from "./cli/utils/render-score-header.js";
 import { printFooter, printSummary } from "./cli/utils/render-summary.js";
 import { resolveOxlintNode } from "./cli/utils/resolve-oxlint-node.js";
+import { resolveCliCategories } from "./cli/utils/resolve-cli-categories.js";
 import { getRunId } from "./cli/utils/run-id.js";
 import {
   buildScanResultCacheKey,
@@ -100,6 +103,13 @@ const recordOnboardingCompletion = (options: ResolvedInspectOptions): void => {
   }
 };
 
+const formatCategorySelection = (categoryFilters: ReadonlySet<string>): string =>
+  [...categoryFilters].join(", ");
+
+export interface ReactDoctorInspectOptions extends InspectOptions {
+  categoryFilters?: string[];
+}
+
 export interface ResolvedInspectOptions {
   lint: boolean;
   deadCode: boolean;
@@ -115,6 +125,7 @@ export interface ResolvedInspectOptions {
   share: boolean;
   respectInlineDisables: boolean;
   warnings: boolean;
+  categoryFilters: ReadonlySet<string>;
   adoptExistingLintConfig: boolean;
   ignoredTags: ReadonlySet<string>;
   outputSurface: DiagnosticSurface;
@@ -134,7 +145,7 @@ const buildIgnoredTags = (userConfig: ReactDoctorConfig | null): ReadonlySet<str
 };
 
 const mergeInspectOptions = (
-  inputOptions: InspectOptions,
+  inputOptions: ReactDoctorInspectOptions,
   userConfig: ReactDoctorConfig | null,
 ): ResolvedInspectOptions => ({
   lint: inputOptions.lint ?? userConfig?.lint ?? true,
@@ -152,6 +163,7 @@ const mergeInspectOptions = (
   respectInlineDisables:
     inputOptions.respectInlineDisables ?? userConfig?.respectInlineDisables ?? true,
   warnings: inputOptions.warnings ?? userConfig?.warnings ?? DEFAULT_SHOW_WARNINGS,
+  categoryFilters: new Set(resolveCliCategories(inputOptions.categoryFilters) ?? []),
   adoptExistingLintConfig: userConfig?.adoptExistingLintConfig ?? true,
   ignoredTags: buildIgnoredTags(userConfig),
   outputSurface: inputOptions.outputSurface ?? "cli",
@@ -184,7 +196,7 @@ const buildRunEventConfig = (
 
 export const inspect = async (
   directory: string,
-  inputOptions: InspectOptions = {},
+  inputOptions: ReactDoctorInspectOptions = {},
 ): Promise<InspectResult> => {
   const startTime = performance.now();
 
@@ -276,6 +288,16 @@ interface BaselineComparison {
   baselineDelta: NonNullable<InspectResult["baselineDelta"]>;
 }
 
+interface RunBaselineComparisonInput {
+  directory: string;
+  options: ResolvedInspectOptions;
+  userConfig: ReactDoctorConfig | null;
+  headProjectInfo: ProjectInfo;
+  headDiagnostics: ReadonlyArray<Diagnostic>;
+  resolvedNodeBinaryPath: string | null;
+  baselineRef: string;
+}
+
 /**
  * Runs a second, lint-only scan over the changed files as they existed at the
  * baseline ref (materialized into a temp tree with head's config) and diffs it
@@ -283,14 +305,9 @@ interface BaselineComparison {
  * introduced plus the fixed / base counts. No score, dead-code, progress, or
  * telemetry — it's a pure comparison pass. The temp tree is always cleaned up.
  */
-const runBaselineComparison = async (params: {
-  directory: string;
-  options: ResolvedInspectOptions;
-  userConfig: ReactDoctorConfig | null;
-  headDiagnostics: ReadonlyArray<Diagnostic>;
-  resolvedNodeBinaryPath: string | null;
-  baselineRef: string;
-}): Promise<BaselineComparison | null> => {
+const runBaselineComparison = async (
+  params: RunBaselineComparisonInput,
+): Promise<BaselineComparison | null> => {
   const tempDirectory = mkdtempSync(path.join(tmpdir(), BASELINE_FILES_TEMP_DIR_PREFIX));
   // If materialization throws before the snapshot (and its cleanup) exists,
   // remove the temp dir we just created so it can't leak.
@@ -309,6 +326,7 @@ const runBaselineComparison = async (params: {
       hasConfigOverride: true,
       userConfig: params.userConfig,
       configSourceDirectory: null,
+      projectInfoOverride: params.headProjectInfo,
       shouldSkipLint: !params.options.lint || !params.resolvedNodeBinaryPath,
       shouldRunDeadCode: false,
       shouldComputeScore: false,
@@ -551,6 +569,7 @@ const runInspectWithRuntime = async (
       directory,
       options,
       userConfig,
+      headProjectInfo: output.project,
       headDiagnostics: output.diagnostics,
       resolvedNodeBinaryPath,
       baselineRef: options.baseline.ref,
@@ -787,17 +806,27 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       options.outputSurface,
       userConfig,
     );
+    const printedDiagnostics = filterDiagnosticsByCategories(
+      surfaceDiagnostics,
+      options.categoryFilters,
+    );
     const demotedDiagnosticCount = diagnostics.length - surfaceDiagnostics.length;
     const isDiffMode = options.includePaths.length > 0;
     const lintSourceFileCount = isDiffMode ? options.includePaths.length : project.sourceFileCount;
 
-    if (surfaceDiagnostics.length === 0) {
+    if (printedDiagnostics.length === 0) {
       yield* pause;
       if (hasSkippedChecks) {
         const skippedLabel = skippedChecks.join(" and ");
         yield* Console.warn(
           highlighter.warn(
             `No issues detected, but ${skippedLabel} checks failed — results are incomplete.`,
+          ),
+        );
+      } else if (options.categoryFilters.size > 0) {
+        yield* Console.log(
+          highlighter.success(
+            `No issues found in category ${formatCategorySelection(options.categoryFilters)}!`,
           ),
         );
       } else if (demotedDiagnosticCount > 0) {
@@ -825,7 +854,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
     yield* pause;
     yield* Console.log("");
     yield* printDiagnostics(
-      [...surfaceDiagnostics],
+      [...printedDiagnostics],
       options.verbose,
       directory,
       buildRulePriorityMap([score]),
@@ -836,7 +865,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       yield* printAgentGuidance();
     }
 
-    if (demotedDiagnosticCount > 0) {
+    if (options.categoryFilters.size === 0 && demotedDiagnosticCount > 0) {
       yield* Console.log(
         highlighter.gray(
           `  ${demotedDiagnosticCount} demoted from the ${options.outputSurface} surface (e.g. design cleanup) — run \`npx react-doctor@latest .\` locally for the full list.`,
@@ -849,14 +878,14 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
     // show the payoff as a ghost gain segment.
     const potentialScore = score
       ? yield* Effect.promise(() =>
-          computeProjectedScore([...surfaceDiagnostics], [...surfaceDiagnostics], score),
+          computeProjectedScore([...printedDiagnostics], [...surfaceDiagnostics], score),
         )
       : null;
 
     const shouldShowShareLink = !options.noScore && options.share && !options.isCi;
     yield* pause;
     yield* printSummary({
-      diagnostics: [...surfaceDiagnostics],
+      diagnostics: [...printedDiagnostics],
       elapsedMilliseconds,
       scoreResult: score,
       potentialScore,
@@ -876,7 +905,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
 
     yield* pause;
     yield* printFooter({
-      diagnostics: [...surfaceDiagnostics],
+      diagnostics: [...printedDiagnostics],
       scoreResult: score,
       projectName: project.projectName,
       isOffline: !shouldShowShareLink,

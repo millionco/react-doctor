@@ -5,6 +5,7 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { NEXTJS_SOURCE_FILE_EXTENSION_GROUP } from "../../constants/nextjs.js";
 
 const isFetchCall = (node: EsTreeNode): boolean => {
   if (!isNodeOfType(node, "CallExpression")) return false;
@@ -39,8 +40,8 @@ const objectExpressionHasNextRevalidate = (objectExpression: EsTreeNode): boolea
 // data bug. Next.js 15+ changed the default to `no-store`, so the rule
 // is gated with `disabledBy: ["nextjs:15"]`.
 //
-// Heuristic: `fetch(url)` in an App Router file (`app/.../route.ts(x)`,
-// `app/.../page.ts(x)`, `app/.../layout.ts(x)`) without a config object —
+// Heuristic: `fetch(url)` in an App Router file (`app/.../route.*`,
+// `app/.../page.*`, `app/.../layout.*`) without a config object —
 // or with a config object that omits both `cache` and
 // `next.revalidate`/`next.tags`. We can't reliably know "this is a
 // Server Component" from the AST alone, so we approximate by:
@@ -50,8 +51,9 @@ const objectExpressionHasNextRevalidate = (objectExpression: EsTreeNode): boolea
 //   2. The file does not start with a `"use client"` directive, AND
 //   3. The path does not pass through `node_modules/` or `dist/`
 //      (vendored or built code).
-const APP_ROUTER_FILE_PATTERN =
-  /\/app\/(?:[^/]+\/)*(?:route|page|layout|template|loading|error|default)\.(?:tsx?|jsx?)$/;
+const APP_ROUTER_FILE_PATTERN = new RegExp(
+  `/app/(?:[^/]+/)*(?:route|page|layout|template|loading|error|default)\\.${NEXTJS_SOURCE_FILE_EXTENSION_GROUP}$`,
+);
 
 const NON_PROJECT_PATH_PATTERN = /\/(?:node_modules|dist|build|\.next)\//;
 

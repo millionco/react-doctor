@@ -1,4 +1,9 @@
 import * as path from "node:path";
+import { NEXTJS_SOURCE_FILE_EXTENSION_GROUP } from "../constants/nextjs.js";
+
+const METADATA_IMAGE_ROUTE_FILE_PATTERN = new RegExp(
+  `^(opengraph-image|twitter-image|icon|apple-icon)\\d*\\.${NEXTJS_SOURCE_FILE_EXTENSION_GROUP}$`,
+);
 
 // Next.js App Router metadata image route conventions. These files look
 // like React components but their default export returns an
@@ -17,7 +22,5 @@ import * as path from "node:path";
 // https://nextjs.org/docs/app/api-reference/file-conventions/metadata
 export const isNextjsMetadataImageRouteFilename = (rawFilename: string | undefined): boolean => {
   if (!rawFilename) return false;
-  return /^(opengraph-image|twitter-image|icon|apple-icon)\d*\.(jsx?|tsx?)$/.test(
-    path.basename(rawFilename),
-  );
+  return METADATA_IMAGE_ROUTE_FILE_PATTERN.test(path.basename(rawFilename));
 };

@@ -7,9 +7,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
 const JSX_NOT_ALLOWED = (extension: string): string =>
-  `This file has JSX but a \`${extension}\` name.`;
+  `This file contains JSX but uses a \`${extension}\` name, so the filename no longer signals JSX to readers or tooling conventions.`;
 const EXTENSION_ONLY_FOR_JSX = (extension: string): string =>
-  `\`${extension}\` files are meant for JSX, but this one has none.`;
+  `\`${extension}\` files are reserved for JSX here, so using that extension without JSX makes file-type conventions less useful.`;
 
 interface JsxFilenameExtensionSettings {
   extensions?: ReadonlyArray<string>;
@@ -52,7 +52,8 @@ export const jsxFilenameExtension = defineRule<Rule>({
   // accept JSX in `.js` files out of the box. Forcing `.jsx` /
   // `.tsx` is a project-specific style choice. Default off.
   defaultEnabled: false,
-  recommendation: "Name files with JSX `.jsx` or `.tsx`, or whatever extension your project uses.",
+  recommendation:
+    "Name JSX files with the configured extension so file names accurately signal which files contain JSX.",
   category: "Architecture",
   create: (context) => {
     const settings = resolveSettings(context.settings);

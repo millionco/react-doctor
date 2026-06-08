@@ -37,7 +37,8 @@ const externalPluginDiagnostic: Diagnostic = {
   plugin: "react",
   rule: "no-danger",
   severity: "warning",
-  message: "Avoid dangerouslySetInnerHTML",
+  message:
+    "dangerouslySetInnerHTML bypasses React escaping, so untrusted HTML can execute script in the user's browser.",
   help: "",
   line: 5,
   column: 2,

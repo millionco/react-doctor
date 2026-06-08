@@ -45,7 +45,8 @@ const DIAGNOSTICS: RuleDiagnostic[] = [
   {
     ruleKey: "react-doctor/no-derived-state-effect",
     severity: "error",
-    message: "Derived state computed in useEffect, compute during render instead",
+    message:
+      "Derived state is computed in useEffect, so users briefly see stale UI before the extra render",
     help: "Derive values directly in the render body, or use useMemo for expensive computations.",
     count: 5,
     location: "src/components/Dashboard.tsx:42",
@@ -53,7 +54,7 @@ const DIAGNOSTICS: RuleDiagnostic[] = [
   {
     ruleKey: "react-doctor/no-server-action-auth",
     severity: "error",
-    message: 'Server action "deleteUser" missing authentication check',
+    message: 'Server action "deleteUser" has no auth check, so any caller could run it',
     help: "Add an authentication check at the top of every server action.",
     count: 2,
     location: "src/app/actions/users.ts:18",
@@ -61,7 +62,7 @@ const DIAGNOSTICS: RuleDiagnostic[] = [
   {
     ruleKey: "react/no-array-index-key",
     severity: "error",
-    message: "Array index used as key, causes bugs when items are reordered",
+    message: "Array index is used as a key, so reordered items can keep the wrong state",
     help: "Use a unique, stable identifier from each item as the key prop.",
     count: 12,
     location: "src/components/TodoList.tsx:24",
@@ -69,7 +70,7 @@ const DIAGNOSTICS: RuleDiagnostic[] = [
   {
     ruleKey: "react-doctor/no-render-in-render",
     severity: "error",
-    message: 'Component "UserCard" inside "Dashboard", destroys state every render',
+    message: 'Component "UserCard" is defined inside "Dashboard", so it remounts and loses state',
     help: "Move the inner component to a separate file or to the module scope.",
     count: 4,
     location: "src/components/Dashboard.tsx:56",
@@ -77,7 +78,7 @@ const DIAGNOSTICS: RuleDiagnostic[] = [
   {
     ruleKey: "react-doctor/no-fetch-in-effect",
     severity: "error",
-    message: "Data fetched in useEffect without cleanup, causes race conditions",
+    message: "Data fetch in useEffect has no cleanup, so slower responses can overwrite newer data",
     help: "Use a data-fetching library or add an AbortController for cleanup.",
     count: 8,
     location: "src/components/Profile.tsx:22",

@@ -4,25 +4,24 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
-import { isNextjsMetadataImageRouteFilename } from "../../utils/is-nextjs-metadata-image-route-filename.js";
+import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { normalizeFilename } from "../../utils/normalize-filename.js";
 import { objectHasAccessibleChild } from "../../utils/object-has-accessible-child.js";
 import type { Rule } from "../../utils/rule.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
 
 const MISSING_ALT_PROP =
-  'Blind users can\'t use this image because screen readers skip it without `alt`, so add `alt="..."` (or `alt=""` if decorative).';
+  'Screen reader users cannot access this image without `alt`. Add `alt="image_description"`, or `alt=""` if it is decorative.';
 const MISSING_ALT_VALUE =
-  'Blind users can\'t use this image because its `alt` is empty or invalid, so add a short description (or `alt=""` if decorative).';
+  'Screen reader users cannot access this image because its `alt` is empty or invalid. Add a short description, or `alt=""` if it is decorative.';
 const ARIA_LABEL_VALUE =
-  "Blind users hear nothing here because `aria-label` has no value, so give it a short description.";
+  "Screen reader users hear nothing here because `aria-label` has no value, so give it a short description.";
 const ARIA_LABELLEDBY_VALUE =
-  "Blind users hear nothing here because `aria-labelledby` has no value, so point it at the id of the text that labels this.";
+  "Screen reader users hear nothing here because `aria-labelledby` has no value, so point it at the id of the text that labels this.";
 const PREFER_ALT =
   'Screen readers skip a decorative image more reliably with `alt=""` than `role="presentation"`, so use `alt=""` instead.';
 const MESSAGE_OBJECT =
-  "Blind users can't use this `<object>` because screen readers can't describe it, so add `alt`, `aria-label`, `aria-labelledby`, `title`, or inner fallback text.";
+  "Screen reader users cannot use this `<object>` because assistive tech cannot describe it, so add `alt`, `aria-label`, `aria-labelledby`, `title`, or inner fallback text.";
 const MESSAGE_AREA =
   "Blind users can't use this `<area>` of the image map because screen readers can't describe it, so add `alt`, `aria-label`, or `aria-labelledby`.";
 const MESSAGE_INPUT_IMAGE =
@@ -189,7 +188,7 @@ export const altText = defineRule<Rule>({
   recommendation: "Give every meaningful image an `alt`, `aria-label`, or `aria-labelledby`.",
   category: "Accessibility",
   create: (context): RuleVisitors => {
-    if (isNextjsMetadataImageRouteFilename(normalizeFilename(context.filename ?? ""))) return {};
+    if (isGeneratedImageRenderContext(context)) return {};
     const settings = resolveSettings(context.settings);
     // Settings.elements selects WHICH element classes to check.
     // Default: all four. Custom aliases are merged into each class.
@@ -204,6 +203,7 @@ export const altText = defineRule<Rule>({
 
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+        if (isGeneratedImageRenderContext(context, node)) return;
         const tag = getElementType(node, context.settings);
 
         if (checkImg && (tag === "img" || imgAliases.has(tag))) {

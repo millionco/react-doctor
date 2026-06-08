@@ -156,7 +156,8 @@ export const jsxPascalCase = defineRule<Rule>({
   // issue (TypeScript already enforces component-ness). Opt in to enforce it.
   defaultEnabled: false,
   tags: ["test-noise"],
-  recommendation: "Rename custom JSX components to PascalCase.",
+  recommendation:
+    "Rename custom JSX components to PascalCase so React treats them as components, not intrinsic DOM tags.",
   category: "Architecture",
   create: (context) => {
     const settings = resolveSettings(context.settings);

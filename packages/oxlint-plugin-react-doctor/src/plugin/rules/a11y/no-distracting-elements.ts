@@ -33,7 +33,8 @@ export const noDistractingElements = defineRule<Rule>({
   title: "Distracting marquee or blink element",
   tags: ["react-jsx-only"],
   severity: "error",
-  recommendation: "Replace `<marquee>` and `<blink>` with normal, accessible markup.",
+  recommendation:
+    "Replace `<marquee>` and `<blink>` with normal markup so motion does not distract or disorient users.",
   category: "Accessibility",
   create: (context) => {
     const { distractingTags } = resolveSettings(context.settings);

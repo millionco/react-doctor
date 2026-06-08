@@ -18,7 +18,8 @@ export const noAriaHiddenOnFocusable = defineRule<Rule>({
   title: "aria-hidden on focusable element",
   tags: ["react-jsx-only"],
   severity: "warn",
-  recommendation: "Remove `aria-hidden` from focusable elements, or stop them being focusable.",
+  recommendation:
+    "Remove `aria-hidden` from focusable elements, or stop them being focusable, so keyboard users do not land on content screen readers hide.",
   category: "Accessibility",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {

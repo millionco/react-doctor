@@ -5,8 +5,10 @@ import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-l
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
-const UNNECESSARY_BRACES_MESSAGE = "These curly braces do nothing here.";
-const REQUIRED_BRACES_MESSAGE = "This value needs curly braces `{ }` to read as an expression.";
+const UNNECESSARY_BRACES_MESSAGE =
+  "These curly braces wrap a literal value, so they add JSX noise without changing output.";
+const REQUIRED_BRACES_MESSAGE =
+  "This JSX value needs `{ }` so React reads it as an expression instead of text.";
 
 type AllowedMode = "always" | "never" | "ignore";
 
@@ -178,7 +180,8 @@ export const jsxCurlyBracePresence = defineRule<Rule>({
   // Pure stylistic rule — `{'string'}` vs `"string"` is a formatter
   // concern, not a bug class. Default off.
   defaultEnabled: false,
-  recommendation: "Pick a consistent quoting style for JSX literal values.",
+  recommendation:
+    "Use one JSX literal style so equivalent markup scans the same without extra JSX noise.",
   category: "Architecture",
   create: (context) => {
     const settings = resolveSettings(context.settings);

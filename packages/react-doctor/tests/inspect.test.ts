@@ -4,7 +4,13 @@ import * as path from "node:path";
 import { afterAll, describe, expect, it, vi } from "vite-plus/test";
 import { inspect } from "../src/inspect.js";
 import { clearConfigCache } from "@react-doctor/core";
-import { setupReactProject } from "./regressions/_helpers.js";
+import {
+  commitAll,
+  initGitRepo,
+  setupReactProject,
+  writeFile,
+  writeJson,
+} from "./regressions/_helpers.js";
 
 const FIXTURES_DIRECTORY = path.resolve(
   import.meta.dirname,
@@ -168,6 +174,53 @@ describe("inspect", () => {
     } finally {
       consoleSpy.mockRestore();
       fs.rmSync(tempDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it("reuses head project metadata for baseline scans of leaf-only pnpm catalog monorepos", async () => {
+    clearConfigCache();
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const monorepoDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-catalog-"));
+    try {
+      writeFile(
+        path.join(monorepoDirectory, "pnpm-workspace.yaml"),
+        'packages:\n  - "apps/*"\n\ncatalog:\n  react: ^19.0.0\n',
+      );
+      writeJson(path.join(monorepoDirectory, "package.json"), {
+        name: "monorepo-root",
+        private: true,
+      });
+      writeJson(path.join(monorepoDirectory, "apps", "web", "package.json"), {
+        name: "web",
+        dependencies: { react: "catalog:" },
+      });
+      writeFile(
+        path.join(monorepoDirectory, "apps", "web", "src", "App.tsx"),
+        "export const App = () => <main>Base</main>;\n",
+      );
+      initGitRepo(monorepoDirectory);
+      const baseRef = commitAll(monorepoDirectory, "initial catalog workspace");
+
+      writeFile(
+        path.join(monorepoDirectory, "apps", "web", "src", "App.tsx"),
+        "export const App = () => <main>Head</main>;\n",
+      );
+
+      const result = await inspect(monorepoDirectory, {
+        lint: true,
+        deadCode: false,
+        noScore: true,
+        silent: true,
+        includePaths: ["apps/web/src/App.tsx"],
+        baseline: { ref: baseRef },
+      });
+
+      expect(result.project.reactVersion).toBe("^19.0.0");
+      expect(result.skippedChecks).not.toContain("lint");
+      expect(result.baselineDelta?.baseTotalCount).toBe(0);
+    } finally {
+      consoleSpy.mockRestore();
+      fs.rmSync(monorepoDirectory, { recursive: true, force: true });
     }
   });
 });

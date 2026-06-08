@@ -138,7 +138,8 @@ export const jsxNoConstructedContextValues = defineRule<Rule>({
   tags: ["react-jsx-only"],
   severity: "warn",
   disabledBy: ["react-compiler"],
-  recommendation: "Wrap the context value in `useMemo`, or move it outside the component.",
+  recommendation:
+    "Wrap the context value in `useMemo` or move it outside the component so consumers do not redraw every render.",
   category: "Performance",
   create: (context) => {
     const isTestlikeFile = isTestlikeFilename(context.filename);

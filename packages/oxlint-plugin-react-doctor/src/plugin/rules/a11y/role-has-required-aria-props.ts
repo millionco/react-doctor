@@ -28,7 +28,8 @@ export const roleHasRequiredAriaProps = defineRule<Rule>({
   title: "Role missing required ARIA props",
   tags: ["react-jsx-only"],
   severity: "error",
-  recommendation: "Add every required `aria-*` attribute when you set an interactive role.",
+  recommendation:
+    "Add every required `aria-*` attribute so assistive tech can expose the role's state correctly.",
   category: "Accessibility",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {

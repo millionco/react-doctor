@@ -46,5 +46,23 @@ describe("nextjs/no-img-element regressions", () => {
       });
       expect(result.diagnostics.length).toBeGreaterThan(0);
     });
+
+    it("skips helper JSX in files that render through next/og ImageResponse", () => {
+      const result = runRule(
+        nextjsNoImgElement,
+        `
+          import { ImageResponse } from "next/og";
+
+          const HeroImage = () => <div><img src="/bg.png" /></div>;
+
+          export const GET = () => new ImageResponse(<HeroImage />);
+        `,
+        {
+          filename: "/proj/app/api/social-card.tsx",
+        },
+      );
+
+      expect(result.diagnostics).toEqual([]);
+    });
   });
 });

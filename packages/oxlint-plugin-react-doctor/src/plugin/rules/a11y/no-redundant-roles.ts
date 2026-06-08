@@ -34,7 +34,8 @@ export const noRedundantRoles = defineRule<Rule>({
   title: "Redundant ARIA role",
   tags: ["react-jsx-only"],
   severity: "warn",
-  recommendation: "Remove `role` attributes that match what the element already does.",
+  recommendation:
+    "Remove redundant `role` attributes so assistive tech reads the element's native semantics without extra noise.",
   category: "Accessibility",
   create: (context) => {
     const settings = resolveSettings(context.settings);

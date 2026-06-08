@@ -32,6 +32,7 @@ const ROOT_FLAG_SPEC: CliFlagSpec = {
     "--yes",
   ]),
   longOptionsWithRequiredValues: new Set([
+    "--category",
     "--changed-files-from",
     "--blocking",
     "--fail-on",

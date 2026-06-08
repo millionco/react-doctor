@@ -147,7 +147,7 @@ describe("in-process render across terminal widths and render modes", () => {
         "Bugs",
         "error",
         5,
-        "State adjusted in a useEffect when a prop changes.",
+        "State adjusted in a useEffect when a prop changes, so the UI shows stale state until the second render.",
       ),
       makeDiagnostic(
         "no-nested-component-definition",
@@ -168,7 +168,7 @@ describe("in-process render across terminal widths and render modes", () => {
         "Performance",
         "warning",
         7,
-        "This JSX element is constant and can be hoisted out of the component.",
+        "This JSX element is constant but built inside the component, so it looks new on every render.",
       ),
     ];
     const warningsOnlyDiagnostics = mixedDiagnostics.filter(
@@ -289,6 +289,13 @@ describe("in-process render across terminal widths and render modes", () => {
     expect(rendered.text).toContain("setCount(0)");
   });
 
+  it("keeps the impact message in verbose issue blocks", async () => {
+    const verboseScenario = scenarios.find((scenario) => scenario.name === "verbose-errors-great");
+    expect(verboseScenario).toBeDefined();
+    const rendered = await renderInTerminal(verboseScenario?.bytes ?? "", { cols: 120 });
+    expect(rendered.text).toContain("remounts on");
+  });
+
   it("never leaks the project name into the header in any mode or width", async () => {
     for (const scenario of scenarios) {
       for (const cols of TERMINAL_WIDTHS) {
@@ -357,8 +364,9 @@ describe("non-verbose overflow summary line", () => {
       rule,
       severity,
       title: `${rule} title`,
-      message: "Impact.",
-      help: "Fix.",
+      message:
+        "The component repeats work during render, so large lists can become noticeably slower.",
+      help: "Move the repeated work behind a stable memo or compute it once before rendering the list.",
       line,
       column: 1,
       category: "Bugs",
@@ -440,7 +448,7 @@ describe("multi-project code frames resolve against each project root", () => {
       plugin: "react-doctor",
       rule: "no-adjust-state-on-prop-change",
       severity: "error",
-      message: "Issue in project A.",
+      message: "Project A resets state after render, so users can briefly see stale UI.",
       help: "",
       line: 2,
       column: 7,
@@ -449,7 +457,7 @@ describe("multi-project code frames resolve against each project root", () => {
     const diagnosticB = {
       ...diagnosticA,
       rule: "no-nested-component-definition",
-      message: "Issue in project B.",
+      message: "Project B defines a component inside render, so React remounts it and loses state.",
       category: "Maintainability",
     } as Diagnostic;
 

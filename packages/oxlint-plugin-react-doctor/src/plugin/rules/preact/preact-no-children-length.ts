@@ -93,11 +93,11 @@ const isChildrenMemberExpression = (node: EsTreeNodeOfType<"MemberExpression">):
 // `this.props.children`, and destructured `children`.
 export const preactNoChildrenLength = defineRule<Rule>({
   id: "preact-no-children-length",
-  title: "Array methods on props.children",
+  title: "Array methods on Preact children can crash",
   requires: ["preact"],
   severity: "warn",
   recommendation:
-    "Wrap with `toChildArray(children)` from `preact` before accessing array methods or `.length`.",
+    "Wrap with `toChildArray(children)` because Preact's `props.children` is not always an array and array methods can crash.",
   create: (context) => ({
     MemberExpression(node: EsTreeNodeOfType<"MemberExpression">) {
       if (node.computed) return;

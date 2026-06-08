@@ -57,7 +57,8 @@ export const tanstackStartNoNavigateInRender = defineRule<Rule>({
         ) {
           context.report({
             node,
-            message: "navigate() during render causes hydration errors.",
+            message:
+              "navigate() runs during render here, so server and browser output can diverge during hydration.",
           });
         }
       },

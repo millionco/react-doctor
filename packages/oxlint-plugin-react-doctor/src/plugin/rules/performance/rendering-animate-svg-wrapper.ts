@@ -11,7 +11,8 @@ export const renderingAnimateSvgWrapper = defineRule<Rule>({
   title: "Animating an SVG directly",
   tags: ["test-noise"],
   severity: "warn",
-  recommendation: "Wrap the SVG: `<motion.div animate={...}><svg>...</svg></motion.div>`",
+  recommendation:
+    "Wrap the SVG in a motion element so animation props apply to a stable wrapper instead of the SVG node itself.",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "svg") return;

@@ -8,12 +8,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const tanstackStartRoutePropertyOrder = defineRule<Rule>({
   id: "tanstack-start-route-property-order",
-  title: "Wrong route property order",
+  title: "Route property order breaks type inference",
   tags: ["test-noise"],
   requires: ["tanstack-start"],
   severity: "error",
   recommendation:
-    "Follow the order: params/validateSearch → loaderDeps → context → beforeLoad → loader → head. See https://tanstack.com/router/latest/docs/eslint/create-route-property-order",
+    "Follow the route property order because TanStack Router's type inference depends on earlier properties feeding later ones.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const optionsObject = getRouteOptionsObject(node);

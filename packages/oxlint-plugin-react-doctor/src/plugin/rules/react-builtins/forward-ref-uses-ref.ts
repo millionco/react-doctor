@@ -16,7 +16,8 @@ export const forwardRefUsesRef = defineRule<Rule>({
   id: "forward-ref-uses-ref",
   title: "forwardRef without ref parameter",
   severity: "warn",
-  recommendation: "Either accept a `ref` parameter, or drop the `forwardRef` wrapper.",
+  recommendation:
+    "Accept the `ref` parameter or drop `forwardRef` so parents are not promised a ref that never reaches the node.",
   category: "Architecture",
   create: (context) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {

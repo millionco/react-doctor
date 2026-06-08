@@ -102,3 +102,31 @@ describe("resolveCliInspectOptions: --no-telemetry alias", () => {
     expect(resolveCliInspectOptions({}, null).noScore).toBe(false);
   });
 });
+
+describe("resolveCliInspectOptions: category filtering", () => {
+  it("canonicalizes a single category case-insensitively", () => {
+    expect(resolveCliInspectOptions({ category: "security" }, null).categoryFilters).toEqual([
+      "Security",
+    ]);
+  });
+
+  it("supports repeated and comma-separated categories", () => {
+    expect(
+      resolveCliInspectOptions({ category: ["security", "Performance, accessibility"] }, null)
+        .categoryFilters,
+    ).toEqual(["Security", "Performance", "Accessibility"]);
+  });
+
+  it("deduplicates repeated categories while keeping order", () => {
+    expect(
+      resolveCliInspectOptions({ category: ["Security", "security", "Performance"] }, null)
+        .categoryFilters,
+    ).toEqual(["Security", "Performance"]);
+  });
+
+  it("rejects an unknown category with the known category list", () => {
+    expect(() => resolveCliInspectOptions({ category: "correctness" }, null)).toThrow(
+      'Unknown category "correctness". Expected one of: Security, Bugs, Performance, Accessibility, Maintainability.',
+    );
+  });
+});

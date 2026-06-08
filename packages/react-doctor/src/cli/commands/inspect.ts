@@ -25,6 +25,7 @@ import { METRIC, STAGED_FILES_TEMP_DIR_PREFIX } from "../utils/constants.js";
 import { recordCount } from "../utils/record-metric.js";
 import { getStagedSourceFiles, materializeStagedFiles } from "../utils/get-staged-files.js";
 import type { InspectFlags } from "../utils/inspect-flags.js";
+import { filterDiagnosticsByCategories } from "../utils/filter-diagnostics-by-categories.js";
 import { handleError, handleUserError } from "../utils/handle-error.js";
 import { isExpectedUserError } from "../utils/is-expected-user-error.js";
 import { handoffToAgent } from "../utils/handoff-to-agent.js";
@@ -50,6 +51,7 @@ import {
   shouldShowAgentInstallHint,
 } from "../utils/prompt-install-setup.js";
 import { resolveCliInspectOptions } from "../utils/resolve-cli-inspect-options.js";
+import type { CliInspectOptions } from "../utils/resolve-cli-inspect-options.js";
 import { resolveDiffMode } from "../utils/resolve-diff-mode.js";
 import { resolveEffectiveDiff } from "../utils/resolve-effective-diff.js";
 import { resolveMergeBaseRef } from "../utils/materialize-baseline-files.js";
@@ -68,6 +70,21 @@ interface CompletedScan {
   result: InspectResult;
 }
 
+const filterCompletedScansByCategories = (
+  completedScans: ReadonlyArray<CompletedScan>,
+  categoryFilters: ReadonlySet<string>,
+): CompletedScan[] => {
+  if (categoryFilters.size === 0) return [...completedScans];
+
+  return completedScans.map((scan) => ({
+    ...scan,
+    result: {
+      ...scan.result,
+      diagnostics: filterDiagnosticsByCategories(scan.result.diagnostics, categoryFilters),
+    },
+  }));
+};
+
 interface FinalizeScansInput {
   readonly diagnostics: Diagnostic[];
   readonly completedScans: CompletedScan[];
@@ -83,6 +100,7 @@ interface FinalizeScansInput {
   readonly isJsonMode: boolean;
   readonly isScoreOnly: boolean;
   readonly flags: InspectFlags;
+  readonly categoryFilters: ReadonlySet<string>;
   readonly userConfig: ReactDoctorConfig | null;
   readonly resolvedDirectory: string;
   readonly startTime: number;
@@ -122,6 +140,10 @@ const finalizeScans = (input: FinalizeScansInput): void => {
     input.completedScans.every((scan) => scan.result.baselineDelta !== undefined);
   const baselineDegraded = input.baselineIntended && !baselineComputed;
   const mode: JsonReportMode = baselineDegraded ? "diff" : input.mode;
+  const jsonCompletedScans = filterCompletedScansByCategories(
+    input.completedScans,
+    input.categoryFilters,
+  );
 
   if (input.isJsonMode) {
     const baseline =
@@ -141,7 +163,7 @@ const finalizeScans = (input: FinalizeScansInput): void => {
         directory: input.resolvedDirectory,
         mode,
         diff: input.diff,
-        scans: input.completedScans,
+        scans: jsonCompletedScans,
         totalElapsedMilliseconds: performance.now() - input.startTime,
         baseline,
       }),
@@ -267,7 +289,8 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       }
     }
 
-    const scanOptions = resolveCliInspectOptions(flags, userConfig);
+    const scanOptions: CliInspectOptions = resolveCliInspectOptions(flags, userConfig);
+    const categoryFilters = new Set(scanOptions.categoryFilters ?? []);
     const skipPrompts = shouldSkipPrompts({ yes: flags.yes, json: flags.json });
 
     if (flags.staged) {
@@ -335,6 +358,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
           isJsonMode,
           isScoreOnly,
           flags,
+          categoryFilters,
           userConfig,
           resolvedDirectory,
           startTime,
@@ -444,6 +468,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       await Effect.runPromise(
         printMultiProjectSummary({
           completedScans,
+          categoryFilters,
           userConfig,
           verbose: Boolean(flags.verbose),
           isOffline: !shouldShowShareLink,
@@ -463,6 +488,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       isJsonMode,
       isScoreOnly,
       flags,
+      categoryFilters,
       userConfig,
       resolvedDirectory,
       startTime,
@@ -473,15 +499,19 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       scanOptions.outputSurface ?? "cli",
       userConfig,
     );
+    const selectedSurfaceDiagnostics = filterDiagnosticsByCategories(
+      surfaceDiagnostics,
+      categoryFilters,
+    );
 
     // After the results print, offer to hand the issues to a coding agent
     // — an interactive select (no flag). Skipped for quiet, skip-prompts,
     // non-TTY, and agent/CI runs (those get the install hint below).
     const canPromptInteractively =
       !isQuiet && !skipPrompts && process.stdout.isTTY === true && !isCiOrCodingAgentEnvironment();
-    if (canPromptInteractively && surfaceDiagnostics.length > 0) {
+    if (canPromptInteractively && selectedSurfaceDiagnostics.length > 0) {
       await handoffToAgent({
-        diagnostics: surfaceDiagnostics,
+        diagnostics: selectedSurfaceDiagnostics,
         projectName: path.basename(resolvedDirectory),
         rootDirectory: resolvedDirectory,
         interactive: true,

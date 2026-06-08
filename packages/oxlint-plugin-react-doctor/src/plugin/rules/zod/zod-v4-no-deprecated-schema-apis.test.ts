@@ -12,7 +12,7 @@ describe("zod-v4-no-deprecated-schema-apis", () => {
     `;
     const result = runRule(zodV4NoDeprecatedSchemaApis, code);
     expect(result.diagnostics).toHaveLength(3);
-    expect(result.diagnostics[0].message).toContain("deprecated or changed");
+    expect(result.diagnostics[0].message).toContain("changed in Zod 4");
     expect(result.diagnostics[0].message).not.toContain("removed");
   });
 

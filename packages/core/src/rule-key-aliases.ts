@@ -96,7 +96,6 @@ const LEGACY_RULE_KEY_TO_NATIVE_RULE_KEY: Readonly<Record<string, string>> = {
   "react/jsx-no-new-function-as-prop": "react-doctor/jsx-no-new-function-as-prop",
   "react/jsx-no-new-object-as-prop": "react-doctor/jsx-no-new-object-as-prop",
   "react/jsx-no-script-url": "react-doctor/jsx-no-script-url",
-  "react/jsx-no-target-blank": "react-doctor/jsx-no-target-blank",
   "react/jsx-no-undef": "react-doctor/jsx-no-undef",
   "react/jsx-no-useless-fragment": "react-doctor/jsx-no-useless-fragment",
   "react/jsx-pascal-case": "react-doctor/jsx-pascal-case",

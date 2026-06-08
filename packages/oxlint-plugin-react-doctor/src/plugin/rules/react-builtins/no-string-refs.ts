@@ -57,10 +57,10 @@ const resolveSettings = (
 //   2. `this.refs.foo` — when used inside a React component's body.
 export const noStringRefs = defineRule<Rule>({
   id: "no-string-refs",
-  title: "Use of string refs",
+  title: "String refs are legacy and fragile",
   severity: "warn",
   recommendation:
-    "Use a callback ref (`ref={(node) => { this.foo = node }}`) or `useRef` instead of string refs.",
+    "Use a callback ref or `useRef` so ref ownership is explicit and not tied to legacy string lookup.",
   create: (context) => {
     const { noTemplateLiterals = false } = resolveSettings(context.settings);
     // Test files routinely use library-specific JSX DSLs whose `ref`

@@ -41,7 +41,7 @@ export const rerenderLazyRefInit = defineRule<Rule>({
   severity: "warn",
   category: "Performance",
   recommendation:
-    "Set it up only once: `const ref = useRef<T | null>(null); if (ref.current === null) ref.current = expensiveCall();`",
+    "Initialize the ref lazily so expensive values are not rebuilt and discarded on every render.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isHookCall(node, "useRef") || !node.arguments?.length) return;

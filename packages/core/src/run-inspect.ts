@@ -19,7 +19,7 @@ import { checkReactNativeProject } from "./check-react-native-project.js";
 import { checkReducedMotion } from "./check-reduced-motion.js";
 import { DEFAULT_SHOW_WARNINGS } from "./constants.js";
 import { highlighter } from "./highlighter.js";
-import { computeJsxIncludePaths } from "./jsx-include-paths.js";
+import { computeExplicitLintIncludePaths } from "./explicit-lint-include-paths.js";
 import { deadCodeMaySurfaceWhenWarningsHidden } from "./utils/dead-code-may-surface.js";
 import {
   NoReactDependency,
@@ -283,13 +283,14 @@ export const runInspect = <HooksR = never>(
         : Effect.succeed(null as string | null),
     );
 
-    const jsxIncludePaths = input.skipJsxIncludeFilter
+    const explicitLintIncludePaths = input.skipJsxIncludeFilter
       ? input.includePaths.length > 0
         ? [...input.includePaths]
         : undefined
-      : computeJsxIncludePaths([...input.includePaths]);
+      : computeExplicitLintIncludePaths([...input.includePaths], project);
     const lintIncludePaths =
-      jsxIncludePaths ?? resolveLintIncludePaths(scanDirectory, resolvedConfig.config);
+      explicitLintIncludePaths ??
+      resolveLintIncludePaths(scanDirectory, resolvedConfig.config, project);
 
     // Absolute paths of the exact file set the linter scans, captured ONLY
     // for the multi-project summary (the sole consumer), which signals via

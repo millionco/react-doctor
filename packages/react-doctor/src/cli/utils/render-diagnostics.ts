@@ -343,20 +343,15 @@ const buildRuleDetailBlock = (
     }
   }
 
-  // Verbose lists every rule & site, so the per-rule impact prose would
-  // just repeat down the whole report — skip it there and let the boxed
-  // frames carry the detail.
-  if (!renderEverySite) {
-    for (const explanationLine of wrapTextToWidth(
-      representative.message,
-      resolveMeasureWidth(TOP_ERROR_DETAIL_INDENT.length),
-      { breakLongWords: false },
-    )) {
-      // The description stays the terminal's default color (not dimmed) —
-      // it's the load-bearing "what & why", so it shouldn't read as muted
-      // secondary text like the file location / code frame below it.
-      lines.push(`${TOP_ERROR_DETAIL_INDENT}${explanationLine}`);
-    }
+  // The description is the load-bearing "what and why" prose. Verbose still
+  // prints it once per rule (not per site), so users do not lose the impact
+  // explanation when they ask for every location.
+  for (const explanationLine of wrapTextToWidth(
+    representative.message,
+    resolveMeasureWidth(TOP_ERROR_DETAIL_INDENT.length),
+    { breakLongWords: false },
+  )) {
+    lines.push(`${TOP_ERROR_DETAIL_INDENT}${explanationLine}`);
   }
 
   // The fix/recommendation, wrapped under the impact (a full sentence is

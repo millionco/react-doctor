@@ -5,7 +5,8 @@ import { isSetStateCallInLifecycle } from "../../utils/is-set-state-in-lifecycle
 import type { Rule } from "../../utils/rule.js";
 
 const LIFECYCLE_NAMES = new Set(["componentDidUpdate"]);
-const MESSAGE = "This can loop forever & freeze the component.";
+const MESSAGE =
+  "Calling setState in componentDidUpdate can trigger another update immediately, loop forever, and freeze the component.";
 
 interface SettingsShape {
   mode?: "allowed" | "disallow-in-func";

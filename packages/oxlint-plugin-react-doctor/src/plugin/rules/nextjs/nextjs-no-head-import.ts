@@ -12,7 +12,7 @@ export const nextjsNoHeadImport = defineRule<Rule>({
   requires: ["nextjs"],
   severity: "error",
   recommendation:
-    "Use the Metadata API instead. Add `export const metadata = { title: '...' }` or `export async function generateMetadata()`",
+    "Use the Metadata API because `next/head` is ignored in the App Router and meta tags will not render.",
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       if (node.source?.value !== "next/head") return;

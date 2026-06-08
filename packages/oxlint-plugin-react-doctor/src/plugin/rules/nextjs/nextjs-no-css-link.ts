@@ -8,12 +8,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const nextjsNoCssLink = defineRule<Rule>({
   id: "nextjs-no-css-link",
-  title: "Stylesheet loaded via link",
+  title: "Linked stylesheet bypasses Next.js CSS optimization",
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "warn",
   recommendation:
-    "Import CSS directly: `import './styles.css'` or use CSS Modules: `import styles from './Button.module.css'`",
+    "Import CSS directly or use CSS Modules so Next.js can bundle, order, and optimize the stylesheet.",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "link") return;
@@ -35,7 +35,8 @@ export const nextjsNoCssLink = defineRule<Rule>({
 
       context.report({
         node,
-        message: 'This <link rel="stylesheet"> loads unbundled, unoptimized CSS.',
+        message:
+          'This <link rel="stylesheet"> bypasses Next.js CSS handling, so the CSS loads unbundled and unoptimized.',
       });
     },
   }),

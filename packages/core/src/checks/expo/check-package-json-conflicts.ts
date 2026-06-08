@@ -18,11 +18,10 @@ export const checkExpoPackageJsonConflicts = (context: ExpoCheckContext): Diagno
   );
   if (conflictingScriptNames.length > 0) {
     const quotedNames = conflictingScriptNames.map((name) => `"${name}"`).join(", ");
-    const shadowsExpoCli = conflictingScriptNames.includes("expo");
     diagnostics.push(
       buildExpoDiagnostic({
         rule: "expo-package-json-conflict",
-        message: `package.json defines ${quotedNames} ${conflictingScriptNames.length === 1 ? "as a script that conflicts" : "as scripts that conflict"} with binaries in node_modules/.bin${shadowsExpoCli ? " — a `expo` script shadows the Expo CLI and will likely cause build failures" : ""}`,
+        message: `package.json defines ${quotedNames} ${conflictingScriptNames.length === 1 ? "as a script that shadows" : "as scripts that shadow"} Expo/React Native binaries in node_modules/.bin, so tooling can run the local script instead of the expected CLI and fail builds.`,
         help: "Rename these scripts so they don't collide with the `expo` / `react-native` binaries",
       }),
     );
@@ -33,7 +32,7 @@ export const checkExpoPackageJsonConflicts = (context: ExpoCheckContext): Diagno
     diagnostics.push(
       buildExpoDiagnostic({
         rule: "expo-package-json-conflict",
-        message: `package.json "name" is "${packageName}", which collides with a dependency of the same name`,
+        message: `package.json "name" is "${packageName}", which collides with a dependency of the same name, so package self-resolution can shadow the dependency and break imports that expect the installed package.`,
         help: "Rename your package so it no longer matches one of its dependencies",
       }),
     );

@@ -178,7 +178,8 @@ export const asyncDeferAwait = defineRule<Rule>({
   title: "await before an early-return guard",
   severity: "warn",
   tags: ["test-noise"],
-  recommendation: "Move the `await` below the early-return guard so the skip path stays fast",
+  recommendation:
+    "Move the `await` below the early-return guard so the skip path stays fast and avoids unnecessary async work.",
   create: (context: RuleContext) => {
     const inspectStatements = (statements: EsTreeNode[]): void => {
       for (let statementIndex = 0; statementIndex < statements.length - 1; statementIndex++) {

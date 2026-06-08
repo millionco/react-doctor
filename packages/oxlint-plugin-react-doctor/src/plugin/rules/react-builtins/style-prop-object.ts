@@ -140,7 +140,8 @@ export const stylePropObject = defineRule<Rule>({
   id: "style-prop-object",
   title: "Style prop is not an object",
   severity: "warn",
-  recommendation: "Pass the `style` prop as `{{ color: 'red' }}` (object literal), not a string.",
+  recommendation:
+    "Pass `style` as an object so React can apply CSS properties instead of ignoring a string style value.",
   category: "Correctness",
   create: (context) => {
     const { allow } = resolveSettings(context.settings);

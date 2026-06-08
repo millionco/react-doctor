@@ -93,12 +93,12 @@ export const noMutableInDeps = defineRule<Rule>({
           if (issue.kind === "ref-current") {
             context.report({
               node: element,
-              message: `Your effect silently never re-runs on "${issue.rootName}.current" because changing a ref doesn't redraw the screen.`,
+              message: `Changing "${issue.rootName}.current" does not re-render the component, so this dependency will not make the effect run again.`,
             });
           } else {
             context.report({
               node: element,
-              message: `Your effect silently never re-runs on "${issue.rootName}.*" because values like \`location.pathname\` can change without redrawing the screen.`,
+              message: `Values like "${issue.rootName}.*" can change without re-rendering the component, so this dependency will not make the effect run again.`,
             });
           }
         }

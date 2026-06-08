@@ -229,10 +229,10 @@ export const effectNeedsCleanup = defineRule<Rule>({
       if (effectHasCleanupReturn(callback, usages)) return;
 
       const firstUsage = usages[0];
-      const verb = firstUsage.kind === "timer" ? "schedules" : "subscribes via";
+      const resourceKind = firstUsage.kind === "timer" ? "timer" : "subscription";
       context.report({
         node,
-        message: `\`${firstUsage.resourceName}(...)\` leaks memory because useEffect ${verb} it but never cleans it up.`,
+        message: `\`${firstUsage.resourceName}\` creates a ${resourceKind} in useEffect without returning cleanup. Return a cleanup function so it does not leak after unmount.`,
       });
     },
   }),

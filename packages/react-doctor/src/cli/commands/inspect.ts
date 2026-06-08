@@ -85,22 +85,6 @@ const filterCompletedScansByCategories = (
   }));
 };
 
-const filterCompletedScansForCliView = (
-  completedScans: ReadonlyArray<CompletedScan>,
-  userConfig: ReactDoctorConfig | null,
-  categoryFilters: ReadonlySet<string>,
-): CompletedScan[] =>
-  completedScans.map((scan) => ({
-    ...scan,
-    result: {
-      ...scan.result,
-      diagnostics: filterDiagnosticsByCategories(
-        filterDiagnosticsForSurface([...scan.result.diagnostics], "cli", userConfig),
-        categoryFilters,
-      ),
-    },
-  }));
-
 interface FinalizeScansInput {
   readonly diagnostics: Diagnostic[];
   readonly completedScans: CompletedScan[];
@@ -483,11 +467,8 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         !scanOptions.noScore && (userConfig?.share ?? true) && !scanOptions.isCi;
       await Effect.runPromise(
         printMultiProjectSummary({
-          completedScans: filterCompletedScansForCliView(
-            completedScans,
-            userConfig,
-            categoryFilters,
-          ),
+          completedScans,
+          categoryFilters,
           userConfig,
           verbose: Boolean(flags.verbose),
           isOffline: !shouldShowShareLink,

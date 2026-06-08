@@ -773,7 +773,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
     // show the payoff as a ghost gain segment.
     const potentialScore = score
       ? yield* Effect.promise(() =>
-          computeProjectedScore([...printedDiagnostics], [...printedDiagnostics], score),
+          computeProjectedScore([...printedDiagnostics], [...surfaceDiagnostics], score),
         )
       : null;
 

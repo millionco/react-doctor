@@ -12,6 +12,7 @@ import {
   SUPPLY_CHAIN_CATEGORY,
   SUPPLY_CHAIN_DEFAULT_MIN_SCORE,
   SUPPLY_CHAIN_FETCH_CONCURRENCY,
+  SUPPLY_CHAIN_IGNORED_PACKAGES,
   SUPPLY_CHAIN_PLUGIN,
   SUPPLY_CHAIN_RULE,
 } from "./constants.js";
@@ -147,6 +148,7 @@ const collectDependenciesToScore = (
 
   const dependencies: DependencyToScore[] = [];
   for (const [name, spec] of specsByName) {
+    if (SUPPLY_CHAIN_IGNORED_PACKAGES.has(name)) continue;
     const version = resolveConcreteVersion(spec);
     if (version === null) continue;
     const location = locateDependencyKey(packageJsonText, name);

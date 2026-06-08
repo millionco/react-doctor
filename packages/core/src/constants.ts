@@ -380,3 +380,10 @@ export const SOCKET_SCORE_SCALE = 100;
 // large dependency list doesn't open hundreds of sockets or trip Socket's
 // per-route rate limit.
 export const SUPPLY_CHAIN_FETCH_CONCURRENCY = 8;
+
+// Packages excluded from the Socket supply-chain check (the gate and the
+// `--sfw` listing). react-doctor already covers these frameworks' specific
+// risks through dedicated rules — e.g. Next.js via the server-components /
+// Next rule family — so a low Socket score would be redundant noise rather
+// than an actionable, distinct supply-chain signal.
+export const SUPPLY_CHAIN_IGNORED_PACKAGES: ReadonlySet<string> = new Set(["next"]);

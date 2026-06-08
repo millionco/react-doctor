@@ -1,3 +1,4 @@
+import * as fs from "node:fs";
 import * as path from "node:path";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -30,7 +31,14 @@ interface ResolvedSupplyChainOptions {
 
 interface DependencyToScore {
   readonly name: string;
+  /** Concrete version queried against Socket (resolved from the spec). */
   readonly version: string;
+  /** The range/spec exactly as declared in package.json (e.g. `^16.2.4`). */
+  readonly spec: string;
+  /** 1-based line of the dependency's key in package.json; `0` if not located. */
+  readonly line: number;
+  /** 1-based column of the dependency's key in package.json; `0` if not located. */
+  readonly column: number;
 }
 
 // The subset of a Socket artifact's score the check reads. Socket returns
@@ -99,8 +107,30 @@ const resolveConcreteVersion = (spec: string): string | null => {
   return match ? match[0] : null;
 };
 
+// Locates the 1-based line/column of a dependency's key in the raw
+// package.json text so the diagnostic anchors to the exact entry the user
+// must edit (rather than the top of the file). Matches the literal `"name"`
+// followed by a colon, so it points at the key rather than any value that
+// happens to contain the name, and so `react` never matches `react-dom`.
+const locateDependencyKey = (
+  packageJsonText: string,
+  name: string,
+): { line: number; column: number } | null => {
+  const needle = `"${name}"`;
+  const lines = packageJsonText.split(/\r?\n/);
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const lineText = lines[lineIndex];
+    const columnIndex = lineText.indexOf(needle);
+    if (columnIndex < 0) continue;
+    if (!/^\s*:/.test(lineText.slice(columnIndex + needle.length))) continue;
+    return { line: lineIndex + 1, column: columnIndex + 1 };
+  }
+  return null;
+};
+
 const collectDependenciesToScore = (
   packageJson: PackageJson,
+  packageJsonText: string,
   includeDevDependencies: boolean,
 ): DependencyToScore[] => {
   const specsByName = new Map<string, string>();
@@ -116,9 +146,28 @@ const collectDependenciesToScore = (
   const dependencies: DependencyToScore[] = [];
   for (const [name, spec] of specsByName) {
     const version = resolveConcreteVersion(spec);
-    if (version !== null) dependencies.push({ name, version });
+    if (version === null) continue;
+    const location = locateDependencyKey(packageJsonText, name);
+    dependencies.push({
+      name,
+      version,
+      spec,
+      line: location?.line ?? 0,
+      column: location?.column ?? 0,
+    });
   }
   return dependencies;
+};
+
+// Reads the package.json text for line-location; tolerates a missing /
+// unreadable file (the parsed object is read separately and resiliently by
+// `readPackageJson`, which returns `{}` on the same failures).
+const readPackageJsonText = (packageJsonPath: string): string => {
+  try {
+    return fs.readFileSync(packageJsonPath, "utf-8");
+  } catch {
+    return "";
+  }
 };
 
 const toPurl = (dependency: DependencyToScore): string =>
@@ -186,11 +235,13 @@ const buildLowScoreDiagnostic = (
     plugin: SUPPLY_CHAIN_PLUGIN,
     rule: SUPPLY_CHAIN_RULE,
     severity: options.severity,
-    message: `\`${dependency.name}@${dependency.version}\` has a Socket supply-chain score of ${overall}/${SOCKET_SCORE_SCALE} (below the minimum of ${options.minScore}). Lowest area: ${lowestAxis.label} (${lowestAxis.value}/${SOCKET_SCORE_SCALE}).`,
-    help: `Review ${dependency.name} on Socket: ${packagePageUrl}. Pin a safer version, replace the dependency, or raise \`supplyChain.minScore\` if you have vetted and accepted this package.`,
+    message: `\`${dependency.name}\` (declared in package.json as "${dependency.spec}", scored at ${dependency.version}) has a Socket supply-chain score of ${overall}/${SOCKET_SCORE_SCALE} (below the minimum of ${options.minScore}). Lowest area: ${lowestAxis.label} (${lowestAxis.value}/${SOCKET_SCORE_SCALE}).`,
+    help: `Update or replace the \`"${dependency.name}": "${dependency.spec}"\` entry in package.json. Review ${dependency.name} on Socket: ${packagePageUrl}. Or raise \`supplyChain.minScore\` if you have vetted and accepted this package.`,
     url: packagePageUrl,
-    line: 0,
-    column: 0,
+    // Anchor to the dependency's declaration so the CLI / editor points at the
+    // exact entry to change rather than the top of the file.
+    line: dependency.line,
+    column: dependency.column,
     category: SUPPLY_CHAIN_CATEGORY,
   };
 };
@@ -225,8 +276,13 @@ export const collectSupplyChainScores = (
 ): Effect.Effect<DependencyScore[]> =>
   Effect.gen(function* () {
     const options = resolveOptions(input.userConfig);
-    const packageJson = readPackageJson(path.join(input.rootDirectory, "package.json"));
-    const dependencies = collectDependenciesToScore(packageJson, options.includeDevDependencies);
+    const packageJsonPath = path.join(input.rootDirectory, "package.json");
+    const packageJson = readPackageJson(packageJsonPath);
+    const dependencies = collectDependenciesToScore(
+      packageJson,
+      readPackageJsonText(packageJsonPath),
+      options.includeDevDependencies,
+    );
     if (dependencies.length === 0) return [];
 
     const scores = yield* Effect.forEach(dependencies, fetchSocketScore, {
@@ -267,8 +323,13 @@ export const collectSupplyChainScores = (
 export const checkSupplyChain = (input: SupplyChainCheckInput): Effect.Effect<Diagnostic[]> =>
   Effect.gen(function* () {
     const options = resolveOptions(input.userConfig);
-    const packageJson = readPackageJson(path.join(input.rootDirectory, "package.json"));
-    const dependencies = collectDependenciesToScore(packageJson, options.includeDevDependencies);
+    const packageJsonPath = path.join(input.rootDirectory, "package.json");
+    const packageJson = readPackageJson(packageJsonPath);
+    const dependencies = collectDependenciesToScore(
+      packageJson,
+      readPackageJsonText(packageJsonPath),
+      options.includeDevDependencies,
+    );
     if (dependencies.length === 0) return [];
 
     const scores = yield* Effect.forEach(dependencies, fetchSocketScore, {

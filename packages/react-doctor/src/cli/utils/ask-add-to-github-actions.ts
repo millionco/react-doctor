@@ -1,4 +1,4 @@
-import { CI_URL, highlighter } from "@react-doctor/core";
+import { GITHUB_ACTIONS_SETUP_URL, highlighter } from "@react-doctor/core";
 import { cliLogger as logger } from "./cli-logger.js";
 import { CI_TRUST_COMPANIES } from "./constants.js";
 import { openUrl } from "./open-url.js";
@@ -52,7 +52,7 @@ export const askAddToGitHubActions = async (
           },
           {
             title: "Learn more",
-            description: highlighter.info(CI_URL),
+            description: "Read docs",
             value: CI_LEARN_MORE_CHOICE,
           },
           {
@@ -71,11 +71,11 @@ export const askAddToGitHubActions = async (
     if (ciChoice === CI_NO_CHOICE) return "no";
 
     // CI_LEARN_MORE_CHOICE: open the docs and loop back to the question.
-    const opened = openUrl(CI_URL);
+    const opened = openUrl(GITHUB_ACTIONS_SETUP_URL);
     logger.log(
       opened
-        ? `Opened ${highlighter.info(CI_URL)} in your browser.`
-        : `Visit ${highlighter.info(CI_URL)} to learn more.`,
+        ? `Opened ${highlighter.info(GITHUB_ACTIONS_SETUP_URL)} in your browser.`
+        : `Visit ${highlighter.info(GITHUB_ACTIONS_SETUP_URL)} to learn more.`,
     );
     logger.break();
   }

@@ -82,6 +82,11 @@ export const SHARE_BASE_URL = "https://react.doctor/share";
 // agent-handoff prompt points the agent here too.
 export const CI_URL = "https://react.doctor/ci";
 
+// Canonical GitHub Actions setup guide. The interactive "Add React Doctor to
+// GitHub Actions?" prompt's "Read docs" choice opens this directly.
+export const GITHUB_ACTIONS_SETUP_URL =
+  "https://www.react.doctor/docs/ci-and-prs/github-actions-setup";
+
 // Root of the documentation site. Guides for CI/CD setup, config files (to
 // suppress rules), and diff/PR scanning live under it; the CLI links here
 // from its closing "learn more" note.

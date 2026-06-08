@@ -7,10 +7,7 @@ describe("react-builtins/no-unknown-property — regressions", () => {
   // from DOM_PROPERTY_NAMES even though `onGotPointerCaptureCapture`
   // was present, producing false positives on the bubbling form.
   it("does not flag onGotPointerCapture", () => {
-    const result = runRule(
-      noUnknownProperty,
-      `<div onGotPointerCapture={x} />`,
-    );
+    const result = runRule(noUnknownProperty, `<div onGotPointerCapture={x} />`);
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
   });

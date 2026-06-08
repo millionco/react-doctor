@@ -19,32 +19,23 @@ import { walkAst } from "./walk-ast.js";
 const IMAGE_RESPONSE_MODULES: ReadonlyArray<string> = ["next/og", "@vercel/og"];
 const SATORI_MODULE = "satori";
 
-const generatedImageJsxCache = new WeakMap<
-  EsTreeNodeOfType<"Program">,
-  WeakSet<EsTreeNode>
->();
+const generatedImageJsxCache = new WeakMap<EsTreeNodeOfType<"Program">, WeakSet<EsTreeNode>>();
 
 type GeneratedImageRendererCall =
   | EsTreeNodeOfType<"CallExpression">
   | EsTreeNodeOfType<"NewExpression">;
 
-export const isGeneratedImageRenderFilename = (
-  rawFilename: string | undefined,
-): boolean => {
+export const isGeneratedImageRenderFilename = (rawFilename: string | undefined): boolean => {
   if (!rawFilename) return false;
   const filename = normalizeFilename(rawFilename);
   return isNextjsMetadataImageRouteFilename(filename);
 };
 
-const isImageResponseCallee = (
-  contextNode: EsTreeNode,
-  callee: EsTreeNode,
-): boolean => {
+const isImageResponseCallee = (contextNode: EsTreeNode, callee: EsTreeNode): boolean => {
   if (isNodeOfType(callee, "Identifier")) {
     return IMAGE_RESPONSE_MODULES.some(
       (moduleSource) =>
-        getImportedNameFromModule(contextNode, callee.name, moduleSource) ===
-        "ImageResponse",
+        getImportedNameFromModule(contextNode, callee.name, moduleSource) === "ImageResponse",
     );
   }
 
@@ -53,55 +44,31 @@ const isImageResponseCallee = (
   const namespaceIdentifierName = callee.object.name;
 
   return IMAGE_RESPONSE_MODULES.some((moduleSource) =>
-    isNamespaceImportFromModule(
-      contextNode,
-      namespaceIdentifierName,
-      moduleSource,
-    ),
+    isNamespaceImportFromModule(contextNode, namespaceIdentifierName, moduleSource),
   );
 };
 
-const isSatoriCallee = (
-  contextNode: EsTreeNode,
-  callee: EsTreeNode,
-): boolean => {
+const isSatoriCallee = (contextNode: EsTreeNode, callee: EsTreeNode): boolean => {
   if (!isNodeOfType(callee, "Identifier")) return false;
-  if (
-    getImportedNameFromModule(contextNode, callee.name, SATORI_MODULE) ===
-    "satori"
-  )
-    return true;
+  if (getImportedNameFromModule(contextNode, callee.name, SATORI_MODULE) === "satori") return true;
   return isDefaultImportFromModule(contextNode, callee.name, SATORI_MODULE);
 };
 
-const isGeneratedImageRendererCall = (
-  node: EsTreeNode,
-): node is GeneratedImageRendererCall => {
-  if (
-    !isNodeOfType(node, "CallExpression") &&
-    !isNodeOfType(node, "NewExpression")
-  ) {
+const isGeneratedImageRendererCall = (node: EsTreeNode): node is GeneratedImageRendererCall => {
+  if (!isNodeOfType(node, "CallExpression") && !isNodeOfType(node, "NewExpression")) {
     return false;
   }
 
-  if (
-    !isNodeOfType(node.callee, "Identifier") &&
-    !isNodeOfType(node.callee, "MemberExpression")
-  ) {
+  if (!isNodeOfType(node.callee, "Identifier") && !isNodeOfType(node.callee, "MemberExpression")) {
     return false;
   }
 
-  return (
-    isImageResponseCallee(node, node.callee) ||
-    isSatoriCallee(node, node.callee)
-  );
+  return isImageResponseCallee(node, node.callee) || isSatoriCallee(node, node.callee);
 };
 
 const isComponentIdentifierName = (name: string): boolean => {
   const firstCharacter = name[0];
-  return Boolean(
-    firstCharacter && firstCharacter === firstCharacter.toUpperCase(),
-  );
+  return Boolean(firstCharacter && firstCharacter === firstCharacter.toUpperCase());
 };
 
 const isFunctionLike = (
@@ -112,9 +79,9 @@ const isFunctionLike = (
   | EsTreeNodeOfType<"ArrowFunctionExpression"> =>
   Boolean(
     node &&
-      (isNodeOfType(node, "FunctionDeclaration") ||
-        isNodeOfType(node, "FunctionExpression") ||
-        isNodeOfType(node, "ArrowFunctionExpression")),
+    (isNodeOfType(node, "FunctionDeclaration") ||
+      isNodeOfType(node, "FunctionExpression") ||
+      isNodeOfType(node, "ArrowFunctionExpression")),
   );
 
 const markFunctionReturnJsx = (
@@ -127,11 +94,7 @@ const markFunctionReturnJsx = (
   if (isNodeOfType(functionNode, "ArrowFunctionExpression")) {
     const body = stripParenExpression(functionNode.body);
     if (!isNodeOfType(body, "BlockStatement")) {
-      markGeneratedImageExpression(
-        body,
-        generatedImageJsxNodes,
-        visitedComponentNames,
-      );
+      markGeneratedImageExpression(body, generatedImageJsxNodes, visitedComponentNames);
       return;
     }
   }
@@ -157,8 +120,7 @@ const markComponentRenderJsx = (
   visitedComponentNames: Set<string>,
 ): void => {
   const tagName = flattenJsxName(openingElement.name);
-  if (!tagName || tagName.includes(".") || !isComponentIdentifierName(tagName))
-    return;
+  if (!tagName || tagName.includes(".") || !isComponentIdentifierName(tagName)) return;
   if (visitedComponentNames.has(tagName)) return;
 
   const binding = findVariableInitializer(openingElement, tagName);
@@ -180,11 +142,7 @@ const markJsxSubtree = (
   walkAst(node, (descendantNode) => {
     if (!isNodeOfType(descendantNode, "JSXOpeningElement")) return;
     generatedImageJsxNodes.add(descendantNode);
-    markComponentRenderJsx(
-      descendantNode,
-      generatedImageJsxNodes,
-      visitedComponentNames,
-    );
+    markComponentRenderJsx(descendantNode, generatedImageJsxNodes, visitedComponentNames);
   });
 };
 
@@ -199,30 +157,19 @@ const markGeneratedImageExpression = (
     isNodeOfType(unwrappedExpression, "JSXElement") ||
     isNodeOfType(unwrappedExpression, "JSXFragment")
   ) {
-    markJsxSubtree(
-      unwrappedExpression,
-      generatedImageJsxNodes,
-      visitedComponentNames,
-    );
+    markJsxSubtree(unwrappedExpression, generatedImageJsxNodes, visitedComponentNames);
     return;
   }
 
   if (isFunctionLike(unwrappedExpression)) {
-    markFunctionReturnJsx(
-      unwrappedExpression,
-      generatedImageJsxNodes,
-      visitedComponentNames,
-    );
+    markFunctionReturnJsx(unwrappedExpression, generatedImageJsxNodes, visitedComponentNames);
     return;
   }
 
   if (isNodeOfType(unwrappedExpression, "Identifier")) {
     if (visitedComponentNames.has(unwrappedExpression.name)) return;
     visitedComponentNames.add(unwrappedExpression.name);
-    const binding = findVariableInitializer(
-      unwrappedExpression,
-      unwrappedExpression.name,
-    );
+    const binding = findVariableInitializer(unwrappedExpression, unwrappedExpression.name);
     if (!binding?.initializer) return;
     markGeneratedImageExpression(
       stripParenExpression(binding.initializer),
@@ -250,10 +197,7 @@ const collectGeneratedImageJsxNodes = (
   return generatedImageJsxNodes;
 };
 
-export const isGeneratedImageRenderContext = (
-  context: RuleContext,
-  node?: EsTreeNode,
-): boolean => {
+export const isGeneratedImageRenderContext = (context: RuleContext, node?: EsTreeNode): boolean => {
   if (isGeneratedImageRenderFilename(context.filename)) return true;
   if (!node) return false;
 

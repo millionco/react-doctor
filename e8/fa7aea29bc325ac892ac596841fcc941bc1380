@@ -1,0 +1,24 @@
+packages/react-doctor/src/cli/utils/render-diagnostics.ts
+  s_ba3c804037a5b7::t_aaef9ea27f4481 207-208
+  s_ba3c804037a5b7::t_950c56601612d6 356-357
+packages/react-doctor/tests/e2e/terminal-visuals.test.ts
+  s_ba3c804037a5b7::t_dab5835383bf4f 429-430
+packages/core/tests/check-dead-code.test.ts
+  s_ba3c804037a5b7::t_41ba65d3f71aac 236
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "e8fa7aea29bc325ac892ac596841fcc941bc1380",
+  "prompts": {},
+  "sessions": {
+    "s_ba3c804037a5b7": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "5d3f21a8-64ba-4cbe-ab06-ea3618589cd2",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

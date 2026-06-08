@@ -225,7 +225,7 @@ export const parseOxlintOutput = (
   }
 
   // HACK: oxlint reports diagnostics for every JS/TS extension it
-  // scanned (`.ts`, `.tsx`, `.js`, `.jsx`). The previous filter only
+  // scanned (`.ts`, `.tsx`, `.js`, `.jsx`, `.mts`, `.mjs`). The previous filter only
   // kept `.tsx` / `.jsx` — fine when react-doctor's curated rules were
   // the only sources (they're React-specific anyway), but adopted
   // user rules like `eslint/no-debugger` or `unicorn/*` typically
@@ -233,7 +233,7 @@ export const parseOxlintOutput = (
   // erased their score impact. `isLintableSourceFile` matches the same
   // extensions we count as source files everywhere else, and also drops
   // generated bundler output (`*.iife.js`, `*.umd.js`, `*.global.js`,
-  // `*.min.js`) so a stray bundle that slipped past file discovery can't
+  // `*.min.js`, plus the `.mjs` variants) so a stray bundle that slipped past file discovery can't
   // pollute the report.
   // The content sniff additionally drops minified files that carry an
   // ordinary extension (e.g. a one-line `public/inject.js`) — these reach

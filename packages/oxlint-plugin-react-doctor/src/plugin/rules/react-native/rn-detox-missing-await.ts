@@ -134,7 +134,7 @@ export const rnDetoxMissingAwait = defineRule<Rule>({
           context.report({
             node,
             message:
-              "This Detox `waitFor(...)` chain isn't awaited, so the test can continue before the condition settles. Prepend `await`.",
+              "This Detox `waitFor` chain isn't awaited, so the test can continue before the condition settles. Prepend `await`.",
           });
           return;
         }
@@ -143,7 +143,7 @@ export const rnDetoxMissingAwait = defineRule<Rule>({
           context.report({
             node,
             message:
-              "This Detox `expect(element(...))` assertion isn't awaited, so the test can pass or fail before the assertion settles. Prepend `await`.",
+              "This Detox `expect(element)` assertion isn't awaited, so the test can pass or fail before the assertion settles. Prepend `await`.",
           });
         }
       },

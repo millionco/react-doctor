@@ -343,7 +343,7 @@ const buildRuleDetailBlock = (
     }
   }
 
-  // The description is the load-bearing "what & why" prose. Verbose still
+  // The description is the load-bearing "what and why" prose. Verbose still
   // prints it once per rule (not per site), so users do not lose the impact
   // explanation when they ask for every location.
   for (const explanationLine of wrapTextToWidth(

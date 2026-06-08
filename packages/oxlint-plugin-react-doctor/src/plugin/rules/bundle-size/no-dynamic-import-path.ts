@@ -29,7 +29,7 @@ export const noDynamicImportPath = defineRule<Rule>({
         context.report({
           node,
           message:
-            "This can stay in the main bundle because the bundler cannot code-split a dynamic import path with `${...}`. Use a plain string path instead.",
+            "This can stay in the main bundle because the bundler cannot code-split a dynamic import path with `${dynamic_path}`. Use a plain string path instead.",
         });
       }
     },

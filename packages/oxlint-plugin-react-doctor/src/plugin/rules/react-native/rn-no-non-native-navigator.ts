@@ -35,7 +35,7 @@ export const rnNoNonNativeNavigator = defineRule<Rule>({
       if (!replacement) return;
       context.report({
         node,
-        message: `Your users get JS-driven transitions and gestures from ${source}, instead of platform-native navigation behavior.`,
+        message: `Users get JS-driven transitions and gestures from ${source}, instead of platform-native navigation behavior.`,
       });
     },
   }),

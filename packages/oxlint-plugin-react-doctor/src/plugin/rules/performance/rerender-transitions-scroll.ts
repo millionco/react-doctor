@@ -91,7 +91,7 @@ export const rerenderTransitionsScroll = defineRule<Rule>({
 
       context.report({
         node: setStateCall,
-        message: `This can make scrolling stutter because setState in a "${eventName}" handler redraws the screen many times per second. Wrap it in startTransition, use useDeferredValue, or keep the value in a ref and throttle with requestAnimationFrame.`,
+        message: `This can make scrolling stutter because setState in a "${eventName}" handler redraws on every event. Wrap it in startTransition, use useDeferredValue, or keep the value in a ref and throttle with requestAnimationFrame.`,
       });
     },
   }),

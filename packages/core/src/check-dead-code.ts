@@ -504,7 +504,7 @@ export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diag
       plugin: DEAD_CODE_PLUGIN,
       rule: "circular-dependency",
       severity: "warning",
-      message: `Circular import cycle: ${cycle.files.map(toRelative).join(" → ")} — modules in the cycle can observe partially initialized exports, causing order-dependent bugs.`,
+      message: `Circular import cycle: ${cycle.files.map(toRelative).join(" → ")}. Modules in the cycle can observe partially initialized exports, causing order-dependent bugs.`,
       help: "Break the cycle by extracting the shared code into a third module that both files import.",
       line: 0,
       column: 0,

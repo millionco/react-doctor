@@ -65,42 +65,42 @@ const FLAGGED_DEPENDENCIES: ReadonlyArray<FlaggedDependency> = [
     packageName: "expo-modules-autolinking",
     rule: "expo-no-redundant-dependency",
     message:
-      '"expo-modules-autolinking" should not be a direct dependency — Expo pins the compatible version through the SDK, and a direct entry can drift to a version that breaks prebuild, Metro, or native builds',
+      '"expo-modules-autolinking" should not be a direct dependency. Expo pins the compatible version through the SDK, and a direct entry can drift to a version that breaks prebuild, Metro, or native builds',
     help: "Remove `expo-modules-autolinking` from your package.json",
   },
   {
     packageName: "expo-dev-launcher",
     rule: "expo-no-redundant-dependency",
     message:
-      '"expo-dev-launcher" should not be a direct dependency — `expo-dev-client` pins the compatible launcher, and a direct entry can drift to a version that breaks native builds',
+      '"expo-dev-launcher" should not be a direct dependency. `expo-dev-client` pins the compatible launcher, and a direct entry can drift to a version that breaks native builds',
     help: "Remove `expo-dev-launcher` and depend on `expo-dev-client` instead",
   },
   {
     packageName: "expo-dev-menu",
     rule: "expo-no-redundant-dependency",
     message:
-      '"expo-dev-menu" should not be a direct dependency — `expo-dev-client` pins the compatible dev menu, and a direct entry can drift to a version that breaks native builds',
+      '"expo-dev-menu" should not be a direct dependency. `expo-dev-client` pins the compatible dev menu, and a direct entry can drift to a version that breaks native builds',
     help: "Remove `expo-dev-menu` and depend on `expo-dev-client` instead",
   },
   {
     packageName: "expo-modules-core",
     rule: "expo-no-redundant-dependency",
     message:
-      '"expo-modules-core" should not be a direct dependency — Expo pins the compatible native core, and a direct entry can drift to a version that breaks prebuild or native builds',
+      '"expo-modules-core" should not be a direct dependency. Expo pins the compatible native core, and a direct entry can drift to a version that breaks prebuild or native builds',
     help: "Remove `expo-modules-core` from your package.json and import from `expo` instead",
   },
   {
     packageName: "@expo/metro-config",
     rule: "expo-no-redundant-dependency",
     message:
-      '"@expo/metro-config" should not be a direct dependency — Expo pins the compatible Metro config, and a direct entry can drift to a version that breaks bundling',
+      '"@expo/metro-config" should not be a direct dependency. Expo pins the compatible Metro config, and a direct entry can drift to a version that breaks bundling',
     help: "Remove `@expo/metro-config` and import `expo/metro-config` in your metro.config.js",
   },
   {
     packageName: "@types/react-native",
     rule: "expo-no-redundant-dependency",
     message:
-      '"@types/react-native" should not be installed — React Native ships its own types since SDK 48, so the extra package can introduce duplicate or stale type definitions',
+      '"@types/react-native" should not be installed. React Native ships its own types since SDK 48, so the extra package can introduce duplicate or stale type definitions',
     help: "Remove `@types/react-native` from your package.json",
     minSdkMajor: 48,
   },
@@ -108,7 +108,7 @@ const FLAGGED_DEPENDENCIES: ReadonlyArray<FlaggedDependency> = [
     packageName: "@expo/config-plugins",
     rule: "expo-no-redundant-dependency",
     message:
-      '"@expo/config-plugins" should not be a direct dependency — Expo pins the compatible config-plugin API, and a direct entry can drift to a version that breaks prebuild',
+      '"@expo/config-plugins" should not be a direct dependency. Expo pins the compatible config-plugin API, and a direct entry can drift to a version that breaks prebuild',
     help: "Remove `@expo/config-plugins`; config-plugin authors should import from `expo/config-plugins`. See https://github.com/expo/expo/pull/18855",
     minSdkMajor: 48,
   },
@@ -116,7 +116,7 @@ const FLAGGED_DEPENDENCIES: ReadonlyArray<FlaggedDependency> = [
     packageName: "@expo/prebuild-config",
     rule: "expo-no-redundant-dependency",
     message:
-      '"@expo/prebuild-config" should not be a direct dependency — Expo pins the compatible prebuild config, and a direct entry can drift to a version that breaks prebuild',
+      '"@expo/prebuild-config" should not be a direct dependency. Expo pins the compatible prebuild config, and a direct entry can drift to a version that breaks prebuild',
     help: "Remove `@expo/prebuild-config` from your package.json",
     minSdkMajor: 53,
   },

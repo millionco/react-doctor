@@ -174,7 +174,7 @@ export const jsxHandlerNames = defineRule<Rule>({
   // isn't an event handler. Default off.
   defaultEnabled: false,
   recommendation:
-    "Use the `on…` prefix for event-handler props and `handle…` for handlers so event flow is easy to trace.",
+    "Use the `on…` prefix for event-handler props and `handle…` for handlers so readers can trace event flow.",
   category: "Architecture",
   create: (context) => {
     const settings = resolveSettings(context.settings);

@@ -11,7 +11,7 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
 
 const MISSING_ALT_PROP =
-  'Screen reader users cannot access this image without `alt`. Add `alt="..."`, or `alt=""` if it is decorative.';
+  'Screen reader users cannot access this image without `alt`. Add `alt="image_description"`, or `alt=""` if it is decorative.';
 const MISSING_ALT_VALUE =
   'Screen reader users cannot access this image because its `alt` is empty or invalid. Add a short description, or `alt=""` if it is decorative.';
 const ARIA_LABEL_VALUE =

@@ -27,7 +27,7 @@ export const rnBottomSheetPreferNative = defineRule<Rule>({
       if (typeof source !== "string" || !JS_BOTTOM_SHEET_PACKAGES.has(source)) return;
       context.report({
         node,
-        message: `Your users get JS-driven sheet gestures and presentation with ${source}, instead of the platform-native formSheet behavior.`,
+        message: `Users get JS-driven sheet gestures and presentation with ${source}, instead of the platform-native formSheet behavior.`,
       });
     },
   }),

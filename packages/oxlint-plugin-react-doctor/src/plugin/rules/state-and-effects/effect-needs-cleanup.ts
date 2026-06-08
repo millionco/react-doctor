@@ -232,7 +232,7 @@ export const effectNeedsCleanup = defineRule<Rule>({
       const resourceKind = firstUsage.kind === "timer" ? "timer" : "subscription";
       context.report({
         node,
-        message: `\`${firstUsage.resourceName}(...)\` creates a ${resourceKind} in useEffect without returning cleanup. Return a cleanup function so it does not leak after unmount.`,
+        message: `\`${firstUsage.resourceName}\` creates a ${resourceKind} in useEffect without returning cleanup. Return a cleanup function so it does not leak after unmount.`,
       });
     },
   }),

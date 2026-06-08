@@ -1,0 +1,23 @@
+.changeset/warning-tail-dependency-names.md
+  s_ba3c804037a5b7::t_3538f521169fa9 7
+packages/core/src/check-dead-code.ts
+  s_ba3c804037a5b7::t_1c755b5bb901df 487-490,496-497
+packages/core/tests/check-dead-code.test.ts
+  s_ba3c804037a5b7::t_7c9e712d96a317 236-237,241,243,246
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "a850bd58801db050acc325eb67ea7f0869d0568a",
+  "prompts": {},
+  "sessions": {
+    "s_ba3c804037a5b7": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "5d3f21a8-64ba-4cbe-ab06-ea3618589cd2",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

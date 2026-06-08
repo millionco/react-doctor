@@ -32,9 +32,10 @@ const assertSkillManifestParseable = (manifestPath: string): void => {
   }
 };
 
-// Ship every skill directory under `skills/` (react-doctor + doctor-explain
-// today) so `react-doctor install` can install them all. Each is validated
-// at build time so a broken SKILL.md is caught here, not at install time.
+// Ship every skill directory under `skills/` (the `react-doctor` skill and
+// its `references/` today) so `react-doctor install` can install them all.
+// Each is validated at build time so a broken SKILL.md is caught here, not
+// at install time.
 const copySkillsToDist = () => {
   const skillsRoot = path.resolve(packageRoot, "../../skills");
   const distSkillsRoot = path.resolve(packageRoot, "dist/skills");

@@ -200,11 +200,16 @@ const checkNextjsAdvisory = (version: string): Diagnostic[] => {
  * security advisory — primarily the critical unauthenticated RCE
  * (CVE-2025-55182), plus the later high-severity DoS (CVE-2026-23870).
  *
- * Next.js vendors its own RSC runtime, so a Next.js project is checked by its
- * `next` version (the fix is a Next.js bump); every other framework or bundler
- * — Vite, Parcel, React Router, Waku, RedwoodSDK — is checked by the resolved
- * version of its `react-server-dom-*` package. Pure client-side React apps
- * (no RSC packages, no Next.js) are not affected and stay quiet.
+ * Next.js vendors its own RSC runtime, so when `next` is installed it is
+ * checked by its `next` version (the fix is a Next.js bump) and the standalone
+ * `react-server-dom-*` check is skipped — Next governs that runtime. Dispatch
+ * keys on whether `next` actually resolves in any candidate directory rather
+ * than the root framework classification, so a monorepo whose root is Vite (or
+ * unknown) but whose workspace installs Next.js is still covered. Every other
+ * framework or bundler — Vite, Parcel, React Router, Waku, RedwoodSDK — is
+ * checked by the resolved version of its `react-server-dom-*` package. Pure
+ * client-side React apps (no RSC packages, no Next.js) are not affected and
+ * stay quiet.
  */
 export const checkReactServerComponentsAdvisory = (
   scanDirectory: string,
@@ -217,15 +222,8 @@ export const checkReactServerComponentsAdvisory = (
     ...new Set([scanDirectory, project.rootDirectory, ...workspaceDirectories]),
   ];
 
-  const isNextjsProject = project.framework === "nextjs" || project.nextjsVersion !== null;
-  if (isNextjsProject) {
-    const nextVersion = resolveInstalledVersion(
-      candidateDirectories,
-      "next",
-      project.nextjsVersion,
-    );
-    return nextVersion === null ? [] : checkNextjsAdvisory(nextVersion);
-  }
+  const nextVersion = resolveInstalledVersion(candidateDirectories, "next", project.nextjsVersion);
+  if (nextVersion !== null) return checkNextjsAdvisory(nextVersion);
 
   return checkReactServerDomPackages(candidateDirectories);
 };

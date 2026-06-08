@@ -247,14 +247,16 @@ describe("checkReactServerComponentsAdvisory (installed-version resolution)", ()
     expect(diagnostics[0].severity).toBe("error");
   });
 
-  it("resolves a vulnerable version installed only under a workspace package (monorepo)", () => {
-    // Regression for the Bugbot finding: `next` is installed under
-    // `packages/web/node_modules`, not the scanned root, and the root spec is a
-    // range — resolution must still find the concrete vulnerable version.
+  it("resolves a vulnerable Next.js installed only under a workspace whose root is not Next", () => {
+    // Regression for the Bugbot findings: the monorepo root is classified as
+    // Vite with no `nextjsVersion`, yet a workspace installs a vulnerable Next.
+    // Dispatch must key on `next` actually resolving (in the workspace's
+    // node_modules), not the root framework, and the standalone
+    // react-server-dom check must not run instead.
     writePackageJson(temporaryRoot, {
       name: "monorepo-root",
       workspaces: ["packages/*"],
-      dependencies: { react: "19.2.0" },
+      dependencies: { react: "19.2.0", vite: "^5.0.0" },
     });
     const webDirectory = path.join(temporaryRoot, "packages", "web");
     writePackageJson(webDirectory, {
@@ -266,7 +268,7 @@ describe("checkReactServerComponentsAdvisory (installed-version resolution)", ()
 
     const diagnostics = checkReactServerComponentsAdvisory(
       temporaryRoot,
-      buildProject(temporaryRoot, "nextjs", "^15.0.0"),
+      buildProject(temporaryRoot, "vite", null),
     );
     expect(diagnostics).toHaveLength(1);
     expect(diagnostics[0].severity).toBe("error");

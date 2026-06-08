@@ -15,7 +15,11 @@ export const jsTosortedImmutable = defineRule<Rule>({
   // throws `undefined is not a function` at runtime. Recommending it in
   // an RN/Expo project would turn working `[...array].sort()` code into
   // a crash, so the gate drops this rule there. See issue #543.
-  disabledBy: ["react-native"],
+  // `pre-es2023` catches web projects whose tsconfig `target` / `lib`
+  // predates ES2023 — applying the suggestion would produce a type error
+  // (`Property 'toSorted' does not exist`) and/or a runtime crash on
+  // browsers without the method. See issue #750.
+  disabledBy: ["react-native", "pre-es2023"],
   recommendation:
     "Use `array.toSorted()` (ES2023) instead of `[...array].sort()` so you sort without copying the array first",
   create: (context: RuleContext) => ({

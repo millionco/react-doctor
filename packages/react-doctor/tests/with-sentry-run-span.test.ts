@@ -32,6 +32,7 @@ const projectInfo: ProjectInfo = {
   shopifyFlashListVersion: null,
   shopifyFlashListMajorVersion: null,
   hasReanimated: false,
+  isPreES2023Target: false,
   sourceFileCount: 12,
 };
 

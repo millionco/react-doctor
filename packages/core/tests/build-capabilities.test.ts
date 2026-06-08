@@ -23,6 +23,7 @@ const baseProject: ProjectInfo = {
   preactVersion: null,
   preactMajorVersion: null,
   hasReanimated: false,
+  isPreES2023Target: false,
   sourceFileCount: 1,
 };
 

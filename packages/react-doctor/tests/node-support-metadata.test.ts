@@ -25,7 +25,11 @@ const readText = (relativePath: string): string =>
 const readPackageJson = (relativePath: string): PackageJson => JSON.parse(readText(relativePath));
 
 const packageManifests: PackageManifestExpectation[] = [
-  { packagePath: "package.json", shouldDependOnPlatformNodeShared: false, shouldDependOnEffect: false },
+  {
+    packagePath: "package.json",
+    shouldDependOnPlatformNodeShared: false,
+    shouldDependOnEffect: false,
+  },
   {
     packagePath: "packages/api/package.json",
     shouldDependOnPlatformNodeShared: false,
@@ -70,7 +74,11 @@ describe("Node support metadata", () => {
   });
 
   it("does not depend on the Undici-backed Effect platform package", () => {
-    for (const { packagePath, shouldDependOnPlatformNodeShared, shouldDependOnEffect } of packageManifests) {
+    for (const {
+      packagePath,
+      shouldDependOnPlatformNodeShared,
+      shouldDependOnEffect,
+    } of packageManifests) {
       const packageJson = readPackageJson(packagePath);
       const dependencies = packageJson.dependencies ?? {};
       const devDependencies = packageJson.devDependencies ?? {};

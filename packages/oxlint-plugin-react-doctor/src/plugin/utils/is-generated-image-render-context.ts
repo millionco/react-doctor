@@ -86,6 +86,7 @@ const isFunctionLike = (
 
 const markFunctionReturnJsx = (
   functionNode: EsTreeNode,
+  programRoot: EsTreeNodeOfType<"Program">,
   generatedImageJsxNodes: WeakSet<EsTreeNode>,
   visitedComponentNames: Set<string>,
 ): void => {
@@ -94,7 +95,12 @@ const markFunctionReturnJsx = (
   if (isNodeOfType(functionNode, "ArrowFunctionExpression")) {
     const body = stripParenExpression(functionNode.body);
     if (!isNodeOfType(body, "BlockStatement")) {
-      markGeneratedImageExpression(body, generatedImageJsxNodes, visitedComponentNames);
+      markGeneratedImageExpression(
+        body,
+        programRoot,
+        generatedImageJsxNodes,
+        visitedComponentNames,
+      );
       return;
     }
   }
@@ -108,13 +114,32 @@ const markFunctionReturnJsx = (
     if (!descendantNode.argument) return;
     markGeneratedImageExpression(
       stripParenExpression(descendantNode.argument),
+      programRoot,
       generatedImageJsxNodes,
       visitedComponentNames,
     );
   });
 };
 
+const hasNormalJsxUsage = (
+  programRoot: EsTreeNodeOfType<"Program">,
+  componentName: string,
+  generatedImageJsxNodes: WeakSet<EsTreeNode>,
+): boolean => {
+  let hasNormalUsage = false;
+  walkAst(programRoot, (descendantNode) => {
+    if (hasNormalUsage) return false;
+    if (!isNodeOfType(descendantNode, "JSXOpeningElement")) return;
+    if (generatedImageJsxNodes.has(descendantNode)) return;
+    if (flattenJsxName(descendantNode.name) !== componentName) return;
+    hasNormalUsage = true;
+    return false;
+  });
+  return hasNormalUsage;
+};
+
 const markComponentRenderJsx = (
+  programRoot: EsTreeNodeOfType<"Program">,
   openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
   generatedImageJsxNodes: WeakSet<EsTreeNode>,
   visitedComponentNames: Set<string>,
@@ -122,6 +147,7 @@ const markComponentRenderJsx = (
   const tagName = flattenJsxName(openingElement.name);
   if (!tagName || tagName.includes(".") || !isComponentIdentifierName(tagName)) return;
   if (visitedComponentNames.has(tagName)) return;
+  if (hasNormalJsxUsage(programRoot, tagName, generatedImageJsxNodes)) return;
 
   const binding = findVariableInitializer(openingElement, tagName);
   if (!binding?.initializer) return;
@@ -129,6 +155,7 @@ const markComponentRenderJsx = (
   visitedComponentNames.add(tagName);
   markGeneratedImageExpression(
     stripParenExpression(binding.initializer),
+    programRoot,
     generatedImageJsxNodes,
     visitedComponentNames,
   );
@@ -136,18 +163,25 @@ const markComponentRenderJsx = (
 
 const markJsxSubtree = (
   node: EsTreeNode,
+  programRoot: EsTreeNodeOfType<"Program">,
   generatedImageJsxNodes: WeakSet<EsTreeNode>,
   visitedComponentNames: Set<string>,
 ): void => {
   walkAst(node, (descendantNode) => {
     if (!isNodeOfType(descendantNode, "JSXOpeningElement")) return;
     generatedImageJsxNodes.add(descendantNode);
-    markComponentRenderJsx(descendantNode, generatedImageJsxNodes, visitedComponentNames);
+    markComponentRenderJsx(
+      programRoot,
+      descendantNode,
+      generatedImageJsxNodes,
+      visitedComponentNames,
+    );
   });
 };
 
 const markGeneratedImageExpression = (
   expression: EsTreeNode,
+  programRoot: EsTreeNodeOfType<"Program">,
   generatedImageJsxNodes: WeakSet<EsTreeNode>,
   visitedComponentNames: Set<string>,
 ): void => {
@@ -157,12 +191,49 @@ const markGeneratedImageExpression = (
     isNodeOfType(unwrappedExpression, "JSXElement") ||
     isNodeOfType(unwrappedExpression, "JSXFragment")
   ) {
-    markJsxSubtree(unwrappedExpression, generatedImageJsxNodes, visitedComponentNames);
+    markJsxSubtree(unwrappedExpression, programRoot, generatedImageJsxNodes, visitedComponentNames);
     return;
   }
 
   if (isFunctionLike(unwrappedExpression)) {
-    markFunctionReturnJsx(unwrappedExpression, generatedImageJsxNodes, visitedComponentNames);
+    markFunctionReturnJsx(
+      unwrappedExpression,
+      programRoot,
+      generatedImageJsxNodes,
+      visitedComponentNames,
+    );
+    return;
+  }
+
+  if (isNodeOfType(unwrappedExpression, "ConditionalExpression")) {
+    markGeneratedImageExpression(
+      unwrappedExpression.consequent,
+      programRoot,
+      generatedImageJsxNodes,
+      visitedComponentNames,
+    );
+    markGeneratedImageExpression(
+      unwrappedExpression.alternate,
+      programRoot,
+      generatedImageJsxNodes,
+      visitedComponentNames,
+    );
+    return;
+  }
+
+  if (isNodeOfType(unwrappedExpression, "LogicalExpression")) {
+    markGeneratedImageExpression(
+      unwrappedExpression.left,
+      programRoot,
+      generatedImageJsxNodes,
+      visitedComponentNames,
+    );
+    markGeneratedImageExpression(
+      unwrappedExpression.right,
+      programRoot,
+      generatedImageJsxNodes,
+      visitedComponentNames,
+    );
     return;
   }
 
@@ -173,6 +244,7 @@ const markGeneratedImageExpression = (
     if (!binding?.initializer) return;
     markGeneratedImageExpression(
       stripParenExpression(binding.initializer),
+      programRoot,
       generatedImageJsxNodes,
       visitedComponentNames,
     );
@@ -189,7 +261,7 @@ const collectGeneratedImageJsxNodes = (
   walkAst(programRoot, (descendantNode) => {
     if (!isGeneratedImageRendererCall(descendantNode)) return;
     for (const argument of descendantNode.arguments) {
-      markGeneratedImageExpression(argument, generatedImageJsxNodes, new Set());
+      markGeneratedImageExpression(argument, programRoot, generatedImageJsxNodes, new Set());
     }
   });
 

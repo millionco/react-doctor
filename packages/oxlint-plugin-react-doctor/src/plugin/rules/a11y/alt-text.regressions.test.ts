@@ -186,6 +186,62 @@ describe("a11y/alt-text regressions", () => {
       expect(result.diagnostics).toHaveLength(1);
     });
 
+    it("still flags shared helper components used by normal UI", () => {
+      const result = runRule(
+        altText,
+        `
+          import { ImageResponse } from "next/og";
+
+          const SharedImage = () => <div><img src="/shared.png" /></div>;
+
+          export const GET = () => new ImageResponse(<SharedImage />);
+
+          export const Page = () => <main><SharedImage /></main>;
+        `,
+        {
+          filename: "/proj/app/social-card.tsx",
+        },
+      );
+
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("skips conditional helper JSX returned only through ImageResponse", () => {
+      const result = runRule(
+        altText,
+        `
+          import { ImageResponse } from "next/og";
+
+          const HeroImage = ({ enabled }) => enabled ? <img src="/enabled.png" /> : <img src="/disabled.png" />;
+
+          export const GET = () => new ImageResponse(<HeroImage enabled />);
+        `,
+        {
+          filename: "/proj/app/social-card.tsx",
+        },
+      );
+
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("skips logical helper JSX returned only through ImageResponse", () => {
+      const result = runRule(
+        altText,
+        `
+          import { ImageResponse } from "next/og";
+
+          const HeroImage = ({ enabled }) => enabled && <img src="/enabled.png" />;
+
+          export const GET = () => new ImageResponse(<HeroImage enabled />);
+        `,
+        {
+          filename: "/proj/app/social-card.tsx",
+        },
+      );
+
+      expect(result.diagnostics).toEqual([]);
+    });
+
     it("still flags Image aliases in ordinary page components", () => {
       const result = runRule(
         altText,

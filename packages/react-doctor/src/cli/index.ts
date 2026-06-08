@@ -136,8 +136,7 @@ const program = new Command()
     new Option(
       "--category <category>",
       "only show diagnostics in a category (repeatable; e.g. Security)",
-    )
-      .argParser(collectCategoryOption),
+    ).argParser(collectCategoryOption),
   )
   .option(
     "--no-telemetry",

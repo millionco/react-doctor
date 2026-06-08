@@ -73,6 +73,35 @@ export const registerEscape = (close: () => void) => {
     expect(hits).toHaveLength(0);
   });
 
+  it("does NOT flag a Tab focus trap (accessibility, not a shortcut)", async () => {
+    const projectDir = setupReactProject(tempRoot, "keybind-focus-trap", {
+      files: {
+        "src/FocusTrap.tsx": `import { useEffect, useRef } from "react";
+
+export const FocusTrap = ({ children }: { children: React.ReactNode }) => {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const loopFocus = (event: KeyboardEvent) => {
+      if (event.key !== "Tab") return;
+      event.preventDefault();
+      const focusable = node.querySelectorAll<HTMLElement>("button, a");
+      focusable[event.shiftKey ? focusable.length - 1 : 0]?.focus();
+    };
+    node.addEventListener("keydown", loopFocus);
+    return () => node.removeEventListener("keydown", loopFocus);
+  }, []);
+  return <div ref={ref}>{children}</div>;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "prefer-keybind-library");
+    expect(hits).toHaveLength(0);
+  });
+
   it("does NOT flag a JSX onKeyDown handler (element-level a11y)", async () => {
     const projectDir = setupReactProject(tempRoot, "keybind-jsx-onkeydown", {
       files: {

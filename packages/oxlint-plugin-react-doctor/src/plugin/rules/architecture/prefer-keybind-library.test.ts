@@ -69,7 +69,40 @@ describe("prefer-keybind-library", () => {
     const code = `
       window.addEventListener("keyup", (event) => {
         const { key, shiftKey } = event;
-        if (shiftKey && key === "Tab") focusPrev();
+        if (shiftKey && key === "Delete") removeSelection();
+      });
+    `;
+    const result = runRule(preferKeybindLibrary, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a renamed destructured key-identity binding", () => {
+    const code = `
+      window.addEventListener("keydown", ({ key: pressedKey }) => {
+        if (pressedKey === "Escape") close();
+      });
+    `;
+    const result = runRule(preferKeybindLibrary, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a dynamic key comparison (key === targetKey)", () => {
+    const code = `
+      function useKeyPress(targetKey) {
+        const onKey = ({ key }) => {
+          if (key === targetKey) fire();
+        };
+        window.addEventListener("keydown", onKey);
+      }
+    `;
+    const result = runRule(preferKeybindLibrary, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a membership-test handler (SHORTCUTS.includes(event.key))", () => {
+    const code = `
+      window.addEventListener("keydown", (event) => {
+        if (["j", "k"].includes(event.key)) move(event.key);
       });
     `;
     const result = runRule(preferKeybindLibrary, code);
@@ -150,6 +183,81 @@ describe("prefer-keybind-library", () => {
     const code = `
       window.addEventListener("keydown", (event) => {
         event.preventDefault();
+      });
+    `;
+    const result = runRule(preferKeybindLibrary, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does NOT flag modifier-only input-modality detection (focus-visible)", () => {
+    // Real shape from @mui/utils useIsFocusVisible: reads only modifier
+    // flags to decide the user is navigating by keyboard. No key-identity
+    // comparison, so it isn't a shortcut a keybind library replaces.
+    const code = `
+      function handleKeyDown(event) {
+        if (event.metaKey || event.altKey || event.ctrlKey) return;
+        hadKeyboardEvent = true;
+      }
+      document.addEventListener("keydown", handleKeyDown, true);
+    `;
+    const result = runRule(preferKeybindLibrary, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does NOT flag Tab focus-trapping (literal 'Tab')", () => {
+    // Real shape from @mui FocusTrap: cycles focus when the only key
+    // checked is Tab. A keybind library does not own focus trapping.
+    const code = `
+      const loopFocus = (event) => {
+        if (event.key !== "Tab") return;
+        event.preventDefault();
+        focusable[event.shiftKey ? last : first].focus();
+      };
+      document.addEventListener("keydown", loopFocus, true);
+    `;
+    const result = runRule(preferKeybindLibrary, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does NOT flag Tab focus-trapping via a constant (KEYS.TAB)", () => {
+    // Real shape from Excalidraw Dialog: `event.key === KEYS.TAB`.
+    const code = `
+      const handleKeyDown = (event) => {
+        if (event.key === KEYS.TAB) {
+          cycleFocusableElements(event.shiftKey);
+        }
+      };
+      islandNode.addEventListener("keydown", handleKeyDown);
+    `;
+    const result = runRule(preferKeybindLibrary, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does NOT flag Tab tracking via keyCode (9)", () => {
+    const code = `
+      window.addEventListener("keydown", (event) => {
+        if (event.keyCode === 9) announceFocus();
+      });
+    `;
+    const result = runRule(preferKeybindLibrary, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("DOES flag a handler that mixes Tab with a non-Tab shortcut key", () => {
+    const code = `
+      window.addEventListener("keydown", (event) => {
+        if (event.key === "Tab") trapFocus();
+        if (event.key === "Escape") close();
+      });
+    `;
+    const result = runRule(preferKeybindLibrary, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does NOT flag a handler that reads the key but never compares it", () => {
+    const code = `
+      window.addEventListener("keydown", (event) => {
+        lastKeydown.current = event.key;
       });
     `;
     const result = runRule(preferKeybindLibrary, code);

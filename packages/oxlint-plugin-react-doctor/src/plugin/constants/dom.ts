@@ -92,23 +92,22 @@ export const EXTERNAL_SYNC_DOM_MEMBER_METHOD_NAMES = new Set([
 export const STORAGE_OBJECTS = new Set(["localStorage", "sessionStorage"]);
 
 // `addEventListener` event names that signal keyboard input. A listener
-// for one of these whose handler inspects a shortcut signal (a specific
-// key or a modifier) is hand-rolling a keyboard shortcut — the surface
-// `prefer-keybind-library` flags.
+// for one of these whose handler compares a key-identity property is
+// hand-rolling a keyboard shortcut — the surface `prefer-keybind-library`
+// flags.
 export const KEYBOARD_EVENT_LISTENER_NAMES = new Set(["keydown", "keyup", "keypress"]);
 
-// `KeyboardEvent` properties a keyboard-shortcut handler reads to decide
-// which combination fired. Reading any of these inside a `keydown`-style
-// listener is the proof that the listener implements a shortcut rather
-// than, say, dismissing on any keypress or tracking "is the user typing".
-export const KEYBOARD_SHORTCUT_EVENT_PROPERTIES = new Set([
+// `KeyboardEvent` properties that identify WHICH key fired. A shortcut
+// handler compares one of these against a value (`event.key === "k"`,
+// `switch (event.code)`, …); that comparison is the proof the listener
+// implements a shortcut, rather than reading modifier flags alone to
+// detect input modality (focus-visible polyfills) or merely storing the
+// event for later. Modifier flags (`metaKey`, `ctrlKey`, …) are
+// deliberately excluded — on their own they don't prove a shortcut.
+export const KEY_IDENTITY_EVENT_PROPERTIES = new Set([
   "key",
   "code",
   "keyCode",
   "which",
   "charCode",
-  "metaKey",
-  "ctrlKey",
-  "altKey",
-  "shiftKey",
 ]);

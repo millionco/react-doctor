@@ -102,10 +102,19 @@ const resolveVersionInDirectory = (
     if (installedVersion !== null) return installedVersion;
   }
 
-  const declaredSpec =
-    readDeclaredSpec(readPackageJson(path.join(directory, "package.json")), packageName) ??
-    declaredSpecOverride;
-  return declaredSpec === null ? null : semver.valid(declaredSpec);
+  // Fall through to the first spec that is actually a concrete version. The
+  // directory's own declaration is tried first, then the seed (discovery's
+  // catalog-resolved `project.nextjsVersion`) — so an unparseable manifest spec
+  // like `catalog:` doesn't shadow an already-resolved concrete pin.
+  const candidateSpecs = [
+    readDeclaredSpec(readPackageJson(path.join(directory, "package.json")), packageName),
+    declaredSpecOverride,
+  ];
+  for (const spec of candidateSpecs) {
+    const pinnedVersion = spec === null ? null : semver.valid(spec);
+    if (pinnedVersion !== null) return pinnedVersion;
+  }
+  return null;
 };
 
 const checkReactServerDomAdvisory = (packageName: string, version: string): Diagnostic[] => {

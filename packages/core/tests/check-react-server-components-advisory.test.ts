@@ -361,6 +361,22 @@ describe("checkReactServerComponentsAdvisory (installed-version resolution)", ()
     expect(diagnostics[0].message).toContain("next@15.0.0");
   });
 
+  it("uses the discovery-resolved next version when the manifest spec is an unparseable catalog ref", () => {
+    // Regression for "Catalog spec blocks version override": a `catalog:` spec
+    // must not shadow `project.nextjsVersion`, which discovery already resolved
+    // to a concrete pin.
+    writePackageJson(temporaryRoot, { name: "app", dependencies: { next: "catalog:" } });
+    clearPackageJsonCache();
+
+    const diagnostics = checkReactServerComponentsAdvisory(
+      temporaryRoot,
+      buildProject(temporaryRoot, "nextjs", "15.0.0"),
+    );
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0].severity).toBe("error");
+    expect(diagnostics[0].message).toContain("next@15.0.0");
+  });
+
   it("checks Next.js by its own version even when a standalone react-server-dom is present", () => {
     writePackageJson(temporaryRoot, { name: "app", dependencies: { next: "15.5.18" } });
     writeInstalledManifest(temporaryRoot, "next", "15.5.18");

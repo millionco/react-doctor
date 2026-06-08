@@ -271,6 +271,7 @@ const markGeneratedImageExpression = (
     }
     if (!isNodeOfType(callee, "Identifier")) return;
     if (visitedComponentNames.has(callee.name)) return;
+    if (hasNormalJsxUsage(programRoot, callee.name, generatedImageJsxNodes)) return;
     if (hasNormalFunctionCallUsage(programRoot, callee.name)) return;
     const binding = findVariableInitializer(callee, callee.name);
     if (!binding?.initializer || !isFunctionLike(stripParenExpression(binding.initializer))) return;

@@ -260,6 +260,26 @@ describe("a11y/alt-text regressions", () => {
       expect(result.diagnostics).toEqual([]);
     });
 
+    it("still flags helper calls when the helper is also rendered as normal JSX", () => {
+      const result = runRule(
+        altText,
+        `
+          import { ImageResponse } from "next/og";
+
+          const SharedImage = () => <div><img src="/shared.png" /></div>;
+
+          export const GET = () => new ImageResponse(SharedImage());
+
+          export const Page = () => <main><SharedImage /></main>;
+        `,
+        {
+          filename: "/proj/app/social-card.tsx",
+        },
+      );
+
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
     it("still flags Image aliases in ordinary page components", () => {
       const result = runRule(
         altText,

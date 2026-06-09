@@ -12,16 +12,13 @@
     "Maintainability": 1
   },
   "ruleImpactMultipliers": {
-    "vercel/async-sequential-await": 2.5,
-    "vercel/bundle-barrel-import": 2,
-    "vercel/architecture-boolean-prop-soup": 1.8,
-    "vercel/patterns-render-prop": 1.3,
-    "vercel/react19-forward-ref": 1.2,
     "ts/ban-ts-comment": 2.5,
     "ts/no-explicit-any": 2,
     "ts/no-non-null-assertion": 1.5,
-    "ts/no-unnecessary-type-assertion": 1.5,
-    "tsc/type-error": 3
+    "ts/no-type-assertion": 1.5,
+    "vercel/architecture-boolean-prop-soup": 1.8,
+    "vercel/patterns-render-prop": 1.3,
+    "deslop/nested-ternary": 1.2
   },
   "dimensionWeights": {
     "react-correctness": 1.5,

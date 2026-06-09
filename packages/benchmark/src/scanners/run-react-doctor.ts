@@ -2,8 +2,9 @@ import type { JsonReport } from "@react-doctor/core";
 import {
   REACT_DOCTOR_CATEGORY_TO_DIMENSION,
   REACT_DOCTOR_FALLBACK_DIMENSION,
+  REACT_DOCTOR_RULE_TO_DIMENSION,
 } from "../constants.js";
-import type { ScanFinding, ScannerContext } from "../types/index.js";
+import type { ScanFinding, ScannerContext, SlopDimension } from "../types/index.js";
 import { resolveBinInvocation } from "../utils/resolve-bin-invocation.js";
 import { runCommand } from "../utils/run-command.js";
 
@@ -33,19 +34,24 @@ const parseReport = (stdout: string): JsonReport | null => {
   }
 };
 
-const toFinding = (
-  diagnostic: JsonReport["diagnostics"][number],
-): ScanFinding => ({
-  scanner: "react-doctor",
-  dimension:
-    REACT_DOCTOR_CATEGORY_TO_DIMENSION[diagnostic.category] ?? REACT_DOCTOR_FALLBACK_DIMENSION,
-  ruleId: `${diagnostic.plugin}/${diagnostic.rule}`,
-  severity: diagnostic.severity,
-  filePath: diagnostic.filePath,
-  line: diagnostic.line,
-  message: diagnostic.message,
-  category: diagnostic.category,
-});
+const resolveDimension = (ruleId: string, category: string): SlopDimension =>
+  REACT_DOCTOR_RULE_TO_DIMENSION[ruleId] ??
+  REACT_DOCTOR_CATEGORY_TO_DIMENSION[category] ??
+  REACT_DOCTOR_FALLBACK_DIMENSION;
+
+const toFinding = (diagnostic: JsonReport["diagnostics"][number]): ScanFinding => {
+  const ruleId = `${diagnostic.plugin}/${diagnostic.rule}`;
+  return {
+    scanner: "react-doctor",
+    dimension: resolveDimension(ruleId, diagnostic.category),
+    ruleId,
+    severity: diagnostic.severity,
+    filePath: diagnostic.filePath,
+    line: diagnostic.line,
+    message: diagnostic.message,
+    category: diagnostic.category,
+  };
+};
 
 // Run React Doctor over the whole project (offline, no remote score), then keep
 // only diagnostics in files the agent changed. Diff-scoping by changed file —
@@ -62,7 +68,11 @@ export const runReactDoctor = (context: ScannerContext): ReactDoctorScanResult =
   );
 
   if (result.spawnFailed) {
-    return { findings: [], doctorVersion: null, error: `react-doctor failed to start: ${result.stderr}` };
+    return {
+      findings: [],
+      doctorVersion: null,
+      error: `react-doctor failed to start: ${result.stderr}`,
+    };
   }
 
   const report = parseReport(result.stdout);
@@ -74,6 +84,8 @@ export const runReactDoctor = (context: ScannerContext): ReactDoctorScanResult =
     };
   }
 
-  const findings = report.diagnostics.filter((diagnostic) => changed.has(diagnostic.filePath)).map(toFinding);
+  const findings = report.diagnostics
+    .filter((diagnostic) => changed.has(diagnostic.filePath))
+    .map(toFinding);
   return { findings, doctorVersion: report.version ?? null, error: null };
 };

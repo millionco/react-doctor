@@ -24,6 +24,33 @@ export const REACT_DOCTOR_CATEGORY_TO_DIMENSION: Record<string, SlopDimension> =
 // unrecognized (e.g. a newly added bucket): treated as a correctness signal.
 export const REACT_DOCTOR_FALLBACK_DIMENSION: SlopDimension = "react-correctness";
 
+// Specific React Doctor rules whose intent is finer than their category
+// bucket. React Doctor files bundle- and waterfall-rules under the broad
+// "Performance" category; routing those exact rule ids into the dedicated
+// `bundle` / `async-waterfall` dimensions lets SlopBench report them
+// separately without us re-implementing detection (we DEFER to React Doctor —
+// see `rule-overlap.md`). Checked before the category mapping.
+export const REACT_DOCTOR_RULE_TO_DIMENSION: Record<string, SlopDimension> = {
+  "react-doctor/no-barrel-import": "bundle",
+  "react-doctor/no-full-lodash-import": "bundle",
+  "react-doctor/no-moment": "bundle",
+  "react-doctor/no-undeferred-third-party": "bundle",
+  "react-doctor/prefer-dynamic-import": "bundle",
+  "react-doctor/no-dynamic-import-path": "bundle",
+  "react-doctor/use-lazy-motion": "bundle",
+  "react-doctor/server-sequential-independent-await": "async-waterfall",
+  "react-doctor/tanstack-start-loader-parallel-fetch": "async-waterfall",
+};
+
+// Threshold for the boolean-prop-soup composition check: a props type with at
+// least this many boolean members is flagged (Vercel architecture-avoid-
+// boolean-props). Below it, a couple of flags is normal and not slop.
+export const BOOLEAN_PROP_SOUP_THRESHOLD = 4;
+
+// Conditional-expression nesting depth at or above which the deslop nested-
+// ternary heuristic fires (the deslop skill calls out nested ternaries).
+export const NESTED_TERNARY_DEPTH_THRESHOLD = 2;
+
 // The built-in fallback profile and single source of truth for default
 // weights. `scoring-profiles/default.json` mirrors this object; a drift test
 // keeps them identical. Tasks may override via `slop-verify --profile <path>`.
@@ -41,18 +68,16 @@ export const DEFAULT_SCORING_PROFILE: ScoringProfile = {
     Maintainability: 1,
   },
   ruleImpactMultipliers: {
-    // Vercel CRITICAL-impact gap-filler checks weigh heaviest.
-    "vercel/async-sequential-await": 2.5,
-    "vercel/bundle-barrel-import": 2,
-    "vercel/architecture-boolean-prop-soup": 1.8,
-    "vercel/patterns-render-prop": 1.3,
-    "vercel/react19-forward-ref": 1.2,
-    // TypeScript slop tiers — escape hatches hurt most.
+    // TypeScript slop tiers — escape hatches that silence the compiler hurt most.
     "ts/ban-ts-comment": 2.5,
     "ts/no-explicit-any": 2,
     "ts/no-non-null-assertion": 1.5,
-    "ts/no-unnecessary-type-assertion": 1.5,
-    "tsc/type-error": 3,
+    "ts/no-type-assertion": 1.5,
+    // Composition gap-fillers (React Doctor does not count these).
+    "vercel/architecture-boolean-prop-soup": 1.8,
+    "vercel/patterns-render-prop": 1.3,
+    // deslop maintainability heuristic.
+    "deslop/nested-ternary": 1.2,
   },
   dimensionWeights: {
     "react-correctness": 1.5,

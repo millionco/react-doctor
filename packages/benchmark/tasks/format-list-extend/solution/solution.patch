@@ -1,0 +1,32 @@
+diff --git a/src/format-list.ts b/src/format-list.ts
+index f645665..6742df7 100644
+--- a/src/format-list.ts
++++ b/src/format-list.ts
+@@ -1,11 +1,17 @@
+-// Joins a list of names into a human sentence, e.g. ["a","b","c"] -> "a, b and c".
+-export function formatList(items: any, conjunction?: any): any {
+-  const c = conjunction ? conjunction : "and";
+-  return items.length === 0
+-    ? ""
+-    : items.length === 1
+-      ? items[0]
+-      : items.length === 2
+-        ? items[0] + " " + c + " " + items[1]
+-        : items.slice(0, -1).join(", ") + " " + c + " " + items[items.length - 1];
++export interface FormatListOptions {
++  conjunction?: string;
++  oxford?: boolean;
+ }
++
++// Joins a list into a human sentence, with an optional Oxford comma.
++export const formatList = (items: readonly string[], options: FormatListOptions = {}): string => {
++  const conjunction = options.conjunction ?? "and";
++  if (items.length === 0) return "";
++  if (items.length === 1) return items[0] ?? "";
++  if (items.length === 2) return `${items[0]} ${conjunction} ${items[1]}`;
++
++  const head = items.slice(0, -1).join(", ");
++  const last = items[items.length - 1];
++  const oxfordComma = options.oxford ? "," : "";
++  return `${head}${oxfordComma} ${conjunction} ${last}`;
++};

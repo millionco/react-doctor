@@ -1,0 +1,18 @@
+diff --git a/src/slugify.ts b/src/slugify.ts
+index 0c6c7ce..b17d8bc 100644
+--- a/src/slugify.ts
++++ b/src/slugify.ts
+@@ -1,4 +1,9 @@
+-// TODO(agent): implement. See instruction.md.
+-export const slugify = (_input: string): string => {
+-  throw new Error("not implemented");
+-};
++// Turns arbitrary text into a URL slug via a sequence of focused replacements.
++export const slugify = (input: string): string =>
++  input
++    .toLowerCase()
++    .trim()
++    .replace(/\s+/g, "-")
++    .replace(/[^a-z0-9-]/g, "")
++    .replace(/-+/g, "-")
++    .replace(/^-+|-+$/g, "");

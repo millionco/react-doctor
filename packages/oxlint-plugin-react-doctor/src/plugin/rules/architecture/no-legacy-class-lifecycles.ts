@@ -60,6 +60,11 @@ export const noLegacyClassLifecycles = defineRule<Rule>({
   title: "Legacy class lifecycle methods",
   severity: "error",
   category: "Correctness",
+  // Matches purely on the class-member NAME (`componentWillMount`, …) with
+  // no React-import/component guard, so on a non-React project an ordinary
+  // class method of the same name would false-fire. The legacy lifecycles
+  // only mean anything with React, so require it.
+  requires: ["react"],
   tags: ["migration-hint"],
   recommendation:
     "Move `componentWillMount` work to `componentDidMount`, `componentWillReceiveProps` to `componentDidUpdate` or the static `getDerivedStateFromProps`, and `componentWillUpdate` to `getSnapshotBeforeUpdate` plus `componentDidUpdate`. The `UNSAFE_` prefix only hides the warning. React 19 removes both.",

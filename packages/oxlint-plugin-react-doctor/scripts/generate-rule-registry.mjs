@@ -29,6 +29,28 @@ const BUCKET_TO_FRAMEWORK = {
   "tanstack-start": "tanstack-start",
 };
 
+// Bucket directories whose rules fundamentally need a React (or Preact)
+// runtime — hooks, JSX, accessibility on JSX, render performance, React
+// state. Every rule in these buckets gets a synthesized `"react"`
+// capability requirement (merged with any rule-authored `requires`) so
+// it stays off on a plain TypeScript / JavaScript project. Without this,
+// hook/component-name heuristics (e.g. `rules-of-hooks` matching a local
+// function named `useThing`) would false-fire on non-React code. Buckets
+// left out here (security, architecture, correctness, bundle-size,
+// js-performance, design, zod) are framework-agnostic and keep running
+// without React. Framework-specific buckets (nextjs, react-native, …)
+// are already gated by their own capability via `BUCKET_TO_FRAMEWORK`.
+const BUCKETS_REQUIRING_REACT = new Set([
+  "a11y",
+  "client",
+  "jotai",
+  "performance",
+  "react-builtins",
+  "react-ui",
+  "state-and-effects",
+  "view-transitions",
+]);
+
 // Bucket directory → behavioral tags merged onto every rule in that
 // bucket at registry-build time. Lets cross-cutting controls
 // (`severity.tags`, `surfaces.*.excludeTags`,
@@ -206,6 +228,7 @@ for (const bucket of fs.readdirSync(PLUGIN_RULES_ROOT, { withFileTypes: true }))
         .replaceAll(path.sep, "/")
         .replace(/\.ts$/, ".js");
     const autoTags = BUCKET_TO_AUTO_TAGS[bucket.name] ?? [];
+    const requiresReact = BUCKETS_REQUIRING_REACT.has(bucket.name);
     const originallyExternal =
       !RULES_NOT_PORTED_FROM_EXTERNAL.has(ruleId) &&
       (BUCKETS_PORTED_FROM_EXTERNAL.has(bucket.name) ||
@@ -218,6 +241,7 @@ for (const bucket of fs.readdirSync(PLUGIN_RULES_ROOT, { withFileTypes: true }))
       category,
       severity,
       autoTags,
+      requiresReact,
       originallyExternal,
     });
   }
@@ -254,6 +278,27 @@ const formatAutoTagsLine = (entry) => {
   return `      tags: [...new Set([${autoTagLiteral}, ...(${entry.identifier}.tags ?? [])])],\n`;
 };
 
+// Merge the bucket-synthesized `"react"` capability with any
+// rule-authored `requires` (deduped), mirroring the auto-tag merge. A
+// rule that already pins a React version (e.g. `requires: ["react:19"]`)
+// keeps that; the redundant `"react"` is harmless since the version gate
+// already implies React is present.
+const formatRequiresLine = (entry) => {
+  if (!entry.requiresReact) return "";
+  // Match prettier's 100-char print width so `gen:check` and `format:check`
+  // agree: emit the single-line form when it fits, else the wrapped form
+  // prettier would otherwise rewrite it into (a few rules have long enough
+  // identifiers — e.g. `noNoninteractiveElementToInteractiveRole` — to spill
+  // past the limit).
+  const singleLine = `      requires: [...new Set(["react", ...(${entry.identifier}.requires ?? [])])],`;
+  if (singleLine.length <= 100) return `${singleLine}\n`;
+  return (
+    `      requires: [\n` +
+    `        ...new Set(["react", ...(${entry.identifier}.requires ?? [])]),\n` +
+    `      ],\n`
+  );
+};
+
 // Per-entry shape:
 //   { key, id, source, originallyExternal, rule: { ...sourceRule, framework, category, tags? } }
 //
@@ -275,6 +320,7 @@ const ruleLines = ruleEntries
       `      framework: "${entry.framework}",\n` +
       `      category: "${entry.category}",\n` +
       formatAutoTagsLine(entry) +
+      formatRequiresLine(entry) +
       `    },\n` +
       `  },`,
   )

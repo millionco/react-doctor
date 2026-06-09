@@ -1,6 +1,6 @@
 {
   "name": "@react-doctor/language-server",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": true,
   "description": "Internal: editor language server for React Doctor — daemonized diagnostics, hovers, and code actions over LSP. Not published directly; bundled into the react-doctor CLI as `react-doctor experimental-lsp`.",
   "license": "MIT",

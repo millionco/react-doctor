@@ -1,6 +1,6 @@
 {
   "name": "@react-doctor/api",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": true,
   "description": "Internal: programmatic diagnose() API for React Doctor — thin Effect.runPromise shell around @react-doctor/core's runInspect orchestrator. Not published.",
   "license": "MIT",

@@ -1,5 +1,13 @@
 # oxlint-plugin-react-doctor
 
+## 0.5.1
+
+### Patch Changes
+
+- [#761](https://github.com/millionco/react-doctor/pull/761) [`77a70ab`](https://github.com/millionco/react-doctor/commit/77a70ab8a78dd21dc305a6c2b924e4bbc44058ce) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - Stop flagging `only-export-components` on framework route modules ([#758](https://github.com/millionco/react-doctor/issues/758)).
+
+  TanStack Router file routes (`export const Route = createFileRoute(...)({ component: ProfilePage })`) were reported even though the router's bundler plugin owns HMR for those modules. Route-factory exports (`createFileRoute`, `createLazyFileRoute`, `createRootRoute`, `createRootRouteWithContext`, data routers like `createBrowserRouter`, …) now count as component exports, and framework route-module contract exports (Remix / React Router `loader` / `action` / `meta` / …, Next.js Pages Router `getServerSideProps` / `getStaticProps` / …, App Router segment config, Expo Router `unstable_settings`) are allowed alongside components.
+
 ## 0.5.0
 
 ### Minor Changes

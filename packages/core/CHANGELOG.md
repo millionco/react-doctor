@@ -1,5 +1,12 @@
 # @react-doctor/core
 
+## 0.5.1
+
+### Patch Changes
+
+- Updated dependencies [[`77a70ab`](https://github.com/millionco/react-doctor/commit/77a70ab8a78dd21dc305a6c2b924e4bbc44058ce)]:
+  - oxlint-plugin-react-doctor@0.5.1
+
 ## 0.5.0
 
 ### Minor Changes

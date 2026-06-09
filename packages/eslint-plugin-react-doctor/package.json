@@ -1,6 +1,6 @@
 {
   "name": "eslint-plugin-react-doctor",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "ESLint plugin for React Doctor: diagnose React codebases for security, performance, correctness, accessibility, bundle-size, and architecture issues",
   "keywords": [
     "accessibility",

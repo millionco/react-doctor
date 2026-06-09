@@ -387,6 +387,53 @@ git push --force origin v1   # the force applies to the moving major tag only
   full commit-SHA pin with a trailing version comment for hardened CI
   (`uses: millionco/react-doctor@<sha> # v1.1.1`), or `@vN` for convenience.
 
+## Cursor Cloud specific instructions
+
+This is a **pnpm + Turborepo monorepo** with no databases or Docker services. The primary product is the `react-doctor` CLI; development is install → build → run CLI/tests on Node.
+
+### Node.js version (important)
+
+`package.json` requires `^20.19.0 || >=22.12.0`, but `vp lint` loads `vite.config.ts` via native TypeScript and needs **Node `^20.19.0` or `>=22.18.0`**. Cloud VMs may ship `/exec-daemon/node` at v22.14.0, which breaks `pnpm lint`. Use nvm Node **v22.22.2** (or any `>=22.18.0`):
+
+```bash
+export PATH="$HOME/.nvm/versions/node/v22.22.2/bin:$PATH"
+node --version   # must be >=22.18.0 (or ^20.19.0)
+```
+
+### No background services
+
+Nothing needs to stay running. After `pnpm build`, the CLI, tests, and LSP all run in-process.
+
+| Goal | Command |
+|---|---|
+| Install deps | `pnpm install` (or `ni`) |
+| Build all packages | `pnpm build` |
+| Watch-build CLI only | `pnpm dev` |
+| Tests | `pnpm test` |
+| Lint / typecheck | `pnpm lint` / `pnpm typecheck` |
+| JSON smoke test | `pnpm smoke:json-report` (requires prior `pnpm build`) |
+| Docs site dev | `nr dev --filter website` (optional) |
+
+### Hello-world CLI scan
+
+Scan the in-repo fixture (intentionally has diagnostics; exit code 1 is expected):
+
+```bash
+pnpm build
+node packages/react-doctor/bin/react-doctor.js \
+  packages/core/tests/fixtures/basic-react \
+  --no-telemetry
+```
+
+Use `--json` for machine-readable output. Add `--no-score` to skip the hosted score API.
+
+### Optional components
+
+- **Website** (`packages/website`): `nr dev --filter website` — only when editing docs.
+- **VS Code extension**: `nr dev --filter vscode-react-doctor` — editor launches LSP separately.
+- **Hosted score API** (`https://www.react.doctor/api/score`): optional; scans work without it.
+- **Sentry telemetry**: disabled with `--no-telemetry` or `REACT_DOCTOR_NO_TELEMETRY=1`.
+
 ## Reference reading
 
 - `tmp/effect/.patterns/effect.md` — canonical Effect v4 idioms (cloned for reference,

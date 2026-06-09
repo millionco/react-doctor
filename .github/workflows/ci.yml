@@ -101,6 +101,12 @@ jobs:
           pnpm build
           pnpm check:published-deps
 
+      - name: Smoke test packed CLI install
+        if: ${{ matrix.node-version == '22.18.0' && (matrix.os == 'ubuntu-latest' || matrix.os == 'windows-latest') }}
+        run: |
+          pnpm build
+          pnpm smoke:packed-cli-install
+
       # Allocates a real pseudo-terminal (`pty.openpty()`) so the CLI sees an
       # interactive TTY and renders the multiselect prompt, then asserts the
       # process stays alive waiting for input instead of exiting by itself

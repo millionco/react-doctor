@@ -434,6 +434,44 @@ Use `--json` for machine-readable output. Add `--no-score` to skip the hosted sc
 - **Hosted score API** (`https://www.react.doctor/api/score`): optional; scans work without it.
 - **Sentry telemetry**: disabled with `--no-telemetry` or `REACT_DOCTOR_NO_TELEMETRY=1`.
 
+### react-doctor-evals (RDE) — sibling eval harness
+
+**Required for rule research/validation workflows**, not for core CLI development. This repo is the canonical Effect v4 application that `react-doctor` core patterns were modeled on (`Runner.ts`, `Worker.ts`, `Schemas.ts`).
+
+**Checkout layout** (match local Million dev machines):
+
+| Repo | Path |
+|---|---|
+| `millionco/react-doctor` | `/workspace` (Cloud Agent workspace) |
+| `millionco/react-doctor-evals` | `~/Developer/react-doctor-evals` |
+
+Clone (private repo — Cloud Agent needs read access):
+
+```bash
+mkdir -p ~/Developer
+git clone https://github.com/millionco/react-doctor-evals.git ~/Developer/react-doctor-evals
+cd ~/Developer/react-doctor-evals
+pnpm install
+pnpm build   # if the repo defines a build script
+```
+
+**What RDE is for** (see `docs/HOW_TO_WRITE_A_RULE.md` and `.agents/skills/rule-validate/`):
+
+- **Parity checks** against `react-doctor` JSON/diagnostic output (complements `pnpm smoke:json-report`, which only validates schema shape).
+- **OSS rule validation**: scan many repos from `repos.json`, filter to a target rule, manually inspect hits for false positives.
+- **Idea validation** before implementing broad/heuristic rules.
+
+**Typical workflow after both repos are built:**
+
+1. Implement or change a rule in `react-doctor`.
+2. Run targeted unit tests in `packages/oxlint-plugin-react-doctor`.
+3. Use RDE to scan OSS repos and filter diagnostics to the target rule.
+4. Record eval results in PR descriptions (repos scanned, rootDir count, false positives).
+
+RDE may point at a local `react-doctor` checkout (workspace path `/workspace` in Cloud Agents). If RDE exposes env vars for the checkout path, set them to `/workspace` rather than `~/Developer/react-doctor`.
+
+**Sandbox note:** RDE can override oxlint timeouts via `REACT_DOCTOR_OXLINT_SPAWN_TIMEOUT_MS` when running under slow sandbox microVMs (see `packages/core/src/refs.ts`).
+
 ## Reference reading
 
 - `tmp/effect/.patterns/effect.md` — canonical Effect v4 idioms (cloned for reference,

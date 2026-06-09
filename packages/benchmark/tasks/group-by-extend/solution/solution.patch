@@ -1,0 +1,33 @@
+diff --git a/src/group-by.ts b/src/group-by.ts
+index 2e0308b..96a04dd 100644
+--- a/src/group-by.ts
++++ b/src/group-by.ts
+@@ -1,14 +1,16 @@
+-// Groups a list of records by the value of a property. Currently only supports
+-// a property name as the key selector.
+-export function groupBy(items: any, key: any): any {
+-  const result: any = {};
+-  for (let i = 0; i < items.length; i++) {
+-    const item = items[i];
+-    const k = item[key];
+-    if (result[k] === undefined) {
+-      result[k] = [];
+-    }
+-    result[k].push(item);
++export type GroupKey = string | number;
++
++// Groups a list by a property name or a selector function. The result maps each
++// distinct key (stringified) to the items that produced it, in first-seen order.
++export const groupBy = <Item>(
++  items: readonly Item[],
++  key: keyof Item | ((item: Item) => GroupKey),
++): Record<string, Item[]> => {
++  const deriveKey = typeof key === "function" ? key : (item: Item) => String(item[key]);
++  const result: Record<string, Item[]> = {};
++  for (const item of items) {
++    const groupKey = String(deriveKey(item));
++    (result[groupKey] ??= []).push(item);
+   }
+   return result;
+-}
++};

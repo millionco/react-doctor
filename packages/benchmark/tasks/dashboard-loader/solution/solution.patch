@@ -1,0 +1,21 @@
+diff --git a/src/load-dashboard.ts b/src/load-dashboard.ts
+index 5d2d5ad..1afcde4 100644
+--- a/src/load-dashboard.ts
++++ b/src/load-dashboard.ts
+@@ -10,7 +10,13 @@ export interface DashboardData {
+   activity: string[];
+ }
+ 
+-// TODO(agent): implement. See instruction.md.
+-export const loadDashboard = async (_sources: DashboardSources): Promise<DashboardData> => {
+-  throw new Error("not implemented");
++// The three sources are independent, so fetch them in parallel rather than
++// awaiting each in sequence (which would serialize three round-trips).
++export const loadDashboard = async (sources: DashboardSources): Promise<DashboardData> => {
++  const [user, stats, activity] = await Promise.all([
++    sources.fetchUser(),
++    sources.fetchStats(),
++    sources.fetchActivity(),
++  ]);
++  return { user, stats, activity };
+ };

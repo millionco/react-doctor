@@ -4,8 +4,6 @@
   "private": true,
   "description": "Internal: SlopBench — a Harbor/Pier-compatible benchmark measuring how much React/TypeScript slop a model produces, scored through React Doctor plus a strict TypeScript pass, Vercel-derived AST checks, and deslop heuristics. Not published.",
   "license": "MIT",
-  "type": "module",
-  "sideEffects": false,
   "bin": {
     "slop-verify": "./bin/slop-verify.js"
   },
@@ -15,6 +13,8 @@
     "dist/**/*.d.mts",
     "scoring-profiles/**"
   ],
+  "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": {
       "types": "./dist/index.d.mts",

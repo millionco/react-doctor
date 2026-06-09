@@ -1,0 +1,38 @@
+{
+  "version": "1.0.0",
+  "severityWeights": {
+    "error": 5,
+    "warning": 2
+  },
+  "categoryMultipliers": {
+    "Security": 3,
+    "Bugs": 2,
+    "Performance": 1.5,
+    "Accessibility": 1.2,
+    "Maintainability": 1
+  },
+  "ruleImpactMultipliers": {
+    "vercel/async-sequential-await": 2.5,
+    "vercel/bundle-barrel-import": 2,
+    "vercel/architecture-boolean-prop-soup": 1.8,
+    "vercel/patterns-render-prop": 1.3,
+    "vercel/react19-forward-ref": 1.2,
+    "ts/ban-ts-comment": 2.5,
+    "ts/no-explicit-any": 2,
+    "ts/no-non-null-assertion": 1.5,
+    "ts/no-unnecessary-type-assertion": 1.5,
+    "tsc/type-error": 3
+  },
+  "dimensionWeights": {
+    "react-correctness": 1.5,
+    "ts-strictness": 1.5,
+    "react-performance": 1.2,
+    "composition": 1,
+    "async-waterfall": 1,
+    "bundle": 1,
+    "maintainability": 1,
+    "accessibility": 0.8
+  },
+  "diffSizeNormalizerLines": 40,
+  "minNormalizerLines": 25
+}

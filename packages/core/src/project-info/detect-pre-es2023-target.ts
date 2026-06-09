@@ -6,7 +6,8 @@ import { ES2023_YEAR, ES_TARGET_YEAR_BY_NAME, TSCONFIG_EXTENDS_MAX_DEPTH } from 
 import { isFile } from "./utils/is-file.js";
 import { isPlainObject } from "./utils/is-plain-object.js";
 
-const TSCONFIG_FILENAMES = ["tsconfig.json", "tsconfig.base.json"];
+const TSCONFIG_FILENAME = "tsconfig.json";
+const TSCONFIG_BASE_FILENAME = "tsconfig.base.json";
 
 interface TsConfigCompilerOptions {
   readonly target?: string;
@@ -155,16 +156,19 @@ const compilerOptionsArePreES2023 = (compilerOptions: TsConfigCompilerOptions): 
 const compilerOptionsDeclareTargetOrLib = (compilerOptions: TsConfigCompilerOptions): boolean =>
   compilerOptions.hasExplicitLib || compilerOptions.target !== undefined;
 
-export const detectPreES2023Target = (directory: string): boolean => {
-  for (const filename of TSCONFIG_FILENAMES) {
-    const tsConfigPath = path.join(directory, filename);
-    if (!isFile(tsConfigPath)) continue;
+const detectPreES2023FromConfig = (tsConfigPath: string): boolean => {
+  const compilerOptions = readResolvedCompilerOptions(tsConfigPath, 0, new Set());
+  if (!compilerOptions) return false;
+  if (!compilerOptionsDeclareTargetOrLib(compilerOptions)) return false;
+  return compilerOptionsArePreES2023(compilerOptions);
+};
 
-    const compilerOptions = readResolvedCompilerOptions(tsConfigPath, 0, new Set());
-    if (!compilerOptions) continue;
-    if (!compilerOptionsDeclareTargetOrLib(compilerOptions)) continue;
-    return compilerOptionsArePreES2023(compilerOptions);
-  }
+export const detectPreES2023Target = (directory: string): boolean => {
+  const tsConfigPath = path.join(directory, TSCONFIG_FILENAME);
+  if (isFile(tsConfigPath)) return detectPreES2023FromConfig(tsConfigPath);
+
+  const tsConfigBasePath = path.join(directory, TSCONFIG_BASE_FILENAME);
+  if (isFile(tsConfigBasePath)) return detectPreES2023FromConfig(tsConfigBasePath);
 
   return false;
 };

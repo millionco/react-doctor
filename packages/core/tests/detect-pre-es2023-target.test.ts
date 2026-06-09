@@ -85,9 +85,17 @@ describe("detectPreES2023Target", () => {
     expect(detectPreES2023Target(projectDirectory)).toBe(true);
   });
 
-  it("falls through to tsconfig.base.json when tsconfig.json has no target or lib", () => {
+  it("ignores sibling tsconfig.base.json when tsconfig.json does not extend it", () => {
     const projectDirectory = setupProject("same-directory-base", {
       "tsconfig.json": writeTsConfig({ compilerOptions: { module: "esnext" } }),
+      "tsconfig.base.json": writeTsConfig({ compilerOptions: { target: "es2022" } }),
+    });
+
+    expect(detectPreES2023Target(projectDirectory)).toBe(false);
+  });
+
+  it("reads tsconfig.base.json when no tsconfig.json exists", () => {
+    const projectDirectory = setupProject("base-only", {
       "tsconfig.base.json": writeTsConfig({ compilerOptions: { target: "es2022" } }),
     });
 

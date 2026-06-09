@@ -1,0 +1,21 @@
+diff --git a/src/truncate-middle.ts b/src/truncate-middle.ts
+index 79e17fc..d42c6bc 100644
+--- a/src/truncate-middle.ts
++++ b/src/truncate-middle.ts
+@@ -1,4 +1,13 @@
+-// TODO(agent): implement. See instruction.md.
+-export const truncateMiddle = (_text: string, _maxLength: number): string => {
+-  throw new Error("not implemented");
++// Shortens text by eliding the middle with a single ellipsis so the result is
++// exactly `maxLength` characters. Odd leftover budget favors the front.
++export const truncateMiddle = (text: string, maxLength: number): string => {
++  if (text.length <= maxLength) return text;
++  if (maxLength <= 1) return "…";
++
++  const budget = maxLength - 1;
++  const frontLength = Math.ceil(budget / 2);
++  const backLength = Math.floor(budget / 2);
++  const front = text.slice(0, frontLength);
++  const back = backLength === 0 ? "" : text.slice(text.length - backLength);
++  return `${front}…${back}`;
+ };

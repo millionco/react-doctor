@@ -32,6 +32,10 @@ export interface SlopReport {
   dimensions: SlopDimensionScore[];
   // Composite 0–100 cleanliness score (higher = less slop).
   slopScore: number;
+  // Non-fatal scanner problems (e.g. React Doctor failed to start). Empty on a
+  // clean run; a populated array means some dimensions may be under-reported,
+  // which reviewers and the aggregator can surface.
+  scannerErrors: string[];
   // Filled by the task's `test.sh` once the functional gate is known; `null`
   // when the verifier runs standalone (quality-only).
   functionalPass: boolean | null;

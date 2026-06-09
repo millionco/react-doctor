@@ -261,6 +261,7 @@ export const buildScanResultCacheKey = (input: ScanResultCacheKeyInput): string 
       noScore: input.options.noScore,
       isCi: input.options.isCi,
       suppressRendering: input.options.suppressRendering,
+      supplyChainManifestChanged: input.options.supplyChainManifestChanged,
     },
   });
   return cacheKeyJson === null ? null : hashString(cacheKeyJson);

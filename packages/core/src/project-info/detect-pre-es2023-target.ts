@@ -7,7 +7,6 @@ import { isFile } from "./utils/is-file.js";
 import { isPlainObject } from "./utils/is-plain-object.js";
 
 const TSCONFIG_FILENAME = "tsconfig.json";
-const TSCONFIG_BASE_FILENAME = "tsconfig.base.json";
 
 interface TsConfigCompilerOptions {
   readonly target?: string;
@@ -166,9 +165,6 @@ const detectPreES2023FromConfig = (tsConfigPath: string): boolean => {
 export const detectPreES2023Target = (directory: string): boolean => {
   const tsConfigPath = path.join(directory, TSCONFIG_FILENAME);
   if (isFile(tsConfigPath)) return detectPreES2023FromConfig(tsConfigPath);
-
-  const tsConfigBasePath = path.join(directory, TSCONFIG_BASE_FILENAME);
-  if (isFile(tsConfigBasePath)) return detectPreES2023FromConfig(tsConfigBasePath);
 
   return false;
 };

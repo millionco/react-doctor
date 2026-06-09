@@ -94,12 +94,12 @@ describe("detectPreES2023Target", () => {
     expect(detectPreES2023Target(projectDirectory)).toBe(false);
   });
 
-  it("reads tsconfig.base.json when no tsconfig.json exists", () => {
+  it("ignores standalone tsconfig.base.json because it is not the selected project config", () => {
     const projectDirectory = setupProject("base-only", {
       "tsconfig.base.json": writeTsConfig({ compilerOptions: { target: "es2022" } }),
     });
 
-    expect(detectPreES2023Target(projectDirectory)).toBe(true);
+    expect(detectPreES2023Target(projectDirectory)).toBe(false);
   });
 
   it("inherits target through a relative extends chain", () => {

@@ -1,0 +1,51 @@
+diff --git a/src/format-money.ts b/src/format-money.ts
+index 9f0e0ec..3e2fa05 100644
+--- a/src/format-money.ts
++++ b/src/format-money.ts
+@@ -5,7 +5,43 @@ export interface FormatMoneyOptions {
+   trimZeroCents?: boolean;
+ }
+ 
+-// TODO(agent): implement. See instruction.md for the exact contract.
+-export const formatMoney = (_amountCents: number, _options?: FormatMoneyOptions): string => {
+-  throw new Error("not implemented");
++interface CurrencyFormat {
++  symbol: string;
++  fractionDigits: number;
++}
++
++const CURRENCY_FORMATS: Record<string, CurrencyFormat> = {
++  USD: { symbol: "$", fractionDigits: 2 },
++  EUR: { symbol: "€", fractionDigits: 2 },
++  GBP: { symbol: "£", fractionDigits: 2 },
++  JPY: { symbol: "¥", fractionDigits: 0 },
++};
++
++const groupThousands = (digits: string): string => digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
++
++const resolveFormat = (currency: string): CurrencyFormat => {
++  const known = CURRENCY_FORMATS[currency];
++  if (known) return known;
++  return { symbol: `${currency} `, fractionDigits: 2 };
++};
++
++export const formatMoney = (amountCents: number, options: FormatMoneyOptions = {}): string => {
++  const currency = (options.currency ?? "USD").toUpperCase();
++  const format = resolveFormat(currency);
++  const isNegative = amountCents < 0;
++  const absoluteCents = Math.abs(amountCents);
++
++  if (format.fractionDigits === 0) {
++    const whole = groupThousands(String(absoluteCents));
++    return `${isNegative ? "-" : ""}${format.symbol}${whole}`;
++  }
++
++  const divisor = 10 ** format.fractionDigits;
++  const major = Math.floor(absoluteCents / divisor);
++  const minor = absoluteCents % divisor;
++  const groupedMajor = groupThousands(String(major));
++  const showDecimals = !(options.trimZeroCents && minor === 0);
++  const fraction = showDecimals ? `.${String(minor).padStart(format.fractionDigits, "0")}` : "";
++
++  return `${isNegative ? "-" : ""}${format.symbol}${groupedMajor}${fraction}`;
+ };

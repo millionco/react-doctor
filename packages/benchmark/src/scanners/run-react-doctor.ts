@@ -58,12 +58,19 @@ const toFinding = (diagnostic: JsonReport["diagnostics"][number]): ScanFinding =
 // rather than React Doctor's own `--diff` git semantics — keeps grading
 // deterministic and ensures pre-existing, untouched slop is never charged to
 // the agent.
+//
+// Dead-code analysis is disabled (`--no-dead-code`): whole-file reachability
+// needs a real application entry point, which a diff-scoped grade of an
+// isolated change does not reliably provide, so it would false-fire
+// "unused file" on legitimately clean new code. The deslop/maintainability
+// signal is still covered by the AST `deslop/nested-ternary` check and React
+// Doctor's other Maintainability rules.
 export const runReactDoctor = (context: ScannerContext): ReactDoctorScanResult => {
   const changed = new Set(context.changedFiles);
   const { command, prefixArgs } = resolveBinInvocation(context.reactDoctorBin);
   const result = runCommand(
     command,
-    [...prefixArgs, context.rootDirectory, "--json", "--no-score"],
+    [...prefixArgs, context.rootDirectory, "--json", "--no-score", "--no-dead-code"],
     { cwd: context.rootDirectory },
   );
 

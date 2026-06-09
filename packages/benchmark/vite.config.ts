@@ -7,5 +7,9 @@ export default defineConfig({
   test: {
     include: ["tests/**/*.test.{ts,tsx}"],
     exclude: ["tasks/**", "dist/**", "node_modules/**"],
+    // Several tests spawn the real React Doctor CLI (a few seconds each) plus
+    // git/diff work, which exceeds vitest's 5s default on slower CI runners.
+    testTimeout: 120_000,
+    hookTimeout: 120_000,
   },
 });

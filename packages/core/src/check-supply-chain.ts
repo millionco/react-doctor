@@ -80,6 +80,11 @@ const clampScore = (value: number): number => {
   return Math.min(Math.max(value, 0), SOCKET_SCORE_SCALE);
 };
 
+// Socket scores arrive normalized 0..1; present them on the familiar 0..100
+// scale used everywhere else (diagnostics, the `--sfw` table, span attributes).
+const toHundred = (normalizedScore: number): number =>
+  Math.round(clampScore(normalizedScore * SOCKET_SCORE_SCALE));
+
 const resolveOptions = (config: ReactDoctorConfig | null): ResolvedSupplyChainOptions => {
   const supplyChain = config?.supplyChain ?? {};
   return {
@@ -264,13 +269,38 @@ const parseScoreFromBody = (body: string): SocketScore | null => {
   return null;
 };
 
+// Span attributes for one Socket lookup: which package/version/PURL was
+// scored, whether Socket knew it, and every axis (overall + the SCORE_AXES
+// dimensions) on the 0..100 scale. Dotted `socket.*` namespacing per the
+// observability conventions, so a trace backend can group/filter by package
+// or query score distributions across a scan.
+const buildScoreSpanAttributes = (
+  dependency: DependencyToScore,
+  score: SocketScore | null,
+): Record<string, string | number | boolean> => {
+  const attributes: Record<string, string | number | boolean> = {
+    "socket.package": dependency.name,
+    "socket.version": dependency.version,
+    "socket.purl": toPurl(dependency),
+    "socket.scored": score !== null,
+  };
+  if (score !== null) {
+    attributes["socket.score.overall"] = toHundred(score.overall);
+    for (const axis of SCORE_AXES) {
+      attributes[`socket.score.${axis.key}`] = toHundred(score[axis.key]);
+    }
+  }
+  return attributes;
+};
+
 // Fetches the free, keyless Socket score for one dependency — the same
 // `firewall-api.socket.dev/purl/<encoded-purl>` endpoint Socket Firewall's
 // free tier hits. `Effect.tryPromise` hands `fetch` an `AbortSignal` that
 // `Effect.timeout` trips on the deadline (cancelling the request), and
 // `Effect.orElseSucceed` makes the lookup fail-open: an unscored / unknown
 // package, a timeout, or any network/parse failure yields `null` (skip)
-// rather than sinking the scan.
+// rather than sinking the scan. Each lookup is its own `SupplyChain.fetchScore`
+// span, annotated with the package/version and resolved axis scores.
 const fetchSocketScore = (dependency: DependencyToScore): Effect.Effect<SocketScore | null> =>
   Effect.tryPromise(async (signal) => {
     const requestUrl = `${SOCKET_FREE_PURL_API_BASE}/${encodeURIComponent(toPurl(dependency))}`;
@@ -283,10 +313,15 @@ const fetchSocketScore = (dependency: DependencyToScore): Effect.Effect<SocketSc
   }).pipe(
     Effect.timeout(FETCH_TIMEOUT_MS),
     Effect.orElseSucceed(() => null),
+    Effect.tap((score) => Effect.annotateCurrentSpan(buildScoreSpanAttributes(dependency, score))),
+    Effect.withSpan("SupplyChain.fetchScore", {
+      attributes: {
+        "socket.package": dependency.name,
+        "socket.version": dependency.version,
+        "socket.purl": toPurl(dependency),
+      },
+    }),
   );
-
-const toHundred = (normalizedScore: number): number =>
-  Math.round(clampScore(normalizedScore * SOCKET_SCORE_SCALE));
 
 const findLowestAxis = (score: SocketScore): { label: string; value: number } => {
   let lowest = SCORE_AXES[0];

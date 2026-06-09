@@ -28,6 +28,7 @@ import { isCatalogReference, resolveCatalogVersion } from "./resolve-catalog-ver
 import { parseReactMajor } from "./parse-react-major.js";
 import { parseZodMajor } from "./parse-zod-major.js";
 import { resolveEffectiveReactMajor } from "./resolve-effective-react-major.js";
+import { detectPreES2023Target } from "./detect-pre-es2023-target.js";
 
 export { discoverReactSubprojects } from "./discover-react-subprojects.js";
 export { formatFrameworkName } from "./detect-framework.js";
@@ -229,6 +230,7 @@ export const discoverProject = (directory: string): ProjectInfo => {
         })
       : null;
   const preactVersion = getPreactVersion(packageJson);
+  const isPreES2023Target = hasTypeScript && detectPreES2023Target(directory);
 
   const projectInfo: ProjectInfo = {
     rootDirectory: directory,
@@ -252,6 +254,7 @@ export const discoverProject = (directory: string): ProjectInfo => {
     shopifyFlashListMajorVersion:
       shopifyFlashListVersion === null ? null : getLowestDependencyMajor(shopifyFlashListVersion),
     hasReanimated,
+    isPreES2023Target,
     sourceFileCount,
   };
   cachedProjectInfos.set(directory, projectInfo);

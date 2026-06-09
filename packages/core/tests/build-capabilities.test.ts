@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
-import { buildCapabilities } from "@react-doctor/core";
-import type { ProjectInfo } from "@react-doctor/core";
+import type { ProjectInfo } from "../src/types/index.js";
+import { buildCapabilities, shouldEnableRule } from "../src/runners/oxlint/capabilities.js";
 
 const baseProject: ProjectInfo = {
   rootDirectory: "/tmp/project",
@@ -23,6 +23,7 @@ const baseProject: ProjectInfo = {
   preactVersion: null,
   preactMajorVersion: null,
   hasReanimated: false,
+  isPreES2023Target: false,
   sourceFileCount: 1,
 };
 
@@ -228,5 +229,25 @@ describe("buildCapabilities", () => {
     });
     expect(capabilities.has("nextjs")).toBe(true);
     expect(capabilities.has("nextjs:15")).toBe(false);
+  });
+
+  it("emits `pre-es2023` when the project target predates ES2023", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      isPreES2023Target: true,
+    });
+
+    expect(capabilities.has("pre-es2023")).toBe(true);
+  });
+
+  it("disables rules when a disabledBy capability is present", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      isPreES2023Target: true,
+    });
+
+    expect(shouldEnableRule(undefined, undefined, capabilities, new Set(), ["pre-es2023"])).toBe(
+      false,
+    );
   });
 });

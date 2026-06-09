@@ -21,6 +21,7 @@ const projectInfo: ProjectInfo = {
   hasReactNativeWorkspace: false,
   expoVersion: null,
   hasReanimated: false,
+  isPreES2023Target: false,
   sourceFileCount: 50,
 };
 

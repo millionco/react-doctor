@@ -21,6 +21,7 @@ const SAMPLE_PROJECT: ProjectInfo = {
   shopifyFlashListVersion: null,
   shopifyFlashListMajorVersion: null,
   hasReanimated: false,
+  isPreES2023Target: false,
   preactVersion: null,
   preactMajorVersion: null,
   sourceFileCount: 42,

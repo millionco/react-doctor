@@ -131,7 +131,7 @@ export const noCreateStoreInRender = defineRule<Rule>({
   severity: "error",
   category: "Correctness",
   recommendation:
-    "Create the store, atom, or observable at the top level of the file, not inside a component or hook.",
+    "Create stores at module scope so subscribers are not cut off and saved state does not reset every render.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const factory = resolveStoreFactoryForCallee(node.callee);

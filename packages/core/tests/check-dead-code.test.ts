@@ -233,6 +233,17 @@ describe("checkDeadCode", () => {
     expect(
       diagnostics.find((diagnostic) => diagnostic.rule === "circular-dependency")?.message,
     ).toContain("src/a.ts → src/b.ts");
+    // Message stays the bare name (deps collapse to `package.json:0`, so the
+    // renderer lists each one); the shared rationale rides `help`, not the message (#690).
+    const unusedDependency = diagnostics.find(
+      (diagnostic) => diagnostic.rule === "unused-dependency",
+    );
+    expect(unusedDependency?.message).toBe("Unused dependency: `left-pad`");
+    expect(unusedDependency?.filePath).toBe("package.json");
+    expect(unusedDependency?.help).toContain("supply-chain");
+    expect(
+      diagnostics.find((diagnostic) => diagnostic.rule === "unused-dev-dependency")?.message,
+    ).toBe("Unused devDependency: `vitest`");
   });
 
   it("rejects malformed worker results instead of silently dropping diagnostics", async () => {

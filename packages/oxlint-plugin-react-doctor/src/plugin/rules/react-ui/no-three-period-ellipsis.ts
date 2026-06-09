@@ -15,7 +15,7 @@ export const noThreePeriodEllipsis = defineRule<Rule>({
   defaultEnabled: false,
   category: "Architecture",
   recommendation:
-    'Use the real ellipsis "…" (or `&hellip;`) instead of three dots. Good for labels like "Rename…" and "Loading…".',
+    'Use the real ellipsis character ("…") so UI labels look polished and consistent instead of like three separate periods.',
   create: (context: RuleContext) => ({
     JSXText(jsxTextNode: EsTreeNodeOfType<"JSXText">) {
       const textValue = typeof jsxTextNode.value === "string" ? jsxTextNode.value : "";
@@ -23,7 +23,7 @@ export const noThreePeriodEllipsis = defineRule<Rule>({
       if (isInsideExcludedTypographyAncestor(jsxTextNode)) return;
       context.report({
         node: jsxTextNode,
-        message: 'Three dots ("...") look unpolished to your users.',
+        message: 'Use the real ellipsis character ("…") instead of three period characters.',
       });
     },
   }),

@@ -68,7 +68,8 @@ export const iframeMissingSandbox = defineRule<Rule>({
   id: "iframe-missing-sandbox",
   title: "iframe missing sandbox attribute",
   severity: "warn",
-  recommendation: 'Add `sandbox=""` (or a curated value) to your iframe.',
+  recommendation:
+    'Add `sandbox=""` or a curated value so embedded pages cannot get full access to your site by default.',
   category: "Security",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {

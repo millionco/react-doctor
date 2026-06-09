@@ -133,7 +133,8 @@ export const jsxNoNewObjectAsProp = defineRule<Rule>({
   // React Compiler auto-memoizes prop allocations, so the perf footgun
   // this rule guards against doesn't exist in compiler-enabled projects.
   disabledBy: ["react-compiler"],
-  recommendation: "Wrap the object in `useMemo`, or move it outside the component.",
+  recommendation:
+    "Wrap the object in `useMemo` or move it outside the component so memoized children do not redraw every render.",
   category: "Performance",
   create: (context) => {
     const isTestlikeFile = isTestlikeFilename(context.filename);

@@ -39,11 +39,11 @@ const collectBooleanLikePropsFromBody = (
 // patterns on the parameter binding.
 export const noManyBooleanProps = defineRule<Rule>({
   id: "no-many-boolean-props",
-  title: "Too many boolean props",
+  title: "Boolean prop combinations are hard to test",
   severity: "warn",
   tags: ["test-noise", "react-jsx-only"],
   recommendation:
-    "Split into smaller components or named variants, like `<Button.Primary />` and `<DialogConfirm />`, instead of stacking `isPrimary` and `isConfirm` flags.",
+    "Split boolean-heavy APIs into smaller components or named variants so combinations stay testable.",
   create: (context: RuleContext) => {
     const reportIfMany = (
       booleanLikePropNames: string[],

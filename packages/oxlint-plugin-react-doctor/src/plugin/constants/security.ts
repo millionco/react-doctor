@@ -101,7 +101,7 @@ export const SECRET_TEST_FILE_PATTERN =
 
 export const SECRET_SERVER_FILE_SUFFIX_PATTERN = /(?:^|\/)[^/]+\.server\.[cm]?[jt]sx?$/;
 
-export const SECRET_SERVER_ENTRY_FILE_PATTERN = /(?:^|\/)(?:middleware|route)\.[cm]?[jt]sx?$/;
+export const SECRET_SERVER_ENTRY_FILE_PATTERN = /(?:^|\/)(?:middleware|proxy|route)\.[cm]?[jt]sx?$/;
 
 export const SECRET_NEXT_PAGES_API_FILE_PATTERN = /(?:^|\/)pages\/api\/.+\.[cm]?[jt]sx?$/;
 

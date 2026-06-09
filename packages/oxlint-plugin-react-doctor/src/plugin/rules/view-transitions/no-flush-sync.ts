@@ -27,7 +27,7 @@ export const noFlushSync = defineRule<Rule>({
           context.report({
             node: specifier,
             message:
-              "Your users lose View Transitions & concurrent rendering when flushSync from react-dom forces an immediate update.",
+              "`flushSync` forces an immediate update, which skips View Transitions and concurrent rendering.",
           });
         }
       }

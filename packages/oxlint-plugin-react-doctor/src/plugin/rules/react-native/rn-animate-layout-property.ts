@@ -7,5 +7,5 @@ export const rnAnimateLayoutProperty = defineRetiredRule({
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    "Reanimated useAnimatedStyle runs on the UI thread; layout-affecting properties driven by animation helpers, interpolate, or shared values are valid.",
+    "Retired: Reanimated `useAnimatedStyle` can safely drive layout-affecting properties on the UI thread, so this pattern should not be flagged.",
 });

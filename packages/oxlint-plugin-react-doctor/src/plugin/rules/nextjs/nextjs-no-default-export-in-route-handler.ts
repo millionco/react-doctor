@@ -51,7 +51,7 @@ export const nextjsNoDefaultExportInRouteHandler = defineRule<Rule>({
   requires: ["nextjs"],
   severity: "error",
   recommendation:
-    "Replace `export default` with named HTTP method exports: `export async function GET(request) { … }`",
+    "Replace `export default` with named HTTP method exports because Next.js ignores default exports in `route.ts`.",
   create: (context: RuleContext) => {
     let isAppRouteHandler = false;
     let programNode: EsTreeNodeOfType<"Program"> | null = null;

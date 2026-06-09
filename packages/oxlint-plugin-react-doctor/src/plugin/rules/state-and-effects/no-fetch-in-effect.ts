@@ -12,7 +12,7 @@ export const noFetchInEffect = defineRule<Rule>({
   title: "Data fetching inside an effect",
   severity: "warn",
   recommendation:
-    "Use `useQuery()` from @tanstack/react-query, `useSWR()`, or fetch in a Server Component instead",
+    "Use a data-fetching layer or Server Component so fetches do not race, double-fire, or leak from `useEffect`.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isHookCall(node, EFFECT_HOOK_NAMES)) return;
@@ -22,7 +22,8 @@ export const noFetchInEffect = defineRule<Rule>({
       if (containsFetchCall(callback)) {
         context.report({
           node,
-          message: "fetch() inside useEffect races, double-fires & leaks for your users.",
+          message:
+            "fetch() inside useEffect can race, double-fire, or leak. Use a data-fetching layer or Server Component instead.",
         });
       }
     },

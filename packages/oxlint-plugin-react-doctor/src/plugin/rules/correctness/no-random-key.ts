@@ -168,7 +168,7 @@ export const noRandomKey = defineRule<Rule>({
 
       context.report({
         node: node.value,
-        message: `Your users lose typed input, focus & scroll position because \`key={${freshDescription}}\` makes a new key every render, so React rebuilds every item. Use a stable id from the item.`,
+        message: `A changing key makes React rebuild each item, which can reset typed input, focus, and scroll position. Use a stable id from the item instead of \`key={${freshDescription}}\`.`,
       });
     },
   }),

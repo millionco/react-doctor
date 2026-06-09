@@ -5,8 +5,10 @@ import { isEs6Component } from "../../utils/is-es6-component.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
-const ALWAYS_MESSAGE = "This component's state is set up inconsistently.";
-const NEVER_MESSAGE = "This component's state is set up inconsistently.";
+const ALWAYS_MESSAGE =
+  "This class uses a state field instead of the configured constructor pattern, so state setup is inconsistent across the codebase.";
+const NEVER_MESSAGE =
+  "This class sets state in the constructor instead of the configured class-field pattern, so state setup is inconsistent across the codebase.";
 
 interface StateInConstructorSettings {
   mode?: "always" | "never";
@@ -74,7 +76,7 @@ export const stateInConstructor = defineRule<Rule>({
   // explicit constructor assignment are equivalent at runtime. The
   // class-field form is idiomatic modern TypeScript. Default off.
   defaultEnabled: false,
-  recommendation: "Pick one way to set up state in class components and stick with it.",
+  recommendation: "Use one class-state setup pattern so readers know where initial state lives.",
   category: "Architecture",
   create: (context) => {
     const { mode } = resolveSettings(context.settings);

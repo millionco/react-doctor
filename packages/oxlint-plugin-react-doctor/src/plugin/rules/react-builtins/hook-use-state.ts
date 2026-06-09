@@ -5,8 +5,10 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactFunctionCall } from "../../utils/is-react-function-call.js";
 import type { Rule } from "../../utils/rule.js";
 
-const REQUIRE_DESTRUCTURE_MESSAGE = "This `useState` result is hard to follow.";
-const NAMING_CONVENTION_MESSAGE = "The setter here is hard to spot.";
+const REQUIRE_DESTRUCTURE_MESSAGE =
+  "`useState` should be destructured as `[value, setValue]` so readers can see the state value and setter together.";
+const NAMING_CONVENTION_MESSAGE =
+  "This `useState` setter does not match its value name, so updates are harder to trace.";
 
 interface HookUseStateSettings {
   allowDestructuredState?: boolean;
@@ -70,7 +72,8 @@ export const hookUseState = defineRule<Rule>({
   // where the setter is intentionally never used). Both are
   // idiomatic. Default off.
   defaultEnabled: false,
-  recommendation: "Destructure useState as `const [thing, setThing] = useState(…)`.",
+  recommendation:
+    "Destructure `useState` as `const [thing, setThing] = useState(…)` so state reads and writes stay visible together.",
   category: "Architecture",
   create: (context) => {
     const { allowDestructuredState } = resolveSettings(context.settings);

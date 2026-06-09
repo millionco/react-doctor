@@ -6,7 +6,7 @@ import { hasJsxProp } from "../../utils/has-jsx-prop.js";
 import type { Rule } from "../../utils/rule.js";
 
 const MESSAGE =
-  "Screen reader users get no help from `scope` here because it only works on `<th>` cells, so remove it.";
+  "The `scope` attribute only works on `<th>` cells, so screen readers get no table-header help from it here.";
 
 // Port of `oxc_linter::rules::jsx_a11y::scope`. Flags `scope=` on
 // non-`<th>` elements.
@@ -15,7 +15,7 @@ export const scope = defineRule<Rule>({
   title: "scope attribute on non-th element",
   tags: ["react-jsx-only"],
   severity: "warn",
-  recommendation: "Only use `scope` on `<th>` cells.",
+  recommendation: "Remove `scope` from this element or move it to the related `<th>` cell.",
   category: "Accessibility",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {

@@ -7,7 +7,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const nextjsNoAElement = defineRule<Rule>({
   id: "nextjs-no-a-element",
-  title: "Plain anchor for internal link",
+  title: "Plain anchor reloads internal Next.js links",
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "warn",
@@ -33,7 +33,8 @@ export const nextjsNoAElement = defineRule<Rule>({
       if (typeof hrefValue === "string" && hrefValue.startsWith("/")) {
         context.report({
           node,
-          message: "Plain <a> reloads the whole page on internal links.",
+          message:
+            "Plain <a> reloads the whole page for internal links, so Next.js loses client-side navigation and prefetching.",
         });
       }
     },

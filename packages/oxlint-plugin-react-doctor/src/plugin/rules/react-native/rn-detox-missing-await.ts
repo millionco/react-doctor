@@ -133,7 +133,8 @@ export const rnDetoxMissingAwait = defineRule<Rule>({
         if (root.calleeName === "waitFor") {
           context.report({
             node,
-            message: "This Detox `waitFor(...)` chain isn't awaited. Prepend `await`.",
+            message:
+              "This Detox `waitFor` chain isn't awaited, so the test can continue before the condition settles. Prepend `await`.",
           });
           return;
         }
@@ -141,7 +142,8 @@ export const rnDetoxMissingAwait = defineRule<Rule>({
         if (root.calleeName === "expect" && isDetoxExpectSubject(root.rootCall)) {
           context.report({
             node,
-            message: "This Detox `expect(element(...))` assertion isn't awaited. Prepend `await`.",
+            message:
+              "This Detox `expect(element)` assertion isn't awaited, so the test can pass or fail before the assertion settles. Prepend `await`.",
           });
         }
       },

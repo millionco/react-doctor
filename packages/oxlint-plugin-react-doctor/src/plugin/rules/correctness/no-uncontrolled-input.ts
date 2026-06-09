@@ -119,10 +119,10 @@ export const noUncontrolledInput = defineRule<Rule>({
           const stateName = valueAttribute.value.expression.name;
           const partnerHint = hasAllowedPartner
             ? "Give useState a starting value"
-            : "Give useState a starting value & add onChange (or readOnly)";
+            : "Give useState a starting value and add onChange (or readOnly)";
           context.report({
             node: child,
-            message: `Your users hit a console warning & a field that can reset because "${stateName}" starts undefined, so <${tagName} value={${stateName}}> flips from uncontrolled to controlled. ${partnerHint} (e.g. \`useState("")\`).`,
+            message: `This can trigger a console warning and reset the field because "${stateName}" starts undefined, so <${tagName} value={${stateName}}> flips from uncontrolled to controlled. ${partnerHint} (e.g. \`useState("")\`).`,
           });
           return;
         }

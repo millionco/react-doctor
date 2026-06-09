@@ -8,12 +8,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const nextjsNoNativeScript = defineRule<Rule>({
   id: "nextjs-no-native-script",
-  title: "Plain script tag",
+  title: "Plain script can block Next.js rendering",
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "warn",
   recommendation:
-    '`import Script from "next/script"`. Use `strategy="afterInteractive"` for analytics or `"lazyOnload"` for widgets',
+    'Use `next/script` with `strategy="afterInteractive"` or `"lazyOnload"` so third-party scripts do not block rendering.',
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "script") return;
@@ -26,7 +26,7 @@ export const nextjsNoNativeScript = defineRule<Rule>({
 
       context.report({
         node,
-        message: "Plain <script> blocks rendering with no loading strategy.",
+        message: "Plain <script> has no Next.js loading strategy, so it can block rendering.",
       });
     },
   }),

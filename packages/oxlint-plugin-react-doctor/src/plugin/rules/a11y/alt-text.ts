@@ -11,17 +11,17 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
 
 const MISSING_ALT_PROP =
-  'Blind users can\'t use this image because screen readers skip it without `alt`, so add `alt="..."` (or `alt=""` if decorative).';
+  'Screen reader users cannot access this image without `alt`. Add `alt="image_description"`, or `alt=""` if it is decorative.';
 const MISSING_ALT_VALUE =
-  'Blind users can\'t use this image because its `alt` is empty or invalid, so add a short description (or `alt=""` if decorative).';
+  'Screen reader users cannot access this image because its `alt` is empty or invalid. Add a short description, or `alt=""` if it is decorative.';
 const ARIA_LABEL_VALUE =
-  "Blind users hear nothing here because `aria-label` has no value, so give it a short description.";
+  "Screen reader users hear nothing here because `aria-label` has no value, so give it a short description.";
 const ARIA_LABELLEDBY_VALUE =
-  "Blind users hear nothing here because `aria-labelledby` has no value, so point it at the id of the text that labels this.";
+  "Screen reader users hear nothing here because `aria-labelledby` has no value, so point it at the id of the text that labels this.";
 const PREFER_ALT =
   'Screen readers skip a decorative image more reliably with `alt=""` than `role="presentation"`, so use `alt=""` instead.';
 const MESSAGE_OBJECT =
-  "Blind users can't use this `<object>` because screen readers can't describe it, so add `alt`, `aria-label`, `aria-labelledby`, `title`, or inner fallback text.";
+  "Screen reader users cannot use this `<object>` because assistive tech cannot describe it, so add `alt`, `aria-label`, `aria-labelledby`, `title`, or inner fallback text.";
 const MESSAGE_AREA =
   "Blind users can't use this `<area>` of the image map because screen readers can't describe it, so add `alt`, `aria-label`, or `aria-labelledby`.";
 const MESSAGE_INPUT_IMAGE =

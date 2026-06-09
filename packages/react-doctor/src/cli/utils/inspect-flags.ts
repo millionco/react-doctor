@@ -17,6 +17,7 @@ export interface InspectFlags {
   // resolver maps the `true` default back to `undefined` so config can win.
   respectInlineDisables?: boolean;
   warnings?: boolean;
+  category?: string | string[];
   project?: string;
   diff?: boolean | string;
   changedFilesFrom?: string;

@@ -10,6 +10,7 @@ import type { Diagnostic, InspectResult, ReactDoctorConfig, ScoreResult } from "
 import { colorizeByScore } from "./colorize-by-score.js";
 import { computeProjectedScore } from "./compute-score-projection.js";
 import { buildRulePriorityMap } from "./diagnostic-grouping.js";
+import { filterDiagnosticsByCategories } from "./filter-diagnostics-by-categories.js";
 import { isCodingAgentEnvironment } from "./is-ci-environment.js";
 import { canAnimateOnboarding } from "./onboarding-pacing.js";
 import { formatElapsedTime, printDiagnostics } from "./render-diagnostics.js";
@@ -78,6 +79,7 @@ const findLowestScoredScan = (
 export interface MultiProjectSummaryInput {
   readonly completedScans: ReadonlyArray<{ readonly result: InspectResult }>;
   readonly userConfig: ReactDoctorConfig | null;
+  readonly categoryFilters?: ReadonlySet<string>;
   readonly verbose: boolean;
   readonly isOffline: boolean;
   readonly projectName: string;
@@ -86,6 +88,7 @@ export interface MultiProjectSummaryInput {
 export const printMultiProjectSummary = (input: MultiProjectSummaryInput): Effect.Effect<void> =>
   Effect.gen(function* () {
     const { completedScans, userConfig, verbose, isOffline, projectName } = input;
+    const categoryFilters = input.categoryFilters ?? new Set<string>();
 
     // Report animations (category count-up + score-projection ghost gain) play
     // on every interactive aggregate render, mirroring the single-project path
@@ -94,6 +97,7 @@ export const printMultiProjectSummary = (input: MultiProjectSummaryInput): Effec
 
     const allDiagnostics: Diagnostic[] = completedScans.flatMap((scan) => scan.result.diagnostics);
     const surfaceDiagnostics = filterDiagnosticsForSurface(allDiagnostics, "cli", userConfig);
+    const displayDiagnostics = filterDiagnosticsByCategories(surfaceDiagnostics, categoryFilters);
 
     // Each diagnostic's `filePath` is relative to its own project root,
     // so the code-frame renderer needs to resolve per-diagnostic rather
@@ -139,10 +143,10 @@ export const printMultiProjectSummary = (input: MultiProjectSummaryInput): Effec
       `${highlighter.success("✔")} Scanned ${totalScannedFileCount} ${totalScannedFileCount === 1 ? "file" : "files"} in ${formatElapsedTime(totalScanElapsedMilliseconds)}`,
     );
 
-    if (surfaceDiagnostics.length > 0) {
+    if (displayDiagnostics.length > 0) {
       yield* Console.log("");
       yield* printDiagnostics(
-        surfaceDiagnostics,
+        displayDiagnostics,
         verbose,
         resolveDiagnosticSourceRoot,
         buildRulePriorityMap(completedScans.map((scan) => scan.result.score)),
@@ -168,15 +172,15 @@ export const printMultiProjectSummary = (input: MultiProjectSummaryInput): Effec
     const potentialScore = lowestScoredScan
       ? yield* Effect.promise(() =>
           computeProjectedScore(
-            surfaceDiagnostics,
-            lowestScoredScan.result.diagnostics,
+            displayDiagnostics,
+            filterDiagnosticsForSurface(lowestScoredScan.result.diagnostics, "cli", userConfig),
             lowestScoredScan.result.score,
           ),
         )
       : null;
 
     yield* printSummary({
-      diagnostics: surfaceDiagnostics,
+      diagnostics: displayDiagnostics,
       elapsedMilliseconds: totalElapsedMilliseconds,
       scoreResult: aggregateScore,
       potentialScore,
@@ -187,13 +191,17 @@ export const printMultiProjectSummary = (input: MultiProjectSummaryInput): Effec
     });
 
     const entries: ProjectScanEntry[] = completedScans.map((scan) => {
-      const errorCount = scan.result.diagnostics.filter(
+      const projectDiagnostics = filterDiagnosticsByCategories(
+        filterDiagnosticsForSurface([...scan.result.diagnostics], "cli", userConfig),
+        categoryFilters,
+      );
+      const errorCount = projectDiagnostics.filter(
         (diagnostic) => diagnostic.severity === "error",
       ).length;
       return {
         projectName: scan.result.project.projectName,
         score: scan.result.score?.score ?? null,
-        issueCount: scan.result.diagnostics.length,
+        issueCount: projectDiagnostics.length,
         errorCount,
       };
     });
@@ -206,7 +214,7 @@ export const printMultiProjectSummary = (input: MultiProjectSummaryInput): Effec
     }
 
     yield* printFooter({
-      diagnostics: surfaceDiagnostics,
+      diagnostics: displayDiagnostics,
       scoreResult: aggregateScore,
       projectName,
       isOffline,

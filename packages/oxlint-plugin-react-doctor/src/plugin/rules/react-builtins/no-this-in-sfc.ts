@@ -126,7 +126,8 @@ export const noThisInSfc = defineRule<Rule>({
   id: "no-this-in-sfc",
   title: "this used in function component",
   severity: "warn",
-  recommendation: "Read from the `props` argument instead of `this.props`.",
+  recommendation:
+    "Read from the `props` argument because function components do not have a React instance `this`.",
   create: (context) => {
     // Read settings.react.createClass — a string OR array OR a single
     // bare name. Always include the standard createReactClass shape

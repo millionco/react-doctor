@@ -9,7 +9,7 @@ import type { Rule } from "../../utils/rule.js";
 const buildMessage = (element: string, customHelp?: string): string =>
   customHelp
     ? `Your project blocks \`<${element}>\` here. ${customHelp}`
-    : `Your project blocks \`<${element}>\` here.`;
+    : `Your project blocks \`<${element}>\` here, so code stays on the approved UI surface.`;
 
 interface ForbidElementsItem {
   element: string;
@@ -46,10 +46,9 @@ const flattenMemberName = flattenCalleeName;
 // the first argument of `React.createElement(...)`.
 export const forbidElements = defineRule<Rule>({
   id: "forbid-elements",
-  title: "Forbidden element used",
+  title: "Blocked element bypasses approved UI primitives",
   severity: "warn",
-  recommendation:
-    "List the element names you want to block in the `forbidElements.forbid` setting.",
+  recommendation: "Configure blocked elements so code stays on the approved UI primitives.",
   category: "Architecture",
   create: (context) => {
     const forbidMap = resolveSettings(context.settings);

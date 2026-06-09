@@ -10,7 +10,7 @@ import { isNonInteractiveElement } from "../../utils/is-non-interactive-element.
 import type { Rule } from "../../utils/rule.js";
 
 const buildMessage = (tag: string, role: string): string =>
-  `Screen reader users get confused because role \`${role}\` makes \`<${tag}>\` act interactive when it isn't, so use a real interactive element instead.`;
+  `Role \`${role}\` gives \`<${tag}>\` interactive semantics even though the element is noninteractive, so screen reader users get the wrong controls.`;
 
 const DEFAULT_ALLOWED_ROLES: Record<string, ReadonlyArray<string>> = {
   ul: ["menu", "menubar", "radiogroup", "tablist", "tree", "treegrid"],

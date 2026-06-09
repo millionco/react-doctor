@@ -11,7 +11,7 @@ describe("StagedFiles.layerNode (driven by Git.layerOf)", () => {
     const layer = StagedFiles.layerNode.pipe(
       Layer.provide(
         Git.layerOf({
-          stagedFiles: ["src/a.ts", "README.md", "src/b.tsx", "package.json"],
+          stagedFiles: ["src/a.ts", "README.md", "src/b.tsx", "src/proxy.mjs", "package.json"],
         }),
       ),
     );
@@ -23,7 +23,7 @@ describe("StagedFiles.layerNode (driven by Git.layerOf)", () => {
       }).pipe(Effect.provide(layer)),
     );
 
-    expect(sourceFiles).toEqual(["src/a.ts", "src/b.tsx"]);
+    expect(sourceFiles).toEqual(["src/a.ts", "src/b.tsx", "src/proxy.mjs"]);
   });
 
   it("returns an empty list when no files are staged", async () => {

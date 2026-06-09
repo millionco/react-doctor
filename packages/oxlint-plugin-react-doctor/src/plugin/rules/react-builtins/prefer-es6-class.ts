@@ -5,8 +5,10 @@ import { isEs5Component } from "../../utils/is-es5-component.js";
 import { isEs6Component } from "../../utils/is-es6-component.js";
 import type { Rule } from "../../utils/rule.js";
 
-const ALWAYS_MESSAGE = "`createReactClass` is legacy & adds a dependency.";
-const NEVER_MESSAGE = "This component is defined inconsistently.";
+const ALWAYS_MESSAGE =
+  "`createReactClass` is legacy and adds a dependency, so this component diverges from modern React class syntax.";
+const NEVER_MESSAGE =
+  "This component uses an ES6 class where `createReactClass` is configured, so component style is inconsistent across the codebase.";
 
 interface PreferEs6ClassSettings {
   mode?: "always" | "never";
@@ -31,7 +33,7 @@ export const preferEs6Class = defineRule<Rule>({
   // which don't occur in a modern function-component codebase. Opt in to enforce it.
   defaultEnabled: false,
   recommendation:
-    "Pick one component style for the whole codebase: `class extends React.Component` (default) or `createReactClass` (legacy).",
+    "Pick one component style so readers do not have to switch between legacy `createReactClass` patterns and modern class components.",
   category: "Architecture",
   create: (context) => {
     const { mode = "always" } = resolveSettings(context.settings);

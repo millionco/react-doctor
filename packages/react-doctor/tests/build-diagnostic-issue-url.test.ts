@@ -5,10 +5,11 @@ import type { Diagnostic } from "@react-doctor/core";
 const diagnostic: Diagnostic = {
   category: "State & Effects",
   filePath: "/repo/src/App.tsx",
-  help: "Move the state update into an event handler.",
+  help: "Move the state update into an event handler or effect that runs after render.",
   line: 12,
   column: 3,
-  message: "State update during render.",
+  message:
+    "State is updated during render, so React can immediately re-render in a loop before the UI settles.",
   plugin: "react-doctor",
   rule: "no-set-state-in-render",
   severity: "error",
@@ -33,8 +34,8 @@ describe("buildDiagnosticIssueUrl", () => {
     expect(issueUrl.searchParams.get("labels")).toBe("bug");
     expect(body).toContain("Rule: react-doctor/no-set-state-in-render");
     expect(body).toContain("Location: src/App.tsx:12");
-    expect(body).toContain("State update during render.");
-    expect(body).toContain("Move the state update into an event handler.");
+    expect(body).toContain("React can immediately re-render in a loop");
+    expect(body).toContain("Move the state update into an event handler or effect");
     expect(body).toContain("false positive");
   });
 });

@@ -21,7 +21,8 @@ interface ForbidDomPropsSettings {
 }
 
 const buildMessage = (propName: string, customMessage?: string): string =>
-  customMessage ?? `Your project blocks the \`${propName}\` prop on plain HTML tags.`;
+  customMessage ??
+  `Your project blocks the \`${propName}\` prop on plain HTML tags, so this bypasses the agreed DOM API contract.`;
 
 const resolveSettings = (
   settings: Readonly<Record<string, unknown>> | undefined,
@@ -55,9 +56,10 @@ const resolveSettings = (
 // (lowercase tag names), respecting per-prop `disallowedFor` allow-lists.
 export const forbidDomProps = defineRule<Rule>({
   id: "forbid-dom-props",
-  title: "Forbidden DOM prop used",
+  title: "Blocked DOM prop bypasses project contract",
   severity: "warn",
-  recommendation: "List the HTML props you want to block in the `forbidDomProps.forbid` setting.",
+  recommendation:
+    "Configure blocked DOM props so plain HTML tags stay on the agreed DOM API surface.",
   category: "Architecture",
   create: (context) => {
     const forbidMap = resolveSettings(context.settings);

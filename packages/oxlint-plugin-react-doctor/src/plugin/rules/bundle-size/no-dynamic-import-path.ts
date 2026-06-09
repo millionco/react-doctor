@@ -21,7 +21,7 @@ export const noDynamicImportPath = defineRule<Rule>({
         context.report({
           node,
           message:
-            "This ships in the main bundle & slows page load, since the bundler can't code-split a dynamic import path. Use a plain string path instead.",
+            "This can stay in the main bundle because the bundler cannot code-split a dynamic import path. Use a plain string path instead.",
         });
         return;
       }
@@ -29,7 +29,7 @@ export const noDynamicImportPath = defineRule<Rule>({
         context.report({
           node,
           message:
-            "This ships in the main bundle & slows page load, since the bundler can't code-split a dynamic import path. Use a plain string path instead of one with `${...}`.",
+            "This can stay in the main bundle because the bundler cannot code-split a dynamic import path with `${dynamic_path}`. Use a plain string path instead.",
         });
       }
     },

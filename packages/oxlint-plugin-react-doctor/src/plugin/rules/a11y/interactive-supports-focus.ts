@@ -51,7 +51,8 @@ export const interactiveSupportsFocus = defineRule<Rule>({
   title: "Interactive element not focusable",
   tags: ["react-jsx-only"],
   severity: "warn",
-  recommendation: "Add `tabIndex` to elements with interactive roles and handlers.",
+  recommendation:
+    "Add keyboard focus support so users can reach interactive elements without a pointer.",
   category: "Accessibility",
   create: (context) => {
     const settings = resolveSettings(context.settings);

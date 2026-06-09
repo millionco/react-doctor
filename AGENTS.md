@@ -15,6 +15,7 @@
 - MUST: Remove unused code and don't repeat yourself.
 - MUST: Use `truffler` to find existing symbols before adding a utility, helper, type, or rule, and again after finishing a task to catch duplicates and dead code (see "Symbol Search & Deduplication").
 - MUST: Always search the codebase, think of many solutions, then implement the most _elegant_ solution.
+- MUST: Before adding or changing the **public surface** (CLI flags/commands, the score, config, the JSON report, package APIs, the GitHub Action, website, or terminal output), run the `product-thinking` pass (`.agents/skills/product-thinking/`): name the user's job, reuse before adding, wire one telemetry metric, add the compatibility artifacts, and set a kill metric. Lint rules use the rule pipeline instead.
 - MUST: Put all magic numbers in `constants.ts` using `SCREAMING_SNAKE_CASE` with unit suffixes (`_MS`, `_PX`).
 - MUST: Put small, focused utility functions in `utils/` with one utility per file.
 - MUST: Use Boolean over !!.

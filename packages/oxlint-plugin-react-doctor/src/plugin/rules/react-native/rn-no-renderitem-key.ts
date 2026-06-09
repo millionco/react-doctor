@@ -77,7 +77,7 @@ const collectReturnedJsxElements = (expression: EsTreeNode): EsTreeNodeOfType<"J
 
 export const rnNoRenderitemKey = defineRule<Rule>({
   id: "rn-no-renderitem-key",
-  title: "Useless key on renderItem JSX",
+  title: "renderItem key is ignored by React Native lists",
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",

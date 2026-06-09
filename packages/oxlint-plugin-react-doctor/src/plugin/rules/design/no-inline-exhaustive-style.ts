@@ -9,7 +9,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noInlineExhaustiveStyle = defineRule<Rule>({
   id: "no-inline-exhaustive-style",
-  title: "Too many inline style properties",
+  title: "Large inline style object rebuilds every render",
   severity: "warn",
   tags: ["test-noise", "react-jsx-only"],
   recommendation:

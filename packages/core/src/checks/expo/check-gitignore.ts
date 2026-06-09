@@ -41,7 +41,7 @@ export const checkExpoGitignore = (context: ExpoCheckContext): Diagnostic[] => {
       buildExpoDiagnostic({
         rule: "expo-gitignore",
         message:
-          "The native `ios`/`android` directories of a local Expo module under `modules/` are gitignored — usually caused by an overly broad `ios`/`android` ignore rule",
+          "The native `ios`/`android` directories of a local Expo module under `modules/` are gitignored, so required native code can be missing from CI or teammate checkouts.",
         help: "Use anchored patterns like `/ios` and `/android` in .gitignore so only the top-level native directories are excluded, not those inside `modules/`",
       }),
     );

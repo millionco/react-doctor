@@ -21,7 +21,8 @@ describe("design-no-redundant-padding-axes", () => {
 
     const hits = await collectRuleHits(projectDir, "design-no-redundant-padding-axes");
     expect(hits).toHaveLength(1);
-    expect(hits[0].message).toContain("px-4 & py-4");
+    expect(hits[0].message).toContain("px-4 and py-4 duplicate p-4");
+    expect(hits[0].message).toContain("without changing spacing");
   });
 
   it("does not flag px-N py-M when N ≠ M", async () => {
@@ -59,8 +60,8 @@ describe("design-no-redundant-padding-axes", () => {
 
     const hits = await collectRuleHits(projectDir, "design-no-redundant-padding-axes");
     expect(hits).toHaveLength(2);
-    expect(hits.some((hit) => hit.message.includes("px-4 & py-4"))).toBe(true);
-    expect(hits.some((hit) => hit.message.includes("px-6 & py-6"))).toBe(true);
+    expect(hits.some((hit) => hit.message.includes("px-4 and py-4 duplicate p-4"))).toBe(true);
+    expect(hits.some((hit) => hit.message.includes("px-6 and py-6 duplicate p-6"))).toBe(true);
   });
 });
 
@@ -76,7 +77,8 @@ describe("design-no-redundant-size-axes", () => {
       tailwindVersion: "^3.4.0",
     });
     expect(hits).toHaveLength(1);
-    expect(hits[0].message).toContain("w-10 & h-10");
+    expect(hits[0].message).toContain("w-10 and h-10 duplicate size-10");
+    expect(hits[0].message).toContain("without changing layout");
   });
 
   it("reports every matching pair when the same axis appears multiple times", async () => {
@@ -90,8 +92,8 @@ describe("design-no-redundant-size-axes", () => {
       tailwindVersion: "^3.4.0",
     });
     expect(hits).toHaveLength(2);
-    expect(hits.some((hit) => hit.message.includes("w-8 & h-8"))).toBe(true);
-    expect(hits.some((hit) => hit.message.includes("w-10 & h-10"))).toBe(true);
+    expect(hits.some((hit) => hit.message.includes("w-8 and h-8 duplicate size-8"))).toBe(true);
+    expect(hits.some((hit) => hit.message.includes("w-10 and h-10 duplicate size-10"))).toBe(true);
   });
 
   it("does not flag fractional widths (w-1/2 h-1/2)", async () => {

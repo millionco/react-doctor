@@ -7,9 +7,9 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
 const buildHandlerNameMessage = (handlerName: string, propKey: string): string =>
-  `The handler "${handlerName}" for "${propKey}" is hard to recognize.`;
+  `The handler "${handlerName}" does not match the "${propKey}" event prop convention, so readers cannot trace event flow quickly.`;
 const buildHandlerPropMessage = (propKey: string, propValue: string): string =>
-  `The prop "${propKey}" passes a handler "${propValue}".`;
+  `The prop "${propKey}" passes handler "${propValue}" but is not named like an event prop, so callers cannot tell it fires an event.`;
 
 interface JsxHandlerNamesSettings {
   checkInlineFunction?: boolean;
@@ -173,7 +173,8 @@ export const jsxHandlerNames = defineRule<Rule>({
   // similar conditional-render APIs where the `on`-named prop value
   // isn't an event handler. Default off.
   defaultEnabled: false,
-  recommendation: "Use the `on…` prefix for event-handler props and `handle…` for handlers.",
+  recommendation:
+    "Use the `on…` prefix for event-handler props and `handle…` for handlers so readers can trace event flow.",
   category: "Architecture",
   create: (context) => {
     const settings = resolveSettings(context.settings);

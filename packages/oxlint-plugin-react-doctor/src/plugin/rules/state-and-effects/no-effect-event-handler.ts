@@ -159,7 +159,7 @@ export const noEffectEventHandler = defineRule<Rule>({
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Move the conditional logic into onClick, onChange, or onSubmit handlers directly",
+    "Move event logic into the handler that starts it so the side effect does not run late after an extra render.",
   create: (context: RuleContext) => {
     const propStackTracker = createComponentPropStackTracker();
 

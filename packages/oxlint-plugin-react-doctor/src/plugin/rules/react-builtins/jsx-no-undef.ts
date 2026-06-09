@@ -59,7 +59,8 @@ export const jsxNoUndef = defineRule<Rule>({
   id: "jsx-no-undef",
   title: "Undefined JSX component",
   severity: "error",
-  recommendation: "Import the component or check for typos.",
+  recommendation:
+    "Import the component or fix the typo so React can resolve the JSX identifier at runtime.",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const rootIdentifier = getRootIdentifier(node.name as EsTreeNode);

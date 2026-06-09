@@ -8,12 +8,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const nextjsNoImgElement = defineRule<Rule>({
   id: "nextjs-no-img-element",
-  title: "Plain img element",
+  title: "Plain img ships unoptimized images",
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "warn",
   recommendation:
-    "`import Image from 'next/image'` for automatic WebP/AVIF, lazy loading, and responsive srcset",
+    "Use `next/image` so users get optimized formats, responsive srcsets, and lazy loading instead of oversized image downloads.",
   create: (context: RuleContext): RuleVisitors => {
     if (isGeneratedImageRenderContext(context)) return {};
 
@@ -23,7 +23,7 @@ export const nextjsNoImgElement = defineRule<Rule>({
         if (isNodeOfType(node.name, "JSXIdentifier") && node.name.name === "img") {
           context.report({
             node,
-            message: "Plain <img> ships unoptimized, oversized images to your users.",
+            message: "Plain <img> ships unoptimized, oversized images.",
           });
         }
       },

@@ -83,7 +83,8 @@ export const noUnknownProperty = defineRule<Rule>({
   id: "no-unknown-property",
   title: "Unknown DOM property",
   severity: "warn",
-  recommendation: "Use the prop name React expects, like `className`, `htmlFor`, or `tabIndex`.",
+  recommendation:
+    "Use the prop name React expects, like `className`, `htmlFor`, or `tabIndex`, so the attribute is applied correctly.",
   create: (context) => {
     const { ignore = [], requireDataLowercase = false } = resolveSettings(context.settings);
     const ignoreSet = new Set(ignore);

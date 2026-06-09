@@ -123,7 +123,8 @@ export const rulesListAction = async (options: RulesListOptions): Promise<void> 
   // values are dropped, not shown as active).
   const config = validateConfigTypes(target.config);
 
-  const categoryFilter = options.category?.toLowerCase();
+  const categoryFilter =
+    typeof options.category === "string" ? options.category.toLowerCase() : undefined;
   const frameworkFilter = options.framework?.toLowerCase();
 
   const rows = catalog

@@ -11,7 +11,7 @@ export const noRenderInRender = defineRule<Rule>({
   severity: "warn",
   tags: ["test-noise"],
   recommendation:
-    "Make it a named component, like `const ListItem = ({ item }) => <div>{item.name}</div>`.",
+    "Make it a named component so React preserves its identity and does not remount its state.",
   create: (context: RuleContext) => ({
     JSXExpressionContainer(node: EsTreeNodeOfType<"JSXExpressionContainer">) {
       const expression = node.expression;

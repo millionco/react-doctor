@@ -10,7 +10,7 @@ export const nextjsNoVercelOgImport = defineRule<Rule>({
   requires: ["nextjs"],
   severity: "warn",
   recommendation:
-    'Use `import { ImageResponse } from "next/og"`. The `@vercel/og` package is built into Next.js and should not be imported directly',
+    'Use `import { ImageResponse } from "next/og"`; do not import `@vercel/og` directly because Next.js already bundles it.',
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       if (node.source?.value !== "@vercel/og") return;

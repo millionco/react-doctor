@@ -9,7 +9,7 @@ import type { Rule } from "../../utils/rule.js";
 import { HTML_TAGS } from "../../constants/html-tags.js";
 
 const MESSAGE =
-  "Screen reader & keyboard users get disoriented because `autoFocus` jumps focus on load, so remove it and let people choose where to focus.";
+  "`autoFocus` moves focus on load, which can disrupt screen reader and keyboard users. Remove it and let users choose where to focus.";
 
 interface NoAutofocusSettings {
   ignoreNonDOM?: boolean;

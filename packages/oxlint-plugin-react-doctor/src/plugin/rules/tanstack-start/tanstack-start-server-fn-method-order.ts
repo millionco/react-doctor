@@ -11,7 +11,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const tanstackStartServerFnMethodOrder = defineRule<Rule>({
   id: "tanstack-start-server-fn-method-order",
-  title: "Wrong server function method order",
+  title: "Server function method order breaks type inference",
   tags: ["test-noise"],
   requires: ["tanstack-start"],
   severity: "error",

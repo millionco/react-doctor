@@ -4,7 +4,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
-const MESSAGE = "This tag has no children.";
+const MESSAGE = "This tag has no children, so the closing tag adds noise without changing output.";
 
 interface SelfClosingCompSettings {
   component?: boolean;
@@ -42,7 +42,7 @@ export const selfClosingComp = defineRule<Rule>({
   // Pure stylistic rule — `<X></X>` vs `<X/>` is a formatter concern,
   // not a bug class. Default off.
   defaultEnabled: false,
-  recommendation: "Use the self-closing form `<X />` for elements with no children.",
+  recommendation: "Use `<X />` for childless elements so empty closing tags do not add noise.",
   category: "Architecture",
   create: (context) => {
     const settings = resolveSettings(context.settings);

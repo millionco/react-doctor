@@ -13,7 +13,8 @@ import { flattenCalleeName } from "../../utils/flatten-callee-name.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { REACT_HOC_NAMES } from "../../constants/react.js";
 
-const MESSAGE = "This file is harder to navigate with more than one component.";
+const MESSAGE =
+  "This file declares several components, so each component is harder to find, test, and change.";
 
 interface NoMultiCompSettings {
   ignoreStateless?: boolean;
@@ -570,7 +571,8 @@ export const noMultiComp = defineRule<Rule>({
   id: "no-multi-comp",
   title: "Multiple components in one file",
   severity: "warn",
-  recommendation: "Move secondary components into their own files.",
+  recommendation:
+    "Move secondary components into their own files so each component stays easier to find, test, and change.",
   category: "Architecture",
   create: (context) => {
     const settings = resolveSettings(context.settings);

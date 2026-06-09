@@ -15,7 +15,7 @@ export const preferUseReducer = defineRule<Rule>({
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Group related state: `const [state, dispatch] = useReducer(reducer, { field1, field2, ... })`",
+    "Group related state in `useReducer` so one logical update does not fan out into separate renders.",
   create: (context: RuleContext) => {
     const reportExcessiveUseState = (body: EsTreeNode, componentName: string): void => {
       if (!isNodeOfType(body, "BlockStatement")) return;

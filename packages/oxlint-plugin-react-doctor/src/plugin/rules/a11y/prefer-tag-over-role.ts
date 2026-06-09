@@ -17,7 +17,8 @@ export const preferTagOverRole = defineRule<Rule>({
   title: "Role used instead of HTML tag",
   tags: ["react-jsx-only"],
   severity: "warn",
-  recommendation: "Replace `role` with the matching HTML element when one exists.",
+  recommendation:
+    "Use the matching HTML element when one exists so browsers and assistive tech get native semantics.",
   category: "Accessibility",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {

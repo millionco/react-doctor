@@ -172,6 +172,30 @@ export const STAGED_FILES_PROJECT_CONFIG_FILENAMES = [
   ".oxlintrc.json",
 ] as const;
 
+export const CONFIG_FINGERPRINT_FILENAMES = [
+  "doctor.config.ts",
+  "doctor.config.mts",
+  "doctor.config.cts",
+  "doctor.config.js",
+  "doctor.config.mjs",
+  "doctor.config.cjs",
+  "doctor.config.json",
+  "doctor.config.jsonc",
+  "react-doctor.config.json",
+  "package.json",
+  "pnpm-workspace.yaml",
+  "tsconfig.json",
+  "tsconfig.base.json",
+  ".oxlintrc.json",
+  ".eslintrc.json",
+  "pnpm-lock.yaml",
+  "package-lock.json",
+  "yarn.lock",
+  "bun.lock",
+  "bun.lockb",
+  ".gitignore",
+] as const;
+
 export const CANONICAL_GITHUB_URL = "https://github.com/millionco/react-doctor";
 
 export const CANONICAL_DISCORD_URL = "https://react.doctor/discord";

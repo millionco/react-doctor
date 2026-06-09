@@ -149,7 +149,7 @@ export const noCascadingSetState = defineRule<Rule>({
   severity: "warn",
   tags: ["test-noise"],
   recommendation:
-    "Combine into useReducer: `const [state, dispatch] = useReducer(reducer, initialState)`",
+    "Combine related updates in `useReducer` so one effect does not redraw the screen once per `setState` call.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isHookCall(node, EFFECT_HOOK_NAMES)) return;

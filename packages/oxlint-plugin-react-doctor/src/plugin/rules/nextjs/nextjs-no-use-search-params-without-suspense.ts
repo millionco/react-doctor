@@ -120,7 +120,7 @@ export const nextjsNoUseSearchParamsWithoutSuspense = defineRule<Rule>({
   requires: ["nextjs"],
   severity: "warn",
   recommendation:
-    "Wrap the component using useSearchParams: `<Suspense fallback={<Skeleton />}><SearchComponent /></Suspense>`",
+    "Wrap the component using `useSearchParams` in `<Suspense>` so the rest of the page can stay statically rendered.",
   create: (context: RuleContext) => {
     let isPageOrLayoutFile = false;
     // A <Suspense> in an ancestor `layout.tsx` wraps `{children}`, so it
@@ -177,7 +177,7 @@ export const nextjsNoUseSearchParamsWithoutSuspense = defineRule<Rule>({
 
         context.report({
           node,
-          message: `<${node.name.name}> uses useSearchParams() but is not wrapped in a <Suspense> boundary.`,
+          message: `<${node.name.name}> uses useSearchParams() outside <Suspense>, so this page falls back to client-side rendering.`,
         });
       },
     };

@@ -8,12 +8,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const nextjsMissingMetadata = defineRule<Rule>({
   id: "nextjs-missing-metadata",
-  title: "Page missing metadata",
+  title: "Page missing metadata for search previews",
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "warn",
   recommendation:
-    "Add `export const metadata = { title: '...', description: '...' }` or `export async function generateMetadata()`",
+    "Add metadata or `generateMetadata()` so search engines and social previews get a title and description.",
   create: (context: RuleContext) => ({
     Program(programNode: EsTreeNodeOfType<"Program">) {
       const filename = normalizeFilename(context.filename ?? "");
@@ -40,7 +40,7 @@ export const nextjsMissingMetadata = defineRule<Rule>({
         context.report({
           node: programNode,
           message:
-            "This page has no metadata, so search engines & social previews get no title or description.",
+            "This page has no metadata, so search engines and social previews get no title or description.",
         });
       }
     },

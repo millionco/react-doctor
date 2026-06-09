@@ -8,7 +8,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
 const MESSAGE =
-  "Blind users can't tell what this `<iframe>` holds because screen readers have no title to read, so add a `title` describing its content.";
+  "Screen reader users cannot identify this `<iframe>` because it has no title. Add a `title` that describes its content.";
 
 type StaticVerdict = "ok" | "empty" | "dynamic-ok";
 
@@ -49,7 +49,8 @@ export const iframeHasTitle = defineRule<Rule>({
   title: "iframe missing title",
   tags: ["react-jsx-only"],
   severity: "warn",
-  recommendation: "Add a descriptive `title` to every `<iframe>`.",
+  recommendation:
+    "Add a descriptive `title` so screen reader users know what the embedded frame contains.",
   category: "Accessibility",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {

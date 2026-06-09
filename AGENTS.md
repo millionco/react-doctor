@@ -404,15 +404,15 @@ node --version   # must be >=22.18.0 (or ^20.19.0)
 
 Nothing needs to stay running. After `pnpm build`, the CLI, tests, and LSP all run in-process.
 
-| Goal | Command |
-|---|---|
-| Install deps | `pnpm install` (or `ni`) |
-| Build all packages | `pnpm build` |
-| Watch-build CLI only | `pnpm dev` |
-| Tests | `pnpm test` |
-| Lint / typecheck | `pnpm lint` / `pnpm typecheck` |
-| JSON smoke test | `pnpm smoke:json-report` (requires prior `pnpm build`) |
-| Docs site dev | `nr dev --filter website` (optional) |
+| Goal                 | Command                                                |
+| -------------------- | ------------------------------------------------------ |
+| Install deps         | `pnpm install` (or `ni`)                               |
+| Build all packages   | `pnpm build`                                           |
+| Watch-build CLI only | `pnpm dev`                                             |
+| Tests                | `pnpm test`                                            |
+| Lint / typecheck     | `pnpm lint` / `pnpm typecheck`                         |
+| JSON smoke test      | `pnpm smoke:json-report` (requires prior `pnpm build`) |
+| Docs site dev        | `nr dev --filter website` (optional)                   |
 
 ### Hello-world CLI scan
 
@@ -440,10 +440,10 @@ Use `--json` for machine-readable output. Add `--no-score` to skip the hosted sc
 
 **Checkout layout** (match local Million dev machines):
 
-| Repo | Path |
-|---|---|
-| `millionco/react-doctor` | `/workspace` (Cloud Agent workspace) |
-| `millionco/react-doctor-evals` | `~/Developer/react-doctor-evals` |
+| Repo                           | Path                                 |
+| ------------------------------ | ------------------------------------ |
+| `millionco/react-doctor`       | `/workspace` (Cloud Agent workspace) |
+| `millionco/react-doctor-evals` | `~/Developer/react-doctor-evals`     |
 
 Clone (private repo — Cloud Agent needs read access):
 

@@ -168,6 +168,7 @@ export const buildTestProject = (options: BuildTestProjectOptions): ProjectInfo 
     shopifyFlashListVersion: options.shopifyFlashListVersion ?? null,
     shopifyFlashListMajorVersion: options.shopifyFlashListMajorVersion ?? null,
     hasReanimated: options.hasReanimated ?? false,
+    isPreES2023Target: false,
     preactVersion: null,
     preactMajorVersion: null,
     sourceFileCount: 0,

@@ -36,6 +36,7 @@ const buildProject = (overrides: Partial<ProjectInfo> = {}): ProjectInfo => ({
   shopifyFlashListVersion: null,
   shopifyFlashListMajorVersion: null,
   hasReanimated: false,
+  isPreES2023Target: false,
   sourceFileCount: 2,
   ...overrides,
 });

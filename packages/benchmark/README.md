@@ -126,7 +126,8 @@ scripts/validate-task.sh tasks/my-task --expect-pass
 Validate the whole corpus (reference solutions must pass + score reward>0):
 
 ```bash
-scripts/validate-all.sh
+scripts/validate-all.sh        # from packages/benchmark
+pnpm benchmark:validate        # from the repo root (also run in CI)
 ```
 
 Pure-TS tasks use Node's built-in test runner (`node --experimental-strip-types

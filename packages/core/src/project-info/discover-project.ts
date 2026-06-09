@@ -54,39 +54,55 @@ export const clearProjectCache = (): void => {
  */
 const discoverProjectWithoutPackageJson = (directory: string): ProjectInfo => {
   const sourceFileCount = countSourceFiles(directory);
+  const hasOwnTsConfig = fs.existsSync(path.join(directory, "tsconfig.json"));
 
   const monorepoRoot = findMonorepoRoot(directory);
-  const inherited =
+  const enclosingProject =
     monorepoRoot !== null && isFile(path.join(monorepoRoot, "package.json"))
       ? discoverProject(monorepoRoot)
       : null;
 
-  if (sourceFileCount === 0 && inherited === null) {
+  // A workspace subfolder (e.g. `repo/packages`): keep the enclosing root's
+  // dependency + framework detection, but scope the directory-specific fields
+  // to this folder so React capabilities survive when a React monorepo
+  // subdirectory is scanned.
+  if (enclosingProject !== null) {
+    return {
+      ...enclosingProject,
+      rootDirectory: directory,
+      projectName: path.basename(directory),
+      hasTypeScript: hasOwnTsConfig || enclosingProject.hasTypeScript,
+      sourceFileCount,
+    };
+  }
+
+  if (sourceFileCount === 0) {
     throw new PackageJsonNotFoundError(directory);
   }
 
+  // A standalone tree of TypeScript/JavaScript files with no enclosing
+  // project — analyzable with the framework-agnostic rules only.
   return {
     rootDirectory: directory,
     projectName: path.basename(directory),
-    reactVersion: inherited?.reactVersion ?? null,
-    reactMajorVersion: inherited?.reactMajorVersion ?? null,
-    tailwindVersion: inherited?.tailwindVersion ?? null,
-    zodVersion: inherited?.zodVersion ?? null,
-    zodMajorVersion: inherited?.zodMajorVersion ?? null,
-    framework: inherited?.framework ?? "unknown",
-    hasTypeScript:
-      fs.existsSync(path.join(directory, "tsconfig.json")) || (inherited?.hasTypeScript ?? false),
-    hasReactCompiler: inherited?.hasReactCompiler ?? false,
-    hasTanStackQuery: inherited?.hasTanStackQuery ?? false,
-    preactVersion: inherited?.preactVersion ?? null,
-    preactMajorVersion: inherited?.preactMajorVersion ?? null,
-    hasReactNativeWorkspace: inherited?.hasReactNativeWorkspace ?? false,
-    nextjsVersion: inherited?.nextjsVersion ?? null,
-    nextjsMajorVersion: inherited?.nextjsMajorVersion ?? null,
-    expoVersion: inherited?.expoVersion ?? null,
-    shopifyFlashListVersion: inherited?.shopifyFlashListVersion ?? null,
-    shopifyFlashListMajorVersion: inherited?.shopifyFlashListMajorVersion ?? null,
-    hasReanimated: inherited?.hasReanimated ?? false,
+    reactVersion: null,
+    reactMajorVersion: null,
+    tailwindVersion: null,
+    zodVersion: null,
+    zodMajorVersion: null,
+    framework: "unknown",
+    hasTypeScript: hasOwnTsConfig,
+    hasReactCompiler: false,
+    hasTanStackQuery: false,
+    preactVersion: null,
+    preactMajorVersion: null,
+    hasReactNativeWorkspace: false,
+    nextjsVersion: null,
+    nextjsMajorVersion: null,
+    expoVersion: null,
+    shopifyFlashListVersion: null,
+    shopifyFlashListMajorVersion: null,
+    hasReanimated: false,
     sourceFileCount,
   };
 };

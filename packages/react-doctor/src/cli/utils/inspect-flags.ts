@@ -33,4 +33,9 @@ export interface InspectFlags {
    * `blocking` is unset, but triggers a one-time deprecation warning.
    */
   failOn?: string;
+  /**
+   * Demo mode: print the Socket.dev supply-chain score of every direct
+   * dependency, then exit without running a scan.
+   */
+  sfw?: boolean;
 }

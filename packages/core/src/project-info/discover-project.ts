@@ -43,13 +43,81 @@ export const clearProjectCache = (): void => {
   cachedProjectInfos.clear();
 };
 
+/**
+ * Build a `ProjectInfo` for a directory that has no `package.json` of
+ * its own — a monorepo subfolder like `repo/packages`, or any loose tree
+ * of TypeScript/JavaScript files. Dependency + framework detection is
+ * inherited from the enclosing workspace root when there is one, so
+ * scanning a subdirectory of a React monorepo still gets the React
+ * capabilities; a standalone non-React directory simply scans with the
+ * framework-agnostic rules. Throws only when the directory has nothing
+ * to scan (no enclosing project and no source files of its own).
+ */
+const discoverProjectWithoutPackageJson = (directory: string): ProjectInfo => {
+  const sourceFileCount = countSourceFiles(directory);
+  const hasOwnTsConfig = fs.existsSync(path.join(directory, "tsconfig.json"));
+
+  const monorepoRoot = findMonorepoRoot(directory);
+  const enclosingProject =
+    monorepoRoot !== null && isFile(path.join(monorepoRoot, "package.json"))
+      ? discoverProject(monorepoRoot)
+      : null;
+
+  // A workspace subfolder (e.g. `repo/packages`): keep the enclosing root's
+  // dependency + framework detection, but scope the directory-specific fields
+  // to this folder so React capabilities survive when a React monorepo
+  // subdirectory is scanned.
+  if (enclosingProject !== null) {
+    return {
+      ...enclosingProject,
+      rootDirectory: directory,
+      projectName: path.basename(directory),
+      hasTypeScript: hasOwnTsConfig || enclosingProject.hasTypeScript,
+      sourceFileCount,
+    };
+  }
+
+  if (sourceFileCount === 0) {
+    throw new PackageJsonNotFoundError(directory);
+  }
+
+  // A standalone tree of TypeScript/JavaScript files with no enclosing
+  // project — analyzable with the framework-agnostic rules only.
+  return {
+    rootDirectory: directory,
+    projectName: path.basename(directory),
+    reactVersion: null,
+    reactMajorVersion: null,
+    tailwindVersion: null,
+    zodVersion: null,
+    zodMajorVersion: null,
+    framework: "unknown",
+    hasTypeScript: hasOwnTsConfig,
+    hasReactCompiler: false,
+    hasTanStackQuery: false,
+    preactVersion: null,
+    preactMajorVersion: null,
+    hasReactNativeWorkspace: false,
+    nextjsVersion: null,
+    nextjsMajorVersion: null,
+    expoVersion: null,
+    shopifyFlashListVersion: null,
+    shopifyFlashListMajorVersion: null,
+    hasReanimated: false,
+    isPreES2023Target: hasOwnTsConfig && detectPreES2023Target(directory),
+    sourceFileCount,
+  };
+};
+
 export const discoverProject = (directory: string): ProjectInfo => {
   const cached = cachedProjectInfos.get(directory);
   if (cached !== undefined) return cached;
 
   const packageJsonPath = path.join(directory, "package.json");
   if (!isFile(packageJsonPath)) {
-    throw new PackageJsonNotFoundError(directory);
+    const synthesized = discoverProjectWithoutPackageJson(directory);
+    cachedProjectInfos.set(directory, synthesized);
+    return synthesized;
   }
 
   const packageJson = readPackageJson(packageJsonPath);

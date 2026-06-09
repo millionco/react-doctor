@@ -12,6 +12,7 @@ import {
   Project,
   Reporter,
   Score,
+  SupplyChain,
 } from "@react-doctor/core";
 import type { ProgressHandle, ProjectInfo, ReactDoctorConfig } from "@react-doctor/core";
 import { spinner } from "./spinner.js";
@@ -103,6 +104,13 @@ export const buildRuntimeLayers = (input: BuildRuntimeLayersInput) => {
   const linterLayer = input.shouldSkipLint ? Linter.layerOf([]) : Linter.layerOxlint;
   const deadCodeLayer = input.shouldRunDeadCode ? DeadCode.layerNode : DeadCode.layerOf([]);
   const scoreLayer = input.shouldComputeScore ? Score.layerHttp : Score.layerOf(null);
+  // Socket.dev supply-chain score gate runs by default (the keyless HTTP
+  // layer); a no-op empty layer only when the user explicitly opts out via
+  // `supplyChain.enabled: false`.
+  const supplyChainLayer =
+    input.userConfig?.supplyChain?.enabled === false
+      ? SupplyChain.layerOf([])
+      : SupplyChain.layerNode;
   const projectLayer =
     input.projectInfoOverride === undefined
       ? Project.layerNode
@@ -134,6 +142,7 @@ export const buildRuntimeLayers = (input: BuildRuntimeLayersInput) => {
     progressLayer,
     Reporter.layerNoop,
     scoreLayer,
+    supplyChainLayer,
   );
 
   // Only override the ambient `OxlintConcurrency` Reference when the CLI

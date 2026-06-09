@@ -17,6 +17,7 @@ import {
   restoreLegacyThrow,
   runInspect,
   Score,
+  SupplyChain,
   type InspectOutput,
   type ResolvedScanTarget,
 } from "@react-doctor/core";
@@ -33,11 +34,24 @@ import type {
 
 // The production layer stack for the programmatic API. The only axis that
 // varies across calls is `Config`: with no override we load from disk
-// (`Config.layerNode`); with a per-project override the caller passes the
-// already-resolved `Config.layerOf(...)`. Every other service is identical,
-// so the stack is built once here rather than duplicated per variant.
-const buildDiagnoseLayer = (configLayer: typeof Config.layerNode = Config.layerNode) =>
-  Layer.mergeAll(
+// (`Config.layerNode`); with a per-project override the caller's already
+// resolved config drives `Config.layerOf(...)`. The supply-chain gate reads
+// `supplyChain.enabled` from that same effective config (default on), so the
+// one config input decides both. Every other service is identical, so the
+// stack is built once here rather than duplicated per variant.
+const buildDiagnoseLayer = (
+  config: ReactDoctorConfig | null,
+  configOverride?: { readonly resolvedDirectory: string },
+) => {
+  const configLayer =
+    configOverride === undefined
+      ? Config.layerNode
+      : Config.layerOf({
+          config,
+          resolvedDirectory: configOverride.resolvedDirectory,
+          configSourceDirectory: null,
+        });
+  return Layer.mergeAll(
     Project.layerNode,
     configLayer,
     DeadCode.layerNode,
@@ -48,7 +62,9 @@ const buildDiagnoseLayer = (configLayer: typeof Config.layerNode = Config.layerN
     Progress.layerNoop,
     Reporter.layerNoop,
     Score.layerHttp,
+    config?.supplyChain?.enabled !== false ? SupplyChain.layerNode : SupplyChain.layerOf([]),
   );
+};
 
 const buildInspectProgram = (
   scanTarget: ResolvedScanTarget,
@@ -107,7 +123,10 @@ export const diagnose = async (
 
   const output: InspectOutput = await Effect.runPromise(
     restoreLegacyThrow(
-      program.pipe(Effect.provide(buildDiagnoseLayer()), Effect.provide(layerOtlp)),
+      program.pipe(
+        Effect.provide(buildDiagnoseLayer(scanTarget.userConfig)),
+        Effect.provide(layerOtlp),
+      ),
     ),
   );
 
@@ -140,16 +159,13 @@ const diagnoseProject = async (
 
     const program = buildInspectProgram(scanTarget, mergedOptions, configOverride);
 
-    const layer =
+    const effectiveConfig = configOverride ?? scanTarget.userConfig;
+    const layer = buildDiagnoseLayer(
+      effectiveConfig,
       configOverride !== undefined
-        ? buildDiagnoseLayer(
-            Config.layerOf({
-              config: configOverride,
-              resolvedDirectory: scanTarget.resolvedDirectory,
-              configSourceDirectory: null,
-            }),
-          )
-        : buildDiagnoseLayer();
+        ? { resolvedDirectory: scanTarget.resolvedDirectory }
+        : undefined,
+    );
 
     const output: InspectOutput = await Effect.runPromise(
       restoreLegacyThrow(program.pipe(Effect.provide(layer), Effect.provide(layerOtlp))),

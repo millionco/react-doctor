@@ -16,6 +16,18 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<string> => 
   const capabilities = new Set<string>();
 
   capabilities.add(project.framework);
+
+  // `react` gates every React-runtime rule family (hooks, JSX, a11y,
+  // render performance, …) so they stay off on a plain TypeScript /
+  // JavaScript project — where, lacking a React dependency, a function
+  // named `useX` or a `setState` call is just ordinary code, not a hook.
+  // Preact satisfies it too: it ships the same hooks + JSX model, so the
+  // React-family rules are equally applicable there. Framework-agnostic
+  // rules (security, architecture, bundle-size, js-performance, zod, …)
+  // never require this and keep running on non-React codebases.
+  if (project.reactVersion !== null || project.preactVersion !== null) {
+    capabilities.add("react");
+  }
   if (
     project.framework === "expo" ||
     project.framework === "react-native" ||
@@ -130,6 +142,12 @@ export const shouldEnableRule = (
       if (!capabilities.has(capability)) return false;
     }
   }
+  // `react-jsx-only` marks rules that apply React-flavoured semantics
+  // (component heuristics, React-cased props, synthetic-event naming).
+  // They're meaningless — and prone to false positives via PascalCase /
+  // hook-name heuristics — on a project without React, so gate them on
+  // the `react` capability the same way an explicit `requires` would.
+  if (tags?.includes("react-jsx-only") && !capabilities.has("react")) return false;
   if (disabledBy) {
     for (const capability of disabledBy) {
       if (capabilities.has(capability)) return false;

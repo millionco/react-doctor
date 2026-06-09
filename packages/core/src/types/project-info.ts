@@ -99,6 +99,7 @@ export interface ProjectInfo {
 
 export interface PackageJson {
   name?: string;
+  version?: string;
   main?: string;
   scripts?: Record<string, string>;
   dependencies?: Record<string, string>;

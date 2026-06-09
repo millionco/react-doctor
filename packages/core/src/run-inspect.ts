@@ -16,6 +16,7 @@ import { buildDiagnosticPipeline } from "./build-diagnostic-pipeline.js";
 import { checkExpoProject } from "./check-expo-project.js";
 import { checkPnpmHardening } from "./check-pnpm-hardening.js";
 import { checkReactNativeProject } from "./check-react-native-project.js";
+import { checkReactServerComponentsAdvisory } from "./check-react-server-components-advisory.js";
 import { checkReducedMotion } from "./check-reduced-motion.js";
 import { DEFAULT_SHOW_WARNINGS } from "./constants.js";
 import { highlighter } from "./highlighter.js";
@@ -40,6 +41,7 @@ import { Progress } from "./services/progress.js";
 import { Project } from "./services/project.js";
 import { Reporter } from "./services/reporter.js";
 import { Score } from "./services/score.js";
+import { SupplyChain } from "./services/supply-chain.js";
 import type { ScoreRequestMetadata } from "./calculate-score.js";
 import { resolveGithubActionsScoreMetadata } from "./utils/resolve-github-actions-score-metadata.js";
 
@@ -100,6 +102,16 @@ export interface InspectInput {
    * `.ts`). Defaults to `false` to preserve the CLI contract.
    */
   readonly skipJsxIncludeFilter?: boolean;
+  /**
+   * Whether the scanned project's `package.json` is among the changed files
+   * in a diff / staged scan. Dependency health is a whole-project property
+   * (read from `package.json`, not the changed source files), so the
+   * supply-chain check is normally skipped in diff mode — but a PR that edits
+   * `package.json` should still have its dependencies scored. When `true`,
+   * the supply-chain pass runs even in diff mode. Ignored on full scans
+   * (those always run it). Defaults to `false`.
+   */
+  readonly supplyChainManifestChanged?: boolean;
 }
 
 export interface InspectOutput {
@@ -239,6 +251,7 @@ export const runInspect = <HooksR = never>(
   | Progress
   | Reporter
   | Score
+  | SupplyChain
   | HooksR
 > =>
   Effect.gen(function* () {
@@ -249,6 +262,7 @@ export const runInspect = <HooksR = never>(
     const reporterService = yield* Reporter;
     const scoreService = yield* Score;
     const deadCodeService = yield* DeadCode;
+    const supplyChainService = yield* SupplyChain;
     const gitService = yield* Git;
     const progressService = yield* Progress;
     const partialFailuresRef = yield* LintPartialFailures;
@@ -331,12 +345,34 @@ export const runInspect = <HooksR = never>(
       : [
           ...checkReducedMotion(scanDirectory),
           ...checkPnpmHardening(scanDirectory),
+          ...checkReactServerComponentsAdvisory(scanDirectory, project),
           ...checkExpoProject(scanDirectory, project),
           ...checkReactNativeProject(scanDirectory, project),
         ];
     const envCollected = yield* Stream.runCollect(
       applyPerElementPipeline(Stream.fromIterable(environmentDiagnostics)),
     );
+
+    // ── Phase: supply-chain score check (Socket.dev, opt-in) ───────
+    // Whole-project (package.json) property, so a plain diff/staged scan
+    // skips it like the environment checks above — but a diff that edits
+    // the scanned project's `package.json` (e.g. a PR adding/bumping a
+    // dependency) still runs it via `supplyChainManifestChanged`, so the
+    // change is scored where it matters. Enablement is decided by the
+    // provided layer (`SupplyChain.layerOf([])` when disabled). The stream
+    // is fail-open — per-package timeouts / network failures are recovered
+    // to "skip" inside the check — so a Socket API outage never sinks the scan.
+    const shouldRunSupplyChain = !isDiffMode || (input.supplyChainManifestChanged ?? false);
+    const supplyChainCollected = shouldRunSupplyChain
+      ? yield* Stream.runCollect(
+          applyPerElementPipeline(
+            supplyChainService.run({
+              rootDirectory: scanDirectory,
+              userConfig: resolvedConfig.config,
+            }),
+          ),
+        )
+      : [];
 
     const lintFailure = yield* Ref.make<{
       didFail: boolean;
@@ -466,6 +502,7 @@ export const runInspect = <HooksR = never>(
 
     const finalDiagnostics: ReadonlyArray<Diagnostic> = [
       ...envCollected,
+      ...supplyChainCollected,
       ...lintCollected,
       ...deadCodeCollected,
     ];

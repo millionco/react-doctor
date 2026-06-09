@@ -134,6 +134,8 @@ export interface ResolvedInspectOptions {
   concurrency: number | undefined;
   /** Baseline ref to subtract (new-only mode), or `null` for a plain scan. */
   baseline: { ref: string } | null;
+  /** See `InspectOptions.supplyChainManifestChanged`. */
+  supplyChainManifestChanged: boolean;
 }
 
 const buildIgnoredTags = (userConfig: ReactDoctorConfig | null): ReadonlySet<string> => {
@@ -170,6 +172,7 @@ const mergeInspectOptions = (
   suppressRendering: inputOptions.suppressRendering ?? false,
   concurrency: inputOptions.concurrency,
   baseline: inputOptions.baseline ?? null,
+  supplyChainManifestChanged: inputOptions.supplyChainManifestChanged ?? false,
 });
 
 // The scan-config slice of the wide event, shared by the success and failure
@@ -349,6 +352,9 @@ const runBaselineComparison = async (
         runId: getRunId(),
         resolveLocalGithubViewerPermission: false,
         suppressScanSummary: true,
+        // Score the base manifest too so `computeDiagnosticDelta` filters out
+        // pre-existing low-score dependencies instead of reporting them as new.
+        supplyChainManifestChanged: params.options.supplyChainManifestChanged,
       },
       {},
     );
@@ -484,6 +490,7 @@ const runInspectWithRuntime = async (
       runId: getRunId(),
       resolveLocalGithubViewerPermission: !options.noScore,
       suppressScanSummary: options.suppressRendering,
+      supplyChainManifestChanged: options.supplyChainManifestChanged,
     },
     {
       beforeLint: (projectInfo, lintIncludePaths) =>

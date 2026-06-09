@@ -140,23 +140,21 @@ describe("runOxlint", () => {
       expect(scriptIssues).toHaveLength(0);
     });
 
-    it("does not flag navigate() inside useCallback / useMemo / useEffect / JSX onXxx callbacks", () => {
+    it("does not flag navigate() inside useCallback / useMemo / useEffect / JSX onXxx / onXxx option / handler-named callbacks", () => {
       const safeNavigateLines = tanstackStartDiagnostics
         .filter((diagnostic) => diagnostic.rule === "tanstack-start-no-navigate-in-render")
         .filter((diagnostic) => diagnostic.filePath.includes("route-issues"))
         .map((diagnostic) => diagnostic.line)
         .sort((a, b) => a - b);
       // Render-time navigate() calls in the fixture: line 60 inside
-      // NavigateInRenderComponent (direct in component body) and the
-      // forEach callback inside SyncIterationNavigateComponent (synchronous
-      // iteration during render). Every other navigate() in the file is
-      // wrapped in useCallback/useMemo/onClick and must NOT fire.
-      expect(safeNavigateLines).toContain(60);
-      // The forEach navigate is at the line within SyncIterationNavigateComponent;
-      // assert at least one diagnostic past line 60 (the sync-iteration case)
-      // and that none of the safe-deferred call sites (lines around the
-      // useCallback / useMemo / onClick block) appear.
-      expect(safeNavigateLines.length).toBeGreaterThanOrEqual(2);
+      // NavigateInRenderComponent (direct in component body) and line 129,
+      // the forEach callback inside SyncIterationNavigateComponent
+      // (synchronous iteration during render). Every other navigate() in
+      // the file is wrapped in useCallback/useMemo/JSX onXxx, an `onXxx`
+      // options-object callback (useForm onSubmit, #759), or a
+      // handler-named local function (handleCancel/onLogout/handleRetry)
+      // and must NOT fire.
+      expect(safeNavigateLines).toEqual([60, 135]);
     });
   });
 });

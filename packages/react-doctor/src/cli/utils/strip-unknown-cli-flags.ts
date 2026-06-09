@@ -25,6 +25,7 @@ const ROOT_FLAG_SPEC: CliFlagSpec = {
     "--no-telemetry",
     "--no-warnings",
     "--score",
+    "--sfw",
     "--staged",
     "--verbose",
     "--version",

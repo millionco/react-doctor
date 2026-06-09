@@ -278,6 +278,26 @@ export const MAX_RULE_GROUPS_PER_CATEGORY_NON_VERBOSE = 3;
 // recommended starting point for the supply-chain hardening check.
 export const RECOMMENDED_PNPM_MINIMUM_RELEASE_AGE_MINUTES = 10_080;
 
+// React's three Server Components transport packages (published in lockstep
+// with `react`/`react-dom`). A framework, bundler, or bundler plugin that
+// supports RSC pulls one of these in; an app that depends on none of them is
+// not exposed to the RSC deserialization advisories. Used by the React Server
+// Components security check to resolve the installed RSC runtime version.
+export const REACT_SERVER_DOM_PACKAGES = [
+  "react-server-dom-webpack",
+  "react-server-dom-parcel",
+  "react-server-dom-turbopack",
+] as const;
+
+// React's disclosure of the critical unauthenticated RSC RCE (CVE-2025-55182).
+export const REACT_BLOG_RSC_ADVISORY_URL =
+  "https://react.dev/blog/2025/12/03/critical-security-vulnerability-in-react-server-components";
+
+// Vercel's coordinated Next.js + React security release with the per-version
+// patched-release table the Next.js advisory check keys off.
+export const VERCEL_NEXTJS_SECURITY_RELEASE_URL =
+  "https://vercel.com/changelog/next-js-may-2026-security-release";
+
 // The closed set of user-facing diagnostic categories. Every rule
 // (collapsed at codegen via `CATEGORY_BUCKET` in
 // `generate-rule-registry.mjs`) and every directly-constructed
@@ -387,3 +407,51 @@ export const OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT = 3;
 // batch subprocess runs. The timer increments a counter so the spinner
 // updates smoothly instead of jumping by the batch size on completion.
 export const PROGRESS_TICK_INTERVAL_MS = 50;
+
+// Socket.dev package-score check (the `SupplyChain` service). Mirrors how
+// Socket Firewall's free tier (`sfw`) talks to Socket: the keyless,
+// no-API-token endpoint `GET <base>/{encodeURIComponent(purl)}`, where the
+// PURL is `pkg:npm/<name>@<version>` (scope kept inline, e.g.
+// `pkg:npm/@vue/reactivity@3.4.0`). The response is newline-delimited JSON,
+// one Socket artifact per line, each carrying a `score` object with an
+// `overall` plus per-category values in the 0..1 range. Unknown
+// package/version pairs come back as a `synthetic:notFound:*` artifact with
+// no `score`, which the check skips.
+export const SOCKET_FREE_PURL_API_BASE = "https://firewall-api.socket.dev/purl";
+
+// Public socket.dev package page, linked from each diagnostic's `help`/`url`
+// so a developer can see the full alert + score breakdown for the version.
+export const SOCKET_PACKAGE_PAGE_BASE = "https://socket.dev/npm/package";
+
+// Sent as the `User-Agent` on the free score lookups, matching how `sfw`
+// identifies itself to the same endpoint.
+export const SOCKET_FREE_USER_AGENT = "react-doctor-supply-chain";
+
+// Plugin / rule / category identity for the diagnostics the supply-chain
+// check emits. `plugin: "socket"` keeps Socket findings visually distinct
+// from the `react-doctor` lint surface in the printed list and JSON report.
+export const SUPPLY_CHAIN_PLUGIN = "socket";
+export const SUPPLY_CHAIN_RULE = "low-supply-chain-score";
+export const SUPPLY_CHAIN_CATEGORY = "Security";
+
+// Default minimum acceptable Socket score (0..100). A dependency scoring
+// below this fails the check. Tuned to Socket's own "needs review" band —
+// most healthy, widely-used packages sit comfortably above it. Overridable
+// per project via `supplyChain.minScore`.
+export const SUPPLY_CHAIN_DEFAULT_MIN_SCORE = 50;
+
+// Socket scores arrive normalized 0..1; multiply by this to present the
+// familiar 0..100 scale users see on socket.dev.
+export const SOCKET_SCORE_SCALE = 100;
+
+// How many free Socket score lookups to keep in flight at once. Bounded so a
+// large dependency list doesn't open hundreds of sockets or trip Socket's
+// per-route rate limit.
+export const SUPPLY_CHAIN_FETCH_CONCURRENCY = 8;
+
+// Packages excluded from the Socket supply-chain check (the gate and the
+// `--sfw` listing). react-doctor already covers these frameworks' specific
+// risks through dedicated rules — e.g. Next.js via the server-components /
+// Next rule family — so a low Socket score would be redundant noise rather
+// than an actionable, distinct supply-chain signal.
+export const SUPPLY_CHAIN_IGNORED_PACKAGES: ReadonlySet<string> = new Set(["next"]);

@@ -250,4 +250,63 @@ describe("buildCapabilities", () => {
       false,
     );
   });
+
+  it("emits the `react` capability for a React project", () => {
+    expect(buildCapabilities(baseProject).has("react")).toBe(true);
+  });
+
+  it("emits the `react` capability for a Preact project (React-compatible runtime)", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      framework: "preact",
+      reactVersion: null,
+      reactMajorVersion: null,
+      preactVersion: "^10.22.0",
+      preactMajorVersion: 10,
+    });
+    expect(capabilities.has("react")).toBe(true);
+  });
+
+  it("omits the `react` capability for a plain TypeScript project with no React or Preact", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      framework: "unknown",
+      reactVersion: null,
+      reactMajorVersion: null,
+      preactVersion: null,
+      preactMajorVersion: null,
+    });
+    expect(capabilities.has("react")).toBe(false);
+    // Framework-agnostic capabilities still surface so TypeScript rules run.
+    expect(capabilities.has("typescript")).toBe(true);
+  });
+});
+
+describe("shouldEnableRule react gating", () => {
+  const reactCapabilities = new Set(["react", "typescript"]);
+  const noReactCapabilities = new Set(["typescript"]);
+  const noIgnoredTags = new Set<string>();
+
+  it("disables a `react-jsx-only` rule when the project has no React", () => {
+    expect(
+      shouldEnableRule(undefined, ["react-jsx-only"], noReactCapabilities, noIgnoredTags),
+    ).toBe(false);
+  });
+
+  it("enables a `react-jsx-only` rule when the project has React", () => {
+    expect(shouldEnableRule(undefined, ["react-jsx-only"], reactCapabilities, noIgnoredTags)).toBe(
+      true,
+    );
+  });
+
+  it("keeps a framework-agnostic rule (no requires, no react tag) enabled without React", () => {
+    expect(shouldEnableRule(undefined, ["security"], noReactCapabilities, noIgnoredTags)).toBe(
+      true,
+    );
+  });
+
+  it("disables a rule that explicitly requires `react` on a non-React project", () => {
+    expect(shouldEnableRule(["react"], undefined, noReactCapabilities, noIgnoredTags)).toBe(false);
+    expect(shouldEnableRule(["react"], undefined, reactCapabilities, noIgnoredTags)).toBe(true);
+  });
 });

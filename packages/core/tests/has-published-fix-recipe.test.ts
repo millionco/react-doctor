@@ -23,6 +23,12 @@ describe("hasPublishedFixRecipe", () => {
     expect(hasPublishedFixRecipe({ plugin: "react-doctor", rule: "require-pnpm-hardening" })).toBe(
       false,
     );
+    expect(
+      hasPublishedFixRecipe({
+        plugin: "react-doctor",
+        rule: "no-vulnerable-react-server-components",
+      }),
+    ).toBe(false);
   });
 
   it("is false for adopted third-party plugins", () => {

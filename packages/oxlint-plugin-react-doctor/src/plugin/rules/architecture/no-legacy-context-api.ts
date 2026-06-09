@@ -44,6 +44,11 @@ export const noLegacyContextApi = defineRule<Rule>({
   title: "Legacy context API",
   severity: "error",
   category: "Correctness",
+  // Matches purely on the member NAME (`contextTypes`, `getChildContext`,
+  // `childContextTypes`) with no React guard, so a same-named method on a
+  // non-React class would false-fire. The legacy context API is React-only,
+  // so require it.
+  requires: ["react"],
   tags: ["migration-hint"],
   recommendation:
     "Swap `childContextTypes` + `getChildContext` for `const MyContext = createContext(...)` and `<MyContext.Provider value={...}>`. Swap `contextTypes` for `static contextType = MyContext` or `useContext()` in a function component. Move the provider and every consumer together, or some consumers read the wrong context.",

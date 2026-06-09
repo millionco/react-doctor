@@ -88,6 +88,44 @@ export const SafeNavigateRoute = createFileRoute("/safe-navigate")({
   component: SafeNavigateComponent,
 });
 
+// Regression (#759): navigate() inside an `onXxx` callback property of a
+// hook options object (e.g. `useForm({ onSubmit })`) and inside
+// handler-named local functions (`handleSubmit`, `onLogout`,
+// `function handleRetry`) runs in response to events, not during render,
+// so none of these must fire.
+const useForm = (_options: { onSubmit: (input: { value: unknown }) => Promise<void> }) => ({
+  handleSubmit: () => {},
+});
+
+const SafeHandlerNavigateComponent = () => {
+  const form = useForm({
+    onSubmit: async ({ value }) => {
+      void value;
+      await navigate({ to: "/dashboard" });
+    },
+  });
+  const handleCancel = () => navigate({ to: "/" });
+  const onLogout = async () => navigate({ to: "/login" });
+  function handleRetry() {
+    navigate({ to: "/retry" });
+  }
+  return (
+    <button
+      type="button"
+      onClick={form.handleSubmit}
+      onMouseEnter={handleCancel}
+      onFocus={onLogout}
+      onBlur={handleRetry}
+    >
+      x
+    </button>
+  );
+};
+
+export const SafeHandlerNavigateRoute = createFileRoute("/safe-handler-navigate")({
+  component: SafeHandlerNavigateComponent,
+});
+
 // Regression in the OPPOSITE direction: synchronous iteration callbacks
 // (Array.prototype.forEach/map/etc.) execute DURING render, so a
 // navigate() inside one IS a render-time bug and MUST still fire.

@@ -159,6 +159,10 @@ const program = new Command()
   )
   .option("--warnings", "show warning-severity diagnostics (default)")
   .option("--no-warnings", "hide warning-severity diagnostics (errors only)")
+  .option(
+    "--sfw",
+    "demo: print the Socket.dev supply-chain score of every direct dependency, then exit",
+  )
   .option("--color", "force colored output")
   .option("--no-color", "disable colored output (also honors NO_COLOR)")
   .addHelpText("after", renderRootHelpEpilog);

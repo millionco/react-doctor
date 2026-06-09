@@ -19,6 +19,7 @@ import { Progress } from "./services/progress.js";
 import { Project } from "./services/project.js";
 import { Reporter } from "./services/reporter.js";
 import { Score } from "./services/score.js";
+import { SupplyChain } from "./services/supply-chain.js";
 
 /**
  * Plain-Promise scan tailored for long-lived editor integrations (the
@@ -135,6 +136,8 @@ export const runEditorScan = async (input: EditorScanInput): Promise<EditorScanR
     Reporter.layerNoop,
     // No hosted score lookup in the editor — keep scans offline and fast.
     Score.layerOf(null),
+    // No Socket.dev network lookups in the editor either — keep scans offline.
+    SupplyChain.layerOf([]),
     // Pin oxlint to a single subprocess per editor scan. Core lints in
     // parallel by default (auto-detect cores), but the language server
     // already parallelizes at the scheduler level — one oxlint process per

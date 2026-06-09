@@ -36,6 +36,7 @@ const baseOptions = (overrides: Partial<ResolvedInspectOptions> = {}): ResolvedI
   suppressRendering: false,
   concurrency: undefined,
   baseline: null,
+  supplyChainManifestChanged: false,
   ...overrides,
 });
 

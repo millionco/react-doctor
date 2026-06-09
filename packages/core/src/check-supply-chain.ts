@@ -44,10 +44,10 @@ interface DependencyToScore {
   readonly column: number;
 }
 
-// The subset of a Socket artifact's score the check reads. Socket returns
-// every field together in the 0..1 range; an unknown package/version comes
-// back as a `synthetic:notFound:*` artifact with `score` absent, which the
-// schema's `optional` lets us skip.
+// The Socket score, all axes in the 0..1 range. Each artifact line carries
+// many other fields (id, author, license, …) that `Schema.Struct` ignores;
+// an unknown package/version comes back as a `synthetic:notFound:*` artifact
+// with `score` absent, which the `optional` lets us skip.
 const SocketScoreSchema = Schema.Struct({
   overall: Schema.Number,
   license: Schema.Number,
@@ -58,8 +58,6 @@ const SocketScoreSchema = Schema.Struct({
 });
 
 const SocketArtifactSchema = Schema.Struct({
-  name: Schema.String,
-  version: Schema.optional(Schema.String),
   score: Schema.optional(SocketScoreSchema),
 });
 
@@ -306,14 +304,6 @@ export interface DependencyScore {
    * package/version is unknown to Socket or the lookup failed.
    */
   readonly overall: number | null;
-  /** Per-axis Socket scores on a 0–100 scale; `null` alongside `overall`. */
-  readonly breakdown: {
-    readonly supplyChain: number;
-    readonly maintenance: number;
-    readonly quality: number;
-    readonly vulnerability: number;
-    readonly license: number;
-  } | null;
 }
 
 /**
@@ -346,15 +336,6 @@ export const collectSupplyChainScores = (
         name: dependency.name,
         version: dependency.version,
         overall: score ? toHundred(score.overall) : null,
-        breakdown: score
-          ? {
-              supplyChain: toHundred(score.supplyChain),
-              maintenance: toHundred(score.maintenance),
-              quality: toHundred(score.quality),
-              vulnerability: toHundred(score.vulnerability),
-              license: toHundred(score.license),
-            }
-          : null,
       };
     });
   });

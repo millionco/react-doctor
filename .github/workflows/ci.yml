@@ -108,3 +108,12 @@ jobs:
       - name: Smoke test interactive TTY prompt
         if: ${{ matrix.os == 'ubuntu-latest' && matrix.node-version == '22.18.0' }}
         run: pnpm smoke:tty-prompt
+
+      # SlopBench task self-test: every benchmark task's clean reference solution
+      # must still pass its functional gate AND score reward > 0. Guards the
+      # corpus against drift in the verifier, the scoring profile, or React
+      # Doctor. The prior `pnpm build` step left react-doctor + the verifier
+      # built; React-component tasks install their own dev deps during grading.
+      - name: Validate SlopBench task reference solutions
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.node-version == '22.18.0' }}
+        run: pnpm benchmark:validate

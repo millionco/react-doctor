@@ -13,7 +13,7 @@
   "scripts": {
     "dev": "turbo run dev --filter=react-doctor",
     "build": "turbo run build",
-    "test": "turbo run test --filter=react-doctor --filter=@react-doctor/core --filter=@react-doctor/api --filter=@react-doctor/language-server --filter=@react-doctor/benchmark",
+    "test": "turbo run test --filter=react-doctor --filter=@react-doctor/core --filter=@react-doctor/api --filter=@react-doctor/language-server",
     "test:public-react-repos": "REACT_DOCTOR_PUBLIC_REPOS=1 vp test run packages/react-doctor/tests/public-react-repos.test.ts",
     "typecheck": "turbo run typecheck",
     "lint": "vp lint",
@@ -26,6 +26,7 @@
     "release": "pnpm build && pnpm check:published-deps && node scripts/sentry-sourcemaps.mjs && changeset publish",
     "check:published-deps": "node --experimental-strip-types --no-warnings scripts/check-published-deps.ts",
     "smoke:json-report": "node --experimental-strip-types --no-warnings scripts/smoke-json-report.ts",
+    "benchmark:validate": "bash packages/benchmark/scripts/validate-all.sh",
     "smoke:tty-prompt": "python3 scripts/smoke-tty-prompt.py",
     "build:schema": "node --experimental-strip-types --no-warnings scripts/generate-config-schema.ts"
   },

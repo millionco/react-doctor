@@ -1,0 +1,35 @@
+diff --git a/src/comment-thread.tsx b/src/comment-thread.tsx
+index 95d3dbe..7251652 100644
+--- a/src/comment-thread.tsx
++++ b/src/comment-thread.tsx
+@@ -9,17 +9,16 @@ export interface CommentThreadProps {
+   comments: Comment[];
+ }
+ 
+-export const CommentThread = ({ comments }: CommentThreadProps) => {
+-  const Item = (props: any) => (
+-    <li>
+-      {props.author}: {props.text}
+-    </li>
+-  );
+-  return (
+-    <ul className="thread">
+-      {comments.map((comment, index) => (
+-        <Item key={index} author={comment.author} text={comment.text} />
+-      ))}
+-    </ul>
+-  );
+-};
++const CommentRow = ({ comment }: { comment: Comment }) => (
++  <li>
++    {comment.author}: {comment.text} ({comment.replies} replies)
++  </li>
++);
++
++export const CommentThread = ({ comments }: CommentThreadProps) => (
++  <ul className="thread">
++    {comments.map((comment) => (
++      <CommentRow key={comment.id} comment={comment} />
++    ))}
++  </ul>
++);

@@ -312,13 +312,10 @@ const fetchSocketScore = (dependency: DependencyToScore): Effect.Effect<SocketSc
     }),
   );
 
-const findLowestAxis = (score: SocketScore): { label: string; value: number } => {
-  let lowest = SCORE_AXES[0];
-  for (const axis of SCORE_AXES) {
-    if (score[axis.key] < score[lowest.key]) lowest = axis;
-  }
-  return { label: lowest.label, value: toHundred(score[lowest.key]) };
-};
+// Per-axis scores on the 0..100 scale, e.g.
+// "supply chain 80, vulnerability 25, maintenance 82, quality 86, license 100".
+const formatAxisScores = (score: SocketScore): string =>
+  SCORE_AXES.map((axis) => `${axis.label} ${toHundred(score[axis.key])}`).join(", ");
 
 const buildLowScoreDiagnostic = (
   dependency: DependencyToScore,
@@ -326,14 +323,13 @@ const buildLowScoreDiagnostic = (
   options: ResolvedSupplyChainOptions,
 ): Diagnostic => {
   const overall = toHundred(score.overall);
-  const lowestAxis = findLowestAxis(score);
   const packagePageUrl = `${SOCKET_PACKAGE_PAGE_BASE}/${dependency.name}/overview/${dependency.version}`;
   return {
     filePath: "package.json",
     plugin: SUPPLY_CHAIN_PLUGIN,
     rule: SUPPLY_CHAIN_RULE,
     severity: options.severity,
-    message: `\`${dependency.name}\` (declared in package.json as "${dependency.spec}", scored at ${dependency.version}) has a Socket supply-chain score of ${overall}/${SOCKET_SCORE_SCALE} (below the minimum of ${options.minScore}). Lowest area: ${lowestAxis.label} (${lowestAxis.value}/${SOCKET_SCORE_SCALE}).`,
+    message: `\`${dependency.name}\` (declared in package.json as "${dependency.spec}", scored at ${dependency.version}) has a Socket supply-chain score of ${overall}/${SOCKET_SCORE_SCALE} (below the minimum of ${options.minScore}). Axis scores — ${formatAxisScores(score)}.`,
     help: `Update or replace the \`"${dependency.name}": "${dependency.spec}"\` entry in package.json. Review ${dependency.name} on Socket: ${packagePageUrl}. Or raise \`supplyChain.minScore\` if you have vetted and accepted this package.`,
     url: packagePageUrl,
     // Anchor to the dependency's declaration so the CLI / editor points at the

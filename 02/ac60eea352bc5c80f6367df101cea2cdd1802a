@@ -1,0 +1,23 @@
+packages/react-doctor/tests/e2e/terminal-visuals.test.ts
+  s_ba3c804037a5b7::t_5558e37e507184 441,454,464-466,469-482
+packages/react-doctor/src/cli/utils/render-diagnostics.ts
+  s_ba3c804037a5b7::t_5596992cd38f7f 358-362
+  s_ba3c804037a5b7::t_a7bf90b7156bad 399-404
+  s_ba3c804037a5b7::t_d9c5bf4f7d0504 405-408
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "02ac60eea352bc5c80f6367df101cea2cdd1802a",
+  "prompts": {},
+  "sessions": {
+    "s_ba3c804037a5b7": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "5d3f21a8-64ba-4cbe-ab06-ea3618589cd2",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

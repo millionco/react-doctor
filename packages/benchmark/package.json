@@ -25,7 +25,8 @@
     "oxc-parser": "^0.132.0"
   },
   "devDependencies": {
-    "@types/node": "^25.6.0"
+    "@types/node": "^25.6.0",
+    "react-doctor": "workspace:*"
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"

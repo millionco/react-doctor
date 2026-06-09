@@ -352,6 +352,9 @@ const runBaselineComparison = async (
         runId: getRunId(),
         resolveLocalGithubViewerPermission: false,
         suppressScanSummary: true,
+        // Score the base manifest too so `computeDiagnosticDelta` filters out
+        // pre-existing low-score dependencies instead of reporting them as new.
+        supplyChainManifestChanged: params.options.supplyChainManifestChanged,
       },
       {},
     );

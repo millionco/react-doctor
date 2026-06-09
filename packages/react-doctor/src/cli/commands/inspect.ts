@@ -472,10 +472,13 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
           }
           continue;
         }
-        // Manifest-only change: enter the scan with the manifest as the sole
-        // include so the run stays in diff mode (lint scans nothing — it's not
-        // a source file) while the supply-chain pass still runs.
-        includePaths = changedSourceFiles.length > 0 ? changedSourceFiles : ["package.json"];
+        // A changed package.json enters the scan as an include so the run
+        // stays in diff mode (lint ignores it — it's not a source file) while
+        // the supply-chain pass runs. Including it also makes the baseline pass
+        // materialize the base manifest, so the delta filters out pre-existing
+        // low-score dependencies instead of reporting them as newly introduced.
+        includePaths = [...changedSourceFiles];
+        if (supplyChainManifestChanged) includePaths.push("package.json");
       }
 
       if (!isQuiet && !isMultiProject) {

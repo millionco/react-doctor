@@ -1,22 +1,24 @@
 diff --git a/src/paginate.ts b/src/paginate.ts
-index 8842acc..8e0eaaf 100644
+index fb52283..8e0eaaf 100644
 --- a/src/paginate.ts
 +++ b/src/paginate.ts
-@@ -6,7 +6,24 @@ export interface Page<Item> {
+@@ -6,11 +6,24 @@ export interface Page<Item> {
    totalPages: number;
  }
  
 -// TODO(agent): implement. See instruction.md.
--export const paginate = <Item>(_items: readonly Item[], _page: number, _perPage: number): Page<Item> => {
--  throw new Error("not implemented");
 +const clampToRange = (value: number, minimum: number, maximum: number): number =>
 +  Math.min(Math.max(value, minimum), maximum);
 +
-+export const paginate = <Item>(
+ export const paginate = <Item>(
+-  _items: readonly Item[],
+-  _page: number,
+-  _perPage: number,
 +  items: readonly Item[],
 +  page: number,
 +  perPage: number,
-+): Page<Item> => {
+ ): Page<Item> => {
+-  throw new Error("not implemented");
 +  const safePerPage = Math.max(1, Math.floor(perPage));
 +  const totalItems = items.length;
 +  const totalPages = Math.max(1, Math.ceil(totalItems / safePerPage));

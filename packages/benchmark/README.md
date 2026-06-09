@@ -117,7 +117,9 @@ scripts/scaffold-task.sh my-task produce-clean "ts-strictness" \
   "My task title" "One-line description"
 # 2. author tasks/my-task/seed/, instruction.md,
 #    _authoring/solved/** (clean reference) and _authoring/hidden/** (hidden tests)
-# 3. generate the patches
+# 3. format first, THEN generate the patches (patches embed seed context,
+#    so formatting after generating would make them stale)
+pnpm --filter @react-doctor/benchmark exec true >/dev/null 2>&1 || true
 scripts/gen-task-patches.sh tasks/my-task
 # 4. validate end-to-end WITHOUT Docker (seed -> grade reference solution)
 scripts/validate-task.sh tasks/my-task --expect-pass

@@ -1,6 +1,6 @@
-import * as path from "node:path";
 import { filterSourceFiles } from "@react-doctor/core";
 import type { DiffInfo } from "@react-doctor/core";
+import { resolveProjectRelativeDirectory } from "./resolve-project-relative-directory.js";
 import { toForwardSlashes } from "./path-format.js";
 
 export const resolveProjectDiffIncludePaths = (
@@ -8,12 +8,11 @@ export const resolveProjectDiffIncludePaths = (
   projectDirectory: string,
   diffInfo: DiffInfo,
 ): string[] => {
-  const changedSourceFiles = filterSourceFiles(diffInfo.changedFiles);
-  const relativeProjectDirectory = toForwardSlashes(path.relative(rootDirectory, projectDirectory));
+  const relativeProjectDirectory = resolveProjectRelativeDirectory(rootDirectory, projectDirectory);
+  if (relativeProjectDirectory === null) return [];
 
+  const changedSourceFiles = filterSourceFiles(diffInfo.changedFiles);
   if (relativeProjectDirectory.length === 0) return changedSourceFiles;
-  if (relativeProjectDirectory.startsWith("../") || relativeProjectDirectory === "..") return [];
-  if (path.isAbsolute(relativeProjectDirectory)) return [];
 
   const projectPrefix = `${relativeProjectDirectory}/`;
   return changedSourceFiles.flatMap((filePath) => {

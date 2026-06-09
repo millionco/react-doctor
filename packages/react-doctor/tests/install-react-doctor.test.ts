@@ -660,7 +660,9 @@ describe("runInstallReactDoctor", () => {
     expect(workflowContent).toContain("contents: read");
     expect(workflowContent).toContain("actions/checkout@v5");
     expect(workflowContent).toContain("actions/setup-node@v5");
-    expect(workflowContent).toContain("npx --yes react-doctor@latest . --blocking error");
+    expect(workflowContent).toContain(
+      "npx --yes react-doctor@latest . --blocking ${{ github.event_name == 'pull_request' && 'error' || 'none' }}",
+    );
     expect(workflowContent).not.toContain("millionco/react-doctor@v2");
     expect(workflowContent).not.toContain("github-token");
     expect(workflowContent).not.toContain("diff: main");
@@ -700,7 +702,7 @@ describe("runInstallReactDoctor", () => {
     expect(fs.existsSync(hookPath)).toBe(false);
     expect(fs.existsSync(path.join(fixture.projectRoot, ".cursor/hooks.json"))).toBe(false);
     expect(fs.readFileSync(workflowPath, "utf8")).toContain(
-      "npx --yes react-doctor@latest . --blocking error",
+      "npx --yes react-doctor@latest . --blocking ${{ github.event_name == 'pull_request' && 'error' || 'none' }}",
     );
   });
 

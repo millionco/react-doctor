@@ -45,10 +45,10 @@ jobs:
           node-version: 22
 
       # Common knobs:
-      # - change "--blocking error" to "--blocking warning" to fail on warnings too
-      # - change it to "--blocking none" for advisory-only rollout
+      # - PRs fail on errors by default; pushes to main stay advisory for trend tracking
+      # - change "error" to "warning" below to fail PRs on warnings too
       # - add "--project web,admin" in a monorepo to scan specific workspace projects
-      - run: npx --yes react-doctor@latest . --blocking error
+      - run: npx --yes react-doctor@latest . --blocking \${{ github.event_name == 'pull_request' && 'error' || 'none' }}
 `;
 
 export const getReactDoctorWorkflowPath = (projectRoot: string): string =>

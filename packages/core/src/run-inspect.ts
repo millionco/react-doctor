@@ -101,6 +101,16 @@ export interface InspectInput {
    * `.ts`). Defaults to `false` to preserve the CLI contract.
    */
   readonly skipJsxIncludeFilter?: boolean;
+  /**
+   * Whether the scanned project's `package.json` is among the changed files
+   * in a diff / staged scan. Dependency health is a whole-project property
+   * (read from `package.json`, not the changed source files), so the
+   * supply-chain check is normally skipped in diff mode — but a PR that edits
+   * `package.json` should still have its dependencies scored. When `true`,
+   * the supply-chain pass runs even in diff mode. Ignored on full scans
+   * (those always run it). Defaults to `false`.
+   */
+  readonly supplyChainManifestChanged?: boolean;
 }
 
 export interface InspectOutput {
@@ -342,22 +352,25 @@ export const runInspect = <HooksR = never>(
     );
 
     // ── Phase: supply-chain score check (Socket.dev, opt-in) ───────
-    // Whole-project (package.json) property, so skipped in diff/staged
-    // mode like the environment checks above. Enablement is decided by
-    // the provided layer (`SupplyChain.layerOf([])` when disabled). The
-    // stream is fail-open — per-package timeouts / network failures are
-    // recovered to "skip" inside the check — so a Socket API outage never
-    // sinks the scan.
-    const supplyChainCollected = isDiffMode
-      ? []
-      : yield* Stream.runCollect(
+    // Whole-project (package.json) property, so a plain diff/staged scan
+    // skips it like the environment checks above — but a diff that edits
+    // the scanned project's `package.json` (e.g. a PR adding/bumping a
+    // dependency) still runs it via `supplyChainManifestChanged`, so the
+    // change is scored where it matters. Enablement is decided by the
+    // provided layer (`SupplyChain.layerOf([])` when disabled). The stream
+    // is fail-open — per-package timeouts / network failures are recovered
+    // to "skip" inside the check — so a Socket API outage never sinks the scan.
+    const shouldRunSupplyChain = !isDiffMode || (input.supplyChainManifestChanged ?? false);
+    const supplyChainCollected = shouldRunSupplyChain
+      ? yield* Stream.runCollect(
           applyPerElementPipeline(
             supplyChainService.run({
               rootDirectory: scanDirectory,
               userConfig: resolvedConfig.config,
             }),
           ),
-        );
+        )
+      : [];
 
     const lintFailure = yield* Ref.make<{
       didFail: boolean;

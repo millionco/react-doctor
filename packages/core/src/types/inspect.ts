@@ -82,6 +82,14 @@ export interface InspectOptions {
   configOverride?: ReactDoctorConfig | null;
   respectInlineDisables?: boolean;
   /**
+   * Whether the scanned project's `package.json` changed in this diff /
+   * staged scan. Forwarded to the orchestrator so the Socket supply-chain
+   * check still runs in diff mode when the manifest changed (a PR that
+   * adds or bumps a dependency), instead of being skipped like the other
+   * whole-project checks. Ignored on full scans. Defaults to `false`.
+   */
+  supplyChainManifestChanged?: boolean;
+  /**
    * Baseline comparison. When set (only meaningful alongside
    * `includePaths`, i.e. a diff scan), `inspect()` runs a second lint pass
    * over the same files as they existed at `ref` and reports only the

@@ -84,9 +84,22 @@ const baseInput: InspectInput = {
   isCi: false,
 };
 
+const supplyChainDiagnostic: Diagnostic = {
+  filePath: "package.json",
+  plugin: "socket",
+  rule: "low-supply-chain-score",
+  severity: "error",
+  message: "`event-stream` has a Socket supply-chain score of 25/100.",
+  help: "Review it on Socket.",
+  line: 8,
+  column: 5,
+  category: "Security",
+};
+
 const layersOf = (config: {
   diagnostics?: ReadonlyArray<Diagnostic>;
   deadCode?: ReadonlyArray<Diagnostic>;
+  supplyChain?: ReadonlyArray<Diagnostic>;
   githubViewerPermission?: string | null;
 }) =>
   Layer.mergeAll(
@@ -103,7 +116,7 @@ const layersOf = (config: {
       githubViewerPermission: config.githubViewerPermission,
     }),
     Score.layerOf({ score: 85, label: "Good" }),
-    SupplyChain.layerOf([]),
+    SupplyChain.layerOf(config.supplyChain ?? []),
     Progress.layerNoop,
     Reporter.layerCapture,
   );
@@ -539,5 +552,36 @@ describe("runInspect — Reporter sees post-filter diagnostics", () => {
     );
     expect(result.output.diagnostics.map((d) => d.filePath)).toEqual(["/repo/src/App.tsx"]);
     expect(result.captured.map((d) => d.filePath)).toEqual(["/repo/src/App.tsx"]);
+  });
+});
+
+describe("runInspect — supply-chain in diff mode", () => {
+  it("runs supply-chain in full scans", async () => {
+    const output = await Effect.runPromise(
+      runInspect(baseInput).pipe(
+        Effect.provide(layersOf({ supplyChain: [supplyChainDiagnostic] })),
+      ),
+    );
+    expect(output.diagnostics.map((d) => d.rule)).toContain("low-supply-chain-score");
+  });
+
+  it("skips supply-chain in a plain diff scan (no manifest change)", async () => {
+    const output = await Effect.runPromise(
+      runInspect({ ...baseInput, includePaths: ["src/App.tsx"] }).pipe(
+        Effect.provide(layersOf({ supplyChain: [supplyChainDiagnostic] })),
+      ),
+    );
+    expect(output.diagnostics.map((d) => d.rule)).not.toContain("low-supply-chain-score");
+  });
+
+  it("runs supply-chain in a diff scan when the manifest changed", async () => {
+    const output = await Effect.runPromise(
+      runInspect({
+        ...baseInput,
+        includePaths: ["src/App.tsx"],
+        supplyChainManifestChanged: true,
+      }).pipe(Effect.provide(layersOf({ supplyChain: [supplyChainDiagnostic] }))),
+    );
+    expect(output.diagnostics.map((d) => d.rule)).toContain("low-supply-chain-score");
   });
 });

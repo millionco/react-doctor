@@ -149,6 +149,30 @@ export const OXLINT_RECOMMENDED_NODE_MAJOR = 24;
 
 export const GIT_SHOW_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
 
+export const TSCONFIG_EXTENDS_MAX_DEPTH = 8;
+
+export const ES2023_YEAR = 2023;
+
+export const UNKNOWN_FUTURE_ES_YEAR = 9999;
+
+export const ES_TARGET_YEAR_BY_NAME: Readonly<Record<string, number>> = {
+  es3: 1999,
+  es5: 2009,
+  es6: 2015,
+  es2015: 2015,
+  es2016: 2016,
+  es2017: 2017,
+  es2018: 2018,
+  es2019: 2019,
+  es2020: 2020,
+  es2021: 2021,
+  es2022: 2022,
+  es2023: 2023,
+  es2024: 2024,
+  es2025: 2025,
+  esnext: UNKNOWN_FUTURE_ES_YEAR,
+};
+
 /**
  * Project-config files that `StagedFiles.materialize` copies into
  * the temp directory alongside staged sources so oxlint resolves

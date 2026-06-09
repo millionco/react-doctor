@@ -1,6 +1,6 @@
 {
   "name": "react-doctor",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "description": "Your agent writes bad React. This catches it",
   "keywords": [
     "accessibility",

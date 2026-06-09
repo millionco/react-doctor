@@ -1,5 +1,36 @@
 # react-doctor
 
+## 0.5.0
+
+### Minor Changes
+
+- [#756](https://github.com/millionco/react-doctor/pull/756) [`93d4eec`](https://github.com/millionco/react-doctor/commit/93d4eecdb8e9e339f4258e67fcfc3649e2024ede) Thanks [@NisargIO](https://github.com/NisargIO)! - React Doctor now runs on repositories that don't depend on React. Previously a scan hard-failed with `No React project found` / `No React dependency`, even though many checks (security, bundle size, JS performance, architecture, and the Zod rules) are framework-agnostic and apply to any TypeScript / JavaScript codebase.
+
+  A project is now analyzable when it has source files, with or without React. A bare directory of TypeScript files — including a monorepo's `packages/` subfolder that has no `package.json` of its own — is scanned by inheriting dependency/framework detection from the enclosing workspace root.
+
+  React-flavoured rules stay off without React. A new `react` capability (set only when React or Preact is present) gates every React-runtime rule family (hooks, JSX, accessibility, render performance, React state) plus any rule tagged `react-jsx-only`, so hook/component-name heuristics like `rules-of-hooks`, `no-legacy-class-lifecycles`, and `no-nested-component-definition` can't false-fire on ordinary TypeScript. Once React (or Preact) is detected, every rule behaves exactly as before.
+
+- [#747](https://github.com/millionco/react-doctor/pull/747) [`a254414`](https://github.com/millionco/react-doctor/commit/a2544146668e8cbaa77d0d846eb252acf083a0ba) Thanks [@NisargIO](https://github.com/NisargIO)! - Add a `--sfw` demo flag that prints the Socket.dev supply-chain score (0–100) of every direct dependency — across every workspace `package.json` in a monorepo, de-duplicated by `name@version` — color-coded and sorted worst-first, then exits without running a scan. Scores come from Socket's free, keyless PURL endpoint (the same one the supply-chain check uses).
+
+- [#747](https://github.com/millionco/react-doctor/pull/747) [`a254414`](https://github.com/millionco/react-doctor/commit/a2544146668e8cbaa77d0d846eb252acf083a0ba) Thanks [@NisargIO](https://github.com/NisargIO)! - Add a Socket.dev supply-chain score check. Every direct dependency in `package.json` is scored against Socket's free, keyless PURL endpoint (the same lookup Socket Firewall's free tier uses) and any dependency whose Socket score falls below `supplyChain.minScore` (default `50`, 0–100 scale) produces a `Security` diagnostic anchored at the offending `package.json` entry. At the default `severity: "error"` a low score fails the scan at the standard `blocking` gate.
+
+  The check runs by default; opt out with `supplyChain: { enabled: false }`. It is fail-open (per-package timeouts / network failures are skipped, never sinking the scan). A plain `--diff` / `--staged` scan skips it like the other whole-project checks, but a diff that edits a `package.json` (including any workspace's in a monorepo) still scores that project's dependencies — so a PR that adds or bumps a dependency is covered. `next` is excluded (its framework-specific risks are already covered by the Next.js / server-components rules).
+
+### Patch Changes
+
+- [#739](https://github.com/millionco/react-doctor/pull/739) [`829655c`](https://github.com/millionco/react-doctor/commit/829655c4049342fc0b967e8c60c865f1586875a4) Thanks [@NisargIO](https://github.com/NisargIO)! - CI setup: collapsed the multi-line inline comments in the generated `.github/workflows/react-doctor.yml` to a single explanatory sentence per trigger and one line for the concurrency block, and dropped the permissions comment (the four well-named keys are self-explanatory). The resulting workflow still configures the same triggers, permissions, and action ref — just with less scrolling for new users.
+
+- [#729](https://github.com/millionco/react-doctor/pull/729) [`25cc69b`](https://github.com/millionco/react-doctor/commit/25cc69bd8fb64d395d33562439e8f50660f9b7b2) Thanks [@aidenybai](https://github.com/aidenybai)! - Fold the standalone `doctor-explain` skill into the `react-doctor` skill as `references/explain.md`.
+
+  Rule-explanation and config-tuning guidance now ships as an on-demand reference inside the primary skill (per the agentskills.io `references/` convention) instead of a separate sibling skill. `react-doctor install` installs a single skill, and the dead bundled-sibling-skill install machinery is removed.
+
+- [#752](https://github.com/millionco/react-doctor/pull/752) [`5b06a86`](https://github.com/millionco/react-doctor/commit/5b06a865faf1cb02acbd9492eeaa9abe92336aa7) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Name every unused dependency in the verbose warning tail.
+
+  Unused-dependency warnings all report at the same line-less location (`package.json:0`), so the dim location header collapsed every finding into one line and dropped the package names — leaving only a generic `deslop/unused-dependency ×N` line ([#690](https://github.com/millionco/react-doctor/issues/690)). `react-doctor --verbose` now lists each `deslop/unused-dependency` and `deslop/unused-dev-dependency` by name, with the shared "why" explanation shown once instead of repeated per package. Errors and code-frame rendering are unchanged.
+
+- Updated dependencies [[`b4b79ad`](https://github.com/millionco/react-doctor/commit/b4b79addce225c47048127e04be2670c13bca332), [`af98f83`](https://github.com/millionco/react-doctor/commit/af98f83614526cca30f3a31ec2507a5df5da2bed), [`93d4eec`](https://github.com/millionco/react-doctor/commit/93d4eecdb8e9e339f4258e67fcfc3649e2024ede)]:
+  - oxlint-plugin-react-doctor@0.5.0
+
 ## 0.4.2
 
 ### Patch Changes

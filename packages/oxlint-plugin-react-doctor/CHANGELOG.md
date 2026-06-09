@@ -1,5 +1,23 @@
 # oxlint-plugin-react-doctor
 
+## 0.5.0
+
+### Minor Changes
+
+- [#756](https://github.com/millionco/react-doctor/pull/756) [`93d4eec`](https://github.com/millionco/react-doctor/commit/93d4eecdb8e9e339f4258e67fcfc3649e2024ede) Thanks [@NisargIO](https://github.com/NisargIO)! - React Doctor now runs on repositories that don't depend on React. Previously a scan hard-failed with `No React project found` / `No React dependency`, even though many checks (security, bundle size, JS performance, architecture, and the Zod rules) are framework-agnostic and apply to any TypeScript / JavaScript codebase.
+
+  A project is now analyzable when it has source files, with or without React. A bare directory of TypeScript files — including a monorepo's `packages/` subfolder that has no `package.json` of its own — is scanned by inheriting dependency/framework detection from the enclosing workspace root.
+
+  React-flavoured rules stay off without React. A new `react` capability (set only when React or Preact is present) gates every React-runtime rule family (hooks, JSX, accessibility, render performance, React state) plus any rule tagged `react-jsx-only`, so hook/component-name heuristics like `rules-of-hooks`, `no-legacy-class-lifecycles`, and `no-nested-component-definition` can't false-fire on ordinary TypeScript. Once React (or Preact) is detected, every rule behaves exactly as before.
+
+### Patch Changes
+
+- [#725](https://github.com/millionco/react-doctor/pull/725) [`b4b79ad`](https://github.com/millionco/react-doctor/commit/b4b79addce225c47048127e04be2670c13bca332) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - Stop flagging the inline-`renderItem` React Native perf rules on React Compiler projects.
+
+  React Compiler auto-memoizes inline functions and objects in list rows, so these rules were noise on compiler-enabled projects ([#723](https://github.com/millionco/react-doctor/issues/723)). `rn-no-inline-flatlist-renderitem`, `rn-list-callback-per-row`, and `rn-no-inline-object-in-list-item` now ship with `disabledBy: ["react-compiler"]`, matching the `jsx-no-new-*-as-prop` family.
+
+- [#735](https://github.com/millionco/react-doctor/pull/735) [`af98f83`](https://github.com/millionco/react-doctor/commit/af98f83614526cca30f3a31ec2507a5df5da2bed) Thanks [@aidenybai](https://github.com/aidenybai)! - Remove the `react-doctor/jsx-no-target-blank` rule because modern browsers implicitly apply `noopener` to `target="_blank"` links.
+
 ## 0.4.2
 
 ## 0.4.1

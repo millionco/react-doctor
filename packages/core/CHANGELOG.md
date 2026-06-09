@@ -1,5 +1,24 @@
 # @react-doctor/core
 
+## 0.5.0
+
+### Minor Changes
+
+- [#756](https://github.com/millionco/react-doctor/pull/756) [`93d4eec`](https://github.com/millionco/react-doctor/commit/93d4eecdb8e9e339f4258e67fcfc3649e2024ede) Thanks [@NisargIO](https://github.com/NisargIO)! - React Doctor now runs on repositories that don't depend on React. Previously a scan hard-failed with `No React project found` / `No React dependency`, even though many checks (security, bundle size, JS performance, architecture, and the Zod rules) are framework-agnostic and apply to any TypeScript / JavaScript codebase.
+
+  A project is now analyzable when it has source files, with or without React. A bare directory of TypeScript files — including a monorepo's `packages/` subfolder that has no `package.json` of its own — is scanned by inheriting dependency/framework detection from the enclosing workspace root.
+
+  React-flavoured rules stay off without React. A new `react` capability (set only when React or Preact is present) gates every React-runtime rule family (hooks, JSX, accessibility, render performance, React state) plus any rule tagged `react-jsx-only`, so hook/component-name heuristics like `rules-of-hooks`, `no-legacy-class-lifecycles`, and `no-nested-component-definition` can't false-fire on ordinary TypeScript. Once React (or Preact) is detected, every rule behaves exactly as before.
+
+### Patch Changes
+
+- [#741](https://github.com/millionco/react-doctor/pull/741) [`963eaf5`](https://github.com/millionco/react-doctor/commit/963eaf53db7de069baf2c7d18075443c3d934f9b) Thanks [@NisargIO](https://github.com/NisargIO)! - Add a `no-vulnerable-react-server-components` security check that flags projects running React Server Components on a version with a known advisory — primarily the critical unauthenticated RCE (CVE-2025-55182, CVSS 10.0), and the later high-severity DoS (CVE-2026-23870).
+
+  It resolves the concrete installed version of React's RSC runtime and compares it against the patched releases per minor line (19.0 → 19.0.6, 19.1 → 19.1.7, 19.2 → 19.2.6). Frameworks and bundlers that expose `react-server-dom-*` directly (Vite, Parcel, React Router, Waku, RedwoodSDK) are checked by those package versions; Next.js — which vendors its own RSC runtime — is checked by its `next` version and the easiest corrective fix points at a Next.js upgrade (15.5.18 / 16.2.6) rather than a React bump. Pure client-side React apps with no RSC packages and no Next.js are unaffected and stay quiet, and the check never flags off an ambiguous declared range whose lockfile may resolve to a patched version.
+
+- Updated dependencies [[`b4b79ad`](https://github.com/millionco/react-doctor/commit/b4b79addce225c47048127e04be2670c13bca332), [`af98f83`](https://github.com/millionco/react-doctor/commit/af98f83614526cca30f3a31ec2507a5df5da2bed), [`93d4eec`](https://github.com/millionco/react-doctor/commit/93d4eecdb8e9e339f4258e67fcfc3649e2024ede)]:
+  - oxlint-plugin-react-doctor@0.5.0
+
 ## 0.4.2
 
 ### Patch Changes

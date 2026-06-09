@@ -108,23 +108,46 @@ const resolveConcreteVersion = (spec: string): string | null => {
   return match ? match[0] : null;
 };
 
-// Locates the 1-based line/column of a dependency's key in the raw
-// package.json text so the diagnostic anchors to the exact entry the user
-// must edit (rather than the top of the file). Matches the literal `"name"`
-// followed by a colon, so it points at the key rather than any value that
-// happens to contain the name, and so `react` never matches `react-dom`.
+type DependencySection = "dependencies" | "devDependencies";
+
+// Locates the 1-based line/column of a dependency's key *within its declaring
+// section* in the raw package.json text, so the diagnostic anchors to the
+// exact entry the user must edit rather than the top of the file — and never
+// to a same-named key under `overrides` / `resolutions` / `pnpm.overrides`.
+// Scopes by the `"<section>": {` header and tracks brace depth so the match
+// stays inside that object; the literal `"name"` + colon means `react` never
+// matches `react-dom`.
 const locateDependencyKey = (
   packageJsonText: string,
+  section: DependencySection,
   name: string,
 ): { line: number; column: number } | null => {
   const needle = `"${name}"`;
+  const sectionHeader = new RegExp(`"${section}"\\s*:\\s*\\{`);
   const lines = packageJsonText.split(/\r?\n/);
+
+  let depth = 0;
+  let insideSection = false;
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
     const lineText = lines[lineIndex];
+    if (!insideSection) {
+      if (sectionHeader.test(lineText)) {
+        insideSection = true;
+        depth = 1;
+      }
+      continue;
+    }
+
     const columnIndex = lineText.indexOf(needle);
-    if (columnIndex < 0) continue;
-    if (!/^\s*:/.test(lineText.slice(columnIndex + needle.length))) continue;
-    return { line: lineIndex + 1, column: columnIndex + 1 };
+    if (columnIndex >= 0 && /^\s*:/.test(lineText.slice(columnIndex + needle.length))) {
+      return { line: lineIndex + 1, column: columnIndex + 1 };
+    }
+
+    for (const character of lineText) {
+      if (character === "{") depth += 1;
+      else if (character === "}") depth -= 1;
+    }
+    if (depth <= 0) return null;
   }
   return null;
 };
@@ -134,22 +157,23 @@ const collectDependenciesToScore = (
   packageJsonText: string,
   includeDevDependencies: boolean,
 ): DependencyToScore[] => {
-  const specsByName = new Map<string, string>();
-  for (const [name, spec] of Object.entries(packageJson.dependencies ?? {})) {
-    specsByName.set(name, spec);
+  const sectionByName = new Map<string, DependencySection>();
+  for (const name of Object.keys(packageJson.dependencies ?? {})) {
+    sectionByName.set(name, "dependencies");
   }
   if (includeDevDependencies) {
-    for (const [name, spec] of Object.entries(packageJson.devDependencies ?? {})) {
-      if (!specsByName.has(name)) specsByName.set(name, spec);
+    for (const name of Object.keys(packageJson.devDependencies ?? {})) {
+      if (!sectionByName.has(name)) sectionByName.set(name, "devDependencies");
     }
   }
 
   const dependencies: DependencyToScore[] = [];
-  for (const [name, spec] of specsByName) {
+  for (const [name, section] of sectionByName) {
     if (SUPPLY_CHAIN_IGNORED_PACKAGES.has(name)) continue;
+    const spec = (packageJson[section] ?? {})[name] ?? "";
     const version = resolveConcreteVersion(spec);
     if (version === null) continue;
-    const location = locateDependencyKey(packageJsonText, name);
+    const location = locateDependencyKey(packageJsonText, section, name);
     dependencies.push({
       name,
       version,

@@ -9,9 +9,7 @@ export interface InstallGitHubWorkflowResult {
 // Self-documenting workflow file. Keep this intentionally direct: the repo no
 // longer ships a composite action, so generated CI should install and invoke the
 // published CLI like any other npm tool.
-const buildWorkflowContent =
-  (): string => `# React Doctor — finds security, performance, correctness, accessibility,
-# bundle-size, and architecture issues in React codebases.
+const buildWorkflowContent = (): string => `# React Doctor - fix bad React code
 #
 # Docs: https://www.react.doctor/ci
 # Source: https://github.com/millionco/react-doctor

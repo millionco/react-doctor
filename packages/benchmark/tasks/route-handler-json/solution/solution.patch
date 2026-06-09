@@ -1,0 +1,17 @@
+diff --git a/app/api/products/route.ts b/app/api/products/route.ts
+index 821b17f..5ecd249 100644
+--- a/app/api/products/route.ts
++++ b/app/api/products/route.ts
+@@ -1,4 +1,9 @@
+-// TODO(agent): implement the GET route handler. See instruction.md.
+-export const GET = async (_request: Request): Promise<Response> => {
+-  throw new Error("not implemented");
++import { PRODUCTS } from "../../../src/products.ts";
++
++export const GET = async (request: Request): Promise<Response> => {
++  const maxPriceCentsParam = new URL(request.url).searchParams.get("maxPriceCents");
++  const maxPriceCents =
++    maxPriceCentsParam === null ? Number.POSITIVE_INFINITY : Number(maxPriceCentsParam);
++  const matching = PRODUCTS.filter((product) => product.priceCents <= maxPriceCents);
++  return Response.json(matching);
+ };

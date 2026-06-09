@@ -1,0 +1,20 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { truncateMiddle } from "../src/truncate-middle.ts";
+
+test("returns short text unchanged", () => {
+  assert.equal(truncateMiddle("hello", 10), "hello");
+});
+
+test("elides the middle to the exact max length, favoring the front", () => {
+  assert.equal(truncateMiddle("hello world", 7), "hel\u2026rld");
+  assert.equal(truncateMiddle("hello world", 7).length, 7);
+});
+
+test("splits an even budget evenly", () => {
+  assert.equal(truncateMiddle("abcdefgh", 5), "ab\u2026gh");
+});
+
+test("collapses to a lone ellipsis at length 1 or less", () => {
+  assert.equal(truncateMiddle("anything", 1), "\u2026");
+});

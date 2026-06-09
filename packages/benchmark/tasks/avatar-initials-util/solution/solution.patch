@@ -1,0 +1,21 @@
+diff --git a/src/avatar-initials.ts b/src/avatar-initials.ts
+index 7ee3eed..5a493f9 100644
+--- a/src/avatar-initials.ts
++++ b/src/avatar-initials.ts
+@@ -1,4 +1,13 @@
+-// TODO(agent): implement. See instruction.md.
+-export const avatarInitials = (_fullName: string): string => {
+-  throw new Error("not implemented");
++// Up to two uppercase initials (first + last word) for an avatar badge.
++export const avatarInitials = (fullName: string): string => {
++  const words = fullName
++    .trim()
++    .split(/\s+/)
++    .filter((word) => word.length > 0);
++  if (words.length === 0) return "";
++
++  const firstWord = words[0] ?? "";
++  const lastWord = words[words.length - 1] ?? "";
++  const initials = words.length === 1 ? firstWord[0] : `${firstWord[0]}${lastWord[0]}`;
++  return initials.toUpperCase();
+ };

@@ -1,0 +1,42 @@
+schema_version = "1.1"
+artifacts = []
+
+[task]
+name = "slopbench/comment-thread-extend"
+description = "Add reply counts to a comment list seeded with index keys + an inline component."
+authors = []
+keywords = ["react", "typescript", "slop", "frontend"]
+
+[metadata]
+task_id = "comment-thread-extend"
+display_title = "Extend comment thread"
+display_description = "Add reply counts to a comment list seeded with index keys + an inline component."
+family = "handle-slop"
+target_dimensions = ["react-correctness", "react-performance"]
+language = "typescript"
+repository_url = "in-tree"
+base_commit_hash = "root"
+slop_profile = ""
+
+[verifier]
+timeout_sec = 1200.0
+
+[verifier.env]
+
+[agent]
+timeout_sec = 3600.0
+
+[environment]
+build_timeout_sec = 1200.0
+docker_image = "slopbench-base:latest"
+os = "linux"
+cpus = 2
+memory_mb = 4096
+storage_mb = 10240
+gpus = 0
+allow_internet = false
+mcp_servers = []
+
+[environment.env]
+
+[solution.env]

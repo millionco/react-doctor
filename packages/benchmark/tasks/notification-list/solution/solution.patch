@@ -1,0 +1,19 @@
+diff --git a/src/notification-list.tsx b/src/notification-list.tsx
+index 13df3b4..9c89d13 100644
+--- a/src/notification-list.tsx
++++ b/src/notification-list.tsx
+@@ -7,7 +7,10 @@ export interface NotificationListProps {
+   notifications: Notification[];
+ }
+ 
+-// TODO(agent): implement. See instruction.md.
+-export const NotificationList = (_props: NotificationListProps) => {
+-  throw new Error("not implemented");
+-};
++export const NotificationList = ({ notifications }: NotificationListProps) => (
++  <ul className="notifications">
++    {notifications.map((notification) => (
++      <li key={notification.id}>{notification.message}</li>
++    ))}
++  </ul>
++);

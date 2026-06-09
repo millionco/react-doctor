@@ -1,0 +1,21 @@
+diff --git a/src/status-pill.tsx b/src/status-pill.tsx
+index 5d246c5..6e1cdf3 100644
+--- a/src/status-pill.tsx
++++ b/src/status-pill.tsx
+@@ -4,7 +4,13 @@ export interface StatusPillProps {
+   status: PillStatus;
+ }
+ 
+-// TODO(agent): implement. See instruction.md.
+-export const StatusPill = (_props: StatusPillProps) => {
+-  throw new Error("not implemented");
++const STATUS_LABEL: Record<PillStatus, string> = {
++  success: "Success",
++  error: "Error",
++  warning: "Warning",
++  info: "Info",
+ };
++
++export const StatusPill = ({ status }: StatusPillProps) => (
++  <span className={`pill pill-${status}`}>{STATUS_LABEL[status]}</span>
++);

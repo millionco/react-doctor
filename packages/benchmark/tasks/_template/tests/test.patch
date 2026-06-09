@@ -1,0 +1,5 @@
+# Replace this file with a real git patch (created with `git diff`) that ADDS
+# the hidden test file(s) for this task — e.g. tests/feature.test.ts. It is
+# applied at grade time so the agent never sees the tests. The patch must only
+# ADD test files (never modify product code), so the slop scan of the agent's
+# diff is unaffected.

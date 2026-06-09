@@ -1,0 +1,46 @@
+schema_version = "1.1"
+artifacts = []
+
+[task]
+name = "slopbench/_template"
+description = "Copy this directory to author a new SlopBench task."
+authors = []
+keywords = ["react", "typescript", "slop", "frontend"]
+
+[metadata]
+task_id = "_template"
+display_title = "SlopBench task template"
+display_description = "Template task — replace every TODO before use."
+# SlopBench taxonomy (informational; the verifier scores all dimensions).
+family = "produce-clean" # produce-clean | handle-slop | explicit-deslop
+target_dimensions = ["react-correctness", "react-performance"]
+language = "typescript"
+repository_url = "TODO: seed repo URL or 'in-tree'"
+base_commit_hash = "TODO: base commit sha the agent starts from"
+# Optional scoring-profile override (path inside the image); empty = built-in.
+slop_profile = ""
+
+[verifier]
+timeout_sec = 1800.0
+
+[verifier.env]
+
+[agent]
+timeout_sec = 5400.0
+
+[environment]
+build_timeout_sec = 1800.0
+# Prefer a prebuilt image for speed; environment/Dockerfile reproduces it.
+docker_image = "slopbench-base:latest"
+os = "linux"
+cpus = 2
+memory_mb = 8192
+storage_mb = 20480
+gpus = 0
+# Air-gapped at agent runtime: the slop verifier + React Doctor run offline.
+allow_internet = false
+mcp_servers = []
+
+[environment.env]
+
+[solution.env]

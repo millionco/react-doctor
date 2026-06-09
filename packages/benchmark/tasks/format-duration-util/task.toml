@@ -1,0 +1,42 @@
+schema_version = "1.1"
+artifacts = []
+
+[task]
+name = "slopbench/format-duration-util"
+description = "Implement formatDuration(ms) producing a compact h/m/s label."
+authors = []
+keywords = ["react", "typescript", "slop", "frontend"]
+
+[metadata]
+task_id = "format-duration-util"
+display_title = "Format duration label"
+display_description = "Implement formatDuration(ms) producing a compact h/m/s label."
+family = "produce-clean"
+target_dimensions = ["ts-strictness", "maintainability"]
+language = "typescript"
+repository_url = "in-tree"
+base_commit_hash = "root"
+slop_profile = ""
+
+[verifier]
+timeout_sec = 1200.0
+
+[verifier.env]
+
+[agent]
+timeout_sec = 3600.0
+
+[environment]
+build_timeout_sec = 1200.0
+docker_image = "slopbench-base:latest"
+os = "linux"
+cpus = 2
+memory_mb = 4096
+storage_mb = 10240
+gpus = 0
+allow_internet = false
+mcp_servers = []
+
+[environment.env]
+
+[solution.env]

@@ -1,0 +1,25 @@
+diff --git a/src/unique-by.ts b/src/unique-by.ts
+index 1ba6925..9312eac 100644
+--- a/src/unique-by.ts
++++ b/src/unique-by.ts
+@@ -1,7 +1,16 @@
+-// TODO(agent): implement. See instruction.md.
++// Removes duplicates by a derived key, keeping the first item per key and
++// preserving order.
+ export const uniqueBy = <Item, Key>(
+-  _items: readonly Item[],
+-  _selector: (item: Item) => Key,
++  items: readonly Item[],
++  selector: (item: Item) => Key,
+ ): Item[] => {
+-  throw new Error("not implemented");
++  const seen = new Set<Key>();
++  const result: Item[] = [];
++  for (const item of items) {
++    const key = selector(item);
++    if (seen.has(key)) continue;
++    seen.add(key);
++    result.push(item);
++  }
++  return result;
+ };

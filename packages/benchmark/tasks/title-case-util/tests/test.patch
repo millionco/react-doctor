@@ -1,0 +1,26 @@
+diff --git a/tests/title-case.test.ts b/tests/title-case.test.ts
+new file mode 100644
+index 0000000..8d6a0c7
+--- /dev/null
++++ b/tests/title-case.test.ts
+@@ -0,0 +1,20 @@
++import { test } from "node:test";
++import assert from "node:assert/strict";
++import { titleCase } from "../src/title-case.ts";
++
++test("capitalizes each word", () => {
++  assert.equal(titleCase("hello world"), "Hello World");
++});
++
++test("collapses whitespace and trims", () => {
++  assert.equal(titleCase("  the QUICK  brown  "), "The Quick Brown");
++});
++
++test("lowercases the rest of each word", () => {
++  assert.equal(titleCase("ALL CAPS"), "All Caps");
++});
++
++test("returns empty string for empty input", () => {
++  assert.equal(titleCase(""), "");
++  assert.equal(titleCase("   "), "");
++});

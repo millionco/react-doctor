@@ -1,0 +1,20 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { GET } from "../app/api/products/route.ts";
+import { PRODUCTS } from "../src/products.ts";
+
+test("returns the full catalog with status 200 when unfiltered", async () => {
+  const response = await GET(new Request("http://localhost/api/products"));
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), PRODUCTS);
+});
+
+test("filters by maxPriceCents (inclusive)", async () => {
+  const response = await GET(new Request("http://localhost/api/products?maxPriceCents=300"));
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.deepEqual(
+    body.map((product: { id: string }) => product.id),
+    ["p2", "p3"],
+  );
+});

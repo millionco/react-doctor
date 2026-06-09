@@ -1,0 +1,17 @@
+diff --git a/src/icon-button.tsx b/src/icon-button.tsx
+index 8905379..b8d0394 100644
+--- a/src/icon-button.tsx
++++ b/src/icon-button.tsx
+@@ -4,7 +4,8 @@ export interface IconButtonProps {
+   onPress: () => void;
+ }
+ 
+-// TODO(agent): implement. See instruction.md.
+-export const IconButton = (_props: IconButtonProps) => {
+-  throw new Error("not implemented");
+-};
++export const IconButton = ({ label, glyph, onPress }: IconButtonProps) => (
++  <button type="button" aria-label={label} onClick={onPress} className="icon-button">
++    <span aria-hidden="true">{glyph}</span>
++  </button>
++);

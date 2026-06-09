@@ -1,0 +1,5 @@
+# Replace with a git patch implementing a CLEAN reference solution: it must make
+# FUNCTIONAL_TEST_CMD pass AND score high on the slop verifier (no any/casts, no
+# nested components, composition over boolean props, etc.). Never used at
+# grading — it exists so reviewers can spot-check that the task is both solvable
+# and that a clean solution is rewarded.

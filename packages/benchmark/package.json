@@ -1,0 +1,40 @@
+{
+  "name": "@react-doctor/benchmark",
+  "version": "0.4.2",
+  "private": true,
+  "description": "Internal: SlopBench — a Harbor/Pier-compatible benchmark measuring how much React/TypeScript slop a model produces, scored through React Doctor plus a strict TypeScript pass, Vercel-derived AST checks, and deslop heuristics. Not published.",
+  "license": "MIT",
+  "bin": {
+    "slop-verify": "./bin/slop-verify.js"
+  },
+  "files": [
+    "bin/**",
+    "dist/**/*.mjs",
+    "dist/**/*.d.mts",
+    "scoring-profiles/**"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    }
+  },
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && cross-env NODE_ENV=production vp pack",
+    "test": "vp test run tests",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@react-doctor/core": "workspace:*",
+    "oxc-parser": "^0.132.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "react-doctor": "workspace:*"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  }
+}

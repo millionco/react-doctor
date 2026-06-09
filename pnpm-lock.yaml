@@ -59,6 +59,22 @@ importers:
         specifier: ^25.6.0
         version: 25.6.0
 
+  packages/benchmark:
+    dependencies:
+      '@react-doctor/core':
+        specifier: workspace:*
+        version: link:../core
+      oxc-parser:
+        specifier: ^0.132.0
+        version: 0.132.0
+    devDependencies:
+      '@types/node':
+        specifier: ^25.6.0
+        version: 25.6.0
+      react-doctor:
+        specifier: workspace:*
+        version: link:../react-doctor
+
   packages/core:
     dependencies:
       '@effect/platform-node-shared':

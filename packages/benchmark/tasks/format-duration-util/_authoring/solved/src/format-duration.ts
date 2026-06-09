@@ -1,0 +1,31 @@
+interface DurationUnit {
+  value: number;
+  suffix: string;
+}
+
+// Compact "1h 0m 1s" label. Leading and trailing zero units are dropped, but a
+// zero unit between two non-zero units is kept so the ordering stays readable.
+export const formatDuration = (milliseconds: number): string => {
+  if (milliseconds <= 0) return "0s";
+
+  const totalSeconds = Math.floor(milliseconds / 1000);
+  const units: DurationUnit[] = [
+    { value: Math.floor(totalSeconds / 3600), suffix: "h" },
+    { value: Math.floor((totalSeconds % 3600) / 60), suffix: "m" },
+    { value: totalSeconds % 60, suffix: "s" },
+  ];
+
+  const firstNonZero = units.findIndex((unit) => unit.value > 0);
+  if (firstNonZero === -1) return "0s";
+
+  let lastNonZero = firstNonZero;
+  for (let index = firstNonZero; index < units.length; index++) {
+    const unit = units[index];
+    if (unit && unit.value > 0) lastNonZero = index;
+  }
+
+  return units
+    .slice(firstNonZero, lastNonZero + 1)
+    .map((unit) => `${unit.value}${unit.suffix}`)
+    .join(" ");
+};

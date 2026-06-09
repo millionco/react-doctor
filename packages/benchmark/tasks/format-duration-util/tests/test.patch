@@ -1,0 +1,31 @@
+diff --git a/tests/format-duration.test.ts b/tests/format-duration.test.ts
+new file mode 100644
+index 0000000..58f20fc
+--- /dev/null
++++ b/tests/format-duration.test.ts
+@@ -0,0 +1,25 @@
++import { test } from "node:test";
++import assert from "node:assert/strict";
++import { formatDuration } from "../src/format-duration.ts";
++
++test("returns 0s for zero and negative input", () => {
++  assert.equal(formatDuration(0), "0s");
++  assert.equal(formatDuration(-10), "0s");
++});
++
++test("renders seconds only under a minute", () => {
++  assert.equal(formatDuration(5_000), "5s");
++});
++
++test("renders minutes and seconds", () => {
++  assert.equal(formatDuration(65_000), "1m 5s");
++});
++
++test("drops trailing zero units", () => {
++  assert.equal(formatDuration(3_600_000), "1h");
++});
++
++test("keeps a zero unit between two non-zero units", () => {
++  assert.equal(formatDuration(3_601_000), "1h 0m 1s");
++  assert.equal(formatDuration(3_661_000), "1h 1m 1s");
++});

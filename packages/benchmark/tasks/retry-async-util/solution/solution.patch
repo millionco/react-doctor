@@ -1,0 +1,26 @@
+diff --git a/src/retry-async.ts b/src/retry-async.ts
+index 649d47c..444d79b 100644
+--- a/src/retry-async.ts
++++ b/src/retry-async.ts
+@@ -1,7 +1,17 @@
+-// TODO(agent): implement. See instruction.md.
++// Runs an async operation, retrying on rejection up to `attempts` total calls.
++// Implemented recursively so each retry chains off the previous failure without
++// awaiting inside a loop.
+ export const retryAsync = async <Value>(
+-  _operation: () => Promise<Value>,
+-  _attempts: number,
++  operation: () => Promise<Value>,
++  attempts: number,
+ ): Promise<Value> => {
+-  throw new Error("not implemented");
++  const maxAttempts = Math.max(1, Math.floor(attempts));
++
++  const attempt = (remaining: number): Promise<Value> =>
++    operation().catch((error: unknown) => {
++      if (remaining <= 1) throw error;
++      return attempt(remaining - 1);
++    });
++
++  return attempt(maxAttempts);
+ };

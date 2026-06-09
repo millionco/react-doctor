@@ -13,7 +13,14 @@ test("groups by a selector function (new behavior)", () => {
 });
 
 test("keeps first-seen order of items within a group", () => {
-  const items = [{ id: 1, g: "x" }, { id: 2, g: "x" }, { id: 3, g: "x" }];
+  const items = [
+    { id: 1, g: "x" },
+    { id: 2, g: "x" },
+    { id: 3, g: "x" },
+  ];
   const result = groupBy(items, "g");
-  assert.deepEqual(result.x.map((item) => item.id), [1, 2, 3]);
+  assert.deepEqual(
+    result.x.map((item) => item.id),
+    [1, 2, 3],
+  );
 });

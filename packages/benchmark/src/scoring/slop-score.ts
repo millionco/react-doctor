@@ -52,11 +52,15 @@ export const computeSlopScore = (
   const violations = findings.map((finding) => computeViolationWeight(finding, profile));
   const normalizer = computeNormalizer(addedLineCount, profile);
 
-  const dimensions = Object.keys(profile.dimensionWeights).map((dimensionKey): SlopDimensionScore => {
-    const dimension = dimensionKey as SlopDimension;
-    const dimensionViolations = violations.filter((violation) => violation.dimension === dimension);
-    return dimensionScoreFrom(dimension, dimensionViolations, normalizer);
-  });
+  const dimensions = Object.keys(profile.dimensionWeights).map(
+    (dimensionKey): SlopDimensionScore => {
+      const dimension = dimensionKey as SlopDimension;
+      const dimensionViolations = violations.filter(
+        (violation) => violation.dimension === dimension,
+      );
+      return dimensionScoreFrom(dimension, dimensionViolations, normalizer);
+    },
+  );
 
   let weightedScoreTotal = 0;
   let weightTotal = 0;

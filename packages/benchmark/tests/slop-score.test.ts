@@ -33,7 +33,10 @@ describe("computeSlopScore", () => {
   });
 
   it("is deterministic across runs", () => {
-    const findings = [finding({}), finding({ severity: "warning", category: "Performance", dimension: "react-performance" })];
+    const findings = [
+      finding({}),
+      finding({ severity: "warning", category: "Performance", dimension: "react-performance" }),
+    ];
     const first = computeSlopScore(findings, 60, DEFAULT_SCORING_PROFILE);
     const second = computeSlopScore(findings, 60, DEFAULT_SCORING_PROFILE);
     expect(first.slopScore).toBe(second.slopScore);

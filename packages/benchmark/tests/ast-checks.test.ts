@@ -21,7 +21,10 @@ const ruleIdsOf = (check: AstCheck, sourceText: string, filePath?: string): stri
 
 describe("ts-no-explicit-any", () => {
   it("flags explicit any annotations", () => {
-    const ids = ruleIdsOf(tsNoExplicitAny, "const value: any = 1;\nfunction f(x: any) { return x; }\n");
+    const ids = ruleIdsOf(
+      tsNoExplicitAny,
+      "const value: any = 1;\nfunction f(x: any) { return x; }\n",
+    );
     expect(ids.filter((id) => id === "ts/no-explicit-any")).toHaveLength(2);
   });
   it("ignores well-typed code", () => {
@@ -31,7 +34,9 @@ describe("ts-no-explicit-any", () => {
 
 describe("ts-no-non-null-assertion", () => {
   it("flags the non-null operator", () => {
-    expect(ruleIdsOf(tsNoNonNullAssertion, "const a = b!.c;\n")).toContain("ts/no-non-null-assertion");
+    expect(ruleIdsOf(tsNoNonNullAssertion, "const a = b!.c;\n")).toContain(
+      "ts/no-non-null-assertion",
+    );
   });
 });
 
@@ -78,7 +83,9 @@ describe("vercel-boolean-prop-soup", () => {
 describe("vercel-render-prop", () => {
   it("flags function-valued render props", () => {
     const source = "interface ListProps {\n  renderItem: (value: string) => unknown;\n}\n";
-    expect(ruleIdsOf(vercelRenderProp, source, "src/list.ts")).toContain("vercel/patterns-render-prop");
+    expect(ruleIdsOf(vercelRenderProp, source, "src/list.ts")).toContain(
+      "vercel/patterns-render-prop",
+    );
   });
   it("ignores non-render function props", () => {
     const source = "interface ListProps {\n  onSelect: (value: string) => void;\n}\n";
@@ -88,7 +95,9 @@ describe("vercel-render-prop", () => {
 
 describe("deslop-nested-ternary", () => {
   it("flags a nested ternary exactly once per chain", () => {
-    const findings = deslopNestedTernary(parse("const x = a ? 1 : b ? 2 : c ? 3 : 4;\n", "src/t.ts"));
+    const findings = deslopNestedTernary(
+      parse("const x = a ? 1 : b ? 2 : c ? 3 : 4;\n", "src/t.ts"),
+    );
     expect(findings).toHaveLength(1);
     expect(findings[0]?.ruleId).toBe("deslop/nested-ternary");
   });

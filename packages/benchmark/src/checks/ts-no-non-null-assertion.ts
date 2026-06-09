@@ -17,7 +17,8 @@ export const tsNoNonNullAssertion: AstCheck = (file): ScanFinding[] => {
         ruleId: "ts/no-non-null-assertion",
         severity: "warning",
         offset: typeof node.start === "number" ? node.start : 0,
-        message: "Non-null assertion (`!`) hides a possible null/undefined; narrow the type instead.",
+        message:
+          "Non-null assertion (`!`) hides a possible null/undefined; narrow the type instead.",
       }),
     );
   });

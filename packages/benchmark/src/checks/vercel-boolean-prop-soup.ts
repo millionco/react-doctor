@@ -48,17 +48,24 @@ const makeFinding = (
 export const vercelBooleanPropSoup: AstCheck = (file): ScanFinding[] => {
   const findings: ScanFinding[] = [];
   walkAst(file.program, (node) => {
-    if (node.type === "TSInterfaceDeclaration" && endsWithProps((node.id as { name?: string })?.name)) {
+    if (
+      node.type === "TSInterfaceDeclaration" &&
+      endsWithProps((node.id as { name?: string })?.name)
+    ) {
       const booleanCount = countBooleanMembers((node.body as { body?: unknown })?.body);
-      if (booleanCount >= BOOLEAN_PROP_SOUP_THRESHOLD) findings.push(makeFinding(file, node, booleanCount));
+      if (booleanCount >= BOOLEAN_PROP_SOUP_THRESHOLD)
+        findings.push(makeFinding(file, node, booleanCount));
     }
     if (
       node.type === "TSTypeAliasDeclaration" &&
       endsWithProps((node.id as { name?: string })?.name) &&
       (node.typeAnnotation as { type?: string })?.type === "TSTypeLiteral"
     ) {
-      const booleanCount = countBooleanMembers((node.typeAnnotation as { members?: unknown }).members);
-      if (booleanCount >= BOOLEAN_PROP_SOUP_THRESHOLD) findings.push(makeFinding(file, node, booleanCount));
+      const booleanCount = countBooleanMembers(
+        (node.typeAnnotation as { members?: unknown }).members,
+      );
+      if (booleanCount >= BOOLEAN_PROP_SOUP_THRESHOLD)
+        findings.push(makeFinding(file, node, booleanCount));
     }
   });
   return findings;

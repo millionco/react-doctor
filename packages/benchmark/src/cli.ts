@@ -41,7 +41,9 @@ const renderSummary = (report: SlopReport): string => {
     ),
   ];
   if (report.functionalPass !== null) {
-    lines.push(`Functional gate: ${report.functionalPass ? "PASS" : "FAIL"}  Reward: ${report.reward?.toFixed(3)}`);
+    lines.push(
+      `Functional gate: ${report.functionalPass ? "PASS" : "FAIL"}  Reward: ${report.reward?.toFixed(3)}`,
+    );
   }
   for (const error of report.scannerErrors) lines.push(`! scanner issue: ${error}`);
   return lines.join("\n");

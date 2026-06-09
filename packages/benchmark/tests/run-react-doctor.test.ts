@@ -20,11 +20,17 @@ const makeFixtureProject = (sourceByPath: Record<string, string>): string => {
   createdDirectories.push(rootDirectory);
   fs.writeFileSync(
     path.join(rootDirectory, "package.json"),
-    JSON.stringify({ name: "slopbench-rd-fixture", version: "1.0.0", dependencies: { react: "^18.3.1" } }),
+    JSON.stringify({
+      name: "slopbench-rd-fixture",
+      version: "1.0.0",
+      dependencies: { react: "^18.3.1" },
+    }),
   );
   fs.writeFileSync(
     path.join(rootDirectory, "tsconfig.json"),
-    JSON.stringify({ compilerOptions: { jsx: "react-jsx", strict: true, moduleResolution: "Bundler" } }),
+    JSON.stringify({
+      compilerOptions: { jsx: "react-jsx", strict: true, moduleResolution: "Bundler" },
+    }),
   );
   for (const [relativePath, contents] of Object.entries(sourceByPath)) {
     const absolutePath = path.join(rootDirectory, relativePath);
@@ -43,7 +49,8 @@ const makeContext = (rootDirectory: string, changedFiles: string[]): ScannerCont
 });
 
 afterAll(() => {
-  for (const directory of createdDirectories) fs.rmSync(directory, { recursive: true, force: true });
+  for (const directory of createdDirectories)
+    fs.rmSync(directory, { recursive: true, force: true });
 });
 
 describe("runReactDoctor", () => {

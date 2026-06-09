@@ -21,8 +21,8 @@ export const vercelRenderProp: AstCheck = (file): ScanFinding[] => {
     if (node.type !== "TSPropertySignature") return;
     const name = keyName(node.key);
     if (!name || !RENDER_PROP_NAME_PATTERN.test(name)) return;
-    const annotationType = (node.typeAnnotation as { typeAnnotation?: { type?: string } })?.typeAnnotation
-      ?.type;
+    const annotationType = (node.typeAnnotation as { typeAnnotation?: { type?: string } })
+      ?.typeAnnotation?.type;
     if (annotationType !== "TSFunctionType") return;
     findings.push(
       makeAstFinding({

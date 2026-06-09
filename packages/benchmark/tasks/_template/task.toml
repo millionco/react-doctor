@@ -12,7 +12,7 @@ task_id = "_template"
 display_title = "SlopBench task template"
 display_description = "Template task — replace every TODO before use."
 # SlopBench taxonomy (informational; the verifier scores all dimensions).
-family = "produce-clean"            # produce-clean | handle-slop | explicit-deslop
+family = "produce-clean" # produce-clean | handle-slop | explicit-deslop
 target_dimensions = ["react-correctness", "react-performance"]
 language = "typescript"
 repository_url = "TODO: seed repo URL or 'in-tree'"

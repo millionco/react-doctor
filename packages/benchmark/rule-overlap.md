@@ -8,16 +8,16 @@ dimension instead of re-implementing detection.
 
 ## Ownership by dimension
 
-| Dimension           | Owner            | How |
-| ------------------- | ---------------- | --- |
-| `react-correctness` | React Doctor     | categories **Security**, **Bugs** |
-| `react-performance` | React Doctor     | category **Performance** (minus the rules rerouted below) |
-| `accessibility`     | React Doctor     | category **Accessibility** |
+| Dimension           | Owner                           | How                                                                                             |
+| ------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `react-correctness` | React Doctor                    | categories **Security**, **Bugs**                                                               |
+| `react-performance` | React Doctor                    | category **Performance** (minus the rules rerouted below)                                       |
+| `accessibility`     | React Doctor                    | category **Accessibility**                                                                      |
 | `maintainability`   | React Doctor + deslop heuristic | category **Maintainability** (incl. the `ln`/deslop dead-code plugin) + `deslop/nested-ternary` |
-| `bundle`            | React Doctor (rerouted) | specific Performance-category rule ids → `bundle` |
-| `async-waterfall`  | React Doctor (rerouted) | specific Performance-category rule ids → `async-waterfall` |
-| `ts-strictness`     | SlopBench TS checks | React Doctor does **not** cover generic TS slop |
-| `composition`       | SlopBench Vercel checks | proliferation / render-prop not counted by React Doctor |
+| `bundle`            | React Doctor (rerouted)         | specific Performance-category rule ids → `bundle`                                               |
+| `async-waterfall`   | React Doctor (rerouted)         | specific Performance-category rule ids → `async-waterfall`                                      |
+| `ts-strictness`     | SlopBench TS checks             | React Doctor does **not** cover generic TS slop                                                 |
+| `composition`       | SlopBench Vercel checks         | proliferation / render-prop not counted by React Doctor                                         |
 
 ## React Doctor rules rerouted to finer dimensions
 
@@ -42,15 +42,15 @@ relabel the dimension.
 These Vercel best-practices map onto an existing React Doctor rule, so SlopBench
 does **not** add a duplicate detector:
 
-| Vercel rule | Covered by React Doctor |
-| ----------- | ----------------------- |
-| `bundle-barrel-imports` | `react-doctor/no-barrel-import`, `no-full-lodash-import` |
-| `bundle-dynamic-imports` | `react-doctor/prefer-dynamic-import`, `no-dynamic-import-path` |
-| `async-parallel` / waterfalls | `react-doctor/server-sequential-independent-await` |
-| `rerender-no-inline-components` | `react-doctor/no-nested-component-definition`, `no-unstable-nested-components` |
-| `rerender-derived-state-no-effect` | React Doctor `state-and-effects` rules |
-| `react19-no-forwardref` | `react-doctor/forward-ref-uses-ref`, `no-react19-deprecated-apis` |
-| `rendering-*` (img, etc.) | `react-doctor/nextjs-no-img-element`, … |
+| Vercel rule                        | Covered by React Doctor                                                        |
+| ---------------------------------- | ------------------------------------------------------------------------------ |
+| `bundle-barrel-imports`            | `react-doctor/no-barrel-import`, `no-full-lodash-import`                       |
+| `bundle-dynamic-imports`           | `react-doctor/prefer-dynamic-import`, `no-dynamic-import-path`                 |
+| `async-parallel` / waterfalls      | `react-doctor/server-sequential-independent-await`                             |
+| `rerender-no-inline-components`    | `react-doctor/no-nested-component-definition`, `no-unstable-nested-components` |
+| `rerender-derived-state-no-effect` | React Doctor `state-and-effects` rules                                         |
+| `react19-no-forwardref`            | `react-doctor/forward-ref-uses-ref`, `no-react19-deprecated-apis`              |
+| `rendering-*` (img, etc.)          | `react-doctor/nextjs-no-img-element`, …                                        |
 
 ## Signals SlopBench OWNS (custom checks — React Doctor gap)
 

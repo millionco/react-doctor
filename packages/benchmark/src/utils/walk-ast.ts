@@ -1,7 +1,9 @@
 import type { AstVisitorNode } from "../types/index.js";
 
 const isAstNode = (value: unknown): value is AstVisitorNode =>
-  typeof value === "object" && value !== null && typeof (value as { type?: unknown }).type === "string";
+  typeof value === "object" &&
+  value !== null &&
+  typeof (value as { type?: unknown }).type === "string";
 
 // Depth-first walk over an oxc ESTree tree, invoking `visit` for every node
 // that has a string `type`. The oxc AST has no parent back-references (we never

@@ -35,7 +35,8 @@ export const deslopNestedTernary: AstCheck = (file): ScanFinding[] => {
         ruleId: "deslop/nested-ternary",
         severity: "warning",
         offset: typeof node.start === "number" ? node.start : 0,
-        message: "Nested ternary is hard to read; use an if/else chain, switch, or extracted helper.",
+        message:
+          "Nested ternary is hard to read; use an if/else chain, switch, or extracted helper.",
       }),
     );
 };

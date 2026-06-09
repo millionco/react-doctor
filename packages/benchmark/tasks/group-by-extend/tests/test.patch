@@ -1,9 +1,9 @@
 diff --git a/tests/group-by.test.ts b/tests/group-by.test.ts
 new file mode 100644
-index 0000000..5cb4b8d
+index 0000000..a08c187
 --- /dev/null
 +++ b/tests/group-by.test.ts
-@@ -0,0 +1,19 @@
+@@ -0,0 +1,26 @@
 +import { test } from "node:test";
 +import assert from "node:assert/strict";
 +import { groupBy } from "../src/group-by.ts";
@@ -19,7 +19,14 @@ index 0000000..5cb4b8d
 +});
 +
 +test("keeps first-seen order of items within a group", () => {
-+  const items = [{ id: 1, g: "x" }, { id: 2, g: "x" }, { id: 3, g: "x" }];
++  const items = [
++    { id: 1, g: "x" },
++    { id: 2, g: "x" },
++    { id: 3, g: "x" },
++  ];
 +  const result = groupBy(items, "g");
-+  assert.deepEqual(result.x.map((item) => item.id), [1, 2, 3]);
++  assert.deepEqual(
++    result.x.map((item) => item.id),
++    [1, 2, 3],
++  );
 +});

@@ -39,7 +39,11 @@ export const collectDiff = (rootDirectory: string, baseRef: string): DiffSummary
     { cwd: rootDirectory },
   );
   if (result.spawnFailed || result.exitCode !== 0) {
-    return { changedFiles: [], addedLineCount: 0, error: result.stderr.trim() || "git diff failed" };
+    return {
+      changedFiles: [],
+      addedLineCount: 0,
+      error: result.stderr.trim() || "git diff failed",
+    };
   }
   return parseNumstat(result.stdout);
 };

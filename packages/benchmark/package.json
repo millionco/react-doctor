@@ -23,7 +23,7 @@
   },
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && cross-env NODE_ENV=production vp pack",
-    "test": "vp test run",
+    "test": "vp test run tests",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

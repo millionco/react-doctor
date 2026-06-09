@@ -55,7 +55,8 @@ const PACKAGE_JSON = JSON.stringify({
 });
 
 afterAll(() => {
-  for (const directory of createdDirectories) fs.rmSync(directory, { recursive: true, force: true });
+  for (const directory of createdDirectories)
+    fs.rmSync(directory, { recursive: true, force: true });
 });
 
 describe("runSlopVerifier", () => {
@@ -107,7 +108,9 @@ describe("runSlopVerifier", () => {
     expect(clean.slopScore).toBeGreaterThan(sloppy.slopScore);
     expect(sloppy.slopScore).toBeLessThan(95);
     // Findings come from more than one scanner on the sloppy diff.
-    expect(new Set(sloppy.violations.map((violation) => violation.scanner)).size).toBeGreaterThan(1);
+    expect(new Set(sloppy.violations.map((violation) => violation.scanner)).size).toBeGreaterThan(
+      1,
+    );
   });
 
   it("gates the reward on the functional outcome", () => {

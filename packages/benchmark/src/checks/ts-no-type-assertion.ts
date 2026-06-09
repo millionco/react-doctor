@@ -27,7 +27,8 @@ export const tsNoTypeAssertion: AstCheck = (file): ScanFinding[] => {
         ruleId: "ts/no-type-assertion",
         severity: "warning",
         offset: typeof node.start === "number" ? node.start : 0,
-        message: "Type assertion overrides the inferred type; prefer a correct type or a runtime guard.",
+        message:
+          "Type assertion overrides the inferred type; prefer a correct type or a runtime guard.",
       }),
     );
   });

@@ -14,6 +14,7 @@ minutes, and seconds (sub-second precision is dropped via truncation).
 - Zero (and any negative input) returns `"0s"`.
 
 Examples:
+
 - `formatDuration(0)` → `"0s"`
 - `formatDuration(65_000)` → `"1m 5s"`
 - `formatDuration(-10)` → `"0s"`

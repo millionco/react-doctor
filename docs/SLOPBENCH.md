@@ -8,7 +8,7 @@ second, continuous quality axis.
 ## Why two axes
 
 Correctness-only benchmarks reward a working feature regardless of how it was
-built. Real frontend review cares about both: does it work, *and* is it clean?
+built. Real frontend review cares about both: does it work, _and_ is it clean?
 SlopBench keeps a hard **functional gate** (hidden behavioral tests) and adds a
 **slop score** computed purely by static analysis on the diff:
 
@@ -77,11 +77,11 @@ Doctor does not already cover (TS strictness + composition).
 ## Task families
 
 - **produce-clean** — implement a working feature; slop is measured on the diff.
-  Measures the slop a model emits *unprompted* (the instruction never mentions
+  Measures the slop a model emits _unprompted_ (the instruction never mentions
   quality).
 - **handle-slop** — the seed ships working-but-sloppy code; a small change is
-  requested. Measures whether the model *adds* slop or cleans what it touches.
-- **explicit-deslop** *(v2)* — the instruction asks to clean up while preserving
+  requested. Measures whether the model _adds_ slop or cleans what it touches.
+- **explicit-deslop** _(v2)_ — the instruction asks to clean up while preserving
   behavior; isolates capability from inclination.
 
 ## Anti-gaming

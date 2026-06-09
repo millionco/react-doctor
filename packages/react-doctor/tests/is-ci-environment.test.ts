@@ -10,7 +10,7 @@ import {
   isCiEnvironment,
   isCiOrCodingAgentEnvironment,
   isCodingAgentEnvironment,
-  isReactDoctorWorkflowWrapper,
+  isOfficialGithubAction,
   isPullRequestCiEvent,
 } from "../src/cli/utils/is-ci-environment.js";
 
@@ -210,10 +210,10 @@ describe("GitHub Actions CI detectors", () => {
     }
   });
 
-  it("detects an external React Doctor workflow wrapper via its marker", () => {
-    expect(isReactDoctorWorkflowWrapper()).toBe(false);
+  it("detects the official react-doctor GitHub Action via its marker", () => {
+    expect(isOfficialGithubAction()).toBe(false);
     process.env[GITHUB_ACTION_MARKER_ENVIRONMENT_VARIABLE] = "v1";
-    expect(isReactDoctorWorkflowWrapper()).toBe(true);
+    expect(isOfficialGithubAction()).toBe(true);
   });
 
   it("reads the GitHub event name and pull-request signal", () => {

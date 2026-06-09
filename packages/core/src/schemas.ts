@@ -98,7 +98,7 @@ export class JsonReportProjectEntry extends Schema.Class<JsonReportProjectEntry>
 /**
  * Versioned JsonReport schema. `JsonReport` is a `Schema.Union` so we
  * can add `schemaVersion: 2` later as one new union member without
- * breaking existing v1 consumers (integrations key off the
+ * breaking existing v1 consumers (the GitHub Action keys off the
  * version literal). Today's union is single-arm; the shape is
  * intentional.
  */

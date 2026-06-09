@@ -161,7 +161,7 @@ export interface DiffInfo {
   currentBranch: string | null;
   baseBranch: string;
   /**
-   * Resolved base commit SHA, when known (workflow wrappers may forward
+   * Resolved base commit SHA, when known (the GitHub Action forwards
    * `pull_request.base.sha`). Preferred over `baseBranch` for baseline
    * merge-base resolution because a branch name often doesn't resolve in a
    * shallow PR checkout, whereas the fetched SHA always does.
@@ -225,7 +225,7 @@ export interface JsonReportError {
   chain: string[];
   /**
    * Sentry event id for the crash, when the run reported one (CLI crash
-   * path in CI). Lets integrations surface a quotable reference so a
+   * path in CI). Lets the GitHub Action surface a quotable reference so a
    * failed scan can be traced back to its Sentry event. `null` for expected
    * user errors and synthetic fallbacks that never hit Sentry.
    */

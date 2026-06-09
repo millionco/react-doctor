@@ -58,7 +58,7 @@ const readEnvBoolean = (name: string): boolean | null => {
   return value.toLowerCase() === "true" || value === "1";
 };
 
-// How an external workflow wrapper's `version` input was pinned, derived from the
+// How the official action's `version` input was pinned, derived from the
 // forwarded value: `latest`, a local path spec, or an explicit version.
 const resolveVersionPin = (versionInput: string | undefined): string | null => {
   if (versionInput === undefined || versionInput.trim() === "") return null;
@@ -67,14 +67,16 @@ const resolveVersionPin = (versionInput: string | undefined): string | null => {
   return "pinned";
 };
 
-// The blocking threshold for the `wouldBlock` signal. External wrappers can
-// forward their own `blocking` input; otherwise fall back to the config value
-// (new name, then the deprecated `failOn` alias), then the `"error"` default. A
-// bare `--blocking` CLI flag (no wrapper, no config) isn't visible here.
+// The blocking threshold for the `wouldBlock` signal. The action forwards
+// its own `blocking` input (so we see the gate even though it's handled by
+// the CLI exit code); otherwise fall back to the config value (new name, then
+// the deprecated `failOn` alias), then the `"error"` default. A bare
+// `--blocking` CLI flag (no action, no config) isn't visible here — an
+// accepted gap, since CI gating runs through the action or config.
 const resolveTelemetryBlocking = (userConfig: ReactDoctorConfig | null): BlockingLevel => {
-  const fromWrapper = process.env[ACTION_INPUT_ENVIRONMENT_VARIABLES.blocking];
-  if (fromWrapper !== undefined && isValidBlockingLevel(fromWrapper)) {
-    return fromWrapper;
+  const fromAction = process.env[ACTION_INPUT_ENVIRONMENT_VARIABLES.blocking];
+  if (fromAction !== undefined && isValidBlockingLevel(fromAction)) {
+    return fromAction;
   }
   return userConfig?.blocking ?? userConfig?.failOn ?? "error";
 };
@@ -182,9 +184,9 @@ const buildCiAttributes = (): RunEventAttributes => {
   return {
     actorAssociation: githubActorAssociation ?? null,
     runnerOs: detectRunnerOs(),
-    // Wrapper knobs: present only when an external workflow wrapper forwarded
-    // them, so they're `null` (dropped) for direct CLI runs. `blocking` is
-    // already captured as `blocking`
+    // Action knobs: present only when the official action forwarded them, so
+    // they're `null` (dropped) for any non-action run. The action's
+    // `blocking` is already captured as `blocking`
     // (resolveTelemetryBlocking prefers it).
     comment: readEnvBoolean(ACTION_INPUT_ENVIRONMENT_VARIABLES.comment),
     reviewComments: readEnvBoolean(ACTION_INPUT_ENVIRONMENT_VARIABLES.reviewComments),

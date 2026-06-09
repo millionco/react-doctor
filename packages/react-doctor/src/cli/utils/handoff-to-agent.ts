@@ -1,3 +1,4 @@
+import * as fs from "node:fs";
 import { getSkillAgentConfig } from "agent-install";
 import type { Diagnostic } from "@react-doctor/core";
 import { highlighter } from "@react-doctor/core";
@@ -5,12 +6,21 @@ import { buildHandoffPayload } from "./build-handoff-payload.js";
 import { cliLogger as logger } from "./cli-logger.js";
 import { detectAvailableAgents } from "./detect-agents.js";
 import { findNearestPackageDirectory } from "./install-doctor-script.js";
-import { isReactDoctorWorkflowInstalled } from "./install-github-workflow.js";
+import {
+  isReactDoctorWorkflowInstalled,
+  readReactDoctorWorkflow,
+  upgradeWorkflowActionToV2,
+  workflowUsesV1Action,
+  type InstalledReactDoctorWorkflow,
+} from "./install-github-workflow.js";
+import { hasHandledActionUpgrade, recordActionUpgradeDecision } from "./action-upgrade-prompt.js";
 import { askAddToGitHubActions } from "./ask-add-to-github-actions.js";
+import { askUpgradeActionVersion } from "./ask-upgrade-action-version.js";
 import { setUpGitHubActions } from "./set-up-github-actions.js";
 import { installReactDoctorSkillForAgent } from "./install-skill-for-agent.js";
 import { isCommandAvailable } from "./is-command-available.js";
 import { METRIC } from "./constants.js";
+import { openWorkflowPullRequest, stageWorkflowFile } from "./open-workflow-pull-request.js";
 import { recordCount } from "./record-metric.js";
 import {
   CLI_AGENT_BINARIES,
@@ -36,6 +46,104 @@ const printPayload = (payload: string): void => {
   logger.log(highlighter.dim("──── Agent prompt ────"));
   logger.log(payload);
   logger.log(highlighter.dim("──────────────────────"));
+};
+
+const UPGRADE_COMMIT_MESSAGE = "ci: upgrade React Doctor GitHub Action to v2";
+const UPGRADE_PR_TITLE = "Upgrade React Doctor Action to v2";
+const UPGRADE_PR_BODY = `Bumps the React Doctor GitHub Actions workflow to the action's latest major, \`millionco/react-doctor@v2\`.
+
+Docs: https://www.react.doctor/ci`;
+
+// Writes the `@v2` bump into the existing (tracked) workflow file and opens a
+// PR for it — mirroring the fresh-install flow's commit-on-a-branch model so
+// the change lands as a reviewable PR rather than a silent edit. On a PR-open
+// success the user's working tree is restored to `@v1` (the bump lives only on
+// the PR branch); when `gh` is unavailable we fall back to staging the edit so
+// it shows up in their next commit. Returns whether the bump was applied: a
+// write failure returns `false` so the caller doesn't record the offer as
+// handled, leaving it to re-prompt on the next scan.
+const upgradeGitHubActionsWorkflow = async (
+  workflow: InstalledReactDoctorWorkflow,
+): Promise<boolean> => {
+  const { content, changed } = upgradeWorkflowActionToV2(workflow.content);
+  if (!changed) return false;
+
+  const upgradeSpinner = spinner("Opening a pull request to upgrade React Doctor to v2...").start();
+  try {
+    fs.writeFileSync(workflow.workflowPath, content);
+  } catch {
+    upgradeSpinner.fail("Couldn't update the workflow file.");
+    return false;
+  }
+
+  const pullRequestResult = await openWorkflowPullRequest({
+    workflowPath: workflow.workflowPath,
+    commitMessage: UPGRADE_COMMIT_MESSAGE,
+    prTitle: UPGRADE_PR_TITLE,
+    prBody: UPGRADE_PR_BODY,
+  });
+
+  if (pullRequestResult.status === "pr-opened") {
+    upgradeSpinner.succeed(
+      `Opened pull request for review: ${highlighter.info(pullRequestResult.url)}`,
+    );
+  } else if (pullRequestResult.status === "branch-pushed") {
+    upgradeSpinner.warn(
+      `Pushed branch ${highlighter.bold(
+        pullRequestResult.branch,
+      )} but couldn't open a PR. Open one with: gh pr create --head ${pullRequestResult.branch}`,
+    );
+  } else {
+    upgradeSpinner.stop();
+    // A git failure mid-flight (e.g. a rejected push) leaves openWorkflowPull-
+    // Request having restored the original branch — reverting the tracked file
+    // back to `@v1`. Re-write the bump so the working tree definitely lands on
+    // `@v2` before staging, keeping the "updated to @v2" message honest (and the
+    // recorded `accepted` decision truthful).
+    try {
+      fs.writeFileSync(workflow.workflowPath, content);
+    } catch {
+      logger.log("  Couldn't finish the upgrade. Re-run React Doctor to try again.");
+      return false;
+    }
+    const didStage = await stageWorkflowFile({
+      workflowPath: workflow.workflowPath,
+    });
+    logger.log(
+      didStage
+        ? "  Updated the workflow to @v2 and staged it. Commit it to finish the upgrade."
+        : "  Updated the workflow to @v2. Commit the change to finish the upgrade.",
+    );
+  }
+
+  return true;
+};
+
+// Offered once per repo: when a React Doctor workflow is already on disk but
+// still pins the action's previous floating major (`@v1`), invite the user to
+// bump it to `@v2` via a PR. A decline is persisted per-repo, and an accept
+// only once the bump is actually applied, so the offer never repeats; a cancel
+// (or a failed write) leaves it un-answered so the prompt can return next scan.
+// The caller has already gated on an interactive run with findings.
+const maybeOfferActionUpgrade = async (projectRoot: string): Promise<void> => {
+  const workflow = readReactDoctorWorkflow(projectRoot);
+  if (!workflow || !workflowUsesV1Action(workflow.content)) return;
+  if (hasHandledActionUpgrade(projectRoot)) return;
+
+  const outcome = await askUpgradeActionVersion();
+  if (outcome === "cancel") return;
+
+  recordCount(METRIC.agentHandoff, 1, {
+    outcome: outcome === "yes" ? "upgrade-accepted" : "upgrade-declined",
+  });
+
+  if (outcome === "no") {
+    recordActionUpgradeDecision(projectRoot, "declined");
+    return;
+  }
+
+  const didApplyUpgrade = await upgradeGitHubActionsWorkflow(workflow);
+  if (didApplyUpgrade) recordActionUpgradeDecision(projectRoot, "accepted");
 };
 
 // CLI agents we can launch: detected as installed by `agent-install`
@@ -80,6 +188,10 @@ export const handoffToAgent = async (input: HandoffToAgentInput): Promise<void> 
       await setUpGitHubActions({ rootDirectory: input.rootDirectory });
       logger.break();
     }
+  } else {
+    // Workflow already present: offer the one-time `@v1` → `@v2` upgrade
+    // instead. Mutually exclusive with the "add" prompt above.
+    await maybeOfferActionUpgrade(projectRootForCi);
   }
 
   const launchableAgents = await detectLaunchableAgents();

@@ -33,4 +33,8 @@ jobs:
 
       - run: pnpm --filter react-doctor... build
 
-      - run: pnpm --filter react-doctor exec react-doctor . --blocking none
+      - uses: ./
+        with:
+          blocking: none
+          node-version: 22.18.0
+          version: ./packages/react-doctor

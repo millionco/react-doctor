@@ -50,7 +50,8 @@ interface ReactDoctorIgnoreConfig {
  *
  * - `cli` — local terminal output from `react-doctor` (`printDiagnostics`).
  * - `prComment` — diagnostics destined for a sticky pull-request
- *   summary comment in integrations that render one.
+ *   summary comment. Selected by running the CLI with `--pr-comment`
+ *   (sets `outputSurface: "prComment"`).
  * - `score` — diagnostics shipped to the React Doctor score API
  *   (or counted toward local score calculations).
  * - `ciFailure` — diagnostics that count toward the CI exit-code gate.
@@ -213,7 +214,8 @@ export interface ReactDoctorConfig {
    * on warnings, or `"none"` to keep the scan advisory (it still reports
    * findings and a score, but always exits `0`).
    *
-   * The CLI exposes the same control as `--blocking <level>`. Flags win over config.
+   * The GitHub Action exposes the same control as its `blocking`
+   * input, and the CLI as `--blocking <level>`. Flags win over config.
    */
   blocking?: BlockingLevel;
   /**

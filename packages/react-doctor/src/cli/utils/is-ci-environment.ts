@@ -22,13 +22,16 @@ const CI_PROVIDER_BY_ENVIRONMENT_VARIABLE: ReadonlyArray<readonly [string, strin
   ["DRONE", "drone"],
 ];
 
-// Marker legacy/external GitHub workflow wrappers can set on their scan step so
-// telemetry can tell "ran via a React Doctor wrapper" apart from a hand-rolled
-// `npx react-doctor` step. Presence is all that matters; the value is the ref.
+// Marker the official react-doctor GitHub Action sets on its scan step so CLI
+// telemetry can tell "ran via our action" apart from a hand-rolled `npx
+// react-doctor` step inside some GitHub workflow. Presence is all that matters;
+// the value is the action ref.
 export const GITHUB_ACTION_MARKER_ENVIRONMENT_VARIABLE = "REACT_DOCTOR_GITHUB_ACTION";
 
-// Wrapper inputs the CLI can't otherwise see because they are handled outside
-// its flags. Exported so tests can save/restore the full telemetry surface.
+// Action inputs the CLI can't otherwise see (they're handled in `action.yml`
+// steps, not passed as flags). The official action forwards them as these env
+// vars so the wide event can record how the action was configured. Exported so
+// tests can save/restore the full surface.
 export const ACTION_INPUT_ENVIRONMENT_VARIABLES = {
   blocking: "REACT_DOCTOR_ACTION_BLOCKING",
   comment: "REACT_DOCTOR_ACTION_COMMENT",
@@ -92,9 +95,9 @@ export const detectCiProvider = (): string | null => {
   return isCiFlagSet(process.env.CI) ? "unknown" : null;
 };
 
-// True when an external React Doctor workflow wrapper supplied the marker env
-// var on its scan step.
-export const isReactDoctorWorkflowWrapper = (): boolean =>
+// True when the run was launched by the official react-doctor GitHub Action
+// (which sets the marker env var on its scan step).
+export const isOfficialGithubAction = (): boolean =>
   Boolean(process.env[GITHUB_ACTION_MARKER_ENVIRONMENT_VARIABLE]);
 
 // The triggering GitHub Actions event (`pull_request`, `push`, `schedule`,

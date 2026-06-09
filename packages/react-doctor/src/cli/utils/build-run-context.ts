@@ -4,7 +4,7 @@ import {
   detectCodingAgent,
   isCiEnvironment,
   isCodingAgentEnvironment,
-  isReactDoctorWorkflowWrapper,
+  isOfficialGithubAction,
 } from "./is-ci-environment.js";
 import { isGitHookEnvironment } from "./is-git-hook-environment.js";
 import { isNonInteractiveEnvironment } from "./is-non-interactive-environment.js";
@@ -30,7 +30,7 @@ export interface RunContext {
   ciProvider: string | null;
   // GitHub Actions triggering event (e.g. `pull_request`), null off GitHub.
   eventName: string | null;
-  // Launched by an external React Doctor workflow wrapper.
+  // Launched by the official react-doctor GitHub Action.
   viaAction: boolean;
   codingAgent: string | null;
   interactive: boolean;
@@ -100,7 +100,7 @@ export const buildRunContext = (): RunContext => {
     ci: isCiEnvironment(),
     ciProvider: detectCiProvider(),
     eventName: detectCiEventName(),
-    viaAction: isReactDoctorWorkflowWrapper(),
+    viaAction: isOfficialGithubAction(),
     codingAgent: detectCodingAgent(),
     interactive: !isNonInteractiveEnvironment(),
     jsonMode: isJsonModeActive(),

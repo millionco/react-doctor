@@ -119,7 +119,7 @@ interface FinalizeScansInput {
  */
 const finalizeScans = (input: FinalizeScansInput): void => {
   // Aggregate the per-project baseline deltas into one report-level block so the
-  // JSON report sees a single new/fixed total across a
+  // JSON (and the GitHub Action) sees a single new/fixed total across a
   // workspace scan. Present only when at least one project produced a delta.
   const baselineDeltas = input.completedScans.flatMap((scan) =>
     scan.result.baselineDelta ? [scan.result.baselineDelta] : [],
@@ -189,9 +189,9 @@ const finalizeScans = (input: FinalizeScansInput): void => {
 const buildChangedFilesDiffInfo = (changedFiles: string[]): DiffInfo => ({
   currentBranch: process.env.GITHUB_HEAD_REF?.trim() || null,
   baseBranch: process.env.GITHUB_BASE_REF?.trim() || "pull request target",
-  // Workflow wrappers can forward the PR base commit so baseline mode can read
+  // The GitHub Action forwards the PR base commit so baseline mode can read
   // base content against a SHA that's actually fetched (branch names rarely
-  // resolve in a shallow PR checkout). Empty in direct local runs.
+  // resolve in a shallow PR checkout). Empty in non-Action runs.
   baseSha: process.env.REACT_DOCTOR_BASE_SHA?.trim() || undefined,
   changedFiles,
   isCurrentChanges: false,
@@ -411,7 +411,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
     // Baseline (PR-introduced-issues-only) mode: when diffing against a base
     // ref (not just uncommitted changes), read base content from the SAME
     // commit the file diff was taken against so the file set and the base
-    // snapshot agree. Workflow wrappers can forward the PR base SHA — three-dot
+    // snapshot agree. The GitHub Action forwards the PR base SHA — three-dot
     // PR semantics, so merge-base it with HEAD; a local `--diff` already knows
     // its exact base (`diffBaseRef`: `A` for two-dot `A..B`, the merge-base for
     // three-dot / single-base). A null ref (base not fetched, detached, or git

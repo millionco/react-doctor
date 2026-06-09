@@ -10,7 +10,7 @@ const REMOVED_FLAGS: ReadonlyMap<string, string> = new Map([
   ["--full", "use `--diff false` to force a full scan"],
   ["--explain", "use the `why <file>:<line>` command"],
   ["--why", "use the `why <file>:<line>` command"],
-  ["--pr-comment", "PR comment posting is no longer supported; remove this flag"],
+  ["--pr-comment", "the GitHub Action posts the PR comment for you; remove this flag"],
 ]);
 
 /**

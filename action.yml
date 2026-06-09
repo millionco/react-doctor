@@ -1,0 +1,467 @@
+name: "React Doctor"
+description: "Scan React codebases for security, performance, and correctness issues"
+branding:
+  icon: "activity"
+  color: "blue"
+
+inputs:
+  directory:
+    description: "Project directory to scan"
+    default: "."
+  project:
+    description: 'Workspace project(s) to scan (comma-separated). Use "*" to scan every discovered project.'
+    default: "*"
+  scope:
+    description: "On pull requests, what to scan: 'changed' (only files changed in the PR, the default baseline/diff behavior) or 'full' (the entire project, reporting every finding). Non-PR events always scan the full project."
+    default: "changed"
+  blocking:
+    description: "Severity that fails the workflow: error (default), warning, or none (advisory — report findings but always exit 0)."
+    default: "error"
+  comment:
+    description: "Create or update a sticky pull request summary comment."
+    default: "true"
+  review-comments:
+    description: "Post inline review comments on the changed lines that triggered diagnostics (pull requests only)."
+    default: "true"
+  commit-status:
+    description: "Publish a commit status with the score and error / warning counts, linking to the run. Surfaces the result on pushes to the default branch (where the PR comment is skipped). Requires `statuses: write` (skipped with a warning otherwise)."
+    default: "true"
+  node-version:
+    description: "Node.js version to use"
+    default: "24"
+  version:
+    description: "react-doctor npm version or package spec to run"
+    default: "latest"
+
+outputs:
+  score:
+    description: "Health score (0-100). Empty when scoring was unavailable."
+    value: ${{ steps.render.outputs.score }}
+  total-issues:
+    description: "Total diagnostic count in the scan report. In baseline mode (pull requests), this is the count of issues introduced by the PR."
+    value: ${{ steps.render.outputs.total-issues }}
+  fixed-issues:
+    description: "Baseline mode (pull requests) only: count of issues the PR resolved. 0 otherwise."
+    value: ${{ steps.render.outputs.fixed-issues }}
+  error-count:
+    description: "Error diagnostic count in the scan report."
+    value: ${{ steps.render.outputs.error-count }}
+  warning-count:
+    description: "Warning diagnostic count in the scan report."
+    value: ${{ steps.render.outputs.warning-count }}
+  affected-files:
+    description: "Number of files with diagnostics."
+    value: ${{ steps.render.outputs.affected-files }}
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/setup-node@v5
+      with:
+        node-version: ${{ inputs.node-version }}
+        package-manager-cache: false
+
+    - id: pr-files
+      if: ${{ github.event_name == 'pull_request' && inputs.scope != 'full' }}
+      uses: actions/github-script@v8
+      env:
+        REACT_DOCTOR_CHANGED_FILES: ${{ runner.temp }}/react-doctor-changed-files.txt
+      with:
+        script: |
+          const fs = require("fs");
+          const outputPath = process.env.REACT_DOCTOR_CHANGED_FILES;
+          const pullRequest = context.payload.pull_request;
+          if (!pullRequest || !outputPath) return;
+          let files;
+          try {
+            files = await github.paginate(github.rest.pulls.listFiles, {
+              ...context.repo,
+              pull_number: pullRequest.number,
+              per_page: 100,
+            });
+          } catch (error) {
+            core.warning(
+              `React Doctor could not list pull request files (${error.message}). ` +
+                "Scanning the full project instead. Grant the workflow `pull-requests: read` " +
+                "permission to scan only the files changed in the pull request.",
+            );
+            return;
+          }
+          const includedStatuses = new Set(["added", "modified", "renamed"]);
+          const changedFiles = files
+            .filter((file) => includedStatuses.has(file.status))
+            .map((file) => file.filename);
+          fs.writeFileSync(outputPath, changedFiles.join("\n") + (changedFiles.length ? "\n" : ""));
+          core.setOutput("path", outputPath);
+
+    - id: base
+      if: ${{ github.event_name == 'pull_request' && inputs.scope != 'full' }}
+      shell: bash
+      env:
+        INPUT_DIRECTORY: ${{ inputs.directory }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      run: |
+        # Fetch the PR base commit so react-doctor can read base file content
+        # and resolve the merge-base for baseline (PR-introduced-issues-only)
+        # mode. Depth 1 covers the standard merge-ref checkout (base is a parent
+        # of HEAD); for deeper history use `fetch-depth: 0` on actions/checkout.
+        # Best-effort: if it fails, react-doctor degrades to reporting every
+        # finding in the changed files.
+        if [ -n "$BASE_SHA" ] && git -C "$INPUT_DIRECTORY" rev-parse --git-dir >/dev/null 2>&1; then
+          git -C "$INPUT_DIRECTORY" fetch --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null || true
+        fi
+
+    - id: scan
+      shell: bash
+      env:
+        NO_COLOR: "1"
+        INPUT_DIRECTORY: ${{ inputs.directory }}
+        INPUT_PROJECT: ${{ inputs.project }}
+        INPUT_SCOPE: ${{ inputs.scope }}
+        INPUT_BLOCKING: ${{ inputs.blocking }}
+        INPUT_VERSION: ${{ inputs.version }}
+        CHANGED_FILES_FROM: ${{ steps.pr-files.outputs.path }}
+        # Forwarded so baseline mode reads base content against a fetched SHA
+        # (branch names rarely resolve in a shallow PR checkout). Empty off PRs.
+        REACT_DOCTOR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        RUNNER_TEMP: ${{ runner.temp }}
+        GITHUB_RUN_ID: ${{ github.run_id }}
+        # Telemetry: mark runs as launched by the official action and forward the
+        # inputs the CLI can't otherwise see (comment / review-comments are
+        # handled in later steps, not as flags). These ride along on the scan's
+        # Sentry wide event. Anonymous: no repo, owner, actor, or ref.
+        REACT_DOCTOR_GITHUB_ACTION: ${{ github.action_ref || '1' }}
+        REACT_DOCTOR_ACTION_BLOCKING: ${{ inputs.blocking }}
+        REACT_DOCTOR_ACTION_COMMENT: ${{ inputs.comment }}
+        REACT_DOCTOR_ACTION_REVIEW_COMMENTS: ${{ inputs.review-comments }}
+        REACT_DOCTOR_ACTION_VERSION: ${{ inputs.version }}
+      run: |
+        REPORT_FILE="${RUNNER_TEMP:-/tmp}/react-doctor-report-${GITHUB_RUN_ID:-$$}.json"
+        echo "report-file=$REPORT_FILE" >> "$GITHUB_OUTPUT"
+
+        FLAGS=("--json" "--json-compact")
+        if [ -n "$INPUT_BLOCKING" ]; then FLAGS+=("--blocking" "$INPUT_BLOCKING"); fi
+        if [ -n "$INPUT_PROJECT" ]; then FLAGS+=("--project" "$INPUT_PROJECT"); fi
+
+        # Lowercase the scope so this bash test matches the case-insensitive
+        # comparison the pr-files/base steps' `inputs.scope != 'full'`
+        # expressions use. Without this, `scope: Full` would skip those steps
+        # (GHA matches) yet fall through to changed-files here (bash wouldn't),
+        # running a diff scan despite the user asking for a full one.
+        SCOPE="$(printf '%s' "$INPUT_SCOPE" | tr '[:upper:]' '[:lower:]')"
+        if [ "$SCOPE" = "full" ]; then
+          # `--diff false` scans the whole project. It turns off diff mode and
+          # ignores any `diff` value set in the project's config.
+          FLAGS+=("--diff" "false")
+        elif [ -n "$CHANGED_FILES_FROM" ]; then
+          FLAGS+=("--changed-files-from" "$CHANGED_FILES_FROM")
+        fi
+
+        if [[ "$INPUT_VERSION" = ./* || "$INPUT_VERSION" = ../* || "$INPUT_VERSION" = /* ]]; then
+          PACKAGE_SPEC="$INPUT_VERSION"
+        else
+          PACKAGE_SPEC="react-doctor@$INPUT_VERSION"
+        fi
+
+        set +e
+        npm exec --yes --package "$PACKAGE_SPEC" -- react-doctor "$INPUT_DIRECTORY" "${FLAGS[@]}" > "$REPORT_FILE"
+        SCAN_STATUS=$?
+        set -e
+
+        if ! node "$GITHUB_ACTION_PATH/scripts/ensure-json-report.mjs" "$REPORT_FILE" "$SCAN_STATUS"; then
+          SCAN_STATUS=1
+        fi
+        echo "exit-code=$SCAN_STATUS" >> "$GITHUB_OUTPUT"
+
+    - id: render
+      if: always()
+      shell: bash
+      env:
+        REPORT_FILE: ${{ steps.scan.outputs.report-file }}
+        COMMENT_FILE: ${{ runner.temp }}/react-doctor-comment.md
+        GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        # The reviewed commit, shown in the sticky comment's footer. On a PR the
+        # head SHA is the merge ref's parent; `github.sha` covers push runs.
+        REACT_DOCTOR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      run: |
+        node "$GITHUB_ACTION_PATH/scripts/render-github-action-comment.mjs" "$REPORT_FILE" "$COMMENT_FILE"
+        echo "comment-file=$COMMENT_FILE" >> "$GITHUB_OUTPUT"
+
+        # Mirror the rendered report into the run's job summary so every event —
+        # including pushes to the default branch, where the sticky PR comment is
+        # skipped — has a visible result on the run page. The commit status's
+        # "Details" link lands here.
+        if [ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ -f "$COMMENT_FILE" ]; then
+          cat "$COMMENT_FILE" >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+    - name: Update sticky PR comment
+      if: ${{ always() && github.event_name == 'pull_request' && inputs.comment == 'true' }}
+      uses: actions/github-script@v8
+      env:
+        REACT_DOCTOR_COMMENT_FILE: ${{ steps.render.outputs.comment-file }}
+      with:
+        script: |
+          const fs = require("fs");
+          const commentPath = process.env.REACT_DOCTOR_COMMENT_FILE;
+          if (!commentPath || !fs.existsSync(commentPath)) return;
+
+          const body = fs.readFileSync(commentPath, "utf8").trim();
+          if (!body) return;
+
+          const marker = "<!-- react-doctor:summary -->";
+          try {
+            const { data: comments } = await github.rest.issues.listComments({
+              ...context.repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            });
+            const previous = comments.find((comment) => comment.body?.startsWith(marker));
+            if (previous) {
+              await github.rest.issues.updateComment({
+                ...context.repo,
+                comment_id: previous.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+          } catch (error) {
+            core.warning(`React Doctor could not update the sticky PR comment: ${error.message}`);
+          }
+
+    - name: Post inline review comments
+      if: ${{ always() && github.event_name == 'pull_request' && inputs.review-comments == 'true' }}
+      uses: actions/github-script@v8
+      env:
+        REACT_DOCTOR_REPORT_FILE: ${{ steps.scan.outputs.report-file }}
+        INPUT_DIRECTORY: ${{ inputs.directory }}
+      with:
+        script: |
+          const fs = require("fs");
+          const reportPath = process.env.REACT_DOCTOR_REPORT_FILE;
+          const pullRequest = context.payload.pull_request;
+          if (!pullRequest || !reportPath || !fs.existsSync(reportPath)) return;
+
+          let report;
+          try {
+            report = JSON.parse(fs.readFileSync(reportPath, "utf8"));
+          } catch {
+            return;
+          }
+          // A failed/aborted scan emits `ok: false` with an empty `diagnostics`
+          // array (CLI error reports + the ensure-json-report fallback). Don't
+          // treat that as a clean scan — leave any existing inline feedback in
+          // place rather than wiping it on a transient failure.
+          if (report.ok === false) return;
+          const diagnostics = Array.isArray(report.diagnostics) ? report.diagnostics : [];
+
+          const marker = "<!-- react-doctor:review -->";
+          const directoryPrefix = (process.env.INPUT_DIRECTORY || ".")
+            .replace(/^\.\/?/, "")
+            .replace(/\/$/, "");
+
+          let files;
+          try {
+            files = await github.paginate(github.rest.pulls.listFiles, {
+              ...context.repo,
+              pull_number: pullRequest.number,
+              per_page: 100,
+            });
+          } catch (error) {
+            core.warning(
+              `React Doctor could not list pull request files for review comments (${error.message}).`,
+            );
+            return;
+          }
+
+          // The Reviews API accepts RIGHT-side comments on any line present in a
+          // diff hunk — added (`+`) AND unchanged context (` `) lines (a
+          // PR-introduced diagnostic can land on a context line when the change
+          // that triggered it is elsewhere in the hunk). Removed (`-`) lines and
+          // the `\ No newline at end of file` marker aren't RIGHT-side lines.
+          const commentableLinesByFile = new Map();
+          for (const file of files) {
+            if (!file.patch) continue;
+            const commentableLines = new Set();
+            let newLine = 0;
+            for (const patchLine of file.patch.split("\n")) {
+              const hunkHeader = patchLine.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+              if (hunkHeader) {
+                newLine = Number(hunkHeader[1]);
+                continue;
+              }
+              if (patchLine.startsWith("+") || patchLine.startsWith(" ")) {
+                commentableLines.add(newLine);
+                newLine += 1;
+              }
+            }
+            commentableLinesByFile.set(file.filename, commentableLines);
+          }
+
+          const toRepoPath = (filePath) => {
+            const normalized = String(filePath || "")
+              .replace(/\\/g, "/")
+              .replace(/^\.\//, "");
+            if (commentableLinesByFile.has(normalized)) return normalized;
+            const prefixed = directoryPrefix ? `${directoryPrefix}/${normalized}` : normalized;
+            if (commentableLinesByFile.has(prefixed)) return prefixed;
+            const suffixMatches = [...commentableLinesByFile.keys()].filter((name) =>
+              name.endsWith(`/${normalized}`),
+            );
+            return suffixMatches.length === 1 ? suffixMatches[0] : null;
+          };
+
+          const seen = new Set();
+          const comments = [];
+          for (const diagnostic of diagnostics) {
+            if (!diagnostic || typeof diagnostic.line !== "number" || diagnostic.line <= 0) continue;
+            const repoPath = toRepoPath(diagnostic.filePath);
+            if (!repoPath) continue;
+            const commentableLines = commentableLinesByFile.get(repoPath);
+            if (!commentableLines || !commentableLines.has(diagnostic.line)) continue;
+            const ruleKey = `${diagnostic.plugin}/${diagnostic.rule}`;
+            const dedupeKey = `${repoPath}:${diagnostic.line}:${ruleKey}`;
+            if (seen.has(dedupeKey)) continue;
+            seen.add(dedupeKey);
+            const severity = diagnostic.severity === "error" ? "error" : "warning";
+            const fixLine = diagnostic.help ? `\n\n**Fix** → ${diagnostic.help}` : "";
+            const docsLink = `\n\n[Docs](https://react.doctor/docs/rules/${ruleKey})`;
+            comments.push({
+              path: repoPath,
+              line: diagnostic.line,
+              side: "RIGHT",
+              body: `${marker}\n**React Doctor** · \`${ruleKey}\` _(${severity})_\n\n${diagnostic.message}${fixLine}${docsLink}`,
+            });
+          }
+
+          // A scan that found issues but mapped none onto changed lines (path
+          // mismatch, missing patch, line outside the diff hunks) must not wipe
+          // existing inline feedback — leave it untouched and bail.
+          if (comments.length === 0 && diagnostics.length > 0) return;
+
+          // Capture the previous run's review comments up front so they can be
+          // cleared AFTER a successful post — never before, so a failed post
+          // can't wipe prior feedback (it just leaves the last run's comments).
+          let priorCommentIds = [];
+          try {
+            const existing = await github.paginate(github.rest.pulls.listReviewComments, {
+              ...context.repo,
+              pull_number: pullRequest.number,
+              per_page: 100,
+            });
+            priorCommentIds = existing
+              .filter((comment) => comment.body && comment.body.startsWith(marker))
+              .map((comment) => comment.id);
+          } catch (error) {
+            core.warning(`React Doctor could not list prior review comments: ${error.message}`);
+          }
+
+          // Inline comments are intentionally capped to avoid flooding a PR and
+          // to stay within GitHub's per-review size limits. When more than this
+          // anchor on the diff, the sticky summary comment remains the complete
+          // record of every finding; the inline subset is just the first slice.
+          const maxComments = 50;
+          if (comments.length > 0) {
+            try {
+              await github.rest.pulls.createReview({
+                ...context.repo,
+                pull_number: pullRequest.number,
+                event: "COMMENT",
+                comments: comments.slice(0, maxComments),
+              });
+            } catch (error) {
+              // Keep the prior comments rather than clearing them, so a failed
+              // post doesn't leave the PR with no inline feedback.
+              core.warning(`React Doctor could not post inline review comments: ${error.message}`);
+              return;
+            }
+          }
+
+          // Clear the previous run's comments now that the new review posted (or
+          // the scan came back genuinely clean) so re-runs don't stack.
+          for (const commentId of priorCommentIds) {
+            try {
+              await github.rest.pulls.deleteReviewComment({
+                ...context.repo,
+                comment_id: commentId,
+              });
+            } catch (error) {
+              core.warning(`React Doctor could not clear a prior review comment: ${error.message}`);
+            }
+          }
+
+    - name: Publish commit status
+      if: ${{ always() && inputs.commit-status == 'true' }}
+      uses: actions/github-script@v8
+      env:
+        REACT_DOCTOR_SCORE: ${{ steps.render.outputs.score }}
+        REACT_DOCTOR_ERROR_COUNT: ${{ steps.render.outputs.error-count }}
+        REACT_DOCTOR_WARNING_COUNT: ${{ steps.render.outputs.warning-count }}
+        REACT_DOCTOR_SCAN_EXIT: ${{ steps.scan.outputs.exit-code }}
+        # On a PR the merge ref's parent is the reviewed commit; `github.sha`
+        # covers push runs.
+        REACT_DOCTOR_STATUS_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        REACT_DOCTOR_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      with:
+        script: |
+          const sha = process.env.REACT_DOCTOR_STATUS_SHA;
+          if (!sha) return;
+
+          const score = process.env.REACT_DOCTOR_SCORE;
+          const errorCount = Number(process.env.REACT_DOCTOR_ERROR_COUNT || "0");
+          const warningCount = Number(process.env.REACT_DOCTOR_WARNING_COUNT || "0");
+          const scanExit = process.env.REACT_DOCTOR_SCAN_EXIT;
+          const isPullRequest = context.eventName === "pull_request";
+
+          const pluralize = (count, noun) => `${count} ${noun}${count === 1 ? "" : "s"}`;
+          const counts = `${pluralize(errorCount, "error")} · ${pluralize(warningCount, "warning")}`;
+          // An empty / missing exit code means the scan step never finished; treat
+          // it as a failure so this status can't show green while the PR gate (which
+          // uses `${SCAN_STATUS:-1}`) fails the run.
+          const scanFailed = scanExit !== "0";
+          // `score` is empty when the scan couldn't produce one (crash / aborted).
+          const description = score ? `Score: ${score}/100 · ${counts}` : scanFailed ? "Scan could not complete" : counts;
+
+          // Advisory on pushes (a default-branch health-trend signal that must
+          // never turn the branch red); on a PR the status mirrors the gate so it
+          // agrees with the job's own pass/fail.
+          const state = isPullRequest && scanFailed ? "failure" : "success";
+
+          try {
+            await github.rest.repos.createCommitStatus({
+              ...context.repo,
+              sha,
+              state,
+              context: "React Doctor",
+              description: description.slice(0, 140),
+              target_url: process.env.REACT_DOCTOR_RUN_URL,
+            });
+          } catch (error) {
+            core.warning(
+              `React Doctor could not publish the commit status (${error.message}). ` +
+                "Grant the workflow `statuses: write` to enable it.",
+            );
+          }
+
+    - name: Fail if React Doctor found blocking issues
+      if: always()
+      shell: bash
+      env:
+        SCAN_STATUS: ${{ steps.scan.outputs.exit-code }}
+        EVENT_NAME: ${{ github.event_name }}
+      run: |
+        # Non-PR events (e.g. a push to the default branch) run a full-project
+        # health snapshot, not a PR gate: the result is surfaced through the job
+        # summary + commit status, but the run never fails on findings so `main`
+        # doesn't go red on pre-existing issues. PRs still propagate the CLI exit
+        # code, which already reflects the `blocking` threshold (`blocking: none`
+        # exits 0 even with findings).
+        if [ "$EVENT_NAME" != "pull_request" ]; then
+          exit 0
+        fi
+        exit "${SCAN_STATUS:-1}"

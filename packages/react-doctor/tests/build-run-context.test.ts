@@ -70,7 +70,7 @@ describe("buildRunContext", () => {
     expect(buildRunContext().runId).toBe(runId);
   });
 
-  it("reports the GitHub event name and workflow wrapper marker when present", () => {
+  it("reports the GitHub event name and official-action marker when present", () => {
     process.env.GITHUB_EVENT_NAME = "pull_request";
     process.env.REACT_DOCTOR_GITHUB_ACTION = "v1";
     const context = buildRunContext();
@@ -78,7 +78,7 @@ describe("buildRunContext", () => {
     expect(context.viaAction).toBe(true);
   });
 
-  it("leaves eventName null and viaAction false outside a workflow wrapper", () => {
+  it("leaves eventName null and viaAction false outside the GitHub Action", () => {
     const context = buildRunContext();
     expect(context.eventName).toBeNull();
     expect(context.viaAction).toBe(false);

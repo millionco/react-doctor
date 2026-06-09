@@ -110,7 +110,13 @@ const SafeHandlerNavigateComponent = () => {
     navigate({ to: "/retry" });
   }
   return (
-    <button type="button" onClick={form.handleSubmit} onMouseEnter={handleCancel} onFocus={onLogout} onBlur={handleRetry}>
+    <button
+      type="button"
+      onClick={form.handleSubmit}
+      onMouseEnter={handleCancel}
+      onFocus={onLogout}
+      onBlur={handleRetry}
+    >
       x
     </button>
   );

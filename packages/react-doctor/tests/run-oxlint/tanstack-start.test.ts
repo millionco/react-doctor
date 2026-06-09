@@ -154,7 +154,7 @@ describe("runOxlint", () => {
       // options-object callback (useForm onSubmit, #759), or a
       // handler-named local function (handleCancel/onLogout/handleRetry)
       // and must NOT fire.
-      expect(safeNavigateLines).toEqual([60, 129]);
+      expect(safeNavigateLines).toEqual([60, 135]);
     });
   });
 });

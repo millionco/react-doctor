@@ -1,0 +1,31 @@
+import { test, beforeEach } from "node:test";
+import assert from "node:assert/strict";
+import { readJson, writeJson } from "../src/storage.ts";
+
+const makeFakeStorage = () => {
+  const map = new Map<string, string>();
+  return {
+    getItem: (key: string): string | null => (map.has(key) ? (map.get(key) ?? null) : null),
+    setItem: (key: string, value: string): void => {
+      map.set(key, value);
+    },
+  };
+};
+
+beforeEach(() => {
+  (globalThis as { localStorage?: unknown }).localStorage = makeFakeStorage();
+});
+
+test("returns the fallback when the key is absent", () => {
+  assert.deepEqual(readJson("missing", { a: 1 }), { a: 1 });
+});
+
+test("round-trips JSON values", () => {
+  writeJson("k", { a: 1, nested: [1, 2, 3] });
+  assert.deepEqual(readJson("k", null), { a: 1, nested: [1, 2, 3] });
+});
+
+test("returns the fallback on corrupt JSON without throwing", () => {
+  globalThis.localStorage.setItem("bad", "{not json");
+  assert.equal(readJson("bad", "fallback"), "fallback");
+});

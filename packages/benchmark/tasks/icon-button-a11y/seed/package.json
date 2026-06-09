@@ -1,0 +1,13 @@
+{
+  "name": "slopbench-icon-button-a11y",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.8"
+  }
+}

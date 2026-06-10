@@ -1,0 +1,21 @@
+packages/react-doctor/src/cli/utils/strip-unknown-cli-flags.ts
+  s_fecb7566c71348::t_c3225580979db3 36,42
+packages/react-doctor/tests/strip-unknown-cli-flags.test.ts
+  s_fecb7566c71348::t_71f5cf5c5c3da2 43-58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "2e420ce18843d13b4f803a3f0d005912e6390056",
+  "prompts": {},
+  "sessions": {
+    "s_fecb7566c71348": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "93b20328-1e1d-478c-b593-8ffa0ad0339d",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

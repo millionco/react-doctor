@@ -13,9 +13,12 @@ const result = await diagnoseProjects({
   projects: [
     { directory: "packages/app" },
     { directory: "packages/shared", deadCode: false },
-    { directory: "packages/admin", config: {
-      rules: { "react-doctor/no-array-index-as-key": "off" },
-    }},
+    {
+      directory: "packages/admin",
+      config: {
+        rules: { "react-doctor/no-array-index-as-key": "off" },
+      },
+    },
   ],
   config: { rules: { "react-doctor/no-prop-drilling": "off" } },
   concurrency: 4,

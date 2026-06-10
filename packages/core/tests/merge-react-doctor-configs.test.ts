@@ -76,10 +76,7 @@ describe("mergeReactDoctorConfigs", () => {
   });
 
   it("overrides scalar fields when set and keeps base scalars otherwise", () => {
-    const merged = mergeReactDoctorConfigs(
-      { deadCode: true, verbose: true },
-      { deadCode: false },
-    );
+    const merged = mergeReactDoctorConfigs({ deadCode: true, verbose: true }, { deadCode: false });
     expect(merged?.deadCode).toBe(false);
     expect(merged?.verbose).toBe(true);
   });

@@ -15,8 +15,8 @@ inputs:
     description: "On pull requests, what to scan: 'changed' (only files changed in the PR, the default baseline/diff behavior) or 'full' (the entire project, reporting every finding). Non-PR events always scan the full project."
     default: "changed"
   blocking:
-    description: "Severity that fails the workflow: error (default), warning, or none (advisory — report findings but always exit 0)."
-    default: "error"
+    description: "Severity that fails the workflow: none (default; advisory — report findings but always exit 0), warning, or error."
+    default: "none"
   comment:
     description: "Create or update a sticky pull request summary comment."
     default: "true"

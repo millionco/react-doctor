@@ -653,6 +653,9 @@ describe("runInstallReactDoctor", () => {
     expect(workflowContent).toContain("statuses: write");
     expect(workflowContent).toContain("actions/checkout@v5");
     expect(workflowContent).toContain("millionco/react-doctor@v2");
+    expect(workflowContent).toContain("Advisory by default");
+    expect(workflowContent).toContain("#   blocking: error");
+    expect(workflowContent).not.toContain("\n        with:\n");
     expect(workflowContent).not.toContain("github-token");
     expect(workflowContent).not.toContain("diff: main");
   });

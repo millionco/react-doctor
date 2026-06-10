@@ -1,0 +1,93 @@
+packages/react-doctor/tests/resolve-scope.test.ts
+  s_fecb7566c71348::t_66333b8d94c720 3,20,30,40-45,48-49,52-53,56-61,64-67,69-71,73-78,81-93,95-101,103-111,113-121,124-133,135-143,145,148-158
+packages/core/tests/parse-changed-line-ranges.test.ts
+  s_fecb7566c71348::t_bbc9222d84e242 1-69
+packages/core/src/types/index.ts
+  s_fecb7566c71348::t_2f7234f9901260 29
+  s_fecb7566c71348::t_2952703538c2c3 8
+packages/core/src/get-diff-files.ts
+  s_fecb7566c71348::t_38bf3136b23dba 4
+  s_fecb7566c71348::t_0797246e4d1a17 40-59
+packages/core/src/index.ts
+  s_fecb7566c71348::t_07d8fed6fa9e91 66
+packages/react-doctor/tests/build-run-event.test.ts
+  s_fecb7566c71348::t_4f3ecf07e87b85 69
+packages/react-doctor/tests/validate-mode-flags.test.ts
+  s_fecb7566c71348::t_2a8db76ee4eb95 33-57
+packages/core/src/services/git.ts
+  s_fecb7566c71348::t_2d134177610f48 283-292
+  s_fecb7566c71348::t_d1a564438175ef 739-757
+  s_fecb7566c71348::t_6ffc284617cfe7 816
+  s_fecb7566c71348::t_c9b41eebc2975c 195-204
+  s_fecb7566c71348::t_11927d9cbd1332 19-20
+  s_fecb7566c71348::t_aed58a951db88b 790
+packages/core/src/types/inspect.ts
+  s_fecb7566c71348::t_5eefd4be57ae5e 104-112
+  s_fecb7566c71348::t_70472d2e886d29 164-174
+packages/react-doctor/src/cli/index.ts
+  s_fecb7566c71348::t_f56015c96fa929 123-135
+action.yml
+  s_fecb7566c71348::t_2747dc80707779 15
+  s_fecb7566c71348::t_8bf1a6b12d41cb 153-155,157-163
+.agents/skills/react-doctor/SKILL.md
+  s_fecb7566c71348::t_8410f762e8943a 13,19
+  s_fecb7566c71348::t_1bd7708adbb967 42,45-51
+packages/react-doctor/src/cli/utils/build-run-event.ts
+  s_fecb7566c71348::t_62624c71d10804 204
+  s_fecb7566c71348::t_076ca7e2c72b22 31-32
+packages/core/src/parse-changed-line-ranges.ts
+  s_fecb7566c71348::t_8cbc03830d2d93 1-44
+packages/react-doctor/src/cli/utils/inspect-flags.ts
+  s_fecb7566c71348::t_34ac03410d8df0 22-24
+skills/react-doctor/SKILL.md
+  s_fecb7566c71348::t_ec06f3f9ad8092 13,19
+  s_fecb7566c71348::t_d81faa292310d0 42,45-51
+packages/react-doctor/src/cli/utils/validate-mode-flags.ts
+  s_fecb7566c71348::t_63530fb2ae584a 4-10,12-24,39-40
+packages/react-doctor/src/inspect.ts
+  s_fecb7566c71348::t_a356fe4e9d4f69 207
+  s_fecb7566c71348::t_70ca5d751da7fd 163-168
+  s_fecb7566c71348::t_2bbd3b975b9dd5 31,40
+  s_fecb7566c71348::t_b9bbdc3ce8550a 111-134
+  s_fecb7566c71348::t_a2234af04e046e 215-225,231
+  s_fecb7566c71348::t_1eaec2cdf954ff 633-639
+packages/react-doctor/src/cli/commands/inspect.ts
+  s_fecb7566c71348::t_f3d17851d53aa5 356-366,372
+  s_fecb7566c71348::t_4db769c8dc3166 59,62-65
+  s_fecb7566c71348::t_e19b704744fc3d 452-454,456,461,468-473
+  s_fecb7566c71348::t_45a012796d91d0 541-543
+  s_fecb7566c71348::t_9c9ab5e7dc4e43 457-459
+  s_fecb7566c71348::t_f25ed873a71d71 19,26
+  s_fecb7566c71348::t_e7328d538a1927 11
+  s_fecb7566c71348::t_e19267acab9ed7 412-424,426-427,430-441,448-451,455,460,462-467
+.changeset/consolidate-scan-scope-flag.md
+  s_fecb7566c71348::t_bcb90069cb3fd4 1-13
+packages/react-doctor/src/cli/utils/resolve-project-diff-include-paths.ts
+  s_fecb7566c71348::t_cd5d57341dad6a 2
+  s_fecb7566c71348::t_2e1916ade85d63 25-53
+packages/react-doctor/src/cli/utils/cli-logger.ts
+  s_fecb7566c71348::t_77bfd54f59ee4a 26
+packages/react-doctor/src/cli/utils/resolve-scope.ts
+  s_fecb7566c71348::t_139aca43e19808 2,4,7-64,66-68,71-130,132-134,149,153
+packages/react-doctor/src/cli/utils/scan-result-cache.ts
+  s_fecb7566c71348::t_37192a388670b9 261-263
+packages/core/src/types/config.ts
+  s_fecb7566c71348::t_191481cb6d63d9 12-26
+  s_fecb7566c71348::t_25c2650d2a133f 224-240
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "6ef44464d0962ef79a0f373ed8bf99e086923846",
+  "prompts": {},
+  "sessions": {
+    "s_fecb7566c71348": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "93b20328-1e1d-478c-b593-8ffa0ad0339d",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

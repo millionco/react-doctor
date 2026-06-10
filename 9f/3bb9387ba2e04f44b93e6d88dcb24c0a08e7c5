@@ -1,0 +1,19 @@
+packages/oxlint-plugin-react-doctor/src/plugin/utils/is-framework-route-or-special-filename.ts
+  s_49db37e2d11561::t_bc2ba62ccbe693 18,21,23,25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "9f3bb9387ba2e04f44b93e6d88dcb24c0a08e7c5",
+  "prompts": {},
+  "sessions": {
+    "s_49db37e2d11561": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a2082d9d-4e1e-4587-973c-de07282ffa2b",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

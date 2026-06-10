@@ -42,7 +42,10 @@ import type {
 // stack is built once here rather than duplicated per variant.
 const buildDiagnoseLayer = (
   config: ReactDoctorConfig | null,
-  configOverride?: { readonly resolvedDirectory: string },
+  configOverride?: {
+    readonly resolvedDirectory: string;
+    readonly configSourceDirectory: string | null;
+  },
 ) => {
   const configLayer =
     configOverride === undefined
@@ -50,7 +53,7 @@ const buildDiagnoseLayer = (
       : Config.layerOf({
           config,
           resolvedDirectory: configOverride.resolvedDirectory,
-          configSourceDirectory: null,
+          configSourceDirectory: configOverride.configSourceDirectory,
         });
   return Layer.mergeAll(
     Project.layerNode,
@@ -173,7 +176,12 @@ const diagnoseProject = async (
 
     const layer = buildDiagnoseLayer(
       effectiveConfig,
-      didOverrideConfig ? { resolvedDirectory: scanTarget.resolvedDirectory } : undefined,
+      didOverrideConfig
+        ? {
+            resolvedDirectory: scanTarget.resolvedDirectory,
+            configSourceDirectory: scanTarget.configSourceDirectory,
+          }
+        : undefined,
     );
 
     const output: InspectOutput = await Effect.runPromise(
@@ -243,26 +251,24 @@ export const diagnoseProjects = async (
   const { projects, concurrency: rawConcurrency, config: batchConfig, ...baseOptions } = input;
   const concurrency = Math.max(1, rawConcurrency ?? projects.length);
 
-  const projectResults: ProjectResult[] = [];
-  const pendingProjects = [...projects];
+  const projectResults: ProjectResult[] = new Array<ProjectResult>(projects.length);
+  let nextProjectIndex = 0;
 
-  const runBatch = async (): Promise<void> => {
-    const batch: Promise<ProjectResult>[] = [];
-
-    while (pendingProjects.length > 0 && batch.length < concurrency) {
-      const projectDefinition = pendingProjects.shift()!;
-      batch.push(diagnoseProject(projectDefinition, baseOptions, batchConfig));
-    }
-
-    const batchResults = await Promise.all(batch);
-    projectResults.push(...batchResults);
-
-    if (pendingProjects.length > 0) {
-      await runBatch();
+  const runWorker = async (): Promise<void> => {
+    while (nextProjectIndex < projects.length) {
+      const projectIndex = nextProjectIndex;
+      nextProjectIndex += 1;
+      projectResults[projectIndex] = await diagnoseProject(
+        projects[projectIndex]!,
+        baseOptions,
+        batchConfig,
+      );
     }
   };
 
-  await runBatch();
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, projects.length) }, () => runWorker()),
+  );
 
   const allDiagnostics = projectResults.flatMap((projectResult) =>
     projectResult.ok ? projectResult.diagnostics : [],

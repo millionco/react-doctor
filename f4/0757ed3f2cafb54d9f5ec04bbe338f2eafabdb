@@ -1,0 +1,81 @@
+packages/core/package.json
+  96f85b7d10a31a59 44
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/only-export-components-tables.ts
+  423e92a99fe0a19f 5-6,204-269
+packages/react-doctor/src/cli/utils/install-github-workflow.ts
+  s_1c9fb95a2fc3f7::t_b83001251ddddc 16-17
+packages/oxlint-plugin-react-doctor/package.json
+  96f85b7d10a31a59 64
+packages/react-doctor/tests/run-oxlint/tanstack-start.test.ts
+  b68fe6c7f6f806e5 143,150-157
+packages/core/tests/fixtures/tanstack-start-app/src/routes/route-issues.tsx
+  b68fe6c7f6f806e5 91-128
+package.json
+  96f85b7d10a31a59 47
+packages/language-server/package.json
+  96f85b7d10a31a59 40
+.changeset/action-blocking-default-advisory.md
+  s_1c9fb95a2fc3f7::t_0c7d16013d07f7 5,7-9
+packages/react-doctor/CHANGELOG.md
+  s_1c9fb95a2fc3f7::t_0c7d16013d07f7 3-40
+packages/react-doctor/tests/node-support-metadata.test.ts
+  96f85b7d10a31a59 20
+packages/oxlint-plugin-react-doctor/src/plugin/constants/react.ts
+  b68fe6c7f6f806e5 55-59
+.changeset/bundle-effect-for-cli.md
+  s_1c9fb95a2fc3f7::t_0c7d16013d07f7 5
+packages/eslint-plugin-react-doctor/CHANGELOG.md
+  s_1c9fb95a2fc3f7::t_0c7d16013d07f7 3-16
+packages/language-server/CHANGELOG.md
+  s_1c9fb95a2fc3f7::t_0c7d16013d07f7 3-16
+packages/api/package.json
+  96f85b7d10a31a59 28
+packages/react-doctor/tests/github-action.test.ts
+  s_1c9fb95a2fc3f7::t_0c7d16013d07f7 61,71-78,186,195
+packages/oxlint-plugin-react-doctor/CHANGELOG.md
+  s_1c9fb95a2fc3f7::t_0c7d16013d07f7 3-28
+packages/core/CHANGELOG.md
+  s_1c9fb95a2fc3f7::t_0c7d16013d07f7 3-28
+packages/eslint-plugin-react-doctor/package.json
+  96f85b7d10a31a59 56
+packages/react-doctor/package.json
+  96f85b7d10a31a59 86
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/only-export-components.regressions.test.ts
+  423e92a99fe0a19f 52-156
+scripts/smoke-packed-cli-install.ts
+  s_1c9fb95a2fc3f7::t_0c7d16013d07f7 1-202
+.github/workflows/ci.yml
+  s_1c9fb95a2fc3f7::t_0c7d16013d07f7 104-109
+.changeset/bump-node-engines.md
+  s_1c9fb95a2fc3f7::t_0c7d16013d07f7 2-3,7
+packages/react-doctor/tests/install-react-doctor.test.ts
+  s_1c9fb95a2fc3f7::t_0c7d16013d07f7 691-693
+packages/api/CHANGELOG.md
+  s_1c9fb95a2fc3f7::t_0c7d16013d07f7 3-16
+packages/react-doctor/vite.config.ts
+  s_1c9fb95a2fc3f7::t_0c7d16013d07f7 78
+action.yml
+  s_1c9fb95a2fc3f7::t_0c7d16013d07f7 18-19,59,66,200,239,400
+packages/vscode-react-doctor/package.json
+  96f85b7d10a31a59 108
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/only-export-components.ts
+  423e92a99fe0a19f 13-14,115-134,216-222,242-247,484-487
+packages/oxlint-plugin-react-doctor/src/plugin/rules/tanstack-start/tanstack-start-no-navigate-in-render.ts
+  b68fe6c7f6f806e5 1-6,14,29-33,53-75,116-151
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "f40757ed3f2cafb54d9f5ec04bbe338f2eafabdb",
+  "prompts": {},
+  "sessions": {
+    "s_1c9fb95a2fc3f7": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "3514b00d-d6bd-48f3-8923-352896539e0e",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

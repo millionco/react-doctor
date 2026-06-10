@@ -95,3 +95,4 @@ export * from "./utils/warn-config-issue.js";
 export * from "./runners/oxlint/capabilities.js";
 export * from "./runners/oxlint/config.js";
 export * from "./runners/oxlint/plugin-resolution.js";
+export { OxlintNotInstalledError } from "./runners/oxlint/resolve-paths.js";

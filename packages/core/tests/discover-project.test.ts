@@ -7,6 +7,7 @@ import {
   discoverReactSubprojects,
   formatFrameworkName,
   listWorkspacePackages,
+  PackageJsonNotFoundError,
 } from "@react-doctor/core";
 
 const FIXTURES_DIRECTORY = path.resolve(import.meta.dirname, "fixtures");
@@ -902,6 +903,60 @@ const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-discov
 
 afterAll(() => {
   fs.rmSync(tempDirectory, { recursive: true, force: true });
+});
+
+describe("discoverProject without a package.json", () => {
+  it("synthesizes a non-React project for a bare directory of source files", () => {
+    const projectDirectory = path.join(tempDirectory, "bare-ts-dir");
+    fs.mkdirSync(path.join(projectDirectory, "src"), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "src", "index.ts"),
+      "export const add = (a: number, b: number) => a + b;\n",
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.reactVersion).toBeNull();
+    expect(projectInfo.preactVersion).toBeNull();
+    expect(projectInfo.framework).toBe("unknown");
+    expect(projectInfo.sourceFileCount).toBeGreaterThan(0);
+    expect(projectInfo.rootDirectory).toBe(projectDirectory);
+  });
+
+  it("detects TypeScript from a tsconfig.json even without a package.json", () => {
+    const projectDirectory = path.join(tempDirectory, "bare-ts-with-config");
+    fs.mkdirSync(path.join(projectDirectory, "src"), { recursive: true });
+    fs.writeFileSync(path.join(projectDirectory, "tsconfig.json"), "{}\n");
+    fs.writeFileSync(path.join(projectDirectory, "src", "main.ts"), "export const x = 1;\n");
+
+    expect(discoverProject(projectDirectory).hasTypeScript).toBe(true);
+  });
+
+  it("inherits React detection from the enclosing workspace root", () => {
+    const workspaceRoot = path.join(tempDirectory, "react-workspace");
+    const subdirectory = path.join(workspaceRoot, "packages");
+    fs.mkdirSync(path.join(subdirectory, "ui", "src"), { recursive: true });
+    fs.writeFileSync(
+      path.join(workspaceRoot, "package.json"),
+      JSON.stringify({
+        name: "react-workspace",
+        dependencies: { react: "^19.0.0" },
+        workspaces: ["packages/*"],
+      }),
+    );
+    fs.writeFileSync(path.join(subdirectory, "ui", "src", "index.ts"), "export const ok = true;\n");
+
+    // `packages` has no package.json of its own, so detection is inherited
+    // from the React workspace root above it.
+    const projectInfo = discoverProject(subdirectory);
+    expect(projectInfo.reactVersion).toBe("^19.0.0");
+    expect(projectInfo.rootDirectory).toBe(subdirectory);
+  });
+
+  it("throws PackageJsonNotFoundError for an empty directory with nothing to scan", () => {
+    const emptyDirectory = path.join(tempDirectory, "truly-empty");
+    fs.mkdirSync(emptyDirectory, { recursive: true });
+    expect(() => discoverProject(emptyDirectory)).toThrow(PackageJsonNotFoundError);
+  });
 });
 
 describe("discoverReactSubprojects", () => {

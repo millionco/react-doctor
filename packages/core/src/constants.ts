@@ -82,6 +82,11 @@ export const SHARE_BASE_URL = "https://react.doctor/share";
 // agent-handoff prompt points the agent here too.
 export const CI_URL = "https://react.doctor/ci";
 
+// Canonical GitHub Actions setup guide. The interactive "Add React Doctor to
+// GitHub Actions?" prompt's "Read docs" choice opens this directly.
+export const GITHUB_ACTIONS_SETUP_URL =
+  "https://www.react.doctor/docs/ci-and-prs/github-actions-setup";
+
 // Root of the documentation site. Guides for CI/CD setup, config files (to
 // suppress rules), and diff/PR scanning live under it; the CLI links here
 // from its closing "learn more" note.
@@ -144,6 +149,30 @@ export const OXLINT_RECOMMENDED_NODE_MAJOR = 24;
 
 export const GIT_SHOW_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
 
+export const TSCONFIG_EXTENDS_MAX_DEPTH = 8;
+
+export const ES2023_YEAR = 2023;
+
+export const UNKNOWN_FUTURE_ES_YEAR = 9999;
+
+export const ES_TARGET_YEAR_BY_NAME: Readonly<Record<string, number>> = {
+  es3: 1999,
+  es5: 2009,
+  es6: 2015,
+  es2015: 2015,
+  es2016: 2016,
+  es2017: 2017,
+  es2018: 2018,
+  es2019: 2019,
+  es2020: 2020,
+  es2021: 2021,
+  es2022: 2022,
+  es2023: 2023,
+  es2024: 2024,
+  es2025: 2025,
+  esnext: UNKNOWN_FUTURE_ES_YEAR,
+};
+
 /**
  * Project-config files that `StagedFiles.materialize` copies into
  * the temp directory alongside staged sources so oxlint resolves
@@ -165,6 +194,30 @@ export const STAGED_FILES_PROJECT_CONFIG_FILENAMES = [
   "doctor.config.jsonc",
   "oxlint.json",
   ".oxlintrc.json",
+] as const;
+
+export const CONFIG_FINGERPRINT_FILENAMES = [
+  "doctor.config.ts",
+  "doctor.config.mts",
+  "doctor.config.cts",
+  "doctor.config.js",
+  "doctor.config.mjs",
+  "doctor.config.cjs",
+  "doctor.config.json",
+  "doctor.config.jsonc",
+  "react-doctor.config.json",
+  "package.json",
+  "pnpm-workspace.yaml",
+  "tsconfig.json",
+  "tsconfig.base.json",
+  ".oxlintrc.json",
+  ".eslintrc.json",
+  "pnpm-lock.yaml",
+  "package-lock.json",
+  "yarn.lock",
+  "bun.lock",
+  "bun.lockb",
+  ".gitignore",
 ] as const;
 
 export const CANONICAL_GITHUB_URL = "https://github.com/millionco/react-doctor";
@@ -224,6 +277,26 @@ export const MAX_RULE_GROUPS_PER_CATEGORY_NON_VERBOSE = 3;
 // minutes. 7 days × 24 h × 60 min = 10080. Surfaced as the
 // recommended starting point for the supply-chain hardening check.
 export const RECOMMENDED_PNPM_MINIMUM_RELEASE_AGE_MINUTES = 10_080;
+
+// React's three Server Components transport packages (published in lockstep
+// with `react`/`react-dom`). A framework, bundler, or bundler plugin that
+// supports RSC pulls one of these in; an app that depends on none of them is
+// not exposed to the RSC deserialization advisories. Used by the React Server
+// Components security check to resolve the installed RSC runtime version.
+export const REACT_SERVER_DOM_PACKAGES = [
+  "react-server-dom-webpack",
+  "react-server-dom-parcel",
+  "react-server-dom-turbopack",
+] as const;
+
+// React's disclosure of the critical unauthenticated RSC RCE (CVE-2025-55182).
+export const REACT_BLOG_RSC_ADVISORY_URL =
+  "https://react.dev/blog/2025/12/03/critical-security-vulnerability-in-react-server-components";
+
+// Vercel's coordinated Next.js + React security release with the per-version
+// patched-release table the Next.js advisory check keys off.
+export const VERCEL_NEXTJS_SECURITY_RELEASE_URL =
+  "https://vercel.com/changelog/next-js-may-2026-security-release";
 
 // The closed set of user-facing diagnostic categories. Every rule
 // (collapsed at codegen via `CATEGORY_BUCKET` in
@@ -334,3 +407,51 @@ export const OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT = 3;
 // batch subprocess runs. The timer increments a counter so the spinner
 // updates smoothly instead of jumping by the batch size on completion.
 export const PROGRESS_TICK_INTERVAL_MS = 50;
+
+// Socket.dev package-score check (the `SupplyChain` service). Mirrors how
+// Socket Firewall's free tier (`sfw`) talks to Socket: the keyless,
+// no-API-token endpoint `GET <base>/{encodeURIComponent(purl)}`, where the
+// PURL is `pkg:npm/<name>@<version>` (scope kept inline, e.g.
+// `pkg:npm/@vue/reactivity@3.4.0`). The response is newline-delimited JSON,
+// one Socket artifact per line, each carrying a `score` object with an
+// `overall` plus per-category values in the 0..1 range. Unknown
+// package/version pairs come back as a `synthetic:notFound:*` artifact with
+// no `score`, which the check skips.
+export const SOCKET_FREE_PURL_API_BASE = "https://firewall-api.socket.dev/purl";
+
+// Public socket.dev package page, linked from each diagnostic's `help`/`url`
+// so a developer can see the full alert + score breakdown for the version.
+export const SOCKET_PACKAGE_PAGE_BASE = "https://socket.dev/npm/package";
+
+// Sent as the `User-Agent` on the free score lookups, matching how `sfw`
+// identifies itself to the same endpoint.
+export const SOCKET_FREE_USER_AGENT = "react-doctor-supply-chain";
+
+// Plugin / rule / category identity for the diagnostics the supply-chain
+// check emits. `plugin: "socket"` keeps Socket findings visually distinct
+// from the `react-doctor` lint surface in the printed list and JSON report.
+export const SUPPLY_CHAIN_PLUGIN = "socket";
+export const SUPPLY_CHAIN_RULE = "low-supply-chain-score";
+export const SUPPLY_CHAIN_CATEGORY = "Security";
+
+// Default minimum acceptable Socket score (0..100). A dependency scoring
+// below this fails the check. Tuned to Socket's own "needs review" band —
+// most healthy, widely-used packages sit comfortably above it. Overridable
+// per project via `supplyChain.minScore`.
+export const SUPPLY_CHAIN_DEFAULT_MIN_SCORE = 50;
+
+// Socket scores arrive normalized 0..1; multiply by this to present the
+// familiar 0..100 scale users see on socket.dev.
+export const SOCKET_SCORE_SCALE = 100;
+
+// How many free Socket score lookups to keep in flight at once. Bounded so a
+// large dependency list doesn't open hundreds of sockets or trip Socket's
+// per-route rate limit.
+export const SUPPLY_CHAIN_FETCH_CONCURRENCY = 8;
+
+// Packages excluded from the Socket supply-chain check (the gate and the
+// `--sfw` listing). react-doctor already covers these frameworks' specific
+// risks through dedicated rules — e.g. Next.js via the server-components /
+// Next rule family — so a low Socket score would be redundant noise rather
+// than an actionable, distinct supply-chain signal.
+export const SUPPLY_CHAIN_IGNORED_PACKAGES: ReadonlySet<string> = new Set(["next"]);

@@ -109,36 +109,6 @@ export const CANONICAL_GITHUB_URL = "https://github.com/millionco/react-doctor";
  * and the CLI lint — so reactive (open/change) and proactive (workspace)
  * scanning cover exactly the same files.
  */
-export const SCANNABLE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx"] as const;
+export const SCANNABLE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mts", ".mjs"] as const;
 
-/** Filenames whose change invalidates project/config caches. */
-export const CONFIG_WATCH_FILENAMES = [
-  // Canonical React Doctor config (`doctor.config.*`), mirroring core's
-  // CONFIG_EXTENSIONS resolution order. The pre-migration
-  // `react-doctor.config.json` is no longer read by core but is kept here so
-  // editing it still triggers a re-scan (which re-surfaces core's "rename it"
-  // warning) instead of silently doing nothing.
-  "doctor.config.ts",
-  "doctor.config.mts",
-  "doctor.config.cts",
-  "doctor.config.js",
-  "doctor.config.mjs",
-  "doctor.config.cjs",
-  "doctor.config.json",
-  "doctor.config.jsonc",
-  "react-doctor.config.json",
-  "package.json",
-  "pnpm-workspace.yaml",
-  "tsconfig.json",
-  "tsconfig.base.json",
-  ".oxlintrc.json",
-  ".eslintrc.json",
-  "pnpm-lock.yaml",
-  "package-lock.json",
-  "yarn.lock",
-  "bun.lock",
-  "bun.lockb",
-  // Changes the set of enumerated source files → triggers a workspace
-  // re-scan + reconcile so newly-ignored files' diagnostics are cleared.
-  ".gitignore",
-] as const;
+export { CONFIG_FINGERPRINT_FILENAMES as CONFIG_WATCH_FILENAMES } from "@react-doctor/core";

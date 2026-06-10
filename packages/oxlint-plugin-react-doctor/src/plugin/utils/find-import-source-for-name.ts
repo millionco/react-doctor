@@ -101,6 +101,18 @@ export const isNamespaceImportFromModule = (
   return info.isNamespace && info.source === moduleSource;
 };
 
+export const isDefaultImportFromModule = (
+  contextNode: EsTreeNode,
+  localIdentifierName: string,
+  moduleSource: string,
+): boolean => {
+  const lookup = getImportLookup(contextNode);
+  if (!lookup) return false;
+  const info = lookup.get(localIdentifierName);
+  if (!info) return false;
+  return info.isDefault && info.source === moduleSource;
+};
+
 // Returns the originally-exported symbol name for a local binding that
 // came from a specific module, resolving renamed imports like
 // `import { useMemo as memoize } from "react"` so callers can match

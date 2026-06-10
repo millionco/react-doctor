@@ -17,6 +17,7 @@ export interface InspectFlags {
   // resolver maps the `true` default back to `undefined` so config can win.
   respectInlineDisables?: boolean;
   warnings?: boolean;
+  category?: string | string[];
   project?: string;
   diff?: boolean | string;
   changedFilesFrom?: string;
@@ -32,4 +33,9 @@ export interface InspectFlags {
    * `blocking` is unset, but triggers a one-time deprecation warning.
    */
   failOn?: string;
+  /**
+   * Demo mode: print the Socket.dev supply-chain score of every direct
+   * dependency, then exit without running a scan.
+   */
+  sfw?: boolean;
 }

@@ -13,6 +13,7 @@ interface PackageJson {
 interface PackageManifestExpectation {
   readonly packagePath: string;
   readonly shouldDependOnPlatformNodeShared: boolean;
+  readonly shouldDependOnEffect: boolean;
 }
 
 const REPOSITORY_ROOT = path.resolve(import.meta.dirname, "..", "..", "..");
@@ -24,18 +25,36 @@ const readText = (relativePath: string): string =>
 const readPackageJson = (relativePath: string): PackageJson => JSON.parse(readText(relativePath));
 
 const packageManifests: PackageManifestExpectation[] = [
-  { packagePath: "package.json", shouldDependOnPlatformNodeShared: false },
-  { packagePath: "packages/api/package.json", shouldDependOnPlatformNodeShared: false },
-  { packagePath: "packages/core/package.json", shouldDependOnPlatformNodeShared: true },
+  {
+    packagePath: "package.json",
+    shouldDependOnPlatformNodeShared: false,
+    shouldDependOnEffect: false,
+  },
+  {
+    packagePath: "packages/api/package.json",
+    shouldDependOnPlatformNodeShared: false,
+    shouldDependOnEffect: true,
+  },
+  {
+    packagePath: "packages/core/package.json",
+    shouldDependOnPlatformNodeShared: true,
+    shouldDependOnEffect: true,
+  },
   {
     packagePath: "packages/eslint-plugin-react-doctor/package.json",
     shouldDependOnPlatformNodeShared: false,
+    shouldDependOnEffect: false,
   },
   {
     packagePath: "packages/oxlint-plugin-react-doctor/package.json",
     shouldDependOnPlatformNodeShared: false,
+    shouldDependOnEffect: false,
   },
-  { packagePath: "packages/react-doctor/package.json", shouldDependOnPlatformNodeShared: true },
+  {
+    packagePath: "packages/react-doctor/package.json",
+    shouldDependOnPlatformNodeShared: false,
+    shouldDependOnEffect: false,
+  },
 ];
 
 const packageBuildConfigs = [
@@ -55,7 +74,11 @@ describe("Node support metadata", () => {
   });
 
   it("does not depend on the Undici-backed Effect platform package", () => {
-    for (const { packagePath, shouldDependOnPlatformNodeShared } of packageManifests) {
+    for (const {
+      packagePath,
+      shouldDependOnPlatformNodeShared,
+      shouldDependOnEffect,
+    } of packageManifests) {
       const packageJson = readPackageJson(packagePath);
       const dependencies = packageJson.dependencies ?? {};
       const devDependencies = packageJson.devDependencies ?? {};
@@ -68,6 +91,9 @@ describe("Node support metadata", () => {
       expect(dependencies["@effect/platform-node-shared"], packagePath).toBe(
         expectedSharedDependency,
       );
+
+      const expectedEffectDependency = shouldDependOnEffect ? "4.0.0-beta.70" : undefined;
+      expect(dependencies.effect, packagePath).toBe(expectedEffectDependency);
     }
   });
 

@@ -1,0 +1,8 @@
+{
+  "name": "rsc-parcel-rce",
+  "dependencies": {
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-server-dom-parcel": "19.1.0"
+  }
+}

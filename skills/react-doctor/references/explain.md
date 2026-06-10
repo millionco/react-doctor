@@ -1,14 +1,11 @@
----
-name: doctor-explain
-description: Explain React Doctor rules and configure which ones run via doctor.config.* (or package.json#reactDoctor). Use when the user types `/doctor-explain` or `/doctor-config`, asks why a rule fired, disagrees with a rule, wants to disable/enable a rule, silence a category or tag, tune CI/PR noise, or asks "what does this rule mean". Covers the `react-doctor rules` CLI (list, explain, set, enable, disable, category, ignore-tag) and how config layers combine: ignore.tags disables matching rules before linting, rules over categories sets severity, surfaces controls visibility only.
-version: "1.0.0"
----
+# Explaining and configuring rules
 
-# Doctor Explain
+Explain React Doctor rules and edit `doctor.config.*` safely. Use this when a user
+wants to understand a rule or change which rules run — not for fixing diagnostics
+(that is the main `react-doctor` skill / `/doctor`).
 
-Explains React Doctor rules and edits `doctor.config.*` safely. Use this when a user wants to understand a rule or change which rules run — not for fixing diagnostics (that is the `react-doctor` skill / `/doctor`).
-
-Triggers: `/doctor-explain`, `/doctor-config`, "why did this rule fire", "I disagree with this rule", "turn this rule off", "stop flagging X", "too noisy", "disable design rules".
+Triggers: "why did this rule fire", "I disagree with this rule", "turn this rule off",
+"stop flagging X", "too noisy", "disable design rules".
 
 ## Workflow
 

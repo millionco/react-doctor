@@ -71,7 +71,7 @@ export const rnAnimationReactionAsDerived = defineRule<Rule>({
       context.report({
         node,
         message:
-          "Your users can see a stale value when this useAnimatedReaction only copies one value to another.",
+          "This useAnimatedReaction only copies one shared value into another, so it can miss Reanimated's derived-value dependency tracking.",
       });
     },
   }),

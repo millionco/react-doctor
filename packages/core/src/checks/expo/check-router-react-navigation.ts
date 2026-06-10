@@ -32,7 +32,7 @@ export const checkExpoRouterReactNavigation = (context: ExpoCheckContext): Diagn
   return [
     buildExpoDiagnostic({
       rule: "expo-router-no-react-navigation",
-      message: `As of SDK 56, expo-router is no longer compatible with react-navigation, but ${quotedNames} ${reactNavigationNames.length === 1 ? "is" : "are"} installed as direct ${reactNavigationNames.length === 1 ? "dependency" : "dependencies"}`,
+      message: `As of SDK 56, expo-router is no longer compatible with directly installed @react-navigation packages, so keeping ${quotedNames} can break routing or linking behavior after the SDK upgrade.`,
       help: "Remove these `@react-navigation/*` packages and replace direct imports with their expo-router equivalents. See https://docs.expo.dev/router/migrate/sdk-55-to-56/",
     }),
   ];

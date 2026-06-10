@@ -83,11 +83,23 @@ export interface ProjectInfo {
    * apply, instead of on every React Native project.
    */
   hasReanimated: boolean;
+  /**
+   * `true` when the project's `tsconfig.json` `compilerOptions.target` or
+   * `compilerOptions.lib` indicates the output environment predates ES2023
+   * (e.g. `target: "es2022"` or `lib: ["es2022"]`). Drives the `pre-es2023`
+   * capability in `buildCapabilities` so rules recommending ES2023-only
+   * methods (`toSorted`, `toReversed`, `toSpliced`, `with`, etc.) are
+   * silenced on projects that would get a type error or runtime crash.
+   * `false` when no tsconfig is found, when the target is ES2023+, or when
+   * the config is unparseable — the safe default is to keep the rule active.
+   */
+  isPreES2023Target: boolean;
   sourceFileCount: number;
 }
 
 export interface PackageJson {
   name?: string;
+  version?: string;
   main?: string;
   scripts?: Record<string, string>;
   dependencies?: Record<string, string>;

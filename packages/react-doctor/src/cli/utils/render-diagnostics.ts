@@ -9,7 +9,6 @@ import {
   groupBy,
   highlighter,
   MILLISECONDS_PER_SECOND,
-  OUTPUT_MEASURE_WIDTH_CHARS,
   TOP_ERRORS_DISPLAY_COUNT,
 } from "@react-doctor/core";
 import type { Diagnostic } from "@react-doctor/core";
@@ -17,6 +16,7 @@ import { boxText } from "./box-text.js";
 import { buildCodeFrame } from "./build-code-frame.js";
 import { buildSectionDivider } from "./build-section-divider.js";
 import {
+  BOX_BORDER_WIDTH_CHARS,
   CATEGORY_COUNTUP_FRAME_DELAY_MS,
   CATEGORY_COUNTUP_MAX_STEPS,
   CATEGORY_COUNTUP_SETTLE_HOLD_MS,
@@ -27,6 +27,7 @@ import {
   formatLearnMoreLine,
 } from "./diagnostic-grouping.js";
 import { indentMultilineText } from "./indent-multiline-text.js";
+import { resolveMeasureWidth } from "./resolve-measure-width.js";
 import { wrapTextToWidth } from "./wrap-indented-text.js";
 import { writeStdout } from "./write-stdout.js";
 
@@ -203,6 +204,16 @@ const TOP_ERROR_DETAIL_INDENT = "    ";
 const pickRepresentativeDiagnostic = (ruleDiagnostics: Diagnostic[]): Diagnostic =>
   ruleDiagnostics.find((diagnostic) => diagnostic.line > 0) ?? ruleDiagnostics[0];
 
+// True when a rule's sites all share one line-less location (e.g. every unused
+// dependency reports at `package.json:0`), so only their messages tell them apart.
+const hasIndistinctSiteLocations = (ruleDiagnostics: Diagnostic[]): boolean => {
+  const firstDiagnostic = ruleDiagnostics[0];
+  if (firstDiagnostic === undefined) return false;
+  return ruleDiagnostics.every(
+    (diagnostic) => diagnostic.line <= 0 && diagnostic.filePath === firstDiagnostic.filePath,
+  );
+};
+
 // A run of same-file sites of one rule whose individual frames would
 // overlap, rendered as a single spanning frame instead of N near-identical
 // boxes. `lead` is the first (lowest-line) site, used for the file path and
@@ -292,9 +303,10 @@ const buildDiagnosticClusterLines = (
       })
     : null;
   if (codeFrame) {
-    lines.push(
-      indentMultilineText(boxText(codeFrame, OUTPUT_MEASURE_WIDTH_CHARS), TOP_ERROR_DETAIL_INDENT),
+    const boxInnerWidth = resolveMeasureWidth(
+      TOP_ERROR_DETAIL_INDENT.length + BOX_BORDER_WIDTH_CHARS,
     );
+    lines.push(indentMultilineText(boxText(codeFrame, boxInnerWidth), TOP_ERROR_DETAIL_INDENT));
   }
   const seenHints = new Set<string>();
   for (const diagnostic of cluster.diagnostics) {
@@ -341,18 +353,19 @@ const buildRuleDetailBlock = (
     }
   }
 
-  // Verbose lists every rule & site, so the per-rule impact prose would
-  // just repeat down the whole report — skip it there and let the boxed
-  // frames carry the detail.
-  if (!renderEverySite) {
+  // Impact prose, once per rule — except a warning group collapsed to one
+  // line-less location lists every distinct message so each name shows (#690).
+  const isCollapsedWarningGroup =
+    severity === "warning" && hasIndistinctSiteLocations(ruleDiagnostics);
+  const impactMessages = isCollapsedWarningGroup
+    ? [...new Set(ruleDiagnostics.map((diagnostic) => diagnostic.message))]
+    : [representative.message];
+  for (const impactMessage of impactMessages) {
     for (const explanationLine of wrapTextToWidth(
-      representative.message,
-      OUTPUT_MEASURE_WIDTH_CHARS,
+      impactMessage,
+      resolveMeasureWidth(TOP_ERROR_DETAIL_INDENT.length),
       { breakLongWords: false },
     )) {
-      // The description stays the terminal's default color (not dimmed) —
-      // it's the load-bearing "what & why", so it shouldn't read as muted
-      // secondary text like the file location / code frame below it.
       lines.push(`${TOP_ERROR_DETAIL_INDENT}${explanationLine}`);
     }
   }
@@ -361,9 +374,11 @@ const buildRuleDetailBlock = (
   // too long to sit at the code-frame caret). Dim `→` lead-in marks it as
   // the suggested action.
   if (representative.help) {
-    for (const fixLine of wrapTextToWidth(`→ ${representative.help}`, OUTPUT_MEASURE_WIDTH_CHARS, {
-      breakLongWords: false,
-    })) {
+    for (const fixLine of wrapTextToWidth(
+      `→ ${representative.help}`,
+      resolveMeasureWidth(TOP_ERROR_DETAIL_INDENT.length),
+      { breakLongWords: false },
+    )) {
       lines.push(highlighter.dim(`${TOP_ERROR_DETAIL_INDENT}${fixLine}`));
     }
   }
@@ -381,8 +396,16 @@ const buildRuleDetailBlock = (
   // still navigable, just without the inline source preview.
   const renderCodeFrame = severity === "error";
   const sites = renderEverySite ? ruleDiagnostics : [representative];
-  for (const cluster of clusterNearbyDiagnostics(sites)) {
-    lines.push(...buildDiagnosticClusterLines(cluster, resolveSourceRoot, renderCodeFrame));
+  // A collapsed group's sites share one line-less location. When the help
+  // already names it ("remove it from package.json"), the bare location line
+  // would just dangle — no frame, no line to navigate to — so skip it. Rules
+  // whose location is the subject (unused files) keep it: their help names no path.
+  const skipSharedLocation =
+    isCollapsedWarningGroup && representative.help.includes(representative.filePath);
+  if (!skipSharedLocation) {
+    for (const cluster of clusterNearbyDiagnostics(sites)) {
+      lines.push(...buildDiagnosticClusterLines(cluster, resolveSourceRoot, renderCodeFrame));
+    }
   }
 
   return lines;

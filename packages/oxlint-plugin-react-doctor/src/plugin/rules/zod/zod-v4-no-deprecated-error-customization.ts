@@ -90,7 +90,7 @@ const parseCallUsesErrorMap = (callExpression: EsTreeNodeOfType<"CallExpression"
 
 export const zodV4NoDeprecatedErrorCustomization = defineRule<Rule>({
   id: "zod-v4-no-deprecated-error-customization",
-  title: "Deprecated Zod error customization",
+  title: "Zod 3 error customization breaks in Zod 4",
   requires: ["zod:4"],
   tags: ["migration-hint"],
   severity: "warn",
@@ -101,7 +101,8 @@ export const zodV4NoDeprecatedErrorCustomization = defineRule<Rule>({
       if (!factoryUsesDeprecatedErrorParameter(node) && !parseCallUsesErrorMap(node)) return;
       context.report({
         node,
-        message: "Zod 4 changed how you customize error messages, so this breaks when you upgrade.",
+        message:
+          "This Zod 3 error-customization form is not compatible with Zod 4, so custom messages can stop applying during the upgrade.",
       });
     },
   }),

@@ -48,7 +48,8 @@ export const jsxPropsNoSpreading = defineRule<Rule>({
   // Opt in via config when a project wants to enforce explicit prop
   // lists on its component boundaries.
   defaultEnabled: false,
-  recommendation: "List each prop explicitly so consumers can see what's being passed.",
+  recommendation:
+    "List each prop explicitly so consumers can see the component API instead of receiving hidden spread props.",
   category: "Architecture",
   create: (context) => {
     const settings = resolveSettings(context.settings);

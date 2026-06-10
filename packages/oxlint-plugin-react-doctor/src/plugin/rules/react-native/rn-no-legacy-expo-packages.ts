@@ -11,7 +11,7 @@ export const rnNoLegacyExpoPackages = defineRule<Rule>({
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    "These Expo packages are no longer maintained. Switch to the recommended replacement package.",
+    "Switch to the maintained replacement package so users are not stuck with unfixed bugs in deprecated Expo packages.",
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       const source = node.source?.value;

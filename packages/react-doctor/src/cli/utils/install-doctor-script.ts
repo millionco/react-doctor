@@ -1,5 +1,6 @@
 import * as path from "node:path";
 import { getPackageJsonPath, isRecord, readPackageJson, writeJsonFile } from "./git-hook-shared.js";
+import { spinner } from "./spinner.js";
 import * as fs from "node:fs";
 
 const DOCTOR_SCRIPT_NAME = "doctor";
@@ -148,4 +149,39 @@ export const installDoctorScript = (
     scriptStatus,
     ...(scriptTarget.reason !== undefined ? { scriptReason: scriptTarget.reason } : {}),
   };
+};
+
+const formatDoctorScriptInstallMessage = (scriptResult: InstallDoctorScriptResult): string => {
+  const scriptName = scriptResult.scriptName ?? "doctor";
+  if (scriptResult.scriptStatus === "created") {
+    return `Added package script: ${scriptName}.`;
+  }
+  if (scriptResult.scriptStatus === "existing") {
+    return `Package script already exists: ${scriptName}.`;
+  }
+  if (scriptResult.scriptReason === "script-names-taken") {
+    return "Skipped package script: doctor and react-doctor are already taken.";
+  }
+  if (scriptResult.scriptReason === "doctor-script-taken") {
+    return "Skipped package script: doctor and react-doctor scripts already exist.";
+  }
+  if (scriptResult.scriptReason === "invalid-scripts") {
+    return "Skipped package script: scripts field is not an object.";
+  }
+  return "Skipped package script: package.json missing or invalid.";
+};
+
+// Adds the `doctor` (or `react-doctor`) script to package.json so users can
+// run `pnpm doctor` / `npm run doctor`. The script invokes `npx react-doctor@latest`,
+// so no local dev-dep is required for it to work — that's why the "Add to CI"
+// path calls this step directly instead of the full package-setup function.
+export const installReactDoctorScriptStep = (projectRoot: string): void => {
+  const scriptSpinner = spinner("Installing React Doctor package script...").start();
+  try {
+    const scriptResult = installDoctorScript({ projectRoot });
+    scriptSpinner.succeed(formatDoctorScriptInstallMessage(scriptResult));
+  } catch (error) {
+    scriptSpinner.fail("Failed to install React Doctor package script.");
+    throw error;
+  }
 };

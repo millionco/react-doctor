@@ -40,7 +40,7 @@ export const noLargeAnimatedBlur = defineRule<Rule>({
         if (blurRadius > LARGE_BLUR_THRESHOLD_PX) {
           context.report({
             node: property,
-            message: `This can run out of GPU memory on phones because blur(${blurRadius}px) gets heavier as the blur & element grow, so use a smaller blur or a smaller element`,
+            message: `Large animated blurs can use significant GPU memory on phones because blur(${blurRadius}px) gets heavier as the blur and element grow. Use a smaller blur or a smaller element.`,
           });
         }
       }

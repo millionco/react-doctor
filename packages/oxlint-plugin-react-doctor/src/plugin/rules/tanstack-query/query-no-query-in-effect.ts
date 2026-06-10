@@ -16,7 +16,7 @@ export const queryNoQueryInEffect = defineRule<Rule>({
   requires: ["tanstack-query"],
   severity: "warn",
   recommendation:
-    "React Query refetches automatically via queryKey changes and the `enabled` option. A manual refetch() in useEffect is usually unnecessary.",
+    "Use `queryKey` changes or `enabled` so React Query schedules the fetch once instead of refetching again from `useEffect`.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isHookCall(node, EFFECT_HOOK_NAMES)) return;

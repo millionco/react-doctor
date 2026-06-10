@@ -9,7 +9,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
 const buildBaseMessage = (suffix: string): string =>
-  `Screen reader users get no help from this \`role\` because it isn't a valid ARIA role, so use a real, non-abstract role.${suffix}`;
+  `This \`role\` is not a valid ARIA role, so assistive tech cannot expose it correctly. Use a real, non-abstract role.${suffix}`;
 
 interface AriaRoleSettings {
   allowedInvalidRoles?: ReadonlyArray<string>;
@@ -36,7 +36,8 @@ export const ariaRole = defineRule<Rule>({
   title: "Invalid ARIA role",
   tags: ["react-jsx-only"],
   severity: "error",
-  recommendation: "Use a real, non-abstract ARIA role.",
+  recommendation:
+    "Use a real, non-abstract ARIA role so assistive tech can expose the element correctly.",
   category: "Accessibility",
   create: (context) => {
     const settings = resolveSettings(context.settings);

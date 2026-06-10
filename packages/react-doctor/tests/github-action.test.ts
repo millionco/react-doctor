@@ -68,8 +68,14 @@ describe("GitHub Action contract", () => {
     const actionYaml = readActionYaml();
     const prFilesStep = normalizeWhitespace(extractStep(actionYaml, "- id: pr-files"));
 
-    expect(actionYaml).toContain("actions/setup-node@v5");
-    expect(actionYaml).toContain("actions/github-script@v8");
+    // setup-node/github-script may be referenced by a floating major tag
+    // (v5/v8) or pinned to a full-length commit SHA with a trailing version
+    // comment — the form required by orgs that enforce GitHub's "actions pinned
+    // to a full-length commit SHA" ruleset. Accept either so the composite
+    // action stays consumable under those policies (and Dependabot can still
+    // bump the pinned SHA), while keeping the major-version floor.
+    expect(actionYaml).toMatch(/actions\/setup-node@(?:v5\b|[0-9a-f]{40} # v5\b)/);
+    expect(actionYaml).toMatch(/actions\/github-script@(?:v8\b|[0-9a-f]{40} # v8\b)/);
     expect(actionYaml).not.toContain("actions/setup-node@v4");
     expect(actionYaml).not.toContain("actions/github-script@v7");
     expect(prFilesStep).toContain("github.rest.pulls.listFiles");

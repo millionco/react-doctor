@@ -18,7 +18,7 @@ const UNSAFE_ALIASES = new Set([
 ]);
 
 const buildMessage = (methodName: string): string =>
-  `\`${methodName}\` causes subtle bugs & React is removing it.`;
+  `\`${methodName}\` runs during unsafe legacy render timing and is deprecated, so React may double-invoke or remove it.`;
 
 interface NoUnsafeSettings {
   checkAliases?: boolean;
@@ -79,7 +79,7 @@ export const noUnsafe = defineRule<Rule>({
   title: "Unsafe legacy lifecycle method",
   severity: "warn",
   recommendation:
-    "Replace `UNSAFE_componentWillMount` / `…WillReceiveProps` / `…WillUpdate` with the modern equivalents.",
+    "Move setup to `constructor` or `componentDidMount`, prop-derived state to `getDerivedStateFromProps`, and update side effects to `componentDidUpdate` so React does not rely on deprecated unsafe lifecycles.",
   create: (context) => {
     const { checkAliases } = resolveSettings(context.settings);
     const reactVersion = getConfiguredReactMajorMinor(context.settings);

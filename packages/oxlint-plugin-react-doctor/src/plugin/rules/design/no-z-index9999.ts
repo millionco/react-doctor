@@ -33,7 +33,7 @@ export const noZIndex9999 = defineRule<Rule>({
         if (zValue !== null && Math.abs(zValue) >= Z_INDEX_ABSURD_THRESHOLD) {
           context.report({
             node: property,
-            message: `z-index ${zValue} is way too high & usually hides a layering bug instead of fixing it, so use a small set scale, like 1 to 50.`,
+            message: `z-index ${zValue} is unusually high and can hide a layering bug instead of fixing it. Use a small set scale, like 1 to 50.`,
           });
         }
       }

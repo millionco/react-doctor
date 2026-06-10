@@ -30,7 +30,7 @@ export const noDocumentStartViewTransition = defineRule<Rule>({
       context.report({
         node,
         message:
-          "Your users lose React's <ViewTransition> animations when document.startViewTransition() runs directly.",
+          "Calling `document.startViewTransition()` directly can bypass React's `<ViewTransition>` animation lifecycle.",
       });
     },
   }),

@@ -30,7 +30,7 @@ export const preactPreferOndblclick = defineRule<Rule>({
   requires: ["pure-preact"],
   severity: "warn",
   recommendation:
-    "Rename the handler from `onDoubleClick` to `onDblClick` to match the DOM event name.",
+    "Rename `onDoubleClick` to `onDblClick` because Preact core listens for the DOM `dblclick` event name and `onDoubleClick` never fires.",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (!isNodeOfType(node.name, "JSXIdentifier")) return;

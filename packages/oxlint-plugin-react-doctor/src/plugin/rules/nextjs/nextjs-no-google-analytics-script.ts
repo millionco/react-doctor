@@ -8,12 +8,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const nextjsNoGoogleAnalyticsScript = defineRule<Rule>({
   id: "nextjs-no-google-analytics-script",
-  title: "Manual Google Analytics script",
+  title: "Manual Google Analytics script blocks optimized loading",
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "warn",
   recommendation:
-    "Use `import { GoogleAnalytics } from '@next/third-parties/google'` for automatic optimization & smaller bundles",
+    "Use `import { GoogleAnalytics } from '@next/third-parties/google'` for automatic optimization and smaller bundles.",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (!isNodeOfType(node.name, "JSXIdentifier")) return;
@@ -30,7 +30,7 @@ export const nextjsNoGoogleAnalyticsScript = defineRule<Rule>({
         context.report({
           node,
           message:
-            "Manual Google Analytics script blocks rendering. Use @next/third-parties for optimal loading strategy.",
+            "Manual Google Analytics scripts block rendering without Next.js' optimized loading strategy.",
         });
       }
     },

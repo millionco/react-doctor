@@ -23,25 +23,25 @@ import type { Rule } from "../../utils/rule.js";
 // "unconditional" check and walks the AST parent chain for the rest.
 
 const buildTopLevelMessage = (hookName: string): string =>
-  `\`${hookName}\` crashes at the top level of a file.`;
+  `\`${hookName}\` can only run inside a React component or custom Hook because React needs that render scope to track Hook state.`;
 const buildNonComponentMessage = (hookName: string, functionName: string): string =>
-  `\`${hookName}\` crashes inside \`${functionName}\` because it isn't a component or a hook.`;
+  `\`${hookName}\` runs inside \`${functionName}\`, which is not a component or Hook, so React cannot attach Hook state to a render.`;
 const buildConditionalMessage = (hookName: string): string =>
-  `\`${hookName}\` crashes when you call it conditionally.`;
+  `\`${hookName}\` changes Hook order between renders when called conditionally, so React can attach state to the wrong Hook.`;
 const buildLoopMessage = (hookName: string): string =>
-  `\`${hookName}\` crashes when you call it inside a loop.`;
+  `\`${hookName}\` can run a different number of times inside a loop, so React can attach state to the wrong Hook.`;
 const buildAsyncMessage = (hookName: string): string =>
-  `\`${hookName}\` crashes inside an async function.`;
+  `\`${hookName}\` runs inside an async function, so React cannot guarantee the same Hook order during render.`;
 const buildClassComponentMessage = (hookName: string): string =>
-  `\`${hookName}\` crashes in a class component.`;
+  `\`${hookName}\` cannot run in a class component because Hooks require a function component or custom Hook render scope.`;
 const buildTryMessage = (hookName: string): string =>
-  `\`${hookName}\` crashes inside a try/catch/finally block.`;
+  `\`${hookName}\` can be skipped by try/catch/finally control flow, so React can attach state to the wrong Hook.`;
 const buildEffectEventCallMessage = (bindingName: string): string =>
   `\`${bindingName}\` comes from useEffectEvent, so it only works when called from Effects in the same component.`;
 const buildEffectEventAssignmentMessage = (bindingName: string): string =>
   `${buildEffectEventCallMessage(bindingName)} It also breaks if saved in a variable or passed around.`;
 const buildEffectEventPassedDownMessage = (): string =>
-  `A function from useEffectEvent breaks when passed around.`;
+  `A function from useEffectEvent only works inside Effects in the same component, so passing it around breaks the event/dependency split.`;
 
 // ASCII range used for the PascalCase namespace heuristic in member
 // hook calls (`Hook.useFoo` flagged, `jest.useFoo` not).
@@ -628,7 +628,8 @@ export const rulesOfHooks = defineRule<Rule>({
   title: "Hook called conditionally",
   severity: "error",
   tags: ["test-noise"],
-  recommendation: "Call hooks at the top level of a React function component or a custom Hook.",
+  recommendation:
+    "Call hooks at the top level of a React function component or custom Hook so React sees the same hook order on every render.",
   category: "Correctness",
   create: (context) => {
     const settings = resolveSettings(context.settings);

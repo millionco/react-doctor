@@ -17,7 +17,21 @@ import {
   printNoScoreHeader,
   printScoreHeader,
 } from "./render-score-header.js";
+import { resolveMeasureWidth } from "./resolve-measure-width.js";
+import { wrapTextToWidth } from "./wrap-indented-text.js";
 import { writeDiagnosticsDirectory } from "./write-diagnostics-directory.js";
+
+const FOOTER_DESCRIPTION_INDENT = "  ";
+
+// Prints a dimmed link description, wrapped to the measure but never past the
+// terminal's right edge. Dim is applied per line so the SGR survives the wrap.
+const printFooterDescription = (description: string): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    const wrapWidth = resolveMeasureWidth(FOOTER_DESCRIPTION_INDENT.length);
+    for (const line of wrapTextToWidth(description, wrapWidth)) {
+      yield* Console.log(highlighter.dim(`${FOOTER_DESCRIPTION_INDENT}${line}`));
+    }
+  });
 
 const buildShareUrl = (
   diagnostics: Diagnostic[],
@@ -53,20 +67,18 @@ export const printFooter = (input: PrintFooterInput): Effect.Effect<void> =>
     if (!input.isOffline) {
       const shareUrl = buildShareUrl(input.diagnostics, input.scoreResult, input.projectName);
       yield* Console.log(`  ${highlighter.bold("Share:")} ${highlighter.info(shareUrl)}`);
-      yield* Console.log(highlighter.dim("  Tell others how you did on socials"));
+      yield* printFooterDescription("Tell others how you did on socials");
       yield* Console.log("");
     }
     yield* Console.log(`  ${highlighter.bold("Docs:")} ${highlighter.info(DOCS_URL)}`);
-    yield* Console.log(
-      highlighter.dim(
-        "  Learn more about fixing issues, setting up CI/CD, and configuring rules with a config file",
-      ),
+    yield* printFooterDescription(
+      "Learn more about fixing issues, setting up CI/CD, and configuring rules with a config file",
     );
     yield* Console.log("");
     yield* Console.log(
       `  ${highlighter.bold("GitHub:")} ${highlighter.info(CANONICAL_GITHUB_URL)}`,
     );
-    yield* Console.log(highlighter.dim("  Report issues and star the repository!"));
+    yield* printFooterDescription("Report issues and star the repository!");
   });
 
 export interface PrintSummaryInput {

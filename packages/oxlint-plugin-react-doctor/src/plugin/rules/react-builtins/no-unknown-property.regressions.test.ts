@@ -42,5 +42,43 @@ describe("react-builtins/no-unknown-property — regressions", () => {
       });
       expect(result.diagnostics.length).toBeGreaterThan(0);
     });
+
+    it("does not flag tw in files that render through ImageResponse", () => {
+      const result = runRule(
+        noUnknownProperty,
+        `
+          import { ImageResponse } from "next/og";
+
+          const HeroImage = () => <div tw="flex flex-col">Hello</div>;
+
+          export const GET = () => new ImageResponse(<HeroImage />);
+        `,
+        {
+          filename: "/proj/app/api/social-card.tsx",
+        },
+      );
+
+      expect(result.diagnostics).toHaveLength(0);
+    });
+
+    it("still flags tw on ordinary JSX in mixed files that also render generated images", () => {
+      const result = runRule(
+        noUnknownProperty,
+        `
+          import { ImageResponse } from "next/og";
+
+          const HeroImage = () => <div tw="flex flex-col">Hello</div>;
+
+          export const GET = () => new ImageResponse(<HeroImage />);
+
+          export const Page = () => <main tw="flex">Hello</main>;
+        `,
+        {
+          filename: "/proj/app/social-card.tsx",
+        },
+      );
+
+      expect(result.diagnostics).toHaveLength(1);
+    });
   });
 });

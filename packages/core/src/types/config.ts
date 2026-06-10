@@ -134,10 +134,57 @@ export interface SurfaceControls {
   excludeRules?: string[];
 }
 
+/**
+ * Configuration for the Socket.dev supply-chain score check (the
+ * `SupplyChain` service). Runs by default; set `enabled: false` to opt out
+ * (it performs one network request per direct dependency).
+ *
+ * Mirrors how Socket Firewall's free tier (`sfw`) works: each direct
+ * dependency's PURL is looked up against Socket's keyless
+ * `firewall-api.socket.dev/purl/<purl>` endpoint, which returns a
+ * supply-chain score (0–100 once normalized). A dependency scoring below
+ * `minScore` produces a diagnostic; at the default `severity: "error"` it
+ * fails the scan (non-zero CI exit), the same way an error-severity lint
+ * finding does.
+ */
+export interface SupplyChainConfig {
+  /**
+   * Whether to run the Socket supply-chain score check. Default: `true`.
+   * Set to `false` to opt out — the check performs one network request per
+   * direct dependency. It is always skipped in `--diff` / `--staged` mode
+   * and in editor scans regardless of this setting.
+   */
+  enabled?: boolean;
+  /**
+   * Minimum acceptable Socket score on a 0–100 scale. A direct dependency
+   * whose Socket `overall` score is below this is flagged. Default: `50`.
+   * Values outside `0..100` are clamped.
+   */
+  minScore?: number;
+  /**
+   * Severity for a below-threshold dependency. `"error"` (default) fails
+   * the scan at the standard `blocking: "error"` gate; `"warning"` keeps
+   * the finding advisory.
+   */
+  severity?: "error" | "warning";
+  /**
+   * Whether to score `devDependencies` in addition to `dependencies`.
+   * Default: `true`.
+   */
+  includeDevDependencies?: boolean;
+}
+
 export interface ReactDoctorConfig {
   $schema?: string;
   ignore?: ReactDoctorIgnoreConfig;
   lint?: boolean;
+  /**
+   * Socket.dev supply-chain score gate. Runs by default; set
+   * `supplyChain: { enabled: false }` to opt out. See {@link SupplyChainConfig}.
+   * Every direct dependency is scored against Socket's free PURL endpoint and
+   * a low score fails the scan (at the default `severity: "error"`).
+   */
+  supplyChain?: SupplyChainConfig;
   /**
    * Whether to run dead-code analysis (via `deslop-js`) alongside lint.
    * Reports unused files, unused exports, unused dependencies, and

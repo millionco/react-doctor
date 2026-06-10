@@ -13,7 +13,8 @@ export const noNestedComponentDefinition = defineRule<Rule>({
   tags: ["test-noise", "react-jsx-only"],
   severity: "error",
   category: "Correctness",
-  recommendation: "Move to a separate file or to module scope above the parent component",
+  recommendation:
+    "Move it to module scope or a separate file so React does not recreate the component and erase its state on every parent render.",
   create: (context: RuleContext) => {
     const componentStack: string[] = [];
 

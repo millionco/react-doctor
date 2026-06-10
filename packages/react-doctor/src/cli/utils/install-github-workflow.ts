@@ -7,17 +7,13 @@ export interface InstallGitHubWorkflowResult {
 }
 
 // Self-documenting workflow file. It installs advisory-first: the action's
-// `blocking` input now defaults to `none`, so this workflow doesn't pin a gate
-// at all — every PR gets a React Doctor report (sticky summary comment, inline
-// review comments, a commit status with the score) but the check never fails,
-// so a brand-new install can't red-X a teammate's PR on day one (first
-// impressions decide whether the team keeps it). The inline YAML comments walk
-// a new user through graduating the gate once they trust the signal (uncomment
-// `with:` and set `blocking: error`), plus the other knobs they're likely to
-// touch (scanning `main` on every push for a quality-trend graph, suppressing
-// PR comments) and explain why each permission is granted — without forcing
-// them off to the docs site to learn the basics. The action itself is pinned to
-// the floating major `@v2` (never `@main`, per the supply-chain guidance in
+// `blocking` input defaults to `none`, so the check never fails on day one —
+// every PR still gets the full report (sticky comment, inline review comments,
+// a commit-status score). The inline YAML comments give a new user one-line
+// explanations of each trigger and show how to graduate the gate (uncomment
+// `with:` and set `blocking: error`), without forcing them off to the docs
+// site to learn the basics. The action itself is pinned to the floating major
+// `@v2` (never `@main`, per the supply-chain guidance in
 // AGENTS.md): `@main` would run whatever HEAD points to with
 // `pull-requests: write` granted.
 const buildWorkflowContent =
@@ -30,37 +26,20 @@ const buildWorkflowContent =
 name: React Doctor
 
 on:
+  # Scans the PR's changed files and posts a sticky summary comment listing only the new issues introduced relative to the merge base of the target branch.
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-  # Scans \`main\` on every push so you get a health-score trend on the
-  # default branch — useful for tracking the overall number commit-by-commit
-  # and catching regressions that slipped past PR review. PR-specific steps
-  # (the sticky summary comment) are skipped automatically on \`push\` events.
-  # Comment this block out if you only want PR-time scans.
+  # Scans \`main\` on every push to track the health-score trend and catch regressions that slipped past PR review.
   push:
     branches: [main]
 
 permissions:
-  # \`actions/checkout\` needs this to read the repo source.
   contents: read
-  # Two uses: (1) reads the PR's changed-file list so the scan only checks
-  # what the PR touched (faster, scoped to the diff), and (2) posts/updates
-  # the sticky React Doctor summary comment on the PR. Downgrade \`write\` to
-  # \`read\` to keep the changed-file scan but disable comment posting.
   pull-requests: write
-  # The sticky-comment step uses GitHub's \`issues.createComment\` /
-  # \`issues.updateComment\` endpoints — those are the same APIs that back PR
-  # comments (PRs are issues under the hood). Not exercised on \`push\`
-  # events, so safe to drop if you only run on \`main\`.
   issues: write
-  # Lets the action publish a commit status with the score + error/warning
-  # counts (links to the run). This is how a \`push\` to \`main\` surfaces its
-  # result, since the PR comment is skipped off pull requests. Drop it to
-  # disable the status (or set \`commit-status: false\` below).
   statuses: write
 
-# Cancels any in-flight scan for the same PR (or branch, on push) the moment
-# a new commit arrives, so reviewers only ever see the latest run.
+# Cancels any in-flight scan for the same PR (or branch, on push) the moment a new commit arrives, so reviewers only ever see the latest run.
 concurrency:
   group: react-doctor-\${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -150,5 +129,40 @@ export const installReactDoctorWorkflow = (projectRoot: string): InstallGitHubWo
     return { status: "created", workflowPath };
   } catch {
     return { status: "failed", workflowPath };
+  }
+};
+
+export interface UpgradeGitHubWorkflowResult {
+  // "upgraded": the floating `@v1` ref was rewritten to `@v2` in place.
+  // "not-needed": no workflow on disk, or it doesn't pin the floating `@v1`.
+  // "failed": the rewrite couldn't be persisted (read-only / permission FS).
+  readonly status: "upgraded" | "not-needed" | "failed";
+  readonly workflowPath: string;
+}
+
+// Rewrites an existing `.github/workflows/react-doctor.yml` from the action's
+// previous floating major (`@v1`) to `@v2` in place, leaving everything else
+// untouched. Mirrors `installReactDoctorWorkflow`'s "write to the working tree,
+// user reviews + commits" contract for the `install` flow — the PR-opening
+// upgrade variant lives in the post-scan handoff. Returns "failed" (rather than
+// throwing) so callers can degrade gracefully.
+export const upgradeReactDoctorWorkflowInPlace = (
+  projectRoot: string,
+): UpgradeGitHubWorkflowResult => {
+  const workflow = readReactDoctorWorkflow(projectRoot);
+  if (!workflow)
+    return {
+      status: "not-needed",
+      workflowPath: getReactDoctorWorkflowPath(projectRoot),
+    };
+
+  const { content, changed } = upgradeWorkflowActionToV2(workflow.content);
+  if (!changed) return { status: "not-needed", workflowPath: workflow.workflowPath };
+
+  try {
+    fs.writeFileSync(workflow.workflowPath, content);
+    return { status: "upgraded", workflowPath: workflow.workflowPath };
+  } catch {
+    return { status: "failed", workflowPath: workflow.workflowPath };
   }
 };

@@ -1,0 +1,8 @@
+{
+  "name": "rsc-unaffected-line",
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-server-dom-webpack": "18.3.1"
+  }
+}

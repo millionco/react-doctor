@@ -8,7 +8,7 @@ import type { Rule } from "../../utils/rule.js";
 
 const MISSING_MESSAGE = "Your users can't toggle this input because `checked` has no `onChange`.";
 const EXCLUSIVE_MESSAGE =
-  "This input behaves unpredictably with both `checked` & `defaultChecked` set.";
+  "This input mixes `checked` with `defaultChecked`, so React can't tell whether it is controlled or uncontrolled.";
 
 interface CheckedRequiresSettings {
   ignoreMissingProperties?: boolean;
@@ -82,7 +82,7 @@ export const checkedRequiresOnchangeOrReadonly = defineRule<Rule>({
   title: "Checked input without onChange",
   severity: "warn",
   recommendation:
-    "Add `onChange` (controlled) or `readOnly` (display-only), or use `defaultChecked` for an uncontrolled checkbox.",
+    "Add `onChange`, `readOnly`, or `defaultChecked` so React knows whether the checkbox is editable, display-only, or uncontrolled.",
   category: "Correctness",
   create: (context) => {
     const settings = resolveSettings(context.settings);

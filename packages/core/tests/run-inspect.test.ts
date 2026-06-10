@@ -22,6 +22,7 @@ import { Progress, ProgressCapture } from "../src/services/progress.js";
 import { Project } from "../src/services/project.js";
 import { Reporter, ReporterCapture } from "../src/services/reporter.js";
 import { Score } from "../src/services/score.js";
+import { SupplyChain } from "../src/services/supply-chain.js";
 
 const sampleProject: ProjectInfo = {
   rootDirectory: "/repo",
@@ -42,6 +43,7 @@ const sampleProject: ProjectInfo = {
   shopifyFlashListVersion: null,
   shopifyFlashListMajorVersion: null,
   hasReanimated: false,
+  isPreES2023Target: false,
   preactVersion: null,
   preactMajorVersion: null,
   sourceFileCount: 1,
@@ -83,9 +85,22 @@ const baseInput: InspectInput = {
   isCi: false,
 };
 
+const supplyChainDiagnostic: Diagnostic = {
+  filePath: "package.json",
+  plugin: "socket",
+  rule: "low-supply-chain-score",
+  severity: "error",
+  message: "`event-stream` has a Socket supply-chain score of 25/100.",
+  help: "Review it on Socket.",
+  line: 8,
+  column: 5,
+  category: "Security",
+};
+
 const layersOf = (config: {
   diagnostics?: ReadonlyArray<Diagnostic>;
   deadCode?: ReadonlyArray<Diagnostic>;
+  supplyChain?: ReadonlyArray<Diagnostic>;
   githubViewerPermission?: string | null;
 }) =>
   Layer.mergeAll(
@@ -102,6 +117,7 @@ const layersOf = (config: {
       githubViewerPermission: config.githubViewerPermission,
     }),
     Score.layerOf({ score: 85, label: "Good" }),
+    SupplyChain.layerOf(config.supplyChain ?? []),
     Progress.layerNoop,
     Reporter.layerCapture,
   );
@@ -202,6 +218,7 @@ describe("runInspect — happy path", () => {
       DeadCode.layerOf([]),
       failingGit,
       Score.layerOf({ score: 85, label: "Good" }),
+      SupplyChain.layerOf([]),
       Progress.layerNoop,
       Reporter.layerCapture,
     );
@@ -233,6 +250,7 @@ describe("runInspect — missing React dependency", () => {
       DeadCode.layerOf([]),
       Git.layerOf({}),
       Score.layerOf(null),
+      SupplyChain.layerOf([]),
       Progress.layerNoop,
       Reporter.layerNoop,
     );
@@ -255,6 +273,7 @@ describe("runInspect — missing React dependency", () => {
       DeadCode.layerOf([]),
       Git.layerOf({}),
       Score.layerOf(null),
+      SupplyChain.layerOf([]),
       Progress.layerNoop,
       Reporter.layerNoop,
     );
@@ -295,6 +314,7 @@ describe("runInspect — mid-stream lint failure", () => {
       DeadCode.layerOf([deadCodeDiagnostic]),
       Git.layerOf({}),
       Score.layerOf({ score: 50, label: "Needs Improvement" }),
+      SupplyChain.layerOf([]),
       Progress.layerNoop,
       Reporter.layerNoop,
     );
@@ -326,6 +346,7 @@ describe("runInspect — dead-code failure", () => {
       failingDeadCode,
       Git.layerOf({}),
       Score.layerOf(null),
+      SupplyChain.layerOf([]),
       Progress.layerNoop,
       Reporter.layerNoop,
     );
@@ -388,6 +409,7 @@ describe("runInspect — scan progress phases", () => {
       trackingDeadCode,
       Git.layerOf({}),
       Score.layerOf(null),
+      SupplyChain.layerOf([]),
       Progress.layerCapture,
       Reporter.layerNoop,
     );
@@ -427,6 +449,62 @@ describe("runInspect — diff mode skips dead-code", () => {
     expect(output.diagnostics.map((d) => d.rule)).toEqual(["no-derived-state"]);
     expect(output.didDeadCodeFail).toBe(false);
   });
+
+  it("passes Next middleware and proxy entries through to the linter", async () => {
+    const nextProject: ProjectInfo = {
+      ...sampleProject,
+      framework: "nextjs",
+      nextjsVersion: "^16.0.0",
+      nextjsMajorVersion: 16,
+    };
+    const reportingLinter = Layer.mock(Linter, {
+      run: (input) =>
+        Stream.fromIterable(
+          (input.includePaths ?? []).map((relativePath) => ({
+            ...lintDiagnostic,
+            filePath: `/repo/${relativePath}`,
+            rule: "no-debugger",
+            message: `Diagnostic emitted from ${relativePath}`,
+          })),
+        ),
+    });
+    const layers = Layer.mergeAll(
+      Project.layerOf(nextProject),
+      Config.layerOf({ config: null, resolvedDirectory: "/repo", configSourceDirectory: null }),
+      Files.layerInMemory(new Map()),
+      reportingLinter,
+      LintPartialFailures.layerLive,
+      DeadCode.layerOf([deadCodeDiagnostic]),
+      Git.layerOf({}),
+      Score.layerOf(null),
+      SupplyChain.layerOf([]),
+      Progress.layerNoop,
+      Reporter.layerCapture,
+    );
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const output = yield* runInspect({
+          ...baseInput,
+          includePaths: ["middleware.ts", "src/proxy.mjs", "src/server.ts", "src/App.tsx"],
+        });
+        const ref = yield* ReporterCapture;
+        const captured = yield* Ref.get(ref);
+        return { output, captured };
+      }).pipe(Effect.provide(layers)),
+    );
+
+    expect(result.output.diagnostics.map((diagnostic) => diagnostic.filePath)).toEqual([
+      "/repo/middleware.ts",
+      "/repo/src/proxy.mjs",
+      "/repo/src/App.tsx",
+    ]);
+    expect(result.captured.map((diagnostic) => diagnostic.filePath)).toEqual([
+      "/repo/middleware.ts",
+      "/repo/src/proxy.mjs",
+      "/repo/src/App.tsx",
+    ]);
+  });
 });
 
 describe("runInspect — runDeadCode=false short-circuits dead-code", () => {
@@ -461,6 +539,7 @@ describe("runInspect — Reporter sees post-filter diagnostics", () => {
       DeadCode.layerOf([]),
       Git.layerOf({}),
       Score.layerOf(null),
+      SupplyChain.layerOf([]),
       Progress.layerNoop,
       Reporter.layerCapture,
     );
@@ -474,5 +553,36 @@ describe("runInspect — Reporter sees post-filter diagnostics", () => {
     );
     expect(result.output.diagnostics.map((d) => d.filePath)).toEqual(["/repo/src/App.tsx"]);
     expect(result.captured.map((d) => d.filePath)).toEqual(["/repo/src/App.tsx"]);
+  });
+});
+
+describe("runInspect — supply-chain in diff mode", () => {
+  it("runs supply-chain in full scans", async () => {
+    const output = await Effect.runPromise(
+      runInspect(baseInput).pipe(
+        Effect.provide(layersOf({ supplyChain: [supplyChainDiagnostic] })),
+      ),
+    );
+    expect(output.diagnostics.map((d) => d.rule)).toContain("low-supply-chain-score");
+  });
+
+  it("skips supply-chain in a plain diff scan (no manifest change)", async () => {
+    const output = await Effect.runPromise(
+      runInspect({ ...baseInput, includePaths: ["src/App.tsx"] }).pipe(
+        Effect.provide(layersOf({ supplyChain: [supplyChainDiagnostic] })),
+      ),
+    );
+    expect(output.diagnostics.map((d) => d.rule)).not.toContain("low-supply-chain-score");
+  });
+
+  it("runs supply-chain in a diff scan when the manifest changed", async () => {
+    const output = await Effect.runPromise(
+      runInspect({
+        ...baseInput,
+        includePaths: ["src/App.tsx"],
+        supplyChainManifestChanged: true,
+      }).pipe(Effect.provide(layersOf({ supplyChain: [supplyChainDiagnostic] }))),
+    );
+    expect(output.diagnostics.map((d) => d.rule)).toContain("low-supply-chain-score");
   });
 });

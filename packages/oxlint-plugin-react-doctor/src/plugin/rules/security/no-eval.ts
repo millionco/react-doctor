@@ -6,7 +6,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const noEval = defineRule<Rule>({
   id: "no-eval",
-  title: "Use of eval()",
+  title: "eval() runs untrusted code strings",
   severity: "error",
   recommendation:
     "Use `JSON.parse` for data, or rewrite the code so it doesn't build and run code from strings.",

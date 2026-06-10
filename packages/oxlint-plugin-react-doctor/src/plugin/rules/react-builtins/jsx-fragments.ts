@@ -4,8 +4,10 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
 import type { Rule } from "../../utils/rule.js";
 
-const SYNTAX_MESSAGE = "This fragment is written inconsistently.";
-const ELEMENT_MESSAGE = "This fragment is written inconsistently.";
+const SYNTAX_MESSAGE =
+  "`<React.Fragment>` is used where shorthand fragments are configured, so similar wrappers look different across the codebase.";
+const ELEMENT_MESSAGE =
+  "Fragment shorthand is used where explicit fragments are configured, so similar wrappers look different across the codebase.";
 
 interface JsxFragmentsSettings {
   mode?: "syntax" | "element";
@@ -33,7 +35,8 @@ export const jsxFragments = defineRule<Rule>({
   // Pure stylistic — `<>` vs `<Fragment>` is a formatter concern,
   // not a bug class. Default off.
   defaultEnabled: false,
-  recommendation: "Pick one fragment style across the codebase.",
+  recommendation:
+    "Use one fragment style so identical wrappers do not look different across files.",
   category: "Architecture",
   create: (context) => {
     const { mode } = resolveSettings(context.settings);

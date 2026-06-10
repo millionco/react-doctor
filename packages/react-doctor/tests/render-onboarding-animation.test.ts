@@ -25,8 +25,8 @@ const makeDiagnostic = (
     plugin: "react-doctor",
     rule,
     severity,
-    message: "boom",
-    help: "fix it",
+    message: "State is reset after render, so users can see stale UI before React corrects it.",
+    help: "Derive the value during render or remove the duplicated state.",
     line: 1,
     column: 1,
     category,
@@ -72,6 +72,34 @@ describe("playWelcomeScene", () => {
     // and clears to the end of the screen.
     expect(output).toContain("\u001B[3A");
     expect(output).toContain("\u001B[0J");
+  });
+
+  it("clamps the tagline to the terminal width so it never soft-wraps", async () => {
+    const NARROW_COLUMNS = 40;
+    const previousColumns = Object.getOwnPropertyDescriptor(process.stdout, "columns");
+    Object.defineProperty(process.stdout, "columns", {
+      value: NARROW_COLUMNS,
+      configurable: true,
+    });
+    try {
+      const writes = await captureStdout(() => Effect.runPromise(playWelcomeScene()));
+      // The full tagline is truncated with an ellipsis…
+      const output = stripAnsi(writes.join(""));
+      expect(output).toContain("…");
+      expect(output).not.toContain("performance.");
+      // …and no single typewriter frame's visible line is wide enough to wrap.
+      for (const write of writes) {
+        for (const segment of stripAnsi(write).split(/[\r\n]/)) {
+          expect(segment.length).toBeLessThanOrEqual(NARROW_COLUMNS);
+        }
+      }
+    } finally {
+      if (previousColumns) {
+        Object.defineProperty(process.stdout, "columns", previousColumns);
+      } else {
+        delete (process.stdout as unknown as { columns?: number }).columns;
+      }
+    }
   });
 });
 
@@ -128,6 +156,42 @@ describe("printSummary onboarding projection", () => {
     // The eased projection redraws the bar in place and reveals the ghost gain.
     expect(output).toContain("\u001B[5A");
     expect(output).toContain("▓");
+  });
+});
+
+describe("score bar width", () => {
+  it("clamps the score bar so the header fits a narrow terminal", async () => {
+    const NARROW_COLUMNS = 60;
+    const previousColumns = Object.getOwnPropertyDescriptor(process.stdout, "columns");
+    Object.defineProperty(process.stdout, "columns", {
+      value: NARROW_COLUMNS,
+      configurable: true,
+    });
+    try {
+      const writes = await captureStdout(() =>
+        Effect.runPromise(
+          printSummary({
+            diagnostics: [makeDiagnostic("Bugs", "error")],
+            elapsedMilliseconds: 0,
+            scoreResult: { score: 75, label: "OK" } as ScoreResult,
+            totalSourceFileCount: 1,
+            noScoreMessage: "",
+          }),
+        ),
+      );
+      const barLine = stripAnsi(writes.join(""))
+        .split("\n")
+        .find((line) => line.includes("█") && line.includes("░"));
+      // The bar still renders (filled + empty), but the whole line now fits.
+      expect(barLine).toBeDefined();
+      expect((barLine ?? "").length).toBeLessThanOrEqual(NARROW_COLUMNS);
+    } finally {
+      if (previousColumns) {
+        Object.defineProperty(process.stdout, "columns", previousColumns);
+      } else {
+        delete (process.stdout as unknown as { columns?: number }).columns;
+      }
+    }
   });
 });
 

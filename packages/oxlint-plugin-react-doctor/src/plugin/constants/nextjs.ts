@@ -1,5 +1,9 @@
-export const PAGE_FILE_PATTERN = /\/page\.(tsx?|jsx?)$/;
-export const PAGE_OR_LAYOUT_FILE_PATTERN = /\/(page|layout)\.(tsx?|jsx?)$/;
+export const NEXTJS_SOURCE_FILE_EXTENSION_GROUP = "(?:tsx?|jsx?|mts|mjs)";
+
+export const PAGE_FILE_PATTERN = new RegExp(`/page\\.${NEXTJS_SOURCE_FILE_EXTENSION_GROUP}$`);
+export const PAGE_OR_LAYOUT_FILE_PATTERN = new RegExp(
+  `/(page|layout)\\.${NEXTJS_SOURCE_FILE_EXTENSION_GROUP}$`,
+);
 
 export const INTERNAL_PAGE_PATH_PATTERN =
   /\/(?:(?:\((?:dashboard|admin|settings|account|internal|manage|console|portal|auth|onboarding|app|ee|protected)\))|(?:dashboard|admin|settings|account|internal|manage|console|portal))\//i;
@@ -22,7 +26,9 @@ export const POLYFILL_SCRIPT_PATTERN = /polyfill\.io|polyfill\.min\.js|cdn\.poly
 
 export const APP_DIRECTORY_PATTERN = /\/app\//;
 
-export const ROUTE_HANDLER_FILE_PATTERN = /\/route\.(tsx?|jsx?)$/;
+export const ROUTE_HANDLER_FILE_PATTERN = new RegExp(
+  `/route\\.${NEXTJS_SOURCE_FILE_EXTENSION_GROUP}$`,
+);
 
 export const CRON_ROUTE_PATTERN = /\/(?:cron|jobs\/cron)(?:\/|$)/i;
 
@@ -39,9 +45,13 @@ export const MUTATING_ROUTE_SEGMENTS = new Set([
   "deactivate",
 ]);
 
-export const ERROR_BOUNDARY_FILE_PATTERN = /\/(error|global-error)\.(tsx?|jsx?)$/;
+export const ERROR_BOUNDARY_FILE_PATTERN = new RegExp(
+  `/(error|global-error)\\.${NEXTJS_SOURCE_FILE_EXTENSION_GROUP}$`,
+);
 
-export const GLOBAL_ERROR_FILE_PATTERN = /\/global-error\.(tsx?|jsx?)$/;
+export const GLOBAL_ERROR_FILE_PATTERN = new RegExp(
+  `/global-error\\.${NEXTJS_SOURCE_FILE_EXTENSION_GROUP}$`,
+);
 
 export const ROUTE_HANDLER_HTTP_METHODS = new Set([
   "GET",
@@ -55,4 +65,6 @@ export const ROUTE_HANDLER_HTTP_METHODS = new Set([
 
 export const GOOGLE_ANALYTICS_SCRIPT_PATTERN = /google-analytics\.com|googletagmanager\.com\/gtag/;
 
-export const OG_IMAGE_FILE_PATTERN = /\/(opengraph-image|twitter-image)\d*\.(tsx?|jsx?)$/;
+export const OG_IMAGE_FILE_PATTERN = new RegExp(
+  `/(opengraph-image|twitter-image)\\d*\\.${NEXTJS_SOURCE_FILE_EXTENSION_GROUP}$`,
+);

@@ -1,7 +1,7 @@
 ---
 name: react-doctor
 description: Use when finishing a feature, fixing a bug, before committing React code, or when the user types `/doctor`, asks to scan, triage, or clean up React diagnostics. Covers lint, accessibility, bundle size, architecture. Includes a regression check and a full local-triage workflow that fetches the canonical playbook.
-version: "1.1.0"
+version: "1.2.0"
 ---
 
 # React Doctor
@@ -34,7 +34,7 @@ Pair it with the matching per-rule prompts at `https://www.react.doctor/prompts/
 
 ## Configuring or explaining rules
 
-When the user wants to understand a rule, disagrees with one, or wants to disable / tune which rules run (not fix code), use the `doctor-explain` skill (alias `/doctor-config`). Start with `npx react-doctor@latest rules explain <rule>`, then apply the narrowest control via `npx react-doctor@latest rules disable|set|category|ignore-tag …`, which edits your `doctor.config.*` (or `package.json#reactDoctor`).
+When the user wants to understand a rule, disagrees with one, or wants to disable / tune which rules run (not fix code), read [references/explain.md](references/explain.md) and follow it. Start with `npx react-doctor@latest rules explain <rule>`, then apply the narrowest control via `npx react-doctor@latest rules disable|set|category|ignore-tag …`, which edits your `doctor.config.*` (or `package.json#reactDoctor`).
 
 ## Command
 

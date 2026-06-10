@@ -3,10 +3,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
-const NEVER_MESSAGE = (): string => `This prop is written inconsistently.`;
-const ALWAYS_MESSAGE = (): string => `This prop is written inconsistently.`;
+const NEVER_MESSAGE = (): string =>
+  "This boolean prop style disagrees with the project setting, so equivalent true props are harder to scan consistently.";
+const ALWAYS_MESSAGE = (): string =>
+  "This boolean prop style disagrees with the project setting, so equivalent true props are harder to scan consistently.";
 const FALSE_OMITTED_MESSAGE = (attributeName: string): string =>
-  `\`${attributeName}={false}\` does nothing.`;
+  `\`${attributeName}={false}\` does nothing, so the explicit false value adds noise without changing output.`;
 
 interface JsxBooleanValueSettings {
   mode?: "never" | "always";
@@ -45,7 +47,7 @@ export const jsxBooleanValue = defineRule<Rule>({
   // concern, not a bug class. Default off.
   defaultEnabled: false,
   recommendation:
-    "Pick a single boolean-attribute style across the codebase (default: omit `={true}`).",
+    "Use one boolean-attribute style so equivalent true props scan the same across the codebase.",
   category: "Architecture",
   create: (context) => {
     const settings = resolveSettings(context.settings);

@@ -25,7 +25,7 @@ export const rnPreferPressable = defineRule<Rule>({
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    "Use `<Pressable>` from react-native (or react-native-gesture-handler) instead of the old Touchable* components.",
+    "Use `<Pressable>` because Touchable* components are frozen and lack Pressable's state-based feedback and accessibility behavior.",
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       const source = node.source?.value;

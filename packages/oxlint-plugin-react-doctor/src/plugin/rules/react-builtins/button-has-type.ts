@@ -10,7 +10,8 @@ import type { Rule } from "../../utils/rule.js";
 
 const MISSING_MESSAGE =
   "Your users can submit the form by accident because a `<button>` with no `type` defaults to submit.";
-const INVALID_MESSAGE = "This button's `type` is invalid.";
+const INVALID_MESSAGE =
+  "This button has an invalid `type`, so the browser may treat it like a submit button.";
 
 interface ButtonHasTypeSettings {
   button?: boolean;
@@ -108,7 +109,8 @@ export const buttonHasType = defineRule<Rule>({
   id: "button-has-type",
   title: "Button missing explicit type",
   severity: "warn",
-  recommendation: 'Always set a `type` on a `<button>`: `type="button"`, `"submit"`, or `"reset"`.',
+  recommendation:
+    'Set an explicit button `type` so plain buttons do not submit forms by accident: `type="button"`, `"submit"`, or `"reset"`.',
   create: (context) => {
     const settings = resolveSettings(context.settings);
     // Storybook stories and tests routinely render bare `<button>` without

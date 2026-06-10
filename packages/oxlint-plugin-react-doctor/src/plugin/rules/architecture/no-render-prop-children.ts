@@ -18,7 +18,7 @@ const RENDER_PROP_PATTERN = /^render[A-Z]/;
 // `children` would be cleaner".
 export const noRenderPropChildren = defineRule<Rule>({
   id: "no-render-prop-children",
-  title: "Too many render props",
+  title: "Render-prop slots make this component hard to extend",
   tags: ["test-noise"],
   severity: "warn",
   recommendation:

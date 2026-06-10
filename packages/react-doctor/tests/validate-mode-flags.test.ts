@@ -19,4 +19,15 @@ describe("validateModeFlags", () => {
   it("allows --yes and --full together (skip prompts + force a full scan are orthogonal)", () => {
     expect(() => validateModeFlags({ yes: true, full: true })).not.toThrow();
   });
+
+  it("rejects --sfw combined with --json / --score / --staged / --diff", () => {
+    expect(() => validateModeFlags({ sfw: true, json: true })).toThrow("Cannot combine --sfw");
+    expect(() => validateModeFlags({ sfw: true, score: true })).toThrow("Cannot combine --sfw");
+    expect(() => validateModeFlags({ sfw: true, staged: true })).toThrow("Cannot combine --sfw");
+    expect(() => validateModeFlags({ sfw: true, diff: "main" })).toThrow("Cannot combine --sfw");
+  });
+
+  it("allows --sfw on its own", () => {
+    expect(() => validateModeFlags({ sfw: true })).not.toThrow();
+  });
 });

@@ -40,11 +40,11 @@ const buildMessage = (importedNames: ReadonlyArray<string>): string =>
 // positive.
 export const preactNoReactHooksImport = defineRule<Rule>({
   id: "preact-no-react-hooks-import",
-  title: "Hooks imported from react",
+  title: "React hook imports break pure Preact hook state",
   requires: ["pure-preact"],
   severity: "warn",
   recommendation:
-    'Replace `from "react"` with `from "preact/hooks"` (or `from "preact/compat"` if other React API surface is needed).',
+    "Import hooks from `preact/hooks` so they share Preact's renderer state instead of loading a second hook implementation.",
   create: (context) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       const source = node.source;

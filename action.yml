@@ -56,14 +56,14 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - uses: actions/setup-node@v5
+    - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
       with:
         node-version: ${{ inputs.node-version }}
         package-manager-cache: false
 
     - id: pr-files
       if: ${{ github.event_name == 'pull_request' && inputs.scope != 'full' }}
-      uses: actions/github-script@v8
+      uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
       env:
         REACT_DOCTOR_CHANGED_FILES: ${{ runner.temp }}/react-doctor-changed-files.txt
       with:
@@ -197,7 +197,7 @@ runs:
 
     - name: Update sticky PR comment
       if: ${{ always() && github.event_name == 'pull_request' && inputs.comment == 'true' }}
-      uses: actions/github-script@v8
+      uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
       env:
         REACT_DOCTOR_COMMENT_FILE: ${{ steps.render.outputs.comment-file }}
       with:
@@ -236,7 +236,7 @@ runs:
 
     - name: Post inline review comments
       if: ${{ always() && github.event_name == 'pull_request' && inputs.review-comments == 'true' }}
-      uses: actions/github-script@v8
+      uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
       env:
         REACT_DOCTOR_REPORT_FILE: ${{ steps.scan.outputs.report-file }}
         INPUT_DIRECTORY: ${{ inputs.directory }}
@@ -397,7 +397,7 @@ runs:
 
     - name: Publish commit status
       if: ${{ always() && inputs.commit-status == 'true' }}
-      uses: actions/github-script@v8
+      uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
       env:
         REACT_DOCTOR_SCORE: ${{ steps.render.outputs.score }}
         REACT_DOCTOR_ERROR_COUNT: ${{ steps.render.outputs.error-count }}

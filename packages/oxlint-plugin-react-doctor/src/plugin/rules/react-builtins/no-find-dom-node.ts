@@ -11,10 +11,10 @@ const MESSAGE = "`findDOMNode` crashes your app in React 19 because it was remov
 // `React`, `ReactDOM`, `ReactDom`.
 export const noFindDomNode = defineRule<Rule>({
   id: "no-find-dom-node",
-  title: "Use of findDOMNode",
+  title: "findDOMNode breaks component encapsulation",
   severity: "warn",
   recommendation:
-    "Use a ref (`useRef` or `createRef`) to reach DOM nodes instead of `findDOMNode`.",
+    "Use a ref to reach DOM nodes because `findDOMNode` was removed in React 19 and can crash the app.",
   create: (context) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const callee = node.callee;

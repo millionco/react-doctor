@@ -32,9 +32,10 @@ const assertSkillManifestParseable = (manifestPath: string): void => {
   }
 };
 
-// Ship every skill directory under `skills/` (react-doctor + doctor-explain
-// today) so `react-doctor install` can install them all. Each is validated
-// at build time so a broken SKILL.md is caught here, not at install time.
+// Ship every skill directory under `skills/` (the `react-doctor` skill and
+// its `references/` today) so `react-doctor install` can install them all.
+// Each is validated at build time so a broken SKILL.md is caught here, not
+// at install time.
 const copySkillsToDist = () => {
   const skillsRoot = path.resolve(packageRoot, "../../skills");
   const distSkillsRoot = path.resolve(packageRoot, "dist/skills");
@@ -72,11 +73,9 @@ export default defineConfig({
         // stay external.
         alwaysBundle: ["commander", "ora"],
         neverBundle: [
-          "@effect/platform-node-shared",
           // Sentry bundles its own OpenTelemetry instrumentation chain
           // and resolves native/optional deps via require() at runtime;
-          // keep it external so those lookups run untouched (same
-          // rationale as `effect` and `deslop-js` below).
+          // keep it external so those lookups run untouched.
           "@sentry/node",
           "agent-install",
           // Config loading/editing: jiti (TS/JS config eval) + confbox
@@ -109,10 +108,6 @@ export default defineConfig({
           // resolves the bindings from the deslop-js node_modules
           // tree on install — see issue #404.
           "deslop-js",
-          // Effect ships as ~1MB+ of tree-shakable TypeScript; bundling
-          // it would balloon the published tarball. Match react-doctor-evals
-          // and let installers pull it as a regular dependency.
-          "effect",
           "oxc-parser",
           "oxc-resolver",
           "oxlint",
@@ -152,14 +147,12 @@ export default defineConfig({
       deps: {
         alwaysBundle: ["commander", "ora"],
         neverBundle: [
-          "@effect/platform-node-shared",
           "@sentry/node",
           "agent-install",
           "confbox",
           "jiti",
           "magicast",
           "deslop-js",
-          "effect",
           "oxc-parser",
           "oxc-resolver",
           "oxlint",
@@ -181,13 +174,11 @@ export default defineConfig({
       entry: { lsp: "./src/lsp.ts" },
       deps: {
         neverBundle: [
-          "@effect/platform-node-shared",
           // Sentry telemetry for `experimental-lsp` — kept external for the
           // same reason as the CLI pack (it resolves its own OTel/native deps
           // via require() at runtime).
           "@sentry/node",
           "deslop-js",
-          "effect",
           "oxc-parser",
           "oxc-resolver",
           "oxlint",

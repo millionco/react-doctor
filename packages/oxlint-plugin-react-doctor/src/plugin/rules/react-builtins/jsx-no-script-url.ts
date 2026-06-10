@@ -56,7 +56,7 @@ export const jsxNoScriptUrl = defineRule<Rule>({
   title: "javascript: URL in JSX",
   severity: "error",
   recommendation:
-    "Replace `javascript:` URLs with `onClick` or `onSubmit` handlers. React 19 blocks them anyway.",
+    "Use real event handlers instead of `javascript:` URLs so injected URL text cannot execute as code.",
   category: "Security",
   create: (context) => {
     const options = resolveSettings(context.settings);

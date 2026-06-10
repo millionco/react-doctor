@@ -61,6 +61,7 @@ ${formatExampleLines([
   ["react-doctor ./apps/web", "scan a specific directory"],
   ["react-doctor --diff main", "scan only files changed vs. main"],
   ["react-doctor --staged", "scan staged files (pre-commit hook)"],
+  ["react-doctor --category Security", "show only one diagnostic category"],
   ["react-doctor --blocking warning", "fail CI on warnings too (default: error)"],
   ["react-doctor --json > report.json", "write a machine-readable report"],
   ["react-doctor why src/App.tsx:42", "explain why a rule fired there"],
@@ -90,6 +91,11 @@ ${formatExampleLines([
 ${highlighter.dim("Learn more:")}
   ${highlighter.info(CANONICAL_GITHUB_URL)}
 `;
+
+const collectCategoryOption = (value: string, previousValues: string[] | undefined): string[] => [
+  ...(previousValues ?? []),
+  value,
+];
 
 const program = new Command()
   .name("react-doctor")
@@ -126,6 +132,12 @@ const program = new Command()
     ).hideHelp(),
   )
   .option("--no-score", "skip the score API, the share URL, and crash reporting")
+  .addOption(
+    new Option(
+      "--category <category>",
+      "only show diagnostics in a category (repeatable; e.g. Security)",
+    ).argParser(collectCategoryOption),
+  )
   .option(
     "--no-telemetry",
     "alias for --no-score (skip the score API, share URL, and crash reporting)",
@@ -147,6 +159,10 @@ const program = new Command()
   )
   .option("--warnings", "show warning-severity diagnostics (default)")
   .option("--no-warnings", "hide warning-severity diagnostics (errors only)")
+  .option(
+    "--sfw",
+    "demo: print the Socket.dev supply-chain score of every direct dependency, then exit",
+  )
   .option("--color", "force colored output")
   .option("--no-color", "disable colored output (also honors NO_COLOR)")
   .addHelpText("after", renderRootHelpEpilog);

@@ -45,7 +45,8 @@ export const jsxNoCommentTextnodes = defineRule<Rule>({
   id: "jsx-no-comment-textnodes",
   title: "Comment rendered as JSX text",
   severity: "warn",
-  recommendation: "Wrap JSX comments in `{/* … */}` so they're parsed as comments, not children.",
+  recommendation:
+    "Wrap JSX comments in `{/* … */}` so users do not see comment text rendered as children.",
   create: (context) => ({
     JSXText(node: EsTreeNodeOfType<"JSXText">) {
       if (!hasCommentLikePattern(node.value)) return;

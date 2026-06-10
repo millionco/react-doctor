@@ -13,10 +13,11 @@ const MESSAGE =
 // and as a property in the props object passed to `React.createElement`.
 export const noDanger = defineRule<Rule>({
   id: "no-danger",
-  title: "Use of dangerouslySetInnerHTML",
+  title: "Raw HTML injection can run unsafe markup",
   severity: "warn",
   category: "Security",
-  recommendation: "Render trusted content as React children rather than injecting raw HTML.",
+  recommendation:
+    "Render trusted content as React children so attacker-controlled HTML cannot run in users' browsers.",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const propAttribute = hasJsxProp(node.attributes, "dangerouslySetInnerHTML");

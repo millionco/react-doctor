@@ -13,7 +13,7 @@ export const rerenderLazyStateInit = defineRule<Rule>({
   severity: "warn",
   category: "Performance",
   recommendation:
-    "Wrap in an arrow function so it only runs once: `useState(() => expensiveComputation())`",
+    "Wrap expensive initial state in an arrow function so the initializer does not rerun and get thrown away on every render.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isHookCall(node, "useState") || !node.arguments?.length) return;

@@ -86,7 +86,8 @@ export const noDangerWithChildren = defineRule<Rule>({
   id: "no-danger-with-children",
   title: "dangerouslySetInnerHTML with children",
   severity: "error",
-  recommendation: "Use either `children` or `dangerouslySetInnerHTML`, never both.",
+  recommendation:
+    "Use either `children` or `dangerouslySetInnerHTML` so React does not ignore one source of content.",
   category: "Correctness",
   create: (context) => ({
     JSXElement(node: EsTreeNodeOfType<"JSXElement">) {

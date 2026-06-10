@@ -62,7 +62,8 @@ exports[`in-process render across terminal widths and render modes > matches the
   ────────────────────────────────────────────────────────────
 
   Docs: https://react.doctor/docs
-  Learn more about fixing issues, setting up CI/CD, and configuring rules with a config file
+  Learn more about fixing issues, setting up CI/CD, and
+  configuring rules with a config file
 
   GitHub: https://github.com/millionco/react-doctor
   Report issues and star the repository!"
@@ -70,12 +71,12 @@ exports[`in-process render across terminal widths and render modes > matches the
 
 exports[`in-process render across terminal widths and render modes > matches the terminal-width × mode overflow matrix 1`] = `
 "mode                            60c    80c   100c   120c   160c
-default-errors-great           wrap   wrap     ok     ok     ok
-default-errors-perfect         wrap   wrap     ok     ok     ok
-default-errors-ok              wrap   wrap     ok     ok     ok
-default-errors-needs-work      wrap   wrap     ok     ok     ok
-default-errors-no-score        wrap   wrap     ok     ok     ok
-default-warnings-only          wrap   wrap     ok     ok     ok
-default-clean-perfect          wrap   wrap     ok     ok     ok
+default-errors-great           wrap     ok     ok     ok     ok
+default-errors-perfect         wrap     ok     ok     ok     ok
+default-errors-ok              wrap     ok     ok     ok     ok
+default-errors-needs-work      wrap     ok     ok     ok     ok
+default-errors-no-score        wrap     ok     ok     ok     ok
+default-warnings-only          wrap     ok     ok     ok     ok
+default-clean-perfect          wrap     ok     ok     ok     ok
 verbose-errors-great           wrap   wrap     ok     ok     ok"
 `;

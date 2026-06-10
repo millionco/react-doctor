@@ -52,6 +52,11 @@ export const UPPERCASE_PATTERN = /^[A-Z]/;
 // destructured.
 export const REACT_HANDLER_PROP_PATTERN = /^on[A-Z]/;
 
+// Naming convention for locally declared event-handler functions —
+// `handleSubmit`, `onLogin`, etc. Functions named this way are wired
+// to events and invoked later, not during render.
+export const HANDLER_FUNCTION_NAME_PATTERN = /^(?:on|handle)[A-Z]/;
+
 export const EFFECT_HOOK_NAMES = new Set(["useEffect", "useLayoutEffect"]);
 export const HOOKS_WITH_DEPS = new Set(["useEffect", "useLayoutEffect", "useMemo", "useCallback"]);
 

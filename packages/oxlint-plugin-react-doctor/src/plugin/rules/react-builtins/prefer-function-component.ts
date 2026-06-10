@@ -6,7 +6,8 @@ import { isEs6Component } from "../../utils/is-es6-component.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
-const MESSAGE = "This class component is harder to maintain than a function component.";
+const MESSAGE =
+  "This class component keeps behavior in lifecycle methods, so state and effects are harder to follow than in a hook-based function component.";
 
 interface PreferFunctionComponentSettings {
   allowErrorBoundary?: boolean;
@@ -68,7 +69,8 @@ export const preferFunctionComponent = defineRule<Rule>({
   // third-party libraries. Forcing rewrites by default is too
   // opinionated. Off by default.
   defaultEnabled: false,
-  recommendation: "Re-write the class component as a function component using hooks.",
+  recommendation:
+    "Rewrite the class component as a function component so state and effects use modern hook patterns instead of class lifecycles.",
   category: "Architecture",
   create: (context) => {
     const settings = resolveSettings(context.settings);

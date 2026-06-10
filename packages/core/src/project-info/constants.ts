@@ -1,4 +1,4 @@
-export const SOURCE_FILE_PATTERN = /\.(tsx?|jsx?)$/;
+export const SOURCE_FILE_PATTERN = /\.(tsx?|jsx?|mts|mjs)$/;
 
 // Bundler output — IIFE / UMD / global builds and explicitly-minified
 // drops (e.g. tsup/rollup emitting `widget.iife.js`, `sdk.umd.js`,
@@ -6,9 +6,9 @@ export const SOURCE_FILE_PATTERN = /\.(tsx?|jsx?)$/;
 // alongside real source rather than an ignored `dist/`) — is generated,
 // usually minified, and not worth linting. Flagging a 17k-line bundle is
 // pure noise, so these are excluded from every source-file scan by
-// default. Only `.js` is matched: these are browser-shippable bundles,
-// and `.cjs`/`.mjs` aren't source files anyway.
-export const GENERATED_BUNDLE_FILE_PATTERN = /\.(iife|umd|global|min)\.js$/i;
+// default. Only `.js` / `.mjs` are matched: these are browser-shippable
+// bundles, and `.cjs` isn't part of the scanner's source-file set.
+export const GENERATED_BUNDLE_FILE_PATTERN = /\.(iife|umd|global|min)\.m?js$/i;
 
 // Minified / generated files (e.g. a one-line `public/inject.js` bundle)
 // don't carry the `.min`/`.iife` extension we can match on, so we sniff

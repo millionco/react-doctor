@@ -86,7 +86,6 @@ import { jsxNoNewArrayAsProp } from "./rules/react-builtins/jsx-no-new-array-as-
 import { jsxNoNewFunctionAsProp } from "./rules/react-builtins/jsx-no-new-function-as-prop.js";
 import { jsxNoNewObjectAsProp } from "./rules/react-builtins/jsx-no-new-object-as-prop.js";
 import { jsxNoScriptUrl } from "./rules/react-builtins/jsx-no-script-url.js";
-import { jsxNoTargetBlank } from "./rules/react-builtins/jsx-no-target-blank.js";
 import { jsxNoUndef } from "./rules/react-builtins/jsx-no-undef.js";
 import { jsxNoUselessFragment } from "./rules/react-builtins/jsx-no-useless-fragment.js";
 import { jsxPascalCase } from "./rules/react-builtins/jsx-pascal-case.js";
@@ -357,6 +356,7 @@ export const reactDoctorRules = [
       ...activityWrapsEffectHeavySubtree,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(activityWrapsEffectHeavySubtree.requires ?? [])])],
     },
   },
   {
@@ -368,6 +368,7 @@ export const reactDoctorRules = [
       ...advancedEventHandlerRefs,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(advancedEventHandlerRefs.requires ?? [])])],
     },
   },
   {
@@ -379,6 +380,7 @@ export const reactDoctorRules = [
       ...altText,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(altText.requires ?? [])])],
     },
   },
   {
@@ -390,6 +392,7 @@ export const reactDoctorRules = [
       ...anchorAmbiguousText,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(anchorAmbiguousText.requires ?? [])])],
     },
   },
   {
@@ -401,6 +404,7 @@ export const reactDoctorRules = [
       ...anchorHasContent,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(anchorHasContent.requires ?? [])])],
     },
   },
   {
@@ -412,6 +416,7 @@ export const reactDoctorRules = [
       ...anchorIsValid,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(anchorIsValid.requires ?? [])])],
     },
   },
   {
@@ -423,6 +428,7 @@ export const reactDoctorRules = [
       ...ariaActivedescendantHasTabindex,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(ariaActivedescendantHasTabindex.requires ?? [])])],
     },
   },
   {
@@ -434,6 +440,7 @@ export const reactDoctorRules = [
       ...ariaProps,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(ariaProps.requires ?? [])])],
     },
   },
   {
@@ -445,6 +452,7 @@ export const reactDoctorRules = [
       ...ariaProptypes,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(ariaProptypes.requires ?? [])])],
     },
   },
   {
@@ -456,6 +464,7 @@ export const reactDoctorRules = [
       ...ariaRole,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(ariaRole.requires ?? [])])],
     },
   },
   {
@@ -467,6 +476,7 @@ export const reactDoctorRules = [
       ...ariaUnsupportedElements,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(ariaUnsupportedElements.requires ?? [])])],
     },
   },
   {
@@ -489,6 +499,7 @@ export const reactDoctorRules = [
       ...asyncDeferAwait,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(asyncDeferAwait.requires ?? [])])],
     },
   },
   {
@@ -511,6 +522,7 @@ export const reactDoctorRules = [
       ...autocompleteValid,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(autocompleteValid.requires ?? [])])],
     },
   },
   {
@@ -522,6 +534,7 @@ export const reactDoctorRules = [
       ...buttonHasType,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(buttonHasType.requires ?? [])])],
     },
   },
   {
@@ -533,6 +546,7 @@ export const reactDoctorRules = [
       ...checkedRequiresOnchangeOrReadonly,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(checkedRequiresOnchangeOrReadonly.requires ?? [])])],
     },
   },
   {
@@ -544,6 +558,7 @@ export const reactDoctorRules = [
       ...clickEventsHaveKeyEvents,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(clickEventsHaveKeyEvents.requires ?? [])])],
     },
   },
   {
@@ -555,6 +570,7 @@ export const reactDoctorRules = [
       ...clientLocalstorageNoVersion,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(clientLocalstorageNoVersion.requires ?? [])])],
     },
   },
   {
@@ -566,6 +582,7 @@ export const reactDoctorRules = [
       ...clientPassiveEventListeners,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(clientPassiveEventListeners.requires ?? [])])],
     },
   },
   {
@@ -577,6 +594,7 @@ export const reactDoctorRules = [
       ...controlHasAssociatedLabel,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(controlHasAssociatedLabel.requires ?? [])])],
     },
   },
   {
@@ -588,6 +606,7 @@ export const reactDoctorRules = [
       ...noEmDashInJsxText,
       framework: "global",
       category: "Maintainability",
+      requires: [...new Set(["react", ...(noEmDashInJsxText.requires ?? [])])],
     },
   },
   {
@@ -599,6 +618,7 @@ export const reactDoctorRules = [
       ...noRedundantPaddingAxes,
       framework: "global",
       category: "Maintainability",
+      requires: [...new Set(["react", ...(noRedundantPaddingAxes.requires ?? [])])],
     },
   },
   {
@@ -610,6 +630,7 @@ export const reactDoctorRules = [
       ...noRedundantSizeAxes,
       framework: "global",
       category: "Maintainability",
+      requires: [...new Set(["react", ...(noRedundantSizeAxes.requires ?? [])])],
     },
   },
   {
@@ -621,6 +642,7 @@ export const reactDoctorRules = [
       ...noSpaceOnFlexChildren,
       framework: "global",
       category: "Maintainability",
+      requires: [...new Set(["react", ...(noSpaceOnFlexChildren.requires ?? [])])],
     },
   },
   {
@@ -632,6 +654,7 @@ export const reactDoctorRules = [
       ...noThreePeriodEllipsis,
       framework: "global",
       category: "Maintainability",
+      requires: [...new Set(["react", ...(noThreePeriodEllipsis.requires ?? [])])],
     },
   },
   {
@@ -643,6 +666,7 @@ export const reactDoctorRules = [
       ...noVagueButtonLabel,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(noVagueButtonLabel.requires ?? [])])],
     },
   },
   {
@@ -654,6 +678,7 @@ export const reactDoctorRules = [
       ...displayName,
       framework: "global",
       category: "Maintainability",
+      requires: [...new Set(["react", ...(displayName.requires ?? [])])],
     },
   },
   {
@@ -665,6 +690,7 @@ export const reactDoctorRules = [
       ...effectNeedsCleanup,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(effectNeedsCleanup.requires ?? [])])],
     },
   },
   {
@@ -676,6 +702,7 @@ export const reactDoctorRules = [
       ...exhaustiveDeps,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(exhaustiveDeps.requires ?? [])])],
     },
   },
   {
@@ -699,6 +726,7 @@ export const reactDoctorRules = [
       ...forbidComponentProps,
       framework: "global",
       category: "Maintainability",
+      requires: [...new Set(["react", ...(forbidComponentProps.requires ?? [])])],
     },
   },
   {
@@ -710,6 +738,7 @@ export const reactDoctorRules = [
       ...forbidDomProps,
       framework: "global",
       category: "Maintainability",
+      requires: [...new Set(["react", ...(forbidDomProps.requires ?? [])])],
     },
   },
   {
@@ -721,6 +750,7 @@ export const reactDoctorRules = [
       ...forbidElements,
       framework: "global",
       category: "Maintainability",
+      requires: [...new Set(["react", ...(forbidElements.requires ?? [])])],
     },
   },
   {
@@ -732,6 +762,7 @@ export const reactDoctorRules = [
       ...forwardRefUsesRef,
       framework: "global",
       category: "Maintainability",
+      requires: [...new Set(["react", ...(forwardRefUsesRef.requires ?? [])])],
     },
   },
   {
@@ -743,6 +774,7 @@ export const reactDoctorRules = [
       ...headingHasContent,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(headingHasContent.requires ?? [])])],
     },
   },
   {
@@ -754,6 +786,7 @@ export const reactDoctorRules = [
       ...hookUseState,
       framework: "global",
       category: "Maintainability",
+      requires: [...new Set(["react", ...(hookUseState.requires ?? [])])],
     },
   },
   {
@@ -765,6 +798,7 @@ export const reactDoctorRules = [
       ...hooksNoNanInDeps,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(hooksNoNanInDeps.requires ?? [])])],
     },
   },
   {
@@ -776,6 +810,7 @@ export const reactDoctorRules = [
       ...htmlHasLang,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(htmlHasLang.requires ?? [])])],
     },
   },
   {
@@ -820,6 +855,7 @@ export const reactDoctorRules = [
       ...iframeHasTitle,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(iframeHasTitle.requires ?? [])])],
     },
   },
   {
@@ -831,6 +867,7 @@ export const reactDoctorRules = [
       ...iframeMissingSandbox,
       framework: "global",
       category: "Security",
+      requires: [...new Set(["react", ...(iframeMissingSandbox.requires ?? [])])],
     },
   },
   {
@@ -842,6 +879,7 @@ export const reactDoctorRules = [
       ...imgRedundantAlt,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(imgRedundantAlt.requires ?? [])])],
     },
   },
   {
@@ -853,6 +891,7 @@ export const reactDoctorRules = [
       ...interactiveSupportsFocus,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(interactiveSupportsFocus.requires ?? [])])],
     },
   },
   {
@@ -864,6 +903,7 @@ export const reactDoctorRules = [
       ...jotaiDerivedAtomReturnsFreshObject,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(jotaiDerivedAtomReturnsFreshObject.requires ?? [])])],
     },
   },
   {
@@ -875,6 +915,7 @@ export const reactDoctorRules = [
       ...jotaiSelectAtomInRenderBody,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(jotaiSelectAtomInRenderBody.requires ?? [])])],
     },
   },
   {
@@ -886,6 +927,7 @@ export const reactDoctorRules = [
       ...jotaiTqUseRawQueryAtom,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(jotaiTqUseRawQueryAtom.requires ?? [])])],
     },
   },
   {
@@ -1051,6 +1093,7 @@ export const reactDoctorRules = [
       ...jsxBooleanValue,
       framework: "global",
       category: "Maintainability",
+      requires: [...new Set(["react", ...(jsxBooleanValue.requires ?? [])])],
     },
   },
   {
@@ -1062,6 +1105,7 @@ export const reactDoctorRules = [
       ...jsxCurlyBracePresence,
       framework: "global",
       category: "Maintainability",
+      requires: [...new Set(["react", ...(jsxCurlyBracePresence.requires ?? [])])],
     },
   },
   {
@@ -1073,6 +1117,7 @@ export const reactDoctorRules = [
       ...jsxFilenameExtension,
       framework: "global",
       category: "Maintainability",
+      requires: [...new Set(["react", ...(jsxFilenameExtension.requires ?? [])])],
     },
   },
   {
@@ -1084,6 +1129,7 @@ export const reactDoctorRules = [
       ...jsxFragments,
       framework: "global",
       category: "Maintainability",
+      requires: [...new Set(["react", ...(jsxFragments.requires ?? [])])],
     },
   },
   {
@@ -1095,6 +1141,7 @@ export const reactDoctorRules = [
       ...jsxHandlerNames,
       framework: "global",
       category: "Maintainability",
+      requires: [...new Set(["react", ...(jsxHandlerNames.requires ?? [])])],
     },
   },
   {
@@ -1106,6 +1153,7 @@ export const reactDoctorRules = [
       ...jsxKey,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(jsxKey.requires ?? [])])],
     },
   },
   {
@@ -1117,6 +1165,7 @@ export const reactDoctorRules = [
       ...jsxMaxDepth,
       framework: "global",
       category: "Maintainability",
+      requires: [...new Set(["react", ...(jsxMaxDepth.requires ?? [])])],
     },
   },
   {
@@ -1128,6 +1177,7 @@ export const reactDoctorRules = [
       ...jsxNoCommentTextnodes,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(jsxNoCommentTextnodes.requires ?? [])])],
     },
   },
   {
@@ -1139,6 +1189,7 @@ export const reactDoctorRules = [
       ...jsxNoConstructedContextValues,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(jsxNoConstructedContextValues.requires ?? [])])],
     },
   },
   {
@@ -1150,6 +1201,7 @@ export const reactDoctorRules = [
       ...jsxNoDuplicateProps,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(jsxNoDuplicateProps.requires ?? [])])],
     },
   },
   {
@@ -1161,6 +1213,7 @@ export const reactDoctorRules = [
       ...jsxNoJsxAsProp,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(jsxNoJsxAsProp.requires ?? [])])],
     },
   },
   {
@@ -1172,6 +1225,7 @@ export const reactDoctorRules = [
       ...jsxNoNewArrayAsProp,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(jsxNoNewArrayAsProp.requires ?? [])])],
     },
   },
   {
@@ -1183,6 +1237,7 @@ export const reactDoctorRules = [
       ...jsxNoNewFunctionAsProp,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(jsxNoNewFunctionAsProp.requires ?? [])])],
     },
   },
   {
@@ -1194,6 +1249,7 @@ export const reactDoctorRules = [
       ...jsxNoNewObjectAsProp,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(jsxNoNewObjectAsProp.requires ?? [])])],
     },
   },
   {
@@ -1205,17 +1261,7 @@ export const reactDoctorRules = [
       ...jsxNoScriptUrl,
       framework: "global",
       category: "Security",
-    },
-  },
-  {
-    key: "react-doctor/jsx-no-target-blank",
-    id: "jsx-no-target-blank",
-    source: "react-doctor",
-    originallyExternal: true,
-    rule: {
-      ...jsxNoTargetBlank,
-      framework: "global",
-      category: "Security",
+      requires: [...new Set(["react", ...(jsxNoScriptUrl.requires ?? [])])],
     },
   },
   {
@@ -1227,6 +1273,7 @@ export const reactDoctorRules = [
       ...jsxNoUndef,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(jsxNoUndef.requires ?? [])])],
     },
   },
   {
@@ -1238,6 +1285,7 @@ export const reactDoctorRules = [
       ...jsxNoUselessFragment,
       framework: "global",
       category: "Maintainability",
+      requires: [...new Set(["react", ...(jsxNoUselessFragment.requires ?? [])])],
     },
   },
   {
@@ -1249,6 +1297,7 @@ export const reactDoctorRules = [
       ...jsxPascalCase,
       framework: "global",
       category: "Maintainability",
+      requires: [...new Set(["react", ...(jsxPascalCase.requires ?? [])])],
     },
   },
   {
@@ -1260,6 +1309,7 @@ export const reactDoctorRules = [
       ...jsxPropsNoSpreadMulti,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(jsxPropsNoSpreadMulti.requires ?? [])])],
     },
   },
   {
@@ -1271,6 +1321,7 @@ export const reactDoctorRules = [
       ...jsxPropsNoSpreading,
       framework: "global",
       category: "Maintainability",
+      requires: [...new Set(["react", ...(jsxPropsNoSpreading.requires ?? [])])],
     },
   },
   {
@@ -1282,6 +1333,7 @@ export const reactDoctorRules = [
       ...labelHasAssociatedControl,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(labelHasAssociatedControl.requires ?? [])])],
     },
   },
   {
@@ -1293,6 +1345,7 @@ export const reactDoctorRules = [
       ...lang,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(lang.requires ?? [])])],
     },
   },
   {
@@ -1304,6 +1357,7 @@ export const reactDoctorRules = [
       ...mediaHasCaption,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(mediaHasCaption.requires ?? [])])],
     },
   },
   {
@@ -1315,6 +1369,7 @@ export const reactDoctorRules = [
       ...mouseEventsHaveKeyEvents,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(mouseEventsHaveKeyEvents.requires ?? [])])],
     },
   },
   {
@@ -1579,6 +1634,7 @@ export const reactDoctorRules = [
       ...noAccessKey,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(noAccessKey.requires ?? [])])],
     },
   },
   {
@@ -1590,6 +1646,7 @@ export const reactDoctorRules = [
       ...noAdjustStateOnPropChange,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noAdjustStateOnPropChange.requires ?? [])])],
     },
   },
   {
@@ -1601,6 +1658,7 @@ export const reactDoctorRules = [
       ...noAriaHiddenOnFocusable,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(noAriaHiddenOnFocusable.requires ?? [])])],
     },
   },
   {
@@ -1623,6 +1681,7 @@ export const reactDoctorRules = [
       ...noArrayIndexKey,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(noArrayIndexKey.requires ?? [])])],
     },
   },
   {
@@ -1634,6 +1693,7 @@ export const reactDoctorRules = [
       ...noAutofocus,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(noAutofocus.requires ?? [])])],
     },
   },
   {
@@ -1656,6 +1716,7 @@ export const reactDoctorRules = [
       ...noCascadingSetState,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noCascadingSetState.requires ?? [])])],
     },
   },
   {
@@ -1667,6 +1728,7 @@ export const reactDoctorRules = [
       ...noChainStateUpdates,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noChainStateUpdates.requires ?? [])])],
     },
   },
   {
@@ -1678,6 +1740,7 @@ export const reactDoctorRules = [
       ...noChildrenProp,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noChildrenProp.requires ?? [])])],
     },
   },
   {
@@ -1689,6 +1752,7 @@ export const reactDoctorRules = [
       ...noCloneElement,
       framework: "global",
       category: "Maintainability",
+      requires: [...new Set(["react", ...(noCloneElement.requires ?? [])])],
     },
   },
   {
@@ -1700,6 +1764,7 @@ export const reactDoctorRules = [
       ...noCreateContextInRender,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noCreateContextInRender.requires ?? [])])],
     },
   },
   {
@@ -1711,6 +1776,7 @@ export const reactDoctorRules = [
       ...noCreateStoreInRender,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noCreateStoreInRender.requires ?? [])])],
     },
   },
   {
@@ -1722,6 +1788,7 @@ export const reactDoctorRules = [
       ...noDanger,
       framework: "global",
       category: "Security",
+      requires: [...new Set(["react", ...(noDanger.requires ?? [])])],
     },
   },
   {
@@ -1733,6 +1800,7 @@ export const reactDoctorRules = [
       ...noDangerWithChildren,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noDangerWithChildren.requires ?? [])])],
     },
   },
   {
@@ -1766,6 +1834,7 @@ export const reactDoctorRules = [
       ...noDerivedState,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noDerivedState.requires ?? [])])],
     },
   },
   {
@@ -1777,6 +1846,7 @@ export const reactDoctorRules = [
       ...noDerivedStateEffect,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noDerivedStateEffect.requires ?? [])])],
     },
   },
   {
@@ -1788,6 +1858,7 @@ export const reactDoctorRules = [
       ...noDerivedUseState,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noDerivedUseState.requires ?? [])])],
     },
   },
   {
@@ -1799,6 +1870,7 @@ export const reactDoctorRules = [
       ...noDidMountSetState,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noDidMountSetState.requires ?? [])])],
     },
   },
   {
@@ -1810,6 +1882,7 @@ export const reactDoctorRules = [
       ...noDidUpdateSetState,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noDidUpdateSetState.requires ?? [])])],
     },
   },
   {
@@ -1821,6 +1894,7 @@ export const reactDoctorRules = [
       ...noDirectMutationState,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noDirectMutationState.requires ?? [])])],
     },
   },
   {
@@ -1832,6 +1906,7 @@ export const reactDoctorRules = [
       ...noDirectStateMutation,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noDirectStateMutation.requires ?? [])])],
     },
   },
   {
@@ -1854,6 +1929,7 @@ export const reactDoctorRules = [
       ...noDistractingElements,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(noDistractingElements.requires ?? [])])],
     },
   },
   {
@@ -1865,6 +1941,7 @@ export const reactDoctorRules = [
       ...noDocumentStartViewTransition,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noDocumentStartViewTransition.requires ?? [])])],
     },
   },
   {
@@ -1887,6 +1964,7 @@ export const reactDoctorRules = [
       ...noEffectChain,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noEffectChain.requires ?? [])])],
     },
   },
   {
@@ -1898,6 +1976,7 @@ export const reactDoctorRules = [
       ...noEffectEventHandler,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noEffectEventHandler.requires ?? [])])],
     },
   },
   {
@@ -1909,6 +1988,7 @@ export const reactDoctorRules = [
       ...noEffectEventInDeps,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noEffectEventInDeps.requires ?? [])])],
     },
   },
   {
@@ -1920,6 +2000,7 @@ export const reactDoctorRules = [
       ...noEffectWithFreshDeps,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noEffectWithFreshDeps.requires ?? [])])],
     },
   },
   {
@@ -1942,6 +2023,7 @@ export const reactDoctorRules = [
       ...noEventHandler,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noEventHandler.requires ?? [])])],
     },
   },
   {
@@ -1953,6 +2035,7 @@ export const reactDoctorRules = [
       ...noEventTriggerState,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noEventTriggerState.requires ?? [])])],
     },
   },
   {
@@ -1964,6 +2047,7 @@ export const reactDoctorRules = [
       ...noFetchInEffect,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noFetchInEffect.requires ?? [])])],
     },
   },
   {
@@ -1975,6 +2059,7 @@ export const reactDoctorRules = [
       ...noFindDomNode,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noFindDomNode.requires ?? [])])],
     },
   },
   {
@@ -1986,6 +2071,7 @@ export const reactDoctorRules = [
       ...noFlushSync,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(noFlushSync.requires ?? [])])],
     },
   },
   {
@@ -2030,6 +2116,7 @@ export const reactDoctorRules = [
       ...noGlobalCssVariableAnimation,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(noGlobalCssVariableAnimation.requires ?? [])])],
     },
   },
   {
@@ -2063,6 +2150,7 @@ export const reactDoctorRules = [
       ...noInitializeState,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noInitializeState.requires ?? [])])],
     },
   },
   {
@@ -2096,6 +2184,7 @@ export const reactDoctorRules = [
       ...noInlinePropOnMemoComponent,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(noInlinePropOnMemoComponent.requires ?? [])])],
     },
   },
   {
@@ -2107,6 +2196,9 @@ export const reactDoctorRules = [
       ...noInteractiveElementToNoninteractiveRole,
       framework: "global",
       category: "Accessibility",
+      requires: [
+        ...new Set(["react", ...(noInteractiveElementToNoninteractiveRole.requires ?? [])]),
+      ],
     },
   },
   {
@@ -2118,6 +2210,7 @@ export const reactDoctorRules = [
       ...noIsMounted,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noIsMounted.requires ?? [])])],
     },
   },
   {
@@ -2151,6 +2244,7 @@ export const reactDoctorRules = [
       ...noLargeAnimatedBlur,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(noLargeAnimatedBlur.requires ?? [])])],
     },
   },
   {
@@ -2162,6 +2256,7 @@ export const reactDoctorRules = [
       ...noLayoutPropertyAnimation,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(noLayoutPropertyAnimation.requires ?? [])])],
     },
   },
   {
@@ -2228,6 +2323,7 @@ export const reactDoctorRules = [
       ...noMirrorPropEffect,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noMirrorPropEffect.requires ?? [])])],
     },
   },
   {
@@ -2250,6 +2346,7 @@ export const reactDoctorRules = [
       ...noMultiComp,
       framework: "global",
       category: "Maintainability",
+      requires: [...new Set(["react", ...(noMultiComp.requires ?? [])])],
     },
   },
   {
@@ -2261,6 +2358,7 @@ export const reactDoctorRules = [
       ...noMutableInDeps,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noMutableInDeps.requires ?? [])])],
     },
   },
   {
@@ -2272,6 +2370,7 @@ export const reactDoctorRules = [
       ...noMutatingReducerState,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noMutatingReducerState.requires ?? [])])],
     },
   },
   {
@@ -2283,6 +2382,7 @@ export const reactDoctorRules = [
       ...noNamespace,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noNamespace.requires ?? [])])],
     },
   },
   {
@@ -2305,6 +2405,7 @@ export const reactDoctorRules = [
       ...noNoninteractiveElementInteractions,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(noNoninteractiveElementInteractions.requires ?? [])])],
     },
   },
   {
@@ -2316,6 +2417,9 @@ export const reactDoctorRules = [
       ...noNoninteractiveElementToInteractiveRole,
       framework: "global",
       category: "Accessibility",
+      requires: [
+        ...new Set(["react", ...(noNoninteractiveElementToInteractiveRole.requires ?? [])]),
+      ],
     },
   },
   {
@@ -2327,6 +2431,7 @@ export const reactDoctorRules = [
       ...noNoninteractiveTabindex,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(noNoninteractiveTabindex.requires ?? [])])],
     },
   },
   {
@@ -2349,6 +2454,7 @@ export const reactDoctorRules = [
       ...noPassDataToParent,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noPassDataToParent.requires ?? [])])],
     },
   },
   {
@@ -2360,6 +2466,7 @@ export const reactDoctorRules = [
       ...noPassLiveStateToParent,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noPassLiveStateToParent.requires ?? [])])],
     },
   },
   {
@@ -2371,6 +2478,7 @@ export const reactDoctorRules = [
       ...noPermanentWillChange,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(noPermanentWillChange.requires ?? [])])],
     },
   },
   {
@@ -2404,6 +2512,7 @@ export const reactDoctorRules = [
       ...noPropCallbackInEffect,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noPropCallbackInEffect.requires ?? [])])],
     },
   },
   {
@@ -2448,6 +2557,7 @@ export const reactDoctorRules = [
       ...noReactChildren,
       framework: "global",
       category: "Maintainability",
+      requires: [...new Set(["react", ...(noReactChildren.requires ?? [])])],
     },
   },
   {
@@ -2481,6 +2591,7 @@ export const reactDoctorRules = [
       ...noRedundantRoles,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(noRedundantRoles.requires ?? [])])],
     },
   },
   {
@@ -2492,6 +2603,7 @@ export const reactDoctorRules = [
       ...noRedundantShouldComponentUpdate,
       framework: "global",
       category: "Maintainability",
+      requires: [...new Set(["react", ...(noRedundantShouldComponentUpdate.requires ?? [])])],
     },
   },
   {
@@ -2525,6 +2637,7 @@ export const reactDoctorRules = [
       ...noRenderReturnValue,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noRenderReturnValue.requires ?? [])])],
     },
   },
   {
@@ -2536,6 +2649,7 @@ export const reactDoctorRules = [
       ...noResetAllStateOnPropChange,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noResetAllStateOnPropChange.requires ?? [])])],
     },
   },
   {
@@ -2547,6 +2661,7 @@ export const reactDoctorRules = [
       ...noScaleFromZero,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(noScaleFromZero.requires ?? [])])],
     },
   },
   {
@@ -2569,6 +2684,7 @@ export const reactDoctorRules = [
       ...noSelfUpdatingEffect,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noSelfUpdatingEffect.requires ?? [])])],
     },
   },
   {
@@ -2580,6 +2696,7 @@ export const reactDoctorRules = [
       ...noSetState,
       framework: "global",
       category: "Maintainability",
+      requires: [...new Set(["react", ...(noSetState.requires ?? [])])],
     },
   },
   {
@@ -2591,6 +2708,7 @@ export const reactDoctorRules = [
       ...noSetStateInRender,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noSetStateInRender.requires ?? [])])],
     },
   },
   {
@@ -2613,6 +2731,7 @@ export const reactDoctorRules = [
       ...noStaticElementInteractions,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(noStaticElementInteractions.requires ?? [])])],
     },
   },
   {
@@ -2624,6 +2743,7 @@ export const reactDoctorRules = [
       ...noStringRefs,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noStringRefs.requires ?? [])])],
     },
   },
   {
@@ -2635,6 +2755,7 @@ export const reactDoctorRules = [
       ...noThisInSfc,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noThisInSfc.requires ?? [])])],
     },
   },
   {
@@ -2657,6 +2778,7 @@ export const reactDoctorRules = [
       ...noTransitionAll,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(noTransitionAll.requires ?? [])])],
     },
   },
   {
@@ -2690,6 +2812,7 @@ export const reactDoctorRules = [
       ...noUnescapedEntities,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noUnescapedEntities.requires ?? [])])],
     },
   },
   {
@@ -2701,6 +2824,7 @@ export const reactDoctorRules = [
       ...noUnknownProperty,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noUnknownProperty.requires ?? [])])],
     },
   },
   {
@@ -2712,6 +2836,7 @@ export const reactDoctorRules = [
       ...noUnsafe,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noUnsafe.requires ?? [])])],
     },
   },
   {
@@ -2723,6 +2848,7 @@ export const reactDoctorRules = [
       ...noUnstableNestedComponents,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(noUnstableNestedComponents.requires ?? [])])],
     },
   },
   {
@@ -2734,6 +2860,7 @@ export const reactDoctorRules = [
       ...noUsememoSimpleExpression,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(noUsememoSimpleExpression.requires ?? [])])],
     },
   },
   {
@@ -2756,6 +2883,7 @@ export const reactDoctorRules = [
       ...noWillUpdateSetState,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(noWillUpdateSetState.requires ?? [])])],
     },
   },
   {
@@ -2778,6 +2906,7 @@ export const reactDoctorRules = [
       ...onlyExportComponents,
       framework: "global",
       category: "Maintainability",
+      requires: [...new Set(["react", ...(onlyExportComponents.requires ?? [])])],
     },
   },
   {
@@ -2855,6 +2984,7 @@ export const reactDoctorRules = [
       ...preferEs6Class,
       framework: "global",
       category: "Maintainability",
+      requires: [...new Set(["react", ...(preferEs6Class.requires ?? [])])],
     },
   },
   {
@@ -2877,6 +3007,7 @@ export const reactDoctorRules = [
       ...preferFunctionComponent,
       framework: "global",
       category: "Maintainability",
+      requires: [...new Set(["react", ...(preferFunctionComponent.requires ?? [])])],
     },
   },
   {
@@ -2888,6 +3019,7 @@ export const reactDoctorRules = [
       ...preferHtmlDialog,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(preferHtmlDialog.requires ?? [])])],
     },
   },
   {
@@ -2921,6 +3053,7 @@ export const reactDoctorRules = [
       ...preferStableEmptyFallback,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(preferStableEmptyFallback.requires ?? [])])],
     },
   },
   {
@@ -2932,6 +3065,7 @@ export const reactDoctorRules = [
       ...preferTagOverRole,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(preferTagOverRole.requires ?? [])])],
     },
   },
   {
@@ -2943,6 +3077,7 @@ export const reactDoctorRules = [
       ...preferUseEffectEvent,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(preferUseEffectEvent.requires ?? [])])],
     },
   },
   {
@@ -2954,6 +3089,7 @@ export const reactDoctorRules = [
       ...preferUseSyncExternalStore,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(preferUseSyncExternalStore.requires ?? [])])],
     },
   },
   {
@@ -2965,6 +3101,7 @@ export const reactDoctorRules = [
       ...preferUseReducer,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(preferUseReducer.requires ?? [])])],
     },
   },
   {
@@ -3064,6 +3201,7 @@ export const reactDoctorRules = [
       ...reactInJsxScope,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(reactInJsxScope.requires ?? [])])],
     },
   },
   {
@@ -3075,6 +3213,7 @@ export const reactDoctorRules = [
       ...reduxUseselectorInlineDerivation,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(reduxUseselectorInlineDerivation.requires ?? [])])],
     },
   },
   {
@@ -3086,6 +3225,7 @@ export const reactDoctorRules = [
       ...reduxUseselectorReturnsNewCollection,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(reduxUseselectorReturnsNewCollection.requires ?? [])])],
     },
   },
   {
@@ -3097,6 +3237,7 @@ export const reactDoctorRules = [
       ...renderingAnimateSvgWrapper,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(renderingAnimateSvgWrapper.requires ?? [])])],
     },
   },
   {
@@ -3119,6 +3260,7 @@ export const reactDoctorRules = [
       ...renderingHoistJsx,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(renderingHoistJsx.requires ?? [])])],
     },
   },
   {
@@ -3130,6 +3272,7 @@ export const reactDoctorRules = [
       ...renderingHydrationMismatchTime,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(renderingHydrationMismatchTime.requires ?? [])])],
     },
   },
   {
@@ -3141,6 +3284,7 @@ export const reactDoctorRules = [
       ...renderingHydrationNoFlicker,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(renderingHydrationNoFlicker.requires ?? [])])],
     },
   },
   {
@@ -3152,6 +3296,7 @@ export const reactDoctorRules = [
       ...renderingScriptDeferAsync,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(renderingScriptDeferAsync.requires ?? [])])],
     },
   },
   {
@@ -3174,6 +3319,7 @@ export const reactDoctorRules = [
       ...renderingUsetransitionLoading,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(renderingUsetransitionLoading.requires ?? [])])],
     },
   },
   {
@@ -3185,6 +3331,7 @@ export const reactDoctorRules = [
       ...requireRenderReturn,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(requireRenderReturn.requires ?? [])])],
     },
   },
   {
@@ -3196,6 +3343,7 @@ export const reactDoctorRules = [
       ...rerenderDeferReadsHook,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(rerenderDeferReadsHook.requires ?? [])])],
     },
   },
   {
@@ -3207,6 +3355,7 @@ export const reactDoctorRules = [
       ...rerenderDependencies,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(rerenderDependencies.requires ?? [])])],
     },
   },
   {
@@ -3218,6 +3367,7 @@ export const reactDoctorRules = [
       ...rerenderDerivedStateFromHook,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(rerenderDerivedStateFromHook.requires ?? [])])],
     },
   },
   {
@@ -3229,6 +3379,7 @@ export const reactDoctorRules = [
       ...rerenderFunctionalSetstate,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(rerenderFunctionalSetstate.requires ?? [])])],
     },
   },
   {
@@ -3240,6 +3391,7 @@ export const reactDoctorRules = [
       ...rerenderLazyRefInit,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(rerenderLazyRefInit.requires ?? [])])],
     },
   },
   {
@@ -3251,6 +3403,7 @@ export const reactDoctorRules = [
       ...rerenderLazyStateInit,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(rerenderLazyStateInit.requires ?? [])])],
     },
   },
   {
@@ -3262,6 +3415,7 @@ export const reactDoctorRules = [
       ...rerenderMemoBeforeEarlyReturn,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(rerenderMemoBeforeEarlyReturn.requires ?? [])])],
     },
   },
   {
@@ -3273,6 +3427,7 @@ export const reactDoctorRules = [
       ...rerenderMemoWithDefaultValue,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(rerenderMemoWithDefaultValue.requires ?? [])])],
     },
   },
   {
@@ -3284,6 +3439,7 @@ export const reactDoctorRules = [
       ...rerenderStateOnlyInHandlers,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(rerenderStateOnlyInHandlers.requires ?? [])])],
     },
   },
   {
@@ -3295,6 +3451,7 @@ export const reactDoctorRules = [
       ...rerenderTransitionsScroll,
       framework: "global",
       category: "Performance",
+      requires: [...new Set(["react", ...(rerenderTransitionsScroll.requires ?? [])])],
     },
   },
   {
@@ -3714,6 +3871,7 @@ export const reactDoctorRules = [
       ...roleHasRequiredAriaProps,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(roleHasRequiredAriaProps.requires ?? [])])],
     },
   },
   {
@@ -3725,6 +3883,7 @@ export const reactDoctorRules = [
       ...roleSupportsAriaProps,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(roleSupportsAriaProps.requires ?? [])])],
     },
   },
   {
@@ -3736,6 +3895,7 @@ export const reactDoctorRules = [
       ...rulesOfHooks,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(rulesOfHooks.requires ?? [])])],
     },
   },
   {
@@ -3747,6 +3907,7 @@ export const reactDoctorRules = [
       ...scope,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(scope.requires ?? [])])],
     },
   },
   {
@@ -3758,6 +3919,7 @@ export const reactDoctorRules = [
       ...selfClosingComp,
       framework: "global",
       category: "Maintainability",
+      requires: [...new Set(["react", ...(selfClosingComp.requires ?? [])])],
     },
   },
   {
@@ -3865,6 +4027,7 @@ export const reactDoctorRules = [
       ...stateInConstructor,
       framework: "global",
       category: "Maintainability",
+      requires: [...new Set(["react", ...(stateInConstructor.requires ?? [])])],
     },
   },
   {
@@ -3876,6 +4039,7 @@ export const reactDoctorRules = [
       ...stylePropObject,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(stylePropObject.requires ?? [])])],
     },
   },
   {
@@ -3887,6 +4051,7 @@ export const reactDoctorRules = [
       ...tabindexNoPositive,
       framework: "global",
       category: "Accessibility",
+      requires: [...new Set(["react", ...(tabindexNoPositive.requires ?? [])])],
     },
   },
   {
@@ -4063,6 +4228,7 @@ export const reactDoctorRules = [
       ...voidDomElementsNoChildren,
       framework: "global",
       category: "Bugs",
+      requires: [...new Set(["react", ...(voidDomElementsNoChildren.requires ?? [])])],
     },
   },
   {

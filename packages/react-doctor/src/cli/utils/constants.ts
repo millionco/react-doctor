@@ -15,6 +15,9 @@ export const NODE_ARGUMENT_COUNT = 2;
 
 export const STAGED_FILES_TEMP_DIR_PREFIX = "react-doctor-staged-";
 export const BASELINE_FILES_TEMP_DIR_PREFIX = "react-doctor-baseline-";
+export const SCAN_RESULT_CACHE_SCHEMA_VERSION = 1;
+export const SCAN_RESULT_CACHE_MAX_ENTRY_COUNT = 20;
+export const CACHE_FILENAME_HASH_LENGTH_CHARS = 16;
 
 export const GIT_HOOK_EXECUTABLE_MODE = 0o755;
 
@@ -53,6 +56,25 @@ export const SCORE_PROJECTION_FRAME_DELAY_MS = 35;
 // line) up to the score bar, so the projection redraw lands on the bar row:
 // improve line, blank, face-bottom, branding, bar.
 export const SCORE_PROJECTION_BAR_ROWS_ABOVE_CURSOR = 5;
+
+// Floor for the terminal-aware typographic measure (`resolveMeasureWidth`).
+// A terminal narrower than this is pathological; clamp here so prose can't
+// collapse into a one-or-two-character sliver.
+export const MIN_MEASURE_WIDTH_CHARS = 24;
+
+// Floor for the score bar when it's shrunk to fit a narrow terminal (the score
+// header clamps it to the columns left of the doctor face). Below this the bar
+// stops conveying the score proportionally, so we let it sit at this width.
+export const SCORE_BAR_MIN_WIDTH_CHARS = 10;
+
+// Keep one column free at the right edge so a full-width line can't trip the
+// terminal's auto-margin into a soft wrap, which breaks the in-place `\r`
+// redraws (the score-bar animation and the welcome typewriter).
+export const RIGHT_EDGE_SAFETY_COLUMNS = 1;
+
+// Visible columns the box border + padding adds around a code frame
+// (`│ ` … ` │` in box-text.ts). Reserved when fitting a box to the terminal.
+export const BOX_BORDER_WIDTH_CHARS = 4;
 
 // Last-resort fallback when buildJsonReportError itself throws — keeps
 // stdout valid JSON so downstream parsers don't see a half-written report.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
-import { buildCapabilities } from "@react-doctor/core";
-import type { ProjectInfo } from "@react-doctor/core";
+import type { ProjectInfo } from "../src/types/index.js";
+import { buildCapabilities, shouldEnableRule } from "../src/runners/oxlint/capabilities.js";
 
 const baseProject: ProjectInfo = {
   rootDirectory: "/tmp/project",
@@ -23,6 +23,7 @@ const baseProject: ProjectInfo = {
   preactVersion: null,
   preactMajorVersion: null,
   hasReanimated: false,
+  isPreES2023Target: false,
   sourceFileCount: 1,
 };
 
@@ -228,5 +229,84 @@ describe("buildCapabilities", () => {
     });
     expect(capabilities.has("nextjs")).toBe(true);
     expect(capabilities.has("nextjs:15")).toBe(false);
+  });
+
+  it("emits `pre-es2023` when the project target predates ES2023", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      isPreES2023Target: true,
+    });
+
+    expect(capabilities.has("pre-es2023")).toBe(true);
+  });
+
+  it("disables rules when a disabledBy capability is present", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      isPreES2023Target: true,
+    });
+
+    expect(shouldEnableRule(undefined, undefined, capabilities, new Set(), ["pre-es2023"])).toBe(
+      false,
+    );
+  });
+
+  it("emits the `react` capability for a React project", () => {
+    expect(buildCapabilities(baseProject).has("react")).toBe(true);
+  });
+
+  it("emits the `react` capability for a Preact project (React-compatible runtime)", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      framework: "preact",
+      reactVersion: null,
+      reactMajorVersion: null,
+      preactVersion: "^10.22.0",
+      preactMajorVersion: 10,
+    });
+    expect(capabilities.has("react")).toBe(true);
+  });
+
+  it("omits the `react` capability for a plain TypeScript project with no React or Preact", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      framework: "unknown",
+      reactVersion: null,
+      reactMajorVersion: null,
+      preactVersion: null,
+      preactMajorVersion: null,
+    });
+    expect(capabilities.has("react")).toBe(false);
+    // Framework-agnostic capabilities still surface so TypeScript rules run.
+    expect(capabilities.has("typescript")).toBe(true);
+  });
+});
+
+describe("shouldEnableRule react gating", () => {
+  const reactCapabilities = new Set(["react", "typescript"]);
+  const noReactCapabilities = new Set(["typescript"]);
+  const noIgnoredTags = new Set<string>();
+
+  it("disables a `react-jsx-only` rule when the project has no React", () => {
+    expect(
+      shouldEnableRule(undefined, ["react-jsx-only"], noReactCapabilities, noIgnoredTags),
+    ).toBe(false);
+  });
+
+  it("enables a `react-jsx-only` rule when the project has React", () => {
+    expect(shouldEnableRule(undefined, ["react-jsx-only"], reactCapabilities, noIgnoredTags)).toBe(
+      true,
+    );
+  });
+
+  it("keeps a framework-agnostic rule (no requires, no react tag) enabled without React", () => {
+    expect(shouldEnableRule(undefined, ["security"], noReactCapabilities, noIgnoredTags)).toBe(
+      true,
+    );
+  });
+
+  it("disables a rule that explicitly requires `react` on a non-React project", () => {
+    expect(shouldEnableRule(["react"], undefined, noReactCapabilities, noIgnoredTags)).toBe(false);
+    expect(shouldEnableRule(["react"], undefined, reactCapabilities, noIgnoredTags)).toBe(true);
   });
 });

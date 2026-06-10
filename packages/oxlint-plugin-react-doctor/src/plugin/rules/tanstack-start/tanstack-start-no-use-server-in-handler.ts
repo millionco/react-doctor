@@ -44,7 +44,8 @@ export const tanstackStartNoUseServerInHandler = defineRule<Rule>({
       if (hasUseServerDirective) {
         context.report({
           node: handlerFunction,
-          message: '"use server" inside a createServerFn handler causes compile errors.',
+          message:
+            '"use server" inside a createServerFn handler duplicates TanStack Start\'s server boundary, so the route can fail to compile.',
         });
       }
     },

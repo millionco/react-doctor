@@ -38,7 +38,8 @@ export const jsxPropsNoSpreadMulti = defineRule<Rule>({
   id: "jsx-props-no-spread-multi",
   title: "Same prop spread multiple times",
   severity: "warn",
-  recommendation: "Spread the same value at most once per element.",
+  recommendation:
+    "Spread each value at most once so later props cannot silently override earlier props from the same object.",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const seenNames = new Map<string, EsTreeNode>();

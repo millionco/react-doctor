@@ -10,16 +10,23 @@ import {
   ENTRY_POINT_BASENAMES,
   NON_FAST_REFRESH_PATH_SEGMENTS,
   NOT_REACT_COMPONENT_EXPRESSION_TYPES,
+  ROUTE_FACTORY_CALLEE_NAMES,
+  ROUTE_MODULE_ALLOWED_EXPORT_NAMES,
   UTILITY_FILE_BASENAMES,
 } from "./only-export-components-tables.js";
 
-const NAMED_EXPORT_MESSAGE = "Fast Refresh stops working when a file exports non-components.";
-const ANONYMOUS_MESSAGE = "Fast Refresh can't track an unnamed component & full-reloads instead.";
-const EXPORT_ALL_MESSAGE = "`export *` hides what's exported, so Fast Refresh stops working.";
-const REACT_CONTEXT_MESSAGE = "Fast Refresh stops working when a file exports a context too.";
-const LOCAL_COMPONENT_MESSAGE = "Fast Refresh skips this component because it isn't exported.";
+const NAMED_EXPORT_MESSAGE =
+  "This file exports non-components, so Fast Refresh can't safely preserve component state.";
+const ANONYMOUS_MESSAGE =
+  "This component is unnamed, so Fast Refresh can't track it and falls back to a full reload.";
+const EXPORT_ALL_MESSAGE =
+  "`export *` hides what's exported, so Fast Refresh can't safely preserve component state.";
+const REACT_CONTEXT_MESSAGE =
+  "This file exports a context with components, so Fast Refresh can't safely preserve component state.";
+const LOCAL_COMPONENT_MESSAGE =
+  "This component is not exported, so Fast Refresh skips it and local edits can full-reload.";
 const NO_EXPORT_MESSAGE =
-  "Fast Refresh can't track this component because the file exports nothing.";
+  "This file exports nothing, so Fast Refresh can't track the component and local edits can full-reload.";
 
 interface OnlyExportComponentsSettings {
   allowExportNames?: ReadonlyArray<string>;
@@ -105,6 +112,26 @@ const isReactCreateContext = (initializer: EsTreeNode | null | undefined): boole
   return false;
 };
 
+const isRouteFactoryName = (name: string): boolean => ROUTE_FACTORY_CALLEE_NAMES.has(name);
+
+const isRouteFactoryCall = (expression: EsTreeNode): boolean => {
+  let currentCall: EsTreeNode = expression;
+  while (isNodeOfType(currentCall, "CallExpression")) {
+    const callee = currentCall.callee as EsTreeNode;
+    if (isNodeOfType(callee, "Identifier") && isRouteFactoryName(callee.name)) return true;
+    if (
+      isNodeOfType(callee, "MemberExpression") &&
+      isNodeOfType(callee.property, "Identifier") &&
+      isRouteFactoryName(callee.property.name)
+    ) {
+      return true;
+    }
+    if (!isNodeOfType(callee, "CallExpression")) return false;
+    currentCall = callee;
+  }
+  return false;
+};
+
 interface AnalyzerState {
   customHocs: ReadonlySet<string>;
   allowExportNames: ReadonlySet<string>;
@@ -186,6 +213,13 @@ const classifyExport = (
   // HoC-wrapped: `export const Foo = memo(...)` — treat as component.
   if (initializer) {
     const expression = skipTsExpression(initializer);
+    // File-based-router route objects (`export const Route =
+    // createFileRoute("/profile")({ component: ProfilePage })`) — the
+    // router's bundler plugin owns HMR for these modules, so the route
+    // export and any local components it references are conventional.
+    if (isRouteFactoryCall(expression)) {
+      return { kind: "react-component" };
+    }
     if (
       isNodeOfType(expression, "CallExpression") &&
       isHocCallee(expression.callee as EsTreeNode, state) &&
@@ -205,6 +239,12 @@ const classifyExport = (
     }
   }
   if (state.allowExportNames.has(name)) return { kind: "allowed" };
+  // Framework route-module contract exports (`loader`, `meta`,
+  // `getStaticProps`, `metadata`, …) — Remix / React Router / Next.js /
+  // Expo Router bundler plugins special-case these during Fast Refresh,
+  // so co-exporting them with the route component is the documented
+  // shape, not a hazard.
+  if (ROUTE_MODULE_ALLOWED_EXPORT_NAMES.has(name)) return { kind: "allowed" };
   // Custom hook exports — `useFoo`, `useBar`. Modern Vite Fast
   // Refresh (>= 4.x via @vitejs/plugin-react-swc + react-refresh)
   // already handles `use[A-Z]*` exports alongside components: the
@@ -370,7 +410,8 @@ export const onlyExportComponents = defineRule<Rule>({
   id: "only-export-components",
   title: "Non-component export in component file",
   severity: "warn",
-  recommendation: "Move non-component exports out of files that export components.",
+  recommendation:
+    "Move non-component exports out of component files so Fast Refresh can preserve component state instead of full-reloading.",
   category: "Architecture",
   create: (context) => {
     const settings = resolveSettings(context.settings);
@@ -440,6 +481,10 @@ export const onlyExportComponents = defineRule<Rule>({
               continue;
             }
             if (isNodeOfType(stripped, "CallExpression")) {
+              if (isRouteFactoryCall(stripped)) {
+                hasReactExport = true;
+                continue;
+              }
               // is_hoc_call_expression: callee must be HoC AND first
               // arg must be a named/identifier-like value (else
               // anonymous).

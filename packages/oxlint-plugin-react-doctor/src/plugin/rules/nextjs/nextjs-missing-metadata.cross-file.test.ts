@@ -143,6 +143,26 @@ describe("nextjs-missing-metadata — cross-file", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("does not flag a page under a nested 'app' route segment that inherits root metadata", () => {
+    writeFile(
+      "app/layout.tsx",
+      `
+        export const metadata = { title: "Site" };
+        export default function RootLayout({ children }) {
+          return <html><body>{children}</body></html>;
+        }
+      `,
+    );
+    const pagePath = writeFile("app/app/page.tsx", PAGE_WITHOUT_METADATA);
+
+    const result = runRule(nextjsMissingMetadata, fs.readFileSync(pagePath, "utf8"), {
+      filename: pagePath,
+    });
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag a page when an ancestor layout.mts exports metadata", () => {
     writeFile(
       "app/layout.mts",

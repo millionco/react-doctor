@@ -10,6 +10,7 @@ import {
   layerOtlp,
   Linter,
   LintPartialFailures,
+  mergeReactDoctorConfigs,
   Progress,
   Project,
   Reporter,
@@ -149,22 +150,30 @@ const findWorstScore = (projectResults: ProjectResult[]): ScoreResult | null => 
 const diagnoseProject = async (
   projectDefinition: ProjectDefinition,
   baseOptions: DiagnoseOptions,
+  batchConfig: ReactDoctorConfig | undefined,
 ): Promise<ProjectResult> => {
   const startTime = globalThis.performance.now();
 
   try {
     const scanTarget = await resolveScanTarget(projectDefinition.directory);
-    const { directory: _, config: configOverride, ...perProjectOptions } = projectDefinition;
+    const { directory: _, config: projectConfig, ...perProjectOptions } = projectDefinition;
     const mergedOptions: DiagnoseOptions = { ...baseOptions, ...perProjectOptions };
 
-    const program = buildInspectProgram(scanTarget, mergedOptions, configOverride);
+    const didOverrideConfig = batchConfig !== undefined || projectConfig !== undefined;
+    const effectiveConfig = mergeReactDoctorConfigs(
+      mergeReactDoctorConfigs(scanTarget.userConfig, batchConfig),
+      projectConfig,
+    );
 
-    const effectiveConfig = configOverride ?? scanTarget.userConfig;
+    const program = buildInspectProgram(
+      scanTarget,
+      mergedOptions,
+      didOverrideConfig ? (effectiveConfig ?? undefined) : undefined,
+    );
+
     const layer = buildDiagnoseLayer(
       effectiveConfig,
-      configOverride !== undefined
-        ? { resolvedDirectory: scanTarget.resolvedDirectory }
-        : undefined,
+      didOverrideConfig ? { resolvedDirectory: scanTarget.resolvedDirectory } : undefined,
     );
 
     const output: InspectOutput = await Effect.runPromise(
@@ -194,6 +203,13 @@ const diagnoseProject = async (
  * dead-code analysis, and scoring all work identically to a single
  * `diagnose()` call.
  *
+ * Config layering (least to most specific): the project's on-disk
+ * `doctor.config.*` ← the batch-level `config` ← the project's own
+ * `config`. Each layer merges additively via `mergeReactDoctorConfigs`
+ * (`rules` / `categories` merge per key, `ignore` lists union, scalars
+ * override), so one base rule set can serve the whole batch with
+ * narrow per-project exceptions.
+ *
  * Projects that fail (e.g. missing `package.json`, no React dependency)
  * are included in the result with `ok: false` rather than aborting the
  * entire batch, so callers always receive partial results.
@@ -207,6 +223,7 @@ const diagnoseProject = async (
  *       rules: { "react-doctor/no-array-index-as-key": "off" },
  *     }},
  *   ],
+ *   config: { rules: { "react-doctor/no-prop-drilling": "off" } },
  *   concurrency: 4,
  * });
  *
@@ -223,7 +240,7 @@ export const diagnoseProjects = async (
   input: DiagnoseProjectsInput,
 ): Promise<DiagnoseProjectsResult> => {
   const startTime = globalThis.performance.now();
-  const { projects, concurrency: rawConcurrency, ...baseOptions } = input;
+  const { projects, concurrency: rawConcurrency, config: batchConfig, ...baseOptions } = input;
   const concurrency = Math.max(1, rawConcurrency ?? projects.length);
 
   const projectResults: ProjectResult[] = [];
@@ -234,7 +251,7 @@ export const diagnoseProjects = async (
 
     while (pendingProjects.length > 0 && batch.length < concurrency) {
       const projectDefinition = pendingProjects.shift()!;
-      batch.push(diagnoseProject(projectDefinition, baseOptions));
+      batch.push(diagnoseProject(projectDefinition, baseOptions, batchConfig));
     }
 
     const batchResults = await Promise.all(batch);

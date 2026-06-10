@@ -87,6 +87,7 @@ export * from "./utils/has-published-fix-recipe.js";
 export * from "./utils/list-source-files.js";
 export * from "./utils/map-with-concurrency.js";
 export * from "./utils/match-glob-pattern.js";
+export * from "./utils/merge-react-doctor-configs.js";
 export * from "./utils/redact-sensitive-text.js";
 export * from "./utils/resolve-github-actions-score-metadata.js";
 export * from "./utils/resolve-scan-concurrency.js";

@@ -11,6 +11,8 @@ import {
 import type {
   Diagnostic,
   DiagnoseOptions,
+  DiagnoseProjectsInput,
+  DiagnoseProjectsResult,
   DiagnoseResult,
   DiffInfo,
   JsonReport,
@@ -19,7 +21,11 @@ import type {
   JsonReportMode,
   JsonReportProjectEntry,
   JsonReportSummary,
+  ProjectDefinition,
   ProjectInfo,
+  ProjectResult,
+  ProjectResultError,
+  ProjectResultOk,
   ReactDoctorConfig,
   ScoreResult,
 } from "@react-doctor/core";
@@ -27,6 +33,8 @@ import type {
 export type {
   Diagnostic,
   DiagnoseOptions,
+  DiagnoseProjectsInput,
+  DiagnoseProjectsResult,
   DiagnoseResult,
   DiffInfo,
   JsonReport,
@@ -35,7 +43,11 @@ export type {
   JsonReportMode,
   JsonReportProjectEntry,
   JsonReportSummary,
+  ProjectDefinition,
   ProjectInfo,
+  ProjectResult,
+  ProjectResultError,
+  ProjectResultOk,
   ReactDoctorConfig,
   ScoreResult,
 };
@@ -109,4 +121,4 @@ export const toJsonReport = (result: DiagnoseResult, options: ToJsonReportOption
     totalElapsedMilliseconds: result.elapsedMilliseconds,
   });
 
-export { diagnose } from "@react-doctor/api";
+export { diagnose, diagnoseProjects } from "@react-doctor/api";

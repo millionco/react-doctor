@@ -1,0 +1,29 @@
+packages/react-doctor/src/cli/utils/detect-default-branch.ts
+  s_1c9fb95a2fc3f7::t_9e9f4aedd9341a 24
+  s_1c9fb95a2fc3f7::t_996507f3b13f35 1
+packages/react-doctor/src/cli/utils/constants.ts
+  s_1c9fb95a2fc3f7::t_3722acbcae81f5 26-30
+packages/react-doctor/tests/run-command.test.ts
+  s_1c9fb95a2fc3f7::t_2d504be017786d 1-31
+packages/react-doctor/tests/install-react-doctor.test.ts
+  s_1c9fb95a2fc3f7::t_aea5869daebfbc 5,7-14
+packages/react-doctor/src/cli/utils/run-command.ts
+  s_1c9fb95a2fc3f7::t_a04542afddc781 33,35-39
+  s_1c9fb95a2fc3f7::t_5f1e2a782802fd 12-14,16-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "d65509200429b3f9181404d89b1bd7d4022410f8",
+  "prompts": {},
+  "sessions": {
+    "s_1c9fb95a2fc3f7": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "3514b00d-d6bd-48f3-8923-352896539e0e",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

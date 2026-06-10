@@ -5,6 +5,7 @@ import type { Rule } from "../../utils/rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { hasAncestorMetadataLayout } from "../../utils/find-ancestor-metadata-layout.js";
 
 export const nextjsMissingMetadata = defineRule<Rule>({
   id: "nextjs-missing-metadata",
@@ -36,13 +37,16 @@ export const nextjsMissingMetadata = defineRule<Rule>({
         return false;
       });
 
-      if (!hasMetadataExport) {
-        context.report({
-          node: programNode,
-          message:
-            "This page has no metadata, so search engines and social previews get no title or description.",
-        });
-      }
+      if (hasMetadataExport) return;
+      // A page inherits metadata merged down the segment chain, so skip the
+      // directory walk only once the cheap in-file check comes up empty.
+      if (hasAncestorMetadataLayout(context.filename ?? "")) return;
+
+      context.report({
+        node: programNode,
+        message:
+          "This page has no metadata, so search engines and social previews get no title or description.",
+      });
     },
   }),
 });

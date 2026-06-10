@@ -75,6 +75,7 @@ const baseInput = (overrides: Partial<RunEventInput> = {}): RunEventInput => ({
   noScore: false,
   respectInlineDisables: true,
   showWarnings: true,
+  usedDiagnosticsDir: false,
   ignoredTagCount: 0,
   hasCustomConfig: false,
   userConfig: null,

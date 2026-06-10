@@ -38,6 +38,8 @@ export interface RunEventInput {
   readonly noScore: boolean;
   readonly respectInlineDisables: boolean;
   readonly showWarnings: boolean;
+  /** A custom `--diagnostics-dir` was passed for the full diagnostics dump. */
+  readonly usedDiagnosticsDir: boolean;
   readonly ignoredTagCount: number;
   readonly hasCustomConfig: boolean;
   readonly userConfig: ReactDoctorConfig | null;
@@ -210,6 +212,7 @@ const buildConfigAttributes = (input: RunEventInput): RunEventAttributes => {
     noScore: input.noScore,
     respectInlineDisables: input.respectInlineDisables,
     showWarnings: input.showWarnings,
+    usedDiagnosticsDir: input.usedDiagnosticsDir,
     ignoredTagCount: input.ignoredTagCount,
     hasCustomConfig: input.hasCustomConfig,
     rulesConfigured: ruleKeys.length,

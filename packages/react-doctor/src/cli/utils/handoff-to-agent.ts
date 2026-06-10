@@ -36,6 +36,9 @@ export interface HandoffToAgentInput {
   readonly projectName: string;
   readonly rootDirectory: string;
   readonly interactive: boolean;
+  // Custom directory for the full diagnostics dump (`--diagnostics-dir`);
+  // falls back to a fresh temp directory when unset.
+  readonly diagnosticsDirectory?: string | null;
 }
 
 const CLIPBOARD_CHOICE = "clipboard";
@@ -237,6 +240,7 @@ export const handoffToAgent = async (input: HandoffToAgentInput): Promise<void> 
   const payload = buildHandoffPayload({
     diagnostics: input.diagnostics,
     projectName: input.projectName,
+    diagnosticsDirectory: input.diagnosticsDirectory,
   });
 
   if (handoffTarget === CLIPBOARD_CHOICE) {

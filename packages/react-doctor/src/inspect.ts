@@ -140,6 +140,8 @@ export interface ResolvedInspectOptions {
   lint: boolean;
   deadCode: boolean;
   verbose: boolean;
+  /** See `InspectOptions.diagnosticsDirectory`. `null` keeps the temp-dir default. */
+  diagnosticsDirectory: string | null;
   scoreOnly: boolean;
   noScore: boolean;
   isCi: boolean;
@@ -185,6 +187,7 @@ const mergeInspectOptions = (
   lint: inputOptions.lint ?? userConfig?.lint ?? true,
   deadCode: inputOptions.deadCode ?? userConfig?.deadCode ?? true,
   verbose: inputOptions.verbose ?? userConfig?.verbose ?? false,
+  diagnosticsDirectory: inputOptions.diagnosticsDirectory ?? null,
   scoreOnly: inputOptions.scoreOnly ?? false,
   noScore: inputOptions.noScore ?? userConfig?.noScore ?? false,
   isCi: inputOptions.isCi ?? false,
@@ -237,6 +240,7 @@ const buildRunEventConfig = (
   noScore: options.noScore,
   respectInlineDisables: options.respectInlineDisables,
   showWarnings: options.warnings,
+  usedDiagnosticsDir: options.diagnosticsDirectory !== null,
   ignoredTagCount: options.ignoredTags.size,
   hasCustomConfig,
   userConfig,
@@ -951,6 +955,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       totalSourceFileCount: lintSourceFileCount,
       noScoreMessage,
       verbose: options.verbose,
+      diagnosticsDirectory: options.diagnosticsDirectory,
       animateProjection: animateRender,
     });
 

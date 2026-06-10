@@ -91,6 +91,10 @@ export interface PrintSummaryInput {
   readonly totalSourceFileCount: number;
   readonly noScoreMessage: string;
   readonly verbose?: boolean;
+  // Custom directory for the full diagnostics dump (`--diagnostics-dir`),
+  // resolved against the working directory. Falls back to a fresh temp
+  // directory per run when unset.
+  readonly diagnosticsDirectory?: string | null;
   // First interactive run on a TTY: draw the score bar plain, then grow the
   // projected "ghost gain" in (eased) in sync with the "you could improve"
   // line. Defaults to the static projected bar drawn by `printScoreHeader`.
@@ -133,10 +137,10 @@ export const printSummary = (input: PrintSummaryInput): Effect.Effect<void> =>
     // shouldn't block the summary, so we fall through to `null` and
     // skip the line.
     const diagnosticsDirectory = yield* Effect.try({
-      try: () => writeDiagnosticsDirectory(input.diagnostics),
+      try: () => writeDiagnosticsDirectory(input.diagnostics, input.diagnosticsDirectory),
       catch: (cause) => cause,
     }).pipe(Effect.orElseSucceed(() => null as string | null));
-    if (diagnosticsDirectory !== null && input.verbose) {
+    if (diagnosticsDirectory !== null && (input.verbose || Boolean(input.diagnosticsDirectory))) {
       yield* Console.log(highlighter.gray(`  Full diagnostics written to ${diagnosticsDirectory}`));
     }
   });

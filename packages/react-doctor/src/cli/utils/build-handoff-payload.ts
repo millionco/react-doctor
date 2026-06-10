@@ -7,6 +7,9 @@ import { writeDiagnosticsDirectory } from "./write-diagnostics-directory.js";
 export interface HandoffPayloadInput {
   readonly diagnostics: ReadonlyArray<Diagnostic>;
   readonly projectName: string;
+  // Custom directory for the full diagnostics dump (`--diagnostics-dir`);
+  // falls back to a fresh temp directory when unset.
+  readonly diagnosticsDirectory?: string | null;
 }
 
 // A focused prompt for the chosen agent: solve the TOP-N issues this pass,
@@ -18,7 +21,10 @@ export const buildHandoffPayload = (input: HandoffPayloadInput): string => {
 
   let diagnosticsDirectory: string | null = null;
   try {
-    diagnosticsDirectory = writeDiagnosticsDirectory([...input.diagnostics]);
+    diagnosticsDirectory = writeDiagnosticsDirectory(
+      [...input.diagnostics],
+      input.diagnosticsDirectory,
+    );
   } catch {}
 
   const lines: string[] = [

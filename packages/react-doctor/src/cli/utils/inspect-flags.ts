@@ -6,6 +6,9 @@ export interface InspectFlags {
   lint?: boolean;
   deadCode?: boolean;
   verbose?: boolean;
+  // `--diagnostics-dir <directory>`: where to write the full diagnostics dump
+  // (diagnostics.json + one .txt per rule) instead of a temp directory.
+  diagnosticsDir?: string;
   score?: boolean;
   json?: boolean;
   jsonCompact?: boolean;

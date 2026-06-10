@@ -17,7 +17,7 @@ interface PackageManifestExpectation {
 }
 
 const REPOSITORY_ROOT = path.resolve(import.meta.dirname, "..", "..", "..");
-const SUPPORTED_NODE_RANGE = "^20.19.0 || >=22.12.0";
+const SUPPORTED_NODE_RANGE = "^20.19.0 || >=22.13.0";
 
 const readText = (relativePath: string): string =>
   fs.readFileSync(path.join(REPOSITORY_ROOT, relativePath), "utf8");

@@ -56,7 +56,7 @@
       "unrs-resolver"
     ],
     "overrides": {
-      "oxlint": "^1.66.0",
+      "oxlint": ">=1.60.0",
       "oxlint-tsgolint": "^0.23.0"
     }
   }

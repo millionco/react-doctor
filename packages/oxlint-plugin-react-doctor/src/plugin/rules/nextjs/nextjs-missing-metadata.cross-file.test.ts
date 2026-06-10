@@ -142,4 +142,84 @@ describe("nextjs-missing-metadata — cross-file", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("does not flag a page when an ancestor layout.mts exports metadata", () => {
+    writeFile(
+      "app/layout.mts",
+      `
+        export const metadata = { title: "Site" };
+        export default function RootLayout({ children }) {
+          return <html><body>{children}</body></html>;
+        }
+      `,
+    );
+    const pagePath = writeFile("app/page.tsx", PAGE_WITHOUT_METADATA);
+
+    const result = runRule(nextjsMissingMetadata, fs.readFileSync(pagePath, "utf8"), {
+      filename: pagePath,
+    });
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a page that exports metadata via an export specifier", () => {
+    const pagePath = writeFile(
+      "app/page.tsx",
+      `
+        const metadata = { title: "Home" };
+        export { metadata };
+        export default function Page() {
+          return <main>Home</main>;
+        }
+      `,
+    );
+
+    const result = runRule(nextjsMissingMetadata, fs.readFileSync(pagePath, "utf8"), {
+      filename: pagePath,
+    });
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a page that renames a local binding to the metadata export", () => {
+    const pagePath = writeFile(
+      "app/page.tsx",
+      `
+        const pageMeta = { title: "Home" };
+        export { pageMeta as metadata };
+        export default function Page() {
+          return <main>Home</main>;
+        }
+      `,
+    );
+
+    const result = runRule(nextjsMissingMetadata, fs.readFileSync(pagePath, "utf8"), {
+      filename: pagePath,
+    });
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a page that exports a non-metadata binding aliased from metadata", () => {
+    const pagePath = writeFile(
+      "app/page.tsx",
+      `
+        const metadata = { title: "Home" };
+        export { metadata as somethingElse };
+        export default function Page() {
+          return <main>Home</main>;
+        }
+      `,
+    );
+
+    const result = runRule(nextjsMissingMetadata, fs.readFileSync(pagePath, "utf8"), {
+      filename: pagePath,
+    });
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

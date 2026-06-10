@@ -1,4 +1,8 @@
-import { INTERNAL_PAGE_PATH_PATTERN, PAGE_FILE_PATTERN } from "../../constants/nextjs.js";
+import {
+  INTERNAL_PAGE_PATH_PATTERN,
+  METADATA_EXPORT_NAMES,
+  PAGE_FILE_PATTERN,
+} from "../../constants/nextjs.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import type { Rule } from "../../utils/rule.js";
@@ -28,13 +32,20 @@ export const nextjsMissingMetadata = defineRule<Rule>({
           return declaration.declarations?.some(
             (declarator) =>
               isNodeOfType(declarator.id, "Identifier") &&
-              (declarator.id.name === "metadata" || declarator.id.name === "generateMetadata"),
+              METADATA_EXPORT_NAMES.includes(declarator.id.name),
           );
         }
         if (isNodeOfType(declaration, "FunctionDeclaration")) {
           return declaration.id?.name === "generateMetadata";
         }
-        return false;
+        // Specifier form: `export { metadata }`, `export { x as metadata }`,
+        // or a re-export `export { metadata } from "./meta"`.
+        return (statement.specifiers ?? []).some(
+          (specifier) =>
+            isNodeOfType(specifier, "ExportSpecifier") &&
+            isNodeOfType(specifier.exported, "Identifier") &&
+            METADATA_EXPORT_NAMES.includes(specifier.exported.name),
+        );
       });
 
       if (hasMetadataExport) return;

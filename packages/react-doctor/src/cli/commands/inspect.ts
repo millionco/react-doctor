@@ -580,6 +580,9 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         configOverride: projectConfig,
         configSourceDirectory: projectConfigSourceDirectory ?? undefined,
         suppressRendering: isMultiProject,
+        // Pool members overlap; they must not own the process-global Sentry
+        // run state (see `InspectOptions.concurrentScan`).
+        concurrentScan: isMultiProject,
         baseline: baselineRef ? { ref: baselineRef } : undefined,
         changedLineRanges:
           scope === "lines" && changedLineRanges !== null

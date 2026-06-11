@@ -166,6 +166,14 @@ export interface InspectOptions {
    * instead of N individual ones.
    */
   suppressRendering?: boolean;
+  /**
+   * Set when multiple `inspect()` calls run concurrently in one process
+   * (the CLI's multi-project pool). The scan keeps its telemetry
+   * span-scoped — it neither resets nor writes the process-global Sentry
+   * run state (scanned project, active run trace), so overlapping scans
+   * can't clear or mislabel each other's attribution. Defaults to `false`.
+   */
+  concurrentScan?: boolean;
 }
 
 /**

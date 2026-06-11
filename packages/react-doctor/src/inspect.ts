@@ -156,6 +156,8 @@ export interface ResolvedInspectOptions {
   ignoredTags: ReadonlySet<string>;
   outputSurface: DiagnosticSurface;
   suppressRendering: boolean;
+  /** See `InspectOptions.concurrentScan`. */
+  concurrentScan: boolean;
   /** Resolved oxlint worker count, or `undefined` to keep the ambient default. */
   concurrency: number | undefined;
   /** Baseline ref to subtract (new-only mode), or `null` for a plain scan. */
@@ -202,6 +204,7 @@ const mergeInspectOptions = (
   ignoredTags: buildIgnoredTags(userConfig),
   outputSurface: inputOptions.outputSurface ?? "cli",
   suppressRendering: inputOptions.suppressRendering ?? false,
+  concurrentScan: inputOptions.concurrentScan ?? false,
   concurrency: inputOptions.concurrency,
   baseline: inputOptions.baseline ?? null,
   changedLineRanges: inputOptions.changedLineRanges ?? null,
@@ -248,10 +251,13 @@ export const inspect = async (
 ): Promise<InspectResult> => {
   const startTime = performance.now();
 
-  // Clear any run-scoped Sentry state from a prior inspect() (workspace scans
-  // call this once per project) so a stale project/trace can't leak onto this
-  // run's events — including errors thrown before the project is discovered.
-  resetSentryRunState();
+  // Clear any run-scoped Sentry state from a prior inspect() so a stale
+  // project/trace can't leak onto this run's events — including errors thrown
+  // before the project is discovered. Concurrent batch members skip this (and
+  // every other write to the module-level run state): overlapping scans would
+  // clear or overwrite each other's attribution mid-flight.
+  const isConcurrentScan = inputOptions.concurrentScan === true;
+  if (!isConcurrentScan) resetSentryRunState();
 
   const hasConfigOverride = inputOptions.configOverride !== undefined;
   // When the caller pre-loaded a config (CLI's `inspectAction` does
@@ -294,38 +300,42 @@ export const inspect = async (
   if (options.silent) setSpinnerSilent(true);
 
   try {
-    const result = await withSentryRunSpan(async (rootSentrySpan) => {
-      try {
-        return await runInspectWithRuntime(
-          scanDirectory,
-          options,
-          userConfig,
-          hasConfigOverride,
-          configSourceDirectory,
-          startTime,
-          rootSentrySpan,
-        );
-      } catch (error) {
-        // Emit the canonical wide event on the failure path too: the scan threw
-        // before finalizing, so there's no `result` — just the error taxonomy
-        // plus the config it ran with. The lint/dead-code outcome isn't known
-        // here, so it's omitted rather than asserted as a benign default.
-        // Rethrow so error handling is unchanged.
-        recordRunEvent(rootSentrySpan, {
-          ...buildRunEventConfig(options, userConfig, userConfig !== null),
-          mode: options.includePaths.length > 0 ? "diff" : "full",
-          error,
-        });
-        throw error;
-      }
-    });
+    const result = await withSentryRunSpan(
+      async (rootSentrySpan) => {
+        try {
+          return await runInspectWithRuntime(
+            scanDirectory,
+            options,
+            userConfig,
+            hasConfigOverride,
+            configSourceDirectory,
+            startTime,
+            rootSentrySpan,
+          );
+        } catch (error) {
+          // Emit the canonical wide event on the failure path too: the scan threw
+          // before finalizing, so there's no `result` — just the error taxonomy
+          // plus the config it ran with. The lint/dead-code outcome isn't known
+          // here, so it's omitted rather than asserted as a benign default.
+          // Rethrow so error handling is unchanged.
+          recordRunEvent(rootSentrySpan, {
+            ...buildRunEventConfig(options, userConfig, userConfig !== null),
+            mode: options.includePaths.length > 0 ? "diff" : "full",
+            error,
+          });
+          throw error;
+        }
+      },
+      { concurrentScan: isConcurrentScan },
+    );
     // Scan finished cleanly — clear run-scoped Sentry state so a later non-scan
     // error (inspectAction's finalize/handoff/install steps, or the next
     // project in a workspace loop) isn't mislabeled with this scan's project or
     // mislinked to its already-sent transaction. On a thrown error this line is
     // skipped, so the state persists for the command catch to attribute and
-    // link the crash before the process exits.
-    resetSentryRunState();
+    // link the crash before the process exits. Concurrent batch members never
+    // wrote this state, so they have nothing to clear.
+    if (!isConcurrentScan) resetSentryRunState();
     return result;
   } finally {
     if (options.silent) setSpinnerSilent(wasSpinnerSilent);
@@ -473,7 +483,9 @@ const runInspectWithRuntime = async (
   const scanResultCache = cacheKey === null ? null : createScanResultCache(directory);
   const cachedPayload = cacheKey === null ? null : (scanResultCache?.lookup(cacheKey) ?? null);
   if (cachedPayload) {
-    recordSentryProjectContext(cachedPayload.project, rootSentrySpan);
+    recordSentryProjectContext(cachedPayload.project, rootSentrySpan, {
+      concurrentScan: options.concurrentScan,
+    });
     recordCount(METRIC.projectDetected, 1);
     await renderCachedProjectDetection({
       payload: cachedPayload,
@@ -548,7 +560,9 @@ const runInspectWithRuntime = async (
           // (this hook fires right after project discovery) so crashes, the run
           // transaction, and every subsequent metric carry it. No-op when
           // Sentry/tracing is off.
-          recordSentryProjectContext(projectInfo, rootSentrySpan);
+          recordSentryProjectContext(projectInfo, rootSentrySpan, {
+            concurrentScan: options.concurrentScan,
+          });
           recordCount(METRIC.projectDetected, 1);
           if (options.scoreOnly || options.suppressRendering) return;
           const lintSourceFileCount = lintIncludePaths?.length ?? projectInfo.sourceFileCount;

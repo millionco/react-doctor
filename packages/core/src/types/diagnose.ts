@@ -76,9 +76,11 @@ export interface DiagnoseProjectsInput extends DiagnoseOptions {
    */
   config?: ReactDoctorConfig;
   /**
-   * Maximum number of projects to scan concurrently. Defaults to the
-   * number of projects (fully parallel). Set to `1` for sequential
-   * execution. Values below 1 are clamped to 1.
+   * Maximum number of projects to scan concurrently. Defaults to
+   * `DEFAULT_PROJECT_SCAN_CONCURRENCY` (4) — each project scan fans out
+   * its own lint workers, so the batch is bounded rather than fully
+   * parallel. Set to `1` for sequential execution. Values below 1 are
+   * clamped to 1.
    */
   concurrency?: number;
 }

@@ -134,6 +134,13 @@ export const MIN_SCAN_CONCURRENCY = 1;
 
 export const MAX_SCAN_CONCURRENCY = 16;
 
+// Default worker count for a `diagnose({ projects })` batch. Each project
+// scan already fans out its own oxlint workers (bounded by the constants
+// above), so batch concurrency multiplies process count — a small bound
+// keeps an 80-module monorepo from spawning hundreds of subprocesses by
+// default. Callers opt into more via `DiagnoseProjectsInput.concurrency`.
+export const DEFAULT_PROJECT_SCAN_CONCURRENCY = 4;
+
 export const DEFAULT_BRANCH_CANDIDATES = ["main", "master"];
 
 // JSON-format oxlint / eslint configs react-doctor can fold into the

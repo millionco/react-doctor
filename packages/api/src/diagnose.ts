@@ -3,6 +3,7 @@ import * as Layer from "effect/Layer";
 import {
   buildSkippedChecks,
   Config,
+  DEFAULT_PROJECT_SCAN_CONCURRENCY,
   DEFAULT_SHOW_WARNINGS,
   DeadCode,
   Files,
@@ -203,7 +204,7 @@ const diagnoseProjectBatch = async (
   // so the pool always drains every project.
   const projectResults = await mapWithConcurrency(
     projects,
-    concurrency ?? projects.length,
+    concurrency ?? DEFAULT_PROJECT_SCAN_CONCURRENCY,
     (projectDefinition) => diagnoseProject(projectDefinition, baseOptions, batchConfig),
   );
 

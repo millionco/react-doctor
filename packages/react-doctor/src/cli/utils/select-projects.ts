@@ -26,10 +26,9 @@ export const selectProjects = async (
     packages = discoverReactSubprojects(rootDirectory);
   }
 
-  // The flag wins over workspace discovery: it can name packages OR point at
-  // arbitrary directories (per-module scoring in repos whose modules aren't
-  // workspace packages), so it must resolve even when discovery finds 0 or 1
-  // packages — previously it was silently ignored in those cases.
+  // The flag wins over workspace discovery: entries can name packages OR
+  // point at arbitrary directories, so it must resolve even when discovery
+  // finds 0 or 1 packages (where it was previously silently ignored).
   if (projectFlag) return resolveProjectFlag(projectFlag, packages, rootDirectory);
 
   // The config's `projects` field is the flag's persistent form: same
@@ -104,26 +103,19 @@ const resolveRequestedProjects = (
   }
 
   const sourceLabel = source === "flag" ? "Project" : 'Config "projects" entry';
-  const resolvedDirectories: string[] = [];
-  let pathSelectionCount = 0;
 
-  for (const requestedName of requestedNames) {
+  return requestedNames.map((requestedName) => {
     const matched = workspacePackages.find(
       (workspacePackage) =>
         workspacePackage.name === requestedName ||
         path.basename(workspacePackage.directory) === requestedName,
     );
-
-    if (matched) {
-      resolvedDirectories.push(matched.directory);
-      continue;
-    }
+    if (matched) return matched.directory;
 
     const candidateDirectory = path.resolve(rootDirectory, requestedName);
     if (isDirectory(candidateDirectory)) {
-      resolvedDirectories.push(candidateDirectory);
-      pathSelectionCount += 1;
-      continue;
+      recordCount(METRIC.projectPathSelected);
+      return candidateDirectory;
     }
 
     const availableNames = workspacePackages
@@ -134,13 +126,7 @@ const resolveRequestedProjects = (
         ? `${sourceLabel} "${requestedName}" is not a workspace project or a directory. Available projects: ${availableNames}`
         : `${sourceLabel} "${requestedName}" is not a directory under ${rootDirectory}.`,
     );
-  }
-
-  if (pathSelectionCount > 0) {
-    recordCount(METRIC.projectPathSelected, pathSelectionCount);
-  }
-
-  return resolvedDirectories;
+  });
 };
 
 const printDiscoveredProjects = (packages: WorkspacePackage[]): void => {

@@ -60,7 +60,7 @@ ${formatExampleLines([
   ["react-doctor", "scan the current project"],
   ["react-doctor ./apps/web", "scan a specific directory"],
   ["react-doctor --diff main", "scan only files changed vs. main"],
-  ["react-doctor --project modules/a,modules/b", "score multiple modules (per-module scores)"],
+  ["react-doctor --project modules/a,modules/b", "score each module separately (names or paths)"],
   ["react-doctor --staged", "scan staged files (pre-commit hook)"],
   ["react-doctor --category Security", "show only one diagnostic category"],
   ["react-doctor --blocking warning", "fail CI on warnings too (default: error)"],

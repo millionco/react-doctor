@@ -552,9 +552,8 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         logger.dim("  ");
       }
       // Each project's own doctor.config layers additively onto the root
-      // config (rules merge per key, ignore lists union) — same semantics as
-      // `diagnose({ projects })` — so per-module overrides apply without
-      // discarding the shared base rules.
+      // config (same `mergeReactDoctorConfigs` semantics as
+      // `diagnose({ projects })`), keeping the shared base rules intact.
       const projectConfig =
         projectDirectory === resolvedDirectory
           ? undefined

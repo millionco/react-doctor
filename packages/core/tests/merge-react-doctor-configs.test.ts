@@ -3,17 +3,11 @@ import type { ReactDoctorConfig } from "@react-doctor/core";
 import { mergeReactDoctorConfigs } from "@react-doctor/core";
 
 describe("mergeReactDoctorConfigs", () => {
-  it("returns the base unchanged when there is no override", () => {
+  it("passes either side through unchanged when the other is empty", () => {
     const baseConfig: ReactDoctorConfig = { rules: { "react-doctor/no-prop-drilling": "off" } };
-    expect(mergeReactDoctorConfigs(baseConfig, undefined)).toBe(baseConfig);
-  });
-
-  it("returns the override when the base is null", () => {
     const overrideConfig: ReactDoctorConfig = { verbose: true };
+    expect(mergeReactDoctorConfigs(baseConfig, undefined)).toBe(baseConfig);
     expect(mergeReactDoctorConfigs(null, overrideConfig)).toBe(overrideConfig);
-  });
-
-  it("returns null when both sides are empty", () => {
     expect(mergeReactDoctorConfigs(null, undefined)).toBeNull();
   });
 

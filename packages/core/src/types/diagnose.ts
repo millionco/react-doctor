@@ -41,18 +41,14 @@ export interface DiagnoseResult {
  * A single project to scan as part of a `diagnose({ projects })` batch.
  * Scan options (`deadCode`, `lint`, etc.) are flat on the entry and
  * layer on top of the global defaults — omitted fields fall through.
- * `config` layers on top of the batch-level `config` and the project's
- * on-disk `doctor.config.*` (see `mergeReactDoctorConfigs`).
  */
 export interface ProjectDefinition extends DiagnoseOptions {
   directory: string;
   /**
-   * Per-project react-doctor config overrides. Merged on top of the
-   * effective base config (the project's on-disk `doctor.config.*`,
-   * then the batch-level `DiagnoseProjectsInput.config`) via
-   * `mergeReactDoctorConfigs`: `rules` / `categories` merge per key,
-   * `ignore` lists union, and scalar fields are overridden when set —
-   * so disabling one rule here keeps every base rule intact.
+   * Per-project config overrides, layered additively (see
+   * `mergeReactDoctorConfigs`) on top of the project's on-disk
+   * `doctor.config.*` and the batch-level `DiagnoseProjectsInput.config`
+   * — so disabling one rule here keeps every base rule intact.
    */
   config?: ReactDoctorConfig;
 }
@@ -73,12 +69,10 @@ export type ProjectResult = ProjectResultOk | ProjectResultError;
 export interface DiagnoseProjectsInput extends DiagnoseOptions {
   projects: ProjectDefinition[];
   /**
-   * Shared react-doctor config overrides applied to every project in
-   * the batch. Merged on top of each project's on-disk
-   * `doctor.config.*` (per-key for `rules` / `categories`, unioned for
-   * `ignore` lists), with each `ProjectDefinition.config` layered on
-   * top of that. Use this to keep one base rule set across the batch
-   * and override per project only where needed.
+   * Config overrides applied to every project in the batch, layered
+   * additively (see `mergeReactDoctorConfigs`) between each project's
+   * on-disk `doctor.config.*` and its `ProjectDefinition.config` — one
+   * base rule set for the batch, overridden per project only where needed.
    */
   config?: ReactDoctorConfig;
   /**

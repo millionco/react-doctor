@@ -231,28 +231,12 @@ describe("diagnose({ projects })", () => {
     expect(result.projects[0].ok).toBe(true);
   });
 
-  it("accepts a batch-level config shared across every project", async () => {
+  it("layers per-project configs on top of a batch-level config", async () => {
     const result = await diagnose({
       projects: [
         { directory: path.join(FIXTURES_DIRECTORY, "basic-react") },
-        { directory: path.join(FIXTURES_DIRECTORY, "nextjs-app") },
-      ],
-      config: { rules: { "react-doctor/no-array-index-as-key": "off" } },
-      deadCode: false,
-      lint: false,
-    });
-
-    expect(result.projects).toHaveLength(2);
-    for (const projectResult of result.projects) {
-      expect(projectResult.ok).toBe(true);
-    }
-  });
-
-  it("layers a per-project config on top of the batch-level config", async () => {
-    const result = await diagnose({
-      projects: [
         {
-          directory: path.join(FIXTURES_DIRECTORY, "basic-react"),
+          directory: path.join(FIXTURES_DIRECTORY, "nextjs-app"),
           config: { rules: { "react-doctor/no-prop-drilling": "off" } },
         },
       ],
@@ -261,7 +245,9 @@ describe("diagnose({ projects })", () => {
       lint: false,
     });
 
-    expect(result.projects).toHaveLength(1);
-    expect(result.projects[0].ok).toBe(true);
+    expect(result.projects).toHaveLength(2);
+    for (const projectResult of result.projects) {
+      expect(projectResult.ok).toBe(true);
+    }
   });
 });

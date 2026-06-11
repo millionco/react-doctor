@@ -8,7 +8,6 @@ import { inspectAction } from "../src/cli/commands/inspect.js";
 import { inspect } from "../src/inspect.js";
 
 const mockState = vi.hoisted(() => ({
-  rootDirectory: "",
   projectDirectories: [] as string[],
 }));
 
@@ -30,9 +29,9 @@ vi.mock("@react-doctor/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@react-doctor/core")>();
   return {
     ...actual,
-    resolveScanTarget: vi.fn(async () => ({
-      resolvedDirectory: mockState.rootDirectory,
-      requestedDirectory: mockState.rootDirectory,
+    resolveScanTarget: vi.fn(async (requestedDirectory: string) => ({
+      resolvedDirectory: requestedDirectory,
+      requestedDirectory,
       userConfig: null,
       configSourceDirectory: null,
       didRedirectViaRootDir: false,
@@ -115,7 +114,6 @@ describe("inspectAction setup prompt", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
-    mockState.rootDirectory = "";
     mockState.projectDirectories = [];
     for (const tempDirectory of tempDirectories.splice(0)) {
       fs.rmSync(tempDirectory, { recursive: true, force: true });
@@ -135,7 +133,6 @@ describe("inspectAction setup prompt", () => {
     writePackageJson(webDirectory, { name: "web", scripts: {} });
     writePackageJson(adminDirectory, { name: "admin", scripts: {} });
 
-    mockState.rootDirectory = rootDirectory;
     mockState.projectDirectories = [webDirectory, adminDirectory];
 
     await inspectAction(rootDirectory, { diff: true, lint: false });
@@ -170,7 +167,6 @@ describe("inspectAction setup prompt", () => {
       ),
     );
 
-    mockState.rootDirectory = rootDirectory;
     mockState.projectDirectories = [webDirectory, adminDirectory];
 
     await inspectAction(rootDirectory, { changedFilesFrom: changedFilesPath, lint: false });

@@ -267,13 +267,14 @@ export const inspect = async (
   // `config.plugins` entries — relative paths and npm packages
   // resolve from here (the config file's location), NOT from the
   // post-`rootDir` scan root. `null` when the caller passed
-  // `configOverride` programmatically, in which case the runner
-  // falls back to the scan root for plugin resolution.
+  // `configOverride` programmatically without a corresponding
+  // `configSourceDirectory`, in which case the runner falls back
+  // to the scan root for plugin resolution.
   let configSourceDirectory: string | null;
   if (hasConfigOverride) {
     scanDirectory = directory;
     userConfig = inputOptions.configOverride ?? null;
-    configSourceDirectory = null;
+    configSourceDirectory = inputOptions.configSourceDirectory ?? null;
   } else {
     const scanTarget = await resolveScanTarget(directory);
     scanDirectory = scanTarget.resolvedDirectory;

@@ -80,6 +80,13 @@ export interface InspectOptions {
   deadCode?: boolean;
   includePaths?: string[];
   configOverride?: ReactDoctorConfig | null;
+  /**
+   * Directory of the config file that supplied `configOverride`, when it was
+   * loaded from disk. Anchors relative `configOverride.plugins` resolution at
+   * the config file's location instead of the scan root. Ignored without
+   * `configOverride`.
+   */
+  configSourceDirectory?: string;
   respectInlineDisables?: boolean;
   /**
    * Whether the scanned project's `package.json` changed in this diff /

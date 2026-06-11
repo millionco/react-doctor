@@ -11,7 +11,6 @@ import {
   getChangedLineRanges,
   getDiffInfo,
   highlighter,
-  loadConfigWithSource,
   mergeReactDoctorConfigs,
   resolveScanTarget,
   toRelativePath,
@@ -512,29 +511,44 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
     const allDiagnostics: Diagnostic[] = [];
     const completedScans: Array<{ directory: string; result: InspectResult }> = [];
     const isMultiProject = projectDirectories.length > 1;
-    // The Socket supply-chain check runs by default; opted out per project
-    // config. Off ⇒ a manifest-only diff change shouldn't pull a project into
-    // the scan (there'd be nothing to report).
-    const supplyChainEnabled = userConfig?.supplyChain?.enabled !== false;
 
     for (const projectDirectory of projectDirectories) {
+      // Each selected folder goes through the same scan-target resolution as
+      // `diagnose({ projects })` — its own `rootDir`, nested React discovery,
+      // and on-disk config (layered additively onto the root config via
+      // `mergeReactDoctorConfigs`) — so the CLI and the API agree on what
+      // scanning a module means.
+      const projectScanTarget =
+        projectDirectory === resolvedDirectory
+          ? scanTarget
+          : await resolveScanTarget(projectDirectory, { allowAmbiguous: true });
+      const scanDirectory = projectScanTarget.resolvedDirectory;
+      const projectConfig =
+        projectDirectory === resolvedDirectory
+          ? userConfig
+          : mergeReactDoctorConfigs(userConfig, projectScanTarget.userConfig ?? undefined);
+      // The Socket supply-chain check runs by default; opted out per project
+      // config. Off ⇒ a manifest-only diff change shouldn't pull a project into
+      // the scan (there'd be nothing to report).
+      const supplyChainEnabled = projectConfig?.supplyChain?.enabled !== false;
+
       let includePaths: string[] | undefined;
       let supplyChainManifestChanged = false;
       if (isDiffMode) {
         const changedSourceFiles =
           diffInfo === null
             ? []
-            : resolveProjectDiffIncludePaths(resolvedDirectory, projectDirectory, diffInfo);
+            : resolveProjectDiffIncludePaths(resolvedDirectory, scanDirectory, diffInfo);
         // A PR that edits this project's package.json should still have its
         // dependencies scored, even with no changed source files — dependency
         // health is a manifest property, not a per-file one.
         supplyChainManifestChanged =
           supplyChainEnabled &&
           diffInfo !== null &&
-          projectManifestChanged(resolvedDirectory, projectDirectory, diffInfo);
+          projectManifestChanged(resolvedDirectory, scanDirectory, diffInfo);
         if (changedSourceFiles.length === 0 && !supplyChainManifestChanged) {
           if (!isQuiet) {
-            logger.dim(`No changed source files in ${projectDirectory}, skipping.`);
+            logger.dim(`No changed source files in ${scanDirectory}, skipping.`);
             logger.break();
           }
           continue;
@@ -551,31 +565,21 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       if (!isQuiet && !isMultiProject) {
         logger.dim("  ");
       }
-      // Each project's own doctor.config layers additively onto the root
-      // config (same `mergeReactDoctorConfigs` semantics as
-      // `diagnose({ projects })`), keeping the shared base rules intact.
-      const projectConfig =
-        projectDirectory === resolvedDirectory
-          ? undefined
-          : (await loadConfigWithSource(projectDirectory))?.config;
-      const scanResult = await inspect(projectDirectory, {
+      const scanResult = await inspect(scanDirectory, {
         ...scanOptions,
         includePaths,
-        configOverride: mergeReactDoctorConfigs(userConfig, projectConfig),
+        configOverride: projectConfig,
+        configSourceDirectory: projectScanTarget.configSourceDirectory ?? undefined,
         suppressRendering: isMultiProject,
         baseline: baselineRef ? { ref: baselineRef } : undefined,
         changedLineRanges:
           scope === "lines" && changedLineRanges !== null
-            ? resolveProjectChangedLineRanges(
-                resolvedDirectory,
-                projectDirectory,
-                changedLineRanges,
-              )
+            ? resolveProjectChangedLineRanges(resolvedDirectory, scanDirectory, changedLineRanges)
             : undefined,
         supplyChainManifestChanged,
       });
       allDiagnostics.push(...scanResult.diagnostics);
-      completedScans.push({ directory: projectDirectory, result: scanResult });
+      completedScans.push({ directory: scanDirectory, result: scanResult });
       if (!isQuiet && !isMultiProject) {
         logger.break();
       }

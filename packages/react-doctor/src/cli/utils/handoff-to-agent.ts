@@ -36,6 +36,7 @@ export interface HandoffToAgentInput {
   readonly projectName: string;
   readonly rootDirectory: string;
   readonly interactive: boolean;
+  readonly outputDirectory?: string | null;
 }
 
 const CLIPBOARD_CHOICE = "clipboard";
@@ -237,6 +238,7 @@ export const handoffToAgent = async (input: HandoffToAgentInput): Promise<void> 
   const payload = buildHandoffPayload({
     diagnostics: input.diagnostics,
     projectName: input.projectName,
+    outputDirectory: input.outputDirectory,
   });
 
   if (handoffTarget === CLIPBOARD_CHOICE) {

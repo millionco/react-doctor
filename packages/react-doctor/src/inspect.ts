@@ -65,7 +65,7 @@ import {
   printNoScoreHeader,
   printScoreHeader,
 } from "./cli/utils/render-score-header.js";
-import { printFooter, printSummary } from "./cli/utils/render-summary.js";
+import { printDiagnosticsDump, printFooter, printSummary } from "./cli/utils/render-summary.js";
 import { resolveOxlintNode } from "./cli/utils/resolve-oxlint-node.js";
 import { resolveCliCategories } from "./cli/utils/resolve-cli-categories.js";
 import { getRunId } from "./cli/utils/run-id.js";
@@ -140,6 +140,8 @@ export interface ResolvedInspectOptions {
   lint: boolean;
   deadCode: boolean;
   verbose: boolean;
+  /** See `InspectOptions.outputDirectory`. `null` keeps the temp-dir default. */
+  outputDirectory: string | null;
   scoreOnly: boolean;
   noScore: boolean;
   isCi: boolean;
@@ -187,6 +189,7 @@ const mergeInspectOptions = (
   lint: inputOptions.lint ?? userConfig?.lint ?? true,
   deadCode: inputOptions.deadCode ?? userConfig?.deadCode ?? true,
   verbose: inputOptions.verbose ?? userConfig?.verbose ?? false,
+  outputDirectory: inputOptions.outputDirectory || null,
   scoreOnly: inputOptions.scoreOnly ?? false,
   noScore: inputOptions.noScore ?? userConfig?.noScore ?? false,
   isCi: inputOptions.isCi ?? false,
@@ -240,6 +243,7 @@ const buildRunEventConfig = (
   noScore: options.noScore,
   respectInlineDisables: options.respectInlineDisables,
   showWarnings: options.warnings,
+  usedOutputDir: options.outputDirectory !== null,
   ignoredTagCount: options.ignoredTags.size,
   hasCustomConfig,
   userConfig,
@@ -864,7 +868,21 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       return buildResult();
     }
 
+    const surfaceDiagnostics = filterDiagnosticsForSurface(
+      [...diagnostics],
+      options.outputSurface,
+      userConfig,
+    );
+    const printedDiagnostics = filterDiagnosticsByCategories(
+      surfaceDiagnostics,
+      options.categoryFilters,
+    );
+
     if (options.scoreOnly) {
+      // The path line goes to stderr so `--score` stdout stays machine-clean.
+      if (options.outputDirectory !== null) {
+        yield* printDiagnosticsDump(printedDiagnostics, options.outputDirectory, false, "stderr");
+      }
       if (score) {
         yield* Console.log(`${score.score}`);
       } else {
@@ -882,16 +900,6 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
     const animateRender =
       !options.silent && !options.verbose && canAnimateOnboarding(process.stdout);
     const pause = onboardingSectionPause(animateRender);
-
-    const surfaceDiagnostics = filterDiagnosticsForSurface(
-      [...diagnostics],
-      options.outputSurface,
-      userConfig,
-    );
-    const printedDiagnostics = filterDiagnosticsByCategories(
-      surfaceDiagnostics,
-      options.categoryFilters,
-    );
     const demotedDiagnosticCount = diagnostics.length - surfaceDiagnostics.length;
     const isDiffMode = options.includePaths.length > 0;
     const lintSourceFileCount = isDiffMode ? options.includePaths.length : project.sourceFileCount;
@@ -929,6 +937,11 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
         yield* printScoreHeader(score);
       } else {
         yield* printNoScoreHeader(noScoreMessage);
+      }
+      // `--output-dir` still gets its dump (and stale-file cleanup) when
+      // nothing printed — e.g. every issue was fixed since the last run.
+      if (options.outputDirectory !== null) {
+        yield* printDiagnosticsDump(printedDiagnostics, options.outputDirectory);
       }
       return buildResult();
     }
@@ -974,6 +987,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       totalSourceFileCount: lintSourceFileCount,
       noScoreMessage,
       verbose: options.verbose,
+      outputDirectory: options.outputDirectory,
       animateProjection: animateRender,
     });
 

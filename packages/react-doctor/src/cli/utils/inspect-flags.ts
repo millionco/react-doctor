@@ -6,6 +6,7 @@ export interface InspectFlags {
   lint?: boolean;
   deadCode?: boolean;
   verbose?: boolean;
+  outputDir?: string;
   score?: boolean;
   json?: boolean;
   jsonCompact?: boolean;

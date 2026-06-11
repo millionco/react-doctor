@@ -95,6 +95,7 @@ Options:
   --lint             enable linting (default: on)
   --no-lint          skip linting
   --verbose          show file details per rule
+  --output-dir <dir>  directory for the full diagnostics dump (default: a temp folder)
   --score            output only the score
   --json             output a single structured JSON report (suppresses other output)
   -y, --yes          skip prompts, scan all workspace projects

@@ -111,6 +111,7 @@ const program = new Command()
     "skip dead-code analysis (unused files / exports / dependencies, circular imports)",
   )
   .option("--verbose", "show every rule and per-file details (default shows top 3 rules)")
+  .option("--output-dir <dir>", "directory for the full diagnostics dump (default: a temp folder)")
   .option("--score", "output only the score")
   .option("--json", "output a single structured JSON report (suppresses other output)")
   .option("--json-compact", "with --json, emit compact JSON (no indentation)")

@@ -139,6 +139,12 @@ export interface InspectOptions {
 
   // ── Rendering / orchestration knobs ──────────────────────────────
   verbose?: boolean;
+  /**
+   * Directory to write the full diagnostics dump into (diagnostics.json +
+   * one .txt per rule), resolved against the working directory. Defaults
+   * to a fresh temp directory per run (`--output-dir`).
+   */
+  outputDirectory?: string;
   scoreOnly?: boolean;
   noScore?: boolean;
   /**

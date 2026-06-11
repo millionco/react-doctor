@@ -80,6 +80,7 @@ export interface MultiProjectSummaryInput {
   readonly completedScans: ReadonlyArray<SurfaceFilterableScan>;
   readonly categoryFilters?: ReadonlySet<string>;
   readonly verbose: boolean;
+  readonly outputDirectory?: string | null;
   readonly isOffline: boolean;
   readonly projectName: string;
   readonly totalElapsedMilliseconds: number;
@@ -178,6 +179,7 @@ export const printMultiProjectSummary = (input: MultiProjectSummaryInput): Effec
       totalSourceFileCount,
       noScoreMessage: "Score unavailable.",
       verbose,
+      outputDirectory: input.outputDirectory,
       animateProjection: animateRender,
     });
 

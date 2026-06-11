@@ -7,8 +7,6 @@ import { writeDiagnosticsDirectory } from "./write-diagnostics-directory.js";
 export interface HandoffPayloadInput {
   readonly diagnostics: ReadonlyArray<Diagnostic>;
   readonly projectName: string;
-  // Custom directory for the full diagnostics dump (`--output-dir`);
-  // falls back to a fresh temp directory when unset.
   readonly outputDirectory?: string | null;
 }
 

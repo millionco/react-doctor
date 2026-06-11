@@ -47,7 +47,7 @@ import { playWelcomeScene, RETURNING_USER_SPEED_MULTIPLIER } from "../utils/rend
 import { reportErrorToSentry } from "../utils/report-error.js";
 import { readChangedFilesFrom } from "../utils/read-changed-files-from.js";
 import { printMultiProjectSummary } from "../utils/render-multi-project-summary.js";
-import { printDiagnosticsDump } from "../utils/print-diagnostics-dump.js";
+import { printDiagnosticsDump } from "../utils/render-summary.js";
 import { isCiOrCodingAgentEnvironment } from "../utils/is-ci-environment.js";
 import {
   printAgentInstallHint,
@@ -577,7 +577,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
           categoryFilters,
           userConfig,
           verbose: Boolean(flags.verbose),
-          outputDirectory: flags.outputDir ?? null,
+          outputDirectory: flags.outputDir,
           isOffline: !shouldShowShareLink,
           projectName: path.basename(resolvedDirectory),
         }),
@@ -596,10 +596,8 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
 
     if (isQuiet && isMultiProject && flags.outputDir) {
       // Quiet workspace scans (`--json` / `--score`) skip the multi-project
-      // summary, so the dump is written here with the same surface and
-      // category filters. The path line goes to stderr to keep machine-read
-      // stdout clean, and a write failure must not block the JSON report or
-      // the CI exit handling that follow.
+      // summary that would otherwise write the dump; the path line goes to
+      // stderr to keep machine-read stdout clean.
       await Effect.runPromise(
         printDiagnosticsDump(selectedSurfaceDiagnostics, flags.outputDir, false, "stderr"),
       );
@@ -636,7 +634,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         projectName: path.basename(resolvedDirectory),
         rootDirectory: resolvedDirectory,
         interactive: true,
-        outputDirectory: flags.outputDir ?? null,
+        outputDirectory: flags.outputDir,
       });
       return;
     }

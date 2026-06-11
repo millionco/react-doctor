@@ -36,8 +36,6 @@ export interface HandoffToAgentInput {
   readonly projectName: string;
   readonly rootDirectory: string;
   readonly interactive: boolean;
-  // Custom directory for the full diagnostics dump (`--output-dir`);
-  // falls back to a fresh temp directory when unset.
   readonly outputDirectory?: string | null;
 }
 

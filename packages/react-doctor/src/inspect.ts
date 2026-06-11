@@ -65,8 +65,7 @@ import {
   printNoScoreHeader,
   printScoreHeader,
 } from "./cli/utils/render-score-header.js";
-import { printFooter, printSummary } from "./cli/utils/render-summary.js";
-import { printDiagnosticsDump } from "./cli/utils/print-diagnostics-dump.js";
+import { printDiagnosticsDump, printFooter, printSummary } from "./cli/utils/render-summary.js";
 import { resolveOxlintNode } from "./cli/utils/resolve-oxlint-node.js";
 import { resolveCliCategories } from "./cli/utils/resolve-cli-categories.js";
 import { getRunId } from "./cli/utils/run-id.js";
@@ -859,7 +858,8 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
     );
 
     if (options.scoreOnly) {
-      if (options.outputDirectory) {
+      // The path line goes to stderr so `--score` stdout stays machine-clean.
+      if (options.outputDirectory !== null) {
         yield* printDiagnosticsDump(printedDiagnostics, options.outputDirectory, false, "stderr");
       }
       if (score) {
@@ -915,7 +915,11 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       } else {
         yield* printNoScoreHeader(noScoreMessage);
       }
-      yield* printDiagnosticsDump(printedDiagnostics, options.outputDirectory, options.verbose);
+      // `--output-dir` still gets its dump (and stale-file cleanup) when
+      // nothing printed — e.g. every issue was fixed since the last run.
+      if (options.outputDirectory !== null) {
+        yield* printDiagnosticsDump(printedDiagnostics, options.outputDirectory);
+      }
       return buildResult();
     }
 

@@ -19,7 +19,7 @@ import {
 } from "./render-score-header.js";
 import { resolveMeasureWidth } from "./resolve-measure-width.js";
 import { wrapTextToWidth } from "./wrap-indented-text.js";
-import { printDiagnosticsDump } from "./print-diagnostics-dump.js";
+import { writeDiagnosticsDirectory } from "./write-diagnostics-directory.js";
 
 const FOOTER_DESCRIPTION_INDENT = "  ";
 
@@ -81,6 +81,30 @@ export const printFooter = (input: PrintFooterInput): Effect.Effect<void> =>
     yield* printFooterDescription("Report issues and star the repository!");
   });
 
+// Writes the full diagnostics dump (diagnostics.json + one .txt per rule) and
+// prints where it landed when the user asked for it (`--output-dir`) or is in
+// verbose mode. Quiet callers (`--score` / `--json`) pass "stderr" so
+// machine-read stdout stays clean. v4 forbids try/catch inside Effect.gen —
+// wrap the sync write in `Effect.try` (always-tagged form: `{ try, catch }`)
+// and recover via `Effect.orElseSucceed`: failing to write the dump shouldn't
+// block the summary, so we fall through to `null` and skip the line.
+export const printDiagnosticsDump = (
+  diagnostics: Diagnostic[],
+  outputDirectory?: string | null,
+  verbose?: boolean,
+  stream: "stdout" | "stderr" = "stdout",
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    const writtenDirectory = yield* Effect.try({
+      try: () => writeDiagnosticsDirectory(diagnostics, outputDirectory),
+      catch: (cause) => cause,
+    }).pipe(Effect.orElseSucceed((): string | null => null));
+    if (writtenDirectory !== null && (verbose || outputDirectory)) {
+      const pathLine = highlighter.gray(`  Full diagnostics written to ${writtenDirectory}`);
+      yield* stream === "stderr" ? Console.error(pathLine) : Console.log(pathLine);
+    }
+  });
+
 export interface PrintSummaryInput {
   readonly diagnostics: Diagnostic[];
   readonly elapsedMilliseconds: number;
@@ -91,9 +115,6 @@ export interface PrintSummaryInput {
   readonly totalSourceFileCount: number;
   readonly noScoreMessage: string;
   readonly verbose?: boolean;
-  // Custom directory for the full diagnostics dump (`--output-dir`),
-  // resolved against the working directory. Falls back to a fresh temp
-  // directory per run when unset.
   readonly outputDirectory?: string | null;
   // First interactive run on a TTY: draw the score bar plain, then grow the
   // projected "ghost gain" in (eased) in sync with the "you could improve"

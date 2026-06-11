@@ -1,5 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { ScanFinding } from "../../utils/file-scan.js";
+import { escapeRegExp } from "./utils/escape-reg-exp.js";
 import { isProductionSourcePath } from "./utils/is-production-source-path.js";
 
 const DANGEROUS_HTML_PATTERN = /dangerouslySetInnerHTML|\.innerHTML\s*[+]?=(?!=)/;
@@ -44,6 +45,15 @@ const STYLE_TAG_BEFORE_SINK_PATTERN = /<style\b[^<>]*$/;
 
 const STYLE_TAG_LOOKBEHIND_LINES = 5;
 
+// HTML email bodies are rendered by mail clients, which strip script and
+// event handlers — the browser-XSS model this rule encodes does not apply.
+const EMAIL_TEMPLATE_PATH_PATTERN = /(?:^|\/)emails?\/|email[-_.]templates?\//i;
+
+const INNERHTML_TARGET_PATTERN = /(?:^|[^\w$.])([\w$]+(?:\.[\w$]+)*)\.innerHTML\s*[+]?=(?!=)/;
+
+const PARSE_IDIOM_LOOKBEHIND_LINES = 8;
+const PARSE_IDIOM_LOOKAHEAD_LINES = 8;
+
 const VALUE_LOOKAHEAD_LINES = 4;
 const VALUE_EXPRESSION_MAX_CHARS = 300;
 
@@ -51,14 +61,43 @@ const VALUE_EXPRESSION_MAX_CHARS = 300;
 const STATIC_TEMPLATE_LOOKAHEAD_LINES = 60;
 const STATIC_TEMPLATE_MAX_CHARS = 5000;
 
-// A backtick template with no `${` anywhere in its body is a static string
-// even when it is too long for STRING_LITERAL_VALUE_PATTERN's window
-// (inline theme-init <script> snippets routinely run hundreds of chars).
-const isStaticTemplateValue = (valueTail: string): boolean => {
-  if (!valueTail.startsWith("`")) return false;
+// The static text of a template literal cannot be injection; only the
+// `${...}` interpolations carry data. Judging the whole body flags inline
+// theme-init scripts because their static code mentions `query` or `text`.
+// Returns null when the value is not a template that closes in the window.
+const getTemplateInterpolations = (valueTail: string): string | null => {
+  if (!valueTail.startsWith("`")) return null;
   const closingBacktickIndex = valueTail.indexOf("`", 1);
-  if (closingBacktickIndex < 0 || closingBacktickIndex > STATIC_TEMPLATE_MAX_CHARS) return false;
-  return !valueTail.slice(1, closingBacktickIndex).includes("${");
+  if (closingBacktickIndex < 0 || closingBacktickIndex > STATIC_TEMPLATE_MAX_CHARS) return null;
+  const templateBody = valueTail.slice(1, closingBacktickIndex);
+  const interpolations = templateBody.match(/\$\{[^}]*\}/g);
+  return interpolations === null ? "" : interpolations.join(" ");
+};
+
+// `<template>` element content is inert by spec (never rendered, scripts do
+// not run), and a detached createElement wrapper whose textContent is read
+// straight back is the parse-to-text idiom — neither reaches a live document.
+const isInertParseTarget = (
+  target: string,
+  lines: readonly string[],
+  sinkLineIndex: number,
+  fileContent: string,
+): boolean => {
+  const escapedTarget = escapeRegExp(target);
+  const templateElementPattern = new RegExp(
+    `${escapedTarget}\\s*=\\s*document\\.createElement\\(\\s*["'\`]template["'\`]`,
+  );
+  if (templateElementPattern.test(fileContent)) return true;
+  const createElementPattern = new RegExp(`${escapedTarget}\\s*=\\s*document\\.createElement\\(`);
+  const lookbehindWindow = lines
+    .slice(Math.max(0, sinkLineIndex - PARSE_IDIOM_LOOKBEHIND_LINES), sinkLineIndex + 1)
+    .join("\n");
+  if (!createElementPattern.test(lookbehindWindow)) return false;
+  const textReadPattern = new RegExp(`${escapedTarget}\\.(?:textContent|innerText)\\b`);
+  const lookaheadWindow = lines
+    .slice(sinkLineIndex, sinkLineIndex + 1 + PARSE_IDIOM_LOOKAHEAD_LINES)
+    .join("\n");
+  return textReadPattern.test(lookaheadWindow);
 };
 
 export const dangerousHtmlSink = defineRule({
@@ -69,6 +108,7 @@ export const dangerousHtmlSink = defineRule({
     "Prefer rendering structured React nodes. If HTML is required, sanitize with a well-reviewed sanitizer and keep the trust boundary close to the sink.",
   scan: (file) => {
     if (!isProductionSourcePath(file.relativePath)) return [];
+    if (EMAIL_TEMPLATE_PATH_PATTERN.test(file.relativePath)) return [];
     if (!DANGEROUS_HTML_PATTERN.test(file.content)) return [];
 
     const findings: ScanFinding[] = [];
@@ -92,10 +132,18 @@ export const dangerousHtmlSink = defineRule({
       if (STRING_LITERAL_VALUE_PATTERN.test(valueExpression)) continue;
       if (MODULE_CONSTANT_VALUE_PATTERN.test(valueExpression)) continue;
       if (DOM_SERIALIZATION_VALUE_PATTERN.test(valueExpression)) continue;
-      if (SANITIZER_PATTERN.test(valueExpression)) continue;
-      if (ENV_CONFIG_VALUE_PATTERN.test(valueExpression)) continue;
-      if (I18N_VALUE_PATTERN.test(valueExpression)) continue;
-      if (!HTML_TAINT_PATTERN.test(valueExpression)) continue;
+
+      const longValueTail = HTML_VALUE_START_PATTERN.exec(
+        lines.slice(lineIndex, lineIndex + 1 + STATIC_TEMPLATE_LOOKAHEAD_LINES).join("\n"),
+      )?.[1]?.trimStart();
+      const templateInterpolations = getTemplateInterpolations(longValueTail ?? fullValueTail);
+      if (templateInterpolations === "") continue;
+      const judgedExpression = templateInterpolations ?? valueExpression;
+
+      if (SANITIZER_PATTERN.test(judgedExpression)) continue;
+      if (ENV_CONFIG_VALUE_PATTERN.test(judgedExpression)) continue;
+      if (I18N_VALUE_PATTERN.test(judgedExpression)) continue;
+      if (!HTML_TAINT_PATTERN.test(judgedExpression)) continue;
       if (ESCAPING_SERIALIZER_CALL_PATTERN.test(valueExpression)) continue;
       if (
         BARE_IDENTIFIER_VALUE_PATTERN.test(valueExpression) &&
@@ -103,10 +151,13 @@ export const dangerousHtmlSink = defineRule({
       ) {
         continue;
       }
-      const longValueTail = HTML_VALUE_START_PATTERN.exec(
-        lines.slice(lineIndex, lineIndex + 1 + STATIC_TEMPLATE_LOOKAHEAD_LINES).join("\n"),
-      )?.[1]?.trimStart();
-      if (isStaticTemplateValue(longValueTail ?? fullValueTail)) continue;
+      const sinkTargetMatch = INNERHTML_TARGET_PATTERN.exec(line);
+      if (
+        sinkTargetMatch?.[1] !== undefined &&
+        isInertParseTarget(sinkTargetMatch[1], lines, lineIndex, file.content)
+      ) {
+        continue;
+      }
       const textBeforeSink = lines
         .slice(Math.max(0, lineIndex - STYLE_TAG_LOOKBEHIND_LINES), lineIndex + 1)
         .join("\n")

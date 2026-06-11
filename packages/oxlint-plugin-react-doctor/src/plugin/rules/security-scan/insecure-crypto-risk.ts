@@ -1,3 +1,4 @@
+import { DEMO_CONTEXT_PATTERN } from "../../constants/security-scan.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { ScanFinding } from "../../utils/file-scan.js";
 import { getLocationAtIndex } from "./utils/get-location-at-index.js";
@@ -8,7 +9,9 @@ const WEAK_HASH_PATTERN = /createHash\s*\(\s*["'](?:md5|sha1)["']|\bmd5\s*\(/gi;
 const SECURITY_CONTEXT_PATTERN =
   /\b(?:password|token|secret|signature|signing|auth|credential|session|cookie|csrf|api.?key)\b/i;
 
-const DEPRECATED_CIPHER_API_PATTERN = /\bcreate(?:Cipher|Decipher)\s*\(/;
+// `(?<!cipher\.)` keeps node-forge's `forge.cipher.createCipher("AES-GCM")`
+// out — only node:crypto's top-level createCipher/createDecipher is deprecated.
+const DEPRECATED_CIPHER_API_PATTERN = /(?<!cipher\.)\bcreate(?:Cipher|Decipher)\s*\(/;
 
 const WEAK_CIPHER_ALGORITHM_PATTERN =
   /\bcreate(?:Cipher|Decipher)iv\s*\(\s*["'](?:des|des3|des-?ede3?|rc4|rc2|bf|blowfish)\b/i;
@@ -22,22 +25,42 @@ const CIPHER_CONTEXT_PATTERN = /\b(?:cipher|decipher|encrypt|decrypt|crypto)\b/i
 const UNSAFE_SIGNATURE_COMPARISON_PATTERN =
   /[A-Za-z_$][\w$.]*signature[\w$]*(?:\([^)]*\))?\s*(?:===?|!==?)\s*[A-Za-z_$][\w$.]*(?:\([^)]*\))?|[A-Za-z_$][\w$.]*(?:\([^)]*\))?\s*(?:===?|!==?)\s*[A-Za-z_$][\w$.]*signature[\w$]*(?:\([^)]*\))?/i;
 
-// `signature !== PluginSignatureStatus.valid` compares enum/status members,
-// not digest values — a PascalCase comparand names a type-level constant.
+// `signature !== PluginSignatureStatus.valid` compares enum/status members and
+// `signatureMethod === SIGNATURE_METHOD_RSA_SHA1` compares against a module
+// constant — neither side is a digest value.
 const ENUM_MEMBER_COMPARAND_PATTERN =
-  /(?:===?|!==?)\s*[A-Z][a-z]|^[A-Z][a-z][\w$.]*(?:\([^)]*\))?\s*(?:===?|!==?)/;
+  /(?:===?|!==?)\s*[A-Z](?:[a-z]|[A-Z0-9_]*\b(?!\s*[.(]))|^[A-Z](?:[a-z]|[A-Z0-9_]*\b(?!\s*[.(]))[\w$.]*(?:\([^)]*\))?\s*(?:===?|!==?)/;
+
+// `signatureMethod`/`signatureType` name which algorithm is in use, not a
+// computed signature value.
+const SIGNATURE_METADATA_IDENTIFIER_PATTERN =
+  /signature(?:Method|Type|Status|Algorithm|Kind|Mode|Version)\b/i;
+
+// `typedSignatureEnabled === false` / `isSignatureValid === false` compare a
+// boolean flag, not a digest.
+const BOOLEAN_COMPARAND_PATTERN = /(?:===?|!==?)\s*(?:true|false|null|undefined)\b/;
+
+// Timing-unsafe comparison is a server-side oracle; a comparison inside a
+// rendered component runs on the attacker's own machine.
+const CLIENT_COMPONENT_FILE_PATTERN = /\.[cm]?[jt]sx$/i;
 
 const TIMING_SAFE_COMPARISON_PATTERN = /timingSafeEqual|timing.?safe/i;
 
-// Gravatar hashes are md5-by-protocol; flagging them teaches users to ignore
-// the rule.
-const GRAVATAR_CONTEXT_PATTERN = /gravatar/i;
+// Gravatar, HTTP Digest auth (RFC 7616), and OAuth 1.0 mandate md5/sha1 by
+// protocol, and `_id`/etag/cache-key derivation hashes for uniqueness, not
+// secrecy; flagging those teaches users to ignore the rule.
+const PROTOCOL_MANDATED_HASH_CONTEXT_PATTERN =
+  /gravatar|digest[-_ ]?auth|oauth[-_ ]?1|\b_id\b|\betag\b|checksum|cache[-_ ]?key|fingerprint/i;
 
 // No bare `key` (React key props) or `hash` (location.hash, hash maps) —
 // both turn every component file with Math.random into a hit. No word
 // boundaries: the context word usually sits inside a camelCase identifier
 // (`sessionToken`), and the same-line requirement bounds the blast radius.
 const SECURITY_RANDOM_CONTEXT_PATTERN = /token|secret|password|nonce|salt|csrf|credential|otp/i;
+
+// `focusNonce: Math.random()` is a UI re-render trigger, not auth material.
+const UI_NONCE_CONTEXT_PATTERN =
+  /(?:focus|render|refresh|remount|redraw|animation|layout|cache|update)[-_]?nonce/i;
 
 const MATH_RANDOM_CALL_PATTERN = /Math\.random\s*\(/g;
 
@@ -70,12 +93,15 @@ const findRandomCallIndexWithSameLineContext = (
   content: string,
   pattern: RegExp,
   contextPattern: RegExp,
+  excludeContextPattern: RegExp,
 ): number => {
   for (const callMatch of content.matchAll(pattern)) {
     const lineStartIndex = content.lastIndexOf("\n", callMatch.index) + 1;
     const lineEndCandidate = content.indexOf("\n", callMatch.index);
     const lineEndIndex = lineEndCandidate < 0 ? content.length : lineEndCandidate;
-    if (contextPattern.test(content.slice(lineStartIndex, lineEndIndex))) return callMatch.index;
+    const lineText = content.slice(lineStartIndex, lineEndIndex);
+    if (excludeContextPattern.test(lineText)) continue;
+    if (contextPattern.test(lineText)) return callMatch.index;
   }
   return -1;
 };
@@ -88,21 +114,35 @@ export const insecureCryptoRisk = defineRule({
     "Use modern primitives, `crypto.randomBytes` / Web Crypto randomness, and timing-safe comparisons for signatures, digests, tokens, and auth material.",
   scan: (file) => {
     if (!isProductionSourcePath(file.relativePath)) return [];
+    if (DEMO_CONTEXT_PATTERN.test(file.relativePath)) return [];
+
+    // The protocol marker often lives in the file name (`digest-auth.ts`),
+    // not within the 250-char window around the hash call.
+    if (PROTOCOL_MANDATED_HASH_CONTEXT_PATTERN.test(file.relativePath)) return [];
 
     let matchIndex = findMatchIndexNearContext(
       file.content,
       WEAK_HASH_PATTERN,
       SECURITY_CONTEXT_PATTERN,
-      GRAVATAR_CONTEXT_PATTERN,
+      PROTOCOL_MANDATED_HASH_CONTEXT_PATTERN,
     );
     if (matchIndex < 0) matchIndex = file.content.search(WEAK_CIPHER_ALGORITHM_PATTERN);
     if (matchIndex < 0) matchIndex = file.content.search(DEPRECATED_CIPHER_API_PATTERN);
     if (matchIndex < 0 && CIPHER_CONTEXT_PATTERN.test(file.content)) {
       matchIndex = file.content.search(WEAK_CIPHER_NAME_PATTERN);
     }
-    if (matchIndex < 0 && !TIMING_SAFE_COMPARISON_PATTERN.test(file.content)) {
+    if (
+      matchIndex < 0 &&
+      !TIMING_SAFE_COMPARISON_PATTERN.test(file.content) &&
+      !CLIENT_COMPONENT_FILE_PATTERN.test(file.relativePath)
+    ) {
       const comparisonMatch = UNSAFE_SIGNATURE_COMPARISON_PATTERN.exec(file.content);
-      if (comparisonMatch !== null && !ENUM_MEMBER_COMPARAND_PATTERN.test(comparisonMatch[0])) {
+      if (
+        comparisonMatch !== null &&
+        !ENUM_MEMBER_COMPARAND_PATTERN.test(comparisonMatch[0]) &&
+        !SIGNATURE_METADATA_IDENTIFIER_PATTERN.test(comparisonMatch[0]) &&
+        !BOOLEAN_COMPARAND_PATTERN.test(comparisonMatch[0])
+      ) {
         matchIndex = comparisonMatch.index;
       }
     }
@@ -111,6 +151,7 @@ export const insecureCryptoRisk = defineRule({
         file.content,
         MATH_RANDOM_CALL_PATTERN,
         SECURITY_RANDOM_CONTEXT_PATTERN,
+        UI_NONCE_CONTEXT_PATTERN,
       );
     }
     if (matchIndex < 0) return [];

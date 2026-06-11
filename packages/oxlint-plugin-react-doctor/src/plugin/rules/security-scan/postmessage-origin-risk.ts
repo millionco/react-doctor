@@ -19,9 +19,10 @@ const MESSAGE_DATA_READ_PATTERN = /\b(?:event|e|evt|msg|message)\.data\b/;
 // MessagePort/Worker/BroadcastChannel/EventSource/WebSocket message events
 // are same-application or server-stream channels; window-origin checks
 // neither exist nor apply there. `self.onmessage` is the worker-global
-// handler idiom.
+// handler idiom. Substring match (no left \b) so camelCase receivers like
+// `tokenChannel.onmessage` count; `^source\.` is the EventSource idiom.
 const SAME_APPLICATION_CHANNEL_TARGET_PATTERN =
-  /\b(?:port\d?|worker|channel|broadcast|socket|ws|sse)|eventsource|^self\./i;
+  /port\d?\b|worker|channel|broadcast|socket|\bws\b|\bsse\b|eventsource|^self\.|^source\./i;
 
 const WORKER_FILE_PATH_PATTERN = /worker/i;
 

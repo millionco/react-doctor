@@ -2,8 +2,7 @@ import {
   PUBLIC_ENV_SECRET_NAME_PATTERN,
   TRUSTED_PUBLIC_SECRET_NAME_PATTERN,
 } from "../../../constants/security.js";
-
-const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+import { escapeRegExp } from "./escape-reg-exp.js";
 
 // Returns a RegExp matching the first suspicious name so callers can
 // locate the finding in the file content; `undefined` when every

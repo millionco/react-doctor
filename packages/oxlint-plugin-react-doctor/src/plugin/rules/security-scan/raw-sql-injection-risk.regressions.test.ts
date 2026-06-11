@@ -52,4 +52,13 @@ describe("security-scan/raw-sql-injection-risk — regressions", () => {
     });
     expect(findings).toHaveLength(1);
   });
+
+  it("stays silent on parameterized whereRaw whose literal starts on the next line", () => {
+    const findings = runScanRule(rawSqlInjectionRisk, {
+      relativePath: "src/server/repositories/events.ts",
+      content:
+        'queryBuilder.whereRaw(\n  "e.span_id IN (SELECT span_id FROM qualifying_obs WHERE _rn = {_posRn: UInt32})",\n  { _posRn: Math.max(1, position) },\n);\n',
+    });
+    expect(findings).toHaveLength(0);
+  });
 });

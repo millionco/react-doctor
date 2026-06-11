@@ -35,4 +35,13 @@ describe("security-scan/git-provider-url-injection-risk — regressions", () => 
     });
     expect(findings).toHaveLength(0);
   });
+
+  it("stays silent in test-data directories (conductor diagramTests shape)", () => {
+    const findings = runScanRule(gitProviderUrlInjectionRisk, {
+      relativePath: "src/testData/diagramTests.js",
+      content:
+        'const task = { uri: "https://api.github.com/repos/${workflow.input.gh_account}/${workflow.input.gh_repo}" };\n',
+    });
+    expect(findings).toHaveLength(0);
+  });
 });

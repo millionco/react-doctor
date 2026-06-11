@@ -1,4 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { isDevToolingPath } from "./utils/is-dev-tooling-path.js";
 import { isProductionScriptSourcePath } from "./utils/is-production-script-source-path.js";
 import { scanByPattern } from "./utils/scan-by-pattern.js";
 
@@ -16,7 +17,8 @@ export const commandExecutionInputRisk = defineRule({
   recommendation:
     "Avoid shell execution for caller-controlled values. Use fixed commands, argument arrays, strict allowlists, and no shell interpolation.",
   scan: scanByPattern({
-    shouldScan: (file) => isProductionScriptSourcePath(file.relativePath),
+    shouldScan: (file) =>
+      isProductionScriptSourcePath(file.relativePath) && !isDevToolingPath(file.relativePath),
     pattern: COMMAND_EXECUTION_INPUT_RISK_PATTERN,
     message:
       "Command execution appears to include request, query, body, or shell-interpolated input.",

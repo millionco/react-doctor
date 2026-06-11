@@ -97,4 +97,20 @@ describe("security-scan/postmessage-origin-risk — regressions", () => {
     });
     expect(findings).toHaveLength(0);
   });
+
+  it("stays silent on camelCase BroadcastChannel receivers", () => {
+    const findings = runScanRule(postmessageOriginRisk, {
+      relativePath: "src/auth-state.ts",
+      content: `const tokenChannel = new BroadcastChannel("auth_token");\ntokenChannel.onmessage = (event) => {\n  applyToken(event.data.token);\n};\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on server-sent-event sources named source", () => {
+    const findings = runScanRule(postmessageOriginRisk, {
+      relativePath: "src/context/event-stream-context.tsx",
+      content: `const source = new EventSource("/api/events");\nsource.addEventListener("message", async (e) => {\n  dispatch(JSON.parse(e.data));\n});\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
 });

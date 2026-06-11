@@ -22,7 +22,7 @@ describe("security-scan/key-lifecycle-risk — regressions", () => {
   it("flags PEM private key material", () => {
     const findings = runScanRule(keyLifecycleRisk, {
       relativePath: "config/deploy.pem",
-      content: `-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA7\n-----END RSA PRIVATE KEY-----\n`,
+      content: `-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA7c1QpDK0N77BSO0FbGCPzcgMCS8ssCXd2eicCRb45fJsbiCe\nahGd0WOZHCSpwHcwgvT5ml0zXmkSO0Iqcm8m3aIp7DJBkLAA1MuYjvVLPyEDqGtR\n-----END RSA PRIVATE KEY-----\n`,
     });
     expect(findings).toHaveLength(1);
   });
@@ -39,6 +39,39 @@ describe("security-scan/key-lifecycle-risk — regressions", () => {
     const findings = runScanRule(keyLifecycleRisk, {
       relativePath: "docs/configuration.md",
       content: `JWT_SECRET_KEY="-----BEGIN RSA PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC...\n-----END RSA PRIVATE KEY-----"\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on PEM headers in input placeholders (grafana TLS form shape)", () => {
+    const findings = runScanRule(keyLifecycleRisk, {
+      relativePath: "src/components/TLSSecretsConfig.tsx",
+      content: `<TextArea placeholder="-----BEGIN RSA PRIVATE KEY-----" rows={7} onChange={onKeyChange} />\nconst privateKeyBeginsWith = '-----BEGIN RSA PRIVATE KEY-----';\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on PEM headers wrapped around interpolated key variables", () => {
+    const findings = runScanRule(keyLifecycleRisk, {
+      relativePath: "src/services/chef-connection-fns.ts",
+      content:
+        "formattedKey = `-----BEGIN RSA PRIVATE KEY-----\\n${formattedKey}\\n-----END RSA PRIVATE KEY-----`;\n",
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on throwaway keys bound to placeholder constants (insomnia shape)", () => {
+    const findings = runScanRule(keyLifecycleRisk, {
+      relativePath: "src/components/auth-private-key-row.tsx",
+      content: `const PRIVATE_KEY_PLACEHOLDER = \`\n-----BEGIN RSA PRIVATE KEY-----\nMIIEpQIBAAKCAQEA39k9udklHnmkU0GtTLpnYtKk1l5txYmUD/cGI0bFd3HHOOLG\nmI0av55vMFEhxL7yrFrcL8pRKp0+pnOVStMDmbwsPE/pu9pf3uxD+m9/Flv89bUk\n-----END RSA PRIVATE KEY-----\`;\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on sample keys inside documentation", () => {
+    const findings = runScanRule(keyLifecycleRisk, {
+      relativePath: "docs/versioned_docs/version-3.5.0-LTS/data-sources/bigquery.md",
+      content: `  "private_key": "-----BEGIN PRIVATE KEY-----\\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDRGgDmfwYcKp4q\\n3ce4DkrKv0vTn"\n`,
     });
     expect(findings).toHaveLength(0);
   });

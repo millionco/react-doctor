@@ -35,4 +35,12 @@ describe("security-scan/tenant-static-proxy-risk — regressions", () => {
     });
     expect(findings).toHaveLength(1);
   });
+
+  it("stays silent on local path joins of workspace-prefixed data (insomnia shape)", () => {
+    const findings = runScanRule(tenantStaticProxyRisk, {
+      relativePath: "src/routes/import.ts",
+      content: `const fullPath = window.path.join(workspaceData.folderPath, workspaceData.fileName);\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
 });

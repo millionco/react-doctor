@@ -320,7 +320,10 @@ describe("checkSecurityScan", () => {
       "src/updater.ts",
       `import { execFile } from "node:child_process"; export const update = (updateUrl) => execFile("installer", [updateUrl ?? "https://example.com/app.exe"]);`,
     );
-    writeFile("secrets/signing-key.txt", "-----BEGIN OPENSSH PRIVATE KEY-----\nredacted\n");
+    writeFile(
+      "secrets/signing-key.txt",
+      "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW\n",
+    );
     writeFile(
       "src/cors.ts",
       `headers.set("Access-Control-Allow-Credentials", "true"); headers.set("Access-Control-Allow-Origin", "https://docs.example.com"); res.setHeader("Set-Cookie", "session=abc; Domain=.example.com");`,
@@ -630,7 +633,7 @@ describe("checkSecurityScan", () => {
 
     writeFile(
       "keys/private.pem",
-      "-----BEGIN RSA PRIVATE KEY-----\nprivate-material\n-----END RSA PRIVATE KEY-----\n",
+      "-----BEGIN RSA PRIVATE KEY-----\nMIIEpQIBAAKCAQEA39k9udklHnmkU0GtTLpnYtKk1l5txYmUDcGI0bFd3HHOOLG\n-----END RSA PRIVATE KEY-----\n",
     );
 
     expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("key-lifecycle-risk");
@@ -666,10 +669,13 @@ describe("checkSecurityScan", () => {
     expect(checkSecurityScan(temporaryRoot)).toEqual([]);
   });
 
-  it("still reports private key material in docs", () => {
-    writeFile("README.md", "-----BEGIN OPENSSH PRIVATE KEY-----\nreal-key-material\n");
+  it("keeps documentation sample keys quiet", () => {
+    writeFile(
+      "README.md",
+      "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW\n",
+    );
 
-    expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("key-lifecycle-risk");
+    expect(rulesOf(checkSecurityScan(temporaryRoot))).not.toContain("key-lifecycle-risk");
   });
 
   it("keeps generated source examples quiet", () => {

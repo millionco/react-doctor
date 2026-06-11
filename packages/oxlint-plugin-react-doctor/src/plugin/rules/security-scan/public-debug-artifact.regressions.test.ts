@@ -33,4 +33,12 @@ describe("security-scan/public-debug-artifact — regressions", () => {
     });
     expect(findings).toHaveLength(0);
   });
+
+  it("stays silent on locale bundles whose filenames echo debug nouns (signoz trace.json shape)", () => {
+    const findings = runScanRule(publicDebugArtifact, {
+      relativePath: "public/locales/en-GB/traceDetails.json",
+      content: `{ "title": "Trace details", "spans": "Spans" }\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
 });

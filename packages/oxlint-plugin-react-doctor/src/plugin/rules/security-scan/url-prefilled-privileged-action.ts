@@ -5,9 +5,10 @@ import { scanByPattern } from "./utils/scan-by-pattern.js";
 // The privileged name must be the parameter actually read — a proximity
 // window matches `from "next/..."` imports and any file mentioning users.
 // No `email`/`user`: prefilled emails and username route params are benign
-// booking/contact UX, not privileged actions.
+// booking/contact UX, not privileged actions. The lookbehind skips reads
+// already wrapped in a validating helper (`getRelativeNextPath(...get("next"))`).
 const PRIVILEGED_QUERY_PARAM_PATTERN =
-  /\b(?:searchParams|useSearchParams\s*\(\s*\)|URLSearchParams\s*\([^)]{0,120}\))(?:[?!])?\.get(?:All)?\s*\(\s*["'](?:userstoinvite|role|permission|sharingaction|invite|admin|next|continue|returnTo|redirect_uri|callbackUrl)["']|\bsearchParams\.(?:userstoinvite|role|permission|sharingaction|invite|admin|returnTo|redirect_uri|callbackUrl)\b/i;
+  /(?<!(?:safe|valid|sanitiz|relativ|allowlist|whitelist)[\w$]*\(\s*(?:new\s+)?)\b(?:searchParams|useSearchParams\s*\(\s*\)|URLSearchParams\s*\([^)]{0,120}\))(?:[?!])?\.get(?:All)?\s*\(\s*["'](?:userstoinvite|role|permission|sharingaction|invite|admin|next|continue|returnTo|redirect_uri|callbackUrl)["']|\bsearchParams\.(?:userstoinvite|role|permission|sharingaction|invite|admin|returnTo|redirect_uri|callbackUrl)\b/i;
 
 export const urlPrefilledPrivilegedAction = defineRule({
   id: "url-prefilled-privileged-action",

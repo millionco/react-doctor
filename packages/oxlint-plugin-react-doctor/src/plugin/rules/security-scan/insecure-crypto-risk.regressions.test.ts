@@ -91,4 +91,52 @@ describe("security-scan/insecure-crypto-risk — regressions", () => {
     });
     expect(findings).toHaveLength(0);
   });
+
+  it("stays silent on vendored version-pinned directories", () => {
+    const findings = runScanRule(insecureCryptoRisk, {
+      relativePath: "public/js/monaco-editor.0.45.0/vs/editor/editor.main.js",
+      content: `const sessionTokenHash = md5(value);\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on node-forge's namespaced createCipher", () => {
+    const findings = runScanRule(insecureCryptoRisk, {
+      relativePath: "src/account/crypt.ts",
+      content: `const cipher = forge.cipher.createCipher('AES-GCM', key);\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("flags node:crypto's deprecated createCipher", () => {
+    const findings = runScanRule(insecureCryptoRisk, {
+      relativePath: "src/account/crypt.ts",
+      content: `const cipher = crypto.createCipher('aes-256-cbc', password);\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("stays silent on signature-method comparisons against module constants", () => {
+    const findings = runScanRule(insecureCryptoRisk, {
+      relativePath: "src/network/o-auth-1/get-token.ts",
+      content: `if (authentication.signatureMethod === SIGNATURE_METHOD_RSA_SHA1) {\n  return signRsaSha1(payload);\n}\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on protocol-mandated md5 in HTTP digest auth", () => {
+    const findings = runScanRule(insecureCryptoRisk, {
+      relativePath: "src/lib/axios/digest-auth.ts",
+      content: `const ha1 = crypto.hashing().md5(\`\${username}:\${realm}:\${password}\`, DigestType.Hex);\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on sha1-derived deterministic ids", () => {
+    const findings = runScanRule(insecureCryptoRisk, {
+      relativePath: "src/services/cookie-jar.ts",
+      content: `const jar = {\n  _id: \`\${prefix}_\${crypto.createHash('sha1').update(parentId).digest('hex')}\`,\n  cookies: cookieJar.cookies,\n};\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
 });

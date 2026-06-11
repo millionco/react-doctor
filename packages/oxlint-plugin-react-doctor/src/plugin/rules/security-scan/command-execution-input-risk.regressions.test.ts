@@ -42,4 +42,20 @@ describe("security-scan/command-execution-input-risk — regressions", () => {
     });
     expect(findings).toHaveLength(1);
   });
+
+  it("stays silent in repo tooling fed by argv (sentry bump_version shape)", () => {
+    const findings = runScanRule(commandExecutionInputRisk, {
+      relativePath: "tools/bump_version.py",
+      content: `def main(args):\n    return subprocess.call(("uv", "add", "--dev", f"{args.package}>={args.version}"))\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent in django management commands", () => {
+    const findings = runScanRule(commandExecutionInputRisk, {
+      relativePath: "backend/management/commands/seed_dummy_runs.py",
+      content: `def seed(shell=True):\n    result = subprocess.run(f"createdb {options['name']}", shell=True)\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
 });

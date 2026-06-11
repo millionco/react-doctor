@@ -146,4 +146,66 @@ describe("security-scan/dangerous-html-sink — regressions", () => {
     });
     expect(findings).toHaveLength(1);
   });
+
+  it("judges template taint on interpolations, not static script text (payload InitTheme shape)", () => {
+    const themeScriptLines = [
+      "return (",
+      "  <Script",
+      "    dangerouslySetInnerHTML={{",
+      "      __html: `",
+      "        var mediaQuery = '(prefers-color-scheme: dark)'",
+      "        var preference = window.localStorage.getItem('${themeLocalStorageKey}')",
+      "        document.documentElement.setAttribute('data-theme', '${defaultTheme}')",
+      "      `,",
+      "    }}",
+      "  />",
+      ");",
+    ];
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/providers/Theme/InitTheme/index.tsx",
+      content: themeScriptLines.join("\n"),
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("flags templates whose interpolations carry tainted values", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/widgets/meeting-card.ts",
+      content:
+        'card.innerHTML = `\n  <div class="meeting-title">${meeting.title}</div>\n  ${subtitleHtml}\n`;\n',
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("stays silent on inert template-element parsing (mastodon hashtag_bar shape)", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/hashtag-bar.tsx",
+      content: `const template = document.createElement('template');\ntemplate.innerHTML = statusContent.trim();\nconst lastChild = template.content.lastChild;\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on the detached parse-to-text idiom (mastodon unescapeHTML shape)", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/utils/html.ts",
+      content: `export const unescapeHTML = (html: string) => {\n  const wrapper = document.createElement('div');\n  wrapper.innerHTML = html.replace(/<[^>]*>/g, '');\n  return wrapper.textContent;\n};\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still flags detached wrappers whose parsed HTML reaches the document", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/render/slot-host.ts",
+      content: `const nextContent = document.createElement('div');\nnextContent.innerHTML = props.normalizedHtml;\ndocument.body.appendChild(nextContent);\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("stays silent on HTML email templates (outline comment-email shape)", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "server/emails/templates/CommentCreatedEmail.tsx",
+      content: `export const CommentBody = ({ body }: Props) => (\n  <div dangerouslySetInnerHTML={{ __html: body }} />\n);\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
 });

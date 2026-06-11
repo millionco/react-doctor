@@ -34,4 +34,28 @@ describe("security-scan/import-metadata-execution-risk — regressions", () => {
     });
     expect(findings).toHaveLength(0);
   });
+
+  it("stays silent on SCREAMING constants containing taint words (medusa PLUGIN_ID shape)", () => {
+    const findings = runScanRule(importMetadataExecutionRisk, {
+      relativePath: "src/utils/claude-code-plugin.ts",
+      content: `import { spawnSync } from "node:child_process";\nconst install = spawnSync("claude", ["plugin", "install", PLUGIN_ID], { stdio: "inherit" });\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on state-machine spawn without a process module (conductor xstate shape)", () => {
+    const findings = runScanRule(importMetadataExecutionRisk, {
+      relativePath: "src/pages/definition/WorkflowMetadata/state/actions.ts",
+      content: `return context.editableFields.map((field) =>\n  spawn(\n    machineInstance.withContext({\n      value: _get(context.metadataChanges, field),\n      fieldName: field,\n    }),\n    \`\${field}-field\`,\n  ),\n);\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still flags bare spawn of metadata when a process module is present", () => {
+    const findings = runScanRule(importMetadataExecutionRisk, {
+      relativePath: "src/import/exif-import.ts",
+      content: `import { spawn } from "node:child_process";\nexport const extract = (upload) => spawn("exiftool", [upload.metadataPath]);\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
 });

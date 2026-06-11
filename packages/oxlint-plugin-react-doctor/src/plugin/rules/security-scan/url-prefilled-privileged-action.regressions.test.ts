@@ -26,4 +26,12 @@ describe("security-scan/url-prefilled-privileged-action — regressions", () => 
     });
     expect(findings).toHaveLength(1);
   });
+
+  it("stays silent when the read is wrapped in a validating helper (posthog getRelativeNextPath shape)", () => {
+    const findings = runScanRule(urlPrefilledPrivilegedAction, {
+      relativePath: "src/scenes/organization/confirmOrganizationLogic.ts",
+      content: `const nextUrl = getRelativeNextPath(new URLSearchParams(location.search).get('next'), location);\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
 });

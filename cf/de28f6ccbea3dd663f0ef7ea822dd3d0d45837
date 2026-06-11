@@ -1,0 +1,27 @@
+.changeset/cap-oxlint-below-1-67.md
+  s_51f8269d86e3af::t_04d7f46f5b9192 1-5
+package.json
+  s_51f8269d86e3af::t_2cf9e387aaa2e4 59
+packages/core/package.json
+  s_51f8269d86e3af::t_2cf9e387aaa2e4 31
+packages/react-doctor/package.json
+  s_51f8269d86e3af::t_2cf9e387aaa2e4 67
+pnpm-lock.yaml
+  s_51f8269d86e3af::t_d3095a99c5270a 8,83,189,875,881,887,893,899,905,911,917,924,931,938,945,952,959,966,973,1088,1095,1102,1109,1218,1225,1232,1239,1246,1253,1260,1267,1347,1353,1359,1365,1371,1377,1383,1389,1463,1470,1477,1484,1491,1498,1505,1512,1615,1622,1629,1636,1643,1650,1657,1664,1732,1738,1744,1750,1756,1762,1768,1774,1780,1786,1792,1798,1804,1976,1983,1990,1997,2249,2256,2263,2270,2923,2930,2937,2944
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "cfde28f6ccbea3dd663f0ef7ea822dd3d0d45837",
+  "prompts": {},
+  "sessions": {
+    "s_51f8269d86e3af": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3564da1f-5bcc-494f-9dd8-3cfe8f6ce776",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

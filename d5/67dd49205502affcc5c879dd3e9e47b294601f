@@ -1,0 +1,29 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/utils/scan-by-pattern.ts
+  s_2762992adc5df7::t_a078dbf41563b7 1,4,20-33,38-39,43,45-46
+packages/core/tests/fixtures/check-security-scan/public-debug-sourcemap-leak/public/debug.log
+  s_2762992adc5df7::t_a078dbf41563b7 1
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/postmessage-origin-risk.ts
+  s_2762992adc5df7::t_a078dbf41563b7 10-15,17-26,41-44,47,49,52-53,55-57,59,70,76-78,82-84
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/git-provider-url-injection-risk.ts
+  s_2762992adc5df7::t_a039de1fca9934 2-3,6-21,29-59
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/public-debug-artifact.ts
+  s_2762992adc5df7::t_d77c5af31dcdf0 14-15,18-19
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/insecure-crypto-risk.ts
+  s_2762992adc5df7::t_a039de1fca9934 2-3,6-20,25-34,36-81,91-125
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "d567dd49205502affcc5c879dd3e9e47b294601f",
+  "prompts": {},
+  "sessions": {
+    "s_2762992adc5df7": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "eee3c1f9-63ac-49af-abe0-e54451c3dfa0",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

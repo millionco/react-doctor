@@ -1,0 +1,36 @@
+packages/core/src/check-supply-chain.ts
+  s_9335d6495af82e::t_6531ff855ddb0b 451-453
+  s_9335d6495af82e::t_399cb84779376c 68-74,77-82,85-103,349,358-362,421-423
+packages/core/src/constants.ts
+  s_9335d6495af82e::t_399cb84779376c 437-441
+packages/core/src/services/supply-chain.ts
+  s_9335d6495af82e::t_399cb84779376c 17-18
+packages/website/public/schema/config.json
+  s_9335d6495af82e::t_d729a60fd33c3f 51-54,191-215
+  s_9335d6495af82e::t_76fc1e1a0ce6e0 216
+packages/core/src/types/config.ts
+  s_9335d6495af82e::t_399cb84779376c 160-162
+  s_9335d6495af82e::t_4f2fedea0f1388 144-148
+.changeset/supply-chain-gate-security-axes.md
+  s_9335d6495af82e::t_6b7ed23f66723a 1-5
+packages/core/tests/check-supply-chain.test.ts
+  s_9335d6495af82e::t_3c6d658eb3b1b5 1-6,8-50,52-149
+  s_9335d6495af82e::t_93e169042e2f2d 7
+  s_9335d6495af82e::t_49e592b88e57ac 51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "5d9bf282d2e7138cc8d8561c379277b225ec4bcc",
+  "prompts": {},
+  "sessions": {
+    "s_9335d6495af82e": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "b88d2d7d-e9ee-400b-9e95-1db10f988bdc",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

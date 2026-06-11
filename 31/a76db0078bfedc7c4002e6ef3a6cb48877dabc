@@ -1,0 +1,37 @@
+packages/react-doctor/src/cli/utils/set-up-github-actions.ts
+  s_1c9fb95a2fc3f7::t_b83001251ddddc 3,46-50,65
+.changeset/onboarding-pr-default-branch.md
+  s_1c9fb95a2fc3f7::t_932088149b6c3b 1-5
+packages/react-doctor/tests/install-github-workflow.test.ts
+  s_1c9fb95a2fc3f7::t_d3a6daf2282204 1-42
+packages/react-doctor/src/cli/utils/open-workflow-pull-request.ts
+  s_1c9fb95a2fc3f7::t_b83001251ddddc 2,4,73-76,98
+packages/react-doctor/src/cli/utils/install-github-workflow.ts
+  s_1c9fb95a2fc3f7::t_b83001251ddddc 11-18,30,32,114-120,126
+packages/react-doctor/src/cli/utils/run-command.ts
+  s_1c9fb95a2fc3f7::t_521267ba84c28d 1-38
+packages/react-doctor/tests/detect-default-branch.test.ts
+  s_1c9fb95a2fc3f7::t_53eba2bd2d19e2 1-2,16-19,21-26,28-58,62,64-70
+  s_1c9fb95a2fc3f7::t_7df7f39214f018 3,20,27,59-61,63
+packages/react-doctor/src/cli/utils/detect-default-branch.ts
+  s_1c9fb95a2fc3f7::t_75dd6067fcc622 1-8,11-18,28-39
+  s_1c9fb95a2fc3f7::t_ef27472f4af779 9-10,19-27
+packages/react-doctor/src/cli/utils/install-react-doctor.ts
+  s_1c9fb95a2fc3f7::t_b83001251ddddc 25,444,446-448,451,606
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "31a76db0078bfedc7c4002e6ef3a6cb48877dabc",
+  "prompts": {},
+  "sessions": {
+    "s_1c9fb95a2fc3f7": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "3514b00d-d6bd-48f3-8923-352896539e0e",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

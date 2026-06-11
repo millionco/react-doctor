@@ -1,0 +1,23 @@
+packages/react-doctor/src/cli/utils/resolve-scope.ts
+  s_fecb7566c71348::t_6f9c21a5ced3dc 87-88,91-92,96-98
+  s_fecb7566c71348::t_a18fd70eaa1325 89-90,93-95
+packages/react-doctor/tests/resolve-scope.test.ts
+  s_fecb7566c71348::t_1f51dc4ec71eba 87-121
+  s_fecb7566c71348::t_406c35a23a002a 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "a21cf76f4eb498bccca7bffd3a2a1b4454290b7c",
+  "prompts": {},
+  "sessions": {
+    "s_fecb7566c71348": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "93b20328-1e1d-478c-b593-8ffa0ad0339d",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

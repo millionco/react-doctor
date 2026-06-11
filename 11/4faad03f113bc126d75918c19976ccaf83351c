@@ -1,0 +1,31 @@
+.changeset/only-export-components-framework-route-files.md
+  s_49db37e2d11561::t_99b4236b388ec2 1-10
+packages/oxlint-plugin-react-doctor/src/plugin/utils/is-framework-route-or-special-filename.test.ts
+  s_49db37e2d11561::t_99b4236b388ec2 1-47
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/only-export-components-tables.ts
+  s_49db37e2d11561::t_f8f198a635d884 55-60
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/only-export-components.regressions.test.ts
+  s_49db37e2d11561::t_a774414b1f5467 216-219
+  s_49db37e2d11561::t_99b4236b388ec2 146-215
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/only-export-components.ts
+  s_49db37e2d11561::t_99b4236b388ec2 2,394-396
+  s_49db37e2d11561::t_1e3316d59cd3b3 389-393
+packages/oxlint-plugin-react-doctor/src/plugin/utils/is-framework-route-or-special-filename.ts
+  s_49db37e2d11561::t_99b4236b388ec2 1-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "114faad03f113bc126d75918c19976ccaf83351c",
+  "prompts": {},
+  "sessions": {
+    "s_49db37e2d11561": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a2082d9d-4e1e-4587-973c-de07282ffa2b",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

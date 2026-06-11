@@ -1,0 +1,20 @@
+packages/react-doctor/src/cli/utils/set-up-github-actions.ts
+  s_1c9fb95a2fc3f7::t_7f645d27a77db9 46-52
+  s_1c9fb95a2fc3f7::t_b9249a34aad561 67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "63002af19276de02ceadaf95ada07d801fdf2299",
+  "prompts": {},
+  "sessions": {
+    "s_1c9fb95a2fc3f7": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "3514b00d-d6bd-48f3-8923-352896539e0e",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

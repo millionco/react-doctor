@@ -1,0 +1,25 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/nextjs/nextjs-missing-metadata.cross-file.test.ts
+  s_557b9674ca1293::t_0e00c0f7d860ed 1-145
+packages/oxlint-plugin-react-doctor/src/plugin/utils/find-ancestor-metadata-layout.ts
+  s_557b9674ca1293::t_b22985b45421f2 1-7,15-36
+packages/oxlint-plugin-react-doctor/src/plugin/rules/nextjs/nextjs-missing-metadata.ts
+  s_557b9674ca1293::t_87f7b4517a53eb 8,40,43-49
+.changeset/nextjs-missing-metadata-inherited-layout.md
+  s_557b9674ca1293::t_9bfd90b838253d 1-6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "687e74c88dd4821f2c4143e83ae3140e6864bfca",
+  "prompts": {},
+  "sessions": {
+    "s_557b9674ca1293": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d9c74d1b-e756-407f-a97b-24320d9fa9c3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

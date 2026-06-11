@@ -1,0 +1,32 @@
+packages/react-doctor/src/cli/commands/inspect.ts
+  s_7ab878c8c630ba::t_d5bcb0c02cce38 583-585
+packages/core/src/types/inspect.ts
+  s_7ab878c8c630ba::t_685ee0240751d5 169-176
+packages/react-doctor/src/cli/utils/with-sentry-run-span.ts
+  s_7ab878c8c630ba::t_3f32136850e6f6 45-49,51-54,61-68
+  s_7ab878c8c630ba::t_f213f1de1400fb 15-21
+  s_7ab878c8c630ba::t_e4032a0c667d0e 81-86,91,93
+packages/react-doctor/src/inspect.ts
+  s_7ab878c8c630ba::t_f1a453acd5bda3 207
+  s_7ab878c8c630ba::t_47f7d7a1e1cba2 159-160
+  s_7ab878c8c630ba::t_c29329d7592c3c 486-488
+  s_7ab878c8c630ba::t_df4278dc19a35c 563-565
+  s_7ab878c8c630ba::t_a6c5226cedc776 254-260
+  s_7ab878c8c630ba::t_03057ff5626daa 303-330,336-338
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "10f28bb32425b4c52c6938eeeb316fc6e3461d71",
+  "prompts": {},
+  "sessions": {
+    "s_7ab878c8c630ba": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d202f7ef-3a30-41a2-9a77-c8abcf24d45e",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

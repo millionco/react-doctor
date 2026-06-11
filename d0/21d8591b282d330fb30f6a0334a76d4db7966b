@@ -1,0 +1,33 @@
+packages/react-doctor/tests/install-react-doctor.test.ts
+  s_9dcb5a6884d865::t_b081b8d5883880 656-658
+packages/react-doctor/src/cli/utils/install-github-workflow.ts
+  s_9dcb5a6884d865::t_60be2459c04cbd 75-80
+  s_9dcb5a6884d865::t_7c49c374b08b32 83
+  s_9dcb5a6884d865::t_e4207a93000400 9,11-20
+  s_9dcb5a6884d865::t_c79e0646b7e15f 21
+  s_9dcb5a6884d865::t_3af7ae572d934a 10
+action.yml
+  s_9dcb5a6884d865::t_f8033d4275aca6 18-19
+packages/react-doctor/tests/github-action.test.ts
+  s_9dcb5a6884d865::t_e7e686cc00b240 180
+  s_9dcb5a6884d865::t_cb3cf13ddee638 189
+  s_9dcb5a6884d865::t_812c809d527be9 61
+.changeset/action-blocking-default-advisory.md
+  s_9dcb5a6884d865::t_4be90eec4a01e6 1-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "d021d8591b282d330fb30f6a0334a76d4db7966b",
+  "prompts": {},
+  "sessions": {
+    "s_9dcb5a6884d865": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "24a476d1-dffe-47b2-b86f-020d7ed843d8",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

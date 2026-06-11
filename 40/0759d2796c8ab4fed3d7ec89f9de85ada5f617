@@ -1,0 +1,23 @@
+packages/react-doctor/src/cli/commands/inspect.ts
+  s_7ab878c8c630ba::t_137c2c71854ca5 607-613,615-632
+  s_7ab878c8c630ba::t_9d86202467a9f5 72
+packages/react-doctor/src/inspect.ts
+  s_7ab878c8c630ba::t_e675883cce7f7b 345
+  s_7ab878c8c630ba::t_c3cc6634b095ab 298-302,304
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "400759d2796c8ab4fed3d7ec89f9de85ada5f617",
+  "prompts": {},
+  "sessions": {
+    "s_7ab878c8c630ba": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d202f7ef-3a30-41a2-9a77-c8abcf24d45e",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

@@ -1,0 +1,19 @@
+.changeset/consolidate-scan-scope-flag.md
+  s_fecb7566c71348::t_eb519da7efb6af 2-3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "cfe58df364ef89829e89830a6d84e9e1dfef422d",
+  "prompts": {},
+  "sessions": {
+    "s_fecb7566c71348": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "93b20328-1e1d-478c-b593-8ffa0ad0339d",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

@@ -1,0 +1,19 @@
+packages/core/src/checks/security-scan/collect-security-scan-files.ts
+  s_2762992adc5df7::t_8ccaed63e19a19 23-29,32,38-39,44,48-50,58-70,78,90,92,94-96,99-100,104-114
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "8dea6444b630f7fd91289cd702c6d036dbe3446e",
+  "prompts": {},
+  "sessions": {
+    "s_2762992adc5df7": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "eee3c1f9-63ac-49af-abe0-e54451c3dfa0",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

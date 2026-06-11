@@ -1,0 +1,23 @@
+packages/react-doctor/tests/write-diagnostics-directory.test.ts
+  s_fd061c66578b19::t_bb452e3db43150 30,32,34,47-49
+packages/react-doctor/src/cli/utils/write-diagnostics-directory.ts
+  s_fd061c66578b19::t_7980924c2ac10c 9-29,38-44,50-53
+packages/react-doctor/tests/e2e/output-dir-no-scans.test.ts
+  s_fd061c66578b19::t_a69de8194ec32f 68-69,73-76
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "88ad326ac2b8b3bb7ad14df376868e0d6bb91f89",
+  "prompts": {},
+  "sessions": {
+    "s_fd061c66578b19": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "47f32734-cf2d-4ca9-b639-4b1e8c95e4d0",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

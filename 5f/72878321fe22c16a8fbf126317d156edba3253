@@ -1,0 +1,29 @@
+packages/core/src/get-diff-files.ts
+  s_fecb7566c71348::t_d663d6c5e9e9ff 44-47,54
+  s_fecb7566c71348::t_e55de1f61cdbe3 59-61
+packages/core/src/services/git.ts
+  s_fecb7566c71348::t_056b40d812f828 287-290,294
+  s_fecb7566c71348::t_c3957ccc621282 744-747,758
+packages/react-doctor/src/cli/commands/inspect.ts
+  s_fecb7566c71348::t_14bff4b4904458 551-552,558
+  s_fecb7566c71348::t_e8e8d1f263ae72 467-470,477-478,480
+  s_fecb7566c71348::t_4d7321c1473ad6 357-368,372-373,379
+  s_fecb7566c71348::t_e55de1f61cdbe3 369-371,553-557
+  s_fecb7566c71348::t_34a7279483f2a9 590-593
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "5f72878321fe22c16a8fbf126317d156edba3253",
+  "prompts": {},
+  "sessions": {
+    "s_fecb7566c71348": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "93b20328-1e1d-478c-b593-8ffa0ad0339d",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

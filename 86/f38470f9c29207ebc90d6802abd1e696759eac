@@ -1,0 +1,55 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/build-pipeline-secret-boundary.ts
+  s_2762992adc5df7::t_619fa6575dbbf8 3-6,14-22
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/postmessage-origin-risk.ts
+  s_2762992adc5df7::t_99527988dc34d0 2,4-7,13-45,54,59,61,63,68
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/raw-sql-injection-risk.ts
+  s_2762992adc5df7::t_7b5056651bae1b 3,26-31
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/git-provider-url-injection-risk.ts
+  s_2762992adc5df7::t_965ded60415383 3,14-19
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/supabase-rls-policy-risk.ts
+  s_2762992adc5df7::t_56afe9d482dc42 3-14,22-32
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/active-static-asset.ts
+  s_2762992adc5df7::t_23b3bb7daca26d 48-52
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/utils/scan-by-pattern.ts
+  s_2762992adc5df7::t_9358e5a0844a45 6-14,19,22-29
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/webhook-signature-risk.ts
+  s_2762992adc5df7::t_83e380860f6f35 3,20-28
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/utils/get-match-location.ts
+  s_2762992adc5df7::t_7e85378f7d1ea4 4-5
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/mcp-tool-capability-risk.ts
+  s_2762992adc5df7::t_0893fd78283210 4,18-24
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/artifact-baas-authority-surface.ts
+  s_2762992adc5df7::t_f836b21df78046 3,19-25
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/command-execution-input-risk.ts
+  s_2762992adc5df7::t_78affc1bd07cd1 3,14-19
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/path-traversal-risk.ts
+  s_2762992adc5df7::t_d0dce1cc617d29 3,14-19
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/supabase-client-owned-authz-field.ts
+  s_2762992adc5df7::t_0eb27573719339 3,17-23
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/nosql-injection-risk.ts
+  s_2762992adc5df7::t_97cc4149facc63 4,15-19
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/public-debug-artifact.ts
+  s_2762992adc5df7::t_0b00132801d6f1 1,14-15,18-19,22-23
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/agent-tool-capability-risk.ts
+  s_2762992adc5df7::t_6f9d6aa67c0294 4,18-26
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/insecure-crypto-risk.ts
+  s_2762992adc5df7::t_c9c9a9734a8fa0 24-32
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/repository-secret-file.ts
+  s_2762992adc5df7::t_b4bdc3be6b1f38 4,27-28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "86f38470f9c29207ebc90d6802abd1e696759eac",
+  "prompts": {},
+  "sessions": {
+    "s_2762992adc5df7": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "eee3c1f9-63ac-49af-abe0-e54451c3dfa0",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

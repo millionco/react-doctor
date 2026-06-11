@@ -38,7 +38,7 @@ export interface DiagnoseResult {
 }
 
 /**
- * A single project to scan as part of a `diagnoseProjects()` batch.
+ * A single project to scan as part of a `diagnose({ projects })` batch.
  * Scan options (`deadCode`, `lint`, etc.) are flat on the entry and
  * layer on top of the global defaults — omitted fields fall through.
  * `config` layers on top of the batch-level `config` and the project's

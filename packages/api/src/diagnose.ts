@@ -117,9 +117,9 @@ const outputToDiagnoseResult = (
   };
 };
 
-export const diagnose = async (
+const diagnoseDirectory = async (
   directory: string,
-  options: DiagnoseOptions = {},
+  options: DiagnoseOptions,
 ): Promise<DiagnoseResult> => {
   const startTime = globalThis.performance.now();
   const scanTarget = await resolveScanTarget(directory);
@@ -202,49 +202,7 @@ const diagnoseProject = async (
   }
 };
 
-/**
- * Scan multiple projects in parallel and return per-project scores,
- * diagnostics, and an aggregate score (worst-of across all projects).
- *
- * Each project runs its own independent `runInspect` pipeline — the
- * same pipeline `diagnose()` uses — so per-project config overrides,
- * dead-code analysis, and scoring all work identically to a single
- * `diagnose()` call.
- *
- * Config layering (least to most specific): the project's on-disk
- * `doctor.config.*` ← the batch-level `config` ← the project's own
- * `config`. Each layer merges additively via `mergeReactDoctorConfigs`
- * (`rules` / `categories` merge per key, `ignore` lists union, scalars
- * override), so one base rule set can serve the whole batch with
- * narrow per-project exceptions.
- *
- * Projects that fail (e.g. missing `package.json`, no React dependency)
- * are included in the result with `ok: false` rather than aborting the
- * entire batch, so callers always receive partial results.
- *
- * ```ts
- * const result = await diagnoseProjects({
- *   projects: [
- *     { directory: "packages/app" },
- *     { directory: "packages/shared", deadCode: false },
- *     { directory: "packages/admin", config: {
- *       rules: { "react-doctor/no-array-index-as-key": "off" },
- *     }},
- *   ],
- *   config: { rules: { "react-doctor/no-prop-drilling": "off" } },
- *   concurrency: 4,
- * });
- *
- * for (const project of result.projects) {
- *   if (project.ok) {
- *     console.log(project.directory, project.score);
- *   } else {
- *     console.error(project.directory, project.error);
- *   }
- * }
- * ```
- */
-export const diagnoseProjects = async (
+const diagnoseProjectBatch = async (
   input: DiagnoseProjectsInput,
 ): Promise<DiagnoseProjectsResult> => {
   const startTime = globalThis.performance.now();
@@ -281,3 +239,63 @@ export const diagnoseProjects = async (
     elapsedMilliseconds: globalThis.performance.now() - startTime,
   };
 };
+
+interface Diagnose {
+  /** Scan a single project directory and return diagnostics + score. */
+  (directory: string, options?: DiagnoseOptions): Promise<DiagnoseResult>;
+  /**
+   * Scan multiple projects in parallel and return per-project scores,
+   * diagnostics, and an aggregate score (worst-of across all projects).
+   *
+   * Each project runs its own independent `runInspect` pipeline — the
+   * same pipeline the single-directory form uses — so per-project
+   * config overrides, dead-code analysis, and scoring all work
+   * identically to a single-directory call.
+   *
+   * Config layering (least to most specific): the project's on-disk
+   * `doctor.config.*` ← the batch-level `config` ← the project's own
+   * `config`. Each layer merges additively via `mergeReactDoctorConfigs`
+   * (`rules` / `categories` merge per key, `ignore` lists union, scalars
+   * override), so one base rule set can serve the whole batch with
+   * narrow per-project exceptions.
+   *
+   * Projects that fail (e.g. missing `package.json`, no React dependency)
+   * are included in the result with `ok: false` rather than aborting the
+   * entire batch, so callers always receive partial results.
+   *
+   * ```ts
+   * const result = await diagnose({
+   *   projects: [
+   *     { directory: "packages/app" },
+   *     { directory: "packages/shared", deadCode: false },
+   *     { directory: "packages/admin", config: {
+   *       rules: { "react-doctor/no-array-index-as-key": "off" },
+   *     }},
+   *   ],
+   *   config: { rules: { "react-doctor/no-prop-drilling": "off" } },
+   *   concurrency: 4,
+   * });
+   *
+   * for (const project of result.projects) {
+   *   if (project.ok) {
+   *     console.log(project.directory, project.score);
+   *   } else {
+   *     console.error(project.directory, project.error);
+   *   }
+   * }
+   * ```
+   */
+  (input: DiagnoseProjectsInput): Promise<DiagnoseProjectsResult>;
+}
+
+// HACK: the cast is the standard escape hatch for assigning an overload
+// implementation (whose return type is the union of both signatures) to
+// the overloaded interface — TypeScript can't verify that narrowing on
+// the first argument selects the matching return type.
+export const diagnose = (async (
+  directoryOrInput: string | DiagnoseProjectsInput,
+  options: DiagnoseOptions = {},
+): Promise<DiagnoseResult | DiagnoseProjectsResult> =>
+  typeof directoryOrInput === "string"
+    ? diagnoseDirectory(directoryOrInput, options)
+    : diagnoseProjectBatch(directoryOrInput)) as Diagnose;

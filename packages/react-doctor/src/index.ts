@@ -121,4 +121,4 @@ export const toJsonReport = (result: DiagnoseResult, options: ToJsonReportOption
     totalElapsedMilliseconds: result.elapsedMilliseconds,
   });
 
-export { diagnose, diagnoseProjects } from "@react-doctor/api";
+export { diagnose } from "@react-doctor/api";

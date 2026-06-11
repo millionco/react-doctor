@@ -3,7 +3,7 @@
 "react-doctor": patch
 ---
 
-Add a `--diagnostics-dir <directory>` flag so the full diagnostics dump
+Add a `--output-dir <directory>` flag so the full diagnostics dump
 (diagnostics.json + one .txt per rule) is written to a directory you choose
 instead of a random per-run temp folder. The written path is printed in the
 summary whenever the flag is set (previously only under `--verbose`), and the

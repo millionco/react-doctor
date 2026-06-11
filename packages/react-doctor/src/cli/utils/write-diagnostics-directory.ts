@@ -8,22 +8,22 @@ import * as path from "node:path";
 
 export const writeDiagnosticsDirectory = (
   diagnostics: Diagnostic[],
-  diagnosticsDirectory?: string | null,
+  outputDirectory?: string | null,
 ): string => {
-  const outputDirectory = diagnosticsDirectory
-    ? path.resolve(diagnosticsDirectory)
+  const resolvedDirectory = outputDirectory
+    ? path.resolve(outputDirectory)
     : path.join(tmpdir(), `react-doctor-${randomUUID()}`);
-  fs.mkdirSync(outputDirectory, { recursive: true });
+  fs.mkdirSync(resolvedDirectory, { recursive: true });
 
   for (const [ruleKey, ruleDiagnostics] of buildSortedRuleGroups(diagnostics)) {
     const fileName = ruleKey.replace(/\//g, "--") + ".txt";
     fs.writeFileSync(
-      path.join(outputDirectory, fileName),
+      path.join(resolvedDirectory, fileName),
       formatRuleSummary(ruleKey, ruleDiagnostics),
     );
   }
 
-  fs.writeFileSync(path.join(outputDirectory, "diagnostics.json"), JSON.stringify(diagnostics));
+  fs.writeFileSync(path.join(resolvedDirectory, "diagnostics.json"), JSON.stringify(diagnostics));
 
-  return outputDirectory;
+  return resolvedDirectory;
 };

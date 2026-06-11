@@ -576,7 +576,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
           categoryFilters,
           userConfig,
           verbose: Boolean(flags.verbose),
-          diagnosticsDirectory: flags.diagnosticsDir ?? null,
+          outputDirectory: flags.outputDir ?? null,
           isOffline: !shouldShowShareLink,
           projectName: path.basename(resolvedDirectory),
         }),
@@ -624,7 +624,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         projectName: path.basename(resolvedDirectory),
         rootDirectory: resolvedDirectory,
         interactive: true,
-        diagnosticsDirectory: flags.diagnosticsDir ?? null,
+        outputDirectory: flags.outputDir ?? null,
       });
       return;
     }

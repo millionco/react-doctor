@@ -56,14 +56,14 @@ describe("stripUnknownCliFlags", () => {
     ]);
   });
 
-  it("keeps --diagnostics-dir and consumes its value (no value leaks as a positional)", () => {
-    expect(stripUserArguments([".", "--diagnostics-dir", "./doctor-report"])).toEqual([
+  it("keeps --output-dir and consumes its value (no value leaks as a positional)", () => {
+    expect(stripUserArguments([".", "--output-dir", "./doctor-report"])).toEqual([
       ".",
-      "--diagnostics-dir",
+      "--output-dir",
       "./doctor-report",
     ]);
-    expect(stripUserArguments(["--diagnostics-dir=./doctor-report"])).toEqual([
-      "--diagnostics-dir=./doctor-report",
+    expect(stripUserArguments(["--output-dir=./doctor-report"])).toEqual([
+      "--output-dir=./doctor-report",
     ]);
   });
 

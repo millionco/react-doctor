@@ -111,7 +111,7 @@ const program = new Command()
   )
   .option("--verbose", "show every rule and per-file details (default shows top 3 rules)")
   .option(
-    "--diagnostics-dir <directory>",
+    "--output-dir <directory>",
     "write the full diagnostics dump (diagnostics.json + one .txt per rule) to this directory instead of a temp folder",
   )
   .option("--score", "output only the score")

@@ -135,9 +135,9 @@ export interface InspectOptions {
   /**
    * Directory to write the full diagnostics dump into (diagnostics.json +
    * one .txt per rule), resolved against the working directory. Defaults
-   * to a fresh temp directory per run (`--diagnostics-dir`).
+   * to a fresh temp directory per run (`--output-dir`).
    */
-  diagnosticsDirectory?: string;
+  outputDirectory?: string;
   scoreOnly?: boolean;
   noScore?: boolean;
   /**

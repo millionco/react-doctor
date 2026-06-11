@@ -81,9 +81,9 @@ export interface MultiProjectSummaryInput {
   readonly userConfig: ReactDoctorConfig | null;
   readonly categoryFilters?: ReadonlySet<string>;
   readonly verbose: boolean;
-  // Custom directory for the full diagnostics dump (`--diagnostics-dir`);
+  // Custom directory for the full diagnostics dump (`--output-dir`);
   // falls back to a fresh temp directory when unset.
-  readonly diagnosticsDirectory?: string | null;
+  readonly outputDirectory?: string | null;
   readonly isOffline: boolean;
   readonly projectName: string;
 }
@@ -190,7 +190,7 @@ export const printMultiProjectSummary = (input: MultiProjectSummaryInput): Effec
       totalSourceFileCount,
       noScoreMessage: "Score unavailable.",
       verbose,
-      diagnosticsDirectory: input.diagnosticsDirectory,
+      outputDirectory: input.outputDirectory,
       animateProjection: animateRender,
     });
 

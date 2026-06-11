@@ -7,9 +7,9 @@ import { writeDiagnosticsDirectory } from "./write-diagnostics-directory.js";
 export interface HandoffPayloadInput {
   readonly diagnostics: ReadonlyArray<Diagnostic>;
   readonly projectName: string;
-  // Custom directory for the full diagnostics dump (`--diagnostics-dir`);
+  // Custom directory for the full diagnostics dump (`--output-dir`);
   // falls back to a fresh temp directory when unset.
-  readonly diagnosticsDirectory?: string | null;
+  readonly outputDirectory?: string | null;
 }
 
 // A focused prompt for the chosen agent: solve the TOP-N issues this pass,
@@ -19,11 +19,11 @@ export interface HandoffPayloadInput {
 export const buildHandoffPayload = (input: HandoffPayloadInput): string => {
   const topGroups = buildSortedRuleGroups(input.diagnostics).slice(0, TOP_ERRORS_DISPLAY_COUNT);
 
-  let diagnosticsDirectory: string | null = null;
+  let outputDirectory: string | null = null;
   try {
-    diagnosticsDirectory = writeDiagnosticsDirectory(
+    outputDirectory = writeDiagnosticsDirectory(
       [...input.diagnostics],
-      input.diagnosticsDirectory,
+      input.outputDirectory,
     );
   } catch {}
 
@@ -59,9 +59,9 @@ export const buildHandoffPayload = (input: HandoffPayloadInput): string => {
   });
 
   lines.push("");
-  if (diagnosticsDirectory) {
+  if (outputDirectory) {
     lines.push(
-      `Full results for all ${input.diagnostics.length} issues (diagnostics.json + a .txt per rule): ${diagnosticsDirectory}`,
+      `Full results for all ${input.diagnostics.length} issues (diagnostics.json + a .txt per rule): ${outputDirectory}`,
       "",
     );
   }

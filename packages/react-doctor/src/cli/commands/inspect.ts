@@ -6,11 +6,13 @@ import * as fs from "node:fs";
 import {
   buildJsonReport,
   collectSupplyChainScores,
+  DEFAULT_PROJECT_SCAN_CONCURRENCY,
   filterDiagnosticsForSurface,
   findLegacyConfig,
   getChangedLineRanges,
   getDiffInfo,
   highlighter,
+  mapWithConcurrency,
   mergeReactDoctorConfigs,
   resolveScanTarget,
   toRelativePath,
@@ -509,10 +511,10 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
     }
 
     const allDiagnostics: Diagnostic[] = [];
-    const completedScans: Array<{ directory: string; result: InspectResult }> = [];
+    const completedScans: CompletedScan[] = [];
     const isMultiProject = projectDirectories.length > 1;
 
-    for (const projectDirectory of projectDirectories) {
+    const scanProject = async (projectDirectory: string): Promise<CompletedScan | null> => {
       // Each selected folder goes through the same scan-target resolution as
       // `diagnose({ projects })` — its own `rootDir`, nested React discovery,
       // and on-disk config (layered additively onto the root config via
@@ -558,7 +560,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
             logger.dim(`No changed source files in ${scanDirectory}, skipping.`);
             logger.break();
           }
-          continue;
+          return null;
         }
         // A changed package.json enters the scan as an include so the run
         // stays in diff mode (lint ignores it — it's not a source file) while
@@ -585,11 +587,38 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
             : undefined,
         supplyChainManifestChanged,
       });
-      allDiagnostics.push(...scanResult.diagnostics);
-      completedScans.push({ directory: scanDirectory, result: scanResult });
       if (!isQuiet && !isMultiProject) {
         logger.break();
       }
+      return { directory: scanDirectory, result: scanResult };
+    };
+
+    // Multi-project scans run through the same bounded pool as
+    // `diagnose({ projects })` — per-project rendering is suppressed in favor
+    // of the aggregate summary, so concurrent scans don't garble output.
+    // Single-project runs keep their inline rendering on the same path.
+    const scanLoopStartTime = performance.now();
+    const projectCount = projectDirectories.length;
+    const batchSpinner =
+      isMultiProject && !isQuiet ? spinner(`Scanning ${projectCount} projects…`).start() : null;
+    let finishedProjectCount = 0;
+    const scanOutcomes = await mapWithConcurrency(
+      projectDirectories,
+      isMultiProject ? DEFAULT_PROJECT_SCAN_CONCURRENCY : 1,
+      async (projectDirectory) => {
+        const scanOutcome = await scanProject(projectDirectory);
+        finishedProjectCount += 1;
+        batchSpinner?.update(
+          `Scanning ${projectCount} projects… (${finishedProjectCount}/${projectCount})`,
+        );
+        return scanOutcome;
+      },
+    );
+    batchSpinner?.stop();
+    for (const scanOutcome of scanOutcomes) {
+      if (scanOutcome === null) continue;
+      allDiagnostics.push(...scanOutcome.result.diagnostics);
+      completedScans.push(scanOutcome);
     }
 
     if (!isQuiet && isMultiProject && completedScans.length > 0) {
@@ -603,6 +632,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
           verbose: Boolean(flags.verbose),
           isOffline: !shouldShowShareLink,
           projectName: path.basename(resolvedDirectory),
+          totalElapsedMilliseconds: performance.now() - scanLoopStartTime,
         }),
       );
     }

@@ -498,13 +498,16 @@ const runInspectWithRuntime = async (
   }
 
   // Suppress the orchestrator-owned lint + dead-code spinners when
-  // the CLI is in score-only / silent mode (or when lint is
-  // skipped entirely). `Progress.layerNoop` makes the lifecycle a
-  // no-op; the rest of the pipeline is unchanged.
+  // the CLI is in score-only / silent / suppressed-rendering mode (or
+  // when lint is skipped entirely) — suppressed-rendering scans run
+  // concurrently in multi-project batches, where interleaved spinners
+  // would garble the terminal. `Progress.layerNoop` makes the lifecycle
+  // a no-op; the rest of the pipeline is unchanged.
   const shouldShowProgressSpinners =
     !options.isCiOrCodingAgentEnvironment &&
     !options.silent &&
     !options.scoreOnly &&
+    !options.suppressRendering &&
     options.lint &&
     Boolean(resolvedNodeBinaryPath);
 
@@ -848,7 +851,9 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       if (score) {
         yield* Console.log(`${score.score}`);
       } else {
-        yield* Console.log(highlighter.gray(noScoreMessage));
+        // stderr, so scripts that parse `--score` stdout (expecting a bare
+        // number) read an empty stream instead of prose when no score exists.
+        yield* Console.error(highlighter.gray(noScoreMessage));
       }
       return buildResult();
     }

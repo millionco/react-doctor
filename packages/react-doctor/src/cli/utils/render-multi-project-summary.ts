@@ -83,11 +83,19 @@ export interface MultiProjectSummaryInput {
   readonly verbose: boolean;
   readonly isOffline: boolean;
   readonly projectName: string;
+  readonly totalElapsedMilliseconds: number;
 }
 
 export const printMultiProjectSummary = (input: MultiProjectSummaryInput): Effect.Effect<void> =>
   Effect.gen(function* () {
-    const { completedScans, userConfig, verbose, isOffline, projectName } = input;
+    const {
+      completedScans,
+      userConfig,
+      verbose,
+      isOffline,
+      projectName,
+      totalElapsedMilliseconds,
+    } = input;
     const categoryFilters = input.categoryFilters ?? new Set<string>();
 
     // Report animations (category count-up + score-projection ghost gain) play
@@ -113,8 +121,8 @@ export const printMultiProjectSummary = (input: MultiProjectSummaryInput): Effec
 
     // Single aggregate scan line in place of the per-project spinner
     // success lines (suppressed via `suppressScanSummary`). Scans run
-    // sequentially, so summing each project's scan duration matches the
-    // wall-clock total.
+    // through a bounded concurrent pool, so the caller passes the
+    // wall-clock total rather than summing per-project durations.
     //
     // Count UNIQUE scanned files by absolute path: nested workspace
     // packages (a parent whose tree contains a child package) scan the
@@ -135,12 +143,8 @@ export const printMultiProjectSummary = (input: MultiProjectSummaryInput): Effec
       }
     }
     const totalScannedFileCount = uniqueScannedFilePaths.size + fileCountFromScansWithoutPaths;
-    const totalScanElapsedMilliseconds = completedScans.reduce(
-      (sum, scan) => sum + (scan.result.scanElapsedMilliseconds ?? scan.result.elapsedMilliseconds),
-      0,
-    );
     yield* Console.log(
-      `${highlighter.success("✔")} Scanned ${totalScannedFileCount} ${totalScannedFileCount === 1 ? "file" : "files"} in ${formatElapsedTime(totalScanElapsedMilliseconds)}`,
+      `${highlighter.success("✔")} Scanned ${totalScannedFileCount} ${totalScannedFileCount === 1 ? "file" : "files"} in ${formatElapsedTime(totalElapsedMilliseconds)}`,
     );
 
     if (displayDiagnostics.length > 0) {
@@ -159,10 +163,6 @@ export const printMultiProjectSummary = (input: MultiProjectSummaryInput): Effec
     const aggregateScore = lowestScoredScan?.result.score ?? null;
     const totalSourceFileCount = completedScans.reduce(
       (sum, scan) => sum + scan.result.project.sourceFileCount,
-      0,
-    );
-    const totalElapsedMilliseconds = completedScans.reduce(
-      (sum, scan) => sum + scan.result.elapsedMilliseconds,
       0,
     );
 

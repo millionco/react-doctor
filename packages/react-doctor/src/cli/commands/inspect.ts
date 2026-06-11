@@ -7,7 +7,6 @@ import {
   buildJsonReport,
   collectSupplyChainScores,
   DEFAULT_PROJECT_SCAN_CONCURRENCY,
-  filterDiagnosticsForSurface,
   findLegacyConfig,
   getChangedLineRanges,
   getDiffInfo,
@@ -19,7 +18,6 @@ import {
 } from "@react-doctor/core";
 import { inspect } from "../../inspect.js";
 import type {
-  Diagnostic,
   DiffInfo,
   InspectResult,
   JsonReportMode,
@@ -68,6 +66,7 @@ import {
 import { runExplain } from "../utils/run-explain.js";
 import { projectManifestChanged } from "../utils/project-manifest-changed.js";
 import { renderSupplyChainScores } from "../utils/render-supply-chain-scores.js";
+import { filterScansForSurface } from "../utils/filter-scans-for-surface.js";
 import { selectProjects } from "../utils/select-projects.js";
 import { isSpinnerSilent, setSpinnerSilent, spinner } from "../utils/spinner.js";
 import { shouldBlockCi } from "../utils/should-block-ci.js";
@@ -79,6 +78,9 @@ import { VERSION } from "../utils/version.js";
 interface CompletedScan {
   directory: string;
   result: InspectResult;
+  // The merged (root + module) config the scan ran under — surface
+  // filtering of its diagnostics must use this, not the root config.
+  config: ReactDoctorConfig | null;
 }
 
 const filterCompletedScansByCategories = (
@@ -97,7 +99,6 @@ const filterCompletedScansByCategories = (
 };
 
 interface FinalizeScansInput {
-  readonly diagnostics: Diagnostic[];
   readonly completedScans: CompletedScan[];
   readonly mode: JsonReportMode;
   readonly diff: DiffInfo | null;
@@ -183,11 +184,7 @@ const finalizeScans = (input: FinalizeScansInput): void => {
 
   if (input.isScoreOnly || baselineDegraded) return;
 
-  const ciFailureDiagnostics = filterDiagnosticsForSurface(
-    input.diagnostics,
-    "ciFailure",
-    input.userConfig,
-  );
+  const ciFailureDiagnostics = filterScansForSurface(input.completedScans, "ciFailure");
   if (shouldBlockCi(ciFailureDiagnostics, resolveBlockingLevel(input.flags, input.userConfig))) {
     process.exitCode = 1;
   }
@@ -398,8 +395,9 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         };
 
         finalizeScans({
-          diagnostics: remappedDiagnostics,
-          completedScans: [{ directory: resolvedDirectory, result: remappedInspectResult }],
+          completedScans: [
+            { directory: resolvedDirectory, result: remappedInspectResult, config: userConfig },
+          ],
           mode: "staged",
           diff: null,
           baselineIntended: false,
@@ -510,7 +508,6 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       logger.break();
     }
 
-    const allDiagnostics: Diagnostic[] = [];
     const completedScans: CompletedScan[] = [];
     const isMultiProject = projectDirectories.length > 1;
 
@@ -593,7 +590,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       if (!isQuiet && !isMultiProject) {
         logger.break();
       }
-      return { directory: scanDirectory, result: scanResult };
+      return { directory: scanDirectory, result: scanResult, config: projectConfig };
     };
 
     // Multi-project scans run through the same bounded pool as
@@ -631,7 +628,6 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
     }
     for (const scanOutcome of scanOutcomes) {
       if (scanOutcome === null) continue;
-      allDiagnostics.push(...scanOutcome.result.diagnostics);
       completedScans.push(scanOutcome);
     }
 
@@ -642,7 +638,6 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         printMultiProjectSummary({
           completedScans,
           categoryFilters,
-          userConfig,
           verbose: Boolean(flags.verbose),
           isOffline: !shouldShowShareLink,
           projectName: path.basename(resolvedDirectory),
@@ -652,7 +647,6 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
     }
 
     finalizeScans({
-      diagnostics: allDiagnostics,
       completedScans,
       // A resolved base ref means a baseline run; finalizeScans downgrades this
       // to `diff` if no delta was produced (degraded run).
@@ -671,10 +665,9 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       startTime,
     });
 
-    const surfaceDiagnostics = filterDiagnosticsForSurface(
-      allDiagnostics,
+    const surfaceDiagnostics = filterScansForSurface(
+      completedScans,
       scanOptions.outputSurface ?? "cli",
-      userConfig,
     );
     const selectedSurfaceDiagnostics = filterDiagnosticsByCategories(
       surfaceDiagnostics,

@@ -1,13 +1,10 @@
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
-import {
-  filterDiagnosticsForSurface,
-  highlighter,
-  SCORE_GOOD_THRESHOLD,
-  SCORE_OK_THRESHOLD,
-} from "@react-doctor/core";
-import type { Diagnostic, InspectResult, ReactDoctorConfig, ScoreResult } from "@react-doctor/core";
+import { highlighter, SCORE_GOOD_THRESHOLD, SCORE_OK_THRESHOLD } from "@react-doctor/core";
+import type { Diagnostic, InspectResult, ScoreResult } from "@react-doctor/core";
 import { colorizeByScore } from "./colorize-by-score.js";
+import { filterScansForSurface } from "./filter-scans-for-surface.js";
+import type { SurfaceFilterableScan } from "./filter-scans-for-surface.js";
 import { computeProjectedScore } from "./compute-score-projection.js";
 import { buildRulePriorityMap } from "./diagnostic-grouping.js";
 import { filterDiagnosticsByCategories } from "./filter-diagnostics-by-categories.js";
@@ -63,11 +60,14 @@ const buildSummaryLine = (entry: ProjectScanEntry, longestProjectNameLength: num
 // (a chain is only as strong as its weakest link), so the score
 // projection is computed against that same project.
 const findLowestScoredScan = (
-  completedScans: ReadonlyArray<{ readonly result: InspectResult }>,
-): { readonly result: InspectResult & { score: ScoreResult } } | null => {
+  completedScans: ReadonlyArray<SurfaceFilterableScan>,
+): (SurfaceFilterableScan & { readonly result: InspectResult & { score: ScoreResult } }) | null => {
   const scoredScans = completedScans.filter(
-    (scan): scan is { readonly result: InspectResult & { score: ScoreResult } } =>
-      scan.result.score !== null,
+    (
+      scan,
+    ): scan is SurfaceFilterableScan & {
+      readonly result: InspectResult & { score: ScoreResult };
+    } => scan.result.score !== null,
   );
   if (scoredScans.length === 0) return null;
 
@@ -77,8 +77,7 @@ const findLowestScoredScan = (
 };
 
 export interface MultiProjectSummaryInput {
-  readonly completedScans: ReadonlyArray<{ readonly result: InspectResult }>;
-  readonly userConfig: ReactDoctorConfig | null;
+  readonly completedScans: ReadonlyArray<SurfaceFilterableScan>;
   readonly categoryFilters?: ReadonlySet<string>;
   readonly verbose: boolean;
   readonly isOffline: boolean;
@@ -88,14 +87,7 @@ export interface MultiProjectSummaryInput {
 
 export const printMultiProjectSummary = (input: MultiProjectSummaryInput): Effect.Effect<void> =>
   Effect.gen(function* () {
-    const {
-      completedScans,
-      userConfig,
-      verbose,
-      isOffline,
-      projectName,
-      totalElapsedMilliseconds,
-    } = input;
+    const { completedScans, verbose, isOffline, projectName, totalElapsedMilliseconds } = input;
     const categoryFilters = input.categoryFilters ?? new Set<string>();
 
     // Report animations (category count-up + score-projection ghost gain) play
@@ -103,8 +95,7 @@ export const printMultiProjectSummary = (input: MultiProjectSummaryInput): Effec
     // in `inspect.ts`. The first-run section pacing stays single-project-only.
     const animateRender = !verbose && canAnimateOnboarding(process.stdout);
 
-    const allDiagnostics: Diagnostic[] = completedScans.flatMap((scan) => scan.result.diagnostics);
-    const surfaceDiagnostics = filterDiagnosticsForSurface(allDiagnostics, "cli", userConfig);
+    const surfaceDiagnostics = filterScansForSurface(completedScans, "cli");
     const displayDiagnostics = filterDiagnosticsByCategories(surfaceDiagnostics, categoryFilters);
 
     // Each diagnostic's `filePath` is relative to its own project root,
@@ -173,7 +164,7 @@ export const printMultiProjectSummary = (input: MultiProjectSummaryInput): Effec
       ? yield* Effect.promise(() =>
           computeProjectedScore(
             displayDiagnostics,
-            filterDiagnosticsForSurface(lowestScoredScan.result.diagnostics, "cli", userConfig),
+            filterScansForSurface([lowestScoredScan], "cli"),
             lowestScoredScan.result.score,
           ),
         )
@@ -192,7 +183,7 @@ export const printMultiProjectSummary = (input: MultiProjectSummaryInput): Effec
 
     const entries: ProjectScanEntry[] = completedScans.map((scan) => {
       const projectDiagnostics = filterDiagnosticsByCategories(
-        filterDiagnosticsForSurface([...scan.result.diagnostics], "cli", userConfig),
+        filterScansForSurface([scan], "cli"),
         categoryFilters,
       );
       const errorCount = projectDiagnostics.filter(

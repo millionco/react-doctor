@@ -3,13 +3,16 @@ import type { WorkspacePackage } from "@react-doctor/core";
 import {
   discoverReactSubprojects,
   highlighter,
+  isDirectory,
   isFile,
   isMonorepoRoot,
   listWorkspacePackages,
 } from "@react-doctor/core";
 import { cliLogger as logger } from "./cli-logger.js";
 import { CliInputError } from "./cli-input-error.js";
+import { METRIC } from "./constants.js";
 import { prompts } from "./prompts.js";
+import { recordCount } from "./record-metric.js";
 
 export const selectProjects = async (
   rootDirectory: string,
@@ -22,6 +25,12 @@ export const selectProjects = async (
     packages = discoverReactSubprojects(rootDirectory);
   }
 
+  // The flag wins over workspace discovery: it can name packages OR point at
+  // arbitrary directories (per-module scoring in repos whose modules aren't
+  // workspace packages), so it must resolve even when discovery finds 0 or 1
+  // packages — previously it was silently ignored in those cases.
+  if (projectFlag) return resolveProjectFlag(projectFlag, packages, rootDirectory);
+
   if (packages.length === 0) return [rootDirectory];
   if (packages.length === 1) {
     logger.log(
@@ -29,8 +38,6 @@ export const selectProjects = async (
     );
     return [packages[0].directory];
   }
-
-  if (projectFlag) return resolveProjectFlag(projectFlag, packages);
 
   if (skipPrompts) {
     printDiscoveredProjects(packages);
@@ -45,6 +52,7 @@ const ALL_PROJECTS_SENTINEL = "*";
 const resolveProjectFlag = (
   projectFlag: string,
   workspacePackages: WorkspacePackage[],
+  rootDirectory: string,
 ): string[] => {
   const requestedNames = projectFlag
     .split(",")
@@ -63,10 +71,13 @@ const resolveProjectFlag = (
   // making "scan all workspace projects" explicit instead of relying on
   // the empty-flag prompt-skip fallback.
   if (requestedNames.includes(ALL_PROJECTS_SENTINEL)) {
-    return workspacePackages.map((workspacePackage) => workspacePackage.directory);
+    return workspacePackages.length > 0
+      ? workspacePackages.map((workspacePackage) => workspacePackage.directory)
+      : [rootDirectory];
   }
 
   const resolvedDirectories: string[] = [];
+  let pathSelectionCount = 0;
 
   for (const requestedName of requestedNames) {
     const matched = workspacePackages.find(
@@ -75,14 +86,30 @@ const resolveProjectFlag = (
         path.basename(workspacePackage.directory) === requestedName,
     );
 
-    if (!matched) {
-      const availableNames = workspacePackages
-        .map((workspacePackage) => workspacePackage.name)
-        .join(", ");
-      throw new CliInputError(`Project "${requestedName}" not found. Available: ${availableNames}`);
+    if (matched) {
+      resolvedDirectories.push(matched.directory);
+      continue;
     }
 
-    resolvedDirectories.push(matched.directory);
+    const candidateDirectory = path.resolve(rootDirectory, requestedName);
+    if (isDirectory(candidateDirectory)) {
+      resolvedDirectories.push(candidateDirectory);
+      pathSelectionCount += 1;
+      continue;
+    }
+
+    const availableNames = workspacePackages
+      .map((workspacePackage) => workspacePackage.name)
+      .join(", ");
+    throw new CliInputError(
+      workspacePackages.length > 0
+        ? `Project "${requestedName}" is not a workspace project or a directory. Available projects: ${availableNames}`
+        : `Project "${requestedName}" is not a directory under ${rootDirectory}.`,
+    );
+  }
+
+  if (pathSelectionCount > 0) {
+    recordCount(METRIC.projectPathSelected, pathSelectionCount);
   }
 
   return resolvedDirectories;

@@ -108,6 +108,75 @@ describe("selectProjects", () => {
     );
   });
 
+  it("resolves --project directory paths when modules are not workspace packages", async () => {
+    const tempDirectory = createTempDirectory();
+    writeJson(path.join(tempDirectory, "package.json"), { name: "monolith" });
+    fs.mkdirSync(path.join(tempDirectory, "modules", "billing"), { recursive: true });
+    fs.mkdirSync(path.join(tempDirectory, "modules", "payroll"), { recursive: true });
+
+    const selectedDirectories = await selectProjects(
+      tempDirectory,
+      "modules/billing,modules/payroll",
+      true,
+    );
+
+    expect(selectedDirectories).toEqual([
+      path.join(tempDirectory, "modules", "billing"),
+      path.join(tempDirectory, "modules", "payroll"),
+    ]);
+    expect(prompts).not.toHaveBeenCalled();
+  });
+
+  it("mixes workspace package names and directory paths in --project", async () => {
+    const tempDirectory = createTempDirectory();
+    writeJson(path.join(tempDirectory, "package.json"), {
+      name: "workspace",
+      workspaces: ["apps/*"],
+    });
+    const webDirectory = setupReactProject(path.join(tempDirectory, "apps"), "web");
+    setupReactProject(path.join(tempDirectory, "apps"), "docs");
+    fs.mkdirSync(path.join(tempDirectory, "modules", "billing"), { recursive: true });
+
+    const selectedDirectories = await selectProjects(tempDirectory, "web,modules/billing", true);
+
+    expect(selectedDirectories).toEqual([
+      webDirectory,
+      path.join(tempDirectory, "modules", "billing"),
+    ]);
+  });
+
+  it("rejects a --project entry that is neither a workspace project nor a directory", async () => {
+    const tempDirectory = createTempDirectory();
+    writeJson(path.join(tempDirectory, "package.json"), { name: "monolith" });
+
+    await expect(selectProjects(tempDirectory, "modules/missing", true)).rejects.toThrow(
+      /is not a directory under/,
+    );
+  });
+
+  it("resolves the --project flag even when discovery finds a single workspace package", async () => {
+    const tempDirectory = createTempDirectory();
+    writeJson(path.join(tempDirectory, "package.json"), {
+      name: "workspace",
+      workspaces: ["apps/*"],
+    });
+    setupReactProject(path.join(tempDirectory, "apps"), "web");
+    fs.mkdirSync(path.join(tempDirectory, "modules", "billing"), { recursive: true });
+
+    const selectedDirectories = await selectProjects(tempDirectory, "modules/billing", true);
+
+    expect(selectedDirectories).toEqual([path.join(tempDirectory, "modules", "billing")]);
+  });
+
+  it("falls back to the root directory for --project '*' when no packages are discovered", async () => {
+    const tempDirectory = createTempDirectory();
+    writeJson(path.join(tempDirectory, "package.json"), { name: "monolith" });
+
+    const selectedDirectories = await selectProjects(tempDirectory, "*", true);
+
+    expect(selectedDirectories).toEqual([tempDirectory]);
+  });
+
   it("rejects a --project flag that names no project (e.g. just commas)", async () => {
     const tempDirectory = createTempDirectory();
     writeJson(path.join(tempDirectory, "package.json"), {

@@ -132,6 +132,7 @@ export const METRIC = {
   cliInvoked: "cli.invoked",
   cliError: "cli.error",
   projectDetected: "project.detected",
+  projectPathSelected: "project.path_selected",
   scanCompleted: "scan.completed",
   scanDuration: "scan.duration",
   scanPhaseDuration: "scan.phase_duration",

@@ -11,6 +11,8 @@ import {
   getChangedLineRanges,
   getDiffInfo,
   highlighter,
+  loadConfigWithSource,
+  mergeReactDoctorConfigs,
   resolveScanTarget,
   toRelativePath,
 } from "@react-doctor/core";
@@ -544,10 +546,18 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       if (!isQuiet && !isMultiProject) {
         logger.dim("  ");
       }
+      // Each project's own doctor.config layers additively onto the root
+      // config (rules merge per key, ignore lists union) — same semantics as
+      // `diagnose({ projects })` — so per-module overrides apply without
+      // discarding the shared base rules.
+      const projectConfig =
+        projectDirectory === resolvedDirectory
+          ? undefined
+          : (await loadConfigWithSource(projectDirectory))?.config;
       const scanResult = await inspect(projectDirectory, {
         ...scanOptions,
         includePaths,
-        configOverride: userConfig,
+        configOverride: mergeReactDoctorConfigs(userConfig, projectConfig),
         suppressRendering: isMultiProject,
         baseline: baselineRef ? { ref: baselineRef } : undefined,
         changedLineRanges:

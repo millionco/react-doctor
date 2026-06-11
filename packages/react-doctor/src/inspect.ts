@@ -66,6 +66,7 @@ import {
   printScoreHeader,
 } from "./cli/utils/render-score-header.js";
 import { printFooter, printSummary } from "./cli/utils/render-summary.js";
+import { printDiagnosticsDump } from "./cli/utils/print-diagnostics-dump.js";
 import { resolveOxlintNode } from "./cli/utils/resolve-oxlint-node.js";
 import { resolveCliCategories } from "./cli/utils/resolve-cli-categories.js";
 import { getRunId } from "./cli/utils/run-id.js";
@@ -187,7 +188,7 @@ const mergeInspectOptions = (
   lint: inputOptions.lint ?? userConfig?.lint ?? true,
   deadCode: inputOptions.deadCode ?? userConfig?.deadCode ?? true,
   verbose: inputOptions.verbose ?? userConfig?.verbose ?? false,
-  outputDirectory: inputOptions.outputDirectory ?? null,
+  outputDirectory: inputOptions.outputDirectory || null,
   scoreOnly: inputOptions.scoreOnly ?? false,
   noScore: inputOptions.noScore ?? userConfig?.noScore ?? false,
   isCi: inputOptions.isCi ?? false,
@@ -911,6 +912,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       } else {
         yield* printNoScoreHeader(noScoreMessage);
       }
+      yield* printDiagnosticsDump([...diagnostics], options.outputDirectory, options.verbose);
       return buildResult();
     }
 

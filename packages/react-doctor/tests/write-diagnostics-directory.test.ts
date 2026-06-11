@@ -39,6 +39,31 @@ describe("writeDiagnosticsDirectory", () => {
     fs.rmSync(customDirectory, { recursive: true, force: true });
   });
 
+  it("removes stale rule dump files when reusing a custom directory", () => {
+    const customDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-stale-"));
+    writeDiagnosticsDirectory(
+      [makeDiagnostic({ plugin: "react-doctor", rule: "old-rule" })],
+      customDirectory,
+    );
+    expect(fs.existsSync(path.join(customDirectory, "react-doctor--old-rule.txt"))).toBe(true);
+
+    writeDiagnosticsDirectory(
+      [makeDiagnostic({ plugin: "react-doctor", rule: "new-rule" })],
+      customDirectory,
+    );
+    expect(fs.existsSync(path.join(customDirectory, "react-doctor--new-rule.txt"))).toBe(true);
+    expect(fs.existsSync(path.join(customDirectory, "react-doctor--old-rule.txt"))).toBe(false);
+    fs.rmSync(customDirectory, { recursive: true, force: true });
+  });
+
+  it("does not remove non-dump files in a custom directory", () => {
+    const customDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-preserve-"));
+    fs.writeFileSync(path.join(customDirectory, "readme.txt"), "keep me");
+    writeDiagnosticsDirectory([makeDiagnostic({})], customDirectory);
+    expect(fs.existsSync(path.join(customDirectory, "readme.txt"))).toBe(true);
+    fs.rmSync(customDirectory, { recursive: true, force: true });
+  });
+
   it("resolves a relative custom directory against the working directory", () => {
     const baseDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-relative-"));
     const previousWorkingDirectory = process.cwd();

@@ -19,7 +19,7 @@ import {
 } from "./render-score-header.js";
 import { resolveMeasureWidth } from "./resolve-measure-width.js";
 import { wrapTextToWidth } from "./wrap-indented-text.js";
-import { writeDiagnosticsDirectory } from "./write-diagnostics-directory.js";
+import { printDiagnosticsDump } from "./print-diagnostics-dump.js";
 
 const FOOTER_DESCRIPTION_INDENT = "  ";
 
@@ -131,16 +131,5 @@ export const printSummary = (input: PrintSummaryInput): Effect.Effect<void> =>
       yield* printNoScoreHeader(input.noScoreMessage);
     }
 
-    // v4 forbids try/catch inside Effect.gen — wrap the sync write
-    // in `Effect.try` (always-tagged form: `{ try, catch }`) and
-    // recover via `Effect.orElseSucceed`. Failing to write the dump
-    // shouldn't block the summary, so we fall through to `null` and
-    // skip the line.
-    const outputDirectory = yield* Effect.try({
-      try: () => writeDiagnosticsDirectory(input.diagnostics, input.outputDirectory),
-      catch: (cause) => cause,
-    }).pipe(Effect.orElseSucceed(() => null as string | null));
-    if (outputDirectory !== null && (input.verbose || Boolean(input.outputDirectory))) {
-      yield* Console.log(highlighter.gray(`  Full diagnostics written to ${outputDirectory}`));
-    }
+    yield* printDiagnosticsDump(input.diagnostics, input.outputDirectory, input.verbose);
   });

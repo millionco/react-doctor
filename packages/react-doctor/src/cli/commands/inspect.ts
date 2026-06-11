@@ -47,6 +47,7 @@ import { playWelcomeScene, RETURNING_USER_SPEED_MULTIPLIER } from "../utils/rend
 import { reportErrorToSentry } from "../utils/report-error.js";
 import { readChangedFilesFrom } from "../utils/read-changed-files-from.js";
 import { printMultiProjectSummary } from "../utils/render-multi-project-summary.js";
+import { writeDiagnosticsDirectory } from "../utils/write-diagnostics-directory.js";
 import { isCiOrCodingAgentEnvironment } from "../utils/is-ci-environment.js";
 import {
   printAgentInstallHint,
@@ -581,6 +582,8 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
           projectName: path.basename(resolvedDirectory),
         }),
       );
+    } else if (isMultiProject && (flags.outputDir ?? null) !== null && allDiagnostics.length > 0) {
+      writeDiagnosticsDirectory(allDiagnostics, flags.outputDir);
     }
 
     finalizeScans({

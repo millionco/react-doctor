@@ -78,6 +78,52 @@ describe("react-native/rn-no-raw-text", () => {
         const App = () => <Label><Icon /> text</Label>;
       `);
     });
+
+    it("suppresses a wrapper forwarding children into a nested Text", () => {
+      expectPass(`
+        function Chip({ children }) {
+          return (
+            <View testID="Chip">
+              <Text>{children}</Text>
+            </View>
+          );
+        }
+        const App = () => <Chip>Test Chip</Chip>;
+      `);
+    });
+
+    it("suppresses an arrow wrapper forwarding props.children into a nested Text", () => {
+      expectPass(`
+        const Badge = (props) => (
+          <View style={props.style}>
+            <Text>{props.children}</Text>
+          </View>
+        );
+        const App = () => <Badge>New</Badge>;
+      `);
+    });
+
+    it("still fires when the nested Text receives something other than children", () => {
+      expectFail(`
+        const Card = ({ title, children }) => (
+          <View>
+            <Text>{title}</Text>
+            {children}
+          </View>
+        );
+        const App = () => <Card title="hi">Body copy</Card>;
+      `);
+    });
+  });
+
+  describe("test-noise suppression", () => {
+    it("does not fire in testlike files", () => {
+      const result = runRule(rnNoRawText, `const App = () => <View>Hello</View>;`, {
+        filename: "Chip.test.tsx",
+      });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    });
   });
 
   describe("expo universal ui ListItem", () => {
